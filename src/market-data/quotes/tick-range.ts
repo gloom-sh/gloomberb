@@ -34,6 +34,11 @@ export interface StreamTickRange {
    * says which session they were in (`streamTicksAsShown`).
    */
   sessions?: Partial<Record<TickSession, StreamTickRange>>;
+  regular?: StreamTickRange & { latest: StreamTickReading };
+}
+
+export function isRegularSessionPrint(quote: Pick<Quote, "marketState" | "overnightPrice">): boolean {
+  return quote.marketState === "REGULAR" && quote.overnightPrice == null;
 }
 
 function reading(display: ActiveQuoteDisplay | null, quote: Quote): StreamTickReading | null {
@@ -103,9 +108,16 @@ export function foldStreamTick(range: StreamTickRange | null, quote: Quote): Str
   const post = sessionReading(quote, "POST");
   if (!range) {
     const started = startRange(tick);
+    if (isRegularSessionPrint(quote)) started.regular = { ...startRange(tick), latest: tick };
     if (pre) (started.sessions ??= {}).PRE = startRange(pre);
     if (post) (started.sessions ??= {}).POST = startRange(post);
     return started;
+  }
+  if (isRegularSessionPrint(quote)) {
+    if (range.regular) {
+      foldReading(range.regular, tick);
+      range.regular.latest = tick;
+    } else range.regular = { ...startRange(tick), latest: tick };
   }
   if (pre || post || range.sessions) {
     foldSessionReading(range, "PRE", pre, tick);
@@ -132,6 +144,10 @@ function mergeFlat(earlier: StreamTickRange, later: StreamTickRange): StreamTick
 export function mergeStreamTickRanges(earlier: StreamTickRange | undefined, later: StreamTickRange): StreamTickRange {
   if (!earlier) return later;
   const merged = mergeFlat(earlier, later);
+  if (earlier.regular || later.regular) {
+    merged.regular = earlier.regular && later.regular
+      ? { ...mergeFlat(earlier.regular, later.regular), latest: later.regular.latest } : earlier.regular ?? later.regular;
+  }
   for (const session of TICK_SESSIONS) {
     const before = earlier.sessions?.[session];
     const after = later.sessions?.[session];
@@ -169,7 +185,8 @@ export function streamTicksAsShown(range: StreamTickRange, applied: Quote): Stre
     : state === "POST" || state === "POSTPOST" ? range.sessions?.POST : undefined;
   for (const view of [session, range]) {
     if (!view || view.last !== shown) continue;
-    return spansOtherPrices(view) ? flatRange(view) : null;
+    return (spansOtherPrices(view) || (range.regular && !isRegularSessionPrint(applied)))
+      ? { ...flatRange(view), ...(range.regular ? { regular: range.regular } : {}) } : null;
   }
   return null;
 }
@@ -205,6 +222,10 @@ function readFlatRange(value: unknown): StreamTickRange | undefined {
 export function readStreamTickRange(value: unknown): StreamTickRange | undefined {
   const range = readFlatRange(value);
   if (!range) return undefined;
+  const rawRegular = (value as { regular?: { latest?: unknown } }).regular;
+  const regular = readFlatRange(rawRegular);
+  const latest = readReading(rawRegular?.latest);
+  if (regular && latest?.price === regular.last) range.regular = { ...regular, latest };
   const sessions = (value as { sessions?: unknown }).sessions;
   for (const session of TICK_SESSIONS) {
     const view = sessions && typeof sessions === "object" ? readFlatRange((sessions as Record<string, unknown>)[session]) : undefined;

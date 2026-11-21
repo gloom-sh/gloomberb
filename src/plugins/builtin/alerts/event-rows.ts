@@ -11,7 +11,7 @@ import { checkedOnlyWithPro } from "./pro-rules";
 export function ruleTarget(rule: EventAlertRule, zone: string | null = null): string {
   const target = eventAlertTarget(rule);
   if (!readScheduledRule(rule)) return target;
-  return `${target} · ${rule.eventDate ? eventWhen(rule, zone) : "date not known yet"}`;
+  return `${target} · ${rule.eventDate ? eventWhen(rule, zone) : rule.kind === "earnings_date" ? "waiting for next date" : "date not known yet"}`;
 }
 
 /** `2026-11-06 13:30 UTC, 08:30 New York`, or the day alone without a print time. */

@@ -7,12 +7,17 @@ import { resolvePlanAccess, type PlanAccessUser } from "../../../api-client/plan
 import { proAlertFormNote, proAlertFree, proAlertSavedNote, proAlertsFree } from "../shared/options-pro-copy";
 
 /**
- * The rules Gloom Cloud checks only for an account with Pro, as docs/usage.md marks them: options flow and an
- * IV spike. A free account saves them, and nothing checks them; signing in alone does not change that.
+ * The rules checked only for an account with Pro. A free account saves them, and signing in alone does not change that.
  */
-const PRO_RULE_NAMES: Readonly<Record<string, string>> = { options_flow: "options flow", iv_spike: "IV spike" };
+const PRO_RULE_NAMES: Readonly<Record<string, string>> = {
+  options_flow: "options flow",
+  iv_spike: "IV spike",
+  catalyst: "catalyst",
+  hiring_move: "hiring move",
+  perps_threshold: "perpetuals threshold",
+};
 
-/** Whether a rule is checked only for an account with Gloom Cloud Pro (options flow, an IV spike). */
+/** Whether a rule is checked only for an account with Gloom Cloud Pro. */
 export function checkedOnlyWithPro(rule: { kind: string }): boolean {
   return Object.hasOwn(PRO_RULE_NAMES, rule.kind);
 }

@@ -67,7 +67,7 @@ export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPane
     describe: (args) => `${initialView === "graph" ? "HVG" : "HVT"} ${args.symbols[0] ?? ""}`,
     discovery: { screenshotReadiness: "live-dom", limitations: ["IV is a dated current observation; HIVG has the stored IV history."] },
     options: [
-      { key: "tab", type: "enum", values: [{ value: "graph" }, { value: "cone" }], defaultValue: initialView,
+      { key: "tab", type: "enum", values: [{ value: "graph", label: "History" }, { value: "cone" }], defaultValue: initialView,
         description: "Initial view", pluginState: { pluginId: "ticker-research", key: "activeTabId" } },
       { key: "estimator", type: "enum", values: ESTIMATOR_OPTIONS.map(({ value }) => ({ value })), defaultValue: "close-to-close", description: "Realized volatility estimator" },
       { key: "windows", type: "string", defaultValue: "",

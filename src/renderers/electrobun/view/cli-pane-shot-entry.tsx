@@ -419,11 +419,13 @@ function createShotDataProvider(payload: DesktopPaneShotPayload): DataProvider {
 
 function createShotAppServices(payload: DesktopPaneShotPayload, externalPlugins: LoadedExternalPlugin[]) {
   const dataProvider = createShotDataProvider(payload);
+  const persistence = new JsonPersistence();
+  for (const { pluginId, key, value } of payload.deviceState ?? []) persistence.pluginState.set(pluginId, key, value);
   return createAppRuntime({
     config: payload.config,
     plugins: getLoadablePlugins(externalPlugins),
     dataProvider,
-    persistence: new JsonPersistence(),
+    persistence,
     tickerRepository: new JsonTickerRepository(undefined, payload.tickers),
     registryOptions: {
       enableCapabilityHandlers: false,

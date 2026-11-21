@@ -5,6 +5,7 @@ import { relativeAlertText } from "./metric-command";
 import { levelAlertStoreKey, readLevelAlertStores } from "./storage";
 import { Box, type ScrollBoxRenderable } from "../../../ui";
 import { Button, DetailScrollBody, KeyValueRow, Notice, PaneStatusBody, PaneFooterScope, QueryBar, usePaneTabs } from "../../../components";
+import { alertSessionLabel } from "./session";
 import { usePluginPaneState, usePluginState } from "../../runtime";
 import { EventAlertsPane } from "./events-pane";
 import { AlertHistoryPane } from "./history-pane";
@@ -73,6 +74,7 @@ type AlertColumnId =
   | "away"
   | "condition"
   | "quote"
+  | "session"
   | "triggered"
   | "created";
 
@@ -89,6 +91,7 @@ const ALERT_COLUMNS: AlertColumn[] = [
   { id: "target", label: "Target", width: 10, align: "right" },
   { id: "away", label: "Away", width: 8, align: "right" },
   { id: "condition", label: "Trigger", width: 12, align: "left" },
+  { id: "session", label: "Session", width: 12, align: "left" },
   // Wide enough to say "not checked yet" for an alert no check has read.
   { id: "quote", label: "Quote", width: 15, align: "left" },
   { id: "triggered", label: "Alerted", width: 8, align: "left" },
@@ -119,6 +122,7 @@ function AlertDetail({ alert, scrollRef }: { alert: AlertRule; scrollRef: RefObj
         {reason ? <Box paddingBottom={1}><Notice tone="warning">{reason}</Notice></Box> : null}
         <KeyValueRow {...DETAIL_ROW} label="State" value={alert.status === "triggered" ? "Triggered" : "Active"} tone={alert.status === "triggered" ? "positive" : "muted"} />
         <KeyValueRow {...DETAIL_ROW} label="Listing" value={listingWithCurrency(alertListing(alert), alert.lastQuoteCurrency)} />
+        {!alert.metric ? <KeyValueRow {...DETAIL_ROW} label="Session" value={alertSessionLabel(alert)} /> : null}
         {/* With no quote the reason above says why; the price and its distance wait for one. */}
         {basis ? <KeyValueRow {...DETAIL_ROW} label="Close date" value={alert.lastDailyClose ?? `Awaiting ${basis}`} /> : null}
         {reason ? null : <KeyValueRow {...DETAIL_ROW} label={alert.move ? "Move" : "Current"} value={formatCurrentPrice(alert, 24, { words: true })} />}
@@ -486,6 +490,8 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
         };
       case "condition":
         return { text: triggerLabel(alert) };
+      case "session":
+        return { text: alert.metric ? MISSING_VALUE : alertSessionLabel(alert, true) };
       case "quote":
         return {
           text: formatQuoteChecked(alert),

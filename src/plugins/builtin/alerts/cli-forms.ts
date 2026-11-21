@@ -1,4 +1,5 @@
 import { CATALYST_TYPES } from "../../../api-client/catalysts";
+import { checkedOnlyWithPro } from "./pro-rules";
 import { RESEARCH_ALERT_FORMS } from "./research-rules";
 
 /**
@@ -68,9 +69,9 @@ export interface RuleAddRequest {
 
 /** Who checks a rule and how it reaches you, as docs/usage.md states it. */
 export function ruleDelivery(event: string): string {
-  if (event.startsWith("catalyst")) return "the app checks it every five minutes while it is running and signed in";
+  if (event.startsWith("catalyst")) return "the app checks it every five minutes while it is running and signed in with Pro";
   if (event.startsWith("congress") || event.startsWith("thirteenf")) return "Gloom Cloud sends it to your phone for a signed-in account with Cloud sync";
-  return "Gloom Cloud checks it, not the app, for a signed-in account with Cloud sync and sends it to your phone";
+  return `Gloom Cloud checks it, not the app, for a signed-in account with Cloud sync${checkedOnlyWithPro({ kind: event }) ? " on Gloom Pro" : ""} and sends it to your phone`;
 }
 
 /** What a US-only rule is called when a listing abroad is refused. */

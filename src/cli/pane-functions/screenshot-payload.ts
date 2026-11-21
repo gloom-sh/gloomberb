@@ -6,6 +6,7 @@ import { isOptionsUnavailableError } from "../../market-data/options-alternative
 import type { TapeCapture } from "../../plugins/builtin/time-sales/snapshot-client";
 import { apiClient } from "../../api-client";
 import { snapshotInstrumentKey, type SnapshotMarketData } from "../../market-data/snapshot-provider";
+import { resumeStateKey } from "../../plugins/registry/plugin-state";
 import { toMarketDataContext } from "../../market-data/selectors";
 import type { ChartPaneModel } from "../../plugins/builtin/chart-composer/headless";
 import { buildHeadlessPaneLoadArgs, loadResolvedHeadlessPaneModel, type LoadedHeadlessPaneModel } from "./headless";
@@ -479,8 +480,17 @@ export async function buildDesktopShotPayload(
   config.layout.instances[0] = shotInstance;
   if (config.layouts[0]) config.layouts[0].layout.instances[0] = shotInstance;
 
+  const deviceState = (resolved.headless?.shotDeviceState ?? []).flatMap(({ pluginId, key }) => {
+    try {
+      const saved = context.persistence?.pluginState.getStrict(pluginId, resumeStateKey(key));
+      return saved ? [{ pluginId, key: resumeStateKey(key), value: stripDesktopShotCredentials(saved.value) }] : [];
+    } catch (error) {
+      return logFailure("headless.shot-device-state", `Read ${pluginId}'s device state failed`, [])(error);
+    }
+  });
   const payload: DesktopPaneShotPayload = {
     config,
+    ...(deviceState.length ? { deviceState } : {}),
     marketDataProviderId: context.dataProvider.id,
     paneId: resolved.instance.instanceId,
     widthCells,

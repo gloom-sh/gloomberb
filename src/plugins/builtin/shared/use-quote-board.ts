@@ -749,6 +749,7 @@ const boardHeadlines = new WeakMap<Quote, Quote>();
  * price's (quoteHeadlineTime), as `quote` dates it.
  */
 export function boardHeadlineQuote(quote: Quote): Quote {
+  if (quote.futuresPriceKind) return quote;
   const cached = boardHeadlines.get(quote);
   if (cached) return cached;
   const display = getRegularSessionDisplay(quote);

@@ -53,6 +53,7 @@ export function editAlert(
     status: "active",
     message: alert.message,
     ...(alert.metric ? { metric: alert.metric } : {}),
+    ...(alert.regularHoursOnly ? { regularHoursOnly: true } : {}),
     // A move rule stays one; the session it went off in is dropped, so it can go off again.
     ...(alert.move ? { move: true } : {}),
   };
@@ -70,6 +71,7 @@ export function rearmAlert(alert: AlertRule): AlertRule {
 export function sameLevelRule(a: AlertRule, b: AlertRule): boolean {
   // One key per listing: 7203.T, `7203 JP` and 7203:JPX are one listing, as is AAPL read on NASDAQ.
   return alertListingKey(a) === alertListingKey(b) && !!a.move === !!b.move
+    && !!a.regularHoursOnly === !!b.regularHoursOnly
     && a.condition === b.condition && a.targetPrice === b.targetPrice
     && JSON.stringify(readAlertMetric(a.metric)) === JSON.stringify(readAlertMetric(b.metric));
 }

@@ -259,6 +259,7 @@ export function futuresSessionQuote(contract: FuturesContract, quote: Quote | nu
 export function futuresBoardQuotes(quotes: BoardQuoteMap, terms: FuturesTermsMap): BoardQuoteMap {
   let next: BoardQuoteMap | null = null;
   for (const [symbol, state] of quotes) {
+    if (state.quote?.futuresPriceKind) continue;
     const quote = futuresQuoteFromSettle(state.quote, terms.get(symbol)?.terms);
     if (quote === state.quote) continue;
     next ??= new Map(quotes);

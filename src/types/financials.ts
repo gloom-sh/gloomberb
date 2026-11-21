@@ -147,6 +147,7 @@ export interface Quote extends DepositaryReceiptFacts {
   priceBasis?: PriceBasis;
   /** Daily fund net asset value; independent of the units used to format its price. */
   priceObservation?: "nav";
+  futuresPriceKind?: "settlement" | "last-trade";
   symbol: string;
   /** Provider-reported security type, independent of the company profile. */
   instrumentType?: string;

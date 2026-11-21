@@ -25,7 +25,7 @@ export const FUTURES_COLUMN_DEFS: readonly FuturesColumnDef[] = [
   { id: "status", label: "Session", description: "Live trading session indicator." },
   { id: "code", label: "Symbol", description: "Exchange contract code." },
   { id: "name", label: "Contract", description: "Contract name." },
-  { id: "price", label: "Last", description: "Last traded price." },
+  { id: "price", label: "Price", description: "Last trade or official settlement." },
   { id: "unit", label: "Unit", description: "What a price counts, as the exchange quotes it (USD / barrel)." },
   { id: "change", label: "Change", description: "Change on the session." },
   { id: "changePercent", label: "Change %", description: "Percent change on the session." },
@@ -128,7 +128,7 @@ const FUTURES_HEADER_LABELS: Record<DrawnColumnId, string> = {
   status: "",
   code: "SYM",
   name: "CONTRACT",
-  price: "LAST",
+  price: "PRICE",
   unit: "UNIT",
   change: "CHG",
   changePercent: "CHG%",
@@ -237,6 +237,12 @@ function formatContractChange(quote: Quote, contract: FuturesContract): string {
   return `${quote.change >= 0 ? "+" : "-"}${prefix}${text}${suffix}`;
 }
 
+export function futuresClosePriceKind(contract: FuturesContract, quote: Quote | null | undefined, now?: number): "S" | "T" | null {
+  if (quote?.futuresPriceKind === "settlement") return "S";
+  if (quote?.futuresPriceKind === "last-trade" || futuresSessionQuote(contract, quote, now)?.marketState === "CLOSED") return "T";
+  return null;
+}
+
 export function renderFuturesCell(
   row: FuturesTableRow,
   column: FuturesColumn,
@@ -256,6 +262,12 @@ export function renderFuturesCell(
         color: colors.textBright,
         attributes: TextAttributes.BOLD,
       };
+    case "price": {
+      const cell = renderQuoteBoardCell("price", state, { formatPrice: (quoted) => formatContractPrice(quoted, contract),
+        formatChange: (quoted) => formatContractChange(quoted, contract) });
+      const kind = typeof cell.value === "number" ? futuresClosePriceKind(contract, quote, options?.now) : null;
+      return kind ? { ...cell, text: `${cell.text} ${kind}` } : cell;
+    }
     case "name":
       return futuresContractHeadline(contract, quote, options?.terms?.get(contract.symbol)?.terms, column.width);
     case "unit": {

@@ -189,7 +189,7 @@ export function mergeQuoteContribution(
 
   // NAV responses are complete dated observations. Never carry an earlier
   // date or intraday session fields into one, or its marker into a later tick.
-  if (current.priceObservation != null || next.priceObservation != null) {
+  if (current.priceObservation != null || next.priceObservation != null || current.futuresPriceKind || next.futuresPriceKind) {
     return { ...next, name: next.name ?? current.name };
   }
 

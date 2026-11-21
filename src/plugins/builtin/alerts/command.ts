@@ -25,6 +25,7 @@ export interface AlertCommandInput {
   price: number;
   /** A move from the previous close (`QQQ moves 5%`): `condition` is either way (crosses), up (above) or down (below). */
   move?: true;
+  regularHoursOnly?: true;
   /** Typed in pence (`70p`): `price` is in pounds, for a London line quoted in pence. */
   pence?: true;
   currency?: string;
@@ -118,7 +119,7 @@ export function parseAlertCommandValues(
     if (!symbol || !typed) return null;
     const percent = parseMovePercent(typed);
     if (percent == null) throw new Error(`${MOVE_PERCENT_RULE}, not "${typed}".`);
-    return { symbol, condition, price: percent, move: true };
+    return { symbol, condition, price: percent, move: true, ...values["move:session"] === "regular" ? { regularHoursOnly: true } : {} };
   }
   const metric = values ? metricFormInput(values) : null;
   if (metric) return metric;
@@ -126,7 +127,7 @@ export function parseAlertCommandValues(
   const condition = parseAlertCondition(values?.condition);
   const priceStr = values?.price?.trim();
   if (!symbol || !condition || !priceStr) return null;
-  return { symbol, condition, ...readAlertLevel(priceStr) };
+  return { symbol, condition, ...readAlertLevel(priceStr), ...values?.["price:session"] === "regular" ? { regularHoursOnly: true } : {} };
 }
 
 /** A move rule's edit read: `GBPUSD=X moves 0.5%`, `HSBA:LSE down 3`, as `alerts add` takes it. Null for another form. */

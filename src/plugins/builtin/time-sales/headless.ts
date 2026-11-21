@@ -71,6 +71,7 @@ export const timeSalesHeadless: HeadlessPaneDefinition<"bundle"> = {
   usListingsOnly: "Time and sales",
   usListingsOnlyHint: (symbol) => subMinuteDataMessage(symbol, "abroad"),
   options: [
+    { key: "tab", type: "enum", settingKey: "tab", values: [{ value: "trades", label: "Trades" }, { value: "quotes", label: "NBBO" }], description: "Which tape to show first." },
     { key: "limit", shot: REPORT_ROWS, type: "integer", minimum: 1, maximum: 1000, defaultValue: 100, description: "Maximum recent prints in the report." },
     { key: "from", shot: WINDOW_OPTION, type: "string", defaultValue: "", placeholder: "time", example: "--from 10:30 --to 10:35",
       description: "Start of a window of the served session, as a time of day: 10:30 or 10:30:15 on New York's clock, 14:30Z on UTC's."
@@ -87,9 +88,9 @@ export const timeSalesHeadless: HeadlessPaneDefinition<"bundle"> = {
   async load(args, ctx) {
     const symbol = args.symbols[0] ?? (typeof args.argument === "string" ? args.argument : "");
     const instrument = await ctx.resolveInstrument?.(symbol);
+    const quotesView = (args.options.tab ?? ctx.settings?.tab) === "quotes";
     if (listedAbroad(symbol, instrument?.exchange)) {
       // Say why the table is empty and where the finest bars for it are, rather than the tape's bare "unavailable".
-      const quotesView = ctx.settings?.tab === "quotes";
       return { complete: false, sections: [
         { title: quotesView ? "NBBO" : "Trades", rows: [], empty: subMinuteDataMessage(symbol, "abroad") },
       ], ...(quotesView ? { metadata: { view: "quotes" } } : {}) };
@@ -125,7 +126,6 @@ export const timeSalesHeadless: HeadlessPaneDefinition<"bundle"> = {
     ];
     // Each low says what it is the low of: the window's every print, the session's as quote and GIP read it.
     const lows = [...notes, tapeRangeBasis(tape[0]!.title)];
-    const quotesView = ctx.settings?.tab === "quotes";
     return { freshness, notes: lows, sections: quotesView ? [nbbo, ...tape] : [...tape, nbbo], errors: data.gaps, metadata: { source: data.source, feed: data.feed, delaySeconds: data.delaySeconds,
       asOf: data.asOf, observedFrom: data.observedFrom, generatedAt: data.generatedAt, status: data.status, ...(windowed ? { window: windowed.range } : {}),
       complete: data.status === "available", capacity: data.capacity, dropped: data.dropped, corrections: data.corrections, cancels: data.cancels, connected: data.connected,

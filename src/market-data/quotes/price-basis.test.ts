@@ -17,6 +17,14 @@ test("selected price owns its unit; incompatible contributors cannot supply dail
   expect(unknown.postMarketPrice).toBeUndefined();
 });
 
+test("a settlement marker belongs to the selected price and clears on the first untagged trade", () => {
+  const settled = normalizeQuoteContribution(quote({ symbol: "NGZ26.NYM", instrumentType: "FUTURE", priceBasis: "per-unit",
+    price: 3.411, futuresPriceKind: "settlement", providerId: "gloomberb-cloud" }))!;
+  expect(resolveCanonicalQuote({ cloud: settled }, now).quote).toMatchObject({ price: 3.411, futuresPriceKind: "settlement" });
+  const trade = mergeQuoteContribution(settled, { ...settled, price: 3.45, futuresPriceKind: undefined, lastUpdated: now + 1000 });
+  expect(resolveCanonicalQuote({ cloud: trade }, now + 1000).quote?.futuresPriceKind).toBeUndefined();
+});
+
 test("new untagged responses clear prior basis and cannot inherit old unit-priced session fields or extrema",()=>{
   const old=normalizeQuoteContribution(quote({providerId:"ibkr",marketState:"POST",postMarketPrice:88,postMarketChange:2,high:89,low:85}))!;
   const next=mergeQuoteContribution(old,quote({providerId:"ibkr",priceBasis:undefined,price:.87,marketState:undefined,high:undefined,low:undefined,previousClose:undefined}));

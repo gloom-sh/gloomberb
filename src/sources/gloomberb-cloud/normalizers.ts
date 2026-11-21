@@ -128,6 +128,7 @@ export function mapQuote(
     priceVenue: typeof quote.priceVenue === "string" && /^[A-Za-z][A-Za-z0-9 .-]{0,23}$/.test(quote.priceVenue) ? quote.priceVenue : undefined,
     priceBasis,
     priceObservation,
+    futuresPriceKind: quote.futuresPriceKind === "settlement" || quote.futuresPriceKind === "last-trade" ? quote.futuresPriceKind : undefined,
     currency: currency || quote.currency,
     price: normalizePriceValueByDivisor(quote.price, divisor) ?? quote.price,
     change,

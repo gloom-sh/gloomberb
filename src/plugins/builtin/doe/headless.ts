@@ -63,7 +63,7 @@ export function doeHeadless(defaultTab: DoeTab | "all"): HeadlessPaneDefinition<
   return {
     shape: "bundle",
     argument: { kind: "free-text", optional: true, placeholder: "series", description: "A series such as cushing, gasoline or east; omit for the tables." },
-    options: [{ key: "tab", type: "enum", values: [{ value: "all" }, ...DOE_TABS.map(({ value }) => ({ value }))], defaultValue: defaultTab,
+    options: [{ key: "tab", type: "enum", values: [{ value: "all" }, ...DOE_TABS], defaultValue: defaultTab,
       description: "Crude, products, gas storage, or all three." }],
     discovery: { aliases: ["DOE", "NGS"], dataRequirements: ["Gloom Cloud EIA weekly history"],
       limitations: ["Weekly data, published Wednesday (petroleum) and Thursday (gas) at 10:30 ET, moved by holidays.",
