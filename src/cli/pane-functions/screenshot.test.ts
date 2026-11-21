@@ -36,7 +36,8 @@ test("ALRT capture copies the local fired log without copying unrelated saved st
     capability: { id: "alerts", options: alertsHeadless.options },
     instance: { instanceId: "alerts:test", paneId: "alerts", settings: {}, binding: { kind: "none" } } } as unknown as ResolvedPaneFunction;
   const shot = await buildDesktopShotPayload(resolved, {
-    config: createDefaultConfig("/tmp/alert-history-shot"), dataProvider: { id: "offline" }, persistence,
+    config: createDefaultConfig("/tmp/alert-history-shot"), dataProvider: { id: "offline" },
+    persistence: { pluginState: { getStrict: persistence.pluginState.get } },
   } as unknown as MarketContext, "", { tab: "history" }, 800, 600, null, 1, null);
   expect(shot.deviceState).toEqual([{ pluginId: ALERTS_PLUGIN_ID, key, value: log }]);
 });
