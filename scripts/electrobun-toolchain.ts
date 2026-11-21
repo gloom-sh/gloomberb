@@ -362,7 +362,8 @@ async function sync(): Promise<number> {
   if (status === 0 && !Buffer.from(bun.bytes).equals(readFileSync(bun.binary))) {
     refused.push(`Hutch replaced the pinned Bun in ${bun.binary}`);
   }
-  for (const line of [...refused, ...mirror.failed]) console.error(`electrobun-toolchain: ${line}`);
+  // Hutch asks up to three times for a file it was refused.
+  for (const line of new Set([...refused, ...mirror.failed])) console.error(`electrobun-toolchain: ${line}`);
   if (refused.length > 0) return 2;
   if (status !== 0) return status;
 
