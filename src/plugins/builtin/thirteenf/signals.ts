@@ -2,6 +2,8 @@ import { apiClient } from "../../../api-client";
 import type { PaneFooterSegment } from "../../../components";
 import { formatShortDate } from "../../../utils/datetime-format";
 import type { HoldingAction } from "./types";
+import { movedListing, movedListingNote } from "../../../tickers/listing-fate";
+import { logFailure } from "../../../utils/log-failure";
 
 export interface TickerHolderRow {
   id: string;
@@ -75,6 +77,17 @@ export async function loadTickerHoldings(ticker: string, offset = 0, signal?: Ab
   const result = await apiClient.getCloudSec13F("ticker-holdings", { tickers: ticker, offset, limit: 25 }, { signal }) as TickerHoldings;
   signal?.throwIfAborted();
   return result;
+}
+/**
+ * What a ticker's 13F holders are read under: the symbol its company trades
+ * as now when it moved (SQ became XYZ), with the note that says so, asked
+ * before any holders request. The holders source maps a symbol to its
+ * security, and an old one maps to nothing: it gave up after 20 s.
+ */
+export async function holdersTicker(ticker: string, marketData: Parameters<typeof movedListing>[1] | null | undefined): Promise<{ ticker: string; note?: string }> {
+  const change = marketData ? await movedListing({ symbol: ticker }, marketData)
+    .catch(logFailure("thirteenf-signals", "Read whether a 13F ticker moved failed", null)) : null;
+  return change ? { ticker: change.tradesAs, note: movedListingNote(change) } : { ticker };
 }
 export async function loadCrowding(signal?: AbortSignal): Promise<Crowding> {
   signal?.throwIfAborted();

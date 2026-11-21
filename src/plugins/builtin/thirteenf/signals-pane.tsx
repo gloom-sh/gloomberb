@@ -6,14 +6,14 @@ import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, type ScrollBoxRenderable } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
-import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
+import { useAssetData, usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useMineTickers } from "../shared/mine-tickers";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
 import { actionLabel, formatMoneyCompact, formatShares, formatWeightMaybe } from "./format";
 import { FundDetailView } from "./pane";
-import { appendTickerHoldings, loadCrowding, loadTickerHoldings, quarterFallbackFooter, type Crowding, type CrowdingRow, type TickerHolderRow } from "./signals";
+import { appendTickerHoldings, holdersTicker, loadCrowding, loadTickerHoldings, quarterFallbackFooter, type Crowding, type CrowdingRow, type TickerHolderRow } from "./signals";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
 export function ThirteenFTickerPane({ focused, width, height }: Pick<PaneProps, "focused" | "width" | "height">) {
@@ -46,7 +46,14 @@ export function ThirteenFTickerHoldingsView({ symbol, focused, width, height, qu
     return () => onDetailChange?.(false);
   }, [fund, onDetailChange]);
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
-  const loadPage = useCallback(({ offset, signal }: PageRequest) => loadTickerHoldings(symbol, offset, signal), [symbol]);
+  // A ticker whose company moved (SQ) is read under its new symbol (XYZ) before any holders request, and says so.
+  const marketData = useAssetData();
+  const read = useMemo(() => holdersTicker(symbol, marketData), [symbol, marketData]);
+  const loadPage = useCallback(async ({ offset, signal }: PageRequest) => {
+    const { ticker, note } = await read;
+    const page = await loadTickerHoldings(ticker, offset, signal);
+    return note ? { ...page, warnings: [note, ...page.warnings] } : page;
+  }, [read]);
   const paged = usePagedRows(symbol ? loadPage : null);
   // Later pages merge into the first the same way the headless command merges them.
   const data = useMemo(() => (paged.pages.length > 0 ? paged.pages.reduce(appendTickerHoldings) : null), [paged.pages]);

@@ -28,6 +28,7 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", description: "US option underlying" },
   usListingsOnly: "Implied volatility history",
   refuseSymbol: fxVolatilityRefusal("HIVG"),
+  readsSymbolFate: true,
   freshness: { status: "not-a-feed", basis: "daily implied volatility", cadence: "daily", observedKey: "date", oldest: null },
   describe: (args) => `HIVG ${args.symbols[0] ?? ""}`,
   discovery: { aliases: ["HIVG"], suggestFor: IMPLIED_VOL_WORDS, screenshotReadiness: "live-dom", dataRequirements: ["Cloud stored implied volatility", "Daily price history"],
@@ -176,6 +177,7 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
   argument: { kind: "symbol-list", optional: true, maximum: VCA_LIMIT, description: "US option underlyings; defaults to index and sector ETFs." },
   usListingsOnly: "Implied volatility",
   refuseSymbol: fxVolatilityRefusal("VCA"),
+  readsSymbolFate: true,
   options: [{ key: "preset", type: "enum", values: [{ value: "etfs" }, { value: "megacaps" }], defaultValue: "etfs", description: "Preset when no symbols are given" }],
   describe: "Volatility rich/cheap",
   // The pane names its universe `scope`; symbols typed open their own (custom), which a preset does not replace.

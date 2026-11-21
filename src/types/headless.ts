@@ -893,6 +893,13 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
    */
   refuseSymbol?(key: string): { message: string; details?: string } | null;
   /**
+   * The function reads each symbol's fate itself (VCA and HIVG refuse a
+   * moved one and keep its row in a list, with the new symbol), so `fn` does
+   * not read a ticker whose company moved (SQ) as its new symbol (XYZ) first,
+   * as it does for any other function that takes tickers.
+   */
+  readsSymbolFate?: boolean;
+  /**
    * `fn` exits 1 when the report has no name with data: no rows, or every row
    * is one of `unavailableSymbols`. A list that gives data for some names
    * exits 0 and names the others in its errors.
