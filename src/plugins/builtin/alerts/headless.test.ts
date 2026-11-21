@@ -29,10 +29,11 @@ function contextWith(alerts: unknown[], events: unknown[]) {
 test("ALRT takes --tab as the pane's own tab and refuses an unknown tab or option", () => {
   const strict = { strict: true, code: "ALRT" };
   expect(normalizeCapabilityOptions(capability, {}, strict)).toEqual({ tab: "prices" });
+  expect(normalizeCapabilityOptions(capability, { tab: "LEVELS" }, strict)).toEqual({ tab: "prices" });
   const events = normalizeCapabilityOptions(capability, { tab: "events" }, strict);
   // The pane reads its tab from the pane state `tab` of the alerts plugin, which `shot` seeds from this.
   expect(capabilityPluginState(capability, events)).toEqual({ alerts: { tab: "events" } });
-  expect(() => normalizeCapabilityOptions(capability, { tab: "bogus" }, strict)).toThrow('Invalid --tab value "bogus". Use one of: prices, events, history.');
+  expect(() => normalizeCapabilityOptions(capability, { tab: "bogus" }, strict)).toThrow('Invalid --tab value "bogus". Use one of: "Levels" (prices), events, history.');
   expect(() => normalizeCapabilityOptions(capability, { foo: "1" }, strict)).toThrow("ALRT does not support --foo. Supported options: --tab.");
 });
 

@@ -275,7 +275,7 @@ export const alertsHeadless: HeadlessPaneDefinition<"rows"> = {
     key: "tab",
     description: "Alerts tab: prices, events or history (alerts that went off; Gloom Cloud's deliveries when signed in).",
     type: "enum",
-    values: ALERT_TABS.map(({ value }) => ({ value })),
+    values: ALERT_TABS,
     defaultValue: "prices",
     example: "--tab events",
     pluginState: { pluginId: ALERTS_PLUGIN_ID, key: "tab" },
