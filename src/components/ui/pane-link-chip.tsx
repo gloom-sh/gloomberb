@@ -409,7 +409,7 @@ const TERMINAL_ITEM_TEXT_ROWS = 2;
  * cut with an ellipsis when it does not fit. Cells, not characters: a CJK
  * character or an emoji takes two.
  */
-function clampedRows(text: string, width: number, rows: number): string[] {
+function terminalClampedRows(text: string, width: number, rows: number): string[] {
   if (rows <= 0 || !text) return [];
   const lines = wrapTextLines(text, width);
   if (lines.length <= rows) return lines;
@@ -435,12 +435,12 @@ function terminalItemCardLayout(content: PaneLinkChipContent, width: number) {
   const cardWidth = Math.max(1, Math.min(width, Math.max(displayWidth(title), displayWidth(excerpt), paneWidth - 2) + 2));
   const textWidth = Math.max(cardWidth - 2, 1);
   if (content.pending) {
-    const titleRows = clampedRows(title, textWidth, 1);
+    const titleRows = terminalClampedRows(title, textWidth, 1);
     return { cardWidth, pane, titleRows, excerptRows: Array.from({ length: TERMINAL_ITEM_TEXT_ROWS - titleRows.length }, () => "") };
   }
   const textRows = title && pane ? TERMINAL_ITEM_TEXT_ROWS : 1;
-  const titleRows = clampedRows(title, textWidth, textRows);
-  const excerptRows = clampedRows(excerpt, textWidth, title ? textRows - titleRows.length : 1);
+  const titleRows = terminalClampedRows(title, textWidth, textRows);
+  const excerptRows = terminalClampedRows(excerpt, textWidth, title ? textRows - titleRows.length : 1);
   return { cardWidth, pane, titleRows, excerptRows };
 }
 

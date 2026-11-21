@@ -18,6 +18,7 @@ import {
   type StatItem,
 } from "../../../components";
 import { spanDigits } from "../../../components/chart-table";
+import { ClippedText } from "../../../components/ui/display";
 import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { isPermanentClientError } from "../../../api-client/errors";
 import { getTableWidth, hasMeaningfulTableHorizontalOverflow } from "../../../components/ui/table-layout";
@@ -30,7 +31,7 @@ import {
 } from "../../../sources/gloomberb-cloud/fred-series";
 import { colors } from "../../../theme/colors";
 import { Box, Text } from "../../../ui";
-import { MISSING_VALUE, displayWidth, truncateToDisplayWidth } from "../../../utils/format";
+import { MISSING_VALUE, displayWidth } from "../../../utils/format";
 import { useOpenTickerChoice } from "../shared/ticker-choice";
 import { resolveFredMapping, projectFredHistory, fredHistoryUnits } from "./fred-series-map";
 import { actualColor, CALENDAR_TIME_ZONE_LABEL, econEventName, figureGap, figureGapText, timeLabel } from "./calendar-model";
@@ -110,12 +111,12 @@ function formatLevelAxis(value: number, domain: CompositeAxisDomain): string {
  */
 function SourceLine({ source, kind, width }: { source: NonNullable<EconEvent["source"]>; kind: EconEvent["kind"]; width: number }) {
   const detail = ` · ${kind === "central-bank-decision" ? "meeting calendar" : "release calendar"}`;
-  const label = truncateToDisplayWidth(source.name, Math.max(4, width - 2 - displayWidth(detail)));
+  const room = Math.max(4, width - 2 - displayWidth(detail));
   return (
     <Box flexDirection="row" paddingX={1} height={1} flexShrink={0}>
       {source.url
-        ? <ExternalLinkText url={source.url} label={label} color={colors.text} />
-        : <Text fg={colors.text}>{label}</Text>}
+        ? <ExternalLinkText url={source.url} label={source.name} width={room} color={colors.text} />
+        : <ClippedText fg={colors.text} text={source.name} width={room} />}
       <Text fg={colors.textDim}>{detail}</Text>
     </Box>
   );

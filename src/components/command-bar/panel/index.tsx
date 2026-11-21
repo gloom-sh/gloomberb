@@ -1,9 +1,10 @@
 import { useLayoutEffect, useState } from "react";
 import { t, tf } from "../../../i18n";
 import { useThemeColors } from "../../../theme/theme-context";
-import { Box, Text, TextAttributes } from "../../../ui";
+import { Box, TextAttributes } from "../../../ui";
 import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
 import { Button, terminalButtonColumns } from "../../ui";
+import { ClippedText } from "../../ui/display";
 import type { ListScreenState } from "../list/model";
 import { CommandBarListBody } from "../list/view";
 import { ThemePicker } from "../theme-picker";
@@ -21,9 +22,12 @@ const COMMAND_BAR_OVERLAY_Z_INDEX = 2_147_483_646;
 const COMMAND_BAR_PANEL_Z_INDEX = 2_147_483_647;
 const NEW_PANE_LABEL = "New pane";
 
-/** Ticker search's title when Enter changes a pane: the pane's name gives way first. */
-function changeTickerTitle(pane: string, width: number): string {
-  const full = tf("Change ticker · {pane}", { pane });
+/**
+ * Ticker search's title when Enter changes a pane, as the terminal cuts it: the
+ * pane's name gives way first. The desktop cuts the whole title by CSS, which
+ * takes the name off its end first too.
+ */
+function terminalChangeTickerTitle(full: string, width: number): string {
   return displayWidth(full) <= width ? full : truncateToDisplayWidth(t("Change ticker"), width);
 }
 
@@ -205,11 +209,17 @@ export function CommandBarPanel({
                       onPress={onBack}
                     />
                     <Box width={2} />
-                    <Text fg={palette.text} attributes={TextAttributes.BOLD}>
-                      {tickerSearchTarget
-                        ? changeTickerTitle(tickerSearchTarget, Math.max(1, queryDisplayWidth - 8 - newPaneColumns - 2))
-                        : truncateToDisplayWidth(t(getCommandBarPanelTitle(currentRoute)), Math.max(1, queryDisplayWidth - 8))}
-                    </Text>
+                    {tickerSearchTarget ? (
+                      <ClippedText
+                        fg={palette.text}
+                        attributes={TextAttributes.BOLD}
+                        text={tf("Change ticker · {pane}", { pane: tickerSearchTarget })}
+                        width={Math.max(1, queryDisplayWidth - 8 - newPaneColumns - 2)}
+                        cut={terminalChangeTickerTitle}
+                      />
+                    ) : (
+                      <ClippedText fg={palette.text} attributes={TextAttributes.BOLD} text={t(getCommandBarPanelTitle(currentRoute))} width={Math.max(1, queryDisplayWidth - 8)} />
+                    )}
                     {tickerSearchTarget && (
                       <>
                         <Box flexGrow={1} />
@@ -230,7 +240,7 @@ export function CommandBarPanel({
                   // Says what Enter runs, and a click on it runs the same.
                   <Button
                     label={rootShortcutFeedback}
-                    displayLabel={truncateToDisplayWidth(rootShortcutFeedback, queryDisplayWidth)}
+                    displayLabel={nativePaneChrome ? rootShortcutFeedback : truncateToDisplayWidth(rootShortcutFeedback, queryDisplayWidth)}
                     variant="plain"
                     compact
                     flush

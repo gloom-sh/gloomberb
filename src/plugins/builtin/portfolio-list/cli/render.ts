@@ -40,7 +40,7 @@ import { loadPurchaseDateCostFx, withPurchaseDateCostFx, type CostFxHistoryClien
 import { apiClient } from "../../../../api-client";
 import { canonicalExchange, isUsListingExchange } from "../../../../utils/exchanges";
 import { formatUtcDayTime, parseReportTime } from "../../../../utils/utc-time";
-import { quoteFreshnessFields } from "../../shared/report-freshness";
+import { bookSource, quoteFreshnessFields } from "../../shared/report-freshness";
 import { resolvePortfolioTotalsCurrency } from "../summary/totals";
 import {
   EXTENDED_SESSION_LABELS,
@@ -1049,14 +1049,16 @@ async function showCollectionWithMarketData(
   ]);
   // Worst of across the holdings' quotes, as the PORT and watchlist reports state it.
   const broker = !!(matchedPortfolio?.brokerId || matchedPortfolio?.brokerInstanceId);
-  const source = !isPortfolio ? "Local watchlist and Gloom Cloud"
-    : broker ? "Your broker account and Gloom Cloud" : "Local portfolio and Gloom Cloud";
+  const holdings = !isPortfolio ? "Local watchlist" : broker ? "Your broker account" : "Local portfolio";
+  const source = `${holdings} and Gloom Cloud`;
+  // Valued at its quotes, a book cites the sources they name, not Gloom Cloud for a price it did not give.
+  const quotedSource = bookSource(holdings, quotes.values(), dataProvider.sourceNameOf);
   if (matchedPortfolio && period) {
     await showPeriodPnl({ ctx, portfolio: matchedPortfolio, name: displayName, tickers: filtered, currency, window: period, provider: dataProvider,
       fxHistory: costFxHistory, quotes, futures: futures ?? new Map(), source, listingLabel, explain, real, ...(cpi ? { cpi } : {}) });
     return;
   }
-  let freshness = isPortfolio ? undefined : quotesFreshness(quotes.values(), { source });
+  let freshness = isPortfolio ? undefined : quotesFreshness(quotes.values(), { source: quotedSource });
   // A watchlist's stale rows, named under the closing line that counts them.
   let staleNote: string | null = null;
 
@@ -1076,7 +1078,7 @@ async function showCollectionWithMarketData(
 
   if (matchedPortfolio && valuation) {
     // Exports carry no header line, so their source line names the basis.
-    freshness = portfolioValuationFreshness(valuation, source, { note: structured });
+    freshness = portfolioValuationFreshness(valuation, quotedSource, { note: structured });
     const {
       positions: valued,
       totalPnl,

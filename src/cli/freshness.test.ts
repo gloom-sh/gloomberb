@@ -120,3 +120,41 @@ describe("quote status line", () => {
       .toBe("Fri 16 Oct 2026 08:03 UTC · 15 min delayed · pre-market open · regular session opens 13:30 UTC, 09:30 ET");
   });
 });
+
+describe("quote source", () => {
+  const quote = (providerId: string | undefined, symbol = "AAPL"): Quote => createTestQuote({
+    symbol, providerId, dataSource: "delayed", listingExchangeName: "NASDAQ", marketState: "REGULAR", lastUpdated: Date.parse("2026-10-12T14:45:00Z"),
+  });
+  const now = Date.parse("2026-10-12T15:00:00Z");
+  const names: Record<string, string> = { ibkr: "Interactive Brokers", "acme-feed": "Acme Feed" };
+  const nameOf = (providerId: string) => names[providerId];
+  const source = (quotes: Quote[], resolve?: typeof nameOf) => quotesFreshness(quotes, undefined, now, resolve)!.source;
+
+  test("Gloom Cloud's quotes are cited to Gloom Cloud, as before", () => {
+    expect(source([quote("gloomberb-cloud"), quote("gloomberb-cloud", "MSFT")])).toBe("Gloom Cloud");
+    expect(formatFreshnessLine(quotesFreshness([quote("gloomberb-cloud")], undefined, now)!))
+      .toBe("Source: Gloom Cloud · Mon 12 Oct 2026 14:45 UTC · 15 min delayed · markets open");
+  });
+
+  test("a plugin's provider is named by its name, beside Gloom Cloud's with an and", () => {
+    expect(source([quote("acme-feed")], nameOf)).toBe("Acme Feed");
+    expect(source([quote("gloomberb-cloud"), quote("acme-feed", "MSFT"), quote("acme-feed", "KO")], nameOf)).toBe("Gloom Cloud and Acme Feed");
+  });
+
+  test("a broker's quote is named by its adapter's name", () => {
+    expect(source([quote("ibkr")], nameOf)).toBe("Interactive Brokers");
+  });
+
+  test("a source with no name leaves the source out, never Gloom Cloud and never its id", () => {
+    for (const quotes of [[quote("acme-feed")], [quote("gloomberb-cloud"), quote("acme-feed", "MSFT")]]) {
+      const freshness = quotesFreshness(quotes, undefined, now)!;
+      expect(freshness.source).toBe("");
+      expect(formatFreshnessLine(freshness)).toStartWith("Mon 12 Oct 2026 14:45 UTC · ");
+      expect(JSON.stringify(freshness)).not.toContain("acme-feed");
+    }
+  });
+
+  test("a source the caller declares is kept", () => {
+    expect(quotesFreshness([quote("acme-feed")], { source: "Local watchlist" }, now)!.source).toBe("Local watchlist");
+  });
+});

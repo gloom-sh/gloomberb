@@ -3,7 +3,7 @@ import type { HeadlessPaneFreshness, HeadlessPaneRow } from "../types/headless";
 import { deriveHeadlessFreshness, type ReportFreshness } from "./pane-functions/freshness";
 import { quoteObservation, REPORTED_DATA } from "../plugins/builtin/shared/report-freshness";
 import { latestReportedPeriod } from "../utils/latest-financial-period";
-import { quoteSourceName } from "../market-data/quotes/export-identity";
+import { quotesSourceName, type BrokerNameOf } from "../market-data/quotes/export-identity";
 
 /**
  * The source, as-of and status line of a plain CLI command, derived exactly as
@@ -27,19 +27,23 @@ export function rowsFreshness(
 
 /**
  * Worst of across the quotes shown, dated by the newest, with their delay and
- * where their markets stand. Quotes that failed to load say nothing.
+ * where their markets stand. Quotes that failed to load say nothing. Their
+ * source is named as their pane footer names it: Gloom Cloud, an exchange
+ * whose own trade prices a coin, a broker or plugin data provider by the name
+ * `brokerName` gives its id, joined with `and`. A source with no name to give
+ * leaves the source out, never Gloom Cloud by default.
  */
 export function quotesFreshness(
   quotes: Iterable<Quote | null | undefined>,
   declared?: HeadlessPaneFreshness,
   now = Date.now(),
+  brokerName?: BrokerNameOf,
 ): ReportFreshness | undefined {
   const shown = [...quotes].filter((quote): quote is Quote => quote != null);
   const rows = shown.map((quote) => quoteObservation(quote, now));
-  // A coin priced by an exchange's own trade names the exchange, as its pane footer does: `Coinbase and Kraken`.
-  const names = shown.some((quote) => quote.priceVenue) ? [...new Set(shown.map((quote) => quoteSourceName(quote)))] : [];
-  const source = !declared?.source && names.length > 0 && names.every(Boolean) ? names.join(" and ") : undefined;
-  return rows.length > 0 ? rowsFreshness(rows, source ? { ...declared, source } : declared, undefined, now) : undefined;
+  const declaresSource = declared?.source === null || !!declared?.source?.trim() || !!declared?.sources?.length;
+  const source = declaresSource ? undefined : quotesSourceName(shown, brokerName) || null;
+  return rows.length > 0 ? rowsFreshness(rows, source === undefined ? declared : { ...declared, source }, undefined, now) : undefined;
 }
 
 /**

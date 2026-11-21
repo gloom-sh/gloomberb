@@ -1,4 +1,5 @@
-import { Box, Text } from "../../../ui";
+import { Box, Text, useUiCapabilities } from "../../../ui";
+import { ClippedText } from "../../../components/ui/display";
 import type { DataTableCell } from "../../../components";
 import { colors, inactiveSelectedText } from "../../../theme/colors";
 import { blendForContrast } from "../../../theme/color-utils";
@@ -36,6 +37,27 @@ function isoDay(date: Date | null): string | null {
   return date ? date.toISOString().slice(0, 10) : null;
 }
 
+/** A transaction's type, then its markers, which give way first; cut by CSS on the desktop and the web. */
+function InsiderTypeCell({ type, markers, width, color, markerColor }: { type: string; markers: string; width: number; color: string; markerColor: string }) {
+  const { nativePaneChrome } = useUiCapabilities();
+  if (nativePaneChrome) {
+    return (
+      <Box flexDirection="row" width={width} overflow="hidden">
+        {type ? <ClippedText fg={color} text={type} width={width} /> : null}
+        <ClippedText fg={markerColor} lead={type ? " " : ""} text={markers} width={width} flex="0 1000 auto" />
+      </Box>
+    );
+  }
+  const label = clipToDisplayWidth(type, width);
+  const room = Math.max(0, width - displayWidth(label) - (label ? 1 : 0));
+  return (
+    <Box flexDirection="row" width={width} overflow="hidden">
+      {label ? <Text fg={color}>{label}</Text> : null}
+      {room > 0 ? <Text fg={markerColor}>{`${label ? " " : ""}${clipToDisplayWidth(markers, room)}`}</Text> : null}
+    </Box>
+  );
+}
+
 export function renderInsiderCell(
   row: InsiderTableRow,
   column: InsiderColumn,
@@ -59,16 +81,9 @@ export function renderInsiderCell(
       if (markers.length === 0) return { text, color, keepColorWhenSelected: true };
       // The markers read after the type in a quieter colour.
       const markerColor = !rowState.selected ? colors.textMuted : inactive ? inactiveSelectedText(colors.textMuted) : colors.selectedText;
-      const label = clipToDisplayWidth(row.type, column.width);
-      const room = Math.max(0, column.width - displayWidth(label) - (label ? 1 : 0));
       return {
         text,
-        content: (
-          <Box flexDirection="row" width={column.width} overflow="hidden">
-            {label ? <Text fg={color}>{label}</Text> : null}
-            {room > 0 ? <Text fg={markerColor}>{`${label ? " " : ""}${clipToDisplayWidth(markers.join(" "), room)}`}</Text> : null}
-          </Box>
-        ),
+        content: <InsiderTypeCell type={row.type} markers={markers.join(" ")} width={column.width} color={color} markerColor={markerColor} />,
       };
     }
     case "security":

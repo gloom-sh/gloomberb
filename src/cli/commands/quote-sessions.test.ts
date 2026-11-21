@@ -507,3 +507,70 @@ test("a coin priced by an exchange's own trade names the exchange in its Feed ce
   const delayed = await quote([coin("USDT-USD", { dataSource: "delayed", lastUpdated: Date.now() - 15 * 60_000 })]);
   expect(delayed.find((line) => line.startsWith("Source:"))).toMatch(/^Source: Gloom Cloud · .*15 min delayed/);
 });
+
+test("quote cites quotes from a plugin's provider or a broker by name, and leaves an unnamed source out instead of calling it Gloom Cloud", async () => {
+  const quoted = (symbol: string, providerId: string): Quote => ({ ...afterHours, symbol, providerId });
+  const quote = async (quotes: Quote[], format: "text" | "csv" | "json", sourceNameOf?: (providerId: string) => string | null) => {
+    const cli = createTestCliContext({ config, dataProvider: {
+      getQuotesBatch: async () => quotes.map((entry) => ({ target: { symbol: entry.symbol, exchange: "" }, quote: entry })),
+      ...sourceNameOf ? { sourceNameOf } : {},
+    } });
+    await marketDataCliCommands.find((command) => command.name === "quote")!.execute(quotes.map((entry) => entry.symbol), cli.context);
+    const [{ result, options }] = cli.printed as [PrintedCliResult];
+    return serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format }, options);
+  };
+  const names: Record<string, string> = { "acme-feed": "Acme Feed", ibkr: "Interactive Brokers" };
+  const nameOf = (providerId: string) => names[providerId] ?? null;
+  const closing = (text: string) => text.split("\n").find((line) => line.startsWith("Source:"));
+
+  // Gloom Cloud's alone reads as it did.
+  expect(closing(await quote([quoted("AAPL", "gloomberb-cloud")], "text"))).toStartWith("Source: Gloom Cloud · ");
+  // A plugin's provider, a broker, and both beside Gloom Cloud's, by name.
+  expect(closing(await quote([quoted("AAPL", "acme-feed")], "text", nameOf))).toStartWith("Source: Acme Feed · ");
+  expect(closing(await quote([quoted("AAPL", "ibkr")], "text", nameOf))).toStartWith("Source: Interactive Brokers · ");
+  const mixed = [quoted("AAPL", "gloomberb-cloud"), quoted("MSFT", "acme-feed"), quoted("KO", "ibkr")];
+  expect(closing(await quote(mixed, "text", nameOf))).toStartWith("Source: Gloom Cloud and Acme Feed and Interactive Brokers · ");
+  // An export cites each row to its own source.
+  expect((await quote(mixed, "csv", nameOf)).split("\n").slice(1, 4).map((line) => line.split(",").at(-3))).toEqual(["Gloom Cloud", "Acme Feed", "Interactive Brokers"]);
+
+  // A provider with no name to give leaves the source out, in the text, the JSON and the export, never its id.
+  for (const quotes of [[quoted("AAPL", "acme-feed")], [quoted("AAPL", "gloomberb-cloud"), quoted("MSFT", "acme-feed")]]) {
+    const text = await quote(quotes, "text");
+    expect(text).not.toContain("Source:");
+    expect(text).not.toContain("Gloom Cloud");
+    expect(JSON.parse(await quote(quotes, "json")).source.name).toBeNull();
+    expect(await quote(quotes, "csv")).not.toContain("acme-feed");
+  }
+  expect((await quote([quoted("AAPL", "acme-feed")], "csv")).split("\n")[1]!.split(",").at(-3)).toBe("");
+
+  // Neither row of a mixed export takes the other's source: a quote with no provider id is Gloom Cloud's, and
+  // the unnamed provider's cell stays blank, whatever the closing lines say.
+  const implicitCloud: Quote = { ...afterHours, symbol: "AAPL", providerId: undefined };
+  for (const quotes of [[implicitCloud, quoted("MSFT", "acme-feed")], [quoted("MSFT", "acme-feed"), implicitCloud]]) {
+    const rows = (await quote(quotes, "csv")).split("\n").slice(1, 3);
+    const sourceOf = (symbol: string) => rows.find((line) => line.startsWith(symbol))!.split(",").at(-3);
+    expect(sourceOf("AAPL")).toBe("Gloom Cloud");
+    expect(sourceOf("MSFT")).toBe("");
+  }
+});
+
+test("QQ's report cites its quotes' sources by name, and leaves an unnamed one out instead of calling it Gloom Cloud", async () => {
+  const quoted = (symbol: string, providerId: string): Quote => ({ ...afterHours, symbol, providerId, lastUpdated: Date.now() - 60_000 });
+  const report = async (providerIds: string[]) => {
+    const symbols = providerIds.map((_, index) => `S${index}`);
+    const quotes = new Map(providerIds.map((providerId, index) => [symbols[index]!, quoted(symbols[index]!, providerId)]));
+    const ctx = {
+      signal: new AbortController().signal,
+      marketData: createTestDataProvider({ getQuote: async (symbol) => quotes.get(symbol)! }),
+      resolveBroker: (type: string) => type === "ibkr" ? { name: "Interactive Brokers" } : null,
+    } as HeadlessPaneContext;
+    const args = { symbols, argument: symbols, rawArgument: symbols.join(","), options: {} };
+    const result = await quoteComparisonHeadless.load(args, ctx);
+    return deriveHeadlessFreshness(quoteComparisonHeadless, result).source;
+  };
+  expect(await report(["gloomberb-cloud", "gloomberb-cloud"])).toBe("Gloom Cloud");
+  expect(await report(["ibkr"])).toBe("Interactive Brokers");
+  expect(await report(["gloomberb-cloud", "ibkr"])).toBe("Gloom Cloud and Interactive Brokers");
+  expect(await report(["acme-feed"])).toBe("");
+  expect(await report(["gloomberb-cloud", "acme-feed"])).toBe("");
+});

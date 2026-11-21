@@ -470,7 +470,7 @@ function ASKGWelcome({
         {examples.map((question, index) => (
           <Button
             key={question}
-            label={truncateWithEllipsis(question, Math.max(10, width - 4))}
+            label={nativePaneChrome ? question : truncateWithEllipsis(question, Math.max(10, width - 4))}
             variant="ghost"
             active={selectedIndex === index}
             onPress={() => onAsk(question)}

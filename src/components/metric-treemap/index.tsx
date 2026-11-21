@@ -89,7 +89,7 @@ function visibleLines(item: MetricTreemapItem): string[] {
   ].filter((line): line is string => !!line);
 }
 
-function Tile<T>({ tile, selected, onSelect, onActivate, pointerMoved }: {
+function TerminalTile<T>({ tile, selected, onSelect, onActivate, pointerMoved }: {
   tile: MetricTreemapTile<T>;
   selected: boolean;
   onSelect: () => void;
@@ -340,7 +340,7 @@ export function MetricTreemapSurface<T>({
     <Box width={width} height={height} paddingX={1} backgroundColor={colors.bg}>
       <Box position="relative" width={chartWidth} height={height} backgroundColor={colors.bg}>
         {tiles.map((tile) => (
-          <Tile
+          <TerminalTile
             key={tile.item.id}
             tile={tile}
             selected={tile.item.id === selectedId}

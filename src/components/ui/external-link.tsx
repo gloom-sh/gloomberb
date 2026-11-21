@@ -8,6 +8,8 @@ import { linkContextMenuItems, useContextMenu, useRendererHost, useUiCapabilitie
 import type { ContextMenuItem } from "../../types/context-menu";
 import { usePaneMenuItems } from "../layout/pane/footer/registration";
 import { logFailure } from "../../utils/log-failure";
+import { truncateToDisplayWidth } from "../../utils/format";
+import { NATIVE_CLIP_STYLE } from "./clip-style";
 
 export function openUrl(rawUrl: string) {
   const url = safeExternalUrl(rawUrl);
@@ -100,9 +102,11 @@ function handleOpen(
 
 /** Desktop and web: a link inside a line of text runs and wraps with the line, rather than standing as a box of its own. */
 const INLINE_LINK_STYLE = { display: "inline", whiteSpace: "pre-wrap", overflowWrap: "anywhere" } as const;
+/** Desktop and web: a link given a width keeps one line and gives way to what stands beside it. */
+const ONE_LINE_LINK_STYLE = { ...NATIVE_CLIP_STYLE, flex: "0 1 auto" } as const;
 
 export function ExternalLinkText(
-  { url, label, color, attributes = 0, inline = false, onOpen = openUrl }: {
+  { url, label, color, attributes = 0, inline = false, width, onOpen = openUrl }: {
     url: string;
     label?: string;
     color?: string;
@@ -110,6 +114,11 @@ export function ExternalLinkText(
     attributes?: number;
     /** Flows inside a line of text on the desktop and the web. */
     inline?: boolean;
+    /**
+     * One line, cut where its room ends: in the terminal at this many cells,
+     * on the desktop and the web by CSS where its box ends.
+     */
+    width?: number;
     onOpen?: (url: string) => void;
   },
 ) {
@@ -138,11 +147,11 @@ export function ExternalLinkText(
       fg={color ?? (nativePaneChrome ? "inherit" : colors.textBright)}
       attributes={TextAttributes.UNDERLINE | attributes}
       cursor="pointer"
-      style={inline ? INLINE_LINK_STYLE : undefined}
+      style={inline ? INLINE_LINK_STYLE : width !== undefined && nativePaneChrome ? ONE_LINE_LINK_STYLE : undefined}
       role="link"
       data-gloom-link="true"
       tabIndex={0}
-      wrapText
+      wrapText={width === undefined || !nativePaneChrome}
       onKeyDown={(event: any) => {
         if (event.key === "Enter" || event.name === "return") handleOpen(url, resolvedOpen, event);
       }}
@@ -160,7 +169,7 @@ export function ExternalLinkText(
         void openLinkContextMenu(event);
       }}
     >
-      {label ?? url}
+      {width === undefined || nativePaneChrome ? label ?? url : truncateToDisplayWidth(label ?? url, width)}
     </Text>
   );
 }

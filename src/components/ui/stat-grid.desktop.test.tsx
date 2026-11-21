@@ -30,8 +30,10 @@ test("the desktop draws a wrapped figure on the terminal's two lines, its split 
   const value = cell("oi").querySelector('[data-gloom-role="stat-grid-value"]')!;
   expect(value.parentElement!.querySelector('[data-gloom-role="split-bar"]')).not.toBeNull();
   expect(cell("oi").querySelectorAll('[data-gloom-role="split-bar"]')).toHaveLength(1);
-  // The date is never what gives way: the percentile is cut, in the same words as the terminal.
-  expect(texts(cell("effr"), "stat-grid-detail")).toEqual(["88 pctl… · 2026-10-29"]);
+  // The date is never what gives way: the detail comes whole, the date in a run of its own that
+  // CSS keeps while it cuts what comes before it where the cell ends (the terminal cuts by cells).
+  expect(texts(cell("effr"), "stat-grid-detail")).toEqual(["88 pctl 1Y"]);
+  expect(texts(cell("effr"), "stat-grid-detail-end")).toEqual([" · 2026-10-29"]);
   // A figure that fits keeps its one line.
   expect(cell("slope").dataset.wrapped).toBeUndefined();
   // The band is sized for the lines the terminal counts: two wrapped figures and one line.

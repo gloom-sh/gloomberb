@@ -60,7 +60,7 @@ export function PageStackView({
  * once the row is laid out, so until then the whole title is drawn, clipped
  * by its box.
  */
-function StackTitle({ title }: { title: string }) {
+function TerminalStackTitle({ title }: { title: string }) {
   const boxRef = useRef<BoxRenderable>(null);
   const [width, setWidth] = useState<number | null>(null);
   useLayoutEffect(() => observeBoxWidth(boxRef.current, setWidth), []);
@@ -143,7 +143,7 @@ function OpenTuiPageStackView({
         {detailTitle ? (
           <>
             <Box width={1} flexShrink={0} />
-            <StackTitle title={detailTitle} />
+            <TerminalStackTitle title={detailTitle} />
           </>
         ) : (
           <Box flexGrow={1} />

@@ -1,7 +1,7 @@
 import { Box, Span, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { useThemeColors } from "../../../theme/theme-context";
 import { blendHex } from "../../../theme/colors";
-import { truncateToDisplayWidth } from "../../../utils/format";
+import { ClippedText } from "../../../components/ui/display";
 import { gpuAxisLabels, gpuBasisColor, gpuBasisLabel, gpuPrice, type GpuAxisLabel, type GpuLadderRow } from "./model";
 
 const LABEL_CELLS = 28;
@@ -65,7 +65,7 @@ export function GpuPriceLadder({ rows, width, height, selected }: {
           <Box key={row.basis} flexDirection="row" height={1} gap={1}>
             <Box width={labelCells} flexShrink={0} flexDirection="row" overflow="hidden">
               <Text fg={color}>●</Text>
-              <Text fg={colors.text}>{` ${truncateToDisplayWidth(gpuBasisLabel(row.basis, !wide), labelCells - 6)}`}</Text>
+              <ClippedText fg={colors.text} lead=" " text={gpuBasisLabel(row.basis, !wide)} width={labelCells - 6} />
               <Text fg={colors.textDim}>{` ${row.n}`}</Text>
             </Box>
             <Box width={trackCellsWidth} height={1} flexShrink={0} overflow="hidden">

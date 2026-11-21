@@ -16,6 +16,9 @@ test("a rates or curve question is CBR, GC and ECO, the ones it asks about first
   // A stock's yield, a question with no rates in it, and "us" that is no country are none of these.
   expect(run("What are the highest dividend yields in the S&P 500?")).toEqual([]);
   expect(run("what did the DAX do yesterday?")).toEqual([]);
+  // A cut with no market or bank named is a company's, and a week alone is no calendar's.
+  expect(run("Did UAL raise or cut its guidance?")).toEqual([]);
+  expect(run("Why did airline stocks fall this week?")).toEqual([]);
   expect(questionMarkets("tell us about the RBA and the Reserve Bank of New Zealand")).toEqual(["AU", "NZ"]);
 });
 

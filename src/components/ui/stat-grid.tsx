@@ -1,8 +1,10 @@
+import type { ReactNode } from "react";
 import { t } from "../../i18n";
 import type { ThemeColors } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../ui";
 import { clipToDisplayWidth, displayWidth, padTo } from "../../utils/format";
+import { NATIVE_CLIP_STYLE } from "./clip-style";
 import { SplitBar, type SplitBarPart } from "./split-bar";
 
 export type StatTone = "neutral" | "positive" | "negative" | "warning" | "accent" | "muted";
@@ -211,9 +213,10 @@ function cutKeepingDates(text: string, width: number): string {
 /**
  * `text` on at most two lines no wider than `width`: broken after the ` · `
  * parts that fit the first, else at its last space that does; the second line
- * is cut where it has no date (cutKeepingDates).
+ * is cut where it has no date (cutKeepingDates). The desktop and the web keep
+ * both whole, for CSS to cut where the cell ends.
  */
-function twoLines(text: string, width: number): string[] {
+function twoLines(text: string, width: number, nativePaneChrome: boolean): string[] {
   const parts = text.split(" · ");
   let first = "";
   let taken = 0;
@@ -228,10 +231,25 @@ function twoLines(text: string, width: number): string[] {
     const words = parts[0]!.split(" ");
     let count = 0;
     while (count < words.length && displayWidth(words.slice(0, count + 1).join(" ")) <= width) count++;
-    first = count ? words.slice(0, count).join(" ") : clipToDisplayWidth(words[0]!, width);
+    first = count ? words.slice(0, count).join(" ") : nativePaneChrome ? words[0]! : clipToDisplayWidth(words[0]!, width);
     rest = [words.slice(Math.max(1, count)).join(" "), ...parts.slice(1)].filter(Boolean).join(" · ");
   }
-  return rest ? [first, cutKeepingDates(rest, width)] : [first];
+  return rest ? [first, nativePaneChrome ? rest : cutKeepingDates(rest, width)] : [first];
+}
+
+/**
+ * The end of a wrapped cell's line that the desktop and the web keep whole
+ * while CSS cuts what comes before it, as a date is never what gives way: its
+ * last ` · ` part from the date in it on, with the space or separator before
+ * it. Null when that part has no date, or the line starts with it.
+ */
+function datedEnd(text: string): string | null {
+  const last = text.split(" · ").at(-1)!;
+  const at = last.search(DATED);
+  if (at < 0) return null;
+  const date = text.length - last.length + at;
+  const start = text.slice(0, date).endsWith(" · ") ? date - 3 : text.slice(0, date).endsWith(" ") ? date - 1 : date;
+  return start > 0 ? text.slice(start) : null;
 }
 
 /** A whole-row cell on its two lines (wrapStatCell). */
@@ -260,12 +278,14 @@ const WRAPPED_CELL_LINES = 2;
  * out in terminal cells for both renderers, so the grid's rows are the same
  * count on each.
  */
-function wrapStatCell(item: StatItem, width: number, labelWidth: number): WrappedStatCell | null {
+function wrapStatCell(item: StatItem, width: number, labelWidth: number, nativePaneChrome: boolean): WrappedStatCell | null {
   const valueWidth = Math.max(1, width - labelWidth);
   const valueCells = displayWidth(item.value);
   const forms = item.detail ? [item.detail, ...(item.detailVariants ?? [])] : [];
   const shown = forms.filter(Boolean);
-  const detailLine = () => shown.find((form) => displayWidth(form) <= valueWidth) ?? cutKeepingDates(shown.at(-1)!, valueWidth);
+  // The terminal cuts a line too wide for the column itself; the desktop and the web cut it in CSS.
+  const cut = (text: string) => (nativePaneChrome ? text : cutKeepingDates(text, valueWidth));
+  const detailLine = () => shown.find((form) => displayWidth(form) <= valueWidth) ?? cut(shown.at(-1)!);
   if (valueCells <= valueWidth) {
     const bar = item.split ? splitBarCells(valueWidth - valueCells - 1) : 0;
     const detailRoom = valueWidth - valueCells - (bar ? bar + 1 : 0) - 2;
@@ -275,18 +295,18 @@ function wrapStatCell(item: StatItem, width: number, labelWidth: number): Wrappe
   }
   const detailCanGo = shown.length === 0 || shown.length < forms.length || !shown.some((form) => DATED.test(form));
   if (detailCanGo) {
-    const value = twoLines(item.value, valueWidth);
-    return { value, bar: item.split ? splitBarCells(valueWidth - displayWidth(value[0]!) - 1) : 0, detail: null };
+    const value = twoLines(item.value, valueWidth, nativePaneChrome);
+    return { value, bar: item.split ? splitBarCells(valueWidth - Math.min(valueWidth, displayWidth(value[0]!)) - 1) : 0, detail: null };
   }
-  return { value: [cutKeepingDates(item.value, valueWidth)], bar: 0, detail: detailLine() };
+  return { value: [cut(item.value)], bar: 0, detail: detailLine() };
 }
 
 /** A laid-out row's one cell, wrapped, when it spans the row and does not fit one line (wrapStatCell). */
-function wrappedRow(row: StatItem[], columns: number, geometry: ReturnType<typeof gridGeometry>): WrappedStatCell | null {
+function wrappedRow(row: StatItem[], columns: number, geometry: ReturnType<typeof gridGeometry>, nativePaneChrome: boolean): WrappedStatCell | null {
   const item = row[0];
   if (!item || row.length > 1 || (!item.wide && columns > 1)) return null;
   const width = item.wide ? geometry.innerWidth : geometry.cellWidth;
-  return wrapStatCell(item, width, cellLabelWidth(width, geometry.labels, geometry.widestValue));
+  return wrapStatCell(item, width, cellLabelWidth(width, geometry.labels, geometry.widestValue), nativePaneChrome);
 }
 
 /**
@@ -295,13 +315,13 @@ function wrappedRow(row: StatItem[], columns: number, geometry: ReturnType<typeo
  * keeps its one line, cut. Decided in terminal cells on both renderers, so a
  * pane sizes the same rows on each.
  */
-function planStatGrid(items: StatItem[], width: number, columns: number, maxLines = Number.POSITIVE_INFINITY) {
+function planStatGrid(items: StatItem[], width: number, columns: number, maxLines = Number.POSITIVE_INFINITY, nativePaneChrome = false) {
   const rows = layoutRows(items, columns);
   const geometry = gridGeometry(items, width, columns, false);
   let spare = maxLines - rows.length;
   const wrapped = rows.map((row) => {
     if (spare < WRAPPED_CELL_LINES - 1) return null;
-    const cell = wrappedRow(row, columns, geometry);
+    const cell = wrappedRow(row, columns, geometry, nativePaneChrome);
     if (cell) spare -= WRAPPED_CELL_LINES - 1;
     return cell;
   });
@@ -330,6 +350,32 @@ export function statGridWithin(items: StatItem[], width: number, maxLines: numbe
   return { items: shown, lines: statGridRows(shown, width, resolved, { maxLines }) };
 }
 
+const WRAPPED_HEAD_STYLE = { ...NATIVE_CLIP_STYLE, flex: "0 1 auto" } as const;
+const WRAPPED_END_STYLE = { flex: "0 0 auto", whiteSpace: "pre" } as const;
+
+/**
+ * A wrapped cell's line on the desktop and the web, whole: CSS cuts it where
+ * the cell ends, after what comes before a date at its end (datedEnd). What
+ * follows the text on its line (the value's split bar) comes as children.
+ */
+function NativeWrappedLine({ text, role, fg, bold = false, children }: {
+  text: string;
+  role: "stat-grid-value" | "stat-grid-detail";
+  fg: string;
+  bold?: boolean;
+  children?: ReactNode;
+}) {
+  const end = datedEnd(text);
+  const attributes = bold ? TextAttributes.BOLD : undefined;
+  return (
+    <Box height={1} flexDirection="row" minWidth={0} overflow="hidden">
+      <Text fg={fg} attributes={attributes} data-gloom-role={role} style={WRAPPED_HEAD_STYLE}>{end ? text.slice(0, -end.length) : text}</Text>
+      {end ? <Text fg={fg} attributes={attributes} data-gloom-role={`${role}-end`} style={WRAPPED_END_STYLE}>{end}</Text> : null}
+      {children}
+    </Box>
+  );
+}
+
 /** A label in its column, cut and padded by terminal cells, so a wide character keeps the values aligned. */
 function labelText(label: string, labelWidth: number): string {
   return padTo(clipToDisplayWidth(label, labelWidth - 1), labelWidth);
@@ -347,7 +393,7 @@ export function StatGrid({ items, width, columns: columnsProp, maxLines }: StatG
   const { nativePaneChrome } = useUiCapabilities();
   if (items.length === 0) return null;
   const columns = Math.max(1, columnsProp ?? statGridColumns(items, width));
-  const { rows, wrapped: wrapping, lines: lineCount } = planStatGrid(items, width, columns, maxLines);
+  const { rows, wrapped: wrapping, lines: lineCount } = planStatGrid(items, width, columns, maxLines, !!nativePaneChrome);
   const { labels, innerWidth, cellWidth, widestValue } = gridGeometry(items, width, columns, !!nativePaneChrome);
 
   const toneColor = (item: StatItem): string =>
@@ -388,20 +434,38 @@ export function StatGrid({ items, width, columns: columnsProp, maxLines }: StatG
                   {nativePaneChrome ? label : labelText(label, labelWidth)}
                 </Text>
                 <Box flexDirection="column" flexGrow={1} minWidth={0}>
-                  <Box height={1} flexDirection="row">
-                    <Text fg={toneColor(item)} attributes={TextAttributes.BOLD} data-gloom-role="stat-grid-value">{firstValue}</Text>
-                    {item.split && wrapped.bar ? (
-                      <Box marginLeft={nativePaneChrome ? 0 : 1} flexShrink={nativePaneChrome ? 1 : 0} style={nativePaneChrome ? { minWidth: 0 } : undefined}>
-                        <SplitBar parts={item.split} width={nativePaneChrome ? SPLIT_BAR_CELLS : wrapped.bar} />
+                  {nativePaneChrome ? (
+                    <>
+                      <NativeWrappedLine text={firstValue!} role="stat-grid-value" fg={toneColor(item)} bold>
+                        {item.split && wrapped.bar ? (
+                          <Box flexShrink={1} style={{ minWidth: 0 }}>
+                            <SplitBar parts={item.split} width={SPLIT_BAR_CELLS} />
+                          </Box>
+                        ) : null}
+                      </NativeWrappedLine>
+                      {moreValue.map((line, index) => (
+                        <NativeWrappedLine key={`value:${index}`} text={line} role="stat-grid-value" fg={toneColor(item)} bold />
+                      ))}
+                      {wrapped.detail != null ? <NativeWrappedLine text={wrapped.detail} role="stat-grid-detail" fg={colors.textDim} /> : null}
+                    </>
+                  ) : (
+                    <>
+                      <Box height={1} flexDirection="row">
+                        <Text fg={toneColor(item)} attributes={TextAttributes.BOLD} data-gloom-role="stat-grid-value">{firstValue}</Text>
+                        {item.split && wrapped.bar ? (
+                          <Box marginLeft={1} flexShrink={0}>
+                            <SplitBar parts={item.split} width={wrapped.bar} />
+                          </Box>
+                        ) : null}
                       </Box>
-                    ) : null}
-                  </Box>
-                  {moreValue.map((line, index) => (
-                    <Text key={`value:${index}`} fg={toneColor(item)} attributes={TextAttributes.BOLD} data-gloom-role="stat-grid-value">{line}</Text>
-                  ))}
-                  {wrapped.detail != null ? (
-                    <Text fg={colors.textDim} data-gloom-role="stat-grid-detail">{wrapped.detail}</Text>
-                  ) : null}
+                      {moreValue.map((line, index) => (
+                        <Text key={`value:${index}`} fg={toneColor(item)} attributes={TextAttributes.BOLD} data-gloom-role="stat-grid-value">{line}</Text>
+                      ))}
+                      {wrapped.detail != null ? (
+                        <Text fg={colors.textDim} data-gloom-role="stat-grid-detail">{wrapped.detail}</Text>
+                      ) : null}
+                    </>
+                  )}
                 </Box>
               </Box>
             </Box>

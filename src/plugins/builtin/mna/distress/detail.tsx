@@ -10,7 +10,6 @@ import { BulletList, ExternalLinkText, Prose, READING_WIDTH } from "../../../../
 import { useThemeColors } from "../../../../theme/theme-context";
 import { Box, Text, useUiCapabilities } from "../../../../ui";
 import { CountryFlagLead } from "../../../../components/ui/country-flag";
-import { truncateToDisplayWidth } from "../../../../utils/format";
 import {
   assessmentHorizonLabel,
   cellText,
@@ -77,7 +76,7 @@ function LinkField({ label, url, width }: { label: string; url: string; width: n
       <Box width={LABEL_WIDTH} flexShrink={0} overflow="hidden">
         <Text fg={colors.textDim}>{label}</Text>
       </Box>
-      <ExternalLinkText url={url} label={truncateToDisplayWidth(url.replace(/^https?:\/\//, ""), valueWidth)} />
+      <ExternalLinkText url={url} label={url.replace(/^https?:\/\//, "")} width={valueWidth} />
     </Box>
   );
 }

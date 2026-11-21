@@ -7,6 +7,10 @@ import type { ExposureComponent } from "../../../api-client/exposure";
 import { basisLabel, hopsText, rangeText, type ExposureRow } from "./model";
 import { truncateToDisplayWidth } from "../../../utils/format";
 
+function rangeLabel(row: ExposureRow, showTargets: boolean): string {
+  return showTargets ? `${row.label} · ${row.symbol}` : row.symbol || row.label;
+}
+
 /** A disclosure-bound interval, not a probability band. Same numerical domain on both renderers. */
 export function ExposureRanges({ rows, selectedId, width, height, onSelect, onOpen, showTargets = false }: {
   rows: ExposureRow[]; selectedId: string | null; width: number; height: number; onSelect: (id: string) => void; onOpen: (id: string) => void; showTargets?: boolean;
@@ -36,7 +40,8 @@ export function ExposureRanges({ rows, selectedId, width, height, onSelect, onOp
       ];
       const start = Math.floor(low * (plotWidth - 1)), end = Math.floor(high * (plotWidth - 1));
       return <Box key={row.id} flexDirection="row" height={1} minHeight={1} paddingX={1}>
-        <Box width={labelWidth}><ActionRow label={truncateToDisplayWidth(showTargets ? `${row.label} · ${row.symbol}` : row.symbol || row.label, labelWidth - 1)} active={selectedId === row.id} onPress={() => { onSelect(row.id); onOpen(row.id); }} /></Box>
+        {/* The desktop cuts the label by CSS a cell short of the track, where the terminal's cut ends. */}
+        <Box width={labelWidth} {...(desktop ? { paddingRight: 1 } : {})}><ActionRow label={desktop ? rangeLabel(row, showTargets) : truncateToDisplayWidth(rangeLabel(row, showTargets), labelWidth - 1)} active={selectedId === row.id} onPress={() => { onSelect(row.id); onOpen(row.id); }} /></Box>
         {desktop ? <ChartSurface width={plotWidth} height={1} vectors={vectors} /> : <Text fg={color}>{" ".repeat(start)}{"─".repeat(Math.max(0, end - start))}│{" ".repeat(Math.max(0, plotWidth - end - 1))}</Text>}
         <Box width={20} alignItems="flex-end"><Text fg={color}>{rangeText(row.exposure)}</Text></Box>
       </Box>;

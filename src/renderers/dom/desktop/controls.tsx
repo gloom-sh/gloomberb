@@ -92,6 +92,8 @@ export function WebButton({
         width: width === undefined ? undefined : width * WEB_CELL_WIDTH,
         height: typeof height === "string" ? height : (height ?? 1) * WEB_CELL_HEIGHT,
         minWidth: 0,
+        // Never wider than the row it sits in: a label longer than the row ends in an ellipsis there.
+        maxWidth: "100%",
         boxSizing: "border-box",
         // A clear button leaves its fill to styles.css, so the pointer can give it the hover fill.
         backgroundColor: palette.bg === "transparent" ? undefined : palette.bg,
@@ -104,7 +106,7 @@ export function WebButton({
         cursor: disabled ? "default" : "pointer",
       } as CSSProperties}
     >
-      {children ?? displayLabel ?? label}
+      {children ?? <span style={BUTTON_LABEL_STYLE}>{displayLabel ?? label}</span>}
       {shortcut && (
         <WebKeycap
           keyName={shortcut}
@@ -114,6 +116,9 @@ export function WebButton({
     </button>
   );
 }
+
+/** A button's own label, cut by CSS where the button ends; its key keeps its room. */
+const BUTTON_LABEL_STYLE: CSSProperties = { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
 
 function checkboxAccentColor(colors: ThemeColors): string {
   const base = colors.borderFocused;

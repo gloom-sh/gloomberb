@@ -3,10 +3,10 @@ import { TickerBadgeList } from "../../../../components";
 import { MarkdownText } from "../../../../components/markdown-text";
 import { Button } from "../../../../components/ui/button";
 import { ExternalLinkText } from "../../../../components/ui/external-link";
-import { ClippedText } from "../../../../components/ui/display";
+import { ClippedText, NATIVE_CLIP_STYLE } from "../../../../components/ui/display";
 import type { InlineTickerCatalogEntry } from "../../../../state/hooks/inline-tickers";
 import { colors } from "../../../../theme/colors";
-import { Box, Text, TextAttributes } from "../../../../ui";
+import { Box, Text, TextAttributes, useUiCapabilities } from "../../../../ui";
 import { truncateWithEllipsis } from "../../../../utils/text-wrap";
 import { listingKey, sourceDetailEntries, text, textOrNull, tickerSymbol } from "../format";
 import type { BuildoutRelatedCompany, BuildoutSource } from "../model/types";
@@ -20,6 +20,7 @@ export type DetailSpec = {
 };
 
 export function DetailSpecGrid({ items, width, marginTop = 1 }: { items: DetailSpec[]; width: number; marginTop?: number }) {
+  const { nativePaneChrome } = useUiCapabilities();
   const visibleItems = items.filter((item) => textOrNull(item.value) != null);
   if (visibleItems.length === 0) return null;
 
@@ -37,10 +38,12 @@ export function DetailSpecGrid({ items, width, marginTop = 1 }: { items: DetailS
           {row.map((item) => {
             const labelWidth = Math.min(Math.max(item.label.length + 2, 8), Math.max(8, Math.floor(columnWidth * 0.45)));
             const valueWidth = Math.max(0, columnWidth - labelWidth);
-            const labelText = truncateWithEllipsis(`${item.label}:`, Math.max(0, labelWidth - 1)).padEnd(labelWidth);
             return (
               <Box key={item.label} flexDirection="row" width={columnWidth} height={1} overflow="hidden">
-                <Text fg={colors.textMuted}>{labelText}</Text>
+                {nativePaneChrome
+                  // As many characters as the terminal's cells, cut by CSS a character short of the value.
+                  ? <Text fg={colors.textMuted} style={{ ...NATIVE_CLIP_STYLE, flex: "0 0 auto", width: `${labelWidth}ch`, paddingRight: "1ch", boxSizing: "border-box" }}>{`${item.label}:`}</Text>
+                  : <Text fg={colors.textMuted}>{truncateWithEllipsis(`${item.label}:`, Math.max(0, labelWidth - 1)).padEnd(labelWidth)}</Text>}
                 <ClippedText fg={item.color ?? colors.text} text={text(item.value, "")} width={valueWidth} cut={truncateWithEllipsis} />
               </Box>
             );

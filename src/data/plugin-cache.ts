@@ -121,12 +121,14 @@ export function createPluginCache<T, Stored = T>(options: {
         const version = (versions.get(key) ?? 0) + 1;
         versions.set(key, version);
         const value = await loader();
-        const fetchedAt = Date.now();
+        let saved: ReturnType<PluginPersistence["setResource"]> | undefined;
         if (owner === generation && versions.get(key) === version) {
-          persistence?.setResource(options.kind, key, options.encode ? options.encode(value) : value, {
+          saved = persistence?.setResource(options.kind, key, options.encode ? options.encode(value) : value, {
             sourceKey: options.source, schemaVersion: options.schemaVersion ?? 1, cachePolicy: options.policy,
           });
         }
+        // The saved copy's own time, so the reply and a later read of the copy agree to the millisecond.
+        const fetchedAt = saved?.fetchedAt ?? Date.now();
         return { value, fetchedAt, staleAt: fetchedAt + options.policy.staleMs, expiresAt: fetchedAt + options.policy.expireMs, source: options.source };
       } });
       // A retained copy carries its refresh failure, whatever was thrown (an Error without a message included).

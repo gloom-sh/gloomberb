@@ -14,7 +14,7 @@ const READ_INSET = 1;
  * sentence on one row when it fits, otherwise wrapped at words onto up to
  * `CHART_READ_MAX_ROWS` rows. None when there is no read or no room for one.
  */
-export function chartReadLines(text: string | null | undefined, width: number): string[] {
+export function terminalChartReadLines(text: string | null | undefined, width: number): string[] {
   const room = Math.floor(width) - 2 * READ_INSET;
   const read = text?.trim();
   if (!read || room <= 0) return [];
@@ -37,7 +37,7 @@ export function useChartReadRows(texts: ReadonlyArray<string | null | undefined>
   const { nativePaneChrome } = useUiCapabilities();
   let rows = 0;
   for (const text of texts) {
-    const lines = chartReadLines(text, width).length;
+    const lines = terminalChartReadLines(text, width).length;
     rows = Math.max(rows, nativePaneChrome ? Math.min(1, lines) : lines);
   }
   return rows;
@@ -59,7 +59,7 @@ export interface ChartReadProps {
 export function ChartRead({ text, width }: ChartReadProps) {
   const colors = useThemeColors();
   const { nativePaneChrome } = useUiCapabilities();
-  const lines = chartReadLines(text, width);
+  const lines = terminalChartReadLines(text, width);
   if (lines.length === 0) return null;
   if (nativePaneChrome) {
     return <Box height={1} paddingX={READ_INSET}><ClippedText fg={colors.textMuted} text={text!.trim()} width={width - 2 * READ_INSET} /></Box>;

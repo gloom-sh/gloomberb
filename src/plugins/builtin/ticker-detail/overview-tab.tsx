@@ -44,7 +44,7 @@ import type { TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
 import { publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
-import { convertCurrency, displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
+import { convertCurrency, displayWidth, formatPercentRaw } from "../../../utils/format";
 import {
   appTtmRate, baseCurrencyFiguresNote, enterpriseValueGapIsLarge, enterpriseValueReconciliationNote, trailingEpsFiscalYear, ttmAtAppRate,
   ttmConversionNote, withFinancialEnterpriseValue,
@@ -421,19 +421,15 @@ function ResolvedOverviewTab({
   const quoteTextWidth = Math.max(1, quoteSummaryWidth - logoCells);
   // The exchange settlement, dated by its session: a futures price is its latest trade.
   const settleLabel = t("Settle");
-  const settleText = contractTerms
-    ? truncateToDisplayWidth(quoteSettleText(movedQuote, contractTerms),
-      Math.max(1, quoteTextWidth - displayWidth(settleLabel) - 1))
-    : "";
+  const settleText = contractTerms ? quoteSettleText(movedQuote, contractTerms) : "";
+  const settleRoom = Math.max(1, quoteTextWidth - displayWidth(settleLabel) - 1);
   // European gas beside Henry Hub: "≈ $30.832/MMBtu at EUR/USD 1.1650", at the app's rate, a conversion that says so.
   const inUsdLabel = t("In USD");
   const gasCurrency = quote?.currency?.trim().toUpperCase() ?? "";
   const gasUsdPerUnit = gasCurrency ? convertCurrency(1, gasCurrency, "USD", exchangeRates) : Number.NaN;
   const gasInUsd = sessionQuote && gasCurrency ? usdPerMmbtu(sessionQuote.price, contractTerms, gasCurrency, gasUsdPerUnit) : null;
-  const inUsdText = gasInUsd != null
-    ? truncateToDisplayWidth(usdPerMmbtuText({ value: gasInUsd, currency: gasCurrency, usdPerUnit: gasUsdPerUnit }),
-      Math.max(1, quoteTextWidth - displayWidth(inUsdLabel) - 1))
-    : "";
+  const inUsdText = gasInUsd != null ? usdPerMmbtuText({ value: gasInUsd, currency: gasCurrency, usdPerUnit: gasUsdPerUnit }) : "";
+  const inUsdRoom = Math.max(1, quoteTextWidth - displayWidth(inUsdLabel) - 1);
   // The extended session's line keeps its label and price whole on a narrow pane: the move gives
   // way to its percent, then goes, rather than wrapping a figure across two lines ("(+0." / "08%)").
   // The extended print says when it was observed (After-Hours 00:10 UTC), as the close above says its day.
@@ -631,13 +627,13 @@ function ResolvedOverviewTab({
             {settleText && (
               <Box flexDirection="row" gap={1} minWidth={0} overflow="hidden">
                 <Text flexShrink={0} fg={colors.textDim}>{settleLabel}</Text>
-                <Text fg={colors.text}>{settleText}</Text>
+                <ClippedText fg={colors.text} text={settleText} width={settleRoom} />
               </Box>
             )}
             {inUsdText && (
               <Box flexDirection="row" gap={1} minWidth={0} overflow="hidden">
                 <Text flexShrink={0} fg={colors.textDim}>{inUsdLabel}</Text>
-                <Text fg={colors.textDim}>{inUsdText}</Text>
+                <ClippedText fg={colors.textDim} text={inUsdText} width={inUsdRoom} />
               </Box>
             )}
             {metadataParts.length > 0 && (

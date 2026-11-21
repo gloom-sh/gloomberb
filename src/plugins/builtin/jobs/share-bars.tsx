@@ -2,7 +2,8 @@ import { COUNTRY_FLAG_CELLS, CountryFlagLead } from "../../../components/ui/coun
 import { RatioBar } from "../../../components/ui/ratio-bar";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { colors } from "../../../theme/colors";
-import { formatNumber, truncateToDisplayWidth } from "../../../utils/format";
+import { formatNumber } from "../../../utils/format";
+import { ClippedText } from "../../../components/ui/display";
 import type { ShareBarRow } from "./model";
 import { formatShare } from "./model";
 
@@ -51,11 +52,10 @@ export function ShareBars({ rows, width, color = colors.borderFocused, showDelta
     <Box flexDirection="column" width={width} data-gloom-ui="share-bars">
       {rows.map((row) => (
         <Box key={row.key} flexDirection="row" height={1} alignItems="center">
-          <Box width={labelWidth} flexShrink={0} overflow="hidden" flexDirection="row" alignItems="center">
+          {/* The terminal leaves the label's last cell as the gap; the desktop pads it and cuts the label in CSS. */}
+          <Box width={labelWidth} flexShrink={0} overflow="hidden" flexDirection="row" alignItems="center" {...(desktop ? { paddingRight: 1 } : {})}>
             {flagged ? <CountryFlagLead value={row.key === "rest" ? null : row.label} reserve /> : null}
-            <Text fg={row.key === "rest" ? colors.textDim : colors.text}>
-              {truncateToDisplayWidth(row.label, labelWidth - 1 - (flagged ? COUNTRY_FLAG_CELLS : 0))}
-            </Text>
+            <ClippedText fg={row.key === "rest" ? colors.textDim : colors.text} text={row.label} width={labelWidth - 1 - (flagged ? COUNTRY_FLAG_CELLS : 0)} />
           </Box>
           <RatioBar ratio={row.ratio} width={barWidth} color={color} track />
           <Box width={COUNT_WIDTH + 1} flexShrink={0} justifyContent="flex-end">

@@ -7,7 +7,8 @@ import {
 } from "../../../../components";
 import { t } from "../../../../i18n";
 import { colors } from "../../../../theme/colors";
-import { Box, Text, TextAttributes } from "../../../../ui";
+import { Box, Text, TextAttributes, useUiCapabilities } from "../../../../ui";
+import { NATIVE_CLIP_STYLE } from "../../../../components/ui/clip-style";
 import { truncateWithEllipsis } from "../../../../utils/text-wrap";
 import {
   askgConversationLabel,
@@ -18,6 +19,9 @@ import {
 const ROW_INDENT = 2;
 /** Width of the delete affordance, so a label truncates clear of it. */
 const ROW_ACTION_WIDTH = 3;
+
+/** A row's text on the desktop and the web gives way to the action after it, cut in CSS. */
+const LABEL_CLIP_STYLE = { ...NATIVE_CLIP_STYLE, flex: "0 1 auto" } as const;
 
 export function ASKGConversationSidebar({
   activeConversationId,
@@ -43,6 +47,8 @@ export function ASKGConversationSidebar({
   onNewConversation: () => void;
   onDelete: (conversationId: string) => void;
 }) {
+  const { nativePaneChrome } = useUiCapabilities();
+  const clip = nativePaneChrome ? LABEL_CLIP_STYLE : undefined;
   const snapshot = useSyncExternalStore(
     (onChange) => askgConversationListStore.subscribe(onChange),
     () => askgConversationListStore.getSnapshot(),
@@ -90,8 +96,8 @@ export function ASKGConversationSidebar({
               flexDirection="row"
               backgroundColor={backgroundColor}
             >
-              <Text fg={colors.textDim} attributes={TextAttributes.BOLD}>
-                {` ${truncateWithEllipsis(t("Conversations"), Math.max(1, listWidth - ROW_ACTION_WIDTH - 1))}`}
+              <Text fg={colors.textDim} attributes={TextAttributes.BOLD} style={clip}>
+                {` ${nativePaneChrome ? t("Conversations") : truncateWithEllipsis(t("Conversations"), Math.max(1, listWidth - ROW_ACTION_WIDTH - 1))}`}
               </Text>
               <Box flexGrow={1} />
               <PaneSidebarAction
@@ -138,8 +144,9 @@ export function ASKGConversationSidebar({
                         attributes={active ? TextAttributes.BOLD : 0}
                         selectable={false}
                         onMouseDown={onMouseDown}
+                        style={clip}
                       >
-                        {truncateWithEllipsis(label, labelWidth)}
+                        {nativePaneChrome ? label : truncateWithEllipsis(label, labelWidth)}
                       </Text>
                       <Box flexGrow={1} onMouseDown={onMouseDown} />
                       <PaneSidebarAction
@@ -167,8 +174,8 @@ export function ASKGConversationSidebar({
             <Box flexGrow={1} />
             {snapshot.error ? (
               <Box height={1} width={listWidth}>
-                <Text fg={colors.negative}>
-                  {` ${truncateWithEllipsis(t("List unavailable"), Math.max(1, listWidth - 1))}`}
+                <Text fg={colors.negative} style={clip}>
+                  {` ${nativePaneChrome ? t("List unavailable") : truncateWithEllipsis(t("List unavailable"), Math.max(1, listWidth - 1))}`}
                 </Text>
               </Box>
             ) : snapshot.loading && focused ? (

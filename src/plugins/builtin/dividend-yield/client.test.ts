@@ -42,7 +42,22 @@ describe("cash distribution calculations", () => {
     const text = renderHeadlessPaneText(createDividendYieldHeadless(), result, request, "DVD");
     expect(text).toContain(currency === "GBp" ? "estimated 7.5835p" : "estimated £0.075835");
     expect(text).toContain("$0.10");
-    expect(text).toContain("estimated from 0.1 USD/share; FX fixing 2026-12-07");
+    // The four figures the estimate reaches say estimated, with their own context; the estimate is named once.
+    const line = (label: string) => text.split("\n").find((entry) => entry.startsWith(`${label} `))!;
+    expect(line("Trailing yield")).toContain("4.17% estimated (last 12 months of distributions)");
+    expect(line("Forward yield")).toContain("4.17% estimated (trailing regular payments: uneven interims)");
+    expect(line("Trailing rate")).toMatch(/ estimated \(converted from USD\)$/);
+    expect(line("Forward rate")).toContain(" estimated (converted from USD) (trailing regular payments: uneven interims)");
+    expect(line("Frequency")).not.toContain("estimated");
+    expect(line("Estimated")).toMatch(/^Estimated\s+\$0\.10 declared, FX fixing 2026-12-07$/);
+    expect(text.match(/FX fixing/g)).toHaveLength(1);
+    expect(text).not.toContain("estimated from");
+    // JSON keeps its numbers and its structured provenance, and none of the text's marks.
+    const entries = (result.sections[0] as { entries: { label: string; value: unknown; formatted?: string }[] }).entries;
+    expect(entries.find((entry) => entry.label === "Trailing rate")!.value).toBeCloseTo(expected, 10);
+    expect(entries.find((entry) => entry.label.startsWith("Forward rate"))!.value).toBeCloseTo(expected, 10);
+    expect(JSON.stringify(entries)).not.toMatch(/estimated/i);
+    expect(result.metadata).toMatchObject({ forwardRateEstimate: { declaredCurrency: "USD", declaredAmount: 0.1, fixingDate: "2026-12-07", basis: expect.any(String) } });
     setHttpFetchTransport(async () => Response.json({ status: "success", data: { ...hsbcIssuerDividendRead(currency), summary: null } }));
     const noSummary = await fetchDividendData("HSBA", 13.38, "LSE", "GBP");
     expect(noSummary.metrics.forwardRate).toBeCloseTo(expected, 10);
@@ -64,6 +79,9 @@ describe("cash distribution calculations", () => {
     expect(fixed.metrics.forwardEstimate).toBeUndefined();
     expect(fixed.metrics.trailingEstimates).toBeUndefined();
     expect(fixed.metrics.trailingRate).toBeCloseTo(expected - 0.075835 + 0.076, 10);
+    const fixedRequest = { rawArgument: "HSBA:LSE", argument: "HSBA:LSE", symbols: ["HSBA:LSE"], options: { limit: "3" } };
+    const fixedText = renderHeadlessPaneText(createDividendYieldHeadless(), projectDividendYieldHeadless(fixed, fixedRequest), fixedRequest, "DVD");
+    expect(fixedText).not.toMatch(/estimated|FX fixing/i);
   });
   test.each(["GBP", "GBp"])("%s history and an unfixed declaration retain units, dates and forward provenance", async (currency) => {
     const divisor = currency === "GBp" ? 100 : 1;
@@ -88,7 +106,13 @@ describe("cash distribution calculations", () => {
     expect(result.metadata).toMatchObject({ forwardRateEstimate: { declaredCurrency: "EUR" }, nextPayDateStatus: "announced" });
     const text = renderHeadlessPaneText(createDividendYieldHeadless(), result, request, "DVD");
     expect(text).toContain(currency === "GBp" ? "2.01294p" : "£0.0201294");
-    expect(text).toContain("estimated from 0.02306 EUR/share; FX fixing 2027-01-27");
+    // Only the forward figures rest on the unfixed declaration: the history's yield is not marked.
+    const line = (label: string) => text.split("\n").find((entry) => entry.startsWith(`${label} `))!;
+    expect(line("Forward yield")).toContain(" estimated");
+    expect(line("Forward rate")).toContain(" estimated (converted from EUR)");
+    expect(line("Trailing rate")).not.toContain("estimated");
+    expect(line("Estimated")).toMatch(/^Estimated\s+€0\.02306 declared, FX fixing 2027-01-27$/);
+    expect(text.match(/FX fixing/g)).toHaveLength(1);
     expect(text).toContain("2027-02-03");
     setHttpFetchTransport(async () => Response.json({ status: "success", data: { quote: null, summary: null, actions: {
       symbol: "VOD", currency: "GBP", coverage: { dividends: "available" }, splits: [], earnings: [], dividends: [],
@@ -97,6 +121,24 @@ describe("cash distribution calculations", () => {
     const withoutSummary = await fetchDividendData("VOD", 1.177, "LSE", "GBP");
     expect(withoutSummary.metrics.nextPayDate).toEqual(new Date("2027-02-03"));
     expect(withoutSummary.summaryError).not.toContain("pay date");
+  });
+  test("a forward rate converted from a currency with no declared amount or fixing says its FX is unknown, once", async () => {
+    setSystemTime(new Date("2026-11-17T06:00:00Z"));
+    setHttpFetchTransport(async () => Response.json({ status: "success", data: { quote: null, summary: {
+      currency: "GBP", trailingAnnualDividendRate: null, trailingAnnualDividendYield: null, payoutRatio: null,
+      forwardAnnualDividendRate: 0.03941926, forwardRateAsOf: "2026-06-04", exDividendDate: null, dividendDate: null,
+    }, actions: {
+      symbol: "VOD", currency: "GBP", coverage: { dividends: "available" }, splits: [], earnings: [],
+      dividends: [{ exDate: "2026-06-04", amount: 0.0201294 }, { exDate: "2025-11-20", amount: 0.0195116 }],
+      declaredCash: { currency: "EUR", rows: [{ exDate: "2026-06-04", amount: 0.023625 }] },
+    } } }));
+    const data = await fetchDividendData("VOD", 1.177, "LSE", "GBP");
+    expect(data.metrics.forwardEstimate).toMatchObject({ declaredCurrency: "EUR" });
+    expect(data.metrics.forwardEstimate?.declaredAmount).toBeUndefined();
+    const request = { rawArgument: "VOD:LSE", argument: "VOD:LSE", symbols: ["VOD:LSE"], options: {} };
+    const text = renderHeadlessPaneText(createDividendYieldHeadless(), projectDividendYieldHeadless(data, request), request, "DVD");
+    expect(text.split("\n").find((entry) => entry.startsWith("Estimated "))).toMatch(/^Estimated\s+declared in EUR, FX fixing unavailable$/);
+    expect(text.match(/FX fixing/g)).toHaveLength(1);
   });
   test("a fixed announced paid amount in pence converts exactly once, while declaration amounts stay in major euros", async () => {
     setSystemTime(new Date("2026-11-17T06:00:00Z"));
