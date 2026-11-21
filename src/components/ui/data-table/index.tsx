@@ -31,8 +31,12 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
   ownProps: DataTableProps<T, C>,
 ) {
   // Every renderer, report and export reads the cells through this, so a column of figures lines up everywhere.
-  const renderCell = useMemo(() => figureColumnCells<T, C>((item, column, index, state) =>
-    ownProps.renderCell(ownProps.rowSource?.read(item) ?? item, column, index, state)), [ownProps.renderCell, ownProps.rowSource]);
+  const drawnCell = useMemo(() => figureColumnCells(ownProps.renderCell), [ownProps.renderCell]);
+  // A row source's reports and exports read each row's current data; a row on screen is drawn from it already.
+  const renderCell = useMemo((): DataTableProps<T, C>["renderCell"] => {
+    const source = ownProps.rowSource;
+    return source ? (item, column, index, state) => drawnCell(source.read(item) ?? item, column, index, state) : drawnCell;
+  }, [drawnCell, ownProps.rowSource]);
   // A caller that already ordered the columns (`DataTableView`) passes the move it resolved.
   const order = useDataTableColumnOrder(ownProps.columns, ownProps.onColumnMove ? false : ownProps.columnReorder);
   const exportIdentity = useMemo(() => {
@@ -157,6 +161,7 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
     | undefined;
   const displayProps = {
     ...props,
+    renderCell: drawnCell,
     columns,
     anchoredColumns: props.anchoredColumns == null ? undefined
       : props.columns.slice(0, props.anchoredColumns).filter((column) => displayColumns.includes(column)).length,

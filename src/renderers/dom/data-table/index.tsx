@@ -1,4 +1,3 @@
-import { ObservedTableRow } from "../../../components/ui/data-table/observed-row";
 /** @jsxImportSource react */
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -24,6 +23,7 @@ import type {
 } from "../../../components/ui/data-table";
 import { resolveDataTableScrollTop } from "../../../components/ui/data-table/visible-range";
 import { useFocusOwningPane, useVisibleRangeEmitter } from "../../../components/ui/data-table/hooks";
+import { ObservedTableRow } from "../../../components/ui/data-table/observed-row";
 import {
   buildTableGridTemplateColumns,
   getTableWidth,

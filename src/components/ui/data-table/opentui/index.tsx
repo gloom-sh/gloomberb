@@ -1,4 +1,3 @@
-import { ObservedTableRow } from "../observed-row";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Box, ScrollBox, Span, Text, TextAttributes, useNativeRenderer, type BoxRenderable } from "../../../../ui";
 import { capturePointerDrag, releasePointerDrag } from "../../../../ui/pointer-drag";
@@ -37,6 +36,7 @@ import type {
 } from "../types";
 import { resolveDataTableScrollTop } from "../visible-range";
 import { useFocusOwningPane, useVisibleRangeEmitter } from "../hooks";
+import { ObservedTableRow } from "../observed-row";
 import { useStableColumns } from "../stable-columns";
 import { COLUMN_DRAG_THRESHOLD_CELLS, columnDropBoundary, columnDropIndex } from "../column-order";
 import {
