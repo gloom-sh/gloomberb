@@ -189,9 +189,9 @@ const listMetadata = (data: Pick<PerpBoardPayload, "asOf" | "access" | "status">
 
 export const perpsHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "free-text", optional: true, placeholder: "market",
-    description: "A base asset, underlying, canonical market identity or Market column label, such as BTC, hyperliquid:xyz:TSLA or xyz:TSLA. Opens its history; with --tab board it searches the board, with --tab compare, liquidations or depth it is the base asset. Without one, the board." },
+    description: "A base asset, underlying, canonical market identity or Market column label, such as BTC, hyperliquid:xyz:TSLA or xyz:TSLA. Opens its history on Pro and its evidence signed out or free (see --tab); with --tab board it searches the board, with --tab compare, liquidations or depth it is the base asset. Without one, the board." },
   options: [
-    { key: "tab", type: "enum", settingKey: "tab", values: PERP_TABS.map((value) => ({ value })), description: "Board, rankings, compare, liquidations, depth, history or evidence. Board without a market, history with one." },
+    { key: "tab", type: "enum", settingKey: "tab", values: PERP_TABS.map((value) => ({ value })), description: "Board, rankings, compare, liquidations, depth, history or evidence. Without a market, the board. With one, History on Pro; signed out or free, the pane and shot open Evidence, and the report the market's latest values, as History is Pro." },
     { key: "asset-class", type: "enum", settingKey: "assetClass", values: ASSET_FILTERS.map((value) => ({ value })), defaultValue: "all", description: "Board and rankings asset class." },
     { key: "venue", type: "enum", settingKey: "venue", values: ["all", ...VENUES].map((value) => ({ value })), defaultValue: "all", invalidValueHint: uncoveredVenueNote,
       description: "Board venue; with a market, opens that venue's contract when the board lists it." },

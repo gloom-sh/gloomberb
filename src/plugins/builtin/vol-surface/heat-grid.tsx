@@ -79,8 +79,9 @@ export function SurfaceHeatGrid({ grid, range, ticks, selected, onSelect, width,
   const selectionFill = useSelectionFill();
   const shown = heatGridColumns(grid.moneyness, width);
   const columns: DataTableColumn[] = [{ id: "tenor", label: "Expiry", width: LABEL_WIDTH, align: "left" },
+    // A wing no expiry is quoted out to is blank with nothing lost: the grid draws quoted values alone.
     ...shown.map((column) => ({ id: String(column), label: grid.axis === "delta" ? deltaLabel(grid.moneyness[column]!) : `${Math.round(grid.moneyness[column]! * 100)}%`,
-      width: CELL_WIDTH, align: "right" as const }))];
+      width: CELL_WIDTH, align: "right" as const, mayBeBlank: true }))];
   const rows: HeatRow[] = grid.tenors.map((years, index) => ({ index,
     label: grid.rows?.[index]?.interpolated ? grid.rows[index]!.label : heatGridTenorLabel(years) }));
   const noticeRows = notice ? 1 : 0;

@@ -64,8 +64,14 @@ export interface PaneScreenshotEvidenceHook<E extends PaneScreenshotEvidence = P
   read(metadata: unknown): E | null;
   /** Ways the rendered evidence differs from what the command requested. */
   mismatches(evidence: E, request: PaneScreenshotEvidenceRequest): string[];
-  /** Symbols or sources that did not finish loading; empty once complete. */
+  /** Symbols or sources that did not finish loading or drew nothing; empty once complete. */
   unavailable(evidence: E | null, request: PaneScreenshotEvidenceRequest): string[];
+  /**
+   * What a view that drew some of its data leaves out, in the few words a
+   * capture's status names it by (OVDV: "4 of 7 expiries ready; empty: ..."):
+   * the capture is partial, not without data. Null when nothing is left out.
+   */
+  gaps?(evidence: E, request: PaneScreenshotEvidenceRequest): string | null;
   /** Freezes the pane's inputs before rendering, so the capture and the verifier agree. */
   prepare?(input: PaneScreenshotPrepareInput): Promise<PaneScreenshotPrepared>;
   /** Symbols the result names, or null to use the captured market data. */
@@ -108,6 +114,17 @@ export function renderedPaneEvidence(
   semanticUi: RemoteUiNodeSnapshot[],
 ): PaneScreenshotEvidence | null {
   return hook.read(semanticUi.find((node) => node.role === "chart-data" && node.metadata?.kind === hook.kind)?.metadata);
+}
+
+/** What a pane's rendered evidence says its partial view leaves out (`PaneScreenshotEvidenceHook.gaps`); null when whole or unread. */
+export function paneEvidenceGaps(
+  resolved: ResolvedPaneFunction,
+  payload: DesktopPaneShotPayload,
+  semanticUi: RemoteUiNodeSnapshot[],
+): string | null {
+  const hook = paneScreenshotEvidenceHook(resolved);
+  const evidence = hook?.gaps ? renderedPaneEvidence(hook, semanticUi) : null;
+  return evidence ? hook!.gaps!(evidence, { resolved, payload }) : null;
 }
 
 /** Ways a pane's rendered evidence differs from the request; empty for panes without a hook. */

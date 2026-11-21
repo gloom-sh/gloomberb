@@ -15,6 +15,43 @@ export const expiryLabel = (expiration: number) => {
   return time ? `${date} ${time}` : date;
 };
 
+/**
+ * What a surface that drew some expiries leaves out, in the words a report's
+ * and a capture's status name it by: "4 of 7 expiries ready; empty:
+ * 2026-11-27 (no paired two-sided quotes after cleaning), 2026-12-18 (fewer
+ * than two cleaned OTM strikes are available)". Each expiry not ready is named
+ * with why: its error, else the warning that stopped its fit (the last it
+ * took), without the filter counts the Warnings table lists. A ready expiry
+ * from a stale chain is named as stale. Null when every expiry asked for is
+ * ready.
+ */
+export function surfaceExpiryGaps(
+  expiries: ReadonlyArray<Pick<SurfaceExpiry, "expiration" | "state" | "stale" | "error" | "warnings">>,
+  requested = expiries.length,
+): string | null {
+  const ready = expiries.filter((expiry) => expiry.state === "ready" && !expiry.stale).length;
+  const total = Math.max(requested, expiries.length);
+  if (ready === total) return null;
+  const why = (expiry: (typeof expiries)[number]) => {
+    const reason = expiry.error ?? expiry.warnings.at(-1) ?? null;
+    const words = reason?.replace(/:.*$/, "").trim();
+    if (!words) return "";
+    // "No paired ..." reads in the sentence as "no paired ..."; "SVI needs ..." keeps its capitals.
+    return ` (${/^[A-Z][a-z]/.test(words) ? `${words[0]!.toLowerCase()}${words.slice(1)}` : words})`;
+  };
+  const groups: Array<[string, Array<(typeof expiries)[number]>]> = [
+    ["empty", expiries.filter((expiry) => expiry.state === "empty")],
+    ["failed", expiries.filter((expiry) => expiry.state === "error")],
+    ["loading", expiries.filter((expiry) => expiry.state === "loading")],
+    ["stale", expiries.filter((expiry) => expiry.state === "ready" && expiry.stale)],
+  ];
+  const named = groups.filter(([, members]) => members.length > 0).map(([state, members]) =>
+    `${state}: ${members.map((expiry) => `${expiryLabel(expiry.expiration)}${state === "stale" || state === "loading" ? "" : why(expiry)}`).join(", ")}`);
+  // Expiries asked for that never came back as entries are counted, not named.
+  const unread = total - expiries.length;
+  return [`${ready} of ${total} expiries ready`, ...named, ...unread > 0 ? [`${unread} not loaded`] : []].join("; ");
+}
+
 /** When a surface's expiries settle at a stated time (08:00 UTC), that time, as one note can say it for every expiry. */
 export function surfaceSettlementTime(snapshot: Pick<SurfaceSnapshot, "expiries">): string | null {
   for (const expiry of snapshot.expiries) {
