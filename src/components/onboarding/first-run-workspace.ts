@@ -12,6 +12,7 @@ import { MAX_DESK_PICKS, type DeskKey } from "../../layout/desk-keys";
 import { DESKS, isDeskKey } from "../../layout/desks";
 import { buildDockStack } from "../../layout/pane-manager/dock-stack";
 import { SEEDED_LIST_MIN_STARTERS, STARTER_SYMBOLS } from "../../tickers/starter-symbols";
+import { slugifyName } from "../../utils/slugify";
 
 /**
  * The watchlist a first run lands with: the two index ETFs and the names most
@@ -48,6 +49,41 @@ export interface FirstRunPick {
   symbol: string;
   /** A suggestion the app has no ticker for yet: what its ticker is created with. */
   seed?: FirstRunTickerSeed;
+}
+
+/** The list a profile starts with (`createDefaultConfig`), which the first run fills when it holds nothing. */
+const STOCK_WATCHLIST = { id: "watchlist", name: "Watchlist" } as const;
+/** What the starter list is called when the user's own list already has the stock list's name. */
+const STARTER_WATCHLIST_NAME = "Starters";
+
+/**
+ * The watchlist the first run fills with its starter names, and the config
+ * that holds it. The first watchlist is filled when it is the app's own: the
+ * stock list holding nothing, or a list of starter names only, as many as a
+ * seeded list holds (`SEEDED_LIST_MIN_STARTERS`). Any other list holds names
+ * the user put there (a CLI add before the first launch): it is never seeded,
+ * trimmed or renamed, and the starters go to a list of their own after the
+ * user's.
+ */
+export function firstRunWatchlist(
+  config: AppConfig,
+  tickers: ReadonlyMap<string, TickerRecord>,
+): { config: AppConfig; watchlistId: string } {
+  const first = config.watchlists[0];
+  if (!first) return { config: { ...config, watchlists: [{ ...STOCK_WATCHLIST }] }, watchlistId: STOCK_WATCHLIST.id };
+  const members = new Set([...tickers.values()]
+    .filter((ticker) => ticker.metadata.watchlists.includes(first.id))
+    .map((ticker) => ticker.metadata.ticker));
+  const appsOwn = members.size === 0
+    ? first.id === STOCK_WATCHLIST.id && first.name === STOCK_WATCHLIST.name
+    : members.size >= SEEDED_LIST_MIN_STARTERS && [...members].every((symbol) => STARTER_SYMBOLS.has(symbol));
+  if (appsOwn) return { config, watchlistId: first.id };
+  const taken = (name: string) => config.watchlists.some((watchlist) => watchlist.name.toLowerCase() === name.toLowerCase());
+  const name = taken(STOCK_WATCHLIST.name) ? STARTER_WATCHLIST_NAME : STOCK_WATCHLIST.name;
+  const base = slugifyName(name, "watchlist");
+  let id = base;
+  for (let suffix = 2; config.watchlists.some((watchlist) => watchlist.id === id); suffix += 1) id = `${base}-${suffix}`;
+  return { config: { ...config, watchlists: [...config.watchlists, { id, name }] }, watchlistId: id };
 }
 
 export interface FirstRunWatchlistPlan {

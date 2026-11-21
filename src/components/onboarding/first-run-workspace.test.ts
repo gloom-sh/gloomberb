@@ -6,6 +6,7 @@ import {
   FIRST_RUN_PANE_IDS,
   applyFirstRunLayout,
   buildFirstRunLayout,
+  firstRunWatchlist,
   isCompactHomeViewport,
   onboardingDeskLayoutId,
   planFirstRunWatchlist,
@@ -76,6 +77,29 @@ describe("first-run workspace", () => {
 
     // No picks: the list is the seeded one, as before.
     expect(starters(listed(planFirstRunWatchlist(tickers, "watchlist", "main")))).toBe(SEEDED_LIST_MIN_STARTERS);
+  });
+
+  // A CLI add before the first launch fills the stock list with the user's own names; the first run used to trim it
+  // to its seven starters and drop the rest.
+  test("fills the app's own first list, and gives the starters a list of their own beside one holding the user's names", () => {
+    const config = createDefaultConfig("/tmp/gloomberb-test");
+    const seeded = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META", "BRK.B", "JPM", "V", "BTC-USD", "ETH-USD"];
+    expect(firstRunWatchlist(config, new Map()).watchlistId).toBe("watchlist");
+    const startup = firstRunWatchlist(config, new Map(seeded.map((symbol) => ticker(symbol, { watched: true }))));
+    expect(startup).toEqual({ config, watchlistId: "watchlist" });
+
+    const own = new Map(["8058:JPX", "7203:JPX", "AAPL"].map((symbol) => ticker(symbol, { watched: true })));
+    const beside = firstRunWatchlist(config, own);
+    expect(beside.watchlistId).toBe("starters");
+    expect(beside.config.watchlists).toEqual([...config.watchlists, { id: "starters", name: "Starters" }]);
+    // Seeding that list moves none of the user's names.
+    const plan = planFirstRunWatchlist(own, beside.watchlistId, "main");
+    expect(plan.update.filter((entry) => !entry.metadata.watchlists.includes("watchlist"))).toEqual([]);
+    expect(plan.create.every((seed) => seed.watchlists.join() === "starters")).toBe(true);
+
+    // An empty list the user named is theirs too; the starters take the stock name, under an id of their own.
+    const named = { ...config, watchlists: [{ id: "watchlist", name: "Tokyo" }, { id: "watchlist-2", name: "Other" }] };
+    expect(firstRunWatchlist(named, new Map()).config.watchlists.at(-1)).toEqual({ id: "watchlist-3", name: "Watchlist" });
   });
 
   test("lays out heatmap, watchlist, chart and top news, with a market read docked in front of Trending", () => {
