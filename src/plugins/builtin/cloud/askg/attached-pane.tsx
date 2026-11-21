@@ -17,6 +17,9 @@ export function attachedPaneBlockHeight(attached: ASKGAttachedPane | null): numb
   return attached.consent === "pending" ? 4 : 1;
 }
 
+/** The question's end, which a long pane label never pushes out of view. */
+const PROMPT_END = " shows?";
+
 /**
  * The pane a conversation is about, above the composer: a chip with its
  * function, and an x that takes it off. A pane that shows personal data
@@ -47,7 +50,8 @@ export function AttachedPaneBlock({
     return (
       <Box flexDirection="column" flexShrink={0} paddingX={1} height={attachedPaneBlockHeight(attached)} backgroundColor={colors.panel}>
         <Box flexDirection="row" height={1}>
-          <ClippedText fg={colors.warning} attributes={TextAttributes.BOLD} text={`Attach what ${label} shows?`} width={textWidth} cut={truncateWithEllipsis} />
+          {/* The desktop keeps the question's end whole and lets the label give way; the terminal cut its label above. */}
+          <ClippedText fg={colors.warning} attributes={TextAttributes.BOLD} text={`Attach what ${label}${PROMPT_END}`} width={textWidth} cut={truncateWithEllipsis} keepEnd={nativePaneChrome ? PROMPT_END : null} />
         </Box>
         <Box height={1}>
           <ClippedText fg={colors.textDim} text="It shows your own data. Only what is on screen goes, as text." width={textWidth} cut={truncateWithEllipsis} />

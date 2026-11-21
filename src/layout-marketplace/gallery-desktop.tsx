@@ -61,7 +61,6 @@ function sectionLabel(title: string, count: number): string {
   return tf("{title} ({count})", { title: t(title), count: String(count) });
 }
 
-
 /** A collapsible group header, the same row the chat sidebar uses. */
 function SidebarSection({
   title,

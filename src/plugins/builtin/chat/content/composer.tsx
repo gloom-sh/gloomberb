@@ -20,14 +20,14 @@ import type { ComposerShareLink } from "../pane-links/composer";
 import type { ChatMessagePaneLink } from "../pane-links/model";
 
 const DESKTOP_CHAT_INPUT_TOP_MARGIN_PX = 6;
+/** A reply's or an edit's preview gives way to Cancel after it, cut in CSS. */
+const PREVIEW_CLIP_STYLE = { ...NATIVE_CLIP_STYLE, flex: "0 1 auto" } as const;
+
 /**
  * The line saying why the composer is closed, a blank row, then its button,
  * as a wall sets them. The desktop has no pane border under the button, so a
  * row below keeps it off the pane's edge.
  */
-/** A reply's or an edit's preview gives way to Cancel after it, cut in CSS. */
-const PREVIEW_CLIP_STYLE = { ...NATIVE_CLIP_STYLE, flex: "0 1 auto" } as const;
-
 function chatAuthPromptRows(nativePaneChrome: boolean | undefined): number {
   return nativePaneChrome ? 4 : 3;
 }
