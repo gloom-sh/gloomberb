@@ -1,10 +1,10 @@
 import type { PaneScreenshotEvidenceHook } from "../../../cli/pane-functions/screenshot-evidence";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
-import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { sameListingKey } from "../../../utils/exchanges";
 import type { SurfaceExpiry, SurfaceGrid, SurfaceSnapshot } from "./model";
 import { isFiniteNumber, isRecord } from "../../../utils/guards";
 import { expiryIsoDate } from "../../../utils/option-expiry";
-import { surfaceSkewRow } from "./tables";
+import { expiryLabel, surfaceExpiryGaps, surfaceSkewRow } from "./tables";
 
 export interface VolSurfaceEvidenceInput {
   snapshot: SurfaceSnapshot | null | undefined;
@@ -54,6 +54,8 @@ export interface VolSurfaceEvidence {
     forward: number | null;
     fitMethod: string | null;
     sourcePointCount: number;
+    /** What the fit said of the expiry, the last being why an empty one is empty. */
+    warnings: string[];
   }>;
   grid: { tenors: number[]; coordinates: number[]; values: (number | null)[][] } | null;
   smile: { expiration: number; points: Array<{ strike: number; volatility: number }> } | null;
@@ -121,7 +123,7 @@ export function volSurfaceSemanticEvidence(input: VolSurfaceEvidenceInput): VolS
       state: expiry.state, source: expiry.source, asOf: expiry.asOf, rate: expiry.rate,
       stale: expiry.stale, error: expiry.error,
       rateAsOf: [...expiry.rateAsOf], forward: expiry.forward, fitMethod: expiry.fit?.method ?? null,
-      sourcePointCount: expiry.points.length })),
+      sourcePointCount: expiry.points.length, warnings: [...expiry.warnings] })),
     grid, smile, term, table, failures: snapshot?.failures.map((failure) => ({ ...failure })) ?? [],
   };
 }
@@ -145,7 +147,9 @@ export function readVolSurfaceEvidence(value: unknown): VolSurfaceEvidence | nul
     || typeof value.complete !== "boolean" || typeof value.loading !== "boolean") return null;
   if (!value.expiries.every((expiry) => isRecord(expiry) && iv(expiry.expiration) && iv(expiry.years)
     && isFiniteNumber(expiry.sourcePointCount) && expiry.sourcePointCount >= 0
-    && ["loading", "ready", "empty", "error"].includes(String(expiry.state)))) return null;
+    && ["loading", "ready", "empty", "error"].includes(String(expiry.state))
+    && typeof expiry.stale === "boolean" && (expiry.error === null || typeof expiry.error === "string")
+    && Array.isArray(expiry.warnings) && expiry.warnings.every((warning) => typeof warning === "string"))) return null;
   if (value.complete && (value.loading || !iv(value.requestedExpiries)
     || value.loadedExpiries !== value.requestedExpiries || value.expiries.length !== value.requestedExpiries
     || value.failedExpiries !== 0 || value.failures.length > 0 || !value.expiries.every((expiry) => isRecord(expiry)
@@ -189,7 +193,8 @@ export const volSurfaceScreenshotEvidence: PaneScreenshotEvidenceHook<VolSurface
   mismatches(evidence, { resolved, payload }) {
     const mismatches: string[] = [];
     const symbol = payload.financials[0]?.[0] ?? resolved.createOptions?.symbol;
-    if (symbol && evidence.symbol !== parsePublicTickerKey(symbol).symbol) mismatches.push("rendered volatility symbol does not match");
+    // The surface is drawn under the key it was asked for (ETH:ARCA), as a bare symbol or with its venue.
+    if (symbol && !sameListingKey(evidence.symbol ?? "", symbol)) mismatches.push("rendered volatility symbol does not match");
     if (evidence.view !== (resolved.options.tab ?? "surface")) mismatches.push("rendered volatility view does not match");
     const sheet = evidence.renderer === "bitmap" || evidence.renderer === "grid";
     const expectedAxis = sheet ? "forward" : resolved.options.axis ?? "spot";
@@ -204,8 +209,26 @@ export const volSurfaceScreenshotEvidence: PaneScreenshotEvidenceHook<VolSurface
       || expiryIsoDate(Number(expiration)) !== expiryIsoDate(evidence.selectedExpiration))) mismatches.push("rendered volatility expiry does not match");
     return mismatches;
   },
+  /** Nothing drawn: a surface with some expiries ready is partial (`gaps`), never without data. */
   unavailable(evidence, { resolved, payload }) {
     const symbol = payload.financials[0]?.[0] ?? resolved.createOptions?.symbol;
-    return evidence?.complete && !evidence.loading ? [] : symbol ? [symbol] : ["volatility surface"];
+    return evidence && !evidence.loading && (evidence.complete || drewExpiries(evidence)) ? [] : symbol ? [symbol] : ["volatility surface"];
+  },
+  /** "4 of 7 expiries ready; empty: 2026-11-27 (no paired two-sided quotes after cleaning), ...". */
+  gaps(evidence) {
+    if (evidence.complete || evidence.loading || !drewExpiries(evidence)) return null;
+    // A failure an expiry's own error already names is not said twice.
+    const named = new Set(evidence.expiries.filter((expiry) => expiry.state === "error").map((expiry) => expiry.expiration));
+    const failed = evidence.failures.filter((failure) => failure.expiration == null || !named.has(failure.expiration))
+      .map((failure) => `failed: ${failure.expiration == null ? "" : `${expiryLabel(failure.expiration)}, `}${failure.message}`);
+    // Never null for a surface that is not whole, so its capture stays partial.
+    const ready = evidence.expiries.filter((expiry) => expiry.state === "ready" && !expiry.stale).length;
+    return [surfaceExpiryGaps(evidence.expiries, evidence.requestedExpiries)
+      ?? `${ready} of ${Math.max(evidence.requestedExpiries, evidence.expiries.length)} expiries ready`, ...failed].join("; ");
   },
 };
+
+/** Whether the view drew an expiry the surface fitted. */
+function drewExpiries(evidence: VolSurfaceEvidence): boolean {
+  return evidence.plottedValueCount > 0 && evidence.expiries.some((expiry) => expiry.state === "ready");
+}

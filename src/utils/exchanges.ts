@@ -244,6 +244,17 @@ export function parsePublicTickerKey(value: string): { symbol: string; exchange?
   return { symbol, exchange };
 }
 
+/**
+ * Whether two keys name the same listing, each written bare or with its venue
+ * (ETH and ETH:ARCA): the symbols agree, and so do the venues where both name
+ * one. A pane that draws a listing under the key it was asked for and one that
+ * names its bare symbol both match the request; ETH:ARCA and ETH:NASDAQ do not.
+ */
+export function sameListingKey(left: string, right: string): boolean {
+  const a = parsePublicTickerKey(left), b = parsePublicTickerKey(right);
+  return a.symbol === b.symbol && (!a.exchange || !b.exchange || a.exchange === b.exchange);
+}
+
 export function canonicalTickerKey(symbol: string, exchange?: string): string {
   const parsed = parsePublicTickerKey(symbol);
   // An explicit listing in the symbol wins over remembered/default metadata.

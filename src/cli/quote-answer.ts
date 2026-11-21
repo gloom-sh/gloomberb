@@ -26,6 +26,7 @@ import {
   tokyoCompanyNameArg,
   parseListingArg,
   quoteBareListing,
+  readPastStoppedListing,
   readShareClassCode,
   serviceNamedCompany,
   titleCaseCompanyName,
@@ -90,8 +91,10 @@ export interface QuoteAnswer {
  * quoted on its listings (`quoteBareListing`), else names them, or asks for an
  * exchange when several companies list it (2222); a bare index root (VIX) also
  * names its index (^VIX), and a futures board code a security keeps (GC) its
- * future (GC=F). Venues are only looked up for a
- * symbol with no quote, so a request that succeeds costs no search.
+ * future (GC=F). One whose own line stopped trading is the company's home
+ * line that still trades under it (`readPastStoppedListing`: SOL is SOL:ASX).
+ * Venues are only looked up for a symbol with no quote or a stopped one, so a
+ * request that succeeds costs no search.
  */
 export async function answerQuote(
   result: QuoteBatchResult,
@@ -123,6 +126,10 @@ export async function answerQuote(
     // BRKB quoted only abroad (BMV) is BRK.B, Berkshire's class B in the US, whose line abroad the note names.
     const shareClass = await abroadShareClass(listing, result.quote, market, request, refresh, datesChangeBasis);
     if (shareClass) return shareClass;
+    // A bare code whose own line stopped trading (SOL's Emeren Group) is the line that still trades under it, as every command reads it.
+    const live = result.quote.delisting ? await readPastStoppedListing(listing, result.quote, market) : null;
+    const liveQuote = live ? await quoteOne(market, live.request, { forceRefresh: refresh, revalidate: true, datesChangeBasis }) : null;
+    if (live && liveQuote?.quote) return answerQuote(liveQuote, live, market, request, refresh, null, { datesChangeBasis });
     // "CAR = Avis Budget Group, NASDAQ (different companies on XETRA, ASX)" names the venue too, so it replaces "SXR8 -> XETRA".
     const choice = await listingChoiceNotes(listing, market, result.quote, venues);
     const venue = choice.length > 0 ? null : bareListingNote(listing, result.quote);

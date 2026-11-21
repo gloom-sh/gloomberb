@@ -10,7 +10,7 @@ import { createDesktopShotBridge, resolveDesktopShotApiProxy, stripDesktopShotCr
 import { shotDataEvidenceFor, shotExpectedText, shotSemanticRowCount, shotUnavailableSymbols } from "./screenshot-data-evidence";
 import { shotFreshness, shotHasStatusLine, shownReportTab, unreadRowsNote } from "./screenshot-render";
 import type { PaneScreenshotExpectedChartEvidence, PaneScreenshotExpectedSelection } from "./screenshot-types";
-import { paneEvidenceMismatches } from "./screenshot-evidence";
+import { paneEvidenceGaps, paneEvidenceMismatches } from "./screenshot-evidence";
 import { shotRowsText } from "./index";
 import { commoditiesEnergyModule } from "../../plugins/builtin/commodities-energy";
 import { realizedVolSemanticEvidence } from "../../plugins/builtin/realized-vol/evidence";
@@ -534,7 +534,7 @@ describe("volatility surface screenshot evidence", () => {
     selectedExpiration: 1_800_000_000, overlaySmiles: false, failures: [], smile: null, term: [], table: [],
     expiries: [1_800_000_000, 1_810_000_000].map((expiration) => ({ expiration, years: 0.5, state: "ready", stale: false,
       error: null, source: "test", asOf: "2026-09-22T13:45:00Z", rate: 0.04, rateAsOf: ["2026-09-21"],
-      forward: 100, fitMethod: "monotone-cubic", sourcePointCount: 2 })),
+      forward: 100, fitMethod: "monotone-cubic", sourcePointCount: 2, warnings: [] })),
     grid: { tenors: [0.25, 0.5], coordinates: [0.9, 1], values: [[0.3, 0.25], [0.32, 0.27]] },
   };
   const nodes = (value: Record<string, unknown> = metadata): RemoteUiNodeSnapshot[] => [
@@ -554,8 +554,12 @@ describe("volatility surface screenshot evidence", () => {
 
   test("does not certify canvas-only, wrong-view, partial or empty captures", () => {
     expect(shotUnavailableSymbols(request, source, [])).toEqual(["AAPL"]);
-    const partial = nodes({ ...metadata, complete: false, failedExpiries: 1, failures: [{ expiration: 1_800_000_000, message: "offline" }] });
-    expect(shotUnavailableSymbols(request, source, partial)).toEqual(["AAPL"]);
+    expect(shotUnavailableSymbols(request, source, nodes({ ...metadata, complete: false, loading: true }))).toEqual(["AAPL"]);
+    const partial = nodes({ ...metadata, complete: false, failedExpiries: 1, failures: [{ expiration: null, message: "offline" }] });
+    // Drawn but not whole: partial, with what it left out, never a symbol without data.
+    expect(shotUnavailableSymbols(request, source, partial)).toEqual([]);
+    expect(paneEvidenceGaps(request, source, partial)).toBe("2 of 2 expiries ready; failed: offline");
+    expect(paneEvidenceGaps(request, source, nodes())).toBeNull();
     expect(shotSemanticRowCount(request, source, partial)).toBe(4);
     expect(paneEvidenceMismatches({ ...request, options: { ...request.options, tab: "smile" } }, source, { semanticUi: nodes() })).toContain("rendered volatility view does not match");
     expect(paneEvidenceMismatches(request, source, { semanticUi: nodes({ ...metadata, symbol: "TSLA" }) })).toContain("rendered volatility symbol does not match");
@@ -564,6 +568,27 @@ describe("volatility surface screenshot evidence", () => {
       grid: { ...metadata.grid, values: [[null, null], [null, null]] } });
     expect(shotSemanticRowCount(request, source, empty)).toBe(0);
     expect(shotDataEvidenceFor(request, source, empty)).toBeNull();
+  });
+
+  test("a venue-qualified surface with some expiries empty is the listing asked for, partial with each empty expiry and why", () => {
+    // `shot OVDV ETH:ARCA --strict` on 2026-11-20 refused with "does not match the data" and "No data for ETH:ARCA":
+    // the pane draws under the key it was asked for, and 4 of 7 expiries had fitted quotes.
+    const arca = payload([["ETH:ARCA", { quote: { price: 15.24 } }]]);
+    const [ready, other] = metadata.expiries;
+    const drawn = { ...metadata, symbol: "ETH:ARCA", complete: false, requestedExpiries: 3, loadedExpiries: 3, expiries: [
+      { ...ready!, expiration: 1_795_737_600, state: "empty", fitMethod: null, sourcePointCount: 0,
+        warnings: ["No paired two-sided quotes after cleaning: 26 zero bid or ask, 19 zero open interest, 1 wide spread"] },
+      { ...other!, expiration: 1_797_552_000, state: "empty", fitMethod: null, sourcePointCount: 1,
+        warnings: ["Parity strikes do not bracket spot", "Fewer than two cleaned OTM strikes are available"] },
+      { ...ready!, expiration: 1_800_000_000, sourcePointCount: 3 },
+    ] };
+    expect(paneEvidenceMismatches(request, arca, { semanticUi: nodes(drawn) })).toEqual([]);
+    expect(paneEvidenceMismatches(request, payload([["ETH", { quote: { price: 15.24 } }]]), { semanticUi: nodes(drawn) })).toEqual([]);
+    expect(paneEvidenceMismatches(request, payload([["ETH:NASDAQ", { quote: { price: 15.24 } }]]), { semanticUi: nodes(drawn) }))
+      .toContain("rendered volatility symbol does not match");
+    expect(shotUnavailableSymbols(request, arca, nodes(drawn))).toEqual([]);
+    expect(paneEvidenceGaps(request, arca, nodes(drawn))).toBe("1 of 3 expiries ready; empty: "
+      + "2026-11-27 (no paired two-sided quotes after cleaning), 2026-12-18 (fewer than two cleaned OTM strikes are available)");
   });
 });
 
@@ -587,6 +612,11 @@ describe("realized volatility screenshot evidence", () => {
     expect(shotSemanticRowCount(request, source, nodes())).toBe(4);
     expect(shotUnavailableSymbols(request, source, nodes())).toEqual([]);
     expect(paneEvidenceMismatches(request, source, { semanticUi: nodes() })).toEqual([]);
+    // A listing asked for with its venue is drawn under that key (`shot HVT ETH:ARCA`), and is the listing asked for.
+    const arca = payload([["ETH:ARCA", { quote: { price: 15.24 } }]]);
+    expect(paneEvidenceMismatches(request, arca, { semanticUi: nodes({ ...evidence, symbol: "ETH:ARCA" }) })).toEqual([]);
+    expect(paneEvidenceMismatches(request, arca, { semanticUi: nodes({ ...evidence, symbol: "ETH:NASDAQ" }) }))
+      .toContain("rendered realized volatility symbol does not match");
     expect(shotDataEvidenceFor(request, source, nodes())).toMatchObject({ series: [
       { id: "hv-10", points: [{ date: dates[0]!.toISOString(), value: null }, { date: dates[1]!.toISOString(), value: 20 }] },
       { id: "current-iv", points: [{ date: status.currentIv.date, value: 22 }] },

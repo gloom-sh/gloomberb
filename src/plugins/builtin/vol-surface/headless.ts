@@ -24,7 +24,7 @@ import { loadIvHistory, loadSurfaceDates } from "../iv-history/client";
 import { logFailure } from "../../../utils/log-failure";
 import {
   expiryFeedFields, expiryLabel, formatIv, formatPrice, formatVolPoints, HIDDEN_SLOPE_TEXT, HIDDEN_YIELD_TEXT, selectSurfaceExpiry, surfaceForwardRow, surfaceSkewRow,
-  surfaceSettlementTime, surfaceSmileRows, surfaceSpotBasisLabel, surfaceTermRows, surfaceThirtyDayAtm, TERM_SLOPE_MIN_DAYS,
+  surfaceExpiryGaps, surfaceSettlementTime, surfaceSmileRows, surfaceSpotBasisLabel, surfaceTermRows, surfaceThirtyDayAtm, TERM_SLOPE_MIN_DAYS,
   type SurfaceForwardRow, type SurfaceSkewRow,
 } from "./tables";
 
@@ -279,6 +279,7 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
       }
     }
     const available = snapshot.expiries.some((expiry) => expiry.fit);
+    const gaps = available ? surfaceExpiryGaps(snapshot.expiries, snapshot.requested) : null;
     // An expiry that failed as the whole surface did (no connection) is not listed again under its own date.
     const surfaceWide = new Set(snapshot.failures.filter((failure) => failure.expiration == null).map((failure) => failure.message));
     const loadErrors = snapshot.failures.filter((failure) => failure.expiration == null || !surfaceWide.has(failure.message))
@@ -334,6 +335,8 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
       ],
       complete: available && snapshot.failures.length === 0 && snapshot.expiries.every((expiry) => expiry.state === "ready"),
       unavailableSymbols: available ? [] : [symbol],
+      // A surface with some expiries fitted is partial, and says which are not and why, as its capture does.
+      ...(gaps ? { incompleteDetail: gaps } : {}),
       errors: [...fate?.errors ?? loadErrors, ...smile?.errors ?? [], ...dvol instanceof Error ? [`DVOL: ${dvol.message}`] : []],
       ...(fate?.empty ? { empty: fate.empty } : {}),
       ...(stored || spotBasis || tab === "skew" || settles || dvol || closedNotice || events ? { notes: [

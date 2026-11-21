@@ -7,7 +7,7 @@ import type { ResolvedPaneFunction } from "./resolver";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
 import { accessGateSentence, accessGateStatus } from "./access-gate";
 import { isDataPaneForDomFallback } from "./capabilities";
-import { paneEvidenceMismatches, paneScreenshotEvidenceHook } from "./screenshot-evidence";
+import { paneEvidenceGaps, paneEvidenceMismatches, paneScreenshotEvidenceHook } from "./screenshot-evidence";
 import { collectShotSymbols } from "./data";
 import { renderedReportNotices } from "./report-notices";
 import { financialRatioRenderMismatches, financialRatioShotGap, shotRatioTab } from "./financial-ratio-shot";
@@ -140,7 +140,9 @@ export function assessPaneScreenshot(
     ? []
     : shotUnavailableSymbols(resolved, payload, render.semanticUi);
   const figureGaps = essentialFigureMismatches(render);
-  const complete = unavailableSymbols.length === 0 && figureGaps.length === 0;
+  // A view that drew part of its data (OVDV with 4 of 7 expiries ready) says what it left out.
+  const gaps = usesLiveDomEvidence ? null : paneEvidenceGaps(resolved, payload, render.semanticUi);
+  const complete = unavailableSymbols.length === 0 && figureGaps.length === 0 && !gaps;
   const expectedText = shotExpectedText(resolved, symbols, payload);
   // A text field's value is on screen too (OVME's Underlying SPY), though not in the page's text. It is read
   // for this check alone: what a reader typed in a field never reaches the result, its JSON or its print.
@@ -206,7 +208,7 @@ export function assessPaneScreenshot(
   const unusableReason = usable
     ? null
     : refused ? refusedShotReason(resolved)
-    : shotUnusableReasonFor(resolved, payload, render, unavailableSymbols, semanticMismatch, blankColumns);
+    : shotUnusableReasonFor(resolved, payload, render, unavailableSymbols, semanticMismatch, blankColumns, gaps);
   const tableRows = shotTableRows(resolved, render);
   const notices = [
     ...renderedReportNotices(render.semanticUi ?? []).notices,
@@ -231,6 +233,7 @@ export function assessPaneScreenshot(
     empty,
     complete,
     unavailableSymbols,
+    ...(gaps ? { gaps } : {}),
     semanticMismatch,
     usable,
     unusableReason,
@@ -486,6 +489,8 @@ export function shotUnusableReasonFor(
   unavailableSymbols: string[],
   semanticMismatch: boolean,
   blankColumns: readonly string[] = [],
+  /** What a view that drew part of its data left out (`paneEvidenceGaps`). */
+  gaps: string | null = null,
 ): string {
   if (resolved.capability.id === "intraday-price-chart") {
     const intraday = payload.intradayHistories[0];
@@ -504,6 +509,8 @@ export function shotUnusableReasonFor(
   const surfaceGap = surfaceNotDrawnMismatches(render)[0];
   if (surfaceGap) return `${surfaceGap[0]!.toUpperCase()}${surfaceGap.slice(1)}.`;
   if (unavailableSymbols.length > 0) return `Data is unavailable for ${unavailableSymbols.join(", ")}.`;
+  // The status names every gap; the reason, the first ("4 of 7 expiries ready").
+  if (gaps) return `The pane drew part of what was asked (${gaps.split("; ")[0]}).`;
   const ratioGap = financialRatioShotGap(resolved, payload);
   if (ratioGap) return ratioGap;
   if (semanticMismatch) return "The rendered content did not match the requested capability.";

@@ -182,25 +182,42 @@ export async function readAmbiguousCurrencyPair(typed: string, { store, dataProv
   }
 }
 
+/** The row a bare symbol stands for (`savedRowOfBareSymbol`). */
+export interface BareSymbolRow {
+  /** The saved row, or null when the listing it stands for is not saved yet. */
+  row: TickerRecord | null;
+  /**
+   * The US venue of the listing a row abroad saved under the bare key gave
+   * way to: NYSE for SAN, whose bare key holds Sanofi's Euronext Paris line
+   * while SAN in New York is Banco Santander. A command reads the symbol on
+   * it, so nothing that reads the store by the bare key draws the row abroad.
+   */
+  usExchange?: string;
+}
+
 /**
  * The saved row a bare symbol stands for, read as the command bar reads it
  * (`savedAbroadForBareSymbol`): a row abroad saved under the bare key (SHEL on
- * LSE, saved from SHEL.L) gives way to the symbol's US listing, the row of it
- * saved under another key, or null when that listing is not saved yet. The
- * row abroad stands when the symbol lists on no US exchange, or search could
- * not say.
+ * LSE, saved from SHEL.L) gives way to the symbol's US listing that trades,
+ * the row of it saved under another key, or null when that listing is not
+ * saved yet, with that listing's venue. The row abroad stands when the symbol
+ * lists on no US exchange, its US line stopped trading (SOL saved on ASX,
+ * beside Emeren Group's NYSE line), or search could not say.
  */
-export async function savedRowOfBareSymbol(symbol: string, saved: TickerRecord | null, { store, dataProvider }: ListingDeps): Promise<TickerRecord | null> {
-  if (!saved || !savedAbroadForBareSymbol(symbol, saved)) return saved;
+export async function savedRowOfBareSymbol(symbol: string, saved: TickerRecord | null, { store, dataProvider }: ListingDeps): Promise<BareSymbolRow> {
+  if (!saved || !savedAbroadForBareSymbol(symbol, saved)) return { row: saved };
   try {
     const tickers = new Map((await store.loadAllTickers()).map((ticker) => [ticker.metadata.ticker.toUpperCase(), ticker] as const));
     const resolved = await resolveTickerSearch({ query: symbol, activeTicker: null, tickers, dataProvider });
-    return resolved?.kind === "local" ? resolved.ticker : resolved ? null : saved;
+    if (!resolved || (resolved.kind === "local" && resolved.ticker === saved)) return { row: saved };
+    const row = resolved.kind === "local" ? resolved.ticker : null;
+    const exchange = canonicalExchange(resolved.kind === "local" ? resolved.ticker.metadata.exchange : listingExchange(resolved.result));
+    return { row, ...isUsListingExchange(exchange) ? { usExchange: exchange } : {} };
   } catch (error) {
     // US listings no quote settles between: the lookup asks which, as with nothing saved.
-    if (error instanceof AmbiguousTickerError && !(error instanceof AmbiguousContractError)) return null;
+    if (error instanceof AmbiguousTickerError && !(error instanceof AmbiguousContractError)) return { row: null };
     logFailure("tickers-listing-venues", "Could not resolve bare symbol")(error);
-    return saved;
+    return { row: saved };
   }
 }
 
