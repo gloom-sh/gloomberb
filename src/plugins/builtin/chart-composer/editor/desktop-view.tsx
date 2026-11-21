@@ -3,10 +3,12 @@ import { Box, Text } from "../../../../ui";
 import { Button, Checkbox } from "../../../../components/ui";
 import { SelectField } from "../../../../components/ui/select-field";
 import { colors } from "../../../../theme/colors";
-import type {
-  SeriesEditorActionModel,
-  SeriesEditorFieldId,
-  SeriesEditorFieldModel,
+import { ChartColorChoice } from "../../../../components/chart/composite/color-choice";
+import {
+  SERIES_EDITOR_AUTO_COLOR,
+  type SeriesEditorActionModel,
+  type SeriesEditorFieldId,
+  type SeriesEditorFieldModel,
 } from "./model";
 
 function DesktopEditorField({
@@ -28,6 +30,7 @@ function DesktopEditorField({
 
 const SECURITY_FIELD_ORDER: SeriesEditorFieldId[] = [
   "style",
+  "color",
   "transform",
   "axis",
   "period",
@@ -39,6 +42,7 @@ const SECURITY_FIELD_ORDER: SeriesEditorFieldId[] = [
 
 const NON_SECURITY_FIELD_ORDER: SeriesEditorFieldId[] = [
   "style",
+  "color",
   "transform",
   "axis",
   "visibility",
@@ -73,6 +77,14 @@ export function DesktopSeriesEditorFields({ fields }: { fields: SeriesEditorFiel
                 checked={field.value === "shown"}
                 variant="desktop"
                 onChange={(checked) => field.onChange(checked ? "shown" : "hidden")}
+              />
+            </Box>
+          ) : field.kind === "color" ? (
+            <Box height="28px" justifyContent="center">
+              <ChartColorChoice
+                label={field.label}
+                value={field.value === SERIES_EDITOR_AUTO_COLOR ? undefined : field.value}
+                onChange={(color) => field.onChange(color ?? SERIES_EDITOR_AUTO_COLOR)}
               />
             </Box>
           ) : field.kind === "panel" ? (

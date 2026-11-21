@@ -1,13 +1,12 @@
 import { describe, expect, it } from "bun:test";
+import { CHART_PALETTE } from "../../../theme/chart-palette";
 import {
   buildChartToolVectors,
-  CHART_DRAWING_COLORS,
   chartDrawingShape,
   parseChartDrawings,
   countMeasureBars,
   drawChartToolOverlay,
   hitTestDrawings,
-  nextDrawingColor,
   shiftDrawing,
   formatMeasureSpan,
   resolveChartToolKind,
@@ -384,7 +383,7 @@ describe("editing drawings", () => {
   const line = {
     id: "line-1",
     panelId: "main",
-    color: CHART_DRAWING_COLORS[0],
+    color: CHART_PALETTE[0],
     points: [
       { time: START + 2 * DAY, value: 150 },
       { time: START + 8 * DAY, value: 50 },
@@ -424,12 +423,6 @@ describe("editing drawings", () => {
     const reshaped = shiftDrawing(line, scene, panel, 0, 0.25, 1);
     expect(reshaped.points[0]!.value).toBeCloseTo(150, 6);
     expect(reshaped.points[1]!.value).toBeCloseTo(0, 6);
-  });
-
-  it("cycles colours and wraps", () => {
-    expect(nextDrawingColor(CHART_DRAWING_COLORS[0])).toBe(CHART_DRAWING_COLORS[1]);
-    expect(nextDrawingColor(CHART_DRAWING_COLORS.at(-1)!)).toBe(CHART_DRAWING_COLORS[0]);
-    expect(nextDrawingColor("#000000")).toBe(CHART_DRAWING_COLORS[0]);
   });
 });
 

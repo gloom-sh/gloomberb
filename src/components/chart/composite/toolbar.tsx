@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Box, Text, useShortcutLabel, type BoxRenderable } from "../../../ui";
 import { colors as themeColors, hoverBg } from "../../../theme/colors";
 import { consumeChartMouseEvent, type ChartMouseEvent } from "../core/pointer";
-import { CHART_DRAWING_COLORS, type ChartToolKind } from "./tools";
+import { type ChartToolKind } from "./tools";
+import { ChartColorSwatch } from "./color-choice";
+import { CHART_PALETTE, chartPaletteColorName } from "../../../theme/chart-palette";
 import { CHART_TOOLS } from "./tool-catalog";
 import { clipToDisplayWidth } from "../../../utils/format";
 
@@ -217,51 +219,6 @@ function svgMaskUrl(svg: string): string {
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
 }
 
-function ChartColorSwatch({
-  color,
-  active,
-  isDesktopWeb,
-  onPress,
-}: {
-  color: string;
-  active: boolean;
-  isDesktopWeb: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Box
-      flexDirection="row"
-      alignItems="center"
-      justifyContent="center"
-      width={2}
-      height={1}
-      flexShrink={0}
-      backgroundColor={active ? themeColors.selected : undefined}
-      hoverBackgroundColor={hoverBg()}
-      onMouseDown={(event: ChartMouseEvent) => {
-        consumeChartMouseEvent(event);
-        onPress();
-      }}
-      cursor="pointer"
-      data-gloom-interactive="true"
-      data-gloom-role="composite-chart-color"
-      data-gloom-label={`Drawing colour ${color}`}
-      data-active={active ? "true" : "false"}
-      style={isDesktopWeb
-        ? {
-          width: 14,
-          height: 14,
-          borderRadius: "var(--gloom-radius-full)",
-          backgroundColor: color,
-          border: `1.5px solid ${active ? themeColors.text : "transparent"}`,
-        }
-        : undefined}
-    >
-      {isDesktopWeb ? null : <Text fg={color}>{active ? "\u25c9" : "\u25cf"}</Text>}
-    </Box>
-  );
-}
-
 /** The terminal names the tool after its glyphs, cut to the room its buttons leave (the desktop has a tooltip). */
 function terminalToolCaption(name: string, room: number): string {
   return room === Infinity ? name : clipToDisplayWidth(name, room);
@@ -310,7 +267,7 @@ export function ChartToolbar({
   const captionTool = hoveredTool ?? tool;
   const tools = CHART_TOOLS.filter((entry) => levelTool || entry.kind !== "level");
   // The handle and each tool take 3 cells, a colour 2, with a cell between any two and before the name.
-  const swatches = showColors ? CHART_DRAWING_COLORS.length : 0;
+  const swatches = showColors ? CHART_PALETTE.length : 0;
   const captionRoom = maxWidth === undefined ? Infinity
     : maxWidth - 3 * (1 + tools.length) - 2 * swatches - (1 + tools.length + swatches);
   const caption = isDesktopWeb ? "" : terminalToolCaption(toolName(captionTool), captionRoom);
@@ -371,12 +328,13 @@ export function ChartToolbar({
         />
       )) : null}
       {/* Colours only take space while something can use them. */}
-      {expanded && showColors ? CHART_DRAWING_COLORS.map((color) => (
+      {expanded && showColors ? CHART_PALETTE.map((color) => (
         <ChartColorSwatch
           key={color}
           color={color}
           active={color === drawColor}
           isDesktopWeb={isDesktopWeb}
+          label={`Drawing colour: ${chartPaletteColorName(color)}`}
           onPress={() => onPickColor(color)}
         />
       )) : null}

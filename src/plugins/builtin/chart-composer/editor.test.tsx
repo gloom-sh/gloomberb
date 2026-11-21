@@ -7,6 +7,7 @@ import { SeriesEditorDialog } from "./editor";
 import { parseSeriesExpression } from "./series-expression";
 import { appendChartSeries } from "./chart-spec-edit";
 import { buildFundamentalChartPreset, buildPriceChartPreset } from "./presets";
+import { CHART_PALETTE } from "../../../theme/chart-palette";
 
 const tui = createOpenTuiTestHarness();
 
@@ -150,6 +151,45 @@ describe("chart composer series editor", () => {
     });
   });
 
+  test("Auto gives a series with a picked colour back the theme's", async () => {
+    const preset = buildPriceChartPreset("AAPL");
+    let resolved: ReturnType<typeof buildPriceChartPreset> | null | undefined;
+    await tui.render(
+      <SeriesEditorDialog
+        dialogId="series-editor-colour-test"
+        initialSpec={{ ...preset, series: [{ ...preset.series[0]!, color: CHART_PALETTE[1] }] }}
+        dismiss={() => {}}
+        resolve={(next) => {
+          resolved = next;
+        }}
+      />,
+      { width: 92, height: 48 },
+    );
+
+    await act(async () => {
+      await tui.setup().renderOnce();
+    });
+    const rows = tui.frame().split("\n");
+    const colourRow = rows.findIndex((line) => line.trim() === "Colour") + 1;
+    const autoColumn = rows[colourRow]?.indexOf("Auto") ?? -1;
+    const actionRow = rows.findIndex((line) => line.includes("Remove") && line.includes("Save"));
+    const saveColumn = rows[actionRow]?.indexOf("Save") ?? -1;
+    expect(autoColumn).toBeGreaterThan(0);
+    expect(saveColumn).toBeGreaterThan(0);
+
+    await act(async () => {
+      await tui.setup().mockMouse.click(autoColumn + 1, colourRow);
+      await tui.setup().renderOnce();
+    });
+    await act(async () => {
+      await tui.setup().mockMouse.click(saveColumn + 1, actionRow);
+      await tui.setup().renderOnce();
+    });
+
+    expect(resolved?.series[0]).toBeDefined();
+    expect(resolved?.series[0]?.color).toBeUndefined();
+  });
+
   test("dismisses the editor from the initially focused quick-add with Escape", async () => {
     let resolved: ReturnType<typeof buildPriceChartPreset> | null | undefined;
     await tui.render(
@@ -252,7 +292,7 @@ describe("chart composer series editor", () => {
       </>;
     }
     await tui.render(<Harness />, { width: 92, height: 48 });
-    for (let index = 0; index < 4; index += 1) await emitKey("tab", "\t");
+    for (let index = 0; index < 5; index += 1) await emitKey("tab", "\t");
     // The full terminal can still identify an underlying input as its focused
     // editor after the dialog has moved its own logical focus to a selector.
     await act(async () => { background!.focus!(); await tui.setup().renderOnce(); });
@@ -302,10 +342,13 @@ describe("chart composer series editor", () => {
     await emitKey("right", "\u001b[C");
     await emitKey("tab", "\t");
     await emitKey("right", "\u001b[C");
+    await emitKey("tab", "\t");
+    await emitKey("right", "\u001b[C");
     await emitKey("enter", "\r");
 
     expect(resolved?.series[0]).toMatchObject({
       style: "line",
+      color: CHART_PALETTE[0],
       transform: "percent",
       axis: "right",
       panelId: "main",

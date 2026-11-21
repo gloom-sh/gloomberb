@@ -10,6 +10,7 @@ import {
 
 const fieldHandlers: SeriesEditorFieldHandlers = {
   setStyle() {},
+  setColor() {},
   setTransform() {},
   setAxis() {},
   setVisibility() {},
@@ -40,6 +41,7 @@ describe("series editor model", () => {
 
     expect(fields.map((field) => field.id)).toEqual([
       "style",
+      "color",
       "transform",
       "axis",
       "visibility",
