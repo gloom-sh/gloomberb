@@ -340,7 +340,7 @@ describe("activating an installed plugin", () => {
   /** The registry's listeners redraw while a plugin registers: what they read of its entry then is what shows. */
   function bindActivationRuntime(externalPlugins: LoadedExternalPlugin[], cleanupFails = false) {
     const iconDuringRegister: Array<string | null> = [];
-    const allPlugins = new Map<string, unknown>(externalPlugins.map((entry) => [entry.plugin.id, entry.plugin]));
+    const allPlugins = new Map<string, unknown>(externalPlugins.filter((entry) => !entry.duplicateOf).map((entry) => [entry.plugin.id, entry.plugin]));
     const pluginRegistry = {
       panes: new Map(),
       allPlugins,
@@ -402,6 +402,24 @@ describe("activating an installed plugin", () => {
     const updated = bindActivationRuntime([aries("data:image/webp;base64,old")]);
     await updated.host.activate(aries("data:image/webp;base64,newer"));
     expect(updated.iconDuringRegister).toEqual(["data:image/webp;base64,newer"]);
+  });
+
+  test("a skipped duplicate folder is listed beside the copy that loads, even when named after the plugin's id", () => {
+    const loads = { plugin: { id: "aries", name: "Aries", version: "1.2.0" }, path: "/plugins/aries-download", directory: "aries-download" } as LoadedExternalPlugin;
+    const skipped = {
+      plugin: { id: "aries", name: "Aries", version: "1.0.0" },
+      path: "/plugins/aries",
+      directory: "aries",
+      error: "The aries-download folder has the same plugin id (aries) and loads instead.",
+      duplicateOf: "aries-download",
+    } as LoadedExternalPlugin;
+    const { host } = bindActivationRuntime([loads, skipped]);
+
+    expect(host.listInstalled()).toMatchObject([
+      { id: "aries", directory: "aries-download", version: "1.2.0" },
+      { id: "aries (duplicate)", directory: "aries", toggleable: false, duplicateOf: "aries-download", loadError: skipped.error },
+    ]);
+    expect(host.listInstalled()[0]).not.toHaveProperty("loadError");
   });
 
   test("failed view cleanup retains the installed entry as needing restart and refuses a no-op retry", async () => {

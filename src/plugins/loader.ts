@@ -16,6 +16,7 @@ import {
   settleDependencyInstalls,
 } from "./dependencies";
 import { declaredPeerPlugins, describePeerLink, installedPeerPlugins, isLinkedPeerModule, linkHostPackages, relinkPeerPlugin } from "./host-link";
+import { skipDuplicatePluginIds } from "./duplicates";
 import { importSiblingsFromTheirFolders } from "./peer-imports";
 import { refreshResolverFolders, rekeyedEntry, withoutRetryQuery } from "./peer-retry";
 import { redirectionGuard } from "./redirection-guard";
@@ -63,6 +64,11 @@ export interface LoadedExternalPlugin {
    * linked. Never registered; the next launch loads it.
    */
   needsRestart?: boolean;
+  /**
+   * Set on a folder whose plugin id another folder, named here, declares and
+   * loads instead (duplicates.ts). `error` says so, and nothing registers it.
+   */
+  duplicateOf?: string;
 }
 
 export function getPluginsDir(): string {
@@ -580,14 +586,17 @@ export async function listPluginDirectories(pluginsDir: string = PLUGINS_DIR): P
   return dirs;
 }
 
-export async function loadExternalPlugins(target: PluginTarget = "cli"): Promise<LoadedExternalPlugin[]> {
+export async function loadExternalPlugins(
+  target: PluginTarget = "cli",
+  pluginsDir: string = PLUGINS_DIR,
+): Promise<LoadedExternalPlugin[]> {
   recordLaunchedVersion();
   const results: LoadedExternalPlugin[] = [];
-  for (const pluginDir of await listPluginDirectories()) {
+  for (const pluginDir of await listPluginDirectories(pluginsDir)) {
     const loaded = await loadExternalPlugin(pluginDir, target);
     if (loaded) results.push(loaded);
   }
-  return results;
+  return skipDuplicatePluginIds(results);
 }
 
 function isSymlink(path: string): boolean {

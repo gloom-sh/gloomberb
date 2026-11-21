@@ -175,6 +175,8 @@ export interface DesktopExternalPluginBundle {
   unsupportedTarget?: "desktop";
   /** The files changed under modules the Bun process already imported; no code is sent. */
   needsRestart?: boolean;
+  /** The folder that loads in this one's place, which declares the same plugin id; `error` says so and no code is sent. */
+  duplicateOf?: string;
 }
 
 /**
