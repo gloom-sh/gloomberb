@@ -338,11 +338,17 @@ export function getActiveQuoteDisplay(quote: Quote | null | undefined): ActiveQu
 /**
  * The quote with `display` as its print in the session getActiveQuoteDisplay
  * reads, which then reads it back: the quote as another tick of that session
- * left it. An after-hours move follows from its price and previous close.
+ * left it. An after-hours move follows from its price and previous close, and
+ * so does a pre-market one the tick gave none of.
  */
 export function withActiveQuoteDisplay(quote: Quote, display: ActiveQuoteDisplay): Quote {
   if ((quote.marketState === "PRE" || quote.marketState === "PREPRE") && isPositive(quote.preMarketPrice)) {
-    return { ...quote, preMarketPrice: display.price, preMarketChange: display.change, preMarketChangePercent: display.changePercent };
+    const close = isPositive(quote.previousClose) ? quote.previousClose : undefined;
+    return {
+      ...quote, preMarketPrice: display.price,
+      preMarketChange: display.change ?? (close != null ? display.price - close : undefined),
+      preMarketChangePercent: display.changePercent ?? (close != null ? ((display.price - close) / close) * 100 : undefined),
+    };
   }
   if ((quote.marketState === "POST" || quote.marketState === "POSTPOST") && quote.postMarketPrice != null) {
     return { ...quote, postMarketPrice: display.price };

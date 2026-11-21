@@ -110,7 +110,7 @@ export function createRemoteAssetDataClient(): RemoteAssetDataClient {
       payload: { targets },
       ...handlers,
     }),
-    dispatch: (target, quote) => quoteSubscriptions.dispatch(target, quote),
+    dispatch: (target, quote, ticks) => quoteSubscriptions.dispatch(target, quote, ticks),
     onClockOffset: setForwardedServerClockOffset,
     onError: (error) => console.error("Failed to subscribe to backend quotes", error),
   });

@@ -1,9 +1,14 @@
 import { instrumentIdentityKey } from "../../../utils/instrument-identity";
+import { carriesOtherPrices, foldStreamTick, type StreamTickRange } from "../../../market-data/quotes/tick-range";
+import type { Quote } from "../../../types/financials";
 
 /**
  * Quote streams cross from the backend process to a window as one message per
  * short interval holding the latest tick per instrument, instead of one RPC
- * message per tick. Other events on the same stream keep their order.
+ * message per tick. An instrument whose ticks in the interval priced other
+ * than its latest one carries their range as `ticks` (`foldStreamTick`), so a
+ * window that judges every tick (price alerts) still sees the ones the batch
+ * left out. Other events on the same stream keep their order.
  */
 export const QUOTE_EVENT_BATCH_KIND = "quote-batch";
 export const QUOTE_EVENT_BATCH_INTERVAL_MS = 40;
@@ -59,8 +64,16 @@ export function unpackQuoteEvents(event: unknown): { events: unknown[]; clockOff
  * Collects the quote events of one stream and sends them as a batch per
  * interval, latest tick per instrument. The timer runs only while ticks wait.
  */
+interface PendingQuoteEvent {
+  event: unknown;
+  /** The range of the instrument's ticks this interval, once a second one came. */
+  ticks: StreamTickRange | null;
+}
+
+const eventQuote = (event: unknown) => (event as { quote: Quote }).quote;
+
 export class QuoteEventBatcher {
-  private readonly pending = new Map<string, unknown>();
+  private readonly pending = new Map<string, PendingQuoteEvent>();
   private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
@@ -76,7 +89,10 @@ export class QuoteEventBatcher {
       this.send(event);
       return;
     }
-    this.pending.set(key, event);
+    // The first tick of an instrument goes as it is; a second one starts the range of them all.
+    const held = this.pending.get(key);
+    const ticks = held ? foldStreamTick(held.ticks ?? foldStreamTick(null, eventQuote(held.event)), eventQuote(event)) : null;
+    this.pending.set(key, { event, ticks });
     this.timer ??= setTimeout(() => this.flush(), this.intervalMs);
   }
 
@@ -84,7 +100,9 @@ export class QuoteEventBatcher {
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
     if (this.pending.size === 0) return;
-    const events = [...this.pending.values()];
+    const events = [...this.pending.values()].map(({ event, ticks }) => (
+      ticks && carriesOtherPrices(ticks) ? { ...(event as object), ticks } : event
+    ));
     this.pending.clear();
     const clockOffsetMs = this.readClockOffset();
     const batch: QuoteEventBatch = {

@@ -115,6 +115,27 @@ export function quoteAlertFields(
   };
 }
 
+/** How far past the check that read it a last print's time may be, for clocks apart, and still be one. */
+const PRINT_CLOCK_SKEW_MS = 5 * 60_000;
+
+/**
+ * Whether a quote printed before the one an alert was last checked on: a
+ * cached copy older than what the alert has already seen (at launch, a quote
+ * read minutes before the app last closed). It must neither set the alert off
+ * nor become its last reading. A last print timed past the check that read
+ * it, beyond clocks apart, says nothing, so it holds no quote back.
+ */
+export function printedBeforeLastCheck(
+  alert: Pick<AlertRule, "lastQuoteUpdatedAt" | "lastCheckedAt">,
+  quote: Pick<Quote, "lastUpdated">,
+): boolean {
+  const seen = alert.lastQuoteUpdatedAt;
+  const printed = quote.lastUpdated;
+  if (seen == null || printed == null || !Number.isFinite(seen) || !Number.isFinite(printed)) return false;
+  if (alert.lastCheckedAt != null && seen > alert.lastCheckedAt + PRINT_CLOCK_SKEW_MS) return false;
+  return printed < seen;
+}
+
 /**
  * A move rule's fields from a quote: those a price rule takes, with the
  * reading the quote's move (in percent) and the close it is measured from.

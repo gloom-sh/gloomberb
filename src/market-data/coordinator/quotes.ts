@@ -8,7 +8,7 @@ import type { QueryEntry } from "../result-types";
 import { buildQuoteKey, instrumentFromQuoteTarget, toMarketDataContext } from "../selectors";
 import { measurePerf } from "../../utils/perf-marks";
 import { quoteStampBucket } from "../quotes/freshness";
-import { foldStreamTick, type StreamTickRange } from "../quotes/tick-range";
+import { foldStreamTick, mergeStreamTickRanges, type StreamTickRange } from "../quotes/tick-range";
 import { withSavedCopyMarkOf } from "../../data/saved-copies";
 import {
   failureStatus,
@@ -388,8 +388,8 @@ export class QuoteSubscriptionManager {
 
     const targets = activeEntries.map(([, entry]) => entry.target);
     const nextDispose = targets.length > 0
-      ? this.dataProvider.subscribeQuotes(targets, (target, quote) => {
-          this.enqueueStreamQuote({ ...instrumentFromQuoteTarget(target), exchange: target.exchange ?? "" }, quote);
+      ? this.dataProvider.subscribeQuotes(targets, (target, quote, ticks) => {
+          this.enqueueStreamQuote({ ...instrumentFromQuoteTarget(target), exchange: target.exchange ?? "" }, quote, ticks);
         })
       : null;
     // Register first so the cloud socket and desktop registries can merge the
@@ -417,15 +417,19 @@ export class QuoteSubscriptionManager {
     this.pendingPriorityUpdateTimer = null;
   }
 
-  private enqueueStreamQuote(instrument: InstrumentRef, quote: Quote): void {
+  /** `carried`: the range of the ticks `quote` is the newest of, from a hop that kept only the newest (a desktop window's quote batch). */
+  private enqueueStreamQuote(instrument: InstrumentRef, quote: Quote, carried?: StreamTickRange): void {
     const key = buildQuoteKey(instrument);
     const subscription = this.quoteSubscriptions.get(key);
     if (!subscription || subscription.targets.size === 0) return;
 
     // Latest tick per key wins; the frame applies whatever is newest, and a
-    // followed key keeps the range of the ticks it folded in.
+    // followed key keeps the range of the ticks it folded in, the ones a hop
+    // before folded included.
     const pending = this.pendingStreamQuotes.get(key);
-    const ticks = this.followsTicks(key) ? foldStreamTick(pending?.ticks ?? null, quote) : null;
+    const ticks = !this.followsTicks(key) ? null
+      : carried ? mergeStreamTickRanges(pending?.ticks ?? undefined, carried)
+      : foldStreamTick(pending?.ticks ?? null, quote);
     this.pendingStreamQuotes.set(key, { instrument, quote, ticks });
     this.frames.request(this.streamQuoteFrame, this.streamQuoteRequest(
       this.streamQuoteDueAt(key, subscription.target),

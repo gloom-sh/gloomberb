@@ -14,6 +14,10 @@ export interface StreamTickReading extends ActiveQuoteDisplay {
   lastUpdated?: number;
 }
 
+/** An extended session a tick that names none of its own can be a print of. */
+type TickSession = "PRE" | "POST";
+const TICK_SESSIONS: readonly TickSession[] = ["PRE", "POST"];
+
 export interface StreamTickRange {
   low: StreamTickReading;
   high: StreamTickReading;
@@ -23,36 +27,95 @@ export interface StreamTickRange {
   fellFromHigh: boolean;
   /** The last tick's price, which the applied quote shows. */
   last: number;
+  /**
+   * The same ticks as a pre-market or after-hours quote shows them, once one
+   * named no session but carried that session's print (an after-hours tick
+   * with its print and the regular close): the quote they are applied onto
+   * says which session they were in (`streamTicksAsShown`).
+   */
+  sessions?: Partial<Record<TickSession, StreamTickRange>>;
 }
 
-function tickReading(quote: Quote): StreamTickReading | null {
-  if (quote.stale === true) return null;
-  const display = getActiveQuoteDisplay(quote);
+function reading(display: ActiveQuoteDisplay | null, quote: Quote): StreamTickReading | null {
   if (!display || !Number.isFinite(display.price)) return null;
   return { ...display, lastUpdated: quote.lastUpdated };
 }
 
-/** The range with one more tick, in arrival order; a range it starts. Mutates `range`, which the caller owns. */
-export function foldStreamTick(range: StreamTickRange | null, quote: Quote): StreamTickRange | null {
-  const reading = tickReading(quote);
-  if (!reading) return range;
-  if (!range) return { low: reading, high: reading, roseFromLow: false, fellFromHigh: false, last: reading.price };
-  const { price } = reading;
+function tickReading(quote: Quote): StreamTickReading | null {
+  if (quote.stale === true) return null;
+  return reading(getActiveQuoteDisplay(quote), quote);
+}
+
+/**
+ * A tick that names no session, read as a quote in `session` shows it, when
+ * it carries that session's print; its move from the previous close when it
+ * gives none.
+ */
+function sessionReading(quote: Quote, session: TickSession): StreamTickReading | null {
+  if (quote.marketState != null || quote.stale === true) return null;
+  const print = session === "PRE" ? quote.preMarketPrice : quote.postMarketPrice;
+  if (print == null || !Number.isFinite(print) || (session === "PRE" && print <= 0)) return null;
+  const display = getActiveQuoteDisplay({ ...quote, marketState: session });
+  if (!display) return null;
+  const close = quote.previousClose;
+  const fromClose = close != null && Number.isFinite(close) && close > 0;
+  return reading({
+    price: display.price,
+    change: display.change ?? (fromClose ? display.price - close : undefined),
+    changePercent: display.changePercent ?? (fromClose ? ((display.price - close) / close) * 100 : undefined),
+  }, quote);
+}
+
+function startRange(tick: StreamTickReading): StreamTickRange {
+  return { low: tick, high: tick, roseFromLow: false, fellFromHigh: false, last: tick.price };
+}
+
+/** The range alone, without its sessions' views. */
+function flatRange({ low, high, roseFromLow, fellFromHigh, last }: StreamTickRange): StreamTickRange {
+  return { low, high, roseFromLow, fellFromHigh, last };
+}
+
+function foldReading(range: StreamTickRange, tick: StreamTickReading): void {
+  const { price } = tick;
   if (price < range.low.price) {
-    range.low = reading;
+    range.low = tick;
     range.roseFromLow = false;
   } else if (price > range.low.price) range.roseFromLow = true;
   if (price > range.high.price) {
-    range.high = reading;
+    range.high = tick;
     range.fellFromHigh = false;
   } else if (price < range.high.price) range.fellFromHigh = true;
   range.last = price;
+}
+
+function foldSessionReading(range: StreamTickRange, session: TickSession, sessionTick: StreamTickReading | null, tick: StreamTickReading): void {
+  // A session's view starts as the ticks before read: none of them carried its print.
+  if (sessionTick && !range.sessions?.[session]) (range.sessions ??= {})[session] = flatRange(range);
+  const view = range.sessions?.[session];
+  if (view) foldReading(view, sessionTick ?? tick);
+}
+
+/** The range with one more tick, in arrival order; a range it starts. Mutates `range`, which the caller owns. */
+export function foldStreamTick(range: StreamTickRange | null, quote: Quote): StreamTickRange | null {
+  const tick = tickReading(quote);
+  if (!tick) return range;
+  const pre = sessionReading(quote, "PRE");
+  const post = sessionReading(quote, "POST");
+  if (!range) {
+    const started = startRange(tick);
+    if (pre) (started.sessions ??= {}).PRE = startRange(pre);
+    if (post) (started.sessions ??= {}).POST = startRange(post);
+    return started;
+  }
+  if (pre || post || range.sessions) {
+    foldSessionReading(range, "PRE", pre, tick);
+    foldSessionReading(range, "POST", post, tick);
+  }
+  foldReading(range, tick);
   return range;
 }
 
-/** Two ranges as one, `later`'s ticks after `earlier`'s. */
-export function mergeStreamTickRanges(earlier: StreamTickRange | undefined, later: StreamTickRange): StreamTickRange {
-  if (!earlier) return later;
+function mergeFlat(earlier: StreamTickRange, later: StreamTickRange): StreamTickRange {
   const lower = later.low.price < earlier.low.price;
   const higher = later.high.price > earlier.high.price;
   return {
@@ -65,7 +128,87 @@ export function mergeStreamTickRanges(earlier: StreamTickRange | undefined, late
   };
 }
 
+/** Two ranges as one, `later`'s ticks after `earlier`'s. */
+export function mergeStreamTickRanges(earlier: StreamTickRange | undefined, later: StreamTickRange): StreamTickRange {
+  if (!earlier) return later;
+  const merged = mergeFlat(earlier, later);
+  for (const session of TICK_SESSIONS) {
+    const before = earlier.sessions?.[session];
+    const after = later.sessions?.[session];
+    // A range with no view of the session reads every tick of it as it reads it.
+    if (before || after) (merged.sessions ??= {})[session] = mergeFlat(before ?? earlier, after ?? later);
+  }
+  return merged;
+}
+
 /** Whether any tick priced other than the last: the applied quote alone says everything the others did. */
-export function spansOtherPrices(range: StreamTickRange): boolean {
+function spansOtherPrices(range: StreamTickRange): boolean {
   return range.low.price < range.last || range.high.price > range.last;
+}
+
+/** Whether the range, in any session it can be read in, says something the newest tick alone does not. */
+export function carriesOtherPrices(range: StreamTickRange): boolean {
+  return spansOtherPrices(range) || TICK_SESSIONS.some((session) => {
+    const view = range.sessions?.[session];
+    return view != null && spansOtherPrices(view);
+  });
+}
+
+/**
+ * The range as `applied`, the quote its last tick left, shows its price: in
+ * that quote's session when ticks named none (`sessions`). Null when that
+ * quote does not show their last price, so the ticks are not what it shows
+ * (a unit its listing's other quotes refuse, an older print than its
+ * snapshot), or when they all priced as it does.
+ */
+export function streamTicksAsShown(range: StreamTickRange, applied: Quote): StreamTickRange | null {
+  if (applied.stale === true) return null;
+  const shown = getActiveQuoteDisplay(applied)?.price;
+  const state = applied.marketState;
+  const session = state === "PRE" || state === "PREPRE" ? range.sessions?.PRE
+    : state === "POST" || state === "POSTPOST" ? range.sessions?.POST : undefined;
+  for (const view of [session, range]) {
+    if (!view || view.last !== shown) continue;
+    return spansOtherPrices(view) ? flatRange(view) : null;
+  }
+  return null;
+}
+
+function finiteOrUndefined(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function readReading(value: unknown): StreamTickReading | null {
+  if (!value || typeof value !== "object") return null;
+  const tick = value as Record<string, unknown>;
+  const price = finiteOrUndefined(tick.price);
+  if (price === undefined) return null;
+  return { price, change: finiteOrUndefined(tick.change), changePercent: finiteOrUndefined(tick.changePercent), lastUpdated: finiteOrUndefined(tick.lastUpdated) };
+}
+
+function readFlatRange(value: unknown): StreamTickRange | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const range = value as Record<string, unknown>;
+  const low = readReading(range.low);
+  const high = readReading(range.high);
+  const last = finiteOrUndefined(range.last);
+  if (!low || !high || last === undefined || typeof range.roseFromLow !== "boolean" || typeof range.fellFromHigh !== "boolean") return undefined;
+  if (low.price > last || high.price < last) return undefined;
+  return { low, high, roseFromLow: range.roseFromLow, fellFromHigh: range.fellFromHigh, last };
+}
+
+/**
+ * A range as it crossed from another process in JSON (a desktop window's
+ * quote batch), where an unavailable move arrives as null. Undefined for
+ * anything that is not one.
+ */
+export function readStreamTickRange(value: unknown): StreamTickRange | undefined {
+  const range = readFlatRange(value);
+  if (!range) return undefined;
+  const sessions = (value as { sessions?: unknown }).sessions;
+  for (const session of TICK_SESSIONS) {
+    const view = sessions && typeof sessions === "object" ? readFlatRange((sessions as Record<string, unknown>)[session]) : undefined;
+    if (view) (range.sessions ??= {})[session] = view;
+  }
+  return range;
 }
