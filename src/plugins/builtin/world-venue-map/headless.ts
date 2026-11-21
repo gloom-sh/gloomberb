@@ -11,6 +11,7 @@ import { REFERENCE_DATA } from "../shared/report-freshness";
 import { columnValue, formatGeoValue, isChangeColumn, layerCoverageNote, parseLayerTokens, parseMapPreset, plainGeoValue, resolveActiveLayers, tickerLinkKey } from "./layers";
 import { filterWorldVenues, formatVenueLocalTime, venueSession } from "./model";
 import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
+import { rowWindowCutNote } from "../../../cli/row-window";
 import { mapHomeArea, mapPlaceBbox, nearestPlaces, resolveMapPlace, type MapStart } from "./place";
 
 /**
@@ -51,13 +52,23 @@ const VENUE_COLUMNS: HeadlessPaneColumn[] = [
   { key: "localTime", header: "Local" },
 ];
 
-async function venueRows(context: HeadlessPaneContext, query: string, start: MapStart): Promise<HeadlessRowsResult> {
+/** What a page of rows the server cut at `--limit` says of the rest: "first 6 of 137 rows (--limit 6)". */
+function pageCutNote(shown: number, total: number | null | undefined, limit: number | undefined): string[] {
+  if (limit == null || total == null) return [];
+  const note = rowWindowCutNote({ limit }, { shown, total });
+  return note ? [note] : [];
+}
+
+/** The venues nearest the place first; `--limit` keeps the first of them, and says how many there were. */
+async function venueRows(context: HeadlessPaneContext, query: string, start: MapStart, limit: number | undefined): Promise<HeadlessRowsResult> {
   const response = await context.apiClient.getCloudWorldVenues();
   if (!response.data) throw new Error(response.reasonCode ?? "World venue data unavailable");
   const now = Date.now();
+  const venues = nearestPlaces(filterWorldVenues(response.data.venues, query), start.place, (venue) => venue);
+  const shown = limit == null ? venues : venues.slice(0, limit);
   return {
     columns: VENUE_COLUMNS,
-    rows: nearestPlaces(filterWorldVenues(response.data.venues, query), start.place, (venue) => venue).map((venue) => ({
+    rows: shown.map((venue) => ({
       mic: venue.mic,
       name: venue.title,
       city: venue.city,
@@ -70,7 +81,8 @@ async function venueRows(context: HeadlessPaneContext, query: string, start: Map
     })),
     freshness: REFERENCE_DATA,
     errors: start.note ? [start.note] : [],
-    metadata: { layer: "venues", stale: response.stale === true, ...(start.place ? { place: start.place } : {}) },
+    notes: pageCutNote(shown.length, venues.length, limit),
+    metadata: { layer: "venues", stale: response.stale === true, total: venues.length, ...(start.place ? { place: start.place } : {}) },
   };
 }
 
@@ -180,14 +192,15 @@ export const mapHeadless = {
       signal: context.signal,
       venues: async () => (await context.apiClient.getCloudWorldVenues()).data?.venues ?? [],
     });
-    if (!tokens.length) return venueRows(context, query, start);
+    const asked = typeof args.options.limit === "number" ? args.options.limit : undefined;
+    if (!tokens.length) return venueRows(context, query, start, asked);
     const layers = resolveActiveLayers(tokens, catalog?.layers);
     const layer = layers[0];
     if (!layer) {
       const known = catalog?.layers.map((entry) => entry.id).join(", ");
       throw new Error(known ? `No map layer "${tokens.join(", ")}". Layers: ${known}.` : "Map layers are not available.");
     }
-    const limit = typeof args.options.limit === "number" ? args.options.limit : 100;
+    const limit = asked ?? 100;
     const page = layer.status === "unavailable"
       ? { rows: [], total: 0, asOf: null, columns: layer.columns }
       : await getGeoEntities(request, layer.id, { q: query, limit, ...(start.place ? { bbox: mapPlaceBbox(start.place) } : {}) }, context.signal);
@@ -212,6 +225,8 @@ export const mapHeadless = {
       freshness: layerFreshness(layer),
       complete: layer.status === "ok",
       errors: [...(start.note ? [start.note] : []), ...(layer.status === "unavailable" ? [`${layer.name}: ${layer.statusNote ?? "unavailable"}`] : [])],
+      // A total row counts every row found; without one, a page `--limit` cut says how many there were.
+      notes: total ? [] : pageCutNote(rows.length, page.total, asked),
       metadata: {
         layer: layer.id,
         name: layer.name,

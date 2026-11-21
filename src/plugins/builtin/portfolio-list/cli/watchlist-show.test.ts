@@ -1,6 +1,6 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../../../api-client";
-import { DEFAULT_CLI_OPTIONS } from "../../../../cli/options";
+import { DEFAULT_CLI_OPTIONS, type CliGlobalOptions } from "../../../../cli/options";
 import { serializeCliResult } from "../../../../cli/result";
 import { createTestCliContext } from "../../../../test-support/cli-context";
 import { createTestDataProvider, createTestQuote } from "../../../../test-support/data-provider";
@@ -40,13 +40,13 @@ const quotes: Record<string, Quote> = {
 };
 
 /** `watchlist show Mix` over these rows: its text, and its JSON rows. */
-async function show(tickers: TickerRecord[], { groups }: { groups?: Watchlist["groups"] } = {}) {
+async function show(tickers: TickerRecord[], { groups, options = {} }: { groups?: Watchlist["groups"]; options?: Partial<CliGlobalOptions> } = {}) {
   const market = { config: groups ? { ...config, watchlists: [{ ...config.watchlists[0]!, groups }] } : config, store: { loadAllTickers: async () => tickers },
     dataProvider: createTestDataProvider({ getQuote: async (symbol) => quotes[symbol]! }) };
   setCliColorEnabledOverride(false);
   const output: string[] = [];
   const logger = spyOn(console, "log").mockImplementation((...args) => { output.push(args.join(" ")); });
-  try { await showCollection("Mix", createTestCliContext(market).context); } finally { logger.mockRestore(); }
+  try { await showCollection("Mix", createTestCliContext(market, options).context); } finally { logger.mockRestore(); }
   const cli = createTestCliContext(market, { format: "json" });
   await showCollection("Mix", cli.context);
   const json = JSON.parse(serializeCliResult(cli.printed[0]!.result, { ...DEFAULT_CLI_OPTIONS, format: "json" }));
@@ -62,6 +62,19 @@ test("a stale row says STALE and the day it last traded, the line under the foot
   expect(rows.find((row) => row.symbol === "SIVB")).toMatchObject({ stale: true, lastTradeDate: "2023-03-09" });
   expect(rows.find((row) => row.symbol === "XOM")).toMatchObject({ stale: false });
   expect((await show([stock])).text).not.toContain("Last Trade");
+});
+
+// The table printed every row of a 212-name list under --limit 2, which the export kept to.
+test("--limit and --tail keep the table's rows as they keep the export's and say of how many, and a stale row cut away adds no column", async () => {
+  const { text, line } = await show([stock, halted, abroad], { options: { limit: 2 } });
+  expect(line("ASML")).not.toBe("");
+  expect(line("SIVB")).toContain("STALE");
+  expect(line("XOM")).toBe("");
+  expect(text).toContain("first 2 of 3 rows (--limit 2)");
+  const tail = await show([stock, halted, abroad], { options: { tail: 1 } });
+  expect(tail.line("XOM")).not.toBe("");
+  expect(tail.text).not.toContain("Last Trade");
+  expect(tail.text).toContain("last 1 of 3 rows (--tail 1)");
 });
 
 test("a market cap of zero prints a dash, as a missing one does, never 0 USD", async () => {

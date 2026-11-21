@@ -8,6 +8,7 @@ import { savedListingName } from "../../../../cli/listing-arg";
 import { currentListingName } from "../../../../tickers/listing-name";
 import { withMarketData } from "../../../../cli/scoped-context";
 import { countCollectionTickers } from "../../../../cli/helpers";
+import { windowTextRows } from "../../../../cli/row-window";
 import {
   cliStyles,
   colorBySign,
@@ -1324,7 +1325,8 @@ async function showCollectionWithMarketData(
     // Where each ticker's lots end, to put its position line there.
     const lastLot = new Map<string, number>();
     valued.forEach((entry, index) => { if (entry.position) lastLot.set(entry.ticker.metadata.ticker, index); });
-    const rows: string[][] = valued.flatMap(({ ticker, quote, headline, extended, position, metrics, pnl, row, valuation: priced, futures: contract }, index): string[][] => {
+    // Each lot's line, and a position's line under its last lot.
+    const lines = valued.map(({ ticker, quote, headline, extended, position, metrics, pnl, row, valuation: priced, futures: contract }, index): string[][] => {
       const asOf = valuationTimeText(priced.valuationAsOf, now, priced.valuationPriceKind);
       const priceText = quote && headline
         ? colorBySign(formatListPrice(headline.price, quote, ticker.metadata.assetCategory), headline.change)
@@ -1375,6 +1377,9 @@ async function showCollectionWithMarketData(
         ...allocationCells(whole, { unpriced: wholeValue == null, units: symbolUnits, assetCategory: ticker.metadata.assetCategory }),
         ...(showIncome ? ["", ""] : []), "", ""]];
     });
+    // `--limit` and `--tail` keep lots as the export keeps them; the cash and TOTAL lines are the whole book's.
+    const holdingsWindow = windowTextRows(lines, ctx.cliOptions ?? {});
+    const rows: string[][] = holdingsWindow.rows.flat();
     const cashRow = (label: string, value: number | null, figures: Parameters<typeof allocationCells>[0]) => [label, "", "", ...extendedSessions.map(() => ""), "", "",
       value == null ? NOT_AVAILABLE : wholeMoney(value), ...allocationCells(figures, { unpriced: value == null }), ...(showIncome ? ["", ""] : []), "", ""];
     // Each currency's cash weighs by its own value; the target, drift and trade belong to the whole cash line under them.
@@ -1422,6 +1427,7 @@ async function showCollectionWithMarketData(
       ],
       rows,
     ));
+    if (holdingsWindow.note) console.log(cliStyles.muted(holdingsWindow.note));
     console.log("");
     if (valued.some((entry) => entry.position)) console.log(dayMoveLine(dayMove, currency, colorBySign, cliStyles.muted, { cashExcluded: !!cashExport }));
     if (valued.some((entry) => entry.position)) console.log(exposureLine(exposure, currency));
@@ -1475,7 +1481,9 @@ async function showCollectionWithMarketData(
         const yearNumbers = Array.from({ length: drip.years }, (_, index) => index + 1);
         const finalYear = `Shares Y${drip.years}`;
         const quantity = (value: number, ticker: TickerRecord) => formatMarketQuantity(value, { assetCategory: ticker.metadata.assetCategory });
-        const dripRows = dripProjections.map(({ ticker, shares, years }) => [
+        // `--limit` and `--tail` keep holdings; TOTAL is the whole book's.
+        const dripWindow = windowTextRows(dripProjections, ctx.cliOptions ?? {});
+        const dripRows = dripWindow.rows.map(({ ticker, shares, years }) => [
           listingLabel(ticker),
           quantity(shares, ticker),
           quantity(years.at(-1)!.shares, ticker),
@@ -1494,6 +1502,7 @@ async function showCollectionWithMarketData(
           ],
           dripRows,
         ));
+        if (dripWindow.note) console.log(cliStyles.muted(dripWindow.note));
         const shorts = dripProjections.some((entry) => entry.shares < 0) ? "; shorts owe each dividend in full" : "";
         console.log(cliStyles.muted(`As of ${dripAsOf}: trailing dividends, prices and FX held flat; ${drip.withholding}% withheld; reinvested once a year${shorts}.`));
       }
@@ -1517,12 +1526,16 @@ async function showCollectionWithMarketData(
       });
       return;
     }
-    const extendedSessions = extendedSessionsOf(watched.map(({ extended }) => extended?.session));
+    // `--limit` and `--tail` keep rows of the table as every list keeps them, and the line under it says of how many.
+    const window = windowTextRows(watched, ctx.cliOptions ?? {});
+    const shown = window.rows;
+    const extendedSessions = extendedSessionsOf(shown.map(({ extended }) => extended?.session));
     // Funding is the one column a list earns by holding perpetual markets; any other list's table is unchanged.
-    const showFunding = watched.some(({ funding }) => funding !== undefined);
+    const showFunding = shown.some(({ funding }) => funding !== undefined);
     // So is Last Trade, by holding a stale quote: the rows the closing line counts stale, dated as `quote` dates them.
     const stale = watched.filter((entry) => entry.stale);
-    const rows = watched.map(({ ticker, quote, headline, extended, venue, marketCap, funding, stale: rowStale, lastTrade }) => {
+    const staleShown = shown.some((entry) => entry.stale);
+    const rows = shown.map(({ ticker, quote, headline, extended, venue, marketCap, funding, stale: rowStale, lastTrade }) => {
       const priceText = quote && headline
         ? colorBySign(formatListPrice(headline.price, quote, ticker.metadata.assetCategory), headline.change)
         : "—";
@@ -1535,7 +1548,7 @@ async function showCollectionWithMarketData(
         venue ?? "—",
         priceText,
         changeText,
-        ...stale.length > 0 ? [rowStale ? cliStyles.warning(staleText) : ""] : [],
+        ...staleShown ? [rowStale ? cliStyles.warning(staleText) : ""] : [],
         ...extendedCells(extendedSessions, extended, quote, ticker.metadata.assetCategory),
         ...showFunding ? [funding == null ? "—" : colorBySign(formatPerpetualRate(funding, 4), funding)] : [],
         marketCap == null ? "—" : `${formatCompact(marketCap)} ${currency}`,
@@ -1549,7 +1562,7 @@ async function showCollectionWithMarketData(
         { header: "Exchange" },
         { header: "Last", align: "right" },
         { header: "Chg", align: "right" },
-        ...stale.length > 0 ? [{ header: "Last Trade", shrink: false }] : [],
+        ...staleShown ? [{ header: "Last Trade", shrink: false }] : [],
         ...extendedSessions.map((session) => ({ header: EXTENDED_SESSION_LABELS[session], align: "right" as const, optional: true, dropPriority: 1 })),
         // As the TUI's FUND 8H: per eight hours whatever interval the venue pays on.
         ...showFunding ? [{ header: "Fund 8H", align: "right" as const, optional: true, dropPriority: 1 }] : [],
@@ -1558,7 +1571,8 @@ async function showCollectionWithMarketData(
       ],
       rows,
     ));
-    const notes = marketCapNotes(watched);
+    if (window.note) console.log(cliStyles.muted(window.note));
+    const notes = marketCapNotes(shown);
     if (notes.length > 0) console.log(["", ...notes.map((note) => cliStyles.muted(note))].join("\n"));
     // The closing line counts the stale rows; the line under it names them.
     if (stale.length > 0) {

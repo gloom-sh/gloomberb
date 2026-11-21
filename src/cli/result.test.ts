@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { printCliResult, serializeCliError, serializeCliResult, type CliResultRenderOptions } from "./result";
+import { windowTextRows } from "./row-window";
 import { printCliError } from "./errors";
 import { captureConsole } from "../test-support/console";
 import { setCliColorEnabledOverride, setCliPlainOverride, setCliWidthOverride } from "../utils/cli-output";
@@ -40,6 +41,21 @@ describe("serializeCliResult", () => {
     expect(dates(ascending, { tail: 1 }, {}).dates).toEqual(["2026-10-08"]);
     expect(dates(ascending, {}, { dateKey: "date", defaultLimit: 3 }).rows).toMatchObject({ shown: 3, total: 4, kept: "oldest" });
     expect(dates(ascending, {}).rows).toBeUndefined();
+  });
+
+  // `watchlist show Tokyo --limit 2` printed all 212 rows, and a list's cut said nothing of the rest.
+  test("a text list cut by --limit or --tail says of how many rows, as a command drawing its own table says it", () => {
+    const plain = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, "");
+    const symbols = ["8058", "8001", "8002", "8053"].map((symbol) => ({ symbol }));
+    const text = (options: Partial<CliGlobalOptions>, render: CliResultRenderOptions = {}) =>
+      plain(serializeCliResult({ data: symbols }, { ...baseOptions, ...options }, render)).split("\n");
+    expect(text({ limit: 2 }).slice(2)).toEqual(["8058", "8001", "first 2 of 4 rows (--limit 2)"]);
+    expect(text({ tail: 1 }).at(-1)).toBe("last 1 of 4 rows (--tail 1)");
+    expect(text({ limit: 4 }).at(-1)).toBe("8053");
+    // A command's own cap says what it does in its own words.
+    expect(text({}, { defaultLimit: 2 }).at(-1)).toBe("8001");
+    expect(windowTextRows(symbols, { limit: 3 })).toEqual({ rows: symbols.slice(0, 3), note: "first 3 of 4 rows (--limit 3)" });
+    expect(windowTextRows(symbols, {})).toEqual({ rows: symbols, note: null });
   });
 
   test("includes display column metadata in JSON envelopes", () => {

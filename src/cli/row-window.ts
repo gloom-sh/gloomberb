@@ -74,3 +74,36 @@ export function windowRows<Row>(
     note: kept === "oldest" ? `showing the oldest ${count} of ${total} rows; --tail ${count} for the latest` : null,
   };
 }
+
+/**
+ * What a cut says under the rows it kept: "first 2 of 212 rows (--limit 2)", "newest 5 of 252 rows (--tail 5)", or
+ * the window's own note; `table` names the table when a report has several, `each` the series a list is cut by
+ * apart ("first 5 rows of each symbol"). Null when nothing was cut. Every list a command prints says it the same way.
+ */
+export function rowWindowCutNote(
+  window: RowWindowOptions,
+  cut: { shown: number; total: number; kept?: RowWindow<unknown>["kept"]; note?: string | null },
+  { table, each }: { table?: string; each?: string } = {},
+): string | null {
+  if (cut.shown >= cut.total) return null;
+  const flag = window.tail != null ? `--tail ${window.tail}` : `--limit ${window.limit}`;
+  const end = window.tail != null ? (cut.kept === "newest" ? "newest" : "last") : "first";
+  const count = window.tail ?? window.limit ?? cut.shown;
+  const kept = each
+    ? `${end} ${count} ${count === 1 ? "row" : "rows"} of each ${each}`
+    : `${end} ${cut.shown} of ${cut.total} rows`;
+  return `${table ? `${table}: ` : ""}${cut.note ?? `${kept} (${flag})`}`;
+}
+
+/**
+ * The rows a command's own text table shows under `--limit` and `--tail`, and the line under it that says what was
+ * cut (rowWindowCutNote), for a command that draws its table itself rather than through printCliResult.
+ */
+export function windowTextRows<Row>(
+  rows: readonly Row[],
+  options: RowWindowOptions,
+  dateOf?: (row: Row) => unknown,
+): { rows: Row[]; note: string | null } {
+  const window = windowRows(rows, options, dateOf);
+  return { rows: window.rows, note: rowWindowCutNote(options, { ...window, shown: window.rows.length }) };
+}

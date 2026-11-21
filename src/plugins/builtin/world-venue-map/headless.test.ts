@@ -111,4 +111,9 @@ test("the venue list says each venue's session as the service read it from the e
   expect(Object.fromEntries(result.rows.map((row) => [row.mic, [row.session, row.open]]))).toEqual({
     XRIS: ["holiday", false], XNAS: ["pre-market", false], ARCX: ["after-hours", false], XLON: ["open", true], XZAG: ["closed", false],
   });
+  // `--limit` keeps the nearest venues and says how many there were, as each layer's page does.
+  const cut = await mapHeadless.load(createTestHeadlessArgs({ argument: "venues", options: { limit: 2 } }), createTestHeadlessContext({ apiClient: client }));
+  expect(cut.rows.map((row) => row.mic)).toEqual(result.rows.slice(0, 2).map((row) => row.mic));
+  expect(cut.notes).toEqual(["first 2 of 5 rows (--limit 2)"]);
+  expect(result.notes).toEqual([]);
 });

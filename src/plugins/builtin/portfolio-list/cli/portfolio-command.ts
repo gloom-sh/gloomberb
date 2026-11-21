@@ -2,6 +2,7 @@ import { saveConfig } from "../../../../data/config/store";
 import { withConfigData } from "../../../../cli/scoped-context";
 import { withCollectionConfigData, withCollectionMarketData } from "../../../../cli/suffixed-listing-rows";
 import { countCollectionTickers } from "../../../../cli/helpers";
+import { windowTextRows } from "../../../../cli/row-window";
 import { exitLeavingReadsBehind } from "../../../../cli/result";
 import { resolveTickerForCli } from "../../../../cli/ticker-resolution";
 import { resolveListTicker } from "../../../../cli/symbol-rows";
@@ -809,10 +810,11 @@ async function showTargetsCommand(name: string, ctx: CliCommandContext) {
         return;
       }
       console.log("");
+      const window = windowTextRows(rows, ctx.cliOptions);
       console.log(renderTable(
         [{ header: "Ticker" }, { header: "Name" }, { header: "Target", align: "right" }],
         // A saved row reads as its listing (SAN:NYSE); a target whose row is not saved keeps its key.
-        rows.map((row) => {
+        window.rows.map((row) => {
           const saved = row.symbol === CASH_SYMBOL ? undefined : bySymbol.get(row.symbol);
           return [
             saved ? listingLabel(saved) : row.symbol,
@@ -821,6 +823,7 @@ async function showTargetsCommand(name: string, ctx: CliCommandContext) {
           ];
         }),
       ));
+      if (window.note) console.log(cliStyles.muted(window.note));
       const note = targetSumNote(config, portfolio.id, tickers);
       if (note) console.log(note);
     } catch (error) {
