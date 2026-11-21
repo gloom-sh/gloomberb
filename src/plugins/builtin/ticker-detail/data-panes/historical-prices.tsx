@@ -28,7 +28,7 @@ import {
   historyMissingPeriodsNote, priceTableIntegrityNotice, quotedPriceDivisor,
 } from "../../../../cli/history-rows";
 import {
-  MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointOpenWithheld, pricePointValues, pricePointWickFlags,
+  MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, priceOnlyPoint, pricePointOpenWithheld, pricePointValues, pricePointWickFlags,
   priceHistoryOpenNotice, priceHistoryRescaleNotice, priceHistoryWickNotice,
 } from "../../../../utils/price-history-integrity";
 import {
@@ -65,7 +65,7 @@ export type HistoricalPriceRow = {
   exportDate: string;
   /** The bar carries a time of day, so the table dates it with one. */
   timed: boolean;
-  /** When the bar opens, or the time of the latest trade an intraday history can end with (latestTradeIndex). */
+  /** When the bar opens, or the time of the latest trade an intraday history can end with (priceOnlyPoint). */
   time: number;
   /** The bar's period had not ended: a week or month still running, or the day's session still trading. */
   partial: boolean;
@@ -168,9 +168,12 @@ function buildHistoricalPriceRows(points: PricePoint[], venue: string | undefine
     historyChangeBaseNote(times, interval),
     rolls.length > 0 ? `No CHG at ${rolls.length === 1 ? "the roll" : "each roll"} to a new contract: ${rolls.join(", ")}` : null,
   ].filter((notice): notice is string => notice != null);
+  // A price on its own after intraday bars (a closing auction's price) has no volume of its own, never 0.
+  const priceOnly = priceOnlyPoint(sorted.map((entry) => ({ ...entry.point, date: entry.date })))?.index;
   const rows = sorted.map((entry, index) => {
     const previous = rolled[index] ? undefined : sorted[index - 1]?.point;
-    const { point, date, sourceIndex, filled, flag } = entry;
+    const { date, sourceIndex, filled, flag } = entry;
+    const point = index === priceOnly && entry.point.volume === 0 ? { ...entry.point, volume: null } : entry.point;
     const newest = index === sorted.length - 1;
     const partial = newest && (!!forming || dayToDate);
     const change = previous?.close != null && point.close != null ? point.close - previous.close : null;

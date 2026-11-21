@@ -13,7 +13,7 @@ import type { TimeRange } from "../../../time-series/range";
 import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 import { formatPriceObservation, penceFigure, quoteFormatOptions } from "../../../market-data/market/format";
 import {
-  MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointOpenWithheld, pricePointWickFlags, priceHistoryIntegrityNotice,
+  MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointOpenWithheld, withoutPriceOnlyVolume, pricePointWickFlags, priceHistoryIntegrityNotice,
   priceHistoryOpenNotice, priceHistoryRescaleNotice, priceHistoryWickNotice,
 } from "../../../utils/price-history-integrity";
 import { indexBarVolume } from "../../../market-data/market/index-level";
@@ -757,7 +757,8 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     const clean = (value: number | null) => value == null ? null : cleanBarPrice(value, priceDivisor);
     // A monthly bar whose prices contradict each other keeps its close, flagged, as `history` keeps it.
     const monthly = historyBarSize(points.map((point) => new Date(point.date).getTime()), requested) === "1mo";
-    const rows = points.map((point) => {
+    // A price on its own after intraday bars (a closing auction's price) has no volume of its own, never 0.
+    const rows = withoutPriceOnlyVolume(points.map((point) => {
       const date = new Date(point.date);
       const values = historyBarValues(point, monthly);
       const flags = historyBarFlags(point);
@@ -771,7 +772,7 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
         // A coin's day Gloom Cloud rebuilt from hourly bars has no volume of its own, as `history` marks it.
         ...(point.filled ? { filled: true } : {}),
       };
-    }).sort((left, right) => left.date.localeCompare(right.date));
+    }).sort((left, right) => left.date.localeCompare(right.date)));
     const notice = priceTableIntegrityNotice(rows);
     const size = historyBarSize(rows.map((row) => Date.parse(row.date)), requested);
     // A weekly or monthly bar whose period runs on is dated by how far it runs, as `history` dates it.

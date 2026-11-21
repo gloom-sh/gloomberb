@@ -229,16 +229,65 @@ function barTime(date: Date | string | number | undefined): number {
   return typeof date === "string" ? Date.parse(date) : Number.NaN;
 }
 
+/** The fields priceOnlyPoint reads of a bar, as a price point, a history row or a chart point carries them. */
+export interface PriceOnlyCandidate {
+  date?: Date | string | number;
+  open?: number | null;
+  high?: number | null;
+  low?: number | null;
+  close?: number | null;
+  volume?: number | null;
+}
+
+/**
+ * Where an intraday history's newest point is a price on its own rather than a bar, or null. Either the latest trade
+ * off the bars' grid, inside the bar before it (latestTradeIndex), or a price some sources stamp as a bar after the
+ * last one: one price for its open, high, low and close, with a volume of 0 or none, after a bar that traded, at a
+ * price of its own or a bar's time or more after it. That one is a session's closing auction price at several venues
+ * (15:30 in Tokyo after the 15:20 bar), whose shares are in the day's bar and not in this point. Neither has volume of
+ * its own: a 0 there is no bar that traded nothing, and no view shows or counts it as one. A thin listing's bar that
+ * traded nothing repeats the close before it on the grid and keeps its 0, as does a day's flat bar without volume.
+ * `bars` may be in any order.
+ */
+export function priceOnlyPoint(bars: readonly PriceOnlyCandidate[]): { index: number; insideBar: boolean } | null {
+  const times = bars.map((bar) => barTime(bar.date));
+  const latestTrade = latestTradeIndex(times);
+  if (latestTrade >= 0) return { index: latestTrade, insideBar: true };
+  const order = times.map((time, index) => ({ time, index }))
+    .filter(({ time }) => Number.isFinite(time))
+    .sort((left, right) => left.time - right.time);
+  if (order.length < 3) return null;
+  const step = medianBarGap(order.slice(0, -1).map(({ time }) => time));
+  if (step == null || step >= INTRADAY_BAR_MAX_MS) return null;
+  const last = bars[order.at(-1)!.index]!;
+  const before = bars[order.at(-2)!.index]!;
+  const price = last.close;
+  const flat = isFiniteNumber(price) && last.open === price && last.high === price && last.low === price;
+  const traded = isFiniteNumber(before.volume) && before.volume > 0;
+  const apart = price !== before.close || order.at(-1)!.time - order.at(-2)!.time > step;
+  return flat && !last.volume && traded && apart ? { index: order.at(-1)!.index, insideBar: false } : null;
+}
+
+/**
+ * The bars with a price-only point's volume (priceOnlyPoint) of 0 read as none, so no table prints 0 for it and no
+ * chart draws or reads a column of it. The same array when there is none to clear.
+ */
+export function withoutPriceOnlyVolume<T extends PriceOnlyCandidate>(bars: T[]): T[] {
+  const point = priceOnlyPoint(bars);
+  if (!point || bars[point.index]!.volume !== 0) return bars;
+  return bars.map((bar, index) => index === point.index ? { ...bar, volume: null } as T : bar);
+}
+
 /**
  * The bars of a history that reports volume left without it for no reason of their own: not still forming, not
- * rebuilt from hourly bars, not blank for contradictory prices and not the latest trade (latestTradeIndex), as
+ * rebuilt from hourly bars, not blank for contradictory prices and not a price on its own (priceOnlyPoint), as
  * `history` counts them. 0 for a history that reports no volume at all, such as an index or a currency pair.
  */
-export function missingVolumeCount(bars: readonly {
-  volume: number | null; integrity?: unknown; partial?: boolean; filled?: boolean; date?: Date | string | number;
-}[]): number {
+export function missingVolumeCount(bars: readonly (PriceOnlyCandidate & {
+  volume: number | null; integrity?: unknown; partial?: boolean; filled?: boolean;
+})[]): number {
   if (!bars.some((bar) => bar.volume != null)) return 0;
-  const latestTrade = latestTradeIndex(bars.map((bar) => barTime(bar.date)));
+  const priceOnly = priceOnlyPoint(bars)?.index;
   return bars.filter((bar, index) => bar.volume == null && !bar.integrity && !bar.partial && !bar.filled
-    && index !== latestTrade).length;
+    && index !== priceOnly).length;
 }
