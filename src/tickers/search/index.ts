@@ -626,8 +626,9 @@ async function resolveTickerSymbol(
       && (item.result?.name ?? "").replace(/\s+/g, "").toUpperCase() === symbol);
   }
   if (abroad) {
-    const us = matches.filter((item) => isUsListingExchange(listingExchange(item.result!)));
-    // No US listing: the row abroad is the symbol's.
+    // A US line that stopped trading (SOL's Emeren Group) never takes the symbol from a row saved abroad.
+    const us = matches.filter((item) => isUsListingExchange(listingExchange(item.result!)) && stillTrades(item.result!));
+    // No US listing that trades: the row abroad is the symbol's.
     if (us.length === 0) return saved;
     matches = us;
     saved = null;
@@ -676,7 +677,10 @@ async function resolveTickerSymbol(
       const exchange = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
       const currency = resolveCurrencyUnit(quote.currency).currency;
       const ended = quote.delisting;
-      if (ended) {
+      const live = ended ? liveHomeLine(homeFirst) : null;
+      if (live) {
+        verified = [live];
+      } else if (ended) {
         // The symbol's own quote is a US listing that no longer trades (a bare FRC, whose
         // venue is not on record): it is the run search offers with the same last session.
         verified = matches.filter((item) => item.result?.delisting?.lastTradeDate === ended.lastTradeDate);
@@ -720,6 +724,25 @@ function quotedListings(items: TickerSearchCandidate[], exchange: string): Ticke
   const named = items.filter((item) => venue(item) === exchange);
   if (named.length > 0 || !isUsListingExchange(exchange)) return named;
   return items.filter((item) => isUsListingExchange(venue(item)));
+}
+
+/** Whether a search row's listing still trades: search names no last session for it, nor a withdrawal. */
+function stillTrades(result: InstrumentSearchResult): boolean {
+  return !result.delisting && !parseListingWithdrawal(result.withdrawal);
+}
+
+/**
+ * The line a bare symbol whose own quote stopped trading stands for instead:
+ * a company's home line that still trades under it, the first in the order
+ * the choices are listed. A listing that stopped trading counts only when no
+ * such line answers, so SOL, whose NYSE line (Emeren Group) last traded on 12
+ * Dec 2025, is Washington H. Soul Pattinson on ASX, as the command bar leads
+ * with it. A line no service marks as a company's home (a German regional
+ * venue, Hampton Financial's HFC in Toronto) never takes the symbol from the
+ * company that stopped: `quote HFC` still says it became DINO.
+ */
+function liveHomeLine(matches: readonly TickerSearchCandidate[]): TickerSearchCandidate | null {
+  return matches.find((item) => item.result?.homeListing === true && stillTrades(item.result)) ?? null;
 }
 
 /** The venue a search row is a listing on: the primary exchange when a broker routes through SMART. */

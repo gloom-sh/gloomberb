@@ -5,6 +5,7 @@ import type { CliCommandContext } from "../types/plugin";
 import type { TickerRecord } from "../types/ticker";
 import { perpetualListingOfMarket, typedPerpetualListing } from "../tickers/perpetual-listing";
 import {
+  bareListingExchange,
   listingVenues,
   quotedOnVenue,
   readAmbiguousCurrencyPair,
@@ -22,7 +23,7 @@ import {
 import { movedAwayChange, startTickerChangeLookup, type MovedTickerChange } from "../tickers/ticker-changes";
 import { isVenueAbroad, lineMayHaveMoved, listingChangeLine, loadListingFate, MovedSymbolError, SUCCESSOR_CHANGE_WAIT_MS, type ListingFate } from "../tickers/listing-fate";
 import { quotedListingName } from "../tickers/listing-name";
-import { withdrawalLabel } from "../market-data/quotes/delisting";
+import { delistingLabel, withdrawalLabel } from "../market-data/quotes/delisting";
 import { cliStyles } from "../utils/cli-output";
 import { companyLinesName, companyNameExtraWords, groupByCompany, namesDepositaryReceipt, sameCompany, sameCompanyName, sameListedName, shortCompanyName } from "../tickers/company-name";
 import {
@@ -657,16 +658,27 @@ function venueInProse(code: string): string {
 // Quotes of these never name a company's listing, so they are never a choice between companies.
 export const UNLISTED_TYPES = new Set(["FUTURE", "INDEX", "CURRENCY", "CRYPTOCURRENCY", "OPTION"]);
 
-/** Whether the data service chose the listing: a bare symbol, with no venue named and none saved. */
-function isBareListing(listing: Pick<CliListing, "exchange" | "saved">): boolean {
-  return !listing.exchange && !listing.saved;
+type BareChoiceListing = Pick<CliListing, "symbol" | "exchange" | "saved"> & Partial<Pick<CliListing, "bareRead">>;
+
+/**
+ * Whether a bare code went where nobody named: the data service chose its
+ * listing (no venue typed, none saved), it was read past its own listing that
+ * stopped trading (SOL as SOL:ASX), or the row standing for it is one saved
+ * abroad, which the symbol shares with other companies' lines (SOL saved on
+ * ASX from the command bar). Its commands say which listing that is and where
+ * the others are, whatever drew it. A row saved for a US symbol is the symbol.
+ */
+function isBareListing(listing: BareChoiceListing): boolean {
+  if (listing.bareRead) return true;
+  if (listing.exchange) return false;
+  return !listing.saved || savedAbroadForBareSymbol(listing.symbol, listing.saved);
 }
 
 /**
  * The venues of a bare listing, started beside its data request so naming the
- * choice costs no wait; null for a listing whose venue was named or saved.
+ * choice costs no wait; null for a listing whose venue was named or saved for a US symbol.
  */
-export function loadBareVenues(listing: Pick<CliListing, "symbol" | "exchange" | "saved">, deps: ListingDeps): Promise<ListingVenue[]> | null {
+export function loadBareVenues(listing: BareChoiceListing, deps: ListingDeps): Promise<ListingVenue[]> | null {
   return isBareListing(listing) ? listingVenues(listing.symbol, deps).catch(logFailure("cli.listing-arg", "Read listing venues failed", [])) : null;
 }
 
@@ -682,10 +694,11 @@ export function listingReadNotes(listing: Pick<ListingArg, "readAs">): string[] 
  * listing on purpose and gets none.
  */
 export function coinListingNotes(
-  listing: Pick<CliListing, "symbol" | "exchange">,
+  listing: Pick<CliListing, "symbol" | "exchange"> & Partial<Pick<CliListing, "bareRead">>,
   quote: Pick<Quote, "name" | "instrumentType" | "stale" | "delisting"> | null | undefined,
 ): string[] {
-  const note = listing.exchange ? null : notTheCoinNote(listing.symbol, quote);
+  // SOL read as SOL:ASX past Emeren's stopped line was typed bare.
+  const note = listing.exchange && !listing.bareRead ? null : notTheCoinNote(listing.symbol, quote);
   return note ? [note] : [];
 }
 
@@ -711,7 +724,7 @@ export async function listCoinNotes(
  * its warnings.
  */
 export async function listingChoiceNotes(
-  listing: Pick<CliListing, "symbol" | "exchange" | "saved" | "readAs" | "readFromName">,
+  listing: Pick<CliListing, "symbol" | "exchange" | "saved" | "readAs" | "readFromName"> & Partial<Pick<CliListing, "bareRead">>,
   deps: ListingDeps,
   quote: Pick<Quote, "name" | "listingExchangeName" | "exchangeName" | "instrumentType" | "stale" | "delisting" | "isDepositaryReceipt">
     | null | undefined,
@@ -722,16 +735,26 @@ export async function listingChoiceNotes(
   if (!isBareListing(listing)) return [...listingReadNotes(listing), ...coin];
   // A bare symbol a name was read as says so: "Read "getty images" as GETYQ (...). GETY became GETYQ on 2026-10-22."
   if (listing.readFromName) return [...listingReadNotes(listing), ...coin];
-  if (!quote || UNLISTED_TYPES.has(quote.instrumentType?.trim().toUpperCase() ?? "")) return coin;
+  // One read past its own line that stopped trading says which line that was, before the choice it went to.
+  const read = listing.bareRead ? listingReadNotes(listing) : [];
+  if (!quote || UNLISTED_TYPES.has(quote.instrumentType?.trim().toUpperCase() ?? "")) return [...read, ...coin];
   const exchange = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
-  if (!exchange) return coin;
+  if (!exchange) return [...read, ...coin];
   // A bare symbol read on a company's own US line (JPM on NYSE) is what it means: companies abroad sharing the
   // letters are named only when one has its main listing under them (CON, Continental AG's on Xetra), from the
   // venues already asked for. A US receipt (SAN, Banco Santander's) may still be meant for another (Sanofi's SAN:EPA).
   if (isUsListingExchange(exchange) && quote.isDepositaryReceipt !== true) {
-    const listed = venues ? await venues : [];
+    const [listed, marked] = venues ? await Promise.all([
+      venues,
+      // So is a listing under another code the service names by the word (LINK: Link REIT, 0823 on HKEX), which the
+      // command bar leads with on a Hong Kong desk. Search answered the same query for the venues, so this asks nothing new.
+      serviceMarkedOtherListing(deps.dataProvider, listing.symbol, exchange).catch(logFailure("cli.listing-arg", "Read the listing a word names failed", null)),
+    ]) : [[], null];
     const other = otherCompanyHomeNote(listing.symbol, { exchange, name: quote.name }, listed);
-    return [...other ? [other] : [], ...coin];
+    const marking = marked && !sameCompany(marked.name, quote.name) ? `${marked.name} is ${marked.symbol}:${marked.exchange}` : null;
+    const named = quote.name?.trim() ? `${shortCompanyName(quote.name)} ` : "";
+    const choice = !marking ? other : `${other ?? `${listing.symbol} = ${named}(${exchange})`}; ${marking}`;
+    return [...read, ...choice ? [choice] : [], ...coin];
   }
   const [listed, marked] = await Promise.all([
     venues ?? loadBareVenues(listing, deps) ?? [],
@@ -745,7 +768,7 @@ export async function listingChoiceNotes(
   const choice = !marking ? note
     : note?.includes("; also ") ? `${note}; ${marking}`
     : `${note ?? `${listing.symbol} = ${named}${exchangeName(exchange)}`}; also ${marking}`;
-  return [...choice ? [choice] : [], ...coin];
+  return [...read, ...choice ? [choice] : [], ...coin];
 }
 
 /**
@@ -755,7 +778,7 @@ export async function listingChoiceNotes(
  * as another listing (BTC, the Grayscale trust) ends with the coin's pair.
  */
 export async function quotedListingChoiceNotes(
-  listing: Pick<CliListing, "symbol" | "exchange" | "saved" | "request" | "readAs" | "readFromName">,
+  listing: Pick<CliListing, "symbol" | "exchange" | "saved" | "request" | "readAs" | "readFromName"> & Partial<Pick<CliListing, "bareRead">>,
   deps: ListingDeps,
   /** A command that draws the listing's prices (`fn HP`) names the index or future a code it reads is typed for (`ownedCodeNotes`). */
   { pricesFor }: { pricesFor?: string } = {},
@@ -1551,6 +1574,15 @@ export interface CliListing extends ListingArg {
    * command bar opens it.
    */
   request: { symbol: string; exchange: string };
+  /**
+   * A code typed bare that the resolver read on a venue, so that everything
+   * reading it by key gets the listing it names: SOL as SOL:ASX, past its own
+   * quote's NYSE line that stopped (`readPastStoppedListing`), or SAN as
+   * SAN:NYSE, Banco Santander's US line, past Sanofi's Euronext Paris row the
+   * profile saved under the bare key. Its venue was not typed, so its commands
+   * name the choice as for any bare code.
+   */
+  bareRead?: true;
 }
 
 /**
@@ -1755,8 +1787,12 @@ export async function resolveCliListing(
   }
   let listing = await settleSharedCode(parsed, deps);
   const found = await loadSavedListing(deps.store, listing) ?? (typedKey ? await loadSuffixedRow(deps.store, typedKey, listing.exchange) : null);
-  // A bare symbol is its US listing when it has one, whatever row abroad holds the bare key (SHEL saved from SHEL.L).
-  const saved = listing.exchange ? found : await savedRowOfBareSymbol(listing.symbol, found, deps);
+  // A bare symbol is its US listing when it has one that trades, whatever row abroad holds the bare key (SHEL saved
+  // from SHEL.L). It is read on that line's venue, so a report that reads the store by key never draws the row abroad.
+  const bareRow = listing.exchange ? null : await savedRowOfBareSymbol(listing.symbol, found, deps);
+  const usLine = bareRow?.usExchange;
+  if (usLine) listing = { ...listing, exchange: usLine, key: `${listing.symbol}:${usLine}` };
+  const saved = bareRow ? bareRow.row : found;
   // A code nothing could read stays the venue it is saved on.
   const savedExchange = canonicalExchange(saved?.metadata.exchange);
   if (listing.sharedCode && savedExchange) listing = { symbol: listing.symbol, exchange: savedExchange, key: `${listing.symbol}:${savedExchange}` };
@@ -1767,11 +1803,58 @@ export async function resolveCliListing(
     request: listing.exchange
       ? { symbol: listing.key, exchange: listing.exchange }
       : { symbol: listing.symbol, exchange: saved?.metadata.exchange ?? "" },
+    ...usLine ? { bareRead: true as const } : {},
   };
   // A bare code no source quotes (O8A, listed in Frankfurt alone) is the listing `quote` reads it on, for every command.
   const readElse = pair || named || index || rooted || company || hongKong || terminal || dotted || suffixed || venueRow;
-  const abroad = options.listingAbroad === false || readElse || listing.exchange || saved ? null : await readBareListingAbroad(resolved, deps, ownQuote);
-  return abroad ?? resolved;
+  const bare = !(options.listingAbroad === false || readElse || listing.exchange || saved);
+  const abroad = bare ? await readBareListingAbroad(resolved, deps, ownQuote) : null;
+  // One whose own quote stopped trading (SOL's Emeren Group) is the company's line that still trades under it.
+  const live = bare && !abroad && mayReadPastStopped(resolved, deps) ? await readPastStoppedListing(resolved, (await ownQuote(resolved.symbol)).quote, deps) : null;
+  return abroad ?? live ?? resolved;
+}
+
+/**
+ * A bare code whose own quote is a listing that stopped trading, read on the
+ * company's home line that still trades under it, as the command bar leads
+ * with it and `resolveTickerSearch` reads it: SOL, whose NYSE line (Emeren
+ * Group) last traded on 12 Dec 2025, is SOL:ASX (Washington H. Soul
+ * Pattinson), saying so. Null for a code whose quote trades, one with no such
+ * line (HFC, which became DINO, stays its old listing for its successor's
+ * note), and when search cannot say.
+ */
+export async function readPastStoppedListing(
+  listing: CliListing,
+  /** The bare code's own quote, already asked for. */
+  quote: Pick<Quote, "name" | "listingExchangeName" | "exchangeName" | "delisting"> | null | undefined,
+  deps: ListingDeps,
+): Promise<CliListing | null> {
+  if (!mayReadPastStopped(listing, deps)) return null;
+  const ended = quote?.delisting;
+  if (!quote || !ended) return null;
+  const stopped = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
+  const exchange = await bareListingExchange(listing.symbol, deps)
+    .catch(logFailure("cli.listing-arg", "Read the line a stopped listing gives way to failed", ""));
+  if (!exchange || exchange === stopped) return null;
+  const key = `${listing.symbol}:${exchange}`;
+  const read: ListingArg = { symbol: listing.symbol, exchange, key };
+  // "Emeren Group Ltd American Depositary Shares, each representing 10 shares" is Emeren Group's line.
+  const company = quote.name?.replace(/\s+(?:American\s+)?Depositary\b.*$/i, "").trim() ?? "";
+  const name = company ? shortCompanyName(company) : "";
+  const was = `${stopped ? `${listing.symbol}:${stopped}` : listing.symbol}${name ? ` (${name})` : ""}`;
+  return {
+    ...read,
+    saved: await loadSavedListing(deps.store, read),
+    typed: listing.typed,
+    request: { symbol: key, exchange },
+    readAs: [listing.readAs, `${was}: ${delistingLabel(ended)}, so ${listing.symbol} is read as ${key}.`].filter(Boolean).join(" "),
+    bareRead: true,
+  };
+}
+
+/** Whether a listing is a bare code, none saved, the shipped listings do not know as a US stock: only such a code is read past a stopped line. */
+function mayReadPastStopped(listing: Pick<CliListing, "symbol" | "exchange" | "saved">, deps: Pick<ListingDeps, "dataProvider">): boolean {
+  return !listing.exchange && !listing.saved && BARE_LISTING_CODE.test(listing.symbol) && !deps.dataProvider.knownUsStock?.(listing.symbol);
 }
 
 /** A listing's code typed bare: letters and digits alone (O8A, 2222, SXR8), with no venue, suffix, pair or index mark. */
