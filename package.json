@@ -65,6 +65,7 @@
     "desktop:release": "electrobun build --env=stable && bun scripts/name-desktop-artifacts.ts artifacts stable",
     "desktop:release:windows": "electrobun build --env=stable && bun scripts/name-desktop-artifacts.ts artifacts stable",
     "desktop:sync": "electrobun sync && bun run scripts/patch-electrobun-devkit.ts",
+    "desktop:sync:pinned": "bun scripts/electrobun-toolchain.ts sync && bun run scripts/patch-electrobun-devkit.ts",
     "docs:snapshot": "bun run scripts/update-docs-snapshot.ts",
     "listings:snapshot": "bun run scripts/update-major-listings.ts",
     "japanese-names:snapshot": "bun run scripts/update-japanese-names.ts",

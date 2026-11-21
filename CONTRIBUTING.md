@@ -21,6 +21,8 @@ bun run desktop:dev   # desktop app
 
 Electrobun 2 keeps its SDK out of `node_modules`: `bun run desktop:sync` downloads the pinned release's into `.hutch/devkit` and applies our patch over it (`patches/electrobun-devkit@*.patch`). The desktop app, `bun run typecheck` and `bun test` read it from there. Run it again after `bun install` brings a new Electrobun version.
 
+CI runs `bun run desktop:sync:pinned` instead, which works the same way but runs no toolchain archive (Hutch, Bun, Cottontail, Electrobun's core and Chromium) whose sha256 is not in `scripts/electrobun-toolchain.json`, for the machines CI builds on: macOS on Arm, Linux x64, and Windows x64 and Arm. A bump of `electrobun` comes with new pins: run `bun scripts/electrobun-toolchain.ts pin` and commit the file it rewrites.
+
 Both use your real profile (`~/.gloomberb`, or the XDG folders on a Linux install that never had one). To develop against a throwaway profile, point `GLOOMBERB_HOME` somewhere else:
 
 ```bash

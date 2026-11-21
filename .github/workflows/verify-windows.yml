@@ -23,7 +23,7 @@ jobs:
   cli:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - uses: ./.github/actions/setup-bun
 
@@ -48,7 +48,7 @@ jobs:
   desktop:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - uses: ./.github/actions/setup-bun
         with:
@@ -100,7 +100,7 @@ jobs:
           Copy-Item earlier/stable-win-x64-GloomSetup.exe -Destination update-release/earlier
           Copy-Item build/stable-win-x64/Gloom-inno-source/Gloom/bin/zig-zstd.exe -Destination update-release
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: windows-x64-update-release
           path: update-release
@@ -112,13 +112,13 @@ jobs:
         shell: pwsh
         run: ./scripts/verify-windows-update.ps1 -EarlierInstaller earlier/stable-win-x64-GloomSetup.exe
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: windows-x64-desktop-update-verification
           path: artifacts/windows-update-verification
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: windows-x64-desktop-cli-verification
@@ -126,19 +126,19 @@ jobs:
 
       # The screenshots the desktop check judged, a passing run's too, to set
       # beside a failing one.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: windows-x64-desktop-gui-verification
           path: artifacts/windows-gui-verification
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: windows-x64-installer
           path: artifacts/stable-win-x64-GloomSetup.exe
           retention-days: 7
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: failure()
         with:
           name: gloomberb-windows-x64-package
@@ -151,12 +151,12 @@ jobs:
     needs: desktop
     runs-on: windows-11-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # Bun and the sources, for the script's seeded config.
       - uses: ./.github/actions/setup-bun
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: windows-x64-update-release
           path: update-release
@@ -168,7 +168,7 @@ jobs:
           Copy-Item update-release/artifacts/* artifacts/
           ./scripts/verify-windows-update.ps1 -EarlierInstaller update-release/earlier/stable-win-x64-GloomSetup.exe -Zstd update-release/zig-zstd.exe
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: windows-arm64-desktop-update-verification
@@ -189,7 +189,7 @@ jobs:
           }
           if ($Failed.Count -gt 0) { throw ($Failed -join "; ") }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: windows-arm64-stays-up

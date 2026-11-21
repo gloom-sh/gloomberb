@@ -91,7 +91,7 @@ jobs:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       # A pull request's own commit, not its merge with main: its base is where it left main.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
@@ -123,12 +123,12 @@ jobs:
           fi
           echo "base=$base" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/gloomberb-pane-chrome/chrome-headless-shell-${{ steps.keys.outputs.chrome }}
           key: chrome-headless-shell-${{ steps.keys.outputs.chrome }}-${{ runner.os }}-${{ runner.arch }}
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/gloomberb-pane-chrome/ui-audit-plugins
           key: ui-audit-plugins-${{ steps.keys.outputs.week }}
@@ -136,7 +136,7 @@ jobs:
 
       - id: snapshot
         name: Restore the data snapshot
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/gloomberb-pane-chrome/ui-replay
           key: ui-replay-v2-${{ steps.keys.outputs.snapshot }}of4-${{ steps.keys.outputs.week }}
@@ -156,7 +156,7 @@ jobs:
       - id: kept
         name: Restore the base's pictures
         if: steps.base-key.outputs.key != ''
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/ui-benchmark-base
           key: ${{ steps.base-key.outputs.key }}
@@ -176,7 +176,7 @@ jobs:
       # Saved before the head is pictured, so a run cancelled by a newer push still leaves them.
       - name: Keep the base's pictures
         if: steps.base.outputs.kept == 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/ui-benchmark-base
           key: ${{ steps.base-key.outputs.key }}
@@ -195,7 +195,7 @@ jobs:
           bun run ui:benchmark shoot "${args[@]}"
 
       - if: github.event_name != 'push'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ui-benchmark-shard-${{ matrix.shard }}
           path: ~/ui-benchmark-shard
@@ -217,7 +217,7 @@ jobs:
     steps:
       # The only job here with a write token: no token on disk, and no Actions
       # cache restored (the shards run plugins' code, which could save one).
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
 
@@ -226,7 +226,7 @@ jobs:
       - name: Install ImageMagick
         run: command -v compare >/dev/null || (sudo apt-get update && sudo apt-get install -y imagemagick)
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: ui-benchmark-shard-*
           path: ~/ui-benchmark/shards
@@ -239,7 +239,7 @@ jobs:
           bun run ui:benchmark report --shards ~/ui-benchmark/shards --out ~/ui-benchmark --expect-shards 8
           ${PR:+--comment "$PR"}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ui-benchmark
           path: |
