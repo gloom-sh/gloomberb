@@ -26,7 +26,7 @@ jobs:
     env:
       TERM: xterm-256color
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - uses: ./.github/actions/setup-bun
 
@@ -56,7 +56,7 @@ jobs:
     outputs:
       relevant: ${{ steps.scope.outputs.relevant }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - uses: ./.github/actions/setup-bun
         with:
@@ -75,7 +75,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - uses: ./.github/actions/setup-bun
 
@@ -83,7 +83,7 @@ jobs:
         name: Read the pinned Chrome version
         run: echo "version=$(sed -n 's/^const CHROME_VERSION = "\(.*\)";$/\1/p' scripts/pane-chrome/browser.ts)" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/gloomberb-pane-chrome/chrome-headless-shell-${{ steps.chrome.outputs.version }}
           key: chrome-headless-shell-${{ steps.chrome.outputs.version }}-${{ runner.os }}-${{ runner.arch }}
@@ -109,7 +109,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - id: scope
         name: Check whether the change touches the data layer
@@ -140,7 +140,7 @@ jobs:
         run: bun scripts/benchmark-app-database.ts --base ../base --seconds 45 --runs 2 --out app-database.json
 
       - if: always() && steps.scope.outputs.relevant == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: app-database-windows
           path: app-database.json
@@ -155,7 +155,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - id: scope
         name: Check whether the change touches the sync or the desktop RPC path
@@ -185,7 +185,7 @@ jobs:
         run: bun scripts/pane-chrome/sync-poll.ts --check --label sync-poll
 
       - if: always() && steps.scope.outputs.relevant == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: sync-poll
           path: ~/.cache/gloomberb-pane-chrome/sync-poll/samples.json

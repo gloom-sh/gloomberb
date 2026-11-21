@@ -55,7 +55,7 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
 
@@ -67,13 +67,13 @@ jobs:
           echo "chrome=$(sed -n 's/^const CHROME_VERSION = "\(.*\)";$/\1/p' scripts/pane-chrome/browser.ts)" >> "$GITHUB_OUTPUT"
           echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/gloomberb-pane-chrome/chrome-headless-shell-${{ steps.keys.outputs.chrome }}
           key: chrome-headless-shell-${{ steps.keys.outputs.chrome }}-${{ runner.os }}-${{ runner.arch }}
 
       # Checkouts of the registry's plugins; which commit each builds is the snapshot's lock.
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/gloomberb-pane-chrome/ui-audit-plugins
           key: ui-audit-plugins-${{ steps.keys.outputs.week }}
@@ -83,7 +83,7 @@ jobs:
       # a pull request takes the newest kept.
       - id: snapshot
         name: Restore the data snapshot
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/gloomberb-pane-chrome/ui-replay
           key: ui-replay-v2-${{ matrix.shard }}of4-${{ steps.keys.outputs.week }}
@@ -97,14 +97,14 @@ jobs:
 
       - name: Keep this week's snapshot
         if: github.ref == 'refs/heads/main' && steps.snapshot.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/gloomberb-pane-chrome/ui-replay
           key: ui-replay-v2-${{ matrix.shard }}of4-${{ steps.keys.outputs.week }}
 
       - name: Keep the measures
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ui-tokens-${{ matrix.shard }}
           path: |
