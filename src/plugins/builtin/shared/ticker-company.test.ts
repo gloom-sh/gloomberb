@@ -27,6 +27,20 @@ test("a ticker reads as its company's name; a fund or an unknown symbol names no
   expect(["Viking Therapeutics", "semaglutide", "NCT07846033"].map(looksLikeTicker)).toEqual([false, false, false]);
 });
 
+// `FDA AZN:LSE` searched FDA records for the drug "AZN:LSE"; bare AZN found AstraZeneca.
+test("a ticker written with its venue reads as that listing's company", async () => {
+  const asked: Array<[string, string | undefined]> = [];
+  const listings = { getQuote: async (symbol: string, exchange?: string) => {
+    asked.push([symbol, exchange]);
+    return { symbol, price: 1, currency: "GBP", change: 0, changePercent: 0, lastUpdated: 0, name: "AstraZeneca PLC", instrumentType: "EQUITY" } as Quote;
+  } };
+  expect(["AZN:LSE", "BRK.B:NYSE", "SHEL:LSE"].map(looksLikeTicker)).toEqual([true, true, true]);
+  // A colon in a word that names no venue is no listing.
+  expect(["HIV:AIDS", "AZN:L"].map(looksLikeTicker)).toEqual([false, false]);
+  expect(await tickerCompanyName(listings, "AZN:LSE")).toBe("AstraZeneca");
+  expect(asked).toEqual([["AZN", "LSE"]]);
+});
+
 // A quote that could not be read says nothing about the company: the search must not settle for none.
 test("a quote that could not be read rejects rather than naming no company", async () => {
   for (const failure of [new DataServiceUnreachableError(new Error("offline")), new ProviderBusyError()]) {

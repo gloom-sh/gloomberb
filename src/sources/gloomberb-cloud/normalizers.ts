@@ -337,6 +337,11 @@ function mapCloudFundamentals(fundamentals: Fundamentals | undefined): Fundament
     if (result === value) result = { ...value };
     delete result[field];
   }
+  // The rate's basis goes with the rate, and only the one basis is read.
+  if (result.dividendRateBasis !== undefined && (result.dividendRate === undefined || result.dividendRateBasis !== "uneven-regular-payments")) {
+    if (result === value) result = { ...value };
+    delete result.dividendRateBasis;
+  }
   return result;
 }
 

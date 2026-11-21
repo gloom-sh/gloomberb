@@ -111,6 +111,13 @@ async function barPriceUnit(
   return historyExportUnit(historyUnit(key, facts, await loadHeadlessContractPriceUnit(ctx, listing, facts?.instrumentType)));
 }
 
+/** The currency a bar unit is in, for a price header: GBP, or JPY for a pair's `JPY per USD`; none for points or a contract's unit. */
+function headerCurrency(unit: string | null): string | null {
+  if (!unit) return null;
+  if (/^[A-Z]{3}$/.test(unit)) return unit;
+  return /^([A-Z]{3}) per [A-Z]{3}$/.exec(unit)?.[1] ?? null;
+}
+
 /** Bars of a window that closed before today: the history asked for, which no later bar makes stale. */
 function pastWindowFreshness(window: PriceWindow, size: HistoryBarSize, observedKey: string): HeadlessPaneFreshness {
   return { status: "not-a-feed", basis: `${historyBarSizeWord(size)} bars, ${priceWindowText(window)}`, observedKey, oldest: null };
@@ -681,8 +688,10 @@ export const quoteComparisonHeadless: HeadlessPaneDefinition<"rows"> = {
  * report declares before it has bars keep every digit the source sent. A bar without
  * volume in a history that reports it (`volumeMissing`) prints it as missing, never as 0.
  */
-const historyPriceColumns = (volumeMissing: boolean, decimals?: number, pence?: (close: number) => string | null): HeadlessPaneColumn[] => ["open", "high", "low", "close", "volume"].map((key) => ({
+const historyPriceColumns = (volumeMissing: boolean, decimals?: number, pence?: (close: number) => string | null, currency?: string | null): HeadlessPaneColumn[] => ["open", "high", "low", "close", "volume"].map((key) => ({
   key, header: key, align: "right" as const,
+  // The text table names the currency over each price (Open GBP), as an export's currency_or_unit does.
+  ...currency && key !== "volume" ? { textHeader: `${key.charAt(0).toUpperCase()}${key.slice(1)} ${currency}` } : {},
   format: (value: unknown) => {
     if (value == null || !Number.isFinite(Number(value))) return key === "volume" && volumeMissing ? MISSING_VOLUME_TEXT : MISSING_VALUE;
     if (key === "volume") return formatNumber(Number(value), 0);
@@ -708,6 +717,8 @@ function historyColumns(
   pence?: (close: number) => string | null,
   /** A bar is flagged (`high<close`, `low<close/2`): the Flag column says how, as `history`'s does. */
   flagged = false,
+  /** The currency the prices are in, which the text table's price headers name. */
+  currency?: string | null,
 ): HeadlessPaneColumn[] {
   const daily = isDailyOrLongerBar(size);
   const date: HeadlessPaneColumn = {
@@ -721,7 +732,7 @@ function historyColumns(
     ? [{ key: "partial", header: "Partial", format: (value) => value === true ? "true" : "" }]
     : [];
   const flag: HeadlessPaneColumn[] = flagged ? [{ key: "flag", header: "Flag", format: (value) => typeof value === "string" ? value : "" }] : [];
-  return [date, ...historyPriceColumns(volumeMissing, decimals, text ? pence : undefined), ...flag, ...marked];
+  return [date, ...historyPriceColumns(volumeMissing, decimals, text ? pence : undefined, text ? currency : undefined), ...flag, ...marked];
 }
 
 export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
@@ -823,7 +834,7 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
       ...(barInterval ? { interval: barInterval } : {}),
       columns: historyColumns(size, marked, false, false, decimals, undefined, flagged),
       textColumns: historyColumns(size, marked, true, volumeMissing > 0, decimals,
-        (close) => penceFigure(Number(close.toFixed(Math.min(20, decimals))), quote, decimals), flagged),
+        (close) => penceFigure(Number(close.toFixed(Math.min(20, decimals))), quote, decimals), flagged, headerCurrency(unit)),
       freshness,
       ...(notes.length > 0 ? { notes } : {}),
       ...(notice ? { complete: false } : {}),

@@ -1,8 +1,9 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, setSystemTime, test } from "bun:test";
 import { resetGeoCatalogCache } from "../../../api-client/geo";
 import { createTestHeadlessArgs, createTestHeadlessContext, createTestTemplateContext } from "../../../test-support/headless";
 import { createGeoFixtureRequest } from "../../../test-support/test-fixture-geo";
 import type { HeadlessPaneContext } from "../../../types/headless";
+import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { mapHeadless } from "./headless";
 import { worldVenueMapModule } from "./index";
 import { buildMapSettingsDef, HOME_AREA_SETTING_KEY } from "./layers";
@@ -116,4 +117,33 @@ test("the venue list says each venue's session as the service read it from the e
   expect(cut.rows.map((row) => row.mic)).toEqual(result.rows.slice(0, 2).map((row) => row.mic));
   expect(cut.notes).toEqual(["first 2 of 5 rows (--limit 2)"]);
   expect(result.notes).toEqual([]);
+});
+
+test("a venue says when it next opens or closes, as the pane's header does, and the footer and JSON read one stale flag", async () => {
+  // XLON on Sat 21 Nov 2026 at 19:06 UTC, read a minute earlier: it opens Mon 08:00 UTC.
+  const checkedAt = Date.parse("2026-11-21T19:05:00Z");
+  setSystemTime(new Date("2026-11-21T19:06:00Z"));
+  try {
+    const read = (stale?: boolean) => ({
+      geo: createGeoFixtureRequest(),
+      getCloudWorldVenues: async () => ({
+        data: {
+          providerId: "gloomberb-cloud", checkedAt, refreshAt: checkedAt + 60_000, ...stale ? { stale } : {},
+          venues: [{ mic: "XLON", name: "XLON", title: "LONDON STOCK EXCHANGE", country: "United Kingdom", countryCode: "GB", city: "London",
+            timezone: "Europe/London", latitude: 51.5, longitude: -0.13, isOpen: false, session: "closed", timeToOpenSeconds: 132_900 }],
+        },
+      }),
+    }) as unknown as HeadlessPaneContext["apiClient"];
+    const args = createTestHeadlessArgs({ argument: "venues" });
+    const result = await mapHeadless.load(args, createTestHeadlessContext({ apiClient: read() }));
+    expect(result.rows[0]).toMatchObject({ nextChange: "opens", nextChangeAt: "2026-11-23T08:00:00.000Z", nextText: "opens 36h 54m" });
+    expect(renderHeadlessPaneText(mapHeadless, result, args, "MAP")).toMatch(/XLON .* closed +19:06 +opens 36h 54m\n/);
+    expect(result.metadata).toMatchObject({ stale: false });
+    // A payload the service marks stale says so in its metadata, which the footer reads.
+    const stale = await mapHeadless.load(args, createTestHeadlessContext({ apiClient: read(true) }));
+    expect(stale.metadata).toMatchObject({ stale: true });
+    expect(renderHeadlessPaneText(mapHeadless, stale, args, "MAP")).toMatch(/· stale/);
+  } finally {
+    setSystemTime();
+  }
 });

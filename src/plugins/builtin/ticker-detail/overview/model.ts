@@ -32,7 +32,7 @@ import { quoteVolumeCurrency, reportedQuoteVolume } from "../../../../market-dat
 import { formatChartLegendValue } from "../../../../components/chart/composite/format";
 import type { OverviewFunctionLink, PositionTableRow, StatField } from "./types";
 import type { OverviewDividendState } from "./dividend";
-import { lapseValue } from "../../../../utils/forward-dividend";
+import { lapseValue, UNEVEN_REGULAR_PAYMENTS } from "../../../../utils/forward-dividend";
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl, portfolioPnlPercent, signedPositionDirection } from "../../../../portfolio/position-metrics";
 import { listingDividendYield, liveForwardPE, liveMarketCapitalization, liveTrailingPE } from "../../../../market-data/quotes/live-valuation";
 import { atRegularSessionPrice } from "../../../../market-data/quotes/regular-session-valuation";
@@ -332,7 +332,10 @@ export function buildOverviewStats({
   } else if (fundamentals && dividendYield != null && !dividend?.pending) {
     const basis = fundamentals.dividendYieldBasis;
     const label = basis === "forward" ? `Fwd ${kind} Yld` : basis === "trailing" ? `TTM ${kind} Yld` : `${kind} Yield`;
-    stats.push({ label, value: formatLevelPercent(dividendYield), ...notSec });
+    // A forward yield over the year's uneven regular payments (HSBC's interims beside its final) says so, as DVD does.
+    const uneven = basis === "forward" && fundamentals.dividendRateBasis === "uneven-regular-payments"
+      ? { detail: [UNEVEN_REGULAR_PAYMENTS, "uneven interims"] } : {};
+    stats.push({ label, value: formatLevelPercent(dividendYield), ...notSec, ...uneven });
   }
   if (bond) {
     // Each dated, as the sponsor publishes it; the narrowest column drops the year.

@@ -30,6 +30,7 @@ import { yearToDateBaseLabel } from "../../../market-data/market/year-to-date";
 import { canonicalExchange, isUsListingExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { LATEST_DISTRIBUTION, TRAILING_DIVIDEND_BASIS } from "../../../utils/forward-dividend";
 import { MISSING_VALUE, formatCompact, formatNumber, formatPercentRaw } from "../../../utils/format";
+import { formatMarketPrice } from "../../../market-data/market/format";
 import { formatPriceEarnings, NOT_MEANINGFUL } from "../../../utils/price-earnings";
 import { ATTENTION_LISTED } from "../attention/listing";
 import { kpiFreeLimitNote } from "../company-kpis/model";
@@ -239,8 +240,14 @@ const MEMBERSHIP = new Set<NumericField>(MEMBERSHIP_FIELDS);
 /** Shown after the screen's own criteria when the pane has room. */
 const CONTEXT_FIELDS: NumericField[] = ["marketCap", "price", "changePercent", "trailingPE", "revenueGrowthPercent", "operatingMarginPercent", "dividendYieldPercent"];
 
-export function formatScreenValue(field: NumericField, value: number | null): string {
+/**
+ * A value as a cell prints it. A price of a line quoted in a sub-unit
+ * (`quotedUnitDivisor`, 100 for pence) keeps the decimals it trades in, as
+ * `quote` prints it: GCP's 82.8p is 0.828, not 0.83.
+ */
+export function formatScreenValue(field: NumericField, value: number | null, quotedUnitDivisor?: number): string {
   if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
+  if (field === "price" && quotedUnitDivisor != null && quotedUnitDivisor > 1) return formatMarketPrice(value, { quotedUnitDivisor, minimumFractionDigits: 2 });
   if (COMPACT.has(field)) return formatCompact(value, { fixedDecimals: true });
   if (DAILY_COUNTS.has(field)) return value < 1_000 ? value.toFixed(0) : formatCompact(value, { fixedDecimals: true });
   if (RATIOS.has(field)) return `${value.toFixed(1)}x`;
@@ -257,16 +264,16 @@ export function formatScreenValue(field: NumericField, value: number | null): st
 }
 
 /** A row's metric as a cell prints it: N/M for a multiple that is not meaningful, as RV and `valuation` print it. */
-export function formatScreenMetric(field: NumericField, metric: Pick<ScreenMetric, "value" | "notMeaningful"> & Partial<Pick<ScreenMetric, "reason">>): string {
-  const text = metric.value == null && metric.notMeaningful ? formatPriceEarnings(NOT_MEANINGFUL) : formatScreenValue(field, metric.value);
+export function formatScreenMetric(field: NumericField, metric: Pick<ScreenMetric, "value" | "notMeaningful"> & Partial<Pick<ScreenMetric, "reason">>, quotedUnitDivisor?: number): string {
+  const text = metric.value == null && metric.notMeaningful ? formatPriceEarnings(NOT_MEANINGFUL) : formatScreenValue(field, metric.value, quotedUnitDivisor);
   return field === "dividendGrowthYears" && metric.value != null && /^At least \d+: the stored history starts \d{4}-\d{2}-\d{2}$/.test(metric.reason ?? "") ? `${text}+` : text;
 }
 
 /** A metric as a company's detail prints it: with its unit, but a grade or the composite reads as itself (B+, 4.72 Top). */
-export function screenDetailValue(field: NumericField, metric: Pick<ScreenMetric, "value" | "notMeaningful" | "unit"> & Partial<Pick<ScreenMetric, "reason">>): string {
+export function screenDetailValue(field: NumericField, metric: Pick<ScreenMetric, "value" | "notMeaningful" | "unit"> & Partial<Pick<ScreenMetric, "reason">>, quotedUnitDivisor?: number): string {
   // A missing value is just "--", without the unit it would have had; N/M says so.
   if (metric.value == null) return metric.notMeaningful ? formatScreenMetric(field, metric) : formatScreenValue(field, null);
-  const text = formatScreenMetric(field, metric);
+  const text = formatScreenMetric(field, metric, quotedUnitDivisor);
   if (GRADE_DISPLAY_FIELDS.has(field)) return text;
   // A count of one is singular: 1 year, 1 day.
   const unit = metric.value === 1 && COUNT_UNITS.has(metric.unit) ? metric.unit.slice(0, -1) : metric.unit;

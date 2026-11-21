@@ -497,6 +497,9 @@ test("historical prices mark a monthly bar whose month runs on and date it by th
     expect(result.freshness).toMatchObject({ basis: "monthly bars", periodToDate: { period: "month", through: "2026-10-15" } });
     const text = renderHeadlessPaneText(historicalPricesHeadless, result, args(["CSCO"], { range: "ALL" }), "HP CSCO");
     expect(text).toContain("month to date, through Thu 15 Oct 2026");
+    // Each price header names the currency the bars are in; an export keeps its headers and says it in currency_or_unit.
+    expect(text).toMatch(/Open USD +High USD +Low USD +Close USD +Volume/);
+    expect(result.columns?.map((column) => column.textHeader ?? null)).toEqual([null, null, null, null, null, null, null]);
     // A month's bar reads as the month, and the one still running says so; the export keeps the day and adds a Partial column.
     expect(text).toContain("2026-10 MTD");
     expect(text).toMatch(/Month\s+Open/);

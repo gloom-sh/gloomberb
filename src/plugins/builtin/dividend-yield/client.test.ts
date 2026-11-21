@@ -23,7 +23,7 @@ describe("cash distribution calculations", () => {
     let fixedCash: number | undefined;
     setHttpFetchTransport(async () => Response.json({ status: "success", data: hsbcIssuerDividendRead(currency, fixedCash) }));
     const data = await fetchDividendData("HSBA", 13.38, "LSE", "GBP");
-    expect(data.payments).toHaveLength(5);
+    expect(data.payments).toHaveLength(8);
     expect(data.payments[0]).toMatchObject({ exDate: new Date("2026-11-05"), amount: 0.075835,
       paymentDate: new Date("2026-12-17"), declared: { amount: 0.1, currency: "USD" },
       cashEstimate: { declaredCurrency: "USD", declaredAmount: 0.1, fixingDate: "2026-12-07" } });
@@ -66,7 +66,7 @@ describe("cash distribution calculations", () => {
     setHttpFetchTransport(async () => Response.json({ status: "success", data: hsbcIssuerDividendRead(currency, fixedCash) }));
     setSystemTime(new Date("2026-11-04T06:00:00Z"));
     const beforeEx = await fetchDividendData("HSBA", 13.38, "LSE", "GBP");
-    expect(beforeEx.payments).toHaveLength(4);
+    expect(beforeEx.payments).toHaveLength(7);
     expect(beforeEx.metrics.trailingEstimates).toBeUndefined();
     setSystemTime(new Date("2026-11-05T12:00:00Z"));
     const justEx = await fetchDividendData("HSBA", 13.38, "LSE", "GBP");
@@ -74,7 +74,7 @@ describe("cash distribution calculations", () => {
     setSystemTime(new Date("2026-12-07T12:00:00Z"));
     fixedCash = 0.076;
     const fixed = await fetchDividendData("HSBA", 13.38, "LSE", "GBP");
-    expect(fixed.payments).toHaveLength(5);
+    expect(fixed.payments).toHaveLength(8);
     expect(fixed.payments[0]?.cashEstimate).toBeUndefined();
     expect(fixed.metrics.forwardEstimate).toBeUndefined();
     expect(fixed.metrics.trailingEstimates).toBeUndefined();
@@ -105,7 +105,8 @@ describe("cash distribution calculations", () => {
     const result = projectDividendYieldHeadless(data, request);
     expect(result.metadata).toMatchObject({ forwardRateEstimate: { declaredCurrency: "EUR" }, nextPayDateStatus: "announced" });
     const text = renderHeadlessPaneText(createDividendYieldHeadless(), result, request, "DVD");
-    expect(text).toContain(currency === "GBp" ? "2.01294p" : "£0.0201294");
+    // A ten-thousandth of a penny in either unit: 2.0129p is £0.020129.
+    expect(text).toContain(currency === "GBp" ? "2.0129p" : "£0.020129");
     // Only the forward figures rest on the unfixed declaration: the history's yield is not marked.
     const line = (label: string) => text.split("\n").find((entry) => entry.startsWith(`${label} `))!;
     expect(line("Forward yield")).toContain(" estimated");
@@ -344,7 +345,8 @@ describe("cash distribution calculations", () => {
   test("a year of widely uneven regular payments forwards their total, not the latest annualized", () => {
     const late = new Date("2026-10-27T12:00:00Z");
     // HSBA in pounds: three interims and a final four and a half times their size; the source annualizes the latest interim.
-    const hsba = [["2025-08-14", 0.073562], ["2025-11-06", 0.075079], ["2026-03-12", 0.333016], ["2026-05-14", 0.074489], ["2026-08-13", 0.074134]]
+    const hsba = [["2025-03-06", 0.278597], ["2025-05-08", 0.074512], ["2025-08-14", 0.073562], ["2025-11-06", 0.075079], ["2026-03-12", 0.333016],
+      ["2026-05-14", 0.074489], ["2026-08-13", 0.074134]]
       .map(([date, amount]) => payment(date as string, amount as number, "GBP"));
     const stated: DividendSummary = { trailingAnnualDividendRate: null, trailingAnnualDividendYield: null, payoutRatio: null,
       exDividendDate: null, dividendDate: null, currency: "GBP", forwardAnnualDividendRate: 0.296536, forwardRateAsOf: "2026-08-13" };
@@ -369,6 +371,22 @@ describe("cash distribution calculations", () => {
     expect(buildDividendMetrics(even, stated, 13.654, { now: late })).toMatchObject({ forwardRate: 0.296536, forwardRateAsOf: "2026-08-13" });
     expect(buildDividendMetrics(even, stated, 13.654, { now: late }).forwardBasis).toBeUndefined();
     expect(buildDividendMetrics(hsba.filter((entry) => entry.amount !== 0.075079), stated, 13.654, { now: late }).forwardRate).toBe(0.296536);
+  });
+
+  test("a semiannual interim beside a final twice its size forwards the year; a one-off special beside an annual dividend does not", () => {
+    // AZN:LSE in pounds: 79.50p interims, 159.50p and 168p finals; the stated rate annualizes the August interim.
+    const azn = [["2025-02-20", 1.68], ["2025-08-07", 0.767], ["2026-02-19", 1.595], ["2026-08-06", 0.795]]
+      .map(([date, amount]) => payment(date as string, amount as number, "GBP"));
+    const stated: DividendSummary = { trailingAnnualDividendRate: null, trailingAnnualDividendYield: null, payoutRatio: null,
+      exDividendDate: null, dividendDate: null, currency: "GBP", forwardAnnualDividendRate: 1.59, forwardRateAsOf: "2026-08-06" };
+    const asOf = new Date("2026-11-21T12:00:00Z");
+    expect(buildDividendMetrics(azn, stated, 134.12, { now: asOf })).toMatchObject({ forwardRate: 2.39, forwardBasis: "uneven" });
+    // A 4.00 special six months after a 1.05 annual dividend is no second payment of the year, as Gloom Cloud reads it too.
+    const annual = [["2024-05-10", 1], ["2025-05-09", 1.05], ["2025-11-14", 4], ["2026-05-08", 1.1]]
+      .map(([date, amount]) => payment(date as string, amount as number));
+    const metrics = buildDividendMetrics(annual, { ...stated, currency: "USD", forwardAnnualDividendRate: 1.1, forwardRateAsOf: "2026-05-08" }, 40, { now: asOf });
+    expect(metrics).toMatchObject({ forwardRate: 1.1, forwardRateAsOf: "2026-05-08" });
+    expect(metrics.forwardBasis).toBeUndefined();
   });
 
   test("a cut that held is the new rate, which the declared distribution annualizes, not the trailing year's total", () => {
@@ -458,6 +476,49 @@ describe("cash distribution calculations", () => {
     expect(text).toMatch(/2026-08-13 +6\.4059p +\$0\.0867 +GBP/);
     expect(text).toMatch(/Trailing rate +12\.5903p \(converted from USD\)/);
     expect(text).not.toContain("£0.06");
+  });
+
+  test("a London line's converted amount is an estimate until it is paid, written to a ten-thousandth of a penny, and a pay date its New York line states names it", async () => {
+    // SHEL:LSE on Sun 22 Nov 2026: its 12 Nov $0.3906 is the source's 29.858244p, paid on 21 Dec (SHEL:NYSE's date) at a sterling rate not yet fixed.
+    setSystemTime(new Date("2026-11-22T12:00:00Z"));
+    const summary = { trailingAnnualDividendRate: null, trailingAnnualDividendYield: null, forwardAnnualDividendRate: 1.1936892, payoutRatio: 0.2627,
+      exDividendDate: Date.parse("2026-11-12T00:00:00Z") / 1000, dividendDate: Date.parse("2026-12-21T00:00:00Z") / 1000, dividendDateListing: "SHEL:NYSE", currency: "GBP" };
+    const read = (stated: Partial<DividendSummary>) => Response.json({ status: "success", data: { quote: null, summary: { ...summary, ...stated }, actions: {
+      symbol: "SHEL", currency: "GBp", coverage: { dividends: "available" }, splits: [], earnings: [],
+      dividends: [{ exDate: "2026-02-19", amount: 27.869999 }, { exDate: "2026-05-21", amount: 29.179998 }, { exDate: "2026-08-13", amount: 28.92 },
+        { exDate: "2026-11-12", amount: 29.858244 }],
+      declaredCash: { currency: "USD", rows: [{ exDate: "2026-02-19", amount: 0.372 }, { exDate: "2026-05-21", amount: 0.3906 },
+        { exDate: "2026-08-13", amount: 0.3906 }, { exDate: "2026-11-12", amount: 0.3906 }] },
+    } } });
+    setHttpFetchTransport(async () => read({}));
+    const data = await fetchDividendData("SHEL", 35.745, "LSE", "GBP");
+    expect(data.payments.map((row) => row.cashEstimate?.declaredAmount ?? null)).toEqual([0.3906, null, null, null]);
+    expect(data.metrics).toMatchObject({ nextPayDate: new Date("2026-12-21"), nextPayDateListing: "SHEL:NYSE",
+      forwardEstimate: { declaredCurrency: "USD", declaredAmount: 0.3906 }, trailingEstimates: [{ declaredAmount: 0.3906 }] });
+    const request = { rawArgument: "SHEL:LSE", argument: "SHEL:LSE", symbols: ["SHEL:LSE"], options: {} };
+    const result = projectDividendYieldHeadless({ ...data, priceQuotedUnitDivisor: 100 }, request);
+    expect(result.metadata).toMatchObject({ nextPayDateListing: "SHEL:NYSE" });
+    const text = renderHeadlessPaneText(createDividendYieldHeadless(), result, request, "DVD");
+    const line = (label: string) => text.split("\n").find((entry) => entry.startsWith(`${label} `))!;
+    // The pence it trades in, as quote prints the price.
+    expect(line("Price")).toMatch(/£35\.745$/);
+    expect(text).toMatch(/2026-11-12 +estimated 29\.8582p +\$0\.3906 +GBP/);
+    expect(text).toMatch(/2026-05-21 +29\.18p +\$0\.3906/);
+    expect(line("Trailing rate")).toMatch(/115\.8282p estimated \(converted from USD\)$/);
+    expect(line("Trailing yield")).toContain(" estimated ");
+    expect(line("Estimated")).toMatch(/^Estimated\s+\$0\.3906 declared, FX fixing unavailable$/);
+    expect(text.match(/^Estimated/gm)).toHaveLength(1);
+    expect(line("Next pay")).toMatch(/2026-12-21 \(from SHEL:NYSE\)$/);
+    // Once the pay date has passed, the amount is what was paid.
+    setSystemTime(new Date("2026-12-22T12:00:00Z"));
+    const paid = await fetchDividendData("SHEL", 35.745, "LSE", "GBP");
+    expect(paid.payments[0]?.cashEstimate).toBeUndefined();
+    // Without a pay date for that distribution, nothing says it is unpaid: it stays as the source has it.
+    setSystemTime(new Date("2026-11-22T12:00:00Z"));
+    setHttpFetchTransport(async () => read({ dividendDate: null, dividendDateListing: undefined }));
+    const undated = await fetchDividendData("SHEL", 35.745, "LSE", "GBP");
+    expect(undated.payments[0]?.cashEstimate).toBeUndefined();
+    expect(undated.metrics.nextPayDateListing).toBeUndefined();
   });
 
   test("a distribution a fund's sponsor gave its history names the sponsor in the history, and JSON keeps its page", async () => {

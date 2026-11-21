@@ -4,15 +4,24 @@ import type { DataProvider } from "../../../types/data-provider";
 import type { CompanyProfile } from "../../../types/financials";
 import { shortCompanyName } from "../../../tickers/company-name";
 import { classifyInstrumentKind } from "../../../tickers/search/ranking";
+import { canonicalExchange, isKnownExchangeCode, parsePublicTickerKey } from "../../../utils/exchanges";
 import { logFailure } from "../../../utils/log-failure";
 
 /**
  * A search typed as a ticker (`TRIAL VKTX`, `FDA AZN`): one to five letters,
- * with a share class. Registries know companies by name, so a symbol no record
- * mentions is looked up as its company.
+ * with a share class, and the venue it lists on when written as the app writes
+ * a listing (`FDA AZN:LSE`, `BRK.B:NYSE`). Registries know companies by name,
+ * so a symbol no record mentions is looked up as its company.
  */
 export function looksLikeTicker(term: string): boolean {
-  return /^[A-Za-z]{1,5}(?:[.-][A-Za-z])?$/.test(term.trim());
+  const match = /^([A-Za-z]{1,5}(?:[.-][A-Za-z])?)(?::([A-Za-z]{2,8}))?$/.exec(term.trim());
+  return !!match && (!match[2] || isKnownExchangeCode(canonicalExchange(match[2])));
+}
+
+/** The listing a ticker search names: `AZN:LSE` is AZN on LSE, `AZN` the symbol alone. */
+function tickerListing(ticker: string): { symbol: string; exchange: string } {
+  const { symbol, exchange } = parsePublicTickerKey(ticker.trim().toUpperCase());
+  return { symbol, exchange: exchange ?? "" };
 }
 
 /**
@@ -23,9 +32,9 @@ export function looksLikeTicker(term: string): boolean {
  * timed out) rejects: it says nothing about the company.
  */
 export async function tickerCompanyName(dataProvider: Pick<DataProvider, "getQuote"> | null, ticker: string): Promise<string | null> {
-  const symbol = ticker.trim().toUpperCase();
+  const { symbol, exchange } = tickerListing(ticker);
   if (!dataProvider || !symbol) return null;
-  const quote = await dataProvider.getQuote(symbol).catch((error: unknown) => {
+  const quote = await (exchange ? dataProvider.getQuote(symbol, exchange) : dataProvider.getQuote(symbol)).catch((error: unknown) => {
     if (isNoSourceAnswer(error)) return null;
     throw error;
   });
@@ -79,15 +88,15 @@ async function tickerListedCompany(
   dataProvider: Pick<DataProvider, "getQuote" | "getTickerFinancials"> | null,
   ticker: string,
 ): Promise<ListedCompany | null> {
-  const symbol = ticker.trim().toUpperCase();
+  const { symbol, exchange } = tickerListing(ticker);
   if (!dataProvider || !symbol) return null;
   const [quote, financials] = await Promise.all([
-    dataProvider.getQuote(symbol).catch((error: unknown) => {
+    (exchange ? dataProvider.getQuote(symbol, exchange) : dataProvider.getQuote(symbol)).catch((error: unknown) => {
       if (isNoSourceAnswer(error)) return null;
       throw error;
     }),
     // What it does is a detail: a profile that could not be read leaves the name to tell.
-    Promise.resolve().then(() => dataProvider.getTickerFinancials(symbol, "")).catch(logFailure("ticker-company", `Read ${symbol}'s profile failed`, null)),
+    Promise.resolve().then(() => dataProvider.getTickerFinancials(symbol, exchange)).catch(logFailure("ticker-company", `Read ${symbol}'s profile failed`, null)),
   ]);
   const legalName = quote?.name?.trim();
   const kind = classifyInstrumentKind(quote?.instrumentType);
