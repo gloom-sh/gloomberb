@@ -192,11 +192,12 @@ export function useAppStartupRuntime({
 
   // A plugin that failed to import is otherwise silent: its panes are simply
   // absent, and the reason sits in a pane the user has no cause to open. Say
-  // so once, with a way in. Unsupported-renderer entries are not failures.
+  // so once, with a way in. Unsupported-renderer entries and a second folder of
+  // a plugin that loads from another are not failures; the Plugins pane lists them.
   useEffect(() => {
     // Popped-out desktop panes load the same list; the main window owns the notice.
     if (!state.initialized || isDetachedWindow) return;
-    const failed = externalPlugins.filter((entry) => entry.error && !entry.unsupportedTarget);
+    const failed = externalPlugins.filter((entry) => entry.error && !entry.unsupportedTarget && !entry.duplicateOf);
     if (failed.length === 0) return;
     const names = failed.map((entry) => entry.plugin.name);
     const body = failed.length === 1

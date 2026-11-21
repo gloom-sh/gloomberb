@@ -333,6 +333,8 @@ Plugin IDs must not reuse current or retired built-in IDs. Retired module IDs re
 
 `ticker-research`, `macro` and `market-overview` are retired too: each now names the group of built-ins it was split into. In `disabledPlugins` the old id stands for all of its successors, and `gloom plugin enable|disable <id>` switches them together.
 
+When two folders in the plugins folder declare the same id (a download beside a marketplace install, or a linked checkout beside a clone), Gloom loads one: a linked checkout over a copy, then the higher version, then the folder name that sorts first. The other is listed in the Plugins pane as a duplicate that names the folder loaded instead. Neither folder is deleted; remove the one you do not want from the pane or with `gloom remove`.
+
 A plugin that changes its id keeps the state its users already have by declaring the old one as `stateId`:
 
 ```typescript
