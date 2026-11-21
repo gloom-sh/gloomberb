@@ -510,6 +510,42 @@ describe("MarketDataCoordinator key subscriptions", () => {
     }
   });
 
+  test("ticks held into an unchanged quote reach a tick follower alone: nothing is stored and no pane hears", () => {
+    const realDateNow = Date.now;
+    const { clock, coordinator, emitQuote } = createFramedCoordinator();
+    const aapl = { symbol: "AAPL", exchange: "NASDAQ" };
+    const key = buildQuoteKey(aapl);
+    const at = 1_800_000_000_000;
+    const heard = { key: 0, all: 0, ticks: 0 };
+    try {
+      Date.now = () => at;
+      coordinator.subscribeKeys([key], () => { heard.key += 1; });
+      coordinator.subscribe(() => { heard.all += 1; });
+      const follow = coordinator.followStreamTicks([key], () => { heard.ticks += 1; });
+      // Off screen: it applies a second apart.
+      coordinator.subscribeQuotes([{ instrument: aapl }]);
+      const tick = (price: number) => quote("AAPL", price, { lastUpdated: at, change: Number.NaN, dataSource: "live", delivery: "stream" });
+      emitQuote(aapl, tick(100));
+      clock.advance(0);
+      // One price is the quote itself: nothing more to follow.
+      expect(heard).toEqual({ key: 1, all: 1, ticks: 0 });
+      const stored = coordinator.getQuoteEntry(aapl);
+
+      emitQuote(aapl, tick(101));
+      clock.advance(100);
+      emitQuote(aapl, tick(99));
+      clock.advance(100);
+      emitQuote(aapl, tick(100));
+      clock.advance(1_100);
+      expect(coordinator.getQuoteEntry(aapl)).toBe(stored);
+      expect(heard).toEqual({ key: 1, all: 1, ticks: 1 });
+      expect(follow.take().get(key)).toMatchObject({ low: { price: 99 }, high: { price: 101 }, last: 100 });
+      expect(follow.take().size).toBe(0);
+    } finally {
+      Date.now = realDateNow;
+    }
+  });
+
   test("applies a tick stamped slightly ahead of the local clock", async () => {
     const { provider, emitQuote } = createProvider();
     const coordinator = new MarketDataCoordinator(provider);

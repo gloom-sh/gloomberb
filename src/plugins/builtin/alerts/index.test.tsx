@@ -14,7 +14,7 @@ import { AlertsPane } from "./pane";
 import type { AlertCondition, AlertRule, AlertStatus } from "./types";
 import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
-import { createManualFrameDriver, DataFrameScheduler } from "../../../market-data/frame-scheduler";
+import { createManualFrameDriver, DataFrameScheduler, TERMINAL_DATA_FRAME_INTERVAL_MS } from "../../../market-data/frame-scheduler";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
@@ -734,6 +734,80 @@ test("a streamed tick triggers a price alert once, and the poll leaves streaming
     await Bun.sleep(5);
     expect(polled).toBe(before);
   } finally {
+    alertsPlugin.dispose?.();
+    coordinator.destroy();
+    setSharedMarketDataCoordinator(null);
+  }
+});
+
+test("a tick that crosses and comes back before its terminal frame sets off price and move alerts, on screen and held off screen", async () => {
+  let emit: ((target: QuoteSubscriptionTarget, quote: Quote) => void) | null = null;
+  let streamedTargets: QuoteSubscriptionTarget[] = [];
+  const clock = createManualFrameDriver(TERMINAL_DATA_FRAME_INTERVAL_MS);
+  const frames = new DataFrameScheduler(clock.driver);
+  const coordinator = new MarketDataCoordinator(createTestDataProvider({
+    subscribeQuotes: (targets, onQuote) => { streamedTargets = targets; emit = onQuote; return () => {}; },
+  }), { frames });
+  setSharedMarketDataCoordinator(coordinator);
+  // Rows on screen apply every frame; ETH-USD streams for its alert alone, a second between applies.
+  const rows = coordinator.subscribeQuotes(["AAPL", "MSFT", "NVDA", "BTC-USD"].map((symbol) => ({ instrument: { symbol, exchange: "" }, priority: { visible: true } })));
+  const level = (id: string, symbol: string, condition: AlertCondition, target: number, lastCheckedPrice: number) => ({ ...makeAlert(id, symbol, condition, target), lastCheckedPrice });
+  const store = new Map<string, string>([
+    ["alerts", serializeAlerts([
+      level("above", "AAPL", "above", 200, 195), level("below", "MSFT", "below", 100, 105),
+      level("crosses", "NVDA", "crosses", 150, 140), level("held", "ETH-USD", "crosses", 3_000, 2_900),
+    ])],
+    ["moveAlerts", serializeAlerts([{ ...makeAlert("move", "BTC-USD", "above", 3), move: true }])],
+  ]);
+  const notifications: string[] = [];
+  const device = new Map<string, unknown>();
+  const ctx = {
+    registerCommand() {}, registerPane() {}, registerPaneTemplate() {},
+    configState: { get: (key: string) => store.get(key) ?? null, set: (key: string, value: string) => { store.set(key, value); } },
+    resume: { getState: (key: string) => device.get(key) ?? null, setState: (key: string, value: unknown) => { device.set(key, value); } },
+    marketData: createTestDataProvider({ getQuote: async () => { throw new Error("no poll expected"); } }),
+    paneSettings: { get: () => "300" },
+    notify: (notification: { body: string }) => { notifications.push(notification.body); },
+    showPane() {}, log: { info() {}, warn() {} },
+  };
+  const tick = (symbol: string, price: number, previousClose = price) => emit!(streamedTargets.find((target) => target.symbol === symbol)!, {
+    symbol, price, change: price - previousClose, changePercent: (price / previousClose - 1) * 100, previousClose, currency: "USD",
+    lastUpdated: Date.now(), delivery: "stream", dataSource: "live", marketState: "REGULAR",
+  } as Quote);
+  const advance = (ms: number) => act(async () => { clock.advance(ms); await Bun.sleep(0); });
+  try {
+    await alertsPlugin.setup?.(ctx as any);
+    // Each alert's first streamed check reads its quote alone.
+    for (const [symbol, price] of [["AAPL", 196], ["MSFT", 104], ["NVDA", 141], ["ETH-USD", 2_950]] as const) tick(symbol, price);
+    tick("BTC-USD", 101_000, 100_000);
+    await advance(TERMINAL_DATA_FRAME_INTERVAL_MS);
+    expect(notifications).toEqual([]);
+    // Inside one frame each crosses and comes back; the frame applies only the second.
+    tick("AAPL", 201); tick("AAPL", 199);
+    tick("MSFT", 99); tick("MSFT", 101);
+    tick("NVDA", 151); tick("NVDA", 149);
+    tick("BTC-USD", 103_500, 100_000); tick("BTC-USD", 102_000, 100_000);
+    await advance(TERMINAL_DATA_FRAME_INTERVAL_MS);
+    expect(notifications).toEqual([
+      "AAPL > 200.00 USD triggered at 201.00",
+      "MSFT < 100.00 USD triggered at 99.00",
+      "NVDA ↕ 150.00 USD triggered at 151.00",
+      "BTC-USD moved +3.50% vs prev close, at 103,500.00",
+    ]);
+    // Off screen, ETH-USD crosses and comes back frames apart, both held for its next apply.
+    tick("ETH-USD", 3_010);
+    await advance(TERMINAL_DATA_FRAME_INTERVAL_MS);
+    tick("ETH-USD", 2_990);
+    await advance(TERMINAL_DATA_FRAME_INTERVAL_MS);
+    expect(notifications).toHaveLength(4);
+    await advance(1_000);
+    expect(notifications.at(-1)).toBe("ETH-USD ↕ 3,000.00 USD triggered at 3,010.00");
+    // Each rule keeps the newest quote's reading.
+    expect(Object.fromEntries(deserializeAlerts(store.get("alerts")!).map((alert) => [alert.id, [alert.status, alert.lastCheckedPrice]]))).toEqual({
+      above: ["triggered", 199], below: ["triggered", 101], crosses: ["triggered", 149], held: ["triggered", 2_990],
+    });
+  } finally {
+    rows();
     alertsPlugin.dispose?.();
     coordinator.destroy();
     setSharedMarketDataCoordinator(null);

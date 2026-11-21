@@ -4,6 +4,7 @@ import { alertListing } from "./format";
 import { alertListingKey, alertPriceWithCurrency } from "./price-text";
 import { moveRuleWords } from "./move";
 import { logFailure } from "../../../utils/log-failure";
+import type { StreamTickRange, StreamTickReading } from "../../../market-data/quotes/tick-range";
 
 export type { AlertRule };
 
@@ -89,6 +90,34 @@ export function evaluateAlert(alert: AlertRule, currentPrice: number): boolean {
       const isAbove = currentPrice > alert.targetPrice;
       const isBelow = currentPrice < alert.targetPrice;
       return (wasBelowOrAt && isAbove) || (wasAboveOrAt && isBelow);
+    }
+  }
+}
+
+/**
+ * The tick that sets a price alert off among the ticks a frame folded into
+ * one quote, judged as evaluateAlert judges each of them in turn from the
+ * alert's last checked price: the highest for above or a rise through the
+ * level, the lowest for below or a fall through it. Null when none does.
+ */
+export function tickTrigger(alert: AlertRule, ticks: StreamTickRange): StreamTickReading | null {
+  if (alert.metric || alert.move || alert.status !== "active") return null;
+  const { low, high } = ticks;
+  const level = alert.targetPrice;
+  switch (alert.condition) {
+    case "above":
+      return high.price > level ? high : null;
+    case "below":
+      return low.price < level ? low : null;
+    case "crosses": {
+      const from = alert.lastCheckedPrice;
+      if (from == null) return null;
+      if (from <= level && high.price > level) return high;
+      if (from >= level && low.price < level) return low;
+      // A price at the level counts as either side of it: a tick there and a later one past it crossed.
+      if (low.price === level && ticks.roseFromLow) return high;
+      if (high.price === level && ticks.fellFromHigh) return low;
+      return null;
     }
   }
 }
