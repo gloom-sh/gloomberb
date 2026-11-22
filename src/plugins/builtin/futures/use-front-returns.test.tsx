@@ -6,7 +6,7 @@ import type { PricePoint, Quote } from "../../../types/financials";
 import { FUTURES_CONTRACTS } from "../../../market-data/futures-board";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import type { BoardQuoteMap } from "../shared/use-quote-board";
-import { NO_FUTURES_RETURNS } from "./returns";
+import { allReturnGaps, NO_FUTURES_RETURNS } from "./returns";
 import { resetFrontContractReturns, useFrontContractReturns, type FrontReturnsMap } from "./use-front-returns";
 
 const tui = createOpenTuiTestHarness();
@@ -70,7 +70,8 @@ test("a year's read that starts on a day that did not trade reads the weeks befo
 test("a history that failed to read is not kept as none: the row draws without returns, and is asked again once the retry delay has passed", async () => {
   let read: () => Promise<PricePoint[]> = async () => { throw new Error("Cloud chart data is unavailable"); };
   const { handle, asked, showAgain } = await renderBoard(() => read());
-  expect(handle.returns.get("CL=F")).toEqual({ loading: false, values: NO_FUTURES_RETURNS });
+  // The row says its history did not load, not that the contract has none.
+  expect(handle.returns.get("CL=F")).toEqual({ loading: false, values: NO_FUTURES_RETURNS, gaps: allReturnGaps({ kind: "failed" }) });
   expect(asked).toEqual(["CLX26.NYM"]);
 
   read = async () => history;
@@ -88,7 +89,8 @@ test("a contract the source has no history for, empty or a miss, is an answer ke
   for (const answer of [async () => [] as PricePoint[], async (): Promise<PricePoint[]> => { throw createProviderMiss("No data found, symbol may be delisted"); }]) {
     resetFrontContractReturns();
     const { handle, asked, showAgain } = await renderBoard(answer);
-    expect(handle.returns.get("CL=F")).toEqual({ loading: false, values: NO_FUTURES_RETURNS });
+    expect(handle.returns.get("CL=F")).toEqual({ loading: false, values: NO_FUTURES_RETURNS,
+      gaps: allReturnGaps({ kind: "no-history", contract: "CLX26" }) });
     setSystemTime(Date.now() + 10 * 60_000);
     await showAgain();
     expect(asked).toHaveLength(1);
