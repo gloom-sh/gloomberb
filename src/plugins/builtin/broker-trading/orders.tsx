@@ -28,7 +28,7 @@ import { orderInstrumentLabel, strategyShape } from "./strategy";
 import { stepNumber } from "../../../components/ui/number-step";
 import { ticketTypeName } from "./ticket-parts";
 import { wrapTextLines } from "../../../utils/text-wrap";
-import { linkedOrderRows, linkRoleName, linkRoleShort, trailingText } from "./linked-orders";
+import { changesAlone, groupCancelLine, linkedOrderRows, linkRoleName, linkRoleShort, trailingText } from "./linked-orders";
 
 export interface BrokerOrdersViewProps {
   broker: BrokerAdapter;
@@ -134,10 +134,11 @@ function renderOrderCell(order: BrokerOrder, column: DataTableColumn, now: numbe
 const CANCEL_NOTE = "The order can still fill before cancellation is confirmed.";
 /**
  * "Cancel Buy 1 SPY?" over "Limit 759.50 · DAY": which order, when two of the same size wait at different prices.
- * The terms keep a line of their own, so a narrow drawer never breaks a price across lines.
+ * The terms keep a line of their own, so a narrow drawer never breaks a price across lines. Then what else of its
+ * bracket or OCO pair goes with it (see groupCancelLine).
  */
-function cancelLines(order: BrokerOrder | undefined): string[] {
-  return order ? [`Cancel ${order.action === "BUY" ? "Buy" : "Sell"} ${quantity(order.quantity)} ${orderInstrumentLabel(order)}?`, orderTerms(order)] : ["Cancel this order?"];
+function cancelLines(order: BrokerOrder | undefined, group?: string): string[] {
+  return order ? [`Cancel ${order.action === "BUY" ? "Buy" : "Sell"} ${quantity(order.quantity)} ${orderInstrumentLabel(order)}?`, orderTerms(order), ...group ? [group] : []] : ["Cancel this order?"];
 }
 
 /** Until the broker takes a change, the order can be cancelled but not changed again. */
@@ -252,6 +253,7 @@ export function BrokerOrdersView({
   const notes = useRowNotes<BrokerOrder, OrderNote>(rows, { key: brokerOrderKey, signature: orderSignature });
   const setNote = notes.setNote;
   const rowsRef = useRef(rows); rowsRef.current = rows;
+  const reconciledRowsRef = useRef(reconciledRows); reconciledRowsRef.current = reconciledRows;
   /**
    * What a cancel came to goes on the order's row while the list shows it as it now reads (the full list keeps the
    * order this view acted on after it ended, the drawer only open ones), and in a toast once it has left.
@@ -296,11 +298,11 @@ export function BrokerOrdersView({
   useEffect(() => { onConfirming?.(trading.phase === "cancel-review"); }, [trading.phase, onConfirming]);
   const busy = ownBusy || blocked;
   const changeable = !!selected && canRead && capabilities?.enabled === true && canChangeBrokerOrder(selected) && !busy;
-  const canModify = changeable && !unsettled(selected) && !!broker.modifyOrder && capabilities?.modify === true;
+  const canModify = changeable && !unsettled(selected) && !!broker.modifyOrder && capabilities?.modify === true && changesAlone(selected, capabilities);
   const canCancel = changeable && !!broker.cancelOrder && capabilities?.cancel === true;
   const modifyOrder = useCallback((order: BrokerOrder) => {
     const capability = broker.getTradingCapabilities?.(instance, order.contract);
-    if (!canRead || busy || !broker.modifyOrder || !capability?.enabled || !capability.modify || !canChangeBrokerOrder(order)) return;
+    if (!canRead || busy || !broker.modifyOrder || !capability?.enabled || !capability.modify || !changesAlone(order, capability) || !canChangeBrokerOrder(order)) return;
     setNote(brokerOrderKey(order), null);
     onModify(order);
   }, [broker, instance, canRead, busy, onModify, setNote]);
@@ -315,9 +317,11 @@ export function BrokerOrdersView({
     try {
       controller.requestCancel(order);
       if (compact) { setInlineCancel(true); setKeepOrder(false); return; }
+      const group = groupCancelLine(order, reconciledRowsRef.current, capability);
       const confirmed = await confirmDialog(dialog, {
         title: `Cancel ${orderInstrumentLabel(order)} order?`,
-        body: [`${order.action} ${quantity(order.quantity)} ${orderInstrumentLabel(order)}, ${orderTerms(order)}. ${quantity(order.remaining)} remaining.`, `${broker.name} ${accountModeLabel(account?.tradingMode)} · ${account.name}`],
+        body: [`${order.action} ${quantity(order.quantity)} ${orderInstrumentLabel(order)}, ${orderTerms(order)}. ${quantity(order.remaining)} remaining.`,
+          ...group ? [group] : [], `${broker.name} ${accountModeLabel(account?.tradingMode)} · ${account.name}`],
         confirmLabel: "Cancel order", cancelLabel: "Keep order", confirmVariant: "danger",
       });
       await controller.confirmCancel(confirmed);
@@ -420,7 +424,9 @@ export function BrokerOrdersView({
   const summaries = snapshot?.executionKind === "order-summaries";
   const executions = (snapshot?.executions ?? []).filter((execution) => !compact || !contract || ticketOrderMatches(execution, contract, instance.id, accountId));
   // Confirming a cancel takes a question, its wrapped note and the two buttons (the note's width is allowed some slack).
-  const contentRows = trading.phase === "cancel-review" ? 1 + [...cancelLines(trading.cancelOrder), CANCEL_NOTE]
+  // One of a bracket or OCO pair the broker cancels together says what else goes.
+  const cancelGroup = trading.cancelOrder ? groupCancelLine(trading.cancelOrder, reconciledRows, broker.getTradingCapabilities?.(instance, trading.cancelOrder.contract)) : undefined;
+  const contentRows = trading.phase === "cancel-review" ? 1 + [...cancelLines(trading.cancelOrder, cancelGroup), CANCEL_NOTE]
     .reduce((rows, text) => rows + Math.max(1, wrapTextLines(text, Math.max(12, width - 6)).length), 0)
     : (view === "open" ? rows.length : executions.length) + (snapshot?.errors?.length ?? 0)
       + (selectedNote ? wrapTextLines(selectedNote.text, Math.max(12, width - 2)).length : 0);
@@ -438,7 +444,7 @@ export function BrokerOrdersView({
       </Box>
     </Box>
     {trading.phase === "cancel-review" ? <Box flexDirection="column" paddingX={1} gap={native ? 0.5 : 0}>
-      {cancelLines(trading.cancelOrder).map((line, index) => <Text key={index} fg={index ? colors.text : colors.textBright} wrapText>{line}</Text>)}
+      {cancelLines(trading.cancelOrder, cancelGroup).map((line, index) => <Text key={index} fg={index ? colors.text : colors.textBright} wrapText>{line}</Text>)}
       <Text fg={colors.textDim} wrapText>{CANCEL_NOTE}</Text>
       <Box flexDirection="row" gap={1}>
         <Button label="Cancel order" variant="primary" tone="negative" active={!keepOrder} onPress={() => { void confirmInline(true); }} />
@@ -470,7 +476,7 @@ export function BrokerOrdersView({
             </Button>
           </Box>
           <Box flexDirection="row" flexShrink={0}>
-            <IconButton icon="edit" label="Modify order" shortcut="Enter" disabled={disabled || unsettled(order) || !broker.modifyOrder || !allowed?.modify} onPress={() => modifyOrder(order)} />
+            <IconButton icon="edit" label="Modify order" shortcut="Enter" disabled={disabled || unsettled(order) || !broker.modifyOrder || !allowed?.modify || !changesAlone(order, allowed)} onPress={() => modifyOrder(order)} />
             <IconButton icon="close" label="Cancel order" shortcut="c" color={colors.negative} disabled={disabled || !broker.cancelOrder || !allowed?.cancel} onPress={() => { void cancelOrder(order); }} />
           </Box>
         </Box>;
@@ -499,7 +505,7 @@ export function BrokerOrdersView({
           const allowed = broker.getTradingCapabilities?.(instance, order.contract);
           const disabled = !canRead || busy || !allowed?.enabled || !canChangeBrokerOrder(order);
           return { text: "Modify Cancel", content: <Box flexDirection="row" gap={1} justifyContent="flex-end" width={column.width}>
-            <Button label="Modify" compact variant="secondary" disabled={disabled || unsettled(order) || !broker.modifyOrder || !allowed?.modify} onPress={() => modifyOrder(order)} stopPropagation />
+            <Button label="Modify" compact variant="secondary" disabled={disabled || unsettled(order) || !broker.modifyOrder || !allowed?.modify || !changesAlone(order, allowed)} onPress={() => modifyOrder(order)} stopPropagation />
             <Button label="Cancel" compact variant="secondary" disabled={disabled || !broker.cancelOrder || !allowed?.cancel} onPress={() => { void cancelOrder(order); }} stopPropagation />
           </Box> };
         }}

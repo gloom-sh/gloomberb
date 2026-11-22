@@ -1,5 +1,6 @@
 import type { Quote } from "../../../types/financials";
-import type { BrokerOrder, BrokerOrderClass, BrokerOrderLinkRole, BrokerOrderRequest, BrokerTradingCapabilities, BrokerTrailingUnit } from "../../../types/trading";
+import type { BrokerAccount, BrokerOrder, BrokerOrderClass, BrokerOrderLinkRole, BrokerOrderRequest, BrokerTradingCapabilities, BrokerTrailingUnit } from "../../../types/trading";
+import { brokerOrderKey, canChangeBrokerOrder } from "./orders-data";
 
 /**
  * Brackets, OCO pairs and trailing stops: what a broker takes, what a draft of
@@ -18,6 +19,36 @@ export function linkedFeature(capabilities: BrokerTradingCapabilities | undefine
     : !!capabilities?.orderClasses?.includes(feature);
   if (available) return { available };
   return { available, reason: `${brokerName} does not take ${FEATURE_NAME[feature]}.` };
+}
+
+/**
+ * What the ticket offers on one account: the broker's own brackets and OCO pairs, and those the account's brokerage
+ * runs (`BrokerAccount.orderClasses`, for an aggregator whose accounts sit at different brokerages).
+ */
+export function accountTradingCapabilities<T extends BrokerTradingCapabilities | undefined>(capabilities: T, account: Pick<BrokerAccount, "orderClasses"> | undefined): T {
+  if (!capabilities || !account?.orderClasses?.length) return capabilities;
+  const orderClasses = [...new Set([...capabilities.orderClasses ?? [], ...account.orderClasses])];
+  return { ...capabilities, orderClasses } as T;
+}
+
+/** Whether a working order can be changed on its own: one of a group the broker holds together is cancelled and placed again. */
+export function changesAlone(order: Pick<BrokerOrder, "linkGroup">, capabilities: Pick<BrokerTradingCapabilities, "linkedOrders"> | undefined): boolean {
+  return !order.linkGroup || capabilities?.linkedOrders !== "group";
+}
+
+/**
+ * What else cancelling an order takes with it where the broker cancels a bracket or OCO pair as one: "Also cancels its
+ * take profit and stop loss.", naming the group's other working orders among `orders`. None when nothing else goes.
+ */
+export function groupCancelLine(order: BrokerOrder, orders: readonly BrokerOrder[], capabilities: Pick<BrokerTradingCapabilities, "linkedOrders"> | undefined): string | undefined {
+  if (changesAlone(order, capabilities)) return undefined;
+  const key = brokerOrderKey(order);
+  const roles = [...new Set(orders.filter((other) => other.linkGroup === order.linkGroup && (other.accountId ?? "") === (order.accountId ?? "")
+    && brokerOrderKey(other) !== key && canChangeBrokerOrder(other)).map((other) => other.linkRole ?? "entry"))]
+    .sort((a, b) => ROLE_ORDER[a] - ROLE_ORDER[b]);
+  if (!roles.length) return undefined;
+  const names = roles.map((role) => linkRoleName[role].toLowerCase());
+  return `Also cancels its ${names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0]}.`;
 }
 
 /** The trailing unit a draft edits: percent once it holds one, else the amount. */

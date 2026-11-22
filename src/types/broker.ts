@@ -212,6 +212,8 @@ export interface BrokerAdapter {
    * Place, change and cancel throw when the broker did not take the action. An error with `refused: true` says the
    * broker answered no, or nothing was sent: the order is as it was, and its message is one short line the app shows as
    * it is ("Aries cannot find this order"). Any other error is a lost answer, whose outcome the app treats as unknown.
+   * One order of a bracket or OCO pair cancels alone, or with the group's other working orders where the adapter
+   * declares `linkedOrders: "group"`, which then also refuses to change one.
    */
   placeOrder?(instance: BrokerInstanceConfig, request: BrokerOrderRequest): Promise<BrokerOrder>;
   modifyOrder?(instance: BrokerInstanceConfig, orderId: number, request: BrokerOrderRequest): Promise<BrokerOrder>;

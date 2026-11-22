@@ -95,6 +95,9 @@ test("draft levels follow both prices and move, working orders move only where t
   const statuses = ["WORKING", "PARTIALLY_FILLED", "PENDING_NEW", "PENDING_REPLACE"].map((status) => orderLineMoves(f.order(f.draft, status, 5), changes));
   expect(statuses).toEqual([true, true, false, false]);
   expect(orderLineMoves(orders[0]!, { enabled: true, modify: false })).toBe(false);
+  // One of a bracket or OCO pair moves only where the broker changes it alone.
+  const exit = { ...f.order(f.draft, "WORKING", 6), linkGroup: "g1", linkRole: "stopLoss" as const };
+  expect([undefined, "each", "group"].map((linkedOrders) => orderLineMoves(exit, { ...changes, linkedOrders: linkedOrders as "each" | "group" | undefined }))).toEqual([true, true, false]);
   expect(levels.find((level) => level.label?.includes("Sell"))?.color).toBe(colors.negative);
   expect(levels.filter((level) => level.id.startsWith("order:"))).toHaveLength(2);
   expect(levels.at(-1)).toMatchObject({ label: "Average cost", axisLabel: "10.00" });

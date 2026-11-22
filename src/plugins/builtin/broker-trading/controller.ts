@@ -6,7 +6,7 @@ import type { Quote } from "../../../types/financials";
 import type { BrokerAccount, BrokerOrder, BrokerOrderPreview, BrokerOrderRequest, BrokerTradingCapabilities } from "../../../types/trading";
 import { optionContractIdentity } from "../../../utils/options";
 import { isStrategyOrder, strategyQuote } from "./strategy";
-import { checkLinkedOrder, restingEntryPrice } from "./linked-orders";
+import { accountTradingCapabilities, changesAlone, checkLinkedOrder, restingEntryPrice } from "./linked-orders";
 import { brokerOrderDone, brokerOrderStatus, orderEstimatePrice, ticketEditingPriceStep } from "./orders-data";
 
 export interface BrokerTradingContext {
@@ -110,15 +110,22 @@ function canonical(value: unknown): string {
   if (value && typeof value === "object") return `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`).join(",")}}`;
   return JSON.stringify(value) ?? "null";
 }
-/** The same broker order: by native ID when the result has one, else by its acknowledged handle. */
+/**
+ * The same broker order: by native ID when the result has one, else by its acknowledged handle. A bracket or OCO pair
+ * the broker took before listing its orders is acknowledged by its group: its entry (an OCO's limit) is the result.
+ */
 function sameOrder(order: BrokerOrder, result: BrokerOrder): boolean {
-  return result.brokerOrderId ? order.brokerOrderId === result.brokerOrderId : result.orderId !== 0 && order.orderId === result.orderId;
+  if (result.brokerOrderId) return order.brokerOrderId === result.brokerOrderId;
+  if (result.orderId !== 0 && order.orderId === result.orderId) return true;
+  return !!result.linkGroup && order.linkGroup === result.linkGroup && order.linkRole === result.linkRole;
 }
 function positive(value: number | undefined): value is number { return value !== undefined && Number.isFinite(value) && value > 0; }
 function errorMessage(error: unknown, fallback: string): string { return error instanceof Error && error.message ? error.message : fallback; }
 
+/** What the broker takes for this order, with the brackets and OCO pairs the selected account's brokerage runs. */
 function tradingCapabilities(context: BrokerTradingContext, request?: BrokerOrderRequest): BrokerTradingCapabilities {
-  return context.adapter.getTradingCapabilities?.(context.instance, request?.contract, request?.orderType) ?? {
+  const account = context.accounts.find((item) => item.accountId === context.accountId);
+  return accountTradingCapabilities(context.adapter.getTradingCapabilities?.(context.instance, request?.contract, request?.orderType), account) ?? {
     enabled: false, disabledReason: "This broker has not enabled the shared order ticket.", orderTypes: [], tif: [],
   };
 }
@@ -564,6 +571,7 @@ export class BrokerTradingController {
     const { context, capabilities } = this.context(true, request);
     this.checkOrder(order, context, "modify");
     if (!capabilities.modify || !context.adapter.modifyOrder) throw new Error("This broker does not support modifying this order.");
+    if (!changesAlone(order, capabilities)) throw new Error("The broker cannot change one order of a bracket or OCO pair. Cancel the group and place it again.");
     if (!["MKT", "LMT", "STP", "STP LMT", "TRAIL"].includes(order.orderType)) throw new Error("This order type cannot be modified in the shared ticket.");
     this.modifyOrder = undefined;
     this.setDraft({ ...request, brokerInstanceId: context.instance.id });

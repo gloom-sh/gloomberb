@@ -17,7 +17,7 @@ import { strategyShape } from "./strategy";
 import { brokerOrderDone, brokerOrderKey, brokerOrderStatus, canChangeBrokerOrder, formatOrderPrice as money, formatOrderQuantity as amount, isBuySide } from "./orders-data";
 import { useBrokerOrderFeeds } from "./order-feed";
 import { ticketTypeName } from "./ticket-parts";
-import { linkRoleName, trailingText } from "./linked-orders";
+import { changesAlone, linkRoleName, trailingText } from "./linked-orders";
 import { resolveTicketContract, subscribeTradingStatus } from "./pane-model";
 
 export interface TickerOrderSource {
@@ -114,7 +114,9 @@ export function TickerOrdersSection({ width, onModify }: { width: number; onModi
   return <Box flexDirection="column" width={width}>
     <SectionHeading title="Orders" />
     {open.map((order) => {
-      const changeable = canChangeBrokerOrder(order);
+      // One of a bracket or OCO pair the broker changes only as a whole is cancelled from the ticket's orders instead.
+      const source = sources.find(({ instance }) => instance.id === (order.brokerInstanceId ?? order.contract.brokerInstanceId));
+      const changeable = canChangeBrokerOrder(order) && changesAlone(order, source?.broker.getTradingCapabilities?.(source.instance, order.contract));
       return <ActionRow key={brokerOrderKey(order)} label={`${orderSummary(order)}${account(order)}`} disabled={!changeable} width={width}
         fg={order.action === "BUY" ? colors.positive : colors.negative} onPress={() => { if (changeable) onModify(order); }} />;
     })}
