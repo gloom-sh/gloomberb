@@ -5,6 +5,9 @@ name: Nightly
 # commit Verify and Verify Windows passed on: the newest such commit among
 # main's last 30, so a run that fires hours late, while the head is still being
 # verified, builds the newest verified ancestor instead of skipping the day.
+# That commit's .github/workflows have to equal main's head's: GitHub refuses a
+# release of one whose workflows differ, so a commit from before a workflow
+# change is passed over, and the publish job checks again before it uploads.
 # The plan job outputs the commit it chose; the build, the version, the notes
 # and the release target all follow it, not the commit this run started on. It
 # never commits (the version is set in each runner, see
@@ -171,10 +174,21 @@ jobs:
       - name: Check the tag is new
         run: bun run scripts/nightly.ts claim-tag
 
+      # Main can move during the build. GitHub refuses a release of a commit
+      # whose .github/workflows differ from main's (this job's token has no
+      # `workflows` permission), so this looks once more right before the
+      # draft. When main changed a workflow meanwhile, the draft, the publish
+      # and the prune below do not run: no draft and no tag are created, and the
+      # run ends green with a notice. The next one builds again.
+      - name: Check main's workflows still match the build
+        id: workflows
+        run: bun run scripts/nightly.ts check-workflows
+
       # Uploaded as a draft first, so no updater sees a release with half its
       # files; published as a prerelease that is never the latest release.
       - name: Upload the draft
         id: draft
+        if: ${{ steps.workflows.outputs.current == 'true' }}
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -189,12 +203,14 @@ jobs:
             --draft
 
       - name: Publish the prerelease
+        if: ${{ steps.workflows.outputs.current == 'true' }}
         run: |
           set -euo pipefail
           gh release edit "$NIGHTLY_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false
           test "$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)" != "$NIGHTLY_TAG"
 
       - name: Prune old nightly builds
+        if: ${{ steps.workflows.outputs.current == 'true' }}
         env:
           NIGHTLY_PRUNE_DAYS: ${{ vars.NIGHTLY_PRUNE_DAYS }}
           NIGHTLY_KEEP_TAG: v${{ needs.plan.outputs.version }}
