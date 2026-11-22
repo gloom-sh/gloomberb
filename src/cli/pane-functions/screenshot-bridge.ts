@@ -102,6 +102,7 @@ const SHOT_BRIDGE_MARKET_OPERATIONS = new Set([
   "getSecFilingContent",
   "getSecFilingDocuments",
   "getSecFilings",
+  "getSecFilingsPage",
 ]);
 
 const SHOT_BRIDGE_HTTP_TIMEOUT_MS = 20_000;

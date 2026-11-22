@@ -58,6 +58,11 @@ const ASSET_DATA_OPERATION_SPECS: Readonly<Record<string, AssetDataOperationSpec
     summary: "Recent SEC filings",
     fields: [required("ticker", "string"), optional("count", "number"), optional("exchange", "string"), optional("context", "object")],
   },
+  getSecFilingsPage: {
+    summary: "A page of SEC filings of some forms",
+    fields: [required("ticker", "string"), required("query", "object"), optional("exchange", "string"), optional("context", "object")],
+    examples: ['api invoke asset-data.asset-data-router.getSecFilingsPage \'{"ticker":"PG","query":{"forms":["4"],"limit":20}}\''],
+  },
   getHolders: { summary: "Institutional and fund holders", fields: LISTING },
   getAnalystResearch: { summary: "Analyst ratings and price targets", fields: LISTING },
   getCorporateActions: { summary: "Dividends, splits and reported earnings", fields: LISTING },

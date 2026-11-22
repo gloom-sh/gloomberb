@@ -15,6 +15,7 @@ const REQUEST_METHODS = new Set([
   "getCorporateActions",
   "getEarningsCalendar",
   "getSecFilings",
+  "getSecFilingsPage",
   "getSecFilingDocuments",
   "getSecFilingContent",
   "getArticleSummary",

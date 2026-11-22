@@ -22,7 +22,7 @@ import type { IssuerListings } from "./issuer-listings";
 import type { StreamTickRange } from "../market-data/quotes/tick-range";
 
 export type CachedAssetMethod = "getExchangeRate" | "getHolders" | "getAnalystResearch" | "getCorporateActions"
-  | "getOptionsChain" | "getSecFilings" | "getSecFilingDocuments" | "getSecFilingContent" | "getArticleSummary";
+  | "getOptionsChain" | "getSecFilings" | "getSecFilingsPage" | "getSecFilingDocuments" | "getSecFilingContent" | "getArticleSummary";
 export type CachedAssetArgs<K extends CachedAssetMethod> = Parameters<NonNullable<AssetDataProvider[K]>>;
 export type CachedAssetValue<K extends CachedAssetMethod> = Awaited<ReturnType<NonNullable<AssetDataProvider[K]>>>;
 
@@ -81,6 +81,29 @@ export interface SecFilingItem {
    * only this names. Absent from other forms and from an older server.
    */
   form4?: SecForm4Trade;
+}
+
+/** Which of a listing's filings `getSecFilingsPage` reads. */
+export interface SecFilingsPageQuery {
+  /** The forms, each with its amendment: `["4"]` is every Form 4 and 4/A. */
+  forms: readonly string[];
+  limit: number;
+  offset?: number;
+}
+
+export interface SecFilingsPage {
+  filings: SecFilingItem[];
+  /** The source holds more of these forms past this page, from `nextOffset`. */
+  hasMore: boolean;
+  nextOffset: number;
+  /**
+   * The newest filing day (YYYY-MM-DD) of each form the company's whole list
+   * holds, by the form as filed (`10-K/A` apart from `10-K`), whatever forms
+   * the page asks for: what the company reports as, and empty when the SEC
+   * lists no filing for it. Absent when the source does not say (an older
+   * server).
+   */
+  newestByForm?: Record<string, string>;
 }
 
 /** A Form 4's main transaction, the one moving the most shares. */
@@ -353,6 +376,12 @@ export interface AssetDataProvider {
   getExchangeRateSnapshot?(fromCurrency: string): Promise<ExchangeRateSnapshot>;
   search(query: string, context?: SearchRequestContext): Promise<InstrumentSearchResult[]>;
   getSecFilings?(ticker: string, count?: number, exchange?: string, context?: MarketDataRequestContext): Promise<SecFilingItem[]>;
+  /**
+   * One page of a listing's filings of some forms, newest first, picked by the
+   * source: a reader of one form (INS's Form 4s) never takes the company's
+   * whole list to filter it.
+   */
+  getSecFilingsPage?(ticker: string, query: SecFilingsPageQuery, exchange?: string, context?: MarketDataRequestContext): Promise<SecFilingsPage>;
   getHolders?(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<HolderData>;
   getAnalystResearch?(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<AnalystResearchData>;
   getCorporateActions?(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<CorporateActionsData>;

@@ -379,6 +379,44 @@ test("a chart of daily bars is as of its newest point: the closed session's day,
   }
 });
 
+// `fn G AAPL:NASDAQ` asked for its history only once the quote had answered.
+test("a listing named with its venue reads its history beside its quote, one without waits for the venue the quote names", async () => {
+  const { applyChartComposerCapabilityOptions } = await import("./cli-options");
+  const daily = ["2026-10-21", "2026-10-22", "2026-10-23"].map((date, index) => ({ date: new Date(`${date}T00:00:00Z`), open: 150, high: 152, low: 149, close: 150 + index }));
+  const quotedAt = Date.parse("2026-10-23T15:42:00Z");
+  const load = async (ticker: string) => {
+    const events: string[] = [];
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
+      getQuote: async () => {
+        events.push("quote asked");
+        await Bun.sleep(5);
+        events.push("quote answered");
+        return { symbol: "DHI", price: 152, change: 1, changePercent: 0.66, currency: "USD", listingExchangeName: "NYSE", lastUpdated: quotedAt };
+      },
+      getChartResolutionSupport: () => [{ resolution: "1d", maxRange: "5Y" }],
+      getPriceHistoryForResolution: async (_symbol, exchange) => {
+        events.push(`history asked on ${exchange || "no venue"}`);
+        return daily;
+      },
+    });
+    const spec = applyChartComposerCapabilityOptions(buildCustomChartPreset(ticker), "chart-composer", { rangePreset: "1M", chartResolution: "1d" });
+    const result = await chartHeadless("chart-composer-pane").load({ argument: ticker, rawArgument: ticker, symbols: [], options: {} },
+      { ...fixture().context, marketData: provider, settings: { chartSpec: spec } });
+    return { events, result };
+  };
+  setSystemTime(new Date("2026-10-23T15:45:00Z"));
+  try {
+    const pinned = await load("DHI:NYSE");
+    expect(pinned.events.slice(0, 3)).toEqual(["quote asked", "history asked on NYSE", "quote answered"]);
+    // The quote still dates the session it trades in.
+    expect(pinned.result.freshness).toMatchObject({ asOf: "2026-10-23T15:42:00.000Z" });
+    expect((await load("DHI")).events.slice(0, 3)).toEqual(["quote asked", "quote answered", "history asked on NYSE"]);
+  } finally {
+    setSystemTime();
+  }
+});
+
 test("a window that ended before today is the history asked for: dated through its last close, never stale", async () => {
   const { applyChartComposerCapabilityOptions } = await import("./cli-options");
   const { renderHeadlessPaneText } = await import("../../../cli/pane-functions/headless");
