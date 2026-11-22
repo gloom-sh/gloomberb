@@ -18,6 +18,7 @@ import { promptChoice } from "./prompts";
 import { thesisStore } from "./store";
 import { usePaneTickerIdentity } from "../../../../state/hooks/pane-ticker";
 import { logFailure } from "../../../../utils/log-failure";
+import { displayTickerKey } from "../../../../utils/exchanges";
 
 /**
  * The Thesis tab on a ticker: the theses that hold it, or the first question
@@ -103,7 +104,7 @@ export function ThesisTickerTab({ focused, width, height }: TickerResearchTabPro
     return (
       <Box flexDirection="column" paddingX={1} paddingY={1}>
         <EmptyState
-          title={`No thesis on ${ticker.metadata.ticker} yet.`}
+          title={`No thesis on ${displayTickerKey(ticker.metadata.ticker)} yet.`}
           message={plan.hasProAccess
             ? "Say why you own it. Pillars, kill conditions, and catalysts are drafted from that and the company data; you edit from there."
             : "Say why you own it, then add the claims that must stay true and what would make you sell. Pro drafts them for you and reviews them against news."}

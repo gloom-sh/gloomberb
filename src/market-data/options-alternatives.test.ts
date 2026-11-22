@@ -1,7 +1,10 @@
 import { expect, test } from "bun:test";
 import { createTestCliContext } from "../test-support/cli-context";
 import { marketDataCliCommands } from "../cli/commands/market";
-import { fxVolatilityNote, fxVolatilityPair, listedOptionsAlternative, optionsUnavailableDetails } from "./options-alternatives";
+import {
+  fxVolatilityNote, fxVolatilityPair, listedOptionsAlternative, optionsUnavailableDetails, optionsUnavailableHint, optionsUnavailableTitle,
+  unservedOptionsVenue,
+} from "./options-alternatives";
 
 test("every spelling of a futures root finds the same listed fund, and a stock finds none", () => {
   const alternative = (symbol: string) => listedOptionsAlternative(symbol)?.symbol ?? null;
@@ -51,4 +54,36 @@ test("a spot pair in any spelling and a currency future in any contract are one 
   expect(fxVolatilityNote("SPY")).toBeNull();
   // The sterling future has its fund for `options`, as the euro and yen ones do.
   expect(listedOptionsAlternative("6B=F")?.symbol).toBe("FXB");
+});
+
+// OMON 0700:HKEX read "Options are not available for 0700:XHKG." HKEX lists Tencent's options; Gloom does not serve them.
+test("a listing whose venue lists options says Gloom does not serve them; a served or unlisted one keeps its wording", async () => {
+  // Listed abroad: as typed, as stored under its MIC, and bare with its exchange, each named by the venue's own code.
+  for (const [symbol, exchange] of [["0700:HKEX"], ["0700:XHKG"], ["0700", "HKEX"]] as const) {
+    expect(unservedOptionsVenue(symbol, exchange)).toBe("HKEX");
+    expect(optionsUnavailableTitle(symbol, exchange)).toBe("Options on HKEX listings (0700:HKEX) are not served.");
+    const said = `${optionsUnavailableHint(symbol, exchange)} ${optionsUnavailableDetails(symbol, (each) => `gloom options ${each}`, exchange)}`;
+    expect(said).toContain("Gloom serves options on US listings, BTC and ETH.");
+    // No plan serves them, so none is offered.
+    expect(said).not.toMatch(/\b(?:pro|plan|upgrade|subscri)/i);
+  }
+  expect(["7203:JPX", "SAP:XETRA", "SHEL:LSE", "RY:TSX", "BHP:ASX", "MC:EPA"].map((key) => unservedOptionsVenue(key)))
+    .toEqual(["JPX", "XETRA", "LSE", "TSX", "ASX", "EPA"]);
+  // Served (a US listing) or listed nowhere Gloom knows of (SGX lists no single-stock options): no venue to name.
+  expect(["AAPL", "AAPL:NASDAQ", "D05:SGX", "600519:SSE"].map((key) => unservedOptionsVenue(key))).toEqual([null, null, null, null]);
+  expect(optionsUnavailableTitle("D05:XSES")).toBe("Options are not available for D05:SGX.");
+  expect(optionsUnavailableHint("D05:SGX")).toBe("OSA builds strategy payoffs on a listed underlying.");
+
+  const cli = createTestCliContext({ dataProvider: {
+    getOptionsChain: async (symbol: string) => { throw new Error(`No options provider available for ${symbol}`); },
+    getQuote: async () => { throw new Error("offline"); },
+  } });
+  let failure: { message: string; details?: string } | null = null;
+  cli.context.fail = ((message: string, details?: string): never => {
+    failure = { message, details };
+    throw new Error(message);
+  }) as typeof cli.context.fail;
+  await expect(marketDataCliCommands.find((command) => command.name === "options")!.execute(["0700:HKEX"], cli.context))
+    .rejects.toThrow("Options on HKEX listings (0700:HKEX) are not served.");
+  expect(failure!.details).toBe("Gloom serves options on US listings, BTC and ETH. Strategy payoffs on a US listing: gloom fn OSA <ticker>");
 });

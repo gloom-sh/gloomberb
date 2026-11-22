@@ -38,7 +38,7 @@ import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useCloudAccessFooter } from "../shared/cloud-upgrade";
 import { CLOUD_QUOTE_DELAY_MINUTES, freeQuoteDelayMinutes, usePlanAccess } from "../../../api-client/plan-access";
 import { shownPaneChoice } from "../../../core/state/app/pane-choices";
-import { parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
+import { displayTickerKey, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { captureAttentionAction } from "../../../telemetry/attention-counts";
 import { tickerHasListingSuffix } from "../../../sources/listing-symbols";
 import { tickerQuoteFooterInfo } from "./quote-footer";
@@ -259,7 +259,7 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
     role: "report-failure",
     label: "No such tab",
     getMetadata: () => ({
-      message: `${ticker!.metadata.ticker} has no ${committedActiveTabId} tab.`,
+      message: `${displayTickerKey(ticker!.metadata.ticker)} has no ${committedActiveTabId} tab.`,
       details: `Tabs: ${optionChoiceNames(tabChoices)}.`,
     }),
   } : null);

@@ -1,5 +1,5 @@
 import type { PaneLock } from "../../../types/plugin";
-import { isOptionsUnavailableError } from "../../../market-data/options-alternatives";
+import { isOptionsUnavailableError, optionsUnavailableTitle } from "../../../market-data/options-alternatives";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { proLockNote, type FreeRoute } from "../shared/pro-lock-note";
 
@@ -37,6 +37,7 @@ export function flowLockNote(lock: PaneLock): Promise<string> {
     does: "it streams real-time sweeps, blocks and large premium prints across US options exchanges",
     shows: "it",
     free: [OPTIONS_ROUTE],
-    noneFor: (ticker) => `Options are not available for ${ticker}, so FLOW has no prints of it.`,
+    // "Options on HKEX listings (0700:HKEX) are not served": no plan serves them, FLOW's included.
+    noneFor: (ticker) => `${optionsUnavailableTitle(ticker).replace(/\.$/, "")}, so FLOW has no prints of it.`,
   });
 }

@@ -44,6 +44,7 @@ import { slugifyName } from "../../../utils/slugify";
 import { readTypedNumber } from "../../../utils/decimal-comma";
 import { resolveTickerInputOrThrow } from "./ops";
 import { resolveCollectionTicker } from "./collection-ticker";
+import { displayTickerKey } from "../../../utils/exchanges";
 
 export type CommandBarNotifyFn = (
   body: string,
@@ -328,7 +329,7 @@ export function createCommandBarCollectionWorkflowActions(options: {
         symbol: result.ticker.metadata.ticker,
         portfolioId: portfolio.id,
       });
-      notify(`Set position for ${result.ticker.metadata.ticker} in "${portfolio.name}".`, { type: "success" });
+      notify(`Set position for ${displayTickerKey(result.ticker.metadata.ticker)} in "${portfolio.name}".`, { type: "success" });
     },
 
     async addTickerMembershipFromWorkflow(values) {

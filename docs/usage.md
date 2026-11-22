@@ -380,6 +380,8 @@ The Overview headline is the regular session, with one extra line for the extend
 
 `gloom ticker` and the `QQ` cards (`AH` or `PM` where narrow) report it the same way, and `quote`, `compare` and `fn QQ` add an After Hours or Pre-Market column when a row has one. In `--json`, `price`, `change` and `changePercent` are the headline, and `extendedSession` (`PRE` or `POST`), `extendedPrice`, `extendedChange` and `extendedChangePercent` are the extended print, null without one.
 
+Once the regular session is over, every view that dates the headline dates it at the close, and the extended print at its own time: a `QQ` card reads `CLOSED · Fri 21:00 UTC` over `After-Hours Sat 00:34 UTC $70.60 +1.35%` (on a narrow card the print's time goes on a row of its own, or after the close's on the as-of line), and the same holds for `DES`, the watchlist's AS OF column and every export's `as_of`. `fn QQ`, `fn PF`, `fn WL`, `portfolio show` and `watchlist show` print the print's time beside it, as `quote` does; their exports add it last, as `After Hours Updated` (or `Pre-Market Updated`, `Overnight Updated`) in `fn` CSV and as `extendedUpdatedAt` in `portfolio show` and `watchlist show`.
+
 #### Overnight session
 
 From 20:00 to 04:00 New York, Sunday night to Friday morning, a US listing still trades on an alternative venue while its exchange is closed. With real-time data the price is that session's last trade, or the midpoint of its bid and ask while nothing has traded. The headline stays the completed regular session, with an Overnight line under it (`Overnight mid` for a midpoint).
@@ -446,7 +448,7 @@ From the close until the next open (overnight, weekend, pre-market), every figur
 `portfolio show` and `watchlist show` read the quote as `quote` does: Last and Chg are the regular close and its move after the close, with an After Hours or Pre-Market column when a holding has one. Value and P&L are priced at the latest print unless you ask for the regular close; see [What a portfolio is priced at](#what-a-portfolio-is-priced-at).
 
 - A portfolio's `--json` puts Last in `quotePrice` and adds the four `extended` fields (`fn PF` reports `price` and `changePercent` the same way).
-- `watchlist show --csv` and `--json` print one row per ticker, as raw numbers: `symbol`, `listing`, `name`, `exchange`, `kind`, `currency`, `price`, `change`, `changePercent`, the four `extended` fields, `volume`, `quoteAsOf`, `stale` and `lastTradeDate`. `marketCap` is in your base currency (`marketCapCurrency`), and `fundingRate8h` appears only when the list holds perpetual markets.
+- `watchlist show --csv` and `--json` print one row per ticker, as raw numbers: `symbol`, `listing`, `name`, `exchange`, `kind`, `currency`, `price`, `change`, `changePercent`, the four `extended` fields, `volume`, `quoteAsOf` (Last's time, the close once the session is over), `stale` and `lastTradeDate`, then `extendedUpdatedAt` (when the extended print is from) after the fixed columns, and each row's `as_of` its own quote's. `marketCap` is in your base currency (`marketCapCurrency`), and `fundingRate8h` appears only when the list holds perpetual markets.
 - A list holding a stale quote adds a Last Trade column (`STALE 2023-03-09`) and a line naming them. Funds and indices have no Mkt Cap (a note names them). A list holding a perpetual market adds a Fund 8H column.
 
 #### Earnings-call exports
@@ -1617,6 +1619,8 @@ Data that covers US listings only says so for a listing elsewhere and names the 
 
 `fn TAS SAN:EPA` answers `Time and sales covers US listings only, and SAN:EPA is Sanofi on Euronext Paris (EPA).` with `Sanofi's US listing: SNY (try: gloom fn TAS SNY)`. A list such as `fn SIW SAN:EPA AAPL` leaves the listing out with the same line.
 
+A chain itself (`options`, `OMON`, the `DES` Options tab) is served for US listings and for BTC and ETH. On a venue abroad that lists options of its own (HKEX, Osaka, Eurex, Euronext, Nasdaq Nordic, London, Montreal, ASX, Korea, Taiwan, India, B3, MexDer, JSE) it says they are not served, which no plan changes: `OMON 0700:HKEX` reads `Options on HKEX listings (0700:HKEX) are not served.` with `Gloom serves options on US listings, BTC and ETH.` A listing on a venue that lists none keeps `Options are not available for D05:SGX.`
+
 The US listing is the receipt the listing's own quote names, else the line search finds by the company's name. A company whose only US line trades over the counter is offered it where the data covers OTC securities: FINRA short interest (`SI`, `SIW`), fails to deliver (`FTD`), weekly ATS volume (`ATS`) and release days (`MDAY`). `fn SI 0700.HK` answers `Tencent Holdings's US listing: TCEHY, over the counter (try: gloom fn SI TCEHY)`. Options, the tape and daily short volume cover exchange listings only, so `fn TAS 0700.HK` names TCEHY as trading over the counter, outside that data, and offers nothing.
 
 #### Functions with a symbol of their own
@@ -1960,7 +1964,7 @@ Exports end each row with six fixed columns, so a row still says what it is, and
 | `currency_or_unit` | The currency or unit of the values: `ZAR`, `USD`, `JPY per USD` (a pair's quote currency per base), `bp`, `pct`, `index points`; blank when the values mix units (their headers name them) |
 | `interval` | The bar interval or observation frequency actually returned: `1d`, `1mo`, `daily`, `monthly`, `spot` for an FX rate, `snapshot` for an options chain |
 | `source` | The source the `Source:` line names: `Gloom Cloud`, `Census Bureau via FRED`. FRED distributes the originator's figures. |
-| `as_of` | The `Observation date:` of the export in ISO 8601, the same on every row; blank when it reads `not published`. Rows dated apart carry their own (a `fn DVD` ranking dates each ticker's row by the price its yields are over). In a statistic's export (below) it is the day or time the figure was released |
+| `as_of` | The `Observation date:` of the export in ISO 8601, the same on every row; blank when it reads `not published`. Rows dated apart carry their own (a `fn DVD` ranking dates each ticker's row by the price its yields are over; `quote`, `fn QQ`, `fn WL` and `watchlist show` each quote's headline, at its close once its session is over; `fn PF` and `portfolio show` the price each value uses), and the observation date then says it is the newest row's: `Observation date: 2026-11-20T21:00:00.000Z (the newest row's; each row's as_of is its own)`. In a statistic's export (below) it is the day or time the figure was released |
 | `retrieved_at` | When the export read the data, an ISO time in UTC, the same on every row: `as_of` is when the data is from, `retrieved_at` when it was fetched. A statistic's export (below) has `retrieved` in its place |
 
 Columns a report adds to its rows come after `retrieved_at`, so no fixed column moves and a file from before lines up with one from after: a futures formula's contract of each leg with `Roll` and `Partial` (`fn G fut:crack-321 --csv`), and `Group`, the section heading a captured report's row sits under (`fn FUT`'s Equity Index or Energy), which the text prints as a row of its own.
@@ -2120,7 +2124,7 @@ A future has no regular close. At the close it is priced at its exchange settlem
 
 ### In exports
 
-The `--json` and `--csv` rows of `portfolio show` and `fn PF` end with `valuationBasis` (`latest-print` or `regular-close`), `valuationPrice` (the price Value uses, in the quote's currency) and `valuationAsOf` (an ISO time in UTC, or a date for a close whose hour the venue's calendar does not give), followed in `--csv` by the [fixed columns](#what-every-exported-row-says). `quoteAsOf` keeps the quote's own time.
+The `--json` and `--csv` rows of `portfolio show` and `fn PF` end with `valuationBasis` (`latest-print` or `regular-close`), `valuationPrice` (the price Value uses, in the quote's currency) and `valuationAsOf` (an ISO time in UTC, or a date for a close whose hour the venue's calendar does not give), followed in `--csv` by the [fixed columns](#what-every-exported-row-says), each row's `as_of` its `valuationAsOf`. `quoteAsOf` dates Last as `quote` dates it (the close once the session is over), and `extendedUpdatedAt`, last of all, the extended print beside it.
 
 - `portfolio show --json` adds `metadata.valuationBasis`, and with `--close` `dayChange` and `dayChangePercent` (in `metadata.totals` for `fn PF`). A future valued at its settlement adds `valuationPriceKind: "settle"`.
 - `Observation date:` is the newest of those prices and `Oldest observation:` the oldest when the rows differ (`source.oldestObservationDate` in JSON).

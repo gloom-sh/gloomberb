@@ -1,6 +1,6 @@
 import { isRoundTheClockCoin } from "../utils/crypto-pair";
 import { currencyPairCode, isCurrencyCode } from "../utils/currency-pair";
-import { parsePublicTickerKey } from "../utils/exchanges";
+import { canonicalExchange, displayTickerKey, parsePublicTickerKey } from "../utils/exchanges";
 import { parseFuturesGeneric } from "../utils/futures-generic";
 
 /** A US-listed fund whose options track an instrument that has none of its own. */
@@ -79,12 +79,43 @@ const CURRENCY_FUND_NAMES: Readonly<Record<string, string>> = {
 };
 
 /**
+ * Venues abroad whose own derivatives market lists options on stocks trading
+ * there, by the app's venue code: HKEX's stock options, Osaka's on Tokyo
+ * listings, Eurex's on Xetra and SIX listings, Euronext's, Nasdaq Nordic's,
+ * IDEM's, MEFF's, ICE Futures Europe's on London listings, the Montreal
+ * Exchange's on Toronto listings, and the Korean, Taiwanese, Indian,
+ * Australian, Brazilian, Mexican and South African exchanges'. Gloom serves
+ * option chains on US listings, and on BTC and ETH, only: a listing on one of
+ * these has options Gloom does not serve, not none at all, and no plan
+ * changes that. A venue that lists none keeps "Options are not available".
+ */
+const UNSERVED_OPTIONS_VENUES: ReadonlySet<string> = new Set([
+  "HKEX", "JPX", "KRX", "TWSE", "NSE", "BSE", "ASX",
+  "LSE", "XETRA", "SWX", "EPA", "AMS", "BRU", "OSL", "BIT", "MCE", "SFB", "HEL", "CPH",
+  "TSX", "B3", "BMV", "JSE",
+]);
+
+/** What a pane or the CLI says Gloom does serve, beside a chain it does not. */
+const SERVED_OPTIONS = "Gloom serves options on US listings, BTC and ETH.";
+
+/**
+ * The venue of a listing whose options its venue lists and Gloom does not
+ * serve (UNSERVED_OPTIONS_VENUES): HKEX for 0700:HKEX, as stored (0700:XHKG)
+ * or bare with its exchange. Null anywhere else.
+ */
+export function unservedOptionsVenue(symbol: string, exchange?: string | null): string | null {
+  const venue = parsePublicTickerKey(symbol.trim()).exchange ?? canonicalExchange(exchange ?? "");
+  return venue && UNSERVED_OPTIONS_VENUES.has(venue) ? venue : null;
+}
+
+/**
  * What a chain that is not served points to, worded for the CLI: the listed
  * alternative and the command that reads its chain (`run`), with OSA on it;
- * the currency funds for a cross no one fund holds; OSA on any listed
+ * the currency funds for a cross no one fund holds; for a listing whose venue
+ * lists options Gloom does not serve, what it does serve; OSA on any listed
  * underlying otherwise. A coin has its own (`coinOptionsAlternativesText`).
  */
-export function optionsUnavailableDetails(symbol: string, run: (symbol: string) => string): string {
+export function optionsUnavailableDetails(symbol: string, run: (symbol: string) => string, exchange?: string | null): string {
   const alternative = listedOptionsAlternative(symbol);
   if (alternative) {
     return `Nearest listed alternative: ${alternative.symbol} (${alternative.name}), ${run(alternative.symbol)}.`
@@ -92,15 +123,17 @@ export function optionsUnavailableDetails(symbol: string, run: (symbol: string) 
   }
   const pair = fxVolatilityPair(symbol);
   if (pair) return `Currency funds with listed options: ${fxVolatilityFunds(pair).map(run).join(", ")}.`;
+  if (unservedOptionsVenue(symbol, exchange)) return `${SERVED_OPTIONS} Strategy payoffs on a US listing: gloom fn OSA <ticker>`;
   return "Strategy payoffs on a listed underlying: gloom fn OSA <ticker>";
 }
 
 /** The same for a pane, which shows the alternative as an action: what to read instead, in a sentence. */
-export function optionsUnavailableHint(symbol: string): string {
+export function optionsUnavailableHint(symbol: string, exchange?: string | null): string {
   const alternative = listedOptionsAlternative(symbol);
   if (alternative) return `Nearest listed alternative: ${alternative.symbol} (${alternative.name}).`;
   const pair = fxVolatilityPair(symbol);
   if (pair) return `Currency funds with listed options: ${fxVolatilityFunds(pair).join(", ")}.`;
+  if (unservedOptionsVenue(symbol, exchange)) return SERVED_OPTIONS;
   return "OSA builds strategy payoffs on a listed underlying.";
 }
 
@@ -115,12 +148,21 @@ export function isOptionsUnavailableError(error: unknown): boolean {
  * follow-up. A currency says what is not served: "Options on CME yen futures
  * (6J=F) are not served." CME lists them; this app does not. Nor does it
  * serve options on a spot pair: "Options on spot FX pairs (EURUSD=X) are not
- * served." No plan changes either.
+ * served." A listing on a venue abroad that lists options says the same of
+ * its venue's: "Options on HKEX listings (0700:HKEX) are not served." No plan
+ * changes any of them. A listing is named as typed, by its venue's own code
+ * (0700:HKEX, never the stored 0700:XHKG).
  */
-export function optionsUnavailableTitle(symbol: string): string {
+export function optionsUnavailableTitle(symbol: string, exchange?: string | null): string {
   const typed = symbol.trim().toUpperCase();
   if (currencyFutureName(typed)) return fxVolatilityLead(typed);
-  return fxVolatilityPair(typed) ? `Options on spot FX pairs (${typed}) are not served.` : `Options are not available for ${typed}.`;
+  if (fxVolatilityPair(typed)) return `Options on spot FX pairs (${typed}) are not served.`;
+  const venue = unservedOptionsVenue(typed, exchange);
+  if (venue) {
+    const listing = parsePublicTickerKey(typed).exchange ? displayTickerKey(typed) : `${typed}:${venue}`;
+    return `Options on ${venue} listings (${listing}) are not served.`;
+  }
+  return `Options are not available for ${displayTickerKey(typed)}.`;
 }
 
 /**

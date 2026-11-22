@@ -18,6 +18,7 @@ import { loadModelDividendYield, type ModelDividendYield } from "../../../market
 import { abortable, abortError } from "../../../utils/async-deadline";
 import { extendedSession, modelSpotStamp, modelSpotStampVariants, type OptionModelSpot } from "../options/model-spot";
 import { errorMessage } from "../../../utils/errors";
+import { optionsUnavailableTitle, unservedOptionsVenue } from "../../../market-data/options-alternatives";
 import { isTransientFailure } from "../../../api-client/errors";
 import { isTransientSourceFailure, serviceDidNotAnswerMessage } from "../../../sources/provider-errors";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE, isNetworkFailure } from "../../../utils/network-failure";
@@ -178,8 +179,8 @@ export async function loadScenarioMarket(
   }
   // A read that failed says why: a service that did not answer is asked again, a chain none lists is not.
   const chainUnavailable = !missingExpiry && (!chain || chainEntry?.error)
-    ? chainReadFailure(symbol, chainRejection, chainEntry, chain != null) : undefined;
-  if (chainUnavailable && chainUnavailable !== `No options chain is listed for ${symbol}.`) {
+    ? chainReadFailure(symbol, request.instrument.exchange, chainRejection, chainEntry, chain != null) : undefined;
+  if (chainUnavailable && chainUnavailable !== noChainListed(symbol, request.instrument.exchange)) {
     // The router's "No options provider available" of a read that timed out reads as no chain at all.
     for (let index = warnings.length - 1; index >= 0; index -= 1) if (warnings[index]!.startsWith("Options chain: ")) warnings.splice(index, 1);
     warnings.push(chainUnavailable);
@@ -215,7 +216,13 @@ export async function loadScenarioMarket(
  * a chain an earlier read left, which only a failure worth retrying explains.
  * Undefined when the read did not fail.
  */
-function chainReadFailure(symbol: string, rejection: unknown, entry: QueryEntry<OptionsChain> | null, kept: boolean): string | undefined {
+function chainReadFailure(
+  symbol: string,
+  exchange: string | undefined,
+  rejection: unknown,
+  entry: QueryEntry<OptionsChain> | null,
+  kept: boolean,
+): string | undefined {
   if (rejection === undefined && !entry?.error) return undefined;
   const what = `the ${symbol} options chain`;
   const message = rejection !== undefined ? errorMessage(rejection) : entry!.error!.message;
@@ -226,7 +233,16 @@ function chainReadFailure(symbol: string, rejection: unknown, entry: QueryEntry<
   if (/\btry again\b/i.test(message)) return message;
   const transient = rejection !== undefined ? isTransientFailure(rejection) || isTransientSourceFailure(rejection) : entryFailedTransiently(entry);
   if (transient) return serviceDidNotAnswerMessage(what);
-  return kept ? undefined : `No options chain is listed for ${symbol}.`;
+  return kept ? undefined : noChainListed(symbol, exchange);
+}
+
+/**
+ * What a read that found no chain says: none is listed, or for a listing on a
+ * venue abroad that lists options (0700 on HKEX), that Gloom does not serve
+ * them, never that none is listed.
+ */
+function noChainListed(symbol: string, exchange: string | undefined): string {
+  return unservedOptionsVenue(symbol, exchange) ? optionsUnavailableTitle(symbol, exchange) : `No options chain is listed for ${symbol}.`;
 }
 
 /** What a strategy seed says when the market holds no current chain to seed it from. */

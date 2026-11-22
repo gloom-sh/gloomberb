@@ -3,12 +3,14 @@ import {
   canonicalExchange,
   canonicalTickerKey,
   CANONICAL_EXCHANGE_ALIASES,
+  displayListingKeys,
   EXCHANGE_TIME_ZONES,
   parsePublicTickerKey,
   publicTickerKey,
   resolveExchangeTimeZone,
 } from "./exchanges";
 import { futuresListingVenue } from "./futures-generic";
+import { readableError } from "./reason-codes";
 
 describe("exchange metadata", () => {
   test("has a valid timezone for every canonical exchange", () => {
@@ -63,4 +65,15 @@ test("repeated exchange suffixes are repaired before provider and snapshot looku
   expect(parsePublicTickerKey("VOD:XLON:XLON")).toEqual({ symbol: "VOD", exchange: "LSE" });
   expect(publicTickerKey("VOD:LSE:XLON", "LSE")).toBe("VOD:XLON");
   expect(canonicalTickerKey("VOD:XLON:LSE")).toBe("VOD:LSE");
+});
+
+// OMON 0700:HKEX said "Options are not available for 0700:XHKG", where everything else named 0700:HKEX.
+test("text names a listing stored under its venue's MIC as it is typed, and leaves anything else as written", () => {
+  expect(displayListingKeys("Options are not available for 0700:XHKG.")).toBe("Options are not available for 0700:HKEX.");
+  expect(displayListingKeys("0700:XHKG · XYZ:XNYS · BRK.B:XNYS · ^FTSE:XLON")).toBe("0700:HKEX · XYZ:NYSE · BRK.B:NYSE · ^FTSE:LSE");
+  // Not a stored key: a series, a coin's venue, a time, a venue code already, a MIC inside a word.
+  for (const text of ["FRED:DFII10", "USDT-USD:CCC", "at 12:30 UTC", "0700:HKEX", "AAPL:XNASX", "X:XHKGQ"]) {
+    expect(displayListingKeys(text)).toBe(text);
+  }
+  expect(readableError("No quote for 0700:XHKG")).toBe("No quote for 0700:HKEX");
 });

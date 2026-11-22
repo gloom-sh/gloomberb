@@ -5,7 +5,7 @@ import { manualPortfolioValue } from "./manual-value";
 import type { Portfolio, TickerRecord } from "../../../types/ticker";
 import { MISSING_VALUE, formatCurrency, formatNumber } from "../../../utils/format";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
-import { canonicalExchange, isUsEquityExchange } from "../../../utils/exchanges";
+import { canonicalExchange, displayTickerKey, isUsEquityExchange } from "../../../utils/exchanges";
 import {
   getPortfolioPositionMetrics,
   resolvePortfolioMarketValue,
@@ -312,7 +312,7 @@ function thirteenFWeighting(
     if (!Number.isFinite(value) || value <= 0)
       return {
         kind: "current",
-        reason: `"${portfolio.name}" has no stored 13F weights and ${ticker.metadata.ticker} has no USD cost to rebuild them from, so the rows hold today's weights fixed. Re-import it (portfolio import --13f ${portfolio.importedFrom?.cik ?? "<CIK>"} --replace) for buy-and-hold.`,
+        reason: `"${portfolio.name}" has no stored 13F weights and ${displayTickerKey(ticker.metadata.ticker)} has no USD cost to rebuild them from, so the rows hold today's weights fixed. Re-import it (portfolio import --13f ${portfolio.importedFrom?.cik ?? "<CIK>"} --replace) for buy-and-hold.`,
       };
     values.set(ticker.metadata.ticker, value);
   }

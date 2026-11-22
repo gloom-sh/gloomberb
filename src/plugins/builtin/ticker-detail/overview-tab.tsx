@@ -42,7 +42,7 @@ import { appendLiveQuotePoint, hasUnknownBondHistoryBasis } from "../../../time-
 import type { TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
-import { publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
+import { displayTickerKey, publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { convertCurrency, displayWidth, formatPercentRaw } from "../../../utils/format";
 import {
   appTtmRate, baseCurrencyFiguresNote, enterpriseValueGapIsLarge, enterpriseValueReconciliationNote, trailingEpsFiscalYear, ttmAtAppRate,
@@ -292,7 +292,7 @@ function ResolvedOverviewTab({
   );
   const priceSeries = pricePointsToResolvedSeries(chartHistory, {
     id: `${ticker.metadata.ticker}:price`,
-    label: `${ticker.metadata.ticker} ${yieldIndex ? "Yield" : "Price"}`,
+    label: `${displayTickerKey(ticker.metadata.ticker)} ${yieldIndex ? "Yield" : "Price"}`,
     color: priceColor(chartDelta),
     unit: yieldIndex ? "%" : unknownHistoryBasis ? "unknown" : priceSeriesUnit(quoteCurrency, instrumentType, quote?.priceBasis),
     ...(yieldIndex ? { unitGroup: "price:%" } : {}),
