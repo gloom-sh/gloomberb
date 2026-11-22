@@ -213,6 +213,29 @@ describe("insider client", () => {
     expect(read).toEqual(["own"]);
   });
 
+  // A page that says there is more from where it began would be read, and its filings listed, again and again.
+  test("a page that has more but no next offset past its own ends the list", async () => {
+    const asked: number[] = [];
+    const owned = Array.from({ length: 100 }, (_, index) => ({
+      ...listed(`owned-${index}`, "4", "2026-08-20"),
+      form4: { ownerName: "BANCO SANTANDER", issuerName: "SANTANDER CONSUMER USA", issuerTicker: "SC", issuerCik: "0001580608", code: "S", side: "sell" as const, shares: 1, price: 1 },
+    }));
+    const provider = createTestDataProvider({
+      getSecFilingsPage: async (_symbol, query) => {
+        asked.push(query.offset ?? 0);
+        return query.offset
+          ? { filings: [listed("own", "4", "2026-08-01")], hasMore: true, nextOffset: query.offset, newestByForm: { "4": "2026-08-20" } }
+          : { filings: owned, hasMore: true, nextOffset: 100, newestByForm: { "4": "2026-08-20" } };
+      },
+      getSecFilingContent: async () => form4("2488"),
+    });
+
+    const result = await loadParsedInsiderFilings(provider, "AMD", { limit: 5 });
+
+    expect(result.parsed.map(({ filing }) => filing.accessionNumber)).toEqual(["own"]);
+    expect(asked).toEqual([0, 100]);
+  });
+
   test.each(Object.keys(listings))("a listing abroad whose company files nothing with the SEC says so by name, as filings does: %s", async (source) => {
     const load = (symbol: string) => createInsiderHeadless().load({ ...args(), rawArgument: symbol, argument: symbol, symbols: [symbol] }, {
       ...createTestHeadlessContext(),

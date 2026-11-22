@@ -88,6 +88,22 @@ const DROPPED_RETRY_MIN_MS = 100;
 const DROPPED_RETRY_SPREAD_MS = 400;
 
 /**
+ * The text of one SEC filing. The service answers it 503 with a Retry-After
+ * of 2 to 600 seconds when the SEC turns it away or the service's own line
+ * to the SEC stays busy for five seconds (`filingTextWaitMs`).
+ */
+const FILING_TEXT_PATH = "/cloud/sec/filing/content";
+/**
+ * The longest Retry-After a filing text read waits out before it is asked
+ * once more. Four seconds lets a short SEC burst end as slower reads instead
+ * of rows that say they were not read, while a report of 100 filings, read
+ * four at a time, waits at most this long more for each round of reads the
+ * burst holds up. A longer Retry-After is never cut short: the read is not
+ * asked again, and fails as it did before.
+ */
+const FILING_TEXT_RETRY_MAX_MS = 4_000;
+
+/**
  * Whether asking twice is harmless: a GET or HEAD, or a POST under the market
  * paths, which are batch reads. Writes are never sent twice: the first may
  * have reached the server before its connection dropped.
@@ -453,14 +469,36 @@ function isRestartAnswer(response: CloudApiResponse): boolean {
 }
 
 /**
- * Sends a read, and once more after a short pause when its connection
- * dropped before the answer began (`isDroppedConnection`), or the answer
- * says its server is going away (`isRestartAnswer`). Only once: a second
- * failure is the service's state, and is reported as before.
+ * How long a filing text read waits before it is asked once more: the
+ * Retry-After of its 503, in whole seconds, when that is over a second (a
+ * second or less is a server going away, `isRestartAnswer`) and at most
+ * FILING_TEXT_RETRY_MAX_MS. Null for any other answer, a longer wait, or a
+ * Retry-After that is no number of seconds (a date reads against this
+ * machine's clock, which may be off).
+ */
+function filingTextWaitMs(path: string, response: CloudApiResponse): number | null {
+  if (response.status !== 503 || path.split("?")[0] !== FILING_TEXT_PATH) return null;
+  const retryAfter = response.headers.get("Retry-After")?.trim() ?? "";
+  if (!/^\d+$/.test(retryAfter)) return null;
+  const waitMs = Number(retryAfter) * 1000;
+  return waitMs > 1000 && waitMs <= FILING_TEXT_RETRY_MAX_MS ? waitMs : null;
+}
+
+/**
+ * Sends a read, and once more when its connection dropped before the answer
+ * began (`isDroppedConnection`) or the answer says its server is going away
+ * (`isRestartAnswer`), after a short pause; or when a filing text read is
+ * told to come back shortly, after the wait it was told
+ * (`filingTextWaitMs`). Only once in all: a second failure is the service's
+ * state, and is reported as before. `answered` hears that the first answer
+ * came, so a request waiting out its Retry-After is not taken for one that
+ * hung.
  */
 async function sendAgainIfCutOff(
   sendOnce: () => Promise<CloudApiResponse>,
   signal: AbortSignal | null | undefined,
+  path: string,
+  answered: () => void,
 ): Promise<CloudApiResponse> {
   let first: CloudApiResponse;
   try {
@@ -470,10 +508,17 @@ async function sendAgainIfCutOff(
     await pause(DROPPED_RETRY_MIN_MS + Math.random() * DROPPED_RETRY_SPREAD_MS, signal);
     return sendOnce();
   }
-  if (!isRestartAnswer(first)) return first;
+  let waitMs: number | null;
+  if (isRestartAnswer(first)) {
+    waitMs = DROPPED_RETRY_MIN_MS + Math.random() * DROPPED_RETRY_SPREAD_MS;
+  } else {
+    waitMs = filingTextWaitMs(path, first);
+    if (waitMs == null) return first;
+    answered();
+  }
   // Read and drop the replaced answer's body, so its connection is released.
   first.text().catch(() => { /* Intentional ignore: this answer is replaced by the next. */ });
-  await pause(DROPPED_RETRY_MIN_MS + Math.random() * DROPPED_RETRY_SPREAD_MS, signal);
+  await pause(waitMs, signal);
   return sendOnce();
 }
 
@@ -995,10 +1040,11 @@ export class CloudApiRequestTransport {
         credentials: "include",
         signal,
       });
+      const epoch = reachEpoch;
       // Inside the reach check: a read that gets through on its second try was answered, not an outage.
       const response = await this.reachService(
         url,
-        () => (repeatable ? sendAgainIfCutOff(sendOnce, signal) : sendOnce()),
+        () => (repeatable ? sendAgainIfCutOff(sendOnce, signal, path, () => this.recordAnswer(epoch)) : sendOnce()),
         signal,
         isBackgroundRequest(path),
       );

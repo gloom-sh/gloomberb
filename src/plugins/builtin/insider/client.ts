@@ -80,13 +80,17 @@ async function pagedForm4s(provider: DataProvider, symbol: string, exchange: str
   const read = (offset: number) => provider.getSecFilingsPage!(symbol, { forms: INSIDER_FORMS, limit: FORM4_PAGE, offset }, exchange);
   const first = await read(0);
   let last = first;
+  let offset = 0;
   // A source that predates the filter lists every form: the Form 4s among them are kept, the pages read on.
   const forms = first.filings.filter((filing) => isInsiderForm(filing.form));
   return {
     forms,
     async more() {
       if (!last.hasMore || last.filings.length === 0) return false;
-      last = await read(last.nextOffset);
+      // A next page that is not past this one would answer the same filings again, and again: the list ends here.
+      if (!Number.isSafeInteger(last.nextOffset) || last.nextOffset <= offset) return false;
+      offset = last.nextOffset;
+      last = await read(offset);
       forms.push(...last.filings.filter((filing) => isInsiderForm(filing.form)));
       return last.filings.length > 0;
     },
