@@ -44,7 +44,7 @@ export function OverviewResearchTab({ width, height, focused }: TickerResearchTa
   const beta = useMemo(() => {
     const [left, right] = betaHistory ?? [];
     if (betaError || !left || !right) return null;
-    return buildOverviewBeta(buildRelationshipAnalysis(left.points, right.points, DEFAULT_RELATIONSHIP_CORRELATION_WINDOW).stats?.beta);
+    return buildOverviewBeta(buildRelationshipAnalysis(left.points, right.points, DEFAULT_RELATIONSHIP_CORRELATION_WINDOW).stats);
   }, [betaError, betaHistory]);
   const coin = useCoinOverview(ticker, financials, focused);
   const snapshot = useTickerSnapshotState(symbol, ticker);

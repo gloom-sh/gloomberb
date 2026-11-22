@@ -58,7 +58,7 @@ Correlation and relationship views calculate close-to-close returns between shar
 
 `CORR` also takes map series beside tickers, for example `CORR FRO, STNG, GEO:HORMUZ`, using the same `GEO:<name>` spelling and series as `G`. A map series is a daily count (vessel transits through a strait) that can be zero on a given day, where a return or log change is undefined, so CORR correlates its change in level between the same shared dates a price uses for its return: a stock's Friday-to-Monday return pairs with Monday's count minus Friday's, and weekend counts drop out. Pearson correlation is unit-free, so the level change needs no scaling. A map series is daily and usually a few days behind prices, so the shared dates end at its latest day. Enter on a pair with a map series charts both in `G`, since ratio and beta are price measures. When the server has no map series, or one name is not found, that row reads unavailable and every ticker pair still computes.
 
-The beta in `DES` uses the same regression as the default `GR`: one year of shared daily price returns against SPY. `GR` changes the estimate when you change the window or benchmark. Portfolio factor beta in `PORT` uses a separate 60-return sample. `DES` leaves beta blank if the required return history is unavailable.
+The beta in `DES` uses the same regression as the default `GR`: one year of shared daily price returns against SPY. `DES` omits beta with fewer than 200 paired daily returns, so a recent listing or a sparse history does not read as a one-year estimate. `GR` can show estimates for shorter samples, and changes the estimate when you change the window or benchmark. Portfolio factor beta in `PORT` uses a separate 60-return sample.
 
 Relationship graph controls sit in the query bar: the time range, the rolling observation window, correlation and the fit line. Each is clickable and shows its current state, and `t`, `p`, `c` and `f` still reach them from the keyboard. In both correlation views, `r` refreshes the selected histories. A failed refresh retains the last complete result with its original retrieval time behind the existing warning indicator; a new relationship pair or range cannot inherit that result. A rolling correlation requires the entire selected observation window and nonzero variance in that window; an older valid correlation does not replace a missing latest value. Headless results retain these limitations and the price-return basis. In narrow panes, `+` means enabled and `−` means disabled.
 
@@ -1520,6 +1520,9 @@ yield, but one that states only a trailing yield is screened on that, so the col
 does not claim a basis. A company's detail names its row's own on a Yield basis line,
 in the words `ticker` and `DVD` use: `latest distribution annualized` or `last 12
 months of distributions`, and no line when the statistics do not state one.
+
+EQS beta covers US listings, using weekly returns against SPY over two years
+of completed weeks. It requires at least 78 paired weekly returns.
 
 Outside the regular session a listing is priced at the last regular close and its
 move, with its market cap moved to that close, so a pre-market or after-hours print

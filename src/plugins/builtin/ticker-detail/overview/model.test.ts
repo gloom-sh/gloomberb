@@ -110,11 +110,18 @@ test("holdings and short interest read as fractions; blank, zero and past figure
 });
 
 test("the DES and default GR betas show the same basis without falling back to the unqualified number", () => {
-  const overview = buildOverviewBeta(0.5962);
-  const [regression] = buildRelationshipStatItems({ beta: 0.5962, alpha: 0, r: 0.34, rSquared: 0.116, stdError: 0, sampleSize: 250 }, "1Y", "SPY");
+  const stats = { beta: 0.5962, alpha: 0, r: 0.34, rSquared: 0.116, stdError: 0, sampleSize: 250 };
+  const overview = buildOverviewBeta(stats);
+  const [regression] = buildRelationshipStatItems(stats, "1Y", "SPY");
   expect(overview).toMatchObject({ value: "0.596", detail: "1Y daily vs SPY" });
   expect(regression).toMatchObject({ value: overview!.value, detail: overview!.detail });
-  expect(buildOverviewBeta(undefined)).toBeNull();
+  expect(buildOverviewBeta(null)).toBeNull();
+});
+
+test("DES hides measurable beta until it has 200 paired daily returns", () => {
+  expect(buildOverviewBeta({ beta: 0.5962, sampleSize: 5 })).toBeNull();
+  expect(buildOverviewBeta({ beta: 0.5962, sampleSize: 199 })).toBeNull();
+  expect(buildOverviewBeta({ beta: 0.5962, sampleSize: 200 })).toMatchObject({ value: "0.596", detail: "1Y daily vs SPY" });
 });
 
 test("declaring minor currency units preserves the reported amount and case-sensitive unit", () => {
