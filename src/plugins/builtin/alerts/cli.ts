@@ -5,7 +5,10 @@ import { firstDailyCheck, metricAvailabilityError, metricReadings } from "./metr
 import { ALERT_ADD_FORMS, ALERT_KINDS_TEXT, parseRuleAddArgs, RULE_US_DATA, ruleDelivery, type RuleAddRequest } from "./cli-forms";
 import { alertChangeEntry, appendAlertLog, type AlertLogAction } from "./fired-log";
 import { alertLogRule } from "./alert-log";
-import { alertListing, alertReadingAt, alertReadingText, isoUtc, listingWithCurrency, measureLabel, NOT_CHECKED_YET, readingSessionWords } from "./format";
+import {
+  alertBenchmarkListing, alertComparatorReadingText, alertListing, alertReadingAt, alertReadingCurrency, alertReadingText, isoUtc, listingWithCurrency,
+  measureLabel, NOT_CHECKED_YET, readingSessionWords,
+} from "./format";
 import { isQuoteStaleForCurrentSession } from "../../../market-data/quotes/freshness";
 import { alertQuoteListingFields, quoteAlertFields } from "./quotes";
 import { createEventAlert } from "./events";
@@ -567,14 +570,18 @@ type AlertListRow = Record<string, unknown> & {
 function priceRow(alert: AlertRule): AlertListRow {
   return {
     ...alert, kind: alert.metric?.kind ?? (alert.move ? "move" : "price"), rule: alert.metric ? metricDescription(alert) : undefined,
-    ...!alert.metric ? { session: alertSessionLabel(alert) } : {},
+    session: alertSessionLabel(alert),
     // A move's rule in the words it was added with: `up 3.00%`, `moves 0.50%`.
     ...alert.move ? { rule: `${moveRuleWords(alert)} from the previous close`, appOnly: true } : {},
     // The listing as it was kept: 7203:JPX, never 7203:JPX:JPX.
     target: alertListing({ symbol: alert.symbol, exchange: alert.exchange }),
-    // The listing it is checked on, in its currency, and its last reading in words with when it is from.
-    listing: alertListing(alert), currency: alert.lastQuoteCurrency ?? null,
+    // The listing it is checked on, the currency its readings are in (none for a ratio, RSI or a multiple), and its
+    // last reading in words with when it is from.
+    listing: alertListing(alert), currency: alertReadingCurrency(alert),
     lastReading: alertReadingText(alert), lastReadingAt: isoUtc(alertReadingAt(alert)) || null,
+    // What the reading is measured against: the slow average of a crossover, or the listing a ratio divides by.
+    comparatorReading: alertComparatorReadingText(alert) || null,
+    benchmarkListing: alertBenchmarkListing(alert) || null,
   };
 }
 
@@ -670,7 +677,9 @@ const plural = (count: number, word: string) => `${count} ${word}${count === 1 ?
 /**
  * One row as text and CSV give it. CSV keeps the columns it has always had in
  * their order, then Created (ISO UTC), the listing, its currency and the last
- * reading, in words and dated.
+ * reading, in words and dated, the session it is read in, and what that
+ * reading is measured against: the comparator's own reading and the
+ * benchmark listing of a ratio or RRG rule.
  */
 function textRow(row: AlertListRow): Record<string, unknown> {
   const price = row.kind === "price";
@@ -695,6 +704,8 @@ function textRow(row: AlertListRow): Record<string, unknown> {
     lastReading: row.lastReading ?? "",
     lastReadingAt: row.lastReadingAt ?? "",
     session: row.session ?? "",
+    comparatorReading: row.comparatorReading ?? "",
+    benchmarkListing: row.benchmarkListing ?? "",
   };
 }
 
@@ -1248,6 +1259,8 @@ export const alertsCliCommand: CliCommandDef = {
           { key: "createdAt", header: "Created", format: (value) => String(value ?? "") },
           { key: "triggeredAt", header: "Triggered", optional: true },
           { key: "session", header: "Session", optional: true },
+          { key: "comparatorReading", header: "Against", optional: true },
+          { key: "benchmarkListing", header: "Benchmark", optional: true },
         ],
         empty: "No alerts. Add one with gloom alerts add AAPL above 400, alerts add CRWV earnings --days 3, alerts add CPI --days 1, or alerts add CN PMI.",
       });

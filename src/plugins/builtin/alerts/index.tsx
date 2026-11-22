@@ -45,6 +45,7 @@ import {
   moveWizardFields,
   parseAlertCommandValues,
   parseAlertShortcutValues,
+  slashSpellsListing,
 } from "./command";
 import { ALERTS_PLUGIN_ID, POLL_INTERVAL_MS, POLL_SECONDS_KEY, PRICE_DELIVERY } from "./constants";
 import { alertHistoryLockNote, alertsHeadless } from "./headless";
@@ -92,16 +93,6 @@ let alertStream: AlertQuoteStream | null = null;
  * triggers or first gets a baseline.
  */
 const STREAM_PERSIST_MS = 60_000;
-
-/** BTC/USD, BRK/B and EUR/USD are one listing written with a slash, as `alerts add` reads them; XLK/SPY is not. */
-function slashSpellsListing(symbol: string): boolean {
-  try {
-    return parseListingArg(symbol).key !== symbol.toUpperCase();
-  } catch {
-    // Intentional ignore: text the listing reader refuses is no pair to divide, so the quote's own error stands.
-    return true;
-  }
-}
 
 export const alertsPlugin: GloomPlugin = {
   id: ALERTS_PLUGIN_ID,

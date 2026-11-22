@@ -12,9 +12,15 @@ export function alertSessionField(kind: "price" | "move"): WizardStep {
   return { key: `${kind}:session`, label: "Session", type: "select", defaultValue: "extended", dependsOn: { key: "kind", value: kind }, options: SESSIONS };
 }
 
-export function alertSessionLabel(rule: Pick<AlertRule, "regularHoursOnly">, short = false): string {
-  if (short) return rule.regularHoursOnly ? "Regular only" : "Reg. + ext.";
-  return SESSIONS[rule.regularHoursOnly ? 1 : 0]!.label;
+/**
+ * The session an alert's readings come from. A valuation or daily technical
+ * rule reads the regular session's price or settled close, never an extended
+ * print, so it is regular hours only however it was saved.
+ */
+export function alertSessionLabel(rule: Pick<AlertRule, "regularHoursOnly" | "metric">, short = false): string {
+  const regular = !!rule.regularHoursOnly || !!rule.metric;
+  if (short) return regular ? "Regular only" : "Reg. + ext.";
+  return SESSIONS[regular ? 1 : 0]!.label;
 }
 
 export function acceptsAlertSession(rule: Pick<AlertRule, "regularHoursOnly">, quote: Pick<Quote, "marketState" | "overnightPrice">): boolean {
