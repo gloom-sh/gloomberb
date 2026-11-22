@@ -138,3 +138,30 @@ test("a currency pair counts its quote currency per unit of its base, and prices
   ]);
   expect(result.warnings.filter((warning) => warning.includes("axis"))).toEqual([]);
 });
+
+test("a series whose history fails keeps the unit its quote, contract terms or symbol give, never a bare currency", async () => {
+  const chart: ChartSpec = {
+    version: CHART_SPEC_VERSION, viewport: { range: "1D", resolution: "5m" }, panels: [{ id: "main" }], studies: [],
+    series: ["^VIX", "DX-Y.NYB", "GC=F", "^RUT"].map((symbol) => ({
+      id: symbol, source: { kind: "security", instrument: { symbol }, fieldId: "market.price" },
+      style: "line", transform: "raw", axis: "auto", panelId: "main", interpolation: "none",
+    })),
+  };
+  const result = await resolveChartSpecData(chart, {
+    now: new Date("2026-11-22T06:29:00Z"),
+    loadFuturesPriceUnit: async (symbol) => symbol === "GC=F" ? "USD / troy oz" : null,
+    dataProvider: createTestDataProvider({
+      // ^RUT's quote fails too: its symbol still says it is an index.
+      getTickerFinancials: async (symbol) => {
+        if (symbol === "^RUT") throw new Error("No quote");
+        return { annualStatements: [], quarterlyStatements: [], priceHistory: [], quote: { symbol, currency: "USD",
+          instrumentType: symbol === "GC=F" ? "FUTURE" : "INDEX", price: 1, change: 0, changePercent: 0, lastUpdated: Date.parse("2026-11-20T22:00:00Z") } };
+      },
+      getPriceHistory: async () => { throw new Error("No bars"); },
+      getPriceHistoryForResolution: async () => { throw new Error("No bars"); },
+    }),
+  });
+  expect(result.series.map(({ id, unit, points }) => [id, unit, points.length])).toEqual([
+    ["^VIX", "points", 0], ["DX-Y.NYB", "points", 0], ["GC=F", "USD / troy oz", 0], ["^RUT", "points", 0],
+  ]);
+});

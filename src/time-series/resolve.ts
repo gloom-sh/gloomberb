@@ -879,6 +879,8 @@ async function resolveChartSpecPass(
     if (!calculationSeriesIds.has(seriesSpec.id)) return null;
     const { warnings, errors, priorityWarnings, coverageNotices } = quietSeriesIds.has(seriesSpec.id)
       ? { warnings: [] as string[], errors: [] as string[], priorityWarnings: [] as string[], coverageNotices: [] as string[] } : messages;
+    // The listing's own facts (its quote), read beside its history: a series whose history fails keeps the unit they give.
+    let listingFacts: Promise<TickerFinancials | null> | null = null;
     try {
       if (seriesSpec.source.kind === "capability") {
         if (!sources.resolveCapabilitySeries) {
@@ -943,6 +945,7 @@ async function resolveChartSpecPass(
       const needsFinancials = !isPriceOnlyMarketFieldId(source.fieldId)
         || !source.instrument.exchange?.trim();
       const financialsPromise = needsFinancials ? loadFinancials(source) : Promise.resolve(null);
+      listingFacts = financialsPromise;
       // A continuous future (HO=F) is known by its symbol: its terms load beside its
       // history and are read below. A failed read already answers null.
       loadPriceUnit(source, undefined).catch(logFailure("time-series-resolve", "Starting a futures price unit read failed"));
@@ -1103,7 +1106,14 @@ async function resolveChartSpecPass(
       const message = error instanceof Error ? error.message : String(error);
       errors.push(`${seriesMessageName(seriesSpec)}: ${message}`);
       if (error instanceof NoPriceHistoryError) onNoPriceHistory?.();
-      return unloadableSeries(seriesSpec, index, message);
+      const facts = await listingFacts?.catch(() => {
+        // Intentional ignore: the series already failed; without its quote it keeps the unit its symbol gives.
+        return null;
+      });
+      // A future's unit is its terms' (USD / troy oz), which load beside its history and never reject.
+      const contractUnit = seriesSpec.source.kind === "security"
+        ? await loadPriceUnit(seriesSpec.source, facts?.quote?.instrumentType || facts?.quoteMetadata?.instrumentType) : null;
+      return unloadableSeries(seriesSpec, index, message, facts ?? undefined, contractUnit);
     }
   }));
 

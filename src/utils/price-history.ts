@@ -263,8 +263,22 @@ export function isPriceHistoryStaleForCurrentWindow(
  * follows, and one written with a venue's suffix (GUBRF.IS) to that venue, whose hours its bars keep.
  */
 function listingSessionExchange(exchange: string | undefined, symbol?: string): string {
-  return canonicalExchange(exchange) || indexSessionVenue(symbol) || (symbol ? listingSuffixVenue(symbol)?.exchange : undefined) || "NYSE";
+  const venue = canonicalExchange(exchange);
+  return (venue && !US_SESSION_PUBLISHERS.has(venue) ? venue : "") || indexSessionVenue(symbol)
+    || (symbol ? listingSuffixVenue(symbol)?.exchange : undefined) || "NYSE";
 }
+
+/**
+ * US index publishers (S&P's SNP, Dow Jones's DJI, Nasdaq's NIM, Cboe's index
+ * feed, FTSE Russell's WCB) and US futures exchanges, which the session tables
+ * have no calendar for. Their bars are read on the US calendar, as the same
+ * symbol asked for bare is: under its venue, `^VIX:CXI` or `GC=F:CMX`, Friday's
+ * bars counted as behind all weekend, and a chart of it had none to show.
+ */
+const US_SESSION_PUBLISHERS: ReadonlySet<string> = new Set([
+  "SNP", "DJI", "NIM", "NASDAQ GIDS", "WCB", "CXI", "CBOE INDICES", "CHICAGO OPTIONS",
+  "CME", "CBT", "NYM", "CMX", "NYB", "CFE",
+]);
 
 interface ListingSessions {
   /** The open of the session trading at the time asked, if one is. */
