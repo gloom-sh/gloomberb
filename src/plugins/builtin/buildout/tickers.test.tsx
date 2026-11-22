@@ -40,7 +40,7 @@ const company = (ticker: string, exchange: string | null): BuildoutRow => ({
 });
 
 describe("the company table's tickers", () => {
-  test("every listing the app can open is one chip that opens it, and one it cannot read is plain text, not another chip", async () => {
+  test("every ticker the dataset names is one chip that opens its listing, with no day move, and a number with no venue is plain text", async () => {
     const state = createInitialState(createDefaultConfig("/tmp/gloomberb-buildout-tickers-test"));
     state.tickers.set("NVDA", createTestTicker("NVDA", "NVIDIA"));
     state.tickers.set("2330:TWSE", createTestTicker("2330", "TSMC", { exchange: "TWSE", currency: "TWD" }));
@@ -72,6 +72,8 @@ describe("the company table's tickers", () => {
     expect(lines[1]).toContain("2330 ");
     expect(lines[1]).not.toContain("TWSE");
     expect(lines[2]).toContain("981");
+    // A day move beside a symbol would carry no date: the quotes the app holds do not reach the column.
+    expect(lines.join("\n")).not.toMatch(/%|…/);
 
     for (const [y, x] of [[0, 2], [1, 2], [2, 1]] as const) {
       await act(async () => { await tui.setup().mockMouse.click(x, y); await tui.setup().renderOnce(); });

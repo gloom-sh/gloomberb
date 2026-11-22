@@ -77,8 +77,10 @@ test("OPX BTC-USD reports max pain and walls per expiry, settling at 08:00 UTC, 
   expect(text).toContain("1 BTC; OI counts BTC");
   expect(text).toContain("Strikes · 30 Oct '26 08:00 UTC");
   expect(text).toContain("87,461.9");
-  // The book is read live, not a day-old OI session.
+  // The book is read live, not a day-old OI session; its open interest is dated to the minute, not called live.
   expect(freshness.status).toBe("live");
+  expect(text).toMatch(/Open interest as of +2026-10-22 22:48 UTC\n/);
+  expect(text).not.toMatch(/OI live|, live\b/);
 });
 
 test("a bare BTC is read as the coin for OPX, and a coin without options is answered with the ones that have them", () => {

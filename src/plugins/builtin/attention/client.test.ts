@@ -71,6 +71,7 @@ test("a ticker outside the free preview lists the preview's rows with the lock l
   expect((await load(api, null)).errors?.[0]).toStartWith("Free shows the top 3 of 6 tickers, for the latest hour.");
 
   const collecting = { getCloudAttention: async () => ({ ...attentionPreview(), status: "collecting" as const, rows: [], sectors: [], countries: [], counts: { rows: 0, sectors: 0, countries: 0 } }) };
-  expect(await load(collecting, "DUOL")).toMatchObject({ sections: [{ rows: [], empty: "Waiting for privacy-qualified research activity." }] });
+  expect(await load(collecting, "DUOL")).toMatchObject({ sections: [{ rows: [], empty: "No privacy-qualified research activity is published yet, for DUOL or any ticker." }] });
   expect((await load(collecting, "DUOL")).errors).toBeUndefined();
+  expect(await load(collecting, null)).toMatchObject({ sections: [{ rows: [], empty: "Waiting for privacy-qualified research activity." }] });
 });

@@ -91,10 +91,12 @@ export interface DatasetTicker {
 }
 
 /**
- * The dataset's tickers, drawn one way: a chip for each the app can look up,
- * price and open, a number-only Asian listing through the venue the dataset
- * names, and bold plain text for one it cannot read. Never a chip that skips
- * the lookup and so looks different from the resolved ones.
+ * The dataset's tickers, drawn one way: a chip for each, as the dataset writes
+ * it (a number-only Asian listing through the venue the dataset names), and
+ * bold plain text for a number it names no venue for. A chip is never looked
+ * up or priced here: the table's own columns carry the dataset's figures, and
+ * a day move beside the symbol would carry no date, since the dataset's
+ * companies list on markets that are shut at different times.
  */
 export function ListingBadges({ tickers, width, fallbackColor = colors.textBright }: {
   tickers: readonly DatasetTicker[];
@@ -113,7 +115,7 @@ export function ListingBadges({ tickers, width, fallbackColor = colors.textBrigh
     }
     return { symbols: shown, listings: known };
   }, [tickers]);
-  return <TickerBadgeList symbols={symbols} width={width} fallbackColor={fallbackColor} listings={listings} />;
+  return <TickerBadgeList symbols={symbols} width={width} fallbackColor={fallbackColor} listings={listings} listed />;
 }
 
 export function RelatedCompaniesLine({

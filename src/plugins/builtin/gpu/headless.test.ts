@@ -23,6 +23,18 @@ test("exports preserve archive evidence and effective dates while a preview stay
     provenanceLabel: "archived page, reconstructed", oldAvailability: "unavailable", newAvailability: "available" });
 });
 
+test("prices read off provider pages are labelled observed in the history and changes exports, with the machine provenance kept", async () => {
+  const ctx = createTestHeadlessContext();
+  const point = gpuRow();
+  ctx.apiClient.getCloudGpuBoard = async () => gpuBoard();
+  ctx.apiClient.getCloudGpuHistory = async () => ({ generatedAt: point.observedAt, points: [point], effectivePoints: [] });
+  ctx.apiClient.getCloudGpuEvents = async () => ({ generatedAt: point.observedAt, events: [gpuEvent()] });
+  const history = await gpuHeadless.load(createTestHeadlessArgs({ options: { tab: "history" } }), ctx);
+  expect(history.sections[0]!.rows![0]).toMatchObject({ provenance: "live", provenanceLabel: "observed price" });
+  const changes = await gpuHeadless.load(createTestHeadlessArgs({ options: { tab: "changes" } }), ctx);
+  expect(changes.sections[0]!.rows![0]).toMatchObject({ provenance: "live", provenanceLabel: "observed price" });
+});
+
 test("a GPU the free board leaves out reads from its own free preview, printed to the cent with its moves left to Pro", async () => {
   const ctx = createTestHeadlessContext();
   const access = { tier: "preview" as const, preview: true, locked: true };

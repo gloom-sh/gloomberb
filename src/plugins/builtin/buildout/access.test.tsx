@@ -8,6 +8,8 @@ import { appReducer, createInitialState } from "../../../state/app/context";
 import { createTestPaneConfig, TestPaneFrame } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
+import { renderedReportNotices } from "../../../cli/pane-functions/report-notices";
+import { createRemoteUiRegistry, RemoteUiRegistryProvider } from "../../../remote/semantic-tree";
 import { getBuildoutProToken } from "./model";
 import { BuildoutPane } from "./pane";
 
@@ -16,6 +18,7 @@ const account = { subscription: { active: true } } as BuildoutAccountResponse;
 const user = { id: "fixture-user" } as AuthUser;
 let failedRead: "session" | "subscription" | "token" | null = null;
 let dataRequests: string[] = [];
+let published = createRemoteUiRegistry();
 let signedIn: ReturnType<typeof spyOn<typeof apiClient, "isSignedIn">>;
 let session: ReturnType<typeof spyOn<typeof apiClient, "getSession">>;
 let subscription: ReturnType<typeof spyOn<typeof apiClient, "getBuildoutAccount">>;
@@ -23,6 +26,7 @@ let token: ReturnType<typeof spyOn<typeof apiClient, "getBuildoutToken">>;
 beforeEach(() => {
   failedRead = null;
   dataRequests = [];
+  published = createRemoteUiRegistry();
   signedIn = spyOn(apiClient, "isSignedIn").mockReturnValue(true);
   session = spyOn(apiClient, "getSession").mockImplementation(async () => {
     if (failedRead === "session") throw new Error("private session details");
@@ -63,7 +67,7 @@ async function mount() {
       {(body) => <BuildoutPane paneId={id} paneType="buildout" focused {...body} />}
     </TestPaneFrame>;
   }
-  await act(async () => { await tui.render(<Harness />); });
+  await act(async () => { await tui.render(<RemoteUiRegistryProvider registry={published}><Harness /></RemoteUiRegistryProvider>); });
 }
 
 for (const read of ["session", "subscription", "token"] as const) {
@@ -88,6 +92,16 @@ for (const read of ["session", "subscription", "token"] as const) {
     expect(dataRequests.length).toBeGreaterThan(requestsBefore.length);
   });
 }
+
+test("the company tables' footer says their market cap, growth and 1Y carry no date", async () => {
+  await mount();
+  const frame = await tui.waitForFrameToContain("All Companies");
+  expect(frame).toContain("cap, growth and 1Y undated");
+  // A report of the pane (`fn TBO`) prints the same fact in full.
+  expect(renderedReportNotices(published.snapshot()).notices).toEqual([
+    "Market cap, growth and 1Y are undated: the dataset states no market date for market cap and 1Y and no period for growth.",
+  ]);
+});
 
 test("initial access failure has a retry that recovers without loading free data", async () => {
   failedRead = "session";
