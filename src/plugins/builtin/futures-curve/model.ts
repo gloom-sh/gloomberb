@@ -983,8 +983,10 @@ export function curveIncompleteDetail(data: Pick<FuturesCurvePayload, "catalogue
 
 /**
  * The archived curve on a past date in the live curve's shape, so the pane
- * draws it the same way. Its week- and month-back ghosts are the curves as
- * they stood then, contracts that have since expired included. A row is dated
+ * draws it the same way. Its week- and month-back ghosts are the archive's
+ * curves on those dates: contracts that have since expired are included from
+ * the day the archive holds them, and a curve before then lists only the
+ * months still listed on that day (a partial curve, as its gaps say). A row is dated
  * by its session, or by the earlier session its carried price comes from.
  * Percentiles and session changes are not archived, so they stay unavailable.
  */
