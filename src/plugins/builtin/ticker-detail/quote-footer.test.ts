@@ -72,7 +72,8 @@ test("a current quote's footer names its source and its time, as `quote` ends", 
 
 // The ticker footer read "Gloom Cloud · 12:25 UTC" the day after too, as if the print were today's.
 test("a quote from before today names its day in every width of the footer", () => {
-  const quote = { ...nvda, marketState: "POST" as const, lastUpdated: Date.parse("2026-11-11T20:59:00Z") };
+  const quote = { ...nvda, marketState: "POST" as const, regularCloseSessionDate: "2026-11-11", changeSessionDate: "2026-11-11",
+    lastUpdated: Date.parse("2026-11-11T20:59:00Z") };
   at("2026-11-12T00:20:00Z");
   const line = segments(quote).find((segment) => segment.id === "ticker-research-source")!;
   const texts = [line.parts[0]!.text, ...(line.variants ?? []).map((parts) => parts[0]!.text)];

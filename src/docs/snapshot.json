@@ -1877,6 +1877,10 @@
     },
     {
      "type": "paragraph",
+     "text": "With Smart App Control on, Windows blocks the installer and cannot be told to run it: use the browser version at [term.gloom.sh](https://term.gloom.sh) instead."
+    },
+    {
+     "type": "paragraph",
      "text": "Terminal only, in PowerShell:"
     },
     {
@@ -2390,6 +2394,10 @@
     {
      "type": "paragraph",
      "text": "CLI reports and screenshots end with the same facts in one dated line: `Fri 9 Oct close · 15 min delayed · markets closed until Mon`, or `Sat 10 Oct 00:15 UTC · 12 h delayed` for news. See [CLI](/docs/cli-functions)."
+    },
+    {
+     "type": "paragraph",
+     "text": "A bid and ask are dated by when they were quoted, not by the last trade: a fund's book can be quoted after hours while its last trade is from the close. Where the source gives no quote time they say `not dated`. `DES`, `gloom ticker`, the order ticket and the price picker show it beside the book, and a portfolio or watchlist can add the `BOOK UTC` column."
     },
     {
      "type": "paragraph",
@@ -3189,6 +3197,10 @@
        "Adds a price alert from the command bar"
       ],
       [
+       "`SA EWJ/ACWI above 0.60`",
+       "Adds a ratio alert: two listings joined by a slash are read as their ratio. A share class or currency pair written with a slash (`BRK/B`, `EUR/USD`) stays one listing"
+      ],
+      [
        "`gloom alerts add ...`",
        "Adds any alert from the shell; `gloom help alerts` lists every form"
       ]
@@ -3298,6 +3310,10 @@
     {
      "type": "paragraph",
      "text": "**History** in `ALRT`, and `gloom fn ALRT --tab history`, lists the alerts that went off on this device, newest first, with the figure and the quote behind each, beside the alerts you created, re-armed or deleted."
+    },
+    {
+     "type": "paragraph",
+     "text": "**Levels** dates each rule's last quote to the minute in UTC (**Quote (UTC)**, with the delayed clock for a 15-minute delayed quote, or the close a daily rule read), and when the rule was created (**Since (UTC)**). The detail below gives the quote's time to the second."
     }
    ]
   },
@@ -6289,8 +6305,8 @@
      "type": "list",
      "items": [
       "An option only the text report reads, such as `--limit`, fails `shot` with exit 1 and names the `fn` command that reads it.",
-      "`shot` saves its PNG, prints a Reason line and exits 0 when the pane drew an error, was empty, still loading or behind an access gate.",
-      "`shot --strict` exits 2 in those cases instead, still saving the PNG and printing the Reason.",
+      "`shot` saves its PNG, prints a Reason line and exits 0 when the pane drew an error, was still loading, was behind an access gate or drew a column with no value in any row. A pane that drew nothing but its empty state exits 1, as `fn` does for an empty report, and still saves the PNG.",
+      "`shot --strict` exits 2 in all those cases, prints the Reason and saves no PNG, leaving any file already at `--output` as it was.",
       "A name nothing opens (`fn volsurf SPY`) lists up to five functions closest by name, keyword and description, and how to search the catalog.",
       "`shot` lays out 720 to 2400 wide and 360 to 1800 tall, drawing the PNG at twice that. Other sizes are clamped, with a warning."
      ]
@@ -6367,11 +6383,21 @@
     },
     {
      "type": "paragraph",
-     "text": "`alerts list --csv` keeps its first eight columns in their original order, and adds five after them:"
+     "text": "`alerts list --csv` keeps its first eight columns in their original order, and adds the rest after them:"
     },
     {
      "type": "code",
-     "code": "id,kind,target,trigger,eventDate,status,lastCheckedPrice,triggeredAt,createdAt,listing,currency,lastReading,lastReadingAt"
+     "code": "id,kind,target,trigger,eventDate,status,lastCheckedPrice,triggeredAt,createdAt,listing,currency,lastReading,lastReadingAt,session,comparatorReading,benchmarkListing"
+    },
+    {
+     "type": "list",
+     "items": [
+      "`triggeredAt` and `createdAt` are ISO 8601 in UTC, to the second (`2026-11-20T21:04:05Z`), as is `lastReadingAt`, the time of the quote or close the last reading was taken from.",
+      "`session` is the session a rule reads: regular hours only for a valuation or daily technical rule, which reads the regular session's price or close.",
+      "`comparatorReading` is what a moving-average rule's last reading was measured against, with its unit and close: the slow average of a crossover (`59.73 USD on the 2026-11-20 close`), the average a close is compared with.",
+      "`benchmarkListing` is the benchmark of a ratio or relative-strength rule, as `ACWI:NASDAQ`.",
+      "A ratio has no currency, so its `currency` is empty."
+     ]
     },
     {
      "type": "heading",

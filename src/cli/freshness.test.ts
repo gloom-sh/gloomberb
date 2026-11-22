@@ -114,10 +114,11 @@ describe("quote status line", () => {
     expect(freshness.asOf).toBe("2026-10-15T20:00:00.000Z");
     expect(formatFreshnessLine(freshness))
       .toBe("Source: Gloom Cloud · US trading day Thu 15 Oct 2026 close · 15 min delayed · pre-market open · regular session opens 13:30 UTC, 09:30 ET");
-    // A pre-market trade dates the line by its own time.
+    // A pre-market trade moves beside that close by its own time (extendedPrintTime): the line still dates the close the headline holds.
     const printed = { ...waiting, preMarketPrice: 201.29, extendedSessionPrint: true, lastUpdated: Date.parse("2026-10-16T08:03:45Z") };
+    expect(quotesFreshness([printed], undefined, Date.parse("2026-10-16T08:14:00Z"))!.asOf).toBe("2026-10-15T20:00:00.000Z");
     expect(status([printed], "2026-10-16T08:14:00Z"))
-      .toBe("Fri 16 Oct 2026 08:03 UTC · 15 min delayed · pre-market open · regular session opens 13:30 UTC, 09:30 ET");
+      .toBe("US trading day Thu 15 Oct 2026 close · 15 min delayed · pre-market open · regular session opens 13:30 UTC, 09:30 ET");
   });
 });
 

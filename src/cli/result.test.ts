@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { printCliResult, serializeCliError, serializeCliResult, type CliResultRenderOptions } from "./result";
 import { windowTextRows } from "./row-window";
 import { printCliError } from "./errors";
+import { portableCsv } from "./csv-export";
 import { captureConsole } from "../test-support/console";
 import { setCliColorEnabledOverride, setCliPlainOverride, setCliWidthOverride } from "../utils/cli-output";
 import type { CliGlobalOptions } from "./options";
@@ -218,6 +219,21 @@ describe("serializeCliResult", () => {
     const cited = { data: { rows: [] }, exportFreshness: freshness };
     expect(JSON.parse(serializeCliResult(cited, { ...baseOptions, format: "json" }))).toEqual({ ok: true, data: { rows: [] }, source });
     expect(serializeCliResult(cited, baseOptions, { text: () => "Report" })).toBe("Report");
+  });
+
+  // Tencent's row of `quote 0700:HKEX XYZ:NYSE --csv`, as of its 08:08 UTC close, read "Observation date:" of a New York time.
+  test("rows dated apart: the observation date beside each row says it is the newest row's, never that row's", () => {
+    const freshness: ReportFreshness = {
+      source: "Gloom Cloud", asOf: "2026-11-20T21:00:00.000Z", status: "delayed", retrievedAt: "2026-11-21T01:00:00.000Z",
+    };
+    const rows = [{ symbol: "0700:HKEX", updatedAt: "2026-11-20T08:08:00.000Z" }, { symbol: "XYZ:NYSE", updatedAt: "2026-11-20T21:00:00.000Z" }];
+    const byRow = { exportIdentity: (row: Record<string, unknown>) => ({ symbolOrSeries: String(row.symbol), asOf: String(row.updatedAt) }) };
+    const csv = (data: typeof rows) => serializeCliResult({ data, freshness }, { ...baseOptions, format: "csv" }, byRow);
+    const portable = portableCsv(csv(rows)).trim().split("\n");
+    expect(portable[1]).toStartWith("0700:HKEX,2026-11-20T08:08:00.000Z,0700:HKEX,,,Gloom Cloud,2026-11-20T08:08:00.000Z,");
+    expect(portable[1]).toContain("| Observation date: 2026-11-20T21:00:00.000Z (the newest row's; each row's as_of is its own) |");
+    // One row, or rows of one time, are what the observation date says.
+    expect(csv(rows.slice(1))).toContain("\n# Observation date: 2026-11-20T21:00:00.000Z\n");
   });
 });
 

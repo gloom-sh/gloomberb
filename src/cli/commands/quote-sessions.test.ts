@@ -210,8 +210,9 @@ test("quote, RV and valuation read the same close after hours, with the extended
     expect(valuation.metric("Dividend Yield (forward) (%)")).toBeCloseTo(104 / close, 6);
     expect(valuation.metric("Enterprise Value (USD)")).toBeCloseTo(Number(row.marketCap) + 5e9, 0);
     expect(Number(row.evSales) * 50e9).toBeCloseTo(Number(row.marketCap) + 5e9, -1);
-    // Dated by its quote as `quote` dates it, by that quote's trading day close, never by when the fundamentals were fetched.
-    expect(valuation.freshness?.asOf).toBe(new Date(quote!.lastUpdated).toISOString());
+    // Dated by its quote as `quote` dates it, at that quote's trading day close (16:00 New York), never at the print after
+    // it nor by when the fundamentals were fetched.
+    expect(valuation.freshness?.asOf).toBe("2026-10-09T20:00:00.000Z");
     expect(valuationFreshness(financials.get(symbol)!, saturday)).toMatchObject({ asOfClose: "2026-10-09", tradingDayMarket: "US" });
     expect(quotesFreshness([quote], undefined, saturday)).toMatchObject({ asOfClose: "2026-10-09" });
   });
@@ -263,7 +264,9 @@ test("QQ sets Chg Basis beside the move it dates, before the extended print, whi
       const ctx = { signal: new AbortController().signal, marketData: createTestDataProvider({ getQuote: async () => quote }) } as HeadlessPaneContext;
       const input = { symbols: ["INTU"], argument: ["INTU"], rawArgument: "INTU", options: {} };
       const board = await quoteComparisonHeadless.load(input, ctx);
-      expect(board.columns?.map((column) => column.header)).toEqual(["Ticker", "Name", "Last", "Change", "Change %", "Chg Basis", header, "Session", "Feed"]);
+      // The print's own time is exported last, after the columns a script reads by position.
+      expect(board.columns?.map((column) => column.header))
+        .toEqual(["Ticker", "Name", "Last", "Change", "Change %", "Chg Basis", header, "Session", "Feed", `${header} Updated`]);
       // Thursday's move is from Wednesday's close; the extended print is measured from Thursday's, the close Last shows.
       expect(board.rows[0]).toMatchObject({ price: 310.02, change: -3.22, changeBasis: "vs Wed 18 Nov close" });
       expect(board.rows[0]!.extendedChangePercent).toBeCloseTo(((quote.overnightPrice ?? 279.74) / 310.02 - 1) * 100, 6);
@@ -361,8 +364,8 @@ test("a pre-market nothing has traded in reads as the close it stands at in quot
     const board = await quoteComparisonHeadless.load({ symbols: ["PLTR"], argument: ["PLTR"], rawArgument: "PLTR", options: {} }, ctx);
     expect(board.rows[0]).toMatchObject({ price: 200.5, extendedSession: null, updatedAt: Date.parse(thursdayClose) });
     expect(boardHeadlineQuote(waiting)).toMatchObject({ price: 200.5, change: -0.47, lastUpdated: Date.parse(thursdayClose) });
-    // A quote with a pre-market trade keeps its time.
-    expect(boardHeadlineQuote(printed).lastUpdated).toBe(printed.lastUpdated);
+    // A board has no column for a pre-market trade: its row holds the close, dated at the close.
+    expect(boardHeadlineQuote(printed)).toMatchObject({ price: 200.5, lastUpdated: Date.parse(thursdayClose) });
   } finally {
     setSystemTime();
   }

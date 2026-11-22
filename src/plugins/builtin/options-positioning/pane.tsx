@@ -46,7 +46,9 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { useCloudAccessFooter } from "../shared/cloud-upgrade";
 import { useCloudDisplayScope } from "../../../api-client/plan-access";
-import { COIN_OPTIONS_HINT, isCoinWithoutOptions, optionsUnavailableTitle } from "../../../market-data/options-alternatives";
+import {
+  COIN_OPTIONS_HINT, isCoinWithoutOptions, optionsUnavailableHint, optionsUnavailableTitle, unservedOptionsVenue,
+} from "../../../market-data/options-alternatives";
 import {
   loadGamma,
   loadOpenInterest,
@@ -199,6 +201,8 @@ export function OptionsPositioningPane(props: PaneProps) {
   const { symbol } = usePaneTickerIdentity();
   // A coin nothing lists options on (SOL-USD) says which coins have them, before any request.
   if (symbol && isCoinWithoutOptions(symbol)) return <EmptyState title={optionsUnavailableTitle(parsePublicTickerKey(symbol).symbol)} hint={COIN_OPTIONS_HINT} />;
+  // So does a listing whose venue lists options Gloom does not serve (0700 on HKEX), never "no listed options".
+  if (symbol && unservedOptionsVenue(symbol)) return <EmptyState title={optionsUnavailableTitle(symbol)} hint={optionsUnavailableHint(symbol)} />;
   // A new underlying starts over rather than relabelling the last one's data.
   return symbol ? <OptionsPositioningView key={symbol} {...props} symbol={symbol} />
     : <EmptyState title="Choose an option underlying." />;

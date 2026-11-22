@@ -13,7 +13,7 @@ import {
   expiryIsoDate, findListedExpiry, formatDaysToExpiry, daysToExpiry, isLiveOptionExpiry, missingExpiryMessage, missingExpiryText, optionExpiryVenue,
   readOptionExpiration,
 } from "../../../utils/option-expiry";
-import { canonicalTickerKey } from "../../../utils/exchanges";
+import { canonicalTickerKey, displayTickerKey } from "../../../utils/exchanges";
 import {
   COIN_OPTIONS_HINT, coinOptionsAlternativesText, isCoinWithoutOptions, isOptionsUnavailableError, listedOptionsAlternative,
   optionsUnavailableDetails, optionsUnavailableHint, optionsUnavailableTitle,
@@ -412,9 +412,9 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     role: "report-failure",
     label: "Options not served",
     getMetadata: () => ({
-      message: optionsUnavailableTitle(effectiveTicker),
+      message: optionsUnavailableTitle(effectiveTicker, effectiveExchange),
       details: isCoinWithoutOptions(effectiveTicker) ? coinOptionsAlternativesText("fn OMON")
-        : optionsUnavailableDetails(effectiveTicker, (symbol) => `gloom fn OMON ${symbol}`),
+        : optionsUnavailableDetails(effectiveTicker, (symbol) => `gloom fn OMON ${symbol}`, effectiveExchange),
     }),
   } : null);
 
@@ -1002,11 +1002,12 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   }
   if (error && !chain && isOptionsUnavailableError(error)) {
     // A future, commodity or FX pair with no chain of its own: the listed fund whose options stand in, and OSA on it.
+    // A listing whose venue lists options (0700 on HKEX): that Gloom does not serve them, and what it does serve.
     const alternative = listedOptionsAlternative(effectiveTicker);
     return (
       <EmptyState
-        title={optionsUnavailableTitle(effectiveTicker)}
-        hint={optionsUnavailableHint(effectiveTicker)}
+        title={optionsUnavailableTitle(effectiveTicker, effectiveExchange)}
+        hint={optionsUnavailableHint(effectiveTicker, effectiveExchange)}
         actions={alternative ? <>
           <Button label={`${alternative.symbol} options`} onPress={() => createPaneFromTemplate("options-pane", { symbol: alternative.symbol })} />
           <Button label={`OSA ${alternative.symbol}`} onPress={() => createPaneFromTemplate("options-scenario-pane", { symbol: alternative.symbol })} />
@@ -1016,7 +1017,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   }
   if (error && !chain) return <EmptyState title="Options chain unavailable." message={error} />;
   if (!chain || expirationDates.length === 0) {
-    return <EmptyState title={`No options available for ${effectiveTicker}.`} />;
+    return <EmptyState title={`No options available for ${displayTickerKey(effectiveTicker)}.`} />;
   }
 
   const positionContracts = isOpt && parsed

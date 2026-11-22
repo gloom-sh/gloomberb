@@ -14,6 +14,7 @@ import { resolveTickerActivation } from "../../../layout/ticker-navigation";
 import { retargetTickerPane } from "../../../layout/ticker-retarget";
 import { getPaneDisplayTitle } from "../pane/title";
 import { tickerLinkMenuItems } from "./ticker-link-menu";
+import { buildQuoteMonitorPaneTitle } from "../../../plugins/builtin/ticker-detail/settings";
 
 const panes = new Map<string, PaneDef>([
   ["portfolio-list", {
@@ -381,6 +382,10 @@ test("a pane title names each ticker key its template wrote by the venue's code,
   expect(titled("RIPL AAPL, 9992:XHKG")).toBe("RIPL AAPL, 9992:HKEX");
   expect(titled("FA AAPL")).toBe("FA AAPL");
   expect(titled("Pop Mart 9992:XHKG notes")).toBe("Pop Mart 9992:XHKG notes");
+  // A Quote Monitor window, saved under its listings' stored keys, reads as its cards do (QQ read "0700:XHKG · XYZ:XNYS").
+  expect(titled("0700:XHKG · XYZ:XNYS")).toBe("0700:HKEX · XYZ:NYSE");
+  expect(titled("0700:XHKG · XYZ:XNYS +2")).toBe("0700:HKEX · XYZ:NYSE +2");
+  expect(titled(buildQuoteMonitorPaneTitle(["0700:XHKG", "XYZ:XNYS", "AAPL"]))).toBe("0700:HKEX · XYZ:NYSE · AAPL");
 });
 
 test("a coin's pane title names its pair alone, never the crypto venue's code", () => {

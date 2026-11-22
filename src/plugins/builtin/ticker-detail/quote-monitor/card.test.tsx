@@ -119,7 +119,8 @@ test("a card of a listing that no longer trades says when, not that its quote is
   }
 });
 
-test("each card says what its own price is as of: Hong Kong's close beside a delayed New York after hours", async () => {
+// XYZ's Friday close read "CLOSED · Sat 00:34 UTC", the time of the after-hours print beside it, which said no time.
+test("each card says what its own price is as of: Hong Kong's close beside New York's, its after-hours print at its own time", async () => {
   const clock = spyOn(Date, "now").mockReturnValue(Date.parse("2026-11-06T21:35:00Z"));
   const hsi: Quote = {
     symbol: "^HSI", name: "HANG SENG INDEX", instrumentType: "INDEX", currency: "HKD", exchangeName: "HKSE",
@@ -134,7 +135,14 @@ test("each card says what its own price is as of: Hong Kong's close beside a del
   try {
     const ready = (quote: Quote) => ({ ...createIdleEntry<Quote>(), phase: "ready" as const, data: quote });
     expect(await renderCard(ready(hsi), 40, 6)).toContain("CLOSED · 08:09 UTC");
-    expect(await renderCard(ready(aapl), 40, 6)).toContain("15 min delayed · 21:20 UTC");
+    // The close at 21:00 UTC; the print, too long with its time beside the change, on a row of its own.
+    const tall = await renderCard(ready(aapl), 40, 6);
+    expect(tall).toContain("15 min delayed · 21:00 UTC");
+    expect(tall).toContain("After-Hours 21:20 UTC $270.90 +0.15%");
+    // A wider card sets it, time and all, beside the change.
+    const atClose = await renderCard(ready(aapl), 60, 5);
+    expect(atClose).toContain("After-Hours 21:20 UTC $270.90 +0.15%");
+    expect(atClose).toContain("15 min delayed · 21:00 UTC");
     // A short card keeps its sparkline's rows; the line waits for room.
     expect(await renderCard(ready(hsi), 40, 4)).not.toContain("UTC");
   } finally {
@@ -152,7 +160,7 @@ test("a narrow card sets an extended print's move only beside its price, as a wi
   };
   try {
     const entry = { ...createIdleEntry<Quote>(), phase: "ready" as const, data: apple };
-    expect(await renderCard(entry, 60, 4)).toContain("After-Hours $336.08 -0.17%");
+    expect(await renderCard(entry, 60, 4)).toContain("After-Hours 22:35 UTC $336.08 -0.17%");
     for (const width of [20, 26, 34]) {
       const card = await renderCard(entry, width, 4);
       expect(card, String(width)).toContain("+2.37%");

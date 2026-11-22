@@ -19,7 +19,7 @@ import { objectVersion } from "../../../utils/object-version";
 import { columnContextVersion, PERPETUAL_COLUMN_IDS } from "./cell-version";
 import { getColumnValue, type ColumnContext } from "./metrics";
 import { RANGE_FROM_BARS_NOTE } from "../../../portfolio/column-values";
-import { periodPnlFigure, tickerDisplayName } from "../../../portfolio/column-values";
+import { getRowAsOfIso, periodPnlFigure, tickerDisplayName } from "../../../portfolio/column-values";
 import { listedSymbol } from "../../../portfolio/listed-symbol";
 import { displayWidth } from "../../../utils/format";
 import { dropColumnsToFit, markHiddenTableColumns } from "../../../components/ui/table-layout";
@@ -366,6 +366,11 @@ export function PortfolioTickerTable({
     const eligible = sizedColumns.filter((column) => !hiddenCompanyRef.current.ids.has(column.id));
     return hiddenColumnIds ? markHiddenTableColumns(eligible, eligible.filter((column) => !hidden.has(column.id))) : sizedColumns;
   }, [hiddenColumnIds, sizedColumns]);
+  // The Export CSV dates each row as its AS OF does: a book at the latest print by the print its LAST is.
+  const exportAsOf = useCallback(
+    (ticker: TickerRecord) => getRowAsOfIso(ticker, tableFinancialsMap.get(ticker.metadata.ticker), columnContext),
+    [columnContext, tableFinancialsMap],
+  );
   // Over a period, each currency's part under the rows, so P&L adds up to the header's total as portfolio show --from prints it.
   const periodLines = columnContext.periodPnl?.lines ?? null;
   const summaryRows = useMemo<TickerTableSummaryRow[] | undefined>(() => {
@@ -422,6 +427,7 @@ export function PortfolioTickerTable({
       summaryRows={summaryRows}
       rootHeight={rootHeight}
       exportName={exportName}
+      exportAsOf={exportAsOf}
       columnReorder={columnReorder}
       groups={groups}
       onToggleGroup={onToggleGroup}

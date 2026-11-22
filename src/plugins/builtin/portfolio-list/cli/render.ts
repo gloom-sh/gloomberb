@@ -47,6 +47,7 @@ import {
   EXTENDED_SESSION_LABELS,
   exchangeShortName,
   extendedPrintSession,
+  extendedPrintTime,
   getActiveQuoteDisplay,
   getCompletedRegularSessionDisplay,
   getExtendedSessionDisplay,
@@ -70,9 +71,11 @@ import { listedMarketCapitalization, selectMarketCapitalization } from "../../..
 import { chunked, LIST_FINANCIALS_CONCURRENCY, mapWithConcurrency } from "../../../../utils/concurrency";
 import { liveMarketCapitalization } from "../../../../market-data/quotes/live-valuation";
 import { delistingLabel } from "../../../../market-data/quotes/delisting";
+import { formatExtendedPrintAsOf } from "../../../../market-data/quotes/time";
 import { instrumentFromTicker } from "../../../../market-data/request-types";
 import { toMarketDataContext } from "../../../../market-data/selectors";
 import { cliFreshnessFooter } from "../../../../cli/result";
+import type { ExportIdentity } from "../../../../cli/export-source";
 import { renderReportGlossary, reportGlossary, type GlossaryEntry } from "../../../../cli/glossary";
 import { quotesFreshness, rowsFreshness } from "../../../../cli/freshness";
 import type { BrokerAccount } from "../../../../types/trading";
@@ -606,7 +609,7 @@ export async function valuePortfolioPositions({
           unrealizedPnl: known(pnl), baseCurrency: currency, dateAcquired: position.dateAcquired ?? null,
           pnlBasis: selectedPnl.basis, brokerUnrealizedPnl: known(position.unrealizedPnl), brokerPnlCurrency: positionCurrency, brokerPnlAsOf: null,
           // Only at a nominal price: `quoteAsOf` is the last print, older than the session that price is for.
-          ...quotePriceKindField(quote) } });
+          ...quotePriceKindField(quote), ...extendedTimeField(extended, quote) } });
     }
   }
 
@@ -841,16 +844,50 @@ export function listingLabel(ticker: TickerRecord): string {
   return savedListingName(ticker).key;
 }
 
-/** One cell per extended column: the print and its move from the close, as `quote` prints it, or blank. */
+/**
+ * One cell per extended column: the print, its move from the close and when
+ * it was observed, as `quote` prints it (`$70.60 +1.35% Sat 00:34 UTC`; Last
+ * is the close, dated at the close), or blank.
+ */
 function extendedCells(
   sessions: readonly ExtendedSession[],
   extended: ExtendedSessionDisplay | null,
   quote: CollectionQuote | undefined,
   assetCategory: string | undefined,
 ): string[] {
-  return sessions.map((session) => extended?.session === session && quote
-    ? `${formatListPrice(extended.price, quote, assetCategory)}${extended.mark ? " mid" : ""} ${colorBySign(formatPercentRaw(extended.changePercent), extended.change)}`
-    : "");
+  return sessions.map((session) => {
+    if (extended?.session !== session || !quote) return "";
+    const time = formatExtendedPrintAsOf(quote);
+    return [`${formatListPrice(extended.price, quote, assetCategory)}${extended.mark ? " mid" : ""}`,
+      colorBySign(formatPercentRaw(extended.changePercent), extended.change), ...time ? [cliStyles.muted(time)] : []].join(" ");
+  });
+}
+
+/**
+ * The export field that dates a row's extended print (`extendedUpdatedAt`,
+ * epoch ms as `quoteAsOf` is), written after every other column so no column
+ * an earlier export had moves: `quoteAsOf` dates Last, the close once the
+ * session is over, and the print is later.
+ */
+const EXTENDED_TIME_APPENDED_KEYS = ["extendedUpdatedAt"] as const;
+
+function extendedTimeField(extended: ExtendedSessionDisplay | null, quote: CollectionQuote | undefined): { extendedUpdatedAt: number | null } {
+  return { extendedUpdatedAt: extended && quote ? extendedPrintTime(quote) : null };
+}
+
+/**
+ * What an exported book row is, with its own as-of from `asOfKey` (an ISO
+ * time or epoch ms) where it has one: a book's rows are dated apart, and
+ * Tencent's close at 08:08 UTC is no observation of New York's 21:00 UTC. A
+ * row without one (cash, the total) keeps the closing lines' date.
+ */
+function bookRowIdentity(asOfKey: string) {
+  return (row: Record<string, unknown>): ExportIdentity => {
+    const text = (value: unknown) => typeof value === "string" && value.trim() ? value : null;
+    const value = row[asOfKey];
+    const asOf = typeof value === "number" && Number.isFinite(value) && value > 0 ? new Date(value).toISOString() : text(value);
+    return { symbolOrSeries: text(row.symbol), currencyOrUnit: text(row.currency), ...asOf ? { asOf } : {} };
+  };
 }
 
 /**
@@ -1292,7 +1329,8 @@ async function showCollectionWithMarketData(
         ...(matchedPortfolio.importedFrom ? { importedFrom: matchedPortfolio.importedFrom } : {}),
         ...(explain ? { glossary: glossaryExport(explained) } : {}),
       }, freshness }, { rows: (data) => [...(data as Record<string, unknown>[]), ...extraRows],
-        exportNotes: fxMarks.length ? [`FX: ${fxMarks.map((mark) => baseConversionLabel(mark)).join("; ")}`] : [] });
+        exportNotes: fxMarks.length ? [`FX: ${fxMarks.map((mark) => baseConversionLabel(mark)).join("; ")}`] : [],
+        exportAppendedKeys: EXTENDED_TIME_APPENDED_KEYS, exportIdentity: bookRowIdentity("valuationAsOf") });
       return;
     }
 
@@ -1523,7 +1561,7 @@ async function showCollectionWithMarketData(
         data: watched.map((entry) => entry.row),
         metadata: { watchlistId: id, watchlistName: displayName, baseCurrency: currency, ...(explain ? { glossary: [] } : {}) },
         freshness,
-      });
+      }, { exportAppendedKeys: EXTENDED_TIME_APPENDED_KEYS, exportIdentity: bookRowIdentity("quoteAsOf") });
       return;
     }
     // `--limit` and `--tail` keep rows of the table as every list keeps them, and the line under it says of how many.
@@ -1726,6 +1764,7 @@ async function valueWatchlistRows({
         ...quotePriceKindField(quote),
         // A listing that no longer trades: its status and last session.
         ...quote?.delisting ? { delisting: quote.delisting } : {},
+        ...extendedTimeField(extended, quote),
       },
     });
   }

@@ -41,3 +41,29 @@ test("the board's Export CSV leaves a source with no name blank, never Gloom Clo
   expect(csv.join("\n")).not.toContain("acme-feed");
   expect(csv.join("\n")).not.toContain("Gloom Cloud");
 });
+
+// XYZ:NYSE's Friday close was dated at its 00:34 UTC after-hours print, which had no time of its own.
+test("a close beside an after-hours print is dated at the close, the print by its own time, beside Hong Kong's close", () => {
+  setSystemTime(new Date("2026-11-21T01:00:00Z"));
+  try {
+    const delayed = { marketState: "CLOSED", dataSource: "delayed", providerId: "gloomberb-cloud" } as const;
+    const tencent = { ...delayed, symbol: "0700", name: "Tencent Holdings Ltd", currency: "HKD", listingExchangeName: "HKEX",
+      price: 615, change: -5, changePercent: -0.806, changeSessionDate: "2026-11-20", lastUpdated: Date.parse("2026-11-20T08:08:00Z") } as Quote;
+    const xyz = { ...delayed, symbol: "XYZ", name: "Block Inc", currency: "USD", listingExchangeName: "NYSE",
+      price: 70.6, change: -0.72, changePercent: -1.01, previousClose: 71.32,
+      regularClose: 69.66, regularCloseSessionDate: "2026-11-20", regularChange: -1.66, regularChangePercent: -2.33,
+      changeSessionDate: "2026-11-20", lastUpdated: Date.parse("2026-11-21T00:34:00.055Z") } as Quote;
+    const [header, hk, ny] = quoteMonitorCsv([
+      { symbol: "0700:HKEX", instrument: { symbol: "0700", exchange: "HKEX" }, quote: tencent },
+      { symbol: "XYZ:NYSE", instrument: { symbol: "XYZ", exchange: "NYSE" }, quote: xyz },
+    ]).slice(EXCEL_CSV_BOM.length).split("\n").map((line) => line.split(","));
+    const cell = (row: string[], column: string) => row[header!.indexOf(column)];
+    expect(header!.slice(-2)).toEqual(["retrieved_at", "After Hours Updated"]);
+    expect([cell(hk!, "Last"), cell(hk!, "After Hours ($)"), cell(hk!, "as_of"), cell(hk!, "After Hours Updated")])
+      .toEqual(["615", "", "2026-11-20T08:08:00.000Z", ""]);
+    expect([cell(ny!, "Last"), cell(ny!, "After Hours ($)"), cell(ny!, "as_of"), cell(ny!, "After Hours Updated")])
+      .toEqual(["69.66", "70.6", "2026-11-20T21:00:00.000Z", "2026-11-21T00:34:00.055Z"]);
+  } finally {
+    setSystemTime();
+  }
+});

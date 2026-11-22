@@ -21,7 +21,7 @@ import type { ThemeColors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { useOpenDescription } from "../shared/open-description";
 import { toneColor } from "../shared/research-cells";
-import { parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
+import { displayTickerKey, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { fundFactsAbroadKey, hasFundFactsAbroad, mayBeFundViewTicker, mayBeSecEquityListing, mayBeUsEquityOrFundTicker, mayBeUsEquityTicker, noSecReportsNotice, nonUsSecListingVenue, secFilingItemCodes, US_FUND_FACTS_ONLY } from "../../../utils/sec";
 import { fundAbroadProfile, venueAbroad, type FundAbroadProfile } from "./fund-abroad";
 import { listingAnnouncementsPage, type ExchangeAnnouncementsPage } from "../../../utils/exchange-announcements";
@@ -610,10 +610,10 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
       const listing = { symbol: parsePublicTickerKey(ticker.metadata.ticker).symbol, exchange: equityAbroad, name: ticker.metadata.name ?? null };
       return <NoSecReportsNotice notice={noSecReportsNotice(listing)} announcements={announcements} />;
     }
-    return renderFilingNotice(`No recent SEC filings for ${ticker.metadata.ticker}.`);
+    return renderFilingNotice(`No recent SEC filings for ${displayTickerKey(ticker.metadata.ticker)}.`);
   }
   const symbol = ticker.metadata.ticker;
-  const fundEmptyTitle = error ? t("SEC filings unavailable.") : tf("No fund filings for {symbol}.", { symbol });
+  const fundEmptyTitle = error ? t("SEC filings unavailable.") : tf("No fund filings for {symbol}.", { symbol: displayTickerKey(symbol) });
   // A trust (IBIT, GLD) files 10-Ks and 10-Qs, not fund forms.
   const fundEmptyHint = error ?? (issuerFilings.length > 0 ? tf("Its other filings: SEC {symbol}.", { symbol }) : undefined);
   if (forms && (facts?.covered || facts?.note) && formFilings.length === 0 && !error) {

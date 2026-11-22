@@ -720,12 +720,15 @@ describe("watchlist and portfolio LAST, CHG and CHG% around the close", () => {
 
   test("valued at the regular close, MKT VAL, P&L, DAY and the totals follow LAST, and AS OF UTC dates each row by the price it uses", () => {
     const posted = createFinancials({ quote: afterHours });
-    const latest: ColumnContext = { ...defaultColumnContext, now: Date.parse("2026-10-09T01:00:00Z") };
+    const latest: ColumnContext = { ...defaultColumnContext, now: Date.parse("2026-10-09T01:00:00Z"), valuationBasis: "latest-print" };
     const atClose: ColumnContext = { ...latest, valuationBasis: "regular-close" };
     const value = (context: ColumnContext, id: string) => getSortValue(column(id), ticker, posted, context);
     const text = (context: ColumnContext, id: string) => getColumnValue(column(id), ticker, posted, context).text;
     expect(value(latest, "mkt_value")).toBeCloseTo(1653.9, 8);
     expect(text(latest, "as_of")).toBe("Thu 22:22");
+    // A watchlist values nothing: its LAST is the close, so AS OF is the close's, never the after-hours print's.
+    const watchlist: ColumnContext = { ...latest, valuationBasis: undefined };
+    expect([text(watchlist, "price"), text(watchlist, "as_of")]).toEqual(["160.57", "Thu 20:00"]);
     // At the close: LAST times the shares, the session's move, and the venue's close (16:00 New York).
     expect(value(atClose, "mkt_value")).toBe(10 * 160.57);
     expect(value(atClose, "pnl")).toBeCloseTo(605.7, 8);

@@ -53,7 +53,9 @@ import { expiryLabel, formatIv, formatPrice, formatVolPoints, HIDDEN_SLOPE_TEXT,
   surfaceSkewRow, surfaceSpotBasisLabel } from "./tables";
 import { findListedExpiry, unlistedExpiryText } from "../../../utils/option-expiry";
 import { dvolCurrency, dvolGap, loadDvol, type DvolPayload } from "../volatility/dvol";
-import { COIN_OPTIONS_HINT, fxVolatilityNote, isCoinWithoutOptions, optionsUnavailableTitle } from "../../../market-data/options-alternatives";
+import {
+  COIN_OPTIONS_HINT, fxVolatilityNote, isCoinWithoutOptions, optionsUnavailableHint, optionsUnavailableTitle, unservedOptionsVenue,
+} from "../../../market-data/options-alternatives";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { surfaceThirtyDayAtm } from "./tables";
 
@@ -229,10 +231,13 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const fateExchange = target?.effectiveExchange ?? "";
   const fateLoader = useCallback(async () => (await getSharedMarketDataCoordinator()
     ?.loadListingFate({ symbol: underlying, exchange: fateExchange }))?.note ?? null, [underlying, fateExchange]);
-  // A coin nothing lists options on (SOL-USD) says which coins have them, and an FX pair which funds stand in.
+  // A coin nothing lists options on (SOL-USD) says which coins have them, an FX pair which funds stand in, and a
+  // listing whose venue lists options Gloom does not serve (0700 on HKEX) what Gloom does serve.
   const coinNote = underlying && isCoinWithoutOptions(underlying)
     ? `${optionsUnavailableTitle(parsePublicTickerKey(underlying).symbol)} ${COIN_OPTIONS_HINT}`
-    : underlying ? fxVolatilityNote(underlying, target?.effectiveExchange) : null;
+    : underlying && unservedOptionsVenue(underlying, target?.effectiveExchange)
+      ? `${optionsUnavailableTitle(underlying, target?.effectiveExchange)} ${optionsUnavailableHint(underlying, target?.effectiveExchange)}`
+      : underlying ? fxVolatilityNote(underlying, target?.effectiveExchange) : null;
   const fateNote = useAsyncResource(underlying && noChain && !coinNote ? fateLoader : null).data ?? coinNote;
   const ivRank = useIvRank(underlying || null);
   // A coin's options (BTC-USD, ETH-USD) come with Deribit's volatility index.

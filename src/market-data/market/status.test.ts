@@ -3,6 +3,7 @@ import type { Quote } from "../../types/financials";
 import { sessionQuotes } from "../../test-support/test-fixture-session-quotes";
 import {
   extendedPrintSession,
+  extendedPrintTime,
   extendedSessionLineLabel,
   getActiveQuoteDisplay,
   getCompletedRegularSessionDisplay,
@@ -404,7 +405,10 @@ describe("a pre-market nothing has traded in yet", () => {
     ];
     for (const [name, quote] of cases) {
       expect(quoteSessionLabel(quote, now), name).toBe("PRE-MKT");
-      expect(quoteHeadlineTime(quote), name).toBe(quote.lastUpdated);
+      // Its headline is still Thursday's close and its move, dated at that close; a pre-market print beside it has its own time.
+      expect(getRegularSessionDisplay(quote)?.price, name).toBe(200.5);
+      expect(quoteHeadlineTime(quote), name).toBe(thursdayClose);
+      if (getExtendedSessionDisplay(quote)) expect(extendedPrintTime(quote), name).toBe(quote.lastUpdated);
     }
     expect(getExtendedSessionDisplay(cases.find(([name]) => name === "mixed sources")![1])).toMatchObject({ session: "PRE", price: 201.29 });
     // A pre-market price of 0 is no print: no $0 pre-market figure, and no $0 position.
@@ -416,24 +420,35 @@ describe("a pre-market nothing has traded in yet", () => {
     expect(quoteSessionLabel({ ...waiting, extendedSessionPrint: undefined, listingExchangeName: "LSE" }, now)).toBe("PRE-MKT");
   });
 
-  test("a pre-market trade is the pre-market again, at that trade's time", () => {
+  test("a pre-market trade is the pre-market again, at that trade's time, beside the close at its own", () => {
     const printed = { ...waiting, price: 201.29, preMarketPrice: 201.29, preMarketChange: 0.79, preMarketChangePercent: 0.394,
       extendedSessionPrint: true, lastUpdated: Date.parse("2026-10-16T08:03:45Z") };
     expect(quoteSessionLabel(printed, now)).toBe("PRE-MKT");
-    expect(quoteHeadlineTime(printed)).toBe(printed.lastUpdated);
     expect(getExtendedSessionDisplay(printed)).toMatchObject({ session: "PRE", price: 201.29 });
+    expect(extendedPrintTime(printed)).toBe(printed.lastUpdated);
+    // The headline is still Thursday's close, so it is dated at that close, not at the pre-market trade.
+    expect(getRegularSessionDisplay(printed)?.price).toBe(200.5);
+    expect(quoteHeadlineTime(printed)).toBe(thursdayClose);
     // Without the close and its move the quote cannot say which close it is: it stays the pre-market's.
     const unanchored = { ...waiting, regularClose: undefined, regularCloseSessionDate: undefined };
     expect(quoteSessionLabel(unanchored, now)).toBe("PRE-MKT");
     expect(quoteHeadlineTime(unanchored)).toBe(waiting.lastUpdated);
   });
 
-  test("the regular session and after hours keep their own labels and times", () => {
-    const { regular, afterHours } = sessionQuotes();
+  test("the regular session keeps its time; once it closes the close is dated at the close and each extended print at its own", () => {
+    const { regular, afterHours, weekend, overnight, preMarket } = sessionQuotes();
+    const fridayClose = Date.parse("2026-10-09T20:00:00Z");
     expect(quoteSessionLabel(regular, regular.lastUpdated)).toBe("OPEN");
     expect(quoteHeadlineTime(regular)).toBe(regular.lastUpdated);
+    expect(extendedPrintTime(regular)).toBeNull();
     expect(quoteSessionLabel(afterHours, afterHours.lastUpdated)).toBe("AFTER-HRS");
-    expect(quoteHeadlineTime(afterHours)).toBe(afterHours.lastUpdated);
+    // After hours, a closed market holding the last after-hours print, the overnight session and a pre-market trade before
+    // Monday's open: the headline is Friday's 198.78 close, at 20:00 UTC, and the print beside it is dated by its own update.
+    for (const [name, quote] of Object.entries({ afterHours, weekend, overnight, preMarket })) {
+      expect(getRegularSessionDisplay(quote)?.price, name).toBe(198.78);
+      expect(quoteHeadlineTime(quote), name).toBe(fridayClose);
+      expect(extendedPrintTime(quote), name).toBe(quote.lastUpdated);
+    }
   });
 
   test("after a weekend or a holiday the close is the last session's: Friday's, and its early close", () => {

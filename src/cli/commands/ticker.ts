@@ -1690,6 +1690,7 @@ function buildTickerStructuredData({
   const runway = burnsCash(computedRunway) ? computedRunway : null;
   const yieldIndex = isYieldIndexSymbol(quote?.symbol ?? symbol);
   const session = getQuoteSessionFields(quote);
+  const printedAt = session.extendedSession && quote ? extendedPrintTime(quote) : null;
   return {
     symbol,
     listing: { symbol: identity.symbol, exchange: identity.exchange || null, name: identity.name },
@@ -1714,7 +1715,10 @@ function buildTickerStructuredData({
       marketState: quote.marketState ?? "",
       dataSource: quote.dataSource ?? "",
       providerId: quote.providerId ?? "",
-      lastUpdated: quote.lastUpdated ? new Date(quote.lastUpdated).toISOString() : "",
+      // When Last was observed, as the text's Updated reads it: once the session is over, its close, never the print
+      // after it, which `extendedUpdatedAt` dates.
+      lastUpdated: quote.lastUpdated ? new Date(quoteHeadlineTime(quote)).toISOString() : "",
+      extendedUpdatedAt: printedAt == null ? null : new Date(printedAt).toISOString(),
     } : null,
     quoteMetadata: financials.quoteMetadata,
     // The receipt pair the listing is a side of, and which side.

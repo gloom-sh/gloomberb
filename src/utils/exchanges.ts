@@ -271,6 +271,29 @@ export function displayTickerKey(key: string): string {
   return isKnownExchangeCode(parsePublicTickerKey(key).exchange) ? canonicalTickerKey(key) : key;
 }
 
+/** A venue by the MIC a stored key writes for it (`XHKG` is HKEX), for the venues whose key code is not their own. */
+const VENUE_BY_KEY_CODE: ReadonlyMap<string, string> = new Map(
+  Object.entries(EXCHANGE_NOTATION.keyCodes).filter(([venue, code]) => venue !== code).map(([venue, code]) => [code, venue]),
+);
+
+/** A stored listing key in running text: a symbol, a colon and a key code (`0700:XHKG`, `XYZ:XNYS`). */
+const STORED_LISTING_KEY = new RegExp(
+  `(?<![\\w:.^=-])([A-Z0-9^][A-Z0-9.^=-]*):(${[...VENUE_BY_KEY_CODE.keys()].join("|")})(?![\\w:])`,
+  "g",
+);
+
+/**
+ * Text with every stored listing key in it written as a person types it, by
+ * its venue's own code (displayTickerKey): "No data for 0700:XHKG" reads "No
+ * data for 0700:HKEX", as titles, cards and the command bar name it. Anything
+ * else stays as written. For text a pane or the CLI shows that may carry a key
+ * as it was stored: an error, a state's title, a window's saved title.
+ */
+export function displayListingKeys(text: string): string {
+  if (!text.includes(":")) return text;
+  return text.replace(STORED_LISTING_KEY, (_match, symbol: string, code: string) => `${symbol}:${VENUE_BY_KEY_CODE.get(code)!}`);
+}
+
 /**
  * A stored key as the listing a request names: a row saved under its venue's
  * code (`ES3:XSES`, as a key is when another listing holds the bare symbol)

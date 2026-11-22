@@ -2,7 +2,7 @@ import type { ExposureHolding } from "../../../api-client/exposure";
 import type { DataProvider } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
 import type { Portfolio, TickerRecord } from "../../../types/ticker";
-import { publicTickerKey } from "../../../utils/exchanges";
+import { displayTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { convertCurrency } from "../../../utils/format";
 import { logFailure } from "../../../utils/log-failure";
@@ -67,7 +67,7 @@ export async function portfolioHoldings(portfolio: Portfolio, tickers: TickerRec
     }, quote);
     const active = getPortfolioQuoteDisplay(metrics, quote);
     const value = resolvePortfolioMarketValue(metrics, active ? convertCurrency(active.price, currency, portfolio.currency, rates) : null);
-    if (!value || !Number.isFinite(value.net)) throw new Error(`Market value unavailable for ${ticker.metadata.ticker}; no partial portfolio was reweighted.`);
+    if (!value || !Number.isFinite(value.net)) throw new Error(`Market value unavailable for ${displayTickerKey(ticker.metadata.ticker)}; no partial portfolio was reweighted.`);
     holdings.push({ symbol: publicTickerKey(ticker.metadata.ticker, ticker.metadata.exchange), weight: value.net / nav });
   }
   return holdings;

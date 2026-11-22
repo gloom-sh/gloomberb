@@ -26,6 +26,7 @@ import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import { tickerNewsHeadless } from "./headless";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { TICKER_NEWS_TAB_ID, TICKER_NEWS_TEMPLATE_ID, tickerNewsQuery, tickerNewsStateKeys } from "./ticker-news";
+import { displayTickerKey } from "../../../utils/exchanges";
 
 const DEFAULT_SORT: NewsSortPreference = { columnId: "time", direction: "desc" };
 
@@ -124,7 +125,7 @@ function TickerNewsView({ width, height, focused }: { width: number; height: num
     loadedCount: loaded.length,
     unmutedCount: news.length,
     fallback: {
-      title: `No news for ${ticker.metadata.ticker}`,
+      title: `No news for ${displayTickerKey(ticker.metadata.ticker)}`,
       hint: "Stories appear as sources publish them.",
     },
   });

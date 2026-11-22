@@ -6,6 +6,7 @@ import type { PriceSparklinePeriod } from "../../../components/price-sparkline/v
 import { getSharedRegistry } from "../../registry";
 import { formatTickerListInput, parseTickerListInput, QUOTE_MONITOR_MAX_TICKERS } from "../../../tickers/list";
 import { resolveTickerInstrumentKind } from "../../../tickers/instrument-kind";
+import { displayTickerKey } from "../../../utils/exchanges";
 import { groupTickerResearchTabs, type TickerResearchTabSummary } from "./research-groups";
 import {
   AUTO_LOG_RANGE, OVERVIEW_CHART_SCALE_SETTING, parseOverviewChartScaleChoice, type OverviewChartScaleChoice,
@@ -118,10 +119,16 @@ function coerceQuoteMonitorSymbols(value: unknown): string[] {
   }
 }
 
+/**
+ * The board's window title: its listings as its cards name them, by the
+ * venue's own code (0700:HKEX · XYZ:NYSE), never the keys they are stored
+ * under (0700:XHKG · XYZ:XNYS).
+ */
 export function buildQuoteMonitorPaneTitle(symbols: string[]): string {
   if (symbols.length === 0) return "Quote Monitor";
-  if (symbols.length <= 3) return symbols.join(" · ");
-  return `${symbols.slice(0, 2).join(" · ")} +${symbols.length - 2}`;
+  const shown = symbols.map(displayTickerKey);
+  if (shown.length <= 3) return shown.join(" · ");
+  return `${shown.slice(0, 2).join(" · ")} +${shown.length - 2}`;
 }
 
 export function getQuoteMonitorPaneSettings(

@@ -37,6 +37,7 @@ import { getPortfolioPositionValue } from "./sector-model";
 import type { AnalyticsMetricRow } from "./view";
 import { qualifySharpeCadence, qualifyReturnTimestamps, type SharpeCadenceResult, type ReturnTimestampResult, type TimestampHistory } from "./sharpe-cadence";
 import { isFiniteNumber } from "../../../utils/guards";
+import { displayTickerKey } from "../../../utils/exchanges";
 
 export const PORTFOLIO_BENCHMARK = {
   symbol: "SPY", exchange: "ARCA", currency: "USD", isin: "US78462F1030",
@@ -126,7 +127,7 @@ export function buildPortfolioReturnSeries({
   let unsupportedReason = syntheticAccountUnsupportedReason(account);
   const historyIntegrity: PortfolioReturnSeriesResult["historyIntegrity"] = [];
   for (const { ticker, request } of chartTargets) {
-    if (!request) unsupportedReason ??= `Broker contract unavailable for ${ticker.metadata.ticker}`;
+    if (!request) unsupportedReason ??= `Broker contract unavailable for ${displayTickerKey(ticker.metadata.ticker)}`;
     unsupportedReason ??= syntheticPositionUnsupportedReason(
       ticker,
       financials.get(ticker.metadata.ticker)?.quote?.currency || ticker.metadata.currency || columnContext.baseCurrency,

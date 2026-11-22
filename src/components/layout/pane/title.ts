@@ -9,7 +9,7 @@ import type { PaneDef } from "../../../types/plugin";
 import { isUnlinkedFollower, paneTitleMnemonic, TITLE_TICKER } from "../../../layout/pane-follow";
 import { canFollowTickerSource, isTickerLinkPeer } from "../../../layout/ticker-navigation";
 import { withoutCryptoVenueCode } from "../../../utils/crypto-pair";
-import { displayTickerKey } from "../../../utils/exchanges";
+import { displayListingKeys, displayTickerKey } from "../../../utils/exchanges";
 
 /** A ticker as a title names it: by its venue's own code, and a coin by its pair alone (USDT-USD, never USDT-USD:CCC). */
 function titleTickerKey(key: string): string {
@@ -17,11 +17,20 @@ function titleTickerKey(key: string): string {
 }
 
 /**
+ * A board's title as the app wrote it, its listing keys joined by " · " and
+ * the rest counted ("0700:XHKG · XYZ:XNYS", "AAPL · MSFT +3").
+ */
+const KEY_LIST_TITLE = /^[^\s·]+(?: · [^\s·]+)*(?: \+\d+)?$/;
+
+/**
  * A title a template wrote, its command and the ticker keys it opened on
  * ("FA 9992:XHKG", "RV 9992:XHKG,PLTR"), with each key by its venue's code
- * ("FA 9992:HKEX"). Any other title is the user's or the pane's own and stays.
+ * ("FA 9992:HKEX"), and a board's list of keys the same way: a Quote Monitor
+ * saved as "0700:XHKG · XYZ:XNYS" reads "0700:HKEX · XYZ:NYSE", as its cards
+ * do. Any other title is the user's or the pane's own and stays as written.
  */
 function displayStoredTitle(title: string): string {
+  if (KEY_LIST_TITLE.test(title)) return displayListingKeys(title);
   const mnemonic = paneTitleMnemonic(title);
   if (!mnemonic) return title;
   // Keys and the separators between them as written ("AAPL, MSFT" keeps its space).

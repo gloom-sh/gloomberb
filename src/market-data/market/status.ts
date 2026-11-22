@@ -504,19 +504,27 @@ function preMarketCloseAwaitingPrint(quote: Quote | null | undefined): { date: s
 /**
  * When the price a quote's headline shows was observed: the regular close a
  * pre-market with no trade yet still stands at (preMarketCloseAwaitingPrint);
- * a completed session's close stamped after the venue closed, with no
- * extended print beside it, at that close (regularSessionCloseOn), as `fn
- * ADR` and `fx` date it (GGAL.BA's 4,857.50 read 20:59 UTC in `quote` and
- * 20:10 in `fn ADR`, its close on BYMA's calendar); otherwise the quote's last
- * update. What an Updated cell and a report's as-of date the quote by.
+ * once the regular session is over, its close, which the headline holds while
+ * an after-hours, overnight or pre-market print moves beside it, so XYZ's
+ * Friday close reads 21:00 UTC, not the 00:34 UTC after-hours print
+ * (extendedPrintTime dates that print); a closed market's close stamped after
+ * the venue closed at that close (regularSessionCloseOn), as `fn ADR` and `fx`
+ * date it (GGAL.BA's 4,857.50 read 20:59 UTC in `quote` and 20:10 in `fn
+ * ADR`, its close on BYMA's calendar); otherwise the quote's last update.
+ * What an Updated cell and a report's as-of date the quote by.
  */
 export function quoteHeadlineTime(quote: Quote): number {
   const awaiting = preMarketCloseAwaitingPrint(quote);
   if (awaiting) return awaiting.closedAt;
-  // A closed market's quote only: in a pre-market or after-hours session the last update can be a print.
-  const date = quote.marketState === "CLOSED" && !quote.delisting ? regularSessionDisplayDate(quote) : null;
-  if (date && Number.isFinite(quote.lastUpdated) && !getExtendedSessionDisplay(quote)) {
-    const closedAt = regularSessionCloseOn(quote.listingExchangeName || quote.exchangeName, date);
+  if (quote.delisting || !Number.isFinite(quote.lastUpdated)) return quote.lastUpdated;
+  const exchange = quote.listingExchangeName || quote.exchangeName;
+  // The headline is a completed session's close (getRegularSessionDisplay): dated at that close, never at a print after it.
+  const session = completedRegularSession(quote);
+  const closeDay = session ? session.date ?? quoteSessionDay(quote) : null;
+  // A closed market's quote with no close reported beside it: in a pre-market or after-hours session the last update can be a print.
+  const date = closeDay ?? (quote.marketState === "CLOSED" && !getExtendedSessionDisplay(quote) ? regularSessionDisplayDate(quote) : null);
+  if (date) {
+    const closedAt = regularSessionCloseOn(exchange, date);
     if (closedAt != null && quote.lastUpdated > closedAt) return closedAt;
   }
   return quote.lastUpdated;

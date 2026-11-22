@@ -142,8 +142,10 @@ describe("what a portfolio is priced at and when each row's price is from", () =
 
     const json = JSON.parse(await showExport(["show", "Main"], "json"));
     expect(json.metadata).toMatchObject({ valuationBasis: "latest-print", dayChange: 1220, dayChangeBasis: "after hours vs mixed closes" });
+    // Last is Friday's close, dated at the close; the after-hours print the value uses has its own time.
     expect(json.data[1]).toMatchObject({ symbol: "XLK", quotePrice: 198.78, marketValue: 198_800, priceBasis: null,
-      valuationBasis: "latest-print", valuationPrice: 198.8, valuationAsOf: "2026-10-09T23:58:08.000Z", quoteAsOf: Date.parse("2026-10-09T23:58:08Z") });
+      valuationBasis: "latest-print", valuationPrice: 198.8, valuationAsOf: "2026-10-09T23:58:08.000Z", quoteAsOf: Date.parse("2026-10-09T20:00:00Z"),
+      extendedPrice: 198.8, extendedUpdatedAt: Date.parse("2026-10-09T23:58:08Z") });
   });
 
   test("a book across markets dates each one's session and names when each opens, not the newest market's day with another's open", async () => {
@@ -188,12 +190,14 @@ describe("what a portfolio is priced at and when each row's price is from", () =
 
     const csv = await showExport(["show", "Main", "--close"], "csv");
     const [header, ...lines] = csv.split("\n");
-    // The valuation fields keep their place; the dividend fields come after them, before the five fixed columns every export ends with.
-    expect(header!.split(",").slice(-13)).toEqual(["valuationBasis", "valuationPrice", "valuationAsOf",
-      "dividendPerShare", "dividendCurrency", "annualIncome", "incomeYield", "symbol_or_series", "currency_or_unit", "interval", "source", "as_of", "retrieved_at"]);
-    expect(lines.find((line) => line.startsWith("XLK"))).toMatch(/,regular-close,198\.78,2026-10-09T20:00:00\.000Z,,,,,XLK,[^,]*,,[^,]+,2026-10-09T20:00:00\.000Z,[^,]+$/);
+    // The valuation fields keep their place; the dividend fields come after them, before the five fixed columns every export ends with,
+    // and when an extended print was observed closes the row.
+    expect(header!.split(",").slice(-14)).toEqual(["valuationBasis", "valuationPrice", "valuationAsOf",
+      "dividendPerShare", "dividendCurrency", "annualIncome", "incomeYield", "symbol_or_series", "currency_or_unit", "interval", "source", "as_of", "retrieved_at",
+      "extendedUpdatedAt"]);
+    expect(lines.find((line) => line.startsWith("XLK"))).toMatch(/,regular-close,198\.78,2026-10-09T20:00:00\.000Z,,,,,XLK,[^,]*,,[^,]+,2026-10-09T20:00:00\.000Z,[^,]+,[^,]+$/);
     expect(csv).toMatch(/# Source: .* · priced at the regular close\n/);
-    expect(csv).toContain("# Observation date: 2026-10-09T20:00:00.000Z\n# Oldest observation: 2026-10-09T15:38:00.000Z\n");
+    expect(csv).toContain("# Observation date: 2026-10-09T20:00:00.000Z (the newest row's; each row's as_of is its own)\n# Oldest observation: 2026-10-09T15:38:00.000Z\n");
 
     await expect(portfolioCliCommand.execute(["show", "Tech", "--close"], createTestCliContext(market).context)).rejects.toThrow("is a watchlist");
   });

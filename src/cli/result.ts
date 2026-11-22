@@ -44,6 +44,8 @@ import {
   exportRetrievalCell,
   exportSource,
   exportSourceLines,
+  rowsDatedApart,
+  withRowsDatedApart,
   type ExportIdentity,
   type ExportSource,
 } from "./export-source";
@@ -625,7 +627,10 @@ function serializeCliRows<T, Row extends Record<string, unknown>>(
       exportRetrievalCell(cited),
       appended,
     );
-    return withCsvFooter(csv, [...exportSourceLines(cited), ...cutNote, ...(renderOptions.exportNotes ?? []).map((note) => `note: ${note}`)]);
+    // Rows dated apart: the observation date is the newest row's, not each row's.
+    const datedApart = rowsDatedApart(rows.map((row) => exportIdentityCells(cited, rowIdentity(row as Row, renderOptions.exportIdentity))[4]));
+    const sourceLines = datedApart ? withRowsDatedApart(exportSourceLines(cited), cited) : exportSourceLines(cited);
+    return withCsvFooter(csv, [...sourceLines, ...cutNote, ...(renderOptions.exportNotes ?? []).map((note) => `note: ${note}`)]);
   }
   if (renderOptions.text) {
     return cliText(renderOptions.text(result.data));

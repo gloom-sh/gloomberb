@@ -4,7 +4,7 @@ import { getLanguage, tf } from "../../i18n";
 import { formatUtcDayTime, formatUtcWeekdayTime } from "../../utils/utc-time";
 import { formatShortDate } from "../../utils/datetime-format";
 import { quoteFeedDelayMinutes } from "../market/freshness";
-import { quoteHeadlineTime, quoteSessionStateLabel } from "../market/status";
+import { extendedPrintTime, quoteHeadlineTime, quoteSessionStateLabel } from "../market/status";
 import { dailyNavDate, isQuoteStaleForCurrentSession } from "./freshness";
 import { savedCopyAt } from "../../data/saved-copies";
 
@@ -67,12 +67,23 @@ export function formatQuoteBookTime(
 }
 
 /**
+ * When a quote's pre-market, after-hours or overnight print was observed, as
+ * a card dates a price (asOfClock): `Sat 00:34 UTC` beside the close it is
+ * measured from, which formatQuoteSessionAsOf dates. Null without such a print.
+ */
+export function formatExtendedPrintAsOf(quote: Quote | null | undefined, now = Date.now()): string | null {
+  const time = extendedPrintTime(quote);
+  return time == null ? null : asOfClock(Math.min(time, now), now);
+}
+
+/**
  * What a quote card's price is as of: CLOSED while its market is, else how
  * current its feed is, and when the price was observed (quoteHeadlineTime,
  * as an export's as_of dates it): `CLOSED · 08:09 UTC` for Hong Kong's close
- * beside `15 min delayed · 21:20 UTC` for New York's after hours. Null for a
- * fund priced by its NAV (formatQuoteNavAsOf dates it), a listing that no
- * longer trades and a quote stale for its session, whose own status says so.
+ * beside `CLOSED · Fri 21:00 UTC` for New York's, whose after-hours print
+ * says its own time (formatExtendedPrintAsOf). Null for a fund priced by its
+ * NAV (formatQuoteNavAsOf dates it), a listing that no longer trades and a
+ * quote stale for its session, whose own status says so.
  */
 export function formatQuoteSessionAsOf(quote: Quote | null | undefined, now = Date.now()): string | null {
   if (!quote || quote.delisting || !(quote.lastUpdated > 0) || dailyNavDate(quote, now)) return null;

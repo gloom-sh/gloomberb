@@ -26,6 +26,8 @@ import {
   exportIdentityCells,
   exportRetrievalCell,
   exportSourceLines,
+  rowsDatedApart,
+  withRowsDatedApart,
   type ExportIdentity,
 } from "./export-source";
 
@@ -774,11 +776,18 @@ function identifiedTable(table: CliReportTable, report: CliReportTables, freshne
  */
 export function renderReportCsv(report: CliReportTables, freshness?: ReportFreshness): string {
   const marked = report.tables.length > 1;
-  const blocks = report.tables.map((table) => identifiedTable(table, report, freshness)).map((table) => [
+  const tables = report.tables.map((table) => identifiedTable(table, report, freshness));
+  const blocks = tables.map((table) => [
     ...(marked ? [commentLine(`section: ${table.title}`)] : []),
     ...(table.columns.length > 0 ? [[table.columns, ...table.rows].map(csvLine).join("\n")] : []),
   ].join("\n"));
-  return withCsvFooter(blocks.join("\n\n"), report.footer);
+  // Rows dated apart: the observation date is the newest row's, not each row's.
+  const asOf = tables.flatMap((table) => {
+    const at = table.columns.indexOf("as_of");
+    return at < 0 ? [] : table.rows.map((row) => String(row[at] ?? ""));
+  });
+  const footer = freshness && rowsDatedApart(asOf) ? withRowsDatedApart(report.footer, freshness) : report.footer;
+  return withCsvFooter(blocks.join("\n\n"), footer);
 }
 
 /**

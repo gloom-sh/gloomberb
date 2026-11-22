@@ -1,3 +1,5 @@
+import { displayListingKeys } from "./exchanges";
+
 /**
  * Reason codes are a data service's words for a machine: why it has nothing
  * (NO_DATA, NOT_FOUND) or could not answer (UPSTREAM_ERROR, TIMEOUT). An
@@ -65,15 +67,16 @@ function withEmbeddedCodes(text: string): string {
  * Text fit to show as a state's title or a CLI error: a bare reason code as
  * a sentence ("The source did not answer."), a known code inside a longer
  * text as its clause ("AAPL: the source did not answer"), anything else as
- * it is.
+ * it is, with a listing stored under its venue's MIC named as it is typed
+ * (`0700:XHKG` reads `0700:HKEX`, displayListingKeys).
  */
 export function readableError(text: string): string {
-  if (!isReasonCode(text)) return withEmbeddedCodes(text);
+  if (!isReasonCode(text)) return displayListingKeys(withEmbeddedCodes(text));
   const clause = reasonCodeClause(text);
   return `${clause.charAt(0).toUpperCase()}${clause.slice(1)}.`;
 }
 
 /** The same for a footer status, which reads as a clause: "the source did not answer". */
 export function readableStatus(text: string): string {
-  return isReasonCode(text) ? reasonCodeClause(text) : withEmbeddedCodes(text);
+  return isReasonCode(text) ? reasonCodeClause(text) : displayListingKeys(withEmbeddedCodes(text));
 }

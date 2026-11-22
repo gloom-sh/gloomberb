@@ -148,13 +148,13 @@ test("a function whose free routes all answer that the listing has none says so,
   expect(apple).toContain("gloom fn FLOW AAPL then reads");
   expect((await flow("LHA:XETRA")).split("\n")).toEqual([
     "FLOW is part of Gloom Cloud Pro: it streams real-time sweeps, blocks and large premium prints across US options exchanges. Signed out it shows none of it.",
-    "Options are not available for LHA:XETRA, so FLOW has no prints of it.",
+    "Options on XETRA listings (LHA:XETRA) are not served, so FLOW has no prints of it.",
     "To read it in FLOW, open the app (gloom), log in or sign up from the command bar (Ctrl+P, Log In or Sign Up), then upgrade (Ctrl+P, UPGRADE); gloom fn FLOW then reads with that session.",
   ]);
   // A check that failed is not known to have none: no route is named, and the command keeps the ticker.
   const failed = await flow("SAP:XETRA");
   expect(failed).not.toContain("gloom options");
-  expect(failed).not.toContain("not available");
+  expect(failed).not.toMatch(/not (available|served)/);
   expect(failed).toContain("gloom fn FLOW SAP:XETRA then reads");
 
 });
