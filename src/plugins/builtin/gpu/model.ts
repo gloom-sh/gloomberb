@@ -355,7 +355,7 @@ export function gpuHistoryViewport(series: readonly ResolvedSeries[]): { start: 
 export const gpuProvenanceLabel = (point: Pick<GpuObservation, "provenance">, full = false) =>
   point.provenance === "reference" ? full ? "Reference index (third party), anonymised" : "Reference"
     : point.provenance === "archive" ? full ? "archived page, reconstructed" : "Archived"
-    : point.provenance === "official-history" ? full ? "official published history" : "Published" : full ? "live observation" : "Observed";
+    : point.provenance === "official-history" ? full ? "official published history" : "Published" : full ? "observed price" : "Observed";
 
 export interface GpuPricePeriod { from: string; to: string; price: number; change: number | null; provenance: GpuObservation["provenance"] }
 
