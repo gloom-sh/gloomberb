@@ -167,4 +167,31 @@ test("reading on from each page's next start lists every print of a busy second 
     // Every print once, in order: none repeated from the page before, none skipped at a boundary.
     expect(listed, view).toEqual(stamps.map((timestamp, index) => `${timestamp}#${index + 1}`));
   }
+  // A server from before exact windows reads from the start of the second: no print repeats, and the prints its page
+  // cannot reach are named, with the next second to read on from.
+  const floored = createTestHeadlessContext({
+    resolveInstrument: async () => ({ symbol: "SPY", exchange: "NYSEARCA" }),
+    apiClient: {
+      getCloudTape: async (_symbol: string, _exchange: string, _signal?: AbortSignal, range?: TapeRange) => {
+        if (!range) return latest;
+        const window = { from: `${range.from.slice(0, 19)}.000Z`, to: range.to };
+        const page = <T extends { timestamp: string }>(rows: T[]) => rows.filter((row) => inTapeRange(row.timestamp, window));
+        const [inTrades, inQuotes] = [page(trades), page(quotes)];
+        return { ...latest, window: { ...window, truncated: { trades: inTrades.length > 3, quotes: inQuotes.length > 3 } },
+          trades: inTrades.slice(0, 3), quotes: inQuotes.slice(0, 3) };
+      },
+    } as unknown as HeadlessPaneContext["apiClient"],
+  });
+  const read = async (from: string) => await timeSalesHeadless.load(createTestHeadlessArgs({ argument: "SPY", symbols: ["SPY"],
+    options: { limit: 1000, from, to: "15:57" } }), floored) as HeadlessBundleResult;
+  const second = await read(at("006000000"));
+  expect(second.sections.find((entry) => entry.title === "Trades")!.rows!.map((row) => row.id)).toEqual(["3"]);
+  expect(second.notes).toContain("The window holds more than 3 trades: these are the first 1, through 15:55:00.006000000 ET (20:55:00.006000000 UTC). "
+    + "Any trades after these and before 15:55:01 ET (20:55:01 UTC) cannot be read from it, as it reads a window from the start of its second. "
+    + "Read on from that second: fn TAS SPY --from 2026-11-20T20:55:01Z --to 15:57");
+  const beyond = await read(at("392451123"));
+  expect(beyond.sections.find((entry) => entry.title === "Trades")!.rows).toEqual([]);
+  expect(beyond.notes!.find((note) => note.startsWith("This server's page of 3 trades"))).toBe("This server's page of 3 trades ends before the window's start: "
+    + "any from 15:55:00.392451123 ET (20:55:00.392451123 UTC) and before 15:55:01 ET (20:55:01 UTC) cannot be read from it, as it reads a window "
+    + "from the start of its second. Read on from that second: fn TAS SPY --from 2026-11-20T20:55:01Z --to 15:57");
 });
