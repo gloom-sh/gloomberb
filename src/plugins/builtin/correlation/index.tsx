@@ -46,7 +46,7 @@ import {
 } from "./matrix/model";
 import { CorrelationMatrixGrid, correlationMatrixLayout, useCorrelationMatrixNavigation } from "./matrix/grid";
 import { correlationHeadless, relationshipHeadless } from "./headless";
-import { CORRELATION_HISTORY_RESOLUTION } from "./history";
+import { CORRELATION_HISTORY_RESOLUTION, CORRELATION_PRICE_RETURN_NOTE } from "./history";
 import { buildMatrixPairHistory, matrixChartRows } from "./matrix/selection";
 import { MatrixPairChart } from "./matrix/pair-chart";
 
@@ -232,7 +232,8 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
   const matrixRowWidth = correlationMatrixLayout(symbols, width).rowWidth;
   const chartRows = pair ? matrixChartRows(width, height, symbols.length, matrixRowWidth) : 0;
   const noteRows = cellNote ? wrapTextLines(cellNote, Math.max(1, width - 2)).length : 0;
-  const matrixHeight = Math.max(1, height - 1 - noteRows - (chartRows > 0 ? chartRows + 1 : 0));
+  const basisRows = wrapTextLines(CORRELATION_PRICE_RETURN_NOTE, Math.max(1, width - 2)).length;
+  const matrixHeight = Math.max(1, height - 1 - basisRows - noteRows - (chartRows > 0 ? chartRows + 1 : 0));
   const bodyStatus = settings.symbolsError
     ? <PaneStatusBody error={settings.symbolsError} />
     : symbols.length < 2
@@ -273,6 +274,7 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
       />
       {bodyStatus ?? (
         <>
+          <RowNote>{CORRELATION_PRICE_RETURN_NOTE}</RowNote>
           <CorrelationMatrixGrid
             symbols={symbols}
             width={width}
@@ -332,7 +334,8 @@ export const correlationModule: PluginModule = {
       label: "Correlation Matrix",
       description: "Date-aligned Pearson correlation matrix for ticker returns and map series such as GEO:HORMUZ.",
       keywords: ["correlation", "corr", "matrix", "pearson", "returns", "covariance"],
-      shortcut: { prefix: "CORR", argPlaceholder: "tickers", argKind: "ticker-list", keepArgToken: (token) => !!geoSeriesToken(token) },
+      shortcut: { prefix: "CORR", argPlaceholder: "tickers", argKind: "ticker-list",
+        keepArgToken: (token) => !!geoSeriesToken(token) || /^[A-Z]{1,5}-[A-Z](?::[A-Z0-9]+)?$/.test(token) },
       wizard: [
         {
           key: "tickers",

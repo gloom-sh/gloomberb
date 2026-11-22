@@ -1,6 +1,7 @@
 import type { PricePoint } from "../types/financials";
 import { getPricePointTimestamp } from "../utils/price-history";
 import { pricePointOpenWithheld } from "../utils/price-history-integrity";
+import { getPublishedUsEquityCalendarDay } from "./published-us-sessions";
 
 /** What a return-based function says once about a continuous future's series (rollAdjustedHistory). */
 export const ROLLS_BACK_ADJUSTED = "rolls back-adjusted";
@@ -62,7 +63,10 @@ const DAY_MS = 86_400_000;
 type LastTradeRule =
   | { kind: "month-start"; sessions: number }
   | { kind: "before-25th"; sessions: number }
-  | { kind: "month-end"; monthsBefore: number };
+  | { kind: "month-end"; monthsBefore: number }
+  | { kind: "quarterly-index" };
+
+const QUARTERLY_INDEX = { kind: "quarterly-index" } as const;
 
 const LAST_TRADE_RULES: Readonly<Record<string, LastTradeRule>> = {
   NG: { kind: "month-start", sessions: 3 },
@@ -73,6 +77,14 @@ const LAST_TRADE_RULES: Readonly<Record<string, LastTradeRule>> = {
   HO: { kind: "month-end", monthsBefore: 1 },
   RB: { kind: "month-end", monthsBefore: 1 },
   BZ: { kind: "month-end", monthsBefore: 2 },
+  ES: QUARTERLY_INDEX,
+  NQ: QUARTERLY_INDEX,
+  YM: QUARTERLY_INDEX,
+  RTY: QUARTERLY_INDEX,
+  MES: QUARTERLY_INDEX,
+  MNQ: QUARTERLY_INDEX,
+  MYM: QUARTERLY_INDEX,
+  M2K: QUARTERLY_INDEX,
 };
 
 /** The root of a continuous future's symbol (NG of NG=F), or null for anything else. */
@@ -90,6 +102,19 @@ const monthDay = (index: number, day: number) =>
   `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 const contractCode = (root: string, delivery: number) =>
   `${root}${MONTH_CODES[delivery % 12]}${String(Math.floor(delivery / 12) % 100).padStart(2, "0")}`;
+
+function indexExpiry(month: number): string {
+  const weekday = new Date(`${monthDay(month, 15)}T00:00:00Z`).getUTCDay();
+  let day = 15 + (5 - weekday + 7) % 7;
+  while (getPublishedUsEquityCalendarDay("NYSE", monthDay(month, day)) === "closed") day--;
+  return monthDay(month, day);
+}
+
+function indexDelivery(day: string): number {
+  const month = monthIndex(day);
+  const delivery = month + 2 - month % 3;
+  return day <= indexExpiry(delivery) ? delivery : delivery + 3;
+}
 
 /** The index of the first of the ascending `days` on or after `day`; `days.length` when none is. */
 function firstOnOrAfter(days: readonly string[], day: string): number {
@@ -111,6 +136,15 @@ function firstOnOrAfter(days: readonly string[], day: string): number {
 function calendarRolls(root: string, rule: LastTradeRule, days: readonly string[]): Array<{ index: number; from: string; to: string }> {
   if (days.length < 2) return [];
   const rolls: Array<{ index: number; from: string; to: string }> = [];
+  if (rule.kind === "quarterly-index") {
+    let held = indexDelivery(days[0]!);
+    for (let index = 1; index < days.length; index++) {
+      const next = indexDelivery(days[index]!);
+      if (next !== held) rolls.push({ index, from: contractCode(root, held), to: contractCode(root, next) });
+      held = next;
+    }
+    return rolls;
+  }
   for (let month = monthIndex(days[0]!); month <= monthIndex(days.at(-1)!); month++) {
     // The month the last trade falls in, and the delivery month of the contract that stops.
     let last: number;
@@ -168,23 +202,36 @@ export function rollAdjustedHistory(points: readonly PricePoint[], symbol: strin
   const asServed = (): RollAdjustedHistory => ({ points: [...points], rolls: [], note: null });
   const root = continuousRoot(symbol);
   if (!root) return asServed();
-  const timed = points.map((point) => ({ point, time: getPricePointTimestamp(point) }));
+  let timed = points.map((point) => ({ point, time: getPricePointTimestamp(point) }));
   if (timed.some(({ time }) => !Number.isFinite(time))) return asServed();
   timed.sort((left, right) => left.time - right.time);
   if (!dailyBars(timed.map(({ time }) => time))) return asServed();
+  const rule = LAST_TRADE_RULES[root];
+  const initialLength = timed.length;
+  const firstNamedBar = timed.findIndex(({ point }) => !!point.contract);
+  const isoDay = (time: number) => new Date(time).toISOString().slice(0, 10);
+  if (rule?.kind === "quarterly-index") {
+    timed = timed.filter(({ time }, index) => {
+      if (firstNamedBar >= 0 && index >= firstNamedBar) return true;
+      const day = isoDay(time);
+      const month = monthIndex(day);
+      return month % 3 !== 2 || day !== indexExpiry(month);
+    });
+  }
+  const omittedExpiry = timed.length < initialLength;
   const sorted = timed.map(({ point }) => point);
-  const days = timed.map(({ time }) => new Date(time).toISOString().slice(0, 10));
+  const days = timed.map(({ time }) => isoDay(time));
 
   const firstNamed = sorted.findIndex((point) => !!point.contract);
   const unnamedEnd = firstNamed < 0 ? sorted.length : firstNamed;
   const found: Array<{ index: number; from: string; to: string; source: ReturnRoll["source"] }> = [];
-  const rule = LAST_TRADE_RULES[root];
   if (rule && unnamedEnd > 0) {
     const calendar = calendarRolls(root, rule, days);
     for (const roll of calendar) if (roll.index < unnamedEnd) found.push({ ...roll, source: "calendar" });
     // The bars may start naming a contract other than the one the calendar holds then: the series rolled there.
-    const held = calendar.filter((roll) => roll.index < unnamedEnd).at(-1)?.to
-      ?? calendar.find((roll) => roll.index >= unnamedEnd)?.from;
+    const held = rule.kind === "quarterly-index" && firstNamed > 0
+      ? contractCode(root, indexDelivery(days[firstNamed - 1]!))
+      : calendar.filter((roll) => roll.index < unnamedEnd).at(-1)?.to ?? calendar.find((roll) => roll.index >= unnamedEnd)?.from;
     const named = sorted[firstNamed]?.contract;
     if (firstNamed > 0 && held && named && held !== named) found.push({ index: firstNamed, from: held, to: named, source: "bars" });
   }
@@ -222,5 +269,5 @@ export function rollAdjustedHistory(points: readonly PricePoint[], symbol: strin
   }
   const note = rule || firstNamed === 0 ? ROLLS_BACK_ADJUSTED
     : firstNamed > 0 ? `${ROLLS_BACK_ADJUSTED} from ${days[firstNamed]}` : ROLLS_LEFT_AS_TRADED;
-  return { points: adjusted, rolls, note };
+  return { points: adjusted, rolls, note: omittedExpiry ? `${note}; expiry settlements omitted` : note };
 }

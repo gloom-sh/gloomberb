@@ -1170,8 +1170,9 @@ function ChartComposerSurface({
         && warning.endsWith("; only matching observation times contribute."))
     ))
   ));
+  const statusComparisonNotice = comparisonUnavailable ?? comparisonNotice;
   const statusNotices = [...new Set([...(statusErrorNotice ? [statusErrorNotice] : []), ...listings.errors, ...listings.notices,
-    ...(comparisonUnavailable ? [comparisonUnavailable] : []), ...statusWarnings])];
+    ...(statusComparisonNotice ? [statusComparisonNotice] : []), ...statusWarnings])];
   usePaneNoticeFooter({
     registrationId: `${footerId}:notices`,
     notices: statusNotices,

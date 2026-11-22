@@ -21,6 +21,29 @@ const NG_OCTOBER_ROLL = bars([
 ]);
 
 describe("rollAdjustedHistory", () => {
+  test.each([
+    ["2025-12-18", 6778.25, "2025-12-19", 6796.54, "2025-12-22", 6906.25, 6930.25, "ESZ25", "ESH26"],
+    ["2026-03-19", 6609.25, "2026-03-20", 6594.63, "2026-03-23", 6510, 6634.75, "ESH26", "ESM26"],
+    ["2026-06-17", 7424.5, "2026-06-18", 7508.43, "2026-06-22", 7543.25, 7541.25, "ESM26", "ESU26"],
+  ] as const)("omits the unnamed expiry settlement after %s and uses the incoming contract's open", (prior, priorClose, expiry, settlement, roll, open, close, from, to) => {
+    const adjusted = rollAdjustedHistory(bars([[prior, priorClose, priorClose], [expiry, settlement, settlement], [roll, open, close]]), "ES=F");
+    expect(adjusted.rolls).toEqual([{ date: roll, from, to, source: "calendar", basis: "open" }]);
+    expect(adjusted.points.map((point) => point.date.toISOString().slice(0, 10))).toEqual([prior, roll]);
+    expect(adjusted.points[1]!.close / adjusted.points[0]!.close).toBeCloseTo(close / open, 10);
+    expect(adjusted.note).toContain("expiry settlements omitted");
+  });
+
+  test("uses the named September roll before the inferred one and keeps the named expiry-day close", () => {
+    const history = bars([
+      ["2026-09-10", 7550, 7620], ["2026-09-11", 7599.5, 7659.5], ["2026-09-14", 7680, 7692.75, "ESZ26"],
+      ["2026-09-15", 7690, 7700, "ESZ26"], ["2026-09-16", 7700, 7701, "ESZ26"],
+      ["2026-09-17", 7701, 7703.25, "ESZ26"], ["2026-09-18", 7703.5, 7712.5, "ESZ26"],
+    ]);
+    const adjusted = rollAdjustedHistory(history, "ES=F");
+    expect(adjusted.rolls).toEqual([{ date: "2026-09-14", from: "ESU26", to: "ESZ26", source: "bars", basis: "open" }]);
+    expect(adjusted.points.slice(2)).toEqual(history.slice(2));
+  });
+
   test("reads NG=F's 20-day volatility across the 26 Oct roll within one contract: 48.4%, not 69.7%", () => {
     expect(realizedVolatilityResult(NG_OCTOBER_ROLL, 20).value!).toBeCloseTo(0.697, 3);
     const { points, rolls, note } = rollAdjustedHistory(NG_OCTOBER_ROLL, "NG=F");

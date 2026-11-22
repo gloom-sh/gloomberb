@@ -135,7 +135,7 @@ describe("report freshness", () => {
     expect(formatStatusLine(quotesFreshness([nominal], undefined, now)!)).toBe("Fri 6 Nov 2026 · 15 min delayed, nominal · markets closed · regular session opens Mon 01:30 UTC, 09:30 HKT");
     // Beside a stale row, each is counted.
     const stale = createTestQuote({ symbol: "9046.HK", ...hkex, stale: true, lastUpdated: Date.parse("2026-11-03T01:31:00Z") });
-    expect(formatStatusLine(quotesFreshness([traded, nominal, stale], undefined, now)!)).toContain("15 min delayed, 1 of 3 stale, 1 of 3 nominal");
+    expect(formatStatusLine(quotesFreshness([traded, nominal, stale], undefined, now)!)).toContain("15 min delayed, 9046.HK stale, 1 of 3 nominal");
   });
 
   test("a narrow capture keeps the date and the delay, shortening the rest first", () => {

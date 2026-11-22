@@ -97,7 +97,7 @@ test("CORR and GR read NG=F's returns within one contract and say the rolls are 
   const args = (symbols: string[]) => ({ symbols, argument: symbols, rawArgument: symbols.join(","), options: { range: "ALL", rangePreset: "1Y", correlationWindow: 20 } });
   // SPY moves as NG=F does within a contract, so read across each roll's 10% gap the two would part.
   const matrix = await correlationHeadless.load(args(["NG=F", "SPY"]), context());
-  expect(matrix.notes).toEqual(["NG=F: rolls back-adjusted"]);
+  expect(matrix.notes).toEqual(["Price returns · no distributions or FX", "NG=F: rolls back-adjusted"]);
   expect(matrix.rows[0]!.correlation!).toBeCloseTo(1, 9);
   const pair = await relationshipHeadless.load(args(["NG=F", "SPY"]), context());
   expect(pair.notes).toEqual(["NG=F: rolls back-adjusted"]);

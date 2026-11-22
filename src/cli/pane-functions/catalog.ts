@@ -36,6 +36,7 @@ import { glossaryFunctionsNamed, glossaryNamesFunction, renderGlossaryEntries, t
 import { renderSeriesMatches, type SeriesMatch } from "../series-search";
 import { typoDistance } from "../../utils/typo-distance";
 import { FUNCTION_HELP } from "./function-help";
+import { functionQueryTerms as queryTerms, matchesFunctionPhrase as containsPhrase } from "../../utils/function-search";
 import { ratesQuestionFunctions } from "./rates-question";
 import { tickerQuestion, type TickerQuestion } from "./ticker-question";
 import { quotedSearchCommand } from "../commands/news-search";
@@ -439,14 +440,6 @@ function namesShownTerm(entry: Pick<PaneCatalogEntry, "token" | "shortcut" | "al
   return [entry.token, entry.shortcut, ...entry.aliases].some((code) => !!code && glossaryNamesFunction(code, query));
 }
 
-/** The phrase starting a word of the text, so "funding rate" finds "funding rates" but "rate" is not found in "separate". */
-function containsPhrase(text: string, phrase: string): boolean {
-  for (let at = text.indexOf(phrase); at >= 0; at = text.indexOf(phrase, at + 1)) {
-    if (at === 0 || !/[a-z0-9]/.test(text[at - 1]!)) return true;
-  }
-  return false;
-}
-
 // A multi-word query ranks a function carrying the whole phrase in its name or keywords first, then in its
 // description, then one carrying every word in its name or description, then every word counting its flags;
 // the rest rank by how many words they match.
@@ -473,16 +466,6 @@ function phraseBand(entry: PaneCatalogEntry, phrase: string): number {
   if (names.some((name) => containsPhrase(name, phrase))) return PHRASE_IN_NAME_BAND;
   const descriptions = lower([entry.description, ...entry.capability.intents]);
   return descriptions.some((description) => containsPhrase(description, phrase)) ? PHRASE_IN_DESCRIPTION_BAND : 0;
-}
-
-/** Words that join a topic without naming it: "year to date" is year and date. */
-const QUERY_STOP_WORDS = new Set(["a", "an", "and", "at", "by", "for", "from", "in", "is", "of", "on", "or", "the", "to", "with"]);
-
-/** The words of a query that name something; a query of only joining words keeps them. */
-function queryTerms(query: string): string[] {
-  const words = query.toLowerCase().split(/\s+/).map((term) => term.trim()).filter(Boolean);
-  const named = words.filter((word) => !QUERY_STOP_WORDS.has(word));
-  return named.length > 0 ? named : words;
 }
 
 /** The texts that say what a function is called and does, apart from its flags, each on its own. */

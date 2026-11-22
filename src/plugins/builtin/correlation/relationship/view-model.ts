@@ -4,6 +4,7 @@ import { colors } from "../../../../theme/colors";
 import { MISSING_VALUE, formatNumber, formatSignificant } from "../../../../utils/format";
 import type { CompositeAxisDomain } from "../../../../components/chart/composite/types";
 import type { StatItem } from "../../../../components/ui";
+import { relationshipBetaBasis, type RelationshipRange } from "./model";
 import type {
   RelationshipAlignedPoint,
   RelationshipRegressionStats,
@@ -121,10 +122,10 @@ export function buildRelationshipScatterPointsForDate(
  * The regression of the first ticker's daily returns on the second's, as the
  * pane's summary figures. R² rides with R; sample counts are left out.
  */
-export function buildRelationshipStatItems(stats: RelationshipRegressionStats | null): StatItem[] {
+export function buildRelationshipStatItems(stats: RelationshipRegressionStats | null, range: RelationshipRange, benchmark: string): StatItem[] {
   if (!stats) return [];
   return [
-    { id: "beta", label: "Beta", value: formatNullableNumber(stats.beta, 3) },
+    { id: "beta", label: "Beta", value: formatNullableNumber(stats.beta, 3), detail: relationshipBetaBasis(range, benchmark), wide: true },
     { id: "alpha", label: "Alpha", value: `${formatNullableNumber(stats.alpha, 3)}%`, detail: "daily" },
     { id: "r", label: "R", value: formatNullableNumber(stats.r, 3), detail: `R² ${formatNullableNumber(stats.rSquared, 3)}` },
     { id: "stdErr", label: "Std err", value: formatNullablePercent(stats.stdError, 3), detail: "daily" },

@@ -238,7 +238,7 @@ import {
   searchNewsStories,
   wordMeansMore,
 } from "./news-search";
-import { displayTimeZone, formatUtcDayTime, formatUtcTime } from "../../utils/utc-time";
+import { displayTimeZone, formatUtcDayTime, formatUtcTime, localTimeSuffix, parseReportTime } from "../../utils/utc-time";
 import { localReportTiming } from "../../utils/report-timing";
 import { DAY_SO_FAR_TEXT, dailyOrLongerBarSize, withSessionBar } from "../../time-series/session-bar";
 import { requestedBarSize } from "../../time-series/bar-spacing";
@@ -799,7 +799,11 @@ const FEED_COLUMNS = [
   },
   // A nominal price names the session it is from ("6 Nov close"), not the last print; JSON keeps both.
   { key: "updatedAt", header: "Updated", shrink: false, stackPriority: 5,
-    format: (value: unknown, row: QuoteRow) => row.nominalLabel || (typeof value === "string" ? formatUtcTime(value) : "") },
+    format: (value: unknown, row: QuoteRow) => {
+      if (row.nominalLabel) return row.nominalLabel;
+      const time = typeof value === "string" ? parseReportTime(value) : null;
+      return time ? formatUtcDayTime(time) + (time.dateOnly ? "" : ` UTC${localTimeSuffix(time.time)}`) : "";
+    } },
 ];
 
 /**

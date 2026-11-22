@@ -26,6 +26,7 @@ import { useBoundTicker } from "../../shared/ticker-request";
 import { useRelationshipHistories } from "./history";
 import {
   DEFAULT_RELATIONSHIP_CORRELATION_WINDOW,
+  DEFAULT_RELATIONSHIP_RANGE,
   DEFAULT_RELATIONSHIP_SECOND_SYMBOL,
   RELATIONSHIP_CORRELATION_WINDOWS,
   RELATIONSHIP_GRAPH_PANE_ID,
@@ -131,7 +132,7 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
   const pane = usePaneInstance();
   const { symbol, exchange } = useBoundTicker();
   const pair = useMemo(() => relationshipSymbolsFromPaneSettings(pane?.settings, symbol), [pane?.settings, symbol]);
-  const [range, setRange] = usePluginPaneState<RelationshipRange>("range", "1Y");
+  const [range, setRange] = usePluginPaneState<RelationshipRange>("range", DEFAULT_RELATIONSHIP_RANGE);
   const [correlationWindow, setCorrelationWindow] = usePluginPaneState<number>(
     "correlationWindow",
     DEFAULT_RELATIONSHIP_CORRELATION_WINDOW,
@@ -153,7 +154,7 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
   const leftSymbol = pair?.[0] ?? left?.symbol ?? "";
   const rightSymbol = pair?.[1] ?? right?.symbol ?? "";
   const stats = analysis?.stats ?? null;
-  const statItems = useMemo(() => buildRelationshipStatItems(stats), [stats]);
+  const statItems = useMemo(() => buildRelationshipStatItems(stats, range, rightSymbol), [stats, range, rightSymbol]);
   const statRows = statItems.length > 0 ? statGridRows(statItems, width) : 0;
   const layout = relationshipLayout(height - 1 - statRows, {
     showCorrelation,

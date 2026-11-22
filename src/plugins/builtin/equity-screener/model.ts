@@ -364,6 +364,7 @@ export function screenYtdBase(rows: readonly ScreenRow[], assembledAt?: string |
  * the pane is short of room.
  */
 export function screenColumnLabel(field: NumericField, ytdBase: string | null, form: "report" | "pane" | "compact" = "pane"): string {
+  if (field === "beta") return form === "compact" ? "Beta 2Y wkly SPY" : "Beta 2Y weekly vs SPY";
   if (field !== "returnYtdPercent" || !ytdBase) return SHORT_LABELS[field];
   return form === "compact" ? `YTD% ${ytdBase}` : `YTD% vs ${ytdBase}${form === "report" ? " close" : ""}`;
 }

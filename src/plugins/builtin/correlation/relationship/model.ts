@@ -9,6 +9,11 @@ import { alignDailyCloses, dailyCloses, pearsonCorrelation } from "../compute";
 import { rollAdjustedHistory } from "../../../../market-data/futures-roll-returns";
 
 export type RelationshipRange = Extract<TimeRange, "1M" | "3M" | "6M" | "1Y" | "5Y" | "ALL">;
+export const DEFAULT_RELATIONSHIP_RANGE: RelationshipRange = "1Y";
+
+export function relationshipBetaBasis(range: RelationshipRange, benchmark: string): string {
+  return `${range} daily vs ${benchmark}`;
+}
 
 export const RELATIONSHIP_GRAPH_PANE_ID = "relationship-graph";
 export const RELATIONSHIP_RANGES: RelationshipRange[] = ["1M", "3M", "6M", "1Y", "5Y", "ALL"];

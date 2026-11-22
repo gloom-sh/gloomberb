@@ -1,3 +1,5 @@
+import { functionQueryTerms, matchesFunctionPhrase } from "./function-search";
+
 interface FuzzyMatchResult {
   match: boolean;
   score: number;
@@ -43,7 +45,7 @@ function matchWordPrefixRun(query: string, label: string): FuzzyMatchResult {
  * up in the full haystack; the looser fallback only ever sees the label, since
  * keywords and descriptions are there to be found by whole words, not letters.
  */
-function matchTerm(term: string, haystack: string, label: string): FuzzyMatchResult {
+function matchTerm(term: string, haystack: string, label: string, functionLookup: boolean): FuzzyMatchResult {
   if (haystack === term) return { match: true, score: 2500 - term.length };
 
   const tokens = haystack.split(/\s+/).filter(Boolean);
@@ -57,23 +59,24 @@ function matchTerm(term: string, haystack: string, label: string): FuzzyMatchRes
   }
 
   if (haystack.includes(term)) return { match: true, score: 500 - term.length };
+  if (functionLookup && matchesFunctionPhrase(haystack, term)) return { match: true, score: 400 - term.length };
 
   return matchWordPrefixRun(term, label);
 }
 
 /** Every word of the query has to match on its own; the whole phrase matching too ranks higher. */
-function fuzzyMatch(query: string, target: string, label: string): FuzzyMatchResult {
+function fuzzyMatch(query: string, target: string, label: string, functionLookup: boolean): FuzzyMatchResult {
   const q = query.toLowerCase().trim();
   const haystack = target.toLowerCase();
   const labelText = label.toLowerCase();
-  const terms = q.split(/\s+/).filter(Boolean);
+  const terms = functionLookup ? functionQueryTerms(q) : q.split(/\s+/).filter(Boolean);
 
   if (terms.length === 0) return { match: true, score: 0 };
-  if (terms.length === 1) return matchTerm(terms[0]!, haystack, labelText);
+  if (terms.length === 1) return matchTerm(terms[0]!, haystack, labelText, functionLookup);
 
   let score = 0;
   for (const term of terms) {
-    const result = matchTerm(term, haystack, labelText);
+    const result = matchTerm(term, haystack, labelText, functionLookup);
     if (!result.match) return NO_MATCH;
     score += result.score;
   }
@@ -92,12 +95,13 @@ export function fuzzyFilter<T>(
   query: string,
   getText: (item: T) => string,
   getLabel?: (item: T) => string,
+  isFunction?: (item: T) => boolean,
 ): T[] {
   if (!query) return items;
   return items
     .map((item) => {
       const text = getText(item);
-      return { item, ...fuzzyMatch(query, text, getLabel ? getLabel(item) : text) };
+      return { item, ...fuzzyMatch(query, text, getLabel ? getLabel(item) : text, isFunction?.(item) ?? false) };
     })
     .filter((r) => r.match)
     .sort((a, b) => b.score - a.score)

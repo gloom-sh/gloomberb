@@ -9,6 +9,8 @@ import type { CedearRatio, CompanyProfile, DepositaryPair, NextEarnings, Quote, 
 import { adrRatioText } from "../../../../utils/depositary-receipt";
 import { cedearRatioText, premiumText, ratioCount } from "../../../../market-data/depositary-pair";
 import { ADR_PAIR_TAB_ID, ADR_PAIR_TEMPLATE_ID } from "../adr-pair/model";
+import { DEFAULT_RELATIONSHIP_RANGE, DEFAULT_RELATIONSHIP_SECOND_SYMBOL, relationshipBetaBasis, type RelationshipRegressionStats } from "../../correlation/relationship/model";
+import { resolveTickerInstrumentKind } from "../../../../tickers/instrument-kind";
 import type { Portfolio, TickerPosition, TickerRecord } from "../../../../types/ticker";
 import type { BrokerInstanceConfig } from "../../../../types/config";
 import type { BrokerAccount } from "../../../../types/trading";
@@ -48,6 +50,27 @@ import { burnsCash, formatRunwayMonths, type CashRunway, type RunwayEstimate } f
 type CurrencyConverter = (value: number, fromCurrency: string) => number;
 
 const RELATIONSHIP_GRAPH: OverviewFunctionLink = { name: "Relationship Graph", templateId: "relationship-graph-pane" };
+
+// Require about 80% of a trading year for DES's 1Y label, allowing for unmatched holidays and missing sessions.
+const MIN_OVERVIEW_BETA_RETURNS = 200;
+
+export function overviewBetaRequest(ticker: TickerRecord, financials: TickerFinancials | null) {
+  const kind = resolveTickerInstrumentKind(ticker, financials);
+  const symbol = ticker.metadata.ticker;
+  const benchmark = DEFAULT_RELATIONSHIP_SECOND_SYMBOL;
+  return symbol !== benchmark && (kind === "equity" || kind === "fund")
+    ? { pair: [symbol, benchmark] as [string, string], range: DEFAULT_RELATIONSHIP_RANGE }
+    : null;
+}
+
+export function buildOverviewBeta(stats: Pick<RelationshipRegressionStats, "beta" | "sampleSize"> | null) {
+  if (!stats || stats.sampleSize < MIN_OVERVIEW_BETA_RETURNS || !finite(stats.beta)) return null;
+  return {
+    label: "Beta", value: formatNumber(stats.beta, 3),
+    detail: relationshipBetaBasis(DEFAULT_RELATIONSHIP_RANGE, DEFAULT_RELATIONSHIP_SECOND_SYMBOL),
+    link: RELATIONSHIP_GRAPH,
+  };
+}
 const HOLDERS: OverviewFunctionLink = { name: "Holders", tabId: "holders", templateId: "holders-pane" };
 const SHORT_INTEREST: OverviewFunctionLink = { name: "Short Interest", tabId: "short-interest", templateId: "short-interest-pane" };
 const EARNINGS: OverviewFunctionLink = { name: "Earnings", templateId: "earnings-calendar-pane" };
@@ -409,9 +432,6 @@ export function buildOverviewStats({
         ? [`cap + debt - cash${minority}`, "computed"]
         : check?.investmentsKept ? ["investments in", "inv. in"] : inBase(enterpriseValue, quoteCurrency),
     });
-  }
-  if (finite(fundamentals?.beta)) {
-    stats.push({ label: "Beta", value: formatNumber(fundamentals.beta, 2), link: RELATIONSHIP_GRAPH });
   }
   if (finite(fundamentals?.shortPercentOfFloat)) {
     stats.push({

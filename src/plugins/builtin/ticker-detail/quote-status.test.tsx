@@ -63,11 +63,12 @@ async function render(plan: "free" | "pro", width: number) {
     initial.financials.set(symbol, financials(quote(symbol, symbol === "9988")));
   }
   initial.paneState[paneId] = { activeTabId: "overview" };
+  const provider = createTestDataProvider();
+  const runtime = createTestPluginRuntime({ getMarketData: () => provider });
   function Harness() {
     const [state, setState] = useState(initial);
     update = setState;
-    return <TestPaneProvider state={state} paneId={paneId} pluginId="ticker-research"
-      runtime={createTestPluginRuntime({ getMarketData: () => createTestDataProvider() })}>
+    return <TestPaneProvider state={state} paneId={paneId} pluginId="ticker-research" runtime={runtime}>
       <PaneFooterProvider>{(value) => {
         footer = value;
         return <PaneWrapper title="Research" focused width={width} height={30} footer={value}>
