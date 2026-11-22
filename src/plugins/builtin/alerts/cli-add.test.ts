@@ -628,7 +628,7 @@ test("alerts list --csv gives a crossover's slow average and a ratio's benchmark
   const close = Date.parse("2026-11-20T21:00:00Z");
   const read = { lastDailyClose: "2026-11-20", lastQuoteUpdatedAt: close, lastCheckedAt: close, lastQuoteCurrency: "USD" };
   const cross = { ...createAlert("XLE", "crosses", 0, "ARCA"), ...read, metric: { kind: "ma_cross", period: 50, slowPeriod: 200, direction: "above" },
-    lastCheckedPrice: 64.6964, lastCheckedTarget: 59.7339 };
+    lastCheckedPrice: 64.6964, lastCheckedTarget: 59.7339, status: "triggered" as const, triggeredAt: Date.parse("2026-11-20T21:04:05.250Z") };
   const ratio = { ...createAlert("EWJ", "above", 0.6, "ARCA"), ...read, metric: { kind: "rs_ratio", benchmark: "ACWI", benchmarkExchange: "NASDAQ" },
     lastCheckedPrice: 0.5851, lastCheckedTarget: 0.6 };
   const config = await loadConfig(desk.dataDir);
@@ -642,6 +642,8 @@ test("alerts list --csv gives a crossover's slow average and a ratio's benchmark
   expect(cell(crossLine, "lastReading")).toBe("64.70 USD on the 2026-11-20 close");
   expect(cell(crossLine, "comparatorReading")).toBe("59.73 USD on the 2026-11-20 close");
   expect(cell(crossLine, "currency")).toBe("USD");
+  // When it went off, to the second in UTC as createdAt is, never an epoch count.
+  expect(cell(crossLine, "triggeredAt")).toBe("2026-11-20T21:04:05Z");
   expect(cell(ratioLine, "benchmarkListing")).toBe("ACWI:NASDAQ");
   expect(cell(ratioLine, "currency")).toBe("");
   expect(cell(ratioLine, "lastReading")).toBe("0.5851 on the 2026-11-20 close");

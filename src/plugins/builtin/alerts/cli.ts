@@ -676,7 +676,7 @@ const plural = (count: number, word: string) => `${count} ${word}${count === 1 ?
 
 /**
  * One row as text and CSV give it. CSV keeps the columns it has always had in
- * their order, then Created (ISO UTC), the listing, its currency and the last
+ * their order, Triggered in ISO UTC, then Created (ISO UTC), the listing, its currency and the last
  * reading, in words and dated, the session it is read in, and what that
  * reading is measured against: the comparator's own reading and the
  * benchmark listing of a ratio or RRG rule.
@@ -697,7 +697,8 @@ function textRow(row: AlertListRow): Record<string, unknown> {
     eventDate: typeof row.leadDays === "number" ? row.eventDate ?? (row.kind === "earnings_date" ? "waiting for next date" : "not known") : "",
     status: row.status,
     lastCheckedPrice: row.lastCheckedPrice,
-    triggeredAt: row.triggeredAt,
+    // ISO 8601 in UTC, as createdAt: a spreadsheet reads an epoch count as a number.
+    triggeredAt: isoUtc(typeof row.triggeredAt === "number" ? row.triggeredAt : null),
     createdAt: isoUtc(typeof row.createdAt === "number" ? row.createdAt : null),
     listing: row.listing ?? "",
     currency: row.currency ?? "",
@@ -1257,7 +1258,7 @@ export const alertsCliCommand: CliCommandDef = {
           { key: "lastReading", header: "Last Reading" },
           // ISO 8601 in UTC, as CSV writes it.
           { key: "createdAt", header: "Created", format: (value) => String(value ?? "") },
-          { key: "triggeredAt", header: "Triggered", optional: true },
+          { key: "triggeredAt", header: "Triggered", optional: true, format: (value) => String(value ?? "") },
           { key: "session", header: "Session", optional: true },
           { key: "comparatorReading", header: "Against", optional: true },
           { key: "benchmarkListing", header: "Benchmark", optional: true },
