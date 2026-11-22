@@ -140,6 +140,12 @@ export interface TickerListVisibleRange {
 export interface TickerListTableViewProps {
   /** What the list is (a watchlist's name), which names its exported file. */
   exportName?: string;
+  /**
+   * When a row's LAST is from, as its exported `as_of` dates it (an ISO time
+   * or date; null for none), where the list knows better than the quote's
+   * headline: a book valued at an after-hours print.
+   */
+  exportAsOf?: (ticker: TickerRecord) => string | null;
   columns: ColumnConfig[];
   tickers: TickerRecord[];
   cursorSymbol: string | null;
@@ -348,6 +354,7 @@ export function TickerListTableView({
   virtualize = true,
   overscan = 4,
   exportName,
+  exportAsOf,
   columnReorder,
 }: TickerListTableViewProps) {
   const commandBarShortcut = useCommandBarShortcut();
@@ -367,6 +374,8 @@ export function TickerListTableView({
   // one row. A new `resolveCell` (another column context: FX, weights, the
   // AGE clock) still redraws every visible row through its epoch.
   const financialsRef = useRef(financialsMap);
+  const exportAsOfRef = useRef(exportAsOf);
+  exportAsOfRef.current = exportAsOf;
   financialsRef.current = financialsMap;
   const flashSymbolsRef = useRef(safeFlashSymbols);
   flashSymbolsRef.current = safeFlashSymbols;
@@ -440,7 +449,9 @@ export function TickerListTableView({
     const identity = (ticker: TickerRecord) => quoteExportIdentityCells(exportedListingKey(ticker), financialsRef.current.get(ticker.metadata.ticker)?.quote,
       Date.now(),
       // A broker's quote names the broker as its source.
-      (providerId) => getSharedRegistry()?.getBrokerAdapter(providerId)?.name);
+      (providerId) => getSharedRegistry()?.getBrokerAdapter(providerId)?.name,
+      // Dated as the row's LAST is, where the list says (a book valued at the latest print).
+      exportAsOfRef.current?.(ticker));
     return groupLabels
       ? {
         headers: ["Group", ...QUOTE_EXPORT_IDENTITY_HEADERS],

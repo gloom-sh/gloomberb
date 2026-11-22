@@ -21,7 +21,7 @@ import {
 import { t } from "../../../../i18n";
 import { isQuoteStaleForCurrentSession } from "../../../../market-data/quotes/freshness";
 import { delistingLabel, delistingStateLabel } from "../../../../market-data/quotes/delisting";
-import { formatQuoteNavAsOf, formatQuoteSessionAsOf } from "../../../../market-data/quotes/time";
+import { formatExtendedPrintAsOf, formatQuoteNavAsOf, formatQuoteSessionAsOf } from "../../../../market-data/quotes/time";
 import { ClippedText } from "../../../../components/ui/display";
 import { useSelectionFill } from "../../../../components/ui/selection-fill";
 import { useQuoteFlashDirection } from "../../../../components/quote-flash";
@@ -46,9 +46,11 @@ function quoteTrend(value: number | null | undefined): PriceSparklineTrend {
 const DESKTOP_DETAIL_CHAR_PX = 12 * 0.6;
 
 /**
- * The extended print's line, "After-Hours $336.08 -0.17%": the full label
- * where the room allows, else "AH", "PM" or "ON" as the heat map marks them,
- * and no line where even that does not fit. Its move is never set without its
+ * The extended print's line, "After-Hours Sat 00:34 UTC $70.60 +1.35%": the
+ * full label where the room allows, else "AH", "PM" or "ON" as the heat map
+ * marks them, each with the print's own time (the close above is dated at the
+ * close), then without it (`dated` false: the as-of line says it instead), and
+ * no line where even that does not fit. Its move is never set without its
  * price: "AH +2.77%" beside the day's +2.33% read as a second day's move
  * (^N225 on a 70-column board, 9 Nov 2026), which a wide card's
  * "After-Hours 60,404.00 +2.77%" did not.
@@ -56,15 +58,16 @@ const DESKTOP_DETAIL_CHAR_PX = 12 * 0.6;
 function extendedLineParts(
   extended: ExtendedSessionDisplay,
   priceText: string,
+  time: string | null,
   fits: (text: string) => boolean,
-): { label: string; figures: string } | null {
-  const mark = EXTENDED_SESSION_MARKS[extended.session];
-  const percent = formatPercentRaw(extended.changePercent);
+): { label: string; figures: string; dated: boolean } | null {
+  const labels = [extendedSessionLineLabel(extended, t), EXTENDED_SESSION_MARKS[extended.session]];
+  const figures = `${priceText} ${formatPercentRaw(extended.changePercent)}`;
   const candidates = [
-    { label: extendedSessionLineLabel(extended, t), figures: `${priceText} ${percent}` },
-    { label: mark, figures: `${priceText} ${percent}` },
+    ...time ? labels.map((label) => ({ label: `${label} ${time}`, figures, dated: true })) : [],
+    ...labels.map((label) => ({ label, figures, dated: false })),
   ];
-  return candidates.find(({ label, figures }) => fits(`${label} ${figures}`)) ?? null;
+  return candidates.find(({ label }) => fits(`${label} ${figures}`)) ?? null;
 }
 
 const DESKTOP_DETAIL_TEXT_STYLE = { fontSize: "var(--gloom-type-ui)", lineHeight: "14px", whiteSpace: "nowrap" };
@@ -93,7 +96,7 @@ function ExtendedSessionLine({
   dim,
   desktopStyle,
 }: {
-  parts: { label: string; figures: string };
+  parts: { label: string; figures: string; dated: boolean };
   color: string;
   dim: boolean;
   /** Placement on the desktop card's grid; the terminal gives the line one row. */
@@ -200,10 +203,9 @@ export function QuoteMonitorCard({
   const quoteStatus = resolveQuoteStatus(quoteEntry, symbol, quote);
   const quoteFailed = quoteStatus.failed && !!display;
   const navAsOf = formatQuoteNavAsOf(quote);
-  // Each card says what its own price is as of (`CLOSED · 08:09 UTC` beside `15 min delayed · 21:20 UTC`);
-  // a fund says its NAV's date instead.
+  // Each card says what its own price is as of (`CLOSED · 08:09 UTC` beside `CLOSED · Fri 21:00 UTC`, a close
+  // dated at the close while its after-hours print says its own time); a fund says its NAV's date instead.
   const sessionAsOf = quoteStatus.ended ? null : formatQuoteSessionAsOf(quote);
-  const desktopAsOf = nativePaneChrome ? navAsOf ?? sessionAsOf : null;
   const changeColor = quoteFailed ? colors.textDim : priceColor(display?.change ?? 0);
   const flashing = !!flashDirection && !headlineHolds;
   const currency = quote?.currency || ticker?.metadata.currency || "USD";
@@ -224,13 +226,11 @@ export function QuoteMonitorCard({
   const extendedRoom = nativePaneChrome
     ? (width * cellWidthPx - 24) / DESKTOP_DETAIL_CHAR_PX
     : stacked ? width - 3 - displayWidth(label) : width - 3 - priceColumnWidth;
-  const extendedParts = display && extended
-    ? extendedLineParts(extended, formatMarketPriceWithCurrency(extended.price, currency, priceOptions), (text) => displayWidth(text) <= extendedRoom)
+  const extendedTime = formatExtendedPrintAsOf(quote);
+  const extendedPriceText = extended ? formatMarketPriceWithCurrency(extended.price, currency, priceOptions) : "";
+  const besideParts = display && extended
+    ? extendedLineParts(extended, extendedPriceText, extendedTime, (text) => displayWidth(text) <= extendedRoom)
     : null;
-  // A desktop card says a listing no longer trades on a row of its own.
-  const endedRow = nativePaneChrome && quoteFailed && !!quoteStatus.ended && !extendedParts;
-  const extendedColor = quoteFailed ? colors.textDim : priceColor(extended?.change ?? 0);
-  const extendedDim = !!flashDirection && headlineHolds;
   const sparklineRange = resolvePriceSparklineRange(priceHistory, chartPeriod);
   // A price in 32nds already has a hyphen (104-16½), so its range reads "to".
   const rangeSeparator = priceOptions.priceBasis === "thirty-seconds" ? " to " : "-";
@@ -244,9 +244,26 @@ export function QuoteMonitorCard({
   const headerRows = stacked ? 3 : 2;
   const showTerminalSparkline = (!quoteFailed && !navAsOf)
     || height >= headerRows + statusRows + terminalSparklineHeight;
+  const terminalRowsUsed = headerRows + statusRows + (perpetuals ? 1 : 0) + (showTerminalSparkline ? terminalSparklineHeight : 0);
   // The terminal gives the as-of line a row only where the card has one to spare: the sparkline keeps its rows.
-  const showTerminalSessionAsOf = !!sessionAsOf
-    && height >= headerRows + statusRows + (perpetuals ? 1 : 0) + (showTerminalSparkline ? terminalSparklineHeight : 0) + 1;
+  const showTerminalSessionAsOf = !!sessionAsOf && height >= terminalRowsUsed + 1;
+  // A terminal print whose time does not fit beside the change takes a row of its own across the card, with its
+  // time, where the card has one more to spare: `AH Sat 00:34 UTC $70.60 +1.35%` under `CLOSED · Fri 21:00 UTC`.
+  const rowParts = !nativePaneChrome && display && extended && extendedTime && !besideParts?.dated
+    && height >= terminalRowsUsed + (showTerminalSessionAsOf ? 1 : 0) + 1
+    ? extendedLineParts(extended, extendedPriceText, extendedTime, (text) => displayWidth(text) <= width - 2)
+    : null;
+  const extendedRowParts = rowParts?.dated ? rowParts : null;
+  const extendedParts = extendedRowParts ? null : besideParts;
+  // Else a print whose line had no room for its time is dated on the as-of line, after the close's: `· AH Sat 00:34 UTC`.
+  const sessionAsOfLine = sessionAsOf && extended && extendedParts && !extendedParts.dated && extendedTime
+    ? `${sessionAsOf} · ${EXTENDED_SESSION_MARKS[extended.session]} ${extendedTime}`
+    : sessionAsOf;
+  const desktopAsOf = nativePaneChrome ? navAsOf ?? sessionAsOfLine : null;
+  // A desktop card says a listing no longer trades on a row of its own.
+  const endedRow = nativePaneChrome && quoteFailed && !!quoteStatus.ended && !extendedParts;
+  const extendedColor = quoteFailed ? colors.textDim : priceColor(extended?.change ?? 0);
+  const extendedDim = !!flashDirection && headlineHolds;
   // Figures sit over the sparkline, so the desktop rings them in the card colour.
   const figureHalo = { textShadow: `0 1px 2px ${colors.bg}` };
   // The card's title: a heading over the app's 12px name, under the 20px price.
@@ -509,8 +526,9 @@ export function QuoteMonitorCard({
             <Box height={1} overflow="hidden"><Text fg={colors.textDim}>{navAsOf}</Text></Box>
           )}
           {showTerminalSessionAsOf && (
-            <Box height={1} overflow="hidden"><ClippedText text={sessionAsOf!} width={Math.max(1, width - 2)} fg={colors.textDim} /></Box>
+            <Box height={1} overflow="hidden"><ClippedText text={sessionAsOfLine!} width={Math.max(1, width - 2)} fg={colors.textDim} /></Box>
           )}
+          {extendedRowParts && <ExtendedSessionLine parts={extendedRowParts} color={extendedColor} dim={extendedDim} />}
           {perpetuals}
           {showTerminalSparkline && <Box height={terminalSparklineHeight} flexDirection="row" alignItems="center" gap={1}>
             <PriceSparkline

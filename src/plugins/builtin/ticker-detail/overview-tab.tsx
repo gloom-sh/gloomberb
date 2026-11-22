@@ -17,7 +17,6 @@ import { formatMarketPriceWithCurrency, formatSignedMarketPrice, liveQuoteFormat
 import { priceSeriesUnit } from "../../../market-data/market/index-level";
 import {
   exchangeShortName,
-  extendedPrintTime,
   extendedSessionLineLabel,
   getExtendedSessionDisplay,
   getRegularSessionDisplay,
@@ -29,7 +28,7 @@ import { buildPriceReturnFields, headlinePriceReturnEnd, priceReturnDailyWindow,
 import type { ChartRequest } from "../../../market-data/request-types";
 import { buildChartKey } from "../../../market-data/selectors";
 import { changeBasisLabel, changeBasisNote, closeDayLabel, futuresQuoteFromSettle, quoteChangeBasis, quoteSettleText } from "../../../market-data/market/change-basis";
-import { asOfClock } from "../../../market-data/quotes/time";
+import { formatExtendedPrintAsOf } from "../../../market-data/quotes/time";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { quoteObservation } from "../shared/report-freshness";
 import {
@@ -434,9 +433,9 @@ function ResolvedOverviewTab({
   // The extended session's line keeps its label and price whole on a narrow pane: the move gives
   // way to its percent, then goes, rather than wrapping a figure across two lines ("(+0." / "08%)").
   // The extended print says when it was observed (After-Hours 00:10 UTC), as the close above says its day.
-  const extendedTime = extendedQuote ? extendedPrintTime(quote) : null;
+  const extendedTime = extendedQuote ? formatExtendedPrintAsOf(quote) : null;
   const extendedLabelText = extendedQuote
-    ? `${extendedSessionLineLabel(extendedQuote, t)}${extendedTime != null ? ` ${asOfClock(Math.min(extendedTime, Date.now()))}` : ""}:`
+    ? `${extendedSessionLineLabel(extendedQuote, t)}${extendedTime ? ` ${extendedTime}` : ""}:`
     : "";
   const extendedPriceText = extendedQuote ? formatMarketPriceWithCurrency(extendedQuote.price, quote?.currency, moneyOptions) : "";
   const extendedMoveText = extendedQuote

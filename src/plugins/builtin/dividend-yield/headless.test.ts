@@ -201,7 +201,8 @@ test("several symbols are one table ranked by trailing yield; a read without its
   expect(csv.find((entry) => entry.startsWith("KO,"))).toMatch(/^KO,2\.2354,0\.52,.*,KO,pct,,Gloom Cloud,2026-01-16T21:00:00\.000Z,[^,]+$/);
   expect(csv.find((entry) => entry.startsWith("SBK.JO,"))).toMatch(/,SBK\.JO,pct,,Gloom Cloud,2026-01-16T15:00:00\.000Z,[^,]+$/);
   expect(csv.find((entry) => entry.startsWith("GONE,"))).toMatch(/,GONE,pct,,Gloom Cloud,,[^,]+$/);
-  expect(csv).toContain("# Observation date: 2026-01-16T21:00:00.000Z");
+  // Its rows are dated apart, so the observation date says it is the newest row's.
+  expect(csv).toContain("# Observation date: 2026-01-16T21:00:00.000Z (the newest row's; each row's as_of is its own)");
 
   // Options that pick one ticker's history rows are refused for a ranking, before anything is read.
   await expect(definition.load({ ...request, options: { type: "special", limit: 40 } }, context)).rejects.toThrow("--type filters one ticker's payment history");

@@ -149,6 +149,36 @@ export function exportIdentityFields(freshness: ReportFreshness, identity: Expor
   return Object.fromEntries(EXPORT_IDENTITY_COLUMNS.map((column, index) => [column, cells[index] || null]));
 }
 
+function observationLine(source: ExportSource): string {
+  return `Observation date: ${source.observationDate ?? NOT_PUBLISHED}`;
+}
+
+/** What the observation date says of itself when the rows are dated apart. */
+const DATED_APART = " (the newest row's; each row's as_of is its own)";
+
+/**
+ * Whether an export's rows are dated apart: their `as_of` cells hold more
+ * than one time (Hong Kong's close beside New York's).
+ */
+export function rowsDatedApart(asOf: Iterable<string | null | undefined>): boolean {
+  return new Set([...asOf].filter((value): value is string => !!value)).size > 1;
+}
+
+/**
+ * The closing lines of an export whose rows are dated apart: the observation
+ * date says it is the newest row's, so where it is repeated beside every row
+ * (CSV's `export_notes`) it never reads as that row's own. Tencent's row of
+ * `quote 0700:HKEX XYZ:NYSE --csv`, as of its 08:08 UTC close, read
+ * `Observation date: 2026-11-21T00:34:00.055Z`. Its date stays first, so a
+ * reader of the line still finds it there.
+ */
+export function withRowsDatedApart(lines: readonly string[], freshness: ReportFreshness): string[] {
+  const source = exportSource(freshness);
+  if (!source.observationDate) return [...lines];
+  const line = observationLine(source);
+  return lines.map((each) => each === line ? `${line}${DATED_APART}` : each);
+}
+
 /**
  * The lines an export ends with: the source line the text report ends with,
  * then the publisher, observation date (the newest; the oldest follows when
@@ -164,7 +194,7 @@ export function exportSourceLines(freshness: ReportFreshness): string[] {
   return [
     formatFreshnessLine(freshness),
     `Publisher: ${stated(source.publisher)}`,
-    `Observation date: ${stated(source.observationDate)}`,
+    observationLine(source),
     ...(source.oldestObservationDate ? [`Oldest observation: ${source.oldestObservationDate}`] : []),
     `Publication time: ${stated(source.publicationTime)}`,
     `Retrieval time: ${source.retrievalTime}`,

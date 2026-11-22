@@ -38,7 +38,9 @@ import type { PortfolioValuationBasis } from "../../../portfolio/valuation-basis
 import { futuresQuantityText, isFuturesTicker } from "../../../portfolio/futures-positions";
 import { dailyFuturesHistory, loadPortfolioFuturesTerms } from "../../../portfolio/futures-terms";
 import { loadPurchaseDateCostFx } from "../../../portfolio/cost-fx";
-import { EXTENDED_SESSION_LABELS, getCompletedRegularSessionDisplay, quoteHeadlineTime, type ExtendedSession } from "../../../market-data/market/status";
+import {
+  EXTENDED_SESSION_LABELS, extendedPrintTime, getCompletedRegularSessionDisplay, quoteHeadlineTime, type ExtendedSession,
+} from "../../../market-data/market/status";
 import {
   BROKER_ACCOUNT_MISSING_NOTE,
   CASH_SYMBOL,
@@ -53,6 +55,7 @@ import {
 import { currencyPriceMinDigits, formatMarketPrice, formatMarketQuantity } from "../../../market-data/market/format";
 import { resolvePortfolioTotalsCurrency } from "./summary/totals";
 import { bookSource, brokerNameOf, quoteFreshnessFields } from "../shared/report-freshness";
+import { extendedPrintTimeColumn, withExtendedPrintTime } from "../shared/extended-print";
 import { importedFromText } from "./imported-from";
 import { describeCollections } from "../../../portfolio/collection-name";
 import { currentListingName } from "../../../tickers/listing-name";
@@ -153,6 +156,10 @@ function extendedColumn(session: ExtendedSession): HeadlessPaneColumn {
     format: (value, row) => row.extendedSession === session && typeof value === "number"
       ? `${unitMoney("priceCurrency")(value, row)} ${percent(row.extendedChangePercent)}`
       : formatNumber(undefined),
+    // The text report dates the print beside it, as `quote` does: Last is the close, dated at the close.
+    textFormat: (value, row) => row.extendedSession === session && typeof value === "number"
+      ? withExtendedPrintTime(`${unitMoney("priceCurrency")(value, row)} ${percent(row.extendedChangePercent)}`, row)
+      : formatNumber(undefined),
     description: "Measured from the regular close in Last.",
   };
 }
@@ -173,6 +180,12 @@ const WATCHLIST_COLUMNS: HeadlessPaneColumn[] = [
   { key: "changePercent", header: "Regular %", align: "right", format: percent },
 ];
 
+/** A watchlist's columns; with an extended print, when it was observed ends an export's row, the text saying it beside the print. */
+function watchlistColumns(tickers: readonly TickerRecord[], sessions: readonly ExtendedSession[]): { columns: HeadlessPaneColumn[]; textColumns?: HeadlessPaneColumn[] } {
+  const columns = withListingLabels(withExtendedColumns(WATCHLIST_COLUMNS, sessions), tickers);
+  return sessions.length > 0 ? { columns: [...columns, ...sessions.map(extendedPrintTimeColumn)], textColumns: columns } : { columns };
+}
+
 /**
  * `columns` with the text report's Ticker column naming each listing as
  * `portfolio show` does (SAN:EPA, SAN:NYSE), not by the key it is stored under,
@@ -192,9 +205,14 @@ function withListingLabels(columns: HeadlessPaneColumn[], tickers: readonly Tick
   });
 }
 
-/** When the price a row shows was observed: in a pre-market nothing has traded in, the close it stands at. */
+/** When the price a row shows was observed: in a pre-market nothing has traded in, the close it stands at; once the session is over, its close. */
 function headlineTime(quote: Quote | undefined): number | null {
   return quote ? quoteHeadlineTime(quote) : null;
+}
+
+/** When a row's extended print was observed, beside the close `headlineTime` dates; null without one. */
+function extendedTime(extended: unknown, quote: Quote | undefined): number | null {
+  return extended ? extendedPrintTime(quote) : null;
 }
 
 function finite(value: unknown): number | null {
@@ -408,6 +426,7 @@ async function portfolioHoldings(
         ...regularChangeFields(quotes.get(ticker.metadata.ticker), headline?.changePercent),
         extendedChangeBasis: extended ? "from-regular-close" : null,
         ...extendedQuoteFields(extended),
+        extendedUpdatedAt: extendedTime(extended, quotes.get(ticker.metadata.ticker)),
         marketValue,
         unrealizedPnl: finite(row.unrealizedPnl),
         weight: figures?.weight ?? null,
@@ -494,6 +513,7 @@ async function portfolioHoldings(
     tickers,
   );
   const lotted = withPositionLines(shown, columns, allocationBySymbol, allocation.cash);
+  const printTimeColumns = extendedSessions.map(extendedPrintTimeColumn);
 
   return {
     // Dated by the prices the value uses, and the oldest of them in exports, with the basis in the closing line.
@@ -503,10 +523,13 @@ async function portfolioHoldings(
       citeOldest: true,
       note: `priced at ${valuationBasisText(basis, holdsFutures(valuation), marketsStillTrading(valuation))}`,
     },
-    columns: shown.some((row) => row.fxMark) ? [...columns, { key: "fxMark", header: "Market-value FX" }] : columns,
+    // When each extended print was observed ends an export's row; the text report says it beside the print.
+    columns: [...shown.some((row) => row.fxMark) ? [...columns, { key: "fxMark", header: "Market-value FX" }] : columns, ...printTimeColumns],
     notes: fxMarks.length ? [`Market-value FX: ${[...fxByCurrency.values()].join("; ")}`] : undefined,
-    ...(!lotted && shown.some((row) => row.fxMark) ? { textColumns: columns } : {}),
+    ...(!lotted && (shown.some((row) => row.fxMark) || printTimeColumns.length > 0) ? { textColumns: columns } : {}),
     rows: shown,
+    // Each exported row is dated by the price its value uses, as the closing lines date the newest and oldest.
+    rowAsOfKey: "valuationAsOf",
     ...(lotted ? { textColumns: lotted.columns, textRows: lotted.rows } : {}),
     complete: errors.length === 0,
     ...(errors.length ? { errors } : {}),
@@ -697,16 +720,16 @@ async function watchlistHoldings(
       ...regularChangeFields(quote, headline ? headline.changePercent : quote?.changePercent),
       extendedChangeBasis: extended ? "from-regular-close" : null,
       ...extendedQuoteFields(extended),
+      extendedUpdatedAt: extendedTime(extended, quote),
     };
   });
   const shown = rows.slice(0, limit);
   return {
     freshness: { source: bookSource("Local watchlist", quotes.values(), brokerNameOf(ctx)) },
-    columns: withListingLabels(
-      withExtendedColumns(WATCHLIST_COLUMNS, extendedSessionsOf(shown.map((row) => row.extendedSession))),
-      tickers,
-    ),
+    ...watchlistColumns(tickers, extendedSessionsOf(shown.map((row) => row.extendedSession))),
     rows: shown,
+    // Each exported row is dated by its own quote: Hong Kong's close is no observation of New York's.
+    rowAsOfKey: "updatedAt",
     metadata: {
       collection: { kind: "watchlist", id: target.id, name: target.name },
       tickers: rows.length,

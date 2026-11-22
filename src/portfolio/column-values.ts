@@ -8,6 +8,7 @@ import type { AnalystResearchData, CorporateActionsData, MarketState, Quote, Tic
 import type { EarningsEvent } from "../types/data-provider";
 import type { TickerRecord } from "../types/ticker";
 import type { PeriodPnlRow } from "./period-pnl";
+import type { ReportTime } from "../utils/utc-time";
 import { colors, priceColor, shownPriceColor } from "../theme/colors";
 import { formatQuoteAgeWithSource, QUOTE_BOOK_UNDATED, resolveQuoteAgeTimestamp } from "../market-data/quotes/time";
 import { delistingStateLabel } from "../market-data/quotes/delisting";
@@ -34,6 +35,7 @@ import {
   marketPriceColor,
   marketStateDot,
   quoteDotMarketState,
+  quoteHeadlineTime,
   type ActiveQuoteDisplay,
   type SessionPriceDisplay,
 } from "../market-data/market/status";
@@ -71,6 +73,7 @@ import {
 import {
   getPortfolioValuationDisplay,
   getPortfolioValuationTime,
+  valuationTimeIso,
   valuesAtNominalPrice,
   valuesAtSettlement,
   type PortfolioValuationBasis,
@@ -403,6 +406,38 @@ function rowHeadlineDisplay(
   if (ctx.valuationBasis !== "latest-print" || !traded) return headlineQuoteDisplay(traded, quote);
   const session = extendedPrintSession(quote, traded.price);
   return session ? { ...traded, session } : traded;
+}
+
+/**
+ * When a row's LAST was observed, its AS OF: in a book, the price its value
+ * uses (getPortfolioValuationTime); in a list that values nothing (no
+ * `valuationBasis`, a watchlist), the regular session `quote` heads it with
+ * (rowHeadlineDisplay), dated as `quote` dates it: once the session is over at
+ * its close, never at the after-hours print EXT% shows beside it.
+ */
+function rowAsOfTime(
+  quote: Quote | undefined,
+  ctx: Pick<ColumnContext, "valuationBasis">,
+  metrics: PortfolioPositionMetrics,
+  settlement: Parameters<typeof getPortfolioValuationTime>[3],
+): ReportTime | null {
+  if (ctx.valuationBasis == null && quote && !quote.nominalPrice) {
+    const time = quoteHeadlineTime(quote);
+    return Number.isFinite(time) && time > 0 ? { time, dateOnly: false } : null;
+  }
+  return getPortfolioValuationTime(quote, ctx.valuationBasis, metrics, settlement);
+}
+
+/**
+ * A row's AS OF as an export writes it (an ISO instant in UTC, or the day of
+ * a close or settlement the venue gives no hour for): what a list's Export
+ * CSV dates each row by, so its as_of is its LAST's.
+ */
+export function getRowAsOfIso(ticker: TickerRecord, financials: TickerFinancials | undefined, ctx: ColumnContext): string | null {
+  const sent = financials?.quote;
+  const { position: positionMetrics } = rowPositionMetrics(ticker, ctx, sent?.currency || ticker.metadata.currency || "USD", sent);
+  const futures = positionMetrics.isFuture ? ctx.futuresTerms?.get(ticker.metadata.ticker) : undefined;
+  return valuationTimeIso(rowAsOfTime(futuresQuoteFromSettle(sent, futures), ctx, positionMetrics, futures?.settlement));
 }
 
 /** CHG% as shown: the headline's, else the quote's own when no position price is usable. */
@@ -858,7 +893,7 @@ export function getColumnValue(
     case "latency":
       return { text: formatQuoteAgeWithSource(quote, ctx.now, { seconds: true }) };
     case "as_of": {
-      const time = getPortfolioValuationTime(quote, ctx.valuationBasis, positionMetrics, futures?.settlement);
+      const time = rowAsOfTime(quote, ctx, positionMetrics, futures?.settlement);
       if (!time) return { text: MISSING_VALUE };
       // In UTC, as the header says; a close the venue's calendar gives no hour for is dated by its day.
       // An export writes the date with it, as ISO: 16:49 alone says nothing of which day.
@@ -1054,7 +1089,7 @@ export function getSortValue(
     case "latency":
       return quote ? ctx.now - (resolveQuoteAgeTimestamp(quote, ctx.now) ?? ctx.now) : null;
     case "as_of":
-      return getPortfolioValuationTime(quote, ctx.valuationBasis, positionMetrics, futures?.settlement)?.time ?? null;
+      return rowAsOfTime(quote, ctx, positionMetrics, futures?.settlement)?.time ?? null;
     case PRICE_SPARKLINE_COLUMN_ID: {
       // The trend the sparkline draws: its window, closed by the live price.
       const history = followLiveSparklinePrice(financials?.priceHistory ?? [], quote, {

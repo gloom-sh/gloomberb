@@ -110,10 +110,18 @@ export function quoteExportFeed(quote: Quote | null | undefined, now = Date.now(
 /**
  * The cells `QUOTE_EXPORT_IDENTITY_HEADERS` name for one row: `listing` is the
  * row's listing with its venue (BA:LSE), the as-of the ISO instant its Last
- * was observed (each row its own: Hong Kong's close beside New York's).
+ * was observed (each row its own: Hong Kong's close beside New York's), as
+ * `quote` dates the headline (quoteHeadlineTime) unless the row says when its
+ * Last is from (`asOf`: a book's after-hours print at the latest print).
  */
-export function quoteExportIdentityCells(listing: string, quote: Quote | null | undefined, now = Date.now(), brokerName?: BrokerNameOf): string[] {
-  const asOf = quote?.lastUpdated ? new Date(quoteHeadlineTime(quote)).toISOString() : "";
+export function quoteExportIdentityCells(
+  listing: string,
+  quote: Quote | null | undefined,
+  now = Date.now(),
+  brokerName?: BrokerNameOf,
+  rowAsOf?: string | null,
+): string[] {
+  const asOf = rowAsOf !== undefined ? rowAsOf ?? "" : quote?.lastUpdated ? new Date(quoteHeadlineTime(quote)).toISOString() : "";
   return [
     quote ? quoteSessionStateLabel(quote, now) ?? "" : "",
     quoteExportFeed(quote, now),
