@@ -6,6 +6,7 @@
  *   bun run scripts/nightly.ts notes   the prerelease notes: what changed since the last nightly build
  *   bun run scripts/nightly.ts prune   nightly prereleases older than NIGHTLY_PRUNE_DAYS; a dry run without it
  *   bun run scripts/nightly.ts claim-tag   fails unless no tag and no release (draft included) is named NIGHTLY_TAG yet
+ *   bun run scripts/nightly.ts check-workflows   whether main's .github/workflows still match NIGHTLY_SHA's (GITHUB_OUTPUT)
  *   bun run scripts/nightly.ts drop-draft  after a failed publish, deletes the drafts named NIGHTLY_TAG, nothing else
  *
  * A nightly build is of the newest commit among main's last NIGHTLY_WINDOW on
@@ -13,6 +14,14 @@
  * otherwise its newest green ancestor, so a run that fires while the head is
  * still being verified (the schedule is often hours late, during the merges)
  * does not skip the day.
+ *
+ * That commit also has to have the same .github/workflows tree as main's head.
+ * GitHub refuses a release (and its tag) for a commit whose workflow files
+ * differ from the default branch's when the token has no `workflows`
+ * permission, which the publish job does not and must not have. A verified
+ * commit whose workflows differ is passed over for an older one that matches,
+ * never one at or before the last nightly build's, and the publish job checks
+ * once more right before it uploads, because main can move during the build.
  *
  * It is named `<base>-nightly.<UTC date>.<run number>.g<sha7>`, with the commit
  * that was built in the name. The base is the patch after the latest stable
@@ -72,6 +81,10 @@ export function isNightlyTag(tag: string): boolean {
 /** How many of main's newest commits the plan looks through for one both checks passed on. */
 const NIGHTLY_WINDOW = 30;
 
+/** The branch nightly builds publish from, which is the default branch GitHub compares a release target's workflows with. */
+const MAIN = "main";
+const WORKFLOWS_DIR = ".github/workflows";
+
 export interface NightlyPlanInput {
   event: string;
   /** The run asked to publish; off builds everything and publishes nothing. */
@@ -89,6 +102,10 @@ export interface NightlyPlanInput {
   verifyPassed: string[];
   /** Commits Verify Windows concluded success on for a push to main. */
   verifyWindowsPassed: string[];
+  /** The .github/workflows tree SHA at each commit `verifiedCommits` lists; read only when the run publishes. */
+  workflowTrees: Record<string, string>;
+  /** The .github/workflows tree SHA at main's head right now, which a release target's has to equal. */
+  mainWorkflowTree: string;
 }
 
 export interface NightlyPlan {
@@ -108,18 +125,26 @@ interface NightlyPick {
 }
 
 /**
- * The newest commit in `history` (newest first) that both checks passed on.
- * The last nightly build's commit stops the search and counts as passed, since
- * it was published: a re-run or a missing record on it must never send the
- * next nightly build back to an older commit.
+ * The commits in `history` (newest first) that both checks passed on, newest
+ * first. The last nightly build's commit stops the list and counts as passed,
+ * since it was published: a re-run or a missing record on it must never send
+ * the next nightly build back to an older commit.
  */
-export function newestVerifiedCommit(history: string[], verifyPassed: string[], verifyWindowsPassed: string[], previousSha: string | null): NightlyPick | null {
+export function verifiedCommits(history: string[], verifyPassed: string[], verifyWindowsPassed: string[], previousSha: string | null): NightlyPick[] {
   const verify = new Set(verifyPassed);
   const verifyWindows = new Set(verifyWindowsPassed);
+  const picks: NightlyPick[] = [];
   for (const [behind, sha] of history.entries()) {
-    if (sha === previousSha || (verify.has(sha) && verifyWindows.has(sha))) return { sha, behind };
+    const isPrevious = sha === previousSha;
+    if (isPrevious || (verify.has(sha) && verifyWindows.has(sha))) picks.push({ sha, behind });
+    if (isPrevious) break;
   }
-  return null;
+  return picks;
+}
+
+function shortShas(picks: NightlyPick[]): string {
+  const shown = picks.slice(0, 3).map((pick) => pick.sha.slice(0, 7)).join(", ");
+  return picks.length > 3 ? `${shown} and ${picks.length - 3} more` : shown;
 }
 
 export function planNightly(input: NightlyPlanInput): NightlyPlan {
@@ -135,28 +160,48 @@ export function planNightly(input: NightlyPlanInput): NightlyPlan {
     return { build: true, publish: false, sha: input.head, reason: `building ${head} without publishing` };
   }
   // Asked for by hand, say so loudly; the schedule tries again tomorrow.
-  const stop = (reason: string): NightlyPlan => input.event === "workflow_dispatch"
-    ? { build: false, publish: false, sha: "", error: `${reason}; wait for it or fix main.`, reason }
+  const stop = (reason: string, hint = "wait for it or fix main"): NightlyPlan => input.event === "workflow_dispatch"
+    ? { build: false, publish: false, sha: "", error: `${reason}; ${hint}.`, reason }
     : { build: false, publish: false, sha: "", reason };
 
-  const pick = newestVerifiedCommit(input.history, input.verifyPassed, input.verifyWindowsPassed, input.previousSha);
-  if (!pick) {
+  const verified = verifiedCommits(input.history, input.verifyPassed, input.verifyWindowsPassed, input.previousSha);
+  if (verified.length === 0) {
     return stop(`None of main's last ${input.history.length} commits has passed Verify and Verify Windows (head ${head})`);
+  }
+  const sameWorkflows = (pick: NightlyPick) => input.workflowTrees[pick.sha] === input.mainWorkflowTree;
+  const pick = verified.find(sameWorkflows);
+  // Verified commits newer than the pick (all of them without one) that main's workflows have moved on from.
+  const passedOver = verified.filter((other) => other.sha !== input.previousSha && !sameWorkflows(other) && (!pick || other.behind < pick.behind));
+  const passedOverNote = passedOver.length > 0
+    ? `; passed over newer verified ${passedOver.length === 1 ? "commit" : "commits"} ${shortShas(passedOver)}, whose ${WORKFLOWS_DIR} differ from main's`
+    : "";
+  const noNewCommit = () => stop(`No commit after the last nightly build (${input.previousSha?.slice(0, 7)}) has passed Verify and Verify Windows; head ${head} not verified yet`);
+  // GitHub refuses a release of a commit whose workflows differ from main's, so there is nothing to publish until one is verified.
+  const workflowsMoved = (since: string) => stop(
+    `Main's head changed ${WORKFLOWS_DIR} after ${since}, and GitHub refuses a release of a commit whose workflows differ`,
+    "wait for the head to pass Verify and Verify Windows",
+  );
+
+  if (!pick) {
+    if (passedOver.length > 0) return workflowsMoved(`the newest verified commit (${passedOver[0]!.sha.slice(0, 7)})`);
+    // Only the last nightly build's commit is left, and it is not for a plain run.
+    if (!input.force) return noNewCommit();
+    return workflowsMoved(`the last nightly build's commit (${input.previousSha?.slice(0, 7)})`);
   }
   const short = pick.sha.slice(0, 7);
   if (pick.sha === input.previousSha) {
     if (!input.force) {
-      return stop(`No commit after the last nightly build (${short}) has passed Verify and Verify Windows; head ${head} not verified yet`);
+      return passedOver.length > 0 ? workflowsMoved(`the newest verified commit (${passedOver[0]!.sha.slice(0, 7)})`) : noNewCommit();
     }
-    return { build: true, publish: true, sha: pick.sha, reason: `publishing ${short} again, the commit of the last nightly build` };
+    return { build: true, publish: true, sha: pick.sha, reason: `publishing ${short} again, the commit of the last nightly build${passedOverNote}` };
   }
   return {
     build: true,
     publish: true,
     sha: pick.sha,
-    reason: pick.behind === 0
+    reason: (pick.behind === 0
       ? `publishing ${short}: main's head passed Verify and Verify Windows`
-      : `publishing ${short}: head ${head} not verified yet; newest verified is ${short}, ${pick.behind} commit${pick.behind === 1 ? "" : "s"} behind`,
+      : `publishing ${short}: head ${head} not verified yet; newest verified is ${short}, ${pick.behind} commit${pick.behind === 1 ? "" : "s"} behind`) + passedOverNote,
   };
 }
 
@@ -237,6 +282,37 @@ export async function readLatestStableTag(repo: string, run: Gh = gh): Promise<s
   const parsed = parseSemver(tag);
   if (!parsed || parsed.prerelease) throw new Error(`The latest release ${JSON.stringify(tag)} is not a stable version`);
   return tag;
+}
+
+/** The tree SHA of .github/workflows at `rev`, a commit or a branch, read through the API so no checkout is needed. */
+async function readWorkflowsTree(repo: string, rev: string, run: Gh): Promise<string> {
+  return (await run(["api", `repos/${repo}/git/trees/${rev}:${WORKFLOWS_DIR}`, "--jq", ".sha"])).trim();
+}
+
+/** main's tree right now, and the tree at each of `shas`. A failed read fails the run: it must not pass for a difference. */
+async function readWorkflowTrees(repo: string, shas: string[], run: Gh = gh): Promise<{ main: string; trees: Record<string, string> }> {
+  const [main, ...trees] = await Promise.all([MAIN, ...shas].map((rev) => readWorkflowsTree(repo, rev, run)));
+  return { main: main!, trees: Object.fromEntries(shas.map((sha, index) => [sha, trees[index]!])) };
+}
+
+export interface WorkflowRecheck {
+  /** Whether a release of the commit would not be refused for its workflows. */
+  current: boolean;
+  reason: string;
+}
+
+/**
+ * Right before the draft is created: whether main's .github/workflows are still
+ * the ones `sha`, the commit that was built, has. Main can move during the build.
+ */
+export async function recheckWorkflows(repo: string, sha: string, run: Gh = gh): Promise<WorkflowRecheck> {
+  const { main, trees } = await readWorkflowTrees(repo, [sha], run);
+  const short = sha.slice(0, 7);
+  if (trees[sha] === main) return { current: true, reason: `${WORKFLOWS_DIR} at ${short} still match main's head` };
+  return {
+    current: false,
+    reason: `Main's head changed ${WORKFLOWS_DIR} while ${short} was built, and GitHub refuses a release of a commit whose workflows differ; nothing is published, and the next run builds again.`,
+  };
 }
 
 function requireEnv(name: string): string {
@@ -332,16 +408,24 @@ async function runPlan(): Promise<void> {
     passedShas(repo, "verify.yml"),
     passedShas(repo, "verify-windows.yml"),
   ]);
+  const publish = process.env.NIGHTLY_PUBLISH === "true";
+  const onMain = process.env.GITHUB_REF === "refs/heads/main";
+  // Only a release is refused for its workflows; a try-out build reads nothing.
+  const workflows = publish && onMain
+    ? await readWorkflowTrees(repo, verifiedCommits(history, verifyPassed, verifyWindowsPassed, previous?.sha ?? null).map((pick) => pick.sha))
+    : null;
   const plan = planNightly({
     event: requireEnv("GITHUB_EVENT_NAME"),
-    publish: process.env.NIGHTLY_PUBLISH === "true",
+    publish,
     force: process.env.NIGHTLY_FORCE === "true",
-    onMain: process.env.GITHUB_REF === "refs/heads/main",
+    onMain,
     head,
     history,
     previousSha: previous?.sha ?? null,
     verifyPassed,
     verifyWindowsPassed,
+    workflowTrees: workflows?.trees ?? {},
+    mainWorkflowTree: workflows?.main ?? "",
   });
   // The version and everything after it belong to the commit that is built, not to the one the run started on.
   const version = plan.build
@@ -361,6 +445,7 @@ async function runPlan(): Promise<void> {
     `- ${plan.error ?? plan.reason}`,
     `- Latest stable release: ${latestStable}; last nightly build: ${previous?.tag ?? "none"}`,
     `- Head ${head.slice(0, 7)}: Verify ${verifyPassed.includes(head) ? "passed" : "not passed"}, Verify Windows ${verifyWindowsPassed.includes(head) ? "passed" : "not passed"}; looked through ${history.length} commit${history.length === 1 ? "" : "s"} of history`,
+    ...(workflows ? [`- ${WORKFLOWS_DIR} at main's head: ${workflows.main.slice(0, 7)}`] : []),
   ].join("\n"));
   if (plan.error) fail(plan.error);
   if (!plan.build) console.log(`::notice::No nightly build: ${plan.reason}`);
@@ -425,6 +510,22 @@ async function runClaimTag(): Promise<void> {
 }
 
 /**
+ * Right before the draft: the later steps of the publish job run only when main's
+ * workflows still match the built commit's. When they do not, nothing is created,
+ * no draft and no tag, and the run stays green.
+ */
+async function runCheckWorkflows(): Promise<void> {
+  const { current, reason } = await recheckWorkflows(requireEnv("GITHUB_REPOSITORY"), requireEnv("NIGHTLY_SHA"));
+  writeOutputs({ current: String(current) });
+  if (current) {
+    console.log(reason);
+    return;
+  }
+  console.log(`::notice::No nightly published. ${reason}`);
+  writeSummary(`### Nightly not published\n\n- ${reason}`);
+}
+
+/**
  * After a failed or cancelled publish: deletes this run's drafts and nothing
  * else. By release id, so the tag stays (a draft has none of its own anyway),
  * and a release already published is never touched.
@@ -445,6 +546,7 @@ const COMMANDS: Record<string, () => Promise<void>> = {
   notes: runNotes,
   prune: runPrune,
   "claim-tag": runClaimTag,
+  "check-workflows": runCheckWorkflows,
   "drop-draft": runDropDraft,
 };
 

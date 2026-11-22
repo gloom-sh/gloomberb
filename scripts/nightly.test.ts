@@ -4,12 +4,13 @@ import {
   firstParentHistory,
   isNightlyTag,
   leftoverDrafts,
-  newestVerifiedCommit,
   nightlyBaseVersion,
   nightlyVersion,
   planNightly,
   prunableNightlies,
   readLatestStableTag,
+  recheckWorkflows,
+  verifiedCommits,
   type NightlyPlanInput,
 } from "./nightly";
 
@@ -62,7 +63,13 @@ describe("planNightly", () => {
     previousSha: sha("e"),
     verifyPassed: history,
     verifyWindowsPassed: history,
+    // Every commit has the workflows main's head has, unless a test says otherwise.
+    workflowTrees: Object.fromEntries(history.map((commit) => [commit, "tree-main"])),
+    mainWorkflowTree: "tree-main",
   };
+  const workflowsDiffer = (...letters: string[]) => ({
+    workflowTrees: { ...base.workflowTrees, ...Object.fromEntries(letters.map((letter) => [sha(letter), "tree-old"])) },
+  });
 
   test("publishes main's head once Verify and Verify Windows passed on it", () => {
     expect(planNightly(base)).toEqual({
@@ -132,18 +139,107 @@ describe("planNightly", () => {
     expect(planNightly({ ...base, onMain: false }).error).toBeDefined();
     expect(planNightly({ ...base, onMain: false, publish: false })).toMatchObject({ build: true, publish: false });
   });
+
+  // GitHub refuses the release of a commit whose .github/workflows differ from
+  // main's, and the publish job's token has no `workflows` permission.
+  describe("when main's workflows moved", () => {
+    // The head is still being verified.
+    const headPending = { verifyPassed: ["b", "c", "d", "e"].map(sha), verifyWindowsPassed: ["b", "c", "d", "e"].map(sha) };
+
+    test("passes a verified commit over for an older one with main's workflows, and says so", () => {
+      // b changed a workflow, c has the ones main's head has.
+      const plan = planNightly({ ...base, ...headPending, ...workflowsDiffer("b") });
+      expect(plan).toEqual({
+        build: true,
+        publish: true,
+        sha: sha("c"),
+        reason: "publishing ccccccc: head aaaaaaa not verified yet; newest verified is ccccccc, 2 commits behind; passed over newer verified commit bbbbbbb, whose .github/workflows differ from main's",
+      });
+      expect(planNightly({ ...base, ...workflowsDiffer("a", "b") }).reason).toContain("passed over newer verified commits aaaaaaa, bbbbbbb");
+      // Forced, the last nightly build's commit e is published again; the list of what it passed over stays short.
+      expect(planNightly({ ...base, ...workflowsDiffer("a", "b", "c", "d"), force: true }).reason)
+        .toBe("publishing eeeeeee again, the commit of the last nightly build; passed over newer verified commits aaaaaaa, bbbbbbb, ccccccc and 1 more, whose .github/workflows differ from main's");
+    });
+
+    test("never goes back past the last nightly build for a commit with main's workflows", () => {
+      // b differs, c is the last nightly build's, and the older d matches but was built before.
+      const stuck = { ...base, ...headPending, ...workflowsDiffer("b"), previousSha: sha("c") };
+      const plan = planNightly(stuck);
+      expect(plan).toMatchObject({ build: false, publish: false, sha: "" });
+      expect(plan.reason).toBe("Main's head changed .github/workflows after the newest verified commit (bbbbbbb), and GitHub refuses a release of a commit whose workflows differ");
+      expect(plan.error).toBeUndefined();
+
+      const previousDiffers = planNightly({ ...base, ...headPending, ...workflowsDiffer("b", "c"), previousSha: sha("c") });
+      expect(previousDiffers).toMatchObject({ build: false, sha: "" });
+      expect(previousDiffers.reason).toContain("after the newest verified commit (bbbbbbb)");
+    });
+
+    test("with no verified commit left, skips on schedule and fails a manual run, saying the head changed a workflow", () => {
+      // Main moved on to workflows none of its recent commits has.
+      const none = { ...base, mainWorkflowTree: "tree-new", previousSha: null };
+      const scheduled = planNightly(none);
+      expect(scheduled).toMatchObject({ build: false, publish: false, sha: "" });
+      expect(scheduled.reason).toContain("Main's head changed .github/workflows after the newest verified commit (aaaaaaa)");
+      expect(scheduled.error).toBeUndefined();
+
+      const manual = planNightly({ ...none, event: "workflow_dispatch" });
+      expect(manual).toMatchObject({ build: false, publish: false, sha: "" });
+      expect(manual.error).toBe(`${scheduled.reason}; wait for the head to pass Verify and Verify Windows.`);
+    });
+
+    test("publishes the last nightly build's commit again only when its workflows match", () => {
+      const again = { ...base, event: "workflow_dispatch", force: true, previousSha: sha("c"), verifyPassed: [], verifyWindowsPassed: [] };
+      expect(planNightly(again)).toMatchObject({ build: true, publish: true, sha: sha("c") });
+
+      const differs = planNightly({ ...again, ...workflowsDiffer("c") });
+      expect(differs).toMatchObject({ build: false, publish: false, sha: "" });
+      expect(differs.error).toContain("after the last nightly build's commit (ccccccc)");
+    });
+
+    test("leaves a try-out build alone", () => {
+      expect(planNightly({ ...base, ...workflowsDiffer("a"), publish: false, workflowTrees: {}, mainWorkflowTree: "" }))
+        .toMatchObject({ build: true, publish: false, sha: sha("a") });
+    });
+  });
 });
 
-describe("newestVerifiedCommit", () => {
+describe("verifiedCommits", () => {
   const sha = (letter: string) => letter.repeat(40);
   const history = ["a", "b", "c", "d", "e"].map(sha);
 
   test("never goes back past the last nightly build, whatever the checks say about it now", () => {
     // A re-run of its Verify failed, so it no longer reads as passed; the older d does.
-    expect(newestVerifiedCommit(history, [sha("d")], [sha("d")], sha("c"))).toEqual({ sha: sha("c"), behind: 2 });
-    // A newer verified commit still wins.
-    expect(newestVerifiedCommit(history, [sha("b")], [sha("b")], sha("c"))).toEqual({ sha: sha("b"), behind: 1 });
-    expect(newestVerifiedCommit(history, [sha("d")], [sha("d")], null)).toEqual({ sha: sha("d"), behind: 3 });
+    expect(verifiedCommits(history, [sha("d")], [sha("d")], sha("c"))).toEqual([{ sha: sha("c"), behind: 2 }]);
+    // A newer verified commit still comes first.
+    expect(verifiedCommits(history, [sha("b")], [sha("b")], sha("c"))).toEqual([{ sha: sha("b"), behind: 1 }, { sha: sha("c"), behind: 2 }]);
+    expect(verifiedCommits(history, [sha("d")], [sha("d")], null)).toEqual([{ sha: sha("d"), behind: 3 }]);
+  });
+});
+
+describe("recheckWorkflows", () => {
+  const built = "b".repeat(40);
+  // The tree each rev has, answered the way the API answers a tree lookup by `<rev>:.github/workflows`.
+  const api = (trees: Record<string, string>) => async (args: string[]) => {
+    const rev = /\/git\/trees\/([^:]+):\.github\/workflows$/.exec(args[1] ?? "")?.[1] ?? "";
+    const tree = trees[rev];
+    if (!tree) throw new Error(`gh ${args.join(" ")} failed: HTTP 404`);
+    return `${tree}\n`;
+  };
+
+  test("lets the publish go on while main's workflows are still the built commit's", async () => {
+    await expect(recheckWorkflows("gloom-sh/gloomberb", built, api({ main: "tree-1", [built]: "tree-1" }))).resolves.toMatchObject({ current: true });
+  });
+
+  test("holds the publish back, with a reason, once main changed a workflow during the build", async () => {
+    const recheck = await recheckWorkflows("gloom-sh/gloomberb", built, api({ main: "tree-2", [built]: "tree-1" }));
+    expect(recheck.current).toBe(false);
+    expect(recheck.reason).toContain("Main's head changed .github/workflows while bbbbbbb was built");
+  });
+
+  // A failed read is no answer: it must not pass for a difference (a silent skip) or for a match.
+  test("fails when the workflows cannot be read", async () => {
+    await expect(recheckWorkflows("gloom-sh/gloomberb", built, api({ main: "tree-1" }))).rejects.toThrow("HTTP 404");
+    await expect(recheckWorkflows("gloom-sh/gloomberb", built, api({ [built]: "tree-1" }))).rejects.toThrow("HTTP 404");
   });
 });
 

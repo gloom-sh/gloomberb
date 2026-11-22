@@ -113,6 +113,22 @@ test("the jobs that publish download only the builds and check every file before
   }
 });
 
+// A step gated on an output nobody sets never runs, and the nightly would quietly stop publishing.
+test("the nightly rechecks main's workflows right before the draft, and only the steps that create or publish one wait on it", () => {
+  const steps = nightly.jobs.publish!.steps!;
+  const recheck = steps.findIndex((step) => step.id === "workflows");
+  expect(steps[recheck]?.run).toBe("bun run scripts/nightly.ts check-workflows");
+  expect(steps[recheck]?.if).toBeUndefined();
+  expect(steps.findIndex((step) => step.id === "draft")).toBe(recheck + 1);
+
+  // The cleanup of a failed draft is the one step that must not wait on it.
+  const after = steps.slice(recheck + 1).filter((step) => step.run !== "bun run scripts/nightly.ts drop-draft");
+  expect(after.map((step) => step.name)).toEqual(["Upload the draft", "Publish the prerelease", "Prune old nightly builds"]);
+  for (const step of after) {
+    expect({ name: step.name, if: step.if }).toEqual({ name: step.name, if: "${{ steps.workflows.outputs.current == 'true' }}" });
+  }
+});
+
 // The release and every check that builds the Windows installer compile it
 // with the one pinned Inno Setup, so no check passes on a compiler the
 // release does not ship with.
