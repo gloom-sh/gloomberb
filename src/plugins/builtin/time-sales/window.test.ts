@@ -59,7 +59,7 @@ test("a bound outside the served window is refused with the window that is serve
 test("a full page ends before the stamp its last prints share, and the next reads from that stamp", () => {
   const row = (timestamp: string) => ({ timestamp });
   const page = [row("2026-10-16T14:30:00.100Z"), row("2026-10-16T14:30:00.392451123Z"), row("2026-10-16T14:30:00.392451123Z")];
-  expect(tapePageEnd(page)).toEqual({ rows: [page[0]], next: "2026-10-16T14:30:00.392451123Z" });
+  expect(tapePageEnd(page)).toEqual({ rows: page.slice(0, 1), next: "2026-10-16T14:30:00.392451123Z" });
   // A page all at one stamp keeps its prints and reads on from the nanosecond after, across a second's end too.
   expect(tapePageEnd([row("2026-10-16T14:30:00.999999999Z"), row("2026-10-16T14:30:00.999999999Z")]).next).toBe("2026-10-16T14:30:01.000000000Z");
   expect(tapePageEnd([])).toEqual({ rows: [], next: null });
