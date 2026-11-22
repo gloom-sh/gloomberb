@@ -1150,7 +1150,12 @@ async function resolveChartSpecPass(
   // asynchronously can be timestamped just after that reference, so advance an
   // untouched market viewport by the same amount instead of clipping its tail.
   // Explicit and user-created windows stay fixed through hasExplicitWindow.
-  const primaryRaw = primaryMarketSeries ? rawSeries.find((entry) => entry.id === primaryMarketSeries.id) : undefined;
+  const firstRaw = primaryMarketSeries ? rawSeries.find((entry) => entry.id === primaryMarketSeries.id) : undefined;
+  // The day is the first market listing's; when its history failed, the next one with bars, so the others are not
+  // drawn on a rolling day that ends on a weekend.
+  const primaryRaw = firstRaw && firstRaw.points.length === 0
+    ? rawSeries.find((entry) => entry.observationKind === "market" && entry.listing && entry.points.length > 0) ?? firstRaw
+    : firstRaw;
   // A panned day keeps its reference line; an authored date window has no latest session.
   const sessionView = spec.viewport.range === "1D" && !explicitBounds(spec)
     ? latestSessionView(primaryRaw, rawSeries.filter((entry) => entry.observationKind === "market"),

@@ -55,38 +55,37 @@ async function loadWindow(symbol: string, exchange: string, from: string, to: st
   const notes = [`Window: ${sessionDay(served.date)}, ${bound(range.from)} to ${bound(range.to)}.`];
   if (data.window) {
     // Only the window's own prints: a server reading from the second around the start sends earlier ones too, and says so.
-    const lists = {
-      trades: data.trades.filter((row) => inTapeRange(row.timestamp, range)),
-      quotes: data.quotes.filter((row) => inTapeRange(row.timestamp, range)),
-    };
+    const { window, capacity } = data;
     // A server from before exact windows reads from the start of the second: its page holds that second's first prints.
-    const floored = tapeTimeKey(data.window.from) < tapeTimeKey(range.from);
-    if (floored) notes.push(`This server read the window from ${exactTapeMoment(data.window.from)}, before its start: its earlier prints are left out.`);
+    const floored = tapeTimeKey(window.from) < tapeTimeKey(range.from);
+    if (floored) notes.push(`This server read the window from ${exactTapeMoment(window.from)}, before its start: its earlier prints are left out.`);
     const command = (kind: "trades" | "quotes", from: string) => `fn ${kind === "quotes" ? "QR" : "TAS"} ${symbol} --from ${from}${to ? ` --to ${to}` : ""}`;
     const pageNotes: Record<"trades" | "quotes", string | null> = { trades: null, quotes: null };
-    for (const kind of ["trades", "quotes"] as const) {
-      if (!data.window.truncated[kind]) continue;
+    // The list's rows on this page, and the note on where the next page starts.
+    const paged = <T extends { timestamp: string }>(kind: "trades" | "quotes", list: T[]): T[] => {
+      if (!window.truncated[kind]) return list;
       // A full page ends before the stamp its last prints share, and names the exact stamp the next page reads from:
       // the trades' in TAS, which pages by them, the quotes' in QR.
-      const page = tapePageEnd(lists[kind]);
+      const page = tapePageEnd(list);
       const last = page.rows.at(-1)?.timestamp;
-      const head = `The window holds more than ${data.capacity[kind]} ${kind}: these are the first ${page.rows.length}${last ? `, through ${exactTapeMoment(last)}` : ""}.`;
+      const head = `The window holds more than ${capacity[kind]} ${kind}: these are the first ${page.rows.length}${last ? `, through ${exactTapeMoment(last)}` : ""}.`;
       // A second-start page that ends at its first prints in the window, or before them, reaches no further on: the
       // rest of that second is out of its reach, and the next read starts on the next second.
-      if (floored && page.rows.length === lists[kind].length) {
+      if (floored && page.rows.length === list.length) {
         const nextSecond = new Date(Date.parse(`${tapeTimeKey(last ?? range.from).slice(0, 19)}Z`) + 1000).toISOString().replace(".000Z", "Z");
         const readOn = tapeTimeKey(nextSecond) < tapeTimeKey(range.to) ? ` Read on from that second: ${command(kind, nextSecond)}` : "";
         const unread = `cannot be read from it, as it reads a window from the start of its second.${readOn}`;
         pageNotes[kind] = last
           ? `${head} Any ${kind} after these and before ${tapeMoment(Date.parse(nextSecond))} ${unread}`
-          : `This server's page of ${data.capacity[kind]} ${kind} ends before the window's start: any from ${exactTapeMoment(range.from)} `
+          : `This server's page of ${capacity[kind]} ${kind} ends before the window's start: any from ${exactTapeMoment(range.from)} `
             + `and before ${tapeMoment(Date.parse(nextSecond))} ${unread}`;
       } else if (page.next) {
         pageNotes[kind] = `${head} Read on from the next: ${command(kind, page.next)}`;
       }
-      lists[kind] = page.rows;
-    }
-    const { trades, quotes } = lists;
+      return page.rows;
+    };
+    const trades = paged("trades", data.trades.filter((row) => inTapeRange(row.timestamp, range)));
+    const quotes = paged("quotes", data.quotes.filter((row) => inTapeRange(row.timestamp, range)));
     // QR pages by its quotes, TAS by its trades: the view's own list first.
     const order = quotesView ? [pageNotes.quotes, pageNotes.trades] : [pageNotes.trades, pageNotes.quotes];
     notes.push(...order.filter((note): note is string => note !== null));
