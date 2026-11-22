@@ -5,7 +5,9 @@ import type { TapeRange, TapeSnapshot } from "../../../api-client/tape";
 import { fetchTape } from "./client";
 import { newestFirst, quoteSpread, tapePrice, tapePriceDigits, tapeStatistics, tapeTimeKey } from "./model";
 import { REPORT_ROWS } from "../shared/headless-options";
-import { inTapeRange, lastSessionNote, normalizeTapeClock, parseTapeClock, servedWindow, sessionDay, tapeMoment, tapeWindowRange } from "./window";
+import {
+  exactTapeMoment, inTapeRange, lastSessionNote, normalizeTapeClock, parseTapeClock, servedWindow, sessionDay, tapeMoment, tapePageEnd, tapeWindowRange,
+} from "./window";
 
 type Format = NonNullable<HeadlessPaneColumn["format"]>;
 const fixedPrice = (digits: number): Format => (value) => tapePrice(typeof value === "number" ? value : null, digits);
@@ -42,19 +44,45 @@ function tapeRangeBasis(window: string): string {
  * with its latest tape: its prints that fall in the window stand, and a note
  * says from when that tape runs.
  */
-async function loadWindow(symbol: string, exchange: string, from: string, to: string, ctx: HeadlessPaneContext) {
+async function loadWindow(symbol: string, exchange: string, from: string, to: string, ctx: HeadlessPaneContext, quotesView: boolean) {
   const latest = await fetchTape(symbol, exchange, ctx.signal, ctx.apiClient);
   const served = servedWindow(latest);
   if (!served) throw new Error(`TAS has no session for ${symbol} to read a window of; run it without --from and --to for the latest prints.`);
   const range = tapeWindowRange(served, from ? parseTapeClock(from) : null, to ? parseTapeClock(to) : null, symbol);
   const data = await fetchTape(symbol, exchange, ctx.signal, ctx.apiClient, range);
-  const notes = [`Window: ${sessionDay(served.date)}, ${tapeMoment(Date.parse(range.from))} to ${tapeMoment(Date.parse(range.to))}.`];
+  // A bound inside a second (a page read on from a print) is named to its nanosecond.
+  const bound = (stamp: string) => tapeTimeKey(stamp).slice(19, 29) === ".000000000" ? tapeMoment(Date.parse(stamp)) : exactTapeMoment(stamp);
+  const notes = [`Window: ${sessionDay(served.date)}, ${bound(range.from)} to ${bound(range.to)}.`];
   if (data.window) {
-    if (data.window.truncated.trades) {
-      const last = data.trades.at(-1)?.timestamp;
-      notes.push(`The window holds more than ${data.capacity.trades} trades: these are the first${last ? `, through ${tapeMoment(Date.parse(last))}` : ""}; start --from there to read on.`);
+    // Only the window's own prints: a server reading from the second around the start sends earlier ones too, and says so.
+    let trades = data.trades.filter((row) => inTapeRange(row.timestamp, range)), quotes = data.quotes.filter((row) => inTapeRange(row.timestamp, range));
+    if (tapeTimeKey(data.window.from) < tapeTimeKey(range.from)) {
+      notes.push(`This server read the window from ${exactTapeMoment(data.window.from)}, before its start: its earlier prints are left out, and its page may end before the start.`);
     }
-    return { data, range, notes };
+    // A full page ends before the stamp its last prints share, and names the exact stamp the next page reads from:
+    // the trades' in TAS, which pages by them, the quotes' in QR.
+    const readOn = (kind: "trades" | "quotes", page: { rows: readonly { timestamp: string }[]; next: string | null }) => {
+      const last = page.rows.at(-1)?.timestamp;
+      const command = `fn ${kind === "quotes" ? "QR" : "TAS"} ${symbol} --from ${page.next}${to ? ` --to ${to}` : ""}`;
+      return `The window holds more than ${data.capacity[kind]} ${kind}: these are the first ${page.rows.length}${last ? `, through ${exactTapeMoment(last)}` : ""}. `
+        + `Read on from the next: ${command}`;
+    };
+    const pageNotes: Record<"trades" | "quotes", string | null> = { trades: null, quotes: null };
+    if (data.window.truncated.trades) {
+      const page = tapePageEnd(trades);
+      trades = page.rows;
+      if (page.next) pageNotes.trades = readOn("trades", page);
+    }
+    if (data.window.truncated.quotes) {
+      const page = tapePageEnd(quotes);
+      quotes = page.rows;
+      if (page.next) pageNotes.quotes = readOn("quotes", page);
+    }
+    // QR pages by its quotes, TAS by its trades: the view's own list first.
+    const order = quotesView ? [pageNotes.quotes, pageNotes.trades] : [pageNotes.trades, pageNotes.quotes];
+    notes.push(...order.filter((note): note is string => note !== null));
+    const times = oldestFirst([...trades, ...quotes]).map((row) => row.timestamp);
+    return { data: { ...data, trades, quotes, asOf: times.at(-1) ?? data.asOf, observedFrom: times[0] ?? data.observedFrom }, range, notes };
   }
   const trades = data.trades.filter((row) => inTapeRange(row.timestamp, range)), quotes = data.quotes.filter((row) => inTapeRange(row.timestamp, range));
   // Dated by what it lists, as a served window is.
@@ -74,7 +102,7 @@ export const timeSalesHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "tab", type: "enum", settingKey: "tab", values: [{ value: "trades", label: "Trades" }, { value: "quotes", label: "NBBO" }], description: "Which tape to show first." },
     { key: "limit", shot: REPORT_ROWS, type: "integer", minimum: 1, maximum: 1000, defaultValue: 100, description: "Maximum recent prints in the report." },
     { key: "from", shot: WINDOW_OPTION, type: "string", defaultValue: "", placeholder: "time", example: "--from 10:30 --to 10:35",
-      description: "Start of a window of the served session (the latest): 10:30 or 10:30:15 on New York's clock, 14:30Z on UTC's, or a timestamp such as 2026-11-20T14:30:00Z (New York time without Z or an offset)."
+      description: "Start of a window of the served session (the latest): 10:30 or 10:30:15 on New York's clock, 14:30Z on UTC's, or a timestamp such as 2026-11-20T14:30:00Z (New York time without Z or an offset), to the nanosecond a print's own stamp gives."
         + " The report then lists that window's prints oldest first; without --to it runs to the end of what is served.",
       normalize: normalizeTapeClock },
     { key: "to", shot: WINDOW_OPTION, type: "string", defaultValue: "", placeholder: "time",
@@ -97,7 +125,7 @@ export const timeSalesHeadless: HeadlessPaneDefinition<"bundle"> = {
     }
     const exchange = instrument?.exchange ?? "";
     const from = String(args.options.from ?? "").trim(), to = String(args.options.to ?? "").trim();
-    const windowed = from || to ? await loadWindow(symbol, exchange, from, to, ctx) : null;
+    const windowed = from || to ? await loadWindow(symbol, exchange, from, to, ctx, quotesView) : null;
     const data: TapeSnapshot = windowed?.data ?? await fetchTape(symbol, exchange, ctx.signal, ctx.apiClient);
     const limit = Number(args.options.limit ?? 100);
     const statistics = tapeStatistics(data);

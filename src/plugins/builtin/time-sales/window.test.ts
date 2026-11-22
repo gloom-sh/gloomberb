@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { lastSessionNote, parseTapeClock, servedWindow, tapeWindowRange } from "./window";
+import { lastSessionNote, parseTapeClock, servedWindow, tapePageEnd, tapeWindowRange } from "./window";
 
 const closed = (date: string) => servedWindow({ session: { date, high: null, low: null, asOf: null }, generatedAt: "2026-12-07T10:00:00.000Z", delaySeconds: 900 })!;
 
@@ -30,7 +30,12 @@ test("a timestamp is its own instant: on the served session it bounds the window
   expect(tapeWindowRange(october, parseTapeClock("2026-10-16T14:30:00Z"), parseTapeClock("2026-10-16 10:35"))).toEqual({
     from: "2026-10-16T14:30:00.000Z", to: "2026-10-16T14:35:00.000Z",
   });
-  expect(tapeWindowRange(october, parseTapeClock("2026-10-16T10:30:00.250-04:00"), null).from).toBe("2026-10-16T14:30:00.000Z");
+  // To the nanosecond it names: a print's own stamp, read on from, is the window's start, not its millisecond or second.
+  expect(tapeWindowRange(october, parseTapeClock("2026-10-16T10:30:00.250-04:00"), null).from).toBe("2026-10-16T14:30:00.250Z");
+  expect(tapeWindowRange(october, parseTapeClock("2026-10-16T14:30:00.392451123Z"), parseTapeClock("10:30:00.392451124")))
+    .toEqual({ from: "2026-10-16T14:30:00.392451123Z", to: "2026-10-16T14:30:00.392451124Z" });
+  expect(() => tapeWindowRange(october, parseTapeClock("2026-10-16T14:30:00.392451123Z"), parseTapeClock("2026-10-16T14:30:00.392451123Z")))
+    .toThrow("must be after --from");
   // 00:30 UTC on the 17th is 20:30 the evening before in New York: the served session's day, past its end.
   expect(() => tapeWindowRange(october, parseTapeClock("2026-10-17T00:30:00Z"), null)).toThrow("is outside the window TAS serves");
   expect(() => tapeWindowRange(october, parseTapeClock("2026-07-24T13:30:00Z"), null, "FFAI")).toThrow(
@@ -49,4 +54,13 @@ test("a bound outside the served window is refused with the window that is serve
     + "Fri 16 Oct 2026, 04:00:00 ET (08:00:00 UTC) to 10:45:00 ET (14:45:00 UTC), the feed cutoff (15 min delayed).");
   expect(() => tapeWindowRange(running, parseTapeClock("10:35"), parseTapeClock("10:30"))).toThrow("--to 10:30:00 ET (14:30:00 UTC) must be after --from 10:35:00 ET (14:35:00 UTC).");
   expect(servedWindow({ session: { date: null, high: null, low: null, asOf: null }, generatedAt: "2026-10-16T15:00:00.000Z", delaySeconds: 0 })).toBeNull();
+});
+
+test("a full page ends before the stamp its last prints share, and the next reads from that stamp", () => {
+  const row = (timestamp: string) => ({ timestamp });
+  const page = [row("2026-10-16T14:30:00.100Z"), row("2026-10-16T14:30:00.392451123Z"), row("2026-10-16T14:30:00.392451123Z")];
+  expect(tapePageEnd(page)).toEqual({ rows: [page[0]], next: "2026-10-16T14:30:00.392451123Z" });
+  // A page all at one stamp keeps its prints and reads on from the nanosecond after, across a second's end too.
+  expect(tapePageEnd([row("2026-10-16T14:30:00.999999999Z"), row("2026-10-16T14:30:00.999999999Z")]).next).toBe("2026-10-16T14:30:01.000000000Z");
+  expect(tapePageEnd([])).toEqual({ rows: [], next: null });
 });
