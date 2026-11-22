@@ -436,10 +436,15 @@ export function resolveCanonicalQuote(
     || !isNav && candidate.priceObservation == null
       && selectedBasis !== null && resolvePriceBasis(candidate.priceBasis, candidate.instrumentType) === selectedBasis;
   const compatiblePriceCandidates = acceptedPriceCandidates.filter(compatiblePrice);
+  let bookProvider: QuoteContribution | undefined;
   for (const field of PRICE_FIELD_KEYS) {
     if (field === "price") continue;
-    pickField(resolved, provenance, field, compatiblePriceCandidates);
+    const picked = pickField(resolved, provenance, field, compatiblePriceCandidates);
+    if (field === "bid" || field === "ask") bookProvider ??= picked;
   }
+  // The book's time comes with the book it dates: a source that gave the bid
+  // without a time leaves it undated, never dated by another source's book.
+  if (bookProvider && finitePositiveNumber(bookProvider.bidAskTime)) assignField(resolved, provenance, "bidAskTime", bookProvider);
   if (priceProvider && typeof priceProvider.lastTradePrice === "number" && Number.isFinite(priceProvider.lastTradePrice)) {
     assignField(resolved, provenance, "lastTradePrice", priceProvider);
     if (finitePositiveNumber(priceProvider.lastTradeTime)) assignField(resolved, provenance, "lastTradeTime", priceProvider);
@@ -570,6 +575,7 @@ export function resolveCanonicalQuote(
     ask: resolved.ask as Quote["ask"],
     bidSize: resolved.bidSize as Quote["bidSize"],
     askSize: resolved.askSize as Quote["askSize"],
+    bidAskTime: resolved.bidAskTime as Quote["bidAskTime"],
     open: resolved.open as Quote["open"],
     high: resolved.high as Quote["high"],
     low: resolved.low as Quote["low"],

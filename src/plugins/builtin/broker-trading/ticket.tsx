@@ -8,6 +8,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { Quote } from "../../../types/financials";
 import { quoteAgeText } from "../../../market-data/quotes/freshness";
 import { MISSING_VALUE, formatPercentRaw } from "../../../utils/format";
+import { formatQuoteBookTime } from "../../../market-data/quotes/time";
 import type { BrokerAccount, BrokerOrder, BrokerOrderPreview, BrokerOrderRequest, BrokerTradingCapabilities } from "../../../types/trading";
 import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities, type BoxRenderable, type ScrollBoxRenderable } from "../../../ui";
 import { useDialogState } from "../../../ui/dialog";
@@ -137,11 +138,15 @@ function TicketNumberInput({ value, focused, onChange, ...props }: {
 function DockedQuote({ quote, delayed, stale, source, updated, price, change, width }: {
   quote?: Quote; delayed: boolean; stale?: string; source: string; updated: string; price(value: number | undefined): string; change: string; width: number;
 }) {
+  // The book's own time, or that its source sent none, as every view of a book dates it; never the trade's.
+  const bookTime = formatQuoteBookTime(quote);
   const c = useThemeColors();
   const native = useUiCapabilities().nativePaneChrome;
   const sized = (size: number | undefined) => size !== undefined && Number.isFinite(size) ? `× ${number(size)}` : "";
   // Sizes drop before bid and ask leave one line.
-  const showSizes = `Bid ${price(quote?.bid)} ${sized(quote?.bidSize)}  Ask ${price(quote?.ask)} ${sized(quote?.askSize)}`.length <= width;
+  const bookLine = `Bid ${price(quote?.bid)} ${sized(quote?.bidSize)}  Ask ${price(quote?.ask)} ${sized(quote?.askSize)}`;
+  const showSizes = bookLine.length <= width;
+  const showTime = !!bookTime && `${bookLine}  ${bookTime}`.length <= width;
   const side = (label: string, value: number | undefined, size: number | undefined, color: string) => <Box flexDirection="row" gap={1} alignItems="baseline" flexShrink={0}>
     <Text fg={c.textDim}>{label}</Text>
     <Text fg={color} attributes={TextAttributes.BOLD} selectable>{price(value)}</Text>
@@ -157,6 +162,7 @@ function DockedQuote({ quote, delayed, stale, source, updated, price, change, wi
     <Box flexDirection="row" gap={2}>
       {side("Bid", quote?.bid, quote?.bidSize, c.positive)}
       {side("Ask", quote?.ask, quote?.askSize, c.negative)}
+      {showTime ? <Text fg={c.textDim} flexShrink={0} selectable>{bookTime}</Text> : null}
     </Box>
   </Box>;
 }
@@ -433,6 +439,8 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
   const change = quoteChange(m.quote, tickDecimals(m.quote?.price));
   const sourceAt = m.quote?.lastTradeTime ?? m.quote?.lastUpdated;
   const updated = sourceAt && Number.isFinite(sourceAt) ? `${new Date(sourceAt).toISOString().slice(11, 19)} UTC` : "unknown";
+  // The book is dated apart from the trade: its own time, or that its source sent none.
+  const bookTime = formatQuoteBookTime(m.quote);
   const delayed = m.quoteData !== "realtime" || m.quote?.dataSource !== "live";
   const age = ticketQuoteAge(m.quote, m.now).replace(" old", "");
   const stale = m.quote && m.quoteStale ? ticketQuoteAge(m.quote, m.now) : undefined;
@@ -489,7 +497,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
           {/* A delayed quote is the yellow clock, as in pane footers, with the detail on hover. */}
           {delayed ? <Box flexShrink={0} title={source}><Icon name="clock" color={c.warning} /></Box> : null}
           <Text fg={stale ? c.warning : c.textDim}>{stale ? `${m.brokerName}, ${stale}` : delayed ? `${m.brokerName} ${age}` : source}</Text>
-          <Text fg={c.textDim}>{`${updated}${m.synthetic && !wide && !narrow ? " · SYNTHETIC" : ""}`}</Text>
+          <Text fg={c.textDim}>{`${updated}${bookTime ? ` · book ${bookTime}` : ""}${m.synthetic && !wide && !narrow ? " · SYNTHETIC" : ""}`}</Text>
         </Box>
       </Box>
     </Box>}

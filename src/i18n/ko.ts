@@ -1248,6 +1248,7 @@ export const ko: Record<string, string> = {
   "Bid": "매수호가",
   "Ask": "매도호가",
   "Spr": "스프레드",
+  "not dated": "시간 없음",
   "Qty": "수량",
   "Avg": "평균",
   "Mark": "평가가",

@@ -47,6 +47,25 @@ export function asOfClock(time: number, now = Date.now()): string {
   return `${now - time < WEEK_MS ? formatUtcWeekdayTime(time) : formatUtcDayTime({ time, dateOnly: false }, now)} UTC`;
 }
 
+/** What a book the source sent without its time says in place of one. */
+export const QUOTE_BOOK_UNDATED = "not dated";
+
+/**
+ * When a quote's bid and ask were quoted, as a card dates a price (asOfClock):
+ * `Sat 00:55 UTC`; QUOTE_BOOK_UNDATED for a book the source sent without its
+ * time, and null with no book. Every view of a book dates it this way, never
+ * by the trade's time beside it: EWG's after-hours book quoted at 00:55 UTC
+ * read as of the 23:20 print.
+ */
+export function formatQuoteBookTime(
+  quote: Pick<Quote, "bid" | "ask" | "bidAskTime"> | null | undefined,
+  now = Date.now(),
+): string | null {
+  if (!quote || (quote.bid == null && quote.ask == null)) return null;
+  const at = quote.bidAskTime;
+  return at != null && Number.isFinite(at) && at > 0 ? asOfClock(Math.min(at, now), now) : QUOTE_BOOK_UNDATED;
+}
+
 /**
  * What a quote card's price is as of: CLOSED while its market is, else how
  * current its feed is, and when the price was observed (quoteHeadlineTime,

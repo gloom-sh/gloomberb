@@ -1234,6 +1234,7 @@ export const es: Record<string, string> = {
   "Bid": "Compra",
   "Ask": "Venta",
   "Spr": "Spr",
+  "not dated": "sin hora",
   "Qty": "Cant",
   "Avg": "Prom",
   "Mark": "Mark",

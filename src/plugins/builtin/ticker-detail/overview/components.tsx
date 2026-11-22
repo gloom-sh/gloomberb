@@ -4,6 +4,7 @@ import { t, tf } from "../../../../i18n";
 import { formatMarketPrice, formatMarketPriceRange, formatMarketPriceWithCurrency, liveQuoteFormatOptions, type MarketFormatOptions } from "../../../../market-data/market/format";
 import { colors, hoverBg, priceColor } from "../../../../theme/colors";
 import type { Quote } from "../../../../types/financials";
+import { formatQuoteBookTime, QUOTE_BOOK_UNDATED } from "../../../../market-data/quotes/time";
 import { Box, Text, useUiCapabilities } from "../../../../ui";
 import { MISSING_VALUE, displayWidth, formatNumber, truncateToDisplayWidth } from "../../../../utils/format";
 import type { OverviewFunctionLink, PositionTableRow, StatField } from "./types";
@@ -225,6 +226,8 @@ export function QuoteBook({ quote, assetCategory, width, desktopWidth }: {
     spreadText = `${formatMarketPriceWithCurrency(spread, quote.currency, priceOptions)}${spreadPercent}`;
   }
 
+  // The book's own time, or that its source sent none: never the trade's time in the header beside it.
+  const bookTime = formatQuoteBookTime(quote);
   const row = (label: string, value: string, color: string): ColumnGridCell[] => [{ text: label, color: colors.textDim }, { text: value, color }];
   return (
     <Box flexDirection="column" width={nativePaneChrome ? undefined : width} flexShrink={0} style={nativePaneChrome ? { width: desktopWidth } : undefined}>
@@ -237,6 +240,7 @@ export function QuoteBook({ quote, assetCategory, width, desktopWidth }: {
           row(t("Bid"), bidText, colors.textBright),
           row(t("Ask"), askText, colors.textBright),
           row(t("Spr"), spreadText, colors.textDim),
+          ...bookTime ? [row(t("Time"), bookTime === QUOTE_BOOK_UNDATED ? t("not dated") : bookTime, colors.textDim)] : [],
         ]}
       />
     </Box>

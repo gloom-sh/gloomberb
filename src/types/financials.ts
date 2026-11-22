@@ -299,6 +299,14 @@ export interface Quote extends DepositaryReceiptFacts {
   ask?: number;
   bidSize?: number;
   askSize?: number;
+  /**
+   * When the bid and ask were quoted, in milliseconds, as the source stamps
+   * the book; absent when it sends a book without a time. A book can be hours
+   * from the trade beside it (an after-hours quote left at 19:55 New York
+   * against the 16:00 close), so it is never dated by lastUpdated or
+   * lastTradeTime (formatQuoteBookTime).
+   */
+  bidAskTime?: number;
   open?: number;
   high?: number;
   low?: number;

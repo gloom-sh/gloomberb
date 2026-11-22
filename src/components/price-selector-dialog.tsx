@@ -6,6 +6,7 @@ import { type PromptContext, useDialogKeyboard } from "../ui/dialog";
 import type { Quote } from "../types/financials";
 import { colors } from "../theme/colors";
 import { formatMarketPrice } from "../market-data/market/format";
+import { formatQuoteBookTime } from "../market-data/quotes/time";
 import { DialogFrame, ListView, NumberField } from "./ui";
 import { matchesNavigationKey, useKeybindings } from "../app/keybindings";
 
@@ -66,6 +67,8 @@ function formatMarketContext(quote: Quote | undefined, assetCategory?: string): 
   if (quote.bid != null && quote.ask != null) {
     parts.push(`Spd ${formatMarketPrice(quote.ask - quote.bid, { assetCategory })}`);
   }
+  const bookTime = formatQuoteBookTime(quote);
+  if (bookTime) parts.push(`Book ${bookTime}`);
   return parts.join(" · ");
 }
 

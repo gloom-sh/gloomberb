@@ -153,6 +153,9 @@ export function mapQuote(
     dailyClose: readDailyClose(quote.dailyClose),
     bid: normalizePriceValueByDivisor(quote.bid, divisor),
     ask: normalizePriceValueByDivisor(quote.ask, divisor),
+    // The book's own stamp, only beside a book: never borrowed from the trade.
+    bidAskTime: (quote.bid != null || quote.ask != null) && typeof quote.bidAskTime === "number"
+      && Number.isFinite(quote.bidAskTime) && quote.bidAskTime > 0 ? quote.bidAskTime : undefined,
     open: sessionPrice(quote.open),
     high: sessionPrice(quote.high),
     low: sessionPrice(quote.low),
