@@ -31,8 +31,8 @@ export function matchesFunctionSearch(query: string, fields: readonly string[]):
 
 export function paneTemplateSearchFields(template: PaneTemplateDef, pane?: { headless?: PaneTemplateDef["headless"] }): string[] {
   const discovery = (template.headless ?? pane?.headless)?.discovery;
-  return [template.label, template.description, template.paneId, template.id,
-    template.shortcut?.prefix ?? "", ...template.shortcut?.aliases ?? [], ...template.keywords ?? [],
+  return [...template.keywords ?? [], template.label, template.description, template.paneId, template.id,
+    template.shortcut?.prefix ?? "", ...template.shortcut?.aliases ?? [],
     ...discovery?.aliases ?? [], ...discovery?.suggestFor ?? [], ...discovery?.intents ?? [],
     ...discovery?.opens?.flatMap((opening) => opening.words) ?? []];
 }
