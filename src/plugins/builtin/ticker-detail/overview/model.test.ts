@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { Fundamentals, NextEarnings, Quote } from "../../../../types/financials";
 import type { TickerPosition, TickerRecord } from "../../../../types/ticker";
-import { buildOverviewStats, buildPositionRows, buildProfileFields } from "./model";
+import { buildOverviewBeta, buildOverviewStats, buildPositionRows, buildProfileFields } from "./model";
+import { buildRelationshipStatItems } from "../../correlation/relationship/view-model";
 import { cashRunway } from "../../../../utils/cash-runway";
 import type { FundBondFacts } from "../../../../api-client/fund-facts";
 import { createTestTicker } from "../../../../test-support/ticker";
@@ -99,13 +100,21 @@ test("holdings and short interest read as fractions; blank, zero and past figure
     floatShares: 23.13e9, beta: 2.217, shortPercentOfFloat: 0.012719, shortRatio: 2.29,
     institutionPercentHeld: 0.71417, insiderPercentHeld: 0.04007, exDividendDate: "2026-09-10",
   }, { date: "2026-11-18", timing: "amc", timingSource: "history" })).toEqual({
-    Float: "23.13B", Beta: "2.22", "Short Float": "1.27% 2.3d to cover",
+    Float: "23.13B", "Short Float": "1.27% 2.3d to cover",
     "Inst Own": "71.42%", "Insider Own": "4.01%", "Ex-Dividend": "10 Sep", Earnings: "18 Nov AMC in 49d",
   });
   expect(figures({ floatShares: 0, beta: Number.NaN, exDividendDate: "" },
     { date: "2026-09-29", timing: null, timingSource: null })).toEqual({});
   expect(buildProfileFields({ profile: { employees: 0, website: "javascript:alert(1)", fiscalYearEnd: "13-31", sic: "" } }))
     .toEqual([]);
+});
+
+test("the DES and default GR betas show the same basis without falling back to the unqualified number", () => {
+  const overview = buildOverviewBeta(0.5962);
+  const [regression] = buildRelationshipStatItems({ beta: 0.5962, alpha: 0, r: 0.34, rSquared: 0.116, stdError: 0, sampleSize: 250 }, "1Y", "SPY");
+  expect(overview).toMatchObject({ value: "0.596", detail: "1Y daily vs SPY" });
+  expect(regression).toMatchObject({ value: overview!.value, detail: overview!.detail });
+  expect(buildOverviewBeta(undefined)).toBeNull();
 });
 
 test("declaring minor currency units preserves the reported amount and case-sensitive unit", () => {

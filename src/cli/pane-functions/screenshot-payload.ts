@@ -39,6 +39,7 @@ import { getQuoteMonitorPaneSettings } from "../../plugins/builtin/ticker-detail
 import { isNotATickerMessage } from "../not-a-ticker";
 import { HISTORY_DEFAULT_RANGE } from "../../plugins/builtin/ticker-detail/data-panes/history-bars";
 import { priceReturnDailyWindow } from "../../market-data/performance";
+import { overviewBetaRequest } from "../../plugins/builtin/ticker-detail/overview/model";
 import { findCollection } from "../../plugins/builtin/portfolio-list/cli/render";
 import { peekCachedBrokerAccounts } from "../../plugins/builtin/portfolio-list/cached-account";
 import { paneScreenshotEvidenceHook } from "./screenshot-evidence";
@@ -385,6 +386,15 @@ export async function buildDesktopShotPayload(
       const { target, daily } = await (returnHistory ?? shotDailyHistory(context, capture.ticker, exchange));
       capture.historyVariants = [{ target, resolution: "1wk", points: data.priceHistory ?? [] },
         ...(daily.length ? [{ target, resolution: "1d" as const, points: daily }] : [])];
+      const beta = overview && daily.length ? overviewBetaRequest(capture.ticker, data) : null;
+      if (beta) {
+        const benchmark = beta.pair[1];
+        const provider = context.dataProvider;
+        const points = await (provider.getPriceHistoryForResolution?.(benchmark, "", beta.range, "1d")
+          ?? provider.getPriceHistory(benchmark, "", beta.range))
+          .catch(logFailure("cli.pane-functions.screenshot-payload", "Read the beta benchmark failed", []));
+        capture.historyVariants = [...capture.historyVariants, { target: { symbol: benchmark, exchange: "" }, resolution: "1d", points }];
+      }
     }
     if (includeOptionsChains && context.dataProvider.getOptionsChain) {
       // A future with no chain of its own is the pane's to explain (the listed alternative), not a failed shot.

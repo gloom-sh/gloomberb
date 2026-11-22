@@ -84,7 +84,6 @@ export type BuildoutCompany = {
   priceToBook?: string | null;
   dilutedEps?: string | null;
   dilutedEpsOriginal?: string | null;
-  beta?: string | null;
   high52w?: string | null;
   high52wOriginal?: string | null;
   low52w?: string | null;

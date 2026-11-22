@@ -463,10 +463,11 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   // Portfolio risk (PORT, and MARS, which opens it on its risk view): the factor table's betas and fits, the tail loss,
   // the drawdown, the stress scenarios, concentration.
   {
-    term: "Beta", aliases: ["betas", "factor beta", "market beta", "beta to spy", "exposure", "factor exposure"], functions: ["PORT", "MARS"],
+    term: "Beta", aliases: ["betas", "factor beta", "market beta", "beta to spy", "exposure", "factor exposure"], functions: ["GR", "PORT", "MARS"],
     shown: ["beta", "Beta"],
     definition: "How far a basket moves with a factor: a beta of 0.54 to SPY means it rose 0.54% on average for each 1% SPY rose. "
-      + "PORT estimates it from the last 60 daily returns; read it with its R², since a beta from a weak fit says little about an exposure.",
+      + "DES uses 1 year of daily price returns vs SPY, the default in GR. GR uses the selected window and second ticker. "
+      + "PORT uses 60 daily returns for portfolio factor beta. Read it with R²: a beta from a weak fit says little about an exposure.",
   },
   {
     term: "R²", aliases: ["r-squared", "r squared", "r2", "coefficient of determination", "goodness of fit", "weak fit"], functions: ["PORT", "MARS"],

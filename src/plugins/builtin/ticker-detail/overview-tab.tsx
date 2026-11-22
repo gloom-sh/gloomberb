@@ -125,6 +125,7 @@ interface OverviewTabProps {
   focused?: boolean;
   ticker: TickerRecord | null;
   financials: TickerFinancials | null;
+  beta?: StatField | null;
   /** A click on the price chart opens the full chart. */
   onOpenChart?: () => void;
   /** A click on a figure opens its research function (beta to GR, holders to HDS). */
@@ -175,7 +176,7 @@ export function OverviewTab(props: OverviewTabProps) {
 const FUND_FACTS_LINK: OverviewFunctionLink = { name: "Fund Facts", templateId: "sec-etf-pane" };
 
 function ResolvedOverviewTab({
-  width, height, focused = false, ticker, financials, onOpenChart, onOpenFunction, perpetuals, news, coin, dividend, ah = null, boardLot = null, tax = null,
+  width, height, focused = false, ticker, financials, beta, onOpenChart, onOpenFunction, perpetuals, news, coin, dividend, ah = null, boardLot = null, tax = null,
   chartScale: chartScaleChoice = "auto", onChartScaleChange,
 }: OverviewTabProps & { ticker: TickerRecord }) {
   const trade = useResearchTrading();
@@ -745,11 +746,12 @@ function ResolvedOverviewTab({
           </Box>
         )}
 
-        {stats.length > 0 && (
+        {(stats.length > 0 || beta) && (
           <Box flexDirection="column">
             <SectionHeading title={t("Fundamentals")} />
             <PaneLinkMenu>
               <FundamentalsGrid fields={stats} width={contentWidth} onOpenLink={onOpenFunction} />
+              {beta && <FundamentalsGrid fields={[beta]} columns={1} width={contentWidth} onOpenLink={onOpenFunction} />}
               {/* The statements behind the figures, for a company that has them. */}
               {onOpenFunction && hasStatementFinancials(financials) ? <FunctionLinkRow link={FINANCIALS} onOpen={onOpenFunction} /> : null}
             </PaneLinkMenu>

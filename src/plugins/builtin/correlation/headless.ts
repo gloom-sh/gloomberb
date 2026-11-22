@@ -8,7 +8,7 @@ import { buildCorrelationMatrix, buildCorrelationSeries, buildGeoCorrelationSeri
 import { geoSeriesToken, loadGeoCorrelationHistory } from "./geo";
 import { buildRelationshipAnalysis, DEFAULT_RELATIONSHIP_SECOND_SYMBOL } from "./relationship/model";
 import { paneSchemas } from "./headless-schema";
-import { CORRELATION_RETURN_BASIS, GEO_CORRELATION_CHANGE_BASIS, loadCorrelationHistory, thinCorrelationNote, unfinishedBarFreshness } from "./history";
+import { CORRELATION_PRICE_RETURN_NOTE, CORRELATION_RETURN_BASIS, GEO_CORRELATION_CHANGE_BASIS, loadCorrelationHistory, thinCorrelationNote, unfinishedBarFreshness } from "./history";
 import type { HeadlessPaneContext } from "../../../types/headless";
 import type { PricePoint } from "../../../types/financials";
 import { newestReportTime } from "../../../utils/utc-time";
@@ -77,7 +77,7 @@ export const correlationHeadless: HeadlessPaneDefinition<"rows"> = {
     return {
       freshness: { asOf, ...unfinishedBarFreshness([...bars.values()], asOf?.slice(0, 10)) },
       rows, unavailableSymbols,
-      ...(rollNotes.length ? { notes: rollNotes } : {}),
+      notes: [CORRELATION_PRICE_RETURN_NOTE, ...rollNotes],
       errors: [
         ...loaded.errors,
         // A thin pair says which side is short of daily bars; a pair with enough returns and no value has no variance.
@@ -140,7 +140,7 @@ export const relationshipHeadless: HeadlessPaneDefinition<"series"> = {
         { key: "latestCorrelation", label: `Rolling correlation (${correlationWindow})`, value: analysis.latestCorrelation, formatted: formatNumber(analysis.latestCorrelation ?? undefined, 3) },
         ...(["beta", "alpha", "rSquared"] as const).map((key) => ({
           // The first ticker's daily returns are regressed on the second's, so a beta says which way round it reads.
-          key, label: { beta: `${regression}: beta`, alpha: `${regression}: alpha`, rSquared: "R squared" }[key],
+          key, label: { beta: `${regression}: beta (${range} daily)`, alpha: `${regression}: alpha`, rSquared: "R squared" }[key],
           value: analysis.stats?.[key] ?? null,
           // Alpha is the regression intercept on daily percent returns.
           formatted: key === "alpha" && analysis.stats ? `${formatNumber(analysis.stats.alpha, 3)}%` : formatNumber(analysis.stats?.[key], 3),

@@ -67,6 +67,7 @@ export interface ReportFreshness {
   ageMinutes?: number;
   /** When only some rows are stale: how many, of the rows that say whether they are... */
   staleCount?: number;
+  staleSymbol?: string;
   observationCount?: number;
   /**
    * How many of those rows are at a nominal price, nothing having traded
@@ -218,6 +219,7 @@ interface FeedSignals {
   /** Rows and series that carry a `stale` flag, and the times of those that are stale... */
   flagged: number;
   staleTimes: Array<ReportTime | null>;
+  staleSymbol?: string;
   /** ...and how many of them are at a nominal price instead (`nominal`). */
   nominal: number;
   /** Rows that name the venue whose sessions they follow (`sessionExchange`), with their time. */
@@ -305,7 +307,10 @@ function readUnitStale(record: Record<string, unknown>, time: ReportTime | null,
   if (typeof record.stale !== "boolean") return;
   signals.flagged += 1;
   if (record.nominal === true) signals.nominal += 1;
-  else if (record.stale) signals.staleTimes.push(time);
+  else if (record.stale) {
+    signals.staleTimes.push(time);
+    signals.staleSymbol = signals.staleTimes.length === 1 && typeof record.quoteSymbol === "string" ? record.quoteSymbol : undefined;
+  }
 }
 
 function observedTime(record: Record<string, unknown>, now: number, keys: readonly string[] = OBSERVATION_KEYS): ReportTime | null {
@@ -646,6 +651,7 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
     ...(minDelayMinutes != null && minDelayMinutes > 0 ? { minDelayMinutes } : {}),
     ...(status === "stale" && staleAt ? { ageMinutes: Math.max(0, Math.floor((now - staleAt.time) / 60_000)) } : {}),
     ...(partial ?? {}),
+    ...(partial && signals.staleSymbol ? { staleSymbol: signals.staleSymbol } : {}),
     ...(signals.nominal > 0 ? { nominalCount: signals.nominal, observationCount: signals.flagged } : {}),
     ...(status === "not-a-feed" && declared.basis ? { basis: declared.basis } : {}),
     ...(periodicity ? { periodicity } : {}),
@@ -868,8 +874,9 @@ function ageText(minutes: number): string {
  * when `short`. Null when the report does not count them. One wording for a
  * report's status line, a capture's and the status a capture prints.
  */
-export function staleRowsText(freshness: Pick<ReportFreshness, "staleCount" | "observationCount">, short = false): string | null {
+export function staleRowsText(freshness: Pick<ReportFreshness, "staleCount" | "staleSymbol" | "observationCount">, short = false): string | null {
   if (freshness.staleCount == null || freshness.observationCount == null) return null;
+  if (freshness.staleCount === 1 && freshness.staleSymbol) return `${freshness.staleSymbol} stale`;
   return `${short ? freshness.staleCount : `${freshness.staleCount} of ${freshness.observationCount}`} stale`;
 }
 

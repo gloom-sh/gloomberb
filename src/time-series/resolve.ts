@@ -1,6 +1,7 @@
 import { logFailure } from "../utils/log-failure";
 import { servedFromSavedCopy } from "../data/saved-copies";
 import { hasValidQuoteObservationTime } from "../market-data/quotes/freshness";
+import { rollAdjustedHistory } from "../market-data/futures-roll-returns";
 import { delistingLabel } from "../market-data/quotes/delisting";
 import { financialPeriodCoverage, financialPeriodCoverageWarnings, limitSeriesObservations } from "./financial-period-coverage";
 import { historyCoverageNotice } from "../sources/history-coverage";
@@ -1040,9 +1041,11 @@ async function resolveChartSpecPass(
       // mark is not a daily closing observation, including on snapshot replay.
       const historical = history ? { ...merged, priceHistory: history.points } : merged;
       sources.onSecurityData?.(resolvedSpec, dailyValuation || history?.session || realizedVolInputs.has(seriesSpec.id) ? historical : sourceBars, history !== null);
+      const returnHistory = comparedSeriesIds.has(seriesSpec.id) && history?.resolution === "1d"
+        ? rollAdjustedHistory(merged.priceHistory, resolvedSource.instrument.symbol) : null;
       const base = baseSecuritySeries(
         resolvedSpec,
-        dailyValuation ? historical : merged,
+        dailyValuation ? historical : returnHistory?.note ? { ...merged, priceHistory: returnHistory.points } : merged,
         index,
         history?.resolution,
         quoteMetadata,
@@ -1050,6 +1053,7 @@ async function resolveChartSpecPass(
         { extendedHours: history?.extendedHours === true },
       );
       if (!base) throw new Error(`Unknown field ${source.fieldId}.`);
+      if (returnHistory?.note) base.returnRollNote = returnHistory.note;
       let result = builtBars ? withBuiltBarSize(base, builtBars) : base;
       if (spec.viewport.totalReturn === true && totalReturnFieldId(source.fieldId)) {
         const outcome = await totalReturnSeries(result, () => loadDistributions(resolvedSource),

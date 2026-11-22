@@ -186,27 +186,29 @@ function textFieldCells(filter: Pick<QueryBarTextFilter, "width" | "value">, ter
 
 /** An inline filter of a few short options, drawn as segments: what collapses to its menu when the row runs short. */
 function collapsibleInline(filter: QueryBarFilter): filter is QueryBarSelectFilter {
-  return (filter.kind === undefined || filter.kind === "select") && filter.inline === true && filter.options.length <= TERMINAL_SEGMENT_LIMIT;
+  return (filter.kind === undefined || filter.kind === "select") && filter.inline === true;
 }
 
 /**
  * The cells a terminal query bar takes with every control drawn in full: what decides whether its inline filters
- * collapse to menus so the as-of keeps its place. `meta` gives way by itself and a long strip scrolls, so neither counts.
+ * collapse to menus so the controls and as-of can keep their places. `meta` gives way by itself.
  */
-function terminalRowCells(width: number, { search, filters = [], view, asOf }: Pick<QueryBarProps, "search" | "filters" | "view" | "asOf">): number {
-  const segments = (options: readonly { label: string; short?: string; hint?: string }[]) => options.length > TERMINAL_SEGMENT_LIMIT ? 0
-    : options.reduce((sum, option) => sum + (keyedStrip(options) && option.hint ? option.hint.length + 1 : 0) + (option.short ?? option.label).length + 2, 0);
+function terminalRowCells(width: number, { search, filters = [], view, asOf }: Pick<QueryBarProps, "search" | "filters" | "view" | "asOf">, filterMenus = false, viewMenu = false): number {
+  const segments = (options: readonly { label: string; short?: string; hint?: string }[]) =>
+    options.reduce((sum, option) => sum + (keyedStrip(options) && option.hint ? option.hint.length + 1 : 0) + displayWidth(option.short ?? option.label) + 2, 0);
   const parts = [
     ...search ? [Math.max(16, Math.min(36, Math.floor(width * 0.3)))] : [],
     ...filters.map((filter) => {
       if (filter.kind === "text") return textFieldCells(filter) + filter.label.length + 1;
       if (filter.kind === "toggle") return (filter.short ?? filter.label).length + 4;
       if (filter.kind === "multi") return filter.label.length + 8;
-      if (filter.inline) return filter.label.length + 1 + segments(filter.options);
+      if (filter.inline && !filterMenus) return filter.label.length + 1 + segments(filter.options);
       const current = filter.options.find((option) => option.value === filter.value);
-      return filter.label.length + (current?.short ?? current?.label ?? "").length + 6;
+      return filter.label.length + displayWidth(current?.short ?? current?.label ?? "") + 1;
     }),
-    ...view ? [segments(view.options)] : [],
+    ...view ? [viewMenu
+      ? displayWidth(view.options.find((option) => option.value === view.value)?.label ?? "")
+      : segments(view.options)] : [],
     ...asOf ? [asOf.length] : [],
   ];
   return 2 + parts.reduce((sum, part) => sum + part, 0) + 2 * Math.max(0, parts.length - 1);
@@ -552,7 +554,14 @@ export function QueryBar({ width, search, filters = [], view, meta, asOf: given,
     );
   }
 
-  const viewStrip = view ? (
+  const collapseInline = (!!asOf || !!view && !view.start) && filters.some(collapsibleInline)
+    && terminalRowCells(width, { search, filters, view, asOf }) > width;
+  const collapseView = collapseInline && !!view && !view.start
+    && terminalRowCells(width, { search, filters, view, asOf }, true) > width;
+  const showAsOf = asOf && (!collapseInline || terminalRowCells(width, { search, filters, view, asOf }, true, collapseView) <= width);
+  const viewStrip = view ? collapseView ? (
+    <SelectButton label={view.label ?? "View"} showLabel={false} value={view.value} options={view.options} onChange={(value) => choose(view, value)} />
+  ) : (
     <Box flexShrink={view.options.length > TERMINAL_SEGMENT_LIMIT ? 1 : 0} minWidth={0}>
       <TerminalChoiceStrip
         options={view.options.map((option) => ({ value: option.value, label: option.label, hint: option.hint, disabled: option.disabled }))}
@@ -564,9 +573,6 @@ export function QueryBar({ width, search, filters = [], view, meta, asOf: given,
     </Box>
   ) : null;
   const viewAtEnd = !!view && !view.start;
-  // Short of room, inline filters give up their segments for a menu, so the as-of and the controls after them stay.
-  // Only a bar with an as-of: elsewhere the row keeps its segments, as it always has.
-  const collapseInline = !!asOf && filters.some(collapsibleInline) && terminalRowCells(width, { search, filters, view, asOf }) > width;
   return (
     <Box height={1} width={width} flexDirection="row" gap={2} paddingX={1} overflow="hidden" flexShrink={0}>
       {view?.start ? viewStrip : null}
@@ -626,9 +632,9 @@ export function QueryBar({ width, search, filters = [], view, meta, asOf: given,
       {narrowingCount >= 2 && (
         <Box onMouseDown={resetAll} cursor="pointer"><Text fg={colors.textDim}>clear</Text></Box>
       )}
-      {(viewAtEnd || meta || asOf) && <Box flexGrow={1} />}
+      {(viewAtEnd || meta || showAsOf) && <Box flexGrow={1} />}
       {/* The as-of keeps its width; the context after it gives way before the controls when the row runs short. */}
-      {asOf ? <Box flexShrink={0}><Text fg={colors.textMuted} wrapMode="none">{asOf}</Text></Box> : null}
+      {showAsOf ? <Box flexShrink={0}><Text fg={colors.textMuted} wrapMode="none">{asOf}</Text></Box> : null}
       {meta && (
         <Box flexShrink={1} minWidth={0} height={1} overflow="hidden">
           <Text fg={colors.textMuted} wrapMode="none" truncate flexShrink={1} minWidth={0}>{meta}</Text>

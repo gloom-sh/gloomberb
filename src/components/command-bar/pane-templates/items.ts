@@ -7,6 +7,7 @@ import type {
 } from "../../../types/plugin";
 import { glossaryNamesFunction } from "../../../cli/glossary";
 import { fuzzyFilter } from "../../../utils/fuzzy-search";
+import { matchesFunctionSearch, paneTemplateSearchFields } from "../../../utils/function-search";
 import { discoveryOpening } from "../../../utils/lookup-token";
 import { summarizeError } from "../helpers";
 import type { ResultItem } from "../list/model";
@@ -217,14 +218,10 @@ export function buildPaneTemplateItem(options: {
   const arg = options.createOptions?.arg;
   const aliases = options.template.shortcut?.aliases ?? [];
   const searchText = [
-    options.template.keywords?.join(" ") || "",
+    ...paneTemplateSearchFields(options.template, options.pluginRegistry.panes?.get(options.template.paneId)),
     displayLabel,
-    options.template.label,
-    options.template.paneId,
     shortcutLabel || "",
-    ...aliases,
     pluginName || "",
-    ...paneTemplateDiscoveryWords(options.template, options.pluginRegistry),
   ].filter(Boolean).join(" ");
 
   if (options.argError) {
@@ -275,23 +272,6 @@ export function buildPaneTemplateItem(options: {
   };
 }
 
-/**
- * The words `gloom catalog` also finds a function by, beyond its keywords and
- * description: its headless discovery aliases, the words it is suggested for,
- * those that open one of its cases (CTM's "vix futures") and its intents. The
- * bar's row carries them, so the same words find the same function.
- */
-function paneTemplateDiscoveryWords(template: PaneTemplateDef, registry: Pick<PluginRegistry, "panes">): string[] {
-  const discovery = paneTemplateDiscovery(template, registry);
-  if (!discovery) return [];
-  return [
-    ...discovery.aliases ?? [],
-    ...discovery.suggestFor ?? [],
-    ...discovery.opens?.flatMap((opening) => opening.words) ?? [],
-    ...discovery.intents ?? [],
-  ];
-}
-
 function paneTemplateDiscovery(template: PaneTemplateDef, registry: Pick<PluginRegistry, "panes">) {
   return (template.headless ?? registry.panes?.get(template.paneId)?.headless)?.discovery;
 }
@@ -306,7 +286,7 @@ function withShownTerm(item: ResultItem, template: PaneTemplateDef, query: strin
   const codes = [template.shortcut?.prefix, ...template.shortcut?.aliases ?? []];
   if (!codes.some((code) => !!code && glossaryNamesFunction(code, query))) return item;
   const own = `${item.label} ${item.searchText ?? ""} ${item.detail} ${item.right ?? ""}`.toLowerCase();
-  if (query.toLowerCase().split(/\s+/).every((word) => own.includes(word))) return item;
+  if (matchesFunctionSearch(query, [own])) return item;
   return { ...item, searchText: `${query} ${item.searchText ?? ""}` };
 }
 
@@ -348,7 +328,7 @@ export function buildPaneShortcutItems(options: {
     });
 
   return options.filterQuery
-    ? fuzzyFilter(items, options.filterQuery, (item) => `${item.label} ${item.searchText || ""} ${item.detail} ${item.right || ""}`)
+    ? fuzzyFilter(items, options.filterQuery, (item) => `${item.label} ${item.searchText || ""} ${item.detail} ${item.right || ""}`, undefined, () => true)
     : items;
 }
 
@@ -362,6 +342,6 @@ export function buildNonShortcutPaneTemplateItems(options: {
     .map((template) => options.createItem(template, { category: "Panes" }));
 
   return options.filterQuery
-    ? fuzzyFilter(items, options.filterQuery, (item) => `${item.label} ${item.searchText || ""} ${item.detail} ${item.right || ""}`)
+    ? fuzzyFilter(items, options.filterQuery, (item) => `${item.label} ${item.searchText || ""} ${item.detail} ${item.right || ""}`, undefined, () => true)
     : items;
 }

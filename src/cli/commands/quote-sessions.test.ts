@@ -101,7 +101,8 @@ test("quote marks each stale row in its Feed cell, as many as the closing line c
   expect(lines.find((line) => line.startsWith("7203:JPX"))).toMatch(/\bstale\b/);
   // Whatever the clock makes of the other row, the cells and the count agree.
   const marked = lines.filter((line) => /^\S+ .*\bstale\b/.test(line) && !line.startsWith("Source:")).length;
-  const counted = Number(/(\d+) of 2 stale/.exec(text)?.[1] ?? (/\bstale\b/.test(lines.at(-1) ?? "") ? 2 : 0));
+  const footer = lines.at(-1) ?? "";
+  const counted = /\b7203\.T stale\b/.test(footer) ? 1 : /\bstale\b/.test(footer) ? 2 : 0;
   expect(marked).toBe(counted);
   // JSON keeps the quote as sent.
   expect((result.data as Array<{ quote: Quote }>)[0]!.quote.dataSource).toBe("delayed");
@@ -308,7 +309,7 @@ test("a nominal price's Updated names the session it is the close of, not the la
     await marketDataCliCommands.find((command) => command.name === "quote")!.execute([usd.symbol], cli.context);
     const [{ result, options }] = cli.printed as [PrintedCliResult];
     const text = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "text" }, options);
-    expect(text).toMatch(/nominal +6 Nov close\n/);
+    expect(text).toMatch(/nominal +Fri 6 Nov close\n/);
     expect(text).not.toContain("2026-11-04 03:32");
     expect(result.warnings?.join("\n") ?? text).toContain("no trades since Thu 29 Oct, nominal price");
     expect(JSON.stringify(result.data)).toContain('"lastTraded":"2026-10-29"');
@@ -477,7 +478,7 @@ test("compare marks which row is stale in Feed and Updated, and prices a future 
     ]);
     const header = text.split("\n")[0]!;
     expect(header).toMatch(/Cur\s+Feed\s+Updated$/);
-    expect(text.split("\n").find((line) => line.startsWith("^VIX"))).toMatch(/stale\s+2026-11-06 21:15 UTC$/);
+    expect(text.split("\n").find((line) => line.startsWith("^VIX"))).toMatch(/stale\s+Fri 6 Nov(?: 2026)? 21:15 UTC$/);
     // The table alone: the contract block is `quote`'s.
     expect(text).not.toContain("Contract");
   } finally {

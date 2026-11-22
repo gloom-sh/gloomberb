@@ -145,9 +145,10 @@ export function quoteFreshnessFields(
  * for (`asOfDate`), not by the older last trade. A board publishes one per
  * quote it shows, so `fn` and `shot` date it as `quote` dates the same quotes.
  */
-export function quoteObservation(quote: Quote, now = Date.now()): QuoteFreshnessFields & { updatedAt: number; asOfDate?: string } {
+export function quoteObservation(quote: Quote, now = Date.now()): QuoteFreshnessFields & { quoteSymbol: string; updatedAt: number; asOfDate?: string } {
   return {
     ...quoteFreshnessFields(quote, now),
+    quoteSymbol: quote.symbol,
     updatedAt: quoteHeadlineTime(quote),
     ...(quote.nominalPrice ? { asOfDate: quote.nominalPrice.session } : {}),
   };

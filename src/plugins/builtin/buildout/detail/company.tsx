@@ -172,7 +172,6 @@ export function CompanyDetail({
             { label: "PEG", value: company.pegRatio },
             { label: "P/B", value: company.priceToBook },
             { label: "EPS", value: valueWithOriginal(company.dilutedEps, company.dilutedEpsOriginal) },
-            { label: "Beta", value: company.beta },
             { label: "52W High", value: valueWithOriginal(company.high52w, company.high52wOriginal) },
             { label: "52W Low", value: valueWithOriginal(company.low52w, company.low52wOriginal) },
           ]}

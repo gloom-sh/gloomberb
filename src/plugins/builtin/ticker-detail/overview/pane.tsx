@@ -3,7 +3,7 @@ import { PerpMarketsSection } from "../../perps/markets-section";
 import { TickerNewsHeadlines } from "../../news/overview-headlines";
 import { TICKER_NEWS_TAB_ID, TICKER_NEWS_TEMPLATE_ID } from "../../news/ticker-news";
 import { perpetualListing } from "../../../../tickers/perpetual-listing";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import type { TickerResearchTabProps } from "../../../../types/plugin";
 import {
   useAppDispatch,
@@ -26,6 +26,9 @@ import { PaneLinkMenu } from "../../../../components";
 import { FunctionLinkRow } from "./components";
 import { OVERVIEW_CHART_SCALE_SETTING, parseOverviewChartScaleChoice } from "./chart-scale";
 import { useCoinOverview } from "./coin";
+import { buildOverviewBeta, overviewBetaRequest } from "./model";
+import { useRelationshipHistories } from "../../correlation/relationship/history";
+import { buildRelationshipAnalysis, DEFAULT_RELATIONSHIP_CORRELATION_WINDOW, DEFAULT_RELATIONSHIP_RANGE } from "../../correlation/relationship/model";
 
 /** Registered by the chart composer, in the same plugin as this tab. */
 const CHART_TAB_ID = "chart";
@@ -34,6 +37,15 @@ const NEWS: OverviewFunctionLink = { name: "News", tabId: TICKER_NEWS_TAB_ID, te
 
 export function OverviewResearchTab({ width, height, focused }: TickerResearchTabProps) {
   const { symbol, ticker, financials } = usePaneTicker();
+  const betaRequest = ticker ? overviewBetaRequest(ticker, financials) : null;
+  const { data: betaHistory, error: betaError } = useRelationshipHistories(
+    betaRequest?.pair ?? null, betaRequest?.range ?? DEFAULT_RELATIONSHIP_RANGE, ticker?.metadata.exchange ?? "",
+  );
+  const beta = useMemo(() => {
+    const [left, right] = betaHistory ?? [];
+    if (betaError || !left || !right) return null;
+    return buildOverviewBeta(buildRelationshipAnalysis(left.points, right.points, DEFAULT_RELATIONSHIP_CORRELATION_WINDOW).stats?.beta);
+  }, [betaError, betaHistory]);
   const coin = useCoinOverview(ticker, financials, focused);
   const snapshot = useTickerSnapshotState(symbol, ticker);
   const dispatch = useAppDispatch();
@@ -68,6 +80,7 @@ export function OverviewResearchTab({ width, height, focused }: TickerResearchTa
       focused={focused}
       ticker={ticker}
       financials={financials}
+      beta={beta}
       coin={coin}
       onOpenChart={paneId && !lockedToOneTab ? openChart : undefined}
       onOpenFunction={openFunction}

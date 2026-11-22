@@ -229,6 +229,7 @@ export interface ResolvedSeries {
    * source gave none to reinvest (`warning` says why).
    */
   returnBasis?: "total" | "price";
+  returnRollNote?: string;
   /** The listing currency a price series was converted from into the chart's `viewport.currency`. */
   convertedFrom?: string;
   unitGroup: string;
