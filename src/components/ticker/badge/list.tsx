@@ -24,8 +24,9 @@ export interface TickerBadgeListProps {
   /**
    * The source names these as listed tickers (an SEC filer's ticker, the
    * pane's own symbol): each is drawn as a badge as it is, with no lookup
-   * and no quote. A lookup that fails prints a symbol as plain text, so a
-   * column of looked-up symbols can mix chips and bare words.
+   * and no quote, so a column of them is one look. Without it, a lookup that
+   * fails prints a symbol as plain text, and a column of looked-up symbols
+   * can mix chips and bare words.
    */
   listed?: boolean;
   /**
@@ -130,7 +131,7 @@ export function TickerBadgeList({
       {named.map((symbol, index) => {
         const key = keyOf(symbol);
         const entry = catalog[key];
-        if (entry?.status === "missing" || (!listed && listings?.[symbol] === null)) {
+        if (entry?.status === "missing" || listings?.[symbol] === null) {
           return (
             <Box key={symbol} paddingRight={1} flexShrink={0}>
               <Text fg={fallbackColor} attributes={TextAttributes.BOLD}>{symbol}</Text>

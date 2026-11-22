@@ -5,6 +5,9 @@ import type {
   BuildoutTabId,
 } from "../model/types";
 
+/** What the dataset leaves out of the company figures, as the footer's title and a report's notice say it. */
+export const BUILDOUT_UNDATED_FIGURES = "Market cap, growth and 1Y are undated: the dataset states no market date for market cap and 1Y and no period for growth.";
+
 export function activeBuildoutPage(
   state: BuildoutLoadState,
   activeTab: BuildoutTabId,
@@ -42,6 +45,14 @@ export function updateBuildoutFooterInfo(
   }
 
   const info: PaneFooterSegment[] = [];
+  // The columns every company and theme row carries; the live price an open detail swaps in has its own freshness below.
+  if (activeTab === "themes" || activeTab === "companies") {
+    info.push({
+      id: "undated", capture: true, holdsPlace: true, title: BUILDOUT_UNDATED_FIGURES,
+      parts: [{ text: "cap, growth and 1Y undated", tone: "muted" }],
+      variants: [[{ text: "figures undated", tone: "muted" }]],
+    });
+  }
   if (messages.quoteFreshness) {
     info.push(...splitDelayedStatus({ id: "quote", parts: [{ text: messages.quoteFreshness, tone: "muted" }] }));
   }

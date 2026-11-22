@@ -57,11 +57,13 @@ import {
 } from "../table-model";
 import { listingKey, tickerSearchText, tickerSymbol } from "../format";
 import {
+  BUILDOUT_UNDATED_FIGURES,
   activeBuildoutPage,
   renderBuildoutPageStatus,
   updateBuildoutFooterInfo,
 } from "./status";
 import { useBuildoutDataRuntime } from "../data-runtime";
+import { useRemoteUiNode } from "../../../../remote/semantic-tree";
 import { GEO_SCOPE_STATE_KEY } from "../../world-venue-map/scope";
 import type { GeoScope } from "../../world-venue-map/local-layers";
 import { boardRows, boardThemes, resolveBoardTheme, ThemeBoard, ThemeStats, themeStatRows, useThemeStepKeys } from "./themes";
@@ -367,6 +369,13 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
     }
     return hints;
   }, [chooseOpenTarget, favoriteBusyKey, favoriteTarget, favoriteTargetKey, openTargets.length, startUpgrade, state, toggleFavoriteRow]);
+
+  // A report of the pane says what its footer says about the figures' dates.
+  useRemoteUiNode(companyTab && state.status === "ready" ? {
+    role: "report-notice",
+    label: "Undated figures",
+    getMetadata: () => ({ text: BUILDOUT_UNDATED_FIGURES, key: "undatedFigures", value: ["marketCap", "growth", "return1y"] }),
+  } : null);
 
   usePaneFooter("buildout", () => ({
     info: updateBuildoutFooterInfo(state, activeTab, currentList, {
