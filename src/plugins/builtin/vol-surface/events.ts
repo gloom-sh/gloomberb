@@ -30,6 +30,8 @@ export interface SurfaceEvents {
   events: SurfaceEvent[];
   /** Why an event is missing or has no history beside it. */
   notes: string[];
+  /** MDAY's moves did not load (the underlying's daily closes), so no release has one beside it: why. */
+  historyError?: string;
 }
 
 /** The expiry's ISO date: a stamp at its settlement or at UTC midnight of the day both read as that day. */
@@ -145,10 +147,14 @@ export function surfaceEventHistory(events: readonly SurfaceEvent[]): string {
   return moves.length === 1 ? percent(moves[0]) : `${moves.map((move) => move == null ? MISSING_VALUE : (move * 100).toFixed(2)).join("/")}%`;
 }
 
-/** One line for a narrow pane: "fwd 17.0% · move ≈1.01% · MDAY 1.01%". */
-export function surfaceEventSummary(reading: SurfaceEventReading): string {
+/**
+ * One line for a narrow pane: "fwd 17.0% · move ≈1.01% · MDAY 1.01%". With
+ * `historyFailed`, MDAY's moves did not load, which it says rather than a
+ * dash that reads as no move on record.
+ */
+export function surfaceEventSummary(reading: SurfaceEventReading, { historyFailed = false }: { historyFailed?: boolean } = {}): string {
   if (reading.after == null) return "no listed expiry after it";
-  return `fwd ${percent(reading.forwardVol, 1)} · move ${approximatePercent(reading.impliedMove)} · MDAY ${surfaceEventHistory(reading.events)}`;
+  return `fwd ${percent(reading.forwardVol, 1)} · move ${approximatePercent(reading.impliedMove)} · MDAY ${historyFailed ? "did not load" : surfaceEventHistory(reading.events)}`;
 }
 
 /** "FOMC 12-09". */
@@ -209,6 +215,7 @@ export async function loadSurfaceEvents(
     const stats = model?.byKind[kind];
     return [{ kind, date: found.date, history: stats ? { meanAbs: stats.meanAbs, count: stats.count } : null }];
   });
-  if (!model && history.error) notes.push(`MDAY's moves on release days are unavailable: ${history.error}.`);
-  return { events: events.sort((a, b) => a.date.localeCompare(b.date)), notes };
+  const historyError = !model && history.error ? history.error : null;
+  if (historyError) notes.push(`MDAY's moves on release days are unavailable: ${historyError}.`);
+  return { events: events.sort((a, b) => a.date.localeCompare(b.date)), notes, ...(historyError ? { historyError } : {}) };
 }

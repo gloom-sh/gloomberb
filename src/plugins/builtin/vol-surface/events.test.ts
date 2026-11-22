@@ -65,6 +65,9 @@ describe("scheduled releases on the term structure", () => {
     const eventVariance = variance - 0.16 ** 2 * (late.years - early.years - 2 / 365);
     expect(reading.impliedMove).toBeCloseTo(Math.sqrt(eventVariance * 2 / Math.PI), 10);
     expect(surfaceEventSummary(reading)).toBe(`fwd ${(reading.forwardVol! * 100).toFixed(1)}% · move ≈${(reading.impliedMove! * 100).toFixed(2)}% · MDAY 1.01/0.98%`);
+    // Closes that never loaded are not a dash, which reads as no move on record.
+    const unread = { ...reading, events: reading.events.map((event) => ({ ...event, history: null })) };
+    expect(surfaceEventSummary(unread, { historyFailed: true })).toEndWith("· MDAY did not load");
   });
 
   test("a release after the last listed expiry has a row that says so, and nothing read", () => {

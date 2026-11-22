@@ -330,7 +330,9 @@ export async function buildDesktopShotPayload(
     const overview = resolved.pane.id === TICKER_RESEARCH_PANE_ID && resolved.template?.id !== "adr-pair-pane" && !isFinancialAnalysisFunction(resolved);
     const overviewTicker = overview ? entry.tickerFile ?? await createFallbackTicker(symbol, data, context) : null;
     const returnHistory = overviewTicker ? shotDailyHistory(context, overviewTicker, exchange, priceReturnDailyWindow()) : null;
-    const fiveYearsDaily = resolved.pane.id === "realized-vol" || resolved.pane.id === "iv-history" || resolved.pane.id === "macro-day";
+    // OVDV's Term tab reads MDAY's moves off five years of daily closes, as MDAY does.
+    const fiveYearsDaily = resolved.pane.id === "realized-vol" || resolved.pane.id === "iv-history" || resolved.pane.id === "macro-day"
+      || resolved.pane.id === "vol-surface" && resolved.options.tab === "term";
     // KELLY's History tab reads monthly returns off the daily closes its own request names, from the month-end
     // before the window, as the KELLY report does; a source with no dated history, its trailing range.
     const kellyHistory = resolved.pane.id === "kelly-sizer"
