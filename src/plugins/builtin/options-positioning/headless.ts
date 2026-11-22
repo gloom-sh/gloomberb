@@ -83,7 +83,7 @@ function summary(openInterest: OpenInterestPayload, dealer: GammaPayload | null)
     { label: "Spot", value: spot, formatted: formatPositioningSpot(spot, spotAsOf, venue, spotBasis) },
     ...(dealer && gammaTimes ? [{ label: "Gamma at", value: dealer.gammaAsOf ?? null, formatted: gammaTimes }]
       : dealer ? [{ label: "Quotes as of", value: dealer.quotesAsOf, formatted: time(dealer.quotesAsOf) }] : []),
-    { label: "Open interest as of", value: oiAsOf ?? openInterest.oiDate, formatted: oiAsOf ? `${time(oiAsOf)}, live` : openInterest.oiDate ?? MISSING_VALUE },
+    { label: "Open interest as of", value: oiAsOf ?? openInterest.oiDate, formatted: oiAsOf ? time(oiAsOf) : openInterest.oiDate ?? MISSING_VALUE },
     ...(contract ? [{ label: "Contract", value: contract, formatted: `${contract.size} ${contract.unit}; OI counts ${contract.unit}` }] : []),
     ...(settles ? [{ label: "Expiries settle", value: settles, formatted: `${settles}, the day each expiry names` }] : []),
   ];
@@ -130,7 +130,7 @@ export const optionsPositioningHeadless = (initialTab: PositioningTab): Headless
       "Open interest is about two sessions old; the Expiries heading names its date.",
       "Dealer gamma assumes dealers are long every call and short every put.",
       "NDX and RUT index options are not covered; use QQQ and IWM.",
-      "BTC-USD and ETH-USD are Deribit's options: open interest is live and counted in coins, and expiries settle at 08:00 UTC.",
+      "BTC-USD and ETH-USD are Deribit's options: open interest is Deribit's own, dated to the minute, and counted in coins, and expiries settle at 08:00 UTC.",
     ],
   },
   options: [
@@ -183,7 +183,7 @@ export const optionsPositioningHeadless = (initialTab: PositioningTab): Headless
     // Each expiry's walls, from the all-expiries gamma; absent from older servers.
     const expiryWalls = allExpiries instanceof Error ? null : wallsByExpiry(allExpiries);
     const settles = openInterest.expiries.some((row) => settlementTime(row.expiresAt));
-    const oiStamp = openInterest.venue && openInterest.oiAsOf ? `${time(openInterest.oiAsOf)}, live` : openInterest.oiDate ?? MISSING_VALUE;
+    const oiStamp = openInterest.venue && openInterest.oiAsOf ? time(openInterest.oiAsOf) : openInterest.oiDate ?? MISSING_VALUE;
     const gammaShown = dealer instanceof Error || !dealer.total ? null : dealer;
     const scope = dealer instanceof Error ? null : dealer.expiry ? expiryLabel(dealer.expiry) : "all expiries";
     const walls = gammaShown ? gammaWalls(gammaShown.strikes) : null;

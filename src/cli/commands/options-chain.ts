@@ -249,7 +249,7 @@ export async function loadOptionsChainOpenInterest(symbol: string, chain: Option
  * OI as of Fri 9 Oct`, with `, ~ filled from neighbouring strikes` after the IV when a strike has no quote to solve from.
  * An open interest whose date cannot be established says why. A chain its
  * venue marks says whose marks they are: `Deribit marks: IV and greeks at
- * each expiry's forward, rate 0%; $ is the BTC price at the forward · OI live, Thu 22 Oct 22:42 UTC`.
+ * each expiry's forward, rate 0%; $ is the BTC price at the forward · OI as of Thu 22 Oct 22:42 UTC`.
  */
 export function optionsBasisFootnote(basis: OptionsChainBasis, chain?: OptionsChain): string {
   const parts: string[] = [];
@@ -261,7 +261,7 @@ export function optionsBasisFootnote(basis: OptionsChainBasis, chain?: OptionsCh
     const settles = [...chain.calls, ...chain.puts].map((contract) => settlementStampTime(contract.expiration)).find(Boolean);
     if (settles) parts.push(`expiries settle ${settles}`);
     const asOf = chain.asOf ? Date.parse(chain.asOf) : Number.NaN;
-    parts.push(Number.isFinite(asOf) ? `OI live, ${formatUtcTime(new Date(asOf).toISOString())}` : openInterestAsOfLabel(basis.openInterest));
+    parts.push(Number.isFinite(asOf) ? `OI as of ${formatUtcTime(new Date(asOf).toISOString())}` : openInterestAsOfLabel(basis.openInterest));
     return parts.join(" · ");
   }
   // An adjusted contract delivers something other than 100 shares: the fund's price values none of it.

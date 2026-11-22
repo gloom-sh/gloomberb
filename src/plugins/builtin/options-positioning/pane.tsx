@@ -326,8 +326,8 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
     ...(savedAt != null ? [savedCopyFooterSegment("saved-copy", savedAt)] : []),
     ...(accessSegment ? [accessSegment] : []),
     ...(venue ? [{ id: "venue", parts: [{ text: venue, tone: "muted" as const }] }] : []),
-    // A venue that publishes open interest live (Deribit) says when it was read.
-    ...(venue && data?.oiAsOf ? [{ id: "oi-date", parts: [{ text: `OI live ${data.oiAsOf.slice(11, 16)} UTC`, tone: "muted" as const }] }]
+    // A venue that publishes open interest by the minute (Deribit) says when it was read.
+    ...(venue && data?.oiAsOf ? [{ id: "oi-date", parts: [{ text: `OI as of ${data.oiAsOf.slice(11, 16)} UTC`, tone: "muted" as const }] }]
       : data?.oiDate ? [{ id: "oi-date", parts: [{ text: `OI as of ${shortDate(data.oiDate)}`, tone: "muted" as const }] }] : []),
     ...(changes && tab !== "gex" ? [{ id: "oi-change", parts: [{ text: `chg since ${shortDate(data!.previousOiDate!)}`, tone: "muted" as const }] }] : []),
   ], [accessSegment, changes, data?.oiAsOf, data?.oiDate, data?.previousOiDate, savedAt, tab, venue]);

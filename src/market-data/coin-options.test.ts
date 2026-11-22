@@ -63,7 +63,7 @@ test("a marked contract keeps the venue's IV and greeks, with its coin premiums 
   expect(call).toMatchObject({ coinCurrency: "BTC", coinBid: 0.046, coinMark: 0.0472, mark: 3_841.22, forward: 81_380,
     expiresAt: "2026-10-30T08:00:00.000Z" });
   expect(optionsBasisFootnote({ spot: null, openInterest: null } as never, chain)).toStartWith(
-    "Deribit marks: IV and greeks at each expiry's forward, rate 0%; $ is the BTC price at the forward · expiries settle 08:00 UTC · OI live,");
+    "Deribit marks: IV and greeks at each expiry's forward, rate 0%; $ is the BTC price at the forward · expiries settle 08:00 UTC · OI as of");
 });
 
 test("options on a coin without them names BTC and ETH options and IBIT, not the routing error", async () => {
