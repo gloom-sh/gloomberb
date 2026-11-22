@@ -10,6 +10,12 @@ const ZONE = "America/Chicago";
 const BREAK_START_MINUTES = 16 * 60;
 const BREAK_END_MINUTES = 17 * 60;
 const GLOBEX_VENUES = new Set(["CME", "CBT", "NYM", "CMX"]);
+/**
+ * Cboe Futures keeps Globex's day (VX: trading-sessions.ts). CME Group's
+ * calendar does not cover it, so only the US equity calendar vouches for its
+ * days: a US holiday or early close is left to the quote.
+ */
+const GLOBEX_HOURS_VENUES = new Set([...GLOBEX_VENUES, "CFE"]);
 
 const isoDay = (day: number) => new Date(day * MS_PER_DAY).toISOString().slice(0, 10);
 
@@ -32,10 +38,11 @@ function isUsHolidayOrEarlyClose(date: string): boolean | null {
  * Globex, and on a day the calendar cannot vouch for: a trade date CME Group
  * has not published or holds no session on, and a US holiday or early close,
  * whose Globex hours vary by contract; the quote's own state says those.
+ * Cboe Futures (VX) keeps the same day.
  */
 export function globexDayOpen(exchange: string | undefined, time: number): boolean | null {
   const venue = canonicalExchange(exchange);
-  if (!GLOBEX_VENUES.has(venue) || !Number.isFinite(time)) return null;
+  if (!GLOBEX_HOURS_VENUES.has(venue) || !Number.isFinite(time)) return null;
   if (futuresWeekendClosure(venue, time)) return false;
   const { year, month, day, hour, minute } = zonedDateTimeParts(time, ZONE);
   const minutes = hour * 60 + minute;
@@ -43,7 +50,7 @@ export function globexDayOpen(exchange: string | undefined, time: number): boole
   const local = Date.UTC(year, month - 1, day) / MS_PER_DAY;
   // From 17:00 the trades are booked on the next trade date.
   const tradeDate = isoDay(minutes >= BREAK_END_MINUTES ? local + 1 : local);
-  if (!hasPublishedFuturesCalendar(venue, tradeDate) || isPublishedFuturesClosure(venue, tradeDate)) return null;
+  if (GLOBEX_VENUES.has(venue) && (!hasPublishedFuturesCalendar(venue, tradeDate) || isPublishedFuturesClosure(venue, tradeDate))) return null;
   for (const date of new Set([isoDay(local), tradeDate])) {
     const unusual = isUsHolidayOrEarlyClose(date);
     if (unusual !== false) return null;

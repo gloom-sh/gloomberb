@@ -1068,7 +1068,11 @@ function newsRows(articles: NewsArticle[]) {
     // Whole, as exports write it; the text table's line under the row (newsRowNote) runs it together.
     summary: article.summary ?? null,
     source: article.source,
+    // Its first publication; the service's other times for it kept beside it, as sent.
     publishedAt: isoDate(article.publishedAt),
+    lastPublishedAt: article.times?.lastPublishedAt ?? null,
+    firstSeenAt: article.times?.firstSeenAt ?? null,
+    lastSeenAt: article.times?.lastSeenAt ?? null,
     topic: article.topic,
     tickers: article.tickers.join(","),
     url: article.url,
@@ -3319,9 +3323,15 @@ const NEWS_COLUMNS = [
   { key: "url", header: "URL", optional: true },
 ];
 
-/** CSV's columns: the text table's, and how many routine notices a folded row stands for and since when. */
+/**
+ * CSV's columns: the text table's, the story's latest publication and when the service first and last saw it,
+ * and how many routine notices a folded row stands for and since when.
+ */
 const NEWS_EXPORT_COLUMNS = [
   ...NEWS_COLUMNS,
+  { key: "lastPublishedAt", header: "Last published" },
+  { key: "firstSeenAt", header: "First seen" },
+  { key: "lastSeenAt", header: "Last seen" },
   { key: "routineNotices", header: "Routine notices" },
   { key: "routineSince", header: "Routine since" },
 ];

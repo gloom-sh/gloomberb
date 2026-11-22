@@ -88,10 +88,12 @@ export function SmileChart({ snapshot, expiry, overlay, axis, width, height, foc
 /** The legend's series and the axes' units on one row, with its padding and gaps. */
 const TERM_LEGEND_UNITS_WIDTH = 2 + "ATM spot".length + "25d put".length + "25d call".length + "IV % · calendar days (log)".length + 3 * 3;
 
-export function TermChart({ snapshot, width, height, focused = false, events = [] }: {
+export function TermChart({ snapshot, width, height, focused = false, events = [], historyFailed = false }: {
   snapshot: SurfaceSnapshot; width: number; height: number; focused?: boolean;
   /** The next scheduled FOMC and CPI read off the expiries either side of each. */
   events?: readonly SurfaceEventReading[];
+  /** MDAY's moves on release days did not load. */
+  historyFailed?: boolean;
 }) {
   const colors = useThemeColors();
   const rows = snapshot.expiries.filter((expiry) => expiry.atmIV != null).sort((a, b) => a.years - b.years);
@@ -133,7 +135,7 @@ export function TermChart({ snapshot, width, height, focused = false, events = [
     {/* Takes what the chart's whole rows leave, so the list ends at the pane's edge on the desktop. */}
     <ScrollBox flexDirection="column" paddingX={1} height={moveHeight} flexGrow={1} scrollY focusable={false}>
       {events.map((reading) => <KeyValueRow key={reading.events.map((event) => event.kind).join("+")} label={surfaceReadingShortLabel(reading)} labelWidth={12}
-        width={Math.max(1, width - 2)} color={colors.warning} value={surfaceEventSummary(reading)} />)}
+        width={Math.max(1, width - 2)} color={colors.warning} value={surfaceEventSummary(reading, { historyFailed })} />)}
       {rows.map((expiry) => <KeyValueRow key={expiry.expiration}
         label={expiryLabel(expiry.expiration)} labelWidth={12} width={Math.max(1, width - 2)}
         value={`${formatPrice(expiry.expectedMove.straddle)} straddle / ${formatPrice(expiry.expectedMove.sigma)} 1-sigma (${formatPrice(expiry.expectedMove.sigmaPercent)}%)`} />)}

@@ -169,8 +169,11 @@ describe("US history between sessions", () => {
   const stale = (last: string, at: string, interval: keyof typeof CLOSE_BARS, options: { exchange?: string; symbol?: string } = {}) =>
     isPriceHistoryStaleForCurrentWindow([{ date: new Date(last), close: 100 }], Date.parse(at),
       { ...options, intervalMs: priceHistoryIntervalMs(interval) });
-  // A venue spelled out, a bare symbol, and the index and fund the CLI reports.
-  const LISTINGS = [{ exchange: "NASDAQ" }, { exchange: "NYSE" }, {}, { symbol: "SPY" }, { symbol: "^GSPC" }];
+  // A venue spelled out, a bare symbol, and the index and fund the CLI reports. An index or future under
+  // its publisher or exchange, which has no calendar of its own, counted Friday's bars as behind all weekend.
+  const LISTINGS = [{ exchange: "NASDAQ" }, { exchange: "NYSE" }, {}, { symbol: "SPY" }, { symbol: "^GSPC" },
+    { symbol: "^GSPC", exchange: "SNP" }, { symbol: "^VIX", exchange: "CXI" }, { symbol: "^VIX", exchange: "CBOE INDICES" },
+    { symbol: "DX-Y.NYB", exchange: "NYB" }, { symbol: "GC=F", exchange: "CMX" }];
 
   test("the last session answers through the pre-market, weekends and holidays, whatever the bar size or venue spelling", () => {
     for (const listing of LISTINGS) {

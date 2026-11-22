@@ -49,12 +49,27 @@ export interface NewsInsiderFiling {
   url: string;
 }
 
+/**
+ * A story's times as the service reports them, ISO instants: its first and
+ * latest publication across the reports it gathers, and when the service first
+ * and last saw it. A field the service did not send is absent.
+ */
+export interface NewsStoryTimes {
+  firstPublishedAt?: string;
+  lastPublishedAt?: string;
+  firstSeenAt?: string;
+  lastSeenAt?: string;
+}
+
 export interface NewsArticle {
   id: string;
   title: string;
   url: string;
   source: string;
+  /** When the story was first published, the earliest time known for it: what lists show and sort by. */
   publishedAt: Date;
+  /** Every time the service reported for the story (a later report's publication, when it was seen), kept as sent. */
+  times?: NewsStoryTimes;
   summary?: string;
   imageUrl?: string;
   topic: string;

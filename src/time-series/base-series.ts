@@ -45,20 +45,26 @@ import { finiteDate } from "./chart-bounds";
 // A series that fails to load keeps its place with no observations. Dropping it
 // made a series the user had added disappear from the legend while it still sat
 // in the series editor, with nothing on screen to explain the difference.
-export function unloadableSeries(spec: ChartSeriesSpec, index: number, warning: string): ResolvedSeries {
+export function unloadableSeries(spec: ChartSeriesSpec, index: number, warning: string, listing?: TickerFinancials,
+  contractUnit?: string | null): ResolvedSeries {
   const field = spec.source.kind === "security" ? getTimeSeriesField(spec.source.fieldId) : undefined;
   const label = spec.source.kind === "security"
     ? `${instrumentLabel(spec.source)} ${field?.seriesLabel ?? field?.shortLabel ?? spec.source.fieldId.split(".").at(-1) ?? "Series"}`
     : spec.source.kind === "economic"
       ? `FRED ${spec.source.seriesId}`
       : spec.source.seriesId;
+  // The unit the series would have had, from its quote or, without one, its symbol (^VIX is points): never the
+  // field's bare "currency" template, which named no unit at all.
+  const shaped = spec.source.kind === "security" && field?.unit.startsWith("currency")
+    ? baseSecuritySeries(spec, { ...(listing ?? emptyFinancials()), priceHistory: [] }, index, null, listing?.quoteMetadata, contractUnit) : null;
+  const unit = shaped ? /currency|^unknown$/.test(shaped.unit) ? "" : shaped.unit : field?.unit ?? "";
   return {
     id: spec.id,
     label: spec.label?.trim() || label,
     legendContext: spec.label?.trim() ? undefined : field?.seriesLabel ?? field?.shortLabel,
     color: spec.color ?? SERIES_COLORS[index % SERIES_COLORS.length]!,
-    unit: field?.unit ?? "",
-    unitGroup: field?.unitGroup ?? "unknown",
+    unit,
+    unitGroup: shaped?.unitGroup ?? field?.unitGroup ?? "unknown",
     nativeFrequency: field?.nativeFrequency ?? "daily",
     dataShape: field?.dataShape ?? "scalar",
     style: spec.style,
@@ -225,7 +231,9 @@ export function baseSecuritySeries(
     ? futuresListingPriceBasis(spec.source.instrument.symbol, spec.source.instrument.exchange) : null;
   // An index's level is points too, never the currency its members trade in.
   const indexLevel = field.unitGroup === "price" && isMarketFieldId(field.id)
-    && isIndexLevel(financials.quote?.instrumentType || quoteMetadata?.instrumentType);
+    && (isIndexLevel(financials.quote?.instrumentType || quoteMetadata?.instrumentType)
+      // Before its quote says so, an index's symbol does (^VIX).
+      || !(financials.quote?.instrumentType || quoteMetadata?.instrumentType) && instrumentKind === "index");
   const yieldIndex = field.unitGroup === "price" && isMarketFieldId(field.id) && isYieldIndexSymbol(spec.source.instrument.symbol);
   const genericUnit = yieldIndex ? "%" : genericBasis === "points" || indexLevel ? INDEX_POINTS_UNIT : genericBasis === "thirty-seconds" ? "32nds" : null;
   // A future's price in a currency counts what its contract terms say: heating

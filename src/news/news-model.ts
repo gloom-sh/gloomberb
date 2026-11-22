@@ -152,6 +152,16 @@ export function newsArticleRevision(article: NewsArticle): string {
   return JSON.stringify([newsArticleSummaryRevision(article), article.items ?? []]);
 }
 
+/**
+ * When a story last changed: its latest report's publication, where the
+ * service says, else its date. A story keeps its first publication as its
+ * date, so a later report does not move that.
+ */
+function storyRevisionTime(article: Pick<NewsArticle, "publishedAt" | "times">): number {
+  const latest = Date.parse(article.times?.lastPublishedAt ?? "");
+  return Number.isFinite(latest) ? Math.max(latest, article.publishedAt.getTime()) : article.publishedAt.getTime();
+}
+
 function mergeDuplicateArticle(existing: NewsArticle, item: NewsArticle): NewsArticle {
   if (existing.id === item.id) {
     // A story's newer publication supersedes its earlier importance score.
@@ -160,7 +170,7 @@ function mergeDuplicateArticle(existing: NewsArticle, item: NewsArticle): NewsAr
     const sameSummary = newsArticleSummaryRevision(existing) === newsArticleSummaryRevision(item);
     const compatibleTimeline = !hasStoryItems(existing) || !hasStoryItems(item)
       || newsArticleRevision(existing) === newsArticleRevision(item);
-    const winner = item.publishedAt > existing.publishedAt
+    const winner = storyRevisionTime(item) > storyRevisionTime(existing)
       || (sameSummary && compatibleTimeline && item.importance > existing.importance) ? item : existing;
     const other = winner === item ? existing : item;
     return !hasStoryItems(winner) && sameSummary && hasStoryItems(other)
@@ -203,7 +213,7 @@ export function dedupeNewsArticles(items: NewsArticle[]): NewsArticle[] {
 export function mergeNewsArticle(base: NewsArticle, detail: NewsArticle): NewsArticle {
   const detailItems = detail.items ?? [];
   const baseItems = base.items ?? [];
-  const olderDetail = detail.publishedAt < base.publishedAt;
+  const olderDetail = storyRevisionTime(detail) < storyRevisionTime(base);
   return {
     ...base,
     ...detail,

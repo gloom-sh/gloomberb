@@ -13,7 +13,7 @@ import { quoteDotMarketState } from "../../../market-data/market/status";
 import { futuresQuoteFromSettle } from "../../../market-data/market/change-basis";
 import { globexDayOpen } from "../../../market-data/market/globex-day";
 import { periodBaseDay, periodBaseText, periodDayText } from "../../../market-data/market/period-return";
-import type { FuturesReturnHorizon } from "./returns";
+import type { FuturesReturnGap, FuturesReturnGaps, FuturesReturnHorizon } from "./returns";
 import type { FuturesTermsMap } from "./use-board-terms";
 import type { FrontReturnsMap } from "./use-front-returns";
 
@@ -231,8 +231,83 @@ export function futuresReturnBaseText(
   return `${horizon} from each contract's close on or before ${periodDayText(asked, new Date(now).getUTCFullYear())}`;
 }
 
-/** Sectors whose contracts trade CME Globex's whole day, 17:00 to 16:00 Central; grains, softs, lumber and livestock keep shorter hours. */
-const GLOBEX_DAY_SECTORS: ReadonlySet<FuturesSector> = new Set(["equity-index", "equity-sectors", "rates", "energy", "metals", "currencies"]);
+/** Why a row's return is empty, after the horizons it is empty for: "ZTZ26's daily history starts Tue 31 Mar". */
+function futuresReturnGapText(gap: FuturesReturnGap, now = Date.now()): string {
+  const year = new Date(now).getUTCFullYear();
+  switch (gap.kind) {
+    case "generic": return "a VIX generic's listed contract has no daily history here (CTM VX has each contract's 1W and 1M)";
+    case "no-contract": return "the quote names no contract to measure";
+    case "failed": return "the contract's daily history did not load";
+    case "no-history": return `${gap.contract} has no daily history`;
+    case "starts-later": return `${gap.contract}'s daily history starts ${periodDayText(gap.firstDay, year)}`;
+    case "no-base": return `${gap.contract} has no close in the two weeks to ${periodDayText(gap.baseDay, year)}`;
+  }
+}
+
+/** "1W, 1M or YTD", after "no". */
+function horizonList(horizons: readonly FuturesReturnHorizon[]): string {
+  return horizons.length <= 1 ? horizons.join("") : `${horizons.slice(0, -1).join(", ")} or ${horizons.at(-1)}`;
+}
+
+/** One row's empty returns among `horizons` and why: "no 1W, 1M or YTD: EMDZ26's daily history starts Fri 20 Nov". */
+export function futuresRowReturnGapText(
+  gaps: FuturesReturnGaps | undefined,
+  horizons: readonly FuturesReturnHorizon[],
+  now = Date.now(),
+): string | null {
+  const groups = new Map<string, FuturesReturnHorizon[]>();
+  for (const horizon of horizons) {
+    const gap = gaps?.[horizon];
+    if (!gap) continue;
+    const text = futuresReturnGapText(gap, now);
+    groups.set(text, [...groups.get(text) ?? [], horizon]);
+  }
+  return groups.size ? [...groups].map(([text, group]) => `no ${horizonList(group)}: ${text}`).join("; ") : null;
+}
+
+/**
+ * Every row's empty returns among the drawn `horizons`, rows that share a
+ * reason together: "No 1W, 1M or YTD for EMD, SXO: their contract's daily
+ * history starts Fri 20 Nov". A dash in a return column always has a line.
+ */
+export function futuresReturnGapNotes(
+  contracts: readonly FuturesContract[],
+  returns: FrontReturnsMap,
+  horizons: readonly FuturesReturnHorizon[],
+  now = Date.now(),
+): string[] {
+  const year = new Date(now).getUTCFullYear();
+  const groups = new Map<string, string[]>();
+  for (const contract of contracts) {
+    const gaps = returns.get(contract.symbol)?.gaps;
+    const byReason = new Map<string, FuturesReturnHorizon[]>();
+    for (const horizon of horizons) {
+      const gap = gaps?.[horizon];
+      if (!gap) continue;
+      // Rows share a line by the reason, not the contract it names.
+      const reason = gap.kind === "starts-later" ? `their contract's daily history starts ${periodDayText(gap.firstDay, year)}`
+        : gap.kind === "no-history" ? "their contract has no daily history"
+          : gap.kind === "no-base" ? `their contract has no close in the two weeks to ${periodDayText(gap.baseDay, year)}`
+            : futuresReturnGapText(gap, now);
+      byReason.set(reason, [...byReason.get(reason) ?? [], horizon]);
+    }
+    for (const [reason, group] of byReason) {
+      const key = `${horizonList(group)}\u001f${reason}`;
+      groups.set(key, [...groups.get(key) ?? [], futuresBoardCode(contract)]);
+    }
+  }
+  return [...groups].map(([key, codes]) => {
+    const [list, reason = ""] = key.split("\u001f");
+    return `No ${list} for ${codes.join(", ")}: ${codes.length === 1 ? reason.replace(/^their /, "its ") : reason}.`;
+  });
+}
+
+/**
+ * Sectors whose contracts trade CME Globex's whole day, 17:00 to 16:00
+ * Central, and VIX futures, which keep the same day on Cboe Futures; grains,
+ * softs, lumber and livestock keep shorter hours.
+ */
+const GLOBEX_DAY_SECTORS: ReadonlySet<FuturesSector> = new Set(["equity-index", "equity-sectors", "rates", "energy", "metals", "currencies", "volatility"]);
 
 /**
  * The row's quote in the session CME Globex's clock gives a contract that
@@ -242,7 +317,8 @@ const GLOBEX_DAY_SECTORS: ReadonlySet<FuturesSector> = new Set(["equity-index", 
  * for, keeps the state its quote reports.
  */
 export function futuresSessionQuote(contract: FuturesContract, quote: Quote | null | undefined, now = Date.now()): Quote | null | undefined {
-  if (!quote?.marketState || quote.delisting || !GLOBEX_DAY_SECTORS.has(contract.sector)) return quote;
+  // A generic quoted at the exchange's settlement (VX1) states no session: the clock gives it one.
+  if (!quote || (!quote.marketState && !contract.generic) || quote.delisting || !GLOBEX_DAY_SECTORS.has(contract.sector)) return quote;
   const open = globexDayOpen(contract.venue, now);
   if (open == null) return quote;
   const state = open ? "REGULAR" : "CLOSED";

@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { PricePoint, Quote } from "../../../types/financials";
-import { FUTURES_CONTRACTS } from "../../../market-data/futures-board";
-import { frontContractCandidates, frontContractPeriodReturns, frontContractReturns, pickFrontContract } from "./returns";
-import { futuresReturnBaseText } from "./model";
+import { FUTURES_BOARD_ROWS, FUTURES_CONTRACTS } from "../../../market-data/futures-board";
+import {
+  allReturnGaps, frontContractCandidates, frontContractPeriodReturns, frontContractReturnGaps, frontContractReturns, NO_FUTURES_RETURNS,
+  pickFrontContract,
+} from "./returns";
+import { futuresReturnBaseText, futuresReturnGapNotes, futuresRowReturnGapText } from "./model";
 
 const contract = (code: string) => FUTURES_CONTRACTS.find((entry) => entry.code === code)!;
 const quote = (symbol: string, name: string, at = "2026-09-27T22:30:00Z"): Quote =>
@@ -83,6 +86,33 @@ describe("front contract returns", () => {
     expect(returns["1W"]).not.toBeNull();
     expect(returns["1M"]).toBeNull();
     expect(returns.YTD).toBeNull();
+  });
+
+  test("an empty return says why, and the board names every row with one", () => {
+    const now = Date.parse("2026-11-22T06:30:00Z");
+    // A note listed in March has no close at the year's end; a contract whose source holds only its latest session has none at all.
+    const note = bars(["2026-03-31", 101], ["2026-10-20", 102], ["2026-11-13", 102.1], ["2026-11-20", 102.24]);
+    const single = bars(["2026-11-20", 3430.9]);
+    const noteReturns = frontContractPeriodReturns(note, 102.24, Date.parse("2026-11-20T21:00:00Z"));
+    const singleReturns = frontContractPeriodReturns(single, 3430.9, Date.parse("2026-11-20T21:00:00Z"));
+    const noteGaps = frontContractReturnGaps("ZTZ26.CBT", note, noteReturns.values, 102.24, Date.parse("2026-11-20T21:00:00Z"));
+    expect(noteGaps.YTD).toEqual({ kind: "starts-later", contract: "ZTZ26", firstDay: "2026-03-31" });
+    expect(noteGaps["1W"]).toBeUndefined();
+    const board = new Map([
+      ["ZT=F", { loading: false, ...noteReturns, gaps: noteGaps }],
+      ["ZF=F", { loading: false, ...noteReturns, gaps: noteGaps }],
+      ["EMD=F", { loading: false, ...singleReturns, gaps: frontContractReturnGaps("EMDZ26.CME", single, singleReturns.values, 3430.9, Date.parse("2026-11-20T21:00:00Z")) }],
+      ["VX1", { loading: false, values: NO_FUTURES_RETURNS, gaps: allReturnGaps({ kind: "generic" }) }],
+    ]);
+    const rows = ["ZT", "ZF", "EMD"].map(contract).concat(FUTURES_BOARD_ROWS.filter((row) => row.symbol === "VX1"));
+    expect(futuresReturnGapNotes(rows, board, ["1W", "1M", "YTD"], now)).toEqual([
+      "No YTD for ZT, ZF: their contract's daily history starts Tue 31 Mar.",
+      "No 1W, 1M or YTD for EMD: its contract's daily history starts Fri 20 Nov.",
+      "No 1W, 1M or YTD for VX1: a VIX generic's listed contract has no daily history here (CTM VX has each contract's 1W and 1M).",
+    ]);
+    // The selected row's line in the footer names its contract.
+    expect(futuresRowReturnGapText(board.get("EMD=F")!.gaps, ["1W", "1M", "YTD"], now)).toBe("no 1W, 1M or YTD: EMDZ26's daily history starts Fri 20 Nov");
+    expect(futuresRowReturnGapText(board.get("ZT=F")!.gaps, ["1W", "1M"], now)).toBeNull();
   });
 
   test("dates that crossed a JSON bridge as strings still read", () => {

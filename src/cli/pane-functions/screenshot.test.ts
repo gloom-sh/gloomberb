@@ -289,6 +289,17 @@ describe("realized volatility screenshot history", () => {
     expect(await captured.getPriceHistoryForResolution!("AAPL", "NASDAQ", "5Y", "1d")).toEqual(daily);
   });
 
+  test("OVDV's Term tab captures MDAY's five years of daily closes, not the weekly seed", async () => {
+    // The weekly seed answered MDAY's 1d request, so no release day matched a bar and MDAY read "—".
+    const daily = [{ date: new Date("2026-11-19"), close: 100 }, { date: new Date("2026-11-20"), close: 101 }];
+    const calls: unknown[][] = [];
+    const term = { ...request, pane: { id: "vol-surface" }, options: { tab: "term" },
+      instance: { ...request.instance, instanceId: "ovdv:test", paneId: "vol-surface", settings: {} } } as unknown as ResolvedPaneFunction;
+    const shot = await capture({ async getPriceHistoryForResolution(...args: unknown[]) { calls.push(args.slice(0, 4)); return daily; } }, term);
+    expect(calls).toEqual([["AAPL", "NASDAQ", "5Y", "1d"]]);
+    expect(shot.financials[0]![1].priceHistory).toEqual(daily);
+  });
+
   test("does not substitute weekly prices when daily history is empty or fails", async () => {
     const empty = await capture({ getPriceHistoryForResolution: async () => [] });
     expect(empty.financials[0]![1].priceHistory).toEqual([]);

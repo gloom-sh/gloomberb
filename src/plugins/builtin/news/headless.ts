@@ -55,7 +55,11 @@ const defaultDependencies: NewsHeadlessDependencies = {
 function newsRow(article: NewsArticle) {
   return {
     id: article.id,
+    // Its first publication; the service's other times for it kept beside it, as sent.
     publishedAt: article.publishedAt.toISOString(),
+    lastPublishedAt: article.times?.lastPublishedAt ?? null,
+    firstSeenAt: article.times?.firstSeenAt ?? null,
+    lastSeenAt: article.times?.lastSeenAt ?? null,
     source: article.source,
     headline: article.title,
     summary: article.summary ?? null,
