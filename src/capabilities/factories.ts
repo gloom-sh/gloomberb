@@ -56,6 +56,8 @@ export function assetDataProvider(provider: AssetDataProvider): AssetDataCapabil
         if (!provider.getSecFilings) throw new Error(`${provider.name} does not provide SEC filings.`);
         return provider.getSecFilings(input.ticker, input.count, input.exchange, input.context);
       }, "query"),
+      ...(provider.getSecFilingsPage ? { getSecFilingsPage: op((input: any) =>
+        provider.getSecFilingsPage!(input.ticker, input.query, input.exchange, input.context), "query") } : {}),
       getHolders: op((input: any) => {
         if (!provider.getHolders) throw new Error(`${provider.name} does not provide holders.`);
         return provider.getHolders(input.ticker, input.exchange, input.context);

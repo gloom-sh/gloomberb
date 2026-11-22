@@ -18,6 +18,8 @@ import type {
   QuoteSubscriptionTarget,
   SearchRequestContext,
   SecFilingItem,
+  SecFilingsPage,
+  SecFilingsPageQuery,
   TickerFinancialsBatchResult,
 } from "../../types/data-provider";
 import type { CapabilityRouteSource } from "../../types/capability-route-source";
@@ -57,6 +59,7 @@ import { ProviderRouterSearchRoutes } from "./search";
 import { collectCapabilityRouteSources, mergeRouteSourcesById, normalizeRouteSource } from "./sources";
 import type { ProviderRouterCoreDeps } from "./route-types";
 import { withProviderConnectionHealth } from "./connection-health";
+import { secFilingsPageFromList } from "./sec-filings-page";
 import { withFiledTrailingEps } from "../../time-series/filed-trailing-eps";
 import { withShareMultiples } from "../../utils/share-multiples";
 import {
@@ -68,6 +71,9 @@ import {
   withBrokerTimeout,
   type BrokerCandidate,
 } from "./brokers";
+
+/** The whole list a source without pages is read to, as INS read it before pages: SEC lists cap at this many. */
+const SEC_FILINGS_LIST_LIMIT = 20_000;
 
 /**
  * One trailing EPS and P/E for every view of a listing: the filed quarters', as PEB and GE read them
@@ -455,6 +461,14 @@ export class AssetDataRouter implements DataProvider {
 
   async getSecFilings(ticker: string, count = 15, exchange?: string, context?: MarketDataRequestContext): Promise<SecFilingItem[]> {
     return (await this.getCachedQuery("getSecFilings", [ticker, count, exchange, context]).load({ force: context?.cacheMode === "refresh", background: this.revalidateInBackground })).value;
+  }
+
+  async getSecFilingsPage(ticker: string, query: SecFilingsPageQuery, exchange?: string, context?: MarketDataRequestContext): Promise<SecFilingsPage> {
+    // A source that lists filings but no page of some forms (a plugin's) answers from its whole list, cut here.
+    if (!this.providersInPriorityOrder().some((provider) => provider.getSecFilingsPage)) {
+      return secFilingsPageFromList(await this.getSecFilings(ticker, SEC_FILINGS_LIST_LIMIT, exchange, context), query);
+    }
+    return (await this.getCachedQuery("getSecFilingsPage", [ticker, query, exchange, context]).load({ force: context?.cacheMode === "refresh", background: this.revalidateInBackground })).value;
   }
 
   async getSecFilingDocuments(filing: SecFilingItem) {

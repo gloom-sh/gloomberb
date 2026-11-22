@@ -550,10 +550,12 @@ async function resolveChartSpecPass(
     }
     return Promise.resolve(DEFAULT_CHART_RESOLUTION_SUPPORT);
   };
-  const sourceWithResolvedExchange = (
+  const sourceWithResolvedExchange = async (
     source: Extract<ChartSeriesSpec["source"], { kind: "security" }>,
     financials: TickerFinancials | null,
   ) => {
+    // A report's quotes arrive beside the histories: the venue one names waits for them.
+    await sources.quoteOverridesReady;
     const quoteOverride = sources.quoteOverrides?.get(chartQuoteOverrideKeyForSource(source));
     return withQuoteExchange(
       source,
@@ -954,14 +956,14 @@ async function resolveChartSpecPass(
       let history: LoadedPriceHistory | null;
       if (needsHistory && !source.instrument.exchange?.trim()) {
         financials = await financialsPromise;
-        resolvedSource = sourceWithResolvedExchange(source, financials);
+        resolvedSource = await sourceWithResolvedExchange(source, financials);
         history = await loadHistory(resolvedSource, historyPricedValuation);
       } else {
         [financials, history] = await Promise.all([
           financialsPromise,
           needsHistory ? loadHistory(source, historyPricedValuation) : Promise.resolve(null),
         ]);
-        resolvedSource = sourceWithResolvedExchange(source, financials);
+        resolvedSource = await sourceWithResolvedExchange(source, financials);
       }
       if (history?.extendedHours) extendedHistories.add(seriesSpec.id);
       else if (history && marketField && seriesSpec.visible !== false && extendedHoursFor(resolvedSource, initialResolution)) {
@@ -977,6 +979,7 @@ async function resolveChartSpecPass(
       // that prices today's consensus itself follows the live quote.
       const followsLiveQuote = marketField
         || (quoteDerivedValuation && (!forwardPE || !!financials?.epsEstimates));
+      if (followsLiveQuote) await sources.quoteOverridesReady;
       const quoteOverride = followsLiveQuote
         ? sources.quoteOverrides?.get(chartQuoteOverrideKeyForSource(source))
         : undefined;

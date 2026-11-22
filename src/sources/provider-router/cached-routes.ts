@@ -265,6 +265,21 @@ export class ProviderRouterCachedRoutes {
           throwLastError: true, error: `No SEC filings provider available for ${symbol}`,
         };
       }
+      case "getSecFilingsPage": {
+        const [symbol, query, listingExchange, requestContext] = args as CachedAssetArgs<"getSecFilingsPage">;
+        const page: Array<[string, string | number]> = [
+          ["forms", [...new Set(query.forms.map((form) => form.trim().toUpperCase()))].sort().join(",")],
+          ["limit", query.limit], ["offset", query.offset ?? 0],
+        ];
+        const exact = buildVariantKey([["exchange", canonicalExchange(listingExchange)], ...page]);
+        return {
+          kind: "sec-filings-page", policy: "secFilings", entityKey: this.deps.getEntityKey(symbol, requestContext?.instrument),
+          // As getSecFilings: a non-US listing never reads the bare symbol's pages.
+          variants: nonUsSecListingVenue(symbol, listingExchange) ? [exact] : [...new Set([exact, buildVariantKey(page)])],
+          request: (provider, force) => provider.getSecFilingsPage?.(symbol, query, listingExchange, force ? { ...requestContext, cacheMode: "refresh" } : requestContext),
+          throwLastError: true, error: `No SEC filings provider available for ${symbol}`,
+        };
+      }
       case "getSecFilingContent":
       case "getSecFilingDocuments": {
         const filing = args[0] as SecFilingItem;

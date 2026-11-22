@@ -349,6 +349,8 @@ export interface CloudSecFilingsResponse {
   nextOffset: number;
   /** The company's home line the filings are read from, when not the listing asked (a foreign line). */
   companyFrom?: CompanyFrom;
+  /** Asked with `newestByForm`: each form's newest filing day across the whole list. Absent from older servers. */
+  newestByForm?: Record<string, string>;
 }
 
 export interface CloudSecDocumentsResponse {

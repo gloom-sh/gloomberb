@@ -24,6 +24,13 @@ export interface ChartResolveSources {
   /** Latest streamed quote per security identity, layered over snapshot data. */
   quoteOverrides?: ReadonlyMap<string, Quote>;
   /**
+   * Settles, never rejecting, once `quoteOverrides` holds what it will: a
+   * report reads one quote per current listing beside the histories, and a
+   * listing named with its venue (AAPL:NASDAQ) starts its history without
+   * waiting for it. The overrides are read only once it settles.
+   */
+  quoteOverridesReady?: Promise<unknown>;
+  /**
    * Start of the current uninterrupted quote observation. Bars formed from
    * quotes inside it are continuous with the loaded history.
    */
