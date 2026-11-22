@@ -20,7 +20,7 @@ export const attentionHeadless: HeadlessPaneDefinition<"bundle"> = {
     const note = attentionPreviewNote(data, asked, outside);
     const lock = note ? { errors: [note] } : {};
     // A board that has published nothing yet says so, whatever the plan.
-    const empty = data.status === "ready" ? {} : { empty: emptyAttention(data) };
+    const empty = data.status === "ready" ? {} : { empty: emptyAttention(data, asked) };
     const metadata = { asOf: data.asOf, stale: data.stale, complete: data.status === "ready" && !data.truncated,
       status: data.status, periodStart: data.periodStart, periodEnd: data.periodEnd, entitlement: data.entitlement,
       privacy: data.privacy, coverage: data.coverage, methodologyUrl: data.methodologyUrl, selectedListing: data.selectedListing ?? null, historyEvidence: data.historyEvidence ?? null, unit: "rounded researcher-hours" };

@@ -201,7 +201,8 @@ export function AttentionPane({ width, height, focused }: PaneProps) {
     {detailMode ? <Box flexGrow={1} flexBasis={0} flexDirection="column">{queryBar}
       <PaneStatusBody loading={!data ? resource.loading : !detailData && detail.loading} error={!data ? resource.error : !detailData ? detail.error : null}
         empty={!!data && !!detailData && !selected} subject={!data ? "research attention" : "ticker attention"}
-        emptyTitle={data?.entitlement === "preview" ? "This ticker is outside the current preview." : "No privacy-qualified hours for this ticker."}>
+        emptyTitle={data && data.status !== "ready" ? emptyAttention(data, selectedSymbol || undefined)
+          : data?.entitlement === "preview" ? "This ticker is outside the current preview." : "No privacy-qualified hours for this ticker."}>
         {data && selected ? tab === "history" ? <History row={selected} width={width} height={bodyHeight - 1} focused={focused} preview={data.entitlement === "preview"} />
           : <Evidence row={selected} data={detailData ?? data} width={width} height={bodyHeight - 1} /> : null}
       </PaneStatusBody>

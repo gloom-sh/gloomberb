@@ -53,6 +53,13 @@ test("qualified historical hours remain reachable when every current ticker is s
   expect(frame).not.toContain("Waiting for privacy-qualified research activity.");
   expect(frame).toContain("2026-10-02 17:00");
 });
+test("a ticker's history before the board publishes anything says so, never that the ticker is outside the preview", async () => {
+  const board = { ...attentionPreview(), status: "collecting" as const, rows: [], sectors: [], countries: [], counts: { rows: 0, sectors: 0, countries: 0 } };
+  await mount(board, { symbol: "BP", tab: "history" });
+  const frame = await tui.waitForFrameToContain("is published yet");
+  expect(frame).toContain("No privacy-qualified research activity is published yet, for BP or any ticker.");
+  expect(frame).not.toContain("outside the current preview");
+});
 test("preview displays retained rows and makes history gating explicit", async () => {
   await mount(attentionPreview());
   const frame = await tui.waitForFrameToContain("Sony Group");

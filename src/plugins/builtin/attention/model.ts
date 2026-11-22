@@ -45,8 +45,13 @@ export function rowCell(row: AttentionRow, column: string) {
   if (column === "sharePct") return number(row.sharePct, 1);
   return typeof value === "number" ? number(value) : typeof value === "string" ? value : MISSING_VALUE;
 }
-export const emptyAttention = (data: AttentionPayload | null | undefined) => data?.status === "disabled"
-  ? "Research attention collection is not enabled yet." : "Waiting for privacy-qualified research activity.";
+/**
+ * What a board that has published nothing says, for a ticker when one was asked: nothing is published for any
+ * ticker, so no plan changes the answer.
+ */
+export const emptyAttention = (data: AttentionPayload | null | undefined, ticker?: string) => data?.status === "disabled"
+  ? "Research attention collection is not enabled yet."
+  : ticker ? `No privacy-qualified research activity is published yet, for ${ticker} or any ticker.` : "Waiting for privacy-qualified research activity.";
 
 /** How many tickers the free preview lists: the top of the board by research hours. */
 const PREVIEW_ROWS = 3;
