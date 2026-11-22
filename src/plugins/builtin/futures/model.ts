@@ -232,7 +232,7 @@ export function futuresReturnBaseText(
 }
 
 /** Why a row's return is empty, after the horizons it is empty for: "ZTZ26's daily history starts Tue 31 Mar". */
-export function futuresReturnGapText(gap: FuturesReturnGap, now = Date.now()): string {
+function futuresReturnGapText(gap: FuturesReturnGap, now = Date.now()): string {
   const year = new Date(now).getUTCFullYear();
   switch (gap.kind) {
     case "generic": return "a VIX generic's listed contract has no daily history here (CTM VX has each contract's 1W and 1M)";
