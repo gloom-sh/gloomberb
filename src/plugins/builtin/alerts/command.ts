@@ -72,7 +72,7 @@ export function slashSpellsListing(symbol: string): boolean {
  * the listing reader respells (BRK/B is BRK-B, EUR/USD is EURUSD=X, BTC/USD is BTC-USD), a spot commodity
  * (XAU/USD), and one or two letters after the slash, a share class or series (BF/B, BAC/PL).
  */
-export function slashNamesTwoListings(symbol: string): boolean {
+function slashNamesTwoListings(symbol: string): boolean {
   if (namesTwoListings(symbol)) return true;
   const pair = /^([^/\s:]+)\/([^/\s:]+)$/.exec(symbol);
   if (!pair || pair[2]!.length <= 2) return false;
