@@ -574,6 +574,109 @@ describe("CloudApiRequestTransport reads cut off by a server restart", () => {
   });
 });
 
+// The service answers a filing text read 503 with a Retry-After of 2 to 600 s
+// when the SEC turns it away or its line to the SEC stays busy. INS and the
+// SEC pane showed each such filing as not read.
+describe("CloudApiRequestTransport filing text told to come back", () => {
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  const FILING = "/cloud/sec/filing/content?cik=80424&accession=0001127602-26-021734&form=4";
+  const READ = "GET /cloud/sec/filing/content";
+  const busy = (retryAfter: string) => () => ({
+    ok: false, status: 503, headers: new Headers({ "Retry-After": retryAfter, "Content-Type": "application/json" }), text: async () => JSON.stringify({ message: "SEC filing text is busy; try again shortly" }),
+  }) as Response;
+  const text = () => Response.json({ content: "<ownershipDocument/>" });
+  const flush = async () => {
+    for (let index = 0; index < 50; index += 1) await Promise.resolve();
+  };
+
+  function transportAnswering(...answers: Array<() => Response | Promise<Response>>) {
+    const asked: string[] = [];
+    const health = new ConnectionHealthRegistry();
+    registerGloomCloudConnectionSources(health);
+    const transport = new CloudApiRequestTransport({
+      connectionHealth: health,
+      fetchTransport: async (url, init) => {
+        asked.push(`${init?.method ?? "GET"} ${new URL(url).pathname}`);
+        const next = answers.shift();
+        if (!next) throw new Error("asked once too often");
+        return next();
+      },
+    });
+    return { asked, health, transport };
+  }
+
+  test("is asked once more after the whole wait it was told, up to four seconds, and the wait is no outage", async () => {
+    jest.useFakeTimers();
+    // The text comes seven seconds after it is asked again: eleven in all, past the ten an unanswered request waits.
+    const { asked, health, transport } = transportAnswering(busy("4"), () => new Promise<Response>((resolve) => setTimeout(() => resolve(text()), 7_000)));
+    const read = transport.request(FILING).catch((error: unknown) => error);
+    await flush();
+    jest.advanceTimersByTime(3_999);
+    await flush();
+    expect(asked).toEqual([READ]);
+    jest.advanceTimersByTime(1);
+    await flush();
+    expect(asked).toEqual([READ, READ]);
+    jest.advanceTimersByTime(7_000);
+    expect(await read).toEqual({ content: "<ownershipDocument/>" });
+    // No check whether the service answers: it had.
+    expect(asked).toEqual([READ, READ]);
+    expect(health.unreachableSince("gloom-cloud-http")).toBeNull();
+  });
+
+  test("a longer wait, or one that is no number of seconds, is not cut short: the read fails as before", async () => {
+    for (const retryAfter of ["5", "600", "2.5", "soon", "", "Wed, 21 Oct 2026 07:28:00 GMT"]) {
+      const { asked, transport } = transportAnswering(busy(retryAfter));
+      await expect(transport.request(FILING)).rejects.toMatchObject({ status: 503 });
+      expect(asked).toEqual([READ]);
+    }
+    // Only the filing text: another read's 503 stands as the service's answer.
+    const other = transportAnswering(busy("2"));
+    await expect(other.transport.request("/cloud/sec/filing/documents?cik=80424")).rejects.toMatchObject({ status: 503 });
+    expect(other.asked).toEqual(["GET /cloud/sec/filing/documents"]);
+  });
+
+  test("is asked again once in all: a second 503 stands, after a server going away too", async () => {
+    jest.useFakeTimers();
+    const twice = transportAnswering(busy("2"), busy("2"));
+    const read = twice.transport.request(FILING).catch((error: unknown) => error);
+    await flush();
+    jest.advanceTimersByTime(2_000);
+    await flush();
+    jest.advanceTimersByTime(10_000);
+    expect(await read).toMatchObject({ status: 503, retryAfterMs: 2_000 });
+    expect(twice.asked).toEqual([READ, READ]);
+
+    spyOn(Math, "random").mockReturnValue(0);
+    const restarted = transportAnswering(busy("0"), busy("3"));
+    const after = restarted.transport.request(FILING).catch((error: unknown) => error);
+    await flush();
+    jest.advanceTimersByTime(100);
+    await flush();
+    jest.advanceTimersByTime(10_000);
+    expect(await after).toMatchObject({ status: 503 });
+    expect(restarted.asked).toEqual([READ, READ]);
+  });
+
+  test("a caller who gives up during the wait stops it, and nothing is asked after", async () => {
+    jest.useFakeTimers();
+    const controller = new AbortController();
+    const { asked, transport } = transportAnswering(busy("3"), text);
+    const read = transport.request(FILING, { signal: controller.signal }).catch((error: unknown) => error);
+    await flush();
+    jest.advanceTimersByTime(1_000);
+    controller.abort(new Error("INS closed"));
+    expect(await read).toMatchObject({ message: "INS closed" });
+    jest.advanceTimersByTime(10_000);
+    await flush();
+    expect(asked).toEqual([READ]);
+  });
+});
+
 describe("CloudApiRequestTransport shared reads", () => {
   test("identical GETs asked while one is out share it, and one caller giving up leaves it to the others", async () => {
     const signals: Array<AbortSignal | null | undefined> = [];

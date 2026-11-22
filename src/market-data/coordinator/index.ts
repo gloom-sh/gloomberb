@@ -914,7 +914,6 @@ export class MarketDataCoordinator {
     });
   }
 
-  /** QueryStore is only a renderer projection here; the provider owns age and refreshes. */
   /** Settles with the background refresh of the stored copy under `key`, when one is running; whatever it answers. */
   private async backgroundRefresh(key: string): Promise<void> {
     const query = this.cachedQueries.get(key)?.query;
@@ -926,6 +925,7 @@ export class MarketDataCoordinator {
     }
   }
 
+  /** QueryStore is only a renderer projection here; the provider owns age and refreshes. */
   private loadCachedQuery<K extends CachedAssetMethod>(
     method: K,
     args: CachedAssetArgs<K>,

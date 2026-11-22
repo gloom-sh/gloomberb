@@ -26,6 +26,12 @@ type StoriesClient = Pick<typeof apiClient, "getCloudInsiderFilingStories">;
 const ACCESSION = /^\d{10}-\d{2}-\d{6}$/;
 /** As many filings as Gloom Cloud reads in one request; a longer list is asked in several. */
 const BATCH = 20;
+/**
+ * Batches asked at once: a report of 100 filings asks its five requests in
+ * three round trips instead of five, and holds no more than two of the few
+ * lookups a server works on at a time.
+ */
+const BATCHES_AT_ONCE = 2;
 /** A filing's stories, by accession, for a few minutes: an INS or SEC pane asks again as its rows redraw. */
 const cache = createTtlCache<FilingStory[]>({ ttlMs: 5 * 60_000, maxEntries: 500 });
 
@@ -40,10 +46,12 @@ function storiesOf(item: CloudInsiderFilingStoriesResponse["items"][number]): Fi
 /**
  * The stories reporting each filing, by accession number, from a short-lived
  * cache where it has them. A filing Gloom Cloud could not be asked about is
- * left out of the map: no stories said is not "none". A batch that fails (a
- * server without the lookup, a session it refuses, a rate or capacity limit)
- * ends the asking without an error: the batches answered before it are kept,
- * and the rows that would have named stories name none.
+ * left out of the map: no stories said is not "none". The batches are asked
+ * BATCHES_AT_ONCE at a time, in the list's order. A batch that fails (a server
+ * without the lookup, a session it refuses, a rate or capacity limit) ends
+ * the asking without an error: no batch is asked after it, the batches
+ * answered beside or before it are kept, and the rows that would have named
+ * stories name none.
  */
 export async function loadFilingStories(
   accessions: readonly string[],
@@ -58,23 +66,31 @@ export async function loadFilingStories(
     if (hit) result.set(accession, hit);
     else wanted.push(accession);
   }
-  for (let start = 0; start < wanted.length; start += BATCH) {
-    const batch = wanted.slice(start, start + BATCH);
-    let response: CloudInsiderFilingStoriesResponse;
-    try {
-      response = await client.getCloudInsiderFilingStories(batch);
-    } catch (error) {
-      // The next batch would meet the same refusal: stop, keeping what was answered.
-      logFailure("insider.filing-stories", "Read the stories reporting filings failed")(error);
-      break;
+  const batches: string[][] = [];
+  for (let start = 0; start < wanted.length; start += BATCH) batches.push(wanted.slice(start, start + BATCH));
+  let next = 0;
+  let refused = false;
+  const askInTurn = async () => {
+    while (!refused && next < batches.length) {
+      const batch = batches[next++]!;
+      let response: CloudInsiderFilingStoriesResponse;
+      try {
+        response = await client.getCloudInsiderFilingStories(batch);
+      } catch (error) {
+        // The next batch would meet the same refusal: stop, keeping what was answered.
+        if (!refused) logFailure("insider.filing-stories", "Read the stories reporting filings failed")(error);
+        refused = true;
+        return;
+      }
+      for (const item of response.items ?? []) {
+        if (!batch.includes(item.accession)) continue;
+        const stories = storiesOf(item);
+        cache.set(item.accession, stories);
+        result.set(item.accession, stories);
+      }
     }
-    for (const item of response.items ?? []) {
-      if (!batch.includes(item.accession)) continue;
-      const stories = storiesOf(item);
-      cache.set(item.accession, stories);
-      result.set(item.accession, stories);
-    }
-  }
+  };
+  await Promise.all(Array.from({ length: Math.min(BATCHES_AT_ONCE, batches.length) }, askInTurn));
   return result;
 }
 
