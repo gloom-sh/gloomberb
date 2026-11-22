@@ -1250,6 +1250,7 @@ export const ja: Record<string, string> = {
   "Bid": "買気配",
   "Ask": "売気配",
   "Spr": "スプレッド",
+  "not dated": "時刻なし",
   "Qty": "数量",
   "Avg": "平均",
   "Mark": "評価価格",

@@ -1250,6 +1250,7 @@ export const zhCN: Record<string, string> = {
   "Bid": "买价",
   "Ask": "卖价",
   "Spr": "价差",
+  "not dated": "无时间",
   "Qty": "数量",
   "Avg": "均价",
   "Mark": "标记价",

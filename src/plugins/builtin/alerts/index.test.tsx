@@ -6,6 +6,7 @@ import type { AppConfig } from "../../../types/config";
 import type { PluginRuntimeAccess } from "../../runtime";
 import { createConfigBackedTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { deserializeAlerts, serializeAlerts } from "./alert-engine";
+import { parseAlertShortcutValues } from "./command";
 import { EVENT_ALERTS_KEY, type EventAlertRule } from "./events";
 import { FIRED_LOG_KEY, readFiredAlerts } from "./fired-log";
 import { createResearchAlert } from "./research-builder";
@@ -521,10 +522,21 @@ describe("alertsPlugin command", () => {
     }
   });
 
-  test("reads an unquoted pair as a ratio only when the service says it is no ticker, and never a listing written with a slash", async () => {
+  // `SA EWJ/ACWI above 0.60` opened a Price alert saying "Not a ticker: EWJ/ACWI" while `alerts add` saved the ratio.
+  test("SA reads two listings with a slash as their ratio, and asks the service first only for a slash a listing is written with", async () => {
+    expect(parseAlertShortcutValues("EWJ/ACWI above 0.60")).toEqual({
+      symbol: "EWJ", kind: "rs_ratio", "rs_ratio:benchmark": "ACWI", "rs_ratio:condition": "above", "rs_ratio:target": "0.6",
+    });
+    // The pair alone opens the ratio form on both listings.
+    expect(parseAlertShortcutValues("EWJ/ACWI")).toEqual({ symbol: "EWJ", kind: "rs_ratio", "rs_ratio:benchmark": "ACWI" });
+    // A share class or series, a currency, coin or spot commodity pair is one listing's price.
+    for (const listing of ["BRK/B", "BF/B", "BAC/PL", "EUR/USD", "BTC/USD", "XAU/USD"]) {
+      expect(parseAlertShortcutValues(`${listing} above 500`)).toEqual({ symbol: listing, condition: "above", price: "500" });
+    }
+
     const commands: any[] = [];
     const quoted: string[] = [];
-    let pairError = "Not a ticker: XLK/SPY.";
+    let pairError = "Not a ticker: BAC/PL.";
     const ctx = {
       registerCommand(command: any) { commands.push(command); },
       registerPane() {},
@@ -533,7 +545,7 @@ describe("alertsPlugin command", () => {
       marketData: {
         getQuote: async (symbol: string) => {
           quoted.push(symbol);
-          if (symbol === "XLK/SPY") throw new Error(pairError);
+          if (symbol === "BAC/PL") throw new Error(pairError);
           if (symbol.includes("/")) throw new Error(`Not a ticker: ${symbol}.`);
           // The ratio's first listing is as far as this needs to go.
           throw new Error(`Quoted ${symbol} for a ratio.`);
@@ -547,8 +559,9 @@ describe("alertsPlugin command", () => {
     try {
       await alertsPlugin.setup?.(ctx as any);
       const command = commands.find((entry) => entry.id === "set-alert");
+      // Two listings: the ratio, with no quote asked of the pair.
       await expect(command.execute({ shortcut: "XLK/SPY above 0.25" })).rejects.toThrow("Quoted XLK for a ratio.");
-      expect([quoted[0], quoted.at(-1)]).toEqual(["XLK/SPY", "XLK"]);
+      expect(new Set(quoted)).toEqual(new Set(["XLK"]));
       // A venue before the slash is no listing's: each side is read on its own, as `alerts add` reads it.
       quoted.length = 0;
       await expect(command.execute({ shortcut: "XLK:ARCA/SPY above 0.25" })).rejects.toThrow("Quoted XLK:ARCA for a ratio.");
@@ -559,11 +572,15 @@ describe("alertsPlugin command", () => {
         await expect(command.execute({ shortcut: `${symbol} above 500` })).rejects.toThrow(`Quoted ${listing} for a ratio.`);
         expect(new Set(quoted)).toEqual(new Set([listing]));
       }
+      // A series written with a slash is a listing first: only once the service says it is no ticker is it a ratio.
+      quoted.length = 0;
+      await expect(command.execute({ shortcut: "BAC/PL above 25" })).rejects.toThrow("Quoted BAC for a ratio.");
+      expect([quoted[0], quoted.at(-1)]).toEqual(["BAC/PL", "BAC"]);
       // A pair the service could not answer for is not known to be no ticker.
       pairError = "The data service timed out.";
       quoted.length = 0;
-      await expect(command.execute({ shortcut: "XLK/SPY above 0.25" })).rejects.toThrow("The data service timed out.");
-      expect(quoted).toEqual(["XLK/SPY"]);
+      await expect(command.execute({ shortcut: "BAC/PL above 25" })).rejects.toThrow("The data service timed out.");
+      expect(quoted).toEqual(["BAC/PL"]);
     } finally {
       alertsPlugin.dispose?.();
     }

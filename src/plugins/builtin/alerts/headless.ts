@@ -17,7 +17,11 @@ import { checkedOnlyWithPro, checksProRules, needsProNote } from "./pro-rules";
 import { readerTimeZone } from "../../../utils/utc-time";
 import { eventAlertTarget, type EventAlertRule } from "./events";
 import {
+  alertBenchmarkListing,
+  alertComparatorReadingText,
   alertListing,
+  alertMinuteUtc,
+  alertReadingCurrency,
   isoUtc,
   measureLabel,
   triggerLabel,
@@ -65,6 +69,7 @@ const PRICE_COLUMNS: HeadlessPaneColumn[] = [
   { key: "targetPrice", header: "Target", align: "right", textFormat: (_value, row) => formatAlertTargetPrice(asAlert(row), 14) },
   { key: "awayPercent", header: "Away", align: "right", format: percent, textFormat: (_value, row) => formatAlertDistance(asAlert(row)) },
   { key: "condition", header: "Trigger", format: (value, row) => triggerLabel({ ...asAlert(row), condition: value as AlertRule["condition"] }) },
+  // The quote's own time to the minute (◷ when delayed), or the close a daily rule read, as the pane's cell says it.
   { key: "quoteAt", header: "Quote", textFormat: (_value, row) => formatQuoteChecked(asAlert(row)) },
   { key: "quoteSource", header: "Quote source" },
   { key: "lastCheckedAt", header: "Checked", format: instant },
@@ -78,12 +83,16 @@ const PRICE_COLUMNS: HeadlessPaneColumn[] = [
   // a move with its close, and a price or move read off a pre-market, after-hours or overnight print with that session, as `alerts list` says it.
   { key: "reading", header: "Reading" },
   { key: "session", header: "Session" },
+  // What the reading is measured against, as `alerts list --csv` gives it: a crossover's slow average, a ratio's benchmark listing.
+  { key: "comparatorReading", header: "Against" },
+  { key: "benchmarkListing", header: "Benchmark" },
 ];
 /** The terminal table keeps the pane's columns: the Quote cell already says the quote's age and feed. */
 const PRICE_TEXT_COLUMNS: HeadlessPaneColumn[] = [
-  ...PRICE_COLUMNS.filter((column) => !["quoteSource", "lastCheckedAt", "created", "listing", "currency", "reading"].includes(column.key)),
-  // The day it was made, as the Events table lists its rules.
-  { key: "createdAt", header: "Since", textFormat: (value) => (typeof value === "number" ? isoUtc(value).slice(0, 10) : "") },
+  ...PRICE_COLUMNS.filter((column) => !["quoteSource", "lastCheckedAt", "created", "listing", "currency", "reading", "comparatorReading", "benchmarkListing"]
+    .includes(column.key)).map((column) => column.key === "quoteAt" ? { ...column, header: "Quote (UTC)" } : column),
+  // When it was made, to the minute, as the pane's Since says it.
+  { key: "createdAt", header: "Since (UTC)", textFormat: (value) => (typeof value === "number" ? alertMinuteUtc(value) : "") },
 ];
 
 const EVENT_COLUMNS: HeadlessPaneColumn[] = [
@@ -126,18 +135,21 @@ function priceRow(alert: AlertRule): HeadlessPaneRow {
   const session = readingSessionWords(alert);
   return {
     ...stored,
-    session: alert.metric ? null : alertSessionLabel(alert),
+    session: alertSessionLabel(alert),
     awayPercent: away != null && Number.isFinite(away) ? Number(away.toFixed(2)) : null,
     quoteAt: quoted ? firedAlertTime(alert.lastQuoteUpdatedAt) : null,
     quoteSource: quoted ? alert.metric && closeBasis(alert.metric) || quoteSourceWords(alert.lastQuoteSource) : null,
     created: isoUtc(alert.createdAt) || null,
     listing: alertListing(alert),
-    currency: alert.lastQuoteCurrency ?? null,
+    // The currency its readings are in: none for a ratio, RSI or a multiple.
+    currency: alertReadingCurrency(alert),
     reading: alert.metric && price != null && Number.isFinite(price) && Number.isFinite(target) ? metricReadingText(alert.metric, { value: price, target })
       // A move, with the session of the print it was read off and the close it is measured from, as `alerts list` words it.
       : alert.move && price != null && Number.isFinite(price) ? `${movePercentText(price)}${session} ${moveBasisText(alert.lastMoveBasis)}`
       // A price read off a pre-market, after-hours or overnight print says so, as `alerts list` does: 508.17 after hours.
       : session && price != null && Number.isFinite(price) ? `${alertPriceText(alert, price)}${session}` : null,
+    comparatorReading: alertComparatorReadingText(alert) || null,
+    benchmarkListing: alertBenchmarkListing(alert) || null,
   };
 }
 

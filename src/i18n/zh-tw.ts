@@ -1250,6 +1250,7 @@ export const zhTW: Record<string, string> = {
   "Bid": "買價",
   "Ask": "賣價",
   "Spr": "價差",
+  "not dated": "無時間",
   "Qty": "數量",
   "Avg": "均價",
   "Mark": "標記價格",

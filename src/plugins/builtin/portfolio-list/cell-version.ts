@@ -26,7 +26,7 @@ const VALUATION_COLUMN_IDS = new Set([
 ]);
 // DIV% reads the corporate actions to measure a trailing yield and to tell a dividend that stopped, which a day can change.
 const SUPPLEMENTAL_COLUMN_IDS = new Set(["target", "target_pct", "rating", "ex_div", "next_earn", "dividend_yield"]);
-const DAY_CLOCK_COLUMN_IDS = new Set(["held", "ex_div", "next_earn", "as_of", "dividend_yield"]);
+const DAY_CLOCK_COLUMN_IDS = new Set(["held", "ex_div", "next_earn", "as_of", "book_time", "dividend_yield"]);
 export const PERPETUAL_COLUMN_IDS: ReadonlySet<string> = new Set(["perp_premium", "perp_funding"]);
 /** Columns a future's contract size or settlement moves: its quantity, its value, and at the close its Last. */
 const FUTURES_TERMS_COLUMN_IDS = new Set([

@@ -78,30 +78,25 @@ const NO_TRADES_SESSION_LABEL = "NO TRADES";
 const DAILY_CLOSE_SESSION_LABEL = "DAILY CLOSE";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 
 /** The books an extended session's bid and ask belong to, as `ticker` names them. */
 const EXTENDED_BOOK_LABELS: Partial<Record<MarketState, string>> = { PRE: "pre-market book", POST: "after-hours book" };
 
 /**
  * What a quote's bid and ask are when the regular session is not on: the
- * pre-market or after-hours book, or a closed market's last quote with the
- * day it is from (ITA's $202.00 against $208.74 around a $206.65 close is no
- * open book). Null in the regular session or without a known state, when the
- * book is the live one. `ticker` prints it after Bid / Ask; the overview's
- * header already names the session, so its quote book does not repeat it.
+ * pre-market or after-hours book, or a closed market's last quote (ITA's
+ * $202.00 against $208.74 around a $206.65 close is no open book). Null in the
+ * regular session or without a known state, when the book is the live one.
+ * It says whose book it is, not when: the trade's day is not the book's, so
+ * the book's own time (formatQuoteBookTime) dates it. `ticker` prints both
+ * after Bid / Ask; the overview's header already names the session, so its
+ * quote book gives only the time.
  */
 export function quoteBookSessionLabel(quote: Quote): string | null {
   const state = quote.marketState;
   if (!state || state === "REGULAR") return null;
-  const extended = EXTENDED_BOOK_LABELS[state];
-  if (extended) return extended;
-  const day = quoteTradingDay(quote);
-  const date = day ? new Date(`${day}T00:00:00Z`) : null;
-  const label = date && Number.isFinite(date.getTime())
-    ? `last quote, ${WEEKDAYS[date.getUTCDay()]} ${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]}`
-    : "last quote";
-  return offMarketBook(quote) ? `${label}, off-market` : label;
+  const label = EXTENDED_BOOK_LABELS[state] ?? "last quote";
+  return label === "last quote" && offMarketBook(quote) ? `${label}, off-market` : label;
 }
 
 /** Past this share of the last price, a closed market's bid or ask is no market for it. */
