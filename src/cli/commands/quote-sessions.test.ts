@@ -108,8 +108,8 @@ test("quote marks each stale row in its Feed cell, as many as the closing line c
   expect((result.data as Array<{ quote: Quote }>)[0]!.quote.dataSource).toBe("delayed");
 });
 
-test("ticker names the book out of regular hours: the extended session's, or a closed market's last quote; an open book stays bare", async () => {
-  // ITA's book around its $206.65 close.
+test("ticker names whose book it is out of regular hours and dates it by its own quote time, or says it is not dated, never by the trade", async () => {
+  // ITA's book around its $206.65 close, its last trade at 23:59 UTC on Friday.
   const book = { ...afterHours, price: 206.65, bid: 202, ask: 208.74, bidSize: 100, askSize: 1400 };
   const report = (quote: Quote) => buildTickerReport({
     symbol: quote.symbol,
@@ -118,15 +118,22 @@ test("ticker names the book out of regular hours: the extended session's, or a c
     config,
     toBase: async (value) => value,
   });
-  expect(await report(book)).toContain("Bid / Ask  $202.00 x 100 / $208.74 x 1,400  (last quote, Fri 9 Oct)");
-  // ITA at 17:45 ET: the book beside Last and the After Hours print is the after-hours one.
-  expect(await report({ ...book, marketState: "POST" })).toContain("Bid / Ask  $202.00 x 100 / $208.74 x 1,400  (after-hours book)");
-  expect(await report({ ...book, marketState: "PRE" })).toContain("(pre-market book)");
-  expect(await report({ ...book, marketState: "REGULAR" })).toMatch(/Bid \/ Ask +\$202\.00 x 100 \/ \$208\.74 x 1,400\n/);
-  // Without a quoted book there is nothing to date.
-  expect(await report({ ...book, bid: undefined, ask: undefined })).not.toContain("last quote");
-  // FMX's $118.00 / $135.00 around a $129.85 close is more than 5% off: no market for it.
-  expect(await report({ ...book, price: 129.85, bid: 118, ask: 135 })).toContain("(last quote, Fri 9 Oct, off-market)");
+  setSystemTime(new Date("2026-10-10T12:00:00Z"));
+  try {
+    expect(await report(book)).toContain("Bid / Ask  $202.00 x 100 / $208.74 x 1,400  (last quote, not dated)");
+    expect(await report({ ...book, bidAskTime: Date.parse("2026-10-10T00:55:00Z") })).toContain("(last quote, 00:55 UTC)");
+    // ITA at 17:45 ET: the book beside Last and the After Hours print is the after-hours one.
+    expect(await report({ ...book, marketState: "POST" })).toContain("Bid / Ask  $202.00 x 100 / $208.74 x 1,400  (after-hours book, not dated)");
+    expect(await report({ ...book, marketState: "PRE", bidAskTime: Date.parse("2026-10-09T12:00:00Z") })).toContain("(pre-market book, Fri 12:00 UTC)");
+    expect(await report({ ...book, marketState: "REGULAR", bidAskTime: Date.parse("2026-10-10T11:58:00Z") })).toContain("1,400  (quoted 11:58 UTC)");
+    expect(await report({ ...book, marketState: "REGULAR" })).toContain("1,400  (not dated)");
+    // Without a quoted book there is nothing to date.
+    expect(await report({ ...book, bid: undefined, ask: undefined })).not.toMatch(/last quote|not dated/);
+    // FMX's $118.00 / $135.00 around a $129.85 close is more than 5% off: no market for it.
+    expect(await report({ ...book, price: 129.85, bid: 118, ask: 135 })).toContain("(last quote, off-market, not dated)");
+  } finally {
+    setSystemTime();
+  }
 });
 
 // NEM after Friday's close, as Gloom Cloud sends it: the price is the after-hours

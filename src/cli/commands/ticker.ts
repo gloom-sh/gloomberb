@@ -220,12 +220,18 @@ function yearRangeText(quote: Quote, options: MarketFormatOptions): string {
   return quote.yearRangeBasis === "daily-bars" ? `${text} (daily bars)` : text;
 }
 
-/** The book, whose it is out of the regular session, and when it was quoted or that its source sent no time. */
+/**
+ * The book, whose it is out of the regular session, and when it was quoted or
+ * that its source sent no time: `(last quote, Sat 00:55 UTC)`, `(quoted 14:31
+ * UTC)`, `(after-hours book, not dated)`. Never the trade's day or time.
+ */
 function bidAskText(quote: Quote, options: MarketFormatOptions): string {
   const text = formatBidAsk(quote.bid, quote.ask, quote.bidSize, quote.askSize, quote.currency, options);
   if (text === "—") return text;
+  const session = quoteBookSessionLabel(quote);
   const time = formatQuoteBookTime(quote);
-  const label = [quoteBookSessionLabel(quote), time && time !== QUOTE_BOOK_UNDATED ? `quoted ${time}` : time].filter(Boolean).join(", ");
+  const when = !time || time === QUOTE_BOOK_UNDATED || session ? time : `quoted ${time}`;
+  const label = [session, when].filter(Boolean).join(", ");
   return label ? `${text}  ${cliStyles.muted(`(${label})`)}` : text;
 }
 

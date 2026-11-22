@@ -1683,7 +1683,7 @@ In short DVD panes, Page Up/Down scroll the summary, arrows or j/k navigate hist
 | `gloom api list\|get\|invoke\|subscribe` | Inspect and call plugin capabilities directly |
 | `gloom quote <symbols>` | Fetch current quotes |
 | `gloom search <query>` / `provider-search <query>` | Search tickers and provider symbols. A sector word such as `defense` lists the large US-listed funds that track it first, then the companies named for it. `defense etf` or `gold miners etf` lists the funds alone, largest first, and a fund family's name such as `ultrapro` lists its largest funds first. A company that a theme's funds hold is listed under Related, even when you saved it; Saved lists only saved tickers |
-| `gloom ticker <symbol>` | Show quote, ownership, and financials. Out of the regular session, Bid / Ask says whose book it is: `(pre-market book)`, `(after-hours book)`, or `(last quote, Fri 9 Oct)` |
+| `gloom ticker <symbol>` | Show quote, ownership, and financials. Bid / Ask says when the book was quoted, or `not dated` when its source sent no time, never the last trade's time; out of the regular session it also says whose book it is: `(quoted 14:31 UTC)`, `(after-hours book, Sat 00:55 UTC)`, `(last quote, not dated)` |
 | `gloom history\|financials\|fundamentals\|options <symbol>` | Fetch research data |
 | `gloom news\|filings\|holders\|insider\|13f\|analyst\|events\|valuation <symbol>` | Fetch company research feeds |
 | `gloom movers\|indices\|sectors\|fx\|fear-greed\|earnings` | Fetch market-wide data |
