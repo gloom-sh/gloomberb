@@ -351,7 +351,9 @@ export function resolvePriceComparison(
     return source?.kind === "security" ? source.instrument.symbol : id;
   };
   // A leg not loaded yet (a seed from cached history) has not failed: nothing compares until it is.
-  const basis = comparisonBasis(spec, seriesIds.map((id) => ({ label: symbolOf(id), entry: byId.get(id) })));
+  const basisLegs = seriesIds.map((id) => ({ label: symbolOf(id), entry: byId.get(id) }));
+  const basis = [comparisonBasis(spec, basisLegs), ...basisLegs.flatMap(({ label, entry }) =>
+    entry?.returnRollNote ? [`${label}: ${entry.returnRollNote}.`] : [])].join(" ");
   const unavailable = `${basis} Comparison unavailable: need two shared dates and a nonzero baseline.`;
   if (seriesIds.some((id) => !byId.has(id))) return { seriesIds, start: null, end: null, notice: unavailable };
   const dropped: NonNullable<PriceComparison["dropped"]> = [];

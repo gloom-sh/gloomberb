@@ -3,10 +3,12 @@ import { Box, Text } from "../../../../ui";
 import { SegmentedControl } from "../../../../components";
 import { Button } from "../../../../components/ui";
 import { colors } from "../../../../theme/colors";
-import type {
-  SeriesEditorActionModel,
-  SeriesEditorFieldModel,
-  SeriesEditorFocus,
+import { ChartColorChoice } from "../../../../components/chart/composite/color-choice";
+import {
+  SERIES_EDITOR_AUTO_COLOR,
+  type SeriesEditorActionModel,
+  type SeriesEditorFieldModel,
+  type SeriesEditorFocus,
 } from "./model";
 
 function TuiEditorField({
@@ -57,7 +59,16 @@ export function OpenTuiSeriesEditorFields({
             focused={focused}
             onFocus={() => onFocus(field.id)}
           >
-            {field.kind === "panel" ? (
+            {field.kind === "color" ? (
+              <ChartColorChoice
+                label={field.label}
+                value={field.value === SERIES_EDITOR_AUTO_COLOR ? undefined : field.value}
+                onChange={(color) => field.onChange(color ?? SERIES_EDITOR_AUTO_COLOR)}
+                focused={focused}
+                allowEditable={focused}
+                shortcutScope={dialogId}
+              />
+            ) : field.kind === "panel" ? (
               <Box flexDirection="row" width="100%" minWidth={0} gap={1} overflow="hidden">
                 <Box flexGrow={1} minWidth={0} overflow="hidden">
                   <SegmentedControl

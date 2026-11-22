@@ -92,6 +92,12 @@ test("Cloud validates exact original bounds and rejects malformed or non-retenti
   const result = await provider.getDetailedPriceHistory(data.symbol, data.exchange, new Date(data.requestedStart + 987), new Date(data.requestedEnd + 456), "15m").catch((error: unknown) => error);
   expect(result).toBeInstanceOf(HistoryRetentionError);
   expect((result as HistoryRetentionError).retention).toEqual(data);
+  // The first bar any source holds is kept between the window's start and the retained window's, and dropped outside it.
+  for (const [firstBarAt, kept] of [[data.requestedStart + DAY, true], [data.requestedStart, false], [data.availableStart, false]] as const) {
+    wire(() => unsupported({ ...data, firstBarAt }));
+    const error = await detail(provider, data).catch((caught: unknown) => caught) as HistoryRetentionError;
+    expect(error.retention).toEqual(kept ? { ...data, firstBarAt } : data);
+  }
 });
 
 test("trailing resolver acquisition shares source-computed Cloud recovery across price, volume and study edits", async () => {

@@ -85,7 +85,8 @@ export function createSectorsHeadless(
   return {
     shape: "rows",
     // Dated by each ETF's quote; the shared session date is the returns' end, not an observation.
-    freshness: { observedKey: "quoteUpdatedAt" },
+    // Once the US market has shut, the board is the session it shows, `US trading day Fri 20 Nov 2026 close`, as MOST's and HM's are.
+    freshness: { observedKey: "quoteUpdatedAt", sessionList: { exchange: "NYSE" } },
     argument: { kind: "none" },
     options: [{
       key: "collection",

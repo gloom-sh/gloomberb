@@ -9,8 +9,9 @@ import type { HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneDefinition, H
 import { formatUtcDayTime } from "../../../utils/utc-time";
 import { REFERENCE_DATA } from "../shared/report-freshness";
 import { columnValue, formatGeoValue, isChangeColumn, layerCoverageNote, parseLayerTokens, parseMapPreset, plainGeoValue, resolveActiveLayers, tickerLinkKey } from "./layers";
-import { filterWorldVenues, formatVenueLocalTime, venueSession } from "./model";
+import { filterWorldVenues, formatVenueCountdown, formatVenueLocalTime, venueRemainingSeconds, venueSession } from "./model";
 import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
+import { rowWindowCutNote } from "../../../cli/row-window";
 import { mapHomeArea, mapPlaceBbox, nearestPlaces, resolveMapPlace, type MapStart } from "./place";
 
 /**
@@ -49,28 +50,53 @@ const VENUE_COLUMNS: HeadlessPaneColumn[] = [
   // The state by the exchange's calendar: a holiday, or a US venue's pre-market and after-hours around its core session.
   { key: "session", header: "Session" },
   { key: "localTime", header: "Local" },
+  // When the core session next opens or closes, as the pane's header says it (opens 36h 54m); an export writes the instant.
+  { key: "nextChangeAt", header: "Next", textFormat: (_value, row) => typeof row.nextText === "string" ? row.nextText : "" },
 ];
 
-async function venueRows(context: HeadlessPaneContext, query: string, start: MapStart): Promise<HeadlessRowsResult> {
+/** What a page of rows the server cut at `--limit` says of the rest: "first 6 of 137 rows (--limit 6)". */
+function pageCutNote(shown: number, total: number | null | undefined, limit: number | undefined): string[] {
+  if (limit == null || total == null) return [];
+  const note = rowWindowCutNote({ limit }, { shown, total });
+  return note ? [note] : [];
+}
+
+/** The venues nearest the place first; `--limit` keeps the first of them, and says how many there were. */
+async function venueRows(context: HeadlessPaneContext, query: string, start: MapStart, limit: number | undefined): Promise<HeadlessRowsResult> {
   const response = await context.apiClient.getCloudWorldVenues();
   if (!response.data) throw new Error(response.reasonCode ?? "World venue data unavailable");
   const now = Date.now();
+  const { checkedAt } = response.data;
+  const venues = nearestPlaces(filterWorldVenues(response.data.venues, query), start.place, (venue) => venue);
+  const shown = limit == null ? venues : venues.slice(0, limit);
   return {
     columns: VENUE_COLUMNS,
-    rows: nearestPlaces(filterWorldVenues(response.data.venues, query), start.place, (venue) => venue).map((venue) => ({
-      mic: venue.mic,
-      name: venue.title,
-      city: venue.city,
-      country: venue.country,
-      session: venueSession(venue),
-      open: venue.isOpen,
-      localTime: formatVenueLocalTime(venue.timezone, now),
-      lon: venue.longitude,
-      lat: venue.latitude,
-    })),
+    rows: shown.map((venue) => {
+      // Counted from when the service read the sessions, as the pane counts it.
+      const remaining = Number.isFinite(checkedAt) ? venueRemainingSeconds(venue, checkedAt, now) : null;
+      const stated = venue.isOpen ? venue.timeToCloseSeconds : venue.timeToOpenSeconds;
+      return {
+        mic: venue.mic,
+        name: venue.title,
+        city: venue.city,
+        country: venue.country,
+        session: venueSession(venue),
+        open: venue.isOpen,
+        localTime: formatVenueLocalTime(venue.timezone, now),
+        nextChange: remaining == null ? null : venue.isOpen ? "closes" : "opens",
+        nextChangeAt: remaining == null || stated == null ? null : new Date(checkedAt + stated * 1_000).toISOString(),
+        nextText: remaining == null ? null : `${venue.isOpen ? "closes" : "opens"} ${formatVenueCountdown(remaining)}`,
+        lon: venue.longitude,
+        lat: venue.latitude,
+      };
+    }),
     freshness: REFERENCE_DATA,
     errors: start.note ? [start.note] : [],
-    metadata: { layer: "venues", stale: response.stale === true, ...(start.place ? { place: start.place } : {}) },
+    notes: pageCutNote(shown.length, venues.length, limit),
+    // The service's states are stale once a session it stated should have opened or closed since it read them: the
+    // flag the footer reads, which the response and its payload each carry.
+    metadata: { layer: "venues", stale: response.stale === true || response.data.stale === true, total: venues.length,
+      ...(start.place ? { place: start.place } : {}) },
   };
 }
 
@@ -180,14 +206,15 @@ export const mapHeadless = {
       signal: context.signal,
       venues: async () => (await context.apiClient.getCloudWorldVenues()).data?.venues ?? [],
     });
-    if (!tokens.length) return venueRows(context, query, start);
+    const asked = typeof args.options.limit === "number" ? args.options.limit : undefined;
+    if (!tokens.length) return venueRows(context, query, start, asked);
     const layers = resolveActiveLayers(tokens, catalog?.layers);
     const layer = layers[0];
     if (!layer) {
       const known = catalog?.layers.map((entry) => entry.id).join(", ");
       throw new Error(known ? `No map layer "${tokens.join(", ")}". Layers: ${known}.` : "Map layers are not available.");
     }
-    const limit = typeof args.options.limit === "number" ? args.options.limit : 100;
+    const limit = asked ?? 100;
     const page = layer.status === "unavailable"
       ? { rows: [], total: 0, asOf: null, columns: layer.columns }
       : await getGeoEntities(request, layer.id, { q: query, limit, ...(start.place ? { bbox: mapPlaceBbox(start.place) } : {}) }, context.signal);
@@ -212,6 +239,8 @@ export const mapHeadless = {
       freshness: layerFreshness(layer),
       complete: layer.status === "ok",
       errors: [...(start.note ? [start.note] : []), ...(layer.status === "unavailable" ? [`${layer.name}: ${layer.statusNote ?? "unavailable"}`] : [])],
+      // A total row counts every row found; without one, a page `--limit` cut says how many there were.
+      notes: total ? [] : pageCutNote(rows.length, page.total, asked),
       metadata: {
         layer: layer.id,
         name: layer.name,

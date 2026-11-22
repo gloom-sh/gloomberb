@@ -28,3 +28,14 @@ test("YTD names its base close in every width, and the longer header never costs
   expect(ytd(160)).toBe("YTD% 31 Dec");
   expect(ytd(80)).toBe("YTD% 31 Dec");
 });
+
+test("the full beta basis and stale date fit in a narrow screen", () => {
+  for (const width of [43, 58]) {
+    for (const stale of [false, true]) {
+      const columns = resultColumns(width, definition, "beta", stale);
+      expect(getTableWidth(columns)).toBeLessThanOrEqual(width - 1);
+      expect(columns.find((column) => column.id === "m:beta")?.label).toBe("Beta 2Y wkly SPY");
+      expect(columns.some((column) => column.id === "date")).toBe(stale);
+    }
+  }
+});

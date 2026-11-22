@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import type { ChartSurfaceProps } from "../../../../ui";
 import { colors as themeColors } from "../../../../theme/colors";
+import { chartPaletteColor } from "../../../../theme/chart-palette";
+import { useThemeId } from "../../../../theme/theme-context";
 import { levelVectors, paintLevels, type ProjectedLevel } from "../levels";
 import type { useCompositePanelBitmap } from "../panel-bitmap";
 import { buildChartToolVectors, drawChartToolOverlay, type ChartToolDrag } from "../tools";
@@ -19,7 +21,7 @@ export function usePanelOverlays({
   colors,
   drawings,
   selectedDrawingId,
-  drawColor,
+  drawColor: pickedColor,
   selectedLevelId,
   activeDrag,
   toolDirection,
@@ -31,10 +33,17 @@ export function usePanelOverlays({
   toolDirection: "up" | "down" | undefined;
   projectedLevels: readonly ProjectedLevel[];
 }) {
+  const themeId = useThemeId();
+  // A palette colour is drawn as the theme reads it, as a study or series picked in it is.
   const panelDrawings = useMemo(
-    () => drawings.filter((drawing) => drawing.panelId === panel.id),
-    [drawings, panel.id],
+    () => drawings.flatMap((drawing) => {
+      if (drawing.panelId !== panel.id) return [];
+      const color = chartPaletteColor(drawing.color, themeId);
+      return [color === drawing.color ? drawing : { ...drawing, color }];
+    }),
+    [drawings, panel.id, themeId],
   );
+  const drawColor = chartPaletteColor(pickedColor, themeId);
   // Drawings project through the time scale alone: the crosshair moving,
   // here or on a linked chart, must not repaint the plot, which the terminal's
   // kitty surface would upload whole again.

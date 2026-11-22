@@ -29,7 +29,9 @@
     "src/renderers/electrobun/view/cli-pane-shot-entry.tsx",
     "src/renderers/electrobun/view/native-stubs/backend-rpc.ts",
     "src/renderers/browser/main.tsx",
-    "src/renderers/share/main.tsx"
+    "src/renderers/share/main.tsx",
+    // Built by path in es2023ArrayMethodsScript (src/renderers/dom/build-assets.ts).
+    "src/renderers/dom/es2023-array-methods.ts"
   ],
   "project": [
     "scripts/**/*.ts",

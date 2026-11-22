@@ -104,10 +104,22 @@ export function formatCurrencyCode(
   return `${value < 0 && /[1-9]/.test(body) ? "-" : ""}${body} ${code}`;
 }
 
-/** Preserve fractional per-share distributions, including split-adjusted history. */
+/**
+ * The decimals a per-share distribution is written to: a ten-thousandth of
+ * its currency's minor unit, whichever unit it is in. HSBC states its HK$ and
+ * sterling amounts to six decimals (HK$0.784088, £0.076442), the same pound
+ * amount in pence is 7.6442p, and a split-adjusted $0.000469 keeps its digits;
+ * an amount converted at a market rate (Shell's 29.858244p before its sterling
+ * fixing) or a sum of them is no finer than that, 29.8582p.
+ */
+function distributionAmountDigits(currency = "USD"): number {
+  return minorUnitSign(currency) ? 4 : currencyPriceDigits(currency) + 4;
+}
+
+/** A per-share distribution to distributionAmountDigits, its currency's usual decimals at least. */
 export function formatDistributionAmount(value: number | undefined, currency = "USD"): string {
   if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
-  return formatMoney(value, currency, 6);
+  return formatMoney(value, currency, distributionAmountDigits(currency));
 }
 
 /** Signs a fixed-decimal move; one that rounds to zero is unsigned (0.00, never +0.00 or -0.00). */

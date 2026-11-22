@@ -115,6 +115,14 @@ export interface DividendSummary {
   trailingEps?: number | null;
   exDividendDate: number | null;
   dividendDate: number | null;
+  /**
+   * The company's other listing (SHEL:NYSE) dividendDate is from, where this
+   * listing's sources state none: one distribution, paid on one day on every
+   * line. Absent for a listing's own date and from older servers.
+   */
+  dividendDateListing?: string;
+  /** The same for exDividendDate: a distribution another listing has declared ahead. */
+  exDividendDateListing?: string;
   currency: string | null;
 }
 

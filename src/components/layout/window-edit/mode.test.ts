@@ -161,7 +161,8 @@ describe("window edit mode", () => {
 
     expect(lines).toHaveLength(2);
     expect(lines[0]).toStartWith("Enter apply  Esc cancel");
-    expect(lines.every((line) => line.length <= 30)).toBe(true);
-    expect(lines[1]).toEndWith("…");
+    expect(lines[0]!.length).toBeLessThanOrEqual(30);
+    // What does not fit stays on the last line, for CSS to cut at the panel's edge.
+    expect(lines[1]!.length).toBeGreaterThan(30);
   });
 });

@@ -11,11 +11,16 @@ import { boardReadGate } from "./board-reads";
 import type { BoardQuoteMap } from "../shared/use-quote-board";
 import type { FuturesContract } from "../../../market-data/futures-board";
 import {
+  allReturnGaps,
+  contractCode,
   frontContractCandidates,
   frontContractPeriodReturns,
+  frontContractReturnGaps,
   NO_FUTURES_RETURNS,
   pickFrontContract,
   type FuturesReturnBases,
+  type FuturesReturnGap,
+  type FuturesReturnGaps,
   type FuturesReturnValues,
 } from "./returns";
 
@@ -25,6 +30,8 @@ interface FrontReturnsState {
   values: FuturesReturnValues;
   /** The day each return's base close is from, once the contract's history is read. */
   bases?: FuturesReturnBases;
+  /** Why each empty return is empty, once the row has loaded. */
+  gaps?: FuturesReturnGaps;
 }
 
 export type FrontReturnsMap = ReadonlyMap<string, FrontReturnsState>;
@@ -154,9 +161,19 @@ export function useFrontContractReturns(
       const available = loaded.flatMap((entry) => entry.history ? [{ symbol: entry.symbol, history: entry.history }] : []);
       const front = pickFrontContract(available, quote?.price);
       const history = available.find((entry) => entry.symbol === front)?.history;
-      result.set(contract.symbol, history
-        ? { loading: false, ...frontContractPeriodReturns(history, quote?.price, quote?.lastUpdated) }
-        : { loading: false, values: NO_FUTURES_RETURNS });
+      if (history && front) {
+        const returns = frontContractPeriodReturns(history, quote?.price, quote?.lastUpdated);
+        result.set(contract.symbol, { loading: false, ...returns,
+          gaps: frontContractReturnGaps(front, history, returns.values, quote?.price, quote?.lastUpdated) });
+        continue;
+      }
+      // Each empty row says why: a generic names no contract read here, a quote may name none, and a contract
+      // may have no history or a read that failed.
+      const gap: FuturesReturnGap = contract.generic ? { kind: "generic" }
+        : loaded.some((entry) => entry.failed) ? { kind: "failed" }
+          : symbols.length === 1 ? { kind: "no-history", contract: contractCode(symbols[0]!) }
+            : { kind: "no-contract" };
+      result.set(contract.symbol, { loading: false, values: NO_FUTURES_RETURNS, ...(quote ? { gaps: allReturnGaps(gap) } : {}) });
     }
     return result;
     // `version` re-reads the history cache as loads land.

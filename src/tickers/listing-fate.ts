@@ -11,6 +11,7 @@ import {
   quotedListing,
   startTickerChangeLookup,
   tickerChangeLine,
+  tickerChangeSymbol,
   type CurrentListing,
   type FormerIssuer,
   type MovedTickerChange,
@@ -372,6 +373,33 @@ export async function loadListingFate(
     logFailure("tickers-listing-fate", "Could not resolve listing fate")(error);
     return NO_FATE;
   }
+}
+
+/**
+ * The change of a symbol whose company trades under another one now, with
+ * nothing new listed under it (`ListingFate.moved`: SQ became XYZ), told
+ * before anything else is asked for the symbol: its quote first, then, only
+ * for a line that stopped, its change lookup. A command that reads a
+ * company's data by symbol (13F holders, a put screen) then asks for the new
+ * symbol, rather than waiting on the old one's dead end. Null for a symbol
+ * that trades, one the change history is not about (a listing abroad, a
+ * pair), and when neither answers.
+ */
+export async function movedListing(
+  listing: { symbol: string; exchange?: string | null },
+  dataProvider: Pick<DataProvider, "getQuote" | "getTickerChanges">,
+): Promise<MovedTickerChange | null> {
+  if (!tickerChangeSymbol(listing.symbol, listing.exchange)) return null;
+  // A line that trades asks for no lookup: only a stopped one can be a company that moved.
+  const quote = await dataProvider.getQuote(listing.symbol, listing.exchange ?? "")
+    .catch(logFailure("tickers-listing-fate", "Could not load a moved listing's quote", null));
+  if (!lineMayHaveMoved(quote)) return null;
+  return (await loadListingFate(listing, dataProvider, { quote })).moved;
+}
+
+/** "SQ became XYZ on 2025-01-21; showing XYZ.": the note of a report read under a moved symbol's new one (`movedListing`). */
+export function movedListingNote(change: MovedTickerChange): string {
+  return `${change.note}; showing ${change.tradesAs}.`;
 }
 
 /**

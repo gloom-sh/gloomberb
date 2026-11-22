@@ -11,6 +11,7 @@ import type { FundPerformanceResult } from "./data";
 import type { FundDetailData } from "./types";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createTestHeadlessContext } from "../../../test-support/headless";
+import { createMovedSymbolsProvider } from "../../../test-support/moved-symbols";
 
 const detail: FundDetailData = {
   cik: "0001067983",
@@ -395,9 +396,25 @@ describe("13F headless model", () => {
       expect(result.metadata?.notices).toEqual([
         "Period 2026-06-30 vs 2026-03-31 | 60 holders (0 new), 0 exited | Value (USD) as reported at period end, not today's price",
         "Showing 40 of 60 funds; the 40 shown hold $4.0k | more: --offset 40 or --limit 200",
-        "30 Sep quarter not complete yet; showing 30 Jun",
+        "30 Sep holders not indexed yet (13Fs due 16 Nov); showing 30 Jun",
       ]);
       expect(typeof headless.describe === "function" ? headless.describe(loadArgs, result) : null).toBe("13F Holders | KO");
+    });
+
+    test("a ticker whose company moved lists its new symbol's holders, asked for under that symbol only, and says so", async () => {
+      const asked: string[] = [];
+      spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async (_view: string, params: { tickers: string }) => {
+        asked.push(params.tickers);
+        return { ...page(0, 2, false), ticker: params.tickers };
+      }) as never);
+      const headless = createThirteenFHeadless({ loadBrowser: async () => ({ rows: [] }), loadDetail: async () => detail, searchFunds: async () => [] });
+      const loadArgs = { ...args("auto"), argument: "HFC", rawArgument: "HFC" };
+      // The old symbol maps to no security: the source gave up after 20 s rather than answer.
+      const result = await headless.load(loadArgs, createTestHeadlessContext({ marketData: createMovedSymbolsProvider() }));
+      expect(asked).toEqual(["DINO"]);
+      expect(result.metadata).toMatchObject({ view: "ticker-holdings", ticker: "DINO" });
+      expect((result.metadata?.notices as string[] | undefined)?.[0]).toBe("HFC became DINO on 2022-03-15; showing DINO.");
+      expect(typeof headless.describe === "function" ? headless.describe(loadArgs, result) : null).toBe("13F Holders | DINO");
     });
 
     test("crowding with a ticker shows that ticker's rank, or says it is not ranked", async () => {

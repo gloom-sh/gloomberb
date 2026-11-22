@@ -40,6 +40,14 @@ function cellText(
 }
 
 describe("futures price formatting", () => {
+  test("labels the confirmed settlement and leaves its price and move intact", () => {
+    const closed = { marketState: "CLOSED", price: 3.411, changePercent: 4.38, regularClose: 3.466,
+      regularChangePercent: 6.06 } as const;
+    expect(cellText("price", { ...closed, futuresPriceKind: "settlement" })).toBe("3.4110 S");
+    expect(cellText("changePercent", { ...closed, futuresPriceKind: "settlement" })).toBe("+4.38%");
+    expect(cellText("price", { ...closed, futuresPriceKind: "last-trade" })).toBe("3.4110 T");
+  });
+
   test("scales precision to the contract's price", () => {
     // Index futures trade in quarter points, FX futures in ten-thousandths,
     // and the yen contract in millionths. One fixed precision serves none.

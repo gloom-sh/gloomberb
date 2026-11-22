@@ -25,8 +25,8 @@ import {
   type ParsedPaneFunctionArgs,
 } from "./options";
 import {
-  applyListingArgument, findPaneFunction, parsePaneFunctionArgsFor, resolvePaneFunction, UnknownPaneFunctionError,
-  type PluginCodeStopFinder, type ResolvedPaneFunction,
+  applyListingArgument, findPaneFunction, parsePaneFunctionArgsFor, resolvePaneFunction, typedFunctionCode, UnknownPaneFunctionError,
+  withRenamedTickers, type PluginCodeStopFinder, type ResolvedPaneFunction,
 } from "./resolver";
 import { idleCliPlugins, installedPluginCount } from "../registry";
 import { pluginSupportsTarget } from "../../plugins/plugin-export";
@@ -95,6 +95,12 @@ async function withPaneRuntime<T>(
         let parsed = await applyListingArgument(registry, context, parsePaneFunctionArgsFor(registry, args, ctx.cliOptions), settings.command);
         const resolution = { ...settings, seriesSources: () => ctx.plugins, pluginStop: pluginStopFor(ctx, context) };
         let resolved = await resolvePaneFunction(registry, context, parsed, resolution);
+        // A ticker whose company moved (SQ) is read as its new symbol (XYZ) before the function asks for anything.
+        const renamed = await withRenamedTickers(context, parsed, resolved, isTickerLinkPeer(resolved.instance, registry.panes));
+        if (renamed) {
+          parsed = renamed;
+          resolved = await resolvePaneFunction(registry, context, parsed, resolution);
+        }
         // A function that widens its argument (RV's --peers) runs, reports and captures the widened one.
         const expansion = await expandResolvedArgument(resolved, context, parsed.arg);
         if (expansion) {
@@ -468,7 +474,8 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       const fate = listing && quoteAnswer && isTickerLinkPeer(resolved.instance, registry.panes)
         ? listingFateLoader(listing, context, quoteAnswer().then((answer) => answer.quote), { successor: true })
         : null;
-      const moved = { command: "fn", retry: (key: string) => `gloom fn ${resolved.token} ${key}` };
+      // The retry starts with the code typed (`fn DES SQ` suggests `gloom fn DES XYZ`, not T).
+      const moved = { command: "fn", retry: (key: string) => `gloom fn ${typedFunctionCode(parsed.target, resolved)} ${key}` };
       // A report that fails or comes back empty for an exchange the symbol is not listed on says so.
       // A report written to a file is drawn for it as it is built: no colour and no terminal width, as a redirect gets it.
       const buildReport = () => buildFunctionReport(resolved, context, parsed.arg, registry);
@@ -691,7 +698,7 @@ async function capturePaneScreenshot(args: string[], ctx: CliCommandContext, onS
         // A bare code several companies list asks which, as `fn` does.
         if (parsed.listing && !quote) {
           await failUnchosenListing(parsed.listing, context, ctx,
-            { command: "shot", noun: "data", retry: (key) => `gloom shot ${resolved.token} ${key}` }, quoteError);
+            { command: "shot", noun: "data", retry: (key) => `gloom shot ${typedFunctionCode(parsed.target, resolved)} ${key}` }, quoteError);
         }
         const stop = parsed.listing && !quote ? await notATickerStop(quoteError, parsed.listing, context) : null;
         throw stop ? new Error(stop) : error;

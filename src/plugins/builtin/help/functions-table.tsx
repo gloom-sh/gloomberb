@@ -20,6 +20,8 @@ import {
 import { t } from "../../../i18n";
 import { useThemeColors } from "../../../theme/theme-context";
 import { useUiCapabilities } from "../../../ui";
+import { glossaryNamesFunction } from "../../../cli/glossary";
+import { matchesFunctionSearch } from "../../../utils/function-search";
 import { groupShortcutEntries, type HelpShortcutEntry } from "./shortcut-model";
 import { badgeCell, badgeColumnWidth, helpRowLines, helpTextWidth, type HelpRowLine } from "./table-cells";
 
@@ -31,6 +33,7 @@ interface FunctionEntry {
   prefix: string[];
   argument: string;
   description: string;
+  searchFields: readonly string[];
   /** The terminal's line of the row this row draws (helpRowLines). */
   line?: HelpRowLine;
 }
@@ -59,14 +62,13 @@ function toEntries(entries: HelpShortcutEntry[], namespace: string): FunctionEnt
     id: `${namespace}:${entry.id}`,
     ...splitEntryBadges(entry.badges),
     description: entry.description,
+    searchFields: entry.searchFields ?? [],
   }));
 }
 
-/** Matches the typed text against FN, ARG and OPENS, as the user reads them. */
 function matchesQuery(entry: FunctionEntry, needle: string): boolean {
-  if (!needle) return true;
-  return [entry.prefix.join(" "), entry.argument, t(entry.description)]
-    .some((text) => text.toLowerCase().includes(needle));
+  return matchesFunctionSearch(needle, [...entry.prefix, entry.argument, entry.description, t(entry.description), ...entry.searchFields])
+    || entry.prefix.some((code) => glossaryNamesFunction(code, needle));
 }
 
 export function FunctionsTable({

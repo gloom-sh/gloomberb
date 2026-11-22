@@ -63,10 +63,14 @@ export function hsbcIssuerDividendRead(currency = "GBp", fixedCash?: number) {
       fetchedAt: "2026-11-17T06:00:00Z", dividends: [
         { exDate: "2026-08-13", amount: 0.074134 * divisor }, { exDate: "2026-05-14", amount: 0.074489 * divisor },
         { exDate: "2026-03-12", amount: 0.333016 * divisor }, { exDate: "2025-11-06", amount: 0.075079 * divisor },
+        // A year earlier's final and interims, which tell this March's final from a one-off.
+        { exDate: "2025-08-14", amount: 0.073562 * divisor }, { exDate: "2025-05-08", amount: 0.074512 * divisor },
+        { exDate: "2025-03-06", amount: 0.278597 * divisor },
       ], declaredDividends: [{ exDate: "2026-11-05", payDate: "2026-12-17", amount: (fixedCash ?? 0.075835) * divisor,
         ...(fixedCash == null ? { cashEstimate } : {}) }],
       declaredCash: { currency: "USD", rows: [{ exDate: "2026-11-05", amount: 0.1 }, { exDate: "2026-08-13", amount: 0.1 },
-        { exDate: "2026-05-14", amount: 0.1 }, { exDate: "2026-03-12", amount: 0.45 }, { exDate: "2025-11-06", amount: 0.1 }],
+        { exDate: "2026-05-14", amount: 0.1 }, { exDate: "2026-03-12", amount: 0.45 }, { exDate: "2025-11-06", amount: 0.1 },
+        { exDate: "2025-08-14", amount: 0.1 }, { exDate: "2025-05-08", amount: 0.1 }, { exDate: "2025-03-06", amount: 0.36 }],
         announced: { exDate: "2026-11-05", payDate: "2026-12-17", amount: 0.1, fixingDate: "2026-12-07",
           ...(fixedCash != null ? { paidAmount: fixedCash * divisor } : {}) } },
     },

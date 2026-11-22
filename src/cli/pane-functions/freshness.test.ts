@@ -135,7 +135,7 @@ describe("report freshness", () => {
     expect(formatStatusLine(quotesFreshness([nominal], undefined, now)!)).toBe("Fri 6 Nov 2026 · 15 min delayed, nominal · markets closed · regular session opens Mon 01:30 UTC, 09:30 HKT");
     // Beside a stale row, each is counted.
     const stale = createTestQuote({ symbol: "9046.HK", ...hkex, stale: true, lastUpdated: Date.parse("2026-11-03T01:31:00Z") });
-    expect(formatStatusLine(quotesFreshness([traded, nominal, stale], undefined, now)!)).toContain("15 min delayed, 1 of 3 stale, 1 of 3 nominal");
+    expect(formatStatusLine(quotesFreshness([traded, nominal, stale], undefined, now)!)).toContain("15 min delayed, 9046.HK stale, 1 of 3 nominal");
   });
 
   test("a narrow capture keeps the date and the delay, shortening the rest first", () => {
@@ -247,6 +247,25 @@ describe("report freshness", () => {
     expect(formatStatusLine(quoted)).toBe("US trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed · regular session opens Mon 13:30 UTC, 09:30 ET");
     // Undeclared, dated data is not a dataset.
     expect(deriveHeadlessFreshness(rows({ status: "not-a-feed" }), { rows: [{ asOf: "2026-10-04" }] }, SAT).lagDays).toBeUndefined();
+  });
+
+  test("a market-wide list read after its market shut is dated by the session it shows, as a quote board is", () => {
+    const SATURDAY = Date.parse("2026-11-21T16:00:00Z");
+    const movers = rows({ status: "delayed", sessionList: { exchange: "NYSE" } });
+    // MOST's Most Active read on Saturday 14:53, its rows stamped at the stored snapshot's midnight.
+    const snapshot = { rows: [{ exchange: "NASDAQ", lastUpdated: Date.parse("2026-11-21T00:00:00Z") }], freshness: { asOf: "2026-11-21T14:53:00Z" } };
+    expect(formatFreshnessLine(deriveHeadlessFreshness(movers, snapshot, SATURDAY)))
+      .toBe("Source: Gloom Cloud · US trading day Fri 20 Nov 2026 close · delayed · markets closed · regular session opens Mon 14:30 UTC, 09:30 ET");
+    // A pre-market list whose session is over names that part of the day it states.
+    const premarket = { ...snapshot, freshness: { asOf: "2026-11-21T15:00:00Z", sessionList: { exchange: "NYSE", session: "2026-11-20", part: "pre-market" as const } } };
+    expect(formatStatusLine(deriveHeadlessFreshness(movers, premarket, SATURDAY))).toStartWith("US trading day Fri 20 Nov 2026 pre-market · delayed · markets closed");
+    // Monday before the open the day's lists are still Friday's; a list stopped mid-session keeps its own time.
+    expect(formatStatusLine(deriveHeadlessFreshness(movers, snapshot, Date.parse("2026-11-23T12:00:00Z")))).toStartWith("US trading day Fri 20 Nov 2026 close ·");
+    const stopped = { ...snapshot, freshness: { asOf: "2026-11-20T17:10:00Z" } };
+    expect(formatStatusLine(deriveHeadlessFreshness(movers, stopped, SATURDAY))).toStartWith("Fri 20 Nov 2026 17:10 UTC · delayed");
+    // While the market trades, the list's own time.
+    expect(formatStatusLine(deriveHeadlessFreshness(movers, { ...snapshot, freshness: { asOf: "2026-11-20T18:00:00Z" } }, Date.parse("2026-11-20T18:05:00Z"))))
+      .toStartWith("Fri 20 Nov 2026 18:00 UTC · delayed");
   });
 
   test("a table across markets that asks for it dates each market's session, not only the newest row's", () => {

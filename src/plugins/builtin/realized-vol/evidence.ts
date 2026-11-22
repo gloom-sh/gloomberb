@@ -1,7 +1,7 @@
 import type { PaneScreenshotEvidenceHook } from "../../../cli/pane-functions/screenshot-evidence";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import type { ResolvedSeries } from "../../../time-series/types";
-import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { sameListingKey } from "../../../utils/exchanges";
 import { isDateString, isFiniteNumber, isRecord, isStringArray } from "../../../utils/guards";
 import { selectedWindows } from "./settings";
 
@@ -133,7 +133,8 @@ export const realizedVolScreenshotEvidence: PaneScreenshotEvidenceHook<RealizedV
     const mismatches: string[] = [];
     const symbol = payload.financials[0]?.[0] ?? resolved.createOptions?.symbol;
     const settings = { ...resolved.instance?.settings, ...resolved.options };
-    if (symbol && evidence.symbol !== parsePublicTickerKey(symbol).symbol) mismatches.push("rendered realized volatility symbol does not match");
+    // Drawn under the key it was asked for (ETH:ARCA), as a bare symbol or with its venue.
+    if (symbol && !sameListingKey(evidence.symbol, symbol)) mismatches.push("rendered realized volatility symbol does not match");
     if (evidence.view !== (settings.tab ?? settings.initialView ?? "graph")) mismatches.push("rendered realized volatility view does not match");
     if (evidence.estimator !== (settings.estimator ?? "close-to-close")) mismatches.push("rendered realized volatility estimator does not match");
     if (evidence.lookbackYears !== Number(settings.lookbackYears ?? 1)) mismatches.push("rendered realized volatility lookback does not match");

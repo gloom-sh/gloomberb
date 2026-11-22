@@ -675,6 +675,16 @@ export class AssetDataRouter implements DataProvider {
   }
 
   /**
+   * What a quote's `providerId` is called where a report names its source: the
+   * broker or the registered data provider of that id, by its own name. Null for
+   * an id nothing here answers to, which a report then leaves unnamed.
+   */
+  readonly sourceNameOf = (providerId: string): string | null =>
+    this.registry?.brokers.get(providerId)?.name
+      ?? this.providersInPriorityOrder().find((provider) => provider.id === providerId)?.name
+      ?? null;
+
+  /**
    * Whether reads of `method` asked together go out as batch requests: only
    * when every source the router could ask for them does, each broker that
    * reads them and each provider. A caller asking many at once then never

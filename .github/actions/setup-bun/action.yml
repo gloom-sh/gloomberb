@@ -7,7 +7,7 @@ inputs:
     required: false
     default: "true"
   desktop:
-    description: Fetch Electrobun's SDK into .hutch/devkit and patch it, for desktop builds, the type checks and the tests
+    description: Fetch Electrobun's SDK into .hutch/devkit from the pinned toolchain and patch it, for desktop builds, the type checks and the tests
     required: false
     default: "false"
   cache:
@@ -47,11 +47,19 @@ runs:
     # jobs that need it ask, so an outage of Electrobun's servers cannot hold
     # up a web deploy or the terminal builds. The download is tried again
     # after a failure (an HTTP 503 once).
+    #
+    # Every archive of the toolchain it runs, Hutch's own included, must
+    # match its sha256 in scripts/electrobun-toolchain.json. The later steps
+    # of the job run that Hutch with DASH_RELEASE_OFFLINE=1, so the build
+    # downloads none of it again. Exit status 2 is a download that does not
+    # match its pin, or one with no pin, which trying again cannot fix.
     - if: inputs.install == 'true' && inputs.desktop == 'true'
       shell: bash
       run: |
         for attempt in 1 2 3; do
-          bun run desktop:sync && exit 0
+          status=0
+          bun run desktop:sync:pinned || status=$?
+          if [ "$status" -eq 0 ] || [ "$status" -eq 2 ]; then exit "$status"; fi
           if [ "$attempt" -lt 3 ]; then
             echo "desktop:sync failed, trying again in $((attempt * 30)) s"
             sleep $((attempt * 30))

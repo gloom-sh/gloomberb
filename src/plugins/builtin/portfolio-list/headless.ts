@@ -52,7 +52,7 @@ import {
 } from "../../../portfolio/allocation";
 import { currencyPriceMinDigits, formatMarketPrice, formatMarketQuantity } from "../../../market-data/market/format";
 import { resolvePortfolioTotalsCurrency } from "./summary/totals";
-import { quoteFreshnessFields } from "../shared/report-freshness";
+import { bookSource, brokerNameOf, quoteFreshnessFields } from "../shared/report-freshness";
 import { importedFromText } from "./imported-from";
 import { describeCollections } from "../../../portfolio/collection-name";
 import { currentListingName } from "../../../tickers/listing-name";
@@ -498,7 +498,7 @@ async function portfolioHoldings(
   return {
     // Dated by the prices the value uses, and the oldest of them in exports, with the basis in the closing line.
     freshness: {
-      source: broker ? "Your broker account and Gloom Cloud" : "Local portfolio and Gloom Cloud",
+      source: bookSource(broker ? "Your broker account" : "Local portfolio", quotes.values(), brokerNameOf(ctx)),
       observedKey: "valuationAsOf",
       citeOldest: true,
       note: `priced at ${valuationBasisText(basis, holdsFutures(valuation), marketsStillTrading(valuation))}`,
@@ -701,7 +701,7 @@ async function watchlistHoldings(
   });
   const shown = rows.slice(0, limit);
   return {
-    freshness: { source: "Local watchlist and Gloom Cloud" },
+    freshness: { source: bookSource("Local watchlist", quotes.values(), brokerNameOf(ctx)) },
     columns: withListingLabels(
       withExtendedColumns(WATCHLIST_COLUMNS, extendedSessionsOf(shown.map((row) => row.extendedSession))),
       tickers,

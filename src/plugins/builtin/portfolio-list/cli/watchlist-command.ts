@@ -2,6 +2,7 @@ import { saveConfig } from "../../../../data/config/store";
 import { withConfigData } from "../../../../cli/scoped-context";
 import { withCollectionConfigData, withCollectionMarketData } from "../../../../cli/suffixed-listing-rows";
 import { countCollectionTickers, findWatchlist } from "../../../../cli/helpers";
+import { windowTextRows } from "../../../../cli/row-window";
 import { slugifyName } from "../../../../utils/slugify";
 import { takeOption } from "../../../../cli/commands/command-utils";
 import { EXCHANGE_OPTION, loadSavedListingOf, requireSavedListing, savedListingCandidates, savedListingName } from "../../../../cli/listing-arg";
@@ -342,18 +343,20 @@ async function listWatchlists(ctx: CliCommandContext) {
       return;
     }
 
+    const window = windowTextRows(rows, ctx.cliOptions);
     console.log(renderTable(
       [
         { header: "Watchlist" },
         { header: "ID", shrink: false },
         { header: "Tickers", align: "right" },
       ],
-      rows.map((watchlist) => [
+      window.rows.map((watchlist) => [
         watchlist.name,
         watchlist.id,
         String(watchlist.tickerCount),
       ]),
     ));
+    if (window.note) console.log(cliStyles.muted(window.note));
     // Nothing in any of them: the command that fills one, as `alerts` names the one that adds an alert.
     if (rows.every((watchlist) => watchlist.tickerCount === 0)) {
       console.log(cliStyles.muted(`\nNo tickers yet. Add some with ${collectionAddCommand("watchlist", rows[0]!.name)}.`));

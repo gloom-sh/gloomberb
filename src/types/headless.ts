@@ -42,6 +42,7 @@ export interface HeadlessPaneReference {
 
 export interface HeadlessPaneOptionValue {
   value: string;
+  label?: string;
   aliases?: string[];
 }
 
@@ -307,8 +308,10 @@ export interface HeadlessPaneFreshness {
    * Who a reader would cite: the venue, exchange or agency for primary data
    * ("SEC EDGAR", "Hyperliquid"), "Gloom Cloud" for aggregated market data,
    * "Local data" or "Your inputs". Never a data vendor or an internal provider id.
+   * `null` says the data has no name to give: the source is then left out, not
+   * cited to Gloom Cloud as an undeclared one is.
    */
-  source?: string;
+  source?: string | null;
   /**
    * Who published the figures, as the data itself names them (FRED's series
    * source, `DTCC Public Price Dissemination`). Exports cite it; left out,
@@ -406,6 +409,16 @@ export interface HeadlessPaneFreshness {
    * one market's.
    */
   tradingDayMarket?: string;
+  /**
+   * The rows are one market's list from a session (MOST's movers, a scan, a
+   * sector board). Once that market is shut, the report names the session
+   * the list shows, `US trading day Fri 20 Nov 2026 close`, with when the
+   * market reopens, never the time the list was taken after the close
+   * (`shownSessionDay`). `session` is the trading day a list states for
+   * itself; `part` names a list of a part of the session that has ended, a
+   * pre-market or after-hours list, dated `... Fri 20 Nov 2026 pre-market`.
+   */
+  sessionList?: { exchange: string; session?: string; part?: "pre-market" | "after-hours" };
   /** The newest observation is stale once this time (the next scheduled release) has passed by a day. */
   nextExpectedAt?: string | number | Date | null;
   /**
@@ -890,6 +903,13 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
    */
   refuseSymbol?(key: string): { message: string; details?: string } | null;
   /**
+   * The function reads each symbol's fate itself (VCA and HIVG refuse a
+   * moved one and keep its row in a list, with the new symbol), so `fn` does
+   * not read a ticker whose company moved (SQ) as its new symbol (XYZ) first,
+   * as it does for any other function that takes tickers.
+   */
+  readsSymbolFate?: boolean;
+  /**
    * `fn` exits 1 when the report has no name with data: no rows, or every row
    * is one of `unavailableSymbols`. A list that gives data for some names
    * exits 0 and names the others in its errors.
@@ -921,6 +941,8 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
     load: () => Promise<HeadlessPaneResultByShape[Shape]>,
     given: ReadonlySet<string>,
   ): HeadlessShotState | Promise<HeadlessShotState>;
+  /** Device-only state the screenshot pane needs in its isolated persistence store. */
+  shotDeviceState?: ReadonlyArray<{ pluginId: string; key: string }>;
   /** What is true of every load: its source, and whether it is a feed. */
   freshness?: HeadlessPaneFreshness;
   /**

@@ -1,9 +1,11 @@
-import { getSharedMarketDataCoordinator, type MarketDataCoordinator } from "../../../market-data/coordinator";
+import { getSharedMarketDataCoordinator, type MarketDataCoordinator, type StreamTickFollow } from "../../../market-data/coordinator";
 import type { QuoteSubscriptionHandle } from "../../../market-data/coordinator/quotes";
-import { getActiveQuoteDisplay } from "../../../market-data/market/status";
+import { getActiveQuoteDisplay, withActiveQuoteDisplay } from "../../../market-data/market/status";
+import type { StreamTickRange, StreamTickReading } from "../../../market-data/quotes/tick-range";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
 import { isAppVisible, subscribeAppVisibility } from "../../../state/app/activity";
+import { savedCopyAt } from "../../../data/saved-copies";
 import type { Quote } from "../../../types/financials";
 import type { AlertRule } from "./types";
 
@@ -15,17 +17,24 @@ const ALERT_STREAM_FRESH_MS = 90_000;
  */
 const ALERT_STREAM_WEIGHT = 20;
 
-export function alertInstrument(alert: Pick<AlertRule, "symbol" | "exchange">): InstrumentRef {
-  return { symbol: alert.symbol, exchange: alert.exchange ?? "" };
+/**
+ * The listing an alert's quotes stream on: the one it names, or for a rule set
+ * by symbol alone (BTC-USD, AAPL, EURUSD=X, GC=F) the venue its last quote
+ * was from, so it follows the key a watchlist row of that listing streams on.
+ * A bare symbol is a key of its own, and with many rows on screen the feed
+ * left it, an off-screen target, without ticks.
+ */
+export function alertInstrument(alert: Pick<AlertRule, "symbol" | "exchange" | "lastQuoteExchange">): InstrumentRef {
+  return { symbol: alert.symbol, exchange: alert.exchange || alert.lastQuoteExchange || "" };
 }
 
 /**
  * The price an alert compares, from a streamed quote fresh enough to act on.
- * Snapshot loads, stale connections and quiet symbols return null, which
- * leaves the symbol to the poll.
+ * Snapshot loads, stale connections, quiet symbols and a copy saved before
+ * the app last closed return null, which leaves the symbol to the poll.
  */
 export function streamedAlertQuote(quote: Quote | null | undefined, now = Date.now()): Quote | null {
-  if (!quote || quote.delivery !== "stream" || quote.stale === true) return null;
+  if (!quote || quote.delivery !== "stream" || quote.stale === true || savedCopyAt(quote) != null) return null;
   const receivedAt = quote.receivedAt;
   if (typeof receivedAt !== "number" || !Number.isFinite(receivedAt) || now - receivedAt > ALERT_STREAM_FRESH_MS) return null;
   const display = getActiveQuoteDisplay(quote);
@@ -39,7 +48,7 @@ export function streamedAlertQuote(quote: Quote | null | undefined, now = Date.n
 }
 
 export function readStreamedAlertQuote(
-  alert: Pick<AlertRule, "symbol" | "exchange" | "metric">,
+  alert: Pick<AlertRule, "symbol" | "exchange" | "lastQuoteExchange" | "metric">,
   coordinator: MarketDataCoordinator | null = getSharedMarketDataCoordinator(),
   now = Date.now(),
 ): Quote | null {
@@ -47,9 +56,20 @@ export function readStreamedAlertQuote(
   return streamedAlertQuote(resolveEntryData(coordinator.getQuoteEntry(alertInstrument(alert))), now);
 }
 
+/**
+ * A streamed alert quote as it read at another tick its frame folded in: that
+ * tick's price, move and print time on the newest quote's session and listing.
+ */
+export function alertQuoteAtTick(quote: Quote, tick: StreamTickReading, now = Date.now()): Quote | null {
+  const atTick = streamedAlertQuote(withActiveQuoteDisplay(quote, tick), now);
+  return atTick && { ...atTick, lastUpdated: tick.lastUpdated ?? quote.lastUpdated };
+}
+
 export interface AlertQuoteStream {
   /** Re-read the active alerts and follow exactly their symbols. */
   sync(): void;
+  /** The range of each symbol's ticks since the last take that priced other than its quote, by quote key. */
+  takeTicks(): Map<string, StreamTickRange>;
   dispose(): void;
 }
 
@@ -78,10 +98,14 @@ export function createAlertQuoteStream({
   let handle: QuoteSubscriptionHandle | null = null;
   let keySignature = "";
   let unsubscribeKeys: (() => void) | null = null;
+  // Every tick is judged, not only the newest one each frame applies.
+  let ticks: StreamTickFollow | null = null;
 
   const teardown = () => {
     unsubscribeKeys?.();
     unsubscribeKeys = null;
+    ticks?.dispose();
+    ticks = null;
     keySignature = "";
     handle?.();
     handle = null;
@@ -117,6 +141,9 @@ export function createAlertQuoteStream({
     unsubscribeKeys?.();
     keySignature = signature;
     unsubscribeKeys = next.subscribeKeys(keys, onQuotes);
+    // A symbol still followed keeps the ticks it gathered and nobody took yet.
+    if (ticks) ticks.update(keys);
+    else ticks = next.followStreamTicks(keys, onQuotes);
   };
 
   const unsubscribeVisibility = subscribeAppVisibility(sync);
@@ -124,6 +151,7 @@ export function createAlertQuoteStream({
 
   const stream: AlertQuoteStream = {
     sync,
+    takeTicks: () => ticks?.take() ?? new Map(),
     dispose() {
       if (disposed) return;
       disposed = true;

@@ -77,6 +77,8 @@ export interface InstalledPlugin {
   /** Set when the plugin is installed but cannot run on this renderer. */
   unsupportedTarget?: PluginTarget;
   loadError?: string;
+  /** Another folder, named here, declares this plugin's id and loads instead; this one is skipped. */
+  duplicateOf?: string;
   /** The checkout declares a newer Gloomberb than this one, so it was not loaded. */
   needsGloomberb?: string;
   /** Declares a `configSchema` and is missing a required value. */
@@ -132,6 +134,8 @@ export interface MarketplaceEntry {
   minGloomberb?: string;
   contributes?: RegistryPlugin["contributes"];
   loadError?: string;
+  /** The folder that loads in this one's place, when two declare the same plugin id. */
+  duplicateOf?: string;
   /** What the installed checkout declares it needs, when this Gloomberb is older. */
   needsGloomberb?: string;
   needsSetup: boolean;
@@ -293,6 +297,7 @@ export function mergeCatalog(options: {
       minGloomberb: plugin.minGloomberb,
       contributes: plugin.contributes,
       loadError: local?.loadError,
+      duplicateOf: local?.duplicateOf,
       needsGloomberb: local?.needsGloomberb,
       needsSetup: local?.needsSetup === true,
       hasSetup: local?.hasSetup === true,
@@ -324,7 +329,7 @@ export function mergeCatalog(options: {
       name: local.name,
       tagline: rowLine(local.source === "builtin"
         ? builtinTagline(local)
-        : local.description ?? (local.linked ? "Linked from a local checkout" : "Installed outside the registry")),
+        : local.description ?? (local.duplicateOf ? `Duplicate of ${local.duplicateOf}` : local.linked ? "Linked from a local checkout" : "Installed outside the registry")),
       description: detailParagraph(local.description),
       categories: local.source === "builtin" ? [...BUILTIN_EDITORIAL[local.id]?.categories ?? []] : ["unlisted"],
       // Shipped by Gloom like every built-in, whether or not the feed lists it.
@@ -343,6 +348,7 @@ export function mergeCatalog(options: {
       installedCommit: local.commit,
       remoteCommit: remoteHeadFor(local),
       loadError: local.loadError,
+      duplicateOf: local.duplicateOf,
       needsGloomberb: local.needsGloomberb,
       needsSetup: local.needsSetup === true,
       hasSetup: local.hasSetup === true,
@@ -419,6 +425,7 @@ export function versionLabel(entry: MarketplaceEntry): string {
 
 export type MarketplaceStatusKind =
   | "failed"
+  | "duplicate"
   | "needs-restart"
   | "unsupported"
   | "needs-setup"
@@ -451,6 +458,8 @@ export function statusOf(entry: MarketplaceEntry): MarketplaceStatus {
   // Also before `failed`: an update landed over modules this session already
   // imported, so any error on the row is from the old code.
   if (entry.needsRestart) return { kind: "needs-restart", text: "needs restart" };
+  // Not a failure: the plugin loads, from the other folder.
+  if (entry.duplicateOf) return { kind: "duplicate", text: "duplicate" };
   if (entry.loadError) return { kind: "failed", text: "failed" };
   const unsupported = unsupportedLabel(entry);
   if (unsupported) return { kind: "unsupported", text: unsupported.toLowerCase() };

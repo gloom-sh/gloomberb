@@ -15,7 +15,7 @@ import { buildFundOverlap, buildManagerEtfOverlap, overlapPeriod } from "./overl
 import type { FundMembersPayload, MemberFundsPayload } from "../../../api-client/members";
 import { fetchFunds, fetchMembers } from "../members/client";
 import { coveredFund } from "../members/model";
-import { appendTickerHoldings, loadCrowding, loadTickerHoldings, quarterFallbackText, type CrowdingRow, type TickerHoldings } from "./signals";
+import { appendTickerHoldings, holdersTicker, loadCrowding, loadTickerHoldings, quarterFallbackText, type CrowdingRow, type TickerHoldings } from "./signals";
 import {
   AS_FILED_VALUE,
   compareCrowding,
@@ -710,10 +710,11 @@ export function createThirteenFHeadless(
           freshness: { asOf: metadata.period }, errors: metadata.warnings };
       }
       let holdings: TickerHoldings | null = null;
+      // "SQ became XYZ on 2025-01-21; showing XYZ.": the holders of a ticker whose company moved are its new symbol's.
+      let renamedNote: string | null = null;
       let shadowed: Promise<ThirteenFFund[]> = Promise.resolve([]);
       if (view === "ticker-holdings") {
         if (!query) throw new Error("13F ticker holdings requires a ticker.");
-        const ticker = query.replace(/^\$/, "").toUpperCase();
         // A lowercase word read as a ticker may name a fund too ("ares"); asked alongside, so it costs no wait.
         if (requestedView === "auto" && !query.startsWith("$") && query !== query.toUpperCase()) {
           // The name search matches anywhere ("man" in every Management); the word and a space keeps it to whole words.
@@ -725,6 +726,9 @@ export function createThirteenFHeadless(
             // Intentional ignore: only cancellation reaches this guard; the awaited promise still rejects.
           });
         }
+        const read = await holdersTicker(query.replace(/^\$/, "").toUpperCase(), ctx.marketData);
+        const ticker = read.ticker;
+        renamedNote = read.note ?? null;
         try {
           holdings = await loadTickerHoldings(ticker, Number(args.options.offset ?? 0), ctx.signal);
           // The endpoint pages 25 funds at a time.
@@ -762,7 +766,7 @@ export function createThirteenFHeadless(
             totalValue: summary.shownValue,
             valueScope: "shown funds",
             valueBasis: "as reported at period end",
-            notices: [...flagNotices, ...summary.notices, ...fallbackNotices(metadata), ...(alsoFunds.length ? [shadowedFundsText(query, alsoFunds)] : [])],
+            notices: [...renamedNote ? [renamedNote] : [], ...flagNotices, ...summary.notices, ...fallbackNotices(metadata), ...(alsoFunds.length ? [shadowedFundsText(query, alsoFunds)] : [])],
           },
           freshness: { asOf: metadata.period },
           errors: metadata.warnings,

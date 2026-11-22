@@ -48,7 +48,7 @@ test.each([44, 60])("an ex-dated unfixed sterling declaration keeps its row, est
     setSystemTime();
   }
   const text = await renderLoaded(data, width, 24);
-  expect(text.split("\n").find((line) => line.includes("2026-11-05"))).toMatch(/2026-11-05\s+estimated 7\.5835p\s+\$0\.10/);
+  expect(text).toMatch(/2026-11-05\s+estimated 7\.5835p\s+\$0\.10/);
   expect(text).toContain("2026-12-07");
   expect(text).toContain("2026-12-17");
 });
@@ -368,11 +368,11 @@ test("cash paid again after a year of none reads N/M for its growth, never a per
   expect(shown).not.toMatch(/1Y growth\s+n\/a/);
 });
 
-test.each([32, 46, 52, 60, 80, 120])("an undated payout keeps its label, value and basis detail without shortening unrelated labels at %d columns", async (width) => {
+test.each([32, 46, 52, 60, 80, 120])("a payout keeps its label, value and basis detail without shortening unrelated labels at %d columns", async (width) => {
   const data = await quarterlyIncome();
   const shown = await renderLoaded({ ...data, metrics: { ...data.metrics, payoutRatio: 0.47 } }, width, 40);
   expect(shown).toMatch(/Payout\s+47\.0%/);
-  expect(shown).toContain("Basis/date unstated");
+  expect(shown).toContain("TTM diluted EPS");
   expect(shown).not.toMatch(/Payout[^\n]*…/);
   if (width >= 80) {
     expect(shown).toContain("TTM/share");

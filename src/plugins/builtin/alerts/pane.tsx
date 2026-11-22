@@ -5,6 +5,7 @@ import { relativeAlertText } from "./metric-command";
 import { levelAlertStoreKey, readLevelAlertStores } from "./storage";
 import { Box, type ScrollBoxRenderable } from "../../../ui";
 import { Button, DetailScrollBody, KeyValueRow, Notice, PaneStatusBody, PaneFooterScope, QueryBar, usePaneTabs } from "../../../components";
+import { alertSessionLabel } from "./session";
 import { usePluginPaneState, usePluginState } from "../../runtime";
 import { EventAlertsPane } from "./events-pane";
 import { AlertHistoryPane } from "./history-pane";
@@ -42,9 +43,11 @@ import {
   conditionLabel,
   formatAlertDistance,
   formatAlertTargetPrice,
+  alertMinuteUtc,
   formatCurrentPrice,
   formatQuoteChecked,
   isoUtc,
+  quoteAsOfText,
   listingWithCurrency,
   measureLabel,
   relativeTime,
@@ -73,6 +76,7 @@ type AlertColumnId =
   | "away"
   | "condition"
   | "quote"
+  | "session"
   | "triggered"
   | "created";
 
@@ -89,11 +93,13 @@ const ALERT_COLUMNS: AlertColumn[] = [
   { id: "target", label: "Target", width: 10, align: "right" },
   { id: "away", label: "Away", width: 8, align: "right" },
   { id: "condition", label: "Trigger", width: 12, align: "left" },
-  // Wide enough to say "not checked yet" for an alert no check has read.
-  { id: "quote", label: "Quote", width: 15, align: "left" },
+  { id: "session", label: "Session", width: 12, align: "left" },
+  // The quote's own time to the minute, as History writes its times (◷2026-11-20 23:20 for a delayed feed), or a
+  // settled close by its session; wide enough to say "not checked yet" for an alert no check has read.
+  { id: "quote", label: "Quote (UTC)", width: 17, align: "left" },
   { id: "triggered", label: "Alerted", width: 8, align: "left" },
-  // The day the alert was made (UTC), as Events lists its rules; the detail gives the instant.
-  { id: "created", label: "Since", width: 10, align: "left" },
+  // When the alert was made, to the minute; the detail gives the second.
+  { id: "created", label: "Since (UTC)", width: 16, align: "left" },
 ];
 
 const DETAIL_ROW = { labelWidth: 10, emphasis: false } as const;
@@ -119,6 +125,7 @@ function AlertDetail({ alert, scrollRef }: { alert: AlertRule; scrollRef: RefObj
         {reason ? <Box paddingBottom={1}><Notice tone="warning">{reason}</Notice></Box> : null}
         <KeyValueRow {...DETAIL_ROW} label="State" value={alert.status === "triggered" ? "Triggered" : "Active"} tone={alert.status === "triggered" ? "positive" : "muted"} />
         <KeyValueRow {...DETAIL_ROW} label="Listing" value={listingWithCurrency(alertListing(alert), alert.lastQuoteCurrency)} />
+        <KeyValueRow {...DETAIL_ROW} label="Session" value={alertSessionLabel(alert)} />
         {/* With no quote the reason above says why; the price and its distance wait for one. */}
         {basis ? <KeyValueRow {...DETAIL_ROW} label="Close date" value={alert.lastDailyClose ?? `Awaiting ${basis}`} /> : null}
         {reason ? null : <KeyValueRow {...DETAIL_ROW} label={alert.move ? "Move" : "Current"} value={formatCurrentPrice(alert, 24, { words: true })} />}
@@ -132,7 +139,7 @@ function AlertDetail({ alert, scrollRef }: { alert: AlertRule; scrollRef: RefObj
         {reason || alert.move ? null : <KeyValueRow {...DETAIL_ROW} label="Away" value={formatAlertDistance(alert)} />}
         {reason
           ? alert.lastCheckedAt ? <KeyValueRow {...DETAIL_ROW} label="Checked" value={relativeTime(alert.lastCheckedAt)} tone="muted" /> : null
-          : <KeyValueRow {...DETAIL_ROW} label="Quote" value={formatQuoteChecked(alert)} tone="muted" />}
+          : <KeyValueRow {...DETAIL_ROW} label="Quote" value={quoteAsOfText(alert)} tone="muted" />}
         {alert.triggeredAt ? <KeyValueRow {...DETAIL_ROW} label="Alerted" value={relativeTime(alert.triggeredAt)} /> : null}
         <KeyValueRow {...DETAIL_ROW} label="Armed" value={relativeTime(alert.armedAt ?? alert.createdAt)} tone="muted" />
         <KeyValueRow {...DETAIL_ROW} label="Created" value={isoUtc(alert.createdAt)} tone="muted" />
@@ -486,6 +493,8 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
         };
       case "condition":
         return { text: triggerLabel(alert) };
+      case "session":
+        return { text: alertSessionLabel(alert, true) };
       case "quote":
         return {
           text: formatQuoteChecked(alert),
@@ -499,7 +508,7 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
           color: colors.textDim,
         };
       case "created":
-        return { text: isoUtc(alert.createdAt).slice(0, 10), color: colors.textDim };
+        return { text: alertMinuteUtc(alert.createdAt), value: isoUtc(alert.createdAt), color: colors.textDim };
     }
   }, []);
 

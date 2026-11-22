@@ -41,6 +41,7 @@ import {
 import {
   FUTURES_BOARD_ROWS,
   FUTURES_SECTOR_LABELS,
+  futuresBoardCode,
   futuresBoardContract,
   getContractsBySector,
   type FuturesSector,
@@ -53,7 +54,9 @@ import {
   futuresBoardQuotes,
   futuresNoMatchFailure,
   futuresReturnBaseText,
+  futuresReturnGapNotes,
   futuresRowId,
+  futuresRowReturnGapText,
   futuresSessionQuote,
   type FuturesColumnId,
   type FuturesSortPreference,
@@ -64,6 +67,7 @@ import {
   DEFAULT_FUTURES_COLUMN_IDS,
   FUTURES_COLUMN_DEFS,
   FUTURES_REPORT_COLUMNS,
+  futuresClosePriceKind,
   renderFuturesCell,
   resolveFuturesColumnIds,
   usesSessionText,
@@ -173,10 +177,26 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
     label: "Return base dates",
     getMetadata: () => ({ text: `Returns: ${[...returnBases.values()].join("; ")}.` }),
   } : null);
+  // Why a drawn return is a dash, every row that has one: a contract listed since the base close, or one whose history starts later.
+  const drawnHorizons = useMemo(() => columns.flatMap((column) => FUTURES_RETURN_COLUMNS[column.id] ?? []), [columns]);
+  const returnGapNotes = useMemo(() => futuresReturnGapNotes(listedContracts, returns, drawnHorizons),
+    [drawnHorizons, listedContracts, returns]);
+  useRemoteUiNode(returnGapNotes.length > 0 ? {
+    role: "report-notice",
+    label: "Empty returns",
+    getMetadata: () => ({ text: returnGapNotes.join(" ") }),
+  } : null);
   // The unit a price counts and the month a symbol rolled past, as `quote` reads them.
   const terms = useFuturesBoardTerms(listedContracts, !!dataProvider && paneVisible);
   // Each move measured as `quote` measures it with the row's terms, so a row never flips between references at the reopen.
   const shownQuotes = useMemo(() => futuresBoardQuotes(quotes, terms), [quotes, terms]);
+  const showPriceBasis = listedContracts.some((contract) => futuresClosePriceKind(contract, shownQuotes.get(contract.symbol)?.quote) != null);
+  const priceBasisNote = showPriceBasis ? "Price: S = settlement, T = last trade (settlement unconfirmed)" : null;
+  useRemoteUiNode(priceBasisNote ? {
+    role: "report-notice",
+    label: "Price basis",
+    getMetadata: () => ({ text: priceBasisNote }),
+  } : null);
 
   const visibleCollapsed = effectiveCollapsedSectors(collapsedSectors, searchQuery);
   const rows = useMemo(
@@ -212,7 +232,7 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
     return [
       state?.loading, state?.stale,
       quote?.price, quote?.change, quote?.changePercent, quote?.previousClose, quote?.volume, quote?.lastUpdated, quote?.symbol, quote?.name,
-      futuresSessionQuote(row.contract, quote)?.marketState,
+      futuresSessionQuote(row.contract, quote)?.marketState, quote?.futuresPriceKind,
       values?.loading, ...Object.values(values?.values ?? {}),
       contract?.loading, contract?.terms?.spec?.unit, contract?.terms?.deliveryMonth, contract?.terms?.nearest?.contract,
       contract?.terms?.nearest?.lastTrade,
@@ -269,6 +289,9 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
   const [picked, setPicked] = useState(false);
   const [, setCurveRoot] = usePaneSettingValue<string | undefined>("root", undefined);
   const selectedRow = rows.find((row) => row.type === "row" && futuresRowId(row) === selectedId);
+  // The selected row's empty returns, and why, beside the board's status.
+  const selectedGapText = selectedRow?.type === "row" ? futuresRowReturnGapText(returns.get(selectedRow.contract.symbol)?.gaps, drawnHorizons) : null;
+  const selectedReturnGap = selectedRow?.type === "row" && selectedGapText ? `${futuresBoardCode(selectedRow.contract)} ${selectedGapText}` : null;
   const marketInView = paneInstance?.paneId === COMMODITIES_ENERGY_PANE_ID && (picked || searchQuery.trim()) && selectedRow?.type === "row"
     ? selectedRow.contract.code : null;
   useEffect(() => {
@@ -333,6 +356,8 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
     const info: PaneFooterSegment[] = quoteBoardFooterInfo(status);
     if (errorMessage) info.push({ id: "reason", parts: [{ text: errorMessage, tone: "warning" }] });
     if (quoteDelay) info.push(quoteDelay);
+    if (priceBasisNote) info.push({ id: "price-basis", parts: [{ text: priceBasisNote, tone: "muted" }] });
+    if (selectedReturnGap) info.push({ id: "return-gap", parts: [{ text: selectedReturnGap, tone: "muted" }] });
     return {
       info,
       hints: [{ id: "search", key: "/", label: "search", onPress: focusSearch }],
@@ -342,10 +367,13 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
     focusSearch,
     noQuotes,
     quoteDelay,
+    priceBasisNote,
+    selectedReturnGap,
     status.latestTs,
     status.loading,
     status.savedAt,
     status.stale,
+    status.staleSymbol,
     status.unavailable,
   ]);
 

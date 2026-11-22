@@ -3,6 +3,7 @@ import type { TapeRange } from "../../../api-client/tape";
 import type { HeadlessBundleResult, HeadlessPaneContext } from "../../../types/headless";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import { timeSalesHeadless } from "./headless";
+import { inTapeRange } from "./window";
 import { tapeFixture } from "./test-fixture";
 import { headlessReportTables } from "../../../cli/pane-functions/headless";
 import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
@@ -105,10 +106,12 @@ test("--from and --to read that window of the served session, oldest first, sayi
   // The latest tape names the session; the window is asked for in instants on its date.
   expect(asked).toEqual([undefined, { from: "2026-10-16T14:30:00.000Z", to: "2026-10-16T14:35:00.000Z" }]);
   expect(result.sections[0]!.title).toBe("Window");
-  expect(tradeTimes(result)).toEqual(["2026-10-16T14:30:05.000000001Z", "2026-10-16T14:31:00.000000001Z"]);
+  // A full page ends before its last stamp, whose prints the next page lists whole.
+  expect(tradeTimes(result)).toEqual(["2026-10-16T14:30:05.000000001Z"]);
   expect(result.notes?.slice(0, -1)).toEqual([
     "Window: Fri 16 Oct 2026, 10:30:00 ET (14:30:00 UTC) to 10:35:00 ET (14:35:00 UTC).",
-    "The window holds more than 1000 trades: these are the first, through 10:31:00 ET (14:31:00 UTC); start --from there to read on.",
+    "The window holds more than 1000 trades: these are the first 1, through 10:30:05.000000001 ET (14:30:05.000000001 UTC). "
+      + "Read on from the next: fn TAS HYG --from 2026-10-16T14:31:00.000000001Z --to 10:35",
   ]);
   expect(result.notes?.at(-1)).toStartWith("Window low and high: every print listed");
   expect(result.metadata).toMatchObject({ window: { from: "2026-10-16T14:30:00.000Z", to: "2026-10-16T14:35:00.000Z" } });
@@ -123,4 +126,72 @@ test("a server that serves only its latest tape gives the window's part of it, d
   expect(tradeTimes(result)).toEqual(["2026-10-16T14:31:00.000000001Z", "2026-10-16T14:32:00.000000001Z"]);
   expect(result.notes).toContain("This server serves only its latest tape, from 10:31:00 ET (14:31:00 UTC): prints before it are not listed.");
   expect(result.metadata).toMatchObject({ asOf: "2026-10-16T14:32:00.000000001Z", observedFrom: "2026-10-16T14:31:00.000000001Z" });
+});
+
+test("reading on from each page's next start lists every print of a busy second once, trades for TAS and quotes for QR", async () => {
+  // Fri 20 Nov 2026 at 15:55:00 New York: more prints in its first half second than a page holds, two sharing each boundary stamp.
+  const at = (ns: string) => `2026-11-20T20:55:00.${ns}Z`;
+  const stamps = ["003000000", "003000000", "006000000", "006000000", "392451122", "392451123", "392451123", "392600000", "500000000"].map(at);
+  const trades = stamps.map((timestamp, index) => ({ ...tapeFixture().trades[0]!, id: String(index + 1), timestamp }));
+  const quotes = stamps.map((timestamp, index) => ({ ...tapeFixture().quotes[0]!, timestamp, bidSize: index + 1 }));
+  const latest = { ...tapeFixture(), symbol: "SPY", exchange: "ARCA", status: "available" as const, gaps: [],
+    session: { date: "2026-11-20", high: 718.29, low: 686.75, asOf: "2026-11-20T21:00:00.000Z" }, generatedAt: "2026-11-21T01:15:00.000Z",
+    capacity: { trades: 3, quotes: 3 }, trades: trades.slice(-1), quotes: quotes.slice(-1) };
+  const asked: TapeRange[] = [];
+  const context = createTestHeadlessContext({
+    resolveInstrument: async () => ({ symbol: "SPY", exchange: "NYSEARCA" }),
+    apiClient: {
+      getCloudTape: async (_symbol: string, _exchange: string, _signal?: AbortSignal, range?: TapeRange) => {
+        if (!range) return latest;
+        asked.push(range);
+        // The server: the window's first prints from its start, to the nanosecond, a page of each at most.
+        const page = <T extends { timestamp: string }>(rows: T[]) => rows.filter((row) => inTapeRange(row.timestamp, range));
+        const [inTrades, inQuotes] = [page(trades), page(quotes)];
+        return { ...latest, window: { ...range, truncated: { trades: inTrades.length > 3, quotes: inQuotes.length > 3 } },
+          trades: inTrades.slice(0, 3), quotes: inQuotes.slice(0, 3) };
+      },
+    } as unknown as HeadlessPaneContext["apiClient"],
+  });
+  for (const [view, section] of [["trades", "Trades"], ["quotes", "NBBO"]] as const) {
+    const listed: string[] = [];
+    let from = "15:55";
+    for (let read = 0; read < 10 && from; read += 1) {
+      const args = createTestHeadlessArgs({ argument: "SPY", symbols: ["SPY"], options: { limit: 1000, from, to: "15:57", ...(view === "quotes" ? { tab: "quotes" } : {}) } });
+      const result = await timeSalesHeadless.load(args, context) as HeadlessBundleResult;
+      const rows = result.sections.find((entry) => entry.title === section)!.rows!;
+      listed.push(...rows.map((row) => `${row.timestamp}#${view === "trades" ? row.id : row.bidSize}`));
+      const next = result.notes?.find((note) => note.includes("Read on from the next"));
+      if (next) expect(next, view).toContain(view === "quotes" ? "fn QR SPY" : "fn TAS SPY");
+      from = next ? /--from (\S+)/.exec(next)![1]! : "";
+    }
+    // Every print once, in order: none repeated from the page before, none skipped at a boundary.
+    expect(listed, view).toEqual(stamps.map((timestamp, index) => `${timestamp}#${index + 1}`));
+  }
+  // A server from before exact windows reads from the start of the second: no print repeats, and the prints its page
+  // cannot reach are named, with the next second to read on from.
+  const floored = createTestHeadlessContext({
+    resolveInstrument: async () => ({ symbol: "SPY", exchange: "NYSEARCA" }),
+    apiClient: {
+      getCloudTape: async (_symbol: string, _exchange: string, _signal?: AbortSignal, range?: TapeRange) => {
+        if (!range) return latest;
+        const window = { from: `${range.from.slice(0, 19)}.000Z`, to: range.to };
+        const page = <T extends { timestamp: string }>(rows: T[]) => rows.filter((row) => inTapeRange(row.timestamp, window));
+        const [inTrades, inQuotes] = [page(trades), page(quotes)];
+        return { ...latest, window: { ...window, truncated: { trades: inTrades.length > 3, quotes: inQuotes.length > 3 } },
+          trades: inTrades.slice(0, 3), quotes: inQuotes.slice(0, 3) };
+      },
+    } as unknown as HeadlessPaneContext["apiClient"],
+  });
+  const read = async (from: string) => await timeSalesHeadless.load(createTestHeadlessArgs({ argument: "SPY", symbols: ["SPY"],
+    options: { limit: 1000, from, to: "15:57" } }), floored) as HeadlessBundleResult;
+  const second = await read(at("006000000"));
+  expect(second.sections.find((entry) => entry.title === "Trades")!.rows!.map((row) => row.id)).toEqual(["3"]);
+  expect(second.notes).toContain("The window holds more than 3 trades: these are the first 1, through 15:55:00.006000000 ET (20:55:00.006000000 UTC). "
+    + "Any trades after these and before 15:55:01 ET (20:55:01 UTC) cannot be read from it, as it reads a window from the start of its second. "
+    + "Read on from that second: fn TAS SPY --from 2026-11-20T20:55:01Z --to 15:57");
+  const beyond = await read(at("392451123"));
+  expect(beyond.sections.find((entry) => entry.title === "Trades")!.rows).toEqual([]);
+  expect(beyond.notes!.find((note) => note.startsWith("This server's page of 3 trades"))).toBe("This server's page of 3 trades ends before the window's start: "
+    + "any from 15:55:00.392451123 ET (20:55:00.392451123 UTC) and before 15:55:01 ET (20:55:01 UTC) cannot be read from it, as it reads a window "
+    + "from the start of its second. Read on from that second: fn TAS SPY --from 2026-11-20T20:55:01Z --to 15:57");
 });

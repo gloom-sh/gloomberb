@@ -14,7 +14,7 @@ import { useCompositeViewport } from "./use-composite-viewport";
 import { CompositePanelSurface } from "./panel-surface";
 import { MINIMUM_AXIS_LABEL_WIDTH, compositeAxisLabelWidth } from "./panel-labels";
 import { AXIS_DOUBLE_PRESS_MS, isVerticalWheelDirection } from "./panel-gestures";
-import { type ChartToolSpan, CHART_DRAWING_COLORS, isDrawingTool, type ChartDrawing } from "./tools";
+import { type ChartToolSpan, isDrawingTool, type ChartDrawing } from "./tools";
 import { ChartDrawingStore, NO_DRAWINGS } from "./drawing-store";
 import { CompositeLegend } from "./legend";
 import { compositeRangeStatisticsLevels } from "./range-statistics";
@@ -36,7 +36,8 @@ import {
 import { usePaneFocused } from "../../../state/app/activity";
 import { useTabCursorLink } from "../../../state/app/tab-cursor";
 import { useThemeColors, useThemeId } from "../../../theme/theme-context";
-import { themedSeriesColor, themeSeriesColors } from "../../../theme/series-colors";
+import { themedSeriesColor } from "../../../theme/series-colors";
+import { CHART_PALETTE, chartPaletteColor } from "../../../theme/chart-palette";
 import { themeKeysDirection } from "../../../theme/themes";
 import { assignSeriesLineCues } from "./series-cues";
 import { chartSurfaceBackground, usePaneSurface } from "../../layout/pane/surface";
@@ -130,16 +131,24 @@ const RESTORE_PANELS_LABEL = "All panels";
 /** The time axis row where a drag on it zooms time. */
 const TIME_AXIS_ROW = { ...DESKTOP_FULL_ROW, cursor: "ew-resize" } as const;
 
-/** Default-palette series in the theme's own palette, where it has one; the same list otherwise. */
+/**
+ * Each series in the colour the theme draws it: a default-palette slot in the
+ * theme's own palette where it has one, a colour picked from the chart's
+ * palette lifted to read on its page. The same list when none moves.
+ */
 function useThemedSeriesList(list: ResolvedSeries[], themeId: string): ResolvedSeries[];
 function useThemedSeriesList(list: ResolvedSeries[] | undefined, themeId: string): ResolvedSeries[] | undefined;
 function useThemedSeriesList(list: ResolvedSeries[] | undefined, themeId: string): ResolvedSeries[] | undefined {
   return useMemo(() => {
-    if (!list || !themeSeriesColors(themeId)) return list;
-    return list.map((entry) => {
-      const color = themedSeriesColor(entry.color, themeId);
-      return color === entry.color ? entry : { ...entry, color };
+    if (!list) return list;
+    let moved = false;
+    const themed = list.map((entry) => {
+      const color = chartPaletteColor(themedSeriesColor(entry.color, themeId), themeId);
+      if (color === entry.color) return entry;
+      moved = true;
+      return { ...entry, color };
     });
+    return moved ? themed : list;
   }, [list, themeId]);
 }
 
@@ -252,7 +261,7 @@ function ThemedCompositeChart({
   const paneInstanceId = useOptionalPaneInstanceId();
   const [drawings, setDrawings] = useState<readonly ChartDrawing[]>(NO_DRAWINGS);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
-  const [drawColor, setDrawColor] = useState<string>(CHART_DRAWING_COLORS[0]);
+  const [drawColor, setDrawColor] = useState<string>(CHART_PALETTE[0]);
   const addDrawing = useCallback((drawing: ChartDrawing) => {
     setDrawings((current) => [...current, drawing]);
     setSelectedDrawingId(drawing.id);

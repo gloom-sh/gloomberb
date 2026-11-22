@@ -18,6 +18,7 @@ import {
   paneTitleText,
 } from "./colors";
 import { readsAtBodyContrast, selectedCellColor } from "./tone-contrast";
+import { CHART_PALETTE, chartPaletteColor, nextChartPaletteColor } from "./chart-palette";
 import { contrastRatio } from "./color-utils";
 import { INACTIVE_SELECTION_MIN, INACTIVE_SELECTION_TEXT_MIN } from "./ui-tokens";
 import { DEFAULT_THEME, getThemeIds, isDarkTheme, listThemes, resolveThemeId, themes, TONE_TEXT_MIN } from "./themes";
@@ -161,6 +162,26 @@ describe("theme contrast", () => {
       assertMinContrast(id, "commandBarAccentText/panel", commandBarAccentText(), commandBarPanelBg(), SUBTLE_TEXT_MIN);
       assertMinContrast(id, "commandBarSelectedText/selected", commandBarSelectedText(), commandBarSelectedBg(), BODY_TEXT_MIN);
     }
+  });
+
+  test("draws every colour of the chart palette readable on the page and panels, and still five apart", () => {
+    for (const [id, theme] of Object.entries(themes)) {
+      const drawn = CHART_PALETTE.map((color) => chartPaletteColor(color, id));
+      for (const [index, color] of drawn.entries()) {
+        assertMinContrast(id, `chartPalette${index}/bg`, color, theme.bg, SUBTLE_TEXT_MIN);
+        assertMinContrast(id, `chartPalette${index}/panel`, color, theme.panel, SUBTLE_TEXT_MIN);
+      }
+      expect(new Set(drawn).size).toBe(CHART_PALETTE.length);
+    }
+    // Any other colour is the caller's: a default slot keeps following its theme's own mapping.
+    expect(chartPaletteColor("#4dabf7", "paper")).toBe("#4dabf7");
+  });
+
+  test("steps a pick through the palette, by way of Auto where there is one", () => {
+    expect(nextChartPaletteColor(undefined, true)).toBe(CHART_PALETTE[0]);
+    expect(nextChartPaletteColor(CHART_PALETTE.at(-1), true)).toBeUndefined();
+    expect(nextChartPaletteColor(CHART_PALETTE.at(-1), false)).toBe(CHART_PALETTE[0]);
+    expect(nextChartPaletteColor("#123456", true)).toBe(CHART_PALETTE[0]);
   });
 
   test("keeps chart indicator colors readable and separate from price line colors", () => {

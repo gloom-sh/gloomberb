@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "../../../api-client";
 import { Box, Text, type InputRenderable, type TextareaRenderable } from "../../../ui";
 import { useShortcut } from "../../../react/input";
+import { useRemoteUiNode } from "../../../remote/semantic-tree";
+import { usePaneInstance } from "../../../state/app/context";
 import { isPlainKey } from "../../../utils/keyboard";
 import type { PaneProps } from "../../../types/plugin";
 import { colors } from "../../../theme/colors";
@@ -27,7 +29,7 @@ import {
   resolveNoteConflict,
   useNoteTeams,
 } from "./owner";
-import { NoteConflictError, type NoteOwner, noteOwnerKey, type NotesStoreRegistry } from "./store";
+import { NoteConflictError, type NoteOwner, noteOwnerKey, type NotesStore, type NotesStoreRegistry } from "./store";
 import { useSyncedText } from "./text-state";
 
 const notesLog = debugLog.createLogger("notes");
@@ -37,11 +39,24 @@ interface OwnedQuickNote extends QuickNoteEntry {
   owner: NoteOwner;
 }
 
+function snapshotStore(notes: Array<QuickNoteEntry & { text: string }>): NotesStore {
+  return {
+    owner: { kind: "user" }, readOnly: true,
+    load: async (id) => notes.find((note) => note.id === id)?.text ?? "",
+    loadQuickNotesIndex: async () => notes.map(({ text: _text, ...entry }) => entry),
+    list: async () => notes.map(({ id, text, updatedAt }) => ({ key: id, text, updatedAt: updatedAt ?? 0 })),
+    quickNoteKey: (id) => id,
+    save: async () => {}, delete: async () => {}, saveQuickNotesIndex: async () => {},
+  };
+}
+
 export function createQuickNotesPane(registry: NotesStoreRegistry) {
   return function QuickNotesPane({ focused, width }: PaneProps) {
     const dialog = useDialog();
     const { notify } = usePluginAppActions();
     const teams = useNoteTeams();
+    const captured = usePaneInstance()?.settings?.localNotesSnapshot as Array<QuickNoteEntry & { text: string }> | undefined;
+    const capturedStore = useMemo(() => captured ? snapshotStore(captured) : null, [captured]);
     const teamKey = teams.map((team) => team.id).join(",");
     const owners = useMemo<NoteOwner[]>(
       () => [{ kind: "user" }, ...teams.map((team) => ({ kind: "team" as const, teamId: team.id }))],
@@ -49,7 +64,7 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
       // eslint-disable-next-line react-hooks/exhaustive-deps
       [teamKey],
     );
-    const storeFor = useCallback((owner: NoteOwner) => registry.forOwner(owner), []);
+    const storeFor = useCallback((owner: NoteOwner) => owner.kind === "user" && capturedStore ? capturedStore : registry.forOwner(owner), [capturedStore]);
     const tabOwner = useCallback((tabId: string | null, list: readonly OwnedQuickNote[]): NoteOwner => (
       list.find((tab) => tab.id === tabId)?.owner ?? { kind: "user" }
     ), []);
@@ -72,6 +87,7 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
     const unreadableIndexRef = useRef(new Set<string>());
     const [indexError, setIndexError] = useState<{ message: string; owners: NoteOwner[] } | null>(null);
     const activeTab = tabs.find((tab) => tab.id === activeTabId);
+    useRemoteUiNode(activeTab && noteText.trim() ? { role: "report-note", label: "Quick note" } : null);
     // Closing a tab deletes its note, which a teammate's team note refuses.
     const mayDelete = useCallback((tab: OwnedQuickNote) => (
       mayDeleteNote(tab, teams, apiClient.getCurrentUser()?.id ?? null)

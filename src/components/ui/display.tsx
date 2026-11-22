@@ -6,6 +6,7 @@ import { useThemeColors } from "../../theme/theme-context";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../ui";
 import { truncateToDisplayWidth } from "../../utils/format";
 import { clipKeepingEnd } from "./table-layout";
+import { NATIVE_CLIP_STYLE } from "./clip-style";
 import { CountryFlagLead } from "./country-flag";
 import { usePaneLinkMenuEntry } from "./external-link";
 import { ICON_GLYPHS, Icon, type IconName } from "./icon";
@@ -30,9 +31,9 @@ export function SectionHeading({ title, marginTop = 0, width, wrap = false }: Se
   const text = translated === title ? titleCase(title) : translated;
   return (
     <Box height={wrap ? undefined : 1} marginTop={marginTop} width={width} overflow="hidden" data-gloom-ui="section-heading">
-      {nativePaneChrome && !wrap ? (
+      {nativePaneChrome ? (
         // The desktop cuts a long heading where its box ends, not at a count of columns.
-        <Text fg={colors.textBright} attributes={TextAttributes.BOLD} style={{ ...NATIVE_CLIP_STYLE, flex: "1 1 auto" }}>{text}</Text>
+        <Text fg={colors.textBright} attributes={TextAttributes.BOLD} wrapText={wrap} style={wrap ? undefined : { ...NATIVE_CLIP_STYLE, flex: "1 1 auto" }}>{text}</Text>
       ) : (
         <Text fg={colors.textBright} attributes={TextAttributes.BOLD} wrapText={wrap}>
           {wrap || width === undefined ? text : truncateToDisplayWidth(text, width)}
@@ -76,12 +77,7 @@ export interface KeyValueRowProps {
   country?: string | null;
 }
 
-/**
- * One line of text that ends in an ellipsis where its box ends, in CSS, on the
- * desktop and the web: the browser clips it at the width it is laid out to,
- * which a count of columns cannot match (a cell is wider than a glyph).
- */
-export const NATIVE_CLIP_STYLE = { display: "block", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "pre" } as const;
+export { NATIVE_CLIP_STYLE };
 
 export interface ClippedTextProps {
   text: string;
@@ -219,6 +215,12 @@ export interface BadgeProps {
   icon?: IconName;
   /** False for a label that is not English to translate, such as a username. */
   translate?: boolean;
+  /**
+   * The most cells the chip takes on the desktop and the web, where CSS cuts
+   * its label to fit with an ellipsis, as it does when its row runs out of
+   * room. The terminal draws the label as its caller cut it.
+   */
+  maxWidth?: number;
 }
 
 /**
@@ -240,9 +242,16 @@ const NATIVE_BADGE_TEXT_STYLE = { fontWeight: "var(--gloom-weight-regular)" };
  * whole line, as ticker chips do; a browser without `text-box` keeps it too.
  */
 const NATIVE_LOWERCASE_BADGE_TEXT_STYLE = { ...NATIVE_BADGE_TEXT_STYLE, textBox: "trim-both ex alphabetic" };
+/**
+ * A label cut where its chip ends (`maxWidth`). Its box is cut to x-height and
+ * baseline when it has lowercase letters, so the clip would take their tops and
+ * tails too: room above and below holds them, and the margin gives it back, so
+ * the label sits where an uncut one does.
+ */
+const NATIVE_CLIPPED_BADGE_TEXT_STYLE = { ...NATIVE_CLIP_STYLE, paddingBlock: "0.5em", marginBlock: "-0.5em" };
 const LOWERCASE = /\p{Ll}/u;
 
-export function Badge({ label, tone = "neutral", color, variant = "subtle", icon, translate = true }: BadgeProps) {
+export function Badge({ label, tone = "neutral", color, variant = "subtle", icon, translate = true, maxWidth }: BadgeProps) {
   const colors = useThemeColors();
   const { nativePaneChrome } = useUiCapabilities();
   const accent = color ?? (tone === "neutral" ? colors.textDim : tone === "accent" ? colors.borderFocused : colors[tone]);
@@ -255,19 +264,24 @@ export function Badge({ label, tone = "neutral", color, variant = "subtle", icon
   const nativeIcon = nativePaneChrome && icon;
   // The terminal draws the icon's glyph as text in front of the label.
   const shown = icon && !nativePaneChrome ? [ICON_GLYPHS[icon], text].filter(Boolean).join(" ") : text;
+  const textStyle = LOWERCASE.test(text) ? NATIVE_LOWERCASE_BADGE_TEXT_STYLE : NATIVE_BADGE_TEXT_STYLE;
   const chip = (
     <Box height={nativePaneChrome ? undefined : 1} paddingX={1} backgroundColor={background}
       data-gloom-ui="badge" {...(nativeIcon ? { flexDirection: "row", alignItems: "center" } as const : {})}
       justifyContent={nativePaneChrome && !nativeIcon ? "center" : undefined}
+      {...(nativePaneChrome && maxWidth !== undefined ? { minWidth: 0, overflow: "hidden" } as const : {})}
       style={nativePaneChrome ? nativeIcon ? NATIVE_ICON_BADGE_STYLE : NATIVE_BADGE_STYLE : undefined}>
       {nativeIcon ? <Icon name={nativeIcon} color={foreground} fullHeight /> : null}
       {shown || !nativeIcon ? (
         <Text fg={foreground} attributes={TextAttributes.BOLD}
-          style={nativePaneChrome ? LOWERCASE.test(text) ? NATIVE_LOWERCASE_BADGE_TEXT_STYLE : NATIVE_BADGE_TEXT_STYLE : undefined}>{shown}</Text>
+          style={!nativePaneChrome ? undefined : maxWidth !== undefined ? { ...textStyle, ...NATIVE_CLIPPED_BADGE_TEXT_STYLE } : textStyle}>{shown}</Text>
       ) : null}
     </Box>
   );
-  return nativePaneChrome ? <Box height={1} flexShrink={0} justifyContent="center">{chip}</Box> : chip;
+  if (!nativePaneChrome) return chip;
+  return maxWidth === undefined
+    ? <Box height={1} flexShrink={0} justifyContent="center">{chip}</Box>
+    : <Box height={1} flexShrink={1} minWidth={0} maxWidth={maxWidth} justifyContent="center">{chip}</Box>;
 }
 
 export interface DividerProps {

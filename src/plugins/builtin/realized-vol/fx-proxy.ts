@@ -64,13 +64,16 @@ function usableExpiries(surface: SurfaceSnapshot): FxVolProxy["expiries"] {
 
 /** Null for a symbol that is no FX pair or currency future, or a pair no single fund stands in for. */
 export async function loadFxVolProxy(
-  request: { symbol: string; exchange?: string; signal?: AbortSignal },
+  request: { symbol: string; exchange?: string; signal?: AbortSignal; preloadCatalogue?: boolean },
   dependencies: FxVolProxyDependencies = { iv: apiClient, surface: createSurfaceDependencies() },
 ): Promise<FxVolProxy | null> {
   const pair = fxVolatilityPair(request.symbol, request.exchange);
   const fund = pair ? fxVolatilityProxyFund(pair) : null;
   if (!pair || !fund) return null;
   if (request.signal?.aborted) throw abortError(CANCELLED);
+  const instrument = { symbol: fund };
+  const catalogue = request.preloadCatalogue ? Promise.resolve().then(() => dependencies.surface.loadOptions({ instrument }))
+    .then((entry) => () => entry, (error: unknown) => () => { throw error; }) : null;
   let payload: IvHistoryPayload;
   try {
     payload = await loadIvHistory(fund, { signal: request.signal, days: 40 }, dependencies.iv);
@@ -84,7 +87,13 @@ export async function loadFxVolProxy(
   let error: string | null = null;
   if (spot != null) {
     try {
-      expiries = usableExpiries(await loadVolatilitySurface({ instrument: { symbol: fund }, spot, signal: request.signal }, dependencies.surface));
+      const surface: SurfaceLoaderDependencies = catalogue ? {
+        ...dependencies.surface,
+        loadOptions: (query, options) => (
+          query.expirationDate == null ? catalogue.then((read) => read()) : dependencies.surface.loadOptions(query, options)
+        ),
+      } : dependencies.surface;
+      expiries = usableExpiries(await loadVolatilitySurface({ instrument, spot, signal: request.signal }, surface));
     } catch (failure) {
       if (request.signal?.aborted) throw abortError(CANCELLED);
       error = `${fund} options: ${errorMessage(failure)}`;

@@ -19,6 +19,7 @@ import type { CachePolicyMap } from "./persistence";
 import type { CachedQueryHandle } from "../data/cached-query";
 import type { TickerChanges } from "./ticker-changes";
 import type { IssuerListings } from "./issuer-listings";
+import type { StreamTickRange } from "../market-data/quotes/tick-range";
 
 export type CachedAssetMethod = "getExchangeRate" | "getHolders" | "getAnalystResearch" | "getCorporateActions"
   | "getOptionsChain" | "getSecFilings" | "getSecFilingsPage" | "getSecFilingDocuments" | "getSecFilingContent" | "getArticleSummary";
@@ -472,9 +473,14 @@ export interface AssetDataProvider {
     context?: MarketDataRequestContext,
   ): Promise<ManualChartResolution[]> | ManualChartResolution[];
   getOptionsChain?(ticker: string, exchange?: string, expirationDate?: number, context?: MarketDataRequestContext): Promise<OptionsChain>;
+  /**
+   * `ticks`, when given, is the range of the ticks `quote` is the newest of,
+   * from a hop that passes on only the newest (a desktop window's quote batch),
+   * so a reader that judges every tick still sees the ones it dropped.
+   */
   subscribeQuotes?(
     targets: QuoteSubscriptionTarget[],
-    onQuote: (target: QuoteSubscriptionTarget, quote: Quote) => void,
+    onQuote: (target: QuoteSubscriptionTarget, quote: Quote, ticks?: StreamTickRange) => void,
   ): () => void;
 }
 

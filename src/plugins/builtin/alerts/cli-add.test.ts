@@ -112,6 +112,28 @@ test("a price alert is kept for the listing quote prints, so one pair is one tar
   }
 });
 
+test("regular-only rules keep the listing but not an extended-hours baseline", async () => {
+  const regular = await addAlert(["AAPL", "above", "260", "--session", "regular"]);
+  const legacy = await addAlert(["AAPL", "above", "260"]);
+  const move = await addAlert(["AAPL", "up", "2%", "--session", "regular"]);
+  expect([regular.error, legacy.error, move.error]).toEqual([null, null, null]);
+  expect(regular.stored[0]).toMatchObject({ regularHoursOnly: true, lastQuoteExchange: "NASDAQ" });
+  expect(move.stored[0]).toMatchObject({ regularHoursOnly: true, move: true });
+  expect(regular.stored[0]).not.toHaveProperty("lastCheckedPrice");
+  expect(move.stored[0]).not.toHaveProperty("lastCheckedPrice");
+  expect(legacy.stored[0]).not.toHaveProperty("regularHoursOnly");
+  expect(legacy.stored[0]!.lastCheckedPrice).toBe(300);
+});
+
+test("earnings results can be saved before the next report is announced", async () => {
+  const dataProvider = Object.assign(cloud(), { getEarningsCalendar: async () => [] });
+  const added = await addAlert(["AAPL", "earnings", "results"], undefined, { dataProvider });
+  expect(added.error).toBeNull();
+  expect(added.events[0]).toMatchObject({ kind: "earnings_date" });
+  expect(added.events[0]).not.toHaveProperty("eventDate");
+  expect(added.printed?.options?.text?.(added.printed.result.data)).toContain("Waiting for the next earnings date to be published");
+});
+
 test("a symbol nothing quotes is refused and nothing is stored, with the nearest listing named when there is one", async () => {
   const unknown = await addAlert(["ZZZQQ9", "above", "1"]);
   expect(unknown.error).toContain("Not a ticker: ZZZQQ9.");
@@ -574,7 +596,9 @@ test("alerts list --csv keeps its columns in their order and adds when each aler
   await saveConfig(config);
 
   const csv = (await desk.run(["list"], { format: "csv" })).output.split("\n");
-  expect(csv[0]).toBe("id,kind,target,trigger,eventDate,status,lastCheckedPrice,triggeredAt,createdAt,listing,currency,lastReading,lastReadingAt");
+  // The columns it has always had keep their order; what a reading is measured against comes after them.
+  expect(csv[0]).toBe("id,kind,target,trigger,eventDate,status,lastCheckedPrice,triggeredAt,createdAt,listing,currency,lastReading,lastReadingAt,session,"
+    + "comparatorReading,benchmarkListing");
   const rows = csv.slice(1).map((line) => line.split(","));
   // Its first reading is the price it was added at, as the app checks it (after hours, the after-hours price).
   expect(rows[0]!.slice(1, 7)).toEqual(["Price", "AAPL", "above 260.00", "", "active", "300"]);
@@ -583,18 +607,48 @@ test("alerts list --csv keeps its columns in their order and adds when each aler
   // An after-hours print says so, as `quote` names it beside Last.
   expect(rows[0]![11]).toMatch(/^300\.00 USD after hours as of \d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z$/);
   expect(rows[0]![12]).toMatch(/Z$/);
-  expect(rows[1]!.slice(8)).toEqual(["2026-10-20T09:30:00Z", "LINK", "", "not checked yet", ""]);
+  expect(rows[1]!.slice(8)).toEqual(["2026-10-20T09:30:00Z", "LINK", "", "not checked yet", "", "Regular and extended", "", ""]);
   // Gloom Cloud checks a 52-week rule for a signed-in account; signed out, nothing has read it yet.
   expect((await desk.run(["add", "AAPL", "52-week", "high"])).error).toBeNull();
   const [, , , research] = (await desk.run(["list"], { format: "csv" })).output.split("\n");
   expect(research!.split(",").slice(1, 3)).toEqual(["52-week range", "AAPL · 52w high"]);
   expect(research!.split(",")[5]).toBe("needs sign-in");
-  expect(research!.split(",").slice(9)).toEqual(["AAPL", "", "not checked yet", ""]);
+  expect(research!.split(",").slice(9)).toEqual(["AAPL", "", "not checked yet", "", "", "", ""]);
 
   const text = (await desk.run(["list"])).output;
   expect(text).toContain("AAPL:NASDAQ (USD)");
   expect(text).toContain("not checked yet");
   expect(text).toContain("2026-10-20T09:30:00Z");
+});
+
+// An audit export of `XLE ma(50) crosses above ma(200)` and `EWJ/ACWI above 0.60` read 64.70 with no 200-day reading,
+// no benchmark listing and no session, and gave the ratio a currency.
+test("alerts list --csv gives a crossover's slow average and a ratio's benchmark listing, the session a daily rule reads, and no currency for a ratio", async () => {
+  const desk = await profile();
+  const close = Date.parse("2026-11-20T21:00:00Z");
+  const read = { lastDailyClose: "2026-11-20", lastQuoteUpdatedAt: close, lastCheckedAt: close, lastQuoteCurrency: "USD" };
+  const cross = { ...createAlert("XLE", "crosses", 0, "ARCA"), ...read, metric: { kind: "ma_cross", period: 50, slowPeriod: 200, direction: "above" },
+    lastCheckedPrice: 64.6964, lastCheckedTarget: 59.7339, status: "triggered" as const, triggeredAt: Date.parse("2026-11-20T21:04:05.250Z") };
+  const ratio = { ...createAlert("EWJ", "above", 0.6, "ARCA"), ...read, metric: { kind: "rs_ratio", benchmark: "ACWI", benchmarkExchange: "NASDAQ" },
+    lastCheckedPrice: 0.5851, lastCheckedTarget: 0.6 };
+  const config = await loadConfig(desk.dataDir);
+  config.pluginConfig.alerts = { ...config.pluginConfig.alerts, metricAlerts: JSON.stringify([cross]), relativeAlerts: JSON.stringify([ratio]) };
+  await saveConfig(config);
+
+  const [header, ...lines] = (await desk.run(["list"], { format: "csv" })).output.trim().split("\n");
+  const columns = header!.split(",");
+  const cell = (line: string, column: string) => line.split(",")[columns.indexOf(column)];
+  const [crossLine, ratioLine] = [lines.find((line) => line.startsWith(cross.id))!, lines.find((line) => line.startsWith(ratio.id))!];
+  expect(cell(crossLine, "lastReading")).toBe("64.70 USD on the 2026-11-20 close");
+  expect(cell(crossLine, "comparatorReading")).toBe("59.73 USD on the 2026-11-20 close");
+  expect(cell(crossLine, "currency")).toBe("USD");
+  // When it went off, to the second in UTC as createdAt is, never an epoch count.
+  expect(cell(crossLine, "triggeredAt")).toBe("2026-11-20T21:04:05Z");
+  expect(cell(ratioLine, "benchmarkListing")).toBe("ACWI:NASDAQ");
+  expect(cell(ratioLine, "currency")).toBe("");
+  expect(cell(ratioLine, "lastReading")).toBe("0.5851 on the 2026-11-20 close");
+  // A daily close is the regular session's, never an extended print.
+  for (const line of [crossLine, ratioLine]) expect(cell(line, "session")).toBe("Regular hours only");
 });
 
 test("an alert only a signed-in account gets checked is saved signed out and reads needs sign-in until a session is saved", async () => {
@@ -626,28 +680,34 @@ test("an alert only a signed-in account gets checked is saved signed out and rea
   expect((await desk.run(["add", "AAPL", "filing", "8-K"])).output).not.toContain("needs sign-in");
 });
 
-/** A signed-out flow alert read "needs sign-in", though a free sign-in would never arm it: it is checked only with Pro. */
-test("an options flow alert saved without Pro reads needs Pro, and list keeps the Pro note add prints", async () => {
+test("alerts checked only with Pro keep that requirement from save to list, distinct from sign-in", async () => {
   const desk = await profile();
-  const added = await desk.run(["add", "AAPL", "flow", "1m"]);
-  expect(added.error).toBeNull();
-  expect(added.printed!.result.data.status).toBe("needs Pro");
-  expect(added.output).toContain("on Gloom Pro");
-  expect(added.output).toContain("Checked only with Pro. Free: OMON chain, price and move alerts.");
-  expect(added.output).not.toContain("sign up free");
+  const commands = [
+    ["AAPL", "flow", "1m"],
+    ["AAPL", "catalyst"],
+    ["AAPL", "hiring", "slowing"],
+    ["perps", "hyperliquid:default:BTC", "funding", "above", "0.05%"],
+  ];
+  for (const args of commands) {
+    const added = await desk.run(["add", ...args]);
+    expect(added.error).toBeNull();
+    expect(added.printed!.result.data.status).toBe("needs Pro");
+    expect(added.output).toContain("Checked only with Pro.");
+    expect(added.output).not.toContain("sign up free");
+  }
   // A rule a sign-in alone arms still says sign-in.
   await desk.run(["add", "AAPL", "filing", "10-Q"]);
 
   const list = await desk.run(["list"], { format: "csv" });
-  expect(list.output.split("\n").slice(1).map((line) => line.split(",")[5])).toEqual(["needs Pro", "needs sign-in"]);
-  expect(list.printed!.result.warnings).toContain("1 event alert needs Pro (options flow). Free: OMON chain, price and move alerts.");
+  expect(list.output.split("\n").slice(1).map((line) => line.split(",")[5])).toEqual([...commands.map(() => "needs Pro"), "needs sign-in"]);
+  expect(list.printed!.result.warnings?.some((warning) => warning.startsWith("4 event alerts need Pro"))).toBe(true);
 
   desk.signIn();
   setCloudApiFetchTransport(async () => { throw new TypeError("fetch failed"); });
   // Signed in, with no account loaded to say its plan, the rule is active and the list still says it is Pro.
   const signedIn = await desk.run(["list"], { format: "csv" });
   expect(signedIn.output.split("\n")[1]!.split(",")[5]).toBe("active");
-  expect(signedIn.printed!.result.warnings).toContain("Options flow alerts are checked only with Pro. Free: OMON chain, price and move alerts.");
+  expect(signedIn.printed!.result.warnings?.some((warning) => warning.includes("alerts are checked only with Pro"))).toBe(true);
 });
 
 // `alerts add BRK.B filing 13F` was refused with the list of filing forms.

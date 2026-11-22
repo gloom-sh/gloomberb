@@ -101,14 +101,15 @@ test("quote marks each stale row in its Feed cell, as many as the closing line c
   expect(lines.find((line) => line.startsWith("7203:JPX"))).toMatch(/\bstale\b/);
   // Whatever the clock makes of the other row, the cells and the count agree.
   const marked = lines.filter((line) => /^\S+ .*\bstale\b/.test(line) && !line.startsWith("Source:")).length;
-  const counted = Number(/(\d+) of 2 stale/.exec(text)?.[1] ?? (/\bstale\b/.test(lines.at(-1) ?? "") ? 2 : 0));
+  const footer = lines.at(-1) ?? "";
+  const counted = /\b7203\.T stale\b/.test(footer) ? 1 : /\bstale\b/.test(footer) ? 2 : 0;
   expect(marked).toBe(counted);
   // JSON keeps the quote as sent.
   expect((result.data as Array<{ quote: Quote }>)[0]!.quote.dataSource).toBe("delayed");
 });
 
-test("ticker names the book out of regular hours: the extended session's, or a closed market's last quote; an open book stays bare", async () => {
-  // ITA's book around its $206.65 close.
+test("ticker names whose book it is out of regular hours and dates it by its own quote time, or says it is not dated, never by the trade", async () => {
+  // ITA's book around its $206.65 close, its last trade at 23:59 UTC on Friday.
   const book = { ...afterHours, price: 206.65, bid: 202, ask: 208.74, bidSize: 100, askSize: 1400 };
   const report = (quote: Quote) => buildTickerReport({
     symbol: quote.symbol,
@@ -117,15 +118,22 @@ test("ticker names the book out of regular hours: the extended session's, or a c
     config,
     toBase: async (value) => value,
   });
-  expect(await report(book)).toContain("Bid / Ask  $202.00 x 100 / $208.74 x 1,400  (last quote, Fri 9 Oct)");
-  // ITA at 17:45 ET: the book beside Last and the After Hours print is the after-hours one.
-  expect(await report({ ...book, marketState: "POST" })).toContain("Bid / Ask  $202.00 x 100 / $208.74 x 1,400  (after-hours book)");
-  expect(await report({ ...book, marketState: "PRE" })).toContain("(pre-market book)");
-  expect(await report({ ...book, marketState: "REGULAR" })).toMatch(/Bid \/ Ask +\$202\.00 x 100 \/ \$208\.74 x 1,400\n/);
-  // Without a quoted book there is nothing to date.
-  expect(await report({ ...book, bid: undefined, ask: undefined })).not.toContain("last quote");
-  // FMX's $118.00 / $135.00 around a $129.85 close is more than 5% off: no market for it.
-  expect(await report({ ...book, price: 129.85, bid: 118, ask: 135 })).toContain("(last quote, Fri 9 Oct, off-market)");
+  setSystemTime(new Date("2026-10-10T12:00:00Z"));
+  try {
+    expect(await report(book)).toContain("Bid / Ask  $202.00 x 100 / $208.74 x 1,400  (last quote, not dated)");
+    expect(await report({ ...book, bidAskTime: Date.parse("2026-10-10T00:55:00Z") })).toContain("(last quote, 00:55 UTC)");
+    // ITA at 17:45 ET: the book beside Last and the After Hours print is the after-hours one.
+    expect(await report({ ...book, marketState: "POST" })).toContain("Bid / Ask  $202.00 x 100 / $208.74 x 1,400  (after-hours book, not dated)");
+    expect(await report({ ...book, marketState: "PRE", bidAskTime: Date.parse("2026-10-09T12:00:00Z") })).toContain("(pre-market book, Fri 12:00 UTC)");
+    expect(await report({ ...book, marketState: "REGULAR", bidAskTime: Date.parse("2026-10-10T11:58:00Z") })).toContain("1,400  (quoted 11:58 UTC)");
+    expect(await report({ ...book, marketState: "REGULAR" })).toContain("1,400  (not dated)");
+    // Without a quoted book there is nothing to date.
+    expect(await report({ ...book, bid: undefined, ask: undefined })).not.toMatch(/last quote|not dated/);
+    // FMX's $118.00 / $135.00 around a $129.85 close is more than 5% off: no market for it.
+    expect(await report({ ...book, price: 129.85, bid: 118, ask: 135 })).toContain("(last quote, off-market, not dated)");
+  } finally {
+    setSystemTime();
+  }
 });
 
 // NEM after Friday's close, as Gloom Cloud sends it: the price is the after-hours
@@ -286,8 +294,9 @@ test("quote's change basis follows Chg% in the table, with the holiday under it,
     expect(text).toContain("\nHKEX closed Mon 19 Oct, holiday");
     const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
     expect(csv[0]).toContain(",Chg%,Pre-Market,");
-    expect(csv[0]).toContain(",Updated,Chg Basis,Chg Basis Note,Pre-Market Chg%,After Hours Chg%,Overnight Chg%,status,symbol_or_series,");
-    expect(csv[1]).toContain(",vs Fri 16 Oct close,\"HKEX closed Mon 19 Oct, holiday\",,,,,3042:HKEX,");
+    expect(csv[0]).toContain(",Updated,Chg Basis,Chg Basis Note,Pre-Market Chg%,After Hours Chg%,Overnight Chg%,"
+      + "Pre-Market Updated,After Hours Updated,Overnight Updated,status,symbol_or_series,");
+    expect(csv[1]).toContain(",vs Fri 16 Oct close,\"HKEX closed Mon 19 Oct, holiday\",,,,,,,,3042:HKEX,");
     const row = JSON.parse(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "ndjson" }, options).split("\n")[0]!);
     const keys = Object.keys(row);
     expect(keys.slice(keys.indexOf("error"), keys.indexOf("error") + 3)).toEqual(["error", "changeBasis", "changeBasisNote"]);
@@ -307,7 +316,7 @@ test("a nominal price's Updated names the session it is the close of, not the la
     await marketDataCliCommands.find((command) => command.name === "quote")!.execute([usd.symbol], cli.context);
     const [{ result, options }] = cli.printed as [PrintedCliResult];
     const text = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "text" }, options);
-    expect(text).toMatch(/nominal +6 Nov close\n/);
+    expect(text).toMatch(/nominal +Fri 6 Nov close\n/);
     expect(text).not.toContain("2026-11-04 03:32");
     expect(result.warnings?.join("\n") ?? text).toContain("no trades since Thu 29 Oct, nominal price");
     expect(JSON.stringify(result.data)).toContain('"lastTraded":"2026-10-29"');
@@ -331,9 +340,10 @@ test("a pre-market nothing has traded in reads as the close it stands at in quot
   setSystemTime(new Date("2026-10-16T08:14:00Z"));
   try {
     const { rows, text } = await compare([waiting, printed]);
-    expect(rows.map(({ session, sessionLabel, updatedAt }) => ({ session, sessionLabel, updatedAt }))).toEqual([
-      { session: "PRE-MKT", sessionLabel: "Thu close", updatedAt: thursdayClose },
-      { session: "PRE-MKT", sessionLabel: "PRE-MKT", updatedAt: "2026-10-16T08:03:45.000Z" },
+    // A traded pre-market's Last is still Thursday's close, the print its own time.
+    expect(rows.map(({ session, sessionLabel, updatedAt, extendedUpdatedAt }) => ({ session, sessionLabel, updatedAt, extendedUpdatedAt }))).toEqual([
+      { session: "PRE-MKT", sessionLabel: "Thu close", updatedAt: thursdayClose, extendedUpdatedAt: "" },
+      { session: "PRE-MKT", sessionLabel: "PRE-MKT", updatedAt: thursdayClose, extendedUpdatedAt: "2026-10-16T08:03:45.000Z" },
     ]);
     expect(text.split("\n").find((line) => line.startsWith("PLTR"))).toContain("Thu close");
     // CSV keeps the state the Session column always held.
@@ -378,9 +388,13 @@ test("quote --csv writes plain numbers, an extended print and its move apart, an
     const columns = header!.split(",");
     const rows = lines.map((line) => line.match(/("[^"]*"|[^,]*)(,|$)/g)!.map((cell) => cell.replace(/,$/, "").replace(/^"|"$/g, "")));
     const cell = (symbol: string, column: string) => rows.find((row) => row[0] === symbol)![columns.indexOf(column)];
-    expect(columns.slice(-9)).toEqual(["After Hours Chg%", "Overnight Chg%", "status",
-      "symbol_or_series", "currency_or_unit", "interval", "source", "as_of", "retrieved_at"]);
+    expect(columns.slice(-12)).toEqual(["After Hours Chg%", "Overnight Chg%", "Pre-Market Updated", "After Hours Updated", "Overnight Updated",
+      "status", "symbol_or_series", "currency_or_unit", "interval", "source", "as_of", "retrieved_at"]);
     expect([cell("AAPL", "Last"), cell("AAPL", "After Hours"), cell("AAPL", "After Hours Chg%"), cell("AAPL", "status")]).toEqual(["336.64", "336.08", "-0.17", ""]);
+    // Each price by its own time: Last is Friday's 20:00 UTC close, the after-hours print is from 23:59 UTC.
+    expect([cell("AAPL", "Updated"), cell("AAPL", "After Hours Updated"), cell("AAPL", "as_of")])
+      .toEqual(["2026-10-09T20:00:00.000Z", "2026-10-09T23:59:31.000Z", "2026-10-09T20:00:00.000Z"]);
+    expect([cell("7203:JPX", "Updated"), cell("7203:JPX", "After Hours Updated")]).toEqual(["2026-10-09T06:30:00.000Z", ""]);
     // A vendor's suffixed symbol is the listing its quote confirms, as RV names it.
     expect([cell("7203:JPX", "Last"), cell("7203:JPX", "Cur"), cell("7203:JPX", "currency_or_unit")]).toEqual(["2910.5", "JPY", "JPY"]);
     expect([cell("0QQQ:LSE", "Last"), cell("0QQQ:LSE", "Chg%"), cell("0QQQ:LSE", "status")]).toEqual(["12.5", "", "Chg%: no previous close"]);
@@ -438,6 +452,7 @@ test("compare writes a day's range as two numbers that are empty, with the range
     const columns = Object.keys(first!);
     expect(columns.slice(columns.indexOf("Chg Basis Note"), columns.indexOf("status"))).toEqual([
       "Chg Basis Note", "Pre-Market Chg%", "After Hours Chg%", "Overnight Chg%", "Day Low", "Day High", "Feed", "Updated",
+      "Pre-Market Updated", "After Hours Updated", "Overnight Updated",
     ]);
   } finally {
     setSystemTime();
@@ -470,7 +485,7 @@ test("compare marks which row is stale in Feed and Updated, and prices a future 
     ]);
     const header = text.split("\n")[0]!;
     expect(header).toMatch(/Cur\s+Feed\s+Updated$/);
-    expect(text.split("\n").find((line) => line.startsWith("^VIX"))).toMatch(/stale\s+2026-11-06 21:15 UTC$/);
+    expect(text.split("\n").find((line) => line.startsWith("^VIX"))).toMatch(/stale\s+Fri 6 Nov(?: 2026)? 21:15 UTC$/);
     // The table alone: the contract block is `quote`'s.
     expect(text).not.toContain("Contract");
   } finally {
@@ -506,4 +521,71 @@ test("a coin priced by an exchange's own trade names the exchange in its Feed ce
   expect(venued.find((line) => line.startsWith("Source:"))).toStartWith("Source: Coinbase and Kraken · ");
   const delayed = await quote([coin("USDT-USD", { dataSource: "delayed", lastUpdated: Date.now() - 15 * 60_000 })]);
   expect(delayed.find((line) => line.startsWith("Source:"))).toMatch(/^Source: Gloom Cloud · .*15 min delayed/);
+});
+
+test("quote cites quotes from a plugin's provider or a broker by name, and leaves an unnamed source out instead of calling it Gloom Cloud", async () => {
+  const quoted = (symbol: string, providerId: string): Quote => ({ ...afterHours, symbol, providerId });
+  const quote = async (quotes: Quote[], format: "text" | "csv" | "json", sourceNameOf?: (providerId: string) => string | null) => {
+    const cli = createTestCliContext({ config, dataProvider: {
+      getQuotesBatch: async () => quotes.map((entry) => ({ target: { symbol: entry.symbol, exchange: "" }, quote: entry })),
+      ...sourceNameOf ? { sourceNameOf } : {},
+    } });
+    await marketDataCliCommands.find((command) => command.name === "quote")!.execute(quotes.map((entry) => entry.symbol), cli.context);
+    const [{ result, options }] = cli.printed as [PrintedCliResult];
+    return serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format }, options);
+  };
+  const names: Record<string, string> = { "acme-feed": "Acme Feed", ibkr: "Interactive Brokers" };
+  const nameOf = (providerId: string) => names[providerId] ?? null;
+  const closing = (text: string) => text.split("\n").find((line) => line.startsWith("Source:"));
+
+  // Gloom Cloud's alone reads as it did.
+  expect(closing(await quote([quoted("AAPL", "gloomberb-cloud")], "text"))).toStartWith("Source: Gloom Cloud · ");
+  // A plugin's provider, a broker, and both beside Gloom Cloud's, by name.
+  expect(closing(await quote([quoted("AAPL", "acme-feed")], "text", nameOf))).toStartWith("Source: Acme Feed · ");
+  expect(closing(await quote([quoted("AAPL", "ibkr")], "text", nameOf))).toStartWith("Source: Interactive Brokers · ");
+  const mixed = [quoted("AAPL", "gloomberb-cloud"), quoted("MSFT", "acme-feed"), quoted("KO", "ibkr")];
+  expect(closing(await quote(mixed, "text", nameOf))).toStartWith("Source: Gloom Cloud and Acme Feed and Interactive Brokers · ");
+  // An export cites each row to its own source.
+  expect((await quote(mixed, "csv", nameOf)).split("\n").slice(1, 4).map((line) => line.split(",").at(-3))).toEqual(["Gloom Cloud", "Acme Feed", "Interactive Brokers"]);
+
+  // A provider with no name to give leaves the source out, in the text, the JSON and the export, never its id.
+  for (const quotes of [[quoted("AAPL", "acme-feed")], [quoted("AAPL", "gloomberb-cloud"), quoted("MSFT", "acme-feed")]]) {
+    const text = await quote(quotes, "text");
+    expect(text).not.toContain("Source:");
+    expect(text).not.toContain("Gloom Cloud");
+    expect(JSON.parse(await quote(quotes, "json")).source.name).toBeNull();
+    expect(await quote(quotes, "csv")).not.toContain("acme-feed");
+  }
+  expect((await quote([quoted("AAPL", "acme-feed")], "csv")).split("\n")[1]!.split(",").at(-3)).toBe("");
+
+  // Neither row of a mixed export takes the other's source: a quote with no provider id is Gloom Cloud's, and
+  // the unnamed provider's cell stays blank, whatever the closing lines say.
+  const implicitCloud: Quote = { ...afterHours, symbol: "AAPL", providerId: undefined };
+  for (const quotes of [[implicitCloud, quoted("MSFT", "acme-feed")], [quoted("MSFT", "acme-feed"), implicitCloud]]) {
+    const rows = (await quote(quotes, "csv")).split("\n").slice(1, 3);
+    const sourceOf = (symbol: string) => rows.find((line) => line.startsWith(symbol))!.split(",").at(-3);
+    expect(sourceOf("AAPL")).toBe("Gloom Cloud");
+    expect(sourceOf("MSFT")).toBe("");
+  }
+});
+
+test("QQ's report cites its quotes' sources by name, and leaves an unnamed one out instead of calling it Gloom Cloud", async () => {
+  const quoted = (symbol: string, providerId: string): Quote => ({ ...afterHours, symbol, providerId, lastUpdated: Date.now() - 60_000 });
+  const report = async (providerIds: string[]) => {
+    const symbols = providerIds.map((_, index) => `S${index}`);
+    const quotes = new Map(providerIds.map((providerId, index) => [symbols[index]!, quoted(symbols[index]!, providerId)]));
+    const ctx = {
+      signal: new AbortController().signal,
+      marketData: createTestDataProvider({ getQuote: async (symbol) => quotes.get(symbol)! }),
+      resolveBroker: (type: string) => type === "ibkr" ? { name: "Interactive Brokers" } : null,
+    } as HeadlessPaneContext;
+    const args = { symbols, argument: symbols, rawArgument: symbols.join(","), options: {} };
+    const result = await quoteComparisonHeadless.load(args, ctx);
+    return deriveHeadlessFreshness(quoteComparisonHeadless, result).source;
+  };
+  expect(await report(["gloomberb-cloud", "gloomberb-cloud"])).toBe("Gloom Cloud");
+  expect(await report(["ibkr"])).toBe("Interactive Brokers");
+  expect(await report(["gloomberb-cloud", "ibkr"])).toBe("Gloom Cloud and Interactive Brokers");
+  expect(await report(["acme-feed"])).toBe("");
+  expect(await report(["gloomberb-cloud", "acme-feed"])).toBe("");
 });

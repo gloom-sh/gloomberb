@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, type Dispatch, type SetStateAction } from "react";
-import type { TextareaRenderable } from "../../../../ui";
+import { useUiCapabilities, type TextareaRenderable } from "../../../../ui";
 import type { ChatMessage } from "../../../../api-client";
 import {
   COMPOSER_ACTION_WIDTH,
   formatInlinePreview,
+  normalizeInlinePreview,
 } from "../layout";
 import { parseChatComposerCommand, type DiscordComposerCommand } from "../composer-commands";
 import { t, tf } from "../../../../i18n";
@@ -89,6 +90,7 @@ export function useChatComposerRuntime({
   /** Runs a /discord command. Without it the command is sent as text. */
   onDiscordCommand?: (command: DiscordComposerCommand) => void;
 }) {
+  const { nativePaneChrome } = useUiCapabilities();
   const replyToRef = useRef(replyTo);
   const draftAttachmentCountRef = useRef(draftAttachmentCount);
   draftAttachmentCountRef.current = draftAttachmentCount;
@@ -431,21 +433,22 @@ export function useChatComposerRuntime({
     cancelEditMessage();
   }, [canSend, cancelEditMessage, editingMessage]);
 
-  const replyPreview = replyTo
-    ? formatInlinePreview(
+  // The desktop and the web take the whole text and cut it in CSS where its row ends.
+  const replyPreview = !replyTo ? ""
+    : nativePaneChrome ? normalizeInlinePreview(chatTextWithImages(replyTo.content, replyTo.attachments?.length ?? 0))
+    : formatInlinePreview(
       chatTextWithImages(replyTo.content, replyTo.attachments?.length ?? 0),
       Math.max(
         contentWidth - ` replying to @${replyTo.user.username}`.length - (isManagedBot(replyTo.user) ? CHAT_PERSON_ICON_WIDTH + 1 : 2) - COMPOSER_ACTION_WIDTH - 1,
         0,
       ),
-    )
-    : "";
-  const editingPreview = editingMessage
-    ? formatInlinePreview(
+    );
+  const editingPreview = !editingMessage ? ""
+    : nativePaneChrome ? normalizeInlinePreview(chatTextWithImages(editingMessage.content, editingMessage.attachments?.length ?? 0))
+    : formatInlinePreview(
       chatTextWithImages(editingMessage.content, editingMessage.attachments?.length ?? 0),
       Math.max(contentWidth - " editing: ".length - COMPOSER_ACTION_WIDTH - 1, 0),
-    )
-    : "";
+    );
   const inputPlaceholder = editingMessage
     ? t("Edit message...")
     : replyTo

@@ -414,7 +414,8 @@ export function bindAppPanePluginRegistry({
   setMarketplaceHost({
     listInstalled: () => {
       const disabled = new Set(stateRef.current.config.disabledPlugins ?? []);
-      const externalById = new Map(listExternalPlugins().map((entry) => [entry.plugin.id, entry]));
+      // A skipped duplicate stands in under its folder's name, which can be the id of the copy that loads.
+      const externalById = new Map(listExternalPlugins().filter((entry) => !entry.duplicateOf).map((entry) => [entry.plugin.id, entry]));
       const installed: InstalledPlugin[] = [];
 
       for (const plugin of pluginRegistry.allPlugins.values()) {
@@ -444,13 +445,13 @@ export function bindAppPanePluginRegistry({
       // Entries that never registered — a broken import, or a plugin this
       // renderer cannot run. They are invisible everywhere else, which is
       // exactly why the marketplace has to show them.
-      for (const entry of externalById.values()) {
+      for (const entry of [...externalById.values(), ...listExternalPlugins().filter((candidate) => candidate.duplicateOf)]) {
         installed.push({
-          id: entry.plugin.id,
+          id: entry.duplicateOf ? `${entry.directory ?? entry.path} (duplicate)` : entry.plugin.id,
           name: entry.plugin.name,
           version: entry.plugin.version ?? "",
           ...(entry.plugin.description ? { description: entry.plugin.description } : {}),
-          toggleable: true,
+          toggleable: !entry.duplicateOf,
           enabled: !disabled.has(entry.plugin.id),
           source: "external",
           ...(entry.directory ? { directory: entry.directory, path: entry.path } : {}),
@@ -458,6 +459,7 @@ export function bindAppPanePluginRegistry({
           ...(entry.linked ? { linked: true } : {}),
           ...(entry.unsupportedTarget ? { unsupportedTarget: entry.unsupportedTarget } : {}),
           ...(entry.error ? { loadError: entry.error } : {}),
+          ...(entry.duplicateOf ? { duplicateOf: entry.duplicateOf } : {}),
           ...(entry.needsGloomberb ? { needsGloomberb: entry.needsGloomberb } : {}),
           ...(entry.needsRestart ? { needsRestart: true } : {}),
         });

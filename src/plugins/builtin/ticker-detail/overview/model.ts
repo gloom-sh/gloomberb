@@ -9,6 +9,8 @@ import type { CedearRatio, CompanyProfile, DepositaryPair, NextEarnings, Quote, 
 import { adrRatioText } from "../../../../utils/depositary-receipt";
 import { cedearRatioText, premiumText, ratioCount } from "../../../../market-data/depositary-pair";
 import { ADR_PAIR_TAB_ID, ADR_PAIR_TEMPLATE_ID } from "../adr-pair/model";
+import { DEFAULT_RELATIONSHIP_RANGE, DEFAULT_RELATIONSHIP_SECOND_SYMBOL, relationshipBetaBasis, type RelationshipRegressionStats } from "../../correlation/relationship/model";
+import { resolveTickerInstrumentKind } from "../../../../tickers/instrument-kind";
 import type { Portfolio, TickerPosition, TickerRecord } from "../../../../types/ticker";
 import type { BrokerInstanceConfig } from "../../../../types/config";
 import type { BrokerAccount } from "../../../../types/trading";
@@ -32,7 +34,7 @@ import { quoteVolumeCurrency, reportedQuoteVolume } from "../../../../market-dat
 import { formatChartLegendValue } from "../../../../components/chart/composite/format";
 import type { OverviewFunctionLink, PositionTableRow, StatField } from "./types";
 import type { OverviewDividendState } from "./dividend";
-import { lapseValue } from "../../../../utils/forward-dividend";
+import { lapseValue, UNEVEN_REGULAR_PAYMENTS } from "../../../../utils/forward-dividend";
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl, portfolioPnlPercent, signedPositionDirection } from "../../../../portfolio/position-metrics";
 import { listingDividendYield, liveForwardPE, liveMarketCapitalization, liveTrailingPE } from "../../../../market-data/quotes/live-valuation";
 import { atRegularSessionPrice } from "../../../../market-data/quotes/regular-session-valuation";
@@ -48,6 +50,27 @@ import { burnsCash, formatRunwayMonths, type CashRunway, type RunwayEstimate } f
 type CurrencyConverter = (value: number, fromCurrency: string) => number;
 
 const RELATIONSHIP_GRAPH: OverviewFunctionLink = { name: "Relationship Graph", templateId: "relationship-graph-pane" };
+
+// Require about 80% of a trading year for DES's 1Y label, allowing for unmatched holidays and missing sessions.
+const MIN_OVERVIEW_BETA_RETURNS = 200;
+
+export function overviewBetaRequest(ticker: TickerRecord, financials: TickerFinancials | null) {
+  const kind = resolveTickerInstrumentKind(ticker, financials);
+  const symbol = ticker.metadata.ticker;
+  const benchmark = DEFAULT_RELATIONSHIP_SECOND_SYMBOL;
+  return symbol !== benchmark && (kind === "equity" || kind === "fund")
+    ? { pair: [symbol, benchmark] as [string, string], range: DEFAULT_RELATIONSHIP_RANGE }
+    : null;
+}
+
+export function buildOverviewBeta(stats: Pick<RelationshipRegressionStats, "beta" | "sampleSize"> | null) {
+  if (!stats || stats.sampleSize < MIN_OVERVIEW_BETA_RETURNS || !finite(stats.beta)) return null;
+  return {
+    label: "Beta", value: formatNumber(stats.beta, 3),
+    detail: relationshipBetaBasis(DEFAULT_RELATIONSHIP_RANGE, DEFAULT_RELATIONSHIP_SECOND_SYMBOL),
+    link: RELATIONSHIP_GRAPH,
+  };
+}
 const HOLDERS: OverviewFunctionLink = { name: "Holders", tabId: "holders", templateId: "holders-pane" };
 const SHORT_INTEREST: OverviewFunctionLink = { name: "Short Interest", tabId: "short-interest", templateId: "short-interest-pane" };
 const EARNINGS: OverviewFunctionLink = { name: "Earnings", templateId: "earnings-calendar-pane" };
@@ -332,7 +355,10 @@ export function buildOverviewStats({
   } else if (fundamentals && dividendYield != null && !dividend?.pending) {
     const basis = fundamentals.dividendYieldBasis;
     const label = basis === "forward" ? `Fwd ${kind} Yld` : basis === "trailing" ? `TTM ${kind} Yld` : `${kind} Yield`;
-    stats.push({ label, value: formatLevelPercent(dividendYield), ...notSec });
+    // A forward yield over the year's uneven regular payments (HSBC's interims beside its final) says so, as DVD does.
+    const uneven = basis === "forward" && fundamentals.dividendRateBasis === "uneven-regular-payments"
+      ? { detail: [UNEVEN_REGULAR_PAYMENTS, "uneven interims"] } : {};
+    stats.push({ label, value: formatLevelPercent(dividendYield), ...notSec, ...uneven });
   }
   if (bond) {
     // Each dated, as the sponsor publishes it; the narrowest column drops the year.
@@ -406,9 +432,6 @@ export function buildOverviewStats({
         ? [`cap + debt - cash${minority}`, "computed"]
         : check?.investmentsKept ? ["investments in", "inv. in"] : inBase(enterpriseValue, quoteCurrency),
     });
-  }
-  if (finite(fundamentals?.beta)) {
-    stats.push({ label: "Beta", value: formatNumber(fundamentals.beta, 2), link: RELATIONSHIP_GRAPH });
   }
   if (finite(fundamentals?.shortPercentOfFloat)) {
     stats.push({

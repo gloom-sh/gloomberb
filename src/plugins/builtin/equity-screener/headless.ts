@@ -14,6 +14,7 @@ import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-d
 import { buildQuoteKey } from "../../../market-data/selectors";
 import type { Quote } from "../../../types/financials";
 import { MISSING_VALUE, formatCurrency, formatPercentRaw } from "../../../utils/format";
+import { currencyPriceMinDigits, formatMarketPriceWithCurrency } from "../../../market-data/market/format";
 import { fetchSavedScreens, fetchScreen, fetchScreenCheck } from "./client";
 import { ideaMetricSetting, SCREEN_IDEAS, screenIdea } from "./ideas";
 import { checkRows, screenCheckSummary, screenCheckTicker } from "./screen-check";
@@ -99,8 +100,12 @@ async function loadRowQuotes(rows: readonly ScreenRow[], ctx: HeadlessPaneContex
   }
 }
 
+// A line quoted in pence keeps the decimals it trades in (GCP's £0.828), as `quote` prints it.
 const price = (value: unknown, row: Record<string, unknown>) =>
-  typeof value === "number" && typeof row.currency === "string" && row.currency ? formatCurrency(value, row.currency) : MISSING_VALUE;
+  typeof value !== "number" || typeof row.currency !== "string" || !row.currency ? MISSING_VALUE
+    : typeof row.quotedUnitDivisor === "number" && row.quotedUnitDivisor > 1
+      ? formatMarketPriceWithCurrency(value, row.currency, { minimumFractionDigits: currencyPriceMinDigits(row.currency), quotedUnitDivisor: row.quotedUnitDivisor })
+      : formatCurrency(value, row.currency);
 const percent = (value: unknown) => typeof value === "number" ? formatPercentRaw(value) : MISSING_VALUE;
 
 /** The pre-market, after-hours or overnight print and its move from the close in Last, for the rows that have one. */
@@ -430,6 +435,7 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
               name: row.name,
               currency: row.currency,
               price: row.metrics.price.value,
+              ...row.quotedUnitDivisor ? { quotedUnitDivisor: row.quotedUnitDivisor } : {},
               changePercent: row.metrics.changePercent.value,
               extendedSession: row.extended?.session ?? null,
               extendedPrice: row.extended?.price ?? null,

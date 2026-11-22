@@ -5,7 +5,6 @@ import { formatMarketPrice } from "../../../market-data/market/format";
 import { EXTENDED_PRINT_WORDS } from "../../../market-data/market/change-basis";
 import { EXTENDED_SESSION_MARKS } from "../../../market-data/market/status";
 import { formatShortDate } from "../../../utils/datetime-format";
-import { formatQuoteAgeWithSource } from "../../../market-data/quotes/time";
 import { alertListingKey, alertPriceText } from "./price-text";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { isRoundTheClockCoin } from "../../../utils/crypto-pair";
@@ -81,7 +80,21 @@ export function formatAlertDistance(alert: AlertRule): string {
   return `${/[1-9]/.test(fixed) ? (percent > 0 ? "+" : "-") : ""}${fixed}%`;
 }
 
-/** The Quote cell: the quote's age and feed, or, on the row of an alert that got none, why (a stale quote, or none). */
+/**
+ * An instant in a cell, to the minute in UTC as the History tab writes its
+ * times under a "(UTC)" heading: `2026-11-20 23:20`.
+ */
+export function alertMinuteUtc(time: number | null | undefined): string {
+  const iso = isoUtc(time);
+  return iso ? iso.slice(0, 16).replace("T", " ") : MISSING_VALUE;
+}
+
+/**
+ * The Quote cell: when the quote it was checked on is from, to the minute in
+ * UTC and marked ◷ when the feed was delayed (◷2026-11-20 23:20), a settled
+ * close by its session, or, on the row of an alert that got none, why (a
+ * stale quote, or none).
+ */
 export function formatQuoteChecked(alert: AlertRule): string {
   const basis = alert.metric ? closeBasis(alert.metric) : null;
   // A settled close reads as the session it is from: Oct 26 close, Oct 23 weekly.
@@ -90,14 +103,27 @@ export function formatQuoteChecked(alert: AlertRule): string {
   }
   if (basis) return `on ${basis}`;
   if (alert.lastCheckError) return /\bstale\b/i.test(alert.lastCheckError) ? "Stale" : "No quote";
-  if (alert.lastQuoteUpdatedAt) {
-    return formatQuoteAgeWithSource({
-      lastUpdated: alert.lastQuoteUpdatedAt,
-      dataSource: alert.lastQuoteSource,
-    });
-  }
+  // The quote's own time, never its age: a compliance record reads the instant the level was judged on.
+  if (alert.lastQuoteUpdatedAt) return `${alert.lastQuoteSource === "delayed" ? "◷" : ""}${alertMinuteUtc(alert.lastQuoteUpdatedAt)}`;
   if (alert.lastCheckedAt) return relativeTime(alert.lastCheckedAt);
   return NOT_CHECKED_YET;
+}
+
+/**
+ * The detail's Quote line: the quote's own instant to the second with its feed
+ * (2026-11-20T23:20:59Z · delayed), or the close a daily rule read
+ * (2026-11-20 close); the row's cell otherwise.
+ */
+export function quoteAsOfText(alert: AlertRule): string {
+  const basis = alert.metric ? closeBasis(alert.metric) : null;
+  if (alert.lastCheckError) return formatQuoteChecked(alert);
+  if (basis && alert.lastDailyClose) return `${alert.lastDailyClose} ${basis === "weekly close" ? "weekly close" : "close"}`;
+  if (!basis && alert.lastQuoteUpdatedAt) {
+    const source = alert.lastQuoteSource;
+    const feed = source === "live" ? "real-time" : source === "delayed" ? "delayed" : source === "snapshot" ? "snapshot" : null;
+    return `${isoUtc(alert.lastQuoteUpdatedAt)}${feed ? ` · ${feed}` : ""}`;
+  }
+  return formatQuoteChecked(alert);
 }
 
 /** A time as lists and exports give it: ISO 8601 in UTC, to the second (2026-10-27T06:35:12Z); empty for none. */
@@ -131,6 +157,39 @@ function readingUnit(alert: AlertRule): string {
   if (kind === "pe" || kind === "ps") return "x";
   if (kind === "rsi" || kind === "rs_ratio" || kind === "rrg") return "";
   return alert.lastQuoteCurrency ?? "";
+}
+
+/**
+ * The currency an alert's readings are in: the listing's for a price, a move
+ * or a moving average; none for a multiple, RSI, a ratio of two listings or an
+ * RRG quadrant, which carry no currency.
+ */
+export function alertReadingCurrency(alert: AlertRule): string | null {
+  const unit = readingUnit(alert);
+  return unit && unit !== "x" ? unit : null;
+}
+
+/**
+ * The reading a daily rule is measured against, as the last reading is
+ * written: the slow average of an MA crossover or the average a close is held
+ * to (`59.73 USD on the 2026-11-20 close`). Empty for a rule judged against a
+ * fixed level, and before a check has read one.
+ */
+export function alertComparatorReadingText(alert: AlertRule): string {
+  const kind = alert.metric?.kind;
+  if (kind !== "ma_cross" && kind !== "close_ma") return "";
+  const value = alert.lastCheckedTarget;
+  if (alert.lastCheckError || value == null || !Number.isFinite(value)) return "";
+  const unit = readingUnit(alert);
+  const figure = `${value.toFixed(2)}${unit ? ` ${unit}` : ""}`;
+  return alert.lastDailyClose ? `${figure} on the ${alert.lastDailyClose} close` : figure;
+}
+
+/** The listing a ratio or RRG rule divides by, as it was confirmed (`ACWI:NASDAQ`); empty for any other rule. */
+export function alertBenchmarkListing(alert: Pick<AlertRule, "metric">): string {
+  const metric = alert.metric;
+  if (metric?.kind !== "rs_ratio" && metric?.kind !== "rrg") return "";
+  return metric.benchmarkExchange ? `${metric.benchmark}:${metric.benchmarkExchange}` : metric.benchmark;
 }
 
 /** When the last reading is from: the quote's own time, or the daily close's; null with none. */

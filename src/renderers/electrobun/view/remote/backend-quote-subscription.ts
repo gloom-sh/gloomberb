@@ -1,6 +1,7 @@
 import type { QuoteSubscriptionTarget } from "../../../../types/data-provider";
 import type { Quote } from "../../../../types/financials";
 import { unpackQuoteEvents } from "../../shared/quote-event-batch";
+import { readStreamTickRange, type StreamTickRange } from "../../../../market-data/quotes/tick-range";
 import type { CapabilitySubscriptionOptions } from "../capability-subscription";
 
 interface BackendQuoteSubscription {
@@ -18,7 +19,8 @@ export interface BackendQuoteSubscriptionDeps {
     targets: QuoteSubscriptionTarget[],
     handlers: Pick<CapabilitySubscriptionOptions, "onEvent" | "onSubscribed" | "onError">,
   ): () => void;
-  dispatch(target: QuoteSubscriptionTarget, quote: Quote): void;
+  /** `ticks`: the range of the ticks the backend's batch kept only `quote` of, when they priced other than it. */
+  dispatch(target: QuoteSubscriptionTarget, quote: Quote, ticks?: StreamTickRange): void;
   onClockOffset?(offsetMs: number): void;
   onError?(error: unknown): void;
 }
@@ -72,8 +74,8 @@ export function createBackendQuoteSubscription(deps: BackendQuoteSubscriptionDep
     const { events, clockOffsetMs } = unpackQuoteEvents(event);
     if (clockOffsetMs !== undefined) deps.onClockOffset?.(clockOffsetMs);
     for (const item of events) {
-      const { target, quote } = (item ?? {}) as { target?: QuoteSubscriptionTarget; quote?: Quote };
-      if (target && quote) deps.dispatch(target, quote);
+      const { target, quote, ticks } = (item ?? {}) as { target?: QuoteSubscriptionTarget; quote?: Quote; ticks?: unknown };
+      if (target && quote) deps.dispatch(target, quote, readStreamTickRange(ticks));
     }
   };
 

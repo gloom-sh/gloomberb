@@ -21,7 +21,9 @@ import { buildPaneCatalogEntries, type PaneFunctionCatalog } from "./catalog";
 import { createPaneCatalog } from "./discovery";
 import { buildFunctionReport } from "./report";
 import { buildCreateOptions, parsePaneFunctionArgs } from "./options";
-import { applyListingArgument, findPaneFunction, parsePaneFunctionArgsFor, resolvePaneFunction, UnknownPaneFunctionError, withTickerList } from "./resolver";
+import { applyListingArgument, findPaneFunction, parsePaneFunctionArgsFor, resolvePaneFunction, UnknownPaneFunctionError, withRenamedTickers, withTickerList } from "./resolver";
+import { createMovedSymbolsProvider } from "../../test-support/moved-symbols";
+import type { CliListing } from "../listing-arg";
 import { getHeadlessPaneDefinition } from "./capabilities";
 import { tickerDetailModule } from "../../plugins/builtin/ticker-detail";
 import { catalystsModule } from "../../plugins/builtin/catalysts";
@@ -476,4 +478,14 @@ test("only a template that opens on a list takes one as symbols: shot DVD KO JNJ
   expect((await resolvePaneFunction(catalog, context, parsePaneFunctionArgs(["DVD", "KO"]), { command: "shot" })).createOptions?.symbols).toBeUndefined();
   const many = Array.from({ length: 26 }, (_, index) => `T${index}`).join(",");
   await expect(resolvePaneFunction(catalog, context, parsePaneFunctionArgs(["DVD", many]), { command: "shot" })).rejects.toThrow("DVD accepts at most 25 symbols.");
+});
+
+test("a moved ticker whose new symbol cannot be resolved is read by that symbol alone, never on the old symbol's listing", async () => {
+  // DINO has no quote here, so it resolves to no listing; HFC's listing must not ride along under it.
+  const context = { config: createDefaultConfig("/tmp/gloom-renamed-ticker-fixture"), dataProvider: createMovedSymbolsProvider() } as unknown as MarketContext;
+  const hfc = { key: "HFC", symbol: "HFC", request: { symbol: "HFC", exchange: "" } } as unknown as CliListing;
+  const args = { ...parsePaneFunctionArgs(["QQ", "HFC"]), listing: hfc };
+  const renamed = await withRenamedTickers(context, args, { headless: { argument: { kind: "ticker" } } } as never, false);
+  expect(renamed).toMatchObject({ arg: "DINO", listingNotes: ["HFC became DINO on 2022-03-15; showing DINO."] });
+  expect(renamed).not.toHaveProperty("listing");
 });

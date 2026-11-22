@@ -29,10 +29,11 @@ function contextWith(alerts: unknown[], events: unknown[]) {
 test("ALRT takes --tab as the pane's own tab and refuses an unknown tab or option", () => {
   const strict = { strict: true, code: "ALRT" };
   expect(normalizeCapabilityOptions(capability, {}, strict)).toEqual({ tab: "prices" });
+  expect(normalizeCapabilityOptions(capability, { tab: "LEVELS" }, strict)).toEqual({ tab: "prices" });
   const events = normalizeCapabilityOptions(capability, { tab: "events" }, strict);
   // The pane reads its tab from the pane state `tab` of the alerts plugin, which `shot` seeds from this.
   expect(capabilityPluginState(capability, events)).toEqual({ alerts: { tab: "events" } });
-  expect(() => normalizeCapabilityOptions(capability, { tab: "bogus" }, strict)).toThrow('Invalid --tab value "bogus". Use one of: prices, events, history.');
+  expect(() => normalizeCapabilityOptions(capability, { tab: "bogus" }, strict)).toThrow('Invalid --tab value "bogus". Use one of: "Levels" (prices), events, history.');
   expect(() => normalizeCapabilityOptions(capability, { foo: "1" }, strict)).toThrow("ALRT does not support --foo. Supported options: --tab.");
 });
 
@@ -131,8 +132,11 @@ test("Prices exports the quote's own time and feed apart from the check time, an
   expect(Number(cell(table.columns.find((column) => column.startsWith("Away"))!))).toBeCloseTo(8.55, 1);
   // The terminal keeps the pane's columns: no source or check-time column of its own.
   const text = renderHeadlessPaneText(alertsHeadless, result, args, "ALRT");
-  expect(text).toMatch(/State\s+Symbol\s+Measure\s+Current\s+Target\s+Away\s+Trigger\s+Quote\s+Alerted/);
+  expect(text).toMatch(/State\s+Symbol\s+Measure\s+Current\s+Target\s+Away\s+Trigger\s+Quote \(UTC\)\s+Alerted/);
   expect(text).not.toContain("Quote source");
+  // The quote's own time and the rule's, never an age or a bare date: a desk's record reads the instants.
+  expect(text).toContain("◷2026-10-22 20:14");
+  expect(text).toContain("2026-10-20 09:30");
 });
 
 test("a reading off an after-hours print is labelled as alerts list labels it, in the export's Reading and the text table", async () => {

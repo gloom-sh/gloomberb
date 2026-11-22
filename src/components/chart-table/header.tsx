@@ -2,11 +2,12 @@ import { useMemo, type ReactNode } from "react";
 import { useThemeColors } from "../../theme/theme-context";
 import type { PricePoint } from "../../types/financials";
 import type { ChartPanelSpec, ResolvedSeries } from "../../time-series/types";
-import { Box, Text } from "../../ui";
+import { Box, Text, useUiCapabilities } from "../../ui";
 import { displayWidth, truncateToDisplayWidth } from "../../utils/format";
 import { CompositeChart } from "../chart/composite";
 import type { CompositeAxisDomain, CompositeChartProps } from "../chart/composite/types";
 import { PriceSparkline } from "../price-sparkline/view";
+import { ClippedText } from "../ui/display";
 import { StatGrid, type StatItem } from "../ui/stat-grid";
 import type { TableWidthColumn } from "../ui/table-layout";
 import { CHART_COMPACT_ROWS, chartTableChromeRows, chartTableLayout, type ChartTableLayout } from "./layout";
@@ -140,6 +141,7 @@ export function ChartStrip({ strip, width, figures = [] }: {
   figures?: readonly StatItem[];
 }) {
   const colors = useThemeColors();
+  const { nativePaneChrome } = useUiCapabilities();
   const inner = Math.max(0, width - 2);
   const shownValue = figures.some((item) => sameValue(item.value, strip.value)) ? "" : strip.value;
   const shownLabel = figures.some((item) => item.label === strip.label) ? "" : strip.label;
@@ -150,8 +152,11 @@ export function ChartStrip({ strip, width, figures = [] }: {
   const readable = Math.min(labelWidth, 7);
   let labelRoom = Math.max(0, inner - valueWidth - STRIP_MIN_SPARKLINE - 3);
   if (labelRoom < readable) labelRoom = Math.max(0, inner - valueWidth - 2);
-  const label = labelRoom >= readable ? truncateToDisplayWidth(shownLabel, Math.min(labelWidth, labelRoom)) : "";
-  const sparkWidth = Math.max(0, inner - (label ? displayWidth(label) + 1 : 0) - valueWidth - 2);
+  const label = labelRoom >= readable ? shownLabel : "";
+  const labelCells = Math.min(labelWidth, labelRoom);
+  // The desktop and the web cut the label by CSS in the room the terminal's cut leaves it.
+  const labelShown = !label ? 0 : nativePaneChrome ? labelCells : displayWidth(truncateToDisplayWidth(label, labelCells));
+  const sparkWidth = Math.max(0, inner - (label ? labelShown + 1 : 0) - valueWidth - 2);
   const history = useMemo<PricePoint[]>(
     () => strip.values.map((close, index) => ({ date: new Date(index * DAY_MS), close })),
     [strip.values],
@@ -159,7 +164,7 @@ export function ChartStrip({ strip, width, figures = [] }: {
   return (
     <Box flexDirection="row" height={1} flexShrink={0} paddingX={1} gap={1} overflow="hidden">
       <Text fg={strip.color ?? colors.text}>●</Text>
-      {label ? <Text fg={colors.text}>{label}</Text> : null}
+      {label ? <ClippedText fg={colors.text} text={label} width={labelCells} /> : null}
       {sparkWidth >= STRIP_MIN_SPARKLINE ? (
         <Box width={sparkWidth} height={1} flexShrink={0}>
           <PriceSparkline priceHistory={history} width={sparkWidth} period="all" color={strip.color} />

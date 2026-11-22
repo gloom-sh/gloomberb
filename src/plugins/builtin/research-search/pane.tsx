@@ -77,7 +77,7 @@ import {
   type SearchFilters,
   type SearchRangeKey,
 } from "./model";
-import { parseMarkedSnippet, snippetPlainText, truncateSegments } from "./snippet";
+import { parseMarkedSnippet, snippetPlainText } from "./snippet";
 import { SnippetText } from "./snippet-text";
 import { errorMessage } from "../../../utils/errors";
 
@@ -329,15 +329,13 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
         // The count leads so collapsing chunks into one row stays visible even
         // where the snippet behind it is cut off.
         const count = hitMatchCountLabel(hit);
-        const segments = truncateSegments(
-          [...(count ? [{ text: count, marked: false }] : []), ...parseMarkedSnippet(hit.snippet)],
-          column.width,
-        );
+        const segments = [...(count ? [{ text: count, marked: false }] : []), ...parseMarkedSnippet(hit.snippet)];
         return {
           text: `${count}${snippetPlainText(hit.snippet)}`,
           content: (
             <SnippetText
               segments={segments}
+              width={column.width}
               color={rowState.selected ? colors.selectedText : colors.text}
               dimColor={rowState.selected ? colors.selectedText : colors.textDim}
             />

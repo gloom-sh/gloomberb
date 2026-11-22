@@ -11,7 +11,7 @@ import {
   type DataTableColumn,
 } from "../../../../components";
 import { useThemeColors } from "../../../../theme/theme-context";
-import { Box, Text, type BoxRenderable } from "../../../../ui";
+import { Box, Text, useUiCapabilities, type BoxRenderable } from "../../../../ui";
 import { truncateWithEllipsis } from "../../../../utils/text-wrap";
 import {
   formatCellValue,
@@ -124,8 +124,10 @@ export function ToolTimelineRow({
   onUndo: () => void;
 }) {
   const colors = useThemeColors();
+  const { nativePaneChrome } = useUiCapabilities();
   const subjectWidth = Math.max(0, width - fixedRowWidth(view, indent));
-  const subject = view.subject && subjectWidth >= 6 ? truncateWithEllipsis(view.subject, subjectWidth) : "";
+  // The terminal shows the subject where six cells are left for it; the desktop and the web cut it in CSS.
+  const showSubject = !!view.subject && (nativePaneChrome || subjectWidth >= 6);
   const undo = undoLabel(row);
   const failed = view.mark === "failed";
   const lineWidth = Math.max(10, width - indent - 2);
@@ -140,7 +142,7 @@ export function ToolTimelineRow({
         width={width - indent}
         onPress={onPress}
       >
-        {subject ? <Text fg={colors.textDim}>{` ${subject}`}</Text> : null}
+        {showSubject ? <ClippedText fg={colors.textDim} lead=" " text={view.subject!} width={subjectWidth} cut={truncateWithEllipsis} flex="0 1000 auto" /> : null}
         <Box flexGrow={1} />
         {view.meta ? <Text fg={colors.textMuted}>{view.meta}</Text> : null}
         <ToolMarkView mark={view.mark} />
@@ -200,13 +202,14 @@ function ToolGroupRow({
   onPress: () => void;
 }) {
   const colors = useThemeColors();
+  const { nativePaneChrome } = useUiCapabilities();
   const group = useMemo(() => describeToolGroup(turn.tools, context), [context, turn.tools]);
   const failed = group.failed > 0 ? `${group.failed} failed` : "";
   const labelWidth = Math.max(8, width - 4 - group.meta.length - (failed ? failed.length + 2 : 0) - 2);
   return (
     <Box ref={selected ? selectedRowRef : undefined} flexDirection="column">
       <ActionRow
-        label={truncateWithEllipsis(group.label, labelWidth)}
+        label={nativePaneChrome ? group.label : truncateWithEllipsis(group.label, labelWidth)}
         expanded={open}
         active={selected}
         width={width}

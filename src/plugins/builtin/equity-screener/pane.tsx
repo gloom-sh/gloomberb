@@ -108,7 +108,7 @@ import { liveScreenPlaces, overlayLiveScreenRows, placeLiveScreenRows, screenExt
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { buildScreenerQuoteTargets } from "../../../market-data/quotes/screener-live-quotes";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
-import { getTableWidth } from "../../../components/ui/table-layout";
+import { dropColumnsToFit, getTableWidth } from "../../../components/ui/table-layout";
 
 /** How often a live sort re-reads the figures it orders by. */
 const LIVE_ORDER_SAMPLE_MS = 5_000;
@@ -185,7 +185,7 @@ export function resultColumns(
   const exchange = fits(build(compact.slice(0, shown), true, false, "compact"));
   const sector = exchange && fits(build(compact.slice(0, shown), true, true, "compact"));
   const named = build(extras("pane").slice(0, shown), exchange, sector, "pane");
-  return fits(named) ? named : build(compact.slice(0, shown), exchange, sector, "compact");
+  return fits(named) ? named : dropColumnsToFit(build(compact.slice(0, shown), exchange, sector, "compact"), width - 1, ["name", "percentile"]);
 }
 const loadFields = () => fetchScreenFields();
 const criterionRowId = (row: { id: string }) => row.id;
@@ -236,7 +236,7 @@ function ScreenDetail({
               <KeyValueRow
                 label={screenLabel(field)}
                 labelWidth={24}
-                value={screenDetailValue(field, metric)}
+                value={screenDetailValue(field, metric, row.quotedUnitDivisor)}
                 detail={
                   metric.value === null
                     ? (reason ?? "unavailable")
@@ -252,7 +252,7 @@ function ScreenDetail({
                 <KeyValueRow
                   label={EXTENDED_SESSION_LABELS[extended.session]}
                   labelWidth={24}
-                  value={`${formatScreenValue("price", extended.price)} ${row.metrics.price.unit}`}
+                  value={`${formatScreenValue("price", extended.price, row.quotedUnitDivisor)} ${row.metrics.price.unit}`}
                   detail={`${formatPercentRaw(extended.changePercent)}${extended.mark ? " mid" : ""}`}
                 />
               ) : null}
@@ -1127,7 +1127,7 @@ function EquityScreenView({
                 const sign = screenSignValue(field, observation.value);
                 const change = sign == null ? undefined : priceColor(sign, colors);
                 return {
-                  text: formatScreenMetric(field, observation),
+                  text: formatScreenMetric(field, observation, row.quotedUnitDivisor),
                   color: observation.state === "stale" ? colors.warning : change,
                 };
               }

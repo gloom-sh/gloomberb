@@ -21,7 +21,7 @@ const PRICE_DENOMINATED_DESCRIPTIVE_FIELDS: ReadonlySet<string> = new Set(["high
  */
 const TRADING_DAY_FIELDS = [
   "changeSessionDate", "previousClose", "previousCloseDate", "open", "volume", "mark", "bid", "ask", "bidSize", "askSize",
-  "lastTradePrice", "lastTradeTime",
+  "bidAskTime", "lastTradePrice", "lastTradeTime",
 ] as const;
 
 /**
@@ -189,7 +189,7 @@ export function mergeQuoteContribution(
 
   // NAV responses are complete dated observations. Never carry an earlier
   // date or intraday session fields into one, or its marker into a later tick.
-  if (current.priceObservation != null || next.priceObservation != null) {
+  if (current.priceObservation != null || next.priceObservation != null || current.futuresPriceKind || next.futuresPriceKind) {
     return { ...next, name: next.name ?? current.name };
   }
 
@@ -209,6 +209,8 @@ export function mergeQuoteContribution(
       postMarketPrice: next.postMarketPrice, postMarketChange: next.postMarketChange,
       postMarketChangePercent: next.postMarketChangePercent,
     } : {}),
+    // The book's time is said with its book: a bid or ask that comes undated is undated, never the old book's time.
+    ...(next.bid !== undefined || next.ask !== undefined || !samePriceBasis ? { bidAskTime: next.bidAskTime } : {}),
     priceBasis: next.priceBasis,
     // Said of this observation's price; a tick that does not say leaves it unknown.
     extendedSessionPrint: next.extendedSessionPrint,

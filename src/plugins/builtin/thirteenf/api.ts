@@ -54,6 +54,8 @@ interface Forms13FRequestOptions extends Forms13FReadOptions {
   signal?: AbortSignal;
   /** Gloom Cloud only: a path the public 13F source does not serve. */
   cloudOnly?: boolean;
+  /** When the service's stored copy of the part a reader is shown was read (ms); the oldest of every row by default. */
+  shownCopyTime?: (value: unknown) => number | null;
 }
 
 let forms13FPersistence: PluginPersistence | null = null;
@@ -173,6 +175,23 @@ function storedCopyTime(value: unknown): number | null {
   return Number.isFinite(oldest) ? oldest : null;
 }
 
+/**
+ * When a filings list's stored copy was read, by the filings of the quarter a
+ * reader is shown (`period`, else the newest the list holds): a fund's row
+ * shows that quarter's report alone, so a filing of an older quarter read on
+ * an earlier day does not date it (Spark's 30 Sep 13F read on 21 Nov beside
+ * its older ones read on 7 Nov).
+ */
+function quarterCopyTime(period: string | undefined) {
+  return (value: unknown): number | null => {
+    const rows = Array.isArray(value) ? value : [value];
+    const periodOf = (row: unknown) => stringOrEmpty(asRecord(row).period_of_report);
+    const quarter = period ?? rows.map(periodOf).reduce((newest, each) => (each > newest ? each : newest), "");
+    const shown = rows.filter((row) => periodOf(row) === quarter);
+    return storedCopyTime(shown.length > 0 ? shown : rows);
+  };
+}
+
 async function fetchForms13F<T>(
   path: string,
   params: Record<string, string | number | undefined>,
@@ -240,7 +259,7 @@ async function fetchForms13F<T>(
       const storedAt = storedCopyTime(value);
       if (storedAt != null) {
         if (current()) failedRefreshes.add(key);
-        options.onSavedCopy?.(storedAt);
+        options.onSavedCopy?.(options.shownCopyTime?.(value) ?? storedAt);
         return value;
       }
       if (current()) {
@@ -410,15 +429,17 @@ export async function listThirteenFForms(
   to: string,
   limit = 12,
   signal?: AbortSignal,
-  options: Forms13FReadOptions & { offset?: number } = {},
+  /** `shownPeriod`: the list stands for one quarter's report (that one, or "newest"), whose filings date its saved copy. */
+  options: Forms13FReadOptions & { offset?: number; shownPeriod?: string } = {},
 ): Promise<ThirteenFFormSummary[]> {
+  const { shownPeriod, ...read } = options;
   const raw = await fetchForms13F<unknown>("/forms", {
     cik: normalizeCik(cik),
     from,
     to,
     limit,
     offset: options.offset ?? 0,
-  }, { ...options, signal });
+  }, { ...read, signal, ...(shownPeriod ? { shownCopyTime: quarterCopyTime(shownPeriod === "newest" ? undefined : shownPeriod) } : {}) });
   return arrayResponse(raw).map(mapForm).filter((form): form is ThirteenFFormSummary => !!form);
 }
 

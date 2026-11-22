@@ -2,7 +2,7 @@ import type { HeadlessBundleResult, HeadlessPaneColumn } from "../../../types/he
 import { MISSING_VALUE, formatPercent } from "../../../utils/format";
 import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import { TOKEN_YIELD_NOTE, type DividendData } from "./client";
-import { formatDividendYield, growthPaymentsDetail, PAYOUT_NOT_MEANINGFUL, trailingPaymentsText } from "./view";
+import { carriedDateText, formatDividendYield, growthPaymentsDetail, PAYOUT_BASIS, PAYOUT_NOT_MEANINGFUL, trailingPaymentsText } from "./view";
 import type { FundBondFacts } from "../../../api-client/fund-facts";
 import { NOT_SEC_YIELD } from "../../../market-data/bond-funds";
 import { historyEndsText, UNEVEN_REGULAR_PAYMENTS } from "../../../utils/forward-dividend";
@@ -36,6 +36,12 @@ function declaredPayDate(data: Pick<DividendData, "declared" | "metrics">, now =
   const today = now.toISOString().slice(0, 10);
   const declared = (data.declared ?? []).map((row) => row.payDate).filter((day): day is string => !!day && day >= today).sort()[0];
   return declared ?? isoDay(data.metrics.nextPayDate);
+}
+
+/** The listing declaredPayDate's date is carried from, when it is the summary's from another listing. */
+function payDateListing(data: Pick<DividendData, "declared" | "metrics">, now = new Date()): string | undefined {
+  const listing = data.metrics.nextPayDateListing;
+  return listing && declaredPayDate(data, now) === isoDay(data.metrics.nextPayDate) ? listing : undefined;
 }
 
 /**
@@ -182,6 +188,8 @@ function rankDividendEntries(entries: readonly DividendRankingEntry[], now = new
         ...metrics.growth3YNotMeaningful ? { growth3YNotMeaningful: true } : {},
         lastExDate: isoDay(metrics.lastExDividendDate),
         payDate: declaredPayDate(data, now),
+        // The company's other listing the pay date is stated by, where this listing's sources state none.
+        ...payDateListing(data, now) ? { payDateListing: payDateListing(data, now) } : {},
         frequency: metrics.paymentFrequency,
         note: incompleteNote(entry),
         yieldBasis: yieldBasis(entry),
@@ -219,14 +227,16 @@ const RANKING_COLUMNS: HeadlessPaneColumn[] = [
     // CSV and NDJSON say `n/m` where JSON has null; the text report draws `N/M` as P/E does.
     format: (value, row) => row.payoutNotMeaningful === true ? PAYOUT_NOT_MEANINGFUL.toLowerCase() : ratio(value),
     textFormat: (value, row) => row.payoutNotMeaningful === true ? PAYOUT_NOT_MEANINGFUL : ratio(value),
-    description: "Supplied earnings payout ratio; its accounting basis and measurement period are unstated. N/M when known trailing EPS is non-positive." },
+    description: "Trailing twelve-month dividends over trailing twelve-month diluted EPS, as the source states it. N/M when known trailing EPS is non-positive." },
   { key: "growth1Y", header: "1Y growth", align: "right", format: growth("growth1Y"), textFormat: growth("growth1Y", NOT_MEANINGFUL_TEXT),
     description: "Trailing twelve-month cash per share against a year earlier; N/M when the year earlier paid nothing; n/a when either year holds fewer payments than the cadence pays." },
   { key: "growth3Y", header: "3Y CAGR", align: "right", format: growth("growth3Y"), textFormat: growth("growth3Y", NOT_MEANINGFUL_TEXT),
     description: "Compound annual growth of trailing twelve-month cash per share over three years; N/M when the year three years earlier paid nothing; n/a when either year holds fewer payments than the cadence pays." },
   { key: "lastExDate", header: "Last ex", format: day, shrink: false },
   { key: "payDate", header: "Next pay", format: day, shrink: false, stackPriority: 2,
-    description: "Pay date of the next declared distribution; past distributions carry ex-dates only." },
+    // A date the company's other listing states names it in the table; an export keeps the date, JSON payDateListing.
+    textFormat: (value, row) => `${day(value)}${typeof row.payDateListing === "string" && value ? ` ${carriedDateText(row.payDateListing)}` : ""}`,
+    description: "Pay date of the next declared distribution; past distributions carry ex-dates only. One the listing's own sources do not state is the company's other listing's, named in payDateListing." },
 ];
 
 /** Shown after the forward yield once a bond fund is ranked: its sponsor's SEC yield, and its date. */
@@ -290,7 +300,7 @@ export function projectDividendRanking(entries: readonly DividendRankingEntry[],
       errors: incomplete.map((entry) => `${entry.symbol}: ${entry.reason}`),
     } : {}),
     sections: [{
-      title: `Ranked by trailing yield; payout is over TTM diluted EPS${bonds ? `; a bond fund's yields are distribution yields, ${NOT_SEC_YIELD}` : ""}`,
+      title: `Ranked by trailing yield; payout is over ${PAYOUT_BASIS}${bonds ? `; a bond fund's yields are distribution yields, ${NOT_SEC_YIELD}` : ""}`,
       columns: [...rankingColumns(bonds, !!tax), ...rows.some((row) => row.note) ? [NOTE_COLUMN] : [], ...rows.some((row) => row.yieldBasis) ? [YIELD_BASIS_COLUMN] : [],
         ...tax && rows.some((row) => row.taxNote) ? [TAX_NOTE_COLUMN] : []],
       rows,

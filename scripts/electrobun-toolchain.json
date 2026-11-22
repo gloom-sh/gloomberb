@@ -1,0 +1,128 @@
+{
+  "electrobun": "2.0.5",
+  "hutch": "0.28.2",
+  "cottontail": "0.7.3",
+  "bun": "1.4.4",
+  "indexes": [
+    {
+      "url": "https://github.com/blackboardsh/electrobun/releases/download/v2.0.5/electrobun-artifacts.json",
+      "sha256": "11f4eeefb76345ea074b9bbb878acf5ddf5440cbfe38e9768ea528be2c2ed4c1",
+      "size": 3647
+    },
+    {
+      "url": "https://electrobun-artifacts.blackboard.sh/cottontail/releases/0.7.3/manifest.json",
+      "sha256": "e6fed3515045563c7a1fc562b43db5291091942566622b446f8e1da945bf51ac",
+      "size": 2278
+    }
+  ],
+  "platforms": {
+    "macos-arm64": {
+      "hutch": {
+        "url": "https://github.com/blackboardsh/electrobun/releases/download/v2.0.5/electrobun-hutch-macos-arm64.tar.gz",
+        "sha256": "7ae8a04e338631240b9a6dd4e703cebeed418af4009b8884024585fb226cf9da",
+        "size": 1248735
+      },
+      "bun": {
+        "url": "https://github.com/oven-sh/bun/releases/download/bun-v1.4.4/bun-darwin-aarch64.zip",
+        "sha256": "c240d7f0ccb90c263a849fcdb09b7ee62630d921348ed6aafda86b9d577bc510",
+        "size": 40323673
+      },
+      "cottontail": {
+        "url": "https://electrobun-artifacts.blackboard.sh/cottontail/builds/e612fc3e1692d963054cc4547d1c47f602b96d03/macos-arm64/cottontail.tar.gz",
+        "sha256": "f2c8c4dd6be4c24ed1b178fc778648163a5677c95176b641986c50020aa0ac66",
+        "size": 46868549
+      },
+      "core": {
+        "url": "https://github.com/blackboardsh/electrobun/releases/download/v2.0.5/electrobun-core-darwin-arm64.tar.gz",
+        "sha256": "610db158df864a067055be365e443d3945392012f92092fb77c26bd2215ef892",
+        "size": 5675912
+      },
+      "cef": {
+        "url": "https://github.com/blackboardsh/electrobun/releases/download/v2.0.5/electrobun-cef-darwin-arm64.tar.gz",
+        "sha256": "cade8321f42f0a3bc590a58c1b938ed9075593ba78ef8f1dedd582e51fb1ddef",
+        "size": 147695098
+      }
+    },
+    "linux-x64": {
+      "hutch": {
+        "url": "https://github.com/blackboardsh/electrobun/releases/download/v2.0.5/electrobun-hutch-linux-x64.tar.gz",
+        "sha256": "50ea299f8dd59ca50e83a9098b72ed2ea1dbdd8b4def9a44d21a11fd45199417",
+        "size": 1237677
+      },
+      "bun": {
+        "url": "https://github.com/oven-sh/bun/releases/download/bun-v1.4.4/bun-linux-x64.zip",
+        "sha256": "bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c",
+        "size": 51794595
+      },
+      "cottontail": {
+        "url": "https://electrobun-artifacts.blackboard.sh/cottontail/builds/e612fc3e1692d963054cc4547d1c47f602b96d03/linux-x64/cottontail.tar.gz",
+        "sha256": "fdc3fc04571af52b4f7f3966f87e116a0d2aa5af66a1c4c1bb7dc7558674e7c9",
+        "size": 50168445
+      },
+      "core": {
+        "url": "https://github.com/blackboardsh/electrobun/releases/download/v2.0.5/electrobun-core-linux-x64.tar.gz",
+        "sha256": "29deec8eb7f8a017f786f95816bccccd91f514e57ea14868e4b97bd409268e88",
+        "size": 20601335
+      },
+      "cef": {
+        "url": "https://github.com/blackboardsh/electrobun/releases/download/v2.0.5/electrobun-cef-linux-x64.tar.gz",
+        "sha256": "6b75b93145855d7966d8de46b8151f13ad45a759ffb51cdc88588e593186bcb9",
+        "size": 182983598
+      }
+    },
+    "windows-x64": {
+      "hutch": {
+        "url": "https://github.com/blackboardsh/electrobun/releases/download/v2.0.5/electrobun-hutch-windows-x64.tar.gz",
+        "sha256": "3062046b88610d4ddb9f538c36671a4ee6c443ffb7bb5d4e7c724a8e6b6c9cba",
+        "size": 1369209
+      },
+      "bun": {
+        "url": "https://github.com/oven-sh/bun/releases/download/bun-v1.4.4/bun-windows-x64.zip",
+        "sha256": "cd2c0fccc78f3ede1f50ca827a15f063eda13d4d150a3d0674f4f6e323d864a5",
+        "size": 54731706
+      },
+      "cottontail": {
+        "url": "https://electrobun-artifacts.blackboard.sh/cottontail/builds/e612fc3e1692d963054cc4547d1c47f602b96d03/windows-x64/cottontail.tar.gz",
+        "sha256": "0f3fadeb56757a94bed05144823d6793b0cdbad8e2049d3a69a1e09a85935a4f",
+        "size": 46816246
+      },
+      "core": {
+        "url": "https://github.com/blackboardsh/electrobun/releases/download/v2.0.5/electrobun-core-win-x64.tar.gz",
+        "sha256": "afae3152b0818b869df93a7a168d6cdc521f1eb9f512eed36356473c6f6d10be",
+        "size": 10726733
+      },
+      "cef": {
+        "url": "https://github.com/blackboardsh/electrobun/releases/download/v2.0.5/electrobun-cef-win-x64.tar.gz",
+        "sha256": "c007e6e145c67cc03e7eae83938f351cb9024b98283808f6acaf06574f190f61",
+        "size": 185783528
+      }
+    },
+    "windows-arm64": {
+      "hutch": {
+        "url": "https://github.com/blackboardsh/electrobun/releases/download/v2.0.5/electrobun-hutch-windows-arm64.tar.gz",
+        "sha256": "461f82f9de9a8b1fd6cbd4f03b4573d7e63204c2b5a3e95ec148aebeabb7d93e",
+        "size": 1803002
+      },
+      "bun": {
+        "url": "https://github.com/oven-sh/bun/releases/download/bun-v1.4.4/bun-windows-aarch64.zip",
+        "sha256": "2d57a0eec0cb44d95c918c3f9734f60455a1306ae5085d76fc68f44e3ee30d09",
+        "size": 49392935
+      },
+      "cottontail": {
+        "url": "https://electrobun-artifacts.blackboard.sh/cottontail/builds/e612fc3e1692d963054cc4547d1c47f602b96d03/windows-arm64/cottontail.tar.gz",
+        "sha256": "5c6634a00d2e174cb33b9ba3832840c9001b59fbcdf246255aed900e29afa734",
+        "size": 45660044
+      },
+      "core": {
+        "url": "https://github.com/blackboardsh/electrobun/releases/download/v2.0.5/electrobun-core-win-arm64.tar.gz",
+        "sha256": "669db94bae60e4daa172609c756cd1315bec7afb0c8331c1d3e4954cc6edb61e",
+        "size": 11878390
+      },
+      "cef": {
+        "url": "https://github.com/blackboardsh/electrobun/releases/download/v2.0.5/electrobun-cef-win-arm64.tar.gz",
+        "sha256": "1fcb38c3bb10b4cf7ef4f01ca74682912beb94968344092bac34e2c459ca61dd",
+        "size": 183755875
+      }
+    }
+  }
+}

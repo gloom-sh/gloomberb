@@ -1,5 +1,6 @@
 import type { CedearRatio, DepositaryPair, Fundamentals, Quote } from "../types/financials";
-import { canonicalExchange, parsePublicTickerKey } from "../utils/exchanges";
+import { canonicalExchange, displayTickerKey, parsePublicTickerKey } from "../utils/exchanges";
+import { listingSuffixCandidate } from "../sources/listing-symbols";
 import { formatNumber } from "../utils/format";
 import { formatUtcDayTime } from "../utils/utc-time";
 import { heldCurrencyUnit } from "../utils/currency-units";
@@ -66,20 +67,36 @@ export function cedearRatioText(ratio: CedearRatio): string {
   return `${ratioCount(ratio.receipts)} ${ratio.listing} = ${ratioCount(ratio.shares)} ${ratio.company.trim()} share${ratio.shares === 1 ? "" : "s"}`;
 }
 
-/** What a home line says of its receipt: `1 GGAL ADR = 10 of these shares`, and `1 of these shares` for one. */
-function homeLineRatioText(pair: DepositaryPair): string {
-  return `1 ${pair.receipt} ADR = ${ratioCount(pair.ratio)} of these shares`;
+/**
+ * A line of a pair as every other listing is named: a served home line by its
+ * venue (SHEL.L is SHEL:LSE, GGAL.BA GGAL:BYMA), the US receipt by the venue
+ * `exchange` says it trades on where that is known (SHEL:NYSE), else bare, as
+ * a US listing's key is.
+ */
+export function pairListingKey(line: string, exchange?: string | null): string {
+  const suffixed = listingSuffixCandidate(line);
+  if (suffixed) return `${suffixed.symbol}:${suffixed.exchange}`;
+  if (parsePublicTickerKey(line).exchange) return displayTickerKey(line);
+  const venue = canonicalExchange(exchange ?? "");
+  return venue ? `${line}:${venue}` : line;
+}
+
+/** What a home line says of its receipt: `1 GGAL:NYSE ADR = 10 of these shares`, and `1 of these shares` for one. */
+function homeLineRatioText(pair: DepositaryPair, receiptExchange?: string | null): string {
+  return `1 ${pairListingKey(pair.receipt, receiptExchange)} ADR = ${ratioCount(pair.ratio)} of these shares`;
 }
 
 /**
  * The ratio as a listing's report states it, from its side of the pair:
- * `1 ADR = 10 ordinary shares of GGAL.BA` on the receipt (`2 preferred
- * shares of PETR4.SA`, homeShareClass), `1 GGAL ADR = 10 of these shares`
- * on a home line.
+ * `1 ADR = 10 ordinary shares of GGAL:BYMA` on the receipt (`2 preferred
+ * shares of PETR4:B3`, homeShareClass), `1 GGAL:NYSE ADR = 10 of these
+ * shares` on a home line, the receipt named by its venue where
+ * `receiptExchange` gives it (pairListingKey).
  */
-export function depositaryPairText(pair: DepositaryPair, receiptSide: boolean): string {
-  if (!receiptSide) return homeLineRatioText(pair);
-  return `${adrRatioText(pair.ratio, pair.ordinary[0]) ?? `1 ADR = ${ratioCount(pair.ratio)}`} of ${pair.ordinary.join(" / ")}`;
+export function depositaryPairText(pair: DepositaryPair, receiptSide: boolean, receiptExchange?: string | null): string {
+  if (!receiptSide) return homeLineRatioText(pair, receiptExchange);
+  const lines = pair.ordinary.map((line) => pairListingKey(line));
+  return `${adrRatioText(pair.ratio, lines[0]) ?? `1 ADR = ${ratioCount(pair.ratio)}`} of ${lines.join(" / ")}`;
 }
 
 /** A price as the comparison reads it, with when it was observed. */

@@ -38,12 +38,14 @@ import {
   formatAlertDescription,
   levelAlreadyMet,
   sameLevelRule,
+  tickTrigger,
 } from "./alert-engine";
 import {
   MOVE_KIND_CHOICE,
   moveWizardFields,
   parseAlertCommandValues,
   parseAlertShortcutValues,
+  slashSpellsListing,
 } from "./command";
 import { ALERTS_PLUGIN_ID, POLL_INTERVAL_MS, POLL_SECONDS_KEY, PRICE_DELIVERY } from "./constants";
 import { alertHistoryLockNote, alertsHeadless } from "./headless";
@@ -55,6 +57,7 @@ import {
   levelInQuoteUnit,
   assertAlertCurrency,
   moveQuoteFields,
+  printedBeforeLastCheck,
   quoteAlertFields,
   quoteErrorAlertFields,
   alertQuote,
@@ -66,10 +69,13 @@ import {
   loadAlerts,
   saveAlerts,
 } from "./storage";
-import { createAlertQuoteStream, readStreamedAlertQuote, type AlertQuoteStream } from "./live";
+import { alertInstrument, alertQuoteAtTick, createAlertQuoteStream, readStreamedAlertQuote, type AlertQuoteStream } from "./live";
+import { buildQuoteKey } from "../../../market-data/selectors";
+import type { StreamTickRange } from "../../../market-data/quotes/tick-range";
 import { isPenceQuotedLine, isSharePriceQuote } from "../../../market-data/market/format";
 import { alertPriceText, alertPriceWithCurrency, alertQuoteTime } from "./price-text";
 import { judgeMove, moveBasisText, moveFiredText, MOVE_DELIVERY } from "./move";
+import { acceptsAlertSession, alertSessionField } from "./session";
 import { MOVE_REARM, moveNowText, planMoveAlerts } from "./cli-move";
 import { alertListing, readingSessionWords } from "./format";
 import type { AlertRule } from "./types";
@@ -87,16 +93,6 @@ let alertStream: AlertQuoteStream | null = null;
  * triggers or first gets a baseline.
  */
 const STREAM_PERSIST_MS = 60_000;
-
-/** BTC/USD, BRK/B and EUR/USD are one listing written with a slash, as `alerts add` reads them; XLK/SPY is not. */
-function slashSpellsListing(symbol: string): boolean {
-  try {
-    return parseListingArg(symbol).key !== symbol.toUpperCase();
-  } catch {
-    // Intentional ignore: text the listing reader refuses is no pair to divide, so the quote's own error stands.
-    return true;
-  }
-}
 
 export const alertsPlugin: GloomPlugin = {
   id: ALERTS_PLUGIN_ID,
@@ -183,13 +179,28 @@ export const alertsPlugin: GloomPlugin = {
       }
     };
 
-    // The last price each alert was judged on by the stream. `crosses` needs
-    // it tick to tick, and writing it to the store on every tick would churn
-    // the saved config.
-    const streamedBaselines = new Map<string, number>();
+    /** The quote at a tick a frame folded in that sets a move rule off, when the newest quote does not. */
+    const movedTick = (alert: AlertRule, quote: Quote, ticks: StreamTickRange, now: number): Quote | null => {
+      if (judgeMove(alert, quote, now).fired) return null;
+      const edges = alert.condition === "above" ? [ticks.high] : alert.condition === "below" ? [ticks.low] : [ticks.high, ticks.low];
+      for (const tick of edges) {
+        const atTick = alertQuoteAtTick(quote, tick, now);
+        if (atTick && judgeMove(alert, atTick, now).fired) return atTick;
+      }
+      return null;
+    };
+
+    // The last price each alert was judged on by the stream, and the arming
+    // it was judged in. `crosses` needs it tick to tick, and writing it to the
+    // store on every tick would churn the saved config. An alert with one also
+    // judges every tick its symbol's frames folded in since, so a tick that
+    // crossed and came back counts.
+    const streamedBaselines = new Map<string, { price: number; armedAt: number }>();
+    const armingOf = (alert: AlertRule) => alert.armedAt ?? alert.createdAt;
     let lastStreamPersistAt = 0;
     const evaluateStreamed = () => {
       if (generation !== pollGeneration) return;
+      const tickRanges = alertStream?.takeTicks() ?? new Map<string, StreamTickRange>();
       const alerts = loadJudgedAlerts();
       const now = Date.now();
       let persist = false;
@@ -197,11 +208,26 @@ export const alertsPlugin: GloomPlugin = {
       let movesTouched = false;
       for (const alert of alerts) {
         if (alert.metric || (alert.status !== "active" && !alert.move)) continue;
-        const quote = readStreamedAlertQuote(alert, undefined, now);
-        if (!quote) continue;
+        const latest = readStreamedAlertQuote(alert, undefined, now);
+        if (!latest) continue;
+        const range = tickRanges.get(buildQuoteKey(alertInstrument(alert)));
+        const regular = range?.regular?.latest;
+        const quote = acceptsAlertSession(alert, latest) ? latest : regular && (!regular.lastUpdated || regular.lastUpdated >= armingOf(alert))
+          ? alertQuoteAtTick({ ...latest, marketState: "REGULAR", overnightPrice: undefined }, regular, now) : null;
+        // A quote older than the one the alert was last checked on is no news of its price.
+        if (!quote || !acceptsAlertSession(alert, quote) || printedBeforeLastCheck(alert, quote)) continue;
+        // A new or edited alert's first check judges its quote alone: earlier ticks may be from before it. An edited
+        // move rule is one too, though this device's reading of it (a poll's since the edit) comes back with it.
+        const baseline = streamedBaselines.get(alert.id);
+        const sameArming = baseline?.armedAt === armingOf(alert);
+        const ticks = alert.lastCheckedPrice != null && sameArming ? (alert.regularHoursOnly ? range?.regular : range) : undefined;
         if (alert.move) {
           const status = alert.status;
-          if (checkMove(alert, quote, now) || alert.status !== status) persist = true;
+          const atTick = ticks ? movedTick(alert, quote, ticks, now) : null;
+          // Gone off at the tick, the rule still keeps the newest quote's reading.
+          const firedAtTick = atTick ? checkMove(alert, atTick, now) : false;
+          if (checkMove(alert, quote, now) || firedAtTick || alert.status !== status) persist = true;
+          streamedBaselines.set(alert.id, { price: quote.price, armedAt: armingOf(alert) });
           touched = true;
           movesTouched = true;
           continue;
@@ -210,16 +236,21 @@ export const alertsPlugin: GloomPlugin = {
         // tick and store one at once, so `crosses` never compares against a
         // price from before the edit.
         const stored = alert.lastCheckedPrice;
-        const previous = stored == null ? undefined : streamedBaselines.get(alert.id) ?? stored;
+        const previous = stored == null ? undefined : sameArming ? baseline!.price : stored;
         if (stored == null) persist = true;
-        if (evaluateAlert({ ...alert, lastCheckedPrice: previous }, quote.price)) {
+        const judged = { ...alert, lastCheckedPrice: previous };
+        const firesNow = evaluateAlert(judged, quote.price);
+        const tick = ticks && !firesNow ? tickTrigger(judged, ticks) : null;
+        // Noted at the price that crossed: the newest, or a tick that came back before its frame.
+        const firedOn = firesNow ? quote : tick ? alertQuoteAtTick(quote, tick, now) : null;
+        if (firedOn) {
           alert.status = "triggered";
           alert.triggeredAt = now;
-          ctx.log.info("stream: TRIGGERED", { symbol: alert.symbol, price: quote.price });
-          notifyTriggered(alert, quote, now);
+          ctx.log.info("stream: TRIGGERED", { symbol: alert.symbol, price: firedOn.price });
+          notifyTriggered(alert, firedOn, now);
           persist = true;
         }
-        streamedBaselines.set(alert.id, quote.price);
+        streamedBaselines.set(alert.id, { price: quote.price, armedAt: armingOf(alert) });
         Object.assign(alert, quoteAlertFields(quote, now));
         touched = true;
       }
@@ -230,7 +261,8 @@ export const alertsPlugin: GloomPlugin = {
       if (persist) alertStream?.sync();
     };
     alertStream?.dispose();
-    alertStream = checks ? createAlertQuoteStream({ readAlerts: () => loadAlerts(ctx), onQuotes: evaluateStreamed }) : null;
+    // Followed as judged: a move rule set by symbol alone learns its listing from this device's reading of it.
+    alertStream = checks ? createAlertQuoteStream({ readAlerts: loadJudgedAlerts, onQuotes: evaluateStreamed }) : null;
     ctx.registerCommand({
       id: "set-alert",
       label: "Add Alert",
@@ -271,7 +303,9 @@ export const alertsPlugin: GloomPlugin = {
           placeholder: "200.00",
           type: "text",
         },
+        alertSessionField("price"),
         ...moveWizardFields,
+        alertSessionField("move"),
         ...metricWizardFields,
       ],
       async execute(values) {
@@ -312,7 +346,8 @@ export const alertsPlugin: GloomPlugin = {
           const now = Date.now();
           const exchange = resolved.exchange ? canonicalExchange(resolved.exchange) : canonicalExchange(quote.listingExchangeName || quote.exchangeName);
           const saved = loadJudgedAlerts();
-          const plan = planMoveAlerts({ kind: "move", symbols: [input.symbol], condition: input.condition, percent: input.price },
+          const plan = planMoveAlerts({ kind: "move", symbols: [input.symbol], condition: input.condition, percent: input.price,
+            ...input.regularHoursOnly ? { regularHoursOnly: true } : {} },
             [{ input: input.symbol, listing: { symbol, ...exchange ? { exchange } : {} }, quote }], saved, now);
           const existing = plan.existing[0]?.alert;
           if (existing) {
@@ -357,11 +392,14 @@ export const alertsPlugin: GloomPlugin = {
         const far = farTargetMessage(symbol, input.price, quote.price, named ? null : notTheCoinNote(input.symbol.toUpperCase(), quote) ?? commodityFutureNote(input.symbol, quote), isPenceQuotedLine(quote));
         if (!input.metric && far) throw new Error(far);
 
+        const eligible = acceptsAlertSession(input, quote);
         const alert: AlertRule = {
           ...createAlert(quote.symbol || symbol, input.condition, input.price),
-          ...(!metric ? quoteAlertFields(quote) : {
-            metric, exchange: quote.listingExchangeName || quote.exchangeName,
+          ...input.regularHoursOnly ? { regularHoursOnly: true } : {},
+          ...(!metric && eligible ? quoteAlertFields(quote) : {
+            ...(metric ? { metric } : {}), exchange: quote.listingExchangeName || quote.exchangeName,
             ...quote.currency ? { lastQuoteCurrency: quote.currency } : {},
+            ...(!metric && isPenceQuotedLine(quote) ? { lastQuotePence: true } : {}),
           }),
         };
         // A close not yet final is read once it is: the rule is kept and says when it is first judged.
@@ -390,12 +428,12 @@ export const alertsPlugin: GloomPlugin = {
         alertStream?.sync();
 
         // A level the price is already past goes off at the next check, as `alerts add` says.
-        const met = !input.metric && levelAlreadyMet(alert.condition, quote.price, alert.targetPrice)
+        const met = eligible && !input.metric && levelAlreadyMet(alert.condition, quote.price, alert.targetPrice)
           ? `, already ${alert.condition}, so it goes off at the next check` : "";
         // What delivers it and what became of the symbol, as `alerts add` says them.
         ctx.notify({
           body: [
-            `Alert set: ${formatAlertDescription(alert)}${input.metric ? firstCheck ? `, ${firstCheck}` : "" : `${isSharePriceQuote(quote) ? " per share" : ""} (current ${alertPriceWithCurrency(alert, quote.price)}${readingSessionWords(alert)} · ${alertQuoteTime(alert.lastQuoteUpdatedAt)}${met})`}.`,
+            `Alert set: ${formatAlertDescription(alert)}${input.metric ? firstCheck ? `, ${firstCheck}` : "" : eligible ? `${isSharePriceQuote(quote) ? " per share" : ""} (current ${alertPriceWithCurrency(alert, quote.price)}${readingSessionWords(alert)} · ${alertQuoteTime(alert.lastQuoteUpdatedAt)}${met})` : " (waiting for a regular-hours quote)"}.`,
             `${PRICE_DELIVERY.charAt(0).toUpperCase()}${PRICE_DELIVERY.slice(1)}.`,
             ...notes.map((note) => /[.?!]$/.test(note) ? note : `${note}.`),
           ].join(" "),
@@ -423,9 +461,8 @@ export const alertsPlugin: GloomPlugin = {
           type: "select",
           // Earnings first, as the command describes itself: an alert anyone can add for any US listing.
           defaultValue: "earnings_date",
-          // Options flow and IV spikes are checked only with Pro, and say so before one is chosen.
           options: [...RESEARCH_FORM_KINDS.map((value) => ({ value, label: checkedOnlyWithPro({ kind: value }) ? `${RESEARCH_LABELS[value]} (Pro)` : RESEARCH_LABELS[value] })),
-            ...EVENT_ALERT_TEMPLATES.map((entry) => ({ label: entry.label, value: entry.id }))],
+            ...EVENT_ALERT_TEMPLATES.map(({ id, kind, label }) => ({ value: id, label: checkedOnlyWithPro({ kind }) ? `${label} (Pro)` : label }))],
         },
         ...EVENT_ALERT_TEMPLATES.filter((entry) => entry.field != null).map((entry) => ({
           key: entry.id,
@@ -444,7 +481,6 @@ export const alertsPlugin: GloomPlugin = {
         if (initial.error) throw new Error(initial.error);
         if (initial.rules.length >= MAX_EVENT_ALERTS)
           throw new Error("Keep at most 40 event alerts.");
-        // Earnings and macro events alert before a date: one has to be known, or the rule would never go off.
         const scheduled = event === "earnings_date" || event === "macro_event";
         const awaitsResults = event === "earnings_date" && values["earnings_date:when"] === "results";
         if (scheduled && !awaitsResults && parseLeadDays(values[`${event}:leadDays`]) == null)
@@ -475,8 +511,9 @@ export const alertsPlugin: GloomPlugin = {
           const lookup = (await lookupScheduledDates([target], scheduledEventSources(ctx.marketData), newYorkToday()))
             .get(scheduledTargetKey(target));
           if (!lookup || "error" in lookup) throw new Error(eventDateUnavailableMessage(target, lookup?.error ?? "no answer"));
-          if (!lookup.date) throw new Error(noUpcomingEventMessage(target));
-          rule = { ...rule, eventDate: lookup.date };
+          if (lookup.date) rule = { ...rule, eventDate: lookup.date };
+          else if (target.kind === "earnings") notes.push("Waiting for the next earnings date to be published.");
+          else throw new Error(noUpcomingEventMessage(target));
         }
         // Read again: the lookup took a while and the rules may have changed meanwhile.
         const result = scheduled ? readAll() : initial;
@@ -584,6 +621,9 @@ export const alertsPlugin: GloomPlugin = {
           changed = true;
           continue;
         }
+        // A cached quote older than the alert's last check (one read before the app last closed) is left alone:
+        // judged, it would set the alert off at a price already gone, or wind its baseline back.
+        if (!acceptsAlertSession(alert, quote) || printedBeforeLastCheck(alert, quote)) continue;
 
         if (alert.move) {
           checkMove(alert, quote, Date.now());
@@ -604,6 +644,8 @@ export const alertsPlugin: GloomPlugin = {
       if (changed) {
         if (!metrics) saveMoveChecks(alerts);
         await saveAlerts(ctx, alerts, metrics ? "metric" : "price");
+        // A rule set by symbol alone now knows the listing its quotes stream on.
+        if (!metrics) alertStream?.sync();
       }
     };
 

@@ -91,7 +91,8 @@ type Axis = "spot" | "forward" | "delta" | "strike";
 export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const colors = useThemeColors();
   const scope = useCloudDisplayScope();
-  const providerId = useAssetData()?.id;
+  const marketData = useAssetData();
+  const providerId = marketData?.id;
   // The chosen cell is the table's cursor: quieter while the pane does not have the keys.
   const selectionFill = useSelectionFill();
   const { symbol, ticker, financials } = usePaneTicker();
@@ -145,8 +146,9 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   useEffect(() => { if (activeTab === "term") setEventsWanted(true); }, [activeTab]);
   const eventSymbol = target?.effectiveTicker ?? symbol ?? null;
   const eventExchange = target?.effectiveExchange ?? "";
-  const eventsLoader = useCallback(async () => loadSurfaceEvents({ symbol: eventSymbol!, exchange: eventExchange }, { apiClient }),
-    [eventSymbol, eventExchange]);
+  // MDAY's moves read the pane's own market data, as the report's do (`fn OVDV --tab term`).
+  const eventsLoader = useCallback(async () => loadSurfaceEvents({ symbol: eventSymbol!, exchange: eventExchange },
+    { apiClient, ...(marketData ? { marketData } : {}) }), [eventSymbol, eventExchange, marketData]);
   const surfaceEvents = useAsyncResource(eventsWanted && eventSymbol && !dvolCurrency(eventSymbol.toUpperCase()) ? eventsLoader : null, {
     savedCopy: scope ? { key: ["surface-events", scope, eventSymbol, eventExchange] } : null,
   });
@@ -568,7 +570,8 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
       setSurfaceCoordinate(denseGrid.moneyness[selection.moneynessIndex] ?? (deltaSurface ? 0 : 1));
     }} fallback={table} loading={active.loading} meshAvailable={bitmapAvailable} /> : activeTab === "smile" && snapshot ? <SmileChart snapshot={snapshot} expiry={selectedExpiry}
       overlay={overlaySmiles} axis={axis} width={width} height={tableHeight} focused={focused} />
-      : activeTab === "term" && snapshot ? <TermChart snapshot={snapshot} width={width} height={tableHeight} focused={focused} events={eventReadings} />
+      : activeTab === "term" && snapshot ? <TermChart snapshot={snapshot} width={width} height={tableHeight} focused={focused} events={eventReadings}
+        historyFailed={!!surfaceEvents.data?.historyError} />
       : ["skew", "forwards"].includes(activeTab) && snapshot ? <ExpiryTable snapshot={snapshot} selected={selectedExpiry}
         onSelect={(entry) => setExpiration(entry.expiration)} forwards={activeTab === "forwards"} width={width} height={tableHeight}
         focused={focused} onKey={handleKey} metadata={exportMetadata} /> : table;

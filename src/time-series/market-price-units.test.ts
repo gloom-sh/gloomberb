@@ -138,3 +138,58 @@ test("a currency pair counts its quote currency per unit of its base, and prices
   ]);
   expect(result.warnings.filter((warning) => warning.includes("axis"))).toEqual([]);
 });
+
+test("a series whose history fails keeps the unit its quote, contract terms or symbol give, never a bare currency", async () => {
+  const chart: ChartSpec = {
+    version: CHART_SPEC_VERSION, viewport: { range: "1D", resolution: "5m" }, panels: [{ id: "main" }], studies: [],
+    series: ["^VIX", "DX-Y.NYB", "GC=F", "^RUT"].map((symbol) => ({
+      id: symbol, source: { kind: "security", instrument: { symbol }, fieldId: "market.price" },
+      style: "line", transform: "raw", axis: "auto", panelId: "main", interpolation: "none",
+    })),
+  };
+  const result = await resolveChartSpecData(chart, {
+    now: new Date("2026-11-22T06:29:00Z"),
+    loadFuturesPriceUnit: async (symbol) => symbol === "GC=F" ? "USD / troy oz" : null,
+    dataProvider: createTestDataProvider({
+      // ^RUT's quote fails too: its symbol still says it is an index.
+      getTickerFinancials: async (symbol) => {
+        if (symbol === "^RUT") throw new Error("No quote");
+        return { annualStatements: [], quarterlyStatements: [], priceHistory: [], quote: { symbol, currency: "USD",
+          instrumentType: symbol === "GC=F" ? "FUTURE" : "INDEX", price: 1, change: 0, changePercent: 0, lastUpdated: Date.parse("2026-11-20T22:00:00Z") } };
+      },
+      getPriceHistory: async () => { throw new Error("No bars"); },
+      getPriceHistoryForResolution: async () => { throw new Error("No bars"); },
+    }),
+  });
+  expect(result.series.map(({ id, unit, points }) => [id, unit, points.length])).toEqual([
+    ["^VIX", "points", 0], ["DX-Y.NYB", "points", 0], ["GC=F", "USD / troy oz", 0], ["^RUT", "points", 0],
+  ]);
+});
+
+test("a day chart whose first listing has no bars shows the next listing's last session, not a weekend's rolling day", async () => {
+  const step = 5 * 60_000, open = Date.parse("2026-11-19T23:00:00Z");
+  // Gold's Globex day to Friday's 17:00 Chicago close; read on Sunday morning.
+  const gold = Array.from({ length: 277 }, (_, index) => ({ date: new Date(open + index * step), open: 3500, high: 3501, low: 3499, close: 3500, volume: 10 }));
+  const chart: ChartSpec = {
+    version: CHART_SPEC_VERSION, viewport: { range: "1D", resolution: "5m" }, panels: [{ id: "main" }], studies: [],
+    series: [{ symbol: "^VIX", exchange: "CBOE INDICES" }, { symbol: "GC=F", exchange: "CMX" }].map((instrument) => ({
+      id: instrument.symbol, source: { kind: "security", instrument, fieldId: "market.price" },
+      style: "line", transform: "raw", axis: "auto", panelId: "main", interpolation: "none",
+    })),
+  };
+  const history = async (symbol: string) => {
+    if (symbol === "^VIX") throw new Error("No bars");
+    return gold;
+  };
+  const result = await resolveChartSpecData(chart, {
+    now: new Date("2026-11-22T07:48:00Z"),
+    dataProvider: createTestDataProvider({
+      getTickerFinancials: async (symbol) => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [], quote: { symbol, currency: "USD",
+        instrumentType: symbol === "GC=F" ? "FUTURE" : "INDEX", price: 3500, change: 0, changePercent: 0, lastUpdated: Date.parse("2026-11-20T22:00:00Z") } }),
+      getPriceHistory: history,
+      getPriceHistoryForResolution: history,
+    }),
+  });
+  expect(result.series.find((entry) => entry.id === "^VIX")?.points).toEqual([]);
+  expect([result.viewport.start?.toISOString(), result.viewport.end?.toISOString()]).toEqual(["2026-11-19T23:00:00.000Z", "2026-11-20T22:00:00.000Z"]);
+});

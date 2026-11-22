@@ -611,6 +611,7 @@ export interface QuoteBoardStatus {
   loading: number;
   /** Symbols showing their last good quote after a failed load. */
   stale: number;
+  staleSymbol: string | null;
   /** Symbols with no quote to show at all. */
   unavailable: number;
   latestTs: number;
@@ -621,15 +622,19 @@ export interface QuoteBoardStatus {
 export function quoteBoardStatus(quotes: BoardQuoteMap): QuoteBoardStatus {
   let loading = 0;
   let stale = 0;
+  let staleSymbol: string | null = null;
   let unavailable = 0;
   let latestTs = 0;
-  for (const state of quotes.values()) {
+  for (const [symbol, state] of quotes) {
     if (state.loading) loading += 1;
-    if (state.stale) stale += 1;
+    if (state.stale) {
+      stale += 1;
+      staleSymbol = stale === 1 ? state.quote?.symbol ?? symbol : null;
+    }
     else if (!state.quote && !state.loading) unavailable += 1;
     latestTs = Math.max(latestTs, state.quote?.lastUpdated ?? 0);
   }
-  return { loading, stale, unavailable, latestTs, savedAt: oldestSavedCopyAt(Array.from(quotes.values(), (state) => state.quote)) };
+  return { loading, stale, staleSymbol, unavailable, latestTs, savedAt: oldestSavedCopyAt(Array.from(quotes.values(), (state) => state.quote)) };
 }
 
 /** The quotes a board shows, for the footer's delayed clock (`useQuoteDelayFooter`). */
@@ -642,7 +647,7 @@ export function quoteBoardFooterInfo(status: QuoteBoardStatus): PaneFooterSegmen
   const info: PaneFooterSegment[] = [];
   if (status.loading > 0) info.push({ id: "loading", parts: [{ text: "loading", tone: "muted" }] });
   if (status.stale > 0) {
-    info.push({ id: "stale", parts: [{ text: `${status.stale} stale`, tone: "warning" }] });
+    info.push({ id: "stale", parts: [{ text: `${status.staleSymbol ?? status.stale} stale`, tone: "warning" }] });
   }
   if (status.unavailable > 0) {
     info.push({ id: "error", parts: [{ text: `${status.unavailable} unavailable`, tone: "warning" }] });
@@ -749,6 +754,7 @@ const boardHeadlines = new WeakMap<Quote, Quote>();
  * price's (quoteHeadlineTime), as `quote` dates it.
  */
 export function boardHeadlineQuote(quote: Quote): Quote {
+  if (quote.futuresPriceKind) return quote;
   const cached = boardHeadlines.get(quote);
   if (cached) return cached;
   const display = getRegularSessionDisplay(quote);
@@ -781,6 +787,7 @@ export function renderQuoteBoardCell(
 
   switch (kind) {
     case "status": {
+      if (state?.stale && !format.sessionText) return { text: "!", value: "stale", color: colors.warning };
       if (format.sessionText) {
         return { text: quoteSessionLabel(quote, format.now) ?? MISSING_VALUE, color: quoteSessionColor(quote, colors, format.now) };
       }

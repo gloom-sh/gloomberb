@@ -333,6 +333,8 @@ Plugin IDs must not reuse current or retired built-in IDs. Retired module IDs re
 
 `ticker-research`, `macro` and `market-overview` are retired too: each now names the group of built-ins it was split into. In `disabledPlugins` the old id stands for all of its successors, and `gloom plugin enable|disable <id>` switches them together.
 
+When two folders in the plugins folder declare the same id (a download beside a marketplace install, or a linked checkout beside a clone), Gloom loads one: a linked checkout over a copy, then the higher version, then the folder name that sorts first. The other is listed in the Plugins pane as a duplicate that names the folder loaded instead. Neither folder is deleted; remove the one you do not want from the pane or with `gloom remove`.
+
 A plugin that changes its id keeps the state its users already have by declaring the old one as `stateId`:
 
 ```typescript
@@ -1186,6 +1188,8 @@ Report the orders the broker made from one request with the same `BrokerOrder.li
 Panes can expose per-instance settings that persist with the layout. These settings are part of the pane definition, can be edited from the pane header or command bar, and are available to both first-party and external plugins.
 
 Table panes built with the shared `DataTable` can opt into an Excel-compatible CSV action with `tableExport: true`. The action exports the current sorted, filtered rows and visible columns. It is available when the pane has one active table. Right-aligned number columns export as plain numbers with the unit in the header; a cell's optional `value` (the full-precision number, or an ISO date) replaces its text in the export.
+
+For a table whose visible rows follow independent live data, `rowSource` can subscribe each mounted row separately. Its `subscribe(item, listener)` returns an unsubscribe, `version(item)` returns a number that stays unchanged between updates, and `read(item)` returns the current row. Keep the source object and `renderCell` stable. The source updates cell values only: change `items` when row identity, order, geometry or an `omitWhenEmpty` column changes. Reports and CSV read the current row through `read`, including rows outside the viewport.
 
 ```typescript
 ctx.registerPane({

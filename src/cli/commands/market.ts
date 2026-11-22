@@ -7,6 +7,7 @@ import { TIME_RANGES, type TimeRange } from "../../time-series/range";
 import { CHART_RESOLUTION_STEP_MS, isIntradayResolution, RANGE_HISTORY_RESOLUTION } from "../../time-series/resolution";
 import { yearToDateStartIndex } from "../../market-data/market/year-to-date";
 import { barCloseSession } from "../../market-data/market/bar-period";
+import { regularSessionCloseOn } from "../../market-data/market/freshness";
 import type { EarningsEvent, MarketDataRequestContext, QuoteBatchResult, QuoteSubscriptionTarget, SecFilingItem } from "../../types/data-provider";
 import { companyDataNotes, type CompanyFrom } from "../../types/company-from";
 import type { NewsArticle, NewsFeed, NewsQuery } from "../../news/types";
@@ -148,7 +149,7 @@ import {
 import { historyCoverageNotice, WindowBeforeFirstBarError } from "../../sources/history-coverage";
 import { fetchHistoryResult } from "../../sources/history-result";
 import { settleWithin } from "../../utils/async-deadline";
-import { demergerRuns, demergerSuccessor, hasPriceBreak, historyDemergerNote, withDemergerFlags } from "../history-demergers";
+import { demergerRuns, demergerSuccessor, hasPriceBreak, historyDemergerNote, SPLIT_FLAG, withDemergerFlags, withSplitFlags } from "../history-demergers";
 import type { FxInterventionsPayload } from "../../api-client/fx-interventions";
 import {
   fxInterventionLatestNote, fxInterventionPair, fxInterventionWindowNote, loadFxInterventions, type FxInterventionPair,
@@ -237,7 +238,7 @@ import {
   searchNewsStories,
   wordMeansMore,
 } from "./news-search";
-import { displayTimeZone, formatUtcDayTime, formatUtcTime } from "../../utils/utc-time";
+import { displayTimeZone, formatUtcDayTime, formatUtcTime, localTimeSuffix, parseReportTime } from "../../utils/utc-time";
 import { localReportTiming } from "../../utils/report-timing";
 import { DAY_SO_FAR_TEXT, dailyOrLongerBarSize, withSessionBar } from "../../time-series/session-bar";
 import { requestedBarSize } from "../../time-series/bar-spacing";
@@ -579,7 +580,7 @@ async function readListedSymbols(
 const QUOTE_CSV_SECTION = {
   title: "CSV",
   lines: [
-    "Last, Chg%, Prev Close and each extended print are plain numbers. Cur is the currency; currency_or_unit is the unit: the currency, a pair's quote currency per base (JPY per USD for USDJPY=X), index points or pct for a yield. A pre-market, after-hours or overnight print's move is in Pre-Market Chg%, After Hours Chg% or Overnight Chg%, and compare's day range in Day Low and Day High, after the columns the export already had.",
+    "Last, Chg%, Prev Close and each extended print are plain numbers. Cur is the currency; currency_or_unit is the unit: the currency, a pair's quote currency per base (JPY per USD for USDJPY=X), index points or pct for a yield. A pre-market, after-hours or overnight print's move is in Pre-Market Chg%, After Hours Chg% or Overnight Chg%, and compare's day range in Day Low and Day High, after the columns the export already had. Updated is when Last was observed (a close beside an extended print, at the venue's close), and each print's own time is in Pre-Market Updated, After Hours Updated or Overnight Updated, last of all.",
     "A row with no figure says why in its status column, never NaN; a symbol with no quote is also named on standard error.",
     "A list from --file or standard input has a row for every line, in its order, one that names no listing with its reason in status; its export adds input, the line as typed, and duplicate_of, the input of an earlier row that is the same listing.",
   ],
@@ -660,7 +661,7 @@ const CHANGE_BASIS_EXPORT_COLUMNS = [
  */
 function quoteTextColumns<Column extends { key: string }>(columns: Column[]): Array<Column | typeof CHANGE_BASIS_COLUMN> {
   const exported = new Set([...CHANGE_BASIS_EXPORT_COLUMNS, ...EXTENDED_CHANGE_EXPORT_COLUMNS, ...DAY_RANGE_EXPORT_COLUMNS, CHANGE_BP_EXPORT_COLUMN,
-    ...LIST_INPUT_EXPORT_COLUMNS].map((column) => column.key));
+    ...LIST_INPUT_EXPORT_COLUMNS, ...EXTENDED_TIME_EXPORT_COLUMNS].map((column) => column.key));
   const kept = columns.filter((column) => !exported.has(column.key));
   const at = kept.findIndex((column) => column.key === "changePercent") + 1;
   return [...kept.slice(0, at), CHANGE_BASIS_COLUMN, ...kept.slice(at)];
@@ -719,6 +720,18 @@ const EXTENDED_CHANGE_EXPORT_COLUMNS = EXTENDED_SESSIONS.map((session) => ({
   key: `${extendedKey(session)}ChangePercent`,
   header: `${EXTENDED_SESSION_LABELS[session]} Chg%`,
   value: (row: QuoteRow) => row.extendedSession === session ? row.extendedChangePercent : null,
+}));
+
+/**
+ * When each extended print was observed, as Updated dates Last: SHEL:NYSE's
+ * after-hours print at 00:04 UTC beside its 21:00 UTC close. Last of all an
+ * export's columns, so one read by position stays where it was; the table
+ * puts the time beside the print.
+ */
+const EXTENDED_TIME_EXPORT_COLUMNS = EXTENDED_SESSIONS.map((session) => ({
+  key: `${extendedKey(session)}UpdatedAt`,
+  header: `${EXTENDED_SESSION_LABELS[session]} Updated`,
+  value: (row: QuoteRow) => row.extendedSession === session && row.extendedUpdatedAt ? row.extendedUpdatedAt : null,
 }));
 
 /**
@@ -786,7 +799,11 @@ const FEED_COLUMNS = [
   },
   // A nominal price names the session it is from ("6 Nov close"), not the last print; JSON keeps both.
   { key: "updatedAt", header: "Updated", shrink: false, stackPriority: 5,
-    format: (value: unknown, row: QuoteRow) => row.nominalLabel || (typeof value === "string" ? formatUtcTime(value) : "") },
+    format: (value: unknown, row: QuoteRow) => {
+      if (row.nominalLabel) return row.nominalLabel;
+      const time = typeof value === "string" ? parseReportTime(value) : null;
+      return time ? formatUtcDayTime(time) + (time.dateOnly ? "" : ` UTC${localTimeSuffix(time.time)}`) : "";
+    } },
 ];
 
 /**
@@ -963,6 +980,9 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
     const closeDate = extended && !result.futuresContract && !quote?.nominalPrice && !quote?.dailyClose ? headlineCloseDate(quote) : null;
     const printedAt = closeDate ? extendedPrintTime(quote) : null;
     const closeBesidePrint = closeDate && printedAt != null ? { date: closeDate, printedAt } : null;
+    // Last and an extended print are two observations: a close beside a print is dated by the venue's close, the print by its own time.
+    const closedAt = closeBesidePrint ? regularSessionCloseOn(quote?.listingExchangeName || quote?.exchangeName, closeBesidePrint.date) : null;
+    const extendedAt = extended ? extendedPrintTime(quote) : null;
     return {
       symbol: quoteRowSymbol(result),
       name: quote?.name || result.listing?.name || "",
@@ -1004,14 +1024,17 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
       source: quote?.dataSource ?? quote?.providerId ?? "",
       feed: quoteFeedState(quote, now),
       ...quote?.priceVenue ? { priceVenue: quote.priceVenue } : {},
-      // When the price Last shows was observed: in a pre-market nothing has traded in, the close it stands at.
-      updatedAt: quote?.lastUpdated ? new Date(quoteHeadlineTime(quote)).toISOString() : "",
+      // When the price Last shows was observed: in a pre-market nothing has traded in, the close it stands at; beside an
+      // extended print, the close it is, the print keeping its own time in its session's Updated column.
+      updatedAt: closedAt != null ? new Date(closedAt).toISOString() : quote?.lastUpdated ? new Date(quoteHeadlineTime(quote)).toISOString() : "",
       input: result.input ?? "",
       duplicateOf: result.duplicateOf ?? "",
       error: result.error ?? "",
       // Last, so a row read by position keeps every field where it was.
       changeBasis: predates ? "" : basisLabel(result, now),
       changeBasisNote: changeBasisNote(rowChangeBasis(result), now) ?? "",
+      // When the extended print was observed, which Updated (Last's time) is not beside a close.
+      extendedUpdatedAt: extendedAt != null ? new Date(extendedAt).toISOString() : "",
       // A price nothing traded at names the venue session it is the nominal close of; the quote keeps its last trade.
       ...quote?.nominalPrice ? { nominalLabel: nominalSessionLabel(quote) ?? undefined } : {},
       // A price with no live quote behind it, the close of the latest daily bar, names that session.
@@ -1045,7 +1068,11 @@ function newsRows(articles: NewsArticle[]) {
     // Whole, as exports write it; the text table's line under the row (newsRowNote) runs it together.
     summary: article.summary ?? null,
     source: article.source,
+    // Its first publication; the service's other times for it kept beside it, as sent.
     publishedAt: isoDate(article.publishedAt),
+    lastPublishedAt: article.times?.lastPublishedAt ?? null,
+    firstSeenAt: article.times?.firstSeenAt ?? null,
+    lastSeenAt: article.times?.lastSeenAt ?? null,
     topic: article.topic,
     tickers: article.tickers.join(","),
     url: article.url,
@@ -1464,9 +1491,11 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
         const pair = listingDepositaryPair({ quote: row.quote });
         if (!pair) return [];
         const receiptSide = isReceiptSide({ quote: row.quote });
-        const receiptQuoted = receiptSide || data.some((other) => other !== row && isReceiptSide({ quote: other.quote })
+        const receipt = receiptSide ? null : data.find((other) => other !== row && isReceiptSide({ quote: other.quote })
           && listingDepositaryPair({ quote: other.quote })?.receipt === pair.receipt);
-        return receiptQuoted ? [`${row.target.symbol}: ${depositaryPairText(pair, receiptSide)}.`] : [];
+        // Each line by its venue, as the table names it (SHEL:LSE, SHEL:NYSE).
+        const receiptVenue = receipt ? receipt.target.exchange || receipt.quote?.listingExchangeName || receipt.quote?.exchangeName : null;
+        return receiptSide || receipt ? [`${row.target.symbol}: ${depositaryPairText(pair, receiptSide, receiptVenue)}.`] : [];
       }),
       ...endedNotes.flatMap((note) => note ?? []),
       // A commodity's word read as a security's ticker (WTI is W&T Offshore, GOLD is Gold.com) names the future it may have meant.
@@ -1481,7 +1510,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     ];
     const holdsYield = data.some((row) => isYieldIndexSymbol(row.target.symbol));
     const columns = [...commandName === "compare" ? compareColumns() : quoteColumns(), ...holdsYield ? [CHANGE_BP_EXPORT_COLUMN] : [],
-      ...listInputs ? LIST_INPUT_EXPORT_COLUMNS : []];
+      ...listInputs ? LIST_INPUT_EXPORT_COLUMNS : [], ...EXTENDED_TIME_EXPORT_COLUMNS];
     // An export of a list read from a file or standard input has a row for every line, in its order: one no listing was
     // read for says why in its status, as its line on stderr does. The table keeps a row per listing.
     const rows = listInputs && ctx.cliOptions.format !== "text"
@@ -1500,7 +1529,9 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     if (ctx.cliOptions.format !== "json") useKnownCoins();
     // Only yield indices: their change is in bp, so the text header drops the percent sign (CSV keeps the percent it holds).
     const yieldsOnly = data.length > 0 && data.every((row) => isYieldIndexSymbol(row.target.symbol));
-    const venued = data.some((row) => row.quote?.priceVenue);
+    const sourceNameOf = market.dataProvider.sourceNameOf;
+    // Each quoted row cites its own source, blank when it has no name to give, so a row never takes another's.
+    const rowSources = new Map(data.flatMap((row) => row.quote ? [[quoteRowSymbol(row), quoteSourceName(row.quote, sourceNameOf)] as const] : []));
     ctx.printResult({
       data: rows,
       warnings: warnings.length > 0 ? warnings : undefined,
@@ -1509,7 +1540,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       // Dated by the quotes as served, which say whether one is the saved copy.
       freshness: withSavedCopy(
         // A table across markets (US and London lines) dates each market's session and says when each opens.
-        quotesFreshness(data.map((row) => row.quote), { datesEachVenue: true, ...yieldsOnly ? { schedule: `Cboe close ${CBOE_YIELD_INDEX_CLOSE}` } : {} }),
+        quotesFreshness(data.map((row) => row.quote), { datesEachVenue: true, ...yieldsOnly ? { schedule: `Cboe close ${CBOE_YIELD_INDEX_CLOSE}` } : {} }, undefined, sourceNameOf),
         answers.map(({ result }) => result.quote),
       ),
     }, {
@@ -1522,8 +1553,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
           : (row.currency && pairExportUnit(row.symbol, row.currency)) || row.currency || (row.yieldIndex ? YIELD_INDEX_EXPORT_UNIT : null),
         // Each row as of its own price (^TNX's 19:59 beside ^VIX's 21:15), as Updated says; a row with none is blank.
         asOf: row.updatedAt || null,
-        // Beside a coin priced by one exchange's own trade, which is cited to that exchange, each row names its own.
-        ...venued ? { source: quoteSourceName(row) } : {},
+        source: rowSources.get(row.symbol),
       }),
       // A row with no price or move says why in its status column, as the warnings do.
       exportStatus: quoteExportStatus,
@@ -2257,10 +2287,12 @@ async function loadListingHistory(
   // One read of the listing's corporate actions serves both, asked only for a share or a fund.
   const actions = shareActionsReader(market, listing, instrumentType);
   const demerged = await listingDemergerFlags(forming?.rows ?? served, actions);
-  const data = demerged.rows;
-  // NFLX's bars across its 10-for-1 split are in post-split shares, as META's FB-era bars say they were FB's. A long
-  // list skips the read, as it skips the other lookups.
-  const splitNote = lookups ? historySplitNote(listing.symbol, data, await actions.splits()) : null;
+  // NFLX's bars across its 10-for-1 split are in post-split shares, as META's FB-era bars say they were FB's, and the
+  // bar it took effect in is flagged. A long list skips the read, as it skips the other lookups.
+  const splits = lookups ? await actions.splits() : [];
+  const flaggedSplits = withSplitFlags(demerged.rows, splits);
+  const data = flaggedSplits.rows;
+  const splitNote = historySplitNote(listing.symbol, flaggedSplits.splits);
   const interval = data[0]?.interval ?? null;
   // Intraday bars print in UTC, as the charts and time and sales label them, not the host zone.
   const intraday = data.some((row) => row.date.length > 10);
@@ -2276,10 +2308,13 @@ async function loadListingHistory(
   const source = loaded.sourceName ? { source: loaded.sourceName } : {};
   // A coin's volume unit, or what an index's volume counts (a day's total, an intraday count).
   const volumeNote = historyVolumeNote(volume, interval, historyVolumeBasis(data));
-  // A window that closed before today is the history asked for: no later bar makes it stale.
+  // A window that closed before today is the history asked for: no later bar makes it stale. The line names the days
+  // its bars run over, as the heading does (a window from a Saturday starts at Monday's bar).
+  const [shownFrom, shownTo] = [data[0]?.date.slice(0, 10), data.at(-1)?.date.slice(0, 10)];
+  const shownDays = !window ? "" : shownFrom && shownTo ? shownFrom === shownTo ? shownFrom : `${shownFrom} to ${shownTo}` : priceWindowText(window);
   const freshness = withSavedCopy(window && isPastPriceWindow(window) ? rowsFreshness(data, {
     ...source,
-    status: "not-a-feed", basis: `${interval ? BAR_INTERVAL_LABELS[interval] : "price"} bars, ${priceWindowText(window)}`, observedKey: "date", oldest: null,
+    status: "not-a-feed", basis: `${interval ? BAR_INTERVAL_LABELS[interval] : "price"} bars, ${shownDays}`, observedKey: "date", oldest: null,
     ...(volumeNote ? { note: volumeNote } : {}),
   }) : rowsFreshness(data, {
     ...source,
@@ -2370,23 +2405,16 @@ async function listingDemergerFlags(
 }
 
 /**
- * "Splits in range: NFLX 10-for-1 on 2025-11-17; bars before it are split-adjusted.": the splits that took effect
- * after the first bar shown and by the last, which the bars run across in post-split shares. Null with none, or for
- * a factor no share count states (a spinoff's price adjustment, which the demerger note covers).
+ * "Splits in range: NFLX 10-for-1 on 2025-11-17 (flag split); bars before it are split-adjusted.": the splits a bar is
+ * flagged for (withSplitFlags), which the bars run across in post-split shares, whatever bar size holds them. Null
+ * with none.
  */
-function historySplitNote(symbol: string, rows: readonly HistoryRow[], splits: readonly SplitAction[]): string | null {
-  const first = rows[0]?.date.slice(0, 10);
-  const last = rows.at(-1)?.date.slice(0, 10);
-  if (!first || !last || first === last) return null;
-  const inside = splits
-    .filter((split) => /^\d{4}-\d{2}-\d{2}/.test(split.date) && split.date.slice(0, 10) > first && split.date.slice(0, 10) <= last)
-    .sort((left, right) => left.date.localeCompare(right.date))
-    .flatMap((split) => {
-      const terms = splitShareTerms(split);
-      return terms ? [`${terms.split(",")[0]} on ${split.date.slice(0, 10)}`] : [];
-    });
-  if (inside.length === 0) return null;
-  return `Splits in range: ${symbol} ${inside.join(" and ")}; bars before ${inside.length === 1 ? "it" : "each"} are split-adjusted.`;
+function historySplitNote(symbol: string, flagged: ReadonlyArray<{ split: SplitAction; barBefore: boolean }>): string | null {
+  if (flagged.length === 0) return null;
+  const named = flagged.map(({ split }) => `${splitShareTerms(split)!.split(",")[0]} on ${split.date.slice(0, 10)}`);
+  // A window that opens on the split's bar has no bar before it to adjust.
+  const adjusted = flagged.some(({ barBefore }) => barBefore) ? `; bars before ${named.length === 1 ? "it" : "each"} are split-adjusted` : "";
+  return `Splits in range: ${symbol} ${named.join(" and ")} (flag ${SPLIT_FLAG})${adjusted}.`;
 }
 
 /**
@@ -3295,9 +3323,15 @@ const NEWS_COLUMNS = [
   { key: "url", header: "URL", optional: true },
 ];
 
-/** CSV's columns: the text table's, and how many routine notices a folded row stands for and since when. */
+/**
+ * CSV's columns: the text table's, the story's latest publication and when the service first and last saw it,
+ * and how many routine notices a folded row stands for and since when.
+ */
 const NEWS_EXPORT_COLUMNS = [
   ...NEWS_COLUMNS,
+  { key: "lastPublishedAt", header: "Last published" },
+  { key: "firstSeenAt", header: "First seen" },
+  { key: "lastSeenAt", header: "Last seen" },
   { key: "routineNotices", header: "Routine notices" },
   { key: "routineSince", header: "Routine since" },
 ];

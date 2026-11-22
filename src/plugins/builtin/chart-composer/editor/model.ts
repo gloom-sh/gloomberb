@@ -10,6 +10,7 @@ import type {
   SeriesTransform,
 } from "../../../../time-series/types";
 import { canToggleChartSeries, MAX_CHART_COMPOSER_SERIES } from "../chart-spec";
+import { CHART_PALETTE, chartPaletteColorName } from "../../../../theme/chart-palette";
 import {
   defaultFinancialTimestampMode,
   getCompatibleSeriesStyles,
@@ -18,6 +19,7 @@ import {
 
 export type SeriesEditorFieldId =
   | "style"
+  | "color"
   | "transform"
   | "axis"
   | "visibility"
@@ -37,7 +39,7 @@ interface SeriesEditorOption {
 export interface SeriesEditorFieldModel {
   id: SeriesEditorFieldId;
   label: string;
-  kind: "select" | "visibility" | "panel";
+  kind: "select" | "visibility" | "panel" | "color";
   value: string;
   options: SeriesEditorOption[];
   onChange(value: string): void;
@@ -55,6 +57,8 @@ export interface SeriesEditorActionModel {
 }
 
 const AXES: SeriesAxis[] = ["auto", "left", "right"];
+/** The colour field's value for a series with none picked: the theme's own. */
+export const SERIES_EDITOR_AUTO_COLOR = "auto";
 const MARKET_PERIODS: SeriesPeriod[] = ["auto", "daily", "weekly", "monthly", "quarterly", "annual"];
 const FINANCIAL_PERIODS: SeriesPeriod[] = ["auto", "quarterly", "annual", "ttm"];
 const TIMING_OPTIONS: Array<{ value: SeriesTimestampMode; label: string }> = [
@@ -89,6 +93,7 @@ export function getSeriesEditorFieldIds(selected: ChartSeriesSpec | null): Serie
   if (!selected) return [];
   return [
     "style",
+    "color",
     "transform",
     "axis",
     "visibility",
@@ -109,6 +114,8 @@ export function getSeriesTimestampMode(series: ChartSeriesSpec): SeriesTimestamp
 
 export interface SeriesEditorFieldHandlers {
   setStyle(value: SeriesStyle): void;
+  /** Undefined gives the series back the theme's colour. */
+  setColor(value: string | undefined): void;
   setTransform(value: SeriesTransform): void;
   setAxis(value: SeriesAxis): void;
   setVisibility(visible: boolean): void;
@@ -142,6 +149,17 @@ export function buildSeriesEditorFields({
         label: titleCaseSeriesEditorValue(value),
       })),
       onChange: (value) => handlers.setStyle(value as SeriesStyle),
+    },
+    {
+      id: "color",
+      label: "Colour",
+      kind: "color",
+      value: selected.color ?? SERIES_EDITOR_AUTO_COLOR,
+      options: [
+        { value: SERIES_EDITOR_AUTO_COLOR, label: "Auto" },
+        ...CHART_PALETTE.map((value) => ({ value, label: chartPaletteColorName(value) })),
+      ],
+      onChange: (value) => handlers.setColor(value === SERIES_EDITOR_AUTO_COLOR ? undefined : value),
     },
     {
       id: "transform",

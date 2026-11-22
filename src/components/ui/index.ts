@@ -3,7 +3,7 @@ export { ListView } from "./list-view";
 export type { ListViewItem, ListViewProps, ListRowState } from "./list-view";
 
 export { DataTable } from "./data-table";
-export type { DataTableCell, DataTableColumn, DataTableColumnReorder, DataTableProps, DataTableVisibleRange } from "./data-table";
+export type { DataTableCell, DataTableColumn, DataTableColumnReorder, DataTableProps, DataTableRowSource, DataTableVisibleRange } from "./data-table";
 
 export { Button, terminalButtonColumns } from "./button";
 export { Icon, IconButton, ICON_GLYPHS } from "./icon";
@@ -22,7 +22,7 @@ export { Menu, MenuPopover } from "./menu";
 export type { MenuItem, MenuProps, MenuPopoverProps } from "./menu";
 
 export { MultiSelectDialogButton, MultiSelectDialogContent } from "./multi-select/dialog";
-export type { MultiSelectDialogButtonHandle, MultiSelectPopoverAnchorPoint, MultiSelectRowAction } from "./multi-select/dialog";
+export type { MultiSelectDialogButtonHandle, MultiSelectPopoverAnchorPoint, MultiSelectRowAction, MultiSelectRowChoice } from "./multi-select/dialog";
 export { NumberPromptDialog } from "./number-prompt-dialog";
 
 export { SelectButton } from "./select-button";

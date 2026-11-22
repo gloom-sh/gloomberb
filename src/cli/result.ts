@@ -47,7 +47,7 @@ import {
   type ExportIdentity,
   type ExportSource,
 } from "./export-source";
-import { windowRows, type RowWindow, type RowWindowOptions } from "./row-window";
+import { rowWindowCutNote, windowRows, type RowWindow, type RowWindowOptions } from "./row-window";
 
 export interface CliResult<T = unknown> {
   data: T;
@@ -637,7 +637,11 @@ function serializeCliRows<T, Row extends Record<string, unknown>>(
     return withHeading(summary || cliStyles.muted(wrapToTerminal(renderOptions.empty ?? "No results.")));
   }
   const table = renderTextRows(rows as Row[], result.data, renderOptions);
-  const notes = [window.note, renderOptions.footnote].filter((note): note is string => !!note);
+  // A cut `--limit` or `--tail` asked for says of how many rows, as every list says it; a command's own cap says what it does.
+  const cut = options.limit != null || options.tail != null
+    ? rowWindowCutNote(rowWindowOptions(options, renderOptions), { ...window, shown: rows.length }, { each: renderOptions.seriesKey })
+    : window.note;
+  const notes = [cut, renderOptions.footnote].filter((note): note is string => !!note);
   const details = renderOptions.details?.(result.data) ?? "";
   const body = [table, ...notes.map((note) => cliStyles.muted(wrapToTerminal(note))), ...details ? ["", details] : []].join("\n");
   return withHeading(summary ? `${summary}\n\n${body}` : body);

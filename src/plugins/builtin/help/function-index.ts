@@ -11,6 +11,8 @@ import { usageFunctionForPane } from "../../../telemetry/usage-counts";
 import type { CommandDef, PaneTemplateDef } from "../../../types/plugin";
 import type { PaneInstanceConfig } from "../../../types/config";
 import type { PluginRegistry } from "../../registry";
+import { glossaryNamesFunction } from "../../../cli/glossary";
+import { functionQueryTerms, matchesFunctionPhrase, paneTemplateSearchFields } from "../../../utils/function-search";
 
 export interface HelpFunction {
   /** The primary mnemonic: CTM for CT. */
@@ -20,6 +22,7 @@ export interface HelpFunction {
   description: string;
   /** Other mnemonics that open it. */
   aliases: string[];
+  searchFields: readonly string[];
   /** The pane it opens, when it opens one. */
   paneId?: string;
   argPlaceholder?: string;
@@ -33,6 +36,7 @@ export interface HelpFunctionSources {
   commands?: readonly Command[];
   pluginCommands: Iterable<CommandDef>;
   paneTemplates: Iterable<PaneTemplateDef>;
+  panes?: PluginRegistry["panes"];
 }
 
 /** Every mnemonic and alias, upper-cased, to the function it runs. */
@@ -73,6 +77,7 @@ export function buildHelpFunctionIndex(sources: HelpFunctionSources): HelpFuncti
       name: command.label,
       description: command.description,
       aliases,
+      searchFields: [],
       paneId: COMMAND_PANES[command.id],
       argPlaceholder: command.hasArg ? command.argPlaceholder : undefined,
       ...(command.listed === false ? { unlisted: true as const } : {}),
@@ -86,6 +91,7 @@ export function buildHelpFunctionIndex(sources: HelpFunctionSources): HelpFuncti
       name: command.label,
       description: command.description ?? "",
       aliases: [],
+      searchFields: command.keywords ?? [],
       argPlaceholder: command.shortcutArg?.placeholder,
     }));
   }
@@ -97,6 +103,7 @@ export function buildHelpFunctionIndex(sources: HelpFunctionSources): HelpFuncti
       name: template.label,
       description: template.description,
       aliases: (template.shortcut?.aliases ?? []).map(normalizeToken).filter(Boolean),
+      searchFields: paneTemplateSearchFields(template, sources.panes?.get(template.paneId)),
       paneId: template.paneId,
       argPlaceholder: template.shortcut?.argPlaceholder
         ?? (template.shortcut?.argKind === "ticker-list" ? "tickers" : template.shortcut?.argKind),
@@ -116,11 +123,12 @@ export function buildHelpFunctionIndex(sources: HelpFunctionSources): HelpFuncti
 
 /** The index for what is registered right now, built-in and installed plugins alike. */
 export function buildRegistryHelpIndex(
-  registry: Pick<PluginRegistry, "commands" | "paneTemplates">,
+  registry: Pick<PluginRegistry, "commands" | "paneTemplates"> & Partial<Pick<PluginRegistry, "panes">>,
 ): HelpFunctionIndex {
   return buildHelpFunctionIndex({
     pluginCommands: registry.commands.values(),
     paneTemplates: registry.paneTemplates.values(),
+    panes: registry.panes,
   });
 }
 
@@ -140,18 +148,18 @@ export type HelpRequest =
 
 const MAX_SEARCH_MATCHES = 8;
 
-function searchScore(fn: HelpFunction, terms: string[]): number {
+function searchScore(fn: HelpFunction, terms: string[], query: string): number {
   const name = fn.name.toLowerCase();
-  const text = `${name} ${fn.description.toLowerCase()} ${fn.help?.summary.toLowerCase() ?? ""}`;
+  const text = [name, fn.description, fn.help?.summary ?? "", ...fn.aliases, ...fn.searchFields].join(" ");
   // "options" is OMON before it is Options Flow.
   let score = name === terms.join(" ") ? 4 : 0;
   for (const term of terms) {
     const upper = term.toUpperCase();
     if (fn.code === upper || fn.aliases.includes(upper)) score += 8;
     else if (fn.code.startsWith(upper)) score += 4;
-    else if (name.split(/[^a-z0-9]+/).some((word) => word.startsWith(term))) score += 3;
-    else if (text.includes(term)) score += 1;
-    else return 0;
+    else if (matchesFunctionPhrase(name, term)) score += 3;
+    else if (matchesFunctionPhrase(text, term)) score += 1;
+    else return glossaryNamesFunction(fn.code, query) ? 1 : 0;
   }
   return score;
 }
@@ -168,10 +176,10 @@ export function parseHelpArgument(arg: string, index: HelpFunctionIndex): HelpRe
     ?? index.get(normalizeToken(query.split(/\s+/)[0] ?? ""));
   if (exact) return exact.code === HELP_CODE ? { kind: "support" } : { kind: "function", fn: exact };
 
-  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const terms = functionQueryTerms(query);
   const matches = listHelpFunctions(index)
     .filter((fn) => fn.code !== HELP_CODE && !fn.unlisted)
-    .map((fn) => ({ fn, score: searchScore(fn, terms) }))
+    .map((fn) => ({ fn, score: searchScore(fn, terms, query) }))
     .filter(({ score }) => score > 0)
     .sort((left, right) => right.score - left.score || left.fn.code.localeCompare(right.fn.code))
     .slice(0, MAX_SEARCH_MATCHES)

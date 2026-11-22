@@ -296,6 +296,44 @@ describe("history rows", () => {
     expect(latestTradeIndex(minutes.slice(2))).toBe(-1);
   });
 
+  // A Tokyo listing's 5-minute bars end on its 15:30 closing price, stamped as a bar after the 15:20 one with a volume
+  // of 0: GP read "Volume 0 shares" for the day's close, and `history` printed 0 beside it.
+  test("a closing price stamped as a bar after the last one has no volume of its own, while a bar that traded nothing keeps its 0", () => {
+    const bar = (date: string, prices: number[], volume: number) => {
+      const [open, high, low, close] = prices.length === 1 ? [prices[0]!, prices[0]!, prices[0]!, prices[0]!] : prices;
+      return mapPricePoint({ date: `2026-11-20T${date}:00Z`, open, high, low, close, volume }, 1, "JPX");
+    };
+    const traded = [bar("06:10", [4842, 4848, 4838, 4839], 162_400), bar("06:15", [4840, 4843, 4835, 4836], 108_600),
+      bar("06:20", [4836, 4848, 4836, 4843], 95_100)];
+    const tokyo = [...traded, bar("06:30", [4840], 0)];
+    const rows = historyRows(tokyo, "5m", "JPY");
+    expect(rows.at(-1)).toMatchObject({ date: "2026-11-20T06:30:00Z", close: 4840, volume: null });
+    expect(historyMissingVolumeNote(rows)).toBeNull();
+    expect(historyBarStatusNote(rows)).toBe("2026-11-20T06:30:00Z is the latest trade, after the last bar, with no volume of its own");
+    expect(missingVolumeCount(rows)).toBe(0);
+    // The chart's volume, and GP's latest volume, end on the last bar that traded.
+    const volume = extractPriceSeries(tokyo, { kind: "security", instrument: { symbol: "8058" }, fieldId: "market.volume" } as never);
+    expect(volume.map((point) => point.value)).toEqual([162_400, 108_600, 95_100, null]);
+
+    // A closing price on the grid, as Singapore's 17:00 follows the 16:55 bar, is one too, and one at the last close
+    // after a skipped bar; one that carries the auction's shares keeps them.
+    expect(historyRows([...traded, bar("06:25", [4840], 0)], "5m").at(-1)?.volume).toBeNull();
+    expect(historyRows([...traded, bar("06:30", [4843], 0)], "5m").at(-1)?.volume).toBeNull();
+    expect(historyRows([...traded, bar("06:30", [4840], 2_869_500)], "5m").at(-1)?.volume).toBe(2_869_500);
+    // A thin listing's bar that traded nothing repeats the last close on the grid, as do bars after quiet ones; they,
+    // one inside the history, and a daily bar keep their 0.
+    expect(historyRows([...traded, bar("06:25", [4843], 0)], "5m").at(-1)?.volume).toBe(0);
+    const quiet = [bar("06:10", [4842], 0), bar("06:15", [4842], 0), bar("06:20", [4842], 0), bar("06:30", [4840], 0)];
+    expect(historyRows(quiet, "5m").at(-1)?.volume).toBe(0);
+    expect(historyRows([...traded.slice(0, 2), bar("06:20", [4840], 0), bar("06:25", [4843, 4848, 4836, 4843], 95_100)], "5m")[2]?.volume)
+      .toBe(0);
+    const days = ["17", "18", "19", "20"].map((day, index) => mapPricePoint({
+      date: `2026-11-${day}`, open: 4840, high: index === 3 ? 4840 : 4900, low: index === 3 ? 4840 : 4800, close: 4840,
+      volume: index === 3 ? 0 : 9_000_000,
+    }, 1, "JPX"));
+    expect(historyRows(days, "1d").at(-1)?.volume).toBe(0);
+  });
+
   test("notes bars coarser than the range is served in, or a first bar well after the start asked for", () => {
     const now = Date.parse("2026-10-09T12:00:00Z");
     // A listing younger than the range starts late; weekends and a holiday at the start do not.

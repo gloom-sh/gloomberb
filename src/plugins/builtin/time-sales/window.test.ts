@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { lastSessionNote, parseTapeClock, servedWindow, tapeWindowRange } from "./window";
+import { lastSessionNote, parseTapeClock, servedWindow, tapePageEnd, tapeWindowRange } from "./window";
 
 const closed = (date: string) => servedWindow({ session: { date, high: null, low: null, asOf: null }, generatedAt: "2026-12-07T10:00:00.000Z", delaySeconds: 900 })!;
 
@@ -21,8 +21,26 @@ test("a window's times are New York's clock on the served session's date, throug
   expect(tapeWindowRange(october, parseTapeClock("14:30Z"), parseTapeClock("14:31 UTC"))).toEqual({ from: "2026-10-16T14:30:00.000Z", to: "2026-10-16T14:31:00.000Z" });
   // Without --from the window opens with the SIP day at 04:00 New York.
   expect(tapeWindowRange(october, null, parseTapeClock("4:01")).from).toBe("2026-10-16T08:00:00.000Z");
-  expect(() => parseTapeClock("25:00")).toThrow("25:00 is not a time of day: use 10:30 or 10:30:15 (New York time), or 14:30Z (UTC).");
-  expect(() => parseTapeClock("10.30")).toThrow("not a time of day");
+  expect(() => parseTapeClock("25:00")).toThrow("25:00 is not a time: use 10:30 or 10:30:15 (New York time), 14:30Z (UTC), or 2026-11-20T14:30:00Z.");
+  expect(() => parseTapeClock("10.30")).toThrow("not a time");
+});
+
+test("a timestamp is its own instant: on the served session it bounds the window, on another day it says the depth and where that day is", () => {
+  const october = closed("2026-10-16");
+  expect(tapeWindowRange(october, parseTapeClock("2026-10-16T14:30:00Z"), parseTapeClock("2026-10-16 10:35"))).toEqual({
+    from: "2026-10-16T14:30:00.000Z", to: "2026-10-16T14:35:00.000Z",
+  });
+  // To the nanosecond it names: a print's own stamp, read on from, is the window's start, not its millisecond or second.
+  expect(tapeWindowRange(october, parseTapeClock("2026-10-16T10:30:00.250-04:00"), null).from).toBe("2026-10-16T14:30:00.250Z");
+  expect(tapeWindowRange(october, parseTapeClock("2026-10-16T14:30:00.392451123Z"), parseTapeClock("10:30:00.392451124")))
+    .toEqual({ from: "2026-10-16T14:30:00.392451123Z", to: "2026-10-16T14:30:00.392451124Z" });
+  expect(() => tapeWindowRange(october, parseTapeClock("2026-10-16T14:30:00.392451123Z"), parseTapeClock("2026-10-16T14:30:00.392451123Z")))
+    .toThrow("must be after --from");
+  // 00:30 UTC on the 17th is 20:30 the evening before in New York: the served session's day, past its end.
+  expect(() => tapeWindowRange(october, parseTapeClock("2026-10-17T00:30:00Z"), null)).toThrow("is outside the window TAS serves");
+  expect(() => tapeWindowRange(october, parseTapeClock("2026-07-24T13:30:00Z"), null, "FFAI")).toThrow(
+    "TAS serves the latest session only, Fri 16 Oct 2026; Fri 24 Jul 2026 is not on it. That day's 1-minute bars: fn GIP FFAI --session 2026-07-24 --chart-resolution 1m.");
+  expect(() => parseTapeClock("2026-02-30T10:00:00Z")).toThrow("not a time");
 });
 
 test("a bound outside the served window is refused with the window that is served, its end the feed cutoff while the session runs", () => {
@@ -36,4 +54,13 @@ test("a bound outside the served window is refused with the window that is serve
     + "Fri 16 Oct 2026, 04:00:00 ET (08:00:00 UTC) to 10:45:00 ET (14:45:00 UTC), the feed cutoff (15 min delayed).");
   expect(() => tapeWindowRange(running, parseTapeClock("10:35"), parseTapeClock("10:30"))).toThrow("--to 10:30:00 ET (14:30:00 UTC) must be after --from 10:35:00 ET (14:35:00 UTC).");
   expect(servedWindow({ session: { date: null, high: null, low: null, asOf: null }, generatedAt: "2026-10-16T15:00:00.000Z", delaySeconds: 0 })).toBeNull();
+});
+
+test("a full page ends before the stamp its last prints share, and the next reads from that stamp", () => {
+  const row = (timestamp: string) => ({ timestamp });
+  const page = [row("2026-10-16T14:30:00.100Z"), row("2026-10-16T14:30:00.392451123Z"), row("2026-10-16T14:30:00.392451123Z")];
+  expect(tapePageEnd(page)).toEqual({ rows: page.slice(0, 1), next: "2026-10-16T14:30:00.392451123Z" });
+  // A page all at one stamp keeps its prints and reads on from the nanosecond after, across a second's end too.
+  expect(tapePageEnd([row("2026-10-16T14:30:00.999999999Z"), row("2026-10-16T14:30:00.999999999Z")]).next).toBe("2026-10-16T14:30:01.000000000Z");
+  expect(tapePageEnd([])).toEqual({ rows: [], next: null });
 });

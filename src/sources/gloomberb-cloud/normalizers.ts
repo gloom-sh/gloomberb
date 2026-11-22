@@ -128,6 +128,7 @@ export function mapQuote(
     priceVenue: typeof quote.priceVenue === "string" && /^[A-Za-z][A-Za-z0-9 .-]{0,23}$/.test(quote.priceVenue) ? quote.priceVenue : undefined,
     priceBasis,
     priceObservation,
+    futuresPriceKind: quote.futuresPriceKind === "settlement" || quote.futuresPriceKind === "last-trade" ? quote.futuresPriceKind : undefined,
     currency: currency || quote.currency,
     price: normalizePriceValueByDivisor(quote.price, divisor) ?? quote.price,
     change,
@@ -152,6 +153,9 @@ export function mapQuote(
     dailyClose: readDailyClose(quote.dailyClose),
     bid: normalizePriceValueByDivisor(quote.bid, divisor),
     ask: normalizePriceValueByDivisor(quote.ask, divisor),
+    // The book's own stamp, only beside a book: never borrowed from the trade.
+    bidAskTime: (quote.bid != null || quote.ask != null) && typeof quote.bidAskTime === "number"
+      && Number.isFinite(quote.bidAskTime) && quote.bidAskTime > 0 ? quote.bidAskTime : undefined,
     open: sessionPrice(quote.open),
     high: sessionPrice(quote.high),
     low: sessionPrice(quote.low),
@@ -335,6 +339,11 @@ function mapCloudFundamentals(fundamentals: Fundamentals | undefined): Fundament
     if (raw === undefined || (typeof raw === "number" && Number.isFinite(raw))) continue;
     if (result === value) result = { ...value };
     delete result[field];
+  }
+  // The rate's basis goes with the rate, and only the one basis is read.
+  if (result.dividendRateBasis !== undefined && (result.dividendRate === undefined || result.dividendRateBasis !== "uneven-regular-payments")) {
+    if (result === value) result = { ...value };
+    delete result.dividendRateBasis;
   }
   return result;
 }

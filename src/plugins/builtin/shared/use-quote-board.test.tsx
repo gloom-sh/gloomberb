@@ -458,7 +458,7 @@ describe("useQuoteBoard target changes", () => {
     expect(quotes.get("^FTSE")?.quote).toBeNull();
     await act(async () => setBoardSymbols([]));
     await settle();
-    expect(quoteBoardStatus(quotes)).toEqual({ loading: 0, stale: 0, unavailable: 0, latestTs: 0, savedAt: null });
+    expect(quoteBoardStatus(quotes)).toEqual({ loading: 0, stale: 0, staleSymbol: null, unavailable: 0, latestTs: 0, savedAt: null });
   });
 });
 

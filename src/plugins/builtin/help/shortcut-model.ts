@@ -1,5 +1,6 @@
 import type { CommandDef } from "../../../types/plugin";
-import { commands as coreCommands } from "../../../components/command-bar/commands/registry";
+import { commands as coreCommands, getCommandPrefixes } from "../../../components/command-bar/commands/registry";
+import { paneTemplateSearchFields } from "../../../utils/function-search";
 import { getSharedRegistry } from "../../registry";
 
 export interface HelpShortcutEntry {
@@ -7,6 +8,7 @@ export interface HelpShortcutEntry {
   badges: string[];
   description: string;
   category: string;
+  searchFields?: readonly string[];
 }
 
 type SharedRegistry = ReturnType<typeof getSharedRegistry>;
@@ -34,6 +36,7 @@ export function resolveWindowTemplates(registry: SharedRegistry): HelpShortcutEn
           shortcut.argPlaceholder ? `<${shortcut.argPlaceholder}>` : null,
         ].filter((value): value is string => !!value),
         description: template.label,
+        searchFields: paneTemplateSearchFields(template, registry.panes?.get(template.paneId)),
         category: pluginName ?? "Core Panes",
       };
     })
@@ -64,7 +67,7 @@ function sortShortcutEntries(left: HelpShortcutEntry, right: HelpShortcutEntry):
 
 export function resolveCommandShortcuts(registry: SharedRegistry): HelpShortcutEntry[] {
   const coreRows: HelpShortcutEntry[] = coreCommands
-    .filter((command) => command.prefix.trim().length > 0)
+    .filter((command) => command.prefix.trim().length > 0 && command.listed !== false)
     .map((command) => ({
       id: `core:${command.id}`,
       badges: [
@@ -72,6 +75,7 @@ export function resolveCommandShortcuts(registry: SharedRegistry): HelpShortcutE
         formatPlaceholder(command.argPlaceholder),
       ].filter((value): value is string => !!value),
       description: command.description,
+      searchFields: [command.label, ...getCommandPrefixes(command)],
       category: command.category,
     }));
 
@@ -96,6 +100,7 @@ export function resolveCommandShortcuts(registry: SharedRegistry): HelpShortcutE
           formatPlaceholder(command.shortcutArg?.placeholder),
         ].filter((value): value is string => !!value),
         description: formatShortcutDescription(command.label),
+        searchFields: [command.description ?? "", ...command.keywords ?? []],
         category: pluginName ?? command.category,
       };
     })

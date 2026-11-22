@@ -1,6 +1,7 @@
 import type { Quote } from "../../types/financials";
 import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
 import { zonedDateKey } from "../../utils/zoned-date-time";
+import { formatUtcDayTime } from "../../utils/utc-time";
 import { getPublishedUsEquitySession } from "../published-us-sessions";
 import { quoteFutureToleranceMs } from "./clock";
 import {
@@ -221,7 +222,7 @@ export function nominalPriceText(quote: Pick<Quote, "nominalPrice"> | null | und
 export function nominalSessionLabel(quote: Pick<Quote, "nominalPrice"> | null | undefined): string | null {
   const session = quote?.nominalPrice?.session;
   const day = session ? new Date(`${session}T00:00:00Z`) : null;
-  return day && Number.isFinite(day.getTime()) ? `${day.getUTCDate()} ${PRINT_MONTHS[day.getUTCMonth()]} close` : null;
+  return day && Number.isFinite(day.getTime()) ? `${formatUtcDayTime({ time: day.getTime(), dateOnly: true })} close` : null;
 }
 
 /**
@@ -240,7 +241,7 @@ export function dailyCloseText(quote: Pick<Quote, "dailyClose"> | null | undefin
 export function dailyCloseSessionLabel(quote: Pick<Quote, "dailyClose"> | null | undefined): string | null {
   const session = quote?.dailyClose?.session;
   const day = session ? new Date(`${session}T00:00:00Z`) : null;
-  return day && Number.isFinite(day.getTime()) ? `${day.getUTCDate()} ${PRINT_MONTHS[day.getUTCMonth()]} daily close` : null;
+  return day && Number.isFinite(day.getTime()) ? `${formatUtcDayTime({ time: day.getTime(), dateOnly: true })} daily close` : null;
 }
 
 /** A US listing's after-hours session ends four hours past its regular close (17:00 New York after an early close). */

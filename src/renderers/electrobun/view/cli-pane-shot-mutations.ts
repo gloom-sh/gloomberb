@@ -34,3 +34,25 @@ export const SHOT_MUTATION_OPTIONS: MutationObserverInit = {
   characterDataOldValue: true,
   subtree: true,
 };
+
+// Effects that request pane data start after the first paint. Waiting only two
+// frames can capture the shell before those requests register, leaving a
+// loading chart or stale performance table in an otherwise valid PNG.
+const SHOT_READY_STABLE_FRAMES = 10;
+const REPORT_STABLE_MS = 75;
+
+export function createShotStabilityCheck(readTickerReport: boolean): (now: number, stable: boolean) => boolean {
+  const requiredFrames = readTickerReport ? 2 : SHOT_READY_STABLE_FRAMES;
+  const quietMs = readTickerReport ? REPORT_STABLE_MS : 0;
+  let stableFrames = 0;
+  let stableSince = 0;
+  return (now, stable) => {
+    if (!stable) {
+      stableFrames = 0;
+      return false;
+    }
+    if (stableFrames === 0) stableSince = now;
+    stableFrames += 1;
+    return stableFrames >= requiredFrames && now - stableSince >= quietMs;
+  };
+}

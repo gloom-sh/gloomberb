@@ -4,6 +4,7 @@ import { t, tf } from "../../../../i18n";
 import { formatMarketPrice, formatMarketPriceRange, formatMarketPriceWithCurrency, liveQuoteFormatOptions, type MarketFormatOptions } from "../../../../market-data/market/format";
 import { colors, hoverBg, priceColor } from "../../../../theme/colors";
 import type { Quote } from "../../../../types/financials";
+import { formatQuoteBookTime, QUOTE_BOOK_UNDATED } from "../../../../market-data/quotes/time";
 import { Box, Text, useUiCapabilities } from "../../../../ui";
 import { MISSING_VALUE, displayWidth, formatNumber, truncateToDisplayWidth } from "../../../../utils/format";
 import type { OverviewFunctionLink, PositionTableRow, StatField } from "./types";
@@ -225,6 +226,8 @@ export function QuoteBook({ quote, assetCategory, width, desktopWidth }: {
     spreadText = `${formatMarketPriceWithCurrency(spread, quote.currency, priceOptions)}${spreadPercent}`;
   }
 
+  // The book's own time, or that its source sent none: never the trade's time in the header beside it.
+  const bookTime = formatQuoteBookTime(quote);
   const row = (label: string, value: string, color: string): ColumnGridCell[] => [{ text: label, color: colors.textDim }, { text: value, color }];
   return (
     <Box flexDirection="column" width={nativePaneChrome ? undefined : width} flexShrink={0} style={nativePaneChrome ? { width: desktopWidth } : undefined}>
@@ -237,6 +240,7 @@ export function QuoteBook({ quote, assetCategory, width, desktopWidth }: {
           row(t("Bid"), bidText, colors.textBright),
           row(t("Ask"), askText, colors.textBright),
           row(t("Spr"), spreadText, colors.textDim),
+          ...bookTime ? [row(t("Time"), bookTime === QUOTE_BOOK_UNDATED ? t("not dated") : bookTime, colors.textDim)] : [],
         ]}
       />
     </Box>
@@ -352,13 +356,14 @@ export function FundamentalsGrid({
       const colWidth = colWidths[offset] ?? baseColWidth;
       const labelWidth = gridLabelWidth(colWidth);
       const valueWidth = Math.max(1, colWidth - labelWidth);
-      // A long value (an industry, a SIC title) is cut from the end, never from the label side.
-      const value = truncateToDisplayWidth(field.value, valueWidth);
-      const detailRoom = valueWidth - displayWidth(value) - 1;
+      // A long value (an industry, a SIC title) is cut from the end, never from the label side:
+      // ColumnGridPair cuts it, and its detail, in cells or by CSS. This is the room the cut value leaves.
+      const valueCells = nativePaneChrome ? Math.min(displayWidth(field.value), valueWidth) : displayWidth(truncateToDisplayWidth(field.value, valueWidth));
+      const detailRoom = valueWidth - valueCells - 1;
       const details = typeof field.detail === "string" ? [field.detail] : field.detail ?? [];
       // A cut "in 4..." misleads; a title cut to "Semicond..." still names it.
       const detail = details.find((text) => displayWidth(text) <= detailRoom)
-        ?? (field.clipDetail && details[0] && detailRoom >= 4 ? truncateToDisplayWidth(details[0], detailRoom) : "");
+        ?? (field.clipDetail && details[0] && detailRoom >= 4 ? nativePaneChrome ? details[0] : truncateToDisplayWidth(details[0], detailRoom) : "");
       const content = (
         <ColumnGridPair
           label={t(field.label)}

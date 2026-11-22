@@ -1,7 +1,7 @@
 {
  "format": 1,
  "site": "https://gloom.sh",
- "updatedAt": "2026-11-18",
+ "updatedAt": "2026-11-20",
  "categories": [
   {
    "id": "research",
@@ -1628,7 +1628,7 @@
    "code": "BR",
    "name": "Brokers",
    "description": "Broker connections",
-   "detail": "Broker profiles, account sync, and connection status. Every broker (IBKR, Public, Robinhood, SimpleFIN) is a plugin you install first.",
+   "detail": "Broker profiles, account sync, and connection status. SnapTrade is built in and connects the brokerages it supports; IBKR, Public, Robinhood and SimpleFIN are plugins you install first.",
    "category": "cloud",
    "lesson": "/academy/terminal-and-workspace/your-workspace/account-and-brokers"
   },
@@ -1813,7 +1813,7 @@
     "desktop",
     "tui"
    ],
-   "updatedAt": "2026-11-09",
+   "updatedAt": "2026-11-20",
    "blocks": [
     {
      "type": "heading",
@@ -1901,7 +1901,7 @@
         "**cmd.exe:** run `chcp 65001` so long dashes, `€` and `·` show, and quote an index symbol (`gloom quote \"^SPX\"`): cmd drops a bare `^`. See [CLI](/docs/cli-functions).",
         "**Data:** `%USERPROFILE%\\.gloomberb`, printed by `gloom version`. `GLOOMBERB_HOME` moves it.",
         "**Exports:** save an export with `--output` (`gloom fn RV NVDA,AMD,ASML:AMS --csv --output rv.csv`), which writes UTF-8 without a byte-order mark; a `>` redirect in Windows PowerShell 5.1 writes UTF-16. See [CLI](/docs/cli-functions).",
-        "**Git and Bun:** Bun ships with the app; Git does not. Some official plugins (TV, Substack, Interactive Brokers, IBKR Gateway, Public, Robinhood, SimpleFIN, Polls, Prediction Markets, BYOK AI) install from GitHub and need [Git for Windows](https://git-scm.com/download/win). Without it Gloom starts without them, says so, and `gloom doctor` names them.",
+        "**Git and Bun:** Bun ships with the app; Git does not. Some official plugins (TV, Substack, Interactive Brokers, IBKR Gateway, Public, Robinhood, SimpleFIN, Polls, Prediction Markets, BYOK AI) install from GitHub and need [Git for Windows](https://git-scm.com/download/win). Without it Gloom starts without them, says so, and `gloom doctor` names them. SnapTrade, which connects the brokerages it supports, is built in and needs no Git.",
         "**Versions:** Windows 11 x64 is tested. ARM PCs run the x64 build through Windows' emulation: the desktop app is checked to open and stay open on Windows 11 on Arm, nothing more. Windows 10 is untested."
        ]
       }
@@ -2922,6 +2922,7 @@
     "BUY",
     "SELL",
     "Aries",
+    "SnapTrade",
     "Interactive Brokers",
     "simulation",
     "spreads",
@@ -2930,7 +2931,7 @@
     "OCO",
     "trailing stop"
    ],
-   "updatedAt": "2026-10-25",
+   "updatedAt": "2026-11-20",
    "blocks": [
     {
      "type": "image",
@@ -2951,6 +2952,10 @@
      ],
      "rows": [
       [
+       "[SnapTrade](https://snaptrade.com)",
+       "This ticket, for stocks and ETFs at the brokerages SnapTrade supports, where the brokerage and your SnapTrade link allow trading"
+      ],
+      [
        "[Aries](/plugins/aries)",
        "This ticket, for stocks, ETFs, options and spreads"
       ],
@@ -2962,7 +2967,20 @@
     },
     {
      "type": "paragraph",
-     "text": "Both need the desktop app or the terminal. To connect Aries:"
+     "text": "All of them need the desktop app or the terminal. SnapTrade is built in, with no plugin to install. To connect it:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Link your brokerages in your free SnapTrade account at [dashboard.snaptrade.com](https://dashboard.snaptrade.com).",
+      "Open Brokers (`BR`), add **SnapTrade**, sign in to Gloom if asked, then sign in with SnapTrade in the browser and allow trading.",
+      "Turn on **Enable trading** in the ticket or in Brokers."
+     ],
+     "ordered": true
+    },
+    {
+     "type": "paragraph",
+     "text": "To connect Aries:"
     },
     {
      "type": "list",
@@ -2993,11 +3011,11 @@
     },
     {
      "type": "paragraph",
-     "text": "Aries takes market, limit, stop and stop limit (`1` to `4`), and spreads at a net debit or credit."
+     "text": "Aries and SnapTrade take market, limit, stop and stop limit (`1` to `4`). Aries also takes spreads at a net debit or credit."
     },
     {
      "type": "paragraph",
-     "text": "Take profit / stop loss, OCO pairs and trailing stops show only for a broker that runs them, which Aries does not."
+     "text": "Take profit / stop loss, OCO pairs and trailing stops show only for a broker that runs them, which neither Aries nor SnapTrade does."
     },
     {
      "type": "heading",
@@ -3115,6 +3133,7 @@
        "type": "list",
        "items": [
         "Aries takes Day, Good til cancelled, Immediate or cancel, Fill or kill, At the opening and At the close for stocks, plus extended hours on live accounts. Options and spreads take Day or Good til cancelled.",
+        "SnapTrade takes stock and ETF orders in whole shares, Day or Good til cancelled, in the regular session. A link made read-only in your SnapTrade account takes no orders, and a brokerage that gives no preview through SnapTrade says so in review.",
         "Selling more than you hold is refused: Aries takes no short sales.",
         "One-click simulation orders still get a preview, and a warning brings the review back.",
         "Cancelling asks first, and the order can still fill before the broker confirms.",
@@ -3401,7 +3420,7 @@
     "troubleshooting",
     "diagnostics"
    ],
-   "updatedAt": "2026-11-09",
+   "updatedAt": "2026-11-20",
    "blocks": [
     {
      "type": "heading",
@@ -3558,6 +3577,7 @@
      "items": [
       "`BR` checks the connection before `IBKR`.",
       "Interactive Brokers: Flex errors are listed in [IBKR Flex Query setup](/answers/ibkr-flex-query-setup); a Gateway that logs out is covered in [the daily restart and the Sunday login](/answers/ib-gateway-daily-restart-sunday-login).",
+      "SnapTrade: a brokerage that is missing, disconnected or read-only is fixed in your SnapTrade account at [dashboard.snaptrade.com](https://dashboard.snaptrade.com); then press `s` in `BR` to sync. If `BR` says to sign in, press `c`.",
       "Cloud login and broker authorization are separate.",
       "Market data, account sync, and order authorization can fail independently.",
       "Review the account and the order preview before submitting. Never test with a real order."
@@ -6794,7 +6814,7 @@
     "terminal",
     "remote control"
    ],
-   "updatedAt": "2026-11-08",
+   "updatedAt": "2026-11-20",
    "blocks": [
     {
      "type": "paragraph",
@@ -7392,6 +7412,11 @@
       [
        "Robinhood",
        "`robinhood.*`: accounts and equity positions",
+       "None"
+      ],
+      [
+       "SnapTrade",
+       "`portfolio.*` only: accounts and positions of the brokerages linked there",
        "None"
       ]
      ]

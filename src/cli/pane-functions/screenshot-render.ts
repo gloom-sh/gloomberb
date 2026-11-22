@@ -27,6 +27,8 @@ import {
   type ReportFreshness,
 } from "./freshness";
 import { quotesFreshness } from "../freshness";
+import { isCurrencyPairListing } from "../../utils/fx-market-hours";
+import type { BrokerNameOf } from "../../market-data/quotes/export-identity";
 import { paneFitsRows, shotMaxHeightCells, buildDesktopShotPayload } from "./screenshot-payload";
 import { resolveDesktopShotApiProxy, createDesktopShotBridge } from "./screenshot-bridge";
 import type { PaneScreenshotResult } from "./screenshot-types";
@@ -86,19 +88,25 @@ export function shotFreshness(
   bridgedQuotes: readonly Quote[],
   report: CaptureReport | undefined,
   now = Date.now(),
+  sourceName?: BrokerNameOf,
 ): CaptureStatusLine {
   const published = renderedReportFreshness(render.semanticUi ?? []);
   const declared = { ...declaredReportFreshness(resolved), ...published };
-  const quotes = [
+  const loaded = [
     ...payload.financials.map(([, financials]) => financials.quote),
     ...(payload.instrumentFinancials ?? []).map(({ financials }) => financials.quote),
     ...bridgedQuotes,
   ];
+  // A rate the page converts by (USD/GBP beside an ADR and its home line) is no market of the capture's: its week's
+  // Sunday reopen read as theirs (`reopens Sun 22:00 UTC` on SHEL:NYSE, which opens Mon 14:30 UTC). A page of rates keeps them.
+  const listings = loaded.filter((quote) => quote && !isCurrencyPairListing(quote.symbol, quote.listingExchangeName || quote.exchangeName));
+  const quotes = listings.length > 0 ? listings : loaded;
   // A pane that publishes the observations behind its figures (FXC's rates) dates itself.
   const observed = renderedReportObservations(render.semanticUi ?? []);
   const quoted = declared.status || observed.length > 0
     ? undefined
-    : quotesFreshness(quotes, declared.source ? { source: declared.source } : undefined, now);
+    // Quotes across markets name each one's session and open (`LSE opens Mon 08:00 UTC · US Mon 14:30 UTC`), as compare and QM do.
+    : quotesFreshness(quotes, { ...declared.source ? { source: declared.source } : {}, datesEachVenue: true }, now, sourceName);
   return captureStatusLine({
     report,
     selfDated: Object.keys(published).length > 0 || observed.length > 0,
@@ -327,6 +335,8 @@ export async function renderDesktopShot({
       loadModel,
     );
     onDrawing?.();
+    const tab = payload.paneState[payload.paneId]?.activeTabId;
+    if (!captureImage && resolved.template?.id === "new-ticker-detail-pane" && (!tab || tab === "overview")) payload.readTickerReport = true;
     if (statusLine && captureImage && shotHasStatusLine(resolved)) payload.statusLine = true;
     const fitRoles = [
       ...(fitRows && paneFitsRows(resolved) ? ["data-table-body-scroll"] : []),
@@ -352,7 +362,8 @@ export async function renderDesktopShot({
         }
         const options = report && shownReportOptions(resolved, rendered.semanticUi);
         const shown = options ? reportShotFreshness(resolved, shownLoader(options)) : report;
-        const line = shotFreshness(resolved, shotPayload, rendered, recorded.quotes, shown && await settledWithin(shown, SHOT_REPORT_WAIT_MS));
+        const line = shotFreshness(resolved, shotPayload, rendered, recorded.quotes, shown && await settledWithin(shown, SHOT_REPORT_WAIT_MS),
+          Date.now(), context.dataProvider.sourceNameOf);
         abandonReports();
         freshness = line.freshness;
         // A row whose read failed is marked on the picture, where its figures are missing.

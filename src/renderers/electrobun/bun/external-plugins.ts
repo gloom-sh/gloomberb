@@ -10,8 +10,9 @@ import { bundleExternalPlugin, pluginBundleCacheDir } from "../../../plugins/bun
 import {
   getPluginCacheDir,
   getPluginsDir,
-  listPluginDirectories,
   loadExternalPlugin,
+  loadExternalPlugins,
+  type LoadedExternalPlugin,
 } from "../../../plugins/loader";
 import { createNodePluginManager } from "../../../plugins/manager-node";
 import { deactivatePluginForRemoval } from "../../../plugins/marketplace/deactivation";
@@ -68,8 +69,14 @@ async function bundlePluginDirectory(
   // The same load the terminal does, so the metadata, the commit and whether
   // the plugin runs on the desktop at all are decided in one place.
   const loaded = await loadExternalPlugin(pluginDir, "desktop", options);
-  if (!loaded) return null;
+  return loaded ? bundleLoadedPlugin(pluginDir, loaded, options) : null;
+}
 
+async function bundleLoadedPlugin(
+  pluginDir: string,
+  loaded: LoadedExternalPlugin,
+  options: { fresh?: boolean } = {},
+): Promise<DesktopExternalPluginBundle> {
   const { plugin } = loaded;
   const directory = basename(pluginDir);
   const icon = readPluginIcon(pluginDir);
@@ -83,6 +90,7 @@ async function bundlePluginDirectory(
     ...(loaded.commit ? { commit: loaded.commit } : {}),
     ...(loaded.repo ? { repo: loaded.repo } : {}),
     ...(loaded.linked ? { linked: true } : {}),
+    ...(loaded.duplicateOf ? { duplicateOf: loaded.duplicateOf } : {}),
     ...(icon ? { icon } : {}),
     ...(plugin.targets ? { targets: plugin.targets } : {}),
   };
@@ -153,10 +161,12 @@ export async function collectExternalPluginBundles(): Promise<DesktopExternalPlu
   const bundles: DesktopExternalPluginBundle[] = [];
 
   // Links every folder before reading any: a plugin that imports a sibling
-  // needs the sibling linked too, whichever of them is read first.
-  for (const pluginDir of await listPluginDirectories(pluginsDir)) {
-    const bundle = await bundlePluginDirectory(pluginDir);
-    if (bundle) bundles.push(bundle);
+  // needs the sibling linked too, whichever of them is read first. Compiled
+  // only once every folder is read, so a plugin id that two folders declare
+  // is settled the way the backend's registry settles it, and the copy that
+  // is not loaded is not compiled.
+  for (const loaded of await loadExternalPlugins("desktop", pluginsDir)) {
+    bundles.push(await bundleLoadedPlugin(loaded.path, loaded));
   }
 
   return bundles;

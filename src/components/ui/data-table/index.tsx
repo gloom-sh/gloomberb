@@ -22,6 +22,7 @@ export type {
   DataTableColumn,
   DataTableColumnReorder,
   DataTableProps,
+  DataTableRowSource,
   DataTableSectionHeader,
   DataTableVisibleRange,
 } from "./types";
@@ -30,12 +31,24 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
   ownProps: DataTableProps<T, C>,
 ) {
   // Every renderer, report and export reads the cells through this, so a column of figures lines up everywhere.
-  const renderCell = useMemo(() => figureColumnCells(ownProps.renderCell), [ownProps.renderCell]);
+  const drawnCell = useMemo(() => figureColumnCells(ownProps.renderCell), [ownProps.renderCell]);
+  // A row source's reports and exports read each row's current data; a row on screen is drawn from it already.
+  const renderCell = useMemo((): DataTableProps<T, C>["renderCell"] => {
+    const source = ownProps.rowSource;
+    return source ? (item, column, index, state) => drawnCell(source.read(item) ?? item, column, index, state) : drawnCell;
+  }, [drawnCell, ownProps.rowSource]);
   // A caller that already ordered the columns (`DataTableView`) passes the move it resolved.
   const order = useDataTableColumnOrder(ownProps.columns, ownProps.onColumnMove ? false : ownProps.columnReorder);
+  const exportIdentity = useMemo(() => {
+    if (!ownProps.exportIdentity || !ownProps.rowSource) return ownProps.exportIdentity;
+    const identity = ownProps.exportIdentity;
+    const source = ownProps.rowSource;
+    return { ...identity, cells: (item: T) => identity.cells(source.read(item)) };
+  }, [ownProps.exportIdentity, ownProps.rowSource]);
   const props = {
     ...ownProps,
     renderCell,
+    exportIdentity,
     // Exports and reports read the columns in the order the reader sees them.
     columns: order.columns,
     onColumnMove: ownProps.onColumnMove ?? order.onColumnMove,
@@ -129,10 +142,10 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
       columns: displayColumns.map((column) => ({ id: column.id, label: column.label, ...(column.mayBeBlank ? { mayBeBlank: true } : {}) })),
       rowCount: props.items.length,
       selectedId: firstSelectedId(props),
-      ...(props.reportEveryRow ? { rows: cachedReportedRows(reportProps, reportedRowsRef) } : {}),
+      ...(props.reportEveryRow ? { rows: ownProps.rowSource ? reportedRows(reportProps) : cachedReportedRows(reportProps, reportedRowsRef) } : {}),
     }),
     // Read for this table alone: a confirmation names the row a call would open.
-    getDetail: () => ({ rows: cachedReportedRows(reportProps, reportedRowsRef) }),
+    getDetail: () => ({ rows: ownProps.rowSource ? reportedRows(reportProps) : cachedReportedRows(reportProps, reportedRowsRef) }),
   });
   // Header labels read the same in every table whatever case a pane wrote
   // them in. Exports and automation keep the pane's own labels.
@@ -148,6 +161,7 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
     | undefined;
   const displayProps = {
     ...props,
+    renderCell: drawnCell,
     columns,
     anchoredColumns: props.anchoredColumns == null ? undefined
       : props.columns.slice(0, props.anchoredColumns).filter((column) => displayColumns.includes(column)).length,

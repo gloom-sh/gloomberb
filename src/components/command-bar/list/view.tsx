@@ -7,12 +7,14 @@ import type { CommandBarResultLineSegment } from "../../../types/plugin";
 import {
   Box,
   ScrollBox,
+  Span,
   Text,
   TextAttributes,
   type ScrollBoxRenderable,
 } from "../../../ui";
 import { displayWidth, truncateTextSegments, truncateToDisplayWidth } from "../../../utils/format";
 import { Spinner } from "../../ui";
+import { NATIVE_CLIP_STYLE } from "../../ui/clip-style";
 import { ClippedText } from "../../ui/display";
 import { useCommandBarPalette } from "../panel/palette";
 import { getRowPresentation } from "../view-model";
@@ -43,6 +45,15 @@ const NAME_GAP = 2;
 const MIN_NAME_WIDTH = 6;
 /** The widest symbol a section's names line up after; a longer one pushes its own name along. */
 const MAX_SYMBOL_COLUMN = 10;
+/** The desktop's label gives way only once the name beside it has. */
+const LABEL_STYLE = { ...NATIVE_CLIP_STYLE, flex: "0 1 auto" } as const;
+/**
+ * The desktop's name: shown while the gap and a few of its characters fit beside the label (its basis),
+ * up to its whole width, and cut by CSS between.
+ */
+const NAME_STYLE = { ...NATIVE_CLIP_STYLE, flex: "1 1 0", minWidth: `${NAME_GAP + MIN_NAME_WIDTH}ch`, maxWidth: "max-content" } as const;
+const LINE_STYLE = { ...NATIVE_CLIP_STYLE, flex: "0 1 auto" } as const;
+const INLINE_STYLE = { display: "inline" } as const;
 
 /**
  * The terminal's instrument rows put their names in one column after the
@@ -117,25 +128,24 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
   // A long title stops one cell short of the right column, so its ellipsis
   // never runs into the date or shortcut sitting there.
   const labelSpace = Math.max(1, labelColumnWidth - (trailingWidth > 0 ? 1 : 0));
-  const label = truncateToDisplayWidth(presentation.label, labelSpace);
+  // The desktop and the web cut the label, the name and the right column by CSS where their boxes end.
+  const label = nativePaneChrome ? presentation.label : truncateToDisplayWidth(presentation.label, labelSpace);
   // The name gives way before the symbol: it shrinks to its ellipsis and drops
   // out once fewer than a few characters of it would show.
   const symbolWidth = Math.max(displayWidth(label), symbolColumn ?? 0);
   const nameSpace = labelSpace - symbolWidth - NAME_GAP;
-  const name = item.name && nameSpace >= MIN_NAME_WIDTH ? truncateToDisplayWidth(item.name, nameSpace) : "";
+  const name = nativePaneChrome ? item.name ?? "" : item.name && nameSpace >= MIN_NAME_WIDTH ? truncateToDisplayWidth(item.name, nameSpace) : "";
   // "current" outranks the shortcut on the right; otherwise a badge lifted from
   // `right` must not be repeated there.
-  const trailing = badgeConsumesRight(item) && !item.current
-    ? ""
-    : truncateToDisplayWidth(presentation.trailing, trailingWidth);
+  const trailing = badgeConsumesRight(item) && !item.current ? "" : presentation.trailing;
   const lineWidth = labelColumnWidth + trailingWidth;
   const lines = useMemo(
-    () => getResultItemLines(item).map((line) => truncateTextSegments(
+    () => getResultItemLines(item).map((line) => nativePaneChrome ? line.segments : truncateTextSegments(
       line.segments,
       lineWidth,
       (ellipsis) => ({ text: ellipsis, emphasis: "muted" as const }),
     )),
-    [item, lineWidth],
+    [item, lineWidth, nativePaneChrome],
   );
   const activate = () => onRowMouseDown({
     preventDefault() {},
@@ -193,28 +203,43 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
     >
       <Box flexDirection="row" height={1}>
         <Box width={BADGE_INDENT} flexDirection="row">
-          {badge && <CommandBarRowBadge text={badge.text} tone={badge.tone} width={BADGE_COLUMN_WIDTH} />}
+          {badge && <CommandBarRowBadge text={badge.text} tone={badge.tone} width={BADGE_COLUMN_WIDTH} nativePaneChrome={nativePaneChrome} />}
         </Box>
-        <Box width={labelColumnWidth} flexDirection="row">
-          <Text fg={isSelected ? palette.selectedText : presentation.primaryMuted ? palette.subtle : palette.text}>
-            {label}
-          </Text>
-          {name && (
-            <Text fg={isSelected ? palette.selectedText : palette.subtle}>
-              {" ".repeat(symbolWidth - displayWidth(label) + NAME_GAP) + name}
+        {nativePaneChrome ? (
+          // One line: the name wraps onto the hidden second line once less than a few characters of it
+          // would show beside the label, and gives way to its ellipsis before the label does.
+          <Box width={labelColumnWidth} height={1} flexDirection="row" flexWrap="wrap" overflow="hidden" paddingRight={trailingWidth > 0 ? 1 : 0}>
+            <Text fg={isSelected ? palette.selectedText : presentation.primaryMuted ? palette.subtle : palette.text} style={LABEL_STYLE}>
+              {label}
             </Text>
-          )}
-        </Box>
+            {name && (
+              <Text fg={isSelected ? palette.selectedText : palette.subtle} style={NAME_STYLE}>
+                {" ".repeat(NAME_GAP) + name}
+              </Text>
+            )}
+          </Box>
+        ) : (
+          <Box width={labelColumnWidth} flexDirection="row">
+            <Text fg={isSelected ? palette.selectedText : presentation.primaryMuted ? palette.subtle : palette.text}>
+              {label}
+            </Text>
+            {name && (
+              <Text fg={isSelected ? palette.selectedText : palette.subtle}>
+                {" ".repeat(symbolWidth - displayWidth(label) + NAME_GAP) + name}
+              </Text>
+            )}
+          </Box>
+        )}
         <Box width={trailingWidth}>
-          <Text
+          <ClippedText
             fg={isSelected
               ? palette.selectedText
               : presentation.trailingAccent
                 ? palette.accent
                 : palette.subtle}
-          >
-            {trailing}
-          </Text>
+            text={trailing}
+            width={trailingWidth}
+          />
         </Box>
       </Box>
       {lines.map((segments, index) => (
@@ -226,7 +251,21 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
           marginLeft={BADGE_INDENT}
           overflow="hidden"
         >
-          {segments.map((segment, segmentIndex) => (
+          {nativePaneChrome ? (
+            // One run of text, so CSS ends it in one ellipsis, in the colour the terminal's takes.
+            <Text fg={isSelected ? palette.selectedText : palette.heading} style={LINE_STYLE}>
+              {segments.map((segment, segmentIndex) => (
+                <Span
+                  key={segmentIndex}
+                  fg={resolveLineSegmentColor(segment, palette, isSelected)}
+                  attributes={segment.emphasis === "match" ? TextAttributes.BOLD : TextAttributes.NONE}
+                  style={INLINE_STYLE}
+                >
+                  {segment.text}
+                </Span>
+              ))}
+            </Text>
+          ) : segments.map((segment, segmentIndex) => (
             <Text
               key={segmentIndex}
               fg={resolveLineSegmentColor(segment, palette, isSelected)}
@@ -246,13 +285,20 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
  * in the list, so the labels line up and the tags share one right edge. Text
  * only: a filled box would outweigh the label it introduces.
  */
-function CommandBarRowBadge({ text, tone, width }: { text: string; tone: CommandBarBadgeTone; width: number }) {
+function CommandBarRowBadge({ text, tone, width, nativePaneChrome }: { text: string; tone: CommandBarBadgeTone; width: number; nativePaneChrome: boolean }) {
   const themeColors = useThemeColors();
   return (
     <Box width={width} height={1}>
-      <Text fg={commandBarBadgeText(tone, themeColors)}>
-        {truncateToDisplayWidth(text, width).padStart(width, " ")}
-      </Text>
+      {nativePaneChrome ? (
+        // Right-aligned in as many characters as the terminal's cells, cut by CSS past them.
+        <Text fg={commandBarBadgeText(tone, themeColors)} style={{ ...NATIVE_CLIP_STYLE, width: `${width}ch`, textAlign: "right" }}>
+          {text}
+        </Text>
+      ) : (
+        <Text fg={commandBarBadgeText(tone, themeColors)}>
+          {truncateToDisplayWidth(text, width).padStart(width, " ")}
+        </Text>
+      )}
     </Box>
   );
 }
@@ -350,9 +396,7 @@ export const CommandBarListBody = memo(function CommandBarListBody({
         if (row.kind === "heading") {
           return (
             <Box key={row.id} height={1} paddingLeft={labelEdgePadding} paddingRight={contentPadding} {...(!nativePaneChrome ? { onMouseScroll: onListScroll } : {})}>
-              <Text attributes={TextAttributes.BOLD} fg={row.accent ? palette.accent : palette.heading}>
-                {truncateToDisplayWidth(t(row.label), labelEdgeWidth)}
-              </Text>
+              <ClippedText attributes={TextAttributes.BOLD} fg={row.accent ? palette.accent : palette.heading} text={t(row.label)} width={labelEdgeWidth} />
             </Box>
           );
         }

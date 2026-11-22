@@ -45,6 +45,8 @@ interface ViewBundleOptions {
    * not keep them.
    */
   keepNames?: boolean;
+  /** Script text emitted ahead of everything else in the bundle. */
+  banner?: string;
 }
 
 /** Bun's minify setting: everything, or everything but identifiers when names are kept. */
@@ -64,6 +66,22 @@ const ELECTROBUN_VIEW_DIR = join(import.meta.dir, "..", "electrobun", "view");
  */
 export const WORLD_MAP_DATA_SPECIFIER = "./natural-earth/index.chunk.js";
 const DOM_RENDERER_DIR = import.meta.dir;
+
+/** Array methods that browsers before Chrome 110 and Firefox 115 lack, which `es2023-array-methods.ts` installs. */
+export const ES2023_ARRAY_METHODS = ["toSorted", "toReversed", "toSpliced", "with", "findLast", "findLastIndex"] as const;
+
+/** The array polyfill as a script for the top of a page bundle: bundled module code is not laid out in run order, so only the first line is certain to run first. */
+export async function es2023ArrayMethodsScript(): Promise<string> {
+  const result = await Bun.build({
+    entrypoints: [join(DOM_RENDERER_DIR, "es2023-array-methods.ts")],
+    target: "browser",
+    format: "iife",
+    minify: true,
+  });
+  const script = result.outputs[0];
+  if (!result.success || !script) throw new Error("Failed to build the array polyfill");
+  return script.text();
+}
 
 export function electrobunViewPath(...parts: string[]): string {
   return join(ELECTROBUN_VIEW_DIR, ...parts);
@@ -86,6 +104,7 @@ export async function buildViewBundle({
   failureMessage,
   missingEntryMessage,
   keepNames,
+  banner,
 }: ViewBundleOptions): Promise<{ script: string; stylesheet: string | null }> {
   const chunks = new Map<string, string>();
   const result = await Bun.build({
@@ -96,6 +115,7 @@ export async function buildViewBundle({
     splitting: false,
     sourcemap,
     minify: minifyOption(keepNames),
+    banner,
     define: {
       "process.env.NODE_ENV": "\"production\"",
       __GLOOM_WORLD_MAP_DATA__: JSON.stringify(WORLD_MAP_DATA_SPECIFIER),

@@ -10,7 +10,7 @@ import { createDesktopShotBridge, resolveDesktopShotApiProxy, stripDesktopShotCr
 import { shotDataEvidenceFor, shotExpectedText, shotSemanticRowCount, shotUnavailableSymbols } from "./screenshot-data-evidence";
 import { shotFreshness, shotHasStatusLine, shownReportTab, unreadRowsNote } from "./screenshot-render";
 import type { PaneScreenshotExpectedChartEvidence, PaneScreenshotExpectedSelection } from "./screenshot-types";
-import { paneEvidenceMismatches } from "./screenshot-evidence";
+import { paneEvidenceGaps, paneEvidenceMismatches } from "./screenshot-evidence";
 import { shotRowsText } from "./index";
 import { commoditiesEnergyModule } from "../../plugins/builtin/commodities-energy";
 import { realizedVolSemanticEvidence } from "../../plugins/builtin/realized-vol/evidence";
@@ -20,6 +20,27 @@ import { paneStateMarkers, shotStatusDateClipped, type DesktopPaneShotPayload, t
 import type { ResolvedPaneFunction } from "./resolver";
 import { buildCustomChartPreset } from "../../plugins/builtin/chart-composer/presets";
 import { CHART_COMPOSER_PANE_ID, createDefaultConfig } from "../../types/config";
+import { JsonPersistence } from "../../data/json-persistence";
+import { alertsHeadless } from "../../plugins/builtin/alerts/headless";
+import { ALERTS_PLUGIN_ID } from "../../plugins/builtin/alerts/constants";
+import { FIRED_LOG_KEY } from "../../plugins/builtin/alerts/fired-log";
+import { resumeStateKey } from "../../plugins/registry/plugin-state";
+
+test("ALRT capture copies the local fired log without copying unrelated saved state", async () => {
+  const persistence = new JsonPersistence();
+  const key = resumeStateKey(FIRED_LOG_KEY);
+  const log = [{ id: "local-fire", rule: "FSLR above 140", firedAt: 1795218720000 }];
+  persistence.pluginState.set(ALERTS_PLUGIN_ID, key, log);
+  persistence.pluginState.set(ALERTS_PLUGIN_ID, resumeStateKey("other"), "unrelated state");
+  const resolved = { token: "ALRT", headless: alertsHeadless, pane: { id: "alerts" }, options: { tab: "history" },
+    capability: { id: "alerts", options: alertsHeadless.options },
+    instance: { instanceId: "alerts:test", paneId: "alerts", settings: {}, binding: { kind: "none" } } } as unknown as ResolvedPaneFunction;
+  const shot = await buildDesktopShotPayload(resolved, {
+    config: createDefaultConfig("/tmp/alert-history-shot"), dataProvider: { id: "offline" },
+    persistence: { pluginState: { getStrict: persistence.pluginState.get } },
+  } as unknown as MarketContext, "", { tab: "history" }, 800, 600, null, 1, null);
+  expect(shot.deviceState).toEqual([{ pluginId: ALERTS_PLUGIN_ID, key, value: log }]);
+});
 
 test("a dropped essential figure is a screenshot gap even when its table holds the same value", () => {
   const semanticUi = [{ id: "figures", role: "figure-layout", label: "Essential figures", actions: [],
@@ -266,6 +287,17 @@ describe("realized volatility screenshot history", () => {
     expect(shot.financials[0]![1].priceHistory).toEqual(daily);
     const captured = createSnapshotDataProvider(shot, {} as MarketContext["dataProvider"]);
     expect(await captured.getPriceHistoryForResolution!("AAPL", "NASDAQ", "5Y", "1d")).toEqual(daily);
+  });
+
+  test("OVDV's Term tab captures MDAY's five years of daily closes, not the weekly seed", async () => {
+    // The weekly seed answered MDAY's 1d request, so no release day matched a bar and MDAY read "—".
+    const daily = [{ date: new Date("2026-11-19"), close: 100 }, { date: new Date("2026-11-20"), close: 101 }];
+    const calls: unknown[][] = [];
+    const term = { ...request, pane: { id: "vol-surface" }, options: { tab: "term" },
+      instance: { ...request.instance, instanceId: "ovdv:test", paneId: "vol-surface", settings: {} } } as unknown as ResolvedPaneFunction;
+    const shot = await capture({ async getPriceHistoryForResolution(...args: unknown[]) { calls.push(args.slice(0, 4)); return daily; } }, term);
+    expect(calls).toEqual([["AAPL", "NASDAQ", "5Y", "1d"]]);
+    expect(shot.financials[0]![1].priceHistory).toEqual(daily);
   });
 
   test("does not substitute weekly prices when daily history is empty or fails", async () => {
@@ -534,7 +566,7 @@ describe("volatility surface screenshot evidence", () => {
     selectedExpiration: 1_800_000_000, overlaySmiles: false, failures: [], smile: null, term: [], table: [],
     expiries: [1_800_000_000, 1_810_000_000].map((expiration) => ({ expiration, years: 0.5, state: "ready", stale: false,
       error: null, source: "test", asOf: "2026-09-22T13:45:00Z", rate: 0.04, rateAsOf: ["2026-09-21"],
-      forward: 100, fitMethod: "monotone-cubic", sourcePointCount: 2 })),
+      forward: 100, fitMethod: "monotone-cubic", sourcePointCount: 2, warnings: [] })),
     grid: { tenors: [0.25, 0.5], coordinates: [0.9, 1], values: [[0.3, 0.25], [0.32, 0.27]] },
   };
   const nodes = (value: Record<string, unknown> = metadata): RemoteUiNodeSnapshot[] => [
@@ -554,8 +586,12 @@ describe("volatility surface screenshot evidence", () => {
 
   test("does not certify canvas-only, wrong-view, partial or empty captures", () => {
     expect(shotUnavailableSymbols(request, source, [])).toEqual(["AAPL"]);
-    const partial = nodes({ ...metadata, complete: false, failedExpiries: 1, failures: [{ expiration: 1_800_000_000, message: "offline" }] });
-    expect(shotUnavailableSymbols(request, source, partial)).toEqual(["AAPL"]);
+    expect(shotUnavailableSymbols(request, source, nodes({ ...metadata, complete: false, loading: true }))).toEqual(["AAPL"]);
+    const partial = nodes({ ...metadata, complete: false, failedExpiries: 1, failures: [{ expiration: null, message: "offline" }] });
+    // Drawn but not whole: partial, with what it left out, never a symbol without data.
+    expect(shotUnavailableSymbols(request, source, partial)).toEqual([]);
+    expect(paneEvidenceGaps(request, source, partial)).toBe("2 of 2 expiries ready; failed: offline");
+    expect(paneEvidenceGaps(request, source, nodes())).toBeNull();
     expect(shotSemanticRowCount(request, source, partial)).toBe(4);
     expect(paneEvidenceMismatches({ ...request, options: { ...request.options, tab: "smile" } }, source, { semanticUi: nodes() })).toContain("rendered volatility view does not match");
     expect(paneEvidenceMismatches(request, source, { semanticUi: nodes({ ...metadata, symbol: "TSLA" }) })).toContain("rendered volatility symbol does not match");
@@ -564,6 +600,27 @@ describe("volatility surface screenshot evidence", () => {
       grid: { ...metadata.grid, values: [[null, null], [null, null]] } });
     expect(shotSemanticRowCount(request, source, empty)).toBe(0);
     expect(shotDataEvidenceFor(request, source, empty)).toBeNull();
+  });
+
+  test("a venue-qualified surface with some expiries empty is the listing asked for, partial with each empty expiry and why", () => {
+    // `shot OVDV ETH:ARCA --strict` on 2026-11-20 refused with "does not match the data" and "No data for ETH:ARCA":
+    // the pane draws under the key it was asked for, and 4 of 7 expiries had fitted quotes.
+    const arca = payload([["ETH:ARCA", { quote: { price: 15.24 } }]]);
+    const [ready, other] = metadata.expiries;
+    const drawn = { ...metadata, symbol: "ETH:ARCA", complete: false, requestedExpiries: 3, loadedExpiries: 3, expiries: [
+      { ...ready!, expiration: 1_795_737_600, state: "empty", fitMethod: null, sourcePointCount: 0,
+        warnings: ["No paired two-sided quotes after cleaning: 26 zero bid or ask, 19 zero open interest, 1 wide spread"] },
+      { ...other!, expiration: 1_797_552_000, state: "empty", fitMethod: null, sourcePointCount: 1,
+        warnings: ["Parity strikes do not bracket spot", "Fewer than two cleaned OTM strikes are available"] },
+      { ...ready!, expiration: 1_800_000_000, sourcePointCount: 3 },
+    ] };
+    expect(paneEvidenceMismatches(request, arca, { semanticUi: nodes(drawn) })).toEqual([]);
+    expect(paneEvidenceMismatches(request, payload([["ETH", { quote: { price: 15.24 } }]]), { semanticUi: nodes(drawn) })).toEqual([]);
+    expect(paneEvidenceMismatches(request, payload([["ETH:NASDAQ", { quote: { price: 15.24 } }]]), { semanticUi: nodes(drawn) }))
+      .toContain("rendered volatility symbol does not match");
+    expect(shotUnavailableSymbols(request, arca, nodes(drawn))).toEqual([]);
+    expect(paneEvidenceGaps(request, arca, nodes(drawn))).toBe("1 of 3 expiries ready; empty: "
+      + "2026-11-27 (no paired two-sided quotes after cleaning), 2026-12-18 (fewer than two cleaned OTM strikes are available)");
   });
 });
 
@@ -587,6 +644,11 @@ describe("realized volatility screenshot evidence", () => {
     expect(shotSemanticRowCount(request, source, nodes())).toBe(4);
     expect(shotUnavailableSymbols(request, source, nodes())).toEqual([]);
     expect(paneEvidenceMismatches(request, source, { semanticUi: nodes() })).toEqual([]);
+    // A listing asked for with its venue is drawn under that key (`shot HVT ETH:ARCA`), and is the listing asked for.
+    const arca = payload([["ETH:ARCA", { quote: { price: 15.24 } }]]);
+    expect(paneEvidenceMismatches(request, arca, { semanticUi: nodes({ ...evidence, symbol: "ETH:ARCA" }) })).toEqual([]);
+    expect(paneEvidenceMismatches(request, arca, { semanticUi: nodes({ ...evidence, symbol: "ETH:NASDAQ" }) }))
+      .toContain("rendered realized volatility symbol does not match");
     expect(shotDataEvidenceFor(request, source, nodes())).toMatchObject({ series: [
       { id: "hv-10", points: [{ date: dates[0]!.toISOString(), value: null }, { date: dates[1]!.toISOString(), value: 20 }] },
       { id: "current-iv", points: [{ date: status.currentIv.date, value: 22 }] },
@@ -1589,6 +1651,23 @@ test("a CTM capture states the delay its contracts' source does, as fn CTM does,
   expect(shot.variants[0]).toContain("10 min delayed");
   expect(shot.variants[0]).not.toContain("15 min");
   expect(formatFreshnessLine(report.freshness)).toContain("10 min delayed");
+});
+
+test("an ADR capture names its two markets' opens, never the Sunday reopen of the rate it converts by (DES adr-vs-home)", () => {
+  // Sun 22 Nov 2026: SHEL:NYSE and SHEL:LSE closed on Fri 20 Nov; USD/GBP's week reopens at 22:00 UTC that evening.
+  const NOW = Date.parse("2026-11-22T10:00:00Z");
+  const closed = { dataSource: "delayed", delayMinutes: 15, marketState: "CLOSED" } as const;
+  const receipt = createTestQuote({ symbol: "SHEL", ...closed, listingExchangeName: "NYSE", exchangeName: "NYSE", lastUpdated: Date.parse("2026-11-20T21:00:00Z") } as never);
+  const home = createTestQuote({ symbol: "SHEL.L", currency: "GBp", ...closed, listingExchangeName: "LSE", exchangeName: "LSE", lastUpdated: Date.parse("2026-11-20T16:35:00Z") } as never);
+  const rate = createTestQuote({ symbol: "GBPUSD=X", currency: "USD", ...closed, listingExchangeName: "CCY", exchangeName: "CCY", lastUpdated: Date.parse("2026-11-20T21:59:00Z") } as never);
+  const payload = { financials: [["SHEL", { quote: receipt }]], instrumentFinancials: [] } as unknown as Pick<DesktopPaneShotPayload, "financials" | "instrumentFinancials">;
+  const pane = { reportFreshness: undefined } as ResolvedPaneFunction["pane"];
+  const line = shotFreshness({ pane }, payload, { semanticUi: [], footerText: "", rows: [] }, [home, rate], undefined, NOW).variants[0]!;
+  expect(line).toContain("LSE opens Mon 08:00 UTC, 08:00 GMT · US Mon 14:30 UTC, 09:30 ET");
+  expect(line).not.toContain("22:00");
+  // The receipt alone opens with its own market.
+  expect(shotFreshness({ pane }, payload, { semanticUi: [], footerText: "", rows: [] }, [rate], undefined, NOW).variants[0])
+    .toContain("regular session opens Mon 14:30 UTC, 09:30 ET");
 });
 
 test("a pane with no market data is not dated by the quotes the page loaded for something else (CHG, BR, ACM, CAT)", () => {

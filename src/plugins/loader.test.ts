@@ -6,7 +6,11 @@ import { join } from "path";
 import type { CrashReportsPayload } from "../api-client";
 import { flushCrashReports, installCrashReporter, resetCrashReporterForTests } from "../telemetry/crash-reports";
 import { VERSION } from "../version";
-import { listPluginDirectories, loadExternalPlugin, readPluginCommit, unresolvedSpecifier } from "./loader";
+import { AppPersistence } from "../data/app-persistence";
+import { TickerRepository } from "../data/ticker-repository";
+import { createTestDataProvider } from "../test-support/data-provider";
+import { listPluginDirectories, loadExternalPlugin, loadExternalPlugins, readPluginCommit, unresolvedSpecifier } from "./loader";
+import { PluginRegistry } from "./registry";
 
 const scratch: string[] = [];
 
@@ -342,5 +346,109 @@ describe("leftover checkouts of plugins that are built in now", () => {
   test("are skipped by the id they export when there is no gloom.json", async () => {
     const dir = pluginAt(SHA, { "index.ts": `export default { id: "market-halts", name: "Market Halts" };\n` });
     expect(await loadExternalPlugin(dir)).toBeNull();
+  });
+});
+
+/**
+ * Two folders declaring one plugin id, such as a download beside a marketplace
+ * install or a dev link beside a clone, used to fail the second one's
+ * registration on every launch and report it as a crash. One loads, the other
+ * is listed as a skipped duplicate, and both folders stay.
+ */
+describe("two plugin folders that declare the same id", () => {
+  const SHARED_ID = "fixture-shared";
+
+  function pluginsFolder() {
+    const pluginsDir = mkdtempSync(join(tmpdir(), "gloom-plugins-"));
+    const devDir = mkdtempSync(join(tmpdir(), "gloom-dev-"));
+    scratch.push(pluginsDir, devDir);
+    const copy = (parent: string, name: string, version: string) => {
+      const dir = join(parent, name);
+      mkdirSync(dir);
+      writeFileSync(join(dir, "gloom.json"), JSON.stringify({ id: SHARED_ID }));
+      writeFileSync(join(dir, "index.ts"), `export default { id: "${SHARED_ID}", name: "Shared", version: "${version}" };\n`);
+      return dir;
+    };
+    return { pluginsDir, devDir, copy };
+  }
+
+  async function register(loaded: Awaited<ReturnType<typeof loadExternalPlugins>>) {
+    const persistence = new AppPersistence(":memory:");
+    const registry = new PluginRegistry(createTestDataProvider(), new TickerRepository(persistence.tickers), persistence);
+    try {
+      for (const entry of loaded) if (!entry.error) await registry.register(entry.plugin);
+      return [...registry.allPlugins.keys()];
+    } finally {
+      registry.destroy();
+      persistence.close();
+    }
+  }
+
+  function outcome(loaded: Awaited<ReturnType<typeof loadExternalPlugins>>) {
+    return loaded.map(({ directory, error, duplicateOf }) => ({ directory, error, duplicateOf }));
+  }
+
+  test("load the first folder by name when nothing else tells them apart, and skip the other", async () => {
+    const { pluginsDir, copy } = pluginsFolder();
+    copy(pluginsDir, "shared-b", "1.0.0");
+    copy(pluginsDir, "shared-a", "1.0.0");
+
+    const loaded = await loadExternalPlugins("cli", pluginsDir);
+
+    expect(outcome(loaded)).toEqual([
+      { directory: "shared-a", error: undefined, duplicateOf: undefined },
+      {
+        directory: "shared-b",
+        error: `The shared-a folder has the same plugin id (${SHARED_ID}) and loads instead.`,
+        duplicateOf: "shared-a",
+      },
+    ]);
+    expect(await register(loaded)).toEqual([SHARED_ID]);
+    expect(existsSync(join(pluginsDir, "shared-b"))).toBe(true);
+  });
+
+  test("load the higher version", async () => {
+    const { pluginsDir, copy } = pluginsFolder();
+    copy(pluginsDir, "shared-a", "1.9.0");
+    copy(pluginsDir, "shared-b", "1.10.0");
+
+    const loaded = await loadExternalPlugins("cli", pluginsDir);
+
+    expect(outcome(loaded).map(({ directory, duplicateOf }) => [directory, duplicateOf])).toEqual([
+      ["shared-a", "shared-b"],
+      ["shared-b", undefined],
+    ]);
+    expect(await register(loaded)).toEqual([SHARED_ID]);
+  });
+
+  test("load a linked folder over a copy, whatever the version and the name", async () => {
+    const { pluginsDir, devDir, copy } = pluginsFolder();
+    copy(pluginsDir, "shared-a", "2.0.0");
+    symlinkSync(copy(devDir, "checkout", "0.1.0"), join(pluginsDir, "shared-z"), "dir");
+
+    const loaded = await loadExternalPlugins("cli", pluginsDir);
+
+    expect(outcome(loaded).map(({ directory, duplicateOf }) => [directory, duplicateOf])).toEqual([
+      ["shared-a", "shared-z"],
+      ["shared-z", undefined],
+    ]);
+    expect(loaded[1]?.linked).toBe(true);
+    expect(await register(loaded)).toEqual([SHARED_ID]);
+    expect(existsSync(join(devDir, "checkout", "index.ts"))).toBe(true);
+  });
+
+  test("keep a copy that works when the other fails to import", async () => {
+    const { pluginsDir, copy } = pluginsFolder();
+    const broken = copy(pluginsDir, "shared-a", "1.0.0");
+    writeFileSync(join(broken, "index.ts"), `throw new Error("broken on purpose");\n`);
+    copy(pluginsDir, "shared-b", "1.0.0");
+
+    const loaded = await loadExternalPlugins("cli", pluginsDir);
+
+    expect(outcome(loaded)).toEqual([
+      { directory: "shared-a", error: expect.stringContaining("broken on purpose"), duplicateOf: undefined },
+      { directory: "shared-b", error: undefined, duplicateOf: undefined },
+    ]);
+    expect(await register(loaded)).toEqual([SHARED_ID]);
   });
 });

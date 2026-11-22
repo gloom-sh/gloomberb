@@ -1,10 +1,12 @@
-import { metricFormInput, metricShortcut, parseMetricAlert } from "./metric-command";
+import { metricFormInput, metricShortcut, namesTwoListings, parseMetricAlert } from "./metric-command";
 import { isRelativeMetric, type AlertMetric } from "./metric-model";
 import type { AlertCondition } from "./types";
 import { hasAlertCurrency, isPenceLevel, parseAlertPrice, readAlertLevel } from "./price";
 import { normalizeAlertSymbol } from "./quotes";
 import { moveCondition, parseMovePercent } from "./move";
 import type { WizardStep } from "../../../types/plugin";
+import { parseListingArg } from "../../../cli/listing-arg";
+import { isSpotCommodityOrCurrencyPair } from "../../../utils/crypto-pair";
 
 /** Add Alert's kind for a move from the previous close, beside a price level. */
 export const MOVE_KIND_CHOICE = { value: "move", label: "Move from previous close" };
@@ -25,6 +27,7 @@ export interface AlertCommandInput {
   price: number;
   /** A move from the previous close (`QQQ moves 5%`): `condition` is either way (crosses), up (above) or down (below). */
   move?: true;
+  regularHoursOnly?: true;
   /** Typed in pence (`70p`): `price` is in pounds, for a London line quoted in pence. */
   pence?: true;
   currency?: string;
@@ -53,6 +56,49 @@ function parseAlertCondition(value: string | undefined): AlertCondition | null {
   }
 }
 
+/** BTC/USD, BRK/B and EUR/USD are one listing written with a slash, as `alerts add` reads them; XLK/SPY is not. */
+export function slashSpellsListing(symbol: string): boolean {
+  try {
+    return parseListingArg(symbol).key !== symbol.toUpperCase();
+  } catch {
+    // Intentional ignore: text the listing reader refuses is no pair to divide, so the quote's own error stands.
+    return true;
+  }
+}
+
+/**
+ * Whether SA can open `A/B` as the ratio of two listings before anything is quoted: no listing is written that
+ * way. One that is stays a listing's price, and Add Alert asks the service first, as `alerts add` does: a pair
+ * the listing reader respells (BRK/B is BRK-B, EUR/USD is EURUSD=X, BTC/USD is BTC-USD), a spot commodity
+ * (XAU/USD), and one or two letters after the slash, a share class or series (BF/B, BAC/PL).
+ */
+function slashNamesTwoListings(symbol: string): boolean {
+  if (namesTwoListings(symbol)) return true;
+  const pair = /^([^/\s:]+)\/([^/\s:]+)$/.exec(symbol);
+  if (!pair || pair[2]!.length <= 2) return false;
+  return !slashSpellsListing(symbol) && !isSpotCommodityOrCurrencyPair(symbol);
+}
+
+/**
+ * `EWJ/ACWI above 0.60` typed after SA: the ratio of two listings (slashNamesTwoListings), as `alerts add` saves
+ * it, so Add Alert opens on Ratio to benchmark with both listings, the direction and the level filled in.
+ */
+function shortcutRatio(parts: readonly string[]): Record<string, string> | null {
+  const pair = /^([^/\s]+)\/([^/\s]+)$/.exec(parts[0] ?? "");
+  if (!pair || !slashNamesTwoListings(parts[0]!)) return null;
+  const condition = parseAlertCondition(parts[1]);
+  if (condition && parts.length === 3) {
+    const ratio = parseMetricAlert(`${parts[0]} ratio ${condition} ${parts[2]}`);
+    if (ratio) return metricShortcut(ratio);
+  }
+  // The pair alone, or with its direction: the ratio form opens on both listings for the rest to be typed.
+  if (parts.length > 2 || (parts[1] && !condition)) return null;
+  return {
+    symbol: normalizeAlertSymbol(pair[1]), kind: "rs_ratio", "rs_ratio:benchmark": pair[2]!.toUpperCase(),
+    ...condition ? { "rs_ratio:condition": condition } : {},
+  };
+}
+
 export function parseAlertShortcutValues(
   input: string,
   context?: { activeTicker: string | null },
@@ -64,6 +110,8 @@ export function parseAlertShortcutValues(
     const activeTicker = normalizeAlertSymbol(context?.activeTicker);
     return activeTicker ? { symbol: activeTicker } : {};
   }
+  const ratio = shortcutRatio(parts);
+  if (ratio) return ratio;
   // The price is the rest of the line, as one: `$ 757.75`, `1 000.50` and `757.75 USD` read as `alerts add` reads them quoted.
   const priceText = parts.slice(2).join(" ");
   if (parts.length > 3 && !isPenceLevel(priceText) && !hasAlertCurrency(priceText) && parseAlertPrice(priceText).kind === "invalid") {
@@ -118,7 +166,7 @@ export function parseAlertCommandValues(
     if (!symbol || !typed) return null;
     const percent = parseMovePercent(typed);
     if (percent == null) throw new Error(`${MOVE_PERCENT_RULE}, not "${typed}".`);
-    return { symbol, condition, price: percent, move: true };
+    return { symbol, condition, price: percent, move: true, ...values["move:session"] === "regular" ? { regularHoursOnly: true } : {} };
   }
   const metric = values ? metricFormInput(values) : null;
   if (metric) return metric;
@@ -126,7 +174,7 @@ export function parseAlertCommandValues(
   const condition = parseAlertCondition(values?.condition);
   const priceStr = values?.price?.trim();
   if (!symbol || !condition || !priceStr) return null;
-  return { symbol, condition, ...readAlertLevel(priceStr) };
+  return { symbol, condition, ...readAlertLevel(priceStr), ...values?.["price:session"] === "regular" ? { regularHoursOnly: true } : {} };
 }
 
 /** A move rule's edit read: `GBPUSD=X moves 0.5%`, `HSBA:LSE down 3`, as `alerts add` takes it. Null for another form. */

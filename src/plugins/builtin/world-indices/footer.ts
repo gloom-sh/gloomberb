@@ -25,6 +25,6 @@ export function useWorldIndicesFooter(quotes: BoardQuoteMap, onRefresh: () => vo
       if (quoteDelay) info.push(quoteDelay);
       return { info };
     },
-    [errorMessage, focused, onRefresh, quoteDelay, status.latestTs, status.loading, status.savedAt, status.stale, status.unavailable],
+    [errorMessage, focused, onRefresh, quoteDelay, status.latestTs, status.loading, status.savedAt, status.stale, status.staleSymbol, status.unavailable],
   );
 }

@@ -19,8 +19,11 @@ import {
   TextPromptDialog,
   type MultiSelectDialogButtonHandle,
   type MultiSelectRowAction,
+  type MultiSelectRowChoice,
 } from "../../../components/ui";
 import { CompositeChart } from "../../../components/chart/composite";
+import { ChartColorChoice } from "../../../components/chart/composite/color-choice";
+import { nextChartPaletteColor } from "../../../theme/chart-palette";
 import { useCaptureDatesData } from "../../../components/layout/pane/capture-status";
 import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { useChartViewReset, useChartViewResetListener } from "../../../components/chart/core/view-reset";
@@ -103,6 +106,7 @@ import {
   rebindResearchChartSpec,
 } from "./chart-spec-edit";
 import {
+  builtinStudyColor,
   builtinStudyPeriod,
   builtinStudySetting,
   builtinVwapAnchors,
@@ -112,6 +116,7 @@ import {
   isPeriodStudy,
   parseVwapAnchor,
   setBuiltinStudies,
+  setBuiltinStudyColor,
   setBuiltinStudyPeriod,
   setBuiltinStudySetting,
   setBuiltinVwapAnchors,
@@ -164,6 +169,8 @@ const RANGE_OPTIONS = RANGES.map((range, index) => ({ label: range, value: range
 const SOURCE_BAR_SIZES = CHART_RESOLUTIONS.filter((value): value is ManualChartResolution => value !== "auto");
 /** The bar size dialog's last choice, which asks for a size to type. */
 const CUSTOM_BAR_SIZE_CHOICE = "custom";
+/** The Indicators dialog's colour choice for a study with none picked: the theme's own. */
+const AUTO_COLOR = "auto";
 const AUTO_VIEWPORT_DEBOUNCE_MS = 350;
 /** A load for a moving view that has not answered in this long no longer holds the next one back. */
 const LOAD_AHEAD_TIMEOUT_MS = 4_000;
@@ -783,6 +790,25 @@ function ChartComposerSurface({
       return chartStudySettingLabel(value, nextSpec);
     },
   }), [dialog, editVwapAnchors, updateSpec]);
+  // Each selected study's colour, on a line under the list: Auto is the theme's, which follows the theme.
+  const studyColorChoice = useMemo<MultiSelectRowChoice>(() => ({
+    label: "Colour",
+    shortcut: "c",
+    appliesTo: (_value, selected) => selected,
+    valueFor: (value) => builtinStudyColor(specRef.current, value as BuiltinStudySelection) ?? AUTO_COLOR,
+    next: (choice) => nextChartPaletteColor(choice === AUTO_COLOR ? undefined : choice, true) ?? AUTO_COLOR,
+    onChange: (value, choice) => {
+      updateSpec(setBuiltinStudyColor(specRef.current, value as BuiltinStudySelection, choice === AUTO_COLOR ? undefined : choice));
+    },
+    render: ({ value, choice, disabled, onPick }) => (
+      <ChartColorChoice
+        label={`${chartStudySettingLabel(value as BuiltinStudySelection, specRef.current)} colour`}
+        value={choice === AUTO_COLOR ? undefined : choice}
+        disabled={disabled}
+        onChange={(color) => onPick(color ?? AUTO_COLOR)}
+      />
+    ),
+  }), [updateSpec]);
   const timePick = useMemo(() => pickingAnchor ? {
     label: "anchor here",
     onPick: (date: Date) => {
@@ -1144,8 +1170,9 @@ function ChartComposerSurface({
         && warning.endsWith("; only matching observation times contribute."))
     ))
   ));
+  const statusComparisonNotice = comparisonUnavailable ?? comparisonNotice;
   const statusNotices = [...new Set([...(statusErrorNotice ? [statusErrorNotice] : []), ...listings.errors, ...listings.notices,
-    ...(comparisonUnavailable ? [comparisonUnavailable] : []), ...statusWarnings])];
+    ...(statusComparisonNotice ? [statusComparisonNotice] : []), ...statusWarnings])];
   usePaneNoticeFooter({
     registrationId: `${footerId}:notices`,
     notices: statusNotices,
@@ -1368,6 +1395,7 @@ function ChartComposerSurface({
           updateSpec(nextSpec);
         }}
         rowAction={studySettingsAction}
+        rowChoice={studyColorChoice}
         disabled={indicatorsDisabled}
         idPrefix={`${footerId}:indicators`}
         shortcutKey="i"

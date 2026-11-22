@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import type { CloudNewsListResponse } from "../../api-client";
 import type { NewsQuery } from "../../news/types";
+import { dedupeNewsArticles } from "../../news/news-model";
 import { cloudNewsAccess, cloudNewsReadArticles, readCloudNews } from "./news";
 
 function story(id: string, tickers: string[] = []) {
@@ -124,4 +125,26 @@ test("an answer is held back when no session went with it, and live only when it
   // A read asks the client whether a session goes with the request.
   const signedOut = { ...cloud({ filed: [story("filed")] }).client, hasSessionCredential: () => false };
   expect((await readCloudNews(signedOut as never, { feed: "top", limit: 20 })).access).toBe("delayed");
+});
+
+test("a story is dated and ordered by its first publication, with every time the service sent kept beside it", () => {
+  // An exclusive broke at 19:12 UTC; a paper's copy of it at 01:06 the next day is the story's latest publication.
+  const times = { firstPublishedAt: "2026-11-20T19:12:52.000Z", lastPublishedAt: "2026-11-21T01:06:53.000Z",
+    firstSeenAt: "2026-11-20T19:13:44.206Z", lastSeenAt: "2026-11-21T01:08:45.541Z" };
+  const exclusive = { ...story("exclusive"), ...times };
+  const post = { ...story("post"), firstPublishedAt: "2026-11-20T21:44:18.000Z", lastPublishedAt: "2026-11-20T21:44:18.000Z" };
+  const articles = cloudNewsReadArticles({ items: [exclusive, post], nextCursor: null });
+  const exclusiveArticle = articles.find((article) => article.id === "exclusive")!;
+  expect(exclusiveArticle.publishedAt.toISOString()).toBe(times.firstPublishedAt);
+  expect(exclusiveArticle.times).toEqual(times);
+  expect(dedupeNewsArticles(articles).map((article) => article.id)).toEqual(["post", "exclusive"]);
+  // The story's next report keeps its date and still replaces the copy read before it.
+  const [earlier] = cloudNewsReadArticles({ items: [{ ...exclusive, headline: "First copy", lastPublishedAt: times.firstPublishedAt }], nextCursor: null });
+  const merged = dedupeNewsArticles([earlier!, exclusiveArticle]).find((article) => article.id === "exclusive")!;
+  expect([merged.title, merged.publishedAt.toISOString()]).toEqual(["Story exclusive", times.firstPublishedAt]);
+  expect(dedupeNewsArticles([exclusiveArticle, earlier!]).find((article) => article.id === "exclusive")!.title).toBe("Story exclusive");
+  // A story with no publication time is dated by when the service first saw it.
+  const unpublished = cloudNewsReadArticles({ items: [{ ...story("seen"), firstPublishedAt: "", lastPublishedAt: "",
+    firstSeenAt: times.firstSeenAt }], nextCursor: null });
+  expect(unpublished[0]!.publishedAt.toISOString()).toBe(times.firstSeenAt);
 });

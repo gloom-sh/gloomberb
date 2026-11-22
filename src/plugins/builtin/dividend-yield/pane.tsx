@@ -32,7 +32,7 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { fetchDividendData, repriceDividendMetrics, statedForwardRate, type DividendData } from "./client";
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import { useTickerQuoteStream } from "../../../state/hooks/live-ticker-financials";
-import { buildTrailingCashChartPoints, convertedFromText, formatConvertedAmount, formatDividendRowAmount, formatDividendYield, forwardEstimateText, growthPaymentsDetail, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText, type DividendRow } from "./view";
+import { buildTrailingCashChartPoints, convertedFromText, formatConvertedAmount, formatDividendRowAmount, formatDividendYield, forwardEstimateText, growthPaymentsDetail, PAYOUT_BASIS, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText, type DividendRow } from "./view";
 import {
   DEFAULT_SORT_PREFERENCE,
   buildDividendColumns,
@@ -99,7 +99,8 @@ function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory
   // The rates of a listing paid in a conversion of what its company declares say what they were converted from.
   const converted = convertedFrom ? { detail: convertedFromText(convertedFrom) } : {};
   const exDate: StatItem[] = metrics.nextExDividendDate
-    ? [{ id: "next-ex", label: "Next ex", value: formatDate(metrics.nextExDividendDate), essential: true }]
+    ? [{ id: "next-ex", label: "Next ex", value: formatDate(metrics.nextExDividendDate), essential: true,
+      ...metrics.nextExDividendDateListing ? { detail: `from ${metrics.nextExDividendDateListing}` } : {} }]
     : hasHistory ? [] : [{ id: "last-ex", label: "Last ex", value: formatDate(metrics.lastExDividendDate) }];
   const dated = metrics.lapse ? lastPaidNote(metrics.lapse)
     : metrics.forwardYield == null ? null
@@ -134,10 +135,12 @@ function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory
     { ...growthItem("growth-1y", short ? "1Y chg" : "1Y growth", metrics.growth1Y, metrics.growth1YPayments, metrics.growth1YNotMeaningful), essential: false },
     { ...growthItem("cagr-3y", "3Y CAGR", metrics.growth3Y, metrics.growth3YPayments, metrics.growth3YNotMeaningful), essential: false },
     { id: "payout", essential: false, label: "Payout", value: metrics.payoutNotMeaningful ? PAYOUT_NOT_MEANINGFUL : metrics.payoutRatio != null ? `${(metrics.payoutRatio * 100).toFixed(1)}%` : MISSING_VALUE,
-      detail: "Basis/date unstated" },
+      detail: PAYOUT_BASIS },
     { id: "cadence", essential: false, label: "Cadence", value: formatFrequency(metrics.paymentFrequency) },
     ...exDate,
-    { id: "next-pay", essential: true, label: "Next pay", value: metrics.nextPayDate ? formatDate(metrics.nextPayDate) : "Unavailable" },
+    // A pay date only the company's other listing states names it (from HSBA:LSE).
+    { id: "next-pay", essential: true, label: "Next pay", value: metrics.nextPayDate ? formatDate(metrics.nextPayDate) : "Unavailable",
+      ...metrics.nextPayDate && metrics.nextPayDateListing ? { detail: `from ${metrics.nextPayDateListing}` } : {} },
   ];
 }
 

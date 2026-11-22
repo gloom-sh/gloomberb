@@ -163,6 +163,27 @@ describe("ticker-search utilities", () => {
     expect(error.listings).toHaveLength(4);
   });
 
+  test("a bare symbol whose own line stopped trading is the company's home line that still trades, saved abroad or not", async () => {
+    // /market/search?q=SOL on 2026-11-21: the bare quote is Emeren's NYSE receipt, last traded 12 Dec 2025.
+    const delisting = { status: "inactive" as const, lastTradeDate: "2025-12-12", historyStart: "2016-01-04" };
+    const emeren = makeSearchResult("SOL", "Emeren Group Ltd American Depositary Shares", { exchange: "NYSE", currency: "USD", delisting });
+    const soul = makeSearchResult("SOL", "Washington H. Soul Pattinson and Company Limited", { exchange: "ASX", currency: "AUD", homeListing: true });
+    const solvay = makeSearchResult("SOL", "Solvay SA", { exchange: "XETRA", currency: "EUR" });
+    const resolve = (rows: InstrumentSearchResult[], tickers = new Map<string, TickerRecord>()) => resolveTickerSearch({
+      query: "SOL", activeTicker: null, tickers,
+      dataProvider: createTestDataProvider({ search: async () => rows,
+        getQuote: async () => createTestQuote({ symbol: "SOL", listingExchangeName: "NYSE", currency: "USD", delisting }) }),
+    });
+    // The command bar leads with Soul Pattinson once search answers; Enter before it does, and every command, agree.
+    expect(await resolve([emeren, solvay, soul])).toMatchObject({ kind: "provider", result: { exchange: "ASX" } });
+    // A row saved abroad under the bare key stands: the US line that stopped never takes the symbol from it.
+    const saved = createTestTicker("SOL", soul.name, { exchange: "ASX", currency: "AUD" });
+    expect(await resolve([emeren, solvay, soul], new Map([["SOL", saved]]))).toMatchObject({ kind: "local", ticker: saved });
+    // With no home line that trades (HFC's Hampton Financial is no company's marked home), the stopped line stays the
+    // symbol's, so `quote HFC` can say it became DINO.
+    expect(await resolve([emeren, solvay, { ...soul, homeListing: false }])).toMatchObject({ kind: "provider", result: { exchange: "NYSE" } });
+  });
+
   test("ambiguous symbols require venue, currency and exact quote evidence", async () => {
     const results = [makeSearchResult("GLD", "SPDR", { exchange: "BYMA", currency: "ARS" }),
       makeSearchResult("GLD", "SPDR", { exchange: "NYSE", currency: "USD" })];

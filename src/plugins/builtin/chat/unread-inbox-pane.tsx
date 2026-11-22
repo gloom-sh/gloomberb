@@ -67,7 +67,7 @@ function chatCell(
   column: DataTableColumn,
   now: number,
   rowState: { selected: boolean },
-  native: boolean,
+  nativePaneChrome: boolean,
 ): DataTableCell {
   switch (column.id) {
     case "from":
@@ -91,17 +91,17 @@ function chatCell(
       const ink = rowState.selected ? colors.selectedText : colors.text;
       // The icon stands where the colon would. The table gives the terminal its resolved width to clip
       // to; the desktop clips the preview with CSS.
-      const latest = native ? ` ${text}` : truncateToDisplayWidth(` ${text}`, Math.max(0, column.width - displayWidth(name) - CHAT_PERSON_ICON_WIDTH));
+      const latest = nativePaneChrome ? ` ${text}` : truncateToDisplayWidth(` ${text}`, Math.max(0, column.width - displayWidth(name) - CHAT_PERSON_ICON_WIDTH));
       return {
         // Exports, reports and screen readers read the text, which names the bot in words.
         text: `${name ? `${name} ` : ""}[Bot]: ${text}`,
         content: (
-          <Box flexDirection="row" height={1} width={native ? "100%" : column.width} overflow="hidden">
+          <Box flexDirection="row" height={1} width={nativePaneChrome ? "100%" : column.width} overflow="hidden">
             {name ? <Text fg={ink}>{name}</Text> : null}
             <ChatBotIcon selectedColor={rowState.selected ? colors.selectedText : undefined} />
             <Text
               fg={ink}
-              style={native ? { flex: "1 1 0", minWidth: 0, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "pre" } : undefined}
+              style={nativePaneChrome ? { flex: "1 1 0", minWidth: 0, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "pre" } : undefined}
             >
               {latest}
             </Text>

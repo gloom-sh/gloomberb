@@ -157,6 +157,7 @@ export function moveRuleOnly(alert: AlertRule): AlertRule {
     ...alert.exchange ? { exchange: alert.exchange } : {},
     condition: alert.condition,
     targetPrice: alert.targetPrice,
+    ...alert.regularHoursOnly ? { regularHoursOnly: true } : {},
     createdAt: alert.createdAt,
     ...alert.armedAt != null ? { armedAt: alert.armedAt } : {},
     status: "active",

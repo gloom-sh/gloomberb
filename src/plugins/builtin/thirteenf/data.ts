@@ -60,9 +60,11 @@ async function loadReportsForFunds(
     while (!options.signal?.aborted && index < funds.length) {
       const fund = funds[index++]!;
       try {
-        const forms = await listThirteenFForms(fund.cik, options.from, options.to, 100, options.signal, options);
-        const periods = buildPeriodReports(forms);
         const selectedPeriod = options.periods?.get(fund.cik);
+        // The row shows one quarter's report: its filings date the row's saved copy.
+        const forms = await listThirteenFForms(fund.cik, options.from, options.to, 100, options.signal,
+          { ...options, shownPeriod: selectedPeriod ?? "newest" });
+        const periods = buildPeriodReports(forms);
         const report = selectedPeriod ? periods.find((item) => item.periodOfReport === selectedPeriod) : periods[0];
         if (report) reports.set(fund.cik, report);
       } catch {
@@ -260,7 +262,7 @@ async function loadBrowserPage(
   if (!trimmed) return { rows: [], quarter };
   if (/^\d{6,10}$/.test(trimmed)) {
     const cik = normalizeCik(trimmed);
-    const forms = await listThirteenFForms(cik, from, to, 100, signal, apiOptions);
+    const forms = await listThirteenFForms(cik, from, to, 100, signal, { ...apiOptions, shownPeriod: "newest" });
     const report = buildPeriodReports(forms)[0];
     const form = report?.filings.at(-1);
     const fund = { cik, name: form?.companyName || cik };
@@ -273,16 +275,24 @@ async function loadBrowserPage(
       nextOffset: offset + 1,
     };
   }
-  const found = await searchThirteenFFunds(trimmed, browserLimit, signal, pageApiOptions);
+  // The rows show each fund's report, whose filings date the page: the names found, and the ranking, date it only
+  // when no report answers, or when a ranked fund is shown (ARK's 30 Sep report read on 13 Nov, not the name
+  // search read on 7 Nov).
+  const listed: { savedAt?: number } = {};
+  const noteListed = (savedAt: number) => { listed.savedAt = Math.min(listed.savedAt ?? savedAt, savedAt); };
+  const found = await searchThirteenFFunds(trimmed, browserLimit, signal, { ...pageApiOptions, onSavedCopy: noteListed });
   const funds = oneFundPerCik(found);
-  const topFunds = await listTopThirteenFFunds(quarter, browserLimit, signal, apiOptions).catch((error: unknown): ThirteenFTopFund[] => {
-    if (!signal?.aborted) logFailure("thirteenf.data", "Load performance ranks for fund search failed")(error);
-    return [];
-  });
+  let rankedAt: number | undefined;
+  const topFunds = await listTopThirteenFFunds(quarter, browserLimit, signal, { ...apiOptions, onSavedCopy: (savedAt) => { rankedAt = savedAt; } })
+    .catch((error: unknown): ThirteenFTopFund[] => {
+      if (!signal?.aborted) logFailure("thirteenf.data", "Load performance ranks for fund search failed")(error);
+      return [];
+    });
   const topByCik = new Map(topFunds.map((fund) => [fund.cik, fund]));
   const matchedTopFunds = funds
     .map((fund) => topByCik.get(fund.cik))
     .filter((fund): fund is ThirteenFTopFund => !!fund);
+  if (rankedAt != null && matchedTopFunds.length > 0) options.onSavedCopy?.(rankedAt);
   const rows = buildBrowserRows({ funds: oneFundPerCik(found), topFunds: matchedTopFunds, source: "funds" });
   const result: BrowserLoadResult = {
     rows,
@@ -292,6 +302,9 @@ async function loadBrowserPage(
   };
   fillReports(result, rows, loadReportsForFunds(funds.slice(0, Math.min(browserLimit, FORM_ENRICHMENT_LIMIT)), {
     from, to, signal, ...apiOptions,
+  }).then((loaded) => {
+    if (loaded.reports.size === 0 && listed.savedAt != null) options.onSavedCopy?.(listed.savedAt);
+    return loaded;
   }), (reports) => buildBrowserRows({
     funds: oneFundPerCik(found, reports),
     topFunds: matchedTopFunds,

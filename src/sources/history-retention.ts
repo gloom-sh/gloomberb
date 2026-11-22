@@ -19,6 +19,12 @@ export interface HistoryRetention {
   readonly requestedEnd: number;
   readonly observedAt: number;
   readonly availableStart: number;
+  /**
+   * When the window is older than every source holds: the first bar any of
+   * them has at the interval, after the window's start and before the
+   * retained window's (a SPY session in 2015, whose minutes start in 2016).
+   */
+  readonly firstBarAt?: number;
 }
 
 interface HistoryRecoveryRequest {
@@ -72,9 +78,13 @@ export function parseHistoryRetention(value: unknown, now = Date.now()): History
     || value.requestedStart >= value.requestedEnd || value.availableStart > value.observedAt
     || value.observedAt > now + HISTORY_RETENTION_CLOCK_SKEW_MS || now - value.observedAt > HISTORY_RETENTION_MAX_AGE_MS
     || [value.requestedStart, value.requestedEnd, value.observedAt, value.availableStart].some((time) => time % 1000 !== 0)) return null;
+  // A first bar outside the window's start and the retained window's is dropped, not the record.
+  const firstBarAt = instant(value.firstBarAt) && value.firstBarAt % 1000 === 0
+    && value.firstBarAt > value.requestedStart && value.firstBarAt < value.availableStart ? value.firstBarAt : undefined;
   return Object.freeze({ version: 1, source: "gloom", symbol: target.symbol, exchange, interval,
     requestedStart: value.requestedStart, requestedEnd: value.requestedEnd,
-    observedAt: value.observedAt, availableStart: value.availableStart });
+    observedAt: value.observedAt, availableStart: value.availableStart,
+    ...(firstBarAt !== undefined ? { firstBarAt } : {}) });
 }
 
 export function parseHistoryRecoveryCandidate(value: unknown, now = Date.now()): HistoryRecoveryCandidate | null {
@@ -137,9 +147,11 @@ export class HistoryRetentionError extends Error {
 /**
  * Shown while a chart at an explicit interval reaches back past what the
  * source keeps at it: the first retained day, read in the listing's zone
- * (UTC when unknown), and the length of the window the source keeps.
+ * (UTC when unknown), and the length of the window the source keeps. A
+ * window older than every source holds names the first day any of them has.
  */
 export function historyRetentionNotice(retention: HistoryRetention, interval: string, timeZone: string | null): string {
+  if (retention.firstBarAt !== undefined) return historyStartNotice(retention.firstBarAt, interval, timeZone, retention.observedAt);
   const zone = timeZone ?? "UTC";
   const day = zonedDateKey(retention.availableStart, zone);
   const sameYear = day.slice(0, 4) === zonedDateKey(retention.observedAt, zone).slice(0, 4);

@@ -12,7 +12,7 @@ export const earningsRippleHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
   freshness: { source: "SEC filings and Gloom Cloud", status: "not-a-feed", basis: "filings and earnings calendar" },
   argument: { kind: "symbol-list", placeholder: "tickers", description: "Holdings to check against their customers' and suppliers' report dates.", minimum: 1, maximum: 60 },
-  options: [{ key: "tab", type: "enum", settingKey: "tab", defaultValue: "direct", values: [{ value: "direct" }, { value: "two-hop" }],
+  options: [{ key: "tab", type: "enum", settingKey: "tab", defaultValue: "direct", values: [{ value: "direct", label: "1 hop" }, { value: "two-hop", label: "2 hops" }],
     description: "Direct customers and suppliers, or also companies two hops away (Pro)." }],
   describe: (args) => `RIPL ${args.symbols.join(", ")}`,
   discovery: { screenshotReadiness: "live-dom", limitations: ["Customers each holding names in its own US filings, and suppliers whose US filings name it, with a share of revenue.",

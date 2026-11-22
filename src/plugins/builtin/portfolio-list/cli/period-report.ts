@@ -1,5 +1,6 @@
 import type { ReportFreshness } from "../../../../cli/pane-functions/freshness";
 import { cliFreshnessFooter } from "../../../../cli/result";
+import { windowTextRows } from "../../../../cli/row-window";
 import { renderReportGlossary, reportGlossary } from "../../../../cli/glossary";
 import { formatMarketPriceWithCurrency, formatMarketQuantity, withCurrencyMinorDigits } from "../../../../market-data/market/format";
 import { periodDayText } from "../../../../market-data/market/period-return";
@@ -163,7 +164,9 @@ export async function showPeriodPnl({ ctx, portfolio, name, tickers, currency, w
     return ticker && isFuturesTicker(ticker) ? futuresQuantityText(units, futures.get(symbol)?.size ?? null) : units;
   };
   const dated = !startDay || !endDay;
-  const rows = result.rows.map((row) => [
+  // `--limit` and `--tail` keep holdings as the export keeps them; the FX lines and TOTAL are the whole book's.
+  const shown = windowTextRows(result.rows, ctx.cliOptions ?? {});
+  const rows = shown.rows.map((row) => [
     label(row.symbol), quantity(row.symbol),
     ...dated ? [row.start ? dayText(row.start.day, year) : "—"] : [], price(row, row.start),
     ...dated ? [row.end ? dayText(row.end.day, year) : "—"] : [], price(row, row.end),
@@ -191,6 +194,7 @@ export async function showPeriodPnl({ ctx, portfolio, name, tickers, currency, w
     { header: `P&L (${currency})`, align: "right" },
     { header: "Contribution", align: "right" },
   ], rows));
+  if (shown.note) console.log(cliStyles.muted(shown.note));
   if (parts.length > 1) {
     // What each currency's holdings made from their prices, from the currency, and together, and the book's; one
     // currency's would repeat the total.

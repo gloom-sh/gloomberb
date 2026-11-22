@@ -14,6 +14,7 @@ import { isRecord } from "../../utils/guards";
 import { latestRegularSessionClose, readIndexSession, regularSessionCloseOn, sessionCalendarTimeZone } from "../../market-data/market/freshness";
 import {
   reportMarketSession,
+  shownSessionList,
   reportVenueMarkets,
   reportVenueSessionDates,
   type ReportMarket,
@@ -33,6 +34,7 @@ type ReportFreshnessStatus = HeadlessFreshnessStatus;
 
 /** What every `fn` report cites about its data, in its JSON and its last text line. */
 export interface ReportFreshness {
+  /** Who the data is cited to; blank when it has no name to give (a quote from a provider with no name), never a default. */
   source: string;
   /**
    * Newest observation: an ISO instant in UTC, or an ISO date. For a figure
@@ -65,6 +67,7 @@ export interface ReportFreshness {
   ageMinutes?: number;
   /** When only some rows are stale: how many, of the rows that say whether they are... */
   staleCount?: number;
+  staleSymbol?: string;
   observationCount?: number;
   /**
    * How many of those rows are at a nominal price, nothing having traded
@@ -86,6 +89,8 @@ export interface ReportFreshness {
   periodToDate?: { period: "week" | "month"; through?: string };
   /** The local date of the session close `asOf` is, when the newest observation is its venue's latest close. */
   asOfClose?: string;
+  /** A session list of a part of `asOfClose`'s session (declared `sessionList.part`), named in its place: `pre-market`. */
+  asOfSessionPart?: "pre-market" | "after-hours";
   /**
    * `asOf` is the last print of a session that has closed since, taken
    * before its close (a feed that stopped early): `last print 12:14 UTC`,
@@ -214,6 +219,7 @@ interface FeedSignals {
   /** Rows and series that carry a `stale` flag, and the times of those that are stale... */
   flagged: number;
   staleTimes: Array<ReportTime | null>;
+  staleSymbol?: string;
   /** ...and how many of them are at a nominal price instead (`nominal`). */
   nominal: number;
   /** Rows that name the venue whose sessions they follow (`sessionExchange`), with their time. */
@@ -301,7 +307,10 @@ function readUnitStale(record: Record<string, unknown>, time: ReportTime | null,
   if (typeof record.stale !== "boolean") return;
   signals.flagged += 1;
   if (record.nominal === true) signals.nominal += 1;
-  else if (record.stale) signals.staleTimes.push(time);
+  else if (record.stale) {
+    signals.staleTimes.push(time);
+    signals.staleSymbol = signals.staleTimes.length === 1 && typeof record.quoteSymbol === "string" ? record.quoteSymbol : undefined;
+  }
 }
 
 function observedTime(record: Record<string, unknown>, now: number, keys: readonly string[] = OBSERVATION_KEYS): ReportTime | null {
@@ -578,13 +587,18 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
       }
     }
   }
-  const { market, closeDate, closeMarket, lastPrint } = reportMarketSession(signals.sessions, now);
+  const rowsSession = reportMarketSession(signals.sessions, now);
+  // A list of one market taken once its session closed names that session, and where the market stands now.
+  const listed = declared.sessionList && asOf && !asOf.dateOnly ? shownSessionList(declared.sessionList, asOf.time, now) : null;
+  const { closeDate, closeMarket } = listed ?? rowsSession;
+  const market = listed?.market ?? rowsSession.market;
+  const lastPrint = !listed && rowsSession.lastPrint;
   const venueSessions = declared.datesEachVenue && !declaredAsOf ? reportVenueSessionDates(signals.sessions, now) : [];
   // Each market's own state and open, when they are not all one: `LSE opens 08:00 UTC · US 13:30 UTC`.
   const venueMarkets = declared.datesEachVenue ? reportVenueMarkets(signals.sessions, now) : [];
   const markets = venueMarkets.length > 0 && !sameMarketText(venueMarkets, now) ? venueMarkets : [];
   // The close wording dates the newest observation, so only when that is what `asOf` is.
-  const asOfClose = closeDate && asOf && !declaredAsOf ? closeDate : null;
+  const asOfClose = closeDate && asOf && (!declaredAsOf || listed) ? closeDate : null;
   const asOfLastPrint = lastPrint && asOf && !asOf.dateOnly && !declaredAsOf;
   const tradingDayMarket = asOfClose ? closeMarket
     : asOf?.dateOnly ? declared.tradingDayMarket?.trim() || null : null;
@@ -619,10 +633,12 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
   const oldestPeriodicity = declared.oldestPeriodicity !== undefined ? declared.oldestPeriodicity
     : oldestRelease ? oldestRelease.periodicity ?? null : unitRelease?.periodicity ? null : undefined;
   // Series that each end on their own day name the oldest one's day even a day apart (`oldestAnyDay`).
-  const namesOldest = !!asOf && !!oldestTime && (asOf.time - oldestTime.time > OLDEST_GAP_MS
+  const namesOldest = !listed && !!asOf && !!oldestTime && (asOf.time - oldestTime.time > OLDEST_GAP_MS
     || (declared.oldestAnyDay === true && declared.oldest != null && isoTime(oldestTime).slice(0, 10) < isoTime(asOf).slice(0, 10)));
   return {
-    source: declared.source?.trim() || (sources.length ? [...new Set(sources.map(({ source }) => source))].join(", ") : DEFAULT_REPORT_SOURCE),
+    // A declared null source says the data has no name to give, which is left out rather than called Gloom Cloud.
+    source: declared.source === null ? ""
+      : declared.source?.trim() || (sources.length ? [...new Set(sources.map(({ source }) => source))].join(", ") : DEFAULT_REPORT_SOURCE),
     asOf: released ? isoTime(released) : asOf ? isoTime(asOf) : null,
     ...(released && asOf ? { referencePeriod: isoTime(asOf) } : {}),
     ...(namesOldest ? {
@@ -635,11 +651,13 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
     ...(minDelayMinutes != null && minDelayMinutes > 0 ? { minDelayMinutes } : {}),
     ...(status === "stale" && staleAt ? { ageMinutes: Math.max(0, Math.floor((now - staleAt.time) / 60_000)) } : {}),
     ...(partial ?? {}),
+    ...(partial && signals.staleSymbol ? { staleSymbol: signals.staleSymbol } : {}),
     ...(signals.nominal > 0 ? { nominalCount: signals.nominal, observationCount: signals.flagged } : {}),
     ...(status === "not-a-feed" && declared.basis ? { basis: declared.basis } : {}),
     ...(periodicity ? { periodicity } : {}),
     ...(periodToDate && !declaredAsOf ? { periodToDate: { period: periodToDate.period, ...(periodToDate.through ? { through: isoTime(periodToDate.through) } : {}) } } : {}),
     ...(asOfClose ? { asOfClose } : {}),
+    ...(asOfClose && listed?.part ? { asOfSessionPart: listed.part } : {}),
     ...(asOfLastPrint ? { asOfLastPrint: true as const } : {}),
     ...(tradingDayMarket ? { tradingDayMarket } : {}),
     ...(market ? { market } : {}),
@@ -856,8 +874,9 @@ function ageText(minutes: number): string {
  * when `short`. Null when the report does not count them. One wording for a
  * report's status line, a capture's and the status a capture prints.
  */
-export function staleRowsText(freshness: Pick<ReportFreshness, "staleCount" | "observationCount">, short = false): string | null {
+export function staleRowsText(freshness: Pick<ReportFreshness, "staleCount" | "staleSymbol" | "observationCount">, short = false): string | null {
   if (freshness.staleCount == null || freshness.observationCount == null) return null;
+  if (freshness.staleCount === 1 && freshness.staleSymbol) return `${freshness.staleSymbol} stale`;
   return `${short ? freshness.staleCount : `${freshness.staleCount} of ${freshness.observationCount}`} stale`;
 }
 
@@ -978,7 +997,7 @@ function asOfText(freshness: ReportFreshness, short: boolean, local: boolean, un
     : freshness.periodToDate ? periodToDateText(freshness.periodToDate, freshness.asOf)
     : period ? `${periodText(freshness.asOf, period)} (${period})`
     : freshness.asOfClose
-      ? `${tradingDayText(freshness.asOfClose, market)} close`
+      ? `${tradingDayText(freshness.asOfClose, market)} ${freshness.asOfSessionPart ?? "close"}`
       : freshness.asOfLastPrint && time && !time.dateOnly
         ? `last print ${undated && onRetrievalDay(new Date(time.time).toISOString(), freshness.retrievedAt)
           ? `${new Date(time.time).toISOString().slice(11, 16)} UTC` : timeText(freshness.asOf, local)}`
@@ -1237,7 +1256,7 @@ function lagText(days: number): string {
  */
 function datasetLineParts(freshness: ReportFreshness & { asOf: string }, detail: DatasetLineDetail = {}): string[] {
   const { asOf, lagDays, observationAgeMinutes } = freshness;
-  const source = detail.source === "none" ? [] : [detail.source === "bare" ? freshness.source : `Source: ${freshness.source}`];
+  const source = detail.source === "none" || !freshness.source ? [] : [detail.source === "bare" ? freshness.source : `Source: ${freshness.source}`];
   const lag = observationAgeMinutes != null ? `${ageText(observationAgeMinutes)} old`
     : freshness.observation ? lagText(lagDays!) : `lag ${lagDays}d`;
   const timestamp = observationAgeMinutes != null ? ` ${asOf.slice(11, 16)} UTC` : "";
@@ -1396,7 +1415,7 @@ export function statusLineVariants(freshness: ReportFreshness, { source = false 
     lines.push(narrowestAsOf(freshness, freshness.asOf));
   }
   // A line that dates each source names them already.
-  if (!source || freshness.sources?.length) return lines;
+  if (!source || freshness.sources?.length || !freshness.source) return lines;
   const sourced = [...new Set(variants.map((detail) => [`Source: ${freshness.source}`, ...statusLineParts(freshness, detail)].join(" · ")))];
   const floor = sourced.at(-1)!.length;
   return [...sourced, ...lines.filter((line) => line.length < floor)];
@@ -1486,5 +1505,7 @@ export function formatFreshnessLine(freshness: ReportFreshness): string {
   // A dataset that names its observation ends `fn` as its pane and capture do.
   if (freshness.observation && datesObservation(freshness)) return statusLineVariants(freshness)[0]!;
   const parts = statusLineParts(freshness);
+  // Without a source to name, the line starts with its status, as a pane footer's does.
+  if (!freshness.source && !freshness.sources?.length) return capitalize(parts.join(" · "));
   return (freshness.sources?.length ? parts : [`Source: ${freshness.source}`, ...parts]).join(" · ");
 }

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { act, createRef, useEffect, useRef, useState } from "react";
 import { setLanguage } from "../../i18n";
 import { createOpenTuiTestHarness, TestDialogProvider, type TestKeyEvent } from "../../renderers/opentui/test-utils";
-import { Box } from "../../ui";
+import { Box, Text } from "../../ui";
 import { AppContext, PaneInstanceProvider, createInitialState } from "../../state/app/context";
 import { createStaticAppStore } from "../../test-support/app-store";
 import { createDefaultConfig } from "../../types/config";
@@ -186,6 +186,36 @@ function MultiSelectDialogButtonHarness() {
   );
 }
 
+let rowChoiceChanges: Array<[string, string]> = [];
+
+function RowChoiceHarness() {
+  const [values, setValues] = useState(["sma"]);
+  return (
+    <TestDialogProvider>
+      <MultiSelectDialogButton
+        ref={multiSelectDialogHandle}
+        label="IND"
+        title="Chart Indicators"
+        selectedValues={values}
+        onChange={setValues}
+        options={[
+          { value: "sma", label: "SMA" },
+          { value: "ema", label: "EMA" },
+        ]}
+        rowChoice={{
+          label: "Colour",
+          shortcut: "c",
+          appliesTo: (_value, selected) => selected,
+          valueFor: () => "auto",
+          next: (choice) => choice === "auto" ? "red" : choice === "red" ? "blue" : "auto",
+          onChange: (value, choice) => { rowChoiceChanges.push([value, choice]); },
+          render: ({ choice, disabled }) => <Text>{disabled ? "no colour" : `in ${choice}`}</Text>,
+        }}
+      />
+    </TestDialogProvider>
+  );
+}
+
 let searchableChanges: string[][] = [];
 
 function SearchableMultiSelectHarness() {
@@ -323,6 +353,34 @@ describe("shared UI kit", () => {
     });
     expect(tui.frame()).toContain("Chart Indicators");
     expect(multiSelectOpenStates.at(-1)).toBe(true);
+  });
+
+  test("a row choice steps with its key on a picked row only, and a row turned off and on starts from its own again", async () => {
+    rowChoiceChanges = [];
+    await tui.render(<RowChoiceHarness />, { width: 60, height: 20 });
+    await act(async () => {
+      multiSelectDialogHandle.current?.open();
+      await Promise.resolve();
+      await tui.setup().renderOnce();
+    });
+    expect(tui.frame()).toMatch(/Colour\s+c\s+in auto/);
+
+    await emitKeypress({ name: "c", sequence: "c" });
+    await emitKeypress({ name: "c", sequence: "c" });
+    expect(tui.frame()).toContain("in blue");
+    expect(rowChoiceChanges).toEqual([["sma", "red"], ["sma", "blue"]]);
+
+    // EMA is not on: nothing to colour.
+    await emitKeypress({ name: "down", sequence: "\u001b[B" });
+    expect(tui.frame()).toContain("no colour");
+    await emitKeypress({ name: "c", sequence: "c" });
+    expect(rowChoiceChanges).toHaveLength(2);
+
+    // Turned off, SMA lost its colour with it: on again, it reads its own.
+    await emitKeypress({ name: "up", sequence: "\u001b[A" });
+    await emitKeypress({ name: "space", sequence: " " });
+    await emitKeypress({ name: "space", sequence: " " });
+    expect(tui.frame()).toContain("in auto");
   });
 
   test("a searchable list narrows as you type and keeps arrows, Space and [ ] for its rows", async () => {

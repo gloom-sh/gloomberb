@@ -160,6 +160,33 @@ export function setBuiltinStudySetting(spec: ChartSpec, selection: NumberSetting
   return updateBuiltinStudy(spec, selection, (parameters) => ({ ...parameters, [key]: bounded }));
 }
 
+/** The colour picked for a selected builtin study, or undefined while it takes the theme's. */
+export function builtinStudyColor(spec: ChartSpec, selection: BuiltinStudySelection): string | undefined {
+  return builtinStudy(spec, selection)?.color;
+}
+
+/**
+ * Picks a selected builtin study's colour, or with undefined gives it back to
+ * the theme. The study keeps its id, so the colour stays through later
+ * toggles of other studies and period edits; an unselected study is left alone.
+ */
+export function setBuiltinStudyColor(
+  spec: ChartSpec,
+  selection: BuiltinStudySelection,
+  color: string | undefined,
+): ChartSpec {
+  const target = builtinStudy(spec, selection);
+  if (!target || target.color === color) return spec;
+  return {
+    ...spec,
+    studies: spec.studies.map((study) => {
+      if (study.id !== target.id) return study;
+      const { color: _previous, ...rest } = study;
+      return color === undefined ? rest : { ...rest, color };
+    }),
+  };
+}
+
 /** Anchor times of the chart's anchored VWAP, oldest first. */
 export function builtinVwapAnchors(spec: ChartSpec): number[] {
   const study = builtinStudy(spec, "anchored-vwap");

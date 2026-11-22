@@ -9,7 +9,8 @@ import { appReducer, createInitialState, type AppAction, type AppState } from ".
 import { createTestPaneConfig, createTestTicker, TestPaneFrame } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
-import { attachExecutivesPersistence, loadProxyStatement, loadProxyStatements, resetExecutivesPersistence } from "./data";
+import { withTickingClock } from "../../../test-support/ticking-clock";
+import { attachExecutivesPersistence, loadProxyStatement, loadProxyStatements, readProxyStatement, resetExecutivesPersistence } from "./data";
 import { ExecutivesPane } from "./pane";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 
@@ -225,6 +226,15 @@ test("a list and statement answered from their saved copies say when they were s
   expect(fresh.fetchedAt).toBeGreaterThan(original.fetchedAt);
   expect(fresh.data?.filedAt).toBe(report.filedAt);
   expect(fresh.data?.updatedAt).toBe(report.updatedAt);
+});
+
+test("a fresh statement carries the time its saved copy was stamped with", async () => {
+  attachExecutivesPersistence(new MemoryPluginPersistence());
+  const detail = spyOn(apiClient, "getProxyStatement").mockResolvedValue(statement("ALPHA", 2026));
+  restore.push(() => detail.mockRestore());
+  const options = { tier: "full" as const, displayIdentity: [cloudDisplayScope(), "NASDAQ"] };
+  const fresh = await withTickingClock(() => loadProxyStatement("ALPHA", 2026, options));
+  expect(readProxyStatement("ALPHA", 2026, options)?.fetchedAt).toBe(fresh.fetchedAt);
 });
 
 for (const status of [401, 402, 403, 404]) test(`authoritative ${status} responses never serve cached executive data`, async () => {

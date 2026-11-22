@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, rm, writeFile } from "fs/promises";
 import { basename, dirname, extname, join, relative, resolve } from "path";
-import { buildViewBundle, pageBootFrameScript, pageBuildId, type PageBootFrame } from "../src/renderers/dom/build-assets";
+import { buildViewBundle, es2023ArrayMethodsScript, pageBootFrameScript, pageBuildId, type PageBootFrame } from "../src/renderers/dom/build-assets";
 import { BROWSER_STORAGE_KEYS } from "../src/data/json-storage";
 import type { WebBundledPluginDescriptor } from "../src/plugins/web-bundled";
 import { isProxiedHost, PROXY_ALLOWED_HOSTS, WEB_DIRECT_HOSTS } from "../src/utils/plugin-proxy-hosts";
@@ -21,6 +21,7 @@ const root = process.cwd();
 const outdir = resolve(takeOption(args, "--out") ?? join(root, "dist", "web"));
 const keepNames = args.includes("--keep-names");
 const extraPluginDirs = args.flatMap((arg, index) => (arg === "--plugin" && args[index + 1] ? [resolve(args[index + 1]!)] : []));
+const arrayPolyfill = await es2023ArrayMethodsScript();
 await rm(outdir, { recursive: true, force: true });
 await mkdir(outdir, { recursive: true });
 // Tabs get the plain mark, like gloom.sh; the app icon tile is too small to read at 16px.
@@ -81,6 +82,7 @@ async function buildPage(
     outdir: join(outdir, "assets", name),
     sourcemap: "none",
     keepNames,
+    banner: arrayPolyfill,
     define: { __GLOOMBERB_API_URL__: "location.origin", ...extraDefines },
     failureMessage: `Failed to build the ${name} web page`,
     missingEntryMessage: `${name} build did not emit JavaScript`,

@@ -58,4 +58,8 @@ export interface DividendMetrics {
   /** Announced ex-date after now, from the summary or a future-dated history record. */
   nextExDividendDate: Date | null;
   nextPayDate: Date | null;
+  /** The company's other listing (HSBA:LSE) nextExDividendDate is stated by, where this listing states none. */
+  nextExDividendDateListing?: string;
+  /** The company's other listing nextPayDate is stated by: 0005:HKEX's 17 Dec pay date is HSBA:LSE's. */
+  nextPayDateListing?: string;
 }

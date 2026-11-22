@@ -5,7 +5,7 @@ import { AssetDataRouter } from "../../../sources/provider-router";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
-import type { PerpBoardPayload, PerpRankingsPayload } from "../../../api-client/perps";
+import type { PerpBoardPayload, PerpBoardRow, PerpRankingsPayload } from "../../../api-client/perps";
 import { PaneFooterBar, PaneFooterKeys, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
@@ -34,14 +34,15 @@ function signInPro() {
 async function remount() { await tui.destroy(); reset(); }
 /** The mounted app state and its dispatch, for a test that changes the instance the way the app does. */
 let app: { state: AppState; dispatch: Dispatch<AppAction> } | null = null;
-async function mount(settings: Record<string, unknown>, instance: Partial<PaneInstanceConfig> = {}, runtime = createTestPluginRuntime(), width = 110) {
+async function mount(settings: Record<string, unknown>, instance: Partial<PaneInstanceConfig> = {}, runtime = createTestPluginRuntime(), width = 110,
+  marketAction?: { id: string; key: string; label: string; onPress: (row: PerpBoardRow) => void }) {
   const id = instance.instanceId ?? "perps:test";
   const state = createInitialState(createTestPaneConfig("/tmp/perps-pane-test", { paneId: "perps", instanceId: id, settings, ...instance }));
   function Harness() {
     const [current, dispatch] = useReducer(appReducer, state);
     app = { state: current, dispatch };
     return <TestPaneProvider state={current} dispatch={dispatch} paneId={id} pluginId="market-overview" runtime={runtime}>
-      <PaneFooterProvider>{(footer) => <Box width={width} height={25} flexDirection="column"><Box height={24}><PerpsPane width={width} height={24} focused /></Box><PaneFooterBar footer={footer} width={width} focused /><PaneFooterKeys paneId={id} footer={footer} focused /></Box>}</PaneFooterProvider>
+      <PaneFooterProvider>{(footer) => <Box width={width} height={25} flexDirection="column"><Box height={24}><PerpsPane width={width} height={24} focused marketAction={marketAction} /></Box><PaneFooterBar footer={footer} width={width} focused /><PaneFooterKeys paneId={id} footer={footer} focused /></Box>}</PaneFooterProvider>
     </TestPaneProvider>;
   }
   await act(async () => { await tui.render(<Harness />, { width, height: 25 }); });
@@ -279,6 +280,32 @@ test("the board's footer says live only while every row on screen streams, and o
   expect(some).not.toMatch(/delayed|· live/);
   await stream(2);
   expect(await tui.waitForFrameToContain("oldest 0 min · live")).not.toContain("delayed");
+});
+
+test("a board action receives the latest selected market reading after streaming ticks", async () => {
+  const row = venueRow("binance", { observedAt: new Date(Date.now() - 60_000).toISOString() });
+  serve({ board: perpBoard({ rows: [row] }) });
+  let subscribed: QuoteSubscriptionTarget[] = [];
+  let deliver!: (target: QuoteSubscriptionTarget, quote: Record<string, unknown>) => void;
+  coordinator = new MarketDataCoordinator(new AssetDataRouter(createTestDataProvider({
+    subscribeQuotes: (targets, onQuote) => { subscribed = targets; deliver = (target, quote) => onQuote(target, quote as never); return () => {}; },
+  })));
+  setSharedMarketDataCoordinator(coordinator);
+  const actions: PerpBoardRow[] = [];
+  await mount({ market: "", tab: "board" }, {}, createTestPluginRuntime(), 180,
+    { id: "inspect", key: "z", label: "inspect", onPress: (selected) => actions.push(selected) });
+  await tui.waitForFrameToContain("Binance");
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+  const live = { ...row, markPrice: 81_234, observedAt: new Date().toISOString() };
+  await act(async () => {
+    const target = subscribed.find((candidate) => candidate.symbol === `${row.symbol}:${row.venue.toUpperCase()}`)!;
+    deliver(target, { symbol: target.symbol, price: live.markPrice, currency: live.quoteCurrency,
+      change: 0, changePercent: 0, lastUpdated: Date.now(), dataSource: "live", delivery: "stream", stale: false, instrumentType: "PERP", perpetual: live });
+    await new Promise((resolve) => setTimeout(resolve, 520));
+  });
+  await tui.waitForFrameToContain("81,234.00");
+  await tui.emitKeypress({ name: "z" });
+  expect(actions.at(-1)?.markPrice).toBe(81_234);
 });
 
 test("the board's footer dates the rows on screen, not markets scrolled out of view", async () => {

@@ -146,6 +146,7 @@ const ACCESS_LABELS = { pro: "Pro", preview: "Pro, free preview" } as const;
 
 const STATUS_COLORS: Record<MarketplaceStatusKind, string> = {
   failed: colors.negative,
+  duplicate: colors.warning,
   "needs-restart": colors.warning,
   unsupported: colors.warning,
   "needs-setup": colors.warning,
@@ -266,7 +267,7 @@ function EntryDetail({ entry, width, host, status, failure }: {
         {entry.installedCommit ? <KeyValueRow labelWidth={11} width={rowWidth} emphasis={false} label="Commit" value={entry.installedCommit.slice(0, 7)} /> : null}
         {!entry.installed && entry.availableCommit ? <KeyValueRow labelWidth={11} width={rowWidth} emphasis={false} label="Pinned" value={`${entry.availableVersion ?? ""} ${entry.availableCommit.slice(0, 7)}`.trim()} /> : null}
         {entry.needsSetup ? <KeyValueRow labelWidth={11} width={rowWidth} emphasis={false} label="Setup" value="Missing a required setting. Press s." /> : null}
-        {entry.loadError ? <KeyValueRow labelWidth={11} width={rowWidth} emphasis={false} label="Error" value={entry.loadError} /> : null}
+        {entry.loadError ? <KeyValueRow labelWidth={11} width={rowWidth} emphasis={false} label={entry.duplicateOf ? "Skipped" : "Error"} value={entry.loadError} /> : null}
         {entry.lastError && !entry.loadError ? <KeyValueRow labelWidth={11} width={rowWidth} emphasis={false} label="Last error" value={entry.lastError} /> : null}
       </Box>
 
@@ -865,12 +866,12 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     && (host.contributions(selected.id).templates.length > 0 || host.contributions(selected.id).panes.length > 0);
   const tooNew = !!selected && (!!requiredGloomberb(selected.minGloomberb) || !!selected.needsGloomberb);
   const canInstall = !!selected && isInstallable(selected) && !!manager && !busy && !tooNew;
-  const canUpdate = !!selected && isManaged(selected) && !selected.linked && !!manager && !busy && !tooNew
+  const canUpdate = !!selected && isManaged(selected) && !selected.linked && !selected.duplicateOf && !!manager && !busy && !tooNew
     && (hasUpdate(selected) || !!selected.loadError);
   const canRemove = !!selected && isManaged(selected) && !!manager && !busy;
   const canToggle = !!selected && selected.installed && selected.toggleable && !selected.loadError;
   const canSetup = !!selected && selected.installed && selected.enabled && selected.hasSetup;
-  const canLog = !!selected && selected.installed && (selected.errorCount > 0 || !!selected.loadError);
+  const canLog = !!selected && selected.installed && !selected.duplicateOf && (selected.errorCount > 0 || !!selected.loadError);
 
   const handleKey = useCallback((key: string): boolean => {
     switch (key) {

@@ -236,7 +236,7 @@ export const exposureHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "depth", type: "integer", settingKey: "depth", defaultValue: 2, minimum: 1, maximum: 4, description: "Maximum relationship hops." },
     { key: "nav", type: "string", settingKey: "nav", description: "Positive portfolio NAV in its configured currency; required for PORT." },
     { key: "cash", type: "string", settingKey: "cash", description: "Explicit cash weight as NAV fraction; no normalization." },
-    { key: "tab", type: "enum", settingKey: "tab", defaultValue: "table", values: TABS.map(t => ({ value: t.value })), description: "Pane tab." },
+    { key: "tab", type: "enum", settingKey: "tab", defaultValue: "table", values: [...TABS], description: "Pane tab." },
     { key: "view", type: "enum", settingKey: "view", defaultValue: "stress", values: ["stress", "country", "supplier", "customer"].map(value => ({ value })), description: "Portfolio stress or concentration grouping." },
   ],
   describe: (args, result) => {

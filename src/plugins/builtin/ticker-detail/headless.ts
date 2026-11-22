@@ -4,6 +4,7 @@ import {
 } from "../../../utils/financial-statements";
 import { canonicalExchange, isUsEquityExchange } from "../../../utils/exchanges";
 import { hasValidQuoteObservationTime } from "../../../market-data/quotes/freshness";
+import { quotesSourceName } from "../../../market-data/quotes/export-identity";
 import { quoteMonitorColumns, quoteMonitorRow, QUOTE_MONITOR_BASE_COLUMNS, QUOTE_MONITOR_ROW_KEYS } from "./quote-monitor/rows";
 import type {
   HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessPaneOptionValues, HeadlessRowsResult,
@@ -12,7 +13,7 @@ import type { TimeRange } from "../../../time-series/range";
 import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 import { formatPriceObservation, penceFigure, quoteFormatOptions } from "../../../market-data/market/format";
 import {
-  MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointOpenWithheld, pricePointWickFlags, priceHistoryIntegrityNotice,
+  MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointOpenWithheld, withoutPriceOnlyVolume, pricePointWickFlags, priceHistoryIntegrityNotice,
   priceHistoryOpenNotice, priceHistoryRescaleNotice, priceHistoryWickNotice,
 } from "../../../utils/price-history-integrity";
 import { indexBarVolume } from "../../../market-data/market/index-level";
@@ -52,7 +53,7 @@ import {
 import {
   loadHeadlessContractPriceUnit, loadHeadlessFinancials, loadHeadlessPriceHistory, loadHeadlessSymbols, resolveHeadlessInstrument,
 } from "../shared/headless-market-data";
-import { barHistoryFreshness, REPORTED_DATA } from "../shared/report-freshness";
+import { barHistoryFreshness, brokerNameOf, REPORTED_DATA } from "../shared/report-freshness";
 import {
   BAR_INTERVAL_LABELS, barPriceDecimals, cleanBarPrice, cleanFloat32Price, formatBarPrice, historyAllStart, historyAllStartNote, historyBarFlags,
   historyBarValues, historyExportUnit, historyMissingPeriodsNote, historyPriceDecimals, historyUnit, priceTableIntegrityNotice, quotedPriceDivisor,
@@ -108,6 +109,13 @@ async function barPriceUnit(
     : await ctx.marketData.getQuoteMetadata?.(listing, exchange ?? "").catch(logFailure("ticker-detail.headless", "Read listing facts for a bar unit failed", null));
   const facts = listed ?? quote;
   return historyExportUnit(historyUnit(key, facts, await loadHeadlessContractPriceUnit(ctx, listing, facts?.instrumentType)));
+}
+
+/** The currency a bar unit is in, for a price header: GBP, or JPY for a pair's `JPY per USD`; none for points or a contract's unit. */
+function headerCurrency(unit: string | null): string | null {
+  if (!unit) return null;
+  if (/^[A-Z]{3}$/.test(unit)) return unit;
+  return /^([A-Z]{3}) per [A-Z]{3}$/.exec(unit)?.[1] ?? null;
 }
 
 /** Bars of a window that closed before today: the history asked for, which no later bar makes stale. */
@@ -658,12 +666,13 @@ export const quoteComparisonHeadless: HeadlessPaneDefinition<"rows"> = {
       return quote;
     });
     const now = Date.now();
-    // A broker's quote names the broker as its source.
-    const brokerName = (providerId: string) => ctx.resolveBroker?.(providerId)?.name;
+    const brokerName = brokerNameOf(ctx);
     const rows = loaded.entries.map(({ symbol, data: quote }) => quoteMonitorRow(symbol, quote, now, brokerName));
     const columns = quoteMonitorColumns(rows);
     return {
       rows,
+      // The report cites the sources its rows name, never Gloom Cloud for a quote that is not its own.
+      ...loaded.entries.length > 0 ? { freshness: { source: quotesSourceName(loaded.entries.map(({ data }) => data), brokerName) || null } } : {},
       // An extended column or Chg bp only when a row has one, so a closed board stays as narrow as before.
       ...(columns.length > QUOTE_MONITOR_BASE_COLUMNS.length ? { columns } : {}),
       // Each exported row names its ticker, its unit, its source and when its own price was observed.
@@ -679,8 +688,10 @@ export const quoteComparisonHeadless: HeadlessPaneDefinition<"rows"> = {
  * report declares before it has bars keep every digit the source sent. A bar without
  * volume in a history that reports it (`volumeMissing`) prints it as missing, never as 0.
  */
-const historyPriceColumns = (volumeMissing: boolean, decimals?: number, pence?: (close: number) => string | null): HeadlessPaneColumn[] => ["open", "high", "low", "close", "volume"].map((key) => ({
+const historyPriceColumns = (volumeMissing: boolean, decimals?: number, pence?: (close: number) => string | null, currency?: string | null): HeadlessPaneColumn[] => ["open", "high", "low", "close", "volume"].map((key) => ({
   key, header: key, align: "right" as const,
+  // The text table names the currency over each price (Open GBP), as an export's currency_or_unit does.
+  ...currency && key !== "volume" ? { textHeader: `${key.charAt(0).toUpperCase()}${key.slice(1)} ${currency}` } : {},
   format: (value: unknown) => {
     if (value == null || !Number.isFinite(Number(value))) return key === "volume" && volumeMissing ? MISSING_VOLUME_TEXT : MISSING_VALUE;
     if (key === "volume") return formatNumber(Number(value), 0);
@@ -706,6 +717,8 @@ function historyColumns(
   pence?: (close: number) => string | null,
   /** A bar is flagged (`high<close`, `low<close/2`): the Flag column says how, as `history`'s does. */
   flagged = false,
+  /** The currency the prices are in, which the text table's price headers name. */
+  currency?: string | null,
 ): HeadlessPaneColumn[] {
   const daily = isDailyOrLongerBar(size);
   const date: HeadlessPaneColumn = {
@@ -719,7 +732,7 @@ function historyColumns(
     ? [{ key: "partial", header: "Partial", format: (value) => value === true ? "true" : "" }]
     : [];
   const flag: HeadlessPaneColumn[] = flagged ? [{ key: "flag", header: "Flag", format: (value) => typeof value === "string" ? value : "" }] : [];
-  return [date, ...historyPriceColumns(volumeMissing, decimals, text ? pence : undefined), ...flag, ...marked];
+  return [date, ...historyPriceColumns(volumeMissing, decimals, text ? pence : undefined, text ? currency : undefined), ...flag, ...marked];
 }
 
 export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
@@ -755,7 +768,8 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     const clean = (value: number | null) => value == null ? null : cleanBarPrice(value, priceDivisor);
     // A monthly bar whose prices contradict each other keeps its close, flagged, as `history` keeps it.
     const monthly = historyBarSize(points.map((point) => new Date(point.date).getTime()), requested) === "1mo";
-    const rows = points.map((point) => {
+    // A price on its own after intraday bars (a closing auction's price) has no volume of its own, never 0.
+    const rows = withoutPriceOnlyVolume(points.map((point) => {
       const date = new Date(point.date);
       const values = historyBarValues(point, monthly);
       const flags = historyBarFlags(point);
@@ -769,7 +783,7 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
         // A coin's day Gloom Cloud rebuilt from hourly bars has no volume of its own, as `history` marks it.
         ...(point.filled ? { filled: true } : {}),
       };
-    }).sort((left, right) => left.date.localeCompare(right.date));
+    }).sort((left, right) => left.date.localeCompare(right.date)));
     const notice = priceTableIntegrityNotice(rows);
     const size = historyBarSize(rows.map((row) => Date.parse(row.date)), requested);
     // A weekly or monthly bar whose period runs on is dated by how far it runs, as `history` dates it.
@@ -820,7 +834,7 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
       ...(barInterval ? { interval: barInterval } : {}),
       columns: historyColumns(size, marked, false, false, decimals, undefined, flagged),
       textColumns: historyColumns(size, marked, true, volumeMissing > 0, decimals,
-        (close) => penceFigure(Number(close.toFixed(Math.min(20, decimals))), quote, decimals), flagged),
+        (close) => penceFigure(Number(close.toFixed(Math.min(20, decimals))), quote, decimals), flagged, headerCurrency(unit)),
       freshness,
       ...(notes.length > 0 ? { notes } : {}),
       ...(notice ? { complete: false } : {}),

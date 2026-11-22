@@ -1,3 +1,4 @@
+import { skipDuplicatePluginIds } from "../../plugins/duplicates";
 import { installPluginHostModules } from "../../plugins/host-modules";
 import type { LoadedExternalPlugin } from "../../plugins/loader";
 import { pluginFromModule } from "../../plugins/plugin-export";
@@ -87,5 +88,5 @@ export async function loadWebBundledPlugins(
     }
   }));
 
-  return loaded;
+  return skipDuplicatePluginIds(loaded);
 }

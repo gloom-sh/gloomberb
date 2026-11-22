@@ -28,6 +28,8 @@ const WEEK_VENUES: Readonly<Record<string, { reopens: boolean }>> = {
   NYM: { reopens: true },
   CMX: { reopens: true },
   NYB: { reopens: false },
+  // Cboe Futures (VX) keeps Globex's week (trading-sessions.ts).
+  CFE: { reopens: true },
 };
 
 export interface FuturesWeekendClosure {

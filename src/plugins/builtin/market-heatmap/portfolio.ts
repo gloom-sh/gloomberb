@@ -11,6 +11,7 @@ import {
 } from "../../../market-data/market/status";
 import type { TickerRecord } from "../../../types/ticker";
 import { getSortValue, type ColumnContext } from "../portfolio-list/metrics";
+import { collectionKindNote } from "../shared/collection-options";
 
 export const PORTFOLIO_HEATMAP_TAB = "portfolio";
 
@@ -143,6 +144,50 @@ export function fallbackHeatmapCollectionId(
   config: { portfolios: readonly { id: string }[]; watchlists: readonly { id: string }[] },
 ): string | null {
   return config.portfolios[0]?.id ?? config.watchlists[0]?.id ?? null;
+}
+
+/** Pane state holding the list picked in the List menu, which the tab shows until the followed pane switches lists. */
+export const HEATMAP_PICKED_LIST_STATE_KEY = "pickedList";
+
+/** The List menu on the lists tab: every portfolio, then every watchlist, as ERN's Names menu offers them. */
+export function heatmapListOptions(
+  config: { portfolios: readonly { id: string; name: string }[]; watchlists: readonly { id: string; name: string }[] },
+): { value: string; label: string; description?: string }[] {
+  return [
+    ...config.portfolios.map((portfolio) => ({
+      value: portfolio.id, label: portfolio.name, description: collectionKindNote(portfolio.name, "Portfolio"),
+    })),
+    ...config.watchlists.map((watchlist) => ({
+      value: watchlist.id, label: watchlist.name, description: collectionKindNote(watchlist.name, "Watchlist"),
+    })),
+  ];
+}
+
+/**
+ * The list the lists tab shows: the one picked in its List menu while it still exists, else the followed portfolio
+ * pane's, else the first list.
+ */
+export function heatmapShownCollectionId(
+  config: { portfolios: readonly { id: string }[]; watchlists: readonly { id: string }[] },
+  picked: string | null | undefined,
+  followed: string | null,
+): string | null {
+  const exists = (id: string) => config.portfolios.some((portfolio) => portfolio.id === id)
+    || config.watchlists.some((watchlist) => watchlist.id === id);
+  return (picked && exists(picked) ? picked : null) ?? followed ?? fallbackHeatmapCollectionId(config);
+}
+
+/**
+ * Whether the portfolio pane the heatmap follows switched to another list: the same pane, showing a list other than
+ * before. That is the latest choice of list, so it takes over from one picked in the heatmap's menu; moving focus to
+ * another portfolio pane chooses nothing and leaves the pick.
+ */
+export function heatmapSourceSwitchedList(
+  previous: { instanceId: string | null; collectionId: string | null } | null,
+  next: { instanceId: string | null; collectionId: string | null },
+): boolean {
+  return previous != null && previous.instanceId != null && previous.instanceId === next.instanceId
+    && previous.collectionId != null && next.collectionId != null && previous.collectionId !== next.collectionId;
 }
 
 export function heatmapPortfolioPanes(

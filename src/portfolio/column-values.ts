@@ -9,7 +9,7 @@ import type { EarningsEvent } from "../types/data-provider";
 import type { TickerRecord } from "../types/ticker";
 import type { PeriodPnlRow } from "./period-pnl";
 import { colors, priceColor, shownPriceColor } from "../theme/colors";
-import { formatQuoteAgeWithSource, resolveQuoteAgeTimestamp } from "../market-data/quotes/time";
+import { formatQuoteAgeWithSource, QUOTE_BOOK_UNDATED, resolveQuoteAgeTimestamp } from "../market-data/quotes/time";
 import { delistingStateLabel } from "../market-data/quotes/delisting";
 import { formatFeedTime, formatShortDate, parseDisplayDate, type ShortDateOptions } from "../utils/datetime-format";
 import { MISSING_VALUE, convertCurrency, formatCompact, formatCompactAmount, formatNumber, formatPercentRaw } from "../utils/format";
@@ -680,6 +680,16 @@ export function getColumnValue(
       if (!isFiniteNumber(quote?.bidSize) && !isFiniteNumber(quote?.askSize)) return { text: MISSING_VALUE };
       return { text: `${formatCompact(quote?.bidSize)}/${formatCompact(quote?.askSize)}` };
     }
+    case "book_time": {
+      if (quote?.bid == null && quote?.ask == null) return { text: MISSING_VALUE };
+      const at = quote.bidAskTime;
+      // A book the source sent without its time says so, never borrows the trade's.
+      if (at == null || !Number.isFinite(at) || at <= 0) return { text: QUOTE_BOOK_UNDATED, color: colors.textDim };
+      return {
+        text: formatFeedTime(at, ctx.now, MISSING_VALUE, { utc: true, dayToday: true }),
+        value: new Date(at).toISOString(),
+      };
+    }
     case "change_pct": {
       if (quote?.delisting) return { text: delistingStateLabel(quote.delisting), color: colors.warning };
       const changePercent = headlineChangePercent(headlineQuote, quote);
@@ -950,6 +960,8 @@ export function getSortValue(
       return isFiniteNumber(quote?.bidSize) || isFiniteNumber(quote?.askSize)
         ? (quote?.bidSize ?? 0) + (quote?.askSize ?? 0)
         : null;
+    case "book_time":
+      return quote?.bid != null || quote?.ask != null ? quote.bidAskTime ?? null : null;
     case "change":
       return quote?.delisting ? null : headlineQuote?.change ?? null;
     case "change_pct":

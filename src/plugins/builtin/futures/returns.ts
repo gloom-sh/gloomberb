@@ -1,5 +1,5 @@
 import type { PricePoint, Quote } from "../../../types/financials";
-import { periodReturn } from "../../../market-data/market/period-return";
+import { periodBaseDay, periodReturn } from "../../../market-data/market/period-return";
 import type { FuturesContract } from "../../../market-data/futures-board";
 import { quotedContractMonth } from "./model";
 
@@ -46,6 +46,59 @@ export function frontContractCandidates(contract: FuturesContract, quote: Quote 
     const month = at.getUTCMonth() + offset;
     return listedContractSymbol(contract, at.getUTCFullYear() + Math.floor(month / 12), month % 12);
   });
+}
+
+/**
+ * Why a row's return is empty: a generic (VX1) that names no listed contract
+ * the history reads cover, a quote that names no contract to measure, a
+ * contract with no daily history, a read that failed, or a contract whose
+ * daily history starts after the close the return runs from (a contract
+ * listed since, or a source holding only its latest session).
+ */
+export type FuturesReturnGap =
+  | { kind: "generic" }
+  | { kind: "no-contract" }
+  | { kind: "failed" }
+  | { kind: "no-history"; contract: string }
+  | { kind: "starts-later"; contract: string; firstDay: string }
+  | { kind: "no-base"; contract: string; baseDay: string };
+
+export type FuturesReturnGaps = Readonly<Partial<Record<FuturesReturnHorizon, FuturesReturnGap>>>;
+
+/** The same gap for every horizon. */
+export function allReturnGaps(gap: FuturesReturnGap): FuturesReturnGaps {
+  return Object.fromEntries(HORIZONS.map((horizon) => [horizon, gap]));
+}
+
+/** ESZ26 for ESZ26.CME: the contract as its row's month names it. */
+export const contractCode = (symbol: string) => symbol.replace(/\.[A-Z]+$/, "");
+
+/**
+ * Why each empty return of a contract with a history read is empty: its
+ * first close comes after the day the return runs from, or it has no close
+ * near that day.
+ */
+export function frontContractReturnGaps(
+  symbol: string,
+  history: readonly PricePoint[],
+  values: FuturesReturnValues,
+  price: number | null | undefined,
+  asOf: number | null | undefined,
+): FuturesReturnGaps {
+  const contract = contractCode(symbol);
+  const closes = dailyCloses(history);
+  const first = closes[0]?.day;
+  const live = price != null && Number.isFinite(price) && asOf != null && Number.isFinite(asOf);
+  const end = (live ? utcDay(asOf) : null) ?? closes.at(-1)?.day;
+  const gaps: Partial<Record<FuturesReturnHorizon, FuturesReturnGap>> = {};
+  for (const horizon of HORIZONS) {
+    if (values[horizon] != null) continue;
+    const baseDay = end ? periodBaseDay(end, horizon) : null;
+    gaps[horizon] = !first ? { kind: "no-history", contract }
+      : baseDay && first > baseDay ? { kind: "starts-later", contract, firstDay: first }
+        : { kind: "no-base", contract, baseDay: baseDay ?? first };
+  }
+  return gaps;
 }
 
 interface DailyClose {

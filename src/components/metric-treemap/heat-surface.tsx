@@ -524,22 +524,25 @@ function DomTooltip<T>({ state, itemsById, otherLines }: {
         maxWidth: 400,
       }}
     >
-      {lines.map((line, index) => (
-        <Text
-          key={index}
-          style={{
-            display: "block",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            lineHeight: 1.25,
-            fontWeight: index === 0 ? 700 : 400,
-            color: index === 0 ? colors.textBright : colors.textDim,
-          }}
-        >
-          {line}
-        </Text>
-      ))}
+      {lines.map((line, index) => {
+        const style = {
+          display: "block",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          lineHeight: 1.25,
+          fontWeight: index === 0 ? 700 : 400,
+          color: index === 0 ? colors.textBright : colors.textDim,
+        } as const;
+        if (typeof line === "string") return <Text key={index} style={style}>{line}</Text>;
+        // The end keeps its room; what comes before it gives way to its ellipsis.
+        return (
+          <Box key={index} flexDirection="row" style={{ minWidth: 0 }}>
+            <Text style={{ ...style, flex: "0 1 auto", minWidth: 0, whiteSpace: "pre" }}>{line.text.slice(0, line.text.length - line.keepEnd.length)}</Text>
+            <Text style={{ ...style, flex: "0 0 auto", whiteSpace: "pre" }}>{line.keepEnd}</Text>
+          </Box>
+        );
+      })}
     </Box>
   );
 }

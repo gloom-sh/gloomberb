@@ -83,6 +83,15 @@ export function alertQuote(quote: Quote, symbol: string): Quote {
   };
 }
 
+export function alertQuoteListingFields(quote: Quote): Pick<AlertRule, "lastQuoteCurrency" | "lastQuoteExchange" | "lastQuotePence"> {
+  const exchange = quote.listingExchangeName || quote.exchangeName;
+  return {
+    ...(quote.currency ? { lastQuoteCurrency: quote.currency } : {}),
+    ...(exchange ? { lastQuoteExchange: canonicalExchange(exchange) } : {}),
+    lastQuotePence: isPenceQuotedLine(quote) || undefined,
+  };
+}
+
 export function quoteAlertFields(
   quote: Quote,
   checkedAt = Date.now(),
@@ -98,21 +107,38 @@ export function quoteAlertFields(
   | "lastQuotePence"
   | "lastQuoteSession"
 > & { lastCheckError?: undefined } {
-  const exchange = quote.listingExchangeName || quote.exchangeName;
   return {
     lastCheckedPrice: quote.price,
     lastCheckedAt: checkedAt,
     lastQuoteUpdatedAt: quote.lastUpdated,
     lastQuoteSource: quote.dataSource,
     lastQuoteProviderId: quote.providerId,
-    ...(quote.currency ? { lastQuoteCurrency: quote.currency } : {}),
-    ...(exchange ? { lastQuoteExchange: canonicalExchange(exchange) } : {}),
-    // A London line in pence writes its levels in pence; a quote that is not clears it.
-    lastQuotePence: isPenceQuotedLine(quote) || undefined,
+    ...alertQuoteListingFields(quote),
     // An after-hours print says so wherever the reading is shown, as `quote` names it beside Last.
     lastQuoteSession: extendedPrintSession(quote, quote.price) ?? undefined,
     lastCheckError: undefined,
   };
+}
+
+/** How far past the check that read it a last print's time may be, for clocks apart, and still be one. */
+const PRINT_CLOCK_SKEW_MS = 5 * 60_000;
+
+/**
+ * Whether a quote printed before the one an alert was last checked on: a
+ * cached copy older than what the alert has already seen (at launch, a quote
+ * read minutes before the app last closed). It must neither set the alert off
+ * nor become its last reading. A last print timed past the check that read
+ * it, beyond clocks apart, says nothing, so it holds no quote back.
+ */
+export function printedBeforeLastCheck(
+  alert: Pick<AlertRule, "lastQuoteUpdatedAt" | "lastCheckedAt">,
+  quote: Pick<Quote, "lastUpdated">,
+): boolean {
+  const seen = alert.lastQuoteUpdatedAt;
+  const printed = quote.lastUpdated;
+  if (seen == null || printed == null || !Number.isFinite(seen) || !Number.isFinite(printed)) return false;
+  if (alert.lastCheckedAt != null && seen > alert.lastCheckedAt + PRINT_CLOCK_SKEW_MS) return false;
+  return printed < seen;
 }
 
 /**

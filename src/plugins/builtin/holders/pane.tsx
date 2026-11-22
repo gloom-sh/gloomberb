@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, TextAttributes, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { Box, TextAttributes, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import {
   Badge,
   DataTableView,
@@ -13,6 +13,7 @@ import {
   type DataTableKeyEvent,
   type PageRequest,
 } from "../../../components";
+import { ClippedText } from "../../../components/ui/display";
 import { useCompanyDataFooter } from "../../../components/layout/pane/status-footer";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
@@ -21,7 +22,7 @@ import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { useShortcut } from "../../../react/input";
 import { colors, priceColor } from "../../../theme/colors";
 import type { HolderData } from "../../../types/financials";
-import { clipToDisplayWidth, displayWidth, formatCompact } from "../../../utils/format";
+import { displayWidth, formatCompact } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { logFailure } from "../../../utils/log-failure";
 import { nextHeaderSort } from "../../../utils/sort-values";
@@ -88,9 +89,7 @@ export function holderNameCell(
     contentWidth: displayWidth(name) + badges * (BADGE_WIDTH + 1),
     content: (
       <Box flexDirection="row" gap={1} width={width} overflow="hidden">
-        <Text fg={color} attributes={TextAttributes.BOLD}>
-          {clipToDisplayWidth(name, Math.max(1, width - badges * (BADGE_WIDTH + 1)))}
-        </Text>
+        <ClippedText fg={color} attributes={TextAttributes.BOLD} text={name} width={Math.max(1, width - badges * (BADGE_WIDTH + 1))} />
         {receipts ? <Badge label={receipts} /> : null}
         {fund ? <Badge label="13F" tone="accent" /> : null}
       </Box>

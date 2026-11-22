@@ -147,21 +147,70 @@ const UNEVEN_PAYMENT_RATIO = 1.5;
  * (steppedPayments): a cut or a raise is a new rate, not interims beside a
  * final. `next` is the annual rate of a distribution declared after the year's
  * payments, as the stated forward rate annualizes it. `latest` is the newest
- * payment's ex-date.
+ * payment's ex-date. A one-off special is no regular payment (regularPayments).
  */
 export function unevenRegularPayments(payments: readonly CashDistribution[], asOf: Date, next?: { exDate: Date; annualRate: number } | null): { total: number; latest: Date } | null {
-  const { counted, perYear } = trailingPayments(payments, asOf);
+  const regular = regularPayments(payments, asOf);
+  const { counted, perYear } = trailingPayments(regular, asOf);
   if (perYear == null || perYear < 2 || counted.length !== perYear) return null;
   const ordered = [...counted].sort((left, right) => left.exDate.getTime() - right.exDate.getTime());
   const amounts = ordered.map((payment) => payment.amount);
   if (Math.max(...amounts) <= UNEVEN_PAYMENT_RATIO * Math.min(...amounts)) return null;
   const latest = ordered.at(-1)!.exDate;
   const declared = next && next.exDate > latest && Number.isFinite(next.annualRate) && next.annualRate > 0 ? next.annualRate / perYear : null;
-  if (steppedPayments(ordered, payments, declared)) return null;
+  if (steppedPayments(ordered, regular, declared)) return null;
   return {
     total: atSourcePrecision(amounts.reduce((sum, amount) => sum + amount, 0)),
     latest,
   };
+}
+
+/** A day this many times the median of the days in the REGULAR_LOOKBACK_DAYS before it is a one-off, unless it recurs. */
+const SPECIAL_MULTIPLE = 3;
+const REGULAR_LOOKBACK_DAYS = 400;
+/** A day recurs when one within this many days of a year before paid within RECURRING_BAND of it. */
+const SAME_SLOT_DAYS = 45;
+const RECURRING_BAND = [2 / 3, 1.5] as const;
+/** Rows of one ex-date this close in amount are one row stated twice, not two distributions. */
+const SAME_AMOUNT_SHARE = 1e-6;
+
+const median = (values: readonly number[]) => {
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2;
+};
+
+/**
+ * The regular distributions paid by `asOf`, one per ex-date (its rows summed,
+ * one stated twice counted once), oldest first, without one-offs: a day three
+ * times the median of the days in the 400 before it that paid nothing like it
+ * a year before. HSBC's final, four and a half times its interims, recurs each
+ * March: it is regular. Gloom Cloud serves the forward rate by the same rule
+ * (its uneven-regular-payments), so DES and DVD agree; keep the two in step.
+ */
+function regularPayments(payments: readonly CashDistribution[], asOf: Date): CashDistribution[] {
+  const byDay = new Map<number, number[]>();
+  for (const payment of payments) {
+    if (payment.exDate > asOf || !Number.isFinite(payment.amount) || !(payment.amount > 0)) continue;
+    const day = payment.exDate.getTime();
+    byDay.set(day, [...byDay.get(day) ?? [], payment.amount]);
+  }
+  const days = [...byDay].sort(([left], [right]) => left - right).map(([day, amounts]) => {
+    const distinct = [...amounts].sort((left, right) => left - right)
+      .filter((amount, index, sorted) => index === 0 || amount - sorted[index - 1]! > SAME_AMOUNT_SHARE * amount);
+    return { exDate: new Date(day), amount: distinct.reduce((sum, amount) => sum + amount, 0) };
+  });
+  const dayOf = (payment: CashDistribution) => payment.exDate.getTime() / DAY;
+  const recurs = (payment: CashDistribution) => {
+    const slot = days.filter((other) => Math.abs(dayOf(other) - (dayOf(payment) - 365.25)) <= SAME_SLOT_DAYS)
+      .reduce((sum, other) => sum + other.amount, 0);
+    const ratio = payment.amount / slot;
+    return slot > 0 && ratio >= RECURRING_BAND[0] && ratio <= RECURRING_BAND[1];
+  };
+  return days.filter((payment, index) => {
+    const before = days.slice(0, index).filter((other) => dayOf(payment) - dayOf(other) <= REGULAR_LOOKBACK_DAYS);
+    return !(before.length >= 1 && payment.amount >= SPECIAL_MULTIPLE * median(before.map((other) => other.amount)) && !recurs(payment));
+  });
 }
 
 /** No payment of `amounts` over 1.5 times another: one level. */

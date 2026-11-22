@@ -33,9 +33,12 @@ export function dividendPriceTime(priceAsOf: string | null | undefined): string 
 export function dividendQuotePriceMetadata(quote: Quote) {
   const quoteTime = dividendPriceAsOf(quote.lastUpdated);
   const valuedAt = quoteTime ? regularSessionValuationTime(quote) : null;
+  const divisor = quote.providerPriceDivisor;
   return {
     priceAsOf: valuedAt ? priceTimeText(valuedAt) : undefined,
     priceStale: quote.stale === true || (quoteTime ? isQuoteStaleForCurrentSession(quote) : undefined),
+    // A line quoted in pence (SHEL:LSE's 3,574.5p) keeps the pence it trades in: £35.745, as `quote` prints it.
+    ...divisor != null && Number.isFinite(divisor) && divisor > 1 ? { priceQuotedUnitDivisor: divisor } : {},
   };
 }
 

@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { MemoryPluginPersistence } from "../test-support/plugin-persistence";
+import { withTickingClock } from "../test-support/ticking-clock";
 import { createPluginCache } from "./plugin-cache";
 
 const makeCache = () => createPluginCache<number>({ kind: "test", source: "provider", policy: { staleMs: 60_000, expireMs: 120_000 } });
@@ -57,4 +58,12 @@ test("a listener outlives the store being attached again", async () => {
   heard = 0;
   await cache.load("key", async () => 4, { force: true });
   expect(heard).toBe(0);
+});
+
+test("a fresh load carries the time its saved copy was stamped with", async () => {
+  const store = new MemoryPluginPersistence();
+  const cache = makeCache();
+  cache.attach(store);
+  const loaded = await withTickingClock(() => cache.load("key", async () => 1));
+  expect(store.getResource("test", "key", { sourceKey: "provider", allowExpired: true })?.fetchedAt).toBe(loaded.fetchedAt);
 });

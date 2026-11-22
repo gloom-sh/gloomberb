@@ -170,9 +170,9 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
   }, [dialog, selectedRule, setAlertLog, updateRules]);
   const status =
     error ??
-    (selectedRule?.kind === "catalyst" ? catalystStatus : null) ??
     // A Pro rule nothing checks says so while it is selected, and what is free beside it.
     (selectedRule && ruleState(selectedRule, now, signedIn, pro) === "Needs Pro" ? proRuleStatus(selectedRule) : null) ??
+    (selectedRule?.kind === "catalyst" ? catalystStatus : null) ??
     sync.error ??
     (sync.phase === "disabled"
       ? "Cloud sync disabled"

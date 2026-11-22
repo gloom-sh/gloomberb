@@ -206,7 +206,6 @@ function readCompany(raw: RawObject): BuildoutCompany {
     priceToBook: stringField(raw, "priceToBook", "price_to_book"),
     dilutedEps: stringField(raw, "dilutedEps", "diluted_eps"),
     dilutedEpsOriginal: stringField(raw, "dilutedEpsOriginal", "diluted_eps_original"),
-    beta: stringField(raw, "beta"),
     high52w: stringField(raw, "high52w", "high_52w"),
     high52wOriginal: stringField(raw, "high52wOriginal", "high_52w_original"),
     low52w: stringField(raw, "low52w", "low_52w"),

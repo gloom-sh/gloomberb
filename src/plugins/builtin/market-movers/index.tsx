@@ -46,7 +46,7 @@ import {
   type TabId,
 } from "./model";
 import { loadMarketMoverTab, marketMoverQuoteError } from "./client";
-import { moverFreshnessFooter, summaryFooterSegments } from "./footer";
+import { moverFreshnessFooter, shownListSession, summaryFooterSegments } from "./footer";
 import { isSessionTab, resolveActiveTab, usSessionAt, type UsSession } from "./session";
 import { SessionMoversBody } from "./session-body";
 import { ANY_FLOAT, minFloatEmptyTitle, minFloatFilter, minFloatShares, partialFloatFooter } from "./min-float";
@@ -273,7 +273,7 @@ function ScreenerMoversBody({ activeTab, hasProAccess, focused, width, summaryQu
     info: [
       ...(loadError ? [{ id: "load-error", parts: [{ text: loadError, tone: "warning" as const }] }] : []),
       ...(quoteDelay ? [quoteDelay] : []),
-      ...(data ? moverFreshnessFooter(data.asOf, savedAt == null ? updatedAt : null) : []),
+      ...(data ? moverFreshnessFooter(data.asOf, savedAt == null ? updatedAt : null, shownListSession(data.asOf, freshnessNow)) : []),
       ...(loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
       ...(feedStatus && !(delayed && feedStatus === "live") ? [{
         id: "feed",
@@ -284,7 +284,7 @@ function ScreenerMoversBody({ activeTab, hasProAccess, focused, width, summaryQu
       ...partialFloatFooter(columns.some((column) => column.id === "floatShares"), rows),
       ...summaryFooterSegments(summaryQuotes),
     ],
-  }), [columns, data, delayed, feedStatus, loadError, loading, stale, quoteDelay, rows, savedAt, summaryQuotes, updatedAt]);
+  }), [columns, data, delayed, feedStatus, freshnessNow, loadError, loading, stale, quoteDelay, rows, savedAt, summaryQuotes, updatedAt]);
 
   return (
     <DataTableView<MarketMoverRow, MarketMoverColumn>

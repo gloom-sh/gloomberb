@@ -445,10 +445,11 @@ test("munis point to the muni funds, DVD, fundamentals and --tax-rate, and say p
   }
 });
 
-test("asked for bars finer than a minute, a US listing is pointed at its trades, a window of them and its quotes; a listing abroad only at its bars", () => {
+test("asked for bars finer than a minute, a US listing is pointed at the latest session's trades, a window of them and its quotes; a listing abroad only at its bars", () => {
   const us = subMinuteDataMessage("HYG");
   expect(us).toStartWith("No second or tick bars; 1-minute bars: fn GIP HYG;");
-  for (const pointer of ["fn TAS HYG", "--from 10:30 --to 10:35", "fn QR HYG"]) expect(us).toContain(pointer);
+  // TAS and QR serve one session, so the pointer says so rather than promising any day's trades.
+  for (const pointer of ["the latest session's trades: fn TAS HYG", "--from 10:30 --to 10:35", "fn QR HYG"]) expect(us).toContain(pointer);
   // A listing named abroad by its exchange or suffix has no tape: no trades or quotes are offered.
   for (const symbol of ["RMS.AX", "RMS:ASX", "VOD.L"]) {
     expect(subMinuteDataMessage(symbol), symbol).toBe(`No second or tick bars; 1-minute bars: fn GIP ${symbol}; trades exist for US listings only.`);

@@ -28,6 +28,8 @@ const EXCHANGE_SUFFIX_MAP: Record<string, string> = {
   BVMF: ".SA", MEXI: ".MX", BMV: ".MX", BYMA: ".BA", BCS: ".SN",
   TADAWUL: ".SR", QE: ".QA", DFM: ".AE", KUWAIT: ".KW",
   EGX: ".CA",
+  // The Pakistan Stock Exchange (OGDC.KA, Karachi).
+  PSX: ".KA",
 };
 
 const EXCHANGE_FALLBACKS: Record<string, string[]> = {
@@ -51,14 +53,22 @@ const KNOWN_SUFFIXES = new Set(
 );
 
 // The legacy PSE suffix entry means the Philippines; the host's PSE means Prague (.PR).
-// Keep that spelling out of host venue inference and conflict checks.
-const HOST_SUFFIX_ENTRIES = Object.entries(EXCHANGE_SUFFIX_MAP)
-  .filter(([venue, suffix]) => venue !== "PSE" || suffix !== ".PS")
+// Keep that spelling out of host venue inference, conflict checks and the suffix a listing is given:
+// it only keeps .PS a known suffix.
+const isLegacyPhilippinesEntry = ([venue, suffix]: readonly [string, string]) => venue === "PSE" && suffix === ".PS";
+const LISTING_SUFFIXES: Record<string, string> = Object.fromEntries(
+  Object.entries(EXCHANGE_SUFFIX_MAP).filter((entry) => !isLegacyPhilippinesEntry(entry)),
+);
+const HOST_SUFFIX_ENTRIES = Object.entries(LISTING_SUFFIXES)
   .map(([venue, suffix]) => [canonicalExchange(venue), suffix] as const);
 const KNOWN_HOST_VENUES = new Set(Object.values(CANONICAL_EXCHANGE_ALIASES));
-/** A venue's suffix by its canonical code, for a code the table spells another way (B3 for BVMF's .SA). */
+/** A venue's suffix by its canonical code, for a code the table spells another way (B3 for BVMF's .SA, PSE for PRA's .PR). */
 const CANONICAL_SUFFIXES = new Map<string, string>();
 for (const [venue, suffix] of HOST_SUFFIX_ENTRIES) if (!CANONICAL_SUFFIXES.has(venue)) CANONICAL_SUFFIXES.set(venue, suffix);
+
+function listingSuffix(canonical: string, exchange: string): string | undefined {
+  return LISTING_SUFFIXES[canonical] ?? LISTING_SUFFIXES[exchange] ?? CANONICAL_SUFFIXES.get(canonical);
+}
 
 export function getListingSymbol(ticker: string, exchange: string): string {
   const qualified = parsePublicTickerKey(ticker);
@@ -66,8 +76,7 @@ export function getListingSymbol(ticker: string, exchange: string): string {
   exchange = qualified.exchange || exchange;
   if (tickerHasListingSuffix(ticker)) return ticker;
   const canonical = canonicalExchange(exchange) || exchange;
-  const suffix = EXCHANGE_SUFFIX_MAP[canonical] ?? EXCHANGE_SUFFIX_MAP[exchange] ?? CANONICAL_SUFFIXES.get(canonical) ?? "";
-  return `${normalizeListingTicker(ticker, canonical)}${suffix}`;
+  return `${normalizeListingTicker(ticker, canonical)}${listingSuffix(canonical, exchange) ?? ""}`;
 }
 
 export function getListingSymbolsToTry(
@@ -82,7 +91,7 @@ export function getListingSymbolsToTry(
   // Explicit listings may use symbol spelling alternatives, but must not
   // resolve an unknown exchange to the default US suffix or try another venue.
   const exactSuffix = options.exactExchange
-    ? Object.entries(EXCHANGE_SUFFIX_MAP).find(([key]) => canonicalExchange(key) === canonical)?.[1]
+    ? HOST_SUFFIX_ENTRIES.find(([venue]) => venue === canonical)?.[1]
     : undefined;
   if (options.exactExchange && exactSuffix === undefined) return [];
   if (tickerHasListingSuffix(ticker)) {
@@ -117,7 +126,7 @@ export function getListingSymbolsToTry(
 
   const primary = options.exactExchange ? `${normalized}${exactSuffix}` : getListingSymbol(ticker, canonical);
   if (dotVariant) {
-    const suffix = exactSuffix ?? EXCHANGE_SUFFIX_MAP[canonical] ?? EXCHANGE_SUFFIX_MAP[exchange] ?? "";
+    const suffix = exactSuffix ?? listingSuffix(canonical, exchange) ?? "";
     return [`${dotVariant}${suffix}`, primary];
   }
   return [primary];

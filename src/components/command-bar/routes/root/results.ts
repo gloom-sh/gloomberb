@@ -219,10 +219,10 @@ function rankMatchBlock(
   query: string,
 ): ResultItem[] {
   if (blockItems.length === 0) {
-    return fuzzyFilter(localItems, query, rootItemSearchText, (item) => item.label);
+    return fuzzyFilter(localItems, query, rootItemSearchText, (item) => item.label, rootItemIsFunction);
   }
   const block = new Set(blockItems);
-  const ranked = fuzzyFilter([...localItems, ...blockItems], query, rootItemSearchText, (item) => item.label);
+  const ranked = fuzzyFilter([...localItems, ...blockItems], query, rootItemSearchText, (item) => item.label, rootItemIsFunction);
   const firstBlockIndex = ranked.findIndex((item) => block.has(item));
   const local = ranked.filter((item) => !block.has(item));
   if (firstBlockIndex < 0) return [...local, ...blockItems];
@@ -231,6 +231,10 @@ function rankMatchBlock(
 
 function rootItemSearchText(item: ResultItem): string {
   return `${item.label} ${item.searchText || ""} ${item.detail} ${item.right || ""}`;
+}
+
+function rootItemIsFunction(item: ResultItem): boolean {
+  return item.kind === "command" || item.category === "Panes";
 }
 
 /** Kept short: the empty bar is still a browse list of everything below. */

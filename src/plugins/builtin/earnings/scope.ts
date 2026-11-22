@@ -1,6 +1,7 @@
 import type { FundMember } from "../../../api-client/members";
 import type { Portfolio, Watchlist } from "../../../types/ticker";
 import { getSectorCollection } from "../sectors/sector-data";
+import { collectionKindNote } from "../shared/collection-options";
 
 /** Focused industries, named by the fund whose published holdings define the group. */
 const INDUSTRIES = [
@@ -34,21 +35,17 @@ export interface EarningsScopeOption {
 export const ALL_SCOPE = "all";
 export const MINE_SCOPE = "mine";
 
-/** "Portfolio" under a portfolio's name, unless the name already says so ("Main Portfolio"). */
-const kindNote = (name: string, kind: "Portfolio" | "Watchlist") =>
-  name.toLowerCase().includes(kind.toLowerCase()) ? undefined : kind;
-
 /** Personal lists, broad sectors and focused industries stay separate in the Names menu. */
 export function earningsScopeOptions(collections: { portfolios: readonly Portfolio[]; watchlists: readonly Watchlist[] }): EarningsScopeOption[] {
   return [
     { value: ALL_SCOPE, label: "All", scope: { kind: "all" } },
     { value: MINE_SCOPE, label: "Mine", description: "Portfolios and watchlists", scope: { kind: "mine" } },
     ...collections.portfolios.map((portfolio): EarningsScopeOption => ({
-      value: `portfolio:${portfolio.id}`, label: portfolio.name, description: kindNote(portfolio.name, "Portfolio"), group: "Your lists",
+      value: `portfolio:${portfolio.id}`, label: portfolio.name, description: collectionKindNote(portfolio.name, "Portfolio"), group: "Your lists",
       scope: { kind: "portfolio", id: portfolio.id, name: portfolio.name },
     })),
     ...collections.watchlists.map((watchlist): EarningsScopeOption => ({
-      value: `watchlist:${watchlist.id}`, label: watchlist.name, description: kindNote(watchlist.name, "Watchlist"), group: "Your lists",
+      value: `watchlist:${watchlist.id}`, label: watchlist.name, description: collectionKindNote(watchlist.name, "Watchlist"), group: "Your lists",
       scope: { kind: "watchlist", id: watchlist.id, name: watchlist.name },
     })),
     ...getSectorCollection("sectors").items.map((sector): EarningsScopeOption => ({

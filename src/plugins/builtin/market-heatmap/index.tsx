@@ -12,6 +12,7 @@ import {
 import {
   loadingText,
   PaneStatusBody,
+  QueryBar,
   Tabs,
   unavailableText,
   usePaneFooter,
@@ -29,7 +30,7 @@ import type { GloomPlugin, PaneProps, PaneSettingField } from "../../../types/pl
 import type { TickerRecord } from "../../../types/ticker";
 import { t, tf } from "../../../i18n";
 import { priceColor } from "../../../theme/colors";
-import { MISSING_VALUE, clipToDisplayWidth, displayWidth, formatCompact, formatCurrency, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, displayWidth, formatCompact, formatCurrency, formatPercentRaw } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { useAppSelector, usePaneAppConfig, usePaneSettingValue, usePaneStateValue } from "../../../state/app/context";
 import { usePluginTickerActions } from "../../runtime";
@@ -56,11 +57,15 @@ import {
 } from "./data";
 import {
   HEATMAP_COLLECTION_KIND_STATE_KEY,
+  HEATMAP_PICKED_LIST_STATE_KEY,
   PORTFOLIO_HEATMAP_TAB,
   buildPortfolioHeatmapAssets,
   fallbackHeatmapCollectionId,
   heatmapCollectionLabel,
   heatmapFollowsCollection,
+  heatmapListOptions,
+  heatmapShownCollectionId,
+  heatmapSourceSwitchedList,
   heatmapSizeBy,
   heatmapSizeByApplies,
   heatmapSizeWeight,
@@ -121,7 +126,6 @@ const TERMINAL_PAINT_THROTTLE_MS = 250;
 /** "loading", which comes and goes with each refresh. */
 const LOADING_FOOTER_WIDTH = 7;
 const SELECTION_STREAM_SETTLE_MS = 1_500;
-const TOOLTIP_NAME_WIDTH = 28;
 const SIZE_BY_SETTING_KEY = "sizeBy";
 const SQRT_SIZE_VALUE: HeatmapSizeBy = "sqrt-market-cap";
 const DAY_MOVE_SIZE_VALUE: HeatmapSizeBy = "day-move";
@@ -133,6 +137,9 @@ const EMPTY_TICKERS: TickerRecord[] = [];
 const NO_CURRENCIES: string[] = [];
 const EMPTY_TITLE = "No market heatmap data.";
 const EMPTY_PORTFOLIO_TITLE = "No symbols in this list.";
+const EMPTY_PORTFOLIO_HINT = "Pick another list from List above, or add symbols to this one.";
+/** The tab of the user's own lists; the List menu under it names the one shown. */
+const LISTS_TAB_LABEL = "My Lists";
 
 function loadCollectionSnapshots(
   tickers: readonly TickerRecord[],
@@ -221,7 +228,8 @@ function paintItem(asset: HeatmapBoardAsset): MetricTreemapItem<HeatmapBoardAsse
     asset.volume != null ? `Vol ${formatCompact(asset.volume)}` : null,
   ].filter((part): part is string => !!part);
   // The move closes the line, so a long name gives way instead of hiding it.
-  const name = asset.name && asset.name !== asset.symbol ? clipToDisplayWidth(asset.name, TOOLTIP_NAME_WIDTH) : null;
+  const name = asset.name && asset.name !== asset.symbol ? asset.name : null;
+  const move = formatMove(asset, change);
   const item: MetricTreemapItem<HeatmapBoardAsset> = {
     id: asset.symbol,
     label: asset.symbol,
@@ -230,7 +238,7 @@ function paintItem(asset: HeatmapBoardAsset): MetricTreemapItem<HeatmapBoardAsse
     primaryText: formatHeatTileMove(change),
     primaryTextSuffix: sessionMark(asset),
     tooltip: [
-      [asset.symbol, name, formatMove(asset, change)].filter(Boolean).join(" · "),
+      name ? { text: [asset.symbol, name, move].join(" · "), keepEnd: ` · ${move}` } : [asset.symbol, move].join(" · "),
       ...(details.length > 0 ? [details.join(" · ")] : []),
     ],
     data: asset,
@@ -281,14 +289,18 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
   const config = usePaneAppConfig();
   const tickersBySymbol = useAppSelector((state) => state.tickers);
   const linkedPortfolio = useLinkedHeatmapCollection();
-  const collectionId = linkedPortfolio.collectionId ?? fallbackHeatmapCollectionId(config);
+  const followedCollectionId = linkedPortfolio.collectionId ?? fallbackHeatmapCollectionId(config);
+  // A list picked in the List menu holds until the followed portfolio pane switches lists.
+  const [pickedList, setPickedList] = usePaneStateValue<string>(HEATMAP_PICKED_LIST_STATE_KEY, "");
+  const collectionId = heatmapShownCollectionId(config, pickedList, followedCollectionId);
   const collectionKind = getCollectionTypeFromConfig(config, collectionId);
   const [, publishCollectionKind] = usePaneStateValue<string>(HEATMAP_COLLECTION_KIND_STATE_KEY, "");
   const portfolioLabel = heatmapCollectionLabel(config, collectionId);
+  const listOptions = useMemo(() => heatmapListOptions(config), [config]);
   const universeTabs = useMemo(() => [
     ...MARKET_HEATMAP_UNIVERSES.map((universe) => ({ label: universe.label, value: universe.id })),
-    { label: portfolioLabel, value: PORTFOLIO_HEATMAP_TAB },
-  ], [portfolioLabel]);
+    { label: LISTS_TAB_LABEL, value: PORTFOLIO_HEATMAP_TAB },
+  ], []);
   const collectionTickers = useMemo(
     () => (portfolioTab && collectionId && collectionKind
       ? getCollectionTickersFromConfig(config, tickersBySymbol, collectionId)
@@ -379,7 +391,9 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
     keyboardNavigation: false,
   });
 
-  const chartHeight = Math.max(1, height - (tabsInHeader ? 0 : 1));
+  // The lists tab picks its list in a query bar above the map.
+  const listBar = portfolioTab && listOptions.length > 0;
+  const chartHeight = Math.max(1, height - (tabsInHeader ? 0 : 1) - (listBar ? 1 : 0));
 
   // Stream weights by market-cap rank, fixed for this load of the board.
   const quoteWeightsRef = useRef<{ tab: string; weights: Map<string, number> } | null>(null);
@@ -466,11 +480,25 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
 
   useEffect(() => {
     const previous = seenCollection.current;
-    seenCollection.current = collectionId;
-    if (!heatmapFollowsCollection(linkPortfolio, previous, collectionId)) return;
+    seenCollection.current = followedCollectionId;
+    if (!heatmapFollowsCollection(linkPortfolio, previous, followedCollectionId)) return;
     setActiveUniverse(PORTFOLIO_HEATMAP_TAB);
     setSelectedSymbol(null);
-  }, [collectionId, linkPortfolio, setActiveUniverse]);
+  }, [followedCollectionId, linkPortfolio, setActiveUniverse]);
+
+  // The followed portfolio pane switching lists is the newer choice: it takes over from a list picked here.
+  const seenSource = useRef<{ instanceId: string | null; collectionId: string | null } | null>(null);
+  useEffect(() => {
+    const next = { instanceId: linkedPortfolio.sourceInstanceId, collectionId: linkedPortfolio.collectionId };
+    const previous = seenSource.current;
+    seenSource.current = next;
+    if (pickedList && heatmapSourceSwitchedList(previous, next)) setPickedList("");
+  }, [linkedPortfolio.collectionId, linkedPortfolio.sourceInstanceId, pickedList, setPickedList]);
+
+  const pickList = useCallback((value: string) => {
+    setPickedList(value);
+    setSelectedSymbol(null);
+  }, [setPickedList]);
 
   // The header shows the square-root control only where it changes the board.
   useEffect(() => {
@@ -693,6 +721,14 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
           />
         </Box>
       )}
+      {listBar && (
+        <Box height={1} flexShrink={0}>
+          <QueryBar
+            width={width}
+            filters={[{ id: "list", label: "List", value: collectionId ?? "", options: listOptions, onChange: pickList }]}
+          />
+        </Box>
+      )}
 
       <PaneStatusBody
         loading={!portfolioTab && loading && !hasBoard}
@@ -700,6 +736,7 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
         error={portfolioTab || hasBoard ? null : loadError}
         empty={!hasBoard}
         emptyTitle={portfolioTab ? EMPTY_PORTFOLIO_TITLE : EMPTY_TITLE}
+        emptyMessage={listBar ? EMPTY_PORTFOLIO_HINT : undefined}
       >
         <HeatTreemapSurface
           scene={scene}
@@ -723,7 +760,7 @@ export const marketHeatmapPlugin: GloomPlugin = {
   id: "market-heatmap",
   name: "Market Heatmap",
   version: "1.0.0",
-  description: "Largest US stocks and ETFs, or the portfolio pane's list, sized by the day's move, market cap or position value and colored by daily move",
+  description: "Largest US stocks and ETFs, or any of your portfolios and watchlists, sized by the day's move, market cap or position value and colored by daily move",
   toggleable: true,
   targets: ["cli", "tui", "desktop", "web"],
 
@@ -777,7 +814,7 @@ export const marketHeatmapPlugin: GloomPlugin = {
                 value: universe.id,
                 label: universe.label,
               })),
-              { value: PORTFOLIO_HEATMAP_TAB, label: "Portfolio pane list" },
+              { value: PORTFOLIO_HEATMAP_TAB, label: LISTS_TAB_LABEL },
             ],
           },
           {
@@ -812,7 +849,7 @@ export const marketHeatmapPlugin: GloomPlugin = {
             key: "linkPortfolio",
             label: "Link to portfolio",
             type: "toggle",
-            description: "Open the list's tab whenever the portfolio pane switches lists.",
+            description: "Open My Lists on the portfolio pane's list whenever that pane switches lists.",
           },
         ] satisfies PaneSettingField[],
       }, context.settings),
@@ -824,7 +861,7 @@ export const marketHeatmapPlugin: GloomPlugin = {
       id: "market-heatmap-pane",
       paneId: "market-heatmap",
       label: "Market Heatmap",
-      description: "Largest US stocks and ETFs, or the portfolio pane's list, sized by the day's move, market cap or position value and colored by daily move.",
+      description: "Largest US stocks and ETFs, or any of your portfolios and watchlists, sized by the day's move, market cap or position value and colored by daily move.",
       keywords: ["heatmap", "market", "largest", "top", "stocks", "etf", "portfolio", "watchlist", "screener"],
       shortcut: { prefix: "HM" },
     },

@@ -58,6 +58,26 @@ export interface MultiSelectRowAction {
   run(value: string): Promise<string | { close: true } | void> | string | { close: true } | void;
 }
 
+/**
+ * A choice the highlighted row carries, on a line of its own under the list:
+ * an indicator's colour. The pointer picks any; its key steps to the next, as
+ * a row action's key runs it.
+ */
+export interface MultiSelectRowChoice {
+  label: string;
+  shortcut: string;
+  /** Whether the highlighted option offers it; `selected` is its checkbox. */
+  appliesTo(value: string, selected: boolean): boolean;
+  /** The option's choice when the dialog has not set one. */
+  valueFor(value: string): string;
+  /** The choice the key steps to from `choice`. */
+  next(choice: string): string;
+  /** Sets the option's choice, which the line shows from then on. */
+  onChange(value: string, choice: string): void;
+  /** The line's choices for the highlighted option; `onPick` sets one. */
+  render(props: { value: string; choice: string; disabled: boolean; onPick(choice: string): void }): ReactNode;
+}
+
 export interface MultiSelectDialogContentProps extends AlertContext {
   title: string;
   options: MultiSelectOption[];
@@ -67,6 +87,7 @@ export interface MultiSelectDialogContentProps extends AlertContext {
   emptyLabel?: string;
   idPrefix?: string;
   rowAction?: MultiSelectRowAction;
+  rowChoice?: MultiSelectRowChoice;
   /**
    * For a long list: a filter box over the rows (typing narrows them by label
    * and description), each description beside its label and, when ordered,
@@ -92,6 +113,8 @@ export interface MultiSelectDialogButtonProps {
   onOpenChange?: (open: boolean) => void;
   /** Opens the dialog on desktop too, since the popover menu has no row actions. */
   rowAction?: MultiSelectRowAction;
+  /** Opens the dialog on desktop too, since the popover menu has no row choices. */
+  rowChoice?: MultiSelectRowChoice;
   /** A filter box over the rows; opens the dialog on desktop too, since the popover menu has none. */
   searchable?: boolean;
 }
@@ -130,6 +153,8 @@ function stopMouseEvent(event?: DialogTriggerEvent) {
 const DESKTOP_ROW_HEIGHT = 1.35;
 /** Terminal rows the dialog spends around its list: frame, title, buttons. */
 const TERMINAL_DIALOG_CHROME_ROWS = 10;
+/** Terminal rows a row choice's line takes under the list, with the gap above it. */
+const TERMINAL_ROW_CHOICE_ROWS = 2;
 /** Cells a searchable list shows on the desktop and web; the rest scrolls. */
 const DESKTOP_SEARCHABLE_LIST_CELLS = 16;
 
@@ -245,6 +270,7 @@ export function MultiSelectDialogContent({
   ordered = false,
   idPrefix,
   rowAction,
+  rowChoice,
   searchable = false,
 }: MultiSelectDialogContentProps) {
   const navigation = useKeybindings();
@@ -287,6 +313,14 @@ export function MultiSelectDialogContent({
     ? rowAction.labelFor(selectedOption.value) : rowAction?.label;
   const rowActionShortcut = rowAction && selectedOption && rowAction.shortcutFor
     ? rowAction.shortcutFor(selectedOption.value) : rowAction?.shortcut;
+  const [choiceOverrides, setChoiceOverrides] = useState<Record<string, string>>({});
+  const canPickRowChoice = !!rowChoice
+    && !!selectedOption
+    && !selectedOption.disabled
+    && rowChoice.appliesTo(selectedOption.value, selectedValues.includes(selectedOption.value));
+  const rowChoiceValue = rowChoice && selectedOption
+    ? choiceOverrides[selectedOption.value] ?? rowChoice.valueFor(selectedOption.value)
+    : "";
 
   useEffect(() => {
     setSelectedValues((values) => normalizeDialogSelectedValues(options, values, ordered));
@@ -328,7 +362,7 @@ export function MultiSelectDialogContent({
   // the filter leaves, so typing does not make the dialog jump.
   const listHeight = isDesktopWeb
     ? Math.min(searchable ? DESKTOP_SEARCHABLE_LIST_CELLS : 12, Math.max(5, displayOptions.length * DESKTOP_ROW_HEIGHT))
-    : Math.max(3, Math.min(12, Math.max(6, displayOptions.length), viewport.height - TERMINAL_DIALOG_CHROME_ROWS - (searchable ? 2 : 0)));
+    : Math.max(3, Math.min(12, Math.max(6, displayOptions.length), viewport.height - TERMINAL_DIALOG_CHROME_ROWS - (searchable ? 2 : 0) - (rowChoice ? TERMINAL_ROW_CHOICE_ROWS : 0)));
   const pageSize = Math.floor(listHeight / (isDesktopWeb ? DESKTOP_ROW_HEIGHT : 1)) - 1;
 
   const applySelectedValues = async (nextValues: string[], nextDisplayValues = displayValues) => {
@@ -347,6 +381,8 @@ export function MultiSelectDialogContent({
 
   const toggleOption = async (option: MultiSelectOption | undefined) => {
     if (!option || option.disabled) return;
+    // An option turned off and on again starts from its own choice, not the one set before.
+    setChoiceOverrides(({ [option.value]: _dropped, ...rest }) => rest);
     const nextValues = ordered
       ? toggleOrderedMultiSelectValue(options, selectedValues, option.value)
       : toggleMultiSelectValue(options, selectedValues, option.value);
@@ -365,6 +401,13 @@ export function MultiSelectDialogContent({
       moveMultiSelectValue(options, selectedValues, selectedOption.value, direction),
       selectedFirst ? displayValues : moveMultiSelectDisplayValue(displayValues, knownSelectedValues, selectedOption.value, direction),
     );
+  };
+
+  const pickRowChoice = (choice: string) => {
+    if (!rowChoice || !canPickRowChoice || !selectedOption) return;
+    const value = selectedOption.value;
+    setChoiceOverrides((current) => ({ ...current, [value]: choice }));
+    rowChoice.onChange(value, choice);
   };
 
   const runRowAction = async () => {
@@ -400,6 +443,8 @@ export function MultiSelectDialogContent({
       void moveOption("up").catch(logFailure("ui.multi-select", "Move multi-select option failed"));
     } else if (event.name === "]" && ordered) {
       void moveOption("down").catch(logFailure("ui.multi-select", "Move multi-select option failed"));
+    } else if (rowChoice && event.name === rowChoice.shortcut && !event.ctrl && !event.meta && !event.alt) {
+      pickRowChoice(rowChoice.next(rowChoiceValue));
     } else if (rowAction && event.name === rowActionShortcut && !event.ctrl && !event.meta && !event.alt) {
       void runRowAction().catch(logFailure("ui.multi-select", "Run multi-select row action failed"));
     } else if (event.name === "enter" || event.name === "return" || event.name === "escape" || isDetailBackNavigationKey(event)) {
@@ -441,6 +486,23 @@ export function MultiSelectDialogContent({
             void toggleOption(optionByValue.get(id)).catch(logFailure("ui.multi-select", "Toggle multi-select option failed"));
           }}
         />
+        {rowChoice && selectedOption && (
+          <Box flexDirection="row" alignItems="center" gap={1} style={isDesktopWeb ? { gap: "var(--gloom-space-sm)" } : undefined}>
+            <Button
+              label={rowChoice.label}
+              shortcut={rowChoice.shortcut}
+              variant="ghost"
+              disabled={!canPickRowChoice}
+              onPress={() => pickRowChoice(rowChoice.next(rowChoiceValue))}
+            />
+            {rowChoice.render({
+              value: selectedOption.value,
+              choice: rowChoiceValue,
+              disabled: !canPickRowChoice,
+              onPick: pickRowChoice,
+            })}
+          </Box>
+        )}
         <Box
           flexDirection="row"
           gap={1}
@@ -484,6 +546,7 @@ function MultiSelectDialogButtonInner({
   shortcutActive = false,
   onOpenChange,
   rowAction,
+  rowChoice,
   searchable = false,
 }: MultiSelectDialogButtonProps, ref: ForwardedRef<MultiSelectDialogButtonHandle>) {
   const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
@@ -497,7 +560,7 @@ function MultiSelectDialogButtonInner({
   const openDialog = useCallback((event?: DialogTriggerEvent, anchorPoint?: MultiSelectPopoverAnchorPoint) => {
     stopMouseEvent(event);
     if (disabled) return;
-    if (isDesktopWeb && !ordered && !rowAction && !searchable) {
+    if (isDesktopWeb && !ordered && !rowAction && !rowChoice && !searchable) {
       setPopoverAnchorPoint(anchorPoint ?? null);
       setPopoverOpen(true);
       onOpenChange?.(true);
@@ -517,11 +580,12 @@ function MultiSelectDialogButtonInner({
           emptyLabel={emptyLabel}
           idPrefix={idPrefix}
           rowAction={rowAction}
+          rowChoice={rowChoice}
           searchable={searchable}
         />
       ),
     }).catch(logFailure("ui.multi-select", "Open multi-select dialog failed")).finally(() => onOpenChange?.(false));
-  }, [dialog, disabled, emptyLabel, idPrefix, isDesktopWeb, label, onChange, onOpenChange, options, ordered, rowAction, searchable, selectedValues, title]);
+  }, [dialog, disabled, emptyLabel, idPrefix, isDesktopWeb, label, onChange, onOpenChange, options, ordered, rowAction, rowChoice, searchable, selectedValues, title]);
 
   const closePopover = useCallback(() => {
     setPopoverOpen(false);
@@ -604,7 +668,7 @@ function MultiSelectDialogButtonInner({
     );
   }
 
-  if (isDesktopWeb && !ordered && !rowAction && !searchable) {
+  if (isDesktopWeb && !ordered && !rowAction && !rowChoice && !searchable) {
     return (
       <Popover
         open={popoverOpen}

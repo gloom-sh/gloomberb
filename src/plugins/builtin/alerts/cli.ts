@@ -5,9 +5,12 @@ import { firstDailyCheck, metricAvailabilityError, metricReadings } from "./metr
 import { ALERT_ADD_FORMS, ALERT_KINDS_TEXT, parseRuleAddArgs, RULE_US_DATA, ruleDelivery, type RuleAddRequest } from "./cli-forms";
 import { alertChangeEntry, appendAlertLog, type AlertLogAction } from "./fired-log";
 import { alertLogRule } from "./alert-log";
-import { alertListing, alertReadingAt, alertReadingText, isoUtc, listingWithCurrency, measureLabel, NOT_CHECKED_YET, readingSessionWords } from "./format";
+import {
+  alertBenchmarkListing, alertComparatorReadingText, alertListing, alertReadingAt, alertReadingCurrency, alertReadingText, isoUtc, listingWithCurrency,
+  measureLabel, NOT_CHECKED_YET, readingSessionWords,
+} from "./format";
 import { isQuoteStaleForCurrentSession } from "../../../market-data/quotes/freshness";
-import { quoteAlertFields } from "./quotes";
+import { alertQuoteListingFields, quoteAlertFields } from "./quotes";
 import { createEventAlert } from "./events";
 import { isResearchAlertKind, readResearchRule } from "./research-rules";
 import { withConfigData, withMarketData } from "../../../cli/scoped-context";
@@ -16,6 +19,7 @@ import { resolvePersistedCloudSessionToken } from "../../../cli/pane-functions/c
 import type { ConfigContext } from "../../../cli/types";
 import { checkedWhenSignedIn, NEEDS_SIGN_IN, needsSignInNote } from "./event-rows";
 import { checkedOnlyWithPro, checksProRules, NEEDS_PRO, needsProNote, savedWithoutProNote } from "./pro-rules";
+import { acceptsAlertSession, alertSessionLabel } from "./session";
 import { OCC_CONTRACT, occContractExample, occFormText, parseLooseOptionContract, resolveLooseOptionContract, type LooseOptionContract } from "./option-contract";
 import { CLI_COMMAND_GROUPS } from "../../../cli/help";
 import { dryRunNote } from "../../../cli/helpers";
@@ -414,7 +418,7 @@ function researchFormValues(request: ResearchAddRequest, exchange: string): { ki
  */
 function researchDelivery(kind: ResearchAddRequest["kind"]): string {
   if (kind === "iv_level") return "the app checks it every 15 minutes while it is running, on the same option fits as OVDV";
-  const plan = kind === "news" ? "" : " on Gloom Pro";
+  const plan = checkedOnlyWithPro({ kind: kind === "flow" ? "options_flow" : kind }) ? " on Gloom Pro" : "";
   // Said apart from the app, which checks IV levels and price alerts: this one goes on with the app closed, and only signed in.
   return `Gloom Cloud checks it, not the app, for a signed-in account with Cloud sync${plan} and sends it to your phone`;
 }
@@ -566,13 +570,18 @@ type AlertListRow = Record<string, unknown> & {
 function priceRow(alert: AlertRule): AlertListRow {
   return {
     ...alert, kind: alert.metric?.kind ?? (alert.move ? "move" : "price"), rule: alert.metric ? metricDescription(alert) : undefined,
+    session: alertSessionLabel(alert),
     // A move's rule in the words it was added with: `up 3.00%`, `moves 0.50%`.
     ...alert.move ? { rule: `${moveRuleWords(alert)} from the previous close`, appOnly: true } : {},
     // The listing as it was kept: 7203:JPX, never 7203:JPX:JPX.
     target: alertListing({ symbol: alert.symbol, exchange: alert.exchange }),
-    // The listing it is checked on, in its currency, and its last reading in words with when it is from.
-    listing: alertListing(alert), currency: alert.lastQuoteCurrency ?? null,
+    // The listing it is checked on, the currency its readings are in (none for a ratio, RSI or a multiple), and its
+    // last reading in words with when it is from.
+    listing: alertListing(alert), currency: alertReadingCurrency(alert),
     lastReading: alertReadingText(alert), lastReadingAt: isoUtc(alertReadingAt(alert)) || null,
+    // What the reading is measured against: the slow average of a crossover, or the listing a ratio divides by.
+    comparatorReading: alertComparatorReadingText(alert) || null,
+    benchmarkListing: alertBenchmarkListing(alert) || null,
   };
 }
 
@@ -667,8 +676,10 @@ const plural = (count: number, word: string) => `${count} ${word}${count === 1 ?
 
 /**
  * One row as text and CSV give it. CSV keeps the columns it has always had in
- * their order, then Created (ISO UTC), the listing, its currency and the last
- * reading, in words and dated.
+ * their order, Triggered in ISO UTC, then Created (ISO UTC), the listing, its currency and the last
+ * reading, in words and dated, the session it is read in, and what that
+ * reading is measured against: the comparator's own reading and the
+ * benchmark listing of a ratio or RRG rule.
  */
 function textRow(row: AlertListRow): Record<string, unknown> {
   const price = row.kind === "price";
@@ -683,15 +694,19 @@ function textRow(row: AlertListRow): Record<string, unknown> {
       : typeof row.leadDays === "number"
         ? scheduledTriggerText({ leadDays: row.leadDays, trigger: row.when === "results" ? "results" : "date", prints: row.onRelease === true })
         : ""),
-    eventDate: typeof row.leadDays === "number" ? row.eventDate ?? "not known" : "",
+    eventDate: typeof row.leadDays === "number" ? row.eventDate ?? (row.kind === "earnings_date" ? "waiting for next date" : "not known") : "",
     status: row.status,
     lastCheckedPrice: row.lastCheckedPrice,
-    triggeredAt: row.triggeredAt,
+    // ISO 8601 in UTC, as createdAt: a spreadsheet reads an epoch count as a number.
+    triggeredAt: isoUtc(typeof row.triggeredAt === "number" ? row.triggeredAt : null),
     createdAt: isoUtc(typeof row.createdAt === "number" ? row.createdAt : null),
     listing: row.listing ?? "",
     currency: row.currency ?? "",
     lastReading: row.lastReading ?? "",
     lastReadingAt: row.lastReadingAt ?? "",
+    session: row.session ?? "",
+    comparatorReading: row.comparatorReading ?? "",
+    benchmarkListing: row.benchmarkListing ?? "",
   };
 }
 
@@ -822,10 +837,10 @@ async function requireEventDate(
   sources: ScheduledEventSources,
   today: string,
   fail: (message: string) => never,
-): Promise<string> {
+): Promise<string | null> {
   const lookup = (await lookupScheduledDates([target], sources, today)).get(scheduledTargetKey(target));
   if (!lookup || "error" in lookup) fail(eventDateUnavailableMessage(target, lookup?.error ?? "no answer"));
-  if (!lookup.date) fail(noUpcomingEventMessage(target));
+  if (!lookup.date && target.kind !== "earnings") fail(noUpcomingEventMessage(target));
   return lookup.date;
 }
 
@@ -848,6 +863,7 @@ export const alertsCliCommand: CliCommandDef = {
       { flags: "--country <code>", description: "The country of a calendar event, as econ --country takes it (CN, US, DE); a code before the name does the same (alerts add CN PMI)" },
       { flags: "--benchmark <symbol>", description: "The listing an RRG alert is measured against; SPY by default, as in RRG" },
       { flags: "--watchlist <name>", description: `A move alert on each listing of the watchlist, up to ${MAX_BULK_ALERTS} (alerts add --watchlist Book up 3%)` },
+      { flags: "--session <regular|extended>", description: "Watch regular hours only, or regular and extended hours (default); price and move alerts" },
     ],
     examples: [
       "alerts",
@@ -901,6 +917,10 @@ export const alertsCliCommand: CliCommandDef = {
     const benchmark = benchmarkFlag && benchmarkValue === undefined ? null : benchmarkValue;
     const watchlistFlag = rawArgs.some((arg) => arg === "--watchlist" || arg.startsWith("--watchlist="));
     const watchlistName = takeOption(args, "--watchlist");
+    const sessionFlag = rawArgs.some((arg) => arg === "--session" || arg.startsWith("--session="));
+    const sessionMode = takeOption(args, "--session")?.toLowerCase();
+    if (sessionFlag && sessionMode !== "regular" && sessionMode !== "extended") ctx.fail("Use --session regular or --session extended (regular and extended hours).");
+    const sessionRule = sessionMode === "regular" ? { regularHoursOnly: true as const } : {};
     if (watchlistFlag && !watchlistName?.trim()) ctx.fail("--watchlist takes a watchlist's name: alerts add --watchlist Book up 3%.");
     const action = args[0] ?? "list";
     if (watchlistFlag && action !== "add") ctx.fail("--watchlist is for alerts add: alerts add --watchlist Book up 3%.");
@@ -908,7 +928,7 @@ export const alertsCliCommand: CliCommandDef = {
     const today = newYorkToday(new Date(now));
     const failWith = (error: unknown): never => ctx.fail(error instanceof Error ? error.message : String(error));
     // A symbol whose company moved names the same add on its new symbol.
-    const alertRetry = (symbol: string) => `gloom alerts add ${symbol} ${args.slice(2).join(" ")}`;
+    const alertRetry = (symbol: string) => `gloom alerts add ${symbol} ${args.slice(2).join(" ")}${sessionMode ? ` --session ${sessionMode}` : ""}`;
     // The listing an alert follows, read as `quote` reads it and held to one that trades (`resolveAlertListing`).
     const requireAlertListing = (typed: string, market: ListingDeps, exchange: string | null | undefined = exchangeOption) =>
       resolveAlertListing(typed, exchange, market, { retry: alertRetry }).catch((error: unknown) => {
@@ -924,6 +944,7 @@ export const alertsCliCommand: CliCommandDef = {
       }
     };
     const typedRequest = action === "add" ? parseAdd() : null;
+    if (sessionFlag && typedRequest?.kind !== "price" && typedRequest?.kind !== "move") ctx.fail("--session is only for price and move alerts.");
     // A move's listings, each read as `quote` reads it, or a watchlist's as it keeps them, with what was dropped.
     let moves: { listings: MoveListing[]; repeats: number; leftOut: number; watchlist?: string } | null = null;
     if (typedRequest?.kind === "move") {
@@ -1058,10 +1079,12 @@ export const alertsCliCommand: CliCommandDef = {
         failWith(error);
       }
     }
-    if (request?.kind === "price" && priced && !isQuoteStaleForCurrentSession(priced.quote)) {
+    if (request?.kind === "price" && priced && acceptsAlertSession(sessionRule, priced.quote) && !isQuoteStaleForCurrentSession(priced.quote)) {
       // The price it is added at is its first reading and the baseline a crossing is measured from, as Add Alert keeps it.
       const price = lastPrice(priced.quote);
       if (price != null) reading = quoteAlertFields({ ...priced.quote, price }, now);
+    } else if (request?.kind === "price" && priced && sessionRule.regularHoursOnly) {
+      reading = alertQuoteListingFields(priced.quote);
     }
     if (request?.kind === "price" && request.thousandsDot && priced) {
       const question = thousandsDotMessage(request, priced.listing.key, lastPrice(priced.quote), exchangeOption);
@@ -1235,7 +1258,10 @@ export const alertsCliCommand: CliCommandDef = {
           { key: "lastReading", header: "Last Reading" },
           // ISO 8601 in UTC, as CSV writes it.
           { key: "createdAt", header: "Created", format: (value) => String(value ?? "") },
-          { key: "triggeredAt", header: "Triggered", optional: true },
+          { key: "triggeredAt", header: "Triggered", optional: true, format: (value) => String(value ?? "") },
+          { key: "session", header: "Session", optional: true },
+          { key: "comparatorReading", header: "Against", optional: true },
+          { key: "benchmarkListing", header: "Benchmark", optional: true },
         ],
         empty: "No alerts. Add one with gloom alerts add AAPL above 400, alerts add CRWV earnings --days 3, alerts add CPI --days 1, or alerts add CN PMI.",
       });
@@ -1295,7 +1321,7 @@ export const alertsCliCommand: CliCommandDef = {
       };
 
       if (request?.kind === "move" && moves) {
-        const plan = planMoveAlerts(request, moves.listings, alerts, now);
+        const plan = planMoveAlerts({ ...request, ...sessionRule }, moves.listings, alerts, now);
         const single = moves.listings.length === 1 && !moves.watchlist;
         const rule = moveRuleWords({ condition: request.condition, targetPrice: request.percent });
         if (single && plan.existing[0]) {
@@ -1320,7 +1346,7 @@ export const alertsCliCommand: CliCommandDef = {
           const alert = plan.added[0]!;
           const nowText = moveNowText(alert, now);
           ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert }, ...(notes.length ? { warnings: notes } : {}) }, {
-            text: (data) => `Added alert ${data.alert.id}: ${formatAlertDescription(data.alert)} (${MOVE_REARM}).${nowText ? ` ${capitalize(nowText)}.` : ""}${dryRunNote(data.dryRun)}\n${MOVE_DELIVERY}`,
+            text: (data) => `Added alert ${data.alert.id}: ${formatAlertDescription(data.alert)} (${MOVE_REARM}).${nowText ? ` ${capitalize(nowText)}.` : alert.regularHoursOnly ? " Waiting for a regular-hours quote." : ""}${dryRunNote(data.dryRun)}\n${MOVE_DELIVERY}`,
           });
           return;
         }
@@ -1343,7 +1369,7 @@ export const alertsCliCommand: CliCommandDef = {
       if (request?.kind === "price" || request?.kind === "metric") {
         const { condition } = request;
         const symbol = requireArg(priceListing?.key, ADD_USAGE, ctx);
-        const alert: AlertRule = { ...createAlert(symbol, condition, request.price, priceListing?.exchange), ...(request.kind === "metric" ? { metric: request.metric } : {}),
+        const alert: AlertRule = { ...createAlert(symbol, condition, request.price, priceListing?.exchange), ...sessionRule, ...(request.kind === "metric" ? { metric: request.metric } : {}),
           // A London line's level is shown in pence from the first, before any check has read its quote.
           ...request.kind === "price" && priced ? {
             lastQuoteCurrency: priced.quote.currency || undefined, lastQuotePence: isPenceQuotedLine(priced.quote) || undefined,
@@ -1362,7 +1388,7 @@ export const alertsCliCommand: CliCommandDef = {
         const daily = !!alert.metric && isDailyMetric(alert.metric);
         const firstCheck = daily ? firstDailyCheck(alert.exchange, now, weekly) : null;
         // The price a price alert is checked on, as the far-target check measures against.
-        const checkedPrice = !alert.metric && priced && Number.isFinite(priced.quote.price) && priced.quote.price !== 0 ? priced.quote.price : null;
+        const checkedPrice = !alert.metric && priced && acceptsAlertSession(alert, priced.quote) && Number.isFinite(priced.quote.price) && priced.quote.price !== 0 ? priced.quote.price : null;
         // An above or below rule that already holds goes off at its first check, not on the next cross: said with the reading.
         const alreadyMet = alert.metric
           ? levelAlreadyMet(alert.condition, alert.lastCheckedPrice, alert.lastCheckedTarget)
@@ -1372,7 +1398,7 @@ export const alertsCliCommand: CliCommandDef = {
         const goesOffThen = daily && alreadyMet ? ` It goes off then if it is still ${alert.condition}.` : "";
         const notes = [
           alert.metric ? unread ? `Not read yet: ${unread.replace(/\.$/, "")}.` : `${metricReadingNote(alert)}${met}.`
-            : checkedPrice != null ? `Last price ${alertPriceWithCurrency(alert, checkedPrice)}${readingSessionWords({ lastQuoteSession: extendedPrintSession(priced?.quote, checkedPrice) ?? undefined })} · ${alertQuoteTime(alert.lastQuoteUpdatedAt)}${met}.` : null,
+            : checkedPrice != null ? `Last price ${alertPriceWithCurrency(alert, checkedPrice)}${readingSessionWords({ lastQuoteSession: extendedPrintSession(priced?.quote, checkedPrice) ?? undefined })} · ${alertQuoteTime(alert.lastQuoteUpdatedAt)}${met}.` : alert.regularHoursOnly ? "Waiting for a regular-hours quote." : null,
           firstCheck ? `First checked on the ${firstCheck.day} ${weekly ? "weekly close" : "close"}, from ${isoUtc(firstCheck.at).slice(11, 16)} UTC.${goesOffThen}`
             : goesOffThen ? `It goes off on the first close it is checked on if it is still ${alert.condition}.` : null,
         ].filter(Boolean).join(" ");
@@ -1431,7 +1457,7 @@ export const alertsCliCommand: CliCommandDef = {
         const delivery = release ? ", only while it is running" : " while it is running, or on your phone with Cloud sync";
         const when = !eventDate ? null : newRelease?.next ? releaseWhen(newRelease.next) : `on ${eventDate}`;
         const reminder = !eventDate
-          ? "the app alerts once the calendar lists its next date, about two weeks ahead"
+          ? scheduled.target.kind === "earnings" ? "waiting for the next earnings date to be published" : "the app alerts once the calendar lists its next date, about two weeks ahead"
           : macroOutAt != null ? `it came out today at ${new Date(macroOutAt).toISOString().slice(11, 16)} UTC, so the app alerts before the next one`
           : due ? "already reached, so the app alerts at its next check" : `the app alerts on ${leadStartDate(eventDate, scheduled.leadDays)}`;
         ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert: rule,
@@ -1439,7 +1465,7 @@ export const alertsCliCommand: CliCommandDef = {
           // Delivery, as docs/usage.md states it: CPI, FOMC and calendar releases notify in the running app only; earnings also reach the phone,
           // which Gloom Cloud alerts with the same results once the actual EPS is stored for a results alert.
           text: (data) => scheduled.trigger === "results"
-            ? `Added alert ${data.alert.id}: ${name} on ${eventDate}, when results are out (the app alerts once the actual EPS is in while it is running, and with Cloud sync your phone gets the same alert).${dryRunNote(data.dryRun)}`
+            ? `Added alert ${data.alert.id}: ${name}${eventDate ? ` on ${eventDate}` : ""}, when results are out (the app alerts once the actual EPS is in while it is running, and with Cloud sync your phone gets the same alert).${eventDate ? "" : " Waiting for the next earnings date to be published."}${dryRunNote(data.dryRun)}`
             : `Added alert ${data.alert.id}: ${name}${when ? ` ${when}` : ""}, ${plural(scheduled.leadDays, "day")} before${prints ? " and when it prints" : ""} (${reminder}${
               prints ? ", and with the actual, forecast and prior once out" : ""}${delivery}).${dryRunNote(data.dryRun)}`,
         });

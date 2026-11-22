@@ -12,12 +12,12 @@ import { ApiRequestError } from "../../../api-client/errors";
 import { Button, ChoiceDialog, EmptyState, PaneStatusBody, SectionHeading, Spinner, usePaneFooter, usePaneMenuItems } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { ExternalLinkText, PaneLinkMenu } from "../../../components/ui";
+import { ClippedText } from "../../../components/ui/display";
 import { t, tf } from "../../../i18n";
 import { colors } from "../../../theme/colors";
 import { Box, ScrollBox, Text, TextAttributes, useRendererHost, useUiCapabilities } from "../../../ui";
 import { useOptionalDialog, type PromptContext } from "../../../ui/dialog";
 import { formatTimeAgo } from "../../../utils/datetime-format";
-import { truncateToDisplayWidth } from "../../../utils/format";
 import { ProWall, SignInWall } from "../cloud/auth-actions";
 import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { usePlanAccess } from "../../../api-client/plan-access";
@@ -339,6 +339,7 @@ function CoverageSection({ coverage, width }: {
   coverage: CloudEquityDiagnosticCoverage[];
   width: number;
 }) {
+  const { nativePaneChrome } = useUiCapabilities();
   if (coverage.length === 0) return null;
   const detailWidth = Math.max(12, width - COVERAGE_LABEL_WIDTH);
 
@@ -355,10 +356,9 @@ function CoverageSection({ coverage, width }: {
           .join(" · ");
         return (
           <Box key={`${entry.dataset}:${entry.status}`} flexDirection="row" width={width}>
-            <Box width={COVERAGE_LABEL_WIDTH} flexShrink={0}>
-              <Text fg={colors.textDim}>
-                {truncateToDisplayWidth(datasetLabel(entry.dataset), COVERAGE_LABEL_WIDTH - 1)}
-              </Text>
+            {/* The terminal leaves the label's last cell as the gap; the desktop pads it and cuts the label in CSS. */}
+            <Box width={COVERAGE_LABEL_WIDTH} flexShrink={0} {...(nativePaneChrome ? { paddingRight: 1 } : {})}>
+              <ClippedText fg={colors.textDim} text={datasetLabel(entry.dataset)} width={COVERAGE_LABEL_WIDTH - 1} />
             </Box>
             <Box flexDirection="column" flexGrow={1} minWidth={0}>
               <Paragraph text={detail} width={detailWidth} color={coverageColor(entry.status)} />

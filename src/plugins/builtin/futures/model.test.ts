@@ -13,6 +13,7 @@ import {
   effectiveCollapsedSectors,
   futuresContractHeadline,
   futuresContractName,
+  futuresSessionQuote,
   futuresUnitLabel,
   type FuturesColumnId,
   type FuturesTableRow,
@@ -162,6 +163,18 @@ test("VIX futures are the board's Volatility group, VX1 and VX2 by symbol, named
   // A quote whose name carries no month is placed by the contract terms.
   expect(futuresContractHeadline(contracts[1]!, { ...quotes.get("VX2")!.quote!, name: "VIX Futures 2nd generic" }, { deliveryMonth: "2026-12" }).text)
     .toBe("VIX Futures Dec 2026");
+});
+
+test("a VIX generic quoted at Cboe's settlement takes its session from the clock VX trades on", () => {
+  const [vx1] = buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, EMPTY_QUOTES, { query: "VX1" })
+    .flatMap((row) => row.type === "row" ? [row.contract] : []);
+  const settled = { symbol: "VX1", price: 28.4582, futuresPriceKind: "settlement" } as Quote;
+  // Sunday morning, Monday mid-session, Monday in the 16:00 to 17:00 Central halt, and Monday evening after the reopen.
+  const states = ["2026-11-22T06:30:00Z", "2026-11-23T16:00:00Z", "2026-11-23T22:30:00Z", "2026-11-23T23:30:00Z"]
+    .map((at) => futuresSessionQuote(vx1!, settled, Date.parse(at))?.marketState);
+  expect(states).toEqual(["CLOSED", "REGULAR", "CLOSED", "REGULAR"]);
+  // Thanksgiving's hours vary by contract: no state is claimed for it.
+  expect(futuresSessionQuote(vx1!, settled, Date.parse("2026-11-26T16:00:00Z"))?.marketState).toBeUndefined();
 });
 
 describe("buildFuturesRows collapse", () => {

@@ -7,10 +7,11 @@ import { createSnapshotScannerClient, ScannerClientContext } from "../../../plug
 import type { TapeSnapshot } from "../../../api-client/tape";
 import { AppProvider, useAppDispatch } from "../../../state/app/context";
 import { createCliPaneShotConnectionHealth } from "./cli-pane-shot-health";
-import { changedThePage, SHOT_MUTATION_OPTIONS } from "./cli-pane-shot-mutations";
+import { changedThePage, createShotStabilityCheck, SHOT_MUTATION_OPTIONS } from "./cli-pane-shot-mutations";
 import { ChartSnapshotContext } from "../../../time-series/hooks";
 import { decodeRpcValue } from "../shared/rpc-codec";
 import { createSnapshotDataProvider } from "../../../market-data/snapshot-provider";
+import { TickerSnapshotLoadTracker } from "../../../market-data/hooks";
 import { createAppRuntime } from "../../../core/app-runtime";
 import { JsonPersistence } from "../../../data/json-persistence";
 import { JsonTickerRepository } from "../../../data/json-ticker-repository";
@@ -85,10 +86,6 @@ declare global {
   }
 }
 
-// Effects that request pane data start after the first paint. Waiting only two
-// frames can capture the shell before those requests register, leaving a
-// loading chart or stale performance table in an otherwise valid PNG.
-const SHOT_READY_STABLE_FRAMES = 10;
 // Loading is detected from an explicit marker rendered by Spinner and
 // PaneStatusBody. Matching on body text instead made any pane whose real
 // content contains the word "loading" (a changelog release note, a news
@@ -129,9 +126,18 @@ function updatePendingShotWork(next: number): void {
   window.__GLOOM_CLI_SHOT_PENDING__ = pendingShotWork;
 }
 
-function trackShotWork<T>(promise: Promise<T>): Promise<T> {
+function beginShotWork(): () => void {
   updatePendingShotWork(pendingShotWork + 1);
-  return promise.finally(() => updatePendingShotWork(pendingShotWork - 1));
+  let pending = true;
+  return () => {
+    if (!pending) return;
+    pending = false;
+    updatePendingShotWork(pendingShotWork - 1);
+  };
+}
+
+function trackShotWork<T>(promise: Promise<T>): Promise<T> {
+  return promise.finally(beginShotWork());
 }
 
 function wrapTrackedResponse(response: Response): Response {
@@ -289,33 +295,28 @@ function hasUnresolvedChartData(): boolean {
   ));
 }
 
-function waitForShotReadiness(): () => void {
+function waitForShotReadiness(readTickerReport = false): () => void {
   let cancelled = false;
   let mutationVersion = 0;
   let lastSeenMutationVersion = 0;
-  let stableFrames = 0;
+  const stable = createShotStabilityCheck(readTickerReport);
   const observer = new MutationObserver((records) => {
     if (changedThePage(records)) mutationVersion += 1;
   });
   observer.observe(document.body, SHOT_MUTATION_OPTIONS);
 
-  const check = () => {
+  const check = (now: number) => {
     if (cancelled || window.__GLOOM_CLI_SHOT_READY__) return;
     const changedSinceLastFrame = mutationVersion !== lastSeenMutationVersion;
     lastSeenMutationVersion = mutationVersion;
-    if (
+    if (stable(now,
       pendingShotWork === 0
       && !isShotLoadingTextVisible()
       && !hasUnresolvedChartData()
       && !hasUndrawnSurface()
       && !changedSinceLastFrame
-    ) {
-      stableFrames += 1;
-    } else {
-      stableFrames = 0;
-    }
-
-    if (stableFrames >= SHOT_READY_STABLE_FRAMES) {
+      && (!readTickerReport || document.fonts.status === "loaded"),
+    )) {
       observer.disconnect();
       window.__GLOOM_CLI_SHOT_READY__ = true;
       return;
@@ -421,11 +422,13 @@ function createShotDataProvider(payload: DesktopPaneShotPayload): DataProvider {
 
 function createShotAppServices(payload: DesktopPaneShotPayload, externalPlugins: LoadedExternalPlugin[]) {
   const dataProvider = createShotDataProvider(payload);
+  const persistence = new JsonPersistence();
+  for (const { pluginId, key, value } of payload.deviceState ?? []) persistence.pluginState.set(pluginId, key, value);
   return createAppRuntime({
     config: payload.config,
     plugins: getLoadablePlugins(externalPlugins),
     dataProvider,
-    persistence: new JsonPersistence(),
+    persistence,
     tickerRepository: new JsonTickerRepository(undefined, payload.tickers),
     registryOptions: {
       enableCapabilityHandlers: false,
@@ -479,7 +482,7 @@ function HydratePayload({
     }
     dispatch({ type: "SET_INITIALIZED" });
 
-    return waitForShotReadiness();
+    return waitForShotReadiness(payload.readTickerReport);
   }, [dispatch, payload]);
 
   return children;
@@ -587,7 +590,9 @@ async function render() {
             }}>
               <HydratePayload payload={payload}>
                 <ChartSnapshotContext.Provider value={payload.chartModel ?? null}>
-                  <ShotPane payload={payload} registry={services.pluginRegistry} />
+                  <TickerSnapshotLoadTracker.Provider value={payload.readTickerReport ? beginShotWork : null}>
+                    <ShotPane payload={payload} registry={services.pluginRegistry} />
+                  </TickerSnapshotLoadTracker.Provider>
                 </ChartSnapshotContext.Provider>
               </HydratePayload>
             </AppProvider>

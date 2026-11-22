@@ -6,8 +6,8 @@ import { type PromptContext, useDialogKeyboard } from "../ui/dialog";
 import type { Quote } from "../types/financials";
 import { colors } from "../theme/colors";
 import { formatMarketPrice } from "../market-data/market/format";
+import { formatQuoteBookTime } from "../market-data/quotes/time";
 import { DialogFrame, ListView, NumberField } from "./ui";
-import { padTo } from "../utils/format";
 import { matchesNavigationKey, useKeybindings } from "../app/keybindings";
 
 interface PricePreset {
@@ -67,6 +67,8 @@ function formatMarketContext(quote: Quote | undefined, assetCategory?: string): 
   if (quote.bid != null && quote.ask != null) {
     parts.push(`Spd ${formatMarketPrice(quote.ask - quote.bid, { assetCategory })}`);
   }
+  const bookTime = formatQuoteBookTime(quote);
+  if (bookTime) parts.push(`Book ${bookTime}`);
   return parts.join(" · ");
 }
 
@@ -132,6 +134,7 @@ export function PriceSelectorDialog({
     }
   }, { scope: dialogId, allowEditable: true });
 
+  // The preset names are short and fixed (Prev Close is the longest): padded, never cut.
   const presetWidth = 12;
 
   return (
@@ -181,7 +184,7 @@ export function PriceSelectorDialog({
                       {state.selected ? "▸ " : "  "}
                     </Text>
                     <Text fg={state.selected ? colors.text : colors.textDim} attributes={state.selected ? TextAttributes.BOLD : 0}>
-                      {padTo(item.label, presetWidth)}
+                      {item.label.padEnd(presetWidth)}
                     </Text>
                     <Text fg={state.selected ? colors.text : colors.textMuted}>
                       {preset ? formatMarketPrice(preset.value, { assetCategory }) : ""}

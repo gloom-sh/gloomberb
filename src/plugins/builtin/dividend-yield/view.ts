@@ -1,5 +1,5 @@
 import type { DividendMetrics, DividendPayment, GrowthPayments } from "./types";
-import { MISSING_VALUE, formatCurrency, formatDistributionAmount } from "../../../utils/format";
+import { MISSING_VALUE, formatDistributionAmount } from "../../../utils/format";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import { calendarMonthsBefore } from "../../../utils/calendar-date";
@@ -9,12 +9,13 @@ import { CADENCE_GRACE_DAYS, LATE_GRACE_DAYS, trailingCashAt, type TrailingPayme
 
 const DAY = 24 * 60 * 60 * 1000;
 
+/** An amount converted from the currency the company declares in, in the unit its history is in (pence for a London line), as any distribution is written. */
 export function formatConvertedAmount(value: number | null | undefined, currency: string, subUnit?: string): string {
   if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   const unit = subUnit ? resolveCurrencyUnit(subUnit) : null;
   return unit && unit.divisor !== 1 && unit.currency === currency
-    ? formatCurrency(value * unit.divisor, subUnit!, 6)
-    : formatCurrency(value, currency, 8);
+    ? formatDistributionAmount(value * unit.divisor, subUnit!)
+    : formatDistributionAmount(value, currency);
 }
 
 export function formatDividendRowAmount(row: Pick<DividendRow, "amount" | "currency" | "cashEstimate" | "combined">, converted = false, subUnit?: string): string {
@@ -31,10 +32,26 @@ export function forwardEstimateText(metrics: DividendMetrics): string | null {
   return `${metrics.forwardBasis === "uneven" ? `${UNEVEN_REGULAR_PAYMENTS}; ` : ""}${cashEstimateText(estimate)}`;
 }
 
-export function cashEstimateText(estimate: NonNullable<DividendMetrics["forwardEstimate"]>): string {
+function cashEstimateText(estimate: NonNullable<DividendMetrics["forwardEstimate"]>): string {
   const declared = estimate.declaredAmount == null ? estimate.declaredCurrency : `${estimate.declaredAmount} ${estimate.declaredCurrency}/share`;
   return `estimated from ${declared}; FX ${estimate.fixingDate ? `fixing ${estimate.fixingDate}` : "fixing unavailable"}${estimate.basis ? `; ${estimate.basis}` : ""}`;
 }
+
+/**
+ * What an estimated figure is estimated from, as a report says it once beside the figures it marks: `$0.10 declared,
+ * FX fixing 2026-12-07`, the declared amount in the distribution's own formatting, `FX fixing unavailable` while
+ * no fixing is known. Each distinct estimate is named once, whichever figures it marks.
+ */
+export function distinctEstimateTexts(estimates: readonly NonNullable<DividendMetrics["forwardEstimate"]>[]): string[] {
+  return [...new Set(estimates.map((estimate) => {
+    const declared = estimate.declaredAmount == null ? `declared in ${estimate.declaredCurrency}`
+      : `${formatDistributionAmount(estimate.declaredAmount, estimate.declaredCurrency)} declared`;
+    return `${declared}, FX ${estimate.fixingDate ? `fixing ${estimate.fixingDate}` : "fixing unavailable"}`;
+  }))];
+}
+
+/** What a date stated by the company's other listing says beside it: `(from HSBA:LSE)`. */
+export const carriedDateText = (listing: string) => `(from ${listing})`;
 
 /** What a converted amount says beside it: `converted from USD`. */
 export const convertedFromText = (currency: string) => `converted from ${currency}`;
@@ -42,6 +59,9 @@ export const convertedFromText = (currency: string) => `converted from ${currenc
 export function formatDividendYield(value: number | null): string {
   return value != null && Number.isFinite(value) ? `${(value * 100).toFixed(2)}%` : MISSING_VALUE;
 }
+
+/** What the payout ratio is over, as the source states it: trailing twelve-month dividends over this. */
+export const PAYOUT_BASIS = "TTM diluted EPS";
 
 /** A payout over zero or negative earnings, written as a P/E over a loss is. */
 export const PAYOUT_NOT_MEANINGFUL = formatPriceEarnings(NOT_MEANINGFUL);

@@ -154,6 +154,28 @@ async function renderHandoff(open: (url: string) => Promise<boolean | void>): Pr
   return upgrade;
 }
 
+test("the browser opens the checkout's short link when the server sends one, and Stripe's page when it sends none", async () => {
+  let link: string | undefined = LINK;
+  apiClient.createCloudCheckout = (async () => {
+    checkouts += 1;
+    return { url: "https://checkout.example/session", ...(link ? { link } : {}) };
+  }) as typeof apiClient.createCloudCheckout;
+  const upgrade = await renderUpgradeAction();
+
+  await act(async () => {
+    await upgrade({ sheet: false });
+  });
+  expect(opened).toEqual([LINK]);
+
+  resetCloudUpgradeGuardForTests();
+  link = undefined;
+  await act(async () => {
+    await upgrade({ sheet: false });
+  });
+  expect(opened).toEqual([LINK, "https://checkout.example/session"]);
+  expect(checkouts).toBe(2);
+});
+
 test("checkout opens under the hand-off, which reopens the same checkout and closes once Pro arrives", async () => {
   // A terminal over SSH: the opener takes its time, then nothing opened.
   const firstOpen = Promise.withResolvers<boolean>();
@@ -172,11 +194,12 @@ test("checkout opens under the hand-off, which reopens the same checkout and clo
   });
   await tui.waitForFrameToContain("No browser opens from here.");
 
-  // The browser button opens the same checkout again, not a second one.
+  // The browser button opens the same checkout again, not a second one, and
+  // both go through the short link, as the QR code does.
   await act(async () => {
     await tui.emitKeypress({ name: "b", sequence: "b" });
   });
-  expect(opened).toEqual(["https://checkout.example/session", "https://checkout.example/session"]);
+  expect(opened).toEqual([LINK, LINK]);
   expect(checkouts).toBe(1);
 
   await act(async () => {
@@ -228,11 +251,14 @@ test("while checkout is open the account is read again, one read at a time, unti
   }
 });
 
-test("signed out, an upgrade opens the sign-up dialog, not a browser page a terminal may never show, and counts one press", async () => {
+test("signed out, an upgrade opens the Pro sheet in the app, not a browser page a terminal may never show, and counts one press", async () => {
   // Over SSH, `$` and the menu's "Upgrade to Pro" opened the Cloud page in no browser and seemed to do nothing.
+  // A bare sign-up form in its place said nothing of Pro, its price or the trial.
   apiClient.setSessionToken(null);
   apiClient.restoreCachedUser(null);
   const intents = spyOn(researchActivity, "recordResearchActivity").mockImplementation(() => {});
+  const pricing = spyOn(apiClient, "getCloudPricing").mockRejectedValue(new Error("Fixture has no pricing"));
+  const plan = spyOn(apiClient, "getCloudAccountPlan").mockRejectedValue(new Error("Signed out"));
   try {
     let upgrade!: (options?: unknown) => Promise<void>;
     function Footer() {
@@ -243,13 +269,20 @@ test("signed out, an upgrade opens the sign-up dialog, not a browser page a term
       return <AuthDialogHost />;
     }
     await tui.render(<Footer />, { width: 90, height: 30 });
-    await act(async () => {
-      await upgrade();
+    act(() => {
+      void upgrade();
     });
-    await tui.waitForFrameToContain("Create your free Gloom Cloud account");
+    await tui.waitForFrameToContain("New accounts get Pro free for 7 days, then $70/mo.");
+    const sheet = tui.frame();
+    expect(sheet).toContain("One better trade pays for Pro");
+    expect(sheet).toContain("Start free trial");
+    expect(sheet).toContain("Sign up free");
+    // Nothing about an account yet, and nobody is asked for one.
+    expect(sheet).not.toContain("Create your free Gloom Cloud account");
+    expect(plan).not.toHaveBeenCalled();
     expect(opened).toEqual([]);
     expect(intents.mock.calls.filter(([event]) => event === "upgrade_intent")).toHaveLength(1);
-    // Another press while the dialog is up asks for nothing new and counts nothing.
+    // Another press while the sheet is up asks for nothing new and counts nothing.
     await act(async () => {
       await upgrade();
     });
@@ -257,6 +290,8 @@ test("signed out, an upgrade opens the sign-up dialog, not a browser page a term
     await tui.destroy();
   } finally {
     intents.mockRestore();
+    pricing.mockRestore();
+    plan.mockRestore();
   }
 
   // With no dialog host to ask, the Cloud page is still where it goes.
@@ -268,19 +303,93 @@ test("signed out, an upgrade opens the sign-up dialog, not a browser page a term
   expect(opened[0]).toContain("gloom.sh/cloud");
 });
 
-test("once signed in from the sign-up dialog, a new account gets the upgrade sheet and a Pro login nothing", async () => {
+/** Signed out with the sheet up, as a press on any upgrade prompt leaves it; `requests` takes what the sheet asks for next. */
+async function openSignedOutSheet(requests: AuthDialogRequest[]): Promise<() => void> {
+  apiClient.setSessionToken(null);
+  apiClient.restoreCachedUser(null);
+  const upgrade = await renderUpgradeAction();
+  const release = interceptAuthDialogForTests((request) => requests.push(request));
+  act(() => {
+    void upgrade();
+  });
+  await tui.waitForFrameToContain("Start free trial");
+  return release;
+}
+
+test("the signed-out sheet's trial button asks for the account and its other button only signs up", async () => {
+  const pricing = spyOn(apiClient, "getCloudPricing").mockRejectedValue(new Error("Fixture has no pricing"));
+  const requests: AuthDialogRequest[] = [];
+  let release = () => {};
+  try {
+    release = await openSignedOutSheet(requests);
+    expect(requests).toEqual([]);
+    await act(async () => {
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
+    });
+    await tui.renderFrames(2);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({ mode: "signup", checkout: true, reason: "First an account, then Pro." });
+    expect(requests[0]!.onSignedIn).toBeFunction();
+    release();
+    await tui.destroy();
+
+    release = await openSignedOutSheet(requests);
+    await tui.clickFrameText("Sign up free");
+    await tui.renderFrames(2);
+    // A plain sign-up: nothing goes on after it, and it is asked where it heard of Gloom like any other.
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toEqual({ mode: "signup" });
+    release();
+    await tui.destroy();
+
+    // Its key does the same for a keyboard.
+    release = await openSignedOutSheet(requests);
+    await act(async () => {
+      tui.setup().mockInput.pressKey("f");
+      await tui.setup().renderOnce();
+    });
+    await tui.renderFrames(2);
+    expect(requests).toHaveLength(3);
+    expect(requests[2]).toEqual({ mode: "signup" });
+    release();
+    await tui.destroy();
+
+    // Closed, it asks for nothing.
+    release = await openSignedOutSheet(requests);
+    await act(async () => {
+      tui.setup().mockInput.pressEscape();
+      await tui.setup().renderOnce();
+    });
+    await tui.renderFrames(2);
+    expect(requests).toHaveLength(3);
+    expect(checkouts).toBe(0);
+  } finally {
+    release();
+    pricing.mockRestore();
+  }
+});
+
+test("once signed in from the sheet, an account without Pro reads its own terms on the interval it chose, and a Pro login gets nothing", async () => {
   const pricing = spyOn(apiClient, "getCloudPricing").mockRejectedValue(new Error("Fixture has no pricing"));
   const portal = spyOn(apiClient, "createBillingPortal").mockResolvedValue({ url: "https://portal.example/session" } as never);
+  const plan = spyOn(apiClient, "getCloudAccountPlan");
   const requests: AuthDialogRequest[] = [];
-  const release = interceptAuthDialogForTests((request) => requests.push(request));
+  let release = () => {};
   try {
-    const signIn = async (user: Parameters<typeof apiClient.restoreCachedUser>[0] & object) => {
-      apiClient.setSessionToken(null);
-      apiClient.restoreCachedUser(null);
-      const upgrade = await renderUpgradeAction();
+    const signIn = async (user: Parameters<typeof apiClient.restoreCachedUser>[0] & object, trialAvailable: boolean) => {
+      plan.mockResolvedValue({ effectivePlan: user.plan, trialAvailable, paymentFailed: false } as never);
+      release = await openSignedOutSheet(requests);
+      // Yearly, then the trial.
       await act(async () => {
-        await upgrade();
+        tui.setup().mockInput.pressArrow("right");
+        await tui.setup().renderOnce();
       });
+      await act(async () => {
+        tui.setup().mockInput.pressEnter();
+        await tui.setup().renderOnce();
+      });
+      await tui.renderFrames(2);
       expect(requests.at(-1)?.mode).toBe("signup");
       apiClient.setSessionToken("cloud-upgrade-session");
       apiClient.restoreCachedUser(user);
@@ -289,11 +398,23 @@ test("once signed in from the sign-up dialog, a new account gets the upgrade she
         await new Promise((resolve) => setTimeout(resolve, 20));
       });
     };
-    await signIn({ id: "user-new", email: "new@example.com", emailVerified: true, plan: "free" });
-    await tui.waitForFrameToContain("One better trade pays for Pro");
+
+    // A new account: what today costs and the day of the first charge, which the signed-out sheet could not say.
+    await signIn({ id: "user-new", email: "new@example.com", emailVerified: true, plan: "free" }, true);
+    await tui.waitForFrameToContain("$0 today, then $630/yr from");
+    expect(tui.frame()).toContain("Not now");
+    expect(tui.frame()).not.toContain("New accounts get");
+    release();
     await tui.destroy();
 
-    await signIn({ id: "user-pro", email: "pro@example.com", emailVerified: true, plan: "pro" });
+    // An account that used its trial would be billed today, and reads that before any checkout opens.
+    await signIn({ id: "user-back", email: "back@example.com", emailVerified: true, plan: "free" }, false);
+    await tui.waitForFrameToContain("$630/yr, billed today.");
+    expect(tui.frame()).toContain("Continue to checkout");
+    release();
+    await tui.destroy();
+
+    await signIn({ id: "user-pro", email: "pro@example.com", emailVerified: true, plan: "pro" }, false);
     await tui.renderFrames(2);
     expect(tui.frame()).not.toContain("One better trade pays for Pro");
     expect(opened).toEqual([]);
@@ -303,6 +424,7 @@ test("once signed in from the sign-up dialog, a new account gets the upgrade she
     release();
     pricing.mockRestore();
     portal.mockRestore();
+    plan.mockRestore();
   }
 });
 
