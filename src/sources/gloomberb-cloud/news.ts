@@ -2,7 +2,7 @@ import { normalizeNewsFeed } from "../../news/news-model";
 import { readableNewsSource } from "../../news/source-label";
 import { collectNewsDisplayTickers } from "../../news/ticker-symbols";
 import type { NewsAccess, NewsArticle, NewsQuery, NewsStoryItem } from "../../types/news-source";
-import type { NewsInsiderFiling } from "../../news/types";
+import type { NewsInsiderFiling, NewsStoryTimes } from "../../news/types";
 import { CLOUD_NEWS_DELAY_HOURS } from "../../api-client/plan-rules";
 import type {
   apiClient,
@@ -124,12 +124,24 @@ function routineNotices(payload: CloudNewsPayload["routine"]): NewsArticle["rout
   return { kind: payload.kind, notices: payload.notices, since, programme: payload.programme ?? null };
 }
 
+/** The story's times as sent, each one that reads as an instant. */
+function storyTimes(item: CloudNewsPayload): NewsStoryTimes {
+  const times: NewsStoryTimes = {};
+  for (const key of ["firstPublishedAt", "lastPublishedAt", "firstSeenAt", "lastSeenAt"] as const) {
+    const value = item[key];
+    if (typeof value === "string" && Number.isFinite(Date.parse(value))) times[key] = value;
+  }
+  return times;
+}
+
 export function mapCloudNewsArticle(
   item: CloudNewsPayload,
   fallbackTicker?: string,
 ): NewsArticle {
+  // A story is dated by its first publication: a later report it gathers (a
+  // paper's copy hours on) is its latest, never when it broke.
   const publishedAt = new Date(
-    item.lastPublishedAt || item.firstPublishedAt || item.lastSeenAt,
+    item.firstPublishedAt || item.lastPublishedAt || item.firstSeenAt || item.lastSeenAt,
   );
   const topic = item.topic ?? item.category ?? "general";
   const topics = uniqueStrings([topic, ...normalizeStringArray(item.topics)]);
@@ -153,6 +165,7 @@ export function mapCloudNewsArticle(
       || primaryItem?.sourceName
       || readableNewsSource(item.primarySource),
     publishedAt: Number.isNaN(publishedAt.getTime()) ? new Date(0) : publishedAt,
+    times: storyTimes(item),
     summary: item.summary,
     topic,
     topics,
