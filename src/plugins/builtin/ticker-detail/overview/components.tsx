@@ -6,7 +6,7 @@ import { colors, hoverBg, priceColor } from "../../../../theme/colors";
 import type { Quote } from "../../../../types/financials";
 import { formatQuoteBookTime, QUOTE_BOOK_UNDATED } from "../../../../market-data/quotes/time";
 import { Box, Text, useUiCapabilities } from "../../../../ui";
-import { MISSING_VALUE, displayWidth, formatNumber, truncateToDisplayWidth } from "../../../../utils/format";
+import { MISSING_VALUE, displayWidth, formatTradeSize, truncateToDisplayWidth } from "../../../../utils/format";
 import type { OverviewFunctionLink, PositionTableRow, StatField } from "./types";
 import { portfolioPnlLabel } from "../../../../portfolio/position-metrics";
 
@@ -215,8 +215,9 @@ export function QuoteBook({ quote, assetCategory, width, desktopWidth }: {
   const priceOptions = liveQuoteFormatOptions(quote, quote.currency, assetCategory);
   const bidPrice = quote.bid != null ? formatMarketPriceWithCurrency(quote.bid, quote.currency, priceOptions) : MISSING_VALUE;
   const askPrice = quote.ask != null ? formatMarketPriceWithCurrency(quote.ask, quote.currency, priceOptions) : MISSING_VALUE;
-  const bidText = quote.bidSize != null && quote.bidSize > 0 ? `${formatNumber(quote.bidSize, 0)} x ${bidPrice}` : bidPrice;
-  const askText = quote.askSize != null && quote.askSize > 0 ? `${formatNumber(quote.askSize, 0)} x ${askPrice}` : askPrice;
+  // A coin's book is sized in fractions (0.0412 x $61,606.17), which whole-share rounding would show as 0.
+  const bidText = quote.bidSize != null && quote.bidSize > 0 ? `${formatTradeSize(quote.bidSize)} x ${bidPrice}` : bidPrice;
+  const askText = quote.askSize != null && quote.askSize > 0 ? `${formatTradeSize(quote.askSize)} x ${askPrice}` : askPrice;
   let spreadText = MISSING_VALUE;
   // A crossed book (a closing auction's last bid above its ask, Tencent's HK$430.80 / HK$430.40) has no spread to show.
   if (quote.bid != null && quote.ask != null && quote.ask >= quote.bid) {

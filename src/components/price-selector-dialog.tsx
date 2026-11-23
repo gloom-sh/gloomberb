@@ -6,6 +6,7 @@ import { type PromptContext, useDialogKeyboard } from "../ui/dialog";
 import type { Quote } from "../types/financials";
 import { colors } from "../theme/colors";
 import { formatMarketPrice } from "../market-data/market/format";
+import { formatTradeSize } from "../utils/format";
 import { formatQuoteBookTime } from "../market-data/quotes/time";
 import { DialogFrame, ListView, NumberField } from "./ui";
 import { matchesNavigationKey, useKeybindings } from "../app/keybindings";
@@ -27,10 +28,10 @@ function buildPresets(quote: Quote | undefined): PricePreset[] {
   if (!quote) return [];
   const presets: PricePreset[] = [];
   if (quote.bid != null && quote.bid > 0) {
-    presets.push({ label: "Bid", value: quote.bid, detail: quote.bidSize != null ? `× ${quote.bidSize}` : undefined });
+    presets.push({ label: "Bid", value: quote.bid, detail: quote.bidSize != null ? `× ${formatTradeSize(quote.bidSize)}` : undefined });
   }
   if (quote.ask != null && quote.ask > 0) {
-    presets.push({ label: "Ask", value: quote.ask, detail: quote.askSize != null ? `× ${quote.askSize}` : undefined });
+    presets.push({ label: "Ask", value: quote.ask, detail: quote.askSize != null ? `× ${formatTradeSize(quote.askSize)}` : undefined });
   }
   if (quote.price > 0) {
     presets.push({ label: "Last", value: quote.price });
@@ -56,12 +57,12 @@ function formatMarketContext(quote: Quote | undefined, assetCategory?: string): 
   parts.push(`Last ${formatMarketPrice(quote.price, { assetCategory })}`);
   if (quote.bid != null) {
     const bidValue = formatMarketPrice(quote.bid, { assetCategory });
-    const bidStr = quote.bidSize != null ? `Bid ${bidValue} × ${quote.bidSize}` : `Bid ${bidValue}`;
+    const bidStr = quote.bidSize != null ? `Bid ${bidValue} × ${formatTradeSize(quote.bidSize)}` : `Bid ${bidValue}`;
     parts.push(bidStr);
   }
   if (quote.ask != null) {
     const askValue = formatMarketPrice(quote.ask, { assetCategory });
-    const askStr = quote.askSize != null ? `Ask ${askValue} × ${quote.askSize}` : `Ask ${askValue}`;
+    const askStr = quote.askSize != null ? `Ask ${askValue} × ${formatTradeSize(quote.askSize)}` : `Ask ${askValue}`;
     parts.push(askStr);
   }
   if (quote.bid != null && quote.ask != null) {

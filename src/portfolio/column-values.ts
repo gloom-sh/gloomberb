@@ -13,7 +13,7 @@ import { colors, priceColor, shownPriceColor } from "../theme/colors";
 import { formatQuoteAgeWithSource, QUOTE_BOOK_UNDATED, resolveQuoteAgeTimestamp } from "../market-data/quotes/time";
 import { delistingStateLabel } from "../market-data/quotes/delisting";
 import { formatFeedTime, formatShortDate, parseDisplayDate, type ShortDateOptions } from "../utils/datetime-format";
-import { MISSING_VALUE, convertCurrency, formatCompact, formatCompactAmount, formatNumber, formatPercentRaw } from "../utils/format";
+import { MISSING_VALUE, convertCurrency, formatCompact, formatCompactAmount, formatNumber, formatPercentRaw, formatTradeSize } from "../utils/format";
 import {
   formatMarketCost,
   quoteFormatOptions,
@@ -713,7 +713,7 @@ export function getColumnValue(
     }
     case "bid_ask_size": {
       if (!isFiniteNumber(quote?.bidSize) && !isFiniteNumber(quote?.askSize)) return { text: MISSING_VALUE };
-      return { text: `${formatCompact(quote?.bidSize)}/${formatCompact(quote?.askSize)}` };
+      return { text: `${formatTradeSize(quote?.bidSize, { compact: true })}/${formatTradeSize(quote?.askSize, { compact: true })}` };
     }
     case "book_time": {
       if (quote?.bid == null && quote?.ask == null) return { text: MISSING_VALUE };

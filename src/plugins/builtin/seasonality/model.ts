@@ -1,3 +1,4 @@
+import { barPeriodToDate } from "../../../market-data/market/bar-period";
 import { latestRegularSessionClose } from "../../../market-data/market/freshness";
 import { listingSuffixExchange, tickerHasListingSuffix } from "../../../sources/listing-symbols";
 import { calendarBarStart } from "../../../time-series/chart-data";
@@ -14,7 +15,7 @@ interface SeasonalityYear {
   months: (number | null)[];
   /** Prior year-end close to the year's last close; null for the first year of history. */
   total: number | null;
-  /** The year still running: its last month is return to date. */
+  /** The year still running: its last month is return to date, or its next one has no close yet. */
   partial: boolean;
 }
 
@@ -40,6 +41,14 @@ export interface SeasonalityModel {
   /** Mean of the completed years' paths at each month-end every one of them reached. */
   averagePath: SeasonalityPathPoint[];
   asOf: Date | null;
+  /**
+   * The session whose close the newest month runs to, "YYYY-MM-DD", when the
+   * model was given one (`SettledClose`): a monthly bar is dated by its
+   * month's first day, which names no close. Null without one.
+   */
+  closeDay: string | null;
+  /** The month still running (0 for January), whose return is to date; null once the newest month has ended. */
+  runningMonth: number | null;
   /**
    * The first month on record ("2000-08") when the lookback reaches before
    * it: a 30-year lookback on NG=F, whose history starts in 2000, covers the
@@ -68,12 +77,33 @@ function medianGapDays(points: readonly { date: Date }[]): number {
 }
 
 /**
+ * The latest session close that had settled when daily bars were read, which
+ * the running month and the year to date run to (`projectSeasonality`).
+ */
+export interface SettledClose {
+  /** The session's date at its venue, "YYYY-MM-DD". */
+  day: string;
+  close: number;
+  /** Whether the session's month had no session still to come when the bars were read. */
+  monthEnded: boolean;
+}
+
+/**
  * Takes the last close in each UTC calendar month, so monthly, weekly and
  * daily bars give the same months. A month's return runs from the previous month's last
  * close to its own, so a month is only returned when the month before it is in
  * the history too.
+ *
+ * With `lastClose`, the newest month runs to that session's close and is named
+ * by it: a running month's bar can hold the latest price or a close days old,
+ * and its date, the month's first day, says neither. A month after it has no
+ * close yet and is left out. A close older than the month before the bars'
+ * newest is a stale read, and the bars keep their own months.
  */
-export function projectSeasonality(history: readonly PricePoint[], options: { symbol: string; lookbackYears: number }): SeasonalityModel {
+export function projectSeasonality(
+  history: readonly PricePoint[],
+  options: { symbol: string; lookbackYears: number; lastClose?: SettledClose | null },
+): SeasonalityModel {
   // Cached history can come back with ISO strings for dates.
   const sorted = history
     .map((point) => ({ date: new Date(point.date), close: point.close }))
@@ -82,19 +112,26 @@ export function projectSeasonality(history: readonly PricePoint[], options: { sy
   // A weekly bar is stamped on its Monday but closes on its Friday: file the
   // close under the Friday, or the week that opens a month lands in the month before.
   // ponytail: cadence read from the median gap; a series mixing cadences takes the majority.
-  const points = medianGapDays(sorted) >= 5 && medianGapDays(sorted) <= 9
+  const served = medianGapDays(sorted) >= 5 && medianGapDays(sorted) <= 9
     ? sorted.map((point) => ({ ...point, date: new Date(point.date.getTime() + 4 * DAY_MS) })) : sorted;
+  const lastClose = usableLastClose(served, options.lastClose);
+  const points = lastClose ? [...served.filter((point) => monthKeyOf(point.date) < monthKeyOf(lastClose.date)), lastClose] : served;
   const last = points.at(-1);
-  if (!last) return { symbol: options.symbol, years: [], months: [], paths: [], averagePath: [], asOf: null, historyStart: null };
+  if (!last) {
+    return { symbol: options.symbol, years: [], months: [], paths: [], averagePath: [], asOf: null, closeDay: null, runningMonth: null, historyStart: null };
+  }
 
   const monthEnd = new Map<number, number>();
   for (const point of points) monthEnd.set(monthKey(point.date.getUTCFullYear(), point.date.getUTCMonth()), point.close);
 
   const lastYear = last.date.getUTCFullYear();
-  // The month of the last bar is still running unless it is December: monthly
-  // bars are stamped at the month's start, so their date cannot say more.
-  const complete = last.date.getUTCMonth() === 11;
-  const runningMonthKey = complete ? null : monthKey(lastYear, last.date.getUTCMonth());
+  const lastIsDecember = last.date.getUTCMonth() === 11;
+  // A settled close says whether its month has ended. Without one, the month of the last bar is still running
+  // unless it is December: monthly bars are stamped at the month's start, so their date cannot say more.
+  const monthRunning = lastClose ? !lastClose.monthEnded : !lastIsDecember;
+  const runningMonthKey = monthRunning ? monthKeyOf(last.date) : null;
+  // The year runs on while its last month does, and after any month but December.
+  const yearRunning = monthRunning || !lastIsDecember;
   const askedFirstYear = lastYear - Math.max(1, options.lookbackYears) + 1;
   const firstYear = Math.max(points[0]!.date.getUTCFullYear(), askedFirstYear);
   // The asked-for first year's January needs the December before it.
@@ -111,14 +148,14 @@ export function projectSeasonality(history: readonly PricePoint[], options: { sy
     });
     const base = monthEnd.get(monthKey(year, 0) - 1);
     const cumulative = closes.map((close) => close != null && base != null ? close / base - 1 : null);
-    years.push({ year, months, partial: year === lastYear && !complete, total: cumulative.findLast((value) => value != null) ?? null });
+    years.push({ year, months, partial: year === lastYear && yearRunning, total: cumulative.findLast((value) => value != null) ?? null });
     if (base == null) continue;
     paths.push({ year, points: [{ date: YEAR_START, value: 0 },
       // The month still running is drawn at its latest bar, not at a month-end still to come.
       ...cumulative.flatMap((value, month) => value == null ? [] : [{ value, date: monthKey(year, month) === runningMonthKey
         ? new Date(Math.min(overlayMonthEnd(month).getTime(), Date.UTC(OVERLAY_YEAR, month, last.date.getUTCDate()))) : overlayMonthEnd(month) }])] });
     // The running year is drawn but left out of the average.
-    if (year !== lastYear || complete) completedCumulative.push(cumulative);
+    if (year !== lastYear || !yearRunning) completedCumulative.push(cumulative);
   }
 
   const months = MONTH_LABELS.map((_, month): SeasonalityMonthStat => {
@@ -133,7 +170,58 @@ export function projectSeasonality(history: readonly PricePoint[], options: { sy
     return values.every((value) => value != null) ? [{ date: overlayMonthEnd(month), value: mean(values as number[])! }] : [];
   })] : [];
 
-  return { symbol: options.symbol, years, months, paths, averagePath, asOf: last.date, historyStart };
+  return { symbol: options.symbol, years, months, paths, averagePath, asOf: last.date, closeDay: lastClose?.day ?? null,
+    runningMonth: runningMonthKey == null ? null : last.date.getUTCMonth(), historyStart };
+}
+
+const monthKeyOf = (date: Date) => monthKey(date.getUTCFullYear(), date.getUTCMonth());
+
+/** The settled close as a point of the series, when its month is the bars' newest or the one before it. */
+function usableLastClose(points: readonly { date: Date }[], lastClose: SettledClose | null | undefined) {
+  const date = lastClose ? new Date(`${lastClose.day}T00:00:00Z`) : null;
+  if (!lastClose || !date || !Number.isFinite(date.getTime()) || !(lastClose.close > 0)) return null;
+  const newest = points.at(-1);
+  const behind = newest ? monthKeyOf(newest.date) - monthKeyOf(date) : 0;
+  return behind === 0 || behind === 1 ? { date, close: lastClose.close, day: lastClose.day, monthEnded: lastClose.monthEnded } : null;
+}
+
+/**
+ * Daily bars as session closes, each filed under its session date at the
+ * venue, oldest first, without a session still trading at `fetchedAt`
+ * (`projectWeekdays` reads them so, and `settledClose` the newest).
+ */
+function settledSessions(history: readonly PricePoint[], options: { symbol: string; exchange?: string; fetchedAt: number }): [string, number][] {
+  const venue = sessionVenue(options.symbol, options.exchange);
+  const settled = settledSessionDate(options.symbol, venue, options.fetchedAt);
+  const sessions = new Map<string, number>();
+  for (const point of history
+    .map((entry) => ({ time: new Date(entry.date).getTime(), close: entry.close }))
+    .filter((entry) => Number.isFinite(entry.close) && entry.close > 0 && Number.isFinite(entry.time))
+    .sort((left, right) => left.time - right.time)) {
+    const day = calendarBarStart(point.time, "1d", venue);
+    if (settled == null || day <= settled) sessions.set(day, point.close);
+  }
+  return [...sessions.entries()].sort(([left], [right]) => left.localeCompare(right));
+}
+
+/** Weekly or monthly bars would file a week's move under one weekday, and date a week's close by its Monday. */
+function isDailyCadence(days: readonly [string, number][]): boolean {
+  return days.length < 2 || medianGapDays(days.map(([day]) => ({ date: new Date(`${day}T00:00:00Z`) }))) <= 4;
+}
+
+/**
+ * The newest close of daily bars that had settled at `fetchedAt`, on the
+ * venue's calendar as Weekdays reads them (a coin's UTC day), and whether its
+ * month had ended by then: no session of it still to come. Null for no daily
+ * bars.
+ */
+export function settledClose(history: readonly PricePoint[], options: { symbol: string; exchange?: string; fetchedAt: number }): SettledClose | null {
+  const days = settledSessions(history, options);
+  const newest = days.at(-1);
+  if (!newest || !isDailyCadence(days)) return null;
+  const [day, close] = newest;
+  const venue = sessionVenue(options.symbol, options.exchange);
+  return { day, close, monthEnded: barPeriodToDate(`${day.slice(0, 7)}-01`, "month", venue, options.fetchedAt) == null };
 }
 
 /** Monday first; a Saturday or Sunday row appears only for a venue that trades then. */
@@ -202,20 +290,9 @@ function settledSessionDate(symbol: string, venue: string | undefined, time: num
  * the weekdays).
  */
 export function projectWeekdays(history: readonly PricePoint[], options: { symbol: string; exchange?: string; fetchedAt: number }): WeekdayModel {
-  const venue = sessionVenue(options.symbol, options.exchange);
-  const settled = settledSessionDate(options.symbol, venue, options.fetchedAt);
-  const sessions = new Map<string, number>();
-  for (const point of history
-    .map((entry) => ({ time: new Date(entry.date).getTime(), close: entry.close }))
-    .filter((entry) => Number.isFinite(entry.close) && entry.close > 0 && Number.isFinite(entry.time))
-    .sort((left, right) => left.time - right.time)) {
-    const day = calendarBarStart(point.time, "1d", venue);
-    if (settled == null || day <= settled) sessions.set(day, point.close);
-  }
-  const days = [...sessions.entries()].sort(([left], [right]) => left.localeCompare(right));
+  const days = settledSessions(history, options);
   const empty = returnStat([]);
-  // Weekly or monthly bars would file a week's move under one weekday.
-  if (days.length < 2 || medianGapDays(days.map(([day]) => ({ date: new Date(`${day}T00:00:00Z`) }))) > 4) {
+  if (days.length < 2 || !isDailyCadence(days)) {
     return { symbol: options.symbol, weekdays: [], turnOfMonth: TURN_OF_MONTH_LABELS.map(() => empty),
       turnWindow: empty, otherDays: empty, start: null, asOf: null };
   }

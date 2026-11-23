@@ -205,7 +205,7 @@ function McpConnectDialog({
   })();
 
   // What the key row says beside its button: the plan the key needs, or why
-  // the last attempt failed. Signed out, the button says it all.
+  // the last attempt failed.
   const keyNote: Status = (() => {
     if (token || failure?.kind === "signin") return null;
     if (failure?.kind === "offline") return { tone: "muted", text: t(failure.message) };
@@ -215,6 +215,8 @@ function McpConnectDialog({
     }
     return null;
   })();
+  // Signed out, the plan is said before the sign-in it would lead to, so no one signs in to find it out.
+  const signedOutNote = !signedIn && !token ? t("The MCP server is part of Gloom Pro.") : null;
 
   useDialogKeyboard((event) => {
     if (isPlainKey(event, "c", "enter", "return")) {
@@ -289,6 +291,7 @@ function McpConnectDialog({
           ) : (
             <Text fg={colors.textDim}>{t("Use a key instead")}</Text>
           )}
+          {signedOutNote ? <Text fg={colors.textDim} wrapText>{signedOutNote}</Text> : null}
           <Box flexDirection="row" gap={2} alignItems="center" flexWrap="wrap">
             <Button
               label={keyAction.label}

@@ -193,6 +193,22 @@ export function isCryptoPairSymbol(symbol: string): boolean {
   return CRYPTO_PAIR.test(symbol);
 }
 
+// A coin and its quote run together, as crypto venues and charting sites write a pair: BTCUSDT, ETHUSDC, BTCUSD.
+const RUN_TOGETHER_COIN_PAIR = /^([A-Z0-9]{2,15}?)(USDT|USDC|USD)$/;
+
+/**
+ * The coin's dollar pair for a pair written with no separator (BTC-USD for
+ * BTCUSDT or BTCUSD), which is how the crypto venue lists it: a coin quoted in
+ * dollars or a stablecoin, six characters or more, so no US ticker (five
+ * letters at most) reads as one. Null for anything else, a currency's code
+ * before USD (EURUSD, spot FX) included.
+ */
+export function runTogetherCoinPair(symbol: string): string | null {
+  const code = symbol.trim().toUpperCase();
+  const base = RUN_TOGETHER_COIN_PAIR.exec(code)?.[1];
+  return code.length >= 6 && base !== undefined && !isIsoCurrencyCode(base) ? `${base}-USD` : null;
+}
+
 /**
  * The coins whose bare ticker is most often typed for the coin itself, with
  * how stories and notes name each: the name a listing's own may not say

@@ -595,6 +595,7 @@ export function CommandBar({
     notify: notifyFromPicker,
     persistConfig,
   });
+  const paneTemplateLabel = useCallback((templateId: string) => pluginRegistry.paneTemplates.get(templateId)?.label ?? null, [pluginRegistry]);
   const routeListState = useRouteListState({
     activeMatch,
     adaptHeaderMarketResult,
@@ -603,6 +604,7 @@ export function CommandBar({
     buildLayoutItems,
     currentRoute,
     orderedRootResults,
+    paneTemplateLabel,
     rootCategoryPriorities,
     rootHoveredIdx,
     rootModeKind: rootModeInfo.kind,

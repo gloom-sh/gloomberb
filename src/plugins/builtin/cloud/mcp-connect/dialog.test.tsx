@@ -149,10 +149,14 @@ describe("the Connect an AI assistant dialog", () => {
     expect(copied[2]).toBe(copied[1]!);
   });
 
-  test("signed out, the key row is the existing sign-in, stacked over the dialog", async () => {
+  test("signed out, the key row is the existing sign-in, stacked over the dialog, and says the plan before it", async () => {
     stubKeys(async () => ({}));
     await openDialog();
-    expect(tui.frame()).toContain("Sign in to Gloom Cloud");
+    const frame = tui.frame();
+    expect(frame).toContain("Sign in to Gloom Cloud");
+    // The plan is said before the sign-in, as it is once signed in without Pro.
+    expect(frame.indexOf("The MCP server is part of Gloom Pro.")).toBeGreaterThan(-1);
+    expect(frame.indexOf("The MCP server is part of Gloom Pro.")).toBeLessThan(frame.indexOf("Sign in to Gloom Cloud"));
     await press("k");
     await tui.waitForFrameToContain("Log in to Gloom Cloud");
     expect(keyRequests).toEqual([]);

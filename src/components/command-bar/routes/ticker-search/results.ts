@@ -19,6 +19,8 @@ import { endsInLegalForm, readNearMissListing, readTerminalListingCode, unknownB
 import { listingSuffixExchange, tickerHasListingSuffix } from "../../../../sources/listing-symbols";
 import { answersToFutureName, answersToIndexCode, compactSearchText, getIssuerGroupKey, isExplicitMarketSymbol } from "../../../../tickers/search/ranking";
 import { isProviderBusy } from "../../../../sources/provider-errors";
+import { indexRootFor } from "../../../../tickers/index-roots";
+import { withIndexRootCandidate } from "../../../../tickers/search/index-root-lead";
 
 export const QUICK_LOOK_TICKER_SEARCH_OPTIONS = { includeOptionContracts: false } as const;
 
@@ -88,6 +90,8 @@ export function isExactTickerResultMatch(item: ResultItem, rawQuery: string): bo
     || answersToFutureName(item, query)
     // BTC is how bitcoin is typed; its own symbol is BTC-USD.
     || majorCoinPairSymbol(query) === parsePublicTickerKey(item.label.trim().toUpperCase()).symbol
+    // SPX is how the S&P 500 is typed; its own symbol is ^SPX.
+    || indexRootFor(query)?.symbol === parsePublicTickerKey(item.label.trim().toUpperCase()).symbol
   ));
 }
 
@@ -136,6 +140,21 @@ export function withMajorCoinCandidate(
   const cannotBeIt = !!listing.result?.delisting || new RegExp(`\\b${coin}\\b`, "i").test(listingName);
   const index = cannotBeIt ? at : at + 1;
   return [...rest.slice(0, index), pair, ...rest.slice(index)];
+}
+
+/**
+ * Search's candidates with the instrument a typed word names and search does
+ * not lead with: a major coin's dollar pair (`withMajorCoinCandidate`: BTC is
+ * BTC-USD) and an index root's index (`withIndexRootCandidate`: SPX is ^SPX).
+ * Every ticker list the bar shows reads its candidates through this, so the
+ * root bar, DES and a function's ticker search (SEAS) rank a word alike.
+ */
+export function withTypedInstrumentCandidates(
+  query: string,
+  candidates: TickerSearchCandidate[],
+  tickers: ReadonlyMap<string, TickerRecord>,
+): TickerSearchCandidate[] {
+  return withIndexRootCandidate(query, withMajorCoinCandidate(query, candidates, tickers), tickers);
 }
 
 export function mergeTickerSearchResultItems(

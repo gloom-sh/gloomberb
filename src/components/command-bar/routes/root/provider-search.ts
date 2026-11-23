@@ -15,7 +15,7 @@ import {
   tickerSearchFailureItems,
   underAnotherSymbol,
   venueDropdownResults,
-  withMajorCoinCandidate,
+  withTypedInstrumentCandidates,
   wordNamesCommand,
   type RootTickerReading,
 } from "../ticker-search/results";
@@ -82,13 +82,13 @@ function buildInstantAnswer(options: {
   const { query, fromIndex, cached, tickers, savedSymbolKeys, buildTickerSearchResultItems, localTickerSearchResultItems, homeVenue } = options;
   const localItems = () => localTickerSearchResultItems(query, { limit: 6 });
   if (cached) {
-    return { query, items: mergeTickerSearchResultItems(query, buildTickerSearchResultItems(withMajorCoinCandidate(query, cached, tickers), query), localItems()), fromIndex: false };
+    return { query, items: mergeTickerSearchResultItems(query, buildTickerSearchResultItems(withTypedInstrumentCandidates(query, cached, tickers), query), localItems()), fromIndex: false };
   }
   if (!fromIndex) return null;
   const symbol = symbolSearchQuery(query);
   const known = knownListings(symbol);
   if (known.length === 0 && !savedSymbolKeys.has(listingIndexKey(symbol))) return null;
-  const candidates = withMajorCoinCandidate(symbol, buildTickerSearchCandidates({
+  const candidates = withTypedInstrumentCandidates(symbol, buildTickerSearchCandidates({
     query: symbol,
     tickers,
     providerResults: known,
@@ -293,7 +293,7 @@ export function useRootProviderSearch(options: {
         published = true;
         setRootProviderResults(mergeTickerSearchResultItems(
           searchQuery,
-          buildTickerSearchResultItems(withMajorCoinCandidate(searchQuery, candidates, tickers), searchQuery),
+          buildTickerSearchResultItems(withTypedInstrumentCandidates(searchQuery, candidates, tickers), searchQuery),
           localTickerSearchResultItems(searchQuery, { limit: 6 }),
         ));
         setRootProviderResultsQuery(searchQuery);

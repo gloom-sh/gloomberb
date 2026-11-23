@@ -19,6 +19,7 @@ import { fuzzyFilter } from "../../../utils/fuzzy-search";
 import type { CommandBarRoute } from "../workflow/types";
 import { t, tc } from "../../../i18n";
 import { HEADER_MARKET_TITLE, isHeaderMarketRoute } from "../routes/header-market";
+import { tickerSearchTitle } from "../routes/ticker-search/title";
 
 type ActiveCommandMatch = ReturnType<typeof matchPrefix>;
 
@@ -32,6 +33,8 @@ interface BuildRouteListStateOptions {
   adaptHeaderMarketResult: (item: ResultItem) => ResultItem;
   /** The header market picker's benchmark rows for a query. */
   headerMarketItems: (query: string) => ResultItem[];
+  /** A function's name by its pane template, which titles the ticker search it opens (Seasonality for SEAS). */
+  paneTemplateLabel: (templateId: string) => string | null;
   buildLayoutItems: (query: string) => ResultItem[];
   currentRoute: CommandBarRoute | null;
   orderedRootResults: ResultItem[];
@@ -55,6 +58,7 @@ function buildRouteListState(options: BuildRouteListStateOptions): ListScreenSta
     currentRoute,
     headerMarketItems,
     orderedRootResults,
+    paneTemplateLabel,
     rootHoveredIdx,
     rootModeKind,
     rootCategoryPriorities,
@@ -134,17 +138,22 @@ function buildRouteListState(options: BuildRouteListStateOptions): ListScreenSta
             footerLeft: getScreenFooterLeft(currentRoute),
             footerRight: getScreenFooterRight(currentRoute),
             sectionOrder: "ranked",
+            searchesTickers: true,
           };
         }
         const results = tickerSearchResults.map((item) => adaptTickerSearchRouteResult(item, currentRoute.payload));
         const emptyState = getEmptyState("search", currentRoute.query, currentRoute.query);
+        const title = tickerSearchTitle(currentRoute.payload, paneTemplateLabel);
         return {
           kind: "mode",
-          title: "Security Description",
-          // DES opens a research pane; the backtick's search changes the focused pane's ticker.
-          subtitle: currentRoute.payload?.action
-            ? "Resolve a ticker, then open its Ticker Research pane."
-            : "Resolve a ticker for the focused pane, or open it in a new pane.",
+          // Titled by the function its rows open: SEAS's search is Seasonality, not DES.
+          title,
+          // DES opens a research pane, a function's own search that function; the backtick's search changes the focused pane's ticker.
+          subtitle: currentRoute.payload?.action === "pane-template" || currentRoute.payload?.action === "collection-command"
+            ? `Resolve a ticker for ${title}.`
+            : currentRoute.payload?.action
+              ? "Resolve a ticker, then open its Ticker Research pane."
+              : "Resolve a ticker for the focused pane, or open it in a new pane.",
           query: currentRoute.query,
           selectedIdx: currentRoute.selectedIdx,
           hoveredIdx: currentRoute.hoveredIdx,
@@ -155,6 +164,7 @@ function buildRouteListState(options: BuildRouteListStateOptions): ListScreenSta
           footerLeft: getScreenFooterLeft(currentRoute),
           footerRight: getScreenFooterRight(currentRoute),
           sectionOrder: "ranked",
+          searchesTickers: true,
         };
       }
       default:
@@ -205,6 +215,7 @@ export function useRouteListState(options: BuildRouteListStateOptions): ListScre
     currentRoute,
     headerMarketItems,
     orderedRootResults,
+    paneTemplateLabel,
     rootCategoryPriorities,
     rootHoveredIdx,
     rootModeKind,
@@ -224,6 +235,7 @@ export function useRouteListState(options: BuildRouteListStateOptions): ListScre
     currentRoute,
     headerMarketItems,
     orderedRootResults,
+    paneTemplateLabel,
     rootCategoryPriorities,
     rootHoveredIdx,
     rootModeKind,

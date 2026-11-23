@@ -29,3 +29,25 @@ test("the running month's bar, dated by its first day, is dated by how far the m
   // A venue whose sessions are unknown says the month has run, not a day it cannot name.
   expect(await line("ZZZ", "2026-10-26T08:52:00Z")).toBe("Source: Gloom Cloud · Oct 2026 to date · not a live feed (monthly closes)");
 });
+
+test("the running month and the year to date run to the latest settled session close, which the line and metadata name", async () => {
+  // Monday 23 Nov mid-session: November's monthly bar holds the day's price; the daily bars settle at Friday's close.
+  setSystemTime(new Date("2026-11-23T19:01:00Z"));
+  const monthly = [{ date: new Date("2025-12-01T00:00:00Z"), close: 100 }, { date: new Date("2026-10-01T00:00:00Z"), close: 100 },
+    { date: new Date("2026-11-01T00:00:00Z"), close: 112 }];
+  const daily = [["2026-11-19", 104], ["2026-11-20", 105], ["2026-11-23", 112]].map(([day, close]) => ({ date: new Date(`${day}T00:00:00Z`), close: close as number }));
+  const bars = async (_symbol: string, _exchange: string, _range: string, resolution: string) => resolution === "1d" ? daily : monthly;
+  const result = await seasonalityHeadless.load(
+    createTestHeadlessArgs({ symbols: ["^GSPC"], options: { tab: "returns" } }),
+    createTestHeadlessContext({
+      resolveInstrument: async () => ({ symbol: "^GSPC", exchange: "" }),
+      marketData: createTestDataProvider({ getPriceHistoryForResolution: bars, getQuote: async () => { throw new Error("no quote needed"); } }),
+    }),
+  );
+  expect(formatFreshnessLine(deriveHeadlessFreshness(seasonalityHeadless, result, Date.now())))
+    .toBe("Source: Gloom Cloud · month to date, through Fri 20 Nov 2026 · not a live feed (monthly closes)");
+  expect(result.metadata).toMatchObject({ asOf: "2026-11-20" });
+  const year = (result.sections![1]!.rows as Record<string, unknown>[])[0]!;
+  expect(year.m10 as number).toBeCloseTo(0.05);
+  expect(year.total as number).toBeCloseTo(0.05);
+});

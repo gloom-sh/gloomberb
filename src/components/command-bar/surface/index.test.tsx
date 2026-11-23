@@ -8,6 +8,7 @@ import { CommandBarHarness, createCommandBarTestControls, expectSingleBackContro
 import { createTestTicker } from "../../../test-support/ticker";
 import { cpiModule } from "../../../plugins/builtin/cpi";
 import { insiderModule } from "../../../plugins/builtin/insider";
+import { seasonalityModule } from "../../../plugins/builtin/seasonality";
 import type { AppContextStoreValue } from "../../../state/app/context";
 
 const tui = createOpenTuiTestHarness();
@@ -653,6 +654,44 @@ describe("CommandBar", () => {
     await waitForFrameToContain("bar:closed");
   });
 
+  test("a function's ticker search says the function, and an index root typed into it leads with the index", async () => {
+    // Ctrl+P, seasonality, Enter, "spx": the sheet read Security Description, six SpaceX listings came first,
+    // and Enter opened SEAS SPX:XETRA. `fn SEAS SPX` opens ^SPX.
+    const created: Array<{ templateId: string; symbol?: string }> = [];
+    const spacex = (exchange: string) => ({ providerId: "gloom", symbol: "SPX", name: "Space Exploration Technologies Corp. Class A Common Stock", exchange, type: "Common Stock" });
+    await tui.render(<CommandBarHarness
+      query=""
+      live
+      dataProvider={makeDataProvider(async () => [spacex("XETRA"), spacex("XSTU"), spacex("FWB2"),
+        { providerId: "gloom", symbol: "^GSPC", name: "S&P 500", exchange: "SNP", type: "INDEX", searchAliases: ["SPX"] }])}
+      configurePluginRegistry={(pluginRegistry) => {
+        mutablePaneRegistryMap(pluginRegistry.paneTemplates).set("seasonality-pane", seasonalityModule.paneTemplates![0]!);
+        pluginRegistry.createPaneFromTemplateAsync = async (templateId, options) => {
+          created.push({ templateId, symbol: options?.symbol });
+        };
+      }}
+      configureState={(state) => ({
+        ...state,
+        commandBarLaunchRequest: { kind: "ticker-search", query: "spx", sequence: 1, payload: { action: "pane-template", templateId: "seasonality-pane" } },
+      })}
+    />, { width: 100, height: 24 });
+
+    const frame = await waitForFrameToContain("S&P 500 Index");
+    expect(frame).toContain("Seasonality");
+    expect(frame).not.toContain("Security Description");
+    const instruments = frame.split("\n").filter((line) => /\b(EQ|IDX)\s+[\^A-Z]/.test(line));
+    expect(instruments[0]).toMatch(/IDX\s+\^SPX\s+S&P 500 Index/);
+    expect(instruments[1]).toMatch(/EQ\s+SPX\s+Space Exploration/);
+
+    await act(async () => {
+      tui.setup().mockInput.pressEnter();
+      await Bun.sleep(0);
+      await tui.setup().renderOnce();
+    });
+    for (let attempt = 0; attempt < 50 && created.length === 0; attempt += 1) await act(async () => { await Bun.sleep(5); });
+    expect(created).toEqual([{ templateId: "seasonality-pane", symbol: "^SPX" }]);
+  });
+
   test("opens ticker search when activating the Ticker Research pane item without a ticker, and Esc goes back", async () => {
     await tui.render(<CommandBarHarness query="ticker research" />, {
       width: 100,
@@ -674,12 +713,13 @@ describe("CommandBar", () => {
 
     const frame = tui.frame();
     expectSingleBackControl(frame);
-    expect(frame).toContain("Security Description");
+    // Titled by the pane its rows open, and still asking for a ticker.
+    expect(frame).toMatch(/Back\s+Ticker Research/);
     expect(frame).toContain("Search tickers");
 
     await tui.emitKeypress({ name: "escape" }, { frames: 2, afterCommit: true });
-    await waitForFrameToContain("Ticker Research");
-    expect(tui.frame()).not.toContain("Security Description");
+    await waitForFrameToExclude("Back");
+    expect(tui.frame()).toMatch(/^\s*T\s+Ticker Research\s*$/m);
   });
 
   test("keeps typed prefixes in the root query until a result is activated", async () => {
