@@ -536,46 +536,29 @@ describe("parseCompanyFactsFinancialStatements", () => {
 });
 
 describe("SecEdgarClient", () => {
-  test("extracts readable text from filing html", () => {
-    const content = extractFilingContent(`
-      <html>
-        <body>
-          <h1>FORM 8-K</h1>
-          <p>Item 2.02 Results of Operations and Financial Condition.</p>
-          <p>Revenue increased 12% year over year.</p>
-        </body>
-      </html>
-    `, "text/html");
-
-    expect(content).toContain("FORM 8-K");
-    expect(content).toContain("Revenue increased 12% year over year.");
-  });
-
-  test("trims SEC document wrapper metadata before exhibit content", () => {
+  test("reads only the text body of an SGML-wrapped prospectus", () => {
     const content = extractFilingContent(`
       <SEC-DOCUMENT>
       <DOCUMENT>
-      <TYPE>EX-99.1
-      <SEQUENCE>2
-      <FILENAME>q42026er-991.htm
-      <DESCRIPTION>EX-99.1
+      <TYPE>424B3
+      <SEQUENCE>1
+      <FILENAME>prospectus.htm
+      <DESCRIPTION>Prospectus supplement
       <TEXT>
-        <html><body>
-          <p>Exhibit 99.1</p>
-          <h1>e.l.f. Beauty Announces Fourth Quarter Fiscal 2026 Results</h1>
-          <p>Delivered fiscal 2026 net sales growth of 25% year over year.</p>
+        <html><head><title>Internal document title</title></head><body>
+          <div style="margin: 0">Filed pursuant to Rule 424(b)(3)</div>
+          <div>Subject to completion.</div>
         </body></html>
       </TEXT>
       </DOCUMENT>
+      <DOCUMENT><TYPE>PDF<TEXT><PDF>Not part of the prospectus</PDF></TEXT></DOCUMENT>
       </SEC-DOCUMENT>
-    `, "text/html", { form: "EX-99.1" });
+    `);
 
-    expect(content?.startsWith("Exhibit 99.1")).toBe(true);
-    expect(content).toContain("Fourth Quarter Fiscal 2026 Results");
-    expect(content).not.toContain("q42026er-991.htm");
+    expect(content).toBe("Filed pursuant to Rule 424(b)(3)\nSubject to completion.");
   });
 
-  test("drops hidden inline xbrl boilerplate from filing html", () => {
+  test("drops iXBRL headers and hidden facts while retaining visible inline facts", () => {
     const content = extractFilingContent(`
       <?xml version="1.0"?>
       <html>
@@ -584,7 +567,7 @@ describe("SecEdgarClient", () => {
           <div style="display: none">
             <ix:header>
               <ix:hidden>
-                <ix:nonNumeric name="dei:DocumentType">DEF 14A</ix:nonNumeric>
+                <ix:nonNumeric name="dei:DocumentType">Hidden form type</ix:nonNumeric>
                 <ix:nonNumeric name="dei:AmendmentFlag">false</ix:nonNumeric>
               </ix:hidden>
               <ix:resources>
@@ -592,20 +575,29 @@ describe("SecEdgarClient", () => {
               </ix:resources>
             </ix:header>
           </div>
+          <span hidden>Invisible fact</span>
+          <div style="display: none !important"><div>Nested hidden fact</div>Still hidden</div>
           <div>
             <div>UNITED STATES</div>
-            <div>SECURITIES AND EXCHANGE COMMISSION</div>
-            <div>SCHEDULE 14A</div>
-            <p>Definitive Proxy Statement</p>
+            <div>FORM <ix:nonNumeric name="dei:DocumentType">8-K</ix:nonNumeric></div>
+            <p>Results of Operations and Financial Condition</p>
           </div>
         </body>
       </html>
-    `, "text/html", { form: "DEF 14A" });
+    `);
 
-    expect(content).toContain("UNITED STATES");
-    expect(content).toContain("SCHEDULE 14A");
-    expect(content).not.toContain("ecd:ChngInFrValOfOutsdngAndUnvstdEqtyAwrdsGrntdInPrrYrsMember");
-    expect(content).not.toContain("false");
+    expect(content).toBe("UNITED STATES\nFORM 8-K\nResults of Operations and Financial Condition");
+  });
+
+  test("decodes an HTML exhibit and preserves an upstream truncation marker after a partial tag", () => {
+    const content = extractFilingContent(`
+      <P STYLE="margin: 0">&nbsp;</P>
+      <P STYLE="margin: 0">Exhibit 1.1</P>
+      <P title="Notes > 2026">Company&nbsp;&amp; Co&#46; &nbsp;&euro;100&thinsp;million</P>
+      <P STYLE="margin: [truncated]
+    `);
+
+    expect(content).toBe("Exhibit 1.1\nCompany & Co. €100 million\n\n[truncated]");
   });
 
   test("returns a clean fallback message for pdf filings", () => {

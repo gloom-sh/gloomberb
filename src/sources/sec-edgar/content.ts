@@ -1,7 +1,13 @@
+import { Parser } from "htmlparser2";
+import type { SecFilingItem } from "../../types/data-provider";
 import { decodeHtmlEntities } from "../../utils/html-entities";
 
 const MAX_CONTENT_CHARS = 16_000;
+const TRUNCATION_MARKER = "[truncated]";
 const OWNERSHIP_FORMS = new Set(["3", "3/A", "4", "4/A", "5", "5/A"]);
+const BLOCK_TAG = /^(?:p|div|section|article|header|footer|li|tr|table|h[1-6]|pre|blockquote)$/;
+const HIDDEN_TAG = /^(?:head|title|script|style|svg|template|ix:header|ix:hidden|ix:references|ix:resources)$/;
+const HIDDEN_STYLE = /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)\s*(?:!important\s*)?(?:;|$)/i;
 
 export const PDF_FALLBACK_MESSAGE = "This SEC document is a PDF. Inline PDF text extraction is not supported here.";
 
@@ -162,46 +168,71 @@ function extractOwnershipDocumentSummary(document: string, form: string): string
   return result || null;
 }
 
+function edgarTextBody(document: string): string {
+  if (!/^\s*<(?:SEC-DOCUMENT|DOCUMENT)\b/i.test(document)) return document;
+  const opening = /<TEXT\s*>/i.exec(document);
+  if (!opening) return "";
+  const start = opening.index + opening[0].length;
+  const closing = /<\/(?:TEXT|DOCUMENT)\s*>/gi;
+  closing.lastIndex = start;
+  return document.slice(start, closing.exec(document)?.index);
+}
+
+function markupToText(markup: string): string {
+  const chunks: string[] = [];
+  let hiddenDepth = 0;
+  let preformatted = false;
+  new Parser({
+    onopentag(tag, attributes) {
+      if (hiddenDepth || HIDDEN_TAG.test(tag) || "hidden" in attributes || HIDDEN_STYLE.test(attributes.style ?? "")) {
+        hiddenDepth += 1;
+        return;
+      }
+      if (tag === "pre") preformatted = true;
+      if (BLOCK_TAG.test(tag) || tag === "br" || tag === "hr") chunks.push("\n");
+      if (tag === "td" || tag === "th") chunks.push(" ");
+    },
+    onclosetag(tag) {
+      if (hiddenDepth) hiddenDepth -= 1;
+      else {
+        if (tag === "pre") preformatted = false;
+        if (BLOCK_TAG.test(tag)) chunks.push("\n");
+      }
+    },
+    ontext(text) {
+      if (!hiddenDepth) chunks.push(preformatted ? text : text.replace(/\s+/g, " "));
+    },
+  }, { recognizeSelfClosing: true }).end(markup);
+  return chunks.join("");
+}
+
 export function extractFilingContent(
   document: string,
   contentType = "",
   options: { form?: string; sourceUrl?: string } = {},
 ): string | null {
-  if (isPdfDocument(document, contentType, options.sourceUrl)) {
-    return PDF_FALLBACK_MESSAGE;
-  }
+  const raw = document.trimEnd();
+  const alreadyTruncated = raw.endsWith(TRUNCATION_MARKER);
+  const body = edgarTextBody(alreadyTruncated ? raw.slice(0, -TRUNCATION_MARKER.length) : raw);
+  if (isPdfDocument(body, contentType, options.sourceUrl)) return PDF_FALLBACK_MESSAGE;
 
-  const ownershipSummary = options.form ? extractOwnershipDocumentSummary(document, options.form) : null;
-  if (ownershipSummary) return ownershipSummary;
+  const ownershipSummary = options.form ? extractOwnershipDocumentSummary(body, options.form.trim()) : null;
+  const looksLikeMarkup = /html|xml/i.test(contentType) || /^\s*<(?:[a-z!?])/i.test(body);
+  const result = ownershipSummary ?? trimLeadingNoise(collapseDocumentLines(
+    looksLikeMarkup ? markupToText(body) : decodeHtmlEntities(body),
+  )).join("\n");
+  if (!result) return null;
+  return alreadyTruncated || result.length > MAX_CONTENT_CHARS
+    ? `${result.slice(0, MAX_CONTENT_CHARS).trimEnd()}\n\n${TRUNCATION_MARKER}`
+    : result;
+}
 
-  const looksLikeMarkup = /html|xml/i.test(contentType) || /^\s*</.test(document);
-  let text = document;
-
-  if (looksLikeMarkup) {
-    text = text
-      .replace(/<head[\s\S]*?<\/head>/gi, " ")
-      .replace(/<script[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style[\s\S]*?<\/style>/gi, " ")
-      .replace(/<svg[\s\S]*?<\/svg>/gi, " ")
-      .replace(/<div[^>]*display\s*:\s*none[^>]*>[\s\S]*?<\/div>/gi, " ")
-      .replace(/<ix:header[\s\S]*?<\/ix:header>/gi, " ")
-      .replace(/<ix:hidden[\s\S]*?<\/ix:hidden>/gi, " ")
-      .replace(/<ix:references[\s\S]*?<\/ix:references>/gi, " ")
-      .replace(/<ix:resources[\s\S]*?<\/ix:resources>/gi, " ")
-      .replace(/<!--[\s\S]*?-->/g, " ")
-      .replace(/<\/(p|div|section|article|header|footer|li|tr|table|h\d|title)>/gi, "\n")
-      .replace(/<(br|hr)\s*\/?>/gi, "\n")
-      .replace(/<(p|div|section|article|header|footer|li|tr|table|h\d|title)[^>]*>/gi, "\n")
-      .replace(/<td[^>]*>/gi, " ")
-      .replace(/<[^>]+>/g, " ");
-  }
-
-  const lines = trimLeadingNoise(collapseDocumentLines(decodeHtmlEntities(text)));
-  if (lines.length === 0) return null;
-
-  let result = lines.join("\n");
-  if (result.length > MAX_CONTENT_CHARS) {
-    result = `${result.slice(0, MAX_CONTENT_CHARS).trimEnd()}\n\n[truncated]`;
-  }
-  return result;
+export function filingContentPreview(
+  raw: string | null | undefined,
+  filing: Pick<SecFilingItem, "form" | "primaryDocumentUrl" | "filingUrl">,
+): string | null {
+  return raw == null ? null : extractFilingContent(raw, "", {
+    form: filing.form,
+    sourceUrl: filing.primaryDocumentUrl ?? filing.filingUrl,
+  });
 }

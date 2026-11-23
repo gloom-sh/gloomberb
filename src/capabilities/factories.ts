@@ -1,4 +1,5 @@
-import type { AssetDataProvider } from "../types/data-provider";
+import type { AssetDataProvider, SecFilingItem } from "../types/data-provider";
+import { filingContentPreview } from "../sources/sec-edgar/content";
 import { quoteMetadataFromQuote } from "../market-data/quotes/metadata";
 import { assetDataOperationContract } from "./asset-data-inputs";
 import type { NewsDataProvider } from "../types/capability-route-source";
@@ -79,9 +80,11 @@ export function assetDataProvider(provider: AssetDataProvider): AssetDataCapabil
         if (!provider.getSecFilingDocuments) throw new Error(`${provider.name} does not provide SEC filing documents.`);
         return provider.getSecFilingDocuments(input.filing);
       }, "query"),
-      getSecFilingContent: op((input: any) => {
+      getSecFilingContent: op(async (input, { renderer }) => {
         if (!provider.getSecFilingContent) throw new Error(`${provider.name} does not provide SEC filing content.`);
-        return provider.getSecFilingContent(input.filing);
+        const { filing } = input as { filing: SecFilingItem };
+        const raw = await provider.getSecFilingContent(filing);
+        return renderer ? raw : filingContentPreview(raw, filing);
       }, "query"),
       getArticleSummary: op((input: any) => provider.getArticleSummary(input.url), "query"),
       getPriceHistory: op((input: any) => provider.getPriceHistory(input.ticker, input.exchange, input.range, input.context), "query"),

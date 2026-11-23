@@ -109,6 +109,7 @@ export class CapabilityRegistry {
     const invoke = () => Promise.resolve(operation.handler!(input, {
       capability,
       operationId,
+      renderer: options.renderer,
       signal: options.signal,
     }));
     const health = this.options.connectionHealth;

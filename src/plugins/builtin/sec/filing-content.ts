@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSecFilingContent } from "../../../market-data/hooks";
 import { getSharedMarketDataCoordinator, resolveEntryValue } from "../../../market-data/coordinator";
 import type { QueryEntry } from "../../../market-data/result-types";
+import { filingContentPreview } from "../../../sources/sec-edgar/content";
 import type { SecFilingDocument, SecFilingItem } from "../../../types/data-provider";
 import { logFailure } from "../../../utils/log-failure";
 import { documentContentTarget, isInlineExhibitDocument } from "./filing-documents";
@@ -40,6 +41,18 @@ export function buildInlineFilingContentTargets(
   return documents
     .filter(isInlineExhibitDocument)
     .map((document) => documentContentTarget(filing, document));
+}
+
+export function buildFilingContentPreviews(
+  targets: readonly SecFilingItem[],
+  rawContents: ReadonlyMap<string, string | null>,
+): Map<string, string | null> {
+  const previews = new Map<string, string | null>();
+  for (const target of targets) {
+    const key = target.accessionNumber;
+    if (rawContents.has(key)) previews.set(key, filingContentPreview(rawContents.get(key), target));
+  }
+  return previews;
 }
 
 /** Filings whose content is read at once: the queue's head and the next ones read ahead. */
