@@ -286,6 +286,8 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
   // Only quote/chart views use the parent quote status. Other research tabs
   // own their data status (the options chain may have a different delay/feed).
   const quoteFooterActive = resolvedTabId === "overview" || resolvedTabId === "chart";
+  // A capture of another tab keeps that tab's footer, and is not dated by the quote.
+  useRemoteUiNode(quoteFooterActive ? null : { role: "own-status", label: "Tab status" });
   // The quote's own delay (SGX's 20m), as the delayed mark on its price and the quote's status say it.
   const quoteDelay = freeQuoteDelayMinutes(access, financials?.quote) ?? CLOUD_QUOTE_DELAY_MINUTES;
   const cloudAccess = useCloudAccessFooter({

@@ -35,6 +35,7 @@ export {
   datesPaneData,
   DELAYED_SEGMENT,
   delayedFooterSegment,
+  footerTimeText,
   hasPaneFooterContent,
   savedCopyFooterInfo,
   savedCopyFooterSegment,

@@ -4,7 +4,8 @@ import type { DoeBoardPayload } from "../../api-client/doe";
 import { ApiRequestError } from "../../api-client/errors";
 import type { MoneyMarketRow, MoneyMarketsPayload } from "../../api-client/money-markets";
 import { AppPersistence } from "../../data/app-persistence";
-import { collectSavedCopies } from "../../data/saved-copies";
+import { CachedQuery, type CachedValue } from "../../data/cached-query";
+import { collectSavedCopies, retrievedAtOf } from "../../data/saved-copies";
 import { TickerRepository } from "../../data/ticker-repository";
 import { getLoadablePlugins } from "../../plugins/catalog";
 import { standaloneSeriesCatalog, standaloneSeriesInvoker } from "../../series/standalone";
@@ -19,6 +20,7 @@ import { createCommandPluginPersistence } from "../saved-copy-persistence";
 import { DEFAULT_CLI_OPTIONS } from "../options";
 import { serializeCliResult } from "../result";
 import { runPaneFunction } from ".";
+import { deriveRenderedFreshness } from "./freshness";
 
 /**
  * Offline, `fn DOE` and `fn ECST` failed with the bare unreachable error
@@ -274,4 +276,34 @@ test("a plugin that keeps a command's persistence past the command never reaches
   const unreleased = createCommandPluginPersistence(store.resources, "plugin:test");
   expect(() => unreleased.setResource("board", "gas", { value: 3 }, policy)).not.toThrow();
   expect(unreleased.getResource("board", "coal", { allowExpired: true })).toBeNull();
+});
+
+test("a report built from a dataset copy read earlier is dated by that read, and as a saved copy once a refresh failed", async () => {
+  // INS rebuilds its rows field by field from a filing list the cache served: no mark survives, so the command keeps a ledger.
+  const at = (minutesAgo: number) => Date.now() - minutesAgo * 60_000;
+  const copy = (fetchedAt: number, staleAt: number): CachedValue<{ filings: number }> => ({
+    value: { filings: 3 }, fetchedAt, staleAt, expiresAt: fetchedAt + 86_400_000, source: "test",
+  });
+  const kept = copy(at(20), Date.now() + 60_000);
+  const filings = new CachedQuery({ read: () => kept, datedByRetrieval: true });
+  const stale = copy(at(90), at(30));
+  const holders = new CachedQuery({ read: () => stale, fetch: async () => { throw unreachable(); }, datedByRetrieval: true });
+  const quotes = new CachedQuery({ read: () => copy(at(120), Date.now() + 60_000) });
+  const line = () => deriveRenderedFreshness({}, { footerText: "", cellTimes: [] });
+
+  await collectSavedCopies(async () => {
+    const served = await filings.load();
+    expect(served.value).toEqual({ filings: 3 });
+    expect(retrievedAtOf(served.value)).toBe(kept.fetchedAt);
+    // A quote carries its own time; its cached copy dates nothing.
+    expect(retrievedAtOf((await quotes.load()).value)).toBeNull();
+    expect(line()).toMatchObject({ retrievedAt: new Date(kept.fetchedAt).toISOString() });
+    expect(line().savedAt).toBeUndefined();
+    await holders.load();
+    expect(line()).toMatchObject({ retrievedAt: new Date(stale.fetchedAt).toISOString(), savedAt: new Date(stale.fetchedAt).toISOString() });
+  });
+  // The next command starts with none.
+  await collectSavedCopies(async () => {
+    expect(Date.parse(line().retrievedAt)).toBeGreaterThan(kept.fetchedAt);
+  });
 });

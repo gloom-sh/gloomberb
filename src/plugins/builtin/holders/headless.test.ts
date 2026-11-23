@@ -6,6 +6,7 @@ import { createTestHeadlessContext } from "../../../test-support/headless";
 import { carBeneficialOwnersPayload } from "./test-fixture";
 import { exportRowsTable } from "../../../cli/report-tables";
 import type { IndexedHolder, IndexedHolderList } from "./index-holders";
+import { ApiRequestError } from "../../../api-client/errors";
 
 function args(overrides: Partial<HeadlessPaneLoadArgs["options"]> = {}): HeadlessPaneLoadArgs {
   return {
@@ -155,10 +156,11 @@ describe("holders headless with the service's units", () => {
 
   test("keeps the source's list and counts it against the service's total when the 13F index cannot be read", async () => {
     const asked: string[] = [];
+    let indexFailure: Error = new Error("13F holders unavailable");
     const headless = createHoldersHeadless({
       loadIndexedHolders: async (ticker) => {
         asked.push(ticker);
-        throw new Error("13F holders unavailable");
+        throw indexFailure;
       },
       loadSnapshot: async () => ({
         marketCap: 4.4e12,
@@ -180,6 +182,16 @@ describe("holders headless with the service's units", () => {
     // A higher limit shows no more: the source names only its largest holders.
     expect(result.metadata?.notices).toContain("The source lists its 2 largest holders; fn 13F AAPL lists all 6,137.");
     expect(result.columns?.map((column) => column.key)).not.toContain("shareBasis");
+    // The short list is not the index: the report says it could not be read.
+    expect(result.complete).toBe(false);
+    expect(result.warnings).toEqual(["The 13F holder index could not be read: this is the source's short list of the largest holders, not every filer."]);
+
+    // An index that does not list the ticker leaves the source's list as the whole answer.
+    indexFailure = new ApiRequestError("not found", 404);
+    const unlisted = await headless.load({ ...args(), rawArgument: "AAPL", argument: "AAPL", symbols: ["AAPL"] }, createTestHeadlessContext());
+    expect(unlisted.rows).toHaveLength(2);
+    expect(unlisted.complete).toBeUndefined();
+    expect(unlisted.warnings).toBeUndefined();
   });
 });
 

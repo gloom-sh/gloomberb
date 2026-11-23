@@ -22,7 +22,7 @@ import {
   type VenueMarket,
   type VenueSessionDate,
 } from "./market-session";
-import { savedCopyShownAt } from "../../data/saved-copies";
+import { savedCopyShownAt, servedCopiesAt } from "../../data/saved-copies";
 import { releasedText } from "../../utils/release-date";
 
 /**
@@ -183,9 +183,28 @@ export interface ReportFreshness {
  * reads `couldn't refresh; saved copy from 21:49 UTC` instead of live or delayed.
  */
 export function withSavedCopy<F extends ReportFreshness | undefined>(freshness: F, shown: unknown): F {
-  if (!freshness || freshness.savedAt) return freshness;
+  if (!freshness || freshness.savedAt) return withServedCopies(freshness);
   const savedAt = savedCopyShownAt(shown);
-  return savedAt == null ? freshness : { ...freshness, savedAt: new Date(savedAt).toISOString() };
+  return withServedCopies(savedAt == null ? freshness : { ...freshness, savedAt: new Date(savedAt).toISOString() });
+}
+
+/**
+ * The freshness of a report built while the command was served copies of
+ * datasets read earlier (`servedCopiesAt`): retrieved when the oldest of them
+ * was read, not when the report was built, and a saved copy when a failed
+ * refresh fell back to one. A report whose rows were rebuilt from such a read
+ * (INS's trades from a filing list) carries no mark of it, so it is dated so.
+ */
+function withServedCopies<F extends ReportFreshness | undefined>(freshness: F): F {
+  if (!freshness || freshness.unreached) return freshness;
+  const { retrievedAt, savedAt } = servedCopiesAt();
+  if (retrievedAt == null) return freshness;
+  const built = Date.parse(freshness.retrievedAt);
+  return {
+    ...freshness,
+    ...(Number.isFinite(built) && retrievedAt < built ? { retrievedAt: new Date(retrievedAt).toISOString() } : {}),
+    ...(savedAt != null && !freshness.savedAt ? { savedAt: new Date(savedAt).toISOString() } : {}),
+  };
 }
 
 /** One source's newest observation: an ISO instant in UTC. */
@@ -516,7 +535,12 @@ function readPeriodToDate(declared: HeadlessPaneFreshness["periodToDate"], now: 
   return { period: declared.period, through: through?.dateOnly && through.time <= now + FUTURE_TOLERANCE_MS ? through : null };
 }
 
-function resolveFreshness({ declared, signals, observations, now }: FreshnessInputs): ReportFreshness {
+/** A report's freshness, dated by the dataset copies the command was served where it read them (`withServedCopies`). */
+function resolveFreshness(inputs: FreshnessInputs): ReportFreshness {
+  return withServedCopies(resolveReadFreshness(inputs));
+}
+
+function resolveReadFreshness({ declared, signals, observations, now }: FreshnessInputs): ReportFreshness {
   const sources = declaredSources(declared, now);
   // Sources date the data by their own observations, as a declared as-of does.
   const declaredAsOf = observedTime({ asOf: declared.asOf }, now, ["asOf"]) ?? newest(sources.map(({ time }) => time));
@@ -1457,6 +1481,8 @@ export interface CaptureStatusLine {
    * `as of` dates; null when it dates nothing it can name.
    */
   dates: "data" | "quotes" | null;
+  /** The view dates its data in its own footer (`rendersOwnStatus`), which the capture keeps beside the line. */
+  ownStatus?: true;
 }
 
 /**

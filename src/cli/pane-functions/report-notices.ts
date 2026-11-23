@@ -55,6 +55,16 @@ export function renderedReportFailure(semanticUi: readonly RemoteUiNodeSnapshot[
 }
 
 /**
+ * Whether the rendered view dates its data in its own footer, which the
+ * quotes the page loaded do not date (`own-status`): a DES research tab such
+ * as Ownership, whose holdings the listing's quote says nothing of. A capture
+ * of it keeps that footer, and its status line is never the quotes'.
+ */
+export function rendersOwnStatus(semanticUi: readonly RemoteUiNodeSnapshot[]): boolean {
+  return semanticUi.some((node) => node.role === "own-status");
+}
+
+/**
  * The load a rendered pane says failed, from the `pane-load-error` node its
  * status footer publishes (usePaneStatusFooter): the error the footer shows.
  * Null when the pane loaded, or is loading.

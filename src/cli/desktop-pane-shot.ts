@@ -19,6 +19,7 @@ import type { DesktopExternalPluginBundle } from "../renderers/electrobun/shared
 import type { HttpProxyRequestEnvelope, HttpProxyResponseEnvelope } from "../utils/http-proxy-response";
 import type { PaneAccessGate } from "./pane-functions/access-gate";
 import { countContentFigures } from "./content-figures";
+import { retrievedAtOf, savedCopyAt, savedCopyShownAt } from "../data/saved-copies";
 import { readVisibleKeyValues } from "./visible-key-values";
 import { rowViewportVisibility, scrollTruncationReasons } from "./scroll-truncation";
 import {
@@ -295,6 +296,8 @@ interface ShotStatusLineVariants {
   variants: readonly string[];
   dates?: "data" | "quotes" | null;
   dateEvidence?: readonly (readonly string[])[];
+  /** The view dates its data in its own footer, which the capture keeps beside the line. */
+  ownStatus?: boolean;
 }
 type ShotStatusLine = (rendered: DesktopPaneShotRenderResult) => ShotStatusLineVariants | null | Promise<ShotStatusLineVariants | null>;
 
@@ -558,7 +561,10 @@ async function answerShotMarketCall(
     const operation = typeof payload.operation === "string" ? payload.operation : "";
     const args = Array.isArray(payload.args) ? payload.args : [];
     const data = await bridge.marketData(operation, args);
-    return Response.json({ ok: true, data });
+    // JSON drops the marks of a copy served again: the page is told when it was saved or read, and marks it back.
+    const savedAt = savedCopyAt(data) ?? savedCopyShownAt(data);
+    const retrievedAt = savedAt == null ? retrievedAtOf(data) : null;
+    return Response.json({ ok: true, data, ...(savedAt != null ? { savedAt } : {}), ...(retrievedAt != null ? { retrievedAt } : {}) });
   } catch (error) {
     return Response.json({ ok: false, error: errorMessage(error) });
   }
@@ -1361,11 +1367,11 @@ function shotStateText(value: { error?: unknown; empty?: unknown } | undefined):
 }
 
 /** Draws the first variant that fits the pane footer, and returns what it drew. */
-async function fitShotStatusLine(session: CdpPage, { variants, dates }: ShotStatusLineVariants): Promise<string | null> {
+async function fitShotStatusLine(session: CdpPage, { variants, dates, ownStatus }: ShotStatusLineVariants): Promise<string | null> {
   const result = await session.send("Runtime.evaluate", {
     expression: `(() => {
       const fit = window.__GLOOM_CLI_SHOT_FIT_STATUS__;
-      return fit ? fit(${JSON.stringify(variants)}, ${JSON.stringify({ dates: dates ?? null })}) : null;
+      return fit ? fit(${JSON.stringify(variants)}, ${JSON.stringify({ dates: dates ?? null, ...(ownStatus ? { ownStatus } : {}) })}) : null;
     })()`,
     awaitPromise: true,
     returnByValue: true,

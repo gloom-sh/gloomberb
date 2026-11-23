@@ -134,18 +134,25 @@ export function delayedFooterSegment({
 }
 
 /**
+ * When a copy the footer speaks of was read or saved: `14:37` today, with its
+ * day (`Nov 20 14:37`) when on another, and its year when in another.
+ */
+export function footerTimeText(at: number, now = Date.now()): string {
+  const saved = new Date(at);
+  const time = saved.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+  const today = new Date(now);
+  const year = saved.getFullYear() !== today.getFullYear() ? "numeric" : false;
+  return saved.toDateString() === today.toDateString() ? time : `${formatShortDate(saved, { year })} ${time}`;
+}
+
+/**
  * The footer's one form for data shown from a copy saved earlier because
  * refreshing it failed (offline, a hung or refused proxy): `saved copy from
  * 14:37`, or with its day when saved on another. It says how current the
  * pane's quotes are, so it is a quote status.
  */
 export function savedCopyFooterSegment(id: string, savedAt: number, now = Date.now(), refreshing = false): PaneFooterSegment {
-  const saved = new Date(savedAt);
-  const time = saved.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
-  const today = new Date(now);
-  const year = saved.getFullYear() !== today.getFullYear() ? "numeric" : false;
-  const when = saved.toDateString() === today.toDateString() ? time : `${formatShortDate(saved, { year })} ${time}`;
-  const text = `${t("saved copy from")} ${when}`;
+  const text = `${t("saved copy from")} ${footerTimeText(savedAt, now)}`;
   return {
     id,
     quoteStatus: true,

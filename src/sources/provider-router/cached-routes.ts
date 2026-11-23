@@ -42,6 +42,15 @@ interface Route {
  */
 const IDLE_QUERY_LIMIT = 64;
 
+/**
+ * Datasets with no observation time of their own, dated by when they were
+ * read: a copy served again is stamped with that time, and a command that
+ * shows it says it was retrieved then (data/saved-copies.ts). Filing
+ * documents never change once filed, and quotes, histories, chains and rates
+ * carry their own times, so none of those is here.
+ */
+const DATED_BY_RETRIEVAL: ReadonlySet<ProviderRouterCachePolicyKey> = new Set(["holders", "analystResearch", "corporateActions", "secFilings"]);
+
 /** One query owns both persisted source selection and live refreshes for a resource. */
 export class ProviderRouterCachedRoutes {
   private readonly objectIds = new WeakMap<object, number>();
@@ -104,6 +113,7 @@ export class ProviderRouterCachedRoutes {
     };
     const query = new CachedQuery({
       read,
+      datedByRetrieval: DATED_BY_RETRIEVAL.has(route.policy),
       acceptResult: method === "getExchangeRate" ? (result) => isUsableCachedExchangeRate(
         result.value as number, String(args[0]).trim().toUpperCase(), result,
       ) : undefined,
