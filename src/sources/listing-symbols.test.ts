@@ -8,6 +8,13 @@ import {
 } from "./listing-symbols";
 
 describe("Listing symbol aliases", () => {
+  test("Hanoi uses the local symbol and the Vietnamese suffix identifies Ho Chi Minh City", () => {
+    expect(getListingSymbolsToTry("PVS", "XHNX", { exactExchange: true })).toEqual(["PVS"]);
+    expect(getListingSymbolsToTry("FPT", "XSTC", { exactExchange: true })).toEqual(["FPT.VN"]);
+    expect(listingSuffixVenue("FPT.VN")).toEqual({ symbol: "FPT", exchange: "HOSE" });
+    expect(listingSuffixVenue("FPT.VN", "HNX")).toBeNull();
+  });
+
   test("canonicalizes MIC aliases before applying exchange suffixes", () => {
     expect(getListingSymbol("VOD", "XLON")).toBe("VOD.L");
     expect(getListingSymbol("VOD:XLON", "LSE")).toBe("VOD.L");
