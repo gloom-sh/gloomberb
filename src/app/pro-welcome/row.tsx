@@ -77,9 +77,9 @@ function fitTerminalRow(
 }
 
 /**
- * The row a new Pro payer sees under the header in their first two weeks: a
- * few Pro functions they have not opened, each a chip that opens it on one
- * of their own tickers. Dismiss puts it away for good on this machine (the
+ * The row someone new to Pro sees under the header, through their trial and
+ * their first two paid weeks: a few Pro functions they have not opened, each
+ * a chip that opens it on one of their own tickers. Dismiss puts it away for good on this machine (the
  * notification dismiss key too; the notification action key opens the first).
  */
 export function ProWelcomeRow({ welcome }: { welcome: ProWelcome }) {

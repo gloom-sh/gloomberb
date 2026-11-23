@@ -55,7 +55,7 @@ function readDismissed(pluginState: Pick<AppPluginStateStorePort, "get">): boole
 /**
  * The first-weeks Pro row's session (see `./model.ts` for who sees it and
  * what it names). The account's plan is asked for once a session, and only
- * for a paying Pro account that has not dismissed the row.
+ * for an account on a trial or paying for Pro that has not dismissed the row.
  */
 export function useProWelcome({
   active,
@@ -95,7 +95,7 @@ export function useProWelcome({
   const asked = useRef(new Set<string>());
   const loadPlanRef = useRef(loadPlan);
   loadPlanRef.current = loadPlan;
-  const wanted = active && initialized && ready && !dismissed && access.isPayingPro && !!accountId;
+  const wanted = active && initialized && ready && !dismissed && (access.isPayingPro || access.isTrialActive) && !!accountId;
 
   useEffect(() => {
     if (!wanted || !accountId || asked.current.has(accountId)) return;

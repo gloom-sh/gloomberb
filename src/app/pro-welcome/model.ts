@@ -7,12 +7,14 @@ import type { TickerRecord } from "../../types/ticker";
 import { trackedListings } from "../since-last-visit/model";
 
 /**
- * The row a new Pro payer sees in their first two weeks: a few Pro functions
- * they have not opened yet, each on one of their own tickers. Everything it
- * reads is already on this machine (the command bar's recent runs, the
- * layouts, the portfolios, watchlists and recently viewed tickers) except the
- * first charge's date, which the account's own plan answer carries. Nothing
- * about it is kept per account or sent anywhere.
+ * The row someone new to Pro sees, from the first day of their trial through
+ * two weeks after their first charge: a few Pro functions they have not
+ * opened yet, each on one of their own tickers. The trial is the week that
+ * decides whether Pro is kept, so the row is there from its first day.
+ * Everything it reads is already on this machine (the command bar's recent
+ * runs, the layouts, the portfolios, watchlists and recently viewed tickers)
+ * except the first charge's date, which the account's own plan answer
+ * carries. Nothing about it is kept per account or sent anywhere.
  */
 
 const DAY_MS = 86_400_000;
@@ -63,13 +65,15 @@ export interface ProWelcomeEligibility {
 }
 
 /**
- * A payer of their own Pro plan from the day of their first paid charge
- * through day 14. Not on a trial (no charge yet), not with Pro through a team
- * seat, not once dismissed, and not when the server gave no first charge.
+ * Someone on a trial of their own Pro plan, every day of it, and a payer of
+ * their own plan from the day of their first paid charge through day 14. Not
+ * with Pro through a team seat, not once dismissed, and for a payer not when
+ * the server gave no first charge.
  */
 export function proWelcomeEligible({ access, plan, dismissed, now }: ProWelcomeEligibility): boolean {
-  if (dismissed || !access.isPayingPro || access.isTrialActive) return false;
-  if (!plan || plan.proTeam) return false;
+  if (dismissed || !plan || plan.proTeam) return false;
+  if (access.isTrialActive) return true;
+  if (!access.isPayingPro) return false;
   const firstCharge = Date.parse(plan.firstChargeAt ?? "");
   if (!Number.isFinite(firstCharge)) return false;
   // A charge a moment ahead of this machine's clock is today's.
