@@ -313,10 +313,10 @@ test("error policy retains the original retrieval time through an outage and cle
   });
   const retrievedAt = resource.updatedAt;
   expect(retrievedAt).not.toBeNull();
-  const outage = new Error("Provider timed out");
+  const outage = new DOMException("Provider timed out", "TimeoutError");
   failure = outage;
   await act(async () => { await resource.reloadAndWait(); });
-  expect(resource).toMatchObject({ data: "known research", updatedAt: retrievedAt, error: outage.message });
+  expect(resource).toMatchObject({ data: "known research", updatedAt: retrievedAt, savedAt: retrievedAt, error: outage.message });
   const denial = new Error("Access denied");
   failure = denial;
   await act(async () => { await resource.reloadAndWait(); });

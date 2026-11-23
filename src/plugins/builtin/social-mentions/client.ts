@@ -3,6 +3,7 @@ import { apiClient } from "../../../api-client";
 import { isAccessDenied } from "../../../api-client/errors";
 import type { SocialMentionDayPosts, SocialMentionPost, SocialMentionsPayload, SocialMentionsRange } from "../../../api-client/social-mentions";
 import { createPluginCache, savedCopyForTransientFailure } from "../../../data/plugin-cache";
+import { markSavedCopy, stampRetrievedAt, withSavedCopyMarkOf } from "../../../data/saved-copies";
 import { CLOUD_SESSION_REQUIRED } from "../shared/research-cloud-session";
 import { unavailableOnServer } from "../shared/cloud-resource";
 import { logFailure } from "../../../utils/log-failure";
@@ -71,14 +72,17 @@ const cacheKey = (symbol: string, range: SocialMentionsRange) => `${range}:${sym
 export function cachedSocialMentions(symbol: string, range: SocialMentionsRange): SocialMentionsResource | null {
   const cached = socialMentionsCache.get(cacheKey(symbol, range), { allowExpired: true });
   if (!cached) return null;
-  try { return { payload: validateSocialMentions(cached.data, symbol, range), stale: false, refreshError: null }; }
+  try {
+    const answer = { payload: validateSocialMentions(cached.data, symbol, range), stale: false, refreshError: null };
+    return cached.fromEarlierRun || cached.stale ? markSavedCopy(answer, cached.fetchedAt) : stampRetrievedAt(answer, cached.fetchedAt);
+  }
   catch (error) { return logFailure("social-mentions.client", "Validate cached social mentions failed", null)(error); }
 }
 export async function loadSocialMentions(symbol: string, range: SocialMentionsRange, force = false): Promise<SocialMentionsResource> {
   // A refusal (a signed-out session, any other 4xx but 408 and 429) or a reply that fails validation shows as itself.
   const result = savedCopyForTransientFailure(await socialMentionsCache.load(cacheKey(symbol, range), () => fetchSocialMentions(symbol, range), { force }));
-  return { payload: validateSocialMentions(result.data, symbol, range), stale: result.stale, refreshError: result.refreshError ?? null,
-    ...(result.source === "stale-fallback" ? { savedAt: result.fetchedAt } : {}) };
+  return withSavedCopyMarkOf(stampRetrievedAt({ payload: validateSocialMentions(result.data, symbol, range), stale: result.stale,
+    refreshError: result.refreshError ?? null, ...(result.source === "stale-fallback" ? { savedAt: result.fetchedAt } : {}) }, result.fetchedAt), result);
 }
 
 /**

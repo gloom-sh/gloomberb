@@ -1,6 +1,7 @@
 import type { DataProvider } from "../../../types/data-provider";
 import type { PricePoint, Quote } from "../../../types/financials";
 import { logFailure } from "../../../utils/log-failure";
+import { savedCopyAt } from "../../../data/saved-copies";
 import type { SectorDef } from "./sector-data";
 import { getCompletedRegularSessionDisplay, getRegularSessionDisplay } from "../../../market-data/market/status";
 import {
@@ -20,6 +21,11 @@ export interface SectorRowOutcome {
   row: Partial<SectorRow> | null;
 }
 
+interface SectorLoadedRow extends SectorRowOutcome {
+  checked: boolean;
+  savedAt: number | null;
+}
+
 /**
  * The year of daily bars each fund's returns are read from, by fund. A load
  * given one asks only for the funds it lacks and adds what it reads, so a
@@ -30,12 +36,13 @@ export type SectorHistories = Map<string, PricePoint[]>;
 export async function loadSectorRows(
   sectors: readonly SectorDef[],
   provider: DataProvider,
-  options: { histories?: SectorHistories } = {},
-): Promise<SectorRowOutcome[]> {
+  options: { histories?: SectorHistories; revalidate?: boolean } = {},
+): Promise<SectorLoadedRow[]> {
   const quotes = new Map<string, Quote | null>();
   if (provider.getQuotesBatch) {
     const results = await provider.getQuotesBatch(
       sectors.map((sector) => ({ symbol: sector.etf, exchange: "" })),
+      options.revalidate ? { revalidate: true } : undefined,
     ).catch(logFailure("sectors", "Sector quote batch failed", []));
     for (const result of results) quotes.set(result.target.symbol, result.quote ?? null);
   }
@@ -43,7 +50,7 @@ export async function loadSectorRows(
   // history close. Retry only the missing instruments through the normal route.
   await Promise.all(sectors.filter((sector) => !quotes.get(sector.etf)).map(async (sector) => {
     try {
-      quotes.set(sector.etf, await provider.getQuote(sector.etf, ""));
+      quotes.set(sector.etf, await provider.getQuote(sector.etf, "", options.revalidate ? { cacheMode: "refresh" } : undefined));
     } catch {
       quotes.set(sector.etf, null);
     }
@@ -52,8 +59,17 @@ export async function loadSectorRows(
   const histories: SectorHistories = options.histories ?? new Map();
   // Funds whose history this load reads; a stored one is not asked again, nor for its boundary buffer.
   const read = new Set(sectors.filter((sector) => !histories.get(sector.etf)?.length).map((sector) => sector.etf));
+  const savedHistories = new Map<string, number>();
   await Promise.all([...read].map(async (etf) => {
-    histories.set(etf, await provider.getPriceHistory(etf, "", "1Y").catch(logFailure("sectors", "Sector price history failed", [])));
+    try {
+      const result = provider.getPriceHistoryWithMetadata
+        ? await provider.getPriceHistoryWithMetadata(etf, "", "1Y") : null;
+      const savedAt = savedCopyAt(result);
+      if (savedAt != null) savedHistories.set(etf, savedAt);
+      histories.set(etf, result?.points ?? await provider.getPriceHistory(etf, "", "1Y"));
+    } catch (error) {
+      histories.set(etf, logFailure("sectors", "Sector price history failed", [] as PricePoint[])(error));
+    }
   }));
   // The quotes as sent carry any pre-market or after-hours print, for its own column.
   const sentQuotes = new Map(quotes);
@@ -78,7 +94,11 @@ export async function loadSectorRows(
   const outcomes = await Promise.all(sectors.map(async (sector) => {
     let history: PricePoint[] = histories.get(sector.etf) ?? [];
     const quote = quotes.get(sector.etf) ?? null;
-    if (!quote && history.length === 0) return { etf: sector.etf, row: null };
+    const savedTimes = [savedCopyAt(sentQuotes.get(sector.etf)), savedHistories.get(sector.etf)]
+      .filter((at): at is number => at != null);
+    const savedAt = savedTimes.length ? Math.min(...savedTimes) : null;
+    const checked = !!quote && savedAt == null && history.length > 0;
+    if (!quote && history.length === 0) return { etf: sector.etf, row: null, checked, savedAt };
     // Price and 1D are the regular session, as `ticker` reads them: after the close
     // its close and move, with an extended print in its own column.
     const headline = getRegularSessionDisplay(quote);
@@ -116,6 +136,8 @@ export async function loadSectorRows(
     const year = computeTrailingReturn(history, "1Y", price, asOfDate);
     return {
       etf: sector.etf,
+      checked,
+      savedAt,
       row: {
         price,
         quoteUnavailable: price == null,

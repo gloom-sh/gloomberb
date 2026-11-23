@@ -1,6 +1,7 @@
 import { apiClient } from "../../../api-client";
 import type { SwapCurvePayload, SwapTenor } from "../../../api-client/swap-curve";
 import { createPluginCache, savedCopyForTransientFailure, type PluginCacheResult } from "../../../data/plugin-cache";
+import { stampRetrievedAt, withSavedCopyMarkOf } from "../../../data/saved-copies";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 import { validateSwapCurve } from "./swaps-model";
 import { loadCurveData, type CurveData, type CurveId } from "./curves";
@@ -56,7 +57,8 @@ const curveKey = (curve: CurveId, requestedDate: string) => `${curve}:${requeste
  */
 function answer<T>(result: PluginCacheResult<T>): SavedCopyAnswer<T> {
   const saved = savedCopyForTransientFailure(result).source === "stale-fallback";
-  return { data: result.data, savedAt: saved ? result.fetchedAt : null };
+  const value = { data: result.data, savedAt: saved ? result.fetchedAt : null };
+  return saved ? withSavedCopyMarkOf(value, result) : stampRetrievedAt(value, result.fetchedAt);
 }
 
 /** The curve on the date (its latest without one), or the copy an earlier read saved when it cannot be read. */

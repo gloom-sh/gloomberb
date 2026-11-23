@@ -164,7 +164,7 @@ export function NewsPresetPane({
     ? parseNewsFeedSettings(storedFeeds, storedDisabledIds).error
     : undefined, [query.feed, storedFeeds, storedDisabledIds]);
   const newsState = useNewsArticles(query);
-  const persisted = usePersistedNewsArticles(`${paneKey}:articles`, newsState.articles);
+  const persisted = usePersistedNewsArticles(`${paneKey}:articles`, newsState.articles, newsState.phase === "error");
   const articles = useNewsMuteFilter(persisted, newsMutesApplyToFeed(query.feed));
   const { scrollRef, onBodyScrollActivity } = useNewsTableLoadMore(query, newsState);
   // The aggregator opens a query in "loading", so the first paint is a loading

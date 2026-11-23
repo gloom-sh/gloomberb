@@ -3,6 +3,7 @@ import type { CachePolicy } from "../types/persistence";
 import type { PluginPersistence } from "../types/plugin";
 import { CachedQuery, type CachedValue } from "./cached-query";
 import { isTransientFailure } from "../api-client/errors";
+import { markSavedCopy, stampRetrievedAt } from "./saved-copies";
 
 export interface PluginCacheResult<T> {
   data: T;
@@ -134,11 +135,14 @@ export function createPluginCache<T, Stored = T>(options: {
       // A retained copy carries its refresh failure, whatever was thrown (an Error without a message included).
       const failed = "refreshError" in result;
       const error = result.refreshError;
-      return {
+      const answer: PluginCacheResult<T> = {
         data: result.value, fetchedAt: result.fetchedAt, stale: failed || result.staleAt <= Date.now(),
         source: failed ? "stale-fallback" : result === before ? "cache" : "network",
         ...(failed ? { error, refreshError: error instanceof Error ? error.message : String(error) } : {}),
       };
+      return failed && isTransientFailure(error)
+        ? markSavedCopy(answer, answer.fetchedAt, true)
+        : stampRetrievedAt(answer, answer.fetchedAt);
     },
   };
 }

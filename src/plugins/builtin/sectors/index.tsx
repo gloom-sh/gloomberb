@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Box } from "../../../ui";
 import { DataTableView, usePaneFooter, usePaneTabs, type DataTableCell, type DataTableKeyEvent, type DataTableVisibleRange } from "../../../components";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
+import { ageFooterSegment, savedCopyFooterInfo } from "../../../components/layout/pane/footer";
+import { connectionHealth, recoversDataRequests } from "../../../core/connection-health";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { useAppSelector, usePaneInstance, usePaneSettingValue } from "../../../state/app/context";
@@ -156,6 +158,7 @@ function EtfBoard({ collectionId, focused, width, height, rootBefore }: EtfBoard
   /** The history the last full load read, for the funds it was read for, which quote refreshes reuse. */
   const historiesRef = useRef<{ funds: string; loadedAt: number; histories: SectorHistories } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [fallback, setFallback] = useState<{ collectionId: SectorCollectionId; savedAt: number | null } | null>(null);
 
   const rows = useMemo(
     () => normalizeRowsForCollection(rowsByCollection, activeCollection.id, activeItems),
@@ -217,6 +220,8 @@ function EtfBoard({ collectionId, focused, width, height, rootBefore }: EtfBoard
     [extendedSessionsKey, width],
   );
   const lastRefreshMs = lastRefreshByCollection[activeCollection.id] ?? null;
+  const refreshFailed = fallback?.collectionId === activeCollection.id;
+  const savedAt = refreshFailed ? fallback.savedAt ?? lastRefreshMs : null;
   const loading = rows.some((row) => row.loading);
   /**
    * A full load marks every row loading and replaces it. A background one,
@@ -251,20 +256,23 @@ function EtfBoard({ collectionId, focused, width, height, rootBefore }: EtfBoard
 
     if (!background) updateRows((rows) => rows.map((row) => ({ ...row, loading: true })));
 
-    loadSectorRows(sectorDefs, dataProvider, { histories }).then((outcomes) => {
+    loadSectorRows(sectorDefs, dataProvider, { histories, revalidate: true }).then((outcomes) => {
       if (fetchGenRef.current !== gen) return;
-      if (!reuse) historiesRef.current = { funds, loadedAt: Date.now(), histories };
+      const checked = outcomes.length > 0 && outcomes.every((outcome) => outcome.checked);
+      if (checked && !reuse) historiesRef.current = { funds, loadedAt: Date.now(), histories };
       const loadedByEtf = new Map(outcomes.map((outcome) => [outcome.etf, outcome.row]));
-      updateRows((rows) => applySectorReload(rows, loadedByEtf, background));
+      updateRows((rows) => clearLoading(applySectorReload(rows, loadedByEtf, background || !checked && rows.some((row) => row.returnAsOfDate))));
 
       const loadedCount = outcomes.filter((outcome) => outcome.row).length;
       setLoadError(loadedCount === 0 ? "Sector data unavailable" : null);
-      // A refresh that returned nothing must not claim the board is current.
-      if (loadedCount === 0) return;
+      const savedTimes = outcomes.flatMap((outcome) => outcome.savedAt == null ? [] : [outcome.savedAt]);
+      setFallback(checked ? null : { collectionId, savedAt: savedTimes.length ? Math.min(...savedTimes) : null });
+      if (!checked) return;
       setLastRefreshByCollection((prev) => ({ ...prev, [collectionId]: Date.now() }));
     }).catch(() => {
       if (fetchGenRef.current !== gen) return;
       setLoadError("Sector data unavailable");
+      setFallback({ collectionId, savedAt: null });
       if (!background) updateRows(clearLoading);
     });
   }, [activeCollection.id, activeItems, dataProvider, researchIntervalMinutes, setLastRefreshByCollection, setRowsByCollection]);
@@ -275,7 +283,10 @@ function EtfBoard({ collectionId, focused, width, height, rootBefore }: EtfBoard
     fetchAll();
   }, [fetchAll]);
 
-  const fallbackRefresh = !feedCoversBoard || loadError != null;
+  useEffect(() => connectionHealth.subscribeRecovery((sourceId) => {
+    if (refreshFailed && recoversDataRequests(sourceId)) refreshInBackground();
+  }), [refreshFailed, refreshInBackground]);
+  const fallbackRefresh = !feedCoversBoard || refreshFailed || loadError != null;
   useAutoRefresh(lastRefreshMs, refreshInBackground, { intervalMs: fallbackRefresh ? SECTOR_FALLBACK_REFRESH_MS : null });
 
   useEffect(() => {
@@ -350,7 +361,7 @@ function EtfBoard({ collectionId, focused, width, height, rootBefore }: EtfBoard
     }
   }, []);
 
-  const updatedAgo = useUpdatedAgo(lastRefreshMs);
+  const updatedAgo = useUpdatedAgo(refreshFailed ? null : lastRefreshMs);
   const returnAsOfDate = rows.map((row) => row.returnAsOfDate).filter((date): date is string => !!date).sort().at(-1);
   // A row with a value the source could not supply says so on that row: its
   // ETF in the warning colour, and the reason under the table while it is
@@ -359,18 +370,19 @@ function EtfBoard({ collectionId, focused, width, height, rootBefore }: EtfBoard
   // Signed out or free, the ETFs' quotes are delayed ones.
   const quoteDelay = useQuoteDelayFooter(rows.map((row) => (row.loading ? null : { dataSource: row.quoteDataSource })), "sectors-delay");
   usePaneFooter("sectors", () => {
-    const info = loadingErrorFooterInfo(loading, loadError);
+    const info = loadingErrorFooterInfo(loading, savedAt == null ? loadError ?? (refreshFailed ? "Couldn't refresh sectors" : null) : null);
     if (returnAsOfDate) info.push({ id: "return-as-of", parts: [{ text: `returns as of ${returnAsOfDate}`, tone: "muted" }] });
-    if (updatedAgo) info.push({ id: "updated", parts: [{ text: `checked ${updatedAgo}`, tone: "muted" }] });
     // Keep the leading current failure readable when the pane is narrow; separate
     // flex children would each shrink it to a few characters beside routine status.
     return { info: [
+      ...savedCopyFooterInfo([savedAt]),
       ...(info.length > 0 ? [{ id: "status", parts: info.flatMap((segment, index) => [
         ...(index > 0 ? [{ text: "·", tone: "muted" as const }] : []), ...segment.parts,
       ]) }] : []),
+      ...(updatedAgo ? [ageFooterSegment(updatedAgo, { verb: "checked" })] : []),
       ...(quoteDelay ? [quoteDelay] : []),
     ] };
-  }, [loadError, loading, quoteDelay, returnAsOfDate, updatedAgo]);
+  }, [loadError, loading, quoteDelay, refreshFailed, returnAsOfDate, savedAt, updatedAgo]);
 
   return (
     <DataTableView<SectorRow, SectorColumn>

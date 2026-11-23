@@ -65,7 +65,7 @@ export function useAsyncResource<T>(
     const saved = savedKey ? readSavedCopy<T>(savedKey) : null;
     const data = loader ? saved?.value ?? options.initialData?.() ?? null : null;
     const savedAt = saved?.fetchedAt ?? savedCopyAt(data);
-    return { owner: loader, ownerKey: savedId, retainWithin, data, savedAt, updatedAt: savedAt, loading: !!loader && !manual, error: null };
+    return { owner: loader, ownerKey: savedId, retainWithin, data, savedAt, updatedAt: savedAt ?? retrievedAtOf(data), loading: !!loader && !manual, error: null };
   };
   // `ownerKey`: the saved-copy key of the question the data answers. A new
   // loader for the same key (a session restored, a callback remade) asks the
@@ -130,7 +130,7 @@ export function useAsyncResource<T>(
             ...current,
             data: discard ? null : current.data,
             updatedAt: discard ? null : current.updatedAt,
-            savedAt: discard ? null : current.savedAt,
+            savedAt: discard ? null : current.savedAt ?? (!discardSaved && !current.placeholder && current.data !== null ? current.updatedAt : null),
             loading: false,
             error: message.trim() ? message : "Request failed",
           };
@@ -168,7 +168,7 @@ export function useAsyncResource<T>(
   // bridge) answers after an outage, so a pane recovers by itself instead of
   // keeping the failure.
   const failedRef = useRef(false);
-  failedRef.current = !!loader && error !== null && !loading;
+  failedRef.current = !!loader && (error !== null || savedCopyAt(data) !== null) && !loading;
   useEffect(() => {
     if (manual || !loader) return;
     return connectionHealth.subscribeRecovery((sourceId) => {

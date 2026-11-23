@@ -48,6 +48,7 @@ function TickerNewsView({ width, height, focused }: { width: number; height: num
   const loaded = usePersistedNewsArticles(
     `articles:${instrument?.symbol ?? "none"}:${instrument?.exchange ?? ""}`,
     newsState.articles,
+    newsState.phase === "error",
   );
   const news = useNewsMuteFilter(loaded, newsMutesApplyToFeed(newsQuery?.feed));
   const search = useNewsListSearch(news, "ticker-news", symbol);

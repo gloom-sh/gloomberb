@@ -5,6 +5,7 @@ import type { PaneInstanceConfig, SavedLayout } from "../types/config";
 import { isRecord } from "../utils/guards";
 import { logFailure } from "../utils/log-failure";
 import { packJson, unpackJson } from "./packed-json";
+import { stampRetrievedAt } from "./saved-copies";
 
 const PUBLIC_LEGACY_SCOPE = "legacy-public";
 const MAX_ARTICLES = 200;
@@ -44,7 +45,7 @@ export function readNewsPaneSnapshot<T>(store: AppResourceStorePort, target: Sna
     const record = (scope == null ? null : store.get<string>({ ...resource, sourceKey: scope })) ?? store.get<string>(resource);
     if (!record) return null;
     const [key, articles] = JSON.parse(unpackJson(record.value));
-    return key === target.key && Array.isArray(articles) ? articles : null;
+    return key === target.key && Array.isArray(articles) ? stampRetrievedAt(articles, record.fetchedAt) : null;
   } catch (error) {
     logFailure("data.news-pane-snapshots", "Reading saved headlines failed")(error);
     return null;

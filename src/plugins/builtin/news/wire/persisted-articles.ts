@@ -5,6 +5,8 @@ import { usePaneInstance } from "../../../../state/app/context";
 import type { MarketNewsItem, NewsStoryItem } from "../../../../types/news-source";
 import { usePluginPaneState } from "../../../runtime";
 import { usePluginRenderContext } from "../../../runtime/context";
+import { useSavedCopyFooter } from "../../../../components/layout/pane/footer/registration";
+import { retrievedAtOf } from "../../../../data/saved-copies";
 
 const MAX_PERSISTED_ARTICLES = 200;
 const EMPTY_PERSISTED_ARTICLES: PersistedNewsArticle[] = [];
@@ -116,22 +118,24 @@ function serializeArticles(articles: MarketNewsItem[]): PersistedNewsArticle[] {
 
 const subscribeToSession = (listener: () => void) => apiClient.subscribeCurrentUser(listener);
 
-export function usePersistedNewsArticles(key: string, articles: MarketNewsItem[]): MarketNewsItem[] {
+export function usePersistedNewsArticles(key: string, articles: MarketNewsItem[], refreshFailed = false): MarketNewsItem[] {
   const { pluginId, runtime } = usePluginRenderContext();
   const pane = usePaneInstance();
   const scope = useSyncExternalStore(subscribeToSession, cloudNewsSnapshotScope, cloudNewsSnapshotScope);
   const snapshots = runtime.newsPaneSnapshots;
   const storageKey = `${key}:v2`;
   const cached = useMemo(() => {
-    if (articles.length || !pane) return [];
-    return restoreArticles(snapshots?.read<PersistedNewsArticle>(pane, pluginId, storageKey, scope) ?? []);
+    if (articles.length || !pane) return null;
+    const saved = snapshots?.read<PersistedNewsArticle>(pane, pluginId, storageKey, scope);
+    return saved ? { articles: restoreArticles(saved), fetchedAt: retrievedAtOf(saved) } : null;
   }, [articles, pane, pluginId, scope, snapshots, storageKey]);
+  useSavedCopyFooter(refreshFailed && cached?.articles.length ? cached.fetchedAt : null, false);
   useEffect(() => {
     if (articles.length && pane && scope != null) {
       snapshots?.write(pane, pluginId, storageKey, scope, serializeArticles(articles));
     }
   }, [articles, pane, pluginId, scope, snapshots, storageKey]);
-  return articles.length ? articles : cached;
+  return articles.length ? articles : cached?.articles ?? [];
 }
 
 export function usePersistedStory(articles: MarketNewsItem[]): MarketNewsItem[] {
