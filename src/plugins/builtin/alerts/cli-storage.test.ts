@@ -10,6 +10,9 @@ import { createDefaultConfig } from "../../../types/config";
 import { createAlert } from "./alert-engine";
 import { alertsCliCommand } from "./cli";
 import { createEventAlert } from "./events";
+import { useAlertTestClock } from "./test-fixture";
+
+useAlertTestClock();
 
 const dirs: string[] = [];
 afterEach(async () => {

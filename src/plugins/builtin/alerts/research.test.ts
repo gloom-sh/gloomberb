@@ -3,6 +3,9 @@ import { expect, test } from "bun:test";
 import { eventAlertTarget, readEventAlerts } from "./events";
 import { alertKindLabel, ruleStateText, validateAlertHistory } from "./history";
 import { createResearchAlert, formatPremium, parseAmount } from "./research-builder";
+import { useAlertTestClock } from "./test-fixture";
+
+useAlertTestClock();
 
 test("wizard values become a normalized synced rule that reads back with its description", () => {
   const rule = createResearchAlert("unusual_volume", {

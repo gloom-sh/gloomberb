@@ -4,6 +4,9 @@ import { parseAlertAddArgs } from "./cli";
 import { assertAlertCurrency, levelInQuoteUnit } from "./quotes";
 import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
 import type { DataProvider } from "../../../types/data-provider";
+import { useAlertTestClock } from "./test-fixture";
+
+useAlertTestClock();
 
 test("the SA shortcut reads its price as alerts add reads it, and never as the digits before a comma or a k", () => {
   const price = (text: string) => parseAlertCommandValues({ shortcut: `BTC-USD below ${text}` })?.price;
@@ -40,7 +43,7 @@ test("explicit alert currencies survive CLI, shortcut and form parsing and canno
     parseAlertCommandValues({ symbol: "AVGO", condition: "below", price: "2560 HKD" })]) {
     expect(input).toMatchObject({ price: 2560, currency: "HKD" });
     await expect(assertAlertCurrency(input as { price: number; currency: string }, quote, "AVGO", provider))
-      .rejects.toThrow(/quoted in USD, not HKD.*About 320\.00 USD \(USD\/HKD 8 · Fri 20 Nov(?: 2026)? 11:00 UTC\)/);
+      .rejects.toThrow(/quoted in USD, not HKD.*About 320\.00 USD \(USD\/HKD 8 · Fri 20 Nov 11:00 UTC\)/);
   }
   expect(levelInQuoteUnit({ price: 320, currency: "USD" }, quote, "AVGO").price).toBe(320);
 });

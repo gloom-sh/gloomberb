@@ -11,7 +11,7 @@ const research = (kind: string, fields: Record<string, string>) =>
   alertTarget(eventRuleSubject(createResearchAlert(kind, Object.fromEntries(Object.entries(fields).map(([key, value]) => [`${kind}:${key}`, value])), NOW)));
 
 test("every rule kind opens what it follows", () => {
-  const event = (templateId: string, value = "") => alertTarget(eventRuleSubject(createEventAlert(templateId, value)));
+  const event = (templateId: string, value = "") => alertTarget(eventRuleSubject(createEventAlert(templateId, value, NOW)));
   expect([
     alertTarget(priceRuleSubject({ id: "p", symbol: "NET", exchange: "LSE", condition: "above", targetPrice: 1, createdAt: 1, status: "active" })),
     event("catalyst-watched"), event("catalyst-ticker", "pfe"), event("catalyst-type", "clinical"), event("catalyst-agency", "FDA"), event("catalyst-country", "us"),

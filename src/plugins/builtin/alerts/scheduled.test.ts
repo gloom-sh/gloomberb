@@ -22,6 +22,9 @@ import {
   type EarningsResultRow,
   type ScheduledEventSources,
 } from "./scheduled";
+import { useAlertTestClock } from "./test-fixture";
+
+useAlertTestClock();
 
 test("an alert is armed until its lead day, due through the event day, and done once it has gone off", () => {
   // Three days before Mon 2 Nov is Fri 30 Oct, across the month end.

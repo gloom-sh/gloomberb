@@ -2,6 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { foldStreamTick, mergeStreamTickRanges, type StreamTickRange } from "../../../market-data/quotes/tick-range";
 import type { Quote } from "../../../types/financials";
 import { evaluateAlert, createAlert, editAlert, rearmAlert, serializeAlerts, deserializeAlerts, readAlertsStoreError, tickTrigger } from "./alert-engine";
+import { useAlertTestClock } from "./test-fixture";
+
+useAlertTestClock();
 
 test("a level alert goes off past its level, never at it, and a crossing needs the price before", () => {
   const above = createAlert("AAPL", "above", 200);
