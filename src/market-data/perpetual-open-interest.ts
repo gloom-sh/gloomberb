@@ -27,3 +27,15 @@ export function rowReadAt(row: PerpOpenInterest & Pick<PerpBoardRow, "observedAt
   const interest = openInterestSourceOf(row)?.observedAt;
   return interest && Date.parse(interest) < Date.parse(row.observedAt) ? interest : row.observedAt;
 }
+
+/** Two stamps this close are one reading: a venue's poll can stamp its mark and its open interest a few ms apart. */
+const SAME_READING_MS = 1_000;
+
+/**
+ * Whether every figure on a row is from its own observation: no open interest older than it. A streamed Binance mark
+ * sits beside the open interest the last poll read (its socket carries none), so its row is not one reading and a view
+ * holding it is not live; Hyperliquid's socket carries both, and a row with no open interest source has one time only.
+ */
+export function readAsOne(row: PerpOpenInterest & Pick<PerpBoardRow, "observedAt">): boolean {
+  return Date.parse(row.observedAt) - Date.parse(rowReadAt(row)) <= SAME_READING_MS;
+}

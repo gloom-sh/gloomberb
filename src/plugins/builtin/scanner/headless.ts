@@ -219,7 +219,8 @@ export function createHiloHeadless(
     async load(args, ctx) {
       const minPrice = args.options.minPrice as HiloMinPrice;
       const sort = args.options.sort as HiloSort;
-      // A shut market is known from the calendar: no scanner to wait on, and the same answer every call.
+      // A shut market is known from the calendar: no scanner to wait on, and the same answer every call. No refusal is
+      // skipped: HILO is served signed out and on every plan (delayed without Pro), unlike FLOW.
       const now = dependencies.now?.() ?? Date.now();
       if (usScannerSessionClosed(now)) return closedHiloSnapshot(minPrice, sort, now);
       const payload = await dependencies.load(args, ctx.apiClient, ctx.signal);

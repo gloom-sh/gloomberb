@@ -1,6 +1,6 @@
 import type { PerpBoardRow } from "../../../api-client/perps";
 import type { HeadlessPaneFreshness } from "../../../types/headless";
-import { rowReadAt } from "../../../market-data/perpetual-open-interest";
+import { readAsOne, rowReadAt } from "../../../market-data/perpetual-open-interest";
 import { perpFreshness } from "./freshness";
 import { venueName } from "./model";
 
@@ -84,14 +84,15 @@ export function venueMarketReadAt(market: Pick<PerpVenueMarket, "contracts">): s
 
 /**
  * How current a list of venue rows is, in PERP's status line: each venue dated by its row's oldest figure, how old the
- * oldest row is, and `live` only while every figure shown streams (`streaming`, the markets whose deepest contract
- * follows its venue's socket; a venue's other contracts are the last read). `refreshFailed` marks the rows off the
- * stream stale: the last read failed and its saved copy is shown.
+ * oldest row is, and `live` only while every figure shown streams. A market streams when its deepest contract follows
+ * its venue's socket (`streaming`) and its open interest came with it, not from the last poll (Binance's socket carries
+ * none); a venue's other contracts are the last read. `refreshFailed` marks the rows off the stream stale: the last
+ * read failed and its saved copy is shown.
  */
 export function venueMarketsFreshness(markets: readonly PerpVenueMarket[], { now = Date.now(), streaming, refreshFailed = false }: {
   now?: number; streaming: ReadonlySet<string>; refreshFailed?: boolean;
 }): HeadlessPaneFreshness {
-  const streams = (market: PerpVenueMarket) => streaming.has(market.primary.marketId);
+  const streams = (market: PerpVenueMarket) => streaming.has(market.primary.marketId) && readAsOne(market.primary);
   const rows = markets.map((market) => ({ venue: market.primary.venue, observedAt: venueMarketReadAt(market),
     stale: market.contracts.some((contract) => contract.stale) || refreshFailed && !streams(market) }));
   return perpFreshness(rows, { now, live: markets.length > 0 && markets.every((market) => streams(market) && market.contracts.length === 1) });

@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { perpFreshness } from "./freshness";
 import { freshnessLine } from "./status-line";
 import { contractText, foldSmallMarkets, mergeVenueMarkets, venueMarketReadAt, venueMarketsFreshness, withPrimaryReading } from "./venue-markets";
 import { perpRow, venueRow } from "./test-fixture";
@@ -82,10 +83,19 @@ test("a venue's row is dated by its oldest figure, and the line under the rows n
   const now = Date.parse(at("17:00"));
   const line = (streaming: readonly string[], list = markets) => freshnessLine(venueMarketsFreshness(list, { now, streaming: new Set(streaming) }), now).variants[0];
   expect(line([])).toBe("Binance 06:10 · Bybit 06:12 · Hyperliquid 06:16 UTC · oldest 6 min");
-  // Live only while every figure on screen streams: Bybit's other contract is the last read.
+  // Live only while every figure on screen streams: Bybit's other contract is the last read, and Binance's streamed
+  // mark sits beside the open interest its last poll read.
   const streamingAll = markets.map((market) => market.primary.marketId);
   expect(line(streamingAll)).not.toContain("live");
-  expect(line(streamingAll, [markets[0]!, markets[2]!])).toBe("Binance 06:10 · Hyperliquid 06:16 UTC · oldest 6 min · live");
+  expect(line(streamingAll, [markets[0]!, markets[2]!])).toBe("Binance 06:10 · Hyperliquid 06:16 UTC · oldest 6 min");
+  expect(perpFreshness([markets[0]!.primary], { now, live: true }).status).toBeUndefined();
+  // Hyperliquid's socket carries both: no open interest source, or one read with the mark, a few ms apart, is live.
+  const hyperliquid = markets[2]!;
+  const together = withPrimaryReading(hyperliquid, { ...hyperliquid.primary, openInterestSource: interest("https://api.hyperliquid.xyz/info", "2026-11-23T06:16:19.700Z") });
+  for (const market of [hyperliquid, together]) {
+    expect(line(streamingAll, [market])).toEndWith(" · live");
+    expect(perpFreshness([market.primary], { now, live: true }).status).toBe("live");
+  }
   // A streamed reading laid over the deepest contract moves the venue's open interest with it, and its read dates the row.
   const streamed = withPrimaryReading(markets[2]!, { ...markets[2]!.primary, observedAt: at("16:58"), openInterestUsd: 2_400e6 });
   expect([streamed.openInterestUsd, venueMarketReadAt(streamed)]).toEqual([2_400e6, at("16:58")]);
