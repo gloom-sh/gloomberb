@@ -30,8 +30,14 @@ function screenRowQuoteKey(row: Pick<ScreenRow, "symbol" | "exchange">): string 
   return buildQuoteKey({ symbol: row.symbol, exchange: row.exchange });
 }
 
+/**
+ * The quote's figure in place of the snapshot's. A snapshot figure that was a
+ * last price on record goes with its print time and the reason it was stale;
+ * any other reason (a cap's share count) still holds.
+ */
 function liveMetric(metric: ScreenMetric, value: number, asOf: string, observedAt: string): ScreenMetric {
-  return { ...metric, value, asOf, observedAt, state: "available" };
+  const { printedAt: _printedAt, ...rest } = metric;
+  return { ...rest, value, asOf, observedAt, state: "available", ...(metric.state === "stale" ? { reason: null } : {}) };
 }
 
 /**

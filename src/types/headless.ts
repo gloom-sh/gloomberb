@@ -788,6 +788,8 @@ export interface HeadlessSeriesTrailing {
   avg28: number | null;
   /** The mean over the 28 days that ended one year before the latest day. */
   yearAgoAvg28: number | null;
+  /** The days `yearAgoAvg28` is the mean of, YYYY-MM-DD; null when there is no such mean. */
+  yearAgoWindow: { start: string; end: string } | null;
   /** `avg28` against `yearAgoAvg28`, in percent. */
   changeVsYearAgoPct: number | null;
 }

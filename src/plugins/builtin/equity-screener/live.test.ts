@@ -132,7 +132,8 @@ async function report(snapshot: ScreenRow, quote: Quote) {
   const args = { argument: undefined, options: {} } as never;
   const result = await equityScreenerHeadless.load(args, { apiClient, marketData } as never);
   setCliColorEnabledOverride(false);
-  return { row: result.sections![0]!.rows![0]!, text: renderHeadlessPaneText(equityScreenerHeadless, result, args, "EQS") };
+  const rows = result.sections!.find((section) => section.title === "Matching equities")!;
+  return { row: rows.rows![0]!, text: renderHeadlessPaneText(equityScreenerHeadless, result, args, "EQS") };
 }
 
 /** `quote AAPL`'s row. */
@@ -252,4 +253,18 @@ test("rows are placed by the order sampled earlier, so a tick moves figures with
   // A's cap overtakes B's on a tick; the places stay those sampled until the pane samples again.
   const ticked = [row("A", 30), row("B", 9), row("C", 5), row("NEW", 1)];
   expect(placeLiveScreenRows(ticked, places).map((item) => item.symbol)).toEqual(["B", "C", "A", "NEW"]);
+});
+
+test("a current quote over a last price on record drops its print time and stale reason; a cap keeps a reason of its own", () => {
+  // The snapshot had only Thursday's print for this row: stale, with when it printed and why.
+  const snapshot = snapshotRow(190, 0.2);
+  snapshot.metrics.price = { ...snapshot.metrics.price, asOf: "2026-10-08", state: "stale", printedAt: "2026-10-08T19:59:00.000Z",
+    reason: "The last price on record, printed 2026-10-08 19:59 UTC: NASDAQ has had a later session (2026-10-09), so this is not its latest price" };
+  snapshot.metrics.marketCap = { ...snapshot.metrics.marketCap, state: "partial", reason: "Shares from the latest 10-Q cover" };
+  const row = paneRow(snapshot, quotes().weekend);
+  expect(row.metrics.price).toMatchObject({ value: 198.78, asOf: "2026-10-09", state: "available", reason: null });
+  expect(row.metrics.price.printedAt).toBeUndefined();
+  expect(row.metrics.marketCap.reason).toBe("Shares from the latest 10-Q cover");
+  // A stale quote leaves the snapshot's last price on record as it was, dated and explained.
+  expect(paneRow(snapshot, { ...quotes().weekend, stale: true }).metrics.price).toMatchObject({ state: "stale", printedAt: "2026-10-08T19:59:00.000Z" });
 });

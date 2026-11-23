@@ -633,9 +633,12 @@ function observationCount(series: HeadlessSeries): number {
   return series.points.filter((point) => point.value != null || point.close != null).length;
 }
 
+/** The averages, and the change with what it is against: the year-ago mean and the days it is of. */
 const TRAILING_COLUMNS: HeadlessPaneColumn[] = [
   { key: "avg7", header: "7D avg", literalHeader: true, align: "right" },
   { key: "avg28", header: "28D avg", literalHeader: true, align: "right" },
+  { key: "yearAgoAvg28", header: "Yr-ago 28D avg", literalHeader: true, align: "right" },
+  { key: "yearAgoWindow", header: "Yr-ago days", literalHeader: true, shrink: false },
   { key: "vsYearAgo", header: "28D vs yr ago", literalHeader: true, align: "right" },
 ];
 
@@ -643,9 +646,12 @@ function trailingCells(trailing: HeadlessSeries["trailing"]): Record<string, str
   if (!trailing) return {};
   const mean = (value: number | null) => (value == null ? MISSING_VALUE : value.toFixed(1));
   const change = trailing.changeVsYearAgoPct;
+  const days = trailing.yearAgoWindow;
   return {
     avg7: mean(trailing.avg7),
     avg28: mean(trailing.avg28),
+    yearAgoAvg28: mean(trailing.yearAgoAvg28),
+    yearAgoWindow: days ? `${days.start} to ${days.end}` : MISSING_VALUE,
     vsYearAgo: change == null || !Number.isFinite(change) ? MISSING_VALUE : `${change > 0 ? "+" : ""}${change.toFixed(1)}%`,
   };
 }

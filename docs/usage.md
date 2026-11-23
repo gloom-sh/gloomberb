@@ -2994,7 +2994,11 @@ gloom fn EQS --check NVDA --definition '{"version":1,"currency":"USD","criteria"
 
 ### Screening from the command line
 
-`gloom fn EQS --metric trailingPE --json` returns the first 100 matches with the snapshot, match and coverage counts, and the chosen metric's date and state per row. A notice says when more rows match (narrow the criteria to reach them). An extended-hours print has its own column (`extendedPrice`, `extendedChangePercent` in JSON). `--definition` accepts versioned JSON with `criteria`, `currency` and `sort`:
+`gloom fn EQS --metric trailingPE --json` returns the first 100 matches with the snapshot, match and coverage counts, and the chosen metric's date and state per row. A notice says when more rows match (narrow the criteria to reach them). An extended-hours print has its own column (`extendedPrice`, `extendedChangePercent` in JSON).
+
+Every report opens with a **Screen** section: the criteria, the currency, the column the rows are sorted by and in which direction, the command that runs the screen again, the snapshot's id and when it was assembled, and how many listings match. A CSV has those as its `Screen` rows ahead of the table (`--section matching` writes the table alone), and JSON as its first section, with `metadata.sort` naming the field, the direction and the column. The text table marks the sorted column (`FY OP MGN% ▼`, `FY OP MGN% (sorted descending)` in plain text). Each metric after the first has its own `as of` and `state` columns, and Last has `Last as of` and `Last state`. A row whose Last is the last price on record rather than its exchange's latest session reads `stale`, says when that price printed, and says why under the row (`Last note` in an export). Exports write these columns after the ones they had before, so none of those moves.
+
+`--definition` accepts versioned JSON with `criteria`, `currency` and `sort`:
 
 ```sh
 gloom fn EQS --definition '{"version":1,"currency":"USD","criteria":[{"field":"trailingPE","op":"between","value":[0,25]},{"field":"revenueGrowthPercent","op":"gte","value":10}],"sort":{"field":"marketCap","direction":"desc"}}' --json
