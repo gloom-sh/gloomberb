@@ -219,6 +219,11 @@ export const EXCHANGE_NOTATION: ExchangeNotation = {
     XCAI: "EGX",
     EGYPT: "EGX",
     CAIRO: "EGX",
+    HOSE: "HOSE",
+    HSX: "HOSE",
+    XSTC: "HOSE",
+    HNX: "HNX",
+    XHNX: "HNX",
     CME: "CME",
     CBT: "CBT",
     CBOT: "CBT",
@@ -278,9 +283,6 @@ export const EXCHANGE_NOTATION: ExchangeNotation = {
     XKAR: "PSX",
     KAR: "PSX",
     KARACHI: "PSX",
-    HSX: "HOSE",
-    XSTC: "HOSE",
-    XHNX: "HNX",
     MUN: "MUNICH",
     XMUN: "MUNICH",
     SWB: "XSTU",
@@ -382,6 +384,8 @@ export const EXCHANGE_NOTATION: ExchangeNotation = {
     MSX: "Muscat Stock Exchange",
     KUWAIT: "Boursa Kuwait",
     EGX: "Egyptian Exchange",
+    HOSE: "Ho Chi Minh Stock Exchange",
+    HNX: "Hanoi Stock Exchange",
     CBT: "CBOT",
     NYM: "NYMEX",
     CMX: "COMEX",
@@ -409,4 +413,4 @@ export const EXCHANGE_NOTATION: ExchangeNotation = {
   },
 }
 
-export const EXCHANGE_NOTATION_VERSION = "e28eebfe454fc5e6"
+export const EXCHANGE_NOTATION_VERSION = "eb76ebd1ac8be330"
