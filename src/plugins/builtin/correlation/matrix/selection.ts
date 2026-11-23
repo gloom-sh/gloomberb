@@ -31,14 +31,32 @@ export function matrixSelection(symbols: readonly string[], cursor: MatrixCursor
   return [symbols[row]!, symbols[column < 0 ? row : column]!];
 }
 
-/** The kit budget includes the read line. No compact strip: the matrix wins. */
-export function matrixChartRows(width: number, height: number, count: number, matrixWidth: number): number {
+/**
+ * The pair chart's rows below a matrix of `count` symbols, in a pane `height`
+ * tall that also draws the query bar and `noteRows` lines of notes (the
+ * return basis, a cell's note). The kit budget includes the read line. No
+ * compact strip: the matrix wins.
+ */
+export function matrixChartRows(width: number, height: number, count: number, matrixWidth: number, noteRows = 0): number {
   const layout = chartTableLayout({
-    width, height, queryRows: 1, tableRows: count,
+    width, height, queryRows: 1 + noteRows, tableRows: count,
     tableChromeRows: matrixWidth > width - 1 ? 2 : 1,
     chart: { minRows: 7, strip: false },
   });
   return layout.mode === "full" ? layout.chartRows - 1 : 0;
+}
+
+/**
+ * The matrix's and the pair chart's rows in the pane (matrixChartRows): the
+ * chart, with its read line, takes what the matrix's header and rows leave
+ * after the query bar and the notes, so a note line never comes out of the
+ * matrix's last row.
+ */
+export function matrixPaneRows(
+  width: number, height: number, count: number, matrixWidth: number, noteRows: number, charted: boolean,
+): { matrixHeight: number; chartRows: number } {
+  const chartRows = charted ? matrixChartRows(width, height, count, matrixWidth, noteRows) : 0;
+  return { chartRows, matrixHeight: Math.max(1, height - 1 - noteRows - (chartRows > 0 ? chartRows + 1 : 0)) };
 }
 
 export function buildMatrixPairHistory(

@@ -6,6 +6,7 @@ import { quoteTradingDay } from "../quotes/day-range";
 import { awaitingFirstDelayedPrint, isQuoteBeforeLatestSession } from "../quotes/freshness";
 import { delistingLabel, delistingStateLabel } from "../quotes/delisting";
 import { preMarketOpenOn, regularSessionCloseOn, venueSessionOnOrBefore } from "./freshness";
+import { isOutsideFuturesProductHours } from "./futures-product-hours";
 import { futuresWeekendClosure } from "./futures-week";
 import { indexLevelMarketState } from "./index-level";
 import { indexSessionVenue } from "./index-session-venues";
@@ -122,12 +123,15 @@ function closeLabel(date: string): string {
 /**
  * The market state a quote's venue is in now. A futures venue's weekend gap
  * closes every contract, so it outranks the state a quote stamped before the
- * Friday close (a stale print reading REGULAR on a Sunday); every other quote
- * keeps the state its source reported.
+ * Friday close (a stale print reading REGULAR on a Sunday), and so do a
+ * grain's, soft's, livestock's or lumber's own shorter hours (a corn quote
+ * reading REGULAR from CME Globex's reopen, two hours before corn's); every
+ * other quote keeps the state its source reported.
  */
 function quoteMarketState(quote: Quote | null | undefined, now = Date.now()): MarketState | undefined {
   if (!quote?.marketState) return undefined;
   if (futuresWeekendClosure(quote.listingExchangeName || quote.exchangeName, now)) return "CLOSED";
+  if (isOutsideFuturesProductHours(quote, now)) return "CLOSED";
   // The session follows the venue's calendar: LSE is open at 08:09, though its delayed feed has not printed in it yet.
   if (quote.marketState !== "REGULAR" && awaitingFirstDelayedPrint(quote, now)) return "REGULAR";
   // An index's final close is a close, not an after-hours session.

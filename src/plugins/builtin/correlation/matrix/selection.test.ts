@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { buildMatrixPairHistory, clampMatrixCursor, matrixChartRows, matrixPairRead, matrixSelection, moveMatrixCursor } from "./selection";
+import { buildMatrixPairHistory, clampMatrixCursor, matrixChartRows, matrixPaneRows, matrixPairRead, matrixSelection, moveMatrixCursor } from "./selection";
 import { buildCorrelationSeries } from "./model";
 import { CORRELATION_RANGE_OPTIONS } from "../settings";
 
@@ -31,6 +31,19 @@ test("the chart gives way before four matrix rows, including horizontal scroll c
     const chart = matrixChartRows(80, height, 10, 78);
     if (chart) expect(height - 1 - chart - 1 - 1).toBeGreaterThanOrEqual(4);
   }
+});
+
+test("the return basis and a cell's note come out of the chart, never out of the matrix's last row", () => {
+  // CORR NVDA,AMD,AVGO,TSM: the basis line above the matrix had cut TSM's row at every height the chart showed.
+  for (const noteRows of [1, 2]) {
+    for (let height = 1; height <= 60; height++) {
+      const { chartRows, matrixHeight } = matrixPaneRows(200, height, 4, 68, noteRows, true);
+      if (!chartRows) continue;
+      expect({ height, noteRows, matrixHeight }).toEqual({ height, noteRows, matrixHeight: 1 + 4 });
+      expect(1 + noteRows + matrixHeight + chartRows + 1).toBe(height);
+    }
+  }
+  expect(matrixPaneRows(200, 30, 4, 68, 1, false)).toEqual({ chartRows: 0, matrixHeight: 28 });
 });
 
 const history = (count: number, flatAfter = Infinity) => buildCorrelationSeries("AAPL", Array.from({ length: count }, (_, index) => ({

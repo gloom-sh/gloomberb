@@ -260,10 +260,33 @@ describe("futures board exports and the reopen", () => {
     expect(cell(es, "status", board("ES=F", quote()), reopened).text).toBe("OPEN");
     // In the daily break it is closed, whatever its last print says.
     expect(cell(es, "status", board("ES=F", quote({ marketState: "REGULAR" })), Date.parse("2026-11-04T22:30:00Z")).text).toBe("CLOSED");
-    // Live cattle keeps its own shorter hours: the quote's state stands.
-    expect(cell(cattle, "status", board("LE=F", quote({ symbol: "LE=F" })), reopened).text).toBe("CLOSED");
-    // Thanksgiving, whose Globex hours vary by contract, is the quote's to say too.
+    // Live cattle keeps its own shorter hours, closed at Globex's reopen whatever its quote says.
+    expect(cell(cattle, "status", board("LE=F", quote({ symbol: "LE=F", marketState: "REGULAR" })), reopened).text).toBe("CLOSED");
+    // Thanksgiving, whose Globex hours vary by contract, is the quote's to say.
     expect(cell(es, "status", board("ES=F", quote()), Date.parse("2026-11-26T15:00:00Z")).text).toBe("CLOSED");
+  });
+
+  test("grains, softs, livestock and lumber read closed outside their own hours though their venue's quote says REGULAR", () => {
+    // Real-time quotes carry the venue's state: corn read REGULAR from Globex's Sunday 17:00 Central reopen, two hours before its own.
+    const contract = (code: string) => FUTURES_CONTRACTS.find((candidate) => candidate.code === code)!;
+    const status = (code: string, iso: string, marketState: Quote["marketState"] = "REGULAR") => {
+      const { symbol, venue } = contract(code);
+      return cell(contract(code), "status", board(symbol, quote({ symbol, listingExchangeName: venue, exchangeName: venue, marketState,
+        futuresPriceKind: "settlement", lastUpdated: Date.parse("2026-11-20T19:20:00Z") })), Date.parse(iso)).text;
+    };
+    const own = ["ZC", "ZS", "ZW", "KC", "SB", "CC", "CT", "OJ", "LBR", "LE", "HE"];
+    const globexDay = ["ES", "ZN", "CL", "GC", "6E"];
+    // Sunday 17:30 and 18:30 Central, after Globex's reopen.
+    for (const iso of ["2026-11-22T23:30:00Z", "2026-11-23T00:30:00Z"]) {
+      expect(Object.fromEntries(own.map((code) => [code, status(code, iso)]))).toEqual(Object.fromEntries(own.map((code) => [code, "CLOSED"])));
+      expect(globexDay.map((code) => status(code, iso))).toEqual(globexDay.map(() => "OPEN"));
+    }
+    // Monday 10:00 Central, 11:00 New York: each in its session, open from the clock even where the feed has not printed yet.
+    expect(Object.fromEntries(own.map((code) => [code, status(code, "2026-11-23T16:00:00Z", "CLOSED")])))
+      .toEqual(Object.fromEntries(own.map((code) => [code, "OPEN"])));
+    // Corn's own reopen at 19:00 Central, and its pause from 07:45 to 08:30.
+    expect(status("ZC", "2026-11-23T01:05:00Z", "CLOSED")).toBe("OPEN");
+    expect(status("ZC", "2026-11-23T14:00:00Z")).toBe("CLOSED");
   });
 
   test("each row's move is measured as quote measures it: from the session before's settlement of the same contract, else the source's", () => {

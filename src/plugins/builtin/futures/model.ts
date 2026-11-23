@@ -11,6 +11,7 @@ import { CONTRACT_MONTH_NAME, futuresPriceUnit } from "../../../market-data/futu
 import { contractMonthLabel } from "../../../utils/contract-month";
 import { quoteDotMarketState } from "../../../market-data/market/status";
 import { futuresQuoteFromSettle } from "../../../market-data/market/change-basis";
+import { futuresProductOpen } from "../../../market-data/market/futures-product-hours";
 import { globexDayOpen } from "../../../market-data/market/globex-day";
 import { periodBaseDay, periodBaseText, periodDayText } from "../../../market-data/market/period-return";
 import type { FuturesReturnGap, FuturesReturnGaps, FuturesReturnHorizon } from "./returns";
@@ -305,21 +306,26 @@ export function futuresReturnGapNotes(
 /**
  * Sectors whose contracts trade CME Globex's whole day, 17:00 to 16:00
  * Central, and VIX futures, which keep the same day on Cboe Futures; grains,
- * softs, lumber and livestock keep shorter hours.
+ * softs, lumber and livestock keep shorter hours (futuresProductOpen).
  */
 const GLOBEX_DAY_SECTORS: ReadonlySet<FuturesSector> = new Set(["equity-index", "equity-sectors", "rates", "energy", "metals", "currencies", "volatility"]);
 
 /**
- * The row's quote in the session CME Globex's clock gives a contract that
- * trades its whole day (globexDayOpen): open from the 17:00 reopen, before a
- * delayed feed shows a trade of it, and closed in the daily break, whatever
- * its last print says. Any other row, and a day the calendar cannot vouch
- * for, keeps the state its quote reports.
+ * The row's quote in the session its product's clock gives it: CME Globex's
+ * whole day for a contract that trades it (globexDayOpen), a grain's,
+ * soft's, livestock's or lumber's own shorter hours for the rest
+ * (futuresProductOpen). Open from the reopen, before a delayed feed shows a
+ * trade, and closed in a break or outside the hours, whatever its last print
+ * or its venue's quote says: corn read OPEN from Globex's Sunday 17:00 reopen,
+ * two hours before its own. A day the calendar cannot vouch for, and a row
+ * whose hours are not known, keep the state the quote reports.
  */
 export function futuresSessionQuote(contract: FuturesContract, quote: Quote | null | undefined, now = Date.now()): Quote | null | undefined {
   // A generic quoted at the exchange's settlement (VX1) states no session: the clock gives it one.
-  if (!quote || (!quote.marketState && !contract.generic) || quote.delisting || !GLOBEX_DAY_SECTORS.has(contract.sector)) return quote;
-  const open = globexDayOpen(contract.venue, now);
+  if (!quote || (!quote.marketState && !contract.generic) || quote.delisting) return quote;
+  const open = GLOBEX_DAY_SECTORS.has(contract.sector)
+    ? globexDayOpen(contract.venue, now)
+    : futuresProductOpen(contract.symbol, contract.venue, now);
   if (open == null) return quote;
   const state = open ? "REGULAR" : "CLOSED";
   return quote.marketState === state ? quote : { ...quote, marketState: state };
