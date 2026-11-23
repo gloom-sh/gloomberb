@@ -1,12 +1,20 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { expect, test } from "bun:test";
-import { KPI_FIELDS } from "../../../api-client/equity-screener";
+import { KPI_FIELDS, type ScreenMetric } from "../../../api-client/equity-screener";
 import { isProLock } from "../../../cli/pane-functions/access-gate";
+import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
+import { headlessReportTables, renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
+import { renderReportCsv } from "../../../cli/report-tables";
+import { setCliPlainOverride, setCliWidthOverride } from "../../../utils/cli-output";
 import { MAX_TOOL_RESULT_BYTES } from "../cloud/askg/protocol";
 import { equityScreenerHeadless } from "./headless";
 import { SCREEN_IDEAS } from "./ideas";
 import { parseScreenDefinition } from "./model";
 import { screenFixture } from "./test-fixture";
+
+/** The report's table of matching rows; the Screen section that says what they are a screen of comes before it. */
+const table = (result: { sections?: Array<{ title: string; columns?: Array<{ key: string; header: string; textHeader?: string }>; rows?: Array<Record<string, unknown>>; empty?: string }> }) =>
+  result.sections!.find((section) => section.title === "Matching equities")!;
 
 test("a full page with more matches is neither an error nor too large for an Ask Gloom tool result", async () => {
   const data = screenFixture();
@@ -32,7 +40,7 @@ test("ATR% can be the metric, and the help says what it is and that IV rank is a
   data.rows[0]!.metrics.atrPercent = { ...data.rows[0]!.metrics.atrPercent, value: 3.456, unit: "%", asOf: "2026-09-21", state: "available", scope: "derived" };
   const apiClient = { equityScreener: async () => structuredClone(data) };
   const result = await equityScreenerHeadless.load({ argument: undefined, options: { metric: "atrPercent" } } as never, { apiClient } as never);
-  const section = result.sections![0]!;
+  const section = table(result);
   expect(section.columns!.find((column) => column.key === "value")!.header).toBe("ATR%");
   expect(section.rows![0]).toMatchObject({ value: "3.5", unit: "%", asOf: "2026-09-21", state: "available" });
   expect(equityScreenerHeadless.options.find((option) => option.key === "metric")!.values).toContainEqual({ value: "atrPercent" });
@@ -119,12 +127,12 @@ test("a KPI the server holds back from Free says why once, in KPIS's words; a Pr
   const locked = await load(free);
   expect(locked.errors).toEqual(["The free screener shows no KPI values; Gloom Pro shows each company's Backlog."]);
   expect(isProLock(locked.errors![0]!)).toBe(true);
-  expect(locked.sections![0]!.rows![0]).toMatchObject({ value: MISSING_VALUE, state: "locked" });
+  expect(table(locked).rows![0]).toMatchObject({ value: MISSING_VALUE, state: "locked" });
   expect(locked.notes).toBeUndefined();
 
   const pro = await load(screenFixture());
   expect(pro.errors).toEqual([]);
-  expect(pro.sections![0]!.rows![0]).toMatchObject({ state: "unavailable" });
+  expect(table(pro).rows![0]).toMatchObject({ state: "unavailable" });
   expect(pro.notes).toEqual(["1 of 1 row has no Backlog. Coverage follows available company disclosures; missing data is not zero."]);
 });
 
@@ -144,7 +152,7 @@ test("a screen its currency emptied says the currency keeps only listings quoted
   const load = async (data: typeof tobacco, baseCurrency = "USD") => {
     const result = await equityScreenerHeadless.load({ argument: undefined, options: { definition: JSON.stringify(data.definition) } } as never,
       { apiClient: { equityScreener: async () => structuredClone(data) }, config: { baseCurrency } } as never);
-    return (result.sections![0] as { empty?: string }).empty;
+    return (table(result) as { empty?: string }).empty;
   };
   const empty = (await load(tobacco))!.split("\n");
   expect(empty[0]).toBe("No listing quoted in CAD matches. Currency CAD keeps only the listings quoted in CAD and converts nothing.");
@@ -178,12 +186,12 @@ test("--preset golden-cross runs the Ideas screen on days since the cross, and a
     criteria: [{ field: "goldenCrossDays", op: "lte", value: 10 }, { field: "marketCap", op: "gte", value: 2_000_000_000 }],
     sort: { field: "goldenCrossDays", direction: "asc" },
   });
-  const section = result.sections![0]!;
+  const section = table(result);
   expect(section.columns!.find((column) => column.key === "value")!.header).toBe("GOLDEN X AGO");
   expect(section.rows![0]).toMatchObject({ symbol: "AAPL", value: "4", unit: "days", asOf: "2026-09-21" });
   // --metric still names the column.
   const priced = await load({ preset: "golden-cross", metric: "priceVsSma200Percent" });
-  expect(priced.sections![0]!.columns!.find((column) => column.key === "value")!.header).toBe("VS SMA200%");
+  expect(table(priced).columns!.find((column) => column.key === "value")!.header).toBe("VS SMA200%");
 
   expect(equityScreenerHeadless.options.find((option) => option.key === "preset")!.values!.map((value) => value.value))
     .toEqual(SCREEN_IDEAS.map((idea) => idea.id));
@@ -211,7 +219,7 @@ test("--preset top-grades leads with the composite and its label, with the five 
     criteria: [{ field: "gradeComposite", op: "gte", value: 4.5 }, { field: "marketCap", op: "gte", value: 2_000_000_000 }],
     sort: { field: "gradeComposite", direction: "desc" },
   });
-  const section = result.sections![0]!;
+  const section = table(result);
   expect(section.columns!.map((column) => column.header)).toEqual(expect.arrayContaining(["COMPOSITE", "VALUE", "GROWTH", "PROFIT", "MOMENTUM", "REVISIONS"]));
   expect(section.rows![0]).toMatchObject({ value: "4.74 Top", valueGrade: "C-", growthGrade: "A+", profitabilityGrade: "A+", momentumGrade: "B+", revisionsGrade: "A" });
 });
@@ -237,10 +245,11 @@ test("--limit pages to its rows; the sort field and every --metric get a column,
   const result = await equityScreenerHeadless.load({ argument: undefined,
     options: { definition: JSON.stringify(data.definition), metric: "trailingPE,beta", limit: 3 } } as never, { apiClient } as never);
   expect(asked).toEqual([{ limit: 3, cursor: null }, { limit: 1, cursor: "next" }]);
-  const section = result.sections![0]!;
+  const section = table(result);
   expect(section.rows!.map((entry) => entry.symbol)).toEqual(["EIX", "AVA", "POR"]);
-  // P/E leads with its unit, rank, date and state; beta and the sort field follow.
-  expect(section.columns!.map((column) => column.key).slice(-3)).toEqual(["state", "beta", "dividendYieldPercent"]);
+  // P/E leads with its unit, rank, date and state; beta and the sort field follow, each with its own date and state.
+  expect(section.columns!.map((column) => column.key).slice(-8)).toEqual(["state", "beta", "betaAsOf", "betaState",
+    "dividendYieldPercent", "dividendYieldPercentAsOf", "dividendYieldPercentState", "priceNote"]);
   expect(section.rows![0]).toMatchObject({ value: "15.0", unit: "x", state: "partial", beta: "0.80", dividendYieldPercent: "6.0" });
   expect(result.notes!.map((note) => note.split(" means ")[0])).toEqual(["A partial State", "A stale State"]);
   expect(result.complete).toBe(true);
@@ -252,10 +261,10 @@ test("--limit pages to its rows; the sort field and every --metric get a column,
     priced.metrics = { ...priced.metrics, price: { ...metric(58.19, "partial"), unit: "USD" }, changePercent: { ...metric(0.71, "partial"), unit: "%" } };
     return structuredClone({ ...data, rows: [priced], nextCursor: null });
   } } } as never);
-  const shownSection = shown.sections![0]!;
+  const shownSection = table(shown);
   const keys = shownSection.columns!.map((column) => column.key);
   expect(keys.filter((key) => key === "price" || key === "changePercent")).toEqual(["price", "changePercent"]);
-  expect(keys.at(-1)).toBe("dividendYieldPercent");
+  expect(keys.slice(-4)).toEqual(["dividendYieldPercent", "dividendYieldPercentAsOf", "dividendYieldPercentState", "priceNote"]);
   expect(shownSection.rows![0]).toMatchObject({ price: 58.19, changePercent: 0.71 });
   // Repeated flags and a comma list read as one list, each metric once.
   expect(equityScreenerHeadless.options.find((option) => option.key === "metric")!.normalize!("trailingPE, beta,trailingPE"))
@@ -275,7 +284,7 @@ test("a sector or industry that names nothing says the names it was likely meant
       { apiClient } as never);
   };
   const empty = await run([{ field: "sector", op: "in", value: ["Utility"] }], false);
-  expect((empty.sections![0] as { empty?: string }).empty)
+  expect((table(empty) as { empty?: string }).empty)
     .toBe('No sector is named "Utility". Closest: Utilities. gloom catalog EQS lists every sector and industry.');
   // With rows, the value that matched nothing is a warning beside them; a sector given as an industry says which it is.
   const some = await run([{ field: "industry", op: "in", value: ["Solar", "Utilities", "Banks"] }], true);
@@ -283,7 +292,7 @@ test("a sector or industry that names nothing says the names it was likely meant
     + 'No industry is named "Banks". Closest: Banks - Diversified, Banks - Regional. gloom catalog EQS lists every sector and industry.']);
   // A GICS sector name points at the sector it is here.
   const gics = await run([{ field: "sector", op: "in", value: ["Information Technology"] }], false);
-  expect((gics.sections![0] as { empty?: string }).empty).toStartWith('No sector is named "Information Technology". Closest: Technology.');
+  expect((table(gics) as { empty?: string }).empty).toStartWith('No sector is named "Information Technology". Closest: Technology.');
   expect(equityScreenerHeadless.discovery!.reference!.map(({ title, items }) => [title, items.length])).toEqual([["Sectors", 11], ["Industries", 144]]);
 });
 
@@ -309,12 +318,12 @@ test("--preset value, quality and garp run on the fundamental fields, leading wi
     ],
     sort: { field: "roicPercent", direction: "desc" },
   });
-  const section = quality.sections![0]!;
+  const section = table(quality);
   expect(section.columns!.find((column) => column.key === "value")!.header).toBe("ROIC%");
   expect(section.rows![0]).toMatchObject({ symbol: "AAPL", value: "71.3", unit: "%", asOf: "2026-06-27" });
   // N/M as FA prints it, not a missing value.
   const leverage = await load({ preset: "value", metric: "netDebtToEbitda" });
-  expect(leverage.sections![0]!.rows![0]).toMatchObject({ symbol: "AAPL", value: "N/M" });
+  expect(table(leverage).rows![0]).toMatchObject({ symbol: "AAPL", value: "N/M" });
   expect(queried[1]!.sort).toEqual({ field: "fcfYieldPercent", direction: "desc" });
   await load({ preset: "garp" });
   expect(queried[2]).toMatchObject({
@@ -342,12 +351,12 @@ test("--preset on the classic scores: Graham and Altman print N/M where the scor
     criteria: [{ field: "magicFormulaRank", op: "lte", value: 100 }, { field: "marketCap", op: "gte", value: 2_000_000_000 }],
     sort: { field: "magicFormulaRank", direction: "asc" },
   });
-  const section = magic.sections![0]!;
+  const section = table(magic);
   expect(section.columns!.find((column) => column.key === "value")!.header).toBe("MAGIC RANK");
   expect(section.rows![0]).toMatchObject({ symbol: "AAPL", value: "22" });
   expect(Object.values(section.rows![0]!)).toEqual(expect.arrayContaining(["13.78", "Yes"]));
   const graham = await load({ preset: "graham-number" });
-  expect(graham.sections![0]!.rows![0]).toMatchObject({ symbol: "AAPL", value: "N/M" });
+  expect(table(graham).rows![0]).toMatchObject({ symbol: "AAPL", value: "N/M" });
   expect(queried[1]).toEqual({
     criteria: [
       { field: "grahamUpsidePercent", op: "gte", value: 0 },
@@ -356,4 +365,113 @@ test("--preset on the classic scores: Graham and Altman print N/M where the scor
     ],
     sort: { field: "grahamUpsidePercent", direction: "desc" },
   });
+});
+
+/** Two Electrical Equipment rows in EUR, ranked by operating margin; PRY's Last is a print from two sessions back. */
+function gridScreen(sourceNewestAt: string | null) {
+  const data = screenFixture();
+  data.definition = {
+    version: 1, currency: "EUR",
+    criteria: [{ field: "sector", op: "in", value: ["Industrials"] }, { field: "industry", op: "in", value: ["Electrical Equipment & Parts"] }],
+    sort: { field: "operatingMarginPercent", direction: "desc" },
+  };
+  data.snapshot = { ...data.snapshot!, id: "105f2c20-bdfe-459e-9e6a-9b0b1d08079e", assembledAt: "2026-11-23T00:07:09.331Z",
+    expiresAt: "2026-11-23T02:07:09.331Z", sourceOldestAt: "2016-08-08T00:00:00.000Z", sourceNewestAt };
+  data.universe = { ...data.universe, covered: 812, matched: 2, currencies: ["EUR"] };
+  const base = data.rows[0]!;
+  const metric = (value: number, unit: string, asOf: string, extra: Partial<ScreenMetric> = {}): ScreenMetric =>
+    ({ ...base.metrics.price, value, unit, asOf, state: "available", ...extra });
+  const row = (symbol: string, exchange: string, name: string, price: ScreenMetric, margin: number, oneYear: ScreenMetric) => ({
+    ...base, symbol, exchange, name, currency: "EUR", sector: "Industrials", industry: "Electrical Equipment & Parts",
+    metrics: { ...base.metrics, price, operatingMarginPercent: metric(margin, "%", "2025-12-31"), return1YPercent: oneYear },
+  });
+  const reason = "The last price on record, printed 2026-11-18 09:56 UTC: BIT has had a later session (2026-11-20), so this is not its latest price";
+  data.rows = [
+    row("LR", "EPA", "Legrand SA", metric(127.4, "EUR", "2026-11-20"), 19.1, metric(-1.7, "%", "2026-11-20")),
+    row("PRY", "BIT", "Prysmian S.p.A.", metric(110.15, "EUR", "2026-11-18", { state: "stale", printedAt: "2026-11-18T09:56:00.000Z", reason }), 9.8,
+      metric(19.5, "%", "2026-11-18", { state: "stale", reason: "Older than a current return allows" })),
+  ];
+  return { data, reason };
+}
+
+test("a report opens with the screen it ran, its order and snapshot, and dates and states each metric and Last on its own", async () => {
+  const { data, reason } = gridScreen("2034-03-05T00:00:00.000Z");
+  const options = { definition: JSON.stringify(data.definition), metric: "operatingMarginPercent,return1YPercent", limit: 5 };
+  const result = await equityScreenerHeadless.load({ argument: undefined, options } as never,
+    { apiClient: { equityScreener: async () => structuredClone(data) } } as never);
+  const screen = result.sections![0]!;
+  expect(screen.title).toBe("Screen");
+  expect(Object.fromEntries(screen.entries!.map((entry) => [entry.label, entry.value]))).toEqual({
+    Criteria: "Sector in Industrials; Industry in Electrical Equipment & Parts",
+    Currency: "EUR",
+    "Sorted by": "FY OP MGN% (operatingMarginPercent), descending",
+    Command: expect.any(String),
+    Snapshot: "105f2c20-bdfe-459e-9e6a-9b0b1d08079e",
+    Assembled: "2026-11-23T00:07:09.331Z",
+    Matches: "2 of 812 covered listings",
+  });
+  // The definition exactly as it ran, as a command that runs it again.
+  const command = String(screen.entries!.find((entry) => entry.label === "Command")!.value);
+  expect(command).toEndWith(" --metric operatingMarginPercent,return1YPercent");
+  expect(JSON.parse(/^gloom fn EQS --definition '(.+)' --metric /.exec(command)![1]!)).toEqual(data.definition);
+  const rows = table(result);
+  expect(rows.columns!.find((column) => column.key === "value")).toMatchObject({ header: "FY OP MGN%", textHeader: "FY OP MGN% ▼" });
+  // 1Y% has its own date and state, not the margin's.
+  expect(rows.rows!.map((row) => [row.symbol, row.asOf, row.state, row.return1YPercent, row.return1YPercentAsOf, row.return1YPercentState]))
+    .toEqual([["LR", "2025-12-31", "available", "-1.7", "2026-11-20", "available"], ["PRY", "2025-12-31", "available", "+19.5", "2026-11-18", "stale"]]);
+  // PRY's Last is the last price on record: its own print time, stale, and why, under its row.
+  expect(rows.rows!.map((row) => [row.symbol, row.price, row.priceAsOf, row.priceState, row.priceNote])).toEqual([
+    ["LR", 127.4, "2026-11-20", "available", null],
+    ["PRY", 110.15, "2026-11-18T09:56:00.000Z", "stale", reason],
+  ]);
+  expect(rows.columns!.find((column) => column.key === "priceNote")).toMatchObject({ underRow: true, exportLast: true });
+  expect(result.notes!.some((note) => note.startsWith("A stale State means"))).toBe(true);
+  expect(result.metadata).toMatchObject({ sort: { field: "operatingMarginPercent", direction: "desc", column: "FY OP MGN%" } });
+  // An input dated after the snapshot was assembled is no observation: the report is not dated by it.
+  expect(result.freshness).toEqual({ asOf: null });
+  const dated = await equityScreenerHeadless.load({ argument: undefined, options } as never,
+    { apiClient: { equityScreener: async () => structuredClone(gridScreen("2026-11-22T21:00:00.000Z").data) } } as never);
+  expect(dated.freshness).toEqual({ asOf: "2026-11-22T21:00:00.000Z" });
+});
+
+test("the sort field and its direction are in the text, CSV and JSON of a report, whichever column it is", async () => {
+  const { data } = gridScreen("2026-11-22T21:00:00.000Z");
+  const run = async (sort: { field: string; direction: "asc" | "desc" }, metric: string) => {
+    const screen = { ...data, definition: { ...data.definition, sort } } as typeof data;
+    const args = { symbols: [], rawArgument: "", argument: undefined, options: { definition: JSON.stringify(screen.definition), metric } } as never;
+    const result = await equityScreenerHeadless.load(args, { apiClient: { equityScreener: async () => structuredClone(screen) } } as never);
+    const freshness = deriveHeadlessFreshness(equityScreenerHeadless, result);
+    setCliPlainOverride(true);
+    setCliWidthOverride(400);
+    try {
+      return {
+        text: renderHeadlessPaneText(equityScreenerHeadless, result, args, "EQS", freshness),
+        csv: renderReportCsv(headlessReportTables(equityScreenerHeadless, result, args, "EQS", freshness, { complete: true, unavailableSymbols: [] }), freshness),
+        json: JSON.parse(JSON.stringify(serializeHeadlessPaneResult(equityScreenerHeadless, result))),
+      };
+    } finally {
+      setCliPlainOverride(null);
+      setCliWidthOverride(null);
+    }
+  };
+  const sortedBy = (json: { sections: Array<{ title: string; entries?: Array<{ label: string; value: unknown }> }> }) =>
+    json.sections.find((section) => section.title === "Screen")!.entries!.find((entry) => entry.label === "Sorted by")!.value;
+  // Sorted by the first metric.
+  const focus = await run({ field: "operatingMarginPercent", direction: "desc" }, "operatingMarginPercent");
+  expect(focus.text).toContain("FY OP MGN% (sorted descending)");
+  expect(focus.text).toMatch(/Sorted by +FY OP MGN% \(operatingMarginPercent\), descending/);
+  expect(focus.csv).toContain('Sorted by,"FY OP MGN% (operatingMarginPercent), descending"');
+  expect(focus.json.metadata.sort).toEqual({ field: "operatingMarginPercent", direction: "desc", column: "FY OP MGN%" });
+  expect(sortedBy(focus.json)).toBe("FY OP MGN% (operatingMarginPercent), descending");
+  // Sorted by another metric, ascending: its column says so, and carries its own date and state.
+  const other = await run({ field: "return1YPercent", direction: "asc" }, "operatingMarginPercent");
+  expect(other.text).toContain("1Y% (sorted ascending)");
+  expect(other.text).not.toContain("sorted descending");
+  expect(other.csv).toContain('Sorted by,"1Y% (return1YPercent), ascending"');
+  expect(other.csv.split("\n").find((line) => line.startsWith("Symbol,"))).toContain(",1Y% as of,1Y% state,");
+  expect(other.json.metadata.sort).toEqual({ field: "return1YPercent", direction: "asc", column: "1Y%" });
+  // Sorted by a column every report prints.
+  const named = await run({ field: "symbol", direction: "asc" }, "operatingMarginPercent");
+  expect(named.text).toContain("Symbol (sorted ascending)");
+  expect(sortedBy(named.json)).toBe("Symbol (symbol), ascending");
 });

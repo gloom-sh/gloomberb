@@ -159,6 +159,16 @@ export interface ScreenMetric {
   unit: string;
   /** Source observation date or timestamp. Never filled from collection time. */
   asOf: string | null;
+  /**
+   * When the price was printed, on a price that is the last on record rather
+   * than its venue's latest session's (state `stale`, with its reason).
+   */
+  printedAt?: string;
+  /**
+   * The end of the period a forecast is for (a guide for the fiscal year in
+   * progress): a forward date, never the as-of, which is when it was given.
+   */
+  periodEnd?: string;
   /** Latest known public filing date where supplied by the source. */
   availableAt: string | null;
   observedAt: string | null;

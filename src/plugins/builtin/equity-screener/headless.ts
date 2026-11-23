@@ -1,6 +1,6 @@
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { isProLock } from "../../../cli/pane-functions/access-gate";
-import type { HeadlessPaneColumn, HeadlessPaneContext } from "../../../types/headless";
+import type { HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneEntry } from "../../../types/headless";
 import {
   KPI_FIELDS,
   NUMERIC_FIELDS,
@@ -16,7 +16,7 @@ import type { Quote } from "../../../types/financials";
 import { MISSING_VALUE, formatCurrency, formatPercentRaw } from "../../../utils/format";
 import { currencyPriceMinDigits, formatMarketPriceWithCurrency } from "../../../market-data/market/format";
 import { fetchSavedScreens, fetchScreen, fetchScreenCheck } from "./client";
-import { ideaMetricSetting, SCREEN_IDEAS, screenIdea } from "./ideas";
+import { ideaMetricSetting, SCREEN_IDEAS, screenIdea, type ScreenIdea } from "./ideas";
 import { checkRows, screenCheckSummary, screenCheckTicker } from "./screen-check";
 import { overlayScreenQuotes, screenExtendedSessions, sortLiveScreenRows } from "./live";
 import {
@@ -27,9 +27,11 @@ import {
   unmatchedCategoryValues,
 } from "./categories";
 import { REPORT_ROWS } from "../shared/headless-options";
+import { shellWord } from "../../../utils/shell-word";
 import { findNamedCollection, readWatchlistArgument } from "../../../portfolio/collection-name";
 import {
   appendScreenPage,
+  criterionText,
   DEFAULT_SCREEN,
   EXAMPLE_SCREEN_DEFINITION,
   formatScreenMetric,
@@ -183,11 +185,85 @@ function extraMetricCell(field: NumericField, metric: ScreenMetric | undefined):
   return metric.value != null && /^[A-Z]{3}$/.test(metric.unit) ? `${value} ${metric.unit}` : value;
 }
 
-/** What the State column's words mean, said once under a report whose first metric has them. */
+/** What the State columns' words mean, said once under a report where a shown metric has them. */
 const STATE_LEGEND: ReadonlyArray<{ state: ScreenMetric["state"]; text: string }> = [
   { state: "partial", text: "A partial State means the source gives no date for the figure, so As of is when it was collected, or that it covers part of what it measures." },
-  { state: "stale", text: "A stale State means the figure is older than its field allows, such as a quote over 4 days old or fundamentals collected over 7 days ago." },
+  { state: "stale", text: "A stale State means the figure is older than its field allows, such as a price from before its exchange's latest session, a quote over 4 days old or fundamentals collected over 7 days ago." },
 ];
+
+/** A date as a report cell prints it: a day as it is, an instant to the minute in UTC. */
+function stampText(stamp: unknown): string {
+  if (typeof stamp !== "string" || !stamp) return MISSING_VALUE;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(stamp)) return stamp;
+  const time = Date.parse(stamp);
+  return Number.isFinite(time) ? `${new Date(time).toISOString().slice(0, 16).replace("T", " ")} UTC` : stamp;
+}
+
+/**
+ * A metric's own As of and State, as the first metric's columns print them.
+ * A forecast is dated by when it was given, and names the period it is for
+ * apart, so a forward date never reads as when the figure was observed.
+ */
+function metricStamp(metric: ScreenMetric | undefined): { asOf: string; state: string } {
+  if (!metric) return { asOf: MISSING_VALUE, state: MISSING_VALUE };
+  const stamp = metricDate(metric);
+  const date = stamp.collected ? `${stamp.text} (collected)` : stamp.text;
+  return {
+    asOf: metric.periodEnd ? `${date} (for the period ending ${metric.periodEnd})` : date,
+    state: metric.access === "pro" ? "locked" : metric.state,
+  };
+}
+
+/**
+ * When the row's Last is from (the session it closed, the time it traded, or
+ * when a last price on record was printed), its state, and, when it is not a
+ * current price, why.
+ */
+function lastStamp(metric: ScreenMetric): { at: string | null; state: string; note: string | null } {
+  const at = metric.printedAt ?? metric.asOf ?? (metric.value != null ? metric.observedAt : null);
+  const note = metric.value == null || metric.state === "available" ? null
+    : metric.reason ?? (metric.state === "stale" ? "The last price on record: older than a current price allows" : null);
+  return { at, state: metric.state, note };
+}
+
+/** The column the rows are ordered by: the first metric's, one every report prints, or the one `extraScreenColumns` adds for the sort. */
+function sortedColumnKey(sortField: string, metric: NumericField): string {
+  return sortField === metric ? "value" : sortField;
+}
+
+/**
+ * What the rows are: the screen as it ran, how they are ordered, and the
+ * snapshot they come from, so a saved report says how to get them again. The
+ * command is the definition exactly, as text an export keeps whole (a JSON
+ * cell would be flattened into words).
+ */
+function screenEntries(
+  data: ScreenPayload,
+  sortedBy: string,
+  source: { preset?: ScreenIdea; savedName?: string; metrics: readonly NumericField[] },
+): HeadlessPaneEntry[] {
+  const { definition, snapshot, universe } = data;
+  const direction = definition.sort.direction === "desc" ? "descending" : "ascending";
+  return [
+    ...(source.preset ? [{ key: "preset", label: "Preset", value: `${source.preset.name} (--preset ${source.preset.id})` }] : []),
+    ...(source.savedName ? [{ key: "savedScreen", label: "Saved screen", value: source.savedName }] : []),
+    { key: "criteria", label: "Criteria", value: definition.criteria.length ? definition.criteria.map(criterionText).join("; ") : "None" },
+    { key: "currency", label: "Currency", value: definition.currency ?? "None: no criterion compares money" },
+    { key: "sort", label: "Sorted by", value: `${sortedBy} (${definition.sort.field}), ${direction}` },
+    { key: "command", label: "Command", value: `gloom fn EQS --definition ${shellWord(spacedJson(definition))} --metric ${source.metrics.join(",")}` },
+    { key: "snapshot", label: "Snapshot", value: snapshot?.id ?? MISSING_VALUE },
+    { key: "assembledAt", label: "Assembled", value: snapshot?.assembledAt ?? MISSING_VALUE },
+    { key: "matched", label: "Matches", value: `${universe.matched.toLocaleString("en-US")} of ${universe.covered.toLocaleString("en-US")} covered listings` },
+  ];
+}
+
+/** The newest input the snapshot observed, as of its assembly or before; a later date is no observation. */
+function newestInput(snapshot: ScreenPayload["snapshot"]): string | null {
+  const newest = snapshot?.sourceNewestAt;
+  if (!newest || !snapshot) return null;
+  const at = Date.parse(newest), assembled = Date.parse(snapshot.assembledAt);
+  return Number.isFinite(at) && Number.isFinite(assembled) && at <= assembled ? newest : null;
+}
 
 /** A typed `--definition`, checked; every error points at the worked example. */
 function readDefinition(text: string): ScreenDefinition {
@@ -391,50 +467,82 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
     const ytdBase = screenYtdBase(data.rows, data.snapshot?.assembledAt);
     // The metrics after the first, then the field the rows are sorted by, so the order shown is explained by a column.
     const extra = extraScreenColumns(metrics, data.definition.sort.field);
-    const states = new Set(rows.map((row) => row.metrics[metric].state));
+    const extraMetrics = extra.filter(isNumericField);
+    // Last is the first metric's own column when it is the price; otherwise it carries its own date and state.
+    const lastShown = metric !== "price";
+    // Every State column a row shows: the first metric's, each other metric's, and Last's.
+    const stated = [...extraMetrics, ...lastShown ? ["price" as const] : []];
+    const states = new Set(rows.flatMap((row) => [row.metrics[metric].state,
+      ...stated.flatMap((field) => row.metrics[field] && row.metrics[field].access !== "pro" ? [row.metrics[field].state] : [])]));
     const legend = STATE_LEGEND.filter(({ state }) => states.has(state)).map(({ text }) => text);
     const locked = rows.some((row) => metrics.some((field) => row.metrics[field]?.access === "pro"));
     const notes = [...watchlistRead.notes, ...listingReadNotes(data.listings, data.definition.currency), ...kpiGaps, ...legend,
       ...(locked && !errors.some(isProLock) ? ["Locked figures require Gloom Pro access."] : [])];
+    const sortedKey = sortedColumnKey(data.definition.sort.field, metric);
+    const mark = data.definition.sort.direction === "desc" ? "▼" : "▲";
+    const columns: HeadlessPaneColumn[] = [
+      { key: "symbol", header: "Symbol" },
+      { key: "exchange", header: "Exchange" },
+      { key: "name", header: "Name" },
+      // The focus metric says it once when it is the price or the move.
+      ...(lastShown ? [{ key: "price", header: "Last", align: "right" as const, format: price }] : []),
+      ...(metric === "changePercent" ? [] : [{ key: "changePercent", header: "Chg%", align: "right" as const, format: percent }]),
+      ...extendedSessions.map(extendedColumn),
+      // When Last and its move are from, and whether that is a current price. Exports write these after their older
+      // columns, so none of those moves.
+      ...(lastShown ? [
+        { key: "priceAsOf", header: "Last as of", textFormat: stampText, optional: true, exportLast: true },
+        { key: "priceState", header: "Last state", optional: true, exportLast: true },
+      ] : []),
+      // YTD names the close it is measured from: `YTD% vs 31 Dec close`.
+      { key: "value", header: screenColumnLabel(metric, ytdBase, "report"), align: "right" },
+      { key: "unit", header: "Unit" },
+      { key: "percentile", header: "Covered pctl", align: "right" },
+      { key: "asOf", header: "As of" },
+      { key: "state", header: "State" },
+      // Every metric after the first is dated and stated on its own, never by the first's columns.
+      ...extra.flatMap((field): HeadlessPaneColumn[] => {
+        if (!isNumericField(field)) return [{ key: field, header: CATEGORY_HEADERS[field] }];
+        const label = screenColumnLabel(field, ytdBase, "report");
+        return [
+          { key: field, header: label, align: "right" },
+          { key: `${field}AsOf`, header: `${label} as of`, literalHeader: true, optional: true, exportLast: true },
+          { key: `${field}State`, header: `${label} state`, literalHeader: true, optional: true, exportLast: true },
+        ];
+      }),
+      // Why a row's Last is not a current price, under that row.
+      ...(lastShown ? [{ key: "priceNote", header: "Last note", underRow: true, exportLast: true }] : []),
+    ];
+    // The text report marks the column the rows are ordered by (`(sorted descending)` in plain text); exports name it in Screen.
+    const sortedColumn = columns.find((column) => column.key === sortedKey);
+    const sortedBy = sortedColumn?.header ?? screenLabel(data.definition.sort.field);
+    if (sortedColumn) sortedColumn.textHeader = `${sortedColumn.header} ${mark}`;
     // Payload status also counts ordinary per-field sparsity; only generation
     // warnings are failures, and more pages are not an error.
     return {
-      freshness: { asOf: data.snapshot?.sourceNewestAt ?? null },
+      freshness: { asOf: newestInput(data.snapshot) },
       complete: !data.nextCursor && errors.length === 0,
       errors,
       ...(notes.length ? { notes } : {}),
       ...(rows.length > 0 && unmatchedText ? { warnings: [unmatchedText] } : {}),
       sections: [
+        // First, so a saved report opens with what it is a screen of and how its rows are ordered.
+        { title: "Screen", entries: screenEntries(data, sortedBy, { preset, savedName, metrics }) },
         {
           title: "Matching equities",
           ...(empty ? { empty } : {}),
-          columns: [
-            { key: "symbol", header: "Symbol" },
-            { key: "exchange", header: "Exchange" },
-            { key: "name", header: "Name" },
-            // The focus metric says it once when it is the price or the move.
-            ...(metric === "price" ? [] : [{ key: "price", header: "Last", align: "right" as const, format: price }]),
-            ...(metric === "changePercent" ? [] : [{ key: "changePercent", header: "Chg%", align: "right" as const, format: percent }]),
-            ...extendedSessions.map(extendedColumn),
-            // YTD names the close it is measured from: `YTD% vs 31 Dec close`.
-            { key: "value", header: screenColumnLabel(metric, ytdBase, "report"), align: "right" },
-            { key: "unit", header: "Unit" },
-            { key: "percentile", header: "Covered pctl", align: "right" },
-            { key: "asOf", header: "As of" },
-            { key: "state", header: "State" },
-            ...extra.map((field): HeadlessPaneColumn => isNumericField(field)
-              ? { key: field, header: screenColumnLabel(field, ytdBase, "report"), align: "right" }
-              : { key: field, header: CATEGORY_HEADERS[field] }),
-          ],
+          columns,
           rows: rows.map((row) => {
             const observation = row.metrics[metric];
-            const stamp = metricDate(observation);
+            const focus = metricStamp(observation);
+            const last = lastStamp(row.metrics.price);
             return {
               symbol: row.symbol,
               exchange: row.exchange,
               name: row.name,
               currency: row.currency,
               price: row.metrics.price.value,
+              ...(lastShown ? { priceAsOf: last.at, priceState: last.state } : {}),
               ...row.quotedUnitDivisor ? { quotedUnitDivisor: row.quotedUnitDivisor } : {},
               changePercent: row.metrics.changePercent.value,
               extendedSession: row.extended?.session ?? null,
@@ -447,11 +555,14 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
                 observation.percentile.value == null
                   ? null
                   : Math.round(observation.percentile.value),
-              asOf: stamp.collected ? `${stamp.text} (collected)` : stamp.text,
-              state: observation.access === "pro" ? "locked" : observation.state,
-              ...Object.fromEntries(extra.map((field) => [field, isNumericField(field)
-                ? extraMetricCell(field, row.metrics[field])
-                : row[field]])),
+              asOf: focus.asOf,
+              state: focus.state,
+              ...Object.fromEntries(extra.flatMap((field): Array<[string, unknown]> => {
+                if (!isNumericField(field)) return [[field, row[field]]];
+                const own = metricStamp(row.metrics[field]);
+                return [[field, extraMetricCell(field, row.metrics[field])], [`${field}AsOf`, own.asOf], [`${field}State`, own.state]];
+              })),
+              ...(lastShown ? { priceNote: last.note } : {}),
             };
           }),
         },
@@ -465,6 +576,7 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
         returned: data.rows.length,
         hasMore: !!data.nextCursor,
         metrics,
+        sort: { field: data.definition.sort.field, direction: data.definition.sort.direction, column: sortedBy },
         ...(unmatched.length > 0 ? { unmatchedValues: unmatchedCategoryValues(data.definition, data, rows) } : {}),
         priceBasis: "price, changePercent and the market cap are the regular session, read from each row's quote as `quote` reads it: after the close, its close and that close's move. trailingPE, forwardPE and priceToBook are over that price, as `valuation` reprices them. A pre-market, after-hours or overnight print is in extendedPrice and extendedChangePercent, measured from that close. Membership and percentiles are the snapshot's, which ranks by the close; a sort on price, changePercent, volume, marketCap or those multiples orders these rows by the figures shown.",
         notices: data.nextCursor
