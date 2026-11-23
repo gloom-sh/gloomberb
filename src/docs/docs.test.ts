@@ -43,6 +43,88 @@ describe("reading the site's docs", () => {
   });
 });
 
+describe("grouping the docs index", () => {
+  const withPages = (...pages: Array<[slug: string, category: string]>) => parseDocsFeed(docsFeedFixture({
+    pages: pages.map(([slug, category]) => ({ slug, title: slug, lead: "", category, tags: [], blocks: [] })),
+  })) as DocsFeed;
+  const pageSections = (docs: DocsFeed) => docsEntries(docs)
+    .filter((entry) => entry.topic.kind === "page")
+    .map((entry) => `${entry.section}: ${entry.key}`);
+
+  test("lists the groups in the order the site does, developer groups after the app's", () => {
+    const docs = withPages(
+      ["getting-started", "Start here"],
+      ["portfolio", "Using Gloom"],
+      ["teams", "Account and teams"],
+      ["company-kpis", "Understand the data"],
+      ["themes", "Reference"],
+      ["developers", "Developers"],
+      ["cli-functions", "Command line"],
+      ["mcp", "Agents"],
+      ["datasets", "APIs and data"],
+      ["plugins", "Extend"],
+    );
+    expect(docsEntries(docs).map((entry) => entry.key)).toEqual([
+      "page:getting-started",
+      "fn:GP",
+      "fn:OMON",
+      "fn:DOCS",
+      "page:portfolio",
+      "page:teams",
+      "page:company-kpis",
+      "page:themes",
+      "page:developers",
+      "page:cli-functions",
+      "page:mcp",
+      "page:datasets",
+      "page:plugins",
+      `lesson:${DOCS_FIXTURE_LESSON_URL}`,
+    ]);
+  });
+
+  test("follows whatever order the feed arrives in, keeping Start here first and each group together", () => {
+    const docs = withPages(
+      ["themes", "Reference"],
+      ["first-session", "Start here"],
+      ["recipes", "Cookbook"],
+      ["troubleshooting", "Reference"],
+      ["tips", "Cookbook"],
+      ["getting-started", "Start here"],
+    );
+    expect(pageSections(docs)).toEqual([
+      "Start here: page:first-session",
+      "Start here: page:getting-started",
+      "Reference: page:themes",
+      "Reference: page:troubleshooting",
+      "Cookbook: page:recipes",
+      "Cookbook: page:tips",
+    ]);
+  });
+
+  test("an older feed, with Advanced and no Using Gloom, still lists every page under its own group", () => {
+    const docs = withPages(
+      ["getting-started", "Start here"],
+      ["portfolio", "Start here"],
+      ["teams", "Account and teams"],
+      ["company-kpis", "Understand the data"],
+      ["layout-shortcuts", "Reference"],
+      ["cli-functions", "Advanced"],
+      ["plugins", "Advanced"],
+      ["loose-page", ""],
+    );
+    expect(pageSections(docs)).toEqual([
+      "Start here: page:getting-started",
+      "Start here: page:portfolio",
+      "Account and teams: page:teams",
+      "Understand the data: page:company-kpis",
+      "Reference: page:layout-shortcuts",
+      "Advanced: page:cli-functions",
+      "Advanced: page:plugins",
+      "Guides: page:loose-page",
+    ]);
+  });
+});
+
 describe("loading the docs", () => {
   let site: (url: string) => Promise<unknown>;
   beforeEach(() => {
