@@ -73,6 +73,7 @@ import { statsCache } from "../../../plugins/builtin/econ-statistics/cache";
 import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
 import { createGloomberbCloudCapabilities, createGloomberbCloudProvider } from "../../../sources/gloomberb-cloud";
 import { logFailure } from "../../../utils/log-failure";
+import { markSavedCopy, stampRetrievedAt } from "../../../data/saved-copies";
 
 declare global {
   interface Window {
@@ -228,6 +229,24 @@ async function restoreShotCloudSession(): Promise<void> {
  * of the corporate action history come from providers the router merges in.
  */
 async function requestShotMarketData<T>(operation: string, args: unknown[], signal?: AbortSignal): Promise<T> {
+  return (await requestShotMarketReply<T>(operation, args, signal)).data as T;
+}
+
+/**
+ * A dataset read through the bridge (holders, filings, analyst research,
+ * corporate actions), marked as the Bun side served it: a copy saved earlier
+ * that a failed refresh fell back to, or one read earlier and served again,
+ * with the time it was saved or read. JSON keeps no marks, so the reply
+ * carries the times; `revive` restores what else JSON loses first.
+ */
+async function requestShotDataset<T extends object>(operation: string, args: unknown[], revive: (value: T) => T = (value) => value): Promise<T> {
+  const reply = await requestShotMarketReply<T>(operation, args);
+  const data = revive(reply.data as T);
+  if (typeof reply.savedAt === "number") return markSavedCopy(data, reply.savedAt);
+  return typeof reply.retrievedAt === "number" ? stampRetrievedAt(data, reply.retrievedAt) : data;
+}
+
+async function requestShotMarketReply<T>(operation: string, args: unknown[], signal?: AbortSignal): Promise<{ data?: T; savedAt?: number; retrievedAt?: number }> {
   const viaFetch = () => window.fetch(shotRouteUrl(SHOT_MARKET_BRIDGE_PATH, SHOT_PAGE_URL), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -240,9 +259,9 @@ async function requestShotMarketData<T>(operation: string, args: unknown[], sign
     const send = await shotSocket();
     return await send?.({ market: { operation, args } }, signal) ?? await viaFetch();
   })());
-  const result = await response.json() as { ok: boolean; data?: T; error?: string };
+  const result = await response.json() as { ok: boolean; data?: T; error?: string; savedAt?: number; retrievedAt?: number };
   if (!result.ok) throw new Error(result.error ?? `Screenshot data request failed: ${operation}`);
-  return result.data as T;
+  return result;
 }
 
 /** JSON has no Date, so every bridged date arrives as a string. */
@@ -369,12 +388,12 @@ function createShotDataProvider(payload: DesktopPaneShotPayload): DataProvider {
         }));
     },
     getArticleSummary: async () => null,
-    getAnalystResearch: (symbol, exchange) => requestShotMarketData<AnalystResearchData>("getAnalystResearch", [symbol, exchange]),
-    getCorporateActions: (symbol, exchange) => requestShotMarketData<CorporateActionsData>("getCorporateActions", [symbol, exchange]),
-    getHolders: (symbol, exchange) => requestShotMarketData<HolderData>("getHolders", [symbol, exchange]),
-    getSecFilings: (symbol, count, exchange) => requestShotMarketData<SecFilingItem[]>("getSecFilings", [symbol, count, exchange]).then(reviveSecFilings),
-    getSecFilingsPage: (symbol, query, exchange) => requestShotMarketData<SecFilingsPage>("getSecFilingsPage", [symbol, query, exchange])
-      .then((page) => ({ ...page, filings: reviveSecFilings(page.filings) })),
+    getAnalystResearch: (symbol, exchange) => requestShotDataset<AnalystResearchData>("getAnalystResearch", [symbol, exchange]),
+    getCorporateActions: (symbol, exchange) => requestShotDataset<CorporateActionsData>("getCorporateActions", [symbol, exchange]),
+    getHolders: (symbol, exchange) => requestShotDataset<HolderData>("getHolders", [symbol, exchange]),
+    getSecFilings: (symbol, count, exchange) => requestShotDataset<SecFilingItem[]>("getSecFilings", [symbol, count, exchange], reviveSecFilings),
+    getSecFilingsPage: (symbol, query, exchange) => requestShotDataset<SecFilingsPage>("getSecFilingsPage", [symbol, query, exchange],
+      (page) => ({ ...page, filings: reviveSecFilings(page.filings) })),
     // The page holds no session credential, so verified cloud reads such as
     // Form 4 content would fail as signed out if the page made them itself.
     getSecFilingDocuments: (filing) => requestShotMarketData<SecFilingDocument[]>("getSecFilingDocuments", [filing]),

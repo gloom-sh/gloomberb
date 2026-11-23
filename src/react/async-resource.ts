@@ -3,7 +3,7 @@ import { connectionHealth, recoversDataRequests } from "../core/connection-healt
 import { useSavedCopyFooter } from "../components/layout/pane/footer/registration";
 import { isPermanentClientError, isTransientFailure } from "../api-client/errors";
 import { afterSavedCopyFrame, deleteSavedCopy, readSavedCopy, savedCopyId, writeSavedCopy, type SavedCopyKey } from "../data/pane-saved-copies";
-import { savedCopyAt } from "../data/saved-copies";
+import { retrievedAtOf, savedCopyAt } from "../data/saved-copies";
 import { reuseSavedData } from "../data/reuse-saved-data";
 import { logFailure } from "../utils/log-failure";
 
@@ -106,7 +106,8 @@ export function useAsyncResource<T>(
       const data = await loader(force);
       if (isCurrent()) {
         const savedAt = savedCopyAt(data);
-        const updatedAt = savedAt ?? Date.now();
+        // A copy read earlier and served again is as old as that read, not this load.
+        const updatedAt = savedAt ?? retrievedAtOf(data) ?? Date.now();
         const current = currentView.current;
         setState({
           owner: loader, ownerKey: keyId, retainWithin, loading: false, error: null, updatedAt, savedAt,

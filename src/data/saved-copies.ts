@@ -128,10 +128,75 @@ export function savedCopyShownAt(shown: unknown): number | null {
 
 /** Runs one command, whose output `savedCopyShownAt` then searches for saved copies. */
 export async function collectSavedCopies<T>(run: () => Promise<T>): Promise<T> {
+  if (collecting === 0) served.length = 0;
   collecting += 1;
   try {
     return await run();
   } finally {
     collecting -= 1;
   }
+}
+
+/**
+ * Copies of a dataset read earlier, served again without asking its source:
+ * a holder list or a filing list inside its cache time, or one a failed
+ * refresh fell back to. Such data has no time of its own to be dated by, so
+ * when it was read is its date: a report built from it was not retrieved when
+ * the command ran but when the copy was saved, and a pane that shows it says
+ * so. Rows are often rebuilt field by field from such a read (INS's trades
+ * from a filing list), which no mark survives, so a command also keeps a
+ * ledger of every copy it was served (`servedCopiesAt`), and its closing line
+ * is dated by the oldest. Quotes and price history are not in it: they carry
+ * their own observation times, which date them.
+ */
+const RETRIEVED_AT = Symbol("gloomberb.retrievedAt");
+
+type Stamped = { [RETRIEVED_AT]?: number };
+
+const served: Array<{ at: number; refreshFailed: boolean }> = [];
+/** The stamped form of each served value, so a copy read twice is one object, as it was unstamped. */
+const stamped = new WeakMap<object, { at: number; value: object }>();
+
+/**
+ * `value` stamped with the time the copy it comes from was read from its
+ * source (`at`, ms), not stamped again when it already says. The stamp is a
+ * symbol that is neither enumerable nor written by JSON, so the value's
+ * fields are untouched.
+ */
+export function stampRetrievedAt<T>(value: T, at: number): T {
+  if (!value || typeof value !== "object" || !Number.isFinite(at)) return value;
+  if ((value as Stamped)[RETRIEVED_AT] === at) return value;
+  const known = stamped.get(value);
+  if (known?.at === at) return known.value as T;
+  const copy = Array.isArray(value) ? value.slice() : { ...value };
+  Object.defineProperty(copy, RETRIEVED_AT, { value: at });
+  stamped.set(value, { at, value: copy });
+  return copy as T;
+}
+
+/** When the copy `value` comes from was read from its source, if it was served from one; null when it was read just now. */
+export function retrievedAtOf(value: unknown): number | null {
+  const at = value && typeof value === "object" ? (value as Stamped)[RETRIEVED_AT] : undefined;
+  return typeof at === "number" ? at : null;
+}
+
+/** Notes, while a command runs, a dataset copy it was served (see `RETRIEVED_AT`); `refreshFailed` when a failed refresh fell back to it. */
+export function noteServedCopy(at: number, refreshFailed: boolean): void {
+  if (collecting === 0 || !Number.isFinite(at)) return;
+  served.push({ at, refreshFailed });
+}
+
+/**
+ * The oldest dataset copy the running command was served (`retrievedAt`) and
+ * the oldest of those a failed refresh fell back to (`savedAt`), ms; null
+ * where there is none, and both null outside a command.
+ */
+export function servedCopiesAt(): { retrievedAt: number | null; savedAt: number | null } {
+  let retrievedAt: number | null = null;
+  let savedAt: number | null = null;
+  for (const { at, refreshFailed } of served) {
+    retrievedAt = Math.min(retrievedAt ?? at, at);
+    if (refreshFailed) savedAt = Math.min(savedAt ?? at, at);
+  }
+  return { retrievedAt, savedAt };
 }

@@ -19,6 +19,7 @@ import type { DesktopExternalPluginBundle } from "../renderers/electrobun/shared
 import type { HttpProxyRequestEnvelope, HttpProxyResponseEnvelope } from "../utils/http-proxy-response";
 import type { PaneAccessGate } from "./pane-functions/access-gate";
 import { countContentFigures } from "./content-figures";
+import { retrievedAtOf, savedCopyAt, savedCopyShownAt } from "../data/saved-copies";
 import { readVisibleKeyValues } from "./visible-key-values";
 import { rowViewportVisibility, scrollTruncationReasons } from "./scroll-truncation";
 import {
@@ -558,7 +559,10 @@ async function answerShotMarketCall(
     const operation = typeof payload.operation === "string" ? payload.operation : "";
     const args = Array.isArray(payload.args) ? payload.args : [];
     const data = await bridge.marketData(operation, args);
-    return Response.json({ ok: true, data });
+    // JSON drops the marks of a copy served again: the page is told when it was saved or read, and marks it back.
+    const savedAt = savedCopyAt(data) ?? savedCopyShownAt(data);
+    const retrievedAt = savedAt == null ? retrievedAtOf(data) : null;
+    return Response.json({ ok: true, data, ...(savedAt != null ? { savedAt } : {}), ...(retrievedAt != null ? { retrievedAt } : {}) });
   } catch (error) {
     return Response.json({ ok: false, error: errorMessage(error) });
   }
