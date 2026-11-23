@@ -7,7 +7,8 @@ import { listingAbroadVenue } from "../utils/sec";
 import { nimCommand } from "./bank-section";
 import { treasuryBillLine, treasuryYieldLine, treasuryYieldTenor } from "./treasury-yields";
 import { namedCurrencyPair } from "./currency-name-hint";
-import { dollarPairListing } from "../utils/currency-pair";
+import { currencyPairCode, currencyPairSpelling, dollarPairListing } from "../utils/currency-pair";
+import { isCryptoPairSymbol, isRoundTheClockCoin, runTogetherCoinPair } from "../utils/crypto-pair";
 import { currencyCodeTyped } from "../utils/currency-names";
 import { uncarriedIndexFor, uncarriedIndexLine } from "../tickers/index-roots";
 
@@ -20,8 +21,20 @@ type SubMinuteListing = "unknown" | "abroad" | "future" | "other";
 
 function subMinuteListing(symbol: string): SubMinuteListing {
   if (listedAbroad(symbol)) return "abroad";
-  const kind = kindFromListingSyntax(symbol, parsePublicTickerKey(symbol).exchange);
-  return kind === "future" ? "future" : kind ? "other" : "unknown";
+  const parsed = parsePublicTickerKey(symbol);
+  const kind = kindFromListingSyntax(symbol, parsed.exchange);
+  if (kind === "future") return "future";
+  return kind || isPairWithoutTape(parsed.symbol) ? "other" : "unknown";
+}
+
+/**
+ * A coin or a currency pair written without the venue that names it: BTC-USD
+ * and ETH/BTC, BTCUSDT as a crypto venue writes it, EUR/USD and EUR-USD. None
+ * is a US listing, so none has a tape. A bare coin code (BTC) is a US fund.
+ */
+function isPairWithoutTape(symbol: string): boolean {
+  return isRoundTheClockCoin(symbol) || isCryptoPairSymbol(symbol) || runTogetherCoinPair(symbol) != null
+    || currencyPairCode(symbol) != null || currencyPairSpelling(symbol) != null;
 }
 
 /**
@@ -45,7 +58,8 @@ export function subMinuteDataMessage(symbol = "<ticker>", listing: SubMinuteList
     case "future":
       return `${none}; 1-minute bars: fn G ${symbol} --range-preset 1D (history ${symbol} --range 1D has 5-minute bars). Trades and quotes cover US equities only.`;
     case "other":
-      return `${none}; 1-minute bars: fn GIP ${symbol}. Trades and quotes cover US equities only.`;
+      // BTCUSDT is no ticker here: its coin's bars are the dollar pair's.
+      return `${none}; 1-minute bars: fn GIP ${runTogetherCoinPair(symbol) ?? symbol}. Trades and quotes cover US equities only.`;
     default:
       return `${none}; 1-minute bars: fn GIP ${symbol}; for a US listing, the latest session's trades: fn TAS ${symbol} (--from 10:30 --to 10:35), and quotes: fn QR ${symbol}.`;
   }

@@ -477,11 +477,18 @@ test("GIP's --chartResolution says the same of a sub-minute ask as history does,
 });
 
 test("asked for bars finer than a minute, an index, a currency pair or a coin is pointed at its 1-minute bars and no tape", () => {
-  for (const symbol of ["^GSPC", "EURUSD=X", "BTC-USD:CCC"]) {
+  // TAS and QR answer a coin or a pair with "Time and sales supports US equities", so neither is named for one,
+  // however the pair is written: on its venue, bare (BTC-USD), run together as crypto venues write it, or as FX.
+  for (const symbol of ["^GSPC", "EURUSD=X", "EUR/USD", "BTC-USD:CCC", "BTC-USD", "ETH-USD", "ETH-BTC"]) {
     expect(subMinuteDataMessage(symbol), symbol).toBe(`No second or tick bars; 1-minute bars: fn GIP ${symbol}. Trades and quotes cover US equities only.`);
   }
-  // A US listing keeps its trades and quotes, and the explicit kind wins over what the symbol says.
-  expect(subMinuteDataMessage("SPY")).toContain("fn TAS SPY");
+  // BTCUSDT is no ticker here; the coin's bars are its dollar pair's.
+  for (const [symbol, pair] of [["BTCUSDT", "BTC-USD"], ["ethusd", "ETH-USD"]]) {
+    expect(subMinuteDataMessage(symbol), symbol).toBe(`No second or tick bars; 1-minute bars: fn GIP ${pair}. Trades and quotes cover US equities only.`);
+  }
+  // A US listing keeps its trades and quotes, a bare coin code among them (BTC is a fund), and the explicit kind wins
+  // over what the symbol says.
+  for (const symbol of ["SPY", "AAPL", "BRK-B", "BTC"]) expect(subMinuteDataMessage(symbol), symbol).toContain(`fn TAS ${symbol}`);
   expect(subMinuteDataMessage("GC=F", "unknown")).toContain("fn TAS GC=F");
 });
 
