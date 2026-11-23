@@ -270,6 +270,26 @@ async function readLines<T>(file: string): Promise<T[]> {
   return (await Bun.file(file).text()).split("\n").filter(Boolean).map((line) => JSON.parse(line) as T);
 }
 
+/** Reveal the selected event from the top using the settled viewport, not the offset left by partial data. */
+async function positionTickerEvents(cdp: Cdp, scope: string): Promise<void> {
+  const scrolled = await evaluate<boolean>(cdp, `(() => {
+    const table = document.querySelector(${JSON.stringify(scope)})?.querySelector('[data-gloom-role="data-table-body-scroll"]');
+    const header = table?.querySelector('[data-gloom-role="data-table-header-row"]');
+    const selected = table?.querySelector('[data-gloom-role="data-table-row"][data-selected="true"]');
+    if (!header || !selected) return false;
+    const row = selected.getBoundingClientRect();
+    if (!row.height) return false;
+    const headerHeight = header.getBoundingClientRect().height;
+    const previous = table.scrollTop;
+    const selectedEnd = row.bottom - table.getBoundingClientRect().top + previous - headerHeight;
+    const rowsThroughSelection = Math.round(selectedEnd / row.height);
+    const visibleRows = Math.max(1, Math.floor((table.clientHeight - headerHeight) / row.height));
+    table.scrollTop = Math.max(0, rowsThroughSelection - visibleRows) * row.height;
+    return table.scrollTop !== previous;
+  })()`);
+  if (scrolled) await settle(cdp, scope, 700, 6_000);
+}
+
 async function main(): Promise<void> {
   const catalog: AuditEntry[] = readCatalog(root, cacheDir("ui-audit-home"));
   const builtIn = new Set(catalog.map((entry) => entry.paneId));
@@ -475,6 +495,9 @@ async function main(): Promise<void> {
           settle: () => settle(cdp, scope, 700, 6_000),
           record: async (path) => {
             const name = pathName(path);
+            if (shots && name === "Events" && (entry.token === "T" || entry.token === "ADR")) {
+              await positionTickerEvents(cdp, scope);
+            }
             const tab: AuditView = { ...base, id: `${entry.token}--tab-${slug(name)}`, view: "tab", tab: name };
             if (!await record(tab, id, width, theme, measure)) return false;
             views.set(tab.id, tab);
