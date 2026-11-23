@@ -475,3 +475,16 @@ test("the sort field and its direction are in the text, CSV and JSON of a report
   expect(named.text).toContain("Symbol (sorted ascending)");
   expect(sortedBy(named.json)).toBe("Symbol (symbol), ascending");
 });
+
+test("a forecast is dated by when it was given and names the period it is for apart", async () => {
+  const { data } = gridScreen("2026-11-22T21:00:00.000Z");
+  const forecast = { ...data.rows[0]!.metrics.return1YPercent!, asOf: "2026-11-04", periodEnd: "2026-12-31" };
+  data.rows[0]!.metrics.return1YPercent = forecast;
+  const options = { definition: JSON.stringify(data.definition), metric: "operatingMarginPercent,return1YPercent" };
+  const result = await equityScreenerHeadless.load({ argument: undefined, options } as never,
+    { apiClient: { equityScreener: async () => structuredClone(data) } } as never);
+  expect(table(result).rows!.map((row) => [row.symbol, row.return1YPercentAsOf])).toEqual([
+    ["LR", "2026-11-04 (for the period ending 2026-12-31)"],
+    ["PRY", "2026-11-18"],
+  ]);
+});
