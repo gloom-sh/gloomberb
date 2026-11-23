@@ -11,7 +11,7 @@ test("event rule storage preserves targets and validates CIKs", () => {
   expect(parsed.error).toBeNull();
   expect(parsed.rules[0]?.value).toBe("0001067983");
   expect(parsed.rules[1]?.value).toBe("Nancy Pelosi:CA11");
-  expect(() => createEventAlert("thirteenf-fund", "Berkshire")).toThrow();
+  expect(() => createEventAlert("thirteenf-fund", "Berkshire", 1000)).toThrow();
   expect(readEventAlerts(JSON.stringify([fund, fund])).error).not.toBeNull();
   expect(readEventAlerts("broken").error).not.toBeNull();
 });

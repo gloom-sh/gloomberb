@@ -16,6 +16,9 @@ import type { AlertRule } from "./types";
 import { IV_LEVEL_CHECKS_KEY } from "./iv-level";
 import { createResearchAlert } from "./research-builder";
 import { createScheduledAlert } from "./scheduled";
+import { useAlertTestClock } from "./test-fixture";
+
+useAlertTestClock();
 
 const pane = { id: "alerts", name: "Alerts", component: () => null, defaultPosition: "right" as const };
 const capability = getPaneFunctionCapability({ id: "alerts-pane", paneId: "alerts", label: "Alerts", description: "Alerts", headless: alertsHeadless }, pane);

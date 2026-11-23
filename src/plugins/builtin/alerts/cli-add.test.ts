@@ -27,31 +27,31 @@ import { IV_LEVEL_ALERTS_KEY } from "./events";
 import { checkIvLevelAlertsNow, startIvLevelAlerts } from "./iv-level";
 import { seriesNamedBy } from "../../../series/registry";
 import { VOLATILITY_SERIES } from "../volatility/series";
+import { useAlertTestClock } from "./test-fixture";
+
+useAlertTestClock();
 
 const dataDirs: string[] = [];
 
 afterEach(async () => {
-  setSystemTime();
   setCloudApiFetchTransport(null);
   apiClient.setSessionToken(null);
   await Promise.all(dataDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
-});
-
-const pair: Quote = createTestQuote({
-  symbol: "USDMXN=X", name: "USD/MXN", currency: "MXN", price: 18.42, listingExchangeName: "CCY", exchangeName: "CCY", instrumentType: "CURRENCY",
 });
 
 /**
  * Gloom Cloud for a few symbols: the pair is quoted under its own listing only (USDMXN as typed is no
  * ticker, as the service answers it), USD_NGN is a miss search lists the pair for, and AAPL is a US stock.
  */
-function cloud() {
+function cloud(appleQuote: Partial<Quote> = {}) {
+  const pair = createTestQuote({
+    symbol: "USDMXN=X", name: "USD/MXN", currency: "MXN", price: 18.42, listingExchangeName: "CCY", exchangeName: "CCY", instrumentType: "CURRENCY",
+  });
   const quotes: Record<string, Quote> = {
     "USDMXN=X": pair,
     "USDNGN=X": { ...pair, symbol: "USDNGN=X", name: "USD/NGN", currency: "NGN", price: 1322 },
-    // After hours: the alert is checked on the regular-session price, which the far-target check measures against.
     AAPL: createTestQuote({ symbol: "AAPL", name: "Apple Inc.", price: 250, listingExchangeName: "NASDAQ", exchangeName: "NASDAQ",
-      marketState: "POST", postMarketPrice: 300 }),
+      marketState: "REGULAR", ...appleQuote }),
     // The bare coin ticker is the Grayscale fund, as the data service answers it.
     BTC: createTestQuote({ symbol: "BTC", name: "Grayscale Bitcoin Mini Trust ETF", price: 37.35, listingExchangeName: "ARCA", exchangeName: "ARCA", instrumentType: "ETF" }),
     // Bitcoin itself, on the coin board, named as the data service names the pair: Deribit lists its options.
@@ -84,6 +84,11 @@ function cloud() {
   });
 }
 
+function afterHoursMarket() {
+  setSystemTime(new Date("2026-11-05T22:00:00Z"));
+  return { dataProvider: cloud({ marketState: "POST", postMarketPrice: 300 }) };
+}
+
 async function addAlert(args: string[], pluginState?: Record<string, unknown>, market: Record<string, unknown> = {}) {
   const dataDir = await mkdtemp(join(tmpdir(), "gloomberb-alerts-add-"));
   dataDirs.push(dataDir);
@@ -113,13 +118,15 @@ test("a price alert is kept for the listing quote prints, so one pair is one tar
 });
 
 test("regular-only rules keep the listing but not an extended-hours baseline", async () => {
-  const regular = await addAlert(["AAPL", "above", "260", "--session", "regular"]);
-  const legacy = await addAlert(["AAPL", "above", "260"]);
-  const move = await addAlert(["AAPL", "up", "2%", "--session", "regular"]);
+  const market = afterHoursMarket();
+  const regular = await addAlert(["AAPL", "above", "260", "--session", "regular"], undefined, market);
+  const legacy = await addAlert(["AAPL", "above", "260"], undefined, market);
+  const move = await addAlert(["AAPL", "up", "2%", "--session", "regular"], undefined, market);
   expect([regular.error, legacy.error, move.error]).toEqual([null, null, null]);
   expect(regular.stored[0]).toMatchObject({ regularHoursOnly: true, lastQuoteExchange: "NASDAQ" });
   expect(move.stored[0]).toMatchObject({ regularHoursOnly: true, move: true });
   expect(regular.stored[0]).not.toHaveProperty("lastCheckedPrice");
+  expect(regular.printed!.result.data).not.toHaveProperty("alreadyMet");
   expect(move.stored[0]).not.toHaveProperty("lastCheckedPrice");
   expect(legacy.stored[0]).not.toHaveProperty("regularHoursOnly");
   expect(legacy.stored[0]!.lastCheckedPrice).toBe(300);
@@ -207,26 +214,20 @@ test("an alert on a listing that stopped trading is refused with what to add ins
     .toBe("Earnings alerts follow US listings, such as CRWV or AAPL:NASDAQ. D05:SGX is not one.");
 });
 
-test("a price alert says what delivers it, and the app is the one thing that always does", async () => {
-  // After the close, when the fixture's after-hours quote is current: before the next open it reads as stale,
-  // and an alert added on a stale quote has no venue to name yet.
-  setSystemTime(new Date("2026-11-05T22:00:00Z"));
-  const { printed, stored } = await addAlert(["AAPL", "above", "250"]);
+test("a price alert says what delivers it and whether the after-hours price already meets its level", async () => {
+  const market = afterHoursMarket();
+  const { printed, stored } = await addAlert(["AAPL", "above", "260"], undefined, market);
   expect(stored).toHaveLength(1);
   const text = printed!.options!.text!(printed!.result.data);
   // The listing with its venue, as every alert message names it.
-  expect(text).toContain("AAPL:NASDAQ above 250.00 USD per share (the app alerts while it is running;");
+  expect(text).toContain("AAPL:NASDAQ above 260.00 USD per share (the app alerts while it is running;");
   // Signed in, Cloud emails or pushes it only once the app has been closed for a while: never promised to everyone.
   expect(text).toContain("sign in with Cloud sync for email or phone alerts when it is closed");
-  expect(text).toContain("). Last price 250.00 USD · Thu 5 Nov 22:00 UTC.");
-
-  // A level the price is already past goes off at the next check, judged on the price the alert is checked on
-  // (250), not the after-hours print (300); crosses waits for the next move through the level.
-  const met = await addAlert(["AAPL", "above", "240"]);
-  expect(met.printed!.options!.text!(met.printed!.result.data)).toContain("Last price 250.00 USD · Thu 5 Nov 22:00 UTC, already above 240.00, so it goes off at the next check.");
-  expect(met.printed!.result.data).toMatchObject({ alreadyMet: true });
-  for (const args of [["AAPL", "above", "260"], ["AAPL", "crosses", "240"]]) {
-    const pending = await addAlert(args);
+  expect(text).toContain("). Last price 300.00 USD after hours · Thu 5 Nov 22:00 UTC, already above 260.00, so it goes off at the next check.");
+  expect(printed!.result.data).toMatchObject({ alreadyMet: true });
+  for (const args of [["AAPL", "above", "2800"], ["AAPL", "crosses", "260"]]) {
+    const pending = await addAlert(args, undefined, market);
+    expect(pending.error).toBeNull();
     expect(pending.printed!.options!.text!(pending.printed!.result.data)).not.toContain("already");
     expect(pending.printed!.result.data).not.toHaveProperty("alreadyMet");
   }
@@ -523,9 +524,7 @@ test("XLK/SPY quoting nothing is the two listings' ratio, kept apart from older 
 });
 
 /** One profile across several `alerts` commands, with the device state the alert log lives in. */
-async function profile() {
-  // Tue 27 Oct 2026, 03:30 in New York: between sessions, AAPL's after-hours print is its latest price.
-  setSystemTime(new Date("2026-10-27T07:30:00Z"));
+async function profile({ dataProvider } = { dataProvider: cloud() }) {
   const dataDir = await mkdtemp(join(tmpdir(), "gloomberb-alerts-desk-"));
   dataDirs.push(dataDir);
   await saveConfig(createDefaultConfig(dataDir));
@@ -538,7 +537,7 @@ async function profile() {
     },
   };
   const run = async (args: string[], options: Partial<CliGlobalOptions> = {}) => {
-    const cli = createTestCliContext({ config: await loadConfig(dataDir), dataProvider: cloud(), persistence }, options);
+    const cli = createTestCliContext({ config: await loadConfig(dataDir), dataProvider, persistence }, options);
     try {
       await alertsCliCommand.execute(args, cli.context);
     } catch (thrown) {
@@ -587,7 +586,7 @@ test("a second add of one alert names it and adds nothing, re-arming an active o
 });
 
 test("alerts list --csv keeps its columns in their order and adds when each alert was made, its listing, currency and last reading", async () => {
-  const desk = await profile();
+  const desk = await profile(afterHoursMarket());
   await desk.run(["add", "AAPL", "above", "260"]);
   // A rule saved before any check (an older version's, or one just re-armed) says it has not been read.
   const config = await loadConfig(desk.dataDir);
@@ -602,11 +601,10 @@ test("alerts list --csv keeps its columns in their order and adds when each aler
   const rows = csv.slice(1).map((line) => line.split(","));
   // Its first reading is the price it was added at, as the app checks it (after hours, the after-hours price).
   expect(rows[0]!.slice(1, 7)).toEqual(["Price", "AAPL", "above 260.00", "", "active", "300"]);
-  expect(rows[0]![8]).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+  expect(rows[0]![8]).toBe("2026-11-05T22:00:00Z");
   expect(rows[0]!.slice(9, 11)).toEqual(["AAPL:NASDAQ", "USD"]);
   // An after-hours print says so, as `quote` names it beside Last.
-  expect(rows[0]![11]).toMatch(/^300\.00 USD after hours as of \d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z$/);
-  expect(rows[0]![12]).toMatch(/Z$/);
+  expect(rows[0]!.slice(11, 13)).toEqual(["300.00 USD after hours as of 2026-11-05T22:00Z", "2026-11-05T22:00:00Z"]);
   expect(rows[1]!.slice(8)).toEqual(["2026-10-20T09:30:00Z", "LINK", "", "not checked yet", "", "Regular and extended", "", ""]);
   // Gloom Cloud checks a 52-week rule for a signed-in account; signed out, nothing has read it yet.
   expect((await desk.run(["add", "AAPL", "52-week", "high"])).error).toBeNull();
@@ -764,6 +762,7 @@ test("alerts add takes every kind Add Event Alert offers, by the words a desk ty
 });
 
 test("a daily technical alert is saved while its close cannot be read yet, and says when it is first checked", async () => {
+  setSystemTime(new Date("2026-10-27T07:30:00Z"));
   const desk = await profile();
   // This connection serves no daily history: the rule is kept, unread, rather than refused.
   const added = await desk.run(["add", "AAPL", "rsi(14)", "above", "70"]);

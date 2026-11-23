@@ -31,7 +31,7 @@ import { saveConfig } from "../../../data/config/store";
 import { resumeStateKey } from "../../registry/plugin-state";
 import type { CliCommandDef } from "../../../types/plugin";
 import type { Quote } from "../../../types/financials";
-import { extendedPrintSession, getActiveQuoteDisplay } from "../../../market-data/market/status";
+import { getActiveQuoteDisplay } from "../../../market-data/market/status";
 import { cliStyles } from "../../../utils/cli-output";
 import { canonicalExchange, isUsListingExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { isRoundTheClockCoin } from "../../../utils/crypto-pair";
@@ -1092,8 +1092,8 @@ export const alertsCliCommand: CliCommandDef = {
     }
     if (request?.kind === "price" && priced) {
       // A target ten times away is a slip or another instrument's price, such as bitcoin's on the BTC fund.
-      // Against the price the alert is checked on, as Add Alert measures it.
-      const far = farTargetMessage(priced.listing.key, request.price, priced.quote.price, coinNote ?? futureNote, isPenceQuotedLine(priced.quote));
+      const referencePrice = sessionRule.regularHoursOnly ? priced.quote.price : lastPrice(priced.quote);
+      const far = farTargetMessage(priced.listing.key, request.price, referencePrice, coinNote ?? futureNote, isPenceQuotedLine(priced.quote));
       if (far) ctx.fail(far);
     }
     // What a typed listing was read as (7203:TSE as 7203:JPX, MXN as MXN:FWB2), said beside what was added.
@@ -1387,8 +1387,7 @@ export const alertsCliCommand: CliCommandDef = {
         const weekly = alert.metric?.kind === "rrg";
         const daily = !!alert.metric && isDailyMetric(alert.metric);
         const firstCheck = daily ? firstDailyCheck(alert.exchange, now, weekly) : null;
-        // The price a price alert is checked on, as the far-target check measures against.
-        const checkedPrice = !alert.metric && priced && acceptsAlertSession(alert, priced.quote) && Number.isFinite(priced.quote.price) && priced.quote.price !== 0 ? priced.quote.price : null;
+        const checkedPrice = alert.lastCheckedPrice;
         // An above or below rule that already holds goes off at its first check, not on the next cross: said with the reading.
         const alreadyMet = alert.metric
           ? levelAlreadyMet(alert.condition, alert.lastCheckedPrice, alert.lastCheckedTarget)
@@ -1398,7 +1397,7 @@ export const alertsCliCommand: CliCommandDef = {
         const goesOffThen = daily && alreadyMet ? ` It goes off then if it is still ${alert.condition}.` : "";
         const notes = [
           alert.metric ? unread ? `Not read yet: ${unread.replace(/\.$/, "")}.` : `${metricReadingNote(alert)}${met}.`
-            : checkedPrice != null ? `Last price ${alertPriceWithCurrency(alert, checkedPrice)}${readingSessionWords({ lastQuoteSession: extendedPrintSession(priced?.quote, checkedPrice) ?? undefined })} · ${alertQuoteTime(alert.lastQuoteUpdatedAt)}${met}.` : alert.regularHoursOnly ? "Waiting for a regular-hours quote." : null,
+            : checkedPrice != null ? `Last price ${alertPriceWithCurrency(alert, checkedPrice)}${readingSessionWords(alert)} · ${alertQuoteTime(alert.lastQuoteUpdatedAt)}${met}.` : alert.regularHoursOnly ? "Waiting for a regular-hours quote." : null,
           firstCheck ? `First checked on the ${firstCheck.day} ${weekly ? "weekly close" : "close"}, from ${isoUtc(firstCheck.at).slice(11, 16)} UTC.${goesOffThen}`
             : goesOffThen ? `It goes off on the first close it is checked on if it is still ${alert.condition}.` : null,
         ].filter(Boolean).join(" ");

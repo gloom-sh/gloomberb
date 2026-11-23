@@ -7,6 +7,9 @@ import type { PricePoint, Quote } from "../../../types/financials";
 import { firstDailyCheck, metricReadings } from "./metric-data";
 import { formatCurrentPrice, formatQuoteChecked } from "./format";
 import type { AlertRule } from "./types";
+import { useAlertTestClock } from "./test-fixture";
+
+useAlertTestClock();
 
 const rule: AlertRule = { id: "cache", symbol: "TSLA", exchange: "NASDAQ", metric: { kind: "close_ma", period: 2 }, condition: "below", targetPrice: 0, status: "active", createdAt: 1 };
 const days = ["2026-10-22", "2026-10-23", "2026-10-26"];

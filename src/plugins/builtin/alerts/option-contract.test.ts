@@ -2,6 +2,9 @@ import { expect, test } from "bun:test";
 import type { OptionContract } from "../../../types/financials";
 import { parseAlertAddArgs } from "./cli";
 import { parseLooseOptionContract, resolveLooseOptionContract, type ChainReader } from "./option-contract";
+import { useAlertTestClock } from "./test-fixture";
+
+useAlertTestClock();
 
 // Wed 18 Nov 2026, 16:00 UTC: the 18 Nov expiry is still trading.
 const NOW = Date.UTC(2026, 10, 18, 16);
