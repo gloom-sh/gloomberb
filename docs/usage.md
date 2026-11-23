@@ -948,11 +948,11 @@ When you open Gloom again after an hour or more, a strip under the header names 
 
 #### Your first weeks with Pro
 
-For the first 14 days after your first Pro payment, a row under the header names two or three Pro functions you have not opened yet, each on one of your own tickers, as in `Try Pro on your tickers  Earnings calls · NVDA  Options flow · AAPL  X mentions · TSLA`. Click one to open it.
+From the first day of your Pro trial through 14 days after your first Pro payment, a row under the header names two or three Pro functions you have not opened yet, each on one of your own tickers, as in `Try Pro on your tickers  Earnings calls · NVDA  Options flow · AAPL  X mentions · TSLA`. Click one to open it.
 
 - **Which functions.** Earnings calls (`CALLS`), options flow (`FLOW`), X mentions (`BUZZ`), hiring (`JOBS`), 8-K events (`EK`) and risk factors (`RISK`), in that order, leaving out any you ran from the command bar lately or have open in a layout. With fewer than two left, there is no row.
 - **Which tickers.** Your holdings, then your watchlists (lists shared with a team and imported portfolios aside), and with none of those the tickers you viewed most recently; each function gets one it has data for.
-- **Who sees it.** Only a paid Pro plan of your own: not during a trial and not with Pro through a team. The date of your first payment comes with your account's plan; which functions you opened is read from this machine and never sent.
+- **Who sees it.** Only a Pro plan of your own, on its trial or paid: not with Pro through a team. The date of your first payment comes with your account's plan; which functions you opened is read from this machine and never sent.
 - **Dismiss**, or the notification dismiss key while no toast or since-last-visit strip is up, puts it away for good on this machine; the action key opens the first function. It shows in the main window only, not in presentation mode.
 
 **Run Setup Again** in the command bar opens setup at its first step, with your holdings listed and the desk tabs it made ticked. Picking the desks rebuilds Home and those tabs where they are, so no layout is copied: a desk you untick loses its tab, and your other layouts and your watchlist stay as they are. **Skip setup** (or `F10`) before then leaves your layouts as they were. The browser version has no setup, so it has no Run Setup Again.

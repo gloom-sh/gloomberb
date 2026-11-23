@@ -518,8 +518,9 @@ function AppInner({
     notify: notifyRequest,
   });
   const showSinceLastVisit = !!sinceLastVisit.recap && state.config.presentationMode !== true;
-  // A new Pro payer's first two weeks: Pro functions they have not opened, on
-  // their own tickers. Its own row under the strip, never part of it.
+  // Someone new to Pro, through the trial and the first two paid weeks: Pro
+  // functions they have not opened, on their own tickers. Its own row under
+  // the strip, never part of it.
   const proWelcome = useProWelcome({
     active: !appWideWorkElsewhere && !onboardingActive && !signInGateActive,
     pluginState: pluginRegistry.persistence.pluginState,

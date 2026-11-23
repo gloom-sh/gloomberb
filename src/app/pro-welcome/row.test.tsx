@@ -165,10 +165,19 @@ describe("ProWelcomeRow", () => {
     expect(again.planRequests()).toBe(0);
   });
 
-  test("not on a trial, past day 14, or with Pro through a team", async () => {
-    signIn({ plan: "pro", trialEndsAt: new Date(NOW + 3 * DAY).toISOString() });
-    const trial = await launch({ pluginState: memoryState(), plan: paid(0) });
-    expect(trial.planRequests()).toBe(0);
+  test("a trial sees it from its first day, before any charge", async () => {
+    signIn({ plan: "pro", trialEndsAt: new Date(NOW + 7 * DAY).toISOString() });
+    const run = await launch({ pluginState: memoryState(), plan: { firstChargeAt: null, proTeam: null } });
+
+    const frame = await tui.waitForFrameToContain(LEAD);
+    expect(frame).toContain("Earnings calls · NVDA");
+    expect(run.planRequests()).toBe(1);
+  });
+
+  test("not past day 14, with Pro through a team, or on Free", async () => {
+    signIn({ plan: "free" });
+    const free = await launch({ pluginState: memoryState(), plan: paid(0) });
+    expect(free.planRequests()).toBe(0);
     expect(tui.frame()).not.toContain(LEAD);
     await tui.destroy();
 

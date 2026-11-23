@@ -28,9 +28,17 @@ describe("who sees the Pro row", () => {
     expect(eligible({}, 15)).toBe(false);
   });
 
-  test("not a trial, a Team seat, someone who dismissed it, or an account the server named no charge for", () => {
-    // A trial has not been charged; the server sends no first charge for one either.
-    expect(eligible({ access: { isPayingPro: false, isTrialActive: true } })).toBe(false);
+  test("someone on a trial of their own plan, from its first day, with no charge yet", () => {
+    const TRIAL = { isPayingPro: false, isTrialActive: true };
+    // The server names no first charge for a trial; an older one leaves the field out.
+    expect(eligible({ access: TRIAL, plan: { firstChargeAt: null, proTeam: null } })).toBe(true);
+    expect(eligible({ access: TRIAL, plan: { proTeam: null } })).toBe(true);
+    expect(eligible({ access: TRIAL, plan: { firstChargeAt: null, proTeam: { id: "t1", name: "Desk" } } })).toBe(false);
+    expect(eligible({ access: TRIAL, plan: { firstChargeAt: null, proTeam: null }, dismissed: true })).toBe(false);
+    expect(eligible({ access: TRIAL, plan: null })).toBe(false);
+  });
+
+  test("not a Team seat, someone who dismissed it, or a payer the server named no charge for", () => {
     expect(eligible({ plan: { firstChargeAt: new Date(NOW - DAY).toISOString(), proTeam: { id: "t1", name: "Desk" } } })).toBe(false);
     expect(eligible({ dismissed: true })).toBe(false);
     expect(eligible({ plan: { firstChargeAt: null, proTeam: null } })).toBe(false);
