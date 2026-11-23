@@ -89,6 +89,22 @@ test("a stock lists the ETFs holding it, daily files before N-PORT reports, each
   expect(none).toContain("ETF QQQ");
   expect(none).not.toContain("not available on this server");
 });
+test("international listings show separate sections for ordinary shares and ADRs", async () => {
+  const fund = { ticker: "ETF", name: "Example ETF", basis: "nport", shares: 1, marketValue: 1,
+    holdingName: "Tencent", asOf: "2026-06-30", filedOn: "2026-08-26" };
+  setCloudApiFetchTransport(async (input) => {
+    const path = decodeURIComponent(new URL(String(input)).pathname);
+    if (path.endsWith("/holding/0700:HKEX")) return Response.json({ symbol: "0700:HKEX", coverage: { daily: 0, nport: 1 }, funds: [
+      { ...fund, weight: 0.05, holdingType: "ordinary" }, { ...fund, weight: 0.01, holdingType: "adr", receiptTicker: "TCEHY" },
+    ] });
+    return Response.json(covered);
+  });
+  await mountMembers("0700:HKEX");
+  const frame = await tui.waitForFrameToContain("Ordinary shares · SEC N-PORT reports");
+  expect(frame).toContain("ADR (TCEHY) · SEC N-PORT reports");
+  expect(frame).toContain("5.00");
+  expect(frame).toContain("1.00");
+});
 test("Movers has no members menu, and a search narrows what the menu opens", async () => {
   setCloudApiFetchTransport(async (input) => Response.json(new URL(String(input)).pathname.endsWith("/members") ? covered : board));
   setSharedRegistryForTests({ paneTemplates: new Map(MEMBER_DESTINATIONS.map((destination) => [destination.templateId, {}])),

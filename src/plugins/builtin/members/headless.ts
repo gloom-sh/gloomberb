@@ -4,7 +4,7 @@ import type { HeadlessRowsResult } from "../../../types/headless";
 import { fetchBreadth, fetchChanges, fetchFunds, fetchMembers, fetchStockFunds, FundNotCoveredError } from "./client";
 import type { FundMembersPayload } from "../../../api-client/members";
 import { canonicalFund, changeReason, coverageText, decimal, DEFAULT_SORT, fundName, fundSource, holdingsCaveats, holdingsSourceText, memberRows, membersFeed,
-  noStockFundsMessage, percent, stockFundAsOf, stockFundsNotices, usListingInput } from "./model";
+  noStockFundsMessage, percent, stockFundAsOf, stockFundsNotices, stockHoldingLabel, stockListingInput } from "./model";
 const columns: HeadlessPaneColumn[] = [
   { key: "symbol", header: "Ticker" }, { key: "name", header: "Name" },
   { key: "weight", header: "Weight %", align: "right", format: (value) => value == null ? MISSING_VALUE : decimal(Number(value) * 100) },
@@ -31,25 +31,22 @@ function holdingsBasis(data: Pick<FundMembersPayload, "asOf" | "basis" | "filedO
  * of ("as of 30 Jun 2026 (N-PORT, filed 26 Aug)"). CSV and JSON rows carry the dates and link apart too.
  */
 async function stockFunds(input: string, client: Parameters<typeof fetchStockFunds>[1]): Promise<HeadlessRowsResult> {
-  const symbol = usListingInput(input);
-  if (!symbol) {
-    return { freshness: { status: "not-a-feed", basis: "fund holdings" }, rows: [], columns: [],
-      empty: "Funds are looked through by US ticker: name the US listing (an ADR such as INFY or TSM)." };
-  }
+  const symbol = stockListingInput(input);
   const data = await fetchStockFunds(symbol, client);
-  const none = noStockFundsMessage(symbol);
+  const none = noStockFundsMessage(data.symbol);
   return { freshness: { status: "not-a-feed", basis: "fund holdings" },
     rows: data.funds.map((row) => ({ ...row, weight: row.weight === null ? null : row.weight * 100, holdings: stockFundAsOf(row),
-      filedOn: row.filedOn ?? null, sourceUrl: row.sourceUrl ?? null })),
+      ...(row.holdingType ? { shareClass: stockHoldingLabel(row) } : {}), filedOn: row.filedOn ?? null, sourceUrl: row.sourceUrl ?? null })),
     columns: [{ key: "ticker", header: "Fund" }, { key: "name", header: "Name" },
+      ...(data.funds.some((row) => row.holdingType) ? [{ key: "shareClass", header: "Share class" }] : []),
       { key: "weight", header: "Weight %", align: "right", format: (value) => decimal(value as number | null) },
       { key: "holdings", header: "Holdings" }, exported("asOf", "Holdings as of"), exported("filedOn", "Filed"), exported("sourceUrl", "Source link")],
-    empty: `${none.title} ${none.message}`,
+    empty: [none.title, none.message].filter(Boolean).join(" "),
     metadata: { symbol: data.symbol, coverage: data.coverage, notices: stockFundsNotices(data) } };
 }
 
 export const membersHeadless: HeadlessPaneDefinition<"rows"> = {
-  shape: "rows", argument: { kind: "free-text", optional: true, placeholder: "fund or stock", description: "Covered fund or index alias for its holdings, a US stock for the funds holding it; omit for the fund list." },
+  shape: "rows", argument: { kind: "free-text", optional: true, placeholder: "fund or stock", description: "Covered fund or index alias for its holdings, a stock (NVDA or 0700:HKEX) for the funds holding it; omit for the fund list." },
   options: [{ key: "tab", type: "enum", values: [{ value: "members" }, { value: "movers" }, { value: "changes" }, { value: "breadth" }], defaultValue: "members", description: "Members, movers, changes or daily breadth." }],
   discovery: { aliases: ["MEMB", "MRR", "IMOV"], limitations: ["ETF holdings, with file dates.", "Thematic funds from SEC N-PORT reports, two to four months old.", "A stock's ETFs: the covered funds, then every other US ETF from its latest SEC N-PORT report, up to nine months old.", "Member prices are real-time with Pro and fifteen minutes delayed otherwise; partial 1D coverage.", "Nasdaq-100 is not covered.", "Breadth history uses current members (survivorship bias)."] },
   describe: (args) => args.rawArgument ? `MEMB ${args.rawArgument}` : "Index and ETF members",
@@ -59,6 +56,7 @@ export const membersHeadless: HeadlessPaneDefinition<"rows"> = {
       rows: (await fetchFunds(context.apiClient)).funds.map((fund) => ({ ...fund, name: fundName(fund), source: fundSource(fund), filedOn: fund.filedOn ?? null })),
       columns: [{ key: "ticker", header: "Fund" }, { key: "name", header: "Index or theme" }, { key: "asOf", header: "Holdings as of" }, { key: "source", header: "Source" },
         exported("filedOn", "Filed")] };
+    if (stockListingInput(input).includes(":")) return stockFunds(input, context.apiClient);
     const fund = canonicalFund(input);
     // A symbol the covered list does not hold is a stock to look the funds through for, whatever the tab.
     const covered = await fetchFunds(context.apiClient).then((payload) => payload.funds, () => {

@@ -62,8 +62,15 @@ function validateStockFunds(data: StockFundsPayload) {
 export const fetchFunds = (client: Client = apiClient) => fetchPayload(() => client.getMemberFunds(), validateFunds);
 /** The ETFs holding a stock; a server without the lookup says so instead of a bare 404. */
 export async function fetchStockFunds(symbol: string, client: Pick<typeof apiClient, "getStockFunds"> = apiClient) {
-  try { return validateStockFunds(await client.getStockFunds(symbol)); } catch (error) {
-    throw unavailableOnServer(error, "Funds holding a stock are not available on this server yet.");
+  const international = symbol.includes(":");
+  const notAvailable = "Funds holding this listing are not available on this server yet.";
+  try {
+    const data = validateStockFunds(await client.getStockFunds(symbol));
+    if (international && !data.symbol.includes(":")) throw new ApiRequestError(notAvailable, 404);
+    return data;
+  } catch (error) {
+    throw international ? unavailableOnServer(error, notAvailable, [400, 404])
+      : unavailableOnServer(error, "Funds holding a stock are not available on this server yet.");
   }
 }
 export const cachedStockFunds = (symbol: string) => cachedCloudResource(stockFundsCache, symbol, validateStockFunds);
