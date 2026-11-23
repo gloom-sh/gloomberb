@@ -1,7 +1,8 @@
-import type { PerpBoardRow, PerpHistoryPayload, PerpLongShortRatio, PerpOpenInterestSource, PerpRankingsPayload } from "../../../api-client/perps";
+import type { PerpBoardRow, PerpHistoryPayload, PerpLongShortRatio, PerpRankingsPayload } from "../../../api-client/perps";
 import type { DataTableCell, DataTableColumn } from "../../../components";
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
 import { getTableWidth, markHiddenTableColumns } from "../../../components/ui/table-layout";
+import { openInterestSourceOf, rowReadAt, type PerpOpenInterest } from "../../../market-data/perpetual-open-interest";
 import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 import { isUsListingExchange, publicTickerKey } from "../../../utils/exchanges";
 import { isRecord } from "../../../utils/guards";
@@ -206,38 +207,16 @@ export function positioningFields(row: Pick<PerpBoardRow, "longShortRatio" | "lo
   ];
 }
 
-type Interest = Partial<Pick<PerpBoardRow, "openInterestBase" | "openInterestUsd" | "openInterestSource">>;
-const readableTime = (value: unknown) => typeof value === "string" && Number.isFinite(Date.parse(value));
-/**
- * Where and when a market's open interest was read, as the server states it. Never the market's own source: a venue
- * serves open interest from another endpoint (Binance's openInterest), and a streamed mark sits beside the open
- * interest the last poll read. Null without open interest, from a server that does not say, and for a market stored
- * before it was recorded.
- */
-export function openInterestSourceOf(row: Interest): PerpOpenInterestSource | null {
-  const source: unknown = row.openInterestSource;
-  if (row.openInterestBase == null && row.openInterestUsd == null || !isRecord(source)) return null;
-  return typeof source.url === "string" && readableTime(source.observedAt) && (source.asOf == null || readableTime(source.asOf))
-    ? source as unknown as PerpOpenInterestSource : null;
-}
 const USD_BASES: Record<"mark" | "oracle" | "face-value", string> = { mark: "mark × contracts", oracle: "oracle × contracts", "face-value": "contracts × face value" };
 /**
  * How a market's OI USD was made: `mark × contracts, USDT valued at 1 USD`, or the venue's own figure
  * (`Bybit's own USDT value, USDT valued at 1 USD`). Null without a USD figure or when the server does not say.
  */
-function openInterestUsdBasis(row: Interest & Pick<PerpBoardRow, "venue">): string | null {
+function openInterestUsdBasis(row: PerpOpenInterest & Pick<PerpBoardRow, "venue">): string | null {
   const source = openInterestSourceOf(row);
   if (row.openInterestUsd == null || !source?.usdBasis) return null;
   const made = source.usdBasis === "venue" ? `${venueName(row.venue)}'s own ${source.usdParity ?? "USD"} value` : USD_BASES[source.usdBasis];
   return made ? `${made}${source.usdParity ? `, ${source.usdParity} valued at 1 USD` : ""}` : null;
-}
-/**
- * When a row's figures were read: its own observation, or its open interest's read when that is older (a streamed
- * mark beside the open interest the last poll read), so a row is never dated newer than a figure it shows.
- */
-export function rowReadAt(row: Interest & Pick<PerpBoardRow, "observedAt">): string {
-  const interest = openInterestSourceOf(row)?.observedAt;
-  return interest && Date.parse(interest) < Date.parse(row.observedAt) ? interest : row.observedAt;
 }
 /**
  * The open interest as Evidence lists it, shared by the pane and the text report: the figure with how its USD was

@@ -1,8 +1,9 @@
 import type { PerpBoardRow } from "../../../api-client/perps";
 import type { HeadlessPaneFreshness } from "../../../types/headless";
-import { rowReadAt, venueName, venuesOf } from "./model";
+import { rowReadAt, type PerpOpenInterest } from "../../../market-data/perpetual-open-interest";
+import { venueName, venuesOf } from "./model";
 
-type Dated = Pick<PerpBoardRow, "venue" | "observedAt" | "stale"> & Partial<Pick<PerpBoardRow, "openInterestBase" | "openInterestUsd" | "openInterestSource">>;
+type Dated = Pick<PerpBoardRow, "venue" | "observedAt" | "stale"> & PerpOpenInterest;
 type Funded = Pick<PerpBoardRow, "venue" | "fundingRate" | "fundingRate8h" | "fundingKind" | "nextFundingAt">;
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;

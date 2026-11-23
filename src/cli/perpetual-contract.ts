@@ -4,7 +4,7 @@ import type { Quote } from "../types/financials";
 import { loadPerpetualMarket } from "../sources/gloomberb-cloud/perpetuals";
 import { PERPETUAL_TYPE, perpetualListing } from "../tickers/perpetual-listing";
 import { MISSING_VALUE, formatCompact } from "../utils/format";
-import { openInterestSourceOf } from "../plugins/builtin/perps/model";
+import { openInterestSourceOf } from "../market-data/perpetual-open-interest";
 
 /** What `quote` adds for a perpetual: the market PERP opens, its funding and open interest. Rates are fractions. */
 export interface PerpetualContractPayload {

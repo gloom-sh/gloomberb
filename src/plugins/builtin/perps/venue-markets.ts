@@ -1,7 +1,8 @@
 import type { PerpBoardRow } from "../../../api-client/perps";
 import type { HeadlessPaneFreshness } from "../../../types/headless";
+import { rowReadAt } from "../../../market-data/perpetual-open-interest";
 import { perpFreshness } from "./freshness";
-import { rowReadAt, venueName } from "./model";
+import { venueName } from "./model";
 
 /**
  * An asset's perpetual markets as DES lists them: one row per venue.

@@ -1,7 +1,8 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { expect, test } from "bun:test";
+import { rowReadAt } from "../../../market-data/perpetual-open-interest";
 import { aprFootnote, baseOfLabel, BOARD_COLUMNS, collectedVenueCount, boardColumns, compareColumns, dayChange, fundingSpread, historyCaption, historyCell, historyChange, historyColumns, historyRows, openInterestFields, percent, perpBaseCandidates, perpCellText, perpDescription, readingTime,
-  rowReadAt, separatedPairBase, underlyingTicker, venueAprSummary } from "./model";
+  separatedPairBase, underlyingTicker, venueAprSummary } from "./model";
 import { fundingNote } from "./freshness";
 import { equityBoard, longShort, longShortPoint, perpHistory, perpRow, venueRow } from "./test-fixture";
 
