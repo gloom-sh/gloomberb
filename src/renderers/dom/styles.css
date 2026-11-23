@@ -355,6 +355,11 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   width: auto !important;
   min-width: 0 !important;
 }
+/* A box above a table that sat a fraction of a cell short of its space keeps
+   that gap while it follows, so the press moves nothing. */
+[data-gloom-follow-short-x] {
+  margin-right: var(--gloom-follow-short-x) !important;
+}
 [data-gloom-fill-y="stretch"], [data-gloom-follow-y="stretch"] {
   height: auto !important;
   align-self: stretch !important;

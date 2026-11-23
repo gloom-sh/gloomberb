@@ -473,7 +473,10 @@ A section header can carry one quiet `action` at its right end for the whole
 group, such as the preset its rows are set to (the Plugins pane's starter
 pack); it is a setting you apply, not a filter, and it also gets a footer key.
 Never build a table from padded `Text` rows: the kit gives the header band,
-gutters and fill to the footer. A few rows of figures inside a section (an
+gutters and fill to the footer. On the desktop and the web its columns follow
+a pane resize to the pixel: the table keeps the columns it had when the
+resize began, so columns sized from the pane's width take their new widths
+when the pointer lets go. A few rows of figures inside a section (an
 overview's positions, a quote book, label and value pairs in columns) are a
 `ColumnGrid`: the terminal sets the columns at the cells you give them, and
 the desktop lays them out as one CSS grid counted in characters, so they

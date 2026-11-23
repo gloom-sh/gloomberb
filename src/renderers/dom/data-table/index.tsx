@@ -2,9 +2,11 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
   type CSSProperties,
@@ -33,8 +35,10 @@ import {
 } from "../../../components/ui/table-layout";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../theme/font-scale";
 import { isLiveResizing, onLiveResizeEnd } from "../../../ui/live-resize";
+import { LivePaneFrameContext } from "../../../ui/live-stretch";
 import { useScrollbarActivity } from "../scrollbar-activity";
 import { useHorizontalScrollEdges } from "../host/overflow-fade";
+import { trackTable } from "../host/surface-fit";
 import {
   CSS_BG,
   CSS_PANEL,
@@ -81,8 +85,37 @@ function overflowFadeStyle(side: "left" | "right", offsetPx: number, bottomPx: n
   };
 }
 
+/**
+ * The columns a table lays out, and the ref for its root. While a resize of
+ * its pane lays the table out at the frame's width on every frame
+ * (host/surface-fit.ts), it keeps the columns it had when the resize began:
+ * the pane renders a few times a second meanwhile, and columns it sizes from
+ * its width would move in whole cells at each of those, or overflow the
+ * width the body was last measured at. Once the resize ends, the table takes
+ * the columns the pane gives it at its final size.
+ */
+function useResizeHeldColumns<C>(columns: C[]): { columns: C[]; rootRef: RefObject<HTMLDivElement | null> } {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const pane = useContext(LivePaneFrameContext);
+  const followsRef = useRef(false);
+  const heldRef = useRef(columns);
+  const latestRef = useRef(columns);
+  latestRef.current = columns;
+  const [, settle] = useReducer((count: number) => count + 1, 0);
+  if (!followsRef.current || pane?.live() == null) heldRef.current = columns;
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    return trackTable(root, (follows) => {
+      followsRef.current = follows;
+      if (!follows && heldRef.current !== latestRef.current) settle();
+    });
+  }, []);
+  return { columns: heldRef.current, rootRef };
+}
+
 export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
-  columns,
+  columns: paneColumns,
   items,
   sortColumnId,
   sortDirection,
@@ -129,6 +162,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
 }: DataTableProps<T, C>) {
   const paneInstanceId = usePaneInstance()?.instanceId ?? null;
   const focusPane = useFocusOwningPane();
+  const { columns, rootRef: rootElementRef } = useResizeHeldColumns(paneColumns);
   const bodyElementRef = useRef<HTMLDivElement | null>(null);
   const contentElementRef = useRef<HTMLDivElement | null>(null);
   const { drag: columnDrag, startPress: pressMovableHeader } = useWebColumnDrag({
@@ -402,7 +436,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   };
 
   return (
-    <div data-gloom-role="data-table" style={rootStyle}>
+    <div ref={rootElementRef} data-gloom-role="data-table" style={rootStyle}>
       {hiddenColumns ? <div style={{ flex: `0 0 ${disclosureHeight}px`, lineHeight: `${disclosureHeight}px`,
         paddingInline: "var(--gloom-space-sm)", color: CSS_TEXT_DIM,
         backgroundColor: CSS_PANEL, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={hiddenColumns}>
