@@ -34,10 +34,8 @@ const LIST_CACHE_POLICY = {
   expireMs: 7 * 24 * 60 * 60 * 1000,
 } as const;
 
-/**
- * A published transcript is immutable: the call already happened and the audio
- * is transcribed once. Keep it for a long time so re-reading is instant.
- */
+const TRANSLATION_RECHECK_MS = 60_000;
+/** A finished English transcript can be read again from the local cache. */
 const TRANSCRIPT_CACHE_POLICY = {
   staleMs: 30 * 24 * 60 * 60 * 1000,
   expireMs: 365 * 24 * 60 * 60 * 1000,
@@ -459,7 +457,12 @@ export async function loadTranscriptWithClient(
     callId,
     { sourceKey: CACHE_SOURCE, schemaVersion: CACHE_SCHEMA_VERSION },
   );
-  if (!force && cached && !cached.stale) return cached.value;
+  if (!force && cached && !cached.stale) {
+    // A Japanese or Chinese original may gain an English edition after the reader opens it.
+    // Check its fetch time so this also works with copies saved before translation was available.
+    const awaitingEnglish = !cached.value.isTranslated && /^(?:zh|ja)(?:[-_]|$)|^(?:chinese|japanese)$/i.test(cached.value.language ?? "");
+    if (!awaitingEnglish || Date.now() - cached.fetchedAt < TRANSLATION_RECHECK_MS) return cached.value;
+  }
 
   const active = activeTranscriptFetches.get(callId);
   if (active && !force) return active;
