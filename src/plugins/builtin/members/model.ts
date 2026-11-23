@@ -14,8 +14,8 @@ export type MembersTab = "members" | "movers" | "changes" | "breadth";
 export const TABS = [{ value: "members", label: "Members" }, { value: "movers", label: "Movers" }, { value: "changes", label: "Changes" }, { value: "breadth", label: "Breadth" }];
 export const isTab = (value: unknown): value is MembersTab => TABS.some((tab) => tab.value === value);
 const COVERED = [{ ticker: "IVV", name: "S&P 500" }, { ticker: "IJH", name: "S&P 400" }, { ticker: "IJR", name: "S&P 600" }, { ticker: "IWM", name: "Russell 2000" }, { ticker: "IWB", name: "Russell 1000" }];
-/** Symbols the app reads as a covered fund before asking the server, which knows its own aliases too. */
-const LOCAL_ALIASES: Record<string, string> = { SPX: "IVV", "^SPX": "IVV", SPY: "IVV", "^GSPC": "IVV", "^MID": "IJH", SP400: "IJH", "^SP400": "IJH", "^SML": "IJR", SP600: "IJR", "^SP600": "IJR", RUT: "IWM", "^RUT": "IWM", RUI: "IWB", "^RUI": "IWB" };
+/** Symbols the app reads as a covered fund before asking the server, which knows its own aliases too. SPY is a fund of its own, with its own holdings. */
+const LOCAL_ALIASES: Record<string, string> = { SPX: "IVV", "^SPX": "IVV", "^GSPC": "IVV", "^MID": "IJH", SP400: "IJH", "^SP400": "IJH", "^SML": "IJR", SP600: "IJR", "^SP600": "IJR", RUT: "IWM", "^RUT": "IWM", RUI: "IWB", "^RUI": "IWB" };
 const requestedSymbol = (input: string) => input.split(":")[0]!.trim().toUpperCase();
 export function canonicalFund(input: string) { const symbol = requestedSymbol(input); return LOCAL_ALIASES[symbol] ?? symbol; }
 /** The covered fund the user asked for, by ticker or by an alias such as SPX, or undefined when it is not covered. */
@@ -67,7 +67,7 @@ export function holdingsBasisText(data: { asOf: string; basis?: "daily" | "nport
   // A narrow footer: "N-PORT 31 Jul 2026, filed 22 Sep".
   return short ? `N-PORT ${dayMonth(data.asOf, true)}${filed}` : `holdings as of ${dayMonth(data.asOf, true)} (N-PORT${filed})`;
 }
-/** "S&P 500, IVV holdings as of 2026-10-08 (for SPY)": the holdings file the members come from. */
+/** "S&P 500, IVV holdings as of 2026-10-08 (for SPX)": the holdings file the members come from. */
 export function holdingsSourceText(input: string, data: Pick<FundMembersPayload, "fund" | "asOf" | "basis" | "filedOn">) {
   const requested = requestedSymbol(input);
   const forRequested = requested && requested !== data.fund.ticker ? ` (for ${requested})` : "";
