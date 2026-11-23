@@ -37,10 +37,9 @@ import { flowStrikeRows, flowTideMoves, flowTideRows, formatSignedFlowPremium } 
 import { signalWithTimeout } from "../../../utils/async-deadline";
 import { errorMessage } from "../../../utils/errors";
 import { explainRefusal, refusedLock } from "../shared/cloud-denied";
-import { captureScannerEvent, SCANNER_SNAPSHOT_TIMEOUT_MS } from "../shared/scanner-capture";
+import { captureScannerEvent, SCANNER_SNAPSHOT_TIMEOUT_MS, usScannerSessionClosed } from "../shared/scanner-capture";
 import { flowLockNote } from "./lock-note";
 import { buildHiloBarRows, filterHiloRows, formatHiloPrice, type HiloMinPrice, type HiloSort } from "./hilo-model";
-import { venueSessionNow } from "../../../market-data/market/venue-session";
 
 /**
  * How long a report waits for a scanner that is starting: an idle one can take
@@ -65,7 +64,7 @@ function loadScannerSnapshot<T extends ScannerPayload>(
   scanner: ScannerKind,
   signal: AbortSignal,
   timeoutMs = SCANNER_SNAPSHOT_TIMEOUT_MS,
-  options: { acceptStarting?: boolean } = {},
+  options: { acceptStarting?: boolean; closed?: boolean } = {},
 ): Promise<T> {
   return captureScannerEvent(client, scanner, signal, timeoutMs, options).then((event) => {
     if (event.type !== "denied") return event.payload as T;
@@ -84,13 +83,17 @@ export function loadHiloSnapshot(
   return loadScannerSnapshot<ScannerHiloPayload>(client, "hilo", signal, timeoutMs);
 }
 
-/** A report's read of a scanner: HEADLESS_SCANNER_WAIT_MS at most, after which a starting scanner is answered as one. */
+/**
+ * A report's read of a scanner: HEADLESS_SCANNER_WAIT_MS at most, after which a starting scanner is answered as one.
+ * While the market is shut (`closed`) its first answer, as no session is coming to wait for.
+ */
 function loadReportSnapshot<T extends ScannerPayload>(
   client: Pick<HeadlessPaneApiClient, "subscribeScanner">,
   scanner: ScannerKind,
   signal: AbortSignal,
+  closed = false,
 ): Promise<T> {
-  return loadScannerSnapshot<T>(client, scanner, signal, HEADLESS_SCANNER_WAIT_MS, { acceptStarting: true });
+  return loadScannerSnapshot<T>(client, scanner, signal, HEADLESS_SCANNER_WAIT_MS, { acceptStarting: true, closed });
 }
 
 /**
@@ -98,37 +101,51 @@ function loadReportSnapshot<T extends ScannerPayload>(
  * accounts get, and whether it is running: a closed session's scan is final,
  * and a degraded one may have fallen behind.
  */
-function scannerFreshness(payload: Pick<ScannerHiloPayload, "access" | "delayMinutes" | "status">): HeadlessPaneFreshness {
+function scannerFreshness(payload: Pick<ScannerHiloPayload, "status"> & Partial<Pick<ScannerHiloPayload, "access" | "delayMinutes">>): HeadlessPaneFreshness {
   if (payload.status === "closed") return { status: "not-a-feed", basis: "closed session" };
   if (payload.status === "degraded" || payload.status === "starting") return { status: "stale" };
   return payload.access === "realtime" ? { status: "live" } : { status: "delayed", delayMinutes: payload.delayMinutes };
 }
 
 /**
- * A scanner still starting while the US market is shut (a weekend, a holiday,
- * the night) has nothing to list because the market is closed, and says that
- * first: what it would list once started is the closed session's nothing.
+ * A scanner read while the US market is shut (a weekend, a holiday, the night)
+ * answers as the closed session it is, whatever it says: one still starting
+ * has nothing to list because the market is closed, and one still holding the
+ * last session has nothing new to report.
  */
-function startingWhileClosed<T extends Pick<ScannerHiloPayload, "status">>(payload: T, now: number): T {
-  if (payload.status !== "starting") return payload;
-  const phase = venueSessionNow("NYSE", now)?.phase;
-  return phase === "closed" || phase === "holiday" ? { ...payload, status: "closed" } : payload;
+function closedWhileShut<T extends Pick<ScannerPayload, "status">>(payload: T, closed: boolean): T {
+  return closed && (payload.status === "starting" || payload.status === "live") ? { ...payload, status: "closed" } : payload;
+}
+
+/** What HILO says while the US market is shut, on every call: there is no session to list. */
+const HILO_CLOSED_TEXT = "The US market is closed. New highs and lows list again from the next session's open.";
+
+/**
+ * HILO while the US market is shut, known from the exchange calendar without reading the scanner: a cold scanner
+ * would answer as starting and a warm one as the night's empty session, so the answer would turn on which was asked.
+ */
+function closedHiloSnapshot(minPrice: HiloMinPrice, sort: HiloSort, now: number): HeadlessSnapshotResult {
+  return {
+    asOf: new Date(now).toISOString(),
+    items: [],
+    empty: HILO_CLOSED_TEXT,
+    freshness: scannerFreshness({ status: "closed" }),
+    metadata: { status: "closed", windows: [], minPrice, sort },
+  };
 }
 
 function projectHiloSnapshot(
-  read: ScannerHiloPayload,
+  payload: ScannerHiloPayload,
   minPrice: HiloMinPrice,
   sort: HiloSort,
-  now = Date.now(),
 ): HeadlessSnapshotResult {
-  const payload = read.highs.length || read.lows.length ? read : startingWhileClosed(read, now);
   const lows = filterHiloRows(payload.lows, minPrice, sort).map((row) => ({ side: "low", ...row }));
   const highs = filterHiloRows(payload.highs, minPrice, sort).map((row) => ({ side: "high", ...row }));
   return {
     asOf: new Date(payload.asOf).toISOString(),
     items: [...lows, ...highs],
     // The lists are the session's: between sessions the scanner holds none, and last session's are not today's.
-    empty: payload.status === "closed" ? "The US market is closed. New highs and lows list again from the next session's open."
+    empty: payload.status === "closed" ? HILO_CLOSED_TEXT
       : payload.status === "starting" ? SCANNER_STARTING_TEXT
         : "No new highs or lows under these filters this session.",
     ...(payload.status === "degraded" ? { errors: ["Scanner feed degraded"] } : {}),
@@ -151,6 +168,8 @@ export interface HiloHeadlessDependencies {
     client: Pick<HeadlessPaneApiClient, "subscribeScanner">,
     signal: AbortSignal,
   ): Promise<ScannerHiloPayload>;
+  /** The clock the US session is read on. */
+  now?: () => number;
 }
 
 const defaultDependencies: HiloHeadlessDependencies = {
@@ -198,12 +217,16 @@ export function createHiloHeadless(
     ],
     describe: "New Highs / Lows",
     async load(args, ctx) {
+      const minPrice = args.options.minPrice as HiloMinPrice;
+      const sort = args.options.sort as HiloSort;
+      // A shut market is known from the calendar: no scanner to wait on, and the same answer every call. HILO asks for a
+      // sign-in (a free account gets the delayed tier), so a signed-out call while shut is told the market is closed
+      // rather than asked to sign in: nothing is served, and the sign-in ask returns with the open.
+      const now = dependencies.now?.() ?? Date.now();
+      if (usScannerSessionClosed(now)) return closedHiloSnapshot(minPrice, sort, now);
       const payload = await dependencies.load(args, ctx.apiClient, ctx.signal);
-      return projectHiloSnapshot(
-        payload,
-        args.options.minPrice as HiloMinPrice,
-        args.options.sort as HiloSort,
-      );
+      // The session can close while the scanner is read.
+      return projectHiloSnapshot(closedWhileShut(payload, usScannerSessionClosed(dependencies.now?.() ?? Date.now())), minPrice, sort);
     },
   };
 }
@@ -327,7 +350,9 @@ function projectFlowReport(
       columns: PRINT_COLUMNS,
       rows: prints.map((event) => ({ ...event })),
       empty: payload.status === "starting" ? SCANNER_STARTING_TEXT
-        : symbol ? `No ${symbol} prints under these filters.` : "No prints on the tape under these filters.",
+        : symbol ? `No ${symbol} prints under these filters.`
+          : payload.status === "closed" ? "The US market is closed. Prints list again from the next session's open."
+            : "No prints on the tape under these filters.",
     });
   }
   if (shows("tide")) {
@@ -369,17 +394,21 @@ function projectFlowReport(
 }
 
 interface FlowHeadlessDependencies {
+  /** `closed`: the US market is shut, so the scanner's first answer is taken. */
   load(
     args: HeadlessPaneLoadArgs,
     client: Pick<HeadlessPaneApiClient, "subscribeScanner">,
     signal: AbortSignal,
+    closed: boolean,
   ): Promise<ScannerFlowPayload>;
+  /** The clock the US session is read on. */
+  now?: () => number;
   recorded(search: string, client: Pick<HeadlessPaneApiClient, "getScannerFlowHistory">, signal: AbortSignal): Promise<ScannerFlowHistoryPage>;
   session(search: string, client: Pick<HeadlessPaneApiClient, "getScannerFlowSession">, signal: AbortSignal): Promise<ScannerFlowSession>;
 }
 
 const flowDependencies: FlowHeadlessDependencies = {
-  load: (_args, client, signal) => loadReportSnapshot<ScannerFlowPayload>(client, "flow", signal),
+  load: (_args, client, signal, closed) => loadReportSnapshot<ScannerFlowPayload>(client, "flow", signal, closed),
   recorded: (search, client, signal) => client.getScannerFlowHistory(search, signalWithTimeout(signal, 20_000)),
   session: (search, client, signal) => client.getScannerFlowSession(search, signalWithTimeout(signal, 20_000)),
 };
@@ -423,9 +452,11 @@ export function createFlowHeadless(
       const refuse = async (error: unknown): Promise<never> => {
         throw await explainRefusal(error, flowLockNote, { symbol, context: ctx });
       };
-      // The live feed answers the entitlement first, as the pane's does; it waits HEADLESS_SCANNER_WAIT_MS at most.
+      // The live feed answers the entitlement first, as the pane's does; it waits HEADLESS_SCANNER_WAIT_MS at most,
+      // and not at all while the US market is shut, when its tape is the closed session's whatever it says.
       const startedAt = Date.now();
-      const payload = await dependencies.load(args, ctx.apiClient, ctx.signal).catch(refuse);
+      const closed = usScannerSessionClosed(dependencies.now?.() ?? startedAt);
+      const payload = closedWhileShut(await dependencies.load(args, ctx.apiClient, ctx.signal, closed).catch(refuse), closed);
       // The recorded prints and the session's sums add to the tape in what is
       // left of FLOW_REPORT_BUDGET_MS: one that fails (a timeout, a server
       // without the route) is said under errors and the rest of the report

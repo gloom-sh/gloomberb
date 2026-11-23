@@ -81,13 +81,16 @@ export function useFlowFeed() {
  * The only status a scanner pane can change between: the cloud entitlement this
  * feed arrived on, stream health while it is entitled, or the auth/entitlement
  * refusal. The delay comes from the payload, since the server moves a session
- * between the realtime and delayed instances without a remount.
+ * between the realtime and delayed instances without a remount. `closed` is the
+ * exchange calendar's word that the US market is shut, said before the feed
+ * answers and whatever it says.
  */
 export function useScannerStatusFooter(
   registrationId: string,
   state: ScannerFeedState<Pick<ScannerPayload, "status" | "access" | "delayMinutes"> & { asOf?: number | null }>,
   focused: boolean,
   extra: PaneFooterSegment | null = null,
+  closed = false,
 ): void {
   const delayed = state.payload?.access === "delayed";
   const { hint: upgradeHint, segment } = useCloudAccessFooter({
@@ -110,9 +113,9 @@ export function useScannerStatusFooter(
         }],
       }];
     }
-    const status = state.payload?.status;
+    const status = closed ? "closed" : state.payload?.status;
     // The feed connects in the background; nothing to report until it answers.
-    if (!status || status === "starting" || state.savedAt != null) return [];
+    if (!status || status === "starting" || state.savedAt != null && !closed) return [];
     if (status === "live") {
       return delayed ? [] : [{ id: "scanner-status", parts: [{ text: "live", tone: "positive" as const }] }];
     }
@@ -120,7 +123,7 @@ export function useScannerStatusFooter(
       return [{ id: "scanner-status", parts: [{ text: "market closed", tone: "muted" as const }] }];
     }
     return [{ id: "scanner-status", parts: [{ text: "degraded", tone: "warning" as const }] }];
-  }, [delayed, state.denied, state.deniedReason, state.payload?.status, state.savedAt]);
+  }, [closed, delayed, state.denied, state.deniedReason, state.payload?.status, state.savedAt]);
 
   // The upgrade segment carries the delay for free accounts; a delayed feed reaching Pro still says so.
   const delayMinutes = delayed ? state.payload?.delayMinutes || CLOUD_QUOTE_DELAY_MINUTES : null;

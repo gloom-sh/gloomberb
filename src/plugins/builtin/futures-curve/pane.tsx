@@ -18,7 +18,7 @@ import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { useQuoteBoard } from "../shared/use-quote-board";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { getCachedFuturesCurve, loadCurveSpotBars, loadCurveSpotCloses, loadFuturesCurve, loadFuturesCurveAsOf } from "./client";
-import { curveFreshnessObservations, curveReportFreshness, BASIS_CONVENTION, basisSpotSymbol, blankBasisNote, curveAsOfDate, curveAxisGrid, curveAxisPrice, curveBasisPercent, curveBasisRows, curveCache, curveChangeText, curveContractChanges, curveContractCode, curvePrice, curveRank, curveSessionNote, curveSettleShown, curveSpot, curveSpotBars, curveSpotLabel, curveSpotPremium, curveSpotSource, curveSpreadBasis, curveSpreadLabel, curveTimestamp, curveStandIn, curveTitle, curveUnitLabel, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, noTradeChangeNote, normalizeCurveRoot, paneCurveRoot, shortDatedBasis, shortDatedBasisNote, skippedSpreadNotice, sortCurveContracts, spotIndexSymbol, thinSpreadNotice, unsupportedCurveRootMessage, type CurveContractChanges, type CurveSpot } from "./model";
+import { curveFreshnessObservations, curveReportFreshness, BASIS_CONVENTION, basisSpotSymbol, blankBasisNote, curveAsOfDate, curveAxisGrid, curveAxisPrice, curveBasisPercent, curveBasisRows, curveCache, curveChangeText, curveContractChanges, curveInterestDate, curveContractCode, curvePrice, curveRank, curveSessionNote, curveSettleShown, curveSpot, curveSpotBars, curveSpotLabel, curveSpotPremium, curveSpotSource, curveSpreadBasis, curveSpreadLabel, curveTimestamp, curveStandIn, curveTitle, curveUnitLabel, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, noTradeChangeNote, normalizeCurveRoot, paneCurveRoot, shortDatedBasis, shortDatedBasisNote, skippedSpreadNotice, sortCurveContracts, spotIndexSymbol, thinSpreadNotice, unsupportedCurveRootMessage, type CurveContractChanges, type CurveSpot } from "./model";
 
 const TABS = [{ value: "curve", label: "Curve" }, { value: "contracts", label: "Contracts" }];
 // One column order for every root. SETTLE is the exchange settlement for the
@@ -35,12 +35,17 @@ const COLUMNS: DataTableColumn[] = [
   { id: "change", label: "CHG", width: 11, align: "right" },
   { id: "percentile", label: "PCTL", width: 5, align: "right" },
   { id: "oi", label: "OPEN INT", width: 10, align: "right" },
+  // The session the open interest counts, a day or so before the last trade.
+  { id: "oiDate", label: "OI DATE", width: 10, align: "left" },
   { id: "volume", label: "VOLUME", width: 10, align: "right" },
   { id: "asOf", label: "AS OF UTC", width: 16, align: "left" },
 ];
+// Open interest and the session it counts go together.
+const INTEREST: readonly string[] = ["oi", "oiDate"];
+type DropOrder = readonly (string | readonly string[])[];
 // A narrow pane keeps the contract and its last trade longest; the settlement
 // goes before the expiry, which names the contract on the curve's time axis.
-const CONTRACTS_DROP_ORDER = ["percentile", "volume", "oi", "notice", "asOf", "change", "settle", "expiry"];
+const CONTRACTS_DROP_ORDER: DropOrder = ["percentile", "volume", INTEREST, "notice", "asOf", "change", "settle", "expiry"];
 const column = (id: string) => COLUMNS.find((entry) => entry.id === id)!;
 // The curve's rows move with the look-back curves drawn above them; the
 // footer carries the quote time every row would otherwise repeat. The session
@@ -49,9 +54,9 @@ const CURVE_COLUMNS: DataTableColumn[] = [
   column("symbol"), column("expiry"), column("settle"), column("price"),
   { id: "change1w", label: "VS 1W", width: 10, align: "right" },
   { id: "change1m", label: "VS 1M", width: 10, align: "right" },
-  column("percentile"), column("oi"), column("volume"),
+  column("percentile"), column("oi"), column("oiDate"), column("volume"),
 ];
-const CURVE_DROP_ORDER = ["percentile", "volume", "change1m", "oi", "change1w", "settle", "expiry"];
+const CURVE_DROP_ORDER: DropOrder = ["percentile", "volume", "change1m", INTEREST, "change1w", "settle", "expiry"];
 // A crypto curve also reads against spot. Its widths are the tightest each column
 // holds (BTCV26.CME, 128000.00), so the two new columns fit beside the rest, and
 // a narrow pane drops the least useful ones before a number would be clipped.
@@ -61,7 +66,7 @@ const BASIS_CURVE_COLUMNS: DataTableColumn[] = [
   { id: "annBasis", label: "ANN BASIS", width: 11, align: "right" },
   ...CURVE_COLUMNS.slice(4),
 ];
-const BASIS_DROP_ORDER = ["percentile", "volume", "change1m", "oi", "settle", "change1w", "vsSpot", "expiry"];
+const BASIS_DROP_ORDER: DropOrder = ["percentile", "volume", "change1m", INTEREST, "settle", "change1w", "vsSpot", "expiry"];
 // Inside a week of expiry Vs Spot is the figure to read, so a curve with such a contract keeps it.
 const SHORT_DATED_DROP_ORDER = BASIS_DROP_ORDER.filter((id) => id !== "vsSpot");
 const NO_SYMBOLS: string[] = [];
@@ -215,7 +220,7 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle, standInNote
     const shown = (list: DataTableColumn[]) => list.filter((entry) => !(settlesOnly && entry.id === "price") && !(noNotice && entry.id === "notice"))
       .map((entry) => entry.id === "settle" ? { ...entry, label: settleLabel } : entry);
     // A curve that only settles keeps its settlement: it is the price.
-    const order = (list: string[]) => settlesOnly ? list.filter((id) => id !== "settle") : list;
+    const order = (list: DropOrder) => settlesOnly ? list.filter((id) => id !== "settle") : list;
     return !curveTab ? fitChartTableColumns(shown(COLUMNS), width, order(CONTRACTS_DROP_ORDER))
       : basisActive ? fitChartTableColumns(shown(BASIS_CURVE_COLUMNS), width, order(shortDated ? SHORT_DATED_DROP_ORDER : BASIS_DROP_ORDER))
         : fitChartTableColumns(shown(CURVE_COLUMNS), width, order(CURVE_DROP_ORDER));
@@ -324,6 +329,7 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle, standInNote
     }
     if (column.id === "percentile") return { text: row.samples < 2 || row.percentile == null ? MISSING_VALUE : row.percentile.toFixed(0) };
     if (column.id === "oi") return { text: integer(row.openInterest) };
+    if (column.id === "oiDate") return { text: curveInterestDate(row), color: colors.textMuted };
     if (column.id === "volume") return { text: integer(row.volume) };
     // A month with no trade since the settlement it shows is dated by that settlement, as the curve marks it.
     const settled = data && !requestedDate ? curveSettleShown(row, data) : null;

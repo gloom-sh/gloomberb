@@ -375,14 +375,14 @@ export function curveContractChanges(data: FuturesCurvePayload): CurveContractCh
 
 const CHANGE_COLUMNS: Readonly<Record<string, CurveLookback>> = { change1w: "1W", change1m: "1M" };
 
-type CurveSortKey = "symbol" | "expiration" | "price" | "settlement" | "firstNotice" | "change" | "openInterest" | "volume" | "percentile" | "asOf";
+type CurveSortKey = "symbol" | "expiration" | "price" | "settlement" | "firstNotice" | "change" | "openInterest" | "openInterestAsOf" | "volume" | "percentile" | "asOf";
 
 const BASIS_COLUMNS: Readonly<Record<string, "vsSpotPct" | "annualisedBasisPct">> = { vsSpot: "vsSpotPct", annBasis: "annualisedBasisPct" };
 
 export function sortCurveContracts(rows: readonly FuturesContract[], id: string, direction: SortDirection,
   changes?: CurveContractChanges, basis?: CurveBasisRows): FuturesContract[] {
   const keys: Record<string, CurveSortKey> = { symbol: "symbol", expiry: "expiration", price: "price", settle: "settlement", notice: "firstNotice",
-    change: "change", oi: "openInterest", volume: "volume", percentile: "percentile", asOf: "asOf" };
+    change: "change", oi: "openInterest", oiDate: "openInterestAsOf", volume: "volume", percentile: "percentile", asOf: "asOf" };
   const key = keys[id] ?? "expiration";
   const lookback = CHANGE_COLUMNS[id];
   const basisKey = BASIS_COLUMNS[id];
@@ -919,6 +919,16 @@ export function curveSettleShown(row: Pick<FuturesContract, "price" | "settlemen
   return row.price == null ? data.settlementDate : curveNoTradeSince(row, data);
 }
 
+/**
+ * The session a contract's open interest counts, as its column dates it: `2026-11-20`, or `n/a` for a count the
+ * server cannot date (one carried forward from an earlier read); blank without open interest. Exchanges publish open
+ * interest once a session, so it is never dated by the last trade beside it.
+ */
+export function curveInterestDate(row: Pick<FuturesContract, "openInterest" | "openInterestAsOf">): string {
+  if (row.openInterest == null) return MISSING_VALUE;
+  return row.openInterestAsOf ?? "n/a";
+}
+
 /** The price a live contract is plotted and measured at: its settlement when it has not traded since (curveSettleShown), else its last trade. */
 function curveShownPrice(row: Pick<FuturesContract, "price" | "settlement" | "asOf">,
   data: Pick<FuturesCurvePayload, "source" | "settlementDate">): number | null {
@@ -999,7 +1009,9 @@ export function archivedFuturesCurve(root: string, curve: FuturesCurveAsOfPayloa
     return [{
       symbol: row.symbol, label: row.label, expiration: expiration(row)!, price: row.price, change: null, asOf: rowDate(row, stale),
       currency: curve.currency ?? "USD", quoteUnit: curve.quoteUnit ?? curve.currency ?? "USD", volume: row.volume,
-      openInterest: row.openInterest, delayMinutes: null, stale, percentile: null, samples: 0, historyStart: null, historyEnd: null,
+      // The archive keeps each session's own open interest, never a carried one.
+      openInterest: row.openInterest, openInterestAsOf: row.openInterest != null ? row.tradeDate : null,
+      delayMinutes: null, stale, percentile: null, samples: 0, historyStart: null, historyEnd: null,
       // Only a row the archive confirms is a settlement; an unconfirmed one is that session's last trade.
       settlement: !stale && row.settled === true ? row.price : null,
       lastTrade: row.lastTrade ?? row.expiration, firstNotice: row.firstNotice ?? null, inDelivery: row.inDelivery ?? false,

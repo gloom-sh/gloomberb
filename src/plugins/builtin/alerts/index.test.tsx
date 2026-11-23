@@ -20,6 +20,9 @@ import { createTestDataProvider } from "../../../test-support/data-provider";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
 import { apiClient } from "../../../api-client";
+import { useAlertTestClock } from "./test-fixture";
+
+useAlertTestClock();
 
 const TEST_PANE_ID = "alerts:test";
 
@@ -518,7 +521,6 @@ describe("alertsPlugin command", () => {
       await expect(command.execute({ shortcut: "QQQ moves 5%" })).rejects.toThrow(`QQQ:NASDAQ moves 5.00% from the previous close already exists (alert ${move!.id}). Nothing was added.`);
     } finally {
       alertsPlugin.dispose?.();
-      setSystemTime();
     }
   });
 
@@ -644,7 +646,7 @@ test("a CLI command's plugins check no alert, so a run like `gloom doctor` canno
 });
 
 test("a completed daily close persists one technical trigger and in-app history, leaving price rules intact", async () => {
-  const now = spyOn(Date, "now").mockReturnValue(Date.parse("2026-10-23T20:30Z"));
+  setSystemTime(new Date("2026-10-23T20:30Z"));
   const price = serializeAlerts([makeAlert("price", "AAPL", "above", 250, "triggered")]);
   const store = new Map<string, unknown>([
     ["alerts", price],
@@ -688,7 +690,7 @@ test("a completed daily close persists one technical trigger and in-app history,
     await Bun.sleep(0);
     expect(notifications).toHaveLength(1);
     expect(notifications[0]).toContain("on daily close");
-  } finally { alertsPlugin.dispose?.(); now.mockRestore(); }
+  } finally { alertsPlugin.dispose?.(); }
 });
 
 test("a streamed tick triggers a price alert once, and the poll leaves streaming symbols alone", async () => {

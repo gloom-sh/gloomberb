@@ -17,7 +17,7 @@ import { useSearchFocusUp } from "../../../components/input-search-bar";
 import { useMembersMenu, type MemberList } from "../shared/members-menu";
 import { cachedChanges, cachedFunds, cachedMembers, cachedStockFunds, loadChanges, loadFunds, loadMembers, loadStockFunds } from "./client";
 import { canonicalFund, changeColumns, changeLabel, changeReason, coverageText, coveredFund, decimal, DEFAULT_SORT, holdingsBasisText, holdingsCaveats, isTab, memberColumns, memberRows,
-  membersFeed, membersTitle, noStockFundsMessage, percent, stockFundAsOf, stockFundAsOfFits, stockFundColumns, stockFundRows, TABS, usListingInput,
+  membersFeed, membersTitle, noStockFundsMessage, percent, stockFundAsOf, stockFundAsOfFits, stockFundColumns, stockFundRows, stockListingInput, TABS,
   type MembersTab } from "./model";
 
 type ViewProps = Pick<PaneProps, "width" | "height" | "focused"> & { fund: string; active: boolean };
@@ -222,7 +222,7 @@ function StockFunds({ symbol, width, height, focused }: ListProps & { symbol: st
     if (column.id === "weight") return { text: row.weight == null ? MISSING_VALUE : decimal(row.weight * 100), value: row.weight == null ? null : row.weight * 100 };
     return { text: stockFundAsOf(row, !stockFundAsOfFits(width)), color: colors.textMuted };
   }, [colors, width]);
-  const none = noStockFundsMessage(symbol, "pane");
+  const none = noStockFundsMessage(data?.symbol ?? symbol, "pane");
   return <PaneStatusBody subject="funds holding the stock" loading={!data && resource.loading} error={!data ? resource.error : null}
     empty={!!data && !data.funds.length} emptyTitle={none.title} emptyMessage={none.message}>
     {data && !!data.funds.length && <DataTableView<SectionedRow<StockFund>> items={rows} columns={stockFundColumns(width)} rootWidth={width} rootHeight={height} focused={focused}
@@ -232,29 +232,27 @@ function StockFunds({ symbol, width, height, focused }: ListProps & { symbol: st
       renderCell={renderCell} selectedTextOverridesCellColor emptyStateTitle={none.title} />}
   </PaneStatusBody>;
 }
-type FundPaneProps = ListProps & { fund: string; requested: string; funds: MemberFundsPayload["funds"] | undefined };
+type FundPaneProps = ListProps & { fund: string; listing: string; funds: MemberFundsPayload["funds"] | undefined };
 /**
  * The covered list is the server's, so a fund it adds opens without an app update. A symbol it does not hold is a
  * stock, and the pane lists the covered funds holding it. A list that cannot be read leaves the fund's own load to
  * report the failure.
  */
-function CoveredFund({ fund, requested, funds, ...props }: FundPaneProps) {
-  if (funds?.length && !coveredFund(funds, fund)) {
-    const symbol = usListingInput(requested);
-    if (!symbol) return <PaneStatusBody empty emptyTitle={`${requested.toUpperCase()} is not a US listing.`}
-      emptyMessage="Funds are looked through by US ticker: name the US listing, such as an ADR (INFY, TSM)." />;
-    return <StockFunds key={symbol} symbol={symbol} {...props} />;
+function CoveredFund({ fund, listing, funds, ...props }: FundPaneProps) {
+  if (listing.includes(":") || funds?.length && !coveredFund(funds, fund)) {
+    return <StockFunds key={listing} symbol={listing} {...props} />;
   }
   return <FundView key={fund} fund={fund} {...props} />;
 }
 export function MembersPane(props: PaneProps) {
-  const { symbol } = usePaneTickerIdentity();
+  const { symbol, ticker } = usePaneTickerIdentity();
   const [chosen, choose] = usePluginPaneState("fund", "");
   const requested = symbol ?? chosen;
+  const listing = stockListingInput(requested, ticker?.metadata.exchange);
   const fund = canonicalFund(requested);
   const resource = useAsyncResource(loadFunds, { initialData: cachedFunds });
   const funds = resource.data?.payload.funds;
-  usePaneTitle(membersTitle(requested, !!fund && !!funds?.length && !coveredFund(funds, fund)));
+  usePaneTitle(listing.includes(":") ? membersTitle(listing, true) : membersTitle(requested, !!fund && !!funds?.length && !coveredFund(funds, fund)));
   if (!fund) return <FundPicker {...props} choose={choose} />;
-  return <CoveredFund fund={fund} requested={requested} funds={funds} {...props} />;
+  return <CoveredFund fund={fund} listing={listing} funds={funds} {...props} />;
 }

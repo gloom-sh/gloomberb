@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { createAlert, deserializeAlerts, serializeAlerts } from "./alert-engine";
 import { activePriceAlertsFor, addLevelAlert, levelAlertCondition } from "./levels";
+import { useAlertTestClock } from "./test-fixture";
+
+useAlertTestClock();
 
 describe("chart levels as price alerts", () => {
   test("a level overhead fires above, one underneath fires below, one at the price crosses", () => {

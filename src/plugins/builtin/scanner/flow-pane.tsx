@@ -31,6 +31,7 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { usePluginTickerActions } from "../../runtime";
 import { ScannerDeniedState } from "./denied";
 import { useFlowFeed, useScannerStatusFooter } from "./feed";
+import { useUsScannerSessionClosed } from "./us-session";
 import { useFlowHistory } from "./flow-history";
 import {
   DEFAULT_FLOW_FILTERS,
@@ -240,6 +241,9 @@ function tideSeries(rows: readonly FlowTideRow[], bucketMs: number): ResolvedSer
 
 function FlowPane({ focused, width, height }: PaneProps) {
   const feed = useFlowFeed();
+  // The calendar says when the US market is shut, whatever a warm scanner holds, as `fn FLOW` does.
+  const closed = useUsScannerSessionClosed();
+  const status = closed && feed.payload?.status !== "degraded" ? "closed" : feed.payload?.status;
   const { pinTicker } = usePluginTickerActions();
   const { createPaneFromTemplate } = usePluginAppActions();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -321,7 +325,7 @@ function FlowPane({ focused, width, height }: PaneProps) {
     { savedCopy: feed.cacheScope && shownSearch !== null ? { key: ["scanner-flow-session", feed.cacheScope, shownSearch] } : null },
   );
   useAutoRefresh(session.updatedAt, () => session.load(), {
-    intervalMs: sessionShown && feed.payload?.status === "live" ? FLOW_SESSION_LIVE_REFRESH_MS : null,
+    intervalMs: sessionShown && status === "live" ? FLOW_SESSION_LIVE_REFRESH_MS : null,
   });
 
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
@@ -335,8 +339,8 @@ function FlowPane({ focused, width, height }: PaneProps) {
   }, [bodyRows, canLoadOlder, events.length, history.loadMore]);
 
   const emptyState = useMemo(
-    () => flowEmptyState(kept.length, liveRows.length, feed.payload?.status, symbol),
-    [feed.payload?.status, kept.length, liveRows.length, symbol],
+    () => flowEmptyState(kept.length, liveRows.length, status, symbol),
+    [status, kept.length, liveRows.length, symbol],
   );
 
   const statusFooter = useMemo<PaneFooterSegment | null>(() => {
@@ -352,7 +356,7 @@ function FlowPane({ focused, width, height }: PaneProps) {
     if (history.loading) return { id: "flow-history", parts: [{ text: "loading older prints", tone: "muted" }] };
     return null;
   }, [history.error, history.loading, session.data, session.error, tab]);
-  useScannerStatusFooter("flow", feed, focused, statusFooter);
+  useScannerStatusFooter("flow", feed, focused, statusFooter, status === "closed");
 
   const dated = useMemo(() => flowRowsSpanDays(events), [events]);
   const columns = useMemo(() => buildColumns(width, dated, !symbol), [dated, symbol, width]);

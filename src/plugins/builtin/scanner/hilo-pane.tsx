@@ -17,6 +17,7 @@ import { formatCompact } from "../../../utils/format";
 import { usePluginTickerActions } from "../../runtime";
 import { ScannerDeniedState } from "./denied";
 import { useHiloFeed, useScannerStatusFooter } from "./feed";
+import { useUsScannerSessionClosed } from "./us-session";
 import { HiloBars } from "./hilo-bars";
 import { filterHiloRows, formatHiloPrice, hiloEmptyState, type HiloMinPrice, type HiloSort } from "./hilo-model";
 
@@ -117,9 +118,11 @@ function HiloPane({ focused, width, height }: PaneProps) {
     [feed.payload?.highs, minPrice, sort],
   );
 
-  useScannerStatusFooter("hilo", feed, focused);
+  // The calendar says when the US market is shut, before the scanner answers and whatever a warm one holds, as `fn HILO` does.
+  const closed = useUsScannerSessionClosed();
+  useScannerStatusFooter("hilo", feed, focused, null, closed);
   // Read when the feed moves, not each render: the clock only matters once a closed session's text is shown.
-  const status = feed.payload?.status;
+  const status = closed ? "closed" : feed.payload?.status;
   const emptyStates = useMemo<Record<Side, { title: string; hint?: string }>>(() => {
     const now = Date.now();
     return {
@@ -176,7 +179,7 @@ function HiloPane({ focused, width, height }: PaneProps) {
       onActivate={(row) => pinTicker(row.symbol, { floating: true, paneType: TICKER_RESEARCH_PANE_ID })}
       renderCell={RENDER_ROW[side]}
       selectedTextOverridesCellColor
-      emptyContent={feed.payload ? undefined : <PaneStatusBody loading loadingLabel="Waiting for the scanner..." />}
+      emptyContent={feed.payload || closed ? undefined : <PaneStatusBody loading loadingLabel="Waiting for the scanner..." />}
       emptyStateTitle={emptyStates[side].title}
       emptyStateHint={emptyStates[side].hint}
     />

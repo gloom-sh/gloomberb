@@ -6,6 +6,7 @@ import { ActionRow, ColumnGrid, SectionHeading, type ColumnGridCell, type Column
 import { hiddenTableColumnText, markHiddenTableColumns } from "../../../components/ui/table-layout";
 import { t, tf } from "../../../i18n";
 import { useAsyncResource, useAutoRefresh } from "../../../public/react";
+import { useAgeClock } from "../../../react/auto-refresh";
 import { useThemeColors } from "../../../theme/theme-context";
 import { perpetualListing } from "../../../tickers/perpetual-listing";
 import { premiumToUnderlying } from "../../../market-data/perpetual-premium";
@@ -18,9 +19,10 @@ import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { loadPerpsCompare, loadPerpsEquity } from "./client";
 import { perpEquityIdentity } from "./equity-identity";
 import { useLivePerpRows } from "./live-rows";
-import { compact, perpCell, percent, price, readingTime, venueName } from "./model";
+import { compact, perpCell, percent, price, venueName } from "./model";
 import { openPerpLabel, useOpenPerpMarket } from "./open-market";
-import { contractText, foldSmallMarkets, mergeVenueMarkets, type PerpVenueMarket } from "./venue-markets";
+import { freshnessLine } from "./status-line";
+import { contractText, foldSmallMarkets, mergeVenueMarkets, venueMarketsFreshness, withPrimaryReading, type PerpVenueMarket } from "./venue-markets";
 
 const STOCK_TYPES = new Set(["STK", "EQUITY", "STOCK", "COMMON STOCK"]);
 const COIN_PAIR = /^([A-Z0-9]{1,15})[-/](?:USD|USDT|USDC)$/;
@@ -74,8 +76,8 @@ function fitColumns(width: number, venueWidth: number): Column[] {
 /**
  * DES's perpetual markets on a stock or a coin: one row per venue (its contracts merged, `venue-markets.ts`), the
  * deepest first, markets with a small share of the open interest folded behind a row that shows them. A row opens
- * PERP on its venue's deepest contract. The figures move with the quote stream while the venue streams; otherwise
- * the section says when the venues were read.
+ * PERP on its venue's deepest contract. The figures move with the quote stream while the venue streams, and the
+ * section ends with PERP's status line: each venue's time, never newer than a figure on its row.
  */
 export function PerpMarketsSection({ symbol, exchange, instrumentType, quote, width }: {
   symbol: string;
@@ -105,8 +107,13 @@ export function PerpMarketsSection({ symbol, exchange, instrumentType, quote, wi
   // The deepest contract of each row on screen follows the quote stream.
   const primaries = useMemo(() => visible.map((market) => market.primary), [visible]);
   const live = useLivePerpRows(primaries, { surface: "detail" });
+  const now = useAgeClock(resource.updatedAt);
   if (!assetKey || !markets.length) return null;
-  const rows = visible.map((market, index) => ({ market, row: live.rows[index] ?? market.primary }));
+  // A streamed reading moves the venue's whole row: its mark, and the open interest and volume counted with it.
+  const rows = visible.map((market, index) => {
+    const row = live.rows[index] ?? market.primary;
+    return { market: withPrimaryReading(market, row), row };
+  });
   const premiumLabel = asset?.kind === "stock" ? "vs last" : "Premium";
   // The venue column fits the longest venue name shown.
   const venueWidth = Math.min(VENUE_MAX_WIDTH, Math.max(VENUE_MIN_WIDTH, ...visible.map((market) => displayWidth(venueName(market.venue)))));
@@ -140,10 +147,9 @@ export function PerpMarketsSection({ symbol, exchange, instrumentType, quote, wi
     return { text: compact(column.id === "oi" ? market.openInterestUsd : market.volume24hUsd), color: colors.text };
   };
   const body = rows.map(({ market, row }) => columns.map((column) => cell(column, market, row)));
-  // Streaming figures date themselves; the rows from the minute's read say when it was.
-  const read = rows.filter(({ row }) => !live.liveMarkets.has(row.marketId));
-  const readAt = read.length ? readingTime(read.reduce<string | null>((latest, { row }) => !latest || row.observedAt > latest ? row.observedAt : latest, null)) : null;
-  const stale = read.length > 0 && (!!resource.data?.stale || read.some(({ row }) => row.stale));
+  // Each venue's own time, as PERP's footer gives it: the first form that fits.
+  const status = freshnessLine(venueMarketsFreshness(rows.map(({ market }) => market), { now, streaming: live.liveMarkets, refreshFailed: !!resource.data?.stale }), now);
+  const statusText = status.variants.find((variant) => displayWidth(variant) <= width) ?? status.variants.at(-1);
   return (
     <Box flexDirection="column" data-gloom-role="perp-markets">
       <SectionHeading title={t("Perpetuals")} />
@@ -154,7 +160,7 @@ export function PerpMarketsSection({ symbol, exchange, instrumentType, quote, wi
           label={expanded ? t("Fewer markets") : folded.length === 1 ? t("1 smaller market") : tf("{count} smaller markets", { count: String(folded.length) })}
           onPress={() => setExpanded((value) => !value)} />
       )}
-      {readAt && <Text fg={stale ? colors.warning : colors.textDim}>{`${read.length < rows.length ? `${[...new Set(read.map(({ market }) => venueName(market.venue)))].join(", ")} ` : ""}${t("as of")} ${readAt}${stale ? ` · ${t("stale")}` : ""}`}</Text>}
+      {statusText && <Text fg={status.stale ? colors.warning : colors.textDim}>{statusText}</Text>}
     </Box>
   );
 }

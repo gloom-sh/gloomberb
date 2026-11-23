@@ -88,6 +88,11 @@ export interface FuturesContract {
   quoteUnit: string
   volume: number | null
   openInterest: number | null
+  /**
+   * The session `openInterest` counts (YYYY-MM-DD): exchanges publish it once a session, a day or so after, so it is
+   * not as of `asOf`. Null when the server cannot date a count it carried forward; absent from older servers.
+   */
+  openInterestAsOf?: string | null
   delayMinutes: number | null
   stale: boolean
   percentile: number | null

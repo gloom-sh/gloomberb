@@ -8,7 +8,7 @@ import { createDefaultConfig } from "../../../types/config";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs, HeadlessRowsResult } from "../../../types/headless";
 import { membersHeadless } from "./headless";
 import { membersPlugin } from "./index";
-import { canonicalFund } from "./model";
+import { canonicalFund, stockListingInput } from "./model";
 import { board } from "./test-fixture";
 
 afterEach(() => setSystemTime());
@@ -70,9 +70,9 @@ test("a stock lists the ETFs holding it; an N-PORT fund's holdings say their rep
   expect(stock.rows.map((row) => [row.ticker, Number((row.weight as number).toFixed(2)), row.asOf, row.holdings])).toEqual([
     ["IVV", 7.12, "2026-11-05", "as of 5 Nov 2026 (daily file)"], ["ARKK", 3.7, "2026-07-31", "as of 31 Jul 2026 (N-PORT, filed 22 Sep)"]]);
   expect((stock.metadata as { notices: string[] }).notices[0]).toBe("2 of 2 ETFs looked through hold NVDA: 1 covered fund from daily holdings files, 1 from their latest SEC N-PORT reports.")
-  // A listing abroad is not looked up by its local code.
-  expect((await load("INFY:NSE")).empty).toContain("US ticker");
-  expect(asked).toEqual(["NVDA"]);
+  expect((await load("NVDA:NASDAQ")).rows).toEqual(stock.rows);
+  await expect(load("AIR:EPA")).rejects.toThrow("Funds holding this listing are not available on this server yet.");
+  expect(asked).toEqual(["NVDA", "NVDA", "AIR:EPA"]);
   // An exported row read alone still says what the holdings are as of: the fund's report date, filing day and link.
   expect(stock.rows[1]).toMatchObject({ filedOn: "2026-09-22", sourceUrl: report });
   expect(stock.columns!.map((column) => column.key)).toEqual(expect.arrayContaining(["asOf", "filedOn", "sourceUrl"]));
@@ -87,4 +87,31 @@ test("a stock lists the ETFs holding it; an N-PORT fund's holdings say their rep
   // The list names the fund as it is, its basis in its own column.
   const list = await load("");
   expect(list.rows.find((row) => row.ticker === "ARKK")).toMatchObject({ name: "Disruptive innovation", source: "N-PORT, filed 22 Sep 2026" });
+});
+
+test("an exchange-qualified lookup keeps ordinary and ADR weights and notices separate", async () => {
+  const input = "0700:HKEX";
+  const fund = { ticker: "ETF", name: "Example ETF", basis: "nport", shares: 1, marketValue: 1,
+    holdingName: "Tencent", asOf: "2026-06-30", filedOn: "2026-08-26" };
+  const context = { apiClient: { getStockFunds: async (symbol: string) => {
+    expect(symbol).toBe(input);
+    return { symbol, coverage: { daily: 0, nport: 2 }, funds: [
+      { ...fund, weight: 0.05, holdingType: "ordinary" }, { ...fund, weight: 0.01, holdingType: "adr", receiptTicker: "TCEHY" },
+    ] };
+  } } } as unknown as HeadlessPaneContext;
+  const args = { symbols: [input], rawArgument: input, options: {} } as unknown as HeadlessPaneLoadArgs;
+  const result = await membersHeadless.load(args, context) as HeadlessRowsResult;
+  expect(result.rows.map((row) => [row.ticker, row.shareClass, row.weight, row.filedOn])).toEqual([
+    ["ETF", "Ordinary shares", 5, "2026-08-26"], ["ETF", "ADR (TCEHY)", 1, "2026-08-26"],
+  ]);
+  expect((result.metadata as { notices: string[] }).notices[0]).toContain("1 of 2 ETFs looked through hold shares or ADRs for 0700:HKEX");
+});
+
+test("a pane's listing venue disambiguates a bare ticker and suffixes do not change US share classes", () => {
+  expect(stockListingInput("AIR", "EPA")).toBe("AIR:EPA");
+  expect(stockListingInput("AIR:EPA", "NYSE")).toBe("AIR:EPA");
+  expect(stockListingInput("7203.T", "JPX")).toBe("7203:JPX");
+  expect(stockListingInput("BRK.B")).toBe("BRK.B");
+  expect(stockListingInput("NVDA:NASDAQ")).toBe("NVDA");
+  expect(stockListingInput("^SPX", "INDEX")).toBe("^SPX");
 });

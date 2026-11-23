@@ -9,6 +9,9 @@ import { parseAlertCommandValues, parseAlertEdit, parseAlertShortcutValues } fro
 import { moveChecksOf, readMoveChecks, withMoveChecks } from "./move-checks";
 import { moveQuoteFields } from "./quotes";
 import type { AlertRule } from "./types";
+import { useAlertTestClock } from "./test-fixture";
+
+useAlertTestClock();
 
 const quote = (changePercent: number, previousClose: number, extra: Partial<Quote> = {}): Quote => ({
   symbol: "GBPUSD=X", name: "GBP/USD", price: previousClose * (1 + changePercent / 100), currency: "USD",

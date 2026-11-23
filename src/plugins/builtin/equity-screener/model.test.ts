@@ -10,7 +10,7 @@ test("only a coverage-bounded dividend streak carries a plus sign, in cells and 
 import { screenFixture as payload } from "./test-fixture";
 import { expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
-import { DIVIDEND_FIELDS, GRADE_FIELDS, LETTER_GRADE_FIELDS, OPTION_VOLATILITY_FIELDS, OWNERSHIP_FIELDS, QUALITY_FIELDS, SCORE_FIELDS, RESEARCH_FIELDS, SOCIAL_FIELDS, TECHNICAL_FIELDS, VOLATILITY_FIELDS, type ScreenFieldDefinition, type ScreenSnapshot } from "../../../api-client/equity-screener";
+import { DIVIDEND_FIELDS, GRADE_FIELDS, LETTER_GRADE_FIELDS, OPTION_VOLATILITY_FIELDS, OWNERSHIP_FIELDS, QUALITY_FIELDS, SCORE_FIELDS, RESEARCH_FIELDS, SOCIAL_FIELDS, TECHNICAL_FIELDS, TRAILING_YIELD_FIELDS, VOLATILITY_FIELDS, type ScreenFieldDefinition, type ScreenSnapshot } from "../../../api-client/equity-screener";
 import { fetchScreen, fetchScreenFields } from "./client";
 import {
   appendScreenPage,
@@ -149,8 +149,17 @@ test("a dividend yield names its own row's basis, and none the server did not st
   const base = { ...payload().rows[0]!.metrics.trailingPE, value: 3.2, unit: "%" };
   const basis = (reason: string) => dividendYieldBasis({ ...base, reason });
   expect(basis("forward yield; provider observation date unavailable")).toBe("latest distribution annualized");
+  // DVD's words for an uneven year's forward rate, its regular payments summed.
+  expect(basis("forward yield (trailing regular payments: uneven interims); provider observation date unavailable"))
+    .toBe("trailing regular payments: uneven interims");
   expect(basis("trailing yield; provider observation date unavailable")).toBe("last 12 months of distributions");
   expect(basis("Unspecified yield; provider observation date unavailable")).toBeNull();
+  // No forward rate: no value, so no basis line; the reason says why and names the trailing yield.
+  expect(dividendYieldBasis({ ...base, value: null, reason: "No forward rate: its source annualized the HKD 1.87 of 2026-09-11 twice, a frequency its paid history does not show; trailing yield 6.12% (last 12 months of distributions)" })).toBeNull();
+  // The trailing yield is a field of its own, labelled as one.
+  expect([SHORT_LABELS.trailingDividendYieldPercent, screenLabel("trailingDividendYieldPercent")]).toEqual(["TTM YLD%", "Trailing dividend yield %"]);
+  expect(SHORT_LABELS.trailingDividendYieldPercent.length).toBeLessThanOrEqual(13);
+  expect(formatScreenValue("trailingDividendYieldPercent", 6.12)).toBe(formatScreenValue("dividendYieldPercent", 6.12));
 });
 
 test("result columns lead with the focus metric and the screen's criteria; money needs a currency", () => {
@@ -171,7 +180,7 @@ test("social and research fields format by kind, and an older server's rows stil
     formatScreenValue("beta", 1.052), formatScreenValue("ivRank", 46.89)])
     .toEqual(["+32.5", "-2.0", "45.9x", "1.05", "47"]);
   const older = payload();
-  for (const row of older.rows) for (const field of [...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...DIVIDEND_FIELDS, ...TECHNICAL_FIELDS, ...OPTION_VOLATILITY_FIELDS, ...OWNERSHIP_FIELDS, ...QUALITY_FIELDS, ...SCORE_FIELDS])
+  for (const row of older.rows) for (const field of [...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...DIVIDEND_FIELDS, ...TECHNICAL_FIELDS, ...OPTION_VOLATILITY_FIELDS, ...OWNERSHIP_FIELDS, ...QUALITY_FIELDS, ...SCORE_FIELDS, ...TRAILING_YIELD_FIELDS])
     delete (row.metrics as Partial<typeof row.metrics>)[field];
   const loaded = validateScreenPayload(older);
   expect(loaded.rows[0]!.metrics.xPostsVsMedian).toMatchObject({ value: null, state: "unavailable" });
@@ -183,6 +192,7 @@ test("social and research fields format by kind, and an older server's rows stil
   expect(loaded.rows[0]!.metrics.roePercent).toMatchObject({ value: null, state: "unavailable" });
   expect(loaded.rows[0]!.metrics.payoutRatioPercent).toMatchObject({ value: null, state: "unavailable" });
   expect(loaded.rows[0]!.metrics.goldenCrossDays).toMatchObject({ value: null, state: "unavailable" });
+  expect(loaded.rows[0]!.metrics.trailingDividendYieldPercent).toMatchObject({ value: null, state: "unavailable" });
   const broken = payload();
   delete (broken.rows[0]!.metrics as Partial<typeof broken.rows[0]["metrics"]>).price;
   expect(() => validateScreenPayload(broken)).toThrow("price");
@@ -219,7 +229,7 @@ test("the field list is requested with the volatility group, which servers witho
   } as never);
   try {
     const data = await fetchScreenFields();
-    expect(String(ask.mock.calls[0]![0])).toMatch(/^fields\?include=.*\bvolatility\b.*\bdividends\b.*\btechnical\b.*\bgrades\b/);
+    expect(String(ask.mock.calls[0]![0])).toMatch(/^fields\?include=.*\bvolatility\b.*\bdividends\b.*\btechnical\b.*\bgrades\b.*\btrailing-yield\b/);
     expect(data.fields.map((entry) => entry.id)).toEqual(["atrPercent"]);
   } finally {
     ask.mockRestore();

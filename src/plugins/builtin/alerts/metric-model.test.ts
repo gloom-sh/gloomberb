@@ -10,6 +10,9 @@ import { levelAlertStoreKey, readLevelAlertStores, writeLevelAlertStores } from 
 import type { AlertRule } from "./types";
 import type { TickerFinancials } from "../../../types/financials";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { useAlertTestClock } from "./test-fixture";
+
+useAlertTestClock();
 
 const calendar = (day: string) => getPublishedUsEquitySession("NASDAQ", day);
 const sessionDays = (n: number) => {

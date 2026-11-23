@@ -7,6 +7,9 @@ import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
 import { createAlertQuoteStream } from "./live";
 import type { AlertRule } from "./types";
+import { useAlertTestClock } from "./test-fixture";
+
+useAlertTestClock();
 
 test("ticks a symbol gathered stay to be judged when the alerts it is followed for change, and go with a symbol no alert follows", () => {
   let emit: ((target: QuoteSubscriptionTarget, quote: Quote) => void) | null = null;

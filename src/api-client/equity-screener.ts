@@ -3,6 +3,12 @@ export const KPI_FIELDS = ["kpiArr", "kpiNrrPercent", "kpiRpo", "kpiCrpo", "kpiS
 /** Payout ratio and dividend growth; listed only when asked (`include=dividends`), and omitted by a server from before them. */
 export const DIVIDEND_FIELDS = ["payoutRatioPercent", "dividendGrowth1YPercent", "dividendGrowth3YPercent"] as const;
 /**
+ * The trailing dividend yield beside the forward one (`dividendYieldPercent`): DVD's Trailing yield, the last 12 months
+ * of distributions, specials included, on the paid history. Listed only when asked (`include=trailing-yield`), and
+ * omitted by a server from before it.
+ */
+export const TRAILING_YIELD_FIELDS = ["trailingDividendYieldPercent"] as const;
+/**
  * Technical readings of the stored daily bars at the last completed session; listed only when asked
  * (`include=technical`), and omitted by a server from before them.
  */
@@ -65,6 +71,7 @@ export const NUMERIC_FIELDS = [
   "forwardPE",
   "enterpriseToRevenue",
   "dividendYieldPercent",
+  ...TRAILING_YIELD_FIELDS,
   ...DIVIDEND_FIELDS,
   "revenueGrowthPercent",
   "earningsGrowthPercent",

@@ -60,7 +60,7 @@ export function formatDividendYield(value: number | null): string {
   return value != null && Number.isFinite(value) ? `${(value * 100).toFixed(2)}%` : MISSING_VALUE;
 }
 
-/** What the payout ratio is over, as the source states it: trailing twelve-month dividends over this. */
+/** What the payout ratio is over: trailing twelve-month dividends over this, the EPS the P/E is on. */
 export const PAYOUT_BASIS = "TTM diluted EPS";
 
 /** A payout over zero or negative earnings, written as a P/E over a loss is. */
