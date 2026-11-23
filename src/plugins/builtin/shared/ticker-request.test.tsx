@@ -83,13 +83,15 @@ test.each(cases)("%s at %i keeps known research through a transient refresh fail
   await settle();
   const failedRefresh = view();
   expect(failedRefresh).toContain(original);
-  expect(failedRefresh).toContain("Research source timed out");
+  expect(failedRefresh).toMatch(/saved copy from \d{2}:\d{2}/);
+  if (width >= 80) expect(failedRefresh).toContain("Research source timed out");
   state.failure = null;
   state.revision = 1;
   await tui.emitKeypress({ name: "r" });
   await settle();
   const recoveredRefresh = view();
   expect(recoveredRefresh).toContain(recovered);
+  expect(recoveredRefresh).not.toContain("saved copy");
   expect(recoveredRefresh).not.toContain("Research source timed out");
   state.failure = new ApiRequestError("Research access denied", 403);
   await tui.emitKeypress({ name: "r" });
