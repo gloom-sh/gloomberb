@@ -389,6 +389,74 @@ describe("cash distribution calculations", () => {
     expect(metrics.forwardBasis).toBeUndefined();
   });
 
+  test("an extra that recurred in no slot of the payer's year never sets its frequency", () => {
+    const asOf = new Date("2026-11-23T20:00:00Z");
+    // WH Group (0288): finals in May or June, interims in August or September, and three payments in no slot of its
+    // year (February and March 2025, and a HK$0.30 special in October 2025). The source annualized the HK$0.20 interim
+    // four times; the year's final and interim differ widely, so their total is the forward rate.
+    const wh = [["2022-06-07", 0.14], ["2022-08-29", 0.05], ["2023-06-09", 0.25], ["2023-08-28", 0.05], ["2024-05-14", 0.25],
+      ["2024-08-26", 0.1], ["2025-02-18", 0.01673], ["2025-03-13", 0.18], ["2025-05-14", 0.4], ["2025-08-25", 0.2], ["2025-10-06", 0.3],
+      ["2026-05-13", 0.41], ["2026-09-11", 0.2]].map(([date, amount]) => payment(date as string, amount as number, "HKD"));
+    const stated: DividendSummary = { trailingAnnualDividendRate: null, trailingAnnualDividendYield: null, payoutRatio: null,
+      exDividendDate: null, dividendDate: null, currency: "HKD", forwardAnnualDividendRate: 0.8, forwardRateAsOf: "2026-09-11" };
+    const metrics = buildDividendMetrics(wh, stated, 6.815, { now: asOf });
+    expect(metrics).toMatchObject({ paymentFrequency: "semi-annual", forwardRate: 0.61, forwardBasis: "uneven", trailingRate: 0.61,
+      trailingPayments: null });
+    // Until a year and a slot after the October special have passed it cannot be told from a new period: it counts.
+    expect(buildDividendMetrics(wh, stated, 6.815, { now: new Date("2026-11-10T12:00:00Z") }).paymentFrequency).toBe("quarterly");
+    // A monthly payer missing three months still reads monthly; Ambev's December, June and September are no two a year.
+    const months = Array.from({ length: 25 }, (_, index) => new Date(Date.UTC(2024, 10 + index, 15)).toISOString().slice(0, 10))
+      .filter((date) => !["2026-07-15", "2026-08-15", "2026-09-15"].includes(date)).map((date) => payment(date, 0.1));
+    expect(buildDividendMetrics(months, null, 10, { now: new Date("2026-11-20T12:00:00Z") }).paymentFrequency).toBe("monthly");
+    const ambev = [["2023-12-20", 0.7302], ["2024-12-20", 0.6676], ["2025-03-17", 0.1276], ["2025-05-16", 0.128], ["2025-12-19", 0.7302],
+      ["2026-06-23", 0.0449], ["2026-09-22", 0.0713]].map(([date, amount]) => payment(date as string, amount as number, "BRL"));
+    expect(buildDividendMetrics(ambev, null, 15.86, { now: asOf })).toMatchObject({ paymentFrequency: "irregular", trailingRate: 0.8464 });
+  });
+
+  test("an interim and a final sized apart the same way each year forward the year; a run of raises does not", () => {
+    const asOf = new Date("2026-11-23T20:00:00Z");
+    // Far East Horizon (3360): HK$0.30 and HK$0.25 in 2025, HK$0.31 and HK$0.25 in 2026, 1.2 and 1.24 times apart.
+    const feh = [["2024-06-07", 0.5], ["2024-09-25", 0.25], ["2025-04-16", 0.3], ["2025-09-09", 0.25], ["2026-06-12", 0.31],
+      ["2026-09-14", 0.25]].map(([date, amount]) => payment(date as string, amount as number, "HKD"));
+    const stated: DividendSummary = { trailingAnnualDividendRate: null, trailingAnnualDividendYield: null, payoutRatio: null,
+      exDividendDate: null, dividendDate: null, currency: "HKD", forwardAnnualDividendRate: 0.5, forwardRateAsOf: "2026-09-14" };
+    expect(buildDividendMetrics(feh, stated, 4.995, { now: asOf })).toMatchObject({ forwardRate: 0.56, forwardBasis: "uneven" });
+    // Within 1.15 times each other, or the other one larger a year before, the latest annualized stands.
+    const near = [...feh.slice(0, 4), payment("2026-06-12", 0.28, "HKD"), payment("2026-09-14", 0.25, "HKD")];
+    expect(buildDividendMetrics(near, stated, 4.995, { now: asOf }).forwardBasis).toBeUndefined();
+    const flipped = [...feh.slice(0, 2), payment("2025-04-16", 0.25, "HKD"), payment("2025-09-09", 0.3, "HKD"), ...feh.slice(4)];
+    expect(buildDividendMetrics(flipped, stated, 4.995, { now: asOf }).forwardBasis).toBeUndefined();
+    // Ibiden's 5, 7.5, 7.5 and 10 yen only rise: raises, whose latest annualized stands.
+    const ibiden = [["2025-03-28", 5], ["2025-09-29", 7.5], ["2026-03-30", 7.5], ["2026-09-29", 10]]
+      .map(([date, amount]) => payment(date as string, amount as number, "JPY"));
+    const raised = buildDividendMetrics(ibiden, { ...stated, currency: "JPY", forwardAnnualDividendRate: 20, forwardRateAsOf: "2026-09-29" }, 4672, { now: asOf });
+    expect(raised).toMatchObject({ forwardRate: 20 });
+    expect(raised.forwardBasis).toBeUndefined();
+  });
+
+  test("a young history's two ex-dates take the cadence its stated rate reads, not their gap's", () => {
+    const asOf = new Date("2026-11-23T20:00:00Z");
+    // CNGR's H line (2579): its 2025 final and 2026 interim, 107 days apart, served at twice the interim.
+    const cngr = [payment("2026-06-09", 0.435138, "HKD"), payment("2026-09-24", 0.440008, "HKD")];
+    const stated: DividendSummary = { trailingAnnualDividendRate: null, trailingAnnualDividendYield: null, payoutRatio: null,
+      exDividendDate: null, dividendDate: null, currency: "HKD", forwardAnnualDividendRate: 0.880016, forwardRateAsOf: "2026-09-24" };
+    expect(buildDividendMetrics(cngr, stated, 15.42, { now: asOf })).toMatchObject({ paymentFrequency: "semi-annual",
+      forwardRate: 0.880016, trailingPayments: null });
+    // Montage's H line (6809): a final and an interim served as their sum, two a year.
+    const montage = [payment("2026-07-07", 0.441, "HKD"), payment("2026-09-25", 0.231, "HKD")];
+    expect(buildDividendMetrics(montage, { ...stated, forwardAnnualDividendRate: 0.672, forwardRateAsOf: "2026-09-25" }, 141.3,
+      { now: asOf }).paymentFrequency).toBe("semi-annual");
+    // A rate four times the interim reads four a year, as the gap does, two of four payments counted; one that reads no
+    // cadence leaves the gap's.
+    expect(buildDividendMetrics(cngr, { ...stated, forwardAnnualDividendRate: 1.760032 }, 15.42, { now: asOf }))
+      .toMatchObject({ paymentFrequency: "quarterly", trailingPayments: { counted: 2, expected: 4, cadence: "quarterly" } });
+    expect(buildDividendMetrics(cngr, { ...stated, forwardAnnualDividendRate: 1.3 }, 15.42, { now: asOf }).paymentFrequency).toBe("quarterly");
+    // An older payer's two ex-dates in two years keep their gap's cadence, whatever the rate reads.
+    const annual = [payment("2023-06-01", 1, "HKD"), payment("2025-06-02", 1, "HKD"), payment("2026-06-01", 1, "HKD")];
+    expect(buildDividendMetrics(annual, { ...stated, forwardAnnualDividendRate: 2, forwardRateAsOf: "2026-06-01" }, 20, { now: asOf })
+      .paymentFrequency).toBe("annual");
+  });
+
   test("a cut that held is the new rate, which the declared distribution annualizes, not the trailing year's total", () => {
     const late = new Date("2026-11-20T12:00:00Z");
     // ECC: $0.14 a month to March 2026, $0.06 from April; the next $0.06 is declared, ex 11 Dec.

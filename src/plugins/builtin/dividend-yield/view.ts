@@ -5,7 +5,7 @@ import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import { calendarMonthsBefore } from "../../../utils/calendar-date";
 import { NOT_MEANINGFUL, formatPriceEarnings } from "../../../utils/price-earnings";
 import { UNEVEN_REGULAR_PAYMENTS } from "../../../utils/forward-dividend";
-import { CADENCE_GRACE_DAYS, LATE_GRACE_DAYS, trailingCashAt, type TrailingPayments } from "../../../utils/trailing-dividend";
+import { CADENCE_GRACE_DAYS, LATE_GRACE_DAYS, OFF_CYCLE_DAYS, trailingCashAt, type TrailingPayments } from "../../../utils/trailing-dividend";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -94,12 +94,16 @@ export function buildTrailingCashChartPoints(payments: DividendPayment[], now = 
   const firstDate = sorted[0]?.exDate;
   if (!firstDate) return [];
   // Rolling cash can change on ex-dates, when payments leave the one-year
-  // window or its late grace, and when the two-year cadence window moves.
+  // window or its late grace, when the two-year cadence window moves, and
+  // when a payment is judged off-cycle.
   // Date rollover deliberately expires February 29 on March 1 in a non-leap
   // year, when the clamped trailing-year cutoff first reaches that payment.
   const dates = new Set<number>([now.getTime()]);
   for (const payment of sorted) {
     dates.add(payment.exDate.getTime());
+    // A payment its slot a year on did not repeat stops counting as a period of the cadence (inferCadence).
+    const offCycle = payment.exDate.getTime() + OFF_CYCLE_DAYS * DAY;
+    if (offCycle <= now.getTime()) dates.add(offCycle);
     for (const years of [1, 2]) {
       const expiry = new Date(payment.exDate);
       expiry.setUTCFullYear(expiry.getUTCFullYear() + years);

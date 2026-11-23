@@ -41,16 +41,22 @@ export const LATE_GRACE_DAYS = [...new Set(Object.values(REGULAR_CADENCE)
  */
 export const CADENCE_GRACE_DAYS = MAX_LATE_GRACE_DAYS;
 
-/** Cadence of ex-dates in the two years ending at `asOf`, ignoring later payments. */
-export function inferCadence(payments: readonly Pick<CashDistribution, "exDate">[], asOf: Date): DistributionCadence | null {
-  const within = (cutoff: Date) => [...new Set(payments.filter((payment) => payment.exDate > cutoff && payment.exDate <= asOf)
-    .map((payment) => payment.exDate.getTime()))]
-    .sort((a, b) => a - b);
-  const cutoff = calendarMonthsBefore(asOf, 24);
+/** A day recurs when one within this many days of a year before paid within RECURRING_BAND of it. */
+const SAME_SLOT_DAYS = 45;
+
+/**
+ * Days after an ex-date at which it is judged off-cycle when nothing was paid
+ * in its slot a year on (offCycleTimes): a year and SAME_SLOT_DAYS.
+ */
+export const OFF_CYCLE_DAYS = 365.25 + SAME_SLOT_DAYS;
+
+/** Cadence of ex-dates (times, oldest first) in the two years ending at `asOf`. */
+function cadenceOf(times: readonly number[], asOf: Date): DistributionCadence | null {
+  const cutoff = calendarMonthsBefore(asOf, 24).getTime();
   // Old suspensions or a former schedule must not redefine a fund's recent cadence.
-  let dates = within(cutoff);
+  let dates = times.filter((time) => time > cutoff);
   // A single ex-date in two years: the one before it, if only days past them, says the cadence.
-  if (dates.length === 1) dates = within(new Date(cutoff.getTime() - CADENCE_GRACE_DAYS * DAY));
+  if (dates.length === 1) dates = times.filter((time) => time > cutoff - CADENCE_GRACE_DAYS * DAY);
   if (dates.length < 2) return null;
   const avgGapDays = (dates.at(-1)! - dates[0]!) / (dates.length - 1) / DAY;
   if (Math.abs(avgGapDays - 30) < 8) return "monthly";
@@ -58,6 +64,57 @@ export function inferCadence(payments: readonly Pick<CashDistribution, "exDate">
   if (Math.abs(avgGapDays - 182) < 36) return "semi-annual";
   if (Math.abs(avgGapDays - 365) < 73) return "annual";
   return "irregular";
+}
+
+/**
+ * The ex-dates (times, oldest first) that recur in no slot of the payer's
+ * year: none was paid within SAME_SLOT_DAYS of a year before one, nor of a
+ * year after it, and that year after has passed by `asOf` (OFF_CYCLE_DAYS).
+ * Each ex-date pairs with at most one a year before and one a year after, the
+ * closest pairs first, so an extra beside a regular one does not share its
+ * counterpart. WH Group (0288) pays an interim each August or September and a
+ * final each May; its HK$0.30 special of 6 October 2025 recurred in no slot,
+ * and counted as a period it read the two years to 23 Nov 2026 as quarterly.
+ * Gloom Cloud reads the cadence by the same rule (uneven-regular-payments).
+ */
+function offCycleTimes(times: readonly number[], asOf: Date): Set<number> {
+  const at = asOf.getTime();
+  // inferCadence's two years and its month further back, and a year and a slot before those for their pairs.
+  const read = times.filter((time) => time > at - (731 + CADENCE_GRACE_DAYS + OFF_CYCLE_DAYS) * DAY);
+  const pairs: { earlier: number; later: number; distance: number }[] = [];
+  for (const [index, earlier] of read.entries()) {
+    for (const later of read.slice(index + 1)) {
+      const distance = Math.abs((later - earlier) / DAY - 365.25);
+      if (distance <= SAME_SLOT_DAYS) pairs.push({ earlier, later, distance });
+    }
+  }
+  const hasLater = new Set<number>();
+  const hasEarlier = new Set<number>();
+  for (const pair of pairs.sort((left, right) => left.distance - right.distance)) {
+    if (hasLater.has(pair.earlier) || hasEarlier.has(pair.later)) continue;
+    hasLater.add(pair.earlier);
+    hasEarlier.add(pair.later);
+  }
+  return new Set(read.filter((time) => !hasLater.has(time) && !hasEarlier.has(time) && time + OFF_CYCLE_DAYS * DAY < at));
+}
+
+/**
+ * Cadence of ex-dates in the two years ending at `asOf`, ignoring later
+ * payments, read without those that recurred in no slot of the payer's year
+ * (offCycleTimes) where the rest show a regular cadence and the twelve months
+ * to `asOf` hold no more ex-dates than it pays: an extra is never a period.
+ * Where they show none (a history with a hole, the slots of a schedule that
+ * moved), or the year paid more often (Ambev's December, June and September),
+ * every ex-date is read.
+ */
+export function inferCadence(payments: readonly Pick<CashDistribution, "exDate">[], asOf: Date): DistributionCadence | null {
+  const times = [...new Set(payments.filter((payment) => payment.exDate <= asOf).map((payment) => payment.exDate.getTime()))]
+    .sort((a, b) => a - b);
+  const offCycle = offCycleTimes(times, asOf);
+  const regular = offCycle.size ? cadenceOf(times.filter((time) => !offCycle.has(time)), asOf) : null;
+  const perYear = regular ? REGULAR_CADENCE[regular]?.perYear : undefined;
+  const yearStart = calendarMonthsBefore(asOf, 12).getTime();
+  return perYear && times.filter((time) => time > yearStart).length <= perYear ? regular : cadenceOf(times, asOf);
 }
 
 /**
@@ -72,12 +129,13 @@ export function inferCadence(payments: readonly Pick<CashDistribution, "exDate">
  * payment just past one year is kept while its counterpart is briefly late and
  * the window holds fewer than one year of payments. Irregular cash uses the
  * plain window, so special distributions are neither dropped nor extended.
+ * `stated` is a cadence read for the payer elsewhere (statedCadence).
  */
-export function trailingPayments<Payment extends CashDistribution>(payments: readonly Payment[], asOf: Date): { counted: Payment[]; perYear: number | null; cadence: DistributionCadence | null } {
+export function trailingPayments<Payment extends CashDistribution>(payments: readonly Payment[], asOf: Date, stated?: DistributionCadence | null): { counted: Payment[]; perYear: number | null; cadence: DistributionCadence | null } {
   const known = payments.filter((payment) => payment.exDate <= asOf && Number.isFinite(payment.amount) && payment.amount > 0)
     .sort((a, b) => a.exDate.getTime() - b.exDate.getTime());
   const cutoff = calendarMonthsBefore(asOf, 12);
-  const cadence = inferCadence(known, asOf);
+  const cadence = stated ?? inferCadence(known, asOf);
   const regular = cadence ? REGULAR_CADENCE[cadence] : undefined;
   if (!regular) return { counted: known.filter((payment) => payment.exDate > cutoff), perYear: null, cadence };
 
@@ -126,28 +184,66 @@ export interface TrailingPayments {
  * its cadence pays in a year: a hole in the history (ECC's monthly July to
  * September 2026 distributions), a missed or late payment, or a fund under a
  * year old. Null for a full year, an irregular payer and an issuer with no
- * cadence, whose trailing cash is the plain window.
+ * cadence, whose trailing cash is the plain window. `stated` is a cadence read
+ * for the payer elsewhere (statedCadence).
  */
-export function trailingPaymentShortfall(payments: readonly CashDistribution[], asOf: Date): TrailingPayments | null {
-  const { counted, perYear, cadence } = trailingPayments(payments, asOf);
+export function trailingPaymentShortfall(payments: readonly CashDistribution[], asOf: Date, stated?: DistributionCadence | null): TrailingPayments | null {
+  const { counted, perYear, cadence } = trailingPayments(payments, asOf, stated);
   return perYear != null && cadence && counted.length < perYear ? { counted: counted.length, expected: perYear, cadence } : null;
 }
 
 /** Over this ratio between a regular payer's largest and smallest payment of a year, no one payment stands for the year. */
 const UNEVEN_PAYMENT_RATIO = 1.5;
 
+/** A stated rate annualizes a payment when it is that payment times its cadence's count within this share. */
+const STATED_TOLERANCE = 0.02;
+const STATED_CADENCES = [["annual", 1], ["semi-annual", 2], ["quarterly", 4], ["monthly", 12]] as const;
+
+/**
+ * The cadence of a young history, its only two ex-dates in the two years to
+ * `asOf`, as a stated forward rate reads it (`stated`: the annual rate and the
+ * ex-date of the payment it annualizes): the count it annualizes that payment
+ * (or the latest) by, within 2%, or two a year where it is the two payments
+ * summed. Two ex-dates show one gap, and an interim four months after a final
+ * reads as quarterly: CNGR's H line (2579) paid its 2025 final in June 2026
+ * and its 2026 interim in September, 107 days apart. Gloom Cloud serves its
+ * rate at the frequency the issuer's Shenzhen line shows, twice the HK$0.44
+ * interim. Null for a history with fewer, more or older ex-dates, and for a
+ * rate that reads no cadence: inferCadence's gap stands.
+ */
+export function statedCadence(payments: readonly CashDistribution[], asOf: Date,
+  stated: { annualRate: number; exDate: Date | null } | null): DistributionCadence | null {
+  if (!stated || !Number.isFinite(stated.annualRate) || !(stated.annualRate > 0)) return null;
+  const paid = payments.filter((payment) => payment.exDate <= asOf && Number.isFinite(payment.amount) && payment.amount > 0);
+  const cutoff = calendarMonthsBefore(asOf, 24);
+  if (paid.some((payment) => payment.exDate <= cutoff)) return null;
+  const days = [...new Set(paid.map((payment) => payment.exDate.getTime()))].sort((a, b) => a - b);
+  if (days.length !== 2) return null;
+  const amountOn = (day: number) => paid.filter((payment) => payment.exDate.getTime() === day).reduce((sum, payment) => sum + payment.amount, 0);
+  const annualizes = (amount: number, count: number) => Math.abs(stated.annualRate / (amount * count) - 1) <= STATED_TOLERANCE;
+  const dated = stated.exDate && days.includes(stated.exDate.getTime()) ? stated.exDate.getTime() : days[1]!;
+  const cadence = STATED_CADENCES.find(([, count]) => annualizes(amountOn(dated), count));
+  if (cadence) return cadence[0];
+  return annualizes(amountOn(days[0]!) + amountOn(days[1]!), 1) ? "semi-annual" : null;
+}
+
+/** Over this ratio, a payer's two payments of a year that differ the same way a year before are uneven too. */
+const RECURRING_UNEVEN_RATIO = 1.15;
+
 /**
  * A regular payer's payments of the trailing year when they differ widely:
  * exactly as many as its cadence pays, the largest more than 1.5 times the
  * smallest (HSBC's final beside its interims, AstraZeneca's interim beside its
- * final). Their total is the year's cash, where the latest one annualized is
- * not (HSBA's interim read as 2.17% a year beside the 4.08% it paid). Null for
- * an even year, one with a hole or an extra payment, an annual payer and an
- * irregular one, and for a year that changed level once and kept it
- * (steppedPayments): a cut or a raise is a new rate, not interims beside a
- * final. `next` is the annual rate of a distribution declared after the year's
- * payments, as the stated forward rate annualizes it. `latest` is the newest
- * payment's ex-date. A one-off special is no regular payment (regularPayments).
+ * final), or a two-a-year payer's interim and final sized apart the same way
+ * each year (recurringUneven: Far East Horizon's). Their total is the year's
+ * cash, where the latest one annualized is not (HSBA's interim read as 2.17% a
+ * year beside the 4.08% it paid). Null for an even year, one with a hole or an
+ * extra payment, an annual payer and an irregular one, and for a year that
+ * changed level once and kept it (steppedPayments): a cut or a raise is a new
+ * rate, not interims beside a final. `next` is the annual rate of a
+ * distribution declared after the year's payments, as the stated forward rate
+ * annualizes it. `latest` is the newest payment's ex-date. A one-off special
+ * is no regular payment (regularPayments).
  */
 export function unevenRegularPayments(payments: readonly CashDistribution[], asOf: Date, next?: { exDate: Date; annualRate: number } | null): { total: number; latest: Date } | null {
   const regular = regularPayments(payments, asOf);
@@ -155,7 +251,7 @@ export function unevenRegularPayments(payments: readonly CashDistribution[], asO
   if (perYear == null || perYear < 2 || counted.length !== perYear) return null;
   const ordered = [...counted].sort((left, right) => left.exDate.getTime() - right.exDate.getTime());
   const amounts = ordered.map((payment) => payment.amount);
-  if (Math.max(...amounts) <= UNEVEN_PAYMENT_RATIO * Math.min(...amounts)) return null;
+  if (Math.max(...amounts) <= UNEVEN_PAYMENT_RATIO * Math.min(...amounts) && !recurringUneven(ordered, regular)) return null;
   const latest = ordered.at(-1)!.exDate;
   const declared = next && next.exDate > latest && Number.isFinite(next.annualRate) && next.annualRate > 0 ? next.annualRate / perYear : null;
   if (steppedPayments(ordered, regular, declared)) return null;
@@ -168,8 +264,7 @@ export function unevenRegularPayments(payments: readonly CashDistribution[], asO
 /** A day this many times the median of the days in the REGULAR_LOOKBACK_DAYS before it is a one-off, unless it recurs. */
 const SPECIAL_MULTIPLE = 3;
 const REGULAR_LOOKBACK_DAYS = 400;
-/** A day recurs when one within this many days of a year before paid within RECURRING_BAND of it. */
-const SAME_SLOT_DAYS = 45;
+/** A day recurs when one within SAME_SLOT_DAYS of a year before paid within RECURRING_BAND of it. */
 const RECURRING_BAND = [2 / 3, 1.5] as const;
 /** Rows of one ex-date this close in amount are one row stated twice, not two distributions. */
 const SAME_AMOUNT_SHARE = 1e-6;
@@ -216,6 +311,39 @@ function regularPayments(payments: readonly CashDistribution[], asOf: Date): Cas
 /** No payment of `amounts` over 1.5 times another: one level. */
 function evenAmounts(amounts: readonly number[]): boolean {
   return Math.max(...amounts) <= UNEVEN_PAYMENT_RATIO * Math.min(...amounts);
+}
+
+/**
+ * A two-a-year payer's year (oldest first) whose payments differ by over
+ * RECURRING_UNEVEN_RATIO, and whose payments a year before (`history`, the
+ * closest to each one's anniversary within half a period) differed the same
+ * way: the same one larger, by over that ratio too, the four of them rising
+ * and falling. An interim and a final the payer sizes apart each year, not a
+ * run of raises or cuts: Far East Horizon (3360) paid HK$0.30 in April 2025
+ * and HK$0.25 in September, then HK$0.31 in June 2026 and HK$0.25 in
+ * September; its HK$0.25 annualized read 10.0% at HK$4.995 on 23 Nov 2026,
+ * beside the 11.2% the year paid.
+ */
+function recurringUneven(year: readonly CashDistribution[], history: readonly CashDistribution[]): boolean {
+  const differs = ([first, second]: readonly CashDistribution[]) =>
+    Math.max(first!.amount, second!.amount) > RECURRING_UNEVEN_RATIO * Math.min(first!.amount, second!.amount)
+      ? first!.amount > second!.amount : null;
+  if (year.length !== 2) return false;
+  const larger = differs(year);
+  if (larger === null) return false;
+  const halfPeriod = REGULAR_CADENCE["semi-annual"]!.halfPeriodDays * DAY;
+  const [first, second] = year.map((payment) => {
+    const anniversary = new Date(payment.exDate);
+    anniversary.setUTCFullYear(anniversary.getUTCFullYear() - 1);
+    const distance = (earlier: CashDistribution) => Math.abs(earlier.exDate.getTime() - anniversary.getTime());
+    return history.filter((earlier) => earlier.exDate < year[0]!.exDate && distance(earlier) <= halfPeriod)
+      .sort((left, right) => distance(left) - distance(right))[0];
+  });
+  if (!first || !second || first.exDate >= second.exDate || differs([first, second]) !== larger) return false;
+  // Sized apart, the four rise and fall: four that only rise are raises (Ibiden's 5, 7.5, 7.5 and 10 yen).
+  const amounts = [first, second, ...year].map((payment) => payment.amount);
+  const steps = amounts.slice(1).map((amount, index) => amount - amounts[index]!);
+  return steps.some((step) => step > 0) && steps.some((step) => step < 0);
 }
 
 /**
