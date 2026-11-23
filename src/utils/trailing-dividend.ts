@@ -18,7 +18,18 @@ export type DistributionCadence = "monthly" | "quarterly" | "semi-annual" | "ann
 export interface CashDistribution {
   exDate: Date;
   amount: number;
+  /**
+   * The issuer's own dividend announcement form says it is a special (Gloom
+   * Cloud's `parts` of an HKEX row): it counts in the trailing year, and is no
+   * period of the payer's year nor a payment the forward rate reads.
+   */
+  special?: true;
+  /** The issuer's own form says what it is, regular or special: a day of such payments is never read as a one-off by its size. */
+  formTyped?: true;
 }
+
+/** Whether a payment is a special its issuer's form types (CashDistribution.special). */
+const typedSpecial = (payment: { special?: true }) => payment.special === true;
 
 const REGULAR_CADENCE: Partial<Record<DistributionCadence, { perYear: number; halfPeriodDays: number }>> = {
   monthly: { perYear: 12, halfPeriodDays: 15 },
@@ -107,8 +118,9 @@ function offCycleTimes(times: readonly number[], asOf: Date): Set<number> {
  * moved), or the year paid more often (Ambev's December, June and September),
  * every ex-date is read.
  */
-export function inferCadence(payments: readonly Pick<CashDistribution, "exDate">[], asOf: Date): DistributionCadence | null {
-  const times = [...new Set(payments.filter((payment) => payment.exDate <= asOf).map((payment) => payment.exDate.getTime()))]
+export function inferCadence(payments: readonly Pick<CashDistribution, "exDate" | "special">[], asOf: Date): DistributionCadence | null {
+  // A special its issuer's form types is no period.
+  const times = [...new Set(payments.filter((payment) => payment.exDate <= asOf && !typedSpecial(payment)).map((payment) => payment.exDate.getTime()))]
     .sort((a, b) => a - b);
   const offCycle = offCycleTimes(times, asOf);
   const regular = offCycle.size ? cadenceOf(times.filter((time) => !offCycle.has(time)), asOf) : null;
@@ -132,7 +144,8 @@ export function inferCadence(payments: readonly Pick<CashDistribution, "exDate">
  * `stated` is a cadence read for the payer elsewhere (statedCadence).
  */
 export function trailingPayments<Payment extends CashDistribution>(payments: readonly Payment[], asOf: Date, stated?: DistributionCadence | null): { counted: Payment[]; perYear: number | null; cadence: DistributionCadence | null } {
-  const known = payments.filter((payment) => payment.exDate <= asOf && Number.isFinite(payment.amount) && payment.amount > 0)
+  // A special its issuer's form types is no period (trailingCashAt counts it in its year).
+  const known = payments.filter((payment) => payment.exDate <= asOf && Number.isFinite(payment.amount) && payment.amount > 0 && !typedSpecial(payment))
     .sort((a, b) => a.exDate.getTime() - b.exDate.getTime());
   const cutoff = calendarMonthsBefore(asOf, 12);
   const cadence = stated ?? inferCadence(known, asOf);
@@ -167,9 +180,25 @@ export function trailingPayments<Payment extends CashDistribution>(payments: rea
   return { counted: [...counted, ...late], perYear: regular.perYear, cadence };
 }
 
-/** Trailing twelve-month cash as known at `asOf` (trailingPayments). */
+/**
+ * Trailing twelve-month cash as known at `asOf` (trailingPayments), with the
+ * specials the issuer's forms type that went ex in the twelve months
+ * (trailingSpecialCash) counted whole.
+ */
 export function trailingCashAt<Payment extends CashDistribution>(payments: readonly Payment[], asOf: Date): number {
-  return trailingPayments(payments, asOf).counted.reduce((sum, payment) => sum + payment.amount, 0);
+  return trailingPayments(payments, asOf).counted.reduce((sum, payment) => sum + payment.amount, trailingSpecialCash(payments, asOf));
+}
+
+/**
+ * The specials the issuer's own forms type (CashDistribution.special) that
+ * went ex in the twelve months to `asOf`, summed: what the trailing year
+ * holds beside its regular payments. Stella's (1836) HK$0.56 of 19 May 2026,
+ * paid beside its HK$0.37 final.
+ */
+export function trailingSpecialCash(payments: readonly CashDistribution[], asOf: Date): number {
+  const cutoff = calendarMonthsBefore(asOf, 12);
+  return payments.filter((payment) => typedSpecial(payment) && payment.exDate > cutoff && payment.exDate <= asOf
+    && Number.isFinite(payment.amount) && payment.amount > 0).reduce((sum, payment) => sum + payment.amount, 0);
 }
 
 /** How many payments trailing cash counts against how many a year the issuer's cadence pays. */
@@ -214,7 +243,7 @@ const STATED_CADENCES = [["annual", 1], ["semi-annual", 2], ["quarterly", 4], ["
 export function statedCadence(payments: readonly CashDistribution[], asOf: Date,
   stated: { annualRate: number; exDate: Date | null } | null): DistributionCadence | null {
   if (!stated || !Number.isFinite(stated.annualRate) || !(stated.annualRate > 0)) return null;
-  const paid = payments.filter((payment) => payment.exDate <= asOf && Number.isFinite(payment.amount) && payment.amount > 0);
+  const paid = payments.filter((payment) => payment.exDate <= asOf && Number.isFinite(payment.amount) && payment.amount > 0 && !typedSpecial(payment));
   const cutoff = calendarMonthsBefore(asOf, 24);
   if (paid.some((payment) => payment.exDate <= cutoff)) return null;
   const days = [...new Set(paid.map((payment) => payment.exDate.getTime()))].sort((a, b) => a - b);
@@ -280,15 +309,20 @@ const median = (values: readonly number[]) => {
  * one stated twice counted once), oldest first, without one-offs: a day three
  * times the median of the days in the 400 before it that paid nothing like it
  * a year before. HSBC's final, four and a half times its interims, recurs each
- * March: it is regular. Gloom Cloud serves the forward rate by the same rule
- * (its uneven-regular-payments), so DES and DVD agree; keep the two in step.
+ * March: it is regular. A special its issuer's form types is none, and a day
+ * the forms type is never read as a one-off by its size: Stella's (1836)
+ * HK$0.37 final of 19 May 2026 is regular beside its HK$0.56 special. Gloom
+ * Cloud serves the forward rate by the same rule (its uneven-regular-payments),
+ * so DES and DVD agree; keep the two in step.
  */
 function regularPayments(payments: readonly CashDistribution[], asOf: Date): CashDistribution[] {
   const byDay = new Map<number, number[]>();
+  const typedDays = new Set<number>();
   for (const payment of payments) {
-    if (payment.exDate > asOf || !Number.isFinite(payment.amount) || !(payment.amount > 0)) continue;
+    if (payment.exDate > asOf || !Number.isFinite(payment.amount) || !(payment.amount > 0) || typedSpecial(payment)) continue;
     const day = payment.exDate.getTime();
     byDay.set(day, [...byDay.get(day) ?? [], payment.amount]);
+    if (payment.formTyped) typedDays.add(day);
   }
   const days = [...byDay].sort(([left], [right]) => left - right).map(([day, amounts]) => {
     const distinct = [...amounts].sort((left, right) => left - right)
@@ -303,6 +337,7 @@ function regularPayments(payments: readonly CashDistribution[], asOf: Date): Cas
     return slot > 0 && ratio >= RECURRING_BAND[0] && ratio <= RECURRING_BAND[1];
   };
   return days.filter((payment, index) => {
+    if (typedDays.has(payment.exDate.getTime())) return true;
     const before = days.slice(0, index).filter((other) => dayOf(payment) - dayOf(other) <= REGULAR_LOOKBACK_DAYS);
     return !(before.length >= 1 && payment.amount >= SPECIAL_MULTIPLE * median(before.map((other) => other.amount)) && !recurs(payment));
   });
@@ -384,7 +419,8 @@ function steppedPayments(year: readonly CashDistribution[], history: readonly Ca
  * is every year), with at least one of those years in the history.
  */
 export function combinedPaymentTimes(payments: readonly CashDistribution[]): Set<number> {
-  const paid = payments.filter((payment) => Number.isFinite(payment.amount) && payment.amount > 0)
+  // A row its issuer's forms split is told apart by them, not guessed.
+  const paid = payments.filter((payment) => Number.isFinite(payment.amount) && payment.amount > 0 && !payment.formTyped)
     .sort((left, right) => left.exDate.getTime() - right.exDate.getTime());
   const combined = new Set<number>();
   for (let index = 1; index < paid.length - 1; index += 1) {

@@ -699,6 +699,13 @@ export interface DividendAction {
    * VanEck), and the page it is published on. Absent elsewhere and from older servers.
    */
   source?: { publisher: string; url: string };
+  /**
+   * The dividends the row holds by the issuer's own dividend announcement
+   * forms (an HKEX listing's): each in the row's currency, summing to its
+   * amount, a special marked, with the form's type and where it is published.
+   * Absent where no form speaks for the row, and from older servers.
+   */
+  parts?: { amount: number; special: boolean; type: string; form: { url: string; publishedOn: string } }[];
 }
 
 /**

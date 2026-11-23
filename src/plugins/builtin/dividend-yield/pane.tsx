@@ -32,7 +32,7 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { fetchDividendData, repriceDividendMetrics, statedForwardRate, type DividendData } from "./client";
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import { useTickerQuoteStream } from "../../../state/hooks/live-ticker-financials";
-import { buildTrailingCashChartPoints, convertedFromText, formatConvertedAmount, formatDividendRowAmount, formatDividendYield, forwardEstimateText, growthPaymentsDetail, PAYOUT_BASIS, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText, type DividendRow } from "./view";
+import { buildTrailingCashChartPoints, convertedFromText, formatConvertedAmount, formatDividendRowAmount, formatDividendYield, forwardEstimateText, growthPaymentsDetail, PAYOUT_BASIS, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText, trailingSpecialText, type DividendRow } from "./view";
 import {
   DEFAULT_SORT_PREFERENCE,
   buildDividendColumns,
@@ -109,7 +109,8 @@ function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory
   const notSec = (note: string | null) => bond ? [note, "not SEC"].filter(Boolean).join(", ") : note;
   const forwardNote = metrics.forwardEstimate ? null : notSec(dated);
   // A regular payer's year with fewer payments than its cadence pays says how many the yield counts.
-  const trailingNote = notSec(trailingPaymentsText(metrics.trailingPayments));
+  const trailingNote = notSec([trailingPaymentsText(metrics.trailingPayments), trailingSpecialText(metrics, currency)]
+    .filter(Boolean).join(", ") || null);
   const ttmLabel = bond ? (short ? "TTM dist" : "TTM dist yld") : short ? "TTM yld" : "TTM yield";
   const fwdLabel = bond ? (short ? "Fwd dist" : "Fwd dist yld") : short ? "Fwd yld" : "Fwd yield";
   const sec = bond ? bondFigures(bond).find((figure) => figure.key === "secYield") : undefined;
