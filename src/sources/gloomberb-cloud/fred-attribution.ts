@@ -3,12 +3,12 @@ import { seriesNotOnFred, type FredSeriesData } from "./fred-series";
 
 /**
  * When FRED last updated a series, its `last_updated` (`2026-10-09 08:08:04-05`),
- * as an ISO instant in UTC: the publication time an export cites. Only when
+ * as an ISO instant in UTC, distinct from the publisher's release. Only when
  * that update covers the newest observation shown (`observationEnd` reaches
- * it): metadata from before it says nothing about when it was published.
+ * it): metadata from before it does not date the observation shown.
  * Null when it does not, or when FRED's metadata does not say.
  */
-export function fredPublicationTime(
+export function fredUpdateTime(
   info: { lastUpdated?: string | null; observationEnd?: string | null } | null | undefined,
   newestDate: string | null | undefined,
 ): string | null {
@@ -23,6 +23,7 @@ export interface FredProvenance {
   source: string;
   publisher?: string;
   publishedAt?: string;
+  fredUpdatedAt?: string;
 }
 
 /**
@@ -78,10 +79,10 @@ export function fredSeriesAttribution(
   const ahead = fredProvenance(data.observations.filter((observation) => observation.date === newestDate), seriesId);
   if (ahead) return ahead;
   const publisher = data.info?.source?.trim();
-  const publishedAt = fredPublicationTime(data.info, newestDate);
+  const fredUpdatedAt = fredUpdateTime(data.info, newestDate);
   return {
     source: notOnFredSource(seriesId) ?? "FRED",
     ...(publisher ? { publisher } : {}),
-    ...(publishedAt ? { publishedAt } : {}),
+    ...(fredUpdatedAt ? { fredUpdatedAt } : {}),
   };
 }

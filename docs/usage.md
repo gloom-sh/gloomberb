@@ -1999,7 +1999,7 @@ The plain commands that print market data end the same way: `quote`, `compare`, 
 
 **In `--json`** the facts are `data.freshness` for `fn` and `metadata.freshness` for the plain commands: `source`, `asOf`, `status`, `delayMinutes`, `retrievedAt`, and `asOfClose`, `tradingDayMarket`, `market`, `minDelayMinutes`, `oldest`, `lagDays`, `observation`, `sources`, `oldestAgeMinutes`, `note` when they apply.
 
-A top-level `source` object has `name`, `publisher`, `observationDate`, `publicationTime`, `retrievalTime`.
+A top-level `source` object has `name`, `publisher`, `observationDate`, `publicationTime`, `retrievalTime`. For data read from FRED, `fredUpdatedAt` dates FRED's update when known, not the publisher's release; the CSV notes call it `FRED updated`.
 
 Quotes name where each comes from: Gloom Cloud, a connected broker by its name, a plugin's data provider by the name it gives itself, joined with `and` (`Source: Gloom Cloud and Acme Feed · ...`). A quote whose source has no name to give leaves the source out of the line, and `name` is `null` in `--json`, rather than being credited to Gloom Cloud.
 

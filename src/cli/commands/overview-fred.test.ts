@@ -167,7 +167,7 @@ test("a start before the series begins starts every format at its first observat
   expect(csv.at(-1)).toBe("# note: Series begins 1980-01-02.");
 });
 
-test("a spread prints and exports in basis points as value, names bp in its unit column, and the CSV ends with FRED's publication time", async () => {
+test("a spread exports in basis points and distinguishes FRED's update from publication", async () => {
   serveSeries(() => ({
     observations: [{ date: "2026-10-09", value: 0.44 }, { date: "2026-10-08", value: -0.125 }],
     info: { ...T10Y2Y_INFO, lastUpdated: "2026-10-09 16:02:11-05", observationEnd: "2026-10-09" },
@@ -180,7 +180,7 @@ test("a spread prints and exports in basis points as value, names bp in its unit
   expect(csv[0]).toBe("date,value,symbol_or_series,currency_or_unit,interval,source,as_of,period,released,retrieved,first_released,revised_on,first_release_value");
   expect(csv[1]).toStartWith("2026-10-09,44,T10Y2Y,bp,daily,Federal Reserve Bank of St. Louis via FRED,2026-10-09,2026-10-09,,");
   expect(csv[2]).toStartWith("2026-10-08,-12.5,T10Y2Y,bp,daily,Federal Reserve Bank of St. Louis via FRED,2026-10-08,2026-10-08,,");
-  expect(csv).toContain("# Publication time: 2026-10-09T21:02:11.000Z");
+  expect(csv).toContain("# FRED updated: 2026-10-09T21:02:11.000Z");
   expect(csv.at(-1)).toBe("# note: Showing from 2021-01-01; earlier: --start YYYY-MM-DD (series begins 1976-06-01).");
   // The default start says it is one.
   expect(text).toContain("Showing from 2021-01-01; earlier: --start YYYY-MM-DD (series begins 1976-06-01).");
@@ -249,11 +249,11 @@ test("a yield ahead of FRED names Treasury and when it published, in the source 
   expect(csv).toContain('"U.S. Treasury, published 2026-10-09",2026-10-09,2026-10-09,,');
   expect(csv).toContain("Federal Reserve Board via FRED,2026-10-08,2026-10-08,,");
 
-  // Once FRED lists it, the line is FRED's again, with FRED's own publication time.
+  // Once FRED lists it, the line is FRED's again, with FRED's own update time.
   serveSeries(() => ({ observations: [{ date: "2026-10-09", value: 5.24 }], info: { ...info, observationEnd: "2026-10-09", lastUpdated: "2026-10-12 15:16:37-05" } }));
   const listed = await runFred(["DGS10"]);
   expect(listed.text.split("\n").at(-1)).toBe("Source: Federal Reserve Board via FRED \u00b7 Fri 9 Oct 2026 \u00b7 not a live feed (published statistics)");
-  expect(listed.result.freshness).toMatchObject({ publisher: "Federal Reserve Board", publishedAt: "2026-10-12T20:16:37.000Z" });
+  expect(listed.result.freshness).toMatchObject({ publisher: "Federal Reserve Board", publishedAt: null, fredUpdatedAt: "2026-10-12T20:16:37.000Z" });
 });
 
 test("a series FRED does not carry names its publisher and where it is read from, never FRED", async () => {
@@ -299,7 +299,7 @@ test("a chart and its export cite a series as fred does: its own publisher and w
   // A series FRED lists cites FRED, its publisher as FRED names it, and when FRED last updated it.
   const dgs10 = { observations: [{ date: "2026-10-09", value: 4.11 }], info: { id: "DGS10", source: "Board of Governors of the Federal Reserve System (US)", observationEnd: "2026-10-09", lastUpdated: "2026-10-12 15:16:37-05" } };
   expect(fredSeriesAttribution("DGS10", dgs10 as never)).toEqual({
-    source: "FRED", publisher: "Board of Governors of the Federal Reserve System (US)", publishedAt: "2026-10-12T20:16:37.000Z",
+    source: "FRED", publisher: "Board of Governors of the Federal Reserve System (US)", fredUpdatedAt: "2026-10-12T20:16:37.000Z",
   });
 });
 
@@ -324,9 +324,13 @@ test("a monthly series names its month and the day it was released, and the repo
       info: { id: "PERMIT", units: "Thousands of Units", frequency: "Monthly", observationStart: "1960-01-01", observationEnd: "2026-09-01",
         lastUpdated: "2026-10-20 07:33:50-05", source: "U.S. Census Bureau" },
     }));
-    const { result, text } = await runFred(["PERMIT"]);
+    const { result, text, options } = await runFred(["PERMIT"]);
     expect(text.split("\n").at(-1)).toBe("Source: Census Bureau via FRED \u00b7 Sep 2026, released Tue 20 Oct \u00b7 not a live feed (published statistics)");
     expect(result.freshness).toMatchObject({ asOf: "2026-10-20", referencePeriod: "2026-09-01", periodicity: "monthly", publisher: "Census Bureau" });
+    const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options);
+    expect(csv).toContain("# Publication time: not published\n# FRED updated: 2026-10-20T12:33:50.000Z");
+    const json = JSON.parse(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "json" }, options));
+    expect(json.source).toMatchObject({ publicationTime: null, fredUpdatedAt: "2026-10-20T12:33:50.000Z" });
   } finally {
     setSystemTime();
   }

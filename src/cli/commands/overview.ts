@@ -106,7 +106,7 @@ import {
   FRED_VINTAGE_NOTE,
   parseFredChange,
 } from "./fred-series";
-import { fredProvenance, fredPublicationTime, notOnFredSource } from "../../sources/gloomberb-cloud/fred-attribution";
+import { fredProvenance, fredUpdateTime, notOnFredSource } from "../../sources/gloomberb-cloud/fred-attribution";
 import { followsUsBondMarket, usBondMarketClosedNote } from "../../market-data/us-bond-market";
 import { commandWord } from "../../utils/shell-word";
 
@@ -1005,7 +1005,7 @@ async function printFredSeries(ctx: Parameters<CliCommandDef["execute"]>[1], { s
   const ahead = fredProvenance(rows.filter((row) => row.value != null && row.date === newestDate), seriesId);
   // FRED names the series' publisher when Gloom Cloud passes it on, and when it last updated the series.
   const publisher = ahead?.publisher ?? fredPublisher(seriesId, data.info?.source);
-  const publishedAt = ahead ? ahead.publishedAt : fredPublicationTime(data.info, newestDate);
+  const fredUpdatedAt = ahead ? null : fredUpdateTime(data.info, newestDate);
   // When the newest figure was released: the report is as of then, `Sep 2026, released Tue 20 Oct`.
   const releasedOn = ahead ? undefined : data.observations.find((observation) => observation.date === newestDate)?.releasedOn;
   const seriesSource = elsewhere ?? fredCitation(seriesId, data.info?.source);
@@ -1024,7 +1024,8 @@ async function printFredSeries(ctx: Parameters<CliCommandDef["execute"]>[1], { s
       ...(periodicity ? { periodicity } : {}),
       ...(releasedOn ? { releasedOn } : {}),
       ...(publisher ? { publisher } : {}),
-      ...(publishedAt ? { publishedAt } : {}),
+      publishedAt: ahead?.publishedAt ?? null,
+      ...(fredUpdatedAt ? { fredUpdatedAt } : {}),
     }),
   }, {
     dateKey: "date",
@@ -1087,23 +1088,23 @@ async function runYieldCurve(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       previousValue: previous?.value ?? null,
       changeBasisPoints: latest?.value != null && previous?.value != null ? toBasisPoints(latest.value - previous.value, 1) : null,
       latest,
-      publishedAt: latest?.publisher ? null : fredPublicationTime(data.info, latest?.date),
+      fredUpdatedAt: latest?.publisher ? null : fredUpdateTime(data.info, latest?.date),
     };
   })));
   // Tenors whose latest yield FRED does not list yet name the Treasury and when it published them.
   const ahead = fredProvenance(results.flatMap((row) => row.latest ? [row.latest] : []));
   const shown = results.map((row) => row.date).filter(Boolean).sort().at(-1);
   const closedDay = shown ? usBondMarketClosedNote(startDate, shown) : null;
-  // The curve shown was published with its last tenor: the newest of their FRED updates, when each has one.
-  const published = results.map((row) => row.publishedAt);
-  const publishedAt = ahead ? ahead.publishedAt : published.every((time) => time != null) ? published.sort().at(-1) : null;
+  const updates = results.flatMap((row) => row.fredUpdatedAt ? [row.fredUpdatedAt] : []);
+  const fredUpdatedAt = updates.length === results.length ? updates.sort().at(-1) : null;
   ctx.printResult({
-    data: results.map(({ publishedAt: _publishedAt, latest: _latest, ...row }) => row),
+    data: results.map(({ fredUpdatedAt: _fredUpdatedAt, latest: _latest, ...row }) => row),
     metadata: { startDate },
     freshness: rowsFreshness(results, {
       source: ahead?.source ?? "FRED", status: "not-a-feed", basis: "daily Treasury yields", observedKey: "date",
       ...(ahead?.publisher ? { publisher: ahead.publisher } : {}),
-      ...(publishedAt ? { publishedAt } : {}),
+      publishedAt: ahead?.publishedAt ?? null,
+      ...(fredUpdatedAt ? { fredUpdatedAt } : {}),
     }),
   }, {
     exportIdentity: (row) => ({ symbolOrSeries: String(row.seriesId), currencyOrUnit: "pct", interval: "daily" }),
