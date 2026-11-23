@@ -10,6 +10,7 @@ import { CommandBarListBody } from "../list/view";
 import { ThemePicker } from "../theme-picker";
 import type { CommandBarRoute } from "../workflow/types";
 import { HEADER_MARKET_TITLE, isHeaderMarketRoute } from "../routes/header-market";
+import { SECURITY_DESCRIPTION_TITLE } from "../routes/ticker-search/title";
 import { NATIVE_COMMAND_SURFACE, nativeCommandSurfaceBorder } from "./native-surface";
 import { useCommandBarPalette } from "./palette";
 import { publishCommandBarPrompt } from "./prompt-binding";
@@ -43,7 +44,7 @@ function resolvePromptPlaceholder(listState: ListScreenState, example: string | 
   if (listState.kind === "root") {
     return example ? tf("Try: {example}", { example }) : t("Search or run a command");
   }
-  if (listState.title === "Security Description" || listState.title === HEADER_MARKET_TITLE) return t("Search tickers");
+  if (listState.searchesTickers) return t("Search tickers");
   return t("Filter");
 }
 
@@ -218,7 +219,7 @@ export function CommandBarPanel({
                         cut={terminalChangeTickerTitle}
                       />
                     ) : (
-                      <ClippedText fg={palette.text} attributes={TextAttributes.BOLD} text={t(getCommandBarPanelTitle(currentRoute))} width={Math.max(1, queryDisplayWidth - 8)} />
+                      <ClippedText fg={palette.text} attributes={TextAttributes.BOLD} text={t(getCommandBarPanelTitle(currentRoute, visibleListState))} width={Math.max(1, queryDisplayWidth - 8)} />
                     )}
                     {tickerSearchTarget && (
                       <>
@@ -293,10 +294,12 @@ export function CommandBarPanel({
   );
 }
 
-function getCommandBarPanelTitle(route: CommandBarRoute): string {
+/** A mode screen is titled as its list is (a ticker search by the function it opens); any other route by its own title. */
+function getCommandBarPanelTitle(route: CommandBarRoute, listState: ListScreenState | null): string {
   if (route.kind === "mode") {
+    if (listState?.kind === "mode") return listState.title;
     if (route.screen === "layout") return "Layout Actions";
-    return isHeaderMarketRoute(route.payload) ? HEADER_MARKET_TITLE : "Security Description";
+    return isHeaderMarketRoute(route.payload) ? HEADER_MARKET_TITLE : SECURITY_DESCRIPTION_TITLE;
   }
   return route.title;
 }

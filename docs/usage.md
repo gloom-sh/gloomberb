@@ -1599,7 +1599,7 @@ A terminal's code is the listing it names, and a line such as `Read WFC.N as WFC
 
 #### Index roots
 
-An index typed with the venue search files it under (`^VIX:CXI`) is the index itself, as the bare `^VIX` is. A bare index root such as `VIX`, `SPX` or `MOVE` points at the index: `quote VIX` fails with `^VIX  Cboe Volatility Index (try: gloom quote "^VIX")`, and `quote MOVE` (Corvex) adds `also ^MOVE ICE BofA MOVE Index`. A suggested command writes a `^` symbol in double quotes, which every shell reads as typed: cmd.exe drops a bare `^` as its escape character.
+An index typed with the venue search files it under (`^VIX:CXI`) is the index itself, as the bare `^VIX` is. A bare index root such as `VIX`, `SPX` or `MOVE` points at the index: `quote VIX` fails with `^VIX  Cboe Volatility Index (try: gloom quote "^VIX")`, and `quote MOVE` (Corvex) adds `also ^MOVE ICE BofA MOVE Index`. The app's ticker picker reads a root the same way: `spx` lists ^SPX first, and a US-listed or saved ticker of the same letters keeps the lead with the index right after it (`MOVE` lists Corvex, then ^MOVE). A suggested command writes a `^` symbol in double quotes, which every shell reads as typed: cmd.exe drops a bare `^` as its escape character.
 
 A broker's code for an index is the index: `VIX.X` and `$VIX.X` (thinkorswim) and `$VIX` (Schwab) are `^VIX` in `quote`, `ticker`, `fn` and `search`, which says `Read VIX.X as ^VIX (Cboe Volatility Index).` Only the index roots the app knows are read this way. A `$` is otherwise a cashtag: `$AAPL` is AAPL, and `$MOVE` is Corvex.
 

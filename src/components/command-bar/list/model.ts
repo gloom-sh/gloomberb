@@ -109,6 +109,8 @@ export interface ListScreenState {
   footerRight: string;
   sectionOrder?: CommandBarSectionOrder;
   categoryPriorities?: CommandBarCategoryPriorities;
+  /** A ticker search, whatever its title names: its prompt asks for a ticker. */
+  searchesTickers?: boolean;
 }
 
 export type CommandBarListRow =

@@ -4,8 +4,9 @@ import { buildTickerSearchCandidates } from "../../../../tickers/search";
 import type { InstrumentSearchResult } from "../../../../types/instrument";
 import { orderListResults } from "../../list/model";
 import { exactMatchAfterCommands } from "../../view-model";
-import { DID_YOU_MEAN_CATEGORY, formatInstrumentBadge, mergePlainRootTickerResults, mergeTickerSearchResultItems, readRootTickerQuery, venueDropdownResults, withMajorCoinCandidate, wordNamesCommand } from "./results";
+import { DID_YOU_MEAN_CATEGORY, formatInstrumentBadge, mergePlainRootTickerResults, mergeTickerSearchResultItems, readRootTickerQuery, venueDropdownResults, withMajorCoinCandidate, withTypedInstrumentCandidates, wordNamesCommand } from "./results";
 import searchAnswers from "../../../../tickers/search/fixtures/search-answers-2026-11-13.json";
+import { createTestTicker } from "../../../../test-support/ticker";
 
 function resultItem(id: string, label: string, right: string, kind: ResultItem["kind"] = "ticker"): ResultItem {
   return {
@@ -151,6 +152,40 @@ test("a major coin's bare ticker offers the coin, first when the listing ahead c
     { ...resultItem("pair", "BCH-USD", "CCC", "search"), category: "Other Listings", instrumentType: "CRYPTOCURRENCY" },
   ], []);
   expect(rows.map((row) => row.category)).toEqual(["Exact Match", "Other Listings"]);
+});
+
+// SPX in the bar listed SpaceX's six German lines first and the S&P 500 twelfth; `fn SEAS SPX` opens ^SPX.
+test("an index root leads with its index, unless a US listing or a saved ticker trades as the letters", () => {
+  const listing = (symbol: string, name: string, exchange: string, type = "Common Stock"): InstrumentSearchResult => (
+    { providerId: "gloomberb-cloud", symbol, name, exchange, type }
+  );
+  const order = (query: string, results: InstrumentSearchResult[], tickers = new Map()) => withTypedInstrumentCandidates(
+    query,
+    buildTickerSearchCandidates({ query, tickers, providerResults: results, totalLimit: 30 }),
+    tickers,
+  ).map((candidate) => `${candidate.symbol}:${candidate.result?.exchange ?? candidate.ticker?.metadata.exchange}`);
+
+  expect(order("spx", [listing("SPX", "Space Exploration Technologies Corp.", "XETRA"), listing("SPX", "Spirax Group plc", "LSE"),
+    { ...listing("^GSPC", "S&P 500", "SNP", "INDEX"), searchAliases: ["SPX"] }]).slice(0, 2)).toEqual(["^SPX:", "SPX:XETRA"]);
+  // A root with no listing at all, and one quoted under another symbol (VHSI is ^HSIL).
+  expect(order("VIX", [])).toEqual(["^VIX:"]);
+  expect(order("vhsi", [])).toEqual(["^HSIL:"]);
+  // An index search sent keeps its own row, moved to the front.
+  expect(order("NDX", [listing("NDX", "Nordex SE", "XETRA"), listing("^NDX", "NASDAQ-100", "NIM", "INDEX")])).toEqual(["^NDX:NIM", "NDX:XETRA"]);
+  // MOVE trades as Corvex in New York, as every command reads it: the index follows it.
+  expect(order("MOVE", [listing("MOVE", "Corvex, Inc.", "NASDAQ"), listing("MOVE", "Movella", "TSX")])).toEqual(["MOVE:NASDAQ", "^MOVE:", "MOVE:TSX"]);
+  // A ticker saved under the letters is what the user meant by them before.
+  const saved = new Map([["RUT", createTestTicker("RUT", "Saved RUT")]]);
+  expect(order("RUT", [], saved).map((key) => key.split(":")[0])).toEqual(["RUT", "^RUT"]);
+  // Neither a caret nor a word that is no root adds an index.
+  expect(order("^SPX", [listing("^SPX", "S&P 500 Index", "", "INDEX")])).toEqual(["^SPX:"]);
+  expect(order("AAPL", [listing("AAPL", "Apple Inc.", "NASDAQ")])).toEqual(["AAPL:NASDAQ"]);
+
+  // The index is the exact match for its root, as the coin is for BTC.
+  const rows = mergeTickerSearchResultItems("spx", [
+    { ...resultItem("index", "^SPX", "", "search"), detail: "S&P 500 Index", category: "Other Listings", instrumentType: "INDEX" },
+  ], []);
+  expect(rows.map((row) => row.category)).toEqual(["Exact Match"]);
 });
 
 test("an index typed by its code is the exact match; the fund named for it and a name search are not", () => {
