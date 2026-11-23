@@ -103,8 +103,10 @@ export function shotFreshness(
   const quotes = listings.length > 0 ? listings : loaded;
   // A pane that publishes the observations behind its figures (FXC's rates) dates itself.
   const observed = renderedReportObservations(render.semanticUi ?? []);
-  // A view that dates its data in its own footer (a DES research tab's holdings) is not dated by the quotes either.
-  const ownStatus = rendersOwnStatus(render.semanticUi ?? []);
+  // A view that dates its data in its own footer (a DES research tab's holdings) is not dated by the quotes either,
+  // and the capture keeps that footer, unless the view publishes how current it is (OMON's chain), which its line says.
+  const ownStatus = rendersOwnStatus(render.semanticUi ?? [])
+    && !(declared.status || declared.asOf != null || declared.sources?.length || observed.length > 0);
   const quoted = declared.status || observed.length > 0 || ownStatus
     ? undefined
     // Quotes across markets name each one's session and open (`LSE opens Mon 08:00 UTC · US Mon 14:30 UTC`), as compare and QM do.
