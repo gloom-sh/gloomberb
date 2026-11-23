@@ -28,7 +28,7 @@ import {
 } from "../../../api-client/equity-screener";
 import { yearToDateBaseLabel } from "../../../market-data/market/year-to-date";
 import { canonicalExchange, isUsListingExchange, parsePublicTickerKey } from "../../../utils/exchanges";
-import { LATEST_DISTRIBUTION, TRAILING_DIVIDEND_BASIS } from "../../../utils/forward-dividend";
+import { LATEST_DISTRIBUTION, TRAILING_DIVIDEND_BASIS, UNEVEN_REGULAR_PAYMENTS } from "../../../utils/forward-dividend";
 import { MISSING_VALUE, formatCompact, formatNumber, formatPercentRaw } from "../../../utils/format";
 import { formatMarketPrice } from "../../../market-data/market/format";
 import { formatPriceEarnings, NOT_MEANINGFUL } from "../../../utils/price-earnings";
@@ -301,13 +301,16 @@ export function gradeRankText(metric: Pick<ScreenMetric, "source">): string | nu
 
 /**
  * A row's dividend yield basis, in the words `ticker` and `DVD` use. Gloom
- * Cloud serves each row's statistics yield as it is stated, forward for most
- * companies and trailing where only that is stated, and names it in the
- * metric's reason; a row whose basis is not stated gets none.
+ * Cloud serves the forward yield DVD and DES show, and names it in the
+ * metric's reason: the latest distribution annualized, or an uneven year's
+ * regular payments summed. A company with no forward rate has no value (its
+ * reason names its trailing yield). An older server's trailing row still
+ * reads as trailing; a row whose basis is not stated gets none.
  */
 export function dividendYieldBasis(metric: ScreenMetric): string | null {
   if (metric.value == null) return null;
-  if (/^forward yield\b/i.test(metric.reason ?? "")) return LATEST_DISTRIBUTION;
+  if (/^forward yield\b/i.test(metric.reason ?? ""))
+    return (metric.reason ?? "").includes(`(${UNEVEN_REGULAR_PAYMENTS})`) ? UNEVEN_REGULAR_PAYMENTS : LATEST_DISTRIBUTION;
   if (/^trailing yield\b/i.test(metric.reason ?? "")) return TRAILING_DIVIDEND_BASIS;
   return null;
 }

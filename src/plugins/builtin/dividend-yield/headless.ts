@@ -365,7 +365,7 @@ export function projectDividendYieldHeadless(
       // Declared and unpaid, apart from the paid history the table and every figure read.
       declaredDividends: data.declared ?? [],
       forwardRateMethod: "Indicated annual cash rate, the one fundamentals use: the latest regular distribution annualized, or once the next one is declared that one, dated by its ex-date (forwardRateAsOf; a date still ahead is the declared distribution's). When the trailing year's regular payments differ widely (the largest over 1.5 times the smallest; forwardBasis: uneven), their total instead, dated by the latest. Only when its currency units are comparable with the share price.",
-      payoutMethod: "Trailing twelve-month dividends over trailing twelve-month diluted EPS, as the source states it; N/M (not meaningful) when that EPS is zero or negative.",
+      payoutMethod: "Trailing twelve-month dividends over trailing twelve-month diluted EPS: the distributions paid in the last 12 months over the EPS the P/E is on, both in the quote's currency (the source's stated ratio where either cannot be read in it); N/M (not meaningful) when that EPS is zero or negative.",
       paymentFrequencyMethod: "Cadence inferred from ex-dates in the last two years, unavailable when no cash was reported in the last year; not an announced payment schedule.",
       // A bond fund's sponsor figures, each dated; its distribution yields above are not its SEC yield.
       ...(bond ? { bondFund: { ...bond, class: bondClassText(bond) } } : {}),

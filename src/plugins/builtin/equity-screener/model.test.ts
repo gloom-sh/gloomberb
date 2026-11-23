@@ -149,8 +149,13 @@ test("a dividend yield names its own row's basis, and none the server did not st
   const base = { ...payload().rows[0]!.metrics.trailingPE, value: 3.2, unit: "%" };
   const basis = (reason: string) => dividendYieldBasis({ ...base, reason });
   expect(basis("forward yield; provider observation date unavailable")).toBe("latest distribution annualized");
+  // DVD's words for an uneven year's forward rate, its regular payments summed.
+  expect(basis("forward yield (trailing regular payments: uneven interims); provider observation date unavailable"))
+    .toBe("trailing regular payments: uneven interims");
   expect(basis("trailing yield; provider observation date unavailable")).toBe("last 12 months of distributions");
   expect(basis("Unspecified yield; provider observation date unavailable")).toBeNull();
+  // No forward rate: no value, so no basis line; the reason names the trailing yield.
+  expect(dividendYieldBasis({ ...base, value: null, reason: "No forward rate; trailing yield 6.12% (last 12 months of distributions)" })).toBeNull();
 });
 
 test("result columns lead with the focus metric and the screen's criteria; money needs a currency", () => {
