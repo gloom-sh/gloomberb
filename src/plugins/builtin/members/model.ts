@@ -4,7 +4,9 @@ import type { DataTableColumn } from "../../../components";
 import { buildSectionedRows, type SectionedRow } from "../../../components/data-table/sections";
 import { getTableWidth } from "../../../components/ui/table-layout";
 import { isRegularSessionTime, latestRegularSessionClose } from "../../../market-data/market/freshness";
-import { isUsListingExchange } from "../../../utils/exchanges";
+import { listingSuffixExchange, listingSuffixVenue } from "../../../sources/listing-symbols";
+import { isUsOtcVenue, parsePublicTickerKey } from "../../../utils/exchanges";
+import { listingAbroadVenue, nonUsSecListingVenue } from "../../../utils/sec";
 import { compareSortValues, type SortPreference } from "../../../utils/sort-values";
 import { rankTickerMatches } from "../../../utils/ticker-match-order";
 import { closeLabel } from "../themes/model";
@@ -91,8 +93,10 @@ const count = (value: number, noun = "") => `${value.toLocaleString("en-US")}${n
  */
 export function stockFundsNotices(data: StockFundsPayload) {
   const total = data.coverage.daily + data.coverage.nport;
+  const holders = new Set(data.funds.map((row) => row.ticker)).size;
+  const position = data.funds.some((row) => row.holdingType === "adr") ? `shares or ADRs for ${data.symbol}` : data.symbol;
   return [
-    `${count(data.funds.length)} of ${count(total)} ETFs looked through hold ${data.symbol}: ${count(data.coverage.daily, "covered fund")} from daily holdings files, ${count(data.coverage.nport)} from their latest SEC N-PORT reports.`,
+    `${count(holders)} of ${count(total)} ETFs looked through hold ${position}: ${count(data.coverage.daily, "covered fund")} from daily holdings files, ${count(data.coverage.nport)} from their latest SEC N-PORT reports.`,
     ...(data.funds.some((row) => row.basis === "nport") ? ["N-PORT holdings are a quarter's report, filed up to 60 days after the date they are as of."] : []),
   ];
 }
@@ -101,16 +105,17 @@ export function fundSource(fund: { basis?: "daily" | "nport"; filedOn?: string |
   if (fund.basis !== "nport") return "Daily file";
   return fund.filedOn ? `N-PORT, filed ${dayMonth(fund.filedOn, true)}` : "N-PORT";
 }
-/**
- * The US ticker a look-through asks for (NVDA, BRK.B), from a bare symbol or a US listing; null for a listing abroad
- * (INFY:NSE), whose code is not the ticker the funds' holdings carry.
- */
-export function usListingInput(input: string): string | null {
-  const [symbol, exchange] = input.trim().toUpperCase().split(":");
-  return symbol && (!exchange || isUsListingExchange(exchange)) ? symbol : null;
+export function stockListingInput(input: string, venue?: string): string {
+  const { symbol, exchange } = parsePublicTickerKey(input);
+  const abroad = exchange ? nonUsSecListingVenue(input) : venue ? listingAbroadVenue(`${symbol}:${venue}`) : null;
+  if (abroad && !isUsOtcVenue(abroad)) return `${listingSuffixVenue(symbol, abroad)?.symbol ?? symbol}:${abroad}`;
+  const suffixed = exchange || venue ? null : listingSuffixVenue(symbol, /^\d/.test(symbol) ? listingSuffixExchange(symbol) : undefined);
+  return suffixed ? `${suffixed.symbol}:${suffixed.exchange}` : symbol;
 }
 /** No ETF looked through holds the symbol: it may be a fund MEMB does not cover, so the fund facts are named too. */
 export function noStockFundsMessage(input: string, surface: "report" | "pane" = "report") {
+  const listing = stockListingInput(input);
+  if (listing.includes(":")) return { title: `No ETF looked through holds ${listing}.`, message: "" };
   const symbol = requestedSymbol(input);
   return { title: `No ETF looked through holds ${symbol}.`,
     message: surface === "pane" ? `If ${symbol} is a fund, MEMB does not cover it: its fund facts are in ETF ${symbol}. MEMB with no fund lists the funds it covers.`
@@ -131,6 +136,8 @@ export function fundName(fund: { name: string; plainName?: string }) {
   return fund.plainName ?? fund.name;
 }
 export function membersTitle(input: string, stock = false) {
+  const listing = stockListingInput(input);
+  if (stock && listing.includes(":")) return `Funds holding ${listing}`;
   const requested = input.split(":")[0]!.trim().toUpperCase();
   const fund = canonicalFund(requested);
   const definition = COVERED.find((item) => item.ticker === fund);
@@ -177,12 +184,17 @@ export function memberColumns(width: number, movers = false): DataTableColumn[] 
     column("changePercent", "1D", compact ? 8 : 9), ...(!movers ? [column("return1WPercent", "1W", 9), column("return1MPercent", "1M", 9), column("returnYtdPercent", "YTD", 9), column("sector", "Sector", 22, "left")] : [])], width,
     ["sector", "shares", "returnYtdPercent", "return1MPercent", "return1WPercent", "price", "name"]);
 }
-/** The ETFs holding a stock, in two sections: the covered funds on daily holdings files, then those read from N-PORT reports, each by weight as the server orders them. */
+export function stockHoldingLabel(row: StockFund): string | undefined {
+  if (row.holdingType === "ordinary") return "Ordinary shares";
+  if (row.holdingType === "adr") return row.receiptTicker ? `ADR (${row.receiptTicker})` : "ADR";
+}
 export function stockFundRows(rows: readonly StockFund[]): SectionedRow<StockFund>[] {
-  return buildSectionedRows([
-    { label: "Daily holdings files", items: rows.filter((row) => row.basis === "daily") },
-    { label: "SEC N-PORT reports", items: rows.filter((row) => row.basis === "nport") },
-  ], (row) => row.ticker);
+  const groups = [...new Set(rows.map(stockHoldingLabel))].sort((left, right) =>
+    Number(left !== "Ordinary shares") - Number(right !== "Ordinary shares") || (left ?? "").localeCompare(right ?? ""));
+  return buildSectionedRows(groups.flatMap((group) => [
+    { label: group ? `${group} · Daily holdings files` : "Daily holdings files", items: rows.filter((row) => stockHoldingLabel(row) === group && row.basis === "daily") },
+    { label: group ? `${group} · SEC N-PORT reports` : "SEC N-PORT reports", items: rows.filter((row) => stockHoldingLabel(row) === group && row.basis === "nport") },
+  ]), (row) => row.holdingType ? `${row.ticker}:${row.holdingType}:${row.receiptTicker ?? ""}` : row.ticker);
 }
 /** Whether a stock's fund table has room for each row's whole "as of 30 Jun 2026 (N-PORT, filed 26 Aug)". */
 export const stockFundAsOfFits = (width: number) => width >= 96;

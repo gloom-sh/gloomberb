@@ -51,6 +51,8 @@ export interface StockFund {
   ticker: string; name: string; basis: "daily" | "nport"; weight: number | null; shares: number; marketValue: number | null;
   /** The stock as the fund's holdings name it. */
   holdingName: string;
+  holdingType?: "ordinary" | "adr";
+  receiptTicker?: string;
   asOf: string; filedOn: string | null; sourceUrl?: string;
 }
 /**
