@@ -46,7 +46,7 @@ export function validateFuturesCurve(data: FuturesCurvePayload, root: string): F
       || !rank(row.percentile) || !Number.isInteger(row.samples) || row.samples < 0
       || row.asOf !== null && !timestamp(row.asOf)
       || ![row.volume, row.openInterest, row.delayMinutes].every((value) => finiteOrNull(value) && (value === null || value >= 0))
-      || row.settlement !== undefined && !finiteOrNull(row.settlement) || !optionalDate(row.lastTrade) || !optionalDate(row.firstNotice)
+      || row.settlement !== undefined && !finiteOrNull(row.settlement) || !optionalDate(row.lastTrade) || !optionalDate(row.firstNotice) || !optionalDate(row.openInterestAsOf)
       || row.inDelivery !== undefined && typeof row.inDelivery !== "boolean" || !validContractSpot(row.spot)) {
       throw new Error("The server returned an invalid futures contract");
     }

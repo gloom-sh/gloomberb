@@ -1,17 +1,21 @@
 import { statGridRows, type StatItem } from "../ui/stat-grid";
 import { getTableWidth, hasMeaningfulTableHorizontalOverflow, hiddenTableColumnRows, type TableWidthColumn } from "../ui/table-layout";
 
-/** Drop optional columns in priority order, using the same widths as the table. */
+/**
+ * Drop optional columns in priority order, using the same widths as the table. An entry that lists several ids drops
+ * them together: a figure and the date it is read with never show apart.
+ */
 export function fitChartTableColumns<C extends TableWidthColumn & { id: string }>(
   columns: readonly C[],
   width: number,
-  dropOrder: readonly C["id"][],
+  dropOrder: readonly (C["id"] | readonly C["id"][])[],
 ): C[] {
   let kept = [...columns];
-  for (const id of dropOrder) {
+  for (const entry of dropOrder) {
     // Reserve the vertical scrollbar, including when the current rows fit.
     if (getTableWidth(kept) <= width - 1) break;
-    kept = kept.filter((column) => column.id !== id);
+    const ids: readonly string[] = typeof entry === "string" ? [entry] : entry;
+    kept = kept.filter((column) => !ids.includes(column.id));
   }
   return kept;
 }

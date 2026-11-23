@@ -4,7 +4,7 @@ import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneEntry, Hea
 import { MISSING_VALUE, formatPercentRaw } from "../../../utils/format";
 import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 import { loadFuturesCurve, loadCurveSpot, loadCurveSpotBars, loadCurveSpotCloses, loadFuturesCurveAsOf } from "./client";
-import { curveReportFreshness, basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveCache, curveSpotBars, curveBasisPercent, curveBasisRows, curveChangeText, curveContractCode, curveIncompleteDetail, curvePrice, curveReadsThirtySeconds, curveRoundedPrice, curveSpotSource, curveSpotPremium, curveSpreadLabel, curveTimestamp, curveNoTradeSince, curveSessionNote, curveSettleShown, curveStandIn, curveUnitLabel, curveRootNamed, noTradeChangeNote, normalizeCurveRoot, shortDatedBasisNote, skippedSpreadNotice, spotIndexSymbol, thinSpreadNotice, unpairedContractCount, unsupportedCurveRootMessage, type ContractBasis, type CurveSpotPremium } from "./model";
+import { curveReportFreshness, basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveCache, curveSpotBars, curveBasisPercent, curveInterestDate, curveBasisRows, curveChangeText, curveContractCode, curveIncompleteDetail, curvePrice, curveReadsThirtySeconds, curveRoundedPrice, curveSpotSource, curveSpotPremium, curveSpreadLabel, curveTimestamp, curveNoTradeSince, curveSessionNote, curveSettleShown, curveStandIn, curveUnitLabel, curveRootNamed, noTradeChangeNote, normalizeCurveRoot, shortDatedBasisNote, skippedSpreadNotice, spotIndexSymbol, thinSpreadNotice, unpairedContractCount, unsupportedCurveRootMessage, type ContractBasis, type CurveSpotPremium } from "./model";
 import { COMMODITIES_VIEW_STATE } from "../commodities-energy/view-state";
 import { knownGapMessage } from "../../../cli/known-gaps";
 
@@ -25,7 +25,8 @@ const basisValue = (value: number | null) => value == null ? null : Number(value
  * `change` is `price` less `settlement`; `noTradeSince` dates the settlement
  * a contract has not traded since, whose change is therefore blank, and
  * `settleShown` the one it is shown and plotted at (no trade since, or none
- * at all). A crypto
+ * at all). `openInterestAsOf` is the session the open interest counts, a day
+ * or so before the trade in `asOf`; null when the server cannot date it. A crypto
  * root adds the basis: the spot in the minute of `price`'s trade and that
  * minute (`spot`, `spotTime`), the fractional days from the trade to final
  * settlement, and the premium and its yearly rate.
@@ -40,7 +41,9 @@ function contractRow(row: FuturesContract, data: FuturesCurvePayload, root: stri
     noTradeSince: past ? null : curveNoTradeSince(row, data),
     // The settlement session a live contract is shown at, when it has no trade since (or none at all): its curve point is that settlement.
     settleShown: past ? null : curveSettleShown(row, data),
-    asOf: row.asOf, stale: row.stale, volume: row.volume, openInterest: row.openInterest, percentile: rank(row.percentile),
+    asOf: row.asOf, stale: row.stale, volume: row.volume, openInterest: row.openInterest,
+    // The session the open interest counts, not the trade beside it; null when the server cannot date it.
+    openInterestAsOf: row.openInterest != null ? row.openInterestAsOf ?? null : null, percentile: rank(row.percentile),
     samples: row.samples, historyStart: row.historyStart, historyEnd: row.historyEnd,
     currency: row.currency, quoteUnit: curveUnitLabel(data) ?? row.quoteUnit, delayMinutes: row.delayMinutes,
     ...(basis ? { spot: price(basis.spot), spotTime: basis.spotTime, daysToExpiry: basisValue(basis.daysToExpiry),
@@ -81,6 +84,9 @@ function contractColumns(root: string, settlementDate: string | null, options: {
       format: (value, row) => typeof row.settleShown === "string" ? MISSING_VALUE : typeof value === "string" ? curveTimestamp(value) : MISSING_VALUE,
       textFormat: (value, row) => typeof row.settleShown === "string" ? `settle ${row.settleShown}` : typeof value === "string" ? curveTimestamp(value) : MISSING_VALUE },
     { key: "openInterest", header: "Open Int", align: "right", format: (value) => typeof value === "number" ? value.toLocaleString("en-US") : MISSING_VALUE },
+    // Its own session beside it: the text says `n/a` for a count it cannot date, an export leaves the cell empty.
+    { key: "openInterestAsOf", header: "OI Date", shrink: false, format: date,
+      textFormat: (value, row) => curveInterestDate({ openInterest: typeof row.openInterest === "number" ? row.openInterest : null, openInterestAsOf: typeof value === "string" ? value : null }) },
     { key: "volume", header: "Volume", align: "right", format: (value) => typeof value === "number" ? value.toLocaleString("en-US") : MISSING_VALUE },
     { key: "percentile", header: "Pctl", align: "right", format: (value) => typeof value === "number" ? String(value) : MISSING_VALUE },
   ];
