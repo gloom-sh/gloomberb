@@ -43,6 +43,7 @@ import {
   filingPreviewTruncated,
 } from "./filing-documents";
 import {
+  buildFilingContentPreviews,
   buildInlineFilingContentTargets,
   useSecFilingContentCache,
 } from "./filing-content";
@@ -103,7 +104,7 @@ function buildDetailBodyWithDocuments({
   documents,
   documentsLoading,
   documentsError,
-  contentCache,
+  previews,
   contentErrors,
   primaryContent,
 }: {
@@ -112,7 +113,7 @@ function buildDetailBodyWithDocuments({
   documentsLoading: boolean;
   documentsError: string | null;
   contentErrors: Map<string, string>;
-  contentCache: Map<string, string | null>;
+  previews: Map<string, string | null>;
   primaryContent: string;
 }): string {
   const lines: string[] = [];
@@ -135,8 +136,8 @@ function buildDetailBodyWithDocuments({
     lines.push("", "Inline Exhibits");
     for (const document of exhibits) {
       const key = documentContentKey(filing, document);
-      const hasContent = contentCache.has(key);
-      const content = contentCache.get(key);
+      const hasContent = previews.has(key);
+      const content = previews.get(key);
       lines.push("", documentHeading(document));
       lines.push(contentErrors.has(key) && !content
         ? `Exhibit content unavailable: ${contentErrors.get(key)}`
@@ -177,6 +178,7 @@ function toFeedItems(
   loadingDocuments: boolean,
   documentsError: string | null,
   contentErrors: Map<string, string>,
+  previews: Map<string, string | null>,
   /** The stories that report the open filing, a Form 4, each a fact that opens it. */
   openStories: { accession: string; stories: readonly FilingStory[]; open: (story: FilingStory) => void } | null = null,
 ): FeedDataTableItem[] {
@@ -189,7 +191,8 @@ function toFeedItems(
     const hasFetchedContent = contentCache.has(filing.accessionNumber);
     const fetchedContent = contentCache.get(filing.accessionNumber);
     const isOwnership = OWNERSHIP_FORMS.has(filing.form.trim());
-    const fallbackBody = hasFetchedContent && !loadingContent && !fetchedContent
+    const preview = previews.get(filing.accessionNumber);
+    const fallbackBody = hasFetchedContent && !loadingContent && !preview
       ? `${buildDetailBody(filing)}\n\nReadable filing content was not available for this document.`
       : buildDetailBody(filing);
 
@@ -205,14 +208,14 @@ function toFeedItems(
       ? "Loading filing content..."
       : contentErrors.has(filing.accessionNumber) && !fetchedContent
         ? `Filing content unavailable: ${contentErrors.get(filing.accessionNumber)}`
-        : form4Detail ?? fetchedContent ?? fallbackBody;
+        : form4Detail ?? preview ?? fallbackBody;
     const detailBody = selected
       ? buildDetailBodyWithDocuments({
           filing,
           documents: selectedDocuments,
           documentsLoading: loadingDocuments,
           documentsError,
-          contentCache,
+          previews,
           contentErrors,
           primaryContent: primaryDetailBody,
         })
@@ -258,7 +261,7 @@ function toFeedItems(
         ...(acceptedAt ? [`SEC-reported acceptance ${acceptedAt}`] : []),
         `Accession ${filing.accessionNumber}`,
         ...(secFilingItemCodes(filing.items) ? [`Items ${secFilingItemCodes(filing.items)}`] : []),
-        ...(filingPreviewTruncated(filing, selected ? selectedDocuments : [], contentCache)
+        ...(selected && filingPreviewTruncated(filing, selectedDocuments, previews)
           ? ["Preview truncated. Open the SEC filing for the complete documents and terms."] : []),
       ],
       detailBody,
@@ -439,6 +442,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
     scopeKey: `${ticker?.metadata.ticker ?? "none"}:${ticker?.metadata.exchange ?? ""}:${eligibleTicker}`,
     targets: contentTargets,
   });
+  const previews = useMemo(() => buildFilingContentPreviews(viewedTargets, contentCache), [viewedTargets, contentCache]);
   const loadingContent = !!openFiling && (!contentCache.has(openFiling.accessionNumber) || loadingKey === openFiling.accessionNumber);
   const activeContentError = [openFiling, ...buildInlineFilingContentTargets(openFiling, openDocuments)]
     .filter((target): target is SecFilingItem => !!target)
@@ -645,6 +649,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
         loadingDocuments,
         documentsError,
         contentErrors,
+        previews,
         storyLinks,
       )}
       selectedIdx={selectedIdx}

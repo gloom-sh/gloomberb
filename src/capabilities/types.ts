@@ -26,6 +26,7 @@ export interface CapabilitySchema<T = unknown> {
 interface CapabilityHandlerContext {
   capability: PluginCapability;
   operationId: string;
+  renderer?: boolean;
   signal?: AbortSignal;
 }
 

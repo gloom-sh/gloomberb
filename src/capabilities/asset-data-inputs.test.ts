@@ -9,6 +9,16 @@ function registryWith(provider = createTestDataProvider()) {
   return registry;
 }
 
+test("SEC capability previews are readable without replacing the renderer's raw Form 4 input", async () => {
+  const raw = "<ownershipDocument><issuer><issuerName>Example Corp</issuerName></issuer>"
+    + "<reportingOwner><reportingOwnerId><rptOwnerName>Jane Doe</rptOwnerName></reportingOwnerId></reportingOwner></ownershipDocument>";
+  const registry = registryWith(createTestDataProvider({ getSecFilingContent: async () => raw }));
+  const payload = { filing: { form: "4", primaryDocumentUrl: "https://example.com/form4.xml" } };
+  const target = "asset-data.asset-data-router";
+  await expect(registry.invoke(target, "getSecFilingContent", payload)).resolves.toBe("Form 4 | Example Corp\nOwner Jane Doe");
+  await expect(registry.invoke(target, "getSecFilingContent", payload, { renderer: true })).resolves.toBe(raw);
+});
+
 // `api invoke asset-data.asset-data-router.getQuote '{"symbol":"TTEK"}'` failed with
 // "undefined is not an object (evaluating 'value.trim')", and an unknown range read one year.
 test("an asset-data operation names the input it takes when a field is missing or of the wrong kind", async () => {

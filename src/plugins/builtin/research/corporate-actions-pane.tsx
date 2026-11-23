@@ -44,6 +44,7 @@ import {
   isInlineExhibitDocument,
 } from "../sec/filing-documents";
 import {
+  buildFilingContentPreviews,
   buildInlineFilingContentTargets,
   useSecFilingContentCache,
 } from "../sec/filing-content";
@@ -609,10 +610,11 @@ export function CorporateActionsView({
     if (!matchedFiling || documentsLoading) return [];
     return inlineTargets.length > 0 ? inlineTargets : [matchedFiling];
   }, [documentsLoading, inlineTargets, matchedFiling]);
-  const { contentCache: inlineContent } = useSecFilingContentCache({
+  const { contentCache } = useSecFilingContentCache({
     scopeKey: `${symbol}:${exchange}`,
     targets: filingContentTargets,
   });
+  const inlineContent = useMemo(() => buildFilingContentPreviews(filingContentTargets, contentCache), [filingContentTargets, contentCache]);
   const hasInlineExhibits = inlineTargets.length > 0;
   const primaryContent = matchedFiling
     ? inlineContent.get(matchedFiling.accessionNumber) ?? null
