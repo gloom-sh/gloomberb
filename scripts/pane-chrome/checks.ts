@@ -1296,34 +1296,44 @@ const steps: Step[] = [
     },
   })),
   {
-    // A chart over a data table stays on its cells and the prediction during a
-    // resize: following the frame would lay the table's rows out on every
-    // frame. The table keeps the size the pane last rendered it at.
-    name: "floating board: the table under the chart band keeps its size between catch-ups",
+    // A data table follows the frame by CSS during a resize: its columns move
+    // with the pointer on every frame, not in whole cells at each catch-up.
+    // The board sizes its first column from the pane's width, and the
+    // catch-up moves no column while the pointer stays still.
+    name: "floating board: the table under the chart band follows the frame between catch-ups",
     scenario: "resize&float=board",
     isolatedClock: true,
     async run(cdp) {
-      const width = `__check.rect(__check.pane("board:float")?.querySelector("[data-gloom-role=data-table]"))?.width ?? null`;
-      const before = await evaluate<number | null>(cdp, width) ?? fail("board:float has no table");
+      // The table's width, and where each of its columns ends short of its right edge.
+      const measure = `(() => {
+        const table = __check.pane("board:float")?.querySelector("[data-gloom-role=data-table]");
+        const box = __check.rect(table);
+        const ends = [...(table?.querySelectorAll("[data-gloom-role=data-table-header-cell]") ?? [])].map((cell) => __check.rect(cell));
+        return box && ends.length ? { width: box.width, gaps: ends.map((cell) => box.x + box.width - cell.x - cell.width) } : null;
+      })()`;
+      type Table = { width: number; gaps: number[] };
+      const before = await evaluate<Table | null>(cdp, measure) ?? fail("board:float has no table");
+      const follows = (table: Table | null) => table !== null && Math.abs(table.width - before.width - 140) <= 0.5
+        && Math.abs(table.gaps.at(-1)! - before.gaps.at(-1)!) <= 0.5;
       const from = await pointOf(cdp, "board:float", "resize");
       await mouse(cdp, "mouseMoved", from.x, from.y, false);
       await mouse(cdp, "mousePressed", from.x, from.y, true);
       await frames(cdp);
       await cdp.send("Emulation.setVirtualTimePolicy", { policy: "pause" });
-      let during: number | null = null;
       try {
         await mouse(cdp, "mouseMoved", from.x + 6, from.y + 6, true);
         await mouse(cdp, "mouseMoved", from.x + 140, from.y + 54, true);
         const painted = cdp.once("Emulation.virtualTimeBudgetExpired");
         await cdp.send("Emulation.setVirtualTimePolicy", { policy: "advance", budget: 2 * 1000 / 60 });
         await painted;
-        during = await evaluate<number | null>(cdp, width);
-        if (during === null || Math.abs(during - before) > 0.5) fail("mid-drag, the table under the chart band was laid out at the frame's size", { before, during });
+        const during = await evaluate<Table | null>(cdp, measure);
+        if (!follows(during)) fail("mid-drag, the table under the chart band and its columns did not follow the frame", { before, during });
         const expired = cdp.once("Emulation.virtualTimeBudgetExpired");
         await cdp.send("Emulation.setVirtualTimePolicy", { policy: "advance", budget: 1000 });
         await expired;
-        const caughtUp = await evaluate<number | null>(cdp, width);
-        if (caughtUp === null || Math.abs(caughtUp - before - 140) > 0.5) fail("the table did not catch up while the pointer stayed down", { before, caughtUp });
+        const caughtUp = await evaluate<Table | null>(cdp, measure);
+        const moved = caughtUp && during && (caughtUp.gaps.length !== during.gaps.length || caughtUp.gaps.some((gap, i) => Math.abs(gap - during.gaps[i]!) > 0.5));
+        if (!follows(caughtUp) || moved) fail("the catch-up moved the table or its columns while the pointer stayed still", { during, caughtUp });
       } finally {
         await mouse(cdp, "mouseReleased", from.x + 140, from.y + 54, false);
       }

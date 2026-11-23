@@ -471,8 +471,11 @@ const BOARD_CURSOR = CHART_SERIES[0]!.points.at(-1)!.date;
 /**
  * A board as the chart-table kit lays it out (inventories, money markets):
  * the pane's tabs, a query bar, the kit's chart band and a table under it.
+ * Its first column takes the cells the others leave, as historical prices
+ * and insider trades size their columns from the pane's width.
  */
 function ChartBoardPane({ paneId, focused, width, height }: PaneProps) {
+  const columns = useMemo(() => TABLE_COLUMNS.map((column, index) => (index === 0 ? { ...column, width: Math.max(10, width - 56) } : column)), [width]);
   const [tab, setTab] = useState("one");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const { strip, rows: tabRows } = usePaneTabs({ tabs: BOARD_TABS, activeValue: tab, onSelect: setTab, focused, dense: true });
@@ -489,13 +492,13 @@ function ChartBoardPane({ paneId, focused, width, height }: PaneProps) {
             width={width}
             height={bodyHeight}
             tableRows={BOARD_ROWS.length}
-            tableColumns={TABLE_COLUMNS}
+            tableColumns={columns}
             query={<QueryBar width={width} meta="Invented closes" />}
             chart={{ series: CHART_SERIES, minRows: 8, cursorDate: BOARD_CURSOR }}
           />
         )}
         selection={{ kind: "id", selectedId, getId: String, onChange: setSelectedId }}
-        columns={TABLE_COLUMNS}
+        columns={columns}
         items={BOARD_ROWS}
         sortColumnId={null}
         sortDirection="asc"

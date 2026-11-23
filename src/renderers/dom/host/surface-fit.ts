@@ -22,10 +22,12 @@ import { isLiveResizing, onLiveResizeEnd, onLiveResizeStart } from "../../../ui/
  * A box that has a size of its own on the way (a fixed width, a share of the
  * pane, a whole-cell rounding) leaves the surface on its cells on that axis,
  * as it was, and to `useLiveStretch`'s prediction during a resize. So does a
- * box that scrolls content larger than itself (a column of charts and text),
- * and a sized box whose data table would be resized with it (the chart-table
- * kit's band over its table): following the frame through either would lay
- * all of that content out on every frame, a table's rows up to 4 ms a frame.
+ * box that scrolls content larger than itself (a column of charts and text):
+ * following the frame through it would lay all of that content out on every
+ * frame. So does a sized box whose data table would be resized with it (the
+ * chart-table kit's band over its table): a table keeps the cells its pane
+ * gives it at rest, and follows the frame on its own during a resize
+ * (`trackTable`).
  *
  * Nothing here changes a box's size at the moment it is marked: an exact box
  * is already the size CSS gives it, and a filled box only gains the fraction
@@ -43,6 +45,10 @@ const surfaces = new Map<HTMLElement, ResizeObserver | null>();
 /** The boxes above each surface that fill at rest along with it. */
 const boxFills = new Map<HTMLElement, Array<[HTMLElement, Axis, Mode]>>();
 const followed = new WeakMap<HTMLElement, { x: boolean; y: boolean }>();
+/** Tracked data tables, each with what it is told when a resize starts and stops laying it out (`trackTable`). */
+const tables = new Map<HTMLElement, (follows: boolean) => void>();
+/** The tables the resize under way lays out on every frame. */
+let followingTables: Array<(follows: boolean) => void> = [];
 let followMarks: Array<[HTMLElement, Axis]> = [];
 let installed = false;
 
@@ -55,6 +61,9 @@ const cellOn = (axis: Axis) => (axis === "x" ? WEB_CELL_WIDTH : WEB_CELL_HEIGHT)
 const SIZE = { x: "width", y: "height" } as const;
 const FILL_ATTRIBUTE = { x: "data-gloom-fill-x", y: "data-gloom-fill-y" } as const;
 const FOLLOW_ATTRIBUTE = { x: "data-gloom-follow-x", y: "data-gloom-follow-y" } as const;
+/** A box above a table that follows short of its space, by what it was at rest (styles.css). */
+const FOLLOW_SHORT = "data-gloom-follow-short-x";
+const FOLLOW_SHORT_BY = "--gloom-follow-short-x";
 
 interface Pass {
   styles: Map<Element, CSSStyleDeclaration>;
@@ -341,7 +350,7 @@ function fitGrip(surface: HTMLElement): void {
 
 function startFollowing(): void {
   const pass: Pass = { styles: new Map() };
-  const marks: Array<[HTMLElement, Axis, Mode]> = [];
+  const marks: Array<[HTMLElement, Axis, Mode, number]> = [];
   // A resize changes the parents' boxes on every frame; nothing refits until it ends.
   for (const observer of surfaces.values()) observer?.disconnect();
   for (const surface of surfaces.keys()) {
@@ -353,21 +362,46 @@ function startFollowing(): void {
       if (!trace(pass, surface.parentElement, axis, links).follows) continue;
       result[axis] = true;
       // A short box fills, and so follows, already.
-      for (const [element, mode, kind] of links) if (kind === "exact") marks.push([element, axis, mode]);
+      for (const [element, mode, kind] of links) if (kind === "exact") marks.push([element, axis, mode, 0]);
     }
     followed.set(surface, result);
   }
+  // A table is never filled at rest, so a short box above it follows short
+  // by the fraction of a cell it is at rest: the press moves no column.
+  for (const [table, listener] of tables) {
+    if (!table.isConnected) continue;
+    const links: Link[] = [];
+    if (!trace(pass, table, "x", links).follows) continue;
+    for (const [element, mode, kind] of links) {
+      marks.push([element, "x", mode, kind === "short" ? placement(pass, element, "x").space - (ownSize(element, "x") ?? 0) : 0]);
+    }
+    followingTables.push(listener);
+  }
   // Marked after every surface is traced: a mark changes no size now, but the
   // trace reads the layout as the pane drew it.
-  for (const [element, axis, mode] of marks) {
+  for (const [element, axis, mode, short] of marks) {
     element.setAttribute(FOLLOW_ATTRIBUTE[axis], mode);
+    if (Math.abs(short) > EXACT_PX) {
+      element.setAttribute(FOLLOW_SHORT, "");
+      element.style.setProperty(FOLLOW_SHORT_BY, `${short}px`);
+    }
     followMarks.push([element, axis]);
   }
+  for (const listener of followingTables) listener(true);
 }
 
 function stopFollowing(): void {
-  for (const [element, axis] of followMarks) element.removeAttribute(FOLLOW_ATTRIBUTE[axis]);
+  for (const [element, axis] of followMarks) {
+    element.removeAttribute(FOLLOW_ATTRIBUTE[axis]);
+    if (element.hasAttribute(FOLLOW_SHORT)) {
+      element.removeAttribute(FOLLOW_SHORT);
+      element.style.removeProperty(FOLLOW_SHORT_BY);
+    }
+  }
   followMarks = [];
+  const stopped = followingTables;
+  followingTables = [];
+  for (const listener of stopped) listener(false);
   for (const surface of surfaces.keys()) followed.delete(surface);
   // After the release has laid the panes out: every surface fits its box again.
   const refit = () => {
@@ -380,16 +414,33 @@ function stopFollowing(): void {
   else setTimeout(refit, 0);
 }
 
+function install(): void {
+  if (installed) return;
+  installed = true;
+  onLiveResizeStart(startFollowing);
+  onLiveResizeEnd(stopFollowing);
+}
+
+/**
+ * Tracks a data table's root: during every resize, the boxes above it follow
+ * the frame on x by CSS wherever they can (as a chart's do), so its columns
+ * are laid out at the frame's width on every frame rather than at each
+ * catch-up. At rest nothing changes: its boxes keep the cells the pane gave
+ * them. `listener` hears when a resize starts laying the table out so
+ * (true) and when it stops (false). Returns the untrack.
+ */
+export function trackTable(table: HTMLElement, listener: (follows: boolean) => void): () => void {
+  install();
+  tables.set(table, listener);
+  return () => { tables.delete(table); };
+}
+
 /**
  * Tracks a surface root: fits it now, again whenever its parent's box changes
  * size at rest, and takes it into every resize's pass. Returns the untrack.
  */
 export function trackSurface(surface: HTMLElement): () => void {
-  if (!installed) {
-    installed = true;
-    onLiveResizeStart(startFollowing);
-    onLiveResizeEnd(stopFollowing);
-  }
+  install();
   const parent = surface.parentElement;
   const observer = typeof ResizeObserver !== "undefined" && parent
     ? new ResizeObserver(() => fitSurface(surface))
