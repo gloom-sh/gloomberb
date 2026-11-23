@@ -47,7 +47,7 @@ import {
 import { CorrelationMatrixGrid, correlationMatrixLayout, useCorrelationMatrixNavigation } from "./matrix/grid";
 import { correlationHeadless, relationshipHeadless } from "./headless";
 import { CORRELATION_HISTORY_RESOLUTION, CORRELATION_PRICE_RETURN_NOTE } from "./history";
-import { buildMatrixPairHistory, matrixChartRows } from "./matrix/selection";
+import { buildMatrixPairHistory, matrixPaneRows } from "./matrix/selection";
 import { MatrixPairChart } from "./matrix/pair-chart";
 
 /** A map series' values and when they arrived; after a failed load, the error and any values kept from before. */
@@ -230,10 +230,9 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
   // Rows are exactly as wide as the matrix (after the one-cell inset), so the
   // zebra and hover bands stop at the last column instead of running on.
   const matrixRowWidth = correlationMatrixLayout(symbols, width).rowWidth;
-  const chartRows = pair ? matrixChartRows(width, height, symbols.length, matrixRowWidth) : 0;
   const noteRows = cellNote ? wrapTextLines(cellNote, Math.max(1, width - 2)).length : 0;
   const basisRows = wrapTextLines(CORRELATION_PRICE_RETURN_NOTE, Math.max(1, width - 2)).length;
-  const matrixHeight = Math.max(1, height - 1 - basisRows - noteRows - (chartRows > 0 ? chartRows + 1 : 0));
+  const { chartRows, matrixHeight } = matrixPaneRows(width, height, symbols.length, matrixRowWidth, basisRows + noteRows, !!pair);
   const bodyStatus = settings.symbolsError
     ? <PaneStatusBody error={settings.symbolsError} />
     : symbols.length < 2

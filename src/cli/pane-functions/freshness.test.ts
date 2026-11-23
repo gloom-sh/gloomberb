@@ -634,9 +634,10 @@ describe("report freshness", () => {
     // Saturday: the weekday of the open, as every other market names its Monday.
     expect(status("2026-10-24T12:00:00Z", "REGULAR", friday, true))
       .toBe("Fri 23 Oct 2026 close · stale (15 hours old) · markets closed · reopens Sun 22:00 UTC, 17:00 CT");
-    // Just after the Sunday open, a board whose source says open is open; so is Monday's.
+    // Just after the Sunday open corn (19:00 CT) and coffee (Monday 04:15 ET) are still shut, whatever their quotes say, so
+    // the board's markets disagree and the line names none; on Monday morning every one of them is open.
     expect(status("2026-10-25T22:05:00Z", "REGULAR", "2026-10-25T22:00:00Z", false))
-      .toBe("22:00 UTC · 15 min delayed · markets open");
+      .toBe("22:00 UTC · 15 min delayed");
     expect(status("2026-10-26T09:00:00Z", "REGULAR", "2026-10-26T08:59:00Z", false))
       .toBe("08:59 UTC · 15 min delayed · markets open");
   });

@@ -5,6 +5,7 @@ import { isQuoteBeforeLatestSession, isQuoteStaleForCurrentSession } from "../..
 import { quoteFeedDelayMinutes, readIndexSession } from "../../../market-data/market/freshness";
 import { quoteHeadlineTime } from "../../../market-data/market/status";
 import { indexLevelMarketState } from "../../../market-data/market/index-level";
+import { isOutsideFuturesProductHours } from "../../../market-data/market/futures-product-hours";
 import { barSizeFromGap, medianBarGap } from "../../../time-series/bar-spacing";
 import { apiClient } from "../../../api-client";
 import { CLOUD_NEWS_DELAY_HOURS, hasProAccess, type PlanAccessUser } from "../../../api-client/plan-rules";
@@ -131,8 +132,10 @@ export function quoteFreshnessFields(
     ...(quote.nominalPrice ? { nominal: true as const } : {}),
     ...(delayMinutes != null ? { delayMinutes } : {}),
     ...(exchange && session ? { sessionExchange: exchange } : {}),
-    // An index's final close reads as a close, not after hours.
-    ...(quote.marketState && session ? { marketState: indexLevelMarketState(quote) } : {}),
+    // An index's final close reads as a close, not after hours; a grain or a soft outside its own hours, as closed.
+    ...(quote.marketState && session
+      ? { marketState: isOutsideFuturesProductHours(quote, now) ? "CLOSED" as const : indexLevelMarketState(quote) }
+      : {}),
     ...(sessionCalendar && session ? { sessionCalendar } : {}),
   };
 }
