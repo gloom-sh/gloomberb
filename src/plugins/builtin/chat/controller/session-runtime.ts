@@ -36,12 +36,20 @@ interface HydrateChatControllerSessionOptions {
   session: ChatControllerSessionState;
   storage: ChatControllerStorage;
   syncVerificationPolling: () => void;
+  /**
+   * A command (`runtime: "command"`) runs with the session its command line
+   * resolved: GLOOMBERB_SESSION_TOKEN, or the profile's. The plugin state a
+   * command gives this chat may hold none, or another, and installing it
+   * would sign the command out midway: its quotes would come back delayed.
+   */
+  keepInstalledSession?: boolean;
 }
 
 export function hydrateChatControllerSession({
   session,
   storage,
   syncVerificationPolling,
+  keepInstalledSession = false,
 }: HydrateChatControllerSessionOptions): void {
   if (session.hydrated || !storage.hasPersistence()) return;
   session.hydrated = true;
@@ -51,14 +59,16 @@ export function hydrateChatControllerSession({
   const currentToken = apiClient.getSessionToken();
   const currentUser = currentToken === session.sessionToken ? apiClient.getCurrentUser() : null;
   const restoredUser = currentUser ?? (session.sessionToken ? storedSession?.user ?? null : null);
-  // Installing the credential already in place would discard its session
-  // check: the web app, which signs in with a cookie and stores no token,
-  // asked the server for its session a second time on every open.
-  if (currentToken !== session.sessionToken) apiClient.setSessionToken(session.sessionToken);
-  // WebSocket tokens are short-lived connection credentials. Reusing a persisted
-  // one can trap reconnects on an expired token even while the session cookie is valid.
-  apiClient.setWebSocketToken(null);
-  if (session.sessionToken && restoredUser !== apiClient.getCurrentUser()) apiClient.restoreCachedUser(restoredUser);
+  if (!keepInstalledSession || !currentToken || currentToken === session.sessionToken) {
+    // Installing the credential already in place would discard its session
+    // check: the web app, which signs in with a cookie and stores no token,
+    // asked the server for its session a second time on every open.
+    if (currentToken !== session.sessionToken) apiClient.setSessionToken(session.sessionToken);
+    // WebSocket tokens are short-lived connection credentials. Reusing a persisted
+    // one can trap reconnects on an expired token even while the session cookie is valid.
+    apiClient.setWebSocketToken(null);
+    if (session.sessionToken && restoredUser !== apiClient.getCurrentUser()) apiClient.restoreCachedUser(restoredUser);
+  }
   session.user = normalizeSessionUser(restoredUser);
   session.sessionChecked = true;
   storage.ensureChannelState(DEFAULT_CHAT_CHANNEL_ID);

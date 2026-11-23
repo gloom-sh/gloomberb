@@ -112,6 +112,63 @@ describe("cloud session token from the environment", () => {
     }
   });
 
+  test("QQ reads an ETF again for a session when its saved copy is a signed-out read's delayed one", async () => {
+    // The service answers a Pro account live, and a free account delayed as it answers a read with no session.
+    const feeds: Record<string, "live" | "delayed"> = { "pro-fixture": "live", "free-fixture": "delayed" };
+    const reads: string[] = [];
+    const initialToken = apiClient.getSessionToken();
+    const previous = process.env.GLOOMBERB_SESSION_TOKEN;
+    setSystemTime(new Date("2026-11-19T19:00:00Z"));
+    setCloudApiFetchTransport(async (url, init) => {
+      if (new URL(url).pathname !== "/market/quote") return Response.json({ message: "No fixture for this route" }, { status: 404 });
+      const cookie = new Headers(init.headers).get("cookie") ?? "";
+      const session = Object.keys(feeds).find((token) => cookie.includes(`=${token}`));
+      reads.push(session ?? "signed out");
+      const feed = session ? feeds[session]! : "delayed";
+      return Response.json({ status: "success", data: {
+        symbol: "QQQ", name: "Invesco QQQ Trust", price: 101, currency: "USD", change: 1, changePercent: 1,
+        previousClose: 100, previousCloseDate: "2026-11-18", changeSessionDate: "2026-11-19",
+        listingExchangeName: "NASDAQ", exchangeName: "NASDAQ", marketState: "REGULAR", instrumentType: "ETF",
+        dataSource: feed, lastUpdated: Date.now() - (feed === "live" ? 0 : 15 * 60_000),
+      } });
+    });
+    // One profile, read by a `fn QQ QQQ` command under each session in turn: each command its own router, as each
+    // process has, over the quotes the earlier ones saved.
+    const profile = () => {
+      const saved = new AppPersistence(":memory:");
+      const persistence = Object.assign(Object.create(saved) as AppPersistence, { close: () => {} });
+      return async (session: string | null) => {
+        if (session) process.env.GLOOMBERB_SESSION_TOKEN = session;
+        else delete process.env.GLOOMBERB_SESSION_TOKEN;
+        apiClient.setSessionToken(session);
+        const dataProvider = new AssetDataRouter(new GloomberbCloudProvider(), [], saved.resources);
+        const cli = createTestCliContext({ persistence, dataProvider, config: createDefaultConfig("fixture") });
+        Object.assign(cli.context, { plugins: getLoadablePlugins() });
+        await runPaneFunction(["QQ", "QQQ"], cli.context);
+        return (cli.printed[0]?.result.data.rows as Array<{ feed: string }>)[0]?.feed;
+      };
+    };
+    try {
+      const pro = profile();
+      expect(await pro(null)).toBe("delayed");
+      expect(await pro("pro-fixture")).toBe("live");
+      expect(reads.splice(0)).toEqual(["signed out", "pro-fixture"]);
+
+      // A free account's own delayed copy answers it again: it is read once after the signed-out copy, not every time.
+      const free = profile();
+      expect(await free(null)).toBe("delayed");
+      expect(await free("free-fixture")).toBe("delayed");
+      expect(await free("free-fixture")).toBe("delayed");
+      expect(reads).toEqual(["signed out", "free-fixture"]);
+    } finally {
+      apiClient.setSessionToken(initialToken);
+      setCloudApiFetchTransport(null);
+      setSystemTime();
+      if (previous === undefined) delete process.env.GLOOMBERB_SESSION_TOKEN;
+      else process.env.GLOOMBERB_SESSION_TOKEN = previous;
+    }
+  });
+
   test("prefers GLOOMBERB_SESSION_TOKEN over persisted state so containers can authenticate", () => {
     const context = {
       persistence: {

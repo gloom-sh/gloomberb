@@ -76,6 +76,13 @@ test("a browser cannot restore an old chat identity without the matching cookie 
   expect(controller.getSnapshot().user).toBeNull();
 });
 
+test("a command's chat never signs out the session the command runs with", () => {
+  // `gloom fn` sets the cloud plugin up with plugin state that holds no session, and reads quotes with its own.
+  apiClient.setSessionToken("command-session");
+  controller.attachPersistence(persistence, undefined, { keepInstalledSession: true });
+  expect(apiClient.getSessionToken()).toBe("command-session");
+});
+
 test.each(["null", "success", "reject"])("disposed get-session continuation cannot mutate account or restart runtime: %s", async (outcome) => {
   attach();
   const deferred = Promise.withResolvers<AuthUser | null>();

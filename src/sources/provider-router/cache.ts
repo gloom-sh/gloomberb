@@ -1,3 +1,4 @@
+import { apiClient } from "../../api-client";
 import { listingSuffixExchange } from "../listing-symbols";
 import type { CachedResourceRecord, ResourceStore } from "../../data/resource-store";
 import type { TimeRange } from "../../time-series/range";
@@ -114,6 +115,7 @@ export function cacheRouterResource<T>(
   value: T,
   cachePolicy: CachePolicy,
 ): void {
+  const provenance = askedBySession(kind, sourceKey) ? CLOUD_SESSION_PROVENANCE : null;
   resources?.set(
     {
       namespace: MARKET_NAMESPACE,
@@ -123,8 +125,35 @@ export function cacheRouterResource<T>(
       sourceKey,
     },
     value,
-    { cachePolicy, ...(SCHEMA_VERSIONS[kind] ? { schemaVersion: SCHEMA_VERSIONS[kind] } : {}) },
+    { cachePolicy, ...(SCHEMA_VERSIONS[kind] ? { schemaVersion: SCHEMA_VERSIONS[kind] } : {}), ...(provenance ? { provenance } : {}) },
   );
+}
+
+const CLOUD_SOURCE_KEY = "provider:gloomberb-cloud";
+/** A cloud quote, or financials carrying one, saved from a read that carried a session. */
+const CLOUD_SESSION_PROVENANCE = { session: true } as const;
+
+/**
+ * Whether this read of Gloom Cloud's quotes carries a session. The service
+ * answers a session with its account's feed and anyone else with the delayed
+ * one, so each saved copy says which it was (`delayedForSignedOut`).
+ */
+function askedBySession(kind: string, sourceKey: string): boolean {
+  return sourceKey === CLOUD_SOURCE_KEY && (kind === "quote" || kind === "financials") && apiClient.hasSessionCredential();
+}
+
+/**
+ * A delayed cloud quote read with no session is the feed anyone gets, not this
+ * session's: stale to a process that now has one, so a Pro account reads the
+ * listing again, live, rather than for minutes from the copy a signed-out read
+ * left. A copy read signed in, a free account's delayed one too, is kept.
+ */
+function delayedForSignedOut<T>(record: CachedResourceRecord<T>, kind: string): boolean {
+  if (record.stale || record.sourceKey !== CLOUD_SOURCE_KEY || (kind !== "quote" && kind !== "financials")) return false;
+  const quote = kind === "quote" ? record.value as Quote : (record.value as TickerFinancials).quote;
+  if (quote?.dataSource !== "delayed") return false;
+  const provenance = record.provenance as { session?: unknown } | null;
+  return provenance?.session !== true && apiClient.hasSessionCredential();
 }
 
 export function sortCachedRecords<T>(
@@ -201,8 +230,8 @@ export function listCachedResources<T>(
     // the unqualified BA quote is Boeing's, never BAE Systems' London line.
     return !(requestedExchange && !declaredExchange && !parsePublicTickerKey(entityKey).exchange
       && variantExchange(record.variantKey) === undefined);
-  }).map((record) => {
-    if (kind !== "financials" || record.sourceKey !== "provider:gloomberb-cloud") return record;
+  }).map((record) => delayedForSignedOut(record, kind) ? { ...record, stale: true } : record).map((record) => {
+    if (kind !== "financials" || record.sourceKey !== CLOUD_SOURCE_KEY) return record;
     // A new client can cache an old backend response during a rolling deploy.
     // Require the metric's own provenance before reusing a cloud yield; retain
     // valid quotes and other issuer data.
