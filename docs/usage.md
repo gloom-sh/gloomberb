@@ -1197,6 +1197,8 @@ Signed in, they also merge in the alerts Gloom Cloud delivered to your phone or 
 
 `FLOW` (Pro) lists sweeps, blocks and large premium prints under the query bar's filters; `FLOW NVDA` narrows it to one name. **Tide** charts the session's net premium: call premium at the ask less call premium at the bid, minus the same for puts. Mid or unknown prints count as neither. With a ticker, **Strikes** sums its premium by expiry and strike. `gloom fn FLOW [ticker] --tab prints|tide|strikes` reads the same.
 
+While the US market is shut (weekends, exchange holidays, and the night between the 20:00 New York close of after-hours and the 04:00 pre-market), `HILO` and `FLOW` say so from the exchange calendar on every call, whether or not the scanner has started: `fn HILO` answers "The US market is closed. New highs and lows list again from the next session's open." without waiting on the scanner, the HILO pane names the next open in both tables, and both panes' footers say `market closed`.
+
 ## Live prices and refresh cadence
 
 Prices come from one shared stream, and a symbol shown in several panes is subscribed once. Rows on screen and the selected symbol update about 4 times a second in the terminal and about 10 on desktop and web, everything else about once a second. Minimizing or hiding the app pauses streams and polling, and plans that cap streamed symbols spend them on the rows in view.

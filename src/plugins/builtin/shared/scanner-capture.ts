@@ -1,5 +1,6 @@
 import { createContext } from "react";
 import type { apiClient, ScannerFeedEvent, ScannerKind } from "../../../api-client";
+import { venueSessionNow } from "../../../market-data/market/venue-session";
 
 // The panes that read a scanner feed, and the shot capture that reads it for
 // them. Core (the CLI's `shot` and its page) imports this, not the scanner
@@ -14,6 +15,16 @@ export const LIVE_SCAN_TEMPLATE_ID = "scanner-live-pane";
 export const SCANNER_PANE_KINDS: Readonly<Record<string, ScannerKind>> = { [HILO_PANE_ID]: "hilo", [FLOW_PANE_ID]: "flow" };
 
 export type ScannerClient = Pick<typeof apiClient, "subscribeScanner">;
+
+/**
+ * Whether US equities are shut at `now` by the exchange calendar: a weekend, a holiday, or the night between the
+ * 20:00 New York close of after-hours and the 04:00 pre-market. The scanners have no session to scan then, so HILO and
+ * FLOW answer as a closed session whatever a scanner still holding the last one says.
+ */
+export function usScannerSessionClosed(now: number): boolean {
+  const phase = venueSessionNow("NYSE", now)?.phase;
+  return phase === "closed" || phase === "holiday";
+}
 /** Where a scanner pane gets its feed; absent, the shared cloud socket. */
 export const ScannerClientContext = createContext<ScannerClient | null>(null);
 
@@ -53,14 +64,16 @@ const SCANNER_LABELS: Record<ScannerKind, string> = {
  * the deadline, since a scanner warming up can pass through a stale row on its
  * way to live. With `acceptStarting`, so is a starting one, for a report that
  * says the scanner is starting rather than failing; a screenshot keeps failing
- * on one, as it would only picture an empty pane.
+ * on one, as it would only picture an empty pane. With `closed`, the market is
+ * known shut and nothing better is coming: the first answer is taken, whatever
+ * it is.
  */
 export function captureScannerEvent(
   client: ScannerClient,
   scanner: ScannerKind,
   signal: AbortSignal,
   timeoutMs = SCANNER_SNAPSHOT_TIMEOUT_MS,
-  { acceptStarting = false }: { acceptStarting?: boolean } = {},
+  { acceptStarting = false, closed = false }: { acceptStarting?: boolean; closed?: boolean } = {},
 ): Promise<ScannerFeedEvent> {
   const label = SCANNER_LABELS[scanner];
   return new Promise((resolve, reject) => {
@@ -86,7 +99,7 @@ export function captureScannerEvent(
     }), timeoutMs);
     signal.addEventListener("abort", onAbort, { once: true });
     unsubscribe = client.subscribeScanner(scanner, (event: ScannerFeedEvent) => {
-      if (event.type === "denied") {
+      if (event.type === "denied" || closed) {
         finish(() => resolve(event));
         return;
       }

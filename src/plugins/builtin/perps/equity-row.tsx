@@ -9,6 +9,7 @@ import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { perpEquityIdentity } from "./equity-identity";
 import { perpetualListing } from "../../../tickers/perpetual-listing";
 import { loadPerpSelection, loadPerpsEquity } from "./client";
+import { rowReadAt } from "../../../market-data/perpetual-open-interest";
 import { compact, percent, perpDescription, price, readingTime } from "./model";
 import { useLivePerpRows } from "./live-rows";
 import { openPerpLabel, useOpenPerpMarket } from "./open-market";
@@ -62,7 +63,8 @@ function PerpRow({ row, stale, width, own = false }: { row: PerpBoardRow; stale:
   const openMarket = useOpenPerpMarket();
   const open = () => openMarket(row.marketId);
   usePaneLinkMenuEntry(`function:perps-pane:${row.marketId}`, openPerpLabel(row), open);
-  const read = readingTime(row.observedAt);
+  // Dated by its oldest figure: a streamed mark can sit beside the open interest the last poll read.
+  const read = readingTime(rowReadAt(row));
   const staleText = row.stale || stale ? " · stale" : "";
   const figures = own
     ? row.underlyingPremium != null ? [`${percent(row.underlyingPremium, 2)} vs ${row.underlyingSymbol ?? "underlying"} last${staleText}`] : staleText ? ["stale"] : []

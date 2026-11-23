@@ -1,7 +1,7 @@
 import { logFailure } from "../../utils/log-failure";
 import { isNoSourceAnswer } from "../../sources/provider-errors";
 import { fetchTape } from "../../plugins/builtin/time-sales/client";
-import { captureScannerEvent, SCANNER_PANE_KINDS, type ScannerCapture } from "../../plugins/builtin/shared/scanner-capture";
+import { captureScannerEvent, SCANNER_PANE_KINDS, usScannerSessionClosed, type ScannerCapture } from "../../plugins/builtin/shared/scanner-capture";
 import { isOptionsUnavailableError } from "../../market-data/options-alternatives";
 import type { TapeCapture } from "../../plugins/builtin/time-sales/snapshot-client";
 import { apiClient } from "../../api-client";
@@ -484,9 +484,10 @@ export async function buildDesktopShotPayload(
     shotInstance = { ...shotInstance, settings: { ...shotInstance.settings, periodPnlSnapshot: loaded.result.metadata?.periodPnl ?? null } };
   }
   // A scanner pane reads one answer from the capture's own session: the page's socket is refused (see createSnapshotScannerClient).
+  // While the US market is shut the pane says so from the calendar, so the scanner's first answer is taken, not waited on.
   const scannerKind = SCANNER_PANE_KINDS[resolved.pane.id];
   const scannerSnapshots: ScannerCapture[] = scannerKind
-    ? [[scannerKind, await captureScannerEvent(scannerFeed, scannerKind, new AbortController().signal)]]
+    ? [[scannerKind, await captureScannerEvent(scannerFeed, scannerKind, new AbortController().signal, undefined, { closed: usScannerSessionClosed(Date.now()) })]]
     : [];
   layout.instances[0] = shotInstance;
   config.layout.instances[0] = shotInstance;

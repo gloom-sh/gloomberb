@@ -2,6 +2,24 @@ const ASSET_CLASSES = ["stocks", "indices", "energy", "metals", "fx", "crypto", 
 type AssetClass = (typeof ASSET_CLASSES)[number]
 type PerpVenue = "hyperliquid" | "binance" | "bybit" | "okx" | "deribit" | "coinbase" | "kraken" | "dydx"
 
+/**
+ * Where a market's open interest was read, when, and how its USD figure was made: a venue can serve it from another
+ * endpoint than the mark (Binance's openInterest), read at another moment, or stream it, so the market's own source
+ * and time do not date it.
+ */
+export interface PerpOpenInterestSource {
+  /** The venue endpoint, or socket, that returned it. */
+  url: string
+  /** When it was read. */
+  observedAt: string
+  /** The venue's own time for the reading; null when it gives none. */
+  asOf: string | null
+  /** The venue's own value (`venue`), contracts × mark or oracle, or USD contracts × face value; null without a USD figure. */
+  usdBasis: "venue" | "mark" | "oracle" | "face-value" | null
+  /** The stablecoin the USD figure takes at 1 USD; null when it is in USD itself. */
+  usdParity: string | null
+}
+
 /** Rates and premiums are fractions, timestamps UTC; null always means unavailable. */
 interface PerpMarket {
   marketId: string
@@ -34,6 +52,8 @@ interface PerpMarket {
   nextFundingAt: string | null
   openInterestBase: number | null
   openInterestUsd: number | null
+  /** Absent from servers older than it, and from a market stored before it was recorded. */
+  openInterestSource?: PerpOpenInterestSource | null
   volume24hUsd: number | null
   maxLeverage: number | null
   isolatedOnly: boolean | null

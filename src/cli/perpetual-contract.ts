@@ -4,6 +4,7 @@ import type { Quote } from "../types/financials";
 import { loadPerpetualMarket } from "../sources/gloomberb-cloud/perpetuals";
 import { PERPETUAL_TYPE, perpetualListing } from "../tickers/perpetual-listing";
 import { MISSING_VALUE, formatCompact } from "../utils/format";
+import { openInterestSourceOf } from "../market-data/perpetual-open-interest";
 
 /** What `quote` adds for a perpetual: the market PERP opens, its funding and open interest. Rates are fractions. */
 export interface PerpetualContractPayload {
@@ -16,7 +17,10 @@ export interface PerpetualContractPayload {
   openInterestUsd: number | null;
   /** Mark over the venue's oracle price. */
   premium: number | null;
+  /** When the venue's figures were read. */
   observedAt: string;
+  /** When the open interest was read, on its own; null when the server does not say. */
+  openInterestObservedAt: string | null;
 }
 
 /** The contract terms of a perpetual quote; null for any other quote or when the market cannot be read. */
@@ -38,6 +42,7 @@ export async function cliPerpetualContract(quote: Pick<Quote, "symbol" | "instru
       openInterestUsd: row.openInterestUsd,
       premium: row.premium,
       observedAt: row.observedAt,
+      openInterestObservedAt: openInterestSourceOf(row)?.observedAt ?? null,
     };
   } catch (error) {
     logFailure("cli.perpetual-contract", "Read perpetual contract terms failed")(error);
@@ -46,10 +51,16 @@ export async function cliPerpetualContract(quote: Pick<Quote, "symbol" | "instru
   }
 }
 
+/** A read time as PERP's Evidence writes it: `2026-11-23 06:10 UTC`. */
+const readAt = (iso: string) => `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`;
 const percent = (value: number, digits: number) => `${value > 0 ? "+" : ""}${(value * 100).toFixed(digits)}%`;
 const FUNDING_KINDS: Record<PerpBoardRow["fundingKind"], string> = { current: "current estimate", "last-paid": "last paid", continuous: "accrues continuously" };
 
-/** The rows `quote` prints under a perpetual: the market PERP takes, funding per eight hours, open interest, premium. */
+/**
+ * The rows `quote` prints under a perpetual: the market PERP takes, funding per eight hours, open interest, premium,
+ * then when the venue's figures were read and, apart, the open interest, as PERP's Evidence dates them. The quote's
+ * own time above dates its price, not these.
+ */
 export function perpetualContractStats(contract: PerpetualContractPayload): [string, string][] {
   const basis = [FUNDING_KINDS[contract.fundingKind], contract.fundingIntervalHours ? `paid every ${contract.fundingIntervalHours}h` : null]
     .filter(Boolean).join(", ");
@@ -58,5 +69,7 @@ export function perpetualContractStats(contract: PerpetualContractPayload): [str
     ["Funding 8h", contract.fundingRate8h == null ? MISSING_VALUE : `${percent(contract.fundingRate8h, 4)}${basis ? ` (${basis})` : ""}`],
     ["Open interest", contract.openInterestUsd == null ? MISSING_VALUE : `${formatCompact(contract.openInterestUsd, { fixedDecimals: true })} USD`],
     ["Premium", contract.premium == null ? MISSING_VALUE : `${percent(contract.premium, 2)} vs oracle`],
+    ["Observed", readAt(contract.observedAt)],
+    ...contract.openInterestUsd == null ? [] : [["OI observed", contract.openInterestObservedAt ? readAt(contract.openInterestObservedAt) : "Not stated"] as [string, string]],
   ];
 }

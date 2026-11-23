@@ -2,6 +2,7 @@ import type { PerpBoardRow, PerpHistoryPayload, PerpLongShortRatio, PerpRankings
 import type { DataTableCell, DataTableColumn } from "../../../components";
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
 import { getTableWidth, markHiddenTableColumns } from "../../../components/ui/table-layout";
+import { openInterestSourceOf, rowReadAt, type PerpOpenInterest } from "../../../market-data/perpetual-open-interest";
 import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 import { isUsListingExchange, publicTickerKey } from "../../../utils/exchanges";
 import { isRecord } from "../../../utils/guards";
@@ -206,6 +207,35 @@ export function positioningFields(row: Pick<PerpBoardRow, "longShortRatio" | "lo
   ];
 }
 
+const USD_BASES: Record<"mark" | "oracle" | "face-value", string> = { mark: "mark × contracts", oracle: "oracle × contracts", "face-value": "contracts × face value" };
+/**
+ * How a market's OI USD was made: `mark × contracts, USDT valued at 1 USD`, or the venue's own figure
+ * (`Bybit's own USDT value, USDT valued at 1 USD`). Null without a USD figure or when the server does not say.
+ */
+function openInterestUsdBasis(row: PerpOpenInterest & Pick<PerpBoardRow, "venue">): string | null {
+  const source = openInterestSourceOf(row);
+  if (row.openInterestUsd == null || !source?.usdBasis) return null;
+  const made = source.usdBasis === "venue" ? `${venueName(row.venue)}'s own ${source.usdParity ?? "USD"} value` : USD_BASES[source.usdBasis];
+  return made ? `${made}${source.usdParity ? `, ${source.usdParity} valued at 1 USD` : ""}` : null;
+}
+/**
+ * The open interest as Evidence lists it, shared by the pane and the text report: the figure with how its USD was
+ * made, then its own read, the venue's time for it and the endpoint, never the market's. A server that does not say
+ * where it read the open interest leaves its time "Not stated".
+ */
+export function openInterestFields(row: Pick<PerpBoardRow, "venue" | "baseAsset" | "openInterestBase" | "openInterestUsd" | "openInterestSource">): PositioningField[] {
+  const basis = openInterestUsdBasis(row);
+  const amount: PositioningField = { key: "openInterest", label: "Open interest", value: row.openInterestUsd,
+    text: `${compact(row.openInterestBase)} ${row.baseAsset} · ${compact(row.openInterestUsd)} USD`, ...(basis ? { detail: `USD = ${basis}` } : {}) };
+  if (row.openInterestBase == null && row.openInterestUsd == null) return [amount];
+  const source = openInterestSourceOf(row);
+  if (!source) return [amount, { key: "openInterestObservedAt", label: "OI observed", value: null, text: "Not stated" }];
+  return [amount,
+    { key: "openInterestObservedAt", label: "OI observed", value: source.observedAt, text: time(source.observedAt) },
+    { key: "openInterestAsOf", label: "OI source as of", value: source.asOf, text: time(source.asOf) },
+    { key: "openInterestSourceUrl", label: "OI source", value: source.url, text: source.url }];
+}
+
 // One text per figure, shared by the pane cells and the text report so the two always agree.
 const markText = (row: Pick<PerpBoardRow, "markPrice" | "quoteCurrency">) => row.markPrice == null ? MISSING_VALUE : `${price(row.markPrice)} ${row.quoteCurrency}`;
 const fundingPerInterval = (row: Pick<PerpBoardRow, "fundingRate" | "fundingIntervalHours" | "fundingKind">) => row.fundingRate == null ? MISSING_VALUE : `${percent(row.fundingRate, 5)} /${fundingInterval(row)}`;
@@ -313,7 +343,8 @@ export function perpCellText(row: PerpBoardRow, id: PerpColumnId): string {
   if (id === "markPrice") return markText(row);
   if (id === "fundingRate") return fundingPerInterval(row);
   if (id === "openInterestUsd") return compact(row.openInterestUsd);
-  if (id === "observedAt") return observed(row.observedAt);
+  // A row is dated by its oldest figure: a streamed mark can sit beside the open interest the last poll read.
+  if (id === "observedAt") return observed(rowReadAt(row));
   if (id === "longShare") return share(row.longShortRatio?.longShare);
   const digits = SIGNED[id];
   return digits === undefined ? MISSING_VALUE : percent(row[id as keyof PerpBoardRow] as number | null, digits);
@@ -322,7 +353,7 @@ export function perpCell(row: PerpBoardRow, id: PerpColumnId, colors: Pick<Theme
   const text = perpCellText(row, id);
   if (id === "market") return { text, color: row.stale ? colors.textDim : colors.textBright };
   if (id === "venue" || id === "symbol") return { text, color: colors.textMuted };
-  if (id === "observedAt") return { text, value: row.observedAt, color: row.stale ? colors.textMuted : colors.textDim };
+  if (id === "observedAt") return { text, value: rowReadAt(row), color: row.stale ? colors.textMuted : colors.textDim };
   if (id === "markPrice") return { text, value: row.markPrice };
   if (id === "openInterestUsd") return { text, value: row.openInterestUsd };
   // A share, not a signed move: no tone, dimmed like a stale market when its bucket is old.

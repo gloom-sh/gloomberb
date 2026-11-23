@@ -432,3 +432,27 @@ describe("CTM exports and the session that has just opened", () => {
     expect(result.errors).toEqual(["The futures contract catalogue is unavailable."]);
   });
 });
+
+test("each contract's open interest carries the session it counts, n/a for a count the server cannot date, in the text and the export", async () => {
+  // BTC on Monday 23 Nov 2026 06:07 UTC: X26's count is Friday's, published with the weekend's quote; Z26 kept an earlier
+  // read's count the server cannot date; F27 has none.
+  const payload: FuturesCurvePayload = { ...curve("BTC", [
+    { ...contract("BTC", "X26", 4, 61_665, false, "2026-11-23T06:07:00Z"), openInterest: 9_778, openInterestAsOf: "2026-11-20" },
+    { ...contract("BTC", "Z26", 31, 61_945, false, "2026-11-23T05:47:00Z"), openInterest: 7_947, openInterestAsOf: null },
+    { ...contract("BTC", "F27", 67, 61_000, false, "2026-11-23T02:42:00Z"), openInterest: null },
+  ]) };
+  const { ctx } = context({ btc: () => payload });
+  const args = createTestHeadlessArgs({ rawArgument: "BTC", argument: "BTC", symbols: [], options: {} });
+  const result = await futuresCurveHeadless.load(args, ctx) as HeadlessBundleResult;
+  expect(result.sections[0]!.rows!.map((row) => [row.openInterest, row.openInterestAsOf])).toEqual([[9_778, "2026-11-20"], [7_947, null], [null, null]]);
+  const text = renderHeadlessPaneText(futuresCurveHeadless, result, createTestHeadlessArgs(), "CTM").replace(/\x1b\[[0-9;]*m/g, "");
+  expect(text).toMatch(/Open Int +OI Date/);
+  expect(text).toMatch(/BTCX26 .* 9,778 +2026-11-20 /);
+  expect(text).toMatch(/BTCZ26 .* 7,947 +n\/a /);
+  expect(text).toMatch(new RegExp(String.raw`BTCF27 .* ${MISSING_VALUE} +${MISSING_VALUE} `));
+  const freshness = deriveHeadlessFreshness(futuresCurveHeadless, result);
+  const csv = renderReportCsv(headlessReportTables(futuresCurveHeadless, result, args, "CTM", freshness, { complete: true, unavailableSymbols: [] }), freshness).split("\n");
+  const header = csv.find((line) => line.includes("OI Date"))!.split(",");
+  const at = header.indexOf("OI Date");
+  expect(csv.filter((line) => line.startsWith("BTC")).map((line) => line.split(",")[at])).toEqual(["2026-11-20", "", ""]);
+});

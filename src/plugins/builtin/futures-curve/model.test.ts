@@ -145,7 +145,8 @@ test("Dutch TTF gas is a curve root that reads in euros per MWh at its 0.001 tic
     archiveStart: "2020-11-30", gaps: [], spec: null, contracts: [{ contract: "TTFX26", symbol: "TTFX26.NYM", label: "Nov 26", deliveryMonth: "2026-11", expiration: "2026-10-29",
       tradeDate: "2026-10-02", price: 74.76, volume: 458, openInterest: 1449, asOf: "2026-10-02T04:00:00.000Z", stale: false, settled: true }] },
   { "1W": null, "1M": null }, "2026-10-11T00:00:00Z");
-  expect(past.contracts[0]).toMatchObject({ currency: "EUR", quoteUnit: "EUR" });
+  // Its open interest is the archived session's own.
+  expect(past.contracts[0]).toMatchObject({ currency: "EUR", quoteUnit: "EUR", openInterest: 1449, openInterestAsOf: "2026-10-02" });
   expect(curveUnitLabel(past)).toBe("EUR / MWh");
 });
 
