@@ -225,7 +225,7 @@ const USD_BASES: Record<"mark" | "oracle" | "face-value", string> = { mark: "mar
  * How a market's OI USD was made: `mark × contracts, USDT valued at 1 USD`, or the venue's own figure
  * (`Bybit's own USDT value, USDT valued at 1 USD`). Null without a USD figure or when the server does not say.
  */
-export function openInterestUsdBasis(row: Interest & Pick<PerpBoardRow, "venue">): string | null {
+function openInterestUsdBasis(row: Interest & Pick<PerpBoardRow, "venue">): string | null {
   const source = openInterestSourceOf(row);
   if (row.openInterestUsd == null || !source?.usdBasis) return null;
   const made = source.usdBasis === "venue" ? `${venueName(row.venue)}'s own ${source.usdParity ?? "USD"} value` : USD_BASES[source.usdBasis];
