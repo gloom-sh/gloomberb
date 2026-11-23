@@ -1517,13 +1517,29 @@ a source date. The dividend yield (DIV YLD%) is the forward yield, the figure `D
 shows as Forward yield and `DES` as Fwd Div Yld, at the price when the screen's data
 was collected, so it differs from the one `ticker` shows by the price move since that
 date. It is never a trailing yield: a company whose paid history gives no forward rate
-(a single payment, or two, at a frequency the history does not show; an interim it
-skipped) has none, as `DVD`'s Forward yield has none, and its detail names its
-trailing yield instead (`No forward rate; trailing yield 6.12% (last 12 months of
-distributions)`), so the company fails a yield criterion rather than passing on
-another basis. A company's detail names its row's basis on a Yield basis line, in the
-words `DVD` uses: `latest distribution annualized`, or `trailing regular payments:
-uneven interims` for a year whose regular payments are summed.
+has none, as `DVD`'s Forward yield has none, and its detail says why and names its
+trailing yield (`No forward rate: its source annualized the HKD 1.87 of 2026-09-11
+twice, a frequency its paid history does not show; trailing yield 6.12% (last 12
+months of distributions)`). The reasons are a distribution annualized by a frequency
+the paid history does not show (one payment, or two, unless another line of the same
+company shows that frequency, as a Shenzhen line does for a young Hong Kong one), one
+annualized more often than the payer paid in the twelve months to it (an interim
+skipped, or instalments), a distribution of the year before that has not recurred a
+year on, and a distribution that covers part of a period. A company paid less often
+than its source annualized, whose ex-dates show its frequency, has the forward rate
+that frequency gives. A company's detail names its row's basis on a Yield basis line,
+in the words `DVD` uses: `latest distribution annualized`, or `trailing regular
+payments: uneven interims` for a year whose regular payments are summed.
+
+The trailing dividend yield (TTM YLD%, `trailingDividendYieldPercent`) is its own field
+beside it, on one basis too: `DVD`'s Trailing yield and the TTM Div Yld `DES` shows for
+a company with no forward rate, the distributions that went ex in the last 12 months
+of the paid history Gloom Cloud has stored, specials included, one per regular period,
+over the price. Every payer with a stored history has one, a forward rate or not, so a
+yield screen reaches a company with no forward rate on this field. A company whose
+statistics were stored as the twelve months paid before its history was stored keeps
+that figure, and its detail gives the day it was stored; one with no history stored has
+none, and its detail says so.
 
 EQS beta covers US listings, using weekly returns against SPY over two years
 of completed weeks. It requires at least 78 paired weekly returns.

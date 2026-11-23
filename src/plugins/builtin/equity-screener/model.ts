@@ -15,6 +15,7 @@ import {
   SCORE_FIELDS,
   SOCIAL_FIELDS,
   TECHNICAL_FIELDS,
+  TRAILING_YIELD_FIELDS,
   VOLATILITY_FIELDS,
   type NumericField,
   type ScreenMetric,
@@ -71,6 +72,7 @@ export const SHORT_LABELS: Record<NumericField, string> = {
   forwardPE: "FWD P/E",
   enterpriseToRevenue: "EV/REV",
   dividendYieldPercent: "DIV YLD%",
+  trailingDividendYieldPercent: "TTM YLD%",
   revenueGrowthPercent: "FY REV GR%",
   earningsGrowthPercent: "FY EARN GR%",
   grossMarginPercent: "FY GROSS MGN%",
@@ -494,6 +496,7 @@ export const screenLabel = (field: string) =>
     changePercent: "Change %",
     daysToCover: "Days to cover",
     dividendYieldPercent: "Dividend yield %",
+    trailingDividendYieldPercent: "Trailing dividend yield %",
     xPostsPerDay: "X posts per day",
     xPostsVsMedian: "X posts vs median",
     payoutRatioPercent: "FY cash dividends / parent net income %",
@@ -1027,8 +1030,9 @@ export function validateScreenPayload(value: unknown): ScreenPayload {
     ids.add(screenRowId(row));
     for (const field of NUMERIC_FIELDS) {
       // A server from before social, research, volatility, dividend, technical, option volatility, ownership, quality,
-      // score or grade fields omits them; they read as unavailable. A Pro field it left out was held back from this caller.
-      if (!row.metrics[field] && ([...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...TECHNICAL_FIELDS, ...OPTION_VOLATILITY_FIELDS, ...OWNERSHIP_FIELDS, ...QUALITY_FIELDS, ...SCORE_FIELDS, ...GRADE_FIELDS, ...ATTENTION_FIELDS, ...HIRING_APP_FIELDS, ...KPI_FIELDS, ...DIVIDEND_FIELDS] as readonly string[]).includes(field))
+      // score, grade or trailing yield fields omits them; they read as unavailable. A Pro field it left out was held back
+      // from this caller.
+      if (!row.metrics[field] && ([...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...TECHNICAL_FIELDS, ...OPTION_VOLATILITY_FIELDS, ...OWNERSHIP_FIELDS, ...QUALITY_FIELDS, ...SCORE_FIELDS, ...GRADE_FIELDS, ...ATTENTION_FIELDS, ...HIRING_APP_FIELDS, ...KPI_FIELDS, ...DIVIDEND_FIELDS, ...TRAILING_YIELD_FIELDS] as readonly string[]).includes(field))
         row.metrics[field] = PRO_FIELDS.has(field) ? withheldMetric() : unavailableMetric();
       const metric = row.metrics[field];
       if (
