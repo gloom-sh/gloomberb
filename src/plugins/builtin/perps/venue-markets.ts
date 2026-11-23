@@ -91,7 +91,7 @@ export function venueMarketsFreshness(markets: readonly PerpVenueMarket[], { now
   now?: number; streaming: ReadonlySet<string>; refreshFailed?: boolean;
 }): HeadlessPaneFreshness {
   const streams = (market: PerpVenueMarket) => streaming.has(market.primary.marketId);
-  const rows = markets.map((market) => ({ venue: market.venue, observedAt: venueMarketReadAt(market),
+  const rows = markets.map((market) => ({ venue: market.primary.venue, observedAt: venueMarketReadAt(market),
     stale: market.contracts.some((contract) => contract.stale) || refreshFailed && !streams(market) }));
   return perpFreshness(rows, { now, live: markets.length > 0 && markets.every((market) => streams(market) && market.contracts.length === 1) });
 }
