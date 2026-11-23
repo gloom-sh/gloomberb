@@ -272,7 +272,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   }, [returnToPresent, setCountryFilter, setSelectedKey]);
 
   // A forced reload goes back to the present once it answers.
-  const forcedResult = calendar.data?.forced ? calendar.data : null;
+  const forcedResult = calendar.savedAt === null && calendar.data?.forced ? calendar.data : null;
   useEffect(() => {
     if (!forcedResult) return;
     setSelectedKey(null);

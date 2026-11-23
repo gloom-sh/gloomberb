@@ -77,6 +77,7 @@ describe("footer hint row", () => {
     // A saved copy is no age: it stays first, whole, beside the date.
     const saved = savedCopyFooterSegment("saved", Date.UTC(2026, 9, 28, 12), Date.UTC(2026, 9, 28, 12, 30));
     expect(fitPaneFooterInfo([saved, rates, fetched], 60)).toEqual([saved, rates]);
+    expect(fitPaneFooterInfo([saved, rates], paneFooterInfoWidth([saved]) + 1, { terminal: true })).toEqual([saved]);
   });
 
   test("segments are set apart by the separator, an icon by one column, and the fit counts both", () => {
@@ -278,7 +279,7 @@ describe("combining footer registrations", () => {
     const loading: PaneFooterSegment = { id: "loading", parts: [{ text: "loading", tone: "muted" }] };
     const stale: PaneFooterSegment = { id: "stale", parts: [{ text: "stale", tone: "warning" }] };
     const footer = combinePaneFooterRegistrations(new Map<string, PaneFooterRegistration>([
-      ["list", { info: [loading, savedCopyFooterSegment("list-saved", Date.UTC(2026, 9, 28, 14, 5))] }],
+      ["list", { info: [loading, ageFooterSegment("just now", { verb: "checked" }), savedCopyFooterSegment("list-saved", Date.UTC(2026, 9, 28, 14, 5))] }],
       ["report", { order: 1, info: [stale, savedCopyFooterSegment("report-saved", Date.UTC(2026, 9, 28, 9, 30))] }],
     ]));
     expect(footer.info.map((segment) => segment.id)).toEqual(["report-saved", "loading", "stale"]);

@@ -167,12 +167,12 @@ export function useAsyncResource<T>(
   // A load that failed is asked again once the data service (or the desktop
   // bridge) answers after an outage, so a pane recovers by itself instead of
   // keeping the failure.
-  const failedRef = useRef(false);
-  failedRef.current = !!loader && (error !== null || savedCopyAt(data) !== null) && !loading;
+  const recoveryRef = useRef<{ refresh: boolean } | null>(null);
+  recoveryRef.current = loader && !loading && (error !== null || savedCopyAt(data) !== null) ? { refresh: savedAt !== null } : null;
   useEffect(() => {
     if (manual || !loader) return;
     return connectionHealth.subscribeRecovery((sourceId) => {
-      if (recoversDataRequests(sourceId) && failedRef.current) load();
+      if (recoversDataRequests(sourceId) && recoveryRef.current) load(recoveryRef.current.refresh);
     });
   }, [load, loader, manual]);
   const status: "error" | "loaded" | "loading" | "idle" = error !== null ? "error" : data !== null ? "loaded" : loading ? "loading" : "idle";
