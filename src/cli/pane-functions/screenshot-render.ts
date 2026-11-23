@@ -15,7 +15,7 @@ import {
 import type { ResolvedPaneFunction } from "./resolver";
 import type { MarketContext } from "../types";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
-import { declaredReportFreshness, renderedReportFreshness, renderedReportObservations, renderedReportOptions } from "./report-notices";
+import { declaredReportFreshness, renderedReportFreshness, renderedReportObservations, renderedReportOptions, rendersOwnStatus } from "./report-notices";
 import {
   captureStatusLine,
   deriveCaptureReport,
@@ -103,11 +103,13 @@ export function shotFreshness(
   const quotes = listings.length > 0 ? listings : loaded;
   // A pane that publishes the observations behind its figures (FXC's rates) dates itself.
   const observed = renderedReportObservations(render.semanticUi ?? []);
-  const quoted = declared.status || observed.length > 0
+  // A view that dates its data in its own footer (a DES research tab's holdings) is not dated by the quotes either.
+  const ownStatus = rendersOwnStatus(render.semanticUi ?? []);
+  const quoted = declared.status || observed.length > 0 || ownStatus
     ? undefined
     // Quotes across markets name each one's session and open (`LSE opens Mon 08:00 UTC · US Mon 14:30 UTC`), as compare and QM do.
     : quotesFreshness(quotes, { ...declared.source ? { source: declared.source } : {}, datesEachVenue: true }, now, sourceName);
-  return captureStatusLine({
+  const line = captureStatusLine({
     report,
     selfDated: Object.keys(published).length > 0 || observed.length > 0,
     quoted,
@@ -117,6 +119,7 @@ export function shotFreshness(
       observed,
     }, now),
   });
+  return ownStatus ? { ...line, ownStatus } : line;
 }
 
 /**
@@ -369,7 +372,7 @@ export async function renderDesktopShot({
         // A row whose read failed is marked on the picture, where its figures are missing.
         const unread = unreadRowsNote(shotPayload.unreadRows);
         return { variants: unread ? line.variants.map((variant) => `${variant} · ${unread}`) : line.variants, dates: line.dates,
-          dateEvidence: statusDateEvidence(line.freshness) };
+          dateEvidence: statusDateEvidence(line.freshness), ...(line.ownStatus ? { ownStatus: true } : {}) };
       },
     }));
     // A pane that shows another view than asked (a stored close while the chain is closed) covers that view's report.

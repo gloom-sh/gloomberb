@@ -1692,6 +1692,23 @@ test("a pane with no market data is not dated by the quotes the page loaded for 
   }
 });
 
+test("a DES research tab is dated by what its own footer says, never by the listing's quote (DES --tab Ownership)", () => {
+  const NOW = Date.parse("2026-11-23T11:30:00Z");
+  const quote = createTestQuote({ symbol: "FUN", dataSource: "delayed", delayMinutes: 15, lastUpdated: NOW - 60_000, sessionExchange: "NYSE", marketState: "PRE" } as never);
+  const payload = { financials: [["FUN", { quote }]], instrumentFinancials: [] } as unknown as Pick<DesktopPaneShotPayload, "financials" | "instrumentFinancials">;
+  const pane = { reportFreshness: undefined } as ResolvedPaneFunction["pane"];
+  const tab = [{ role: "own-status", label: "Tab status" } as unknown as RemoteUiNodeSnapshot];
+  const own = shotFreshness({ pane }, payload, { semanticUi: tab, footerText: "2026-06-30", rows: [] }, [], undefined, NOW);
+  expect(own.ownStatus).toBe(true);
+  expect(own.dates).toBeNull();
+  expect(own.variants.join("\n")).not.toMatch(/delayed|pre-market|session opens/);
+  // The overview, which publishes no such node, is the quote's.
+  const overview = shotFreshness({ pane }, payload, { semanticUi: [], footerText: "", rows: [] }, [], undefined, NOW);
+  expect(overview.ownStatus).toBeUndefined();
+  expect(overview.dates).toBe("quotes");
+  expect(overview.variants[0]).toContain("delayed");
+});
+
 describe("a capture's footer with nothing to date", () => {
   const nothing = { accessGate: null, emptyStateDetected: false, loadingStateDetected: false, errorStateDetected: false, rows: [], visibleKeyValues: [], semanticUi: [] } satisfies Parameters<typeof shotLoadedNothing>[0];
   const row = { tableIndex: 0, rowIndex: 0, selected: false, cells: [{ columnLabel: "Symbol", text: "AAPL" }] };

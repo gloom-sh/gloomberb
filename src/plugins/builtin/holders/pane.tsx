@@ -15,10 +15,14 @@ import {
 } from "../../../components";
 import { ClippedText } from "../../../components/ui/display";
 import { useCompanyDataFooter } from "../../../components/layout/pane/status-footer";
+import { footerTimeText, type PaneFooterSegment } from "../../../components/layout/pane/footer";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
 import { cachedValueForDisplay } from "../../../data/cached-query";
 import { useCloudDisplayScope } from "../../../api-client/plan-access";
+import { isPermanentClientError } from "../../../api-client/errors";
+import { isNetworkFailure } from "../../../utils/network-failure";
+import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { useShortcut } from "../../../react/input";
 import { colors, priceColor } from "../../../theme/colors";
 import type { HolderData } from "../../../types/financials";
@@ -97,6 +101,27 @@ export function holderNameCell(
   };
 }
 
+/** What the footer and a report say of the source's short list standing in for a 13F holder index that could not be read. */
+const INDEX_UNREAD = "holder index could not be read; short list";
+
+/**
+ * The footer's segment for the source's short list standing in for a 13F
+ * holder index that could not be read: what the rows are, and when the list
+ * was read (`readAt`). When the list is itself a saved copy, the saved copy's
+ * own segment says when.
+ */
+export function indexUnreadFooter(readAt: number | null, savedCopy: boolean, now = Date.now()): PaneFooterSegment {
+  const when = !savedCopy && readAt !== null ? ` from ${footerTimeText(readAt, now)}` : "";
+  return {
+    id: "index-unread",
+    // A picture of the rows cannot say they are not every filer.
+    capture: true,
+    title: "The 13F holder index could not be read: this is the short list of the largest holders, not every filer.",
+    parts: [{ text: `${INDEX_UNREAD}${when}`, tone: "warning" }],
+    variants: [[{ text: `short list${when}`, tone: "warning" }]],
+  };
+}
+
 export function HoldersView({ focused, width, height }: { focused: boolean; width: number; height: number }) {
   const { nativePaneChrome } = useUiCapabilities();
   const { symbol, ticker, financials } = usePaneTicker();
@@ -121,7 +146,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
       throw isNoHoldersAnswer(error) ? new Error(noHoldersText(symbol, exchange, savedCurrency)) : error;
     });
   } : null, [dataProvider, exchange, savedCurrency, symbol]);
-  const { data, loading, error, reload } = useAsyncResource<HolderData>(loadHolders, {
+  const { data, loading, error, reload, updatedAt, savedAt } = useAsyncResource<HolderData>(loadHolders, {
     keepPreviousData: scope,
     initialData: () => scope && symbol && dataProvider?.getCachedQuery
       ? cachedValueForDisplay(dataProvider.getCachedQuery("getHolders", [symbol, exchange]).getSnapshot().result)
@@ -143,6 +168,10 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   const base = data && indexHolderTicker(data.symbol) === indexTicker ? data : null;
   const indexed = index.rows.length > 0 && (!!base || !loading) && indexHolderTicker(symbol, exchange, base) != null;
   const indexPending = !!indexTicker && index.loading && index.rows.length === 0;
+  // The index could not be read, as opposed to not listing the ticker: the source's short list stands in.
+  const indexUnread = !!indexTicker && !indexed && index.error !== null && !isPermanentClientError(index.error);
+  // Nor could the data service be reached, which every 13F name lookup would ask in turn.
+  const serviceUnreached = indexUnread && isNetworkFailure(index.error);
   // Index rows take the source's price; the quote's only when the source gave none, sampled so ticks do not re-sort.
   // The rows follow the units in use, so a quote that is not the price used leaves them as they are.
   const quotePrice = useSampledValue(financials?.quote?.price, HOLDER_MARKET_CAP_SAMPLE_MS, symbol ?? "");
@@ -172,6 +201,12 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   const sharesOutstanding = classSharesToday(financials);
   const sharesOutstandingAsOf = classSharesAsOf(financials);
   const rows = useMemo(() => buildRows(listData), [listData]);
+  const shortListShown = indexUnread && rows.length > 0;
+  // A report of the view says so after its date, which is the short list's.
+  useRemoteUiNode(shortListShown && viewMode !== "13dg" ? {
+    role: "report-freshness", label: "Holder list",
+    getMetadata: () => ({ note: INDEX_UNREAD, noteVariants: ["short list"] }),
+  } : null);
   const periodsDiffer = useMemo(() => holderPeriodsDiffer(rows), [rows]);
   const sortedRows = useMemo(() => sortRows(rows, sortPreference, marketCap), [marketCap, rows, sortPreference]);
   // Change columns only when the source reports a change; otherwise every row would read as missing.
@@ -200,8 +235,8 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
       return;
     }
     setFundMatches(new Map());
-    // The source's rows are not matched while the index's may replace them.
-    if (rows.length === 0 || indexPending) {
+    // The source's rows are not matched while the index's may replace them, nor by a service that does not answer.
+    if (rows.length === 0 || indexPending || serviceUnreached) {
       setFundMatching(false);
       return;
     }
@@ -226,7 +261,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
         fundMatchAbortRef.current = null;
       }
     };
-  }, [indexPending, rows]);
+  }, [indexPending, rows, serviceUnreached]);
 
   const selectedRow = activeIdx >= 0 ? sortedRows[activeIdx] ?? null : null;
   const selectedFundMatch = selectedRow ? fundMatches.get(selectedRow.id) ?? null : null;
@@ -367,6 +402,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
           ? [{ id: "more-error", parts: [{ text: "more holders could not be read", tone: "warning" as const }] }]
           : []),
         ...(fundMatching ? [{ id: "fund-matching", parts: [{ text: "13F matching", tone: "muted" as const }] }] : []),
+        ...(shortListShown ? [indexUnreadFooter(updatedAt, savedAt !== null)] : []),
       ],
       // The title-bar tabs (or the query bar inside Ticker Research) switch
       // views, so the footer only carries the fund action.
@@ -375,7 +411,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
         ...(selectedFundMatch ? [{ id: "fund", key: "o", label: "pen 13F", onPress: () => openFundDetail(selectedRow) }] : []),
       ],
     };
-  }, [data, error, fundMatching, index.loadingMore, index.moreError, index.pages, indexed, indexPending, listData, loading, openFundDetail, periodsDiffer, selectedFundMatch, selectedRow, viewMode]);
+  }, [data, error, fundMatching, index.loadingMore, index.moreError, index.pages, indexed, indexPending, listData, loading, openFundDetail, periodsDiffer, savedAt, selectedFundMatch, selectedRow, shortListShown, updatedAt, viewMode]);
 
   const selectView = useCallback((value: string) => setViewMode(value as ViewMode), [setViewMode]);
   // As a research tab, h/l move between research tabs; `s` switches the view.

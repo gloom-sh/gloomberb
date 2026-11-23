@@ -17,11 +17,12 @@ declare global {
      * Set by a capture that carries a status line: shows the first of the
      * variants (longest first) that fits the footer, cut in the middle when
      * none does, and resolves to the text shown. `dates` says what the line
-     * dates, so the pane's own text that says the same goes. With no variants
-     * the pane has nothing to date: the footer row is given back to the body
-     * and the text shown is empty.
+     * dates, so the pane's own text that says the same goes. `ownStatus`: the
+     * view dates its data in its own footer (a DES research tab), which stays
+     * whole beside the line. With no variants the pane has nothing to date:
+     * the footer row is given back to the body and the text shown is empty.
      */
-    __GLOOM_CLI_SHOT_FIT_STATUS__?: (variants: string[], options?: { dates?: ShotLineDates }) => Promise<string>;
+    __GLOOM_CLI_SHOT_FIT_STATUS__?: (variants: string[], options?: { dates?: ShotLineDates; ownStatus?: boolean }) => Promise<string>;
   }
 }
 
@@ -126,17 +127,21 @@ interface ShotStatusLineState {
   dates: ShotLineDates;
   /** No variant fit beside the pane's own `as of`, so it gave way. */
   crowded: boolean;
+  /** The view dates its data in its own footer, which the capture keeps. */
+  ownStatus: boolean;
 }
 
 function useShotStatusLine(enabled: boolean, hasAsOf: () => boolean): ShotStatusLineState {
   const [text, setText] = useState<string | null>(PENDING_STATUS);
   const [dates, setDates] = useState<ShotLineDates>(null);
   const [crowded, setCrowded] = useState(false);
+  const [ownStatus, setOwnStatus] = useState(false);
   useEffect(() => {
     if (!enabled) return;
     // What the line says goes before it is fitted, so the line gets its room.
     window.__GLOOM_CLI_SHOT_FIT_STATUS__ = async (variants, options) => {
       setDates(options?.dates ?? null);
+      setOwnStatus(options?.ownStatus === true);
       setCrowded(false);
       if (variants.length === 0) {
         setText(null);
@@ -158,7 +163,7 @@ function useShotStatusLine(enabled: boolean, hasAsOf: () => boolean): ShotStatus
       delete window.__GLOOM_CLI_SHOT_FIT_STATUS__;
     };
   }, [enabled, hasAsOf]);
-  return { text, dates, crowded };
+  return { text, dates, crowded, ownStatus };
 }
 
 /**
@@ -170,7 +175,9 @@ function useShotStatusLine(enabled: boolean, hasAsOf: () => boolean): ShotStatus
  * pane's own text that says the same goes, so the date is said once: its `as
  * of` (a footer segment or a query bar's) when the line dates the pane's data,
  * and its quote date and delay when the line states them. A pane's `as of`
- * also gives way before the line would be cut.
+ * also gives way before the line would be cut. A view that dates its data in
+ * its own footer (the line's `ownStatus`) keeps that footer's status, as
+ * `preserveStatus` does for a whole pane.
  */
 export function PaneShotFrame({ paneId, title, width, height, preserveStatus = false, statusLine = false, children }: {
   paneId: string;
@@ -183,7 +190,7 @@ export function PaneShotFrame({ paneId, title, width, height, preserveStatus = f
 }) {
   const shownAsOf = useRef(false);
   const hasAsOf = useCallback(() => shownAsOf.current, []);
-  const { text: statusText, dates, crowded } = useShotStatusLine(statusLine, hasAsOf);
+  const { text: statusText, dates, crowded, ownStatus } = useShotStatusLine(statusLine, hasAsOf);
   const datesData = statusLine && dates === "data";
   const palette = useThemeColors();
   const [noteHeight, setNoteHeight] = useState(0);
@@ -201,7 +208,7 @@ export function PaneShotFrame({ paneId, title, width, height, preserveStatus = f
     const status: PaneFooterSegment[] = statusLine && statusText !== null ? [{ id: "shot-status", parts: [{ text: statusText, tone: "label" }] }] : [];
     const warnings = registeredFooter.info.filter((segment) => segment.icon === "warning" && segment.notes?.length !== 0);
     const info = registeredFooter.info.filter((segment) => segment.icon !== "warning"
-      && (preserveStatus || segment.capture)
+      && (preserveStatus || ownStatus || segment.capture)
       && !(datesPaneData(segment) && (datesData || crowded))
       && !(segment.quoteStatus && statusLine && dates !== null));
     shownAsOf.current = info.some(datesPaneData);

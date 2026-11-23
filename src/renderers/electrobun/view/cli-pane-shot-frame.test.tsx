@@ -114,6 +114,37 @@ test("a status line replaces the pane's own text that says the same: its as-of f
   expect(footer()).toContain("Observed Mon 5 Oct · lag 5d");
 });
 
+test("a view that dates its data in its own footer keeps that footer beside the line (a DES research tab)", async () => {
+  const ui = createDomUiHost();
+  function Holdings() {
+    usePaneFooter("holders", () => ({
+      info: [
+        { id: "as-of", parts: [{ text: "2026-06-30" }] },
+        { id: "index-unread", capture: true, parts: [{ text: "holder index could not be read; short list from 11:22", tone: "warning" }] },
+      ],
+      hints: [{ id: "fund", key: "o", label: "pen 13F", onPress() {} }],
+    }), []);
+    return <div>Holders</div>;
+  }
+  const root = await render(<UiHostProvider ui={ui} renderer={noopRendererHost}>
+    <WebInputHostProvider><WebDialogHostProvider>
+      <PaneShotFrame paneId="shot" title="FUN" width={90} height={24} statusLine>
+        {() => <PaneFooterScope active><Holdings /></PaneFooterScope>}
+      </PaneShotFrame>
+    </WebDialogHostProvider></WebInputHostProvider>
+  </UiHostProvider>);
+  const footer = () => root.querySelector('[data-gloom-role="pane-footer"]')?.textContent ?? "";
+  // Before the line is known only what a picture of the rows cannot say is kept.
+  expect(footer()).toContain("short list from 11:22");
+  expect(footer()).not.toContain("2026-06-30");
+
+  await act(async () => { await window.__GLOOM_CLI_SHOT_FIT_STATUS__?.(["Retrieved Mon 23 Nov 2026 11:22 UTC"], { dates: null, ownStatus: true }); });
+  expect(footer()).toContain("2026-06-30");
+  expect(footer()).toContain("short list from 11:22");
+  expect(footer()).toContain("Retrieved Mon 23 Nov 2026 11:22 UTC");
+  expect(root.querySelector('[data-gloom-role="pane-hint"]')).toBeNull();
+});
+
 test("a capture with nothing to date gives the footer row back to the pane", async () => {
   const ui = createDomUiHost();
   const root = await render(<UiHostProvider ui={ui} renderer={noopRendererHost}>

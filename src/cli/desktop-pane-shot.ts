@@ -296,6 +296,8 @@ interface ShotStatusLineVariants {
   variants: readonly string[];
   dates?: "data" | "quotes" | null;
   dateEvidence?: readonly (readonly string[])[];
+  /** The view dates its data in its own footer, which the capture keeps beside the line. */
+  ownStatus?: boolean;
 }
 type ShotStatusLine = (rendered: DesktopPaneShotRenderResult) => ShotStatusLineVariants | null | Promise<ShotStatusLineVariants | null>;
 
@@ -1365,11 +1367,11 @@ function shotStateText(value: { error?: unknown; empty?: unknown } | undefined):
 }
 
 /** Draws the first variant that fits the pane footer, and returns what it drew. */
-async function fitShotStatusLine(session: CdpPage, { variants, dates }: ShotStatusLineVariants): Promise<string | null> {
+async function fitShotStatusLine(session: CdpPage, { variants, dates, ownStatus }: ShotStatusLineVariants): Promise<string | null> {
   const result = await session.send("Runtime.evaluate", {
     expression: `(() => {
       const fit = window.__GLOOM_CLI_SHOT_FIT_STATUS__;
-      return fit ? fit(${JSON.stringify(variants)}, ${JSON.stringify({ dates: dates ?? null })}) : null;
+      return fit ? fit(${JSON.stringify(variants)}, ${JSON.stringify({ dates: dates ?? null, ...(ownStatus ? { ownStatus } : {}) })}) : null;
     })()`,
     awaitPromise: true,
     returnByValue: true,

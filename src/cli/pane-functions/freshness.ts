@@ -1481,6 +1481,8 @@ export interface CaptureStatusLine {
    * `as of` dates; null when it dates nothing it can name.
    */
   dates: "data" | "quotes" | null;
+  /** The view dates its data in its own footer (`rendersOwnStatus`), which the capture keeps beside the line. */
+  ownStatus?: true;
 }
 
 /**

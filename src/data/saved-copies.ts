@@ -192,6 +192,7 @@ export function noteServedCopy(at: number, refreshFailed: boolean): void {
  * where there is none, and both null outside a command.
  */
 export function servedCopiesAt(): { retrievedAt: number | null; savedAt: number | null } {
+  if (collecting === 0) return { retrievedAt: null, savedAt: null };
   let retrievedAt: number | null = null;
   let savedAt: number | null = null;
   for (const { at, refreshFailed } of served) {

@@ -6,6 +6,7 @@ import type {
 import { loadHolderSnapshot } from "./client";
 import { holderValueCurrency } from "./format";
 import { logFailure } from "../../../utils/log-failure";
+import { isPermanentClientError } from "../../../api-client/errors";
 import type { HolderData } from "../../../types/financials";
 import { SEC_FILING_ROWS, SEC_FILINGS } from "../shared/report-freshness";
 import type { BeneficialOwnersPayload } from "../../../api-client/beneficial-owners";
@@ -85,6 +86,9 @@ export interface HoldersHeadlessDependencies {
     ctx: HeadlessPaneContext,
   ): Promise<IndexedHolderList>;
 }
+
+/** Said when a US listing's 13F holder index could not be read, so the source's short list answers in its place. */
+const INDEX_UNREAD_NOTE = "The 13F holder index could not be read: this is the source's short list of the largest holders, not every filer.";
 
 const defaultDependencies: HoldersHeadlessDependencies = {
   loadSnapshot: (symbol, _args, ctx) => loadHolderSnapshot(ctx.marketData, symbol),
@@ -236,7 +240,11 @@ export function createHoldersHeadless(
           throw error;
         }),
         indexTicker
-          ? dependencies.loadIndexedHolders(indexTicker, limit, ctx).catch(logFailure("holders.headless", "Load 13F holder index failed", null))
+          ? dependencies.loadIndexedHolders(indexTicker, limit, ctx).catch((error: unknown) => {
+            logFailure("holders.headless", "Load 13F holder index failed")(error);
+            // An index that does not list the ticker leaves the source's list as the answer; one that could not be read is a gap.
+            return isPermanentClientError(error) ? null : "unread" as const;
+          })
           : null,
       ]);
       // A fund has no ownership breakdown, and a listing may have no holders on record: the report says so
@@ -251,11 +259,14 @@ export function createHoldersHeadless(
         };
       }
       const { marketCap } = snapshot;
-      const indexed = !!index?.rows.length && indexHolderTicker(symbol, exchange, snapshot.data) != null;
-      const partialNote = indexed ? indexedHoldersPartialNote(index, limit) : null;
+      const indexes = indexHolderTicker(symbol, exchange, snapshot.data) != null;
+      const list = index === "unread" ? null : index;
+      const indexed = !!list?.rows.length && indexes;
+      const partialNote = indexed ? indexedHoldersPartialNote(list, limit)
+        : index === "unread" && indexes ? INDEX_UNREAD_NOTE : null;
       // Pages hold 25; another order ranks the largest `limit`, not whatever the last page held past them.
       const data = indexed
-        ? withIndexedHolders(snapshot.data, indexTicker!, { ...index!, rows: index!.rows.slice(0, limit) }, indexedHolderUnits(snapshot.data, snapshot.price))
+        ? withIndexedHolders(snapshot.data, indexTicker!, { ...list!, rows: list!.rows.slice(0, limit) }, indexedHolderUnits(snapshot.data, snapshot.price))
         : snapshot.data;
       const currency = data.currency ?? "USD";
       // A London line's values can be dollars from the 13F filings; they are labelled and formatted as such.
@@ -270,7 +281,7 @@ export function createHoldersHeadless(
       const { notices, valueBasis, positionsBasis, changeReported } = holderReportNotices({
         data, requested: symbol, shown: rows, reported: sorted.length, total, sort, indexed,
       });
-      const fallback = quarterFallbackText(indexed ? index : null);
+      const fallback = quarterFallbackText(indexed ? list : null);
       return {
         // A change column that is empty on every row says nothing; the notices explain it once.
         columns: holderReportColumns(rows, valueCurrency),
