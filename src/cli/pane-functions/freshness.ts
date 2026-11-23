@@ -195,7 +195,7 @@ export function withSavedCopy<F extends ReportFreshness | undefined>(freshness: 
  * refresh fell back to one. A report whose rows were rebuilt from such a read
  * (INS's trades from a filing list) carries no mark of it, so it is dated so.
  */
-export function withServedCopies<F extends ReportFreshness | undefined>(freshness: F): F {
+function withServedCopies<F extends ReportFreshness | undefined>(freshness: F): F {
   if (!freshness || freshness.unreached) return freshness;
   const { retrievedAt, savedAt } = servedCopiesAt();
   if (retrievedAt == null) return freshness;

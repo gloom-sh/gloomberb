@@ -110,7 +110,7 @@ const INDEX_UNREAD = "holder index could not be read; short list";
  * was read (`readAt`). When the list is itself a saved copy, the saved copy's
  * own segment says when.
  */
-export function indexUnreadFooter(readAt: number | null, savedCopy: boolean, now = Date.now()): PaneFooterSegment {
+function indexUnreadFooter(readAt: number | null, savedCopy: boolean, now = Date.now()): PaneFooterSegment {
   const when = !savedCopy && readAt !== null ? ` from ${footerTimeText(readAt, now)}` : "";
   return {
     id: "index-unread",
