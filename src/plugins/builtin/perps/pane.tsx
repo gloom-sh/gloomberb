@@ -28,7 +28,7 @@ import { useFreshnessStatusLine } from "./status-line";
 import { useLivePerpRows, useLivePerpTableRows } from "./live-rows";
 import { perpBoardRowSource, readPerpBoardRow } from "./board-row-source";
 import { aprFormula, ASSET_FILTERS, BOARD_SORTS, boardColumns, collectedVenueCount, compact, compareColumns, dayChange, fundingInterval, fundingSpread, historyCaption, historyCell, historyChange, historyColumns,
-  HISTORY_METRICS, historyRows, historySeries, historyValue, inPoints, isAssetTab, isMarketTab, label, longShortReason, marketLabel, metricLabel, openingTab, perpCell, perpHistoryProText, PERP_TABS, percent,
+  HISTORY_METRICS, historyRows, historySeries, historyValue, inPoints, isAssetTab, isMarketTab, label, longShortReason, marketLabel, metricLabel, openInterestFields, openingTab, perpCell, perpHistoryProText, PERP_TABS, percent,
   positioningFields, price, rankingColumns, rankingRows, RANKINGS, ratioText, share, sortLabel, time, underlyingTicker, venueAprSummary, venueLabel, venueName, venuesOf, type HistoryMetric,
   type PerpColumnId, type PerpTab, type RankingKey } from "./model";
 
@@ -81,7 +81,8 @@ function MarketEvidence({ row, data, width, height }: { row: PerpBoardRow; data:
       ...(row.predictedFundingRate != null ? [["Predicted funding", `${percent(row.predictedFundingRate)} / ${row.predictedFundingIntervalHours ?? MISSING_VALUE}h`] as [string, string]] : []),
       ...(row.nextFundingAt ? [["Next funding", time(row.nextFundingAt)] as [string, string]] : []),
       ...(acrossVenues ? [["APR across venues", acrossVenues.text] as [string, string]] : [])]],
-    ["Open Interest", [["Open interest", `${compact(row.openInterestBase)} ${row.baseAsset} · ${compact(row.openInterestUsd)} USD`],
+    // The open interest is dated and sourced by its own read, not the market's above.
+    ["Open Interest", [...openInterestFields(row).map((field): EvidenceField => [field.label, field.text, field.detail]),
       ["OI change 1h / 24h", row.oiChange1h == null && row.oiChange24h == null ? "Collecting" : `${percent(row.oiChange1h, 2)} / ${percent(row.oiChange24h, 2)}`, "own snapshots"]]],
     ...(positioning ? [["Positioning", positioning.map((field) => [field.label, field.text, field.detail])] as [string, EvidenceField[]]] : []),
     ...(row.underlying ? [["Underlying", [...listed, ["Underlying last", `${price(row.underlying.price)} ${row.underlying.currency}`, time(row.underlying.asOf)], ["Underlying session", row.underlying.marketState ?? "Unknown"],

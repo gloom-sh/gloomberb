@@ -1,7 +1,7 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { expect, test } from "bun:test";
-import { aprFootnote, baseOfLabel, BOARD_COLUMNS, collectedVenueCount, boardColumns, compareColumns, dayChange, fundingSpread, historyCaption, historyCell, historyChange, historyColumns, historyRows, percent, perpBaseCandidates, perpCellText, perpDescription, readingTime,
-  separatedPairBase, underlyingTicker, venueAprSummary } from "./model";
+import { aprFootnote, baseOfLabel, BOARD_COLUMNS, collectedVenueCount, boardColumns, compareColumns, dayChange, fundingSpread, historyCaption, historyCell, historyChange, historyColumns, historyRows, openInterestFields, percent, perpBaseCandidates, perpCellText, perpDescription, readingTime,
+  rowReadAt, separatedPairBase, underlyingTicker, venueAprSummary } from "./model";
 import { fundingNote } from "./freshness";
 import { equityBoard, longShort, longShortPoint, perpHistory, perpRow, venueRow } from "./test-fixture";
 
@@ -172,4 +172,28 @@ test("one asset's carry across venues: the APR range, weighted by open interest,
   const stale = venueAprSummary(rows.map((row) => row.venue === "okx" ? { ...row, stale: true } : row))!;
   expect(stale.text).toBe("3 venues: -0.0% to +11.0%, OI-weighted +6.1%; Hyperliquid sits at the 0.01%/8h baseline; 1 stale contract left out");
   expect([stale.low, stale.stale]).toEqual([-0.0004, 1]);
+});
+
+test("open interest is listed with its own read, source and USD basis, never the market's", () => {
+  const read = "2026-11-23T06:10:02.000Z";
+  const source = (patch = {}) => ({ url: "https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT", observedAt: read, asOf: "2026-11-23T06:10:01.000Z",
+    usdBasis: "mark" as const, usdParity: "USDT", ...patch });
+  const binance = venueRow("binance", { observedAt: "2026-11-23T06:16:30.000Z", openInterestBase: 92_190, openInterestUsd: 5_690e6, openInterestSource: source() });
+  expect(openInterestFields(binance).map((field) => [field.label, field.text, field.detail])).toEqual([
+    ["Open interest", "92.2k BTC · 5.69B USD", "USD = mark × contracts, USDT valued at 1 USD"],
+    ["OI observed", "2026-11-23 06:10 UTC", undefined],
+    ["OI source as of", "2026-11-23 06:10 UTC", undefined],
+    ["OI source", "https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT", undefined]]);
+  // A streamed mark beside the open interest the last poll read is dated by the older read.
+  expect(rowReadAt(binance)).toBe(read);
+  const basis = (venue: Parameters<typeof venueRow>[0], patch: object) => openInterestFields(venueRow(venue, { openInterestSource: source(patch) }))[0]!.detail;
+  expect(basis("bybit", { usdBasis: "venue" })).toBe("USD = Bybit's own USDT value, USDT valued at 1 USD");
+  expect(basis("okx", { usdBasis: "venue", usdParity: null })).toBe("USD = OKX's own USD value");
+  expect(basis("binance", { usdBasis: "face-value", usdParity: null })).toBe("USD = contracts × face value");
+  // A server that does not say, or says something unreadable, leaves the time unstated rather than lending the market's.
+  for (const unstated of [venueRow("bybit"), venueRow("bybit", { openInterestSource: source({ observedAt: "soon" }) })]) {
+    expect(openInterestFields(unstated).slice(1).map((field) => [field.label, field.text])).toEqual([["OI observed", "Not stated"]]);
+    expect(rowReadAt(unstated)).toBe(unstated.observedAt);
+  }
+  expect(openInterestFields(venueRow("bybit", { openInterestBase: null, openInterestUsd: null, openInterestSource: source() })).map((field) => field.text)).toEqual([`${MISSING_VALUE} BTC · ${MISSING_VALUE} USD`]);
 });

@@ -1,5 +1,7 @@
 import type { PerpBoardRow } from "../../../api-client/perps";
-import { venueName } from "./model";
+import type { HeadlessPaneFreshness } from "../../../types/headless";
+import { perpFreshness } from "./freshness";
+import { rowReadAt, venueName } from "./model";
 
 /**
  * An asset's perpetual markets as DES lists them: one row per venue.
@@ -58,6 +60,40 @@ export function mergeVenueMarkets(rows: readonly PerpBoardRow[]): PerpVenueMarke
       volume24hUsd: sumOrNull(sorted.map((row) => row.volume24hUsd)),
     };
   }).sort((a, b) => deeper(a, b) || venueName(a.venue).localeCompare(venueName(b.venue)) || a.key.localeCompare(b.key));
+}
+
+/**
+ * A venue's row with its deepest contract's newer reading (the quote stream's) laid over it: the open interest and
+ * volume count that reading, so they move with the mark beside them. The row itself for the reading it was made from.
+ */
+export function withPrimaryReading(market: PerpVenueMarket, row: PerpBoardRow): PerpVenueMarket {
+  if (row === market.primary) return market;
+  const contracts = [row, ...market.contracts.slice(1)];
+  return { ...market, primary: row, contracts, openInterestUsd: sumOrNull(contracts.map((contract) => contract.openInterestUsd)),
+    volume24hUsd: sumOrNull(contracts.map((contract) => contract.volume24hUsd)) };
+}
+
+/**
+ * When a venue's row was read: the oldest reading among the contracts its figures are made of, each one's open
+ * interest by its own read, so the row is never dated newer than a figure it shows.
+ */
+export function venueMarketReadAt(market: Pick<PerpVenueMarket, "contracts">): string {
+  return market.contracts.map(rowReadAt).reduce((oldest, at) => Date.parse(at) < Date.parse(oldest) ? at : oldest);
+}
+
+/**
+ * How current a list of venue rows is, in PERP's status line: each venue dated by its row's oldest figure, how old the
+ * oldest row is, and `live` only while every figure shown streams (`streaming`, the markets whose deepest contract
+ * follows its venue's socket; a venue's other contracts are the last read). `refreshFailed` marks the rows off the
+ * stream stale: the last read failed and its saved copy is shown.
+ */
+export function venueMarketsFreshness(markets: readonly PerpVenueMarket[], { now = Date.now(), streaming, refreshFailed = false }: {
+  now?: number; streaming: ReadonlySet<string>; refreshFailed?: boolean;
+}): HeadlessPaneFreshness {
+  const streams = (market: PerpVenueMarket) => streaming.has(market.primary.marketId);
+  const rows = markets.map((market) => ({ venue: market.venue, observedAt: venueMarketReadAt(market),
+    stale: market.contracts.some((contract) => contract.stale) || refreshFailed && !streams(market) }));
+  return perpFreshness(rows, { now, live: markets.length > 0 && markets.every((market) => streams(market) && market.contracts.length === 1) });
 }
 
 /** A market under this share of the asset's open interest is folded behind "more". */

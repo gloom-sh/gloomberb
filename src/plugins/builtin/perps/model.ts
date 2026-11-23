@@ -1,4 +1,4 @@
-import type { PerpBoardRow, PerpHistoryPayload, PerpLongShortRatio, PerpRankingsPayload } from "../../../api-client/perps";
+import type { PerpBoardRow, PerpHistoryPayload, PerpLongShortRatio, PerpOpenInterestSource, PerpRankingsPayload } from "../../../api-client/perps";
 import type { DataTableCell, DataTableColumn } from "../../../components";
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
 import { getTableWidth, markHiddenTableColumns } from "../../../components/ui/table-layout";
@@ -206,6 +206,57 @@ export function positioningFields(row: Pick<PerpBoardRow, "longShortRatio" | "lo
   ];
 }
 
+type Interest = Partial<Pick<PerpBoardRow, "openInterestBase" | "openInterestUsd" | "openInterestSource">>;
+const readableTime = (value: unknown) => typeof value === "string" && Number.isFinite(Date.parse(value));
+/**
+ * Where and when a market's open interest was read, as the server states it. Never the market's own source: a venue
+ * serves open interest from another endpoint (Binance's openInterest), and a streamed mark sits beside the open
+ * interest the last poll read. Null without open interest, from a server that does not say, and for a market stored
+ * before it was recorded.
+ */
+export function openInterestSourceOf(row: Interest): PerpOpenInterestSource | null {
+  const source: unknown = row.openInterestSource;
+  if (row.openInterestBase == null && row.openInterestUsd == null || !isRecord(source)) return null;
+  return typeof source.url === "string" && readableTime(source.observedAt) && (source.asOf == null || readableTime(source.asOf))
+    ? source as unknown as PerpOpenInterestSource : null;
+}
+const USD_BASES: Record<"mark" | "oracle" | "face-value", string> = { mark: "mark × contracts", oracle: "oracle × contracts", "face-value": "contracts × face value" };
+/**
+ * How a market's OI USD was made: `mark × contracts, USDT valued at 1 USD`, or the venue's own figure
+ * (`Bybit's own USDT value, USDT valued at 1 USD`). Null without a USD figure or when the server does not say.
+ */
+export function openInterestUsdBasis(row: Interest & Pick<PerpBoardRow, "venue">): string | null {
+  const source = openInterestSourceOf(row);
+  if (row.openInterestUsd == null || !source?.usdBasis) return null;
+  const made = source.usdBasis === "venue" ? `${venueName(row.venue)}'s own ${source.usdParity ?? "USD"} value` : USD_BASES[source.usdBasis];
+  return made ? `${made}${source.usdParity ? `, ${source.usdParity} valued at 1 USD` : ""}` : null;
+}
+/**
+ * When a row's figures were read: its own observation, or its open interest's read when that is older (a streamed
+ * mark beside the open interest the last poll read), so a row is never dated newer than a figure it shows.
+ */
+export function rowReadAt(row: Interest & Pick<PerpBoardRow, "observedAt">): string {
+  const interest = openInterestSourceOf(row)?.observedAt;
+  return interest && Date.parse(interest) < Date.parse(row.observedAt) ? interest : row.observedAt;
+}
+/**
+ * The open interest as Evidence lists it, shared by the pane and the text report: the figure with how its USD was
+ * made, then its own read, the venue's time for it and the endpoint, never the market's. A server that does not say
+ * where it read the open interest leaves its time "Not stated".
+ */
+export function openInterestFields(row: Pick<PerpBoardRow, "venue" | "baseAsset" | "openInterestBase" | "openInterestUsd" | "openInterestSource">): PositioningField[] {
+  const basis = openInterestUsdBasis(row);
+  const amount: PositioningField = { key: "openInterest", label: "Open interest", value: row.openInterestUsd,
+    text: `${compact(row.openInterestBase)} ${row.baseAsset} · ${compact(row.openInterestUsd)} USD`, ...(basis ? { detail: `USD = ${basis}` } : {}) };
+  if (row.openInterestBase == null && row.openInterestUsd == null) return [amount];
+  const source = openInterestSourceOf(row);
+  if (!source) return [amount, { key: "openInterestObservedAt", label: "OI observed", value: null, text: "Not stated" }];
+  return [amount,
+    { key: "openInterestObservedAt", label: "OI observed", value: source.observedAt, text: time(source.observedAt) },
+    { key: "openInterestAsOf", label: "OI source as of", value: source.asOf, text: time(source.asOf) },
+    { key: "openInterestSourceUrl", label: "OI source", value: source.url, text: source.url }];
+}
+
 // One text per figure, shared by the pane cells and the text report so the two always agree.
 const markText = (row: Pick<PerpBoardRow, "markPrice" | "quoteCurrency">) => row.markPrice == null ? MISSING_VALUE : `${price(row.markPrice)} ${row.quoteCurrency}`;
 const fundingPerInterval = (row: Pick<PerpBoardRow, "fundingRate" | "fundingIntervalHours" | "fundingKind">) => row.fundingRate == null ? MISSING_VALUE : `${percent(row.fundingRate, 5)} /${fundingInterval(row)}`;
@@ -313,7 +364,8 @@ export function perpCellText(row: PerpBoardRow, id: PerpColumnId): string {
   if (id === "markPrice") return markText(row);
   if (id === "fundingRate") return fundingPerInterval(row);
   if (id === "openInterestUsd") return compact(row.openInterestUsd);
-  if (id === "observedAt") return observed(row.observedAt);
+  // A row is dated by its oldest figure: a streamed mark can sit beside the open interest the last poll read.
+  if (id === "observedAt") return observed(rowReadAt(row));
   if (id === "longShare") return share(row.longShortRatio?.longShare);
   const digits = SIGNED[id];
   return digits === undefined ? MISSING_VALUE : percent(row[id as keyof PerpBoardRow] as number | null, digits);
@@ -322,7 +374,7 @@ export function perpCell(row: PerpBoardRow, id: PerpColumnId, colors: Pick<Theme
   const text = perpCellText(row, id);
   if (id === "market") return { text, color: row.stale ? colors.textDim : colors.textBright };
   if (id === "venue" || id === "symbol") return { text, color: colors.textMuted };
-  if (id === "observedAt") return { text, value: row.observedAt, color: row.stale ? colors.textMuted : colors.textDim };
+  if (id === "observedAt") return { text, value: rowReadAt(row), color: row.stale ? colors.textMuted : colors.textDim };
   if (id === "markPrice") return { text, value: row.markPrice };
   if (id === "openInterestUsd") return { text, value: row.openInterestUsd };
   // A share, not a signed move: no tone, dimmed like a stale market when its bucket is old.

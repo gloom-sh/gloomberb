@@ -6,7 +6,7 @@ import { DEPTH_COLUMN_IDS, depthBandTotals, depthCellText, depthColumnLabel, dep
   PRINT_COLUMN_IDS, printCellText, printColumnLabel, type DepthColumnId, type LiquidationColumnId, type PrintColumnId } from "./cascade";
 import { boardSearchText, fetchPerpSelection, fetchPerpsBoard, fetchPerpsCompare, fetchPerpsDepth, fetchPerpsHistory, fetchPerpsLiquidations, fetchPerpsRankings, marketQuery, nearestPerpMarkets } from "./client";
 import { perpFreshness } from "./freshness";
-import { aprFootnote, ASSET_FILTERS, BOARD_COLUMNS, BOARD_SORTS, collectedVenueCount, COMPARE_COLUMNS, compact, fundingSpread, HISTORY_METRICS, label, marketLabel, observed, openingTab, PERP_TABS, perpCellText,
+import { aprFootnote, ASSET_FILTERS, BOARD_COLUMNS, BOARD_SORTS, collectedVenueCount, COMPARE_COLUMNS, compact, fundingSpread, HISTORY_METRICS, label, marketLabel, observed, openInterestFields, openingTab, PERP_TABS, perpCellText,
   perpColumnLabel, percent, perpHistoryProText, positioningFields, price, RANKING_COLUMNS, rankingRows, RANKINGS, ratioText, share, time, uncoveredVenueNote, VENUES, venueAprSummary, venueName, venuesOf, IDENTITY_VENUES,
   type PerpColumnId } from "./model";
 import { freePreviewNote } from "../shared/free-preview";
@@ -342,6 +342,9 @@ async function loadPerpTab(args: HeadlessPaneLoadArgs, ctx: HeadlessPaneContext)
       // Where the figures were read, as the pane's Evidence names it: the venue's own endpoint and its time.
       { title: "Source", entries: [{ key: "sourceUrl", label: "URL", value: selected.sourceUrl },
         { key: "sourceAsOf", label: "Venue as of", value: selected.sourceAsOf, formatted: time(selected.sourceAsOf) }] },
+      // The open interest's own read, which the market's source and time above do not date, and how its USD was made.
+      { title: "Open interest", entries: openInterestFields(selected).map((field) => ({ key: field.key, label: field.label, value: field.value,
+        formatted: field.detail ? `${field.text} · ${field.detail}` : field.text })) },
       ...(positioning ? [{ title: "Positioning", entries: positioning.map((field) => ({ key: field.key, label: field.label, value: field.value,
         formatted: field.detail ? `${field.text} · ${field.detail}` : field.text })) }] : []),
       { title: "Observation revisions", columns: REVISION_COLUMNS, rows: market.evidence.map((row) => ({ ...row })), ...lockedTable(market.access !== "pro") }],

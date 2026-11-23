@@ -1,8 +1,8 @@
 import type { PerpBoardRow } from "../../../api-client/perps";
 import type { HeadlessPaneFreshness } from "../../../types/headless";
-import { venueName, venuesOf } from "./model";
+import { rowReadAt, venueName, venuesOf } from "./model";
 
-type Dated = Pick<PerpBoardRow, "venue" | "observedAt" | "stale">;
+type Dated = Pick<PerpBoardRow, "venue" | "observedAt" | "stale"> & Partial<Pick<PerpBoardRow, "openInterestBase" | "openInterestUsd" | "openInterestSource">>;
 type Funded = Pick<PerpBoardRow, "venue" | "fundingRate" | "fundingRate8h" | "fundingKind" | "nextFundingAt">;
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -47,8 +47,11 @@ export function fundingNote(rows: readonly Funded[], now = Date.now()): string |
   }).join("; ")}`;
 }
 
-/** What a capture reads of a row: when it was observed and whether the venue has stopped answering for it. */
-const perpObservation = (row: Pick<PerpBoardRow, "observedAt" | "stale">) => ({ observedAt: row.observedAt, stale: row.stale });
+/**
+ * What a capture reads of a row: when its figures were read, its open interest's own read when that is older (a
+ * streamed mark beside polled open interest), and whether the venue has stopped answering for it.
+ */
+const perpObservation = (row: Dated) => ({ observedAt: rowReadAt(row), stale: row.stale });
 
 /**
  * How current a view of perpetual markets is: each venue's own newest observation, how old the oldest price shown is,
@@ -63,7 +66,7 @@ export function perpFreshness(rows: readonly Dated[], { funding = [], venue = "a
   live?: boolean;
 } = {}): HeadlessPaneFreshness {
   const sources = venuesOf(rows).map((id) => ({ source: venueName(id), asOf: new Date(Math.max(...rows.filter((row) => row.venue === id)
-    .map((row) => Date.parse(row.observedAt)))).toISOString() }));
+    .map((row) => Date.parse(rowReadAt(row))))).toISOString() }));
   const source = sources.length ? sources.map((entry) => entry.source).join(", ") : venue !== "all" ? venueName(venue) : null;
   const note = fundingNote(funding, now);
   return { ...(source ? { source } : {}), sources, ...(live ? { status: "live" as const } : {}), ageOnly: true, maxAgeMinutes: 60,

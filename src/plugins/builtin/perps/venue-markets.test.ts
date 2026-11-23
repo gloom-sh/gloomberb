@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { contractText, foldSmallMarkets, mergeVenueMarkets } from "./venue-markets";
+import { freshnessLine } from "./status-line";
+import { contractText, foldSmallMarkets, mergeVenueMarkets, venueMarketReadAt, venueMarketsFreshness, withPrimaryReading } from "./venue-markets";
 import { perpRow, venueRow } from "./test-fixture";
 
 // BTC across venues as the collectors read them (2026-10-19): Bybit and OKX each list it in several settlements.
@@ -61,4 +62,31 @@ test("markets with a small share of the open interest fold behind more, and the 
   // When no venue states open interest, nothing is small: volume orders them and the first four show.
   const unknown = mergeVenueMarkets(btc.map((row) => ({ ...row, openInterestUsd: null })));
   expect(foldSmallMarkets(unknown).shown.map((market) => market.venue)).toEqual(["okx", "bybit", "hyperliquid", "deribit"]);
+});
+
+test("a venue's row is dated by its oldest figure, and the line under the rows never dates a venue newer than its row", () => {
+  const at = (minute: string) => `2026-11-23T06:${minute}.000Z`;
+  const interest = (url: string, observedAt: string) => ({ url, observedAt, asOf: observedAt, usdBasis: "mark" as const, usdParity: "USDT" });
+  const markets = mergeVenueMarkets([
+    // Binance's mark streams; its open interest is the last poll's, read from another endpoint.
+    venueRow("binance", { observedAt: at("16:30"), openInterestUsd: 5_690e6, openInterestSource: interest("https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT", at("10:02")) }),
+    // Bybit's inverse contract, read earlier in the pass, is counted in the venue's open interest.
+    venueRow("bybit", { observedAt: at("16:05"), openInterestUsd: 4_190e6 }),
+    venueRow("bybit", { marketId: "bybit:BTCUSD", symbol: "BTCUSD", observedAt: at("12:40"), openInterestUsd: 558e6 }),
+    perpRow({ venue: "hyperliquid", observedAt: at("16:20"), openInterestUsd: 2_310e6 }),
+  ]);
+  expect(markets.map((market) => [market.venue, venueMarketReadAt(market)])).toEqual([
+    ["binance", at("10:02")], ["bybit", at("12:40")], ["hyperliquid", at("16:20")]]);
+  for (const market of markets) for (const contract of market.contracts) expect(Date.parse(venueMarketReadAt(market))).toBeLessThanOrEqual(Date.parse(contract.observedAt));
+
+  const now = Date.parse(at("17:00"));
+  const line = (streaming: readonly string[], list = markets) => freshnessLine(venueMarketsFreshness(list, { now, streaming: new Set(streaming) }), now).variants[0];
+  expect(line([])).toBe("Binance 06:10 · Bybit 06:12 · Hyperliquid 06:16 UTC · oldest 6 min");
+  // Live only while every figure on screen streams: Bybit's other contract is the last read.
+  const streamingAll = markets.map((market) => market.primary.marketId);
+  expect(line(streamingAll)).not.toContain("live");
+  expect(line(streamingAll, [markets[0]!, markets[2]!])).toBe("Binance 06:10 · Hyperliquid 06:16 UTC · oldest 6 min · live");
+  // A streamed reading laid over the deepest contract moves the venue's open interest with it, and its read dates the row.
+  const streamed = withPrimaryReading(markets[2]!, { ...markets[2]!.primary, observedAt: at("16:58"), openInterestUsd: 2_400e6 });
+  expect([streamed.openInterestUsd, venueMarketReadAt(streamed)]).toEqual([2_400e6, at("16:58")]);
 });
