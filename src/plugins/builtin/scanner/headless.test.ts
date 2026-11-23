@@ -1,4 +1,4 @@
-import { describe, expect, setSystemTime, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import type { ScannerFlowEvent, ScannerFlowPayload, ScannerHiloPayload } from "../../../api-client";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { createFlowHeadless, createHiloHeadless, FLOW_SIDE_RULE, loadHiloSnapshot } from "./headless";
@@ -22,6 +22,8 @@ function args(minPrice: string, sort: string): HeadlessPaneLoadArgs {
 }
 
 const ctx = { signal: new AbortController().signal } as HeadlessPaneContext;
+/** Monday 9 Nov 2026 10:00 New York: the US session is open. */
+const OPEN = () => Date.parse("2026-11-09T15:00:00Z");
 
 describe("highs and lows headless model", () => {
   test("waits for scanner data beyond the connecting snapshot", async () => {
@@ -67,11 +69,15 @@ describe("highs and lows headless model", () => {
     await expect(captureScannerEvent(warming, "hilo", new AbortController().signal, 5)).rejects.toThrow("Highs and lows snapshot timed out");
     expect(await captureScannerEvent(warming, "hilo", new AbortController().signal, 5, { acceptStarting: true }))
       .toMatchObject({ payload: { status: "starting", highs: payload.highs } });
+    // While the market is known shut nothing better is coming: the first answer is taken at once.
+    expect(await captureScannerEvent(warming, "hilo", new AbortController().signal, 60_000, { closed: true }))
+      .toMatchObject({ payload: { status: "starting" } });
   });
 
   test("reports a degraded stream as partial data", async () => {
     const headless = createHiloHeadless({
       load: async () => ({ ...payload, status: "degraded" }),
+      now: OPEN,
     });
 
     const result = await headless.load(args("1", "recent"), ctx);
@@ -79,27 +85,35 @@ describe("highs and lows headless model", () => {
     expect(result.errors).toEqual(["Scanner feed degraded"]);
   });
 
-  // The first `fn HILO` on a Sunday said "still starting … stale (0 min old)"; the second, that the market is closed.
-  test("a scanner still starting while the US market is shut answers that the market is closed; in a session it says it is starting", async () => {
-    const headless = createHiloHeadless({ load: async () => ({ ...payload, status: "starting", highs: [], lows: [] }) });
-    const at = async (iso: string) => {
-      setSystemTime(new Date(iso));
-      try {
-        return await headless.load(args("1", "recent"), ctx);
-      } finally {
-        setSystemTime();
+  // At 01:21 New York on a Monday a cold `fn HILO` said the market was closed and a warm one "No new highs or lows …
+  // 15 min delayed", as the warm scanner called its empty night session live.
+  test("while the US market is shut HILO answers closed on every call, cold or warm, without reading the scanner", async () => {
+    let reads = 0;
+    const cold = { ...payload, status: "starting" as const, highs: [], lows: [] };
+    const warm = { ...payload, access: "delayed" as const, delayMinutes: 15, highs: [], lows: [] };
+    const at = (iso: string, read: ScannerHiloPayload) =>
+      createHiloHeadless({ load: async () => { reads += 1; return read; }, now: () => Date.parse(iso) }).load(args("1", "recent"), ctx);
+    // A weekday night, a Sunday evening and Thanksgiving, read cold and warm.
+    for (const iso of ["2026-11-23T06:21:00Z", "2026-11-08T23:10:00Z", "2026-11-26T15:00:00Z"]) {
+      for (const read of [cold, warm]) {
+        const closed = await at(iso, read);
+        expect(closed.empty).toBe("The US market is closed. New highs and lows list again from the next session's open.");
+        expect(closed.items).toEqual([]);
+        expect(closed.freshness).toEqual({ status: "not-a-feed", basis: "closed session" });
+        expect(closed.metadata).not.toHaveProperty("notices");
       }
-    };
-    const sunday = await at("2026-11-08T23:10:00Z");
-    expect(sunday.empty).toBe("The US market is closed. New highs and lows list again from the next session's open.");
-    expect(sunday.freshness).toEqual({ status: "not-a-feed", basis: "closed session" });
-    const session = await at("2026-11-09T15:00:00Z");
+    }
+    expect(reads).toBe(0);
+    // In a session, and in the pre-market and after-hours the scanner covers, it is read and says what it holds.
+    const session = await at("2026-11-09T15:00:00Z", cold);
     expect(session.empty).toBe("The scanner is still starting and has nothing to list yet. Ask again in a few seconds.");
     expect(session.freshness).toEqual({ status: "stale" });
+    expect((await at("2026-11-24T00:59:00Z", warm)).empty).toBe("No new highs or lows under these filters this session.");
+    expect(reads).toBe(2);
   });
 
   test("applies the pane price and sort options to a stream snapshot", async () => {
-    const headless = createHiloHeadless({ load: async () => payload });
+    const headless = createHiloHeadless({ load: async () => payload, now: OPEN });
     const filtered = await headless.load(args("1", "recent"), ctx);
     const unfiltered = await headless.load(args("off", "count"), ctx);
 
@@ -123,6 +137,7 @@ describe("options flow report", () => {
   const searches: string[] = [];
   const headless = createFlowHeadless({
     load: async () => feed,
+    now: () => AT,
     recorded: async (search) => { searches.push(`history?${search}`); return { events: [print("old-nvda", "NVDA", AT - 3_600_000)], hasMore: true }; },
     session: async (search) => {
       searches.push(`session?${search}`);
@@ -161,6 +176,7 @@ describe("options flow report", () => {
   test("a session or recorded read that fails leaves the live prints standing, said under errors", async () => {
     const failing = createFlowHeadless({
       load: async () => feed,
+      now: () => AT,
       recorded: async () => { throw new Error("Request timed out"); },
       session: async () => { throw new Error("Not Found"); },
     });
@@ -178,12 +194,27 @@ describe("options flow report", () => {
   test("a starting feed says so instead of an empty tape", async () => {
     const starting = createFlowHeadless({
       load: async () => ({ ...feed, status: "starting", events: [] }),
+      now: () => AT,
       recorded: async () => ({ events: [], hasMore: false }),
       session: async () => { throw new Error("Not Found"); },
     });
     const report = await starting.load(args(null, { tab: "prints" }), ctx);
     expect((report.sections[0] as { empty?: string }).empty).toBe("The scanner is still starting and has nothing to list yet. Ask again in a few seconds.");
     expect(report.freshness).toEqual({ status: "stale" });
+  });
+
+  test("while the US market is shut the tape is the closed session's, read without waiting on the scanner", async () => {
+    const waited: boolean[] = [];
+    const night = createFlowHeadless({
+      load: async (_args, _client, _signal, closed) => { waited.push(closed); return { ...feed, status: "live", events: [] }; },
+      now: () => Date.parse("2026-11-23T06:21:00Z"),
+      recorded: async () => ({ events: [], hasMore: false }),
+      session: async () => { throw new Error("Not Found"); },
+    });
+    const report = await night.load(args(null, { tab: "prints" }), ctx);
+    expect(waited).toEqual([true]);
+    expect((report.sections[0] as { empty?: string }).empty).toBe("The US market is closed. Prints list again from the next session's open.");
+    expect(report.freshness).toEqual({ status: "not-a-feed", basis: "closed session" });
   });
 
   test("the market reads the live tape alone, a tab one section, and strikes need a ticker", async () => {

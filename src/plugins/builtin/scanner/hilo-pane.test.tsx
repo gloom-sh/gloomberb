@@ -21,7 +21,11 @@ const originalSubscribe = apiClient.subscribeScanner;
 let pushPayload: ((payload: ScannerHiloPayload) => void) | null = null;
 const tui = createOpenTuiTestHarness();
 
+/** Wednesday 18 Nov 2026 10:00 New York: the US session is open. */
+const OPEN = new Date("2026-11-18T15:00:00Z");
+
 beforeEach(() => {
+  setSystemTime(OPEN);
   apiClient.subscribeScanner = ((_scanner: string, listener: (event: ScannerFeedEvent) => void) => {
     pushPayload = (payload) => listener({ type: "data", payload } as ScannerFeedEvent);
     return () => { pushPayload = null; };
@@ -113,18 +117,28 @@ test("counts keep a gap from the window label, and the top row names the sides",
   expect(narrow).toMatch(/17 {2,}5 min {2,}42/);
 });
 
-test("a closed weekend names the closed market in both tables, an open market with no rows the price filter", async () => {
+test("a closed market is named in both tables from the calendar, before the scanner answers and whatever it says; an open one with no rows names the price filter", async () => {
   const empty = { ...PAYLOAD, highs: [], lows: [], windows: { m5: { highs: 0, lows: 0 }, m1: { highs: 0, lows: 0 }, s30: { highs: 0, lows: 0 } } };
+  const closed = (frame: string) => {
+    expect(frame.match(/Markets closed until Mon 14:30 UTC, 09:30 ET\./g)).toHaveLength(2);
+    expect(frame.match(/New highs and lows resume at the open\./g)).toHaveLength(2);
+    expect(frame).toContain("market closed");
+    expect(frame).not.toContain("price filter");
+    expect(frame).not.toContain("Waiting for the scanner");
+  };
   setSystemTime(new Date("2026-10-31T16:00:00Z"));
   await renderPane(100);
+  closed(tui.frame());
   await deliver({ ...empty, status: "closed" });
-  let frame = tui.frame();
-  expect(frame.match(/Markets closed until Mon 14:30 UTC, 09:30 ET\./g)).toHaveLength(2);
-  expect(frame.match(/New highs and lows resume at the open\./g)).toHaveLength(2);
-  expect(frame).not.toContain("price filter");
-
+  closed(tui.frame());
+  // A warm scanner holding an empty session it calls live changes nothing while the market is shut.
   await deliver({ ...empty, status: "live" });
-  frame = tui.frame();
+  closed(tui.frame());
+
+  setSystemTime(OPEN);
+  await renderPane(100);
+  await deliver({ ...empty, status: "live" });
+  const frame = tui.frame();
   expect(frame.match(/Nothing above the price filter yet\./g)).toHaveLength(2);
   expect(frame).not.toContain("closed");
 });
