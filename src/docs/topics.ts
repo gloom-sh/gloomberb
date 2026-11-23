@@ -122,13 +122,15 @@ export interface DocsEntry {
   keywords: string;
 }
 
-const GUIDES_ORDER = ["Start here", "Understand the data", "Account and teams", "Advanced", "Reference"];
+const START_HERE = "Start here";
 /** The function list is the index; its page would only repeat it. */
 const INDEX_PAGES_SKIPPED = new Set(["functions"]);
 
 /**
  * Every entry in reading order: start-here pages, then functions by task,
- * then the other guides, then the Academy by chapter.
+ * then the other guides grouped as the site lists them (the order the feed's
+ * pages arrive in, so a regrouping on the site needs no app release), then the
+ * Academy by chapter.
  */
 export function docsEntries(feed: DocsFeed): DocsEntry[] {
   const pages = feed.pages
@@ -144,13 +146,13 @@ export function docsEntries(feed: DocsFeed): DocsEntry[] {
         keywords: page.tags.join(" "),
       };
     });
-  const pageRank = (entry: DocsEntry) => {
-    const rank = GUIDES_ORDER.indexOf(entry.section);
-    return rank < 0 ? GUIDES_ORDER.length : rank;
-  };
-  const startHere = pages.filter((entry) => entry.section === GUIDES_ORDER[0]);
-  const guides = pages.filter((entry) => entry.section !== GUIDES_ORDER[0])
-    .sort((left, right) => pageRank(left) - pageRank(right));
+  const groupRank = new Map([[START_HERE, 0]]);
+  for (const entry of pages) {
+    if (!groupRank.has(entry.section)) groupRank.set(entry.section, groupRank.size);
+  }
+  const startHere = pages.filter((entry) => entry.section === START_HERE);
+  const guides = pages.filter((entry) => entry.section !== START_HERE)
+    .sort((left, right) => groupRank.get(left.section)! - groupRank.get(right.section)!);
   const categoryTitle = new Map(feed.categories.map((category) => [category.id, category.title]));
   const categoryRank = new Map(feed.categories.map((category, index) => [category.id, index]));
   const functions = feed.functions
