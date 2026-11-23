@@ -201,9 +201,10 @@ export class ChatController {
     invalidateMentionCandidates: () => this.mentionCandidates.invalidate(),
   });
 
-  attachPersistence(persistence: PluginPersistence, resume?: PluginResumeState): void {
+  /** `keepInstalledSession`: a command's, which its own session outlasts (`hydrateChatControllerSession`). */
+  attachPersistence(persistence: PluginPersistence, resume?: PluginResumeState, { keepInstalledSession = false } = {}): void {
     this.storage.attachPersistence(persistence, resume);
-    this.hydrate();
+    this.hydrate(keepInstalledSession);
   }
 
   /**
@@ -246,11 +247,12 @@ export class ChatController {
     if (changed) this.emit();
   }
 
-  hydrate(): void {
+  hydrate(keepInstalledSession = false): void {
     hydrateChatControllerSession({
       session: this.session,
       storage: this.storage,
       syncVerificationPolling: () => this.realtime.syncVerificationPolling(),
+      keepInstalledSession,
     });
   }
 
