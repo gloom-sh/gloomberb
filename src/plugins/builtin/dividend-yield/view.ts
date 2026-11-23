@@ -18,9 +18,18 @@ export function formatConvertedAmount(value: number | null | undefined, currency
     : formatDistributionAmount(value, currency);
 }
 
-export function formatDividendRowAmount(row: Pick<DividendRow, "amount" | "currency" | "cashEstimate" | "combined">, converted = false, subUnit?: string): string {
+export function formatDividendRowAmount(row: Pick<DividendRow, "amount" | "currency" | "cashEstimate" | "combined" | "special">, converted = false, subUnit?: string): string {
   const cash = converted ? formatConvertedAmount(row.amount, row.currency, subUnit) : formatDistributionAmount(row.amount, row.currency);
-  return `${row.cashEstimate ? "estimated " : ""}${row.combined ? `${COMBINED_PAYMENT} ` : ""}${cash}`;
+  return `${row.cashEstimate ? "estimated " : ""}${row.combined ? `${COMBINED_PAYMENT} ` : ""}${row.special ? `${SPECIAL_PAYMENT} ` : ""}${cash}`;
+}
+
+/** A payment its issuer's own form says is a special (DividendPayment.special). */
+const SPECIAL_PAYMENT = "special";
+
+/** What the trailing year's specials are, beside its yield: "incl. HK$0.56 special". */
+export function trailingSpecialText(metrics: Pick<DividendMetrics, "trailingSpecial">, currency: string): string | null {
+  return metrics.trailingSpecial && metrics.trailingSpecial > 0
+    ? `incl. ${formatDistributionAmount(metrics.trailingSpecial, currency)} ${SPECIAL_PAYMENT}` : null;
 }
 
 /** A row whose amount is a regular payment and an extra one on the same ex-date (DividendPayment.combined). */
@@ -145,6 +154,8 @@ export interface DividendRow {
   source?: string;
   /** A regular payment and an extra one on the same ex-date (DividendPayment.combined). */
   combined?: true;
+  /** A special, as the issuer's own form types it (DividendPayment.special). */
+  special?: true;
 }
 
 export function toDividendRows(payments: DividendPayment[]): DividendRow[] {
@@ -157,5 +168,6 @@ export function toDividendRows(payments: DividendPayment[]): DividendRow[] {
     ...(payment.declared ? { declared: payment.declared } : {}),
     ...(payment.source ? { source: payment.source.publisher } : {}),
     ...(payment.combined ? { combined: true as const } : {}),
+    ...(payment.special ? { special: true as const } : {}),
   }));
 }

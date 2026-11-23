@@ -4,7 +4,7 @@ import type { ConnectionHealthRegistry } from "../../../core/connection-health";
 import type { DividendMetrics, DividendPayment, GrowthPayments } from "./types";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { calendarMonthsBefore } from "../../../utils/calendar-date";
-import { cashDistribution, combinedPaymentTimes, dividendReferencePrice, dividendYieldAt, inferCadence, statedCadence, trailingCashAt, trailingDividendRate, trailingPayments as countedTrailingPayments, trailingPaymentShortfall, unevenRegularPayments, type DistributionCadence } from "../../../utils/trailing-dividend";
+import { cashDistribution, combinedPaymentTimes, dividendReferencePrice, dividendYieldAt, inferCadence, statedCadence, trailingCashAt, trailingDividendRate, trailingPayments as countedTrailingPayments, trailingPaymentShortfall, trailingSpecialCash, unevenRegularPayments, type DistributionCadence } from "../../../utils/trailing-dividend";
 import { dividendQuotePriceMetadata } from "./reference-price";
 import { mapQuote } from "../../../sources/gloomberb-cloud/normalizers";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
@@ -128,6 +128,23 @@ export function toDividendPayment(
   };
 }
 
+/**
+ * The dividends a history row holds by its issuer's own announcement forms
+ * (Gloom Cloud's `parts` of an HKEX row): each with its amount, whether it is
+ * a special and the form's type, summing to the row. Null for a row without
+ * them, or with parts that are no cash or do not sum to it.
+ */
+function formParts(value: unknown, amount: number): { amount: number; special: boolean; type: string }[] | null {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const parts = value.flatMap((part) => {
+    const { amount: cash, special, type } = (part ?? {}) as { amount?: unknown; special?: unknown; type?: unknown };
+    return typeof cash === "number" && Number.isFinite(cash) && cash > 0 && typeof special === "boolean"
+      ? [{ amount: cash, special, type: typeof type === "string" ? type : "" }] : [];
+  });
+  const sum = parts.reduce((total, part) => total + part.amount, 0);
+  return parts.length === value.length && Math.abs(sum - amount) <= 1e-6 * Math.max(1, amount) ? parts : null;
+}
+
 /** A row's publisher when the server names one (a fund's sponsor), else null. */
 function distributionSource(value: unknown): { publisher: string; url: string } | null {
   const source = value as { publisher?: unknown; url?: unknown } | null | undefined;
@@ -239,21 +256,29 @@ export async function fetchDividendData(
   const convertedSubUnit = convertedFrom && sourceUnit && resolveCurrencyUnit(sourceUnit).divisor !== 1 ? sourceUnit : undefined;
   const declared = actions && cashCurrency ? declaredDividends(actions) : [];
   const distributions = actions ? [...actions.dividends, ...declared.filter((row) => declaredCash.has(row.exDate) && Date.parse(row.exDate) <= Date.now())] : [];
+  // A row its issuer's forms split is one payment per dividend they state, a special typed as one.
+  const partsOf = (action: (typeof distributions)[number]) => "parts" in action ? formParts(action.parts, action.amount) : null;
   const listed = cashCurrency ? distributions.flatMap(action => {
     const payment = toDividendPayment(action.exDate, action.amount, cashCurrency);
     const declared = declaredCash.get(action.exDate);
     const source = distributionSource("source" in action ? action.source : undefined);
-    return payment ? [{ ...payment, paymentDate: action.payDate ? reportedDividendDate(Date.parse(action.payDate) / 1000) : null,
+    const row = payment ? { ...payment, paymentDate: action.payDate ? reportedDividendDate(Date.parse(action.payDate) / 1000) : null,
       recordDate: action.recordDate ? reportedDividendDate(Date.parse(action.recordDate) / 1000) : null,
       ...(declared ? { declared } : {}), ...("cashEstimate" in action && action.cashEstimate ? { cashEstimate: action.cashEstimate } : {}),
-      ...(source ? { source } : {}) }] : [];
+      ...(source ? { source } : {}) } : null;
+    const parts = row && partsOf(action);
+    if (row && parts) return parts.map((part) => ({ ...row, amount: part.amount, type: part.special ? "special" as const : "cash" as const,
+      ...(part.special ? { special: true as const } : {}), formTyped: true as const, ...(part.type ? { formType: part.type } : {}),
+      ...(declared && row.amount > 0 ? { declared: { ...declared, amount: declared.amount * part.amount / row.amount } } : {}) }));
+    return row ? [row] : [];
   }).sort((a, b) => b.exDate.getTime() - a.exDate.getTime()) : [];
   // A regular payment and an extra one on one ex-date are one row of the history: the row says it is both.
   const combined = combinedPaymentTimes(listed);
   const merged = combined.size ? listed.map((payment) => combined.has(payment.exDate.getTime()) ? { ...payment, combined: true as const } : payment) : listed;
   // A declared row is the issuer's (or the server's) own: it says itself whether its conversion is fixed.
   const payments = convertedFrom ? withUnfixedConversions(merged, quoteFields, cashCurrency, new Set(declared.map((row) => row.exDate))) : merged;
-  if (!historyError && actions && (actions.coverage?.dividends === "unavailable" || payments.length !== distributions.length)) {
+  const rows = distributions.reduce((count, action) => count + (partsOf(action)?.length ?? 1), 0);
+  if (!historyError && actions && (actions.coverage?.dividends === "unavailable" || payments.length !== rows)) {
     // A read with no rows is not an incomplete one.
     historyError = actions.dividends.length === 0 ? unavailableDividendHistory(triedAt) : incompleteDividendHistory(triedAt);
   }
@@ -380,6 +405,8 @@ export function buildDividendMetrics(
     : options.summaryRatesComparable !== false ? quoteFields?.trailingAnnualDividendRate ?? null : null;
   const trailingEstimates = options.historyAvailable !== false
     ? countedTrailingPayments(payments, now).counted.flatMap((payment) => payment.cashEstimate ? [payment.cashEstimate] : []) : [];
+  // The specials the issuer's forms type in the year, which the trailing rate counts and the forward one never does.
+  const trailingSpecial = options.historyAvailable !== false ? atSourcePrecision(trailingSpecialCash(payments, now)) : 0;
   const statedRate = options.summaryRatesComparable !== false ? quoteFields?.forwardAnnualDividendRate ?? null : null;
   const statedAsOf = statedRate != null && /^\d{4}-\d{2}-\d{2}$/.test(quoteFields?.forwardRateAsOf ?? "")
     ? quoteFields!.forwardRateAsOf! : null;
@@ -441,6 +468,7 @@ export function buildDividendMetrics(
     forwardYield: null,
     trailingRate,
     ...(trailingEstimates.length ? { trailingEstimates } : {}),
+    ...(trailingSpecial > 0 ? { trailingSpecial } : {}),
     forwardRate,
     forwardRateAsOf,
     ...(uneven ? { forwardBasis: "uneven" as const } : {}),

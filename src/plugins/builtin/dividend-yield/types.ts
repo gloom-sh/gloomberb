@@ -17,6 +17,12 @@ export interface DividendPayment {
   source?: { publisher: string; url: string };
   /** The amount is a regular payment and an extra one on the same ex-date, which the history keeps as one row (combinedPaymentTimes). */
   combined?: true;
+  /** The issuer's own dividend announcement form says it is a special (CashDistribution.special). */
+  special?: true;
+  /** The issuer's own form says what it is: one of the dividends a history row holds (DividendAction.parts). */
+  formTyped?: true;
+  /** That form's dividend type: "Final", "Interim (Semi-annual)", "Other Special Dividend". */
+  formType?: string;
 }
 
 /** A short year a growth figure would compare: its payments, and the day it ends (absent for the trailing year). */
@@ -43,6 +49,8 @@ export interface DividendMetrics {
   payoutNotMeaningful?: boolean;
   /** A regular payer's trailing year holds fewer payments than its cadence: the yield counts only these. */
   trailingPayments?: TrailingPayments | null;
+  /** The specials the issuer's forms type in the trailing year, summed: the trailing rate counts them, the forward rate never does. */
+  trailingSpecial?: number;
   growth1Y: number | null;
   growth3Y: number | null;
   /** Set when one of the two years 1Y growth compares holds fewer payments than the cadence pays: no growth, and how many it holds. */
