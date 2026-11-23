@@ -322,6 +322,8 @@ export async function buildDesktopShotPayload(
     }
     const requestedRange = shotPriceHistoryRange(resolved);
     let data = entry.financials;
+    /** SEAS's daily closes beside its monthly ones, which name the close the running month runs to. */
+    let seasonalityDaily: PricePoint[] = [];
     const exchange = entry.instrument.exchange
       ?? entry.tickerFile?.metadata.exchange
       ?? data.quote?.listingExchangeName
@@ -357,7 +359,7 @@ export async function buildDesktopShotPayload(
     } else if (shotRatioTab(resolved)?.key === "valuation") {
       data = await withShotPeriodEndHistory(context, entry.instrument, exchange, resolved, data);
     } else if (resolved.pane.id === "seasonality") {
-      data = await withShotSeasonalityHistory(context, entry.instrument, resolved, data);
+      ({ financials: data, daily: seasonalityDaily } = await withShotSeasonalityHistory(context, entry.instrument, resolved, data));
     } else if (resolved.pane.id === "returns") {
       data = await withShotReturnHistory(context, entry.instrument, exchange, resolved, data);
     } else if (requestedRange && readsDailyReturns(resolved)) {
@@ -382,6 +384,12 @@ export async function buildDesktopShotPayload(
     };
     if (resolved.pane.id === "time-sales") {
       capture.tape = [entry.instrument.symbol, exchange, await fetchTape(entry.instrument.symbol, exchange)];
+    }
+    // Each of SEAS's two requests is answered by its own bars: the monthly closes, and the daily ones that date the running month.
+    if (seasonalityDaily.length && data.priceHistoryResolution) {
+      const target = { symbol: capture.ticker.metadata.ticker, exchange: capture.ticker.metadata.exchange ?? "" };
+      capture.historyVariants = [{ target, resolution: data.priceHistoryResolution, points: data.priceHistory ?? [] },
+        { target, resolution: "1d", points: seasonalityDaily }];
     }
     // DES (the research pane's overview, not its financials or the ADR pair) measures returns on daily closes.
     if (resolved.pane.id === "pe-band" || overview) {

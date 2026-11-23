@@ -16,6 +16,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { ResolvedSeries } from "../../../time-series/types";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
+import { formatWeekdayDay } from "../../../utils/datetime-format";
 import { cachedSeasonalityHistory, loadSeasonalityHistory } from "./client";
 import { type DailyReturnStat, MONTH_LABELS, OVERLAY_YEAR, projectSeasonality, projectWeekdays, type SeasonalityModel,
   TURN_OF_MONTH_LABELS, type WeekdayModel } from "./model";
@@ -131,11 +132,13 @@ function monthStats(model: SeasonalityModel): StatItem[] {
   const month = model.asOf.getUTCMonth();
   const stat = model.months[month]!;
   const current = model.years[0]!;
+  // The close the year to date runs to: a running month's bar holds the latest price or a close days old, and says neither.
+  const through = model.closeDay ? `to ${formatWeekdayDay(model.closeDay, { timeZone: "UTC" })} close` : undefined;
   return [
     { id: "month-avg", label: `${MONTH_LABELS[month]} avg`, value: pct(stat.mean), tone: tone(stat.mean) },
     { id: "month-hit", label: `${MONTH_LABELS[month]} up`, value: stat.count ? `${Math.round(stat.hitRate! * 100)}%` : MISSING_VALUE,
       detail: stat.count ? `${Math.round(stat.hitRate! * stat.count)} of ${stat.count} yrs` : undefined },
-    ...(current.partial ? [{ id: "ytd", label: `${current.year} YTD`, value: pct(current.total), tone: tone(current.total) }] : []),
+    ...(current.partial ? [{ id: "ytd", label: `${current.year} YTD`, value: pct(current.total), tone: tone(current.total), detail: through }] : []),
   ];
 }
 
@@ -169,7 +172,8 @@ export function SeasonalityPane({ width, height, focused }: PaneProps) {
 
   const lookbackYears = Number(lookback) || 10;
   const model = useMemo(() => history.data && cadence === "monthly"
-    ? projectSeasonality(history.data.history, { symbol: symbol ?? "", lookbackYears }) : null, [history.data, cadence, lookbackYears, symbol]);
+    ? projectSeasonality(history.data.history, { symbol: symbol ?? "", lookbackYears, lastClose: history.data.lastClose }) : null,
+  [history.data, cadence, lookbackYears, symbol]);
   // Daily closes are served for five years, so Weekdays counts all of them and has no lookback.
   const weekdayModel = useMemo(() => history.data && cadence === "daily"
     ? projectWeekdays(history.data.history, { symbol: symbol ?? "", exchange, fetchedAt: history.data.fetchedAt }) : null,
@@ -177,13 +181,13 @@ export function SeasonalityPane({ width, height, focused }: PaneProps) {
   const rows = useMemo(() => model ? tableRows(model) : [], [model]);
   const dailyRows = useMemo(() => weekdayModel ? weekdayRows(weekdayModel) : [], [weekdayModel]);
   const series = useMemo(() => model ? overlaySeries(model, colors) : [], [model, colors]);
-  const runningMonth = model?.years[0]?.partial && model.asOf ? model.asOf.getUTCMonth() : null;
+  const runningMonth = model?.runningMonth ?? null;
 
   usePaneNoticeFooter({ registrationId: "seasonality-notices", focused,
     notices: [...new Set([identityError, history.error, history.data?.error].filter((value): value is string => !!value))] });
   const rolls = history.data?.rollNote ? ` · ${history.data.rollNote}` : "";
-  // From the first month on record when the lookback reaches before it.
-  const closes = model?.asOf ? `monthly closes ${model.historyStart ? `${model.historyStart} ` : ""}to ${model.asOf.toISOString().slice(0, 7)}${rolls}`
+  // From the first month on record when the lookback reaches before it, to the session the newest month runs to, as Weekdays names its last.
+  const closes = model?.asOf ? `monthly closes ${model.historyStart ? `${model.historyStart} ` : ""}to ${model.closeDay ?? model.asOf.toISOString().slice(0, 7)}${rolls}`
     : weekdayModel?.start ? `daily closes ${weekdayModel.start} to ${weekdayModel.asOf}${rolls}` : null;
   usePaneFooter("seasonality", () => ({ info: [
     ...(history.loading ? [{ id: "loading", parts: [{ text: "loading history", tone: "muted" as const }] }] : []),
@@ -228,7 +232,7 @@ export function SeasonalityPane({ width, height, focused }: PaneProps) {
           : <DataTableView<Row> focused={focused} columns={COLUMNS} columnReorder={false} items={rows} rootWidth={width} rootHeight={contentHeight}
             getItemKey={(row) => row.id} emptyStateTitle="No monthly returns." sortColumnId={null} sortDirection="desc"
             selection={{ kind: "id", selectedId: selectedRow, getId: (row) => row.id, onChange: (id) => setSelectedRow(id) }}
-            getExportMetadata={() => [["symbol", model.symbol], ["as of", model.asOf?.toISOString()], ["units", "percent, local-price close to close"]]}
+            getExportMetadata={() => [["symbol", model.symbol], ["as of", model.closeDay ?? model.asOf?.toISOString()], ["units", "percent, local-price close to close"]]}
             renderCell={(row, column) => renderCell(row, column, runningMonth)} />}
       </> : null}
     </PaneStatusBody>}

@@ -396,15 +396,20 @@ describe("seasonality screenshot history", () => {
       getPriceHistoryForResolution: async (_symbol, _exchange, _range, resolution) => history(resolution) }),
   } as unknown as MarketContext, "SPY", {}, 800, 600, null, 1, null);
 
-  test("captures the pane's monthly closes, tagged 1mo, instead of the weekly seed", async () => {
+  test("captures the pane's monthly closes, tagged 1mo, instead of the weekly seed, and the daily closes that date the last month", async () => {
     const requested: string[] = [];
-    const shot = await capture((resolution) => { requested.push(resolution); return resolution === "1mo" ? monthly : weekly; });
-    expect(requested).toEqual(["1mo"]);
+    const daily = [{ date: new Date("2026-10-22"), close: 771 }, { date: new Date("2026-10-23"), close: 773 }];
+    const shot = await capture((resolution) => {
+      requested.push(resolution);
+      return resolution === "1mo" ? monthly : resolution === "1d" ? daily : weekly;
+    });
+    expect(requested.toSorted()).toEqual(["1d", "1mo"]);
     expect(shot.financials[0]![1]).toMatchObject({ priceHistory: monthly, priceHistoryResolution: "1mo" });
-    // The page answers the pane's own request from the capture, never from live data.
+    // The page answers each of the pane's own requests from the capture, never from live data.
     const page = createSnapshotDataProvider(JSON.parse(JSON.stringify(shot)), createTestDataProvider());
-    const replayed = await loadSeasonalityHistory({ instrument: { symbol: "SPY" } }, page);
+    const replayed = await loadSeasonalityHistory({ instrument: { symbol: "SPY", exchange: shot.tickers[0]?.metadata.exchange } }, page);
     expect(replayed.history.map((point) => point.close)).toEqual([760, 765, 772]);
+    expect(replayed.lastClose).toMatchObject({ day: "2026-10-23", close: 773 });
   });
 
   test("fails instead of drawing another cadence when monthly history is missing", async () => {

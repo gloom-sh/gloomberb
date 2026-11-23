@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { projectSeasonality, projectWeekdays } from "./model";
+import { projectSeasonality, projectWeekdays, settledClose } from "./model";
 
 const bar = (iso: string, close: number) => ({ date: new Date(`${iso}T00:00:00Z`), close });
 
@@ -60,6 +60,47 @@ describe("projectSeasonality", () => {
     // Jan runs from the Dec 28 close (100) to the Jan 25 close (99): the week of Jan 28 closes in February.
     // Stamped by its Monday, January would run from 90 to 110.
     expect(model.years.find((year) => year.year === 2019)!.months[0]).toBeCloseTo(-0.01);
+  });
+
+  test("a settled close names the session the newest month runs to, drops a month with no close yet, and is ignored when stale", () => {
+    const monthly = [bar("2025-12-01", 100), bar("2026-09-01", 90), bar("2026-10-01", 100), bar("2026-11-01", 112)];
+    // Monday mid-session: November's bar holds the day's price; the month runs to Friday's close.
+    const running = projectSeasonality(monthly, { symbol: "^GSPC", lookbackYears: 5, lastClose: { day: "2026-11-20", close: 105, monthEnded: false } });
+    expect([running.closeDay, running.runningMonth]).toEqual(["2026-11-20", 10]);
+    expect(running.years[0]!.months[10]).toBeCloseTo(0.05);
+    expect(running.years[0]).toMatchObject({ partial: true });
+    expect(running.years[0]!.total).toBeCloseTo(0.05);
+    // Tue 1 Dec before the open: December's bar has no close yet, and November ended on Mon 30 Nov.
+    const ended = projectSeasonality([...monthly, bar("2026-12-01", 115)],
+      { symbol: "^GSPC", lookbackYears: 5, lastClose: { day: "2026-11-30", close: 111, monthEnded: true } });
+    expect([ended.closeDay, ended.runningMonth, ended.years[0]!.months[11]]).toEqual(["2026-11-30", null, null]);
+    expect(ended.years[0]!.months[10]).toBeCloseTo(0.11);
+    // The year runs on into December.
+    expect(ended.years[0]!.partial).toBe(true);
+    // A close from before the month ahead of the newest bar's is a stale read: the bars keep their own months.
+    const stale = projectSeasonality(monthly, { symbol: "^GSPC", lookbackYears: 5, lastClose: { day: "2026-09-30", close: 80, monthEnded: true } });
+    expect([stale.closeDay, stale.runningMonth]).toEqual([null, 10]);
+    expect(stale.years[0]!.months[10]).toBeCloseTo(0.12);
+  });
+});
+
+describe("settledClose", () => {
+  test("the newest session settled when the bars were read, and whether its month has a session still to come", () => {
+    const days = (dates: string[]) => dates.map((day, index) => ({ date: new Date(`${day}T00:00:00Z`), close: 100 + index }));
+    const november = days(["2026-11-18", "2026-11-19", "2026-11-20", "2026-11-23", "2026-11-24", "2026-11-25", "2026-11-27", "2026-11-30"]);
+    // Monday 23 Nov mid-session: a bare index is read on New York's sessions, and Monday's bar is still trading.
+    expect(settledClose(november.slice(0, 4), { symbol: "^GSPC", fetchedAt: Date.parse("2026-11-23T19:01:00Z") }))
+      .toEqual({ day: "2026-11-20", close: 102, monthEnded: false });
+    // After Monday 30 Nov's close, November has no session left.
+    expect(settledClose(november, { symbol: "^GSPC", fetchedAt: Date.parse("2026-11-30T21:31:00Z") }))
+      .toEqual({ day: "2026-11-30", close: 107, monthEnded: true });
+    // A coin's daily bar is a UTC day, and its month runs to the month's last one.
+    const coin = days(["2026-11-27", "2026-11-28", "2026-11-29", "2026-11-30"]);
+    expect(settledClose(coin, { symbol: "BTC-USD", fetchedAt: Date.parse("2026-11-30T12:00:00Z") }))
+      .toEqual({ day: "2026-11-29", close: 102, monthEnded: false });
+    // Weekly or monthly bars name no session.
+    expect(settledClose(days(["2026-10-01", "2026-11-01"]), { symbol: "^GSPC", fetchedAt: Date.parse("2026-11-23T19:01:00Z") })).toBeNull();
+    expect(settledClose([], { symbol: "^GSPC", fetchedAt: Date.parse("2026-11-23T19:01:00Z") })).toBeNull();
   });
 });
 

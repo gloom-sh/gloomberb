@@ -1,5 +1,5 @@
 import { logFailure } from "../../utils/log-failure";
-import type { TickerFinancials } from "../../types/financials";
+import type { PricePoint, TickerFinancials } from "../../types/financials";
 import type { TickerRecord } from "../../types/ticker";
 export { clipPriceHistoryToRange } from "../../time-series/history-window";
 import { CHART_COMPOSER_PANE_ID, LEGACY_TICKER_DETAIL_PANE_ID } from "../../types/config";
@@ -105,21 +105,25 @@ export async function withShotPriceHistory(
  * SEAS reads monthly closes, and its Weekdays tab daily ones. Captured history
  * answers every request, so the weekly seed would stand in for them and price
  * each month at a week's close. The pane's own load fetches the shot tab's
- * cadence, tagged so no other cadence is answered.
+ * cadence, tagged so no other cadence is answered. Beside monthly closes it
+ * also reads a month of daily ones, which name the close the running month
+ * runs to: those are returned as `daily`, for the capture to answer that
+ * request with.
  */
 export async function withShotSeasonalityHistory(
   context: MarketContext,
   instrument: InstrumentRef,
   resolved: ResolvedPaneFunction,
   financials: TickerFinancials,
-): Promise<TickerFinancials> {
+): Promise<{ financials: TickerFinancials; daily: PricePoint[] }> {
   const cadence = resolved.options.tab === "weekdays" ? "daily" : "monthly";
   const history = await loadSeasonalityHistory({ instrument, cadence, forceRefresh: context.refresh }, context.dataProvider);
   if (history.error || history.stale) {
     throw new Error(`${instrument.symbol}: ${history.error ?? `${cadence} price history is stale`}`);
   }
   // The bars as served: the pane closes a continuous future's rolls itself, from its daily bars.
-  return { ...financials, priceHistory: history.served.points, priceHistoryResolution: history.served.resolution };
+  return { financials: { ...financials, priceHistory: history.served.points, priceHistoryResolution: history.served.resolution },
+    daily: history.served.daily ?? [] };
 }
 
 /**

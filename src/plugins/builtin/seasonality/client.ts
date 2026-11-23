@@ -8,6 +8,8 @@ import type { DataProvider } from "../../../types/data-provider";
 import type { PricePoint } from "../../../types/financials";
 import { abortable, abortError } from "../../../utils/async-deadline";
 import { errorMessage } from "../../../utils/errors";
+import { logFailure } from "../../../utils/log-failure";
+import { settledClose, type SettledClose } from "./model";
 
 export interface SeasonalityHistory {
   history: PricePoint[];
@@ -19,9 +21,16 @@ export interface SeasonalityHistory {
   /**
    * The bars as served and their size, what a capture hands the pane to read
    * again: a continuous future's daily bars before their rolls were closed,
-   * anything else's `history` itself.
+   * anything else's `history` itself, and beside monthly bars the daily ones
+   * that name the running month's close (`lastClose`).
    */
-  served: { points: PricePoint[]; resolution: ManualChartResolution };
+  served: { points: PricePoint[]; resolution: ManualChartResolution; daily?: PricePoint[] };
+  /**
+   * Monthly cadence: the latest session close that had settled when the
+   * history was read, which the running month and the year to date run to
+   * (`projectSeasonality`). Null when no daily bars could be read.
+   */
+  lastClose?: SettledClose | null;
 }
 
 /** Monthly closes for the Returns and Overlay tabs, daily closes for Weekdays. */
@@ -32,6 +41,14 @@ const CANCELLED = "Seasonality history load was cancelled";
 const SEASONALITY_HISTORY_RESOLUTION: Record<SeasonalityCadence, ManualChartResolution> = { monthly: "1mo", daily: "1d" };
 /** Daily history is served to five years; a longer request can come back as weekly bars. */
 const BUFFER_RANGE = { monthly: "ALL", daily: "5Y" } as const;
+
+/**
+ * The daily bars that date the running month (`settledClose`): a month is
+ * enough to hold the latest settled session, and a new month's first days.
+ */
+function lastCloseRequest(instrument: InstrumentRef): ChartRequest {
+  return { instrument, bufferRange: "1M", granularity: "resolution", resolution: "1d" };
+}
 
 /**
  * The bars a tab reads: monthly or daily ones, and for a continuous future
@@ -54,8 +71,9 @@ function seasonalityRequest(instrument: InstrumentRef, cadence: SeasonalityCaden
  * are. Anything else as served.
  */
 function seasonalitySeries(
-  bars: readonly PricePoint[], symbol: string, cadence: SeasonalityCadence,
-): Pick<SeasonalityHistory, "history" | "rollNote" | "served"> {
+  bars: readonly PricePoint[], instrument: InstrumentRef, cadence: SeasonalityCadence, fetchedAt: number,
+): Pick<SeasonalityHistory, "history" | "rollNote" | "served" | "lastClose"> {
+  const symbol = instrument.symbol;
   if (!isContinuousFuture(symbol)) {
     return { history: [...bars], served: { points: [...bars], resolution: SEASONALITY_HISTORY_RESOLUTION[cadence] } };
   }
@@ -71,7 +89,13 @@ function seasonalitySeries(
     const day = new Date(point.date).toISOString();
     months.set(day.slice(0, 7), { date: new Date(`${day.slice(0, 7)}-01T00:00:00Z`), close: point.close });
   }
-  return { history: [...months.values()], ...note };
+  // Its daily bars already hold the latest settled session, on the same roll-adjusted level as its months.
+  return { history: [...months.values()], ...note, lastClose: settledClose(adjusted.points, { symbol, exchange: instrument.exchange, fetchedAt }) };
+}
+
+/** The settled close in daily bars read beside the monthly ones; null when they could not be read. */
+function lastCloseOf(entry: { fetchedAt?: number | null } | null, bars: readonly PricePoint[] | null | undefined, instrument: InstrumentRef, now: number) {
+  return entry && bars?.length ? settledClose(bars, { symbol: instrument.symbol, exchange: instrument.exchange, fetchedAt: entry.fetchedAt ?? now }) : null;
 }
 
 export function cachedSeasonalityHistory(
@@ -84,8 +108,11 @@ export function cachedSeasonalityHistory(
   const served = resolveEntryValue(entry);
   if (!served?.length) return null;
   const now = Date.now();
+  const series = seasonalitySeries(served, request.instrument, cadence, entry.fetchedAt ?? now);
+  const daily = cadence === "monthly" && !isContinuousFuture(request.instrument.symbol) ? coordinator.getChartEntry(lastCloseRequest(request.instrument)) : null;
   const data = {
-    ...seasonalitySeries(served, request.instrument.symbol, cadence),
+    ...series,
+    ...(daily ? { lastClose: lastCloseOf(daily, resolveEntryValue(daily), request.instrument, now) } : {}),
     stale: !!entry.error || (entry.staleAt != null && entry.staleAt <= now),
     error: entry.error?.message ?? null,
     fetchedAt: entry.fetchedAt ?? now,
@@ -113,11 +140,20 @@ export async function loadSeasonalityHistory(
   const coordinator = marketData ? new MarketDataCoordinator(marketData) : getSharedMarketDataCoordinator();
   try {
     if (!coordinator) throw new Error("Market data coordinator unavailable");
-    const entry = await abortable(coordinator.loadChart(seasonalityRequest(request.instrument, cadence),
-      { forceRefresh: request.forceRefresh }), request.signal, CANCELLED);
-    const series = seasonalitySeries(resolveEntryValue(entry) ?? [], request.instrument.symbol, cadence);
+    // A month's bar is dated by its first day and its close can be the latest price or one days old: daily bars,
+    // read beside it, name the session close the running month runs to. Without them it keeps its own close.
+    const dated = cadence === "monthly" && !isContinuousFuture(request.instrument.symbol);
+    const [entry, daily] = await Promise.all([
+      abortable(coordinator.loadChart(seasonalityRequest(request.instrument, cadence), { forceRefresh: request.forceRefresh }), request.signal, CANCELLED),
+      dated ? abortable(coordinator.loadChart(lastCloseRequest(request.instrument), { forceRefresh: request.forceRefresh }), request.signal, CANCELLED)
+        .catch(logFailure("seasonality.client", "Load the daily closes that date the running month failed", null)) : null,
+    ]);
+    const series = seasonalitySeries(resolveEntryValue(entry) ?? [], request.instrument, cadence, entry.fetchedAt ?? now);
     const history = series.history;
-    const data = { ...series, stale: !!entry.error || (entry.staleAt != null && entry.staleAt <= now),
+    const dailyBars = daily ? resolveEntryValue(daily) ?? [] : [];
+    const data = { ...series,
+      ...(dated ? { lastClose: lastCloseOf(daily, dailyBars, request.instrument, now), served: { ...series.served, daily: [...dailyBars] } } : {}),
+      stale: !!entry.error || (entry.staleAt != null && entry.staleAt <= now),
       error: entry.error?.message ?? (history.length ? null : unavailableText(cadence === "daily" ? "Daily price history" : "Monthly price history")),
       fetchedAt: entry.fetchedAt ?? now };
     return entry.savedCopyAt == null ? data : markSavedCopy(data, entry.savedCopyAt);

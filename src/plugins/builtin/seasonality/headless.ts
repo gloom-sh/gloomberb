@@ -5,14 +5,37 @@ import { loadSeasonalityHistory } from "./client";
 import { closedHistoryBarDay, formingHistoryBar } from "../ticker-detail/data-panes/history-bars";
 import { MONTH_LABELS, projectSeasonality, projectWeekdays, TURN_OF_MONTH_LABELS } from "./model";
 import { logFailure } from "../../../utils/log-failure";
+import type { DataProvider } from "../../../types/data-provider";
 
 const percent = (digits: number) => (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(digits)}%` : MISSING_VALUE;
 const statColumns = (digits: number, countHeader: string) => [{ key: "mean", header: "Avg", format: percent(digits) },
   { key: "median", header: "Median", format: percent(digits) }, { key: "hitRate", header: "Up", format: percent(1) }, { key: "count", header: countHeader }];
 
+/** A month running to a named session close is that month to date, through it; a month that has ended is dated by it. */
+function closeDayFreshness(closeDay: string, monthRunning: boolean) {
+  return monthRunning ? { periodToDate: { period: "month" as const, through: closeDay } } : { asOf: closeDay };
+}
+
+/**
+ * Without daily closes to name the session, the newest monthly bar dated by its
+ * venue's calendar: how far the month has run, or its last session once it has
+ * ended. Monthly bars are dated by their month's first day, which is no close
+ * while the month runs. Null when there is no bar.
+ */
+async function monthlyBarFreshness(asOf: Date | null, instrument: { symbol: string; exchange?: string }, marketData: { getQuote: DataProvider["getQuote"] }) {
+  const bar = asOf?.toISOString().slice(0, 10);
+  if (!bar) return null;
+  // The venue whose sessions say whether the month still runs: the key's, or for a bare symbol its quote's.
+  const quote = !instrument.exchange ? await marketData.getQuote(instrument.symbol, "").catch(logFailure("seasonality.headless", "Load seasonality quote failed", null)) : null;
+  const venue = instrument.exchange || quote?.listingExchangeName || quote?.exchangeName || undefined;
+  const forming = formingHistoryBar("1mo", bar, venue, Date.now());
+  const closed = forming ? null : closedHistoryBarDay("1mo", bar, venue, Date.now());
+  return forming ? { periodToDate: forming } : closed ? { asOf: closed } : null;
+}
+
 export const seasonalityHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", description: "Ticker" },
-  // Dated by its last monthly close, or by how far the running month's bar runs (`month to date, through Fri 23 Oct 2026`).
+  // Dated by the session close the running month runs to (`month to date, through Fri 20 Nov 2026`), or the last month's close.
   freshness: { status: "not-a-feed", basis: "monthly closes", maxAgeMinutes: 45 * 24 * 60 },
   describe: (args) => `SEAS ${args.symbols[0] ?? ""}`,
   discovery: { screenshotReadiness: "live-dom", limitations: ["Local-price closes; dividends and FX are excluded.",
@@ -49,17 +72,11 @@ export const seasonalityHeadless: HeadlessPaneDefinition<"bundle"> = {
       };
     }
     const lookbackYears = Number(args.options.lookbackYears) || 10;
-    const model = projectSeasonality(history.history, { symbol: instrument.symbol, lookbackYears });
+    const model = projectSeasonality(history.history, { symbol: instrument.symbol, lookbackYears, lastClose: history.lastClose });
     // A lookback past the first month on record says where the years it covers start.
     const coverage = model.historyStart
       ? `History starts ${model.historyStart}, so the ${lookbackYears}-year lookback covers ${model.years.length} calendar year${model.years.length === 1 ? "" : "s"}` : null;
-    // Monthly bars are dated by their month's first day, which is no close while the month runs.
-    const bar = model.asOf?.toISOString().slice(0, 10);
-    // The venue whose sessions say whether the month still runs: the key's, or for a bare symbol its quote's.
-    const quote = bar && !instrument.exchange ? await ctx.marketData.getQuote(instrument.symbol, "").catch(logFailure("seasonality.headless", "Load seasonality quote failed", null)) : null;
-    const venue = instrument.exchange || quote?.listingExchangeName || quote?.exchangeName || undefined;
-    const forming = formingHistoryBar("1mo", bar, venue, Date.now());
-    const closed = forming ? null : closedHistoryBarDay("1mo", bar, venue, Date.now());
+    const freshness = model.closeDay ? closeDayFreshness(model.closeDay, model.runningMonth != null) : await monthlyBarFreshness(model.asOf, instrument, ctx.marketData);
     const monthColumns = MONTH_LABELS.map((label, month) => ({ key: `m${month}`, header: label, format: percent(1) }));
     return {
       sections: [
@@ -72,8 +89,9 @@ export const seasonalityHeadless: HeadlessPaneDefinition<"bundle"> = {
       unavailableSymbols: model.years.length ? [] : [instrument.symbol],
       ...common,
       ...(coverage ? { notes: [...common.notes ?? [], coverage] } : {}),
-      ...(forming ? { freshness: { periodToDate: forming } } : closed ? { freshness: { asOf: closed } } : {}),
-      metadata: { unit: "decimal return, local-price close to close", asOf: model.asOf?.toISOString() ?? null, stale: history.stale,
+      ...(freshness ? { freshness } : {}),
+      // The session the newest month runs to, not the first day its monthly bar is dated by.
+      metadata: { unit: "decimal return, local-price close to close", asOf: model.closeDay ?? model.asOf?.toISOString() ?? null, stale: history.stale,
         fetchedAt: history.fetchedAt, averagePath: model.averagePath, methodology: "docs/research-data.md#seasonality" },
     };
   },
