@@ -18,21 +18,25 @@ test("CHOKE's averages: the 7 and 28 days to the latest, against the same 28 day
   const recent = daily("2026-10-05", [...Array(21).fill(4), ...Array(7).fill(2)]);
   // The chart's year starts on 11 Nov 2025, after the year-ago window (5 Oct to 1 Nov 2025): that is read apart.
   const yearAgo = daily("2025-10-05", Array(28).fill(62));
+  // The change names what it is against: the year-ago mean and its 28 days.
   expect(trailingAverages(recent, yearAgo)).toEqual({
     avg7: 2,
     avg28: 3.5,
     yearAgoAvg28: 62,
+    yearAgoWindow: { start: "2025-10-05", end: "2025-11-01" },
     changeVsYearAgoPct: (3.5 / 62 - 1) * 100,
   });
   // A window short of its days, now or a year before, has no average and gives no change: 24 of 28 days and 6 of 7 stand.
   expect(trailingAverages(recent, yearAgo.slice(4))).toMatchObject({ yearAgoAvg28: 62 });
-  expect(trailingAverages(recent, yearAgo.slice(5))).toMatchObject({ avg28: 3.5, yearAgoAvg28: null, changeVsYearAgoPct: null });
+  expect(trailingAverages(recent, yearAgo.slice(5))).toMatchObject({ avg28: 3.5, yearAgoAvg28: null, yearAgoWindow: null, changeVsYearAgoPct: null });
   expect(trailingAverages(recent, yearAgo.filter((_, index) => index % 7 !== 3))).toMatchObject({ yearAgoAvg28: 62 });
   expect(trailingAverages(recent.filter((_, index) => index < 26 && index !== 22 && index !== 23), yearAgo)).toEqual({
-    avg7: null, avg28: expect.any(Number), yearAgoAvg28: 62, changeVsYearAgoPct: expect.any(Number),
+    avg7: null, avg28: expect.any(Number), yearAgoAvg28: 62, yearAgoWindow: expect.any(Object), changeVsYearAgoPct: expect.any(Number),
   });
   // A chart read over a week (`--range 1w`) has a 7-day average and no 28-day one.
-  expect(trailingAverages(recent.slice(-7), yearAgo)).toEqual({ avg7: 2, avg28: null, yearAgoAvg28: 62, changeVsYearAgoPct: null });
+  expect(trailingAverages(recent.slice(-7), yearAgo)).toEqual({
+    avg7: 2, avg28: null, yearAgoAvg28: 62, yearAgoWindow: { start: "2025-10-05", end: "2025-11-01" }, changeVsYearAgoPct: null,
+  });
   // A series that reaches back a year and more reads its own year-ago days.
   const long = [...daily("2025-10-05", Array(28).fill(10)), ...recent];
   expect(trailingAverages(long)).toMatchObject({ yearAgoAvg28: 10, changeVsYearAgoPct: -65 });

@@ -77,7 +77,9 @@ export function trailingAverages(
   const changeVsYearAgoPct = avg28 != null && yearAgoAvg28 != null && yearAgoAvg28 !== 0
     ? (avg28 / yearAgoAvg28 - 1) * 100
     : null;
-  return { avg7, avg28, yearAgoAvg28, changeVsYearAgoPct };
+  // The change names what it is against: that mean and its days.
+  const yearAgoWindow = yearAgoAvg28 == null ? null : { start: isoDay(yearAgoEnd - 27 * DAY_MS), end: isoDay(yearAgoEnd) };
+  return { avg7, avg28, yearAgoAvg28, yearAgoWindow, changeVsYearAgoPct };
 }
 
 /** The map series a chart series is of (`CAP:geo-series:HORMUZ` is HORMUZ), or null for any other source. */
