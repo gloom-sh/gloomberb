@@ -1,14 +1,43 @@
 import { afterEach, expect, setSystemTime, spyOn, test } from "bun:test";
 import { apiClient, type CloudMacroReleaseDaysPayload } from "../../../api-client";
-import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
+import { buildHeadlessPaneLoadArgs, renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import type { HeadlessPaneContext } from "../../../types/headless";
 import { macroReleaseCache } from "./client";
 import { macroDayHeadless } from "./headless";
+import { createTestDataProvider } from "../../../test-support/data-provider";
 
 afterEach(() => {
   macroReleaseCache.reset();
   setSystemTime();
+});
+
+test("comparison aligns by release rather than by trading session and keeps missing moves blank", async () => {
+  setSystemTime(new Date("2026-04-08T12:00:00Z"));
+  const days = spyOn(apiClient, "getCloudMacroReleaseDays").mockResolvedValue({ checkedAt: "2026-04-07T22:00:00Z",
+    coveredThrough: "2026-04-07", sources: [], releases: { cpi: [], jobs: ["2026-04-03"], fomc: [] } });
+  const provider = createTestDataProvider({ getPriceHistoryForResolution: async (symbol) => {
+    const prices = symbol === "^TNX" ? [["2026-04-02", 4], ["2026-04-06", 4.04]] as const
+      : symbol === "GLD" ? [] : [["2026-04-02", 100], ["2026-04-03", symbol === "SPY" ? 101 : 99]] as const;
+    return prices.map(([date, close]) => ({ date: new Date(`${date}T00:00:00Z`), close }));
+  } });
+  try {
+    const args = buildHeadlessPaneLoadArgs(macroDayHeadless, "MDAY", "SPY,UUP,^TNX,GLD", { release: "jobs" });
+    expect(() => buildHeadlessPaneLoadArgs(macroDayHeadless, "MDAY", "SPY,UUP,^TNX,GLD,TLT", {})).toThrow(/4/);
+    const result = await macroDayHeadless.load!(args, { marketData: provider, signal: new AbortController().signal } as unknown as HeadlessPaneContext);
+    if (!result) throw new Error("MDAY loaded nothing");
+    const section = result.sections[0];
+    const row = section && "rows" in section ? section.rows?.[0] : undefined;
+    expect(row).toMatchObject({ date: "2026-04-03", "SPY session": "2026-04-03", "^TNX session": "2026-04-06", GLD: null });
+    expect(result.unavailableSymbols).toEqual(["GLD"]);
+    const text = renderHeadlessPaneText(macroDayHeadless, result, args, "MDAY", deriveHeadlessFreshness(macroDayHeadless, result, Date.now()));
+    expect(text).toMatch(/SPY %\s+UUP %\s+\^TNX bp\s+GLD %/);
+    expect(text).toMatch(/2026-04-03\s+Jobs\s+\+1\.00%\s+-1\.00%\s+\+4\.0\s+—/);
+    expect(text).toContain("Daily close-to-close");
+    expect(days).toHaveBeenCalledTimes(1);
+  } finally {
+    days.mockRestore();
+  }
 });
 
 test("an FOMC day's row is named FOMC, its decision a field of its own, and the text reads them together", async () => {

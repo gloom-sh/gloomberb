@@ -46,6 +46,7 @@ describe("macro-day earnings dates", () => {
 
     // A listing key naming another venue is not the US company of the same symbol.
     expect((await loadMacroDayEarnings({ instrument: { symbol: "SAP:XETR", exchange: "" } }, load)).reports).toEqual([]);
+    expect(await loadMacroDayEarnings({ instrument: { symbol: "^TNX" } }, load)).toMatchObject({ reports: [], error: null });
     expect(asked).toHaveLength(1);
 
     const failed = await loadMacroDayEarnings({ instrument: { symbol: "CRWV", exchange: "NASDAQ" } }, async () => { throw new Error("offline"); });

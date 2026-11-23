@@ -8,12 +8,16 @@ import { instrumentFromTicker } from "../../../market-data/request-types";
 import { usePaneSettingValue, usePluginPaneState } from "../../../public/react";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useCloudDisplayScope } from "../../../api-client/plan-access";
+import { usePaneInstance } from "../../../state/app/context";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { shownPriceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
 import { loadMacroDayEarnings, loadMacroDayHistory, loadMacroReleases, macroDayEarningsNotice } from "./client";
+import { compareMacroDays, loadMacroDayTarget, MACRO_DAY_DAILY_BASIS, macroDayComparisonHeader, macroDayKey,
+  projectMacroDayTargets, type MacroDayComparisonRow } from "./comparison";
 import {
   formatMacroDayMove, macroDayEventLabel, macroDayEventNote, macroDayMoveDecimals, macroDayStats, matchesSurprise, macroFigureGapNotices,
   macroSurpriseBasisLabel, macroSurpriseExclusionNote, macroSurpriseOf, projectMacroDays, type MacroDayEvent,
@@ -109,12 +113,101 @@ function figures(model: MacroDayModel, release: string): StatItem[] {
   ];
 }
 
-export function MacroDayPane({ width, height, focused }: PaneProps) {
-  const colors = useThemeColors();
-  const { symbol, ticker, error: identityError } = usePaneTicker();
+function useMacroDayFilters() {
   const [lookback, setLookback] = usePaneSettingValue("lookbackYears", "5");
   const [release, setRelease] = usePluginPaneState("release", "all");
   const [surprise, setSurprise] = usePluginPaneState<MacroSurprise | "all">("surprise", "all");
+  return { lookback, setLookback, release, setRelease, surprise, setSurprise };
+}
+
+function MacroDayQuery({ width, filters }: { width: number; filters: ReturnType<typeof useMacroDayFilters> }) {
+  const { release, setRelease, surprise, setSurprise, lookback, setLookback } = filters;
+  return <QueryBar width={width} filters={[
+    { id: "release", label: "Release", value: release, options: RELEASE_OPTIONS, onChange: setRelease, inline: true },
+    { id: "surprise", label: "Surprise", value: surprise, options: SURPRISE_OPTIONS, onChange: (value) => setSurprise(value as MacroSurprise | "all") },
+    { id: "lookback", label: "Lookback", value: String(lookback), options: LOOKBACK_OPTIONS, onChange: setLookback },
+  ]} />;
+}
+
+export function MacroDayPane(props: PaneProps) {
+  const symbols = usePaneInstance()?.params?.symbols;
+  return symbols ? <MacroDayComparisonPane key={symbols} {...props} list={symbols} /> : <SingleMacroDayPane {...props} />;
+}
+
+function MacroDayComparisonPane({ width, height, focused, list }: PaneProps & { list: string }) {
+  const colors = useThemeColors();
+  const filters = useMacroDayFilters();
+  const { lookback, release, surprise } = filters;
+  const [selectedRow, setSelectedRow] = usePluginPaneState<string | null>("selectedRow", null);
+  const scope = useCloudDisplayScope();
+  const controller = useRef<AbortController | null>(null);
+  const loader = useCallback(async (forceRefresh: boolean) => {
+    controller.current?.abort();
+    controller.current = new AbortController();
+    const { signal } = controller.current;
+    const [releases, targets] = await Promise.all([loadMacroReleases({ force: forceRefresh }), Promise.all(list.split(",").map((symbol) =>
+      loadMacroDayTarget(symbol, () => parsePublicTickerKey(symbol), { signal, forceRefresh })))]);
+    if (targets.every((target) => !target.history.length && target.error)) throw new Error(targets[0]!.error!);
+    return { releases, targets };
+  }, [list]);
+  const history = useAsyncResource(scope ? loader : null, { savedCopy: scope ? { key: ["macro-day-compare", scope, list] } : null,
+    shouldSave: (answer) => answer.targets.every((target) => !target.stale && !target.error) });
+  useEffect(() => () => controller.current?.abort(), [loader]);
+  useAutoRefresh(history.updatedAt, history.load);
+  usePaneRefreshKey(() => history.reload(), { focused });
+
+  const models = useMemo(() => history.data ? projectMacroDayTargets(history.data.targets, history.data.releases, Number(lookback) || 5) : [], [history.data, lookback]);
+  const scoped = useMemo(() => compareMacroDays(models).filter((event) => release === "all" || event.kind === release), [models, release]);
+  const rows = useMemo(() => scoped.filter((event) => matchesSurprise(event, surprise)), [scoped, surprise]);
+  const columns = useMemo<DataTableColumn[]>(() => [
+    { ...DATE, width: 10 }, { id: "release", label: "Release", width: 12, align: "left" },
+    ...models.map((model) => ({ id: model.symbol, label: macroDayComparisonHeader(model),
+      width: Math.max(8, displayWidth(macroDayComparisonHeader(model))), align: "right" as const })),
+    ...figureColumns(rows),
+  ], [models, rows]);
+  const hasEarnings = rows.some((day) => [...day.moves.values()].some((move) => move.earnings));
+  const usesNextSession = rows.some((day) => [...day.moves.values()].some((move) => move.session !== day.date));
+  usePaneNoticeFooter({ registrationId: "macro-day-comparison-notices", focused, notices: [
+    ...(usesNextSession ? ["Where the market was shut, the move uses the next available session."] : []),
+    ...(hasEarnings ? ["* Also an earnings reaction session for this instrument."] : []),
+    ...[history.data && staleMacroReleasesNotice(history.data.releases), macroSurpriseExclusionNote(scoped, surprise)]
+      .filter((note): note is string => !!note),
+    ...(history.data?.targets.flatMap(({ symbol, error, earningsNotice }) => [error, earningsNotice]
+      .flatMap((notice) => notice ? [`${symbol}: ${notice}`] : [])) ?? []),
+    ...macroFigureGapNotices(rows),
+  ] });
+  const stale = history.data?.targets.some((target) => target.stale);
+  usePaneFooter("macro-day-comparison", () => ({ info: [
+    ...(stale ? [{ id: "stale", parts: [{ text: "stale history", tone: "warning" as const }] }] : []),
+    { id: "basis", parts: [{ text: "daily close-to-close", tone: "muted" as const }] },
+  ] }), [stale]);
+  const renderCell = (event: MacroDayComparisonRow, column: DataTableColumn): DataTableCell => {
+    if (column.id === "date") return { text: event.date };
+    if (column.id === "release") return { text: macroDayEventLabel(event) };
+    if (column.id === "actual" || column.id === "forecast" || column.id === "prior") return { text: event.figures?.[column.id] ?? "" };
+    if (column.id === "surprise") return { text: macroSurpriseText(event) };
+    const move = event.moves.get(column.id);
+    const basis = models.find((model) => model.symbol === column.id)?.basis ?? "return";
+    return move ? { text: `${formatMacroDayMove(move.move, basis, { unit: false })}${move.earnings ? "*" : ""}`, value: move.move * 100,
+      color: shownPriceColor(move.move * 100, macroDayMoveDecimals(basis), colors) } : { text: MISSING_VALUE };
+  };
+  return <Box width={width} height={height} flexDirection="column" overflow="hidden">
+    <MacroDayQuery width={width} filters={filters} />
+    <PaneStatusBody subject="macro-day moves" loading={history.loading && !history.data} error={!history.data ? history.error : null}>
+      {history.data ? <DataTableView<MacroDayComparisonRow> focused={focused} columns={columns} items={rows} rootWidth={width} rootHeight={height - 1}
+        getItemKey={macroDayKey} emptyStateTitle="No matching release days." sortColumnId={null} sortDirection="desc" selectedTextOverridesCellColor
+        selection={{ kind: "id", selectedId: selectedRow, getId: macroDayKey, onChange: setSelectedRow }}
+        getExportMetadata={() => [["basis", MACRO_DAY_DAILY_BASIS], ["units", models.map(macroDayComparisonHeader).join(", ")]]}
+        renderCell={renderCell} /> : null}
+    </PaneStatusBody>
+  </Box>;
+}
+
+function SingleMacroDayPane({ width, height, focused }: PaneProps) {
+  const colors = useThemeColors();
+  const { symbol, ticker, error: identityError } = usePaneTicker();
+  const filters = useMacroDayFilters();
+  const { lookback, release, surprise } = filters;
   const [selectedRow, setSelectedRow] = usePluginPaneState<string | null>("selectedRow", null);
   const instrument = instrumentFromTicker(ticker, symbol);
   const instrumentKey = JSON.stringify(instrument);
@@ -182,21 +275,15 @@ export function MacroDayPane({ width, height, focused }: PaneProps) {
   // A figure wraps only into rows the table's least leaves, so the pane never spills.
   const statMaxLines = height - 1 - 4;
   const contentHeight = Math.max(4, height - 1 - statGridRows(stats, width, undefined, { maxLines: statMaxLines }));
-  const key = (event: MacroDayEvent) => `${event.kind}:${event.date}`;
-
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
-    <QueryBar width={width} filters={[
-      { id: "release", label: "Release", value: release, options: RELEASE_OPTIONS, onChange: setRelease, inline: true },
-      { id: "surprise", label: "Surprise", value: surprise, options: SURPRISE_OPTIONS, onChange: (value) => setSurprise(value as MacroSurprise | "all") },
-      { id: "lookback", label: "Lookback", value: String(lookback), options: LOOKBACK_OPTIONS, onChange: setLookback },
-    ]} />
+    <MacroDayQuery width={width} filters={filters} />
     {!symbol ? <EmptyState title="Select a ticker." /> : <PaneStatusBody subject="macro-day moves" loading={history.loading && !model}
       error={!model ? history.error ?? identityError ?? null : null} empty={!!model && !model.events.length}>
       {model ? <>
         <StatGrid items={stats} width={width} maxLines={statMaxLines} />
         <DataTableView<MacroDayEvent> focused={focused} columns={columns} items={rows} rootWidth={width} rootHeight={contentHeight}
-          getItemKey={key} emptyStateTitle={surprise === "all" ? "No release days." : `No ${MACRO_SURPRISE_LABELS[surprise].toLowerCase()} prints.`} sortColumnId={null} sortDirection="desc" selectedTextOverridesCellColor
-          selection={{ kind: "id", selectedId: selectedRow, getId: key, onChange: (id) => setSelectedRow(id) }}
+          getItemKey={macroDayKey} emptyStateTitle={surprise === "all" ? "No release days." : `No ${MACRO_SURPRISE_LABELS[surprise].toLowerCase()} prints.`} sortColumnId={null} sortDirection="desc" selectedTextOverridesCellColor
+          selection={{ kind: "id", selectedId: selectedRow, getId: macroDayKey, onChange: setSelectedRow }}
           getExportMetadata={() => [["symbol", model.symbol], ["from", model.start ?? ""], ["to", model.asOf ?? ""],
             ["units", model.basis === "yield" ? "percentage points of yield, close to close on the release day"
               : "percent, close to close on the release day"]]}

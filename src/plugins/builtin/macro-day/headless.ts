@@ -3,6 +3,8 @@ import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { loadMacroDayEarnings, loadMacroDayHistory, loadMacroDaySeriesHistory, loadMacroReleases, macroDayEarningsNotice, type MacroDayEarnings } from "./client";
 import { fredSeriesArgument } from "../../../series/fred-argument";
+import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/headless";
+import { compareMacroDays, loadMacroDayTarget, MACRO_DAY_DAILY_BASIS, macroDayComparisonHeader, MAX_MACRO_DAY_SYMBOLS, projectMacroDayTargets } from "./comparison";
 import { formatMacroDayMove, macroDayEventLabel, macroDayReleaseName, macroDayStats, macroFigureGapNotices, macroSurpriseBasisLabel,
   macroSurpriseExclusionNote, macroSurpriseOf, matchesSurprise, projectMacroDays, type MacroDayEvent, type MacroDayStats } from "./model";
 import { MACRO_EVENT_KINDS, MACRO_EVENT_LABELS, MACRO_RELEASE_SOURCES, MACRO_SURPRISE_LABELS, MACRO_SURPRISES, staleMacroReleasesNotice,
@@ -13,8 +15,49 @@ const percent = (value: unknown) => typeof value !== "number" ? MISSING_VALUE : 
 const multiple = (value: unknown) => typeof value === "number" ? `${value.toFixed(2)}x` : MISSING_VALUE;
 const share = (value: unknown) => typeof value === "number" ? `${Math.round(value * 100)}%` : MISSING_VALUE;
 
+async function loadComparison(args: HeadlessPaneLoadArgs, ctx: HeadlessPaneContext) {
+  const [releases, targets] = await Promise.all([loadMacroReleases(), Promise.all(args.symbols.map((symbol) => loadMacroDayTarget(
+    symbol, () => resolveHeadlessInstrument(ctx, symbol), { signal: ctx.signal, marketData: ctx.marketData, apiClient: ctx.apiClient },
+  )))]);
+  ctx.signal.throwIfAborted();
+  const models = projectMacroDayTargets(targets, releases, Number(args.options.lookbackYears) || 5);
+  const release = String(args.options.release ?? "all");
+  const surprise = String(args.options.surprise ?? "all") as MacroSurprise | "all";
+  const scoped = compareMacroDays(models).filter((event) => release === "all" || event.kind === release);
+  const days = scoped.filter((event) => matchesSurprise(event, surprise));
+  const errors = targets.flatMap((target) => target.error ? [`${target.symbol}: ${target.error}`] : []);
+  const unavailableSymbols = models.flatMap((model) => model.events.length ? [] : [model.symbol]);
+  const notes = [MACRO_DAY_DAILY_BASIS, staleMacroReleasesNotice(releases), macroSurpriseExclusionNote(scoped, surprise),
+    ...(days.some((day) => [...day.moves.values()].some((move) => move.earnings)) ? ["* Also an earnings reaction session for this instrument."] : []),
+    ...targets.map((target) => target.earningsNotice ? `${target.symbol}: ${target.earningsNotice}` : null),
+    ...macroFigureGapNotices(days),
+  ].filter((note): note is string => !!note);
+  return {
+    sections: [{ title: "Release-day moves", columns: [
+      { key: "date", header: "Date" }, { key: "release", header: "Release" },
+      ...models.map((model) => ({ key: model.symbol, header: macroDayComparisonHeader(model),
+        textFormat: (value: unknown, row: Record<string, unknown>) => typeof value === "number"
+          ? `${formatMacroDayMove(value / 100, model.basis, { unit: false })}${row[`${model.symbol} earnings`] ? "*" : ""}` : MISSING_VALUE })),
+      { key: "actual", header: "Actual" }, { key: "forecast", header: "Forecast" }, { key: "prior", header: "Prior" },
+      { key: "surprise", header: "Surprise" },
+    ], rows: days.map((day) => ({ date: day.date, release: macroDayEventLabel(day), kind: day.kind,
+      actual: day.figures?.actual ?? null, forecast: day.figures?.forecast ?? null, prior: day.figures?.prior ?? null,
+      surprise: macroSurpriseOf(day.figures),
+      ...Object.fromEntries(models.flatMap(({ symbol }) => {
+        const move = day.moves.get(symbol);
+        return [[symbol, move ? move.move * 100 : null], [`${symbol} session`, move?.session ?? null], [`${symbol} earnings`, move?.earnings ?? null]];
+      })),
+    })) }],
+    complete: !unavailableSymbols.length && !errors.length && !staleMacroReleasesNotice(releases) && targets.every((target) => !target.stale),
+    unavailableSymbols, errors, notes,
+    metadata: { basis: MACRO_DAY_DAILY_BASIS, unitBySymbol: Object.fromEntries(models.map(({ symbol, basis }) => [symbol, basis === "yield" ? "bp" : "%"])),
+      releasesThrough: releases.coveredThrough, methodology: "docs/research-data.md#macro-day-reaction" },
+  };
+}
+
 export const macroDayHeadless: HeadlessPaneDefinition<"bundle"> = {
-  shape: "bundle", argument: { kind: "ticker", description: "Ticker, or a FRED series such as FRED:T10Y2Y", examples: ["TLT", "FRED:T10Y2Y"] },
+  shape: "bundle", argument: { kind: "tickers", minimum: 1, maximum: MAX_MACRO_DAY_SYMBOLS,
+    description: `Up to ${MAX_MACRO_DAY_SYMBOLS} comma-separated tickers or FRED series`, examples: ["SPY,UUP,^TNX,GLD", "FRED:T10Y2Y"] },
   usListingsOnly: "Macro release day data",
   // Daily closes in the US session, which a line over the counter has as a listed one does.
   usListingsOtc: true,
@@ -22,9 +65,9 @@ export const macroDayHeadless: HeadlessPaneDefinition<"bundle"> = {
   fredSeriesArgument: true,
   // Dated by the release list (releasesThrough) as much as by the closes, so no session schedule applies.
   freshness: { status: "not-a-feed", basis: "release-day study on daily closes" },
-  describe: (args) => `MDAY ${args.symbols[0] ?? ""}`,
+  describe: (args) => `MDAY ${args.symbols.join(", ")}`,
   discovery: { screenshotReadiness: "live-dom", limitations: [
-    "US listings, or a FRED series (FRED:T10Y2Y, whose moves in a rate or spread read in bp); close-to-close on the release day.",
+    `Compare up to ${MAX_MACRO_DAY_SYMBOLS} US listings or FRED series side by side. ${MACRO_DAY_DAILY_BASIS} Moves are in bp for yields and rates, % otherwise.`,
     "Published CPI, jobs and FOMC days, and from Gloom Cloud Brazil's IPCA days, the ECB's decision days (every Governing Council monetary policy meeting) and the BoJ's (each monetary policy meeting's Tokyo day, from 2026); sessions after the list's last covered day (releasesThrough) are left out.",
     "Actual, forecast and prior for the days Gloom Cloud has them (the US headlines from its kept economic calendar, under either feed's title; an FOMC day's are the federal funds target range and whether it held or moved, an ECB day's the deposit facility rate, a BoJ day's its policy rate; IPCA from the central bank's SGS series); --surprise keeps the days that came in hot, cool or in line with the forecast.",
     "A CPI day the calendar lists without its year-on-year actual takes one computed from the CPI index against a year earlier, labelled computed; where none can be (October 2026, as the October 2025 index was never published), its surprise is read from core CPI m/m, else CPI m/m, and named so (hot (core m/m)).",
@@ -41,6 +84,7 @@ export const macroDayHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "lookbackYears", type: "integer", minimum: 1, maximum: 5, defaultValue: 5, description: "Years of daily closes" },
   ],
   async load(args, ctx) {
+    if (args.symbols.length > 1) return loadComparison(args, ctx);
     // FRED:T10Y2Y is a series, read from FRED: it has no earnings, and a rate or spread moves by its level.
     const seriesId = fredSeriesArgument(args.symbols[0]!);
     const instrument = seriesId ? null : await resolveHeadlessInstrument(ctx, args.symbols[0]!);

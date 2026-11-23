@@ -137,10 +137,9 @@ export async function loadMacroDayEarnings(
   load: typeof loadEarningsHistory = loadEarningsHistory,
 ): Promise<MacroDayEarnings> {
   if (request.signal?.aborted) throw abortError(CANCELLED);
-  if (isNonUsVenue(request.instrument)) return { reports: [], stale: false, error: null };
+  const symbol = parsePublicTickerKey(request.instrument.symbol.trim()).symbol.toUpperCase();
+  if (symbol.startsWith("^") || isNonUsVenue(request.instrument)) return { reports: [], stale: false, error: null };
   try {
-    // Earnings are keyed by the bare US symbol; a listing key ("CRWV:XNAS") drops its exchange.
-    const symbol = parsePublicTickerKey(request.instrument.symbol.trim()).symbol.toUpperCase();
     const resource = await abortable(load(symbol, request.forceRefresh, EARNINGS_REPORT_LIMIT), request.signal, CANCELLED);
     return { reports: resource.payload.reports.map((report) => ({ date: report.date, timing: report.timing, reactionSession: report.realized?.afterSession ?? null })),
       stale: resource.stale, error: null };

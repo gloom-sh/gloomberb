@@ -362,8 +362,8 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
   },
   MDAY: {
-    summary: "Does this name care about CPI day? Its average move on CPI, jobs report and FOMC days against a normal day, the average signed move and share of up days, and the move on every release day. Takes a FRED series too (FRED:T10Y2Y), whose moves in a rate or spread read in basis points.",
-    usage: ["MDAY SPY", "MDAY FRED:T10Y2Y"],
+    summary: "Compare up to four tickers or FRED series side by side on CPI, jobs report and central-bank release days. Daily close-to-close moves are in bp for yields or rates and % otherwise. With one ticker, compare its release-day moves to a normal day.",
+    usage: ["MDAY SPY", "MDAY SPY,UUP,^TNX,GLD", "MDAY FRED:T10Y2Y"],
     keys: [],
     data: DAILY_CLOSES,
     bloomberg: [],

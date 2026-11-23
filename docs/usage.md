@@ -302,7 +302,7 @@ When Gloom Cloud is too busy to search, the list says `Search is busy` rather th
 | `ADR <ticker>` | A depositary receipt beside its home listing (GGAL and GGAL.BA, TSM and 2330.TW): the ratio, both prices with their times, the implied dollar rate (home × ratio / ADR, the CCL rate for an Argentine pair), spot and the premium or discount. A line of an A+H company (1088:HKEX, 601088:SSE) adds its other line and the H price over the A price at spot. Opens DES on ADR vs Home, under Financials, which shows for listings with a known pair |
 | `RDCF <ticker>` | Reverse DCF: the ten-year free cash flow growth the enterprise value prices in, against past growth, by discount rate |
 | `PEB <ticker>` | P/E band: weekly price against round multiples of trailing EPS, today's P/E and its percentile |
-| `MDAY <ticker>` | Macro-day reaction: average absolute and signed move and up share on CPI, jobs, FOMC and Brazil IPCA days against a normal day, with each day's actual, forecast and prior |
+| `MDAY <ticker[,ticker…]>` | Macro-day reaction: daily close-to-close moves on CPI, jobs and policy days, side by side for up to four tickers or FRED series; one ticker also shows statistics against a normal day |
 | `HIVG <ticker>` | Implied volatility history against realized, with IV rank and percentile |
 | `VCA [tickers]` | Rich/cheap implied volatility across a list: IV rank, percentile, term slope, skew, IV/HV |
 | `OSA <ticker>` | Multi-leg option positions, scenario P&L, payoff charts and aggregate Greeks, with a hedge budget, a collar or a cash-secured put |

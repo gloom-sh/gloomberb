@@ -278,9 +278,16 @@ export async function applyListingArgument(
   // A long list is a batch of tickers: its words cost no quote each to be read as companies' names, nor its codes
   // no source quotes to be read on their listings abroad.
   const companyWord = typed.length <= MAX_CHOICE_LOOKUPS;
-  let listings = named ? [named] : await Promise.all(typed.map((raw) => resolveCliListing(raw, exchange, context, {
-    ownExchangeWins: typed.length > 1, venueSuffix: true, companyWord, listingAbroad: companyWord,
-  })));
+  let listings = named ? [named] : await Promise.all(typed.map((raw): Promise<CliListing> => {
+    const series = !exchange && headless?.fredSeriesArgument ? fredSeriesArgument(raw) : null;
+    if (series) {
+      const symbol = `FRED:${series}`;
+      return Promise.resolve({ symbol, key: symbol, exchange: "", saved: null, request: { symbol, exchange: "" } });
+    }
+    return resolveCliListing(raw, exchange, context, {
+      ownExchangeWins: typed.length > 1, venueSuffix: true, companyWord, listingAbroad: companyWord,
+    });
+  }));
   // A separator stuck to the end of a pasted list (`UPST;`) is not part of a symbol; it is named.
   const notes: string[] = takesOneTicker ? [] : stripStrayEdges(args.arg).notes;
   notes.push(...aliases.flatMap((alias) => alias ? [alias.note] : []));
@@ -389,6 +396,7 @@ export async function withRenamedTickers(
   const keys = kind === "ticker" ? [args.arg.trim()] : splitSymbolArgs([args.arg]);
   if (keys.length === 0 || keys.length > MAX_CHOICE_LOOKUPS) return null;
   const moved = await Promise.all(keys.map((key) => {
+    if (resolved.headless?.fredSeriesArgument && fredSeriesArgument(key)) return null;
     // One ticker is asked for as the function will ask for it (on its saved venue); a list's by key.
     const { symbol, exchange } = keys.length === 1 && args.listing ? args.listing.request : parsePublicTickerKey(key);
     return movedListing({ symbol, exchange: exchange ?? "" }, context.dataProvider)
