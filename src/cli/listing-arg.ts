@@ -41,6 +41,7 @@ import {
   parsePublicTickerKey,
   publicTickerKey,
   typedExchangeCode,
+  typedExchangeVenue,
 } from "../utils/exchanges";
 import { withMarketData } from "./scoped-context";
 import { failWithFields } from "./errors";
@@ -385,24 +386,37 @@ export function listingKeys(listing: ListingArg): string[] {
 
 /**
  * An exchange code the app does not know is accepted only when the symbol is
- * listed there, so a typo never falls back to another venue's line.
+ * listed there, so a typo never falls back to another venue's line. A code
+ * Gloom Cloud reads as a venue (IDX, KLSE, BKK: `typedExchangeVenue`) is that
+ * venue's listing, said so, unless a row is saved on the code itself.
  */
-async function checkListingExchange(listing: ListingArg, deps: ListingDeps): Promise<void> {
+async function checkListingExchange(listing: ListingArg, deps: ListingDeps): Promise<ListingArg> {
   if (listing.symbol.endsWith(":")) {
     const symbol = listing.symbol.slice(0, -1);
     throw new ListingArgError(`Choose an exchange for ${symbol}.${tradesOn(symbol, await listingVenues(symbol, deps))}`);
   }
-  if (!listing.exchange || isKnownExchangeCode(listing.exchange)) return;
+  if (!listing.exchange || isKnownExchangeCode(listing.exchange)) return listing;
   // A row saved on that venue says it is real (GARAN:BIST, which the exchange table lacks), with no request.
-  if (await loadSavedListing(deps.store, listing)) return;
+  if (await loadSavedListing(deps.store, listing)) return listing;
+  const typed = typedExchangeVenue(listing.exchange);
+  if (typed) return typedVenueListing(listing, typed);
   const venues = await listingVenues(listing.symbol, deps);
-  if (venues.some((venue) => venue.exchange === listing.exchange)) return;
+  if (venues.some((venue) => venue.exchange === listing.exchange)) return listing;
   // Search busy, or missing the venue: the listing's own quote there settles it, as `quote` reads it.
-  if (await quotedOnVenue(listing, deps)) return;
+  if (await quotedOnVenue(listing, deps)) return listing;
   throw new ListingArgError(
     `Unknown exchange ${listing.exchange} for ${listing.symbol}.${tradesOn(listing.symbol, venues)}`,
     venues.length > 0 ? undefined : `No listings of ${listing.symbol} were found.`,
   );
+}
+
+/** INTP:IDX read as INTP:JAKARTA: "Read INTP:IDX as INTP:JAKARTA.", or one reading of IDX:INTP typed venue first. */
+function typedVenueListing(listing: ListingArg, exchange: string): ListingArg {
+  const key = `${listing.symbol}:${exchange}`;
+  const typedAs = ` as ${listing.key}.`;
+  const readAs = listing.readAs?.endsWith(typedAs) ? `${listing.readAs.slice(0, -typedAs.length)} as ${key}.`
+    : [listing.readAs, `Read ${listing.key} as ${key}.`].filter(Boolean).join(" ");
+  return { ...listing, exchange, key, readAs };
 }
 
 /**
@@ -1779,7 +1793,7 @@ export async function resolveCliListing(
   try {
     // A code's venue is one the app reads; where search alone knows it (`BBCA IJ`) or the codes differ (`DBS SP`), search says what trades there.
     if (terminal?.market && parsed.exchange === terminal.exchange) await checkTerminalCodeVenue(parsed, terminal.market, deps);
-    else await checkListingExchange(parsed, deps);
+    else parsed = await checkListingExchange(parsed, deps);
   } catch (error) {
     const market = error instanceof ListingArgError ? await builderDexMarket(parsed, deps) : null;
     if (!market) throw error;
@@ -2492,10 +2506,7 @@ export async function requireListingArg(
   try {
     const listing = parseListingArg(raw, exchangeOption, options);
     if (listing.symbol.endsWith(":") || (listing.exchange && !isKnownExchangeCode(listing.exchange)) || listing.sharedCode) {
-      return await withMarketData(ctx, async (market) => {
-        await checkListingExchange(listing, market);
-        return settleSharedCode(listing, market);
-      });
+      return await withMarketData(ctx, async (market) => settleSharedCode(await checkListingExchange(listing, market), market));
     }
     return listing;
   } catch (error) {

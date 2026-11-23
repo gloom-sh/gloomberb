@@ -94,6 +94,19 @@ export function isKnownExchangeCode(value?: string): boolean {
   return !!normalized && KNOWN_EXCHANGE_CODES.has(normalized);
 }
 
+/**
+ * The venue a code the app does not know names where a listing is typed with it: IDX and XIDX are the Indonesia
+ * Stock Exchange (JAKARTA), KLSE Bursa Malaysia, BKK the Stock Exchange of Thailand (the notation table's
+ * `typedAliases`, Gloom Cloud's own reading). Never read from a saved ticker or as a listing suffix, so a key is
+ * built from the venue's code and none already saved moves. Undefined for a code the app knows, or one no venue
+ * is written as.
+ */
+export function typedExchangeVenue(value?: string): string | undefined {
+  const normalized = normalizeExchange(value);
+  if (!normalized || KNOWN_EXCHANGE_CODES.has(normalized)) return undefined;
+  return EXCHANGE_NOTATION.typedAliases[normalized];
+}
+
 /** "Warsaw Stock Exchange" for a venue with a name, the canonical code otherwise (NASDAQ, whose name is its code). */
 export function exchangeName(value?: string): string {
   const code = canonicalExchange(value);
@@ -140,11 +153,15 @@ export function isSharedExchangeCode(value?: string): boolean {
 
 /**
  * Every venue a typed exchange code can name, as canonical codes: TSE is
- * TSX or JPX, PAR is EPA. Empty for no code.
+ * TSX or JPX, PAR is EPA, IDX is JAKARTA (or IDX, where a row is saved on
+ * it). Empty for no code.
  */
 export function exchangeCodeVenues(value?: string): string[] {
   const normalized = normalizeExchange(value);
   if (!normalized) return [];
+  // A typed spelling of a venue (IDX) is that venue, or the spelling a row was saved under before it was read.
+  const typed = typedExchangeVenue(normalized);
+  if (typed) return [typed, normalized];
   return [...(SHARED_EXCHANGE_CODES[normalized] ?? [canonicalExchange(normalized)])];
 }
 

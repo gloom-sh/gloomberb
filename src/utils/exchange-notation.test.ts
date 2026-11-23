@@ -7,9 +7,11 @@ import {
   canonicalTickerKey,
   exchangeCodeVenues,
   exchangeLabel,
+  isKnownExchangeCode,
   publicExchange,
   publicTickerKey,
   resolveExchangeTimeZone,
+  typedExchangeVenue,
 } from "./exchanges";
 
 // The exchange-notation table is Gloom Cloud's; the phone keeps the same copy.
@@ -36,6 +38,12 @@ describe("exchange-notation copy", () => {
     }
     for (const [code, shared] of Object.entries(EXCHANGE_NOTATION.sharedCodes)) {
       expect(exchangeCodeVenues(code)).toEqual([...shared.venues]);
+    }
+    // A typed spelling (INTP:IDX) is read where a listing is typed, never where a key is built from a saved ticker,
+    // so nothing saved moves; a spelling the app reads itself keeps its reading.
+    for (const [spelling, venue] of Object.entries(EXCHANGE_NOTATION.typedAliases)) {
+      expect([spelling, canonicalExchange(spelling)]).toEqual([spelling, spelling]);
+      expect([spelling, typedExchangeVenue(spelling) ?? (isKnownExchangeCode(spelling) ? venue : undefined)]).toEqual([spelling, venue]);
     }
   });
 

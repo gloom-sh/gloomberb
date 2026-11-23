@@ -5,6 +5,12 @@
 export interface ExchangeNotation {
   /** Every spelling read as a venue, by the venue's code. */
   aliases: Readonly<Record<string, string>>
+  /**
+   * Other spellings of venues `aliases` does not name, by the venue's code,
+   * read only where a listing is typed (INTP:IDX is INTP:JAKARTA): never in a
+   * saved ticker or as a listing suffix.
+   */
+  typedAliases: Readonly<Record<string, string>>
   /** What a listing key writes for a venue when it is not the code (its MIC). */
   keyCodes: Readonly<Record<string, string>>
   /** Venue names, for output that says where a listing trades. */
@@ -239,6 +245,53 @@ export const EXCHANGE_NOTATION: ExchangeNotation = {
     KRX: "KRX",
     EURONEXT: "AMS",
   },
+  typedAliases: {
+    "TEXAS STOCK EXCHANGE": "TXSE",
+    BCXE: "CBOE",
+    XDUB: "ISE",
+    XMSM: "ISE",
+    IRISH: "ISE",
+    KLSE: "BURSAMY",
+    XKLS: "BURSAMY",
+    IDX: "JAKARTA",
+    XIDX: "JAKARTA",
+    BKK: "SET",
+    XBKK: "SET",
+    THAILAND: "SET",
+    BCS: "BVS",
+    SGO: "BVS",
+    XSGO: "BVS",
+    SANTIAGO: "BVS",
+    BUX: "BUD",
+    XBUD: "BUD",
+    BUDAPEST: "BUD",
+    ATHEX: "ATH",
+    ASEX: "ATH",
+    ATHENS: "ATH",
+    XBSE: "BVB",
+    IST: "BIST",
+    XIST: "BIST",
+    ISTANBUL: "BIST",
+    XADS: "ADX",
+    ADSM: "ADX",
+    "ABU DHABI": "ADX",
+    XKAR: "PSX",
+    KAR: "PSX",
+    KARACHI: "PSX",
+    HSX: "HOSE",
+    XSTC: "HOSE",
+    XHNX: "HNX",
+    MUN: "MUNICH",
+    XMUN: "MUNICH",
+    SWB: "XSTU",
+    STU: "XSTU",
+    STUTTGART: "XSTU",
+    DUS: "XDUS",
+    BER: "XBER",
+    HAM: "XHAM",
+    HAN: "HANOVER",
+    XHAN: "HANOVER",
+  },
   keyCodes: {
     NASDAQ: "XNAS",
     NYSE: "XNYS",
@@ -356,4 +409,4 @@ export const EXCHANGE_NOTATION: ExchangeNotation = {
   },
 }
 
-export const EXCHANGE_NOTATION_VERSION = "936f2769090c78dd"
+export const EXCHANGE_NOTATION_VERSION = "e28eebfe454fc5e6"

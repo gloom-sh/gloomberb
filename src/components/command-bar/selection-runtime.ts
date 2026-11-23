@@ -3,7 +3,7 @@ import type { AppState } from "../../state/app/context";
 import type { TickerRecord } from "../../types/ticker";
 import { t } from "../../i18n";
 import { listingChoiceQuery, normalizeTickerInput } from "../../tickers/search";
-import { isKnownExchangeCode } from "../../utils/exchanges";
+import { isKnownExchangeCode, typedExchangeVenue } from "../../utils/exchanges";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { Command } from "./commands/registry";
 import type {
@@ -314,7 +314,8 @@ export function useCommandBarSelectionRuntime({
       ? rootShortcutIntent.argText : null;
     // `DES BA LN` names its listing as `DES BA:LSE` does.
     const listingQuery = listingChoiceQuery((tickerArgument === null ? null : normalizeTickerInput(null, tickerArgument)) ?? rootQueryRef.current);
-    const choosingVenue = listingQuery && !isKnownExchangeCode(listingQuery.suffix);
+    // `DES INTP:IDX` names Jakarta's line as `DES INTP:JAKARTA` does (typedExchangeVenue).
+    const choosingVenue = listingQuery && !isKnownExchangeCode(listingQuery.suffix) && !typedExchangeVenue(listingQuery.suffix);
     const highlighted = listState.results[listState.selectedIdx];
     // A function given a listing with its venue opens that listing: a row the
     // user did not pick (a saved BRK.B the letters match, Boeing's BA on NYSE)

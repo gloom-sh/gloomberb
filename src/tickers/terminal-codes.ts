@@ -1,7 +1,7 @@
 import { futuresContractByCode } from "../market-data/futures-board";
 import { getListingSymbol, hongKongListingCode, tickerHasListingSuffix } from "../sources/listing-symbols";
 import { isCurrencyCode } from "../utils/currency-pair";
-import { canonicalExchange, isKnownExchangeCode, isPredictionMarketExchange, isSharedExchangeCode, isUsListingExchange } from "../utils/exchanges";
+import { canonicalExchange, isKnownExchangeCode, isPredictionMarketExchange, isSharedExchangeCode, isUsListingExchange, typedExchangeVenue } from "../utils/exchanges";
 
 /**
  * A listing written the way a market data terminal names it, read as the
@@ -558,15 +558,18 @@ const VENUE_FIRST = /^([A-Z][A-Z0-9]{1,11}):([A-Z0-9][A-Z0-9.&-]{0,19})$/;
  * stay as typed, as does a ticker before a two-letter market code (`ICE:US`,
  * `ASX:AU`, `BSE:IN`, `AMS:SW`), the code it is written symbol first with.
  * A code that names several venues (`TSE:7203`) is kept for the listing to
- * settle. A prediction market's id (`KALSHI:...`) is not a listing. Null for
- * anything else.
+ * settle, as is a code Gloom Cloud reads as a venue the app has no code of
+ * (`IDX:BBCA`, as Google Sheets writes Jakarta's, is `BBCA:IDX`, which the
+ * listing reads as BBCA:JAKARTA). A prediction market's id (`KALSHI:...`) is
+ * not a listing. Null for anything else.
  */
 export function readVenueFirstListing(raw: string): NearMissListing | null {
   const typed = raw.trim();
   const match = VENUE_FIRST.exec(typed.toUpperCase());
   if (!match) return null;
   const [, code, symbol] = match as unknown as [string, string, string];
-  if (!isKnownExchangeCode(code) || isKnownExchangeCode(symbol) || isPredictionMarketExchange(code)) return null;
+  if (!(isKnownExchangeCode(code) || typedExchangeVenue(code)) || isKnownExchangeCode(symbol) || typedExchangeVenue(symbol)
+    || isPredictionMarketExchange(code)) return null;
   if (symbol.length === 2 && BLOOMBERG_MARKETS[symbol]) return null;
   return { typed, symbol: `${symbol}:${isSharedExchangeCode(code) ? code : canonicalExchange(code)}` };
 }
