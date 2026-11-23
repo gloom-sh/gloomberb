@@ -299,6 +299,9 @@ test("a colon dropdown is one exact venue per row, narrowed by the exchange pref
   expect(venueDropdownResults("NET", items, "N").map((item) => item.right)).toEqual(["NYSE"]);
   expect(venueDropdownResults("NET", items, "X").map((item) => item.right)).toEqual(["LSE", "NYSE"]);
   expect(venueDropdownResults("NET", items, "LON").map((item) => item.right)).toEqual(["LSE"]);
+  // A code Gloom Cloud reads as a venue the app has no code of: INTP:IDX is Jakarta's line, and a row saved on IDX.
+  const intp = [resultItem("jakarta", "INTP", "JAKARTA", "search"), resultItem("saved", "INTP", "IDX"), resultItem("us", "INTP", "NYSE", "search")];
+  expect(venueDropdownResults("INTP", intp, "IDX").map((item) => item.id)).toEqual(["jakarta", "saved"]);
   // EURUSD:FX and EURUSD:CCY pick the pair search lists on the currency venue.
   const pairs = [resultItem("eurusd", "EURUSD=X", "CCY", "search"), resultItem("fund", "EURUSD", "LSE", "search")];
   for (const suffix of ["FX", "CCY", ""]) {

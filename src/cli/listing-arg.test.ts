@@ -192,6 +192,32 @@ test("an exchange code the app does not know is refused unless the symbol trades
   expect((await resolveCliListing("SAN:NYSE", undefined, deps)).saved).toBeNull();
 });
 
+test("IDX, KLSE, BKK and IST are the venues they name, typed either way, unless a row is saved on the code itself", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  // Search lists Indocement on the code the app keys Jakarta's listings by.
+  const dataProvider = createTestDataProvider({
+    search: async () => [{ providerId: "test", symbol: "INTP", name: "PT Indocement Tunggal Prakarsa Tbk", exchange: "JAKARTA", currency: "IDR", type: "Common Stock" }],
+  });
+  const deps = { store, dataProvider };
+  expect(await resolveCliListing("INTP:IDX", undefined, deps)).toMatchObject({
+    key: "INTP:JAKARTA", readAs: "Read INTP:IDX as INTP:JAKARTA.", request: { symbol: "INTP:JAKARTA", exchange: "JAKARTA" },
+  });
+  // As spreadsheets write it, venue first, and by its MIC.
+  expect(await resolveCliListing("IDX:INTP", undefined, deps)).toMatchObject({ key: "INTP:JAKARTA", readAs: "Read IDX:INTP as INTP:JAKARTA." });
+  expect((await resolveCliListing("INTP", "XIDX", deps)).key).toBe("INTP:JAKARTA");
+  for (const [typed, key] of [["1155:KLSE", "1155:BURSAMY"], ["PTT:BKK", "PTT:SET"], ["THYAO:IST", "THYAO:BIST"], ["VNM:HSX", "VNM:HOSE"]]) {
+    expect((await resolveCliListing(typed, undefined, deps)).key, typed).toBe(key);
+  }
+  // A row saved on the code as it was typed stays that row; IDX before a venue the app knows is the US fund's symbol.
+  await store.createTicker({
+    ticker: "BBCA", exchange: "IDX", currency: "IDR", name: "Bank Central Asia", portfolios: [], watchlists: [], positions: [], custom: {}, tags: [],
+  });
+  expect(await resolveCliListing("BBCA:IDX", undefined, deps)).toMatchObject({ key: "BBCA:IDX", saved: { metadata: { name: "Bank Central Asia" } } });
+  expect(parseListingArg("IDX:ARCA").key).toBe("IDX:ARCA");
+});
+
 test("BRK B and BRKB are Berkshire's class B, the saved row first, never the ETN named for it, naming the code's lines abroad", async () => {
   const persistence = new AppPersistence(":memory:");
   persistences.push(persistence);
