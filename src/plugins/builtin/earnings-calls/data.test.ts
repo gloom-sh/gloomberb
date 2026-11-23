@@ -302,6 +302,20 @@ test("a transcript response from before reset cannot fill the replacement store"
   expect(requests).toBe(1);
 });
 
+test("a saved Japanese briefing picks up its English edition on the next read after a minute", async () => {
+  const store = new MemoryPluginPersistence();
+  attachEarningsCallsPersistence(store);
+  store.seedResource("transcript", "controlled-0", { ...transcriptValue("決算説明会"), language: "ja" },
+    { sourceKey: "earnings-calls", schemaVersion: 2 });
+  const client = clientWith(async () => ({ calls: [] }));
+  client.getCloudEarningsTranscript = async () => ({
+    ...transcriptValue("Earnings briefing"), originalText: "決算説明会", language: "ja", isTranslated: true,
+  });
+  expect((await loadTranscriptWithClient(client, "controlled-0")).fullText).toBe("Earnings briefing");
+  client.getCloudEarningsTranscript = async () => { throw new Error("The English edition was already saved"); };
+  expect((await loadTranscriptWithClient(client, "controlled-0")).originalText).toBe("決算説明会");
+});
+
 test("a forced pending transcript invalidates published cache until content recovers", async () => {
   attachEarningsCallsPersistence(new MemoryPluginPersistence());
   let requests = 0;
