@@ -232,6 +232,29 @@ export function formatNumber(value: number | undefined, decimals = 2): string {
   return getNumberFormatter(decimals).format(value);
 }
 
+const tradeSizeFormatters = new Map<number, Intl.NumberFormat>();
+
+/**
+ * A traded size, as every book, tape and size column writes it: a bid or ask
+ * size, a print's size, a lot count. A whole number reads as it always has
+ * (1,500); a fraction keeps up to four decimals, and one under 1 four
+ * significant digits (0.001235), so a coin's size never rounds to 0.
+ * `compact` writes a thousand or more as a compact column does (1.5k).
+ */
+export function formatTradeSize(value: number | null | undefined, { compact = false }: { compact?: boolean } = {}): string {
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
+  if (compact && Math.abs(value) >= 1000) return formatCompact(value);
+  if (Number.isInteger(value)) return getNumberFormatter(0).format(value);
+  const abs = Math.abs(value);
+  const decimals = abs >= 1 ? 4 : Math.min(12, 3 - Math.floor(Math.log10(abs)));
+  let formatter = tradeSizeFormatters.get(decimals);
+  if (!formatter) {
+    formatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: decimals });
+    tradeSizeFormatters.set(decimals, formatter);
+  }
+  return formatter.format(value);
+}
+
 /**
  * A value to a count of significant digits, so a small ratio keeps its leading
  * digits (0.0005664, not 0.0006) while a large one reads as a plain number

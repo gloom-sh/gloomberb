@@ -189,6 +189,29 @@ test("a stablecoin's header keeps six decimals when its previous close was writt
   expect(frame).not.toMatch(/\$0\.\d{8}/);
 });
 
+test("a coin's book shows its fractional sizes, which whole-share rounding read as 0", async () => {
+  // BTC-USD on 23 Nov 2026: Coinbase's book read "Bid 0 x $61,606.17".
+  const quote = createTestQuote({
+    symbol: "BTC-USD", name: "Bitcoin USD", currency: "USD", instrumentType: "CRYPTOCURRENCY", listingExchangeName: "CCC",
+    exchangeName: "CCC", price: 61_606.18, change: 443.98, changePercent: 0.73, previousClose: 61_162.2, bid: 61_606.17, ask: 61_606.18,
+    bidSize: 0.0412, askSize: 0.00123456, marketState: "REGULAR", priceVenue: "Coinbase", dataSource: "live",
+    lastUpdated: Date.parse("2026-11-23T19:04:51Z"),
+  });
+  await act(async () => {
+    await tui.render(
+      <AppContext value={createStaticAppStore(createInitialState(config))}>
+        <OverviewTab ticker={createTestTicker("BTC-USD", "Bitcoin USD", { exchange: "CCC", currency: "USD", assetCategory: "CRYPTOCURRENCY" })}
+          financials={createTestFinancials({ quote })} width={110} height={10} />
+      </AppContext>,
+      { width: 110, height: 10 },
+    );
+  });
+  await settleFrame(tui.setup(), 10);
+  const frame = tui.frame();
+  expect(frame).toMatch(/Bid\s+0\.0412 x \$61,606\.17/);
+  expect(frame).toMatch(/Ask\s+0\.001235 x \$61,606\.18/);
+});
+
 test("a coin's ranges write both ends at its price's six decimals, whatever the composite's tail", async () => {
   // USDT on 14 Nov 2026: the composite's low was its 00:00 UTC close, 0.9989128, and read $0.9989128 beside $0.998990.
   const quote = createTestQuote({

@@ -7,7 +7,7 @@ import { afterLayout, revealInScrollBox } from "../../../components/ui/reveal-in
 import { useThemeColors } from "../../../theme/theme-context";
 import type { Quote } from "../../../types/financials";
 import { quoteAgeText } from "../../../market-data/quotes/freshness";
-import { MISSING_VALUE, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, formatPercentRaw, formatTradeSize } from "../../../utils/format";
 import { formatQuoteBookTime } from "../../../market-data/quotes/time";
 import type { BrokerAccount, BrokerOrder, BrokerOrderPreview, BrokerOrderRequest, BrokerTradingCapabilities } from "../../../types/trading";
 import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities, type BoxRenderable, type ScrollBoxRenderable } from "../../../ui";
@@ -142,7 +142,7 @@ function DockedQuote({ quote, delayed, stale, source, updated, price, change, wi
   const bookTime = formatQuoteBookTime(quote);
   const c = useThemeColors();
   const native = useUiCapabilities().nativePaneChrome;
-  const sized = (size: number | undefined) => size !== undefined && Number.isFinite(size) ? `× ${number(size)}` : "";
+  const sized = (size: number | undefined) => size !== undefined && Number.isFinite(size) ? `× ${formatTradeSize(size)}` : "";
   // Sizes drop before bid and ask leave one line.
   const bookLine = `Bid ${price(quote?.bid)} ${sized(quote?.bidSize)}  Ask ${price(quote?.ask)} ${sized(quote?.askSize)}`;
   const showSizes = bookLine.length <= width;
@@ -451,7 +451,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
     active={active === "account" && focused} controlRef={accountControl} width={pickerWidth} showMode />;
   const bookSide = (label: string, size: number | undefined, value: number | undefined, color: string) => <Box flexDirection="column" paddingX={1}
     border={["bottom"]} borderColor={color} style={native ? { borderBottom: `2px solid ${color}` } : undefined}>
-    <Text fg={c.textDim}>{`${label}${size !== undefined ? ` × ${number(size)}` : ""}`}</Text>
+    <Text fg={c.textDim}>{`${label}${size !== undefined ? ` × ${formatTradeSize(size)}` : ""}`}</Text>
     <Text fg={color} attributes={TextAttributes.BOLD}>{quotePrice(value)}</Text>
   </Box>;
   const resultQuantity = (value: number | undefined) => m.resultQuantities === "unconfirmed" || !Number.isFinite(value) ? "Not confirmed" : number(value);

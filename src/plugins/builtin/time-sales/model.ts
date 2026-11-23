@@ -1,5 +1,5 @@
 import { dayFirstParts } from "../../../utils/datetime-format";
-import { MISSING_VALUE } from "../../../utils/format";
+import { MISSING_VALUE, formatTradeSize } from "../../../utils/format";
 import { sampleStatistics } from "../../../components/chart/curve/model";
 import type { TapeQuote, TapeSnapshot, TapeTrade } from "../../../api-client/tape";
 
@@ -31,7 +31,7 @@ export function stickyTapePriceDigits(previous: TapeDigits | null, symbol: strin
   if (previous?.symbol !== symbol) return prices.some((price) => price != null) ? { symbol, digits: tapePriceDigits(prices) } : null;
   return previous.digits < 4 && prices.some(subPenny) ? { symbol, digits: 4 } : previous;
 }
-export const tapeQuantity = (value: number) => value.toLocaleString("en-US", { maximumFractionDigits: 6 });
+export const tapeQuantity = (value: number) => formatTradeSize(value);
 const tradeDate = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
 export const tradeKey = (row: TapeTrade) => `${tradeDate.format(new Date(row.timestamp))}:${row.exchange}:${row.id}`;
 export const quoteKey = (row: TapeQuote) => JSON.stringify([tapeTimeKey(row.timestamp), row.bidExchange, row.askExchange, row.bid, row.ask, row.bidSize, row.askSize, row.conditions, row.tape]);

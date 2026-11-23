@@ -4,6 +4,7 @@ import {
   formatCurrencyCode,
   formatNumber,
   formatPercentRaw,
+  formatTradeSize,
 } from "../utils/format";
 import { formatMarketChangeWithCurrency, formatMarketPriceRange, formatMarketPriceWithCurrency, type MarketFormatOptions } from "../market-data/market/format";
 import { changeBasisLabel, changeBasisNote, printPredatesChangeBasis, quoteChangeBasis } from "../market-data/market/change-basis";
@@ -136,7 +137,7 @@ export function formatBidAsk(
   if (bid == null && ask == null) return "—";
   // A zero size is the vendor's placeholder outside the session, not a quoted size.
   const side = (price: number | undefined, size: number | undefined) => price != null
-    ? `${formatMarketPriceWithCurrency(price, currency, options)}${size ? ` x ${formatNumber(size, 0)}` : ""}`
+    ? `${formatMarketPriceWithCurrency(price, currency, options)}${size ? ` x ${formatTradeSize(size)}` : ""}`
     : "—";
   return `${side(bid, bidSize)} / ${side(ask, askSize)}`;
 }

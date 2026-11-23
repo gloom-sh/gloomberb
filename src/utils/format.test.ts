@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { convertCurrency, displayWidth, formatCompact, formatCurrency, formatNumber, formatPercent, formatPercentRaw, formatSignificant, padTo, truncateToDisplayWidth } from "./format";
+import { convertCurrency, displayWidth, formatCompact, formatCurrency, formatNumber, formatPercent, formatPercentRaw, formatSignificant, formatTradeSize, padTo, truncateToDisplayWidth } from "./format";
 import { normalizeTimestamp } from "./timestamp";
 import { fxRateCurrencies } from "./currency-units";
 import { getCurrencySymbol } from "../market-data/market/format";
@@ -22,6 +22,16 @@ test("currency conversion never presents a missing or invalid FX leg as parity",
       expect(format(value)).toBe("—");
     }
   }
+});
+
+test("a traded size keeps a coin's fraction and leaves whole shares as they were", () => {
+  // A coin's book trades in fractions: a size under one is never rounded to 0.
+  expect([0.00123456, 0.0412, 0.5, 1.23456, 12.5].map((size) => formatTradeSize(size))).toEqual(["0.001235", "0.0412", "0.5", "1.2346", "12.5"]);
+  // Whole shares read as grouped integers, as every book and tape wrote them before.
+  expect([0, 100, 1_400, 2_500_000].map((size) => formatTradeSize(size))).toEqual(["0", "100", "1,400", "2,500,000"]);
+  // A compact column keeps its k and M from a thousand up, and the fraction below it.
+  expect([0.0412, 300, 1_500, 2_500_000].map((size) => formatTradeSize(size, { compact: true }))).toEqual(["0.0412", "300", "1.5k", "2.5M"]);
+  for (const missing of [undefined, null, Number.NaN]) expect(formatTradeSize(missing)).toBe("—");
 });
 
 test("money in a minor unit converts at a hundredth of its major currency's rate, which the rates loaded include", () => {
