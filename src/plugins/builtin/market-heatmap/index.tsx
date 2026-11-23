@@ -357,7 +357,7 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
   const loadUniverse = useMemo(() => isRemoteHeatmapUniverse(activeUniverse)
     ? (forceRefresh: boolean) => fetchMarketHeatmap(activeUniverse, { count: requestCount, forceRefresh })
     : null, [activeUniverse, requestCount, scope]);
-  const { data: currentBoard, loading, error, reload } = useAsyncResource(loadUniverse, {
+  const { data: currentBoard, loading, error, reload, savedAt } = useAsyncResource(loadUniverse, {
     savedCopy: scope ? { key: ["market-heatmap", scope, activeUniverse, requestCount] } : null,
   });
   const previousBoard = useRef<{ scope: string | null; board: MarketHeatmapBoard } | null>(null);
@@ -636,7 +636,7 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
 
   // Ages the last check that succeeded, not the snapshot, which the server can
   // hand back unchanged long after it was put together.
-  const checked = useUpdatedAgo(shownBoard?.checkedAt ?? null);
+  const checked = useUpdatedAgo(savedAt === null ? shownBoard?.checkedAt ?? null : null);
   // The snapshot carries sizes and every name the stream does not: a minute on the server, a quarter of one real-time.
   useAutoRefresh(board?.checkedAt ?? null, reload, { intervalMs: heatmapCheckIntervalMs(board) });
 

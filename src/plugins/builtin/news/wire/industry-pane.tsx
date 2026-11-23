@@ -57,8 +57,9 @@ function useIndustryArticles(entry: NewsIndustryCode | null): IndustryArticles {
   const topicArticles = usePersistedNewsArticles(
     `industry:topic:${entry?.topic ?? "none"}:articles`,
     topicState.articles,
+    topicState.phase === "error",
   );
-  const allArticles = usePersistedNewsArticles("industry:sector:all:articles", sectorState.articles);
+  const allArticles = usePersistedNewsArticles("industry:sector:all:articles", sectorState.articles, sectorState.phase === "error");
   const sector = entry?.sector;
   const sectorArticles = useMemo(() => (
     sector

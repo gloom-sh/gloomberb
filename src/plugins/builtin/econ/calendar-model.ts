@@ -56,7 +56,7 @@ type EconCalendarColumnId =
 export type EconCalendarColumn = DataTableColumn & { id: EconCalendarColumnId };
 
 type PersistedEconEvent = Omit<EconEvent, "date"> & { date: string };
-export type EconCalendarCacheEntry = { data: EconEvent[]; fetchedAt: number; stale: boolean };
+export type EconCalendarCacheEntry = { data: EconEvent[]; fetchedAt: number; stale: boolean; fromEarlierRun?: true };
 
 const cache = createPluginCache<EconEvent[], PersistedEconEvent[]>({
   kind: CACHE_KIND, source: CACHE_SOURCE, schemaVersion: CACHE_SCHEMA_VERSION, policy: CACHE_POLICY,

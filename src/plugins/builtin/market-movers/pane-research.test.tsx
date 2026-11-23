@@ -21,6 +21,7 @@ import { AssetDataRouter } from "../../../sources/provider-router";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { useRegularMarketSession } from "../../../test-support/market-session";
 import { createTestTicker } from "../../../test-support/ticker";
+import { footerTimeText } from "../../../components/layout/pane/footer/model";
 import { formatDetailDate } from "../../../utils/datetime-format";
 import type { Quote } from "../../../types/financials";
 
@@ -94,9 +95,15 @@ test("switching lists hides old rows and observation time; a failed refresh keep
   fail = true;
   await tui.emitKeypress({ name: "r", sequence: "r" }); await settleFrame(tui.setup(), 6);
   expect(await csv()).toContain("GAINER");
-  expect(JSON.stringify(footer)).toContain("stale");
+  expect(JSON.stringify(footer)).toContain(`saved copy from ${footerTimeText(Date.now())}`);
+  expect(JSON.stringify(footer)).not.toContain("checked ");
   expect(JSON.stringify(footer)).toContain(asOf);
   expect(JSON.stringify(footer)).toContain("unavailable");
+
+  fail = false;
+  await tui.emitKeypress({ name: "r", sequence: "r" }); await settleFrame(tui.setup(), 6);
+  expect(JSON.stringify(footer)).not.toContain("saved copy");
+  expect(JSON.stringify(footer)).toContain("checked ");
 });
 
 test("keyboard selects both same-symbol listings and the actual open runtime preserves venue and source type", async () => {
@@ -260,7 +267,8 @@ test("trending failures retain only same-list rows and success time, partial ref
     expect(await csv()).toContain("FIRST");
     expect(await csv()).toContain("SECOND");
     expect(lastSuccessful).toBe(successTime);
-    expect(JSON.stringify(footer)).toContain("stale");
+    expect(JSON.stringify(footer)).toContain(`saved copy from ${footerTimeText(successTime!)}`);
+    expect(JSON.stringify(footer)).not.toContain("checked ");
 
     mode = "partial";
     now += 1_000;
@@ -275,7 +283,7 @@ test("trending failures retain only same-list rows and success time, partial ref
     await tui.emitKeypress({ name: "r", sequence: "r" });
     await tui.waitForFrameToContain("SECOND");
     expect(JSON.stringify(footer)).not.toContain("Quotes unavailable");
-    expect(JSON.stringify(footer)).not.toContain('"text":"stale"');
+    expect(JSON.stringify(footer)).not.toContain("saved copy");
     expect(lastSuccessful!).toBeGreaterThan(successTime!);
 
     const recoveredAt = lastSuccessful;

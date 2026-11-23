@@ -41,11 +41,11 @@ export function servedFromSavedCopy<T>(value: T, savedAt: number): T {
   return (Array.isArray(value) ? value.map((item) => mark(item, savedAt)) : mark(value, savedAt)) as T;
 }
 
-export function markSavedCopy<T extends object>(value: T, savedAt: number): T {
+export function markSavedCopy<T extends object>(value: T, savedAt: number, enumerable = false): T {
   if (Array.isArray(value) && Number.isFinite(savedAt)) {
     return Object.defineProperty(value.slice(), SAVED_AT, { value: savedAt }) as T;
   }
-  return Number.isFinite(savedAt) ? mark(value, savedAt, false) : value;
+  return Number.isFinite(savedAt) ? mark(value, savedAt, enumerable) : value;
 }
 
 /** A quote answered from a copy saved at `savedAt` (ms) after its refresh failed: marked, in a command and in the app. */

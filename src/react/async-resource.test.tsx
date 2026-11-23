@@ -313,10 +313,10 @@ test("error policy retains the original retrieval time through an outage and cle
   });
   const retrievedAt = resource.updatedAt;
   expect(retrievedAt).not.toBeNull();
-  const outage = new Error("Provider timed out");
+  const outage = new DOMException("Provider timed out", "TimeoutError");
   failure = outage;
   await act(async () => { await resource.reloadAndWait(); });
-  expect(resource).toMatchObject({ data: "known research", updatedAt: retrievedAt, error: outage.message });
+  expect(resource).toMatchObject({ data: "known research", updatedAt: retrievedAt, savedAt: retrievedAt, error: outage.message });
   const denial = new Error("Access denied");
   failure = denial;
   await act(async () => { await resource.reloadAndWait(); });
@@ -367,6 +367,31 @@ test("a load that failed is asked again once the data service answers after an o
     connectionHealth.reportReachability(GLOOM_CLOUD_HTTP_CONNECTION_ID, false);
     await act(async () => { connectionHealth.reportReachability(GLOOM_CLOUD_HTTP_CONNECTION_ID, true); });
     expect(asked).toBe(2);
+  } finally {
+    disposeSources();
+  }
+});
+
+test("recovery revalidates a retained copy even if the cache still considers it fresh", async () => {
+  const disposeSources = registerGloomCloudConnectionSources(connectionHealth);
+  try {
+    let online = false;
+    await mount(async (force) => {
+      if (!force) return "cached board";
+      if (!online) throw new DOMException("Provider timed out", "TimeoutError");
+      return "fresh board";
+    });
+    const savedAt = resource.updatedAt;
+    await act(async () => { await resource.reloadAndWait(); });
+    expect(resource).toMatchObject({ data: "cached board", savedAt });
+
+    online = true;
+    await act(async () => {
+      connectionHealth.reportReachability(GLOOM_CLOUD_HTTP_CONNECTION_ID, false);
+      connectionHealth.reportReachability(GLOOM_CLOUD_HTTP_CONNECTION_ID, true);
+    });
+    await act(async () => { await tui.setup().renderOnce(); });
+    expect(resource).toMatchObject({ data: "fresh board", savedAt: null, error: null });
   } finally {
     disposeSources();
   }

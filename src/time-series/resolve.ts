@@ -1,5 +1,5 @@
 import { logFailure } from "../utils/log-failure";
-import { servedFromSavedCopy } from "../data/saved-copies";
+import { savedCopyAt, servedFromSavedCopy } from "../data/saved-copies";
 import { hasValidQuoteObservationTime } from "../market-data/quotes/freshness";
 import { rollAdjustedHistory } from "../market-data/futures-roll-returns";
 import { delistingLabel } from "../market-data/quotes/delisting";
@@ -662,6 +662,7 @@ async function resolveChartSpecPass(
       allowProviderDefaultFallback: !dailyValuation && spec.viewport.resolution === "auto",
       support,
       requiredWarmupPoints: maxStudyWarmupPoints(spec.studies),
+      refresh: options.refreshHistory,
       ...(extendedHoursFor(source, initialResolution) ? { historySession: "extended" as const } : {}),
     };
     const key = [
@@ -1104,7 +1105,8 @@ async function resolveChartSpecPass(
       if (!dailyValuation && isFundamentalFieldId(source.fieldId) && fundamentalSeriesUsesAvailabilityFallback(merged, source)) {
         result.warning = [result.warning, "Publication dates are unavailable for some observations; period-end dates are used as a fallback."].filter(Boolean).join(" ");
       }
-      return result;
+      const savedAt = savedCopyAt(history);
+      return savedAt == null ? result : asSavedCopy({ ...result, savedAt });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       errors.push(`${seriesMessageName(seriesSpec)}: ${message}`);

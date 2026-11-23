@@ -536,6 +536,7 @@ export class NewsService {
         if (generation !== this.sessionGeneration) return this.currentRead(entry);
         const state: NewsQueryState = {
           ...(denied ? createIdleNewsQueryState() : current),
+          ...(!denied && current.articles.length > 0 && current.updatedAt != null ? { savedAt: current.savedAt ?? current.updatedAt } : {}),
           phase: "error",
           error: error instanceof Error ? error.message : String(error),
         };

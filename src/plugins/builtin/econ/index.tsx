@@ -100,25 +100,31 @@ const SPELLED_COUNTRY = "COUNTRY";
 const SPELLED_HEADER_MIN_EVENT_WIDTH = 24;
 /** A result says whether a forced reload asked for it, so its answer can reset the cursor. */
 type CalendarResult = EconCalendarLoadResult & { forced?: boolean };
-const loadEvents = async (force: boolean): Promise<CalendarResult> => ({ ...await loadCalendar(force), forced: force });
+const loadEvents = async (force: boolean): Promise<CalendarResult> => ({
+  ...await loadCalendar(force || getCalendarCache()?.fromEarlierRun === true), forced: force,
+});
 const cachedEvents = () => getCalendarCache();
 
 function EconCalendarPane({ focused, width, height }: PaneProps) {
   // loadCalendar serves a fresh cache without a request, so the pane can always
   // ask and still follow the global cadence once the cache goes stale.
-  const calendar = useAsyncResource<CalendarResult>(loadEvents, { initialData: cachedEvents });
+  const paneVisible = usePaneVisible();
+  const calendar = useAsyncResource<CalendarResult>(loadEvents, { initialData: cachedEvents, deferLoad: !paneVisible });
   // A load made elsewhere, such as the print watch asking while a release is
   // due, reaches the open pane through the cache; the newer of the two wins.
   const [cacheVersion, setCacheVersion] = useState(0);
   useEffect(() => subscribeCalendar(() => setCacheVersion((version) => version + 1)), []);
   const cached = useMemo(() => getCalendarCache(), [cacheVersion]);
-  const shown = cached && (!calendar.data || cached.fetchedAt > calendar.data.fetchedAt) ? cached : calendar.data;
+  const shown: CalendarResult | null = cached && (!calendar.data || cached.fetchedAt > calendar.data.fetchedAt) ? cached : calendar.data;
+  useEffect(() => {
+    if (shown === cached && calendar.savedAt != null) calendar.load();
+  }, [cached, calendar.load, calendar.savedAt, shown]);
   const loading = calendar.loading || (!shown && !calendar.error);
   const events = shown?.data ?? NO_EVENTS;
   const stale = shown?.stale ?? false;
   const fetchedAt = shown?.fetchedAt ?? null;
   // A cache that could not be refreshed arrives as a result, not a failure.
-  const error = calendar.error ?? (loading ? null : calendar.data?.refreshError ?? null);
+  const error = calendar.error ?? (loading || shown?.source === "stale-fallback" ? null : shown?.refreshError ?? null);
   // The selected row and the open event are remembered by event id, so a
   // reload or a shared layout comes back to the same release.
   const [selectedKey, setSelectedKey] = usePluginPaneState<string | null>("selectedKey", null);
@@ -151,7 +157,6 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
 
   useAutoRefresh(stale ? null : fetchedAt, calendar.load);
 
-  const paneVisible = usePaneVisible();
   // In view, a due high-impact print is asked for on the print watch's timing
   // and lands here through the cache; a covered or hidden pane asks nothing.
   useEffect(() => (paneVisible ? retainVisiblePrintRefresh() : undefined), [paneVisible]);
@@ -267,7 +272,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   }, [returnToPresent, setCountryFilter, setSelectedKey]);
 
   // A forced reload goes back to the present once it answers.
-  const forcedResult = calendar.data?.forced ? calendar.data : null;
+  const forcedResult = calendar.savedAt === null && calendar.data?.forced ? calendar.data : null;
   useEffect(() => {
     if (!forcedResult) return;
     setSelectedKey(null);
@@ -287,10 +292,14 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     // cells over "07:00" while EVENT read "GDP Growth Ra…" (review, 12 Nov 2026).
     const timeLabelText = CALENDAR_TIME_ZONE_LABEL;
     const timeWidth = tableColumnWidth({ width: filtered.some(isAllDayEvent) ? "All day".length : 5, label: timeLabelText });
-    const actualWidth = valueColumnWidth(filtered, "actual", 9);
-    const forecastWidth = valueColumnWidth(filtered, "forecast", 10);
-    const priorWidth = valueColumnWidth(filtered, "prior", 9);
-    const minEventWidth = 12;
+    const compact = width < 58;
+    const showCountry = !compact || !/^[A-Z]{2}$/.test(countryFilter) || countryFilter === "EU";
+    const actualLabel = compact ? "ACT" : "ACTUAL";
+    const forecastLabel = compact ? "EST" : "FORECAST";
+    const actualWidth = tableColumnWidth({ width: valueColumnWidth(filtered, "actual", compact ? 3 : 9), label: actualLabel });
+    const forecastWidth = tableColumnWidth({ width: valueColumnWidth(filtered, "forecast", compact ? 3 : 10), label: forecastLabel });
+    const priorWidth = tableColumnWidth({ width: valueColumnWidth(filtered, "prior", compact ? 5 : 9), label: "PRIOR" });
+    const minEventWidth = tableColumnWidth({ width: compact ? 5 : 12, label: "EVENT" });
     // The reader's clock, with the weekday on rows where it is another day than the UTC one they are listed under.
     const readerLabel = readerZone ? timeZoneCity(readerZone).toUpperCase() : null;
     const readerWidth = !readerZone || !readerLabel ? 0 : tableColumnWidth({ label: readerLabel,
@@ -298,7 +307,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     // Padding, one gap per column boundary, and the vertical scrollbar lane;
     // one column short of that clipped the PRIOR values at the right edge.
     const roomBeside = (count: number, timesWidth: number) => (impactWidth: number, countryWidth: number) => (
-      width - 3 - count - (timesWidth + impactWidth + countryWidth + actualWidth + forecastWidth + priorWidth)
+      width - 3 - count + (showCountry ? 0 : 1) - (timesWidth + impactWidth + (showCountry ? countryWidth : 0) + actualWidth + forecastWidth + priorWidth)
     );
     const codeWidth = 2 + (flagged ? COUNTRY_FLAG_CELLS : 0);
     // The reader's column only where the event names keep room to read beside it, under the short headers.
@@ -315,19 +324,19 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     const countryColumn = spelled
       ? { label: SPELLED_COUNTRY, width: spelledCountryWidth }
       : { label: "CTY", width: Math.max(3, codeWidth), title: "Country" };
-    const eventWidth = Math.max(minEventWidth, eventRoom(impactColumn.width, countryColumn.width));
+    const eventWidth = Math.max(minEventWidth, eventRoom(tableColumnWidth(impactColumn), tableColumnWidth(countryColumn)));
 
     return [
       { id: "time", label: timeLabelText, width: timeWidth, align: "left" },
       ...withReader ? [{ id: "readerTime" as const, label: readerLabel!, width: readerWidth, align: "left" as const, title: readerZone! }] : [],
       { id: "impact", ...impactColumn, align: "left" },
-      { id: "country", ...countryColumn, align: "left" },
+      ...showCountry ? [{ id: "country" as const, ...countryColumn, align: "left" as const }] : [],
       { id: "event", label: "EVENT", width: eventWidth, align: "left" },
-      { id: "actual", label: "ACTUAL", width: actualWidth, align: "right" },
-      { id: "forecast", label: "FORECAST", width: forecastWidth, align: "right" },
+      { id: "actual", label: actualLabel, title: "Actual", width: actualWidth, align: "right" },
+      { id: "forecast", label: forecastLabel, title: "Forecast", width: forecastWidth, align: "right" },
       { id: "prior", label: "PRIOR", width: priorWidth, align: "right" },
     ];
-  }, [filtered, flagged, readerZone, width]);
+  }, [countryFilter, filtered, flagged, readerZone, width]);
   const separatorBg = blendHex(colors.bg, colors.border, 0.3);
   const staleness = fetchedAt ? formatStaleness(fetchedAt, now) : "";
   // The calendar has events and the filters hid them all: say which, with the way back.
@@ -359,7 +368,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   // context; the footer ellipsizes a long event name.
   const nextText = nextEvent && nextCountdown ? `next ${econEventName(nextEvent)} ${nextCountdown}` : null;
   // The cached first paint is being replaced; its age only counts once a load has answered.
-  const showStale = stale && (!loading || calendar.updatedAt !== null);
+  const showStale = stale && shown?.source !== "stale-fallback" && (!loading || calendar.updatedAt !== null);
   // An empty list says it in its empty state instead.
   const listedAfterStatus = listedAfter && !detailEvent && filtered.length > 0 ? listedAfter : null;
   // What the High filter, where the calendar opens, leaves out, and the key that lists it (Shift+F steps back to All).
@@ -599,7 +608,6 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       ) : undefined}
       emptyStateTitle={listedAfter ?? "No events"}
       emptyStateHint={emptyStateHint}
-      showHorizontalScrollbar={false}
     />
   );
 }

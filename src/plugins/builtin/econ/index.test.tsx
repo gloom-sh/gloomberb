@@ -1,13 +1,14 @@
 import { afterEach, beforeEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { act } from "react";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
-import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
+import { PaneFooterBar, PaneFooterProvider, footerTimeText } from "../../../components/layout/pane/footer";
+import { connectionHealth, GLOOM_CLOUD_HTTP_CONNECTION_ID, registerGloomCloudConnectionSources } from "../../../core/connection-health";
 import { Box } from "../../../ui";
 import { createInitialState } from "../../../state/app/context";
 import { createDefaultConfig } from "../../../types/config";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import type { PluginRuntimeAccess } from "../../runtime";
-import { attachEconCalendarPersistence, resetEconCalendarPersistence } from "./calendar-model";
+import { attachEconCalendarPersistence, getCalendarCache, resetEconCalendarPersistence } from "./calendar-model";
 import { economicCalendarModule } from "./index";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
 import { PaneInViewProvider } from "../../../state/app/activity";
@@ -57,11 +58,14 @@ function seedCalendar(): void {
 
 beforeEach(() => {
   setSystemTime(new Date("2026-08-21T12:00:00.000Z"));
+  spyOn(apiClient, "getCloudEconomicCalendar").mockImplementation(async () =>
+    (getCalendarCache()?.data ?? []).map((event) => ({ ...event, date: event.date.toISOString() })));
 });
 
 afterEach(() => {
   setSystemTime();
   resetEconCalendarPersistence();
+  (apiClient.getCloudEconomicCalendar as ReturnType<typeof spyOn>).mockRestore?.();
 });
 
 /**
@@ -136,6 +140,37 @@ describe("EconCalendarPane", () => {
     expect(frame).toContain("PRIOR");
     expect(frame).toContain("0.2%");
     expect(frame).toContain("0.8%");
+
+    const compact = await renderPane(43, "all", true, { country: "FR" });
+    expect(compact).toMatch(/ACT\s+EST\s+PRIOR/);
+    expect(compact).toMatch(/1\.1%\s+0\.9%\s+0\.8%/);
+  });
+
+  test("shows the saved calendar's original time after a timed-out refresh and clears it on recovery", async () => {
+    const persistence = new MemoryPluginPersistence();
+    const entry: CloudEconEventPayload = { id: "jobs", date: "2026-08-21T13:30:00Z", time: "13:30", country: "US",
+      event: "Non Farm Payrolls", impact: "high", actual: null, forecast: "93K", prior: "165K" };
+    persistence.seedResource("calendar", "global", [entry], { sourceKey: "gloomberb-cloud", schemaVersion: 1 });
+    attachEconCalendarPersistence(persistence);
+    const cloud = spyOn(apiClient, "getCloudEconomicCalendar").mockRejectedValue(new DOMException("Request timed out", "TimeoutError"));
+    const dispose = registerGloomCloudConnectionSources(connectionHealth);
+    try {
+      const offline = await renderPane(43, "high", true, { country: "US" });
+      expect(offline).toContain(`saved copy from ${footerTimeText(Date.now() - 60_000)}`);
+      expect(offline).toMatch(/93K\s+165K/);
+      cloud.mockResolvedValue([{ ...entry, forecast: "94K" }]);
+      await act(async () => {
+        connectionHealth.reportReachability(GLOOM_CLOUD_HTTP_CONNECTION_ID, false);
+        connectionHealth.reportReachability(GLOOM_CLOUD_HTTP_CONNECTION_ID, true);
+      });
+      await act(async () => { await tui.setup().renderOnce(); });
+      const online = tui.frame();
+      expect(online).toContain("94K");
+      expect(online).not.toContain("saved copy from");
+    } finally {
+      dispose();
+      cloud.mockRestore();
+    }
   });
 
   test("separates days so a row's date is never ambiguous", async () => {

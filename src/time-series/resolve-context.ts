@@ -70,6 +70,7 @@ export interface ChartResolveSources {
 }
 
 export interface ChartResolveOptions {
+  refreshHistory?: boolean;
   /** Runtime zoom window used only to choose an adaptive Auto resolution. */
   autoViewport?: { start: Date; end: Date } | null;
   /** Runtime interaction window used to load history around the visible chart. */

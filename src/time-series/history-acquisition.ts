@@ -47,6 +47,7 @@ export interface PriceHistoryRequest {
   support: readonly ChartResolutionSupport[];
   requiredWarmupPoints: number;
   historyRequestKey?: string;
+  refresh?: boolean;
   /** Ask for pre-market and after-hours bars. */
   historySession?: "extended";
 }
@@ -379,6 +380,7 @@ export async function loadPriceHistory(
   request: PriceHistoryRequest,
 ): Promise<LoadedPriceHistory> {
   const context = { ...requestContext(source), historyRequestKey: request.historyRequestKey,
+    ...(request.refresh ? { cacheMode: "refresh" as const } : {}),
     ...(request.historySession ? { historySession: request.historySession } : {}) };
   let coverageNotice: string | null = null;
   let retentionError: HistoryRetentionError | null = null;

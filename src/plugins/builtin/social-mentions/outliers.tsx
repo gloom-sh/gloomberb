@@ -11,6 +11,7 @@ import {
 } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { ageFooterSegment } from "../../../components/layout/pane/footer";
+import { retrievedAtOf, stampRetrievedAt, withSavedCopyMarkOf } from "../../../data/saved-copies";
 import { useUtcDay } from "../../../react/auto-refresh";
 import { reportFooterSegment } from "../shared/source-footer";
 import { socialMentionsHeadless } from "./headless";
@@ -58,6 +59,12 @@ interface SocialOutliersAnswer {
   resource: CloudResource<SocialOutliersPayload>;
 }
 
+function outliersAnswer(query: SocialOutliersQuery, resource: CloudResource<SocialOutliersPayload>): SocialOutliersAnswer {
+  const fetchedAt = retrievedAtOf(resource);
+  const answer = { query, resource };
+  return fetchedAt != null ? stampRetrievedAt(answer, fetchedAt) : withSavedCopyMarkOf(answer, resource);
+}
+
 /** A multiple this high reads in the warning tone, as it does in the ticker's own days. */
 const LOUD_RATIO = 2.5;
 
@@ -96,13 +103,13 @@ export function SocialOutliersView({ width, height, focused, renderTicker }: {
   // Each ticker is named as search names it, in one batched request with the ranking.
   const marketData = useMarketData();
   const loader = useCallback(
-    async (force: boolean): Promise<SocialOutliersAnswer> => ({ query, resource: await loadSocialOutliers(query, { force, names: marketData }) }),
+    async (force: boolean) => outliersAnswer(query, await loadSocialOutliers(query, { force, names: marketData })),
     [marketData, query, session.displayScope],
   );
   const resource = useAsyncResource(loader, {
     initialData: () => {
       const cached = cachedSocialOutliers(query);
-      return cached ? { query, resource: cached } : null;
+      return cached ? outliersAnswer(query, cached) : null;
     },
     clearOnError: (error) => error instanceof Error && isCloudSessionRequired(error.message),
     // Another window or filter keeps the rows on screen, loading, until its own arrive.

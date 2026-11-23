@@ -28,6 +28,7 @@ export interface ExportSource {
   oldestObservationDate?: string;
   /** When the publisher released the data, when the data states it. */
   publicationTime: string | null;
+  fredUpdatedAt?: string;
   /** When the data was retrieved for this export: an ISO instant in UTC. */
   retrievalTime: string;
   /** Refreshing the data failed and a copy saved earlier answered: when it was saved, an ISO instant in UTC. */
@@ -41,7 +42,8 @@ export function exportSource(freshness: ReportFreshness): ExportSource {
     // A figure as of its release is still dated by the period it covers; the release is its publication time.
     observationDate: freshness.referencePeriod ?? freshness.asOf,
     ...(freshness.oldestObservation ? { oldestObservationDate: freshness.oldestObservation } : {}),
-    publicationTime: freshness.publishedAt ?? (freshness.referencePeriod ? freshness.asOf : null),
+    publicationTime: freshness.publishedAt === undefined ? (freshness.referencePeriod ? freshness.asOf : null) : freshness.publishedAt,
+    ...(freshness.fredUpdatedAt ? { fredUpdatedAt: freshness.fredUpdatedAt } : {}),
     retrievalTime: freshness.retrievedAt,
     ...(freshness.savedAt ? { savedTime: freshness.savedAt } : {}),
   };
@@ -197,6 +199,7 @@ export function exportSourceLines(freshness: ReportFreshness): string[] {
     observationLine(source),
     ...(source.oldestObservationDate ? [`Oldest observation: ${source.oldestObservationDate}`] : []),
     `Publication time: ${stated(source.publicationTime)}`,
+    ...(source.fredUpdatedAt ? [`FRED updated: ${source.fredUpdatedAt}`] : []),
     `Retrieval time: ${source.retrievalTime}`,
     ...(source.savedTime ? [`Saved time: ${source.savedTime}`] : []),
   ];

@@ -320,6 +320,7 @@ export interface HeadlessPaneFreshness {
   publisher?: string;
   /** When the publisher released the data, as the data states it. Exports cite it; left out, they say it was not published. */
   publishedAt?: string | number | Date | null;
+  fredUpdatedAt?: string;
   /** Newest observation in the data. A `YYYY-MM-DD` string reads as a date without a time. */
   asOf?: string | number | Date | null;
   /** Oldest observation, mentioned when it is far older than `asOf`; `null` when the rows are a history. */

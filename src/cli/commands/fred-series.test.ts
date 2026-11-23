@@ -18,7 +18,7 @@ import {
   laggingSeriesNote,
   parseFredChange,
 } from "./fred-series";
-import { fredPublicationTime } from "../../sources/gloomberb-cloud/fred-attribution";
+import { fredUpdateTime } from "../../sources/gloomberb-cloud/fred-attribution";
 
 test("a table prints every observation at the series' precision, which FRED's dropped zeros and float noise do not lower or raise", () => {
   // FRED serves 5.10 and 5.00 as 5.1 and 5; beside 5.09 they print as 5.10 and 5.00.
@@ -83,14 +83,13 @@ test("a start before the series begins drops the blank days before it, and keeps
   expect(fredObservationsFromStart([{ date: "2021-01-01", value: null }, { date: "2021-01-04", value: 14.6 }], "1980-01-02")).toHaveLength(2);
 });
 
-test("FRED's last update is the publication time only when it covers the newest observation", () => {
+test("FRED's last update is cited only when it covers the newest observation", () => {
   const info = { lastUpdated: "2026-10-09 08:08:04-05", observationEnd: "2026-10-08" };
-  expect(fredPublicationTime(info, "2026-10-08")).toBe("2026-10-09T13:08:04.000Z");
-  // Metadata from before the newest observation says nothing about when it was published.
-  expect(fredPublicationTime(info, "2026-10-09")).toBeNull();
-  expect(fredPublicationTime({ lastUpdated: info.lastUpdated }, "2026-10-08")).toBeNull();
-  expect(fredPublicationTime({ ...info, lastUpdated: "2026-10-09" }, "2026-10-08")).toBeNull();
-  expect(fredPublicationTime(null, "2026-10-08")).toBeNull();
+  expect(fredUpdateTime(info, "2026-10-08")).toBe("2026-10-09T13:08:04.000Z");
+  expect(fredUpdateTime(info, "2026-10-09")).toBeNull();
+  expect(fredUpdateTime({ lastUpdated: info.lastUpdated }, "2026-10-08")).toBeNull();
+  expect(fredUpdateTime({ ...info, lastUpdated: "2026-10-09" }, "2026-10-08")).toBeNull();
+  expect(fredUpdateTime(null, "2026-10-08")).toBeNull();
 });
 
 test("says where the history starts when the default start hides older data, or the series begins after the start asked for", () => {

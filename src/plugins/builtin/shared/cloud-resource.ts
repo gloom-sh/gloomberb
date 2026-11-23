@@ -3,7 +3,7 @@ import { ApiRequestError } from "../../../api-client/errors";
 import { cloudDisplayScope } from "../../../api-client/plan-access";
 import { createMissingRouteLatch } from "../../../api-client/coalesce";
 import { savedCopyForTransientFailure, type PluginCacheResult } from "../../../data/plugin-cache";
-import { markSavedCopy } from "../../../data/saved-copies";
+import { markSavedCopy, stampRetrievedAt } from "../../../data/saved-copies";
 
 interface CloudCache<T> {
   get(key: string, options?: { allowExpired?: boolean }): PluginCacheResult<T> | null;
@@ -37,7 +37,7 @@ export function cachedCloudResource<T>(
   if (!cached) return null;
   try {
     const result = { payload: validate(cached.data), stale: false, refreshError: null };
-    return cached.fromEarlierRun || cached.stale ? markSavedCopy(result, cached.fetchedAt) : result;
+    return cached.fromEarlierRun || cached.stale ? markSavedCopy(result, cached.fetchedAt) : stampRetrievedAt(result, cached.fetchedAt);
   } catch (error) {
     return logFailure("shared.cloud-resource", "Validate cached cloud payload failed", null)(error);
   }
@@ -78,7 +78,7 @@ export async function loadCloudResource<T>(
     payload: validate(result.data), stale: result.stale, refreshError: result.refreshError ?? null,
     ...(saved ? { savedAt: result.fetchedAt } : {}),
   };
-  return saved ? markSavedCopy(answer, result.fetchedAt) : answer;
+  return saved ? markSavedCopy(answer, result.fetchedAt) : stampRetrievedAt(answer, result.fetchedAt);
 }
 
 /**

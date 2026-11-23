@@ -160,7 +160,8 @@ export interface ReportFreshness {
   /** Who published the figures, when the data names them. */
   publisher?: string;
   /** When the publisher released the data, an ISO instant in UTC or an ISO date, when the data states it. */
-  publishedAt?: string;
+  publishedAt?: string | null;
+  fredUpdatedAt?: string;
   /** When this report was built. */
   retrievedAt: string;
   /**
@@ -648,6 +649,7 @@ function resolveReadFreshness({ declared, signals, observations, now }: Freshnes
   const scheduleVariants = schedule ? (declared.scheduleVariants ?? []).map((variant) => variant.trim()).filter((variant) => variant && variant !== schedule) : [];
   const publisher = declared.publisher?.trim();
   const publishedAt = parseReportTime(declared.publishedAt);
+  const fredUpdatedAt = parseReportTime(declared.fredUpdatedAt);
   // A figure dated by the period it covers is as of its release: September's permits
   // are dated 1 Sep and were released 20 Oct. Age, staleness and the oldest stay the observation's.
   const released = asOf?.dateOnly && !declared.dataset && !periodToDate
@@ -702,7 +704,8 @@ function resolveReadFreshness({ declared, signals, observations, now }: Freshnes
     ...(schedule ? { schedule } : {}),
     ...(scheduleVariants.length > 0 ? { scheduleVariants } : {}),
     ...(publisher ? { publisher } : {}),
-    ...(publishedAt ? { publishedAt: isoTime(publishedAt) } : {}),
+    ...(publishedAt ? { publishedAt: isoTime(publishedAt) } : declared.publishedAt === null ? { publishedAt: null } : {}),
+    ...(fredUpdatedAt ? { fredUpdatedAt: isoTime(fredUpdatedAt) } : {}),
     retrievedAt: declaredRetrieval(declared.retrievedAt, now) ?? new Date(now).toISOString(),
   };
 }

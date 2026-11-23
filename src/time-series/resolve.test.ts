@@ -3,6 +3,7 @@ import { FINANCIAL_VINTAGE_NOTICE } from "../utils/financial-statements";
 import { describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { apiClient } from "../api-client";
 import { ApiRequestError } from "../api-client/errors";
+import { markSavedCopy } from "../data/saved-copies";
 import type { CloudHistoryParams } from "../api-client/paths";
 import { AssetDataRouter } from "../sources/provider-router";
 import { GloomberbCloudProvider } from "../sources/gloomberb-cloud";
@@ -130,6 +131,28 @@ describe("resolveChartSpecData", () => {
     expect(withoutMetadata.errors).toEqual([]);
     expect(withoutMetadata.series[0]?.points.map((point) => point.value)).toEqual([77.53]);
     expect(withoutMetadata.series[0]?.unit).toBe("currency");
+  });
+
+  test("price history keeps its saved timestamp through chart normalization until a refresh succeeds", async () => {
+    const savedAt = Date.parse("2026-01-15T21:01:00Z");
+    const history = { points: [{ date: new Date("2026-01-15"), close: 77.53 }], resolution: "1d" as const };
+    let offline = true;
+    const requests: Array<string | undefined> = [];
+    const provider = createTestDataProvider({ getPriceHistoryForResolutionWithMetadata: async (_symbol, _exchange, _range, _resolution, context) => {
+      requests.push(context?.cacheMode);
+      return offline ? markSavedCopy(history, savedAt, true) : { ...history, points: [{ ...history.points[0]!, close: 78 }] };
+    } });
+    const spec = chartSpec({ viewport: { range: "1M", resolution: "1d" }, series: [chartSeries({ source: { kind: "security",
+      instrument: { symbol: "GLD", exchange: "ARCA" }, fieldId: "market.close" } })] });
+    const sources = { dataProvider: provider, loadFredSeries: async () => fredLoad(), now: new Date("2026-01-16") };
+    const held = await resolveChartSpecData(spec, sources, new ChartResolveCache(), { refreshHistory: true });
+    expect(held.savedAt).toBe(savedAt);
+    expect(held.series[0]?.points[0]?.value).toBe(77.53);
+    offline = false;
+    const recovered = await resolveChartSpecData(spec, sources, new ChartResolveCache(), { refreshHistory: true });
+    expect(recovered.savedAt).toBeUndefined();
+    expect(recovered.series[0]?.points[0]?.value).toBe(78);
+    expect(requests).toEqual(["refresh", "refresh"]);
   });
 
   test("a series drawn in a ticker's price shares that price's axis instead of taking a scale of its own", async () => {

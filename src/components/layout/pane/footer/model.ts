@@ -534,6 +534,12 @@ export function fitPaneFooterInfo(
     return fitNoteLines(fitPaneFooterInfo(held, width, { besideHints, terminal })
       .map((segment) => notesOf.has(segment.id) ? { ...segment, notes: notesOf.get(segment.id) } : segment), width);
   }
+  const [first, ...rest] = info;
+  if (first?.savedCopyAt != null && rest.length && infoTextWidth(info) > width && infoTextWidth([first]) <= width) {
+    const room = width - infoTextWidth([first]) - PANE_FOOTER_SEPARATOR.length;
+    const remainder = room > 0 ? fitPaneFooterInfo(rest, room, { besideHints, terminal }) : [];
+    return infoTextWidth(remainder) <= room ? [first, ...remainder] : [first];
+  }
   if (!besideHints && !terminal) return stepDownTogether(info, width);
   const lastWithVariants = info.findLastIndex((segment) => (segment.variants?.length ?? 0) > 0);
   if (lastWithVariants >= 0 && lastWithVariants < info.length - 1 && infoTextWidth(info) > width) {
@@ -735,7 +741,7 @@ function savedCopyFirst(info: PaneFooterSegment[]): PaneFooterSegment[] {
   for (const segment of info) {
     if (segment.savedCopyAt != null && (oldest?.savedCopyAt == null || segment.savedCopyAt < oldest.savedCopyAt)) oldest = segment;
   }
-  return oldest ? [oldest, ...info.filter((segment) => segment.savedCopyAt == null)] : info;
+  return oldest ? [oldest, ...info.filter((segment) => segment.savedCopyAt == null && !segment.age)] : info;
 }
 
 function sameFooterParts(left: PaneFooterPart[], right: PaneFooterPart[]): boolean {

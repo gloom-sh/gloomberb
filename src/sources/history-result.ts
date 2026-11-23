@@ -7,6 +7,7 @@ import { canonicalHistoryInterval } from "./history-retention";
 import { historyCoverageNoteText, isHistoryCoverageDate } from "./history-coverage";
 import { readNonPositiveCloseDates } from "./history-omitted";
 import { parseListingDelisting } from "../market-data/quotes/delisting";
+import { savedCopyMark } from "../data/saved-copies";
 
 export type HistoryResultRequest =
   | { kind: "range"; range: TimeRange }
@@ -40,7 +41,7 @@ export function normalizeHistoryResult(
   if (result.session != null && (!session || result.resolution === null)) return null;
   const nonPositiveCloseDates = readNonPositiveCloseDates(result.nonPositiveCloseDates);
   const delisting = parseListingDelisting(result.delisting);
-  return { points: result.points, resolution: result.resolution,
+  return { points: result.points, resolution: result.resolution, ...savedCopyMark(result),
     ...(session ? { session } : {}),
     ...(nonPositiveCloseDates ? { nonPositiveCloseDates } : {}),
     ...(typeof result.sourceKey === "string" && /^(provider|broker):[^\r\n\0]+$/.test(result.sourceKey) ? { sourceKey: result.sourceKey } : {}),

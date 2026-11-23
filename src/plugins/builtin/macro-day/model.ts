@@ -29,7 +29,7 @@ export interface MacroDayEarningsReport {
 export type MacroDayMoveBasis = "return" | "yield";
 
 /** A Treasury yield index moves by its level: 5.24 to 5.28 is +4bp, not +0.76%. */
-const macroDayMoveBasis = (symbol: string): MacroDayMoveBasis => isYieldIndexSymbol(symbol) ? "yield" : "return";
+export const macroDayMoveBasis = (symbol: string): MacroDayMoveBasis => isYieldIndexSymbol(symbol) ? "yield" : "return";
 
 /**
  * A move as it reads: a return in percent (`+0.76%`), a yield's change in

@@ -1440,7 +1440,7 @@
           {
             "code": "MDAY",
             "name": "Macro-Day Reaction",
-            "description": "How a name moves on CPI, jobs, FOMC and Brazil IPCA days against a normal day: average move, direction, hit rate, and every release day with its actual, forecast and prior."
+            "description": "Compare up to 4 tickers or FRED series side by side on CPI, jobs and central-bank release days, close to close. With one ticker, see how those moves compare to a normal day."
           }
         ]
       },

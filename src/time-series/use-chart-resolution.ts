@@ -351,7 +351,7 @@ export function useChartResolution(
   // instead of keeping the failure.
   const live = !snapshot;
   const failedRef = useRef(false);
-  failedRef.current = live && displayed.errors.length > 0 && !displayed.loading;
+  failedRef.current = live && (displayed.errors.length > 0 || displayed.savedAt != null) && !displayed.loading;
   useEffect(() => {
     if (!live) return;
     return connectionHealth.subscribeRecovery((sourceId) => {
@@ -570,7 +570,7 @@ export function useChartResolution(
       spec,
       withQuoteOverrides(sources, liveQuoteOverridesRef.current, liveSinceRef.current),
       cache,
-      resolveOptions,
+      { ...resolveOptions, refreshHistory: isExplicitReload || stateSavedAt != null },
     );
     const frame = stateSavedAt != null ? afterSavedCopyFrame() : undefined;
     (frame ? frame.then(() => generationRef.current === generation ? resolve() : EMPTY_RESULT) : resolve())

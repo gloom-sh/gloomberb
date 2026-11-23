@@ -27,7 +27,7 @@ import { resolvePriceHistoryCurrencyUnit } from "../../utils/currency-units";
 import { calendarHistoryFetchState, calendarHistoryLastBarDate, dropLeadingPlaceholderBars, getPricePointTimestamp, hasUsablePriceHistory, preservePriceHistoryGaps, isPriceHistoryStaleForCurrentWindow, normalizePriceHistory, priceHistoryIntervalMs, type CalendarHistoryFetchState } from "../../utils/price-history";
 import { noProviderError, noteProviderAnswer, noteProviderMiss, shouldLogProviderError, StaleHistoryError, type ProviderMissNote } from "../provider-errors";
 import { HistoryCoverageError } from "../history-coverage";
-import { servedFromSavedCopy } from "../../data/saved-copies";
+import { markSavedCopy } from "../../data/saved-copies";
 import {
   buildVariantKey,
   compactDate,
@@ -785,7 +785,7 @@ export class ProviderRouterHistoryRoutes {
         ? { ...fallbackRecord.value, savedCopyBehind: true as const } : fallbackRecord.value;
       const answer = request.requestedRange ? clip(withReportedGaps(fallbackValue)) : withReportedGaps(fallbackValue);
       // A refetch that failed, rather than one that found nothing newer, leaves the saved copy answering.
-      return attempts.misses.failure !== undefined ? servedFromSavedCopy(answer, fallbackRecord.fetchedAt) : answer;
+      return attempts.misses.failure !== undefined ? markSavedCopy(answer, fallbackRecord.fetchedAt, true) : answer;
     }
     if (coverageError) throw coverageError;
     if (attempts.coverageError) throw attempts.coverageError;

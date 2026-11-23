@@ -2,6 +2,21 @@ import { expect, spyOn, test } from "bun:test";
 import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
 import { debugLog } from "../../../utils/debug-log";
 import { loadSectorRows } from "./client";
+import { quoteServedFromSavedCopy } from "../../../data/saved-copies";
+
+test("sector history still paints a board when a quote falls back, but the refresh is not a check", async () => {
+  const quote = createTestQuote({ symbol: "XLK", changeSessionDate: "2026-09-10" });
+  const savedAt = Date.parse("2026-09-10T16:15:00Z");
+  let offline = true;
+  const provider = createTestDataProvider({
+    getQuotesBatch: async (targets) => targets.map((target) => ({ target, quote: offline ? quoteServedFromSavedCopy(quote, savedAt) : quote })),
+    getPriceHistory: async () => [{ date: new Date("2026-09-10T00:00:00Z"), close: 105 }],
+  });
+  const sectors = [{ name: "Technology", etf: "XLK" }];
+  expect((await loadSectorRows(sectors, provider))[0]).toMatchObject({ checked: false, savedAt, row: { returnAsOfDate: "2026-09-10" } });
+  offline = false;
+  expect((await loadSectorRows(sectors, provider))[0]).toMatchObject({ checked: true, savedAt: null });
+});
 
 test("a failed sector quote batch logs safely and retains individual quote recovery", async () => {
   // Give this integration boundary its own rate-limit window in a full test run.
