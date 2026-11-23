@@ -1702,6 +1702,11 @@ test("a DES research tab is dated by what its own footer says, never by the list
   expect(own.ownStatus).toBe(true);
   expect(own.dates).toBeNull();
   expect(own.variants.join("\n")).not.toMatch(/delayed|pre-market|session opens/);
+  // What the tab notes is in the footer the capture keeps, so the line does not say it again.
+  const noted = [...tab, { role: "report-freshness", metadata: { note: "holder index could not be read; short list" } } as unknown as RemoteUiNodeSnapshot];
+  const offline = shotFreshness({ pane }, payload, { semanticUi: noted, footerText: "", rows: [] }, [], undefined, NOW);
+  expect(offline.ownStatus).toBe(true);
+  expect(offline.variants.join("\n")).not.toContain("short list");
   // The overview, which publishes no such node, is the quote's.
   const overview = shotFreshness({ pane }, payload, { semanticUi: [], footerText: "", rows: [] }, [], undefined, NOW);
   expect(overview.ownStatus).toBeUndefined();

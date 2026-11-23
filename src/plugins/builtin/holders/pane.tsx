@@ -16,6 +16,7 @@ import {
 import { ClippedText } from "../../../components/ui/display";
 import { useCompanyDataFooter } from "../../../components/layout/pane/status-footer";
 import { footerTimeText, type PaneFooterSegment } from "../../../components/layout/pane/footer";
+import { usePaneCapture } from "../../../components/layout/pane/capture-status";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
 import { cachedValueForDisplay } from "../../../data/cached-query";
@@ -108,7 +109,7 @@ const INDEX_UNREAD = "holder index could not be read; short list";
  * The footer's segment for the source's short list standing in for a 13F
  * holder index that could not be read: what the rows are, and when the list
  * was read (`readAt`). When the list is itself a saved copy, the saved copy's
- * own segment says when.
+ * own segment says when, and a capture's status line says it in UTC.
  */
 function indexUnreadFooter(readAt: number | null, savedCopy: boolean, now = Date.now()): PaneFooterSegment {
   const when = !savedCopy && readAt !== null ? ` from ${footerTimeText(readAt, now)}` : "";
@@ -124,6 +125,7 @@ function indexUnreadFooter(readAt: number | null, savedCopy: boolean, now = Date
 
 export function HoldersView({ focused, width, height }: { focused: boolean; width: number; height: number }) {
   const { nativePaneChrome } = useUiCapabilities();
+  const capture = usePaneCapture();
   const { symbol, ticker, financials } = usePaneTicker();
   const dataProvider = useAssetData();
   const scope = useCloudDisplayScope();
@@ -402,7 +404,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
           ? [{ id: "more-error", parts: [{ text: "more holders could not be read", tone: "warning" as const }] }]
           : []),
         ...(fundMatching ? [{ id: "fund-matching", parts: [{ text: "13F matching", tone: "muted" as const }] }] : []),
-        ...(shortListShown ? [indexUnreadFooter(updatedAt, savedAt !== null)] : []),
+        ...(shortListShown ? [indexUnreadFooter(capture ? null : updatedAt, savedAt !== null)] : []),
       ],
       // The title-bar tabs (or the query bar inside Ticker Research) switch
       // views, so the footer only carries the fund action.
@@ -411,7 +413,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
         ...(selectedFundMatch ? [{ id: "fund", key: "o", label: "pen 13F", onPress: () => openFundDetail(selectedRow) }] : []),
       ],
     };
-  }, [data, error, fundMatching, index.loadingMore, index.moreError, index.pages, indexed, indexPending, listData, loading, openFundDetail, periodsDiffer, savedAt, selectedFundMatch, selectedRow, shortListShown, updatedAt, viewMode]);
+  }, [capture, data, error, fundMatching, index.loadingMore, index.moreError, index.pages, indexed, indexPending, listData, loading, openFundDetail, periodsDiffer, savedAt, selectedFundMatch, selectedRow, shortListShown, updatedAt, viewMode]);
 
   const selectView = useCallback((value: string) => setViewMode(value as ViewMode), [setViewMode]);
   // As a research tab, h/l move between research tabs; `s` switches the view.

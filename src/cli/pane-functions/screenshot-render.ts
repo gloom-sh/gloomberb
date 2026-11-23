@@ -111,11 +111,13 @@ export function shotFreshness(
     ? undefined
     // Quotes across markets name each one's session and open (`LSE opens Mon 08:00 UTC · US Mon 14:30 UTC`), as compare and QM do.
     : quotesFreshness(quotes, { ...declared.source ? { source: declared.source } : {}, datesEachVenue: true }, now, sourceName);
+  // The footer such a view keeps says what its note would.
+  const { note: _note, noteVariants: _noteVariants, ...unnoted } = declared;
   const line = captureStatusLine({
     report,
     selfDated: Object.keys(published).length > 0 || observed.length > 0,
     quoted,
-    rendered: () => deriveRenderedFreshness(declared, {
+    rendered: () => deriveRenderedFreshness(ownStatus ? unnoted : declared, {
       footerText: render.footerText ?? "",
       cellTimes: render.rows.flatMap((row) => row.cells.flatMap((cell) => (cell.instant ? [cell.instant] : []))),
       observed,
