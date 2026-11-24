@@ -222,6 +222,9 @@ export function SupplyChainPane({ width, height, focused }: PaneProps) {
 function SupplyView({ symbol, listingName, width, height, focused }: Pick<PaneProps, "width" | "height" | "focused"> & { symbol: string | null; listingName: string | null }) {
   const colors = useThemeColors();
   const host = useRendererHost();
+  const openSource = (url: string) => {
+    void host.openExternal(url).catch(logFailure("supply-chain.pane", "Open source document failed"));
+  };
   const desktop = !!useUiCapabilities().nativePaneChrome;
   const { createPaneFromTemplate } = usePluginAppActions();
   const openDescription = useOpenDescription();
@@ -291,10 +294,10 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
   };
   const current = openRow ?? selected;
   const hints: PaneHint[] = directoryTab && selectedDirectory ? [
-    { id: "source", key: "o", label: "pen source", onPress: () => void host.openExternal(selectedDirectory.sourceUrl) },
+    { id: "source", key: "o", label: "pen source", onPress: () => openSource(selectedDirectory.sourceUrl) },
     ...(directories?.some(report => report.total > report.entries.length) ? [{ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", onPress: openUpgrade }] : []),
   ] : [
-    ...(current ? [{ id: "source", key: "o", label: "pen source", onPress: () => void host.openExternal(current.filingUrl) }] : []),
+    ...(current ? [{ id: "source", key: "o", label: "pen source", onPress: () => openSource(current.filingUrl) }] : []),
     ...(!openRow && selected ? [{ id: "evidence", key: "e", label: "vidence", onPress: evidence }] : []),
     ...(selected?.counterparty.ticker ? [
       { id: "description", key: "d", label: "es", onPress: () => openDescription(selected.counterparty.ticker!, selected.counterparty.exchange ?? undefined) },
@@ -404,7 +407,7 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
         getItemKey={row => row.id} renderCell={(row, column) => {
           const value = row[column.id as keyof typeof row];
           return { text: (column.id === "observedAt" ? row.observedAt.slice(0, 10) : value) ?? "" };
-        }} onActivate={row => void host.openExternal(row.sourceUrl)} freezeFirstColumn showHorizontalScrollbar />
+        }} onActivate={row => openSource(row.sourceUrl)} freezeFirstColumn showHorizontalScrollbar />
     </Box>;
   }
   // A listing filed under its code (0700:HKEX) reads by its company's name.
