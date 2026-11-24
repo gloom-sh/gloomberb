@@ -13,6 +13,7 @@ import {
 import {
   chainOpenInterestAsOf, loadListedOpenInterest, openInterestAsOfLabel, type OpenInterestAsOf, statedOpenInterestAsOf,
 } from "../../plugins/builtin/options/open-interest-as-of";
+import { volumeSessionLabel } from "../../plugins/builtin/options/volume-session";
 import { DEFAULT_OPTION_CALC_DRAFT } from "../../plugins/builtin/options-calculator/model";
 import { expiryIsoDate, OPTION_EXPIRATION_PLACEHOLDER, parseOptionExpiration, settlementStampTime } from "../../utils/option-expiry";
 import { loadModelDividendYield } from "../../market-data/model-dividend-yield";
@@ -209,6 +210,8 @@ export interface OptionsChainBasis {
   spot: OptionModelSpot | null;
   dividendYield: number | null;
   openInterest: OpenInterestAsOf | null;
+  /** The US session the chain's volume counts (`chainVolumeSession`), dated beside the open interest's. */
+  volumeSession?: string | null;
   /** A strike's IV is filled from its neighbours (`chainHasFilledIv`), which the closing line says. */
   ivFilled?: boolean;
 }
@@ -246,7 +249,7 @@ export async function loadOptionsChainOpenInterest(symbol: string, chain: Option
 
 /**
  * The line under the chain: `Greeks at spot 89.79 (close Mon 12 Oct 20:00 UTC), dividend yield 2.34%, rate 4% · IV solved from quote mids ·
- * OI as of Fri 9 Oct`, with `, ~ filled from neighbouring strikes` after the IV when a strike has no quote to solve from.
+ * Volume for Fri 9 Oct · OI as of Thu 8 Oct`, with `, ~ filled from neighbouring strikes` after the IV when a strike has no quote to solve from.
  * An open interest whose date cannot be established says why. A chain its
  * venue marks says whose marks they are: `Deribit marks: IV and greeks at
  * each expiry's forward, rate 0%; $ is the BTC price at the forward · OI as of Thu 22 Oct 22:42 UTC`.
@@ -278,6 +281,7 @@ export function optionsBasisFootnote(basis: OptionsChainBasis, chain?: OptionsCh
   if (chain && [...chain.calls, ...chain.puts].some((contract) => contract.quoteStale)) {
     parts.push("stale: quoted before the session or under intrinsic, no IV or delta");
   }
+  if (basis.volumeSession) parts.push(volumeSessionLabel(basis.volumeSession));
   const oi = basis.openInterest;
   parts.push(oi?.date ? openInterestAsOfLabel(oi)
     : oi?.listedDate && oi.compared > 0
@@ -292,6 +296,7 @@ export function optionsBasisFields(basis: OptionsChainBasis) {
     spot: basis.spot?.price ?? null,
     spotBasis: basis.spot ? basis.spot.basis === "close" ? "close" : basis.spot.session ?? "last" : null,
     spotAsOf: basis.spot ? new Date(basis.spot.observedAt).toISOString() : null,
+    volumeSession: basis.volumeSession ?? null,
     openInterestAsOf: basis.openInterest?.date ?? null,
   };
 }

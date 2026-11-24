@@ -159,16 +159,21 @@ test("activity totals require each reported contract's input without discarding 
     expect(summary.expirationVolume).toBe(10);
     expect(summary.putCallVolumeRatio).toBe(0);
     expect(summary.putCallOpenInterestRatio).toBeNull();
+    // The blank ratio counts what left it blank, so the pane can say so rather than show a bare dash.
+    expect(summary.uncounted).toEqual({ volume: 0, openInterest: 1 });
     expect(summary.atmImpliedVolatility).toBe(.25);
   }
   const missingVolume = calculateOptionsSummary({ ...chain, puts: [{ ...chain.puts[0]!, volume: undefined }] }, 100, [], NO_VOLS);
   expect(missingVolume.expirationVolume).toBeNull();
   expect(missingVolume.putCallVolumeRatio).toBeNull();
   expect(missingVolume.putCallOpenInterestRatio).toBe(0);
+  expect(missingVolume.uncounted).toEqual({ volume: 1, openInterest: 0 });
   const zero = calculateOptionsSummary({ ...chain, calls: [{ ...chain.calls[0]!, volume: 0, openInterest: 0 }] }, 100, [], NO_VOLS);
   expect(zero.expirationVolume).toBe(0);
   expect(zero.putCallVolumeRatio).toBeNull();
   expect(zero.putCallOpenInterestRatio).toBeNull();
+  // Zero calls blank the ratios with every contract counted.
+  expect(zero.uncounted).toEqual({ volume: 0, openInterest: 0 });
 });
 
 

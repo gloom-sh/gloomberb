@@ -92,6 +92,7 @@ import {
   type OptionModelSpot,
 } from "./model-spot";
 import { chainOpenInterestAsOf, loadListedOpenInterest, openInterestAsOfLabel, readListedOpenInterest, statedOpenInterestAsOf } from "./open-interest-as-of";
+import { chainVolumeSession, volumeSessionLabel } from "./volume-session";
 import { useAsyncResource } from "../../../react/async-resource";
 import {
   ALL_STRIKES,
@@ -188,6 +189,15 @@ function optionsSummaryItems({ spot, summary, enrichment, currency, ivRank }: {
   const slopeAnnualized = enrichment?.termSlopeAnnualized === true;
   // The selected expiry is the active choice in the bar above, so the slope names only the one it runs to.
   const slopeTo = enrichment?.neighbourExpiration == null ? undefined : `to ${formatExpDate(enrichment.neighbourExpiration)}`;
+  // A blank flow figure says why. A contract sent without a count leaves its total unknown, not zero;
+  // with every contract counted, a blank ratio has no calls to divide by.
+  const uncounted = (count: number, what: string, short: string): Pick<StatItem, "detail" | "detailVariants"> =>
+    ({ detail: `${count} ${count === 1 ? "contract" : "contracts"} without ${what}`, detailVariants: [`${count} without ${short}`] });
+  const volumeBlank = summary && summary.expirationVolume == null && summary.uncounted.volume
+    ? uncounted(summary.uncounted.volume, "a volume count", "volume") : {};
+  const putCallVolumeBlank = summary && summary.putCallVolumeRatio == null && summary.expirationVolume != null ? { detail: "no call volume" } : {};
+  const putCallOpenInterestBlank = !summary || summary.putCallOpenInterestRatio != null ? {}
+    : summary.uncounted.openInterest ? uncounted(summary.uncounted.openInterest, "an OI count", "OI") : { detail: "no call OI" };
   return [
     spot,
     { id: "atm-iv", label: "ATM IV", value: iv(summary?.atmImpliedVolatility) },
@@ -201,9 +211,10 @@ function optionsSummaryItems({ spot, summary, enrichment, currency, ivRank }: {
     { id: "sigma", label: "1σ fit", ...move(enrichment?.expectedMove.sigma, enrichment?.expectedMove.sigmaPercent) },
     { id: "skew", label: "Skew", value: skew == null ? MISSING_VALUE : `${skew} pp`, detail: "25d P-C" },
     { id: "slope", label: "Slope", value: slope == null ? MISSING_VALUE : `${slope} ${slopeAnnualized ? "pp/y" : "pp"}`, detail: slopeTo },
-    { id: "volume", label: "Volume", value: summary?.expirationVolume == null ? MISSING_VALUE : formatCompact(summary.expirationVolume, { fixedDecimals: true }) },
-    { id: "pc-volume", label: "P/C vol", value: formatRatio(summary?.putCallVolumeRatio) },
-    { id: "pc-oi", label: "P/C OI", value: formatRatio(summary?.putCallOpenInterestRatio) },
+    { id: "volume", label: "Volume", value: summary?.expirationVolume == null ? MISSING_VALUE : formatCompact(summary.expirationVolume, { fixedDecimals: true }),
+      ...volumeBlank },
+    { id: "pc-volume", label: "P/C vol", value: formatRatio(summary?.putCallVolumeRatio), ...putCallVolumeBlank },
+    { id: "pc-oi", label: "P/C OI", value: formatRatio(summary?.putCallOpenInterestRatio), ...putCallOpenInterestBlank },
   ];
 }
 
@@ -650,6 +661,16 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
         asOf: new Date(modelSpot.observedAt).toISOString(), valuationTime: new Date(modelSpot.valuationTime).toISOString() },
     }),
   } : null);
+  // The volume's session goes where the open interest's date does: before the open, the chain's
+  // volume is the last session's, which is not the day the counts are read on.
+  const volumeSession = strikeChain ? chainVolumeSession(strikeChain, effectiveExchange || undefined) : null;
+  const volumeSessionText = volumeSession ? volumeSessionLabel(volumeSession) : "";
+  const volumeSessionShortText = volumeSession ? `Vol ${volumeSession.slice(5)}` : "";
+  useRemoteUiNode(volumeSessionText ? {
+    role: "report-notice",
+    label: "Volume session",
+    getMetadata: () => ({ text: volumeSessionText, key: "volumeSession", value: volumeSession }),
+  } : null);
   useRemoteUiNode(strikeChain && !listedOpenInterest.loading ? {
     role: "report-notice",
     label: "Open interest as of",
@@ -675,10 +696,13 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     label: "IV filled",
     getMetadata: () => ({ text: IV_FILLED_NOTE, key: "ivFilled", value: true }),
   } : null);
-  usePaneFooter("options-oi-date", () => ({ order: -1, info: openInterestDateText ? [{
-    id: "oi-as-of", capture: openInterestShown, holdsPlace: openInterestShown, parts: [{ text: openInterestDateText, tone: "muted" as const }],
-    variants: openInterestShown ? [[{ text: openInterestShortText, tone: "muted" as const }]] : [[{ text: openInterestShortText, tone: "muted" as const }], []],
-  }] : [] }), [openInterestDateText, openInterestShortText, openInterestShown]);
+  usePaneFooter("options-oi-date", () => {
+    const dated = (volume: string, openInterest: string) => [{ text: [volume, openInterest].filter(Boolean).join(" · "), tone: "muted" as const }];
+    return { order: -1, info: openInterestDateText ? [{
+      id: "oi-as-of", capture: openInterestShown, holdsPlace: openInterestShown, parts: dated(volumeSessionText, openInterestDateText),
+      variants: [dated(volumeSessionShortText, openInterestShortText), ...(openInterestShown ? [] : [[]])],
+    }] : [] };
+  }, [openInterestDateText, openInterestShortText, openInterestShown, volumeSessionText, volumeSessionShortText]);
   usePaneFooter("options-basis", () => ({ info: [
     ...(basisText ? [{ id: "greeks-basis", parts: [{ text: basisText, tone: "muted" as const }],
       variants: [[{ text: shortBasisText, tone: "muted" as const }], []] }] : []),

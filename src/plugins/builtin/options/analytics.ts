@@ -28,6 +28,11 @@ export interface OptionsSummary {
   expirationVolume: number | null;
   putCallVolumeRatio: number | null;
   putCallOpenInterestRatio: number | null;
+  /**
+   * Contracts the source sent without a volume or an open interest count. A
+   * missing count is not read as zero, so any one leaves its total and ratio blank.
+   */
+  uncounted: { volume: number; openInterest: number };
 }
 
 function positive(value: number | undefined): value is number {
@@ -38,11 +43,17 @@ function ratio(numerator: number | null, denominator: number | null): number | n
   return numerator != null && denominator != null && denominator > 0 ? numerator / denominator : null;
 }
 
+const counted = (value: number | null | undefined): value is number => value != null && Number.isFinite(value) && value >= 0;
+
+function uncounted(contracts: readonly OptionContract[], field: "volume" | "openInterest"): number {
+  return contracts.reduce((total, contract) => total + (counted(contract[field]) ? 0 : 1), 0);
+}
+
 function sum(contracts: readonly OptionContract[], field: "volume" | "openInterest"): number | null {
   let total = 0;
   for (const contract of contracts) {
     const value = contract[field];
-    if (value == null || !Number.isFinite(value) || value < 0) return null;
+    if (!counted(value)) return null;
     total += value;
   }
   return Number.isFinite(total) ? total : null;
@@ -231,6 +242,10 @@ export function calculateOptionsSummary(
     expirationVolume: callVolume != null && putVolume != null ? callVolume + putVolume : null,
     putCallVolumeRatio: ratio(putVolume, callVolume),
     putCallOpenInterestRatio: ratio(putOpenInterest, callOpenInterest),
+    uncounted: {
+      volume: uncounted(chain.calls, "volume") + uncounted(chain.puts, "volume"),
+      openInterest: uncounted(chain.calls, "openInterest") + uncounted(chain.puts, "openInterest"),
+    },
   };
 }
 

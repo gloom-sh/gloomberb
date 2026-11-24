@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import type { Quote } from "../../../types/financials";
 import { modelSpotExtendedPrint, modelSpotLabel, modelSpotStamp, observedModelSpot, optionModelSpot } from "./model-spot";
 import { chainOpenInterestAsOf, openInterestAsOfLabel, statedOpenInterestAsOf } from "./open-interest-as-of";
+import { chainVolumeSession } from "./volume-session";
 
 // KO before Tuesday's open: Monday's chain from the close, a pre-market print, Monday's official close.
 const chainAsOf = "2026-10-12T19:59:59.998Z";
@@ -68,4 +69,17 @@ test("a chain's own open-interest date is used as stated; only a chain without t
   // An older server sends no field, and an unreadable value is no statement either.
   expect(statedOpenInterestAsOf({})).toBeUndefined();
   expect(statedOpenInterestAsOf({ openInterestAsOf: "9 Oct" })).toBeUndefined();
+});
+
+test("a chain's volume belongs to the last session open by its quotes' time, not the day it is read", () => {
+  expect(chainVolumeSession({ asOf: chainAsOf })).toBe("2026-10-12");
+  // A chain stamped before Tuesday's open, or on a weekend, still counts the previous session.
+  expect(chainVolumeSession({ asOf: "2026-10-13T12:41:00Z" })).toBe("2026-10-12");
+  expect(chainVolumeSession({ asOf: "2026-10-18T15:00:00Z" })).toBe("2026-10-16");
+  // Thanksgiving is closed: Friday's pre-open quotes are Wednesday's session.
+  expect(chainVolumeSession({ asOf: "2026-11-27T13:00:00Z" })).toBe("2026-11-25");
+  expect(chainVolumeSession({ asOf: "2026-10-13T14:00:00Z" })).toBe("2026-10-13");
+  // A venue trading round the clock has no such session; an undated chain states none.
+  expect(chainVolumeSession({ asOf: chainAsOf, venue: "Deribit" })).toBeNull();
+  expect(chainVolumeSession({})).toBeNull();
 });
