@@ -4,23 +4,36 @@ import { colors } from "../../../theme/colors";
 import { wrapTextLines } from "../../../utils/text-wrap";
 import { optionMarketReferenceLines, type OptionMarketReference } from "./market-reference";
 
-export function optionQuoteContextHeight(reference: OptionMarketReference | undefined, width: number, maximum: number, snapshot = false): number {
-  return reference ? Math.min(Math.max(1, maximum), optionMarketReferenceLines(reference)
-    .reduce((height, line, index) => height + wrapTextLines(snapshot && index === 0 ? `Snapshot: ${line}` : line, Math.max(8, width)).length, 0)) : 0;
+/** The reference's lines, marked a snapshot when it is one, then any notes on how it is valued. */
+function quoteContextLines(reference: OptionMarketReference | undefined, snapshot: boolean, notes: readonly string[]): string[] {
+  const lines = reference ? optionMarketReferenceLines(reference).map((line, index) => snapshot && index === 0 ? `Snapshot: ${line}` : line) : [];
+  return [...lines, ...notes];
 }
 
-/** Shared source context for the selected chain contract and its calculator snapshot. */
-export function OptionQuoteContext({ reference, width, height, snapshot = false, scrollable = true }: {
-  reference: OptionMarketReference;
+export function optionQuoteContextHeight(reference: OptionMarketReference | undefined, width: number, maximum: number, snapshot = false,
+  notes: readonly string[] = []): number {
+  const lines = quoteContextLines(reference, snapshot, notes);
+  return lines.length ? Math.min(Math.max(1, maximum), lines
+    .reduce((height, line) => height + wrapTextLines(line, Math.max(8, width)).length, 0)) : 0;
+}
+
+/**
+ * Shared source context for the selected chain contract and its calculator
+ * snapshot, with any notes on how the calculator values it (from when, and
+ * why its IV differs from the chain's).
+ */
+export function OptionQuoteContext({ reference, width, height, snapshot = false, scrollable = true, notes = [] }: {
+  reference?: OptionMarketReference;
   width: number;
   height: number;
   snapshot?: boolean;
   /** A parent scrolling the full result body can own overflow instead. */
   scrollable?: boolean;
+  notes?: readonly string[];
 }) {
   const content = <Box flexDirection="column">
-    {optionMarketReferenceLines(reference).map((line, index) => (
-      <Prose key={index} text={snapshot && index === 0 ? `Snapshot: ${line}` : line} width={Math.max(8, width)} color={colors.textDim} />
+    {quoteContextLines(reference, snapshot, notes).map((line, index) => (
+      <Prose key={index} text={line} width={Math.max(8, width)} color={colors.textDim} />
     ))}
   </Box>;
   return scrollable

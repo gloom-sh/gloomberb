@@ -18,8 +18,8 @@ const percent = (value: number | null | undefined) => value == null ? MISSING_VA
 
 /**
  * An FX pair's IV section: the fund whose options stand in, its IV30 and the
- * close it is from, how many of its expiries price (or, outside the options
- * session with none, when its surface fills), and IV30 less the pair's HV20
+ * close it is from, how many of its expiries price (and, outside the options
+ * session with none, when options reopen), and IV30 less the pair's HV20
  * on that close. There is no ATM IV of the pair's own to show.
  */
 function fxProxySection(proxy: FxVolProxy, reading: FxProxyReading): HeadlessBundleSection {

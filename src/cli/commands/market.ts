@@ -120,6 +120,7 @@ import {
   valueChainAtModelSpot,
   type OptionsChainBasis,
 } from "./options-chain";
+import { optionQuoteSession } from "../../plugins/builtin/shared/volatility/quote-session";
 import {
   expirationHint, expiredExpiryText, expiryIsoDate, isLiveOptionExpiry, liveDefaultExpiry, liveOptionExpiries, missingExpiryMessage,
   OPTION_EXPIRATION_FORMAT, OPTION_EXPIRATION_PLACEHOLDER, optionExpiryVenue, withLiveExpiryList,
@@ -4361,7 +4362,8 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const { chain, spot: modelSpot } = adjusted ? { chain: loaded, spot: null }
       : valueChainAtModelSpot(loaded, inputs, Date.now(), identity.exchange);
     const basis: OptionsChainBasis = { spot: modelSpot, dividendYield: inputs.dividendYield ?? null,
-      openInterest: await loadOptionsChainOpenInterest(symbol, chain), ivFilled: chainHasFilledIv(chain) };
+      openInterest: await loadOptionsChainOpenInterest(symbol, chain), ivFilled: chainHasFilledIv(chain),
+      volumeSession: optionQuoteSession(chain, identity.exchange || undefined) };
     const basisFields = optionsBasisFields(basis);
     const currency = [...chain.calls, ...chain.puts].find((contract) => contract.currency?.trim())?.currency.trim().toUpperCase()
       ?? quote?.currency ?? null;
@@ -4410,6 +4412,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
             valuationTime: modelSpot ? new Date(modelSpot.valuationTime).toISOString() : null,
             dividendYield: inputs.dividendYield ?? null, rate: OPTION_MODEL_RATE,
           },
+        volume: { session: basisFields.volumeSession },
         openInterest: { asOf: basisFields.openInterestAsOf, listedAsOf: basis.openInterest?.listedDate ?? null,
           compared: basis.openInterest?.compared ?? 0, matched: basis.openInterest?.matched ?? 0 },
       },
@@ -4443,6 +4446,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         { key: "spot", header: "Spot" },
         { key: "spotBasis", header: "Spot basis" },
         { key: "spotAsOf", header: "Spot as of" },
+        { key: "volumeSession", header: "Vol session" },
         { key: "openInterestAsOf", header: "OI as of" },
         // A venue's marks and its coin prices (Deribit's BTC and ETH options).
         ...(marked ? [

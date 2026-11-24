@@ -117,7 +117,7 @@ export interface IvScreenRow {
   coverageStatus?: IvCoverageStatus;
   /** When the symbol was queued and how far its backfill has got; null when it is not covered. */
   coverage?: { source: "seed" | "demand"; addedAt: string; backfilledThrough: string | null } | null;
-  /** Why it is not covered yet, such as demand coverage being full. */
+  /** Why it is not collected: coverage for requested names is full (`ivNotCollectedText`). */
   warnings?: string[];
   iv30: IvStats | null;
   iv90: IvStats | null;
@@ -128,24 +128,33 @@ export interface IvScreenRow {
   skew: { date: string; put25: number; call25: number; skew: number } | null;
   rr25?: IvRiskReversalStats | null;
 }
-/** Why a name IV history covers has no rank yet, by where its history stands. */
+/** Why a name IV history covers has no rank, by where its history stands. */
 const IV_COVERAGE_REASONS: Partial<Record<IvCoverageStatus, string>> = {
-  queued: "IV history queued, try again in a few minutes",
+  queued: "IV history queued for backfill",
   backfilling: "IV history still loading",
   unavailable: "no options history",
 };
 
 /**
+ * A name IV history does not collect, said plainly. The server collects at
+ * most 400 requested names and keeps one only while it is requested within
+ * 30 days; with that full, a new name is not collected and an idle one is no
+ * longer collected (its readings stop where it went idle). Nothing says when
+ * a slot frees, so no time is promised (docs/research-data.md#implied-volatility-history).
+ */
+export function ivNotCollectedText(symbol: string, readings: boolean): string {
+  return `${symbol} IV history is ${readings ? "no longer" : "not"} collected: coverage for requested names is full.`;
+}
+
+/**
  * Why a screened name has no IV rank, in words for the reader: the server's
- * note for a history too short to rank, or where its history stands. Null when
- * there is nothing true to add, as for a name demand coverage could not take
- * (the row carries the server's queue wording as a warning): none of its
- * history is being collected, so no reason and no promise of one later.
+ * note for a history too short to rank, or where its history stands, queued
+ * or not collected.
  */
 export function ivRankReason(row: IvScreenRow | undefined): string | null {
   if (!row) return "no IV history";
   if (row.iv30?.rankNote) return row.iv30.rankNote;
-  if (row.warnings?.length) return null;
+  if (row.warnings?.length) return `IV history ${row.latest ? "no longer" : "not"} collected, coverage full`;
   return IV_COVERAGE_REASONS[row.coverageStatus ?? row.status] ?? null;
 }
 export interface IvScreenPayload { version: 1; asOf: string; rows: IvScreenRow[] }

@@ -28,6 +28,7 @@ import { loadContractPremiumHistory, premiumSeries } from "./premium-history";
 import type { ResolvedSeries } from "../../../time-series/types";
 import { OptionQuoteContext, optionQuoteContextHeight } from "../options/quote-context";
 import { useCalculatorEvidence, CALCULATOR_IGNORED_DIVIDENDS_NOTICE, type CalculatorScreenshotSnapshot } from "./evidence";
+import { calculatorValuationText, chainIvText } from "./valuation";
 
 const SIDE_OPTIONS = [
   { label: "Call", value: "call" },
@@ -315,7 +316,13 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
   const resultWidth = Math.max(1, width - 3);
   const metricWidth = pairMetrics ? Math.floor(resultWidth / 2) : resultWidth;
   const trailingMetricWidth = pairMetrics ? Math.max(1, resultWidth - metricWidth) : metricWidth;
-  const referenceHeight = optionQuoteContextHeight(linkedDraft.marketReference, resultWidth, Number.POSITIVE_INFINITY, !liveInputs);
+  // A snapshot is valued at the time its quotes were taken, and says so; a live price runs the days with the clock instead.
+  // The chain's IV is said beside the one this mid gives when they differ, with why.
+  const valuationNotes = [
+    ...(draft.valuation && !daysRunning ? [calculatorValuationText(draft.valuation, linkedDraft.spot)] : []),
+    ...(draft.chainIv && !liveInputs ? [chainIvText(draft.chainIv, draft.strike, implied.volatility, !american)] : []),
+  ].filter((line): line is string => !!line);
+  const referenceHeight = optionQuoteContextHeight(linkedDraft.marketReference, resultWidth, Number.POSITIVE_INFINITY, !liveInputs, valuationNotes);
 
   return (
     <Box flexDirection="column" width={width} height={height}>
@@ -345,8 +352,9 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
       <Box height={1} />
 
       <ScrollBox id="options-calculator-results" flexGrow={1} flexBasis={0} minHeight={0} scrollY focusable={false}>
-        {linkedDraft.marketReference && <Box paddingX={1} height={referenceHeight} flexShrink={0}>
-          <OptionQuoteContext reference={linkedDraft.marketReference} width={resultWidth} height={referenceHeight} snapshot={!liveInputs} scrollable={false} />
+        {referenceHeight > 0 && <Box paddingX={1} height={referenceHeight} flexShrink={0}>
+          <OptionQuoteContext reference={linkedDraft.marketReference} width={resultWidth} height={referenceHeight} snapshot={!liveInputs}
+            scrollable={false} notes={valuationNotes} />
         </Box>}
         {contractSymbol ? (
           <ContractPremiumChart

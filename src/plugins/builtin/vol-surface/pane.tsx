@@ -29,7 +29,8 @@ import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { CLOUD_QUOTE_DELAY_MINUTES, useCloudDisplayScope } from "../../../api-client/plan-access";
 import { writeSavedCopy } from "../../../data/pane-saved-copies";
 import { useAssetData } from "../../runtime";
-import { optionsClosedNotice, useLiveSessionRefresh, useOptionsSessionOpen, usOptionsReopen } from "../shared/volatility/live-session";
+import { optionsClosedText, useLiveSessionRefresh, useOptionsSessionOpen, usOptionsReopen } from "../shared/volatility/live-session";
+import { surfaceQuoteCoverage, uncleanSurfaceDetail, uncleanSurfaceTitle } from "./quote-coverage";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { hasFreshReadyEntry } from "../../../market-data/coordinator/entries";
 import { createSurfaceDependencies, loadVolatilitySurface, withReusedYieldCurve, type SurfaceLoadRequest } from "./client";
@@ -40,7 +41,7 @@ import { formatCaptureTime, storedSurfaceFreshness, storedSurfaceSnapshot, type 
 import { useShownObservationFooter } from "../shared/source-footer";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { useVolSurfaceEvidence } from "./evidence";
-import { buildSurfaceGrid, DEFAULT_SURFACE_SETTINGS, SURFACE_3D_DELTAS, surfaceFilterSummary, totalSurfaceFilterCounts, windowSurfaceGrid,
+import { buildSurfaceGrid, DEFAULT_SURFACE_SETTINGS, SURFACE_3D_DELTAS, surfaceRowValuationTime, windowSurfaceGrid,
   type SurfaceExpiry, type SurfaceGridRow, type SurfaceSettings, type SurfaceSnapshot } from "./model";
 import {
   DEFAULT_SURFACE3D_CAMERA, rotateSurface3DCamera, zoomSurface3DCamera, type Surface3DCamera,
@@ -252,10 +253,11 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const liveSnapshot = liveReload ?? (incremental && (!resource.data || (!resource.refreshing && incremental.loaded > 0)) ? incremental : resource.data);
   // Outside regular hours the delayed chain publishes zero bids, so nothing is two-sided.
   // Judged on the last complete load, so a refresh in progress does not flip the view.
-  const liveQuotes = liveQuoteCoverage(settledSnapshot);
-  const liveEmpty = liveQuotes.empty && liveQuoteCoverage(liveSnapshot).points === 0;
-  // Outside the US options session a chain with no expiry fitted is the hour, not the symbol (FXE before the open):
-  // it waits for the open, beside IV30 at the last close. A coin's options trade around the clock.
+  const liveQuotes = surfaceQuoteCoverage(settledSnapshot);
+  const liveEmpty = liveQuotes.empty && surfaceQuoteCoverage(liveSnapshot).points === 0;
+  // Outside the US options session a chain with no expiry fitted says what its quotes did (VNDA's, FXE's before
+  // the open, did not pass cleaning) and when options reopen, beside IV30 at the last close. A coin's options
+  // trade around the clock.
   const optionsOpen = useOptionsSessionOpen(!!symbol && !historyDate && !coin);
   const closedUnfitted = !coin && !optionsOpen && liveQuotes.settled && liveQuotes.expiries > 0 && !liveQuotes.fitted;
   const noLiveSurface = liveEmpty || closedUnfitted;
@@ -371,10 +373,13 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   };
   const openPricer = () => {
     if (!snapshot || !selectedCell?.volatility || !selectedCell.strike || !selectedRow) return;
+    // A listed expiry's row counts its years from the quotes' time; the calculator says so, with the spot's stamp.
+    const valuedAt = surfaceRowValuationTime(selectedRow);
     const params = buildOptionCalcParams({ symbol: snapshot.symbol, spot: snapshot.spot,
       strike: selectedCell.strike, volatility: selectedCell.volatility, side: selectedCell.point?.side ?? "call",
       expiration: selectedRow.expiration, dividendYield: selectedRow.dividendYield,
-      marketPrice: selectedCell.point?.strike === selectedCell.strike ? selectedCell.point.price : undefined });
+      marketPrice: selectedCell.point?.strike === selectedCell.strike ? selectedCell.point.price : undefined,
+      ...(valuedAt != null ? { valuation: { at: valuedAt, spot: snapshot.spot, spotLabel: surfaceSpotBasisLabel(snapshot) } } : {}) });
     params.days = String(selectedRow.years * 365);
     if (selectedRow.rate != null) params.rate = String(selectedRow.rate);
     if (selectedRow.dividendYield != null) params.dividendYield = String(selectedRow.dividendYield);
@@ -451,10 +456,9 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
       ? "All expiries" : expirations.map(expiryLabel).join(", ")}: ${warning}`),
     ...(!spotAvailable && symbol && !historyDate ? ["Underlying price unavailable or stale"] : []),
     ...(historyDate && !stored.loading && !stored.data && !stored.error ? [`No stored ${underlying} surface for ${historyDate}`] : []),
-    // Outside the session the stored close stands in for the hour, and the live surface fills at the open.
-    ...(fallbackDate ? [closedUnfitted
-      ? `${optionsClosedNotice(usOptionsReopen(Date.now()) ?? { at: null }).title} Showing the ${fallbackDate} close; the live surface fills at the open.`
-      : `Live chain has no two-sided quotes; showing the ${fallbackDate} close`] : []),
+    // The stored close stands in for quotes that did not pass cleaning; outside the session, so does when options reopen.
+    ...(fallbackDate ? [`${uncleanSurfaceTitle(liveQuotes)}; showing the ${fallbackDate} close.${closedUnfitted
+      ? ` ${optionsClosedText(usOptionsReopen(Date.now()) ?? { at: null })}` : ""}`] : []),
     ...(pinned != null && snapshot && !resource.loading && !snapshot.catalogue.includes(pinned)
       && !snapshot.failures.some((failure) => failure.expiration === pinned)
       ? [`${expiryLabel(pinned)}: ${unlistedExpiryText(pinned, snapshot.catalogue)}`] : []),
@@ -555,13 +559,13 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
         backgroundColor: chosen ? selectionFill.bg : cell.volatility == null ? colors.bg : blendHex(colors.bg, cell.volatility > 0.5 ? colors.warning : colors.positive, Math.min(0.48, 0.08 + cell.volatility * 0.5)),
         onMouseDown: () => { onSelectRow(row); setCoordinate(cell.coordinate); } };
     }} emptyStateTitle="No volatility observations." />;
+  // With no clean quote and no stored close to stand in, the pane leads with the quotes: what failed the cleaning,
+  // that this name has no stored close, then when options reopen. It promises no surface at the open.
   const reopen = !shownDate && closedUnfitted ? usOptionsReopen(Date.now()) : null;
-  const content = reopen ? <EmptyState {...optionsClosedNotice(reopen)} />
-    : !shownDate && liveEmpty ? <EmptyState title="No two-sided option quotes"
-    message={liveQuotes.zeroBid === liveQuotes.contracts
-      ? `All ${liveQuotes.contracts.toLocaleString()} contracts across ${liveQuotes.expiries} expiries have a zero bid. ${ZERO_BID_HOURS}`
-      : `None of the ${liveQuotes.contracts.toLocaleString()} contracts across ${liveQuotes.expiries} expiries passes the quote filters${
-        liveQuotes.removed ? `: ${liveQuotes.removed}` : ""}.${liveQuotes.zeroBidMost && liveQuotes.zeroBid ? ` ${ZERO_BID_HOURS}` : ""}`} />
+  const noStoredClose = !dates.loading && !dates.error && dates.data?.length === 0;
+  const content = !shownDate && noLiveSurface ? <EmptyState title={`${uncleanSurfaceTitle(liveQuotes)}.`}
+    message={[uncleanSurfaceDetail(liveQuotes), noStoredClose ? `No stored close for ${underlying}.` : null,
+      reopen ? optionsClosedText(reopen) : null].filter(Boolean).join(" ")} />
     : activeTab === "surface" && denseGrid ? <VolatilitySurface width={width} height={tableHeight}
     grid={denseGrid} camera={camera} onCameraChange={setCamera} selected={{
       tenorIndex: nearestRow(selectedExpiry?.years),
@@ -633,19 +637,6 @@ function fitMetaParts(parts: ReadonlyArray<string | null | undefined>, room: num
 }
 
 const wholeNumber = (value: number | null) => value == null ? MISSING_VALUE : String(Math.round(value));
-/** Whether a settled live chain produced any clean quote, with the filter counts that explain why not. */
-function liveQuoteCoverage(snapshot: SurfaceSnapshot | null | undefined) {
-  const expiries = snapshot?.expiries.filter((entry) => entry.state !== "loading") ?? [];
-  const points = expiries.reduce((sum, entry) => sum + entry.points.length, 0);
-  const contracts = expiries.reduce((sum, entry) => sum + Object.values(entry.filterCounts).reduce((a, b) => a + b, 0) + entry.points.length, 0);
-  const counts = totalSurfaceFilterCounts(expiries);
-  const zeroBid = counts["zero-bid"];
-  const settled = !!snapshot && snapshot.loaded >= snapshot.requested;
-  return { empty: settled && expiries.length > 0 && points === 0 && contracts > 0, points, expiries: expiries.length, contracts, zeroBid,
-    removed: surfaceFilterSummary(counts), zeroBidMost: Object.values(counts).every((count) => count <= zeroBid),
-    settled, fitted: expiries.some((entry) => entry.fit) };
-}
-const ZERO_BID_HOURS = "The delayed feed publishes zero bids outside regular hours (09:30 to 16:00 New York); the surface fills in when quotes return.";
 
 function ExpiryTable({ snapshot, selected, onSelect, forwards, width, height, focused, onKey, metadata }: {
   snapshot: DatedSurfaceSnapshot; selected: SurfaceExpiry | null; onSelect: (expiry: SurfaceExpiry) => void;
