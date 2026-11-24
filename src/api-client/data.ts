@@ -1,3 +1,4 @@
+import type { JpxShortPositions } from "./jpx-short-positions";
 import type { TaiwanShortBalances, TaiwanVenue } from "./taiwan-short-balances";
 import type { SfcShortPositions } from "./sfc-short-positions";
 import type { AttentionPayload, AttentionWindow } from "./attention";
@@ -750,6 +751,14 @@ export class CloudDataApi {
     exchange?: string,
   ): Promise<CloudMarketResponse<CloudAnalystResearchPayload>> {
     return this.requestMarketSymbol("/market/analyst", symbol, exchange);
+  }
+
+  async getJpxShortPositions(symbol: string, asOf?: string): Promise<JpxShortPositions> {
+    const params = new URLSearchParams({ symbol });
+    if (asOf) params.set("asOf", asOf);
+    const response = await this.request<CloudMarketResponse<JpxShortPositions>>(`/market/jpx-short-positions?${params}`);
+    if (!response.data) throw new Error(response.message || "JPX position disclosures unavailable.");
+    return response.data;
   }
 
   async getTaiwanShortBalances(symbol: string, exchange: TaiwanVenue, asOf?: string): Promise<TaiwanShortBalances> {

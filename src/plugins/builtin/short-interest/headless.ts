@@ -1,3 +1,4 @@
+import { jpxReport, jpxSymbol } from "./jpx";
 import { taiwanListing, taiwanReport } from "./taiwan";
 import { sfcSymbol, sfcReport } from "./sfc";
 import type {
@@ -77,7 +78,7 @@ export function createShortInterestHeadless(
     argument: {
       kind: "ticker",
       placeholder: "ticker",
-      description: "US, Hong Kong or Taiwanese equity ticker.",
+      description: "Equity ticker for the US, Hong Kong, Japan or Taiwan.",
     },
     discovery: {
       limitations: [
@@ -85,7 +86,7 @@ export function createShortInterestHeadless(
         "Percent of float is each settlement's shares short over the float of its day: the 10-K or 10-Q share count known when FINRA published it, at the part of today's count that floats; the latest is over the current float. A settlement no count was known for stays blank.",
       ],
     },
-    additionalListingVenues: ["HKEX", "TWSE", "TPEX"],
+    additionalListingVenues: ["HKEX", "JPX", "TWSE", "TPEX"],
     usListingsOnly: "FINRA short interest",
     // FINRA's settlements count OTC securities' shares short too: 0700.HK is offered TCEHY.
     usListingsOtc: true,
@@ -122,6 +123,8 @@ export function createShortInterestHeadless(
       const symbol = args.symbols[0]!;
       const taiwan = taiwanListing(symbol);
       const cutoff = typeof args.options.asOf === "string" ? args.options.asOf : undefined;
+      const jp = jpxSymbol(symbol);
+      if (jp) return jpxReport(await ctx.apiClient.getJpxShortPositions(jp, cutoff), args, cutoff);
       if (taiwan) return taiwanReport(await ctx.apiClient.getTaiwanShortBalances(taiwan.symbol, taiwan.exchange, cutoff), args, cutoff);
       const hk = sfcSymbol(symbol);
       if (hk) {

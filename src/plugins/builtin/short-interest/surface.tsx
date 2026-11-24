@@ -1,3 +1,4 @@
+import { jpxSymbol } from "./jpx";
 import { taiwanListing } from "./taiwan";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { ExchangePositionsPane } from "./exchange-positions-pane";
@@ -20,7 +21,9 @@ export function ShortInterestSurface({ nested = false, ...props }: Pick<PaneProp
 }) {
   const { ticker } = usePaneTickerIdentity();
   const tw = ticker && taiwanListing(ticker.metadata.ticker, ticker.metadata.exchange);
+  const jp = ticker && jpxSymbol(ticker.metadata.ticker, ticker.metadata.exchange);
   const hk = ticker && sfcSymbol(ticker.metadata.ticker, ticker.metadata.exchange);
+  const listing = tw || (jp ? { symbol: jp, exchange: "JPX" as const } : hk ? { symbol: hk, exchange: "HKEX" as const } : null);
   const [tab, setTab] = useCommandTab("short-interest", "short-interest:tab", ["interest", "volume", "ftd", "ats"], "interest");
   const [mounted, setMounted] = useState<Set<string>>(() => new Set([tab]));
   useEffect(() => { setMounted((current) => current.has(tab) ? current : new Set([...current, tab])); }, [tab]);
@@ -45,7 +48,7 @@ export function ShortInterestSurface({ nested = false, ...props }: Pick<PaneProp
       <PaneFooterScope active={value === tab}>
         {value === "volume" ? <ShortVolumePane {...props} height={height} focused={props.focused && value === tab} />
           : value === "ftd" || value === "ats" ? <ShortSidePublicationPane {...props} kind={value} height={height} focused={props.focused && value === tab} />
-          : tw || hk ? <ExchangePositionsPane key={tw ? tw.symbol + tw.exchange : hk} symbol={tw?.symbol ?? hk!} venue={tw?.exchange ?? "HKEX"} {...props} height={height} focused={props.focused && value === tab} />
+          : listing ? <ExchangePositionsPane key={listing.symbol + listing.exchange} symbol={listing.symbol} venue={listing.exchange} {...props} height={height} focused={props.focused && value === tab} />
           : <ShortInterestView {...props} height={height} focused={props.focused && value === tab} />}
       </PaneFooterScope>
     </Box> : null)}

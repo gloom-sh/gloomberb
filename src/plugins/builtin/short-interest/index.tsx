@@ -91,7 +91,7 @@ export const shortInterestModule: PluginModule = {
         paneId: "short-interest",
         label: "Short Interest",
         // The current snapshot only carries the current and prior settlement dates.
-        description: "US FINRA settlements, Hong Kong reportable positions and Taiwan daily short sale balances.",
+        description: "US FINRA settlements, Hong Kong reportable positions, Japanese short seller disclosures and Taiwan short sale balances.",
         keywords: ["short", "interest", "si", "shorts", "days", "cover"],
         shortcut: "SI",
       }), "interest"),
