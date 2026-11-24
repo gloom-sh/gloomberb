@@ -34,7 +34,7 @@ const PAGES: Readonly<Record<string, (code: string) => ExchangeAnnouncementsPage
   SWX: () => ({ name: "SIX Swiss Exchange", url: "https://www.six-group.com/en/market-data/news-tools/equity-issuer-news.html" }),
   KRX: () => ({ name: "DART filings", url: "https://dart.fss.or.kr/" }),
   KOSDAQ: () => PAGES.KRX!(""),
-  TWSE: () => ({ name: "MOPS filings", url: "https://mops.twse.com.tw/mops/web/index" }),
+  TWSE: () => ({ name: "MOPS filings", url: "https://doc.twse.com.tw/server-java/t57sb01" }),
   TPEX: () => PAGES.TWSE!(""),
   NSE: () => ({ name: "NSE corporate announcements", url: "https://www.nseindia.com/companies-listing/corporate-filings-announcements" }),
   BSE: () => ({ name: "BSE corporate announcements", url: "https://www.bseindia.com/corporates/ann.html" }),
@@ -62,6 +62,7 @@ function exchangeAnnouncementsPage(symbol: string, exchange: string | null | und
  */
 export function exchangeAnnouncementsPublisher(exchange: string | null | undefined): string | null {
   const venue = canonicalExchange(exchange ?? "");
+  if (venue === "TWSE" || venue === "TPEX") return "MOPS";
   return venue === "ASX" || venue === "CXA" ? "ASX" : venue === "HKEX" ? "HKEXnews" : venue === "SWX" ? "SIX Swiss Exchange" : null;
 }
 
