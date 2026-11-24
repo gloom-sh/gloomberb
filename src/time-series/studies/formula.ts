@@ -1,4 +1,4 @@
-import { alignTimeSeries, matchedBarStart } from "../alignment";
+import { alignTimeSeries, matchedFreshBarStart } from "../alignment";
 import type { ChartStudySpec, ResolvedSeries, TimeSeriesPoint } from "../types";
 import { isFiniteNumber } from "../../utils/guards";
 import { continuousFuturesRoot, futuresContractCode, futuresContractMonth, futuresGenericListing } from "../../utils/futures-generic";
@@ -181,7 +181,7 @@ function alignedSamples(inputs: readonly (ResolvedSeries | undefined)[], summed:
     const aligned = read.map((input) => row.values[input.id]);
     if (aligned.some((entry) => !isFiniteNumber(entry?.value))) return [];
     const availability = Math.max(...aligned.map((entry) => entry!.point.availableAt?.getTime() ?? entry!.point.date.getTime()));
-    const barStart = matchedBarStart(aligned);
+    const barStart = matchedFreshBarStart(aligned);
     const values: number[] = [];
     const points: TimeSeriesPoint[] = [];
     summed.forEach((index, position) => {

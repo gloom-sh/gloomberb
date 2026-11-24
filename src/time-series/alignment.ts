@@ -65,9 +65,16 @@ export function effectiveTimeSeriesPointTime(point: TimeSeriesPoint): number {
   return isFiniteNumber(availableTime) ? Math.max(pointTime, availableTime) : pointTime;
 }
 
-export function matchedBarStart(entries: ReadonlyArray<AlignedSeriesValue | null | undefined>): number | undefined {
-  const start = entries[0]?.point.barStart?.getTime();
-  return start !== undefined && entries.every((entry) => entry && !entry.carried && entry.point.barStart?.getTime() === start) ? start : undefined;
+export function matchedFreshBarStart(entries: ReadonlyArray<AlignedSeriesValue | null | undefined>): number | undefined {
+  let start: number | undefined;
+  for (const entry of entries) {
+    if (!entry) return undefined;
+    if (entry.carried) continue;
+    const freshStart = entry.point.barStart?.getTime();
+    if (!isFiniteNumber(freshStart) || (start !== undefined && start !== freshStart)) return undefined;
+    start = freshStart;
+  }
+  return start;
 }
 
 /**

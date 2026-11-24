@@ -23,6 +23,19 @@ function formula(inputs: string[], parameters: Record<string, number>): ChartStu
   return { id: "formula", kind: "formula", inputSeriesIds: inputs, parameters, panelId: "formula", axis: "auto" };
 }
 
+function intraday(symbol: string, closes: Record<string, number>): ResolvedSeries {
+  const points = Object.entries(closes).map(([start, value]) => {
+    const date = new Date(start);
+    const end = new Date(date.getTime() + 15 * 60_000);
+    return { date, barStart: date, observedAt: date, availableAt: end, value, close: value };
+  });
+  return {
+    id: symbol, label: symbol, color: "#fff", unit: "USD", unitGroup: "price:USD",
+    nativeFrequency: "auto", historyResolution: "15m", dataShape: "ohlcv", style: "line", transform: "raw",
+    axis: "left", panelId: "main", interpolation: "none", observationKind: "market", points,
+  };
+}
+
 const HO = future("HO=F", "USD / gallon", { 1: 2.5, 2: 2.6, 3: 2.4 });
 const RB = future("RB=F", "USD / gallon", { 1: 2, 2: 2.1, 3: 2.2 });
 const CL = future("CL=F", "USD / barrel", { 1: 70, 3: 72 });
@@ -36,6 +49,43 @@ describe("formula studies", () => {
     expect(crack).toMatchObject({ label: "42×HO=F - CL=F", unit: "USD / barrel", statedUnit: "USD / barrel", unitGroup: "price:USD" });
     // CL=F has no settle on the 2nd: its 1st carries forward.
     expect(crack.points.map(({ value }) => value)).toEqual([42 * 2.5 - 70, 42 * 2.6 - 70, 42 * 2.4 - 72].map((value) => expect.closeTo(value, 9)));
+  });
+
+  test.each(["ratio", "formula"] as const)("plots a mixed-calendar intraday %s at distinct bar starts across the close and next open", (kind) => {
+    const session = intraday("IBIT", {
+      "2026-01-05T20:45:00Z": 48,
+      "2026-01-06T14:30:00Z": 54,
+    });
+    const continuous = intraday("BTC-USD", {
+      "2026-01-05T20:45:00Z": 24,
+      "2026-01-05T21:00:00Z": 16,
+      "2026-01-06T14:15:00Z": 12,
+      "2026-01-06T14:30:00Z": 18,
+    });
+    const spec = formula([session.id, continuous.id], kind === "formula" ? { weight1: 1, power2: -1 } : {});
+    const result = resolveStudies([session, continuous], [{ ...spec, kind }]);
+    const expected = [2, 3, 4, 3];
+    expect(result.errors).toEqual([]);
+    expect(result.series[0]?.points.map(({ date, barStart, availableAt, value }) => ({ date, barStart, availableAt, value }))).toEqual(
+      continuous.points.map(({ date, availableAt }, index) => ({ date, barStart: date, availableAt, value: expected[index] })),
+    );
+  });
+
+  test("plots an intraday formula at bar start when its daily step input is carried", () => {
+    const bars = intraday("INTRADAY", {
+      "2026-01-06T14:30:00Z": 20,
+      "2026-01-06T14:45:00Z": 25,
+    });
+    const date = new Date("2026-01-05");
+    const daily: ResolvedSeries = {
+      ...bars, id: "DAILY", label: "Daily", nativeFrequency: "daily", historyResolution: "1d", interpolation: "step-after",
+      points: [{ date, observedAt: date, availableAt: new Date("2026-01-05T21:00:00Z"), value: 10 }],
+    };
+    const result = resolveStudies([daily, bars], [formula([daily.id, bars.id], { weight1: 1, power2: -1 })]);
+    expect(result.errors).toEqual([]);
+    expect(result.series[0]?.points.map(({ date, barStart, availableAt, value }) => ({ date, barStart, availableAt, value }))).toEqual(
+      bars.points.map(({ date, availableAt, close }) => ({ date, barStart: date, availableAt, value: 10 / close! })),
+    );
   });
 
   test("a crack priced in crude's month takes the products' next month between the rolls, and rolls once", () => {
