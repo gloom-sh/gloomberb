@@ -283,9 +283,14 @@ test("fn of a function that reads a company by symbol reads a moved one as its n
   expect(JSON.stringify(board.printed!.result.data)).toContain("DINO");
   expect(JSON.stringify(board.printed!.result.data)).not.toContain("36.39");
   // A pane that shows one ticker refuses it, with the code as typed: DES is Ticker Research's alias of T.
-  for (const code of ["DES", "T"]) {
-    const { error } = await runFn([code, "HFC"]);
-    expect((error as Error).message, code).toBe(`HFC became DINO on 2022-03-15: \`gloom fn ${code} DINO\``);
+  const render = spyOn(paneShot, "renderDesktopPaneScreenshot").mockRejectedValue(new Error("Listing unavailable"));
+  try {
+    for (const code of ["DES", "T"]) {
+      const { error } = await runFn([code, "HFC"]);
+      expect((error as Error).message, code).toBe(`HFC became DINO on 2022-03-15: \`gloom fn ${code} DINO\``);
+    }
+  } finally {
+    render.mockRestore();
   }
 });
 

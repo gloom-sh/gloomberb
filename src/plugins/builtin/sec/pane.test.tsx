@@ -465,12 +465,22 @@ test("a company listed abroad is looked up by the SEC, and one that files nothin
   expect(secModule.paneTemplates![0]!.canCreate?.({} as never, { ticker: createTestTicker("8058:JPX", "Mitsubishi Corporation", firstListing) } as never))
     .toBe(true);
   const filings: string[] = [];
-  await mount(createTestDataProvider({ getSecFilings: async (symbol) => { filings.push(symbol); return []; } }));
-  const shown = (await tui.waitForFrameToContain("files no SEC reports")).replace(/\s+/g, " ");
-  // The harness names the ticker by its key; `filings` prints the same line.
-  expect(shown).toContain("8058:JPX (JPX) files no SEC reports. TDnet timely disclosures: release.tdnet.info");
-  expect(filings).toEqual(["8058:JPX"]);
-  expect(footer.menu?.map((item) => ("label" in item ? item.label : null))).toEqual(["Open release.tdnet.info"]);
+  const exchange = spyOn(apiClient, "getCloudExchangeAnnouncements").mockResolvedValue({
+    exchange: "JPX", symbol: "8058", name: "Mitsubishi Corporation",
+    page: "https://www.release.tdnet.info/inbs/I_main_00.html", announcements: [], total: 0,
+    retrievedAt: "2026-11-20T07:00:00Z",
+  });
+  try {
+    await mount(createTestDataProvider({ getSecFilings: async (symbol) => { filings.push(symbol); return []; } }));
+    const shown = (await tui.waitForFrameToContain("files no SEC reports")).replace(/\s+/g, " ");
+    // The harness names the ticker by its key; `filings` prints the same line.
+    expect(shown).toContain("8058:JPX (JPX) files no SEC reports. TDnet timely disclosures: release.tdnet.info");
+    expect(filings).toEqual(["8058:JPX"]);
+    expect(footer.menu?.map((item) => ("label" in item ? item.label : null))).toEqual(["Open release.tdnet.info"]);
+    expect(exchange).toHaveBeenCalledWith({ symbol: "8058:JPX", exchange: "JPX", limit: 50 });
+  } finally {
+    exchange.mockRestore();
+  }
 });
 
 test("a Hong Kong spot coin fund shows its issuer's figures in its counter's currency, with units per coin", async () => {

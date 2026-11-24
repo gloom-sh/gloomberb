@@ -3,6 +3,8 @@ import type {
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
+import { disclosureListing } from "../../../api-client/ownership-disclosures";
+import { disclosureReport } from "./disclosures";
 import { loadHolderSnapshot } from "./client";
 import { holderValueCurrency } from "./format";
 import { logFailure } from "../../../utils/log-failure";
@@ -142,9 +144,9 @@ export function createHoldersHeadless(
       },
       {
         key: "view",
-        description: "Rendered pane view: the holder table, the ownership treemap or the 13D/13G beneficial owners.",
+        description: "Rendered pane view: the holder table, the ownership treemap, 13D/13G beneficial owners, or ownership disclosures for Korea and Taiwan.",
         type: "enum",
-        values: [{ value: "table" }, { value: "chart" }, { value: "13dg", aliases: ["beneficial"] }],
+        values: [{ value: "table" }, { value: "chart" }, { value: "13dg", aliases: ["beneficial"] }, { value: "disclosures" }],
         defaultValue: "table",
         pluginState: { pluginId: "ticker-research", key: "viewMode" },
       },
@@ -176,6 +178,11 @@ export function createHoldersHeadless(
     },
     async load(args, ctx) {
       const symbol = args.symbols[0]!;
+      if (args.options.view === "disclosures") {
+        const listing = disclosureListing(symbol) ?? disclosureListing(symbol, (await resolveHeadlessIssuerListing(ctx, symbol))?.exchange);
+        if (!listing) throw new Error("Ownership disclosures cover TWSE, TPEx, KRX and KOSDAQ listings.");
+        return disclosureReport(await ctx.apiClient.getOwnershipDisclosures(listing, Number(args.options.limit ?? 25), ctx.signal));
+      }
       const requestedForm = parseHolderForm(args.options.form) ?? "13f";
       // The 13D/G view reports what it shows when no form is asked for.
       const form = requestedForm === "13f" && args.options.view === "13dg" ? "all" : requestedForm;

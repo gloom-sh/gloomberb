@@ -1,3 +1,6 @@
+import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
+import { SfcPositionsPane } from "./sfc-pane";
+import { sfcSymbol } from "./sfc";
 import { useEffect, useState } from "react";
 import { Box } from "../../../ui";
 import { PaneFooterScope, usePaneFooter, usePaneTabs } from "../../../components";
@@ -14,6 +17,8 @@ export function ShortInterestSurface({ nested = false, ...props }: Pick<PaneProp
   /** Inside Ticker Research, whose own tab strip keeps h/l and the arrows. */
   nested?: boolean;
 }) {
+  const { ticker } = usePaneTickerIdentity();
+  const hk = ticker && sfcSymbol(ticker.metadata.ticker, ticker.metadata.exchange);
   const [tab, setTab] = useCommandTab("short-interest", "short-interest:tab", ["interest", "volume", "ftd", "ats"], "interest");
   const [mounted, setMounted] = useState<Set<string>>(() => new Set([tab]));
   useEffect(() => { setMounted((current) => current.has(tab) ? current : new Set([...current, tab])); }, [tab]);
@@ -38,6 +43,7 @@ export function ShortInterestSurface({ nested = false, ...props }: Pick<PaneProp
       <PaneFooterScope active={value === tab}>
         {value === "volume" ? <ShortVolumePane {...props} height={height} focused={props.focused && value === tab} />
           : value === "ftd" || value === "ats" ? <ShortSidePublicationPane {...props} kind={value} height={height} focused={props.focused && value === tab} />
+          : hk ? <SfcPositionsPane key={hk} symbol={hk} {...props} height={height} focused={props.focused && value === tab} />
           : <ShortInterestView {...props} height={height} focused={props.focused && value === tab} />}
       </PaneFooterScope>
     </Box> : null)}

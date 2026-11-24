@@ -862,6 +862,8 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
    * in the US never shows that company's numbers.
    */
   usListingsOnly?: string;
+  /** Home venues where the function has its own local source. */
+  additionalListingVenues?: readonly string[];
   /**
    * The data covers US over-the-counter lines too (FINRA's short interest
    * and weekly off-exchange volume, the SEC's fails to deliver, daily

@@ -625,7 +625,7 @@
           {
             "code": "SEC",
             "name": "SEC",
-            "description": "Recent SEC filings for the selected ticker."
+            "description": "SEC filings and covered exchange disclosures for the selected ticker."
           },
           {
             "code": "ETF",
@@ -1299,7 +1299,7 @@
           {
             "code": "SI",
             "name": "Short Interest",
-            "description": "Bi-monthly short interest settlements from FINRA with days to cover and average daily volume. Daily volume, fails to deliver and weekly ATS/OTC volume share the pane."
+            "description": "US FINRA settlements and Hong Kong SFC weekly reportable short positions."
           },
           {
             "code": "SIV",

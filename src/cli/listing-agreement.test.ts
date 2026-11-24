@@ -278,8 +278,9 @@ test("a listing abroad whose US line is a receipt over the counter is offered it
   const refused = (token: string, typed: string) => runFunction(token, typed)
     .then(() => null, (error: { message: string; details?: string }) => [error.message, error.details?.split("\n")[0]]);
   try {
-    // FINRA short interest, its watch, the SEC's fails, FINRA's weekly volume and release-day closes all have TCEHY.
-    for (const [token, what] of [["SI", "FINRA short interest"], ["SIW", "FINRA short interest"], ["FTD", "SEC fails to deliver"],
+    // Hong Kong has an SFC short position series of its own. US-only datasets can still offer the receipt.
+    expect(await refused("SI", "0700:HKEX")).toBeNull();
+    for (const [token, what] of [["SIW", "FINRA short interest"], ["FTD", "SEC fails to deliver"],
       ["ATS", "FINRA weekly off-exchange volume"], ["MDAY", "Macro release day data"]] as const) {
       expect(await refused(token, "0700:HKEX"), token).toEqual([
         `${what} covers US listings only, and 0700:HKEX is Tencent Holdings on Hong Kong Stock Exchange (HKEX).`,
