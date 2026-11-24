@@ -26,7 +26,7 @@ import { nextHeaderSort } from "../../../utils/sort-values";
 import { useAssetData, usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useMineTickers } from "../shared/mine-tickers";
 import { usePaneStatusFooter, usePaneStatusLinkFooter } from "../../../components/layout/pane/status-footer";
-import { corporateSplitFactor, createFundPrefetcher, loadBrowserRows, loadFilingPositions, loadFundDetail, loadSplitFactors, type BrowserLoadResult } from "./data";
+import { corporateSplitLookup, createFundPrefetcher, loadBrowserRows, loadFilingPositions, loadFundDetail, loadSplitFactors, type BrowserLoadResult } from "./data";
 import { FundOverlapView } from "./overlap-pane";
 import { ThirteenFCrowdingPane, ThirteenFTickerHoldingsView } from "./signals-pane";
 import { PaneFooterScope, savedCopyFooterInfo } from "../../../components/layout/pane/footer";
@@ -397,7 +397,7 @@ export function FundDetailView({
         // The table is up already: a line that moved as across a split has no Est P&L until its corporate actions say whether one happened.
         const provider = marketDataRef.current;
         void (provider
-          ? loadSplitFactors(nextData, (ticker, after, through) => corporateSplitFactor(provider, ticker, after, through), controller.signal)
+          ? loadSplitFactors(nextData, corporateSplitLookup(provider), controller.signal)
           : Promise.resolve(new Map<string, number | null>())
         ).then((factors) => {
           if (abortRef.current === controller) setSplitFactors(factors);

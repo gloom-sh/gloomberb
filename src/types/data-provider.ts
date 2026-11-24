@@ -11,6 +11,7 @@ import type {
   PricePoint,
   OptionsChain,
   HolderData,
+  SplitHistory,
 } from "./financials";
 import type { TimeRange } from "../time-series/range";
 import type { ChartResolutionSupport, ManualChartResolution } from "../time-series/resolution";
@@ -385,6 +386,13 @@ export interface AssetDataProvider {
   getHolders?(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<HolderData>;
   getAnalystResearch?(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<AnalystResearchData>;
   getCorporateActions?(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<CorporateActionsData>;
+  /**
+   * The share splits of several bare symbols in a few requests, and nothing
+   * else of their corporate actions, by symbol as asked: null for one the
+   * source holds no split history for. A symbol the source could not answer
+   * for is left out; null when the source cannot answer a batch at all.
+   */
+  getSplitHistoryBatch?(symbols: string[], options?: { signal?: AbortSignal }): Promise<Map<string, SplitHistory | null> | null>;
   /**
    * A US symbol's changes: where the issuer that held it trades now (FB is
    * META), or what its holder was called before. Null when none is on record.
