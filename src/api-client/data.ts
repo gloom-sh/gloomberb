@@ -1,3 +1,4 @@
+import type { TaiwanShortBalances, TaiwanVenue } from "./taiwan-short-balances";
 import type { SfcShortPositions } from "./sfc-short-positions";
 import type { AttentionPayload, AttentionWindow } from "./attention";
 import type { HiringBoard, HiringBuildingBoard, HiringBuildingFilter, HiringCompanyBuilding, HiringCompanyMoves, HiringCompanySignals, HiringMovesBoard, HiringMovesFilter, HiringPayload, HiringSignalGroup, HiringSignalsBoard, HiringSignalsFilter } from "./hiring";
@@ -749,6 +750,14 @@ export class CloudDataApi {
     exchange?: string,
   ): Promise<CloudMarketResponse<CloudAnalystResearchPayload>> {
     return this.requestMarketSymbol("/market/analyst", symbol, exchange);
+  }
+
+  async getTaiwanShortBalances(symbol: string, exchange: TaiwanVenue, asOf?: string): Promise<TaiwanShortBalances> {
+    const params = new URLSearchParams({ symbol, exchange });
+    if (asOf) params.set("asOf", asOf);
+    const response = await this.request<CloudMarketResponse<TaiwanShortBalances>>(`/market/taiwan-short-balances?${params}`);
+    if (!response.data) throw new Error(response.message || "Taiwan short sale balances unavailable.");
+    return response.data;
   }
 
   async getSfcShortPositions(symbol: string, asOf?: string): Promise<SfcShortPositions> {
