@@ -587,13 +587,7 @@ export const alertsPlugin: GloomPlugin = {
           const result = readings.get(alert.id);
           if (!result || result.armedAt !== (alert.armedAt ?? alert.createdAt)) continue;
           const reading = result.reading;
-          if (typeof reading !== "string" && reading.day && reading.day === alert.lastDailyClose && !alert.lastCheckError) {
-            if (reading.ratioInputs && !alert.lastRatioInputs && reading.value === alert.lastCheckedPrice) {
-              alert.lastRatioInputs = metricReadingFields(reading, Date.now()).lastRatioInputs;
-              changed = true;
-            }
-            continue;
-          }
+          if (typeof reading !== "string" && reading.day && reading.day === alert.lastDailyClose && !alert.lastCheckError) continue;
           if (typeof reading === "string" && reading === alert.lastCheckError) continue;
           if (typeof reading === "string") Object.assign(alert, quoteErrorAlertFields(reading));
           else {
