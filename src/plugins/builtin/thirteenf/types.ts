@@ -15,6 +15,13 @@ export interface ThirteenFTopFund {
   name: string;
   periodOfReport: string;
   pnl: number | null;
+  reportedValue?: {
+    value: number | null;
+    entries: number | null;
+    filed: string;
+    through: string;
+    complete: boolean;
+  };
 }
 
 export interface ThirteenFFormSummary {
@@ -78,6 +85,7 @@ export interface FundBrowserRow {
   tableValueTotal?: number | null;
   tableEntryTotal?: number | null;
   estQuarterReturn?: number | null;
+  rankedByReportedValue?: boolean;
   priorReturns?: Array<{ quarter: string; value: number | null }>;
   source: "funds" | "performance" | "ticker" | "latest";
 }

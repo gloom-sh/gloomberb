@@ -169,12 +169,21 @@ async function loadBrowserPage(
   const pageApiOptions = { ...apiOptions, offset };
 
   if (tab === "performance") {
+    const topFunds = await listTopThirteenFFunds(quarter, browserLimit, signal, pageApiOptions);
+    const reported = topFunds[0]?.reportedValue;
+    if (reported) {
+      const through = reported.through ? ` · through ${reported.through}` : "";
+      return {
+        rows: buildBrowserRows({ topFunds, source: "performance" }),
+        quarter,
+        period: topFunds[0]?.periodOfReport,
+        hasMore: topFunds.length >= browserLimit,
+        nextOffset: offset + topFunds.length,
+        warning: `Ranked by reported value${through}${reported.complete ? "" : " · still indexing"}`,
+      };
+    }
     const quarters = priorQuarters(quarter);
-    // The prior quarters' rankings do not depend on this page, so they are read beside it.
-    const [topFunds, history] = await Promise.all([
-      listTopThirteenFFunds(quarter, browserLimit, signal, pageApiOptions),
-      loadRankingHistory(quarters, signal, apiOptions),
-    ]);
+    const history = await loadRankingHistory(quarters, signal, apiOptions);
     const funds: ThirteenFFund[] = topFunds.map((fund) => ({ cik: fund.cik, name: fund.name }));
     const rows = buildBrowserRows({ topFunds, source: "performance" }).map(row => ({ ...row, priorReturns: quarters.map((previous, index) => ({ quarter: previous, value: history[index]?.get(row.cik) ?? null })) }));
     const result: BrowserLoadResult = {
@@ -536,7 +545,7 @@ export async function loadFundPerformance(
     loadRankingHistory(quarters, signal, apiOptions),
   ]);
   const own = ranked?.find((fund) => fund.cik === detail.cik && fund.periodOfReport === period);
-  const ranking = !quarter ? null : !ranked ? "unavailable" : own ? "ranked" : "unranked";
+  const ranking = !quarter ? null : !ranked || ranked[0]?.reportedValue ? "unavailable" : own ? "ranked" : "unranked";
   // A line that moved as across a split is priced by its corporate actions: split-adjusted, as a trade, or left out unread.
   const factors: SplitFactors = own?.pnl != null || !options.splitFactor ? new Map() : await loadSplitFactors(detail, options.splitFactor, signal, { budgetMs: options.splitBudgetMs });
   const filed = own?.pnl != null ? null : estimateFilingQuarterReturn(detail, factors);

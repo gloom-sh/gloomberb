@@ -322,12 +322,12 @@ function thirteenFTitle(args: HeadlessPaneLoadArgs, metadata: Record<string, unk
 }
 
 /** The browser's columns: the performance list's prior quarters in place of Rows and Filed when it has them, and Est 13F on it alone. */
-function browserColumns(tab: ThirteenFBrowserTab, rows: readonly { priorReturns?: Array<{ quarter: string }> }[]): HeadlessPaneColumn[] {
+function browserColumns(tab: ThirteenFBrowserTab, rows: readonly { priorReturns?: Array<{ quarter: string }>; rankedByReportedValue?: boolean }[]): HeadlessPaneColumn[] {
   const history = rows[0]?.priorReturns ?? [];
   if (history.length) {
     return [...BROWSER_COLUMNS.filter(column => !["filedAsOfDate", "tableEntryTotal"].includes(column.key)), ...history.map((point, index) => ({ key: `return${index + 1}`, header: point.quarter, align: "right" as const, format: (value: unknown) => formatRawPercentMaybe(typeof value === "number" ? value : null) }))];
   }
-  return tab === "performance" ? BROWSER_COLUMNS : BROWSER_COLUMNS.filter(column => column.key !== "estQuarterReturn");
+  return tab === "performance" && !rows[0]?.rankedByReportedValue ? BROWSER_COLUMNS : BROWSER_COLUMNS.filter(column => column.key !== "estQuarterReturn");
 }
 
 /** `2026-03-31 and 2026-06-30`: the two quarter ends a fund's own estimate compares. */
@@ -945,7 +945,8 @@ export function createThirteenFHeadless(
         await result.reportsLoaded;
       }
       const more = result.hasMore || result.rows.length > rowLimit;
-      const browserRows = sortBrowserRows(result.rows, browserSortFor(DEFAULT_BROWSER_SORT, tab)).slice(0, rowLimit);
+      const rankedByReportedValue = !!result.rows[0]?.rankedByReportedValue;
+      const browserRows = sortBrowserRows(result.rows, browserSortFor(DEFAULT_BROWSER_SORT, tab, rankedByReportedValue)).slice(0, rowLimit);
       const warning = [tickerFailure, result.warning].filter(Boolean).join(" ") || undefined;
       // A search finds managers behind on their filings. EDGAR says whether one filed a 13F-NT, whose holdings another manager reported.
       const lagging = tab === "funds" ? browserRows.filter((row) => filingGapFor(row.periodOfReport, null)) : [];

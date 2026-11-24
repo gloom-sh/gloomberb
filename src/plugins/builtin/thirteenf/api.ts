@@ -361,7 +361,14 @@ function mapTopFund(raw: any): ThirteenFTopFund | null {
     cik,
     name,
     periodOfReport,
-    pnl: finiteOrNull(raw.pnl),
+    pnl: raw.ranking_basis === "reported_value" ? null : finiteOrNull(raw.pnl),
+    ...(raw.ranking_basis === "reported_value" ? { reportedValue: {
+      value: finiteOrNull(raw.table_value_total),
+      entries: finiteOrNull(raw.table_entry_total),
+      filed: stringOrEmpty(raw.filed_as_of_date),
+      through: stringOrEmpty(raw.filings_through),
+      complete: raw.ranking_complete === true,
+    } } : {}),
   };
 }
 

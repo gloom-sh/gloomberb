@@ -30,6 +30,27 @@ afterEach(() => {
   resetThirteenFApiPersistence();
 });
 
+test("the filing value fallback keeps the current quarter's totals without inventing returns", async () => {
+  const paths: string[] = [];
+  setHttpFetchTransport(async (url) => {
+    const request = new URL(String(url));
+    paths.push(request.pathname);
+    if (request.searchParams.get("quarter") !== "2026Q2") return json([]);
+    return json([{
+      cik: "42", name: "Fresh Filing", period_of_report: "2026-06-30",
+      table_value_total: 345000000, table_entry_total: 72, ranking_basis: "reported_value", pnl: 100,
+      filed_as_of_date: "2026-08-23", ranking_complete: false, filings_through: "2026-08-24",
+    }]);
+  });
+  const result = await loadBrowserRows("performance", "");
+  expect(result.rows[0]).toMatchObject({
+    cik: "0000000042", tableValueTotal: 345000000, tableEntryTotal: 72, estQuarterReturn: null,
+    filedAsOfDate: "2026-08-23", rankedByReportedValue: true,
+  });
+  expect(result.warning).toContain("still indexing");
+  expect(paths).toEqual(["/cloud/sec/13f/topfunds"]);
+});
+
 describe("13F data cache", () => {
   test("all browser entry points reconcile additions and restatements without borrowing another period", async () => {
     const forms: any[] = [

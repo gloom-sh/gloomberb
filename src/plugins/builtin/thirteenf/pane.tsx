@@ -178,15 +178,16 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
     if (!showTickerHoldings) handleRefreshKey(event, browser.reload, { stopPropagation: true });
   }, { allowEditable: true });
 
-  const browserSort = useMemo(() => browserSortFor(sortPreference, browserMode), [sortPreference, browserMode]);
+  const rankedByReportedValue = browserMode === "performance" && !!rows[0]?.rankedByReportedValue;
+  const browserSort = useMemo(() => browserSortFor(sortPreference, browserMode, rankedByReportedValue), [sortPreference, browserMode, rankedByReportedValue]);
   // The rows' reports fill the rows in place after their page answers (from the network or a saved copy);
   // a row the table drew before then is drawn again only as a new object.
   const sortedRows = useMemo(() => sortBrowserRows(rows.map((row) => ({ ...row })), browserSort), [rows, browserSort, reportPaint]);
   const columns = useMemo(() => {
-    if (browserMode !== "performance") return buildBrowserColumns(false);
+    if (browserMode !== "performance" || rankedByReportedValue) return buildBrowserColumns(false);
     const history = rows[0]?.priorReturns ?? [];
     return [...buildBrowserColumns().filter(column => !["rows", "filed"].includes(column.id)), ...history.map((point, index) => ({ id: `return${index + 1}` as FundBrowserColumnId, label: point.quarter, width: 10, align: "right" as const, omitWhenEmpty: true }))];
-  }, [browserMode, rows]);
+  }, [browserMode, rows, rankedByReportedValue]);
 
   useEffect(() => {
     if (selectedId && sortedRows.some((row) => row.id === selectedId)) return;
