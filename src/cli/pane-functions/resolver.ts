@@ -343,7 +343,10 @@ export async function applyListingArgument(
     refused.push(...refusals.map(({ listing, refusal }) => ({ symbol: listing.key, reason: refusal.message })));
   }
   const usOnly = headless?.usListingsOnly;
-  const abroad = usOnly ? listings.filter((listing) => listingAbroadVenue(listing.key) != null) : [];
+  const abroad = usOnly ? listings.filter((listing) => {
+    const venue = listingAbroadVenue(listing.key);
+    return venue && !headless?.additionalListingVenues?.includes(venue);
+  }) : [];
   if (usOnly && abroad.length > 0) {
     const answers = await Promise.all(abroad.map(async (listing) => {
       const answer = await usListingsOnlyMessage(usOnly, listing, context, (key) => `gloom ${command} ${token} ${key}`,
