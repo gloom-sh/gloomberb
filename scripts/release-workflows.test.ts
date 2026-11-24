@@ -13,12 +13,24 @@ interface Step {
   with?: Record<string, unknown>;
 }
 interface Workflow {
+  on?: { workflow_call?: { secrets?: Record<string, unknown> } };
   permissions?: Permissions;
-  jobs: Record<string, { permissions?: Permissions; steps?: Step[] }>;
+  jobs: Record<string, {
+    permissions?: Permissions;
+    environment?: string;
+    "runs-on"?: string;
+    strategy?: { matrix?: { include?: Array<{ os?: string }> } };
+    secrets?: Record<string, string>;
+    steps?: Step[];
+  }>;
+}
+
+function workflowText(name: string): string {
+  return readFileSync(resolve(import.meta.dir, `../.github/workflows/${name}.yml`), "utf8");
 }
 
 function workflow(name: string): Workflow {
-  return Bun.YAML.parse(readFileSync(resolve(import.meta.dir, `../.github/workflows/${name}.yml`), "utf8")) as Workflow;
+  return Bun.YAML.parse(workflowText(name)) as Workflow;
 }
 
 function writes(permissions: Permissions, scope: string): boolean {
@@ -78,6 +90,39 @@ test("each build job attests the files it uploads for publishing right before th
     const attest = steps[index - 1]!;
     expect({ job, attest: attest.uses?.split("@")[0], subject: attest.with?.["subject-path"], if: attest.if, uploadIf: upload.if })
       .toEqual({ job, attest: "actions/attest", subject: upload.with?.path, if: undefined, uploadIf: undefined });
+  }
+});
+
+// Windows blocks an unsigned program with no way past it. Signing stays off
+// until the signing environment names a certificate profile, so no pull
+// request runs it: this holds its place. Every job that builds for Windows
+// takes the environment the macOS app is signed in, sets signing up before
+// its build signs, and checks what it ships before attesting it.
+test("every Windows build signs in the signing environment and checks its files are signed before attesting them", () => {
+  const windows = Object.entries(build.jobs).filter(([, job]) =>
+    [job["runs-on"], ...(job.strategy?.matrix?.include ?? []).map((entry) => entry.os)].some((os) => os?.startsWith("windows")));
+  expect(windows.map(([job]) => job)).toEqual(["build-windows", "desktop-windows"]);
+  for (const [job, { environment, steps = [] }] of windows) {
+    expect({ job, environment }).toEqual({ job, environment: build.jobs["desktop-macos"]!.environment });
+    const setup = steps.findIndex((step) => step.uses === "./.github/actions/windows-signing");
+    const built = steps.findIndex((step) => /scripts\/build\.ts|build-windows-desktop-package\.ps1/.test(step.run ?? ""));
+    const checked = steps.findIndex((step) => step.run?.startsWith("bun scripts/windows-signing.ts check "));
+    const attested = steps.findIndex((step) => step.uses?.startsWith("actions/attest@"));
+    expect({ job, order: setup !== -1 && setup < built && built < checked && checked < attested }).toEqual({ job, order: true });
+    expect({ job, checkIf: steps[checked]!.if }).toEqual({ job, checkIf: `\${{ steps.${steps[setup]!.id}.outputs.enabled == 'true' }}` });
+  }
+});
+
+// A called workflow reads a secret, even one its job's environment holds, only
+// when the caller passes it by name; one not passed is an empty string, with
+// no error, and a release would sign with nothing.
+test("both callers pass every secret the build workflow reads", () => {
+  const read = [...new Set([...workflowText("build-release-assets").matchAll(/\bsecrets\.([A-Z][A-Z0-9_]*)/g)].map((match) => match[1]!))].sort();
+  expect(read).toEqual(expect.arrayContaining(["AZURE_CLIENT_ID", "AZURE_TENANT_ID"]));
+  expect(Object.keys(build.on?.workflow_call?.secrets ?? {}).sort()).toEqual(read);
+  for (const [name, caller] of [["release", release], ["nightly", nightly]] as const) {
+    const passed = caller.jobs.build!.secrets ?? {};
+    expect({ name, passed }).toEqual({ name, passed: Object.fromEntries(read.map((secret) => [secret, `\${{ secrets.${secret} }}`])) });
   }
 });
 

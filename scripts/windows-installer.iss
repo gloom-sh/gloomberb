@@ -52,6 +52,13 @@ SetupLogging=yes
 SetupIconFile={#SourceDir}\Resources\gloomberb-logo.ico
 WizardStyle=modern
 ChangesEnvironment=yes
+#ifdef SignSetup
+; A release's setup is signed, with the copy of Inno's engine it runs from the
+; temp folder: Windows' Smart App Control blocks that copy unsigned, with no
+; way past it. scripts/build-windows-installer.ps1 defines the Sign Tool.
+SignTool=gloomsign
+SignedUninstaller=yes
+#endif
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

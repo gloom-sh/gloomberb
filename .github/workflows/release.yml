@@ -42,6 +42,11 @@ jobs:
       ELECTROBUN_APPLEAPIKEY_BASE64: ${{ secrets.ELECTROBUN_APPLEAPIKEY_BASE64 }}
       ELECTROBUN_APPLEAPIISSUER: ${{ secrets.ELECTROBUN_APPLEAPIISSUER }}
       ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}
+      # Windows signing's, kept in the signing environment, which the Windows
+      # build jobs take: a called workflow gets an environment's secret only
+      # when its caller passes it by name.
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
   # Every plugin the registry lists has to load in what was built, in a job
   # with no secrets. A host that does not serve what plugins import holds the
