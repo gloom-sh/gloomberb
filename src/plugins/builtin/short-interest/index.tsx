@@ -1,4 +1,4 @@
-import { taiwanListing } from "./taiwan";
+import { balanceListing } from "./exchange-balances";
 import { jpxSymbol } from "./jpx";
 import { sfcSymbol } from "./sfc";
 import type { PluginModule } from "../plugin-module";
@@ -43,7 +43,7 @@ export const shortInterestModule: PluginModule = {
       order: 36,
       component: ShortInterestResearchTab,
       instruments: ["equity"],
-      isVisible: ({ ticker }) => !isKnownNonUsListing(ticker) || (!!ticker && (!!sfcSymbol(ticker.metadata.ticker, ticker.metadata.exchange) || !!jpxSymbol(ticker.metadata.ticker, ticker.metadata.exchange) || !!taiwanListing(ticker.metadata.ticker, ticker.metadata.exchange))),
+      isVisible: ({ ticker }) => !isKnownNonUsListing(ticker) || (!!ticker && (!!sfcSymbol(ticker.metadata.ticker, ticker.metadata.exchange) || !!jpxSymbol(ticker.metadata.ticker, ticker.metadata.exchange) || !!balanceListing(ticker.metadata.ticker, ticker.metadata.exchange))),
     });
   },
 
@@ -92,7 +92,7 @@ export const shortInterestModule: PluginModule = {
         paneId: "short-interest",
         label: "Short Interest",
         // The current snapshot only carries the current and prior settlement dates.
-        description: "US FINRA settlements, Hong Kong reportable positions, Japanese short seller disclosures and Taiwan short sale balances.",
+        description: "US FINRA settlements, Hong Kong reportable positions, Japanese short seller disclosures, Korean net short positions and daily Taiwan and mainland China lending data.",
         keywords: ["short", "interest", "si", "shorts", "days", "cover"],
         shortcut: "SI",
       }), "interest"),

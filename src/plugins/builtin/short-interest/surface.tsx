@@ -1,5 +1,5 @@
 import { jpxSymbol } from "./jpx";
-import { taiwanListing } from "./taiwan";
+import { balanceListing } from "./exchange-balances";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { ExchangePositionsPane } from "./exchange-positions-pane";
 import { sfcSymbol } from "./sfc";
@@ -20,10 +20,10 @@ export function ShortInterestSurface({ nested = false, ...props }: Pick<PaneProp
   nested?: boolean;
 }) {
   const { ticker } = usePaneTickerIdentity();
-  const tw = ticker && taiwanListing(ticker.metadata.ticker, ticker.metadata.exchange);
+  const balances = ticker && balanceListing(ticker.metadata.ticker, ticker.metadata.exchange);
   const jp = ticker && jpxSymbol(ticker.metadata.ticker, ticker.metadata.exchange);
   const hk = ticker && sfcSymbol(ticker.metadata.ticker, ticker.metadata.exchange);
-  const listing = tw || (jp ? { symbol: jp, exchange: "JPX" as const } : hk ? { symbol: hk, exchange: "HKEX" as const } : null);
+  const listing = balances || (jp ? { symbol: jp, exchange: "JPX" as const } : hk ? { symbol: hk, exchange: "HKEX" as const } : null);
   const [tab, setTab] = useCommandTab("short-interest", "short-interest:tab", ["interest", "volume", "ftd", "ats"], "interest");
   const [mounted, setMounted] = useState<Set<string>>(() => new Set([tab]));
   useEffect(() => { setMounted((current) => current.has(tab) ? current : new Set([...current, tab])); }, [tab]);

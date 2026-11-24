@@ -1299,7 +1299,7 @@
           {
             "code": "SI",
             "name": "Short Interest",
-            "description": "US FINRA settlements, Hong Kong reportable positions, Japanese short seller disclosures and Taiwan short sale balances."
+            "description": "US FINRA settlements, Hong Kong reportable positions, Japanese short seller disclosures, Korean net short positions and daily Taiwan and mainland China lending data."
           },
           {
             "code": "SIV",
