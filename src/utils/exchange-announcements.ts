@@ -38,6 +38,8 @@ const PAGES: Readonly<Record<string, (code: string) => ExchangeAnnouncementsPage
   TPEX: () => PAGES.TWSE!(""),
   NSE: () => ({ name: "NSE corporate announcements", url: "https://www.nseindia.com/companies-listing/corporate-filings-announcements" }),
   BSE: () => ({ name: "BSE corporate announcements", url: "https://www.bseindia.com/corporates/ann.html" }),
+  SSE: () => ({ name: "CNINFO filings", url: "https://www.cninfo.com.cn/new/index" }),
+  SZSE: () => PAGES.SSE!(""),
   SGX: () => ({ name: "SGX company announcements", url: "https://www.sgx.com/securities/company-announcements" }),
   SET: () => ({ name: "SET company news", url: "https://www.set.or.th/en/market/news-and-alert/news" }),
   // The Public Disclosure Platform, where every Borsa Istanbul company files its disclosures.
@@ -55,6 +57,11 @@ function exchangeAnnouncementsPage(symbol: string, exchange: string | null | und
   return page && code ? page(code) : null;
 }
 
+const PUBLISHERS: Readonly<Record<string, string>> = {
+  ASX: "ASX", CXA: "ASX", HKEX: "HKEXnews", SWX: "SIX Swiss Exchange",
+  KRX: "DART", KOSDAQ: "DART", SGX: "SGX", SSE: "CNINFO", SZSE: "CNINFO",
+};
+
 /**
  * Who publishes the announcements Gloom Cloud lists for a listing on this
  * venue, as a source line names them: "ASX" (and Cboe Australia's, which
@@ -62,7 +69,7 @@ function exchangeAnnouncementsPage(symbol: string, exchange: string | null | und
  */
 export function exchangeAnnouncementsPublisher(exchange: string | null | undefined): string | null {
   const venue = canonicalExchange(exchange ?? "");
-  return venue === "ASX" || venue === "CXA" ? "ASX" : venue === "HKEX" ? "HKEXnews" : venue === "SWX" ? "SIX Swiss Exchange" : null;
+  return PUBLISHERS[venue] ?? null;
 }
 
 /** Whether Gloom Cloud lists the company's announcements on this venue (ASX, HKEX). */

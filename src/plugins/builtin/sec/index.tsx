@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { PluginModule } from "../plugin-module";
 import type { SecFilingDocument, SecFilingItem } from "../../../types/data-provider";
+import { apiClient } from "../../../api-client";
+import { useAsyncResource } from "../../../public/react";
+import { localFilingListing, localFilingRows } from "./exchange-filings";
 import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery, useTickerFinancials } from "../../../market-data/hooks";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { useShortcut } from "../../../react/input";
@@ -9,7 +12,7 @@ import { logFailure } from "../../../utils/log-failure";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useDebouncedPluginPaneState, usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { usePaneSettingValue } from "../../../state/app/context";
-import { Box, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { Box, Text, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { FILL_REST } from "../../../components/ui/fill";
 import { t, tf } from "../../../i18n";
 import { EmptyState, ExternalLinkText, FeedDataTableStackView, PaneLinkMenu, QueryBar, Spinner, TickerBadgeList, usePaneNoticeFooter, useTableLoadMore, type FeedDataTableItem, type FeedDataTableTimeColumn, type PaneHint, type QueryBarFilter } from "../../../components";
@@ -359,6 +362,22 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
     () => (showSupplements || supplementCount === 0 ? scopedFilings : scopedFilings.filter((filing) => !isSupplement(filing))),
     [isSupplement, scopedFilings, showSupplements, supplementCount],
   );
+  const host = useRendererHost();
+  const local = ticker && !forms && eligibleTicker ? localFilingListing(ticker.metadata.ticker, ticker.metadata.exchange) : null;
+  const localSymbol = local?.symbol;
+  const localVenue = local?.exchange;
+  const readLocal = useCallback(() => apiClient.getCloudExchangeAnnouncements({ symbol: localSymbol!, exchange: localVenue!, limit: 50 }), [localSymbol, localVenue]);
+  const localFeed = useAsyncResource(localSymbol && localVenue ? readLocal : null);
+  const localRows = useMemo(() => localFeed.data && localVenue && formGroup === ALL_FORMS && issuerCik === ALL_FORMS
+    ? localFilingRows(localFeed.data, showSupplements) : [], [localFeed.data, localSymbol, localVenue, formGroup, issuerCik, showSupplements]);
+
+  const openLocal = localRows.find(row => `exchange:${row.url}` === openItemId);
+  const localItems: FeedDataTableItem[] = localRows.map(row => ({
+    id: `exchange:${row.url}`, title: row.filing, timestamp: row.filedAt, eyebrow: row.source,
+    detailFacts: [{ label: "Filed", value: formatFilingDate(row.filedAt) },
+      { label: "Document", value: row.source, link: { label: "Open filing", onOpen: () => void host.openExternal(row.url) } }],
+    detailMeta: [row.form, formatFilingDate(row.filedAt)],
+  }));
   const filterHistoryCapped = !!forms && issuerFilings.length >= SEC_FILING_FETCH_LIMIT;
   const [visibleCount, setVisibleCount] = useState(SEC_FILING_PAGE_SIZE);
   const visibleFilings = useMemo(() => filings.slice(0, visibleCount), [filings, visibleCount]);
@@ -375,7 +394,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   // A restored or shared open filing can sit past the first page, or be gone
   // from the feed entirely.
   useEffect(() => {
-    if (!openItemId || filings.length === 0) return;
+    if (!openItemId || openItemId.startsWith("exchange:") || filings.length === 0) return;
     const index = filings.findIndex((filing) => filing.accessionNumber === openItemId);
     if (index < 0) {
       // A pricing supplement opened from the command bar shows the supplements rather than closing.
@@ -477,6 +496,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   useShortcut((event) => {
     if (!isPlainKey(event, "r")) return;
     refresh();
+    if (localVenue) localFeed.reload();
     if (forms && eligibleTicker) reloadFacts();
   }, { enabled: focused, scope: "sec" });
   // Signing in must retry the request the wall was shown for.
@@ -487,11 +507,12 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
     refresh();
   }, [cloudSession.requestKey, refresh]);
 
+  const itemCount = visibleFilings.length + localRows.length;
   useEffect(() => {
-    if (visibleFilings.length > 0 && selectedIdx >= visibleFilings.length) {
-      setSelectedIdx(Math.max(0, visibleFilings.length - 1));
+    if (itemCount > 0 && selectedIdx >= itemCount) {
+      setSelectedIdx(Math.max(0, itemCount - 1));
     }
-  }, [selectedIdx, setSelectedIdx, visibleFilings.length]);
+  }, [selectedIdx, setSelectedIdx, itemCount]);
 
   // The pane's own ticker opens its description; a fund or equity both have one.
   const issuerTicker = useMemo(() => (ticker && paneType ? {
@@ -506,22 +527,22 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
     registrationId: "sec",
     focused,
     // A current report links its press release, where its figures are, when its index names one.
-    url: openFiling ? openFiling.pressReleaseUrl ?? openFiling.filingUrl : factsUrl ?? abroadPage ?? announcements?.url,
-    source: openFiling ? openFiling.form : facts?.covered ? listNames(fundFactPublishers(facts)) : facts?.note ? facts.note.filing.form : announcements?.name ?? null,
-    label: openFiling ? openFiling.pressReleaseUrl ? "press release" : "filing"
+    url: openLocal ? openLocal.url : openFiling ? openFiling.pressReleaseUrl ?? openFiling.filingUrl : factsUrl ?? abroadPage ?? announcements?.url,
+    source: openLocal ? openLocal.source : openFiling ? openFiling.form : facts?.covered ? listNames(fundFactPublishers(facts)) : facts?.note ? facts.note.filing.form : announcements?.name ?? null,
+    label: openLocal ? "filing" : openFiling ? openFiling.pressReleaseUrl ? "press release" : "filing"
       : factsUrl ? "source" : abroadPage ? "issuer page" : announcements ? "announcements" : "filing",
     // Rows read in the background for their insiders do not hold up the pane.
     loading: loading || loadingDocuments || (!!loadingKey && viewedTargets.some((target) => target.accessionNumber === loadingKey)),
-    error: authWall ? null : error ?? detailError,
+    error: authWall ? null : error ?? detailError ?? localFeed.error,
     hints,
-    showOpenHint: !!(openFiling ? openFiling.filingUrl : factsUrl ?? abroadPage ?? announcements),
+    showOpenHint: !!openLocal || !!(openFiling ? openFiling.filingUrl : factsUrl ?? abroadPage ?? announcements),
   });
 
   // A foreign line's filings are its company's, read from the home line.
   useCompanyDataFooter(issuerFilings[0]?.companyFrom, !openFiling);
   usePaneNoticeFooter({
     registrationId: "sec:form-filter",
-    notices: filterHistoryCapped
+    notices: localRows.length && localFeed.data?.coverage ? [localFeed.data.coverage] : filterHistoryCapped
       ? [`Only the ${SEC_FILING_FETCH_LIMIT.toLocaleString("en-US")} most recent filings of this issuer were searched; older fund filings are not listed.`]
       : [],
     focused,
@@ -605,10 +626,10 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
     )
     : body;
   if (authWall) return withFacts(<SignInWall placement="sec-signin" action="view SEC filings" needsVerification={cloudSession.needsVerification} />);
-  if (loading && filings.length === 0) return withFacts(<Spinner label="Loading SEC filings..." />);
+  if ((loading || localFeed.loading) && filings.length === 0 && !localRows.length) return withFacts(<Spinner label="Loading SEC filings..." />);
   // The fund view keeps its facts and query bar over an empty or failed filings list, which says why in the table.
-  if (!forms && error && formFilings.length === 0) return <EmptyState title="SEC filings unavailable." message={error} />;
-  if (!forms && formFilings.length === 0) {
+  if (!forms && error && formFilings.length === 0 && !localRows.length) return <EmptyState title="SEC filings unavailable." message={error} />;
+  if (!forms && formFilings.length === 0 && !localRows.length) {
     // A company from abroad that files nothing with the SEC says so and links its exchange's announcements, as `filings` does.
     if (equityAbroad) {
       const listing = { symbol: parsePublicTickerKey(ticker.metadata.ticker).symbol, exchange: equityAbroad, name: ticker.metadata.name ?? null };
@@ -637,7 +658,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
       width={width}
       height={height}
       focused={focused}
-      items={toFeedItems(
+      items={[...toFeedItems(
         colors,
         issuerTicker,
         issuers.length > 1 && issuerCik === ALL_FORMS,
@@ -651,14 +672,14 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
         contentErrors,
         previews,
         storyLinks,
-      )}
+      ), ...localItems]}
       selectedIdx={selectedIdx}
       onSelect={setSelectedIdx}
       openItemId={openItemId}
       onOpenItemIdChange={setOpenItemId}
       prefetchDetail={prefetchDocuments}
       rootBefore={factsSummary ? <Box flexDirection="column" flexShrink={0}>{queryBar}{factsSummary}</Box> : queryBar}
-      sourceLabel="Form"
+      sourceLabel={localRows.length ? "Source / form" : "Form"}
       titleLabel="Filing"
       timeColumn={FILED_COLUMN}
       emptyStateTitle={forms && formFilings.length === 0 ? fundEmptyTitle
@@ -694,7 +715,7 @@ export const secModule: PluginModule = {
         id: "sec-pane",
         paneId: "sec",
         label: "SEC",
-        description: "Recent SEC filings for the selected ticker.",
+        description: "SEC filings and covered exchange disclosures for the selected ticker.",
         keywords: ["sec", "filings", "10-k", "10-q", "8-k"],
         shortcut: "SEC",
         shortcutAliases: ["CF"],
