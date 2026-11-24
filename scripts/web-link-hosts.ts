@@ -83,6 +83,7 @@ export const WEB_LINK_ONLY_HOSTS: ReadonlySet<string> = new Set([
   "www.sedarplus.ca",
   "www.set.or.th",
   "www.sgx.com",
+  "www.six-group.com",
   "www.tcmb.gov.tr",
   "www.unternehmensregister.de",
   "www1.hkexnews.hk",
