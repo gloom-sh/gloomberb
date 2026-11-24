@@ -1,6 +1,11 @@
-import type { AppConfig, BrokerInstanceConfig } from "../types/config";
+import type { AppConfig, BrokerExcludedAccount, BrokerInstanceConfig } from "../types/config";
 import type { Portfolio, TickerRecord } from "../types/ticker";
 import { isRecord } from "../utils/guards";
+import { readExcludedAccounts } from "../brokers/account-choice";
+
+function withExcludedAccounts(excludedAccounts: BrokerExcludedAccount[] | undefined): Pick<BrokerInstanceConfig, "excludedAccounts"> {
+  return excludedAccounts ? { excludedAccounts } : {};
+}
 
 /** The entries of a pulled list that carry an id. */
 export function idEntries(entries: unknown): Array<{ id: string }> {
@@ -43,6 +48,8 @@ export function mergeBrokerInstances(
       connectionMode: instance.connectionMode ?? current?.connectionMode,
       enabled: instance.enabled ?? current?.enabled,
       lastSyncedAt: instance.lastSyncedAt ?? current?.lastSyncedAt,
+      // A device that predates the choice sends none: the one made here stays.
+      ...withExcludedAccounts(readExcludedAccounts(instance.excludedAccounts) ?? current?.excludedAccounts),
       config: current?.config ?? {},
     };
   };

@@ -1,5 +1,6 @@
 import { logFailure } from "../../../utils/log-failure";
 import { peekPersistedBrokerAccounts } from "../../../brokers/account-cache";
+import { includedBrokerAccounts } from "../../../brokers/account-choice";
 import type { AppResourceStorePort } from "../../../core/app-service-ports";
 import type { AppConfig } from "../../../types/config";
 import type { Portfolio } from "../../../types/ticker";
@@ -20,7 +21,8 @@ export function peekCachedBrokerAccounts(
   for (const instance of config.brokerInstances) {
     try {
       const accounts = peekPersistedBrokerAccounts(resources, instance);
-      if (accounts?.length) brokerAccounts[instance.id] = accounts;
+      // Without the accounts the user left out, as the app shows them.
+      if (accounts?.length) brokerAccounts[instance.id] = includedBrokerAccounts(instance, accounts);
     } catch (error) {
       // An unreadable snapshot leaves the portfolio without account figures.
       logFailure("portfolio-list.cached-account", "Read cached broker accounts failed")(error);

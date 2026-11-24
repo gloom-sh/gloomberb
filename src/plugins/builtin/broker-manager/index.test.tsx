@@ -13,6 +13,7 @@ import { appReducer, createInitialState, type AppAction, type AppState } from ".
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createDefaultConfig, type BrokerInstanceConfig } from "../../../types/config";
 import type { BrokerAdapter } from "../../../types/broker";
+import type { BrokerAccount } from "../../../types/trading";
 import { createTestBrokerAdapter, testBroker } from "../../../test-support/broker";
 import { BROKER_ADD_REQUEST_KEY, openBrokerAddFlow } from "./add-request";
 import { BrokersPane } from "./index";
@@ -48,6 +49,7 @@ const signedInBroker = createSignedInBrokerAdapter({ findBroker: () => null });
 function Harness({
   instance,
   instances = instance ? [instance] : [],
+  accounts,
   calls,
   height = 25,
   adapters = [testBroker, signedInBroker],
@@ -60,6 +62,8 @@ function Harness({
 }: {
   instance?: BrokerInstanceConfig;
   instances?: BrokerInstanceConfig[];
+  /** The first profile's accounts, as its last sync left them. */
+  accounts?: BrokerAccount[];
   calls: string[];
   height?: number;
   /** The brokers installed, for the add flow. */
@@ -85,7 +89,7 @@ function Harness({
     });
     if (instances[0]) {
       initial.brokerAccounts = {
-        [instances[0].id]: [{
+        [instances[0].id]: accounts ?? [{
           accountId: "DU12345",
           name: "DU12345",
           currency: "USD",
@@ -131,6 +135,11 @@ function Harness({
         return;
       }
       calls.push(`update:${instanceId}:${String(config.connectionMode)}`);
+      if (options?.excludedAccounts) {
+        calls.push(`left out:${options.excludedAccounts.map((entry) => `${entry.accountId}=${entry.name}`).join(",")}`);
+        const current = stateRef.current.config;
+        dispatch({ type: "SET_CONFIG", config: { ...current, brokerInstances: current.brokerInstances.map((entry) => entry.id === instanceId ? { ...entry, excludedAccounts: options.excludedAccounts } : entry) } });
+      }
     },
     removeBrokerInstance: async (instanceId) => {
       calls.push(`remove:${instanceId}`);
@@ -184,6 +193,10 @@ async function pressKeyBeforeFrame(key: Parameters<ReturnType<typeof tui.setup>[
     renderer.loop = loop;
   }
   await tui.setup().renderOnce();
+}
+
+async function pressSpace() {
+  await tui.emitKeypress({ name: "space", sequence: " " }, { frames: 2, afterCommit: true });
 }
 
 async function pressArrow(direction: "up" | "down") {
@@ -447,6 +460,45 @@ describe("BrokersPane", () => {
     });
     await pressKey("RETURN");
     expect(calls).toEqual(["update:ibkr-paper:local"]);
+  });
+
+  test("e ticks which of a profile's accounts Gloom shows; a changed choice saves and syncs, and one account must stay", async () => {
+    const calls: string[] = [];
+    const instance: BrokerInstanceConfig = {
+      id: "snaptrade", brokerType: "signed-in", label: "SnapTrade", connectionMode: "snaptrade", config: { broker: "snaptrade" }, enabled: true,
+      excludedAccounts: [{ accountId: "ST-HSA", name: "HSA ····6604" }],
+    };
+    const accounts = [
+      { accountId: "ST-IND", name: "Individual ····4410", currency: "USD" },
+      { accountId: "ST-IRA", name: "Roth IRA ····2207", currency: "USD" },
+    ];
+    await tui.render(<Harness calls={calls} instance={instance} accounts={accounts} height={30} />, { width: 92, height: 30 });
+    await settle();
+    await pressKey("RETURN");
+    expect(frame()).toContain("1 account left out of Gloom");
+
+    await pressKey("e");
+    await pressKey("TAB");
+    await pressKey("TAB");
+    expect(frameLine("Individual")).toContain("> [✓] Individual ····4410");
+    await pressSpace();
+    expect(frameLine("Individual")).toContain("[ ] Individual ····4410");
+
+    // Leaving out every account is turning the profile off: the form says so and saves nothing.
+    await pressKey("TAB");
+    await pressSpace();
+    await pressKey("RETURN");
+    await settle();
+    expect(frame().replace(/\s+/g, " ")).toContain("Keep at least one account, or disable the profile.");
+    expect(calls).toEqual([]);
+
+    await pressSpace();
+    await pressKey("TAB");
+    expect(frameLine("HSA")).toContain("> [ ] HSA ····6604");
+    await pressSpace();
+    await pressKey("RETURN");
+    await settle();
+    expect(calls).toEqual(["update:snaptrade:undefined", "left out:ST-IND=Individual ····4410", "sync:snaptrade"]);
   });
 
   test("d confirms in the central modal, removes the profile though Gloom cannot disconnect it, and selects the next one", async () => {

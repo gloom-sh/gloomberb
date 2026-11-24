@@ -145,6 +145,8 @@ export function sanitizeBrokerInstance(instance: BrokerInstanceConfig): Omit<Bro
     connectionMode: instance.connectionMode,
     enabled: instance.enabled,
     lastSyncedAt: instance.lastSyncedAt,
+    // Which accounts the user keeps follows the profile to every device.
+    excludedAccounts: instance.excludedAccounts,
   };
 }
 

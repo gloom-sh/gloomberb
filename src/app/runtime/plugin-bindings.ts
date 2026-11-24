@@ -4,7 +4,13 @@ import {
   clearPersistedBrokerAccounts,
   getBrokerAccountCacheSourceKey,
 } from "../../brokers/account-cache";
-import { accountsShownFor, clearLeftoverBrokerHoldings, findPortfolioHeir, knownBrokerHoldings } from "../../brokers/broker-portfolio-sync";
+import {
+  accountsShownFor,
+  clearLeftoverBrokerHoldings,
+  findPortfolioHeir,
+  knownBrokerHoldings,
+  withoutExcludedAccountPortfolios,
+} from "../../brokers/broker-portfolio-sync";
 import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import type { MarketDataCoordinator } from "../../market-data/coordinator";
 import { instrumentFromTicker } from "../../market-data/request-types";
@@ -165,6 +171,7 @@ export function bindPluginRegistryRuntimeAccess({
               connectionMode: typeof nextValues.connectionMode === "string" ? nextValues.connectionMode : instance.connectionMode,
               config: nextValues,
               ...(localOnly ? { localOnly: true } : {}),
+              ...(options.excludedAccounts ? { excludedAccounts: options.excludedAccounts } : {}),
             };
           })()
           : instance,
@@ -178,10 +185,12 @@ export function bindPluginRegistryRuntimeAccess({
       if (shouldClearBrokerAccounts) {
         clearPersistedBrokerAccounts(pluginRegistry.persistence.resources, currentInstance);
       }
-      const nextConfig = {
+      const updatedConfig = {
         ...stateRef.current.config,
         brokerInstances: nextInstances,
       };
+      // The portfolios of accounts just left out go now, not only once the profile syncs.
+      const nextConfig = options.excludedAccounts ? withoutExcludedAccountPortfolios(updatedConfig, instanceId) : updatedConfig;
       dispatch({ type: "SET_CONFIG", config: nextConfig });
       await saveConfigImmediately(nextConfig);
       pluginRegistry.events.emit("config:changed", { config: nextConfig });

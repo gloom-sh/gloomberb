@@ -20,6 +20,7 @@ import type {
   BrokerPortfolioPerformance,
   BrokerTradingCapabilities,
 } from "../../types/trading";
+import { excludedAccountIds } from "../account-choice";
 import { findSignedInBroker, refreshSignedInBrokersAndWait } from "./catalog";
 import type { SignedInBroker, SignedInBrokerConnection } from "./client";
 import { SIGNED_IN_BROKER_TYPE, signedInBrokerId } from "./profile";
@@ -192,6 +193,16 @@ function orderBody(request: BrokerOrderRequest): BrokerOrderRequest {
 
 const DIRECT_TIF = ["DAY"];
 
+/**
+ * A read of the profile's accounts, without those the user left out of it:
+ * Gloom then does not read their balances, positions or orders at all.
+ */
+function withAccountChoice(instance: BrokerInstanceConfig, path: string): string {
+  const excluded = [...excludedAccountIds(instance)];
+  if (excluded.length === 0) return path;
+  return `${path}${path.includes("?") ? "&" : "?"}exclude=${excluded.map(encodeURIComponent).join(",")}`;
+}
+
 export function createSignedInBrokerAdapter(overrides: Partial<SignedInBrokerAdapterDeps> = {}): BrokerAdapter {
   const deps: SignedInBrokerAdapterDeps = {
     request: (broker, path, options) => apiClient.brokerRequest(broker, path, options),
@@ -253,7 +264,7 @@ export function createSignedInBrokerAdapter(overrides: Partial<SignedInBrokerAda
     }));
 
   const snapshot = (instance: BrokerInstanceConfig) =>
-    track(instance, () => get<PortfolioSnapshot>(instance, "/snapshot"));
+    track(instance, () => get<PortfolioSnapshot>(instance, withAccountChoice(instance, "/snapshot")));
 
   /**
    * An order as the app holds it: this profile's, under this adapter, and
@@ -290,7 +301,7 @@ export function createSignedInBrokerAdapter(overrides: Partial<SignedInBrokerAda
     const known = handles.get(instance.id)?.get(orderId);
     if (known) return known;
     try {
-      for (const order of await get<BrokerOrder[]>(instance, "/orders")) ownOrder(instance, order);
+      for (const order of await get<BrokerOrder[]>(instance, withAccountChoice(instance, "/orders"))) ownOrder(instance, order);
     } catch (error) {
       throw refused(describeSignedInBrokerError(error, brokerName(instance)).message);
     }
@@ -370,11 +381,11 @@ export function createSignedInBrokerAdapter(overrides: Partial<SignedInBrokerAda
     },
 
     listExecutions(instance) {
-      return getOptional<BrokerExecution[]>(instance, "/executions?period=DAYS_90", []);
+      return getOptional<BrokerExecution[]>(instance, withAccountChoice(instance, "/executions?period=DAYS_90"), []);
     },
 
     async listOpenOrders(instance) {
-      return (await getOptional<BrokerOrder[]>(instance, "/orders", [])).map((order) => ownOrder(instance, order));
+      return (await getOptional<BrokerOrder[]>(instance, withAccountChoice(instance, "/orders"), [])).map((order) => ownOrder(instance, order));
     },
 
     async previewOrder(instance, request) {
@@ -508,7 +519,7 @@ export function createSignedInBrokerAdapter(overrides: Partial<SignedInBrokerAda
       if (!directOrders(instance)) throw new Error(`${brokerName(instance)} gives no quotes to the ticket.`);
       const answer = await orderAction(instance, () => deps.request<SignedInBrokerQuote>(
         id,
-        `/quote?symbol=${encodeURIComponent(ticker.trim().toUpperCase())}`,
+        withAccountChoice(instance, `/quote?symbol=${encodeURIComponent(ticker.trim().toUpperCase())}`),
       ));
       const quote: Quote = {
         symbol: answer.symbol,

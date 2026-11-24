@@ -3,6 +3,7 @@ import type { AppConfig, BrokerInstanceConfig } from "../types/config";
 import type { Portfolio, TickerPosition, TickerRecord } from "../types/ticker";
 import type { BrokerAccount } from "../types/trading";
 import { buildBrokerPortfolioId, getBrokerInstance, isBrokerPortfolioId } from "../utils/broker-instances";
+import { includedBrokerAccounts, isExcludedAccount } from "./account-choice";
 import { isSignedInBrokerProfile } from "./signed-in/profile";
 
 /**
@@ -79,17 +80,39 @@ export function accountsHeldUnderOwnNumber(
 }
 
 /**
- * The accounts of `instance` to list: without those another enabled profile
- * holds under their own number (`accountsHeldUnderOwnNumber`), so an account
- * linked twice appears once wherever accounts are chosen or shown.
+ * The accounts of `instance` to list: without those the user left out of the
+ * profile, and without those another enabled profile holds under their own
+ * number (`accountsHeldUnderOwnNumber`), so an account linked twice appears
+ * once wherever accounts are chosen or shown.
  */
 export function accountsShownFor(
   config: AppConfig,
   instance: BrokerInstanceConfig,
   accounts: BrokerAccount[],
 ): BrokerAccount[] {
-  const held = accountsHeldUnderOwnNumber(config, instance, accounts);
-  return held.size ? accounts.filter((account) => !held.has(account.accountId)) : accounts;
+  const included = includedBrokerAccounts(instance, accounts);
+  const held = accountsHeldUnderOwnNumber(config, instance, included);
+  return held.size ? included.filter((account) => !held.has(account.accountId)) : included;
+}
+
+/**
+ * The portfolios `instance` holds for accounts the user left out of it. They
+ * go, with what the profile synced into them, until the account is taken back.
+ */
+export function excludedAccountPortfolioIds(config: Pick<AppConfig, "portfolios">, instance: BrokerInstanceConfig): Set<string> {
+  if (!instance.excludedAccounts?.length) return new Set();
+  return new Set(config.portfolios.flatMap((portfolio) =>
+    portfolio.brokerInstanceId === instance.id && isExcludedAccount(instance, portfolio.brokerAccountId) ? [portfolio.id] : []));
+}
+
+/**
+ * The config without the portfolios of accounts the user left out of the
+ * profile, so they go as soon as the choice is saved, before its next sync.
+ */
+export function withoutExcludedAccountPortfolios<T extends Pick<AppConfig, "portfolios" | "brokerInstances">>(config: T, instanceId: string): T {
+  const instance = getBrokerInstance(config.brokerInstances, instanceId);
+  const leftOut = instance ? excludedAccountPortfolioIds(config, instance) : new Set<string>();
+  return leftOut.size > 0 ? { ...config, portfolios: config.portfolios.filter((portfolio) => !leftOut.has(portfolio.id)) } : config;
 }
 
 /**
@@ -339,6 +362,8 @@ export function restoreBrokerPortfoliosFromTickerPositions(
       if (!instance) continue;
 
       const brokerAccountId = inferBrokerAccountId(position, position.portfolio, instance.id);
+      // An account the user left out keeps no portfolio, whatever its last sync left behind.
+      if (isExcludedAccount(instance, brokerAccountId)) continue;
       nextConfig = ensureBrokerPortfolio(
         nextConfig,
         instance,

@@ -6,7 +6,7 @@ import type { SeriesDefinition } from "../series/types";
 import type { SyncContributor, SyncTransport } from "../sync/types";
 import type { PluginLogger } from "../utils/debug-log";
 import type { BrokerAdapter } from "./broker";
-import type { BrokerInstanceConfig } from "./config";
+import type { BrokerExcludedAccount, BrokerInstanceConfig } from "./config";
 import type { DataProvider } from "./data-provider";
 import type { TickerFinancials } from "./financials";
 import type { BrokerContractRef, TickerListingRef } from "./instrument";
@@ -35,6 +35,11 @@ export interface BrokerInstanceUpdateOptions {
   replaceConfig?: boolean;
   /** Keep this connection's data on this device, out of Gloom Cloud sync (`BrokerInstanceConfig.localOnly`). */
   localOnly?: boolean;
+  /**
+   * The accounts to leave out of Gloom (`BrokerInstanceConfig.excludedAccounts`); an empty list takes
+   * every account back. Their portfolios go at once; sync the profile to bring back one taken back.
+   */
+  excludedAccounts?: BrokerExcludedAccount[];
 }
 
 export interface BrokerInstanceCreateOptions {

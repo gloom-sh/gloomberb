@@ -1,4 +1,5 @@
 import type { AppConfig } from "../../../types/config";
+import { includedBrokerAccounts } from "../../../brokers/account-choice";
 import { updateKeybindingsConfig } from "../../../app/keybindings/config";
 import { recordCommandBarOpen } from "../../../app/command-bar-intro";
 import { resolveTickerFinancialsQuoteState } from "../../../market-data/quotes/resolution";
@@ -197,14 +198,17 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, refreshing };
     }
 
-    case "SET_BROKER_ACCOUNTS":
+    case "SET_BROKER_ACCOUNTS": {
+      // An account the user left out of the profile is shown nowhere, whoever read it.
+      const instance = state.config.brokerInstances.find((entry) => entry.id === action.instanceId);
       return {
         ...state,
         brokerAccounts: {
           ...state.brokerAccounts,
-          [action.instanceId]: action.accounts,
+          [action.instanceId]: instance ? includedBrokerAccounts(instance, action.accounts) : action.accounts,
         },
       };
+    }
 
     case "SET_BROKER_SYNC_ERROR": {
       if (!state.config.brokerInstances.some((instance) => instance.id === action.instanceId)) return state;

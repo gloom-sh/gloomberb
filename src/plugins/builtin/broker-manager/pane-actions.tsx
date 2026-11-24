@@ -5,6 +5,7 @@ import {
   validateBrokerProfileValues,
   type BrokerProfileDraft,
 } from "../../../brokers/profile-form";
+import { excludedAccountsFrom, sameExcludedAccounts, type ProfileAccountChoice } from "../../../brokers/account-choice";
 import { brokerProfileRemovalConfirm, removeBrokerProfile } from "../../../brokers/remove-profile";
 import { signedInBrokerForProfile } from "../../../brokers/signed-in/connect";
 import { isSignedInBrokerProfile } from "../../../brokers/signed-in/profile";
@@ -67,6 +68,7 @@ function errorText(error: unknown, fallback: string): string {
 export function useBrokerManagerActions({
   rows,
   selectedRow,
+  accountChoices,
   editDraft,
   setEditDraft,
   setActiveEditKey,
@@ -76,6 +78,8 @@ export function useBrokerManagerActions({
 }: {
   rows: readonly BrokerProfileRow[];
   selectedRow: BrokerProfileRow | null;
+  /** The selected profile's accounts to keep or leave out, which the edit form ticks. */
+  accountChoices: readonly ProfileAccountChoice[];
   editDraft: BrokerProfileDraft | null;
   setEditDraft: Dispatch<SetStateAction<BrokerProfileDraft | null>>;
   setActiveEditKey: Dispatch<SetStateAction<BrokerEditKey>>;
@@ -148,8 +152,15 @@ export function useBrokerManagerActions({
       setEditError(validationError);
       return;
     }
+    const excludedAccounts = excludedAccountsFrom(accountChoices, new Set(editDraft.excludedAccountIds));
+    const accountsChanged = !sameExcludedAccounts(selectedRow.instance.excludedAccounts, excludedAccounts);
+    if (accountsChanged && accountChoices.length > 0 && excludedAccounts.length === accountChoices.length) {
+      setEditError(t("Keep at least one account, or disable the profile."));
+      return;
+    }
     setEditError(null);
 
+    let saved = false;
     try {
       startRowAction(selectedRow.id, t("Saving…"));
       const nextConfig = buildBrokerProfileConfig(selectedRow.adapter, editDraft.values, selectedRow.instance);
@@ -164,15 +175,31 @@ export function useBrokerManagerActions({
         enabled: editDraft.enabled,
         localOnly: editDraft.localOnly,
         replaceConfig: true,
+        ...(accountsChanged ? { excludedAccounts } : {}),
       });
       // The row shows the saved profile.
       setEditDraft(null);
+      saved = true;
     } catch (error) {
       setEditError(errorText(error, t("Failed to save broker profile.")));
     } finally {
-      setBusy(null);
+      if (!saved) setBusy(null);
     }
-  }, [dialog, editDraft, selectedRow, setBusy, setEditDraft, startRowAction, updateBrokerInstance]);
+    if (!saved) return;
+    // A changed choice of accounts syncs at once: one left out loses its
+    // positions, and one taken back gets its portfolio again.
+    if (accountsChanged && editDraft.enabled) {
+      const { id } = selectedRow;
+      try {
+        startRowAction(id, t("Syncing…"));
+        await syncBrokerInstance(id);
+        refreshStatuses();
+      } catch (error) {
+        setRowNote(id, { tone: "error", status: t("Sync failed"), text: errorText(error, tf("Failed to sync {label}.", { label })) });
+      }
+    }
+    setBusy(null);
+  }, [accountChoices, dialog, editDraft, refreshStatuses, selectedRow, setBusy, setEditDraft, setRowNote, startRowAction, syncBrokerInstance, updateBrokerInstance]);
 
   const connectSelected = useCallback(async () => {
     if (!selectedRow) return;

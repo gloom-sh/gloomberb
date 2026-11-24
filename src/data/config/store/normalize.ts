@@ -26,6 +26,7 @@ import { sanitizeSavedPaneState } from "./pane-state";
 import { stripLegacyNewsSnapshots } from "../../news-pane-snapshots";
 import { isRecord } from "../../../utils/guards";
 import { normalizeWatchlistGroups } from "../../../portfolio/watchlist-groups";
+import { readExcludedAccounts } from "../../../brokers/account-choice";
 import { portfolioCashBalances, withPortfolioCashBalances } from "../../../portfolio/cash-balances";
 import { normalizeStoredBaseCurrency } from "../../../utils/base-currency";
 import { debugLog } from "../../../utils/debug-log";
@@ -455,11 +456,16 @@ function sanitizeBrokerInstances(value: unknown): BrokerInstanceConfig[] {
       && typeof (entry as BrokerInstanceConfig).config === "object"
       && (entry as BrokerInstanceConfig).config !== null,
     )
-    .map((entry) => ({
-      ...entry,
-      enabled: entry.enabled ?? true,
-      config: { ...entry.config },
-    }));
+    .map((entry) => {
+      const { excludedAccounts: storedExcluded, ...rest } = entry;
+      const excludedAccounts = readExcludedAccounts(storedExcluded);
+      return {
+        ...rest,
+        enabled: entry.enabled ?? true,
+        config: { ...entry.config },
+        ...(excludedAccounts ? { excludedAccounts } : {}),
+      };
+    });
 }
 
 function sanitizeLayoutOrigin(value: unknown): LayoutOrigin | undefined {

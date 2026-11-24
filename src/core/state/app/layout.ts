@@ -18,6 +18,7 @@ import {
 import type { DesktopSharedStateSnapshot } from "../../../types/desktop-window";
 import type { BrokerAccount } from "../../../types/trading";
 import { isBrokerPortfolioId } from "../../../utils/broker-instances";
+import { includedBrokerAccounts } from "../../../brokers/account-choice";
 import type { AppState, LayoutHistoryEntry, OpeningPaneSettlement, PaneRuntimeState } from "./types";
 
 function getDefaultCollectionId(config: AppConfig): string {
@@ -200,13 +201,17 @@ export function reconcilePaneState(
   return next;
 }
 
+/** The accounts of the profiles that remain, without any the user left out of one. */
 function reconcileBrokerAccounts(
   config: AppConfig,
   brokerAccounts: Record<string, BrokerAccount[]>,
 ): Record<string, BrokerAccount[]> {
-  const validInstanceIds = new Set(config.brokerInstances.map((instance) => instance.id));
+  const instances = new Map(config.brokerInstances.map((instance) => [instance.id, instance]));
   return Object.fromEntries(
-    Object.entries(brokerAccounts).filter(([instanceId]) => validInstanceIds.has(instanceId)),
+    Object.entries(brokerAccounts).flatMap(([instanceId, accounts]) => {
+      const instance = instances.get(instanceId);
+      return instance ? [[instanceId, includedBrokerAccounts(instance, accounts)]] : [];
+    }),
   );
 }
 
