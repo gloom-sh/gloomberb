@@ -1,4 +1,5 @@
 import { taiwanListing } from "./taiwan";
+import { jpxSymbol } from "./jpx";
 import { sfcSymbol } from "./sfc";
 import type { PluginModule } from "../plugin-module";
 import { SHORT_INTEREST_SERIES } from "./series";
@@ -42,7 +43,7 @@ export const shortInterestModule: PluginModule = {
       order: 36,
       component: ShortInterestResearchTab,
       instruments: ["equity"],
-      isVisible: ({ ticker }) => !isKnownNonUsListing(ticker) || (!!ticker && (!!sfcSymbol(ticker.metadata.ticker, ticker.metadata.exchange) || !!taiwanListing(ticker.metadata.ticker, ticker.metadata.exchange))),
+      isVisible: ({ ticker }) => !isKnownNonUsListing(ticker) || (!!ticker && (!!sfcSymbol(ticker.metadata.ticker, ticker.metadata.exchange) || !!jpxSymbol(ticker.metadata.ticker, ticker.metadata.exchange) || !!taiwanListing(ticker.metadata.ticker, ticker.metadata.exchange))),
     });
   },
 
