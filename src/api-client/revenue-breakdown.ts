@@ -45,3 +45,7 @@ export interface RevenueBreakdownPayload {
   /** Rows withheld from a preview. */
   lockedRows: number;
 }
+
+/** Venues where company filings can supply annual or interim revenue periods. */
+export const reportedRevenueVenue = (exchange: string | undefined) =>
+  exchange === "HKEX" || exchange === "SSE" || exchange === "SZSE";
