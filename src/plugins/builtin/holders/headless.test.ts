@@ -311,3 +311,28 @@ test("--form 13g lists the beneficial owners joined to the 13F holders, and --hi
     ["2026-05-11", 5.6], ["2026-05-07", 7.3], ["2026-04-07", 22.2],
   ]);
 });
+
+test("a partial home register retains its rows, as-filed values and missing source", async () => {
+  const ctx = createTestHeadlessContext();
+  const url = "https://dart.fss.or.kr/dsaf001/main.do?rcpNo=20261113001011";
+  ctx.apiClient.getOwnershipDisclosures = async (listing, limit) => {
+    expect([listing, limit]).toEqual(["035420:KRX", 1]);
+    return {
+      listing, name: "NAVER", publisher: "Korea FSS DART", total: 307,
+      registers: [
+        {kind: "major", status: "unavailable", total: 0, retrievedAt: null},
+        {kind: "insider", status: "read", total: 307, retrievedAt: "2026-11-24T00:00:00Z"},
+      ],
+      rows: [{owner: "김소연", role: "리더", date: "2026-11-13", dateBasis: "filing", kind: "Officer or principal holder report",
+        securities: 1884, percent: 0, change: 50, pledged: null, url}],
+    };
+  };
+  const result = await createHoldersHeadless().load({
+    ...args({view: "disclosures", limit: 1}), symbols: ["035420.KS"],
+  }, ctx);
+  expect(result).toMatchObject({
+    complete: false, metadata: {shown: 1, total: 307, truncated: true},
+    rows: [{url, percent: 0, change: 50, pledged: null}],
+    warnings: ["Major shareholder disclosures unavailable."],
+  });
+});
