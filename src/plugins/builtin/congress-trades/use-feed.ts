@@ -15,6 +15,7 @@ export function useCongressFeed(request: CloudCongressHouseParams, memberId: str
   const previous = useRef<{ payload: CloudCongressHousePayload; owner: unknown } | null>(null);
   const controller = useRef<AbortController | null>(null);
   const pageController = useRef<AbortController | null>(null);
+  const forceServerRefresh = useRef(false);
   const [page, setPage] = useState<{ first: CloudCongressHousePayload; payload: CloudCongressHousePayload } | null>(null);
   const [pageState, setPageState] = useState<{ first: CloudCongressHousePayload; error: string | null } | null>(null);
   const loader = useCallback(async (refresh: boolean): Promise<CloudCongressHousePayload> => {
@@ -24,7 +25,9 @@ export function useCongressFeed(request: CloudCongressHouseParams, memberId: str
     setPageState(null);
     const current = new AbortController();
     controller.current = current;
-    const loaded = await loadCongressHouse({ ...request, refresh }, undefined, current.signal);
+    const refreshServer = refresh && forceServerRefresh.current;
+    forceServerRefresh.current = false;
+    const loaded = await loadCongressHouse(refreshServer ? { ...request, refresh: true } : request, undefined, current.signal);
     const last = previous.current;
     if (!current.signal.aborted) setPage(null);
     return refresh && last?.owner === loader
@@ -34,6 +37,14 @@ export function useCongressFeed(request: CloudCongressHouseParams, memberId: str
   useEffect(() => () => { controller.current?.abort(); pageController.current?.abort(); }, [loader]);
 
   const resource = useAsyncResource(loader, { savedCopy: key });
+  const reload = useCallback(() => {
+    forceServerRefresh.current = true;
+    resource.reload();
+  }, [resource.reload]);
+  const autoReload = useCallback(() => {
+    forceServerRefresh.current = false;
+    resource.reload();
+  }, [resource.reload]);
   const payload = resource.data && page?.first === resource.data ? page.payload : resource.data;
   previous.current = payload ? { payload, owner: loader } : null;
   const paging = pageState?.first === resource.data ? pageState : null;
@@ -59,5 +70,5 @@ export function useCongressFeed(request: CloudCongressHouseParams, memberId: str
         setPageState((state) => state?.first === first && state.error === null ? null : state);
       }).catch(logFailure("congress-trades.feed", "Could not load Congress trades page"));
   }, [path, scope, memberId, payload, resource.data, resource.refreshing, resource.updatedAt]);
-  return { ...resource, payload, loadPage, loadingMore: !!paging && !paging.error, error: resource.error ?? paging?.error ?? null };
+  return { ...resource, reload, autoReload, payload, loadPage, loadingMore: !!paging && !paging.error, error: resource.error ?? paging?.error ?? null };
 }

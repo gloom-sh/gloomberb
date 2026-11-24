@@ -40,12 +40,12 @@ import {
   financialSubTabFields,
   latestFinancialPeriodEnd,
   notInYetNote,
+  trailingNotInYetNote,
   resolveFinancialPeriod,
   resolveFinancialPeriodOption,
   semanticGrowthValue,
   selectFinancialStatements,
   shareFinancialUnit,
-  splitPeriodsNotInYet,
   type FinancialPeriod,
   type FinancialTableRow,
 } from "./model";
@@ -53,6 +53,7 @@ import type { FinancialTableStatement } from "./aggregation";
 import {
   FINANCIAL_SECTIONS,
   RATIO_TABS,
+  blankRatioPeriodsNote,
   buildRatioTableModel,
   latestRunwayPeriodEnd,
   oldestRatioPeriodEnd,
@@ -332,11 +333,9 @@ export function ResolvedFinancialsTab({
     () => selectFinancialStatements(resolvedPeriod, subTab.key, annualStatements, quarterlyStatements, undefined, financials?.trailingStatement),
     [annualStatements, quarterlyStatements, resolvedPeriod, subTab.key, financials?.trailingStatement],
   );
-  // A newest period with only some figures (an EPS alone) is left out of a statement table, and a line says so.
-  const { shown: displayStatements, notInYet } = useMemo(
-    () => ratioTab ? { shown: selected.statements, notInYet: [] } : splitPeriodsNotInYet(selected.statements, subTab),
-    [ratioTab, selected.statements, subTab],
-  );
+  // A newest period with only some figures (an EPS alone) is left out of the columns, and a line says so, as it
+  // does of a newer quarter the TTM passed over.
+  const { statements: displayStatements, notInYet, trailingNotInYet } = selected;
   const previousStatementMap = selected.previousStatementMap;
   // One currency for every column goes in the query bar with the growth basis;
   // a column in a different currency (or none) says so in its own header.
@@ -473,7 +472,7 @@ export function ResolvedFinancialsTab({
   const runwayFilings = useRunwayOfferings(boundSymbol, boundExchange, runwayPeriodEnd);
   const ratioModel = useMemo(() => {
     if (!ratioTab) return null;
-    const openings = ratioOpenings(resolvedPeriod, annualStatements, quarterlyStatements);
+    const openings = ratioOpenings(resolvedPeriod, annualStatements, quarterlyStatements, displayStatements.find((statement) => statement.date === "TTM"));
     const price = (statement: FinancialTableStatement): RatioAmount => {
       if (!isValuation) return "no-price";
       if (!history.data) return history.error && !history.loading ? "no-price" : "loading";
@@ -488,10 +487,13 @@ export function ResolvedFinancialsTab({
     annualStatements, collapsedGroups, currencies, displayStatements, history.data, history.error, history.loading,
     isValuation, quarterlyStatements, ratioTab, resolvedPeriod, financials?.profile, runwayPeriodEnd, runwayFilings,
   ]);
+  // The model's periods: a column the tab has nothing for is left out of it (buildRatioTableModel).
   const ratioColumns = useMemo<RatioTableColumn[]>(() => [
     ratioMetricColumn(width),
-    ...columns.flatMap((column, index) => column.kind === "statement" ? [{ ...column, index: index - 1 }] : []),
-  ], [columns, width]);
+    ...(ratioModel?.periods ?? []).flatMap(({ statement }, index) => columns.flatMap((column) => (
+      column.kind === "statement" && column.statement === statement ? [{ ...column, index }] : []
+    ))),
+  ], [columns, ratioModel, width]);
 
   // The Balance Sheet and Liquidity show cash, which an offering filed since the latest balance sheet is not in yet.
   // Years filled from the listing's exchange, with the lines this table shows.
@@ -511,13 +513,16 @@ export function ResolvedFinancialsTab({
     [displayStatements, subTab],
   );
   const notInYetLine = useMemo(
-    () => notInYetNote(notInYet, subTab, resolvedPeriod, yearEndMonth),
-    [notInYet, resolvedPeriod, subTab, yearEndMonth],
+    () => notInYetNote(notInYet, subTab, resolvedPeriod, yearEndMonth)
+      ?? trailingNotInYetNote(displayStatements, trailingNotInYet, subTab, yearEndMonth),
+    [displayStatements, notInYet, resolvedPeriod, subTab, trailingNotInYet, yearEndMonth],
   );
+  const blankRatioLine = ratioModel ? blankRatioPeriodsNote(ratioModel, resolvedPeriod, yearEndMonth) : null;
   usePaneNoticeFooter({
     registrationId: "financials-notices",
     notices: [
       ...(notInYetLine ? [notInYetLine] : []),
+      ...(blankRatioLine ? [blankRatioLine] : []),
       ...exchangeResults,
       ...(stalePeriod ? [stalePeriod] : []),
       ...(filledPeriods ? [filledPeriods] : []),

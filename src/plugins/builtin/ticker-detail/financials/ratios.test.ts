@@ -284,9 +284,15 @@ describe("financial ratios", () => {
     // A quarter missing the total reads not reported, not its cash alone, when other periods report it.
     const sparse = createTestFinancials({
       ...financials,
-      quarterlyStatements: [{ date: "2025-09-30", totalRevenue: 0, operatingCashFlow: -94, cashAndCashEquivalents: 38 }, ...financials.quarterlyStatements.slice(1)],
+      quarterlyStatements: [{ date: "2025-09-30", totalRevenue: 0, operatingCashFlow: -94, cashAndCashEquivalents: 38, currentLiabilities: 50 }, ...financials.quarterlyStatements.slice(1)],
     });
     expect(ratioTableForFinancials(sparse, liquidity, "quarterly").cells.get("runway-quarter")!.at(-1)!.value).toBe("not-reported");
+    // With no line the tab reads, the quarter is no column of it: a header over "not reported" alone.
+    const bare = createTestFinancials({
+      ...financials,
+      quarterlyStatements: [{ date: "2025-09-30", totalRevenue: 0, operatingCashFlow: -94, cashAndCashEquivalents: 38 }, ...financials.quarterlyStatements.slice(1)],
+    });
+    expect(ratioTableForFinancials(bare, liquidity, "quarterly").periods.map(({ statement }) => statement.date)).toEqual(["2026-06-30", "2026-03-31", "2025-12-31"]);
     // Years have no quarter to read: the annual view keeps the trailing runway alone.
     const annual = ratioTableForFinancials(financials, liquidity, "annual");
     expect(annual.ratios.map((def) => def.id)).not.toContain("runway-quarter");

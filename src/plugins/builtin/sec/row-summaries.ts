@@ -30,6 +30,7 @@ const isOwnershipForm = (form: string) => OWNERSHIP_FORMS.test(form.trim());
 export function rowSummaryTarget(filing: SecFilingItem): SecFilingItem | null {
   const form = filing.form.trim();
   if (!isOwnershipForm(form) && !FUND_FLOW_FORM.test(form)) return null;
+  if (/^4(?:\/A)?$/i.test(form) && filing.form4) return null;
   if (/^[345](?:\/A)?$/i.test(form)) return filing;
   const url = filing.primaryDocumentUrl?.replace(/\/xsl[^/]+\//, "/");
   if (!url || url === filing.primaryDocumentUrl) return null;

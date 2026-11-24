@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { paneBg } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { PaneBodyFrame, getPaneWindowAttributes, type DockEdge } from "./frame";
-import { PaneHeader, type PaneHeaderQuickSetting, type PaneHeaderStack } from "./header";
+import { PaneHeader, paneHeaderHoldsOneStrip, type PaneHeaderQuickSetting, type PaneHeaderStack } from "./header";
 import { PaneHeaderTabsProvider, usePaneHeaderTabsHost } from "./header-tabs";
 import { hasPaneFooterContent, PaneFooterBar, type CombinedPaneFooter } from "./footer";
 import { paneHeaderRows, resolvePaneBodyFrame, shouldReservePaneFooter } from "./sizing";
@@ -87,7 +87,11 @@ export function PaneWrapper({
   children,
 }: PaneWrapperProps) {
   const { nativePaneChrome } = useUiCapabilities();
-  const { headerTabs, contextValue: headerTabsContext } = usePaneHeaderTabsHost(nativePaneChrome === true && !!title);
+  // A header too narrow for its stack's tabs and the pane's own strip keeps
+  // the stack's: the pane draws its strip in its body.
+  const { headerTabs, contextValue: headerTabsContext } = usePaneHeaderTabsHost(
+    nativePaneChrome === true && !!title && !paneHeaderHoldsOneStrip(stack, width),
+  );
   // This frame can sit below a memoized layer. The body surface feeds canvas
   // charts too, so subscribe rather than reading the non-reactive facade.
   const colors = useThemeColors();

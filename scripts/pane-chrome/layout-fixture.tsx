@@ -5,14 +5,15 @@
  * reader, markdown, prose paragraphs, a table, and a page with a table as tall
  * as its rows and label and value rows, a series list beside its detail
  * under a query bar), plus the real Trials and
- * Changelog panes, whose open items read through the detail reader, and the
- * Calls pane on an invented earnings call with its recording. Every study,
- * release, article and call is invented, and nothing is fetched: the Trials
- * registry, the release feed and Gloom Cloud's call reads are answered in the
- * page, signed in on a Pro plan.
+ * Changelog panes, whose open items read through the detail reader, the
+ * Calls pane on an invented earnings call with its recording, and Ask Gloom,
+ * RISK and EK on an invented answer and invented filings. Every study,
+ * release, article, call, answer and filing is invented, and nothing is
+ * fetched: the Trials registry, the release feed and Gloom Cloud's reads are
+ * answered in the page, signed in on a Pro plan.
  *
  * Scenario options (query string, after `scenario=layout`): `pane=<id>`
- * (trials, changelog, calls, reader, markdown, prose, inline, list, or a pane of the main
+ * (trials, changelog, calls, askg, risk, ek, reader, markdown, prose, inline, list, or a pane of the main
  * fixture such as table or chart-bar), `audio=<url>` (the recording the call
  * plays, `none` for a call without one), `calls=calendar` or `calls=META`
  * (the Calls pane alone or on one company, over a production-like day of
@@ -33,7 +34,12 @@ import { parseArticle } from "../../src/components/reader/article-text";
 import { TrialsPane } from "../../src/plugins/builtin/clinical-trials/pane";
 import { changelogModule } from "../../src/plugins/builtin/changelog";
 import { EarningsCallsPane } from "../../src/plugins/builtin/earnings-calls/pane";
+import { ASKGPane } from "../../src/plugins/builtin/cloud/askg/pane";
+import { askgConversationListStore } from "../../src/plugins/builtin/cloud/askg/conversation-store";
+import { RiskFactorsPane } from "../../src/plugins/builtin/risk-factors/pane";
+import { FilingEventsPane } from "../../src/plugins/builtin/filing-events/pane";
 import { apiClient, setCloudApiFetchTransport, type CloudEarningsCallPayload, type CloudEarningsTranscriptPayload, type CloudTranscriptTurnPayload } from "../../src/api-client";
+import { setSharedRegistryForTests, type PluginRegistry } from "../../src/plugins/registry";
 import { PluginRenderProvider } from "../../src/plugins/runtime";
 import { createTestPluginRuntime } from "../../src/test-support/plugin-runtime";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../src/theme/font-scale";
@@ -113,6 +119,9 @@ const RELEASES = Array.from({ length: 6 }, (_, index) => ({
 /** Answers the Trials registry and the release feed in the page; anything else fails. */
 export function installLayoutFetches(params?: URLSearchParams): void {
   if (params?.get("pane") === "calls") installCallFetches(params);
+  if (params?.get("pane") === "askg") installAskgFetches();
+  if (params?.get("pane") === "risk") installRiskFetches();
+  if (params?.get("pane") === "ek") installFilingEventFetches();
   const answer = (url: string): Response | null => {
     if (url.startsWith("https://clinicaltrials.gov/api/v2/studies")) {
       return Response.json({ studies: Array.from({ length: 12 }, (_, index) => inventedStudy(index)) });
@@ -382,12 +391,217 @@ function installCallFetches(params: URLSearchParams): void {
   });
 }
 
+/** Signed in on Pro, as the Gloom Cloud panes below need, with `answer` for every Cloud read. */
+function signInOnPro(answer: (path: string, url: URL) => Response): void {
+  apiClient.setSessionToken("fixture-session");
+  apiClient.restoreCachedUser({
+    id: "fixture-user", name: "Fixture", email: "fixture@example.invalid", emailVerified: true, plan: "pro", effectivePlan: "pro",
+  } as never);
+  setCloudApiFetchTransport(async (url) => {
+    const parsed = new URL(String(url));
+    return answer(parsed.pathname, parsed);
+  });
+}
+
+const FIXTURE_AT = "2026-08-07T14:00:00.000Z";
+const ASKG_QUESTION = "How did Lumen Instrument Works' margins move over the last four quarters, and what drove the change?";
+/** An invented answer in the shapes Ask Gloom writes: a heading, paragraphs, a table, a list, citations. */
+const ASKG_ANSWER = [
+  "## Margins over the last four quarters",
+  "",
+  "Gross margin rose from 44.1% to 46.2% over the year [1], mostly from better yields on the new lens line in the river studio. Operating margin moved less, because the company added service staff in two regions and paid for moving its classroom kit assembly [2].",
+  "",
+  "| Quarter | Revenue | Gross margin | Operating margin |",
+  "|---|---:|---:|---:|",
+  "| Q3 2025 | $131.0M | 44.1% | 12.4% |",
+  "| Q4 2025 | $139.5M | 44.8% | 12.9% |",
+  "| Q1 2026 | $142.2M | 45.3% | 13.1% |",
+  "| Q2 2026 | $148.0M | 46.2% | 13.6% |",
+  "",
+  "What moved it:",
+  "",
+  "- Lens yields above 90% cut the cost of each assembly by about a fifth [2].",
+  "- Classroom kit orders arrived earlier than usual, which added perhaps thirty basis points that will reverse in the fourth quarter.",
+  "- Hiring service staff raised operating expenses 6% from a year ago.",
+  "",
+  "By segment, revenue grew fastest in the field spectrometers [1]:",
+  "",
+  "| Segment | Q3 2025 | Q4 2025 | Q1 2026 | Q2 2026 | Change over the year |",
+  "|---|---:|---:|---:|---:|---:|",
+  "| Field spectrometers | $61.2M | $64.0M | $66.9M | $70.1M | +14.5% |",
+  "| Classroom kits | $38.4M | $41.2M | $40.3M | $42.0M | +9.4% |",
+  "| Observatory work | $31.4M | $34.3M | $35.0M | $35.9M | +14.3% |",
+  "",
+  "The company expects a gross margin of about 46% for the full year [2], so the second half should look like this quarter rather than better.",
+].join("\n");
+
+/** Two functions a cited read opens, so the answer's citations are chips that open them. */
+function askgSourceRegistry(): PluginRegistry {
+  const pane = (id: string, name: string, icon: string) => [id, { id, name, icon, component: () => null, defaultPosition: "right" }] as const;
+  const template = (id: string, paneId: string, label: string, prefix: string) => [id, { id, paneId, label, description: label, shortcut: { prefix, argKind: "ticker" } }] as const;
+  return {
+    panes: new Map([pane("financials", "Financials", "F"), pane("ticker-detail", "Ticker", "T")]),
+    paneTemplates: new Map([template("financials-pane", "financials", "Financials", "FA"), template("ticker-detail-pane", "ticker-detail", "Ticker", "T")]),
+  } as unknown as PluginRegistry;
+}
+
+/**
+ * Gloom Cloud for Ask Gloom: signed in on Pro, with one invented conversation
+ * the pane reopens as the one it last showed, its answer citing two reads.
+ */
+function installAskgFetches(): void {
+  const summary = { id: "conv-fixture", title: "Lumen margins", messageCount: 2, lastMessageAt: FIXTURE_AT, createdAt: FIXTURE_AT, updatedAt: FIXTURE_AT };
+  const tool = (ref: number, name: string, args: Record<string, string>) => ({ toolCallId: `call-${ref}`, name, origin: "server", status: "ok", args, rowCount: 8, ref });
+  signInOnPro((path) => {
+    if (path.endsWith("/askg/conversations")) return Response.json({ count: 1, items: [summary] });
+    if (path.endsWith("/askg/conversations/conv-fixture")) {
+      return Response.json({
+        ...summary,
+        capabilities: { feedback: 1 },
+        messages: [
+          { seq: 1, role: "user", text: ASKG_QUESTION, tools: [], turnId: "turn-fixture", createdAt: FIXTURE_AT },
+          {
+            seq: 2, role: "assistant", text: ASKG_ANSWER, turnId: "turn-fixture", createdAt: FIXTURE_AT, feedback: null,
+            tools: [tool(1, "company.financials", { symbol: "LUMN" }), tool(2, "company.profile", { symbol: "LUMN" })],
+          },
+        ],
+      });
+    }
+    return Response.json({});
+  });
+  askgConversationListStore.rememberOpen("conv-fixture");
+  setSharedRegistryForTests(askgSourceRegistry());
+}
+
+const RISK_COMPANY = { ticker: "LUMN", cik: "0000000009", name: "Lumen Instrument Works", shortName: "Lumen" };
+const RISK_HEADINGS: Array<[group: string, heading: string]> = [
+  ["Operations", "We rely on a single studio on the river for the lenses in every field spectrometer, and a flood, fire or long outage there would stop most of our shipments for months."],
+  ["Operations", "Yields on the new lens line could fall back below the levels we reached this year, which would raise the cost of each assembly and lower our gross margin."],
+  ["Customers", "Observatory customers accept our instruments on their own testing schedules, so revenue from our backlog can arrive later than we expect and vary widely from quarter to quarter."],
+  ["Customers", "School districts buy classroom kits from annual budgets that depend on public funding, and a cut to those budgets would reduce our orders in the autumn season."],
+  ["Supply", "A few suppliers make the rare-earth glass our lenses need, and a shortage, a tariff or an export rule could raise its price or delay our production."],
+  ["People", "We depend on a small number of optical engineers whose knowledge of our grinding process is hard to replace, and losing them could slow new products."],
+  ["Technology", "Competitors may bring cheaper sensors to market that make our spectrometers less attractive to field researchers who are sensitive to price."],
+  ["Financial", "Our results depend on a few large observatory contracts each year, and the loss or delay of one of them would affect our revenue for the whole year."],
+];
+
+function riskReport(year: number) {
+  const latest = year === 2026;
+  return {
+    id: `lumen-risk-${year}`, ticker: "LUMN", company: RISK_COMPANY, reportYear: year,
+    filedAt: `${year}-02-26T21:05:00Z`, filingDate: `${year}-02-26`, updatedAt: `${year}-02-27T09:00:00Z`,
+    riskCount: RISK_HEADINGS.length, groupCount: 6, wordCount: 9200, addedCount: latest ? 1 : null, removedCount: latest ? 1 : null, rewordedCount: latest ? 1 : null,
+    overview: [
+      "Risk now centres on the single lens studio: the company names a flood or long outage there first, ahead of every customer risk.",
+      "A new risk on rare-earth glass suppliers reflects the tariff and export rules that came in during the year, which the prior filing did not mention.",
+      "The observatory backlog is described as converting on customers' testing schedules, a softer promise than last year's two-quarter estimate.",
+    ].join("\n"),
+    docUrl: `https://example.invalid/lumen/10-k-${year}`,
+    groups: ["Operations", "Customers", "Supply", "People", "Technology", "Financial"],
+    risks: RISK_HEADINGS.map(([group, heading]) => ({ heading, group, excerpt: heading, words: 900 })),
+    diff: latest ? {
+      added: [4],
+      removed: [{ heading: "We may not complete the move of classroom kit assembly to the new building on time, which would delay autumn shipments to schools.", group: "Operations", excerpt: "" }],
+      reworded: [{ index: 2, similarity: 0.58, headingChanged: true, priorHeading: "Most of our backlog ships within two quarters." }],
+      matched: 7, priorRiskCount: 8,
+    } : null,
+    notes: {
+      added: [{ index: 4, text: "First named this year: the filing ties the risk to new export rules on rare-earth glass and names two suppliers by region, not by name." }],
+      removed: [{ index: 0, text: "The move finished in the spring, so the filing no longer lists it as a risk to autumn shipments." }],
+      reworded: [{ index: 2, text: "The two-quarter estimate is gone; revenue from the backlog now arrives on the customer's own testing schedule, with no estimate given." }],
+      top: [],
+    },
+    otherYears: [],
+  };
+}
+
+/** Gloom Cloud for RISK: two years of an invented company's 10-K risk factors, the newest compared with the one before. */
+function installRiskFetches(): void {
+  signInOnPro((path) => {
+    const year = /\/cloud\/risks\/[^/]+\/(\d{4})$/.exec(path)?.[1];
+    if (year) return Response.json(riskReport(Number(year)));
+    if (path.includes("/cloud/risks/")) {
+      return Response.json({ company: RISK_COMPANY, reports: [2026, 2025].map((entry) => { const { docUrl: _d, groups: _g, risks: _r, diff: _f, notes: _n, otherYears: _o, ...summary } = riskReport(entry); return summary; }) });
+    }
+    return Response.json({ message: "Not in the fixture" }, { status: 404 });
+  });
+}
+
+/** Gloom Cloud for EK: an invented company's 8-Ks, four read and two listed under them. */
+function installFilingEventFetches(): void {
+  const event = (index: number, date: string, labels: string[], read: { headline: string; summary: string[]; people?: Array<{ name: string; role: string; action: string; effective: string | null }> } | null) => ({
+    id: `lumen-8k-${index}`, ticker: "LUMN", company: RISK_COMPANY, filedAt: `${date}T20:30:00Z`, filingDate: date, form: "8-K",
+    docUrl: `https://example.invalid/lumen/8-k-${index}`, items: labels.map((_, item) => `${item + 1}.01`), labels, kinds: [], material: index < 2,
+    headline: read?.headline ?? null, summary: read ? read.summary.join("\n") : null, people: read?.people ?? [], read: read !== null,
+  });
+  const events = [
+    event(0, "2026-10-14", ["Executive change", "Exhibits"], {
+      headline: "Chief financial officer Ines Kovac to step down at the end of the year; the controller takes over while the board searches.",
+      summary: [
+        "Ines Kovac leaves on December 31 after six years in the role and stays as an adviser until the end of March to hand over the annual audit.",
+        "The board named the controller, Arjun Mehta, interim chief financial officer and said it will consider candidates from inside and outside the company.",
+      ],
+      people: [
+        { name: "Ines Kovac", role: "Chief Financial Officer", action: "resigned", effective: "2026-12-31" },
+        { name: "Arjun Mehta", role: "Interim Chief Financial Officer", action: "appointed", effective: "2027-01-01" },
+      ],
+    }),
+    event(1, "2026-09-02", ["Material agreement", "Exhibits"], {
+      headline: "A five-year supply agreement for rare-earth glass with a second supplier, at prices fixed for the first two years.",
+      summary: [
+        "The agreement covers about 40% of the glass the lens studio expects to use and lets the company buy more at the same price if orders grow.",
+        "Either side can end it after three years with twelve months' notice; the company pays a fee if it buys less than the agreed minimum in any year.",
+      ],
+    }),
+    event(2, "2026-08-06", ["Results of operations", "Exhibits"], {
+      headline: "Second quarter revenue of $148 million, up 11%, and a full-year outlook raised to $590 million to $605 million.",
+      summary: [
+        "Gross margin was 46.2%, a point and a half better than a year ago, from higher yields on the new lens line.",
+        "Free cash flow was $19 million, and the company ended the quarter with $96 million in cash and no debt.",
+      ],
+    }),
+    event(3, "2026-06-18", ["Shareholder vote"], {
+      headline: "Shareholders elected all seven directors and approved the auditor at the annual meeting.",
+      summary: ["The advisory vote on executive pay passed with 91% of the votes cast."],
+    }),
+    event(4, "2026-05-07", ["Results of operations", "Regulation FD disclosure", "Exhibits"], null),
+    event(5, "2026-03-12", ["Other events"], null),
+  ];
+  signInOnPro((path) => (path.includes("/cloud/events/")
+    ? Response.json({ ticker: "LUMN", events })
+    : Response.json({ message: "Not in the fixture" }, { status: 404 })));
+}
+
 const RUNTIME = createTestPluginRuntime();
 
 function CallsFixturePane(props: PaneProps) {
   return (
     <PluginRenderProvider pluginId="research" runtime={RUNTIME}>
       <EarningsCallsPane {...props} />
+    </PluginRenderProvider>
+  );
+}
+
+function AskgFixturePane(props: PaneProps) {
+  return (
+    <PluginRenderProvider pluginId="gloomberb-cloud" runtime={RUNTIME}>
+      <ASKGPane {...props} />
+    </PluginRenderProvider>
+  );
+}
+
+function RiskFixturePane(props: PaneProps) {
+  return (
+    <PluginRenderProvider pluginId="ticker-research" runtime={RUNTIME}>
+      <RiskFactorsPane {...props} />
+    </PluginRenderProvider>
+  );
+}
+
+function FilingEventsFixturePane(props: PaneProps) {
+  return (
+    <PluginRenderProvider pluginId="ticker-research" runtime={RUNTIME}>
+      <FilingEventsPane {...props} />
     </PluginRenderProvider>
   );
 }
@@ -563,6 +777,9 @@ export const LAYOUT_PANES = {
   trials: { name: "Trials", component: TrialsFixturePane },
   changelog: { name: "Changelog", component: ChangelogFixturePane },
   calls: { name: "Earnings Calls", component: CallsFixturePane },
+  askg: { name: "Ask Gloom", component: AskgFixturePane },
+  risk: { name: "Risk Factors", component: RiskFixturePane },
+  ek: { name: "8-K Events", component: FilingEventsFixturePane },
   reader: { name: "Reader", component: ReaderFixturePane },
   markdown: { name: "Markdown", component: MarkdownFixturePane },
   prose: { name: "Prose", component: ProseFixturePane },
@@ -575,8 +792,11 @@ export function layoutLayout(params: URLSearchParams): LayoutConfig {
   // The Calls pane opens on the newest call's transcript, as a layout can ask it to;
   // `calls=calendar` opens it alone, and `calls=<ticker>` on that company's calls.
   const production = paneId === "calls" ? params.get("calls") : null;
-  const settings = paneId === "calls" && !production ? { quarter: "latest", reader: params.get("reader") ?? "transcript" } : undefined;
-  const binding = production && production !== "calendar" ? { kind: "fixed" as const, symbol: production } : { kind: "none" as const };
+  // Unbound, CALLS opens on the calendar; the shelf of transcripts is where a `quarter` setting opens its call.
+  const settings = paneId === "calls" && !production ? { view: "transcripts", quarter: "latest", reader: params.get("reader") ?? "transcript" } : undefined;
+  // RISK and EK read the invented company's filings.
+  const fixed = production && production !== "calendar" ? production : paneId === "risk" || paneId === "ek" ? "LUMN" : null;
+  const binding = fixed ? { kind: "fixed" as const, symbol: fixed } : { kind: "none" as const };
   const instance = { instanceId, paneId, binding, ...(settings ? { settings } : {}) };
   if (params.get("mode") !== "float") return { dockRoot: { kind: "pane", instanceId }, instances: [instance], floating: [], detached: [] };
   const columns = window.innerWidth / WEB_CELL_WIDTH;

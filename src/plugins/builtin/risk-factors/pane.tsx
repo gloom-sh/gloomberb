@@ -9,6 +9,7 @@ import {
   type PaneHint,
 } from "../../../components";
 import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
+import { ReaderMeasure } from "../../../components/reader/reader-text";
 import { useAsyncResource } from "../../../react/async-resource";
 import { colors } from "../../../theme/colors";
 import {
@@ -36,6 +37,10 @@ function noteFor(
   return notes.find((note) => note.index === index)?.text;
 }
 
+/** A risk's tag keeps its room in the line above it; its group wraps after it. */
+const NATIVE_KEEP = { flexShrink: 0 } as const;
+const NATIVE_WRAP = { wrapText: true, style: { minWidth: 0 } } as const;
+
 /** A risk heading, its group, and the model's line under it. */
 function RiskLine({
   tag,
@@ -50,11 +55,14 @@ function RiskLine({
   note?: string;
   width: number;
 }) {
+  // The desktop and the web wrap a group the reading column has no room for
+  // under its start; the terminal row ends at the pane's edge.
+  const nativePaneChrome = useUiCapabilities().nativePaneChrome === true;
   return (
     <Box flexDirection="column" marginTop={1}>
-      <Box height={1} flexDirection="row" gap={1} overflow="hidden">
-        <Text fg={colors.textBright}>{tag}</Text>
-        {group ? <Text fg={colors.textDim}>{group}</Text> : null}
+      <Box height={nativePaneChrome ? undefined : 1} flexDirection="row" gap={1} overflow={nativePaneChrome ? undefined : "hidden"}>
+        <Text fg={colors.textBright} {...(nativePaneChrome ? NATIVE_KEEP : {})}>{tag}</Text>
+        {group ? <Text fg={colors.textDim} {...(nativePaneChrome ? NATIVE_WRAP : {})}>{group}</Text> : null}
       </Box>
       <Prose
         text={heading}
@@ -111,7 +119,6 @@ function RiskFactorsReader({
   const displayScope = useCloudDisplayScope();
   const exchange = boundTicker?.metadata.exchange;
   const request = useMemo(() => ({ listing, displayScope, exchange }), [listing, displayScope, exchange]);
-  const nativePaneChrome = useUiCapabilities().nativePaneChrome === true;
   const rendererHost = useRendererHost();
 
   // The year is remembered with the pane; the ticker it was chosen on is the
@@ -227,10 +234,8 @@ function RiskFactorsReader({
         {report && listsNone ? (
           <PaneStatusBody empty emptyTitle={report.overview || NO_RISK_FACTORS} />
         ) : report ? (
-          <Box
-            flexDirection="column"
-            width={nativePaneChrome ? "100%" : bodyWidth}
-          >
+          // The reading column on the desktop and the web; the terminal keeps its body width.
+          <ReaderMeasure width={bodyWidth}>
             {report.overview ? (
               <Box flexDirection="column">
                 <SectionHeading
@@ -312,7 +317,7 @@ function RiskFactorsReader({
               ))}
             </Box>
 
-          </Box>
+          </ReaderMeasure>
         ) : reportError ? (
           <PaneStatusBody error={reportError} errorTitle={`Could not load ${year} risk report.`} />
         ) : (

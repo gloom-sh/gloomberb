@@ -3,6 +3,7 @@ import type { SupplyRow } from "../../../api-client/supply-chain";
 import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
 import type { GraphEvidence, GraphPath, GraphPayload } from "../../../api-client/supply-chain-graph";
 import type { HeadlessBundleResult, HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/plugin";
+import { directoryColumns, directoryRows } from "./directories";
 import { fetchSupplyChain } from "./client";
 import { evidenceDate, evidenceLabel, isUnconfirmed, matchesSupplyOptions, supplyOptions, trustTier } from "./trust";
 import { fetchSupplyGraph, graphOptions } from "./graph-client";
@@ -129,7 +130,7 @@ export const supplyChainHeadless: HeadlessPaneDefinition<"bundle"> = {
   options: [
     // No default: left out, the report prints both views; the pane opens on what the company says.
     { key: "view", type: "enum", settingKey: "view", values: [{ value: "says" }, { value: "names" }], description: "Statements by the company, or other sources naming it; both when left out." },
-    { key: "tab", type: "enum", settingKey: "tab", defaultValue: "table", values: ["table", "flow", "graph", "path"].map(value => ({ value })), description: "Disclosures table, direct flow, multi-hop graph or routes to a target." },
+    { key: "tab", type: "enum", settingKey: "tab", defaultValue: "table", values: ["table", "directories", "flow", "graph", "path"].map(value => ({ value })), description: "Disclosures table, issuer supplier directories, direct flow, multi-hop graph or routes to a target." },
     { key: "route", type: "integer", minimum: 1, maximum: 50, defaultValue: 1, settingKey: "route", description: "Selected route for graph and evidence screenshots." },
     { key: "evidence", type: "boolean", settingKey: "evidence", defaultValue: false, description: "Open selected relationship or path evidence in screenshots." },
     { key: "depth", type: "integer", settingKey: "depth", minimum: 1, maximum: 4, defaultValue: 2, description: "Maximum graph depth in hops (Pro)." },
@@ -182,7 +183,7 @@ export const supplyChainHeadless: HeadlessPaneDefinition<"bundle"> = {
     const requested: "says" | "names" | null = args.options.view === "says" || args.options.view === "names" ? args.options.view : null;
     const views: ("says" | "names")[] = requested ? [requested] : ["says", "names"];
     const viewTitle = (view: "says" | "names") => view === "says" ? `${data.symbol} says` : `Names ${data.symbol}`;
-    const sections = views.flatMap((view): HeadlessBundleSection[] => {
+    const sections = args.options.tab === "directories" ? [] : views.flatMap((view): HeadlessBundleSection[] => {
       const shown = (rows: SupplyRow[]) => rows.filter((row) => matchesSupplyOptions(row, options));
       const parts = [
         { title: viewTitle(view), rows: shown(data[view]).filter((row) => !isUnconfirmed(row)).map(record) },
@@ -190,25 +191,35 @@ export const supplyChainHeadless: HeadlessPaneDefinition<"bundle"> = {
         // Shares from before the reporter's latest period on the same basis: each dated by its own period, never current.
         { title: `${viewTitle(view)} | Earlier periods`, rows: shown(earlierRows(data, view)).map(record) },
       ].filter((section) => section.rows.length > 0).map((section) => ({ ...section, columns: tableColumns(section.rows, sources, data.entity?.id) }));
-      if (parts.length || !requested) return parts;
+      if (parts.length || !requested || args.options.tab !== "flow" && data.directories?.some(report => (report.buyerView ? "says" : "names") === view)) return parts;
       // "In the free preview" only when this view holds rows the preview leaves out.
       const scope = lockedDisclosures(data, [view]) > 0 ? " in the free preview" : "";
       return [{ title: viewTitle(view), rows: [], empty: view === "names"
         ? `No other company's disclosures name ${data.symbol}${scope}.`
         : `${data.symbol}'s own disclosures name no relationship${scope}.` }];
     });
+    const directories = args.options.tab === "flow" ? [] : (data.directories ?? []).filter(report =>
+      !requested || (report.buyerView ? "says" : "names") === requested);
+    let directoryLocked = 0;
+    for (const report of directories) {
+      const rows = directoryRows(report);
+      sections.push({ title: report.buyer + " supplier directory", rows,
+        columns: directoryColumns(rows).map(([key, header]) => ({ key, header })) });
+      directoryLocked += report.total - rows.length;
+    }
     // A requested view is complete when the preview leaves none of its own rows out.
     const locked = lockedDisclosures(data, views);
-    const truncated = data.truncated && (!requested || locked > 0);
+    const truncated = args.options.tab !== "directories" && data.truncated && (!requested || locked > 0);
     // A company with no relationship at all says what SPLC reads and where else to look, not that it is "not covered".
     const none = !sections.every((section) => !section.rows?.length) ? null
+      : args.options.tab === "directories" ? "No issuer supplier directory for this selection."
       : asOf && data.status === "available" ? `No relationship of ${data.symbol}'s was disclosed by ${asOf}.`
         : asOf ? `No relationship of ${data.symbol}'s was disclosed by ${asOf}; ${supplyEmptyText(data, (symbol) => `fn SPLC ${symbol}`)}`
           : supplyEmptyText(data, (symbol) => `fn SPLC ${symbol}`);
     // Dated by the newest disclosure shown, as each row's Published says, never by the latest period one covers: a
     // filing published on 29 Oct about June is known from 29 Oct.
     const published = [...sources.values()].map(evidenceDate).sort().at(-1) ?? null;
-    return { complete: !truncated, errors: truncated ? [data.access === "preview" ? supplyPreviewNote(data, locked) : "Additional relationships need Gloom Pro"] : [],
+    return { complete: !truncated && !directoryLocked, errors: directoryLocked ? [`${directoryLocked} further directory entries require Gloom Pro`] : truncated ? [data.access === "preview" ? supplyPreviewNote(data, locked) : "Additional relationships need Gloom Pro"] : [],
       sections, ...(none && !requested ? { empty: none } : {}),
       metadata: { symbol: data.symbol, asOf: published, latestPeriod: data.asOf, ...asOf ? { knownBy: asOf } : {},
         view: requested ?? "both", counterparties: figures("counterparties"), locked: figures("locked"),

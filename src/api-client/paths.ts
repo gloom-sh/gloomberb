@@ -8,7 +8,7 @@ import { nonUsSecListingVenue } from "../utils/sec";
 import type { HistoryRetention } from "../sources/history-retention";
 import type { CloudBeneficialOwnersParams } from "./beneficial-owners";
 import type { CloudInsiderSignalsParams } from "./insider-signals";
-import type { RevenueBreakdownView } from "./revenue-breakdown";
+import { reportedRevenueVenue, type RevenueBreakdownView } from "./revenue-breakdown";
 
 export type CloudHistoryParams = {
   interval?: string;
@@ -452,7 +452,7 @@ export function cloudRevenueBreakdownPath(symbol: string, view?: RevenueBreakdow
   const search = new URLSearchParams({ symbol: abroad?.symbol ?? symbol });
   setListingAbroad(search, abroad);
   if (view) search.set("view", view);
-  if (abroad?.exchange === "HKEX") search.set("periods", "reported");
+  if (reportedRevenueVenue(abroad?.exchange)) search.set("periods", "reported");
   return appendQuery("/cloud/revenue-breakdown", search);
 }
 

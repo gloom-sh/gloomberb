@@ -119,3 +119,19 @@ test("a quarterly column's trailing EPS across a fiscal Q4 without EPS reads the
   expect(trailingFourQuarters(gap, "2023-12-31", [year])).toMatchObject({ basicEps: expect.closeTo(11.11, 10), unavailableEarnings: ["eps"] });
   expect(trailingFourQuarters(gap, "2023-12-31", [year])!.eps).toBeUndefined();
 });
+
+test("a TTM over complete quarters runs to the latest four that pass, past a newer quarter with only its EPS", () => {
+  const quarters: FinancialStatement[] = [
+    ...["2025-07-27", "2025-10-26", "2026-01-25", "2026-04-26", "2026-07-26"].map((date, index) => ({ date, totalRevenue: (index + 1) * 10, eps: 1 })),
+    { date: "2026-10-31", eps: 2.7, dilutedShares: 24.19e9 },
+  ];
+  const complete = (quarter: FinancialStatement) => typeof quarter.totalRevenue === "number";
+  const ttm = computeTTM(quarters, [], complete)!;
+  expect(ttm.aggregation).toMatchObject({ kind: "trailing-four-quarters", periodEnd: "2026-07-26" });
+  expect(ttm.totalRevenue).toBe(20 + 30 + 40 + 50);
+  // Without the test, the latest four, as before: the EPS-only quarter leads and no revenue sums.
+  expect(computeTTM(quarters)!.aggregation?.periodEnd).toBe("2026-10-31");
+  expect(computeTTM(quarters)!.totalRevenue).toBeUndefined();
+  // Fewer than four complete quarters make no TTM.
+  expect(computeTTM(quarters.slice(2), [], complete)).toBeNull();
+});

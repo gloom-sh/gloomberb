@@ -87,12 +87,32 @@ function carriesTyped(result: InstrumentSearchResult, typed: string): boolean {
     .some((name) => !!name && coveredIssuerMatch(typed, [name]) != null);
 }
 
+const CDS_LEVELS_CACHE_TTL_MS = 5 * 60_000;
+let cachedCdsLevels: { expiresAt: number; value: CloudCdsLevelsResponse } | null = null;
+let inflightCdsLevels: Promise<CloudCdsLevelsResponse> | null = null;
+
+function fetchCachedCloudCdsLevels(): Promise<CloudCdsLevelsResponse> {
+  const now = Date.now();
+  if (cachedCdsLevels && cachedCdsLevels.expiresAt > now) return Promise.resolve(cachedCdsLevels.value);
+  if (inflightCdsLevels) return inflightCdsLevels;
+  const request = apiClient.getCloudCdsLevels()
+    .then((value) => {
+      cachedCdsLevels = { value, expiresAt: Date.now() + CDS_LEVELS_CACHE_TTL_MS };
+      return value;
+    })
+    .finally(() => {
+      if (inflightCdsLevels === request) inflightCdsLevels = null;
+    });
+  inflightCdsLevels = request;
+  return request;
+}
+
 /** The covered issuers' names, from the same request as their levels. */
 export function coveredIssuersFrom(fetchLevels: CdsLevelsFetch): CoveredIssuers {
   return async () => ((await fetchLevels()).levels ?? []).flatMap((level) => (typeof level.issuer === "string" ? [level.issuer] : []));
 }
 
-const defaultCoveredIssuers = coveredIssuersFrom(() => apiClient.getCloudCdsLevels());
+const defaultCoveredIssuers = coveredIssuersFrom(fetchCachedCloudCdsLevels);
 
 async function searchOrNone(searchInstruments: InstrumentSearch, query: string): Promise<InstrumentSearchResult[]> {
   try {
@@ -274,7 +294,7 @@ export type CdsSpreadLevelsLoader = () => Promise<CdsSpreadLevels>;
  * not in the response.
  */
 export async function loadCdsSpreadLevels(
-  fetchLevels: CdsLevelsFetch = () => apiClient.getCloudCdsLevels(),
+  fetchLevels: CdsLevelsFetch = fetchCachedCloudCdsLevels,
 ): Promise<CdsSpreadLevels> {
   const response = await fetchLevels();
   return spreadLevelsOf(response.levels ?? []);

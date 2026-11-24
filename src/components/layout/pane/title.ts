@@ -9,6 +9,7 @@ import type { PaneDef } from "../../../types/plugin";
 import { isUnlinkedFollower, paneTitleMnemonic, TITLE_TICKER } from "../../../layout/pane-follow";
 import { canFollowTickerSource, isTickerLinkPeer } from "../../../layout/ticker-navigation";
 import { withoutCryptoVenueCode } from "../../../utils/crypto-pair";
+import { LINK_GLYPH } from "./link-note";
 import { displayListingKeys, displayTickerKey } from "../../../utils/exchanges";
 
 /** A ticker as a title names it: by its venue's own code, and a coin by its pair alone (USDT-USD, never USDT-USD:CCC). */
@@ -39,9 +40,6 @@ function displayStoredTitle(title: string): string {
   if (!keys[0] || !keys.every((key) => TITLE_TICKER.test(key))) return title;
   return `${title.slice(0, mnemonic.length)}${parts.map((part, index) => index % 2 === 0 ? part.replace(part.trim(), titleTickerKey(part.trim())) : part).join("")}`;
 }
-
-/** Single-cell link glyph: emoji link icons render double-width in terminals. */
-const LINK_GLYPH = "\u29c9";
 
 /** The title without the link suffix. */
 export function getBasePaneDisplayTitle(

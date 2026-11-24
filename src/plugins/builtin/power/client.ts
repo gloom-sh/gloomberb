@@ -81,14 +81,14 @@ async function fetchPowerHistory(filter: PowerFilter, client: Pick<PowerApi, "ge
   return data;
 }
 export async function fetchAllPowerHistory(filter: PowerFilter, client: Pick<PowerApi, "getCloudPowerHistory"> = apiClient) {
-  const first = await fetchPowerHistory({ ...filter, limit: 500 }, client);
+  const first = await fetchPowerHistory({ ...filter, limit: 5000 }, client);
   const points = [...first.points];
   let page = first;
   let offset = 0;
   while (page.hasMore) {
     if (page.nextOffset === null || page.nextOffset <= offset) throw new Error("Power history pagination did not advance.");
     offset = page.nextOffset;
-    page = await fetchPowerHistory({ ...filter, offset, limit: 500 }, client);
+    page = await fetchPowerHistory({ ...filter, offset, limit: 5000 }, client);
     points.push(...page.points);
   }
   return { ...first, points, hasMore: false, nextOffset: null };

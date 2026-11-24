@@ -108,7 +108,7 @@ function PowerView({ width, height, focused, scope, canSave, needsVerification }
   const filterChoices = board?.filters ?? lastFilters.current;
   const historyLoader = useCallback(async ({ offset, force }: { offset: number; force: boolean }) => {
     const result = snapshot?.history ? { payload: snapshot.history, stale: false, refreshError: null }
-      : await loadPowerHistory({ ...filter, offset, limit: 500 }, scope, force);
+      : await loadPowerHistory({ ...filter, offset, limit: 5000 }, scope, force);
     return { ...result, rows: result.payload.points, hasMore: result.payload.hasMore && !snapshot, nextOffset: result.payload.nextOffset };
   }, [filter, scope, snapshot]);
   const historyPages = usePagedRows(tab === "history" ? historyLoader : null, { getId: historyId });

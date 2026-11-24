@@ -9,8 +9,8 @@ import {
   buildFinancialTableModel,
   financialColumnPeriod,
   financialFiscalHeader,
-  splitPeriodsNotInYet,
 } from "../../plugins/builtin/ticker-detail/financials/model";
+import { ratioTableForFinancials } from "../../plugins/builtin/ticker-detail/financials/ratios";
 import { fiscalYearEndMonth } from "../../utils/fiscal-period";
 import type { FundamentalPeriod, GraphKind, GraphMetricKey } from "../../time-series/reporting";
 import type { TimeRange } from "../../time-series/range";
@@ -362,8 +362,11 @@ export function shotExpectedText(
         period: resolved.options.period as FundamentalPeriod,
         statement: String(resolved.options.statement),
       });
-      // A newest period with only some figures is left out of the pane's statement columns (splitPeriodsNotInYet).
-      const latestStatement = table && !ratioTab ? splitPeriodsNotInYet(table.statements, table.subTab).shown[0] : table?.statements[0];
+      // The pane's first column: a newest period with only some figures is left out (selectFinancialStatements), and
+      // so is a ratio tab's column with nothing in it (buildRatioTableModel).
+      const latestStatement = ratioTab && table
+        ? ratioTableForFinancials(financials, ratioTab, table.period).periods[0]?.statement
+        : table?.statements[0];
       const firstMetric = table?.rows[0];
       if (table && latestStatement) {
         const annual = financials.annualStatements ?? [];

@@ -96,7 +96,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
   const assetControl = useRef<SelectControl | null>(null);
   const amountControl = useRef<SelectControl | null>(null);
   const filterKey = JSON.stringify(filters);
-  const { payload, status, error, updatedAt, loadingMore, loadPage, reload: refresh } = useCongressFeed({
+  const { payload, status, error, updatedAt, loadingMore, loadPage, reload: refresh, autoReload } = useCongressFeed({
     ...filters,
     chamber: filters.chamber ?? "all",
     limit: CONGRESS_TRADE_LIMIT,
@@ -153,7 +153,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
     // Without a table there is no row handler, and a failing filter must stay changeable.
     if (!payload && isPlainKey(event, "f")) { event.preventDefault?.(); event.stopPropagation?.(); void openFiltersRef.current(); }
   }, { phase: "before" });
-  useAutoRefresh(updatedAt, refresh);
+  useAutoRefresh(updatedAt, autoReload);
 
   const trades = payload?.trades ?? [];
   const visibleTrades = useMemo(() => mine ? trades.filter((trade) => trade.ticker && mineTickers.has(trade.ticker)) : trades, [trades, mine, mineTickers]);

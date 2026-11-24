@@ -28,6 +28,11 @@ export interface FundMembersPayload {
   /** An N-PORT report's short positions and negative weights, left out apart from its derivatives. */
   excludedShorts?: number;
   quotesUnavailable: boolean; snapshotAsOf: string | null; fundDailyAsOf: string | null; quoteCap: number;
+  /**
+   * How many positions the fund holds. A bond fund's members are its largest positions only (AGG holds about
+   * 13,500), and `omittedWeight` is the share of the fund the rest come to. An older server leaves both out.
+   */
+  positions?: number; omittedWeight?: number;
   members: FundMember[];
   aggregate: { sum: number | null; fundReturn: number | null; residual: number | null; tolerancePp: number;
     withinTolerance: boolean | null; covered: number; total: number; coveredWeight: number; holdingsWeight: number; fresh1D: number };

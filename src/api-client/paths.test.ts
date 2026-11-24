@@ -75,6 +75,8 @@ test("issuer reads of a listing outside the US send its bare symbol with its ven
 test("Hong Kong revenue requests negotiate as-reported periods without changing US requests", () => {
   expect(cloudRevenueBreakdownPath("0700:HKEX", "region"))
     .toBe("/cloud/revenue-breakdown?symbol=0700&exchange=HKEX&view=region&periods=reported");
+  expect(cloudRevenueBreakdownPath("300750:SZSE", "segment"))
+    .toBe("/cloud/revenue-breakdown?symbol=300750&exchange=SZSE&view=segment&periods=reported");
   expect(cloudRevenueBreakdownPath("AAPL", "product"))
     .toBe("/cloud/revenue-breakdown?symbol=AAPL&view=product");
 });
