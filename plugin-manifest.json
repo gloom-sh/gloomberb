@@ -1299,7 +1299,7 @@
           {
             "code": "SI",
             "name": "Short Interest",
-            "description": "US FINRA settlements and Hong Kong SFC weekly reportable short positions."
+            "description": "US FINRA settlements, Hong Kong reportable positions and Taiwan daily short sale balances."
           },
           {
             "code": "SIV",

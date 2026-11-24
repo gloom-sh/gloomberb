@@ -103,6 +103,7 @@ test("ticker and news read a bare code listed abroad alone on that listing, and 
   let report: any;
   let warnings: string[] = [];
   await ticker("O8A", {
+    listingIpo: async () => null,
     initMarketData: async () => ({ config, dataDir: "/tmp/gloom-bare-listing-abroad", store, persistence: { close: () => {} }, dataProvider }) as unknown as MarketContext,
     fail: (message) => { throw new Error(message); },
     printResult: (result) => { report = result.data; warnings = result.warnings ?? []; },
