@@ -385,9 +385,10 @@ function CompanyView({
   // behind the footer notice rather than a standing line under the chart.
   usePaneNoticeFooter({
     registrationId: `${registrationId}:notices`,
-    notices: summary.datesReliable === false
-      ? ["Posting dates on this careers system change on every read, so posting ages are not shown."]
-      : [],
+    notices: [
+      ...(summary.coverage.boardScope ? [summary.coverage.boardScope] : []),
+      ...(summary.datesReliable === false ? ["Posting dates on this careers system change on every read, so posting ages are not shown."] : []),
+    ],
     focused,
   });
 

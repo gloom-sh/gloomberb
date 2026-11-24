@@ -65,6 +65,7 @@ export interface CloudJobsSummaryPayload {
     status: string;
     vendor: string | null;
     careersUrl: string | null;
+    boardScope?: string;
     lastCollectedAt: string | null;
     firstObservedAt: string | null;
     daysObserved: number;
