@@ -54,9 +54,12 @@ import {
   nextViewMode,
   sortRows,
   VIEW_TABS,
+  DISCLOSURE_TABS,
 } from "./table-model";
 import { classSharesAsOf, classSharesToday, loadHolderData } from "./client";
 import { HoldersTreemap } from "./treemap";
+import { disclosureListing } from "../../../api-client/ownership-disclosures";
+import { OwnershipDisclosureView } from "./disclosures-view";
 import { BeneficialOwnersView } from "./beneficial-view";
 import { useIssuerListing } from "../shared/ticker-request";
 import type { HolderColumn, HolderColumnId, HolderRow, SortPreference, ViewMode } from "./types";
@@ -130,7 +133,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   const dataProvider = useAssetData();
   const scope = useCloudDisplayScope();
   const { createPaneFromTemplate } = usePluginAppActions();
-  const [viewMode, setViewMode] = usePluginPaneState<ViewMode>("viewMode", "table");
+  const [preferredView, setViewMode] = usePluginPaneState<ViewMode>("viewMode", "table");
   const [sortPreference, setSortPreference] = usePluginPaneState<SortPreference>("sortPreference", DEFAULT_SORT);
   const [fundMatches, setFundMatches] = useState<Map<string, Holder13FMatch>>(() => new Map());
   const [fundMatching, setFundMatching] = useState(false);
@@ -139,6 +142,9 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   const tableScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
   const exchange = ticker?.metadata.exchange ?? "";
+  const localListing = disclosureListing(symbol, exchange);
+  const tabs = localListing ? DISCLOSURE_TABS : VIEW_TABS;
+  const viewMode = !localListing && preferredView === "disclosures" ? "table" : preferredView;
   const savedCurrency = ticker?.metadata.currency ?? "";
   const issuerListing = useIssuerListing(ticker);
   const loadHolders = useMemo(() => symbol ? async (forceRefresh: boolean) => {
@@ -205,7 +211,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   const rows = useMemo(() => buildRows(listData), [listData]);
   const shortListShown = indexUnread && rows.length > 0;
   // A report of the view says so after its date, which is the short list's.
-  useRemoteUiNode(shortListShown && viewMode !== "13dg" ? {
+  useRemoteUiNode(shortListShown && viewMode !== "13dg" && viewMode !== "disclosures" ? {
     role: "report-freshness", label: "Holder list",
     getMetadata: () => ({ note: INDEX_UNREAD, noteVariants: ["short list"] }),
   } : null);
@@ -289,8 +295,8 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   }, [setSortPreference]);
 
   const toggleView = useCallback(() => {
-    setViewMode(nextViewMode);
-  }, [setViewMode]);
+    setViewMode(nextViewMode(viewMode, tabs));
+  }, [setViewMode, viewMode, tabs]);
 
   const reloadIndex = index.reload;
   const refresh = useCallback(() => {
@@ -385,10 +391,10 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   }, [currency, currencyCode, fundMatches, marketCap]);
 
   // Holders read from the company's home line say whose; the SEC index's rows are the listing's own.
-  useCompanyDataFooter(indexed ? null : listData?.companyFrom, viewMode !== "13dg");
+  useCompanyDataFooter(indexed ? null : listData?.companyFrom, viewMode !== "13dg" && viewMode !== "disclosures");
   // The 13D/G tab registers its own footer.
   usePaneFooter("holders", () => {
-    if (viewMode === "13dg") return null;
+    if (viewMode === "13dg" || viewMode === "disclosures") return null;
     return {
       info: [
         ...quarterFallbackFooter(indexed ? index.pages[0] : null),
@@ -419,7 +425,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   // As a research tab, h/l move between research tabs; `s` switches the view.
   const inResearchTab = useInResearchTab();
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({
-    tabs: VIEW_TABS,
+    tabs,
     activeValue: viewMode,
     onSelect: selectView,
     focused,
@@ -478,6 +484,8 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
           emptyStateTitle={statusTitle ?? "No holders available"}
           rootBefore={registerCaveat ? <Box paddingX={1}><Notice tone="muted">{registerCaveat}</Notice></Box> : undefined}
         />
+      ) : viewMode === "disclosures" && localListing ? (
+        <OwnershipDisclosureView listing={localListing} focused={focused} width={width} onCycle={toggleView} />
       ) : viewMode === "13dg" ? (
         <BeneficialOwnersView
           focused={focused}

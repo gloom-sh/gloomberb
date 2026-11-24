@@ -15,9 +15,11 @@ export const VIEW_TABS: Array<{ label: string; value: ViewMode }> = [
 ];
 
 /** `s` steps through the views in tab order. */
-export function nextViewMode(current: ViewMode): ViewMode {
-  const index = VIEW_TABS.findIndex((tab) => tab.value === current);
-  return VIEW_TABS[(index + 1) % VIEW_TABS.length]!.value;
+export const DISCLOSURE_TABS = [...VIEW_TABS, { label: "Disclosures", value: "disclosures" as const }];
+
+export function nextViewMode(current: ViewMode, tabs = VIEW_TABS): ViewMode {
+  const index = tabs.findIndex((tab) => tab.value === current);
+  return tabs[(index + 1) % tabs.length]!.value;
 }
 
 export function buildRows(data: HolderData | null): HolderRow[] {
