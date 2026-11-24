@@ -11,7 +11,7 @@ import { usePaneSettingValue, usePluginPaneState } from "../../../public/react";
 import { shownPriceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
-import { MISSING_VALUE, formatPercentileRank } from "../../../utils/format";
+import { MISSING_VALUE, formatPercentileRank, formatSignificant } from "../../../utils/format";
 import { Box, Text } from "../../../ui";
 import { nextHeaderSort, type SortPreference } from "../../../utils/sort-values";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
@@ -204,7 +204,7 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
   const curveStats: StatItem[] = curve ? [
     { id: "structure", label: "Structure", value: termStateLabel(curve.termState) ?? MISSING_VALUE,
       tone: curve.termState === "backwardation" ? "warning" : curve.termState === "contango" ? "positive" : "neutral" },
-    { id: "ratio", label: "3M/30D", value: number(curve.ratio),
+    { id: "ratio", label: "3M/30D", value: formatSignificant(curve.ratio ?? undefined),
       detail: curve.ratio == null ? undefined : formatPercentileRank(curve.ratioPercentile1y, "1Y") },
     { id: "spread", label: "Spread", value: `${number(curve.slope, true)} pts` },
   ] : [];

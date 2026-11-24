@@ -604,7 +604,7 @@ test("a series observed by the day is dated without a time in text and CSV, one 
       { date: Date.parse("2026-10-15T00:00:00Z"), value: 31.5428571428 }, { date: Date.parse("2026-10-16T23:59:49Z"), value: 17.9383219955 }] },
   ] };
   const lines = renderHeadlessPaneText(definition, result, args, "Custom Chart").split("\n");
-  expect(lines.find((line) => line.startsWith("VIX 3M / VIX ratio"))).toMatch(/ 2026-10-16 +1\.03 +ratio /);
+  expect(lines.find((line) => line.startsWith("VIX 3M / VIX ratio"))).toMatch(/ 2026-10-16 +1\.026 +ratio /);
   expect(lines.find((line) => line.startsWith("Fear & Greed index"))).toMatch(/ 2026-10-16 23:59 UTC +17\.9 +score /);
   // The export keeps every digit, dated as the text is.
   const freshness = deriveHeadlessFreshness(definition, result);

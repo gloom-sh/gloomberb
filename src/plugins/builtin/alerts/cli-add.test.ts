@@ -17,6 +17,7 @@ import { farTargetMessage } from "./quotes";
 import { readAlertStores } from "./storage";
 import { getPublishedUsEquitySession } from "../../../market-data/published-us-sessions";
 import { serializeCliResult } from "../../../cli/result";
+import { portableCsv } from "../../../cli/csv-export";
 import type { CliGlobalOptions } from "../../../cli/options";
 import { resumeStateKey } from "../../registry/plugin-state";
 import { createAlert } from "./alert-engine";
@@ -86,7 +87,7 @@ function cloud(appleQuote: Partial<Quote> = {}) {
 
 function afterHoursMarket() {
   setSystemTime(new Date("2026-11-05T22:00:00Z"));
-  return { dataProvider: cloud({ marketState: "POST", postMarketPrice: 300 }) };
+  return { dataProvider: cloud({ marketState: "POST", postMarketPrice: 300, dataSource: "delayed" }) };
 }
 
 async function addAlert(args: string[], pluginState?: Record<string, unknown>, market: Record<string, unknown> = {}) {
@@ -493,7 +494,8 @@ test("XLK/SPY quoting nothing is the two listings' ratio, kept apart from older 
   const ratio = await add(["XLK/SPY", "above", "0.25"]);
   expect(ratio.error).toBeNull();
   expect(ratio.stored).toMatchObject([{ symbol: "XLK", exchange: "ARCA", condition: "above", targetPrice: 0.25, lastCheckedPrice: 0.2434, lastDailyClose: "2026-10-26",
-    metric: { kind: "rs_ratio", benchmark: "SPY", benchmarkExchange: "ARCA" } }]);
+    metric: { kind: "rs_ratio", benchmark: "SPY", benchmarkExchange: "ARCA" },
+    lastRatioInputs: { numerator: 24.34, denominator: 100, numeratorAt: Date.parse("2026-10-26T20:00:00Z"), denominatorAt: Date.parse("2026-10-26T20:00:00Z") } }]);
   expect(JSON.parse(String(ratio.pluginState.relativeAlerts))).toHaveLength(1);
   expect(JSON.parse(String(ratio.pluginState.metricAlerts ?? "[]"))).toEqual([]);
   expect(ratio.text).toContain("XLK ratio to SPY above 0.25 · on daily close (the app alerts while it is running;");
@@ -594,10 +596,11 @@ test("alerts list --csv keeps its columns in their order and adds when each aler
   config.pluginConfig.alerts = { ...config.pluginConfig.alerts, alerts: JSON.stringify([...JSON.parse(config.pluginConfig.alerts!.alerts as string), unchecked]) };
   await saveConfig(config);
 
-  const csv = (await desk.run(["list"], { format: "csv" })).output.split("\n");
+  const list = await desk.run(["list"], { format: "csv" });
+  const csv = portableCsv(list.output, [], [], list.printed?.options?.csvTrailingColumns).split("\n");
   // The columns it has always had keep their order; what a reading is measured against comes after them.
   expect(csv[0]).toBe("id,kind,target,trigger,eventDate,status,lastCheckedPrice,triggeredAt,createdAt,listing,currency,lastReading,lastReadingAt,session,"
-    + "comparatorReading,benchmarkListing");
+    + "comparatorReading,benchmarkListing,export_notes,lastReadingFeed,numeratorValue,numeratorAsOf,denominatorValue,denominatorAsOf");
   const rows = csv.slice(1).map((line) => line.split(","));
   // Its first reading is the price it was added at, as the app checks it (after hours, the after-hours price).
   expect(rows[0]!.slice(1, 7)).toEqual(["Price", "AAPL", "above 260.00", "", "active", "300"]);
@@ -605,13 +608,15 @@ test("alerts list --csv keeps its columns in their order and adds when each aler
   expect(rows[0]!.slice(9, 11)).toEqual(["AAPL:NASDAQ", "USD"]);
   // An after-hours print says so, as `quote` names it beside Last.
   expect(rows[0]!.slice(11, 13)).toEqual(["300.00 USD after hours as of 2026-11-05T22:00Z", "2026-11-05T22:00:00Z"]);
-  expect(rows[1]!.slice(8)).toEqual(["2026-10-20T09:30:00Z", "LINK", "", "not checked yet", "", "Regular and extended", "", ""]);
+  expect(rows[0]!.slice(17)).toEqual(["delayed", "", "", "", ""]);
+  expect(rows[1]!.slice(8, 16)).toEqual(["2026-10-20T09:30:00Z", "LINK", "", "not checked yet", "", "Regular and extended", "", ""]);
+  expect(rows[1]!.slice(17)).toEqual(["", "", "", "", ""]);
   // Gloom Cloud checks a 52-week rule for a signed-in account; signed out, nothing has read it yet.
   expect((await desk.run(["add", "AAPL", "52-week", "high"])).error).toBeNull();
   const [, , , research] = (await desk.run(["list"], { format: "csv" })).output.split("\n");
   expect(research!.split(",").slice(1, 3)).toEqual(["52-week range", "AAPL · 52w high"]);
   expect(research!.split(",")[5]).toBe("needs sign-in");
-  expect(research!.split(",").slice(9)).toEqual(["AAPL", "", "not checked yet", "", "", "", ""]);
+  expect(research!.split(",").slice(9, 16)).toEqual(["AAPL", "", "not checked yet", "", "", "", ""]);
 
   const text = (await desk.run(["list"])).output;
   expect(text).toContain("AAPL:NASDAQ (USD)");
@@ -628,7 +633,8 @@ test("alerts list --csv gives a crossover's slow average and a ratio's benchmark
   const cross = { ...createAlert("XLE", "crosses", 0, "ARCA"), ...read, metric: { kind: "ma_cross", period: 50, slowPeriod: 200, direction: "above" },
     lastCheckedPrice: 64.6964, lastCheckedTarget: 59.7339, status: "triggered" as const, triggeredAt: Date.parse("2026-11-20T21:04:05.250Z") };
   const ratio = { ...createAlert("EWJ", "above", 0.6, "ARCA"), ...read, metric: { kind: "rs_ratio", benchmark: "ACWI", benchmarkExchange: "NASDAQ" },
-    lastCheckedPrice: 0.5851, lastCheckedTarget: 0.6 };
+    lastCheckedPrice: 86.9 / 148.94, lastCheckedTarget: 0.6,
+    lastRatioInputs: { numerator: 86.9, numeratorAt: close, denominator: 148.94, denominatorAt: close } };
   const config = await loadConfig(desk.dataDir);
   config.pluginConfig.alerts = { ...config.pluginConfig.alerts, metricAlerts: JSON.stringify([cross]), relativeAlerts: JSON.stringify([ratio]) };
   await saveConfig(config);
@@ -644,7 +650,11 @@ test("alerts list --csv gives a crossover's slow average and a ratio's benchmark
   expect(cell(crossLine, "triggeredAt")).toBe("2026-11-20T21:04:05Z");
   expect(cell(ratioLine, "benchmarkListing")).toBe("ACWI:NASDAQ");
   expect(cell(ratioLine, "currency")).toBe("");
-  expect(cell(ratioLine, "lastReading")).toBe("0.5851 on the 2026-11-20 close");
+  expect(cell(ratioLine, "lastReading")).toBe("0.5835 on the 2026-11-20 close");
+  expect(Number(cell(ratioLine, "numeratorValue")) / Number(cell(ratioLine, "denominatorValue"))).toBeCloseTo(Number(cell(ratioLine, "lastCheckedPrice")), 11);
+  const audit = { lastReadingFeed: "daily close", numeratorValue: 86.9, numeratorAsOf: "2026-11-20T21:00:00Z", denominatorValue: 148.94, denominatorAsOf: "2026-11-20T21:00:00Z" };
+  for (const [key, value] of Object.entries(audit)) expect(cell(ratioLine, key)).toBe(String(value));
+  expect(JSON.parse((await desk.run(["list"], { format: "json" })).output).data).toContainEqual(expect.objectContaining({ id: ratio.id, ...audit }));
   // A daily close is the regular session's, never an extended print.
   for (const line of [crossLine, ratioLine]) expect(cell(line, "session")).toBe("Regular hours only");
 });

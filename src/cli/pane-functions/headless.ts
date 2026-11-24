@@ -39,7 +39,7 @@ import {
 } from "../report-tables";
 import type { ExportIdentity } from "../export-source";
 import { observationDate } from "../../time-series/price-comparison";
-import { chartBarSizeParts } from "../../time-series/resolution";
+import { chartBarSizeName, chartBarSizeParts, type ChartBarSize } from "../../time-series/resolution";
 import type { ResolvedSeries } from "../../time-series/types";
 import { barLastSession } from "../../market-data/market/bar-period";
 import type { PaneFunctionReport } from "./report";
@@ -48,7 +48,7 @@ import { isRecord } from "../../utils/guards";
 import { displayTickerKey } from "../../utils/exchanges";
 import { splitSymbolWords } from "../symbol-args";
 import { formatUtcTime, localTimeSuffix } from "../../utils/utc-time";
-import { MISSING_VALUE, formatCompact } from "../../utils/format";
+import { MISSING_VALUE, formatCompact, formatSignificant } from "../../utils/format";
 import { deriveHeadlessFreshness, formatFreshnessLine, staleRowsText, withSavedCopy, type ReportFreshness } from "./freshness";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE } from "../../utils/network-failure";
 import { accessGateStatus, errorsAccessGate, isProLock, reportGateText } from "./access-gate";
@@ -512,6 +512,18 @@ function seriesLatestDate(series: HeadlessSeries, date: SeriesPointDate): string
   return barLastSession(observationDate(time, calendar), period, venue, Date.now()) ?? series.latestDate ?? seriesPointDate(series, date);
 }
 
+function seriesLatestReading(series: HeadlessSeries, point: HeadlessSeriesPoint): string {
+  if (point.barStart != null && point.availableAt != null && chartBarSizeParts(series.interval)) {
+    const startTime = seriesPointTime(point.barStart), endTime = seriesPointTime(point.availableAt);
+    if (Number.isFinite(startTime) && Number.isFinite(endTime)) {
+      const start = new Date(startTime).toISOString().slice(0, 16), end = new Date(endTime).toISOString().slice(0, 16);
+      const endClock = start.slice(0, 10) === end.slice(0, 10) ? end.slice(11) : end.replace("T", " ");
+      return `${start.replace("T", " ")}–${endClock} UTC (${chartBarSizeName(series.interval as ChartBarSize)} bar close)`;
+    }
+  }
+  return seriesLatestDate(series, point.date);
+}
+
 /**
  * Each series' own last day, as its exported rows' `as_of`, when the series of
  * a report end on different days (a price through Fri 20 Nov beside a spread
@@ -540,10 +552,8 @@ function seriesPointExportDate(series: HeadlessSeries, date: SeriesPointDate, da
 
 /**
  * A latest value as the series report prints it: percentages and percentage
- * points, multiples and
- * ratios (P/E, EV/EBITDA, one series over another, VIX 3M / VIX) to two
- * decimals, which a ratio under 0.1 trades for three significant digits so it
- * is not flattened to 0.03, and a 0 to 100 score to a tenth of a point. A
+ * points and valuation multiples usually read to two decimals, series ratios
+ * to four significant digits, and a 0 to 100 score to a tenth of a point. A
  * company's reported total (`textCompact`) reads as the tables print one:
  * 63.33B. The exports keep every digit. Any other unit prints as loaded,
  * without float noise.
@@ -555,7 +565,8 @@ function seriesValue(series: HeadlessSeries, value: number | null): string {
   if (series.textCompact) return formatCompact(value);
   const unit = series.unit?.trim().toLowerCase();
   if (unit === "%" || unit === "pp") return value.toFixed(2);
-  if (unit === "x" || unit === "ratio") return value !== 0 && Math.abs(value) < 0.1 ? value.toPrecision(3) : value.toFixed(2);
+  if (series.unitGroup?.toLowerCase() === "ratio" || unit === "ratio") return formatSignificant(value);
+  if (unit === "x") return value !== 0 && Math.abs(value) < 0.1 ? value.toPrecision(3) : value.toFixed(2);
   if (unit === "score") return value.toFixed(1);
   // A count or amount of five digits or more groups its thousands as every other table does (27,256,037 shares).
   const plain = displayNumber(value);
@@ -668,7 +679,7 @@ function renderSeries(result: HeadlessSeriesResult, showPoints: boolean): string
     return {
       series: series.label,
       name: series.name?.trim() || null,
-      latest: series.notMeaningful ? series.notMeaningful.asOf : latest ? seriesLatestDate(series, latest.date) : MISSING_VALUE,
+      latest: series.notMeaningful ? series.notMeaningful.asOf : latest ? seriesLatestReading(series, latest) : MISSING_VALUE,
       value: series.notMeaningful ? "N/M" : seriesValue(series, latest?.value ?? latest?.close ?? null),
       unit: series.unit?.trim() ? currencyRateUnitText(series.unit.trim()) : null,
       move: series.latestChangeBasisPoints === undefined ? null : formatBasisPoints(series.latestChangeBasisPoints / 100, 1),

@@ -64,9 +64,9 @@ const MISSING = MISSING_VALUE;
 const ALL_COLUMNS: CalendarColumn[] = [
   { id: "ticker", label: "TICKER", width: 6, align: "left" },
   { id: "company", label: "COMPANY", width: COMPANY_MIN_WIDTH, align: "left" },
-  { id: "local", label: "LOCAL", width: 5, align: "left" },
-  { id: "newYork", label: "ET", width: 5, align: "left" },
-  { id: "period", label: "PERIOD", width: 7, align: "left" },
+  { id: "local", label: "LOCAL", width: 5, align: "left", mayBeBlank: true },
+  { id: "newYork", label: "ET", width: 5, align: "left", mayBeBlank: true },
+  { id: "period", label: "PERIOD", width: 7, align: "left", mayBeBlank: true },
   // "in 23h 59m" and "in progress" are the longest.
   { id: "away", label: "IN", width: 11, align: "right" },
 ];

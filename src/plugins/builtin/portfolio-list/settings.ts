@@ -52,7 +52,7 @@ const PORTFOLIO_COLUMN_DEFS: ColumnConfig[] = [
   { id: "spread_pct", label: "SPR%", width: 7, align: "right", format: "percent" },
   { id: "bid_ask_size", label: "B/A SZ", width: 9, align: "right", format: "compact" },
   // When the bid and ask were quoted, which is not when the last trade was.
-  { id: "book_time", label: "BOOK UTC", width: 10, align: "right" },
+  { id: "book_time", label: "BOOK TIME", width: 53, align: "right" },
   { id: "change", label: "CHG", width: 9, align: "right", format: "currency" },
   { id: "ext_hours", label: "EXT%", width: 8, align: "right", format: "percent" },
   { id: "dividend_yield", label: "DIV%", width: 7, align: "right", format: "percent" },

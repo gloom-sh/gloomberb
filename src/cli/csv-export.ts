@@ -21,7 +21,7 @@ function csvRows(text: string, separator: string): string[][] {
   return rows;
 }
 
-export function portableCsv(text: string, warnings: readonly string[] = [], extraNotes: readonly string[] = []): string {
+export function portableCsv(text: string, warnings: readonly string[] = [], extraNotes: readonly string[] = [], trailingColumns: readonly string[] = []): string {
   const decimal = csvDecimal();
   const separator = decimal === "comma" ? ";" : ",";
   const { csv, footer } = splitCsvFooter(text);
@@ -60,12 +60,16 @@ export function portableCsv(text: string, warnings: readonly string[] = [], extr
   while (usedNames.has(sectionKey)) sectionKey = `_${sectionKey}`;
   while (usedNames.has(notesKey)) notesKey = `_${notesKey}`;
   const notes = [...new Set([...footer, ...extraNotes.flatMap((note) => note.split(/\r\n?|\n/).filter(Boolean).map((line) => `note: ${line}`)), ...warnings.map((warning) => `warning: ${warning}`)].map((note) => cliText(note.replace(/\r\n?|\n/g, " | "))))].join(" | ");
-  const header = [...columns, ...tagged ? [sectionKey] : [], notesKey];
+  const trailing = columns.filter((column) => trailingColumns.includes(column));
+  const leading = columns.filter((column) => !trailingColumns.includes(column));
+  const header = [...leading, ...tagged ? [sectionKey] : [], notesKey, ...trailing];
   const rows = tables.flatMap((table) => {
-    const indices = columns.map((column) => table.columns.indexOf(column));
-    return table.rows.map((row) => [...indices.map((index) => index < 0 ? "" : row[index] ?? ""), ...tagged ? [table.section] : [], notes]);
+    const leadingIndices = leading.map((column) => table.columns.indexOf(column));
+    const trailingIndices = trailing.map((column) => table.columns.indexOf(column));
+    return table.rows.map((row) => [...leadingIndices.map((index) => row[index] ?? ""), ...tagged ? [table.section] : [], notes,
+      ...trailingIndices.map((index) => row[index] ?? "")]);
   });
-  if (!rows.length && notes) rows.push([...header.slice(0, -1).map(() => ""), notes]);
+  if (!rows.length && notes) rows.push(header.map((column) => column === notesKey ? notes : ""));
   const records = [header, ...rows];
   const normalized = decimal === "comma"
     ? records.map((row) => row.map((cell) => /^[+-]?(?:\d+(?:,\d+)?|,\d+)(?:e[+-]?\d+)?%?$/i.test(cell) ? cell.replace(",", ".") : cell))

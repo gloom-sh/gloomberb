@@ -333,6 +333,7 @@ export function appendLiveQuotePoint(
         high: range?.high ?? quotePrice,
         low: range?.low ?? quotePrice,
         close: quotePrice,
+        ...(!calendarBars ? { quoteOnly: true } as const : {}),
       },
     ];
   }
@@ -344,6 +345,7 @@ export function appendLiveQuotePoint(
     {
       date: new Date(quoteTime),
       close: quotePrice,
+      ...(!calendarBars ? { quoteOnly: true } as const : {}),
     },
   ];
 }

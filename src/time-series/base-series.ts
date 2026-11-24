@@ -4,7 +4,7 @@ import { getActiveQuoteDisplay, getRegularSessionDisplay } from "../market-data/
 import type { HistorySession } from "../types/price-history";
 import { appendLiveQuotePoint, hasUnknownBondHistoryBasis } from "./chart-data";
 import type { LiveBarAccumulator } from "./live-bars";
-import { CHART_RESOLUTION_STEP_MS, type ManualChartResolution } from "./resolution";
+import { CHART_RESOLUTION_STEP_MS, type ChartBarSize, type ManualChartResolution } from "./resolution";
 import type { Quote, QuoteMetadata, TickerFinancials } from "../types/financials";
 import type { FredSeriesLoadResult } from "../sources/gloomberb-cloud/fred-series";
 import { fredSeriesAttribution } from "../sources/gloomberb-cloud/fred-attribution";
@@ -185,12 +185,12 @@ export function baseSecuritySeries(
   /** What a futures contract's price counts ("USD / gallon"), from its terms. */
   contractUnit?: string | null,
   /** The bars run into pre-market and after-hours trading. */
-  { extendedHours = false, currencies }: { extendedHours?: boolean; currencies?: ValuationCurrencyContext } = {},
+  { extendedHours = false, currencies, barSize }: { extendedHours?: boolean; currencies?: ValuationCurrencyContext; barSize?: ChartBarSize } = {},
 ): ResolvedSeries | null {
   if (spec.source.kind !== "security") return null;
   const field = getTimeSeriesField(spec.source.fieldId);
   if (!field) return null;
-  const points = extractSecuritySeries(financials, spec.source, currencies);
+  const points = extractSecuritySeries(financials, spec.source, currencies, barSize ?? marketResolution);
   const valuationFallback = dailyValuationFallbackPeriod(financials, spec.source);
   const unreportedPeriod = points.length === 0 ? unreportedStatementPeriod(financials, spec.source) : null;
   const notMeaningful = valuationNotMeaningful(financials, spec.source);
@@ -412,7 +412,8 @@ export function baseCapabilitySeries(
     const date = finiteDate(point.date as unknown as string | Date | undefined);
     const observedAt = finiteDate(point.observedAt as unknown as string | Date | undefined) ?? date;
     const availableAt = finiteDate(point.availableAt as unknown as string | Date | undefined) ?? undefined;
-    return date && observedAt ? [{ ...point, date, observedAt, ...(availableAt ? { availableAt } : {}) }] : [];
+    const barStart = finiteDate(point.barStart) ?? undefined;
+    return date && observedAt ? [{ ...point, date, observedAt, availableAt, barStart }] : [];
   });
   return {
     ...loaded,

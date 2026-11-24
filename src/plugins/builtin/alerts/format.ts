@@ -1,5 +1,5 @@
-import { MISSING_VALUE } from "../../../utils/format";
-import { closeBasis, metricName, metricReadingText, rotationQuadrant } from "./metric-model";
+import { MISSING_VALUE, formatSignificant } from "../../../utils/format";
+import { closeBasis, metricName, metricReadingText, rotationQuadrant, type AlertMetric, type MetricReading } from "./metric-model";
 import { moveBasisText, movePercentText, moveTargetText, moveTriggerLabel } from "./move";
 import { formatMarketPrice } from "../../../market-data/market/format";
 import { EXTENDED_PRINT_WORDS } from "../../../market-data/market/change-basis";
@@ -9,6 +9,7 @@ import { alertListingKey, alertPriceText } from "./price-text";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { isRoundTheClockCoin } from "../../../utils/crypto-pair";
 import type { AlertCondition, AlertRule } from "./types";
+import { quoteSourceWords } from "./fired-log";
 
 /** What a list says of an alert no check has read yet. */
 export const NOT_CHECKED_YET = "not checked yet";
@@ -25,8 +26,15 @@ export function relativeTime(ts: number): string {
   return `${days}d ago`;
 }
 
-/** A price ratio to four decimals, as GR states the latest ratio. */
-const formatRatio = (value: number) => value.toFixed(Math.abs(value) >= 100 ? 2 : 4);
+export function formatMetricReading(metric: AlertMetric, reading: Pick<MetricReading, "value" | "target">): string {
+  return metric.kind === "rs_ratio" ? formatSignificant(reading.value) : metricReadingText(metric, reading);
+}
+
+export function formatAlertHistoryValue(value: number | null, kind: string, unit: string): string | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  const figure = kind === "rs_ratio" ? formatSignificant(value) : String(Number(value.toFixed(4)));
+  return `${figure}${unit === "%" ? "%" : unit ? ` ${unit}` : ""}`;
+}
 
 /**
  * The current reading in a cell: an after-hours, pre-market or overnight
@@ -39,7 +47,7 @@ export function formatCurrentPrice(alert: AlertRule, maxWidth = 9, { words = fal
     : /missing|bars|history|weekly closes/i.test(alert.lastCheckError) ? "Bar gap" : "No data";
   // The quadrant the latest weekly strength and momentum place it in.
   if (alert.metric?.kind === "rrg") return rotationQuadrant(alert.lastCheckedPrice, alert.lastCheckedTarget) ?? MISSING_VALUE;
-  if (alert.metric?.kind === "rs_ratio" && alert.lastCheckedPrice != null) return formatRatio(alert.lastCheckedPrice);
+  if (alert.metric?.kind === "rs_ratio") return formatSignificant(alert.lastCheckedPrice);
   if (alert.lastCheckedPrice == null) return MISSING_VALUE;
   const session = alert.metric ? undefined : alert.lastQuoteSession;
   const mark = session && !words ? `${EXTENDED_SESSION_MARKS[session]} ` : "";
@@ -60,7 +68,7 @@ export function formatAlertTargetPrice(alert: AlertRule, maxWidth = 9): string {
   if (alert.metric?.kind === "ma_cross") return `${alert.metric.slowPeriod}-day MA`;
   if (alert.metric?.kind === "close_ma") return `${alert.metric.period}-day MA`;
   if (alert.metric?.kind === "rrg") return `${alert.metric.quadrant[0]!.toUpperCase()}${alert.metric.quadrant.slice(1)}`;
-  if (alert.metric?.kind === "rs_ratio") return formatRatio(alert.targetPrice);
+  if (alert.metric?.kind === "rs_ratio") return formatSignificant(alert.targetPrice);
   if (alert.move) return moveTargetText(alert);
   return alert.metric ? formatMarketPrice(alert.targetPrice, { maxWidth, minimumFractionDigits: 2 }) : alertPriceText(alert, alert.targetPrice, maxWidth);
 }
@@ -119,8 +127,7 @@ export function quoteAsOfText(alert: AlertRule): string {
   if (alert.lastCheckError) return formatQuoteChecked(alert);
   if (basis && alert.lastDailyClose) return `${alert.lastDailyClose} ${basis === "weekly close" ? "weekly close" : "close"}`;
   if (!basis && alert.lastQuoteUpdatedAt) {
-    const source = alert.lastQuoteSource;
-    const feed = source === "live" ? "real-time" : source === "delayed" ? "delayed" : source === "snapshot" ? "snapshot" : null;
+    const feed = quoteSourceWords(alert.lastQuoteSource);
     return `${isoUtc(alert.lastQuoteUpdatedAt)}${feed ? ` · ${feed}` : ""}`;
   }
   return formatQuoteChecked(alert);
@@ -198,6 +205,11 @@ export function alertReadingAt(alert: AlertRule): number | null {
   return alert.lastQuoteUpdatedAt ?? alert.lastCheckedAt ?? null;
 }
 
+export function alertReadingFeed(alert: AlertRule): string | null {
+  if (alert.lastCheckError || !Number.isFinite(alert.lastCheckedPrice)) return null;
+  return (alert.metric && closeBasis(alert.metric)) || quoteSourceWords(alert.lastQuoteSource) || "feed not recorded";
+}
+
 /**
  * The last reading an alert was checked on, with its unit and when it is
  * from: `37.12 USD as of 2026-10-27T14:31Z`, `61.23 on the 2026-10-26 close`
@@ -217,8 +229,8 @@ export function alertReadingText(alert: AlertRule): string {
   // A price at its instrument's precision and with thousands separators, as the Trigger beside it (74,481.45 USD);
   // a London line's in pence, which says its unit itself.
   const price = !alert.metric ? alertPriceText(alert, value) : null;
-  const figure = alert.metric?.kind === "rrg" ? metricReadingText(alert.metric, { value, target: alert.lastCheckedTarget ?? Number.NaN })
-    : alert.metric?.kind === "rs_ratio" ? formatRatio(value)
+  const figure = alert.metric?.kind === "rrg" || alert.metric?.kind === "rs_ratio"
+    ? formatMetricReading(alert.metric, { value, target: alert.lastCheckedTarget ?? Number.NaN })
     : price?.endsWith("p") ? `${price}${readingSessionWords(alert)}`
     : `${price ?? value.toFixed(2)}${unit === "x" ? "x" : unit ? ` ${unit}` : ""}${readingSessionWords(alert)}`;
   const basis = alert.metric ? closeBasis(alert.metric) : null;

@@ -137,6 +137,7 @@ export interface TimeSeriesPoint {
   date: Date;
   observedAt: Date;
   availableAt?: Date;
+  barStart?: Date;
   /**
    * The day the figure was released (`2026-10-20`), when its source says so for
    * this point alone: FRED's newest observation from Gloom Cloud. The report

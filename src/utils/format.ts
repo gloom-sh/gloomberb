@@ -267,7 +267,7 @@ export function formatSignificant(value: number | undefined, digits = 4): string
 }
 
 /** The decimals `formatSignificant` writes a value to: 0.8904 has 4, 1.123 has 3, 0 none. */
-export function significantDecimals(value: number, digits = 4): number {
+function significantDecimals(value: number, digits = 4): number {
   if (value === 0 || !Number.isFinite(value)) return 0;
   const rounded = Number(value.toPrecision(digits));
   return Math.min(12, Math.max(0, digits - 1 - Math.floor(Math.log10(Math.abs(rounded)))));

@@ -10,6 +10,7 @@ import {
   useQueryBarSearch,
   useTableLoadMore,
   type DataTableCell,
+  type DataTableColumn,
   type DataTableKeyEvent,
   type DataTableRootKeyContext,
   type PaneFooterSegment,
@@ -65,12 +66,7 @@ function isReaderTab(value: string): value is ReaderTab {
   return READER_TABS.some((tab) => tab.value === value);
 }
 
-interface CallColumn {
-  id: string;
-  label: string;
-  width: number;
-  align: "left" | "right";
-}
+type CallColumn = DataTableColumn;
 
 function buildColumns(width: number, showTicker: boolean): CallColumn[] {
   const tickerWidth = showTicker ? 8 : 0;
@@ -89,8 +85,8 @@ function buildColumns(width: number, showTicker: boolean): CallColumn[] {
   columns.push(
     { id: "company", label: "COMPANY", width: companyWidth, align: "left" },
     { id: "date", label: "DATE", width: dateWidth, align: "left" },
-    { id: "period", label: "PERIOD", width: periodWidth, align: "left" },
-    { id: "length", label: "LENGTH", width: lengthWidth, align: "right" },
+    { id: "period", label: "PERIOD", width: periodWidth, align: "left", mayBeBlank: true },
+    { id: "length", label: "LENGTH", width: lengthWidth, align: "right", mayBeBlank: true },
     { id: "sentiment", label: "TONE", width: sentimentWidth, align: "right" },
   );
   return columns;

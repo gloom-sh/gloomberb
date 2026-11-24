@@ -35,10 +35,6 @@ const PRICE_FIELD_KEYS = [
   "price",
   "currency",
   "changeSessionDate",
-  "bid",
-  "ask",
-  "bidSize",
-  "askSize",
   "open",
   "high",
   "low",
@@ -436,15 +432,14 @@ export function resolveCanonicalQuote(
     || !isNav && candidate.priceObservation == null
       && selectedBasis !== null && resolvePriceBasis(candidate.priceBasis, candidate.instrumentType) === selectedBasis;
   const compatiblePriceCandidates = acceptedPriceCandidates.filter(compatiblePrice);
-  let bookProvider: QuoteContribution | undefined;
   for (const field of PRICE_FIELD_KEYS) {
     if (field === "price") continue;
-    const picked = pickField(resolved, provenance, field, compatiblePriceCandidates);
-    if (field === "bid" || field === "ask") bookProvider ??= picked;
+    pickField(resolved, provenance, field, compatiblePriceCandidates);
   }
-  // The book's time comes with the book it dates: a source that gave the bid
-  // without a time leaves it undated, never dated by another source's book.
-  if (bookProvider && finitePositiveNumber(bookProvider.bidAskTime)) assignField(resolved, provenance, "bidAskTime", bookProvider);
+  const bookProvider = compatiblePriceCandidates.find((candidate) => candidate.bid != null || candidate.ask != null);
+  for (const field of ["bid", "ask", "bidSize", "askSize", "bidAskTime"] as const) {
+    if (field !== "bidAskTime" || finitePositiveNumber(bookProvider?.bidAskTime)) assignField(resolved, provenance, field, bookProvider);
+  }
   if (priceProvider && typeof priceProvider.lastTradePrice === "number" && Number.isFinite(priceProvider.lastTradePrice)) {
     assignField(resolved, provenance, "lastTradePrice", priceProvider);
     if (finitePositiveNumber(priceProvider.lastTradeTime)) assignField(resolved, provenance, "lastTradeTime", priceProvider);

@@ -84,14 +84,14 @@ const COLUMNS: Record<ColumnId, DataTableColumn> = {
   date: { id: "date", label: "DATE", width: 8, align: "left" },
   target: { id: "target", label: "TARGET", width: 16, align: "left", flexGrow: 1 },
   acquirer: { id: "acquirer", label: "ACQUIRER", width: 16, align: "left", flexGrow: 1 },
-  terms: { id: "terms", label: "TERMS", width: 18, align: "left" },
-  value: { id: "value", label: "VALUE", width: 8, align: "right" },
+  terms: { id: "terms", label: "TERMS", width: 18, align: "left", mayBeBlank: true },
+  value: { id: "value", label: "VALUE", width: 8, align: "right", mayBeBlank: true },
   price: { id: "price", label: "PRICE", width: 9, align: "right" },
   spread: { id: "spread", label: "SPREAD", width: 7, align: "right" },
-  annualized: { id: "annualized", label: "ANN.", width: 7, align: "right" },
+  annualized: { id: "annualized", label: "ANN.", width: 7, align: "right", mayBeBlank: true },
   // What the spread's prices are: a session's closes (`Mon close`), or trades and when (`15:42`, `8h apart`).
   basis: { id: "basis", label: "AS OF", width: 12, align: "left" },
-  close: { id: "close", label: "CLOSE", width: 7, align: "left" },
+  close: { id: "close", label: "CLOSE", width: 7, align: "left", mayBeBlank: true },
   stage: { id: "stage", label: "STAGE", width: 16, align: "left" },
 };
 
@@ -378,6 +378,7 @@ function MnaDealsView({ focused, width, height, symbol }: {
       return { text: "░".repeat(size), color: placeholder, onMouseDown: openUpgrade };
     }
     const { deal } = item;
+    const hasTradableTarget = deal.status === "pending" && !!deal.target.symbol;
     const base = state.selected ? colors.selectedText : colors.text;
     const muted = state.selected ? colors.selectedText : colors.textMuted;
     switch (column.id) {
@@ -391,11 +392,11 @@ function MnaDealsView({ focused, width, height, symbol }: {
       case "value": return { text: formatDealValue(deal.value, deal.valueCurrency), color: base };
       case "price": {
         const spread = spreadOf(deal);
-        return { text: spread ? formatPrice(spread.price) : MISSING, color: spread ? base : muted };
+        return { text: spread ? formatPrice(spread.price) : MISSING, color: spread ? base : muted, mayBeBlank: !hasTradableTarget };
       }
       case "spread": {
         const spread = spreadOf(deal);
-        if (!spread) return { text: MISSING, color: muted };
+        if (!spread) return { text: MISSING, color: muted, mayBeBlank: !hasTradableTarget };
         // Negative: the market expects better terms than the ones on the table.
         return { text: formatPercentShort(spread.spread), color: spread.spread < 0 && !state.selected ? colors.warning : base };
       }
@@ -405,7 +406,7 @@ function MnaDealsView({ focused, width, height, symbol }: {
       }
       case "basis": {
         const spread = spreadOf(deal);
-        if (!spread) return { text: MISSING, color: muted };
+        if (!spread) return { text: MISSING, color: muted, mayBeBlank: !hasTradableTarget };
         // Trades too far apart to be one moment's take the warning tone every stale mark has.
         const apart = legsApart(spread.basis);
         return { text: spreadBasisLabel(spread.basis, (at) => formatFeedTime(at), Date.now(), { timed: false }), color: apart && !state.selected ? colors.warning : muted };

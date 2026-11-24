@@ -237,6 +237,7 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
         // A rule nothing checks while signed out, or without Pro, says so in its State, in the warning tone.
         const waits = (state === "Needs sign-in" || state === "Needs Pro") && column.id === "status";
         return {
+          ...(column.id === "last" && rule.kind !== "iv_level" && !isResearchAlertKind(rule.kind) ? { mayBeBlank: true } : {}),
           text:
             column.id === "kind"
               ? alertKindLabel(rule.kind)

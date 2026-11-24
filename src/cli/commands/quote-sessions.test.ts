@@ -120,17 +120,18 @@ test("ticker names whose book it is out of regular hours and dates it by its own
   });
   setSystemTime(new Date("2026-10-10T12:00:00Z"));
   try {
-    expect(await report(book)).toContain("Bid / Ask  $202.00 x 100 / $208.74 x 1,400  (last quote, not dated)");
-    expect(await report({ ...book, bidAskTime: Date.parse("2026-10-10T00:55:00Z") })).toContain("(last quote, 00:55 UTC)");
+    expect(await report(book)).toContain("Bid / Ask  $202.00 x 100 / $208.74 x 1,400  (not dated · last quote)");
+    expect(await report({ ...book, bidAskTime: Date.parse("2026-10-10T00:55:00Z") })).toContain("(Sat 10 Oct 00:55 UTC · last quote)");
+    expect(await report({ ...book, bidAskTime: Date.parse("2026-10-09T23:55:00Z") })).toContain("(Fri 9 Oct 23:55 UTC · after-hours)");
     // ITA at 17:45 ET: the book beside Last and the After Hours print is the after-hours one.
-    expect(await report({ ...book, marketState: "POST" })).toContain("Bid / Ask  $202.00 x 100 / $208.74 x 1,400  (after-hours book, not dated)");
-    expect(await report({ ...book, marketState: "PRE", bidAskTime: Date.parse("2026-10-09T12:00:00Z") })).toContain("(pre-market book, Fri 12:00 UTC)");
-    expect(await report({ ...book, marketState: "REGULAR", bidAskTime: Date.parse("2026-10-10T11:58:00Z") })).toContain("1,400  (quoted 11:58 UTC)");
+    expect(await report({ ...book, marketState: "POST" })).toContain("Bid / Ask  $202.00 x 100 / $208.74 x 1,400  (not dated · after-hours book)");
+    expect(await report({ ...book, marketState: "CLOSED", bidAskTime: Date.parse("2026-10-09T12:00:00Z") })).toContain("(Fri 9 Oct 12:00 UTC · pre-market)");
+    expect(await report({ ...book, marketState: "CLOSED", bidAskTime: Date.parse("2026-10-09T18:00:00Z") })).toContain("(Fri 9 Oct 18:00 UTC · regular session)");
     expect(await report({ ...book, marketState: "REGULAR" })).toContain("1,400  (not dated)");
     // Without a quoted book there is nothing to date.
     expect(await report({ ...book, bid: undefined, ask: undefined })).not.toMatch(/last quote|not dated/);
     // FMX's $118.00 / $135.00 around a $129.85 close is more than 5% off: no market for it.
-    expect(await report({ ...book, price: 129.85, bid: 118, ask: 135 })).toContain("(last quote, off-market, not dated)");
+    expect(await report({ ...book, price: 129.85, bid: 118, ask: 135 })).toContain("(not dated · last quote, off-market)");
   } finally {
     setSystemTime();
   }

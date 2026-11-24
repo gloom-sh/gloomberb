@@ -1,13 +1,13 @@
-import { closeBasis, isDailyMetric, isRelativeMetric, metricDescription, metricName, metricReadingText, validMetricRule } from "./metric-model";
+import { closeBasis, isDailyMetric, isRelativeMetric, metricDescription, metricName, validMetricRule } from "./metric-model";
 import { logFailure } from "../../../utils/log-failure";
 import { benchmarkKey, namesTwoListings, parseMetricAlert, type MetricAlertInput } from "./metric-command";
-import { firstDailyCheck, metricAvailabilityError, metricReadings } from "./metric-data";
+import { firstDailyCheck, metricAvailabilityError, metricReadingFields, metricReadings } from "./metric-data";
 import { ALERT_ADD_FORMS, ALERT_KINDS_TEXT, parseRuleAddArgs, RULE_US_DATA, ruleDelivery, type RuleAddRequest } from "./cli-forms";
 import { alertChangeEntry, appendAlertLog, type AlertLogAction } from "./fired-log";
 import { alertLogRule } from "./alert-log";
 import {
-  alertBenchmarkListing, alertComparatorReadingText, alertListing, alertReadingAt, alertReadingCurrency, alertReadingText, isoUtc, listingWithCurrency,
-  measureLabel, NOT_CHECKED_YET, readingSessionWords,
+  alertBenchmarkListing, alertComparatorReadingText, alertListing, alertReadingAt, alertReadingCurrency, alertReadingFeed, alertReadingText, isoUtc, listingWithCurrency,
+  formatMetricReading, measureLabel, NOT_CHECKED_YET, readingSessionWords,
 } from "./format";
 import { isQuoteStaleForCurrentSession } from "../../../market-data/quotes/freshness";
 import { alertQuoteListingFields, quoteAlertFields } from "./quotes";
@@ -542,7 +542,7 @@ function metricReadingNote(alert: AlertRule): string {
   const metric = alert.metric!;
   // "Ratio to SPY was 0.2434 on the 2026-10-26 close", "RRG vs SPY was Leading (strength 110.06, momentum 108.88) on the 2026-10-23 weekly close".
   if (isRelativeMetric(metric)) {
-    const reading = metricReadingText(metric, { value: alert.lastCheckedPrice ?? Number.NaN, target: alert.lastCheckedTarget ?? Number.NaN });
+    const reading = formatMetricReading(metric, { value: alert.lastCheckedPrice ?? Number.NaN, target: alert.lastCheckedTarget ?? Number.NaN });
     return `${metricName(metric)} was ${reading} on the ${alert.lastDailyClose} ${closeBasis(metric) === "weekly close" ? "weekly close" : "close"}`;
   }
   const value = (alert.lastCheckedPrice ?? Number.NaN).toFixed(2);
@@ -567,7 +567,10 @@ type AlertListRow = Record<string, unknown> & {
   status: string;
 };
 
+const AUDIT_COLUMNS = ["lastReadingFeed", "numeratorValue", "numeratorAsOf", "denominatorValue", "denominatorAsOf"] as const;
+
 function priceRow(alert: AlertRule): AlertListRow {
+  const inputs = alert.metric?.kind === "rs_ratio" && !alert.lastCheckError ? alert.lastRatioInputs : undefined;
   return {
     ...alert, kind: alert.metric?.kind ?? (alert.move ? "move" : "price"), rule: alert.metric ? metricDescription(alert) : undefined,
     session: alertSessionLabel(alert),
@@ -582,6 +585,11 @@ function priceRow(alert: AlertRule): AlertListRow {
     // What the reading is measured against: the slow average of a crossover, or the listing a ratio divides by.
     comparatorReading: alertComparatorReadingText(alert) || null,
     benchmarkListing: alertBenchmarkListing(alert) || null,
+    lastReadingFeed: alertReadingFeed(alert),
+    numeratorValue: inputs?.numerator ?? null,
+    numeratorAsOf: isoUtc(inputs?.numeratorAt) || null,
+    denominatorValue: inputs?.denominator ?? null,
+    denominatorAsOf: isoUtc(inputs?.denominatorAt) || null,
   };
 }
 
@@ -602,9 +610,11 @@ function eventRow(
     const reading = rule.kind === "iv_level" ? {
       lastReading: ivLevelCheckText(rule, check),
       lastReadingAt: check?.value != null ? isoUtc(check.quoteAt ? Date.parse(check.quoteAt) : check.checkedAt) || null : null,
+      lastReadingFeed: check?.value != null ? check.source ?? "feed not recorded" : null,
     } : state ? {
       lastReading: ruleStateText(state),
       lastReadingAt: state.asOf ? isoUtc(Date.parse(state.asOf)) || null : null,
+      lastReadingFeed: state.value != null && state.asOf ? "feed not recorded" : null,
     } : cloud?.failed ? {} : { lastReading: NOT_CHECKED_YET };
     return { id: rule.id, kind: rule.kind, target: eventAlertTarget(rule), status, createdAt: rule.createdAt,
       listing: eventRuleListing(rule), ...reading,
@@ -707,6 +717,7 @@ function textRow(row: AlertListRow): Record<string, unknown> {
     session: row.session ?? "",
     comparatorReading: row.comparatorReading ?? "",
     benchmarkListing: row.benchmarkListing ?? "",
+    ...Object.fromEntries(AUDIT_COLUMNS.map((key) => [key, row[key] ?? ""])),
   };
 }
 
@@ -1051,8 +1062,7 @@ export const alertsCliCommand: CliCommandDef = {
       if (unavailable) ctx.fail(unavailable);
       try {
         const value = await withMarketData(ctx, market => metricReadings(market.dataProvider, now)(preview));
-        reading = { lastCheckedPrice: value.value, lastCheckedTarget: value.target, lastQuoteUpdatedAt: value.at, lastCheckedAt: now,
-          ...value.day ? { lastDailyClose: value.day } : {} };
+        reading = metricReadingFields(value, now);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         // A valuation the inputs cannot give is refused; a daily close not yet final, or history not there yet, is read once it is.
@@ -1247,6 +1257,7 @@ export const alertsCliCommand: CliCommandDef = {
         ...proRules.length ? [needsProNote(proRules, rows.filter((row) => row.status === NEEDS_PRO).length)] : []];
       ctx.printResult({ data: rows, ...(allWarnings.length ? { warnings: allWarnings } : {}) }, {
         rows: (data) => data.map(textRow),
+        csvTrailingColumns: AUDIT_COLUMNS,
         textColumns: [
           { key: "id", header: "ID", shrink: false },
           { key: "kind", header: "Kind" },
@@ -1256,6 +1267,7 @@ export const alertsCliCommand: CliCommandDef = {
           { key: "eventDate", header: "Event Date" },
           { key: "status", header: "Status" },
           { key: "lastReading", header: "Last Reading" },
+          { key: "lastReadingFeed", header: "Feed", optional: true },
           // ISO 8601 in UTC, as CSV writes it.
           { key: "createdAt", header: "Created", format: (value) => String(value ?? "") },
           { key: "triggeredAt", header: "Triggered", optional: true, format: (value) => String(value ?? "") },

@@ -398,6 +398,7 @@ export function renderOptionCell(
   const surface = backgroundColor ?? rowSurface;
   return {
     text: formatOptionContractCell(row, contract, column),
+    ...(!contract ? { mayBeBlank: true } : {}),
     color: contract && !contract.quoteStale ? optionRoleColor(optionColumnRole(column), surface) : optionMutedColor(surface),
     keepColorWhenSelected: otherHalf,
     backgroundColor,

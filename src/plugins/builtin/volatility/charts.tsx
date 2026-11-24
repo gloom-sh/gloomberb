@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { CompositeChart, EmptyState, StaticChartSurface } from "../../../components";
-import { formatCompositeSeriesValue } from "../../../components/chart/composite/format";
+import { formatCompositeAxisValue, formatCompositeCursorValue } from "../../../components/chart/composite/format";
+import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { useThemeColors } from "../../../theme/theme-context";
 import { volatilityHistorySeries, volatilityIndexHistoryPoints } from "./chart-model";
@@ -9,6 +10,10 @@ import type { VolatilityBoardRow, VolatilityTermHistory } from "./model";
 interface ChartSize { width: number; height: number }
 
 const HISTORY_PANELS = [{ id: "vol", height: 2 }, { id: "ratio", height: 1 }];
+const formatHistoryAxis = Object.assign(
+  (value: number, domain: CompositeAxisDomain) => domain.unitGroup === "ratio" ? formatCompositeAxisValue(value, domain) : value.toFixed(0),
+  { tag: (value: number, domain: CompositeAxisDomain) => domain.unitGroup === "ratio" ? formatCompositeCursorValue(value, domain) : value.toFixed(0) },
+);
 
 /** VIX 30D and 3M over the 3M/30D ratio on one date axis, with the flat line at 1.00. */
 export function VolatilityHistoryChart({ term, width, height, focused = false }: ChartSize & { term: VolatilityTermHistory; focused?: boolean }) {
@@ -25,8 +30,7 @@ export function VolatilityHistoryChart({ term, width, height, focused = false }:
   }
   return <CompositeChart series={series} legendSeries={legendSeries} panels={HISTORY_PANELS} width={width} height={height}
     focused={focused} navigable={false} showLegend showTimeAxis remoteKind="vix-history"
-    formatValue={(value, entry) => entry.unitGroup === "ratio" ? `${value.toFixed(2)}x` : formatCompositeSeriesValue(value, entry)}
-    formatAxisValue={(value, domain) => domain.unitGroup === "ratio" ? `${value.toFixed(2)}x` : value.toFixed(0)}
+    formatAxisValue={formatHistoryAxis}
     colors={{ background: palette.bgColor, grid: palette.gridColor, crosshair: palette.crosshairColor, text: colors.text,
       textDim: palette.axisColor, negative: colors.negative }} />;
 }

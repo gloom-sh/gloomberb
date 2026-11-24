@@ -12,6 +12,7 @@ import { EVENT_ALERTS_KEY, IV_LEVEL_ALERTS_KEY } from "./events";
 import { appendFiredAlert, FIRED_LOG_KEY } from "./fired-log";
 import { alertsHeadless } from "./headless";
 import { alertReadingText } from "./format";
+import { RELATIVE_ALERTS_KEY } from "./metric-model";
 import type { AlertRule } from "./types";
 import { IV_LEVEL_CHECKS_KEY } from "./iv-level";
 import { createResearchAlert } from "./research-builder";
@@ -158,6 +159,22 @@ test("a reading off an after-hours print is labelled as alerts list labels it, i
   // A regular session's price says nothing more than its figure.
   expect(reading(1) ?? "").toBe("");
   expect(renderHeadlessPaneText(alertsHeadless, result, args, "ALRT")).toMatch(/MSFT\S*\s+Price\s+AH 508\.17\s+900\.00/);
+});
+
+test("a small ratio keeps its leading digits in the alert table and reading text without rounding the export value", async () => {
+  const ratio: AlertRule = {
+    ...createAlert("EWJ", "above", 0.0006, "ARCA"),
+    metric: { kind: "rs_ratio", benchmark: "ACWI", benchmarkExchange: "NASDAQ" },
+    lastCheckedPrice: 0.00056638,
+    lastDailyClose: "2026-11-20",
+  };
+  const args = createTestHeadlessArgs({ options: { tab: "prices" } });
+  const ctx = contextWith([], []);
+  ctx.config.pluginConfig[ALERTS_PLUGIN_ID]![RELATIVE_ALERTS_KEY] = JSON.stringify([ratio]);
+  const result = await alertsHeadless.load(args, ctx);
+  expect(result.rows[0]).toMatchObject({ lastCheckedPrice: 0.00056638, reading: "0.0005664" });
+  expect(alertReadingText(ratio)).toBe("0.0005664 on the 2026-11-20 close");
+  expect(renderHeadlessPaneText(alertsHeadless, result, args, "ALRT")).toMatch(/0\.0005664\s+0\.0006000/);
 });
 
 test("History lists this app's fired alerts with no sign-in, and merges Gloom Cloud's deliveries in, newest first", async () => {

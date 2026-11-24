@@ -1,8 +1,7 @@
 import type { ProjectedChartPoint } from "../../../../components/chart/core/data";
 import type { ScatterChartPoint } from "../../../../components/chart/static";
 import { colors } from "../../../../theme/colors";
-import { MISSING_VALUE, formatNumber, formatSignificant } from "../../../../utils/format";
-import type { CompositeAxisDomain } from "../../../../components/chart/composite/types";
+import { MISSING_VALUE, formatNumber } from "../../../../utils/format";
 import type { StatItem } from "../../../../components/ui";
 import { relationshipBetaBasis, type RelationshipRange } from "./model";
 import type {
@@ -26,23 +25,6 @@ function formatNullableNumber(value: number | null | undefined, decimals: number
 function formatNullablePercent(value: number | null | undefined, decimals: number): string {
   const text = formatNullableNumber(value, decimals);
   return text === MISSING_VALUE ? text : `${text}%`;
-}
-
-/**
- * A ratio's legend value at four significant digits, so a ratio of 0.000566
- * does not read 0.001. Whole index points and correlations keep their own fixed decimals.
- */
-export const formatRatioValue = (value: number) => `${formatSignificant(value)}x`;
-
-/**
- * Ratio axis ticks need decimals that tell neighbours apart: 0.00040, 0.00045, 0.00050 where 0.001 would repeat.
- * They end in `x` as a ratio does everywhere else in the app, which also tells the panel from the prices over it.
- */
-export function formatRatioAxisValue(value: number, domain: Pick<CompositeAxisDomain, "min" | "max">): string {
-  if (Math.abs(value) >= 10) return `${formatNumber(value, 1)}x`;
-  const span = Math.abs(domain.max - domain.min);
-  const decimals = Number.isFinite(span) && span > 0 ? Math.min(10, Math.max(3, 1 - Math.floor(Math.log10(span)))) : 3;
-  return `${formatNumber(value, decimals)}x`;
 }
 
 export function buildIndexedPriceSeries(

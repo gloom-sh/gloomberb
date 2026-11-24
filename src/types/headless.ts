@@ -729,6 +729,8 @@ export interface HeadlessBundleResult extends HeadlessPaneResultBase {
 
 export interface HeadlessSeriesPoint extends HeadlessPaneRow {
   date: string | number | Date;
+  availableAt?: string | number | Date;
+  barStart?: string | number | Date;
   nativeAmount?: { value: number; currency: string };
   value?: number | null;
   open?: number | null;
@@ -753,6 +755,7 @@ export interface HeadlessSeries {
   name?: string;
   /** Explicit unit of the point values; report formatting does not rescale them. */
   unit?: string;
+  unitGroup?: string;
   /** The symbol or series ID the series was asked for as (`USDZAR=X`, `DEXSFUS`), which exports name each row by. */
   symbol?: string;
   /** The bar interval or observation frequency the points are at (`1d`, `1mo`, `daily`), as served, not as asked. */
