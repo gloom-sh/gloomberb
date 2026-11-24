@@ -6,9 +6,13 @@ on:
     branches:
       - main
 
+# Neither a push to main nor a manual run on main cancels a run half done: it
+# waits for the one running and replaces any waiting, so the nightly build can
+# find a main commit that passed. A run on any other branch still cancels its
+# older run.
 concurrency:
   group: verify-windows-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read

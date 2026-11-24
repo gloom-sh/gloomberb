@@ -11,9 +11,12 @@ on:
 permissions:
   contents: read
 
+# A newer push to a pull request cancels its older run. Main never cancels a
+# run half done: a push waits for the one running and replaces any waiting, so
+# the web terminal deploy at the end of a run is not starved by a burst of merges.
 concurrency:
   group: verify-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   GLOOMBERB_NO_TELEMETRY: "1"
