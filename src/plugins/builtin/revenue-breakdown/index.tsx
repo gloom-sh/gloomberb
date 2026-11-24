@@ -1,6 +1,7 @@
 import type { PluginModule } from "../plugin-module";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import { isKnownNonUsListing } from "../../../utils/sec";
+import { reportedRevenueVenue } from "../../../api-client/revenue-breakdown";
 import { canonicalExchange } from "../../../utils/exchanges";
 import { revenueBreakdownCache } from "./client";
 import { revenueBreakdownHeadless } from "./headless";
@@ -19,7 +20,7 @@ export const revenueBreakdownModule: PluginModule = {
       order: 22,
       component: RevenueResearchTab,
       instruments: ["equity"],
-      isVisible: ({ ticker }) => canonicalExchange(ticker?.metadata.exchange) === "HKEX" || !isKnownNonUsListing(ticker),
+      isVisible: ({ ticker }) => reportedRevenueVenue(canonicalExchange(ticker?.metadata.exchange)) || !isKnownNonUsListing(ticker),
     });
   },
 

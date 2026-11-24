@@ -34,7 +34,7 @@ export const revenueBreakdownHeadless: HeadlessPaneDefinition<"bundle"> = {
     dataRequirements: ["Revenue breakdowns from company filings"],
     limitations: [
       "Rows are the members that add up to reported revenue; subtotals are dropped.",
-      "Annual and interim periods for Hong Kong listings; fiscal quarters for US filings.",
+      "Hong Kong filings give annual and interim periods, including for matching A shares. US filings give fiscal quarters.",
       "Free accounts get the two largest rows.",
     ],
   },
