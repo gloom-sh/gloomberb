@@ -1,16 +1,18 @@
 import { getPublishedUsEquityCalendarDay } from "../../../market-data/published-us-sessions";
 import type { PricePoint } from "../../../types/financials";
 import { rollingRealizedVolatility } from "../shared/volatility";
-import type { IvCloseBasis, IvCoverageStatus, IvHistoryPayload, IvMethod, IvPoint, IvRiskReversalStats, IvScreenRow, IvStats, ScreenHv } from "./client";
+import { ivNotCollectedText, type IvCloseBasis, type IvCoverageStatus, type IvHistoryPayload, type IvMethod, type IvPoint, type IvRiskReversalStats,
+  type IvScreenRow, type IvStats, type ScreenHv } from "./client";
 
 /**
- * A history's warnings in words for the reader. A symbol demand coverage could
- * not take (unavailable, with the server's queue wording as its warning) is
- * said plainly instead: none of its history is being collected, so nothing is
- * promised.
+ * A history's warnings in words for the reader. A symbol demand coverage does
+ * not collect (unavailable, with the server's coverage wording as its warning)
+ * is said plainly, whatever an older server words it as: not collected, or no
+ * longer collected when it has readings, with no time promised.
  */
-export function ivHistoryWarnings(payload: Pick<IvHistoryPayload, "status" | "symbol" | "warnings">): string[] {
-  return payload.status === "unavailable" && payload.warnings.length ? [`No IV history for ${payload.symbol} yet.`] : [...payload.warnings];
+export function ivHistoryWarnings(payload: Pick<IvHistoryPayload, "status" | "symbol" | "warnings" | "latest" | "series">): string[] {
+  return payload.status === "unavailable" && payload.warnings.length
+    ? [ivNotCollectedText(payload.symbol, !!payload.latest || payload.series.length > 0)] : [...payload.warnings];
 }
 
 export const HV_WINDOWS = [20, 30] as const;
@@ -483,7 +485,7 @@ export interface RichCheapRow {
   queuedAt: string | null;
   /** The last session its backfill has reached. */
   backfilledThrough: string | null;
-  /** Why an unavailable symbol is not covered yet (demand coverage is full): not final, unlike one with no options history. */
+  /** Why an unavailable symbol is not collected (coverage for requested names is full): not final, unlike one with no options history. */
   warning: string | null;
   iv30: number | null;
   date: string | null;
@@ -633,7 +635,7 @@ export function projectRichCheap(rows: readonly IvScreenRow[], hv: ReadonlyMap<s
 interface ScreenCoverage {
   /** One line per state, each symbol dated: queued since when, backfilled through which session. */
   notes: string[];
-  /** Symbols whose history is still to come or not covered yet: the screen is incomplete while there are any. */
+  /** Symbols whose history is still to come or not collected: the screen is incomplete while there are any. */
   pending: string[];
   /** Those of them with no reading to show yet. */
   missing: string[];
@@ -644,8 +646,8 @@ interface ScreenCoverage {
  * and the pane's notices. A queued symbol says since when and, with `retry`,
  * when to look again: ten minutes after the newest of them was queued. One
  * backfilling says how far it has got. One that finished with no options
- * history is final and leaves the screen complete; one demand coverage could
- * not take is not final. An older server says only ready or queued, without
+ * history is final and leaves the screen complete; one demand coverage does
+ * not collect is not final. An older server says only ready or queued, without
  * dates, so its queued symbols are counted from now as before. A symbol in
  * `explained` (a listing that stopped trading, which its row says) is not
  * listed again as having no options history.
@@ -670,8 +672,8 @@ export function screenCoverage(
     notes.push(`Backfilling: ${backfilling.map((row) => row.backfilledThrough ? `${row.symbol} through ${row.backfilledThrough}` : row.symbol).join(", ")}.`);
   }
   if (final.length) notes.push(`No options history: ${final.map((row) => row.symbol).join(", ")}.`);
-  // The server's queue wording (why demand coverage could not take them) is not repeated: none of their history is being collected, so nothing is promised.
-  if (uncovered.length) notes.push(`No IV history yet: ${uncovered.map((row) => row.symbol).join(", ")}.`);
+  // Said plainly, whatever an older server words it as: no time is promised for a name whose history is not collected.
+  if (uncovered.length) notes.push(`Not collected, coverage for requested names is full: ${uncovered.map((row) => row.symbol).join(", ")}.`);
   const pending = [...queued, ...backfilling, ...uncovered];
   return { notes, pending: pending.map((row) => row.symbol),
     missing: pending.filter((row) => row.iv30 == null && row.date == null).map((row) => row.symbol) };

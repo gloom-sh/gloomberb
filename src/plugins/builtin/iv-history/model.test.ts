@@ -73,9 +73,13 @@ describe("IV history against realized", () => {
       coverage: { source: "demand", addedAt: "", backfilledThrough: "2025-03-14", since: null } }), prices(dates)).warnings[0])
       .toBe("SPY backfilling through 2025-03-14.");
     expect(projectIvHistory(payload([], { status: "unavailable" }), prices(dates)).warnings[0]).toBe("No options history for SPY.");
-    // Demand coverage full: the server's queue wording gives way to a plain line, and a finished backfill with no options is not the same thing.
-    expect(projectIvHistory(payload([], { status: "unavailable", warnings: ["Coverage for new underlyings is full; try again later."] }), prices(dates)).warnings[0])
-      .toBe("No IV history for SPY yet.");
+    // Demand coverage full: said plainly, whatever the server's wording, and a finished backfill with no options is not the same thing.
+    // A name gone idle keeps its readings and says it is no longer collected; neither promises a time.
+    const full = "Not collected: coverage for requested names is full, with the 400 requested in the last 30 days.";
+    expect(projectIvHistory(payload([], { status: "unavailable", warnings: [full] }), prices(dates)).warnings[0])
+      .toBe("SPY IV history is not collected: coverage for requested names is full.");
+    expect(projectIvHistory(payload(dates.slice(0, 5).map((date) => point(date, 0.2)), { status: "unavailable", warnings: ["No longer collected: not requested in 30 days, and coverage for requested names is full."] }),
+      prices(dates)).warnings[0]).toBe("SPY IV history is no longer collected: coverage for requested names is full.");
   });
 });
 
@@ -241,7 +245,7 @@ describe("VCA backfill states", () => {
     pending("ABCD", "backfilling", "2026-10-11T07:31:00Z", "2025-03-14"),
     pending("PFAI", "unavailable", "2026-10-11T04:09:51Z", "2026-10-09"),
     pending("NEXE", "unavailable", "2026-10-11T00:45:22Z", "2026-10-09"),
-    pending("FULL", "unavailable", "", null, ["Coverage for new underlyings is full; try again later."]),
+    pending("FULL", "unavailable", "", null, ["Not collected: coverage for requested names is full, with the 400 requested in the last 30 days."]),
   ]);
 
   test("each state is dated, and only history still to come leaves the screen incomplete", () => {
@@ -251,8 +255,8 @@ describe("VCA backfill states", () => {
         "Queued for backfill: ZZZZ since 07:58 UTC, YYYY since 2026-10-10 23:40 UTC; a first backfill usually takes under 10 minutes, try again after 08:08 UTC.",
         "Backfilling: ABCD through 2025-03-14.",
         "No options history: PFAI, NEXE.",
-        // The server's queue wording is not repeated, and nothing is promised for a name whose history is not being collected.
-        "No IV history yet: FULL.",
+        // Said plainly, with no time promised for a name whose history is not collected.
+        "Not collected, coverage for requested names is full: FULL.",
       ],
       pending: ["ZZZZ", "YYYY", "ABCD", "FULL"],
       missing: ["ZZZZ", "YYYY", "ABCD", "FULL"],

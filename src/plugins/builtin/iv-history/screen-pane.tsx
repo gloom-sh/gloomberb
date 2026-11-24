@@ -130,7 +130,8 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
       case "iv30": return { text: formatVol(row.iv30), color: row.stale ? colors.textDim : colors.warning };
       case "spot": return { text: formatSpot(row.spot), color: colors.textDim };
       case "date": return { text: row.date ? readingLabel(row.date, row.method, true, { basis: row.basis, stale: row.stale })
-        : row.status === "queued" || row.status === "backfilling" ? row.status : MISSING_VALUE, color: row.stale ? colors.warning : colors.textDim };
+        : row.status === "queued" || row.status === "backfilling" ? row.status : row.warning ? "not collected" : MISSING_VALUE,
+        color: row.stale ? colors.warning : colors.textDim };
       case "rank": return { text: formatRank(row.rank) };
       case "percentile": return { text: formatRank(row.percentile) };
       case "verdict": return { text: verdictLabel(row.verdict), color: row.verdict === "rich" ? colors.negative : row.verdict === "cheap" ? colors.positive : colors.textDim };

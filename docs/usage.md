@@ -1739,9 +1739,9 @@ A quote from before the chain's session, or with its ask more than 2% of the und
 
 The chain is the standard contracts. Contracts a corporate action adjusted (listed under a numbered root, such as ETHA1 beside ETHA after a split) deliver something other than 100 shares, so their prices do not compare with the standard ones at the same strike. `gloom options ETHA --adjusted` lists them instead, each with its deliverable (`15 ETHA + 120.5 USD cash`, or `not stated` when the source does not say).
 
-The line under the table names the spot and time they are valued at and the open interest's date: `Greeks at spot 89.79 (close Mon 12 Oct), dividend yield 2.34%, rate 4% · OI as of Fri 9 Oct` (`OI date not published` when it cannot be established; [method](research-data.md#greeks-spot-and-time)).
+The line under the table names the spot and time they are valued at, the session the volume counts and the open interest's date: `Greeks at spot 89.79 (close Mon 12 Oct), dividend yield 2.34%, rate 4% · Volume for Mon 12 Oct · OI as of Fri 9 Oct` (`OI date not published` when it cannot be established; [method](research-data.md#greeks-spot-and-time)).
 
-- `--csv` writes IV and delta as decimals under `IV (annualized decimal)` and `Delta (decimal)`. Every row carries `Spot`, `Spot basis` (`close`, `last`, `pre-market`, `after hours`), `Spot as of`, `OI as of` and the fixed columns, with `interval` reading `snapshot`.
+- `--csv` writes IV and delta as decimals under `IV (annualized decimal)` and `Delta (decimal)`. Every row carries `Spot`, `Spot basis` (`close`, `last`, `pre-market`, `after hours`), `Spot as of`, `Vol session`, `OI as of` and the fixed columns, with `interval` reading `snapshot`.
 - `--json` and `--ndjson` carry `iv` (a fraction) and `delta` on each contract. `metadata.model` has `spot`, `spotBasis`, `spotAsOf`, `valuationTime`, dividend yield and rate, with `metadata.openInterest.asOf`, `metadata.currency`, `metadata.interval` and `metadata.units`.
   - `metadata.fields` says `iv` is the one solved from the quote midpoint (which delta and GEX use) and `impliedVolatility` the provider's own figure.
 
@@ -1782,7 +1782,7 @@ The line under the table names the spot and time they are valued at and the open
 - `--strikes 10` keeps 10 either side of the money. `--strikes 0.70-0.90` (or `--delta 0.70-0.90`) keeps the strikes whose call or put delta is in the band. `--strikes all`, the default, keeps every strike.
 - `--columns bid,ask,spread,delta,openInterest,extrinsicPerYear` picks the fields mirrored around the strike. `costOfSpot` adds the put's midpoint as a percent of spot on the put side ([method](research-data.md#omon-strike-window-and-carry)).
 - `gloom shot OMON` takes the same options, and its result names the rows cut above or below the view.
-- While the chain shows open interest, the footer keeps its date (`OI as of Mon 16 Nov`, `OI 11-16` in a narrow pane) and the image prints it; the spot the Greeks are valued at and the contract under the cursor give way first.
+- While the chain shows open interest, the footer keeps its date beside the volume's session (`Volume for Tue 17 Nov · OI as of Mon 16 Nov`, `Vol 11-17 · OI 11-16` in a narrow pane) and the image prints it; the spot the Greeks are valued at and the contract under the cursor give way first.
 - The report and the image name the expiry with its days left (`Expiry 2028-01-21 (469d)`, `data.metadata.expiry` in `--json`), and the report ends with the chain's as-of and delay in the same words as `options`.
 
 ### Adding and removing symbols
