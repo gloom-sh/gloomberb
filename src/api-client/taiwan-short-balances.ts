@@ -1,6 +1,6 @@
 export type TaiwanVenue = "TWSE" | "TPEX";
 
-export interface TaiwanShortBalance {
+interface TaiwanShortBalance {
   day: string;
   observedAt: string;
   sourceUrl: string;
