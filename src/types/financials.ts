@@ -744,6 +744,14 @@ export interface SplitAction {
   toFactor?: number;
 }
 
+/** A listing's share splits and nothing else of its corporate actions (`getSplitHistoryBatch`). */
+export interface SplitHistory {
+  symbol: string;
+  splits: SplitAction[];
+  /** `unavailable`: the splits could not be read, which says nothing about whether the listing split. */
+  coverage: "available" | "unavailable";
+}
+
 /**
  * How a reported EPS relates to the company's statements: `gaap` is the
  * quarter's diluted EPS as the statements report it; `adjusted` is the

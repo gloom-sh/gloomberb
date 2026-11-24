@@ -58,6 +58,7 @@ import type {
   PricePoint,
   Quote,
   QuoteMetadata,
+  SplitHistory,
 } from "../../../types/financials";
 import type { NewsCapability } from "../../../capabilities/types";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
@@ -390,6 +391,8 @@ function createShotDataProvider(payload: DesktopPaneShotPayload): DataProvider {
     getArticleSummary: async () => null,
     getAnalystResearch: (symbol, exchange) => requestShotDataset<AnalystResearchData>("getAnalystResearch", [symbol, exchange]),
     getCorporateActions: (symbol, exchange) => requestShotDataset<CorporateActionsData>("getCorporateActions", [symbol, exchange]),
+    getSplitHistoryBatch: (symbols) => requestShotMarketData<Array<[string, SplitHistory | null]> | null>("getSplitHistoryBatch", [symbols])
+      .then((answers) => answers ? new Map(answers) : null),
     getHolders: (symbol, exchange) => requestShotDataset<HolderData>("getHolders", [symbol, exchange]),
     getSecFilings: (symbol, count, exchange) => requestShotDataset<SecFilingItem[]>("getSecFilings", [symbol, count, exchange], reviveSecFilings),
     getSecFilingsPage: (symbol, query, exchange) => requestShotDataset<SecFilingsPage>("getSecFilingsPage", [symbol, query, exchange],

@@ -33,6 +33,7 @@ import {
 import { mapWithConcurrency } from "../../../utils/concurrency";
 import { describeTickerChange, movedAwayChange, startTickerChangeLookup } from "../../../tickers/ticker-changes";
 import type { DataProvider } from "../../../types/data-provider";
+import { prefetchSplitHistories, readSplitHistory, type SplitHistorySource } from "./split-history";
 import type {
   FundBrowserRow,
   FundDetailData,
@@ -408,17 +409,23 @@ export interface FundPerformanceResult extends BrowserLoadResult {
 }
 
 /** A ticker's split factor, new shares per old, after one day through another: 1 for none, null when its actions cannot be read. */
-export type SplitFactorLookup = (ticker: string, after: string, through: string) => Promise<number | null>;
+export type SplitFactorLookup = ((ticker: string, after: string, through: string) => Promise<number | null>) & {
+  /** Starts reading every ticker a pass will look up, so they go out together before the first is waited on. */
+  prefetch?(tickers: readonly string[]): void;
+};
+
+/** Where a ticker's split factor is read: its split history, and its change record when it has none. */
+export type SplitFactorSource = SplitHistorySource & Pick<DataProvider, "getTickerChanges">;
 
 /** The least provider adjustment that is a share split: 5:4. A spinoff's price adjustment, nearer 1, changes no share count. */
 const MIN_SPLIT_FACTOR = 1.25;
 
 /** The share splits a ticker's own corporate actions show, as one factor; see corporateSplitFactor. */
-async function ownSplitFactor(marketData: Pick<DataProvider, "getCorporateActions">, ticker: string, after: string, through: string): Promise<number | null> {
-  if (!marketData.getCorporateActions) return null;
-  const actions = await marketData.getCorporateActions(ticker);
-  if (actions.coverage?.splits === "unavailable") return null;
-  return actions.splits.reduce((factor, split) => {
+async function ownSplitFactor(marketData: SplitHistorySource, ticker: string, after: string, through: string): Promise<number | null> {
+  if (!marketData.getCorporateActions && !marketData.getSplitHistoryBatch) return null;
+  const history = await readSplitHistory(marketData, ticker);
+  if (!history || history.coverage === "unavailable") return null;
+  return history.splits.reduce((factor, split) => {
     const ratio = split.fromFactor && split.toFactor ? split.toFactor / split.fromFactor : split.ratio;
     const inWindow = split.date.slice(0, 10) > after && split.date.slice(0, 10) <= through;
     return inWindow && ratio && Number.isFinite(ratio) && Math.abs(Math.log(ratio)) >= Math.log(MIN_SPLIT_FACTOR) - 1e-9 ? factor * ratio : factor;
@@ -438,8 +445,11 @@ const RENAME_LOOKUP_MS = 5_000;
  * its own, so when the ticker's actions are unreadable they are asked of the
  * symbol the company trades as now, once, when its change record says nothing
  * lists under the old one. A ticker with no such record stays unreadable.
+ *
+ * A ticker's splits are read once a session (readSplitHistory), however many
+ * funds, reopens and refreshes ask for them.
  */
-export async function corporateSplitFactor(marketData: Pick<DataProvider, "getCorporateActions" | "getTickerChanges">, ticker: string, after: string, through: string): Promise<number | null> {
+export async function corporateSplitFactor(marketData: SplitFactorSource, ticker: string, after: string, through: string): Promise<number | null> {
   let failure: unknown;
   const own = await ownSplitFactor(marketData, ticker, after, through).catch((error: unknown) => { failure = error; return null; });
   if (own != null) return own;
@@ -450,6 +460,14 @@ export async function corporateSplitFactor(marketData: Pick<DataProvider, "getCo
     return null;
   }
   return ownSplitFactor(marketData, current, after, through);
+}
+
+/** corporateSplitFactor as a SplitFactorLookup, whose pass reads every candidate's splits ahead in a few batched requests. */
+export function corporateSplitLookup(marketData: SplitFactorSource): SplitFactorLookup {
+  return Object.assign(
+    (ticker: string, after: string, through: string) => corporateSplitFactor(marketData, ticker, after, through),
+    { prefetch: (tickers: readonly string[]) => prefetchSplitHistories(marketData, tickers) },
+  );
 }
 
 /** Corporate-action lookups in flight at once for one fund's split candidates. */
@@ -488,6 +506,7 @@ export async function loadSplitFactors(
   const previousPeriod = detail.previousForm?.periodOfReport;
   if (!period || !previousPeriod) return Object.assign(new Map<string, number | null>(), { late });
   const candidates = filingSplitCandidates(detail).filter((line) => !scope.only || scope.only.has(line.id));
+  lookup.prefetch?.(candidates.flatMap((line) => line.ticker ? [line.ticker] : []));
   const endsAt = scope.budgetMs == null ? Infinity : Date.now() + scope.budgetMs;
   const factors = await mapWithConcurrency(candidates, SPLIT_LOOKUP_CONCURRENCY, async (line) => {
     signal?.throwIfAborted();

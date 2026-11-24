@@ -66,6 +66,10 @@ const ASSET_DATA_OPERATION_SPECS: Readonly<Record<string, AssetDataOperationSpec
   getHolders: { summary: "Institutional and fund holders", fields: LISTING },
   getAnalystResearch: { summary: "Analyst ratings and price targets", fields: LISTING },
   getCorporateActions: { summary: "Dividends, splits and reported earnings", fields: LISTING },
+  getSplitHistoryBatch: {
+    summary: "Share splits of several bare symbols, without the rest of their corporate actions",
+    fields: [required("symbols", "array")],
+  },
   getTickerChanges: { summary: "Symbol changes a listing went through", fields: [required("symbol", "string")] },
   getEarningsCalendar: { summary: "Upcoming and recent earnings dates", fields: [required("symbols", "array"), optional("context", "object")] },
   getSecFilingDocuments: { summary: "Documents of one SEC filing", fields: [required("filing", "object")] },

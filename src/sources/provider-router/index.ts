@@ -24,7 +24,7 @@ import type {
 } from "../../types/data-provider";
 import type { CapabilityRouteSource } from "../../types/capability-route-source";
 import { routeSourcePriority } from "../../types/capability-route-source";
-import type { AnalystResearchData, CorporateActionsData, HolderData, OptionsChain, PricePoint, Quote, QuoteContributionMap, QuoteMetadata, TickerFinancials } from "../../types/financials";
+import type { AnalystResearchData, CorporateActionsData, HolderData, OptionsChain, PricePoint, Quote, QuoteContributionMap, QuoteMetadata, SplitHistory, TickerFinancials } from "../../types/financials";
 import { datedCloseListingKey, PreviousCloseDates, type DatedCloseListing } from "../../market-data/market/dated-previous-close";
 import { mergeQuoteMetadata, quoteMetadataFromQuote, quoteMetadataMatchesTarget } from "../../market-data/quotes/metadata";
 import type { NewsArticle, NewsQuery } from "../../news/types";
@@ -417,6 +417,14 @@ export class AssetDataRouter implements DataProvider {
 
   knownUsStock(symbol: string): boolean {
     return this.providersInPriorityOrder().some((provider) => provider.knownUsStock?.(symbol) === true);
+  }
+
+  /** The first source that answers a batch of split histories; null when none can or it fails. */
+  async getSplitHistoryBatch(symbols: string[], options?: { signal?: AbortSignal }): Promise<Map<string, SplitHistory | null> | null> {
+    const provider = this.providersInPriorityOrder().find((candidate) => candidate.getSplitHistoryBatch);
+    if (!provider) return null;
+    return await provider.getSplitHistoryBatch!(symbols, options)
+      .catch(logFailure("sources.provider-router.index", "Batched split histories failed", null));
   }
 
   /** The first source that answers a batch of symbol changes; null when none can or it fails. */

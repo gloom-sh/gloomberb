@@ -33,6 +33,7 @@ import {
 import type { LettersParams } from "./letters";
 import type { IpoCalendarParams, IpoCalendarPayload } from "./ipo";
 import type { TickerChanges } from "../types/ticker-changes";
+import type { SplitHistory } from "../types/financials";
 import type { IssuerListings } from "../types/issuer-listings";
 import type { OrganizationTickersResponse } from "./organization-tickers";
 import type { BitcoinNetworkPayload, CryptoMarketsPayload, DefiTvlPayload, StablecoinSupplyHistoryPayload, StablecoinSupplyPayload } from "./crypto-markets";
@@ -815,6 +816,22 @@ export class CloudDataApi {
       symbol,
       exchange,
     );
+  }
+
+  /**
+   * The share splits of several bare symbols in one request, and nothing else
+   * of their corporate actions: by symbol as asked, null for one with no split
+   * history the service can list. A symbol the service could not answer for is left out.
+   */
+  async getCloudSplitHistoryBatch(
+    symbols: readonly string[],
+    options: { signal?: AbortSignal } = {},
+  ): Promise<Map<string, SplitHistory | null>> {
+    const response = await this.request<CloudMarketResponse<CloudBatchAnswer<"symbol", SplitHistory>>>(
+      "/market/splits/batch",
+      { method: "POST", body: JSON.stringify({ symbols }), ...options.signal ? { signal: options.signal } : {} },
+    );
+    return batchAnswers(response, "symbol");
   }
 
   /** Where the issuer that held a US symbol trades now, or what the symbol's holder was called before. */
