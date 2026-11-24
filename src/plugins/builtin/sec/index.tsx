@@ -372,20 +372,21 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
     ? localFilingRows(localFeed.data, showSupplements) : [], [localFeed.data, localSymbol, localVenue, formGroup, issuerCik, showSupplements]);
 
   const openLocal = localRows.find(row => `exchange:${row.url}` === openItemId);
-  const localItems: FeedDataTableItem[] = localRows.map(row => ({
-    id: `exchange:${row.url}`, title: row.filing, timestamp: row.filedAt, eyebrow: row.source,
-    detailFacts: [{ label: "Filed", value: formatFilingDate(row.filedAt) },
-      { label: "Document", value: row.source, link: { label: "Open filing", onOpen: () => void host.openExternal(row.url) } }],
-    detailMeta: [row.form, formatFilingDate(row.filedAt)],
-  }));
+  const timeline = useMemo(() => {
+    const sec = filings.map(filing => ({ id: filing.accessionNumber, date: +new Date(filing.filingDate), filing }));
+    if (!localRows.length) return sec;
+    return [...sec, ...localRows.map(row => ({ id: `exchange:${row.url}`, date: Date.parse(row.filedAt), filing: null }))]
+      .sort((a, b) => b.date - a.date);
+  }, [filings, localRows]);
   const filterHistoryCapped = !!forms && issuerFilings.length >= SEC_FILING_FETCH_LIMIT;
   const [visibleCount, setVisibleCount] = useState(SEC_FILING_PAGE_SIZE);
-  const visibleFilings = useMemo(() => filings.slice(0, visibleCount), [filings, visibleCount]);
+  const visible = useMemo(() => timeline.slice(0, visibleCount), [timeline, visibleCount]);
+  const visibleFilings = useMemo(() => visible.flatMap(item => item.filing ? [item.filing] : []), [visible]);
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const loadMore = useTableLoadMore(
     scrollRef,
-    visibleCount < filings.length,
-    () => setVisibleCount((current) => Math.min(filings.length, current + SEC_FILING_PAGE_SIZE)),
+    visibleCount < timeline.length,
+    () => setVisibleCount((current) => Math.min(timeline.length, current + SEC_FILING_PAGE_SIZE)),
   );
   useEffect(() => {
     setVisibleCount(SEC_FILING_PAGE_SIZE);
@@ -394,23 +395,23 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   // A restored or shared open filing can sit past the first page, or be gone
   // from the feed entirely.
   useEffect(() => {
-    if (!openItemId || openItemId.startsWith("exchange:") || filings.length === 0) return;
-    const index = filings.findIndex((filing) => filing.accessionNumber === openItemId);
+    if (!openItemId || !timeline.length) return;
+    const index = timeline.findIndex(item => item.id === openItemId);
     if (index < 0) {
       // A pricing supplement opened from the command bar shows the supplements rather than closing.
       const supplement = !showSupplements && scopedFilings.some((filing) => filing.accessionNumber === openItemId && isSupplement(filing));
       if (supplement) setShowSupplements(true);
-      else if (!loading) setOpenItemId(null);
+      else if (!loading && !localFeed.loading) setOpenItemId(null);
       return;
     }
     if (index >= visibleCount) {
       setVisibleCount(Math.ceil((index + 1) / SEC_FILING_PAGE_SIZE) * SEC_FILING_PAGE_SIZE);
     }
-  }, [filings, isSupplement, loading, openItemId, scopedFilings, setOpenItemId, setShowSupplements, showSupplements, visibleCount]);
+  }, [timeline, isSupplement, loading, localFeed.loading, openItemId, scopedFilings, setOpenItemId, setShowSupplements, showSupplements, visibleCount]);
   const error = filingsEntry?.error && filingsEntry.error.reasonCode !== "NO_DATA" ? filingsEntry.error.message : null;
   // Hosted, the only filings source is Gloom Cloud, which needs an account.
   const cloudSession = useResearchCloudSession();
-  const authWall = formFilings.length === 0 && isCloudSessionRequired(error);
+  const authWall = !localFeed.loading && !localRows.length && formFilings.length === 0 && (isCloudSessionRequired(error) || isCloudSessionRequired(localFeed.error));
 
   const openFiling = openItemId
     ? filings.find((filing) => filing.accessionNumber === openItemId) ?? null
@@ -437,21 +438,21 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   // in their text, so the ones around the cursor are read after it, one at a
   // time, for their rows; the rest of the list is never queued, which would
   // fire dozens of requests for rows nobody looks at. Read text is cached.
-  const selectedFiling = visibleFilings[selectedIdx];
+  const selectedFiling = visible[selectedIdx]?.filing;
   // The rows on screen, as a share of the list so it holds for terminal rows and desktop pixels alike.
   const [onScreen, setOnScreen] = useState({ first: 0, count: height });
   const trackScroll = useCallback(() => {
     loadMore();
     const box = scrollRef.current;
-    if (!box?.viewport || !(box.scrollHeight > 0) || visibleFilings.length === 0) return;
-    const first = Math.floor((box.scrollTop / box.scrollHeight) * visibleFilings.length);
-    const count = Math.ceil((box.viewport.height / box.scrollHeight) * visibleFilings.length) + 1;
+    if (!box?.viewport || !(box.scrollHeight > 0) || visible.length === 0) return;
+    const first = Math.floor((box.scrollTop / box.scrollHeight) * visible.length);
+    const count = Math.ceil((box.viewport.height / box.scrollHeight) * visible.length) + 1;
     setOnScreen((current) => (current.first === first && current.count === count ? current : { first, count }));
-  }, [loadMore, visibleFilings.length]);
+  }, [loadMore, visible.length]);
   const nearbyOwnership = useMemo(() => [
     ...(selectedFiling ? [selectedFiling] : []),
-    ...visibleFilings.slice(onScreen.first, onScreen.first + Math.min(OWNERSHIP_ROWS_READ, onScreen.count)),
-  ].map(rowSummaryTarget).filter((target): target is SecFilingItem => !!target), [onScreen, selectedFiling, visibleFilings]);
+    ...visible.slice(onScreen.first, onScreen.first + Math.min(OWNERSHIP_ROWS_READ, onScreen.count)).flatMap(item => item.filing ? [item.filing] : []),
+  ].map(rowSummaryTarget).filter((target): target is SecFilingItem => !!target), [onScreen, selectedFiling, visible]);
   const viewedTargets = useMemo(() => [
     ...(openFiling ? [openFiling] : []),
     ...buildInlineFilingContentTargets(openFiling, openDocuments),
@@ -507,7 +508,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
     refresh();
   }, [cloudSession.requestKey, refresh]);
 
-  const itemCount = visibleFilings.length + localRows.length;
+  const itemCount = visible.length;
   useEffect(() => {
     if (itemCount > 0 && selectedIdx >= itemCount) {
       setSelectedIdx(Math.max(0, itemCount - 1));
@@ -532,7 +533,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
     label: openLocal ? "filing" : openFiling ? openFiling.pressReleaseUrl ? "press release" : "filing"
       : factsUrl ? "source" : abroadPage ? "issuer page" : announcements ? "announcements" : "filing",
     // Rows read in the background for their insiders do not hold up the pane.
-    loading: loading || loadingDocuments || (!!loadingKey && viewedTargets.some((target) => target.accessionNumber === loadingKey)),
+    loading: loading || localFeed.loading || loadingDocuments || (!!loadingKey && viewedTargets.some((target) => target.accessionNumber === loadingKey)),
     error: authWall ? null : error ?? detailError ?? localFeed.error,
     hints,
     showOpenHint: !!openLocal || !!(openFiling ? openFiling.filingUrl : factsUrl ?? abroadPage ?? announcements),
@@ -628,7 +629,8 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   if (authWall) return withFacts(<SignInWall placement="sec-signin" action="view SEC filings" needsVerification={cloudSession.needsVerification} />);
   if ((loading || localFeed.loading) && filings.length === 0 && !localRows.length) return withFacts(<Spinner label="Loading SEC filings..." />);
   // The fund view keeps its facts and query bar over an empty or failed filings list, which says why in the table.
-  if (!forms && error && formFilings.length === 0 && !localRows.length) return <EmptyState title="SEC filings unavailable." message={error} />;
+  const feedError = localFeed.error ?? error;
+  if (!forms && feedError && formFilings.length === 0 && !localRows.length) return <EmptyState title="Filings unavailable." message={feedError} />;
   if (!forms && formFilings.length === 0 && !localRows.length) {
     // A company from abroad that files nothing with the SEC says so and links its exchange's announcements, as `filings` does.
     if (equityAbroad) {
@@ -653,26 +655,40 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
     );
   }
 
+  const secItems = toFeedItems(
+    colors,
+    issuerTicker,
+    issuers.length > 1 && issuerCik === ALL_FORMS,
+    visibleFilings,
+    openFiling?.accessionNumber,
+    contentCache,
+    loadingContent,
+    openDocuments,
+    loadingDocuments,
+    documentsError,
+    contentErrors,
+    previews,
+    storyLinks,
+  );
+  let items = secItems;
+  if (localRows.length) {
+    const byId = new Map(secItems.map(item => [item.id, item]));
+    for (const row of localRows) {
+      const id = `exchange:${row.url}`;
+      byId.set(id, { id, title: row.filing, timestamp: row.filedAt, eyebrow: row.source,
+        detailFacts: [{ label: "Filed", value: formatFilingDate(row.filedAt) },
+          { label: "Document", value: row.source, link: { label: "Open filing", onOpen: () => void host.openExternal(row.url) } }],
+        detailMeta: [row.form, formatFilingDate(row.filedAt)],
+      });
+    }
+    items = visible.map(item => byId.get(item.id)!);
+  }
   return (
     <FeedDataTableStackView
       width={width}
       height={height}
       focused={focused}
-      items={[...toFeedItems(
-        colors,
-        issuerTicker,
-        issuers.length > 1 && issuerCik === ALL_FORMS,
-        visibleFilings,
-        openFiling?.accessionNumber,
-        contentCache,
-        loadingContent,
-        openDocuments,
-        loadingDocuments,
-        documentsError,
-        contentErrors,
-        previews,
-        storyLinks,
-      ), ...localItems]}
+      items={items}
       selectedIdx={selectedIdx}
       onSelect={setSelectedIdx}
       openItemId={openItemId}
