@@ -536,6 +536,12 @@ export class CloudDataApi {
   }
 
   /** A company's recent announcements on its exchange (ASX and HKEX); another exchange answers 404. */
+  getOwnershipDisclosures(listing: string, limit: number, signal?: AbortSignal) {
+    return this.request<import("./ownership-disclosures").OwnershipDisclosures>(
+      `/cloud/ownership-disclosures/${encodeURIComponent(listing)}?limit=${limit}`, signal ? { signal } : undefined,
+    );
+  }
+
   getCloudExchangeAnnouncements(params: { symbol: string; exchange: string; limit?: number; kind?: "results" }) {
     return this.request<import("./exchange-announcements").ExchangeAnnouncementsPayload>(
       cloudExchangeAnnouncementsPath(params),
