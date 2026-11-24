@@ -14,6 +14,7 @@ import type { FundFactsPayload } from "../../../api-client/fund-facts";
 import { errorMessage } from "../../../utils/errors";
 import { filingStoryNote, loadFilingStories, type FilingStory } from "../insider/filing-stories";
 import { logFailure } from "../../../utils/log-failure";
+import { latestFilingRows, localFilingListing, localFilingRows } from "./exchange-filings";
 import { loadSecFilings } from "./client";
 import { ETF_FILING_FORMS, filterFilingsByForms, fundSeriesFilings, loadShownSecFilings, SEC_FILING_FETCH_LIMIT } from "./forms";
 import { hiddenFilingsMetadata, hiddenFilingsNote } from "../../../utils/sec-filings";
@@ -108,11 +109,13 @@ export interface SecHeadlessDependencies {
     args: HeadlessPaneLoadArgs,
     ctx: HeadlessPaneContext,
   ): Promise<SecFilingItem[]>;
+  loadExchange?: (listing: { symbol: string; exchange: string; limit: number }, ctx: HeadlessPaneContext) => Promise<import("../../../api-client/exchange-announcements").ExchangeAnnouncementsPayload>;
   /** The stories reporting each Form 4, by accession number (Gloom Cloud's match); none asked when absent. */
   loadFilingStories?(accessions: readonly string[], ctx: HeadlessPaneContext): Promise<Map<string, FilingStory[]>>;
 }
 
 const defaultDependencies: SecHeadlessDependencies = {
+  loadExchange: (listing, ctx) => ctx.apiClient.getCloudExchangeAnnouncements(listing),
   loadFilings: (symbol, limit, _args, ctx) => loadSecFilings(ctx.marketData, symbol, limit),
   loadFilingStories: (accessions, ctx) => loadFilingStories(accessions, ctx.apiClient),
 };
@@ -138,7 +141,7 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
     argument: {
       kind: "ticker",
       placeholder: "ticker",
-      description: "US equity ticker.",
+      description: "Equity ticker, with its exchange for a local listing.",
     },
     options: [
       {
@@ -176,10 +179,30 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       const load = (count: number) => dependencies.loadFilings(symbol, count, args, ctx);
       // A form filter searches every filing listed for the issuer and keeps the supplements it names; without
       // one, a bank's pricing supplements and a trust's other funds stay out unless --all, as in `filings`.
-      const { filings, hidden } = await loadShownSecFilings(load, limit, { form: form || null, all: args.options.all === true });
+      const listing = !form ? localFilingListing(symbol) : null;
+      const [us, local] = await Promise.allSettled([
+        loadShownSecFilings(load, limit, { form: form || null, all: args.options.all === true }),
+        listing && dependencies.loadExchange ? dependencies.loadExchange({ ...listing, limit: listing.exchange === "HKEX" && args.options.all !== true ? 100 : Math.min(50, limit) }, ctx) : Promise.resolve(null),
+      ]);
+      const exchange = local.status === "fulfilled" ? local.value : null;
+      const exchangeRows = exchange ? localFilingRows(exchange, args.options.all === true) : [];
+      if (us.status === "rejected" && !exchangeRows.length) throw us.reason;
+      const { filings, hidden } = us.status === "fulfilled" ? us.value : { filings: [], hidden: null };
       const hiddenNote = hidden && hiddenFilingsNote(hidden);
       const rows = await withFilingStories(buildSecFilingRows(filings), ctx, dependencies);
       const notes = hiddenNote ? [hiddenNote] : [];
+      if (us.status === "rejected") notes.push(`SEC filings unavailable: ${errorMessage(us.reason)}`);
+      if (local.status === "rejected" && listing) notes.push(`${listing.publisher} filings unavailable: ${errorMessage(local.reason)}`);
+      if (exchange?.coverage) notes.push(exchange.coverage);
+      if (exchangeRows.length && listing && exchange) {
+        const combined = latestFilingRows(rows, exchangeRows, limit);
+        const columns: HeadlessPaneColumn[] = [
+          SEC_COLUMNS[0]!, { key: "source", header: "Source" }, SEC_COLUMNS[2]!, SEC_COLUMNS[4]!, { key: "url", header: "Document" },
+        ];
+        return { rows: combined, columns, textColumns: columns.slice(0, -1), notes: [...notes, ...companyDataNotes(filings[0]?.companyFrom)],
+          freshness: { source: rows.length ? `SEC EDGAR, ${listing.publisher}` : listing.publisher, status: "not-a-feed", basis: "filed data", observedKey: "filedAt" },
+          metadata: { symbol, returned: combined.length, exchangePage: exchange.page, ...hiddenFilingsMetadata(hidden) } };
+      }
       // A listing abroad whose company files nothing with the SEC says where its exchange publishes its announcements.
       const page = !form && filings.length === 0 ? listingAnnouncementsPage(symbol) : null;
       return {

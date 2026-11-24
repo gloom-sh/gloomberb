@@ -27,6 +27,7 @@ export interface ExchangeAnnouncementsPayload {
   announcements: ExchangeAnnouncement[];
   /** How many announcements the exchange holds for the company; null when it does not say. */
   total: number | null;
+  coverage?: string;
   /** When Gloom Cloud read the list from the exchange. */
   retrievedAt: string;
   /** An earlier read, served because the exchange could not be reached. */

@@ -37,6 +37,26 @@ function args(limit: number): HeadlessPaneLoadArgs {
 }
 
 describe("SEC headless model", () => {
+  test("orders home-market and SEC filings by date, preserves document links and keeps SEC form filters scoped", async () => {
+    let exchangeReads = 0;
+    const localUrl = "https://dart.fss.or.kr/dsaf001/main.do?rcpNo=20261113001140";
+    const headless = createSecHeadless({
+      loadFilings: async () => filings,
+      loadExchange: async () => {
+        exchangeReads++;
+        return { exchange: "KRX", symbol: "035420", name: "NAVER", page: "https://dart.fss.or.kr/", total: null,
+          retrievedAt: "2026-11-13T05:00:00Z", announcements: [{ date: "2026-11-13T00:00:00Z", headline: "Quarterly report",
+            types: ["Quarterly report"], priceSensitive: null, fileSize: null, documentKey: "20261113001140", url: localUrl }] };
+      },
+    });
+    const input = { ...args(2), symbols: ["035420:KRX"] };
+    const result = await headless.load(input, createTestHeadlessContext());
+    expect(result.rows.map(row => row.source)).toEqual(["DART", "SEC EDGAR"]);
+    expect(result.rows[0]?.url).toBe(localUrl);
+    await headless.load({ ...input, options: { limit: 2, form: "8-K" } }, createTestHeadlessContext());
+    expect(exchangeReads).toBe(1);
+  });
+
   test("projects filing rows and honors the page limit", async () => {
     const requestedLimits: number[] = [];
     const headless = createSecHeadless({
