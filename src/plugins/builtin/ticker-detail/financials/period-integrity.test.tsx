@@ -121,7 +121,8 @@ test("actual financial table and CSV retain the derived TTM window and known fie
   const quarterEnds = ["2024-03-31", "2024-06-30", "2024-09-30", "2024-12-31"];
   const published = ["2024-05-01", "2024-08-01", "2024-11-01", "2025-02-01"];
   const financials: TickerFinancials = {
-    annualStatements: [{ date: "2025-12-31", currency: "USD", totalRevenue: 1000, basicEps: 5, eps: 4.5 }],
+    // The year before the quarters: a TTM ending before the latest year would be no column.
+    annualStatements: [{ date: "2023-12-31", currency: "USD", totalRevenue: 1000, basicEps: 5, eps: 4.5 }],
     quarterlyStatements: quarterEnds.map((date, i) => ({
       date,
       currency: "USD",
@@ -146,7 +147,7 @@ test("actual financial table and CSV retain the derived TTM window and known fie
   expect(csv).toContain("TTM Q4 FY24 2024-12-31");
   expect(csv).toContain("Currency,USD");
   expect(frame()).toContain("TTM Q4 FY24 2024-12-31");
-  expect(frame()).toContain("FY2025 2025-12-31");
+  expect(frame()).toContain("FY2023 2023-12-31");
   expect(frame()).toMatch(/^ {2}USD K\s/m);
   expect(row(result, "income:revenue").TTM).toBe(400);
 });

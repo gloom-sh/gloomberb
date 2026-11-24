@@ -313,9 +313,27 @@ export function servedTrailingStatement(
   };
 }
 
-export function computeTTM(quarterlyStatements: FinancialStatement[], annualStatements: readonly FinancialStatement[] = []) {
+/**
+ * The latest four quarters summed. With `complete`, the latest four that all
+ * pass it: a quarter whose statements are not in yet (only its EPS is on file,
+ * as a company's newest quarter is between its earnings release and its 10-Q)
+ * never joins the sum, which then runs to the quarter before it.
+ */
+export function computeTTM(
+  quarterlyStatements: FinancialStatement[],
+  annualStatements: readonly FinancialStatement[] = [],
+  complete?: (quarter: FinancialStatement) => boolean,
+) {
   const sorted = sortedQuarters(quarterlyStatements);
-  return aggregateQuarterlyStatements(sorted.slice(-4), "TTM", { quarterly: sorted, annual: annualStatements });
+  const onFile = { quarterly: sorted, annual: annualStatements };
+  if (!complete) return aggregateQuarterlyStatements(sorted.slice(-4), "TTM", onFile);
+  for (let end = sorted.length; end >= 4; end -= 1) {
+    const quarters = sorted.slice(end - 4, end);
+    if (!quarters.every(complete)) continue;
+    const ttm = aggregateQuarterlyStatements(quarters, "TTM", onFile);
+    if (ttm) return ttm;
+  }
+  return null;
 }
 
 /**
@@ -332,9 +350,12 @@ function previousTrailing(
 ): FinancialStatement | null {
   const sorted = sortedQuarters(quarterlyStatements);
   if (ttm.aggregation?.kind !== "annual-plus-interim") {
-    const previous = aggregateQuarterlyStatements(sorted.slice(-8, -4), "prevTTM", { quarterly: sorted, annual: annualStatements });
-    const latest = sorted.at(-1);
-    const prior = sorted.at(-5);
+    // The four quarters before the TTM's own, which need not be the latest on file (computeTTM).
+    const index = sorted.findIndex((row) => row.date === ttm.aggregation?.periodEnd);
+    const end = index >= 0 ? index + 1 : sorted.length;
+    const previous = aggregateQuarterlyStatements(sorted.slice(Math.max(0, end - 8), Math.max(0, end - 4)), "prevTTM", { quarterly: sorted, annual: annualStatements });
+    const latest = sorted[end - 1];
+    const prior = end >= 5 ? sorted[end - 5] : undefined;
     const days = latest && prior ? (Date.parse(latest.date) - Date.parse(prior.date)) / 86_400_000 : NaN;
     return previous && days >= 300 && days <= 430 ? previous : null;
   }

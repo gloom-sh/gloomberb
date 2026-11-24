@@ -47,6 +47,47 @@ test("FA points to newer earnings releases without putting preliminary figures i
   }
 });
 
+// NVIDIA on 2026-11-24: Q3 FY27 in its earnings release, not yet in a 10-Q, its row EPS alone under 2026-10-31.
+test("FA leaves out a quarter with only its EPS, names it, and sums its TTM to the quarter before", async () => {
+  const release = {
+    symbol: "NVDA", name: "NVIDIA", date: "2026-11-19", timing: "amc", timingSource: "company", reportedAt: "2026-11-19T21:00:00Z",
+    dateStatus: "reported", fiscalPeriod: "2026-10", fiscalYear: 2027, fiscalQuarter: 3, marketCap: null,
+    epsEstimate: null, epsActual: null, epsAnalysts: null, revenueEstimate: null, revenueAnalysts: null,
+    revenueActual: 115_844_000_000, revenueActualSource: "press-release", implied: null, realized: null,
+  } as const;
+  const quarter = (date: string, revenue: number) => ({ date, currency: "USD", totalRevenue: revenue, netIncome: revenue / 2, eps: revenue / 2 / 24.3e9 });
+  const ctx = createTestHeadlessContext({
+    marketData: createTestDataProvider({ getTickerFinancials: async () => createTestFinancials({
+      financialCurrency: "USD",
+      annualStatements: [{ date: "2026-01-25", currency: "USD", totalRevenue: 215.9e9, netIncome: 120.1e9, eps: 4.9 }],
+      quarterlyStatements: [
+        quarter("2025-10-26", 57e9), quarter("2026-01-25", 68e9), quarter("2026-04-26", 82e9), quarter("2026-07-26", 96e9),
+        { date: "2026-10-31", currency: "USD", basicShares: 24.106e9, dilutedShares: 24.186e9, basicEps: 2.71, eps: 2.7 },
+      ],
+    }) }),
+    apiClient: { getCloudEarningsHistory: async (symbol) => ({ asOf: "2026-11-24", symbol, name: release.name, reports: [release] }) } as HeadlessPaneContext["apiClient"],
+  });
+  setSystemTime(new Date("2026-11-24T15:00:00Z"));
+  try {
+    const quarterly = await financialStatementsHeadless.load(args(["NVDA:NASDAQ"], { period: "quarterly", statement: "income" }), ctx);
+    expect((quarterly.metadata?.columns as Array<{ date: string }>).map(({ date }) => date))
+      .toEqual(["2026-07-26", "2026-04-26", "2026-01-25", "2025-10-26"]);
+    expect(quarterly.notes?.slice(0, 2)).toEqual([
+      "Q3 FY27 is not in yet: only its EPS is on file (2.70 diluted), not its revenue.",
+      "Newer results for Q3 FY2027 were reported on 2026-11-19 in the company's earnings release. See ERN NVDA:NASDAQ for the release figures until FA reflects the filing.",
+    ]);
+    const annual = await financialStatementsHeadless.load(args(["NVDA:NASDAQ"], { period: "annual", statement: "income" }), ctx);
+    expect(annual.metadata?.columns).toMatchObject([
+      { date: "TTM", period: "TTM Q2 FY27", aggregation: { periodEnd: "2026-07-26" } },
+      { date: "2026-01-25" },
+    ]);
+    expect(annual.rows.find((row) => row.id === "income:revenue")?.TTM).toBe(303e9);
+    expect(annual.notes?.join(" ")).not.toContain("not in yet");
+  } finally {
+    setSystemTime();
+  }
+});
+
 test("financial statements keep raw values, dated growth cells, and formatted columns without requiring a quote", async () => {
   const requested: string[] = [];
   const ctx = {
@@ -101,7 +142,13 @@ test("financial statements say how old a latest period over 15 months old is, pa
       }),
     } as HeadlessPaneContext;
     const load = (statement: string) => financialStatementsHeadless.load(args(["EVN:ASX"], { period: "annual", statement }), ctx);
-    expect((await load("income")).notes?.[0]).toBe("Latest period 2024-06-30 is 27 months old; 2025-06-30 has only some figures.");
+    // FY2025 is left out, as in the pane, and named with its EPS.
+    const income = await load("income");
+    expect(income.columns?.map(({ key }) => key)).toEqual(["metric", "2024-06-30", "2023-06-30"]);
+    expect(income.notes?.slice(0, 2)).toEqual([
+      "FY2025 is not in yet: only its EPS is on file (0.46 diluted), not its revenue.",
+      "Latest period 2024-06-30 is 27 months old.",
+    ]);
     expect((await load("balance")).notes?.[0]).toBe("Latest period 2024-06-30 is 27 months old.");
   } finally {
     setSystemTime();
@@ -955,9 +1002,9 @@ test("a quarter-only runway flags an offering since its balance sheet even with 
     apiClient: apiClient as HeadlessPaneContext["apiClient"],
   });
   const report = await financialStatementsHeadless.load(args([`${symbol}:NASDAQ`], { statement: "liquidity", period: "quarterly" }), ctx);
-  expect(report.rows.find((row) => row.id === "runway-quarter")?.cells).toEqual([
-    expect.objectContaining({ gap: "not reported" }), expect.objectContaining({ value: 12 }),
-  ]);
+  // The newer quarter has nothing Liquidity reads: it is no column, and a line says so.
+  expect(report.rows.find((row) => row.id === "runway-quarter")?.cells).toEqual([expect.objectContaining({ value: 12 })]);
+  expect(report.notes?.[0]).toBe("2026-09-30 is not in Liquidity yet: none of the lines these ratios read are on file for it.");
   expect(report.notes).toContain("424B4 offering filed 2026-08-01, after the 2026-06-30 balance sheet; cash and runway predate it.");
 });
 

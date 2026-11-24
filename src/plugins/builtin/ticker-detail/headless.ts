@@ -19,8 +19,9 @@ import {
 import { indexBarVolume } from "../../../market-data/market/index-level";
 import {
   buildFinancialTableModel, financialColumnLabel, financialGrowthNotice, financialStatementCurrency, financialStatementDateNotice, financialStatementLimitations,
-  financialReportHeader, financialStatementPeriods, financialSubTabFields, formatFinancialAmount, isPerShareFinancialRow, receiptShareCountLabel,
+  financialReportHeader, financialStatementPeriods, financialSubTabFields, formatFinancialAmount, isPerShareFinancialRow, notInYetNote, receiptShareCountLabel,
 } from "./financials/model";
+import { FINANCIAL_SUB_TABS } from "./financials/schema";
 import { fiscalYearEndMonth } from "../../../utils/fiscal-period";
 import { adrRatioText } from "../../../utils/depositary-receipt";
 import { paneSchemas } from "./headless-schema";
@@ -37,6 +38,7 @@ import { logFailure } from "../../../utils/log-failure";
 import { loadStatementCurrency } from "../shared/statement-currency";
 import {
   RATIO_GAP_TEXT,
+  blankRatioPeriodsNote,
   findRatioTab,
   formatRatioInput,
   formatRatioValue,
@@ -397,6 +399,8 @@ async function loadFinancialReport(symbol: string, options: HeadlessPaneOptionVa
     ];
     // The balance sheet's cash, when an offering since is not in it yet.
     const offering = table?.subTab.key === "balance" ? await reportOfferingNote(ctx, symbol, latestBalanceSheetDate(financials)) : null;
+    // A newest period with only some figures (an EPS alone) is left out, as in the pane, and a line says so.
+    const notInYet = table ? notInYetNote(table.notInYet, table.subTab, requestedPeriod, yearEndMonth) : null;
     // A latest period over 15 months old says how old it is; an HKEX company's, the announcement its results came in.
     const stale = table ? stalePeriodNote(financialStatementPeriods(table.statements, table.subTab)) : null;
     // Years filled from the listing's exchange, with the lines this table shows; an announcement that dates one is not
@@ -415,7 +419,7 @@ async function loadFinancialReport(symbol: string, options: HeadlessPaneOptionVa
       // Each exported row names its unit, the statements' period and the newest period end it runs to.
       rowUnitKey: "unit", rowAsOfKey: "periodEnd", interval: requestedPeriod,
       // The report closes with how old its latest period is, how far back its periods go, and how to read further.
-      notes: [...newerRelease ? [newerRelease] : [], ...announced, ...stale ? [stale] : [], ...filled ? [filled] : [], ...offering ? [offering] : [],
+      notes: [...notInYet ? [notInYet] : [], ...newerRelease ? [newerRelease] : [], ...announced, ...stale ? [stale] : [], ...filled ? [filled] : [], ...offering ? [offering] : [],
         ...statementHistoryNotes(requestedPeriod, periodDates, symbol, await reportOlderStatements(ctx, symbol, requestedPeriod, periodDates)),
         ...table?.subTab.key === "cashflow" ? [CASH_FLOW_NOTE] : [], ...dateSourceNotes(dates)],
       metadata: {
@@ -622,6 +626,8 @@ async function loadRatioReport(
     // Each exported row names its unit, the statements' period and the newest period end it runs to.
     rowUnitKey: "unit", rowAsOfKey: "periodEnd", interval: period,
     notes: [
+      ...[table ? notInYetNote(table.notInYet ?? [], FINANCIAL_SUB_TABS[0]!, period, yearEndMonth) : null,
+        table ? blankRatioPeriodsNote(table, period, yearEndMonth) : null].filter((note): note is string => !!note),
       ...currencyNotes.filter((note): note is string => !!note),
       ...[stalePeriodNote(dates.map(({ periodEnd }) => ({ date: periodEnd, lead: true })))].filter((note): note is string => !!note),
       ...[filledPeriodsNote(table?.periods.map(({ statement }) => statement) ?? [])].filter((note): note is string => !!note),

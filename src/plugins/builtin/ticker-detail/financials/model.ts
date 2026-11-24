@@ -659,13 +659,8 @@ export interface FinancialTableModel {
   rows: FinancialTableModelRow[];
   /** Money unit word the rows share (`bn`), stated once beside the currency. */
   unit: string | undefined;
-}
-
-function coversLatestYear(ttm: FinancialTableStatement, latestYear: FinancialStatement | undefined): boolean {
-  const periodEnd = ttm.aggregation?.periodEnd;
-  if (!periodEnd || !latestYear) return false;
-  const days = Math.abs(Date.parse(periodEnd) - Date.parse(latestYear.date)) / 86_400_000;
-  return days <= 7;
+  /** The newest periods left out because they are not in yet (selectFinancialStatements), for notInYetNote. */
+  notInYet: FinancialTableStatement[];
 }
 
 /** Counts of the shares a company has issued or has outstanding, which are never zero; treasury shares can be. */
@@ -700,6 +695,39 @@ function withoutImpossibleShareCounts(
   return { annualStatements: clean(annualStatements), quarterlyStatements: clean(quarterlyStatements) };
 }
 
+/**
+ * The lines a quarter needs before a trailing-twelve-month column sums it, per statement: one of them at least. A
+ * quarter with none (only its EPS on file, between the earnings release and the 10-Q) is not in yet. The ratio tabs
+ * read Income's periods.
+ */
+const TTM_HEADLINES: Record<string, ReadonlyArray<keyof FinancialStatement>> = {
+  income: ["totalRevenue", "operatingIncome", "netIncome"],
+  cashflow: ["operatingCashFlow", "freeCashFlow"],
+};
+
+function finiteLine(statement: FinancialStatement, key: keyof FinancialStatement): boolean {
+  const value = statement[key];
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+/** Whether a trailing column ends more than a few days after the first year shown, so it is no repeat of that year. */
+function endsAfterLatestYear(ttm: FinancialTableStatement, latestYear: FinancialStatement | undefined): boolean {
+  const periodEnd = ttm.aggregation?.periodEnd;
+  if (!periodEnd) return false;
+  if (!latestYear) return true;
+  return Date.parse(periodEnd) - Date.parse(latestYear.date) > 7 * 86_400_000;
+}
+
+/**
+ * A statement table's columns, newest first: a trailing-twelve-month column
+ * (annual Income and Cash Flow) and the periods with a figure on the
+ * statement. No column is a header over nothing: a period or a TTM with no
+ * figure on this statement is left out, and so are the newest periods that
+ * are not in yet (`notInYet`, splitPeriodsNotInYet: NVDA's Q3 FY27 with only
+ * its EPS on file between its earnings release and its 10-Q). A TTM never sums
+ * such a quarter: it runs to the latest four quarters that carry the
+ * statement's lines (TTM_HEADLINES), or is Gloom Cloud's served one.
+ */
 export function selectFinancialStatements(
   period: FinancialPeriod,
   statement: string,
@@ -712,13 +740,20 @@ export function selectFinancialStatements(
   const { annualStatements, quarterlyStatements } = withoutImpossibleShareCounts(servedAnnual, servedQuarterly);
   // A period with nothing on this statement (a fiscal year-end balance point on
   // the income statement) would render as an all-dash column.
-  const tabRows = FINANCIAL_SUB_TABS.find((tab) => tab.key === statement)?.rows;
-  const rawStatements = (period === "annual" ? annualStatements : quarterlyStatements)
-    .filter((candidate) => !tabRows || tabRows.some((row) => hasFinancialRowValue(row, [candidate])))
-    .slice(-limit)
-    .reverse();
-  const fromQuarters = period === "annual" && statement !== "balance" ? computeTTM(quarterlyStatements, annualStatements) : null;
-  const served = period === "annual" && statement !== "balance" ? servedTrailingStatement(servedTrailing, annualStatements) : null;
+  const tab = FINANCIAL_SUB_TABS.find((candidate) => candidate.key === statement);
+  const hasFigures = (candidate: FinancialStatement) => !tab || tab.rows.some((row) => hasFinancialRowValue(row, [candidate]));
+  const { shown, notInYet } = splitPeriodsNotInYet(
+    (period === "annual" ? annualStatements : quarterlyStatements).filter(hasFigures).reverse(),
+    tab ?? { rows: [] },
+  );
+  const rawStatements = shown.slice(0, limit);
+  const trailingStatement = period === "annual" && statement !== "balance";
+  const headlines = TTM_HEADLINES[statement] ?? TTM_HEADLINES.income!;
+  const carriesHeadline = (quarter: FinancialStatement) => headlines.some((key) => finiteLine(quarter, key));
+  // A company whose quarters carry none of these lines keeps the four latest, as before.
+  const complete = quarterlyStatements.some(carriesHeadline) ? carriesHeadline : undefined;
+  const fromQuarters = trailingStatement ? computeTTM(quarterlyStatements, annualStatements, complete) : null;
+  const served = trailingStatement ? servedTrailingStatement(servedTrailing, annualStatements) : null;
   // The newer of the two: four quarters, or the year plus the half since it. To the same day, the served
   // one where a quarter lacks a headline line the four would need (Meituan's Q3 2025 revenue).
   const quartersEnd = (fromQuarters?.aggregation?.periodEnd ?? "").slice(0, 10);
@@ -732,8 +767,9 @@ export function selectFinancialStatements(
     ? served
     : fromQuarters;
   // Right after a fiscal year closes, the last four quarters are that year:
-  // the reported year is shown, not a second column of the same period.
-  const ttm = trailing && !coversLatestYear(trailing, rawStatements[0]) ? trailing : null;
+  // the reported year is shown, not a second column of the same period. Nor is
+  // one that ends before it, or one with nothing on this statement.
+  const ttm = trailing && endsAfterLatestYear(trailing, rawStatements[0]) && hasFigures(trailing) ? trailing : null;
   const previousStatementMap = buildPreviousStatementMap(period, annualStatements, quarterlyStatements, ttm);
   const statements: FinancialTableStatement[] = ttm ? [ttm, ...rawStatements] : rawStatements;
 
@@ -754,7 +790,7 @@ export function selectFinancialStatements(
       if (previous) previousStatementMap.set(latest.date, previous);
     }
   }
-  return { statements, previousStatementMap };
+  return { statements, previousStatementMap, notInYet };
 }
 
 /** Whether four quarters summed lack a headline line the served TTM has. */
@@ -784,7 +820,7 @@ export function buildFinancialTableModel(
   const requestedPeriod = options.period ?? (hasAnnualStatements ? "annual" : "quarterly");
   const period = resolveFinancialPeriod(requestedPeriod, hasAnnualStatements, hasQuarterlyStatements);
   const subTabKey = resolveFinancialSubTabKey(options.statement);
-  const { statements, previousStatementMap } = selectFinancialStatements(
+  const { statements, previousStatementMap, notInYet } = selectFinancialStatements(
     period, subTabKey, annualStatements, quarterlyStatements,
     period === "annual" ? options.annualLimit : options.quarterlyLimit,
     financials?.trailingStatement,
@@ -821,7 +857,7 @@ export function buildFinancialTableModel(
     };
   });
 
-  return { period, subTab, statements, rows, unit };
+  return { period, subTab, statements, rows, unit, notInYet };
 }
 
 /**
@@ -874,7 +910,11 @@ export function splitPeriodsNotInYet<T extends FinancialTableStatement>(
   return { shown: statements.filter((statement) => !notInYet.includes(statement)), notInYet };
 }
 
-/** "FY2025 is not in yet: only some of its figures are on file, not its revenue." Null when every period is shown. */
+/**
+ * "FY2025 is not in yet: only some of its figures are on file, not its revenue." A quarter with only its
+ * earnings per share, as one is between the earnings release and the 10-Q, keeps its EPS in the line: "Q3 FY27
+ * is not in yet: only its EPS is on file (2.70 diluted), not its revenue." Null when every period is shown.
+ */
 export function notInYetNote(
   notInYet: readonly FinancialTableStatement[],
   subTab: Pick<FinancialSubTab, "rows">,
@@ -885,7 +925,18 @@ export function notInYetNote(
   const periods = notInYet.map((statement) => financialColumnLabel(statement, kind, yearEndMonth)).reverse();
   const names = periods.length === 1 ? periods[0]! : `${periods.slice(0, -1).join(", ")} and ${periods.at(-1)}`;
   const lead = subTab.rows[0]?.label.toLowerCase();
-  return `${names} ${periods.length === 1 ? "is" : "are"} not in yet: only some of ${periods.length === 1 ? "its" : "their"} figures are on file${lead ? `, not ${periods.length === 1 ? "its" : "their"} ${lead}` : ""}.`;
+  const leadText = lead ? `, not ${periods.length === 1 ? "its" : "their"} ${lead}` : "";
+  const only = notInYet.length === 1 ? earningsOnly(notInYet[0]!, subTab) : null;
+  if (only) return `${names} is not in yet: only its EPS is on file (${only}), not its ${lead ?? "statements"}.`;
+  return `${names} ${periods.length === 1 ? "is" : "are"} not in yet: only some of ${periods.length === 1 ? "its" : "their"} figures are on file${leadText}.`;
+}
+
+/** A period's EPS as notInYetNote names it ("2.70 diluted"), when it has nothing on the table but EPS and share counts. */
+function earningsOnly(statement: FinancialStatement, subTab: Pick<FinancialSubTab, "rows">): string | null {
+  const shown = [...financialSubTabFields(subTab)].filter((field) => finiteLine(statement, field as keyof FinancialStatement));
+  if (!shown.length || shown.some((field) => !SHARE_COUNT_FIELDS.has(field as keyof FinancialStatement) && !PER_SHARE_EARNINGS_FIELDS.has(field as keyof FinancialStatement))) return null;
+  if (finiteLine(statement, "eps")) return `${formatPerShareNumber(statement.eps)} diluted`;
+  return finiteLine(statement, "basicEps") ? `${formatPerShareNumber(statement.basicEps)} basic` : null;
 }
 
 /** The statement lines a table has a row for (filledPeriodsNote), group totals included. */
