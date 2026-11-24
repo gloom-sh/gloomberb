@@ -1304,7 +1304,7 @@
           {
             "code": "SIV",
             "name": "Daily Short Volume",
-            "description": "The short interest pane on Daily volume: FINRA daily off-exchange short-volume ratios, historical percentile and reported share quantities."
+            "description": "Daily executed short sales on SGX and US off-exchange short-volume ratios and quantities from FINRA."
           },
           {
             "code": "FTD",

@@ -1,3 +1,4 @@
+import { sgxVolumeSymbol } from "../short-volume/sgx";
 import { balanceListing } from "./exchange-balances";
 import { jpxSymbol } from "./jpx";
 import { sfcSymbol } from "./sfc";
@@ -43,7 +44,7 @@ export const shortInterestModule: PluginModule = {
       order: 36,
       component: ShortInterestResearchTab,
       instruments: ["equity"],
-      isVisible: ({ ticker }) => !isKnownNonUsListing(ticker) || (!!ticker && (!!sfcSymbol(ticker.metadata.ticker, ticker.metadata.exchange) || !!jpxSymbol(ticker.metadata.ticker, ticker.metadata.exchange) || !!balanceListing(ticker.metadata.ticker, ticker.metadata.exchange))),
+      isVisible: ({ ticker }) => !isKnownNonUsListing(ticker) || (!!ticker && (!!sgxVolumeSymbol(ticker.metadata.ticker, ticker.metadata.exchange) || !!sfcSymbol(ticker.metadata.ticker, ticker.metadata.exchange) || !!jpxSymbol(ticker.metadata.ticker, ticker.metadata.exchange) || !!balanceListing(ticker.metadata.ticker, ticker.metadata.exchange))),
     });
   },
 
@@ -104,7 +105,7 @@ export const shortInterestModule: PluginModule = {
         id: "short-volume-pane",
         paneId: "short-interest",
         label: "Daily Short Volume",
-        description: "The short interest pane on Daily volume: FINRA daily off-exchange short-volume ratios, historical percentile and reported share quantities.",
+        description: "Daily executed short sales on SGX and US off-exchange short-volume ratios and quantities from FINRA.",
         keywords: ["daily", "short", "volume", "finra", "siv"],
         shortcut: "SIV",
         publicShare: true,

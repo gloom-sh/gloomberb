@@ -1,3 +1,4 @@
+import { sgxVolumeSymbol } from "../short-volume/sgx";
 import { jpxSymbol } from "./jpx";
 import { balanceListing } from "./exchange-balances";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
@@ -21,10 +22,11 @@ export function ShortInterestSurface({ nested = false, ...props }: Pick<PaneProp
 }) {
   const { ticker } = usePaneTickerIdentity();
   const balances = ticker && balanceListing(ticker.metadata.ticker, ticker.metadata.exchange);
+  const sgx = ticker && sgxVolumeSymbol(ticker.metadata.ticker, ticker.metadata.exchange);
   const jp = ticker && jpxSymbol(ticker.metadata.ticker, ticker.metadata.exchange);
   const hk = ticker && sfcSymbol(ticker.metadata.ticker, ticker.metadata.exchange);
   const listing = balances || (jp ? { symbol: jp, exchange: "JPX" as const } : hk ? { symbol: hk, exchange: "HKEX" as const } : null);
-  const [tab, setTab] = useCommandTab("short-interest", "short-interest:tab", ["interest", "volume", "ftd", "ats"], "interest");
+  const [tab, setTab] = useCommandTab("short-interest", "short-interest:tab", ["interest", "volume", "ftd", "ats"], sgx && nested ? "volume" : "interest");
   const [mounted, setMounted] = useState<Set<string>>(() => new Set([tab]));
   useEffect(() => { setMounted((current) => current.has(tab) ? current : new Set([...current, tab])); }, [tab]);
   // Nested in Ticker Research the title bar belongs to the research tabs, so
@@ -46,7 +48,8 @@ export function ShortInterestSurface({ nested = false, ...props }: Pick<PaneProp
     {tabStrip}
     {TABS.map(({ value }) => mounted.has(value) || value === tab ? <Box key={value} visible={value === tab} height={height} flexGrow={1} flexBasis={0} overflow="hidden">
       <PaneFooterScope active={value === tab}>
-        {value === "volume" ? <ShortVolumePane {...props} height={height} focused={props.focused && value === tab} />
+        {value === "volume" && sgx ? <ExchangePositionsPane key={sgx} symbol={sgx} venue="SGX" {...props} height={height} focused={props.focused && value === tab} />
+          : value === "volume" ? <ShortVolumePane {...props} height={height} focused={props.focused && value === tab} />
           : value === "ftd" || value === "ats" ? <ShortSidePublicationPane {...props} kind={value} height={height} focused={props.focused && value === tab} />
           : listing ? <ExchangePositionsPane key={listing.symbol + listing.exchange} symbol={listing.symbol} venue={listing.exchange} {...props} height={height} focused={props.focused && value === tab} />
           : <ShortInterestView {...props} height={height} focused={props.focused && value === tab} />}

@@ -18,3 +18,7 @@ export type MainlandLendingBalances = DailyReport<MainlandVenue, { outstanding: 
 export type KoreanShortPositions = DailyReport<KoreanVenue, {
   netShort: number; listedShares: number; valueKrw: number; percent: number;
 }>;
+
+export type SgxShortSales = DailyReport<"SGX", {
+  shortVolume: number; shortValue: number; currency: string; security: string;
+}>;

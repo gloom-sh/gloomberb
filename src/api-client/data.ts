@@ -1,5 +1,5 @@
 import type { JpxShortPositions } from "./jpx-short-positions";
-import type { KoreanShortPositions, KoreanVenue, MainlandLendingBalances, MainlandVenue, TaiwanShortBalances, TaiwanVenue } from "./exchange-short-balances";
+import type { SgxShortSales, KoreanShortPositions, KoreanVenue, MainlandLendingBalances, MainlandVenue, TaiwanShortBalances, TaiwanVenue } from "./exchange-short-balances";
 import type { SfcShortPositions } from "./sfc-short-positions";
 import type { AttentionPayload, AttentionWindow } from "./attention";
 import type { HiringBoard, HiringBuildingBoard, HiringBuildingFilter, HiringCompanyBuilding, HiringCompanyMoves, HiringCompanySignals, HiringMovesBoard, HiringMovesFilter, HiringPayload, HiringSignalGroup, HiringSignalsBoard, HiringSignalsFilter } from "./hiring";
@@ -767,6 +767,10 @@ export class CloudDataApi {
     const response = await this.request<CloudMarketResponse<T>>(`/market/${path}?${params}`);
     if (!response.data) throw new Error(response.message || `${exchange} short sale report unavailable.`);
     return response.data;
+  }
+
+  getSgxShortSales(symbol: string, asOf?: string) {
+    return this.exchangeBalanceReport<SgxShortSales>("sgx-short-sales", symbol, "SGX", asOf);
   }
 
   getKoreanShortPositions(symbol: string, exchange: KoreanVenue, asOf?: string) {

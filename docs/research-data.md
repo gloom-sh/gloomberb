@@ -1844,3 +1844,5 @@ EPS estimates in headless EE reports carry an explicit basis: GAAP, adjusted, or
 unknown when the estimate source does not identify it. A reported quarter's basis
 is not assumed to apply to an unlabelled estimate. Portfolio report changes label
 the regular session separately from extended moves measured from its close.
+
+Singapore `SIV` shows daily short-sale shares and value in the counter’s trading currency. Each observation links to SGX’s dated report.
