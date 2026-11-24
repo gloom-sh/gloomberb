@@ -129,6 +129,8 @@ export function holdingsCaveats(data: FundMembersPayload, movers: boolean) {
     ...(movers && data.aggregate.withinTolerance === false ? [`The covered contribution sum differs from the fund by ${percent(data.aggregate.residual, " pp")}.`] : []),
     ...(data.excludedDerivatives ? [`${data.excludedDerivatives} derivative positions are excluded from these share holdings.`] : []),
     ...(data.excludedShorts ? [`${data.excludedShorts} short positions are excluded from these share holdings.`] : []),
+    ...(data.positions && data.positions > data.members.length ? [`The largest ${count(data.members.length)} of ${count(data.positions)} positions are listed${
+      data.omittedWeight != null && Number.isFinite(data.omittedWeight) ? `; the rest are ${decimal(data.omittedWeight * 100, 1)}% of the fund` : ""}.`] : []),
   ];
 }
 /** A fund's own name: an N-PORT fund's served `name` says "(N-PORT)" for apps that cannot show its basis. */
