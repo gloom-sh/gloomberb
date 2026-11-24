@@ -8,7 +8,7 @@ import { createDefaultConfig } from "../../../types/config";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs, HeadlessRowsResult } from "../../../types/headless";
 import { membersHeadless } from "./headless";
 import { membersPlugin } from "./index";
-import { canonicalFund, stockListingInput } from "./model";
+import { canonicalFund, coveredFund, stockListingInput } from "./model";
 import { board } from "./test-fixture";
 
 afterEach(() => setSystemTime());
@@ -28,6 +28,15 @@ test("MEMB index arguments reach the fund service without requiring a stock quot
   }
   // Bare listings must not be redirected to an unrelated tracking fund.
   for (const ticker of ["MID", "SML"]) expect(canonicalFund(ticker)).toBe(ticker);
+});
+
+test("SPY opens its own holdings where the server lists SPY, and IVV's where an older server still names SPY as IVV's alias", () => {
+  expect(canonicalFund("SPY")).toBe("SPY");
+  const ivv = { ticker: "IVV", name: "S&P 500", aliases: ["SPX"], changes: "sp500" as const, asOf: "2026-11-20" };
+  const spy = { ticker: "SPY", name: "S&P 500", aliases: [] as string[], changes: "none" as const, asOf: "2026-11-20" };
+  expect(coveredFund([ivv, spy], "SPY")?.ticker).toBe("SPY");
+  expect(coveredFund([ivv, spy], "SPX")?.ticker).toBe("IVV");
+  expect(coveredFund([{ ...ivv, aliases: ["SPY", "SPX"] }], "SPY")?.ticker).toBe("IVV");
 });
 
 test("a Pro account's report is live only while a session trades, and as of the close otherwise", async () => {
