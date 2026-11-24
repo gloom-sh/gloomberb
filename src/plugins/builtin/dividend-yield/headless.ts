@@ -8,7 +8,7 @@ import { fetchDividendData, requestDividendHistory, statedForwardRate, TOKEN_YIE
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import type { DividendPayment, GrowthPayments } from "./types";
 import {
-  carriedDateText, COMBINED_PAYMENT, convertedFromText, distinctEstimateTexts, formatConvertedAmount, formatDividendYield, growthPaymentsText, PAYOUT_BASIS, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText,
+  carriedDateText, COMBINED_PAYMENT, convertedFromText, distinctEstimateTexts, formatConvertedAmount, formatDividendYield, growthPaymentsText, PAYOUT_BASIS, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText, trailingSpecialText,
 } from "./view";
 import { MISSING_VALUE, formatDistributionAmount, formatPercent } from "../../../utils/format";
 import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
@@ -198,6 +198,8 @@ export function projectDividendYieldHeadless(
       declarationDate: payment?.declarationDate?.toISOString() ?? null,
       type: payment?.type ?? null,
       ...(payment?.combined ? { combined: true } : {}),
+      // The issuer's own form's dividend type, where a form types the row ("Final", "Other Special Dividend").
+      ...(payment?.formType ? { formType: payment.formType } : {}),
       ...(row.declared ? { declared: row.declared.amount, declaredCurrency: row.declared.currency } : {}),
       ...(payment?.source ? { source: payment.source.publisher, sourceUrl: payment.source.url } : {}),
     };
@@ -229,7 +231,8 @@ export function projectDividendYieldHeadless(
 
   // A monthly payer's history that ends early: its yields and last ex-date stop there, and each says so.
   const historyEnd = metrics.lapse?.historyEnds ? metrics.lapse.lastPaid : null;
-  const trailingNotes = [TRAILING_DIVIDEND_BASIS, shortfall ? `counts ${shortfall}` : null, historyEnd ? historyEndsText(historyEnd) : null]
+  const trailingNotes = [TRAILING_DIVIDEND_BASIS, shortfall ? `counts ${shortfall}` : null,
+    currency ? trailingSpecialText(metrics, currency) : null, historyEnd ? historyEndsText(historyEnd) : null]
     .filter((note): note is string => !!note).join("; ");
   const trailingLabel = bond ? `Trailing distribution yield (${NOT_SEC_YIELD})` : "Trailing yield";
   const forwardLabel = bond ? `Forward distribution yield (${NOT_SEC_YIELD})` : "Forward yield";

@@ -519,6 +519,78 @@ describe("cash distribution calculations", () => {
     expect(typeColumn?.format?.("cash", { combined: true })).toBe("cash, combined: regular + extra");
   });
 
+  test("a final and a special the issuer's forms split from one row: the forward never counts the special, the trailing year does", async () => {
+    // Stella International (1836): HK$0.56 specials ex with its 2025 and 2026 finals, one row each in its history; its
+    // forms split them. The stated HK$0.84 is its interim twice. Read as one regular payment the row made the year uneven
+    // and the forward rate HK$1.35, 10.7% at HK$12.57.
+    const form = { url: "https://www1.hkexnews.hk/listedco/listconews/sehk/2026/0319/2026031900747.pdf", publishedOn: "2026-03-19" };
+    const part = (amount: number, special: boolean, type: string) => ({ amount, special, type, form });
+    const rows = [
+      { exDate: "2024-05-16", amount: 0.61 }, { exDate: "2024-09-04", amount: 0.65 },
+      { exDate: "2025-05-20", amount: 1.06, parts: [part(0.56, true, "Other Special Dividend"), part(0.5, false, "Final")] },
+      { exDate: "2025-09-03", amount: 0.52 },
+      { exDate: "2026-05-19", amount: 0.93, parts: [part(0.56, true, "Other Special Dividend"), part(0.37, false, "Final")] },
+      { exDate: "2026-09-02", amount: 0.42, parts: [part(0.42, false, "Interim (Semi-annual)")] },
+    ];
+    const read = (dividends: unknown[]) => async () => Response.json({ status: "success", data: { quote: null, summary: null, actions: {
+      symbol: "1836", currency: "HKD", coverage: { dividends: "available" }, splits: [], earnings: [], dividends } } });
+    setHttpFetchTransport(read(rows));
+    const data = await fetchDividendData("1836", null, "HKEX");
+    expect(data.historyError ?? null).toBeNull();
+    expect(data.payments.filter((row) => row.exDate.toISOString().startsWith("2026-05-19"))
+      .map((row) => [row.amount, row.type, row.special ?? false, row.formType])).toEqual([
+      [0.56, "special", true, "Other Special Dividend"],
+      [0.37, "cash", false, "Final"],
+    ]);
+    const asOf = new Date("2026-11-23T20:00:00Z");
+    const stated: DividendSummary = { trailingAnnualDividendRate: null, trailingAnnualDividendYield: null, payoutRatio: null,
+      exDividendDate: null, dividendDate: null, currency: "HKD", forwardAnnualDividendRate: 0.84, forwardRateAsOf: "2026-09-02" };
+    const metrics = buildDividendMetrics(data.payments, stated, 12.57, { now: asOf });
+    expect(metrics).toMatchObject({ paymentFrequency: "semi-annual", forwardRate: 0.84, trailingRate: 1.35, trailingSpecial: 0.56,
+      trailingPayments: null });
+    expect(metrics.forwardBasis).toBeUndefined();
+    // The history labels each special, and the trailing yield says it counts the year's.
+    const request = { rawArgument: "1836:HKEX", argument: "1836:HKEX", symbols: ["1836:HKEX"], options: {} };
+    const result = projectDividendYieldHeadless({ ...data, metrics, price: 12.57, currency: "HKD" }, request);
+    expect(result.sections.find((section) => section.title === "Dividend history")?.rows?.slice(0, 4)
+      .map((row) => [row.exDate, row.amount, row.type])).toEqual([
+      ["2026-09-02", 0.42, "cash"], ["2026-05-19", 0.56, "special"], ["2026-05-19", 0.37, "cash"], ["2025-09-03", 0.52, "cash"],
+    ]);
+    expect(result.sections.find((section) => section.title === "Dividend history")?.rows?.[1])
+      .toMatchObject({ special: true, formType: "Other Special Dividend" });
+    const text = renderHeadlessPaneText(createDividendYieldHeadless(), result, request, "DVD");
+    expect(text).toContain("incl. HK$0.56 special");
+    expect(text).not.toContain("combined");
+
+    // The same history with no parts, or parts that do not sum to the row or say nothing of its nature, is read as before.
+    for (const dividends of [rows.map(({ exDate, amount }) => ({ exDate, amount })),
+      rows.map((row) => row.parts ? { ...row, parts: [{ ...row.parts[0], amount: 0.5 }, row.parts[1]] } : row),
+      rows.map((row) => row.parts ? { ...row, parts: row.parts.map(({ special: _, ...rest }) => rest) } : row)]) {
+      setHttpFetchTransport(read(dividends));
+      const plain = await fetchDividendData("1836", null, "HKEX");
+      expect(plain.payments.map((row) => [row.amount, row.special ?? false])).toEqual(
+        [[0.42, false], [0.93, false], [0.52, false], [1.06, false], [0.65, false], [0.61, false]]);
+      const before = buildDividendMetrics(plain.payments, stated, 12.57, { now: asOf });
+      expect(before).toMatchObject({ forwardRate: 1.35, forwardBasis: "uneven", trailingRate: 1.35 });
+      expect(before.trailingSpecial).toBeUndefined();
+    }
+  });
+
+  test("a special the issuer's form types on its own ex-date is no period of the year and never forwarded", () => {
+    // China Feihe (6186): an "Other Special Dividend" of HK$0.2905 on 13 Oct 2026, five weeks after its interim. The source
+    // annualized it twice, 20.9% at HK$2.78; its regular year is the HK$0.129 final and the HK$0.0828 interim.
+    const asOf = new Date("2026-11-23T20:00:00Z");
+    const typed = (date: string, amount: number, special = false) => ({ ...payment(date, amount, "HKD"), formTyped: true as const,
+      ...(special ? { special: true as const, type: "special" as const } : {}) });
+    const feihe = [typed("2024-05-24", 0.1484), typed("2024-09-10", 0.1632), typed("2025-06-02", 0.1632), typed("2025-09-10", 0.1209),
+      typed("2026-06-09", 0.129), typed("2026-09-08", 0.0828), typed("2026-10-13", 0.2905, true)];
+    const stated: DividendSummary = { trailingAnnualDividendRate: null, trailingAnnualDividendYield: null, payoutRatio: null,
+      exDividendDate: null, dividendDate: null, currency: "HKD", forwardAnnualDividendRate: 0.581, forwardRateAsOf: "2026-10-13" };
+    const metrics = buildDividendMetrics(feihe, stated, 2.78, { now: asOf });
+    expect(metrics).toMatchObject({ paymentFrequency: "semi-annual", forwardRate: 0.2118, forwardBasis: "uneven", trailingRate: 0.5023,
+      trailingSpecial: 0.2905 });
+  });
+
   test("a London line of a dollar payer retains paid pence precision beside each declared amount, and a kept history is dated", async () => {
     setHttpFetchTransport(async () => Response.json({ status: "success", data: { quote: null, summary: null, actions: {
       symbol: "BP", currency: "GBp", stale: true, fetchedAt: "2026-10-27T03:00:00.000Z", dividendsAsOf: "2026-10-20T02:31:00.000Z",
