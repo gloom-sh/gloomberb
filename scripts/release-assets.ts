@@ -10,8 +10,9 @@
  * a draft. `gh run rerun <run> --failed` builds what is missing again, runs the
  * release job once more, and that publishes it.
  *
- * The terminal binaries are read from the build matrix in
- * build-release-assets.yml, so a platform added there is expected here too.
+ * The terminal binaries are read from the build matrices in
+ * build-release-assets.yml (`build`, and `build-windows`, which signs), so a
+ * platform added there is expected here too.
  */
 import { existsSync, readdirSync } from "fs";
 import { join } from "path";
@@ -46,15 +47,22 @@ const UNPREFIXED_WINDOWS_INSTALLER = WINDOWS_INSTALLER.slice(WINDOWS_PREFIX.leng
 const LEGACY_HOMEBREW_ZIP = "stable-macos-arm64-Gloomberb.app.zip";
 
 interface BuildWorkflow {
-  jobs?: { build?: { strategy?: { matrix?: { include?: unknown } } } };
+  jobs?: Record<string, { strategy?: { matrix?: { include?: unknown } } } | null>;
 }
 
-/** The gzipped binary each entry of the build matrix uploads: `gloomberb-linux-x64.gz`, `gloomberb-windows-x64.exe.gz`. */
+/** The terminal builds: the build matrix, and the Windows build apart from it so that only it takes a signing environment. */
+const TERMINAL_BUILD_JOBS = ["build", "build-windows"];
+
+/** The gzipped binary each entry of the build matrices uploads: `gloomberb-linux-x64.gz`, `gloomberb-windows-x64.exe.gz`. */
 export function terminalAssets(workflowYaml: string): string[] {
-  const include = (Bun.YAML.parse(workflowYaml) as BuildWorkflow | null)?.jobs?.build?.strategy?.matrix?.include;
-  if (!Array.isArray(include) || include.length === 0) {
-    throw new Error("build-release-assets.yml has no build matrix to read the terminal binaries from");
-  }
+  const jobs = (Bun.YAML.parse(workflowYaml) as BuildWorkflow | null)?.jobs;
+  const include = TERMINAL_BUILD_JOBS.flatMap((job) => {
+    const entries = jobs?.[job]?.strategy?.matrix?.include;
+    if (!Array.isArray(entries) || entries.length === 0) {
+      throw new Error(`build-release-assets.yml has no ${job} matrix to read the terminal binaries from`);
+    }
+    return entries;
+  });
   return include.map((entry: { asset?: unknown } | null) => {
     const asset = entry?.asset;
     if (typeof asset !== "string" || !asset.startsWith("gloomberb-")) {

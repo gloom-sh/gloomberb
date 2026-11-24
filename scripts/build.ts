@@ -11,6 +11,7 @@ import {
 } from "../src/cli/native-smoke";
 import { buildShotView, packShotView } from "../src/cli/desktop-pane-shot-view";
 import { removeCatalogSnapshot, writeCatalogSnapshot } from "./catalog-snapshot-file";
+import { signWindowsFiles, windowsSigning } from "./windows-signing";
 import { detectLinuxLibc, type LinuxLibc } from "../src/utils/linux-libc";
 
 const rootDir = join(import.meta.dir, "..");
@@ -550,6 +551,13 @@ async function build(targetConfig: BuildTarget) {
 
   if (os === "darwin") {
     await signDarwinBinary(outfile);
+  }
+
+  // A release job that set Windows signing up signs the binary here, so the
+  // smoke tests run the signed file and the archive and its checksum hold it.
+  const signing = os === "windows" ? windowsSigning() : null;
+  if (signing) {
+    await signWindowsFiles(signing, [outfile]);
   }
 
   await smokeTestBinary(outfile, targetConfig);

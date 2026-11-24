@@ -83,11 +83,23 @@ if (-not $Iscc) {
   throw "ISCC.exe was not found. Install Inno Setup 6 or set ISCC_EXE."
 }
 
+# In a release job that set Windows signing up, Inno Setup signs the setup it
+# writes and the copy of its engine the setup runs from the temp folder, which
+# Windows blocks unsigned, with scripts/windows-signing.ts as its Sign Tool.
+# Inno puts in $q for a quote and $f for the file to sign.
+$SignArgs = @()
+if ($env:GLOOM_WINDOWS_SIGNING) {
+  $Bun = (Get-Command bun -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+  $Signer = Join-Path $Root "scripts\windows-signing.ts"
+  $SignArgs = @("/DSignSetup", "/Sgloomsign=`$q$Bun`$q `$q$Signer`$q sign `$f")
+}
+
 & $Iscc `
   "/DAppVersion=$($PackageJson.version)" `
   "/DArch=$Arch" `
   "/DSourceDir=$SourceDir" `
   "/DOutputDir=$OutputDir" `
+  @SignArgs `
   $InstallerScript
 
 if ($LASTEXITCODE -ne 0) {
