@@ -3,7 +3,7 @@ import type { ReactNode, RefObject } from "react";
 import { colors, floatingPaneBg } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { PaneBodyFrame, getPaneWindowAttributes } from "./pane/frame";
-import { PaneHeader, type PaneHeaderQuickSetting, type PaneHeaderStack } from "./pane/header";
+import { PaneHeader, paneHeaderHoldsOneStrip, type PaneHeaderQuickSetting, type PaneHeaderStack } from "./pane/header";
 import { PaneHeaderTabsProvider, usePaneHeaderTabsHost } from "./pane/header-tabs";
 import { hasPaneFooterContent, PaneFooterBar, type CombinedPaneFooter } from "./pane/footer";
 import { resolvePaneBodyFrame, shouldReservePaneFooter } from "./pane/sizing";
@@ -119,7 +119,10 @@ export function FloatingPaneWrapper({
   children,
 }: FloatingPaneWrapperProps) {
   const { nativePaneChrome } = useUiCapabilities();
-  const { headerTabs, contextValue: headerTabsContext } = usePaneHeaderTabsHost(nativePaneChrome === true);
+  // As a docked pane: a header too narrow for two strips keeps its stack's.
+  const { headerTabs, contextValue: headerTabsContext } = usePaneHeaderTabsHost(
+    nativePaneChrome === true && !paneHeaderHoldsOneStrip(stack, width),
+  );
   const palette = useThemeColors();
   const bg = floatingPaneBg(focused, palette);
   const showFooter = hasPaneFooterContent(footer);
