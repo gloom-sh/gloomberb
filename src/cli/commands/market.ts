@@ -3078,6 +3078,8 @@ async function runHistoryList(
           asOf: history ? history.freshness?.asOf ?? undefined : null,
         };
       },
+      // A bar's as_of is its symbol's bars', the same on each of that symbol's rows, never the bar's own day.
+      exportAsOfOf: "symbol",
     });
     // The table and the warnings name each symbol with no bars; with none served, the exit status says so too.
     if (served.length === 0) process.exitCode = CLI_EXIT_CODES.error;

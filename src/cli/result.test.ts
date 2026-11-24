@@ -235,6 +235,19 @@ describe("serializeCliResult", () => {
     // One row, or rows of one time, are what the observation date says.
     expect(csv(rows.slice(1))).toContain("\n# Observation date: 2026-11-20T21:00:00.000Z\n");
   });
+
+  // `history SIE:XETRA BMW:XETRA --csv` dates every bar by its symbol's bars, yet said each row's as_of was its own.
+  test("rows dated by what they are of: the observation date says each row's as_of is that, not the row's own", () => {
+    const freshness: ReportFreshness = { source: "Gloom Cloud", asOf: "2026-11-24T15:46:33.000Z", status: "delayed", retrievedAt: "2026-11-24T16:00:00.000Z" };
+    const asOf: Record<string, string> = { "SIE:XETRA": "2026-11-24T15:46:33.000Z", "BMW:XETRA": "2026-11-24T15:45:10.000Z" };
+    const rows = [{ symbol: "SIE:XETRA", date: "2025-11-24" }, { symbol: "BMW:XETRA", date: "2025-11-24" }];
+    const csv = serializeCliResult({ data: rows, freshness }, { ...baseOptions, format: "csv" }, {
+      exportIdentity: (row: Record<string, unknown>) => ({ symbolOrSeries: String(row.symbol), asOf: asOf[String(row.symbol)] }),
+      exportAsOfOf: "symbol",
+    });
+    expect(csv).toContain("\n# Observation date: 2026-11-24T15:46:33.000Z (the newest symbol's; each row's as_of is its symbol's, not the row's own date)\n");
+    expect(csv).not.toContain("is its own");
+  });
 });
 
 test("plain text keeps every column with a dash in the empty cells, and JSON, CSV and NDJSON are the same bytes plain or not", () => {

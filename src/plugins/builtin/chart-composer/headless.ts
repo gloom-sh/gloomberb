@@ -34,6 +34,7 @@ import { uncoveredCapabilityMessage } from "../../../capabilities/chart-series";
 import { loadFuturesContractTerms, loadFuturesPriceUnit } from "../../../market-data/futures-contract";
 import { formulaContractNote, formulaRollNote } from "../../../time-series/studies/formula";
 import { loadDailyFxCloses } from "../../../time-series/currency-conversion";
+import { DAY_SO_FAR_TEXT } from "../../../time-series/session-bar";
 import { loadStatementCurrency } from "../shared/statement-currency";
 import { canonicalExchange, isKnownExchangeCode, isUsListingExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { zonedDateKey, zonedDateTimeParts } from "../../../utils/zoned-date-time";
@@ -439,7 +440,9 @@ function chartFreshness(
   // A history: its first bars are not stale data, so the line dates it by the bar still forming alone.
   if (forming) return { ...barHistoryFreshness(coarsest), periodToDate: forming, oldest: null };
   // A comparison whose newest point is a session still trading is not a day's closes.
-  const basis = coarsest === "1d" && priceComparisonEndsIntraday(comparison) ? { basis: LATEST_INTRADAY_TEXT } : {};
+  // Daily bars whose newest is a session still trading are not all closes: that bar is the day so far, as HP says.
+  const basis = coarsest === "1d" && priceComparisonEndsIntraday(comparison) ? { basis: LATEST_INTRADAY_TEXT }
+    : coarsest === "1d" && formingDailyBar(series) ? { basis: "daily bars", note: `the newest bar is ${DAY_SO_FAR_TEXT}` } : {};
   // Daily bars are dated by the time of the newest point: a closed session's day, or when a session still trading was last quoted.
   const asOf = coarsest === "1d" ? newestDailyPoint(series, closedDay, quoteTimes) : closedDay;
   return { ...barHistoryFreshness(coarsest), ...basis, ...(asOf ? { asOf } : {}) };
@@ -551,6 +554,15 @@ function closedPriceBarDay(series: readonly HeadlessSeries[]): string | null {
     return day ? [day] : [];
   });
   return days.length ? days.sort().at(-1)! : null;
+}
+
+/** Whether a series' newest daily bar is of a session still trading, by its venue's hours. */
+function formingDailyBar(series: readonly HeadlessSeries[]): boolean {
+  const now = Date.now();
+  return (series as ReadonlyArray<HeadlessSeries & Partial<Pick<ResolvedSeries, "historyResolution" | "timeBasis" | "listing">>>).some((entry) => {
+    const bar = entry.historyResolution === "1d" ? newestBar(entry) : null;
+    return !!bar && !closedHistoryBarDay("1d", bar.day, bar.venue, now);
+  });
 }
 
 /**

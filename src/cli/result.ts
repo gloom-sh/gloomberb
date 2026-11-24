@@ -143,6 +143,12 @@ export interface CliResultRenderOptions<T = unknown, Row = Record<string, unknow
    * `symbol` and `currency` fields say it, as far as they go.
    */
   exportIdentity?: ExportIdentity | ((row: Row) => ExportIdentity);
+  /**
+   * What a row's own `as_of` is the as-of of when the rows are dated apart and
+   * it is not the row itself: `history` of several symbols dates each bar by
+   * its symbol's bars (`"symbol"`), so no bar reads as dated by its own day.
+   */
+  exportAsOfOf?: string;
   /** What CSV says after the source lines as `# note:` lines: what the rows do not show, such as where a series begins. */
   exportNotes?: readonly string[];
   csvTrailingColumns?: readonly string[];
@@ -630,7 +636,7 @@ function serializeCliRows<T, Row extends Record<string, unknown>>(
     );
     // Rows dated apart: the observation date is the newest row's, not each row's.
     const datedApart = rowsDatedApart(rows.map((row) => exportIdentityCells(cited, rowIdentity(row as Row, renderOptions.exportIdentity))[4]));
-    const sourceLines = datedApart ? withRowsDatedApart(exportSourceLines(cited), cited) : exportSourceLines(cited);
+    const sourceLines = datedApart ? withRowsDatedApart(exportSourceLines(cited), cited, renderOptions.exportAsOfOf) : exportSourceLines(cited);
     return withCsvFooter(csv, [...sourceLines, ...cutNote, ...(renderOptions.exportNotes ?? []).map((note) => `note: ${note}`)]);
   }
   if (renderOptions.text) {
