@@ -5,12 +5,14 @@ import type { BrokerAdapter, BrokerPosition } from "../types/broker";
 import type { AppConfig, BrokerInstanceConfig } from "../types/config";
 import type { BrokerAccount } from "../types/trading";
 import type { TickerRecord } from "../types/ticker";
-import { getBrokerInstance } from "../utils/broker-instances";
+import { buildBrokerPortfolioId, getBrokerInstance } from "../utils/broker-instances";
+import { excludedAccountIds } from "./account-choice";
 import {
   accountsHeldUnderOwnNumber,
   clearBrokerInstanceTickerData,
   clearLeftoverBrokerHoldings,
   ensureBrokerPortfolio,
+  excludedAccountPortfolioIds,
   findReusableBrokerPortfolioId,
   isHeldByOtherSignedInProfile,
   knownBrokerHoldings,
@@ -245,6 +247,14 @@ export async function syncBrokerInstance({
     throwIfBrokerImportCancelled(signal);
   }
 
+  // An account the user left out of the profile gets no portfolio and no
+  // positions, whatever the broker still reports for it.
+  const excluded = excludedAccountIds(instance);
+  if (excluded.size > 0) {
+    brokerAccounts = brokerAccounts.filter((account) => !excluded.has(account.accountId));
+    positions = positions.filter((position) => !position.accountId || !excluded.has(position.accountId));
+  }
+
   // An account another profile holds under its own number stays with it.
   const heldUnderOwnNumber = accountsHeldUnderOwnNumber(config, instance, brokerAccounts);
   if (heldUnderOwnNumber.size > 0) {
@@ -305,7 +315,7 @@ export async function syncBrokerInstance({
       const account = accountMetadata.get(accountId);
       claimPortfolio(portfolioId, account?.name || accountId, account?.currency || "USD", accountId);
     }
-  } else if (heldUnderOwnNumber.size === 0) {
+  } else if (heldUnderOwnNumber.size === 0 && excluded.size === 0) {
     const defaultAccount = brokerAccounts[0];
     const portfolioId = findReusableBrokerPortfolioId(nextConfig, instance, defaultAccount?.accountId, portfolioBrokerId);
     const fallbackName = defaultAccount?.name || defaultAccount?.accountId || instance.label || broker.name;
@@ -313,12 +323,26 @@ export async function syncBrokerInstance({
   }
 
   const currentPortfolioIds = new Set(portfolioIds);
+  // The portfolios of the accounts left out, also once Brokers removed them
+  // from the config: what any sync of those accounts put there goes.
+  const leftOutPortfolioIds = new Set([
+    ...excludedAccountPortfolioIds(config, instance),
+    ...[...excluded].flatMap((accountId) => {
+      const portfolioId = buildBrokerPortfolioId(instance.id, accountId);
+      const owner = config.portfolios.find((portfolio) => portfolio.id === portfolioId)?.brokerInstanceId;
+      return !owner || owner === instance.id ? [portfolioId] : [];
+    }),
+  ]);
   const brokerPortfolioIds = new Set([
     ...config.portfolios
       .filter((portfolio) => portfolio.brokerInstanceId === instance.id)
       .map((portfolio) => portfolio.id),
     ...portfolioIds,
+    ...leftOutPortfolioIds,
   ]);
+  const clearedPortfolioIds = leftOutPortfolioIds.size > 0
+    ? new Set([...currentPortfolioIds, ...leftOutPortfolioIds])
+    : currentPortfolioIds;
 
   // A portfolio a signed-in profile took from another (a Flex account now
   // signed in) drops that profile's positions, so nothing it no longer reports
@@ -346,7 +370,7 @@ export async function syncBrokerInstance({
     const cleanedTickers = new Map<string, TickerRecord>();
     for (const ticker of tickers.values()) {
       const cleared = clearBrokerInstanceTickerData(
-        ticker, instance.id, brokerPortfolioIds, takenOverPortfolioIds, currentPortfolioIds,
+        ticker, instance.id, brokerPortfolioIds, takenOverPortfolioIds, clearedPortfolioIds,
       );
       const cleanedTicker = clearLeftoverBrokerHoldings(cleared ?? ticker, known) ?? cleared;
       if (!cleanedTicker) continue;

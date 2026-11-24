@@ -7,6 +7,7 @@ import {
   reconcileAppSessionSnapshot,
   type AppSessionSnapshot,
 } from "../../../../core/state/session-persistence";
+import { withoutExcludedAccountPortfolios } from "../../../../brokers/broker-portfolio-sync";
 import { saveConfig, watchExternalConfigChanges } from "../../../../data/config/store";
 import { pluginAutoUpdateEnabled } from "../../../../plugins/auto-update";
 import { startNodePluginAutoUpdates } from "../../../../plugins/auto-update-node";
@@ -722,14 +723,16 @@ export class DesktopBackend {
             enabled: options.enabled ?? instance.enabled,
             connectionMode: typeof nextValues.connectionMode === "string" ? nextValues.connectionMode : instance.connectionMode,
             config: nextValues,
+            ...(options.excludedAccounts ? { excludedAccounts: options.excludedAccounts } : {}),
           };
         });
         if (!found) return;
 
-        const nextConfig = {
+        const updatedConfig = {
           ...config,
           brokerInstances,
         };
+        const nextConfig = options.excludedAccounts ? withoutExcludedAccountPortfolios(updatedConfig, instanceId) : updatedConfig;
         if (this.workspace) {
           await this.commitDesktopSnapshot(this.workspace.replaceConfig(nextConfig, { layoutChanged: false }));
           return;

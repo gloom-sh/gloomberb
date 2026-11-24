@@ -19,8 +19,10 @@ export function useBrokerManagerKeyboard({
   focused,
   scope,
   selectKeys,
+  toggleKeys,
   onCancelEdit,
   onCycleSelect,
+  onToggle,
   saveEdit,
 }: {
   activeEditKey: BrokerEditKey;
@@ -30,8 +32,11 @@ export function useBrokerManagerKeyboard({
   scope: string;
   /** Rows edited with left and right: the enabled switch and select-type broker fields. */
   selectKeys: ReadonlySet<BrokerEditKey>;
+  /** Checkbox rows, ticked and unticked with Space: the profile's accounts, when editing one. */
+  toggleKeys?: ReadonlySet<BrokerEditKey>;
   onCancelEdit: () => void;
   onCycleSelect: (key: BrokerEditKey, direction: -1 | 1) => void;
+  onToggle?: (key: BrokerEditKey) => void;
   saveEdit: () => Promise<void>;
 }) {
   useShortcut((event) => {
@@ -55,6 +60,11 @@ export function useBrokerManagerKeyboard({
     if (onSelectRow && isPlainKey(event, "left", "h", "right", "l", "space")) {
       consume(event);
       onCycleSelect(activeEditKey, isPlainKey(event, "left", "h") ? -1 : 1);
+      return;
+    }
+    if (onToggle && !event.targetEditable && toggleKeys?.has(activeEditKey) && isPlainKey(event, "space")) {
+      consume(event);
+      onToggle(activeEditKey);
     }
   }, { enabled: focused && editing, phase: "before", scope, allowEditable: true });
 }

@@ -2424,7 +2424,7 @@
     "spreads",
     "OSA"
    ],
-   "updatedAt": "2026-11-24",
+   "updatedAt": "2026-11-25",
    "blocks": [
     {
      "type": "image",
@@ -2452,6 +2452,10 @@
     {
      "type": "paragraph",
      "text": "Then turn on **Enable trading** in the ticket or in `BR`."
+    },
+    {
+     "type": "paragraph",
+     "text": "A profile with several accounts can leave some out: press `e` on it in `BR` and untick them. Gloom then shows no portfolio for them, does not sync them and does not offer them for orders."
     },
     {
      "type": "heading",
