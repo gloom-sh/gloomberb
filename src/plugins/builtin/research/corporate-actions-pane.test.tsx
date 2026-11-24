@@ -139,32 +139,51 @@ test("a fund's events are its distributions alone, without earnings, estimates o
   expect(tui.frame()).toContain("Q EPS");
 });
 
-/** Review, 12 Nov 2026: AAPL's events led with a 2028 estimate, the newest date, above everything that had happened. */
-test("events read in the order they happen and open on the next one", async () => {
-  await render({ symbol: "TEST", splits: [], earnings: [],
-    dividends: [{ exDate: "2099-02-10", amount: 0.3 }, { exDate: "2020-02-10", amount: 0.1 }, { exDate: "2098-02-10", amount: 0.2 }],
-  }, "corporate-actions", 100);
+/** The table's lines from its header down, and where a date first appears in them. */
+function tableLines() {
   const lines = tui.frame().split("\n");
-  const rowOf = (date: string) => lines.findIndex((line) => line.includes(date));
-  expect(rowOf("10 Feb 2020")).toBeGreaterThan(-1);
-  expect(rowOf("10 Feb 2020")).toBeLessThan(rowOf("10 Feb 2098"));
-  expect(rowOf("10 Feb 2098")).toBeLessThan(rowOf("10 Feb 2099"));
+  const rows = lines.slice(lines.findIndex((line) => /\bDATE\b/.test(line)) + 1);
+  return { rows, rowOf: (date: string) => rows.findIndex((line) => line.includes(date)) };
+}
+
+/** A Shanghai listing's Events opened on its 1995 dividend, oldest first, with the latest payments off-screen. */
+test("a long dividend history opens on its latest payment, newest first", async () => {
+  // Oldest first, as a source may send them.
+  const dividends = Array.from({ length: 40 }, (_, index) => ({ exDate: `${1980 + index}-03-10`, amount: 0.01 * (index + 1) }));
+  await render({ symbol: "TEST", splits: [], earnings: [], dividends }, "corporate-actions", 100);
+  const { rows, rowOf } = tableLines();
+  expect(rows[0]).toContain("10 Mar 2019");
+  expect(rowOf("10 Mar 2018")).toBe(1);
+  expect(rowOf("10 Mar 2017")).toBe(2);
+  expect(tui.frame()).not.toContain("10 Mar 1980");
   await tui.emitKeypress({ name: "return" });
   await frame();
-  expect(tui.frame()).toContain("$0.20");
-  expect(tui.frame()).not.toContain("10 Feb 2020");
+  expect(tui.frame()).toContain("2019-03-10");
+  expect(tui.frame()).toContain("$0.40");
 });
 
-test("a long history scrolls to the next event, not its first row", async () => {
-  const past = Array.from({ length: 40 }, (_, index) => ({ exDate: `${1980 + index}-03-10`, amount: 0.01 * (index + 1) }));
-  await render({ symbol: "TEST", splits: [], earnings: [], dividends: [...past, { exDate: "2098-02-10", amount: 9.5 }] },
-    "corporate-actions", 100);
-  // Forty past rows do not fit 24 lines: the table opens scrolled to the next one, the oldest out of view.
-  expect(tui.frame()).toContain("10 Feb 2098");
+/** Review, 12 Nov 2026: the newest date leads, so the pane opens on the next event, below what is further ahead. */
+test.each(["corporate-actions", "earnings-estimates"] as const)("%s puts upcoming rows on top and opens on the next one, history under it", async (variant) => {
+  const past = Array.from({ length: 40 }, (_, index) => ({ date: `${1980 + index}-03-10`, epsActual: 2 }));
+  await render({ symbol: "TEST", currency: "USD", splits: [], dividends: [{ exDate: "2098-05-15", amount: 0.5 }],
+    earnings: [...past, { date: "2098-02-10", epsEstimate: 3.25 }] }, variant, 100,
+  { symbol: "TEST", recommendations: [], ratings: [], revenueEstimates: [], earningsEstimates: [
+    { date: "2098-12-31", period: "current_year", average: 12.5 },
+    { date: "2099-12-31", period: "next_year", average: 14 },
+  ] });
+  const { rows, rowOf } = tableLines();
+  const order = ["31 Dec 2099", "31 Dec 2098", ...variant === "corporate-actions" ? ["15 May 2098"] : [], "10 Feb 2098", "10 Mar 2019", "10 Mar 2018"];
+  expect(rows[0]).toContain(order[0]);
+  expect(order.map(rowOf)).toEqual(order.map((_, index) => index));
   expect(tui.frame()).not.toContain("10 Mar 1980");
+  // Selected is the next report, not the estimates above it.
+  await tui.emitKeypress({ name: "return" });
+  await frame();
+  expect(tui.frame()).toContain("2098-02-10");
+  expect(tui.frame()).toMatch(/Consensus\s+3\.25/);
 });
 
-test("late estimates scroll into view, and scrolling back restores covered historical surprises", async () => {
+test("late estimates land on top in view, and the end of the table restores covered historical surprises", async () => {
   const estimates = Promise.withResolvers<AnalystResearchData>();
   await render({ symbol: "TEST", currency: "USD", splits: [], dividends: [], earnings: Array.from({ length: 40 }, (_, index) => ({
     date: `${1980 + index}-03-10`, epsActual: 2, ...(index === 0 ? { epsEstimate: 1 } : {}),
@@ -176,31 +195,11 @@ test("late estimates scroll into view, and scrolling back restores covered histo
   expect(tui.frame()).toContain("31 Mar 2098");
   expect(tui.frame()).toContain("+25.00% EPS");
   expect(tui.frame()).not.toContain("EPS SURP");
-  await tui.emitKeypress({ name: "home" });
+  await tui.emitKeypress({ name: "end" });
   for (let index = 0; index < 4; index += 1) await frame();
   expect(tui.frame()).toContain("10 Mar 1980");
   expect(tui.frame()).toContain("EPS SURP");
   expect(tui.frame()).toContain("+100.00%");
-});
-
-test.each(["earnings-estimates", "corporate-actions"] as const)("%s keeps its initial viewport and old reports reachable", async (variant) => {
-  const past = Array.from({ length: 40 }, (_, index) => ({ date: `${1980 + index}-03-10`, epsActual: 2 }));
-  await render({ symbol: "TEST", currency: "USD", splits: [], dividends: [], earnings: [...past,
-    { date: "2098-02-10", epsEstimate: 3.25 }] }, variant, 100,
-  { symbol: "TEST", recommendations: [], ratings: [], revenueEstimates: [], earningsEstimates: [
-    { date: "2098-12-31", period: "current_year", average: 12.5 },
-    { date: "2099-12-31", period: "next_year", average: 14 },
-  ] });
-  expect(tui.frame()).toContain("10 Feb 2098");
-  if (variant === "earnings-estimates") {
-    expect(tui.frame()).toContain("31 Dec 2099");
-  } else {
-    expect(tui.frame()).toContain("10 Mar 2019");
-    expect(tui.frame()).not.toContain("31 Dec 2099");
-  }
-  await tui.emitKeypress({ name: "home" });
-  for (let index = 0; index < 4; index += 1) await frame();
-  expect(tui.frame()).toContain("10 Mar 1980");
 });
 
 test("opening a fiscal-period row cannot select a same-day pending announcement", async () => {

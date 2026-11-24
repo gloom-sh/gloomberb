@@ -426,6 +426,19 @@ function EventDetailSections({ sections, width }: { sections: EventDetailSection
   );
 }
 
+/**
+ * The row the pane opens on, in newest-first rows: the first row of the
+ * earliest day from today on, else the latest row.
+ */
+function nextEventIndex(rows: readonly EventRow[], today: string): number {
+  let next = 0;
+  for (const [index, row] of rows.entries()) {
+    if (row.date < today) break;
+    if (row.date !== rows[next]!.date) next = index;
+  }
+  return next;
+}
+
 /** Statuses the Earnings Estimates surface keeps; the rest are corporate actions. */
 const EARNINGS_STATUSES = new Set<EventStatus>(["Q Est", "FY Est", "Earnings", "TTM"]);
 
@@ -515,15 +528,15 @@ export function CorporateActionsView({
   const allRows = useMemo(() => (
     buildEventRows(actionsData, analystData, financialsData, displayCurrency)
   ), [actionsData, analystData, displayCurrency, financialsData]);
-  // In the order they happen, as a calendar reads, from the oldest to the
-  // furthest estimate; the pane opens on the present (selectedIdx). The
-  // model's newest-first order is the report's, cut by a limit; a day's
-  // events keep its order among themselves.
+  // Newest first, in the model's order, as `fn EVT` prints them: what is ahead
+  // (estimates, the next report, a declared dividend) on top, tinted, then the
+  // latest event and the older ones under it. Oldest first, a long history
+  // (a dividend from 1995) opened on its first row with the recent ones off-screen.
   const rows = useMemo(() => (
     variant === "earnings-estimates"
       ? allRows.filter((row) => EARNINGS_STATUSES.has(row.status))
-      : [...allRows]
-  ).sort((left, right) => left.date.localeCompare(right.date)), [allRows, variant]);
+      : allRows
+  ), [allRows, variant]);
   const unit = useMemo(() => sharedMetricCurrency(rows), [rows]);
   const hasUnstatedCurrency = rows.some((row) =>
     ((row.qEps != null || row.annualEps != null) && !row.epsCurrency)
@@ -546,12 +559,11 @@ export function CorporateActionsView({
   // Keyed by row id, not by position, so a reload or a shared layout comes
   // back to the same event.
   const [selectedKey, setSelectedKey] = usePluginPaneState<string | null>("selectedKey", null);
-  // Until one is picked, the next event: the rows run oldest to the furthest estimate, and the present is what is read first.
+  // Until one is picked, the next event: the last of the rows ahead, right
+  // above the history, or the latest one when nothing is ahead.
   const selectedIdx = useMemo(() => {
     const picked = rows.findIndex((row) => eventRowKey(row) === selectedKey);
-    if (picked >= 0) return picked;
-    const next = rows.findIndex((row) => row.date >= today);
-    return next >= 0 ? next : Math.max(0, rows.length - 1);
+    return picked >= 0 ? picked : nextEventIndex(rows, today);
   }, [rows, selectedKey, today]);
   const [openRowId, setOpenRowId] = usePluginPaneState<string | null>("openRowId", null);
   const detailScrollRef = useRef<ScrollBoxRenderable>(null);
@@ -738,11 +750,11 @@ export function CorporateActionsView({
       onRootKeyDown={handleKeyDown}
       columns={columns}
       items={rows}
+      // Opens at the top; the next event is a few rows down, scrolled only as far as it takes to show it.
       scrollToIndex={selectedIdx}
-      scrollToIndexAlign={variant === "earnings-estimates" ? "start" : undefined}
       scrollToIndexVersion={rows.length}
       sortColumnId={null}
-      sortDirection="asc"
+      sortDirection="desc"
       getItemKey={eventRowKey}
       renderCell={renderCell}
       getExportMetadata={() => [
