@@ -448,7 +448,9 @@ describe("BrokersPane", () => {
     await tui.emitKeypress({ name: "escape", sequence: "\u001b" }, { frames: 2, trackPropagation: true, afterCommit: true });
     const frame = tui.frame();
     expect(frame).not.toContain("Edit Profile");
-    expect(frame).toContain("Accounts");
+    // The accounts sit right under their heading: the form's spacing goes with it.
+    const lines = frame.split("\n");
+    expect(lines[lines.findIndex((line) => line.includes("Accounts")) + 1]).toContain("DU12345");
 
     await pressKey("e");
     await pressKey("TAB");

@@ -401,8 +401,9 @@ export function BrokerDetailContent({
         <Text fg={colors.textMuted}>{tf("Status updated {time}", { time: formatRelativeAge(row.updatedAt) })}</Text>
         <Box height={1} />
 
+        {/* Keyed apart: the terminal keeps a reused box's gap, so the accounts would stay spaced like the form. */}
         {editDraft && editAdapter ? (
-          <Box flexDirection="column" gap={1}>
+          <Box key="edit" flexDirection="column" gap={1}>
             <SectionHeading title="Edit Profile" />
             <BrokerProfileForm
               adapter={editAdapter}
@@ -432,7 +433,7 @@ export function BrokerDetailContent({
           </Box>
         ) : (
           // Edit, test, sync, open and disconnect are the footer's e, c, s, o and d.
-          <Box flexDirection="column">
+          <Box key="accounts" flexDirection="column">
             <SectionHeading title="Accounts" />
             {accounts.length === 0 ? (
               <Text fg={colors.textDim}>{t("No accounts loaded. Test/connect or sync this profile.")}</Text>
