@@ -29,6 +29,7 @@ const PAGES: Readonly<Record<string, (code: string) => ExchangeAnnouncementsPage
   SFB: () => NASDAQ_NORDIC, HEL: () => NASDAQ_NORDIC, CPH: () => NASDAQ_NORDIC, ICEX: () => NASDAQ_NORDIC,
   XETRA: () => ({ name: "Unternehmensregister", url: "https://www.unternehmensregister.de/" }),
   FWB2: () => PAGES.XETRA!(""),
+  HOSE: () => ({ name: "Ho Chi Minh Stock Exchange issuer disclosures", url: "https://www.hsx.vn/vi/tin-tuc/tin-to-chuc-niem-yet" }),
   JPX: () => ({ name: "TDnet timely disclosures", url: "https://www.release.tdnet.info/inbs/I_main_00.html" }),
   HKEX: () => ({ name: "HKEXnews", url: "https://www1.hkexnews.hk/search/titlesearch.xhtml?lang=en" }),
   SWX: () => ({ name: "SIX Swiss Exchange", url: "https://www.six-group.com/en/market-data/news-tools/equity-issuer-news.html" }),
@@ -59,7 +60,7 @@ function exchangeAnnouncementsPage(symbol: string, exchange: string | null | und
 
 const PUBLISHERS: Readonly<Record<string, string>> = {
   ASX: "ASX", CXA: "ASX", HKEX: "HKEXnews", SWX: "SIX Swiss Exchange",
-  KRX: "DART", KOSDAQ: "DART", SGX: "SGX", SSE: "CNINFO", SZSE: "CNINFO",
+  JPX: "TDnet", HOSE: "HOSE", KRX: "DART", KOSDAQ: "DART", SGX: "SGX", SSE: "CNINFO", SZSE: "CNINFO",
 };
 
 /**
