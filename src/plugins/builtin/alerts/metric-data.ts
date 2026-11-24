@@ -62,13 +62,13 @@ const DAILY_BARS = "1d";
 
 const dailyCaches = new WeakMap<AssetDataProvider, DailyMetricCache>();
 
-type ObservedMetricReading = MetricReading & { quoteSource?: QuoteDataSource };
+type ObservedMetricReading = MetricReading & { quoteSource?: QuoteDataSource; ratioInputs?: AlertRule["lastRatioInputs"] };
 
 export function metricReadingFields(reading: ObservedMetricReading, checkedAt: number): Partial<AlertRule> {
   return {
     lastCheckedPrice: reading.value, lastCheckedTarget: reading.target, lastQuoteUpdatedAt: reading.at, lastCheckedAt: checkedAt,
     lastDailyClose: reading.day, lastQuoteSource: reading.quoteSource, lastCheckError: undefined,
-    lastRatioInputs: reading.ratioInputs ? { ...reading.ratioInputs, numeratorAt: reading.at, denominatorAt: reading.at } : undefined,
+    lastRatioInputs: reading.ratioInputs,
   };
 }
 
@@ -96,7 +96,7 @@ export function metricReadings(provider: AssetDataProvider, now = Date.now()) {
     if (unavailable) throw new Error(unavailable);
     const latest = latestSettledClose(now, session);
     const ruleKey = JSON.stringify([rule.id, rule.armedAt ?? rule.createdAt, key, rule.condition, rule.targetPrice, m]);
-    return daily.read(ruleKey, latest.day, now, async () => {
+    return daily.read(ruleKey, latest.day, now, async (): Promise<ObservedMetricReading> => {
       const load = async (symbol: string, venue: string) => {
         // An explicit end at the settled session avoids today's forming-bar quote read.
         const end = new Date(`${latest.day}T23:59:59Z`);
@@ -127,8 +127,16 @@ export function metricReadings(provider: AssetDataProvider, now = Date.now()) {
       };
       const bars = await completed(rule.symbol, exchange);
       // RS ratios and RRG quadrants read the benchmark's own completed bars, never a quote.
-      const benchmark = isRelativeMetric(m) ? await completed(m.benchmark, canonicalExchange(m.benchmarkExchange ?? "")) : undefined;
-      return dailyMetricReading(rule, bars, now, session, benchmark);
+      const benchmarkVenue = isRelativeMetric(m) ? canonicalExchange(m.benchmarkExchange ?? "") : undefined;
+      const benchmark = isRelativeMetric(m) && benchmarkVenue !== undefined ? await completed(m.benchmark, benchmarkVenue) : undefined;
+      const reading = dailyMetricReading(rule, bars, now, session, benchmark);
+      if (m.kind !== "rs_ratio" || !reading.day || !benchmarkVenue) return reading;
+      const numerator = bars.find((bar) => bar.date === reading.day)?.close;
+      const denominator = benchmark?.find((bar) => bar.date === reading.day)?.close;
+      const benchmarkSession = getPublishedUsEquitySession(benchmarkVenue, reading.day);
+      return numerator != null && denominator != null && benchmarkSession?.kind === "session"
+        ? { ...reading, ratioInputs: { numerator, numeratorAt: reading.at, denominator, denominatorAt: benchmarkSession.close } }
+        : reading;
     });
   };
 }
