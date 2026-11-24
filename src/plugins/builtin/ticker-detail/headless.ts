@@ -19,7 +19,7 @@ import {
 import { indexBarVolume } from "../../../market-data/market/index-level";
 import {
   buildFinancialTableModel, financialColumnLabel, financialGrowthNotice, financialStatementCurrency, financialStatementDateNotice, financialStatementLimitations,
-  financialReportHeader, financialStatementPeriods, financialSubTabFields, formatFinancialAmount, isPerShareFinancialRow, notInYetNote, receiptShareCountLabel,
+  financialReportHeader, financialStatementPeriods, financialSubTabFields, formatFinancialAmount, isPerShareFinancialRow, notInYetNote, receiptShareCountLabel, trailingNotInYetNote,
 } from "./financials/model";
 import { FINANCIAL_SUB_TABS } from "./financials/schema";
 import { fiscalYearEndMonth } from "../../../utils/fiscal-period";
@@ -400,7 +400,8 @@ async function loadFinancialReport(symbol: string, options: HeadlessPaneOptionVa
     // The balance sheet's cash, when an offering since is not in it yet.
     const offering = table?.subTab.key === "balance" ? await reportOfferingNote(ctx, symbol, latestBalanceSheetDate(financials)) : null;
     // A newest period with only some figures (an EPS alone) is left out, as in the pane, and a line says so.
-    const notInYet = table ? notInYetNote(table.notInYet, table.subTab, requestedPeriod, yearEndMonth) : null;
+    const notInYet = table ? notInYetNote(table.notInYet, table.subTab, requestedPeriod, yearEndMonth)
+      ?? trailingNotInYetNote(table.statements, table.trailingNotInYet, table.subTab, yearEndMonth) : null;
     // A latest period over 15 months old says how old it is; an HKEX company's, the announcement its results came in.
     const stale = table ? stalePeriodNote(financialStatementPeriods(table.statements, table.subTab)) : null;
     // Years filled from the listing's exchange, with the lines this table shows; an announcement that dates one is not
@@ -626,7 +627,8 @@ async function loadRatioReport(
     // Each exported row names its unit, the statements' period and the newest period end it runs to.
     rowUnitKey: "unit", rowAsOfKey: "periodEnd", interval: period,
     notes: [
-      ...[table ? notInYetNote(table.notInYet ?? [], FINANCIAL_SUB_TABS[0]!, period, yearEndMonth) : null,
+      ...[table ? notInYetNote(table.notInYet ?? [], FINANCIAL_SUB_TABS[0]!, period, yearEndMonth)
+        ?? trailingNotInYetNote(table.periods.map(({ statement }) => statement), table.trailingNotInYet ?? [], FINANCIAL_SUB_TABS[0]!, yearEndMonth) : null,
         table ? blankRatioPeriodsNote(table, period, yearEndMonth) : null].filter((note): note is string => !!note),
       ...currencyNotes.filter((note): note is string => !!note),
       ...[stalePeriodNote(dates.map(({ periodEnd }) => ({ date: periodEnd, lead: true })))].filter((note): note is string => !!note),

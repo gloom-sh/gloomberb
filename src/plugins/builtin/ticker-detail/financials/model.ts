@@ -661,6 +661,8 @@ export interface FinancialTableModel {
   unit: string | undefined;
   /** The newest periods left out because they are not in yet (selectFinancialStatements), for notInYetNote. */
   notInYet: FinancialTableStatement[];
+  /** The newer quarters the TTM column passed over, not in yet, for trailingNotInYetNote. */
+  trailingNotInYet: FinancialStatement[];
 }
 
 /** Counts of the shares a company has issued or has outstanding, which are never zero; treasury shares can be. */
@@ -770,6 +772,11 @@ export function selectFinancialStatements(
   // the reported year is shown, not a second column of the same period. Nor is
   // one that ends before it, or one with nothing on this statement.
   const ttm = trailing && endsAfterLatestYear(trailing, rawStatements[0]) && hasFigures(trailing) ? trailing : null;
+  // The newer quarters a TTM summed from quarters passed over for want of the statement's lines
+  // (trailingNotInYetNote); none where it stops for another reason, as a quarter missing from the list.
+  const periodEnd = ttm?.aggregation?.periodEnd;
+  const newer = ttm && ttm === fromQuarters && complete && periodEnd ? quarterlyStatements.filter((quarter) => quarter.date > periodEnd) : [];
+  const passedOver = newer.every((quarter) => !complete?.(quarter)) ? newer.reverse() : [];
   const previousStatementMap = buildPreviousStatementMap(period, annualStatements, quarterlyStatements, ttm);
   const statements: FinancialTableStatement[] = ttm ? [ttm, ...rawStatements] : rawStatements;
 
@@ -790,7 +797,7 @@ export function selectFinancialStatements(
       if (previous) previousStatementMap.set(latest.date, previous);
     }
   }
-  return { statements, previousStatementMap, notInYet };
+  return { statements, previousStatementMap, notInYet, trailingNotInYet: passedOver };
 }
 
 /** Whether four quarters summed lack a headline line the served TTM has. */
@@ -820,7 +827,7 @@ export function buildFinancialTableModel(
   const requestedPeriod = options.period ?? (hasAnnualStatements ? "annual" : "quarterly");
   const period = resolveFinancialPeriod(requestedPeriod, hasAnnualStatements, hasQuarterlyStatements);
   const subTabKey = resolveFinancialSubTabKey(options.statement);
-  const { statements, previousStatementMap, notInYet } = selectFinancialStatements(
+  const { statements, previousStatementMap, notInYet, trailingNotInYet } = selectFinancialStatements(
     period, subTabKey, annualStatements, quarterlyStatements,
     period === "annual" ? options.annualLimit : options.quarterlyLimit,
     financials?.trailingStatement,
@@ -857,7 +864,7 @@ export function buildFinancialTableModel(
     };
   });
 
-  return { period, subTab, statements, rows, unit, notInYet };
+  return { period, subTab, statements, rows, unit, notInYet, trailingNotInYet };
 }
 
 /**
@@ -929,6 +936,21 @@ export function notInYetNote(
   const only = notInYet.length === 1 ? earningsOnly(notInYet[0]!, subTab) : null;
   if (only) return `${names} is not in yet: only its EPS is on file (${only}), not its ${lead ?? "statements"}.`;
   return `${names} ${periods.length === 1 ? "is" : "are"} not in yet: only some of ${periods.length === 1 ? "its" : "their"} figures are on file${leadText}.`;
+}
+
+/**
+ * Why an annual table's TTM stops short of the latest quarter: "Q3 FY27 is not in yet: only its EPS is on file
+ * (2.70 diluted), not its revenue, so the TTM runs to Q2 FY27." Null when it passed over none.
+ */
+export function trailingNotInYetNote(
+  statements: readonly FinancialTableStatement[],
+  passedOver: readonly FinancialStatement[],
+  subTab: Pick<FinancialSubTab, "rows">,
+  yearEndMonth: number | null,
+): string | null {
+  const ttm = statements.find((statement) => statement.date === "TTM");
+  const note = ttm ? notInYetNote(passedOver, subTab, "quarterly", yearEndMonth) : null;
+  return note && ttm ? `${note.slice(0, -1)}, so the TTM runs to ${financialColumnLabel(ttm, "annual", yearEndMonth).replace(/^TTM /, "")}.` : null;
 }
 
 /** A period's EPS as notInYetNote names it ("2.70 diluted"), when it has nothing on the table but EPS and share counts. */

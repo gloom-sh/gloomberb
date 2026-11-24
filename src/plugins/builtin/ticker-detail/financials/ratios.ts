@@ -835,6 +835,8 @@ export interface RatioTableModel {
   blank?: FinancialTableStatement[];
   /** The newest periods left out because they are not in yet (selectFinancialStatements), for notInYetNote. */
   notInYet?: FinancialTableStatement[];
+  /** The newer quarters the TTM column passed over, not in yet, for trailingNotInYetNote. */
+  trailingNotInYet?: FinancialStatement[];
 }
 
 export function latestRunwayPeriodEnd(table: RatioTableModel | null | undefined): string | null {
@@ -973,7 +975,7 @@ export function ratioTableForFinancials(
 ): RatioTableModel {
   const annual = byDate(financials.annualStatements);
   const quarterly = byDate(financials.quarterlyStatements);
-  const { statements, notInYet } = selectFinancialStatements(period, "income", annual, quarterly, undefined, financials.trailingStatement);
+  const { statements, notInYet, trailingNotInYet } = selectFinancialStatements(period, "income", annual, quarterly, undefined, financials.trailingStatement);
   const price = (statement: FinancialTableStatement): RatioAmount => {
     const date = ratioPeriodEnd(statement);
     const close = history ? periodEndClose(history, date) : undefined;
@@ -983,5 +985,6 @@ export function ratioTableForFinancials(
   return {
     ...buildRatioTableModel(tab, ratioPeriods(statements, openings, period, price, { annual, quarterly }), "all", financials.profile, proceeds),
     notInYet,
+    trailingNotInYet,
   };
 }

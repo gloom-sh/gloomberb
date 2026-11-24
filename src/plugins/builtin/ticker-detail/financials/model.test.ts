@@ -16,6 +16,7 @@ import {
   resolveFinancialSubTabKey,
   selectFinancialStatements,
   splitPeriodsNotInYet,
+  trailingNotInYetNote,
 } from "./model";
 import { createTestFinancials } from "../../../../test-support/data-provider";
 import { RATIO_TABS, ratioOpenings, ratioTableForFinancials } from "./ratios";
@@ -646,6 +647,14 @@ describe("a quarter with only its EPS, between its earnings release and its 10-Q
     }
     const table = buildFinancialTableModel(financials, { period: "annual", statement: "income", expandAll: true })!;
     expect(financialColumnLabel(table.statements[0]!, "annual", 1)).toBe("TTM Q2 FY27");
+    // A line says why it stops there.
+    expect(table.trailingNotInYet.map(({ date }) => date)).toEqual(["2026-10-31"]);
+    expect(trailingNotInYetNote(table.statements, table.trailingNotInYet, table.subTab, 1))
+      .toBe("Q3 FY27 is not in yet: only its EPS is on file (2.70 diluted), not its revenue, so the TTM runs to Q2 FY27.");
+    // A TTM that stops at a gap in the quarters, not at a quarter missing its lines, says nothing of the kind.
+    const gap = selectFinancialStatements("annual", "income", annual, [...quarterly.slice(0, 7), { ...quarterly[7]!, date: "2026-10-25" }]);
+    expect(gap.statements[0]!.aggregation?.periodEnd).toBe("2026-04-26");
+    expect(gap.trailingNotInYet).toEqual([]);
     expect(table.rows.find(({ summaryKey, key }) => (summaryKey ?? key) === "totalRevenue")!.cells[0]!.value).toBe(303e9);
   });
 

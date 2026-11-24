@@ -82,7 +82,7 @@ test("FA leaves out a quarter with only its EPS, names it, and sums its TTM to t
       { date: "2026-01-25" },
     ]);
     expect(annual.rows.find((row) => row.id === "income:revenue")?.TTM).toBe(303e9);
-    expect(annual.notes?.join(" ")).not.toContain("not in yet");
+    expect(annual.notes?.[0]).toBe("Q3 FY27 is not in yet: only its EPS is on file (2.70 diluted), not its revenue, so the TTM runs to Q2 FY27.");
   } finally {
     setSystemTime();
   }

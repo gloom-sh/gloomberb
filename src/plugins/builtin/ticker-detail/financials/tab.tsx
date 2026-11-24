@@ -40,6 +40,7 @@ import {
   financialSubTabFields,
   latestFinancialPeriodEnd,
   notInYetNote,
+  trailingNotInYetNote,
   resolveFinancialPeriod,
   resolveFinancialPeriodOption,
   semanticGrowthValue,
@@ -332,8 +333,9 @@ export function ResolvedFinancialsTab({
     () => selectFinancialStatements(resolvedPeriod, subTab.key, annualStatements, quarterlyStatements, undefined, financials?.trailingStatement),
     [annualStatements, quarterlyStatements, resolvedPeriod, subTab.key, financials?.trailingStatement],
   );
-  // A newest period with only some figures (an EPS alone) is left out of the columns, and a line says so.
-  const { statements: displayStatements, notInYet } = selected;
+  // A newest period with only some figures (an EPS alone) is left out of the columns, and a line says so, as it
+  // does of a newer quarter the TTM passed over.
+  const { statements: displayStatements, notInYet, trailingNotInYet } = selected;
   const previousStatementMap = selected.previousStatementMap;
   // One currency for every column goes in the query bar with the growth basis;
   // a column in a different currency (or none) says so in its own header.
@@ -511,8 +513,9 @@ export function ResolvedFinancialsTab({
     [displayStatements, subTab],
   );
   const notInYetLine = useMemo(
-    () => notInYetNote(notInYet, subTab, resolvedPeriod, yearEndMonth),
-    [notInYet, resolvedPeriod, subTab, yearEndMonth],
+    () => notInYetNote(notInYet, subTab, resolvedPeriod, yearEndMonth)
+      ?? trailingNotInYetNote(displayStatements, trailingNotInYet, subTab, yearEndMonth),
+    [displayStatements, notInYet, resolvedPeriod, subTab, trailingNotInYet, yearEndMonth],
   );
   const blankRatioLine = ratioModel ? blankRatioPeriodsNote(ratioModel, resolvedPeriod, yearEndMonth) : null;
   usePaneNoticeFooter({
