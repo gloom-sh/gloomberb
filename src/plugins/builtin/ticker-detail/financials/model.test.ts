@@ -16,8 +16,10 @@ import {
   resolveFinancialSubTabKey,
   selectFinancialStatements,
   splitPeriodsNotInYet,
+  trailingNotInYetNote,
 } from "./model";
 import { createTestFinancials } from "../../../../test-support/data-provider";
+import { RATIO_TABS, ratioOpenings, ratioTableForFinancials } from "./ratios";
 
 function createFinancials(): TickerFinancials {
   return createTestFinancials({
@@ -302,7 +304,7 @@ test("liabilities plus equity requires its own components and cannot copy total 
   expect(table.rows.find(({ summaryKey }) => summaryKey === "totalAssets")!.cells.map(({ value }) => value)).toEqual([130, 120, 110, 100]);
 });
 
-test("a newest year with only some figures (an EPS alone) is left out of the pane's columns and named, so its first column is never all dashes", () => {
+test("a newest year with only some figures (an EPS alone) is left out of the columns and named, so its first column is never all dashes", () => {
   // Pop Mart on 2026-11-11: FY2025 carried its EPS but none of its statement.
   const annual = [
     { date: "2023-12-31", totalRevenue: 6.3e9, eps: 0.81 },
@@ -310,11 +312,15 @@ test("a newest year with only some figures (an EPS alone) is left out of the pan
     { date: "2025-12-31", eps: 9.58 },
   ];
   const income = FINANCIAL_SUB_TABS.find((tab) => tab.key === "income")!;
-  const { statements } = selectFinancialStatements("annual", "income", annual, []);
-  expect(statements.map((statement) => statement.date)).toEqual(["2025-12-31", "2024-12-31", "2023-12-31"]);
-  const { shown, notInYet } = splitPeriodsNotInYet(statements, income);
-  expect(shown.map((statement) => statement.date)).toEqual(["2024-12-31", "2023-12-31"]);
-  expect(notInYetNote(notInYet, income, "annual", 12)).toBe("FY2025 is not in yet: only some of its figures are on file, not its revenue.");
+  const { statements, notInYet } = selectFinancialStatements("annual", "income", annual, []);
+  expect(statements.map((statement) => statement.date)).toEqual(["2024-12-31", "2023-12-31"]);
+  expect(notInYet.map((statement) => statement.date)).toEqual(["2025-12-31"]);
+  expect(notInYetNote(notInYet, income, "annual", 12)).toBe("FY2025 is not in yet: only its EPS is on file (9.58 diluted), not its revenue.");
+  // Leaving them out twice changes nothing.
+  expect(splitPeriodsNotInYet(statements, income).shown).toEqual(statements);
+  // A year with more than its EPS (its net income) is not EPS-only.
+  expect(notInYetNote([{ date: "2025-12-31", eps: 9.58, netIncome: 12e9 }], income, "annual", 12))
+    .toBe("FY2025 is not in yet: only some of its figures are on file, not its revenue.");
   // A table where no year has the lead line keeps them all: there is nothing newer to lead with.
   expect(splitPeriodsNotInYet([{ date: "2025-12-31", eps: 1 }], income).shown).toHaveLength(1);
 });
@@ -592,4 +598,108 @@ test("a cash flow table is in one unit, shows a line once, and works out capex i
   expect(cell("CapEx / Revenue")).toBe("3.6%");
   // (1.671 + 0.705 - 1.403) / (28.11 x (1 - 4.589 / 28.093)) = 4.1%.
   expect(cell("Reinvestment Rate")).toBe("4.1%");
+});
+
+/**
+ * NVIDIA on 2026-11-24: Q3 FY27 (to 2026-10-25) was in its earnings release, not yet in a 10-Q, so its row carried
+ * only its EPS and share counts, under the month-end label 2026-10-31. Eight full quarters before it.
+ */
+function epsOnlyQuarterFinancials(): TickerFinancials {
+  const ends = ["2024-10-27", "2025-01-26", "2025-04-27", "2025-07-27", "2025-10-26", "2026-01-25", "2026-04-26", "2026-07-26"];
+  const revenue = [35, 39, 44, 47, 57, 68, 82, 96];
+  const quarter = (date: string, index: number): FinancialStatement => {
+    const sales = revenue[index]! * 1e9;
+    return {
+      date, currency: "USD", totalRevenue: sales, operatingIncome: sales * 0.6, netIncome: sales * 0.55, eps: sales * 0.55 / 24.3e9,
+      dilutedShares: 24.3e9, operatingCashFlow: sales * 0.4, freeCashFlow: sales * 0.37, capitalExpenditure: -sales * 0.03,
+      totalAssets: 200e9 + index * 15e9, totalEquity: 150e9 + index * 10e9, currentAssets: 120e9, currentLiabilities: 40e9,
+    };
+  };
+  return createTestFinancials({
+    financialCurrency: "USD",
+    annualStatements: [
+      { date: "2025-01-26", currency: "USD", totalRevenue: 130.5e9, operatingIncome: 81.5e9, netIncome: 72.9e9, eps: 2.94, operatingCashFlow: 64.1e9, freeCashFlow: 60.9e9, totalAssets: 111.6e9, totalEquity: 79.3e9 },
+      { date: "2026-01-25", currency: "USD", totalRevenue: 215.9e9, operatingIncome: 130.4e9, netIncome: 120.1e9, eps: 4.9, operatingCashFlow: 102.7e9, freeCashFlow: 96.7e9, totalAssets: 206.8e9, totalEquity: 157.3e9 },
+    ],
+    quarterlyStatements: [
+      ...ends.map(quarter),
+      { date: "2026-10-31", currency: "USD", basicShares: 24.106e9, dilutedShares: 24.186e9, basicEps: 2.71, eps: 2.7 },
+    ],
+  });
+}
+
+describe("a quarter with only its EPS, between its earnings release and its 10-Q", () => {
+  const financials = epsOnlyQuarterFinancials();
+  const annual = financials.annualStatements;
+  const quarterly = financials.quarterlyStatements;
+
+  test("the annual TTM runs to the last quarter with its statements, not to a column of dashes", () => {
+    for (const statement of ["income", "cashflow"]) {
+      const { statements, previousStatementMap, notInYet } = selectFinancialStatements("annual", statement, annual, quarterly);
+      expect(statements.map(({ date }) => date)).toEqual(["TTM", "2026-01-25", "2025-01-26"]);
+      expect(statements[0]!.aggregation).toMatchObject({ kind: "trailing-four-quarters", periodEnd: "2026-07-26" });
+      expect(notInYet).toEqual([]);
+      if (statement === "income") {
+        expect(statements[0]!.totalRevenue).toBe((57 + 68 + 82 + 96) * 1e9);
+        // Its growth is over the four quarters before its own.
+        expect(previousStatementMap.get("TTM")!.totalRevenue).toBe((35 + 39 + 44 + 47) * 1e9);
+      }
+    }
+    const table = buildFinancialTableModel(financials, { period: "annual", statement: "income", expandAll: true })!;
+    expect(financialColumnLabel(table.statements[0]!, "annual", 1)).toBe("TTM Q2 FY27");
+    // A line says why it stops there.
+    expect(table.trailingNotInYet.map(({ date }) => date)).toEqual(["2026-10-31"]);
+    expect(trailingNotInYetNote(table.statements, table.trailingNotInYet, table.subTab, 1))
+      .toBe("Q3 FY27 is not in yet: only its EPS is on file (2.70 diluted), not its revenue, so the TTM runs to Q2 FY27.");
+    // A TTM that stops at a gap in the quarters, not at a quarter missing its lines, says nothing of the kind.
+    const gap = selectFinancialStatements("annual", "income", annual, [...quarterly.slice(0, 7), { ...quarterly[7]!, date: "2026-10-25" }]);
+    expect(gap.statements[0]!.aggregation?.periodEnd).toBe("2026-04-26");
+    expect(gap.trailingNotInYet).toEqual([]);
+    expect(table.rows.find(({ summaryKey, key }) => (summaryKey ?? key) === "totalRevenue")!.cells[0]!.value).toBe(303e9);
+  });
+
+  test("the quarterly tables leave the quarter out and say what is on file for it", () => {
+    for (const statement of ["income", "cashflow", "balance"]) {
+      const table = buildFinancialTableModel(financials, { period: "quarterly", statement, expandAll: true })!;
+      expect(table.statements[0]!.date).toBe("2026-07-26");
+      // The cash flow and balance sheet have nothing of it: it is no period of theirs, and nothing is said.
+      expect(table.notInYet.map(({ date }) => date)).toEqual(statement === "income" ? ["2026-10-31"] : []);
+    }
+    const income = FINANCIAL_SUB_TABS.find((tab) => tab.key === "income")!;
+    const { notInYet } = selectFinancialStatements("quarterly", "income", annual, quarterly);
+    expect(notInYetNote(notInYet, income, "quarterly", 1)).toBe("Q3 FY27 is not in yet: only its EPS is on file (2.70 diluted), not its revenue.");
+  });
+
+  test("the ratio tabs read the same periods: the TTM to Q2 FY27, its opening a year before it", () => {
+    const profitability = RATIO_TABS.find((tab) => tab.key === "profitability")!;
+    const yearly = ratioTableForFinancials(financials, profitability, "annual");
+    expect(yearly.periods.map(({ statement }) => statement.date)).toEqual(["TTM", "2026-01-25", "2025-01-26"]);
+    expect(yearly.periods[0]!.opening?.date).toBe("2025-07-27");
+    expect(yearly.cells.get(profitability.ratios[0]!.id)![0]!.value).toEqual(expect.any(Number));
+    const ttm = yearly.periods[0]!.statement;
+    expect(ratioOpenings("annual", annual, quarterly, ttm).get("TTM")?.date).toBe("2025-07-27");
+    // Without the TTM, the quarter a year before the latest on file, as before.
+    expect(ratioOpenings("annual", annual, quarterly).get("TTM")?.date).toBe("2025-10-26");
+    const quarters = ratioTableForFinancials(financials, profitability, "quarterly");
+    expect(quarters.periods[0]!.statement.date).toBe("2026-07-26");
+    expect(quarters.notInYet?.map(({ date }) => date)).toEqual(["2026-10-31"]);
+  });
+
+  test("a TTM ending before the latest year is no column, and neither is one with nothing on the statement", () => {
+    // Air Products on 2026-11-24: FY2026 filed in its 10-K, its fiscal Q4 with only its EPS.
+    const quarters: FinancialStatement[] = [
+      ...["2025-09-30", "2025-12-31", "2026-03-31", "2026-06-30"].map((date) => ({ date, totalRevenue: 3e9, netIncome: 0.6e9, operatingCashFlow: 1e9 })),
+      { date: "2026-09-30", eps: 3.1 },
+    ];
+    const years: FinancialStatement[] = [
+      { date: "2025-09-30", totalRevenue: 12e9, netIncome: 2.4e9, operatingCashFlow: 3.6e9 },
+      { date: "2026-09-30", totalRevenue: 12.1e9, netIncome: 2.5e9, operatingCashFlow: 3.7e9 },
+    ];
+    expect(selectFinancialStatements("annual", "income", years, quarters).statements.map(({ date }) => date)).toEqual(["2026-09-30", "2025-09-30"]);
+    // Quarters with income lines only: four of them sum to no cash flow, and the TTM is not shown on Cash Flow.
+    const incomeOnly = quarters.slice(0, 4).map(({ date, totalRevenue }) => ({ date, totalRevenue }));
+    const earlier = [{ ...years[0]!, date: "2023-09-30" }, { ...years[1]!, date: "2024-09-30" }];
+    expect(selectFinancialStatements("annual", "income", earlier, incomeOnly).statements[0]!.date).toBe("TTM");
+    expect(selectFinancialStatements("annual", "cashflow", earlier, incomeOnly).statements.map(({ date }) => date)).toEqual(["2024-09-30", "2023-09-30"]);
+  });
 });

@@ -15,6 +15,7 @@ import {
 } from "./aggregation";
 import {
   FINANCIAL_SUB_TABS,
+  financialColumnLabel,
   resolveFinancialSubTabKey,
   selectFinancialStatements,
   type FinancialSubTab,
@@ -706,15 +707,20 @@ export function ratioPeriodEnd(statement: FinancialTableStatement): string {
 
 /**
  * Opening balance sheets: the prior year for a year, the prior quarter for a
- * quarter, and the quarter a year before the last one for TTM.
+ * quarter, and for TTM the quarter a year before the last one it sums, which
+ * need not be the latest on file (a newest quarter with only its EPS is left
+ * out of the sum).
  */
 export function ratioOpenings(
   period: FinancialPeriod,
   annualStatements: FinancialStatement[],
   quarterlyStatements: FinancialStatement[],
+  /** The TTM column the openings are for, if any. */
+  ttm?: FinancialTableStatement,
 ): Map<string, FinancialStatement> {
   const openings = buildPreviousStatementMap(period, annualStatements, quarterlyStatements, null);
-  const latest = quarterlyStatements.at(-1);
+  const end = ttm?.aggregation?.periodEnd;
+  const latest = (end && quarterlyStatements.find((row) => row.date === end)) || quarterlyStatements.at(-1);
   // By date, not four rows back: a half-yearly reporter's rows are halves.
   const yearBefore = latest && quarterlyStatements.find((row) => {
     const days = (Date.parse(latest.date) - Date.parse(row.date)) / 86_400_000;
@@ -825,6 +831,12 @@ export interface RatioTableModel {
   /** Each ratio's cell per period, by ratio id. */
   cells: Map<string, RatioCell[]>;
   rows: RatioTableRow[];
+  /** The newest of Income's periods the tab leaves out, having nothing for them (blankRatioPeriodsNote). */
+  blank?: FinancialTableStatement[];
+  /** The newest periods left out because they are not in yet (selectFinancialStatements), for notInYetNote. */
+  notInYet?: FinancialTableStatement[];
+  /** The newer quarters the TTM column passed over, not in yet, for trailingNotInYetNote. */
+  trailingNotInYet?: FinancialStatement[];
 }
 
 export function latestRunwayPeriodEnd(table: RatioTableModel | null | undefined): string | null {
@@ -846,16 +858,31 @@ export function visibleRatios(tab: RatioTabDef, quarterly: boolean): RatioDef[] 
   return quarterly ? tab.ratios : tab.ratios.filter((def) => !def.quarterlyOnly);
 }
 
+/**
+ * Whether a ratio column shows anything: a figure in an input, or a ratio that is more than a line not
+ * reported (a value, N/M, or a gap that says why, as "< 4 quarters" or "needs prior period" do).
+ */
+function showsAnything(cells: readonly RatioCell[]): boolean {
+  return cells.some((cell) => cell.value !== "not-reported" || cell.inputs.some((amount) => typeof amount === "number"));
+}
+
+/**
+ * A ratio tab's columns are Income's periods, left out where the tab has
+ * nothing for one: every ratio's lines not reported and no input with a
+ * figure, as a quarter's Liquidity before its balance sheet is filed, or the
+ * oldest year's before the balance sheets on file begin. A tab with nothing
+ * in any column keeps them all, each saying why.
+ */
 export function buildRatioTableModel(
   tab: RatioTabDef,
-  periods: RatioPeriod[],
+  allPeriods: RatioPeriod[],
   expandedRatioIds: ReadonlySet<string> | "all",
   profile?: CompanyProfile,
   proceeds?: { periodEnd: string; filings: readonly OfferingFiling[] },
 ): RatioTableModel {
-  const quarterly = periods.some((period) => period.quarterly);
-  const totalOnFile = periods.some((period) => period.shortTermTotalOnFile);
-  const leases = periods.find((period) => period.leaseBasis)?.leaseBasis;
+  const quarterly = allPeriods.some((period) => period.quarterly);
+  const totalOnFile = allPeriods.some((period) => period.shortTermTotalOnFile);
+  const leases = allPeriods.find((period) => period.leaseBasis)?.leaseBasis;
   const ratios = visibleRatios(tab, quarterly)
     .filter((def) => def.format !== "months" || !excludesCashRunway(profile))
     .map((def) => def.format === "months"
@@ -865,7 +892,14 @@ export function buildRatioTableModel(
           ? cash + netProceedsAfter(proceeds.filings, proceeds.periodEnd, period.statement.currency) : cash;
       } } : input) }
       : withLeaseRow(def, leases));
-  const cells = new Map(ratios.map((def) => [def.id, periods.map((period) => evaluateRatio(def, period))]));
+  const evaluated = ratios.map((def) => allPeriods.map((period) => evaluateRatio(def, period)));
+  const shown = allPeriods.map((_, index) => showsAnything(evaluated.map((row) => row[index]!)));
+  const keep = (_: unknown, index: number) => shown[index] || !shown.some(Boolean);
+  const periods = allPeriods.filter(keep);
+  const cells = new Map(ratios.map((def, index) => [def.id, evaluated[index]!.filter(keep)]));
+  // The newest periods left out, which the tab's notes name (blankRatioPeriodsNote).
+  const firstShown = shown.indexOf(true);
+  const blank = firstShown > 0 ? allPeriods.slice(0, firstShown).map(({ statement }) => statement) : [];
   const inputs = ratios.flatMap((def) => def.inputs.map((input, index) => {
     const values = cells.get(def.id)!.map((cell) => cell.inputs[index]).filter((value) => typeof value === "number");
     const { suffix, divisor } = input.format === "money" ? pickUnit(values) : { suffix: "", divisor: 1 };
@@ -889,7 +923,22 @@ export function buildRatioTableModel(
     rows.push({ kind: "ratio", id: def.id, def, label: def.label, expanded });
     if (expanded) rows.push(...inputs.filter((row) => row.def === def));
   }
-  return { tab, ratios, periods, cells, rows };
+  return { tab, ratios, periods, cells, rows, blank };
+}
+
+/**
+ * "Q3 FY26 is not in Liquidity yet: none of the lines these ratios read are on file for it." for the newest
+ * periods a ratio tab leaves out (buildRatioTableModel); null when it leaves none out.
+ */
+export function blankRatioPeriodsNote(
+  table: Pick<RatioTableModel, "tab" | "blank">,
+  kind: FinancialPeriod,
+  yearEndMonth: number | null,
+): string | null {
+  if (!table.blank?.length) return null;
+  const periods = table.blank.map((statement) => financialColumnLabel(statement, kind, yearEndMonth)).reverse();
+  const names = periods.length === 1 ? periods[0]! : `${periods.slice(0, -1).join(", ")} and ${periods.at(-1)}`;
+  return `${names} ${periods.length === 1 ? "is" : "are"} not in ${table.tab.name} yet: none of the lines these ratios read are on file for ${periods.length === 1 ? "it" : "them"}.`;
 }
 
 export const findRatioTab = (key: string) => RATIO_TABS.find((tab) => tab.key === key);
@@ -926,11 +975,16 @@ export function ratioTableForFinancials(
 ): RatioTableModel {
   const annual = byDate(financials.annualStatements);
   const quarterly = byDate(financials.quarterlyStatements);
-  const { statements } = selectFinancialStatements(period, "income", annual, quarterly, undefined, financials.trailingStatement);
+  const { statements, notInYet, trailingNotInYet } = selectFinancialStatements(period, "income", annual, quarterly, undefined, financials.trailingStatement);
   const price = (statement: FinancialTableStatement): RatioAmount => {
     const date = ratioPeriodEnd(statement);
     const close = history ? periodEndClose(history, date) : undefined;
     return (close === undefined ? null : currencies.priceInStatementUnits(statement, close, date)) ?? "no-price";
   };
-  return buildRatioTableModel(tab, ratioPeriods(statements, ratioOpenings(period, annual, quarterly), period, price, { annual, quarterly }), "all", financials.profile, proceeds);
+  const openings = ratioOpenings(period, annual, quarterly, statements.find((statement) => statement.date === "TTM"));
+  return {
+    ...buildRatioTableModel(tab, ratioPeriods(statements, openings, period, price, { annual, quarterly }), "all", financials.profile, proceeds),
+    notInYet,
+    trailingNotInYet,
+  };
 }
