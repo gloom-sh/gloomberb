@@ -26,6 +26,7 @@ import { useOpenDescription } from "../shared/open-description";
 import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedSupplyChain, loadSupplyChain, SUPPLY_UNAVAILABLE, validateSupplyChain } from "./client";
+import { directoryColumns, directoryRows } from "./directories";
 import { useSupplyEvidence } from "./evidence";
 import { SupplyFlow } from "./flow";
 import { SupplyGraphPane } from "./graph-pane";
@@ -249,7 +250,12 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
   const [savedView, setView] = usePluginPaneState<string>("supply:view", openingView);
   const view = savedView === "names" || savedView === "says" ? savedView : data ? openingSupplyView(data, options) : "says";
   const tooSmall = width < 70 || height < 13;
-  const tab = graphTab ? savedTab : savedTab === "flow" && !tooSmall ? "flow" : "table";
+  const directories = data?.directories;
+  const directoryTab = !!directories?.length && (savedTab === "directories" || savedTab === "table" && !data?.totalRows);
+  const directoryItems = useMemo(() => directories?.flatMap(directoryRows) ?? [], [directories]);
+  const [directoryId, setDirectoryId] = useState<string | null>(null);
+  const selectedDirectory = directoryItems.find(row => row.id === directoryId) ?? directoryItems[0];
+  const tab = directoryTab ? "directories" : graphTab ? savedTab : savedTab === "flow" && !tooSmall ? "flow" : "table";
   const [sort, setSort] = usePluginPaneState<SupplySort>("supply:sort", { column: "pct", direction: "desc" });
   const [selectedId, setSelected] = usePluginPaneState<string | null>(`supply:selected:${view}`, null);
   const [openingEvidence] = usePaneSettingValue("evidence", false);
@@ -264,7 +270,7 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
   const selected = tab === "flow" && selectedId?.startsWith("more:") ? null
     : selectionRows.find((row) => row.id === selectedId) ?? (tab === "flow" ? allRows.find((row) => row.id === flowIds[0]) : rows[0]) ?? null;
   const openRow = allRows.find((row) => row.id === openId) ?? earlier.find((row) => row.id === openId) ?? (openingEvidence && openId === null ? rows[0] : null) ?? null;
-  useSupplyEvidence(graphTab ? null : data, tab, view, tab === "flow" ? flowIds : tableRows.map((row) => row.id), openRow?.id ?? null, options.tiers);
+  useSupplyEvidence(graphTab ? null : data, tab, view, directoryTab ? directoryItems.map(row => row.id) : tab === "flow" ? flowIds : tableRows.map((row) => row.id), directoryTab ? null : openRow?.id ?? null, options.tiers);
   const locked = data?.truncated ? lockedDisclosures(data, [view]) : 0;
   const items = useMemo<SectionedRow<Item>[]>(() => buildSectionedRows<Item>([
     { label: "Relationships", items: rows.filter((row) => !isUnconfirmed(row)).map((row) => ({ kind: "edge", row })) },
@@ -272,7 +278,7 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
     { label: "Earlier periods", items: earlier.map((row) => ({ kind: "edge", row })) },
     { label: "Pro", items: Array.from({ length: Math.min(3, locked) }, (_, i) => ({ kind: "locked", id: `locked:${i}` })) },
   ], itemId), [rows, earlier, locked]);
-  const { strip, rows: tabRows } = usePaneTabs(symbol ? { tabs: [{ value: "table", label: "Table" }, { value: "flow", label: "Flow", disabled: tooSmall }, { value: "graph", label: "Graph" }, { value: "path", label: "Path" }], activeValue: tab, onSelect: setTab, focused, dense: true } : null);
+  const { strip, rows: tabRows } = usePaneTabs(symbol ? { tabs: [...(directories?.length && !data?.totalRows ? [] : [{ value: "table", label: "Table" }]), ...(directories?.length ? [{ value: "directories", label: "Supplier lists" }] : []), { value: "flow", label: "Flow", disabled: tooSmall }, { value: "graph", label: "Graph" }, { value: "path", label: "Path" }], activeValue: tab, onSelect: setTab, focused, dense: true } : null);
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => resource.reload(), { focused: focused && !graphTab });
   const navigate = (row: SupplyRow, template = "supply-chain-pane") => {
@@ -284,7 +290,10 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
     setOpen(selected.id);
   };
   const current = openRow ?? selected;
-  const hints: PaneHint[] = [
+  const hints: PaneHint[] = directoryTab && selectedDirectory ? [
+    { id: "source", key: "o", label: "pen source", onPress: () => void host.openExternal(selectedDirectory.sourceUrl) },
+    ...(directories?.some(report => report.total > report.entries.length) ? [{ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", onPress: openUpgrade }] : []),
+  ] : [
     ...(current ? [{ id: "source", key: "o", label: "pen source", onPress: () => void host.openExternal(current.filingUrl) }] : []),
     ...(!openRow && selected ? [{ id: "evidence", key: "e", label: "vidence", onPress: evidence }] : []),
     ...(selected?.counterparty.ticker ? [
@@ -298,7 +307,7 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
   // Dated by the newest disclosure the reader can see, as its Published column says, never by the latest period one covers.
   const published = useMemo(() => allRows.map(evidenceDate).sort().at(-1) ?? null, [allRows]);
   usePaneStatusFooter({ registrationId: "supply-chain", enabled: !graphTab, loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale,
-    info: published ? [{ id: "as-of", parts: [{ text: asOfSetting ? `known by ${asOfSetting}` : `as of ${published}`, tone: "muted" as const }] }] : [], hints });
+    info: !directoryTab && published ? [{ id: "as-of", parts: [{ text: asOfSetting ? `known by ${asOfSetting}` : `as of ${published}`, tone: "muted" as const }] }] : [], hints });
   usePaneNoticeFooter({ registrationId: "supply-chain:notices", focused, enabled: !graphTab, notices: [
     ...(resource.data?.refreshError ? [resource.data.refreshError] : []),
     ...(savedTab === "flow" && tooSmall ? ["Flow needs a wider pane. Showing the table."] : []),
@@ -385,6 +394,19 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
   if (graphTab) return <Box width={width} height={height} flexDirection="column">{strip}<SupplyGraphPane symbol={symbol} tab={savedTab as "graph" | "path"} width={width} height={Math.max(3, height - tabRows)} focused={focused} /></Box>;
   if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="supply-chain-signin" action="view supply chain disclosures" needsVerification={session.needsVerification} />;
   const bodyHeight = Math.max(3, height - tabRows);
+  if (directoryTab && directories) {
+    const columns = directoryColumns(directoryItems).map(([id, label, width]) => ({ id, label, width, align: "left" as const }));
+    const meta = directories.map(report => report.buyer + " · " + (report.total > report.entries.length ? report.entries.length + " of " : "") + report.total + " entries").join(" · ");
+    return <Box width={width} height={height} flexDirection="column">{strip}
+      <DataTableView sortColumnId={null} sortDirection="asc" emptyStateTitle="No supplier entries." columns={columns} items={directoryItems} focused={focused} rootWidth={width} rootHeight={bodyHeight}
+        rootBefore={<QueryBar width={width} filters={[]} meta={meta} />}
+        selection={{ kind: "id", selectedId: selectedDirectory?.id ?? null, getId: row => row.id, onChange: setDirectoryId }}
+        getItemKey={row => row.id} renderCell={(row, column) => {
+          const value = row[column.id as keyof typeof row];
+          return { text: (column.id === "observedAt" ? row.observedAt.slice(0, 10) : value) ?? "" };
+        }} onActivate={row => void host.openExternal(row.sourceUrl)} freezeFirstColumn showHorizontalScrollbar />
+    </Box>;
+  }
   // A listing filed under its code (0700:HKEX) reads by its company's name.
   const company = focusCompanyName(data?.entity?.name, symbol, listingName);
   const focusLabel = focusCompanyLabel(symbol, company);

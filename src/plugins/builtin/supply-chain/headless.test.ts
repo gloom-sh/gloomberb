@@ -253,3 +253,19 @@ test("--view prints that view alone and says when it is empty; an earlier period
   expect(says.sections.map((section) => section.title)).toEqual(["FOCUS says", "FOCUS says | Earlier periods"]);
   expect(says.complete).toBe(false);
 });
+
+test("a supplier's reverse directory read preserves the operator, parent, dates and free allowance", async () => {
+  const context = createTestHeadlessContext();
+  const directory = { buyer: "Buyer", buyerListing: "9983:JPX", buyerView: false, url: "https://example.com/list.xlsx",
+    page: "https://example.com/list", effectiveDay: "2026-09-30", observedAt: "2026-11-24T04:00:00Z", sha256: "a".repeat(64), total: 4,
+    entries: [{ operator: "Factory", kind: "Fabric Mill", country: "Viet Nam", city: null,
+      parent: "Parent", operatorListing: null, parentListing: "2313:HKEX" }] };
+  context.apiClient = { ...context.apiClient, getCloudSupplyChain: async () => supplyPayload({
+    directories: [directory], access: "preview", previewRowsPerRole: 3, says: [], names: [], totalRows: 0 }) };
+  const load = (options: Record<string, string>) => supplyChainHeadless.load(createTestHeadlessArgs({ symbols: ["2313:HKEX"], options }), context);
+  const result = await load({ view: "names" });
+  expect(result.sections[0]?.rows?.[0]).toMatchObject({ operator: "Factory", parent: "Parent", observedAt: directory.observedAt, sourceUrl: directory.url });
+  expect(result.complete).toBe(false);
+  expect((await load({ view: "says" })).sections.flatMap(section => section.rows ?? [])).toHaveLength(0);
+  await expect(load({ asOf: "2026-11-22" })).rejects.toThrow("published after");
+});

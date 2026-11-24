@@ -99,7 +99,29 @@ export interface SupplyRow {
   whyUnconfirmed?: string | null;
   evidence?: SupplyEvidenceItem[];
 }
+export interface SupplyDirectoryEntry {
+  operator: string;
+  kind: string;
+  country: string | null;
+  city: string | null;
+  parent: string | null;
+  operatorListing: string | null;
+  parentListing: string | null;
+}
+export interface SupplyDirectory {
+  buyer: string;
+  buyerListing: string;
+  buyerView: boolean;
+  url: string;
+  page: string;
+  effectiveDay: string | null;
+  observedAt: string;
+  sha256: string;
+  total: number;
+  entries: SupplyDirectoryEntry[];
+}
 export interface SupplyChainPayload {
+  directories?: SupplyDirectory[];
   symbol: string;
   entity: SupplyEntity | null;
   asOf: string | null;

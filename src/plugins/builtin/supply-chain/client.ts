@@ -7,7 +7,7 @@ import { activeRelationship, canShowQuote, evidenceDate, isUnconfirmed, publicEv
 export const SUPPLY_UNAVAILABLE = "Supply chain disclosures are not available yet.";
 const SUPPLY_ROLES = ["customer", "supplier", "partner", "competitor", "investee"] as const;
 export const supplyChainCache = createPluginCache<SupplyChainPayload>({
-  kind: "supply-chain", source: "gloom-cloud", schemaVersion: 2,
+  kind: "supply-chain", source: "gloom-cloud", schemaVersion: 3,
   policy: { staleMs: 60 * 60_000, expireMs: 30 * 86_400_000 },
 });
 const text = (value: unknown): value is string => typeof value === "string";
@@ -87,6 +87,14 @@ export function normalizeSupplyRow(input: SupplyRow): SupplyRow {
 }
 export function validateSupplyChain(data: SupplyChainPayload): SupplyChainPayload {
   const valid = !!data && text(data.symbol) && (data.entity === null || validSupplyEntity(data.entity))
+    && (data.directories === undefined || Array.isArray(data.directories) && data.directories.every(report =>
+      !!report && text(report.buyer) && text(report.buyerListing) && typeof report.buyerView === "boolean"
+      && url(report.url) && url(report.page) && (report.effectiveDay === null || date(report.effectiveDay))
+      && timestamp(report.observedAt) && /^[a-f0-9]{64}$/.test(report.sha256) && Number.isInteger(report.total)
+      && Array.isArray(report.entries) && report.entries.length <= report.total
+      && (data.access === "full" ? report.entries.length === report.total : report.entries.length <= 3)
+      && report.entries.every(row => !!row && text(row.operator) && text(row.kind)
+        && [row.country, row.city, row.parent, row.operatorListing, row.parentListing].every(nullableText))))
     && (data.asOf === null || date(data.asOf)) && ["available", "unavailable"].includes(data.status)
     && ["says", "names"].every((view) => {
       const key = view as "says" | "names";
@@ -125,7 +133,7 @@ class AsOfUnsupportedError extends Error {
 function knownBy(data: SupplyChainPayload, asOf: string | undefined): SupplyChainPayload {
   if (!asOf) return data;
   const rows = [...data.says, ...data.names, ...data.earlier?.says ?? [], ...data.earlier?.names ?? []];
-  if (rows.some((row) => evidenceDate(row) > asOf)) throw new AsOfUnsupportedError(asOf);
+  if (rows.some((row) => evidenceDate(row) > asOf) || data.directories?.some(report => report.observedAt.slice(0, 10) > asOf)) throw new AsOfUnsupportedError(asOf);
   return data;
 }
 export async function fetchSupplyChain(symbol: string, client: Pick<typeof apiClient, "getCloudSupplyChain"> = apiClient, options: SupplyRead = {}) {
