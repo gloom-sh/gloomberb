@@ -32,18 +32,23 @@ const finiteOrNull = (value: unknown) =>
   value === null || (typeof value === "number" && Number.isFinite(value));
 const day = (value: unknown) =>
   typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
-const filingUrl = /^https:\/\/(?:www1?\.)?hkexnews\.hk\/listedco\/listconews\/sehk\/\d{4}\/\d{4}\/\d{13}\.pdf(?:#page=[1-9]\d*)?$/i;
+const hkexFilingUrl = /^https:\/\/(?:www1?\.)?hkexnews\.hk\/listedco\/listconews\/sehk\/\d{4}\/\d{4}\/\d{13}\.pdf(?:#page=[1-9]\d*)?$/i;
+
+const dartFilingUrl = /^https:\/\/dart\.fss\.or\.kr\/dsaf001\/main\.do\?rcpNo=\d{14}$/;
 
 function validPeriod(period: RevenueBreakdownPeriod) {
   if (!day(period?.end)) return false;
   return "kind" in period
-    ? (period.kind === "annual" || period.kind === "interim")
+    ? (period.kind === "annual" || period.kind === "interim" || period.kind === "quarter")
       && typeof period.label === "string"
       && typeof period.revenueLabel === "string"
       && (period.singleSegment === undefined || period.singleSegment === true)
       && day(period.filing?.filed)
-      && typeof period.filing?.url === "string" && filingUrl.test(period.filing.url)
-      && Number.isInteger(period.filing.page) && period.filing.page > 0
+      && typeof period.filing?.url === "string"
+      && (period.kind === "quarter"
+        ? dartFilingUrl.test(period.filing.url) && period.filing.page === null
+        : hkexFilingUrl.test(period.filing.url) && period.filing.page !== null
+          && Number.isInteger(period.filing.page) && period.filing.page > 0)
     : Number.isInteger(period.fiscalYear) && Number.isInteger(period.fiscalQuarter)
       && period.fiscalQuarter >= 1 && period.fiscalQuarter <= 4;
 }

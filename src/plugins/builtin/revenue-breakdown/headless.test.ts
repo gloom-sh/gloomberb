@@ -89,3 +89,16 @@ test("reported periods share fiscal-year labels across the pane, text report and
   const tables = headlessReportTables(revenueBreakdownHeadless, result, args, "SEG", freshness, { complete: true, unavailableSymbols: [] });
   expect(renderReportCsv(tables, freshness)).toContain("Segment,H1 2026,FY 2026,Share");
 });
+
+test("three-month DART figures link to the receipt and reject unrelated URLs", async () => {
+  const url = "https://dart.fss.or.kr/dsaf001/main.do?rcpNo=20261116001715";
+  const period = { end: "2026-09-30", kind: "quarter" as const, label: "Three months ended 30 September 2026", revenueLabel: "Consolidated revenue", filing: { filed: "2026-11-16", url, page: null } };
+  const data: RevenueBreakdownPayload = { ...payload, periods: [period], rows: [{ ...payload.rows[0]!, values: [78_228_825e6] }], total: [104_615_483e6], currency: "KRW" };
+  const args = createTestHeadlessArgs({symbols: ["000660:KRX"]});
+  const context = createTestHeadlessContext({apiClient: {getCloudRevenueBreakdown: async () => data} as never});
+  const result = await revenueBreakdownHeadless.load(args, context);
+  expect(result.sections[0]?.columns?.map(column => column.header)).toEqual(["Product", "3M 2026-09", "Share"]);
+  expect(result.sections[1]?.rows?.[0]).toMatchObject({period: period.label, filing: url});
+  period.filing.url = url + "&redirect=https://example.test";
+  await expect(revenueBreakdownHeadless.load(args, context)).rejects.toThrow("unreadable revenue breakdown");
+});
