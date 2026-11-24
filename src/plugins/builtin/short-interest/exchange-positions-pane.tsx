@@ -1,0 +1,45 @@
+import { useCallback, useState } from "react";
+import { apiClient } from "../../../api-client";
+import type { TaiwanVenue } from "../../../api-client/taiwan-short-balances";
+import { DataTableView, PaneStatusBody, usePaneStatusLinkFooter } from "../../../components";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { useAsyncResource } from "../../../react/async-resource";
+import type { PaneProps } from "../../../types/plugin";
+import { sfcColumns, sfcEmpty, sfcValue } from "./sfc";
+import { taiwanColumns, taiwanEmpty } from "./taiwan";
+
+type Venue = TaiwanVenue | "HKEX";
+type ReportRow = { day: string; sourceUrl: string } & Record<string, number | string | null>;
+const rowKey = (row: ReportRow) => row.day;
+
+async function loadReport(symbol: string, venue: Venue) {
+  if (venue === "HKEX") {
+    const data = await apiClient.getSfcShortPositions(symbol);
+    return { rows: data.points.map(row => ({ ...row })), empty: sfcEmpty(data), page: data.page, source: data.source };
+  }
+  const data = await apiClient.getTaiwanShortBalances(symbol, venue);
+  return { rows: data.points.map(row => ({ ...row })), empty: taiwanEmpty(data), page: undefined, source: venue };
+}
+
+export function ExchangePositionsPane({ symbol, venue, focused, width, height }: Pick<PaneProps, "focused" | "width" | "height"> & {symbol: string; venue: Venue}) {
+  const read = useCallback(() => loadReport(symbol, venue), [symbol, venue]);
+  const resource = useAsyncResource(read);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const data = resource.data;
+  const rows: ReportRow[] = data?.rows ?? [];
+  const current = rows.find(row => row.day === selectedDay) ?? rows[0];
+  const hk = venue === "HKEX";
+  const columns = (hk ? sfcColumns : taiwanColumns).map(({ key, header, width: columnWidth }) => ({
+    id: key, label: header, width: columnWidth, align: key === "day" ? "left" as const : "right" as const,
+  }));
+  usePaneRefreshKey(resource.reload, { focused });
+  usePaneStatusLinkFooter({ registrationId: "exchange-short-positions", focused, loading: resource.loading, error: resource.error,
+    label: hk ? "weekly report" : "daily report", source: data?.source, url: current?.sourceUrl ?? data?.page, showOpenHint: !!(current || data?.page) });
+  return <PaneStatusBody loading={resource.loading && !data} error={data ? null : resource.error} subject={hk ? "SFC reportable short positions" : "Short sale balances"}
+    empty={!!data && !rows.length} emptyTitle={data?.empty}>
+    <DataTableView focused={focused} rootWidth={width} rootHeight={height} freezeFirstColumn columns={columns} items={rows}
+      selection={{ kind: "id", selectedId: current?.day ?? null, getId: rowKey, onChange: setSelectedDay }}
+      emptyStateTitle={data?.empty ?? "No reported positions."} sortColumnId="day" sortDirection="desc" getItemKey={rowKey}
+      renderCell={(row, column) => ({ text: sfcValue(row[column.id]), value: row[column.id] ?? null })} />
+  </PaneStatusBody>;
+}

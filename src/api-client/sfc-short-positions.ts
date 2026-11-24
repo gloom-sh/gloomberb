@@ -1,4 +1,4 @@
-export interface SfcPosition {
+interface SfcPosition {
   day: string;
   name: string;
   shares: number;

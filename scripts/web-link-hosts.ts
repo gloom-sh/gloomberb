@@ -29,6 +29,7 @@ export const WEB_LINK_ONLY_HOSTS: ReadonlySet<string> = new Set([
   "apidocs.hkma.gov.hk",
   "app.pascal.trade",
   "crypto.com",
+  "doc.twse.com.tw",
   "ember-energy.org",
   "en.wikipedia.org",
   // MAS's interest rates page, credited as SORA's source; the rate itself comes through Gloom Cloud.
@@ -68,6 +69,8 @@ export const WEB_LINK_ONLY_HOSTS: ReadonlySet<string> = new Set([
   "ir.theice.com",
   "live.euronext.com",
   "mops.twse.com.tw",
+  "www.twse.com.tw",
+  "www.tpex.org.tw",
   "www.asx.com.au",
   "www.bseindia.com",
   "www.ibge.gov.br",
