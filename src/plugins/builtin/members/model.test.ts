@@ -1,8 +1,8 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { expect, test } from "bun:test";
 import { fitTableCellText, getTableWidth, tableColumnWidth } from "../../../components/ui/table-layout";
-import { changeColumns, changeReason, holdingsBasisText, memberColumns, memberRows, membersFeed, percent, sortMembers, stockFundAsOf, stockFundColumns } from "./model";
-import { changes, member } from "./test-fixture";
+import { changeColumns, changeReason, holdingsBasisText, holdingsCaveats, memberColumns, memberRows, membersFeed, percent, sortMembers, stockFundAsOf, stockFundColumns } from "./model";
+import { board, changes, member } from "./test-fixture";
 test("sorting keeps gaps last in either direction and movers separate positive and negative contributions", () => {
   const rows = [member("A", null), member("B", -4), member("C", 2), member("D", 0)];
   expect(sortMembers(rows, { columnId: "changePercent", direction: "desc" }).map((row) => row.id)).toEqual(["C", "D", "B", "A"]);
@@ -72,6 +72,14 @@ test("a move that rounds to zero prints unsigned, as every other change cell doe
   expect([1.234, -0.27, 0.004, -0.004, 0, null].map((value) => percent(value))).toEqual(["+1.23%", "-0.27%", "0.00%", "0.00%", "0.00%", MISSING_VALUE]);
   expect(percent(-0.0004, "", 3)).toBe("0.000");
   expect(percent(0.0004, " pp", 3)).toBe("0.000 pp");
+});
+
+test("a fund whose members are its largest positions says how many it holds and what the rest weigh", () => {
+  expect(holdingsCaveats({ ...board, positions: 13547, omittedWeight: 0.3816 }, false)).toEqual(["The largest 3 of 13,547 positions are listed; the rest are 38.2% of the fund."]);
+  expect(holdingsCaveats({ ...board, positions: 13547 }, false)).toEqual(["The largest 3 of 13,547 positions are listed."]);
+  // Every position listed, or a server that does not say: no caveat.
+  expect(holdingsCaveats({ ...board, positions: 3 }, false)).toEqual([]);
+  expect(holdingsCaveats(board, false)).toEqual([]);
 });
 
 test("an N-PORT report's holdings name its period end and filing day, with the filing's year when it differs", () => {
