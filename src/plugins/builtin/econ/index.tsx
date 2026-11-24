@@ -333,8 +333,8 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       ...showCountry ? [{ id: "country" as const, ...countryColumn, align: "left" as const }] : [],
       { id: "event", label: "EVENT", width: eventWidth, align: "left" },
       { id: "actual", label: actualLabel, title: "Actual", width: actualWidth, align: "right" },
-      { id: "forecast", label: forecastLabel, title: "Forecast", width: forecastWidth, align: "right" },
-      { id: "prior", label: "PRIOR", width: priorWidth, align: "right" },
+      { id: "forecast", label: forecastLabel, title: "Forecast", width: forecastWidth, align: "right", mayBeBlank: true },
+      { id: "prior", label: "PRIOR", width: priorWidth, align: "right", mayBeBlank: true },
     ];
   }, [countryFilter, filtered, flagged, readerZone, width]);
   const separatorBg = blendHex(colors.bg, colors.border, 0.3);

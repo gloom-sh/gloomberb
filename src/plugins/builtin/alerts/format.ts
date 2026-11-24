@@ -9,6 +9,7 @@ import { alertListingKey, alertPriceText } from "./price-text";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { isRoundTheClockCoin } from "../../../utils/crypto-pair";
 import type { AlertCondition, AlertRule } from "./types";
+import { quoteSourceWords } from "./fired-log";
 
 /** What a list says of an alert no check has read yet. */
 export const NOT_CHECKED_YET = "not checked yet";
@@ -119,8 +120,7 @@ export function quoteAsOfText(alert: AlertRule): string {
   if (alert.lastCheckError) return formatQuoteChecked(alert);
   if (basis && alert.lastDailyClose) return `${alert.lastDailyClose} ${basis === "weekly close" ? "weekly close" : "close"}`;
   if (!basis && alert.lastQuoteUpdatedAt) {
-    const source = alert.lastQuoteSource;
-    const feed = source === "live" ? "real-time" : source === "delayed" ? "delayed" : source === "snapshot" ? "snapshot" : null;
+    const feed = quoteSourceWords(alert.lastQuoteSource);
     return `${isoUtc(alert.lastQuoteUpdatedAt)}${feed ? ` · ${feed}` : ""}`;
   }
   return formatQuoteChecked(alert);
@@ -196,6 +196,11 @@ export function alertBenchmarkListing(alert: Pick<AlertRule, "metric">): string 
 export function alertReadingAt(alert: AlertRule): number | null {
   if (alert.lastCheckError || alert.lastCheckedPrice == null) return null;
   return alert.lastQuoteUpdatedAt ?? alert.lastCheckedAt ?? null;
+}
+
+export function alertReadingFeed(alert: AlertRule): string | null {
+  if (alert.lastCheckError || !Number.isFinite(alert.lastCheckedPrice)) return null;
+  return (alert.metric && closeBasis(alert.metric)) || quoteSourceWords(alert.lastQuoteSource) || "feed not recorded";
 }
 
 /**

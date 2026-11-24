@@ -1274,6 +1274,7 @@ export interface PricePoint {
   volumeBasis?: string;
   /** The bar's period had not ended when it was served: its close is the latest price, and it may have no volume yet. */
   partial?: boolean;
+  quoteOnly?: true;
   /** The bar's prices were rebuilt from shorter bars where the source left it empty or too coarse. */
   filled?: boolean;
   /** A future's session that has closed but whose settlement is not confirmed yet: its close is the last trade. */

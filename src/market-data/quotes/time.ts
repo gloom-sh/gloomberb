@@ -3,8 +3,11 @@ import type { Quote } from "../../types/financials";
 import { getLanguage, tf } from "../../i18n";
 import { formatUtcDayTime, formatUtcWeekdayTime } from "../../utils/utc-time";
 import { formatShortDate } from "../../utils/datetime-format";
-import { quoteFeedDelayMinutes } from "../market/freshness";
-import { extendedPrintTime, quoteHeadlineTime, quoteSessionStateLabel } from "../market/status";
+import { isRegularSessionTime, quoteFeedDelayMinutes } from "../market/freshness";
+import { extendedPrintTime, quoteBookSessionLabel, quoteHeadlineTime, quoteSessionStateLabel } from "../market/status";
+import { venueSessionNow } from "../market/venue-session";
+import { resolveExchangeTimeZone } from "../../utils/exchanges";
+import { zonedDateKey } from "../../utils/zoned-date-time";
 import { dailyNavDate, isQuoteStaleForCurrentSession } from "./freshness";
 import { savedCopyAt } from "../../data/saved-copies";
 
@@ -51,19 +54,36 @@ export function asOfClock(time: number, now = Date.now()): string {
 export const QUOTE_BOOK_UNDATED = "not dated";
 
 /**
- * When a quote's bid and ask were quoted, as a card dates a price (asOfClock):
- * `Sat 00:55 UTC`; QUOTE_BOOK_UNDATED for a book the source sent without its
- * time, and null with no book. Every view of a book dates it this way, never
- * by the trade's time beside it: EWG's after-hours book quoted at 00:55 UTC
- * read as of the 23:20 print.
+ * Date the book on its own clock, never the trade's. Only today's regular
+ * session can omit the date and session. Missing time is explicit.
  */
-export function formatQuoteBookTime(
-  quote: Pick<Quote, "bid" | "ask" | "bidAskTime"> | null | undefined,
+export function quoteBookTimeParts(
+  quote: Quote | null | undefined,
   now = Date.now(),
-): string | null {
-  if (!quote || (quote.bid == null && quote.ask == null)) return null;
+): string[] {
+  if (!quote || (quote.bid == null && quote.ask == null)) return [];
+  const bookSource = quote.provenance?.fields?.bid ?? quote.provenance?.fields?.ask;
+  const dataSource = bookSource ? bookSource.dataSource : quote.dataSource;
+  const feed = dataSource === "live" ? "real-time" : dataSource === "snapshot" ? "snapshot" : dataSource === "delayed" ? "delayed" : null;
   const at = quote.bidAskTime;
-  return at != null && Number.isFinite(at) && at > 0 ? asOfClock(Math.min(at, now), now) : QUOTE_BOOK_UNDATED;
+  if (at == null || !Number.isFinite(at) || at <= 0) {
+    return [QUOTE_BOOK_UNDATED, quoteBookSessionLabel(quote), feed].filter((part): part is string => part != null);
+  }
+  const time = Math.min(at, now);
+  const venue = [quote.listingExchangeName, quote.exchangeName].find((exchange) => resolveExchangeTimeZone(exchange));
+  const zone = resolveExchangeTimeZone(venue) ?? "UTC";
+  const phase = venueSessionNow(venue, time)?.phase;
+  const regular = phase ? phase === "open" : isRegularSessionTime(venue, time) ?? quote.marketState === "REGULAR";
+  if (regular && zonedDateKey(time, zone) === zonedDateKey(now, zone)) return [asOfClock(time, now), ...(feed ? [feed] : [])];
+  const session = regular ? "regular session"
+    : phase === "pre-market" || phase === "after-hours" ? phase
+    : phase === "lunch" ? "midday break"
+    : phase ? "last quote" : quoteBookSessionLabel(quote) ?? "session unknown";
+  return [`${formatUtcDayTime({ time, dateOnly: false }, now)} UTC`, session, ...(feed ? [feed] : [])];
+}
+
+export function formatQuoteBookTime(quote: Quote | null | undefined, now = Date.now()): string | null {
+  return quoteBookTimeParts(quote, now).join(" · ") || null;
 }
 
 /**

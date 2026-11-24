@@ -1,4 +1,4 @@
-import { alignTimeSeries } from "../alignment";
+import { alignTimeSeries, matchedBarStart } from "../alignment";
 import type { ManualChartResolution } from "../resolution";
 import type { ChartStudySpec, ResolvedSeries, SeriesPeriod, TimeSeriesPoint } from "../types";
 import { isFiniteNumber } from "../../utils/guards";
@@ -27,13 +27,15 @@ function pairedSamples(left: ResolvedSeries, right: ResolvedSeries, carryForward
       leftValue.point.availableAt?.getTime() ?? leftValue.point.date.getTime(),
       rightValue.point.availableAt?.getTime() ?? rightValue.point.date.getTime(),
     );
+    const barStart = matchedBarStart([leftValue, rightValue]);
     return [{
       left: leftValue.value,
       right: rightValue.value,
       point: {
-        date: new Date(row.date),
+        date: new Date(barStart ?? row.date.getTime()),
         observedAt: new Date(row.date),
         availableAt: Number.isFinite(availability) ? new Date(availability) : undefined,
+        ...(barStart !== undefined ? { barStart: new Date(barStart) } : {}),
         value: null,
         provenance: { quality: "derived" as const },
       },

@@ -37,6 +37,7 @@ export interface AlertRule {
   lastMoveBasis?: QuoteChangeBasis;
   lastDailyClose?: string;
   lastCheckedTarget?: number;
+  lastRatioInputs?: { numerator: number; numeratorAt: number; denominator: number; denominatorAt: number };
   createdAt: number;
   /** When an edit or re-arm last armed the rule; createdAt until then. Gloom Cloud emails a trigger once per arming. */
   armedAt?: number;

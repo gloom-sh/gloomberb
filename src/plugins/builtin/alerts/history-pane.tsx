@@ -90,11 +90,11 @@ export function AlertHistoryPane({ focused, width, height }: PaneProps) {
     { id: "time", label: "Time (UTC)", width: 16, align: "left" },
     { id: "kind", label: "Event", width: 15, align: "left" },
     { id: "alert", label: "Alert", width: 20, flexGrow: 1, align: "left" },
-    ...(width >= 70 ? [{ id: "value", label: "Value", width: 16, align: "left" as const }] : []),
+    ...(width >= 70 ? [{ id: "value", label: "Value", width: 16, align: "left" as const, mayBeBlank: true }] : []),
     ...(width >= 115
       ? [
-          { id: "quote", label: "Quote (UTC)", width: 16, align: "left" as const },
-          { id: "source", label: "Source", width: 14, align: "left" as const },
+          { id: "quote", label: "Quote (UTC)", width: 16, align: "left" as const, mayBeBlank: true },
+          { id: "source", label: "Source", width: 14, align: "left" as const, mayBeBlank: true },
           { id: "via", label: "Via", width: 10, align: "left" as const },
         ]
       : []),

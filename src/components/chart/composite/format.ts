@@ -458,6 +458,7 @@ export function formatChartLegendValue(
   if (group.includes("percent") || trimmed === "%" || trimmed.toLowerCase().includes("percent")) {
     return `${compact}%`;
   }
+  if (group === "ratio") return `${value.toPrecision(4)}x`;
   if (group.includes("ratio") || trimmed.toLowerCase() === "x") return `${compact}x`;
   // Generic futures quoted in points or 32nds of par (VX1, TY1) carry no currency.
   if (trimmed === "points" || trimmed === "32nds") {

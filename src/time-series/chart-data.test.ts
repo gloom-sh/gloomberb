@@ -28,7 +28,7 @@ describe("appendLiveQuotePoint", () => {
     try {
       expect(appendLiveQuotePoint(history, quote, { now })).toBe(history);
       setForwardedServerClockOffset(6 * 60_000);
-      expect(appendLiveQuotePoint(history, quote, { now }).at(-1)).toEqual({ date: new Date("2026-05-15T19:36:00Z"), close: 129 });
+      expect(appendLiveQuotePoint(history, quote, { now }).at(-1)).toEqual({ date: new Date("2026-05-15T19:36:00Z"), close: 129, quoteOnly: true });
     } finally {
       resetServerClockForTests();
     }
@@ -227,6 +227,7 @@ describe("appendLiveQuotePoint", () => {
       high: 129,
       low: 129,
       close: 129,
+      quoteOnly: true,
     });
   });
 
@@ -298,8 +299,8 @@ describe("appendLiveQuotePoint", () => {
     const now = Date.parse("2026-11-20T17:18:21Z");
 
     expect(appendLiveQuotePoint(history, quote, { now, mode: "ohlc", resolution: "1m", exchange: "NASDAQ" }).at(-1))
-      .toEqual({ date: new Date("2026-11-20T17:18:20Z"), open: 84.53, high: 84.53, low: 84.53, close: 84.53 });
-    expect(appendLiveQuotePoint(history, quote, { now }).at(-1)).toEqual({ date: new Date("2026-11-20T17:18:20Z"), close: 84.53 });
+      .toEqual({ date: new Date("2026-11-20T17:18:20Z"), open: 84.53, high: 84.53, low: 84.53, close: 84.53, quoteOnly: true });
+    expect(appendLiveQuotePoint(history, quote, { now }).at(-1)).toEqual({ date: new Date("2026-11-20T17:18:20Z"), close: 84.53, quoteOnly: true });
 
     // Bars that stopped on an earlier day are a session the history has not reached: no one point bridges it.
     const earlier = history.map((point) => ({ ...point, date: new Date(point.date.getTime() - 24 * 60 * 60_000) }));

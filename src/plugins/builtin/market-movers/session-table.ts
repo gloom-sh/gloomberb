@@ -36,7 +36,7 @@ export function buildSessionMoverColumns(view: CloudSessionMoversCategory, width
     { id: "relativeVolume", label: "RVOL", width: 6, align: "right" },
     ...(view === "gaps" ? [{ id: "vwapPercent" as const, label: "VWAP%", width: 7, align: "right" as const }] : []),
     { id: "floatShares", label: "FLOAT", width: 7, align: "right" },
-    { id: "catalyst", label: "EVENT", width: 6, align: "left" },
+    { id: "catalyst", label: "EVENT", width: 6, align: "left", mayBeBlank: true },
   ];
   const optional: SessionMoverColumnId[] = [...(view === "gaps" ? ["volume" as const] : []), ...(options.float ? [] : ["floatShares" as const])];
   // Measured the way the table draws it: a header widens its column, and a

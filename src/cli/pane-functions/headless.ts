@@ -39,7 +39,7 @@ import {
 } from "../report-tables";
 import type { ExportIdentity } from "../export-source";
 import { observationDate } from "../../time-series/price-comparison";
-import { chartBarSizeParts } from "../../time-series/resolution";
+import { chartBarSizeName, chartBarSizeParts, type ChartBarSize } from "../../time-series/resolution";
 import type { ResolvedSeries } from "../../time-series/types";
 import { barLastSession } from "../../market-data/market/bar-period";
 import type { PaneFunctionReport } from "./report";
@@ -512,6 +512,18 @@ function seriesLatestDate(series: HeadlessSeries, date: SeriesPointDate): string
   return barLastSession(observationDate(time, calendar), period, venue, Date.now()) ?? series.latestDate ?? seriesPointDate(series, date);
 }
 
+function seriesLatestReading(series: HeadlessSeries, point: HeadlessSeriesPoint): string {
+  if (point.barStart != null && point.availableAt != null && chartBarSizeParts(series.interval)) {
+    const startTime = seriesPointTime(point.barStart), endTime = seriesPointTime(point.availableAt);
+    if (Number.isFinite(startTime) && Number.isFinite(endTime)) {
+      const start = new Date(startTime).toISOString().slice(0, 16), end = new Date(endTime).toISOString().slice(0, 16);
+      const endClock = start.slice(0, 10) === end.slice(0, 10) ? end.slice(11) : end.replace("T", " ");
+      return `${start.replace("T", " ")}–${endClock} UTC (${chartBarSizeName(series.interval as ChartBarSize)} bar close)`;
+    }
+  }
+  return seriesLatestDate(series, point.date);
+}
+
 /**
  * Each series' own last day, as its exported rows' `as_of`, when the series of
  * a report end on different days (a price through Fri 20 Nov beside a spread
@@ -555,7 +567,8 @@ function seriesValue(series: HeadlessSeries, value: number | null): string {
   if (series.textCompact) return formatCompact(value);
   const unit = series.unit?.trim().toLowerCase();
   if (unit === "%" || unit === "pp") return value.toFixed(2);
-  if (unit === "x" || unit === "ratio") return value !== 0 && Math.abs(value) < 0.1 ? value.toPrecision(3) : value.toFixed(2);
+  if (series.unitGroup === "ratio" || unit === "ratio") return value.toPrecision(4);
+  if (unit === "x") return value !== 0 && Math.abs(value) < 0.1 ? value.toPrecision(3) : value.toFixed(2);
   if (unit === "score") return value.toFixed(1);
   // A count or amount of five digits or more groups its thousands as every other table does (27,256,037 shares).
   const plain = displayNumber(value);
@@ -668,7 +681,7 @@ function renderSeries(result: HeadlessSeriesResult, showPoints: boolean): string
     return {
       series: series.label,
       name: series.name?.trim() || null,
-      latest: series.notMeaningful ? series.notMeaningful.asOf : latest ? seriesLatestDate(series, latest.date) : MISSING_VALUE,
+      latest: series.notMeaningful ? series.notMeaningful.asOf : latest ? seriesLatestReading(series, latest) : MISSING_VALUE,
       value: series.notMeaningful ? "N/M" : seriesValue(series, latest?.value ?? latest?.close ?? null),
       unit: series.unit?.trim() ? currencyRateUnitText(series.unit.trim()) : null,
       move: series.latestChangeBasisPoints === undefined ? null : formatBasisPoints(series.latestChangeBasisPoints / 100, 1),

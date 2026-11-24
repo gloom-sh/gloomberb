@@ -21,6 +21,7 @@ export interface MetricReading {
   previousTarget?: number;
   day?: string;
   at: number;
+  ratioInputs?: { numerator: number; denominator: number };
 }
 export interface MetricRule {
   metric?: AlertMetric;
@@ -240,7 +241,8 @@ function relativeMetricReading(
   };
   if (m.kind === "rs_ratio") {
     const value = ratio(latest.day), previousValue = ratio(sessionBefore(latest.day, session));
-    return { value, target: rule.targetPrice, previousValue, previousTarget: rule.targetPrice, day: latest.day, at: latest.at };
+    return { value, target: rule.targetPrice, previousValue, previousTarget: rule.targetPrice, day: latest.day, at: latest.at,
+      ratioInputs: { numerator: own.get(latest.day)!, denominator: reference.get(latest.day)! } };
   }
   const weeks = settledWeekCloses(now, session, ROTATION_ALERT_WEEKS);
   const [before, last] = rotationSeries(weeks.map((week) => ratio(week.day))).slice(-2);

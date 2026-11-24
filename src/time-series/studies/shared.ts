@@ -57,6 +57,7 @@ export function derivedPoint(sample: NumericSample, value: number | null): TimeS
     date: new Date(sample.point.date),
     observedAt: new Date(sample.point.observedAt),
     availableAt: sample.point.availableAt ? new Date(sample.point.availableAt) : undefined,
+    ...(sample.point.barStart ? { barStart: new Date(sample.point.barStart) } : {}),
     value,
     periodLabel: sample.point.periodLabel,
     provenance: {

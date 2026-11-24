@@ -164,6 +164,7 @@ function DockedQuote({ quote, delayed, stale, source, updated, price, change, wi
       {side("Ask", quote?.ask, quote?.askSize, c.negative)}
       {showTime ? <Text fg={c.textDim} flexShrink={0} selectable>{bookTime}</Text> : null}
     </Box>
+    {bookTime && !showTime ? <Text fg={c.textDim} selectable>{bookTime}</Text> : null}
   </Box>;
 }
 

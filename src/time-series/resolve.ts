@@ -1073,7 +1073,7 @@ async function resolveChartSpecPass(
         history?.resolution,
         quoteMetadata,
         contractUnit,
-        { extendedHours: history?.extendedHours === true, currencies },
+        { extendedHours: history?.extendedHours === true, currencies, barSize: builtBars ?? undefined },
       );
       if (!base) throw new Error(`Unknown field ${source.fieldId}.`);
       if (returnHistory?.note) base.returnRollNote = returnHistory.note;

@@ -145,6 +145,7 @@ export interface CliResultRenderOptions<T = unknown, Row = Record<string, unknow
   exportIdentity?: ExportIdentity | ((row: Row) => ExportIdentity);
   /** What CSV says after the source lines as `# note:` lines: what the rows do not show, such as where a series begins. */
   exportNotes?: readonly string[];
+  csvTrailingColumns?: readonly string[];
   /**
    * The rows are statistics dated by a period and a release (`econ`, `fred`):
    * CSV and NDJSON rows also end with `period`, `released` and `retrieved`
@@ -762,7 +763,7 @@ export function printCliResult<T, Row extends Record<string, unknown> = Record<s
     : serializeCliResult(cells, options, renderOptions));
   const { csv, footer } = options.format === "csv" ? splitCsvFooter(serialized) : { csv: serialized, footer: [] };
   const output = options.format === "csv" ? portableCsv(serialized, result.warnings,
-    [...renderOptions.exportNotes ?? [], ...renderOptions.footnote ? [renderOptions.footnote] : []]) : csv;
+    [...renderOptions.exportNotes ?? [], ...renderOptions.footnote ? [renderOptions.footnote] : []], renderOptions.csvTrailingColumns) : csv;
   if (toFile) fileExport.push(output);
   // Bun's console writer can truncate a large pipe write after stdout has been
   // initialized. The stream queues the remaining bytes until the reader drains.

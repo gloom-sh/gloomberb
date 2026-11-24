@@ -64,10 +64,14 @@ test("a book is dated by its own quote time, carried and resolved with that book
   const cloud = normalizeQuoteContribution({
     symbol: "EWG", price: 40.35, currency: "USD", change: 0, changePercent: 0, priceBasis: "per-unit",
     bid: 39.17, ask: 41.48, bidSize: 200, askSize: 100, bidAskTime: bookAt, lastUpdated: trade,
-    providerId: "gloomberb-cloud", dataSource: "delayed",
+    listingExchangeName: "ARCA", providerId: "gloomberb-cloud", dataSource: "delayed",
   })!;
-  expect(formatQuoteBookTime(cloud, now)).toBe("Sat 00:55 UTC");
-  expect(formatQuoteBookTime({ ...cloud, bidAskTime: undefined }, now)).toBe(QUOTE_BOOK_UNDATED);
+  expect(formatQuoteBookTime(cloud, now)).toBe("Sat 21 Nov 00:55 UTC · after-hours · delayed");
+  expect(formatQuoteBookTime(cloud, Date.parse("2026-11-21T09:00:00Z"))).toBe("Sat 21 Nov 00:55 UTC · after-hours · delayed");
+  const regular = Date.parse("2026-11-20T18:56:00Z");
+  expect(formatQuoteBookTime({ ...cloud, bidAskTime: regular }, trade)).toBe("18:56 UTC · delayed");
+  expect(formatQuoteBookTime({ ...cloud, bidAskTime: regular }, now)).toBe("Fri 20 Nov 18:56 UTC · regular session · delayed");
+  expect(formatQuoteBookTime({ ...cloud, bidAskTime: undefined }, now)).toBe(`${QUOTE_BOOK_UNDATED} · delayed`);
   expect(formatQuoteBookTime({ ...cloud, bid: undefined, ask: undefined }, now)).toBeNull();
 
   // A trade tick with no book keeps the book and its time; a new book sent without a time is undated.
@@ -83,5 +87,9 @@ test("a book is dated by its own quote time, carried and resolved with that book
   const resolved = resolveCanonicalQuote({ ibkr: broker, "gloomberb-cloud": cloud }, now).quote!;
   expect(resolved.bid).toBe(40.3);
   expect(resolved.bidAskTime).toBeUndefined();
+  expect(formatQuoteBookTime(resolved, now)).toBe(`${QUOTE_BOOK_UNDATED} · real-time`);
+  const oneSided = resolveCanonicalQuote({ ibkr: { ...broker, ask: undefined }, "gloomberb-cloud": cloud }, now).quote!;
+  expect(oneSided.bid).toBe(40.3);
+  expect(oneSided.ask).toBeUndefined();
   expect(resolveCanonicalQuote({ "gloomberb-cloud": cloud }, now).quote!.bidAskTime).toBe(bookAt);
 });

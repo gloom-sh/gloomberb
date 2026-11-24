@@ -489,6 +489,7 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
       case "away":
         return {
           text: formatAlertDistance(alert),
+          ...(alert.move || alert.metric?.kind === "rrg" ? { mayBeBlank: true } : {}),
           color: colors.textDim,
         };
       case "condition":
@@ -505,6 +506,7 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
       case "triggered":
         return {
           text: alert.triggeredAt ? relativeTime(alert.triggeredAt) : MISSING_VALUE,
+          ...(!alert.triggeredAt && alert.status !== "triggered" ? { mayBeBlank: true } : {}),
           color: colors.textDim,
         };
       case "created":

@@ -61,12 +61,12 @@ const orderColumns: DataTableColumn[] = [
   { id: "symbol", label: "Symbol", width: 8, align: "left" }, { id: "side", label: "Side", width: 6, align: "left" },
   { id: "status", label: "Status", width: 16, align: "left" }, { id: "quantity", label: "Filled / Qty", width: 14, align: "right" },
   { id: "type", label: "Type", width: 4, align: "left" }, { id: "price", label: "Price", width: 8, align: "right" },
-  { id: "age", label: "Age", width: 4, align: "right" }, { id: "actions", label: "", width: 14, align: "right" },
+  { id: "age", label: "Age", width: 4, align: "right" }, { id: "actions", label: "", width: 14, align: "right", mayBeBlank: true },
 ];
 const activityColumns: DataTableColumn[] = [
   { id: "symbol", label: "Symbol", width: 18, align: "left" }, { id: "side", label: "Side", width: 5, align: "left" },
   { id: "quantity", label: "Quantity", width: 12, align: "right" }, { id: "price", label: "Price", width: 12, align: "right" },
-  { id: "fees", label: "Fees", width: 12, align: "right" }, { id: "age", label: "Age", width: 5, align: "right" },
+  { id: "fees", label: "Fees", width: 12, align: "right", mayBeBlank: true }, { id: "age", label: "Age", width: 5, align: "right" },
 ];
 /** An order's type, prices and time in force, as a cancellation names them: "Limit 336.50 · DAY", "Take profit, limit 345.00 · GTC". */
 function orderTerms(order: BrokerOrder): string {

@@ -1,7 +1,7 @@
 import { METRIC_CHOICES, benchmarkKey, metricWizardFields, namesTwoListings, parseMetricAlert } from "./metric-command";
-import { firstDailyCheck, metricAvailabilityError, metricReadings } from "./metric-data";
+import { firstDailyCheck, metricAvailabilityError, metricReadingFields, metricReadings } from "./metric-data";
 import { alertLogRule } from "./alert-log";
-import { closeBasis, isDailyMetric, isRelativeMetric, metricReadingText, metricTrigger, validMetricRule, type MetricReading } from "./metric-model";
+import { closeBasis, isDailyMetric, isRelativeMetric, metricReadingText, metricTrigger, validMetricRule } from "./metric-model";
 import { canonicalExchange } from "../../../utils/exchanges";
 import { startCatalystAlerts } from "./catalysts";
 import { notTheCoinNote } from "../../../cli/commands/crypto-hints";
@@ -412,8 +412,7 @@ export const alertsPlugin: GloomPlugin = {
           }
           try {
             const reading = await metricReadings(ctx.marketData, now)(alert);
-            Object.assign(alert, { lastCheckedPrice: reading.value, lastCheckedTarget: reading.target, lastQuoteUpdatedAt: reading.at,
-              lastCheckedAt: now, ...reading.day ? { lastDailyClose: reading.day } : {} });
+            Object.assign(alert, metricReadingFields(reading, now));
           } catch (error) {
             if (!isDailyMetric(metric) || metricAvailabilityError(alert)) throw error;
           }
@@ -570,7 +569,7 @@ export const alertsPlugin: GloomPlugin = {
         }
       }));
       const readMetric = metricReadings(ctx.marketData);
-      const readings = new Map<string, { armedAt: number; reading: MetricReading | string }>();
+      const readings = new Map<string, { armedAt: number; reading: Awaited<ReturnType<typeof readMetric>> | string }>();
       for (const alert of pending.filter(a => a.metric)) {
         try { readings.set(alert.id, { armedAt: alert.armedAt ?? alert.createdAt, reading: await readMetric(alert) }); }
         catch (error) { readings.set(alert.id, { armedAt: alert.armedAt ?? alert.createdAt, reading: error instanceof Error ? error.message : String(error) }); }
@@ -588,7 +587,13 @@ export const alertsPlugin: GloomPlugin = {
           const result = readings.get(alert.id);
           if (!result || result.armedAt !== (alert.armedAt ?? alert.createdAt)) continue;
           const reading = result.reading;
-          if (typeof reading !== "string" && reading.day && reading.day === alert.lastDailyClose && !alert.lastCheckError) continue;
+          if (typeof reading !== "string" && reading.day && reading.day === alert.lastDailyClose && !alert.lastCheckError) {
+            if (reading.ratioInputs && !alert.lastRatioInputs && reading.value === alert.lastCheckedPrice) {
+              alert.lastRatioInputs = metricReadingFields(reading, Date.now()).lastRatioInputs;
+              changed = true;
+            }
+            continue;
+          }
           if (typeof reading === "string" && reading === alert.lastCheckError) continue;
           if (typeof reading === "string") Object.assign(alert, quoteErrorAlertFields(reading));
           else {
@@ -601,14 +606,13 @@ export const alertsPlugin: GloomPlugin = {
                 unit: alert.metric.kind === "pe" || alert.metric.kind === "ps" ? "x" : undefined,
                 // An RRG quadrant is two readings; the figure is strength, the detail says both.
                 ...(alert.metric.kind === "rrg" ? { detail: readingText } : {}),
-                quoteAt: firedAlertTime(reading.at), source: closeBasis(alert.metric),
+                quoteAt: firedAlertTime(reading.at), source: closeBasis(alert.metric) ?? quoteSourceWords(reading.quoteSource),
                 symbol: alert.symbol, exchange: alert.exchange });
               ctx.notify({ body: alert.metric.kind === "rrg" ? `${description} triggered: ${readingText}` : `${description} triggered at ${readingText}`, type: "success",
                 refId: `price:${alert.id}`, desktop: "always", persistent: true, sound: "Glass",
                 action: { label: "Open", onClick: () => ctx.showPane("alerts") } });
             }
-            Object.assign(alert, { lastCheckedPrice: reading.value, lastCheckedTarget: reading.target,
-              lastDailyClose: reading.day, lastQuoteUpdatedAt: reading.at, lastCheckedAt: Date.now(), lastCheckError: undefined });
+            Object.assign(alert, metricReadingFields(reading, Date.now()));
           }
           changed = true;
           continue;

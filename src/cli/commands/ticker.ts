@@ -43,11 +43,10 @@ import {
   getQuoteSessionFields,
   getRegularSessionDisplay,
   headlineCloseDate,
-  quoteBookSessionLabel,
   quoteHeadlineTime,
   quoteMarketStateLabel,
 } from "../../market-data/market/status";
-import { formatQuoteBookTime, QUOTE_BOOK_UNDATED } from "../../market-data/quotes/time";
+import { formatQuoteBookTime } from "../../market-data/quotes/time";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
 import { changeBasisJson, closeDayLabel, futuresQuoteFromSettle, quoteChangeBasis, quotePreviousCloseDate, quoteSettleText } from "../../market-data/market/change-basis";
 import {
@@ -222,17 +221,13 @@ function yearRangeText(quote: Quote, options: MarketFormatOptions): string {
 
 /**
  * The book, whose it is out of the regular session, and when it was quoted or
- * that its source sent no time: `(last quote, Sat 00:55 UTC)`, `(quoted 14:31
- * UTC)`, `(after-hours book, not dated)`. Never the trade's day or time.
+ * that its source sent no time. Never the trade's day or time.
  */
 function bidAskText(quote: Quote, options: MarketFormatOptions): string {
   const text = formatBidAsk(quote.bid, quote.ask, quote.bidSize, quote.askSize, quote.currency, options);
   if (text === "—") return text;
-  const session = quoteBookSessionLabel(quote);
   const time = formatQuoteBookTime(quote);
-  const when = !time || time === QUOTE_BOOK_UNDATED || session ? time : `quoted ${time}`;
-  const label = [session, when].filter(Boolean).join(", ");
-  return label ? `${text}  ${cliStyles.muted(`(${label})`)}` : text;
+  return time ? `${text}  ${cliStyles.muted(`(${time})`)}` : text;
 }
 
 function wrapProse(text: string): string {

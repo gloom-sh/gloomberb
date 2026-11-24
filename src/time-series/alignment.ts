@@ -65,6 +65,11 @@ export function effectiveTimeSeriesPointTime(point: TimeSeriesPoint): number {
   return isFiniteNumber(availableTime) ? Math.max(pointTime, availableTime) : pointTime;
 }
 
+export function matchedBarStart(entries: ReadonlyArray<AlignedSeriesValue | null | undefined>): number | undefined {
+  const start = entries[0]?.point.barStart?.getTime();
+  return start !== undefined && entries.every((entry) => entry && !entry.carried && entry.point.barStart?.getTime() === start) ? start : undefined;
+}
+
 /**
  * Aligns heterogeneous observations on one timeline. Step series carry their
  * last known value forward only after `availableAt`; values are never filled
@@ -86,11 +91,9 @@ export function alignTimeSeries(
     for (const entry of series) {
       for (const point of entry.points) {
         const time = point.date.getTime();
-        if (time >= start && time <= end) timeline.add(time);
         const effectiveTime = effectiveTimeSeriesPointTime(point);
-        if (effectiveTime !== time && effectiveTime >= start && effectiveTime <= end) {
-          timeline.add(effectiveTime);
-        }
+        if (!point.barStart && time >= start && time <= end) timeline.add(time);
+        if (effectiveTime >= start && effectiveTime <= end) timeline.add(effectiveTime);
       }
     }
   }

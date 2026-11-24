@@ -4,9 +4,10 @@ import { t, tf } from "../../../../i18n";
 import { formatMarketPrice, formatMarketPriceRange, formatMarketPriceWithCurrency, liveQuoteFormatOptions, type MarketFormatOptions } from "../../../../market-data/market/format";
 import { colors, hoverBg, priceColor } from "../../../../theme/colors";
 import type { Quote } from "../../../../types/financials";
-import { formatQuoteBookTime, QUOTE_BOOK_UNDATED } from "../../../../market-data/quotes/time";
+import { quoteBookTimeParts, QUOTE_BOOK_UNDATED } from "../../../../market-data/quotes/time";
 import { Box, Text, useUiCapabilities } from "../../../../ui";
 import { MISSING_VALUE, displayWidth, formatTradeSize, truncateToDisplayWidth } from "../../../../utils/format";
+import { wrapTextLines } from "../../../../utils/text-wrap";
 import type { OverviewFunctionLink, PositionTableRow, StatField } from "./types";
 import { portfolioPnlLabel } from "../../../../portfolio/position-metrics";
 
@@ -228,7 +229,13 @@ export function QuoteBook({ quote, assetCategory, width, desktopWidth }: {
   }
 
   // The book's own time, or that its source sent none: never the trade's time in the header beside it.
-  const bookTime = formatQuoteBookTime(quote);
+  const [clock, ...context] = quoteBookTimeParts(quote).map((part) => part === QUOTE_BOOK_UNDATED ? t("not dated") : part);
+  const room = width - BOOK_LABEL_WIDTH;
+  const bookTime = [clock, ...context].join(" · ");
+  const contextText = context.join(" · ");
+  const clockLines = !clock ? [] : displayWidth(bookTime) <= room ? [bookTime]
+    : [...wrapTextLines(clock, room), ...(displayWidth(contextText) <= room ? contextText ? [contextText] : []
+      : context.flatMap((part) => wrapTextLines(part, room)))];
   const row = (label: string, value: string, color: string): ColumnGridCell[] => [{ text: label, color: colors.textDim }, { text: value, color }];
   return (
     <Box flexDirection="column" width={nativePaneChrome ? undefined : width} flexShrink={0} style={nativePaneChrome ? { width: desktopWidth } : undefined}>
@@ -241,7 +248,7 @@ export function QuoteBook({ quote, assetCategory, width, desktopWidth }: {
           row(t("Bid"), bidText, colors.textBright),
           row(t("Ask"), askText, colors.textBright),
           row(t("Spr"), spreadText, colors.textDim),
-          ...bookTime ? [row(t("Time"), bookTime === QUOTE_BOOK_UNDATED ? t("not dated") : bookTime, colors.textDim)] : [],
+          ...clockLines.map((line, index) => row(index === 0 ? t("Time") : "", line, colors.textDim)),
         ]}
       />
     </Box>

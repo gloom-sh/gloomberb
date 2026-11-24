@@ -1,5 +1,5 @@
 import type { AssetDataProvider } from "../../../types/data-provider";
-import type { Quote, TickerFinancials } from "../../../types/financials";
+import type { Quote, QuoteDataSource, TickerFinancials } from "../../../types/financials";
 import { liveMarketCapitalization, liveTrailingPE } from "../../../market-data/quotes/live-valuation";
 import { comparablePriceEarnings } from "../../../utils/price-earnings";
 import { canonicalExchange } from "../../../utils/exchanges";
@@ -62,6 +62,16 @@ const DAILY_BARS = "1d";
 
 const dailyCaches = new WeakMap<AssetDataProvider, DailyMetricCache>();
 
+type ObservedMetricReading = MetricReading & { quoteSource?: QuoteDataSource };
+
+export function metricReadingFields(reading: ObservedMetricReading, checkedAt: number): Partial<AlertRule> {
+  return {
+    lastCheckedPrice: reading.value, lastCheckedTarget: reading.target, lastQuoteUpdatedAt: reading.at, lastCheckedAt: checkedAt,
+    lastDailyClose: reading.day, lastQuoteSource: reading.quoteSource, lastCheckError: undefined,
+    lastRatioInputs: reading.ratioInputs ? { ...reading.ratioInputs, numeratorAt: reading.at, denominatorAt: reading.at } : undefined,
+  };
+}
+
 /** A pass shares each listing's reads; there is no second provider or quote subscription. */
 export function metricReadings(provider: AssetDataProvider, now = Date.now()) {
   const daily = dailyCaches.get(provider) ?? new DailyMetricCache();
@@ -69,7 +79,7 @@ export function metricReadings(provider: AssetDataProvider, now = Date.now()) {
   const financials = new Map<string, Promise<TickerFinancials>>();
   const history = new Map<string, Promise<Awaited<ReturnType<AssetDataProvider["getPriceHistory"]>> >>();
   const quotes = new Map<string, Promise<Quote | null>>();
-  return async (rule: AlertRule): Promise<MetricReading> => {
+  return async (rule: AlertRule): Promise<ObservedMetricReading> => {
     const m = rule.metric!;
     const key = `${rule.symbol}|${rule.exchange ?? ""}`;
     if (!isDailyMetric(m)) {
@@ -78,7 +88,7 @@ export function metricReadings(provider: AssetDataProvider, now = Date.now()) {
       const loaded = await data;
       const value = valuationAlertValue(m.kind as "pe" | "ps", loaded);
       if (value == null) throw new Error(m.kind === "pe" ? "Trailing P/E is unavailable or not meaningful." : "Trailing P/S is unavailable on a matching currency basis.");
-      return { value, target: rule.targetPrice, at: loaded.quote?.lastUpdated ?? now };
+      return { value, target: rule.targetPrice, at: loaded.quote?.lastUpdated ?? now, quoteSource: loaded.quote?.dataSource };
     }
     const exchange = canonicalExchange(rule.exchange ?? "");
     const session = (day: string) => getPublishedUsEquitySession(exchange, day);

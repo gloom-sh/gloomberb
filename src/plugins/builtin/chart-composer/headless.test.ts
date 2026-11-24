@@ -145,6 +145,38 @@ test("an unavailable currency spread reaches headless errors even with normalize
   }
 });
 
+test("an intraday ratio keeps the visible last bar, but is only available at its close", async () => {
+  setSystemTime(new Date("2026-11-24T06:00:00Z"));
+  try {
+    const prices = (symbol: string) => ["20:30", "20:45"].map((time, index) => {
+      const close = symbol === "EWJ" ? [86.8, 86.9][index]! : 148.94;
+      return { date: new Date(`2026-11-23T${time}:00Z`), open: close, high: close, low: close, close, volume: 100 };
+    });
+    const marketData = createTestDataProvider({
+      getQuote: async (symbol) => ({ symbol, price: prices(symbol).at(-1)!.close, change: 0, changePercent: 0,
+        currency: "USD", instrumentType: "ETF", marketState: "CLOSED", lastUpdated: Date.parse("2026-11-23T20:45:00Z") }),
+      getPriceHistoryForResolution: async (symbol) => prices(symbol),
+      getDetailedPriceHistory: async (symbol) => prices(symbol),
+    });
+    const argument = "EWJ:ARCA/ACWI:NASDAQ";
+    const options = { rangePreset: "1D", chartResolution: "15m" };
+    const spec = applyChartComposerCapabilityOptions(buildCustomChartPreset(argument), "chart-composer", options);
+    const args = { argument, rawArgument: argument, symbols: ["EWJ:ARCA", "ACWI:NASDAQ"], options };
+    const definition = chartHeadless("chart-composer-pane");
+    const result = await definition.load(args, createTestHeadlessContext({ marketData, settings: { chartSpec: spec } })) as ChartPaneModel;
+    const ratio = result.series.find((series) => series.id === "pair:ratio")!;
+    expect(ratio.points.map((point) => point.availableAt)).toEqual([
+      new Date("2026-11-23T20:45:00Z"), new Date("2026-11-23T21:00:00Z"),
+    ]);
+    expect(ratio.points.at(-1)).toMatchObject({ date: new Date("2026-11-23T20:45:00Z"), value: 86.9 / 148.94 });
+    const serialized = JSON.parse(JSON.stringify(serializeHeadlessPaneResult(definition, result)));
+    expect(serialized.series.find((series: { id: string }) => series.id === ratio.id).points.at(-1).availableAt).toBe("2026-11-23T21:00:00.000Z");
+    expect(renderHeadlessPaneText(definition, result, args, "Custom Chart")).toMatch(/EWJ.* \/ ACWI.*20:45–21:00 UTC \(15-minute bar close\)\s+0\.5835\s+x/);
+  } finally {
+    setSystemTime();
+  }
+});
+
 test("fn G 42*HO=F - CL=F charts the heating-oil crack per barrel, in the units the contracts trade in", async () => {
   resetFuturesPriceUnits();
   const closes: Record<string, number[]> = { "HO=F": [2.5, 2.6, 2.4], "CL=F": [70, 71, 72] };

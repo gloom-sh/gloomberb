@@ -844,6 +844,20 @@ describe("a capture of a pane that marks no rows", () => {
     expect(assess(diag, { rows: [release(0, "—", false), release(1, "—", false), ...upcoming] })).toMatchObject({ usable: true });
   });
 
+  test("unfired alert rows can omit Alerted without masking a missing Current column", () => {
+    const rows = (price: string, waiting: boolean) => Array.from({ length: 4 }, (_, rowIndex) => ({
+      tableIndex: 0, rowIndex, selected: false,
+      cells: [
+        { columnId: "symbol", columnLabel: "Symbol", text: `T${rowIndex}` },
+        { columnId: "current", columnLabel: "Current", text: price },
+        { columnId: "triggered", columnLabel: "Alerted", text: "—", ...(waiting ? { mayBeBlank: true as const } : {}) },
+      ],
+    }));
+    expect(assess(diag, { rows: rows("86.90", true) })).toMatchObject({ usable: true });
+    expect(assess(diag, { rows: rows("—", true) })).toMatchObject({ usable: false, blankColumns: ["Current"] });
+    expect(assess(diag, { rows: rows("86.90", false) })).toMatchObject({ usable: false, blankColumns: ["Alerted"] });
+  });
+
   // APPS read "Grossing and genre ranks are unavailable." in its footer as an error over its empty state, and INS's
   // "…$21.24M A Form 4/A in this window is unreconciled, so the affected transaction totals are unavailable." over a full table.
   test("a footer note is not the pane's state; the same words in its body are", () => {

@@ -7,8 +7,11 @@ import { canonicalTimeSeriesFieldId, isFundamentalFieldId, isMarketFieldId } fro
 import { extractFundamentalSeries } from "./fundamentals";
 import type { ValuationCurrencyContext } from "./valuation-currency";
 import type { ChartSeriesPriceHistoryIntegrity, ResolvedSeries, SecuritySeriesSource, SeriesPeriod, TimeSeriesPoint } from "./types";
-import type { ManualChartResolution } from "./resolution";
+import { chartBarSizeParts, chartBarSizeStepMs, type ChartBarSize, type ManualChartResolution } from "./resolution";
 import { isFiniteNumber } from "../utils/guards";
+import type { HistorySession } from "../types/price-history";
+import { regularSessionCloseOn } from "../market-data/market/freshness";
+import { zonedDateKey } from "../utils/zoned-date-time";
 
 /** Field catalogue frequency is a default, not evidence for acquired bars. */
 export function marketSeriesFrequency(source: SecuritySeriesSource, historyResolution: ManualChartResolution | null | undefined): SeriesPeriod {
@@ -109,12 +112,19 @@ function aggregatePriceHistory(
 export function extractPriceSeries(
   priceHistory: readonly PricePoint[],
   source: SecuritySeriesSource,
+  barSize?: ChartBarSize | null,
+  session?: HistorySession,
 ): TimeSeriesPoint[] {
   const fieldId = canonicalTimeSeriesFieldId(source.fieldId);
   if (!isMarketFieldId(fieldId)) return [];
   const aggregated = aggregatePriceHistory(priceHistory, source.period ?? "auto");
   // A price on its own at the end of intraday bars (a closing auction's price) has no volume of its own, never 0.
   const priceOnly = priceOnlyPoint(aggregated)?.index;
+  const size = chartBarSizeParts(barSize);
+  const step = barSize && (size?.unit === "m" || size?.unit === "h") && (!source.period || source.period === "auto")
+    ? chartBarSizeStepMs(barSize) : 0;
+  let sessionDay: string | undefined;
+  let sessionClose: number | null = null;
   return aggregated.map((point, index) => {
     // A roll is the contract changing from the bar before, which a window's first bar knows from the bars before it.
     const before = index > 0 ? aggregated[index - 1]!.contract : undefined;
@@ -129,10 +139,25 @@ export function extractPriceSeries(
           : fieldId === "market.volume"
             ? values.volume
             : values.close;
+    const date = new Date(point.date);
+    const start = date.getTime();
+    let end = start;
+    if (step && !point.partial && !point.quoteOnly && !point.sessionClose && index !== priceOnly) {
+      end += step;
+      if (session) {
+        const day = zonedDateKey(start, session.timeZone);
+        if (day !== sessionDay) {
+          sessionDay = day;
+          sessionClose = regularSessionCloseOn(session.exchange, day);
+        }
+        if (sessionClose != null && sessionClose > start) end = Math.min(end, sessionClose);
+      }
+    }
     return {
-      date: new Date(point.date),
+      date,
       observedAt: new Date(point.date),
-      availableAt: new Date(point.date),
+      availableAt: new Date(end),
+      ...(end !== start ? { barStart: date } : {}),
       value,
       ...values,
       // A continuous future's bar names its contract, and the source marks a bar still forming.
@@ -186,9 +211,10 @@ export function extractSecuritySeries(
   financials: TickerFinancials | null,
   source: SecuritySeriesSource,
   currencies?: ValuationCurrencyContext,
+  barSize?: ChartBarSize | null,
 ): TimeSeriesPoint[] {
   if (!financials) return [];
-  if (isMarketFieldId(source.fieldId)) return extractPriceSeries(financials.priceHistory, source);
+  if (isMarketFieldId(source.fieldId)) return extractPriceSeries(financials.priceHistory, source, barSize, financials.priceHistorySession);
   if (isFundamentalFieldId(source.fieldId)) return extractFundamentalSeries(financials, source, currencies);
   return [];
 }
