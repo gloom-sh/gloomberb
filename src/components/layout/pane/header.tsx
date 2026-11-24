@@ -13,6 +13,7 @@ import { Button } from "../../ui/button";
 import { t } from "../../../i18n";
 import type { PaneHeaderTabsRegistration } from "./header-tabs";
 import { nativePaneHeaderRows } from "./sizing";
+import { paneTitleWithoutLink } from "./link-note";
 
 const PANE_HEADER_HEIGHT = 1;
 const PANE_HEADER_GRIP = ":: ";
@@ -26,6 +27,13 @@ export const PANE_HEADER_CLOSE = " x ";
  * menu and the close button sit where they always do.
  */
 export const PANE_HEADER_ASK_MIN_WIDTH = 32;
+/**
+ * Desktop and web: the least a header is wide, in cells, to hold a stack's
+ * tabs and the shown pane's own strip side by side. Narrower (a phone, where
+ * a workspace comes as one stack), each strip showed one cut tab and hid the
+ * rest behind a chevron.
+ */
+export const PANE_HEADER_TWO_STRIPS_MIN_WIDTH = 56;
 /** Same width as the close mark, so the header hit areas stay put. */
 export const PANE_HEADER_RESTORE = " - ";
 const PANE_HEADER_LOCK = " 🔒 ";
@@ -203,6 +211,16 @@ function TerminalStackTabs({ stack, spans, width, activeFg, pad }: {
       {pad && left > 0 && <Text fg={activeFg} selectable={false}>{" ".repeat(left)}</Text>}
     </>
   );
+}
+
+/**
+ * Desktop and web: whether a header of `width` cells keeps one strip, its
+ * stack's. The pane then draws its own strip as the first row of its body,
+ * as the terminal does, at the pane's full width, and the stack's tabs go by
+ * each pane's name without the note of what it follows.
+ */
+export function paneHeaderHoldsOneStrip(stack: PaneHeaderStack | null | undefined, width: number): boolean {
+  return !!stack && stack.tabs.length > 1 && width > 0 && width < PANE_HEADER_TWO_STRIPS_MIN_WIDTH;
 }
 
 /** The place of the tab a stack shows among its tabs. */
@@ -534,9 +552,10 @@ export function PaneHeader({
     }
     onHeaderMouseDown?.(event);
   };
+  const shortStackTabs = nativePaneChrome === true && paneHeaderHoldsOneStrip(stack, width);
   const stackTabItems = useMemo(
-    () => stack?.tabs.map((tab) => ({ label: tab.title, value: tab.id })) ?? null,
-    [stack?.tabs],
+    () => stack?.tabs.map((tab) => ({ label: shortStackTabs ? paneTitleWithoutLink(tab.title) : tab.title, value: tab.id })) ?? null,
+    [shortStackTabs, stack?.tabs],
   );
   const beginWindowDrag = (event?: { stopPropagation?: () => void; detail?: number }) => {
     event?.stopPropagation?.();
