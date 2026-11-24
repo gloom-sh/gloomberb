@@ -38,7 +38,8 @@ export const researchModule: PluginModule = {
     });
     ctx.registerTickerResearchTab({
       id: "corporate-actions",
-      name: "Events",
+      // The first view of the Events tab, so not "Events" again: its reports, estimates and ex-dates.
+      name: "Calendar",
       order: 34,
       component: CorporateActionsView,
       instruments: ["equity", "fund"],

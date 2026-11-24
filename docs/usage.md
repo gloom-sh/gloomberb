@@ -348,7 +348,7 @@ A company's page has eleven tabs, and a tab with several views shows them as cho
 | Financials | Financials, Revenue, Diagnostic, Dividends, ADR vs Home (for a listing with a known receipt pair) |
 | Analysts | Analyst, Calls |
 | Options | Options |
-| Events | Events, Catalysts, M&A |
+| Events | Calendar, Catalysts, M&A |
 | Filings | SEC, 8-K, Risks |
 | Ownership | Holders, Insider, 13F, Congress, Short Interest |
 | People | Exec, Hiring, Hiring momentum |

@@ -45,4 +45,19 @@ describe("corporate actions headless model", () => {
     expect(own.rows.map((row) => row.status)).toEqual(["Earnings", "Dividend", "Dividend"]);
     expect(own.notes).toEqual(["STPP last traded 2020-07-16; no longer listed."]);
   });
+
+  test("fn EVT lists the dividends the pane does, names fn DVD for the rest, and prints the pane's summary", async () => {
+    const marketData = createTestDataProvider({
+      getCorporateActions: async () => ({ symbol: "AAPL", currency: "USD", splits: [],
+        dividends: Array.from({ length: 10 }, (_, index) => ({ exDate: `${2015 + index}-05-10`, amount: 0.25 })),
+        earnings: [{ date: "2024-08-01", epsActual: 1.4, epsEstimate: 1.35, currency: "USD", fiscalPeriod: "2024-06" }] }),
+      getAnalystResearch: async () => null as never,
+      getTickerFinancials: async () => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
+    });
+    const result = await createEventsHeadless().load(args, { marketData } as HeadlessPaneContext);
+    expect(result.rows.filter((row) => row.status === "Dividend").map((row) => row.date)).toEqual(["2024-05-10", "2023-05-10", "2022-05-10"]);
+    expect(result.notes).toEqual(["7 earlier dividends, ex 2021-05-10 and before, are in DVD: gloom fn DVD AAPL"]);
+    expect(result.metadata).toMatchObject({ earlierDividends: { count: 7, latestExDate: "2021-05-10" } });
+    expect(result.textSections?.[0]?.entries?.map((entry) => entry.formatted)).toEqual(["+3.70%  Jun 2024 · 1.40 vs 1.35 USD", "10 May 2024  $0.25"]);
+  });
 });

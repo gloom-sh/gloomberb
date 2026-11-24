@@ -8,8 +8,9 @@ import type {
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
-import { buildEventRows, eventSourceNotice, CORPORATE_ACTION_COVERAGE } from "./event-model";
-import { EVENT_COLUMNS, loadEventSources } from "./event-sources";
+import { buildEventRows, buildEventSummary, eventSourceNotice, isFundListing, recentDividends, CORPORATE_ACTION_COVERAGE } from "./event-model";
+import { EVENT_COLUMNS, EVENT_TEXT_COLUMNS, eventSummarySection, loadEventSources } from "./event-sources";
+import { listingDay } from "../shared/earnings-calendar";
 import { REPORTED_DATA } from "../shared/report-freshness";
 import { EPS_BASIS_NOTE } from "../shared/earnings-report";
 import { loadNoQuoteLastTraded, noQuoteLastTradeNote, otherListingProfile } from "../../../tickers/listing-fate";
@@ -83,13 +84,24 @@ export function createEventsHeadless(
       const hidden = rows.length - own.length;
       const ended = lastTrade ? `${noQuoteLastTradeNote(symbol, lastTrade)}.${hidden > 0
         ? ` ${hidden} later ${hidden === 1 ? "report is" : "reports are"} another listing's (${other}), not shown.` : ""}` : null;
+      // The pane's list: the last few years of dividends, the rest DVD's.
+      const { earlier, before } = recentDividends(data.actions?.dividends ?? []);
+      const toDvd = earlier > 0 ? `${earlier} earlier ${earlier === 1 ? "dividend" : "dividends"}, ex ${before} and before, are in DVD: gloom fn DVD ${symbol}` : null;
+      const notes = [ended, toDvd].filter((note): note is string => !!note);
+      // The figures over the pane's table, under the rows here.
+      const summary = buildEventSummary(own, { today: listingDay(parsePublicTickerKey(symbol).exchange), variant: "corporate-actions",
+        fund: isFundListing(data.financials), statedExDate: data.financials?.fundamentals?.exDividendDate });
       return {
         rows: own.map((row) => ({ ...row })),
-        ...(ended ? { notes: [ended] } : {}),
+        textColumns: EVENT_TEXT_COLUMNS,
+        ...(summary.length ? { textSections: [eventSummarySection(summary)] } : {}),
+        ...(notes.length ? { notes } : {}),
         errors: errors.length > 0 ? errors : undefined,
         metadata: { symbol, currency: data.currency, coverage: data.actions?.coverage,
           coverageNote: CORPORATE_ACTION_COVERAGE, epsBasis: EPS_BASIS_NOTE,
           actionsFetchedAt: data.actions?.fetchedAt, estimatesFetchedAt: data.estimates?.fetchedAt,
+          ...(summary.length ? { nextUp: summary } : {}),
+          ...(earlier > 0 ? { earlierDividends: { count: earlier, latestExDate: before } } : {}),
           ...(notice ? { notice: notice.text } : {}),
         },
       };

@@ -1,7 +1,7 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { describe, expect, test } from "bun:test";
 import type { AnalystResearchData } from "../../../types/financials";
-import { buildEventRows, eventSourceNotice, formatEventMetric, sourceErrorText, type EventFinancials } from "./event-model";
+import { buildEventRows, buildEventSummary, eventSourceNotice, formatEventMetric, recentDividends, sourceErrorText, type EventFinancials } from "./event-model";
 import { NOT_MEANINGFUL_TONE } from "../../../utils/growth";
 import { fiscalPeriodText } from "../earnings/fiscal-quarter";
 
@@ -582,4 +582,75 @@ test("a fund lists its distributions but no earnings or estimates, whatever a fe
   expect(statuses({ quarterlyStatements: [], quote: { currency: "USD", instrumentType: "ETF" } })).toEqual(["Dividend"]);
   expect(statuses({ quarterlyStatements: [], quoteMetadata: { instrumentType: "ETF" } })).toEqual(["Dividend"]);
   expect(statuses({ quarterlyStatements: [], quote: { currency: "USD", instrumentType: "EQUITY" } })).toEqual(expect.arrayContaining(["Earnings", "Q Est"]));
+});
+
+describe("dividend rows", () => {
+  test("keep three years before the latest payment, however long ago it was, and count the rest for DVD", () => {
+    const dividends = ["2009-06-10", "2010-06-10", "2011-06-10", "2012-06-10", "2013-06-10"].map((exDate) => ({ exDate, amount: 0.1 }));
+    // A payer that stopped in 2013 still shows its last years; the day three years before the latest is DVD's.
+    expect(recentDividends(dividends)).toEqual({ shown: dividends.slice(2), earlier: 2, before: "2010-06-10" });
+    expect(recentDividends([])).toEqual({ shown: [], earlier: 0 });
+  });
+
+  /** Review, 24 Nov 2026: Haier's amounts read 0.4, 0.46136 and 0.8, every one tinted as a gain and dated Ex-date again. */
+  test("state every amount to one count of decimals, untinted, with a detail only where there is something to add", () => {
+    const rows = buildEventRows({ symbol: "TEST", currency: "CNY", earnings: [],
+      dividends: [
+        { exDate: "2023-06-10", amount: 0.4 },
+        { exDate: "2024-06-10", amount: 0.46136, payDate: "2024-06-20" },
+        { exDate: "2025-06-10", amount: 0.8, parts: [{ amount: 0.8, special: true, type: "special", form: { url: "", publishedOn: "2025-05-01" } }] },
+      ],
+      splits: [{ date: "2024-01-15", fromFactor: 10, toFactor: 11 }],
+    }, null, null, "CNY");
+    expect(rows.map((row) => [row.value, row.detail, row.tone, row.period])).toEqual([
+      ["CN¥0.80000", "special", "text", ""],
+      ["CN¥0.46136", "payable 2024-06-20", "text", ""],
+      ["11:10", "11-for-10, 1 new share for every 10 held", "muted", ""],
+      ["CN¥0.40000", "split-adjusted", "text", ""],
+    ]);
+  });
+});
+
+describe("the summary over the events table", () => {
+  const today = "2026-11-24";
+  const options = { today, variant: "corporate-actions" as const, fund: false };
+
+  test("names the next report with its quarter's consensus, the last surprise and the declared ex-date", () => {
+    const rows = buildEventRows({ symbol: "KO", currency: "USD", splits: [],
+      dividends: [{ exDate: "2026-09-15", amount: 0.53 }],
+      declaredDividends: [{ exDate: "2098-12-01", amount: 0.53, payDate: "2098-12-15", special: true }],
+      earnings: [
+        { date: "2026-10-21", epsActual: 0.82, epsEstimate: 0.78, currency: "USD", fiscalPeriod: "2026-09" },
+        { date: "2099-02-10", epsEstimate: 0.61, currency: "USD", dateStatus: "projected" },
+      ],
+    }, { symbol: "KO", recommendations: [], ratings: [],
+      earningsEstimates: [{ date: "2098-12-31", period: "current_quarter", average: 0.6, currency: "USD" },
+        { date: "2099-03-31", period: "next_quarter", average: 0.7, currency: "USD" }],
+      revenueEstimates: [{ date: "2098-12-31", period: "current_quarter", average: 11.2e9, currency: "USD" },
+        { date: "2099-03-31", period: "next_quarter", average: 12.5e9, currency: "USD" }],
+    }, null, "USD");
+    const figures = buildEventSummary(rows, { ...options, epsUnit: "USD", revenueUnit: "USD" });
+    expect(figures.map((figure) => [figure.id, figure.value, figure.detail])).toEqual([
+      // The quarter it covers is the last one estimated to end before it, not the one after.
+      ["next-report", "10 Feb 2099", "Dec 2098 qtr · projected · EPS est 0.61 · rev est 11.2B"],
+      ["last-surprise", "+5.13%", "Sep 2026 · 0.82 vs 0.78"],
+      ["next-ex", "01 Dec 2098", "$0.53 · special · payable 15 Dec 2098"],
+    ]);
+    // Shorter forms for a narrow pane, never a longer one.
+    for (const figure of figures) for (const variant of figure.detailVariants ?? []) expect(variant.length).toBeLessThan(figure.detail!.length);
+  });
+
+  test("dates the next ex-date the listing's figures state before its amount is declared, and the last one otherwise", () => {
+    const rows = buildEventRows({ symbol: "KO", currency: "USD", splits: [], earnings: [],
+      dividends: [{ exDate: "2026-09-15", amount: 0.53 }] }, null, null, "USD");
+    expect(buildEventSummary(rows, { ...options, statedExDate: "2098-12-01" })).toEqual([
+      { id: "next-ex", label: "Next ex", value: "01 Dec 2098", detail: "last paid $0.53" },
+    ]);
+    // A stated date already past is the last payment's, not the next.
+    expect(buildEventSummary(rows, { ...options, statedExDate: "2026-09-15" })).toEqual([
+      { id: "last-ex", label: "Last ex", value: "15 Sep 2026", detail: "$0.53" },
+    ]);
+    // A fund's first row is its last distribution already.
+    expect(buildEventSummary(rows, { ...options, fund: true })).toEqual([]);
+  });
 });

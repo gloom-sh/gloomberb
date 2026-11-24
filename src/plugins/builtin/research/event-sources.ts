@@ -4,7 +4,8 @@ import type {
   CorporateActionsData,
   TickerFinancials,
 } from "../../../types/financials";
-import { formatEventMetric } from "./event-model";
+import { formatEventMetric, type EventSummaryFigure } from "./event-model";
+import type { HeadlessBundleSection } from "../../../types/headless";
 import { loadAnalystResearch } from "./client";
 import { MISSING_VALUE, formatPercent, formatPercentRaw } from "../../../utils/format";
 import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
@@ -31,6 +32,38 @@ export const EVENT_COLUMNS = [
   { key: "value", header: "Value", align: "right" as const },
   { key: "detail", header: "Detail" },
 ];
+
+/** A quarter's or a year's figure, as the row's Event and Period say; blank on a dividend or a split. */
+function eitherFormat(quarter: "qEps" | "qRevenue", year: "annualEps" | "annualRevenue", currencyKey: "epsCurrency" | "revenueCurrency", kind: "eps" | "revenue") {
+  const format = metricFormat(currencyKey, kind);
+  return (_value: unknown, row: Record<string, unknown>) => {
+    if (row.period === "") return "";
+    return format(row[quarter] ?? row[year], row);
+  };
+}
+
+/**
+ * The columns `fn EVT` prints, as the pane heads them: one EPS and one
+ * revenue column, a quarter's or a year's as Event and Period say. CSV, NDJSON
+ * and JSON keep EVENT_COLUMNS, the quarter's and the year's apart.
+ */
+export const EVENT_TEXT_COLUMNS = [
+  ...EVENT_COLUMNS.filter((column) => column.key === "date" || column.key === "status" || column.key === "period"),
+  { key: "qEps", header: "EPS", align: "right" as const, format: eitherFormat("qEps", "annualEps", "epsCurrency", "eps") },
+  { key: "qRevenue", header: "Revenue", align: "right" as const, format: eitherFormat("qRevenue", "annualRevenue", "revenueCurrency", "revenue") },
+  ...EVENT_COLUMNS.filter((column) => column.key === "value" || column.key === "detail"),
+];
+
+/** The figures over the events table (buildEventSummary), as the text report prints them under its rows. */
+export function eventSummarySection(figures: readonly EventSummaryFigure[]): HeadlessBundleSection {
+  return {
+    title: "Next up",
+    entries: figures.map((figure) => ({
+      key: figure.id, label: figure.label, value: figure.value,
+      formatted: figure.detail ? `${figure.value}  ${figure.detail}` : figure.value,
+    })),
+  };
+}
 
 /**
  * The columns of the earnings estimates report, as its pane heads them: what corporate actions

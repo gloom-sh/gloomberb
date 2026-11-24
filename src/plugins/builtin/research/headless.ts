@@ -9,8 +9,10 @@ import type {
   HeadlessPaneLoadArgs,
   HeadlessRowsResult,
 } from "../../../types/plugin";
-import { buildEventRows, eventSourceNotice, type EventRow } from "./event-model";
-import { EARNINGS_ESTIMATE_COLUMNS, loadEventSources } from "./event-sources";
+import { buildEventRows, buildEventSummary, eventSourceNotice, isFundListing, type EventRow } from "./event-model";
+import { EARNINGS_ESTIMATE_COLUMNS, eventSummarySection, loadEventSources } from "./event-sources";
+import { listingDay } from "../shared/earnings-calendar";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { REPORTED_DATA } from "../shared/report-freshness";
 import { EPS_BASIS_NOTE } from "../shared/earnings-report";
 import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
@@ -65,12 +67,18 @@ function projectEarningsEstimatesHeadless(
 ): HeadlessRowsResult {
   const kind = String(args.options.kind ?? "all");
   const limit = Number(args.options.limit ?? 50);
-  const matching = buildEventRows(
+  const all = buildEventRows(
     sources.actions,
     sources.estimates,
     sources.financials,
     sources.currency,
-  ).filter((row) => matchesKind(row, kind));
+  );
+  const matching = all.filter((row) => matchesKind(row, kind));
+  // The figures over the pane's table: the next report with its consensus and the last surprise.
+  const symbol = args.symbols[0] ?? String(args.argument ?? "");
+  const summary = buildEventSummary(all.filter((row) => matchesKind(row, "all")), {
+    today: listingDay(parsePublicTickerKey(symbol).exchange), variant: "earnings-estimates", fund: isFundListing(sources.financials),
+  });
   const rows = matching.slice(0, limit).map((row) => ({ ...row,
     ...(row.status === "Q Est" || row.status === "FY Est" ? {
       epsBasis: row.estimateInputs?.eps?.epsBasis === "gaap" ? "GAAP" : row.estimateInputs?.eps?.epsBasis === "adjusted" ? "adjusted" : "unknown",
@@ -86,6 +94,7 @@ function projectEarningsEstimatesHeadless(
   return {
     columns: ESTIMATE_COLUMNS,
     rows,
+    ...(summary.length ? { textSections: [eventSummarySection(summary)] } : {}),
     errors: errors.length ? errors : undefined,
     metadata: {
       // When Gloom Cloud read the figures (the newer of the earnings rows' and the estimates' reads): the export's as_of.
@@ -98,6 +107,7 @@ function projectEarningsEstimatesHeadless(
       coverageNote: notice?.text,
       epsBasis: `Estimate basis is unknown unless the estimate source explicitly identifies GAAP or adjusted; never assume it matches a reported quarter. ${EPS_BASIS_NOTE} The TTM row's EPS is the GAAP diluted trailing figure ticker shows as EPS (TTM): the last four filed quarters', or Gloom Cloud's TTM (named so) when they give none, or the four statement quarters' diluted EPS when neither is there; reported quarters of different bases are never summed, and the row adds an adjusted sum only when all four quarters are adjusted.`,
       dateNote: "Fiscal period dates are not announcement dates. Revenue is attached only to an identified statement period.",
+      ...(summary.length ? { nextUp: summary } : {}),
       unmatchedReportedPeriods,
     },
   };
