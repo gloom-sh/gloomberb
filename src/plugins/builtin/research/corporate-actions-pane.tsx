@@ -1,4 +1,5 @@
 import { useCompanyDisclosureLinks } from "../company-kpis/related";
+import { useEventData } from "./event-data";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Box, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import {
@@ -18,27 +19,17 @@ import {
 import { fitChartTableColumns } from "../../../components/chart-table";
 import type { DataTableSectionHeader } from "../../../components/ui/data-table/types";
 import type { SecFilingDocument, SecFilingItem } from "../../../types/data-provider";
-import type {
-  AnalystResearchData,
-  CorporateActionsData,
-} from "../../../types/financials";
 import { blendHex, colors } from "../../../theme/colors";
 import { MISSING_VALUE, formatPercent } from "../../../utils/format";
 import { formatFilingDate } from "../../../utils/datetime-format";
 import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery } from "../../../market-data/hooks";
 import { instrumentFromTicker } from "../../../market-data/request-types";
-import { usePaneTicker } from "../../../state/app/context";
 import { mayBeUsEquityTicker } from "../../../utils/sec";
-import { loadAnalystResearch } from "./client";
-import { useAssetData, usePluginAppActions, usePluginPaneState } from "../../runtime";
+import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { useOpenResearchTab } from "../ticker-detail/research-tab-navigation";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
-import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
-import { useBoundTicker as useSymbolBinding, useTickerRequest } from "../shared/ticker-request";
-import { loadEarningsCalendar } from "../earnings/data/cache";
-import { calendarEventOf, listingDay, withResolvedEarnings } from "../shared/earnings-calendar";
 import {
   documentContentKey,
   formatCompactDocumentLabel,
@@ -51,13 +42,9 @@ import {
   useSecFilingContentCache,
 } from "../sec/filing-content";
 import {
-  buildEventRows,
   buildEventSummary,
-  eventSourceNotice,
   formatEventMetric,
-  isFundListing,
   recentDividends,
-  type EventFinancials,
   type EventRow,
   type EventStatus,
 } from "./event-model";
@@ -497,79 +484,11 @@ export function CorporateActionsView({
   footerPaneId?: string;
   variant?: "corporate-actions" | "earnings-estimates";
 }) {
-  const dataProvider = useAssetData();
-  const cloudSession = useResearchCloudSession();
-  const { symbol, ticker, exchange, currency } = useSymbolBinding();
+  const {
+    symbol, ticker, exchange, cloudSession, fund, recordedActions, actionsData, calendarError, today, allRows,
+    sourceNotice, loading, authWall, error, reload, statedExDate,
+  } = useEventData(variant);
   useCompanyDisclosureLinks(symbol);
-  // The shared ticker snapshot already subscribes to financials for this pane.
-  // Only the statements and the trailing EPS are read, so the rows do not rebuild on price ticks.
-  const { financials: tickerFinancials } = usePaneTicker();
-  const quarterlyStatements = tickerFinancials?.quarterlyStatements;
-  const annualStatements = tickerFinancials?.annualStatements;
-  const financialCurrency = tickerFinancials?.financialCurrency;
-  const trailingEps = tickerFinancials?.fundamentals?.eps;
-  const trailingEpsCurrency = tickerFinancials?.fundamentals?.epsCurrency;
-  const trailingEpsSource = tickerFinancials?.fundamentals?.trailingEpsSource;
-  const fundamentalsCurrency = tickerFinancials?.fundamentals?.financialCurrency;
-  const marketCapCurrency = tickerFinancials?.fundamentals?.marketCapCurrency;
-  const quoteCurrency = tickerFinancials?.quote?.currency;
-  // The listing's type, as `fn EVT` reads it: a fund's events are its distributions, never a feed's EPS rows.
-  const quoteType = tickerFinancials?.quote?.instrumentType;
-  const metadataType = tickerFinancials?.quoteMetadata?.instrumentType;
-  const financialsData = useMemo<EventFinancials | null>(
-    () => (quarterlyStatements || financialCurrency || trailingEps != null || quoteType || metadataType ? {
-      quarterlyStatements: quarterlyStatements ?? [],
-      // Their last end names the fiscal quarters (Q1 FY2027), as GUIDE and ERN name them.
-      annualStatements: annualStatements ?? [],
-      financialCurrency,
-      fundamentals: { eps: trailingEps, epsCurrency: trailingEpsCurrency, financialCurrency: fundamentalsCurrency, marketCapCurrency, trailingEpsSource },
-      quote: quoteCurrency || quoteType ? { currency: quoteCurrency ?? "", instrumentType: quoteType } : null,
-      quoteMetadata: metadataType ? { instrumentType: metadataType } : null,
-    } : null),
-    [annualStatements, financialCurrency, fundamentalsCurrency, marketCapCurrency, metadataType, quarterlyStatements, quoteCurrency, quoteType,
-      trailingEps, trailingEpsCurrency, trailingEpsSource],
-  );
-  const fund = isFundListing(financialsData);
-  const actionsLoader = useCallback((nextSymbol: string, nextExchange: string, forceRefresh: boolean) => {
-    if (!dataProvider?.getCorporateActions) throw new Error("Corporate actions source unavailable");
-    return dataProvider.getCorporateActions(nextSymbol, nextExchange, forceRefresh ? { cacheMode: "refresh" } : undefined);
-  }, [dataProvider, cloudSession.requestKey]);
-  const analystLoader = useCallback(async (nextSymbol: string, nextExchange: string, forceRefresh: boolean) => {
-    if (!dataProvider?.getAnalystResearch) return null;
-    return loadAnalystResearch(dataProvider, nextSymbol, nextExchange, forceRefresh ? { cacheMode: "refresh" } : undefined);
-  }, [dataProvider, cloudSession.requestKey]);
-  // The earnings calendar's next report, which the rows are resolved against as `earnings` and ERN read it.
-  const calendarLoader = useCallback((nextSymbol: string, _exchange: string, forceRefresh: boolean) => (
-    loadEarningsCalendar(dataProvider, [nextSymbol], { force: forceRefresh }).then((result) => calendarEventOf(result.events, nextSymbol))
-  ), [dataProvider]);
-  const {
-    data: recordedActions,
-    loading: actionsLoading,
-    error: actionsError,
-    reload: reloadActions,
-  } = useTickerRequest<CorporateActionsData>(actionsLoader, symbol, exchange, ["corporate-actions", cloudSession.requestKey]);
-  const {
-    data: calendarEvent,
-    loading: calendarLoading,
-    error: calendarError,
-    reload: reloadCalendar,
-  } = useTickerRequest(calendarLoader, symbol, exchange, ["corporate-actions-calendar"]);
-  // The listing's own day, as `earnings` reads a report date: SIE:XETRA's has passed once Berlin's day has.
-  const today = listingDay(exchange);
-  const actionsData = useMemo(
-    () => (recordedActions ? withResolvedEarnings(recordedActions, calendarEvent, today) : recordedActions),
-    [calendarEvent, recordedActions, today],
-  );
-  const {
-    data: analystData,
-    loading: analystLoading,
-    error: analystError,
-    reload: reloadAnalyst,
-  } = useTickerRequest<AnalystResearchData | null>(analystLoader, symbol, exchange);
-  const displayCurrency = actionsData?.currency ?? analystData?.currency ?? currency;
-  const allRows = useMemo(() => (
-    buildEventRows(actionsData, analystData, financialsData, displayCurrency)
-  ), [actionsData, analystData, displayCurrency, financialsData]);
   // Newest first, in the model's order, as `fn EVT` prints them: what is ahead
   // (estimates, the next report, a declared dividend) on top, tinted, then the
   // latest event and the older ones under it. Oldest first, a long history
@@ -591,7 +510,6 @@ export function CorporateActionsView({
     || ((row.qRevenue != null || row.annualRevenue != null) && !row.revenueCurrency));
   const columns = useMemo(() => buildEventColumns(width, { eps: epsUnit, revenue: revenueUnit }, variant, fund),
     [width, epsUnit, revenueUnit, variant, fund]);
-  const statedExDate = tickerFinancials?.fundamentals?.exDividendDate;
   const figures = useMemo(() => buildEventSummary(rows, { today, variant, fund, statedExDate, epsUnit, revenueUnit }),
     [epsUnit, fund, revenueUnit, rows, statedExDate, today, variant]);
   const { createPaneFromTemplate } = usePluginAppActions();
@@ -601,19 +519,6 @@ export function CorporateActionsView({
     if (openResearchTab?.("dividend-yield")) return;
     if (symbol) createPaneFromTemplate("dividend-yield-pane", { symbol, symbols: [symbol], ...(ticker ? { ticker } : {}) });
   }, [createPaneFromTemplate, openResearchTab, symbol, ticker]);
-  const sourceNotice = useMemo(() => (
-    actionsLoading || analystLoading
-      ? null
-      : eventSourceNotice({
-        variant,
-        symbol: symbol ?? "this ticker",
-        actions: actionsData,
-        actionsError,
-        // A fund has no analyst estimates to miss.
-        estimates: fund ? null : analystData,
-        estimatesError: fund ? null : analystError,
-      })
-  ), [actionsData, actionsError, actionsLoading, analystData, analystError, analystLoading, fund, symbol, variant]);
   // Keyed by row id, not by position, so a reload or a shared layout comes
   // back to the same event.
   const [selectedKey, setSelectedKey] = usePluginPaneState<string | null>("selectedKey", null);
@@ -633,19 +538,8 @@ export function CorporateActionsView({
   const rowBackground = useCallback((row: EventTableItem) => (
     !isEarlierDividends(row) && row.date > today ? futureRowBackground : undefined
   ), [futureRowBackground, today]);
-  const loading = actionsLoading || analystLoading || (calendarLoading && !!recordedActions);
-  const authWall = !loading && !actionsData && !analystData && (isCloudSessionRequired(actionsError) || isCloudSessionRequired(analystError));
-  // Parallel requests fail with the same message ("No ticker selected"), so the
-  // footer must report each distinct reason once.
-  const error = [...new Set([actionsError, analystError].filter((value): value is string => !!value && !isCloudSessionRequired(value)))]
-    .join(" | ") || null;
   const loadError = error ?? (sourceNotice?.failed ? sourceNotice.text : null)
     ?? (recordedActions && !rows.length ? calendarError : null);
-  const reload = useCallback(() => {
-    reloadActions();
-    reloadAnalyst();
-    reloadCalendar();
-  }, [reloadActions, reloadAnalyst, reloadCalendar]);
   const openRow = openRowId
     ? rows.find((row) => row.id === openRowId) ?? null
     : null;

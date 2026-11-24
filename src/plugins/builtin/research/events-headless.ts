@@ -8,8 +8,11 @@ import type {
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
-import { buildEventRows, buildEventSummary, eventSourceNotice, isFundListing, recentDividends, CORPORATE_ACTION_COVERAGE } from "./event-model";
-import { EVENT_COLUMNS, EVENT_TEXT_COLUMNS, eventSummarySection, loadEventSources } from "./event-sources";
+import { buildEventRows, buildNextUp, eventSourceNotice, formatEventMetric, isFundListing, recentDividends, CORPORATE_ACTION_COVERAGE } from "./event-model";
+import { dividendYearLabel, dividendYears, earningsQuarters } from "./event-charts";
+import { MISSING_VALUE, distributionAmountsDigits, formatPercentRaw } from "../../../utils/format";
+import type { HeadlessBundleSection, HeadlessPaneColumn } from "../../../types/headless";
+import { EVENT_COLUMNS, eventSummarySection, loadEventSources } from "./event-sources";
 import { listingDay } from "../shared/earnings-calendar";
 import { REPORTED_DATA } from "../shared/report-freshness";
 import { EPS_BASIS_NOTE } from "../shared/earnings-report";
@@ -30,6 +33,26 @@ interface EventHeadlessData {
 
 /** The rows drawn from the research served under a symbol (its reports and estimates), not from its own corporate actions. */
 const RESEARCH_EVENTS: ReadonlySet<EventStatus> = new Set(["Earnings", "Q Est", "FY Est", "TTM"]);
+
+/** The Earnings view's table, as the text report prints it: one row per quarter, the next one first. */
+const QUARTER_TEXT_COLUMNS: HeadlessPaneColumn[] = [
+  { key: "date", header: "Date" },
+  { key: "period", header: "Quarter" },
+  { key: "eps", header: "EPS", align: "right" },
+  { key: "estimate", header: "Est", align: "right" },
+  { key: "surprise", header: "Surprise", align: "right" },
+  { key: "revenue", header: "Revenue", align: "right" },
+  { key: "detail", header: "Detail" },
+];
+
+/** The Dividends view's table: one row per year of ex-dates, newest first. */
+const YEAR_TEXT_COLUMNS: HeadlessPaneColumn[] = [
+  { key: "year", header: "Year" },
+  { key: "paid", header: "Paid", align: "right" },
+  { key: "special", header: "Special", align: "right" },
+  { key: "payments", header: "Payments", align: "right" },
+  { key: "change", header: "Change", align: "right" },
+];
 
 export interface EventsHeadlessDependencies {
   load(
@@ -86,15 +109,41 @@ export function createEventsHeadless(
         ? ` ${hidden} later ${hidden === 1 ? "report is" : "reports are"} another listing's (${other}), not shown.` : ""}` : null;
       // The pane's list: the last few years of dividends, the rest DVD's.
       const { earlier, before } = recentDividends(data.actions?.dividends ?? []);
-      const toDvd = earlier > 0 ? `${earlier} earlier ${earlier === 1 ? "dividend" : "dividends"}, ex ${before} and before, are in DVD: gloom fn DVD ${symbol}` : null;
+      const toDvd = earlier > 0 ? `The exports list the dividends of the last three years; every payment is in DVD: gloom fn DVD ${symbol}` : null;
       const notes = [ended, toDvd].filter((note): note is string => !!note);
-      // The figures over the pane's table, under the rows here.
-      const summary = buildEventSummary(own, { today: listingDay(parsePublicTickerKey(symbol).exchange), variant: "corporate-actions",
-        fund: isFundListing(data.financials), statedExDate: data.financials?.fundamentals?.exDividendDate });
+      // As the pane reads: what is next, the quarters of its Earnings view and the years of its Dividends view.
+      // The exports keep every event row.
+      const today = listingDay(parsePublicTickerKey(symbol).exchange);
+      const fund = isFundListing(data.financials);
+      const summary = buildNextUp(own, { today, fund, statedExDate: data.financials?.fundamentals?.exDividendDate });
+      const quarters = fund ? [] : earningsQuarters(own, today);
+      const quarterRows = quarters.map((quarter) => ({
+        date: quarter.date, period: quarter.period,
+        eps: quarter.upcoming ? "" : formatEventMetric(quarter.eps, quarter.epsCurrency, "eps"),
+        estimate: formatEventMetric(quarter.estimate, quarter.epsCurrency, "eps"),
+        surprise: quarter.upcoming ? "" : quarter.surprisePercent != null ? formatPercentRaw(quarter.surprisePercent) : MISSING_VALUE,
+        revenue: quarter.upcoming ? "" : formatEventMetric(quarter.revenue, quarter.revenueCurrency, "revenue"),
+        detail: quarter.detail,
+      }));
+      const years = dividendYears(data.actions?.dividends ?? [], today);
+      const currency = data.actions?.currency ?? data.currency;
+      const digits = Math.min(4, distributionAmountsDigits(years.flatMap((year) => (year.total == null ? [] : [year.total])), currency || "USD"));
+      const yearRows = years.map((year) => ({
+        year: dividendYearLabel(year),
+        paid: year.total == null ? "" : `${year.total.toFixed(digits)}${currency ? ` ${currency}` : ""}`,
+        special: year.special > 0 ? year.special.toFixed(digits) : "",
+        payments: year.payments ? String(year.payments) : "",
+        change: year.change == null ? "" : formatPercentRaw(year.change * 100),
+      }));
+      // The Special column only where the issuer's forms mark one, as the pane shows it.
+      const yearColumns = years.some((year) => year.special > 0) ? YEAR_TEXT_COLUMNS : YEAR_TEXT_COLUMNS.filter((column) => column.key !== "special");
+      const yearSection: HeadlessBundleSection = { title: "Dividends by year", columns: yearColumns, rows: yearRows };
+      const sections = [...(summary.length ? [eventSummarySection(summary)] : []), ...(fund || !yearRows.length ? [] : [yearSection])];
       return {
         rows: own.map((row) => ({ ...row })),
-        textColumns: EVENT_TEXT_COLUMNS,
-        ...(summary.length ? { textSections: [eventSummarySection(summary)] } : {}),
+        textColumns: fund ? yearColumns : QUARTER_TEXT_COLUMNS,
+        textRows: fund ? yearRows : quarterRows,
+        ...(sections.length ? { textSections: sections } : {}),
         ...(notes.length ? { notes } : {}),
         errors: errors.length > 0 ? errors : undefined,
         metadata: { symbol, currency: data.currency, coverage: data.actions?.coverage,

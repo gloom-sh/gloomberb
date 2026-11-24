@@ -585,7 +585,7 @@ export function buildEventRows(
 
 /** One figure of the summary over the events table, in the shape the kit's StatGrid takes. */
 export interface EventSummaryFigure {
-  id: "next-report" | "last-surprise" | "next-ex" | "last-ex";
+  id: "next-report" | "last-surprise" | "next-ex" | "last-ex" | "eps-estimate" | "revenue-estimate" | "next-catalyst";
   label: string;
   value: string;
   detail?: string;
@@ -624,6 +624,102 @@ function detailForms(...forms: Array<Array<string | null | undefined>>): { detai
 }
 
 /**
+ * The next report on the calendar and the quarter it covers: the last
+ * quarter analysts estimate that ends before it, within a report's lag.
+ * Without a dated report, the earliest quarter analysts still estimate.
+ */
+export function nextReportOf(rows: readonly EventRow[], today: string): { report?: EventRow; quarter?: EventRow } {
+  const report = rows
+    .filter((row) => row.status === "Earnings" && row.earningsState === "pending" && row.dateType !== "fiscal-period-end" && row.date >= today)
+    .sort((left, right) => left.date.localeCompare(right.date))[0];
+  const quarters = rows.filter((row) => row.status === "Q Est").sort((left, right) => left.date.localeCompare(right.date));
+  const quarter = report
+    ? quarters.filter((row) => row.date <= report.date && daysFrom(row.date, report.date) <= REPORT_LAG_DAYS).at(-1)
+    : quarters[0];
+  return { ...(report ? { report } : {}), ...(quarter ? { quarter } : {}) };
+}
+
+/** A quarter as the fiscal calendar names it, else by the month it ends in: never by its place from today. */
+export function quarterName(row: EventRow): string {
+  return NAMED_FISCAL_QUARTER.test(row.period) ? row.period : `${quarterLabel(row.date)} qtr`;
+}
+
+/** How far ahead a day is, in words: `today`, `tomorrow`, `in 12 days`. */
+function daysAhead(today: string, day: string): string {
+  const days = Math.round(daysFrom(today, day));
+  return days <= 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`;
+}
+
+export interface NextUpOptions extends Omit<EventSummaryOptions, "variant"> {
+  /** The company's next dated catalyst (a regulatory decision, a court date), when one is on record. */
+  catalyst?: { date: string; label: string } | null;
+}
+
+/**
+ * The Events tab's opening block: what is next, each with how far away it is.
+ * The next report and its consensus EPS and revenue for the quarter it covers,
+ * the next ex-date with its amount (the last one while none is known), and the
+ * next catalyst. A fund has its ex-dates only.
+ */
+export function buildNextUp(rows: readonly EventRow[], options: NextUpOptions): EventSummaryFigure[] {
+  const { today } = options;
+  const figures: EventSummaryFigure[] = [];
+  const date = (day: string) => formatFilingDate(day, day);
+  if (!options.fund) {
+    const { report, quarter } = nextReportOf(rows, today);
+    const period = report && report.period !== MISSING_VALUE ? report.period : quarter ? quarterName(quarter) : undefined;
+    if (report) {
+      const status = report.dateStatus === "projected" ? "projected" : report.dateStatus === "confirmed" ? "confirmed" : null;
+      figures.push({ id: "next-report", label: "Next report", value: date(report.date),
+        ...detailForms([daysAhead(today, report.date), status, period], [daysAhead(today, report.date), status], [daysAhead(today, report.date)]) });
+    } else if (quarter) {
+      figures.push({ id: "next-report", label: "Next report", value: quarterName(quarter), detail: "not dated yet" });
+    }
+    const eps = report?.epsEstimate ?? quarter?.qEps;
+    const epsCurrency = report?.epsEstimate != null ? report.epsCurrency : quarter?.epsCurrency;
+    if (eps != null) {
+      const analysts = report?.epsEstimate != null ? report.epsAnalysts : quarter?.estimateInputs?.eps?.analysts;
+      const growth = quarter?.estimateInputs?.eps?.growth;
+      figures.push({ id: "eps-estimate", label: "EPS est", value: formatEventMetric(eps, epsCurrency, "eps"),
+        ...detailForms(
+          [analysts ? `${analysts} ${analysts === 1 ? "analyst" : "analysts"}` : null, growth != null ? `${formatPercentRaw(growth * 100)} y/y` : null],
+          [growth != null ? `${formatPercentRaw(growth * 100)} y/y` : null],
+        ) });
+    }
+    if (quarter?.qRevenue != null) {
+      const analysts = quarter.estimateInputs?.revenue?.analysts;
+      const growth = quarter.estimateInputs?.revenue?.growth;
+      figures.push({ id: "revenue-estimate", label: "Revenue est", value: formatEventMetric(quarter.qRevenue, quarter.revenueCurrency, "revenue"),
+        ...detailForms(
+          [analysts ? `${analysts} ${analysts === 1 ? "analyst" : "analysts"}` : null, growth != null ? `${formatPercentRaw(growth * 100)} y/y` : null],
+          [growth != null ? `${formatPercentRaw(growth * 100)} y/y` : null],
+        ) });
+    }
+  }
+  const dividends = rows.filter((row) => row.status === "Dividend");
+  const declared = dividends.filter((row) => row.declared && row.date >= today).sort((left, right) => left.date.localeCompare(right.date))[0];
+  const latestPaid = dividends.filter((row) => !row.declared).sort((left, right) => right.date.localeCompare(left.date))[0];
+  const stated = options.statedExDate && /^\d{4}-\d{2}-\d{2}$/.test(options.statedExDate) ? options.statedExDate : undefined;
+  if (declared) {
+    figures.push({ id: "next-ex", label: "Next ex", value: date(declared.date),
+      ...detailForms([declared.value, declared.special ? "special" : null, daysAhead(today, declared.date)], [declared.value, daysAhead(today, declared.date)], [declared.value]) });
+  } else if (stated && stated >= today && (!latestPaid || stated > latestPaid.date)) {
+    figures.push({ id: "next-ex", label: "Next ex", value: date(stated),
+      ...detailForms([daysAhead(today, stated), latestPaid ? `last paid ${latestPaid.value}` : null], [daysAhead(today, stated)]) });
+  } else if (latestPaid) {
+    figures.push({ id: "last-ex", label: "Last ex", value: date(latestPaid.date), detail: latestPaid.value });
+  }
+  if (options.catalyst && !options.fund) {
+    // A source can date a catalyst to its month or year only (a trial's completion): it is said that way.
+    const day = options.catalyst.date;
+    const exact = day.length === 10;
+    figures.push({ id: "next-catalyst", label: "Next catalyst", value: exact ? date(day) : day.length === 7 ? quarterLabel(`${day}-01`) : day,
+      ...detailForms([exact ? daysAhead(today, day) : null, options.catalyst.label], [options.catalyst.label]) });
+  }
+  return figures;
+}
+
+/**
  * What the pane is opened for, over its table: the next report with its
  * consensus, the last surprise, and the next ex-date with its amount (the last
  * one while none is known). The next report is the calendar's, else the
@@ -639,14 +735,7 @@ export function buildEventSummary(rows: readonly EventRow[], options: EventSumma
   const date = (day: string) => formatFilingDate(day, day);
 
   if (!options.fund) {
-    const report = rows
-      .filter((row) => row.status === "Earnings" && row.earningsState === "pending" && row.dateType !== "fiscal-period-end" && row.date >= today)
-      .sort((left, right) => left.date.localeCompare(right.date))[0];
-    const quarters = rows.filter((row) => row.status === "Q Est").sort((left, right) => left.date.localeCompare(right.date));
-    // The quarter the report covers: the last estimated one that ends before it, within a report's lag.
-    const quarter = report
-      ? quarters.filter((row) => row.date <= report.date && daysFrom(row.date, report.date) <= REPORT_LAG_DAYS).at(-1)
-      : quarters[0];
+    const { report, quarter } = nextReportOf(rows, today);
     if (report || quarter) {
       const epsFromReport = report?.epsEstimate != null;
       const eps = epsFromReport ? report!.epsEstimate : quarter?.qEps;
