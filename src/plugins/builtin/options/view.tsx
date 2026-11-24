@@ -767,15 +767,23 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     : resolveCalcSide(calcSide, parsed?.side, selectedRow);
   const selectedReference = optionMarketReference(selectedSide === "put" ? selectedRow?.put
     : selectedSide === "call" ? selectedRow?.call : undefined);
+  // The calculator starts where the chain's IV and Greeks are valued: the same spot (the close a chain from the
+  // close is priced at) and the same instant, so the days to expiry run from the chain's quote time, not from now.
+  const selectedExpiry = (selectedSide === "put" ? selectedRow?.put : selectedRow?.call)?.expiration;
+  const calcValuation = useMemo(() => modelSpot && volatilities ? {
+    time: volatilities.valuationTime, spotLabel: modelSpotStamp(modelSpot),
+    forward: selectedExpiry == null ? null : volatilities.forwards.get(selectedExpiry) ?? null,
+  } : null, [modelSpot, volatilities, selectedExpiry]);
   const calcParams = useMemo(() => buildChainCalcParams({
     symbol: effectiveTicker,
     row: selectedRow,
     side: selectedSide,
-    // On an option ticker the pane quote is the contract's own price, so load
-    // the underlying snapshot rather than silently using the option mark as spot.
-    spot,
+    // On an option ticker the pane quote is the contract's own price, so the
+    // underlying's quote prices it rather than the option mark.
+    spot: greeksSpot,
     dividendYield,
-  }), [dividendYield, effectiveTicker, selectedSide, selectedRow, spot]);
+    valuation: calcValuation,
+  }), [dividendYield, effectiveTicker, selectedSide, selectedRow, greeksSpot, calcValuation]);
 
   const openCalculator = useCallback(() => {
     if (!calcParams) return;
