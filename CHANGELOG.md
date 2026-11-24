@@ -23,7 +23,7 @@ How to edit this file (update it in the release commit):
 - **Import positions from your broker's CSV.** For brokers Gloom does not sync, in the app or the CLI. (0.20.2)
 - **Your tickers at a glance.** A strip shows what moved since your last visit, watchlists take named groups, and the header follows any market. (0.20.3, 0.20.16)
 - **Ask Gloom shows its sources and asks before it acts.** Every figure links to the data behind it, and it asks before it presses a button. (0.20.2, 0.20.4)
-- **Listings and reports read correctly.** Hong Kong reports keep their period and currency, and company or fund names find the home line. (0.20.1, 0.20.2, 0.20.14, 0.20.20)
+- **Listings and reports read correctly.** Hong Kong reports keep their period and currency, company or fund names find the home line, and codes such as `KLSE` open their venue. (0.20.1, 0.20.2, 0.20.14, 0.20.20, 0.20.21)
 
 ## 0.19: Option strategy screens, a deeper EQS, and panes that stack as tabs
 
