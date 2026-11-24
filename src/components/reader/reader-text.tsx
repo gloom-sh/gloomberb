@@ -288,7 +288,6 @@ function ReaderTable({ rows, geometry }: { rows: readonly string[][]; geometry: 
   );
 }
 
-
 /**
  * The reading column for prose a pane sets in the app's own type (a call's
  * transcript and summary, an Ask Gloom answer, a 10-K's risk factors): on the
