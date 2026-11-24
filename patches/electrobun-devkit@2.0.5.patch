@@ -370,10 +370,23 @@ index 807fd20e2..9f8bc899e 100644
  	type?: "normal";
  	label?: string;
 diff --git a/api/sdks/main/proc/native.ts b/api/sdks/main/proc/native.ts
-index 449853c5b..fc1500c52 100644
+index 449853c5b..1a5cee413 100644
 --- a/api/sdks/main/proc/native.ts
 +++ b/api/sdks/main/proc/native.ts
-@@ -1279,6 +1279,19 @@ function createFfiRequestProxy(ffiRequest: Record<string, Function>): Record<str
+@@ -74,9 +74,11 @@ import {
+ 	type Pointer,
+ } from "bun:ffi";
+ import { parseWebviewEventBridgeMessage } from "./eventBridge";
+-import { ffiCStringToString } from "./ffiCString";
++import { ffiCStringToString, toCString } from "./ffiCString";
+ import { rasterizeNativeText } from "./nativeTextBitmap";
+ 
++export { toCString };
++
+ function getElectrobunLibraryPathCandidates(fileName: string) {
+ 	const candidates = new Set<string>();
+ 	candidates.add(join(process.cwd(), fileName));
+@@ -1279,21 +1281,34 @@ function createFfiRequestProxy(ffiRequest: Record<string, Function>): Record<str
  const core_ = core!;
  const native_ = native!;
  
@@ -393,7 +406,26 @@ index 449853c5b..fc1500c52 100644
  type DarwinNativeWrapperSymbols = {
  	wgpuViewSetAlphaBlending: (view: Pointer, enabled: boolean) => void;
  	setWGPUPointerHandler: (handler: Pointer | null) => void;
-@@ -2349,8 +2362,11 @@ const _ffiImpl = {
+ 	setWGPUKeyHandler: (handler: Pointer | null) => void;
+ 	uiMeasureText: (
+-		text: CString,
+-		fontName: CString,
++		text: Uint8Array,
++		fontName: Uint8Array,
+ 		size: number,
+ 		width: Pointer,
+ 		height: Pointer,
+ 		ascent: Pointer,
+ 	) => void;
+ 	uiRasterizeText: (
+-		text: Pointer,
+-		fontName: Pointer,
++		text: Uint8Array,
++		fontName: Uint8Array,
+ 		size: number,
+ 		scale: number,
+ 		width: Pointer,
+@@ -2349,8 +2364,11 @@ const _ffiImpl = {
  		},
  		showContextMenu: (params: { menuConfig: string }): void => {
  			const { menuConfig } = params;
@@ -406,3 +438,137 @@ index 449853c5b..fc1500c52 100644
  		},
  		moveToTrash: (params: { path: string }): boolean => {
  			const { path } = params;
+@@ -2477,7 +2495,7 @@ const _ffiImpl = {
+ 		},
+ 		clipboardWriteImage: (params: { pngData: Uint8Array }): void => {
+ 			const { pngData } = params;
+-			core_.symbols.clipboardWriteImage(ptr(pngData), BigInt(pngData.length));
++			core_.symbols.clipboardWriteImage(pngData, BigInt(pngData.length));
+ 		},
+ 		clipboardClear: (): void => {
+ 			core_.symbols.clipboardClear();
+@@ -2649,7 +2667,13 @@ export const WGPUBridge = {
+ // Worker management. Move to a different file
+ process.on("uncaughtException", (err) => {
+ 	console.error("Uncaught exception in worker:", err);
+-	if (native) {
++	if (core) {
++		// The main thread ends the process once its event loop stops, with the
++		// code a quit left it and 0 otherwise, so stopping the loop here and
++		// calling forceExit(1) after closed the app with 0. The core's quit
++		// leaves it 1, then stops the loop and exits the same way.
++		core_.symbols.quitGracefully(1, 5000);
++	} else if (native) {
+ 		native_.symbols.stopEventLoop();
+ 		native_.symbols.waitForShutdownComplete(5000);
+ 		native_.symbols.forceExit(1);
+@@ -2995,6 +3019,11 @@ const windowKeyCallback = new JSCallback(
+ 	},
+ );
+ 
++// A callback's string is read by native code after the callback returns, so
++// each stays referenced until the next call replaces it.
++let returnedMimeType: Buffer | null = null;
++let returnedHTML: Buffer | null = null;
++
+ const getMimeType = new JSCallback(
+ 	(filePath) => {
+ 		const _filePath = ffiCStringToString(filePath);
+@@ -3004,7 +3033,8 @@ const getMimeType = new JSCallback(
+ 		// otherwise it can break. eg: for html with text/javascript;charset=utf-8 browsers
+ 		// will tend to render the code/text instead of interpreting the html.
+ 
+-		return toCString(mimeType.split(";")[0]!);
++		returnedMimeType = toCString(mimeType.split(";")[0]!);
++		return ptr(returnedMimeType);
+ 	},
+ 	{
+ 		args: [FFIType.cstring],
+@@ -3017,7 +3047,8 @@ const getHTMLForWebviewSync = new JSCallback(
+ 	(webviewId) => {
+ 		const webview = BrowserView.ensureWrapped(webviewId);
+ 
+-		return toCString(webview?.html || "");
++		returnedHTML = toCString(webview?.html || "");
++		return ptr(returnedHTML);
+ 	},
+ 	{
+ 		args: [FFIType.u32],
+@@ -3707,23 +3738,6 @@ const contextMenuHandler = new JSCallback(
+ 	},
+ );
+ 
+-// Note: When passed over FFI JS will GC the buffer/pointer. Make sure to use strdup() or something
+-// on the c side to duplicate the string so objc/c++ gc can own it
+-export function toCString(
+-	jsString: string,
+-	addNullTerminator: boolean = true,
+-): CString {
+-	let appendWith = "";
+-
+-	if (addNullTerminator && !jsString.endsWith("\0")) {
+-		appendWith = "\0";
+-	}
+-	const buff = Buffer.from(jsString + appendWith, "utf8");
+-
+-	// @ts-ignore - This is valid in Bun
+-	return ptr(buff);
+-}
+-
+ type WebviewTagInitParams = {
+ 	url: string | null;
+ 	html: string | null;
+diff --git a/api/sdks/main/proc/ffiCString.ts b/api/sdks/main/proc/ffiCString.ts
+index 9498dc7df..ebcbf9ab6 100644
+--- a/api/sdks/main/proc/ffiCString.ts
++++ b/api/sdks/main/proc/ffiCString.ts
+@@ -1,5 +1,22 @@
+ import { CString, type Pointer } from "bun:ffi";
+ 
++/**
++ * `jsString` as the NUL-terminated UTF-8 bytes a native call takes for a C
++ * string. Pass the buffer itself as the argument, never `ptr()` of it: the
++ * call then holds it until it returns. A pointer is only a number and keeps
++ * nothing alive, so a collection between making it and the call reading it
++ * (the next argument's allocation, a callback into JavaScript) frees the
++ * bytes and the call reads whatever took their place. Native code copies
++ * what it keeps past the call.
++ */
++export function toCString(
++	jsString: string,
++	addNullTerminator: boolean = true,
++): Buffer {
++	const terminator = addNullTerminator && !jsString.endsWith("\0") ? "\0" : "";
++	return Buffer.from(jsString + terminator, "utf8");
++}
++
+ /**
+  * Bun 1.4 decodes `FFIType.cstring` callback arguments to JavaScript strings.
+  * Cottontail and earlier Bun releases expose the same arguments as pointers.
+diff --git a/api/sdks/main/proc/nativeTextBitmap.ts b/api/sdks/main/proc/nativeTextBitmap.ts
+index 3f5ab4a9f..96d308689 100644
+--- a/api/sdks/main/proc/nativeTextBitmap.ts
++++ b/api/sdks/main/proc/nativeTextBitmap.ts
+@@ -2,7 +2,7 @@ import { ptr, toArrayBuffer, type Pointer } from "bun:ffi";
+ 
+ export function rasterizeNativeText(
+ 	symbols: {
+-		rasterizeText: (text: Pointer, font: Pointer, size: number, scale: number, width: Pointer, height: Pointer) => Pointer | null;
++		rasterizeText: (text: Uint8Array, font: Uint8Array, size: number, scale: number, width: Pointer, height: Pointer) => Pointer | null;
+ 		freeTextBitmap: (pixels: Pointer) => void;
+ 	},
+ 	text: string,
+@@ -17,9 +17,11 @@ export function rasterizeNativeText(
+ 	// the earlier width pointer disconnected from the JavaScript view.
+ 	const widthOut = new Int32Array(1);
+ 	const heightOut = new Int32Array(1);
++	// The strings go as buffers, which the call holds until it returns (see
++	// toCString); the output buffers are read afterwards, so they stay alive.
+ 	const pixelsPtr = symbols.rasterizeText(
+-		ptr(textBytes),
+-		ptr(fontBytes),
++		textBytes,
++		fontBytes,
+ 		size,
+ 		scale,
+ 		ptr(widthOut),
