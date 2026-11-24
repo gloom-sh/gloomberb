@@ -183,7 +183,10 @@ function toFeedItems(
   openStories: { accession: string; stories: readonly FilingStory[]; open: (story: FilingStory) => void } | null = null,
 ): FeedDataTableItem[] {
   // A Form 144 names its seller freely; the insider forms read beside it say which way round.
-  const knownOwners = filings.flatMap((filing) => ownerNames(filing.form, contentCache.get(filing.accessionNumber)));
+  const knownOwners = filings.flatMap((filing) => [
+    ...ownerNames(filing.form, contentCache.get(filing.accessionNumber)),
+    ...(filing.form4?.ownerName ? [filing.form4.ownerName] : []),
+  ]);
   return filings.map((filing) => {
     const displayTitle = getFilingDisplayTitle(filing);
     const acceptedAt = secReportedAcceptance(filing);
