@@ -6,6 +6,7 @@ import {
   type CloudCdsResponse,
 } from "../../../api-client";
 import type { CloudCdsHistoryParams } from "../../../api-client/paths";
+import { createTtlCache } from "../../../data/ttl-cache";
 import type { InstrumentSearchResult } from "../../../types/instrument";
 import {
   cdsReferenceEntity,
@@ -87,24 +88,10 @@ function carriesTyped(result: InstrumentSearchResult, typed: string): boolean {
     .some((name) => !!name && coveredIssuerMatch(typed, [name]) != null);
 }
 
-const CDS_LEVELS_CACHE_TTL_MS = 5 * 60_000;
-let cachedCdsLevels: { expiresAt: number; value: CloudCdsLevelsResponse } | null = null;
-let inflightCdsLevels: Promise<CloudCdsLevelsResponse> | null = null;
+const cdsLevelsCache = createTtlCache<CloudCdsLevelsResponse>({ ttlMs: 5 * 60_000 });
 
 function fetchCachedCloudCdsLevels(): Promise<CloudCdsLevelsResponse> {
-  const now = Date.now();
-  if (cachedCdsLevels && cachedCdsLevels.expiresAt > now) return Promise.resolve(cachedCdsLevels.value);
-  if (inflightCdsLevels) return inflightCdsLevels;
-  const request = apiClient.getCloudCdsLevels()
-    .then((value) => {
-      cachedCdsLevels = { value, expiresAt: Date.now() + CDS_LEVELS_CACHE_TTL_MS };
-      return value;
-    })
-    .finally(() => {
-      if (inflightCdsLevels === request) inflightCdsLevels = null;
-    });
-  inflightCdsLevels = request;
-  return request;
+  return cdsLevelsCache.load("levels", () => apiClient.getCloudCdsLevels());
 }
 
 /** The covered issuers' names, from the same request as their levels. */
