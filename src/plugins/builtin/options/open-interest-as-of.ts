@@ -95,3 +95,8 @@ export async function loadListedOpenInterest(
 export function openInterestAsOfLabel(asOf: Pick<OpenInterestAsOf, "date"> | null): string {
   return asOf?.date ? `OI as of ${formatCalendarDay(asOf.date)}` : "OI date not published";
 }
+
+/** `Volume for Mon 23 Nov` (optionQuoteSession), beside the open interest's `OI as of Fri 20 Nov`. */
+export function volumeSessionLabel(date: string): string {
+  return `Volume for ${formatCalendarDay(date)}`;
+}

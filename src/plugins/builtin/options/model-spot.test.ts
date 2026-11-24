@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import type { Quote } from "../../../types/financials";
 import { modelSpotExtendedPrint, modelSpotLabel, modelSpotStamp, observedModelSpot, optionModelSpot } from "./model-spot";
 import { chainOpenInterestAsOf, openInterestAsOfLabel, statedOpenInterestAsOf } from "./open-interest-as-of";
-import { optionQuoteSession } from "./quote-session";
+import { optionQuoteSession } from "../shared/volatility/quote-session";
 
 // KO before Tuesday's open: Monday's chain from the close, a pre-market print, Monday's official close.
 const chainAsOf = "2026-10-12T19:59:59.998Z";

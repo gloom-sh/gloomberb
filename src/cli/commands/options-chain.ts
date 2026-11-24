@@ -11,9 +11,8 @@ import {
   formatModelSpotPrice, modelSpotLabel, optionModelSpot, type OptionModelSpot,
 } from "../../plugins/builtin/options/model-spot";
 import {
-  chainOpenInterestAsOf, loadListedOpenInterest, openInterestAsOfLabel, type OpenInterestAsOf, statedOpenInterestAsOf,
+  chainOpenInterestAsOf, loadListedOpenInterest, openInterestAsOfLabel, type OpenInterestAsOf, statedOpenInterestAsOf, volumeSessionLabel,
 } from "../../plugins/builtin/options/open-interest-as-of";
-import { volumeSessionLabel } from "../../plugins/builtin/options/quote-session";
 import { DEFAULT_OPTION_CALC_DRAFT } from "../../plugins/builtin/options-calculator/model";
 import { expiryIsoDate, OPTION_EXPIRATION_PLACEHOLDER, parseOptionExpiration, settlementStampTime } from "../../utils/option-expiry";
 import { loadModelDividendYield } from "../../market-data/model-dividend-yield";

@@ -1,7 +1,6 @@
-import { getPublishedUsEquitySession } from "../../../market-data/published-us-sessions";
-import type { OptionsChain } from "../../../types/financials";
-import { zonedWallClockToUtcMs } from "../../../utils/zoned-date-time";
-import { formatCalendarDay } from "./model-spot";
+import { getPublishedUsEquitySession } from "../../../../market-data/published-us-sessions";
+import type { OptionsChain } from "../../../../types/financials";
+import { zonedWallClockToUtcMs } from "../../../../utils/zoned-date-time";
 
 const newYorkDate = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
 
@@ -37,11 +36,6 @@ export function optionQuoteSession(chain: Pick<OptionsChain, "asOf" | "venue">, 
     date = previousDate(date);
   }
   return null;
-}
-
-/** `Volume for Mon 23 Nov`, beside the open interest's `OI as of Fri 20 Nov`. */
-export function volumeSessionLabel(date: string): string {
-  return `Volume for ${formatCalendarDay(date)}`;
 }
 
 /** Whether a quote time falls inside a US regular session, when the market, not the hour, set its bids. */

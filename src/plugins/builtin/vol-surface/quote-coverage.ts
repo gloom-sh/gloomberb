@@ -1,5 +1,5 @@
 import { formatCalendarDay } from "../options/model-spot";
-import { optionQuoteSession, quotedInSession } from "../options/quote-session";
+import { optionQuoteSession, quotedInSession } from "../shared/volatility/quote-session";
 import { surfaceFilterSummary, totalSurfaceFilterCounts, type SurfaceSnapshot } from "./model";
 
 export interface SurfaceQuoteCoverage {

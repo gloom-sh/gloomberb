@@ -91,8 +91,8 @@ import {
   formatModelSpotPrice, modelSpotExtendedPrint, modelSpotLabel, modelSpotStamp, modelSpotStampVariants, optionModelSpot,
   type OptionModelSpot,
 } from "./model-spot";
-import { chainOpenInterestAsOf, loadListedOpenInterest, openInterestAsOfLabel, readListedOpenInterest, statedOpenInterestAsOf } from "./open-interest-as-of";
-import { optionQuoteSession, volumeSessionLabel } from "./quote-session";
+import { chainOpenInterestAsOf, loadListedOpenInterest, openInterestAsOfLabel, readListedOpenInterest, statedOpenInterestAsOf, volumeSessionLabel } from "./open-interest-as-of";
+import { optionQuoteSession } from "../shared/volatility/quote-session";
 import { useAsyncResource } from "../../../react/async-resource";
 import {
   ALL_STRIKES,
