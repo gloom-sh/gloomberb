@@ -170,8 +170,8 @@ describe("OVDV --date", () => {
   });
 });
 
-test("outside the options session a chain with nothing fitted says when the surface fills, with IV30 at the last close", async () => {
-  // Sat 26 Sep 2026: the delayed chain carries Friday's quotes, zeroed.
+test("outside the options session a chain with nothing fitted leads with its quotes, then when options reopen, promising no surface", async () => {
+  // Sat 26 Sep 2026: the chain carries Tuesday's quotes, all zero, which the cleaning removes.
   setSystemTime(Date.UTC(2026, 8, 26, 12));
   const zeroed = (expiration: number): OptionsChain => {
     const quoted = chain(expiration);
@@ -180,13 +180,16 @@ test("outside the options session a chain with nothing fitted says when the surf
   };
   const args = createTestHeadlessArgs({ rawArgument: "AAPL", argument: "AAPL", symbols: ["AAPL"],
     options: { tab: "surface", ivSource: "recomputed", priceSide: "mid", axis: "spot", tenors: "listed", limit: 18 } });
-  const result = await volSurfaceHeadless.load(args, createTestHeadlessContext({
+  const load = (dates: string[]) => volSurfaceHeadless.load(args, createTestHeadlessContext({
     marketData: createTestDataProvider({ id: "ovdv-closed", getQuote: async () => createTestQuote({ price: 100, lastUpdated: now }),
       getOptionsChain: async (_symbol, _exchange, expiration) => zeroed(expiration ?? listed[0]!) }),
     apiClient: { getCloudYieldCurve: async () => curve, impliedVolatility: async (path: string) => path.startsWith("surface-dates")
-      ? { version: 1, symbol: "AAPL", dates: ["2026-09-25", "2026-09-24"] }
+      ? { version: 1, symbol: "AAPL", dates }
       : { stats: { iv30: { value: 0.2815, date: "2026-09-25", method: "trade-close" }, iv90: null } } } as unknown as HeadlessPaneApiClient,
-  })) as HeadlessBundleResult;
-  expect(result.notes?.[0]).toBe("Options closed until Mon 13:30 UTC, 09:30 ET. The surface fills at the open. IV30 at the 2026-09-25 close: 28.15%."
-    + " The 2026-09-25 close surface: gloom fn OVDV AAPL --date 2026-09-25.");
+  })) as Promise<HeadlessBundleResult>;
+  const quotes = "Quotes from Tue 22 Sep did not pass cleaning. All 48 contracts across 3 expiries have a zero bid or ask.";
+  expect((await load(["2026-09-25", "2026-09-24"])).notes?.[0]).toBe(`${quotes} Options closed until Mon 13:30 UTC, 09:30 ET.`
+    + " IV30 at the 2026-09-25 close: 28.15%. The 2026-09-25 close surface: gloom fn OVDV AAPL --date 2026-09-25.");
+  expect((await load([])).notes?.[0]).toBe(`${quotes} No stored close for AAPL. Options closed until Mon 13:30 UTC, 09:30 ET.`
+    + " IV30 at the 2026-09-25 close: 28.15%.");
 });

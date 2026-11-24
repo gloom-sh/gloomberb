@@ -120,7 +120,7 @@ import {
   valueChainAtModelSpot,
   type OptionsChainBasis,
 } from "./options-chain";
-import { chainVolumeSession } from "../../plugins/builtin/options/volume-session";
+import { optionQuoteSession } from "../../plugins/builtin/options/quote-session";
 import {
   expirationHint, expiredExpiryText, expiryIsoDate, isLiveOptionExpiry, liveDefaultExpiry, liveOptionExpiries, missingExpiryMessage,
   OPTION_EXPIRATION_FORMAT, OPTION_EXPIRATION_PLACEHOLDER, optionExpiryVenue, withLiveExpiryList,
@@ -4363,7 +4363,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       : valueChainAtModelSpot(loaded, inputs, Date.now(), identity.exchange);
     const basis: OptionsChainBasis = { spot: modelSpot, dividendYield: inputs.dividendYield ?? null,
       openInterest: await loadOptionsChainOpenInterest(symbol, chain), ivFilled: chainHasFilledIv(chain),
-      volumeSession: chainVolumeSession(chain, identity.exchange || undefined) };
+      volumeSession: optionQuoteSession(chain, identity.exchange || undefined) };
     const basisFields = optionsBasisFields(basis);
     const currency = [...chain.calls, ...chain.puts].find((contract) => contract.currency?.trim())?.currency.trim().toUpperCase()
       ?? quote?.currency ?? null;

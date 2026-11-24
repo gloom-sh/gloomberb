@@ -92,7 +92,7 @@ import {
   type OptionModelSpot,
 } from "./model-spot";
 import { chainOpenInterestAsOf, loadListedOpenInterest, openInterestAsOfLabel, readListedOpenInterest, statedOpenInterestAsOf } from "./open-interest-as-of";
-import { chainVolumeSession, volumeSessionLabel } from "./volume-session";
+import { optionQuoteSession, volumeSessionLabel } from "./quote-session";
 import { useAsyncResource } from "../../../react/async-resource";
 import {
   ALL_STRIKES,
@@ -663,7 +663,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   } : null);
   // The volume's session goes where the open interest's date does: before the open, the chain's
   // volume is the last session's, which is not the day the counts are read on.
-  const volumeSession = strikeChain ? chainVolumeSession(strikeChain, effectiveExchange || undefined) : null;
+  const volumeSession = strikeChain ? optionQuoteSession(strikeChain, effectiveExchange || undefined) : null;
   const volumeSessionText = volumeSession ? volumeSessionLabel(volumeSession) : "";
   const volumeSessionShortText = volumeSession ? `Vol ${volumeSession.slice(5)}` : "";
   useRemoteUiNode(volumeSessionText ? {

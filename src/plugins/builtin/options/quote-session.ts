@@ -20,12 +20,12 @@ function previousDate(date: string): string {
 }
 
 /**
- * The US session a listed chain's volume counts, YYYY-MM-DD: the latest one
- * open by the time of its quotes. Read before the open (Tuesday premarket),
- * Monday's last quotes carry Monday's volume, not a Tuesday count. A venue
- * that trades around the clock (Deribit) has no such session: null.
+ * The US session a listed chain's quotes and volume are from, YYYY-MM-DD: the
+ * latest one open by the time of its quotes. Read before the open (Tuesday
+ * premarket), Monday's last quotes carry Monday's volume, not a Tuesday count.
+ * A venue that trades around the clock (Deribit) has no such session: null.
  */
-export function chainVolumeSession(chain: Pick<OptionsChain, "asOf" | "venue">, exchange = "NYSE"): string | null {
+export function optionQuoteSession(chain: Pick<OptionsChain, "asOf" | "venue">, exchange = "NYSE"): string | null {
   if (chain.venue) return null;
   const time = chain.asOf ? Date.parse(chain.asOf) : Number.NaN;
   if (!Number.isFinite(time)) return null;
@@ -42,4 +42,14 @@ export function chainVolumeSession(chain: Pick<OptionsChain, "asOf" | "venue">, 
 /** `Volume for Mon 23 Nov`, beside the open interest's `OI as of Fri 20 Nov`. */
 export function volumeSessionLabel(date: string): string {
   return `Volume for ${formatCalendarDay(date)}`;
+}
+
+/** Whether a quote time falls inside a US regular session, when the market, not the hour, set its bids. */
+export function quotedInSession(asOf: string | null | undefined, exchange = "NYSE"): boolean {
+  const time = asOf ? Date.parse(asOf) : Number.NaN;
+  if (!Number.isFinite(time)) return false;
+  const session = getPublishedUsEquitySession(exchange, newYorkDate.format(time));
+  if (session) return session.kind === "session" && time >= session.open && time <= session.close;
+  const open = sessionOpen(exchange, newYorkDate.format(time));
+  return open != null && time >= open && time <= open + 6.5 * 3_600_000;
 }
