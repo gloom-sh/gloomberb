@@ -10,6 +10,7 @@ import { listingAbroadVenue, nonUsSecListingVenue } from "../../../utils/sec";
 import { compareSortValues, type SortPreference } from "../../../utils/sort-values";
 import { rankTickerMatches } from "../../../utils/ticker-match-order";
 import { closeLabel } from "../themes/model";
+import { WORLD_INDICES } from "../world-indices/indices";
 export type MembersTab = "members" | "movers" | "changes" | "breadth";
 export const TABS = [{ value: "members", label: "Members" }, { value: "movers", label: "Movers" }, { value: "changes", label: "Changes" }, { value: "breadth", label: "Breadth" }];
 export const isTab = (value: unknown): value is MembersTab => TABS.some((tab) => tab.value === value);
@@ -33,6 +34,35 @@ export function notCoveredMessage(input: string, surface: "report" | "pane" = "r
   const message = surface === "pane" ? `Its fund facts are in ETF ${symbol}. MEMB with no fund lists the funds it covers.`
     : `Its fund facts: gloom fn ETF ${symbol}. The covered funds: gloom fn MEMB.`;
   return { title, message };
+}
+/** An index MEMB was asked for: its symbol where known (^GDAXI) and its name (DAX). */
+export interface MemberIndex { symbol: string | null; name: string }
+/** How an index's name compares: capitals, single spaces, no closing "Index" (Hang Seng Index is HANG SENG). */
+const indexNameKey = (text: string) => text.trim().toUpperCase().replace(/\s+/g, " ").replace(/ INDEX$/, "");
+/**
+ * The index an input names, read once no covered fund answers to it: a caret symbol (^GDAXI, ^N225), named as
+ * the world indices name it, or an index's name (HANG SENG, Nikkei 225 Index). A name a ticker could be (DAX,
+ * KOSPI) stays a ticker, so the funds holding that listing are still looked for. Null for anything else.
+ */
+export function memberIndex(input: string): MemberIndex | null {
+  const typed = input.trim();
+  if (!typed || typed.includes(":")) return null;
+  if (typed.startsWith("^")) {
+    const symbol = typed.toUpperCase();
+    return { symbol, name: WORLD_INDICES.find((entry) => entry.symbol.toUpperCase() === symbol)?.name ?? symbol };
+  }
+  if (/^[A-Z][A-Z0-9.-]{0,9}$/i.test(typed)) return null;
+  const entry = WORLD_INDICES.find((item) => item.symbol.startsWith("^") && indexNameKey(item.name) === indexNameKey(typed));
+  return entry ? { symbol: entry.symbol, name: entry.name } : null;
+}
+/**
+ * What MEMB of an index no covered fund stands for reads: that its members are not covered, and where the
+ * covered funds and indexes are listed, as a command for the report and as the function for the pane.
+ */
+export function indexNotCoveredMessage(index: MemberIndex, surface: "report" | "pane" = "report") {
+  const named = index.symbol && index.symbol !== index.name ? `${index.name} (${index.symbol})` : index.name;
+  return { title: `${named} members are not covered.`,
+    message: surface === "pane" ? "MEMB with no fund lists the funds and indexes it covers." : "The covered funds and indexes: gloom fn MEMB." };
 }
 /** "Partial 1D 334/504 · 91.5% wt": how many holdings have a fresh 1D return, and their share of the fund. */
 export function coverageText(aggregate: FundMembersPayload["aggregate"], short = false) {
