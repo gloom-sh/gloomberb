@@ -1,7 +1,6 @@
 import { apiClient } from "../../../api-client";
 import { getSharedMarketDataCoordinator, MarketDataCoordinator, resolveEntryValue } from "../../../market-data/coordinator";
-import { fxLegForCurrency } from "../../../market-data/coordinator/fx-legs";
-import { dailyFxCloses, FxHistoryError, type FxCloses } from "../../../market-data/fx-closes";
+import { dailyFxCloses, dailyFxLeg, FxHistoryError, type FxCloses } from "../../../market-data/fx-closes";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { ManualChartResolution } from "../../../time-series/resolution";
 import type { DataProvider } from "../../../types/data-provider";
@@ -29,7 +28,7 @@ export interface PeBandInputs {
   historyError: string | null;
   /** Report dates for US listings; empty for the rest and when the earnings history is unavailable. */
   reports: ReportDate[];
-  /** Daily FX closes for each currency a dollar-priced listing reports its EPS in. */
+  /** Daily USD legs for the reporting and listing currencies. */
   fx: Map<string, FxCloses>;
   /** Why a currency's FX closes are missing; its EPS then stays unconverted. */
   fxError: string | null;
@@ -62,14 +61,11 @@ async function loadFxCloses(financials: TickerFinancials, client: ReportClient, 
   Promise<{ fx: Map<string, FxCloses>; error: string | null }> {
   const fx = new Map<string, FxCloses>();
   const errors: string[] = [];
-  const rows = [...financials.annualStatements, ...financials.quarterlyStatements];
-  await Promise.all(epsFxCurrencies(financials).map(async (currency) => {
-    const leg = fxLegForCurrency(currency)!;
-    const oldest = rows.filter((row) => row.currency?.trim().toUpperCase() === currency && Number.isFinite(Date.parse(row.date)))
-      .reduce((min, row) => Math.min(min, Date.parse(row.date)), now.getTime());
+  await Promise.all([...epsFxCurrencies(financials, [])].map(async ([currency, since]) => {
+    const leg = dailyFxLeg(currency)!;
     try {
       const response = await client.getCloudHistory(leg.instrument.symbol, leg.instrument.exchange ?? "", {
-        interval: "1day", startDate: new Date(oldest - FX_LEAD_DAYS * 86_400_000).toISOString().slice(0, 10),
+        interval: "1day", startDate: new Date(Date.parse(since) - FX_LEAD_DAYS * 86_400_000).toISOString().slice(0, 10),
         endDate: now.toISOString().slice(0, 10), outputsize: FX_MAX_ROWS,
       }, signal ? { signal } : undefined);
       fx.set(currency, dailyFxCloses(response, leg, now, FX_MAX_ROWS));

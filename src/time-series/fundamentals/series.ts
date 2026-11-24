@@ -4,7 +4,7 @@ import { fiscalYearEndMonth } from "../../utils/fiscal-period";
 import { canonicalTimeSeriesFieldId, getTimeSeriesField } from "../field-catalog";
 import { dailyForwardPeHistory, forwardPeHistory, realizedNtmPeHistory } from "../forward-valuation";
 import { reportingCurrencySeries } from "../reporting-currency";
-import { createValuationCurrencyContext } from "../valuation-currency";
+import { createValuationCurrencyContext, type ValuationCurrencyContext } from "../valuation-currency";
 import { valuationPriceAtOrBefore, valuationQuoteIssue, type ValuationPriceIssue } from "../valuation-price";
 import type { SecuritySeriesSource, TimeSeriesPoint } from "../types";
 import { isBankOrInsurerIndustry } from "../../utils/ebitda";
@@ -24,6 +24,7 @@ const SHARE_PRICE_EARNINGS = new Set(["trailingPE", "forwardPE", "realizedNtmPE"
 export function extractFundamentalSeries(
   financials: TickerFinancials | null,
   source: SecuritySeriesSource,
+  currencyContext?: ValuationCurrencyContext,
 ): TimeSeriesPoint[] {
   if (!financials) return [];
   const canonicalId = canonicalTimeSeriesFieldId(source.fieldId);
@@ -57,24 +58,25 @@ export function extractFundamentalSeries(
   if (SHARE_PRICE_EARNINGS.has(metric) && notTheShare(financials)) return [];
   // A bank's or an insurer's EBITDA measures nothing: its EV/EBITDA is N/M throughout (valuationNotMeaningful).
   if (metric === "evEbitda" && isBankOrInsurerIndustry(financials.profile?.industry)) return [];
+  const currencies = currencyContext ?? createValuationCurrencyContext(financials);
   const fallback = dailyValuationFallbackPeriod(financials, source);
-  if (fallback) return extractFundamentalSeries(financials, { ...source, period: fallback });
+  if (fallback) return extractFundamentalSeries(financials, { ...source, period: fallback }, currencies);
   if (source.period === "daily" && metric !== "realizedNtmPE") {
-    if (metric !== "forwardPE") return dailyStatementValuation(financials, metric, source.instrument.exchange);
-    const points = dailyForwardPeHistory(financials, createValuationCurrencyContext(financials), source.instrument.exchange);
+    if (metric !== "forwardPE") return dailyStatementValuation(financials, metric, source.instrument.exchange, currencies);
+    const points = dailyForwardPeHistory(financials, currencies, source.instrument.exchange);
     if (points.some((point) => point.value !== null)) return points;
     const current = providerCurrentValuationPoint(financials, metric);
     return current ? [current] : [];
   }
   if (metric === "forwardPE") {
-    const points = forwardPeHistory(financials, createValuationCurrencyContext(financials));
+    const points = forwardPeHistory(financials, currencies);
     if (points.length > 0) return points;
     // Without an estimate history the provider's own figure is all there is.
     const current = providerCurrentValuationPoint(financials, metric);
     return current ? [current] : [];
   }
   if (metric === "realizedNtmPE") {
-    return realizedNtmPeHistory(financials, createValuationCurrencyContext(financials));
+    return realizedNtmPeHistory(financials, currencies);
   }
   if (metric === "pegRatio") {
     const current = providerCurrentValuationPoint(financials, metric);
@@ -82,7 +84,6 @@ export function extractFundamentalSeries(
   }
 
   const selected = sourceStatements(financials, source.period, metric);
-  const currencies = createValuationCurrencyContext(financials);
   const yearEndMonth = fiscalYearEndMonth(financials.annualStatements);
   let hasHistoricalObservation = false;
   const historical = selected.statements.flatMap((statement) => {
@@ -138,23 +139,25 @@ export function fundamentalSeriesUsesAvailabilityFallback(
 }
 
 /** Explains withheld currency-dependent values through chart and export metadata. */
-export function valuationCurrencyWarning(financials: TickerFinancials, source: SecuritySeriesSource): string | undefined {
+export function valuationCurrencyWarning(financials: TickerFinancials, source: SecuritySeriesSource,
+  currencies?: ValuationCurrencyContext): string | undefined {
   const [namespace, metric = ""] = canonicalTimeSeriesFieldId(source.fieldId).split(".");
   if (namespace !== "valuation" || !QUOTE_DERIVED_VALUATION_IDS.has(metric)) return undefined;
   const selected = sourceStatements(financials, source.period, metric);
-  return createValuationCurrencyContext(financials).warning(selected.statements.filter((row) => (
+  return (currencies ?? createValuationCurrencyContext(financials)).warning(selected.statements.filter((row) => (
     valuationAtPrice(row, metric, 1) !== null
   )));
 }
 
 /** Structured failures preserve source values independently of the chart's ratios. */
-export function valuationPriceIssues(financials: TickerFinancials, source: SecuritySeriesSource): ValuationPriceIssue[] {
+export function valuationPriceIssues(financials: TickerFinancials, source: SecuritySeriesSource,
+  currencyContext?: ValuationCurrencyContext): ValuationPriceIssue[] {
   if (source.period === "daily" && canonicalTimeSeriesFieldId(source.fieldId).startsWith("valuation.")) {
-    return extractFundamentalSeries(financials, source).flatMap((point) => point.provenance?.valuationPriceIssues ?? []);
+    return extractFundamentalSeries(financials, source, currencyContext).flatMap((point) => point.provenance?.valuationPriceIssues ?? []);
   }
   if (!valuationSeriesUsesLiveQuote(source.fieldId)) return [];
+  const currencies = currencyContext ?? createValuationCurrencyContext(financials);
   const metric = canonicalTimeSeriesFieldId(source.fieldId).split(".")[1]!;
-  const currencies = createValuationCurrencyContext(financials);
   const selected = sourceStatements(financials, source.period, metric);
   const rows = selected.statements.filter((row) => (
     currencies.priceInStatementUnits(row, 1) !== null && valuationAtPrice(row, metric, 1) !== null

@@ -20,6 +20,7 @@ import {
   valuationPriceIssues,
 } from "./fundamentals";
 import { extractSecuritySeries } from "./market";
+import type { ValuationCurrencyContext } from "./valuation-currency";
 import { activeStudyInputSeriesIds } from "./studies/resolve";
 import { reportingCurrencySeries } from "./reporting-currency";
 import { compareChartQuoteRecency } from "./live-quotes";
@@ -184,12 +185,12 @@ export function baseSecuritySeries(
   /** What a futures contract's price counts ("USD / gallon"), from its terms. */
   contractUnit?: string | null,
   /** The bars run into pre-market and after-hours trading. */
-  { extendedHours = false }: { extendedHours?: boolean } = {},
+  { extendedHours = false, currencies }: { extendedHours?: boolean; currencies?: ValuationCurrencyContext } = {},
 ): ResolvedSeries | null {
   if (spec.source.kind !== "security") return null;
   const field = getTimeSeriesField(spec.source.fieldId);
   if (!field) return null;
-  const points = extractSecuritySeries(financials, spec.source);
+  const points = extractSecuritySeries(financials, spec.source, currencies);
   const valuationFallback = dailyValuationFallbackPeriod(financials, spec.source);
   const unreportedPeriod = points.length === 0 ? unreportedStatementPeriod(financials, spec.source) : null;
   const notMeaningful = valuationNotMeaningful(financials, spec.source);
@@ -291,7 +292,7 @@ export function baseSecuritySeries(
     ? barMoveBasisPoints(points.at(-1), display.price - display.change) ?? toBasisPoints(display.change, 1) : undefined;
   const fieldLabel = field.id === "market.volume" && volumeBasis ? INDEX_MEMBERS_VOLUME_LABEL
     : yieldIndex ? field.id === "market.ohlcv" ? "Yield" : `${field.shortLabel} Yield` : field.seriesLabel ?? field.shortLabel;
-  const priceIssues = valuationPriceIssues(financials, spec.source);
+  const priceIssues = valuationPriceIssues(financials, spec.source, currencies);
   // A source with closes only, such as a generic future, has flat bars (open,
   // high and low filled from the close): nothing to draw as candles.
   const closesOnly = marketField && points.length > 1
@@ -313,7 +314,7 @@ export function baseSecuritySeries(
     warning: [valuationFallback ? "Release dates unavailable; showing reported periods." : undefined,
       notMeaningful ? `N/M: ${notMeaningful.reason} (period to ${notMeaningful.asOf}).` : undefined,
       field.id === "market.volume" && !volumeUnit && !volumeBasis && points.some((point) => Number.isFinite(point.value) && point.value !== 0)
-        ? "Volume unit unknown." : statementCurrency?.warning ?? valuationCurrencyWarning(financials, spec.source)].filter(Boolean).join(" ") || undefined,
+        ? "Volume unit unknown." : statementCurrency?.warning ?? valuationCurrencyWarning(financials, spec.source, currencies)].filter(Boolean).join(" ") || undefined,
     nativeFrequency: marketField ? marketSeriesFrequency(spec.source, marketResolution)
       : valuationFallback ?? (spec.source.period && spec.source.period !== "auto" ? spec.source.period : field.nativeFrequency),
     ...(unreportedPeriod ? { unreportedPeriod } : {}),

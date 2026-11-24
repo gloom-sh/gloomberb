@@ -357,6 +357,13 @@ export function latestFinancialPeriodEnd(statements: readonly FinancialTableStat
     .reduce<string | undefined>((max, end) => (end && (!max || end > max) ? end : max), undefined);
 }
 
+export function financialGrowthNotice(period: FinancialPeriod, statements: readonly FinancialStatement[]): string {
+  if (period === "annual") return "Growth: YoY.";
+  return statements.some((statement) => statement.date !== "TTM" && (statementPeriodMonths(statement) ?? 3) > 3)
+    ? "Growth: QoQ; half-year growth is YoY."
+    : "Growth: QoQ.";
+}
+
 export function financialStatementDateNotice(statements: readonly FinancialStatement[]): string {
   const dated = statements.filter(({ date }) => date !== "TTM");
   return [

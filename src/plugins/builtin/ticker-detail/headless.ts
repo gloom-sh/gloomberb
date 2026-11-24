@@ -1,6 +1,6 @@
 import {
   FINANCIAL_VINTAGE_NOTICE, fillDate, filledPeriodPublications, filledPeriodsNote, hasOlderStatements, reportsHalfYearly, stalePeriodNote,
-  statementHistoryNotes, statementPeriodMonths,
+  statementHistoryNotes,
 } from "../../../utils/financial-statements";
 import { canonicalExchange, isUsEquityExchange } from "../../../utils/exchanges";
 import { hasValidQuoteObservationTime } from "../../../market-data/quotes/freshness";
@@ -18,14 +18,14 @@ import {
 } from "../../../utils/price-history-integrity";
 import { indexBarVolume } from "../../../market-data/market/index-level";
 import {
-  buildFinancialTableModel, financialColumnLabel, financialStatementCurrency, financialStatementDateNotice, financialStatementLimitations,
+  buildFinancialTableModel, financialColumnLabel, financialGrowthNotice, financialStatementCurrency, financialStatementDateNotice, financialStatementLimitations,
   financialReportHeader, financialStatementPeriods, financialSubTabFields, formatFinancialAmount, isPerShareFinancialRow, receiptShareCountLabel,
 } from "./financials/model";
 import { fiscalYearEndMonth } from "../../../utils/fiscal-period";
-import type { FinancialStatement } from "../../../types/financials";
 import { adrRatioText } from "../../../utils/depositary-receipt";
 import { paneSchemas } from "./headless-schema";
 import { loadPeriodEndHistory } from "./financials/period-end-history";
+import { createValuationCurrencyContext, loadValuationFx } from "../../../time-series/valuation-currency";
 import { loadExchangeResultsNotes } from "./financials/exchange-results";
 import { boardKey, newYorkToday } from "../earnings/board-model";
 import { fetchEarningsHistory } from "../earnings/client";
@@ -424,8 +424,7 @@ async function loadFinancialReport(symbol: string, options: HeadlessPaneOptionVa
         period: requestedPeriod, growthBasis: requestedPeriod === "quarterly" ? "QoQ" : "YoY", columns: dates,
         shareBasis: shareBases.size === 1 ? [...shareBases][0] ?? null : null,
         ...(receiptPeriods.length > 0 ? { adrRatio: financials.fundamentals?.adrRatio ?? financials.quote?.adrRatio ?? null } : {}),
-        // A quarter's change is against the quarter before it, which a reader of a table of quarters must be told.
-        notices: rows.length ? [FINANCIAL_VINTAGE_NOTICE, ...requestedPeriod === "quarterly" ? [quarterlyGrowthNotice(table?.statements ?? [])] : [],
+        notices: rows.length ? [FINANCIAL_VINTAGE_NOTICE, financialGrowthNotice(requestedPeriod, table?.statements ?? []),
           ...(shareBasisNotice ? [shareBasisNotice] : [])] : [],
         limitations: financialStatementLimitations(financials),
         dateProvenance: financialStatementDateNotice(table?.statements ?? []),
@@ -457,16 +456,6 @@ function dateSourceNotes(columns: ReadonlyArray<{ dateSource: string }>): string
     ...columns.some(({ dateSource }) => dateSource === "sec") ? [SEC_DATE_NOTE] : [],
     ...columns.some(({ dateSource }) => dateSource === "provider") ? [PROVIDER_DATE_NOTE] : [],
   ];
-}
-
-/**
- * What a table of quarters says its growth is measured against; a half filled
- * from a results announcement is measured against the same half a year earlier.
- */
-function quarterlyGrowthNotice(statements: readonly FinancialStatement[]): string {
-  return statements.some((statement) => statement.date !== "TTM" && (statementPeriodMonths(statement) ?? 3) > 3)
-    ? "Growth is vs prior quarter; a half's is vs the same half a year earlier."
-    : "Growth is vs prior quarter.";
 }
 
 type HeadlessContext = Parameters<typeof financialStatementsHeadless.load>[1];
@@ -558,19 +547,23 @@ async function loadRatioReport(
   period: "annual" | "quarterly",
   hasRequestedStatements: boolean,
 ) {
-  const oldest = hasRequestedStatements ? oldestRatioPeriodEnd(ratioStatements(financials, period)) : undefined;
-  const history = oldest && tab.key === "valuation"
-    ? await resolveHeadlessInstrument(ctx, symbol)
+  const statements = hasRequestedStatements && tab.key === "valuation" ? ratioStatements(financials, period) : [];
+  const oldest = oldestRatioPeriodEnd(statements);
+  const [history, fx] = oldest ? await Promise.all([
+    resolveHeadlessInstrument(ctx, symbol)
       .then(({ symbol: bare, exchange }) => loadPeriodEndHistory(ctx.marketData, bare, exchange ?? "", oldest))
-      .catch(logFailure("ticker-detail.headless", "Load valuation price history failed", null))
-    : null;
+      .catch(logFailure("ticker-detail.headless", "Load valuation price history failed", null)),
+    loadValuationFx(createValuationCurrencyContext(financials).fxCurrencies(statements), oldest, ctx.apiClient),
+  ]) : [null, undefined] as const;
+  const currencies = createValuationCurrencyContext(financials, fx);
+  const currencyNotes = tab.key === "valuation" ? [currencies.conversionNote(statements, ratioPeriodEnd), currencies.warning(statements, ratioPeriodEnd)] : [];
   const runway = tab.key === "liquidity" && hasRequestedStatements ? cashRunway(financials) : null;
   const periodEnd = burnsCash(runway) ? runway.periodEnd : null;
   const filings = periodEnd ? await resolveHeadlessInstrument(ctx, symbol)
     .then((listing) => loadRunwayOfferings(ctx.apiClient, listing, periodEnd, ctx.signal))
     .catch(logFailure("ticker-detail.headless", "Reading the offering filings failed", [] as OfferingFiling[])) : [];
   const table = hasRequestedStatements ? ratioTableForFinancials(financials, tab, period, history,
-    periodEnd ? { periodEnd, filings } : undefined) : null;
+    periodEnd ? { periodEnd, filings } : undefined, currencies) : null;
   const statementCurrency = financialStatementCurrency(financials, [
     ...financials.annualStatements, ...financials.quarterlyStatements,
   ]);
@@ -629,6 +622,7 @@ async function loadRatioReport(
     // Each exported row names its unit, the statements' period and the newest period end it runs to.
     rowUnitKey: "unit", rowAsOfKey: "periodEnd", interval: period,
     notes: [
+      ...currencyNotes.filter((note): note is string => !!note),
       ...[stalePeriodNote(dates.map(({ periodEnd }) => ({ date: periodEnd, lead: true })))].filter((note): note is string => !!note),
       ...[filledPeriodsNote(table?.periods.map(({ statement }) => statement) ?? [])].filter((note): note is string => !!note),
       ...offering ? [offering] : [],

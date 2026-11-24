@@ -93,6 +93,7 @@ export interface InstrumentSearchResult {
   /** The company's home line, its common stock on its home exchange (7203 on JPX for Toyota), sent by newer
    * cloud servers. Search lists it before the company's depositary receipts and other lines. Only `true` counts. */
   homeListing?: boolean;
+  preferredNameMatch?: boolean;
   /**
    * The company the line belongs to, as the data service identifies it, sent by newer cloud servers on a bare
    * symbol's own lines: DHL's Xetra and Vienna lines carry one id however each venue names the company. Two lines

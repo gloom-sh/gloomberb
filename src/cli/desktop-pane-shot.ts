@@ -94,6 +94,7 @@ export interface DesktopPaneShotPayload {
   /** Broker accounts as last synced, by profile, so a broker portfolio shows its equity and cash. */
   brokerAccounts?: Record<string, BrokerAccount[]>;
   financials: Array<[string, TickerFinancials]>;
+  valuationFx?: Array<{ currency: string; first: string; asOf: string; closes: Array<[string, number]> }>;
   instrumentFinancials?: SnapshotMarketData["instrumentFinancials"];
   historyVariants?: SnapshotMarketData["historyVariants"];
   intradayHistories: DesktopPaneShotIntradayHistory[];

@@ -5,6 +5,7 @@ import {
 } from "../utils/price-history-integrity";
 import { canonicalTimeSeriesFieldId, isFundamentalFieldId, isMarketFieldId } from "./field-catalog";
 import { extractFundamentalSeries } from "./fundamentals";
+import type { ValuationCurrencyContext } from "./valuation-currency";
 import type { ChartSeriesPriceHistoryIntegrity, ResolvedSeries, SecuritySeriesSource, SeriesPeriod, TimeSeriesPoint } from "./types";
 import type { ManualChartResolution } from "./resolution";
 import { isFiniteNumber } from "../utils/guards";
@@ -184,9 +185,10 @@ export function chartPriceHistoryIntegrityNotices(entries: readonly ChartSeriesP
 export function extractSecuritySeries(
   financials: TickerFinancials | null,
   source: SecuritySeriesSource,
+  currencies?: ValuationCurrencyContext,
 ): TimeSeriesPoint[] {
   if (!financials) return [];
   if (isMarketFieldId(source.fieldId)) return extractPriceSeries(financials.priceHistory, source);
-  if (isFundamentalFieldId(source.fieldId)) return extractFundamentalSeries(financials, source);
+  if (isFundamentalFieldId(source.fieldId)) return extractFundamentalSeries(financials, source, currencies);
   return [];
 }

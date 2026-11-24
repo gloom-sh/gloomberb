@@ -1,7 +1,8 @@
 import type { TickerFinancials } from "../../types/financials";
+import { apiClient } from "../../api-client";
 import type { DesktopPaneShotPayload, DesktopPaneShotRenderResult } from "../desktop-pane-shot";
 import type { ResolvedPaneFunction } from "./resolver";
-import { createValuationCurrencyContext } from "../../time-series/valuation-currency";
+import { createValuationCurrencyContext, loadValuationFx } from "../../time-series/valuation-currency";
 import {
   resolveFinancialPeriod,
   resolveFinancialPeriodOption,
@@ -12,7 +13,9 @@ import {
   findRatioTab,
   formatRatioInput,
   formatRatioValue,
+  oldestRatioPeriodEnd,
   ratioPeriodEnd,
+  ratioStatements,
   ratioTableForFinancials,
   resolveFinancialSectionKey,
   type RatioTabDef,
@@ -49,10 +52,21 @@ export function shotFinancialPeriod(resolved: ResolvedPaneFunction, financials: 
 
 interface RatioShot {
   symbol: string;
-  financials: TickerFinancials;
   tab: RatioTabDef;
   period: FinancialPeriod;
   model: RatioTableModel;
+  currencies: ReturnType<typeof createValuationCurrencyContext>;
+}
+
+export async function loadShotValuationFx(resolved: ResolvedPaneFunction, financials?: TickerFinancials): Promise<DesktopPaneShotPayload["valuationFx"]> {
+  if (!financials || shotRatioTab(resolved)?.key !== "valuation") return;
+  const statements = ratioStatements(financials, shotFinancialPeriod(resolved, financials));
+  const since = oldestRatioPeriodEnd(statements);
+  if (!since) return;
+  const codes = createValuationCurrencyContext(financials).fxCurrencies(statements);
+  if (!codes.length) return;
+  const fx = await loadValuationFx(codes, since, apiClient);
+  return [...fx.values()].map((series) => ({ ...series, closes: [...series.closes] }));
 }
 
 /** The table the page computes from the captured data, with every ratio expanded. */
@@ -64,7 +78,9 @@ function ratioShot(resolved: ResolvedPaneFunction, payload: DesktopPaneShotPaylo
   // The page answers Valuation's daily request only from a daily capture.
   const history = tab.key === "valuation" && financials.priceHistoryResolution === PERIOD_END_HISTORY_RESOLUTION
     ? financials.priceHistory : null;
-  return { symbol, financials, tab, period, model: ratioTableForFinancials(financials, tab, period, history) };
+  const fx = new Map(payload.valuationFx?.map((series) => [series.currency, { ...series, closes: new Map(series.closes) }]));
+  const currencies = createValuationCurrencyContext(financials, fx);
+  return { symbol, tab, period, currencies, model: ratioTableForFinancials(financials, tab, period, history, undefined, currencies) };
 }
 
 const hasRatio = ({ model }: RatioShot, index: number) => model.ratios.some((def) => (
@@ -77,9 +93,8 @@ export function financialRatioShotGap(resolved: ResolvedPaneFunction, payload: D
   if (!shot) return null;
   if (shot.tab.key === "valuation") {
     const unpriced = shot.model.periods.flatMap(({ statement, price }) => typeof price === "number" ? [] : [statement]);
-    // A close in another currency than the statements prices nothing; the pane's footer says so.
     if (unpriced.length) {
-      return createValuationCurrencyContext(shot.financials).warning(unpriced)
+      return shot.currencies.warning(unpriced, ratioPeriodEnd)
         ?? `Valuation has no period-end close for ${unpriced.map(ratioPeriodEnd).join(", ")}, so those columns read "no price".`;
     }
   }

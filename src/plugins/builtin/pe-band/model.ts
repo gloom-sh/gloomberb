@@ -1,6 +1,5 @@
-import { fxLegForCurrency } from "../../../market-data/coordinator/fx-legs";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
-import { fxCloseOnOrBefore, type FxCloses } from "../../../market-data/fx-closes";
+import { crossFxCloseOnOrBefore, dailyFxLeg, type FxCloses } from "../../../market-data/fx-closes";
 import { knownWhenFiled } from "../../../time-series/fundamentals";
 import { STALE_TRAILING_EPS_MS, trailingEpsSteps as sharedTrailingEpsSteps, type EpsStep } from "../../../time-series/filed-trailing-eps";
 import { createValuationCurrencyContext } from "../../../time-series/valuation-currency";
@@ -39,17 +38,17 @@ export interface PeBandRow extends EpsStep {
   fx: FxClose | null;
 }
 
-/** One completed daily FX close: USD per unit of the statement currency. */
+/** Price currency per unit of the reporting currency. */
 interface FxClose {
   date: string;
   rate: number;
 }
 
-/** EPS reported in another currency than a dollar price, converted at daily FX closes. */
+/** EPS converted from the reporting currency at the period's daily FX close. */
 interface EpsConversion {
   /** The statement currency of today's EPS. */
   currency: string;
-  /** The latest completed close, which converts today's EPS. */
+  /** The rate that converts the trailing EPS currently in force. */
   latest: FxClose;
 }
 
@@ -86,7 +85,7 @@ export interface PeBandModel {
   undated: number;
   /** Trailing sums in the window that are unavailable (a quarter's EPS is withheld or not reported). */
   unavailable: number;
-  /** Set when today's EPS is in another currency than the dollar price. */
+  /** Set when current EPS was converted to the listing currency. */
   conversion: EpsConversion | null;
   /** Blocks the pane: nothing can be priced. */
   error: string | null;
@@ -116,35 +115,22 @@ export function perShareDigits(value: number): number {
 
 export const formatPerShare = (value: number) => value.toFixed(perShareDigits(value));
 
-/**
- * A rate in the pair's market convention: "USD/TWD 31.99" (Taiwan dollars per
- * dollar) or "EUR/USD 1.17" (dollars per euro), from USD per unit.
- */
-export function fxPairQuote(currency: string, usdPerUnit: number): { pair: string; value: number } {
-  const perDollar = fxLegForCurrency(currency)?.invert ?? true;
-  return perDollar ? { pair: `USD/${currency}`, value: 1 / usdPerUnit } : { pair: `${currency}/USD`, value: usdPerUnit };
+export function formatEpsFx(from: string, to: string, rate: number): string {
+  return `${resolveCurrencyUnit(from).currency}/${resolveCurrencyUnit(to).currency} ${rate.toPrecision(5)}`;
 }
 
-/** The statement unit of an EPS currency when it is a whole currency other than USD with a daily pair, else null. */
-function fxCurrency(code: string | null | undefined): string | null {
-  const unit = resolveCurrencyUnit(code);
-  return unit.divisor === 1 && unit.currency !== "USD" && fxLegForCurrency(unit.currency) ? unit.currency : null;
-}
-
-const isDollarPrice = (currency: string | null | undefined) => {
-  const unit = resolveCurrencyUnit(currency);
-  return unit.currency === "USD" && unit.divisor === 1;
-};
-
-/**
- * The currencies whose daily FX closes a dollar-priced listing needs: those
- * its EPS is reported in, other than USD. Rows without a declared currency
- * are never converted.
- */
-export function epsFxCurrencies(financials: TickerFinancials): string[] {
-  if (!isDollarPrice(financials.quote?.currency)) return [];
-  const rows = [...financials.annualStatements, ...financials.quarterlyStatements].filter((row) => typeof row.eps === "number");
-  return [...new Set(rows.flatMap((row) => fxCurrency(row.currency?.trim()) ?? []))];
+export function epsFxCurrencies(financials: TickerFinancials, reports: readonly ReportDate[]): Map<string, string> {
+  const target = resolveCurrencyUnit(financials.quote?.currency).currency;
+  const starts = new Map<string, string>();
+  if (target !== "USD" && !dailyFxLeg(target)) return starts;
+  for (const step of trailingEpsSteps(financials, reports)) {
+    const source = resolveCurrencyUnit(step.currency).currency;
+    if (step.eps == null || source === target || (source !== "USD" && !dailyFxLeg(source))) continue;
+    for (const currency of [source, target]) {
+      if (currency !== "USD" && (!starts.has(currency) || step.periodEnd < starts.get(currency)!)) starts.set(currency, step.periodEnd);
+    }
+  }
+  return starts;
 }
 
 function quantile(sorted: readonly number[], q: number): number {
@@ -241,7 +227,7 @@ export function projectPeBand(
   history: readonly PricePoint[],
   options: {
     symbol: string; lookbackYears: number; now?: number; reports?: readonly ReportDate[];
-    /** Daily FX closes by statement currency, for a dollar price against EPS in another currency. */
+    /** Daily FX closes by currency, quoted in USD per unit. */
     fx?: ReadonlyMap<string, FxCloses>;
     /** Why a needed FX history is missing, said when it leaves today's EPS unconverted. */
     fxError?: string | null;
@@ -265,26 +251,20 @@ export function projectPeBand(
     const factor = units.priceInStatementUnits({ date: step.periodEnd, currency: step.currency ?? undefined }, 1);
     return factor ? 1 / factor : null;
   };
-  // ADRs report in one currency and trade in dollars: their EPS converts at a daily FX close.
-  const fxFor = (step: EpsStep) => {
-    const code = isDollarPrice(currency) ? fxCurrency(step.currency) : null;
-    return code ? options.fx?.get(code) ?? null : null;
-  };
-  if (unitScale(latest) == null && !fxFor(latest)) {
-    const fxCode = isDollarPrice(currency) ? fxCurrency(latest.currency) : null;
-    return { ...empty, error: !currency || !latest.currency ? "The price or EPS currency is unknown."
-      : `EPS is reported in ${latest.currency} and the price is in ${currency}${fxCode && options.fxError ? `; ${options.fxError}` : ""}.` };
-  }
-  /** The EPS in price units on `date` (YYYY-MM-DD), with the FX close used when it was converted. */
-  const priced = (step: EpsStep | null, date: string): { eps: number; fx: FxClose | null } | null => {
+  const quoteUnit = resolveCurrencyUnit(currency);
+  const priced = (step: EpsStep | null): { eps: number; fx: FxClose | null } | null => {
     if (step?.eps == null) return null;
     const factor = unitScale(step);
     if (factor != null) return { eps: step.eps * factor, fx: null };
-    const history = fxFor(step);
-    const close = history ? fxCloseOnOrBefore(history, date) : null;
-    return close ? { eps: step.eps * close.rate, fx: close } : null;
+    const source = resolveCurrencyUnit(step.currency);
+    const close = options.fx && crossFxCloseOnOrBefore(options.fx, source.currency, quoteUnit.currency, step.periodEnd);
+    return close ? { eps: step.eps / source.divisor * close.rate * quoteUnit.divisor, fx: close } : null;
   };
-  const day = (time: Date | number) => new Date(time).toISOString().slice(0, 10);
+  const pricedSteps = new Map(allSteps.map((step) => [step, priced(step)]));
+  if (!pricedSteps.get(latest) && !allSteps.some((step) => pricedSteps.get(step))) {
+    return { ...empty, error: !currency || !latest.currency ? "The price or EPS currency is unknown."
+      : `EPS is reported in ${latest.currency} and the price is in ${currency}; ${options.fxError ?? `no FX close for ${latest.periodEnd}`}.` };
+  }
 
   const now = options.now ?? Date.now();
   const firstKnown = allSteps.find((step) => step.eps != null)!.knownAt.getTime();
@@ -294,9 +274,8 @@ export function projectPeBand(
   const dailyStart = daily[0]?.date.getTime() ?? Number.POSITIVE_INFINITY;
   /** A close as the chart reads it: with the EPS in force on its day, and the P/E they make. */
   const reading = (point: { date: Date; close: number }): PeBandWeek => {
-    // Converted at the FX close of the bar's date, the same date that picks the EPS in force, so each week's multiple
-    // moves with the price and the currency together rather than with the rate of an old publication date.
-    const eps = priced(stepAt(allSteps, point.date.getTime()), day(point.date))?.eps ?? null;
+    const step = stepAt(allSteps, point.date.getTime());
+    const eps = step ? pricedSteps.get(step)?.eps ?? null : null;
     const positive = eps != null && eps > 0 ? eps : null;
     return { date: point.date, close: point.close, eps: positive, pe: positive ? point.close / positive : null };
   };
@@ -308,8 +287,7 @@ export function projectPeBand(
   const rows = steps.filter((step) => step.eps != null).map((step): PeBandRow => {
     const time = step.knownAt.getTime();
     const price = (dayClose(time) ?? sorted.findLast((point) => point.date.getTime() <= time))?.close ?? null;
-    // Converted at the FX close of the day it became known.
-    const converted = priced(step, day(step.knownAt));
+    const converted = pricedSteps.get(step);
     const eps = converted?.eps ?? null;
     const prior = allSteps.find((other) => other.eps != null && other.currency === step.currency
       && Math.abs(Date.parse(step.periodEnd) - Date.parse(other.periodEnd) - 365 * DAY_MS) <= 20 * DAY_MS);
@@ -325,9 +303,9 @@ export function projectPeBand(
   // Today's figure reads like every week's: one whose newest quarter has no EPS keeps the last figure, dated in the
   // table, where the headline EPS (TTM) needs that quarter's own (filed-trailing-eps) and shows Gloom Cloud's, labelled.
   const currentStep = stepAt(allSteps, now);
-  // Today's EPS at the latest completed FX close.
-  const currentEps = priced(currentStep, day(now))?.eps ?? null;
-  const latestFx = unitScale(latest) == null ? fxFor(latest) : null;
+  const currentConversion = currentStep ? pricedSteps.get(currentStep) : null;
+  const currentEps = currentConversion?.eps ?? null;
+  const latestFx = currentConversion?.fx;
   const currentPe = price != null && currentEps != null && currentEps > 0 ? price / currentEps : null;
   const multiples = chooseMultiples(pes, currentPe);
   const above = currentPe == null ? undefined : multiples.find((multiple) => multiple >= currentPe);
@@ -341,7 +319,7 @@ export function projectPeBand(
   const points = [...byTime.values()].sort((a, b) => a.date.getTime() - b.date.getTime());
   return {
     ...empty, weeks, points, rows, multiples,
-    conversion: latestFx ? { currency: latestFx.currency, latest: fxCloseOnOrBefore(latestFx, day(now))! } : null,
+    conversion: latestFx && currentStep?.currency ? { currency: currentStep.currency, latest: latestFx } : null,
     sample: ranked.length ? { start: ranked[0]!.date, weeks: ranked.length } : null,
     bandCeiling: highestClose > 0 ? Math.max(highestClose * 1.5, above != null && currentEps != null ? above * currentEps : 0) : null,
     current: price == null ? null : { price, eps: currentEps, pe: currentPe, step: currentStep,
@@ -349,6 +327,7 @@ export function projectPeBand(
     range: ordered.length ? { min: ordered[0]!, median: quantile(ordered, 0.5), max: ordered.at(-1)! } : null,
     undated: steps.filter((step) => !step.dated && step.eps != null).length,
     unavailable: steps.filter((step) => step.eps == null).length,
-    notice: pes.length ? null : "Trailing EPS was not positive in this window, so there is no P/E band.",
+    notice: currentStep && !currentConversion ? options.fxError ?? `No FX close for ${currentStep.periodEnd}.`
+      : pes.length ? null : "Trailing EPS was not positive in this window, so there is no P/E band.",
   };
 }

@@ -292,7 +292,7 @@ test("a quarterly report says its growth is vs prior quarter, and a share count 
     priceHistory: [],
   };
   const { result, text } = await statementsReport("quarterly", financials);
-  expect(text).toContain("Growth is vs prior quarter.");
+  expect(text).toContain("Growth: QoQ.");
   const shares = row(result, "dilutedShares:1").cells;
   expect(shares.map((cell) => cell.value)).toEqual([4.96e9, null, null, 4.67e9]);
   // No fall of 100% into a missing count, and no rise out of one.

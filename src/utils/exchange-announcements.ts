@@ -31,6 +31,7 @@ const PAGES: Readonly<Record<string, (code: string) => ExchangeAnnouncementsPage
   FWB2: () => PAGES.XETRA!(""),
   JPX: () => ({ name: "TDnet timely disclosures", url: "https://www.release.tdnet.info/inbs/I_main_00.html" }),
   HKEX: () => ({ name: "HKEXnews", url: "https://www1.hkexnews.hk/search/titlesearch.xhtml?lang=en" }),
+  SWX: () => ({ name: "SIX Swiss Exchange", url: "https://www.six-group.com/en/market-data/news-tools/equity-issuer-news.html" }),
   KRX: () => ({ name: "DART filings", url: "https://dart.fss.or.kr/" }),
   KOSDAQ: () => PAGES.KRX!(""),
   TWSE: () => ({ name: "MOPS filings", url: "https://mops.twse.com.tw/mops/web/index" }),
@@ -61,7 +62,7 @@ function exchangeAnnouncementsPage(symbol: string, exchange: string | null | und
  */
 export function exchangeAnnouncementsPublisher(exchange: string | null | undefined): string | null {
   const venue = canonicalExchange(exchange ?? "");
-  return venue === "ASX" || venue === "CXA" ? "ASX" : venue === "HKEX" ? "HKEXnews" : null;
+  return venue === "ASX" || venue === "CXA" ? "ASX" : venue === "HKEX" ? "HKEXnews" : venue === "SWX" ? "SIX Swiss Exchange" : null;
 }
 
 /** Whether Gloom Cloud lists the company's announcements on this venue (ASX, HKEX). */

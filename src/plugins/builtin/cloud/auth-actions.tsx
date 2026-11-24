@@ -130,17 +130,19 @@ export interface SignInWallProps {
   action: string;
   /** The session exists but the address is unconfirmed, so signing in again solves nothing. */
   needsVerification?: boolean;
+  pro?: boolean;
   /** One line for anything the pane still has to explain; most panes need none. */
   hint?: string;
 }
 
 /** The account wall for a pane body that cannot render until the account is right. */
-export function SignInWall({ placement, action, needsVerification = false, hint, width = 0, height = 0, symbol, exchange }: SignInWallProps) {
+export function SignInWall({ placement, action, needsVerification = false, pro = false, hint, width = 0, height = 0, symbol, exchange }: SignInWallProps) {
   const { openCommandBar } = usePluginAppActions();
   const { nativePaneChrome } = useUiCapabilities();
   const title = needsVerification
     ? tf("Verify your email to {action}.", { action: t(action) })
-    : tf("Sign in to {action}.", { action: t(action) });
+    : pro ? tf("Gloom Cloud Pro: Sign in to {action}.", { action: t(action) })
+      : tf("Sign in to {action}.", { action: t(action) });
   const authenticate = (mode: AccountMode) => {
     recordWallCtaClicked(placement, mode);
     openAuth(openCommandBar, mode);
