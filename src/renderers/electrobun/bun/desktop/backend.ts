@@ -8,6 +8,8 @@ import {
   type AppSessionSnapshot,
 } from "../../../../core/state/session-persistence";
 import { withoutExcludedAccountPortfolios } from "../../../../brokers/broker-portfolio-sync";
+import { assertKeepsAnAccount } from "../../../../brokers/account-choice";
+import { peekPersistedBrokerAccounts } from "../../../../brokers/account-cache";
 import { saveConfig, watchExternalConfigChanges } from "../../../../data/config/store";
 import { pluginAutoUpdateEnabled } from "../../../../plugins/auto-update";
 import { startNodePluginAutoUpdates } from "../../../../plugins/auto-update-node";
@@ -712,6 +714,12 @@ export class DesktopBackend {
       getLayout: () => this.config!.layout,
       updateBrokerInstance: async (instanceId, values, options = {}) => {
         const config = this.requireConfig();
+        const current = config.brokerInstances.find((instance) => instance.id === instanceId);
+        if (current && options.excludedAccounts) {
+          // The accounts the profile shows now, as its last sync saved them.
+          const shown = peekPersistedBrokerAccounts(services.pluginRegistry.persistence.resources, current) ?? [];
+          assertKeepsAnAccount(current, shown, options.excludedAccounts);
+        }
         let found = false;
         const brokerInstances = config.brokerInstances.map((instance) => {
           if (instance.id !== instanceId) return instance;

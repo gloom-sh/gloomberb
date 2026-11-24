@@ -5,7 +5,13 @@ import {
   validateBrokerProfileValues,
   type BrokerProfileDraft,
 } from "../../../brokers/profile-form";
-import { excludedAccountsFrom, sameExcludedAccounts, type ProfileAccountChoice } from "../../../brokers/account-choice";
+import {
+  excludedAccountsFrom,
+  keepOneAccountMessage,
+  leavesNoAccount,
+  sameExcludedAccounts,
+  type AccountInclusion,
+} from "../../../brokers/account-choice";
 import { brokerProfileRemovalConfirm, removeBrokerProfile } from "../../../brokers/remove-profile";
 import { signedInBrokerForProfile } from "../../../brokers/signed-in/connect";
 import { isSignedInBrokerProfile } from "../../../brokers/signed-in/profile";
@@ -79,7 +85,7 @@ export function useBrokerManagerActions({
   rows: readonly BrokerProfileRow[];
   selectedRow: BrokerProfileRow | null;
   /** The selected profile's accounts to keep or leave out, which the edit form ticks. */
-  accountChoices: readonly ProfileAccountChoice[];
+  accountChoices: readonly AccountInclusion[];
   editDraft: BrokerProfileDraft | null;
   setEditDraft: Dispatch<SetStateAction<BrokerProfileDraft | null>>;
   setActiveEditKey: Dispatch<SetStateAction<BrokerEditKey>>;
@@ -154,8 +160,8 @@ export function useBrokerManagerActions({
     }
     const excludedAccounts = excludedAccountsFrom(accountChoices, new Set(editDraft.excludedAccountIds));
     const accountsChanged = !sameExcludedAccounts(selectedRow.instance.excludedAccounts, excludedAccounts);
-    if (accountsChanged && accountChoices.length > 0 && excludedAccounts.length === accountChoices.length) {
-      setEditError(t("Keep at least one account, or disable the profile."));
+    if (leavesNoAccount(selectedRow.instance, accountChoices, excludedAccounts)) {
+      setEditError(keepOneAccountMessage());
       return;
     }
     setEditError(null);

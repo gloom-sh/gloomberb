@@ -5,6 +5,7 @@
  */
 import type { BrokerExcludedAccount, BrokerInstanceConfig } from "../types/config";
 import { isRecord } from "../utils/guards";
+import { t } from "../i18n";
 
 type AccountChoiceSource = Pick<BrokerInstanceConfig, "excludedAccounts">;
 
@@ -26,7 +27,7 @@ export function includedBrokerAccounts<T extends { accountId: string }>(instance
 }
 
 /** One of a profile's accounts as Brokers offers it to keep or leave out. */
-export interface ProfileAccountChoice {
+export interface AccountInclusion {
   accountId: string;
   name: string;
   included: boolean;
@@ -40,9 +41,9 @@ export interface ProfileAccountChoice {
 export function profileAccountChoices(
   instance: AccountChoiceSource,
   reported: ReadonlyArray<{ accountId: string; name?: string }>,
-): ProfileAccountChoice[] {
+): AccountInclusion[] {
   const excluded = excludedAccountIds(instance);
-  const choices: ProfileAccountChoice[] = reported
+  const choices: AccountInclusion[] = reported
     .filter((account) => !excluded.has(account.accountId))
     .map((account) => ({ accountId: account.accountId, name: account.name?.trim() || account.accountId, included: true }));
   const listed = new Set(choices.map((choice) => choice.accountId));
@@ -56,7 +57,7 @@ export function profileAccountChoices(
 
 /** The accounts left out once `excludedIds` are the ones unticked among `choices`, by the names they show. */
 export function excludedAccountsFrom(
-  choices: readonly ProfileAccountChoice[],
+  choices: readonly AccountInclusion[],
   excludedIds: ReadonlySet<string>,
 ): BrokerExcludedAccount[] {
   return choices.flatMap((choice) => excludedIds.has(choice.accountId) ? [{ accountId: choice.accountId, name: choice.name }] : []);
@@ -69,6 +70,38 @@ export function sameExcludedAccounts(
 ): boolean {
   const ids = (list: readonly BrokerExcludedAccount[] | undefined) => [...new Set((list ?? []).map((entry) => entry.accountId))].sort();
   return ids(left).join("\0") === ids(right).join("\0");
+}
+
+/**
+ * Whether `excluded` leaves the profile no account Gloom shows: every account it is known to have,
+ * those `known` (as its last sync reported them, or as Brokers lists them) and those already left
+ * out, is in it. The list the profile already has is never refused, so an edit of anything else
+ * saves; nor is one for a profile whose accounts are not known yet.
+ */
+export function leavesNoAccount(
+  instance: AccountChoiceSource,
+  known: ReadonlyArray<{ accountId: string }>,
+  excluded: readonly BrokerExcludedAccount[],
+): boolean {
+  if (excluded.length === 0 || sameExcludedAccounts(instance.excludedAccounts, excluded)) return false;
+  const accountIds = new Set([...known.map((account) => account.accountId), ...excludedAccountIds(instance)]);
+  if (accountIds.size === 0) return false;
+  const left = new Set(excluded.map((entry) => entry.accountId));
+  return [...accountIds].every((accountId) => left.has(accountId));
+}
+
+/** Why a choice that leaves the profile no account is refused, wherever it is made. */
+export function keepOneAccountMessage(): string {
+  return t("Keep at least one account, or disable the profile.");
+}
+
+/** Refuses, below any form, a choice that leaves the profile no account (`leavesNoAccount`). */
+export function assertKeepsAnAccount(
+  instance: AccountChoiceSource,
+  known: ReadonlyArray<{ accountId: string }>,
+  excluded: readonly BrokerExcludedAccount[],
+): void {
+  if (leavesNoAccount(instance, known, excluded)) throw new Error(keepOneAccountMessage());
 }
 
 /**
