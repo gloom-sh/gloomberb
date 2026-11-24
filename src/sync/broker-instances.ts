@@ -1,10 +1,29 @@
 import type { AppConfig, BrokerExcludedAccount, BrokerInstanceConfig } from "../types/config";
 import type { Portfolio, TickerRecord } from "../types/ticker";
 import { isRecord } from "../utils/guards";
-import { readExcludedAccounts } from "../brokers/account-choice";
+import { readExcludedAccounts, sameExcludedAccounts } from "../brokers/account-choice";
 
 function withExcludedAccounts(excludedAccounts: BrokerExcludedAccount[] | undefined): Pick<BrokerInstanceConfig, "excludedAccounts"> {
   return excludedAccounts ? { excludedAccounts } : {};
+}
+
+/**
+ * A profile's left-out accounts once a pull meets this device's, with `synced` the list this device
+ * last synced for it. A device that predates the choice sends none, which changes nothing here;
+ * only a list does, an empty one taking every account back. A pulled list replaces one this device
+ * has not changed since it last synced; one changed here stays, like any edit made here.
+ */
+function mergedExcludedAccounts(
+  local: BrokerExcludedAccount[] | undefined,
+  pulled: unknown,
+  synced: unknown,
+): BrokerExcludedAccount[] | undefined {
+  const incoming = readExcludedAccounts(pulled);
+  if (!incoming) return local;
+  if (!local || sameExcludedAccounts(local, readExcludedAccounts(synced))) {
+    return sameExcludedAccounts(local, incoming) && local ? local : incoming;
+  }
+  return local;
 }
 
 /** The entries of a pulled list that carry an id. */
@@ -21,21 +40,26 @@ export function idsOf(entries: unknown[]): Set<string> {
 /**
  * Takes the pulled profiles when this device has not changed its own since it
  * last synced. When it has (a broker sync alone moves `lastSyncedAt`), it keeps
- * its own, but profile by profile against the ids it last synced: one removed
- * on another device goes, one removed here stays gone, and one added elsewhere
- * arrives. Keeping the whole list instead pushed a profile removed elsewhere
- * back to every device.
+ * its own, but profile by profile against the ones it last synced (`synced`):
+ * one removed on another device goes, one removed here stays gone, and one
+ * added elsewhere arrives. Keeping the whole list instead pushed a profile
+ * removed elsewhere back to every device.
  *
  * An older build that changed its own profiles pushes its whole list, without
  * a profile added here since it last pulled, so only a list merged the same
  * way (`removalsCount`) can remove one: the profile's settings never sync and
  * would be lost for good.
+ *
+ * Which accounts a profile leaves out merges on its own even then
+ * (`mergedExcludedAccounts`): a choice made on another device arrives at once,
+ * not once this device stops changing its profiles, and this device's next
+ * push carries it instead of dropping it from the account's copy.
  */
 export function mergeBrokerInstances(
   local: BrokerInstanceConfig[],
   incoming: Array<Partial<BrokerInstanceConfig>>,
   localUnchanged: boolean,
-  syncedIds: ReadonlySet<string> | null,
+  synced: readonly unknown[] | null,
   removalsCount: boolean,
 ): BrokerInstanceConfig[] {
   const localById = new Map(local.map((instance) => [instance.id, instance]));
@@ -54,16 +78,37 @@ export function mergeBrokerInstances(
     };
   };
   if (localUnchanged) return incoming.map(fromIncoming);
-  if (!syncedIds) return local;
+
+  const pulledById = new Map(incoming.flatMap((instance) => (
+    typeof instance.id === "string" ? [[instance.id, instance] as const] : []
+  )));
+  const syncedById = new Map((synced ?? []).flatMap((entry) => (
+    isRecord(entry) && typeof entry.id === "string" ? [[entry.id, entry] as const] : []
+  )));
+  let choiceMerged = false;
+  const merged = local.map((instance) => {
+    const pulled = pulledById.get(instance.id);
+    if (!pulled) return instance;
+    const excludedAccounts = mergedExcludedAccounts(
+      instance.excludedAccounts,
+      pulled.excludedAccounts,
+      syncedById.get(instance.id)?.excludedAccounts,
+    );
+    if (excludedAccounts === instance.excludedAccounts) return instance;
+    choiceMerged = true;
+    return { ...instance, ...withExcludedAccounts(excludedAccounts) };
+  });
+  const current = choiceMerged ? merged : local;
+  if (!synced) return current;
 
   const incomingIds = idsOf(incoming);
   const kept = removalsCount
-    ? local.filter((instance) => incomingIds.has(instance.id) || !syncedIds.has(instance.id))
-    : local;
+    ? current.filter((instance) => incomingIds.has(instance.id) || !syncedById.has(instance.id))
+    : current;
   const added = incoming.filter((instance) => (
-    typeof instance.id === "string" && !localById.has(instance.id) && !syncedIds.has(instance.id)
+    typeof instance.id === "string" && !localById.has(instance.id) && !syncedById.has(instance.id)
   ));
-  return kept.length === local.length && added.length === 0 ? local : [...kept, ...added.map(fromIncoming)];
+  return kept.length === current.length && added.length === 0 ? current : [...kept, ...added.map(fromIncoming)];
 }
 
 /**

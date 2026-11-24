@@ -2,7 +2,7 @@ import { useEffect, useRef, type Ref } from "react";
 import { Box, ScrollBox, Text, TextAttributes, useNativeRenderer, useUiCapabilities, type BoxRenderable, type ScrollBoxRenderable } from "../../../ui";
 import { Button, Checkbox, FieldLabel, NumberField, SectionHeading, SegmentedControl, TextField, useFieldRing } from "../../../components";
 import { afterLayout, revealInScrollBox } from "../../../components/ui/reveal-in-scroll-box";
-import type { ProfileAccountChoice } from "../../../brokers/account-choice";
+import type { AccountInclusion } from "../../../brokers/account-choice";
 import {
   PRESERVED_PASSWORD_HINT,
   type BrokerProfileDraft,
@@ -147,7 +147,7 @@ export function BrokerProfileForm({
   fields: BrokerConfigField[];
   previous: BrokerInstanceConfig | null;
   /** Editing only: the profile's accounts to keep or leave out, for a profile with several. */
-  accountChoices?: readonly ProfileAccountChoice[];
+  accountChoices?: readonly AccountInclusion[];
   activeKey: BrokerEditKey;
   busy: string | null;
   /** Columns a text field may take. */
@@ -308,7 +308,7 @@ export function BrokerDetailContent({
   row: BrokerProfileRow | null;
   accounts: BrokerAccount[];
   /** The profile's accounts to keep or leave out; none for a profile with one. */
-  accountChoices: readonly ProfileAccountChoice[];
+  accountChoices: readonly AccountInclusion[];
   editDraft: BrokerProfileDraft | null;
   editFields: BrokerConfigField[];
   activeEditKey: BrokerEditKey;

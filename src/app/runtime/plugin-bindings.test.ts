@@ -98,6 +98,32 @@ function removalHarness() {
   return { instance, portfolio, stateRef, savedConfigs, repository, writes, disconnected, pluginRegistry, saveEdit, manualEdit };
 }
 
+test("a choice that leaves a profile no account is refused below any form, counting the accounts already left out", async () => {
+  const harness = removalHarness();
+  const { id } = harness.instance;
+  harness.stateRef.current = {
+    ...harness.stateRef.current,
+    brokerAccounts: { [id]: [{ accountId: "ACC", name: "Individual" }, { accountId: "IRA", name: "Roth IRA" }] },
+  };
+  const ira = { accountId: "IRA", name: "Roth IRA" };
+  const everyAccount = [{ accountId: "ACC", name: "Individual" }, ira];
+  const leaveOut = (excludedAccounts: typeof everyAccount) => harness.pluginRegistry.updateBrokerInstance(id, {}, { excludedAccounts });
+  const saves = harness.savedConfigs.length;
+
+  await expect(leaveOut(everyAccount)).rejects.toThrow("Keep at least one account, or disable the profile.");
+  expect(harness.stateRef.current.config.brokerInstances[0]?.excludedAccounts).toBeUndefined();
+  expect(harness.savedConfigs).toHaveLength(saves);
+
+  await leaveOut([ira]);
+  expect(harness.stateRef.current.config.brokerInstances[0]?.excludedAccounts).toEqual([ira]);
+  // The profile now shows the one account; the IRA, left out, still counts as one of its accounts.
+  expect(harness.stateRef.current.brokerAccounts[id]?.map((account) => account.accountId)).toEqual(["ACC"]);
+  await expect(leaveOut(everyAccount)).rejects.toThrow("Keep at least one account, or disable the profile.");
+  // Saving the choice it already has, with any other change, goes through.
+  await harness.pluginRegistry.updateBrokerInstance(id, {}, { label: "Renamed", excludedAccounts: [ira] });
+  expect(harness.stateRef.current.config.brokerInstances[0]).toMatchObject({ label: "Renamed", excludedAccounts: [ira] });
+});
+
 test("profile removal retains a manual edit whose desktop save is still awaiting acknowledgement", async () => {
   const harness = removalHarness();
   const written = deferred();

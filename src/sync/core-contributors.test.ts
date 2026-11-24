@@ -2,7 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { createInitialState } from "../core/state/app/state";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../market-data/coordinator";
 import { createTestDataProvider } from "../test-support/data-provider";
-import { createDefaultConfig, createPaneInstance, type TelemetryConfig } from "../types/config";
+import { createDefaultConfig, createPaneInstance, type AppConfig, type BrokerExcludedAccount, type BrokerInstanceConfig, type TelemetryConfig } from "../types/config";
 import { removePane, removeUnavailablePaneTypes, restoreHiddenPanes } from "../layout/pane-manager";
 import type { PricePoint } from "../types/financials";
 import type { TickerPosition, TickerRecord } from "../types/ticker";
@@ -681,6 +681,56 @@ describe("core sync contributors", () => {
     const kept = __syncContributorInternalsForTests.mergeConfigPayload(local, fromOlderBuild, local, lastSynced);
     expect(kept?.brokerInstances.map((instance) => instance.id)).toEqual(["ibkr-flex", "signed-in-ibkr", "schwab"]);
     expect(kept?.portfolios.map((portfolio) => portfolio.id)).toEqual(["main", "broker:signed-in-ibkr:U1"]);
+  });
+
+  test("the accounts a profile leaves out reach every device, one that changed its own profiles too, and a device that predates the choice erases nothing", () => {
+    const { collectCoreConfigPayload: collect, mergeConfigPayload: merge } = __syncContributorInternalsForTests;
+    const config = createDefaultConfig("/tmp/gloomberb-sync-account-choice-test");
+    const profile: BrokerInstanceConfig = { id: "snaptrade", brokerType: "signed-in", label: "SnapTrade", connectionMode: "snaptrade", config: {}, lastSyncedAt: 100 };
+    const ira = { accountId: "ST-IRA", name: "Roth IRA ····2207" };
+    const hsa = { accountId: "ST-HSA", name: "HSA ····6604" };
+    // The profile with these accounts left out, last synced with its broker at `lastSyncedAt`.
+    const device = (excludedAccounts?: BrokerExcludedAccount[], lastSyncedAt = 100): AppConfig => ({
+      ...config,
+      brokerInstances: [{ ...profile, lastSyncedAt, ...(excludedAccounts ? { excludedAccounts } : {}) }],
+    });
+    const choiceAfterPull = (local: AppConfig, pulled: unknown, lastSynced: unknown) => (
+      merge(local, pulled, local, lastSynced)?.brokerInstances[0]?.excludedAccounts
+    );
+    const pushedChoice = (merged: AppConfig | null) => (
+      (collect(merged!).brokerInstances as Array<Partial<BrokerInstanceConfig>>)[0]?.excludedAccounts
+    );
+    // What a build from before the choice pushes: its profiles without it, merged as a whole list.
+    const fromOlderBuild = (payload: unknown) => {
+      const { brokerInstancesMergedById: _mergedById, brokerInstances, ...rest } = payload as Record<string, unknown>;
+      return { ...rest, brokerInstances: (brokerInstances as Array<Record<string, unknown>>).map(({ excludedAccounts: _choice, ...entry }) => entry) };
+    };
+
+    // Another device leaves the IRA out.
+    const syncedBefore = collect(device());
+    const leftOut = collect(device([ira], 150));
+    expect(choiceAfterPull(device(), leftOut, syncedBefore)).toEqual([ira]);
+    // This device synced the profile since (its lastSyncedAt moved), so it keeps its own list: the
+    // choice arrives all the same, and its next push carries it instead of dropping it.
+    const busy = merge(device(undefined, 200), leftOut, device(undefined, 200), syncedBefore);
+    expect(busy?.brokerInstances[0]).toMatchObject({ lastSyncedAt: 200, excludedAccounts: [ira] });
+    expect(pushedChoice(busy)).toEqual([ira]);
+    // A choice made here since the last sync wins over the pulled one, like any edit made here.
+    expect(choiceAfterPull(device([hsa], 200), leftOut, syncedBefore)).toEqual([hsa]);
+
+    // Once both have the IRA left out, an empty list taken back elsewhere takes it back here too.
+    const syncedChoice = collect(device([ira]));
+    const takenBack = collect(device([], 150));
+    expect(choiceAfterPull(device([ira]), takenBack, syncedChoice)).toEqual([]);
+    expect(choiceAfterPull(device([ira], 200), takenBack, syncedChoice)).toEqual([]);
+
+    // A device that predates the choice pushes the profile without it: the choice stays here,
+    // changed profiles or not, and goes back out with this device's next push.
+    const older = fromOlderBuild(collect(device(undefined, 150)));
+    expect(choiceAfterPull(device([ira]), older, syncedChoice)).toEqual([ira]);
+    const kept = merge(device([ira], 200), older, device([ira], 200), syncedChoice);
+    expect(kept?.brokerInstances[0]?.excludedAccounts).toEqual([ira]);
+    expect(pushedChoice(kept)).toEqual([ira]);
   });
 
   test("a profile removed elsewhere takes its positions here, and the tickers it alone held", async () => {

@@ -1149,6 +1149,38 @@ describe("loadConfig", () => {
     });
   });
 
+  test("a profile's left-out accounts load cleaned; an empty list still takes every account back, and none stays none", async () => {
+    const dataDir = await createTempConfigDir();
+    const profile = (id: string, excludedAccounts?: unknown) => ({
+      id, brokerType: "signed-in", label: id, config: {}, ...(excludedAccounts === undefined ? {} : { excludedAccounts }),
+    });
+    await writeConfigJson(dataDir, createSavedConfig({
+      brokerInstances: [
+        profile("chosen", [
+          { accountId: " ST-IRA ", name: "Roth IRA" },
+          { accountId: "ST-IRA", name: "listed twice" },
+          { name: "no id" },
+          { accountId: "ST-HSA" },
+          "junk",
+        ]),
+        profile("taken-back", []),
+        profile("never"),
+        profile("malformed", "ST-IRA"),
+      ],
+    }));
+
+    const config = await loadConfig(dataDir);
+
+    expect(config.brokerInstances.map((instance) => [instance.id, instance.excludedAccounts])).toEqual([
+      ["chosen", [{ accountId: "ST-IRA", name: "Roth IRA" }, { accountId: "ST-HSA", name: "" }]],
+      ["taken-back", []],
+      ["never", undefined],
+      ["malformed", undefined],
+    ]);
+    expect(config.brokerInstances.filter((instance) => "excludedAccounts" in instance).map((instance) => instance.id))
+      .toEqual(["chosen", "taken-back"]);
+  });
+
   test("migrates legacy saved pane tab IDs and preserves focus metadata", async () => {
     const dataDir = await createTempConfigDir();
     await writeConfigJson(dataDir, createSavedConfig({

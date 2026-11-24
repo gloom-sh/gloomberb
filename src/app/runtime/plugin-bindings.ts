@@ -3,7 +3,9 @@ import type { Dispatch } from "react";
 import {
   clearPersistedBrokerAccounts,
   getBrokerAccountCacheSourceKey,
+  peekPersistedBrokerAccounts,
 } from "../../brokers/account-cache";
+import { assertKeepsAnAccount } from "../../brokers/account-choice";
 import {
   accountsShownFor,
   clearLeftoverBrokerHoldings,
@@ -158,6 +160,13 @@ export function bindPluginRegistryRuntimeAccess({
 
     updateBrokerInstance: async (instanceId, values, options = {}) => {
       const currentInstance = stateRef.current.config.brokerInstances.find((instance) => instance.id === instanceId);
+      if (currentInstance && options.excludedAccounts) {
+        // The accounts the profile shows now, as its last sync left them.
+        const shown = stateRef.current.brokerAccounts[instanceId]
+          ?? peekPersistedBrokerAccounts(pluginRegistry.persistence.resources, currentInstance)
+          ?? [];
+        assertKeepsAnAccount(currentInstance, shown, options.excludedAccounts);
+      }
       const nextInstances = stateRef.current.config.brokerInstances.map((instance) =>
         instance.id === instanceId
           ? (() => {

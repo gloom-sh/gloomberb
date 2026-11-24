@@ -38,6 +38,8 @@ export interface BrokerInstanceUpdateOptions {
   /**
    * The accounts to leave out of Gloom (`BrokerInstanceConfig.excludedAccounts`); an empty list takes
    * every account back. Their portfolios go at once; sync the profile to bring back one taken back.
+   * A list that would leave out every account the profile is known to have is refused (the update
+   * throws and changes nothing): keep one, or disable the profile instead.
    */
   excludedAccounts?: BrokerExcludedAccount[];
 }
