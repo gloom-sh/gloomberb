@@ -10,12 +10,14 @@ import {
   usePaneStatusFooter,
   type CompositeAxisDomain,
 } from "../../../../components";
+import { formatCompositeAxisValue, formatCompositeCursorValue, formatCompositeSeriesValue } from "../../../../components/chart/composite/format";
 import { StaticScatterChartSurface } from "../../../../components/chart/static";
 import { scalarPoint, staticSeries } from "../../../../components/chart/static/series";
 import { usePaneRefreshKey } from "../../../../components/data-table/table-pane";
 import { useShortcut, type KeyEventLike } from "../../../../react/input";
 import { usePaneInstance } from "../../../../state/app/context";
 import { formatTickerListInput } from "../../../../tickers/list";
+import { PLAIN_RATIO_UNIT } from "../../../../time-series/studies/units";
 import type { ResolvedSeries } from "../../../../time-series/types";
 import type { PaneProps, PaneTemplateDef } from "../../../../types/plugin";
 import { Box, useUiCapabilities } from "../../../../ui";
@@ -45,8 +47,6 @@ import {
   buildRelationshipRatioSeries,
   buildRelationshipScatterPointsForDate,
   buildRelationshipStatItems,
-  formatRatioAxisValue,
-  formatRatioValue,
   type MultiLineChartSeries,
 } from "./view-model";
 
@@ -80,15 +80,17 @@ const CHART_CHROME_ROWS = 2;
 const MIN_SCATTER_ROWS = 8;
 const MIN_PANEL_ROWS = 3;
 
-/** Each panel's axis reads at its own precision: whole index points, a ratio, a correlation. */
-function formatAxisValue(value: number, domain: CompositeAxisDomain): string {
-  if (domain.seriesIds.includes("ratio")) return formatRatioAxisValue(value, domain);
-  if (domain.seriesIds.includes("correlation")) return formatNumber(value, 2);
-  return formatNumber(value, 0);
+function formatNonRatioAxisValue(value: number, domain: CompositeAxisDomain): string {
+  return formatNumber(value, domain.seriesIds.includes("correlation") ? 2 : 0);
 }
 
+const formatAxisValue = Object.assign(
+  (value: number, domain: CompositeAxisDomain) => domain.unitGroup === "ratio" ? formatCompositeAxisValue(value, domain) : formatNonRatioAxisValue(value, domain),
+  { tag: (value: number, domain: CompositeAxisDomain) => domain.unitGroup === "ratio" ? formatCompositeCursorValue(value, domain) : formatNonRatioAxisValue(value, domain) },
+);
+
 function formatLegendValue(value: number, series: ResolvedSeries): string {
-  if (series.id === "ratio") return formatRatioValue(value);
+  if (series.unitGroup === "ratio") return formatCompositeSeriesValue(value, series);
   if (series.id === "correlation") return formatNumber(value, 2);
   return formatNumber(value, 1);
 }
@@ -99,6 +101,7 @@ function panelSeries(series: MultiLineChartSeries[], panelId: string): ResolvedS
       entry.points.map((point) => scalarPoint(point.date, point.value)),
       { id: entry.id, label: entry.label, color: entry.color },
     ),
+    ...(panelId === "ratio" ? PLAIN_RATIO_UNIT : {}),
     panelId,
   }));
 }

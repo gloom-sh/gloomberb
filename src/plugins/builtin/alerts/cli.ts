@@ -1,4 +1,4 @@
-import { closeBasis, isDailyMetric, isRelativeMetric, metricDescription, metricName, metricReadingText, validMetricRule } from "./metric-model";
+import { closeBasis, isDailyMetric, isRelativeMetric, metricDescription, metricName, validMetricRule } from "./metric-model";
 import { logFailure } from "../../../utils/log-failure";
 import { benchmarkKey, namesTwoListings, parseMetricAlert, type MetricAlertInput } from "./metric-command";
 import { firstDailyCheck, metricAvailabilityError, metricReadingFields, metricReadings } from "./metric-data";
@@ -7,7 +7,7 @@ import { alertChangeEntry, appendAlertLog, type AlertLogAction } from "./fired-l
 import { alertLogRule } from "./alert-log";
 import {
   alertBenchmarkListing, alertComparatorReadingText, alertListing, alertReadingAt, alertReadingCurrency, alertReadingFeed, alertReadingText, isoUtc, listingWithCurrency,
-  measureLabel, NOT_CHECKED_YET, readingSessionWords,
+  formatMetricReading, measureLabel, NOT_CHECKED_YET, readingSessionWords,
 } from "./format";
 import { isQuoteStaleForCurrentSession } from "../../../market-data/quotes/freshness";
 import { alertQuoteListingFields, quoteAlertFields } from "./quotes";
@@ -542,7 +542,7 @@ function metricReadingNote(alert: AlertRule): string {
   const metric = alert.metric!;
   // "Ratio to SPY was 0.2434 on the 2026-10-26 close", "RRG vs SPY was Leading (strength 110.06, momentum 108.88) on the 2026-10-23 weekly close".
   if (isRelativeMetric(metric)) {
-    const reading = metricReadingText(metric, { value: alert.lastCheckedPrice ?? Number.NaN, target: alert.lastCheckedTarget ?? Number.NaN });
+    const reading = formatMetricReading(metric, { value: alert.lastCheckedPrice ?? Number.NaN, target: alert.lastCheckedTarget ?? Number.NaN });
     return `${metricName(metric)} was ${reading} on the ${alert.lastDailyClose} ${closeBasis(metric) === "weekly close" ? "weekly close" : "close"}`;
   }
   const value = (alert.lastCheckedPrice ?? Number.NaN).toFixed(2);

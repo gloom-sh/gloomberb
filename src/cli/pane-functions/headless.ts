@@ -48,7 +48,7 @@ import { isRecord } from "../../utils/guards";
 import { displayTickerKey } from "../../utils/exchanges";
 import { splitSymbolWords } from "../symbol-args";
 import { formatUtcTime, localTimeSuffix } from "../../utils/utc-time";
-import { MISSING_VALUE, formatCompact } from "../../utils/format";
+import { MISSING_VALUE, formatCompact, formatSignificant } from "../../utils/format";
 import { deriveHeadlessFreshness, formatFreshnessLine, staleRowsText, withSavedCopy, type ReportFreshness } from "./freshness";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE } from "../../utils/network-failure";
 import { accessGateStatus, errorsAccessGate, isProLock, reportGateText } from "./access-gate";
@@ -552,10 +552,8 @@ function seriesPointExportDate(series: HeadlessSeries, date: SeriesPointDate, da
 
 /**
  * A latest value as the series report prints it: percentages and percentage
- * points, multiples and
- * ratios (P/E, EV/EBITDA, one series over another, VIX 3M / VIX) to two
- * decimals, which a ratio under 0.1 trades for three significant digits so it
- * is not flattened to 0.03, and a 0 to 100 score to a tenth of a point. A
+ * points and valuation multiples usually read to two decimals, series ratios
+ * to four significant digits, and a 0 to 100 score to a tenth of a point. A
  * company's reported total (`textCompact`) reads as the tables print one:
  * 63.33B. The exports keep every digit. Any other unit prints as loaded,
  * without float noise.
@@ -567,7 +565,7 @@ function seriesValue(series: HeadlessSeries, value: number | null): string {
   if (series.textCompact) return formatCompact(value);
   const unit = series.unit?.trim().toLowerCase();
   if (unit === "%" || unit === "pp") return value.toFixed(2);
-  if (series.unitGroup === "ratio" || unit === "ratio") return value.toPrecision(4);
+  if (series.unitGroup?.toLowerCase() === "ratio" || unit === "ratio") return formatSignificant(value);
   if (unit === "x") return value !== 0 && Math.abs(value) < 0.1 ? value.toPrecision(3) : value.toFixed(2);
   if (unit === "score") return value.toFixed(1);
   // A count or amount of five digits or more groups its thousands as every other table does (27,256,037 shares).

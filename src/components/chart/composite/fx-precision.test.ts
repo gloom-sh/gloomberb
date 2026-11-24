@@ -90,7 +90,7 @@ test("FX metadata does not turn normalized returns or ratios into currency price
   expect(latest.value).toBeCloseTo((fx.points.at(-1)!.value! / fx.points[0]!.value! - 1) * 100, 10);
   expect(latest.rawValue).toBe(fx.points.at(-1)!.value);
   expect(formatCompositeSeriesValue(latest.value!, percent)).toEndWith("%");
-  expect(formatCompositeSeriesValue(1.25, { ...fx, unit: "x", unitGroup: "ratio" })).toBe("1.25x");
+  expect(formatCompositeSeriesValue(1.25, { ...fx, unit: "x", unitGroup: "ratio" })).toBe("1.250x");
 });
 
 // Live labels read their decimals from the last completed bar, not the start

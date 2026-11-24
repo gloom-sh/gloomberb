@@ -2,7 +2,7 @@ import { formatMarketPrice, formatMarketPriceWithCurrency, stablePriceFractionDi
 import { INDEX_POINTS_UNIT } from "../../../market-data/market/index-level";
 import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
 import type { CompositeAxisDomain, CompositePanelScene } from "./types";
-import { formatNumber, formatPercentRaw } from "../../../utils/format";
+import { formatNumber, formatPercentRaw, formatSignificant } from "../../../utils/format";
 import { timeZoneLabel, zonedWallClockMs } from "../../../utils/zoned-date-time";
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
@@ -443,6 +443,10 @@ export function formatCompositeSeriesValue(
   return formatChartLegendValue(value, series.unit, series.unitGroup, series.priceAssetCategory, referencePrice);
 }
 
+function isPlainRatio(unit: string, unitGroup: string): boolean {
+  return unitGroup.toLowerCase() === "ratio" || unit.trim().toLowerCase() === "ratio";
+}
+
 export function formatChartLegendValue(
   value: number,
   unit: string,
@@ -453,12 +457,12 @@ export function formatChartLegendValue(
 ): string {
   const trimmed = unit.trim();
   const group = unitGroup.toLowerCase();
+  if (isPlainRatio(unit, unitGroup)) return `${formatSignificant(value)}x`;
   const compact = compactNumber(value);
   if (group === "price:%") return formatMarketPrice(value, { yieldIndex: true });
   if (group.includes("percent") || trimmed === "%" || trimmed.toLowerCase().includes("percent")) {
     return `${compact}%`;
   }
-  if (group === "ratio") return `${value.toPrecision(4)}x`;
   if (group.includes("ratio") || trimmed.toLowerCase() === "x") return `${compact}x`;
   // Generic futures quoted in points or 32nds of par (VX1, TY1) carry no currency.
   if (trimmed === "points" || trimmed === "32nds") {
@@ -518,6 +522,13 @@ function compactAxisNumber(value: number, domain: CompositeAxisDomain): string {
 }
 
 export function formatCompositeAxisValue(value: number, domain: CompositeAxisDomain): string {
+  if (isPlainRatio(domain.unit, domain.unitGroup)) {
+    const gap = labelsLogLadder(domain) ? null : narrowestAxisTickGap(domain);
+    const digits = gap === null || value === 0 ? 4 : Math.min(15, Math.max(4,
+      1 + Math.floor(Math.log10(Math.abs(value))) + Math.ceil(-Math.log10(gap) - 1e-9),
+    ));
+    return `${formatSignificant(value, digits)}x`;
+  }
   const compact = compactAxisNumber(value, domain);
   const group = domain.unitGroup.toLowerCase();
   if (group.includes("percent") || domain.unit === "%") return `${compact}%`;
@@ -547,6 +558,7 @@ export function formatCompositeAxisValue(value: number, domain: CompositeAxisDom
 }
 
 export function formatCompositeCursorValue(value: number, domain: CompositeAxisDomain): string {
+  if (isPlainRatio(domain.unit, domain.unitGroup)) return `${formatSignificant(value)}x`;
   const group = domain.unitGroup.toLowerCase();
   if (group.startsWith("derived-unit:")) return compactNumber(value);
   if (group.split(":")[0] === "currency-total") {

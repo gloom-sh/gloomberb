@@ -1,5 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
-import { closeBasis, metricReadingText } from "./metric-model";
+import { closeBasis } from "./metric-model";
 import { moveBasisText, movePercentText } from "./move";
 /**
  * `gloom fn ALRT`: the Alerts pane's three tabs as reports. Prices lists
@@ -26,8 +26,10 @@ import {
   measureLabel,
   triggerLabel,
   formatAlertDistance,
+  formatAlertHistoryValue,
   formatAlertTargetPrice,
   formatCurrentPrice,
+  formatMetricReading,
   formatQuoteChecked,
   readingSessionWords,
   relativeTime,
@@ -106,8 +108,9 @@ const EVENT_COLUMNS: HeadlessPaneColumn[] = [
 ];
 
 const minute = (value: unknown) => text(value).slice(0, 16).replace("T", " ");
-const valueText = (value: unknown, row: HeadlessPaneRow) => (typeof value === "number" && Number.isFinite(value)
-  ? `${Number(value.toFixed(4))}${row.unit === "%" ? "%" : row.unit ? ` ${text(row.unit)}` : ""}` : "");
+const valueText = (value: unknown, row: HeadlessPaneRow) => formatAlertHistoryValue(
+  typeof value === "number" ? value : null, text(row.kind), text(row.unit),
+) ?? "";
 
 /**
  * One line per alert, the app's and Gloom Cloud's together, newest first: when it went off, what
@@ -143,7 +146,7 @@ function priceRow(alert: AlertRule): HeadlessPaneRow {
     listing: alertListing(alert),
     // The currency its readings are in: none for a ratio, RSI or a multiple.
     currency: alertReadingCurrency(alert),
-    reading: alert.metric && price != null && Number.isFinite(price) && Number.isFinite(target) ? metricReadingText(alert.metric, { value: price, target })
+    reading: alert.metric && price != null && Number.isFinite(price) && Number.isFinite(target) ? formatMetricReading(alert.metric, { value: price, target })
       // A move, with the session of the print it was read off and the close it is measured from, as `alerts list` words it.
       : alert.move && price != null && Number.isFinite(price) ? `${movePercentText(price)}${session} ${moveBasisText(alert.lastMoveBasis)}`
       // A price read off a pre-market, after-hours or overnight print says so, as `alerts list` does: 508.17 after hours.

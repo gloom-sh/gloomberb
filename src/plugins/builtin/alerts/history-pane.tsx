@@ -18,7 +18,7 @@ import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { FIRED_LOG_KEY, readFiredAlerts } from "./fired-log";
 import { alertKindLabel, fetchAlertHistory, type AlertHistoryItem } from "./history";
 import { mergeAlertHistory, type AlertHistoryRow, type AlertHistoryVia } from "./history-rows";
-import { relativeTime } from "./format";
+import { formatAlertHistoryValue, relativeTime } from "./format";
 import { alertTarget, alertViewHints, deliveredAlertSubject, useOpenAlertTarget, type AlertSubject } from "./targets";
 
 const stamp = (value: string) => value.slice(0, 16).replace("T", " ");
@@ -41,8 +41,7 @@ interface HistoryRow {
 }
 
 function historyRow(row: AlertHistoryRow): HistoryRow {
-  const figure = row.value == null ? null
-    : `${Number(row.value.toFixed(4))}${row.unit === "%" ? "%" : row.unit ? ` ${row.unit}` : ""}`;
+  const figure = formatAlertHistoryValue(row.value, row.kind, row.unit ?? "");
   return {
     id: row.id, time: row.time, kind: row.kind, alert: row.alert, value: figure ?? row.detail,
     quoteAt: row.quoteAt, source: row.source ?? "", via: row.via,

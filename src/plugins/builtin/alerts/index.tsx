@@ -1,7 +1,7 @@
 import { METRIC_CHOICES, benchmarkKey, metricWizardFields, namesTwoListings, parseMetricAlert } from "./metric-command";
 import { firstDailyCheck, metricAvailabilityError, metricReadingFields, metricReadings } from "./metric-data";
 import { alertLogRule } from "./alert-log";
-import { closeBasis, isDailyMetric, isRelativeMetric, metricReadingText, metricTrigger, validMetricRule } from "./metric-model";
+import { closeBasis, isDailyMetric, isRelativeMetric, metricTrigger, validMetricRule } from "./metric-model";
 import { canonicalExchange } from "../../../utils/exchanges";
 import { startCatalystAlerts } from "./catalysts";
 import { notTheCoinNote } from "../../../cli/commands/crypto-hints";
@@ -77,7 +77,7 @@ import { alertPriceText, alertPriceWithCurrency, alertQuoteTime } from "./price-
 import { judgeMove, moveBasisText, moveFiredText, MOVE_DELIVERY } from "./move";
 import { acceptsAlertSession, alertSessionField } from "./session";
 import { MOVE_REARM, moveNowText, planMoveAlerts } from "./cli-move";
-import { alertListing, readingSessionWords } from "./format";
+import { alertListing, formatMetricReading, readingSessionWords } from "./format";
 import type { AlertRule } from "./types";
 
 let catalystAlertsStop: (() => void) | null = null;
@@ -595,7 +595,7 @@ export const alertsPlugin: GloomPlugin = {
               const firedAt = Date.now();
               alert.status = "triggered"; alert.triggeredAt = firedAt;
               const description = formatAlertDescription(alert);
-              const readingText = metricReadingText(alert.metric, reading);
+              const readingText = formatMetricReading(alert.metric, reading);
               recordFired({ kind: alert.metric.kind, ruleId: alert.id, rule: description, firedAt, value: reading.value,
                 unit: alert.metric.kind === "pe" || alert.metric.kind === "ps" ? "x" : undefined,
                 // An RRG quadrant is two readings; the figure is strength, the detail says both.

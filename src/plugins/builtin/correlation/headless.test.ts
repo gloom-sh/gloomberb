@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import type { HeadlessPaneContext, HeadlessPaneEntry, HeadlessPaneLoadArgs, HeadlessSeriesResult } from "../../../types/headless";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { correlationHeadless, relationshipHeadless } from "./headless";
@@ -64,16 +65,18 @@ test("relationship notes mixed session closes only, and keeps a small ratio's di
       })),
     }),
   } as HeadlessPaneContext;
-  const mixed = await relationshipHeadless.load(args(["IBIT", "BTC-USD"]), ctx);
+  const mixedArgs = args(["IBIT", "BTC-USD"]);
+  const mixed = await relationshipHeadless.load(mixedArgs, ctx);
   expect(mixed.metadata?.notices).toEqual(["IBIT closes 21:00 UTC; BTC-USD bar is 00:00 UTC (3 h offset). Daily pairs are matched by date."]);
   expect(statEntries(mixed).find((stat) => stat.key === "latestRatio")?.formatted).toBe("0.000006667");
   // The ratio's latest value in the series table reads to the digits Statistics gives it, not every float digit.
-  expect(mixed.series[0]).toMatchObject({ textDecimals: 9 });
-  const ratio = await relationshipHeadless.load(args(["ABC", "XYZ"]), { ...ctx, marketData: createTestDataProvider({
+  expect(renderHeadlessPaneText(relationshipHeadless, mixed, mixedArgs, "GR")).toMatch(/IBIT\/BTC-USD[^\n]*0\.000006667\s+ratio/);
+  const ratioArgs = args(["ABC", "XYZ"]);
+  const ratio = await relationshipHeadless.load(ratioArgs, { ...ctx, marketData: createTestDataProvider({
     getPriceHistory: async (symbol) => [100, 110, 105].map((close, index) => ({ date: new Date(Date.UTC(2026, 0, index + 1)), close: symbol === "ABC" ? close * 1.12313341493 : close })),
   }) } as HeadlessPaneContext);
   expect(statEntries(ratio).find((stat) => stat.key === "latestRatio")?.formatted).toBe("1.123");
-  expect(ratio.series[0]).toMatchObject({ textDecimals: 3 });
+  expect(renderHeadlessPaneText(relationshipHeadless, ratio, ratioArgs, "GR")).toMatch(/ABC\/XYZ[^\n]*1\.123\s+ratio/);
   expect((await relationshipHeadless.load(args(["IBIT", "MSFT"]), ctx)).metadata?.notices).toBeUndefined();
 });
 

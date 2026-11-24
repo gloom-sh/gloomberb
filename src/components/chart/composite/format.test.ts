@@ -148,6 +148,29 @@ describe("composite chart point details", () => {
 });
 
 describe("composite chart unit formatting", () => {
+  test("ratio legends, cursors and axis labels keep four significant digits", () => {
+    for (const [value, expected] of [[0.00056638, "0.0005664x"], [1.25, "1.250x"], [25.43, "25.43x"]] as const) {
+      const domain = {
+        side: "right" as const, seriesIds: ["ratio"], min: value / 2, max: value * 2,
+        scale: "linear" as const, unit: "x", unitGroup: "ratio",
+      };
+      expect(formatChartLegendValue(value, domain.unit, domain.unitGroup)).toBe(expected);
+      expect(formatCompositeCursorValue(value, domain)).toBe(expected);
+      expect(formatCompositeAxisValue(value, domain)).toBe(expected);
+    }
+  });
+
+  test("zooming into a ratio keeps neighboring ticks distinct without changing the cursor's precision", () => {
+    const domain = {
+      side: "right" as const, seriesIds: ["ratio"], min: 1.2501, max: 1.2509,
+      scale: "linear" as const, unit: "x", unitGroup: "ratio",
+    };
+    const labels = compositeAxisTicks(domain).map((tick) => tick.label);
+    expect(labels.length).toBeGreaterThan(2);
+    expect(new Set(labels).size).toBe(labels.length);
+    expect(formatCompositeCursorValue(1.2504, domain)).toBe("1.250x");
+  });
+
   test("Treasury axes and cursors keep the legend's 32nds, including fractional ticks and adjusted prices", () => {
     for (const [value, expected] of [[104.484375, "104-15½"], [104.0078125, "104-00¼"], [104.49, "104-15.68"], [-0.375, "-0-12"]] as const) {
       for (const span of [0.125, 20]) {
