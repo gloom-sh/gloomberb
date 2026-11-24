@@ -1,3 +1,4 @@
+import { taiwanListing } from "./taiwan";
 import { sfcSymbol } from "./sfc";
 import type { PluginModule } from "../plugin-module";
 import { SHORT_INTEREST_SERIES } from "./series";
@@ -41,7 +42,7 @@ export const shortInterestModule: PluginModule = {
       order: 36,
       component: ShortInterestResearchTab,
       instruments: ["equity"],
-      isVisible: ({ ticker }) => !isKnownNonUsListing(ticker) || (!!ticker && !!sfcSymbol(ticker.metadata.ticker, ticker.metadata.exchange)),
+      isVisible: ({ ticker }) => !isKnownNonUsListing(ticker) || (!!ticker && (!!sfcSymbol(ticker.metadata.ticker, ticker.metadata.exchange) || !!taiwanListing(ticker.metadata.ticker, ticker.metadata.exchange))),
     });
   },
 
@@ -90,7 +91,7 @@ export const shortInterestModule: PluginModule = {
         paneId: "short-interest",
         label: "Short Interest",
         // The current snapshot only carries the current and prior settlement dates.
-        description: "US FINRA settlements and Hong Kong SFC weekly reportable short positions.",
+        description: "US FINRA settlements, Hong Kong reportable positions and Taiwan daily short sale balances.",
         keywords: ["short", "interest", "si", "shorts", "days", "cover"],
         shortcut: "SI",
       }), "interest"),
