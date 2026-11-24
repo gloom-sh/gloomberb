@@ -51,6 +51,12 @@ export interface BrokerTradingCapabilities {
   orderClasses?: BrokerOrderClass[];
   /** How a trailing stop (`TRAIL` in `orderTypes`) can be set: by price, by percent or both. */
   trailing?: BrokerTrailingUnit[];
+  /**
+   * How the broker holds the orders of a bracket or OCO pair (orders sharing a `linkGroup`). `each`, or omitted: each
+   * changes and cancels on its own. `group`: cancelling any of them cancels the group's other working orders, and none
+   * can be changed (it is cancelled and placed again).
+   */
+  linkedOrders?: "each" | "group";
 }
 
 export interface BrokerCashBalance {
@@ -74,6 +80,11 @@ export interface BrokerAccount {
    * aggregator (SnapTrade). Another profile that holds that number keeps it.
    */
   brokerageAccountId?: string;
+  /**
+   * Brackets and OCO pairs this account's own brokerage runs, adding to the broker's `orderClasses`: for an aggregator
+   * (SnapTrade) whose accounts sit at different brokerages. The ticket offers the union for this account only.
+   */
+  orderClasses?: BrokerOrderClass[];
   updatedAt?: number;
   asOfDate?: string;
   netLiquidation?: number;

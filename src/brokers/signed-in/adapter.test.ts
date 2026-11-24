@@ -218,6 +218,47 @@ describe("signedInBrokerAdapter, direct orders (SnapTrade)", () => {
     }
   });
 
+  test("a bracket or OCO pair goes on an account whose own brokerage runs it, though the broker names none for all", async () => {
+    const accounts = [
+      { accountId: "acct-1", name: "Alpaca Paper", tradingMode: "simulation", orderClasses: ["bracket", "oco"] },
+      { accountId: "acct-2", name: "Robinhood", tradingMode: "live" },
+    ];
+    const preview = { status: "preview", previewId: "p", expiresAt: new Date(240_000).toISOString(), impact: { source: "broker" } };
+    let snapshotFails = false;
+    const answer = (_method: string, path: string) => path === "" ? connection(true)
+      : path === "/snapshot" ? snapshotFails ? new ApiRequestError("SnapTrade is unavailable right now.", 502, undefined, "upstream") : { accounts, positions: [] }
+        : preview;
+    SNAPTRADE.capabilities = { ...SNAPTRADE.capabilities, orders: { mode: "direct", types: ["MKT", "LMT"], tif: ["DAY", "GTC"], linkedOrders: "group" } };
+    try {
+      const bracket = { ...order, orderClass: "bracket" as const, takeProfitPrice: 240, stopLossPrice: 220 };
+      const oco = { ...order, action: "SELL" as const, orderClass: "oco" as const, limitPrice: 240, stopLossPrice: 220 };
+      const { adapter, calls } = snaptrade(answer);
+      await adapter.connect!(profile);
+      const capabilities = adapter.getTradingCapabilities!(profile);
+      expect(capabilities.orderClasses).toBeUndefined();
+      expect(capabilities.linkedOrders).toBe("group");
+      // The account names its own, for the ticket to offer there alone.
+      expect((await adapter.listAccounts!(profile)).map((account) => account.orderClasses)).toEqual([["bracket", "oco"], undefined]);
+      for (const request of [bracket, oco]) await adapter.previewOrder!(profile, request);
+      await expect(adapter.previewOrder!(profile, { ...bracket, accountId: "acct-2" }))
+        .rejects.toMatchObject({ refused: true, message: "SnapTrade does not take bracket orders from Gloom on this account." });
+      expect(calls.filter((call) => call.path === "/orders").map((call) => (call.body as { accountId: string }).accountId)).toEqual(["acct-1", "acct-1"]);
+      expect(calls.filter((call) => call.path === "/snapshot")).toHaveLength(1);
+
+      // An app that has not read the accounts yet reads them once; a failed read sends nothing.
+      const fresh = snaptrade(answer);
+      await fresh.adapter.connect!(profile);
+      snapshotFails = true;
+      await expect(fresh.adapter.previewOrder!(profile, bracket)).rejects.toMatchObject({ refused: true, message: "SnapTrade is not responding. Try again shortly." });
+      snapshotFails = false;
+      await fresh.adapter.previewOrder!(profile, bracket);
+      await fresh.adapter.previewOrder!(profile, oco);
+      expect(fresh.calls.filter((call) => call.path !== "").map((call) => call.path)).toEqual(["/snapshot", "/snapshot", "/orders", "/orders"]);
+    } finally {
+      SNAPTRADE.capabilities = { ...SNAPTRADE.capabilities, orders: { mode: "direct", types: ["MKT", "LMT"], tif: ["DAY", "GTC"] } };
+    }
+  });
+
   test("a refused order leaves the profile connected; a lost answer is not a refusal", async () => {
     const { adapter } = snaptrade((method, path, body) => {
       if (path === "") return connection(true);

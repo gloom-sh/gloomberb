@@ -831,4 +831,64 @@ describe("brackets, OCO pairs and trailing stops", () => {
     expect(f.controller.getSnapshot().draft).toMatchObject({ orderType: "TRAIL", trailingPercent: 2 });
     expect(() => f.controller.setDraft({ ...f.controller.getSnapshot().draft!, trailingPercent: undefined, trailingAmount: 1 })).toThrow(/keeps the original/);
   });
+
+  test("an account whose own brokerage runs a bracket takes one; another account of the same broker refuses it before any broker request", async () => {
+    const f = setup({ ...fresh, mode: "both" });
+    const caps = f.demo.adapter.getTradingCapabilities!.bind(f.demo.adapter);
+    // An aggregator: no class for every account, each account's own on the account.
+    f.demo.adapter.getTradingCapabilities = (instance, contract, type) => ({ ...caps(instance, contract, type), orderClasses: undefined });
+    f.setAccounts(f.demo.accounts().map((account) => account.accountId === DEMO_SIM_ACCOUNT ? { ...account, orderClasses: ["bracket"] } : account));
+    const bracket = { ...f.demo.draft, accountId: DEMO_SIM_ACCOUNT, orderClass: "bracket", takeProfitPrice: 350, stopLossPrice: 330 } as BrokerOrderRequest;
+    f.controller.setDraft(bracket);
+    await f.controller.review();
+    expect(f.count("previewOrder")).toBe(1);
+    f.controller.reset();
+    f.controller.setDraft({ ...bracket, action: "SELL", quantity: 10, orderClass: "oco", limitPrice: 350, takeProfitPrice: undefined });
+    await expect(f.controller.review()).rejects.toThrow(/does not take OCO orders/);
+    f.setAccount(DEMO_LIVE_ACCOUNT);
+    f.controller.syncContext();
+    f.controller.setDraft({ ...bracket, accountId: DEMO_LIVE_ACCOUNT });
+    await expect(f.controller.review()).rejects.toThrow(/does not take brackets/);
+    expect(f.count("previewOrder")).toBe(1);
+  });
+
+  test("one order of a group the broker holds together is not changed alone", async () => {
+    const f = setup(fresh);
+    const caps = f.demo.adapter.getTradingCapabilities!.bind(f.demo.adapter);
+    f.demo.adapter.getTradingCapabilities = (instance, contract, type) => ({ ...caps(instance, contract, type), linkedOrders: "group" });
+    f.controller.setDraft({ ...f.demo.draft, orderClass: "bracket", takeProfitPrice: 350, stopLossPrice: 330 });
+    await f.controller.review();
+    await f.controller.confirm();
+    const entry = f.controller.getSnapshot().result!;
+    expect(entry.linkGroup).toBeDefined();
+    f.controller.reset();
+    expect(() => f.controller.beginModify(entry)).toThrow("The broker cannot change one order of a bracket or OCO pair. Cancel the group and place it again.");
+    // An order of no group still changes, and so does a group's order where the broker changes each alone.
+    f.controller.beginModify(f.demo.order(f.demo.draft));
+    f.controller.reset();
+    f.demo.adapter.getTradingCapabilities = caps;
+    f.controller.beginModify(entry);
+    expect(f.controller.getSnapshot().modifying).toBe(true);
+  });
+
+  test("a bracket the broker took before listing its orders is followed by its group to the entry it lists", async () => {
+    const f = setup(fresh);
+    const place = f.demo.adapter.placeOrder!.bind(f.demo.adapter);
+    // The broker's answer names the group, not yet the entry's own id.
+    f.demo.adapter.placeOrder = async (instance, request) => {
+      const { brokerOrderId: _id, ...placed } = await place(instance, request);
+      return { ...placed, orderId: 9_001, status: "PENDING_NEW" };
+    };
+    f.controller.setDraft({ ...f.demo.draft, orderClass: "bracket", takeProfitPrice: 350, stopLossPrice: 330 });
+    await f.controller.review();
+    await f.controller.confirm();
+    const pending = f.controller.getSnapshot().result!;
+    expect(pending).toMatchObject({ orderId: 9_001, status: "PENDING_NEW", linkRole: "entry" });
+    const listed = await f.demo.adapter.listOpenOrders!(f.demo.instance);
+    const exit = listed.find((order) => order.linkGroup === pending.linkGroup && order.linkRole === "takeProfit")!;
+    expect(f.controller.applyOrderUpdate(exit)).toBe(pending);
+    const entry = listed.find((order) => order.linkGroup === pending.linkGroup && order.linkRole === "entry")!;
+    expect(f.controller.applyOrderUpdate(entry)).toMatchObject({ orderId: entry.orderId, brokerOrderId: entry.brokerOrderId, status: "WORKING" });
+    expect(f.controller.getSnapshot().resultQuantities).toBe("confirmed");
+  });
 });

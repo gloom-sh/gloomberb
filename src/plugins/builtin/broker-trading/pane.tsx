@@ -31,6 +31,7 @@ import {
 } from "./pane-model";
 import { BrokerTicketView, type TicketAction, type TicketField } from "./ticket";
 import { chartPriceOnTick, orderLevelTarget, orderLineMoves, TICKET_LEVEL_FIELDS, ticketChartLevels, ticketLineOrders, ticketOrderMatches } from "./chart-levels";
+import { accountTradingCapabilities } from "./linked-orders";
 import { useResearchTrading } from "../shared/research-trading";
 import { useThemeColors } from "../../../theme/theme-context";
 
@@ -93,7 +94,9 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
   } }), [instance.id, getState, getBrokerAdapter]);
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const draft = state.draft;
-  const caps = broker.getTradingCapabilities?.(instance, draft?.contract ?? contract, draft?.orderType);
+  // The brackets and OCO pairs offered are the selected account's: an aggregator's accounts sit at different brokerages.
+  const caps = accountTradingCapabilities(broker.getTradingCapabilities?.(instance, draft?.contract ?? contract, draft?.orderType),
+    accounts.find((account) => account.accountId === accountId));
   const connection = broker.getStatus?.(instance);
   const connected = connection?.state === "connected";
   const reconnecting = connection?.state === "connecting";

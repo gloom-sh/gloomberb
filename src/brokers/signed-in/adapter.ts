@@ -15,6 +15,7 @@ import type {
   BrokerAccount,
   BrokerExecution,
   BrokerOrder,
+  BrokerOrderClass,
   BrokerOrderPreview,
   BrokerOrderRequest,
   BrokerPortfolioPerformance,
@@ -209,6 +210,8 @@ export function createSignedInBrokerAdapter(overrides: Partial<SignedInBrokerAda
   const previews = new Map<string, { order: string; previewId: string; expiresAt: number }>();
   /** Direct mode: the broker's own id behind each order number the app holds, per profile. */
   const handles = new Map<string, Map<number, { accountId: string; brokerOrderId: string }>>();
+  /** The brackets and OCO pairs each account's own brokerage runs, per profile, as its last snapshot named them. */
+  const accountClasses = new Map<string, Map<string, BrokerOrderClass[]>>();
 
   const brokerName = (instance: BrokerInstanceConfig) =>
     deps.findBroker(signedInBrokerId(instance))?.name ?? instance.label;
@@ -253,7 +256,25 @@ export function createSignedInBrokerAdapter(overrides: Partial<SignedInBrokerAda
     }));
 
   const snapshot = (instance: BrokerInstanceConfig) =>
-    track(instance, () => get<PortfolioSnapshot>(instance, "/snapshot"));
+    track(instance, async () => {
+      const read = await get<PortfolioSnapshot>(instance, "/snapshot");
+      accountClasses.set(instance.id, new Map(read.accounts.map((account) => [account.accountId, account.orderClasses ?? []])));
+      return read;
+    });
+
+  /**
+   * Whether an account's own brokerage runs this bracket or OCO pair (an aggregator's accounts sit at different
+   * brokerages). An account no snapshot has named yet is read once; a failed read sends nothing.
+   */
+  const accountTakes = async (instance: BrokerInstanceConfig, accountId: string | undefined, orderClass: BrokerOrderClass) => {
+    if (!accountId) return false;
+    if (!accountClasses.get(instance.id)?.has(accountId)) {
+      await snapshot(instance).catch((error: unknown) => {
+        throw refused(error instanceof Error && error.message ? error.message : `${brokerName(instance)} accounts could not be read.`);
+      });
+    }
+    return accountClasses.get(instance.id)?.get(accountId)?.includes(orderClass) === true;
+  };
 
   /**
    * An order as the app holds it: this profile's, under this adapter, and
@@ -318,8 +339,8 @@ export function createSignedInBrokerAdapter(overrides: Partial<SignedInBrokerAda
     if (!request.orderClass && (request.takeProfitPrice !== undefined || request.stopLossPrice !== undefined)) {
       throw refused("A take profit or stop loss needs a bracket or OCO order.");
     }
-    if (request.orderClass && !orders.orderClasses?.includes(request.orderClass)) {
-      throw refused(`${name} does not take ${request.orderClass === "oco" ? "OCO" : "bracket"} orders from Gloom.`);
+    if (request.orderClass && !orders.orderClasses?.includes(request.orderClass) && !await accountTakes(instance, request.accountId, request.orderClass)) {
+      throw refused(`${name} does not take ${request.orderClass === "oco" ? "OCO" : "bracket"} orders from Gloom${orders.orderClasses ? "" : " on this account"}.`);
     }
     if (request.orderType === "TRAIL" && !orders.trailing?.includes(request.trailingPercent !== undefined ? "percent" : "amount")) {
       throw refused(`${name} does not take this trailing stop from Gloom.`);
@@ -486,6 +507,7 @@ export function createSignedInBrokerAdapter(overrides: Partial<SignedInBrokerAda
         tif: orders.tif?.length ? [...orders.tif] : DIRECT_TIF,
         ...(orders.orderClasses?.length ? { orderClasses: [...orders.orderClasses] } : {}),
         ...(orders.trailing?.length ? { trailing: [...orders.trailing] } : {}),
+        ...(orders.linkedOrders ? { linkedOrders: orders.linkedOrders } : {}),
         minQuantity: 1,
         quantityStep: 1,
         modify: true,

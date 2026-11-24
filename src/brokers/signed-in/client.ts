@@ -15,10 +15,15 @@ interface SignedInBrokerCapabilities {
    */
   orders: false | {
     mode: "review" | "direct"; types: BrokerOrderType[]; tif?: string[];
-    /** Brackets and OCO pairs the broker places and runs itself; absent from a server that sends none. */
+    /**
+     * Brackets and OCO pairs the broker places and runs itself on every account; absent from a server that sends
+     * none. An aggregator (SnapTrade) names each account's own on the account (`BrokerAccount.orderClasses`).
+     */
     orderClasses?: BrokerOrderClass[];
     /** How a trailing stop (`TRAIL` in `types`) is set. */
     trailing?: BrokerTrailingUnit[];
+    /** How the orders of a bracket or OCO pair change and cancel (see `BrokerTradingCapabilities.linkedOrders`). */
+    linkedOrders?: "each" | "group";
   };
   /** Connecting Gloom replaces this broker's link to other AI apps. */
   singleConnection: boolean;

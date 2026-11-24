@@ -13,8 +13,10 @@ const tui = createOpenTuiTestHarness({ width: 90, height: 30 });
 afterEach(() => brokerOrderFeed.clear());
 const paneId = "broker-orders:test";
 
-async function mount(options: DemoBrokerOptions = {}, selectedAccount?: string | null, confirmedCancel = false, compact = false) {
+async function mount(options: DemoBrokerOptions = {}, selectedAccount?: string | null, confirmedCancel = false, compact = false,
+  prepare?: (demo: ReturnType<typeof createDemoBroker>) => Promise<unknown>) {
   const demo = createDemoBroker(options);
+  await prepare?.(demo);
   const toasts: string[] = [];
   if (confirmedCancel) demo.adapter.getOrderStatus = async (_instance, orderId) => demo.order(demo.draft, "CANCELED", orderId);
   const config = createTestPaneConfig("/synthetic/orders-render", { instanceId: paneId, paneId: "broker-orders", binding: { kind: "none" }, settings: {} });
@@ -282,4 +284,25 @@ test("a cancel the broker refused because the order ended first is a toast once 
   for (let attempt = 0; attempt < 40 && !f.toasts.length; attempt++) await act(async () => { await Bun.sleep(25); });
   expect(f.toasts).toEqual(["Already filled"]);
   expect(tui.frame()).not.toContain("Cancel refused");
+});
+
+test("one order of a bracket the broker cancels as a group says what else goes, and is not changed alone", async () => {
+  const f = await mount({ seedOrders: false }, undefined, false, false, async (demo) => {
+    const caps = demo.adapter.getTradingCapabilities!.bind(demo.adapter);
+    demo.adapter.getTradingCapabilities = (instance, contract, type) => ({ ...caps(instance, contract, type), linkedOrders: "group" });
+    await demo.adapter.placeOrder!(demo.instance, { ...demo.draft, orderClass: "bracket", takeProfitPrice: 350, stopLossPrice: 330 });
+  });
+  // The entry, then its take profit and stop loss: the third row is the stop loss.
+  await tui.emitKeypress([{ name: "j", sequence: "j" }, { name: "j", sequence: "j" }, { name: "j", sequence: "j" }], { trackPropagation: true });
+  await tui.emitKeypress({ name: "m", sequence: "m" }, { trackPropagation: true });
+  expect(f.modifications).toEqual([]);
+  expect(footer()).toContain("[c]ancel");
+  expect(footer()).not.toContain("odify");
+  await tui.emitKeypress({ name: "c", sequence: "c" }, { trackPropagation: true });
+  await tui.waitForFrameToContain("Also cancels its entry and take profit.");
+  expect(tui.frame()).toContain("SELL 10 AAPL, Stop loss, stop 330.00 · DAY");
+  await tui.emitKeypress({ name: "enter", sequence: "\r" }, { trackPropagation: true });
+  await tui.waitForFrameToContain("Pending cancel");
+  // The broker cancels the rest: the app asks it once, for the order chosen.
+  expect(f.mutations().map((call) => call.method)).toEqual(["placeOrder", "cancelOrder"]);
 });

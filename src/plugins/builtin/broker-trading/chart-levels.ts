@@ -5,7 +5,7 @@ import type { BrokerOrder, BrokerOrderRequest, BrokerTradingCapabilities } from 
 import { brokerOrderKey, brokerOrderStatus, canChangeBrokerOrder, ticketEditingPriceStep, withLatestOrder } from "./orders-data";
 import { sameBrokerContract } from "../../../utils/instrument-identity";
 import { isStrategyOrder } from "./strategy";
-import { linkRoleName } from "./linked-orders";
+import { changesAlone, linkRoleName } from "./linked-orders";
 
 export function ticketOrderMatches(order: Pick<BrokerOrder, "accountId" | "brokerInstanceId" | "contract" | "legs">, contract: BrokerContractRef, profileId: string, accountId?: string): boolean {
   if (!accountId || order.accountId !== accountId || order.brokerInstanceId && order.brokerInstanceId !== profileId
@@ -36,11 +36,11 @@ export function ticketLineOrders(orders: readonly BrokerOrder[], latestOrder?: B
 }
 
 /**
- * Whether a working order's line moves on the chart: the broker changes this order, and it is neither still being
- * acknowledged nor already being replaced.
+ * Whether a working order's line moves on the chart: the broker changes this order (one of a bracket or OCO pair only
+ * where it changes on its own), and it is neither still being acknowledged nor already being replaced.
  */
-export function orderLineMoves(order: BrokerOrder, allowed: Pick<BrokerTradingCapabilities, "enabled" | "modify"> | undefined): boolean {
-  return !!allowed?.enabled && !!allowed.modify && canChangeBrokerOrder(order) && !["Replacing", "Submitted"].includes(brokerOrderStatus(order.status));
+export function orderLineMoves(order: BrokerOrder, allowed: Pick<BrokerTradingCapabilities, "enabled" | "modify" | "linkedOrders"> | undefined): boolean {
+  return !!allowed?.enabled && !!allowed.modify && changesAlone(order, allowed) && canChangeBrokerOrder(order) && !["Replacing", "Submitted"].includes(brokerOrderStatus(order.status));
 }
 
 /** Which ticket price each draft level shows, by level id. */
