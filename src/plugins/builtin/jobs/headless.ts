@@ -40,6 +40,7 @@ function companyBundle(symbol: string, state: Exclude<JobsCompanyState, { kind: 
         title: "Summary",
         entries: [
           { label: "Open roles", value: summary.openCount, formatted: formatNumber(summary.openCount, 0) },
+          ...(summary.coverage.boardScope ? [{ label: "Board coverage", value: summary.coverage.boardScope }] : []),
           ...(summary.openPerThousandEmployees != null
             ? [{ label: "Per 1,000 employees", value: summary.openPerThousandEmployees, formatted: formatNumber(summary.openPerThousandEmployees, 1) }]
             : []),
