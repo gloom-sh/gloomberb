@@ -1,6 +1,7 @@
+import type { ReactNode } from "react";
 import { useThemeColors } from "../../theme/theme-context";
 import { TYPE, WEIGHT } from "../../theme/ui-tokens";
-import { Box, StyledText, Text, TextAttributes } from "../../ui";
+import { Box, StyledText, Text, TextAttributes, useUiCapabilities } from "../../ui";
 import { displayWidth } from "../../utils/format";
 import { wrapTextLines } from "../../utils/text-wrap";
 import { ClippedText } from "../ui/display";
@@ -34,8 +35,15 @@ import type { ArticleBlock } from "./article-text";
  * lines hanging under the text, in the article reader and in markdown alike.
  */
 export const READER_COLUMN_FONT = `calc(var(--reader-em, ${TYPE.body / TYPE.ui}) * 1em)`;
+/** Characters a line of the reading measure holds. */
+export const READER_MEASURE_CHARACTERS = 66;
 /** The reading measure: every reader centres its column at this width, in its own type. */
-export const READER_MEASURE = "66ch";
+export const READER_MEASURE = `${READER_MEASURE_CHARACTERS}ch`;
+/**
+ * The measure alone, centred, for prose a pane sets in the app's own type in
+ * a body that already gives the pane's inset (`ReaderMeasure`).
+ */
+const READER_MEASURE_STYLE = { width: "100%", maxWidth: READER_MEASURE, marginLeft: "auto", marginRight: "auto", minWidth: 0 } as const;
 /**
  * The one reading column: centred at the measure, the pane's inset on each
  * side, 12px above and 16px below. Readers that sit in a DetailScrollBody
@@ -280,3 +288,18 @@ function ReaderTable({ rows, geometry }: { rows: readonly string[][]; geometry: 
   );
 }
 
+/**
+ * The reading column for prose a pane sets in the app's own type (a call's
+ * transcript and summary, an Ask Gloom answer, a 10-K's risk factors): on the
+ * desktop and the web its lines hold at most the measure of that type, the
+ * column centred in a body that already gives the pane's inset, as every
+ * reader centres its own. The terminal lays the children out at `width`
+ * cells, or as they are without one.
+ */
+export function ReaderMeasure({ width, children }: { width?: number; children: ReactNode }) {
+  const { nativePaneChrome } = useUiCapabilities();
+  if (nativePaneChrome) {
+    return <Box flexDirection="column" data-gloom-ui="reader-measure" style={READER_MEASURE_STYLE}>{children}</Box>;
+  }
+  return width === undefined ? <>{children}</> : <Box flexDirection="column" width={width}>{children}</Box>;
+}

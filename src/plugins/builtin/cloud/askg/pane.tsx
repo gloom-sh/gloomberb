@@ -36,6 +36,7 @@ import {
   type PaneHint,
 } from "../../../../components";
 import { MarkdownText } from "../../../../components/markdown-text";
+import { READER_MEASURE_CHARACTERS, ReaderMeasure } from "../../../../components/reader/reader-text";
 import { useShortcut } from "../../../../react/input";
 import {
   useAppDispatch,
@@ -547,6 +548,10 @@ function TurnView({
     if (source) onOpenSource(source);
   }, [onOpenSource, sources]);
   const finished = turn.status === "complete" && answerText.length > 0;
+  // The desktop and the web wrap the answer in CSS, in the reading column; a
+  // table is laid out in characters, so it is fitted to that column's measure.
+  const { nativePaneChrome } = useUiCapabilities();
+  const answerWidth = nativePaneChrome ? Math.min(width, READER_MEASURE_CHARACTERS) : width;
   return (
     <Box flexDirection="column" paddingTop={1}>
       <TurnQuestion text={turn.prompt} width={width} />
@@ -555,7 +560,7 @@ function TurnView({
         <Box paddingTop={1}>
           <MarkdownText
             text={answer}
-            lineWidth={width}
+            lineWidth={answerWidth}
             catalog={catalog}
             textColor={colors.text}
             openTicker={openTicker}
@@ -1969,59 +1974,64 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
             selectedIndex={inputFocused ? null : exampleIndex}
             onAsk={askAndCompose}
           />
-        ) : state.turns.map((turn, index) => (
-          <TurnView
-            key={turn.id}
-            turn={turn}
-            width={contentWidth}
-            latest={turn.id === lastTurnId}
-            rateable={canRateTurn(state, turn)}
-            feedbackSelected={selectedId === answerStopId(turn.id)}
-            feedbackKeysShown={focused && !inputFocused && !showSidebar && feedbackTarget?.id === turn.id}
-            feedbackFollowUpOpen={feedbackFollowUp?.id === turn.id}
-            selectedRowRef={selectedRowRef}
-            catalog={catalog}
-            openTicker={openTicker}
-            tools={(
-              <TurnTools
+        ) : (
+          // The conversation reads in the reading column on the desktop and the web.
+          <ReaderMeasure>
+            {state.turns.map((turn, index) => (
+              <TurnView
+                key={turn.id}
                 turn={turn}
                 width={contentWidth}
-                context={displayContext}
-                selectedId={selectedId}
-                expandedToolCallId={expandedToolCallId}
-                openGroups={openGroups}
+                latest={turn.id === lastTurnId}
+                rateable={canRateTurn(state, turn)}
+                feedbackSelected={selectedId === answerStopId(turn.id)}
+                feedbackKeysShown={focused && !inputFocused && !showSidebar && feedbackTarget?.id === turn.id}
+                feedbackFollowUpOpen={feedbackFollowUp?.id === turn.id}
                 selectedRowRef={selectedRowRef}
-                onPressRow={pressRow}
-                onPressGroup={pressGroup}
-                onUndo={(toolCallId) => void controller.undo(toolCallId)}
+                catalog={catalog}
+                openTicker={openTicker}
+                tools={(
+                  <TurnTools
+                    turn={turn}
+                    width={contentWidth}
+                    context={displayContext}
+                    selectedId={selectedId}
+                    expandedToolCallId={expandedToolCallId}
+                    openGroups={openGroups}
+                    selectedRowRef={selectedRowRef}
+                    onPressRow={pressRow}
+                    onPressGroup={pressGroup}
+                    onUndo={(toolCallId) => void controller.undo(toolCallId)}
+                  />
+                )}
+                sources={turnSources[index] ?? NO_SOURCES}
+                followUps={turn.id === lastTurnId ? followUps : NO_FOLLOW_UPS}
+                displayContext={displayContext}
+                onOpenSource={openSource}
+                onAskFollowUp={(question) => {
+                  leaveSidebar();
+                  askAndCompose(question);
+                }}
+                onRetry={() => retryAndCompose(turn.id)}
+                onUpgrade={upgrade}
+                // The controls keep their press from the column behind them, so
+                // they close the list themselves.
+                onRate={(rating) => {
+                  leaveSidebar();
+                  rateAnswer(turn, rating);
+                }}
+                onReason={(reason) => {
+                  leaveSidebar();
+                  chooseFeedbackReason(turn, reason);
+                }}
+                onShare={() => {
+                  leaveSidebar();
+                  shareAnswer(turn);
+                }}
               />
-            )}
-            sources={turnSources[index] ?? NO_SOURCES}
-            followUps={turn.id === lastTurnId ? followUps : NO_FOLLOW_UPS}
-            displayContext={displayContext}
-            onOpenSource={openSource}
-            onAskFollowUp={(question) => {
-              leaveSidebar();
-              askAndCompose(question);
-            }}
-            onRetry={() => retryAndCompose(turn.id)}
-            onUpgrade={upgrade}
-            // The controls keep their press from the column behind them, so
-            // they close the list themselves.
-            onRate={(rating) => {
-              leaveSidebar();
-              rateAnswer(turn, rating);
-            }}
-            onReason={(reason) => {
-              leaveSidebar();
-              chooseFeedbackReason(turn, reason);
-            }}
-            onShare={() => {
-              leaveSidebar();
-              shareAnswer(turn);
-            }}
-          />
-        ))}
+            ))}
+          </ReaderMeasure>
+        )}
       </ScrollBox>
 
       {confirmation ? (

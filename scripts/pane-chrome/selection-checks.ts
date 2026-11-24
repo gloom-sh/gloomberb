@@ -58,7 +58,10 @@ window.__select = {
         // The middle of its first line: the middle of a run wrapped over two lines is the edge between them, where a press may land on neither.
         const r = range.getClientRects()[0] ?? range.getBoundingClientRect();
         if (r.width < 6 || r.top < 0 || r.bottom > innerHeight) continue;
-        return { x: r.x + Math.min(r.width / 2, 60), y: r.y + r.height / 2, text: node.nodeValue.trim() };
+        const x = r.x + Math.min(r.width / 2, 60), y = r.y + r.height / 2;
+        // Text scrolled under the pane's header is on the page but out of reach.
+        if (!document.elementFromPoint(x, y)?.contains(node)) continue;
+        return { x, y, text: node.nodeValue.trim() };
       }
     }
     return null;
@@ -191,6 +194,11 @@ export const selectionSteps: SelectionStep[] = [
     name: "selection: the article reader's text can be selected, and nothing around it",
     scenario: "layout&pane=reader&mode=dock",
     run: (cdp) => expectCopyable(cdp, "[data-gloom-ui=reader-column]", ["pane-header", "pane-footer"]),
+  },
+  {
+    name: "selection: an Ask Gloom answer can be selected in its reading column, and nothing around it",
+    scenario: "layout&pane=askg&mode=dock",
+    run: (cdp) => expectCopyable(cdp, "[data-gloom-ui=reader-measure] [data-gloom-selectable=true]", ["pane-header", "pane-footer"]),
   },
   {
     name: "selection: markdown can be selected, and nothing around it",

@@ -13,6 +13,7 @@ import {
   SectionHeading,
   type QueryBarSearch,
 } from "../../../components";
+import { ReaderMeasure } from "../../../components/reader/reader-text";
 import { PlaybackLine } from "../../../components/ui";
 import { afterLayout, revealInScrollBox } from "../../../components/ui/reveal-in-scroll-box";
 import { useShortcut } from "../../../react/input";
@@ -54,7 +55,9 @@ export const READER_TABS: Array<{ label: string; value: ReaderTab; hint: string 
   { label: "Original", value: "original", hint: "g" },
 ];
 
-const NATIVE_STRETCH_STYLE = { minWidth: 0 };
+/** A speaker's time and name keep their room in the header; the role and firm after them wrap. */
+const NATIVE_KEEP = { flexShrink: 0 } as const;
+const NATIVE_WRAP = { wrapText: true, style: { minWidth: 0 } } as const;
 /** After the reader scrolls by hand, playback leaves the view where it is for this long. */
 const FOLLOW_PAUSE_MS = 5_000;
 /** A scroll this soon after the reader moved itself is that move, not the user's. */
@@ -136,17 +139,20 @@ const TurnView = memo(function TurnView({
   // The server cuts paragraphs where the speaker paused on the recording.
   // A transcript from before that is one block, so it is cut here by length.
   const paragraphs = turnParagraphs(turn);
+  // The desktop and the web wrap a role and firm the reading column has no
+  // room for under its start; the terminal row ends at the pane's edge.
+  const { nativePaneChrome } = useUiCapabilities();
   return (
     <Box flexDirection="column" marginTop={1}>
-      <Box height={1} flexDirection="row" gap={1} overflow="hidden">
+      <Box height={nativePaneChrome ? undefined : 1} flexDirection="row" gap={1} overflow={nativePaneChrome ? undefined : "hidden"}>
         {/* A transcript the company published as a document has no timings. */}
         {turn.startSeconds !== null && (
-          <Text fg={colors.textDim}>{formatTimestamp(turn.startSeconds)}</Text>
+          <Text fg={colors.textDim} {...(nativePaneChrome ? NATIVE_KEEP : {})}>{formatTimestamp(turn.startSeconds)}</Text>
         )}
-        <Text fg={speakerColor(turn)} attributes={TextAttributes.BOLD}>
+        <Text fg={speakerColor(turn)} attributes={TextAttributes.BOLD} {...(nativePaneChrome ? NATIVE_KEEP : {})}>
           {turn.speaker}
         </Text>
-        {detail ? <Text fg={colors.textDim}>{detail}</Text> : null}
+        {detail ? <Text fg={colors.textDim} {...(nativePaneChrome ? NATIVE_WRAP : {})}>{detail}</Text> : null}
       </Box>
       {paragraphs.map((paragraph, index) => (
         <PlaybackLine
@@ -202,9 +208,6 @@ export function TranscriptView({
   /** The call's recording: lines play from where they start and the one heard is marked and followed. */
   playback?: TranscriptPlayback;
 }) {
-  const { nativePaneChrome } = useUiCapabilities();
-  const isNative = nativePaneChrome === true;
-
   // Each shown turn with its place in the whole transcript, which names its
   // lines for playback and find whatever the section shows.
   const turns = useMemo(() => {
@@ -330,8 +333,6 @@ export function TranscriptView({
   // One column of padding each side inside the scroll box.
   const bodyWidth = Math.max(12, width - 2);
   const proseWidth = Math.min(bodyWidth, READING_WIDTH);
-  const contentWidth = isNative ? "100%" : bodyWidth;
-  const contentStyle = isNative ? NATIVE_STRETCH_STYLE : undefined;
 
   return (
     <Box
@@ -365,7 +366,8 @@ export function TranscriptView({
         focusable={false}
         paddingX={1}
       >
-        <Box flexDirection="column" width={contentWidth} style={contentStyle}>
+        {/* The reading column on the desktop and the web; the terminal keeps its body width. */}
+        <ReaderMeasure width={bodyWidth}>
           {tab === "summary" ? (
             <>
               <Prose
@@ -480,7 +482,7 @@ export function TranscriptView({
               )}
             </>
           )}
-        </Box>
+        </ReaderMeasure>
       </ScrollBox>
     </Box>
   );
