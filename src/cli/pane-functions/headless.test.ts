@@ -579,6 +579,35 @@ test("a continuous future's and a formula's contracts close each row, a roll mar
   expect(rowOf("2026-10-16", "3-2-1 crack spread")).toEndWith(",RBZ26,HOZ26,CLZ26,true,false");
 });
 
+// `fn GP SIE:XETRA --csv` keyed its volume rows SIE:XETR beside price rows of SIE:XETRA, and left out the day still forming.
+test("a listing's price and volume rows name it by its venue's code, and a day still forming is marked Partial as JSON marks it", () => {
+  const definition: HeadlessPaneDefinition<"series"> = { shape: "series", argument: { kind: "none" }, options: [], load: () => ({ series: [] }) };
+  const result: HeadlessSeriesResult = { series: [
+    { id: "sie", label: "SIE:XETRA Price", unit: "EUR/share", symbol: "SIE:XETR", interval: "1d", points: [
+      { date: "2026-11-23", open: 260, high: 265, low: 259, close: 264.2, volume: 1_029_455 },
+      { date: "2026-11-24", open: 264.2, high: 264.55, low: 256.7, close: 256.9, volume: 341_631, partial: true }] },
+    // The volume study's series names no symbol: its rows are the report's.
+    { id: "builtin:volume:sie", label: "Volume", unit: "shares", interval: "1d", points: [
+      { date: "2026-11-23", value: 1_029_455 }, { date: "2026-11-24", value: 341_631, partial: true }] },
+  ] };
+  const freshness = deriveHeadlessFreshness(definition, result);
+  const csv = renderReportCsv(headlessReportTables(definition, result, args, "Custom Chart", freshness, { complete: true, unavailableSymbols: [] }), freshness).split("\n");
+  const section = (title: string) => csv.slice(csv.indexOf(`# section: ${title}`) + 1, csv.indexOf(`# section: ${title}`) + 4);
+  const [priceHeader, priceClosed, priceForming] = section("SIE:XETRA Price");
+  const [volumeHeader, volumeClosed, volumeForming] = section("Volume");
+  expect(priceHeader).toEndWith(",retrieved_at,Partial");
+  expect(volumeHeader).toEndWith(",retrieved_at,Partial");
+  expect(priceClosed).toStartWith("2026-11-23,");
+  expect(priceClosed).toEndWith(",false");
+  expect(priceForming).toEndWith(",true");
+  expect(volumeClosed).toEndWith(",false");
+  expect(volumeForming).toEndWith(",true");
+  for (const row of [priceClosed, priceForming, volumeClosed, volumeForming]) {
+    expect(row).toContain(",SIE:XETRA,");
+    expect(row).not.toContain("SIE:XETR,");
+  }
+});
+
 test("a series of a reported total prints compact in text, while JSON and CSV keep every digit and do not carry the flag", () => {
   const definition: HeadlessPaneDefinition<"series"> = { shape: "series", argument: { kind: "none" }, options: [], load: () => ({ series: [] }) };
   const result: HeadlessSeriesResult = { series: [

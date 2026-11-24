@@ -785,8 +785,12 @@ function seriesContractColumns(series: HeadlessSeries): { columns: string[]; cel
   const formula = legNames.length > 0
     && series.points.some((point) => point.legs?.length === legNames.length && point.legs.some((leg) => leg.contract));
   const continuous = !formula && series.points.some((point) => point.contract);
-  if (!formula && !continuous) return { columns: [], cells: () => [] };
   const flag = (value: boolean | undefined) => value ? "true" : "false";
+  // A series of no contracts whose newest bar is still forming says which as JSON does (`partial`), as `history` does.
+  if (!formula && !continuous) {
+    return series.points.some((point) => point.partial)
+      ? { columns: ["Partial"], cells: (point) => [flag(point.partial)] } : { columns: [], cells: () => [] };
+  }
   return {
     columns: [...formula ? legNames.map((leg) => `${leg} Contract`) : ["Contract"], "Roll", "Partial"],
     cells: (point, index) => {
@@ -1026,7 +1030,8 @@ export function headlessReportTables(
  */
 function reportIdentity(definition: HeadlessPaneDefinition, result: HeadlessPaneResult, args: HeadlessPaneLoadArgs): ExportIdentity {
   const series = definition.shape === "series" ? (result as HeadlessSeriesResult).series : [];
-  const charted = [...new Set(series.flatMap((entry) => entry.symbol?.trim() ? [entry.symbol.trim()] : []))];
+  // Named by its venue's code (SIE:XETRA) as its series table names it, so a derived series' rows (Volume) say the same.
+  const charted = [...new Set(series.flatMap((entry) => entry.symbol?.trim() ? [displayTickerKey(entry.symbol.trim())] : []))];
   const symbols = charted.length > 0 ? charted : args.symbols.length > 0 ? args.symbols : result.symbols ?? [];
   return symbols.length === 1 ? { symbolOrSeries: symbols[0]! } : {};
 }

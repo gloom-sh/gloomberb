@@ -155,8 +155,13 @@ function observationLine(source: ExportSource): string {
   return `Observation date: ${source.observationDate ?? NOT_PUBLISHED}`;
 }
 
-/** What the observation date says of itself when the rows are dated apart. */
-const DATED_APART = " (the newest row's; each row's as_of is its own)";
+/**
+ * What the observation date says of itself when the rows are dated apart: each
+ * row's own, or, when a row's as_of is not its own (`history`'s bars are dated
+ * by their symbol's), what it is of.
+ */
+const datedApartText = (of?: string) => of ? ` (the newest ${of}'s; each row's as_of is its ${of}'s, not the row's own date)`
+  : " (the newest row's; each row's as_of is its own)";
 
 /**
  * Whether an export's rows are dated apart: their `as_of` cells hold more
@@ -174,11 +179,11 @@ export function rowsDatedApart(asOf: Iterable<string | null | undefined>): boole
  * `Observation date: 2026-11-21T00:34:00.055Z`. Its date stays first, so a
  * reader of the line still finds it there.
  */
-export function withRowsDatedApart(lines: readonly string[], freshness: ReportFreshness): string[] {
+export function withRowsDatedApart(lines: readonly string[], freshness: ReportFreshness, of?: string): string[] {
   const source = exportSource(freshness);
   if (!source.observationDate) return [...lines];
   const line = observationLine(source);
-  return lines.map((each) => each === line ? `${line}${DATED_APART}` : each);
+  return lines.map((each) => each === line ? `${line}${datedApartText(of)}` : each);
 }
 
 /**

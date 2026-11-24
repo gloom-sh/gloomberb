@@ -376,6 +376,31 @@ describe("history rows", () => {
     expect(historyGapNote(weekly, btc)).toBe("No bar for the week of 2026-09-21");
   });
 
+  // An export of SIE's daily bars once came without 2026-11-23, a Monday session, and said nothing of it.
+  test("a session its venue's published calendar holds with no daily bar is named; a holiday, an unpublished calendar and a future are not", () => {
+    const weekdays = (first: string, last: string, skip: string[] = []) => {
+      const dates: Date[] = [];
+      for (let time = Date.parse(first); time <= Date.parse(last); time += 86_400_000) {
+        const day = new Date(time);
+        if (day.getUTCDay() !== 0 && day.getUTCDay() !== 6 && !skip.includes(day.toISOString().slice(0, 10))) dates.push(day);
+      }
+      return historyRows(dates.map((date) => ({ date, close: 1 })), "1d");
+    };
+    const aapl = { listing: "AAPL", exchange: "NASDAQ", instrumentType: "EQUITY" };
+    expect(historyGapNote(weekdays("2026-11-16", "2026-11-24", ["2026-11-23"]), aapl)).toBe("No bar for 2026-11-23, a scheduled session of NASDAQ");
+    // Thanksgiving is no session; four missing sessions name the latest three.
+    expect(historyGapNote(weekdays("2026-11-23", "2026-11-30", ["2026-11-26"]), aapl)).toBeNull();
+    expect(historyGapNote(weekdays("2026-11-02", "2026-11-24", ["2026-11-04", "2026-11-10", "2026-11-12", "2026-11-23"]), aapl))
+      .toBe("No bars for 1 earlier session, 2026-11-10, 2026-11-12 and 2026-11-23, scheduled sessions of NASDAQ");
+    // Xetra's closures are not published, so a weekday without a bar may be its holiday: not named.
+    expect(historyGapNote(weekdays("2026-11-16", "2026-11-24", ["2026-11-23"]), { listing: "SIE", exchange: "XETRA", instrumentType: "EQUITY" })).toBeNull();
+    expect(historyGapNote(weekdays("2026-11-16", "2026-11-24", ["2026-11-23"]), { listing: "ES=F", exchange: "CME", instrumentType: "FUTURE" })).toBeNull();
+    // NSE's Sunday Muhurat session has no daily bar of its own; its stocks' bars of Monday 9 Nov 2026 were missing while the index had one.
+    const reliance = { listing: "RELIANCE:NSE", exchange: "NSE", instrumentType: "EQUITY" };
+    expect(historyGapNote(weekdays("2026-11-02", "2026-11-13", ["2026-11-10"]), reliance)).toBeNull();
+    expect(historyGapNote(weekdays("2026-11-02", "2026-11-13", ["2026-11-09", "2026-11-10"]), reliance)).toBe("No bar for 2026-11-09, a scheduled session of NSE");
+  });
+
   test("a gap or a 100x jump flags the bar after it and keeps its prices, which the blanked-bar count leaves out", () => {
     const rows = historyRows(usdIlsMonthly(), "1mo", "ILS", "ILS per USD");
     expect(rows.filter((row) => row.flag).map((row) => [row.date, row.flag, row.close])).toEqual([["1992-12-01", "gap,jump", 2.763]]);

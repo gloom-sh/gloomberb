@@ -10,10 +10,10 @@ import {
   RANGE_HISTORY_RESOLUTION,
   type ManualChartResolution,
 } from "../time-series/resolution";
-import { classifyInstrumentType } from "../tickers/instrument-kind";
+import { classifyInstrumentType, kindFromListingSyntax } from "../tickers/instrument-kind";
 import { isRoundTheClockCoin } from "../utils/crypto-pair";
 import { currencyPairCode } from "../utils/currency-pair";
-import { parsePublicTickerKey } from "../utils/exchanges";
+import { canonicalExchange, parsePublicTickerKey } from "../utils/exchanges";
 import { currencyUnitLabel, resolveCurrencyUnit } from "../utils/currency-units";
 import { dailyBarDate, getPricePointTimestamp } from "../utils/price-history";
 import {
@@ -25,7 +25,7 @@ import { maxDrawdown, type DrawdownScale, type MaxDrawdown } from "../utils/max-
 import { historyCoverageNotice } from "../sources/history-coverage";
 import { barLastSession, barPeriodToDate, type BarPeriodToDate } from "../market-data/market/bar-period";
 import { barSizeFromGap, medianBarGap } from "../time-series/bar-spacing";
-import { isRegularSessionTime, sessionCalendarTimeZone } from "../market-data/market/freshness";
+import { hasPublishedSessionCalendar, isAlwaysOpenExchange, isRegularSessionTime, isTradingWeekday, isVenueTradingDay, sessionCalendarTimeZone } from "../market-data/market/freshness";
 import { zonedDateKey } from "../utils/zoned-date-time";
 import { cleanFloat32Price, decimalPlaces } from "../utils/float32-price";
 import { futuresBoardContract } from "../market-data/futures-board";
@@ -1174,6 +1174,43 @@ export function historyJumpNote(rows: readonly Pick<HistoryRow, "date" | "close"
   return `Close ${earlier > 0 ? `jumps over 100x at ${earlier} earlier ${earlier === 1 ? "bar" : "bars"}, then ` : ""}${listItems(shown)}`;
 }
 
+/** Instruments whose daily bars follow no venue's stock calendar: a future's trade dates, a pair's or coin's days. */
+const OFF_CALENDAR_KINDS = new Set(["future", "crypto", "currency", "perpetual", "prediction"]);
+
+/**
+ * "No bar for 2026-11-23, a scheduled NASDAQ session": the days between a
+ * listing's first and last daily bar that its venue's published calendar
+ * holds a session on (hasPublishedSessionCalendar) and no bar has, the
+ * latest by date, the rest as a count. A venue whose closures are not
+ * published (Xetra, Euronext, the LSE) would read each of its holidays as a
+ * missing session, so it is not checked; nor are futures, pairs and coins.
+ */
+function missingSessionsNote(
+  rows: readonly Pick<HistoryRow, "date" | "interval">[],
+  market: { listing: string; exchange?: string; instrumentType?: string },
+): string | null {
+  const venue = market.exchange;
+  const kind = classifyInstrumentType(market.instrumentType) ?? kindFromListingSyntax(market.listing, venue);
+  if (rows[0]?.interval !== "1d" || !venue || isAlwaysOpenExchange(venue) || (kind && OFF_CALENDAR_KINDS.has(kind))) return null;
+  const days = new Set(rows.map((row) => row.date.slice(0, 10)));
+  const sorted = [...days].sort();
+  const first = Date.parse(`${sorted[0]}T00:00:00Z`);
+  const last = Date.parse(`${sorted.at(-1)}T00:00:00Z`);
+  if (!Number.isFinite(first) || !Number.isFinite(last)) return null;
+  const canonical = canonicalExchange(venue);
+  const missing: string[] = [];
+  for (let time = first + DAY_MS; time < last; time += DAY_MS) {
+    const day = utcDay(time);
+    // A special session on a day off (NSE's Sunday Muhurat hour) has no daily bar of its own at most sources.
+    if (!days.has(day) && isTradingWeekday(canonical, new Date(time).getUTCDay()) && hasPublishedSessionCalendar(venue, day) && isVenueTradingDay(venue, day)) missing.push(day);
+  }
+  if (!missing.length) return null;
+  const shown = missing.slice(-LISTED_GAPS);
+  const earlier = missing.length - shown.length;
+  const listed = [...earlier > 0 ? [`${earlier} earlier ${earlier === 1 ? "session" : "sessions"}`] : [], ...shown];
+  return `${missing.length === 1 ? "No bar" : "No bars"} for ${listItems(listed)}, ${missing.length === 1 ? "a scheduled session" : "scheduled sessions"} of ${canonical}`;
+}
+
 /**
  * "No bar for 2026-10-10": the days a coin, which trades every day, has no
  * daily bar for between its first and last bar. Days before the first bar are
@@ -1188,7 +1225,10 @@ export function historyGapNote(
 ): string | null {
   const everyDay = isRoundTheClockCoin(market.listing, market.exchange)
     || classifyInstrumentType(market.instrumentType) === "crypto";
-  if (!everyDay || rows[0]?.interval !== "1d") return historyBreakGapNote(rows);
+  if (!everyDay || rows[0]?.interval !== "1d") {
+    const sessions = everyDay ? null : missingSessionsNote(rows, market);
+    return [sessions, historyBreakGapNote(rows)].filter(Boolean).join("; ") || null;
+  }
   const days = new Set(rows.map((row) => Date.parse(`${row.date.slice(0, 10)}T00:00:00Z`)).filter(Number.isFinite));
   const sorted = [...days].sort((left, right) => left - right);
   const gaps: Array<[number, number]> = [];
