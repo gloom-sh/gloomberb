@@ -804,9 +804,11 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
       values: { seedLeg: JSON.stringify(leg), spot: String(spot),
         currency: contract.currency,
         ...(dividendYield == null ? {} : { dividendYield: String(dividendYield * 100) }),
+        // The scenario values at the underlying's print; the chain's quote time goes with the leg, so a roll from an earlier session shows.
+        ...(Number.isFinite(chainAsOfMs) ? { optionQuotesAt: new Date(chainAsOfMs).toISOString() } : {}),
         asOf: new Date(underlying?.quote?.lastUpdated ?? Date.now()).toISOString() } });
   }, [scenarioContract, scenarioAvailable, scenarioMid, scenarioVolatility, createPaneFromTemplate, dividendYield, effectiveTicker,
-    effectiveExchange, selectedSide, spot, underlying?.quote?.lastUpdated]);
+    effectiveExchange, selectedSide, spot, underlying?.quote?.lastUpdated, chainAsOfMs]);
 
   // A contract opens as its own listing: quote, chart and Trade. It stays on
   // the chain's broker while that profile is on, else it opens by its symbol.

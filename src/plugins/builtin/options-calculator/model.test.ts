@@ -23,12 +23,16 @@ const CANONICAL: OptionCalcDraft = {
 test("contract edits retain numeric what-if inputs without borrowing market attribution", () => {
   const original: OptionCalcDraft = { ...CANONICAL, marketPrice: 20.425, marketPriceSource: "mid",
     marketReference: { contractSymbol: "COST260925C00900000", currency: "USD", expiration: 1790294400,
-      bid: 19.75, ask: 21.1, lastPrice: 21.34, lastTradeDate: 1789136721 } };
+      bid: 19.75, ask: 21.1, lastPrice: 21.34, lastTradeDate: 1789136721 },
+    valuation: { at: 1789136721000, spot: 100, spotLabel: "close Fri 11 Sep" }, chainIv: { volatility: 0.21, kind: "forward", forward: 100.4 } };
   for (const patch of [{ side: "put" as const }, { strike: 105 }, { daysToExpiry: 14 }, { symbol: "COST" }]) {
     const changed = updateOptionCalcDraft(original, patch);
     expect(changed.marketPrice).toBe(20.425);
     expect(changed.marketPriceSource).toBeUndefined();
     expect(changed.marketReference).toBeUndefined();
+    // Another contract is not the one the chain valued, so neither its quote time nor its IV note carries over.
+    expect(changed.valuation).toBeUndefined();
+    expect(changed.chainIv).toBeUndefined();
     const restored = updateOptionCalcDraft(changed, { side: original.side, strike: original.strike,
       daysToExpiry: original.daysToExpiry, symbol: original.symbol });
     expect(restored.marketPriceSource).toBeUndefined();
@@ -36,6 +40,7 @@ test("contract edits retain numeric what-if inputs without borrowing market attr
   expect(updateOptionCalcDraft(original, { side: original.side })).toEqual(original);
   expect(updateOptionCalcDraft(original, { volatility: 0.4, spot: 120 }).marketReference).toEqual(original.marketReference);
   expect(updateOptionCalcDraft(original, { marketPrice: 20.425 }).marketPriceSource).toBeUndefined();
+  expect(updateOptionCalcDraft(original, { marketPrice: 21 })).toMatchObject({ valuation: original.valuation, chainIv: undefined });
   expect(updateOptionCalcDraft({ ...CANONICAL, marketPrice: 5 }, { side: "put" }).marketPrice).toBe(5);
 });
 

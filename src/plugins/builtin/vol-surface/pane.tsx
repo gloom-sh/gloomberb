@@ -40,7 +40,7 @@ import { formatCaptureTime, storedSurfaceFreshness, storedSurfaceSnapshot, type 
 import { useShownObservationFooter } from "../shared/source-footer";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { useVolSurfaceEvidence } from "./evidence";
-import { buildSurfaceGrid, DEFAULT_SURFACE_SETTINGS, SURFACE_3D_DELTAS, surfaceFilterSummary, totalSurfaceFilterCounts, windowSurfaceGrid,
+import { buildSurfaceGrid, DEFAULT_SURFACE_SETTINGS, SURFACE_3D_DELTAS, surfaceFilterSummary, surfaceRowValuationTime, totalSurfaceFilterCounts, windowSurfaceGrid,
   type SurfaceExpiry, type SurfaceGridRow, type SurfaceSettings, type SurfaceSnapshot } from "./model";
 import {
   DEFAULT_SURFACE3D_CAMERA, rotateSurface3DCamera, zoomSurface3DCamera, type Surface3DCamera,
@@ -371,10 +371,13 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   };
   const openPricer = () => {
     if (!snapshot || !selectedCell?.volatility || !selectedCell.strike || !selectedRow) return;
+    // A listed expiry's row counts its years from the quotes' time; the calculator says so, with the spot's stamp.
+    const valuedAt = surfaceRowValuationTime(selectedRow);
     const params = buildOptionCalcParams({ symbol: snapshot.symbol, spot: snapshot.spot,
       strike: selectedCell.strike, volatility: selectedCell.volatility, side: selectedCell.point?.side ?? "call",
       expiration: selectedRow.expiration, dividendYield: selectedRow.dividendYield,
-      marketPrice: selectedCell.point?.strike === selectedCell.strike ? selectedCell.point.price : undefined });
+      marketPrice: selectedCell.point?.strike === selectedCell.strike ? selectedCell.point.price : undefined,
+      ...(valuedAt != null ? { valuation: { at: valuedAt, spot: snapshot.spot, spotLabel: surfaceSpotBasisLabel(snapshot) } } : {}) });
     params.days = String(selectedRow.years * 365);
     if (selectedRow.rate != null) params.rate = String(selectedRow.rate);
     if (selectedRow.dividendYield != null) params.dividendYield = String(selectedRow.dividendYield);

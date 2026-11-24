@@ -4,7 +4,7 @@ import { optionsScenarioHeadless } from "./headless";
 import { cspScreenHeadless } from "./csp-screen-headless";
 
 const scenarioSettingKeys = ["legs", "strategy", "strike", "delta", "putStrike", "callStrike", "shares", "expiration", "spot", "rate", "dividendYield", "currency", "asOf", "date", "volShift",
-  "spotRange", "seedLeg", "nav", "budgetBps", "sleeve"];
+  "spotRange", "seedLeg", "optionQuotesAt", "nav", "budgetBps", "sleeve"];
 
 export const optionsScenarioModule: PluginModule = {
   panes: [{
