@@ -4,7 +4,7 @@ import { fetchTape } from "../../plugins/builtin/time-sales/client";
 import { captureScannerEvent, SCANNER_PANE_KINDS, usScannerSessionClosed, type ScannerCapture } from "../../plugins/builtin/shared/scanner-capture";
 import { isOptionsUnavailableError } from "../../market-data/options-alternatives";
 import type { TapeCapture } from "../../plugins/builtin/time-sales/snapshot-client";
-import { apiClient } from "../../api-client";
+import { apiClient, type ScannerFeedEvent } from "../../api-client";
 import { snapshotInstrumentKey, type SnapshotMarketData } from "../../market-data/snapshot-provider";
 import { resumeStateKey } from "../../plugins/registry/plugin-state";
 import { toMarketDataContext } from "../../market-data/selectors";
@@ -195,6 +195,18 @@ async function shotDailyHistory(
     : provider.getPriceHistoryForResolution?.(target.symbol, exchange, "5Y", "1d", toMarketDataContext(target));
   const daily = await (read ?? Promise.resolve([])).catch(logFailure("cli.pane-functions.screenshot-payload", "Read daily closes for a capture failed", []));
   return { target, daily };
+}
+
+/**
+ * The scanner answer the page replays, taken while the US market is shut. A cold scanner answers `starting` while it
+ * seeds (a few seconds for FLOW, over twenty for HILO), and a pane's feed drops a starting payload to wait for the next,
+ * which the page never gets: FLOW stayed on "Waiting for the scanner..." until the capture timed out. While shut, that
+ * answer is the closed session, as `fn FLOW` reports it.
+ */
+function closedSessionAnswer(event: ScannerFeedEvent, closed: boolean): ScannerFeedEvent {
+  return closed && event.type === "data" && event.payload.status === "starting"
+    ? { ...event, payload: { ...event.payload, status: "closed" } }
+    : event;
 }
 
 export async function buildDesktopShotPayload(
@@ -494,8 +506,12 @@ export async function buildDesktopShotPayload(
   // A scanner pane reads one answer from the capture's own session: the page's socket is refused (see createSnapshotScannerClient).
   // While the US market is shut the pane says so from the calendar, so the scanner's first answer is taken, not waited on.
   const scannerKind = SCANNER_PANE_KINDS[resolved.pane.id];
+  const scannerClosed = scannerKind ? usScannerSessionClosed(Date.now()) : false;
   const scannerSnapshots: ScannerCapture[] = scannerKind
-    ? [[scannerKind, await captureScannerEvent(scannerFeed, scannerKind, new AbortController().signal, undefined, { closed: usScannerSessionClosed(Date.now()) })]]
+    ? [[scannerKind, closedSessionAnswer(
+      await captureScannerEvent(scannerFeed, scannerKind, new AbortController().signal, undefined, { closed: scannerClosed }),
+      scannerClosed,
+    )]]
     : [];
   layout.instances[0] = shotInstance;
   config.layout.instances[0] = shotInstance;
