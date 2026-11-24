@@ -62,6 +62,7 @@ describe("13F model", () => {
   test("a stored return sort falls back to reported value outside the performance ranking", () => {
     const stored = { columnId: "estQuarterReturn" as const, direction: "desc" as const };
     expect(browserSortFor(stored, "performance")).toBe(stored);
+    expect(browserSortFor(stored, "performance", true)).toEqual({ columnId: "value", direction: "desc" });
     expect(browserSortFor(stored, "byTicker")).toEqual({ columnId: "value", direction: "desc" });
     expect(browserSortFor({ columnId: "fund", direction: "asc" }, "funds")).toEqual({ columnId: "fund", direction: "asc" });
   });

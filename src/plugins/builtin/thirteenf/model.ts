@@ -48,8 +48,9 @@ const RETURN_SORT_COLUMNS = new Set<FundBrowserColumnId>(["estQuarterReturn", "r
 export function browserSortFor(
   preference: FundSortPreference<FundBrowserColumnId>,
   tab: ThirteenFBrowserTab,
+  rankedByReportedValue = false,
 ): FundSortPreference<FundBrowserColumnId> {
-  return tab !== "performance" && RETURN_SORT_COLUMNS.has(preference.columnId)
+  return (tab !== "performance" || rankedByReportedValue) && RETURN_SORT_COLUMNS.has(preference.columnId)
     ? { columnId: "value", direction: "desc" }
     : preference;
 }
@@ -265,15 +266,17 @@ export function buildBrowserRows(options: {
       ? topFund?.periodOfReport ?? latestForm?.periodOfReport
       : latestForm?.periodOfReport ?? topFund?.periodOfReport;
     const form = latestForm?.periodOfReport === periodOfReport ? latestForm : undefined;
+    const ranked = topFund?.periodOfReport === periodOfReport ? topFund?.reportedValue : undefined;
     return {
       id: `${options.source}:${fund.cik}`,
       cik: fund.cik,
       name: fund.name,
       periodOfReport,
-      filedAsOfDate: form?.filedAsOfDate,
-      tableValueTotal: browserReportTotal(form, report, "tableValueTotal"),
-      tableEntryTotal: browserReportTotal(form, report, "tableEntryTotal"),
+      filedAsOfDate: ranked?.filed || form?.filedAsOfDate,
+      tableValueTotal: ranked ? ranked.value : browserReportTotal(form, report, "tableValueTotal"),
+      tableEntryTotal: ranked ? ranked.entries : browserReportTotal(form, report, "tableEntryTotal"),
       estQuarterReturn: topFund && topFund.periodOfReport === periodOfReport ? topFund.pnl : null,
+      ...(ranked ? { rankedByReportedValue: true } : {}),
       source: options.source,
     };
   });
