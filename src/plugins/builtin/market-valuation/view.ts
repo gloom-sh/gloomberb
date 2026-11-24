@@ -153,16 +153,14 @@ export function selectValuationViews(
   return bundle.builds.map((build) => projectView(build, range));
 }
 
-/** Months a period of each periodicity runs. */
-const PERIOD_MONTHS = { monthly: 1, quarterly: 3, annual: 12 } as const;
+const observationMonth = new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
 
-/**
- * A reading's as-of as FA dates a period, by the day it ends: a quarterly series dated 2026-04-01 (the start of Q2,
- * as FRED dates it) is as of 2026-06-30. A reading dated by its own day stays as it is.
- */
-export function readingPeriodEnd(date: string, periodicity: keyof typeof PERIOD_MONTHS | null | undefined): string {
+export function readingPeriodLabel(date: string, periodicity: IndicatorViewModel["periodicity"] | undefined): string {
   if (!periodicity || !/^\d{4}-\d{2}-\d{2}/.test(date)) return date;
   const start = new Date(`${date.slice(0, 10)}T00:00:00Z`);
   if (!Number.isFinite(start.getTime())) return date;
-  return new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + PERIOD_MONTHS[periodicity], 0)).toISOString().slice(0, 10);
+  const year = start.getUTCFullYear();
+  if (periodicity === "monthly") return observationMonth.format(start);
+  if (periodicity === "quarterly") return `Q${Math.floor(start.getUTCMonth() / 3) + 1} ${year}`;
+  return String(year);
 }

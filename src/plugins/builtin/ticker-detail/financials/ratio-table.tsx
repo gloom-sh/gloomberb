@@ -10,6 +10,9 @@ import { useAssetData } from "../../../runtime";
 import { colors, priceColor } from "../../../../theme/colors";
 import { notMeaningfulColor } from "../../../../components/ui/not-meaningful";
 import type { PricePoint } from "../../../../types/financials";
+import type { FxCloses } from "../../../../market-data/fx-closes";
+import { apiClient } from "../../../../api-client";
+import { loadValuationFx } from "../../../../time-series/valuation-currency";
 import { displayWidth, padTo } from "../../../../utils/format";
 import { useBoundTicker, useTickerRequest } from "../../shared/ticker-request";
 import type { FinancialTableStatement } from "./aggregation";
@@ -54,6 +57,7 @@ export function ratioNameCell(
 
 export interface PeriodEndHistoryState {
   data: PricePoint[] | undefined;
+  fx?: ReadonlyMap<string, FxCloses>;
   loading: boolean;
   error: string | null;
 }
@@ -63,18 +67,23 @@ export interface PeriodEndHistoryState {
  * mounts only while the Valuation tab is open, so the other tabs never ask for
  * history and the table itself needs no plugin runtime.
  */
-export function PeriodEndHistoryLoader({ oldestPeriodEnd, onChange }: {
+export function PeriodEndHistoryLoader({ oldestPeriodEnd, fxCurrencies, onChange }: {
   oldestPeriodEnd: string;
+  fxCurrencies: string;
   onChange: (state: PeriodEndHistoryState | null) => void;
 }) {
   const provider = useAssetData();
   const { symbol, exchange } = useBoundTicker();
-  const loader = useCallback((nextSymbol: string, nextExchange: string, forceRefresh: boolean): Promise<PricePoint[]> => {
+  const loader = useCallback(async (nextSymbol: string, nextExchange: string, forceRefresh: boolean) => {
     if (!provider) throw new Error("Market data unavailable");
-    return loadPeriodEndHistory(provider, nextSymbol, nextExchange, oldestPeriodEnd, forceRefresh ? { cacheMode: "refresh" } : undefined);
-  }, [oldestPeriodEnd, provider]);
-  const { data, loading, error } = useTickerRequest(loader, symbol, exchange, ["period-end-history", oldestPeriodEnd]);
-  useEffect(() => onChange({ data: data ?? undefined, loading, error: error ? String(error) : null }), [data, error, loading, onChange]);
+    const [prices, fx] = await Promise.all([
+      loadPeriodEndHistory(provider, nextSymbol, nextExchange, oldestPeriodEnd, forceRefresh ? { cacheMode: "refresh" } : undefined),
+      loadValuationFx(fxCurrencies ? fxCurrencies.split(",") : [], oldestPeriodEnd, apiClient),
+    ]);
+    return { prices, fx };
+  }, [oldestPeriodEnd, provider, fxCurrencies]);
+  const { data, loading, error } = useTickerRequest(loader, symbol, exchange, ["period-end-history", oldestPeriodEnd, fxCurrencies]);
+  useEffect(() => onChange({ data: data?.prices, fx: data?.fx, loading, error: error ? String(error) : null }), [data, error, loading, onChange]);
   useEffect(() => () => onChange(null), [onChange]);
   return null;
 }

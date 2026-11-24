@@ -1,4 +1,4 @@
-import { createValuationCurrencyContext } from "../../../../time-series/valuation-currency";
+import { createValuationCurrencyContext, type ValuationCurrencyContext } from "../../../../time-series/valuation-currency";
 import type { CompanyProfile, FinancialStatement, PricePoint, TickerFinancials } from "../../../../types/financials";
 import { MISSING_VALUE, formatNumber, pickUnit } from "../../../../utils/format";
 import { pricePointIntegrity } from "../../../../utils/price-history-integrity";
@@ -922,14 +922,15 @@ export function ratioTableForFinancials(
   period: FinancialPeriod,
   history?: readonly PricePoint[] | null,
   proceeds?: { periodEnd: string; filings: readonly OfferingFiling[] },
+  currencies: ValuationCurrencyContext = createValuationCurrencyContext(financials),
 ): RatioTableModel {
   const annual = byDate(financials.annualStatements);
   const quarterly = byDate(financials.quarterlyStatements);
   const { statements } = selectFinancialStatements(period, "income", annual, quarterly, undefined, financials.trailingStatement);
-  const currencies = createValuationCurrencyContext(financials);
   const price = (statement: FinancialTableStatement): RatioAmount => {
-    const close = history ? periodEndClose(history, ratioPeriodEnd(statement)) : undefined;
-    return (close === undefined ? null : currencies.priceInStatementUnits(statement, close)) ?? "no-price";
+    const date = ratioPeriodEnd(statement);
+    const close = history ? periodEndClose(history, date) : undefined;
+    return (close === undefined ? null : currencies.priceInStatementUnits(statement, close, date)) ?? "no-price";
   };
   return buildRatioTableModel(tab, ratioPeriods(statements, ratioOpenings(period, annual, quarterly), period, price, { annual, quarterly }), "all", financials.profile, proceeds);
 }

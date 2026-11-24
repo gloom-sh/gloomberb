@@ -25,6 +25,25 @@ function lead(query: keyof typeof fixture.answers, rows = answer(query), tickers
   return `${first?.result?.name} | ${first?.result?.exchange || "-"}`;
 }
 
+test("a server-confirmed trade name leads with the home equity, not an index, receipt or unrelated ticker", () => {
+  const build = (query: string, providerResults: InstrumentSearchResult[]) => buildTickerSearchCandidates({
+    query, providerResults, tickers: new Map(), totalLimit: 30,
+  });
+  const listing = (symbol: string, name: string, exchange: string, type = "Common Stock"): InstrumentSearchResult =>
+    ({ providerId: "gloomberb-cloud", symbol, name, exchange, type });
+  const cases = [
+    ["munich re", listing("MUV2", "Münchener Rückversicherungs-Gesellschaft AG", "XETRA"), listing("IDX", "Solactive Munich Re Index", "XSTU", "Index")],
+    ["hannover re", listing("HNR1", "Hannover Rück SE", "XETRA"), listing("HVRRF", "Hannover Re", "PNK")],
+    ["swiss re", listing("SREN", "Swiss Re AG", "SWX"), listing("SSREF", "Swiss Re AG", "OTC")],
+    ["scor", listing("SCR", "SCOR SE", "EPA"), listing("SCOR", "comScore, Inc.", "NASDAQ")],
+  ] as const;
+  for (const [query, home, decoy] of cases) {
+    const rows = [{ ...home, searchAliases: [query], homeListing: true, preferredNameMatch: true }, decoy];
+    expect(build(query, rows)[0]?.result).toMatchObject({ symbol: home.symbol, exchange: home.exchange });
+    expect(build(`${decoy.symbol}:${decoy.exchange}`, rows)[0]?.result).toMatchObject({ symbol: decoy.symbol, exchange: decoy.exchange });
+  }
+});
+
 test.each([
   // A company whose name starts with the letters: AXP Energy, CAT Strategic Metals.
   ["AXP", "American Express Company | NYSE"],

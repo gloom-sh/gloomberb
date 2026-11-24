@@ -4,6 +4,7 @@ import { valuationCache } from "./cache";
 import { marketValuationHeadless } from "./headless";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 import { deriveHeadlessFreshness, formatFreshnessLine } from "../../../cli/pane-functions/freshness";
+import { readingPeriodLabel } from "./view";
 
 beforeEach(() => valuationCache.reset());
 afterEach(() => valuationCache.reset());
@@ -18,6 +19,11 @@ function loadArgs(): HeadlessPaneLoadArgs {
 }
 
 describe("market valuation headless model", () => {
+  test("monthly and quarterly observations do not claim a close on a day that has not happened", () => {
+    expect(readingPeriodLabel("2026-11-01", "monthly")).toBe("Nov 2026");
+    expect(readingPeriodLabel("2026-10-01", "quarterly")).toBe("Q4 2026");
+    expect(readingPeriodLabel("2026-11-24", null)).toBe("2026-11-24");
+  });
   test("loads through the injected cloud client and produces bundle sections", async () => {
     let shillerCalls = 0;
     const fredRequests: string[] = [];

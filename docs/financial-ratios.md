@@ -125,7 +125,7 @@ The Valuation tab prices each period at its own period end, not today:
 - **Market cap** is that close × period-end shares outstanding from the balance sheet, never weighted-average shares.
 - **EPS.** A quarterly column's P/E divides by the trailing year's diluted EPS, the same figure the annual view's TTM column shows for that quarter end. It reads `not reported` when any of the four quarters has no EPS or an unresolved share basis.
 - **Splits.** Closes are split-adjusted and statement EPS and share counts are on the current share basis, so a split since the period does not distort the multiple (NVIDIA's FY2023 reads 20.37 ÷ 0.174 = 117.0x).
-- **Currency.** The close must be in the reporting currency; GBp converts to GBP without an FX rate. A foreign listing of a company reporting in another currency reads `no price`.
+- **Currency.** The close is converted to the reporting currency at the daily FX close on or before the period end. GBp converts to GBP without an FX rate. A period without a comparable close or a nearby FX rate reads `no price`.
 
 Current multiples at today's price are in `DES` and `RV`; once the regular session is over they are measured at its close, never at an after-hours print.
 

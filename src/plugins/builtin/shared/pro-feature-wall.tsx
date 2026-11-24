@@ -46,7 +46,7 @@ export function useProFeatureWall(copy: ProFeatureWallCopy, size: { width: numbe
   const gated = !options.preview;
   let wall: ReactNode = null;
   if ((gated && !access.signedIn) || refused === 401) {
-    wall = <SignInWall placement={`${copy.placement.replace(/-wall$/, "")}-signin`} {...size} symbol={symbol} exchange={exchange} action={copy.action} />;
+    wall = <SignInWall placement={`${copy.placement.replace(/-wall$/, "")}-signin`} {...size} symbol={symbol} exchange={exchange} action={copy.action} pro />;
   } else if ((gated && !access.emailVerified) || refused === 403) {
     wall = <SignInWall placement={`${copy.placement.replace(/-wall$/, "")}-signin`} {...size} symbol={symbol} exchange={exchange} action={copy.action} needsVerification />;
   } else if ((gated && !access.hasProAccess) || refused === 402) {

@@ -3807,7 +3807,7 @@ async function printExchangeAnnouncements(
   let failure: string | null = null;
   try {
     // HKEX's routine returns are left out after the read, so its list is asked for whole: a buyback files one a day.
-    const limit = all || publisher === "ASX" ? Math.min(count, 50) : 100;
+    const limit = publisher === "HKEXnews" && !all ? 100 : Math.min(count, 50);
     payload = await apiClient.getCloudExchangeAnnouncements({ symbol: resolved.symbol, exchange: resolved.exchange, limit });
   } catch (error) {
     failure = `${publisher} announcements unavailable: ${error instanceof Error ? error.message : String(error)}`;
@@ -5300,7 +5300,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
   },
   {
     name: "filings",
-    description: "Fetch recent SEC filings; a listing abroad gets its exchange's announcements page, and ASX's or HKEX's list",
+    description: "Fetch recent SEC filings; a listing abroad gets its exchange's announcements page, and ASX, HKEX or SIX listings get the announcements list",
     help: {
       group: CLI_COMMAND_GROUPS.companyData,
       usage: ["filings <symbol> [--count <n>] [--form <form>] [--all]"],

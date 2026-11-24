@@ -112,15 +112,14 @@ describe("P/E band", () => {
     expect(pence.current?.pe).toBe(1.4);
     expect(pence.conversion).toBeNull();
     const taiwan = financials(quarters.map((row) => ({ ...row, currency: "TWD" })), [], { price: 140, currency: "USD" });
-    expect(projectPeBand(taiwan, weeks, { symbol: "X", lookbackYears: 10 }).error).toBe("EPS is reported in TWD and the price is in USD.");
+    expect(projectPeBand(taiwan, weeks, { symbol: "X", lookbackYears: 10 }).error).toContain("no FX close for 2025-12-31");
     expect(projectPeBand(taiwan, weeks, { symbol: "X", lookbackYears: 10, fx: new Map(), fxError: "daily TWD FX closes are stale" }).error)
       .toBe("EPS is reported in TWD and the price is in USD; daily TWD FX closes are stale.");
-    // A pound price has no dollar leg to cross through, so Taiwan dollars stay unconverted however many closes there are.
     expect(projectPeBand({ ...taiwan, quote: { price: 140, currency: "GBP" } as Quote }, weeks, { symbol: "X", lookbackYears: 10, fx: new Map() }).error)
-      .toBe("EPS is reported in TWD and the price is in GBP.");
+      .toBe("EPS is reported in TWD and the price is in GBP; no FX close for 2025-12-31.");
   });
 
-  test("dollar prices convert foreign EPS at the FX close of each week, of each publication and of today", () => {
+  test("dollar prices use the FX close at the EPS period end throughout the step", () => {
     // TWD 10 of trailing EPS; the dollar is worth 25 Taiwan dollars, then 20 from 2026-01-12.
     const quarters = ["2025-03-31", "2025-06-30", "2025-09-30", "2025-12-31"].map((date) => ({ ...quarter(date, 2.5, date), currency: "TWD" }));
     const closes = new Map<string, number>();
@@ -133,19 +132,32 @@ describe("P/E band", () => {
     const weeks = ["2026-01-04", "2026-01-11", "2026-01-18"].map((date) => ({ date: new Date(date), close: 8 }));
     const model = projectPeBand(financials(quarters, [], { price: 10, currency: "USD" }), weeks,
       { symbol: "X", lookbackYears: 10, now: Date.parse("2026-02-01"), fx });
-    // Sundays take Friday's close: 10 / 25 then 10 / 20 of EPS in dollars.
-    expect(model.weeks.map((week) => week.eps)).toEqual([0.4, 0.4, 0.5]);
-    expect(model.weeks.map((week) => week.pe)).toEqual([20, 20, 16]);
-    expect(model.current).toMatchObject({ price: 10, eps: 0.5, pe: 20 });
-    expect(model.conversion).toEqual({ currency: "TWD", latest: { date: "2026-01-30", rate: 1 / 20 } });
-    // The table row keeps the reported figure and converts it at the close of the day it became known.
+    expect(model.weeks.map((week) => week.eps)).toEqual([0.4, 0.4, 0.4]);
+    expect(model.weeks.map((week) => week.pe)).toEqual([20, 20, 20]);
+    expect(model.current).toMatchObject({ price: 10, eps: 0.4, pe: 25 });
+    expect(model.conversion).toEqual({ currency: "TWD", latest: { date: "2025-12-31", rate: 1 / 25 } });
     expect(model.rows[0]).toMatchObject({ periodEnd: "2025-12-31", eps: 10, fx: { date: "2025-12-31", rate: 1 / 25 } });
-    // A week before the first FX close has no dollar EPS, so no P/E, rather than one at a later rate.
     const later = new Map([...closes].filter(([date]) => date >= "2026-01-05"));
     const early = projectPeBand(financials(quarters, [], { price: 10, currency: "USD" }), weeks,
       { symbol: "X", lookbackYears: 10, now: Date.parse("2026-02-01"), fx: new Map([["TWD", { currency: "TWD", closes: later, first: "2026-01-05", asOf: "2026-01-30" }]]) });
-    expect(early.weeks.map((week) => week.pe)).toEqual([null, 20, 16]);
-    expect(early.rows[0]).toMatchObject({ fx: null, pe: null });
+    expect(early.error).toContain("no FX close for 2025-12-31");
+  });
+
+  test("cross rates use a shared close on or before each EPS period end, not the publication date", () => {
+    const annual = [
+      { date: "2023-12-31", eps: 10, currency: "EUR", availableAt: "2024-02-01" },
+      { date: "2024-12-31", eps: 10, currency: "EUR", availableAt: "2025-02-01" },
+    ];
+    const history = (values: [string, number][]) => ({ closes: new Map(values), first: values[0]![0], asOf: values.at(-1)![0] });
+    const fx = new Map([
+      ["EUR", { currency: "EUR", ...history([["2023-12-29", 1.1], ["2024-12-30", 1.2], ["2024-12-31", 1.4], ["2025-02-01", 9]]) }],
+      ["CHF", { currency: "CHF", ...history([["2023-12-29", 1.1], ["2024-12-30", 1], ["2025-02-01", 1]]) }],
+    ]);
+    const model = projectPeBand(financials([], annual, { price: 24, currency: "CHF" }), [], {
+      symbol: "X", lookbackYears: 0, now: Date.parse("2025-02-02"), fx,
+    });
+    expect(model.rows.map((row) => row.fx)).toEqual([{ date: "2024-12-30", rate: 1.2 }, { date: "2023-12-29", rate: 1 }]);
+    expect(model.current).toMatchObject({ eps: 12, pe: 2 });
   });
 
   test("a report dates the figures with no publication date, so the weeks before it no longer price an unreleased EPS", () => {

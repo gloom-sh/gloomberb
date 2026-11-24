@@ -208,7 +208,7 @@ test("FA: a filled half is headed as one with its growth on the half before; a f
       "H1 FY25 2025-06-30 CNY bn (comparative in the 2026-08-20 announcement)",
     ]);
     expect(growth(quarterly, "income:revenue")["2026-06-30"]).toBeCloseTo(17.17 / 13.88 - 1, 6);
-    expect(quarterly.metadata?.notices).toContain("Growth is vs prior quarter; a half's is vs the same half a year earlier.");
+    expect(quarterly.metadata?.notices).toContain("Growth: QoQ; half-year growth is YoY.");
     expect((quarterly.metadata?.columns as Array<{ date: string; announced?: string; comparativeIn?: string }>)
       .map(({ date, announced, comparativeIn }) => [date, announced ?? null, comparativeIn ?? null]))
       .toEqual([["2026-06-30", "2026-08-20", null], ["2025-06-30", null, "2026-08-20"]]);

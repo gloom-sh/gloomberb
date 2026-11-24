@@ -208,6 +208,9 @@ function isListedEquity(candidate: TickerSearchCandidate): boolean {
  */
 export function withHomeListingLead<T extends TickerSearchCandidate>(items: T[], query: string): T[] {
   if (isQualifiedTickerQuery(query)) return items;
+  const namedHome = items.find((item) => item.result?.preferredNameMatch === true && item.homeListing === true
+    && item.instrumentClass === "equity" && isListedEquity(item) && item.result && namedByService(query, item.result));
+  if (namedHome && items[0] && !items[0].saved) return namedHome === items[0] ? items : moveAhead(items, namedHome, items[0]);
   const lead = items.find((item) => item.instrumentClass !== "fund" && item.instrumentClass !== "derivative"
     && !answersOnlyByKeyword(item, query));
   if (!lead || !isListedEquity(lead)) return items;

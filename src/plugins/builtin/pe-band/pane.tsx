@@ -15,7 +15,7 @@ import { Box } from "../../../ui";
 import { MISSING_VALUE, formatCurrency, formatPercentileRank } from "../../../utils/format";
 import { useAssetData } from "../../runtime";
 import { loadPeBandInputs } from "./client";
-import { formatPerShare, fxPairQuote, perShareDigits, projectPeBand, type PeBandModel, type PeBandRow } from "./model";
+import { formatEpsFx, formatPerShare, perShareDigits, projectPeBand, type PeBandModel, type PeBandRow } from "./model";
 
 export const LOOKBACK_OPTIONS = [{ value: "5", label: "5Y" }, { value: "10", label: "10Y" }, { value: "0", label: "Max" }];
 
@@ -30,12 +30,12 @@ const periodLabel = (row: Pick<PeBandRow, "basis" | "periodEnd">) =>
   `${row.basis === "annual" ? "FY" : "TTM"} ${MONTHS[Number(row.periodEnd.slice(5, 7)) - 1]} ${row.periodEnd.slice(0, 4)}`;
 
 /** With EPS converted from another currency, the table keeps the reported figure and adds the FX close it was converted at. */
-function tableColumns(conversion: PeBandModel["conversion"]): DataTableColumn[] {
+function tableColumns(showFx: boolean): DataTableColumn[] {
   return [
     { id: "period", label: "Period", width: 13, align: "left" },
     { id: "known", label: "Known", width: 11, align: "left" },
-    { id: "eps", label: conversion ? `EPS ${conversion.currency}` : "EPS", width: 9, align: "right" },
-    ...(conversion ? [{ id: "fx", label: fxPairQuote(conversion.currency, conversion.latest.rate).pair, width: 9, align: "right" as const }] : []),
+    { id: "eps", label: "EPS", width: showFx ? 14 : 9, align: "right" },
+    ...(showFx ? [{ id: "fx", label: "Period-end FX", width: 17, align: "right" as const }] : []),
     { id: "yoy", label: "YoY", width: 8, align: "right", omitWhenEmpty: true },
     { id: "price", label: "Price", width: 10, align: "right" },
     { id: "pe", label: "P/E", width: 7, align: "right" },
@@ -44,19 +44,18 @@ function tableColumns(conversion: PeBandModel["conversion"]): DataTableColumn[] 
 
 const rowKey = (row: PeBandRow) => `${row.basis}:${row.periodEnd}`;
 
-function renderCell(row: PeBandRow, column: DataTableColumn, colors: ReturnType<typeof useThemeColors>): DataTableCell {
+function renderCell(row: PeBandRow, column: DataTableColumn, colors: ReturnType<typeof useThemeColors>, fxTarget?: string): DataTableCell {
   switch (column.id) {
     case "period": return { text: periodLabel(row) };
     // A figure with no publication date on record steps at its period end.
     case "known": return row.dated ? { text: row.knownAt.toISOString().slice(0, 10), value: row.knownAt.toISOString().slice(0, 10) }
       : { text: "period end", color: colors.textMuted };
-    case "eps": return { text: row.eps == null ? MISSING_VALUE : formatPerShare(row.eps), value: row.eps,
+    case "eps": return { text: row.eps == null ? MISSING_VALUE : `${formatPerShare(row.eps)}${fxTarget && row.currency ? ` ${row.currency}` : ""}`, value: row.eps,
       color: row.eps != null && row.eps <= 0 ? colors.negative : undefined };
     case "yoy": return { text: pct(row.yoy), value: row.yoy == null ? null : row.yoy * 100,
       color: row.yoy == null || Math.abs(row.yoy) < 0.0005 ? undefined : row.yoy > 0 ? colors.positive : colors.negative };
     case "fx": {
-      const quote = row.fx && row.currency ? fxPairQuote(row.currency, row.fx.rate).value : null;
-      return { text: quote == null ? MISSING_VALUE : quote.toPrecision(5), value: quote };
+      return { text: row.fx && row.currency && fxTarget ? formatEpsFx(row.currency, fxTarget, row.fx.rate) : MISSING_VALUE, value: row.fx?.rate };
     }
     case "price": return { text: row.price == null ? MISSING_VALUE : formatPerShare(row.price), value: row.price };
     default: return { text: multiple(row.pe), value: row.pe };
@@ -111,7 +110,8 @@ export function PeBandPane({ width, height, focused }: PaneProps) {
     : null, [inputs.data, lookbackYears, symbol]);
   const rows = model?.rows ?? [];
   const conversion = model?.conversion ?? null;
-  const columns = useMemo(() => tableColumns(conversion), [conversion?.currency, conversion?.latest.rate]);
+  const showFx = !!conversion || rows.some((row) => row.fx);
+  const columns = useMemo(() => tableColumns(showFx), [showFx]);
   const series = useMemo(() => model && !model.error ? chartSeries(model, colors) : [], [model, colors]);
   const currency = model?.currency ?? undefined;
   const firstWeek = model?.weeks[0]?.date;
@@ -144,9 +144,8 @@ export function PeBandPane({ width, height, focused }: PaneProps) {
     const { current, range } = model;
     const step = current.step;
     // Converted EPS says what it was converted from, and at which close.
-    const pair = conversion ? fxPairQuote(conversion.currency, conversion.latest.rate) : null;
-    const converted = step?.eps != null && conversion && pair && step.currency === conversion.currency
-      ? `, from ${conversion.currency} ${formatPerShare(step.eps)} at ${pair.pair} ${pair.value.toPrecision(5)}` : "";
+    const converted = step?.eps != null && conversion && currency && step.currency === conversion.currency
+      ? ` · from ${conversion.currency} ${formatPerShare(step.eps)} at ${formatEpsFx(conversion.currency, currency, conversion.latest.rate)}` : "";
     return [
       { id: "pe", label: "P/E", value: multiple(current.pe),
         detail: current.pe != null ? formatPercentileRank(current.percentile, windowLabel) : current.eps != null ? "EPS not positive" : "EPS unavailable" },
@@ -169,10 +168,10 @@ export function PeBandPane({ width, height, focused }: PaneProps) {
         selection={{ kind: "id", selectedId: selected, getId: rowKey, onChange: (id) => setSelectedId(id) }}
         selectedTextOverridesCellColor
         getExportMetadata={() => [["symbol", model.symbol], ["currency", model.currency ?? ""],
-          ["units", conversion
-            ? `EPS as reported in ${conversion.currency}; FX close of the day it became known; price in ${model.currency ?? ""}; P/E at that day's close`
+          ["units", showFx
+            ? `EPS as reported; period-end FX to ${model.currency ?? ""}; P/E at the close of the day the EPS became known`
             : "EPS and price in the listing currency; P/E at the close of the day the EPS became known"]]}
-        renderCell={(row, column) => renderCell(row, column, colors)}
+        renderCell={(row, column) => renderCell(row, column, colors, showFx ? currency : undefined)}
         rootBefore={<ChartTableHeader width={width} height={height} tableRows={rows.length} tableColumns={columns} query={query} figures={figures}
           chart={model.weeks.length >= 2 ? { series, formatValue: formatPrice, formatAxisValue: formatAxis, remoteKind: "pe-band", ...link } : null} />} />
         : null}

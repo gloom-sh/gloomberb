@@ -46,7 +46,7 @@ import {
 } from "./fundamentals";
 import { FORWARD_PE_BASIS_NOTICE, REALIZED_NTM_PE_BASIS_NOTICE } from "./forward-valuation";
 import { valuationPriceWarning } from "./valuation-price";
-import { VALUATION_CURRENCY_WARNING_PREFIX } from "./valuation-currency";
+import { createValuationCurrencyContext, valuationFxHistories, VALUATION_CURRENCY_WARNING_PREFIX } from "./valuation-currency";
 import { chartPriceHistoryIntegrityNotices } from "./market";
 import { maxStudyWarmupPoints, resolveStudies } from "./studies/resolve";
 import { isFormulaNextMonth, withFormulaNextMonths, withoutFormulaNextMonths } from "./formula-months";
@@ -1048,6 +1048,22 @@ async function resolveChartSpecPass(
       // mark is not a daily closing observation, including on snapshot replay.
       const historical = history ? { ...merged, priceHistory: history.points } : merged;
       sources.onSecurityData?.(resolvedSpec, dailyValuation || history?.session || realizedVolInputs.has(seriesSpec.id) ? historical : sourceBars, history !== null);
+      const forwardEps = (forwardPE || source.fieldId === "valuation.realizedNtmPE") ? merged.epsEstimates : undefined;
+      const estimateCurrency = forwardEps?.currency ?? merged.financialCurrency;
+      const valuationDates = !historyPricedValuation || !sources.loadFxCloses ? [] : forwardEps ? [
+        ...forwardEps.reported.map((row) => ({ date: row.date, currency: estimateCurrency })),
+        ...forwardEps.snapshots.map((row) => ({ date: row.observedOn, currency: estimateCurrency })),
+        { date: dateOnly(referenceNow), currency: estimateCurrency },
+      ] : [...merged.annualStatements, ...merged.quarterlyStatements];
+      const valuationBasis = valuationDates.filter((row) => /^\d{4}-\d{2}-\d{2}/.test(row.date));
+      const fxCodes = valuationBasis.length ? createValuationCurrencyContext(merged).fxCurrencies(valuationBasis) : [];
+      const currencies = sources.loadFxCloses && fxCodes.length ? createValuationCurrencyContext(merged, await valuationFxHistories(
+        fxCodes, valuationBasis.map((row) => row.date.slice(0, 10)).sort()[0]!, sources.loadFxCloses,
+      )) : undefined;
+      if (currencies) {
+        const note = currencies.conversionNote(valuationBasis, (row) => row.date.slice(0, 10));
+        if (note) warnings.push(`${instrumentLabel(resolvedSource)}: ${forwardEps ? note.replace("Period-end FX", "Dated FX") : note}`);
+      }
       const returnHistory = comparedSeriesIds.has(seriesSpec.id) && history?.resolution === "1d"
         ? rollAdjustedHistory(merged.priceHistory, resolvedSource.instrument.symbol) : null;
       const base = baseSecuritySeries(
@@ -1057,7 +1073,7 @@ async function resolveChartSpecPass(
         history?.resolution,
         quoteMetadata,
         contractUnit,
-        { extendedHours: history?.extendedHours === true },
+        { extendedHours: history?.extendedHours === true, currencies },
       );
       if (!base) throw new Error(`Unknown field ${source.fieldId}.`);
       if (returnHistory?.note) base.returnRollNote = returnHistory.note;

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { EpsEstimateHistory, TickerFinancials } from "../types/financials";
 import { extractFundamentalSeries } from "./fundamentals";
 import type { SecuritySeriesSource } from "./types";
+import { createValuationCurrencyContext } from "./valuation-currency";
 
 const source = (metric: string): SecuritySeriesSource => ({
   kind: "security",
@@ -112,6 +113,18 @@ describe("forward P/E history", () => {
       reported: reported.map((row, index) => (index === 3 ? { ...row, epsEstimate: -1 } : row)),
     }) });
     expect(extractFundamentalSeries(dip, source("forwardPE"))[0]!.value).toBeCloseTo(100 / (1.1 + 1.2 - 1 + 1.4));
+  });
+
+  test("forward P/E converts at report-date FX and leaves a gap where that date is not covered", () => {
+    const data = financials({ epsEstimates: estimates({ currency: "GBP" }) });
+    const currencies = createValuationCurrencyContext(data, new Map([["GBP", {
+      currency: "GBP", first: "2025-01-30", asOf: "2026-09-30",
+      closes: new Map([["2025-01-30", 1.25], ["2026-09-30", 1.4]]),
+    }]]));
+    const readings = extractFundamentalSeries(data, source("forwardPE"), currencies);
+    expect(readings.map((point) => point.date.toISOString().slice(0, 10))).toEqual(["2025-01-30", "2026-09-30"]);
+    expect(readings[0]?.value).toBe(100 / 1.25 / 5);
+    expect(readings[1]?.value).toBeCloseTo(140 / 1.4 / blended("2026-09-30T20:00:00Z", 6, 8));
   });
 
   test("without an estimate history the provider's own forward P/E remains the single point", () => {

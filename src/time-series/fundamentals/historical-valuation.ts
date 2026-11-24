@@ -29,10 +29,10 @@ export function historicalValuation(
   return { value: comparablePrice === null ? null : valuationAtPrice(statement, metric, comparablePrice), integrity: price.integrity, issue: price.issue };
 }
 
-export function dailyStatementValuation(financials: TickerFinancials, metric: string, exchange?: string): TimeSeriesPoint[] {
+export function dailyStatementValuation(financials: TickerFinancials, metric: string, exchange?: string,
+  currencies = createValuationCurrencyContext(financials)): TimeSeriesPoint[] {
   const earningsMetric = metric === "pegRatio" ? "trailingPE" : metric;
   const selected = sourceStatements(financials, "daily", earningsMetric, exchange);
-  const currencies = createValuationCurrencyContext(financials);
   const yearEndMonth = fiscalYearEndMonth(financials.annualStatements);
   const bases: DailyValuationBasis[] = selected.statements.flatMap((statement) => {
     const usable = valuationAtPrice(statement, earningsMetric, 1, true) !== null;

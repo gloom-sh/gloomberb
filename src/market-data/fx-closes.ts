@@ -74,6 +74,20 @@ export function fxCloseOnOrBefore(fx: FxCloses, date: string): { date: string; r
   return null;
 }
 
+export function crossFxCloseOnOrBefore(
+  histories: ReadonlyMap<string, FxCloses>, from: string, to: string, date: string,
+): { date: string; rate: number } | null {
+  if (from === to || !isDay(date)) return null;
+  const end = Date.parse(date);
+  for (let back = 0; back <= FX_MAX_AGE_DAYS; back++) {
+    const day = isoDay(end - back * DAY_MS);
+    const fromRate = from === "USD" ? 1 : histories.get(from)?.closes.get(day);
+    const toRate = to === "USD" ? 1 : histories.get(to)?.closes.get(day);
+    if (fromRate && toRate) return { date: day, rate: fromRate / toRate };
+  }
+  return null;
+}
+
 /** Reads a pair's daily bars: `apiClient` in the app, a fake in tests. */
 export interface FxHistoryClient {
   getCloudHistory(symbol: string, exchange: string, params: CloudHistoryParams): Promise<CloudMarketResponse<CloudPricePointPayload[]>>;

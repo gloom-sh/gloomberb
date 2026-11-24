@@ -16,6 +16,7 @@ import {
 import { colors, priceColor } from "../../../../theme/colors";
 import { notMeaningfulColor } from "../../../../components/ui/not-meaningful";
 import { isNotMeaningful } from "../../../../utils/growth";
+import { useRemoteUiNode } from "../../../../remote/semantic-tree";
 import { fiscalYearEndMonth } from "../../../../utils/fiscal-period";
 import { displayWidth, padTo } from "../../../../utils/format";
 import { filledPeriodPublications, filledPeriodsNote, stalePeriodNote } from "../../../../utils/financial-statements";
@@ -30,6 +31,7 @@ import {
   financialCellParts,
   financialColumnPeriod,
   financialFiscalHeader,
+  financialGrowthNotice,
   formatFinancialCell,
   formatFinancialCellValue,
   financialStatementCurrency,
@@ -339,6 +341,11 @@ export function ResolvedFinancialsTab({
   // One currency for every column goes in the query bar with the growth basis;
   // a column in a different currency (or none) says so in its own header.
   const growthBasis = isAnnual ? "YoY" : "QoQ";
+  useRemoteUiNode(!ratioTab && displayStatements.length ? {
+    role: "report-notice",
+    label: "Growth",
+    getMetadata: () => ({ text: financialGrowthNotice(resolvedPeriod, displayStatements), key: "growthBasis", value: growthBasis }),
+  } : null);
   const yearEndMonth = useMemo(() => fiscalYearEndMonth(annualStatements), [annualStatements]);
   const annualDates = useMemo(() => new Set(annualStatements.map(({ date }) => date)), [annualStatements]);
   const { rows, unit } = useMemo(
@@ -458,7 +465,8 @@ export function ResolvedFinancialsTab({
   const oldestPeriodEnd = oldestRatioPeriodEnd(displayStatements);
   const [loadedHistory, setHistory] = useState<PeriodEndHistoryState | null>(null);
   const history: PeriodEndHistoryState = isValuation && loadedHistory ? loadedHistory : { data: undefined, loading: isValuation, error: null };
-  const currencies = useMemo(() => financials ? createValuationCurrencyContext(financials) : null, [financials]);
+  const currencies = useMemo(() => financials ? createValuationCurrencyContext(financials, history.fx) : null, [financials, history.fx]);
+  const valuationFxCurrencies = isValuation ? currencies?.fxCurrencies(displayStatements).sort().join(",") ?? "" : "";
   const { symbol: boundSymbol, exchange: boundExchange } = useBoundTicker();
   const latestRunway = financials && ratioTab?.key === "liquidity" ? cashRunway(financials) : null;
   const runwayPeriodEnd = burnsCash(latestRunway) ? latestRunway.periodEnd : null;
@@ -469,8 +477,9 @@ export function ResolvedFinancialsTab({
     const price = (statement: FinancialTableStatement): RatioAmount => {
       if (!isValuation) return "no-price";
       if (!history.data) return history.error && !history.loading ? "no-price" : "loading";
-      const close = periodEndClose(history.data, ratioPeriodEnd(statement));
-      return (close === undefined ? null : currencies?.priceInStatementUnits(statement, close)) ?? "no-price";
+      const date = ratioPeriodEnd(statement);
+      const close = periodEndClose(history.data, date);
+      return (close === undefined ? null : currencies?.priceInStatementUnits(statement, close, date)) ?? "no-price";
     };
     const expanded = new Set(ratioTab.ratios.map((ratio) => ratio.id).filter((id) => !collapsedGroups.has(id)));
     return buildRatioTableModel(ratioTab, ratioPeriods(displayStatements, openings, resolvedPeriod, price, { annual: annualStatements, quarterly: quarterlyStatements }), expanded, financials?.profile,
@@ -515,7 +524,7 @@ export function ResolvedFinancialsTab({
       ...financialStatementLimitations(financials),
       ...(offeringNote ? [offeringNote] : []),
       ...(isValuation && history.error && !history.data ? ["Period-end prices are unavailable, so valuation ratios are too."] : []),
-      ...(isValuation ? [currencies?.warning(displayStatements) ?? ""] : []),
+      ...(isValuation && !history.loading ? [currencies?.conversionNote(displayStatements, ratioPeriodEnd) ?? "", currencies?.warning(displayStatements, ratioPeriodEnd) ?? ""] : []),
     ],
     focused,
   });
@@ -573,7 +582,7 @@ export function ResolvedFinancialsTab({
       paddingX={nativePaneChrome ? 0 : 1}
       overflow="hidden"
     >
-      {isValuation && oldestPeriodEnd ? <PeriodEndHistoryLoader oldestPeriodEnd={oldestPeriodEnd} onChange={setHistory} /> : null}
+      {isValuation && oldestPeriodEnd ? <PeriodEndHistoryLoader oldestPeriodEnd={oldestPeriodEnd} fxCurrencies={valuationFxCurrencies} onChange={setHistory} /> : null}
       {ratioModel ? (
         <RatioTable
           focused={focused}

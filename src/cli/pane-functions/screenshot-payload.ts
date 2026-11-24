@@ -58,7 +58,7 @@ import {
   withShotReturnHistory,
   withShotSeasonalityHistory,
 } from "./data";
-import { shotRatioTab } from "./financial-ratio-shot";
+import { loadShotValuationFx, shotRatioTab } from "./financial-ratio-shot";
 import { stripDesktopShotCredentials } from "./screenshot-bridge";
 
 const DEFAULT_SHOT_DEVICE_SCALE_FACTOR = 2;
@@ -509,6 +509,7 @@ export async function buildDesktopShotPayload(
       return logFailure("headless.shot-device-state", `Read ${pluginId}'s device state failed`, [])(error);
     }
   });
+  const valuationFx = await loadShotValuationFx(resolved, financials[0]?.[1]);
   const payload: DesktopPaneShotPayload = {
     config,
     ...(deviceState.length ? { deviceState } : {}),
@@ -525,6 +526,7 @@ export async function buildDesktopShotPayload(
       ? { brokerAccounts: peekCachedBrokerAccounts(context.config, context.persistence?.resources) }
       : {}),
     financials,
+    ...(valuationFx?.length ? { valuationFx } : {}),
     ...(instrumentFinancials?.length ? { instrumentFinancials } : {}),
     ...(historyVariants?.length ? { historyVariants } : {}),
     intradayHistories,

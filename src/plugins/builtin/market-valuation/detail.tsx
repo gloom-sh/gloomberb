@@ -5,7 +5,7 @@ import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 import { historySpanStat, sinceLabel } from "../shared/history-span";
 import { SeriesDetailChart } from "../shared/series-detail-chart";
 import { valuationAxis, zoneSeriesFor } from "./chart-projection";
-import { readingPeriodEnd, type IndicatorViewModel } from "./view";
+import { readingPeriodLabel, type IndicatorViewModel } from "./view";
 import { ZoneColorScale } from "./zone-scale";
 
 function formatTrillions(billions: number): string {
@@ -49,8 +49,8 @@ export function IndicatorDetail({
       : []),
     { id: "year-ago", label: "1Y ago", value: view.ratioOneYearAgo == null ? MISSING_VALUE : indicator.formatValue(view.ratioOneYearAgo) },
     // The whole history's, whatever the range the chart shows.
-    { id: "ath", label: sinceLabel("High", view.historyStart), value: indicator.formatValue(view.allTimeHigh.ratio), detail: readingPeriodEnd(view.allTimeHigh.date, view.periodicity) },
-    { id: "atl", label: sinceLabel("Low", view.historyStart), value: indicator.formatValue(view.allTimeLow.ratio), detail: readingPeriodEnd(view.allTimeLow.date, view.periodicity) },
+    { id: "ath", label: sinceLabel("High", view.historyStart), value: indicator.formatValue(view.allTimeHigh.ratio), detail: readingPeriodLabel(view.allTimeHigh.date, view.periodicity) },
+    { id: "atl", label: sinceLabel("Low", view.historyStart), value: indicator.formatValue(view.allTimeLow.ratio), detail: readingPeriodLabel(view.allTimeLow.date, view.periodicity) },
     // A range longer than the history shows all of it, from where it starts.
     ...[historySpanStat(view.span)].filter((item): item is StatItem => item !== null),
   ], [indicator, levels, view]);
