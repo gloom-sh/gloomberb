@@ -625,7 +625,7 @@
           {
             "code": "SEC",
             "name": "SEC",
-            "description": "Recent SEC filings for the selected ticker."
+            "description": "SEC filings and covered exchange disclosures for the selected ticker."
           },
           {
             "code": "ETF",
