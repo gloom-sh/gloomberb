@@ -1299,12 +1299,12 @@
           {
             "code": "SI",
             "name": "Short Interest",
-            "description": "US FINRA settlements, Hong Kong reportable positions and Taiwan daily short sale balances."
+            "description": "US FINRA settlements, Hong Kong reportable positions, Japanese short seller disclosures, Korean net short positions and daily Taiwan and mainland China lending data."
           },
           {
             "code": "SIV",
             "name": "Daily Short Volume",
-            "description": "The short interest pane on Daily volume: FINRA daily off-exchange short-volume ratios, historical percentile and reported share quantities."
+            "description": "Daily executed short sales on SGX and US off-exchange short-volume ratios and quantities from FINRA."
           },
           {
             "code": "FTD",

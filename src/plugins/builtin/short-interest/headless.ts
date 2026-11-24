@@ -1,4 +1,5 @@
-import { taiwanListing, taiwanReport } from "./taiwan";
+import { jpxReport, jpxSymbol } from "./jpx";
+import { balanceListing, balanceReport, readExchangeBalances } from "./exchange-balances";
 import { sfcSymbol, sfcReport } from "./sfc";
 import type {
   HeadlessPaneColumn,
@@ -77,7 +78,7 @@ export function createShortInterestHeadless(
     argument: {
       kind: "ticker",
       placeholder: "ticker",
-      description: "US, Hong Kong or Taiwanese equity ticker.",
+      description: "Equity ticker for the US, mainland China, Hong Kong, Japan, Korea or Taiwan.",
     },
     discovery: {
       limitations: [
@@ -85,7 +86,7 @@ export function createShortInterestHeadless(
         "Percent of float is each settlement's shares short over the float of its day: the 10-K or 10-Q share count known when FINRA published it, at the part of today's count that floats; the latest is over the current float. A settlement no count was known for stays blank.",
       ],
     },
-    additionalListingVenues: ["HKEX", "TWSE", "TPEX"],
+    additionalListingVenues: ["HKEX", "JPX", "TWSE", "TPEX", "SSE", "SZSE", "KRX", "KOSDAQ"],
     usListingsOnly: "FINRA short interest",
     // FINRA's settlements count OTC securities' shares short too: 0700.HK is offered TCEHY.
     usListingsOtc: true,
@@ -120,9 +121,11 @@ export function createShortInterestHeadless(
     describe: (args) => `Short Interest | ${args.symbols[0]}`,
     async load(args, ctx) {
       const symbol = args.symbols[0]!;
-      const taiwan = taiwanListing(symbol);
+      const balances = balanceListing(symbol);
       const cutoff = typeof args.options.asOf === "string" ? args.options.asOf : undefined;
-      if (taiwan) return taiwanReport(await ctx.apiClient.getTaiwanShortBalances(taiwan.symbol, taiwan.exchange, cutoff), args, cutoff);
+      const jp = jpxSymbol(symbol);
+      if (jp) return jpxReport(await ctx.apiClient.getJpxShortPositions(jp, cutoff), args, cutoff);
+      if (balances) return balanceReport(await readExchangeBalances(ctx.apiClient, balances.symbol, balances.exchange, cutoff), args, cutoff);
       const hk = sfcSymbol(symbol);
       if (hk) {
         return sfcReport(await ctx.apiClient.getSfcShortPositions(hk, cutoff), args, cutoff);

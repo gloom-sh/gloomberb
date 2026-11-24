@@ -1,4 +1,6 @@
-import { taiwanListing } from "./taiwan";
+import { sgxVolumeSymbol } from "../short-volume/sgx";
+import { balanceListing } from "./exchange-balances";
+import { jpxSymbol } from "./jpx";
 import { sfcSymbol } from "./sfc";
 import type { PluginModule } from "../plugin-module";
 import { SHORT_INTEREST_SERIES } from "./series";
@@ -42,7 +44,7 @@ export const shortInterestModule: PluginModule = {
       order: 36,
       component: ShortInterestResearchTab,
       instruments: ["equity"],
-      isVisible: ({ ticker }) => !isKnownNonUsListing(ticker) || (!!ticker && (!!sfcSymbol(ticker.metadata.ticker, ticker.metadata.exchange) || !!taiwanListing(ticker.metadata.ticker, ticker.metadata.exchange))),
+      isVisible: ({ ticker }) => !isKnownNonUsListing(ticker) || (!!ticker && (!!sgxVolumeSymbol(ticker.metadata.ticker, ticker.metadata.exchange) || !!sfcSymbol(ticker.metadata.ticker, ticker.metadata.exchange) || !!jpxSymbol(ticker.metadata.ticker, ticker.metadata.exchange) || !!balanceListing(ticker.metadata.ticker, ticker.metadata.exchange))),
     });
   },
 
@@ -91,7 +93,7 @@ export const shortInterestModule: PluginModule = {
         paneId: "short-interest",
         label: "Short Interest",
         // The current snapshot only carries the current and prior settlement dates.
-        description: "US FINRA settlements, Hong Kong reportable positions and Taiwan daily short sale balances.",
+        description: "US FINRA settlements, Hong Kong reportable positions, Japanese short seller disclosures, Korean net short positions and daily Taiwan and mainland China lending data.",
         keywords: ["short", "interest", "si", "shorts", "days", "cover"],
         shortcut: "SI",
       }), "interest"),
@@ -103,7 +105,7 @@ export const shortInterestModule: PluginModule = {
         id: "short-volume-pane",
         paneId: "short-interest",
         label: "Daily Short Volume",
-        description: "The short interest pane on Daily volume: FINRA daily off-exchange short-volume ratios, historical percentile and reported share quantities.",
+        description: "Daily executed short sales on SGX and US off-exchange short-volume ratios and quantities from FINRA.",
         keywords: ["daily", "short", "volume", "finra", "siv"],
         shortcut: "SIV",
         publicShare: true,

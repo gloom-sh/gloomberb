@@ -73,11 +73,11 @@ const scenarios: Scenario[] = [
   { label: "QQQ ETF", ticker: createTestTicker("QQQ"), financials: quoted("ETF"), kind: "fund", visible: usFund },
   { label: "AAPL equity", ticker: createTestTicker("AAPL"), financials: quoted("EQUITY"), kind: "equity", visible: usEquity },
   { label: "BRK.B share class", ticker: createTestTicker("BRK.B", "Berkshire", { exchange: "NYSE" }), financials: quoted("EQUITY"), kind: "equity", visible: usEquity },
-  { label: "7203.T foreign equity", ticker: createTestTicker("7203.T", "Toyota", { exchange: "JPX", currency: "JPY" }), financials: quoted("EQUITY"), kind: "equity", visible: foreignEquity },
+  { label: "7203.T foreign equity", ticker: createTestTicker("7203.T", "Toyota", { exchange: "JPX", currency: "JPY" }), financials: quoted("EQUITY"), kind: "equity", visible: [...foreignEquity, "short-interest"] },
   // A symbol whose quote never loaded has no venue or currency: unknown is not foreign.
   { label: "US equity with no quote and no venue", ticker: createTestTicker("CRBG", "Corebridge", { exchange: "", currency: "" }), kind: "equity", visible: usEquity },
   // Tweets go by the saved venue alone.
-  { label: "7203.T with no quote and no venue", ticker: createTestTicker("7203.T", "Toyota", { exchange: "", currency: "" }), kind: "equity", visible: [...foreignEquity, "ticker-tweets"] },
+  { label: "7203.T with no quote and no venue", ticker: createTestTicker("7203.T", "Toyota", { exchange: "", currency: "" }), kind: "equity", visible: [...foreignEquity, "short-interest", "ticker-tweets"] },
   { label: "BTC-USD crypto", ticker: createTestTicker("BTC-USD", "Bitcoin", { exchange: "CCC" }), financials: quoted("CRYPTOCURRENCY"), kind: "crypto", visible: common },
   { label: "^GSPC index before quote", ticker: createTestTicker("^GSPC", "S&P 500", { exchange: "SNP" }), kind: "index", visible: withOptions },
   { label: "ES=F future before quote", ticker: createTestTicker("ES=F", "S&P future", { exchange: "CME" }), kind: "future", visible: withOptions },
@@ -182,7 +182,7 @@ test("each asset type gets only the groups it has views for, and a one-view grou
     "Analysts: analyst-research earnings-calls",
     "Options: options",
     "Events: corporate-actions catalysts mna",
-    "Ownership: holders",
+    "Ownership: holders short-interest",
     "People: jobs hiring-momentum",
     "Buzz: news app-attention",
     "Notes: thesis notes",

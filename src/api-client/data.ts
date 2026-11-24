@@ -1,4 +1,5 @@
-import type { TaiwanShortBalances, TaiwanVenue } from "./taiwan-short-balances";
+import type { JpxShortPositions } from "./jpx-short-positions";
+import type { SgxShortSales, KoreanShortPositions, KoreanVenue, MainlandLendingBalances, MainlandVenue, TaiwanShortBalances, TaiwanVenue } from "./exchange-short-balances";
 import type { SfcShortPositions } from "./sfc-short-positions";
 import type { AttentionPayload, AttentionWindow } from "./attention";
 import type { HiringBoard, HiringBuildingBoard, HiringBuildingFilter, HiringCompanyBuilding, HiringCompanyMoves, HiringCompanySignals, HiringMovesBoard, HiringMovesFilter, HiringPayload, HiringSignalGroup, HiringSignalsBoard, HiringSignalsFilter } from "./hiring";
@@ -752,12 +753,36 @@ export class CloudDataApi {
     return this.requestMarketSymbol("/market/analyst", symbol, exchange);
   }
 
-  async getTaiwanShortBalances(symbol: string, exchange: TaiwanVenue, asOf?: string): Promise<TaiwanShortBalances> {
+  async getJpxShortPositions(symbol: string, asOf?: string): Promise<JpxShortPositions> {
+    const params = new URLSearchParams({ symbol });
+    if (asOf) params.set("asOf", asOf);
+    const response = await this.request<CloudMarketResponse<JpxShortPositions>>(`/market/jpx-short-positions?${params}`);
+    if (!response.data) throw new Error(response.message || "JPX position disclosures unavailable.");
+    return response.data;
+  }
+
+  private async exchangeBalanceReport<T>(path: string, symbol: string, exchange: string, asOf?: string): Promise<T> {
     const params = new URLSearchParams({ symbol, exchange });
     if (asOf) params.set("asOf", asOf);
-    const response = await this.request<CloudMarketResponse<TaiwanShortBalances>>(`/market/taiwan-short-balances?${params}`);
-    if (!response.data) throw new Error(response.message || "Taiwan short sale balances unavailable.");
+    const response = await this.request<CloudMarketResponse<T>>(`/market/${path}?${params}`);
+    if (!response.data) throw new Error(response.message || `${exchange} short sale report unavailable.`);
     return response.data;
+  }
+
+  getSgxShortSales(symbol: string, asOf?: string) {
+    return this.exchangeBalanceReport<SgxShortSales>("sgx-short-sales", symbol, "SGX", asOf);
+  }
+
+  getKoreanShortPositions(symbol: string, exchange: KoreanVenue, asOf?: string) {
+    return this.exchangeBalanceReport<KoreanShortPositions>("korean-short-positions", symbol, exchange, asOf);
+  }
+
+  getMainlandLendingBalances(symbol: string, exchange: MainlandVenue, asOf?: string) {
+    return this.exchangeBalanceReport<MainlandLendingBalances>("mainland-lending-balances", symbol, exchange, asOf);
+  }
+
+  getTaiwanShortBalances(symbol: string, exchange: TaiwanVenue, asOf?: string) {
+    return this.exchangeBalanceReport<TaiwanShortBalances>("taiwan-short-balances", symbol, exchange, asOf);
   }
 
   async getSfcShortPositions(symbol: string, asOf?: string): Promise<SfcShortPositions> {
