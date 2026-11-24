@@ -635,6 +635,15 @@ write it to lead with what names the item. Rules:
   and bright with space above them; a title 20px bold. In a column under 480px
   the body is 13.2px and the levels above it follow. A pane does not set its
   own reading size or column.
+- Long prose a pane sets in the app's own type (a call's transcript and
+  summary, an Ask Gloom answer, a 10-K's risk factors) reads in
+  `ReaderMeasure` from the same file: the same 66 characters a line, centred,
+  measured in that type, and the pane's full width once the pane is narrower.
+  A table in it is laid out to that measure. Feeds, data tables and controls
+  keep the pane's width; a header row beside the prose (a speaker and role, a
+  risk's tag and group) wraps rather than clips. The terminal keeps its body
+  width. The pane chrome check `layout: a call's transcript` holds the four to
+  this.
 - Any other scrolling body is a `ScrollBox`. Leaving `scrollY` out means it
   scrolls vertically, with the wheel and, while the pane is focused, with the
   arrows, j/k, PageUp, PageDown, Home and End; `scrollY={false}` turns that off.

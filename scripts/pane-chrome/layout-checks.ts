@@ -34,6 +34,9 @@ const RESTORE = { width: 1400, height: 900 };
 const PANES: Array<{ id: string; label: string; opens?: string[] }> = [
   { id: "trials", label: "Trials study", opens: ["a study"] },
   { id: "changelog", label: "Changelog version and release", opens: ["a version", "a release"] },
+  { id: "askg", label: "Ask Gloom answer" },
+  { id: "risk", label: "10-K risk factors" },
+  { id: "ek", label: "8-K events feed" },
   { id: "reader", label: "article reader" },
   { id: "markdown", label: "markdown in a detail body" },
   { id: "prose", label: "prose paragraphs in a detail body" },
@@ -152,3 +155,105 @@ export const layoutSteps: LayoutStep[] = PANES.flatMap(({ id, label, opens }) =>
     if (problems.length > 0) fail(problems.join("\n     "));
   },
 })));
+
+/**
+ * Prose a pane sets in the app's own type reads in the reading column
+ * (`ReaderMeasure`, reader-text.tsx): a call's transcript and summary, an Ask
+ * Gloom answer with its tables and citations, and a 10-K's risk factors. In
+ * a wide window the column is the measure of its type, centred, and no line
+ * holds more characters than that; in a narrow one it takes the pane's width.
+ * Nothing in it runs past its edge.
+ */
+const MEASURED: Array<{ query: string; pane: string; label: string; shows: string }> = [
+  { query: "pane=calls&reader=transcript", pane: "calls", label: "a call's transcript", shows: "Mara Ellison" },
+  { query: "pane=calls&reader=summary", pane: "calls", label: "a call's summary", shows: "Analysts Pressed On" },
+  { query: "pane=askg", pane: "askg", label: "an Ask Gloom answer", shows: "Change over" },
+  { query: "pane=risk", pane: "risk", label: "a 10-K's risk factors", shows: "All Risk Factors" },
+];
+
+const READING_COLUMN = (paneId: string) => `(() => {
+  const pane = document.querySelector('[data-gloom-pane-id="${paneId}"]');
+  const column = pane?.querySelector("[data-gloom-ui=reader-measure]");
+  if (!column) return null;
+  const C = column.getBoundingClientRect();
+  const P = column.parentElement.getBoundingClientRect();
+  const parent = getComputedStyle(column.parentElement);
+  const inner = { left: P.left + parseFloat(parent.paddingLeft), right: P.right - parseFloat(parent.paddingRight) };
+  // The measure in the column's own type.
+  const probe = document.createElement("span");
+  probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre";
+  probe.textContent = "0".repeat(66);
+  column.appendChild(probe);
+  const measure = probe.getBoundingClientRect().width;
+  probe.remove();
+  // Characters on each rendered line of text in the column.
+  let most = 0, sample = "";
+  const one = document.createRange();
+  const walker = document.createTreeWalker(column, NodeFilter.SHOW_TEXT);
+  const rows = new Map();
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const text = node.textContent;
+    for (let i = 0; i < text.length && i < 4000; i++) {
+      one.setStart(node, i); one.setEnd(node, i + 1);
+      const q = [...one.getClientRects()].find((r) => r.width > 0);
+      if (!q) continue;
+      const key = Math.round(q.top / 2);
+      const row = rows.get(key) ?? { left: q.left, right: q.left, text: "" };
+      // A space where a line wraps hangs past the edge in CSS; only ink counts.
+      if (/\\S/.test(text[i])) { row.left = Math.min(row.left, q.left); row.right = Math.max(row.right, q.right); }
+      row.text += text[i];
+      rows.set(key, row);
+    }
+  }
+  const past = [];
+  for (const row of rows.values()) {
+    const chars = row.text.replace(/\\s+$/, "").length;
+    if (chars > most) { most = chars; sample = row.text.slice(0, 40); }
+    if (row.right > C.right + 1) past.push(row.text.slice(0, 40) + " (" + Math.round(row.right - C.right) + "px)");
+  }
+  return { width: C.width, measure, left: C.left - inner.left, right: inner.right - C.right, available: inner.right - inner.left, most, sample, past };
+})()`;
+
+const READING_SIZES = [
+  { name: "wide", width: 1440, height: 900 },
+  { name: "narrow", width: 400, height: 900 },
+] as const;
+
+layoutSteps.push({
+  name: "layout: a call's transcript and summary, an Ask Gloom answer and RISK read in the reading column, centred wide and the pane's width narrow",
+  scenario: "layout&pane=calls&mode=dock",
+  async run(cdp) {
+    const problems: string[] = [];
+    try {
+      for (const { query, pane, label, shows } of MEASURED) {
+        for (const size of READING_SIZES) {
+          await cdp.send("Emulation.setDeviceMetricsOverride", { ...size, deviceScaleFactor: 1, mobile: false });
+          const url = await evaluate<string>(cdp, `(() => { const url = new URL(location.href); url.search = "?scenario=layout&${query}&mode=dock"; return url.href; })()`);
+          const loaded = cdp.once("Page.loadEventFired");
+          await cdp.send("Page.navigate", { url });
+          await loaded;
+          if (!await waitFor(cdp, "window.__paneChrome?.ready === true", 15_000)) fail(`the ${pane} fixture did not render`);
+          const paneId = `${pane}:layout`;
+          if (!await waitFor(cdp, `(document.querySelector('[data-gloom-pane-id="${paneId}"]')?.innerText ?? "").includes(${JSON.stringify(shows)})`, 10_000)) {
+            fail(`${label} did not open`, await evaluate(cdp, `document.querySelector('[data-gloom-pane-id="${paneId}"]')?.innerText?.slice(0, 200)`));
+          }
+          await frames(cdp, 3);
+          const column = await evaluate<{ width: number; measure: number; left: number; right: number; available: number; most: number; sample: string; past: string[] } | null>(cdp, READING_COLUMN(paneId));
+          const at = `${label} at ${size.width}px`;
+          if (!column) { problems.push(`${at}: no reading column`); continue; }
+          if (column.most > 66) problems.push(`${at}: a line holds ${column.most} characters ("${column.sample}")`);
+          if (column.past.length > 0) problems.push(`${at}: lines run past the column's edge: ${column.past.join(" | ")}`);
+          if (size.name === "wide") {
+            if (Math.abs(column.width - column.measure) > 1) problems.push(`${at}: the column is ${Math.round(column.width)}px, the measure ${Math.round(column.measure)}px`);
+            if (Math.abs(column.left - column.right) > 1) problems.push(`${at}: the column is not centred (${Math.round(column.left)}px left, ${Math.round(column.right)}px right)`);
+          } else if (Math.abs(column.width - column.available) > 1) {
+            problems.push(`${at}: the column is ${Math.round(column.width)}px of the ${Math.round(column.available)}px the pane gives it`);
+          }
+        }
+      }
+    } finally {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { ...RESTORE, deviceScaleFactor: 1, mobile: false });
+    }
+    if (problems.length > 0) fail(problems.join("\n     "));
+  },
+});
