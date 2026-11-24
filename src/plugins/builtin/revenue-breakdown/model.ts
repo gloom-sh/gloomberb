@@ -43,6 +43,7 @@ export function revenuePeriodLabeler(periods: readonly RevenueBreakdownPeriod[])
   return (period: RevenueBreakdownPeriod): string => {
     if (!("kind" in period)) return `Q${period.fiscalQuarter} ${period.fiscalYear}`;
     const year = period.end.slice(0, 4);
+    if (period.kind === "quarter") return `3M ${period.end.slice(0, 7)}`;
     if (period.kind === "annual") return `FY ${year}`;
     return `H1 ${Number(period.end.slice(5, 7)) > yearEndMonth ? Number(year) + 1 : year}`;
   };
@@ -53,6 +54,7 @@ export function reportedPeriods(payload: RevenueBreakdownPayload) {
 }
 
 export function filingPageUrl(filing: ReportedRevenueBreakdownPeriod["filing"]): string {
+  if (filing.page === null) return filing.url;
   const url = new URL(filing.url);
   url.hash = `page=${filing.page}`;
   return url.href;

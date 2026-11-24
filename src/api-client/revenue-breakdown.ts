@@ -9,11 +9,11 @@ interface QuarterlyRevenueBreakdownPeriod {
 
 export interface ReportedRevenueBreakdownPeriod {
   end: string;
-  kind: "annual" | "interim";
+  kind: "annual" | "interim" | "quarter";
   label: string;
   revenueLabel: string;
   singleSegment?: true;
-  filing: { filed: string; url: string; page: number };
+  filing: { filed: string; url: string; page: number | null };
 }
 
 export type RevenueBreakdownPeriod = QuarterlyRevenueBreakdownPeriod | ReportedRevenueBreakdownPeriod;
@@ -46,6 +46,6 @@ export interface RevenueBreakdownPayload {
   lockedRows: number;
 }
 
-/** Venues where company filings can supply annual or interim revenue periods. */
+/** Venues where company filings can supply reported revenue periods. */
 export const reportedRevenueVenue = (exchange: string | undefined) =>
-  exchange === "HKEX" || exchange === "SSE" || exchange === "SZSE";
+  exchange === "HKEX" || exchange === "SSE" || exchange === "SZSE" || exchange === "KRX" || exchange === "KOSDAQ";
