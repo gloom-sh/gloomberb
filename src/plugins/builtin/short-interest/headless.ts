@@ -1,3 +1,4 @@
+import { sfcSymbol, sfcReport } from "./sfc";
 import type {
   HeadlessPaneColumn,
   HeadlessPaneContext,
@@ -75,7 +76,7 @@ export function createShortInterestHeadless(
     argument: {
       kind: "ticker",
       placeholder: "ticker",
-      description: "US equity ticker.",
+      description: "US or Hong Kong equity ticker.",
     },
     discovery: {
       limitations: [
@@ -83,6 +84,7 @@ export function createShortInterestHeadless(
         "Percent of float is each settlement's shares short over the float of its day: the 10-K or 10-Q share count known when FINRA published it, at the part of today's count that floats; the latest is over the current float. A settlement no count was known for stays blank.",
       ],
     },
+    additionalListingVenues: ["HKEX"],
     usListingsOnly: "FINRA short interest",
     // FINRA's settlements count OTC securities' shares short too: 0700.HK is offered TCEHY.
     usListingsOtc: true,
@@ -99,7 +101,7 @@ export function createShortInterestHeadless(
         key: "asOf",
         type: "string",
         placeholder: "date",
-        description: `Only the settlements FINRA had published by this date, as ${DATE_OPTION_EXAMPLES}, each on the share count known then.`,
+        description: `Only FINRA settlements published or SFC reports observed by this date, as ${DATE_OPTION_EXAMPLES}.`,
         normalize: (value) => isoDateOption(value, "as-of"),
       },
       {
@@ -117,6 +119,11 @@ export function createShortInterestHeadless(
     describe: (args) => `Short Interest | ${args.symbols[0]}`,
     async load(args, ctx) {
       const symbol = args.symbols[0]!;
+      const hk = sfcSymbol(symbol);
+      if (hk) {
+        const asOf = typeof args.options.asOf === "string" ? args.options.asOf : undefined;
+        return sfcReport(await ctx.apiClient.getSfcShortPositions(hk, asOf), args, asOf);
+      }
       const loaded = await dependencies.loadRecords(symbol, args, ctx);
       const { records, source, cloudSessionRequired } = Array.isArray(loaded)
         ? { records: loaded, source: undefined, cloudSessionRequired: false }

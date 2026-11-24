@@ -1,3 +1,4 @@
+import { sfcSymbol } from "./sfc";
 import type { PluginModule } from "../plugin-module";
 import { SHORT_INTEREST_SERIES } from "./series";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
@@ -40,7 +41,7 @@ export const shortInterestModule: PluginModule = {
       order: 36,
       component: ShortInterestResearchTab,
       instruments: ["equity"],
-      isVisible: ({ ticker }) => !isKnownNonUsListing(ticker),
+      isVisible: ({ ticker }) => !isKnownNonUsListing(ticker) || (!!ticker && !!sfcSymbol(ticker.metadata.ticker, ticker.metadata.exchange)),
     });
   },
 
@@ -89,7 +90,7 @@ export const shortInterestModule: PluginModule = {
         paneId: "short-interest",
         label: "Short Interest",
         // The current snapshot only carries the current and prior settlement dates.
-        description: "Bi-monthly short interest settlements from FINRA with days to cover and average daily volume. Daily volume, fails to deliver and weekly ATS/OTC volume share the pane.",
+        description: "US FINRA settlements and Hong Kong SFC weekly reportable short positions.",
         keywords: ["short", "interest", "si", "shorts", "days", "cover"],
         shortcut: "SI",
       }), "interest"),

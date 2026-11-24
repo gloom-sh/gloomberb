@@ -1,3 +1,4 @@
+import type { SfcShortPositions } from "./sfc-short-positions";
 import type { AttentionPayload, AttentionWindow } from "./attention";
 import type { HiringBoard, HiringBuildingBoard, HiringBuildingFilter, HiringCompanyBuilding, HiringCompanyMoves, HiringCompanySignals, HiringMovesBoard, HiringMovesFilter, HiringPayload, HiringSignalGroup, HiringSignalsBoard, HiringSignalsFilter } from "./hiring";
 import type { AppAttentionFilter, AppAttentionPayload, AppRankPayload } from "./app-attention";
@@ -742,6 +743,16 @@ export class CloudDataApi {
     exchange?: string,
   ): Promise<CloudMarketResponse<CloudAnalystResearchPayload>> {
     return this.requestMarketSymbol("/market/analyst", symbol, exchange);
+  }
+
+  async getSfcShortPositions(symbol: string, asOf?: string): Promise<SfcShortPositions> {
+    const params = new URLSearchParams({ symbol });
+    if (asOf) params.set("asOf", asOf);
+    const response = await this.request<CloudMarketResponse<SfcShortPositions>>(
+      `/market/hk-short-positions?${params}`,
+    );
+    if (!response.data) throw new Error(response.message || "SFC weekly positions unavailable.");
+    return response.data;
   }
 
   async getCloudShortInterest(
