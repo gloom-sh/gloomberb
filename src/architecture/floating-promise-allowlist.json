@@ -170,7 +170,7 @@
   "src/plugins/builtin/shared/wall-teaser.tsx": ["void:function()"],
   "src/plugins/builtin/shared/wall-view-lifecycle.ts": ["void:answer.then()"],
   "src/plugins/builtin/supply-chain/graph-pane.tsx": ["void:host.openExternal()"],
-  "src/plugins/builtin/supply-chain/pane.tsx": ["statement:openUpgrade()","void:host.openExternal()"],
+  "src/plugins/builtin/supply-chain/pane.tsx": ["statement:openUpgrade()"],
   "src/plugins/builtin/thirteenf/pane.tsx": ["void:rendererHost.openExternal()"],
   "src/plugins/builtin/ticker-detail/data-panes/returns-pane.tsx": ["void:supportRequest.then()"],
   "src/plugins/builtin/world-venue-map/layered-pane.tsx": ["void:upgrade()"],

@@ -4,11 +4,12 @@ import type { PaneScreenshotEvidenceHook } from "../../../cli/pane-functions/scr
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { isRecord } from "../../../utils/guards";
 import { fetchSupplyChain, validateSupplyChain } from "./client";
+import { directoryRows } from "./directories";
 import { earlierRows, openingSupplyView } from "./model";
 import { isUnconfirmed, matchesSupplyOptions, supplyOptions } from "./trust";
 import { fetchSupplyGraph, graphOptions, validateGraph } from "./graph-client";
 
-type SupplyTab = "table" | "flow" | "graph" | "path";
+type SupplyTab = "table" | "directories" | "flow" | "graph" | "path";
 interface SupplyEvidence {
   kind: "supply-chain";
   version: 1;
@@ -41,12 +42,12 @@ export const supplyScreenshotEvidence: PaneScreenshotEvidenceHook<SupplyEvidence
       const payload = await fetchSupplyGraph(symbol, graphOptions(resolved.options), target);
       return { settings: { graphSnapshot: payload }, financials: [[payload.symbol, { annualStatements: [], quarterlyStatements: [], priceHistory: [] }]] };
     }
-    const payload = await fetchSupplyChain(symbol, undefined, supplyOptions(resolved.options.tiers));
+    const payload = await fetchSupplyChain(symbol, undefined, { ...supplyOptions(resolved.options.tiers), asOf: typeof resolved.options.asOf === "string" ? resolved.options.asOf : undefined });
     return { settings: { supplySnapshot: payload }, financials: [[payload.symbol, { annualStatements: [], quarterlyStatements: [], priceHistory: [] }]] };
   },
   read(value) {
     if (!isRecord(value) || value.kind !== "supply-chain" || value.version !== 1 || !isRecord(value.payload)
-      || !["table", "flow", "graph", "path"].includes(String(value.tab))
+      || !["table", "directories", "flow", "graph", "path"].includes(String(value.tab))
       || !Array.isArray(value.rowIds) || !value.rowIds.every((id) => typeof id === "string") || value.complete !== true
       || value.evidenceOpen !== undefined && typeof value.evidenceOpen !== "boolean"
       || value.plottedValueCount !== value.rowIds.length || new Set(value.rowIds).size !== value.rowIds.length) return null;
@@ -61,6 +62,11 @@ export const supplyScreenshotEvidence: PaneScreenshotEvidenceHook<SupplyEvidence
       } else {
         if (!["says", "names"].includes(String(value.view))) return null;
         const payload = validateSupplyChain(value.payload as unknown as SupplyChainPayload);
+        if (value.tab === "directories") {
+          const ids = payload.directories?.flatMap(directoryRows).map(row => row.id);
+          if (!ids?.length || JSON.stringify(ids) !== JSON.stringify(value.rowIds) || value.evidenceOpen) return null;
+          return { ...value, payload } as unknown as SupplyEvidence;
+        }
         const options = supplyOptions(value.tiers);
         const view = value.view as "says" | "names";
         const eligible = (value.tab === "flow" ? [...payload.says, ...payload.names].filter(row => !isUnconfirmed(row)) : [...payload[view], ...earlierRows(payload, view)])
@@ -78,7 +84,9 @@ export const supplyScreenshotEvidence: PaneScreenshotEvidenceHook<SupplyEvidence
     const mismatches: string[] = [];
     if (JSON.stringify(evidence.payload) !== JSON.stringify(snapshot)) mismatches.push("Supply chain disclosures differ from the captured filing data");
     if (resolved.options.evidence === true && (!evidence.evidenceOpen || !evidence.evidenceId)) mismatches.push("Supply chain evidence detail was not opened");
-    if (evidence.tab !== (resolved.options.tab ?? "table")) mismatches.push("Supply chain tab does not match");
+    const expected = resolved.options.tab ?? "table";
+    const autoDirectory = expected === "table" && evidence.tab === "directories" && !(evidence.payload as SupplyChainPayload).totalRows;
+    if (!autoDirectory && evidence.tab !== expected) mismatches.push("Supply chain tab does not match");
     if (!graphTab(evidence.tab)) {
       const view = resolved.options.view ?? openingSupplyView(evidence.payload as SupplyChainPayload, supplyOptions(resolved.options.tiers));
       if (evidence.view !== view) mismatches.push("Supply chain direction does not match");
