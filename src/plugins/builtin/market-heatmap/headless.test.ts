@@ -82,6 +82,22 @@ describe("fn HM report", () => {
     expect(marketHeatmapHeadless.discovery?.limitations?.join(" ")).toContain("not the pane's tile area");
   });
 
+  test("a Pro board's names without a live price are left out of the moves and listed with their delayed print", async () => {
+    const MON = Date.UTC(2026, 10, 23, 16, 46);
+    const printedAt = Date.UTC(2026, 10, 23, 16, 21);
+    const delayed = { ...asset("S0", 100, null), hasChange: true, changePercent: null, price: 0,
+      delayedQuote: { price: 151.33, changePercent: -1.4, volume: 900, printedAt } } as unknown as MarketHeatmapAsset;
+    const assets = [delayed, ...board(1, 40).slice(1)];
+    const result = await load(assets, false, { fetchedAt: MON - 5_000, session: "REGULAR", access: "realtime", pricesAsOf: MON - 5_000 });
+    expect(result.complete).toBe(true);
+    expect(result.metadata?.noMove).toEqual([]);
+    expect(result.metadata?.delayed).toEqual([{ symbol: "S0", move: -1.4, price: 151.33, printedAt: "2026-11-23T16:21:00.000Z" }]);
+    expect((result.metadata?.notices as string[])[0]).toMatch(/^1 of 40 names had no live price and are left out of the moves; their delayed figures are in metadata\.delayed: S0 delayed (23 Nov )?11:21 ET\.$/);
+    // Its delayed move counts in no group.
+    expect(result.rows.map((row) => [row.group, row.names, row.moved])).toEqual([["Energy", 20, 20], ["Tech", 20, 19]]);
+    expect(result.metadata?.asOf).toBe(new Date(MON - 5_000).toISOString());
+  });
+
   test("a stale snapshot is incomplete and says so", async () => {
     const result = await load(board(0, 40), true);
     expect(result.complete).toBe(false);

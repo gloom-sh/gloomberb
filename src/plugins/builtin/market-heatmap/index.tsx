@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { MarketHeatmapDelayedQuote } from "../../../api-client/market-discovery";
 import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { useAsyncResource } from "../../../react/async-resource";
 import { Box, useUiCapabilities } from "../../../ui";
@@ -92,8 +93,11 @@ import {
 import { useMarketHeatmapEvidence } from "./evidence";
 import { marketHeatmapHeadless } from "./headless";
 import {
+  DELAYED_TILE_MARK,
   HEATMAP_NAME_COUNTS,
   heatmapBoardCaption,
+  heatmapDelayedPrintTime,
+  heatmapDelayedQuote,
   heatmapExtendedPrintTime,
   heatmapMove,
   heatmapNameCount,
@@ -218,9 +222,43 @@ function buildLayoutItems(
  */
 const paintItemCache = new WeakMap<HeatmapBoardAsset, MetricTreemapItem<HeatmapBoardAsset>>();
 
+/**
+ * A tile of a real-time board the server could not price live, until the
+ * stream does: grey, as a tile without a move, with the delayed move marked
+ * by the clock and dated in its tooltip, so it never reads as a live one.
+ */
+function delayedPaintItem(asset: HeatmapBoardAsset, delayed: MarketHeatmapDelayedQuote): MetricTreemapItem<HeatmapBoardAsset> {
+  const details = [
+    typeof delayed.price === "number" && delayed.price > 0 ? formatCurrency(delayed.price, asset.currency) : null,
+    sizeLabel(asset),
+    delayed.volume != null ? `Vol ${formatCompact(delayed.volume)}` : null,
+  ].filter((part): part is string => !!part);
+  const name = asset.name && asset.name !== asset.symbol ? asset.name : null;
+  const move = `${delayed.changePercent == null ? MISSING_VALUE : formatPercentRaw(delayed.changePercent)} ${DELAYED_TILE_MARK} ${heatmapDelayedPrintTime(delayed, Date.now())}`;
+  return {
+    id: asset.symbol,
+    label: asset.symbol,
+    weight: asset.weight ?? asset.size ?? 0,
+    colorValue: null,
+    primaryText: formatHeatTileMove(delayed.changePercent),
+    primaryTextSuffix: DELAYED_TILE_MARK,
+    tooltip: [
+      name ? { text: [asset.symbol, name, move].join(" · "), keepEnd: ` · ${move}` } : [asset.symbol, move].join(" · "),
+      ...(details.length > 0 ? [details.join(" · ")] : []),
+    ],
+    data: asset,
+  };
+}
+
 function paintItem(asset: HeatmapBoardAsset): MetricTreemapItem<HeatmapBoardAsset> {
   const cached = paintItemCache.get(asset);
   if (cached) return cached;
+  const delayed = heatmapDelayedQuote(asset);
+  if (delayed) {
+    const item = delayedPaintItem(asset, delayed);
+    paintItemCache.set(asset, item);
+    return item;
+  }
   const change = heatmapMove(asset);
   const details = [
     asset.price > 0 ? formatCurrency(asset.price, asset.currency) : null,
@@ -658,7 +696,23 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
 
   usePaneFooter("market-heatmap", () => {
     const printTime = selectedAsset ? heatmapExtendedPrintTime(selectedAsset) : null;
-    const selected: PaneFooterSegment[] = selectedAsset ? [{
+    const delayed = selectedAsset ? heatmapDelayedQuote(selectedAsset) : null;
+    // A selected tile the server could not price live shows its delayed figures, marked, and when they printed.
+    const selected: PaneFooterSegment[] = selectedAsset && delayed ? [{
+      id: "selected",
+      parts: [
+        { text: selectedAsset.symbol, tone: "label" as const },
+        { text: delayed.changePercent == null ? MISSING_VALUE : formatPercentRaw(delayed.changePercent), tone: "muted" as const, bold: true },
+        { text: `${DELAYED_TILE_MARK} ${heatmapDelayedPrintTime(delayed, Date.now())}`, tone: "warning" as const },
+        ...(typeof delayed.price === "number" && delayed.price > 0
+          ? [{ text: formatCurrency(delayed.price, selectedAsset.currency), tone: "muted" as const }]
+          : []),
+        ...(sizeLabel(selectedAsset) ? [{ text: sizeLabel(selectedAsset)!, tone: "muted" as const }] : []),
+        ...(delayed.volume != null
+          ? [{ text: `Vol ${formatCompact(delayed.volume)}`, tone: "muted" as const }]
+          : []),
+      ],
+    }] : selectedAsset ? [{
       id: "selected",
       parts: [
         { text: selectedAsset.symbol, tone: "label" as const },

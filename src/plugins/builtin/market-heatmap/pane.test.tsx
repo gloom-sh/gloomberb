@@ -459,3 +459,47 @@ test("a tile sized by the day's move is sized by the move its colour shows, afte
   expect(await biggestTile({ liveStreaming: true }, board)).toBe("BBBB");
   expect(await biggestTile({ liveStreaming: true, sessionBasis: "regular-session" }, board)).toBe("AAAA");
 });
+
+test("a Pro board's tile the server could not price live is grey with its delayed move marked, until the stream prices it", async () => {
+  const now = Date.now();
+  const delayed: MarketHeatmapAsset = { ...stock("AAAA", 400, 0), price: 0, change: null, changePercent: null, volume: null, regularChangePercent: null,
+    delayedQuote: { price: 98.5, changePercent: -1.5, volume: 900, printedAt: now - 20 * 60_000 } };
+  const board: MarketHeatmapResult = { universe: "us-equity", source: "gloom", fetchedAt: now - 2_000, pricesAsOf: now - 2_000, session: "REGULAR",
+    regularSessionDate: null, access: "realtime", assets: [delayed, { ...stock("BBBB", 200, 1.1), regularChangePercent: null }] };
+  const api = spyOn(apiClient, "getMarketHeatmap").mockResolvedValue({ status: "success", data: board });
+  const user = spyOn(apiClient, "getCurrentUser").mockReturnValue({ id: "pro", emailVerified: true, plan: "pro" } as never);
+  restore = () => { api.mockRestore(); user.mockRestore(); };
+
+  // Sized by market cap, so AAAA is the first tile, and selected.
+  const pane = await mountHeatmap({ liveStreaming: false, sizeBy: "market-cap" });
+  expect(tui.frame()).toContain("-1.5%");
+  expect(tui.frame()).toContain("◷");
+  expect(pane.footer()).toMatch(/"text":"AAAA","tone":"label"\},\{"text":"-1\.50%","tone":"muted","bold":true\},\{"text":"◷ delayed \d\d:\d\d ET","tone":"warning"\},\{"text":"\$98\.50","tone":"muted"\}/);
+  // Only BBBB is coloured by a move.
+  expect(await publishedEvidence("us-equity")).toMatchObject({ tiles: 2, moved: 1 });
+});
+
+test("a streamed live quote replaces a tile's delayed figures", async () => {
+  const now = Date.now();
+  const live: Quote = { symbol: "AAAA", currency: "USD", listingExchangeName: "NASDAQ", marketState: "REGULAR", price: 99, change: -1,
+    changePercent: -1, previousClose: 100, lastUpdated: now - 1_000 };
+  const entry = { phase: "ready" as const, data: live, lastGoodData: live, source: "test", fetchedAt: 1, staleAt: null, error: null, attempts: [] };
+  setSharedMarketDataCoordinator({
+    ...IDLE_COORDINATOR_QUOTES, subscribe: () => () => {}, getVersion: () => 1,
+    getQuoteEntry: (instrument: Parameters<typeof buildQuoteKey>[0]) => (buildQuoteKey(instrument) === buildQuoteKey({ symbol: "AAAA", exchange: "NASDAQ" })
+      ? entry
+      : IDLE_COORDINATOR_QUOTES.getQuoteEntry()),
+  } as never);
+  const delayed: MarketHeatmapAsset = { ...stock("AAAA", 400, 0), price: 0, change: null, changePercent: null, volume: null, regularChangePercent: null,
+    delayedQuote: { price: 98.5, changePercent: -1.5, volume: 900, printedAt: now - 20 * 60_000 } };
+  const api = spyOn(apiClient, "getMarketHeatmap").mockResolvedValue({ status: "success", data: {
+    universe: "us-equity", source: "gloom", fetchedAt: now - 2_000, pricesAsOf: now - 2_000, session: "REGULAR", regularSessionDate: null,
+    access: "realtime", assets: [delayed, { ...stock("BBBB", 200, 1.1), regularChangePercent: null }] } });
+  restore = () => api.mockRestore();
+
+  const pane = await mountHeatmap({ sizeBy: "market-cap" });
+  expect(pane.footer()).toMatch(/"text":"AAAA","tone":"label"\},\{"text":"-1\.00%"/);
+  expect(pane.footer()).not.toContain("◷ delayed");
+  expect(tui.frame()).toContain("-1.0%");
+  expect(tui.frame()).not.toContain("-1.5%");
+});

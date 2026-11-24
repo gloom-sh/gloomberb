@@ -1,7 +1,7 @@
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { formatCompact, formatPercentRaw } from "../../../utils/format";
 import { MARKET_HEATMAP_REQUEST_COUNT, MARKET_HEATMAP_UNIVERSES, fetchMarketHeatmap, type MarketHeatmapBoard, type MarketHeatmapUniverseId } from "./data";
-import { heatmapMove, summarizeHeatmapGroups, type HeatmapGroupBy, type HeatmapGroupSummary } from "./model";
+import { heatmapDelayedPrintTime, heatmapDelayedQuote, heatmapMove, summarizeHeatmapGroups, type HeatmapGroupBy, type HeatmapGroupSummary } from "./model";
 
 /**
  * A few names always lack a move (foreign listings and new tickers the snapshot
@@ -37,6 +37,33 @@ function noMoveNotice(symbols: readonly string[], names: number): string {
   const shown = symbols.slice(0, 8).join(", ");
   const rest = symbols.length > 8 ? ` and ${symbols.length - 8} more` : "";
   return `${symbols.length} of ${names} names have no move yet and count toward size only: ${shown}${rest}.`;
+}
+
+/** A real-time board's names the server could not price live, as the report lists them. */
+interface DelayedName {
+  symbol: string;
+  move: number | null;
+  price: number | null;
+  printedAt: string | null;
+}
+
+function delayedNames(assets: MarketHeatmapBoard["assets"]): DelayedName[] {
+  return assets.flatMap((asset) => {
+    const delayed = heatmapDelayedQuote(asset);
+    if (!delayed) return [];
+    const printedAt = typeof delayed.printedAt === "number" && delayed.printedAt > 0 ? new Date(delayed.printedAt).toISOString() : null;
+    return [{ symbol: asset.symbol, move: delayed.changePercent, price: delayed.price, printedAt }];
+  });
+}
+
+function delayedNotice(names: readonly DelayedName[], assets: MarketHeatmapBoard["assets"], now: number): string {
+  const bySymbol = new Map(assets.map((asset) => [asset.symbol, asset]));
+  const shown = names.slice(0, 8).map((name) => {
+    const delayed = heatmapDelayedQuote(bySymbol.get(name.symbol)!);
+    return `${name.symbol} ${delayed ? heatmapDelayedPrintTime(delayed, now) : "delayed"}`;
+  }).join(", ");
+  const rest = names.length > 8 ? ` and ${names.length - 8} more` : "";
+  return `${names.length} of ${assets.length} names had no live price and are left out of the moves; their delayed figures are in metadata.delayed: ${shown}${rest}.`;
 }
 
 /**
@@ -103,6 +130,7 @@ export const marketHeatmapHeadless: HeadlessPaneDefinition<"rows"> = {
     dataRequirements: ["Gloom Cloud market heatmap snapshot"],
     limitations: [
       "The snapshot the pane starts from: real-time with Pro, fifteen minutes behind otherwise; the pane's live-streamed colors are not in the report.",
+      "On a real-time board, a name the server had no live price for is left out of the moves and listed with its delayed figures and when they printed.",
       "Sizes, shares and the weighted move use market cap (net assets for ETFs), not the pane's tile area, which follows its Size by setting (the day's move by default).",
     ],
   },
@@ -124,15 +152,21 @@ export const marketHeatmapHeadless: HeadlessPaneDefinition<"rows"> = {
     ctx.signal.throwIfAborted();
     const { grouping, groups, board } = summarizeHeatmapGroups(result.assets, groupBy);
     const flat = grouping === "flat";
-    const noMove = result.assets.filter((asset) => heatmapMove(asset) == null).map((asset) => asset.symbol);
+    const delayed = delayedNames(result.assets);
+    const delayedSymbols = new Set(delayed.map((name) => name.symbol));
+    const noMove = result.assets.filter((asset) => heatmapMove(asset) == null && !delayedSymbols.has(asset.symbol)).map((asset) => asset.symbol);
     const covered = result.assets.length > 0 && board.moved / board.names >= MIN_MOVE_COVERAGE;
+    const notices = [
+      ...(delayed.length > 0 ? [delayedNotice(delayed, result.assets, Date.now())] : []),
+      ...(noMove.length > 0 ? [noMoveNotice(noMove, result.assets.length)] : []),
+    ];
     return {
       columns: columns(universe, groupBy, flat),
       rows: groups.map((summary) => projectRow(summary, groupBy, flat)),
       complete: !result.stale && covered,
       // A Pro account's board is priced from a live read.
       freshness: { status: result.access === "realtime" ? "live" : "delayed", tradingDayMarket: "US" },
-      unavailableSymbols: covered ? [] : noMove,
+      unavailableSymbols: covered ? [] : [...delayedSymbols, ...noMove],
       metadata: {
         universe,
         groupBy: flat ? null : groupBy,
@@ -142,7 +176,8 @@ export const marketHeatmapHeadless: HeadlessPaneDefinition<"rows"> = {
         regularSessionDate: result.regularSessionDate ?? null,
         names: result.assets.length,
         noMove,
-        ...(noMove.length > 0 ? { notices: [noMoveNotice(noMove, result.assets.length)] } : {}),
+        delayed,
+        ...(notices.length > 0 ? { notices } : {}),
         board: projectRow(board, groupBy, true),
         unit: "move and sharePercent in percent; size in USD",
         weighting: universe === "us-etf"

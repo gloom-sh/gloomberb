@@ -37,8 +37,10 @@ export interface MarketHeatmapAsset {
   symbol: string;
   name: string;
   price: number;
-  change: number;
-  changePercent: number;
+  /** Null on a real-time board's tile the live read did not price (`delayedQuote`). */
+  change: number | null;
+  /** Null on a real-time board's tile the live read did not price (`delayedQuote`). */
+  changePercent: number | null;
   /**
    * Whether the source actually carried a session change. `changePercent` keeps
    * a numeric 0 for the shared screener row shape, so tiles must read this
@@ -60,9 +62,31 @@ export interface MarketHeatmapAsset {
    * for a name without that session's close.
    */
   regularChangePercent?: number | null;
+  /**
+   * On a real-time board while the session trades, a name the server's live
+   * read did not price: its tile carries no price or move of its own
+   * (`price` 0, `changePercent` null), and these are the delayed figures it
+   * last had, as of `printedAt` (epoch milliseconds, null when unknown). A
+   * client shows them only as delayed, on that tile, and its own live quote
+   * of the name replaces them. Absent on every other tile.
+   */
+  delayedQuote?: MarketHeatmapDelayedQuote | null;
+}
+
+/** A tile's delayed figures beside a real-time board (see `MarketHeatmapAsset.delayedQuote`). */
+export interface MarketHeatmapDelayedQuote {
+  price: number | null;
+  changePercent: number | null;
+  volume: number | null;
+  printedAt: number | null;
 }
 
 export interface MarketHeatmapResult {
+  /**
+   * The board is not current: a real-time board whose last good live read
+   * is old (its refreshes failed), and is dated by that read; or one served
+   * from the delayed snapshot for want of any live read.
+   */
   stale?: boolean;
   universe: MarketHeatmapUniverseId;
   source: MarketHeatmapSource;
@@ -86,10 +110,12 @@ export interface MarketHeatmapResult {
   regularSessionClosedAt?: number | null;
   /**
    * When the prices the board's moves are read at were printed, in epoch
-   * milliseconds, never later than any of them: the oldest delayed print
-   * while the session trades, that session's close outside it. `fetchedAt`
-   * is when the server put the snapshot together, at least fifteen minutes
-   * later. Null when a print is unknown; an older server leaves it out.
+   * milliseconds, never later than any of them: on a delayed board the
+   * oldest delayed print while the session trades, on a real-time board its
+   * live read's time (a tile it did not price dates its own figures, in
+   * `delayedQuote`), and outside the session that session's close.
+   * `fetchedAt` is when the server put the board together. Null when a print
+   * is unknown; an older server leaves it out.
    */
   pricesAsOf?: number | null;
   assets: MarketHeatmapAsset[];

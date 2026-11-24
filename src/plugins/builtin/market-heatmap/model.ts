@@ -1,4 +1,4 @@
-import type { MarketHeatmapAsset } from "../../../api-client/market-discovery";
+import type { MarketHeatmapAsset, MarketHeatmapDelayedQuote } from "../../../api-client/market-discovery";
 import { formatShortDate } from "../../../utils/datetime-format";
 import { displayWidth } from "../../../utils/format";
 import { zonedDateKey, zonedDateTimeParts } from "../../../utils/zoned-date-time";
@@ -79,6 +79,32 @@ const dayLabel = (day: string) => formatShortDate(day, { year: false, utc: true,
 
 const isTimestamp = (value: number | null | undefined): value is number =>
   typeof value === "number" && Number.isFinite(value) && value > 0;
+
+/** What a tile shows after a delayed move: the clock the app's delayed footers show. */
+export const DELAYED_TILE_MARK = "◷";
+
+/**
+ * The delayed figures a real-time board's tile carries for a name the
+ * server's live read did not price (`delayedQuote`), while nothing live
+ * replaces them: null once the tile has a live move of its own (a streamed
+ * quote), and on every other tile. Such a tile is never coloured as live.
+ */
+export function heatmapDelayedQuote(
+  asset: Pick<MarketHeatmapAsset, "hasChange" | "changePercent" | "regularChangePercent" | "delayedQuote"> & { extendedSession?: string },
+): MarketHeatmapDelayedQuote | null {
+  const delayed = asset.delayedQuote;
+  if (!delayed || heatmapMove(asset) != null) return null;
+  return delayed;
+}
+
+/** When a tile's delayed figures printed, as "delayed 11:21 ET", dated ("delayed 23 Nov 15:59 ET") when not today in New York. */
+export function heatmapDelayedPrintTime(delayed: Pick<MarketHeatmapDelayedQuote, "printedAt">, now: number): string {
+  if (!isTimestamp(delayed.printedAt)) return "delayed";
+  const { hour, minute } = zonedDateTimeParts(delayed.printedAt, NEW_YORK);
+  const day = zonedDateKey(delayed.printedAt, NEW_YORK);
+  const clock = `${twoDigits(hour)}:${twoDigits(minute)} ET`;
+  return `delayed ${day === zonedDateKey(now, NEW_YORK) ? clock : `${dayLabel(day)} ${clock}`}`;
+}
 
 export function heatmapExtendedPrintTime(asset: { extendedSession?: string | null; lastUpdated?: number | null }): string | null {
   if (!asset.extendedSession) return null;
