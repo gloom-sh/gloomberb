@@ -1,7 +1,8 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { describe, expect, test } from "bun:test";
-import type { AnalystResearchData } from "../../../types/financials";
-import { buildEventRows, eventSourceNotice, formatEventMetric, sourceErrorText, type EventFinancials } from "./event-model";
+import type { AnalystResearchData, CorporateActionsData } from "../../../types/financials";
+import { buildEventRows, buildEventSummary, buildNextUp, eventSourceNotice, formatEventMetric, nextCatalystOf, sourceErrorText, type EventFinancials } from "./event-model";
+import { catalystFixture } from "../catalysts/test-fixture";
 import { NOT_MEANINGFUL_TONE } from "../../../utils/growth";
 import { fiscalPeriodText } from "../earnings/fiscal-quarter";
 
@@ -582,4 +583,106 @@ test("a fund lists its distributions but no earnings or estimates, whatever a fe
   expect(statuses({ quarterlyStatements: [], quote: { currency: "USD", instrumentType: "ETF" } })).toEqual(["Dividend"]);
   expect(statuses({ quarterlyStatements: [], quoteMetadata: { instrumentType: "ETF" } })).toEqual(["Dividend"]);
   expect(statuses({ quarterlyStatements: [], quote: { currency: "USD", instrumentType: "EQUITY" } })).toEqual(expect.arrayContaining(["Earnings", "Q Est"]));
+});
+
+/** Review, 24 Nov 2026: Haier's dividends were each dated Ex-date again and tinted as a gain. */
+test("dividend rows say only what the row does not, untinted", () => {
+  const rows = buildEventRows({ symbol: "TEST", currency: "CNY", earnings: [],
+    dividends: [
+      { exDate: "2023-06-10", amount: 0.4 },
+      { exDate: "2024-06-10", amount: 0.46136, payDate: "2024-06-20" },
+      { exDate: "2025-06-10", amount: 0.8, parts: [{ amount: 0.8, special: true, type: "special", form: { url: "", publishedOn: "2025-05-01" } }] },
+    ],
+    splits: [{ date: "2024-01-15", fromFactor: 10, toFactor: 11 }],
+  }, null, null, "CNY");
+  expect(rows.map((row) => [row.status, row.detail, row.tone, row.period, row.special ?? false])).toEqual([
+    ["Dividend", "special", "text", "", true],
+    ["Dividend", "payable 2024-06-20", "text", "", false],
+    ["Split", "11-for-10, 1 new share for every 10 held", "muted", "", false],
+    // Paid before a split on record: the amount is on today's shares.
+    ["Dividend", "split-adjusted", "text", "", false],
+  ]);
+});
+
+describe("what is next", () => {
+  const today = "2098-11-24";
+  const estimates: AnalystResearchData = { symbol: "KO", recommendations: [], ratings: [],
+    earningsEstimates: [
+      { date: "2098-12-31", period: "current_quarter", average: 0.6, currency: "USD", analysts: 12, growth: 0.05 },
+      { date: "2099-03-31", period: "next_quarter", average: 0.7, currency: "USD" },
+    ],
+    revenueEstimates: [
+      { date: "2098-12-31", period: "current_quarter", average: 11.2e9, currency: "USD", analysts: 1, growth: -0.02 },
+      { date: "2099-03-31", period: "next_quarter", average: 12.5e9, currency: "USD" },
+    ] };
+  const rows = (earnings: CorporateActionsData["earnings"], extra = {}) => buildEventRows({
+    symbol: "KO", currency: "USD", splits: [], dividends: [{ exDate: "2098-09-15", amount: 0.53 }], earnings, ...extra,
+  }, estimates, null, "USD");
+  const figures = (built: ReturnType<typeof rows>, options: Partial<Parameters<typeof buildNextUp>[1]> = {}) =>
+    buildNextUp(built, { today, fund: false, ...options }).map((figure) => [figure.id, figure.label, figure.value, figure.detail]);
+
+  test("the next report counts the days to it and carries the consensus for the quarter it covers", () => {
+    const built = rows([
+      { date: "2098-10-21", epsActual: 0.82, epsEstimate: 0.78, currency: "USD", fiscalPeriod: "2098-09" },
+      { date: "2099-02-10", epsEstimate: 0.61, currency: "USD", dateStatus: "projected", epsAnalysts: 20 },
+    ]);
+    expect(figures(built)).toEqual([
+      // The quarter it covers is the last one estimated to end before it, not the one after.
+      ["next-report", "Next report", "10 Feb 2099", "in 78 days · projected · Dec 2098 qtr"],
+      ["eps-estimate", "EPS est", "0.61 USD", "20 analysts · +5.00% y/y"],
+      ["revenue-estimate", "Revenue est", "11.2B USD", "1 analyst · -2.00% y/y"],
+      ["last-ex", "Last ex", "15 Sep 2098", "$0.53"],
+    ]);
+  });
+
+  test("undated, the next report is the earliest quarter analysts estimate, with its consensus", () => {
+    expect(figures(rows([{ date: "2098-10-21", epsActual: 0.82, epsEstimate: 0.78, currency: "USD" }])).slice(0, 3)).toEqual([
+      ["next-report", "Next report", "Dec 2098 qtr", "not dated yet"],
+      ["eps-estimate", "EPS est", "0.60 USD", "12 analysts · +5.00% y/y"],
+      ["revenue-estimate", "Revenue est", "11.2B USD", "1 analyst · -2.00% y/y"],
+    ]);
+  });
+
+  test("the ex-date: a declared one with its amount, else the one the listing's figures state, else the last", () => {
+    const declared = rows([], { declaredDividends: [{ exDate: "2098-12-01", amount: 0.55, payDate: "2098-12-15", special: true }] });
+    expect(figures(declared, { fund: true })).toEqual([["next-ex", "Next ex", "01 Dec 2098", "$0.55 · special · in 7 days"]]);
+    expect(figures(rows([]), { fund: true, statedExDate: "2098-12-01" })).toEqual([["next-ex", "Next ex", "01 Dec 2098", "in 7 days · last paid $0.53"]]);
+    // A stated date already past is the last payment's, not the next.
+    expect(figures(rows([]), { fund: true, statedExDate: "2098-09-15" })).toEqual([["last-ex", "Last ex", "15 Sep 2098", "$0.53"]]);
+  });
+
+  test("a catalyst dated to the day counts the days to it; one dated to its month says the month; a fund has none", () => {
+    const at = (date: string) => figures(rows([]), { catalyst: { date, label: "FDA decision" } }).at(-1);
+    expect(at("2098-12-04")).toEqual(["next-catalyst", "Next catalyst", "04 Dec 2098", "in 10 days · FDA decision"]);
+    expect(at("2099-03")).toEqual(["next-catalyst", "Next catalyst", "Mar 2099", "FDA decision"]);
+    expect(figures(rows([]), { fund: true, catalyst: { date: "2098-12-04", label: "FDA decision" } }).map(([id]) => id)).toEqual(["last-ex"]);
+  });
+
+  test("the next catalyst is the earliest one not over, at the precision its date has, never one whose date is withheld", () => {
+    const event = (id: string, deadlineDate: string, deadline: "day" | "month", extra = {}) => ({ ...catalystFixture, id, title: id, deadlineDate,
+      datePrecision: { ...catalystFixture.datePrecision, deadline }, ...extra });
+    const events = [
+      event("past", "2098-11-20", "day"),
+      event("withheld", "2098-11-25", "day", { metadata: { dateWithheld: true } }),
+      event("this month", "2098-11", "month"),
+      event("later", "2098-12-02", "day"),
+    ];
+    expect(nextCatalystOf(events, "2098-11-24")).toEqual({ date: "2098-11", label: "this month" });
+    expect(nextCatalystOf(events.slice(0, 2), "2098-11-24")).toBeNull();
+  });
+
+  test("EE's figures are the next report with its consensus and the last surprise", () => {
+    const built = rows([
+      { date: "2098-10-21", epsActual: 0.82, epsEstimate: 0.78, currency: "USD", fiscalPeriod: "2098-09" },
+      { date: "2099-02-10", epsEstimate: 0.61, currency: "USD", dateStatus: "projected" },
+    ]);
+    const summary = buildEventSummary(built, { today, fund: false, epsUnit: "USD", revenueUnit: "USD" });
+    expect(summary.map((figure) => [figure.id, figure.value, figure.detail])).toEqual([
+      ["next-report", "10 Feb 2099", "Dec 2098 qtr · projected · EPS est 0.61 · rev est 11.2B"],
+      ["last-surprise", "+5.13%", "Sep 2098 · 0.82 vs 0.78"],
+    ]);
+    // Shorter forms for a narrow pane, never a longer one.
+    for (const figure of summary) for (const variant of figure.detailVariants ?? []) expect(variant.length).toBeLessThan(figure.detail!.length);
+    expect(buildEventSummary(built, { today, fund: true })).toEqual([]);
+  });
 });

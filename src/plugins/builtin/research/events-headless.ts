@@ -8,8 +8,14 @@ import type {
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
-import { buildEventRows, eventSourceNotice, CORPORATE_ACTION_COVERAGE } from "./event-model";
-import { EVENT_COLUMNS, loadEventSources } from "./event-sources";
+import { buildEventRows, buildNextUp, eventSourceNotice, formatEventMetric, isFundListing, nextCatalystOf, nextCatalystQuery, CORPORATE_ACTION_COVERAGE, type NextCatalyst } from "./event-model";
+import { dividendYearDetail, dividendYearLabel, dividendYears, earningsQuarters, splitMarks } from "./event-charts";
+import { fetchCatalysts } from "../catalysts/client";
+import { isCloudSessionRequired } from "../shared/research-cloud-session";
+import { MISSING_VALUE, distributionAmountsDigits, formatPercentRaw } from "../../../utils/format";
+import type { HeadlessBundleSection, HeadlessPaneColumn } from "../../../types/headless";
+import { EVENT_COLUMNS, eventSummarySection, loadEventSources } from "./event-sources";
+import { listingDay } from "../shared/earnings-calendar";
 import { REPORTED_DATA } from "../shared/report-freshness";
 import { EPS_BASIS_NOTE } from "../shared/earnings-report";
 import { loadNoQuoteLastTraded, noQuoteLastTradeNote, otherListingProfile } from "../../../tickers/listing-fate";
@@ -29,6 +35,27 @@ interface EventHeadlessData {
 
 /** The rows drawn from the research served under a symbol (its reports and estimates), not from its own corporate actions. */
 const RESEARCH_EVENTS: ReadonlySet<EventStatus> = new Set(["Earnings", "Q Est", "FY Est", "TTM"]);
+
+/** The Earnings view's table, as the text report prints it: one row per quarter, the next one first. */
+const QUARTER_TEXT_COLUMNS: HeadlessPaneColumn[] = [
+  { key: "date", header: "Date" },
+  { key: "period", header: "Quarter" },
+  { key: "eps", header: "EPS", align: "right" },
+  { key: "estimate", header: "Est", align: "right" },
+  { key: "surprise", header: "Surprise", align: "right" },
+  { key: "revenue", header: "Revenue", align: "right" },
+  { key: "detail", header: "Detail" },
+];
+
+/** The Dividends view's table: one row per year of ex-dates, newest first. */
+const YEAR_TEXT_COLUMNS: HeadlessPaneColumn[] = [
+  { key: "year", header: "Year" },
+  { key: "paid", header: "Paid", align: "right" },
+  { key: "special", header: "Special", align: "right" },
+  { key: "payments", header: "Payments", align: "right" },
+  { key: "change", header: "Change", align: "right" },
+  { key: "detail", header: "Detail" },
+];
 
 export interface EventsHeadlessDependencies {
   load(
@@ -83,13 +110,59 @@ export function createEventsHeadless(
       const hidden = rows.length - own.length;
       const ended = lastTrade ? `${noQuoteLastTradeNote(symbol, lastTrade)}.${hidden > 0
         ? ` ${hidden} later ${hidden === 1 ? "report is" : "reports are"} another listing's (${other}), not shown.` : ""}` : null;
+      const notes = ended ? [ended] : [];
+      // As the pane reads: what is next, the quarters of its Earnings view and the years of its Dividends view.
+      // The exports keep every event row.
+      const today = listingDay(parsePublicTickerKey(symbol).exchange);
+      const fund = isFundListing(data.financials);
+      // The next catalyst, as the Earnings view asks the calendar for it; a failed read is said, the rest stands.
+      let catalyst: NextCatalyst | null = null;
+      // A context without the cloud client (a test's) reads no catalysts.
+      if (!fund && (ctx.apiClient as Partial<typeof ctx.apiClient> | undefined)?.getCloudCatalysts) {
+        try {
+          catalyst = nextCatalystOf((await fetchCatalysts(nextCatalystQuery(symbol), ctx.apiClient, ctx.signal)).events, today);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          // Signed out, as in the pane, the figure is left out: the Catalysts report says why.
+          if (!isCloudSessionRequired(message)) errors.push(`Catalysts unavailable: ${message}`);
+        }
+      }
+      const summary = buildNextUp(own, { today, fund, statedExDate: data.financials?.fundamentals?.exDividendDate, catalyst });
+      const quarters = fund ? [] : earningsQuarters(own, today);
+      const quarterRows = quarters.map((quarter) => ({
+        date: quarter.date, period: quarter.period,
+        eps: quarter.upcoming ? "" : formatEventMetric(quarter.eps, quarter.epsCurrency, "eps"),
+        estimate: formatEventMetric(quarter.estimate, quarter.epsCurrency, "eps"),
+        surprise: quarter.upcoming ? "" : quarter.surprisePercent != null ? formatPercentRaw(quarter.surprisePercent) : MISSING_VALUE,
+        revenue: quarter.upcoming ? "" : formatEventMetric(quarter.revenue, quarter.revenueCurrency, "revenue"),
+        detail: quarter.detail,
+      }));
+      const years = dividendYears(data.actions?.dividends ?? [], today, splitMarks(own));
+      const currency = data.actions?.currency ?? data.currency;
+      const digits = Math.min(4, distributionAmountsDigits(years.flatMap((year) => (year.total == null ? [] : [year.total])), currency || "USD"));
+      const yearRows = years.map((year) => ({
+        year: dividendYearLabel(year),
+        paid: year.total == null ? "" : `${year.total.toFixed(digits)}${currency ? ` ${currency}` : ""}`,
+        special: year.special > 0 ? year.special.toFixed(digits) : "",
+        payments: year.payments ? String(year.payments) : "",
+        change: year.change == null ? "" : formatPercentRaw(year.change * 100),
+        detail: dividendYearDetail(year),
+      }));
+      // The Special column only where the issuer's forms mark one, as the pane shows it.
+      const yearColumns = years.some((year) => year.special > 0) ? YEAR_TEXT_COLUMNS : YEAR_TEXT_COLUMNS.filter((column) => column.key !== "special");
+      const yearSection: HeadlessBundleSection = { title: "Dividends by year", columns: yearColumns, rows: yearRows };
+      const sections = [...(summary.length ? [eventSummarySection(summary)] : []), ...(fund || !yearRows.length ? [] : [yearSection])];
       return {
         rows: own.map((row) => ({ ...row })),
-        ...(ended ? { notes: [ended] } : {}),
+        textColumns: fund ? yearColumns : QUARTER_TEXT_COLUMNS,
+        textRows: fund ? yearRows : quarterRows,
+        ...(sections.length ? { textSections: sections } : {}),
+        ...(notes.length ? { notes } : {}),
         errors: errors.length > 0 ? errors : undefined,
         metadata: { symbol, currency: data.currency, coverage: data.actions?.coverage,
           coverageNote: CORPORATE_ACTION_COVERAGE, epsBasis: EPS_BASIS_NOTE,
           actionsFetchedAt: data.actions?.fetchedAt, estimatesFetchedAt: data.estimates?.fetchedAt,
+          ...(summary.length ? { nextUp: summary } : {}),
           ...(notice ? { notice: notice.text } : {}),
         },
       };

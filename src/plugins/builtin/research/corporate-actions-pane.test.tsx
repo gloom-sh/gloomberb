@@ -3,12 +3,12 @@ import { act, useState } from "react";
 import { createOpenTuiTestHarness, takeSavedTextFile } from "../../../renderers/opentui/test-utils";
 import { exportPaneTable } from "../../../state/pane-table-export-registry";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
-import { createTestDataProvider, createTestFinancials, createTestQuote } from "../../../test-support/data-provider";
+import { createTestDataProvider } from "../../../test-support/data-provider";
 import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import type { AnalystResearchData, CorporateActionsData, TickerFinancials } from "../../../types/financials";
+import type { AnalystResearchData, CorporateActionsData } from "../../../types/financials";
 import { Box } from "../../../ui";
-import { buildEventColumns, buildEventDetail, CorporateActionsView, matchEarningsSecFiling, type EventDetailSection } from "./corporate-actions-pane";
+import { buildEventColumns, buildEventDetail, EarningsEstimatesView, matchEarningsSecFiling, type EventDetailSection } from "./corporate-actions-pane";
 import { getTableWidth } from "../../../components/ui/table-layout";
 import { buildEventRows } from "./event-model";
 
@@ -18,7 +18,7 @@ test("EE omits uncovered comparisons, restores covered rows, and exports both ra
   const actions: CorporateActionsData = { symbol: "TEST", currency: "USD", dividends: [], splits: [], earnings: [
     { date: "2026-06-01", epsActual: 2 }, { date: "2026-09-01", epsActual: 3 },
   ] };
-  await render(actions, "earnings-estimates", 140);
+  await render(actions, 140);
   expect(tui.frame()).not.toContain("EPS SURP");
   expect(tui.frame()).not.toContain("YOY GROWTH");
   await exportPaneTable("earnings-estimates:TEST", "uncovered.csv");
@@ -27,7 +27,7 @@ test("EE omits uncovered comparisons, restores covered rows, and exports both ra
   expect(csv).toContain("YOY GROWTH");
   await tui.destroy();
   actions.earnings[0]!.epsEstimate = 1;
-  await render(actions, "earnings-estimates", 140, { symbol: "TEST", recommendations: [], ratings: [], revenueEstimates: [],
+  await render(actions, 140, { symbol: "TEST", recommendations: [], ratings: [], revenueEstimates: [],
     earningsEstimates: [{ date: "2027-03-31", period: "next quarter", average: 4, growth: 0.25, currency: "USD" }] });
   const mixed = tui.frame();
   expect(mixed).toContain("EPS SURP");
@@ -37,22 +37,14 @@ test("EE omits uncovered comparisons, restores covered rows, and exports both ra
   expect(mixed.split("\n").find((line) => line.includes("01 Sep 2026"))).toContain("—");
 });
 
-test("EVT drops annual estimates before quarterly values and keeps VALUE and the complete period visible", () => {
-  for (const unit of [undefined, "USD"]) {
-    for (const width of [68, 88, 90, 120, 160]) {
-      const columns = buildEventColumns(width, unit);
-      expect(getTableWidth(columns)).toBeLessThanOrEqual(width - 1);
-      expect(columns.some(({ id }) => id === "value")).toBe(true);
-      expect(columns.find(({ id }) => id === "period")!.width).toBeGreaterThanOrEqual("After Hours".length);
-    }
-    const narrow = buildEventColumns(90, unit).map(({ id }) => id);
-    expect(narrow).toContain("qEps");
-    expect(narrow).toContain("qRevenue");
-    expect(narrow).toContain("detail");
-    expect(narrow).not.toContain("annualEps");
-    expect(narrow).not.toContain("annualRevenue");
-    expect(buildEventColumns(160, unit).map(({ id }) => id)).toContain("annualRevenue");
+test("EE heads one EPS and one revenue column with the currency each shares, and fits any width", () => {
+  for (const units of [{}, { eps: "USD", revenue: "TWD" }]) {
+    for (const width of [68, 88, 90, 120, 160]) expect(getTableWidth(buildEventColumns(width, units))).toBeLessThanOrEqual(width - 1);
   }
+  // An ADR's EPS in dollars beside its revenue in the home currency: each column names its own.
+  expect(buildEventColumns(160, { eps: "USD", revenue: "TWD" }).map(({ label }) => label))
+    .toEqual(["DATE", "EVENT", "PERIOD", "EPS USD", "REVENUE TWD", "EPS SURP", "YOY GROWTH", "DETAIL"]);
+  expect(buildEventColumns(160, { eps: "USD" }).map(({ label }) => label)).toContain("REVENUE");
 });
 
 async function frame() {
@@ -60,16 +52,14 @@ async function frame() {
   await act(async () => { await tui.setup().renderOnce(); });
 }
 
-async function render(actions: CorporateActionsData, variant: "corporate-actions" | "earnings-estimates", width = 80, estimates?: AnalystResearchData | Promise<AnalystResearchData>,
-  financials?: TickerFinancials) {
-  const paneId = `${variant}:TEST`;
+async function render(actions: CorporateActionsData, width = 80, estimates?: AnalystResearchData | Promise<AnalystResearchData>) {
+  const paneId = "earnings-estimates:TEST";
   const config = createTestPaneConfig("/tmp/gloom-corporate-actions-pane-test", {
-    instanceId: paneId, paneId: variant, binding: { kind: "fixed", symbol: "TEST" },
+    instanceId: paneId, paneId: "earnings-estimates", binding: { kind: "fixed", symbol: "TEST" },
   });
   const state = createInitialState(config);
   state.focusedPaneId = paneId;
   state.tickers = new Map([["TEST", createTestTicker("TEST", "Test", { exchange: "ASX", currency: "AUD" })]]);
-  if (financials) state.financials = new Map([["TEST", financials]]);
   const provider = createTestDataProvider({
     getCorporateActions: async () => actions,
     getAnalystResearch: async () => estimates ?? ({ symbol: "TEST", recommendations: [], ratings: [], earningsEstimates: [], revenueEstimates: [] }),
@@ -83,7 +73,7 @@ async function render(actions: CorporateActionsData, variant: "corporate-actions
     return (
       <TestPaneProvider state={state} dispatch={dispatch} paneId={paneId} pluginId="ticker-research" runtime={runtime}>
         <Box width={width} height={24} flexDirection="column">
-          <CorporateActionsView focused width={width} height={24} variant={variant} footerPaneId={variant} />
+          <EarningsEstimatesView focused width={width} height={24} />
         </Box>
       </TestPaneProvider>
     );
@@ -98,7 +88,7 @@ test("EE keeps surprise visible with annual and quarterly estimates and never as
   await render({ symbol: "TEST", dividends: [], splits: [], earnings: [
     { date: "2026-07-30", epsActual: 2, epsEstimate: 1, currency: "USD", epsBasis: "adjusted" },
     { date: "2025-07-30", epsActual: 1.5, epsEstimate: 1 },
-  ] }, "earnings-estimates", 88, {
+  ] }, 88, {
     symbol: "TEST", recommendations: [], ratings: [],
     earningsEstimates: [{ date: "2027-09-30", period: "next_year", average: 9.5, growth: .2, currency: "USD" }],
     revenueEstimates: [{ date: "2026-12-31", period: "next_quarter", average: 1e9, growth: .1, currency: "USD" }],
@@ -110,33 +100,18 @@ test("EE keeps surprise visible with annual and quarterly estimates and never as
   expect(screen).toContain("+10.00% rev");
   expect(screen).toContain("9.50");
   expect(screen).toContain("1.50 ?");
-  expect(screen.match(/USD/g)).toHaveLength(1);
+  // Named once per column, in its heading: no line of its own over the table.
+  expect(screen).toContain("EPS USD");
+  expect(screen).toContain("REVENUE USD");
+  expect(screen.match(/USD/g)).toHaveLength(2);
   expect(screen).not.toContain("basis unknown");
-  expect(getTableWidth(buildEventColumns(88, "USD", "earnings-estimates"))).toBeLessThan(88);
+  expect(getTableWidth(buildEventColumns(88, { eps: "USD", revenue: "USD" }))).toBeLessThan(88);
   await exportPaneTable("earnings-estimates:TEST", "estimates.csv");
   const csv = takeSavedTextFile()!.text;
   expect(csv).toContain("Currency,USD");
   expect(csv).toContain("?,Currency unstated");
   expect(csv).toContain("1.50 ?");
   expect(csv).toContain("1000000000");
-});
-
-/** DES SPY's Events tab listed a feed's EPS rows as the fund's earnings, which `fn EVT SPY` left out: the pane never passed the listing's type. */
-test("a fund's events are its distributions alone, without earnings, estimates or their columns", async () => {
-  const actions: CorporateActionsData = { symbol: "TEST", currency: "USD", splits: [], dividends: [{ exDate: "2026-09-18", amount: 1.889 }],
-    earnings: [{ date: "2026-04-30", epsActual: 2.68, epsEstimate: 2.03, currency: "USD" }] };
-  const estimates: AnalystResearchData = { symbol: "TEST", recommendations: [], ratings: [], revenueEstimates: [],
-    earningsEstimates: [{ date: "2027-03-31", period: "next quarter", average: 4, growth: 0.25, currency: "USD" }] };
-  // The quote's type is all the pane knows the fund by: it has no statements or trailing EPS to build rows from.
-  await render(actions, "corporate-actions", 120, estimates, createTestFinancials({ quote: createTestQuote({ symbol: "TEST", instrumentType: "ETF" }) }));
-  const fund = tui.frame();
-  expect(fund).toContain("$1.889");
-  for (const text of ["Earnings", "+32.02%", "Q Est", "Q EPS", "PERIOD", "No analyst estimates"]) expect(fund).not.toContain(text);
-  await tui.destroy();
-  // The same feed under a stock is its earnings.
-  await render(actions, "corporate-actions", 120, estimates, createTestFinancials({ quote: createTestQuote({ symbol: "TEST", instrumentType: "EQUITY" }) }));
-  expect(tui.frame()).toContain("Earnings");
-  expect(tui.frame()).toContain("Q EPS");
 });
 
 /** The table's lines from its header down, and where a date first appears in them. */
@@ -146,33 +121,17 @@ function tableLines() {
   return { rows, rowOf: (date: string) => rows.findIndex((line) => line.includes(date)) };
 }
 
-/** A Shanghai listing's Events opened on its 1995 dividend, oldest first, with the latest payments off-screen. */
-test("a long dividend history opens on its latest payment, newest first", async () => {
-  // Oldest first, as a source may send them.
-  const dividends = Array.from({ length: 40 }, (_, index) => ({ exDate: `${1980 + index}-03-10`, amount: 0.01 * (index + 1) }));
-  await render({ symbol: "TEST", splits: [], earnings: [], dividends }, "corporate-actions", 100);
-  const { rows, rowOf } = tableLines();
-  expect(rows[0]).toContain("10 Mar 2019");
-  expect(rowOf("10 Mar 2018")).toBe(1);
-  expect(rowOf("10 Mar 2017")).toBe(2);
-  expect(tui.frame()).not.toContain("10 Mar 1980");
-  await tui.emitKeypress({ name: "return" });
-  await frame();
-  expect(tui.frame()).toContain("2019-03-10");
-  expect(tui.frame()).toContain("$0.40");
-});
-
 /** Review, 12 Nov 2026: the newest date leads, so the pane opens on the next event, below what is further ahead. */
-test.each(["corporate-actions", "earnings-estimates"] as const)("%s puts upcoming rows on top and opens on the next one, history under it", async (variant) => {
+test("EE puts upcoming rows on top and opens on the next one, history under it", async () => {
   const past = Array.from({ length: 40 }, (_, index) => ({ date: `${1980 + index}-03-10`, epsActual: 2 }));
   await render({ symbol: "TEST", currency: "USD", splits: [], dividends: [{ exDate: "2098-05-15", amount: 0.5 }],
-    earnings: [...past, { date: "2098-02-10", epsEstimate: 3.25 }] }, variant, 100,
+    earnings: [...past, { date: "2098-02-10", epsEstimate: 3.25 }] }, 100,
   { symbol: "TEST", recommendations: [], ratings: [], revenueEstimates: [], earningsEstimates: [
     { date: "2098-12-31", period: "current_year", average: 12.5 },
     { date: "2099-12-31", period: "next_year", average: 14 },
   ] });
   const { rows, rowOf } = tableLines();
-  const order = ["31 Dec 2099", "31 Dec 2098", ...variant === "corporate-actions" ? ["15 May 2098"] : [], "10 Feb 2098", "10 Mar 2019", "10 Mar 2018"];
+  const order = ["31 Dec 2099", "31 Dec 2098", "10 Feb 2098", "10 Mar 2019", "10 Mar 2018"];
   expect(rows[0]).toContain(order[0]);
   expect(order.map(rowOf)).toEqual(order.map((_, index) => index));
   expect(tui.frame()).not.toContain("10 Mar 1980");
@@ -187,7 +146,7 @@ test("late estimates land on top in view, and the end of the table restores cove
   const estimates = Promise.withResolvers<AnalystResearchData>();
   await render({ symbol: "TEST", currency: "USD", splits: [], dividends: [], earnings: Array.from({ length: 40 }, (_, index) => ({
     date: `${1980 + index}-03-10`, epsActual: 2, ...(index === 0 ? { epsEstimate: 1 } : {}),
-  })) }, "earnings-estimates", 140, estimates.promise);
+  })) }, 140, estimates.promise);
   expect(tui.frame()).not.toContain("EPS SURP");
   estimates.resolve({ symbol: "TEST", recommendations: [], ratings: [], revenueEstimates: [],
     earningsEstimates: [{ date: "2098-03-31", period: "next quarter", average: 4, growth: 0.25, currency: "USD" }] });
@@ -206,7 +165,7 @@ test("opening a fiscal-period row cannot select a same-day pending announcement"
   await render({ symbol: "TEST", dividends: [], splits: [], earnings: [
     { date: "2026-09-30", dateType: "announcement", epsEstimate: 2.2 },
     { date: "2026-09-30", dateType: "fiscal-period-end", epsActual: 2, epsEstimate: 1.8, currency: "USD" },
-  ] }, "earnings-estimates", 120);
+  ] }, 120);
   await tui.emitKeypress({ name: "down" });
   await frame();
   await tui.emitKeypress({ name: "return" });
@@ -217,12 +176,10 @@ test("opening a fiscal-period row cannot select a same-day pending announcement"
   expect(detail).not.toMatch(/Consensus\s+2\.2/);
 });
 
-test.each(["corporate-actions", "earnings-estimates"] as const)("%s preserves unavailable source status with no visible rows", async (variant) => {
-  await render({ symbol: "TEST", earnings: [], splits: [],
-    dividends: variant === "earnings-estimates" ? [{ exDate: "2026-09-30", amount: 0.1 }] : [],
-    coverage: { dividends: "available", splits: "unavailable", earnings: "unavailable" },
-  }, variant);
-  expect(tui.frame()).toContain(variant === "earnings-estimates" ? "Unavailable: earnings" : "Unavailable: splits, earnings");
+test("EE preserves unavailable source status with no visible rows", async () => {
+  await render({ symbol: "TEST", earnings: [], splits: [], dividends: [{ exDate: "2026-09-30", amount: 0.1 }],
+    coverage: { dividends: "available", splits: "unavailable", earnings: "unavailable" } });
+  expect(tui.frame()).toContain("Unavailable: earnings");
 });
 
 /** The detail as text, one line per heading, labelled figure or note. */

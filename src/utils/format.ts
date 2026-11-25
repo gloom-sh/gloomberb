@@ -15,15 +15,19 @@ export function currencyPriceDigits(currency: string | undefined): 2 | 3 {
   return currency != null && THREE_DECIMAL_CURRENCIES.has(currency.trim().toUpperCase()) ? 3 : 2;
 }
 
-function getCurrencyFormatter(currency: string, maximumFractionDigits: number = currencyPriceDigits(currency)): Intl.NumberFormat {
-  const key = `${currency}:${maximumFractionDigits}`;
+function getCurrencyFormatter(
+  currency: string,
+  maximumFractionDigits: number = currencyPriceDigits(currency),
+  // Whole units (0) drop the cents rather than throw.
+  minimumFractionDigits: number = Math.min(currencyPriceDigits(currency), maximumFractionDigits),
+): Intl.NumberFormat {
+  const key = `${currency}:${maximumFractionDigits}:${minimumFractionDigits}`;
   let formatter = currencyFormatters.get(key);
   if (!formatter) {
     const options = {
       style: "currency" as const,
       currency,
-      // Whole units (0) drop the cents rather than throw.
-      minimumFractionDigits: Math.min(currencyPriceDigits(currency), maximumFractionDigits),
+      minimumFractionDigits,
       maximumFractionDigits,
     };
     formatter = new Intl.NumberFormat("en-US", options);
@@ -53,21 +57,21 @@ function getNumberFormatter(decimals: number): Intl.NumberFormat {
  * stablecoin perpetual venues quote in) reads as the code before the amount,
  * as a price in it does: USDT101.70.
  */
-function formatMoney(value: number, currency: string, maximumFractionDigits: number): string {
+function formatMoney(value: number, currency: string, maximumFractionDigits: number, minimumFractionDigits?: number): string {
   // A minor unit is written after the amount: 314.95¢ in US cents, 412.50p in pence.
   const minor = minorUnitSign(currency);
   if (minor) {
     const body = new Intl.NumberFormat("en-US", {
-      minimumFractionDigits: Math.min(2, maximumFractionDigits),
+      minimumFractionDigits: minimumFractionDigits ?? Math.min(2, maximumFractionDigits),
       maximumFractionDigits,
     }).format(Math.abs(value));
     return `${value < 0 && /[1-9]/.test(body) ? "-" : ""}${body}${minor}`;
   }
   try {
-    return getCurrencyFormatter(currency, maximumFractionDigits).format(value).replace(BIDI_MARKS, "");
+    return getCurrencyFormatter(currency, maximumFractionDigits, minimumFractionDigits).format(value).replace(BIDI_MARKS, "");
   } catch {
     const body = new Intl.NumberFormat("en-US", {
-      minimumFractionDigits: Math.min(currencyPriceDigits(currency), maximumFractionDigits),
+      minimumFractionDigits: minimumFractionDigits ?? Math.min(currencyPriceDigits(currency), maximumFractionDigits),
       maximumFractionDigits,
     }).format(Math.abs(value));
     return `${value < 0 && /[1-9]/.test(body) ? "-" : ""}${currency.trim().toUpperCase()}${body}`;
@@ -116,10 +120,33 @@ function distributionAmountDigits(currency = "USD"): number {
   return minorUnitSign(currency) ? 4 : currencyPriceDigits(currency) + 4;
 }
 
-/** A per-share distribution to distributionAmountDigits, its currency's usual decimals at least. */
-export function formatDistributionAmount(value: number | undefined, currency = "USD"): string {
+/**
+ * A per-share distribution to distributionAmountDigits, its currency's usual
+ * decimals at least; with `digits` (distributionAmountsDigits), to exactly
+ * that many, so a column of them reads alike.
+ */
+export function formatDistributionAmount(value: number | undefined, currency = "USD", digits?: number): string {
   if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
-  return formatMoney(value, currency, distributionAmountDigits(currency));
+  return digits == null
+    ? formatMoney(value, currency, distributionAmountDigits(currency))
+    : formatMoney(value, currency, digits, digits);
+}
+
+/**
+ * The decimals per-share distributions shown together share: as many as the
+ * finest of them needs, distributionAmountDigits at most, and the currency's
+ * usual decimals at least. Haier's CN¥0.89151 beside its CN¥0.2692 makes five
+ * (0.89151 over 0.26920), and KO's $0.485 beside $0.51 three ($0.485, $0.510).
+ */
+export function distributionAmountsDigits(values: readonly number[], currency = "USD"): number {
+  const most = distributionAmountDigits(currency);
+  let digits = Math.min(minorUnitSign(currency) ? 2 : currencyPriceDigits(currency), most);
+  for (const value of values) {
+    if (!Number.isFinite(value)) continue;
+    const finest = Number(value.toFixed(most));
+    while (digits < most && Number(value.toFixed(digits)) !== finest) digits += 1;
+  }
+  return digits;
 }
 
 /** Signs a fixed-decimal move; one that rounds to zero is unsigned (0.00, never +0.00 or -0.00). */

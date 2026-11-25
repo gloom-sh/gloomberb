@@ -188,6 +188,7 @@ function renderBand(
   renderLineLike(rows, series, width, height, cue, domain.manual === true);
 }
 
+/** Draws a column per point; returns the point each drawn column of cells is. */
 function renderColumns(
   rows: string[][],
   series: CompositeProjectedSeries,
@@ -195,8 +196,9 @@ function renderColumns(
   width: number,
   height: number,
   layout: CompositeColumnLayout,
-): void {
+): Map<number, CompositeProjectedPoint> {
   const baseline = valueRow(0, domain, height) ?? height - 1;
+  const pointAt = new Map<number, CompositeProjectedPoint>();
   for (const point of series.points) {
     const cell = cellPoint(point, width, height, domain.manual);
     const group = layout.groupByPoint.get(point) ?? {
@@ -224,18 +226,22 @@ function renderColumns(
     }
     const [top, bottom] = rowSpan(cell.y, baseline, height);
     for (let row = top; row <= bottom; row += 1) setCell(rows, cell.x, row, "█");
+    pointAt.set(cell.x, point);
   }
+  return pointAt;
 }
 
+/** Draws each bar; returns whether the bar drawn in each column of cells rose. */
 function renderOhlc(
   rows: string[][],
   series: CompositeProjectedSeries,
   domain: CompositeAxisDomain,
   width: number,
   height: number,
-): void {
+): Map<number, boolean> {
   const candleWidth = resolveCompositeTextOhlcWidth(series.points, width);
   const halfCandleWidth = Math.floor(candleWidth / 2);
+  const risingAt = new Map<number, boolean>();
   for (const projected of series.points) {
     const source = projected.point;
     const x = cellPoint(projected, width, height).x;
@@ -248,6 +254,7 @@ function renderOhlc(
     const highRow = valueRow(high, domain, height);
     const lowRow = valueRow(low, domain, height);
     if (closeRow === null || highRow === null || lowRow === null) continue;
+    for (let offset = -halfCandleWidth; offset <= halfCandleWidth; offset += 1) risingAt.set(x + offset, close >= open);
     drawRowsLine(rows, x, highRow, x, lowRow, "│");
     const style = series.source.style;
     if (style !== "ohlc" && style !== "hlc" && openRow !== null) {
@@ -269,6 +276,7 @@ function renderOhlc(
     }
     drawLine(rows, x, closeRow, Math.min(width - 1, x + tickWidth), closeRow, "─");
   }
+  return risingAt;
 }
 
 export function resolveCompositeTextOhlcWidth(
@@ -283,17 +291,56 @@ export function resolveCompositeTextOhlcWidth(
   return resolved % 2 === 0 ? Math.max(1, resolved - 1) : resolved;
 }
 
+/** The colour a falling bar is drawn in (a candle, a volume column), as the bitmap draws it. */
+export interface CompositeTextPalette {
+  negative: string;
+}
+
+/** A panel drawn in cells: each row's text, and each cell's colour. */
+export interface CompositePanelCells {
+  lines: string[];
+  /** A series' mark takes the series' colour, as the bitmap draws it; null is the text colour (grid, crosshair, guides). */
+  tints: Array<Array<string | null>>;
+}
+
 export function renderCompositePanelText(
   panel: CompositePanelScene,
   width: number,
   cursorXRatio: number | null,
   cursorYRatio: number | null,
 ): string[] {
+  return renderCompositePanelCells(panel, width, cursorXRatio, cursorYRatio).lines;
+}
+
+/**
+ * The panel in a terminal without graphics. Every mark a series draws is
+ * tinted with that series' colour, so columns, candles and lines read as they
+ * do on the bitmap (a beat green beside a miss red); glyph cues still tell
+ * lines apart without colour.
+ */
+export function renderCompositePanelCells(
+  panel: CompositePanelScene,
+  width: number,
+  cursorXRatio: number | null,
+  cursorYRatio: number | null,
+  palette?: CompositeTextPalette,
+): CompositePanelCells {
   // The web terminal sizes panes from the viewport in fractional cells, and
   // Array() throws on a fractional length.
   const height = Math.max(1, Math.floor(panel.height));
   const plotWidth = Math.max(1, Math.floor(width));
   const rows = Array.from({ length: height }, () => Array(plotWidth).fill(" "));
+  const tints: Array<Array<string | null>> = Array.from({ length: height }, () => Array(plotWidth).fill(null));
+  // Whatever a step changed takes its colour: a series' marks, or (null) a guide over them.
+  const tintChanges = (draw: () => void, tint: (x: number, y: number) => string | null) => {
+    const before = rows.map((row) => row.slice());
+    draw();
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < plotWidth; x += 1) {
+        if (rows[y]![x] !== before[y]![x]) tints[y]![x] = tint(x, y);
+      }
+    }
+  };
   for (const ratio of compositeGridRatios(panel)) {
     const row = Math.round((height - 1) * ratio);
     for (let x = 0; x < plotWidth; x += 3) setCell(rows, x, row, "·");
@@ -308,74 +355,87 @@ export function renderCompositePanelText(
     const domain = panel.axes[series.source.axis];
     if (!domain) continue;
     const cue = panel.lineCues?.get(series.source.id);
+    const { color, negativeColor } = series.source;
+    const fallColor = palette?.negative ?? color;
     switch (series.source.style) {
-      case "columns":
-        renderColumns(rows, series, domain, plotWidth, height, columnLayout);
+      case "columns": {
+        let pointAt = new Map<number, CompositeProjectedPoint>();
+        // As the bitmap fills a column: below zero in the series' negative colour, a falling one (volume) in the theme's.
+        tintChanges(() => { pointAt = renderColumns(rows, series, domain, plotWidth, height, columnLayout); }, (x) => {
+          const point = pointAt.get(x);
+          return point && point.value < 0 ? negativeColor ?? color : point?.point.fell ? fallColor : color;
+        });
         break;
+      }
       case "area":
-        renderArea(rows, series, domain, plotWidth, height, cue);
+        tintChanges(() => renderArea(rows, series, domain, plotWidth, height, cue), () => color);
         break;
       case "band":
-        renderBand(rows, series, domain, plotWidth, height, cue);
+        tintChanges(() => renderBand(rows, series, domain, plotWidth, height, cue), () => color);
         break;
       case "candles":
       case "hollow":
       case "heikin-ashi":
       case "ohlc":
-      case "hlc":
-        renderOhlc(rows, series, domain, plotWidth, height);
+      case "hlc": {
+        let risingAt = new Map<number, boolean>();
+        tintChanges(() => { risingAt = renderOhlc(rows, series, domain, plotWidth, height); }, (x) => (risingAt.get(x) === false ? fallColor : color));
         break;
+      }
       case "line":
       case "step":
-        renderLineLike(rows, series, plotWidth, height, cue, domain.manual === true);
+        tintChanges(() => renderLineLike(rows, series, plotWidth, height, cue, domain.manual === true), () => color);
         break;
       case "points":
-        renderPoints(rows, series, plotWidth, height, domain.manual === true);
+        tintChanges(() => renderPoints(rows, series, plotWidth, height, domain.manual === true), () => color);
         break;
     }
   }
 
-  if (panel.volumeProfile) writeVolumeProfileText(rows, plotWidth, panel.volumeProfile);
-  if (panel.extendedHours) writeSessionBreaksText(rows, plotWidth, panel.extendedHours);
-  if (panel.eventGuides) writeEventGuidesText(rows, plotWidth, panel.eventGuides);
+  // Guides, levels and the crosshair are drawn in the text colour, over the marks.
+  tintChanges(() => {
+    if (panel.volumeProfile) writeVolumeProfileText(rows, plotWidth, panel.volumeProfile);
+    if (panel.extendedHours) writeSessionBreaksText(rows, plotWidth, panel.extendedHours);
+    if (panel.eventGuides) writeEventGuidesText(rows, plotWidth, panel.eventGuides);
 
-  // Blank cells only, so the dashed level reads as if it ran under the marks.
-  if (panel.lastPrice) {
-    const row = clamp(
-      Math.round(panel.lastPrice.yRatio * Math.max(height - 1, 0)),
-      0,
-      Math.max(height - 1, 0),
-    );
-    for (let x = 0; x < plotWidth; x += 1) {
-      const current = rows[row]?.[x];
-      if (current === " " || current === "·") setCell(rows, x, row, "╌");
+    // Blank cells only, so the dashed level reads as if it ran under the marks.
+    if (panel.lastPrice) {
+      const row = clamp(
+        Math.round(panel.lastPrice.yRatio * Math.max(height - 1, 0)),
+        0,
+        Math.max(height - 1, 0),
+      );
+      for (let x = 0; x < plotWidth; x += 1) {
+        const current = rows[row]?.[x];
+        if (current === " " || current === "·") setCell(rows, x, row, "╌");
+      }
     }
-  }
-  // The previous close, dotted, where the last price has not taken the row.
-  if (panel.priorClose) {
-    const row = clamp(Math.round(panel.priorClose.yRatio * Math.max(height - 1, 0)), 0, Math.max(height - 1, 0));
-    for (let x = 0; x < plotWidth; x += 1) {
-      const current = rows[row]?.[x];
-      if (current === " " || current === "·") setCell(rows, x, row, "┈");
+    // The previous close, dotted, where the last price has not taken the row.
+    if (panel.priorClose) {
+      const row = clamp(Math.round(panel.priorClose.yRatio * Math.max(height - 1, 0)), 0, Math.max(height - 1, 0));
+      for (let x = 0; x < plotWidth; x += 1) {
+        const current = rows[row]?.[x];
+        if (current === " " || current === "·") setCell(rows, x, row, "┈");
+      }
     }
-  }
 
-  if (cursorXRatio !== null) {
-    const cursorX = clamp(Math.round(cursorXRatio * Math.max(plotWidth - 1, 0)), 0, Math.max(plotWidth - 1, 0));
-    for (let y = 0; y < height; y += 1) {
-      const current = rows[y]?.[cursorX];
-      setCell(rows, cursorX, y, current === " " || current === "·" ? "│" : "┼");
+    if (cursorXRatio !== null) {
+      const cursorX = clamp(Math.round(cursorXRatio * Math.max(plotWidth - 1, 0)), 0, Math.max(plotWidth - 1, 0));
+      for (let y = 0; y < height; y += 1) {
+        const current = rows[y]?.[cursorX];
+        setCell(rows, cursorX, y, current === " " || current === "·" ? "│" : "┼");
+      }
     }
-  }
-  if (cursorYRatio !== null) {
-    const cursorY = clamp(Math.round(cursorYRatio * Math.max(height - 1, 0)), 0, Math.max(height - 1, 0));
-    for (let x = 0; x < plotWidth; x += 1) {
-      const current = rows[cursorY]?.[x];
-      setCell(rows, x, cursorY, current === " " || current === "·" ? "─" : "┼");
+    if (cursorYRatio !== null) {
+      const cursorY = clamp(Math.round(cursorYRatio * Math.max(height - 1, 0)), 0, Math.max(height - 1, 0));
+      for (let x = 0; x < plotWidth; x += 1) {
+        const current = rows[cursorY]?.[x];
+        setCell(rows, x, cursorY, current === " " || current === "·" ? "─" : "┼");
+      }
     }
-  }
+  }, () => null);
 
-  return rows.map((row) => row.join(""));
+  return { lines: rows.map((row) => row.join("")), tints };
 }
 
 /** Axis ticks as they fit a gutter of `width` cells. */

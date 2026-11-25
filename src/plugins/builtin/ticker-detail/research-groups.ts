@@ -35,7 +35,7 @@ const TICKER_RESEARCH_GROUPS: readonly TickerResearchGroupDef[] = [
   { id: "financials", name: "Financials", views: ["financials", "revenue", "equity-diagnostic", "dividend-yield", ADR_PAIR_TAB_ID] },
   { id: "analysts", name: "Analysts", views: ["analyst-research", "earnings-calls"] },
   { id: "options", name: "Options", views: ["options"] },
-  { id: "events", name: "Events", views: ["corporate-actions", "catalysts", "mna", PHARMA_SIGNALS_TAB_ID] },
+  { id: "events", name: "Events", views: ["corporate-actions", "event-dividends", "catalysts", "mna", PHARMA_SIGNALS_TAB_ID] },
   { id: "filings", name: "Filings", views: ["sec", "filing-events", "risk-factors"] },
   { id: "ownership", name: "Ownership", views: ["holders", "insider", "thirteenf", "congress", "short-interest"] },
   { id: "people", name: "People", views: ["executives", "jobs", "hiring-momentum"] },

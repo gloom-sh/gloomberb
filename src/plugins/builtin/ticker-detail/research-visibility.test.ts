@@ -51,7 +51,7 @@ const modules: PluginModule[] = [
 const common = ["overview", "chart", "news", "notes", "thesis", "external"];
 const usFund = [...common, "corporate-actions", "options", "congress", "ticker-tweets", "dividend-yield", "thirteenf"];
 const mutualFund = usFund.filter((id) => id !== "options" && id !== "thirteenf");
-const foreignEquity = [...common, "analyst-research", "equity-diagnostic", "corporate-actions", "earnings-calls", "options", "catalysts", "mna", "jobs", "hiring-momentum", "app-attention", "dividend-yield", "holders"];
+const foreignEquity = [...common, "analyst-research", "equity-diagnostic", "corporate-actions", "event-dividends", "earnings-calls", "options", "catalysts", "mna", "jobs", "hiring-momentum", "app-attention", "dividend-yield", "holders"];
 const usEquity = [...foreignEquity, "revenue", "executives", "short-interest", "risk-factors", "filing-events", "congress", "ticker-tweets", "thirteenf", "sec", "insider"];
 const withOptions = [...common, "options"];
 const quoted = (instrumentType: string) => createTestFinancials({ quote: createTestQuote({ instrumentType }) });
@@ -155,7 +155,7 @@ test("each asset type gets only the groups it has views for, and a one-view grou
     "Financials: revenue equity-diagnostic dividend-yield",
     "Analysts: analyst-research earnings-calls",
     "Options: options",
-    "Events: corporate-actions catalysts mna",
+    "Events: corporate-actions event-dividends catalysts mna",
     "Filings: sec filing-events risk-factors",
     "Ownership: holders insider thirteenf congress short-interest",
     "People: executives jobs hiring-momentum",
@@ -181,7 +181,7 @@ test("each asset type gets only the groups it has views for, and a one-view grou
     "Financials: equity-diagnostic dividend-yield",
     "Analysts: analyst-research earnings-calls",
     "Options: options",
-    "Events: corporate-actions catalysts mna",
+    "Events: corporate-actions event-dividends catalysts mna",
     "Ownership: holders short-interest",
     "People: jobs hiring-momentum",
     "Buzz: news app-attention",

@@ -316,7 +316,7 @@ When Gloom Cloud is too busy to search, the list says `Search is busy` rather th
 | `BUZZ [ticker]` | Daily posts on X naming the cashtag, the 30-day median, top posts and their stance. Alone, the tickers whose posts jump above their own median |
 | `13F [fund/ticker/CIK]` | 13F fund filings and holdings |
 | `INS [ticker]` | Insider activity. Alone, the companies whose insiders are buying or selling in the open market |
-| `EVT <ticker>` | Corporate actions, earnings, and estimates |
+| `EVT <ticker>` | What is next (report, consensus, ex-date, catalyst), then earnings against estimates by quarter and dividends paid by year |
 | `RV <tickers>` | Relative valuation. One ticker adds its industry peers |
 
 #### Company function notes
@@ -348,7 +348,7 @@ A company's page has eleven tabs, and a tab with several views shows them as cho
 | Financials | Financials, Revenue, Diagnostic, Dividends, ADR vs Home (for a listing with a known receipt pair) |
 | Analysts | Analyst, Calls |
 | Options | Options |
-| Events | Events, Catalysts, M&A |
+| Events | Earnings, Dividends, Catalysts, M&A |
 | Filings | SEC, 8-K, Risks |
 | Ownership | Holders, Insider, 13F, Congress, Short Interest |
 | People | Exec, Hiring, Hiring momentum |

@@ -10,6 +10,7 @@ import { buildCompositeColumnLayout } from "./column-layout";
 import { buildCompositeChartScene, projectCompositeValue } from "./scene";
 import { valueScaleSlot } from "./value-scale";
 import {
+  renderCompositePanelCells,
   renderCompositePanelText,
   resolveCompositeTextOhlcWidth,
 } from "./text-renderer";
@@ -125,6 +126,28 @@ describe("composite chart renderers", () => {
     expect(rows[7]!.slice(0, 2)).toBe("██");
     expect(rows[7]!.slice(14, 16)).toBe("██");
     expect(rows[7]!.slice(28, 30)).toBe("██");
+  });
+
+  /** Review, 25 Nov 2026: in a terminal without graphics EVT's beats and misses were one grey, the colour only in the legend. */
+  test("in cells, each series' marks take its colour as the bitmap's do, and the crosshair and grid the text colour", () => {
+    const cellsOf = (list: ResolvedSeries[], cursor: number | null) => {
+      const scene = buildCompositeChartScene(list, [{ id: "main" }], { width: 31, height: 9 })!;
+      const cells = renderCompositePanelCells(scene.panels[0]!, scene.width, cursor, null, { negative: "#cc0000" });
+      expect(cells.lines).toEqual(renderCompositePanelText(scene.panels[0]!, scene.width, cursor, null));
+      return (glyph: string) => [...new Set(cells.lines.flatMap((line, y) => Array.from(line).flatMap((char, x) => (char === glyph ? [cells.tints[y]![x]] : []))))].sort();
+    };
+    // An estimate beside a surprise: the estimate's grey, the surprise green above zero and its own red below.
+    const columns = cellsOf([
+      series("estimate", "columns", [5, 6, 5], "left", "#999999"),
+      { ...series("surprise", "columns", [4, -2, 6], "left", "#00ff66"), negativeColor: "#ff0000" },
+    ], 0.25);
+    expect(columns("█")).toEqual(["#00ff66", "#999999", "#ff0000"]);
+    expect(columns("│")).toEqual([null]);
+    expect(columns("·")).toEqual([null]);
+    // A candle that fell takes the theme's falling colour, one that rose its series'.
+    const candles = cellsOf([createTestResolvedSeries({ id: "price", color: "#ffaa00", unit: "USD", unitGroup: "currency", style: "candles", axis: "left",
+      points: [{ ...point("2025-01-01", 10), open: 8, high: 11, low: 7 }, { ...point("2025-01-02", 9), open: 12, high: 13, low: 8 }] })], null);
+    expect(candles("█")).toEqual(["#cc0000", "#ffaa00"]);
   });
 
   test("a fractional pane width, as the web terminal gives, draws whole cells", () => {

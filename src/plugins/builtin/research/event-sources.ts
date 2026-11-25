@@ -4,7 +4,8 @@ import type {
   CorporateActionsData,
   TickerFinancials,
 } from "../../../types/financials";
-import { formatEventMetric } from "./event-model";
+import { formatEventMetric, type EventSummaryFigure } from "./event-model";
+import type { HeadlessBundleSection } from "../../../types/headless";
 import { loadAnalystResearch } from "./client";
 import { MISSING_VALUE, formatPercent, formatPercentRaw } from "../../../utils/format";
 import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
@@ -31,6 +32,17 @@ export const EVENT_COLUMNS = [
   { key: "value", header: "Value", align: "right" as const },
   { key: "detail", header: "Detail" },
 ];
+
+/** The figures over the events views (buildNextUp, buildEventSummary), as the text reports print them under their rows. */
+export function eventSummarySection(figures: readonly EventSummaryFigure[]): HeadlessBundleSection {
+  return {
+    title: "Next up",
+    entries: figures.map((figure) => ({
+      key: figure.id, label: figure.label, value: figure.value,
+      formatted: figure.detail ? `${figure.value}  ${figure.detail}` : figure.value,
+    })),
+  };
+}
 
 /**
  * The columns of the earnings estimates report, as its pane heads them: what corporate actions

@@ -1,7 +1,8 @@
 import type { PluginModule } from "../plugin-module";
 import { parseTickerListInput, formatTickerListInput } from "../../../tickers/list";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
-import { CorporateActionsView } from "./corporate-actions-pane";
+import { EarningsEstimatesView } from "./corporate-actions-pane";
+import { EventsDividendsView, EventsPane, EventsResearchEarnings } from "./event-views";
 import { relativeValuationHeadless } from "./relative-valuation-headless";
 import { AUTO_PEERS_SETTING, relativeValuationTitle } from "./relative-valuation-peers";
 import { buildRelativeValuationSettingsDef, MAX_RELATIVE_VALUATION_TICKERS } from "./relative-valuation-settings";
@@ -10,15 +11,6 @@ import { eventsHeadless } from "./events-headless";
 import { earningsEstimatesHeadless } from "./headless";
 
 
-function EarningsEstimatesPane(props: { focused: boolean; width: number; height: number }) {
-  return (
-    <CorporateActionsView
-      {...props}
-      footerPaneId="earnings-estimates"
-      variant="earnings-estimates"
-    />
-  );
-}
 
 export const researchModule: PluginModule = {
   setup(ctx) {
@@ -37,11 +29,20 @@ export const researchModule: PluginModule = {
       instruments: ["equity"],
     });
     ctx.registerTickerResearchTab({
+      // The id saved layouts, `--tab` and links have always named the Events tab's first view by.
       id: "corporate-actions",
-      name: "Events",
+      name: "Earnings",
       order: 34,
-      component: CorporateActionsView,
+      // A fund's is its distributions: it has no Dividends view beside it.
+      component: EventsResearchEarnings,
       instruments: ["equity", "fund"],
+    });
+    ctx.registerTickerResearchTab({
+      id: "event-dividends",
+      name: "Dividends",
+      order: 34,
+      component: EventsDividendsView,
+      instruments: ["equity"],
     });
   },
 
@@ -78,7 +79,7 @@ export const researchModule: PluginModule = {
       id: "corporate-actions",
       name: "Corporate Actions",
       icon: "E",
-      component: CorporateActionsView,
+      component: EventsPane,
       defaultPosition: "right",
       shareItem: { ticker: true },
       tickerFollower: true,
@@ -103,7 +104,7 @@ export const researchModule: PluginModule = {
       id: "earnings-estimates",
       name: "Earnings Estimates",
       icon: "E",
-      component: EarningsEstimatesPane,
+      component: EarningsEstimatesView,
       defaultPosition: "right",
       shareItem: { ticker: true },
       tickerFollower: true,
@@ -140,7 +141,7 @@ export const researchModule: PluginModule = {
       id: "corporate-actions-pane",
       paneId: "corporate-actions",
       label: "Corporate Actions",
-      description: "Dividends, splits, reported earnings, and analyst estimates.",
+      description: "What is next, reported earnings against estimates by quarter, and dividends and splits by year.",
       keywords: ["events", "corporate", "actions", "dividend", "split", "earnings", "estimate", "revenue", "evt"],
       shortcut: "EVT",
       publicShare: true,

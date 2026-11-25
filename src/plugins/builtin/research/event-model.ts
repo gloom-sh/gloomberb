@@ -1,8 +1,11 @@
 import { splitShareTerms } from "../../../market-data/split-terms";
+import type { CatalystEvent, CatalystFilters } from "../../../api-client/catalysts";
+import { catalystDate } from "../catalysts/model";
 import type {
   AnalystEstimateRecord,
   AnalystResearchData,
   CorporateActionsData,
+  DividendAction,
   EarningsDateStatus,
   FinancialStatement,
   TickerFinancials,
@@ -15,6 +18,7 @@ import {
   formatPercent,
   formatPercentRaw,
 } from "../../../utils/format";
+import { formatFilingDate } from "../../../utils/datetime-format";
 import { computeTTM } from "../ticker-detail/financials/aggregation";
 import { classifyInstrumentType } from "../../../tickers/instrument-kind";
 import { declaredDividendCash, declaredDividends } from "../../../utils/declared-dividends";
@@ -33,6 +37,7 @@ import {
   epsSurprise,
   inFiscalMonth,
   isProvisionalActual,
+  quarterLabel,
   showsEpsBasis,
   type EpsBasisName,
 } from "../shared/earnings-report";
@@ -46,7 +51,10 @@ export interface EventRow {
   date: string;
   dateType?: "announcement" | "fiscal-period-end";
   status: EventStatus;
-  /** The fiscal quarter an earnings row reports (Sep 2026), "-" when no source names it. */
+  /**
+   * The fiscal quarter an earnings row reports (Sep 2026), "-" when no source names it; empty on a row it does not
+   * apply to (a dividend, a split), as are its EPS and revenue.
+   */
   period: string;
   /** When in the day an earnings report comes out, as the source says it ("Pre Market"). */
   reportTime?: string;
@@ -87,6 +95,12 @@ export interface EventRow {
   dateEvidence?: FinancialStatement["dateEvidence"];
   annualEps?: number;
   annualRevenue?: number;
+  /** A dividend row's: declared and not yet paid, kept apart from the paid history. */
+  declared?: true;
+  /** A dividend row's: a one-off beside the regular payments (the issuer's own forms say so of a paid one). */
+  special?: true;
+  /** A dividend row's payable date, YYYY-MM-DD, where the source states one. */
+  payDate?: string;
   value: string;
   tone: "positive" | "negative" | "muted" | "text";
 }
@@ -367,6 +381,13 @@ function upcomingEarningsDetail(earning: CorporateActionsData["earnings"][number
   return [...parts.slice(0, at), time, ...parts.slice(at)].join(", ");
 }
 
+/** "special" when every dividend the issuer's forms say a paid row holds is one, "incl. special" when some are. */
+function dividendSpecial(dividend: DividendAction): "special" | "incl. special" | null {
+  const parts = dividend.parts ?? [];
+  if (!parts.some((part) => part.special)) return null;
+  return parts.every((part) => part.special) ? "special" : "incl. special";
+}
+
 export function buildEventRows(
   data: CorporateActionsData | null,
   estimates: AnalystResearchData | null,
@@ -472,30 +493,42 @@ export function buildEventRows(
     });
   }
 
+  const dividendCurrency = data?.currency ?? currency;
+  // The paid history is stated on today's shares: an amount before a split or bonus issue on record is that split's.
+  const splitDates = (data?.splits ?? []).filter((split) => splitShareTerms(split)).map((split) => split.date);
   for (const dividend of data?.dividends ?? []) {
+    const special = dividendSpecial(dividend);
+    const adjusted = splitDates.some((date) => date > dividend.exDate);
     rows.push({
       id: `div:${dividend.exDate}`,
       date: dividend.exDate,
       status: "Dividend",
-      period: MISSING_VALUE,
-      detail: "Ex-date",
-      value: formatDistributionAmount(dividend.amount, data?.currency ?? currency),
-      tone: "positive",
+      period: "",
+      // Only what the row does not say already: its date is the ex-date.
+      detail: [special, dividend.payDate ? `payable ${dividend.payDate}` : null, adjusted ? "split-adjusted" : null].filter(Boolean).join(", "),
+      ...(special === "special" ? { special: true as const } : {}),
+      ...(dividend.payDate ? { payDate: dividend.payDate } : {}),
+      value: formatDistributionAmount(dividend.amount, dividendCurrency),
+      // An amount is no gain or loss: it takes no tone.
+      tone: "text",
     });
   }
 
   // Declared and unpaid: its own row at its ex-date, apart from the paid distributions above.
   for (const dividend of declaredDividends(data)) {
-    const cash = declaredDividendCash(dividend, data?.currency ?? currency);
+    const cash = declaredDividendCash(dividend, dividendCurrency);
     rows.push({
       id: `div-declared:${dividend.exDate}`,
       date: dividend.exDate,
       status: "Dividend",
-      period: MISSING_VALUE,
+      period: "",
       // A one-off beside the regular payments says so: "Declared special, payable 2026-11-25".
       detail: `Declared${dividend.special ? " special" : ""}${cash.estimate ? `, ${cash.estimate}` : ""}${dividend.payDate ? `, payable ${dividend.payDate}` : ""}`,
+      declared: true,
+      ...(dividend.special ? { special: true as const } : {}),
+      ...(dividend.payDate ? { payDate: dividend.payDate } : {}),
       value: cash.amount,
-      tone: "positive",
+      tone: "text",
     });
   }
 
@@ -507,7 +540,7 @@ export function buildEventRows(
       id: `split:${split.date}:${split.description ?? ""}`,
       date: split.date,
       status: terms ? "Split" : "Factor",
-      period: MISSING_VALUE,
+      period: "",
       detail: terms ?? "Split/adjustment",
       providerDescription: split.description,
       adjustmentFactor: split.fromFactor && split.toFactor ? split.toFactor / split.fromFactor : split.ratio,
@@ -523,6 +556,227 @@ export function buildEventRows(
     || eventSortRank(left.status) - eventSortRank(right.status)
     || left.period.localeCompare(right.period)
   ));
+}
+
+/** One figure of the summary over the events table, in the shape the kit's StatGrid takes. */
+export interface EventSummaryFigure {
+  id: "next-report" | "last-surprise" | "next-ex" | "last-ex" | "eps-estimate" | "revenue-estimate" | "next-catalyst";
+  label: string;
+  value: string;
+  detail?: string;
+  /** Shorter forms of `detail`, longest first. */
+  detailVariants?: string[];
+  tone?: "positive" | "negative" | "muted";
+}
+
+export interface EventSummaryOptions {
+  /** The listing's own day, YYYY-MM-DD: a report or ex-date from it on is ahead. */
+  today: string;
+  fund: boolean;
+  /** The currencies EE's EPS and revenue columns are headed with: an amount in it is bare. */
+  epsUnit?: string;
+  revenueUnit?: string;
+}
+
+/** A quarter as the company's fiscal calendar names it: `Q1 FY2027`. */
+const NAMED_FISCAL_QUARTER = /^Q[1-4] FY\d{4}$/;
+
+/** The quarter a report covers ends before it, within this many days. */
+const REPORT_LAG_DAYS = 120;
+
+function daysFrom(from: string, to: string): number {
+  return (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000;
+}
+
+/** Distinct forms of a detail, longest first, each a ` · ` join of its parts. */
+function detailForms(...forms: Array<Array<string | null | undefined>>): { detail?: string; detailVariants?: string[] } {
+  const joined = [...new Set(forms.map((parts) => parts.filter(Boolean).join(" · ")).filter(Boolean))];
+  if (!joined.length) return {};
+  return { detail: joined[0], ...(joined.length > 1 ? { detailVariants: joined.slice(1) } : {}) };
+}
+
+/**
+ * The next report on the calendar and the quarter it covers: the last
+ * quarter analysts estimate that ends before it, within a report's lag.
+ * Without a dated report, the earliest quarter analysts still estimate.
+ */
+export function nextReportOf(rows: readonly EventRow[], today: string): { report?: EventRow; quarter?: EventRow } {
+  const report = rows
+    .filter((row) => row.status === "Earnings" && row.earningsState === "pending" && row.dateType !== "fiscal-period-end" && row.date >= today)
+    .sort((left, right) => left.date.localeCompare(right.date))[0];
+  const quarters = rows.filter((row) => row.status === "Q Est").sort((left, right) => left.date.localeCompare(right.date));
+  const quarter = report
+    ? quarters.filter((row) => row.date <= report.date && daysFrom(row.date, report.date) <= REPORT_LAG_DAYS).at(-1)
+    : quarters[0];
+  return { ...(report ? { report } : {}), ...(quarter ? { quarter } : {}) };
+}
+
+/** A quarter as the fiscal calendar names it, else by the month it ends in: never by its place from today. */
+export function quarterName(row: EventRow): string {
+  return NAMED_FISCAL_QUARTER.test(row.period) ? row.period : `${quarterLabel(row.date)} qtr`;
+}
+
+/** How far ahead a day is, in words: `today`, `tomorrow`, `in 12 days`. */
+function daysAhead(today: string, day: string): string {
+  const days = Math.round(daysFrom(today, day));
+  return days <= 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`;
+}
+
+/** A catalyst the opening block names: its day (or month or year, as dated) and title. */
+export interface NextCatalyst {
+  date: string;
+  label: string;
+}
+
+/** How the Events views and `fn EVT` ask the catalyst calendar for a company's next catalysts. */
+export function nextCatalystQuery(symbol: string): CatalystFilters {
+  return { symbol, upcoming: true, dateField: "any", limit: 20, offset: 0 };
+}
+
+/**
+ * The earliest catalyst dated today or later among a company's upcoming ones,
+ * read as the Catalysts view lists them. One dated to its month or year only
+ * counts while that month or year is not over; one whose date is withheld
+ * does not count.
+ */
+export function nextCatalystOf(events: readonly CatalystEvent[], today: string): NextCatalyst | null {
+  const read = { upcoming: true, dateField: "any" as const };
+  const ahead = events
+    .map((event) => ({ event, date: catalystDate(event, read) }))
+    .filter(({ date }) => /^\d{4}(-\d{2}){0,2}$/.test(date) && date >= today.slice(0, date.length))
+    .sort((left, right) => left.date.localeCompare(right.date))[0];
+  return ahead ? { date: ahead.date, label: ahead.event.title } : null;
+}
+
+export interface NextUpOptions {
+  /** The listing's own day, YYYY-MM-DD: a report or ex-date from it on is ahead. */
+  today: string;
+  fund: boolean;
+  /** The ex-date the listing's figures state (fundamentals' exDividendDate), which can be the next one before its amount is declared. */
+  statedExDate?: string;
+  /** The company's next dated catalyst (a regulatory decision, a court date), when one is on record. */
+  catalyst?: NextCatalyst | null;
+}
+
+/**
+ * The Events tab's opening block: what is next, each with how far away it is.
+ * The next report and its consensus EPS and revenue for the quarter it covers,
+ * the next ex-date with its amount (the last one while none is known), and the
+ * next catalyst. A fund has its ex-dates only.
+ */
+export function buildNextUp(rows: readonly EventRow[], options: NextUpOptions): EventSummaryFigure[] {
+  const { today } = options;
+  const figures: EventSummaryFigure[] = [];
+  const date = (day: string) => formatFilingDate(day, day);
+  if (!options.fund) {
+    const { report, quarter } = nextReportOf(rows, today);
+    const period = report && report.period !== MISSING_VALUE ? report.period : quarter ? quarterName(quarter) : undefined;
+    if (report) {
+      const status = report.dateStatus === "projected" ? "projected" : report.dateStatus === "confirmed" ? "confirmed" : null;
+      figures.push({ id: "next-report", label: "Next report", value: date(report.date),
+        ...detailForms([daysAhead(today, report.date), status, period], [daysAhead(today, report.date), status], [daysAhead(today, report.date)]) });
+    } else if (quarter) {
+      figures.push({ id: "next-report", label: "Next report", value: quarterName(quarter), detail: "not dated yet" });
+    }
+    const eps = report?.epsEstimate ?? quarter?.qEps;
+    const epsCurrency = report?.epsEstimate != null ? report.epsCurrency : quarter?.epsCurrency;
+    if (eps != null) {
+      const analysts = report?.epsEstimate != null ? report.epsAnalysts : quarter?.estimateInputs?.eps?.analysts;
+      const growth = quarter?.estimateInputs?.eps?.growth;
+      figures.push({ id: "eps-estimate", label: "EPS est", value: formatEventMetric(eps, epsCurrency, "eps"),
+        ...detailForms(
+          [analysts ? `${analysts} ${analysts === 1 ? "analyst" : "analysts"}` : null, growth != null ? `${formatPercentRaw(growth * 100)} y/y` : null],
+          [growth != null ? `${formatPercentRaw(growth * 100)} y/y` : null],
+        ) });
+    }
+    if (quarter?.qRevenue != null) {
+      const analysts = quarter.estimateInputs?.revenue?.analysts;
+      const growth = quarter.estimateInputs?.revenue?.growth;
+      figures.push({ id: "revenue-estimate", label: "Revenue est", value: formatEventMetric(quarter.qRevenue, quarter.revenueCurrency, "revenue"),
+        ...detailForms(
+          [analysts ? `${analysts} ${analysts === 1 ? "analyst" : "analysts"}` : null, growth != null ? `${formatPercentRaw(growth * 100)} y/y` : null],
+          [growth != null ? `${formatPercentRaw(growth * 100)} y/y` : null],
+        ) });
+    }
+  }
+  const dividends = rows.filter((row) => row.status === "Dividend");
+  const declared = dividends.filter((row) => row.declared && row.date >= today).sort((left, right) => left.date.localeCompare(right.date))[0];
+  const latestPaid = dividends.filter((row) => !row.declared).sort((left, right) => right.date.localeCompare(left.date))[0];
+  const stated = options.statedExDate && /^\d{4}-\d{2}-\d{2}$/.test(options.statedExDate) ? options.statedExDate : undefined;
+  if (declared) {
+    figures.push({ id: "next-ex", label: "Next ex", value: date(declared.date),
+      ...detailForms([declared.value, declared.special ? "special" : null, daysAhead(today, declared.date)], [declared.value, daysAhead(today, declared.date)], [declared.value]) });
+  } else if (stated && stated >= today && (!latestPaid || stated > latestPaid.date)) {
+    figures.push({ id: "next-ex", label: "Next ex", value: date(stated),
+      ...detailForms([daysAhead(today, stated), latestPaid ? `last paid ${latestPaid.value}` : null], [daysAhead(today, stated)]) });
+  } else if (latestPaid) {
+    figures.push({ id: "last-ex", label: "Last ex", value: date(latestPaid.date), detail: latestPaid.value });
+  }
+  if (options.catalyst && !options.fund) {
+    // A source can date a catalyst to its month or year only (a trial's completion): it is said that way.
+    const day = options.catalyst.date;
+    const exact = day.length === 10;
+    figures.push({ id: "next-catalyst", label: "Next catalyst", value: exact ? date(day) : day.length === 7 ? quarterLabel(`${day}-01`) : day,
+      ...detailForms([exact ? daysAhead(today, day) : null, options.catalyst.label], [options.catalyst.label]) });
+  }
+  return figures;
+}
+
+/**
+ * EE's figures over its table: the next report with its consensus, and the
+ * last surprise. The next report is the calendar's, else the earliest quarter
+ * analysts still estimate, undated. A fund has neither.
+ */
+export function buildEventSummary(rows: readonly EventRow[], options: EventSummaryOptions): EventSummaryFigure[] {
+  const { today } = options;
+  const figures: EventSummaryFigure[] = [];
+  const metric = (value: number | undefined, currency: string | undefined, unit: string | undefined, kind: "eps" | "revenue") => (
+    formatEventMetric(value, unit && currency === unit ? undefined : currency, kind)
+  );
+  const date = (day: string) => formatFilingDate(day, day);
+
+  if (!options.fund) {
+    const { report, quarter } = nextReportOf(rows, today);
+    if (report || quarter) {
+      const epsFromReport = report?.epsEstimate != null;
+      const eps = epsFromReport ? report!.epsEstimate : quarter?.qEps;
+      const epsText = eps == null ? null : `EPS est ${metric(eps, epsFromReport ? report!.epsCurrency : quarter?.epsCurrency, options.epsUnit, "eps")}`;
+      const revenueText = quarter?.qRevenue == null ? null : `rev est ${metric(quarter.qRevenue, quarter.revenueCurrency, options.revenueUnit, "revenue")}`;
+      // A quarter the fiscal calendar does not name is said by the month it ends in, never by its place from today.
+      const quarterName = quarter && (NAMED_FISCAL_QUARTER.test(quarter.period) ? quarter.period : `${quarterLabel(quarter.date)} qtr`);
+      const period = report && report.period !== MISSING_VALUE ? report.period : quarterName;
+      const projected = report?.dateStatus === "projected" ? "projected" : null;
+      figures.push({
+        id: "next-report",
+        label: "Next report",
+        // Undated, the report is named by its quarter.
+        value: report ? date(report.date) : period ?? MISSING_VALUE,
+        ...detailForms(
+          [report ? period : null, projected, epsText, revenueText],
+          [projected, epsText, revenueText],
+          [projected, epsText],
+        ),
+      });
+    }
+
+    const last = rows.find((row) => row.status === "Earnings" && row.earningsState === "reported"
+      && (row.surprisePercent != null || row.surpriseNotMeaningful));
+    if (last) {
+      // The currency once, after both: `0.38 vs 0.49 CNY`, bare under a column headed with it.
+      const code = last.epsCurrency && last.epsCurrency !== options.epsUnit ? ` ${last.epsCurrency}` : "";
+      const versus = last.epsActual != null && last.epsEstimate != null
+        ? `${formatEventMetric(last.epsActual, undefined, "eps")} vs ${formatEventMetric(last.epsEstimate, undefined, "eps")}${code}` : null;
+      figures.push({
+        id: "last-surprise",
+        label: "Surprise",
+        value: last.value,
+        ...(last.tone === "positive" || last.tone === "negative" || last.tone === "muted" ? { tone: last.tone } : {}),
+        ...detailForms([last.period !== MISSING_VALUE ? last.period : null, versus], [last.period !== MISSING_VALUE ? last.period : null]),
+      });
+    }
+  }
+
+  return figures;
 }
 
 export interface EventSourceState {
