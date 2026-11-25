@@ -95,6 +95,17 @@ describe("corporate actions headless model", () => {
       expect(result.errors).toBeUndefined();
     });
 
+    test("a free preview names its first row only while its rows come earliest first, as the pane does", async () => {
+      const event = (id: string, deadlineDate: string) => ({ ...catalystFixture, id, title: id, deadlineDate, datePrecision: { deadline: "day" as const } });
+      const preview = (events: ReturnType<typeof event>[]) => async () => ({ ...catalystPayload(), total: 200, events,
+        access: { pro: false, lockedRows: 197, previewLimit: 3, lockedUpcoming: 197 } });
+      const inOrder = await load(preview([event("FDA decision", "2099-03-15"), event("Court hearing", "2099-06-01")]));
+      expect(inOrder.textSections?.[0]?.entries?.find((entry) => entry.label === "Next catalyst")?.formatted).toContain("FDA decision");
+      const outOfOrder = await load(preview([event("Court hearing", "2099-06-01"), event("FDA decision", "2099-03-15")]));
+      expect(outOfOrder.textSections?.[0]?.entries?.map((entry) => entry.label)).toEqual(["Last ex"]);
+      expect(outOfOrder.errors).toBeUndefined();
+    });
+
     test("a failed read is said and the rest stands; signed out, the figure is only left out", async () => {
       const failed = await load(async () => { throw new Error("Catalyst calendar timed out"); });
       expect(failed.errors).toEqual(["Catalysts unavailable: Catalyst calendar timed out"]);

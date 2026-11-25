@@ -120,7 +120,7 @@ export function createEventsHeadless(
       // A context without the cloud client (a test's) reads no catalysts.
       if (!fund && (ctx.apiClient as Partial<typeof ctx.apiClient> | undefined)?.getCloudCatalysts) {
         try {
-          catalyst = nextCatalystOf((await fetchCatalysts(nextCatalystQuery(symbol), ctx.apiClient, ctx.signal)).events, today);
+          catalyst = nextCatalystOf(await fetchCatalysts(nextCatalystQuery(symbol), ctx.apiClient, ctx.signal), today);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           // Signed out, as in the pane, the figure is left out: the Catalysts report says why.

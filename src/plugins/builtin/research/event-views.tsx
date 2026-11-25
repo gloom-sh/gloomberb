@@ -1,7 +1,8 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { Box, TextAttributes } from "../../../ui";
 import {
   ChartTableHeader,
+  DataTableStackView,
   DataTableView,
   spanAxisFormatter,
   useChartTableSelection,
@@ -29,7 +30,9 @@ import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { loadCatalysts } from "../catalysts/client";
 import type { TickerResearchTabProps } from "../../../types/plugin-contributions";
+import { useCompanyDisclosureLinks } from "../company-kpis/related";
 import { useEventData } from "./event-data";
+import { useEventRowDetail } from "./corporate-actions-pane";
 import { buildNextUp, formatEventMetric, isFundListing, nextCatalystOf, nextCatalystQuery, type EventSummaryFigure } from "./event-model";
 import { dividendYearDetail, dividendYearLabel, dividendYears, dividendYearSpan, earningsQuarters, splitMarks, type DividendYear, type EarningsQuarter } from "./event-charts";
 
@@ -91,7 +94,7 @@ function useNextCatalyst(symbol: string | null, enabled: boolean, today: string)
   // As the Catalysts view keys its reads: what the calendar answers differs by session and plan.
   const accessKey = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
   const loader = useCallback((force: boolean) => (
-    loadCatalysts(nextCatalystQuery(symbol!), accessKey, force).then((result) => nextCatalystOf(result.payload.events, today))
+    loadCatalysts(nextCatalystQuery(symbol!), accessKey, force).then((result) => nextCatalystOf(result.payload, today))
   ), [accessKey, symbol, today]);
   const { data, error, reload } = useAsyncResource(enabled && symbol ? loader : null);
   // Signed out, the Catalysts view says so; the opening block leaves the figure out.
@@ -119,11 +122,13 @@ function quarterColumns(width: number, epsUnit: string | undefined, revenueUnit:
  * The Earnings view of EVT and the Events tab: what is next over a chart of
  * the last quarters, the reported EPS against its estimate with the surprise
  * in the beat or miss colour under it, and the quarters' exact figures in the
- * table, one selection across both.
+ * table, one selection across both. Enter or a click opens a quarter's detail
+ * as EE does: the EPS comparison and, for a US report, its SEC filing.
  */
 function EventsEarningsView({ focused, width, height, footerPaneId = "corporate-actions" }: ViewProps) {
   const data = useEventData();
-  const { symbol, today, allRows, fund } = data;
+  const { symbol, ticker, exchange, today, allRows, fund } = data;
+  useCompanyDisclosureLinks(symbol);
   const quarters = useMemo(() => earningsQuarters(allRows, today), [allRows, today]);
   const { catalyst, error: catalystError, reload: reloadCatalyst } = useNextCatalyst(symbol, !fund, today);
   const figures = useMemo(() => buildNextUp(allRows, { today, fund, statedExDate: data.statedExDate, catalyst }).map(toStat),
@@ -157,9 +162,25 @@ function EventsEarningsView({ focused, width, height, footerPaneId = "corporate-
   const [selectedKey, setSelectedKey] = usePluginPaneState<string | null>("earningsQuarter", null);
   // Until one is picked, the next report, else the latest one.
   const selected = quarters.find((quarter) => quarter.id === selectedKey) ?? quarters[0] ?? null;
+  // The open quarter by its event row's id, under the key EVT's table has always kept it by, so a layout saved
+  // with a report open opens on it again.
+  const [openRowId, setOpenRowId] = usePluginPaneState<string | null>("openRowId", null);
+  const openQuarter = openRowId ? quarters.find((quarter) => quarter.rowId === openRowId) ?? null : null;
+  const openRow = openQuarter ? allRows.find((row) => row.id === openQuarter.rowId) ?? null : null;
+  const detail = useEventRowDetail(openRow, { symbol, exchange, ticker, width });
+  // A row no listed quarter is drawn from (a dividend a layout saved open, a report older than the list) closes
+  // once the rows are in, not while they load.
+  useEffect(() => {
+    if (openRowId && !openRow && !data.loading) setOpenRowId(null);
+  }, [data.loading, openRow, openRowId, setOpenRowId]);
+  const openQuarterDetail = useCallback((quarter: EarningsQuarter) => {
+    // Back lands on the quarter that was open, however it was opened.
+    setSelectedKey(quarter.id);
+    setOpenRowId(quarter.rowId);
+  }, [setOpenRowId, setSelectedKey]);
   const link = useChartTableSelection({
     rows: quarters, getId: (quarter) => quarter.id, getDate: (quarter) => new Date(`${quarter.date}T00:00:00Z`),
-    selectedId: selected?.id ?? null, onSelect: setSelectedKey, focused,
+    selectedId: selected?.id ?? null, onSelect: setSelectedKey, focused: focused && !openRow,
   });
   const formatEpsAxis = useMemo(() => spanAxisFormatter((value, digits) => value.toFixed(digits), 2), []);
   const chart = useMemo<ChartTableChart | null>(() => series.length ? {
@@ -196,8 +217,14 @@ function EventsEarningsView({ focused, width, height, footerPaneId = "corporate-
   if (data.authWall) return <SignInWall placement="corporate-actions-signin" action="view corporate actions" needsVerification={data.cloudSession.needsVerification} />;
 
   return (
-    <DataTableView<EarningsQuarter, QuarterColumn>
+    <DataTableStackView<EarningsQuarter, QuarterColumn>
       focused={focused}
+      detailOpen={!!openRow}
+      onBack={() => setOpenRowId(null)}
+      detailContent={detail.content}
+      detailTitle={detail.title}
+      detailScrollRef={detail.scrollRef}
+      onActivate={openQuarterDetail}
       rootWidth={width}
       rootHeight={height}
       columns={columns}

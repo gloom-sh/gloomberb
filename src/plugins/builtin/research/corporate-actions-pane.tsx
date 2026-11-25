@@ -1,6 +1,6 @@
 import { useCompanyDisclosureLinks } from "../company-kpis/related";
 import { useEventData } from "./event-data";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, type ReactNode, type RefObject } from "react";
 import { Box, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import {
   DataTableStackView,
@@ -417,6 +417,88 @@ function EventDetailSections({ sections, width }: { sections: EventDetailSection
 }
 
 /**
+ * A row's detail as EE and EVT's Earnings view open it: an estimate's inputs,
+ * or a report's EPS comparison and, for a US listing, the SEC filing matched
+ * to it with its documents and exhibits. Nothing is read until a row is open;
+ * what was read stays for the view's life, so reopening a row is instant.
+ */
+export function useEventRowDetail(openRow: EventRow | null, { symbol, exchange, ticker, width }: {
+  symbol: string | null;
+  exchange: string;
+  ticker: Parameters<typeof instrumentFromTicker>[0];
+  width: number;
+}): { content: ReactNode; title: string | undefined; scrollRef: RefObject<ScrollBoxRenderable | null> } {
+  const scrollRef = useRef<ScrollBoxRenderable>(null);
+  const instrument = useMemo(() => instrumentFromTicker(ticker, symbol), [symbol, ticker]);
+  const secFilingsEntry = useSecFilingsQuery(
+    openRow?.status === "Earnings" && instrument && mayBeUsEquityTicker(ticker)
+      ? { instrument, count: SEC_EVENT_FILING_LIMIT }
+      : null,
+  );
+  const secFilings = useResolvedEntryValue(secFilingsEntry) ?? [];
+  const secFilingsLoading = openRow?.status === "Earnings" && (
+    secFilingsEntry?.phase === "idle"
+    || secFilingsEntry?.phase === "loading"
+    || secFilingsEntry?.phase === "refreshing"
+  );
+  const matchedFiling = useMemo(
+    () => matchEarningsSecFiling(openRow, secFilings),
+    [openRow, secFilings],
+  );
+  const documentsEntry = useSecFilingDocuments(matchedFiling);
+  const documents = useResolvedEntryValue(documentsEntry) ?? [];
+  const documentsLoading = !!matchedFiling && (
+    documentsEntry?.phase === "idle"
+    || documentsEntry?.phase === "loading"
+    || documentsEntry?.phase === "refreshing"
+  );
+  const inlineTargets = useMemo(
+    () => buildInlineFilingContentTargets(matchedFiling, documents),
+    [documents, matchedFiling],
+  );
+  const filingContentTargets = useMemo(() => {
+    if (!matchedFiling || documentsLoading) return [];
+    return inlineTargets.length > 0 ? inlineTargets : [matchedFiling];
+  }, [documentsLoading, inlineTargets, matchedFiling]);
+  const { contentCache } = useSecFilingContentCache({
+    scopeKey: `${symbol}:${exchange}`,
+    targets: filingContentTargets,
+  });
+  const inlineContent = useMemo(() => buildFilingContentPreviews(filingContentTargets, contentCache), [filingContentTargets, contentCache]);
+  const hasInlineExhibits = inlineTargets.length > 0;
+  const primaryContent = matchedFiling
+    ? inlineContent.get(matchedFiling.accessionNumber) ?? null
+    : null;
+  const primaryContentLoading = !!matchedFiling
+    && !documentsLoading
+    && !hasInlineExhibits
+    && !inlineContent.has(matchedFiling.accessionNumber);
+
+  if (!openRow) return { content: <Box flexGrow={1} />, title: undefined, scrollRef };
+  const sections = buildEventDetail({
+    row: openRow,
+    secFilingsLoading,
+    filing: matchedFiling,
+    documents,
+    documentsLoading,
+    inlineContent,
+    primaryContent,
+    primaryContentLoading,
+  });
+  // Leave room for both horizontal padding cells and the vertical scrollbar.
+  const textWidth = Math.max(width - 3, 12);
+  return {
+    content: (
+      <DetailScrollBody ref={scrollRef} resetScrollKey={openRow.id}>
+        <EventDetailSections sections={sections} width={textWidth} />
+      </DetailScrollBody>
+    ),
+    title: eventDetailTitle(openRow),
+    scrollRef,
+  };
+}
+
+/**
  * The row the pane opens on, in newest-first rows: the first row of the
  * earliest day from today on, else the latest row.
  */
@@ -476,7 +558,6 @@ export function EarningsEstimatesView({
     return picked >= 0 ? picked : nextEventIndex(rows, today);
   }, [rows, selectedKey, today]);
   const [openRowId, setOpenRowId] = usePluginPaneState<string | null>("openRowId", null);
-  const detailScrollRef = useRef<ScrollBoxRenderable>(null);
   const futureRowBackground = blendHex(colors.bg, colors.positive, 0.16);
   // Tinted after the day the pane opens on, New York's, as the calendar dates
   // a report: on the local day, a reader east of New York saw today's row
@@ -490,78 +571,13 @@ export function EarningsEstimatesView({
   const openRow = openRowId
     ? rows.find((row) => row.id === openRowId) ?? null
     : null;
-  const instrument = useMemo(() => instrumentFromTicker(ticker, symbol), [symbol, ticker]);
-  const secFilingsEntry = useSecFilingsQuery(
-    openRow?.status === "Earnings" && instrument && mayBeUsEquityTicker(ticker)
-      ? { instrument, count: SEC_EVENT_FILING_LIMIT }
-      : null,
-  );
-  const secFilings = useResolvedEntryValue(secFilingsEntry) ?? [];
-  const secFilingsLoading = openRow?.status === "Earnings" && (
-    secFilingsEntry?.phase === "idle"
-    || secFilingsEntry?.phase === "loading"
-    || secFilingsEntry?.phase === "refreshing"
-  );
-  const matchedFiling = useMemo(
-    () => matchEarningsSecFiling(openRow, secFilings),
-    [openRow, secFilings],
-  );
-  const documentsEntry = useSecFilingDocuments(matchedFiling);
-  const documents = useResolvedEntryValue(documentsEntry) ?? [];
-  const documentsLoading = !!matchedFiling && (
-    documentsEntry?.phase === "idle"
-    || documentsEntry?.phase === "loading"
-    || documentsEntry?.phase === "refreshing"
-  );
-  const inlineTargets = useMemo(
-    () => buildInlineFilingContentTargets(matchedFiling, documents),
-    [documents, matchedFiling],
-  );
-  const filingContentTargets = useMemo(() => {
-    if (!matchedFiling || documentsLoading) return [];
-    return inlineTargets.length > 0 ? inlineTargets : [matchedFiling];
-  }, [documentsLoading, inlineTargets, matchedFiling]);
-  const { contentCache } = useSecFilingContentCache({
-    scopeKey: `${symbol}:${exchange}`,
-    targets: filingContentTargets,
-  });
-  const inlineContent = useMemo(() => buildFilingContentPreviews(filingContentTargets, contentCache), [filingContentTargets, contentCache]);
-  const hasInlineExhibits = inlineTargets.length > 0;
-  const primaryContent = matchedFiling
-    ? inlineContent.get(matchedFiling.accessionNumber) ?? null
-    : null;
-  const primaryContentLoading = !!matchedFiling
-    && !documentsLoading
-    && !hasInlineExhibits
-    && !inlineContent.has(matchedFiling.accessionNumber);
+  const detail = useEventRowDetail(openRow, { symbol, exchange, ticker, width });
 
   useEffect(() => {
     if (openRowId && !rows.some((row) => row.id === openRowId)) {
       setOpenRowId(null);
     }
   }, [openRowId, rows]);
-
-  const detailSections = openRow
-    ? buildEventDetail({
-        row: openRow,
-        secFilingsLoading,
-        filing: matchedFiling,
-        documents,
-        documentsLoading,
-        inlineContent,
-        primaryContent,
-        primaryContentLoading,
-      })
-    : [];
-  // Leave room for both horizontal padding cells and the vertical scrollbar.
-  const detailTextWidth = Math.max(width - 3, 12);
-  const detailContent = openRow ? (
-    <DetailScrollBody ref={detailScrollRef} resetScrollKey={openRow.id}>
-      <EventDetailSections sections={detailSections} width={detailTextWidth} />
-    </DetailScrollBody>
-  ) : (
-    <Box flexGrow={1} />
-  );
 
   const renderCell = useCallback((
     row: EventRow,
@@ -622,15 +638,15 @@ export function EarningsEstimatesView({
       focused={focused}
       detailOpen={!!openRow}
       onBack={() => setOpenRowId(null)}
-      detailContent={detailContent}
-      detailTitle={openRow ? eventDetailTitle(openRow) : undefined}
+      detailContent={detail.content}
+      detailTitle={detail.title}
       selection={{
         kind: "index",
         selectedIndex: selectedIdx,
         onChange: (_index, row) => setSelectedKey(eventRowKey(row)),
       }}
       onActivate={(row) => setOpenRowId(row.id)}
-      detailScrollRef={detailScrollRef}
+      detailScrollRef={detail.scrollRef}
       rootWidth={width}
       rootHeight={height}
       rootBefore={figures.length ? <ChartTableHeader width={width} height={height} tableRows={rows.length} tableColumns={columns}
