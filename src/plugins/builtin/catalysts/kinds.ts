@@ -276,7 +276,7 @@ export function catalystKindFold(events: readonly CatalystEvent[], read: Catalys
   if (!events.length) return { hidden: new Set(catalystKindTypes(kind).length === 1 ? ["type"] : []), basis: null };
   const text = (event: CatalystEvent, column: CatalystKindColumn) => catalystKindCell(event, column, read, kind, null);
   const alike = (rows: readonly CatalystEvent[], column: CatalystKindColumn) => rows.every((event) => text(event, column) === text(rows[0]!, column));
-  const dated = events.filter((event) => !catalystDateWithheld(event, typeof read === "string" ? read : read.dateField));
+  const dated = events.filter((event) => !catalystDateWithheld(event, typeof read === "string" ? read : read?.dateField));
   const byType = (rows: readonly CatalystEvent[]) => {
     const groups = new Map<string, CatalystEvent[]>();
     for (const event of rows) groups.set(event.type, [...groups.get(event.type) ?? [], event]);
@@ -317,14 +317,14 @@ export function catalystKindFields({ kind, self = null, fold = null }: CatalystK
 }
 
 /** Columns sized to the widest cell on screen, up to a cap: a long value past it is the only one cut. */
-const CONTENT_COLUMNS = ["date", "basis", "type", "status", "agency"] as const;
+const CONTENT_COLUMNS = ["date", "basis", "with", "type", "status", "agency"] as const;
 type ContentColumn = typeof CONTENT_COLUMNS[number];
-const CONTENT_CAPS: Record<ContentColumn, number> = { date: 16, basis: 27, type: 19, status: 24, agency: 16 };
+const CONTENT_CAPS: Record<ContentColumn, number> = { date: 16, basis: 27, with: 22, type: 19, status: 24, agency: 16 };
 
 /** The widest cell of each column sized to its content, as the pane shows the rows. */
-export function catalystKindWidths(events: readonly CatalystEvent[], read: CatalystDateRead, kind: CatalystKind): Partial<Record<ContentColumn, number>> {
+export function catalystKindWidths(events: readonly CatalystEvent[], read: CatalystDateRead, kind: CatalystKind, self: CatalystSelf | null = null): Partial<Record<ContentColumn, number>> {
   return Object.fromEntries(CONTENT_COLUMNS.map((column) => [column,
-    events.reduce((widest, event) => Math.max(widest, displayWidth(catalystKindCell(event, column, read, kind, null, true))), 0)]));
+    events.reduce((widest, event) => Math.max(widest, displayWidth(catalystKindCell(event, column, read, kind, self, true))), 0)]));
 }
 
 /** A kind's columns fitted to `width`, each content column as wide as its widest cell (`widths`); a rule's agency stays as its date and title do. */
@@ -344,7 +344,7 @@ export function catalystKindColumns(width: number, layout: CatalystKindLayout & 
     date: sized("date", 10),
     basis: sized("basis", 10, 10),
     ticker: { width: width < 110 ? 12 : 14, min: 10 },
-    with: { width: 14, min: 10 },
+    with: sized("with", 14, 10),
     parties: { width: Math.max(16, Math.min(28, Math.round(width * 0.16))), min: 14 },
     title: { width: 30, min: 20, flexGrow: 1 },
     phase: { width: 7 },
@@ -395,7 +395,7 @@ export function catalystKindCell(event: CatalystEvent, column: string, read: Cat
   if (column === "with") return self ? catalystWith(event, self) : "";
   if (column === "phase") return trialPhase(event);
   if (column === "basis" && kind === "trials") return trialDateBasis(event, read);
-  if (column === "date" && catalystDateWithheld(event, typeof read === "string" ? read : read.dateField)) return DATE_WITHHELD;
+  if (column === "date" && catalystDateWithheld(event, typeof read === "string" ? read : read?.dateField)) return DATE_WITHHELD;
   if (short && column === "agency") return SHORT_AGENCIES[catalystAgency(event.agency)] ?? catalystAgency(event.agency);
   if (short && column === "status" && !event.datePassed) {
     if (QUIET_STATUSES.has(event.status.toLowerCase())) return "";

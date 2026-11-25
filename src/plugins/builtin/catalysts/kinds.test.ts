@@ -97,7 +97,7 @@ describe("a kind's columns", () => {
     const ids = (columns: { id: string; label: string }[]) => columns.map((column) => column.id);
     const decision = (id: string, deadline: string, withheld = false): CatalystEvent => ({ ...catalystFixture, id, type: "pdufa", status: "company-reported target",
       agency: "SEC / company disclosure", announcedDate: "2026-10-01", deadlineDate: deadline, datePrecision: { deadline: "day" }, metadata: withheld ? { dateWithheld: true } : {} });
-    const meeting = { ...catalystFixture, id: "m", type: "advisory-meeting" as CatalystType, status: "Notice", agency: "FDA", source: "fda_advisory",
+    const meeting: CatalystEvent = { ...catalystFixture, id: "m", type: "advisory-meeting" as CatalystType, status: "Notice", agency: "FDA", source: "fda_advisory",
       announcedDate: "2026-10-01", deadlineDate: "2027-01-21", datePrecision: { deadline: "day" }, metadata: { deadlineMeaning: "Advisory committee meeting" } };
     // A PDUFA date is always a company's target, an advisory meeting the FDA's: only the type tells them apart.
     const drugs = [decision("p1", "2026-12-20"), decision("p2", "2027-02-01"), decision("p3", "2027-03-01", true), meeting];

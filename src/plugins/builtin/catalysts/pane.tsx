@@ -171,7 +171,7 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
   const hasOthers = useMemo(() => !!self && rows.some((event) => catalystWith(event, self) !== ""), [self, rows]);
   // A kind shows only what tells its rows apart, each column as wide as what it holds.
   const fold = useMemo(() => kindView ? catalystKindFold(rows, query, kindView) : null, [kindView, rows, query]);
-  const widths = useMemo(() => kindView ? catalystKindWidths(rows, query, kindView) : undefined, [kindView, rows, query]);
+  const widths = useMemo(() => kindView ? catalystKindWidths(rows, query, kindView, self) : undefined, [kindView, rows, query, self]);
   const columns = kindView
     ? catalystKindColumns(width, { kind: kindView, self: self ? { hasOthers } : null, fold, widths })
     : catalystColumns(width, tab === "changes", litigation, catalystBasisWidth(rows, query));
