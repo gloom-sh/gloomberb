@@ -10,7 +10,7 @@ const group = (value: unknown) => typeof value === "string" ? value : "";
 const COLUMNS: HeadlessPaneColumn[] = [
   { key: "position", header: "Position" },
   { key: "group", header: "Group", format: group },
-  { key: "asOf", header: "As of", format: text },
+  { key: "asOf", header: "As of", format: text, omitWhenSame: true },
   { key: "latest", header: "Latest $mn", align: "right", format: level },
   { key: "previous", header: "Previous $mn", align: "right", format: level },
   { key: "change", header: "Change $mn", align: "right", format: change },

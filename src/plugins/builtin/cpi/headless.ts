@@ -26,7 +26,8 @@ const SUMMARY_COLUMNS = [
   { key: "annualized6m", header: "6M ann %", align: "right" as const, format: percent },
   { key: "yearChange", header: "Y/Y % NSA", align: "right" as const, format: percent },
   { key: "contributionMonth", header: "M/M pts", align: "right" as const, format: percent },
-  { key: "contributionYear", header: "Y/Y pts", align: "right" as const, format: percent },
+  // As the pane: a release without year-over-year contributions has no column for them.
+  { key: "contributionYear", header: "Y/Y pts", align: "right" as const, format: percent, omitWhenEmpty: true },
 ];
 
 const notesOf = (note: string | null) => note ? { notes: [note] } : {};

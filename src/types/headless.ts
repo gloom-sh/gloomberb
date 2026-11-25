@@ -253,6 +253,13 @@ export interface HeadlessPaneColumn {
    * the width, never wrapped (a story's summary under its headline).
    */
   underRow?: boolean | "line";
+  /** The text report leaves the column out while every row prints it blank or as MISSING_VALUE (DataTableColumn.omitWhenEmpty); exports keep it. */
+  omitWhenEmpty?: boolean;
+  /**
+   * The text report leaves the column out while every row, two or more, prints the same text in it
+   * (DataTableColumn.omitWhenSame): set it only where the rows are all the report holds. Exports keep it.
+   */
+  omitWhenSame?: boolean;
 }
 
 export interface HeadlessPaneEntry {

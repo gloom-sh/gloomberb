@@ -1,6 +1,6 @@
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchBalances } from "./client";
-import { balanceTitle, formatBalance, formatBalanceMonth, type BalanceCommodity, type BalanceRow } from "./model";
+import { BALANCE_FIGURE_KEYS, BALANCE_FLOW_KEYS, balanceDigits, balanceTitle, balanceUnits, formatBalance, formatBalanceMonth, type BalanceCommodity, type BalanceRow } from "./model";
 import { COMMODITIES_VIEW_STATE } from "../commodities-energy/view-state";
 
 const number = (value: unknown) => typeof value === "number" ? formatBalance(value) : "—";
@@ -55,10 +55,23 @@ export const jodiHeadless: HeadlessPaneDefinition<"bundle"> = {
     const balances = await fetchBalances(ctx.signal);
     const board = commodity === "gas" ? balances.gas : balances.oil;
     if (!board) throw new Error("Gas balances are unavailable.");
+    // One precision down each figure column, as the pane (balanceDigits).
+    const digits = balanceDigits(board.rows);
+    const columns = (board.commodity === "oil" ? COLUMNS.filter((column) => column.key !== "demand") : COLUMNS).map((column) => {
+      const key = BALANCE_FIGURE_KEYS.find((figure) => figure === column.key);
+      return key ? { ...column, format: (value: unknown) => typeof value === "number" ? formatBalance(value, digits[key]) : "—" } : column;
+    });
+    const units = balanceUnits(board.rows);
     return {
       sections: [{
         title: balanceTitle(board),
-        columns: board.commodity === "oil" ? COLUMNS.filter((column) => column.key !== "demand") : COLUMNS,
+        columns,
+        // As the pane: one set of units for every country heads the figures instead of a Unit column.
+        ...(units ? { textColumns: columns.flatMap((column): HeadlessPaneColumn[] => {
+          if (column.key === "unit") return [];
+          const unit = BALANCE_FLOW_KEYS.has(column.key) ? units.flow : column.key === "stocks" ? units.stock : null;
+          return [unit ? { ...column, textHeader: `${column.header} ${unit}` } : column];
+        }) } : {}),
         rows: board.rows.map(reportRow),
       }],
       metadata: {

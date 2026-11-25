@@ -16,15 +16,15 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { cachedShortVolume, loadShortVolume } from "./client";
 import { shortVolumeHeadless } from "./headless";
 import { reportFooterSegment } from "../shared/source-footer";
-import { exactQuantity, sortedVolumeHistory, VOLUME_COLUMNS, volumeChange, volumeHistoryPoints, volumePercent, volumePointStatus, volumeQuantity, type VolumeColumn, type VolumeSort } from "./model";
+import { exactQuantity, sortedVolumeHistory, VOLUME_COLUMNS, volumeChange, volumeHistoryPoints, volumePercent, volumePointStatus, volumeQuantity, volumeRowStatus, type VolumeColumn, type VolumeSort } from "./model";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
 const DETAIL_LABEL_WIDTH = 26;
 const rowDate = (row: ShortVolumeObservation) => row.ratioPercent == null ? null : new Date(row.date);
 function renderCell(row: ShortVolumeObservation, column: VolumeColumn, _index: number, state: { selected: boolean }): DataTableCell {
   const text = column.id === "date" ? row.date : column.id === "ratioPercent" ? volumePercent(row.ratioPercent)
-    : column.id === "status" ? volumePointStatus(row) : volumeQuantity(row[column.id]);
-  return { text, color: state.selected ? colors.selectedText : column.id === "ratioPercent" ? colors.warning
+    : column.id === "status" ? volumeRowStatus(row) : volumeQuantity(row[column.id]);
+  return { text, ...(column.id === "status" ? { value: volumePointStatus(row) } : {}), color: state.selected ? colors.selectedText : column.id === "ratioPercent" ? colors.warning
     : row.unavailableReason ? colors.textMuted : colors.text };
 }
 function VolumeDetail({ row, width, height }: { row: ShortVolumeObservation; width: number; height: number }) {

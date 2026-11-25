@@ -39,6 +39,7 @@ function createDividendYieldModule({
 
       ctx.registerTickerResearchTab({
         id: "dividend-yield",
+        // Events has the Dividends view (event-dividends), and `--tab dividends` opens that one.
         name: "Dividend Yield",
         order: 38,
         component,

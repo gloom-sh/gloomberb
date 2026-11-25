@@ -1,5 +1,5 @@
 import type { DebtMaturitiesPayload } from "../../../api-client/debt-maturities";
-import type { HeadlessBundleSection, HeadlessPaneFreshness } from "../../../types/headless";
+import type { HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneFreshness } from "../../../types/headless";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchDebtMaturities } from "./client";
 import {
@@ -12,6 +12,9 @@ import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 /** Amounts and shares as the pane prints them (952.00M, 12.5%); exports keep the whole number. */
 const amount = (value: unknown) => debtAmount(typeof value === "number" ? value : null);
 const percent = (value: unknown) => debtPercent(typeof value === "number" ? value : null);
+
+/** What every row of one filing's schedule shares, which the text report says once instead of in columns. */
+const ONE_FILING_KEYS = new Set(["currency", "asOf", "filed"]);
 
 /**
  * A schedule in its filing's own bands, as the pane shows it: each band as
@@ -39,6 +42,7 @@ function bandSections(data: DebtMaturitiesPayload, latest: DebtLatest): Headless
     [basis.total, `${debtAmount(bandTotal(debtBands(latest)!))} ${latest.currency}`],
     ["Reported in", source ? bandScaleText(latest.currency, source.scale, source.scaleStated) : latest.currency],
     ["Form", latest.form],
+    ["Filed", latest.filed],
     ["Accession", latest.accession],
     ["Table", source?.concept],
     ["Checked against", check ? `${check.concept} (${check.ratio.toFixed(2)}x)` : null],
@@ -57,7 +61,8 @@ function bandSections(data: DebtMaturitiesPayload, latest: DebtLatest): Headless
         ...columns.slice(2),
         { key: "readFrom", header: "Read from" },
       ],
-      textColumns: [columns[0]!, { ...columns[1]!, header: basis.amount }, ...columns.slice(2)],
+      // One filing's bands: its currency, date and filing are said once, in the Filing table and the source line.
+      textColumns: [columns[0]!, { ...columns[1]!, header: basis.amount }, ...columns.slice(2).filter((column) => !ONE_FILING_KEYS.has(column.key))],
       rows: maturityRows(latest).map((row) => ({
         label: row.label,
         value: row.value,
@@ -143,20 +148,55 @@ export const debtMaturitiesHeadless: HeadlessPaneDefinition<"bundle"> = {
     }
     const quarter = newerQuarter(data);
     const costNote = debtCostProxyNote(data.history);
+    const scheduleColumns: HeadlessPaneColumn[] = [
+      { key: "label", header: "Maturity" },
+      { key: "value", header: "Principal", align: "right", textFormat: amount },
+      { key: "currency", header: "Currency" },
+      { key: "share", header: "% total", align: "right", textFormat: percent },
+      { key: "asOf", header: "As of" },
+      { key: "filed", header: "Filed" },
+    ];
+    const historyRows = debtHistoryRows(data.history);
+    // A currency every filing shares heads the history once instead of filling a column.
+    const historyCurrencies = new Set(historyRows.map((row) => row.currency));
+    const historyCurrency = historyRows.length > 1 && historyCurrencies.size === 1 ? historyRows[0]!.currency : null;
+    const historyColumns: HeadlessPaneColumn[] = [
+      { key: "asOf", header: "As of" },
+      { key: "totalPrincipal", header: "Principal", align: "right", textFormat: amount },
+      { key: "next12MonthsShare", header: "Next 12m %", align: "right", textFormat: percent },
+      { key: "next3YearsShare", header: "Next 3y %", align: "right", textFormat: percent },
+      {
+        key: "interestExpense",
+        header: "Interest expense",
+        align: "right",
+        textFormat: amount,
+      },
+      {
+        key: "borrowingCostPercent",
+        header: "Cost proxy %",
+        align: "right",
+        textFormat: percent,
+      },
+      {
+        // What the proxy divides: exports keep `filed` or `average-principal`, the text says it in words.
+        key: "borrowingCostBasis",
+        header: "Cost basis",
+        optional: true,
+        textFormat: (value) => value === "filed" ? "Filed" : value === "average-principal" ? "Avg principal" : "",
+      },
+      { key: "currency", header: "Currency" },
+      { key: "filed", header: "Filed" },
+    ];
     return {
       complete: data.status === "available",
       errors: debtNotices(data),
       sections: [
         {
           title: "Principal maturity schedule",
-          columns: [
-            { key: "label", header: "Maturity" },
-            { key: "value", header: "Principal", align: "right", textFormat: amount },
-            { key: "currency", header: "Currency" },
-            { key: "share", header: "% total", align: "right", textFormat: percent },
-            { key: "asOf", header: "As of" },
-            { key: "filed", header: "Filed" },
-          ],
+          // One filing's buckets: its currency heads them, its date and form end the report.
+          ...(data.latest ? { textTitle: `Principal maturity schedule (${data.latest.currency})` } : {}),
+          textColumns: scheduleColumns.filter((column) => !ONE_FILING_KEYS.has(column.key)),
+          columns: scheduleColumns,
           rows:
             data.latest?.buckets.map((row) => ({
               ...row,
@@ -191,34 +231,12 @@ export const debtMaturitiesHeadless: HeadlessPaneDefinition<"bundle"> = {
         }] : []),
         {
           title: "Annual filing history",
-          columns: [
-            { key: "asOf", header: "As of" },
-            { key: "totalPrincipal", header: "Principal", align: "right", textFormat: amount },
-            { key: "next12MonthsShare", header: "Next 12m %", align: "right", textFormat: percent },
-            { key: "next3YearsShare", header: "Next 3y %", align: "right", textFormat: percent },
-            {
-              key: "interestExpense",
-              header: "Interest expense",
-              align: "right",
-              textFormat: amount,
-            },
-            {
-              key: "borrowingCostPercent",
-              header: "Cost proxy %",
-              align: "right",
-              textFormat: percent,
-            },
-            {
-              // What the proxy divides: exports keep `filed` or `average-principal`, the text says it in words.
-              key: "borrowingCostBasis",
-              header: "Cost basis",
-              optional: true,
-              textFormat: (value) => value === "filed" ? "Filed" : value === "average-principal" ? "Avg principal" : "",
-            },
-            { key: "currency", header: "Currency" },
-            { key: "filed", header: "Filed" },
-          ],
-          rows: debtHistoryRows(data.history).map((row) => ({ ...row })),
+          ...(historyCurrency ? {
+            textTitle: `Annual filing history (${historyCurrency})`,
+            textColumns: historyColumns.filter((column) => column.key !== "currency"),
+          } : {}),
+          columns: historyColumns,
+          rows: historyRows.map((row) => ({ ...row })),
         },
       ],
       ...(costNote || data.notes?.length ? { notes: [...(data.notes ?? []), ...(costNote ? [costNote] : [])] } : {}),

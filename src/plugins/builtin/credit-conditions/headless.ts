@@ -38,7 +38,8 @@ const COLUMNS = [
     align: "right" as const,
     format: (value: unknown) => value == null ? MISSING_VALUE : `${Number(value) > 0 ? "+" : ""}${Number(value).toFixed(1)}bp`,
   },
-  { key: "date", header: "As of" },
+  // The source line dates the report; indexes from different sessions bring the column back.
+  { key: "date", header: "As of", omitWhenSame: true },
 ];
 
 /** What the publisher caps the indexes' history at, said once for the report. */

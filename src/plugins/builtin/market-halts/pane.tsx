@@ -189,7 +189,7 @@ export function MarketHaltsPane({ focused, width, height }: PaneProps) {
         return {
           text: haltStatusLabel(rowStatus),
           color: selectedColor ?? haltStatusColor(rowStatus),
-          attributes: TextAttributes.BOLD,
+          attributes: rowStatus === "resumed" ? 0 : TextAttributes.BOLD,
         };
       }
     }

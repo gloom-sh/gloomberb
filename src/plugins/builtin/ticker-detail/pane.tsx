@@ -32,7 +32,7 @@ import {
   resolveLockedTabId,
 } from "./settings";
 import { TICKER_RESEARCH_BUILTIN_TABS } from "./research-tabs";
-import { findTickerResearchGroup, groupTickerResearchTabs, tickerResearchGroupView } from "./research-groups";
+import { findTickerResearchGroup, FORMER_VIEW_NAMES, groupTickerResearchTabs, tickerResearchGroupView } from "./research-groups";
 import { isRecord } from "../../../utils/guards";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useCloudAccessFooter } from "../shared/cloud-upgrade";
@@ -232,7 +232,7 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
   const tabItemsKey = allTabs.map((tab) => `${tab.id}:${tab.name}:${tab.order}`).join("\0");
   const groups = useMemo(() => groupTickerResearchTabs(allTabs), [tabItemsKey]);
   const tabChoices = useMemo(() => [
-    ...allTabs.map((tab) => ({ value: tab.id, label: t(tab.name), viewId: tab.id })),
+    ...allTabs.map((tab) => ({ value: tab.id, label: t(tab.name), aliases: FORMER_VIEW_NAMES[tab.id], viewId: tab.id })),
     ...groups.filter((group) => !group.id.startsWith("tab:") && !allTabs.some((tab) => tab.id === group.id))
       .map((group) => ({ value: group.id, label: t(group.name), viewId: tickerResearchGroupView(group, undefined) })),
     ...(!allTabs.some((tab) => tab.id === "event-dividends") && allTabs.some((tab) => tab.id === "dividend-yield")
@@ -256,7 +256,7 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
   // `gloom fn DES ARCC --tab x` opens on a tab the ticker has, or fails naming the ones it has: an id no tab has at
   // once, a tab this ticker does not show (financials of a fund without statements) once its data is in.
   const missingTab = !paneSettings.hideTabs && !!ticker && !matchOptionChoice(tabChoices, committedActiveTabId)
-    && (financials != null || !matchOptionChoice(tickerResearchTabs.map((tab) => ({ value: tab.id, label: t(tab.name) })), committedActiveTabId));
+    && (financials != null || !matchOptionChoice(tickerResearchTabs.map((tab) => ({ value: tab.id, label: t(tab.name), aliases: FORMER_VIEW_NAMES[tab.id] })), committedActiveTabId));
   useRemoteUiNode(missingTab ? {
     role: "report-failure",
     label: "No such tab",

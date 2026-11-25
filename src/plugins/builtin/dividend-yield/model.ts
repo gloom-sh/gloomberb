@@ -1,7 +1,7 @@
 import type { DataTableColumn } from "../../../components";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
-import { displayWidth } from "../../../utils/format";
-import { formatDividendRowAmount, type DividendRow } from "./view";
+import { displayWidth, formatDistributionAmount } from "../../../utils/format";
+import { dividendAmountDigits, formatDividendRowAmount, type DividendRow } from "./view";
 
 export type DividendColumnId = "exDate" | "amount" | "declared" | "currency" | "source";
 export type DividendColumn = DataTableColumn & { id: DividendColumnId };
@@ -25,10 +25,13 @@ export const DEFAULT_SORT_PREFERENCE: DividendSortPreference = {
  */
 export function buildDividendColumns(rows: readonly Pick<DividendRow, "amount" | "currency" | "declared" | "source" | "cashEstimate" | "combined" | "special">[] = [], converted = false, subUnit?: string): DividendColumn[] {
   const mixed = new Set(rows.map((row) => row.currency)).size > 1;
+  const digits = dividendAmountDigits(rows, converted, subUnit);
+  const declared = rows.flatMap((row) => row.declared ? [row.declared] : []);
+  const declaredDigits = dividendAmountDigits(declared);
   return [
     { id: "exDate", label: "EX-DATE", width: 10, align: "left" },
-    { id: "amount", label: "AMOUNT", width: Math.max(12, ...rows.map((row) => displayWidth(formatDividendRowAmount(row, converted, subUnit)))), align: "right" },
-    ...(rows.some((row) => row.declared) ? [{ id: "declared" as const, label: "DECLARED", width: 10, align: "right" as const }] : []),
+    { id: "amount", label: "AMOUNT", width: Math.max(12, ...rows.map((row) => displayWidth(formatDividendRowAmount(row, converted, subUnit, digits)))), align: "right" },
+    ...(declared.length ? [{ id: "declared" as const, label: "DECLARED", width: Math.max(10, ...declared.map((entry) => displayWidth(formatDistributionAmount(entry.amount, entry.currency, declaredDigits.get(entry.currency))))), align: "right" as const }] : []),
     ...(mixed ? [{ id: "currency" as const, label: "CCY", width: 6, align: "left" as const }] : []),
     ...(rows.some((row) => row.source) ? [{ id: "source" as const, label: "SOURCE", width: 12, align: "left" as const }] : []),
   ];

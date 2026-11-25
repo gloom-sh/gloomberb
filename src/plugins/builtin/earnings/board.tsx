@@ -50,7 +50,7 @@ import {
   type BoardRow,
   type BoardSort,
 } from "./board-model";
-import { boardColumns, boardHasCurrencies, boardSymbolWidth, renderBoardCell, renderBoardSection, SORTABLE, type BoardCellContext, type BoardColumn } from "./board-table";
+import { BOARD_CURRENCY_EXPORT, boardColumns, boardHasCurrencies, boardSymbolWidth, renderBoardCell, renderBoardSection, SORTABLE, type BoardCellContext, type BoardColumn } from "./board-table";
 import { EarningsCalendarView, CALENDAR_GROUP_ROWS, calendarSlotsPerRow } from "./calendar";
 import {
   boardRangeDays,
@@ -119,7 +119,7 @@ interface BoardData {
  * Names filter (Mine, a portfolio, a watchlist or a fund's holdings),
  * the upcoming reports of those companies instead. Every board reads the Hong
  * Kong, China A and Singapore top 100's reports too, ranked by their value in
- * dollars beside US companies, each with the currency of its figures (CCY).
+ * dollars beside US companies, a code after each figure not in dollars.
  */
 export function EarningsBoard({ focused, width, height, scopedSymbols, highlight = null }: {
   focused: boolean;
@@ -223,8 +223,8 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   const week = useMemo(() => calendarWeekDates(today, weekOffset), [today, weekOffset]);
   // EVTS 0700.HK names its listing, which the market board then keeps whatever the day's cut.
   const highlightListing = market && highlight ? boardKey(highlight) : null;
-  // The calendar reads its week, reported days included; the table its days. Each report says its currency
-  // (CCY), so every board reads the listings abroad too.
+  // The calendar reads its week, reported days included; the table its days. A report not in dollars says its
+  // currency after its figures, so every board reads the listings abroad too.
   const query = useMemo<EarningsCalendarQuery>(() => {
     const symbols = highlightListing && !named.includes(highlightListing) ? [...named, highlightListing] : named;
     return calendar
@@ -303,8 +303,8 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   const selected = reportRows.find((row) => row.key === selectedKey) ?? reportRows[0] ?? null;
   const open = reportRows.find((row) => row.key === openKey)?.report
     ?? (openKey ? data?.reports.find((report) => report.key === openKey) : undefined) ?? null;
-  // Each view has its own columns, and CCY only while one of its reports is in another currency than dollars;
-  // keyed by the flags, so the columns hold between renders.
+  // Each view has its own columns, with room for a code after the figures while one of its reports is in another
+  // currency than dollars; keyed by the flags, so the columns hold between renders.
   const currencies = boardHasCurrencies(rows);
   // TICKER fits a listing abroad's key (601939:SSE) when the board has one.
   const symbolWidth = boardSymbolWidth(rows);
@@ -355,9 +355,15 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
       candidate.kind === "report" && boardRowOf(candidate.report, highlight))?.report;
     if (!report) return;
     highlighted.current = highlight;
-    setKind(boardReportKind(report, today));
+    // A view named by `--kind` or a layout's `kind` wins: the ticker's report is selected only in it.
+    const reportKind = boardReportKind(report, today);
+    if (isBoardKind(requestedKind)) {
+      if (requestedKind === reportKind) setSelectedKey(report.key);
+      return;
+    }
+    setKind(reportKind);
     setSelectedKey(report.key);
-  }, [data, days, highlight, setKind, setSelectedKey, sort, today]);
+  }, [data, days, highlight, requestedKind, setKind, setSelectedKey, sort, today]);
 
   useAutoRefresh(resource.updatedAt, resource.load);
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
@@ -526,6 +532,8 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
         isNavigable={(row) => row.kind === "report"}
         renderSectionHeader={renderBoardSection}
         renderCell={renderCell}
+        // The figures export bare; a board with a report in another currency names each row's after them.
+        exportIdentity={currencies ? BOARD_CURRENCY_EXPORT : undefined}
         getRowVersion={rowVersion}
         selectedTextOverridesCellColor
         sortColumnId={sortColumn}

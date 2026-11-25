@@ -381,6 +381,19 @@ test.each([32, 46, 52, 60, 80, 120])("a payout keeps its label, value and basis 
   }
 });
 
+test("payments that arrive after the first frame share one precision down the amount column", async () => {
+  const { buildDividendMetrics, toDividendPayment } = await import("./client");
+  const now = new Date();
+  // A raise from $0.485 to $0.51: the column reads $0.510 over $0.485, never $0.51 beside it.
+  const payments = Array.from({ length: 8 }, (_, index) => {
+    const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - index * 3, 1));
+    return toDividendPayment(date.toISOString().slice(0, 10), index < 4 ? 0.51 : 0.485, "USD")!;
+  });
+  const shown = await renderLoaded({ payments, currency: "USD", price: 50, historyAvailable: true, metrics: buildDividendMetrics(payments, null, 50) }, 88, 26);
+  expect(shown).toContain("$0.510");
+  expect(shown).toContain("$0.485");
+});
+
 test("mixed-currency payments keep the currency column", async () => {
   const data = await quarterlyIncome((index) => index < 2 ? "USD" : "CAD");
   expect(await renderLoaded(data, 88, 26)).toContain("CCY");
