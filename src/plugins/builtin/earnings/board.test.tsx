@@ -294,3 +294,32 @@ test("EVTS 0700.HK: the market board reads the listings abroad, lands on Tencent
     resetEarningsCloudCaches();
   }
 });
+
+test("reports to come and reports out are two views, each with its own columns; EVTS on a report out opens on Reported", async () => {
+  resetEarningsCloudCaches();
+  const jpm = { ...entry("JPM", "2026-10-14"), dateStatus: "reported" as const, epsActual: 1.2, epsActualSource: "calendar" as const, epsBasis: "adjusted" as const };
+  const nflx = { ...entry("NFLX", "2026-10-15"), dateStatus: "confirmed" as const, epsAnalysts: 30 };
+  calendarRequests.mockImplementation(async (query: EarningsCalendarQuery) => ({ asOf: "2026-10-14T15:00:00Z", from: query.from, to: query.to, reports: [jpm, nflx] }));
+  try {
+    const instance = `${PANE}:kinds`;
+    const state = createInitialState(createTestPaneConfig("/tmp/gloomberb-ern-kinds-tui-test", { paneId: "earnings-calendar", instanceId: instance }));
+    state.focusedPaneId = instance;
+    await act(async () => {
+      await tui.render(<LiveBoard initial={state} runtime={runtime} highlight="JPM" onFooter={() => {}} />, { width: 150, height: 12 });
+    });
+    const reported = await tui.waitForFrameToContain("EPS ACT", 40);
+    expect(reported).toMatch(/Upcoming\s+Reported/);
+    expect(reported).toContain("JPM");
+    expect(reported).not.toContain("NFLX");
+    expect(reported).not.toContain("STATUS");
+    await tui.clickFrameText("Upcoming");
+    const upcoming = await tui.waitForFrameToContain("NFLX", 40);
+    expect(upcoming).not.toContain("JPM ");
+    // Nothing out yet: no actual, surprise or move to wait on, and no `pending` in their place.
+    expect(upcoming).not.toMatch(/EPS ACT|EPS SURP|\bMOVE\b|pending/);
+    expect(upcoming).toMatch(/STATUS/);
+  } finally {
+    calendarRequests.mockImplementation(defaultCalendar);
+    resetEarningsCloudCaches();
+  }
+});

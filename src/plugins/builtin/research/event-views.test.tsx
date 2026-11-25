@@ -16,7 +16,8 @@ import type { GloomPluginContext } from "../../../types/plugin-context";
 import type { TickerResearchTabDef } from "../../../types/plugin-contributions";
 import { catalystCache } from "../catalysts/client";
 import { catalystFixture, catalystPayload } from "../catalysts/test-fixture";
-import { EarningsEstimatesView } from "./corporate-actions-pane";
+import { getTableWidth } from "../../../components/ui/table-layout";
+import { EarningsEstimatesView, estimateColumns } from "./earnings-estimates-pane";
 import { EventsDividendsView, EventsPane, EventsResearchEarnings } from "./event-views";
 import { researchModule } from "./index";
 
@@ -80,10 +81,14 @@ afterEach(() => {
 
 interface MountOptions {
   symbol?: string;
+  /** The pane drawn, EVT's unless named; `earnings-estimates` draws EE. */
+  pane?: "corporate-actions" | "earnings-estimates";
   actions?: () => Promise<CorporateActionsData>;
   estimates?: () => Promise<AnalystResearchData>;
   financials?: Partial<TickerFinancials>;
   paneState?: AppState["paneState"];
+  /** The pane's settings, as a layout or `shot` gives them. */
+  settings?: Record<string, unknown>;
   content?: (body: { width: number; height: number }) => ReactNode;
   /** The SEC reads an opened report's detail makes, which go through the shared market data. */
   sec?: Pick<DataProvider, "getSecFilings" | "getSecFilingDocuments" | "getSecFilingContent">;
@@ -96,8 +101,9 @@ async function settle(frames = 6) {
 /** EVT on its own (or the view `content` draws) for a fixed ticker, with its pane state kept as the app keeps it. */
 async function mount(options: MountOptions = {}) {
   const symbol = options.symbol ?? "TEST";
-  const paneId = `corporate-actions:${symbol}`;
-  const config = createTestPaneConfig("/tmp/gloom-event-views-test", { instanceId: paneId, paneId: "corporate-actions", binding: { kind: "fixed", symbol } });
+  const pane = options.pane ?? "corporate-actions";
+  const paneId = `${pane}:${symbol}`;
+  const config = createTestPaneConfig("/tmp/gloom-event-views-test", { instanceId: paneId, paneId: pane, binding: { kind: "fixed", symbol }, settings: options.settings });
   const initial = createInitialState(config);
   initial.focusedPaneId = paneId;
   initial.paneState = options.paneState ?? {};
@@ -123,7 +129,7 @@ async function mount(options: MountOptions = {}) {
     app.state = state;
     return (
       <TestPaneFrame state={state} dispatch={dispatch} paneId={paneId} pluginId="research" runtime={runtime} width={WIDTH} height={HEIGHT}>
-        {(body) => options.content?.(body) ?? <EventsPane focused {...body} />}
+        {(body) => options.content?.(body) ?? (pane === "earnings-estimates" ? <EarningsEstimatesView focused {...body} /> : <EventsPane focused {...body} />)}
       </TestPaneFrame>
     );
   }
@@ -259,6 +265,72 @@ describe("an earnings quarter's detail", () => {
     await mount({ sec, paneState: { "corporate-actions:TEST": { pluginState: { research: { openRowId: "dividend:2019-05-10" } } } } });
     expect(tui.frame()).toContain("Next report");
     expect(tui.frame()).not.toContain("Earnings | ");
+  });
+});
+
+describe("EE's views", () => {
+  const EE_ESTIMATES: AnalystResearchData = {
+    ...ESTIMATES,
+    earningsEstimates: [
+      { date: "2026-12-31", period: "current_quarter", average: 2.65, low: 2.5, high: 2.8, analysts: 29, growth: 0.07, currency: "USD" },
+      { date: "2027-03-31", period: "next_quarter", average: 1.8, analysts: 27, growth: 0.09, currency: "USD" },
+      { date: "2027-09-30", period: "current_year", average: 8.4, low: 8, high: 8.9, analysts: 40, growth: 0.1, currency: "USD" },
+      { date: "2028-09-30", period: "next_year", average: 9.2, analysts: 38, growth: 0.095, currency: "USD" },
+    ],
+    revenueEstimates: [
+      { date: "2026-12-31", period: "current_quarter", average: 138e9, analysts: 28, growth: 0.08, currency: "USD" },
+      { date: "2027-09-30", period: "current_year", average: 450e9, analysts: 39, growth: 0.06, currency: "USD" },
+    ],
+  };
+  const STATEMENTS = { quarterlyStatements: ["2025-12-31", "2026-03-31", "2026-06-30", "2026-09-30"]
+    .map((date) => ({ date, eps: 1.9, totalRevenue: 100e9, currency: "USD" })) } as Partial<TickerFinancials>;
+  const ee = (options: MountOptions = {}) => mount({ pane: "earnings-estimates", estimates: async () => structuredClone(EE_ESTIMATES), financials: STATEMENTS, ...options });
+
+  test("Estimates: the quarters and years ahead in their own sections and columns, the trailing twelve months over them", async () => {
+    await ee();
+    expect(lines()[0]).toMatch(/^\s*Estimates\s+Reported\s*$/);
+    expect(tui.frame()).toMatch(/Next report\s+28 Jan 2027/);
+    expect(tui.frame()).toMatch(/EPS TTM\s+7\.60 USD/);
+    expect(tui.frame()).toMatch(/Revenue TTM\s+400B USD\s+4 qtrs to 30 Sep 2026/);
+    // EE reads no ex-dates, and no reported quarter shares the estimates' columns.
+    expect(tui.frame()).not.toContain("Last ex");
+    expect(tui.frame()).not.toContain("29 Oct 2026");
+    expect(line("PERIOD")).toMatch(/PERIOD\s+ENDS\s+EPS USD\s+EPS LOW\s+EPS HIGH\s+EPS Y\/Y\s+REVENUE USD/);
+    const table = lines().slice(lines().findIndex((row) => row.includes("PERIOD")) + 1, lines().findIndex((row) => row.includes("PERIOD")) + 7);
+    expect(table.map((row) => row.trim().split(/\s{2,}/)[0])).toEqual(["Quarters (2)", "cur qtr", "next qtr", "Years (2)", "cur yr", "next yr"]);
+    expect(table[1]).toMatch(/31 Dec 2026\s+2\.65\s+2\.50\s+2\.80\s+\+7\.00%\s+138\.00B/);
+    // Enter opens the period it is on: the nearest quarter, its inputs for each metric.
+    await tui.emitKeypress({ name: "return" });
+    await settle(10);
+    expect(tui.frame()).toContain("Q Est | 2026-12-31");
+    expect(tui.frame()).toMatch(/Analysts\s+29/);
+  });
+
+  test("Reported is EVT's Earnings view; a layout saved with a report open, or a view setting, opens on it", async () => {
+    await ee();
+    await tui.clickFrameText("Reported");
+    await settle(10);
+    expect(line("● Estimate")).toMatch(/● Estimate .*● Beat .*● Miss/);
+    expect(line("29 Oct 2026")).toMatch(/Sep 2026\s+1\.85\s+1\.77\s+\+4\.52%/);
+    expect(tui.frame()).toMatch(/EPS TTM\s+7\.60 USD/);
+    expect(tui.frame()).not.toContain("cur qtr");
+    // Saved before EE had views: its open report opens in Reported, the view kept with the layout from then on.
+    const { app } = await ee({ paneState: { "earnings-estimates:TEST": { pluginState: { research: { openRowId: "earn:2026-07-30:announcement" } } } } });
+    expect(tui.frame()).toContain("Earnings | 2026-07-30");
+    expect(app.state.paneState["earnings-estimates:TEST"]?.pluginState?.research).toMatchObject({ eeView: "reported" });
+    await ee({ settings: { view: "reported" } });
+    expect(tui.frame()).toContain("● Estimate");
+  });
+
+  test("the Estimates columns name the currency each metric shares and fit any width", () => {
+    for (const units of [{}, { eps: "USD", revenue: "TWD" }]) {
+      for (const width of [40, 68, 90, 120, 160]) expect(getTableWidth(estimateColumns(width, units))).toBeLessThanOrEqual(Math.max(width - 1, 40));
+    }
+    // An ADR's EPS in dollars beside its revenue in the home currency.
+    expect(estimateColumns(160, { eps: "USD", revenue: "TWD" }).map(({ label }) => label)).toEqual([
+      "PERIOD", "ENDS", "EPS USD", "EPS LOW", "EPS HIGH", "EPS Y/Y", "EPS ESTS", "REVENUE TWD", "REV LOW", "REV HIGH", "REV Y/Y", "REV ESTS"]);
+    // Narrow, the counts and ranges give way before the period end, which says which quarter or year a row is.
+    expect(estimateColumns(90).map(({ id }) => id)).toEqual(["period", "ends", "eps", "epsLow", "epsHigh", "epsGrowth", "revenue", "revenueGrowth"]);
   });
 });
 

@@ -38,6 +38,9 @@
   "src/plugins/builtin/earnings-ripple/pane.tsx": {
     "holdings.length": "No holdings to ripple from yet: the pane says how to add them instead of offering views of nothing."
   },
+  "src/plugins/builtin/earnings/board.tsx": {
+    "calendar || open": "The week view draws reports to come and reports out together as logos, and an open company's report history replaces the board by design."
+  },
   "src/plugins/builtin/estimate-revisions/pane.tsx": {
     "!symbol || signInWall": "No ticker yet, or signed out: every tab would be the same prompt or sign-in wall."
   },

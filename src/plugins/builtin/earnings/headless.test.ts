@@ -181,6 +181,17 @@ test("ERN board rows carry the status, analysts and basis ERN <ticker> shows, ra
     ["KO", "confirmed", 0.88024, 18, null, null, 386.37e9],
     ["SAP", "projected", null, null, null, null, null],
   ]);
+  // The text report draws the pane's two views: reports to come, then those out, each with its own columns.
+  const text = renderHeadlessPaneText(definition, result, { ...args, rawArgument: "PEP GOOGL KO SAP" }, "ERN").split("\n");
+  const upcoming = text.find((line) => line.includes("Status"))!;
+  expect(upcoming).toMatch(/Date\s+Status\s+When\s+Ticker/);
+  expect(upcoming).not.toMatch(/EPS act|EPS surp|Basis|Ccy/);
+  const reported = text.findIndex((line) => line.includes("Reported"));
+  expect(reported).toBeGreaterThan(text.findIndex((line) => line.includes("KO")));
+  expect(text[reported + 1]).toMatch(/EPS act\s+Basis\s+EPS surp/);
+  expect(text[reported + 1]).not.toMatch(/Status|Ests|Ccy/);
+  expect(text.slice(reported + 1).join("\n")).toContain("PEP");
+  expect(text.slice(0, reported).join("\n")).not.toContain("PEP");
 });
 
 test("EVTS with a ticker stays the market board and says whether that ticker is on it", async () => {

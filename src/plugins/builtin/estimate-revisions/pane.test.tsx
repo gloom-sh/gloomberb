@@ -1,7 +1,7 @@
 import { afterAll, afterEach, expect, spyOn, test } from "bun:test";
 import { act, useState } from "react";
 import { apiClient } from "../../../api-client";
-import type { EstimateObservation, EstimatePeriod, EstimateRevisionsPayload } from "../../../api-client/estimate-revisions";
+import type { EstimateObservation, EstimatePeriod, EstimateRevisionsPayload, EstimateSurprise } from "../../../api-client/estimate-revisions";
 import { createOpenTuiTestHarness, takeSavedTextFile } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { exportPaneTable } from "../../../state/pane-table-export-registry";
@@ -50,11 +50,11 @@ async function settle(delayMs = 5) {
   for (let index = 0; index < 6; index += 1) await act(async () => { await Bun.sleep(delayMs); await tui.setup().renderOnce(); });
 }
 
-/** The pane with the quarter's detail open, as a reload restores it. */
-async function renderDetail(width: number, height: number, open = true): Promise<string[]> {
+/** The pane with the quarter's detail open, as a reload restores it; `tab` opens another of its tabs. */
+async function renderDetail(width: number, height: number, open = true, tab?: string): Promise<string[]> {
   const id = "estimate-revisions:AAPL";
   const state = createInitialState(createTestPaneConfig("/tmp/gloomberb-estimates-test", {
-    instanceId: id, paneId: "estimate-revisions", binding: { kind: "fixed", symbol: "AAPL" },
+    instanceId: id, paneId: "estimate-revisions", binding: { kind: "fixed", symbol: "AAPL" }, ...(tab ? { settings: { tab } } : {}),
   }));
   state.tickers.set("AAPL", createTestTicker("AAPL", "Apple Inc.", { exchange: "NASDAQ" }));
   if (open) state.paneState[id] = { pluginState: { "estimate-revisions": { "estimates:open": period.id } } } as never;
@@ -88,7 +88,7 @@ test("a single-analyst consensus omits dispersion, and one covered period restor
   estimatesSpy.mockResolvedValue(mixed);
   const frame = (await renderDetail(160, 28, false)).join("\n");
   expect(frame).toContain("HI-LO");
-  expect(frame).toContain("0.3");
+  expect(frame).toContain("0.30");
   expect(frame).toContain("—");
 });
 
@@ -105,7 +105,7 @@ test("the period detail charts recorded and lookback EPS over its observations, 
 
   await tui.emitKeypress({ name: "down" });
   await settle(40);
-  expect(tui.frame()).toContain("• Recorded 1.7 ");
+  expect(tui.frame()).toContain("• Recorded 1.70 ");
   await tui.emitKeypress({ name: "left" });
   await settle(20);
   expect(tui.frame()).toContain("• Recorded 1.69 ");
@@ -118,4 +118,33 @@ test("a short detail keeps the observations and draws the chart as a strip", asy
   expect(lines[header - 2]).toContain("EPS  1.71 USD");
   expect(lines[header - 1]).toMatch(/^ ● Recorded [⠀-⣿]+\s*$/);
   expect(lines.slice(header + 1).filter((line) => /\d{4}-\d{2}-\d{2}/.test(line)).length).toBeGreaterThanOrEqual(4);
+});
+
+test("Revisions keeps the quarters apart from the years, in cents, and charts the consensus of the period selected", async () => {
+  const annual = { ...period, id: "annual:2027-09-30:USD", frequency: "annual", periodEnd: "2027-09-30", label: "next year",
+    current: { ...latest, average: 7.456, growth: null }, recorded: recorded.slice(-1), lookbacks: [] } as unknown as EstimatePeriod;
+  estimatesSpy.mockResolvedValue({ ...payload, periods: [period, annual] });
+  const lines = await renderDetail(120, 28, false);
+  const header = lines.findIndex((line) => line.includes("FISCAL END"));
+  expect(lines[header]).not.toContain("CCY");
+  expect(lines.slice(header + 1, header + 5).map((line) => line.trim().split(/\s+/).slice(0, 2).join(" "))).toEqual([
+    "Quarters (1)", "2026-09-30 1.71", "Years (1)", "2027-09-30 7.46"]);
+  // The chart is the quarter's consensus over time; on the year, one reading, it says it has none to draw.
+  expect(lines.find((line) => line.includes("• Recorded"))).toContain("Q 2026-09-30");
+  await tui.emitKeypress({ name: "down" });
+  await settle();
+  expect(tui.frame()).toContain("No consensus history for FY 2027-09-30");
+});
+
+test("Surprises charts each report's estimate beside its actual over the reports, with no column every row repeats", async () => {
+  const report = (date: string, estimate: number, actual: number): EstimateSurprise => (
+    { date, dateType: "announcement", currency: "USD", estimate, actual, difference: null, percent: null, percentile: null, samples: 0, source: "gloom" });
+  estimatesSpy.mockResolvedValue({ ...payload, surprises: [report("2026-07-30", 1.43, 1.57), report("2026-04-30", 1.7, 1.65), report("2026-01-29", 2.67, 2.84)] });
+  const lines = await renderDetail(120, 28, false, "surprises");
+  expect(lines.find((line) => line.includes("● Estimate"))).toMatch(/● Estimate .*● Beat .*● Miss/);
+  const header = lines.findIndex((line) => line.includes("EST EPS"));
+  expect(lines[header]).toMatch(/DATE \S\s+EST EPS USD\s+ACT EPS USD\s+SURPRISE\s*$/);
+  // The surprise is the actual's on the estimate, as EVT's, where the server sent none.
+  expect(lines[header + 1]).toMatch(/2026-07-30\s+1\.43\s+1\.57\s+\+9\.79%/);
+  expect(lines[header + 2]).toMatch(/2026-04-30\s+1\.70\s+1\.65\s+-2\.94%/);
 });

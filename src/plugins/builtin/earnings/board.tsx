@@ -6,6 +6,7 @@ import {
   usePaneFooter,
   usePaneMenuItems,
   usePaneStatusFooter,
+  usePaneTabs,
   type DataTableKeyEvent,
   type QueryBarFilter,
   type QueryBarView,
@@ -43,11 +44,13 @@ import {
   ownershipBySymbol,
   relativeDays,
   boardMove,
+  boardReportKind,
+  type BoardKind,
   type BoardReport,
   type BoardRow,
   type BoardSort,
 } from "./board-model";
-import { boardColumns, boardHasActuals, boardHasCurrencies, boardSymbolWidth, renderBoardCell, renderBoardSection, SORTABLE, type BoardCellContext, type BoardColumn } from "./board-table";
+import { boardColumns, boardHasCurrencies, boardSymbolWidth, renderBoardCell, renderBoardSection, SORTABLE, type BoardCellContext, type BoardColumn } from "./board-table";
 import { EarningsCalendarView, CALENDAR_GROUP_ROWS, calendarSlotsPerRow } from "./calendar";
 import {
   boardRangeDays,
@@ -96,6 +99,9 @@ type BoardView = "table" | "calendar";
 const ORDER_OPTIONS: ReadonlyArray<{ value: Order; label: string }> = [{ value: "cap", label: "Size" }, { value: "mine", label: "Mine first" }];
 /** The week as logos is for the desktop and the web; the terminal draws no logos and keeps the table. */
 const ERN_VIEWS: ReadonlyArray<{ value: BoardView; label: string }> = [{ value: "table", label: "Table" }, { value: "calendar", label: "Calendar" }];
+/** The table's reports to come and reports out, each with columns of its own. */
+const BOARD_KINDS: Array<{ value: BoardKind; label: string }> = [{ value: "upcoming", label: "Upcoming" }, { value: "reported", label: "Reported" }];
+const isBoardKind = (value: unknown): value is BoardKind => value === "upcoming" || value === "reported";
 
 interface BoardData {
   /** The query read, by `earningsCalendarKey`: kept data from another week is not this week's. */
@@ -156,6 +162,8 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   const [requestedDate] = usePaneSettingValue<string>("date", "");
   const [requestedWeek] = usePaneSettingValue<string>("week", "");
   const [chosenRange, setRange] = usePluginPaneState<BoardRange | null>("range", null);
+  // The table's Upcoming or Reported view; until one is chosen, the reports to come while the range has any.
+  const [chosenKind, setKind] = usePluginPaneState<BoardKind | null>("kind", null);
   // The calendar's groups opened past their "+N more" slot, by `calendarGroupKey`.
   const [expanded, setExpanded] = useState(NONE_EXPANDED);
   const desktop = useUiCapabilities().nativePaneChrome === true;
@@ -271,7 +279,13 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   // A new fund or range never shows the previous scope while its holdings load or fail.
   const data = resource.data?.queryKey === queryKey ? resource.data : null;
   const weekData = data;
-  const rows = useMemo(() => boardRows(data?.reports ?? [], days, sort, order === "mine"), [data, days, order, sort]);
+  const kinds = useMemo(() => {
+    const split: Record<BoardKind, BoardReport[]> = { upcoming: [], reported: [] };
+    for (const report of data?.reports ?? []) split[boardReportKind(report, today)].push(report);
+    return split;
+  }, [data, today]);
+  const kind: BoardKind = chosenKind ?? (kinds.upcoming.length > 0 || kinds.reported.length === 0 ? "upcoming" : "reported");
+  const rows = useMemo(() => boardRows(kinds[kind], days, sort, order === "mine"), [days, kind, kinds, order, sort]);
   const reportRows = useMemo(() => rows.filter((row): row is BoardRow & { kind: "report" } => row.kind === "report"), [rows]);
   const slotsPerRow = calendarSlotsPerRow(width);
   const weekDays = useMemo(
@@ -286,13 +300,12 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   const selected = reportRows.find((row) => row.key === selectedKey) ?? reportRows[0] ?? null;
   const open = reportRows.find((row) => row.key === openKey)?.report
     ?? (openKey ? data?.reports.find((report) => report.key === openKey) : undefined) ?? null;
-  // A board with an actual keeps EPS ACT and EPS SURP when narrow, and one with a listing abroad's report shows CCY;
+  // Each view has its own columns, and CCY only while one of its reports is in another currency than dollars;
   // keyed by the flags, so the columns hold between renders.
-  const actuals = boardHasActuals(rows);
   const currencies = boardHasCurrencies(rows);
   // TICKER fits a listing abroad's key (601939:SSE) when the board has one.
   const symbolWidth = boardSymbolWidth(rows);
-  const columns = useMemo(() => boardColumns(width, { actuals, currencies, symbolWidth }), [actuals, currencies, symbolWidth, width]);
+  const columns = useMemo(() => boardColumns(width, { kind, currencies, symbolWidth }), [currencies, kind, symbolWidth, width]);
   // The move on each report out today, beside its implied move, from the quotes every board reads.
   // Keyed by content: the rows are rebuilt on renders that change nothing, and the quote board reloads on a new list.
   const reportedKey = [...new Set(reportRows.filter((row) => row.report.dateStatus === "reported" && row.report.date === today)
@@ -333,13 +346,15 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   }, [data, openSymbol, setOpenKey]);
 
   useEffect(() => {
-    if (!highlight || highlighted.current === highlight) return;
-    // 0700.HK as typed is the board's 0700:HKEX; 0939.HK is CCB's row under its A share.
-    const row = reportRows.find((candidate) => boardRowOf(candidate.report, highlight));
-    if (!row) return;
+    if (!highlight || highlighted.current === highlight || !data) return;
+    // 0700.HK as typed is the board's 0700:HKEX; 0939.HK is CCB's row under its A share. In the range, in its view.
+    const report = boardRows(data.reports, days, sort, false).find((candidate): candidate is BoardRow & { kind: "report" } =>
+      candidate.kind === "report" && boardRowOf(candidate.report, highlight))?.report;
+    if (!report) return;
     highlighted.current = highlight;
-    setSelectedKey(row.key);
-  }, [highlight, reportRows, setSelectedKey]);
+    setKind(boardReportKind(report, today));
+    setSelectedKey(report.key);
+  }, [data, days, highlight, setKind, setSelectedKey, sort, today]);
 
   useAutoRefresh(resource.updatedAt, resource.load);
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
@@ -418,7 +433,8 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
         ...weekOptions(range && !isBoardRangeDay(range) ? weekOffset : null),
         ...rangeDates.map((date) => ({ value: date, label: boardRangeLabel(date, today)! })),
       ],
-      onChange: (value: string) => { setRange(value); setSelectedKey(null); },
+      // Another range opens on its reports to come, or on those out when none is.
+      onChange: (value: string) => { setRange(value); setSelectedKey(null); setKind(null); },
     };
   // On the desktop the view picks the table or the week, and the order is a filter beside the names and the Range.
   const queryBar = !desktop ? <QueryBar width={width} filters={[...namesFilter, rangeFilter]} view={orderView} /> : (
@@ -434,10 +450,22 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   );
   // "last week", "on Thu Oct 15", "in the week of Nov 2": the days the empty board or week is of.
   const rangeWords = calendar ? boardRangeWords(String(weekOffset), today) : boardRangeWords(range, today);
-  const emptyStateTitle = market ? noCalendarReportsTitle(rangeWords)
+  // A view with none of the range's reports says so: all are out, or none is yet.
+  const otherKind = kind === "upcoming" ? kinds.reported.length > 0 : kinds.upcoming.length > 0;
+  const emptyStateTitle = !calendar && otherKind
+    ? kind === "upcoming" ? `Every report ${rangeWords ?? "these days"} is out.` : "None of these reports is out yet."
+    : market ? noCalendarReportsTitle(rangeWords)
     : scope.kind === "mine" && named.length === 0 ? "No portfolio or watchlist names."
       : (scope.kind === "portfolio" || scope.kind === "watchlist") && named.length === 0 ? `No tickers in ${scope.name}.`
         : rangeWords ? `No reports from these companies ${rangeWords}.` : "No upcoming reports.";
+  // The table's two views. The week draws both kinds as logos, and a company's report history replaces the board.
+  const { strip: kindStrip, rows: kindRows } = usePaneTabs(calendar || open ? null : {
+    tabs: BOARD_KINDS,
+    activeValue: kind,
+    onSelect: (value) => { if (isBoardKind(value)) { setKind(value); setSelectedKey(null); } },
+    focused,
+    dense: true,
+  });
   const history = open ? (
     <EarningsHistoryView key={open.symbol} symbol={open.symbol} width={width} height={Math.max(4, height - 1)}
       focused={focused} registrationId="earnings-history" />
@@ -481,40 +509,43 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   }
 
   return (
-    <DataTableStackView<BoardRow, BoardColumn>
-      focused={focused}
-      rootWidth={width}
-      rootHeight={height}
-      rootBefore={queryBar}
-      status={{ loading: (resource.loading || highlightedReport.loading) && !data, error: !data ? resource.error : null, subject: "the earnings calendar" }}
-      columns={columns}
-      items={rows}
-      getItemKey={(row) => row.key}
-      isNavigable={(row) => row.kind === "report"}
-      renderSectionHeader={renderBoardSection}
-      renderCell={renderCell}
-      getRowVersion={rowVersion}
-      selectedTextOverridesCellColor
-      sortColumnId={sortColumn}
-      sortDirection={sort.direction}
-      onHeaderClick={(columnId) => {
-        const column = SORTABLE[columnId as BoardColumn["id"]];
-        if (!column) return;
-        setSort((current) => ({ column, direction: current.column === column && current.direction === "desc" ? "asc" : column === "symbol" ? "asc" : "desc" }));
-      }}
-      selection={{
-        kind: "index",
-        selectedIndex: selected ? rows.indexOf(selected) : -1,
-        onChange: (_index, row) => { if (row.kind === "report") setSelectedKey(row.key); },
-      }}
-      onActivate={(row) => { if (row.kind === "report") setOpenKey(row.key); }}
-      onRootKeyDown={handleKeyDown}
-      detailOpen={!!open}
-      onBack={() => setOpenKey(null)}
-      detailTitle={open ? `${open.symbol} · ${open.name}` : undefined}
-      detailContent={history}
-      emptyStateTitle={emptyStateTitle}
-    />
+    <Box flexDirection="column" width={width} height={height}>
+      {kindStrip}
+      <DataTableStackView<BoardRow, BoardColumn>
+        focused={focused}
+        rootWidth={width}
+        rootHeight={Math.max(3, height - kindRows)}
+        rootBefore={queryBar}
+        status={{ loading: (resource.loading || highlightedReport.loading) && !data, error: !data ? resource.error : null, subject: "the earnings calendar" }}
+        columns={columns}
+        items={rows}
+        getItemKey={(row) => row.key}
+        isNavigable={(row) => row.kind === "report"}
+        renderSectionHeader={renderBoardSection}
+        renderCell={renderCell}
+        getRowVersion={rowVersion}
+        selectedTextOverridesCellColor
+        sortColumnId={sortColumn}
+        sortDirection={sort.direction}
+        onHeaderClick={(columnId) => {
+          const column = SORTABLE[columnId as BoardColumn["id"]];
+          if (!column) return;
+          setSort((current) => ({ column, direction: current.column === column && current.direction === "desc" ? "asc" : column === "symbol" ? "asc" : "desc" }));
+        }}
+        selection={{
+          kind: "index",
+          selectedIndex: selected ? rows.indexOf(selected) : -1,
+          onChange: (_index, row) => { if (row.kind === "report") setSelectedKey(row.key); },
+        }}
+        onActivate={(row) => { if (row.kind === "report") setOpenKey(row.key); }}
+        onRootKeyDown={handleKeyDown}
+        detailOpen={!!open}
+        onBack={() => setOpenKey(null)}
+        detailTitle={open ? `${open.symbol} · ${open.name}` : undefined}
+        detailContent={history}
+        emptyStateTitle={emptyStateTitle}
+      />
+    </Box>
   );
 }
 

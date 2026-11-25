@@ -1,7 +1,7 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { describe, expect, test } from "bun:test";
 import type { AnalystResearchData, CorporateActionsData } from "../../../types/financials";
-import { buildEventRows, buildEventSummary, buildNextUp, eventSourceNotice, formatEventMetric, nextCatalystOf, sourceErrorText, type EventFinancials } from "./event-model";
+import { buildEarningsHeader, buildEventRows, buildNextUp, eventSourceNotice, formatEventMetric, nextCatalystOf, sourceErrorText, type EventFinancials } from "./event-model";
 import { catalystFixture } from "../catalysts/test-fixture";
 import { NOT_MEANINGFUL_TONE } from "../../../utils/growth";
 import { fiscalPeriodText } from "../earnings/fiscal-quarter";
@@ -691,18 +691,22 @@ describe("what is next", () => {
     expect(nextCatalystOf({ events: [], access: preview }, "2098-11-24")).toBeNull();
   });
 
-  test("EE's figures are the next report with its consensus and the last surprise", () => {
-    const built = rows([
+  test("EE's figures are the next report with its consensus, no ex-date, and the trailing twelve months the table no longer has", () => {
+    const statements = ["2097-12-31", "2098-03-31", "2098-06-30", "2098-09-30"].map((date) => ({ date, eps: 0.7, totalRevenue: 11e9, currency: "USD" }));
+    const built = buildEventRows({ symbol: "KO", currency: "USD", splits: [], dividends: [{ exDate: "2098-09-15", amount: 0.53 }], earnings: [
       { date: "2098-10-21", epsActual: 0.82, epsEstimate: 0.78, currency: "USD", fiscalPeriod: "2098-09" },
       { date: "2099-02-10", epsEstimate: 0.61, currency: "USD", dateStatus: "projected" },
-    ]);
-    const summary = buildEventSummary(built, { today, fund: false, epsUnit: "USD", revenueUnit: "USD" });
-    expect(summary.map((figure) => [figure.id, figure.value, figure.detail])).toEqual([
-      ["next-report", "10 Feb 2099", "Dec 2098 qtr · projected · EPS est 0.61 · rev est 11.2B"],
-      ["last-surprise", "+5.13%", "Sep 2098 · 0.82 vs 0.78"],
+    ] }, estimates, { quarterlyStatements: statements }, "USD");
+    const header = buildEarningsHeader(built, { today, fund: false });
+    expect(header.map((figure) => [figure.id, figure.value, figure.detail])).toEqual([
+      ["next-report", "10 Feb 2099", "in 78 days · projected · Dec 2098 qtr"],
+      ["eps-estimate", "0.61 USD", "+5.00% y/y"],
+      ["revenue-estimate", "11.2B USD", "1 analyst · -2.00% y/y"],
+      ["ttm-eps", "2.80 USD", "GAAP diluted (statements) · 4 qtrs to 30 Sep 2098"],
+      ["ttm-revenue", "44B USD", "4 qtrs to 30 Sep 2098"],
     ]);
     // Shorter forms for a narrow pane, never a longer one.
-    for (const figure of summary) for (const variant of figure.detailVariants ?? []) expect(variant.length).toBeLessThan(figure.detail!.length);
-    expect(buildEventSummary(built, { today, fund: true })).toEqual([]);
+    for (const figure of header) for (const variant of figure.detailVariants ?? []) expect(variant.length).toBeLessThan(figure.detail!.length);
+    expect(buildEarningsHeader(built, { today, fund: true })).toEqual([]);
   });
 });

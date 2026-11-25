@@ -1,7 +1,7 @@
 import type { PluginModule } from "../plugin-module";
 import { parseTickerListInput, formatTickerListInput } from "../../../tickers/list";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
-import { EarningsEstimatesView } from "./corporate-actions-pane";
+import { EarningsEstimatesView } from "./earnings-estimates-pane";
 import { EventsDividendsView, EventsPane, EventsResearchEarnings } from "./event-views";
 import { relativeValuationHeadless } from "./relative-valuation-headless";
 import { AUTO_PEERS_SETTING, relativeValuationTitle } from "./relative-valuation-peers";

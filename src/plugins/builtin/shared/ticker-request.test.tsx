@@ -10,7 +10,7 @@ import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { AnalystResearchView } from "../research/analyst-pane";
 import { catalystCache } from "../catalysts/client";
 import { catalystPayload } from "../catalysts/test-fixture";
-import { EarningsEstimatesView } from "../research/corporate-actions-pane";
+import { EarningsEstimatesView } from "../research/earnings-estimates-pane";
 import { EventsPane } from "../research/event-views";
 import { HistoricalPricesPane } from "../ticker-detail/data-panes/historical-prices";
 import { listingIdentity } from "./ticker-request";

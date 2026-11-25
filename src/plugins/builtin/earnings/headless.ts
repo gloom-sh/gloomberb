@@ -11,7 +11,7 @@ import type {
   HeadlessRowsResult,
 } from "../../../types/plugin";
 import type { EarningsEvent } from "../../../types/data-provider";
-import { addDays, boardKey, boardReport, boardRowOf, fallbackReport, historyListing, MIN_AVERAGE_REPORTS, newYorkToday, type BoardReport } from "./board-model";
+import { addDays, boardKey, boardReport, boardReportKind, boardRowOf, fallbackReport, historyListing, MIN_AVERAGE_REPORTS, newYorkToday, type BoardReport } from "./board-model";
 import { BOARD_WEEKS, boardRangeDays, boardRangeLabel, isBoardWeek, requestedBoardRange, type BoardRange } from "./calendar-model";
 import { fetchEarningsCalendar, fetchEarningsHistory, noHistoryAbroad, sameHistoryListing } from "./client";
 import { loadEarningsCalendar } from "./data/cache";
@@ -27,7 +27,7 @@ import { findUsListingOfCompany } from "../../../tickers/us-listing";
 import { shortCompanyName } from "../../../tickers/company-name";
 import { REPORT_ROWS } from "../shared/headless-options";
 import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
-import type { HeadlessPaneOptionDef } from "../../../types/headless";
+import type { HeadlessBundleSection, HeadlessPaneOptionDef } from "../../../types/headless";
 
 const right = "right" as const;
 const num = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
@@ -84,6 +84,16 @@ const BOARD_COLUMNS: HeadlessPaneColumn[] = [
   { key: "impliedMove", header: "Implied", align: right, format: (value) => impliedText(num(value)) },
   { key: "averageMove", header: "Avg move", align: right, format: (value) => moveSize(num(value)) },
 ];
+
+/**
+ * The text report's tables, as the pane's views are: reports to come with their date's status and analysts,
+ * reports out with their actual and surprise. CCY only where a report is in another currency than dollars.
+ * The exports keep BOARD_COLUMNS for every row.
+ */
+const UPCOMING_TEXT_COLUMNS = BOARD_COLUMNS.filter((column) => !["epsActual", "epsBasis", "epsSurprise"].includes(column.key));
+const REPORTED_TEXT_COLUMNS = BOARD_COLUMNS.filter((column) => !["dateStatus", "epsAnalysts"].includes(column.key));
+const textColumnsFor = (columns: HeadlessPaneColumn[], rows: ReadonlyArray<{ currency?: unknown }>) =>
+  rows.some((row) => row.currency != null && row.currency !== "USD") ? columns : columns.filter((column) => column.key !== "currency");
 
 /** What the board's currency and cap are, and which listings abroad it has, in its metadata. */
 const BOARD_CURRENCY_NOTE = "currency is the ISO currency of a report's EPS and sales figures: dollars for US listings, a listing abroad's own (CNY for Tencent), never converted. marketCap is in dollars for every company, so the board ranks them together. Besides US listings the board has the Hong Kong, China A and Singapore top 100's reports whose date the company confirmed or that are out, from each listing's earnings history; they have no time of day, implied or average move. A company listed on two of those markets is shown once, under its primary listing, and found by any of its lines.";
@@ -254,9 +264,19 @@ async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContex
     averageMove: report.averageMove,
   }));
   const ticker = highlight ? boardTickerNotice(highlight, all, query.from, query.to) : null;
+  // As the pane's Upcoming and Reported views: the reports to come first, those out under them.
+  const kinds = all.slice(0, limit).map((report) => boardReportKind(report, today));
+  const upcoming = rows.filter((_row, index) => kinds[index] === "upcoming");
+  const reported = rows.filter((_row, index) => kinds[index] === "reported");
+  const [main, mainColumns] = upcoming.length || !reported.length ? [upcoming, UPCOMING_TEXT_COLUMNS] : [reported, REPORTED_TEXT_COLUMNS];
+  const textSections: HeadlessBundleSection[] = main === upcoming && reported.length
+    ? [{ title: "Reported", columns: textColumnsFor(REPORTED_TEXT_COLUMNS, reported), rows: reported }] : [];
   return {
     columns: BOARD_COLUMNS,
     rows,
+    textColumns: textColumnsFor(mainColumns, main),
+    textRows: main,
+    ...(textSections.length ? { textSections } : {}),
     complete: rows.length === all.length && cloud.status !== "rejected",
     ...(rows.length < all.length ? { notes: [`Showing ${rows.length} of ${all.length} reports. Retrieve all with --limit ${all.length}.`] } : {}),
     errors: cloud.status === "rejected" ? [String(cloud.reason instanceof Error ? cloud.reason.message : cloud.reason)] : undefined,
