@@ -27,7 +27,8 @@ const BOARD_COLUMNS: DataTableColumn[] = [
   { id: "one", label: "PCTL 1Y", width: 8, align: "right" },
   { id: "three", label: "PCTL 3Y", width: 8, align: "right" },
   { id: "all", label: "PCTL ALL", width: 9, align: "right" },
-  { id: "asOf", label: "AS OF", width: 10, align: "left" },
+  // The footer dates the report; a market whose latest report is older brings the column back.
+  { id: "asOf", label: "AS OF", width: 10, align: "left", omitWhenSame: true },
 ];
 const POSITION_COLUMNS: DataTableColumn[] = [
   { id: "name", label: "CLASS", width: 20, align: "left" },
