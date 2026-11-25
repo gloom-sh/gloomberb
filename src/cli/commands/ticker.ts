@@ -151,6 +151,7 @@ interface TickerCommandDependencies {
   exchange?: string;
   /** A stock's IPO of the last year with its lock-up news; a failure leaves the IPO section out. */
   listingIpo?: (listing: { symbol: string; exchange?: string | null }) => Promise<TickerIpo | null>;
+  readFundFacts?: (symbol: string) => Promise<FundFactsPayload>;
   initMarketData?: () => Promise<MarketContext>;
   fail?: (message: string, details?: string) => never;
   printResult?: CliCommandContext["printResult"];
@@ -1886,7 +1887,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     // A fund's facts: its bond figures beside its distribution yield, and whether fn ETF has any to point to.
     const fundFacts = loadReportFundFacts(requestSymbol,
       quote?.tradingExchangeName || exchange || quote?.listingExchangeName || quote?.exchangeName || tickerFile?.metadata.exchange,
-      resolvedFinancials, tickerFile);
+      resolvedFinancials, tickerFile, dependencies.readFundFacts);
     const bondFund = fundFacts.then((facts) => facts?.bond ?? null);
     const statementFilings = loadStatementFilings(statementSources, { symbol: requestSymbol, exchange }, {
       quarter: latestFinancialPeriod(resolvedFinancials.quarterlyStatements, (row) => row.date),
