@@ -36,8 +36,6 @@ const PRICE_FIELD_KEYS = [
   "currency",
   "changeSessionDate",
   "open",
-  "high",
-  "low",
   "mark",
   "lastUpdated",
   "receivedAt",
@@ -140,19 +138,6 @@ function sessionConfidenceRank(confidence?: SessionConfidence): number {
     default:
       return 2;
   }
-}
-
-/**
- * What a coin's day range measures, said of the range, so it comes with the
- * provider whose range it is; and whether the service widened it to take in
- * its exchange's price.
- */
-function dayRangeBasis(contributions: readonly QuoteContribution[], resolved: Partial<Quote>): Pick<Quote, "statsBasis" | "rangeWidened"> {
-  const source = contributions.find((quote) => quote.high === resolved.high && quote.low === resolved.low);
-  return {
-    ...(source?.statsBasis ? { statsBasis: source.statsBasis } : {}),
-    ...(source?.rangeWidened ? { rangeWidened: true } : {}),
-  };
 }
 
 function toProvenance(quote: QuoteContribution | undefined): QuoteFieldProvenance | undefined {
@@ -436,6 +421,11 @@ export function resolveCanonicalQuote(
     if (field === "price") continue;
     pickField(resolved, provenance, field, compatiblePriceCandidates);
   }
+  const highProvider = pickField(resolved, provenance, "high", compatiblePriceCandidates);
+  const lowProvider = pickField(resolved, provenance, "low", compatiblePriceCandidates);
+  const rangeProvider = highProvider === lowProvider ? highProvider : undefined;
+  assignField(resolved, provenance, "dayRangeBasis", rangeProvider);
+  assignField(resolved, provenance, "dayRangeSessionDate", rangeProvider);
   const bookProvider = compatiblePriceCandidates.find((candidate) => candidate.bid != null || candidate.ask != null);
   for (const field of ["bid", "ask", "bidSize", "askSize", "bidAskTime"] as const) {
     if (field !== "bidAskTime" || finitePositiveNumber(bookProvider?.bidAskTime)) assignField(resolved, provenance, field, bookProvider);
@@ -526,7 +516,10 @@ export function resolveCanonicalQuote(
     low52w: resolved.low52w as Quote["low52w"],
     // Said of the range, so it comes with the provider whose range it is.
     yearRangeBasis: contributions.find((quote) => quote.high52w === resolved.high52w && quote.low52w === resolved.low52w)?.yearRangeBasis,
-    ...dayRangeBasis(contributions, resolved),
+    dayRangeBasis: resolved.dayRangeBasis,
+    dayRangeSessionDate: resolved.dayRangeSessionDate ?? null,
+    ...(rangeProvider?.statsBasis ? { statsBasis: rangeProvider.statsBasis } : {}),
+    ...(rangeProvider?.rangeWidened ? { rangeWidened: true } : {}),
     // Said of the price, so it comes with it.
     dailyClose: priceProvider?.dailyClose,
     marketCap: resolved.marketCap as Quote["marketCap"],

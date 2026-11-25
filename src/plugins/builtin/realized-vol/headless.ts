@@ -52,11 +52,10 @@ function historySection(model: RealizedVolatilityModel): HeadlessBundleSection {
   })).reverse();
   return {
     title: "History",
-    textTitle: `History, latest ${Math.min(HISTORY_TEXT_SESSIONS, rows.length)} sessions`,
     columns: [{ key: "date", header: "Date" }, ...model.windows.map((window) => ({ key: `hv${window}`, header: `HV${window}`,
       format: (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : MISSING_VALUE }))],
     rows,
-    textRows: rows.slice(0, HISTORY_TEXT_SESSIONS),
+    textPreview: { title: `History, latest ${Math.min(HISTORY_TEXT_SESSIONS, rows.length)} sessions`, limit: HISTORY_TEXT_SESSIONS },
   };
 }
 

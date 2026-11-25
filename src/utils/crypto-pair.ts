@@ -229,6 +229,16 @@ export const MAJOR_COIN_NAMES: ReadonlyMap<string, string> = new Map([
   ["BNB", "BNB"],
 ]);
 
+export function exactCoinNameListing(query: string): { symbol: string; name: string } | null {
+  const name = query.trim().toLowerCase();
+  for (const [code, coin] of MAJOR_COIN_NAMES) {
+    if (coin.toLowerCase() === name && code.toLowerCase() !== name) {
+      return { symbol: `${code}-USD`, name: coin.replace(/\b[a-z]/g, (letter) => letter.toUpperCase()) };
+    }
+  }
+  return null;
+}
+
 /**
  * The largest coins by market value, stablecoins and gold tokens left out, with
  * how a note names each: the coins whose bare ticker a listed company or fund
