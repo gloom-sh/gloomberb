@@ -249,7 +249,7 @@ async function fetchForms13F<T>(
         });
         if (!response.ok) {
           if (isRateLimited(error)) throw error;
-          throw thirteenFSourceError(new ApiRequestError(`Forms13F ${response.status} for ${path}`, response.status));
+          throw thirteenFSourceError(new ApiRequestError(`13F source ${response.status} for ${path}`, response.status));
         }
         value = await response.json() as T;
       }

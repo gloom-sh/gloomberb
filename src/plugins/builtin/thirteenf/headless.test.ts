@@ -530,9 +530,9 @@ describe("13F headless model", () => {
 
       // A ticker with no CUSIP moves on to its holders' books; when that lookup fails, the failure is the answer.
       failure = new ApiRequestError("No 13F CUSIP found for AAPL", 404);
-      holders = "Forms13F 503 for /holders";
+      holders = "13F source 503 for /holders";
       const failed = await load("AAPL");
-      expect(failed.errors).toEqual(["Forms13F 503 for /holders"]);
+      expect(failed.errors).toEqual(["13F source 503 for /holders"]);
       expect(renderHeadlessPaneText(headless, failed, args("auto"), "13F")).not.toContain("matches");
     });
   });
