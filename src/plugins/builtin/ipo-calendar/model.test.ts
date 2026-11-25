@@ -246,7 +246,7 @@ describe("IPO calendar lists", () => {
     expect(ids(filterIpoDeals(board, "all", "", now))).toHaveLength(board.length);
   });
 
-  test("an upcoming deal has no RETURN, a recent listing has one, STATUS says only what differs from the list's own, and each narrows to what its list is about", () => {
+  test("an upcoming deal has no DAY 1 return, a recent listing has one, STATUS says only what differs from the list's own, and each narrows to what its list is about", () => {
     const columnIds = (width: number, list: "upcoming" | "listed") => buildIpoColumns(width, 10, list).map((column) => column.id);
     expect(columnIds(1000, "upcoming")).toEqual(["ticker", "company", "market", "date", "status", "price", "size"]);
     expect(columnIds(1000, "listed")).toEqual(["ticker", "company", "market", "date", "status", "price", "size", "return", "lockup"]);
@@ -265,7 +265,7 @@ describe("IPO calendar lists", () => {
 });
 
 describe("IPO calendar columns", () => {
-  test("a narrowing pane drops SIZE, STATUS, LOCKUP, PRICE, MKT, DATE, then TICKER, keeping COMPANY and RETURN", () => {
+  test("a narrowing pane drops SIZE, STATUS, LOCKUP, PRICE, MKT, DATE, then TICKER, keeping COMPANY and DAY 1", () => {
     const columnIds = (width: number) => buildIpoColumns(width).map((column) => column.id);
     const full: IpoColumnId[] = ["ticker", "company", "market", "date", "status", "price", "size", "return", "lockup"];
     const fullWidth = ipoTableWidth(buildIpoColumns(1000));
@@ -317,7 +317,7 @@ describe("IPO calendar cells", () => {
     expect(ipoDateColumnWidths([near, far], now)).toEqual({ date: 10, lockup: 7 });
   });
 
-  test("RETURN reads the first-day fraction as a signed percent", () => {
+  test("DAY 1 reads the first-day fraction as a signed percent", () => {
     expect(formatIpoReturn(0.164)).toBe("+16.4%");
     expect(formatIpoReturn(-0.05)).toBe("-5.0%");
     expect(formatIpoReturn(-0.0004)).toBe("0.0%");

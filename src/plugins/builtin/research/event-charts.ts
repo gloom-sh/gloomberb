@@ -116,11 +116,14 @@ export interface DividendYear {
   partial: boolean;
   /** Against the year before, as a fraction, when both are whole years with payments. */
   change?: number;
-  /** The splits that went ex in the year, in share terms (`4-for-1`): the amounts before them are on today's shares. */
+  /**
+   * The splits and price adjustments that went ex in the year, as said (`4-for-1 split`, `VYLR spin-off`,
+   * `1253:1000 factor`): the amounts before them are adjusted for them.
+   */
   splits: string[];
 }
 
-/** A split on record, in share terms, by the day it went ex. */
+/** A split or price adjustment on record, by the day it went ex, as a year names it (`4-for-1 split`). */
 export interface SplitMark {
   date: string;
   terms: string;
@@ -130,8 +133,8 @@ export interface SplitMark {
  * The paid history summed by calendar year of ex-date, newest first, from
  * the first payment on. Years without one stay in as a gap, a run of them as
  * one entry (AAPL's 1996-2011), so the paying years keep the room; a year a
- * split went ex in is its own entry, to say so. Amounts are on today's shares,
- * as paid (asPaidDividends undoes a spin-off's price adjustment first).
+ * split or price adjustment went ex in is its own entry, to say so. Amounts are
+ * on today's shares, as the history states them.
  */
 export function dividendYears(dividends: readonly DividendAction[], today: string, splits: readonly SplitMark[] = []): DividendYear[] {
   const byYear = new Map<number, { total: number; special: number; payments: number }>();
@@ -182,12 +185,21 @@ export function dividendYearDetail(year: DividendYear): string {
   const paid = year.total == null
     ? year.fromYear != null ? `no dividend for ${year.year - year.fromYear + 1} years` : "no dividend"
     : year.partial ? "so far" : year.special > 0 ? "incl. special" : null;
-  return [paid, ...year.splits.map((terms) => `${terms} split`)].filter(Boolean).join(" · ");
+  return [paid, ...year.splits].filter(Boolean).join(" · ");
 }
 
-/** The splits among an event list's rows, in share terms, as the Dividends view marks them. */
+/**
+ * The splits and price adjustments among an event list's rows, as the Dividends view marks them. A price adjustment's
+ * mark says the amounts before it are adjusted for it, as they stand in the history.
+ */
 export function splitMarks(rows: readonly EventRow[]): SplitMark[] {
-  return rows.filter((row) => row.status === "Split").map((row) => ({ date: row.date, terms: row.detail }));
+  return rows.flatMap((row) => {
+    if (row.status === "Split") return [{ date: row.date, terms: `${row.detail} split` }];
+    if (row.status === "Spin-off" && row.demerger) {
+      return [{ date: row.date, terms: `${row.demerger.successor.symbol} spin-off, amounts before it adjusted` }];
+    }
+    return row.status === "Factor" ? [{ date: row.date, terms: `${row.value} factor, amounts before it adjusted` }] : [];
+  });
 }
 
 /** How the year reads in the table and under its bar: `2026 YTD`, `1996-2011`, `2025`. */

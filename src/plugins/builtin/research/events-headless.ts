@@ -1,4 +1,3 @@
-import { asPaidDividends } from "../../../market-data/spin-off-adjustments";
 import type { DataProvider } from "../../../types/data-provider";
 import type {
   AnalystResearchData,
@@ -120,7 +119,7 @@ export function createEventsHeadless(
       const summary = buildNextUp(own, { today, fund, statedExDate: data.financials?.fundamentals?.exDividendDate, catalyst });
       const quarters = fund ? [] : earningsQuarters(own, today);
       const quarterRows = quarterTextRows(quarters);
-      const years = dividendYears(asPaidDividends(data.actions?.dividends ?? [], data.actions?.splits), today, splitMarks(own));
+      const years = dividendYears(data.actions?.dividends ?? [], today, splitMarks(own));
       const currency = data.actions?.currency ?? data.currency;
       const digits = Math.min(4, distributionAmountsDigits(years.flatMap((year) => (year.total == null ? [] : [year.total])), currency || "USD"));
       const yearRows = years.map((year) => ({

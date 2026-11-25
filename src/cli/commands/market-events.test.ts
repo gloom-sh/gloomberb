@@ -11,7 +11,7 @@ const events = marketDataCliCommands.find((command) => command.name === "events"
 beforeAll(() => { setSystemTime(new Date("2026-10-15T12:00:00Z")); });
 afterAll(() => { setSystemTime(); });
 
-async function eventRows(earnings: unknown[], actions: { dividends?: unknown[]; splits?: unknown[] } = {}) {
+async function eventRows(earnings: unknown[], actions: { dividends?: unknown[]; splits?: unknown[]; demergers?: unknown[] } = {}) {
   const run = createTestCliContext({
     dataProvider: {
       getCorporateActions: async () => ({ symbol: "PLTR", currency: "USD", dividends: [], splits: [], earnings, ...actions }),
@@ -62,22 +62,30 @@ test("events is dated by when it was read: a row's date is when its event happen
   expect(formatFreshnessLine(result.freshness!)).toMatch(/^Source: Gloom Cloud · retrieved \w{3} \d+ \w{3} \d{4} \d{2}:\d{2} UTC · not a live feed \(corporate actions\)$/);
 });
 
-// `events CTVA` listed its 6665:1000 of 2026-10-01 as a split and the $0.18 dividends before it as $0.027007.
-test("a spin-off's price adjustment is named, the dividends before it are shown as paid, and the EPS it divides says so", async () => {
-  const { rows, result } = await eventRows([
+// `events CTVA` listed its 6665:1000 of 2026-10-01 as a split, and the VYLR demerger on record beside it would make two rows.
+test("a factor on a demerger's ex-date is that spin-off, one row; another in no share terms is a factor; what precedes them is labelled", async () => {
+  const vylor = { exDate: "2026-10-01", recordDate: "2026-09-24", business: "seed", ratio: 1,
+    successor: { symbol: "VYLR", exchange: "NYSE", name: "Vylor Inc.", listedOn: "2026-10-01" } };
+  const factor = { date: "2026-10-01", ratio: 6.665, fromFactor: 1000, toFactor: 6665, description: "6665:1000" };
+  const earnings = [
     { date: "2026-11-11", currency: "USD", epsActual: -0.04, epsEstimate: 0.09 },
     { date: "2026-07-30", currency: "USD", epsActual: 0.345086, epsEstimate: 0.336084 },
-  ], {
-    dividends: [{ exDate: "2026-09-01", amount: 0.027007 }],
-    splits: [{ date: "2026-10-01", ratio: 6.665, fromFactor: 1000, toFactor: 6665, description: "6665:1000" }],
-  });
-  expect(rows.map((row) => `${row.date} ${row.type} ${row.detail}`)).toEqual([
+  ];
+  const dividends = [{ exDate: "2026-09-01", amount: 0.027007 }];
+  const confirmed = await eventRows(earnings, { dividends, splits: [factor], demergers: [vylor] });
+  expect(confirmed.rows.map((row) => `${row.date} ${row.type} ${row.detail}`)).toEqual([
     "2026-11-11 earnings eps -$0.04",
-    "2026-10-01 spin-off price adjustment 6665:1000, not a share split: prices, EPS and dividends before it ÷6.665 at source",
-    "2026-09-01 dividend $0.18 paid ($0.027007 spin-off-adjusted, ÷6.665)",
-    "2026-07-30 earnings eps $0.35, EPS spin-off-adjusted ÷6.665",
+    "2026-10-01 spin-off seed business into VYLR:NYSE (Vylor Inc.), 1 share per share, listed 2026-10-01; price adjustment 6665:1000",
+    "2026-09-01 dividend $0.027007, adjusted for the VYLR spin-off of 2026-10-01 (6665:1000)",
+    "2026-07-30 earnings eps $0.35, EPS adjusted for the VYLR spin-off of 2026-10-01 (6665:1000)",
   ]);
-  // JSON keeps the history's amount, with what was paid beside it.
-  expect(result.data.dividends[0]).toEqual({ exDate: "2026-09-01", amount: 0.027007, paidAmount: 0.18, spinOffDivisor: 6.665 });
-  expect(result.data.splits[0]).toMatchObject({ kind: "spin-off adjustment" });
+  // JSON keeps the history's amount: nothing is multiplied back to a paid figure.
+  expect(confirmed.result.data.dividends[0]).toEqual({ exDate: "2026-09-01", amount: 0.027007 });
+  expect(confirmed.result.data.splits[0]).toMatchObject({ kind: "spin-off adjustment", spinOff: "VYLR" });
+  const unclassified = await eventRows(earnings, { dividends, splits: [factor] });
+  expect(unclassified.rows.map((row) => `${row.date} ${row.type} ${row.detail}`).slice(1, 3)).toEqual([
+    "2026-10-01 adjustment factor 6665:1000, in no share terms",
+    "2026-09-01 dividend $0.027007, adjusted by the 6665:1000 factor of 2026-10-01",
+  ]);
+  expect(unclassified.result.data.splits[0]).toMatchObject({ kind: "adjustment factor" });
 });

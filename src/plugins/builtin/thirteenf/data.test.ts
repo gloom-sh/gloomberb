@@ -514,16 +514,24 @@ test("a prior quarter the service refused says it did not load and when to try a
 
 // Signed out, `fn 13F 0001603466` listed 50 of Point72's first 1,000 lines (issuers A to C) as if its largest, every
 // 13F %, QoQ and Est P&L blank, and said why only in a trailing "loaded 1000 of 3856" error.
-test("a filing read in part for the signed-out cap says so up front, weighs its lines against the filing's own total, and names the quarter it cannot compare", async () => {
-  const spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async (path: string, params: Record<string, unknown>) => {
-    if (path === "/forms") return [filedForm("current", "2026-09-30", 3_856), filedForm("previous", "2026-06-30", 3_923)];
-    if (path !== "/holdings") throw new Error(`unexpected ${path}`);
-    return { rows: holdingRows(String(params.accession_number), 0, 1_000), complete: false };
-  }) as never);
-  setHttpFetchTransport(async (url) => { throw new Error(`unexpected ${url}`); });
-  try {
-    const detail = await loadFundDetail("1603466", "Fund", undefined, { filingGap: false });
-    expect(detail.latestReport?.capped).toEqual({ loaded: 1_000, entries: 3_856 });
+describe("a filing read in part", () => {
+  const load = async (entries: [number, number], answer: (accession: string) => Record<string, unknown>) => {
+    const spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async (path: string, params: Record<string, unknown>) => {
+      if (path === "/forms") return [filedForm("current", "2026-09-30", entries[0]), filedForm("previous", "2026-06-30", entries[1])];
+      if (path !== "/holdings") throw new Error(`unexpected ${path}`);
+      return answer(String(params.accession_number));
+    }) as never);
+    setHttpFetchTransport(async (url) => { throw new Error(`unexpected ${url}`); });
+    try {
+      return await loadFundDetail("1603466", "Fund", undefined, { filingGap: false });
+    } finally {
+      spy.mockRestore();
+    }
+  };
+
+  test("for the signed-out limit, as the service says, says so up front and weighs its lines against the filing's own total", async () => {
+    const detail = await load([3_856, 3_923], (accession) => ({ rows: holdingRows(accession, 0, 1_000), complete: false, signedOutLimit: 1_000 }));
+    expect(detail.latestReport?.capped).toEqual({ loaded: 1_000, entries: 3_856, limit: 1_000 });
     expect(detail.warnings).toEqual([
       "Signed out, Gloom Cloud sends a filing's first 1,000 lines: 30 Sep 2026 is 1,000 of 3,856, in the filing's order, not the largest. Sign in for the whole book.",
       "Signed out, Gloom Cloud sends a filing's first 1,000 lines: 30 Jun 2026 is 1,000 of 3,923, in the filing's order, not the largest. Sign in for the whole book.",
@@ -534,9 +542,23 @@ test("a filing read in part for the signed-out cap says so up front, weighs its 
     const [top] = buildFundHoldingRows(detail).sort((left, right) => (right.value ?? 0) - (left.value ?? 0));
     expect(top).toMatchObject({ value: 1_000, weight: 10, action: "unknown" });
     expect(comparedWith(detail)).toEqual({ value: "2026-06-30", detail: "read in part, sign in for changes", tone: "warning" });
-  } finally {
-    spy.mockRestore();
-  }
+  });
+
+  test("of 1,000 lines the service does not say it cut names no cause, and a whole book still compares its quarters", async () => {
+    const partial = await load([3_856, 3_923], (accession) => ({ rows: holdingRows(accession, 0, 1_000), complete: false }));
+    expect(partial.latestReport?.capped).toBeUndefined();
+    expect(cappedHoldingsText(partial)).toBeNull();
+    expect(partial.warnings).toEqual([
+      "2026-09-30: loaded 1000 of 3856 disclosed entries for current.",
+      "2026-06-30: loaded 1000 of 3923 disclosed entries for previous.",
+    ]);
+    expect(comparedWith(partial)).toEqual({ value: "2026-06-30", detail: "read in part", tone: "warning" });
+    // Both quarters whole: the line one lacks is a buy or a sale, and the quarter is compared.
+    const whole = await load([5, 5], (accession) => ({ rows: holdingRows(accession, accession === "current" ? 1 : 0, 5), complete: true }));
+    expect(hasComparable13FQuarter(whole)).toBe(true);
+    expect(comparedWith(whole)).toEqual({ value: "2026-06-30" });
+    expect(buildFundHoldingRows(whole).map((row) => row.action).sort()).toEqual(["exit", "held", "held", "held", "held", "new"]);
+  });
 });
 
 test("a signed-out limit shows the service's own message, and says how long to wait when it sent none", () => {

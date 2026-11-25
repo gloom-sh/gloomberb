@@ -246,7 +246,9 @@ test("a lone match found only through a word of its description is labelled the 
     const entries = await buildPaneCatalogEntries(registry, context);
     const searched = (query: string) => renderPaneCatalogReport(filterPaneCatalogEntries(entries, query), parsePaneCatalogArgs([query]))
       .replace(/\x1b\[[0-9;]*m/g, "");
-    expect(searched("managers")).toStartWith('Closest match for "managers": no function is named for it.\n\nECO  Economic Calendar');
+    expect(searched("managers")).toStartWith('Closest match for "managers": no function is named for it. Try gloom fn ECO <countries>.\n\nECO  Economic Calendar');
+    // One that takes a ticker leads with it: EVT lists spin-offs, the IPO calendar none.
+    expect(searched("spin-off")).toStartWith('Closest match for "spin-off": no function is named for it. Try gloom fn EVT <ticker>.\n\nEVT  Corporate Actions');
     expect(searched("vix")).toStartWith("VIX  VIX Curve");
   } finally {
     registry.destroy();

@@ -36,7 +36,6 @@ import { useEventData } from "./event-data";
 import { useEventRowDetail } from "./event-detail";
 import { buildEarningsHeader, buildNextUp, formatEventMetric, isFundListing, nextCatalystOf, nextCatalystQuery, type EventSummaryFigure } from "./event-model";
 import { dividendYearDetail, dividendYearLabel, dividendYears, dividendYearSpan, earningsQuarters, splitMarks, type DividendYear, type EarningsQuarter } from "./event-charts";
-import { asPaidDividends } from "../../../market-data/spin-off-adjustments";
 
 type ViewProps = { focused: boolean; width: number; height: number; footerPaneId?: string };
 
@@ -238,9 +237,7 @@ export function EventsDividendsView({ focused, width, height, footerPaneId = "co
   const data = useEventData();
   const { symbol, ticker, today, allRows, actionsData } = data;
   const currency = actionsData?.currency ?? data.currency ?? "";
-  // As paid: a spin-off's price adjustment in the history is undone (asPaidDividends).
-  const years = useMemo(() => dividendYears(asPaidDividends(actionsData?.dividends ?? [], actionsData?.splits), today, splitMarks(allRows)),
-    [actionsData?.dividends, actionsData?.splits, allRows, today]);
+  const years = useMemo(() => dividendYears(actionsData?.dividends ?? [], today, splitMarks(allRows)), [actionsData?.dividends, allRows, today]);
   // A year's total to one count of decimals, at most four: a sum needs no more to compare years by.
   const digits = useMemo(() => Math.min(YEAR_TOTAL_DIGITS,
     distributionAmountsDigits(years.flatMap((year) => (year.total == null ? [] : [year.total])), currency || "USD")), [currency, years]);

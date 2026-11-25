@@ -1,11 +1,12 @@
 import { splitShareTerms } from "../../../market-data/split-terms";
-import { paidDividend, spinOffAdjustment, spinOffAdjustments, spinOffDivisor, spinOffDivisorText } from "../../../market-data/spin-off-adjustments";
+import { adjustedForText, adjustmentsAfter, demergerSuccessor, priceAdjustment, priceAdjustments, publishedDividend } from "../../../market-data/price-adjustments";
 import type { CatalystEvent, CatalystFilters, CatalystResponse } from "../../../api-client/catalysts";
 import { catalystDate } from "../catalysts/model";
 import type {
   AnalystEstimateRecord,
   AnalystResearchData,
   CorporateActionsData,
+  DemergerAction,
   DividendAction,
   EarningsDateStatus,
   FinancialStatement,
@@ -43,7 +44,7 @@ import {
   type EpsBasisName,
 } from "../shared/earnings-report";
 
-export const CORPORATE_ACTION_COVERAGE = "A split-feed factor no share count states is a spin-off's price adjustment: EPS before it is divided by it, as the feed states it, and dividends show what was paid. Merger terms, spin-off distributions, and security conversions are not covered.";
+export const CORPORATE_ACTION_COVERAGE = "A price-adjustment factor is named a spin-off only where the demerger is on record; any other factor in no share terms is shown as a factor. Dividends and EPS before a factor are shown as adjusted for it. Merger terms and security conversions are not covered.";
 
 export type EventStatus = "Earnings" | "Q Est" | "FY Est" | "TTM" | "Dividend" | "Split" | "Spin-off" | "Factor";
 
@@ -103,10 +104,12 @@ export interface EventRow {
   /** A dividend row's payable date, YYYY-MM-DD, where the source states one. */
   payDate?: string;
   /**
-   * A paid dividend's history amount, divided by `divisor` for the spin-offs after its ex-date, where the row's value
-   * is what was paid; an earnings row's EPS divided by `divisor`, as the feed states it (no `amount`).
+   * A paid dividend's or a report's: what the later price adjustments its figures are adjusted for are
+   * ("adjusted for the VYLR spin-off of 2026-10-01 (6665:1000)"). Its value stays as the history states it.
    */
-  spinOffAdjusted?: { amount?: number; value?: string; divisor: number };
+  adjustedFor?: string;
+  /** A spin-off row's demerger on record, which its price-adjustment factor is for. */
+  demerger?: DemergerAction;
   value: string;
   tone: "positive" | "negative" | "muted" | "text";
 }
@@ -419,8 +422,8 @@ export function buildEventRows(
   // company's own EPS is in that currency too: one company's EPS then reads in one unit down the table, and an
   // unlabelled figure nothing else vouches for stays unlabelled.
   const reportedCurrency = feedCurrency && fundamentalsEpsCurrency(financials) === feedCurrency ? feedCurrency : undefined;
-  // The feed divides EPS before a spin-off's price adjustment by it (CTVA's by 6.665 before 2026-10-01): said on the row.
-  const earningsSpinOffs = spinOffAdjustments(data?.splits);
+  // EPS before a price adjustment is adjusted for it (CTVA's before the VYLR spin-off of 2026-10-01): said on the row.
+  const adjustments = priceAdjustments(data?.splits, data?.demergers);
   for (const [index, earning] of earnings.entries()) {
     // A pending announcement must never inherit the previous report's actuals.
     const statement = earning.epsActual == null ? undefined : statementForEarningsDate(quarterlyStatements, earning);
@@ -429,7 +432,7 @@ export function buildEventRows(
     const surpriseNotMeaningful = earning.epsActual != null && isNotMeaningful(surprise);
     const surprisePercent = earning.epsActual == null || surpriseNotMeaningful ? undefined
       : typeof surprise === "number" ? Math.round(surprise * 10_000) / 100 : earning.surprisePercent;
-    const spinOffDivided = earning.epsActual == null && earning.epsEstimate == null ? 1 : spinOffDivisor(earningsSpinOffs, earning.date);
+    const adjustedEps = earning.epsActual == null && earning.epsEstimate == null ? [] : adjustmentsAfter(adjustments, earning.date);
     rows.push({
       id: earningsIds[index]!,
       // An announcement keeps its date beside ERN's; a period-end row moves to its statement's.
@@ -439,9 +442,8 @@ export function buildEventRows(
       // The fiscal quarter, never the time of day ("After Hours"), which the row keeps as reportTime.
       period: fiscalPeriodText(earning.fiscalPeriod ?? statement?.date, fiscalQuarterInYear(earning.fiscalPeriod ?? statement?.date, yearEnd)),
       ...(earning.time?.trim() ? { reportTime: earning.time.trim() } : {}),
-      detail: [upcomingEarningsDetail(earning), spinOffDivided === 1 ? "" : `EPS spin-off-adjusted ${spinOffDivisorText(spinOffDivided)}`]
-        .filter(Boolean).join(", "),
-      ...(spinOffDivided === 1 ? {} : { spinOffAdjusted: { divisor: spinOffDivided } }),
+      detail: [upcomingEarningsDetail(earning), adjustedEps.length ? `EPS ${adjustedForText(adjustedEps, false)}` : ""].filter(Boolean).join(", "),
+      ...(adjustedEps.length ? { adjustedFor: `EPS ${adjustedForText(adjustedEps)}` } : {}),
       epsCurrency: earning.currency ?? (earning.epsActual == null ? feedCurrency : reportedCurrency),
       revenueCurrency: statement ? statement.currency ?? financials?.financialCurrency : undefined,
       qEps: earning.epsActual ?? earning.epsEstimate,
@@ -507,14 +509,13 @@ export function buildEventRows(
 
   const dividendCurrency = data?.currency ?? currency;
   // The paid history is stated on today's shares: an amount before a split or bonus issue on record is that split's.
-  const splitDates = (data?.splits ?? []).filter((split) => splitShareTerms(split)).map((split) => split.date);
-  // A spin-off's adjustment is no share: a dividend before it is shown as paid, the history's amount beside it.
-  const spinOffs = spinOffAdjustments(data?.splits);
+  const splitDates = (data?.splits ?? []).filter((split) => splitShareTerms(split) && !priceAdjustment(split, data?.demergers))
+    .map((split) => split.date);
   for (const dividend of data?.dividends ?? []) {
     const special = dividendSpecial(dividend);
     const adjusted = splitDates.some((date) => date > dividend.exDate);
-    const paid = paidDividend(dividend, spinOffs);
-    const adjustedValue = paid.adjusted == null ? null : formatDistributionAmount(paid.adjusted, dividendCurrency);
+    // One before a price adjustment is as adjusted for it, and says so; a published row stands as published.
+    const adjustedBy = publishedDividend(dividend) ? [] : adjustmentsAfter(adjustments, dividend.exDate);
     rows.push({
       id: `div:${dividend.exDate}`,
       date: dividend.exDate,
@@ -522,12 +523,12 @@ export function buildEventRows(
       period: "",
       // Only what the row does not say already: its date is the ex-date.
       detail: [special, dividend.payDate ? `payable ${dividend.payDate}` : null, adjusted ? "split-adjusted" : null,
-        adjustedValue == null ? null : `${adjustedValue} spin-off-adjusted (${spinOffDivisorText(paid.divisor!)})`,
+        adjustedBy.length ? adjustedForText(adjustedBy, false) : null,
       ].filter(Boolean).join(", "),
       ...(special === "special" ? { special: true as const } : {}),
       ...(dividend.payDate ? { payDate: dividend.payDate } : {}),
-      ...(adjustedValue == null ? {} : { spinOffAdjusted: { amount: paid.adjusted!, value: adjustedValue, divisor: paid.divisor! } }),
-      value: formatDistributionAmount(paid.amount, dividendCurrency),
+      ...(adjustedBy.length ? { adjustedFor: adjustedForText(adjustedBy) } : {}),
+      value: formatDistributionAmount(dividend.amount, dividendCurrency),
       // An amount is no gain or loss: it takes no tone.
       tone: "text",
     });
@@ -553,16 +554,18 @@ export function buildEventRows(
 
   for (const split of data?.splits ?? []) {
     // A factor of whole share counts is a split, said in its terms (DBS's bonus issue: 11-for-10, 1 new share for
-    // every 10 held); one that lowers the price by a factor no share count states is a spin-off's price adjustment
-    // (CTVA's 6665:1000); any other says no more than that.
-    const terms = splitShareTerms(split);
-    const spinOff = terms ? null : spinOffAdjustment(split);
+    // every 10 held). One on a demerger's ex-date is that spin-off's price adjustment (CTVA's 6665:1000, VYLR's), one
+    // row for both; any other says no more than that it is a factor.
+    const adjustment = priceAdjustment(split, data?.demergers);
+    const demerger = adjustment?.demerger;
+    const terms = adjustment ? null : splitShareTerms(split);
     rows.push({
       id: `split:${split.date}:${split.description ?? ""}`,
       date: split.date,
-      status: terms ? "Split" : spinOff ? "Spin-off" : "Factor",
+      status: demerger ? "Spin-off" : terms ? "Split" : "Factor",
       period: "",
-      detail: terms ?? (spinOff ? `Price adjustment, not a share split: earlier prices, EPS and dividends ${spinOffDivisorText(spinOff.factor)} at source` : "Split/adjustment"),
+      detail: demerger ? spinOffDetail(demerger) : terms ?? "Split/adjustment",
+      ...(demerger ? { demerger } : {}),
       providerDescription: split.description,
       adjustmentFactor: split.fromFactor && split.toFactor ? split.toFactor / split.fromFactor : split.ratio,
       value: split.fromFactor && split.toFactor
@@ -744,9 +747,9 @@ export function buildNextUp(rows: readonly EventRow[], options: NextUpOptions): 
       ...detailForms([declared.value, declared.special ? "special" : null, daysAhead(today, declared.date)], [declared.value, daysAhead(today, declared.date)], [declared.value]) });
   } else if (stated && stated >= today && (!latestPaid || stated > latestPaid.date)) {
     figures.push({ id: "next-ex", label: "Next ex", value: date(stated),
-      ...detailForms([daysAhead(today, stated), latestPaid ? `last paid ${latestPaid.value}` : null], [daysAhead(today, stated)]) });
+      ...detailForms([daysAhead(today, stated), latestPaid ? `last paid ${paidValue(latestPaid)}` : null], [daysAhead(today, stated)]) });
   } else if (latestPaid) {
-    figures.push({ id: "last-ex", label: "Last ex", value: date(latestPaid.date), detail: latestPaid.value });
+    figures.push({ id: "last-ex", label: "Last ex", value: date(latestPaid.date), detail: paidValue(latestPaid) });
   }
   if (options.catalyst && !options.fund) {
     // A source can date a catalyst to its month or year only (a trial's completion): it is said that way.
@@ -765,6 +768,17 @@ export function forwardEstimates(rows: readonly EventRow[]): { quarters: EventRo
     quarters: rows.filter((row) => row.status === "Q Est").sort(byDate),
     years: rows.filter((row) => row.status === "FY Est").sort(byDate),
   };
+}
+
+/** A paid row's amount, said to be adjusted where a later price adjustment changed it: "$0.027007 (adjusted)". */
+function paidValue(row: EventRow): string {
+  return row.adjustedFor ? `${row.value} (adjusted)` : row.value;
+}
+
+/** A spin-off row's detail: "Seed business into VYLR:NYSE (Vylor Inc.), 1 share per share". */
+function spinOffDetail(demerger: DemergerAction): string {
+  const what = demerger.business ? `${demerger.business.charAt(0).toUpperCase()}${demerger.business.slice(1)} business into` : "Into";
+  return [`${what} ${demergerSuccessor(demerger)}`, demerger.ratio ? `${demerger.ratio} share per share` : null].filter(Boolean).join(", ");
 }
 
 /** Statuses that are corporate actions, not earnings: EE's header leaves them out. */

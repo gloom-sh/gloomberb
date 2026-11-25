@@ -1,13 +1,15 @@
 import type { DemergerAction, SplitAction } from "../types/financials";
 import { splitShareTerms } from "../market-data/split-terms";
-import { spinOffAdjustments, spinOffDivisor, spinOffDivisorText, type SpinOffAdjustment } from "../market-data/spin-off-adjustments";
+import { demergerSuccessor, priceAdjustment, priceAdjustments, type PriceAdjustment } from "../market-data/price-adjustments";
 
 /** The flag a bar takes when a business was demerged out of the listing at it. */
 export const DEMERGER_FLAG = "demerger";
 /** The flag the bar a split took effect in takes: the first in post-split shares. */
 export const SPLIT_FLAG = "split";
-/** The flag the bar a spin-off's price adjustment took effect in takes: the first the source did not divide by it. */
+/** The flag the bar a spin-off's price adjustment took effect in takes, where the bars before it are adjusted for it. */
 export const SPIN_OFF_FLAG = "spin-off";
+/** The flag the bar an adjustment factor no action on record explains took effect in takes. */
+export const ADJUSTMENT_FLAG = "adjustment";
 
 /**
  * A close this far below the one before can be a business leaving the line
@@ -32,13 +34,6 @@ export function hasPriceBreak(rows: readonly Pick<DemergerRow, "close">[]): bool
     previous = row.close;
   }
   return false;
-}
-
-/** The demerger of `--json` and the note: "TMCV:NSE (Tata Motors Limited)". */
-export function demergerSuccessor(action: Pick<DemergerAction, "successor">): string {
-  const { symbol, exchange, name } = action.successor;
-  const key = exchange ? `${symbol}:${exchange}` : symbol;
-  return name ? `${key} (${name})` : key;
 }
 
 /**
@@ -70,17 +65,17 @@ function actionBarIndex(rows: readonly DemergerRow[], exDate: string, barBefore:
  * 1-for-150 reverse on 2026-07-24), as `history` marks it beside the note
  * naming it, and those splits, oldest first, each with whether a bar comes
  * before its own: a weekly or monthly bar holds the split anywhere in its
- * period, the last one too. A factor no share count states is left to the
- * demerger flag.
+ * period, the last one too. A factor no share count states, or one a
+ * demerger's ex-date explains, is a price adjustment (withPriceAdjustmentFlags).
  */
-export function withSplitFlags<Row extends DemergerRow>(rows: readonly Row[], splits: readonly SplitAction[]): {
+export function withSplitFlags<Row extends DemergerRow>(rows: readonly Row[], splits: readonly SplitAction[], demergers: readonly DemergerAction[] = []): {
   rows: Row[];
   splits: Array<{ split: SplitAction; barBefore: boolean }>;
 } {
   const marked = [...rows];
   const flagged: Array<{ split: SplitAction; barBefore: boolean }> = [];
   for (const split of [...splits].sort((left, right) => left.date.localeCompare(right.date))) {
-    if (!/^\d{4}-\d{2}-\d{2}/.test(split.date) || !splitShareTerms(split)) continue;
+    if (!/^\d{4}-\d{2}-\d{2}/.test(split.date) || !splitShareTerms(split) || priceAdjustment(split, demergers)) continue;
     const index = actionBarIndex(marked, split.date.slice(0, 10), false);
     if (index < 0) continue;
     const row = marked[index]!;
@@ -91,73 +86,81 @@ export function withSplitFlags<Row extends DemergerRow>(rows: readonly Row[], sp
   return { rows: marked, splits: flagged };
 }
 
-/** A spin-off adjustment that divides bars in a history: at the bar flagged for it, or after the last (`at` null). */
-export interface BarsSpinOff {
-  adjustment: SpinOffAdjustment;
+/** A price adjustment the bars in a history come before: at the bar flagged for it, or after the last (`at` null). */
+export interface BarsAdjustment {
+  adjustment: PriceAdjustment;
   at: string | null;
 }
 
 /**
- * The rows with the bar each spin-off's price adjustment took effect in
- * flagged `spin-off` (CTVA's 6.665 on 2026-10-01), and every adjustment that
- * divides any of them, oldest first: the source divides the prices before it
- * (and multiplies the volume), so one after the last bar divides them all.
+ * Whether the bars fall across `index` by the factor, as bars that traded
+ * through the adjustment do: the close there nearer the one before divided by
+ * the factor than the one before itself. Bars adjusted for it run on.
  */
-export function withSpinOffFlags<Row extends DemergerRow>(rows: readonly Row[], splits: readonly SplitAction[]): {
-  rows: Row[];
-  spinOffs: BarsSpinOff[];
-} {
-  const marked = [...rows];
-  const spinOffs: BarsSpinOff[] = [];
-  const first = rows[0]?.date.slice(0, 10);
-  if (!first) return { rows: marked, spinOffs };
-  for (const adjustment of spinOffAdjustments(splits)) {
-    if (adjustment.date <= first) continue;
-    const index = actionBarIndex(marked, adjustment.date, true);
-    if (index < 0) {
-      // Past the last bar: every bar shown is divided by it.
-      if (adjustment.date > rows.at(-1)!.date.slice(0, 10)) spinOffs.push({ adjustment, at: null });
-      continue;
-    }
-    const row = marked[index]!;
-    const codes = (row.flag ?? "").split(",").filter(Boolean);
-    if (!codes.includes(SPIN_OFF_FLAG)) marked[index] = { ...row, flag: [...codes, SPIN_OFF_FLAG].join(",") };
-    spinOffs.push({ adjustment, at: row.date });
-  }
-  return { rows: marked, spinOffs };
-}
-
-/** A divided close multiplied back: to the cent where the divided figure's rounding allows (11.65041 × 6.665 is 77.65). */
-function undividedPrice(close: number, divisor: number, price: (value: number) => string): string {
-  const value = close * divisor;
-  const cents = Math.round(value * 100) / 100;
-  return Math.abs(value - cents) <= 1e-5 * divisor ? cents.toFixed(2) : price(value);
+function showsFactorFall(rows: readonly DemergerRow[], index: number, factor: number): boolean {
+  const before = rows.slice(0, index).findLast((row) => row.close != null && row.close > 0)?.close;
+  const at = rows[index]?.close;
+  if (before == null || at == null || !(at > 0)) return false;
+  const move = Math.log(at / before);
+  return Math.abs(move + Math.log(factor)) < Math.abs(move);
 }
 
 /**
- * "On 2026-10-01 CTVA's bars take a spin-off's price adjustment, not a share
- * split: prices before it are divided by 6.665 and volumes multiplied by it at
- * source, so they are not the prices that traded (the 2026-09-30 close, 11.65041
- * here, is 77.65 before the adjustment) (flag spin-off)". Null without one.
+ * The rows with the bar each price adjustment took effect in flagged, and
+ * every adjustment the bars come before, oldest first. A spin-off's
+ * (CTVA's 6665:1000 of 2026-10-01, VYLR's) is flagged `spin-off`, any other
+ * factor `adjustment`. Bars that fall by the factor across it traded through
+ * it unadjusted, and are left to the demerger flag; one after the last bar
+ * comes after them all.
  */
-export function historySpinOffNote(
-  symbol: string,
-  rows: readonly DemergerRow[],
-  spinOffs: readonly BarsSpinOff[],
-  price: (value: number) => string,
-): string | null {
-  if (spinOffs.length === 0) return null;
-  const adjustments = spinOffs.map(({ adjustment }) => adjustment);
-  const parts = spinOffs.map(({ adjustment, at }) => {
-    const index = at == null ? rows.length : rows.findIndex((row) => row.date === at);
-    const before = rows.slice(0, index).findLast((row) => row.close != null && row.close > 0);
-    const divided = spinOffDivisorText(adjustment.factor).slice(1);
-    const close = before?.close != null
-      ? ` (the ${before.date.slice(0, 10)} close, ${price(before.close)} here, is ${undividedPrice(before.close, spinOffDivisor(adjustments, before.date), price)} before the adjustment)`
-      : "";
+export function withPriceAdjustmentFlags<Row extends DemergerRow>(
+  rows: readonly Row[],
+  splits: readonly SplitAction[],
+  demergers: readonly DemergerAction[],
+): { rows: Row[]; adjustments: BarsAdjustment[] } {
+  const marked = [...rows];
+  const adjustments: BarsAdjustment[] = [];
+  const first = rows[0]?.date.slice(0, 10);
+  if (!first) return { rows: marked, adjustments };
+  for (const adjustment of priceAdjustments(splits, demergers)) {
+    if (adjustment.date <= first) continue;
+    const index = actionBarIndex(marked, adjustment.date, true);
+    if (index < 0) {
+      if (adjustment.date > rows.at(-1)!.date.slice(0, 10)) adjustments.push({ adjustment, at: null });
+      continue;
+    }
+    if (showsFactorFall(marked, index, adjustment.factor)) continue;
+    const flag = adjustment.demerger ? SPIN_OFF_FLAG : ADJUSTMENT_FLAG;
+    const row = marked[index]!;
+    const codes = (row.flag ?? "").split(",").filter(Boolean);
+    if (!codes.includes(flag)) marked[index] = { ...row, flag: [...codes, flag].join(",") };
+    adjustments.push({ adjustment, at: row.date });
+  }
+  return { rows: marked, adjustments };
+}
+
+/**
+ * What the bars before each price adjustment are: "On 2026-10-01 the seed
+ * business was spun off into VYLR:NYSE (Vylor Inc.), 1 share per share:
+ * CTVA's bars before it are adjusted for it (6665:1000), so they are not the
+ * prices that traded then (flag spin-off)". A factor no action on record
+ * explains says only that the bars before it may be adjusted by it. Null
+ * without one.
+ */
+export function historyAdjustmentNote(symbol: string, adjustments: readonly BarsAdjustment[]): string | null {
+  if (adjustments.length === 0) return null;
+  const parts = adjustments.map(({ adjustment, at }) => {
+    const { demerger, terms, date } = adjustment;
+    if (demerger) {
+      const what = demerger.business ? `the ${demerger.business} business was spun off` : "a business was spun off";
+      const ratio = demerger.ratio ? `, ${demerger.ratio} share per share` : "";
+      return at == null
+        ? `${symbol}'s bars here come before the ${demergerSuccessor(demerger)} spin-off of ${date} and are adjusted for it (${terms}), so they are not the prices that traded then`
+        : `On ${date} ${what} into ${demergerSuccessor(demerger)}${ratio}: ${symbol}'s bars before it are adjusted for it (${terms}), so they are not the prices that traded then (flag ${SPIN_OFF_FLAG})`;
+    }
     return at == null
-      ? `${symbol}'s bars here are divided by ${divided} and their volumes multiplied by it at source, for a spin-off's price adjustment on ${adjustment.date} (not a share split), so they are not the prices that traded${close}`
-      : `On ${adjustment.date} ${symbol}'s bars take a spin-off's price adjustment, not a share split: prices before it are divided by ${divided} and volumes multiplied by it at source, so they are not the prices that traded${close} (flag ${SPIN_OFF_FLAG})`;
+      ? `${symbol}'s bars here come before a ${terms} adjustment factor of ${date} in no share terms, which no action on record explains, and may be adjusted by it`
+      : `On ${date} ${symbol} has a ${terms} adjustment factor in no share terms, which no action on record explains: bars before it may be adjusted by it (flag ${ADJUSTMENT_FLAG})`;
   });
   return `${parts.join("; ")}.`;
 }

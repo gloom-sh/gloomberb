@@ -80,8 +80,23 @@ function precedingQuarterInputs(
 }
 
 /**
+ * Whether the three quarters before a year's end sum to more revenue than the
+ * year itself, for a year with revenue above zero: the year and the quarters
+ * are not one measure (VYLR's carve-out year of 10.07B beside nine months of
+ * its former parent's scope), and no fourth quarter is their difference, in
+ * revenue or in any other flow.
+ */
+function threeQuartersExceedYear(quarterlyStatements: readonly FinancialStatement[], annualStatement: FinancialStatement): boolean {
+  const year = statementNumber(annualStatement, "totalRevenue");
+  if (year === null || !(year > 0)) return false;
+  const quarters = precedingQuarterInputs(quarterlyStatements, annualStatement, "totalRevenue");
+  return quarters.length === 3 && quarters.reduce((sum, quarter) => sum + quarter.value, 0) > year;
+}
+
+/**
  * Completes additive fiscal Q4 flows from the annual total and three reported
- * quarters. EPS and weighted-average shares require reported quarter values;
+ * quarters, never from quarters of another measure than the year
+ * (threeQuartersExceedYear). EPS and weighted-average shares require reported quarter values;
  * neither is an additive flow. Snapshots come from the annual balance sheet. Derived
  * values become available only after the annual total and every quarterly
  * input used in the derivation are public.
@@ -97,8 +112,9 @@ export function deriveQuarterlyStatements(
     let target: InternalStatement = byDate.get(annualStatement.date) ?? { date: annualStatement.date, currency: annualStatement.currency };
     if (target.currency !== annualStatement.currency) continue;
     let changed = false;
+    const comparable = !threeQuartersExceedYear(mergedQuarterly, annualStatement);
 
-    for (const field of QUARTERLY_FLOW_FIELDS) {
+    for (const field of comparable ? QUARTERLY_FLOW_FIELDS : []) {
       // A line unavailable for the fourth quarter stays a gap: the full year
       // minus the other quarters would recreate the value a source withheld.
       if (hasStatementGap(target, field) || mergedQuarterly.some((statement) => (

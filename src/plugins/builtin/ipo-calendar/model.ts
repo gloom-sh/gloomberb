@@ -167,7 +167,7 @@ export function marketsBehind(
 }
 
 /** The market a venue answers to: "UK" for XLON; a venue not named yet reads as its MIC. */
-export function ipoMarketName(mic: string): string {
+function ipoMarketName(mic: string): string {
   return MARKETS[mic]?.market ?? mic;
 }
 
@@ -423,7 +423,8 @@ const IPO_COLUMNS: readonly IpoColumn[] = [
   { id: "price", label: "PRICE", width: 14, align: "right", mayBeBlank: true },
   // "$218.82M". A deal's size comes with its terms and its return with its first day: an upcoming one has neither.
   { id: "size", label: "SIZE", width: 8, align: "right", mayBeBlank: true },
-  { id: "return", label: "RETURN", width: 8, align: "right", mayBeBlank: true },
+  // The first day's return from the offer, never one since: the detail says that apart.
+  { id: "return", label: "DAY 1", width: 8, align: "right", mayBeBlank: true },
   // A US IPO's estimated lock-up end, "~2 Nov", as `fn IPO` lists it; sized to the board's (ipoDateColumnWidths).
   { id: "lockup", label: "LOCKUP", width: 7, align: "left", mayBeBlank: true },
 ];
@@ -449,7 +450,7 @@ export function ipoListStatus(deal: IpoDeal, list: IpoList | null | undefined, n
 }
 
 /**
- * What a narrow pane gives up first, so COMPANY and RETURN stay. SIZE is
+ * What a narrow pane gives up first, so COMPANY and DAY 1 stay. SIZE is
  * only filled once terms are out, STATUS follows from the calendar's order,
  * the date and a return, the lock-up estimate goes before the price, and MKT
  * before the date a deal lists on.

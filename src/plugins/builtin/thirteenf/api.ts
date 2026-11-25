@@ -472,11 +472,28 @@ function mapHoldings(raw: unknown): ThirteenFHoldingRecord[] {
   return arrayResponse(raw).map(mapHolding).filter((holding): holding is ThirteenFHoldingRecord => !!holding);
 }
 
+/**
+ * A filing's information table as read: its rows, and when Gloom Cloud's
+ * limit for a reader who is not signed in cut it short, that limit (the
+ * first 1,000 lines, in the filing's order). Absent when the answer says
+ * nothing of it, whatever the count: a short read is not by itself that cut.
+ */
+export interface FilingHoldings {
+  rows: ThirteenFHoldingRecord[];
+  signedOutLimit?: number;
+}
+
 /** A filing's whole information table as Gloom Cloud sends it in one answer. */
 function filingRows(raw: unknown): ThirteenFHoldingRecord[] {
   const rows = asRecord(raw).rows;
   if (!Array.isArray(rows)) throw new Error("13F filing answer has no rows");
   return mapHoldings(rows);
+}
+
+function filingHoldings(raw: unknown): FilingHoldings {
+  const rows = filingRows(raw);
+  const limit = asRecord(raw).signedOutLimit;
+  return typeof limit === "number" && Number.isSafeInteger(limit) && limit > 0 && rows.length >= limit ? { rows, signedOutLimit: limit } : { rows };
 }
 
 export interface FilingHoldingsOptions extends Forms13FReadOptions {
@@ -499,9 +516,9 @@ export async function listThirteenFFormHoldings(
   accessionNumber: string,
   signal?: AbortSignal,
   options: FilingHoldingsOptions = {},
-): Promise<ThirteenFHoldingRecord[]> {
+): Promise<FilingHoldings> {
   const { entries, onFirstRows, ...readOptions } = options;
-  if (wholeFilingsMissing) return listPagedHoldings(cik, accessionNumber, signal, readOptions);
+  if (wholeFilingsMissing) return { rows: await listPagedHoldings(cik, accessionNumber, signal, readOptions) };
   // The count lets a filing the service has not stored yet be read in fewer requests.
   const params = {
     cik: normalizeCik(cik),
@@ -522,13 +539,13 @@ export async function listThirteenFFormHoldings(
     }, FIRST_ROWS_AFTER_MS);
   }
   try {
-    return filingRows(await whole);
+    return filingHoldings(await whole);
   } catch (error) {
     signal?.throwIfAborted();
     const missing = error instanceof ApiRequestError && error.status === 404;
     if (!missing && !isNetworkFailure(error)) throw error;
     if (missing) wholeFilingsMissing = true;
-    return listPagedHoldings(cik, accessionNumber, signal, readOptions);
+    return { rows: await listPagedHoldings(cik, accessionNumber, signal, readOptions) };
   } finally {
     answered = true;
     clearTimeout(timer);

@@ -700,9 +700,6 @@ export function estimateFilingQuarterReturn(data: FundDetailData, splits: SplitF
   return { percent: base > 0 ? (pnl / base) * 100 : null, splits: adjusted, skipped, skippedShare: skipped.length && book > 0 ? left / book : null };
 }
 
-/** The lines of a filing Gloom Cloud sends a reader who is not signed in: the first, in the filing's order. */
-export const SIGNED_OUT_FILING_ROWS = 1_000;
-
 export function hasComparable13FQuarter(data: FundDetailData): boolean {
   if (data.latestReport?.complete === false || data.previousReport?.complete === false) return false;
   // Until both quarters are in whole, a line one of them lacks is not a buy or a sale.
@@ -737,10 +734,13 @@ export function comparedWith(data: FundDetailData | null | undefined): {
   if (data?.loading && hasComparable13FQuarter({ ...data, loading: undefined })) {
     return { value: data.previousForm!.periodOfReport, tone: "muted" };
   }
-  // On file, but a quarter loaded only its first lines (signed out): no change can be told from a line left unread.
-  if (data && !data.loading && (data.latestReport?.capped || data.previousReport?.capped)
+  // On file, but a quarter loaded in part: no change can be told from a line left unread. Signing in reads the rest
+  // only where the signed-out limit is what cut it.
+  const partial = [data?.latestReport, data?.previousReport].filter((report) => report?.complete === false);
+  if (data && !data.loading && partial.length > 0 && data.latestReport && data.previousReport
     && adjacentQuarterPeriods(data.latestForm?.periodOfReport, data.previousForm?.periodOfReport)) {
-    return { value: data.previousForm!.periodOfReport, detail: "read in part, sign in for changes", tone: "warning" };
+    const signIn = partial.every((report) => report!.capped);
+    return { value: data.previousForm!.periodOfReport, detail: signIn ? "read in part, sign in for changes" : "read in part", tone: "warning" };
   }
   return { value: "No prior quarter", tone: "muted" };
 }

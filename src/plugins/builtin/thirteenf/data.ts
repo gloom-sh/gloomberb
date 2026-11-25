@@ -21,7 +21,6 @@ import { cappedReadText } from "./report-notes";
 import {
   amendmentKind,
   buildBrowserRows,
-  SIGNED_OUT_FILING_ROWS,
   filingGapFor,
   estimateFilingQuarterReturn,
   hasComparable13FQuarter,
@@ -719,25 +718,26 @@ export async function loadFundDetail(
   async function loadReport(report: ThirteenFPeriodReport | undefined, onFirstRows?: (rows: ThirteenFHoldingRecord[]) => void): Promise<ThirteenFHoldingRecord[]> {
     if (!report) return [];
     // An amended period's filings are read at once: the original and each of its additions.
-    const filings = await Promise.all(report.filings.map((form, index) => listThirteenFFormHoldings(cik, form.accessionNumber, signal, {
+    const read = await Promise.all(report.filings.map((form, index) => listThirteenFFormHoldings(cik, form.accessionNumber, signal, {
       ...apiOptions,
       entries: form.tableEntryTotal,
       ...(index === 0 && onFirstRows ? { onFirstRows } : {}),
     })));
-    // Signed out, Gloom Cloud sends a filing's first SIGNED_OUT_FILING_ROWS lines: the report's totals stand, and it says so.
+    const filings = read.map((filing) => filing.rows);
+    // Cut to its first lines by the signed-out limit, as the answer says: the report's totals stand, and it says so up
+    // front. A filing short for any other reason says how much loaded, and names no cause.
     const reconciled = report.complete;
     const short = report.filings.flatMap((form, index) => (
-      form.tableEntryTotal != null && filings[index]!.length !== form.tableEntryTotal ? [{ form, rows: filings[index]! }] : []));
-    const capped = reconciled && short.length > 0
-      && short.every(({ form, rows }) => rows.length === SIGNED_OUT_FILING_ROWS && form.tableEntryTotal! > rows.length);
+      form.tableEntryTotal != null && filings[index]!.length !== form.tableEntryTotal ? [{ form, read: read[index]! }] : []));
+    const limit = short.length > 0 && short.every(({ read }) => read.signedOutLimit != null) ? short[0]!.read.signedOutLimit! : null;
     if (short.length) report.complete = false;
-    if (capped) {
+    if (reconciled && limit != null) {
       const loaded = filings.reduce((sum, rows) => sum + rows.length, 0);
-      report.capped = { loaded, entries: report.tableEntryTotal ?? loaded };
+      report.capped = { loaded, entries: report.tableEntryTotal ?? loaded, limit };
       warnings.push(cappedReadText(report));
     } else {
-      for (const { form, rows } of short) {
-        warnings.push(`${report.periodOfReport}: loaded ${rows.length} of ${form.tableEntryTotal} disclosed entries for ${form.accessionNumber}.`);
+      for (const { form, read } of short) {
+        warnings.push(`${report.periodOfReport}: loaded ${read.rows.length} of ${form.tableEntryTotal} disclosed entries for ${form.accessionNumber}.`);
       }
     }
     if (!report.complete && !report.capped && !warnings.some((warning) => warning.startsWith(report.periodOfReport))) {

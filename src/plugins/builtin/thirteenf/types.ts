@@ -188,11 +188,11 @@ export interface ThirteenFPeriodReport {
   tableValueTotal: number | null;
   tableEntryTotal: number | null;
   /**
-   * The report reconciles, but only its filings' first lines loaded, as Gloom
-   * Cloud sends them to a reader not signed in (SIGNED_OUT_FILING_ROWS): its
-   * totals stand, its lines do not all. `complete` is false.
+   * The report reconciles, but Gloom Cloud's limit for a reader not signed in
+   * (`limit`, its first lines in the filing's order) cut its filings short, as
+   * its answers say: its totals stand, its lines do not all. `complete` is false.
    */
-  capped?: { loaded: number; entries: number };
+  capped?: { loaded: number; entries: number; limit: number };
 }
 
 export type HoldingAction = "held" | "new" | "add" | "trim" | "exit" | "unknown";

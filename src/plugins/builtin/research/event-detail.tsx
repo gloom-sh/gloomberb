@@ -13,7 +13,7 @@ import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery } from "../../../market-data/hooks";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { mayBeUsEquityTicker } from "../../../utils/sec";
-import { spinOffDivisorText } from "../../../market-data/spin-off-adjustments";
+import { demergerSuccessor } from "../../../market-data/price-adjustments";
 import {
   documentContentKey,
   formatCompactDocumentLabel,
@@ -201,20 +201,27 @@ export function buildEventDetail({
       detailRow("Ex-date", row.date),
       ...(row.payDate ? [detailRow("Payable", row.payDate)] : []),
       detailRow("Per share", row.value, [row.declared ? "declared" : null, row.special ? "special" : null].filter(Boolean).join(", ") || undefined),
-      // As paid, where the history divides it by a later spin-off's price adjustment (CTVA's 6.665).
-      ...(row.spinOffAdjusted?.value
-        ? [detailRow("Spin-off-adjusted", row.spinOffAdjusted.value, spinOffDivisorText(row.spinOffAdjusted.divisor))]
-        : []),
+      // What a later price adjustment (CTVA's for the VYLR spin-off) did to the amount, which stays as the history states it.
+      ...(row.adjustedFor ? [detailRow("Basis", row.adjustedFor)] : []),
       // The paid history is stated on today's shares; a declared amount is as declared.
-      ...(row.declared ? [] : [detailNote("Per share as the shares stand today: an amount paid before a later split or bonus issue is adjusted for it; one before a spin-off is as paid.")]),
+      ...(row.declared ? [] : [detailNote("Per share as the shares stand today: an amount paid before a later split, bonus issue or price adjustment is adjusted for it.")]),
     ] }];
   }
 
   const sections: EventDetailSection[] = [];
   const summary = eventSummaryLine(row);
   if (summary) sections.push({ title: "Summary", blocks: [{ kind: "prose", text: summary }] });
-  if ((row.status === "Factor" || row.status === "Spin-off") && row.providerDescription) {
-    sections.push({ title: row.status === "Spin-off" ? "Spin-off adjustment" : "Split/adjustment factor", blocks: [detailRow("Description", row.providerDescription)] });
+  if (row.status === "Spin-off" && row.demerger) {
+    const { demerger } = row;
+    sections.push({ title: "Spin-off", blocks: [
+      detailRow("Into", demergerSuccessor(demerger)),
+      ...(demerger.ratio ? [detailRow("Shares", `${demerger.ratio} per share held`)] : []),
+      ...(demerger.recordDate ? [detailRow("Record date", demerger.recordDate)] : []),
+      detailRow("Listed", demerger.successor.listedOn ?? "not yet"),
+      detailRow("Price adjustment", row.value),
+    ] });
+  } else if (row.status === "Factor" && row.providerDescription) {
+    sections.push({ title: "Split/adjustment factor", blocks: [detailRow("Description", row.providerDescription)] });
   }
   if (row.status !== "Earnings") return sections;
 
@@ -231,6 +238,8 @@ export function buildEventDetail({
         row.epsActual == null && row.epsBasis === "adjusted" ? "adjusted" : null].filter(Boolean).join(", ") || undefined),
   ];
   if (row.epsDifference != null) comparison.push(detailRow("Difference", earningsInput(row.epsDifference, row.epsCurrency)));
+  // Both figures as the history states them after a later price adjustment (CTVA's for the VYLR spin-off).
+  if (row.adjustedFor) comparison.push(detailRow("Basis", row.adjustedFor));
   if (row.surpriseNotMeaningful) {
     comparison.push(detailRow("Surprise", NOT_MEANINGFUL_TEXT, "against a loss or zero estimate"));
   } else if (row.surprisePercent != null) {

@@ -1357,18 +1357,18 @@ test("a share's fall on a demerger's ex-date is flagged, said, and no drawdown i
   const demerger = { exDate: "2025-10-14", recordDate: "2025-10-14", business: "commercial vehicles", ratio: 1,
     successor: { symbol: "TMCV", exchange: "NSE", name: "Tata Motors Limited", listedOn: "2025-11-12" } };
   let actionsRead = 0;
-  const provider = (demergers: typeof demerger[]) => createTestDataProvider({
+  const provider = (demergers: typeof demerger[], splits: unknown[]) => createTestDataProvider({
     getQuote: async () => createTestQuote({ symbol: "TMPV", currency: "INR", listingExchangeName: "NSE", exchangeName: "NSE", instrumentType: "EQUITY" }),
     getDetailedPriceHistoryWithMetadata: async () => ({
       resolution: "1d", points: closes.map(([date, close]) => ({ date: new Date(date), open: close, high: close, low: close, close, volume: 1 })),
     }),
     getCorporateActions: async () => {
       actionsRead++;
-      return { symbol: "TMPV", dividends: [], splits: [], earnings: [], demergers };
+      return { symbol: "TMPV", dividends: [], splits, earnings: [], demergers };
     },
   });
-  const run = async (demergers: typeof demerger[]) => {
-    const cli = createTestCliContext({ config: createDefaultConfig("/tmp/gloom-history-demerger-fixture"), dataProvider: provider(demergers) });
+  const run = async (demergers: typeof demerger[], splits: unknown[] = []) => {
+    const cli = createTestCliContext({ config: createDefaultConfig("/tmp/gloom-history-demerger-fixture"), dataProvider: provider(demergers, splits) });
     await history.execute(["TMPV:NSE", "--from", "2025-10-08", "--to", "2025-10-16"], cli.context);
     return cli.printed[0]!;
   };
@@ -1384,7 +1384,11 @@ test("a share's fall on a demerger's ex-date is flagged, said, and no drawdown i
   // With none on record the bars stand as served: the fall is no demerger the app can name.
   const none = await run([]);
   expect((none.result.data as Array<{ flag: string | null }>).every((row) => row.flag == null)).toBe(true);
-  expect(actionsRead).toBe(2);
+  // A factor dated that day changes nothing while the bars still fall by it: they traded through it, not adjusted for it.
+  const traded = await run([demerger], [{ date: "2025-10-14", fromFactor: 1000, toFactor: 1671, ratio: 1.671 }]);
+  expect((traded.result.data as Array<{ date: string; flag: string | null }>).find((row) => row.date === "2025-10-14")?.flag).toBe("demerger");
+  expect(traded.result.warnings?.join(" ")).not.toContain("spun off");
+  expect(actionsRead).toBe(3);
 });
 
 // `history NFLX --from 2025-11-12 --to 2025-11-20` ran across the 10-for-1 split of 2025-11-17 in split-adjusted bars,
@@ -1392,48 +1396,53 @@ test("a share's fall on a demerger's ex-date is flagged, said, and no drawdown i
 test("the bar a split took effect in is flagged and the note says the bars before it are split-adjusted; a spinoff factor is no split", async () => {
   pinClosedSession();
   const days = ["2025-11-12", "2025-11-13", "2025-11-14", "2025-11-17", "2025-11-18", "2025-11-19", "2025-11-20"];
-  const run = async (from: string, splits: Array<{ date: string; fromFactor: number; toFactor: number; ratio: number }>) => {
+  const run = async (from: string, splits: Array<{ date: string; fromFactor: number; toFactor: number; ratio: number }>,
+    demergers: unknown[] = []) => {
     const dataProvider = createTestDataProvider({
       getQuote: async () => createTestQuote({ symbol: "NFLX", listingExchangeName: "NASDAQ", exchangeName: "NASDAQ", instrumentType: "EQUITY" }),
       getDetailedPriceHistoryWithMetadata: async () => ({
         resolution: "1d", points: sessionBars(days, days.map(() => 30_000_000)).filter((bar) => bar.date.toISOString().slice(0, 10) >= from),
       }),
-      getCorporateActions: async () => ({ symbol: "NFLX", dividends: [], splits, earnings: [] }),
+      getCorporateActions: async () => ({ symbol: "NFLX", dividends: [], splits, earnings: [], demergers }),
     });
     const cli = createTestCliContext({ config: createDefaultConfig("/tmp/gloom-history-split-fixture"), dataProvider }, { format: "json" });
     await history.execute(["NFLX", "--from", from, "--to", "2025-11-20"], cli.context);
     const result = cli.printed[0]!.result;
     const rows = result.data as Array<{ date: string; flag: string | null }>;
     const flagged = (code: string) => rows.filter((row) => row.flag?.split(",").includes(code)).map((row) => row.date);
-    return { warnings: result.warnings ?? [], flagged: flagged("split"), ...(flagged("spin-off").length ? { spinOff: flagged("spin-off") } : {}) };
+    return { warnings: result.warnings ?? [], flagged: flagged("split"), spinOff: flagged("spin-off"), factor: flagged("adjustment") };
   };
   const tenForOne = { date: "2025-11-17", fromFactor: 1, toFactor: 10, ratio: 10 };
   expect(await run("2025-11-12", [tenForOne])).toEqual({
     warnings: expect.arrayContaining(["Splits in range: NFLX 10-for-1 on 2025-11-17 (flag split); bars before it are split-adjusted."]),
-    flagged: ["2025-11-17"],
+    flagged: ["2025-11-17"], spinOff: [], factor: [],
   });
   // FFAI's 1-for-150 is a split however many shares it joins; one on a day with no bar flags the next session's.
   const reverse = await run("2025-11-12", [{ date: "2025-11-16", fromFactor: 150, toFactor: 1, ratio: 1 / 150 }]);
   expect(reverse.flagged).toEqual(["2025-11-17"]);
   expect(reverse.warnings).toContain("Splits in range: NFLX 1-for-150 reverse on 2025-11-16 (flag split); bars before it are split-adjusted.");
   // A window that opens on the split day flags it, with no bar before it to adjust.
-  expect(await run("2025-11-17", [tenForOne])).toEqual({
+  expect(await run("2025-11-17", [tenForOne])).toMatchObject({
     warnings: expect.arrayContaining(["Splits in range: NFLX 10-for-1 on 2025-11-17 (flag split)."]), flagged: ["2025-11-17"],
   });
   expect(await run("2025-11-18", [tenForOne])).toMatchObject({ flagged: [] });
-  // GE's 1253:1000 is a spin-off's price adjustment, no split: the source divided the bars before it, which say so
-  // (CTVA's before 2026-10-01 read 11.65 for 77.65), its bar flagged, and a window wholly before it too.
-  const spinOff = { date: "2025-11-17", fromFactor: 1000, toFactor: 1253, ratio: 1.253 };
-  const across = await run("2025-11-12", [spinOff]);
-  expect(across).toMatchObject({ flagged: [], spinOff: ["2025-11-17"] });
-  expect(across.warnings).toContain("On 2025-11-17 NFLX's bars take a spin-off's price adjustment, not a share split: prices before it are divided by "
-    + "1.253 and volumes multiplied by it at source, so they are not the prices that traded (the 2025-11-14 close, 102.00 here, is 127.81 before "
-    + "the adjustment) (flag spin-off).");
-  const before = await run("2025-11-12", [{ ...spinOff, date: "2025-11-21" }]);
-  expect(before.spinOff).toBeUndefined();
-  expect(before.warnings).toContain("NFLX's bars here are divided by 1.253 and their volumes multiplied by it at source, for a spin-off's price "
-    + "adjustment on 2025-11-21 (not a share split), so they are not the prices that traded (the 2025-11-20 close, 106.00 here, is 132.82 before the adjustment).");
-  expect((await run("2025-11-18", [spinOff])).warnings.some((warning) => warning.includes("spin-off"))).toBe(false);
+  // A 1253:1000 factor is no split. With a demerger on record that day it is that spin-off's adjustment, and bars that
+  // run on across it are adjusted for it; with none it is a factor the bars may be adjusted by, and says no more.
+  const factor = { date: "2025-11-17", fromFactor: 1000, toFactor: 1253, ratio: 1.253 };
+  const spunOff = [{ exDate: "2025-11-17", business: "power", ratio: 0.25, successor: { symbol: "NFLV", exchange: "NYSE", name: "Power Co" } }];
+  const confirmed = await run("2025-11-12", [factor], spunOff);
+  expect(confirmed).toMatchObject({ flagged: [], spinOff: ["2025-11-17"], factor: [] });
+  expect(confirmed.warnings).toContain("On 2025-11-17 the power business was spun off into NFLV:NYSE (Power Co), 0.25 share per share: NFLX's bars "
+    + "before it are adjusted for it (1253:1000), so they are not the prices that traded then (flag spin-off).");
+  expect((await run("2025-11-12", [{ ...factor, date: "2025-11-21" }], [{ ...spunOff[0], exDate: "2025-11-21" }])).warnings)
+    .toContain("NFLX's bars here come before the NFLV:NYSE (Power Co) spin-off of 2025-11-21 and are adjusted for it (1253:1000), so they are "
+      + "not the prices that traded then.");
+  const unclassified = await run("2025-11-12", [factor]);
+  expect(unclassified).toMatchObject({ flagged: [], spinOff: [], factor: ["2025-11-17"] });
+  expect(unclassified.warnings).toContain("On 2025-11-17 NFLX has a 1253:1000 adjustment factor in no share terms, which no action on record "
+    + "explains: bars before it may be adjusted by it (flag adjustment).");
+  expect(unclassified.warnings.join(" ")).not.toMatch(/spin-off|traded/);
+  expect((await run("2025-11-18", [factor], spunOff)).warnings.some((warning) => warning.includes("spin-off"))).toBe(false);
 });
 
 test("a split inside the last weekly or monthly bar's period is flagged on that bar and named in the note", async () => {

@@ -143,7 +143,7 @@ export function ipoDetailSentences(deal: IpoDeal, quoted: IpoPriceNow | null | u
   const where = `${day ? ` ${day}` : ""}${deal.venue ? ` on ${deal.venue}` : ""}`;
   const offer = deal.offerPrice != null ? ` at a ${formatIpoAmount(deal, deal.offerPrice)} offer price`
     : deal.listingType === "direct" ? `: ${formatIpoPrice(deal, { full: true })}` : "";
-  // The table's Return is the first day's; the sentence says which is which.
+  // The table's Day 1 is the first day's return; the sentence says which is which.
   const firstDay = deal.firstDay?.returnPct != null && deal.offerPrice != null
     ? `, ${formatIpoReturn(deal.firstDay.returnPct)} on the first day`
     : deal.opening?.returnPct != null ? `, opened at ${formatIpoAmount(deal, deal.opening.price)} (${formatIpoReturn(deal.opening.returnPct)} from the offer)` : "";

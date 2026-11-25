@@ -97,6 +97,21 @@ describe("fundamental series extraction", () => {
     expect(q4?.fieldAvailability?.totalRevenue).toBe("2025-02-15");
   });
 
+  // VYLR's carve-out year of 10.07B came beside nine months of 13.49B on its former parent's scope: no quarter is the difference.
+  test("derives no fiscal Q4 flow from quarters that sum above their year, and keeps a reported loss quarter", () => {
+    const other = [{ date: "2025-03-31", totalRevenue: 4_420, netIncome: 520 }, { date: "2025-06-30", totalRevenue: 6_450, netIncome: 1_200 },
+      { date: "2025-09-30", totalRevenue: 2_621, netIncome: -320 }];
+    const year = { date: "2025-12-31", totalRevenue: 10_067, netIncome: 376, totalAssets: 22_019 };
+    const q4 = deriveQuarterlyStatements(other, [year]).find((statement) => statement.date === "2025-12-31");
+    expect(q4).toMatchObject({ totalAssets: 22_019 });
+    expect([q4?.totalRevenue, q4?.netIncome]).toEqual([undefined, undefined]);
+    // Quarters of the year's own measure still give it, a loss included.
+    const own = [{ date: "2025-03-31", totalRevenue: 2_700, netIncome: 400 }, { date: "2025-06-30", totalRevenue: 4_500, netIncome: 1_100 },
+      { date: "2025-09-30", totalRevenue: 917, netIncome: -368 }];
+    expect(deriveQuarterlyStatements(own, [year]).find((statement) => statement.date === "2025-12-31"))
+      .toMatchObject({ totalRevenue: 1_950, netIncome: -756 });
+  });
+
   test("delays derived Q4 until a later amended input is available", () => {
     const derived = deriveQuarterlyStatements([
       {

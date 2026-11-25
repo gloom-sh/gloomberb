@@ -1,7 +1,7 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import type { CrowdingRow, TickerHolderRow } from "./signals";
 import { formatMoneyCompact } from "./format";
-import { adjacentQuarterPeriods, formatSplitRatio, SIGNED_OUT_FILING_ROWS } from "./model";
+import { adjacentQuarterPeriods, formatSplitRatio } from "./model";
 import type { FundDetailData, ThirteenFFilingGap, ThirteenFOtherManager, ThirteenFPeriodReport } from "./types";
 
 /**
@@ -67,8 +67,8 @@ export function filingDayText(date: string, omitYear?: number): string {
  * in for the whole book."
  */
 export function cappedReadText(report: Pick<ThirteenFPeriodReport, "periodOfReport" | "capped">): string {
-  const { loaded, entries } = report.capped ?? { loaded: 0, entries: 0 };
-  return `Signed out, Gloom Cloud sends a filing's first ${count(SIGNED_OUT_FILING_ROWS)} lines: ${filingDayText(report.periodOfReport)} `
+  const { loaded, entries, limit } = report.capped ?? { loaded: 0, entries: 0, limit: 0 };
+  return `Signed out, Gloom Cloud sends a filing's first ${count(limit)} lines: ${filingDayText(report.periodOfReport)} `
     + `is ${count(loaded)} of ${count(entries)}, in the filing's order, not the largest. Sign in for the whole book.`;
 }
 
@@ -87,7 +87,7 @@ export function cappedHoldingsText(data: Pick<FundDetailData, "latestReport" | "
     latest ? `these are ${count(latest.loaded)} of the ${count(latest.entries)} lines filed, in the filing's order, not the fund's largest` : null,
     previous ? `${filingDayText(data.previousReport!.periodOfReport)}'s are ${count(previous.loaded)} of ${count(previous.entries)}` : null,
   ].filter(Boolean);
-  return `Signed out, Gloom Cloud sends a filing's first ${count(SIGNED_OUT_FILING_ROWS)} lines: ${parts.join("; ")}`
+  return `Signed out, Gloom Cloud sends a filing's first ${count((latest ?? previous)!.limit)} lines: ${parts.join("; ")}`
     + `${compared ? ", so QoQ and Est P&L stay blank" : ""}. Sign in for the whole book.`;
 }
 

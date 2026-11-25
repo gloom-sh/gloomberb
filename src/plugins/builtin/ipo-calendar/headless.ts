@@ -40,7 +40,7 @@ const COLUMNS: HeadlessPaneColumn[] = [
   { key: "status", header: "Status" },
   { key: "price", header: "Price", align: "right" },
   { key: "offerSizeUsd", header: "Size", align: "right", format: (value) => formatIpoSize(value as number | null) },
-  { key: "firstDayReturn", header: "Return", align: "right", format: (value, row) => formatIpoReturn((value ?? row.openingReturn) as number | null),
+  { key: "firstDayReturn", header: "Day 1", align: "right", format: (value, row) => formatIpoReturn((value ?? row.openingReturn) as number | null),
     textFormat: (value, row) => value == null && row.openingReturn != null ? `${formatIpoReturn(row.openingReturn as number)} open` : formatIpoReturn(value as number | null) },
   // A US IPO's estimated lock-up end: "~2026-11-02".
   { key: "lockupEnds", header: "Lockup ends", format: (value) => formatIpoLockupEnd(typeof value === "string" ? value : null) },
