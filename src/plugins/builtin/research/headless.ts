@@ -15,7 +15,7 @@ import { MISSING_VALUE, formatPercent } from "../../../utils/format";
 import { isNotMeaningful, NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import { buildEarningsHeader, buildEventRows, estimateRate, eventSourceNotice, formatEventMetric, forwardEstimates, isFundListing, type EventRow } from "./event-model";
 import { earningsQuarters } from "./event-charts";
-import { EARNINGS_ESTIMATE_COLUMNS, eventSummarySection, loadEventSources, QUARTER_TEXT_COLUMNS, quarterTextRows } from "./event-sources";
+import { EARNINGS_ESTIMATE_COLUMNS, eventSummarySection, loadEventSources, quarterTextColumns, quarterTextRows } from "./event-sources";
 import { listingDay } from "../shared/earnings-calendar";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { REPORTED_DATA } from "../shared/report-freshness";
@@ -128,8 +128,10 @@ function projectEarningsEstimatesHeadless(
   // keep every row of the kind asked for.
   const { quarters, years } = forwardEstimates(all);
   const estimateRows = [...quarters, ...years].map(estimateTextRow).slice(0, limit);
-  const quarterRows = quarterTextRows(fund ? [] : earningsQuarters(all, today).slice(0, limit));
-  const quarterSection: HeadlessBundleSection = { title: "Reported quarters", columns: QUARTER_TEXT_COLUMNS, rows: quarterRows };
+  const listedQuarters = fund ? [] : earningsQuarters(all, today).slice(0, limit);
+  const quarterRows = quarterTextRows(listedQuarters);
+  const quarterColumns = quarterTextColumns(listedQuarters);
+  const quarterSection: HeadlessBundleSection = { title: "Reported quarters", columns: quarterColumns, rows: quarterRows };
   // `--view` prints one of the pane's views under Next up, as `shot` opens on it; without it, `--kind` says which.
   const view = args.options.view === "estimates" || args.options.view === "reported" ? args.options.view : null;
   const reportedText = view ? view === "reported" : kind === "reported";
@@ -144,7 +146,7 @@ function projectEarningsEstimatesHeadless(
   return {
     columns: ESTIMATE_COLUMNS,
     rows,
-    textColumns: reportedText ? QUARTER_TEXT_COLUMNS : ESTIMATE_TEXT_COLUMNS,
+    textColumns: reportedText ? quarterColumns : ESTIMATE_TEXT_COLUMNS,
     textRows: reportedText ? quarterRows : estimateRows,
     ...(sections.length ? { textSections: sections } : {}),
     errors: errors.length ? errors : undefined,

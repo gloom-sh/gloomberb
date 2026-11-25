@@ -20,6 +20,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities } from "../../../ui";
 import { MISSING_VALUE, displayWidth } from "../../../utils/format";
+import { formatFilingDate } from "../../../utils/datetime-format";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { useOpenDescription } from "../shared/open-description";
@@ -107,7 +108,8 @@ export function tableColumns(width: number, desktop: boolean, locked: boolean, v
   const share: DataTableColumn = { id: "pct", label: "Share", width: shareWidth, align: "left" };
   let columns: DataTableColumn[] = [
     name,
-    { id: "evidence", label: "Evidence", width: 12, align: "left" },
+    // One kind of evidence for every row (filings alone) is no column; the filter names the kinds shown.
+    { id: "evidence", label: "Evidence", width: 12, align: "left", omitWhenSame: true },
     // A listing as every function writes it: 000063:SZSE whole.
     ...(medium ? [{ id: "ticker", label: "Ticker", width: 11, align: "left" as const }] : []),
     { id: "role", label: "Role", width: 11, align: "left" },
@@ -115,9 +117,11 @@ export function tableColumns(width: number, desktop: boolean, locked: boolean, v
     ...(valueWidth !== null ? [{ id: "usd", label: "Value", width: Math.max(medium ? 10 : 8, valueWidth), align: "right" as const }] : []),
     { id: "fy", label: "Period", width: periodWidth, align: "left" },
     ...(wide ? [
-      { id: "filed", label: "Published", width: 10, align: "left" as const },
-      { id: "publisher", label: "Publisher", width: 16, align: "left" as const },
-      { id: "corroboration", label: "Origins", width: 8, align: "right" as const },
+      // A day as the Period column writes it: 03 Nov 2026.
+      { id: "filed", label: "Published", width: 11, align: "left" as const },
+      // One publisher (the company's own filings) or one origin for every row is no column either.
+      { id: "publisher", label: "Publisher", width: 16, align: "left" as const, omitWhenSame: true },
+      { id: "corroboration", label: "Origins", width: 8, align: "right" as const, omitWhenSame: true },
     ] : []),
   ];
   const preferred = { share: share.width, name: name.width };
@@ -356,7 +360,7 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
     const ink = state.selected ? colors.selectedText : isUnconfirmed(row) ? colors.textDim : undefined;
     switch (column.id) {
       case "evidence": return { text: evidenceLabel(row), content: <Badge label={evidenceLabel(row)} tone={isUnconfirmed(row) ? "neutral" : "accent"} /> };
-      case "filed": return { text: evidenceDate(row), color: colors.textDim };
+      case "filed": return { text: formatFilingDate(evidenceDate(row), MISSING_VALUE), value: evidenceDate(row), color: colors.textDim };
       case "publisher": return { text: cellText(row, "publisher"), color: colors.textDim };
       case "corroboration": return { text: String(row.corroboration ?? 1), value: row.corroboration ?? 1, color: colors.textDim, content: <Text fg={colors.textDim}>{row.corroboration ?? 1}</Text> };
       case "name": {

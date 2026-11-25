@@ -348,6 +348,8 @@ function projectFlowReport(
     sections.push({
       title: symbol ? `${symbol} prints` : "Prints",
       columns: PRINT_COLUMNS,
+      // As the pane: one ticker's prints name it in the title, not on every row; exports keep the column.
+      ...(symbol ? { textColumns: PRINT_COLUMNS.filter((column) => column.key !== "underlying") } : {}),
       rows: prints.map((event) => ({ ...event })),
       empty: payload.status === "starting" ? SCANNER_STARTING_TEXT
         : symbol ? `No ${symbol} prints under these filters.`

@@ -27,7 +27,8 @@ const BOARD_COLUMNS: DataTableColumn[] = [
   { id: "one", label: "PCTL 1Y", width: 8, align: "right" },
   { id: "three", label: "PCTL 3Y", width: 8, align: "right" },
   { id: "all", label: "PCTL ALL", width: 9, align: "right" },
-  { id: "asOf", label: "AS OF", width: 10, align: "left" },
+  // The footer dates the report; a market whose latest report is older brings the column back.
+  { id: "asOf", label: "AS OF", width: 10, align: "left", omitWhenSame: true },
 ];
 const POSITION_COLUMNS: DataTableColumn[] = [
   { id: "name", label: "CLASS", width: 20, align: "left" },
@@ -130,7 +131,11 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
       if (column.id === "code") return { text: row.contractCode, color: colors.textMuted };
       if (column.id === "net") return { text: cotInteger(row.position.net, true) };
       if (column.id === "change") return { text: cotInteger(row.position.weeklyChange, true) };
-      if (column.id === "one" || column.id === "three" || column.id === "all") return { text: rank(columnRank(row.position, column.id)), color: colors.warning };
+      if (column.id === "one" || column.id === "three" || column.id === "all") {
+        // Only an extreme rank is toned, as the market boards tone theirs: amber on every row would mark nothing.
+        const value = columnRank(row.position, column.id);
+        return { text: rank(value), color: value != null && (value <= 10 || value >= 90) ? colors.warning : colors.textMuted };
+      }
       return { text: row.reportDate, color: colors.textMuted };
     }}
     rootBefore={<QueryBar width={width}

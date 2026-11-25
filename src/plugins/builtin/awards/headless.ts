@@ -6,7 +6,7 @@ import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-dat
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { fetchAward, fetchAwards } from "./client";
 import { AWARD_TABS, amountWithheld, awardsAmountNotices, awardsAttributions, awardScope, awardsCoverageNotes, awardsEmptyReason, awardsPreviewNote, awardTypeLabel,
-  futureAwardDatesNote, money, statementText, WITHHELD_AMOUNT } from "./model";
+  awardAmountLabel, awardsQueryShared, futureAwardDatesNote, money, statementText, WITHHELD_AMOUNT, type AwardsQueryShared } from "./model";
 import { REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
 
 /**
@@ -65,6 +65,11 @@ const FEED_COLUMNS: HeadlessPaneColumn[] = [
   { ...amount("value", "Value"), textFormat: (value, row) => value == null && row.valueWithheld ? WITHHELD_AMOUNT : money(value as string | null) }, amount("obligated", "Obligated"), amount("ceiling", "Ceiling"), { key: "agency", header: "Agency" }, { key: "jurisdiction", header: "Country" },
   { key: "performancePeriod", header: "Performance period", format: period }, { key: "title", header: "Contract" }, { key: "dateBasis", header: "Date basis", format: dateBasis },
 ];
+/** As the pane's feed: what every award of the query shares (awardsQueryShared) is said once, the currency in the amounts' headers; exports keep every field. */
+const feedTextColumns = (shared: AwardsQueryShared): HeadlessPaneColumn[] => FEED_COLUMNS.flatMap((column) => {
+  if (column.key === "ticker" && shared.ticker || column.key === "currency" && shared.currency || column.key === "jurisdiction" && shared.country) return [];
+  return [["value", "obligated", "ceiling"].includes(column.key) ? { ...column, header: awardAmountLabel(column.header, shared.currency) } : column];
+});
 const EVENT_COLUMNS: HeadlessPaneColumn[] = [
   { key: "date", header: "Date" }, { key: "recipient", header: "Awardee" }, { key: "ticker", header: "Ticker" },
   { key: "annualRevenuePercent", header: "% revenue", align: "right", format: (value) => typeof value === "number" ? `${value.toFixed(2)}%` : MISSING_VALUE },
@@ -143,7 +148,9 @@ export const awardsHeadless: HeadlessPaneDefinition<"bundle"> = {
       ...awardsAmountNotices(data, withheld)];
     const empty = awardsEmptyReason(data);
     const sections: HeadlessBundleSection[] = [];
-    if (tab === "feed" || tab === "company" || tab === "all") sections.push({ title: "Awards", columns: FEED_COLUMNS, rows: data.rows.map(record) });
+    if (tab === "feed" || tab === "company" || tab === "all") {
+      sections.push({ title: "Awards", columns: FEED_COLUMNS, textColumns: feedTextColumns(awardsQueryShared(data, filter)), rows: data.rows.map(record) });
+    }
     if (tab === "company" || tab === "all") sections.push({ title: "Award cohorts by month and currency", columns: COHORT_COLUMNS, rows: data.history.map((row) => ({ ...row })) });
     if (tab === "agencies" || tab === "all") sections.push({ title: "Agency concentration", columns: aggregateColumns("Agency"), rows: data.agencies.map((row) => ({ ...row })) });
     if (tab === "sectors" || tab === "all") sections.push({ title: "Sector company leaders", columns: LEADER_COLUMNS, rows: (data.leaders ?? []).map((row) => ({ ...row })) },

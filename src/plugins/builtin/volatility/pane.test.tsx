@@ -156,12 +156,13 @@ test("a short pane keeps every tenor and turns the curve into a strip, then drop
   expect(tenorRows().length).toBeGreaterThanOrEqual(4);
 });
 
-test("a narrow board drops the name column before it cuts a date", async () => {
+test("a narrow board drops the name column first, and one session's date is the footer's, not a column", async () => {
   await renderPane(78, 24, "board");
   const header = lines().find((line) => line.includes("LEVEL"))!;
-  expect(header).toContain("AS OF");
   expect(header).not.toContain("NAME");
-  expect(lines().some((line) => /^ VIX +14\.87 .* 2026-09-25 *$/.test(line))).toBe(true);
+  expect(header).not.toContain("AS OF");
+  expect(lines().some((line) => /^ VIX +14\.87 /.test(line))).toBe(true);
+  expect(footer()).toContain("2026-09-25");
   await renderPane(110, 24, "board");
   expect(lines().find((line) => line.includes("LEVEL"))).toContain("NAME");
 });

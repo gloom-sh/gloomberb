@@ -61,7 +61,8 @@ export function buildColumns(width: number, showChange: boolean): HolderColumn[]
       { id: "changePercent", label: "CHG%", width: changePercentWidth, align: "right" },
     ] satisfies HolderColumn[] : []),
     { id: "percentHeld", label: "HELD", width: heldWidth, align: "right" },
-    { id: "reportDate", label: "PERIOD", width: dateWidth, align: "right" },
+    // One period for every holder is the footer's date, not a column.
+    { id: "reportDate", label: "PERIOD", width: dateWidth, align: "right", omitWhenSame: true },
   ];
 }
 

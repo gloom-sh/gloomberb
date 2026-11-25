@@ -137,6 +137,16 @@ describe("Ticker Research groups", () => {
     });
   }
 
+  test("a view renamed apart from its group still opens by its former name", async () => {
+    useRegistry([...US_EQUITY_TABS, stubTab("analyst-research", "Coverage", 32), stubTab("earnings-calls", "Calls", 34)]);
+    const frame = await render(optionPaneState({ tab: "analyst" }));
+    expect(frame).toContain("body:analyst-research");
+    const lines = frame.split("\n");
+    expect(lines[0]).toContain("Analysts");
+    expect(lines[1]).toMatch(/Coverage\s+Calls/);
+    expect(frame).not.toContain("No such tab");
+  });
+
   test("a pane locked to an old tab id shows that view alone, with no strips", async () => {
     useRegistry(US_EQUITY_TABS);
     const frame = await render({ activeTabId: "overview" }, { hideTabs: true, lockedTabId: "risk-factors" });

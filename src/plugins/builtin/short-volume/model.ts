@@ -16,6 +16,11 @@ export function volumePointStatus(point: ShortVolumeObservation): string {
     : point.unavailableReason === "not_reported" ? "Not reported"
       : point.unavailableReason === "zero_volume" ? "Zero volume" : point.refreshFailed ? "Refresh failed" : "Reported";
 }
+/** The status a table row shows: blank for a reported day, which nearly every day is, so only the exceptions read. */
+export function volumeRowStatus(point: ShortVolumeObservation): string {
+  const status = volumePointStatus(point);
+  return status === "Reported" ? "" : status;
+}
 type VolumeColumnId = "date" | "ratioPercent" | "shortVolume" | "totalVolume" | "shortExemptVolume" | "status";
 export type VolumeColumn = Omit<DataTableColumn, "id"> & { id: VolumeColumnId };
 export const VOLUME_COLUMNS: VolumeColumn[] = [
@@ -24,7 +29,7 @@ export const VOLUME_COLUMNS: VolumeColumn[] = [
   { id: "shortVolume", label: "SHORT VOL", width: 12, align: "right" },
   { id: "totalVolume", label: "TOTAL VOL", width: 12, align: "right" },
   { id: "shortExemptVolume", label: "EXEMPT", width: 11, align: "right" },
-  { id: "status", label: "STATUS", width: 15, flexGrow: 1, align: "left" },
+  { id: "status", label: "STATUS", width: 15, flexGrow: 1, align: "left", omitWhenEmpty: true },
 ];
 export interface VolumeSort { column: VolumeColumn["id"]; direction: "asc" | "desc" }
 export function sortedVolumeHistory(data: ShortVolumePayload, sort: VolumeSort): ShortVolumeObservation[] {

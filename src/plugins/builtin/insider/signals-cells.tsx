@@ -11,12 +11,17 @@ import { INSIDER_BOTH_WAYS_MARK, type InsiderSignalFact } from "./signals-model"
  * A fact's colour, the roles the why chips had: the side's tone for a fact
  * the ranking counts, a holding's change in its sign's tone, NEW and EXITED
  * too; plain text for a figure it does not count; the research panes' muted
- * placeholder for the dash.
+ * placeholder for the dash. `oneSide` is a table whose every row is on
+ * `side` (the ranking): the side's tone would tint every figure alike, so a
+ * fact keeps a tone only where its sign goes against the side.
  */
-function factColor(fact: InsiderSignalFact, side: InsiderSignalSide, colors: ThemeColors): string {
+function factColor(fact: InsiderSignalFact, side: InsiderSignalSide, colors: ThemeColors, oneSide: boolean): string {
   if (fact.weight === "none") return colors.textMuted;
   if (fact.weight === "plain") return colors.text;
-  return (fact.sign ?? (side === "sell" ? -1 : 1)) < 0 ? colors.negative : colors.positive;
+  const sideSign = side === "sell" ? -1 : 1;
+  const sign = fact.sign ?? sideSign;
+  if (oneSide && sign === sideSign) return colors.text;
+  return sign < 0 ? colors.negative : colors.positive;
 }
 
 /**
@@ -25,13 +30,14 @@ function factColor(fact: InsiderSignalFact, side: InsiderSignalSide, colors: The
  * in that many cells (the terminal's table); without it the content grows to
  * its track.
  */
-function FactFigures({ fact, side, selected, width }: { fact: InsiderSignalFact; side: InsiderSignalSide; selected: boolean; width?: number }) {
+function FactFigures({ fact, side, oneSide, selected, width }: { fact: InsiderSignalFact; side: InsiderSignalSide; oneSide: boolean; selected: boolean; width?: number }) {
   const colors = useThemeColors();
+  const color = factColor(fact, side, colors, oneSide);
   const figure = fact.bothWays ? fact.text.slice(0, -(INSIDER_BOTH_WAYS_MARK.length + 1)) : fact.text;
   return (
     <Box flexDirection="row" height={1} overflow="hidden" justifyContent="flex-end" flexGrow={1} width={width}>
       {/* A buy or sell keeps its tone on the selected row, as every table's up and down figures do. */}
-      <Text fg={selected ? selectedRowCellColor(factColor(fact, side, colors), true, false, colors) ?? colors.selectedText : factColor(fact, side, colors)}
+      <Text fg={selected ? selectedRowCellColor(color, true, false, colors) ?? colors.selectedText : color}
         attributes={fact.weight === "strong" ? TextAttributes.BOLD : TextAttributes.NONE}>{figure}</Text>
       {fact.bothWays ? <Text fg={selected ? colors.selectedText : colors.textMuted}>{` ${INSIDER_BOTH_WAYS_MARK}`}</Text> : null}
     </Box>
@@ -42,14 +48,15 @@ function FactFigures({ fact, side, selected, width }: { fact: InsiderSignalFact;
  * A fact's table cell, in the ranking and in an opened company's insiders:
  * plain text in its colour, or the figures with the both-ways mark. `width`
  * is the column's, in the terminal, where content is set in its own cells.
+ * `oneSide` is the ranking, every row on `side` (see factColor).
  */
-export function factCell(fact: InsiderSignalFact, side: InsiderSignalSide, colors: ThemeColors, selected: boolean, width?: number): DataTableCell {
+export function factCell(fact: InsiderSignalFact, side: InsiderSignalSide, colors: ThemeColors, selected: boolean, width?: number, oneSide = false): DataTableCell {
   if (fact.weight === "none" && !fact.bothWays) return missingCell(colors);
   const cell: DataTableCell = {
     text: fact.text,
     value: fact.value,
-    color: factColor(fact, side, colors),
+    color: factColor(fact, side, colors, oneSide),
     ...(fact.weight === "strong" ? { attributes: TextAttributes.BOLD } : {}),
   };
-  return fact.bothWays ? { ...cell, content: <FactFigures fact={fact} side={side} selected={selected} width={width} /> } : cell;
+  return fact.bothWays ? { ...cell, content: <FactFigures fact={fact} side={side} oneSide={oneSide} selected={selected} width={width} /> } : cell;
 }

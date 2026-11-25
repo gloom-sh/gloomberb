@@ -58,7 +58,7 @@ test("narrow preview preserves visible amounts and offers the standard upgrade",
   preview.access = "preview"; preview.lockedRows = 5;
   await mount(80, 20, "capital", preview);
   const frame = await tui.waitForFrameToContain("Upgrade to see all terms");
-  expect(frame).toContain("400M");
+  expect(frame).toContain("400.00M");
   expect(frame).not.toContain("provider:");
 });
 

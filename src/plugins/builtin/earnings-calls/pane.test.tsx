@@ -75,10 +75,12 @@ afterEach(() => {
   resetEarningsCallsPersistence();
 });
 const call = (ticker: string): CloudEarningsCallPayload => ({
-  id: `${ticker}-call`, ticker, companyName: `${ticker} CORP`, fiscalYear: 2026, fiscalQuarter: 2,
+  id: `${ticker}-call`, ticker, companyName: `${ticker} CORP`, fiscalYear: ticker === "SECOND" ? 2025 : 2026, fiscalQuarter: 2,
   callAt: "2026-08-01T20:00:00Z", status: "published", durationSeconds: 3000,
   wordCount: 100, hasTranscript: true, sentiment: null,
 });
+/** A company's call as its row reads: a ticker's list names no company on every row, so each company's call has its own year. */
+const callRow = (ticker: "FIRST" | "SECOND") => ticker === "SECOND" ? "FQ2 25" : "FQ2 26";
 const transcript = (ticker: string): CloudEarningsTranscriptPayload => ({
   ...call(ticker), timing: null, webcastUrl: null,
   fullText: `${ticker} controlled full text is present.\n\nMargin outlook remains available.`,
@@ -179,7 +181,7 @@ test("identical pending responses keep polling until calls arrive and unmount ca
   expect(tui.frame()).toContain("Looking for FIRST");
   await timers.fire();
   expect(requests).toBe(3);
-  expect(tui.frame()).toContain("FIRST CORP");
+  expect(tui.frame()).toContain(callRow("FIRST"));
   expect(timers.pending.size).toBe(0);
   setCloudApiFetchTransport(async () => Response.json({ calls: [], pending: true }));
   await press("r");
@@ -197,12 +199,12 @@ for (const rejected of [false, true]) {
     await mount();
     await act(async () => setSymbol("SECOND"));
     await frames();
-    expect(tui.frame()).toContain("SECOND CORP");
+    expect(tui.frame()).toContain(callRow("SECOND"));
     await act(async () => finishFirst(rejected
       ? Response.json({ error: "Controlled denied" }, { status: 403 }) : Response.json({ calls: [call("FIRST")] })));
     await frames();
-    expect(tui.frame()).toContain("SECOND CORP");
-    expect(tui.frame()).not.toContain("FIRST CORP");
+    expect(tui.frame()).toContain(callRow("SECOND"));
+    expect(tui.frame()).not.toContain(callRow("FIRST"));
   });
 }
 
@@ -231,7 +233,7 @@ for (const change of ["ticker", "access", "unmount"] as const) {
     if (tui.isMounted()) await frames();
     expect(timers.pending.size).toBe(0);
     expect(detailRequests).toBe(1);
-    if (change === "ticker") expect(tui.frame()).toContain("SECOND CORP");
+    if (change === "ticker") expect(tui.frame()).toContain(callRow("SECOND"));
     if (change === "access") expect(tui.frame()).toContain("Sign in");
   });
 }
@@ -269,13 +271,13 @@ for (const persisted of [false, true]) {
     await mount();
     fail = true;
     await press("r");
-    expect(tui.frame()).toContain("FIRST CORP");
+    expect(tui.frame()).toContain(callRow("FIRST"));
     // A saved copy says when it was saved, as every pane does; rows kept in memory say why the refresh failed.
     expect(tui.frame().includes("saved copy from")).toBe(persisted);
     expect(tui.frame().includes("Controlled outage")).toBe(!persisted);
     fail = false;
     await press("r");
-    expect(tui.frame()).toContain("FIRST CORP");
+    expect(tui.frame()).toContain(callRow("FIRST"));
     expect(tui.frame()).not.toContain("Controlled outage");
     expect(tui.frame()).not.toContain("saved copy");
   });
@@ -289,7 +291,7 @@ test("an explicit unauthorized response gates the pane even after a successful c
   setCloudApiFetchTransport(async () => Response.json({ error: "Controlled auth required" }, { status: 401 }));
   await press("r");
   expect(tui.frame()).toContain("Sign in");
-  expect(tui.frame()).not.toContain("FIRST CORP");
+  expect(tui.frame()).not.toContain(callRow("FIRST"));
 });
 
 for (const width of [48, 80, 120]) {

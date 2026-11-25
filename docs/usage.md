@@ -345,17 +345,17 @@ A company's page has eleven tabs, and a tab with several views shows them as cho
 |-----|-------|
 | Overview | Overview |
 | Chart | Chart, Trade (with a connected broker) |
-| Financials | Financials, Revenue, Diagnostic, Dividends, ADR vs Home (for a listing with a known receipt pair) |
-| Analysts | Analyst, Calls |
+| Financials | Statements, Revenue, Diagnostic, Dividend Yield, ADR vs Home (for a listing with a known receipt pair) |
+| Analysts | Coverage, Calls |
 | Options | Options |
 | Events | Earnings, Dividends, Catalysts, M&A |
 | Filings | SEC, 8-K, Risks |
 | Ownership | Holders, Insider, Buybacks (Hong Kong listings), 13F, Congress, Short Interest |
 | People | Exec, Hiring, Hiring momentum |
 | Buzz | News, Tweets, Apps |
-| Notes | Thesis, Notes |
+| Notes | Thesis, Notebook |
 
-`h` and `l` move between the tabs, `{` and `}` between the views of the one you are on, and a tab opens on the view last chosen in it, except Chart, which always opens on the chart: Trade opens only when you ask for the ticket. The pane menu's **Go to Tab…** lists every view under its tab. A plugin's tab gets a tab of its own after Notes. A view keeps its own id: `--tab risk-factors`, `?tab=risk-factors` and a pane locked to Risks open the same view as before.
+`h` and `l` move between the tabs, `{` and `}` between the views of the one you are on, and a tab opens on the view last chosen in it, except Chart, which always opens on the chart: Trade opens only when you ask for the ticket. The pane menu's **Go to Tab…** lists every view under its tab. A plugin's tab gets a tab of its own after Notes. A view keeps its own id: `--tab risk-factors`, `?tab=risk-factors` and a pane locked to Risks open the same view as before. No view is named like its tab: Statements was Financials, Coverage (analyst ratings and price targets) was Analyst and Notebook was Notes, and the old names still open them (`--tab analyst`). Dividend Yield, once a second Dividends, is `--tab dividend-yield`; `--tab dividends` opens Events > Dividends.
 
 Ticker Research shows the views that can have data for the instrument. A tab with none of them is left out, and a tab with one opens it directly.
 
@@ -1993,7 +1993,7 @@ A row's own `symbol` and `currency` fill the first two when a command does not s
 
 **Period headers.** `fn FA` heads each column with the fiscal period, as the pane names it, then the day it ends, the currency and the table's unit: `FY2026 2026-09-30 USD bn (SEC date)`, `TTM Q3 FY26 2026-09-30 USD`. `(SEC date)` is the period end the company's 10-K or 10-Q states; `(provider date)` is the statements source's date for it, which can be a few days off. The notes say which the table has. Every money row is in the table's one unit, a small line to three decimals (`0.001`), so no row names a unit of its own.
 
-**In the pane.** `FA` and a ticker's Financials tab head each column with the fiscal period alone (`FY2026`, `TTM Q3 FY26`) and give the day it ends in the first row, **Period end**, on the statements and on the ratio tabs. A statement column is as wide as its figures, so more periods show side by side: five in a 96-column terminal, three in the browser's research pane, two on a phone. The metric names give up room for a whole period, never for part of one. The cursor passes the Period end row, and a CSV export keeps it as its first row.
+**In the pane.** `FA` and a ticker's Statements view (Financials tab) head each column with the fiscal period alone (`FY2026`, `TTM Q3 FY26`) and give the day it ends in the first row, **Period end**, on the statements and on the ratio tabs. A statement column is as wide as its figures, so more periods show side by side: five in a 96-column terminal, three in the browser's research pane, two on a phone. The metric names give up room for a whole period, never for part of one. The cursor passes the Period end row, and a CSV export keeps it as its first row.
 
 **Several companies.** `gloom fn FA V MCO CPRT --statement profitability` (up to 10 tickers) is one long table, a row per ticker, fiscal period and metric: `Ticker`, `Period` (`FY2026`, `TTM Q3 FY26`), `Period End`, `Metric`, `Value` and, in the text, `Unit`. Money is in the unit most of the tables take (`USD bn`), percents are in percent, and an input several ratios share (Net Income under ROE, ROA and Net Margin) is one row. Its CSV names each row's unit in `currency_or_unit` and its period end in `as_of`; a figure that is missing is empty, its reason (`needs prior period`, `not reported`) in `status`. `--layout long` lays one ticker out the same way; `--layout wide` is one ticker's periods as columns, the default for one. `shot FA` captures one ticker's pane. With `--csv` a wide table also names each row's unit (`USD bn`, `%`), `interval` (`annual` or `quarterly`) and its newest period end in `as_of`.
 
@@ -2518,7 +2518,7 @@ A pane that shows your own data asks once before Share makes its link, `Copy a p
 |---------------|-------|
 | `This shows your holdings.` | Your portfolios (not watchlists), Portfolio Analytics, the position sizer, Earnings Ripple on your holdings, a heat map of a portfolio, Relative Rotation and `VCA` linked to a portfolio, Ticker Research and `OMON` on a ticker you hold |
 | `This shows your account details.` | Brokers, ACM and Team |
-| `This shows private messages.` | A DM, group or team chat, Unread Chat, Quick Notes, Ticker Research on its Notes tab and Ask Gloom |
+| `This shows private messages.` | A DM, group or team chat, Unread Chat, Quick Notes, Ticker Research on its Notebook view and Ask Gloom |
 
 To show a picture of a pane in chat, copy it with Copy Screenshot and paste it into the message field on the desktop or the web.
 
@@ -2595,7 +2595,7 @@ Closing the pane keeps the conversation (opening it with a question starts a new
 
 Every pane can be asked about: the spark beside the `?` in its header on the desktop and the web, **Ask Gloom** in its pane menu, or `Alt+A` (`Cmd+Shift+A` or `Ctrl+Shift+A` on the desktop). Where a browser keeps `Ctrl+Shift+A` for itself (Chrome's tab search), use `Alt+A`.
 
-Ask Gloom opens with a new conversation, the pane attached above the question field (the x takes it off), and the field holds `What does this pane show?` to edit or send. Nothing is asked until you press Enter. What goes with the pane is its function and how it is set (`DES AAPL` on its Financials tab, a chart's range) and a short summary of the text it shows.
+Ask Gloom opens with a new conversation, the pane attached above the question field (the x takes it off), and the field holds `What does this pane show?` to edit or send. Nothing is asked until you press Enter. What goes with the pane is its function and how it is set (`DES AAPL` on its Statements view, a chart's range) and a short summary of the text it shows.
 
 A pane that shows your own data asks first, the same panes that ask before Share (see Share): `y` or Attach sends what it shows, `n` or Leave out sends only which function it is.
 
