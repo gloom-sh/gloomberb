@@ -335,10 +335,10 @@ test("a pane behind the sign-in wall reports what it needs instead of the wall's
   const resolved = {
     token: "DIAG", label: "Equity Diagnostic", options: {}, capability: { id: "equity-diagnostic-pane" }, pane: diagnostic,
   } as unknown as ResolvedPaneFunction;
-  const wall = async (visibleText: string) => (await buildDomPaneReportFromRender(resolved, {
+  const wall = async (visibleText: string, signInGate?: "free" | "verify-email" | "pro") => (await buildDomPaneReportFromRender(resolved, {
     symbols: ["MSTR"],
     render: {
-      visibleText, accessGate: "sign-in", rows: [], truncated: false, truncationReasons: [], loadingStateDetected: false,
+      visibleText, accessGate: "sign-in", signInGate, rows: [], truncated: false, truncationReasons: [], loadingStateDetected: false,
       errorStateDetected: true, errorStateMarkers: ["Sign in to"], emptyStateDetected: false, emptyStateMarkers: [],
     },
   } as unknown as PaneScreenshotResult)).text;
@@ -350,12 +350,12 @@ test("a pane behind the sign-in wall reports what it needs instead of the wall's
   expect(await wall("THESIS Sign in to keep investment theses. Sign up free \u21A9 Log in")).toEndWith("keep investment theses. Requires a free Gloom sign-in: "
     + "open the app (gloom) and log in or sign up free from the command bar (Ctrl+P, Log In or Sign Up); this command then reads with that session.");
   // Signed in with an unconfirmed address, the wall asks for the email instead.
-  expect(await wall("DIAG MSTR Verify your email to run the Equity Diagnostic. Resend Verification Email")).toEndWith(
+  expect(await wall("DIAG MSTR Verify your email to run the Equity Diagnostic. Resend Verification Email", "verify-email")).toEndWith(
     "Verify your email to run the Equity Diagnostic. Requires a verified email on your Gloom account: open the app (gloom) and resend the "
       + "verification email from the command bar (Ctrl+P, Resend Verification Email).",
   );
   for (const action of ["read risk factors", "read earnings calls", "follow hiring"]) {
-    const report = await wall(`Gloom Cloud Pro: Sign in to ${action}. Sign up free ↵ Log in`);
+    const report = await wall(`Sign in to ${action}. Sign up free ↵ Log in`, "pro");
     expect(report).toContain("upgrade if your account does not have Gloom Cloud Pro");
     expect(report).not.toContain("Requires a free Gloom sign-in");
   }

@@ -86,9 +86,9 @@ async function venueRows(context: HeadlessPaneContext, query: string, start: Map
         nextChange: remaining == null ? null : venue.isOpen ? "closes" : "opens",
         nextChangeAt: remaining == null || stated == null ? null : new Date(checkedAt + stated * 1_000).toISOString(),
         nextText: remaining == null ? null : `${venue.isOpen ? "closes" : "opens"} ${formatVenueCountdown(remaining)}`,
-        ...(venue.hours ? { hours: venue.hours } : {}),
         lon: venue.longitude,
         lat: venue.latitude,
+        ...(venue.hours ? { hours: venue.hours } : {}),
       };
     }),
     freshness: REFERENCE_DATA,
