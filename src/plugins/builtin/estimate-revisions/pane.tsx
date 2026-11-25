@@ -379,7 +379,7 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
   const surpriseChart = useMemo<ChartTableChart | null>(() => {
     const series = beatMissSeries(bars, { actual: (row) => row.actual, estimate: (row) => row.estimate }, surpriseUnit);
     return series.length ? {
-      series, panels: SURPRISE_PANELS, xAxis: slotAxis(bars, (row) => reportMonth(row.date), (row) => row.date),
+      series, panels: SURPRISE_PANELS, xAxis: slotAxis(bars, (row) => reportMonth(row.date), (row) => estimateDay(row.date)),
       remoteKind: "estimate-surprises", ...surpriseLink, formatValue: eps, formatAxisValue: formatEpsAxis,
     } : null;
   }, [bars, surpriseLink, surpriseUnit]);
