@@ -861,7 +861,7 @@ a paused rule starts a new observation window. The evaluator looks back at most
 House alerts depend on successful PDF parsing and the daily OCR budget; Senate
 alerts cover electronic reports only. Each chamber scans up to 240 recent
 filings per source year. Fund filing checks share the 24-hour
-forms13f cache. Delivery therefore follows source availability and parsing, not
+13F filing cache. Delivery therefore follows source availability and parsing, not
 the transaction date or a guaranteed real-time schedule. Price alerts continue
 to use their existing price conditions.
 
@@ -879,7 +879,7 @@ the cooldown or daily cap waits up to a day. The 52-week test compares a
 completed session's high or low with the prior 252 completed sessions; unusual
 volume divides a completed session's share volume by the prior 20 sessions'
 mean; short interest change compares consecutive FINRA settlements; IV spike
-compares OPRA implied volatility for one contract and requires Pro. Readings
+compares one option contract's implied volatility and requires Pro. Readings
 carry their unit, date and a percentile of the same statistic over up to one
 year of readings, shown once at least 20 readings exist. Delivery history records what the push service
 accepted, not what the phone displayed.
@@ -1039,7 +1039,7 @@ OMON and `gloom options` serve no chain for a spot FX pair or a CME currency fut
 
 Ticker Research's 13F tab compares current holders and prior-quarter exits. Holder/new/exit counts cover the source indexes; the USD total covers loaded fund pages and grows as the list scrolls. Fund weight is share of reported 13F value. Equity, puts and calls remain separate, and incomplete reports leave changes unknown. A fund with no prior-quarter 13F-HR, such as a first-time filer or one whose manager filed a 13F-NT, also leaves its changes unknown without a warning; a warning names the fund when its report is incomplete or when SEC data shows a filing the provider lacks. On September 22, 2026, the upstream `/holders` index returned HTTP 400 for current periods and its official example; the tab reports that source failure until the provider restores the index.
 
-Crowding uses the latest broadly available quarter and the top 25 funds ranked by forms13f.com estimated performance. It is a sample, not the whole market. New and exit counts count distinct funds; DELTA PP sums changes in reported fund weight in percentage points, and COMP counts funds with a valid weight comparison. Options use underlying notional and remain separate from shares. Complete aggregates cache for 24 hours and partial results for five minutes. Mine marks and filters existing portfolio or watchlist tickers without changing the source sample or aggregate denominators.
+Crowding uses the latest broadly available quarter and the top 25 funds ranked by estimated performance. It is a sample, not the whole market. New and exit counts count distinct funds; DELTA PP sums changes in reported fund weight in percentage points, and COMP counts funds with a valid weight comparison. Options use underlying notional and remain separate from shares. Complete aggregates cache for 24 hours and partial results for five minutes. Mine marks and filters existing portfolio or watchlist tickers without changing the source sample or aggregate denominators.
 
 The Performance list shows the provider's estimated quarterly return and the prior three quarters when that fund appeared among each quarter's top 100. Missing ranks and failed or mismatched periods stay blank. This is a survivor-biased ranking history, not a verified fund track record; the provider's opaque `pnl` estimate is not realized fund performance.
 

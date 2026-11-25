@@ -1195,7 +1195,7 @@
           {
             "code": "OPX",
             "name": "Options Positioning",
-            "description": "Open interest by strike and expiry, max pain, walls and dealer gamma (GEX); BTC-USD and ETH-USD from Deribit."
+            "description": "Open interest by strike and expiry, max pain, walls and dealer gamma (GEX); BTC-USD and ETH-USD options as listed on Deribit."
           },
           {
             "code": "GEX",
