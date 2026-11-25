@@ -49,7 +49,7 @@ describe("cash distribution calculations", () => {
     expect(line("Trailing rate")).toMatch(/ estimated \(converted from USD\)$/);
     expect(line("Forward rate")).toContain(" estimated (converted from USD) (trailing regular payments: uneven interims)");
     expect(line("Frequency")).not.toContain("estimated");
-    expect(line("Estimated")).toMatch(/^Estimated\s+\$0\.10 declared, FX fixing 2026-12-07$/);
+    expect(line("Estimated")).toMatch(/^Estimated\s+\$0\.10 declared, FX fixing 07 Dec 2026$/);
     expect(text.match(/FX fixing/g)).toHaveLength(1);
     expect(text).not.toContain("estimated from");
     // JSON keeps its numbers and its structured provenance, and none of the text's marks.
@@ -112,9 +112,9 @@ describe("cash distribution calculations", () => {
     expect(line("Forward yield")).toContain(" estimated");
     expect(line("Forward rate")).toContain(" estimated (converted from EUR)");
     expect(line("Trailing rate")).not.toContain("estimated");
-    expect(line("Estimated")).toMatch(/^Estimated\s+€0\.02306 declared, FX fixing 2027-01-27$/);
+    expect(line("Estimated")).toMatch(/^Estimated\s+€0\.02306 declared, FX fixing 27 Jan 2027$/);
     expect(text.match(/FX fixing/g)).toHaveLength(1);
-    expect(text).toContain("2027-02-03");
+    expect(text).toContain("03 Feb 2027");
     setHttpFetchTransport(async () => Response.json({ status: "success", data: { quote: null, summary: null, actions: {
       symbol: "VOD", currency: "GBP", coverage: { dividends: "available" }, splits: [], earnings: [], dividends: [],
       declaredCash: { currency: "EUR", rows: [], announced: { exDate: "2026-11-19", payDate: "2027-02-03", amount: 0.02306 } },
@@ -228,9 +228,9 @@ describe("cash distribution calculations", () => {
       lastExDividendDate: new Date("2026-09-01") });
     const entries = projectDividendYieldHeadless({ payments: history, metrics, price: 100, currency: "USD" },
       { rawArgument: "IEF", argument: "IEF", symbols: ["IEF"], options: {} }).sections[0]!.textEntries!;
-    expect(entries.find((entry) => entry.label === "Forward yield")?.formatted).toBe("distribution history ends 2026-09-01");
-    expect(entries.find((entry) => entry.label === "Trailing yield")?.formatted).toContain("distribution history ends 2026-09-01");
-    expect(entries.find((entry) => entry.label === "Last ex-dividend")?.formatted).toBe("2026-09-01");
+    expect(entries.find((entry) => entry.label === "Forward yield")?.formatted).toBe("distribution history ends 01 Sep 2026");
+    expect(entries.find((entry) => entry.label === "Trailing yield")?.formatted).toContain("distribution history ends 01 Sep 2026");
+    expect(entries.find((entry) => entry.label === "Last ex-dividend")?.formatted).toBe("01 Sep 2026");
     // Once the missing months are filled the fund is current, and its stated rate stands.
     const filled = buildDividendMetrics([...history, payment("2026-10-01", 0.3), payment("2026-11-02", 0.3)], summary, 100, { now: at });
     expect(filled).toMatchObject({ forwardRate: 3.6, forwardRateAsOf: "2026-11-02", lapse: null, lastExDividendDate: new Date("2026-11-02") });
@@ -606,14 +606,14 @@ describe("cash distribution calculations", () => {
     expect(data.fetchedAt).toBe("2026-10-20T02:31:00.000Z");
     const result = projectDividendYieldHeadless(data, { rawArgument: "BP:LSE", argument: "BP:LSE", symbols: ["BP:LSE"], options: {} });
     expect(result.sections[0]?.entries?.find((entry) => entry.label === "History status")?.value)
-      .toBe("Stale cash history as of 2026-10-20; recent distributions may be missing.");
+      .toBe("Stale cash history as of 20 Oct 2026; recent distributions may be missing.");
     // The pence are a conversion of the dollars declared: the history says so, and JSON keeps every decimal.
     const history = result.sections.find((section) => section.title === "Dividend history (amounts converted from USD)")!;
     expect(history.columns?.map((column) => column.key)).toEqual(["exDate", "amount", "declared", "currency", "type"]);
     expect(history.rows?.[0]).toMatchObject({ amount: 0.064059, declared: 0.0867, declaredCurrency: "USD" });
     expect(result.metadata).toMatchObject({ convertedFrom: "USD" });
     const text = renderHeadlessPaneText(createDividendYieldHeadless(), result, { rawArgument: "BP:LSE", argument: "BP:LSE", symbols: ["BP:LSE"], options: {} }, "DVD");
-    expect(text).toMatch(/2026-08-13 +6\.4059p +\$0\.0867\n/);
+    expect(text).toMatch(/13 Aug 2026 +6\.4059p +\$0\.0867\n/);
     expect(text).toMatch(/Trailing rate +12\.5903p \(converted from USD\)/);
     expect(text).not.toContain("£0.06");
   });
@@ -642,15 +642,15 @@ describe("cash distribution calculations", () => {
     const line = (label: string) => text.split("\n").find((entry) => entry.startsWith(`${label} `))!;
     // The pence it trades in, as quote prints the price.
     expect(line("Price")).toMatch(/£35\.745$/);
-    expect(text).toMatch(/2026-11-12 +estimated 29\.8582p +\$0\.3906\n/);
+    expect(text).toMatch(/12 Nov 2026 +estimated 29\.8582p +\$0\.3906\n/);
     // The column shares the estimate's precision, as the declared column shares its finest.
-    expect(text).toMatch(/2026-05-21 +29\.1800p +\$0\.3906/);
-    expect(text).toMatch(/2026-02-19 +27\.8700p +\$0\.3720/);
+    expect(text).toMatch(/21 May 2026 +29\.1800p +\$0\.3906/);
+    expect(text).toMatch(/19 Feb 2026 +27\.8700p +\$0\.3720/);
     expect(line("Trailing rate")).toMatch(/115\.8282p estimated \(converted from USD\)$/);
     expect(line("Trailing yield")).toContain(" estimated ");
     expect(line("Estimated")).toMatch(/^Estimated\s+\$0\.3906 declared, FX fixing unavailable$/);
     expect(text.match(/^Estimated/gm)).toHaveLength(1);
-    expect(line("Next pay")).toMatch(/2026-12-21 \(from SHEL:NYSE\)$/);
+    expect(line("Next pay")).toMatch(/21 Dec 2026 \(from SHEL:NYSE\)$/);
     // Once the pay date has passed, the amount is what was paid.
     setSystemTime(new Date("2026-12-22T12:00:00Z"));
     const paid = await fetchDividendData("SHEL", 35.745, "LSE", "GBP");
@@ -679,7 +679,7 @@ describe("cash distribution calculations", () => {
     expect(history.rows?.[0]).toMatchObject({ exDate: "2026-11-02", source: "iShares", sourceUrl: iShares.url });
     expect(history.rows?.[2]).not.toHaveProperty("source");
     const text = renderHeadlessPaneText(createDividendYieldHeadless(), result, request, "DVD");
-    expect(text).toMatch(/2026-11-02 +\$0\.284092 +iShares/);
+    expect(text).toMatch(/02 Nov 2026 +\$0\.284092 +iShares/);
     // A history its sponsor gave nothing to keeps its columns.
     const own = projectDividendYieldHeadless({ ...data, payments: data.payments.map(({ source: _, ...row }) => row) }, request);
     expect(own.sections.find((section) => section.title === "Dividend history")?.columns?.map((column) => column.key))
@@ -699,7 +699,7 @@ describe("cash distribution calculations", () => {
     const text = renderHeadlessPaneText(createDividendYieldHeadless(), result, request, "DVD");
     expect(text).toMatch(/Trailing rate +148\.8201c \(converted from USD\)/);
     expect(text).toContain("Dividend history (amounts converted from USD)");
-    expect(text).toMatch(/2026-09-16 +86\.6087c\n/);
+    expect(text).toMatch(/16 Sep 2026 +86\.6087c\n/);
     expect(text).not.toContain("0.866087");
     // The exports keep the amount as read.
     expect(result.sections[1]!.rows![0]).toMatchObject({ amount: 0.866087, currency: "ZAR" });

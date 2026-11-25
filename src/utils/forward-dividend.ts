@@ -55,7 +55,7 @@ function statedDeclaration(exDate: string, options: DeclaredBasisOptions): { amo
 }
 
 /**
- * `latest distribution annualized, as of 2026-08-20`, or for a rate dated
+ * `latest distribution annualized, as of 20 Aug 2026`, or for a rate dated
  * ahead, `annualized from the declared $0.98 payable 2026-12-10, ex
  * 2026-11-19`, the amount and pay date when they are stated; the basis alone
  * when the date is unknown. `payDate` is the pay date a source states beside
@@ -277,7 +277,7 @@ export function noCurrentDividend(lapse: DividendLapse): string {
   return note ? `${NO_CURRENT_DIVIDEND} (${note})` : NO_CURRENT_DIVIDEND;
 }
 
-/** The same basis as a pane's short note under the figure: `as of 2026-08-20`, or `declared $0.98` beside the next ex-date it shows. */
+/** The same basis as a pane's short note under the figure: `as of 20 Aug 2026`, or `declared $0.98` beside the next ex-date it shows. */
 export function forwardDividendNote(asOf: string | Date | null | undefined, options: DeclaredBasisOptions = {}): string | null {
   const exDate = isoDay(asOf);
   if (!exDate) return null;

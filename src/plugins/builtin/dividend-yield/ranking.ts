@@ -1,6 +1,7 @@
 import type { HeadlessBundleResult, HeadlessPaneColumn } from "../../../types/headless";
 import { MISSING_VALUE, formatPercent } from "../../../utils/format";
-import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
+import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
+import { formatDay } from "../../../utils/day-format";
 import { TOKEN_YIELD_NOTE, type DividendData } from "./client";
 import { carriedDateText, formatDividendYield, growthPaymentsDetail, PAYOUT_BASIS, PAYOUT_NOT_MEANINGFUL, trailingPaymentsText } from "./view";
 import type { FundBondFacts } from "../../../api-client/fund-facts";
@@ -54,7 +55,7 @@ function incompleteNote(entry: DividendRankingEntry): string | null {
   const { historyError, summaryError, forwardFromFundamentals, metrics } = entry.data;
   // A forward yield read from fundamentals in place of the summary is dated by the ex-date it annualizes.
   const forward = summaryError && forwardFromFundamentals && metrics.forwardRateAsOf
-    ? `; fwd yield from fundamentals, ex ${metrics.forwardRateAsOf}` : "";
+    ? `; fwd yield from fundamentals, ex ${formatDay(metrics.forwardRateAsOf)}` : "";
   if (historyError && summaryError) return `no cash history or summary${forward}`;
   if (historyError) return "no cash history";
   return summaryError ? `no summary${forward}` : null;
@@ -215,7 +216,8 @@ const ratio = (value: unknown) => formatDividendYield(typeof value === "number" 
 const growth = (key: "growth1Y" | "growth3Y", notMeaningful = NOT_MEANINGFUL_TEXT.toLowerCase()) => (value: unknown, row: Record<string, unknown>) =>
   typeof value !== "number" && row[`${key}NotMeaningful`] === true ? notMeaningful
     : typeof value !== "number" && typeof row[`${key}Payments`] === "string" ? "n/a" : formatPercent(typeof value === "number" ? value : undefined);
-const day = (value: unknown) => typeof value === "string" && value ? value : MISSING_VALUE;
+// A day reads day first, as tables write it; the export keeps the ISO day. Other words (a tenor) stay as they are.
+const day = (value: unknown) => typeof value === "string" && value ? formatDay(value) : MISSING_VALUE;
 
 const RANKING_COLUMNS: HeadlessPaneColumn[] = [
   { key: "symbol", header: "Ticker", shrink: false },

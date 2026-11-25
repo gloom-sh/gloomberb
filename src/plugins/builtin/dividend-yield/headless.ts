@@ -17,7 +17,8 @@ import { currencyPriceMinDigits, formatMarketPriceWithCurrency } from "../../../
 import type { Quote } from "../../../types/financials";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { dividendPriceStatus, dividendQuotePriceMetadata } from "./reference-price";
-import { logFailure } from "../../../utils/log-failure";
+import { logFailure } from "../../../utils/log-failure";import { logFailure } from "../../../utils/log-failure";
+import { formatDay } from "../../../utils/day-format";
 import { projectDividendRanking, roundedRatio } from "./ranking";
 import { MAX_RANKED_SYMBOLS, readDividendRanking, type DividendRankingReads } from "./ranking-reads";
 import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
@@ -167,7 +168,7 @@ const PAYOUT_LABEL = `Payout (${PAYOUT_BASIS})`;
 
 /** A date, with the company's other listing it is stated by where it is not this one's: `2026-12-17 (from HSBA:LSE)`. */
 function dateEntry(label: string, date: Date | null, listing?: string) {
-  return { label, value: date, formatted: date ? `${date.toISOString().slice(0, 10)}${listing ? ` ${carriedDateText(listing)}` : ""}` : "—" };
+  return { label, value: date, formatted: date ? `${formatDay(date.toISOString().slice(0, 10))}${listing ? ` ${carriedDateText(listing)}` : ""}` : "—" };
 }
 
 /** The next pay date, when it is the one stated beside the ex-date the forward rate is dated by. */
@@ -288,7 +289,7 @@ export function projectDividendYieldHeadless(
           ...figures.map((figure) => ({
             label: figureLabel(figure),
             value: figure.value,
-            formatted: `${figure.text}${figure.date ? ` (as of ${figure.date})` : ""}`,
+            formatted: `${figure.text}${figure.date ? ` (as of ${formatDay(figure.date)})` : ""}`,
           })),
           { label: "Trailing rate", value: metrics.trailingRate, formatted: cashRate(metrics.trailingRate, trailingEstimated) },
           { label: "Forward rate", value: metrics.forwardRate, formatted: `${cashRate(metrics.forwardRate, forwardEstimated)}${trailingForward ? ` (${UNEVEN_REGULAR_PAYMENTS})` : ""}` },

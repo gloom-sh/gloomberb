@@ -125,7 +125,7 @@ function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory
       : { id: "forward-yield", essential: true, label: fwdLabel, value: `${formatDividendYield(metrics.forwardYield)}${metrics.forwardEstimate ? " estimated" : ""}`, color: priceColor(metrics.forwardYield ?? 0),
         ...(forwardNote ? { detail: forwardNote } : {}) },
     ...(metrics.forwardEstimate ? [{ id: "forward-fx", essential: true, label: metrics.forwardEstimate.fixingDate ? "FX fixing" : "FX basis",
-      value: metrics.forwardEstimate.fixingDate ?? `${metrics.forwardEstimate.declaredCurrency}, ${metrics.forwardEstimate.declaredAmount != null ? "not fixed" : "FX unknown"}` }] : []),
+      value: metrics.forwardEstimate.fixingDate ? formatDay(metrics.forwardEstimate.fixingDate) : `${metrics.forwardEstimate.declaredCurrency}, ${metrics.forwardEstimate.declaredAmount != null ? "not fixed" : "FX unknown"}` }] : []),
     // The 30-day SEC yield as the fund's sponsor publishes it, dated.
     ...(sec ? [{ id: "sec-yield", label: short ? "SEC yld" : "SEC yield", value: sec.text, ...(sec.date ? { detail: `as of ${formatDay(sec.date)}` } : {}) }] : []),
     { id: "ttm-rate", essential: false, label: short ? "TTM/sh" : "TTM/share", value: formatRate(metrics.trailingRate, currency, !!convertedFrom, convertedSubUnit),

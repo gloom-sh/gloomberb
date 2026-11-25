@@ -74,14 +74,14 @@ function cashEstimateText(estimate: NonNullable<DividendMetrics["forwardEstimate
 
 /**
  * What an estimated figure is estimated from, as a report says it once beside the figures it marks: `$0.10 declared,
- * FX fixing 2026-12-07`, the declared amount in the distribution's own formatting, `FX fixing unavailable` while
+ * FX fixing 07 Dec 2026`, the declared amount in the distribution's own formatting, `FX fixing unavailable` while
  * no fixing is known. Each distinct estimate is named once, whichever figures it marks.
  */
 export function distinctEstimateTexts(estimates: readonly NonNullable<DividendMetrics["forwardEstimate"]>[]): string[] {
   return [...new Set(estimates.map((estimate) => {
     const declared = estimate.declaredAmount == null ? `declared in ${estimate.declaredCurrency}`
       : `${formatDistributionAmount(estimate.declaredAmount, estimate.declaredCurrency)} declared`;
-    return `${declared}, FX ${estimate.fixingDate ? `fixing ${estimate.fixingDate}` : "fixing unavailable"}`;
+    return `${declared}, FX ${estimate.fixingDate ? `fixing ${formatDay(estimate.fixingDate)}` : "fixing unavailable"}`;
   }))];
 }
 
