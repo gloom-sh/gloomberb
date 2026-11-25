@@ -44,6 +44,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { ThemeColors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { MISSING_VALUE, formatCompact, formatPercentileRank, formatPercentRaw } from "../../../utils/format";
+import { formatDetailDate } from "../../../utils/datetime-format";
 import { canonicalExchange } from "../../../utils/exchanges";
 import { isNotMeaningful, NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
@@ -66,7 +67,8 @@ import {
   estimateSurprise,
   NO_ESTIMATE_PERIODS_TITLE,
   periodColumns,
-  periodLabel,
+  periodTitle,
+  estimateDay,
   pinnedEstimatePeriods,
   revisionNotices,
   sharedPeriodCurrency,
@@ -185,21 +187,21 @@ function EstimateDetail({
   const asOf = current?.date;
   // The latest observation date is said once, on the consensus; the other
   // figures name a date only when theirs differs.
-  const otherDate = (date: string | null | undefined) => date && date !== asOf ? date : undefined;
+  const otherDate = (date: string | null | undefined) => date && date !== asOf ? estimateDay(date) : undefined;
   const pctl = period.percentile.percentile;
   const figures: StatItem[] = [
     {
       id: "eps",
       label: "EPS",
       value: `${eps(current?.average)}${period.currency ? ` ${period.currency}` : ""}`,
-      detail: [pctl == null ? null : formatPercentileRank(pctl), asOf].filter(Boolean).join(" · ") || undefined,
+      detail: [pctl == null ? null : formatPercentileRank(pctl), asOf ? estimateDay(asOf) : null].filter(Boolean).join(" · ") || undefined,
     },
     {
       id: "change",
       label: "Change",
       value: percent(period.change.percent),
       tone: period.change.percent == null || period.change.percent === 0 ? "neutral" : period.change.percent > 0 ? "positive" : "negative",
-      detail: `${period.change.fromDate ?? MISSING_VALUE} to ${period.change.toDate ?? MISSING_VALUE}`,
+      detail: `${estimateDay(period.change.fromDate)} to ${estimateDay(period.change.toDate)}`,
     },
     {
       id: "range",
@@ -251,7 +253,7 @@ function EstimateDetail({
       renderCell={(row, column, _index, state) => ({
         text:
           column.id === "date"
-            ? row.date
+            ? estimateDay(row.date)
             : column.id === "source"
               ? historySource(row)
               : column.id === "analysts"
@@ -327,7 +329,7 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
   // The chart follows the selected period: its consensus over time, as recorded and as lookbacks reported it.
   const revisionsChart = useMemo<ChartTableChart | null>(() => {
     if (!rows.some((row) => consensusPoints(row) >= 2)) return null;
-    const label = chartedPeriod ? periodLabel(chartedPeriod) : "";
+    const label = chartedPeriod ? periodTitle(chartedPeriod) : "";
     return {
       series: chartedPeriod && consensusPoints(chartedPeriod) >= 2 ? consensusSeries(chartedPeriod, colors) : [],
       empty: `No consensus history for ${label}`,
@@ -341,7 +343,7 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
     const current = estimateCurrent(row);
     const breadth = row.breadth.find((entry) => entry.days === 30);
     switch (column.id) {
-      case "period": return { text: row.periodEnd, color: colors.textBright };
+      case "period": return { text: estimateDay(row.periodEnd), value: row.periodEnd, color: colors.textBright };
       case "currency": return { text: row.currency ?? MISSING_VALUE, color: colors.textDim };
       case "eps": return { text: eps(current?.average), value: current?.average ?? null, color: colors.text };
       case "percentile": return { text: estimatePercentile(row.percentile.percentile), value: row.percentile.percentile, color: colors.textDim };
@@ -352,7 +354,7 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
       case "breadth":
         return { text: breadth?.up == null && breadth?.down == null ? MISSING_VALUE : `${count(breadth?.up)}/${count(breadth?.down)}`, color: colors.textDim };
       case "range": return { text: eps(current?.range), value: current?.range ?? null, color: colors.textDim };
-      default: return { text: current?.date ?? MISSING_VALUE, color: colors.textDim };
+      default: return { text: estimateDay(current?.date), value: current?.date ?? null, color: colors.textDim };
     }
   }, [colors]);
 
@@ -383,7 +385,7 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
   }, [bars, surpriseLink, surpriseUnit]);
   const renderSurpriseCell = useCallback((row: EstimateSurprise, column: DataTableColumn): DataTableCell => {
     switch (column.id) {
-      case "date": return { text: row.date, color: colors.textDim };
+      case "date": return { text: estimateDay(row.date), value: row.date, color: colors.textDim };
       case "dateType": return { text: row.dateType, color: colors.textDim };
       case "currency": return { text: row.currency ?? MISSING_VALUE, color: colors.textDim };
       case "estimate": return { text: eps(row.estimate), value: row.estimate, color: colors.textDim };
@@ -519,7 +521,7 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
             detailOpen={!!selectedPeriod}
             onBack={() => setOpen(null)}
             detailTitle={
-              selectedPeriod ? periodLabel(selectedPeriod) : undefined
+              selectedPeriod ? periodTitle(selectedPeriod) : undefined
             }
             detailContent={
               selectedPeriod ? (
@@ -583,8 +585,8 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
                 <KeyValueRow
                   labelWidth={16}
                   label="Call"
-                  value={data.guidance.callDate?.slice(0, 10) ?? MISSING_VALUE}
-                  detail={`FY${data.guidance.fiscalYear} Q${data.guidance.fiscalQuarter} · summary ${data.guidance.publishedAt.replace("T", " ").slice(0, 16)}`}
+                  value={estimateDay(data.guidance.callDate?.slice(0, 10))}
+                  detail={`FY${data.guidance.fiscalYear} Q${data.guidance.fiscalQuarter} · summary ${formatDetailDate(data.guidance.publishedAt)}`}
                 />
                 <Prose
                   text={data.guidance.text}

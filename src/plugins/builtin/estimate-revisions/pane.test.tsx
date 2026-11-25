@@ -99,9 +99,9 @@ test("the period detail charts recorded and lookback EPS over its observations, 
   // The legend names each line as the SOURCE column does, at the latest observation.
   expect(lines.some((line) => /• Recorded 1\.71 \+ Reported lookback 1\.62/.test(line))).toBe(true);
   const header = lines.findIndex((line) => line.includes("OBSERVED"));
-  expect(lines[header + 1]).toMatch(/2026-09-16\s+1\.71/);
+  expect(lines[header + 1]).toMatch(/16 Sep 2026\s+1\.71/);
   // The detail fills the body under the stack bar, down to the footer.
-  expect(lines[27]).toMatch(/\d{4}-\d{2}-\d{2}/);
+  expect(lines[27]).toMatch(/\d{2} \w{3} \d{4}/);
 
   await tui.emitKeypress({ name: "down" });
   await settle(40);
@@ -117,7 +117,7 @@ test("a short detail keeps the observations and draws the chart as a strip", asy
   // The EPS figure above already reads 1.71, so the strip does not repeat it.
   expect(lines[header - 2]).toContain("EPS  1.71 USD");
   expect(lines[header - 1]).toMatch(/^ ● Recorded [⠀-⣿]+\s*$/);
-  expect(lines.slice(header + 1).filter((line) => /\d{4}-\d{2}-\d{2}/.test(line)).length).toBeGreaterThanOrEqual(4);
+  expect(lines.slice(header + 1).filter((line) => /\d{2} \w{3} \d{4}/.test(line)).length).toBeGreaterThanOrEqual(4);
 });
 
 test("Revisions keeps the quarters apart from the years, in cents, and charts the consensus of the period selected", async () => {
@@ -127,13 +127,13 @@ test("Revisions keeps the quarters apart from the years, in cents, and charts th
   const lines = await renderDetail(120, 28, false);
   const header = lines.findIndex((line) => line.includes("FISCAL END"));
   expect(lines[header]).not.toContain("CCY");
-  expect(lines.slice(header + 1, header + 5).map((line) => line.trim().split(/\s+/).slice(0, 2).join(" "))).toEqual([
-    "Quarters (1)", "2026-09-30 1.71", "Years (1)", "2027-09-30 7.46"]);
+  expect(lines.slice(header + 1, header + 5).map((line) => line.trim().split(/\s+/).slice(0, 4).join(" "))).toEqual([
+    "Quarters (1)", "30 Sep 2026 1.71", "Years (1)", "30 Sep 2027 7.46"]);
   // The chart is the quarter's consensus over time; on the year, one reading, it says it has none to draw.
-  expect(lines.find((line) => line.includes("• Recorded"))).toContain("Q 2026-09-30");
+  expect(lines.find((line) => line.includes("• Recorded"))).toContain("Q 30 Sep 2026");
   await tui.emitKeypress({ name: "down" });
   await settle();
-  expect(tui.frame()).toContain("No consensus history for FY 2027-09-30");
+  expect(tui.frame()).toContain("No consensus history for FY 30 Sep 2027");
 });
 
 test("Surprises charts each report's estimate beside its actual over the reports, with no column every row repeats", async () => {
@@ -145,6 +145,6 @@ test("Surprises charts each report's estimate beside its actual over the reports
   const header = lines.findIndex((line) => line.includes("EST EPS"));
   expect(lines[header]).toMatch(/DATE \S\s+EST EPS USD\s+ACT EPS USD\s+SURPRISE\s+VS EST\s*$/);
   // The surprise is the actual's on the estimate, as EVT's, where the server sent none.
-  expect(lines[header + 1]).toMatch(/2026-07-30\s+1\.43\s+1\.57\s+\+9\.79%\s+\+0\.14\s*$/);
-  expect(lines[header + 2]).toMatch(/2026-04-30\s+1\.70\s+1\.65\s+-2\.94%\s+-0\.05\s*$/);
+  expect(lines[header + 1]).toMatch(/30 Jul 2026\s+1\.43\s+1\.57\s+\+9\.79%\s+\+0\.14\s*$/);
+  expect(lines[header + 2]).toMatch(/30 Apr 2026\s+1\.70\s+1\.65\s+-2\.94%\s+-0\.05\s*$/);
 });
