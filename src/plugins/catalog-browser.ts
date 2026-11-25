@@ -17,8 +17,6 @@ import { revenueBreakdownModule } from "./builtin/revenue-breakdown";
 import { mnaModule } from "./builtin/mna";
 import { cryptoBoardModule } from "./builtin/crypto-board";
 import { cryptoEtfFlowsModule } from "./builtin/crypto-etf-flows";
-import { shortInterestModule } from "./builtin/short-interest";
-import { shortVolumeModule } from "./builtin/short-volume";
 import { socialMentionsModule } from "./builtin/social-mentions";
 import { timeSalesModule } from "./builtin/time-sales";
 import { estimateRevisionsModule } from "./builtin/estimate-revisions";
@@ -27,8 +25,6 @@ import type { LoadedExternalPlugin } from "./loader";
 import { portfolioAnalyticsModule } from "./builtin/analytics";
 import { earningsCallsModule } from "./builtin/earnings-calls";
 import { earningsModule } from "./builtin/earnings";
-import { holdersModule } from "./builtin/holders";
-import { thirteenFModule } from "./builtin/thirteenf";
 import { browserDividendYieldModule } from "./builtin/dividend-yield/browser";
 import { executivesModule } from "./builtin/executives";
 import { filingEventsModule } from "./builtin/filing-events";
@@ -51,6 +47,7 @@ import { chartComposerModule } from "./builtin/chart-composer";
 import { connectionsModule } from "./builtin/connections";
 import { relativeRotationModule } from "./builtin/relative-rotation";
 import { screenersPlugin } from "./builtin/composite/screeners";
+import { browserOwnershipPlugin } from "./builtin/composite/ownership-browser";
 import { correlationModule } from "./builtin/correlation";
 import { cdsModule } from "./builtin/cds";
 import { creditBoardsModule } from "./builtin/credit-boards";
@@ -76,8 +73,6 @@ import { layoutManagerModule } from "./builtin/layout-manager";
 import { tickerNewsModule } from "./builtin/news";
 import { browserNewsWireModule } from "./builtin/news/wire";
 import { secModule } from "./builtin/sec";
-import { insiderModule } from "./builtin/insider";
-import { buybacksModule } from "./builtin/buybacks";
 import { jobsModule } from "./builtin/jobs";
 import { optionsModule } from "./builtin/options";
 import { optionsPositioningModule } from "./builtin/options-positioning";
@@ -112,7 +107,6 @@ import {
   earningsPluginMeta,
   filingsPluginMeta,
   optionsVolatilityPluginMeta,
-  ownershipPluginMeta,
   ratesMacroPluginMeta,
   tickerCorePluginMeta,
   altDataPluginMeta,
@@ -168,23 +162,6 @@ const browserOptionsVolatilityPlugin = composeBuiltinPlugin({
     volSurfaceModule,
     realizedVolModule,
     ivHistoryModule,
-  ],
-});
-
-const browserOwnershipPlugin = composeBuiltinPlugin({
-  ...ownershipPluginMeta,
-  description: "Holders, 13F funds, insider trades, Hong Kong buybacks, and short interest and volume.",
-  // The public 13F fallback goes through the same host proxy as other plugins.
-  hosts: ["forms13f.com"],
-  modules: [
-    holdersModule,
-    thirteenFModule,
-    // Form 4s come through Gloom Cloud, behind a sign-in wall.
-    insiderModule,
-    buybacksModule,
-    // Daily volume shares open this pane.
-    shortInterestModule,
-    shortVolumeModule,
   ],
 });
 

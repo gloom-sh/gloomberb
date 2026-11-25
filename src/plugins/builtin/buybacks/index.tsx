@@ -1,8 +1,10 @@
 import type { PluginModule } from "../plugin-module";
 import { buybacksCache, buybackSymbol } from "./client";
+import { BUYBACK_SERIES } from "./series";
 
 /** Ticker Research's Buybacks view: a Hong Kong listing's repurchases by session, its mandate and its blackout windows. */
 export const buybacksModule: PluginModule = {
+  series: BUYBACK_SERIES,
   setup(ctx) {
     buybacksCache.attach(ctx.persistence);
     ctx.registerTickerResearchTab({

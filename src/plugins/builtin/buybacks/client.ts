@@ -30,9 +30,10 @@ function validateBuybacks(data: BuybacksPayload): BuybacksPayload {
   return data;
 }
 
-async function fetchBuybacks(symbol: string): Promise<BuybacksPayload> {
+/** One read of a listing's buybacks, uncached: the pane caches it per account, a chart series reads it as it is now. */
+export async function fetchBuybacks(symbol: string, signal?: AbortSignal): Promise<BuybacksPayload> {
   try {
-    const data = validateBuybacks(await apiClient.getCloudBuybacks(symbol));
+    const data = validateBuybacks(await apiClient.getCloudBuybacks(symbol, signal ? { signal } : undefined));
     if (data.symbol !== symbol) throw new Error("Share buybacks do not match the requested listing");
     return data;
   } catch (error) {
