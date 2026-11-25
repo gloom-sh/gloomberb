@@ -64,16 +64,16 @@ const FEED_COLUMNS: DataTableColumn[] = [COLUMN.date, COLUMN.recipient, COLUMN.t
   ...[COLUMN.value, COLUMN.obligated, COLUMN.ceiling].map((column) => ({ ...column, omitWhenEmpty: "visible" as const })),
   COLUMN.country, COLUMN.period, COLUMN.dateBasis];
 /**
- * The feed's columns, without what every award of the query shares: the ticker
- * it is filtered to, its one currency, named in the amounts' headers instead,
- * and its one country. A date basis the whole list shares, all of it loaded,
- * goes too.
+ * The feed's columns, leaving out of the table what every award of the query
+ * shares: the ticker it is filtered to, its one currency, named in the
+ * amounts' headers instead, and its one country. A date basis the whole list
+ * shares, all of it loaded, goes too. The export keeps every column.
  */
 function feedColumns(shared: AwardsQueryShared, complete: boolean): DataTableColumn[] {
-  return FEED_COLUMNS.flatMap((column) => {
-    if (column.id === "ticker" && shared.ticker || column.id === "currency" && shared.currency || column.id === "country" && shared.country) return [];
-    if (column.id === "value" || column.id === "obligated" || column.id === "ceiling") return [{ ...column, label: awardAmountLabel(column.label, shared.currency) }];
-    return [column.id === "dateBasis" && complete ? { ...column, omitWhenSame: true } : column];
+  return FEED_COLUMNS.map((column) => {
+    if (column.id === "ticker" && shared.ticker || column.id === "currency" && shared.currency || column.id === "country" && shared.country) return { ...column, omitWhenSame: true };
+    if (column.id === "value" || column.id === "obligated" || column.id === "ceiling") return { ...column, label: awardAmountLabel(column.label, shared.currency) };
+    return column.id === "dateBasis" && complete ? { ...column, omitWhenSame: true } : column;
   });
 }
 const EVENT_COLUMNS: DataTableColumn[] = [COLUMN.date, COLUMN.recipient, COLUMN.ticker,
