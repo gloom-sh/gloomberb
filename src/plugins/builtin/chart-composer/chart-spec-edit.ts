@@ -4,10 +4,10 @@ import type {
   ChartSeriesSpec,
   ChartSpec,
   ChartStudySpec,
+  SecuritySeriesSource,
   SeriesAxis,
   SeriesPeriod,
   SeriesStyle,
-  SecuritySeriesSource,
   SeriesTimestampMode,
   SeriesTransform,
 } from "../../../time-series/types";
@@ -416,9 +416,9 @@ export function appendChartSeries(
   expression: ParsedSeriesExpression,
   options: {
     /**
-     * Off for a formula's legs, which the formula reads at their price: a
-     * ticker's price otherwise joins the prices the chart draws rebased
-     * (`buildComparisonLeg`). At its own defaults, SPY added to `CMP SMH, QQQ,
+     * Whether a ticker's price joins the prices the chart draws rebased
+     * (`buildComparisonLeg`); false for a formula's legs, which the formula
+     * reads at their price. At its own defaults, SPY added to `CMP SMH, QQQ,
      * RSP` drew raw candles on a dollar axis beside the legs' % lines, and
      * the chart stopped comparing them.
      */
