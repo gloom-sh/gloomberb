@@ -725,18 +725,21 @@ test("EVT row windows show a stock's latest dividend instead of an older earning
   }
 });
 
-test("EVT summarizes a named ETF's split even without covered payouts", async () => {
+test.each([["without payouts", false], ["after a recorded payout", true]] as const)("EVT summarizes a named ETF's split %s", async (_case, hasPayout) => {
   const symbol = "TEST";
   const definition = createEventsHeadless({ load: async () => ({
     currency: "USD", estimates: null, financials: null,
     actions: { symbol, name: "Test Index ETF", currency: "USD", coverage: { dividends: "unavailable" },
-      dividends: [], earnings: [], splits: [{ date: "2022-08-31", fromFactor: 1, toFactor: 4 }] },
+      dividends: hasPayout ? [{ exDate: "2021-05-10", amount: 0.25 }] : [], earnings: [], splits: [{ date: "2022-08-31", fromFactor: 1, toFactor: 4 }] },
   }) });
   const loaded = await definition.load({ ...args, symbols: [symbol] }, createTestHeadlessContext());
   const headless = { ...definition, argument: { kind: "none" } as const, load: () => loaded };
   const summary = await reportOf(headless);
-  expect(summary.text).toMatch(/^2022\b[^\n]*4-for-1 split · Distribution history incomplete/m);
+  expect(summary.text).toMatch(/^2022[ \t—]+4-for-1 split · Distribution history incomplete[ \t]*$/m);
   expect(summary.text).not.toContain("No data.");
+  if (hasPayout) expect(summary.text).toMatch(/^2021\s+0\.25 USD\s+1\b/m);
+  expect(csvOf(summary).filter((line) => /^\d{4}-\d{2}-\d{2},/.test(line)).map((line) => line.split(",").slice(0, 2)))
+    .toEqual(hasPayout ? [["2022-08-31", "Split"], ["2021-05-10", "Dividend"]] : [["2022-08-31", "Split"]]);
   for (const window of [{ tail: 1 }, { limit: 1 }]) {
     const report = await reportOf(headless, "", window);
     expect(report.text).toMatch(/^2022-08-31\s+Split\b/m);

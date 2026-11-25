@@ -414,6 +414,14 @@ describe("EVT's Dividends view", () => {
     expect(tui.frame()).not.toMatch(/\bEPS\b|Next report/);
     expect(actionReads).toBe(1);
   });
+
+  test("shows a fund's split after its last recorded payout without assuming no dividend", async () => {
+    await mount({ actions: async () => ({ ...ACTIONS, name: "Test Index ETF",
+      dividends: [paid("2021-05-10", 0.25)], coverage: { ...ACTIONS.coverage, dividends: "unavailable" } }) });
+    expect(tui.frame()).toMatch(/^\s*2022\s+4-for-1 split · Distribution history incomplete/m);
+    expect(tui.frame()).toMatch(/^\s*2021\s+0\.25\s+1\b/m);
+    expect(line("Paying since")).toMatch(/2021\s+1 of 1\b/);
+  });
 });
 
 describe("the strip stays", () => {
