@@ -288,7 +288,7 @@ function daysUntil(date: string, today: string): string {
 export function historyFigures(rows: readonly HistoryRow[], today: string, selected?: HistoryRow | null): StatItem[] {
   if (selected?.epsBasis === "company-adjusted" && selected.streetEps) {
     return [
-      { id: "filed", label: "Company-adjusted EPS", value: epsText(selected.epsActual), detail: "diluted" },
+      { id: "filed", label: "Company EPS", value: epsText(selected.epsActual), detail: "non-GAAP diluted" },
       { id: "gaap", label: "GAAP diluted", value: epsText(selected.gaapEps) },
       { id: "street", label: "Street actual", value: epsText(selected.streetEps.actual), detail: "includes stock comp" },
       { id: "street-estimate", label: "Street estimate", value: epsText(selected.streetEps.estimate), detail: "basis unconfirmed" },
