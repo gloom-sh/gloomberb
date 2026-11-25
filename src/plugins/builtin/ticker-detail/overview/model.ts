@@ -424,7 +424,8 @@ export function buildOverviewStats({
     // shows it; the notice under the pane gives its inputs where the provider's is far off (enterpriseValueGapIsLarge).
     const check = enterpriseValueCheck(priced);
     const minority = (check?.minorityAndPreferred ?? 0) > 0 ? " + minority" : "";
-    const computedDetail = (enterpriseValue.bridge?.leases ?? 0) > 0 ? "computed" : [`cap + debt - cash${minority}`, "computed"];
+    const leases = enterpriseValue.bridge?.leases ?? check?.leases ?? 0;
+    const computedDetail = leases > 0 ? "computed" : [`cap + debt - cash${minority}`, "computed"];
     stats.push({
       label: "EV",
       value: formatCompactCurrency(enterpriseValue.value, enterpriseValue.currency),

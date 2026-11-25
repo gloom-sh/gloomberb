@@ -119,6 +119,27 @@ test("Overview and valuation use the same dated FX close for a withdrawn EV on a
   }
 });
 
+test("a wide Overview tile labels a served, lease-inclusive EV as computed", async () => {
+  const financials = createTestFinancials({ quote: createTestQuote({ symbol: ticker.metadata.ticker }), fundamentals: {
+    marketCap: 100e9, marketCapCurrency: "USD", enterpriseValue: 125e9,
+    enterpriseValueCheck: { status: "differs", currency: "USD", source: 110e9, computed: 125e9,
+      marketCap: 100e9, totalDebt: 20e9, leases: 10e9, cash: 5e9, balanceSheetDate: "2026-09-30" },
+  } });
+  const overview = createOpenTuiTestHarness();
+  try {
+    await act(async () => {
+      await overview.render(<TestPaneFrame state={createInitialState(config)} paneId="overview" pluginId="ticker-research"
+        runtime={createTestPluginRuntime()} width={224} height={50}>
+        {(body) => <OverviewTab {...body} focused ticker={ticker} financials={financials} />}
+      </TestPaneFrame>, { width: 224, height: 50 });
+    });
+    const frame = await overview.waitForFrameToContain("125B USD");
+    expect(frame).toMatch(/\bEV +125B USD +computed\b/);
+  } finally {
+    await overview.destroy();
+  }
+});
+
 test.each([true, false])("IAG Overview and valuation agree when a withdrawn EV has a valid bridge (%s)", async (hasBridge) => {
   setSystemTime(new Date("2026-11-25T20:05:00Z"));
   const listing = createTestTicker("IAG:LSE", "International Consolidated Airlines Group", { exchange: "LSE", currency: "GBP" });
