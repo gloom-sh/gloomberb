@@ -13,6 +13,15 @@ import { MarketDataCoordinator } from "./index";
 
 useRegularMarketSession();
 
+function restoreWithoutDecodedBars<T>(restore: () => T): T {
+  const deref = spyOn(WeakRef.prototype, "deref").mockReturnValue(undefined);
+  try {
+    return restore();
+  } finally {
+    deref.mockRestore();
+  }
+}
+
 test("archives exact chart values and keeps the last good answer on a failed refresh", () => {
   const bars: PricePoint[] = [
     { date: new Date("2025-01-06"), close: 103.123456789, high: 104, low: undefined, volume: -0 },
@@ -20,7 +29,7 @@ test("archives exact chart values and keeps the last good answer on a failed ref
     { date: new Date("2025-01-20"), close: NaN, low: NaN },
   ];
   const entry = { ...createIdleEntry<PricePoint[]>(), phase: "ready" as const, data: bars, lastGoodData: bars, fetchedAt: 12 };
-  const restored = archiveChartEntry(entry)!();
+  const restored = restoreWithoutDecodedBars(archiveChartEntry(entry)!);
   expect(restored).toStrictEqual(entry);
   expect(restored.data).toBe(restored.lastGoodData);
   expect(restored.data![0]).not.toBe(bars[0]);
@@ -40,8 +49,10 @@ test("packs shared chart and snapshot bars once, including after restoring them"
   const snapshot = archiveSnapshotEntry({ ...createIdleEntry<TickerFinancials>(), data: createTestFinancials({ priceHistory }) })!;
   expect(timestamp).toHaveBeenCalledTimes(1);
 
-  const reopenedChart = chart();
+  const reopenedChart = restoreWithoutDecodedBars(chart);
   const reopenedSnapshot = snapshot();
+  expect(reopenedChart.data).not.toBe(priceHistory);
+  expect(reopenedSnapshot.data?.priceHistory).toBe(reopenedChart.data);
   const chartTimestamp = spyOn(reopenedChart.data![0]!.date, "getTime");
   const snapshotTimestamp = spyOn(reopenedSnapshot.data!.priceHistory[0]!.date, "getTime");
   expect(archiveChartEntry(reopenedChart)).not.toBeNull();

@@ -9,6 +9,7 @@ const packedHistories = new WeakMap<PricePoint[], PackedBars>();
 interface PackedBars {
   values: Float64Array;
   missing: Uint8Array;
+  decoded: WeakRef<PricePoint[]>;
   /** Nonstandard points, such as bars carrying a venue breakout, are kept as served. */
   other: Map<number, PricePoint>;
 }
@@ -44,23 +45,32 @@ function packBars(points: PricePoint[]): PackedBars {
     values[offset] = point.date.getTime();
     values[offset + 1] = point.close;
   }
-  return { values, missing, other };
+  return { values, missing, other, decoded: new WeakRef(points) };
 }
 
 function unpackBars(packed: PackedBars): PricePoint[] {
+  const decoded = packed.decoded.deref();
+  if (decoded) return decoded;
   const { values, missing, other } = packed;
-  const points = Array.from(missing, (mask, index) => {
-    const kept = other.get(index);
-    if (kept) return kept;
+  const irregular = other.size ? other : null;
+  const points: PricePoint[] = new Array(missing.length);
+  for (let index = 0; index < missing.length; index++) {
+    const kept = irregular?.get(index);
+    if (kept) {
+      points[index] = kept;
+      continue;
+    }
+    const mask = missing[index]!;
     const offset = index * BAR_COLUMNS;
     const point: PricePoint = { date: new Date(values[offset]!), close: values[offset + 1]! };
-    optionalColumns.forEach((key, column) => {
-      if (mask & (1 << column)) return;
+    for (let column = 0; column < optionalColumns.length; column++) {
+      if (mask & (1 << column)) continue;
       const value = values[offset + 2 + column]!;
-      point[key] = Number.isNaN(value) ? undefined : value;
-    });
-    return point;
-  });
+      point[optionalColumns[column]!] = Number.isNaN(value) ? undefined : value;
+    }
+    points[index] = point;
+  }
+  packed.decoded = new WeakRef(points);
   packedHistories.set(points, packed);
   return points;
 }
