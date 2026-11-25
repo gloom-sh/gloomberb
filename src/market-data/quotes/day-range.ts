@@ -75,6 +75,8 @@ export function reconcileQuoteDayRange<T extends Quote>(next: T, current?: Quote
   const nextDate = sessionDate(next);
   let high = next.high;
   let low = next.low;
+  let highSource: Quote | undefined = high === undefined ? undefined : next;
+  let lowSource: Quote | undefined = low === undefined ? undefined : next;
   if (current && compatibleUnits) {
     const sameRegularSession = current.marketState === "REGULAR"
       && next.marketState === "REGULAR"
@@ -84,23 +86,36 @@ export function reconcileQuoteDayRange<T extends Quote>(next: T, current?: Quote
       && nextDate != null
       && sessionDate(current) === nextDate;
     if (sameRegularSession) {
-      if (positive(current.high)) high = positive(high) ? Math.max(high, current.high) : current.high;
-      if (positive(current.low)) low = positive(low) ? Math.min(low, current.low) : current.low;
+      if (positive(current.high) && (!positive(high) || current.high > high)) {
+        high = current.high;
+        highSource = current;
+      }
+      if (positive(current.low) && (!positive(low) || current.low < low)) {
+        low = current.low;
+        lowSource = current;
+      }
     } else if (next.marketState !== "REGULAR") {
       // Extended-hours trades are not part of the regular-session range.
-      high ??= current.high;
-      low ??= current.low;
+      if (high == null) { high = current.high; highSource = current; }
+      if (low == null) { low = current.low; lowSource = current; }
     }
   }
+  const source = positive(high) && positive(low) && highSource === lowSource ? highSource : undefined;
+  const sourceDate = source?.dayRangeSessionDate !== undefined ? source.dayRangeSessionDate
+    : source ? declaredSessionDate(source) ?? (source.marketState === "REGULAR" ? source === next ? nextDate : sessionDate(source) : null) : null;
+  let widened = false;
   if (next.marketState === "REGULAR" && next.sessionConfidence !== "unknown"
     && !next.stale && positive(next.price) && nextDate) {
     // Do not fabricate a full-day range from a stream that supplies only last.
-    if (positive(high) && !hasLikelyQuoteUnitMismatch(next, { currency: next.currency, price: high })) {
-      high = Math.max(high, next.price);
+    if (positive(high) && next.price > high && !hasLikelyQuoteUnitMismatch(next, { currency: next.currency, price: high })) {
+      high = next.price;
+      widened = true;
     }
-    if (positive(low) && !hasLikelyQuoteUnitMismatch(next, { currency: next.currency, price: low })) {
-      low = Math.min(low, next.price);
+    if (positive(low) && next.price < low && !hasLikelyQuoteUnitMismatch(next, { currency: next.currency, price: low })) {
+      low = next.price;
+      widened = true;
     }
   }
-  return { ...next, high, low };
+  return { ...next, high, low, dayRangeSessionDate: !widened || sourceDate === nextDate ? sourceDate : null,
+    dayRangeBasis: widened ? undefined : source?.dayRangeBasis };
 }

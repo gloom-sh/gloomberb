@@ -4,6 +4,7 @@ import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test
 import type { HeadlessBundleSection } from "../../../types/headless";
 import type { PricePoint } from "../../../types/financials";
 import { realizedVolHeadless } from "./headless";
+import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 
 // Three hundred weekday closes up to Wed 11 Nov 2026, wobbling so every window has a volatility.
 const closes: PricePoint[] = Array.from({ length: 300 }, (_, index) => {
@@ -18,15 +19,17 @@ const closes: PricePoint[] = Array.from({ length: 300 }, (_, index) => {
 
 async function report(options: Record<string, unknown>, bars = closes) {
   const prices = async () => bars;
-  const result = await realizedVolHeadless("cone").load(
-    createTestHeadlessArgs({ symbols: ["UNG"], options: { estimator: "close-to-close", lookbackYears: 1, windows: "", showIv: true, ...options } }),
+  const definition = realizedVolHeadless("cone");
+  const args = createTestHeadlessArgs({ symbols: ["UNG"], options: { estimator: "close-to-close", lookbackYears: 1, windows: "", showIv: true, ...options } });
+  const result = await definition.load(
+    args,
     createTestHeadlessContext({
       resolveInstrument: async () => ({ symbol: "UNG", exchange: "NYSEARCA" }),
       marketData: createTestDataProvider({ getPriceHistoryForResolution: prices, getPriceHistory: prices }),
     }),
   );
   const sections = result.sections as HeadlessBundleSection[];
-  return { windows: sections[0]!.rows!.map((row) => row.window), titles: sections.map((section) => section.title), result };
+  return { windows: sections[0]!.rows!.map((row) => row.window), titles: sections.map((section) => section.title), result, definition, args };
 }
 
 test("HVT prints the windows asked for and no IV block when it is off, and every window by default", async () => {
@@ -49,7 +52,7 @@ test("HVT is complete for the windows asked for, whatever the windows left out l
 
 test("HVG's export has the daily series it draws, a column per window in percent, newest first", async () => {
   // The series was in JSON only, as fractions: a spreadsheet had the cone and nothing to chart.
-  const { result } = await report({ windows: "20", showIv: false });
+  const { result, definition, args } = await report({ windows: "20", showIv: false });
   const history = (result.sections as HeadlessBundleSection[]).find((section) => section.title === "History")!;
   expect(history.columns!.map((column) => column.header)).toEqual(["Date", "HV20"]);
   const model = result.metadata!.model as { series: Array<{ date: Date; values: Record<number, number | null> }> };
@@ -58,5 +61,6 @@ test("HVG's export has the daily series it draws, a column per window in percent
   expect(history.rows![0]).toEqual({ date: newest.date.toISOString().slice(0, 10), hv20: newest.values[20] });
   expect(history.columns![1]!.format!(newest.values[20], {})).toBe(`${(newest.values[20]! * 100).toFixed(2)}%`);
   // The text report prints the latest sessions.
-  expect(history.textRows).toHaveLength(10);
+  const text = renderHeadlessPaneText(definition, result, args, "HVG");
+  expect([...text.matchAll(/^\d{4}-\d{2}-\d{2}\s+\S+/gm)].map(([row]) => row.slice(0, 10))).toEqual(history.rows!.slice(0, 10).map((row) => String(row.date)));
 });

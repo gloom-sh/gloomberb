@@ -78,6 +78,8 @@ export function BuybacksView({ width, height, focused }: Pick<PaneProps, "width"
   usePaneStatusLinkFooter({ registrationId: "buybacks", focused, loading: resource.loading, error: resource.error,
     label: "next day disclosure return", url: selected?.filing.url ?? data?.mandate?.filing ?? null, showOpenHint: true,
     info: data ? [...(data.asOfSession ? [{ id: "as-of", parts: [{ text: `returns to ${shortDay(data.asOfSession)}`, tone: "muted" as const }] }] : []),
+      // Sessions withheld: the chart's buying is blank before the newest sent.
+      ...(data.lockedDays ? [{ id: "preview", parts: [{ text: "Pro preview", tone: "warning" as const }] }] : []),
       ...(updatedAgo ? [ageFooterSegment(updatedAgo)] : [])] : [],
     stale: !!data && resource.data?.stale,
   });

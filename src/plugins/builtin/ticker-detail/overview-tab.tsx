@@ -42,7 +42,7 @@ import { appendLiveQuotePoint, hasUnknownBondHistoryBasis } from "../../../time-
 import type { TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
-import { displayTickerKey, publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
+import { canonicalExchange, displayTickerKey, publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { convertCurrency, displayWidth, formatPercentRaw } from "../../../utils/format";
 import {
   appTtmRate, baseCurrencyFiguresNote, enterpriseValueGapIsLarge, enterpriseValueReconciliationNote, trailingEpsFiscalYear, ttmAtAppRate,
@@ -463,7 +463,11 @@ function ResolvedOverviewTab({
   const hasDayRange = quote?.low != null && quote?.high != null && quote.high > quote.low;
   const yearRange = liveFiftyTwoWeekRange(quote);
   // A listing that no longer trades: its range is its last session's, years ago perhaps, never today's.
-  const dayRangeLabel = delisted ? t("Last Session") : t("Day Range");
+  const nseRange = !delisted && quote && canonicalExchange(returnVenue) === "NSE";
+  const rangeDay = nseRange ? quote.dayRangeSessionDate : null;
+  const sessionRange = nseRange && quote.dayRangeBasis === "daily-bar";
+  const rangeBasis = sessionRange ? t("Session Range") : rangeDay ? t("Quote Range") : null;
+  const dayRangeLabel = delisted ? t("Last Session") : rangeBasis ?? t("Day Range");
   const yearRangeLabel = t("52W Range");
   const rangeLabelWidth = Math.max(
     hasDayRange ? displayWidth(dayRangeLabel) : 0,
@@ -663,9 +667,8 @@ function ResolvedOverviewTab({
                 low={quote.low!}
                 high={quote.high!}
                 label={dayRangeLabel}
-                // A coin's range is the composite's or one exchange's own day: said, so a switch between them shows.
-                note={quoteStatsBasisText(quote) || undefined}
-                shortLabel={delisted ? t("Last") : t("Day")}
+                note={rangeDay ?? (quoteStatsBasisText(quote) || undefined)}
+                shortLabel={delisted ? t("Last") : sessionRange ? t("Session") : rangeDay ? t("Quote") : t("Day")}
                 labelWidth={rangeLabelWidth}
                 endpointWidth={rangeEndpointCells}
                 width={rangeWidth}
