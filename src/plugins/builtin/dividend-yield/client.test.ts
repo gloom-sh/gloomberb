@@ -643,7 +643,9 @@ describe("cash distribution calculations", () => {
     // The pence it trades in, as quote prints the price.
     expect(line("Price")).toMatch(/£35\.745$/);
     expect(text).toMatch(/2026-11-12 +estimated 29\.8582p +\$0\.3906 +GBP/);
-    expect(text).toMatch(/2026-05-21 +29\.18p +\$0\.3906/);
+    // The column shares the estimate's precision, as the declared column shares its finest.
+    expect(text).toMatch(/2026-05-21 +29\.1800p +\$0\.3906/);
+    expect(text).toMatch(/2026-02-19 +27\.8700p +\$0\.3720/);
     expect(line("Trailing rate")).toMatch(/115\.8282p estimated \(converted from USD\)$/);
     expect(line("Trailing yield")).toContain(" estimated ");
     expect(line("Estimated")).toMatch(/^Estimated\s+\$0\.3906 declared, FX fixing unavailable$/);

@@ -8,7 +8,7 @@ import { fetchDividendData, requestDividendHistory, statedForwardRate, TOKEN_YIE
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import type { DividendPayment, GrowthPayments } from "./types";
 import {
-  carriedDateText, COMBINED_PAYMENT, convertedFromText, distinctEstimateTexts, formatConvertedAmount, formatDividendYield, growthPaymentsText, PAYOUT_BASIS, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText, trailingSpecialText,
+  carriedDateText, COMBINED_PAYMENT, convertedFromText, dividendAmountDigits, distinctEstimateTexts, formatConvertedAmount, formatDividendYield, growthPaymentsText, PAYOUT_BASIS, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText, trailingSpecialText, type DividendAmountDigits,
 } from "./view";
 import { MISSING_VALUE, formatDistributionAmount, formatPercent } from "../../../utils/format";
 import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
@@ -33,9 +33,14 @@ import {
 const DEFAULT_TYPE = "all";
 const DEFAULT_LIMIT = 40;
 
-/** The history's columns; amounts converted from the currency the company declares in go to two decimals of their source's unit. */
-function paymentColumns(converted: boolean, subUnit?: string) {
-  const amount = converted ? (value: number, currency: string) => formatConvertedAmount(value, currency, subUnit) : formatDistributionAmount;
+/**
+ * The history's columns; amounts converted from the currency the company
+ * declares in are in their source's unit. Each unit's amounts share one
+ * precision down the column (`digits`, dividendAmountDigits).
+ */
+function paymentColumns(converted: boolean, digits: DividendAmountDigits, subUnit?: string) {
+  const amount = (value: number, currency: string) => converted
+    ? formatConvertedAmount(value, currency, subUnit, digits) : formatDistributionAmount(value, currency, digits.get(currency));
   return [
     { key: "exDate", header: "Ex-date" },
     { key: "amount", header: "Amount", align: "right" as const,
@@ -52,10 +57,10 @@ function paymentColumns(converted: boolean, subUnit?: string) {
 const SOURCE_COLUMN = { key: "source", header: "Source",
   format: (value: unknown) => typeof value === "string" ? value : "" };
 
-/** After the amount, for a company declaring in another currency than the listing pays: what it declared. */
-const DECLARED_COLUMN = { key: "declared", header: "Declared", align: "right" as const,
+/** After the amount, for a company declaring in another currency than the listing pays: what it declared, one precision down the column. */
+const declaredColumn = (digits: DividendAmountDigits) => ({ key: "declared", header: "Declared", align: "right" as const,
   format: (value: unknown, row: Record<string, unknown>) => typeof value === "number" && typeof row.declaredCurrency === "string"
-    ? formatDistributionAmount(value, row.declaredCurrency) : MISSING_VALUE };
+    ? formatDistributionAmount(value, row.declaredCurrency, digits.get(row.declaredCurrency)) : MISSING_VALUE });
 
 /** What a ticker's read needs: the market data, Gloom Cloud, and the listing a typed key stands for. */
 export type DividendReadContext = Pick<HeadlessPaneContext, "marketData" | "apiClient" | "resolveInstrument">;
@@ -207,10 +212,11 @@ export function projectDividendYieldHeadless(
   // A listing paid in another currency than its company declares (South32's rand) has its amounts converted from that one.
   const convertedFrom = data.convertedFrom;
   const subUnit = data.convertedSubUnit;
-  const paymentColumnList = paymentColumns(!!convertedFrom, subUnit);
+  const paymentColumnList = paymentColumns(!!convertedFrom, dividendAmountDigits(rows, !!convertedFrom, subUnit), subUnit);
+  const declared = rows.flatMap((row) => typeof row.declared === "number" && row.declaredCurrency ? [{ amount: row.declared, currency: row.declaredCurrency }] : []);
   const historyColumns = [
-    ...(rows.some((row) => row.declared)
-      ? [...paymentColumnList.slice(0, 2), DECLARED_COLUMN, ...paymentColumnList.slice(2)] : paymentColumnList),
+    ...(declared.length
+      ? [...paymentColumnList.slice(0, 2), declaredColumn(dividendAmountDigits(declared)), ...paymentColumnList.slice(2)] : paymentColumnList),
     ...(rows.some((row) => row.source) ? [SOURCE_COLUMN] : []),
   ];
   const metrics = data.metrics;

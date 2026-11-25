@@ -32,7 +32,7 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { fetchDividendData, repriceDividendMetrics, statedForwardRate, type DividendData } from "./client";
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import { useTickerQuoteStream } from "../../../state/hooks/live-ticker-financials";
-import { buildTrailingCashChartPoints, convertedFromText, formatConvertedAmount, formatDividendRowAmount, formatDividendYield, forwardEstimateText, growthPaymentsDetail, PAYOUT_BASIS, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText, trailingSpecialText, type DividendRow } from "./view";
+import { buildTrailingCashChartPoints, convertedFromText, dividendAmountDigits, formatConvertedAmount, formatDividendRowAmount, formatDividendYield, forwardEstimateText, growthPaymentsDetail, PAYOUT_BASIS, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText, trailingSpecialText, type DividendAmountDigits, type DividendRow } from "./view";
 import {
   DEFAULT_SORT_PREFERENCE,
   buildDividendColumns,
@@ -162,6 +162,7 @@ const rowKey = (row: DividendRow) => row.key;
 function renderCell(
   row: DividendRow,
   column: DividendColumn,
+  digits: { amount: DividendAmountDigits; declared: DividendAmountDigits },
   converted = false,
   subUnit?: string,
 ): DataTableCell {
@@ -170,12 +171,12 @@ function renderCell(
       return { text: row.exDate, color: colors.textDim };
     case "amount":
       return {
-        text: formatDividendRowAmount(row, converted, subUnit),
+        text: formatDividendRowAmount(row, converted, subUnit, digits.amount),
         color: colors.textBright,
         attributes: TextAttributes.BOLD,
       };
     case "declared":
-      return { text: row.declared ? formatDistributionAmount(row.declared.amount, row.declared.currency) : "", color: colors.textDim };
+      return { text: row.declared ? formatDistributionAmount(row.declared.amount, row.declared.currency, digits.declared.get(row.declared.currency)) : "", color: colors.textDim };
     case "currency":
       return { text: row.currency, color: colors.textDim };
     case "source":
@@ -308,7 +309,12 @@ function DividendTickerPane({ focused, width, height, loadData = fetchDividendDa
   });
   // The header row, plus the scrollbar row once the columns overflow the pane.
   const tableChromeRows = chartTableChromeRows(columns, width);
-  const renderRowCell = useCallback((row: DividendRow, column: DividendColumn) => renderCell(row, column, !!convertedFrom, convertedSubUnit),
+  // One precision down each amount column, in each unit it writes.
+  const digits = useMemo(() => ({
+    amount: dividendAmountDigits(rows, !!convertedFrom, convertedSubUnit),
+    declared: dividendAmountDigits(rows.flatMap((row) => row.declared ? [row.declared] : [])),
+  }), [rows, convertedFrom, convertedSubUnit]);
+  const renderRowCell = useCallback((row: DividendRow, column: DividendColumn) => renderCell(row, column, digits, !!convertedFrom, convertedSubUnit),
     [convertedFrom, convertedSubUnit]);
   const fullFigures = metrics ? buildMetricItems(metrics, currency, sortedRows.length > 0, false, data?.declared, bond, convertedFrom, convertedSubUnit) : [];
   const keptFigures = chartTableLayout({
