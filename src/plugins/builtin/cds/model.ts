@@ -742,15 +742,23 @@ export function tradeSortColumnIds(points: boolean): readonly TradeColumnId[] {
 }
 
 /** A Points column sits beside Spread only when a print was quoted in points. */
+/** The running coupon every trade of two or more is on, which the pane and the report say once rather than on each print. */
+export function sharedTradeCoupon(trades: readonly Pick<CdsTrade, "couponBp">[]): number | null {
+  const coupon = trades[0]?.couponBp ?? null;
+  return trades.length >= 2 && coupon != null && trades.every((trade) => trade.couponBp === coupon) ? coupon : null;
+}
+
 export function buildTradeColumns(width: number, points = false): TradeColumn[] {
   const maturityWidth = Math.max(10, Math.min(12, width - 59 - (points ? 9 : 0)));
   return [
     { id: "time", label: "TIME UTC", width: 16, align: "left" },
     { id: "maturity", label: "MATURITY", width: maturityWidth, align: "left" },
     { id: "notional", label: "NOTIONAL", width: 11, align: "right" },
-    { id: "currency", label: "CCY", width: 5, align: "left" },
-    { id: "coupon", label: "COUPON", width: 9, align: "right" },
-    { id: "spread", label: "SPREAD", width: 10, align: "right" },
+    // A currency every print shares is the upfront's own, and a shared coupon goes above the table (sharedTradeCoupon).
+    { id: "currency", label: "CCY", width: 5, align: "left", omitWhenSame: true },
+    { id: "coupon", label: "COUPON", width: 9, align: "right", omitWhenSame: true },
+    // Prints of a name quoted upfront carry no spread at all.
+    { id: "spread", label: "SPREAD", width: 10, align: "right", omitWhenEmpty: true },
     ...(points ? [{ id: "points" as const, label: "POINTS", width: 9, align: "right" as const }] : []),
     { id: "upfront", label: "ABS UPFRONT", width: 13, align: "right" },
   ];

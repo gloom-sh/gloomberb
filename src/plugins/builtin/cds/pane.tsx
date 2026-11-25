@@ -44,6 +44,7 @@ import {
   ISSUER_SORT_COLUMN_IDS,
   buildIssuerColumns,
   buildTradeColumns,
+  sharedTradeCoupon,
   cdsFreshness,
   formatBp,
   formatEventTime,
@@ -273,10 +274,13 @@ function IssuerHeader({ issuer, line, trades, width, height, focused, loading, s
     : spreadFigures(line);
   const why = !points.length ? noLevelMessage(line.noLevelReason, null) : null;
   const moves = shown.filter((item) => item.id === "spread" || item.id === "1w" || item.id === "1m");
+  // A coupon every print shares leaves the table; an upfront level already names its coupon.
+  const coupon = unit === "pts" ? null : sharedTradeCoupon(trades);
   const figures: StatItem[] = [
     ...moves,
     ...(issuer ? [{ id: "issuer", label: "Issuer", value: issuer }] : []),
     ...shown.filter((item) => !moves.includes(item)),
+    ...(coupon != null ? [{ id: "coupon", label: "Coupon", value: formatBp(coupon) }] : []),
   ];
   const series = useMemo(() => [staticSeries(spreadChartPoints(charted), {
     id: "cds-5y", label: unit === "pts" ? "5Y upfront" : "5Y spread", color: colors.positive, calendarSpaced: true,
