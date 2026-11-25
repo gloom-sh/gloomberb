@@ -27,13 +27,13 @@ import { useSearchFocusUp } from "../../../components/input-search-bar";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginTickerActions } from "../../runtime";
 import { useCommandValue } from "../shared/command-tab";
+import { withoutQuietColumns } from "../shared/research-cells";
 import { getCachedIpoCalendar, loadIpoCalendar } from "./client";
 import {
   buildIpoColumns,
   DEFAULT_IPO_SORT,
   filterIpoDeals,
   firstIpoSortDirection,
-  calendarDate,
   formatIpoDate,
   formatIpoPrice,
   formatIpoReturn,
@@ -42,6 +42,8 @@ import {
   IPO_LISTS,
   IPO_TABS,
   ipoBoardStatus,
+  ipoListStatus,
+  ipoShownDate,
   isIpoList,
   ipoTickerKey,
   isIpoTab,
@@ -61,11 +63,13 @@ import {
 const NO_DEALS: IpoDeal[] = [];
 const TABS = IPO_TABS.map((tab) => ({ label: tab.label, value: tab.value as string }));
 const dealKey = (deal: IpoDeal) => deal.id;
+/** A STATUS column whose cells are all blank: every deal has the list's own status. */
+const QUIET_STATUS = { status: [""] };
 
 /**
- * An upcoming deal's status in colour only where it says something: a book
- * open now, terms set, a deal pulled. A date ahead, a filing, a late or
- * postponed deal read in the quiet tone the rest of the list shares.
+ * A deal's status, shown only where it differs from its list's own, in colour
+ * only where it says something: a book open now, terms set, a deal pulled. A
+ * filing, a late or postponed deal read in the quiet tone the rest of the list shares.
  */
 function statusColor(status: IpoBoardStatus, colors: ThemeColors): string {
   switch (status) {
@@ -127,7 +131,9 @@ export function IpoCalendarPane({ focused, width, height }: PaneProps) {
   // The desktop and the web lead each venue with its country's flag.
   const flagged = useUiCapabilities().nativePaneChrome === true;
   const marketWidth = useMemo(() => marketColumnWidth(deals) + (flagged ? COUNTRY_FLAG_CELLS : 0), [deals, flagged]);
-  const columns = useMemo(() => buildIpoColumns(width, marketWidth, list), [list, marketWidth, width]);
+  // STATUS says only what differs from the list's own (priced among the upcoming deals), and goes when nothing does.
+  const columns = useMemo(() => withoutQuietColumns(buildIpoColumns(width, marketWidth, list), rows,
+    (deal, id) => (id === "status" ? ipoListStatus(deal, list, now) : null), QUIET_STATUS) as IpoColumn[], [list, marketWidth, now, rows, width]);
 
   const openDeal = useCallback((deal: IpoDeal) => {
     const key = ipoTickerKey(deal);
@@ -191,18 +197,16 @@ export function IpoCalendarPane({ focused, width, height }: PaneProps) {
       case "date": {
         // A target date the venue has not set yet reads quieter than a set
         // one, and so does a book's closing day standing in for a listing
-        // date nobody has named.
-        const date = calendarDate(deal);
+        // date nobody has named. A priced deal whose book has closed has no date ahead.
+        const date = ipoShownDate(deal, now);
         return {
           text: formatIpoDate(date),
           value: date,
           color: !deal.listingDate || deal.dateKind === "expected" ? colors.textMuted : colors.text,
         };
       }
-      case "status": {
-        const status = ipoBoardStatus(deal, now);
-        return { text: status, color: statusColor(status, colors) };
-      }
+      case "status":
+        return { text: ipoListStatus(deal, list, now), color: statusColor(ipoBoardStatus(deal, now), colors) };
       case "price": {
         const text = formatIpoPrice(deal);
         return { text, color: text === MISSING ? colors.textMuted : colors.text };
@@ -218,7 +222,7 @@ export function IpoCalendarPane({ focused, width, height }: PaneProps) {
         };
       }
     }
-  }, [colors, flagged, now]);
+  }, [colors, flagged, list, now]);
 
   if (!payload) {
     return (
@@ -250,10 +254,10 @@ export function IpoCalendarPane({ focused, width, height }: PaneProps) {
               debounceMs: 250,
               ...searchProps,
             }}
-            filters={[{
-              id: "list",
+            // Which of the two lists the table shows, each with its own columns: the bar's view, first.
+            view={{
               label: "List",
-              inline: true,
+              start: true,
               value: list,
               options: IPO_LISTS,
               onChange: (value: IpoList) => {
@@ -261,7 +265,7 @@ export function IpoCalendarPane({ focused, width, height }: PaneProps) {
                 setSelectedId(null);
                 setSort(DEFAULT_IPO_SORT);
               },
-            }]}
+            }}
           />
         )}
         onRootKeyDown={handleRootKeyDown}

@@ -10,6 +10,8 @@ import {
   formatIpoSize,
   ipoBoardStatus,
   ipoList,
+  ipoListStatus,
+  ipoShownDate,
   ipoTableWidth,
   ipoTickerKey,
   marketColumnWidth,
@@ -121,17 +123,23 @@ describe("IPO calendar order", () => {
     ipoDeal({ id: "delayed", listingDate: "2026-09-10" }),
     ipoDeal({ id: "overdue", listingDate: "2026-09-24", dateKind: "expected" }),
     ipoDeal({ id: "listed-new", status: "listed", listingDate: "2026-09-25" }),
-    // Priced with no listing date yet: its book dates it, not the foot of the board.
+    // Priced on a book that closed on the 26th, no listing day named: no date ahead of it.
     ipoDeal({ id: "priced-undated", status: "priced", subscriptionOpen: "2026-09-26", subscriptionClose: "2026-09-26" }),
+    // Priced on a book still to come: dated by it, among the deals ahead.
+    ipoDeal({ id: "priced-book-ahead", status: "priced", subscriptionOpen: "2026-10-02", subscriptionClose: "2026-10-02" }),
   ];
 
-  test("books open now, then upcoming soonest first, overdue last, then priced and listed most recent first, then filings, then stopped and delayed deals", () => {
-    expect(ids(sortIpoDeals(deals, DEFAULT_IPO_SORT, new Date("2026-09-29T15:00:00Z")))).toEqual([
-      "offering", "upcoming-bookbuild", "upcoming-later", "upcoming-undated", "overdue",
-      "priced", "priced-undated", "listed-new", "listed-old",
+  test("one date order per list: upcoming soonest first, priced or not, then no date ahead, overdue last; recent listings latest first", () => {
+    const now = new Date("2026-09-29T15:00:00Z");
+    expect(ids(sortIpoDeals(deals, DEFAULT_IPO_SORT, now))).toEqual([
+      "offering", "priced", "priced-book-ahead", "upcoming-bookbuild", "upcoming-later", "priced-undated", "upcoming-undated", "overdue",
+      "listed-new", "listed-old",
       "filed",
-      "withdrawn", "delayed",
+      "delayed", "withdrawn",
     ]);
+    // A priced deal shows the date ahead of it, and none once its book has closed with no listing day.
+    const shown = (id: string) => ipoShownDate(deals.find((deal) => deal.id === id)!, now);
+    expect([shown("priced"), shown("priced-book-ahead"), shown("priced-undated"), shown("listed-new")]).toEqual(["2026-09-30", "2026-10-02", null, "2026-09-25"]);
   });
 
   test("a deal still not trading three weekdays past its listing day is delayed, at its venue's date, and leaves the upcoming deals", () => {
@@ -179,7 +187,7 @@ describe("IPO calendar order", () => {
       "priced-past": "priced",
     });
     expect(ids(sortIpoDeals(board, DEFAULT_IPO_SORT, now))).toEqual([
-      "hk-book", "nasdaq-today", "hk-book-later", "nasdaq-next", "tokyo-yesterday", "nasdaq-missed", "priced-past",
+      "hk-book", "nasdaq-today", "hk-book-later", "nasdaq-next", "nasdaq-missed", "tokyo-yesterday", "priced-past",
     ]);
     // Search reads the word the row shows; pending is still every deal not priced yet.
     expect(ids(filterIpoDeals(board, "all", "overdue", now))).toEqual(["tokyo-yesterday", "nasdaq-missed"]);
@@ -236,10 +244,16 @@ describe("IPO calendar lists", () => {
     expect(ids(filterIpoDeals(board, "all", "", now))).toHaveLength(board.length);
   });
 
-  test("an upcoming deal has STATUS and no RETURN, a recent listing RETURN and no STATUS, and each narrows to what its list is about", () => {
+  test("an upcoming deal has no RETURN, a recent listing has one, STATUS says only what differs from the list's own, and each narrows to what its list is about", () => {
     const columnIds = (width: number, list: "upcoming" | "listed") => buildIpoColumns(width, 10, list).map((column) => column.id);
     expect(columnIds(1000, "upcoming")).toEqual(["ticker", "company", "market", "date", "status", "price", "size"]);
-    expect(columnIds(1000, "listed")).toEqual(["ticker", "company", "market", "date", "price", "size", "return"]);
+    expect(columnIds(1000, "listed")).toEqual(["ticker", "company", "market", "date", "status", "price", "size", "return"]);
+    const now = new Date("2026-10-16T20:00:00Z");
+    const upcoming = ipoDeal({ id: "u", listingDate: "2026-10-20" });
+    const priced = ipoDeal({ id: "p", status: "priced", offerPrice: 20, listingDate: "2026-10-16" });
+    expect([ipoListStatus(upcoming, "upcoming", now), ipoListStatus(upcoming, null, now)]).toEqual(["", "upcoming"]);
+    // Priced on its listing day, its first close not in: a recent listing that says so.
+    expect([ipoListStatus(priced, "listed", now), ipoListStatus(ipoDeal({ id: "l", status: "listed" }), "listed", now)]).toEqual(["priced", ""]);
     // Narrow, what is next and where it stands outlast the venue and the price.
     expect(columnIds(70, "upcoming")).toEqual(["ticker", "company", "date", "status", "price"]);
     expect(columnIds(40, "upcoming")).toEqual(["company", "date", "status"]);

@@ -7,7 +7,6 @@ import type {
 } from "../../../types/plugin";
 import { fetchIpoCalendar } from "./client";
 import {
-  calendarDate,
   filterIpoDeals,
   formatIpoLockupEnd,
   formatIpoPrice,
@@ -16,6 +15,8 @@ import {
   IPO_STATUSES,
   ipoBoardStatus,
   ipoKeyword,
+  ipoListStatus,
+  ipoShownDate,
   isIpoList,
   isIpoTab,
   marketsBehind,
@@ -70,12 +71,18 @@ function listOption(args: HeadlessPaneLoadArgs): IpoList | null {
 
 /**
  * One list's columns, as its pane view has them: an upcoming deal has no
- * return or lock-up yet, and every recent listing's status is that it listed.
+ * return or lock-up yet. Status reads only where it differs from the list's
+ * own (a priced deal among the upcoming ones), and goes when none does;
+ * the rows keep every status.
  */
-function listColumns(list: IpoList | null): HeadlessPaneColumn[] {
-  if (list === "upcoming") return COLUMNS.filter((column) => column.key !== "firstDayReturn" && column.key !== "lockupEnds");
-  if (list === "listed") return COLUMNS.filter((column) => column.key !== "status");
-  return COLUMNS;
+function listColumns(list: IpoList | null, deals: readonly IpoDeal[], now: Date): HeadlessPaneColumn[] {
+  if (!list) return COLUMNS;
+  const quiet = deals.every((deal) => ipoListStatus(deal, list, now) === "");
+  return COLUMNS.flatMap((column) => {
+    if (list === "upcoming" && (column.key === "firstDayReturn" || column.key === "lockupEnds")) return [];
+    if (column.key !== "status") return [column];
+    return quiet ? [] : [{ ...column, textFormat: (value: unknown) => (value === (list === "upcoming" ? "upcoming" : "listed") ? "" : String(value ?? "")) }];
+  });
 }
 
 function statusOption(args: HeadlessPaneLoadArgs): StatusOption {
@@ -95,7 +102,8 @@ function toRow(deal: IpoDeal, now: Date) {
     segment: deal.segment,
     country: deal.country,
     region: deal.region,
-    date: calendarDate(deal),
+    // As the pane's DATE: none for a priced deal whose book closed with no listing day named.
+    date: ipoShownDate(deal, now),
     listingDate: deal.listingDate,
     dateKind: deal.dateKind,
     subscriptionOpen: deal.subscriptionOpen,
@@ -167,7 +175,7 @@ export function projectIpoCalendarHeadless(
     ...keyword === "spac" || keyword === "de-spac" ? [SPAC_NOTE] : [],
   ];
   return {
-    columns: listColumns(list),
+    columns: listColumns(list, matching.slice(0, limit), now),
     rows,
     ...(behind ? { errors: [behind] } : {}),
     ...(notes.length ? { notes } : {}),

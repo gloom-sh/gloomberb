@@ -97,8 +97,12 @@ test("Enter opens a Hong Kong code on its own exchange, never a US ticker of the
 test("upcoming deals and recent listings are two lists, each with its own columns", async () => {
   await mount(110, 10, undefined, null);
   const header = tui.frame().split("\n").find((line) => line.includes("COMPANY"))!;
-  expect(header).toContain("STATUS");
+  // Every deal here is upcoming, which the list says already: no STATUS column, and no return yet.
+  expect(header).not.toContain("STATUS");
   expect(header).not.toContain("RETURN");
+  // The two lists are the bar's view, unlabelled, ahead of the search.
+  expect(tui.frame()).toMatch(/Upcoming +Recent listings/);
+  expect(tui.frame()).not.toContain("List");
   expect(tui.frame()).toContain("$18-20");
   expect(tui.frame()).not.toContain("3750");
 });

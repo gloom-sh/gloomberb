@@ -288,27 +288,49 @@ export function calendarDate(deal: IpoDeal): string | null {
 }
 
 /**
- * Upcoming deals: the ones in their offer now, then the ones still ahead
- * soonest first, then undated ones, then the overdue ones most recent first,
- * so the board opens on what is next. Everything after them most recent first,
- * a delayed deal among the ones that stopped.
+ * The date a deal's row shows: its calendar date, except that a deal priced
+ * on a book that has closed, with no listing day named yet, has no date ahead
+ * of it. The book's closing day is behind it and says nothing of when it
+ * lists, so it shows none rather than a day gone by.
  */
-function calendarOrder(boardStatus: (deal: IpoDeal) => IpoBoardStatus): (a: IpoDeal, b: IpoDeal) => number {
-  const groupOf = (deal: IpoDeal) => boardStatus(deal) === "delayed" ? calendarGroup("postponed") : calendarGroup(deal.status);
-  const upcomingRank = (deal: IpoDeal) => {
+export function ipoShownDate(deal: IpoDeal, now = new Date()): string | null {
+  const date = calendarDate(deal);
+  if (deal.status !== "priced" || deal.listingDate || deal.firstDay || deal.opening || !date) return date;
+  return date < venueToday(deal.timezone, now) ? null : date;
+}
+
+/**
+ * One date order per list. Upcoming reads soonest first throughout: the deals
+ * in their offer now, then the ones dated ahead, set or priced alike, then
+ * those with no date ahead (a priced deal waiting for its listing day among
+ * them), then the overdue ones, then the filings, then the deals that
+ * stopped, a delayed one among them. Recent listings read latest first.
+ */
+function calendarOrder(boardStatus: (deal: IpoDeal) => IpoBoardStatus, now: Date): (a: IpoDeal, b: IpoDeal) => number {
+  const shown = new Map<IpoDeal, string | null>();
+  const dateOf = (deal: IpoDeal) => {
+    if (!shown.has(deal)) shown.set(deal, ipoShownDate(deal, now));
+    return shown.get(deal)!;
+  };
+  const listed = (deal: IpoDeal) => ipoList(deal, now) === "listed";
+  const groupOf = (deal: IpoDeal) => {
+    if (listed(deal)) return 1;
+    if (boardStatus(deal) === "delayed") return calendarGroup("postponed");
+    return deal.status === "priced" ? 0 : calendarGroup(deal.status);
+  };
+  const rankOf = (deal: IpoDeal) => {
+    if (groupOf(deal) !== 0) return 0;
     const status = boardStatus(deal);
     if (status === "offering") return 0;
     if (status === "overdue") return 3;
-    return calendarDate(deal) === null ? 2 : 1;
+    return dateOf(deal) === null ? 2 : 1;
   };
   return (a, b) => {
     const group = groupOf(a) - groupOf(b);
     if (group !== 0) return group;
-    const upcoming = a.status === "upcoming" && boardStatus(a) !== "delayed";
-    const rank = upcoming ? upcomingRank(a) - upcomingRank(b) : 0;
+    const rank = rankOf(a) - rankOf(b);
     if (rank !== 0) return rank;
-    const ascending = upcoming && upcomingRank(a) < 3;
-    const date = compareSortValues(calendarDate(a), calendarDate(b), ascending ? "asc" : "desc");
+    const date = compareSortValues(dateOf(a), dateOf(b), groupOf(a) === 1 ? "desc" : "asc");
     return date || a.company.localeCompare(b.company) || a.id.localeCompare(b.id);
   };
 }
@@ -323,12 +345,12 @@ function usdPrice(deal: IpoDeal): number | null {
   return price * (deal.offerSizeUsd / deal.offerSize);
 }
 
-function sortValue(columnId: IpoColumnId, deal: IpoDeal, status: IpoBoardStatus): string | number | null {
+function sortValue(columnId: IpoColumnId, deal: IpoDeal, status: IpoBoardStatus, now: Date): string | number | null {
   switch (columnId) {
     case "ticker": return deal.symbol;
     case "company": return deal.company;
     case "market": return deal.venue;
-    case "date": return calendarDate(deal);
+    case "date": return ipoShownDate(deal, now);
     case "status": return IPO_BOARD_STATUSES.indexOf(status);
     case "price": return usdPrice(deal);
     case "size": return deal.offerSizeUsd;
@@ -340,9 +362,9 @@ export function sortIpoDeals(deals: readonly IpoDeal[], sort: IpoSortPreference,
   const { columnId } = sort;
   const statuses = new Map(deals.map((deal) => [deal, ipoBoardStatus(deal, now)]));
   const boardStatus = (deal: IpoDeal) => statuses.get(deal)!;
-  const order = calendarOrder(boardStatus);
+  const order = calendarOrder(boardStatus, now);
   const sorted = [...deals].sort(!columnId ? order : (a, b) => (
-    compareSortValues(sortValue(columnId, a, boardStatus(a)), sortValue(columnId, b, boardStatus(b)), sort.direction) || order(a, b)
+    compareSortValues(sortValue(columnId, a, boardStatus(a), now), sortValue(columnId, b, boardStatus(b), now), sort.direction) || order(a, b)
   ));
   return rankTickerMatches(sorted, query, (deal) => [deal.symbol, deal.company, deal.companyLocal]);
 }
@@ -371,14 +393,24 @@ const IPO_COLUMNS: readonly IpoColumn[] = [
 ];
 
 /**
- * The columns each list has. An upcoming deal has no return yet, and its
- * status says where it stands (in its book, priced, late); a recent listing's
- * status is that it listed, so its row ends on the return instead.
+ * The columns each list has. An upcoming deal has no return yet; a recent
+ * listing ends on its return. STATUS shows only a status other than the
+ * list's own (ipoListStatus), so a deal priced, in its book or late stands out
+ * among the upcoming ones, and one priced on its listing day among those listed.
  */
 const IPO_LIST_COLUMNS: Record<IpoList, readonly IpoColumnId[]> = {
   upcoming: ["ticker", "company", "market", "date", "status", "price", "size"],
-  listed: ["ticker", "company", "market", "date", "price", "size", "return"],
+  listed: ["ticker", "company", "market", "date", "status", "price", "size", "return"],
 };
+
+/** The status every deal on a list has, which its STATUS column leaves blank. */
+const IPO_LIST_STATUS: Record<IpoList, IpoBoardStatus> = { upcoming: "upcoming", listed: "listed" };
+
+/** What a deal's STATUS cell says on `list`: its status where it differs from the list's own, else nothing. */
+export function ipoListStatus(deal: IpoDeal, list: IpoList | null | undefined, now = new Date()): string {
+  const status = ipoBoardStatus(deal, now);
+  return list && status === IPO_LIST_STATUS[list] ? "" : status;
+}
 
 /**
  * What a narrow pane gives up first, so COMPANY and RETURN stay. SIZE is
