@@ -1,14 +1,43 @@
-import { expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
+import { apiClient } from "../../api-client";
 import { questionTickers, questionWindow, tickerQuestion } from "./ticker-question";
 
 const NOW = new Date("2026-11-21T03:00:00Z");
+
+function questionListings() {
+  const listing = (symbol: string, exchange: string) => ({ symbol, exchange, name: symbol, type: "Common Stock" });
+  const rows = new Map([
+    ["IAG:XLON", [listing("IAG", "LSE"), listing("IAG", "ASX")]],
+    ["LHA:XETR", [listing("LHA:XETR", "XETR")]],
+    ["AF:XPAR", [listing("AF", "EPA")]],
+    ["AF", [listing("AF", "EPA"), listing("AF", "AMS")]],
+    ["LUV", [listing("LUV", "NYSE")]],
+  ]);
+  return spyOn(apiClient, "searchInstrumentsBatch").mockImplementation(async (queries) =>
+    new Map(queries.map((query) => [query, rows.get(query) ?? []])));
+}
+
+let search: ReturnType<typeof questionListings>;
+beforeEach(() => { search = questionListings(); });
+afterEach(() => search.mockRestore());
+
+test("venue aliases are atomic and deduplicated; a wrong venue or ambiguous bare listing is not substituted", async () => {
+  const result = await tickerQuestion("Compare $iag:xlon,IAG:LSE LHA:XETRA, AF:PAR and AF price moves", { now: NOW });
+  expect(result?.functions).toEqual([
+    { code: "CMP", argument: "IAG:LSE,LHA:XETRA,AF:EPA", input: "IAG:LSE,LHA:XETRA,AF:EPA" },
+    { code: "CN", argument: "IAG:LSE", input: "IAG:LSE" },
+    { code: "ANR", argument: "IAG:LSE", input: "IAG:LSE" },
+  ]);
+  search.mockImplementationOnce(async (queries) => new Map(queries.map((query) => [query, [{ symbol: "IAG", name: "IAG", exchange: "LSE", type: "Common Stock" }]])));
+  expect(await questionTickers("Compare IAG:EPA and AF:XPAR:EPA")).toEqual([]);
+});
 
 test("a question's tickers are its cashtags and its symbols in capitals, never an abbreviation, a function's code or a shout", async () => {
   expect(await questionTickers("What moved DAL UAL and AAL from November 9 to November 13, 2026?")).toEqual(["DAL", "UAL", "AAL"]);
   // AI is C3.ai's ticker and the AI trade; US, CEO, P/E, S&P, U.S. and Q4 are no company.
   expect(await questionTickers("Did the US CEO talk about AI, P/E, the S&P, U.S. demand or Q4?")).toEqual([]);
   expect(await questionTickers("What is MSFT's P/E, and where is $dal?")).toEqual(["MSFT", "DAL"]);
-  // Only the large caps ship: a symbol they do not carry still counts from three letters, a function's code does not.
+  // A listing outside the shipped directory counts once verified; a function's code does not.
   expect(await questionTickers("What does OMON show for LUV?", new Set(["OMON"]))).toEqual(["LUV"]);
   expect(await questionTickers("WHAT MOVED DAL TODAY")).toEqual([]);
 });
@@ -47,6 +76,5 @@ test("a move asked about is the prices over those days, then the first ticker's 
   expect(await run("Did UAL raise or cut its guidance?")).toEqual(["GUIDE UAL"]);
   expect(await run("Who holds the most AAL stock?")).toEqual(["HDS AAL"]);
   expect(await run("What did the DAX do yesterday?")).toBeUndefined();
-  // A word only its shape made a ticker does not take the one-ticker functions from a listing: "the KST of NVDA" is NVDA's.
-  expect(await run("What moved the KST of NVDA today?")).toEqual(["QQ KST,NVDA", "CN NVDA", "ANR NVDA"]);
+  expect(await run("What moved the KST of NVDA today?")).toEqual(["QQ NVDA", "CN NVDA", "ANR NVDA"]);
 });

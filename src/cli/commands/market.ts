@@ -54,7 +54,9 @@ import {
   quoteChangeText,
 } from "../helpers";
 import { cliArrow, cliStyles, colorBySign, renderSection, renderStats } from "../../utils/cli-output";
-import { filledPeriodsNote, hasOlderStatements, stalePeriodNote, statementHistoryNotes } from "../../utils/financial-statements";
+import { filledPeriodsNote, stalePeriodNote, statementHistoryNotes } from "../../utils/financial-statements";
+import { hasEarlierGfRevenue } from "../../time-series/fundamentals/history-link";
+import { priceBasisBreaks, priceBasisFactor } from "../../market-data/market/split-price-basis";
 import { formatPerShareNumber } from "../../utils/reported-money";
 import { isCurrencyPairListing } from "../../utils/fx-market-hours";
 import {
@@ -1962,6 +1964,7 @@ interface ListingHistory {
   catalogSeries?: true;
   /** The bars a business was demerged out of the listing at (flag `demerger`): a drawdown is measured within the runs between them. */
   demergers?: Array<{ date: string; action: DemergerAction }>;
+  unverifiedPriceBasis?: boolean;
 }
 
 /**
@@ -2294,8 +2297,10 @@ async function loadListingHistory(
   const splits = lookups ? await actions.splits() : [];
   const flaggedSplits = withSplitFlags(demerged.rows, splits);
   const data = flaggedSplits.rows;
-  const splitNote = historySplitNote(listing.symbol, flaggedSplits.splits);
   const interval = data[0]?.interval ?? null;
+  const basisBreak = priceBasisBreaks(data, splits, { interval, venue })[0];
+  const basisBreakDate = interval === "1wk" || interval === "1mo" ? `in the ${BAR_INTERVAL_LABELS[interval]} bar dated` : "on";
+  const splitNote = historySplitNote(listing.symbol, flaggedSplits.splits, !basisBreak);
   // Intraday bars print in UTC, as the charts and time and sales label them, not the host zone.
   const intraday = data.some((row) => row.date.length > 10);
   // A bar history: dated by its last bar, stale once bars of its size stop arriving.
@@ -2363,6 +2368,7 @@ async function loadListingHistory(
     historyRollNote(listing.symbol, data, { mostTraded }) ?? [], historyThinNote(data) ?? [],
     historyDemergerNote(data, demerged.breaks, historyPrice(historyPriceDecimals(data, listing.saved?.metadata.assetCategory, priceDivisor))) ?? [],
     splitNote ?? [],
+    ...basisBreak ? [`${listing.symbol}: ${basisBreak.kind === "close" ? "close jumps" : "high/low range is"} ${priceBasisFactor(basisBreak.ratio)}× ${basisBreakDate} ${basisBreak.day} near the ${basisBreak.split!.date.slice(0, 10)} split. A consistent split-adjusted price basis cannot be verified; no split rescaling was applied and drawdown is withheld.`] : [],
     historyBarStatusNote(forming ? served : data, { tradingDay: venueTradingDay(venue, Date.now()) }) ?? [],
     await interventionWindowNote(interventions, interventionPair, data) ?? [],
   ].flat();
@@ -2370,6 +2376,7 @@ async function loadListingHistory(
     listing, identity, unit, data, resolution, interval, intraday, volume, freshness, notes, mostTraded,
     decimals: historyPriceDecimals(data, listing.saved?.metadata.assetCategory, priceDivisor),
     ...demerged.breaks.length > 0 ? { demergers: demerged.breaks } : {},
+    ...basisBreak ? { unverifiedPriceBasis: true } : {},
   };
 }
 
@@ -2411,11 +2418,11 @@ async function listingDemergerFlags(
  * flagged for (withSplitFlags), which the bars run across in post-split shares, whatever bar size holds them. Null
  * with none.
  */
-function historySplitNote(symbol: string, flagged: ReadonlyArray<{ split: SplitAction; barBefore: boolean }>): string | null {
+function historySplitNote(symbol: string, flagged: ReadonlyArray<{ split: SplitAction; barBefore: boolean }>, clearBasis: boolean): string | null {
   if (flagged.length === 0) return null;
   const named = flagged.map(({ split }) => `${splitShareTerms(split)!.split(",")[0]} on ${split.date.slice(0, 10)}`);
   // A window that opens on the split's bar has no bar before it to adjust.
-  const adjusted = flagged.some(({ barBefore }) => barBefore) ? `; bars before ${named.length === 1 ? "it" : "each"} are split-adjusted` : "";
+  const adjusted = clearBasis && flagged.some(({ barBefore }) => barBefore) ? `; bars before ${named.length === 1 ? "it" : "each"} are split-adjusted` : "";
   return `Splits in range: ${symbol} ${named.join(" and ")} (flag ${SPLIT_FLAG})${adjusted}.`;
 }
 
@@ -2635,7 +2642,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     // Nor from a close that held a business the listing demerged to one that did not (TMPV before 2025-10-14): split
     // before each bar flagged `demerger`, whatever date its close is given, and named by the demerger's own day.
     const demergedOn = history.demergers?.map((entry) => entry.action.exDate) ?? [];
-    const contractDrawdown = demergedOn.length > 0
+    const contractDrawdown = history.unverifiedPriceBasis ? null : demergedOn.length > 0
       ? deepestRunDrawdown(demergerRuns(closes).map((run) => historyContractDrawdown(run, yieldUnits ? "yield" : "return")))
       : historyContractDrawdown(closes, yieldUnits ? "yield" : "return");
     // A window's last week can close after the dates asked for (--to 2003, a week ending Fri 2 Jan 2004): measured to its end.
@@ -3271,7 +3278,7 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       new Set(["totalRevenue", "netIncome"]));
     // GF is pointed to only when the listing's extended history goes further back than these years.
     const dates = rows.map((row) => row.date);
-    const older = await hasOlderStatements(() => market.dataProvider.getTickerFinancials(listing.request.symbol, listing.request.exchange,
+    const older = await hasEarlierGfRevenue(() => market.dataProvider.getTickerFinancials(listing.request.symbol, listing.request.exchange,
       { statementHistory: "extended" }), "annual", dates);
     const historyNotes = [...stale ? [stale] : [], ...filled ? [filled] : [], ...statementHistoryNotes("annual", dates, listing.key, older)];
     // No year to list says why, and where its quarters are, rather than "No results.".
