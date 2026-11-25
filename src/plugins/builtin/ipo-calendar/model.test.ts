@@ -15,6 +15,8 @@ import {
   ipoTableWidth,
   ipoTickerKey,
   marketColumnWidth,
+  formatIpoDate,
+  ipoDateColumnWidths,
   marketsBehind,
   marketsBehindText,
   MISSING,
@@ -247,7 +249,7 @@ describe("IPO calendar lists", () => {
   test("an upcoming deal has no RETURN, a recent listing has one, STATUS says only what differs from the list's own, and each narrows to what its list is about", () => {
     const columnIds = (width: number, list: "upcoming" | "listed") => buildIpoColumns(width, 10, list).map((column) => column.id);
     expect(columnIds(1000, "upcoming")).toEqual(["ticker", "company", "market", "date", "status", "price", "size"]);
-    expect(columnIds(1000, "listed")).toEqual(["ticker", "company", "market", "date", "status", "price", "size", "return"]);
+    expect(columnIds(1000, "listed")).toEqual(["ticker", "company", "market", "date", "status", "price", "size", "return", "lockup"]);
     const now = new Date("2026-10-16T20:00:00Z");
     const upcoming = ipoDeal({ id: "u", listingDate: "2026-10-20" });
     const priced = ipoDeal({ id: "p", status: "priced", offerPrice: 20, listingDate: "2026-10-16" });
@@ -263,12 +265,12 @@ describe("IPO calendar lists", () => {
 });
 
 describe("IPO calendar columns", () => {
-  test("a narrowing pane drops SIZE, STATUS, PRICE, MKT, DATE, then TICKER, keeping COMPANY and RETURN", () => {
+  test("a narrowing pane drops SIZE, STATUS, LOCKUP, PRICE, MKT, DATE, then TICKER, keeping COMPANY and RETURN", () => {
     const columnIds = (width: number) => buildIpoColumns(width).map((column) => column.id);
-    const full: IpoColumnId[] = ["ticker", "company", "market", "date", "status", "price", "size", "return"];
+    const full: IpoColumnId[] = ["ticker", "company", "market", "date", "status", "price", "size", "return", "lockup"];
     const fullWidth = ipoTableWidth(buildIpoColumns(1000));
     expect(columnIds(fullWidth)).toEqual(full);
-    expect(columnIds(fullWidth - 1)).toEqual(["ticker", "company", "market", "date", "status", "price", "return"]);
+    expect(columnIds(fullWidth - 1)).toEqual(["ticker", "company", "market", "date", "status", "price", "return", "lockup"]);
     expect(columnIds(80)).toEqual(["ticker", "company", "market", "date", "price", "return"]);
     expect(columnIds(60)).toEqual(["ticker", "company", "market", "date", "return"]);
     expect(columnIds(20)).toEqual(["company", "return"]);
@@ -304,6 +306,17 @@ describe("IPO calendar cells", () => {
     expect("SWASTIKAIN".length).toBeLessThanOrEqual(width("ticker"));
   });
 
+  test("DATE always names the day, with the year once it is half a year off, and widens only as far as the board's dates need", () => {
+    const now = new Date("2026-11-25T12:00:00Z");
+    expect(formatIpoDate("2026-10-23", now)).toBe("23 Oct");
+    // HAWK's listing day, as `fn IPO` gives it (2026-05-07), never "May 2026".
+    expect(formatIpoDate("2026-05-07", now)).toBe("7 May 2026");
+    const near = ipoDeal({ id: "near", status: "listed", listingDate: "2026-10-23" });
+    const far = ipoDeal({ id: "far", status: "listed", listingDate: "2026-05-07", lockup: { endsOn: "2026-11-02", days: 180, basis: "prospectus", prospectusDate: null, prospectusUrl: null } });
+    expect(ipoDateColumnWidths([near], now)).toEqual({ date: 6, lockup: 7 });
+    expect(ipoDateColumnWidths([near, far], now)).toEqual({ date: 10, lockup: 7 });
+  });
+
   test("RETURN reads the first-day fraction as a signed percent", () => {
     expect(formatIpoReturn(0.164)).toBe("+16.4%");
     expect(formatIpoReturn(-0.05)).toBe("-5.0%");
@@ -325,6 +338,7 @@ describe("markets behind", () => {
   const source = (id: string, mics: string[], ok: boolean): IpoSourceHealth => ({ id, mics, ok, asOf: null });
 
   test("a market is behind only when no source covering it answered, and only on its own tab", () => {
+    const names = (behind: ReturnType<typeof marketsBehind>) => behind.map((entry) => entry.market);
     const sources = [
       source("nasdaq", ["XNAS", "XNYS", "XASE"], true),
       source("nse", ["XNSE"], false),
@@ -333,12 +347,15 @@ describe("markets behind", () => {
       source("cross-check", ["XNAS", "XHKG"], false),
       source("hkex", ["XHKG"], true),
     ];
-    expect(marketsBehind(sources, "all")).toEqual(["India", "France", "Netherlands"]);
-    expect(marketsBehind(sources, "apac")).toEqual(["India"]);
+    expect(names(marketsBehind(sources, "all"))).toEqual(["India", "France", "Netherlands"]);
+    expect(names(marketsBehind(sources, "apac"))).toEqual(["India"]);
     expect(marketsBehind(sources, "us")).toEqual([]);
-    expect(marketsBehindText(["India"])).toBe("India not updated");
-    expect(marketsBehindText(["UK", "Switzerland", "Germany"])).toBe("UK, Switzerland and Germany not updated");
-    expect(marketsBehindText(["UK", "France", "Italy", "Norway"])).toBe("UK, France and 2 more not updated");
+    const at = (market: string, since: string | null = null) => ({ market, since });
+    expect(marketsBehindText([at("India")])).toBe("India not updated");
+    expect(marketsBehindText([at("UK", "2026-10-22"), at("Switzerland", "2026-11-20"), at("Germany")]))
+      .toBe("UK not updated since 2026-10-22, Switzerland since 2026-11-20, Germany not updated");
+    expect(marketsBehindText([at("UK", "2026-10-22"), at("France", "2026-11-01"), at("Italy"), at("Norway")]))
+      .toBe("UK, France and 2 more not updated since 2026-10-22");
     expect(marketsBehindText([])).toBeNull();
   });
 });

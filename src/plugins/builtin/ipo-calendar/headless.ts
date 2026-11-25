@@ -26,7 +26,7 @@ import {
   type IpoList,
   type IpoTab,
 } from "./model";
-import { ipoDetailSentences, loadIpoLockupNews, type IpoLockupStory } from "./listing-ipo";
+import { ipoDetailSentences, ipoPriceNow, loadIpoLockupNews, type IpoLockupStory, type IpoPriceNow } from "./listing-ipo";
 import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
 import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
 import { logFailure } from "../../../utils/log-failure";
@@ -130,9 +130,9 @@ function toRow(deal: IpoDeal, now: Date) {
   };
 }
 
-/** One deal found: its IPO in words, as `ticker` gives it, with its price now and its lock-up news. */
+/** One deal found: its IPO in words, as `ticker` gives it, with its price as `quote` reads it and its lock-up news. */
 interface IpoDealDetail {
-  price: number | null;
+  price: IpoPriceNow | null;
   news: IpoLockupStory[];
 }
 
@@ -165,7 +165,8 @@ export function projectIpoCalendarHeadless(
   const found = filterIpoDeals(payload.deals, region, query, now, list ?? undefined).filter((deal) => atStatus(deal, status, now));
   const matching = keyword === "lockup" ? byLockupEnd(found, now) : sortIpoDeals(found, DEFAULT_IPO_SORT, now, query);
   const rows = matching.slice(0, limit).map((deal) => toRow(deal, now));
-  const behind = marketsBehindText(marketsBehind(payload.sources, region, payload.deals));
+  // A search that found deals speaks for their markets alone: HAWK's report says nothing of London's.
+  const behind = marketsBehindText(marketsBehind(payload.sources, region, payload.deals, query && matching.length ? matching : undefined));
   const single = matching.length === 1 && query && !keyword ? matching[0]! : null;
   const notes = [
     ...rows.length < matching.length
@@ -276,7 +277,7 @@ export const ipoCalendarHeadless: HeadlessPaneDefinition<"rows"> = {
     if (!matched?.symbol) return projected;
     const [price, news] = await Promise.all([
       matched.status === "listed"
-        ? ctx.marketData.getQuote(matched.symbol, matched.exchange ?? undefined).then((quote) => quote.price ?? null,
+        ? ctx.marketData.getQuote(matched.symbol, matched.exchange ?? undefined).then(ipoPriceNow,
           logFailure("plugins.ipo-calendar", "Load the price of an IPO failed", null))
         : Promise.resolve(null),
       loadIpoLockupNews(ctx.apiClient, matched).catch(logFailure("plugins.ipo-calendar", "Load an IPO's lock-up news failed", [] as IpoLockupStory[])),

@@ -3,8 +3,8 @@ import type { IpoCalendarPayload, IpoDeal } from "../../../api-client/ipo";
 import type { HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { validateIpoCalendar } from "./client";
 import { ipoCalendarHeadless, projectIpoCalendarHeadless } from "./headless";
-import { ipoDetailNotes, ipoDetailSentences, ipoMetricRows, loadIpoLockupNews, loadListingIpo } from "./listing-ipo";
-import { filterIpoDeals, formatIpoLockupEnd, formatIpoPrice, ipoKeyword, ipoLockupBasis, ipoLockupText, ipoReturnSince } from "./model";
+import { ipoDetailNotes, ipoDetailSentences, ipoMetricRows, ipoPriceNow, loadIpoLockupNews, loadListingIpo } from "./listing-ipo";
+import { filterIpoDeals, formatIpoLockupDate, formatIpoLockupEnd, formatIpoPrice, ipoKeyword, ipoLockupBasis, ipoLockupText, ipoReturnSince } from "./model";
 import { ipoDeal } from "./test-fixture";
 
 const NOW = new Date("2026-10-28T19:00:00Z");
@@ -30,7 +30,7 @@ function args(argument: string, options: Record<string, unknown> = {}): Headless
   return { argument, options, symbols: [] } as unknown as HeadlessPaneLoadArgs;
 }
 
-const payload = (deals: IpoDeal[]): IpoCalendarPayload => ({ asOf: "2026-10-28T19:00:00Z", deals, sources: [] });
+const payload = (deals: IpoDeal[], sources: IpoCalendarPayload["sources"] = []): IpoCalendarPayload => ({ asOf: "2026-10-28T19:00:00Z", deals, sources });
 
 test("a direct listing reads that it has no offer price, short in the pane's column and in full in a report", () => {
   expect(formatIpoPrice(GYGY)).toBe("direct listing");
@@ -43,6 +43,9 @@ test("a direct listing reads that it has no offer price, short in the pane's col
 test("the lock-up estimate reads as one: ends, or ended, about a date", () => {
   expect(formatIpoLockupEnd(HAWK.lockup?.endsOn)).toBe("~2026-11-02");
   expect(formatIpoLockupEnd(GYGY.lockup?.endsOn)).toBe("—");
+  // The pane's LOCKUP reads the same day, with the year once it is half a year off.
+  expect(formatIpoLockupDate(HAWK.lockup?.endsOn, NOW)).toBe("~2 Nov");
+  expect(formatIpoLockupDate("2027-05-07", NOW)).toBe("~7 May 2027");
   expect(ipoLockupText(HAWK, NOW)).toBe("lockup ends ~2026-11-02 (estimate)");
   expect(ipoLockupText(HAWK, new Date("2026-11-03T00:00:00Z"))).toBe("lockup ended ~2026-11-02 (estimate)");
   expect(ipoLockupText(GYGY, NOW)).toBeNull();
@@ -73,7 +76,7 @@ test("lockup, lock-up, SPAC and de-SPAC are kinds of deal to list, not names to 
 test("one deal found reads its IPO date, offer price, return since the IPO, lock-up estimate and lock-up news", () => {
   const news = [{ title: "HawkEye 360 Confirms Early Lock-up Release for September 2nd", source: "PR Newswire",
     publishedAt: "2026-08-31T11:41:00.000Z", url: "https://example.com/hawk" }];
-  const result = projectIpoCalendarHeadless(payload([HAWK, GYGY]), args("HawkEye"), { price: 42.3, news }, NOW);
+  const result = projectIpoCalendarHeadless(payload([HAWK, GYGY]), args("HawkEye"), { price: { price: 42.3, at: null }, news }, NOW);
   expect(result.rows).toHaveLength(1);
   expect(result.rows[0]).toMatchObject({ ticker: "HAWK", price: "$26", lockupEnds: "2026-11-02", lockupBasis: "prospectus", prospectusDate: "2026-05-06" });
   expect(result.notes).toEqual([
@@ -81,7 +84,7 @@ test("one deal found reads its IPO date, offer price, return since the IPO, lock
     "HAWK lockup ends ~2026-11-02 (estimate): 180 days from the prospectus dated 2026-05-06; underwriters can release shares early.",
     "Lock-up news 2026-08-31: HawkEye 360 Confirms Early Lock-up Release for September 2nd (PR Newswire)",
   ]);
-  const direct = projectIpoCalendarHeadless(payload([HAWK, GYGY]), args("GYGY"), { price: 30, news: [] }, NOW);
+  const direct = projectIpoCalendarHeadless(payload([HAWK, GYGY]), args("GYGY"), { price: { price: 30, at: null }, news: [] }, NOW);
   expect(direct.rows[0]).toMatchObject({ price: "direct listing, no offer price", lockupEnds: null });
   expect(direct.notes).toEqual(["GYGY listed 2026-07-30 on Nasdaq: direct listing, no offer price; $30 now, +33.3% since the first trade at $22.50."]);
   // Several deals found: rows only, and a cut list says how to see the rest.
@@ -89,6 +92,35 @@ test("one deal found reads its IPO date, offer price, return since the IPO, lock
   const cut = projectIpoCalendarHeadless(payload([HAWK, GYGY, SPAC]), args("", { limit: 2 }), null, NOW);
   expect(cut.rows).toHaveLength(2);
   expect(cut.notes).toEqual(["Showing 2 of 3 deals; --limit 3 lists them all."]);
+});
+
+test("the price since the IPO is the one quote heads the listing with: after the close, the close and its day, never an after-hours print", () => {
+  // Tue 24 Nov 2026 after the close: the close 16.62 is the regular session's; 16.50 traded after hours.
+  const quote = {
+    symbol: "HAWK", price: 16.5, currency: "USD", change: -0.06, changePercent: -0.36, previousClose: 16.68,
+    regularClose: 16.62, regularCloseSessionDate: "2026-11-24", regularChange: -0.06, regularChangePercent: -0.36,
+    marketState: "POST", postMarketPrice: 16.5, postMarketChange: -0.12, lastUpdated: Date.parse("2026-11-24T23:40:00Z"),
+    changeSessionDate: "2026-11-24", exchangeName: "NYSE",
+  } as const;
+  const quoted = ipoPriceNow(quote as never);
+  expect(quoted).toEqual({ price: 16.62, at: "at the 2026-11-24 close" });
+  expect(ipoDetailSentences(HAWK, quoted, [], NOW)[0]).toBe(
+    "HAWK listed 2026-05-07 on NYSE at a $26 offer price, +20.0% on the first day; $16.62 at the 2026-11-24 close, -36.1% since the IPO.");
+  // While the session trades, the live price with the time it was read.
+  expect(ipoPriceNow({ ...quote, price: 16.8, marketState: "REGULAR", lastUpdated: Date.parse("2026-11-25T15:02:30Z") } as never))
+    .toEqual({ price: 16.8, at: "as of 2026-11-25 15:02 UTC" });
+});
+
+test("a report names only the markets behind that its deals are on, with the day each was last read", () => {
+  const sources = [
+    { id: "nasdaq", mics: ["XNAS", "XNYS"], ok: true, asOf: "2026-10-28T18:00:00Z" },
+    { id: "lse", mics: ["XLON"], ok: false, asOf: "2026-10-22T20:44:06Z" },
+  ];
+  const lse = ipoDeal({ id: "lse", company: "Example plc", symbol: "EXPL", mic: "XLON", exchange: "LSE", venue: "LSE", country: "GB", region: "europe" });
+  expect(projectIpoCalendarHeadless(payload([HAWK, lse], sources), args(""), null, NOW).errors).toEqual(["UK not updated since 2026-10-22"]);
+  // A search that found a US deal says nothing of London's; one that found nothing still says what is behind.
+  expect(projectIpoCalendarHeadless(payload([HAWK, lse], sources), args("HawkEye"), null, NOW).errors).toBeUndefined();
+  expect(projectIpoCalendarHeadless(payload([HAWK, lse], sources), args("nothing"), null, NOW).errors).toEqual(["UK not updated since 2026-10-22"]);
 });
 
 test("ticker's IPO rows, and the lines under them", () => {
