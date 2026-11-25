@@ -419,8 +419,8 @@ const IPO_COLUMNS: readonly IpoColumn[] = [
   { id: "market", label: "MKT", width: 10, align: "left" },
   { id: "date", label: "DATE", width: 8, align: "left" },
   { id: "status", label: "STATUS", width: 9, align: "left" },
-  // "HK$26.20-28.50".
-  { id: "price", label: "PRICE", width: 14, align: "right", mayBeBlank: true },
+  // "HK$26.20-28.50". Each deal says whether it owes one (ipoPriceMayBeBlank).
+  { id: "price", label: "PRICE", width: 14, align: "right" },
   // "$218.82M". A deal's size comes with its terms and its return with its first day: an upcoming one has neither.
   { id: "size", label: "SIZE", width: 8, align: "right", mayBeBlank: true },
   // The first day's return from the offer, never one since: the detail says that apart.
@@ -546,6 +546,19 @@ export function formatIpoPrice(deal: IpoDeal, { full = false }: { full?: boolean
   if (!code) return figures;
   const sign = CURRENCY_SIGNS[code.toUpperCase()];
   return sign ? `${sign}${figures}` : `${code.toUpperCase()} ${figures}`;
+}
+
+/**
+ * Whether a deal's PRICE is blank with no price missing: it has not priced
+ * (filed, upcoming, postponed or withdrawn, with no range out yet), or it
+ * lists by introduction, which sells no shares.
+ *
+ * A priced or listed offering owes one. A venue that publishes no offer price
+ * sends the same null prices as a deal whose price was lost, so a capture
+ * whose every priced deal has none fails on the column.
+ */
+export function ipoPriceMayBeBlank(deal: Pick<IpoDeal, "status" | "listingType">): boolean {
+  return (deal.status !== "priced" && deal.status !== "listed") || deal.listingType === "introduction";
 }
 
 /** "$1.2B", "$85M". */
