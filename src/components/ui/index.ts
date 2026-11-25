@@ -66,6 +66,8 @@ export { EmptyState, PaneStatusBody, Notice, RowNote, loadingText, unavailableTe
 export type { EmptyStateProps, PaneStatusBodyProps, NoticeProps, StatusRetry } from "./status";
 export { Badge, BulletList, Divider, FigureList, KeyValueRow, Prose, READING_WIDTH, Section, SectionHeading } from "./display";
 export { Card } from "./card";
+export { dayCell, formatDay, formatDayTime, isoDay } from "./day-cell";
+export type { DayCellForm } from "./day-cell";
 export type { CardProps } from "./card";
 export type {
   BadgeProps, BulletListProps, DividerProps, FigureListItem, FigureListProps, KeyValueRowProps, ProseProps, SectionProps,

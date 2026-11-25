@@ -1035,7 +1035,7 @@ export function sortTimelineRows(
 /** The name column takes the room the figures leave; the table lays it out. */
 export function buildBrowserColumns(withEstimate = true): FundBrowserColumn[] {
   const cikWidth = 12;
-  const periodWidth = 10;
+  const periodWidth = 11;
   const filedWidth = 9;
   const valueWidth = 11;
   const rowsWidth = 6;
@@ -1094,8 +1094,8 @@ export function buildHoldingColumns(): FundHoldingColumn[] {
 }
 
 export function buildTimelineColumns(width: number): FundTimelineColumn[] {
-  const periodWidth = 10;
-  const filedWidth = 10;
+  const periodWidth = 11;
+  const filedWidth = 11;
   const valueWidth = 12;
   const rowsWidth = 6;
   const changeWidth = 9;
