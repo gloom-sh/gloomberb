@@ -5,7 +5,7 @@ import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import { calendarMonthsBefore } from "../../../utils/calendar-date";
 import { NOT_MEANINGFUL, formatPriceEarnings } from "../../../utils/price-earnings";
 import { UNEVEN_REGULAR_PAYMENTS } from "../../../utils/forward-dividend";
-import { CADENCE_GRACE_DAYS, LATE_GRACE_DAYS, OFF_CYCLE_DAYS, trailingCashAt, type TrailingPayments } from "../../../utils/trailing-dividend";
+import { CADENCE_GRACE_DAYS, LATE_GRACE_DAYS, OFF_CYCLE_DAYS, trailingCashAt, trailingCashInHindsight, type TrailingPayments } from "../../../utils/trailing-dividend";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -134,7 +134,8 @@ export function buildTrailingCashChartPoints(payments: DividendPayment[], now = 
     const date = new Date(timestamp);
     // Avoid drawing the first partial year of a fund's history as a full-year cash rate.
     if (calendarMonthsBefore(date, 12) < firstDate) continue;
-    const cash = trailingCashAt(sorted, date);
+    // The past reads with what was paid after it; the latest point is as known.
+    const cash = timestamp === now.getTime() ? trailingCashAt(sorted, date) : trailingCashInHindsight(sorted, date);
     // A step series only needs its changes and the current value.
     if (points.at(-1)?.close === cash && timestamp !== now.getTime()) continue;
     points.push({ date, open: cash, high: cash, low: cash, close: cash, volume: 0 });

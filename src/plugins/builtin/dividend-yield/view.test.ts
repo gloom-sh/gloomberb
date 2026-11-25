@@ -19,10 +19,10 @@ test("cash chart reaches the current zero cash rate after payments stop", () => 
     toDividendPayment("2023-08-04", 0.125, "USD")!,
     toDividendPayment("2024-08-07", 0.125, "USD")!,
   ], new Date("2026-09-10"));
-  // Two ex-dates 369 days apart are an annual cadence, so the last is held through the late grace and goes
-  // when the cadence does (two years and 30 days past the first).
+  // The first year holds until the second, three days late, went ex; the last is held through the late
+  // grace and goes when the cadence does (two years and 30 days past the first).
   expect(points.map((point) => [point.date.toISOString().slice(0, 10), point.close])).toEqual([
-    ["2024-08-04", 0], ["2024-08-07", 0.125], ["2025-09-03", 0], ["2026-09-10", 0],
+    ["2024-08-04", 0.125], ["2025-09-03", 0], ["2026-09-10", 0],
   ]);
 });
 
@@ -97,4 +97,30 @@ test("an annual payer whose ex-date slips a few days keeps its trailing cash bet
   // A payer that stops still falls to nothing once the grace has passed.
   const stopped = moutai.filter((payment) => payment.exDate < new Date("2022-01-01"));
   expect(buildDividendMetrics(stopped, null, 1800, { now: new Date("2022-08-15T12:00:00Z") }).trailingRate ?? 0).toBe(0);
+});
+
+test("the chart of the past holds a year's cash until a late payment in its slot goes ex, and the latest point is as known", () => {
+  // Haier Smart Home (600690): an annual final each summer, its ex-date drifting by weeks, no 1999 dividend,
+  // an interim added in November 2025.
+  const haier = [
+    ["1997-06-16", 0.037879], ["1998-06-08", 0.049453], ["2000-06-20", 0.025253], ["2001-06-21", 0.025253],
+    ["2014-06-18", 0.23], ["2015-07-16", 0.246], ["2016-07-26", 0.212], ["2017-08-01", 0.248], ["2018-06-07", 0.342],
+    ["2019-08-08", 0.351], ["2020-07-16", 0.375], ["2021-08-23", 0.366], ["2022-08-23", 0.46136], ["2023-08-25", 0.56692],
+    ["2024-08-16", 0.80131], ["2025-07-25", 0.96504], ["2025-11-07", 0.2692], ["2026-08-21", 0.89151],
+  ].map(([date, amount]) => toDividendPayment(date as string, amount as number, "CNY")!);
+  const now = new Date("2026-11-25T12:00:00Z");
+  const points = buildTrailingCashChartPoints(haier, now);
+  const at = (day: string) => points.filter((point) => point.date.toISOString().slice(0, 10) <= day).at(-1)!.close;
+  // As known on the day these read 0: the 2014, 2018 and 2020 finals had left the year and the next had not gone ex.
+  expect(at("2015-07-10")).toBe(0.23);
+  expect(at("2019-07-15")).toBe(0.342);
+  expect(at("2021-08-20")).toBe(0.375);
+  // The interim alone read 0.2692 until the 2026 final went ex.
+  expect(at("2026-08-01")).toBeCloseTo(0.96504 + 0.2692, 9);
+  // No 1999 dividend: the year with nothing paid in its slot still falls to nothing.
+  expect(at("1999-12-31")).toBe(0);
+  // The latest point is the strip's figure: the 2025 interim has left the year, the 2026 one is not paid yet.
+  expect(points.at(-1)!.date).toEqual(now);
+  expect(points.at(-1)!.close).toBe(buildDividendMetrics(haier, null, 30, { now }).trailingRate!);
+  expect(points.at(-1)!.close).toBe(0.89151);
 });
