@@ -62,7 +62,7 @@ test("the CBR footer names its sources and the rates' day, as `fn CBR` ends, and
   const footer = frame.split("\n").filter((line) => line.trim()).at(-1)!;
   expect(footer).toMatch(/FRED and central banks · Thu 12 Nov 2026/);
   expect(frame).toContain("AS OF");
-  expect(frame).toContain("2026-11-12");
+  expect(frame).toContain("12 Nov 2026");
 });
 
 // The CBE's terms ask that a figure computed from its rates say so.

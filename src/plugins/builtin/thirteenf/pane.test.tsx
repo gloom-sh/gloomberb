@@ -243,19 +243,19 @@ describe("ThirteenFPane", () => {
         { width: 100, height: 20 },
       );
     });
-    expect(await tui.waitForFrameToContain("2026-06-30")).toContain("$299.25B");
+    expect(await tui.waitForFrameToContain("30 Jun 2026")).toContain("$299.25B");
 
     offline = true;
     await emitKeypress({ name: "r", sequence: "r" });
     await tui.waitForFrameToContain("saved copy from");
-    const saved = await tui.waitForFrameToContain("2026-06-30");
+    const saved = await tui.waitForFrameToContain("30 Jun 2026");
     expect(saved).toContain("$299.25B");
     expect(saved).not.toMatch(/refresh failed|Retained data|Unable to connect/);
 
     offline = false;
     await emitKeypress({ name: "r", sequence: "r" });
     await tui.waitForFrameToExclude("saved copy");
-    expect(await tui.waitForFrameToContain("2026-06-30")).toContain("$299.25B");
+    expect(await tui.waitForFrameToContain("30 Jun 2026")).toContain("$299.25B");
   });
 
   test("moves from the first fund row to search with Up", async () => {

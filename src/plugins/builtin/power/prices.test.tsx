@@ -185,7 +185,7 @@ test("the gas board boards each area's storage by its gas day, charts the EU's y
   // The power board opens; the query bar switches to gas storage, credited to its publisher.
   await tui.waitForFrameToContain("Great Britain");
   await tui.clickFrameText("Gas storage");
-  const frame = await tui.waitForFrameToContain("2026-10-12 est");
+  const frame = await tui.waitForFrameToContain("12 Oct 2026 est");
   expect(frame).toContain("GIE AGSI+");
   expect(frame).toContain("73.87");
   expect(frame).toContain("below");

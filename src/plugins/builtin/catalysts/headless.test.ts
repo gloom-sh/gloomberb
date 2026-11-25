@@ -70,5 +70,5 @@ test("a kind report reads its types together in calendar order, under the pane's
   // and what every row says alike (scheduled, filed with one body) is left out, as in the pane.
   expect(section!.columns.map((column) => column.header)).toEqual(["Date", "With", "Event", "Type", "Primary source"]);
   expect(section!.rows.map((row) => [row.id, row.with])).toEqual([["vote", "Metsera"], ["results", ""]]);
-  expect(renderHeadlessPaneText(catalystsHeadless, result, args, "CATL")).toMatch(/2027-01-20 +Metsera +Vote on the merger +Merger vote/);
+  expect(renderHeadlessPaneText(catalystsHeadless, result, args, "CATL")).toMatch(/20 Jan 2027 +Metsera +Vote on the merger +Merger vote/);
 });

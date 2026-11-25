@@ -1,4 +1,4 @@
-import { formatDay } from "../../../utils/day-format";
+import { formatDay, formatDayTime } from "../../../utils/day-format";
 import type { DataTableColumn, StatItem } from "../../../components";
 import type { HiringCompanySignals, HiringMovePosting, HiringSignalFlag, HiringSignalGroup, HiringSignalHold, HiringSignalKind, HiringSignalSkip, HiringSignalsBoard, HiringSignalsFilter, HiringWeekSignal } from "../../../api-client/hiring";
 import { MISSING_VALUE, formatNumber } from "../../../utils/format";
@@ -93,7 +93,7 @@ export function signalFacts(signal: HiringWeekSignal): Array<{ label: string; va
     ...(signal.places.length ? [{ label: signal.dimension === "country" ? "Cities" : "Where", value: signal.places.map((row) => `${row.label} (${count(row.count)})`).join(", ") }] : []),
     ...(signal.topTitles.length ? [{ label: "Top titles", value: signal.topTitles.map((row) => `${row.title.trim()} (${count(row.count)})`).join(", ") }] : []),
     { label: "Boards", value: signal.sourceTickers.join(", ") },
-    { label: "First computed", value: signal.firstComputedAt },
+    { label: "First computed", value: `${formatDayTime(signal.firstComputedAt)} UTC` },
   ];
 }
 
