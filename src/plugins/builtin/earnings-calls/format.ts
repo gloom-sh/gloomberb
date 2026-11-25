@@ -82,6 +82,8 @@ const SHORT_EVENT_LABELS: Record<string, string> = {
   "business update": "Update",
   "trial results": "Trial",
   "shareholder call": "Holders",
+  // A second call after the results call, for analysts (Micron's "post earnings analyst call").
+  "analyst call": "Analyst",
 };
 
 /** The period column: "FQ4 26", or a short event label ("M&A", "Inv day"). */

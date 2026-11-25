@@ -182,6 +182,11 @@ describe("earnings transcript headless", () => {
     expect(callTitle(deal)).toBe("AMD M&A call");
     expect(callPeriod(deal)).toBe("M&A");
     expect(callTitle(calls[0]!)).toBe("AMD FQ2 26");
+    // The analyst call held after the results call is its own event, listed by its label.
+    const analysts: CloudEarningsCallPayload = { ...calls[0]!, id: "amd-analysts", fiscalYear: null, fiscalQuarter: null, eventKind: "other", eventLabel: "analyst call" };
+    expect(callPeriod(analysts)).toBe("Analyst");
+    expect(callTitle(analysts)).toBe("AMD analyst call");
+    expect(findCallForQuarter([analysts, ...calls], "latest")?.id).toBe("amd-fq2-2026");
   });
 
   test("a ticker alone lists the company's calls; a quarter or section reads the transcript", async () => {
