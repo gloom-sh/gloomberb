@@ -581,7 +581,7 @@ export interface HeadlessRowsResult extends HeadlessPaneResultBase {
   rows: HeadlessPaneRow[];
   /** The rows `textColumns` read, when the text report adds lines that are no record (the position under its lots); `rows` when absent. CSV, NDJSON and JSON keep `rows`. */
   textRows?: HeadlessPaneRow[];
-  /** A text summary of the whole report yields to the actual records when a row window is requested. */
+  /** Replace full-report text rows and sections with the selected records when a row window is requested. */
   textRowsUseRecordsWhenWindowed?: boolean;
   /** What the report says when `rows` is empty, in place of "No data.": why there are none. */
   empty?: string;

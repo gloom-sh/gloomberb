@@ -1197,7 +1197,7 @@ function windowHeadlessResult(definition: HeadlessPaneDefinition, result: Headle
       const rows = result as HeadlessRowsResult;
       const dateOf = rowDate(rows.columns ?? definition.columns);
       windowed = { ...rows, rows: cut(rows.rows, undefined, dateOf), ...(rows.textRowsUseRecordsWhenWindowed
-        ? { textColumns: undefined, textRows: undefined }
+        ? { textColumns: undefined, textRows: undefined, textSections: undefined }
         : rows.textRows ? { textRows: quiet(rows.textRows, dateOf) } : {}) };
       break;
     }

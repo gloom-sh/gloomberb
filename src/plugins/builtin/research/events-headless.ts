@@ -119,7 +119,7 @@ export function createEventsHeadless(
       const summary = buildNextUp(own, { today, fund, statedExDate: data.financials?.fundamentals?.exDividendDate, catalyst });
       const quarters = fund ? [] : earningsQuarters(own, today);
       const quarterRows = quarterTextRows(quarters);
-      const years = dividendYears(data.actions?.dividends ?? [], today, splitMarks(own), data.actions?.coverage?.dividends);
+      const years = dividendYears(data.actions?.dividends ?? [], today, splitMarks(own), data.actions?.coverage?.dividends, { includeSplitOnly: fund });
       const currency = data.actions?.currency ?? data.currency;
       const digits = Math.min(4, distributionAmountsDigits(years.flatMap((year) => (year.total == null ? [] : [year.total])), currency || "USD"));
       const yearRows = years.map((year) => ({

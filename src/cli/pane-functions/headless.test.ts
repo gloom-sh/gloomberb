@@ -688,8 +688,11 @@ test("EVT tail renders the same payout record as CSV instead of slicing the annu
       dividends: [{ exDate: "2022-03-15", amount: 0.5 }, { exDate: "2019-02-18", amount: 0.8 }] },
   }) });
   const loaded = await definition.load({ ...args, symbols: [symbol] }, createTestHeadlessContext());
-  expect(loaded.textRows?.map((row) => row.year)).toEqual(["2022", "2020-2021", "2019"]);
-  const report = await reportOf({ ...definition, argument: { kind: "none" }, load: () => loaded }, "", { tail: 1 });
+  const headless = { ...definition, argument: { kind: "none" } as const, load: () => loaded };
+  const summary = await reportOf(headless);
+  expect(summary.text).toMatch(/^2022\s+0\.50 INR/m);
+  expect(summary.text).toMatch(/^2019\s+0\.80 INR/m);
+  const report = await reportOf(headless, "", { tail: 1 });
   expect(report.text).toMatch(/2022-03-15\s+Dividend/);
   expect(report.text).not.toContain("2019");
   expect(report.text).toContain("newest 1 of 2 rows (--tail 1)");
@@ -701,7 +704,7 @@ test("EVT row windows show a stock's latest dividend instead of an older earning
   const symbol = "TEST";
   const definition = createEventsHeadless({ load: async () => ({
     currency: "USD", estimates: null, financials: null,
-    actions: { symbol, currency: "USD", splits: [], dividends: [{ exDate: "2022-11-15", amount: 0.5 }],
+    actions: { symbol, currency: "USD", splits: [], dividends: [{ exDate: "2022-11-15", amount: 0.5 }, { exDate: "2021-11-15", amount: 0.25 }],
       earnings: [{ date: "2022-10-27", dateType: "announcement", fiscalPeriod: "2022-09", epsActual: 1.27, currency: "USD" }] },
   }) });
   const loaded = await definition.load({ ...args, symbols: [symbol] }, createTestHeadlessContext());
@@ -709,13 +712,37 @@ test("EVT row windows show a stock's latest dividend instead of an older earning
   const summary = await reportOf(headless);
   expect(summary.text).toMatch(/^2022-10-27\s+/m);
   expect(summary.text).toContain("Dividends by year");
+  expect(summary.text).toMatch(/^2022\s+0\.50 USD/m);
+  expect(summary.text).toMatch(/^2021\s+0\.25 USD/m);
   for (const window of [{ tail: 1 }, { limit: 1 }]) {
     const report = await reportOf(headless, "", window);
-    expect(report.text).toMatch(/^2022-11-15\s+Dividend\b/m);
-    expect(report.text).not.toMatch(/^2022-10-27\s+/m);
+    const events = [...report.text.matchAll(/^(\d{4}-\d{2}-\d{2})\s+(\S+)/gm)].map((match) => match.slice(1));
+    expect(events).toEqual([["2022-11-15", "Dividend"]]);
+    expect(report.text).not.toContain("Dividends by year");
     expect(report.data).toMatchObject({ rowCount: 1, rows: [{ date: "2022-11-15", status: "Dividend" }] });
-    expect(csvOf(report).filter((line) => /^2022-/.test(line)).map((line) => line.split(",").slice(0, 2)))
-      .toEqual([["2022-11-15", "Dividend"]]);
+    expect(csvOf(report).filter((line) => /^\d{4}-\d{2}-\d{2},/.test(line)).map((line) => line.split(",").slice(0, 2)))
+      .toEqual(events);
+  }
+});
+
+test("EVT summarizes a named ETF's split even without covered payouts", async () => {
+  const symbol = "TEST";
+  const definition = createEventsHeadless({ load: async () => ({
+    currency: "USD", estimates: null, financials: null,
+    actions: { symbol, name: "Test Index ETF", currency: "USD", coverage: { dividends: "unavailable" },
+      dividends: [], earnings: [], splits: [{ date: "2022-08-31", fromFactor: 1, toFactor: 4 }] },
+  }) });
+  const loaded = await definition.load({ ...args, symbols: [symbol] }, createTestHeadlessContext());
+  const headless = { ...definition, argument: { kind: "none" } as const, load: () => loaded };
+  const summary = await reportOf(headless);
+  expect(summary.text).toMatch(/^2022\b[^\n]*4-for-1 split · Distribution history incomplete/m);
+  expect(summary.text).not.toContain("No data.");
+  for (const window of [{ tail: 1 }, { limit: 1 }]) {
+    const report = await reportOf(headless, "", window);
+    expect(report.text).toMatch(/^2022-08-31\s+Split\b/m);
+    expect(report.text).not.toMatch(/^2022\s+/m);
+    expect(csvOf(report).filter((line) => line.startsWith("2022-")).map((line) => line.split(",").slice(0, 2)))
+      .toEqual([["2022-08-31", "Split"]]);
   }
 });
 
