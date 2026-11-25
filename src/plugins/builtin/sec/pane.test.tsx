@@ -477,7 +477,7 @@ test("a company listed abroad is looked up by the SEC, and one that files nothin
     expect(shown).toContain("8058:JPX (JPX) files no SEC reports. TDnet timely disclosures: release.tdnet.info");
     expect(filings).toEqual(["8058:JPX"]);
     expect(footer.menu?.map((item) => ("label" in item ? item.label : null))).toEqual(["Open release.tdnet.info"]);
-    expect(exchange).toHaveBeenCalledWith({ symbol: "8058:JPX", exchange: "JPX", limit: 50 });
+    expect(exchange).toHaveBeenCalledWith({ symbol: "8058:JPX", exchange: "JPX", limit: 200 });
   } finally {
     exchange.mockRestore();
   }
