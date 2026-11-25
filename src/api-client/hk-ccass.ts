@@ -69,7 +69,7 @@ export function hkCcassCode(key: string | null | undefined, exchange?: string): 
   return null;
 }
 
-export interface HkCcassBucketSummary {
+interface HkCcassBucketSummary {
   bucket: HkCcassBucket;
   label: string;
   shares: number;
@@ -143,7 +143,7 @@ export interface HkCcassSouthboundRow {
   top10Pct: number | null;
 }
 
-export interface HkCcassParticipantSummary {
+interface HkCcassParticipantSummary {
   partId: string;
   ccassId: string | null;
   name: string;

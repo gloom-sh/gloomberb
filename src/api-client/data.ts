@@ -2,6 +2,13 @@ import type { JpxShortPositions } from "./jpx-short-positions";
 import type { SgxShortSales, KoreanShortPositions, KoreanVenue, MainlandLendingBalances, MainlandVenue, TaiwanShortBalances, TaiwanVenue } from "./exchange-short-balances";
 import type { SfcShortPositions } from "./sfc-short-positions";
 import type { BuybacksPayload } from "./buybacks";
+import type {
+  HkCcassBigChangesPayload,
+  HkCcassConcentrationPayload,
+  HkCcassParticipantPortfolioPayload,
+  HkCcassSouthboundPayload,
+  HkCcassStockPayload,
+} from "./hk-ccass";
 import type { AttentionPayload, AttentionWindow } from "./attention";
 import type { HiringBoard, HiringBuildingBoard, HiringBuildingFilter, HiringCompanyBuilding, HiringCompanyMoves, HiringCompanySignals, HiringMovesBoard, HiringMovesFilter, HiringPayload, HiringSignalGroup, HiringSignalsBoard, HiringSignalsFilter } from "./hiring";
 import type { AppAttentionFilter, AppAttentionPayload, AppRankPayload } from "./app-attention";
@@ -556,7 +563,7 @@ export class CloudDataApi {
     if (options.date) qs.set("date", options.date);
     if (options.limit) qs.set("limit", String(options.limit));
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
-    return this.request<import("./hk-ccass").HkCcassStockPayload>(
+    return this.request<HkCcassStockPayload>(
       `/cloud/hk-ccass/stocks/${encodeURIComponent(code)}${suffix}`,
       options.signal ? { signal: options.signal } : undefined,
     );
@@ -572,7 +579,7 @@ export class CloudDataApi {
     if (options.code) qs.set("code", options.code);
     if (options.limit) qs.set("limit", String(options.limit));
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
-    return this.request<import("./hk-ccass").HkCcassBigChangesPayload>(
+    return this.request<HkCcassBigChangesPayload>(
       `/cloud/hk-ccass/big-changes${suffix}`,
       options.signal ? { signal: options.signal } : undefined,
     );
@@ -586,7 +593,7 @@ export class CloudDataApi {
     if (options.sortBy) qs.set("sortBy", options.sortBy);
     if (options.limit) qs.set("limit", String(options.limit));
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
-    return this.request<import("./hk-ccass").HkCcassConcentrationPayload>(
+    return this.request<HkCcassConcentrationPayload>(
       `/cloud/hk-ccass/concentration${suffix}`,
       options.signal ? { signal: options.signal } : undefined,
     );
@@ -600,7 +607,7 @@ export class CloudDataApi {
     if (options.sortBy) qs.set("sortBy", options.sortBy);
     if (options.limit) qs.set("limit", String(options.limit));
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
-    return this.request<import("./hk-ccass").HkCcassSouthboundPayload>(
+    return this.request<HkCcassSouthboundPayload>(
       `/cloud/hk-ccass/southbound${suffix}`,
       options.signal ? { signal: options.signal } : undefined,
     );
@@ -615,7 +622,7 @@ export class CloudDataApi {
     if (options.sortBy) qs.set("sortBy", options.sortBy);
     if (options.limit) qs.set("limit", String(options.limit));
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
-    return this.request<import("./hk-ccass").HkCcassParticipantPortfolioPayload>(
+    return this.request<HkCcassParticipantPortfolioPayload>(
       `/cloud/hk-ccass/participants/${encodeURIComponent(partId)}${suffix}`,
       options.signal ? { signal: options.signal } : undefined,
     );

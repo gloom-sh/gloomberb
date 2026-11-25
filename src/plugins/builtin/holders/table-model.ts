@@ -8,14 +8,11 @@ export const DEFAULT_SORT: SortPreference = {
   direction: "desc",
 };
 
-export const VIEW_TABS: Array<{ label: string; value: ViewMode }> = [
+const VIEW_TABS: Array<{ label: string; value: ViewMode }> = [
   { label: "Table", value: "table" },
   { label: "Chart", value: "chart" },
   { label: "13D/G", value: "13dg" },
 ];
-
-/** `s` steps through the views in tab order. */
-export const DISCLOSURE_TABS = [...VIEW_TABS, { label: "Disclosures", value: "disclosures" as const }];
 
 export function holderTabs(options: { hasDisclosures: boolean; hasCcass: boolean }): Array<{ label: string; value: ViewMode }> {
   return [
