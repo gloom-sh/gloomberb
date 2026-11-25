@@ -149,8 +149,9 @@ export function mnaColumns(status: ColumnSet, width: number, targetWidth = COLUM
  *   no terms, no announced value and no close to expect.
  * - PRICE, SPREAD and AS OF of a deal with no spread to read: it is not
  *   pending, its target is not listed, or it states no per-share terms.
- * - ANN. of such a deal, and of one whose spread has no annual figure
- *   (annualizedMayBeBlank).
+ * - ANN. of such a deal, and of one whose spread has no annual figure at
+ *   `now`: a partial offer, a spread that is not positive, a close less than
+ *   a day off (annualizedMayBeBlank).
  *
  * An agreed deal owes the rest, and the list cannot tell these apart from a
  * figure it lost: terms the parties did not disclose (`consideration:
@@ -190,7 +191,7 @@ export function mnaDealCell(
     case "annualized": {
       const annualized = spread?.annualized ?? null;
       return annualized == null
-        ? { text: MISSING, color: muted, mayBeBlank: spread ? annualizedMayBeBlank(deal, spread) : !expectsSpread }
+        ? { text: MISSING, color: muted, mayBeBlank: spread ? annualizedMayBeBlank(deal, spread, now) : !expectsSpread }
         : { text: formatPercentShort(annualized), color: base };
     }
     case "basis": {

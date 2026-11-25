@@ -537,7 +537,12 @@ a kind that has none (ECO's ACTUAL before the release, the terms of a deal
 still in talks), mark those cells with `DataTableCell.mayBeBlank` and leave the
 column unmarked, so the capture still fails when the rows that owe the value
 have none. Decide it from what else the row says (its status, its kind, its
-time), never from the blank itself: a null is not thereby optional. Where the
+time), never from the cell: a null is not thereby optional, and words in the
+value's place are not the value. The capture leaves a marked cell out whatever
+it shows, so mark a row of a kind that has no value even where its cell says
+something else (an event's label under a call's PERIOD, "Created" under an
+alert's Value), and never mark a row that owes the value: its figure, zero
+included, is what fills the column. Where the
 row cannot say whether its null is a value lost (a deal's undisclosed terms, a
 fill with no commission), leave the cell unmarked and write the limit down
 beside the rule and in `docs/usage.md`. For structurally unavailable coverage, opt that

@@ -12,7 +12,8 @@ interface RenderedTableColumn {
  * with their column, text, exact value, and whether the cell may be blank with
  * nothing missing. That is the column's own word (`DataTableColumn.mayBeBlank`)
  * or the cell's (`DataTableCell.mayBeBlank`, drawn as
- * `data-gloom-cell-may-be-blank`), and `--strict` reads a blank column by it.
+ * `data-gloom-cell-may-be-blank`), and `--strict` reads a blank column by it,
+ * leaving a marked cell out whatever its text.
  * A cell with no text is left out, and a row with none.
  *
  * `clipped` is set when a cell shows an ellipsis or holds text wider than itself.

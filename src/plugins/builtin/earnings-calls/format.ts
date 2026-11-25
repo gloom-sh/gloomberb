@@ -95,9 +95,10 @@ export function callPeriod(call: Omit<NamedCall, "ticker">): string {
 
 /**
  * Whether a call's PERIOD is blank with no period missing: an event that is
- * not an earnings call (`eventKind: "other"`) has no fiscal period, and reads
- * by its label where it has one ("Analyst", "Inv day"), which is its period
- * column's data.
+ * not an earnings call (`eventKind: "other"`) has no fiscal period. Where it
+ * has a label it reads by it ("Analyst", "Inv day"), which names the event and
+ * is no period: the mark stands with the label or without, so a capture leaves
+ * the row out and the label fills nothing for the earnings calls beside it.
  *
  * An earnings call owes its period, and so does a call whose kind is unclear
  * (`eventKind` null, or an older server that sends none): the list cannot tell

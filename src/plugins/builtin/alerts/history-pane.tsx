@@ -62,8 +62,10 @@ export function alertHistoryLine(row: AlertHistoryRow): HistoryRow {
  *
  * Value is owed by an alert this app fired on a figure (owesAlertFigure), and
  * by no other line: a rule change says what was done there, a dated event
- * what it announced. That text fills the column for a capture, so a figure
- * missing from every alert is named only in a history with no such line.
+ * what it announced, a delivery what its server sent. Those words are no
+ * figure, so each such cell is marked as one that may be blank whatever it
+ * holds, and a capture leaves its line out: the figure lines alone say whether
+ * the column is blank.
  * Quote and Source are owed by none. The app writes a quote's time and how
  * current its feed is only where the quote states them, a rule change and a
  * dated event have neither, and a delivery names only a daily close. So a
@@ -88,20 +90,24 @@ export function alertHistoryColumns(width: number): DataTableColumn[] {
 
 /**
  * One cell of a line. A Value with nothing to show is a dash, which a strict
- * capture reads where it reads no empty cell: a gap on a line that owes the
- * figure, and marked as one that may be blank on a line that owes none (a
- * delivery that carried a title alone).
+ * capture reads where it reads no empty cell. The mark that the cell may be
+ * blank follows what the line is, never what the cell holds: none on a line
+ * that owes the figure, so its dash is a gap and its figure fills the column,
+ * and one on every other line, words or dash.
  */
 export function alertHistoryCell(item: HistoryRow, column: Pick<DataTableColumn, "id">, selected: boolean): DataTableCell {
-  if (column.id === "value" && !item.value) {
-    return { text: MISSING_VALUE, color: selected ? colors.selectedText : colors.textMuted, ...(item.owesFigure ? {} : { mayBeBlank: true }) };
+  if (column.id === "value") {
+    return {
+      text: item.value || MISSING_VALUE,
+      color: selected ? colors.selectedText : item.value ? colors.text : colors.textMuted,
+      ...(item.owesFigure ? {} : { mayBeBlank: true }),
+    };
   }
   return {
     text:
       column.id === "time" ? stamp(item.time)
         : column.id === "kind" ? alertKindLabel(item.kind)
         : column.id === "alert" ? item.alert
-        : column.id === "value" ? item.value
         : column.id === "quote" ? (item.quoteAt ? stamp(item.quoteAt) : "")
         : column.id === "via" ? VIA_TEXT[item.via]
         : item.source,

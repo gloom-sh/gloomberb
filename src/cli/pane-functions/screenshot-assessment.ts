@@ -325,9 +325,12 @@ const BLANK_COLUMN_MIN_ROWS = 3;
  * and V/AVG did before the open. A column some rows leave empty is a sparse
  * marker (an event column), not a blank one, and neither is a column the pane
  * says can be blank (`mayBeBlank`: a value that comes after an event, such as
- * an upcoming report's move). A row the pane says is still waiting on the
- * value (a cell's `mayBeBlank`: ECO's ACTUAL before the release) is left out:
- * the column is blank when every other row is, and there are at least
+ * an upcoming report's move). A row the pane says does not owe the value (a
+ * cell's `mayBeBlank`: ECO's ACTUAL before the release) is left out whatever
+ * its cell shows, a dash or words of its own: an event's label under PERIOD and
+ * a rule change's "Created" under Value are no period and no figure, and
+ * neither fills the column for the rows that owe one. The column is blank when
+ * every row that owes the value is, and there are at least
  * BLANK_COLUMN_MIN_ROWS of them. Section headers and tables of fewer than
  * BLANK_COLUMN_MIN_ROWS rows are not read.
  */
@@ -341,21 +344,21 @@ function shotBlankColumns(rows: readonly Pick<DesktopPaneShotRenderedRow, "table
   const blank: string[] = [];
   for (const tableRows of tables.values()) {
     if (tableRows.length < BLANK_COLUMN_MIN_ROWS) continue;
-    const columns = new Map<string, { label: string; placeholders: number; waiting: number; filled: boolean }>();
+    const columns = new Map<string, { label: string; placeholders: number; exempt: number; filled: boolean }>();
     for (const row of tableRows) {
       for (const cell of row.cells) {
         const key = cell.columnId ?? cell.columnLabel;
-        const column = columns.get(key) ?? { label: cell.columnLabel, placeholders: 0, waiting: 0, filled: false };
-        // A row still waiting on the value (an upcoming release's ACTUAL) is neither a gap nor a value.
-        if (cell.mayBeBlank && PLACEHOLDER_VALUE.test(cell.text.trim())) column.waiting += 1;
+        const column = columns.get(key) ?? { label: cell.columnLabel, placeholders: 0, exempt: 0, filled: false };
+        // A row that does not owe the value is neither a gap nor a value, whether its cell is a dash or says why.
+        if (cell.mayBeBlank) column.exempt += 1;
         else if (PLACEHOLDER_VALUE.test(cell.text.trim())) column.placeholders += 1;
         else column.filled = true;
         columns.set(key, column);
       }
     }
-    for (const { label, placeholders, waiting, filled } of columns.values()) {
+    for (const { label, placeholders, exempt, filled } of columns.values()) {
       // Blank in every row that should have the value, and in enough of them to be no short list's gaps.
-      const owed = tableRows.length - waiting;
+      const owed = tableRows.length - exempt;
       if (!filled && owed >= BLANK_COLUMN_MIN_ROWS && placeholders === owed && !blank.includes(label)) blank.push(label);
     }
   }

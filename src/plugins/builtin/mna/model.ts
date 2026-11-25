@@ -410,26 +410,39 @@ export function dealSpread(
   } else {
     priced = { ...latest, latest: null };
   }
-  const close = expectedCloseDate(deal.expectedClose);
-  const days = close ? (close.getTime() - now) / MS_PER_DAY : null;
-  const annualized = !deal.terms.partial && priced.spread > 0 && days != null && days >= 1
+  const days = daysToExpectedClose(deal, now);
+  const annualized = !deal.terms.partial && priced.spread > 0 && days != null && days >= MIN_ANNUALIZED_DAYS
     ? priced.spread * 365 / days
     : null;
   return { ...priced, annualized, legs };
 }
 
+/** A close nearer than this, or past, has no annual rate to state: the spread is all that is left of the return. */
+const MIN_ANNUALIZED_DAYS = 1;
+
+/** Days from `now` to the expected close, negative once it has come; null with no date to read. */
+function daysToExpectedClose(deal: Pick<MnaDeal, "expectedClose">, now: number): number | null {
+  const close = expectedCloseDate(deal.expectedClose);
+  return close ? (close.getTime() - now) / MS_PER_DAY : null;
+}
+
 /**
- * Whether a spread's ANN. is blank with no figure missing: the offer is for
- * part of the shares, the spread is not positive, or the expected close has
- * come, none of which has an annual return to state (dealSpread).
+ * Whether a spread's ANN. is blank with no figure missing, by the terms
+ * dealSpread states no annual return on: the offer is for part of the shares,
+ * the spread is not positive, or the expected close is less than a day off
+ * (MIN_ANNUALIZED_DAYS, the one boundary both read).
  *
- * A spread with no close date to annualize to owes one: it follows the CLOSE
- * the deal owes, and the list cannot tell a deal that gives no date from one
- * whose date was lost.
+ * Every other spread owes the figure. A positive one on a close a day or more
+ * out has an annual return, so its blank is a figure the list lost, however
+ * well the date reads. One with no close date to annualize to follows the
+ * CLOSE the deal owes: the list cannot tell a deal that gives no date from
+ * one whose date was lost.
  */
-export function annualizedMayBeBlank(deal: Pick<MnaDeal, "terms" | "expectedClose">, spread: DealSpread): boolean {
+export function annualizedMayBeBlank(deal: Pick<MnaDeal, "terms" | "expectedClose">, spread: DealSpread, now: number): boolean {
   if (spread.annualized != null) return false;
-  return deal.terms.partial || spread.spread <= 0 || expectedCloseDate(deal.expectedClose) != null;
+  if (deal.terms.partial || spread.spread <= 0) return true;
+  const days = daysToExpectedClose(deal, now);
+  return days != null && days < MIN_ANNUALIZED_DAYS;
 }
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;

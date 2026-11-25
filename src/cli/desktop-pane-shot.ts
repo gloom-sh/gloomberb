@@ -182,8 +182,9 @@ export interface DesktopPaneShotBridge {
 interface DesktopPaneShotRenderedCell {
   /**
    * The cell can be blank with nothing missing: its whole column can
-   * (DataTableColumn.mayBeBlank), or its row is still waiting on the value
-   * (DataTableCell.mayBeBlank).
+   * (DataTableColumn.mayBeBlank), or its row owes no value here
+   * (DataTableCell.mayBeBlank). A strict capture leaves it out of a blank
+   * column's count whatever its text.
    */
   mayBeBlank?: true;
   columnId?: string;

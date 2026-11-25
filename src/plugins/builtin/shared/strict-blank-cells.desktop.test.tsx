@@ -77,14 +77,14 @@ const call = (index: number, overrides: Partial<CloudEarningsCallPayload>): Clou
   callTimeKnown: true, eventKind: "earnings", eventLabel: null, ...overrides,
 });
 
-test("CALLS fails on PERIOD and LENGTH for earnings calls and recordings with none, and not for events or calls still to come", async () => {
+test("CALLS fails on PERIOD and LENGTH for earnings calls and recordings with none, beside labelled events too, and not for events or calls still to come", async () => {
   const read = (calls: CloudEarningsCallPayload[]) => strict(callListColumns(100, true), calls, (row, column) => callListCell(row, column, NOW));
   const lost = times(3, (index) => call(index, { fiscalYear: null, fiscalQuarter: null, durationSeconds: null }));
   // An event that is not an earnings call has no fiscal period, and a call with no transcript has no recording yet.
   const unlabelled = times(4, (index) => call(10 + index, {
     eventKind: "other", fiscalYear: null, fiscalQuarter: null, hasTranscript: false, durationSeconds: null, callAt: "2026-12-03T21:30:00Z", status: "scheduled",
   }));
-  // An analyst call after the results call reads by its label, which is its period column's data.
+  // An analyst call after the results call reads "Analyst" under PERIOD: a label, and no period.
   const analyst = times(3, (index) => call(20 + index, { eventKind: "other", eventLabel: "analyst call", fiscalYear: null, fiscalQuarter: null }));
   // A call whose kind is unclear is not thereby an event: its missing period is still owed.
   const unclear = times(3, (index) => call(30 + index, { eventKind: null, fiscalYear: null, fiscalQuarter: null }));
@@ -93,8 +93,10 @@ test("CALLS fails on PERIOD and LENGTH for earnings calls and recordings with no
   expect(await read(unlabelled)).toMatchObject(USABLE);
   expect(await read([...lost, ...unlabelled])).toMatchObject(blank("PERIOD", "LENGTH"));
   expect(await read(analyst)).toMatchObject(USABLE);
+  // The label fills no period for the earnings calls beside it, whose own are still lost. Each analyst call has its length.
+  expect(await read([...lost, ...analyst])).toMatchObject(blank("PERIOD"));
   expect(await read(unclear)).toMatchObject(blank("PERIOD"));
-  expect(await read([...lost.slice(1), call(9, {}), ...unlabelled])).toMatchObject(USABLE);
+  expect(await read([...lost.slice(1), call(9, {}), ...unlabelled, ...analyst])).toMatchObject(USABLE);
 });
 
 test("the calls calendar fails on LOCAL and ET for calls with no day, and not for calls known by their day alone", async () => {
@@ -150,6 +152,10 @@ test("MA fails on TERMS, VALUE and CLOSE for agreed deals with none, on the spre
   expect(await read(priced.map((row) => ({ ...row, terms: { ...row.terms, partial: true } })), () => at(0.02, null))).toMatchObject(USABLE);
   // A positive spread with no close date to annualize to follows the CLOSE it owes.
   expect(await read(priced.map((row) => ({ ...row, expectedClose: null })), () => at(0.02, null))).toMatchObject(blank("ANN.", "CLOSE"));
+  // A positive spread on a close months out has an annual return, so its blank is a lost figure however well the date reads.
+  expect(await read(priced, () => at(0.02, null))).toMatchObject(blank("ANN."));
+  // Less than a day from the close there is none to state.
+  expect(await read(priced.map((row) => ({ ...row, expectedClose: "2026-11-26" })), () => at(0.02, null))).toMatchObject(USABLE);
 });
 
 test("an IPO list fails on PRICE for priced and listed offerings with none, and not for deals yet to price", async () => {
@@ -179,7 +185,7 @@ test("a broker's fills fail on Fees when no fill has a commission, and a commiss
   expect(await read([fill(0), fill(1), fill(2, 1.25)])).toMatchObject(USABLE);
 });
 
-test("alert history fails on Value when the alerts fired on a figure have none, and not for rule changes, dated events or bare deliveries", async () => {
+test("alert history fails on Value when the alerts fired on a figure have none, beside rule changes and dated events too, and not for those alone", async () => {
   const fired = (index: number, overrides: Partial<FiredAlert>): FiredAlert => ({
     id: `f${index}`, firedAt: new Date(NOW - index * 60_000).toISOString(), kind: "price", ruleId: `r${index}`, rule: `T${index} above 10`,
     value: 10.5, unit: "USD", quoteAt: new Date(NOW - index * 60_000 - 5_000).toISOString(), source: "real-time", symbol: `T${index}`, ...overrides,
@@ -206,8 +212,9 @@ test("alert history fails on Value when the alerts fired on a figure have none, 
   expect(await read([...changes, ...events], bare)).toMatchObject(USABLE);
   expect(await read([], bare)).toMatchObject(USABLE);
   expect(await read(lost, bare)).toMatchObject(blank("Value"));
+  // A rule change says "Created" under Value and a dated event what it announced: words, and no figure for the alerts beside them.
+  expect(await read([...lost, ...changes])).toMatchObject(blank("Value"));
+  expect(await read([...lost, ...changes, ...events], bare)).toMatchObject(blank("Value"));
   // One alert with its figure fills the column, and a move of zero is a figure.
-  expect(await read([...lost.slice(1), fired(3, { kind: "move", value: 0, unit: "%" })], bare)).toMatchObject(USABLE);
-  // A rule change says what was done in Value, and that text fills the column for a capture: no gap is named beside one.
-  expect(await read([...lost, ...changes])).toMatchObject(USABLE);
+  expect(await read([...lost.slice(1), fired(3, { kind: "move", value: 0, unit: "%" }), ...changes], bare)).toMatchObject(USABLE);
 });
