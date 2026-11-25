@@ -44,7 +44,7 @@ function DisclosureEvidence({ row, sourceId, onSource, width }: { row: CompanyRo
     {row.evidence.length > 1 ? <QueryBar width={Math.max(1, width - 4)} filters={[{ id: "source", label: "Document", value: evidence.id,
       options: row.evidence.map((entry) => ({ value: entry.id, label: `${formatDay(entry.publishedAt)} · ${entry.title}` })), onChange: onSource }]} /> : null}
     <KeyValueRow label="Value" value={isGuidance(row) ? rangeText(row) : observationValue(row)} detail={row.currency || row.unit === "volume" || row.unit === "count" ? unitLabel(row) : undefined} labelWidth={18} />
-    <KeyValueRow label="Fiscal period" value={row.period.label} detail={row.period.end ? row.period.start ? `${row.period.start} to ${row.period.end}` : `${row.period.kind === "instant" ? "As of" : "Ended"} ${row.period.end}` : "Calendar dates unavailable"} labelWidth={18} />
+    <KeyValueRow label="Fiscal period" value={row.period.label} detail={row.period.end ? row.period.start ? `${formatDay(row.period.start)} to ${formatDay(row.period.end)}` : `${row.period.kind === "instant" ? "As of" : "Ended"} ${formatDay(row.period.end)}` : "Calendar dates unavailable"} labelWidth={18} />
     <KeyValueRow label="Basis" value={basisLabel(row.basis)} labelWidth={18} />
     <KeyValueRow label="Scope" value={(desktop ? scopeWords(seriesLabels(row)) : dimensionLabel(row.dimensions)) || "Consolidated"} labelWidth={18} />
     <KeyValueRow label="Definition" value={row.metric.definition} labelWidth={18} />

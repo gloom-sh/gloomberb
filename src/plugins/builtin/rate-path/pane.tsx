@@ -62,11 +62,11 @@ function signColor(value: number | null, digits: number): string {
   return value == null || !Number.isFinite(value) ? colors.textDim : shownPriceColor(value, digits);
 }
 function bpText(value: number | null): string { return value == null ? MISSING_VALUE : rateChangeText(value / 100); }
-/** Days to a meeting, counted in UTC dates like the schedule. */
-function daysUntil(date: string, today = new Date().toISOString().slice(0, 10)): string {
+/** When a meeting is, counted in UTC dates like the schedule: `15 Jan · in 3 days`, or the whole day once it has passed. */
+function meetingWhen(date: string, today = new Date().toISOString().slice(0, 10)): string {
   const days = Math.round((Date.parse(date) - Date.parse(today)) / DAY_MS);
-  if (days < 0) return date;
-  return days === 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`;
+  if (days < 0) return formatDay(date);
+  return `${formatMeetingDay(date)} · ${days === 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`}`;
 }
 function meetingCell(row: RateMeeting, column: DataTableColumn, moves: ReadonlyMap<string, number | null>): DataTableCell {
   if (column.id === "date") return dayCell(row.date);
@@ -127,14 +127,14 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
   // The footer carries the snapshot time, so a figure from the same day does
   // not repeat it; older dates (EFFR's lag, the slope's quote) stay.
   const footerDay = data?.asOf?.slice(0, 10) ?? null;
-  const ownDate = (value: string | null | undefined) => value && value.slice(0, 10) !== footerDay ? value : null;
+  const ownDate = (value: string | null | undefined) => value && value.slice(0, 10) !== footerDay ? stampText(value) : null;
   // The next meeting's odds lead: what the market prices first.
   const byDate = data?.meetings.toSorted((a, b) => a.date.localeCompare(b.date)) ?? [];
   const next = byDate[0], last = byDate.at(-1);
   const nextMove = next ? moves.get(next.date) ?? null : null;
   const statItems: StatItem[] = data ? [
     ...(next ? [{ id: "next", label: "Next FOMC", value: moveOddsText(nextMove), color: nextMove == null ? undefined : signColor(nextMove, 2),
-      detail: `${formatMeetingDay(next.date)} · ${daysUntil(next.date)}` }] : []),
+      detail: meetingWhen(next.date) }] : []),
     { id: "effr", label: "EFFR", value: rateText(data.current.effr.value),
       detail: [percentileText(data.current.effr.percentile), ownDate(data.current.effr.asOf)].filter(Boolean).join(" · ") },
     { id: "target", label: "Target range", value: `${rateText(data.current.targetLower.value)} to ${rateText(data.current.targetUpper.value)}`,
