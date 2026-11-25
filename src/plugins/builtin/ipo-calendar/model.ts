@@ -583,7 +583,7 @@ export function formatIpoLockupEnd(endsOn: string | null | undefined): string {
   return endsOn ? `~${endsOn}` : MISSING;
 }
 
-/** "~2 Nov", as the pane's LOCKUP reads the same estimate (formatIpoDate); "—" without one. */
+/** "~2 Nov", as the pane's LOCKUP reads the same estimate (formatIpoDate); the missing mark without one. */
 export function formatIpoLockupDate(endsOn: string | null | undefined, now = new Date()): string {
   return endsOn ? `~${formatIpoDate(endsOn, now)}` : MISSING;
 }
