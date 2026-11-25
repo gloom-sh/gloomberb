@@ -5,7 +5,7 @@ import { ChartTableHeader, DataTableView, PaneStatusBody, QueryBar, useChartTabl
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
-import { Box } from "../../../ui";import { Box } from "../../../ui";
+import { Box } from "../../../ui";
 import { formatDay } from "../../../utils/day-format";
 import { SignInWall } from "../cloud/auth-actions";
 import { useCloudUpgradeAction } from "../shared/cloud-upgrade";

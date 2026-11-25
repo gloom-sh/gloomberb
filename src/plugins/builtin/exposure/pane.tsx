@@ -9,7 +9,7 @@ import { useAppSelector, useAsyncResource, useAutoRefresh, useMarketData, usePan
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, useRendererHost, useUiCapabilities } from "../../../ui";
-import { withCountryFlag } from "../../../components/ui/country-flag";import { withCountryFlag } from "../../../components/ui/country-flag";
+import { withCountryFlag } from "../../../components/ui/country-flag";
 import { formatDay } from "../../../components/ui/day-cell";
 import { logFailure } from "../../../utils/log-failure";
 import { SignInWall } from "../cloud/auth-actions";

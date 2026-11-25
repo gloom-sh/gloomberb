@@ -1,7 +1,7 @@
 import type { DataTableColumn, StatItem } from "../../../components";
 import { spanDigits } from "../../../components/chart-table";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
-import { MISSING_VALUE, formatCompact, formatNumber } from "../../../utils/format";import { MISSING_VALUE, formatCompact, formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatNumber } from "../../../utils/format";
 import { formatDay } from "../../../utils/day-format";
 import { compareSortValues } from "../../../utils/sort-values";
 import { shortInterestPublished } from "./schedule";

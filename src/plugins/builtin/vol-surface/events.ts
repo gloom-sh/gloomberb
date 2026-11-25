@@ -1,4 +1,4 @@
-import { MISSING_VALUE } from "../../../utils/format";import { MISSING_VALUE } from "../../../utils/format";
+import { MISSING_VALUE } from "../../../utils/format";
 import { formatDay } from "../../../utils/day-format";
 import type { apiClient as cloudApiClient } from "../../../api-client";
 import type { InstrumentRef } from "../../../market-data/request-types";

@@ -1,5 +1,5 @@
 import type { ResolvedSeries } from "../../../time-series/types";
-import { displayWidth } from "../../../utils/format";import { displayWidth } from "../../../utils/format";
+import { displayWidth } from "../../../utils/format";
 import { formatDay } from "../../../utils/day-format";
 import type { ChartStripSpec } from "../../chart-table/header";
 import { compositeAxisTagFormatter, compositeAxisTicks, type CompositeAxisValueFormatter } from "../composite/format";

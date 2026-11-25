@@ -1,6 +1,6 @@
 import { daysToExpiryFrom, valueOption, type OptionValuation } from "../shared/volatility";
 import { isFiniteNumber } from "../../../utils/guards";
-import { isUsListingExchange } from "../../../utils/exchanges";import { isUsListingExchange } from "../../../utils/exchanges";
+import { isUsListingExchange } from "../../../utils/exchanges";
 import { formatDay, type DayCellForm } from "../../../utils/day-format";
 
 /** What the pane says before any leg is added. */

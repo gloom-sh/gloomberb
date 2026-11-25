@@ -1,6 +1,6 @@
 import type { HeadlessBundleResult, HeadlessPaneColumn } from "../../../types/headless";
 import { MISSING_VALUE, formatPercent } from "../../../utils/format";
-import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
+import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import { formatDay } from "../../../utils/day-format";
 import { TOKEN_YIELD_NOTE, type DividendData } from "./client";
 import { carriedDateText, formatDividendYield, growthPaymentsDetail, PAYOUT_BASIS, PAYOUT_NOT_MEANINGFUL, trailingPaymentsText } from "./view";

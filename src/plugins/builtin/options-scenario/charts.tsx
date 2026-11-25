@@ -3,7 +3,7 @@ import { StaticChartSurface, type StaticChartOverlay } from "../../../components
 import { Box, Text } from "../../../ui";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { useThemeColors } from "../../../theme/theme-context";
-import { displayWidth } from "../../../utils/format";import { displayWidth } from "../../../utils/format";
+import { displayWidth } from "../../../utils/format";
 import { formatDay } from "../../../utils/day-format";
 import { ClippedText } from "../../../components/ui/display";
 import { currencyLabel, scenarioLegsText, scenarioValueUnit, type buildScenario } from "./model";

@@ -17,7 +17,7 @@ import { currencyPriceMinDigits, formatMarketPriceWithCurrency } from "../../../
 import type { Quote } from "../../../types/financials";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { dividendPriceStatus, dividendQuotePriceMetadata } from "./reference-price";
-import { logFailure } from "../../../utils/log-failure";import { logFailure } from "../../../utils/log-failure";
+import { logFailure } from "../../../utils/log-failure";
 import { formatDay } from "../../../utils/day-format";
 import { projectDividendRanking, roundedRatio } from "./ranking";
 import { MAX_RANKED_SYMBOLS, readDividendRanking, type DividendRankingReads } from "./ranking-reads";

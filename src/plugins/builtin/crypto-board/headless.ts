@@ -1,6 +1,6 @@
 import type { CryptoAssetKind, DefiTvlPayload, StablecoinSupplyPayload } from "../../../api-client/crypto-markets";
 import type { HeadlessExportTable, HeadlessPaneColumn } from "../../../types/headless";
-import type { HeadlessPaneDefinition } from "../../../types/plugin";import type { HeadlessPaneDefinition } from "../../../types/plugin";
+import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { formatDay } from "../../../utils/day-format";
 import { formatCompact, formatCompactAmount } from "../../../utils/format";
 import { errorMessage } from "../../../utils/errors";
