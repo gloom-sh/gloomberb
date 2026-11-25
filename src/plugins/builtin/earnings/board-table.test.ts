@@ -114,9 +114,6 @@ describe("EVTS with listings abroad", () => {
   // Alibaba the day it reports as BABA and as 9988:HKEX: the board's BABA row carries the listing's lines.
   const BABA = boardReport(calendarReport({ symbol: "BABA", epsEstimate: 2.12, listings: ["9988:HKEX"] }), new Map());
   const CCB = boardReport(calendarReport({ symbol: "601939:SSE", currency: "CNY", listings: ["601939:SSE", "0939:HKEX"] }), new Map());
-  const ids = (width: number, currencies: boolean, kind: "upcoming" | "reported" = "upcoming") =>
-    boardColumns(width, { currencies, kind }).map((entry) => entry.id);
-
   test("a report in another currency writes its code after each figure, a dollar one bare, and no column says USD down the board", () => {
     expect(boardHasCurrencies([row(LADR), row(BABA)])).toBe(false);
     expect(boardHasCurrencies([row(LADR), row(TENCENT)])).toBe(true);

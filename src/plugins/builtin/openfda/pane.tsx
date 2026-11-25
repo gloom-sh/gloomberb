@@ -99,7 +99,7 @@ function labelerText(record: DrugReport): string | null {
 /** What a drug search names, when it is a product's name: the product, and the labeler every loaded report of it names, if one. */
 interface SearchedDrug { product: string; labeler: string | null }
 
-const isSearchedDrug = (record: OpenFdaRecord, searched: SearchedDrug | null): record is DrugReport =>
+const isSearchedDrug = (record: OpenFdaRecord, searched: SearchedDrug | null): boolean =>
   !!searched && record.dataset === "drug" && record.product.trim().toUpperCase() === searched.product;
 
 /**
