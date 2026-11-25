@@ -10,8 +10,14 @@ import { recordPerfSample } from "../../utils/perf-marks";
  */
 export const SQLITE_DEFAULT_AUTOCHECKPOINT_PAGES = 1_000;
 export const SQLITE_BACKSTOP_AUTOCHECKPOINT_PAGES = 10_000;
-/** How soon after a commit the WAL is copied into the database, at most once per this. */
-const CHECKPOINT_DELAY_MS = 1_000;
+/** How soon after a commit of user data the WAL is copied into the database and flushed, at most once per this. */
+export const CHECKPOINT_DELAY_MS = 1_000;
+/**
+ * How soon after commits of cached data alone. A cache can be fetched again,
+ * so nothing waits on its flush, and each flush is a window in which the
+ * app's own commits wait on Windows (see `busy`): seconds on a slow disk.
+ */
+export const LAZY_CHECKPOINT_DELAY_MS = 30_000;
 /** How long closing waits for the checkpointer to let go of the file (Windows cannot delete an open one). */
 const CLOSE_WAIT_MS = 1_000;
 /**
@@ -104,8 +110,20 @@ export interface WalCheckpointerOptions {
 }
 
 export interface WalCheckpointer {
-  /** Writes were committed: the WAL is copied into the database shortly, off this thread. */
-  nudge(): void;
+  /**
+   * Writes were committed: the WAL is copied into the database and flushed
+   * within `delayMs`, off this thread. A shorter delay than the one waiting
+   * brings the checkpoint forward.
+   */
+  nudge(delayMs?: number): void;
+  /**
+   * Whether the thread is copying and flushing now. On Windows a commit
+   * made meanwhile waits for the flush to end, so the app's thread holds its
+   * commits back (access.ts).
+   */
+  busy(): boolean;
+  /** `listener` runs on this thread each time a checkpoint ends. Returns how to stop it. */
+  onIdle(listener: () => void): () => void;
   /** Stops the thread, waiting briefly for it to close its connection. */
   close(): void;
 }
@@ -155,7 +173,12 @@ export function startWalCheckpointer(
   let stopped = false;
   let running = false;
   let pending = false;
+  /** The shortest delay the commits since the running checkpoint began have asked for. */
+  let pendingDelayMs = Number.POSITIVE_INFINITY;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  /** When the waiting timer fires (performance.now()). */
+  let timerDueAt = 0;
+  const idleListeners = new Set<() => void>();
   /** Messages the thread has yet to answer, and the clock on its next answer. */
   let owed = 0;
   let watchdog: ReturnType<typeof setTimeout> | null = null;
@@ -172,6 +195,10 @@ export function startWalCheckpointer(
     if (timer) clearTimeout(timer);
     timer = null;
     checkpointLog.warn("The WAL checkpointer stopped; commits checkpoint themselves", { reason });
+    if (running) {
+      running = false;
+      notifyIdle();
+    }
     try {
       onFailure();
     } catch (error) {
@@ -227,15 +254,31 @@ export function startWalCheckpointer(
     watch();
   };
 
-  const schedule = () => {
-    if (timer || running || failed || stopped) return;
+  const schedule = (delayMs: number) => {
+    if (running || failed || stopped) return;
+    const dueAt = performance.now() + delayMs;
+    if (timer) {
+      if (dueAt >= timerDueAt) return;
+      clearTimeout(timer);
+    }
+    timerDueAt = dueAt;
     timer = setTimeout(() => {
       timer = null;
       if (failed || stopped) return;
       pending = false;
       running = ask({ type: "checkpoint" });
-    }, CHECKPOINT_DELAY_MS);
+    }, delayMs);
     (timer as { unref?: () => void }).unref?.();
+  };
+
+  const notifyIdle = () => {
+    for (const listener of [...idleListeners]) {
+      try {
+        listener();
+      } catch (error) {
+        logFailure("data.sqlite", "A checkpoint listener failed")(error);
+      }
+    }
   };
 
   worker.onmessage = (event: MessageEvent<WorkerMessage>) => {
@@ -259,7 +302,12 @@ export function startWalCheckpointer(
         startedAt: Math.round(message.startedAt ?? 0),
         endedAt: Math.round(message.endedAt ?? 0),
       }, { lastStep: false });
-      if (pending) schedule();
+      if (pending) {
+        const delayMs = pendingDelayMs;
+        pendingDelayMs = Number.POSITIVE_INFINITY;
+        schedule(delayMs);
+      }
+      notifyIdle();
       options.onCheckpoint?.(message.result ?? {});
     }
   };
@@ -272,11 +320,25 @@ export function startWalCheckpointer(
     return null;
   }
 
+  const fireIdleWhenGone = () => {
+    // A checkpointer that stops mid-checkpoint will answer no more: whoever held back for it goes on.
+    running = false;
+    notifyIdle();
+  };
+
   return {
-    nudge() {
+    nudge(delayMs = CHECKPOINT_DELAY_MS) {
       if (failed || stopped) return;
       pending = true;
-      schedule();
+      if (running) pendingDelayMs = Math.min(pendingDelayMs, delayMs);
+      else schedule(delayMs);
+    },
+    busy() {
+      return running && !failed && !stopped;
+    },
+    onIdle(listener) {
+      idleListeners.add(listener);
+      return () => { idleListeners.delete(listener); };
     },
     close() {
       if (stopped) return;
@@ -285,6 +347,7 @@ export function startWalCheckpointer(
       stopWatching();
       const asked = !failed && post({ type: "close" });
       stopped = true;
+      if (running) fireIdleWhenGone();
       if (!asked) {
         terminate();
         return;

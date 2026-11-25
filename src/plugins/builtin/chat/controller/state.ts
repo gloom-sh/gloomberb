@@ -23,6 +23,8 @@ export const TRANSCRIPT_CACHE_POLICY = {
   expireMs: 90 * 24 * 60 * 60_000,
 };
 export const DRAFT_SYNC_DEBOUNCE_MS = 250;
+/** Typing without a pause this long still saves the draft, so a crash costs seconds of it, not all. */
+export const DRAFT_SYNC_MAX_WAIT_MS = 2_000;
 export const VERIFICATION_POLL_MS = 5_000;
 export const SESSION_RETRY_MS = 30_000;
 export const SAFETY_REFRESH_MS = 30_000;
@@ -161,6 +163,7 @@ export interface ChannelRuntimeState {
   wsConnection: ChatConnection | null;
   wsConnected: boolean;
   draftSyncTimer: ReturnType<typeof setTimeout> | null;
+  draftSyncMaxTimer: ReturnType<typeof setTimeout> | null;
   openViewCount: number;
   focusedViewCount: number;
 }
@@ -198,6 +201,7 @@ export function createEmptyChannelState(): ChannelRuntimeState {
     wsConnection: null,
     wsConnected: false,
     draftSyncTimer: null,
+    draftSyncMaxTimer: null,
     openViewCount: 0,
     focusedViewCount: 0,
   };

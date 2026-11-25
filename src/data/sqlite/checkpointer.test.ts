@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { openSync, readSync, closeSync, statSync } from "fs";
-import type { WalCheckpointResult } from "./checkpointer";
+import { startWalCheckpointer, type WalCheckpointResult } from "./checkpointer";
 import { SqliteDatabase } from "./database";
 import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
 import { withDeadline } from "../../utils/async-deadline";
@@ -80,3 +80,55 @@ test("a checkpointer stuck in a checkpoint gives the app's user writes their flu
     database.close();
   }
 });
+
+// A thread that takes `ms` over each checkpoint, as a slow disk does.
+const slowCheckpointWorker = (ms: number) => `
+  self.onmessage = (event) => {
+    if (event.data.type === "open") postMessage({ type: "ready" });
+    if (event.data.type === "checkpoint") setTimeout(() => postMessage({ type: "checkpointed", ms: ${ms}, result: {} }), ${ms});
+  };
+`;
+
+// Commits of cached data ask for a late checkpoint, so each flush (a window
+// in which the app's commits wait on Windows) comes rarely; a commit of user
+// data asks for the usual one and must not wait out the late one.
+test("a checkpoint asked for soon comes forward, one asked for later does not push it back, and its length is told", async () => {
+  const checkpointer = startWalCheckpointer("unused.db", () => {}, { workerSource: slowCheckpointWorker(200) })!;
+  const idle = new Promise<void>((resolve) => { checkpointer.onIdle(resolve); });
+  try {
+    checkpointer.nudge(30_000);
+    await Bun.sleep(100);
+    expect(checkpointer.busy()).toBe(false);
+
+    checkpointer.nudge(50);
+    checkpointer.nudge(30_000);
+    await Bun.sleep(150);
+    expect(checkpointer.busy()).toBe(true);
+    await withDeadline(idle, 3_000, "The checkpoint never ended");
+    expect(checkpointer.busy()).toBe(false);
+  } finally {
+    checkpointer.close();
+  }
+});
+
+// A stream of cached quotes commits every few hundred ms. Each flush it set
+// off a second later was a window in which Windows held the app's commits.
+test("in the app, commits of cached data alone ask for a late flush, and a commit of user data for the usual one", async () => {
+  const dbPath = createTempDbPath("checkpointer-lazy");
+  let checkpoints = 0;
+  const database = new SqliteDatabase(dbPath, { interactive: true, checkpointer: { onCheckpoint: () => { checkpoints += 1; } } });
+  const { connection, access } = database;
+  try {
+    connection.exec("CREATE TABLE rows (k INTEGER PRIMARY KEY)");
+    access.writeCache("cache write", () => { connection.exec("INSERT INTO rows DEFAULT VALUES"); });
+    await Bun.sleep(1_500);
+    expect(checkpoints).toBe(0);
+
+    access.write("user write", () => { connection.exec("INSERT INTO rows DEFAULT VALUES"); });
+    const deadline = performance.now() + 5_000;
+    while (checkpoints === 0 && performance.now() < deadline) await Bun.sleep(50);
+    expect(checkpoints).toBe(1);
+  } finally {
+    database.close();
+  }
+}, 10_000);

@@ -1,9 +1,10 @@
-import { DRAFT_SYNC_DEBOUNCE_MS, type ChannelRuntimeState } from "./state";
+import { DRAFT_SYNC_DEBOUNCE_MS, DRAFT_SYNC_MAX_WAIT_MS, type ChannelRuntimeState } from "./state";
 
 export function clearDraftSyncTimer(channel: ChannelRuntimeState): void {
-  if (!channel.draftSyncTimer) return;
-  clearTimeout(channel.draftSyncTimer);
+  if (channel.draftSyncTimer) clearTimeout(channel.draftSyncTimer);
+  if (channel.draftSyncMaxTimer) clearTimeout(channel.draftSyncMaxTimer);
   channel.draftSyncTimer = null;
+  channel.draftSyncMaxTimer = null;
 }
 
 export function scheduleDraftSync({
@@ -17,13 +18,18 @@ export function scheduleDraftSync({
   writeChannelState: (channelId: string) => void;
   emit: (channelId: string) => void;
 }): void {
-  clearDraftSyncTimer(channel);
-  channel.draftSyncTimer = setTimeout(() => {
-    channel.draftSyncTimer = null;
+  const write = () => {
+    clearDraftSyncTimer(channel);
     writeChannelState(channelId);
     emit(channelId);
-  }, DRAFT_SYNC_DEBOUNCE_MS);
+  };
+  if (channel.draftSyncTimer) clearTimeout(channel.draftSyncTimer);
+  channel.draftSyncTimer = setTimeout(write, DRAFT_SYNC_DEBOUNCE_MS);
   channel.draftSyncTimer.unref?.();
+  if (!channel.draftSyncMaxTimer) {
+    channel.draftSyncMaxTimer = setTimeout(write, DRAFT_SYNC_MAX_WAIT_MS);
+    channel.draftSyncMaxTimer.unref?.();
+  }
 }
 
 export function flushDraftSync({
