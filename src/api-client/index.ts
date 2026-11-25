@@ -1152,6 +1152,7 @@ class GloomApiClient {
   getTaiwanShortBalances = this.data.getTaiwanShortBalances.bind(this.data);
   getSfcShortPositions = this.data.getSfcShortPositions.bind(this.data);
   getCloudShortInterest = this.data.getCloudShortInterest.bind(this.data);
+  getCloudBuybacks = this.data.getCloudBuybacks.bind(this.data);
   getCloudAnalystResearch = this.data.getCloudAnalystResearch.bind(this.data);
   getCloudCorporateActions = this.data.getCloudCorporateActions.bind(this.data);
   getCloudSplitHistoryBatch = this.data.getCloudSplitHistoryBatch.bind(this.data);

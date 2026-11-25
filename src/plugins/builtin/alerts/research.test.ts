@@ -36,6 +36,15 @@ test("hiring move rules take any HIRE listing with its venue, as Cloud stores th
   expect(() => createResearchAlert("hiring_move", { "hiring_move:symbol": "RIVN", "hiring_move:direction": "surge" })).toThrow("Check the symbol");
 });
 
+test("buyback rules take a Hong Kong code in any spelling, as Cloud stores them", () => {
+  const rule = createResearchAlert("buyback", { "buyback:symbol": " 700.hk ", "buyback:direction": "stopped" }, 1_000);
+  expect(JSON.parse(rule.value)).toEqual({ version: 1, symbol: "0700:HKEX", direction: "stopped" });
+  expect(eventAlertTarget(readEventAlerts(JSON.stringify([rule])).rules[0]!)).toBe("0700:HKEX · stopped buying back");
+  expect(alertKindLabel("buyback")).toBe("HK buyback");
+  expect(JSON.parse(createResearchAlert("buyback", { "buyback:symbol": "0700:HKEX" }, 1_000).value)).toMatchObject({ direction: "either" });
+  expect(() => createResearchAlert("buyback", { "buyback:symbol": "AAPL" })).toThrow("Hong Kong listing");
+});
+
 test("invalid contracts, exchanges and thresholds are refused before sync", () => {
   expect(() => createResearchAlert("iv_spike", { "iv_spike:contract": "AAPL" })).toThrow("OCC contract");
   expect(() => createResearchAlert("fifty_two_week", { "fifty_two_week:symbol": "SAP", "fifty_two_week:exchange": "XETRA" })).toThrow();

@@ -77,6 +77,7 @@ import { tickerNewsModule } from "./builtin/news";
 import { browserNewsWireModule } from "./builtin/news/wire";
 import { secModule } from "./builtin/sec";
 import { insiderModule } from "./builtin/insider";
+import { buybacksModule } from "./builtin/buybacks";
 import { jobsModule } from "./builtin/jobs";
 import { optionsModule } from "./builtin/options";
 import { optionsPositioningModule } from "./builtin/options-positioning";
@@ -172,7 +173,7 @@ const browserOptionsVolatilityPlugin = composeBuiltinPlugin({
 
 const browserOwnershipPlugin = composeBuiltinPlugin({
   ...ownershipPluginMeta,
-  description: "Holders, 13F funds, insider trades, and short interest and volume.",
+  description: "Holders, 13F funds, insider trades, Hong Kong buybacks, and short interest and volume.",
   // The public 13F fallback goes through the same host proxy as other plugins.
   hosts: ["forms13f.com"],
   modules: [
@@ -180,6 +181,7 @@ const browserOwnershipPlugin = composeBuiltinPlugin({
     thirteenFModule,
     // Form 4s come through Gloom Cloud, behind a sign-in wall.
     insiderModule,
+    buybacksModule,
     // Daily volume shares open this pane.
     shortInterestModule,
     shortVolumeModule,

@@ -1,5 +1,6 @@
 import {
   ATTENTION_FIELDS,
+  BUYBACK_FIELDS,
   DIVIDEND_FIELDS,
   HIRING_APP_FIELDS,
   CATEGORY_FIELDS,
@@ -84,6 +85,9 @@ export const SHORT_LABELS: Record<NumericField, string> = {
   shortInterestShares: "SHORT INT",
   shortInterestChangePercent: "SI CHG%",
   daysToCover: "DAYS COVER",
+  buybackVolume5dPercent: "BUYBACK 5D %VOL",
+  buybackMandateLeftPercent: "MANDATE LEFT %AUTH",
+  buybackBlackoutDays: "TO BLACKOUT",
   insiderPurchases90d: "INS BUYS 90D",
   insiderSales90d: "INS SELLS 90D",
   institutionalHolders: "13F HOLDERS",
@@ -231,7 +235,7 @@ export function screenSignValue(field: NumericField, value: number | null): numb
   if (field === "gradeComposite") return value >= 3.5 ? 1 : value < 2.5 ? -1 : 0;
   return null;
 }
-const COUNTS = new Set<NumericField>(["appRatingCountGrowth7d", "hiringNetAddsWeek", "hiringOpenRoles", "attentionResearchUnits", "insiderPurchases90d", "insiderSales90d", "institutionalHolders", "institutionalNewHolders", "institutionalExits", "ivRank", "ivPercentile", "hvRank",
+const COUNTS = new Set<NumericField>(["buybackBlackoutDays", "appRatingCountGrowth7d", "hiringNetAddsWeek", "hiringOpenRoles", "attentionResearchUnits", "insiderPurchases90d", "insiderSales90d", "institutionalHolders", "institutionalNewHolders", "institutionalExits", "ivRank", "ivPercentile", "hvRank",
   "macdBullishCrossDays", "macdBearishCrossDays", "goldenCrossDays", "deathCrossDays",
   "newHigh20dDays", "newLow20dDays", "newHigh52wDays", "newLow52wDays", "bollingerWidthPercentile",
   "piotroskiFScore", "magicFormulaRank", "rsRating", "profitableYears", "revenueGrowthYears", "dividendGrowthYears"]);
@@ -258,6 +262,8 @@ export function formatScreenValue(field: NumericField, value: number | null, quo
   if (LETTER_GRADES.has(field)) return gradeLetter(value) ?? MISSING_VALUE;
   if (field === "gradeComposite") return `${formatNumber(value, 2)} ${compositeLabel(value)}`;
   if (HUNDREDTHS.has(field)) return formatNumber(value, 2);
+  // A buyback is often a fraction of a percent of the tape; one decimal would read 0.06% as 0.1.
+  if (field === "buybackVolume5dPercent") return formatNumber(value, 2);
   // The day's move reads as every quote list's CHG% does (+2.04%), not +2.0 (review, 12 Nov 2026).
   if (field === "changePercent") return formatPercentRaw(value);
   // A value that rounds to zero prints 0.0, never -0.0.
@@ -495,6 +501,9 @@ export const screenLabel = (field: string) =>
     averageVolume20d: "20D average volume",
     changePercent: "Change %",
     daysToCover: "Days to cover",
+    buybackVolume5dPercent: "Buyback, 5-day % of volume",
+    buybackMandateLeftPercent: "Buyback mandate left, % of authorised",
+    buybackBlackoutDays: "Days to buyback blackout",
     dividendYieldPercent: "Dividend yield %",
     trailingDividendYieldPercent: "Trailing dividend yield %",
     xPostsPerDay: "X posts per day",
@@ -975,7 +984,7 @@ export function pickerFields<Field extends { id: string }>(
 }
 
 /** Company KPIs, guidance, hiring and app attention: the server leaves them out of a screen for a caller without Gloom Pro. */
-const PRO_FIELDS: ReadonlySet<string> = new Set([...KPI_FIELDS, ...HIRING_APP_FIELDS]);
+const PRO_FIELDS: ReadonlySet<string> = new Set([...KPI_FIELDS, ...HIRING_APP_FIELDS, ...BUYBACK_FIELDS]);
 const withheldMetric = (): ScreenMetric => ({ ...unavailableMetric(), reason: "Needs Gloom Pro", access: "pro" });
 
 /**
@@ -1032,7 +1041,7 @@ export function validateScreenPayload(value: unknown): ScreenPayload {
       // A server from before social, research, volatility, dividend, technical, option volatility, ownership, quality,
       // score, grade or trailing yield fields omits them; they read as unavailable. A Pro field it left out was held back
       // from this caller.
-      if (!row.metrics[field] && ([...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...TECHNICAL_FIELDS, ...OPTION_VOLATILITY_FIELDS, ...OWNERSHIP_FIELDS, ...QUALITY_FIELDS, ...SCORE_FIELDS, ...GRADE_FIELDS, ...ATTENTION_FIELDS, ...HIRING_APP_FIELDS, ...KPI_FIELDS, ...DIVIDEND_FIELDS, ...TRAILING_YIELD_FIELDS] as readonly string[]).includes(field))
+      if (!row.metrics[field] && ([...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...TECHNICAL_FIELDS, ...OPTION_VOLATILITY_FIELDS, ...OWNERSHIP_FIELDS, ...QUALITY_FIELDS, ...SCORE_FIELDS, ...GRADE_FIELDS, ...ATTENTION_FIELDS, ...HIRING_APP_FIELDS, ...KPI_FIELDS, ...DIVIDEND_FIELDS, ...TRAILING_YIELD_FIELDS, ...BUYBACK_FIELDS] as readonly string[]).includes(field))
         row.metrics[field] = PRO_FIELDS.has(field) ? withheldMetric() : unavailableMetric();
       const metric = row.metrics[field];
       if (
