@@ -19,6 +19,9 @@ export interface InsiderWeek {
 
 const DAY_MS = 86_400_000;
 
+/** A date as it arrives: a Date here, an ISO string once it has crossed a JSON boundary (a saved copy, the desktop and web bridge). */
+const toDate = (value: Date | string): Date => (value instanceof Date ? value : new Date(value));
+
 function weekStart(date: Date): string {
   const day = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
   const back = (day.getUTCDay() + 6) % 7;
@@ -37,9 +40,10 @@ export function insiderWeeklyActivity(parsed: readonly ParsedInsiderFiling[], si
   for (const { transaction } of parsed) {
     if (!transaction || transaction.isDerivative || transaction.shares == null || !transaction.filingDate) continue;
     if (transaction.transactionType !== "P" && transaction.transactionType !== "S") continue;
-    const time = transaction.filingDate.getTime();
+    const traded = toDate(transaction.filingDate);
+    const time = traded.getTime();
     if (!Number.isFinite(time) || time < since) continue;
-    const start = weekStart(transaction.filingDate);
+    const start = weekStart(traded);
     const week = weeks.get(start) ?? { start, buys: 0, planBuys: 0, sales: 0, planSales: 0 };
     const plan = transaction.rule10b51 === true;
     if (transaction.transactionType === "P") week[plan ? "planBuys" : "buys"] += transaction.shares;
@@ -84,12 +88,22 @@ export interface InsiderChartPalette {
 export function insiderActivitySeries(weeks: readonly InsiderWeek[], prices: readonly PricePoint[] | null, palette: InsiderChartPalette): ResolvedSeries[] {
   if (weeks.length === 0) return [];
   const first = Date.parse(`${weeks[0]!.start}T00:00:00Z`);
-  const closes = (prices ?? []).filter((point) => point.date.getTime() >= first && Number.isFinite(point.close));
+  const closes = (prices ?? []).map((point) => ({ date: toDate(point.date), close: point.close }))
+    .filter((point) => point.date.getTime() >= first && Number.isFinite(point.close));
   if (weeks.length < 2 && closes.length < 2) return [];
   const at = (week: InsiderWeek) => new Date(`${week.start}T00:00:00Z`);
+  // Every week from the first trade to the latest close, a quiet one at zero,
+  // so each bar is a week wide and a week with none reads as none.
+  const traded = new Map(weeks.map((week) => [week.start, week]));
+  const last = Math.max(Date.parse(`${weeks.at(-1)!.start}T00:00:00Z`), closes.at(-1)?.date.getTime() ?? 0);
+  const every: InsiderWeek[] = [];
+  for (let time = first; time <= last; time += 7 * DAY_MS) {
+    const start = new Date(time).toISOString().slice(0, 10);
+    every.push(traded.get(start) ?? { start, buys: 0, planBuys: 0, sales: 0, planSales: 0 });
+  }
   const bars = (id: string, label: string, color: string, value: (week: InsiderWeek) => number, sign: 1 | -1): ResolvedSeries | null => {
     if (!weeks.some((week) => value(week) > 0)) return null;
-    const points = weeks.map((week) => scalarPoint(at(week), value(week) > 0 ? sign * value(week) : null));
+    const points = every.map((week) => scalarPoint(at(week), value(week) > 0 ? sign * value(week) : 0));
     return { ...staticSeries(points, { id, label, color, style: "columns", calendarSpaced: true }), unit: "shares", unitGroup: SHARES, axis: "left" };
   };
   const series = [
@@ -120,7 +134,8 @@ const priceAxis = spanAxisFormatter((value, digits) => value.toFixed(digits), 2)
 /** Shares bought and sold read as amounts either side of zero (`40k`), the close in its own currency. */
 const sharesAxis = (value: number, domain: CompositeAxisDomain) => formatCompactAxis(Math.abs(value), domain);
 
+/** The crosshair's tags read as the legend does: `2.4k` shares, not the axis's rounded `2k`. */
 export const insiderAxisValue: CompositeAxisValueFormatter = Object.assign(
   (value: number, domain: CompositeAxisDomain) => (domain.unitGroup === PRICE ? priceAxis(value, domain) : sharesAxis(value, domain)),
-  { tag: (value: number, domain: CompositeAxisDomain) => (domain.unitGroup === PRICE ? priceAxis.tag!(value, domain) : sharesAxis(value, domain)) },
+  { tag: (value: number, domain: CompositeAxisDomain) => (domain.unitGroup === PRICE ? priceAxis.tag!(value, domain) : formatCompact(Math.abs(value))) },
 );

@@ -118,15 +118,16 @@ const priceAxis = spanAxisFormatter((value, digits) => `$${value.toFixed(digits)
 
 /**
  * Each axis in its own unit: fail shares compact (`600k`), the price in
- * dollars, the ATS share in percent; a tag on the price or the percent axis
- * reads to the cent or the hundredth, as the table does.
+ * dollars, the ATS share in percent; the crosshair's tag reads as the table
+ * does: fail shares `224.7k` (or `8`, never `0k`), the price to the cent, the
+ * percent to the hundredth.
  */
 export const publicationAxisValue: CompositeAxisValueFormatter = Object.assign(
   (value: number, domain: CompositeAxisDomain) => domain.unitGroup === FAIL_PRICE ? priceAxis(value, domain)
     : domain.unitGroup === ATS_PERCENT ? formatPercentAxis(value, domain) : formatCompactAxis(value, domain),
   {
     tag: (value: number, domain: CompositeAxisDomain) => domain.unitGroup === FAIL_PRICE ? priceAxis.tag!(value, domain)
-      : domain.unitGroup === ATS_PERCENT ? formatPercentAxis.tag!(value, domain) : formatCompactAxis(value, domain),
+      : domain.unitGroup === ATS_PERCENT ? formatPercentAxis.tag!(value, domain) : formatCompact(value),
   },
 );
 /** Reports retain exact quantities; compact display values are never the exported data. */

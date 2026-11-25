@@ -37,6 +37,9 @@ describe("catalyst parties, tones and columns", () => {
     const heading = { ...event, parties: [], title: "Airworthiness Directives; Airbus Helicopters" };
     expect(catalystParties(heading)).toBe(MISSING_VALUE);
     expect(catalystCell(heading, "title", "any", false)).toBe(heading.title);
+    // A title led by a party reads without it; one led by anything else keeps its opening.
+    expect(catalystCell({ ...event, title: "PolyPid Ltd.: PDUFA target date for D-PLEX", parties: [party("PolyPid Ltd", "PYPD")] }, "title", "any", false)).toBe("PDUFA target date for D-PLEX");
+    expect(catalystCell({ ...event, title: "Stelo SPARK Study: Glucose Visibility" }, "title", "any", false)).toBe("Stelo SPARK Study: Glucose Visibility");
   });
   test("tones a status by what it means for the company", () => {
     expect(catalystStatusTone("complete response letter")).toBe("negative");

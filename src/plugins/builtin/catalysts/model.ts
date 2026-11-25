@@ -8,7 +8,8 @@ import { humanLabel, type StateTone } from "../shared/research-cells";
 export const CATALYST_TABS = [{ value: "calendar", label: "Calendar" }, { value: "changes", label: "Changes" }] as const;
 export type CatalystTab = typeof CATALYST_TABS[number]["value"];
 export const catalystTab = (value: unknown): CatalystTab => value === "changes" ? "changes" : "calendar";
-export const catalystAgency = (value: string) => value === "ClinicalTrials.gov" ? "NIH registry" : value;
+/** The body an event is filed with or decided by, not the site that publishes it: `SSE (cninfo)` is the Shanghai exchange. */
+export const catalystAgency = (value: string) => value === "ClinicalTrials.gov" ? "NIH registry" : value.replace(/\s*\(cninfo\)$/i, "");
 export const catalystLabel = (value: string) => value === "pdufa" ? "PDUFA" : value.replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase());
 export const catalystSymbol = (event: CatalystEvent): string | null => {
   const party = event.parties.find((party) => party.ticker);
@@ -148,6 +149,18 @@ function titleFiler(event: Pick<CatalystEvent, "parties" | "title">): { name: st
   return match ? { name: match[1]!.trim(), rest: match[2]!.trim() } : null;
 }
 
+/**
+ * A title that opens with one of the row's parties (`PolyPid Ltd.: PDUFA
+ * target date for D-PLEX`) reads without it, since the parties have their
+ * own column. A title whose opening is not a party keeps it.
+ */
+function titleAfterParty(event: Pick<CatalystEvent, "parties" | "title">): string {
+  const at = event.title.indexOf(": ");
+  if (at <= 0) return event.title;
+  const lead = shortPartyName(event.title.slice(0, at)).toLowerCase();
+  return event.parties.some((party) => shortPartyName(party.name).toLowerCase() === lead) ? event.title.slice(at + 2) : event.title;
+}
+
 /** The parties a row names, the ones linked to a listing first, so the ticker beside them is the first one's. */
 export function catalystParties(event: Pick<CatalystEvent, "parties" | "title">): string {
   const parties = [...event.parties].sort((a, b) => Number(!a.ticker) - Number(!b.ticker));
@@ -271,7 +284,7 @@ export const catalystCell = (event: CatalystEvent, column: string, read: Catalys
     case "ticker": return catalystTickers(event) || "Unlinked";
     case "parties": return catalystParties(event);
     // A filer read from the title is in the Parties column; the event is the rest.
-    case "title": return titleFiler(event)?.rest ?? event.title;
+    case "title": return titleFiler(event)?.rest ?? titleAfterParty(event);
     case "type": return catalystLabel(event.type);
     case "status": return changes ? changeSummary(event) : humanLabel(catalystShownStatus(event));
     case "agency": return catalystAgency(event.agency);

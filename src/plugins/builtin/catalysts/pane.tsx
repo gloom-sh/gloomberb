@@ -183,7 +183,11 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
     const text = kindView ? catalystKindCell(event, column.id, query, kindView, self) : catalystCell(event, column.id, query, tab === "changes");
     if (column.id === "with") {
       if (!text) return { text: MISSING_VALUE, color: colors.textMuted };
-      return /^\S+:\S+$/.test(text) ? listingCell(text, colors, state.selected) : { text, color: colors.textBright };
+      // A listed party reads as the Ticker column does, any others counted after it.
+      const [, key, more = ""] = /^(\S+:\S+)( \+\d+)?$/.exec(text) ?? [];
+      if (!key) return { text, color: colors.textBright };
+      const listing = listingCell(key, colors, state.selected);
+      return more ? { text, content: <Box flexDirection="row" height={1} overflow="hidden">{listing.content}<Text fg={state.selected ? colors.selectedText : colors.textDim}>{more}</Text></Box> } : listing;
     }
     if (column.id === "ticker") {
       const symbol = catalystSymbol(event);
