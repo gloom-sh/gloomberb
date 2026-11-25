@@ -2,7 +2,7 @@ import { MISSING_VALUE } from "../../../utils/format";
 import { expect, test } from "bun:test";
 import type { MnaDeal } from "../../../api-client/mna";
 import type { Quote } from "../../../types/financials";
-import { dealSpread, dealsSymbol, electionLeg, expectedCloseDate, formatDealValue, formatPercentShort, inQuoteCurrency, legsApart, offerSeries, spreadBasisLabel, stageLabel, termsLabel } from "./model";
+import { annualizedMayBeBlank, dealSpread, dealsSymbol, electionLeg, expectedCloseDate, formatDealValue, formatPercentShort, inQuoteCurrency, legsApart, offerSeries, spreadBasisLabel, stageLabel, termsLabel } from "./model";
 
 const NOW = Date.parse("2026-09-27T12:00:00Z");
 
@@ -37,6 +37,22 @@ test("a cash deal's spread annualizes to the expected close", () => {
   expect(formatPercentShort(spread.spread)).toBe("0.38%");
   // 0.38% over 17.5 days
   expect(spread.annualized!).toBeCloseTo(0.0798, 3);
+});
+
+test("ANN. may be blank on a close less than a day off, the boundary dealSpread annualizes from, and is owed past it", () => {
+  const read = (expectedClose: string) => {
+    const offer = deal({ expectedClose });
+    const spread = dealSpread(offer, quote("ACVA", 10.46), null, NOW)!;
+    // The figure dealSpread gave, whether its absence may be blank, whether it may once the figure is lost, and with no quote.
+    return [
+      spread.annualized != null, annualizedMayBeBlank(offer, spread, NOW),
+      annualizedMayBeBlank(offer, { ...spread, annualized: null }, NOW), annualizedMayBeBlank(offer, null, NOW),
+    ];
+  };
+  // NOW is noon on 27 Sep: midnight on the 28th is half a day off, on the 29th a day and a half.
+  expect(read("2026-09-28")).toEqual([false, true, true, true]);
+  expect(read("2026-09-29")).toEqual([true, false, false, false]);
+  expect(read("Q1 2027")).toEqual([true, false, false, false]);
 });
 
 test("a stock deal prices the ratio at the paying listing", () => {

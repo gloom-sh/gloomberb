@@ -410,7 +410,7 @@ function WebDataTableRowInner<
             data-gloom-cell-instant={cell.value instanceof Date && Number.isFinite(cell.value.getTime()) ? cell.value.toISOString() : undefined}
             // The full-precision number behind a rounded cell (a trade of -9.4596 for -9.45963753), for the same reports.
             data-gloom-cell-value={typeof cell.value === "number" && Number.isFinite(cell.value) ? String(cell.value) : undefined}
-            // A value this row is still waiting on (DataTableCell.mayBeBlank): its blank is no lost data.
+            // A row that owes no value here (DataTableCell.mayBeBlank): a strict capture leaves the cell out, dash or words.
             data-gloom-cell-may-be-blank={cell.mayBeBlank ? "true" : undefined}
             style={{
               minWidth: 0,
