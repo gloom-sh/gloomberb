@@ -245,7 +245,6 @@ export function mergeQuoteContribution(
   // What a coin's day range and volume measure goes with the range the merge keeps, as the 52-week range's does:
   // a tick relaying the same range keeps the word, one with another range says its own or none.
   if (next.high !== undefined || next.low !== undefined) {
-    merged.dayRangeBasis = next.dayRangeBasis;
     const relayed = next.statsBasis === undefined && next.high === current.high && next.low === current.low;
     const basis = relayed ? current.statsBasis : next.statsBasis;
     if (basis) merged.statsBasis = basis;

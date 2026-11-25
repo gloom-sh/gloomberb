@@ -27,6 +27,8 @@ import {
 import { deriveHeadlessFreshness } from "./freshness";
 import { renderReportCsv, selectReportTables } from "../report-tables";
 import { setCliWidthOverride } from "../../utils/cli-output";
+import { createEventsHeadless } from "../../plugins/builtin/research/events-headless";
+import { createTestHeadlessContext } from "../../test-support/headless";
 
 const args: HeadlessPaneLoadArgs = {
   rawArgument: "",
@@ -676,6 +678,23 @@ test("tail overrides the text preview and selects the same newest dated rows in 
   expect(report.text).toContain("Windows: last 2 of 3 rows (--tail 2)");
   expect(report.data).toMatchObject({ rowCount: 4, sections: [{ rows: rows.slice(0, 2) }, { rows: [{ bars: 30 }, { bars: 90 }] }] });
   expect(report.tables?.tables[0]?.rows).toEqual(rows.slice(0, 2).map(({ date, value }) => [date, value]));
+});
+
+test("EVT tail renders the same payout record as CSV instead of slicing the annual summary", async () => {
+  const symbol = "NIFTYBEES.NS";
+  const definition = createEventsHeadless({ load: async () => ({
+    currency: "INR", estimates: null, financials: { annualStatements: [], quarterlyStatements: [], priceHistory: [] },
+    actions: { symbol, exchange: "NSE", name: "Nippon India ETF Nifty 50 BeES", currency: "INR", splits: [], earnings: [],
+      dividends: [{ exDate: "2022-03-15", amount: 0.5 }, { exDate: "2019-02-18", amount: 0.8 }] },
+  }) });
+  const loaded = await definition.load({ ...args, symbols: [symbol] }, createTestHeadlessContext());
+  expect(loaded.textRows?.map((row) => row.year)).toEqual(["2022", "2020-2021", "2019"]);
+  const report = await reportOf({ ...definition, argument: { kind: "none" }, load: () => loaded }, "", { tail: 1 });
+  expect(report.text).toMatch(/2022-03-15\s+Dividend/);
+  expect(report.text).not.toContain("2019");
+  expect(report.text).toContain("newest 1 of 2 rows (--tail 1)");
+  expect(report.data).toMatchObject({ rowCount: 1, rows: [{ date: "2022-03-15", status: "Dividend" }] });
+  expect(report.tables?.tables[0]?.rows.map((row) => row.slice(0, 2))).toEqual([["2022-03-15", "Dividend"]]);
 });
 
 function csvOf(report: Awaited<ReturnType<typeof reportOf>>, section?: string): string[] {

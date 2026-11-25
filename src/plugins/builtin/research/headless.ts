@@ -117,7 +117,7 @@ function projectEarningsEstimatesHeadless(
   // The figures over the pane's views: the next report with its consensus, and the trailing twelve months.
   const symbol = args.symbols[0] ?? String(args.argument ?? "");
   const today = listingDay(parsePublicTickerKey(symbol).exchange);
-  const fund = isFundListing(sources.financials);
+  const fund = isFundListing(sources.financials, sources.actions);
   const summary = buildEarningsHeader(all, { today, fund });
   const rows = matching.slice(0, limit).map((row) => ({ ...row,
     ...(row.status === "Q Est" || row.status === "FY Est" ? {
@@ -135,8 +135,8 @@ function projectEarningsEstimatesHeadless(
   const reportedText = view ? view === "reported" : kind === "reported";
   const sections = [...(summary.length ? [eventSummarySection(summary)] : []), ...(!view && kind === "all" && quarterRows.length ? [quarterSection] : [])];
   const notice = eventSourceNotice({ variant: "earnings-estimates", symbol: args.symbols[0] ?? String(args.argument ?? ""),
-    actions: sources.actions, estimates: sources.estimates,
-    actionsError: sources.actions ? null : "Source unavailable", estimatesError: sources.estimates ? null : "Source unavailable",
+    actions: sources.actions, estimates: fund ? null : sources.estimates,
+    actionsError: sources.actions ? null : "Source unavailable", estimatesError: fund || sources.estimates ? null : "Source unavailable",
   });
   const errors = [...(sources.errors ?? []), ...(notice?.failed ? [notice.text] : [])];
   const unmatchedReportedPeriods = matching.filter((row) => row.earningsState === "reported" && !row.fiscalPeriodEnd).map((row) => row.date);

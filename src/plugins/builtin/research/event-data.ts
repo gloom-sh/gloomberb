@@ -8,6 +8,7 @@ import { useBoundTicker as useSymbolBinding, useTickerRequest } from "../shared/
 import { loadEarningsCalendar } from "../earnings/data/cache";
 import { calendarEventOf, listingDay, withResolvedEarnings } from "../shared/earnings-calendar";
 import { buildEventRows, eventSourceNotice, isFundListing, type EventFinancials } from "./event-model";
+import { fundCorporateActions } from "../../../market-data/fund-actions";
 
 /**
  * What every Events view reads for its ticker: the corporate actions feed
@@ -38,7 +39,7 @@ export function useEventData(variant: "corporate-actions" | "earnings-estimates"
   const quoteExchange = tickerFinancials?.quote?.listingExchangeName || tickerFinancials?.quote?.exchangeName;
   const metadataType = tickerFinancials?.quoteMetadata?.instrumentType;
   const financialsData = useMemo<EventFinancials | null>(
-    () => (quarterlyStatements || financialCurrency || trailingEps != null || quoteType || metadataType ? {
+    () => (quarterlyStatements || financialCurrency || trailingEps != null || quoteType || metadataType || quoteName ? {
       quarterlyStatements: quarterlyStatements ?? [],
       // Their last end names the fiscal quarters (Q1 FY2027), as GUIDE and ERN name them.
       annualStatements: annualStatements ?? [],
@@ -50,7 +51,6 @@ export function useEventData(variant: "corporate-actions" | "earnings-estimates"
     [annualStatements, financialCurrency, fundamentalsCurrency, marketCapCurrency, metadataType, quarterlyStatements, quoteCurrency, quoteExchange, quoteName, quoteType,
       trailingEps, trailingEpsCurrency, trailingEpsSource],
   );
-  const fund = isFundListing(financialsData);
   const actionsLoader = useCallback((nextSymbol: string, nextExchange: string, forceRefresh: boolean) => {
     if (!dataProvider?.getCorporateActions) throw new Error("Corporate actions source unavailable");
     return dataProvider.getCorporateActions(nextSymbol, nextExchange, forceRefresh ? { cacheMode: "refresh" } : undefined);
@@ -69,6 +69,7 @@ export function useEventData(variant: "corporate-actions" | "earnings-estimates"
     error: actionsError,
     reload: reloadActions,
   } = useTickerRequest<CorporateActionsData>(actionsLoader, symbol, exchange, ["corporate-actions", cloudSession.requestKey]);
+  const fund = isFundListing(financialsData, recordedActions);
   const {
     data: calendarEvent,
     loading: calendarLoading,
@@ -78,7 +79,7 @@ export function useEventData(variant: "corporate-actions" | "earnings-estimates"
   // The listing's own day, as `earnings` reads a report date: SIE:XETRA's has passed once Berlin's day has.
   const today = listingDay(exchange);
   const actionsData = useMemo(
-    () => (recordedActions && !fund ? withResolvedEarnings(recordedActions, calendarEvent, today) : recordedActions),
+    () => recordedActions ? (fund ? fundCorporateActions(recordedActions) : withResolvedEarnings(recordedActions, calendarEvent, today)) : null,
     [calendarEvent, fund, recordedActions, today],
   );
   const {

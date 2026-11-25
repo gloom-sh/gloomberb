@@ -160,10 +160,40 @@ test("Thanksgiving closure and early close are separate from the NYSE clock and 
     const report = await mapHeadless.load(args, createTestHeadlessContext({ apiClient: client }));
     expect(report.rows[0]).toMatchObject({ nextChangeAt: "2026-11-25T21:00:00.000Z", nextClosure: "2026-11-26",
       nextEarlyCloseAt: "2026-11-27T18:00:00.000Z", nextEarlyCloseLocal: "13:00 ET" });
-    expect(venueExceptionLines(nextVenueExceptions("XNYS", "America/New_York", now), 24)).toEqual([
+    const exceptions = nextVenueExceptions("XNYS", "America/New_York", now);
+    expect(nextVenueExceptions("XNYS", "America/New_York", now + 1_000)).toBe(exceptions);
+    expect(nextVenueExceptions("XNYS", "America/New_York", Date.parse("2026-11-26T05:00:00Z"))).not.toBe(exceptions);
+    expect(venueExceptionLines(exceptions, 24)).toEqual([
       "Nov 26 closed", "Nov 27 early close", "13:00 ET / 18:00 UTC",
     ]);
-    expect(nextVenueExceptions("XNYS", "America/New_York", Date.parse("2026-11-27T18:01:00Z")).earlyClose?.date).toBe("2026-12-24");
+    const beforeClose = nextVenueExceptions("XNYS", "America/New_York", Date.parse("2026-11-27T17:59:00Z"));
+    expect(beforeClose.earlyClose?.date).toBe("2026-11-27");
+    expect(nextVenueExceptions("XNYS", "America/New_York", Date.parse("2026-11-27T18:00:00Z")).earlyClose?.date).toBe("2026-12-24");
+  } finally {
+    setSystemTime();
+  }
+});
+
+test("Singapore and Sydney publish the early-close date without treating freshness cutoffs as exact times", async () => {
+  const now = Date.parse("2026-12-23T00:00:00Z");
+  setSystemTime(now);
+  try {
+    const venues = [{ mic: "XSES", timezone: "Asia/Singapore", latitude: 1.28, longitude: 103.85 },
+      { mic: "XASX", timezone: "Australia/Sydney", latitude: -33.86, longitude: 151.21 }].map((venue) => ({
+      ...venue, name: venue.mic, title: venue.mic, city: "", country: "", countryCode: "", isOpen: false, session: "closed" as const,
+    }));
+    const client = { ...apiClient, getCloudWorldVenues: async () => ({ data: { checkedAt: now, venues } }) } as unknown as HeadlessPaneContext["apiClient"];
+    const args = createTestHeadlessArgs({ argument: "venues" });
+    const report = await mapHeadless.load(args, createTestHeadlessContext({ apiClient: client }));
+    expect(report.rows).toHaveLength(2);
+    for (const row of report.rows) expect(row).toMatchObject({ nextEarlyClose: "2026-12-24", nextEarlyCloseDate: "2026-12-24",
+      nextEarlyCloseAt: null, nextEarlyCloseLocal: null });
+    for (const { mic, timezone } of venues) {
+      expect(venueExceptionLines(nextVenueExceptions(mic, timezone, now), 24)).toEqual(["Dec 25 closed", "Dec 24 early close"]);
+    }
+    const text = renderHeadlessPaneText(mapHeadless, report, args, "MAP");
+    expect(text).toMatch(/^XASX .*2026-12-24$/m);
+    expect(text).toMatch(/^XSES .*2026-12-24$/m);
   } finally {
     setSystemTime();
   }

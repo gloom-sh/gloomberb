@@ -43,7 +43,6 @@ import type { TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
 import { canonicalExchange, displayTickerKey, publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
-import { quoteTradingDay } from "../../../market-data/quotes/day-range";
 import { convertCurrency, displayWidth, formatPercentRaw } from "../../../utils/format";
 import {
   appTtmRate, baseCurrencyFiguresNote, enterpriseValueGapIsLarge, enterpriseValueReconciliationNote, trailingEpsFiscalYear, ttmAtAppRate,
@@ -465,8 +464,9 @@ function ResolvedOverviewTab({
   const yearRange = liveFiftyTwoWeekRange(quote);
   // A listing that no longer trades: its range is its last session's, years ago perhaps, never today's.
   const nseRange = !delisted && quote && canonicalExchange(returnVenue) === "NSE";
-  const rangeDay = nseRange ? quoteTradingDay(quote) : null;
-  const rangeBasis = nseRange ? (quote.dayRangeBasis === "daily-bar" ? t("Session Range") : t("Quote Range")) : null;
+  const rangeDay = nseRange ? quote.dayRangeSessionDate : null;
+  const sessionRange = nseRange && quote.dayRangeBasis === "daily-bar";
+  const rangeBasis = sessionRange ? t("Session Range") : rangeDay ? t("Quote Range") : null;
   const dayRangeLabel = delisted ? t("Last Session") : rangeBasis ?? t("Day Range");
   const yearRangeLabel = t("52W Range");
   const rangeLabelWidth = Math.max(
@@ -668,7 +668,7 @@ function ResolvedOverviewTab({
                 high={quote.high!}
                 label={dayRangeLabel}
                 note={rangeDay ?? (quoteStatsBasisText(quote) || undefined)}
-                shortLabel={delisted ? t("Last") : nseRange ? (quote.dayRangeBasis === "daily-bar" ? t("Session") : t("Quote")) : t("Day")}
+                shortLabel={delisted ? t("Last") : sessionRange ? t("Session") : rangeDay ? t("Quote") : t("Day")}
                 labelWidth={rangeLabelWidth}
                 endpointWidth={rangeEndpointCells}
                 width={rangeWidth}

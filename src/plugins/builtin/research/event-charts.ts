@@ -1,4 +1,5 @@
 import type { DividendAction } from "../../../types/financials";
+import { INCOMPLETE_DISTRIBUTIONS } from "../../../market-data/fund-actions";
 import { MISSING_VALUE } from "../../../utils/format";
 import { quarterLabel } from "../shared/earnings-report";
 import { nextReportOf, quarterName, type EventRow } from "./event-model";
@@ -114,6 +115,7 @@ export interface DividendYear {
   payments: number;
   /** The year is not over: what is paid so far. */
   partial: boolean;
+  coverageIncomplete?: true;
   /** Against the year before, as a fraction, when both are whole years with payments. */
   change?: number;
   /** The splits that went ex in the year, in share terms (`4-for-1`): the amounts before them are on today's shares. */
@@ -133,7 +135,7 @@ export interface SplitMark {
  * split went ex in is its own entry, to say so. Amounts are on today's shares,
  * as the history states them.
  */
-export function dividendYears(dividends: readonly DividendAction[], today: string, splits: readonly SplitMark[] = []): DividendYear[] {
+export function dividendYears(dividends: readonly DividendAction[], today: string, splits: readonly SplitMark[] = [], coverage?: "available" | "unavailable"): DividendYear[] {
   const byYear = new Map<number, { total: number; special: number; payments: number }>();
   for (const dividend of dividends) {
     if (!Number.isFinite(dividend.amount)) continue;
@@ -163,6 +165,7 @@ export function dividendYears(dividends: readonly DividendAction[], today: strin
       if (!yearSplits.length) while (from - 1 >= first && !byYear.has(from - 1) && !splitsIn.has(from - 1)) from -= 1;
       result.push({
         id: String(year), year, ...(from < year ? { fromYear: from } : {}), total: null, special: 0, payments: 0, partial: year >= thisYear, splits: yearSplits,
+        ...(coverage === "unavailable" ? { coverageIncomplete: true } : {}),
       });
       year = from;
       continue;
@@ -180,7 +183,8 @@ export function dividendYears(dividends: readonly DividendAction[], today: strin
 /** What a year's row says beside its figures: no payment, paid so far, a special, a split. */
 export function dividendYearDetail(year: DividendYear): string {
   const paid = year.total == null
-    ? year.fromYear != null ? `no dividend for ${year.year - year.fromYear + 1} years` : "no dividend"
+    ? year.coverageIncomplete ? INCOMPLETE_DISTRIBUTIONS
+      : year.fromYear != null ? `no dividend for ${year.year - year.fromYear + 1} years` : "no dividend"
     : year.partial ? "so far" : year.special > 0 ? "incl. special" : null;
   return [paid, ...year.splits.map((terms) => `${terms} split`)].filter(Boolean).join(" · ");
 }

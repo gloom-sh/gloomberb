@@ -238,7 +238,8 @@ export function EventsDividendsView({ focused, width, height, footerPaneId = "co
   const data = useEventData();
   const { symbol, ticker, today, allRows, actionsData } = data;
   const currency = actionsData?.currency ?? data.currency ?? "";
-  const years = useMemo(() => dividendYears(actionsData?.dividends ?? [], today, splitMarks(allRows)), [actionsData?.dividends, allRows, today]);
+  const coverage = actionsData?.coverage?.dividends;
+  const years = useMemo(() => dividendYears(actionsData?.dividends ?? [], today, splitMarks(allRows), coverage), [actionsData?.dividends, allRows, coverage, today]);
   // A year's total to one count of decimals, at most four: a sum needs no more to compare years by.
   const digits = useMemo(() => Math.min(YEAR_TOTAL_DIGITS,
     distributionAmountsDigits(years.flatMap((year) => (year.total == null ? [] : [year.total])), currency || "USD")), [currency, years]);
@@ -335,7 +336,7 @@ export function EventsDividendsView({ focused, width, height, footerPaneId = "co
       onRootKeyDown={handleKeyDown}
       onActivate={openDividends}
       selection={{ kind: "index", selectedIndex: selected ? years.indexOf(selected) : -1, onChange: (index) => setSelectedKey(years[index]?.id ?? null) }}
-      getExportMetadata={() => (currency ? [["Currency", currency]] : [])}
+      getExportMetadata={() => [...(currency ? [["Currency", currency]] : []), ...(incompletePayouts ? [["Coverage", INCOMPLETE_DISTRIBUTIONS]] : [])]}
       status={{ loading: data.loading && !years.length, error: !data.loading && !years.length ? data.error : null, subject: "dividends" }}
       emptyStateTitle={incompletePayouts ? INCOMPLETE_DISTRIBUTIONS : "No dividends on record"}
       rootBefore={figures.length || chart ? (

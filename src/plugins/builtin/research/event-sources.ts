@@ -4,7 +4,8 @@ import type {
   CorporateActionsData,
   TickerFinancials,
 } from "../../../types/financials";
-import { formatEventMetric, type EventSummaryFigure } from "./event-model";
+import { formatEventMetric, isFundListing, type EventSummaryFigure } from "./event-model";
+import { fundCorporateActions } from "../../../market-data/fund-actions";
 import type { HeadlessBundleSection, HeadlessPaneColumn } from "../../../types/headless";
 import type { EarningsQuarter } from "./event-charts";
 import { loadAnalystResearch } from "./client";
@@ -135,16 +136,18 @@ export async function loadEventSources(
     loadEarningsCalendar(provider, [symbol]),
   ]);
   const event = calendar.status === "fulfilled" ? calendarEventOf(calendar.value.events, symbol) : null;
-  const actionsData = actions.status === "fulfilled" && actions.value ? withResolvedEarnings(actions.value, event, today) : null;
-  const estimatesData = estimates.status === "fulfilled" ? estimates.value : null;
   const financialsData = financials.status === "fulfilled" ? financials.value : null;
+  const recordedActions = actions.status === "fulfilled" ? actions.value : null;
+  const fund = isFundListing(financialsData, recordedActions);
+  const actionsData = recordedActions ? (fund ? fundCorporateActions(recordedActions) : withResolvedEarnings(recordedActions, event, today)) : null;
+  const estimatesData = !fund && estimates.status === "fulfilled" ? estimates.value : null;
   return {
     actions: actionsData,
     estimates: estimatesData,
     financials: financialsData,
     currency: actionsData?.currency ?? estimatesData?.currency ?? financialsData?.quote?.currency ?? "",
     actionsError: settledError(actions),
-    estimatesError: settledError(estimates),
+    estimatesError: fund ? null : settledError(estimates),
     financialsError: settledError(financials),
   };
 }
