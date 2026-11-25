@@ -15,7 +15,7 @@ import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities, type Scr
 import { withCountryFlag } from "../../../components/ui/country-flag";
 import { dayCell } from "../../../components/ui/day-cell";
 import { publicTickerKey } from "../../../utils/exchanges";
-import { MISSING_VALUE, truncateToDisplayWidth } from "../../../utils/format";
+import { truncateToDisplayWidth } from "../../../utils/format";
 import { wrapTextLines } from "../../../utils/text-wrap";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";

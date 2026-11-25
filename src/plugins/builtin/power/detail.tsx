@@ -65,13 +65,13 @@ export function PowerDetailView({ row, scope, scrollRef, snapshot, focused, widt
       {row.history ? <>
         <KeyValueRow label="History basis" value={row.history.basis === "published" ? "Published period" : "Observed snapshot"} labelWidth={22} />
         <KeyValueRow label="Published as of" value={stamp(row.history.asOf) ?? MISSING_VALUE} labelWidth={22} />
-        <KeyValueRow label="Observed UTC" value={stamp(row.history.observedAt)} labelWidth={22} />
+        <KeyValueRow label="Observed UTC" value={stamp(row.history.observedAt) ?? MISSING_VALUE} labelWidth={22} />
         <SectionHeading title="Primary evidence" />
         <PaneLinkMenu>{row.history.sourceUrls.map((url, index) => <Box key={url} paddingBottom={1}><ExternalLinkText url={url} label={`Open primary document ${index + 1}`} /></Box>)}</PaneLinkMenu>
       </> : null}
       {row.exposure ? <>
         <KeyValueRow label="Published as of" value={stamp(row.exposure.asOf) ?? MISSING_VALUE} labelWidth={22} />
-        <KeyValueRow label="Observed UTC" value={stamp(row.exposure.observedAt)} labelWidth={22} />
+        <KeyValueRow label="Observed UTC" value={stamp(row.exposure.observedAt) ?? MISSING_VALUE} labelWidth={22} />
         <SectionHeading title="Primary evidence" />
         <PaneLinkMenu>{row.exposure.sourceUrls.map((url, index) => <Box key={url} paddingBottom={1}><ExternalLinkText url={url} label={`Open primary document ${index + 1}`} /></Box>)}</PaneLinkMenu>
       </> : null}
