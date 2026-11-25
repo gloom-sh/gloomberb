@@ -16,11 +16,13 @@ import {
   IPO_STATUSES,
   ipoBoardStatus,
   ipoKeyword,
+  isIpoList,
   isIpoTab,
   marketsBehind,
   marketsBehindText,
   sortIpoDeals,
   DEFAULT_IPO_SORT,
+  type IpoList,
   type IpoTab,
 } from "./model";
 import { ipoDetailSentences, loadIpoLockupNews, type IpoLockupStory } from "./listing-ipo";
@@ -58,6 +60,22 @@ function atStatus(deal: IpoDeal, status: StatusOption, now: Date): boolean {
 function regionOption(args: HeadlessPaneLoadArgs): IpoTab {
   const value = args.options.region;
   return isIpoTab(value) ? value : "all";
+}
+
+/** The pane's list, when one is asked for; without it the report lists every deal. */
+function listOption(args: HeadlessPaneLoadArgs): IpoList | null {
+  const value = args.options.list;
+  return isIpoList(value) ? value : null;
+}
+
+/**
+ * One list's columns, as its pane view has them: an upcoming deal has no
+ * return or lock-up yet, and every recent listing's status is that it listed.
+ */
+function listColumns(list: IpoList | null): HeadlessPaneColumn[] {
+  if (list === "upcoming") return COLUMNS.filter((column) => column.key !== "firstDayReturn" && column.key !== "lockupEnds");
+  if (list === "listed") return COLUMNS.filter((column) => column.key !== "status");
+  return COLUMNS;
 }
 
 function statusOption(args: HeadlessPaneLoadArgs): StatusOption {
@@ -133,9 +151,10 @@ export function projectIpoCalendarHeadless(
   const query = typeof args.argument === "string" ? args.argument.trim() : "";
   const region = regionOption(args);
   const status = statusOption(args);
+  const list = listOption(args);
   const limit = Number(args.options.limit ?? 50);
   const keyword = ipoKeyword(query);
-  const found = filterIpoDeals(payload.deals, region, query, now).filter((deal) => atStatus(deal, status, now));
+  const found = filterIpoDeals(payload.deals, region, query, now, list ?? undefined).filter((deal) => atStatus(deal, status, now));
   const matching = keyword === "lockup" ? byLockupEnd(found, now) : sortIpoDeals(found, DEFAULT_IPO_SORT, now, query);
   const rows = matching.slice(0, limit).map((deal) => toRow(deal, now));
   const behind = marketsBehindText(marketsBehind(payload.sources, region, payload.deals));
@@ -148,7 +167,7 @@ export function projectIpoCalendarHeadless(
     ...keyword === "spac" || keyword === "de-spac" ? [SPAC_NOTE] : [],
   ];
   return {
-    columns: COLUMNS,
+    columns: listColumns(list),
     rows,
     ...(behind ? { errors: [behind] } : {}),
     ...(notes.length ? { notes } : {}),
@@ -160,6 +179,7 @@ export function projectIpoCalendarHeadless(
       query: query || null,
       region,
       status,
+      list,
     },
   };
 }
@@ -186,6 +206,14 @@ export const ipoCalendarHeadless: HeadlessPaneDefinition<"rows"> = {
       values: ["all", "us", "apac", "europe"].map((value) => ({ value })),
       // The pane's tab, so a screenshot shows the region the report lists.
       pluginState: { pluginId: "ipo-calendar", key: "region" },
+    },
+    {
+      key: "list",
+      description: "Upcoming deals or recent listings, each with the columns its pane view shows; every deal when omitted.",
+      type: "enum",
+      values: [{ value: "upcoming" }, { value: "listed", aliases: ["recent"] }],
+      // The pane's list, so a screenshot shows the deals the report lists.
+      pluginState: { pluginId: "ipo-calendar", key: "list" },
     },
     {
       key: "status",
@@ -220,6 +248,8 @@ export const ipoCalendarHeadless: HeadlessPaneDefinition<"rows"> = {
     const region = regionOption(args);
     const status = statusOption(args);
     if (region !== "all") parts.push(region === "us" ? "US" : region === "apac" ? "APAC" : "Europe");
+    const list = listOption(args);
+    if (list) parts.push(list === "upcoming" ? "Upcoming" : "Recent listings");
     if (status !== "all") parts.push(status);
     return parts.join(" | ");
   },

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DataTableView,
   PaneStatusBody,
@@ -18,6 +18,7 @@ import { useAsyncResource, useAutoRefresh, usePluginPaneState } from "../../../p
 import { priceColor, type ThemeColors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
+import { usePaneInstance } from "../../../state/app/context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, TextAttributes, useUiCapabilities } from "../../../ui";
 import { COUNTRY_FLAG_CELLS, withCountryFlag } from "../../../components/ui/country-flag";
@@ -38,8 +39,10 @@ import {
   formatIpoReturn,
   formatIpoSize,
   IPO_CALENDAR_PANE_ID,
+  IPO_LISTS,
   IPO_TABS,
   ipoBoardStatus,
+  isIpoList,
   ipoTickerKey,
   isIpoTab,
   marketsBehind,
@@ -50,6 +53,7 @@ import {
   type IpoBoardStatus,
   type IpoColumn,
   type IpoColumnId,
+  type IpoList,
   type IpoSortPreference,
   type IpoTab,
 } from "./model";
@@ -58,19 +62,22 @@ const NO_DEALS: IpoDeal[] = [];
 const TABS = IPO_TABS.map((tab) => ({ label: tab.label, value: tab.value as string }));
 const dealKey = (deal: IpoDeal) => deal.id;
 
+/**
+ * An upcoming deal's status in colour only where it says something: a book
+ * open now, terms set, a deal pulled. A date ahead, a filing, a late or
+ * postponed deal read in the quiet tone the rest of the list shares.
+ */
 function statusColor(status: IpoBoardStatus, colors: ThemeColors): string {
   switch (status) {
-    // Not priced yet: a date ahead, or a book open now.
-    case "upcoming":
     case "offering": return colors.warning;
-    // Its listing day went by with no word: no longer next, not called off either.
-    case "overdue":
-    case "delayed": return colors.textDim;
     case "priced": return colors.textBright;
-    case "listed": return colors.positive;
     case "withdrawn": return colors.negative;
+    case "listed": return colors.text;
+    case "upcoming":
+    case "overdue":
+    case "delayed":
     case "filed":
-    case "postponed": return colors.textMuted;
+    case "postponed": return colors.textDim;
   }
 }
 
@@ -83,6 +90,9 @@ export function IpoCalendarPane({ focused, width, height }: PaneProps) {
   const deals = payload?.deals ?? NO_DEALS;
   const [storedTab, setTab] = usePluginPaneState<IpoTab>("region", "all");
   const tab = isIpoTab(storedTab) ? storedTab : "all";
+  // Upcoming deals and recent listings are two lists with their own columns.
+  const [storedList, setList] = usePluginPaneState<IpoList | null>("list", null);
+  const list: IpoList = isIpoList(storedList) ? storedList : "upcoming";
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selected", null);
   const [sort, setSort] = useState<IpoSortPreference>(DEFAULT_IPO_SORT);
   // `IPO japan` opens on that search, as `fn IPO japan` reads it.
@@ -94,14 +104,30 @@ export function IpoCalendarPane({ focused, width, height }: PaneProps) {
 
   // One clock per board, so a deal's status, its place and a search for it agree.
   const now = useMemo(() => new Date(), [deals, resource.updatedAt]);
-  const rows = useMemo(() => sortIpoDeals(filterIpoDeals(deals, tab, query, now), sort, now, query), [deals, now, query, sort, tab]);
+  const rows = useMemo(() => sortIpoDeals(filterIpoDeals(deals, tab, query, now, list), sort, now, query), [deals, list, now, query, sort, tab]);
+  // A search that finds deals only on the other list says so, rather than reading as no match at all.
+  const otherList: IpoList = list === "upcoming" ? "listed" : "upcoming";
+  const otherMatches = useMemo(() => (query.trim() && rows.length === 0 ? filterIpoDeals(deals, tab, query, now, otherList).length : 0),
+    [deals, now, otherList, query, rows.length, tab]);
+  // `IPO arm` opens on the list its deals are on, once the board is in, as `fn IPO arm` lists them.
+  const instance = usePaneInstance();
+  const commandSearch = instance?.paneId === IPO_CALENDAR_PANE_ID ? instance.params?.search ?? null : null;
+  const commandAt = commandSearch ? instance?.params?.tabAt ?? "" : null;
+  // A list already chosen in this pane wins over the command it was opened with, until a newer command.
+  const placedCommand = useRef<string | null>(storedList ? commandAt : null);
+  useEffect(() => {
+    // Waits for the search to be the command's and for deals to search.
+    if (commandAt === null || placedCommand.current === commandAt || query !== commandSearch || deals.length === 0) return;
+    placedCommand.current = commandAt;
+    if (otherMatches > 0) setList(otherList);
+  }, [commandAt, commandSearch, deals.length, otherList, otherMatches, query, setList]);
   // The cursor starts on the first deal, and moves there when its deal leaves the list.
   const selected = rows.find((deal) => deal.id === selectedId) ?? rows[0] ?? null;
   // Sized on the whole board, so switching tabs does not move the columns.
   // The desktop and the web lead each venue with its country's flag.
   const flagged = useUiCapabilities().nativePaneChrome === true;
   const marketWidth = useMemo(() => marketColumnWidth(deals) + (flagged ? COUNTRY_FLAG_CELLS : 0), [deals, flagged]);
-  const columns = useMemo(() => buildIpoColumns(width, marketWidth), [marketWidth, width]);
+  const columns = useMemo(() => buildIpoColumns(width, marketWidth, list), [list, marketWidth, width]);
 
   const openDeal = useCallback((deal: IpoDeal) => {
     const key = ipoTickerKey(deal);
@@ -224,6 +250,18 @@ export function IpoCalendarPane({ focused, width, height }: PaneProps) {
               debounceMs: 250,
               ...searchProps,
             }}
+            filters={[{
+              id: "list",
+              label: "List",
+              inline: true,
+              value: list,
+              options: IPO_LISTS,
+              onChange: (value: IpoList) => {
+                setList(value);
+                setSelectedId(null);
+                setSort(DEFAULT_IPO_SORT);
+              },
+            }]}
           />
         )}
         onRootKeyDown={handleRootKeyDown}
@@ -246,8 +284,9 @@ export function IpoCalendarPane({ focused, width, height }: PaneProps) {
         onSortChange={(id, direction) => setSort({ columnId: id as IpoColumnId, direction })}
         renderCell={renderCell}
         selectedTextOverridesCellColor
-        resetScrollKey={`${tab}:${query}`}
-        emptyStateTitle={query.trim() ? "No matching IPOs." : "No IPOs."}
+        resetScrollKey={`${tab}:${list}:${query}`}
+        emptyStateTitle={query.trim() ? `No matching ${list === "upcoming" ? "upcoming IPOs" : "recent listings"}.` : list === "upcoming" ? "No upcoming IPOs." : "No recent listings."}
+        emptyStateHint={otherMatches ? `${IPO_LISTS.find((entry) => entry.value === otherList)!.label} has ${otherMatches}.` : undefined}
       />
     </Box>
   );

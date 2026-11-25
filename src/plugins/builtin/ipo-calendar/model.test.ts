@@ -9,6 +9,7 @@ import {
   formatIpoReturn,
   formatIpoSize,
   ipoBoardStatus,
+  ipoList,
   ipoTableWidth,
   ipoTickerKey,
   marketColumnWidth,
@@ -196,6 +197,54 @@ describe("IPO calendar order", () => {
       ipoDeal({ id: "unsized", currency: "USD", offerPrice: 99 }),
     ];
     expect(ids(sortIpoDeals(priced, { columnId: "price", direction: "desc" }))).toEqual(["nasdaq", "tokyo", "london", "unsized"]);
+  });
+});
+
+describe("IPO calendar lists", () => {
+  test("a deal is a recent listing once it trades or its listing day has come at its venue, and upcoming until then", () => {
+    // 16:00 in New York is already the next morning in Tokyo.
+    const now = new Date("2026-10-16T20:00:00Z");
+    const tokyo = { mic: "XTKS", exchange: "JPX", venue: "Tokyo", country: "JP", region: "apac", timezone: "Asia/Tokyo" } as const;
+    const board = [
+      ipoDeal({ id: "listed", status: "listed", listingDate: "2026-10-01" }),
+      // Priced for tomorrow in New York: no return yet.
+      ipoDeal({ id: "priced-ahead", status: "priced", offerPrice: 20, listingDate: "2026-10-17" }),
+      // Priced for today in Tokyo, where today is the 17th: listed, its close not in yet.
+      ipoDeal({ id: "priced-today-tokyo", ...tokyo, status: "priced", offerPrice: 1200, listingDate: "2026-10-17" }),
+      // Its first trade came in before the venue said it listed.
+      ipoDeal({ id: "priced-opened", status: "priced", offerPrice: 20, listingDate: "2026-10-20",
+        opening: { session: "2026-10-16", price: 24, returnPct: 0.2 } }),
+      ipoDeal({ id: "priced-undated", status: "priced", offerPrice: 20 }),
+      // Past its day and never priced: late, not listed.
+      ipoDeal({ id: "overdue", listingDate: "2026-10-14" }),
+      ipoDeal({ id: "filed", status: "filed", filedDate: "2026-10-01" }),
+      ipoDeal({ id: "withdrawn", status: "withdrawn", listingDate: "2026-10-10" }),
+    ];
+    expect(Object.fromEntries(board.map((deal) => [deal.id, ipoList(deal, now)]))).toEqual({
+      listed: "listed",
+      "priced-ahead": "upcoming",
+      "priced-today-tokyo": "listed",
+      "priced-opened": "listed",
+      "priced-undated": "upcoming",
+      overdue: "upcoming",
+      filed: "upcoming",
+      withdrawn: "upcoming",
+    });
+    // The list narrows with the region tab and the search, never instead of them.
+    expect(ids(filterIpoDeals(board, "apac", "", now, "listed"))).toEqual(["priced-today-tokyo"]);
+    expect(ids(filterIpoDeals(board, "all", "priced", now, "upcoming"))).toEqual(["priced-ahead", "priced-undated"]);
+    expect(ids(filterIpoDeals(board, "all", "", now))).toHaveLength(board.length);
+  });
+
+  test("an upcoming deal has STATUS and no RETURN, a recent listing RETURN and no STATUS, and each narrows to what its list is about", () => {
+    const columnIds = (width: number, list: "upcoming" | "listed") => buildIpoColumns(width, 10, list).map((column) => column.id);
+    expect(columnIds(1000, "upcoming")).toEqual(["ticker", "company", "market", "date", "status", "price", "size"]);
+    expect(columnIds(1000, "listed")).toEqual(["ticker", "company", "market", "date", "price", "size", "return"]);
+    // Narrow, what is next and where it stands outlast the venue and the price.
+    expect(columnIds(70, "upcoming")).toEqual(["ticker", "company", "date", "status", "price"]);
+    expect(columnIds(40, "upcoming")).toEqual(["company", "date", "status"]);
+    expect(columnIds(30, "upcoming")).toEqual(["company", "date"]);
+    expect(columnIds(30, "listed")).toEqual(["company", "return"]);
   });
 });
 

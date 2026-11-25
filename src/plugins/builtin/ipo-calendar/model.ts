@@ -219,8 +219,38 @@ function matchesIpoQuery(deal: IpoDeal, query: string, now: Date): boolean {
   ].some((value) => !!value && value.toLowerCase().includes(needle));
 }
 
-export function filterIpoDeals(deals: readonly IpoDeal[], tab: IpoTab, query = "", now = new Date()): IpoDeal[] {
-  return deals.filter((deal) => (tab === "all" || deal.region === tab) && matchesIpoQuery(deal, query, now));
+export function filterIpoDeals(deals: readonly IpoDeal[], tab: IpoTab, query = "", now = new Date(), list?: IpoList): IpoDeal[] {
+  return deals.filter((deal) => (tab === "all" || deal.region === tab) && (!list || ipoList(deal, now) === list) && matchesIpoQuery(deal, query, now));
+}
+
+/**
+ * The board's two lists, each with its own columns: the deals not trading
+ * yet, with their price range or offer price and size, and the deals that
+ * have listed, with their first-day return.
+ */
+export type IpoList = "upcoming" | "listed";
+
+export const IPO_LISTS: readonly { value: IpoList; label: string }[] = [
+  { value: "upcoming", label: "Upcoming" },
+  { value: "listed", label: "Recent listings" },
+];
+
+export function isIpoList(value: unknown): value is IpoList {
+  return value === "upcoming" || value === "listed";
+}
+
+/**
+ * Which list a deal is on. A listed deal is a recent listing, and so is a
+ * priced one whose first session has a price or whose listing day has come at
+ * its venue (its first close may not be in yet). Everything else, priced ahead
+ * of its day, in its book, filed, postponed or withdrawn, is upcoming: it has
+ * no return to show.
+ */
+export function ipoList(deal: IpoDeal, now = new Date()): IpoList {
+  if (deal.status === "listed") return "listed";
+  if (deal.status !== "priced") return "upcoming";
+  if (deal.firstDay || deal.opening) return "listed";
+  return deal.listingDate && deal.listingDate <= venueToday(deal.timezone, now) ? "listed" : "upcoming";
 }
 
 export type IpoColumnId = "ticker" | "company" | "market" | "date" | "status" | "price" | "size" | "return";
@@ -324,7 +354,7 @@ export function firstIpoSortDirection(columnId: IpoColumnId): "asc" | "desc" {
 
 const COMPANY_MIN_WIDTH = 16;
 
-/** Every column at its narrowest; COMPANY takes what the pane has left. */
+/** Every column at its narrowest; COMPANY takes what the pane has left. Each list shows its own (IPO_LIST_COLUMNS). */
 const IPO_COLUMNS: readonly IpoColumn[] = [
   // NSE symbols run to ten letters; the rest are far shorter.
   { id: "ticker", label: "TICKER", width: 10, align: "left" },
@@ -341,11 +371,30 @@ const IPO_COLUMNS: readonly IpoColumn[] = [
 ];
 
 /**
+ * The columns each list has. An upcoming deal has no return yet, and its
+ * status says where it stands (in its book, priced, late); a recent listing's
+ * status is that it listed, so its row ends on the return instead.
+ */
+const IPO_LIST_COLUMNS: Record<IpoList, readonly IpoColumnId[]> = {
+  upcoming: ["ticker", "company", "market", "date", "status", "price", "size"],
+  listed: ["ticker", "company", "market", "date", "price", "size", "return"],
+};
+
+/**
  * What a narrow pane gives up first, so COMPANY and RETURN stay. SIZE is
  * only filled once terms are out, STATUS follows from the calendar's order,
  * the date and a return, and MKT goes before the date a deal lists on.
  */
 const NARROW_DROP_ORDER: readonly IpoColumnId[] = ["size", "status", "price", "market", "date", "ticker"];
+
+/**
+ * Upcoming deals keep COMPANY, the date and the status the longest: what is
+ * next, and whether its book is open, priced or late, is the list's point.
+ */
+const NARROW_DROP_ORDER_BY_LIST: Record<IpoList, readonly IpoColumnId[]> = {
+  upcoming: ["size", "market", "price", "ticker", "status", "date"],
+  listed: NARROW_DROP_ORDER,
+};
 
 /** The table's own width for these columns, plus a cell for the scrollbar. */
 export function ipoTableWidth(columns: readonly IpoColumn[]): number {
@@ -358,9 +407,12 @@ export function marketColumnWidth(deals: readonly IpoDeal[]): number {
   return Math.min(14, Math.max(5, longest));
 }
 
-export function buildIpoColumns(width: number, marketWidth = 10): IpoColumn[] {
-  const columns = IPO_COLUMNS.map((column) => (column.id === "market" ? { ...column, width: marketWidth } : column));
-  return dropColumnsToFit(columns, width - 1, NARROW_DROP_ORDER);
+/** The columns of every deal, or of one list's (`list`), that fit `width`. */
+export function buildIpoColumns(width: number, marketWidth = 10, list?: IpoList): IpoColumn[] {
+  const columns = IPO_COLUMNS
+    .filter((column) => !list || IPO_LIST_COLUMNS[list].includes(column.id))
+    .map((column) => (column.id === "market" ? { ...column, width: marketWidth } : column));
+  return dropColumnsToFit(columns, width - 1, list ? NARROW_DROP_ORDER_BY_LIST[list] : NARROW_DROP_ORDER);
 }
 
 /**
