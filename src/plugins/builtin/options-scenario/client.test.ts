@@ -243,7 +243,7 @@ describe("scenario headless inputs", () => {
     try {
       const whr = await run("WHR", { exDividendDate: "2026-02-27" }, ["2025-05-23", "2025-08-15", "2025-11-21", "2026-02-27"]);
       expect(whr.metadata).toMatchObject({ position: { dividendYield: 0 }, market: { dividendYieldBasis: "stopped", dividendLastPaid: "2026-02-27" } });
-      expect(dividendLine(whr)).toBe("0.00% (no current dividend, last paid 2026-02-27)");
+      expect(dividendLine(whr)).toBe("0.00% (no current dividend, last paid 27 Feb 2026)");
       const ko = await run("KO", { dividendYield: 0.0226, dividendYieldBasis: "forward", exDividendDate: "2026-09-15" }, ["2026-03-13", "2026-06-15", "2026-09-15"]);
       expect(ko.metadata).toMatchObject({ position: { dividendYield: 0.0226 }, market: { dividendYieldBasis: "stated" } });
       expect(dividendLine(ko)).toBe("2.26%");

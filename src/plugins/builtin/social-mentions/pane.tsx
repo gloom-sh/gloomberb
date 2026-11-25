@@ -160,14 +160,14 @@ function SocialMentionsTickerView({ width, height, focused, listingKey, onDetail
         onHeaderClick={(column) => setSort((current) => ({ column: column as SocialSort["column"], direction: current.column === column && current.direction === "desc" ? "asc" : "desc" }))}
         rootBefore={<Box flexDirection="column" flexShrink={0}>
           <StatGrid width={width} items={[
-            { id: "posts", label: "Posts", value: socialCount(latest?.mentions), detail: latest ? `${socialRatio(latest.ratio)} median · ${latest.day.slice(5)}` : undefined },
+            { id: "posts", label: "Posts", value: socialCount(latest?.mentions), detail: latest ? `${socialRatio(latest.ratio)} median · ${formatDay(latest.day, "no-year")}` : undefined },
             { id: "median", label: "30D median", value: socialCount(data.x.baseline) },
             { id: "stance", label: "Stance 7D", value: socialStance(summary?.stance ?? null), detail: stanceWord(summary?.stance ?? null) },
-            { id: "peak", label: `Peak ${range === "max" ? "all" : range.toUpperCase()}`, value: socialCount(summary?.peak?.mentions), detail: summary?.peak?.day },
+            { id: "peak", label: `Peak ${range === "max" ? "all" : range.toUpperCase()}`, value: socialCount(summary?.peak?.mentions), detail: summary?.peak?.day ? formatDay(summary.peak.day) : undefined },
             ...(summary?.wiki ? [{ id: "wiki", label: "Wiki views", value: socialCount(summary.wiki.views),
-              detail: `${socialRatio(summary.wiki.ratio)} median · ${summary.wiki.day.slice(5)}` }] : []),
+              detail: `${socialRatio(summary.wiki.ratio)} median · ${formatDay(summary.wiki.day, "no-year")}` }] : []),
             ...(summary?.reddit ? [{ id: "reddit", label: "Reddit", value: socialCount(summary.reddit.mentions),
-              detail: `${socialRatio(summary.reddit.ratio)} median · ${summary.reddit.day.slice(5)}` }] : []),
+              detail: `${socialRatio(summary.reddit.ratio)} median · ${formatDay(summary.reddit.day, "no-year")}` }] : []),
           ]} />
           {chartHeight && allRows.length ? <Box paddingX={1} flexShrink={0}>
             <CompositeChart series={series} panels={hasWiki ? WITH_WIKI_PANELS : PANELS} width={Math.max(1, width - 2)} height={chartHeight} focused={focused && !openRow} showLegend={hasWiki} showTimeAxis navigable={false}

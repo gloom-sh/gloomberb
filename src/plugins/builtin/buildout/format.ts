@@ -1,4 +1,5 @@
-import { MISSING_VALUE } from "../../../utils/format";
+import { MISSING_VALUE } from "../../../utils/format";import { MISSING_VALUE } from "../../../utils/format";
+import { formatDay } from "../../../utils/day-format";
 import { colors, priceColor } from "../../../theme/colors";
 import { collectUniqueTickerSymbols } from "../../../tickers/tokenizer";
 import { isKnownExchangeCode } from "../../../utils/exchanges";
@@ -85,10 +86,11 @@ export function moneyText(value: string | null | undefined): string {
   return amount == null ? text(value) : formatCompactMoney(amount);
 }
 
+/** A day without its year, day first as tables write it: `03 Nov`. */
 export function dateShort(value: string | null | undefined) {
   const date = parseDisplayDate(value);
   if (!date) return MISSING_VALUE;
-  return date.toISOString().slice(5, 10);
+  return formatDay(date.toISOString().slice(0, 10), "no-year");
 }
 
 export function dateDetail(value: string | null | undefined) {

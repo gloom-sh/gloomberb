@@ -192,6 +192,6 @@ test("a supply a day older than the prices beside it is headed with its day", as
     const column = result.columns!.find((entry) => entry.key === "supply")!;
     return column.textHeader ?? column.header;
   };
-  expect(await supplyHeader("2026-09-22")).toBe("Supply 09-22");
+  expect(await supplyHeader("2026-09-22")).toBe("Supply 22 Sep");
   expect(await supplyHeader("2026-09-23")).toBe("Supply");
 });

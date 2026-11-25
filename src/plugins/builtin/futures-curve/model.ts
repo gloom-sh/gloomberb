@@ -201,16 +201,17 @@ export function curveSpreadLabel(slope: Pick<FuturesCurvePayload["slope"], "fron
 const THIN_SPREAD_LOTS = 20;
 
 /**
- * What the front spread subtracts, as its figure says it: "settle 10-22" for
+ * What the front spread subtracts, as its figure says it: "settle 22 Oct" for
  * two settlements of a session (the Settle column's date), "last 20:59" for
  * two last trades made together, dated when not the newest quote's day. Null
  * when the server does not say.
  */
 export function curveSpreadBasis(slope: Pick<FuturesCurvePayload["slope"], "basis" | "asOf">, newest: string | null): string | null {
   if (!slope.basis || !slope.asOf) return null;
-  if (slope.basis === "settle" || !slope.asOf.includes("T")) return `${slope.basis} ${slope.asOf.slice(5, 10)}`;
+  if (slope.basis === "settle" || !slope.asOf.includes("T")) return `${slope.basis} ${formatDay(slope.asOf.slice(0, 10), "no-year")}`;
   const stamp = curveTimestamp(slope.asOf);
-  return `last ${newest?.includes("T") && curveTimestamp(newest).slice(0, 10) === stamp.slice(0, 10) ? stamp.slice(11) : stamp.slice(5)}`;
+  const sameDay = newest?.includes("T") && curveTimestamp(newest).slice(0, 10) === stamp.slice(0, 10);
+  return `last ${sameDay ? stamp.slice(11) : `${formatDay(stamp.slice(0, 10), "no-year")} ${stamp.slice(11)}`}`;
 }
 
 /**

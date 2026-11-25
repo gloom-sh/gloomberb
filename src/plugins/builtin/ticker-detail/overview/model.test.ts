@@ -287,7 +287,7 @@ test("DES omits runway for a cash-generating TTM and shows quarter-only burn wit
   expect(stats(quarters.slice(0, 3)).find((row) => row.label === "Runway")).toBeUndefined();
   const burning = quarters.map((row) => ({ ...row, operatingCashFlow: -20 }));
   expect(stats(burning).find((row) => row.label === "Runway")).toMatchObject({
-    value: "> 120 mo", detail: expect.arrayContaining(["qtr to 06-30 · TTM > 120 mo"]),
+    value: "> 120 mo", detail: expect.arrayContaining(["qtr to 30 Jun · TTM > 120 mo"]),
   });
 });
 

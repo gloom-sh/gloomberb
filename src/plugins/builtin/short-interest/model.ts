@@ -1,7 +1,8 @@
 import type { DataTableColumn, StatItem } from "../../../components";
 import { spanDigits } from "../../../components/chart-table";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
-import { MISSING_VALUE, formatCompact, formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatNumber } from "../../../utils/format";import { MISSING_VALUE, formatCompact, formatNumber } from "../../../utils/format";
+import { formatDay } from "../../../utils/day-format";
 import { compareSortValues } from "../../../utils/sort-values";
 import { shortInterestPublished } from "./schedule";
 import type { ShortInterestRecord } from "./types";
@@ -255,13 +256,13 @@ export function shortInterestFigures(records: readonly ShortInterestRecord[]): S
   const prior = sorted.at(-2);
   const change = prior && prior.sharesShort > 0 ? latest.sharesShort - prior.sharesShort : null;
   return [
-    { id: "shares", label: "Shares short", value: formatMaybeCompact(latest.sharesShort), detail: formatDate(latest.settlementDate) },
+    { id: "shares", label: "Shares short", value: formatMaybeCompact(latest.sharesShort), detail: formatDay(formatDate(latest.settlementDate)) },
     ...(latest.shortRatio != null ? [{ id: "days", label: "Days to cover", value: formatRatio(latest.shortRatio) }] : []),
     ...(latest.shortPercentFloat != null ? [{
       id: "float",
       label: "% float",
       value: formatPercent(latest.shortPercentFloat),
-      ...(latest.floatAsOf ? { detail: `as of ${latest.floatAsOf}` } : {}),
+      ...(latest.floatAsOf ? { detail: `as of ${formatDay(latest.floatAsOf)}` } : {}),
     }] : []),
     ...(change != null && prior ? [{
       id: "change",

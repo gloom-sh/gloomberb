@@ -39,7 +39,7 @@ import { collarStatItems, scenarioCollar } from "./collar";
 import { useAssetData } from "../../runtime";
 import { extendedSession, formatSpotTime } from "../options/model-spot";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
-import { buildScenario, currencyLabel, EMPTY_POSITION_TITLE, scenarioCurrency, scenarioDateLabels, scenarioValueUnit, UNKNOWN_CURRENCY, type ScenarioLeg, type ScenarioPosition,
+import { buildScenario, currencyLabel, EMPTY_POSITION_TITLE, scenarioCurrency, scenarioDateLabels, scenarioDayText, scenarioValueUnit, UNKNOWN_CURRENCY, type ScenarioLeg, type ScenarioPosition,
   type ScenarioControls, validatePosition } from "./model";
 import { EMPTY_SAVED_STRATEGIES, restoreSavedStrategies, type SavedScenarioStrategy } from "./state";
 import { useScenarioEvidence } from "./evidence";
@@ -425,7 +425,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
       emptyStateTitle="No scenario values." getItemKey={(row) => `${row.landmark ?? "step"}:${row.spot}`}
       columns={[{ id: "spot", label: `Spot ${position?.currency ?? ""}`, width: 14, align: "right" }, { id: "move", label: "Move %", width: 10, align: "right" },
         { id: "mark", label: "", width: 10, align: "left" },
-        ...scenarioDateLabels(scenario.dates).map((label, i) => ({ id: String(i), label: label.slice(5), width: 13, align: "right" as const }))]}
+        ...scenarioDateLabels(scenario.dates).map((label, i) => ({ id: String(i), label: scenarioDayText(label, "no-year"), width: 13, align: "right" as const }))]}
       renderCell={(row, column) => {
         const atSpot = row.move != null && Math.abs(row.move) < 1e-9;
         if (column.id === "spot") return { text: money(row.spot), color: row.landmark ? colors.warning : atSpot ? colors.textBright : colors.text };
