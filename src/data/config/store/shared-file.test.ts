@@ -3,7 +3,8 @@ import { mkdtemp, readdir, readFile, rm, utimes, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { initDataDir, saveConfig, watchExternalConfigChanges } from "./index";
-import { createDefaultConfig, type AppConfig } from "../../../types/config";
+import { createBlankLayout, createDefaultConfig, getPlacedPaneInstanceIds, type AppConfig, type LayoutConfig } from "../../../types/config";
+import { buildSplitAroundNode } from "../../../layout/pane-manager/dock-tree";
 
 const tempDirs: string[] = [];
 const originalHome = process.env.GLOOMBERB_HOME;
@@ -36,6 +37,43 @@ function priceAlerts(config: AppConfig): unknown[] {
 }
 
 describe("config.json shared with another program", () => {
+  test.each([
+    { start: "empty", id: "home" },
+    { start: "docked", id: "home" },
+    { start: "docked, legacy tab", id: undefined },
+  ])("overlapping dock additions survive a stale save and reload ($start)", async ({ start, id }) => {
+    const dataDir = await mkdtemp(join(tmpdir(), "gloomberb-shared-layout-"));
+    tempDirs.push(dataDir);
+    process.env.GLOOMBERB_HOME = dataDir;
+    const add = (layout: LayoutConfig, paneId: string): LayoutConfig => ({
+      ...layout,
+      instances: [...layout.instances, { instanceId: paneId, paneId }],
+      dockRoot: layout.dockRoot ? buildSplitAroundNode(layout.dockRoot, paneId, "right") : { kind: "pane", instanceId: paneId },
+    });
+    const empty = createBlankLayout();
+    const base = start === "empty" ? empty : add(empty, "help");
+    const workspace = (config: AppConfig, layout: LayoutConfig) => ({ ...config, layout, layouts: [{ id, name: "Home", layout }] });
+    await saveConfig(workspace(createDefaultConfig(dataDir), base));
+    let app: AppConfig = workspace(await initDataDir(dataDir), add(base, "world-indices"));
+    const pending = app;
+    const external = add(base, "econ-calendar");
+    const stop = watchExternalConfigChanges(dataDir, (change) => { app = change.apply(app); });
+    try {
+      await writeFromAnotherProgram(dataDir, `(config) => ({ ...config, layout: ${JSON.stringify(external)}, layouts: [{ ...config.layouts[0], layout: ${JSON.stringify(external)} }] })`);
+      await saveConfig(pending);
+      const disk = JSON.parse(await readFile(join(dataDir, "config.json"), "utf-8")) as AppConfig;
+      const expected = [...getPlacedPaneInstanceIds(base), "econ-calendar", "world-indices"].sort();
+      for (const config of [disk, app, await initDataDir(dataDir)]) {
+        for (const layout of [config.layout, config.layouts[0]!.layout]) {
+          expect(layout.instances.map((instance) => instance.instanceId).sort()).toEqual(expected);
+          expect(getPlacedPaneInstanceIds(layout).sort()).toEqual(expected);
+        }
+      }
+    } finally {
+      stop();
+    }
+  });
+
   test("an alert a command adds while the app runs survives the app's next save and reaches the app", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "gloomberb-shared-config-"));
     tempDirs.push(dataDir);

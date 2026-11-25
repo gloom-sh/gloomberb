@@ -701,7 +701,7 @@ function cloneDockNode(node: DockLayoutNode): DockLayoutNode {
   };
 }
 
-function normalizeDockNode(
+export function normalizeDockNode(
   node: DockLayoutNode | null | undefined,
   validInstanceIds: Set<string>,
   seenPaneIds: Set<string>,
