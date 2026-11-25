@@ -1,4 +1,5 @@
 import type { DividendAction } from "../../../types/financials";
+import { publishedDividend } from "../../../market-data/price-adjustments";
 import { MISSING_VALUE } from "../../../utils/format";
 import { quarterLabel } from "../shared/earnings-report";
 import { nextReportOf, quarterName, type EventRow } from "./event-model";
@@ -107,18 +108,28 @@ export interface DividendYear {
   year: number;
   /** The first year of a run with no payment, when the run is longer than one. */
   fromYear?: number;
-  /** Everything paid in the year; null for years with no payment between two that have one. */
+  /**
+   * Everything paid in the year; null for years with no payment between two that have one, and for a year whose
+   * amounts are on different bases (`mixedBasis`), which no sum states.
+   */
   total: number | null;
   /** What the issuer's own forms mark special, where they say. */
   special: number;
   payments: number;
   /** The year is not over: what is paid so far. */
   partial: boolean;
-  /** Against the year before, as a fraction, when both are whole years with payments. */
+  /** Against the year before, as a fraction, when both are whole years with payments on the same basis. */
   change?: number;
   /**
+   * The year's amounts are on more than one basis (CTVA's $0.027007 adjusted for the VYLR spin-off beside $0.18 as
+   * its forms published it before that): not summed.
+   */
+  mixedBasis?: true;
+  /** Every amount in the year is as published before a split or adjustment after it, not on today's shares. */
+  published?: true;
+  /**
    * The splits and price adjustments that went ex in the year, as said (`4-for-1 split`, `VYLR spin-off`,
-   * `1253:1000 factor`): the amounts before them are adjusted for them.
+   * `1253:1000 factor`): the history's amounts before them are adjusted for them, a published one is not.
    */
   splits: string[];
 }
@@ -130,23 +141,37 @@ export interface SplitMark {
 }
 
 /**
+ * What an amount is stated on: the history's own amounts on today's shares
+ * (""), adjusted for every split and adjustment after them; one its issuer or
+ * sponsor published as it was paid, on the shares before each of those after
+ * it (their dates). Two amounts on one basis sum and compare; others do not.
+ */
+function amountBasis(dividend: DividendAction, marks: readonly SplitMark[]): string {
+  if (!publishedDividend(dividend)) return "";
+  return marks.filter((mark) => mark.date > dividend.exDate.slice(0, 10)).map((mark) => mark.date).join(",");
+}
+
+/**
  * The paid history summed by calendar year of ex-date, newest first, from
  * the first payment on. Years without one stay in as a gap, a run of them as
  * one entry (AAPL's 1996-2011), so the paying years keep the room; a year a
  * split or price adjustment went ex in is its own entry, to say so. Amounts are
- * on today's shares, as the history states them.
+ * as the history states them, on today's shares, or as published: a year is
+ * summed, and compared with the year before, only on one basis.
  */
 export function dividendYears(dividends: readonly DividendAction[], today: string, splits: readonly SplitMark[] = []): DividendYear[] {
-  const byYear = new Map<number, { total: number; special: number; payments: number }>();
+  const byYear = new Map<number, { total: number; special: number; payments: number; bases: Set<string> }>();
   for (const dividend of dividends) {
     if (!Number.isFinite(dividend.amount)) continue;
     const year = Number(dividend.exDate.slice(0, 4));
-    const entry = byYear.get(year) ?? { total: 0, special: 0, payments: 0 };
+    const entry = byYear.get(year) ?? { total: 0, special: 0, payments: 0, bases: new Set<string>() };
     entry.total += dividend.amount;
     entry.special += (dividend.parts ?? []).filter((part) => part.special).reduce((sum, part) => sum + part.amount, 0);
     entry.payments += 1;
+    entry.bases.add(amountBasis(dividend, splits));
     byYear.set(year, entry);
   }
+  const basisOf = (entry: { bases: Set<string> } | undefined) => (entry?.bases.size === 1 ? [...entry.bases][0]! : null);
   if (!byYear.size) return [];
   const years = [...byYear.keys()];
   const first = Math.min(...years);
@@ -172,34 +197,45 @@ export function dividendYears(dividends: readonly DividendAction[], today: strin
     }
     const before = byYear.get(year - 1);
     const partial = year >= thisYear;
+    const basis = basisOf(entry);
+    if (basis == null) {
+      result.push({ id: String(year), year, total: null, special: 0, payments: entry.payments, partial, mixedBasis: true, splits: yearSplits });
+      continue;
+    }
+    const comparable = before && before.total > 0 && !partial && basisOf(before) === basis;
     result.push({
       id: String(year), year, total: entry.total, special: entry.special, payments: entry.payments, partial, splits: yearSplits,
-      ...(before && before.total > 0 && !partial ? { change: entry.total / before.total - 1 } : {}),
+      ...(basis ? { published: true as const } : {}),
+      ...(comparable ? { change: entry.total / before.total - 1 } : {}),
     });
   }
   return result;
 }
 
-/** What a year's row says beside its figures: no payment, paid so far, a special, a split. */
+/** What a year's row says beside its figures: no payment, amounts not summed, paid so far, a special, as published, a split. */
 export function dividendYearDetail(year: DividendYear): string {
-  const paid = year.total == null
-    ? year.fromYear != null ? `no dividend for ${year.year - year.fromYear + 1} years` : "no dividend"
-    : year.partial ? "so far" : year.special > 0 ? "incl. special" : null;
-  return [paid, ...year.splits].filter(Boolean).join(" · ");
+  const paid = year.mixedBasis ? `${year.payments} payments on different bases, not summed`
+    : year.total == null ? year.fromYear != null ? `no dividend for ${year.year - year.fromYear + 1} years` : "no dividend"
+      : year.partial ? "so far" : year.special > 0 ? "incl. special" : null;
+  return [paid, year.published ? "as published" : null, ...year.splits].filter(Boolean).join(" · ");
 }
 
 /**
  * The splits and price adjustments among an event list's rows, as the Dividends view marks them. A price adjustment's
- * mark says the amounts before it are adjusted only where a paid row before it says so (its adjustedFor): a date
- * alone says nothing of an amount's basis, and a published row stands as published.
+ * mark says the amounts before it are adjusted only as far as the paid rows before it say so (their adjustedFor): all
+ * of them, or some where others stand as published. A date alone says nothing of an amount's basis.
  */
 export function splitMarks(rows: readonly EventRow[]): SplitMark[] {
-  const adjustedBefore = (date: string) => rows.some((row) => row.status === "Dividend" && row.adjustedFor && row.date < date);
+  const adjustedBefore = (date: string) => {
+    const paid = rows.filter((row) => row.status === "Dividend" && !row.declared && row.date < date);
+    const adjusted = paid.filter((row) => row.adjustedFor).length;
+    return adjusted === 0 ? "" : adjusted === paid.length ? ", amounts before it adjusted" : ", some amounts before it adjusted";
+  };
   return rows.flatMap((row) => {
     if (row.status === "Split") return [{ date: row.date, terms: `${row.detail} split` }];
     const name = row.status === "Spin-off" && row.demerger ? `${row.demerger.successor.symbol} spin-off`
       : row.status === "Factor" ? `${row.value} factor` : null;
-    return name ? [{ date: row.date, terms: adjustedBefore(row.date) ? `${name}, amounts before it adjusted` : name }] : [];
+    return name ? [{ date: row.date, terms: `${name}${adjustedBefore(row.date)}` }] : [];
   });
 }
 

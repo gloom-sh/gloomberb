@@ -378,9 +378,9 @@ test("a factor is a spin-off only beside its demerger on record, else a factor; 
 test("a 2-for-1 the day of a spin-off stays a split beside it, and what the company published keeps no adjusted basis", () => {
   const vylor = { exDate: "2026-10-01", business: "seed", ratio: 1, successor: { symbol: "VYLR", exchange: "NYSE", name: "Vylor Inc." } };
   const form = { url: "https://example.com/dividend-form.pdf", publishedOn: "2026-08-20" };
-  const rows = buildEventRows({ symbol: "CTVA", currency: "USD", demergers: [vylor],
+  const dividends = [{ exDate: "2026-06-01", amount: 0.027007 }, { exDate: "2026-09-01", amount: 0.18, parts: [{ amount: 0.18, special: false, type: "interim", form }] }];
+  const rows = buildEventRows({ symbol: "CTVA", currency: "USD", demergers: [vylor], dividends,
     earnings: [{ date: "2026-08-05", epsActual: 2.3, epsEstimate: 2.25, epsActualSource: "press-release" }],
-    dividends: [{ exDate: "2026-06-01", amount: 0.027007 }, { exDate: "2026-09-01", amount: 0.18, parts: [{ amount: 0.18, special: false, type: "interim", form }] }],
     splits: [{ date: "2026-10-01", fromFactor: 1, toFactor: 2, ratio: 2 }, { date: "2026-10-01", fromFactor: 1000, toFactor: 6665 }],
   }, null, null, "USD");
   expect(rows.filter((row) => row.date === "2026-10-01").map((row) => [row.status, row.detail, row.value])).toEqual([
@@ -394,9 +394,13 @@ test("a 2-for-1 the day of a spin-off stays a split beside it, and what the comp
   expect(published).toMatchObject({ value: "$0.18", detail: "", published: true });
   expect(published?.adjustedFor).toBeUndefined();
   expect(rows.find((row) => row.status === "Earnings")?.adjustedFor).toBeUndefined();
-  // The year marks both; the spin-off's says the amounts before it are adjusted only because a row before it says so.
-  expect(dividendYearDetail(dividendYears([{ exDate: "2026-06-01", amount: 0.027007 }], "2026-12-15", splitMarks(rows))[0]!))
-    .toBe("so far · 2-for-1 split · VYLR spin-off, amounts before it adjusted");
+  // The Dividends view as the pane reads these same dividends: $0.027007 adjusted beside $0.18 as published are on two
+  // bases, so the year is not summed, and the spin-off's mark says only some of the amounts before it are adjusted.
+  const [year] = dividendYears(dividends, "2026-12-15", splitMarks(rows));
+  expect(year).toMatchObject({ total: null, special: 0, payments: 2, mixedBasis: true });
+  expect(dividendYearDetail(year!)).toBe("2 payments on different bases, not summed · 2-for-1 split · VYLR spin-off, some amounts before it adjusted");
+  const adjustedOnly = rows.filter((row) => row.id !== "div:2026-09-01");
+  expect(splitMarks(adjustedOnly).map((mark) => mark.terms)).toEqual(["2-for-1 split", "VYLR spin-off, amounts before it adjusted"]);
   const publishedOnly = rows.filter((row) => row.id !== "div:2026-06-01");
   expect(splitMarks(publishedOnly).map((mark) => mark.terms)).toEqual(["2-for-1 split", "VYLR spin-off"]);
 });
