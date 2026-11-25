@@ -197,11 +197,16 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       if (exchange?.coverage) notes.push(exchange.coverage);
       if (exchangeRows.length && listing && exchange) {
         const combined = latestFilingRows(rows, exchangeRows, limit);
+        const hasCatalogueDate = combined.some(row => row.dateBasis === "catalogue");
         const columns: HeadlessPaneColumn[] = [
-          SEC_COLUMNS[0]!, { key: "source", header: "Source" }, SEC_COLUMNS[2]!, SEC_COLUMNS[4]!, { key: "url", header: "Document" },
+          hasCatalogueDate ? { ...SEC_COLUMNS[0]!, header: "Date" } : SEC_COLUMNS[0]!,
+          { key: "source", header: "Source" }, SEC_COLUMNS[2]!, SEC_COLUMNS[4]!, { key: "url", header: "Document" },
         ];
+        const publishers = hasCatalogueDate
+          ? [...new Set(combined.map(row => String(row.source)))].join(", ")
+          : rows.length ? `SEC EDGAR, ${listing.publisher}` : listing.publisher;
         return { rows: combined, columns, textColumns: columns.slice(0, -1), notes: [...notes, ...companyDataNotes(filings[0]?.companyFrom)],
-          freshness: { source: rows.length ? `SEC EDGAR, ${listing.publisher}` : listing.publisher, status: "not-a-feed", basis: "filed data", observedKey: "filedAt" },
+          freshness: { source: publishers, status: "not-a-feed", basis: hasCatalogueDate ? "filings and catalogue dates" : "filed data", observedKey: "filedAt" },
           metadata: { symbol, returned: combined.length, exchangePage: exchange.page, ...hiddenFilingsMetadata(hidden) } };
       }
       // A listing abroad whose company files nothing with the SEC says where its exchange publishes its announcements.

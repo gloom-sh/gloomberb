@@ -12,8 +12,9 @@ export function localFilingListing(symbol: string, exchange?: string) {
 export function localFilingRows(payload: ExchangeAnnouncementsPayload, all: boolean) {
   return payload.announcements.filter(item => all || !isRoutineReturn(item)).map(item => ({
     filedAt: item.date, filing: item.headline, form: item.types.join(", ") || "Announcement",
-    companyName: payload.name, url: item.url, source: exchangeAnnouncementsPublisher(payload.exchange) ?? payload.exchange,
+    companyName: payload.name, url: item.url, source: item.publisher ?? exchangeAnnouncementsPublisher(payload.exchange) ?? payload.exchange,
     documentKey: item.documentKey,
+    ...(item.dateBasis ? { dateBasis: item.dateBasis } : {}),
   }));
 }
 

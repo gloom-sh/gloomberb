@@ -679,7 +679,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
     for (const row of localRows) {
       const id = `exchange:${row.url}`;
       byId.set(id, { id, title: row.filing, timestamp: row.filedAt, eyebrow: row.source,
-        detailFacts: [{ label: "Filed", value: formatFilingDate(row.filedAt) },
+        detailFacts: [{ label: row.dateBasis === "catalogue" ? "Catalogue date" : "Filed", value: formatFilingDate(row.filedAt) },
           { label: "Document", value: row.source, link: { label: "Open filing", onOpen: () => host.openExternal(row.url).catch(logFailure("sec.pane", "Open exchange filing failed")) } }],
         detailMeta: [row.form, formatFilingDate(row.filedAt)],
       });
@@ -700,7 +700,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
       rootBefore={factsSummary ? <Box flexDirection="column" flexShrink={0}>{queryBar}{factsSummary}</Box> : queryBar}
       sourceLabel={localRows.length ? "Source / form" : "Form"}
       titleLabel="Filing"
-      timeColumn={FILED_COLUMN}
+      timeColumn={localRows.some(row => row.dateBasis === "catalogue") ? { ...FILED_COLUMN, label: "Date" } : FILED_COLUMN}
       emptyStateTitle={forms && formFilings.length === 0 ? fundEmptyTitle
         : supplementCount > 0 && !showSupplements ? "Only pricing supplements."
         : formGroup === ALL_FORMS ? "No SEC filings." : "No filings of these forms."}
