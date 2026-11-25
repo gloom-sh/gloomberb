@@ -2,7 +2,7 @@ import { formatDay, isoDay, type DayCellForm } from "../../utils/day-format";
 import { MISSING_VALUE } from "../../utils/format";
 import type { DataTableCell } from "./data-table/types";
 
-export { formatDay, formatDayTime, isoDay, type DayCellForm } from "../../utils/day-format";
+export { formatDay, formatDayTime, type DayCellForm } from "../../utils/day-format";
 
 /**
  * A table cell for a calendar day, as every table writes one (docs/pane-conventions.md,
