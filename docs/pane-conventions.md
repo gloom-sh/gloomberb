@@ -575,9 +575,10 @@ compact figures keep theirs (below), and a cell built as a string formats with
 the column's precision, not its own. A financial statement column (FA,
 Statements), whose rows are different line items, keeps its magnitude tiers
 (`formatFinancialAmount`: one decimal from 100, two from 1, three below): its
-figures are not one quantity. Dates in a table are one format app-wide, day
-first (`formatFilingDate`, `02 Nov 2026`), with the ISO day as the cell's
-`value`; a time beside a date is `formatDetailDate`'s, with its zone.
+figures are not one quantity. The dates in one table share one format; the
+filing, estimate and event tables (SEC, INS, EM, GUID, EVT) write a calendar
+day first (`formatFilingDate`, `02 Nov 2026`), with the ISO day as the cell's
+`value`, and a time beside a date is `formatDetailDate`'s, with its zone.
 
 **Country flags.** Wherever a row or a field names a country (ECO's country,
 a balance's or a board's country or jurisdiction, a venue's market, an IPO's

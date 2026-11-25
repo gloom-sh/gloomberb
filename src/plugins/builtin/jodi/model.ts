@@ -18,11 +18,28 @@ export function formatBalanceMonth(month: string): string {
   return name && match ? `${name} ${match[1]}` : month;
 }
 
-/** Whole numbers from 100 up; one decimal below that, and an integer stays whole. */
-export function formatBalance(value: number | null): string {
+/** A figure in the decimals its column shares (balanceDigits); alone, whole from 100 up and one decimal below. */
+export function formatBalance(value: number | null, digits?: number): string {
   if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
-  const decimals = Math.abs(value) >= 100 || Number.isInteger(value) ? 0 : 1;
+  const decimals = digits ?? (Math.abs(value) >= 100 || Number.isInteger(value) ? 0 : 1);
   return formatNumber(value, decimals);
+}
+
+/** The figure columns, each one quantity across the countries. */
+export const BALANCE_FIGURE_KEYS = ["production", "demand", "imports", "exports", "stocks"] as const;
+export type BalanceFigureKey = typeof BALANCE_FIGURE_KEYS[number];
+
+/**
+ * The decimals each figure column shares: one when any of its figures under
+ * 100 has a fraction (Japan's 2.2 kb/d of crude), so the whole column reads
+ * 13,952.7 over it; whole numbers otherwise.
+ */
+export function balanceDigits(rows: readonly BalanceRow[]): Record<BalanceFigureKey, number> {
+  const digits = (key: BalanceFigureKey) => rows.some((row) => {
+    const value = row[key];
+    return value != null && Number.isFinite(value) && Math.abs(value) < 100 && !Number.isInteger(value);
+  }) ? 1 : 0;
+  return Object.fromEntries(BALANCE_FIGURE_KEYS.map((key) => [key, digits(key)])) as Record<BalanceFigureKey, number>;
 }
 
 export function balanceTitle(board: Board): string {

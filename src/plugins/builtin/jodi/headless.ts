@@ -1,6 +1,6 @@
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchBalances } from "./client";
-import { BALANCE_FLOW_KEYS, balanceTitle, balanceUnits, formatBalance, formatBalanceMonth, type BalanceCommodity, type BalanceRow } from "./model";
+import { BALANCE_FIGURE_KEYS, BALANCE_FLOW_KEYS, balanceDigits, balanceTitle, balanceUnits, formatBalance, formatBalanceMonth, type BalanceCommodity, type BalanceRow } from "./model";
 import { COMMODITIES_VIEW_STATE } from "../commodities-energy/view-state";
 
 const number = (value: unknown) => typeof value === "number" ? formatBalance(value) : "—";
@@ -55,7 +55,12 @@ export const jodiHeadless: HeadlessPaneDefinition<"bundle"> = {
     const balances = await fetchBalances(ctx.signal);
     const board = commodity === "gas" ? balances.gas : balances.oil;
     if (!board) throw new Error("Gas balances are unavailable.");
-    const columns = board.commodity === "oil" ? COLUMNS.filter((column) => column.key !== "demand") : COLUMNS;
+    // One precision down each figure column, as the pane (balanceDigits).
+    const digits = balanceDigits(board.rows);
+    const columns = (board.commodity === "oil" ? COLUMNS.filter((column) => column.key !== "demand") : COLUMNS).map((column) => {
+      const key = BALANCE_FIGURE_KEYS.find((figure) => figure === column.key);
+      return key ? { ...column, format: (value: unknown) => typeof value === "number" ? formatBalance(value, digits[key]) : "—" } : column;
+    });
     const units = balanceUnits(board.rows);
     return {
       sections: [{

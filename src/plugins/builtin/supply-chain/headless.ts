@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { formatFilingDate } from "../../../utils/datetime-format";
 import type { SupplyRow } from "../../../api-client/supply-chain";
 import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
 import type { GraphEvidence, GraphPath, GraphPayload } from "../../../api-client/supply-chain-graph";
@@ -44,7 +45,7 @@ function tableColumns(rows: HeadlessPaneRow[], sources: ReadonlyMap<HeadlessPane
     // Exports keep the end date; the text adds the period's length when the source states it ("year to 31 Dec
     // 2025", "as of 26 Sep 2026"), and a narrow table never cuts it, so the date is never lost behind the length.
     { key: "period", header: "Period", textFormat: cell(periodText), ...(lengths ? { minWidth: Math.max(...rows.map((row) => { const source = sources.get(row); return source ? periodText(source).length : 0; })) } : {}) },
-    { key: "filed", header: "Published", format: cell(evidenceDate) },
+    { key: "filed", header: "Published", format: cell(evidenceDate), textFormat: cell((row) => formatFilingDate(evidenceDate(row), MISSING_VALUE)) },
   ];
 }
 

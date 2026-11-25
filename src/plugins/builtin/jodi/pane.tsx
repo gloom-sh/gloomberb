@@ -21,10 +21,12 @@ import { fetchBalances } from "./client";
 import {
   JODI_PANE_ID,
   balanceColumns,
+  balanceDigits,
   formatBalance,
   formatBalanceMonth,
   balanceUnits,
   type BalanceCommodity,
+  type BalanceFigureKey,
   type BalanceRow,
 } from "./model";
 
@@ -84,33 +86,34 @@ export function JodiPane({ focused, width, height }: PaneProps) {
   });
   usePaneNoticeFooter({ registrationId: `${JODI_PANE_ID}:notices`, focused, notices: balances?.gaps ?? [] });
 
+  // One precision down each figure column (balanceDigits).
+  const digits = useMemo(() => balanceDigits(rows), [rows]);
   const renderCell = useCallback((row: BalanceRow, column: { id: string }): DataTableCell => {
-    const number = (value: number | null): DataTableCell => ({
-      text: formatBalance(value),
-      value,
-      color: value == null ? colors.textMuted : colors.text,
-    });
+    const number = (key: BalanceFigureKey): DataTableCell => {
+      const value = row[key];
+      return { text: formatBalance(value, digits[key]), value, color: value == null ? colors.textMuted : colors.text };
+    };
     switch (column.id) {
       case "country":
         return withCountryFlag({ text: row.country, color: colors.textBright, attributes: TextAttributes.BOLD }, row.country, flagged);
       case "month":
         return { text: row.month ? formatBalanceMonth(row.month) : MISSING_VALUE, value: row.month, color: colors.textMuted };
       case "production":
-        return number(row.production);
+        return number("production");
       case "demand":
-        return number(row.demand);
+        return number("demand");
       case "imports":
-        return number(row.imports);
+        return number("imports");
       case "exports":
-        return number(row.exports);
+        return number("exports");
       case "stocks":
-        return number(row.stocks);
+        return number("stocks");
       case "unit":
         return { text: row.unit, color: colors.textDim };
       default:
         return { text: "" };
     }
-  }, [colors, flagged]);
+  }, [colors, digits, flagged]);
 
   if (!balances) {
     return (
