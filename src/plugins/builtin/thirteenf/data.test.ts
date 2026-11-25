@@ -11,7 +11,7 @@ import {
 } from "./api";
 import { ApiRequestError } from "../../../api-client/errors";
 import { corporateSplitFactor, createFundPrefetcher, prefetchFundDetail, loadBrowserRows as loadRankedRows, loadFilingGap, loadFilingPositions, loadFundDetail, loadFundPerformance, loadSplitFactors } from "./data";
-import { filingGapText } from "./report-notes";
+import { cappedHoldingsText, filingGapText } from "./report-notes";
 import { buildFundHoldingRows, comparedWith, comparedWithText, hasComparable13FQuarter } from "./model";
 import type { FundDetailData, ThirteenFFormSummary, ThirteenFHoldingRecord } from "./types";
 
@@ -507,6 +507,33 @@ test("a prior quarter the service refused says it did not load and when to try a
     expect(comparedWithText(detail)).toBe("previous quarter did not load, try again in 40 s");
     // A fund with no quarter before is still said so.
     expect(comparedWith({ ...detail, previousForm: null, previousReport: undefined, comparisonFailed: undefined }).value).toBe("No prior quarter");
+  } finally {
+    spy.mockRestore();
+  }
+});
+
+// Signed out, `fn 13F 0001603466` listed 50 of Point72's first 1,000 lines (issuers A to C) as if its largest, every
+// 13F %, QoQ and Est P&L blank, and said why only in a trailing "loaded 1000 of 3856" error.
+test("a filing read in part for the signed-out cap says so up front, weighs its lines against the filing's own total, and names the quarter it cannot compare", async () => {
+  const spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async (path: string, params: Record<string, unknown>) => {
+    if (path === "/forms") return [filedForm("current", "2026-09-30", 3_856), filedForm("previous", "2026-06-30", 3_923)];
+    if (path !== "/holdings") throw new Error(`unexpected ${path}`);
+    return { rows: holdingRows(String(params.accession_number), 0, 1_000), complete: false };
+  }) as never);
+  setHttpFetchTransport(async (url) => { throw new Error(`unexpected ${url}`); });
+  try {
+    const detail = await loadFundDetail("1603466", "Fund", undefined, { filingGap: false });
+    expect(detail.latestReport?.capped).toEqual({ loaded: 1_000, entries: 3_856 });
+    expect(detail.warnings).toEqual([
+      "Signed out, Gloom Cloud sends a filing's first 1,000 lines: 30 Sep 2026 is 1,000 of 3,856, in the filing's order, not the largest. Sign in for the whole book.",
+      "Signed out, Gloom Cloud sends a filing's first 1,000 lines: 30 Jun 2026 is 1,000 of 3,923, in the filing's order, not the largest. Sign in for the whole book.",
+    ]);
+    expect(cappedHoldingsText(detail)).toBe("Signed out, Gloom Cloud sends a filing's first 1,000 lines: these are 1,000 of the 3,856 lines filed, "
+      + "in the filing's order, not the fund's largest; 30 Jun 2026's are 1,000 of 3,923, so QoQ and Est P&L stay blank. Sign in for the whole book.");
+    // The filing's cover states its whole value: a line's weight is of that. No line is a buy or a sale.
+    const [top] = buildFundHoldingRows(detail).sort((left, right) => (right.value ?? 0) - (left.value ?? 0));
+    expect(top).toMatchObject({ value: 1_000, weight: 10, action: "unknown" });
+    expect(comparedWith(detail)).toEqual({ value: "2026-06-30", detail: "read in part, sign in for changes", tone: "warning" });
   } finally {
     spy.mockRestore();
   }

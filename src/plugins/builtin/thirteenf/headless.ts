@@ -6,7 +6,6 @@ import type {
   HeadlessPaneLoadArgs,
   HeadlessShotState,
 } from "../../../types/plugin";
-import { formatShortDate } from "../../../utils/datetime-format";
 import { servedFromSavedCopy } from "../../../data/saved-copies";
 import { normalizeCik, searchThirteenFFunds, TOP_FUNDS_MAX_LIMIT } from "./api";
 import { ApiRequestError } from "../../../api-client/errors";
@@ -18,6 +17,8 @@ import { coveredFund } from "../members/model";
 import { appendTickerHoldings, holdersTicker, loadCrowding, loadTickerHoldings, quarterFallbackText, type CrowdingRow, type TickerHoldings } from "./signals";
 import {
   AS_FILED_VALUE,
+  cappedHoldingsText,
+  cappedReadText,
   compareCrowding,
   crowdingForTicker,
   cutText,
@@ -82,7 +83,6 @@ import {
   formatPercentMaybe,
   formatRawPercentMaybe,
   formatShares,
-  FILING_DAY_FORMAT,
   formatWeightMaybe,
 } from "./format";
 import type {
@@ -119,11 +119,8 @@ const BROWSER_COLUMNS: HeadlessPaneColumn[] = [
     format: (value) => formatMoneyCompact(value == null ? null : Number(value)),
   },
   { key: "tableEntryTotal", header: "Rows", align: "right" },
-  {
-    key: "filedAsOfDate",
-    header: "Filed",
-    format: (value) => formatShortDate(typeof value === "string" ? value : null, FILING_DAY_FORMAT),
-  },
+  // The day as Period gives it, with its year: a fund that stopped filing did so years ago.
+  { key: "filedAsOfDate", header: "Filed", format: (value) => (typeof value === "string" && value) || MISSING_VALUE },
 ];
 
 /** What a 13F position report notes after its table: the filing's limits, and what the option marker means when option rows are shown. */
@@ -833,10 +830,15 @@ export function createThirteenFHeadless(
             type: positionType(row),
             actionLabel: holdingActionLabel(row),
           }));
+        // Signed out, a large filing's first lines alone: said before the table, not among its errors after it.
+        const capped = cappedHoldingsText(detail);
+        const cappedReads = capped
+          ? [detail.latestReport, detail.previousReport].flatMap((report) => (report?.capped ? [cappedReadText(report)] : [])) : [];
+        const errors = (detail.warnings ?? []).filter((warning) => !cappedReads.includes(warning));
         return {
           columns: HOLDING_COLUMNS,
           rows,
-          ...(detail.warnings?.length ? { errors: detail.warnings } : {}),
+          ...(errors.length ? { errors } : {}),
           notes: positionNotes(rows),
           // Dated by the filing that made the positions public, with the quarter they report beside it.
           ...(latestPeriod ? { freshness: {
@@ -865,6 +867,7 @@ export function createThirteenFHeadless(
                 ...(detail.comparisonFailed ? [`QoQ: ${comparedWithText(detail)}`] : []),
                 ...(nextFiling ? [`Next 13F ${nextFiling.quarter}, ${nextFiling.due}`] : []),
               ].filter(Boolean).join(" | "),
+              ...(capped ? [capped] : []),
               AS_FILED_VALUE,
               ...(restated ? [restated] : []),
               ...holdingSplitNotes(rows),

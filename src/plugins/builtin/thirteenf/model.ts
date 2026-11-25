@@ -700,6 +700,9 @@ export function estimateFilingQuarterReturn(data: FundDetailData, splits: SplitF
   return { percent: base > 0 ? (pnl / base) * 100 : null, splits: adjusted, skipped, skippedShare: skipped.length && book > 0 ? left / book : null };
 }
 
+/** The lines of a filing Gloom Cloud sends a reader who is not signed in: the first, in the filing's order. */
+export const SIGNED_OUT_FILING_ROWS = 1_000;
+
 export function hasComparable13FQuarter(data: FundDetailData): boolean {
   if (data.latestReport?.complete === false || data.previousReport?.complete === false) return false;
   // Until both quarters are in whole, a line one of them lacks is not a buy or a sale.
@@ -723,15 +726,21 @@ export function comparedWith(data: FundDetailData | null | undefined): {
   if (data && hasComparable13FQuarter(data)) return { value: data.previousForm!.periodOfReport };
   if (data?.comparisonFailed) {
     const seconds = data.comparisonFailed.retryAfterSeconds;
+    const again = seconds != null ? `try again in ${seconds} s` : "try again";
     return {
       value: "Previous quarter did not load",
-      detail: seconds != null ? `try again in ${seconds} s` : "try again",
+      detail: data.comparisonFailed.signIn ? `too many 13F reads without signing in: ${again}, or sign in` : again,
       tone: "warning",
     };
   }
   // The quarter the changes will compare with, dim until both are in.
   if (data?.loading && hasComparable13FQuarter({ ...data, loading: undefined })) {
     return { value: data.previousForm!.periodOfReport, tone: "muted" };
+  }
+  // On file, but a quarter loaded only its first lines (signed out): no change can be told from a line left unread.
+  if (data && !data.loading && (data.latestReport?.capped || data.previousReport?.capped)
+    && adjacentQuarterPeriods(data.latestForm?.periodOfReport, data.previousForm?.periodOfReport)) {
+    return { value: data.previousForm!.periodOfReport, detail: "read in part, sign in for changes", tone: "warning" };
   }
   return { value: "No prior quarter", tone: "muted" };
 }
@@ -742,7 +751,7 @@ export function comparedWithText(data: FundDetailData | null | undefined): strin
   return [compared.value, compared.detail].filter(Boolean).join(", ").replace(/^./, (first) => first.toLowerCase());
 }
 
-function adjacentQuarterPeriods(current: string | undefined, previous: string | undefined): boolean {
+export function adjacentQuarterPeriods(current: string | undefined, previous: string | undefined): boolean {
   if (!current || !previous) return false;
   const date = new Date(`${current}T00:00:00Z`);
   if (!Number.isFinite(date.getTime())) return false;
@@ -768,8 +777,9 @@ export function buildFundHoldingRows(data: FundDetailData | null, splits?: Split
   const moved = cusipSplits(current, previous, splits);
   for (const { previousId } of moved.values()) previous.delete(previousId);
   const allKeys = new Set([...current.keys(), ...previous.keys()]);
+  // A report read in part (signed out) still states its whole value: each line's weight is of that.
   const totalValue = data.latestReport
-    ? data.latestReport.complete ? data.latestReport.tableValueTotal : null
+    ? data.latestReport.complete || data.latestReport.capped ? data.latestReport.tableValueTotal : null
     : data.latestForm.tableValueTotal;
 
   return [...allKeys].map((id) => {
@@ -1036,7 +1046,7 @@ export function sortTimelineRows(
 export function buildBrowserColumns(withEstimate = true): FundBrowserColumn[] {
   const cikWidth = 12;
   const periodWidth = 10;
-  const filedWidth = 9;
+  const filedWidth = 10;
   const valueWidth = 11;
   const rowsWidth = 6;
   const retWidth = withEstimate ? 9 : 0;

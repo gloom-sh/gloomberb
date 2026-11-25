@@ -11,14 +11,17 @@ import {
   normalizeCik,
   retryAfterSeconds,
   searchThirteenFFunds,
+  thirteenFReadError,
 } from "./api";
 import { isoDateDaysAgo, isoDateToday, isoDateYearsAgo } from "../../../utils/calendar-date";
 import { abortable, OperationTimeoutError, withDeadline } from "../../../utils/async-deadline";
 import { logFailure } from "../../../utils/log-failure";
 import { quarterFallbackText } from "./signals";
+import { cappedReadText } from "./report-notes";
 import {
   amendmentKind,
   buildBrowserRows,
+  SIGNED_OUT_FILING_ROWS,
   filingGapFor,
   estimateFilingQuarterReturn,
   hasComparable13FQuarter,
@@ -721,14 +724,23 @@ export async function loadFundDetail(
       entries: form.tableEntryTotal,
       ...(index === 0 && onFirstRows ? { onFirstRows } : {}),
     })));
-    report.filings.forEach((form, index) => {
-      const rows = filings[index]!;
-      if (form.tableEntryTotal != null && rows.length !== form.tableEntryTotal) {
-        report.complete = false;
+    // Signed out, Gloom Cloud sends a filing's first SIGNED_OUT_FILING_ROWS lines: the report's totals stand, and it says so.
+    const reconciled = report.complete;
+    const short = report.filings.flatMap((form, index) => (
+      form.tableEntryTotal != null && filings[index]!.length !== form.tableEntryTotal ? [{ form, rows: filings[index]! }] : []));
+    const capped = reconciled && short.length > 0
+      && short.every(({ form, rows }) => rows.length === SIGNED_OUT_FILING_ROWS && form.tableEntryTotal! > rows.length);
+    if (short.length) report.complete = false;
+    if (capped) {
+      const loaded = filings.reduce((sum, rows) => sum + rows.length, 0);
+      report.capped = { loaded, entries: report.tableEntryTotal ?? loaded };
+      warnings.push(cappedReadText(report));
+    } else {
+      for (const { form, rows } of short) {
         warnings.push(`${report.periodOfReport}: loaded ${rows.length} of ${form.tableEntryTotal} disclosed entries for ${form.accessionNumber}.`);
       }
-    });
-    if (!report.complete && !warnings.some((warning) => warning.startsWith(report.periodOfReport))) {
+    }
+    if (!report.complete && !report.capped && !warnings.some((warning) => warning.startsWith(report.periodOfReport))) {
       warnings.push(`${report.periodOfReport}: amendment type or original report unavailable; disclosed entries cannot be reconciled into a full report.`);
     }
     return filings.flat();
@@ -746,7 +758,10 @@ export async function loadFundDetail(
     loadReport(previousReport).catch((error) => {
       if (signal?.aborted) throw error;
       if (previousReport) previousReport.complete = false;
-      parts.comparisonFailed = { retryAfterSeconds: retryAfterSeconds(error) };
+      // The service's signed-out limit says signing in lifts it, as the quarter's line then does.
+      const refused = thirteenFReadError(error);
+      const signIn = refused instanceof Error && /\bsign in\b/i.test(refused.message);
+      parts.comparisonFailed = { retryAfterSeconds: retryAfterSeconds(error), ...(signIn ? { signIn: true as const } : {}) };
       warnings.push(`${previousReport?.periodOfReport ?? "Prior quarter"}: holdings unavailable; comparison unavailable.`);
       return [];
     }).then((rows) => {

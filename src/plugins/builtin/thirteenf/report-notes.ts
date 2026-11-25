@@ -1,8 +1,8 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import type { CrowdingRow, TickerHolderRow } from "./signals";
 import { formatMoneyCompact } from "./format";
-import { formatSplitRatio } from "./model";
-import type { ThirteenFFilingGap, ThirteenFOtherManager } from "./types";
+import { adjacentQuarterPeriods, formatSplitRatio, SIGNED_OUT_FILING_ROWS } from "./model";
+import type { FundDetailData, ThirteenFFilingGap, ThirteenFOtherManager, ThirteenFPeriodReport } from "./types";
 
 /**
  * Summary lines for the 13F text reports. Each says which quarters the rows
@@ -58,6 +58,37 @@ export function filingDayText(date: string, omitYear?: number): string {
   if (!day) return date;
   const text = `${day.getUTCDate()} ${MONTHS[day.getUTCMonth()]}`;
   return day.getUTCFullYear() === omitYear ? text : `${text} ${day.getUTCFullYear()}`;
+}
+
+/**
+ * A quarter read in part because the reader is not signed in, in a fund's
+ * warnings: "Signed out, Gloom Cloud sends a filing's first 1,000 lines:
+ * 30 Sep 2026 is 1,000 of 3,856, in the filing's order, not the largest. Sign
+ * in for the whole book."
+ */
+export function cappedReadText(report: Pick<ThirteenFPeriodReport, "periodOfReport" | "capped">): string {
+  const { loaded, entries } = report.capped ?? { loaded: 0, entries: 0 };
+  return `Signed out, Gloom Cloud sends a filing's first ${count(SIGNED_OUT_FILING_ROWS)} lines: ${filingDayText(report.periodOfReport)} `
+    + `is ${count(loaded)} of ${count(entries)}, in the filing's order, not the largest. Sign in for the whole book.`;
+}
+
+/**
+ * What a fund's holdings say before their table when a quarter was read in
+ * part (cappedReadText): the lines shown are not the fund's largest, and QoQ
+ * and Est P&L stay blank until both quarters load whole. Null when neither
+ * was cut.
+ */
+export function cappedHoldingsText(data: Pick<FundDetailData, "latestReport" | "previousReport" | "latestForm" | "previousForm">): string | null {
+  const latest = data.latestReport?.capped;
+  const compared = adjacentQuarterPeriods(data.latestForm?.periodOfReport, data.previousForm?.periodOfReport);
+  const previous = compared ? data.previousReport?.capped : undefined;
+  if (!latest && !previous) return null;
+  const parts = [
+    latest ? `these are ${count(latest.loaded)} of the ${count(latest.entries)} lines filed, in the filing's order, not the fund's largest` : null,
+    previous ? `${filingDayText(data.previousReport!.periodOfReport)}'s are ${count(previous.loaded)} of ${count(previous.entries)}` : null,
+  ].filter(Boolean);
+  return `Signed out, Gloom Cloud sends a filing's first ${count(SIGNED_OUT_FILING_ROWS)} lines: ${parts.join("; ")}`
+    + `${compared ? ", so QoQ and Est P&L stay blank" : ""}. Sign in for the whole book.`;
 }
 
 /** Whole days from a quarter end to the filing, or null when either date is unreadable. */

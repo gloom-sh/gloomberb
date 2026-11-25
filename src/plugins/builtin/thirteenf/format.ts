@@ -1,4 +1,3 @@
-import type { ShortDateOptions } from "../../../utils/datetime-format";
 import { MISSING_VALUE, formatCompact, formatPercentRaw } from "../../../utils/format";
 import type { HoldingAction } from "./types";
 
@@ -29,8 +28,6 @@ export function formatRawPercentMaybe(value: number | null | undefined): string 
   return formatPercentRaw(value);
 }
 
-/** Filing dates are "YYYY-MM-DD" calendar days, shown as "Jan 5". */
-export const FILING_DAY_FORMAT: ShortDateOptions = { year: false, utc: true, fallback: MISSING_VALUE };
 
 export function actionLabel(action: HoldingAction): string {
   switch (action) {
