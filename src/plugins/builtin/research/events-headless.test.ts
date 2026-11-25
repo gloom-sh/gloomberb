@@ -14,11 +14,13 @@ describe("corporate actions headless model", () => {
   test("named ETF actions disqualify calendar EPS even without financials and keep splits and uncertain payout gaps", async () => {
     const symbol = "NIFTYBEES.NS";
     const fundArgs = { ...args, rawArgument: symbol, argument: symbol, symbols: [symbol] };
+    let analystReads = 0;
     const marketData = createTestDataProvider({
       getCorporateActions: async () => ({ symbol, name: "Nippon India ETF Nifty 50 BeES", exchange: "NSE", currency: "INR",
         coverage: { dividends: "unavailable" }, splits: [{ date: "2020-03-02", fromFactor: 1, toFactor: 10 }],
         dividends: [{ exDate: "2019-02-18", amount: 0.8 }, { exDate: "2021-02-18", amount: 0.5 }], earnings: [] }),
       getTickerFinancials: async () => { throw new Error("Financials source timed out"); },
+      getAnalystResearch: async () => { analystReads++; throw new Error("Analyst source unavailable"); },
       getEarningsCalendar: async () => [{ symbol, name: "Nifty 50 BeES", earningsDate: new Date("2099-03-01"), isDateEstimate: true,
         epsEstimate: 6, epsActual: null, revenueEstimate: null, revenueActual: null, surprise: null, timing: "" }],
     });
@@ -32,6 +34,7 @@ describe("corporate actions headless model", () => {
     const estimates = await createEarningsEstimatesHeadless().load(fundArgs, context);
     expect(estimates.rows).toEqual([]);
     expect(estimates.metadata?.nextUp).toBeUndefined();
+    expect(analystReads).toBe(0);
   });
   test("keeps successful events while reporting failed estimates and statements", async () => {
     const marketData = createTestDataProvider({

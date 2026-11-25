@@ -3,6 +3,7 @@ import { afterEach, expect, setSystemTime, test } from "bun:test";
 import { act, useState } from "react";
 import { apiClient, setCloudApiFetchTransport, type CloudEarningsCallPayload, type CloudEarningsTranscriptPayload } from "../../../api-client";
 import { createDomUiHost } from "../../../renderers/dom/dom-ui-host";
+import { WebDialogHostProvider } from "../../../renderers/dom/dialog-host";
 import { WebInputHostProvider } from "../../../renderers/dom/input-host";
 import { createDomTestHarness } from "../../../renderers/dom/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
@@ -12,6 +13,7 @@ import { noopRendererHost } from "../../../test-support/renderer-host";
 import { UiHostProvider } from "../../../ui";
 import { resetEarningsCallsPersistence } from "./data";
 import { EarningsCallsPane } from "./pane";
+import { CALLS_VIEWS, UpcomingCallsView } from "./calendar";
 
 const dom = createDomTestHarness({ withUi: false });
 const runtime = createTestPluginRuntime();
@@ -35,7 +37,7 @@ const TRANSCRIPT: CloudEarningsTranscriptPayload = {
   analystFocus: null, sentimentRationale: null, qaStartTurn: 2, asrModel: null, updatedAt: "2026-08-02",
 };
 
-function Harness({ symbol }: { symbol?: string } = {}) {
+function Harness({ symbol, upcoming }: { symbol?: string; upcoming?: boolean } = {}) {
   const [paneState, setPaneState] = useState<AppState["paneState"]>({
     "calls:test": { pluginState: { research: { view: "transcripts", detailOpen: !symbol, selectedId: symbol ? null : CALL.id, readerTab: "transcript" } } },
   });
@@ -48,11 +50,13 @@ function Harness({ symbol }: { symbol?: string } = {}) {
   const dispatch = (action: AppAction) => setPaneState((current) => appReducer({ ...state, paneState: current }, action).paneState);
   return (
     <UiHostProvider ui={createDomUiHost("linux")} renderer={noopRendererHost}>
-      <WebInputHostProvider>
+      <WebInputHostProvider><WebDialogHostProvider>
         <TestPaneFrame state={state} dispatch={dispatch} paneId="calls:test" pluginId="research" runtime={runtime} width={100} height={30} footerKeys>
-          {(body) => <EarningsCallsPane focused {...body} />}
+          {(body) => upcoming
+            ? <UpcomingCallsView {...body} focused view={{ value: "upcoming", options: CALLS_VIEWS, onChange: () => {} }} renderCompany={() => null} />
+            : <EarningsCallsPane focused {...body} />}
         </TestPaneFrame>
-      </WebInputHostProvider>
+      </WebDialogHostProvider></WebInputHostProvider>
     </UiHostProvider>
   );
 }
@@ -90,6 +94,18 @@ afterEach(() => {
   setCloudApiFetchTransport(null);
   apiClient.setSessionToken(null);
   resetEarningsCallsPersistence();
+});
+
+test.each([false, true])("Calls marks both its Pro sign-in and email gates (upcoming: %s)", async (upcoming) => {
+  apiClient.setSessionToken(null);
+  const root = await dom.render(<Harness upcoming={upcoming} />);
+  const gate = () => root.querySelector('[data-gloom-ui="sign-in-wall"]');
+  expect(gate()?.getAttribute("data-gloom-sign-in")).toBe("pro");
+  await act(async () => {
+    apiClient.setSessionToken("fixture-session");
+    apiClient.restoreCachedUser({ id: "fixture", emailVerified: false, plan: "pro" } as never);
+  });
+  expect(gate()?.getAttribute("data-gloom-sign-in")).toBe("verify-email");
 });
 
 for (const symbol of ["DWSN", "7203:JPX"]) {

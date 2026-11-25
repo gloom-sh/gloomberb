@@ -275,6 +275,7 @@ export interface DesktopPaneShotRenderResult {
   cutColumns?: string[];
   /** A wall that needs an account, or a Pro lock on part of the pane. */
   accessGate?: PaneAccessGate | null;
+  signInGate?: "verify-email" | "pro" | "free";
   /**
    * The blocks of text with a figure in them that the pane's body shows
    * outside its controls, chrome, notices, charts and labels
@@ -1229,6 +1230,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
         // The shared sign-in wall and the Pro lock prompt every gated pane draws.
         accessGate: [...root.querySelectorAll('[data-gloom-ui="sign-in-wall"]')].some(isVisible) ? "sign-in"
           : [...root.querySelectorAll('[data-gloom-ui="pro-lock"]')].some(isVisible) ? "pro" : "",
+        signInGate: [...root.querySelectorAll('[data-gloom-sign-in]')].find(isVisible)?.getAttribute("data-gloom-sign-in"),
         rows,
         truncated: truncationReasons.size > 0,
         truncationReasons: [...truncationReasons],
@@ -1259,6 +1261,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
         contentFigures?: number;
         cutColumns?: unknown;
         accessGate?: string;
+        signInGate?: string;
         rows?: DesktopPaneShotRenderedRow[];
         truncated?: boolean;
         truncationReasons?: string[];
@@ -1277,8 +1280,9 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
   const loadingStateMarkers = markers.loading;
   const errorStateMarkers = markers.error;
   const emptyStateMarkers = markers.empty;
-  const accessGate: PaneAccessGate | null = value?.accessGate === "sign-in" || markers.signIn ? "sign-in"
-    : value?.accessGate === "pro" || markers.pro ? "pro" : null;
+  const accessGate: PaneAccessGate | null = value?.accessGate === "sign-in" || value?.accessGate === "pro" ? value.accessGate
+    : markers.signIn ? "sign-in" : markers.pro ? "pro" : null;
+  const signInGate = value?.signInGate;
   const rows = Array.isArray(value?.rows) ? value.rows : [];
   const textShowsEllipsis = rows.some((row) => row.cells.some((cell) => /\u2026|\.\.\./.test(cell.text)));
   const truncationReasons = Array.isArray(value?.truncationReasons)
@@ -1316,6 +1320,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
     ...(Array.isArray(value?.emptyStateText) && value.emptyStateText.length > 0
       ? { emptyStateText: value.emptyStateText.filter((line): line is string => typeof line === "string" && line.length > 0) } : {}),
     accessGate,
+    ...(signInGate === "verify-email" || signInGate === "pro" || signInGate === "free" ? { signInGate } : {}),
     ...shotStateText(value?.stateText),
     ...(typeof value?.contentFigures === "number" ? { contentFigures: value.contentFigures } : {}),
     ...(Array.isArray(value?.cutColumns) && value.cutColumns.length > 0

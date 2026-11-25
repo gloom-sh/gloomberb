@@ -10,7 +10,7 @@ import { formatMarketPrice, formatSignedMarketPrice, liveQuoteFormatOptions } fr
 import { getRegularSessionDisplay } from "../../../market-data/market/status";
 import { chainOptionContract, formatExpDate, formatStrikeLabel, optionContractName, resolveOptionsTarget } from "../../../utils/options";
 import {
-  expiryIsoDate, findListedExpiry, formatDaysToExpiry, daysToExpiry, isLiveOptionExpiry, missingExpiryMessage, missingExpiryText, optionExpiryVenue,
+  expiryIsoDate, findListedExpiry, formatDaysToExpiry, isLiveOptionExpiry, missingExpiryMessage, missingExpiryText, optionExpiryVenue,
   readOptionExpiration,
 } from "../../../utils/option-expiry";
 import { canonicalTickerKey, displayTickerKey } from "../../../utils/exchanges";
@@ -73,6 +73,7 @@ import {
   resolveChainRefreshIntervalMs,
 } from "./live-quotes";
 import { useOptionsAccessFooter } from "./footer";
+import { optionExpiryFacts, optionSnapshotFreshness } from "../shared/volatility/option-snapshot";
 import { AnalyticsAsOfDialog, analyticsAsOfRows } from "./analytics-as-of";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { signedPositionDirection } from "../../../portfolio/position-metrics";
@@ -88,7 +89,7 @@ import { useOptionsSessionOpen, useThrottledValue } from "../shared/volatility/l
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { optionCarry, optionCostOfSpot } from "./carry";
 import {
-  formatModelSpotPrice, modelSpotExtendedPrint, modelSpotLabel, modelSpotStamp, modelSpotStampVariants, optionModelSpot,
+  formatModelSpotPrice, formatSpotTime, modelSpotExtendedPrint, modelSpotLabel, modelSpotStamp, modelSpotStampVariants, optionModelSpot,
   type OptionModelSpot,
 } from "./model-spot";
 import { chainOpenInterestAsOf, loadListedOpenInterest, openInterestAsOfLabel, readListedOpenInterest, statedOpenInterestAsOf, volumeSessionLabel } from "./open-interest-as-of";
@@ -488,20 +489,19 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
       ? ["The delta window needs a current underlying quote; showing every strike."]
       : strikeWindowResult.fallback === "no-price" ? ["No price to centre the strike window on; showing every strike."] : [] });
   // What the chain shows, in every renderer and in its reports: the expiry
-  // and its days left from the chain's as-of, beside the chain's own feed.
+  // and its calendar days left today, beside the chain's own dated feed.
   // Published ahead of the strike window, so a report names the expiry first.
   const asOfChain = strikeChain ?? chain;
   const chainAsOfMs = asOfChain?.asOf ? Date.parse(asOfChain.asOf) : Number.NaN;
-  const expiryAsOfMs = Number.isFinite(chainAsOfMs) ? chainAsOfMs : Date.now();
-  const expiryDate = selectedExpiration == null ? "" : expiryIsoDate(selectedExpiration);
-  const expiryDays = selectedExpiration == null ? "" : formatDaysToExpiry(selectedExpiration, expiryAsOfMs, expiryVenue);
-  useRemoteUiNode(expiryDate && chain && !expirationUnavailable ? {
+  const expiry = selectedExpiration == null ? null : optionExpiryFacts(selectedExpiration, now, expiryVenue);
+  const expiryDays = selectedExpiration == null ? "" : formatDaysToExpiry(selectedExpiration, now, expiryVenue);
+  useRemoteUiNode(expiry && chain && !expirationUnavailable ? {
     role: "report-notice",
     label: "Expiry",
     getMetadata: () => ({
-      text: `Expiry ${expiryDate} (${expiryDays})`,
+      text: `Expiry ${expiry.date} (${expiryDays})`,
       key: "expiry",
-      value: { date: expiryDate, daysToExpiry: daysToExpiry(selectedExpiration!, expiryAsOfMs) },
+      value: expiry,
     }),
   } : null);
   // `fn OMON --expiration` on a date the chain cannot show fails as `options --expiration` does.
@@ -512,18 +512,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   } : null);
   // A refresh that failed keeps the last chain, which is then stale.
   const asOfEntry = strikeChain == null ? null : strikeChain === expirationChain ? expirationChainEntry : initialChainEntry;
-  const chainDelay = asOfChain?.delayMinutes ?? 0;
-  const chainStatus = asOfEntry?.error != null ? "stale" as const
-    : asOfChain?.dataSource ?? (chainDelay > 0 ? "delayed" as const : undefined);
-  useRemoteUiNode(asOfChain ? {
-    role: "report-freshness",
-    label: "Chain freshness",
-    getMetadata: () => ({
-      ...(asOfChain.asOf ? { asOf: asOfChain.asOf } : {}),
-      ...(chainStatus ? { status: chainStatus } : {}),
-      ...(chainDelay > 0 ? { delayMinutes: chainDelay } : {}),
-    }),
-  } : null);
+  const snapshot = asOfChain ? optionSnapshotFreshness(asOfChain, now, expiryVenue, asOfEntry?.error != null) : null;
   // A report of the pane (`gloom fn OMON`) says how many strikes it lists of how many the expiry has.
   useRemoteUiNode(strikeChain ? {
     role: "report-notice",
@@ -591,10 +580,41 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   // analytics) reads this chain rather than the snapshot.
   // The snapshot object itself comes back while nothing streamed, so the
   // memos below only recompute when a quote actually landed.
-  const liveChain = useMemo(
-    () => strikeChain ? overlayOptionChainQuotes(strikeChain, optionQuoteEntries, optionQuoteFreshness, optionQuoteBroker).chain : null,
+  const overlay = useMemo(
+    () => strikeChain ? overlayOptionChainQuotes(strikeChain, optionQuoteEntries, optionQuoteFreshness, optionQuoteBroker) : null,
     [optionQuoteEntries, optionQuoteFreshness, strikeChain, optionQuoteBroker],
   );
+  const liveChain = overlay?.chain ?? null;
+  const optionQuoteCoverage = useMemo(
+    () => resolveOptionQuoteCoverage(optionQuoteTargets, optionQuoteEntries, optionQuoteFreshness, overlay?.liveBookTimes),
+    [optionQuoteEntries, optionQuoteFreshness, optionQuoteTargets, overlay?.liveBookTimes],
+  );
+  const { status: quoteStatus, oldestLiveAt, liveCount, totalCount } = optionQuoteCoverage;
+  const fullLive = quoteStatus === "live" && oldestLiveAt != null;
+  useRemoteUiNode(snapshot ? {
+    role: "report-freshness",
+    label: "Option quotes",
+    getMetadata: () => fullLive ? {
+      status: "live",
+      asOf: new Date(oldestLiveAt).toISOString(),
+      asOfLabel: "Visible bids/asks",
+      observations: [{ updatedAt: oldestLiveAt, dataSource: "live", stale: false }],
+    }
+      : quoteStatus === "mixed" ? { ...snapshot, asOfLabel: "Stored snapshot" } : snapshot,
+  } : null);
+  useRemoteUiNode(snapshot && liveCount > 0 ? {
+    role: "report-notice",
+    label: "Quote coverage",
+    getMetadata: () => {
+      const stored = snapshot.asOf ? `Stored snapshot ${formatSpotTime(Date.parse(snapshot.asOf))}${snapshot.status === "stale" ? " (stale)" : ""}.`
+        : "Stored snapshot time not reported.";
+      return {
+        text: `${fullLive ? "Visible bids/asks are real-time." : "Visible bids/asks mix real-time and snapshot quotes."} ${stored}`,
+        key: "quoteCoverage",
+        value: { status: quoteStatus, liveCount, totalCount, snapshot },
+      };
+    },
+  } : null);
   // IV and the Greeks are valued at one spot and instant, which the footer
   // names: the close a chain from the close was quoted against, else the
   // latest price (docs/research-data.md#greeks-spot-and-time).
@@ -655,7 +675,8 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     role: "report-notice",
     label: "Greeks spot",
     getMetadata: () => ({
-      text: `Greeks at spot ${formatModelSpotPrice(modelSpot.price)} (${modelSpotLabel(modelSpot)})`,
+      text: `Greeks at spot ${formatModelSpotPrice(modelSpot.price)} (${modelSpotLabel(modelSpot)})`
+        + (snapshot?.status === "stale" ? ` · valuation ${formatSpotTime(modelSpot.valuationTime)}` : ""),
       key: "greeksSpot",
       value: { spot: modelSpot.price, basis: modelSpot.basis === "close" ? "close" : modelSpot.session ?? "last",
         asOf: new Date(modelSpot.observedAt).toISOString(), valuationTime: new Date(modelSpot.valuationTime).toISOString() },
@@ -770,14 +791,6 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
       title: analyticsAsOfRows(enrichment).map((row) => `${row.label}: ${row.value}`).join("\n"),
       parts: [{ text: `Analytics ${enrichment.asOf.slice(0, 16).replace("T", " ")} UTC`, tone: "muted" as const }] }] : []),
   ] }), [enrichmentState.loading, enrichment]);
-  const optionQuoteCoverage = useMemo(
-    () => resolveOptionQuoteCoverage(
-      optionQuoteTargets,
-      optionQuoteEntries,
-      optionQuoteFreshness,
-    ),
-    [optionQuoteEntries, optionQuoteFreshness, optionQuoteTargets],
-  );
   const optionColumns = useMemo<OptionColumn[]>(() => createOptionColumns(shownFieldIds).map((column) => ({
     ...column,
     headerColor: optionColumnColor(column, colors.panel),
@@ -946,6 +959,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   useOptionsAccessFooter({
     broker: !!optionQuoteBroker,
     chain,
+    snapshot,
     unserved,
     error: unserved ? null : [error, underlyingStale ? "Underlying quote stale: Greeks and calculator unavailable" : null,
       selectedContract && strikeChain && !selectedContractAvailable
