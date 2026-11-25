@@ -90,7 +90,7 @@ export function CryptoEtfFlowsPane({ focused, width, height }: PaneProps) {
     const points = cumulativeFlows(data).filter((point) => point.date >= first)
       .map((point) => scalarPoint(new Date(`${point.date}T00:00:00Z`), point.value * 1_000_000));
     const launch = data.days.at(-1)?.date;
-    return [staticSeries(points, { id: `etf-flows:${asset}`, label: `${label} ETF net flows since ${launch ?? "launch"}`, color: colors.positive, calendarSpaced: true })];
+    return [staticSeries(points, { id: `etf-flows:${asset}`, label: `${label} ETF net flows since ${launch ? formatDay(launch) : "launch"}`, color: colors.positive, calendarSpaced: true })];
   }, [asset, data, days, label]);
   const link = useChartTableSelection({ rows: days, getId: rowId, getDate: rowDate, selectedId, onSelect: selectDay, focused });
 

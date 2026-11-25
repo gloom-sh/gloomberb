@@ -16,7 +16,7 @@ test("a row says what the filing reports: 8-K items in words, a periodic report'
   expect(getFilingColumnText(filing("8-K", { items: "2.02,9.01" }))).toBe("Results of operations");
   expect(getFilingColumnText(filing("8-K/A", { items: "5.02" }))).toBe("Officer or director change (amended)");
   expect(getFilingColumnText(filing("8-K", { items: "9.01" }))).toBe("Exhibits");
-  expect(getFilingColumnText(filing("10-Q", { primaryDocument: "aapl-20260627.htm" }))).toBe("Quarterly Report, period ended 2026-06-27");
+  expect(getFilingColumnText(filing("10-Q", { primaryDocument: "aapl-20260627.htm" }))).toBe("Quarterly Report, period ended 27 Jun 2026");
   // A document date after the filing is not a period end.
   expect(getFilingColumnText(filing("10-Q", { primaryDocument: "aapl-20261231.htm" }))).toBe("Quarterly Report");
   expect(getFilingColumnText(filing("SD"))).toBe("Conflict Minerals Report");
@@ -63,7 +63,7 @@ const PROPOSED_SALE = `<ns2:edgarSubmission xmlns:ns2="http://www.sec.gov/edgar/
 test("XML filings read for their rows: a 144 names the seller and size, a 24F-2NT the year's net flow", () => {
   expect(rowSummary("144", PROPOSED_SALE)).toEqual({ title: "John Ternus: proposed sale of 25.4k shares ($8.48M)", direction: null });
   expect(rowSummary("24F-2NT", FUND_FLOWS)).toEqual({
-    title: "Year to 2025-09-30: net flow -$3.8B (sold $992.59B, redeemed $996.39B)",
+    title: "Year to 30 Sep 2025: net flow -$3.8B (sold $992.59B, redeemed $996.39B)",
     direction: "sell",
   });
   expect(rowSummary("8-K", PROPOSED_SALE)).toBeNull();

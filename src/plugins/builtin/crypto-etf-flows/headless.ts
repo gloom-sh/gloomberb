@@ -36,25 +36,25 @@ function flowColumns(payload: CryptoEtfFlowsPayload): HeadlessPaneColumn[] {
   ];
 }
 
-/** "Net flows of the US spot bitcoin ETFs in US$ millions. 2026-10-19 to 2026-10-23: +$301.20M over 5 trading days." */
+/** "Net flows of the US spot bitcoin ETFs in US$ millions. 19 Oct 2026 to 23 Oct 2026: +$301.20M over 5 trading days." */
 function windowSummaryLine(payload: CryptoEtfFlowsPayload, window: PriceWindow, days: CryptoEtfFlowsPayload["days"]): string {
   const total = days.some((day) => day.total != null) ? days.reduce((sum, day) => sum + (day.total ?? 0), 0) : null;
   return `Net flows of the US spot ${cryptoEtfFlowAssetLabel(payload.asset).toLowerCase()} ETFs in US$ millions. ${formatDay(window.from)} to ${formatDay(window.to)}: `
     + `${formatFlowAmount(total)} over ${days.length} trading ${days.length === 1 ? "day" : "days"}.`;
 }
 
-/** "Net flows of the US spot bitcoin ETFs in US$ millions. 2026-10-20: -$6.70M (IBIT pending); 5 days ..., since 2024-01-11 +$57.47B." */
+/** "Net flows of the US spot bitcoin ETFs in US$ millions. 20 Oct 2026: -$6.70M (IBIT pending); 5 days ..., since 11 Jan 2024 +$57.47B." */
 function summaryLine(payload: CryptoEtfFlowsPayload): string {
   const summary = cryptoEtfFlowSummary(payload);
   const pending = pendingText(summary.latest);
   return [
     `Net flows of the US spot ${cryptoEtfFlowAssetLabel(payload.asset).toLowerCase()} ETFs in US$ millions.`,
-    `${summary.latest?.date ?? payload.asOf}: ${formatFlowAmount(summary.latest?.total)}${pending ? ` (${pending})` : ""};`,
+    `${formatDay(summary.latest?.date ?? payload.asOf)}: ${formatFlowAmount(summary.latest?.total)}${pending ? ` (${pending})` : ""};`,
     [
       // A day still pending is left out of the rolling sums, which say the day they end on.
       summary.week != null ? `5 days${summary.through ? ` through ${formatDay(summary.through)}` : ""} ${formatFlowAmount(summary.week)}` : null,
       summary.month != null ? `20 days${summary.through ? ` through ${formatDay(summary.through)}` : ""} ${formatFlowAmount(summary.month)}` : null,
-      summary.firstDate ? `since ${summary.firstDate} ${formatFlowAmount(summary.sinceLaunch)}` : null,
+      summary.firstDate ? `since ${formatDay(summary.firstDate)} ${formatFlowAmount(summary.sinceLaunch)}` : null,
     ].filter(Boolean).join(", ") + ".",
   ].join(" ");
 }

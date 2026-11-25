@@ -151,7 +151,7 @@ test("a short history pane keeps the filings and shrinks the chart to a strip", 
   expect(lines[1]).toContain("● Principal total");
   expect(lines[1]).toContain("210.00M");
   expect(lines[2]).toContain("AS OF");
-  for (const date of ["2025-06-30", "2024-06-30", "2023-06-30", "2022-06-30"]) {
+  for (const date of ["30 Jun 2025", "30 Jun 2024", "30 Jun 2023", "30 Jun 2022"]) {
     expect(lines.some((line) => line.includes(date))).toBe(true);
   }
 });
@@ -168,10 +168,10 @@ test("a newer 10-Q is a dated figure row of its own, and every filing's year lab
   debtMaturitiesCache.reset();
   const lines = await render(94, 30);
   // Named by its period; the filed date beside the figures where it fits.
-  const row = lines.find((line) => line.includes("10-Q 2025-12-31"));
-  expect(row).toMatch(/10-Q 2025-12-31 +Current 212\.00M · Non-current 6\.84B USD  filed 2026-02-10/);
+  const row = lines.find((line) => line.includes("10-Q 31 Dec 2025"));
+  expect(row).toMatch(/10-Q 31 Dec 2025 +Current 212\.00M · Non-current 6\.84B USD  filed 10 Feb 2026/);
   // The schedule's own date is still said once, apart from the 10-Q's.
-  expect(lines.find((line) => line.includes("As of"))).toContain("2025-06-30");
+  expect(lines.find((line) => line.includes("As of"))).toContain("30 Jun 2025");
   // The idle legend reads the newest filing, and each fiscal year sits under the chart once, in order.
   expect(lines.find((line) => line.includes("Due next 12 months"))).toContain("4.8%");
   const axis = lines.find((line) => /^\s*2022\s/.test(line))!;

@@ -1,3 +1,4 @@
+import { formatDay } from "../../../utils/day-format";
 import {
   FINANCIAL_VINTAGE_NOTICE, fillDate, filledPeriodPublications, filledPeriodsNote, hasOlderStatements, reportsHalfYearly, stalePeriodNote,
   statementHistoryNotes,
@@ -821,7 +822,7 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     const closes = shown.map((row) => ({ date: isDailyOrLongerBar(size) ? barCloseSession(size, row.date, venue, now) : row.date, close: row.close }));
     // A window's last week can close after the dates asked for: the fall is measured to its end.
     const { drawdown, runUp, lines: moveLines } = closeMoves(closes, drawdownScaleOf(symbol), { basis: `${historyBarSizeWord(size)} closes`,
-      price: (value) => formatBarPrice(value, decimals), date: (value) => isDailyOrLongerBar(size) ? value.slice(0, 10) : formatUtcTime(value) }, window?.to);
+      price: (value) => formatBarPrice(value, decimals), date: (value) => isDailyOrLongerBar(size) ? formatDay(value.slice(0, 10)) : formatUtcTime(value) }, window?.to);
     // A wick left out of the range is said, though the bar's close still counts.
     const wickNotice = priceHistoryWickNotice(points.filter((point) => pricePointWickFlags(point).length > 0).length);
     // As are bars the source served in the wrong unit, shown scaled back.
@@ -903,11 +904,11 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
     const rows = forming || dayToDate ? [...unmarked.slice(0, -1), { ...unmarked.at(-1)!, partial: true }] : unmarked;
     const price = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(decimals) : MISSING_VALUE;
     // The largest fall from a close to a later one in the window, said under the title; a yield's in bp, with its largest rise.
-    // A week's or month's close is dated by its last session, not the 1st its bar is dated by ("peak 35.70 on 2026-03-31").
+    // A week's or month's close is dated by its last session, not the 1st its bar is dated by ("peak 35.70 on 31 Mar 2026").
     const closes = unmarked.map((row) => ({ date: intraday ? row.time : barCloseSession(series.resolution, row.time, venue, now), close: row.close }));
     // A week still forming runs to today, and a window's last week can close after the dates asked for: the fall is measured to their end.
     const { drawdown, runUp, lines: moveLines } = closeMoves(closes, drawdownScaleOf(symbol),
-      { basis: `${BAR_INTERVAL_LABELS[series.resolution]} closes`, price, date: (value) => intraday ? formatUtcTime(value) : value.slice(0, 10) }, window?.to);
+      { basis: `${BAR_INTERVAL_LABELS[series.resolution]} closes`, price, date: (value) => intraday ? formatUtcTime(value) : formatDay(value.slice(0, 10)) }, window?.to);
     const figures: HeadlessPaneColumn[] = [
       { key: "close", header: "Price", align: "right", format: price },
       { key: "intervalChange", header: "Int $", align: "right", format: price },
