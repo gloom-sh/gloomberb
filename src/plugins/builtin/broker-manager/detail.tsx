@@ -1,7 +1,8 @@
 import { useEffect, useRef, type Ref } from "react";
 import { Box, ScrollBox, Text, TextAttributes, useNativeRenderer, useUiCapabilities, type BoxRenderable, type ScrollBoxRenderable } from "../../../ui";
-import { Button, FieldLabel, NumberField, SectionHeading, SegmentedControl, TextField, useFieldRing } from "../../../components";
+import { Button, Checkbox, FieldLabel, NumberField, SectionHeading, SegmentedControl, TextField, useFieldRing } from "../../../components";
 import { afterLayout, revealInScrollBox } from "../../../components/ui/reveal-in-scroll-box";
+import type { AccountInclusion } from "../../../brokers/account-choice";
 import {
   PRESERVED_PASSWORD_HINT,
   type BrokerProfileDraft,
@@ -11,7 +12,7 @@ import type { BrokerAdapter, BrokerConfigField } from "../../../types/broker";
 import type { BrokerInstanceConfig } from "../../../types/config";
 import type { BrokerAccount } from "../../../types/trading";
 import { formatRelativeAge } from "../../../utils/datetime-format";
-import { formatCurrency } from "../../../utils/format";
+import { clipToDisplayWidth, formatCurrency } from "../../../utils/format";
 import { ClippedText } from "../../../components/ui/display";
 import { t, tf } from "../../../i18n";
 import type { BrokerProfileRow } from "./model";
@@ -20,6 +21,18 @@ import { signInEndNote } from "./sign-in-end";
 import { brokerRowStatus } from "./table";
 
 export type BrokerEditKey = "label" | "enabled" | "localOnly" | string;
+
+/** An account's checkbox in the edit form, one field of its ring each. */
+const ACCOUNT_EDIT_KEY = "account:";
+
+export function accountEditKey(accountId: string): BrokerEditKey {
+  return `${ACCOUNT_EDIT_KEY}${accountId}`;
+}
+
+/** The account an edit key ticks, or null for any other field. */
+export function editKeyAccountId(key: BrokerEditKey): string | null {
+  return key.startsWith(ACCOUNT_EDIT_KEY) ? key.slice(ACCOUNT_EDIT_KEY.length) : null;
+}
 
 type RowRef = (node: BoxRenderable | null) => void;
 
@@ -109,9 +122,11 @@ export function BrokerProfileForm({
   draft,
   fields,
   previous,
+  accountChoices = [],
   activeKey,
   busy,
   width,
+  rowWidth = width,
   scope,
   paneFocused,
   submitLabel,
@@ -122,6 +137,7 @@ export function BrokerProfileForm({
   onLabelChange,
   onEnabledChange,
   onLocalOnlyChange,
+  onAccountToggle,
   onValueChange,
   onSubmit,
   onCancel,
@@ -130,10 +146,14 @@ export function BrokerProfileForm({
   draft: BrokerProfileDraft;
   fields: BrokerConfigField[];
   previous: BrokerInstanceConfig | null;
+  /** Editing only: the profile's accounts to keep or leave out, for a profile with several. */
+  accountChoices?: readonly AccountInclusion[];
   activeKey: BrokerEditKey;
   busy: string | null;
   /** Columns a text field may take. */
   width: number;
+  /** Columns a checkbox row may take: the detail's. */
+  rowWidth?: number;
   /** The form's shortcut scope, shared with the pane's field ring. */
   scope: string;
   /** The form's fields take keys only while the pane has the keyboard. */
@@ -150,10 +170,14 @@ export function BrokerProfileForm({
   /** Editing only: a new profile starts enabled. */
   onEnabledChange?: (enabled: boolean) => void;
   onLocalOnlyChange: (localOnly: boolean) => void;
+  /** Ticks or unticks an account of `accountChoices`. */
+  onAccountToggle?: (accountId: string) => void;
   onValueChange: (key: string, value: string) => void;
   onSubmit: () => void;
   onCancel: () => void;
 }) {
+  const excluded = new Set(draft.excludedAccountIds);
+  const desktop = useUiCapabilities().nativePaneChrome === true;
   return (
     <>
       <Box ref={rowRef("label")} onMouseDown={() => onActiveKeyChange("label")}>
@@ -199,6 +223,30 @@ export function BrokerProfileForm({
           onSubmit={onSubmit}
         />
       ))}
+      {accountChoices.length > 0 && onAccountToggle ? (
+        <Box flexDirection="column">
+          <FieldLabel label={t("Accounts")} />
+          {accountChoices.map((choice) => {
+            const key = accountEditKey(choice.accountId);
+            return (
+              <Box key={key} ref={rowRef(key)} onMouseDown={() => onActiveKeyChange(key)}>
+                <Checkbox
+                  label={choice.name}
+                  // A terminal row keeps to one line: "> [x] " and the name, cut to fit.
+                  displayLabel={desktop ? undefined : clipToDisplayWidth(choice.name, Math.max(1, rowWidth - 6))}
+                  checked={!excluded.has(choice.accountId)}
+                  active={paneFocused && activeKey === key}
+                  width={rowWidth}
+                  onChange={() => {
+                    onActiveKeyChange(key);
+                    onAccountToggle(choice.accountId);
+                  }}
+                />
+              </Box>
+            );
+          })}
+        </Box>
+      ) : null}
       <Box ref={rowRef("localOnly")} flexDirection="column" onMouseDown={() => onActiveKeyChange("localOnly")}>
         <FieldLabel label={t("Account data")} active={activeKey === "localOnly"} />
         <SegmentedControl
@@ -237,6 +285,7 @@ export function profileFieldWidth(width: number): number {
 export function BrokerDetailContent({
   row,
   accounts,
+  accountChoices,
   editDraft,
   editFields,
   activeEditKey,
@@ -251,12 +300,15 @@ export function BrokerDetailContent({
   onDraftLabelChange,
   onDraftEnabledChange,
   onDraftLocalOnlyChange,
+  onDraftAccountToggle,
   onDraftValueChange,
   onSaveEdit,
   onCancelEdit,
 }: {
   row: BrokerProfileRow | null;
   accounts: BrokerAccount[];
+  /** The profile's accounts to keep or leave out; none for a profile with one. */
+  accountChoices: readonly AccountInclusion[];
   editDraft: BrokerProfileDraft | null;
   editFields: BrokerConfigField[];
   activeEditKey: BrokerEditKey;
@@ -276,6 +328,7 @@ export function BrokerDetailContent({
   onDraftLabelChange: (label: string) => void;
   onDraftEnabledChange: (enabled: boolean) => void;
   onDraftLocalOnlyChange: (localOnly: boolean) => void;
+  onDraftAccountToggle: (accountId: string) => void;
   onDraftValueChange: (key: string, value: string) => void;
   onSaveEdit: () => void;
   onCancelEdit: () => void;
@@ -327,6 +380,7 @@ export function BrokerDetailContent({
       : row.state === "sign-in" || row.state === "disabled" ? colors.warning
         : colors.textDim;
   const editAdapter = row.adapter;
+  const leftOut = accountChoices.filter((choice) => !choice.included).length;
 
   return (
     <ScrollBox ref={scrollRef} flexGrow={1} scrollY>
@@ -347,17 +401,20 @@ export function BrokerDetailContent({
         <Text fg={colors.textMuted}>{tf("Status updated {time}", { time: formatRelativeAge(row.updatedAt) })}</Text>
         <Box height={1} />
 
+        {/* Keyed apart: the terminal keeps a reused box's gap, so the accounts would stay spaced like the form. */}
         {editDraft && editAdapter ? (
-          <Box flexDirection="column" gap={1}>
+          <Box key="edit" flexDirection="column" gap={1}>
             <SectionHeading title="Edit Profile" />
             <BrokerProfileForm
               adapter={editAdapter}
               draft={editDraft}
               fields={editFields}
               previous={row.instance}
+              accountChoices={accountChoices}
               activeKey={activeEditKey}
               busy={busy}
               width={profileFieldWidth(width)}
+              rowWidth={width}
               scope={editScope}
               paneFocused={paneFocused}
               submitLabel={t("Save")}
@@ -368,6 +425,7 @@ export function BrokerDetailContent({
               onLabelChange={onDraftLabelChange}
               onEnabledChange={onDraftEnabledChange}
               onLocalOnlyChange={onDraftLocalOnlyChange}
+              onAccountToggle={onDraftAccountToggle}
               onValueChange={onDraftValueChange}
               onSubmit={onSaveEdit}
               onCancel={onCancelEdit}
@@ -375,13 +433,18 @@ export function BrokerDetailContent({
           </Box>
         ) : (
           // Edit, test, sync, open and disconnect are the footer's e, c, s, o and d.
-          <Box flexDirection="column">
+          <Box key="accounts" flexDirection="column">
             <SectionHeading title="Accounts" />
             {accounts.length === 0 ? (
               <Text fg={colors.textDim}>{t("No accounts loaded. Test/connect or sync this profile.")}</Text>
             ) : accounts.map((account) => (
               <ClippedText key={account.accountId} fg={colors.textDim} text={accountDetail(account)} width={width} />
             ))}
+            {leftOut > 0 ? (
+              <Text fg={colors.textMuted}>
+                {leftOut === 1 ? t("1 account left out of Gloom") : tf("{count} accounts left out of Gloom", { count: leftOut })}
+              </Text>
+            ) : null}
           </Box>
         )}
       </Box>

@@ -28,7 +28,7 @@ import { buildOptionQuoteKey, freshOptionQuote, OPTIONS_QUOTE_EXCHANGE } from ".
 import { liveScenarioPosition, scenarioLegContractSymbol } from "./live";
 import { ScenarioPayoffChart } from "./charts";
 import { ScenarioLegEditor, ScenarioSaveForm, ScenarioInputsForm } from "./editor";
-import { loadScenarioMarket, scenarioControlsFromSettings, scenarioPositionFromSettings, scenarioSpotBasis, scenarioSpotStamp, scenarioSpotStampVariants, suppliedScenarioInputs,
+import { loadScenarioMarket, optionQuoteTime, scenarioControlsFromSettings, scenarioPositionFromSettings, scenarioSpotBasis, scenarioSpotStamp, scenarioSpotStampVariants, suppliedScenarioInputs,
   type ScenarioMarketSnapshot } from "./client";
 import { earlierOptionSession, scenarioFreshness, scenarioQuoteTime } from "./freshness";
 import { loadScenarioFx, scenarioMoneyTotals, scenarioNeedsFx } from "./base-totals";
@@ -77,6 +77,8 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const [tab, setTab] = usePluginPaneState("activeTabId", "payoff");
   const [detail, setDetail] = useState<"chain" | "leg" | "save" | "inputs" | null>(null);
   const [editingLeg, setEditingLeg] = useState<ScenarioLeg | null>(null);
+  // When the leg being edited was priced off a chain, the time of that chain's quotes.
+  const [editingQuotesAt, setEditingQuotesAt] = useState<number | null | undefined>(undefined);
   const [gridIndex, setGridIndex] = useState(0);
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedLegId", null);
   const [rawSaved, setSaved] = usePluginState<SavedScenarioStrategy[]>("osa-strategies", EMPTY_SAVED_STRATEGIES, { schemaVersion: 1 });
@@ -222,7 +224,10 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
     rate: settings.rate != null ? Number(settings.rate) / 100 : market?.rate ?? NaN,
     dividendYield: settings.dividendYield != null ? Number(settings.dividendYield) / 100 : market?.dividendYield ?? NaN,
     asOf: settings.asOf ? Date.parse(String(settings.asOf)) : market?.asOf ?? Date.now(), legs: [] };
-  const edit = (leg: ScenarioLeg) => { setEditingLeg(leg); setDetail(validatePosition({ ...baseline(), legs: [leg] }) ? "inputs" : "leg"); setLocalError(null); };
+  // A leg priced off a chain carries the time of its quotes, so the position says which session its entry and IV are from.
+  const edit = (leg: ScenarioLeg, quotesAt?: number | null) => {
+    setEditingLeg(leg); setEditingQuotesAt(quotesAt); setDetail(validatePosition({ ...baseline(), legs: [leg] }) ? "inputs" : "leg"); setLocalError(null);
+  };
   const addTyped = () => {
     const base = baseline();
     const expiration = base.legs[0]?.expiration ?? Math.floor(Date.parse(dateLabel((Number.isFinite(base.asOf) ? base.asOf : Date.now()) + 30 * 86_400_000)) / 1000);
@@ -233,10 +238,11 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
     if (typeof raw !== "string" || raw === consumedSeed || resource.loading) return;
     try {
       const leg = JSON.parse(raw) as ScenarioLeg;
+      const quotesAt = typeof settings.optionQuotesAt === "string" ? Date.parse(settings.optionQuotesAt) : NaN;
       // Validate the complete candidate before displaying a persisted handoff.
-      edit(leg); setConsumedSeed(raw);
+      edit(leg, Number.isFinite(quotesAt) ? quotesAt : undefined); setConsumedSeed(raw);
     } catch (error) { setLocalError(error instanceof Error ? error.message : String(error)); setConsumedSeed(raw); }
-  }, [settings.seedLeg, consumedSeed, resource.loading]);
+  }, [settings.seedLeg, settings.optionQuotesAt, consumedSeed, resource.loading]);
   const selected = position?.legs.find((leg) => leg.id === selectedId) ?? position?.legs[0];
   const remove = async () => {
     if (!selected || !position) return;
@@ -487,7 +493,8 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
         selection={{ kind: "id", selectedId: chainSelection, getId: (row) => row.contractSymbol, onChange: (id) => setChainSelection(id) }}
         onActivate={(row) => edit({ id: crypto.randomUUID(), side: row.side, quantity: 1, strike: row.strike,
           expiration: row.expiration, price: optionMid(row) ?? (row.lastPrice > 0 ? row.lastPrice : 0),
-          volatility: Number.isFinite(row.impliedVolatility) && row.impliedVolatility >= 0 ? row.impliedVolatility : 0, multiplier: 100 })}
+          volatility: Number.isFinite(row.impliedVolatility) && row.impliedVolatility >= 0 ? row.impliedVolatility : 0, multiplier: 100 },
+          optionQuoteTime(market?.chain))}
         renderCell={(row, column) => ({ text: column.id === "side" ? row.side : column.id === "iv" ? (row.impliedVolatility > 0 ? (row.impliedVolatility * 100).toFixed(2) : MISSING_VALUE)
           : column.id === "oi" ? String(row.openInterest ?? MISSING_VALUE) : money(row[column.id as "strike" | "bid" | "ask"]) })} />
     </PaneStatusBody>
@@ -501,7 +508,9 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
           if (live && Math.abs(leg.volatility - editingLeg.volatility) > 1e-12) setFollow(false);
           const current = baseline();
           const legs = current.legs.some((entry) => entry.id === leg.id) ? current.legs.map((entry) => entry.id === leg.id ? leg : entry) : [...current.legs, leg];
-          setPosition({ ...current, legs }); setSelectedId(leg.id); setDetail(null); setEditingLeg(null); setLocalError(null);
+          // The position values at its own spot and time; the chain's quote time shows beside the underlying's, so a roll from an earlier session is said.
+          const quotesAt = current.optionQuotesAt === undefined && editingQuotesAt !== undefined ? { optionQuotesAt: editingQuotesAt } : {};
+          setPosition({ ...current, ...quotesAt, legs }); setSelectedId(leg.id); setDetail(null); setEditingLeg(null); setLocalError(null);
         }} /> : detail === "save" ? <ScenarioSaveForm focused={focused} onSave={save} onCancel={() => { setDetail(null); setEditingLeg(null); }} />
         : detail === "inputs" ? <ScenarioInputsForm position={baseline()} controls={controls} focused={focused} width={width}
           onCancel={() => { setDetail(null); setEditingLeg(null); }} onSave={(position, controls) => {

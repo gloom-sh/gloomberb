@@ -25,6 +25,18 @@ export interface BrokerInstanceConfig {
    * brief, position alerts, the mobile app and Ask Gloom's portfolio context then go without it.
    */
   localOnly?: boolean;
+  /**
+   * The accounts the user left out of Gloom, each with the name it had then so Brokers can list it.
+   * Such an account has no portfolio, is offered nowhere an order is placed, and is not synced; a
+   * signed-in broker does not read it at all. Every other account is in, so one linked later shows
+   * up. Synced with the profile; an empty list says the user took every account back.
+   */
+  excludedAccounts?: BrokerExcludedAccount[];
+}
+
+export interface BrokerExcludedAccount {
+  accountId: string;
+  name: string;
 }
 
 export interface ColumnConfig {

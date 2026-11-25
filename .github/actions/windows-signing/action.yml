@@ -1,0 +1,98 @@
+name: Set up Windows code signing
+description: >-
+  Get what the Windows release files are Authenticode-signed with and point
+  scripts/windows-signing.ts at it through GLOOM_WINDOWS_SIGNING, for the
+  later steps of the job. The calling step passes the signing environment's
+  variables and secrets in its env. ARTIFACT_SIGNING_PROFILE, the certificate
+  profile, is the switch: unset, this says so in one line and sets nothing up,
+  and the job builds unsigned files as before; set, every signing step has to
+  succeed or the job fails. The signing service takes the job's GitHub OIDC
+  token, so the job needs `id-token: write`; no key or password is stored.
+
+outputs:
+  enabled:
+    description: '"true" once signing is set up, "false" when no certificate profile is set.'
+    value: ${{ steps.setup.outputs.enabled }}
+
+runs:
+  using: composite
+  steps:
+    # Pinned by version and by the SHA-256 of the package: signtool from the
+    # Windows SDK build tools, and the signing service's signtool plugin. The
+    # plugin runs on .NET 8 or later, which the runner image has.
+    - id: setup
+      shell: pwsh
+      env:
+        SIGNTOOL_PACKAGE: Microsoft.Windows.SDK.BuildTools/10.0.26100.4188
+        SIGNTOOL_SHA256: 180deb372659029864c10a0c04787833234d64aacd1d2c0661d2c00295d8e022
+        PLUGIN_PACKAGE: Microsoft.ArtifactSigning.Client/1.0.146
+        PLUGIN_SHA256: 7761e5d8f31e54b764da21d33cd8b0a2940e1b05526c7dfcb5e94b0431426f70
+      run: |
+        $ErrorActionPreference = "Stop"
+        if (-not $env:ARTIFACT_SIGNING_PROFILE) {
+          Write-Host "::notice title=Windows signing::Not signing: this job's environment sets no ARTIFACT_SIGNING_PROFILE, so the Windows files are built unsigned."
+          "enabled=false" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+          exit 0
+        }
+        foreach ($Name in "ARTIFACT_SIGNING_ENDPOINT", "ARTIFACT_SIGNING_ACCOUNT", "AZURE_CLIENT_ID", "AZURE_TENANT_ID") {
+          if (-not [Environment]::GetEnvironmentVariable($Name)) {
+            throw "ARTIFACT_SIGNING_PROFILE is set, so this job has to sign, but $Name is not set."
+          }
+        }
+        if (-not $env:ACTIONS_ID_TOKEN_REQUEST_URL) {
+          throw "Signing authenticates with the job's GitHub OIDC token: give the job id-token: write."
+        }
+        $Runtimes = @()
+        if (Get-Command dotnet -ErrorAction SilentlyContinue) {
+          $Runtimes = & dotnet --list-runtimes | Select-String -Pattern '^Microsoft\.NETCore\.App (\d+)\.' | ForEach-Object { [int]$_.Matches[0].Groups[1].Value }
+        }
+        if (-not ($Runtimes | Where-Object { $_ -ge 8 })) {
+          throw "The signtool plugin needs the .NET 8 runtime or later, and this runner has none."
+        }
+
+        $Tools = Join-Path $env:RUNNER_TEMP "windows-signing"
+        New-Item -ItemType Directory -Force -Path $Tools | Out-Null
+        function Get-PinnedPackage([string]$Package, [string]$Sha256) {
+          $Id, $Version = $Package.ToLowerInvariant() -split "/"
+          $Nupkg = Join-Path $Tools "$Id.$Version.nupkg"
+          Invoke-WebRequest -Uri "https://api.nuget.org/v3-flatcontainer/$Id/$Version/$Id.$Version.nupkg" -OutFile $Nupkg -MaximumRetryCount 3 -RetryIntervalSec 10
+          $Actual = (Get-FileHash -LiteralPath $Nupkg -Algorithm SHA256).Hash
+          if ($Actual -ne $Sha256) { throw "$Package has SHA-256 $Actual, not the pinned $Sha256." }
+          $Dir = Join-Path $Tools "$Id.$Version"
+          Expand-Archive -LiteralPath $Nupkg -DestinationPath $Dir -Force
+          Remove-Item -LiteralPath $Nupkg
+          return $Dir
+        }
+        $BuildTools = Get-PinnedPackage $env:SIGNTOOL_PACKAGE $env:SIGNTOOL_SHA256
+        $Plugin = Get-PinnedPackage $env:PLUGIN_PACKAGE $env:PLUGIN_SHA256
+        $SignTool = @(Get-ChildItem -Path (Join-Path $BuildTools "bin\*\x64\signtool.exe") -File)
+        if ($SignTool.Count -ne 1) { throw "Expected one x64 signtool.exe in $env:SIGNTOOL_PACKAGE, found $($SignTool.Count)." }
+        $Dlib = Join-Path $Plugin "bin\x64\Azure.CodeSigning.Dlib.dll"
+        if (-not (Test-Path -LiteralPath $Dlib)) { throw "$env:PLUGIN_PACKAGE has no x64 plugin at $Dlib." }
+
+        # The plugin signs with the first credential that works; every one but
+        # the OIDC token scripts/windows-signing.ts hands it is left out.
+        $Metadata = Join-Path $Tools "metadata.json"
+        [ordered]@{
+          Endpoint = $env:ARTIFACT_SIGNING_ENDPOINT
+          CodeSigningAccountName = $env:ARTIFACT_SIGNING_ACCOUNT
+          CertificateProfileName = $env:ARTIFACT_SIGNING_PROFILE
+          ExcludeCredentials = @(
+            "EnvironmentCredential", "ManagedIdentityCredential", "SharedTokenCacheCredential",
+            "VisualStudioCredential", "VisualStudioCodeCredential", "AzureCliCredential",
+            "AzurePowerShellCredential", "AzureDeveloperCliCredential", "InteractiveBrowserCredential"
+          )
+        } | ConvertTo-Json | Set-Content -LiteralPath $Metadata -Encoding utf8NoBOM
+
+        $Settings = Join-Path $Tools "settings.json"
+        [ordered]@{
+          signtool = $SignTool[0].FullName
+          dlib = $Dlib
+          metadata = $Metadata
+          clientId = $env:AZURE_CLIENT_ID
+          tenantId = $env:AZURE_TENANT_ID
+        } | ConvertTo-Json | Set-Content -LiteralPath $Settings -Encoding utf8NoBOM
+
+        Write-Host "Signing is set up: this job signs its Windows files with $($SignTool[0].FullName)."
+        "GLOOM_WINDOWS_SIGNING=$Settings" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+        "enabled=true" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT

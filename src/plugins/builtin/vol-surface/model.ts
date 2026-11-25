@@ -311,6 +311,16 @@ export function optionQuoteValuationTime(chain: Pick<OptionsChain, "asOf" | "ven
   return Number.isFinite(observedAt) && observedAt < now - CLOSED_QUOTE_GAP_MS ? observedAt : now;
 }
 /**
+ * When a listed expiry's row counts its time from: its close less its years,
+ * so a handoff from the row values at the quotes' time, not the reader's.
+ */
+export function surfaceRowValuationTime(row: { expiration: number | null; years: number }): number | null {
+  if (row.expiration == null || !(row.years > 0)) return null;
+  const close = daysToExpiryFrom(row.expiration, 0) * 86_400_000;
+  return close > 0 ? close - row.years * 365 * 86_400_000 : null;
+}
+
+/**
  * Listed strikes the cleaned smile may skip around the forward. A coarse
  * chain skips one; a chain whose near-the-money quotes are all zero-bid
  * (after the close, on LEAPS) skips dozens, and a fit bridging the

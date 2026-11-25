@@ -89,6 +89,21 @@ test("a stock lists the ETFs holding it, daily files before N-PORT reports, each
   expect(none).toContain("ETF QQQ");
   expect(none).not.toContain("not available on this server");
 });
+// MEMB on ^GDAXI read "Name a stock, such as NVDA or 0700:HKEX.", the server's answer to a stock lookup.
+test("an index no covered fund stands for says its members are not covered, and asks for no stock", async () => {
+  const calls: string[] = [];
+  setCloudApiFetchTransport(async (input) => {
+    const path = new URL(String(input)).pathname;
+    calls.push(path);
+    return path.endsWith("/members") ? Response.json(covered) : Response.json({ error: "Name a stock, such as NVDA or 0700:HKEX." }, { status: 400 });
+  });
+  await mountMembers("^GDAXI");
+  const frame = await tui.waitForFrameToContain("DAX (^GDAXI) members are not covered.");
+  expect(frame).toContain("MEMB with no fund lists the funds and indexes it covers.");
+  expect(frame).not.toContain("Name a stock");
+  // The stock lookup is never asked; only the covered list and the fund route, as for any fund before the list is in.
+  expect(calls.some((path) => path.includes("/holding"))).toBe(false);
+});
 test("international listings show separate sections for ordinary shares and ADRs", async () => {
   const fund = { ticker: "ETF", name: "Example ETF", basis: "nport", shares: 1, marketValue: 1,
     holdingName: "Tencent", asOf: "2026-06-30", filedOn: "2026-08-26" };

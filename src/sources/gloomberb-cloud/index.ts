@@ -30,7 +30,7 @@ import type {
   SearchRequestContext,
   TickerFinancialsBatchResult,
 } from "../../types/data-provider";
-import type { AnalystResearchData, CorporateActionsData, HolderData, OptionsChain, PricePoint, Quote, QuoteMetadata, TickerFinancials } from "../../types/financials";
+import type { AnalystResearchData, CorporateActionsData, HolderData, OptionsChain, PricePoint, Quote, QuoteMetadata, SplitHistory, TickerFinancials } from "../../types/financials";
 import type { PriceHistoryResult } from "../../types/price-history";
 import { parseHistorySession } from "../../market-data/history-session";
 import { quoteMetadataFromQuote, quoteMetadataMatchesTarget } from "../../market-data/quotes/metadata";
@@ -97,7 +97,7 @@ import {
 import { predictionMarketListing } from "../../tickers/prediction-listing";
 import { cleanListingName } from "../../tickers/company-name";
 import { settleWithin } from "../../utils/async-deadline";
-import { cloudSearchBatch, cloudTickerChangesBatch } from "./batched-lookups";
+import { cloudSearchBatch, cloudSplitHistoryBatch, cloudTickerChangesBatch } from "./batched-lookups";
 import { cappedAnswerStart, firstBarDate, reachesWindowStart, withOlderBars } from "./dated-chunks";
 import { chunked, mapWithConcurrency } from "../../utils/concurrency";
 
@@ -883,6 +883,36 @@ export class GloomberbCloudProvider implements AssetDataProvider {
       const response = await apiClient.getCloudCorporateActions(target.symbol, target.exchange);
       return unwrapRequiredCloudResponse(response, `Cloud corporate actions are unavailable for ${ticker}`) as CloudCorporateActionsPayload;
     }, `Cloud corporate actions are unavailable for ${ticker}`);
+  }
+
+  /**
+   * The share splits of several bare symbols, read without buying anything; a
+   * symbol that names a venue (SHOP.TO) or is not a listing is left out, for
+   * its corporate actions to be read on their own.
+   */
+  async getSplitHistoryBatch(symbols: string[], options: { signal?: AbortSignal } = {}): Promise<Map<string, SplitHistory | null> | null> {
+    const asked = new Map<string, string[]>();
+    for (const symbol of symbols) {
+      let target: ReturnType<typeof cloudInstrumentTarget>;
+      try {
+        rejectPerpetual(symbol, "", "corporate actions");
+        target = cloudInstrumentTarget(symbol, "");
+      } catch {
+        // Intentional ignore: not a listing the batch reads, left for the caller to read on its own.
+        continue;
+      }
+      if (target.exchange) continue;
+      const key = target.symbol.trim().toUpperCase();
+      asked.set(key, [...asked.get(key) ?? [], symbol]);
+    }
+    if (!asked.size) return new Map();
+    const answers = await cloudSplitHistoryBatch([...asked.keys()], options);
+    if (!answers) return null;
+    const bySymbol = new Map<string, SplitHistory | null>();
+    for (const [key, history] of answers) {
+      for (const symbol of asked.get(key.trim().toUpperCase()) ?? []) bySymbol.set(symbol, history);
+    }
+    return bySymbol;
   }
 
   async getTickerChanges(symbol: string, options: { signal?: AbortSignal } = {}): Promise<TickerChanges | null> {

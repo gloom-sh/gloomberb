@@ -3,6 +3,7 @@ import { basename, join } from "path";
 import * as ResEdit from "resedit";
 import { buildShotView, packShotView, SHOT_VIEW_ARCHIVE } from "../src/cli/desktop-pane-shot-view";
 import { buildDesktopTuiBundle } from "./desktop-tui-bundle";
+import { signUnsignedPrograms, windowsSigning } from "./windows-signing";
 
 type TargetOs = "darwin" | "linux" | "win";
 
@@ -356,4 +357,14 @@ for (const bundlePath of bundleCandidates(os)) {
   }
 
   installShim(runtimePath, resourcesPath, os);
+
+  // Last, once nothing here changes a program again: Electrobun hashes the
+  // bundle and packs it into the update archive right after this script, and
+  // the installer and the archive under the old name are made from that. A
+  // release job that set Windows signing up signs every program and library
+  // in it that has no valid, timestamped signature of its own.
+  const signing = os === "win" ? windowsSigning() : null;
+  if (signing) {
+    await signUnsignedPrograms(signing, bundlePath);
+  }
 }

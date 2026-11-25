@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import type { OptionContract } from "../../../types/financials";
-import { draftFromParams } from "../options-calculator/model";
+import type { OptionContract, OptionsChain } from "../../../types/financials";
+import { DEFAULT_OPTION_CALC_DRAFT, draftFromParams } from "../options-calculator/model";
+import { chainIvText } from "../options-calculator/valuation";
+import { daysToExpiryFrom, solveImpliedVolatility, valueOption, type OptionSide } from "../shared/volatility";
+import { solveChainVolatilities } from "./analytics";
 import { buildChainCalcParams, resolveCalcSide } from "./calc-seed";
 import type { OptionTableRow } from "./types";
 
@@ -127,4 +130,49 @@ test("a crossed or one-sided market never becomes a midpoint", () => {
       side: "call", spot: 230, dividendYield: null, now: NOW});
     expect(draftFromParams(params!)).toMatchObject({marketPrice: 6, marketPriceSource: "last"});
   }
+});
+
+describe("a chain handed to the calculator after the close", () => {
+  // Monday's last quotes, read Tuesday premarket: the chain values them at their own time.
+  const QUOTED = Date.UTC(2026, 7, 17, 20, 0, 0);
+  const READ = QUOTED + 14 * 3_600_000;
+  const SPOT = 230;
+  const rate = DEFAULT_OPTION_CALC_DRAFT.rate;
+  const years = daysToExpiryFrom(EXPIRATION, QUOTED) / 365;
+  /** Quotes a penny either side of the model price, with the market carrying a dividend the reader does not know of. */
+  function chain(dividendYield: number): OptionsChain {
+    const quote = (side: OptionSide, strike: number) => {
+      const price = valueOption({ side, spot: SPOT, strike, daysToExpiry: years * 365, rate, volatility: 0.3, dividendYield }).price;
+      return contract({ contractSymbol: `AAPL260919${side === "call" ? "C" : "P"}${strike}`, strike, bid: price - 0.01, ask: price + 0.01 });
+    };
+    const strikes = [210, 220, 230, 240, 250];
+    return { underlyingSymbol: "AAPL", expirationDates: [EXPIRATION], asOf: new Date(QUOTED).toISOString(),
+      calls: strikes.map((strike) => quote("call", strike)), puts: strikes.map((strike) => quote("put", strike)) };
+  }
+  function handoff(dividendYield: number) {
+    const quotes = chain(dividendYield);
+    const volatilities = solveChainVolatilities(quotes, SPOT, 0, READ);
+    const call = quotes.calls.find((entry) => entry.strike === 240)!;
+    const params = buildChainCalcParams({ symbol: "AAPL", row: row({ strike: 240, call, put: quotes.puts[3],
+      impliedVolatility: volatilities.byStrike.get(240)! }), side: "call", spot: SPOT, dividendYield: 0, now: READ,
+    valuation: { time: volatilities.valuationTime, spotLabel: "close Mon 17 Aug", forward: volatilities.forwards.get(EXPIRATION) } });
+    const draft = draftFromParams(params!);
+    const implied = solveImpliedVolatility(draft, draft.marketPrice).volatility;
+    return { draft, implied, chainIv: volatilities.byStrike.get(240)! };
+  }
+
+  test("counts its days from the quotes, so the same mid solves to the chain's IV", () => {
+    const { draft, implied, chainIv } = handoff(0);
+    expect(draft.valuation).toEqual({ at: QUOTED, spot: SPOT, spotLabel: "close Mon 17 Aug" });
+    expect(draft.daysToExpiry).toBeCloseTo(years * 365, 8);
+    expect(implied!).toBeCloseTo(chainIv, 4);
+    expect(chainIvText(draft.chainIv!, 240, implied, true)).toBeNull();
+  });
+
+  test("says the chain solved against the parity forward when the two IVs part", () => {
+    const { draft, implied, chainIv } = handoff(0.03);
+    expect(Math.abs(implied! - chainIv)).toBeGreaterThan(0.0001);
+    expect(draft.chainIv).toMatchObject({ kind: "forward" });
+    expect(chainIvText(draft.chainIv!, 240, implied, true)).toMatch(/^Chain IV 30\.\d\d% solves this mid against the expiry's parity forward, 2\d\d\.\d+, not spot\.$/);
+  });
 });

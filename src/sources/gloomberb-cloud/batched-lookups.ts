@@ -1,5 +1,6 @@
 import { apiClient } from "../../api-client";
 import { ApiRequestError } from "../../api-client/errors";
+import type { SplitHistory } from "../../types/financials";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { TickerChanges } from "../../types/ticker-changes";
 import { logFailure } from "../../utils/log-failure";
@@ -9,10 +10,12 @@ import { chunked, mapWithConcurrency } from "../../utils/concurrency";
 const TICKER_CHANGES_BATCH_SIZE = 500;
 /** Queries in one batched search; the service runs up to 100, as many as a signed-out quote batch reads. */
 const SEARCH_BATCH_SIZE = 100;
+/** Symbols in one batched split history request; the service reads up to 100. */
+const SPLITS_BATCH_SIZE = 100;
 /** Batch requests of one lookup in flight at once, so a long list does not ask the service for everything at the same moment. */
 const BATCHES_IN_FLIGHT = 3;
 
-type BatchRoute = "ticker-changes" | "search";
+type BatchRoute = "ticker-changes" | "search" | "splits";
 
 /** Batch routes the service answered 404 for: an older service, asked one symbol at a time from then on. */
 const unsupported = new Set<BatchRoute>();
@@ -52,6 +55,14 @@ export function cloudTickerChangesBatch(
   options: { signal?: AbortSignal } = {},
 ): Promise<Map<string, TickerChanges | null> | null> {
   return inBatches("ticker-changes", symbols, TICKER_CHANGES_BATCH_SIZE, (chunk) => apiClient.getCloudTickerChangesBatch(chunk, options));
+}
+
+/** Each bare symbol's share splits, by symbol as asked (null: none the service can list); null from a service that cannot batch them. */
+export function cloudSplitHistoryBatch(
+  symbols: readonly string[],
+  options: { signal?: AbortSignal } = {},
+): Promise<Map<string, SplitHistory | null> | null> {
+  return inBatches("splits", symbols, SPLITS_BATCH_SIZE, (chunk) => apiClient.getCloudSplitHistoryBatch(chunk, options));
 }
 
 /**

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { profileAccountChoices } from "../../../brokers/account-choice";
 import {
   getVisibleBrokerConfigFields,
   type BrokerProfileDraft,
@@ -22,6 +23,7 @@ import {
   usePaneStateValue,
 } from "../../../state/app/context";
 import type { BrokerAdapter } from "../../../types/broker";
+import type { BrokerAccount } from "../../../types/trading";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, useUiCapabilities } from "../../../ui";
 import { getCurrentPluginTarget } from "../../current-target";
@@ -29,7 +31,7 @@ import { usePluginBrokerActions, usePluginPaneState } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
 import { BrokerAddFlowContent, useBrokerAddFlow } from "./add-flow";
 import { BROKER_ADD_REQUEST_KEY } from "./add-request";
-import { BrokerDetailContent, type BrokerEditKey } from "./detail";
+import { accountEditKey, BrokerDetailContent, editKeyAccountId, type BrokerEditKey } from "./detail";
 import { useBrokerManagerFooter } from "./footer";
 import { useBrokerManagerKeyboard } from "./keyboard";
 import {
@@ -44,6 +46,8 @@ import {
   type BrokerColumn,
 } from "./table";
 import { logFailure } from "../../../utils/log-failure";
+
+const NO_ACCOUNTS: BrokerAccount[] = [];
 
 export function BrokersPane({ focused, width, height }: PaneProps) {
   const language = useAppLanguage();
@@ -89,14 +93,21 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
   );
   const selectedIndex = Math.max(0, rows.findIndex((row) => row.id === selectedId));
   const selectedRow = rows[selectedIndex] ?? null;
-  const selectedAccounts = selectedRow ? brokerAccounts[selectedRow.id] ?? [] : [];
+  const selectedAccounts = (selectedRow ? brokerAccounts[selectedRow.id] : undefined) ?? NO_ACCOUNTS;
+  // Which of a profile's accounts Gloom shows: those it reports, and those left out.
+  const accountChoices = useMemo(
+    () => selectedRow ? profileAccountChoices(selectedRow.instance, selectedAccounts) : [],
+    [selectedAccounts, selectedRow],
+  );
   const editFields = editDraft && selectedRow?.adapter
     ? getVisibleBrokerConfigFields(selectedRow.adapter, editDraft.values)
     : [];
+  const accountKeys = useMemo(() => accountChoices.map((choice) => accountEditKey(choice.accountId)), [accountChoices]);
   const editKeys = useMemo<BrokerEditKey[]>(
-    () => ["label", "enabled", ...editFields.map((field) => field.key), "localOnly"],
-    [editFields],
+    () => ["label", "enabled", ...editFields.map((field) => field.key), ...accountKeys, "localOnly"],
+    [accountKeys, editFields],
   );
+  const editToggleKeys = useMemo<ReadonlySet<BrokerEditKey>>(() => new Set(accountKeys), [accountKeys]);
   const editSelectKeys = useMemo<ReadonlySet<BrokerEditKey>>(
     () => new Set(["enabled", "localOnly", ...editFields.filter((field) => field.type === "select").map((field) => field.key)]),
     [editFields],
@@ -139,6 +150,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
   } = useBrokerManagerActions({
     rows,
     selectedRow,
+    accountChoices,
     editDraft,
     setEditDraft,
     setActiveEditKey,
@@ -226,14 +238,31 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
     });
   }, [editFields]);
 
+  const toggleDraftAccount = useCallback((accountId: string) => {
+    setEditDraft((current) => {
+      if (!current) return current;
+      const excluded = current.excludedAccountIds.includes(accountId)
+        ? current.excludedAccountIds.filter((id) => id !== accountId)
+        : [...current.excludedAccountIds, accountId];
+      return { ...current, excludedAccountIds: excluded };
+    });
+  }, []);
+
+  const toggleEditKey = useCallback((key: BrokerEditKey) => {
+    const accountId = editKeyAccountId(key);
+    if (accountId !== null) toggleDraftAccount(accountId);
+  }, [toggleDraftAccount]);
+
   useBrokerManagerKeyboard({
     activeEditKey,
     editing: !!editDraft,
     focused,
     scope: editScope,
     selectKeys: editSelectKeys,
+    toggleKeys: editToggleKeys,
     onCancelEdit: cancelEdit,
     onCycleSelect: cycleEditSelect,
+    onToggle: toggleEditKey,
     saveEdit,
   });
 
@@ -295,6 +324,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
     <BrokerDetailContent
       row={selectedRow}
       accounts={selectedAccounts}
+      accountChoices={accountChoices}
       editDraft={editDraft}
       editFields={editFields}
       activeEditKey={activeEditKey}
@@ -309,6 +339,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
       onDraftLabelChange={updateDraftLabel}
       onDraftEnabledChange={updateDraftEnabled}
       onDraftLocalOnlyChange={updateDraftLocalOnly}
+      onDraftAccountToggle={toggleDraftAccount}
       onDraftValueChange={updateDraftValue}
       onSaveEdit={saveCurrentEdit}
       onCancelEdit={cancelEdit}

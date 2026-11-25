@@ -103,6 +103,7 @@ const SHOT_BRIDGE_MARKET_OPERATIONS = new Set([
   "getSecFilingDocuments",
   "getSecFilings",
   "getSecFilingsPage",
+  "getSplitHistoryBatch",
 ]);
 
 const SHOT_BRIDGE_HTTP_TIMEOUT_MS = 20_000;
@@ -143,10 +144,12 @@ export function createDesktopShotBridge(
       if (typeof handler !== "function") {
         throw new Error(`No provider available for ${operation}.`);
       }
-      return await (handler as (...values: unknown[]) => Promise<unknown>).apply(
+      const result = await (handler as (...values: unknown[]) => Promise<unknown>).apply(
         context.dataProvider,
         args,
       );
+      // JSON has no Map: a batch's answers go to the page as entries.
+      return result instanceof Map ? [...result] : result;
     },
     httpFetch: (request, signal) => runDesktopShotHttpFetch(request, httpOptions, signal),
   };

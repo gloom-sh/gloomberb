@@ -150,7 +150,7 @@ test("a name with no current price says why in words, and its row's few words, n
   expect(screen.rows.map((row) => row.note ?? "").join(" ")).not.toContain("--");
 });
 
-test("a name demand coverage could not take is just not ranked yet: the server's queue wording is not shown", async () => {
+test("a name demand coverage does not collect says so as its reason for no IV rank, promising nothing", async () => {
   const { provider, cloud } = screenSources();
   const full = { symbol: "AAA", status: "queued", coverageStatus: "unavailable", coverage: null, iv30: null, iv90: null, latest: null, skew: null,
     warnings: ["Coverage for new underlyings is full; try again later."] };
@@ -159,9 +159,9 @@ test("a name demand coverage could not take is just not ranked yet: the server's
   setSystemTime(now);
   try {
     const result = await cspScreenHeadless.load({ symbols: ["AAA", "BBB"], rawArgument: "AAA BBB", argument: ["AAA", "BBB"], options: {} }, ctx);
-    // A name whose history is still short says why; one that is not collected promises nothing.
-    expect(result.notes?.slice(1, 3)).toEqual(["No IV rank: BBB (fewer than 120 sessions).", "No IV rank for AAA yet."]);
-    expect(result.notes?.[3]).toMatch(/AAA: Option quotes .* UTC · Underlying .* UTC/);
+    // A name whose history is still short says why, and so does one that is not collected, with no time to come back.
+    expect(result.notes?.[1]).toBe("No IV rank: AAA (IV history not collected, coverage full), BBB (fewer than 120 sessions).");
+    expect(result.notes?.[2]).toMatch(/AAA: Option quotes .* UTC · Underlying .* UTC/);
   } finally {
     setSystemTime();
   }

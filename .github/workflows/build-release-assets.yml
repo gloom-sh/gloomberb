@@ -6,6 +6,10 @@ name: Build Release Assets
 # nightly version, with the desktop files named nightly-* so they can never be
 # taken for a stable manifest.
 #
+# The Windows jobs Authenticode-sign every program they ship once their
+# signing environment sets ARTIFACT_SIGNING_PROFILE, and build unsigned files
+# until then (.github/actions/windows-signing, scripts/windows-signing.ts).
+#
 # No registry plugin runs in these jobs, which hold the signing keys. The
 # plugin check reads these builds after this workflow, in
 # load-registry-plugins.yml, which callers run with no secrets.
@@ -46,6 +50,12 @@ on:
         required: false
       ELECTROBUN_DEVELOPER_ID:
         required: false
+      # Secrets of the signing environments, which reach the Windows jobs only
+      # when the caller passes them by name.
+      AZURE_CLIENT_ID:
+        required: false
+      AZURE_TENANT_ID:
+        required: false
 
 permissions:
   contents: read
@@ -63,8 +73,9 @@ jobs:
       attestations: write
     strategy:
       fail-fast: false
-      # A stable release publishes only once every entry here has uploaded its
-      # binary: scripts/release-assets.ts reads the assets from this matrix.
+      # A stable release publishes only once every entry here, and the one in
+      # build-windows, has uploaded its binary: scripts/release-assets.ts reads
+      # the assets from these matrices.
       matrix:
         include:
           - os: macos-latest
@@ -85,8 +96,7 @@ jobs:
           - os: ubuntu-24.04-arm
             asset: gloomberb-linux-arm64-musl
             target: linux-arm64-musl
-          - os: windows-latest
-            asset: gloomberb-windows-x64
+          # Windows builds in build-windows, which signs.
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -111,6 +121,65 @@ jobs:
 
       - name: Build
         run: bun run scripts/build.ts ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
+
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/*
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/*
+
+  # The Windows terminal binary, built as the matrix above builds the others,
+  # in a job of its own so that the signing environment reaches only the jobs
+  # that sign. Its matrix of one is where scripts/release-assets.ts reads its
+  # asset from.
+  build-windows:
+    runs-on: windows-latest
+    environment: ${{ inputs.channel == 'nightly' && 'signing-main' || 'release' }}
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    strategy:
+      matrix:
+        include:
+          - asset: gloomberb-windows-x64
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Set the build version
+        if: ${{ inputs.version != '' }}
+        shell: bash
+        env:
+          BUILD_VERSION: ${{ inputs.version }}
+        run: npm pkg set "version=$BUILD_VERSION"
+
+      - name: Set up Windows code signing
+        id: signing
+        uses: ./.github/actions/windows-signing
+        env:
+          ARTIFACT_SIGNING_ENDPOINT: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+          ARTIFACT_SIGNING_ACCOUNT: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+          ARTIFACT_SIGNING_PROFILE: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      # With signing set up, build.ts signs the binary before its smoke tests
+      # and before it gzips it.
+      - name: Build
+        run: bun run scripts/build.ts
+
+      - name: Check the binary is signed
+        if: ${{ steps.signing.outputs.enabled == 'true' }}
+        shell: pwsh
+        run: bun scripts/windows-signing.ts check dist
 
       - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
@@ -226,6 +295,7 @@ jobs:
 
   desktop-windows:
     runs-on: windows-latest
+    environment: ${{ inputs.channel == 'nightly' && 'signing-main' || 'release' }}
     permissions:
       contents: read
       id-token: write
@@ -247,6 +317,19 @@ jobs:
           BUILD_VERSION: ${{ inputs.version }}
         run: npm pkg set "version=$BUILD_VERSION"
 
+      - name: Set up Windows code signing
+        id: signing
+        uses: ./.github/actions/windows-signing
+        env:
+          ARTIFACT_SIGNING_ENDPOINT: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+          ARTIFACT_SIGNING_ACCOUNT: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+          ARTIFACT_SIGNING_PROFILE: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      # With signing set up, Electrobun's postBuild script
+      # (scripts/install-electrobun-tui-shim.ts) signs the app's programs
+      # before Electrobun hashes them and packs the update archive.
       - name: Build Windows desktop package
         shell: pwsh
         run: ./scripts/build-windows-desktop-package.ps1
@@ -255,6 +338,9 @@ jobs:
       - name: Install Inno Setup
         uses: ./.github/actions/inno-setup
 
+      # Made from the signed programs in the update archive. With signing set
+      # up, Inno Setup signs the setup and the engine copy it runs from the
+      # temp folder.
       - name: Build Windows installer
         shell: pwsh
         run: ./scripts/build-windows-installer.ps1
@@ -264,6 +350,12 @@ jobs:
       - name: Write the desktop files under the app's old name
         shell: pwsh
         run: bun scripts/write-legacy-desktop-files.ts artifacts
+
+      # Every installer, and every program in either update archive.
+      - name: Check every Windows program is signed
+        if: ${{ steps.signing.outputs.enabled == 'true' }}
+        shell: pwsh
+        run: bun scripts/windows-signing.ts check artifacts
 
       - name: Verify Windows desktop artifacts
         shell: pwsh

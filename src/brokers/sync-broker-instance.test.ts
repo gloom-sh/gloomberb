@@ -7,7 +7,7 @@ import type { BrokerAdapter } from "../types/broker";
 import type { Portfolio, TickerRecord } from "../types/ticker";
 import type { BrokerAccount } from "../types/trading";
 import { hydrateTickerMetadata } from "../tickers/metadata";
-import { accountsShownFor } from "./broker-portfolio-sync";
+import { accountsShownFor, withoutExcludedAccountPortfolios } from "./broker-portfolio-sync";
 import { AppPersistence } from "../data/app-persistence";
 import { TickerRepository } from "../data/ticker-repository";
 import { getColumnValue, getSortValue } from "../portfolio/column-values";
@@ -676,6 +676,92 @@ describe("syncBrokerInstance", () => {
     expect(restoreBrokerPortfoliosFromTickerPositions(restored, [
       createBrokerTicker("demo-work", "WORK"),
     ])).toBe(restored);
+  });
+});
+
+describe("leaving an account out of a profile", () => {
+  const profile: BrokerInstanceConfig = {
+    id: "snaptrade", brokerType: "signed-in", label: "SnapTrade", connectionMode: "snaptrade", config: {}, enabled: true,
+  };
+  const individualId = "broker:snaptrade:ST-IND";
+  const iraId = "broker:snaptrade:ST-IRA";
+  const withChoice = (config: AppConfig, excludedAccounts: BrokerInstanceConfig["excludedAccounts"]): AppConfig => ({
+    ...config,
+    brokerInstances: config.brokerInstances.map((instance) => instance.id === profile.id ? { ...instance, excludedAccounts } : instance),
+  });
+
+  test("drops the account's portfolio and positions, keeps what was entered by hand, and brings it back when taken back", async () => {
+    // A server that predates the choice reads and returns every account, whatever the app asks.
+    const paths: string[] = [];
+    const brokers = new Map<string, BrokerAdapter>([["signed-in", createSignedInBrokerAdapter({
+      request: async <T,>(_broker: string, path: string) => {
+        paths.push(path);
+        return {
+          accounts: [
+            { accountId: "ST-IND", name: "Individual ····4410", currency: "USD", source: "cloud" },
+            { accountId: "ST-IRA", name: "Roth IRA ····2207", currency: "USD", source: "cloud" },
+          ],
+          positions: [
+            { ticker: "AAPL", exchange: "NASDAQ", shares: 10, avgCost: 150, currency: "USD", accountId: "ST-IND" },
+            { ticker: "AAPL", exchange: "NASDAQ", shares: 4, avgCost: 160, currency: "USD", accountId: "ST-IRA" },
+            { ticker: "VTI", exchange: "NYSEARCA", shares: 20, avgCost: 200, currency: "USD", accountId: "ST-IRA" },
+          ],
+        } as T;
+      },
+      findBroker: () => null,
+    })]]);
+    const manual = { portfolio: "main", shares: 3, avgCost: 90, currency: "USD", broker: "manual" };
+    const tickerRepository = new JsonTickerRepository(undefined, [
+      createTestTicker("AAPL", "Apple Inc.", { portfolios: ["main"], positions: [manual] }),
+    ]);
+    let config: AppConfig = {
+      ...createDefaultConfig("/tmp/gloomberb-left-out-account"),
+      portfolios: [{ id: "main", name: "Main", currency: "USD" }],
+      brokerInstances: [profile],
+    };
+    const sync = async () => {
+      const result = await syncBrokerInstance({ config, instanceId: profile.id, brokers, tickerRepository });
+      config = result.config;
+      return result;
+    };
+    const positionsOf = async (symbol: string) => (await tickerRepository.loadTicker(symbol))?.metadata.positions ?? [];
+
+    await sync();
+    expect(config.portfolios.map((portfolio) => portfolio.id)).toEqual(["main", individualId, iraId]);
+    // A position typed into the IRA's portfolio, and a copy of its sync another device pushed.
+    const handEntered = { portfolio: iraId, shares: 1, avgCost: 100, currency: "USD", broker: "manual" };
+    const aapl = (await tickerRepository.loadTicker("AAPL"))!;
+    await tickerRepository.saveTicker({ ...aapl, metadata: { ...aapl.metadata, positions: [...aapl.metadata.positions, handEntered, { portfolio: iraId, shares: 4, broker: "signed-in" }] } });
+
+    // Saved in Brokers: the portfolio goes at once, and nothing brings it back before the sync.
+    config = withoutExcludedAccountPortfolios(withChoice(config, [{ accountId: "ST-IRA", name: "Roth IRA ····2207" }]), profile.id);
+    expect(config.portfolios.map((portfolio) => portfolio.id)).toEqual(["main", individualId]);
+    expect(restoreBrokerPortfoliosFromTickerPositions(config, [(await tickerRepository.loadTicker("AAPL"))!])).toBe(config);
+
+    const leftOut = await sync();
+    expect(paths.at(-1)).toBe("/snapshot?exclude=ST-IRA");
+    expect(leftOut.portfolioIds).toEqual([individualId]);
+    expect(leftOut.brokerAccounts.map((account) => account.accountId)).toEqual(["ST-IND"]);
+    expect(config.portfolios.map((portfolio) => portfolio.id)).toEqual(["main", individualId]);
+    expect(await positionsOf("AAPL")).toEqual([manual, handEntered, expect.objectContaining({ portfolio: individualId, shares: 10 })]);
+    expect((await tickerRepository.loadTicker("AAPL"))!.metadata.portfolios).toEqual(["main", iraId, individualId]);
+    expect(await positionsOf("VTI")).toEqual([]);
+    // The app never lists it, whoever read it.
+    const state = appReducer(createInitialState(config), { type: "SET_BROKER_ACCOUNTS", instanceId: profile.id, accounts: (await brokers.get("signed-in")!.listAccounts!(profile)) });
+    expect(state.brokerAccounts[profile.id]!.map((account) => account.accountId)).toEqual(["ST-IND"]);
+
+    config = withChoice(config, []);
+    const takenBack = await sync();
+    expect(paths.at(-1)).toBe("/snapshot");
+    expect(takenBack.portfolioIds).toEqual([individualId, iraId]);
+    expect(config.portfolios.map((portfolio) => portfolio.id)).toEqual(["main", individualId, iraId]);
+    expect(await positionsOf("AAPL")).toEqual([
+      manual,
+      handEntered,
+      expect.objectContaining({ portfolio: individualId, shares: 10 }),
+      expect.objectContaining({ portfolio: iraId, shares: 4, brokerInstanceId: profile.id }),
+    ]);
+    expect(await positionsOf("VTI")).toEqual([expect.objectContaining({ portfolio: iraId, shares: 20 })]);
   });
 });
 

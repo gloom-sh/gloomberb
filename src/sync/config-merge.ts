@@ -166,7 +166,7 @@ export function mergeConfigPayload(
       config.brokerInstances,
       payload.brokerInstances as Array<Partial<BrokerInstanceConfig>>,
       canApply("brokerInstances"),
-      syncedIds,
+      Array.isArray(lastSynced?.brokerInstances) ? lastSynced.brokerInstances : null,
       payload.brokerInstancesMergedById === true,
     );
   }

@@ -84,8 +84,8 @@ const listText = (items: readonly string[]) => items.length <= 1 ? items.join(""
 /**
  * The ranking basis and the wide flag's limit, then the names IV history has no
  * rank for: those with a reason say it (`No IV rank: BBB (fewer than 120
- * sessions).`), and a bare symbol, which has none to give, is just not ranked
- * yet (`No IV rank for DAL yet.`).
+ * sessions).`, `AAA (IV history not collected, coverage full)`), and a bare
+ * symbol, which has none to give, is listed (`No IV rank for DAL.`).
  */
 export function cspScreenNotes(
   screen: { criteria: Pick<CspScreen["criteria"], "maxSpreadPercent">; missingRanks: string[] }, rankedBy = "annualised yield at the bid",
@@ -95,7 +95,7 @@ export function cspScreenNotes(
   return [
     `Ranked by ${rankedBy}. Wide is a spread over ${screen.criteria.maxSpreadPercent}% of the mid (--max-spread).`,
     ...(reasoned.length ? [`No IV rank: ${reasoned.join(", ")}.`] : []),
-    ...(bare.length ? [`No IV rank for ${listText(bare)} yet.`] : []),
+    ...(bare.length ? [`No IV rank for ${listText(bare)}.`] : []),
   ];
 }
 

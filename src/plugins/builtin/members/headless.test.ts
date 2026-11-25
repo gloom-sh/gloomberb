@@ -116,6 +116,32 @@ test("an exchange-qualified lookup keeps ordinary and ADR weights and notices se
   expect((result.metadata as { notices: string[] }).notices[0]).toContain("1 of 2 ETFs looked through hold shares or ADRs for 0700:HKEX");
 });
 
+// `fn MEMB ^GDAXI` and `fn MEMB "HANG SENG"` answered "Name a stock, such as NVDA or 0700:HKEX."
+test("an index no covered fund stands for says its members are not covered and where the covered list is, never asking for a stock", async () => {
+  const ivv = { ticker: "IVV", name: "S&P 500", aliases: ["SPX", "^SPX", "^GSPC"], changes: "sp500", basis: "daily", asOf: "2026-11-20", filedOn: null };
+  const asked: string[] = [];
+  const load = async (input: string, funds: unknown[] | null = [ivv]) => await membersHeadless.load({ symbols: [], rawArgument: input, options: {} } as unknown as HeadlessPaneLoadArgs,
+    { signal: new AbortController().signal, refresh: false, apiClient: {
+      getMemberFunds: async () => { if (!funds) throw new Error("offline"); return { funds }; },
+      getStockFunds: async (symbol: string) => { asked.push(symbol); return { symbol, coverage: { daily: 1, nport: 0 }, funds: [] }; },
+      getFundMembers: async (fund: string) => { asked.push(`members:${fund}`); return { ...board, fund: { ...ivv, ticker: fund } }; },
+    } } as unknown as HeadlessPaneContext) as HeadlessRowsResult;
+  await expect(load("^GDAXI")).rejects.toThrow("DAX (^GDAXI) members are not covered. The covered funds and indexes: gloom fn MEMB.");
+  await expect(load("HANG SENG")).rejects.toThrow("Hang Seng Index (^HSI) members are not covered.");
+  await expect(load("nikkei 225 index")).rejects.toThrow("Nikkei 225 (^N225) members are not covered.");
+  await expect(load("^MDAXI")).rejects.toThrow("^MDAXI members are not covered.");
+  expect(asked).toEqual([]);
+  // A covered fund that stands for the index answers for it, the server's alias as much as the app's.
+  const dax = { ticker: "DAX", name: "DAX (N-PORT)", plainName: "DAX", aliases: ["^GDAXI"], changes: "none", basis: "nport", asOf: "2026-09-30", filedOn: "2026-11-25" };
+  await load("^GDAXI", [ivv, dax]);
+  await load("^GSPC");
+  expect(asked).toEqual(["members:^GDAXI", "members:IVV"]);
+  // A name a ticker could be is still a stock to look the funds through for.
+  asked.length = 0;
+  await load("KOSPI");
+  expect(asked).toEqual(["KOSPI"]);
+});
+
 test("a pane's listing venue disambiguates a bare ticker and suffixes do not change US share classes", () => {
   expect(stockListingInput("AIR", "EPA")).toBe("AIR:EPA");
   expect(stockListingInput("AIR:EPA", "NYSE")).toBe("AIR:EPA");

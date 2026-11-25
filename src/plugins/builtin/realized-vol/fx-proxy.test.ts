@@ -57,9 +57,9 @@ test("the fund's chain with nothing priced outside the options session says when
   // Mon 9 Nov 2026 08:10 UTC: FX trades, US options open at 14:30 UTC.
   const monday = Date.parse("2026-11-09T08:10:00Z");
   expect(fxProxyChain(none, monday)).toEqual({ count: "0 of 4", reopen: { at: "14:30 UTC, 09:30 ET", short: "14:30 UTC" } });
-  expect(fxProxyChainText(none, monday)).toBe("Options closed until 14:30 UTC, 09:30 ET. The surface fills at the open.");
+  expect(fxProxyChainText(none, monday)).toBe("0 of 4 expiries with ATM IV from the last session's quotes. Options closed until 14:30 UTC, 09:30 ET.");
   // Saturday names the day it opens.
-  expect(fxProxyChainText(none, Date.parse("2026-11-07T12:00:00Z"))).toBe("Options closed until Mon 14:30 UTC, 09:30 ET. The surface fills at the open.");
+  expect(fxProxyChainText(none, Date.parse("2026-11-07T12:00:00Z"))).toBe("0 of 4 expiries with ATM IV from the last session's quotes. Options closed until Mon 14:30 UTC, 09:30 ET.");
   // In the session the count is the reading, none included; out of it, a priced expiry is still one.
   const session = Date.parse("2026-11-09T16:00:00Z");
   expect(fxProxyChainText(none, session)).toBe("0 of 4 expiries with ATM IV");

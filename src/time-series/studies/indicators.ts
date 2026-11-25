@@ -274,6 +274,8 @@ export function resolveVolume(spec: ChartStudySpec, input: ResolvedSeries, color
     .flatMap((point) => isFiniteNumber(point.volume)
       ? [{
         ...derivedPoint({ point, value: point.volume }, point.volume),
+        // A bar still forming has the day's volume so far: its bar says so, and so does its volume.
+        ...(point.partial ? { partial: true } : {}),
         ...(directional && isFiniteNumber(point.open) && isFiniteNumber(point.close) && point.close < point.open ? { fell: true } : {}),
       }]
       : []);

@@ -203,7 +203,7 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
   };
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: view, onSelect: setView, focused, dense: true });
   const reference = showIv ? iv.data?.reference ?? null : null;
-  // Outside the options session with none of the fund's expiries priced, its chain says when the surface fills.
+  // Outside the options session with none of the fund's expiries priced, its chain says so and when options reopen.
   const proxyChain = proxyData ? fxProxyChain(proxyData, Date.now()) : null;
   // The cone has no IV line of its own, so the dated ATM IV it is read against sits above it; for an FX pair,
   // the proxy fund's IV30 at its close (as OVDV dates it), how many of the fund's expiries price at the money,
@@ -216,8 +216,8 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
           detail: proxyData.iv30 ? `${proxyData.iv30.date.slice(5)} close` : undefined, tone: proxySpread.stale ? "warning" : undefined },
         { id: "proxy-spread", label: "IV30 - HV20", value: proxySpread.spread == null ? MISSING_VALUE : points(proxySpread.spread), detail: "pts" },
         { id: "proxy-chain", label: fxProxyChainLabel(proxyData), ...(!proxyChain ? { value: MISSING_VALUE }
-          : proxyChain.reopen ? { value: "closed", detail: proxyChain.reopen.short ? `fills at the open, ${proxyChain.reopen.short}` : "fills at the open",
-            detailVariants: ["fills at the open"] }
+          : proxyChain.reopen ? { value: proxyChain.count, detail: proxyChain.reopen.short ? `closed until ${proxyChain.reopen.short}` : "closed",
+            detailVariants: ["closed"] }
             : { value: proxyChain.count, detail: "expiries with ATM IV", detailVariants: ["with ATM IV"] }) },
       ] : [];
   const contentHeight = Math.max(4, height - 1 - tabRows - statGridRows(coneStats, width));

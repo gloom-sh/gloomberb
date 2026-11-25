@@ -9,7 +9,7 @@ import type { Quote } from "../../../types/financials";
 import { BrokerOrdersPane, BrokerTradeTab } from "./pane";
 import { createTradeCommand } from "./command";
 import { brokerOrderFeed } from "./order-feed";
-import { createDemoBroker } from "./test-fixture";
+import { createDemoBroker, DEMO_LIVE_ACCOUNT } from "./test-fixture";
 
 const tui = createOpenTuiTestHarness({ width: 90, height: 30 });
 afterEach(() => brokerOrderFeed.clear());
@@ -251,4 +251,27 @@ test("an account another profile holds under its own number is not offered in th
   await tui.waitForFrameToContain("Buy 1 AAPL");
   await tui.waitForFrameToContain("Demo Broker (simulation)");
   expect(tui.frame()).not.toContain("Demo Broker (LIVE)");
+});
+
+test.each(["trade", "orders"] as const)("an account left out of its profile is not offered in %s", async (view) => {
+  const demo = createDemoBroker({ seedOrders: false, mode: "both" });
+  demo.instance.excludedAccounts = [{ accountId: DEMO_LIVE_ACCOUNT, name: "Demo Broker (LIVE)" }];
+  const paneId = `broker-ticket:left-out-${view}`;
+  const config = createTestPaneConfig("/synthetic/ticket-left-out", { instanceId: paneId, paneId: "ticker-detail", binding: { kind: "fixed", symbol: "AAPL" }, settings: {} });
+  config.brokerInstances = [demo.instance];
+  const state = createInitialState(config);
+  state.focusedPaneId = paneId;
+  state.tickers.set("AAPL", createTestTicker("AAPL", "Example company"));
+  const runtime = createTestPluginRuntime({ getBrokerAdapter: () => demo.adapter });
+  await act(async () => {
+    await tui.render(<TestPaneFrame state={state} paneId={paneId} pluginId="broker" runtime={runtime} width={90} height={30} footerKeys>{() => view === "trade"
+      ? <BrokerTradeTab width={90} height={29} focused onCapture={() => {}} />
+      : <BrokerOrdersPane paneId={paneId} paneType="broker-orders" width={90} height={29} focused />}</TestPaneFrame>);
+  });
+  await tui.waitForFrameToContain(view === "trade" ? "Buy 1 AAPL" : "No open orders in this account.");
+  // Its account choice lists the simulation account alone, as if the live one were not there.
+  await tui.emitKeypress({ name: "a", sequence: "a" }, { trackPropagation: true });
+  await tui.waitForFrameToContain("Choose an account");
+  expect(tui.frame()).toContain("SIMULATION");
+  expect(tui.frame()).not.toContain("LIVE");
 });

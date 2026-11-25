@@ -63,7 +63,8 @@ function storedPayload(expirations: number[], now: number) {
         point.contract.bid, point.contract.ask, point.openInterest, point.contract.contractSymbol]) })))) } };
 }
 
-async function mount({ missingSelection = false, holdSecond = false, pinnedSelection = false, optionTicker = false, zeroBids = false, storedDates = false, staleQuote = false } = {}) {
+async function mount({ missingSelection = false, holdSecond = false, pinnedSelection = false, optionTicker = false, zeroBids = false, storedDates = false,
+  noStoredDates = false, staleQuote = false } = {}) {
   const now = Date.now();
   const date = new Date(now);
   const expirations = (pinnedSelection ? Array.from({ length: 40 }, (_, index) => index + 1) : [45, 120])
@@ -99,6 +100,8 @@ async function mount({ missingSelection = false, holdSecond = false, pinnedSelec
     ? spyOn(apiClient, "impliedVolatility").mockImplementation((async (path: string) => path.startsWith("surface-dates")
       ? { version: 1, symbol: SYMBOL, dates: ["2026-09-22"] }
       : path.startsWith("surface?") ? storedPayload(expirations, now) : Promise.reject(new Error("offline"))) as never)
+    : noStoredDates ? spyOn(apiClient, "impliedVolatility").mockImplementation((async (path: string) => path.startsWith("surface-dates")
+      ? { version: 1, symbol: SYMBOL, dates: [] } : Promise.reject(new Error("offline"))) as never)
     : spyOn(apiClient, "impliedVolatility").mockRejectedValue(new Error("Cloud IV offline in tests"));
   treasury = spyOn(apiClient, "getCloudYieldCurve").mockResolvedValue([
     { maturity: "1M", maturityYears: 1 / 12, yield: 4, asOf: date.toISOString().slice(0, 10) },
@@ -242,27 +245,30 @@ test("partial expiry progress settles without reloading or rendering indefinitel
 });
 
 test("a chain with no two-sided quote explains itself instead of drawing an empty surface", async () => {
-  // In the session (Tue 10 Nov 2026 16:00 UTC): the quotes, not the hour, are why.
+  // In the session (Tue 10 Nov 2026 16:00 UTC): the quotes, not the hour, are why, so the feed's hours are not blamed.
   setSystemTime(new Date("2026-11-10T16:00:00Z"));
   try {
     await mount({ zeroBids: true });
     const frame = tui.frame();
-    expect(frame).toContain("No two-sided option quotes");
-    expect(frame).toContain("have a zero bid");
+    expect(frame).toContain("Quotes from Tue 10 Nov did not pass cleaning.");
+    expect(frame).toContain("have a zero bid or ask.");
+    expect(frame).not.toContain("outside regular hours");
   } finally {
     setSystemTime();
   }
 });
 
-test("outside the options session a chain with nothing fitted waits for the open, not reads as a symbol without options", async () => {
-  // Mon 9 Nov 2026 08:10 UTC: the delayed chain carries Friday's zeroed quotes; options open at 14:30 UTC.
+test("outside the options session a chain with nothing fitted leads with its quotes and promises nothing about the open", async () => {
+  // Mon 9 Nov 2026 08:10 UTC: the chain carries Friday's quotes, which failed the cleaning, and the name has no stored
+  // close; options open at 14:30 UTC, which is no promise that Monday's quotes pass.
   setSystemTime(new Date("2026-11-09T08:10:00Z"));
   try {
-    await mount({ zeroBids: true });
-    const frame = tui.frame();
-    expect(frame).toContain("Options closed until 14:30 UTC, 09:30 ET.");
-    expect(frame).toContain("The surface fills at the open.");
-    expect(frame).not.toContain("No two-sided option quotes");
+    await mount({ zeroBids: true, noStoredDates: true });
+    await settle();
+    const frame = tui.frame().replace(/\s*\n\s*/g, " ");
+    expect(frame).toContain("Quotes from Fri 6 Nov did not pass cleaning.");
+    expect(frame).toContain(`No stored close for ${SYMBOL}. Options closed until 14:30 UTC, 09:30 ET.`);
+    expect(frame).not.toContain("fills");
     expect(frame).not.toContain("No volatility to draw");
   } finally {
     setSystemTime();
@@ -273,7 +279,7 @@ test("with no live quote the latest stored close stands in, labelled as such", a
   await mount({ zeroBids: true, storedDates: true });
   await settle();
   const frame = tui.frame();
-  expect(frame).not.toContain("No two-sided option quotes");
+  expect(frame).not.toContain("did not pass cleaning.");
   expect(frame).toContain("Stored close");
   expect(frame).toContain("2026-09-22");
 });

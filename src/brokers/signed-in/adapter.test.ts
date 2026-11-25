@@ -250,6 +250,24 @@ describe("signedInBrokerAdapter, direct orders (SnapTrade)", () => {
     await expect(createSignedInBrokerAdapter({ findBroker: () => IBKR }).getQuote!("AAPL", instance)).rejects.toThrow("gives no quotes to the ticket");
   });
 
+  test("asks Gloom not to read the accounts left out of the profile", async () => {
+    const { adapter, calls } = snaptrade((_method, path) => path === "" ? connection(true)
+      : path.startsWith("/snapshot") ? { accounts: [], positions: [] }
+        : path.startsWith("/quote") ? { symbol: "AAPL", price: 230, lastUpdated: 1, dataSource: "live" } : []);
+    const leftOut = { ...profile, excludedAccounts: [{ accountId: "acct 2", name: "Roth IRA" }, { accountId: "acct-3", name: "HSA" }] };
+    await adapter.connect!(leftOut);
+    await adapter.importPortfolioSnapshot!(leftOut);
+    await adapter.listOpenOrders!(leftOut);
+    await adapter.listExecutions!(leftOut);
+    await adapter.getQuote!("AAPL", leftOut);
+    expect(calls.slice(1).map((call) => call.path)).toEqual([
+      "/snapshot?exclude=acct%202,acct-3",
+      "/orders?exclude=acct%202,acct-3",
+      "/executions?period=DAYS_90&exclude=acct%202,acct-3",
+      "/quote?symbol=AAPL&exclude=acct%202,acct-3",
+    ]);
+  });
+
   test("changes and cancels an order by the broker's id behind its number", async () => {
     const { adapter, calls } = snaptrade((method, path) => {
       if (method === "GET" && path === "/orders") return [placed];

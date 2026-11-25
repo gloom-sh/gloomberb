@@ -9,7 +9,7 @@ import {
   type ChainVolatilities,
 } from "./analytics";
 
-const NO_VOLS: ChainVolatilities = { valuationTime: 0, byStrike: new Map(), filled: new Set() };
+const NO_VOLS: ChainVolatilities = { valuationTime: 0, byStrike: new Map(), filled: new Set(), forwards: new Map() };
 
 function contract(
   strike: number,
@@ -66,7 +66,7 @@ test("summarizes the selected expiration without presenting it as whole-chain vo
     calls: [contract(100, 0.2, 100, 200), contract(105, 0.3, 200, 400)],
     puts: [contract(100, 0.22, 150, 180), contract(105, 0.4, 300, 420)],
   };
-  const summary = calculateOptionsSummary(chain, 101, priceHistory(), { valuationTime: 0, byStrike: new Map([[100, 0.21], [105, 0.3]]), filled: new Set() });
+  const summary = calculateOptionsSummary(chain, 101, priceHistory(), { valuationTime: 0, byStrike: new Map([[100, 0.21], [105, 0.3]]), filled: new Set(), forwards: new Map() });
 
   expect(summary.atmImpliedVolatility).toBeCloseTo(0.21, 10);
   expect(summary.expirationVolume).toBe(750);
@@ -155,20 +155,25 @@ test("activity totals require each reported contract's input without discarding 
   };
   for (const invalid of [undefined, Number.NaN, Infinity, -1]) {
     const partial = { ...chain, calls: [{ ...chain.calls[0]!, openInterest: invalid }] };
-    const summary = calculateOptionsSummary(partial, 100, [], { valuationTime: 0, byStrike: new Map([[100, .25]]), filled: new Set() });
+    const summary = calculateOptionsSummary(partial, 100, [], { valuationTime: 0, byStrike: new Map([[100, .25]]), filled: new Set(), forwards: new Map() });
     expect(summary.expirationVolume).toBe(10);
     expect(summary.putCallVolumeRatio).toBe(0);
     expect(summary.putCallOpenInterestRatio).toBeNull();
+    // The blank ratio counts what left it blank, so the pane can say so rather than show a bare dash.
+    expect(summary.uncounted).toEqual({ volume: 0, openInterest: 1 });
     expect(summary.atmImpliedVolatility).toBe(.25);
   }
   const missingVolume = calculateOptionsSummary({ ...chain, puts: [{ ...chain.puts[0]!, volume: undefined }] }, 100, [], NO_VOLS);
   expect(missingVolume.expirationVolume).toBeNull();
   expect(missingVolume.putCallVolumeRatio).toBeNull();
   expect(missingVolume.putCallOpenInterestRatio).toBe(0);
+  expect(missingVolume.uncounted).toEqual({ volume: 1, openInterest: 0 });
   const zero = calculateOptionsSummary({ ...chain, calls: [{ ...chain.calls[0]!, volume: 0, openInterest: 0 }] }, 100, [], NO_VOLS);
   expect(zero.expirationVolume).toBe(0);
   expect(zero.putCallVolumeRatio).toBeNull();
   expect(zero.putCallOpenInterestRatio).toBeNull();
+  // Zero calls blank the ratios with every contract counted.
+  expect(zero.uncounted).toEqual({ volume: 0, openInterest: 0 });
 });
 
 
@@ -178,7 +183,7 @@ test("rejects bad observations inside the selected HV window instead of bridging
   for (const bad of [{ high: 90, low: 110 }, { high: 99 }, { close: 0 }, { close: Number.NaN }]) {
     const points = extended.map((point, i) => i === 15 ? { ...point, ...bad } : point);
     expect(historicalVolatility30d(points)).toBeNull();
-    const summary = calculateOptionsSummary({ underlyingSymbol: "AAPL", expirationDates: [], calls: [contract(100, .2, 100, 200)], puts: [] }, 100, points, { valuationTime: 0, byStrike: new Map([[100, .2]]), filled: new Set() });
+    const summary = calculateOptionsSummary({ underlyingSymbol: "AAPL", expirationDates: [], calls: [contract(100, .2, 100, 200)], puts: [] }, 100, points, { valuationTime: 0, byStrike: new Map([[100, .2]]), filled: new Set(), forwards: new Map() });
     expect(summary.historicalVolatilityUnavailableReason).toBeTruthy();
     expect(summary.impliedHistoricalRatio).toBeNull();
     expect(summary.atmImpliedVolatility).toBe(.2);

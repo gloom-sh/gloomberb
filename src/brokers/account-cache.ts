@@ -5,6 +5,7 @@ import type { BrokerInstanceConfig } from "../types/config";
 import type { CachePolicy } from "../types/persistence";
 import type { BrokerAccount } from "../types/trading";
 import { fnv1aHashString } from "../utils/hash";
+import { includedBrokerAccounts } from "./account-choice";
 
 const BROKER_ACCOUNT_SNAPSHOT_KIND = "account-snapshot";
 const BROKER_ACCOUNT_SNAPSHOT_SCHEMA_VERSION = 1;
@@ -188,7 +189,7 @@ export function loadPersistedBrokerAccountMap(
     if (!broker?.listAccounts && !broker?.importPortfolioSnapshot) continue;
     const accounts = loadPersistedBrokerAccounts(resources, instance, broker);
     if (!accounts || accounts.length === 0) continue;
-    accountMap[instance.id] = accounts;
+    accountMap[instance.id] = includedBrokerAccounts(instance, accounts);
   }
 
   return accountMap;

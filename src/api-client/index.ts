@@ -1154,6 +1154,7 @@ class GloomApiClient {
   getCloudShortInterest = this.data.getCloudShortInterest.bind(this.data);
   getCloudAnalystResearch = this.data.getCloudAnalystResearch.bind(this.data);
   getCloudCorporateActions = this.data.getCloudCorporateActions.bind(this.data);
+  getCloudSplitHistoryBatch = this.data.getCloudSplitHistoryBatch.bind(this.data);
   getCloudTickerChanges = this.data.getCloudTickerChanges.bind(this.data);
   getCloudOrganizationTickers = this.data.getCloudOrganizationTickers.bind(this.data);
   getCloudTickerChangesBatch = this.data.getCloudTickerChangesBatch.bind(this.data);

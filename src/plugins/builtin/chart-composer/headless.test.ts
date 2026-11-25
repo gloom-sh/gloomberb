@@ -397,8 +397,12 @@ test("a chart of daily bars is as of its newest point: the closed session's day,
     // Fri 23 Oct 2026, 15:45 UTC: the session is trading, last quoted at 15:42.
     setSystemTime(new Date("2026-10-23T15:45:00Z"));
     const trading = await load();
-    expect(trading.freshness).toMatchObject({ basis: "daily closes", asOf: "2026-10-23T15:42:00.000Z" });
-    expect(renderHeadlessPaneText(definition, trading, args, "Custom Chart")).toContain("Fri 23 Oct 2026 15:42 UTC");
+    // Its newest bar is the day so far, not a close: GP's export said "daily closes" of a session still trading.
+    expect(trading.freshness).toMatchObject({ basis: "daily bars", note: "the newest bar is today so far", asOf: "2026-10-23T15:42:00.000Z" });
+    const tradingText = renderHeadlessPaneText(definition, trading, args, "Custom Chart");
+    expect(tradingText).toContain("Fri 23 Oct 2026 15:42 UTC");
+    expect(tradingText).toContain("the newest bar is today so far");
+    expect(tradingText).not.toContain("daily closes");
     // Once it has closed, the day the close is from, as `history` dates it; never 00:00 UTC.
     setSystemTime(new Date("2026-10-23T22:50:00Z"));
     const closed = await load();

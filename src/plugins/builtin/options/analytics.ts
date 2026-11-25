@@ -28,6 +28,11 @@ export interface OptionsSummary {
   expirationVolume: number | null;
   putCallVolumeRatio: number | null;
   putCallOpenInterestRatio: number | null;
+  /**
+   * Contracts the source sent without a volume or an open interest count. A
+   * missing count is not read as zero, so any one leaves its total and ratio blank.
+   */
+  uncounted: { volume: number; openInterest: number };
 }
 
 function positive(value: number | undefined): value is number {
@@ -38,11 +43,17 @@ function ratio(numerator: number | null, denominator: number | null): number | n
   return numerator != null && denominator != null && denominator > 0 ? numerator / denominator : null;
 }
 
+const counted = (value: number | null | undefined): value is number => value != null && Number.isFinite(value) && value >= 0;
+
+function uncounted(contracts: readonly OptionContract[], field: "volume" | "openInterest"): number {
+  return contracts.reduce((total, contract) => total + (counted(contract[field]) ? 0 : 1), 0);
+}
+
 function sum(contracts: readonly OptionContract[], field: "volume" | "openInterest"): number | null {
   let total = 0;
   for (const contract of contracts) {
     const value = contract[field];
-    if (value == null || !Number.isFinite(value) || value < 0) return null;
+    if (!counted(value)) return null;
     total += value;
   }
   return Number.isFinite(total) ? total : null;
@@ -59,6 +70,13 @@ export interface ChainVolatilities {
    * strikes (flat beyond the last of them). Shown marked, never as a solved figure.
    */
   filled: ReadonlySet<number>;
+  /**
+   * The forward each expiry's IVs were solved against (by expiration, Unix
+   * seconds): its quotes' put-call parity forward, else spot carried at the
+   * rate and dividend yield. A strike at or above it is solved from its call,
+   * one below from its put. Absent for a venue that marks its own IV.
+   */
+  forwards: ReadonlyMap<number, { forward: number; parity: boolean }>;
 }
 
 /**
@@ -99,6 +117,7 @@ export function solveChainVolatilities(
   const valuationTime = optionQuoteValuationTime(chain, now);
   const byStrike = new Map<number, number>();
   const filled = new Set<number>();
+  const forwards = new Map<number, { forward: number; parity: boolean }>();
   // A venue that marks every contract (Deribit) states its volatility: the out-of-the-money side's at each strike.
   if ([...chain.calls, ...chain.puts].some((contract) => contract.mark)) {
     for (const [side, contracts] of [["call", chain.calls], ["put", chain.puts]] as const) {
@@ -109,9 +128,9 @@ export function solveChainVolatilities(
         if (outOfTheMoney || !byStrike.has(contract.strike)) byStrike.set(contract.strike, mark.iv);
       }
     }
-    return { valuationTime, byStrike, filled };
+    return { valuationTime, byStrike, filled, forwards };
   }
-  if (!positive(spot)) return { valuationTime, byStrike, filled };
+  if (!positive(spot)) return { valuationTime, byStrike, filled, forwards };
   // A quote under intrinsic is no market: no midpoint, forward or IV is read from it.
   chain = withQuotesUnderIntrinsicMarked(chain, spot);
   const rate = optionChainRate(chain);
@@ -122,9 +141,10 @@ export function solveChainVolatilities(
     if (!(years > 0)) continue;
     const calls = tightestQuotes(chain.calls, expiration);
     const puts = tightestQuotes(chain.puts, expiration);
-    const forward = extractImpliedForward([...calls.values()], [...puts.values()], spot, years, rate, chain.underlyingSymbol).forward
-      ?? forwardFromCarry(spot, years, rate, carry);
+    const parity = extractImpliedForward([...calls.values()], [...puts.values()], spot, years, rate, chain.underlyingSymbol).forward;
+    const forward = parity ?? forwardFromCarry(spot, years, rate, carry);
     if (forward == null) continue;
+    forwards.set(expiration, { forward, parity: parity != null });
     // q=r turns the shared spot pricer into discounted forward pricing.
     const solve = (side: OptionSide, contract: OptionContract | undefined): number | null => {
       const mid = contract ? optionMid(contract) : null;
@@ -159,7 +179,7 @@ export function solveChainVolatilities(
       }
     });
   }
-  return { valuationTime, byStrike, filled };
+  return { valuationTime, byStrike, filled, forwards };
 }
 
 function atmImpliedVolatility(volatilities: ChainVolatilities, spot: number | undefined): number | null {
@@ -222,6 +242,10 @@ export function calculateOptionsSummary(
     expirationVolume: callVolume != null && putVolume != null ? callVolume + putVolume : null,
     putCallVolumeRatio: ratio(putVolume, callVolume),
     putCallOpenInterestRatio: ratio(putOpenInterest, callOpenInterest),
+    uncounted: {
+      volume: uncounted(chain.calls, "volume") + uncounted(chain.puts, "volume"),
+      openInterest: uncounted(chain.calls, "openInterest") + uncounted(chain.puts, "openInterest"),
+    },
   };
 }
 

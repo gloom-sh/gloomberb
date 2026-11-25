@@ -8,6 +8,8 @@ export interface BrokerProfileDraft {
   enabled: boolean;
   /** Keep the connection's data on this device, out of Gloom Cloud sync. */
   localOnly: boolean;
+  /** The ids of the accounts left unticked, which Gloom leaves out (`BrokerInstanceConfig.excludedAccounts`). */
+  excludedAccountIds: string[];
   values: Record<string, string>;
 }
 
@@ -50,6 +52,7 @@ export function createBrokerProfileDraft(
     label: instance?.label || adapter.name,
     enabled: instance?.enabled !== false,
     localOnly: instance?.localOnly === true,
+    excludedAccountIds: (instance?.excludedAccounts ?? []).map((entry) => entry.accountId),
     values: flattenBrokerConfigValues(adapter, instance),
   };
 }

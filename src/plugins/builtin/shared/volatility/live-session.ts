@@ -65,14 +65,13 @@ export function usOptionsReopen(now: number): { at: string | null; short: string
 }
 
 /**
- * What a volatility view with nothing fitted says outside the options
- * session: `Options closed until Mon 14:30 UTC, 09:30 ET.`, then `The surface
- * fills at the open.` A chain read then carries the last session's quotes,
- * which the delayed feed zeroes, so an empty surface is the hour, not the
- * symbol.
+ * When a volatility view with nothing fitted outside the options session can
+ * next read new quotes: `Options closed until Mon 14:30 UTC, 09:30 ET.` It
+ * follows what the last session's quotes did (they did not pass cleaning),
+ * and promises no surface: the next session's quotes may not pass either.
  */
-export function optionsClosedNotice(reopen: { at: string | null }): { title: string; message: string } {
-  return { title: `Options closed${reopen.at ? ` until ${reopen.at}` : ""}.`, message: "The surface fills at the open." };
+export function optionsClosedText(reopen: { at: string | null }): string {
+  return `Options closed${reopen.at ? ` until ${reopen.at}` : ""}.`;
 }
 
 /**
