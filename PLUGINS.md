@@ -607,6 +607,8 @@ The `setup()` function receives a context object with these capabilities:
 | `ctx.registerTickerAction(action)` | Add a per-ticker action (shown via `a` key) |
 | `ctx.registerContextMenuProvider(provider)` | Add renderer-neutral context menu items |
 
+Every contribution needs a non-empty string `id`. A registration without one fails the plugin's load with a message that names the plugin and the kind of contribution, and the Plugins pane shows the plugin as failed with that message.
+
 ### Context menus
 
 Plugins can contribute items to native desktop context menus without importing Electrobun, the DOM, or OpenTUI directly. Use Gloom APIs from the plugin context, and let the renderer decide whether a native menu is available.

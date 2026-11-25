@@ -137,3 +137,54 @@ describe("registered panes and research tabs", () => {
     expect(zaps.filter((entry) => !entry.endsWith(`: ${LIVE_STREAMING_SETTING_KEY}`))).toEqual([]);
   });
 });
+
+describe("a contribution without a usable id", () => {
+  const component = () => null;
+  // Every register path, each given a definition that names itself but has no id.
+  const kinds: Array<{
+    kind: string;
+    register: (contributions: RegistryContributions, id: unknown) => void;
+    stored: (contributions: RegistryContributions) => number;
+  }> = [
+    { kind: "pane", register: (c, id) => c.registerPane("author", { id, name: "Pane", component, defaultPosition: "left" } as never), stored: (c) => c.panesMap.size },
+    { kind: "pane template", register: (c, id) => c.registerPaneTemplate("author", { id, paneId: "pane", label: "Template" } as never), stored: (c) => c.paneTemplatesMap.size },
+    { kind: "command", register: (c, id) => c.registerCommand("author", { id, label: "Command" } as never), stored: (c) => c.commandsMap.size },
+    { kind: "command bar search provider", register: (c, id) => c.registerCommandBarSearchProvider("author", { id, name: "Provider" } as never), stored: (c) => c.commandBarSearchProvidersMap.size },
+    { kind: "column", register: (c, id) => c.registerColumn("author", { id, name: "Column" } as never), stored: (c) => c.columnsMap.size },
+    { kind: "broker", register: (c, id) => c.registerBroker("author", { id, name: "Broker" } as never), stored: (c) => c.brokersMap.size },
+    { kind: "ticker research tab", register: (c, id) => c.registerTickerResearchTab("author", { id, name: "Tab", order: 1, component } as never), stored: (c) => c.tickerResearchTabsMap.size },
+    { kind: "shortcut", register: (c, id) => c.registerShortcut("author", { id, name: "Shortcut" } as never), stored: (c) => c.shortcutsMap.size },
+    { kind: "ticker action", register: (c, id) => c.registerTickerAction("author", { id, label: "Action" } as never), stored: (c) => c.tickerActionsMap.size },
+    { kind: "context menu provider", register: (c, id) => c.registerContextMenuProvider("author", { id } as never), stored: (c) => c.contextMenuProvidersMap.size },
+  ];
+
+  test.each(kinds)("is refused for a $kind, with the plugin and kind named, and nothing is stored", ({ kind, register, stored }) => {
+    const { contributions } = countingContributions();
+    for (const id of [undefined, null, "", 7]) {
+      expect(() => register(contributions, id), String(id)).toThrow(`Plugin "author" registered a ${kind}`);
+      expect(stored(contributions), String(id)).toBe(0);
+    }
+    register(contributions, "ok");
+    expect(stored(contributions)).toBe(1);
+  });
+
+  test("says what is wrong with the id and which contribution it is", () => {
+    const { contributions } = countingContributions();
+    const refusal = (definition: unknown) => {
+      try {
+        contributions.registerCommand("author", definition as never);
+      } catch (error) {
+        return (error as Error).message;
+      }
+      throw new Error("expected the registration to be refused");
+    };
+    expect(refusal({ label: "Run it" })).toBe(
+      'Plugin "author" registered a command ("Run it") that has no id. Give every command a non-empty string `id`.',
+    );
+    expect(refusal({ id: "", label: "Run it" })).toContain("that has an empty id");
+    expect(refusal({ id: 3 })).toBe(
+      'Plugin "author" registered a command that has an id that is not a string (number). Give every command a non-empty string `id`.',
+    );
+    expect(refusal(undefined)).toContain("that has no id");
+  });
+});
