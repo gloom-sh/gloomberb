@@ -200,11 +200,13 @@ export function buildEventDetail({
     return [{ title: "Dividend", blocks: [
       detailRow("Ex-date", row.date),
       ...(row.payDate ? [detailRow("Payable", row.payDate)] : []),
-      detailRow("Per share", row.value, [row.declared ? "declared" : null, row.special ? "special" : null].filter(Boolean).join(", ") || undefined),
+      detailRow("Per share", row.value, [row.declared ? "declared" : row.published ? "as published" : null, row.special ? "special" : null]
+        .filter(Boolean).join(", ") || undefined),
       // What a later price adjustment (CTVA's for the VYLR spin-off) did to the amount, which stays as the history states it.
       ...(row.adjustedFor ? [detailRow("Basis", row.adjustedFor)] : []),
-      // The paid history is stated on today's shares; a declared amount is as declared.
-      ...(row.declared ? [] : [detailNote("Per share as the shares stand today: an amount paid before a later split, bonus issue or price adjustment is adjusted for it.")]),
+      // The history's paid amounts are stated on today's shares; a declared amount is as declared, a published one as published.
+      ...(row.declared || row.published ? []
+        : [detailNote("Per share as the shares stand today: an amount paid before a later split, bonus issue or price adjustment is adjusted for it.")]),
     ] }];
   }
 

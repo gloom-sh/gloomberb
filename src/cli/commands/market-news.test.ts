@@ -541,6 +541,24 @@ test("a hyphened word search reads as a name, whose listing has no stories, list
   expect(text).toContain("Corteva completes global seed business spin-off");
 });
 
+test("a hyphened symbol typed in lower case stays that symbol when it has no stories: never a search for its text", async () => {
+  // `news btc-usd` is BTC-USD typed in lower case, not a word like "spin-off" that a search found a listing for.
+  const requests = serveSearch([story("btc", "Bitcoin snaps back after a failed downside break", "2026-10-15T09:00:00.000Z")]);
+  const cli = createTestCliContext({
+    dataProvider: {
+      getNews: async () => [],
+      getQuote: async () => ({ symbol: "BTC-USD", name: "Bitcoin USD", exchangeName: "CCC", instrumentType: "CRYPTOCURRENCY",
+        price: 91_000, currency: "USD", change: 0, changePercent: 0, lastUpdated: Date.parse("2026-11-25T12:00:00Z") }),
+    },
+  });
+  await news.execute(["btc-usd"], cli.context);
+
+  expect(requests.filter((url) => url.searchParams.has("query"))).toEqual([]);
+  const text = render(cli.printed[0]!);
+  expect(text).not.toContain("Stories matching");
+  expect(text).toContain("No news for Bitcoin USD (CCC).");
+});
+
 test("a coin pair whose stories came from searching the coin says so, with the name its quote gives to search", async () => {
   const queries: Array<{ ticker?: string; listingName?: string }> = [];
   const cli = createTestCliContext({

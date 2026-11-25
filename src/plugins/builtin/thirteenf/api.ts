@@ -51,6 +51,14 @@ export interface Forms13FReadOptions {
 
 interface Forms13FRequestOptions extends Forms13FReadOptions {
   cache?: boolean;
+  /**
+   * The sign-in state the answer is for, when it depends on it (a filing's
+   * holdings: the first 1,000 lines signed out, the whole book signed in). Its
+   * saved copy and a request in flight serve only that state.
+   */
+  session?: ReaderSession;
+  /** Whether an answer may be saved; every answer by default. */
+  keep?: (value: unknown) => boolean;
   signal?: AbortSignal;
   /** Gloom Cloud only: a path the public 13F source does not serve. */
   cloudOnly?: boolean;
@@ -111,9 +119,17 @@ function normalizeAccessionNumber(rawValue: unknown, rawUrl: unknown): string {
   return value;
 }
 
-function cacheKey(path: string, params: URLSearchParams): string {
+function cacheKey(path: string, params: URLSearchParams, session?: ReaderSession): string {
   const query = params.toString();
-  return query ? `${path}?${query}` : path;
+  const key = query ? `${path}?${query}` : path;
+  return session ? `${key}#${session}` : key;
+}
+
+/** Whether a 13F read goes out signed in: the service answers a reader who is not with less of a filing. */
+type ReaderSession = "signed-in" | "signed-out";
+
+function readerSession(): ReaderSession {
+  return apiClient.isSignedIn() ? "signed-in" : "signed-out";
 }
 
 const isRateLimited = (error: unknown): error is ApiRequestError => error instanceof ApiRequestError && error.status === 429;
@@ -203,7 +219,7 @@ async function fetchForms13F<T>(
     searchParams.set(key, String(value));
   }
 
-  const key = cacheKey(path, searchParams);
+  const key = cacheKey(path, searchParams, options.session);
   const store = forms13FPersistence;
   const cacheOptions = { sourceKey: CACHE_SOURCE, schemaVersion: CACHE_SCHEMA_VERSION };
   const cached = options.cache !== false ? store?.getResource<T>(CACHE_KIND, key, cacheOptions) ?? null : null;
@@ -264,7 +280,7 @@ async function fetchForms13F<T>(
       }
       if (current()) {
         failedRefreshes.delete(key);
-        if (value != null && options.cache !== false) {
+        if (value != null && options.cache !== false && (options.keep?.(value) ?? true)) {
           store?.setResource(CACHE_KIND, key, value, { ...cacheOptions, cachePolicy: FORMS_13F_CACHE_POLICY });
         }
       }
@@ -463,7 +479,7 @@ export async function listThirteenFFormHoldingsPage(
     accession_number: accessionNumber,
     limit,
     offset,
-  }, { ...options, signal });
+  }, { ...options, signal, session: readerSession() });
   const rows = arrayResponse(raw).map(mapHolding).filter((holding): holding is ThirteenFHoldingRecord => !!holding);
   return { rows, hasMore: rows.length >= limit && offset + rows.length < MAX_FORM_ROWS };
 }
@@ -473,13 +489,16 @@ function mapHoldings(raw: unknown): ThirteenFHoldingRecord[] {
 }
 
 /**
- * A filing's information table as read: its rows, and when Gloom Cloud's
- * limit for a reader who is not signed in cut it short, that limit (the
- * first 1,000 lines, in the filing's order). Absent when the answer says
- * nothing of it, whatever the count: a short read is not by itself that cut.
+ * A filing's information table as read: its rows; `complete: false` when the
+ * answer says they are not the whole table, whether or not the filing's cover
+ * counts its lines; and when Gloom Cloud's limit for a reader who is not
+ * signed in is what cut it short, that limit (the first 1,000 lines, in the
+ * filing's order). Each is as the answer says it: a short read is not by
+ * itself that cut, and a whole one says neither.
  */
 export interface FilingHoldings {
   rows: ThirteenFHoldingRecord[];
+  complete?: false;
   signedOutLimit?: number;
 }
 
@@ -492,8 +511,9 @@ function filingRows(raw: unknown): ThirteenFHoldingRecord[] {
 
 function filingHoldings(raw: unknown): FilingHoldings {
   const rows = filingRows(raw);
-  const limit = asRecord(raw).signedOutLimit;
-  return typeof limit === "number" && Number.isSafeInteger(limit) && limit > 0 && rows.length >= limit ? { rows, signedOutLimit: limit } : { rows };
+  const { complete, signedOutLimit: limit } = asRecord(raw);
+  const capped = typeof limit === "number" && Number.isSafeInteger(limit) && limit > 0;
+  return { rows, ...(complete === false || capped ? { complete: false as const } : {}), ...(capped ? { signedOutLimit: limit } : {}) };
 }
 
 export interface FilingHoldingsOptions extends Forms13FReadOptions {
@@ -525,13 +545,19 @@ export async function listThirteenFFormHoldings(
     accession_number: accessionNumber,
     ...(entries != null && entries > 0 ? { entries } : {}),
   };
-  const whole = fetchForms13F<unknown>("/holdings", params, { ...readOptions, signal, cloudOnly: true });
+  // Signed out, the service sends the first 1,000 lines; signed in, the whole book. Each is kept for its own state,
+  // and an answer the limit cut is never kept as a signed-in reader's (a session the service did not accept).
+  const session = readerSession();
+  const whole = fetchForms13F<unknown>("/holdings", params, {
+    ...readOptions, signal, cloudOnly: true, session,
+    keep: (raw) => session === "signed-out" || asRecord(raw).signedOutLimit == null,
+  });
   let answered = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   if (onFirstRows && entries != null && entries > FIRST_ROWS) {
     timer = setTimeout(() => {
       if (answered) return;
-      void fetchForms13F<unknown>("/holdings", { ...params, limit: FIRST_ROWS }, { signal, cloudOnly: true, cache: false })
+      void fetchForms13F<unknown>("/holdings", { ...params, limit: FIRST_ROWS }, { signal, cloudOnly: true, cache: false, session })
         .then((raw) => { if (!answered) onFirstRows(filingRows(raw)); })
         .catch(() => {
           // Intentional ignore: the first rows only come ahead of the whole filing, which reports its own failure.

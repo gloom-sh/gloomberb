@@ -191,8 +191,9 @@ export interface ThirteenFPeriodReport {
    * The report reconciles, but Gloom Cloud's limit for a reader not signed in
    * (`limit`, its first lines in the filing's order) cut its filings short, as
    * its answers say: its totals stand, its lines do not all. `complete` is false.
+   * `entries` is the line count the cover states, null when it states none.
    */
-  capped?: { loaded: number; entries: number; limit: number };
+  capped?: { loaded: number; entries: number | null; limit: number };
 }
 
 export type HoldingAction = "held" | "new" | "add" | "trim" | "exit" | "unknown";

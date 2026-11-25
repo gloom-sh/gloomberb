@@ -1,6 +1,6 @@
 import { apiClient } from "../../../api-client";
 import type { IpoDeal } from "../../../api-client/ipo";
-import { getRegularSessionDisplay, headlineCloseDate } from "../../../market-data/market/status";
+import { getRegularSessionDisplay, headlineCloseDate, quoteHeadlineTime } from "../../../market-data/market/status";
 import type { Quote } from "../../../types/financials";
 import type { HeadlessPaneApiClient } from "../../../types/plugin";
 import { canonicalExchange } from "../../../utils/exchanges";
@@ -116,14 +116,17 @@ export interface IpoPriceNow {
 /**
  * The price `quote` and DES head a listing with: the regular session's, so an
  * after-hours or pre-market print never stands in for it, dated by the close
- * it is (or the time it was read while the session trades). Null without a price.
+ * it is, else when `quote` dates it (quoteHeadlineTime): a closed market's
+ * price stamped after its venue closed is from that close, not from the
+ * stamp. Null without a price.
  */
 export function ipoPriceNow(quote: Quote | null | undefined): IpoPriceNow | null {
   const price = getRegularSessionDisplay(quote)?.price;
   if (!quote || price == null || !Number.isFinite(price) || price <= 0) return null;
   const close = headlineCloseDate(quote);
   if (close) return { price, at: `at the ${close} close` };
-  const time = Number.isFinite(quote.lastUpdated) && quote.lastUpdated > 0 ? new Date(quote.lastUpdated).toISOString() : null;
+  const observed = quoteHeadlineTime(quote);
+  const time = Number.isFinite(observed) && observed > 0 ? new Date(observed).toISOString() : null;
   return { price, at: time ? `as of ${time.slice(0, 10)} ${time.slice(11, 16)} UTC` : null };
 }
 

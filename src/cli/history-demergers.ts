@@ -143,9 +143,11 @@ export function withPriceAdjustmentFlags<Row extends DemergerRow>(
  * What the bars before each price adjustment are: "On 2026-10-01 the seed
  * business was spun off into VYLR:NYSE (Vylor Inc.), 1 share per share:
  * CTVA's bars before it are adjusted for it (6665:1000), so they are not the
- * prices that traded then (flag spin-off)". A factor no action on record
- * explains says only that the bars before it may be adjusted by it. Null
- * without one.
+ * prices that traded then (flag spin-off)", where the bar it took effect in
+ * runs on without the factor's fall. Bars that all end before it show no such
+ * bar, and their date says nothing of their basis: they may be adjusted for
+ * it. A factor no action on record explains says only that the bars before it
+ * may be adjusted by it. Null without one.
  */
 export function historyAdjustmentNote(symbol: string, adjustments: readonly BarsAdjustment[]): string | null {
   if (adjustments.length === 0) return null;
@@ -155,11 +157,13 @@ export function historyAdjustmentNote(symbol: string, adjustments: readonly Bars
       const what = demerger.business ? `the ${demerger.business} business was spun off` : "a business was spun off";
       const ratio = demerger.ratio ? `, ${demerger.ratio} share per share` : "";
       return at == null
-        ? `${symbol}'s bars here come before the ${demergerSuccessor(demerger)} spin-off of ${date} and are adjusted for it (${terms}), so they are not the prices that traded then`
+        ? `${symbol}'s bars here end before the ${demergerSuccessor(demerger)} spin-off of ${date} and may be adjusted for it (${terms}), `
+          + "so they may not be the prices that traded then: no bar here spans it to tell"
         : `On ${date} ${what} into ${demergerSuccessor(demerger)}${ratio}: ${symbol}'s bars before it are adjusted for it (${terms}), so they are not the prices that traded then (flag ${SPIN_OFF_FLAG})`;
     }
     return at == null
-      ? `${symbol}'s bars here come before a ${terms} adjustment factor of ${date} in no share terms, which no action on record explains, and may be adjusted by it`
+      ? `${symbol}'s bars here end before a ${terms} adjustment factor of ${date} in no share terms, which no action on record explains, `
+        + "and may be adjusted by it: no bar here spans it to tell"
       : `On ${date} ${symbol} has a ${terms} adjustment factor in no share terms, which no action on record explains: bars before it may be adjusted by it (flag ${ADJUSTMENT_FLAG})`;
   });
   return `${parts.join("; ")}.`;

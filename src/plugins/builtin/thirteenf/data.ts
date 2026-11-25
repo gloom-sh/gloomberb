@@ -725,19 +725,25 @@ export async function loadFundDetail(
     })));
     const filings = read.map((filing) => filing.rows);
     // Cut to its first lines by the signed-out limit, as the answer says: the report's totals stand, and it says so up
-    // front. A filing short for any other reason says how much loaded, and names no cause.
+    // front. A filing short for any other reason says how much loaded, and names no cause. Short is what the answer
+    // says (complete: false) or what the cover's count shows; a cover with no count gives no denominator.
     const reconciled = report.complete;
-    const short = report.filings.flatMap((form, index) => (
-      form.tableEntryTotal != null && filings[index]!.length !== form.tableEntryTotal ? [{ form, read: read[index]! }] : []));
+    const short = report.filings.flatMap((form, index) => {
+      const filing = read[index]!;
+      const counted = form.tableEntryTotal != null && filing.rows.length !== form.tableEntryTotal;
+      return filing.complete === false || counted ? [{ form, read: filing }] : [];
+    });
     const limit = short.length > 0 && short.every(({ read }) => read.signedOutLimit != null) ? short[0]!.read.signedOutLimit! : null;
     if (short.length) report.complete = false;
     if (reconciled && limit != null) {
       const loaded = filings.reduce((sum, rows) => sum + rows.length, 0);
-      report.capped = { loaded, entries: report.tableEntryTotal ?? loaded, limit };
+      report.capped = { loaded, entries: report.tableEntryTotal, limit };
       warnings.push(cappedReadText(report));
     } else {
       for (const { form, read } of short) {
-        warnings.push(`${report.periodOfReport}: loaded ${read.rows.length} of ${form.tableEntryTotal} disclosed entries for ${form.accessionNumber}.`);
+        warnings.push(form.tableEntryTotal != null
+          ? `${report.periodOfReport}: loaded ${read.rows.length} of ${form.tableEntryTotal} disclosed entries for ${form.accessionNumber}.`
+          : `${report.periodOfReport}: loaded ${read.rows.length} entries for ${form.accessionNumber}, not the whole filing.`);
       }
     }
     if (!report.complete && !report.capped && !warnings.some((warning) => warning.startsWith(report.periodOfReport))) {

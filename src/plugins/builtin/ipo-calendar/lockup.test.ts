@@ -4,6 +4,7 @@ import type { HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { validateIpoCalendar } from "./client";
 import { ipoCalendarHeadless, projectIpoCalendarHeadless } from "./headless";
 import { ipoDetailNotes, ipoDetailSentences, ipoMetricRows, ipoPriceNow, loadIpoLockupNews, loadListingIpo } from "./listing-ipo";
+import { quoteHeadlineTime } from "../../../market-data/market/status";
 import { filterIpoDeals, formatIpoLockupDate, formatIpoLockupEnd, formatIpoPrice, ipoKeyword, ipoLockupBasis, ipoLockupText, ipoReturnSince } from "./model";
 import { ipoDeal } from "./test-fixture";
 
@@ -109,6 +110,12 @@ test("the price since the IPO is the one quote heads the listing with: after the
   // While the session trades, the live price with the time it was read.
   expect(ipoPriceNow({ ...quote, price: 16.8, marketState: "REGULAR", lastUpdated: Date.parse("2026-11-25T15:02:30Z") } as never))
     .toEqual({ price: 16.8, at: "as of 2026-11-25 15:02 UTC" });
+  // London's session was over by 16:40 on Tue 24 Nov; the quote was stamped at 17:12. `quote` dates its price at that close, and so does this.
+  const london = { symbol: "EXPL", price: 412.5, currency: "GBp", change: 2.5, changePercent: 0.61, previousClose: 410,
+    marketState: "CLOSED", lastUpdated: Date.parse("2026-11-24T17:12:00Z"), changeSessionDate: "2026-11-24",
+    exchangeName: "LSE", listingExchangeName: "LSE" };
+  expect(quoteHeadlineTime(london as never)).toBe(Date.parse("2026-11-24T16:40:00Z"));
+  expect(ipoPriceNow(london as never)).toEqual({ price: 412.5, at: "as of 2026-11-24 16:40 UTC" });
 });
 
 test("a report names only the markets behind that its deals are on, with the day each was last read", () => {

@@ -1,5 +1,5 @@
 import { splitShareTerms } from "../../../market-data/split-terms";
-import { adjustedForText, adjustmentsAfter, demergerSuccessor, priceAdjustment, priceAdjustments, publishedDividend } from "../../../market-data/price-adjustments";
+import { adjustedForText, adjustmentsAfter, demergerSuccessor, priceAdjustment, priceAdjustments, publishedDividend, publishedEps } from "../../../market-data/price-adjustments";
 import type { CatalystEvent, CatalystFilters, CatalystResponse } from "../../../api-client/catalysts";
 import { catalystDate } from "../catalysts/model";
 import type {
@@ -44,7 +44,7 @@ import {
   type EpsBasisName,
 } from "../shared/earnings-report";
 
-export const CORPORATE_ACTION_COVERAGE = "A price-adjustment factor is named a spin-off only where the demerger is on record; any other factor in no share terms is shown as a factor. Dividends and EPS before a factor are shown as adjusted for it. Merger terms and security conversions are not covered.";
+export const CORPORATE_ACTION_COVERAGE = "A price-adjustment factor is named a spin-off only where the demerger is on record; any other factor in no share terms is shown as a factor. The history's dividends and EPS before one are shown as adjusted for it; what the company published is shown as published. Merger terms and security conversions are not covered.";
 
 export type EventStatus = "Earnings" | "Q Est" | "FY Est" | "TTM" | "Dividend" | "Split" | "Spin-off" | "Factor";
 
@@ -110,6 +110,8 @@ export interface EventRow {
   adjustedFor?: string;
   /** A spin-off row's demerger on record, which its price-adjustment factor is for. */
   demerger?: DemergerAction;
+  /** A paid dividend as its issuer's forms or a fund's sponsor published it, shown as that. */
+  published?: true;
   value: string;
   tone: "positive" | "negative" | "muted" | "text";
 }
@@ -422,7 +424,8 @@ export function buildEventRows(
   // company's own EPS is in that currency too: one company's EPS then reads in one unit down the table, and an
   // unlabelled figure nothing else vouches for stays unlabelled.
   const reportedCurrency = feedCurrency && fundamentalsEpsCurrency(financials) === feedCurrency ? feedCurrency : undefined;
-  // EPS before a price adjustment is adjusted for it (CTVA's before the VYLR spin-off of 2026-10-01): said on the row.
+  // The history's EPS before a price adjustment is adjusted for it (CTVA's before the VYLR spin-off of 2026-10-01): said
+  // on the row. A release's own EPS is as the company reported it, whatever its date.
   const adjustments = priceAdjustments(data?.splits, data?.demergers);
   for (const [index, earning] of earnings.entries()) {
     // A pending announcement must never inherit the previous report's actuals.
@@ -432,7 +435,7 @@ export function buildEventRows(
     const surpriseNotMeaningful = earning.epsActual != null && isNotMeaningful(surprise);
     const surprisePercent = earning.epsActual == null || surpriseNotMeaningful ? undefined
       : typeof surprise === "number" ? Math.round(surprise * 10_000) / 100 : earning.surprisePercent;
-    const adjustedEps = earning.epsActual == null && earning.epsEstimate == null ? [] : adjustmentsAfter(adjustments, earning.date);
+    const adjustedEps = (earning.epsActual == null && earning.epsEstimate == null) || publishedEps(earning) ? [] : adjustmentsAfter(adjustments, earning.date);
     rows.push({
       id: earningsIds[index]!,
       // An announcement keeps its date beside ERN's; a period-end row moves to its statement's.
@@ -509,13 +512,14 @@ export function buildEventRows(
 
   const dividendCurrency = data?.currency ?? currency;
   // The paid history is stated on today's shares: an amount before a split or bonus issue on record is that split's.
-  const splitDates = (data?.splits ?? []).filter((split) => splitShareTerms(split) && !priceAdjustment(split, data?.demergers))
-    .map((split) => split.date);
+  const splitDates = (data?.splits ?? []).filter((split) => splitShareTerms(split)).map((split) => split.date);
   for (const dividend of data?.dividends ?? []) {
     const special = dividendSpecial(dividend);
-    const adjusted = splitDates.some((date) => date > dividend.exDate);
-    // One before a price adjustment is as adjusted for it, and says so; a published row stands as published.
-    const adjustedBy = publishedDividend(dividend) ? [] : adjustmentsAfter(adjustments, dividend.exDate);
+    // A row the issuer's forms or a fund's sponsor published stands as published: its date before a split or an
+    // adjustment says nothing of its basis. The history's own rows before one are adjusted for it, and say so.
+    const published = publishedDividend(dividend);
+    const adjusted = !published && splitDates.some((date) => date > dividend.exDate);
+    const adjustedBy = published ? [] : adjustmentsAfter(adjustments, dividend.exDate);
     rows.push({
       id: `div:${dividend.exDate}`,
       date: dividend.exDate,
@@ -528,6 +532,7 @@ export function buildEventRows(
       ...(special === "special" ? { special: true as const } : {}),
       ...(dividend.payDate ? { payDate: dividend.payDate } : {}),
       ...(adjustedBy.length ? { adjustedFor: adjustedForText(adjustedBy) } : {}),
+      ...(published ? { published: true as const } : {}),
       value: formatDistributionAmount(dividend.amount, dividendCurrency),
       // An amount is no gain or loss: it takes no tone.
       tone: "text",
@@ -554,11 +559,10 @@ export function buildEventRows(
 
   for (const split of data?.splits ?? []) {
     // A factor of whole share counts is a split, said in its terms (DBS's bonus issue: 11-for-10, 1 new share for
-    // every 10 held). One on a demerger's ex-date is that spin-off's price adjustment (CTVA's 6665:1000, VYLR's), one
-    // row for both; any other says no more than that it is a factor.
-    const adjustment = priceAdjustment(split, data?.demergers);
-    const demerger = adjustment?.demerger;
-    const terms = adjustment ? null : splitShareTerms(split);
+    // every 10 held), whatever its date. One in no share terms on a demerger's ex-date is that spin-off's price
+    // adjustment (CTVA's 6665:1000, VYLR's), one row for both; any other says no more than that it is a factor.
+    const demerger = priceAdjustment(split, data?.demergers)?.demerger;
+    const terms = splitShareTerms(split);
     rows.push({
       id: `split:${split.date}:${split.description ?? ""}`,
       date: split.date,

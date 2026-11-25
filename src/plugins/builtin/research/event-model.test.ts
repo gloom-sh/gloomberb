@@ -373,7 +373,32 @@ test("a factor is a spin-off only beside its demerger on record, else a factor; 
     splits: [{ date: "2024-04-22", fromFactor: 10, toFactor: 11, ratio: 1.1, description: "11:10" }],
   }, null, null, "SGD");
   expect(bonus).toMatchObject({ status: "Split", value: "11:10", detail: "11-for-10, 1 new share for every 10 held" });
+});
 
+test("a 2-for-1 the day of a spin-off stays a split beside it, and what the company published keeps no adjusted basis", () => {
+  const vylor = { exDate: "2026-10-01", business: "seed", ratio: 1, successor: { symbol: "VYLR", exchange: "NYSE", name: "Vylor Inc." } };
+  const form = { url: "https://example.com/dividend-form.pdf", publishedOn: "2026-08-20" };
+  const rows = buildEventRows({ symbol: "CTVA", currency: "USD", demergers: [vylor],
+    earnings: [{ date: "2026-08-05", epsActual: 2.3, epsEstimate: 2.25, epsActualSource: "press-release" }],
+    dividends: [{ exDate: "2026-06-01", amount: 0.027007 }, { exDate: "2026-09-01", amount: 0.18, parts: [{ amount: 0.18, special: false, type: "interim", form }] }],
+    splits: [{ date: "2026-10-01", fromFactor: 1, toFactor: 2, ratio: 2 }, { date: "2026-10-01", fromFactor: 1000, toFactor: 6665 }],
+  }, null, null, "USD");
+  expect(rows.filter((row) => row.date === "2026-10-01").map((row) => [row.status, row.detail, row.value])).toEqual([
+    ["Split", "2-for-1", "2:1"],
+    ["Spin-off", "Seed business into VYLR:NYSE (Vylor Inc.), 1 share per share", "6665:1000"],
+  ]);
+  // The history's own dividend before both is adjusted for them; the one its forms state, and the release's EPS, are as published.
+  expect(rows.find((row) => row.id === "div:2026-06-01")).toMatchObject({ detail: "split-adjusted, adjusted for the VYLR spin-off",
+    adjustedFor: "adjusted for the VYLR spin-off of 2026-10-01 (6665:1000)" });
+  const published = rows.find((row) => row.id === "div:2026-09-01");
+  expect(published).toMatchObject({ value: "$0.18", detail: "", published: true });
+  expect(published?.adjustedFor).toBeUndefined();
+  expect(rows.find((row) => row.status === "Earnings")?.adjustedFor).toBeUndefined();
+  // The year marks both; the spin-off's says the amounts before it are adjusted only because a row before it says so.
+  expect(dividendYearDetail(dividendYears([{ exDate: "2026-06-01", amount: 0.027007 }], "2026-12-15", splitMarks(rows))[0]!))
+    .toBe("so far · 2-for-1 split · VYLR spin-off, amounts before it adjusted");
+  const publishedOnly = rows.filter((row) => row.id !== "div:2026-06-01");
+  expect(splitMarks(publishedOnly).map((mark) => mark.terms)).toEqual(["2-for-1 split", "VYLR spin-off"]);
 });
 
 describe("event rows", () => {

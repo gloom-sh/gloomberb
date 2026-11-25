@@ -80,10 +80,13 @@ export function newsSearchTextProblem(text: string): string | null {
 /**
  * A word typed as one, not as a symbol: letters, three or more, hyphened
  * between words ("spin-off", "lock-up"), with a lower-case letter, as a
- * word is and a ticker rarely is. BRK-B and CORN are symbols.
+ * word is and a ticker rarely is. BRK-B and CORN are symbols, and so is a
+ * hyphened code that is the listing it found, typed in lower case (btc-usd
+ * is BTC-USD).
  */
-export function isTypedNewsWord(text: string): boolean {
-  return text.length >= MIN_FALLBACK_LENGTH && /^[A-Za-z]+(?:-[A-Za-z]{2,})*$/.test(text) && /[a-z]/.test(text);
+export function isTypedNewsWord(text: string, symbol?: string): boolean {
+  if (text.length < MIN_FALLBACK_LENGTH || !/^[A-Za-z]+(?:-[A-Za-z]{2,})*$/.test(text) || !/[a-z]/.test(text)) return false;
+  return !(text.includes("-") && symbol != null && text.toUpperCase() === symbol.toUpperCase());
 }
 
 /**

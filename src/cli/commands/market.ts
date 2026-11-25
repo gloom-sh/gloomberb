@@ -1,6 +1,6 @@
 import { splitShareTerms } from "../../market-data/split-terms";
 import {
-  adjustedForText, adjustmentsAfter, demergerSuccessor, priceAdjustment, priceAdjustments, publishedDividend, withPriceAdjustmentKinds,
+  adjustedForText, adjustmentsAfter, demergerSuccessor, priceAdjustment, priceAdjustments, publishedDividend, publishedEps, withPriceAdjustmentKinds,
 } from "../../market-data/price-adjustments";
 import { logFailure } from "../../utils/log-failure";
 import { isTransientFailure } from "../../api-client/errors";
@@ -1177,8 +1177,9 @@ function corporateActionRows(data: CorporateActionsData) {
       : !unit ? formatNumber(value, 2)
         : /^[A-Z]{3}$/.test(unit) ? formatCurrency(value, unit, 2) : `${formatNumber(value, 2)} ${unit}`
   );
-  // CTVA's 6665:1000 of 2026-10-01 is the VYLR spin-off's price adjustment: the EPS and dividends before it say they
-  // are adjusted for it, as any factor in no share terms says it adjusts them.
+  // CTVA's 6665:1000 of 2026-10-01 is the VYLR spin-off's price adjustment: the history's EPS and dividends before it
+  // say they are adjusted for it, as any factor in no share terms says it adjusts them. A figure the company published
+  // (a release's EPS, a dividend its own forms state) is as published, whatever its date.
   const adjustments = priceAdjustments(data.splits, data.demergers);
   const amount = (value: number) => (currency ? formatDistributionAmount(value, currency) : cleanDecimal(value));
   return [
@@ -1188,7 +1189,8 @@ function corporateActionRows(data: CorporateActionsData) {
       const basis = earningsEpsBasis(event.epsBasis);
       // History rows are keyed by fiscal quarter end, upcoming ones by announcement date.
       const note = [event.dateType === "fiscal-period-end" ? "period end" : null, quarter === MISSING_VALUE ? null : quarter].filter(Boolean).join(", ");
-      const adjustedFor = event.epsActual == null && event.epsEstimate == null ? "" : adjustedForText(adjustmentsAfter(adjustments, event.date));
+      const adjustedFor = (event.epsActual == null && event.epsEstimate == null) || publishedEps(event) ? ""
+        : adjustedForText(adjustmentsAfter(adjustments, event.date));
       return {
         type: "earnings",
         date: event.date,
@@ -1221,8 +1223,9 @@ function corporateActionRows(data: CorporateActionsData) {
         ...(event.cashEstimate ? { cashEstimate: event.cashEstimate } : {}),
       };
     }),
-    // In share terms where the factor states them (11-for-10, 1 new share for every 10 held). One on a demerger's
-    // ex-date is that spin-off's price adjustment, one row for both; any other in no share terms is a factor, no more.
+    // In share terms where the factor states them (11-for-10, 1 new share for every 10 held), a split whatever its date.
+    // One in no share terms on a demerger's ex-date is that spin-off's price adjustment, one row for both; any other in
+    // no share terms is a factor, no more.
     ...data.splits.map((event) => {
       const adjustment = priceAdjustment(event, data.demergers ?? []);
       if (adjustment?.demerger) {
@@ -3596,8 +3599,9 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     const futuresCode = !!word && !!bareFuturesCode(word) && isFuturesInstrument(listing!.symbol, quote?.instrumentType);
     // A word typed as a word ("corn", not CORN; "spin-off", hyphened) that a ticker answers to but no story is filed
     // under: the stories that mention the word, said to be that (Teucrium Corn Fund had none on 5 Nov 2026; corn's
-    // market had plenty; the S&P spin-off index has none, spin-offs have plenty).
-    const typedWord = !!word && isTypedNewsWord(word);
+    // market had plenty; the S&P spin-off index has none, spin-offs have plenty). A hyphened code that is the listing
+    // itself (btc-usd for BTC-USD) is that symbol, typed in lower case.
+    const typedWord = !!word && isTypedNewsWord(word, listing?.symbol);
     const reason = commodity ? `the commodity ${future!.symbol} trades`
       : !resolved ? "no ticker by that name" : futuresCode ? "a futures code, not a ticker"
         : typedWord ? `no stories filed under ${listing!.symbol}${identity?.name ? ` (${identity.name})` : ""}` : null;

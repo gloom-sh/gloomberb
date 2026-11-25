@@ -190,15 +190,16 @@ export function dividendYearDetail(year: DividendYear): string {
 
 /**
  * The splits and price adjustments among an event list's rows, as the Dividends view marks them. A price adjustment's
- * mark says the amounts before it are adjusted for it, as they stand in the history.
+ * mark says the amounts before it are adjusted only where a paid row before it says so (its adjustedFor): a date
+ * alone says nothing of an amount's basis, and a published row stands as published.
  */
 export function splitMarks(rows: readonly EventRow[]): SplitMark[] {
+  const adjustedBefore = (date: string) => rows.some((row) => row.status === "Dividend" && row.adjustedFor && row.date < date);
   return rows.flatMap((row) => {
     if (row.status === "Split") return [{ date: row.date, terms: `${row.detail} split` }];
-    if (row.status === "Spin-off" && row.demerger) {
-      return [{ date: row.date, terms: `${row.demerger.successor.symbol} spin-off, amounts before it adjusted` }];
-    }
-    return row.status === "Factor" ? [{ date: row.date, terms: `${row.value} factor, amounts before it adjusted` }] : [];
+    const name = row.status === "Spin-off" && row.demerger ? `${row.demerger.successor.symbol} spin-off`
+      : row.status === "Factor" ? `${row.value} factor` : null;
+    return name ? [{ date: row.date, terms: adjustedBefore(row.date) ? `${name}, amounts before it adjusted` : name }] : [];
   });
 }
 

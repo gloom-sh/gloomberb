@@ -67,9 +67,14 @@ export function filingDayText(date: string, omitYear?: number): string {
  * in for the whole book."
  */
 export function cappedReadText(report: Pick<ThirteenFPeriodReport, "periodOfReport" | "capped">): string {
-  const { loaded, entries, limit } = report.capped ?? { loaded: 0, entries: 0, limit: 0 };
+  const { loaded, entries, limit } = report.capped ?? { loaded: 0, entries: null, limit: 0 };
   return `Signed out, Gloom Cloud sends a filing's first ${count(limit)} lines: ${filingDayText(report.periodOfReport)} `
-    + `is ${count(loaded)} of ${count(entries)}, in the filing's order, not the largest. Sign in for the whole book.`;
+    + `is ${linesOf(loaded, entries)}, in the filing's order, not the largest. Sign in for the whole book.`;
+}
+
+/** "1,000 of 3,856", or "its first 1,000" when the cover counts no lines: a count the filing does not state is not made up. */
+function linesOf(loaded: number, entries: number | null): string {
+  return entries != null ? `${count(loaded)} of ${count(entries)}` : `its first ${count(loaded)}`;
 }
 
 /**
@@ -84,8 +89,9 @@ export function cappedHoldingsText(data: Pick<FundDetailData, "latestReport" | "
   const previous = compared ? data.previousReport?.capped : undefined;
   if (!latest && !previous) return null;
   const parts = [
-    latest ? `these are ${count(latest.loaded)} of the ${count(latest.entries)} lines filed, in the filing's order, not the fund's largest` : null,
-    previous ? `${filingDayText(data.previousReport!.periodOfReport)}'s are ${count(previous.loaded)} of ${count(previous.entries)}` : null,
+    latest ? `these are ${latest.entries != null ? `${count(latest.loaded)} of the ${count(latest.entries)} lines filed` : `its first ${count(latest.loaded)} lines`}, `
+      + "in the filing's order, not the fund's largest" : null,
+    previous ? `${filingDayText(data.previousReport!.periodOfReport)}'s are ${linesOf(previous.loaded, previous.entries)}` : null,
   ].filter(Boolean);
   return `Signed out, Gloom Cloud sends a filing's first ${count((latest ?? previous)!.limit)} lines: ${parts.join("; ")}`
     + `${compared ? ", so QoQ and Est P&L stay blank" : ""}. Sign in for the whole book.`;

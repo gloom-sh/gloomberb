@@ -1,4 +1,4 @@
-import type { CorporateActionsData, DemergerAction, DividendAction, SplitAction } from "../types/financials";
+import type { CorporateActionsData, DemergerAction, DividendAction, EarningsAction, SplitAction } from "../types/financials";
 import { splitShareTerms } from "./split-terms";
 
 /**
@@ -23,19 +23,19 @@ export interface PriceAdjustment {
 type Factor = Pick<SplitAction, "date" | "fromFactor" | "toFactor" | "ratio">;
 
 /**
- * The split as a price adjustment: a factor that lowers the price on a
- * demerger's ex-date is that demerger's, whatever its terms; any other is an
- * adjustment when no share count states it. Null for a split, and for a
+ * The split as a price adjustment: a factor no share count states. One that
+ * lowers the price on a demerger's ex-date is that demerger's; any other is an
+ * adjustment, no more. Null for a split in share terms, on a demerger's
+ * ex-date too (a 2-for-1 beside CTVA's 6665:1000 stays a split), and for a
  * factor that moves nothing.
  */
 export function priceAdjustment(split: Factor, demergers: readonly DemergerAction[] = []): PriceAdjustment | null {
-  if (!/^\d{4}-\d{2}-\d{2}/.test(split.date)) return null;
+  if (!/^\d{4}-\d{2}-\d{2}/.test(split.date) || splitShareTerms(split)) return null;
   const { fromFactor: from, toFactor: to } = split;
   const factor = from != null && to != null && from > 0 && to > 0 ? to / from : split.ratio;
   if (factor == null || !Number.isFinite(factor) || !(factor > 0) || factor === 1) return null;
   const date = split.date.slice(0, 10);
   const demerger = factor > 1 ? demergers.find((action) => action.exDate === date) : undefined;
-  if (!demerger && splitShareTerms(split)) return null;
   const terms = from != null && to != null && from > 0 && to > 0 ? `${to}:${from}` : String(Number(factor.toFixed(6)));
   return { date, factor, terms, ...(demerger ? { demerger } : {}) };
 }
@@ -80,9 +80,18 @@ export function adjustedForText(adjustments: readonly PriceAdjustment[], dated =
   return `adjusted ${named.join(" and ")}`;
 }
 
-/** Whether a paid row is as its publisher or the issuer's own forms state it: no adjustment in the history touches it. */
+/**
+ * Whether a paid row is as its publisher or the issuer's own forms state it:
+ * its date before an adjustment says nothing of its basis, so it is shown as
+ * published, with no adjustment named.
+ */
 export function publishedDividend(dividend: Pick<DividendAction, "source" | "parts">): boolean {
   return !!dividend.source || !!dividend.parts?.length;
+}
+
+/** Whether a report's EPS is the company's own release's (`press-release`), shown as reported, with no adjustment named. */
+export function publishedEps(earning: Pick<EarningsAction, "epsActualSource">): boolean {
+  return earning.epsActualSource === "press-release";
 }
 
 /**
