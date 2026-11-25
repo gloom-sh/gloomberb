@@ -1,5 +1,6 @@
-import { expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { act } from "react";
+import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
@@ -7,12 +8,19 @@ import { createTestDataProvider } from "../../../test-support/data-provider";
 import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { AnalystResearchView } from "../research/analyst-pane";
-import { CorporateActionsView } from "../research/corporate-actions-pane";
+import { catalystCache } from "../catalysts/client";
+import { catalystPayload } from "../catalysts/test-fixture";
+import { EarningsEstimatesView } from "../research/corporate-actions-pane";
+import { EventsPane } from "../research/event-views";
 import { HistoricalPricesPane } from "../ticker-detail/data-panes/historical-prices";
 import { listingIdentity } from "./ticker-request";
 
 type Pane = "analyst-research" | "earnings-estimates" | "corporate-actions" | "historical-prices";
 const tui = createOpenTuiTestHarness();
+let catalystsSpy: ReturnType<typeof spyOn>;
+// EVT's opening block also reads the next catalyst; none is on the calendar here.
+beforeEach(() => { catalystsSpy = spyOn(apiClient, "getCloudCatalysts").mockResolvedValue({ ...catalystPayload(), events: [], total: 0 }); });
+afterEach(() => { catalystsSpy.mockRestore(); catalystCache.reset(); });
 
 async function settle() {
   for (let i = 0; i < 4; i++) await act(async () => { await Bun.sleep(1); await tui.setup().renderOnce(); });
@@ -35,7 +43,7 @@ async function mount(pane: Pane, width: number, state: { failure: Error | null; 
     getCorporateActions: async (_symbol, _exchange, context) => {
       if (pane === "corporate-actions") { requests.push(context?.cacheMode === "refresh"); fail(); }
       return { symbol: "GROW", currency: "USD", dividends: [], splits: [],
-        earnings: [{ date: state.revision ? "2026-06-30" : "2026-03-31", dateType: "fiscal-period-end" as const, epsActual: 2.34, currency: "USD" }],
+        earnings: [{ date: state.revision ? "2026-06-30" : "2026-03-31", dateType: "announcement" as const, epsActual: 2.34, currency: "USD" }],
       };
     },
     getPriceHistory: async (_symbol, _exchange, _range, context) => {
@@ -55,7 +63,9 @@ async function mount(pane: Pane, width: number, state: { failure: Error | null; 
     ? <AnalystResearchView focused width={width} height={23} />
     : pane === "historical-prices"
       ? <HistoricalPricesPane focused width={width} height={23} paneId={paneId} paneType={pane} />
-      : <CorporateActionsView focused width={width} height={23} variant={pane} footerPaneId={pane} />;
+      : pane === "earnings-estimates"
+        ? <EarningsEstimatesView focused width={width} height={23} />
+        : <EventsPane focused width={width} height={23} />;
   await act(async () => {
     await tui.render(<TestPaneFrame state={app} paneId={paneId} pluginId="ticker-research" runtime={runtime} width={width} height={24}>
       {() => content}

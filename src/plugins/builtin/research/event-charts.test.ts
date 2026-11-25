@@ -11,7 +11,7 @@ describe("the Earnings view's quarters", () => {
   // Fifteen reported quarters, Mar 2095 to Sep 2098, oldest first as a source may send them, alternately a beat and a miss.
   const reported = Array.from({ length: 15 }, (_, index) => {
     const year = 2095 + Math.floor(index / 4);
-    const [end, report] = [["03-31", "04-28"], ["06-30", "07-28"], ["09-30", "10-28"], ["12-31", "01-28"]][index % 4]!;
+    const [end, report] = ([["03-31", "04-28"], ["06-30", "07-28"], ["09-30", "10-28"], ["12-31", "01-28"]] as const)[index % 4]!;
     const eps = Number((1 + index / 100).toFixed(2));
     return { date: `${index % 4 === 3 ? year + 1 : year}-${report}`, dateType: "announcement" as const, currency: "USD",
       fiscalPeriod: `${year}-${end.slice(0, 2)}`, epsActual: eps, epsEstimate: Number((eps + (index % 2 ? -0.02 : 0.02)).toFixed(2)) };

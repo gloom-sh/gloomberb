@@ -10,7 +10,10 @@ import { DividendYieldPane } from "../dividend-yield/pane";
 import { fetchProviderDividendData } from "../dividend-yield/provider-client";
 import { buildDividendMetrics, type fetchDividendData } from "../dividend-yield/client";
 import { AnalystResearchView } from "../research/analyst-pane";
-import { CorporateActionsView } from "../research/corporate-actions-pane";
+import { catalystCache } from "../catalysts/client";
+import { catalystPayload } from "../catalysts/test-fixture";
+import { EarningsEstimatesView } from "../research/corporate-actions-pane";
+import { EventsPane } from "../research/event-views";
 import { isCloudSessionRequired } from "./research-cloud-session";
 
 const denial = "Gloom Cloud requires signup and email verification";
@@ -20,8 +23,16 @@ let user: AuthUser | null = null;
 const listeners = new Set<() => void>();
 let getUserSpy: ReturnType<typeof spyOn>;
 let subscribeSpy: ReturnType<typeof spyOn>;
+let catalystsSpy: ReturnType<typeof spyOn>;
+let checkCatalystAccess = () => {};
 
 beforeEach(() => {
+  checkCatalystAccess = () => {};
+  // EVT's opening block reads the next catalyst from the Cloud calendar, behind the same session.
+  catalystsSpy = spyOn(apiClient, "getCloudCatalysts").mockImplementation(async () => {
+    checkCatalystAccess();
+    return { ...catalystPayload(), events: [], total: 0 };
+  });
   user = null;
   getUserSpy = spyOn(apiClient, "getCurrentUser").mockImplementation(() => user);
   subscribeSpy = spyOn(apiClient, "subscribeCurrentUser").mockImplementation((listener) => {
@@ -33,6 +44,8 @@ beforeEach(() => {
 afterEach(() => {
   getUserSpy.mockRestore();
   subscribeSpy.mockRestore();
+  catalystsSpy.mockRestore();
+  catalystCache.reset();
   listeners.clear();
 });
 
@@ -55,12 +68,13 @@ async function render(pane: typeof panes[number], state: { cloudRequired: boolea
     if (state.failure) throw new Error(state.failure);
     if (state.cloudRequired && !user?.emailVerified) throw new Error(denial);
   };
+  checkCatalystAccess = checkAccess;
   const provider = createTestDataProvider({
     getCorporateActions: async () => {
       checkAccess();
       return { symbol: "TEST", currency: "USD", coverage: { dividends: "available", earnings: "available", splits: "available" },
         dividends: [{ exDate: "2026-08-01", amount: 0.25 }], splits: [],
-        earnings: [{ date: "2026-06-30", dateType: "fiscal-period-end", epsActual: 2, currency: "USD" }],
+        earnings: [{ date: "2026-07-28", dateType: "announcement", fiscalPeriod: "2026-06", epsActual: 2, epsEstimate: 1.9, currency: "USD" }],
       };
     },
     getAnalystResearch: async () => {
@@ -82,7 +96,9 @@ async function render(pane: typeof panes[number], state: { cloudRequired: boolea
     ? <DividendYieldPane focused width={80} height={23} loadData={loadData} />
     : pane === "analyst-research"
       ? <AnalystResearchView focused width={80} height={23} />
-      : <CorporateActionsView focused width={80} height={23} variant={pane} footerPaneId={pane} />;
+      : pane === "earnings-estimates"
+        ? <EarningsEstimatesView focused width={80} height={23} />
+        : <EventsPane focused width={80} height={23} />;
   await act(async () => {
     await tui.render(<TestPaneFrame state={appState} paneId={id} pluginId="ticker-research" runtime={runtime} width={80} height={24}>
       {() => content}
@@ -111,20 +127,22 @@ test.each([...panes])("%s recovers from sign-in and verification while preservin
   state.failure = undefined;
   await tui.emitKeypress({ name: "r" });
   for (let i = 0; i < 5; i++) await frame();
-  expect(tui.frame()).toContain(pane === "dividend-yield" ? "TTM/share" : pane === "analyst-research" ? "Fixture Research" : "Earnings");
+  const loaded = { "dividend-yield": "TTM/share", "analyst-research": "Fixture Research", "corporate-actions": "Jun 2026", "earnings-estimates": "Earnings" }[pane];
+  expect(tui.frame()).toContain(loaded);
   expect(tui.frame()).not.toContain("Research provider timed out");
   // A usable non-Cloud source remains available without any signed-in account.
   state.cloudRequired = false;
   await setSession(null);
   expect(tui.frame()).not.toContain("Sign in to");
-  expect(tui.frame()).toContain(pane === "dividend-yield" ? "TTM/share" : pane === "analyst-research" ? "Fixture Research" : "Earnings");
+  expect(tui.frame()).toContain(loaded);
 });
 
 test("partial event data keeps usable rows and reports an auth-denied source once", async () => {
   await render("corporate-actions", { cloudRequired: false, analystDenied: true });
   const output = tui.frame();
-  expect(output).toContain("Dividend");
-  expect(output).toContain("Earnings");
+  // The quarter reported and the last ex-date, without the estimates the denied source holds.
+  expect(output).toContain("Jun 2026");
+  expect(output).toContain("Last ex");
   expect(output.match(/Gloom Cloud requires signup/g)).toHaveLength(1);
   expect(output).not.toContain("Sign in to");
 });

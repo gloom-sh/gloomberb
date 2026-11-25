@@ -93,9 +93,9 @@ function useNextCatalyst(symbol: string | null, enabled: boolean, today: string)
   const loader = useCallback((force: boolean) => (
     loadCatalysts(nextCatalystQuery(symbol!), accessKey, force).then((result) => nextCatalystOf(result.payload.events, today))
   ), [accessKey, symbol, today]);
-  const { data, error } = useAsyncResource(enabled && symbol ? loader : null);
+  const { data, error, reload } = useAsyncResource(enabled && symbol ? loader : null);
   // Signed out, the Catalysts view says so; the opening block leaves the figure out.
-  return { catalyst: data ?? null, error: error && !isCloudSessionRequired(error) ? `Catalysts unavailable: ${error}` : null };
+  return { catalyst: data ?? null, error: error && !isCloudSessionRequired(error) ? `Catalysts unavailable: ${error}` : null, reload };
 }
 
 type QuarterColumnId = "date" | "period" | "eps" | "estimate" | "surprise" | "revenue" | "detail";
@@ -125,7 +125,7 @@ function EventsEarningsView({ focused, width, height, footerPaneId = "corporate-
   const data = useEventData();
   const { symbol, today, allRows, fund } = data;
   const quarters = useMemo(() => earningsQuarters(allRows, today), [allRows, today]);
-  const { catalyst, error: catalystError } = useNextCatalyst(symbol, !fund, today);
+  const { catalyst, error: catalystError, reload: reloadCatalyst } = useNextCatalyst(symbol, !fund, today);
   const figures = useMemo(() => buildNextUp(allRows, { today, fund, statedExDate: data.statedExDate, catalyst }).map(toStat),
     [allRows, catalyst, data.statedExDate, fund, today]);
   const epsUnit = sharedCurrency(quarters.flatMap((quarter) => [
@@ -190,7 +190,9 @@ function EventsEarningsView({ focused, width, height, footerPaneId = "corporate-
 
   usePaneStatusFooter({ registrationId: footerPaneId, loading: data.loading,
     error: data.error ?? (data.sourceNotice?.failed ? data.sourceNotice.text : null) ?? catalystError });
-  const handleKeyDown = useCallback((event: DataTableKeyEvent) => handleRefreshKey(event, data.reload, { stopPropagation: true }), [data.reload]);
+  // A refresh asks the catalyst calendar again too, so a failed read does not outlast it.
+  const handleKeyDown = useCallback((event: DataTableKeyEvent) => handleRefreshKey(event, () => { data.reload(); reloadCatalyst(); }, { stopPropagation: true }),
+    [data.reload, reloadCatalyst]);
   if (data.authWall) return <SignInWall placement="corporate-actions-signin" action="view corporate actions" needsVerification={data.cloudSession.needsVerification} />;
 
   return (

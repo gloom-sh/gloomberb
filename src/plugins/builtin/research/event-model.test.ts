@@ -1,6 +1,6 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { describe, expect, test } from "bun:test";
-import type { AnalystResearchData } from "../../../types/financials";
+import type { AnalystResearchData, CorporateActionsData } from "../../../types/financials";
 import { buildEventRows, buildEventSummary, buildNextUp, eventSourceNotice, formatEventMetric, nextCatalystOf, sourceErrorText, type EventFinancials } from "./event-model";
 import { catalystFixture } from "../catalysts/test-fixture";
 import { NOT_MEANINGFUL_TONE } from "../../../utils/growth";
@@ -615,7 +615,7 @@ describe("what is next", () => {
       { date: "2098-12-31", period: "current_quarter", average: 11.2e9, currency: "USD", analysts: 1, growth: -0.02 },
       { date: "2099-03-31", period: "next_quarter", average: 12.5e9, currency: "USD" },
     ] };
-  const rows = (earnings: Parameters<typeof buildEventRows>[0] extends infer T ? NonNullable<T>["earnings"] : never, extra = {}) => buildEventRows({
+  const rows = (earnings: CorporateActionsData["earnings"], extra = {}) => buildEventRows({
     symbol: "KO", currency: "USD", splits: [], dividends: [{ exDate: "2098-09-15", amount: 0.53 }], earnings, ...extra,
   }, estimates, null, "USD");
   const figures = (built: ReturnType<typeof rows>, options: Partial<Parameters<typeof buildNextUp>[1]> = {}) =>

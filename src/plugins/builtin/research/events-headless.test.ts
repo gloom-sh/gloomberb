@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { createEventsHeadless } from "./events-headless";
 import { createTestDataProvider } from "../../../test-support/data-provider";
+import { catalystFixture, catalystPayload } from "../catalysts/test-fixture";
 
 const args: HeadlessPaneLoadArgs = {
   rawArgument: "AAPL", argument: "AAPL", symbols: ["AAPL"], options: {},
@@ -46,24 +47,62 @@ describe("corporate actions headless model", () => {
     expect(own.notes).toEqual(["STPP last traded 2020-07-16; no longer listed."]);
   });
 
-  test("fn EVT prints the pane's views: what is next, the quarters, the years paid, and names fn DVD for every payment", async () => {
+  test("fn EVT prints the pane's views: what is next, the quarters, and the years paid with the splits that went ex in them", async () => {
     const marketData = createTestDataProvider({
-      getCorporateActions: async () => ({ symbol: "AAPL", currency: "USD", splits: [],
-        // Nothing paid in 2020 or 2021: one gap, not two years of blanks.
+      getCorporateActions: async () => ({ symbol: "AAPL", currency: "USD",
+        splits: [{ date: "2020-08-31", fromFactor: 1, toFactor: 4 }],
+        // Nothing paid in 2020 or 2021: a gap, broken where the split went ex.
         dividends: [2015, 2016, 2017, 2018, 2019, 2022, 2023, 2024].map((year) => ({ exDate: `${year}-05-10`, amount: 0.25 })),
         earnings: [{ date: "2024-08-01", epsActual: 1.4, epsEstimate: 1.35, currency: "USD", fiscalPeriod: "2024-06" }] }),
       getAnalystResearch: async () => null as never,
       getTickerFinancials: async () => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
     });
     const result = await createEventsHeadless().load(args, { marketData } as HeadlessPaneContext);
-    // The exports keep the event rows, the last three years of dividends among them.
-    expect(result.rows.filter((row) => row.status === "Dividend").map((row) => row.date)).toEqual(["2024-05-10", "2023-05-10", "2022-05-10"]);
-    expect(result.notes).toEqual(["The exports list the dividends of the last three years; every payment is in DVD: gloom fn DVD AAPL"]);
-    expect(result.metadata).toMatchObject({ earlierDividends: { count: 5, latestExDate: "2019-05-10" } });
+    // The exports keep every event row; the text report reads as the views do.
+    expect(result.rows.filter((row) => row.status === "Dividend")).toHaveLength(8);
+    expect(result.rows.find((row) => row.status === "Split")).toMatchObject({ date: "2020-08-31", detail: "4-for-1" });
+    expect(result.notes).toBeUndefined();
     expect(result.textRows?.map((row) => [row.date, row.eps, row.estimate, row.surprise])).toEqual([["2024-08-01", "1.40 USD", "1.35 USD", "+3.70%"]]);
     const [nextUp, years] = result.textSections ?? [];
     expect(nextUp?.entries?.map((entry) => entry.formatted)).toEqual(["10 May 2024  $0.25"]);
-    expect(years?.rows?.map((row) => `${row.year} ${row.paid}`)).toEqual([
-      "2024 0.25 USD", "2023 0.25 USD", "2022 0.25 USD", "2020-2021 ", "2019 0.25 USD", "2018 0.25 USD", "2017 0.25 USD", "2016 0.25 USD", "2015 0.25 USD"]);
+    expect(years?.rows?.map((row) => `${row.year} ${row.paid} ${row.detail}`.trim())).toEqual([
+      "2024 0.25 USD", "2023 0.25 USD", "2022 0.25 USD", "2021  no dividend", "2020  no dividend · 4-for-1 split",
+      "2019 0.25 USD", "2018 0.25 USD", "2017 0.25 USD", "2016 0.25 USD", "2015 0.25 USD"]);
+  });
+
+  describe("the next catalyst", () => {
+    const marketData = createTestDataProvider({
+      getCorporateActions: async () => ({ symbol: "AAPL", currency: "USD", splits: [], dividends: [{ exDate: "2024-05-10", amount: 0.25 }],
+        earnings: [{ date: "2024-08-01", epsActual: 1.4, epsEstimate: 1.35, currency: "USD", fiscalPeriod: "2024-06" }] }),
+      getAnalystResearch: async () => null as never,
+      getTickerFinancials: async () => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
+    });
+    const load = (getCloudCatalysts: (query: unknown) => Promise<unknown>) => createEventsHeadless()
+      .load(args, { marketData, apiClient: { getCloudCatalysts } } as unknown as HeadlessPaneContext);
+
+    test("is read from the catalyst calendar as the pane reads it, the earliest one ahead", async () => {
+      const queries: unknown[] = [];
+      const event = (id: string, deadlineDate: string, title: string) => ({ ...catalystFixture, id, title, deadlineDate, datePrecision: { deadline: "day" as const } });
+      const result = await load(async (query) => {
+        queries.push(query);
+        return { ...catalystPayload(), total: 3, events: [event("later", "2099-06-01", "Court hearing"), event("past", "2001-01-01", "Old ruling"), event("next", "2099-03-15", "FDA decision")] };
+      });
+      expect(queries).toEqual([{ symbol: "AAPL", upcoming: true, dateField: "any", limit: 20, offset: 0 }]);
+      const catalyst = result.textSections?.[0]?.entries?.find((entry) => entry.label === "Next catalyst");
+      expect(catalyst?.formatted).toStartWith("15 Mar 2099");
+      expect(catalyst?.formatted).toContain("FDA decision");
+      expect(result.metadata?.nextUp).toContainEqual(expect.objectContaining({ id: "next-catalyst", value: "15 Mar 2099" }));
+      expect(result.errors).toBeUndefined();
+    });
+
+    test("a failed read is said and the rest stands; signed out, the figure is only left out", async () => {
+      const failed = await load(async () => { throw new Error("Catalyst calendar timed out"); });
+      expect(failed.errors).toEqual(["Catalysts unavailable: Catalyst calendar timed out"]);
+      expect(failed.textRows).toHaveLength(1);
+      expect(failed.textSections?.[0]?.entries?.map((entry) => entry.label)).toEqual(["Last ex"]);
+      const signedOut = await load(async () => { throw new Error("Gloom Cloud requires signup and email verification"); });
+      expect(signedOut.errors).toBeUndefined();
+      expect(signedOut.textSections?.[0]?.entries?.map((entry) => entry.label)).toEqual(["Last ex"]);
+    });
   });
 });
