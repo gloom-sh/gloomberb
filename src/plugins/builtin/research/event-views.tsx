@@ -35,7 +35,8 @@ import { beatMissSeries, slotAxis, slotPoints } from "../shared/beat-miss-chart"
 import { useEventData } from "./event-data";
 import { useEventRowDetail } from "./event-detail";
 import { buildEarningsHeader, buildNextUp, formatEventMetric, isFundListing, nextCatalystOf, nextCatalystQuery, type EventSummaryFigure } from "./event-model";
-import { dividendYearDetail, dividendYearLabel, dividendYears, dividendYearSpan, earningsQuarters, splitMarks, type DividendYear, type EarningsQuarter } from "./event-charts";
+import { dividendYearDetail, dividendYearLabel, dividendYears, dividendYearSpan, earningsQuarters, epsHeading, quartersEpsBasis, splitMarks, type DividendYear, type EarningsQuarter } from "./event-charts";
+import type { EpsBasisName } from "../shared/earnings-report";
 
 type ViewProps = { focused: boolean; width: number; height: number; footerPaneId?: string };
 
@@ -79,12 +80,14 @@ function useNextCatalyst(symbol: string | null, enabled: boolean, today: string)
 type QuarterColumnId = "date" | "period" | "eps" | "estimate" | "surprise" | "revenue" | "detail";
 type QuarterColumn = DataTableColumn & { id: QuarterColumnId };
 
-function quarterColumns(width: number, epsUnit: string | undefined, revenueUnit: string | undefined): QuarterColumn[] {
+/** The quarters' columns; the EPS heading names the basis most reported quarters share (`ADJ EPS USD`), once. */
+function quarterColumns(width: number, epsUnit: string | undefined, revenueUnit: string | undefined, basis: EpsBasisName | null): QuarterColumn[] {
   const heading = (label: string, unit: string | undefined) => (unit ? `${label} ${unit}` : label);
+  const eps = heading(epsHeading(basis), epsUnit);
   const columns: QuarterColumn[] = [
     { id: "date", label: "DATE", width: 11, align: "left" },
     { id: "period", label: "QUARTER", width: 9, align: "left" },
-    { id: "eps", label: heading("EPS", epsUnit), width: Math.max(7, heading("EPS", epsUnit).length), align: "right" },
+    { id: "eps", label: eps, width: Math.max(7, eps.length), align: "right" },
     { id: "estimate", label: "EST", width: 7, align: "right" },
     { id: "surprise", label: "SURPRISE", width: 9, align: "right" },
     { id: "revenue", label: heading("REVENUE", revenueUnit), width: Math.max(9, heading("REVENUE", revenueUnit).length), align: "right" },
@@ -123,7 +126,8 @@ export function EventsEarningsView({ focused, width, height, footerPaneId = "cor
   const epsUnit = sharedCurrency(quarters.flatMap((quarter) => [
     { value: quarter.eps, currency: quarter.epsCurrency }, { value: quarter.estimate, currency: quarter.epsCurrency }]));
   const revenueUnit = sharedCurrency(quarters.map((quarter) => ({ value: quarter.revenue, currency: quarter.revenueCurrency })));
-  const columns = useMemo(() => quarterColumns(width, epsUnit, revenueUnit), [epsUnit, revenueUnit, width]);
+  const basis = useMemo(() => quartersEpsBasis(quarters), [quarters]);
+  const columns = useMemo(() => quarterColumns(width, epsUnit, revenueUnit, basis), [basis, epsUnit, revenueUnit, width]);
 
   const bars = useMemo(() => quarters.toReversed(), [quarters]);
   // Each quarter is its estimate beside what was reported, in the beat or miss colour: EM's Surprises draws the same.

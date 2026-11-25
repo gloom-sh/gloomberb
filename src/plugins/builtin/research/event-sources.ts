@@ -6,7 +6,7 @@ import type {
 } from "../../../types/financials";
 import { formatEventMetric, type EventSummaryFigure } from "./event-model";
 import type { HeadlessBundleSection, HeadlessPaneColumn } from "../../../types/headless";
-import type { EarningsQuarter } from "./event-charts";
+import { quartersEpsBasis, type EarningsQuarter } from "./event-charts";
 import { loadAnalystResearch } from "./client";
 import { MISSING_VALUE, formatPercent, formatPercentRaw } from "../../../utils/format";
 import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
@@ -45,7 +45,15 @@ export function eventSummarySection(figures: readonly EventSummaryFigure[]): Hea
   };
 }
 
-/** The Earnings view's table (EVT's, and EE's Reported), as the text reports print it: one row per quarter, the next one first. */
+/**
+ * The Earnings view's table (EVT's, and EE's Reported), as the text reports
+ * print it: one row per quarter, the next one first, the EPS heading naming
+ * the basis most reported quarters share (`Adj EPS`), as the pane's does.
+ */
+export function quarterTextColumns(quarters: readonly EarningsQuarter[]): HeadlessPaneColumn[] {
+  const basis = quartersEpsBasis(quarters);
+  return QUARTER_TEXT_COLUMNS.map((column) => column.key === "eps" && basis ? { ...column, header: basis === "GAAP" ? "GAAP EPS" : "Adj EPS" } : column);
+}
 export const QUARTER_TEXT_COLUMNS: HeadlessPaneColumn[] = [
   { key: "date", header: "Date" },
   { key: "period", header: "Quarter" },
