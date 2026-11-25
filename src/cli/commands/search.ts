@@ -20,6 +20,7 @@ import {
   otherLegalFormRows,
   primaryCompanyLine,
   searchTickerCandidates,
+  withExactCoinNameLead,
   type TickerSearchCandidate,
 } from "../../tickers/search";
 import { initMarketData, withMarketData } from "../context";
@@ -144,7 +145,7 @@ export async function searchCandidatesForCli({
     const ordered = withLiveCompanyPrimary(symbol,
       withQuotedNames(symbol, withUsLineOfPrimary(withHomeListingPrimary(trimmedQuery, withPrimaryListingFirst(symbol, candidates, named ? null : quote))), quote),
       quote);
-    return cutKeepingCompanies(withOtherCompaniesApart(ordered, symbol, named ? trimmedQuery : null), totalLimit, symbol);
+    return cutKeepingCompanies(withExactCoinNameLead(trimmedQuery, withOtherCompaniesApart(ordered, symbol, named ? trimmedQuery : null)), totalLimit, symbol);
   } catch (error) {
     // Not "No matches found": a script or a reader would take that for a name nothing lists.
     if (isProviderBusy(error)) failRetryable(SEARCH_BUSY_MESSAGE, SEARCH_BUSY_CODE);

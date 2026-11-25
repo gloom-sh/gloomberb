@@ -79,7 +79,7 @@ import { useMapKeyboard, WorldVenueMap, type WorldMapFocus } from "./map";
 import { usesClassTones } from "./map-symbols";
 import { filterWorldVenues, WORLD_MAP_HEIGHT_RATIO } from "./model";
 import { useGeoLayerFeed } from "./use-geo";
-import { SelectedVenueHeader } from "./venue-header";
+import { SelectedVenueHeader, venueHeaderLines } from "./venue-header";
 import { initialMapFocus, mapPlaceBbox, nearestPlaces, type MapStart } from "./place";
 
 interface LayeredMapViewProps extends PaneProps {
@@ -428,7 +428,9 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
   const naturalMapRows = nativePaneChrome ? Math.ceil((width * WORLD_MAP_HEIGHT_RATIO) / 2.12) + 4 : Math.ceil((width * WORLD_MAP_HEIGHT_RATIO) / 2.25) + 3;
   const mapSectionHeight = horizontal ? height : Math.max(8, Math.min(Math.floor(height * 0.52), naturalMapRows));
   const tableHeight = horizontal ? height : Math.max(4, height - mapSectionHeight);
-  const mapHeight = Math.max(2, mapSectionHeight - 2);
+  const headerLines = headerSubject === "venue" && selectedVenue && venueData
+    ? venueHeaderLines(selectedVenue, venueData.checkedAt, now, mapWidth) : [];
+  const mapHeight = Math.max(2, mapSectionHeight - Math.max(2, 1 + headerLines.length));
 
   const layerColumns = pages.pages[0]?.columns?.length ? pages.pages[0].columns : tableLayer.columns;
   const columns = useMemo(() => entityColumns(layerColumns, listWidth), [layerColumns, listWidth]);
@@ -587,7 +589,7 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
   const map = (
     <Box key="map" flexDirection="column" width={mapWidth} height={mapSectionHeight} overflow="hidden">
       {headerSubject === "venue" && selectedVenue && venueData ? (
-        <SelectedVenueHeader venue={selectedVenue} checkedAt={venueData.checkedAt} now={now} width={mapWidth} />
+        <SelectedVenueHeader venue={selectedVenue} width={mapWidth} lines={headerLines} />
       ) : (
         <SelectedEntityHeader row={headerRow} layer={tableLayer} color={colorFor(tableLayer.id)} now={now} width={mapWidth} />
       )}

@@ -7,6 +7,7 @@ import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { mapHeadless } from "./headless";
 import { worldVenueMapModule } from "./index";
 import { buildMapSettingsDef, HOME_AREA_SETTING_KEY } from "./layers";
+import { nextVenueExceptions, venueExceptionLines } from "./venue-exceptions";
 
 afterEach(() => resetGeoCatalogCache());
 
@@ -143,6 +144,26 @@ test("a venue says when it next opens or closes, as the pane's header does, and 
     const stale = await mapHeadless.load(args, createTestHeadlessContext({ apiClient: read(true) }));
     expect(stale.metadata).toMatchObject({ stale: true });
     expect(renderHeadlessPaneText(mapHeadless, stale, args, "MAP")).toMatch(/· stale/);
+  } finally {
+    setSystemTime();
+  }
+});
+
+test("Thanksgiving closure and early close are separate from the NYSE clock and fit a narrow header", async () => {
+  const now = Date.parse("2026-11-25T16:00:00Z");
+  setSystemTime(now);
+  try {
+    const client = { ...apiClient, getCloudWorldVenues: async () => ({ data: { checkedAt: now, venues: [{ mic: "XNYS",
+      title: "NYSE", country: "United States", city: "New York", timezone: "America/New_York", latitude: 40.7, longitude: -74,
+      isOpen: true, session: "open", timeToCloseSeconds: 18_000 }] } }) } as unknown as HeadlessPaneContext["apiClient"];
+    const args = createTestHeadlessArgs({ argument: "venues", options: { query: "XNYS" } });
+    const report = await mapHeadless.load(args, createTestHeadlessContext({ apiClient: client }));
+    expect(report.rows[0]).toMatchObject({ nextChangeAt: "2026-11-25T21:00:00.000Z", nextClosure: "2026-11-26",
+      nextEarlyCloseAt: "2026-11-27T18:00:00.000Z", nextEarlyCloseLocal: "13:00 ET" });
+    expect(venueExceptionLines(nextVenueExceptions("XNYS", "America/New_York", now), 24)).toEqual([
+      "Nov 26 closed", "Nov 27 early close", "13:00 ET / 18:00 UTC",
+    ]);
+    expect(nextVenueExceptions("XNYS", "America/New_York", Date.parse("2026-11-27T18:01:00Z")).earlyClose?.date).toBe("2026-12-24");
   } finally {
     setSystemTime();
   }

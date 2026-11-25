@@ -635,6 +635,8 @@ export type HeadlessBundleSection =
     textColumns?: HeadlessPaneColumn[];
     /** The rows `textColumns` read, when the pane's rows are not the records (one per holding and scenario shock); `rows` when absent. */
     textRows?: HeadlessPaneRow[];
+    /** Default text-only preview. An explicit row window replaces it. */
+    textPreview?: { title: string; limit: number };
     /**
      * The currency or unit the rows' figures are in (`USD per 1% move`),
      * which every exported row names in `currency_or_unit`.

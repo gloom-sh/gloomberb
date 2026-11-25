@@ -34,6 +34,8 @@ export function useEventData(variant: "corporate-actions" | "earnings-estimates"
   const quoteCurrency = tickerFinancials?.quote?.currency;
   // The listing's type, as `fn EVT` reads it: a fund's events are its distributions, never a feed's EPS rows.
   const quoteType = tickerFinancials?.quote?.instrumentType;
+  const quoteName = tickerFinancials?.quote?.name;
+  const quoteExchange = tickerFinancials?.quote?.listingExchangeName || tickerFinancials?.quote?.exchangeName;
   const metadataType = tickerFinancials?.quoteMetadata?.instrumentType;
   const financialsData = useMemo<EventFinancials | null>(
     () => (quarterlyStatements || financialCurrency || trailingEps != null || quoteType || metadataType ? {
@@ -42,10 +44,10 @@ export function useEventData(variant: "corporate-actions" | "earnings-estimates"
       annualStatements: annualStatements ?? [],
       financialCurrency,
       fundamentals: { eps: trailingEps, epsCurrency: trailingEpsCurrency, financialCurrency: fundamentalsCurrency, marketCapCurrency, trailingEpsSource },
-      quote: quoteCurrency || quoteType ? { currency: quoteCurrency ?? "", instrumentType: quoteType } : null,
+      quote: quoteCurrency || quoteType || quoteName ? { currency: quoteCurrency ?? "", instrumentType: quoteType, name: quoteName, exchangeName: quoteExchange } : null,
       quoteMetadata: metadataType ? { instrumentType: metadataType } : null,
     } : null),
-    [annualStatements, financialCurrency, fundamentalsCurrency, marketCapCurrency, metadataType, quarterlyStatements, quoteCurrency, quoteType,
+    [annualStatements, financialCurrency, fundamentalsCurrency, marketCapCurrency, metadataType, quarterlyStatements, quoteCurrency, quoteExchange, quoteName, quoteType,
       trailingEps, trailingEpsCurrency, trailingEpsSource],
   );
   const fund = isFundListing(financialsData);
@@ -76,8 +78,8 @@ export function useEventData(variant: "corporate-actions" | "earnings-estimates"
   // The listing's own day, as `earnings` reads a report date: SIE:XETRA's has passed once Berlin's day has.
   const today = listingDay(exchange);
   const actionsData = useMemo(
-    () => (recordedActions ? withResolvedEarnings(recordedActions, calendarEvent, today) : recordedActions),
-    [calendarEvent, recordedActions, today],
+    () => (recordedActions && !fund ? withResolvedEarnings(recordedActions, calendarEvent, today) : recordedActions),
+    [calendarEvent, fund, recordedActions, today],
   );
   const {
     data: analystData,

@@ -21,6 +21,7 @@ import {
 import { formatFilingDate } from "../../../utils/datetime-format";
 import { computeTTM } from "../ticker-detail/financials/aggregation";
 import { classifyInstrumentType } from "../../../tickers/instrument-kind";
+import { isIndianEtfListing } from "../../../market-data/fund-actions";
 import { declaredDividendCash, declaredDividends } from "../../../utils/declared-dividends";
 import { fiscalPeriodText, fiscalQuarterInYear, fiscalQuarterText, fiscalYearText } from "../earnings/fiscal-quarter";
 import { fiscalYearEndMonth } from "../../../utils/fiscal-period";
@@ -234,7 +235,7 @@ export type EventFinancials = Pick<TickerFinancials, "quarterlyStatements" | "fi
   annualStatements?: readonly Pick<FinancialStatement, "date">[];
   fundamentals?: Pick<NonNullable<TickerFinancials["fundamentals"]>, "eps" | "epsCurrency" | "financialCurrency" | "marketCapCurrency" | "trailingEpsSource"> | null;
   /** The listing's currency, which says whether an unlabelled EPS can be in the statements' (fundamentalsCurrency), and its type. */
-  quote?: Pick<NonNullable<TickerFinancials["quote"]>, "currency" | "instrumentType"> | null;
+  quote?: Pick<NonNullable<TickerFinancials["quote"]>, "currency" | "instrumentType" | "exchangeName" | "listingExchangeName" | "name"> | null;
   quoteMetadata?: Pick<NonNullable<TickerFinancials["quoteMetadata"]>, "instrumentType"> | null;
 };
 
@@ -243,7 +244,9 @@ export type EventFinancials = Pick<TickerFinancials, "quarterlyStatements" | "fi
  * are another company's or noise, so its events are its distributions and splits alone.
  */
 export function isFundListing(financials: EventFinancials | null): boolean {
-  return [financials?.quote?.instrumentType, financials?.quoteMetadata?.instrumentType].some((type) => classifyInstrumentType(type) === "fund");
+  const quote = financials?.quote;
+  return [quote?.instrumentType, financials?.quoteMetadata?.instrumentType].some((type) => classifyInstrumentType(type) === "fund")
+    || isIndianEtfListing(quote?.listingExchangeName || quote?.exchangeName, quote?.name);
 }
 
 /**

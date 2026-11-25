@@ -31,6 +31,7 @@ import type {
   TickerFinancialsBatchResult,
 } from "../../types/data-provider";
 import type { AnalystResearchData, CorporateActionsData, HolderData, OptionsChain, PricePoint, Quote, QuoteMetadata, SplitHistory, TickerFinancials } from "../../types/financials";
+import { fundCorporateActions, isIndianEtfListing } from "../../market-data/fund-actions";
 import type { PriceHistoryResult } from "../../types/price-history";
 import { parseHistorySession } from "../../market-data/history-session";
 import { quoteMetadataFromQuote, quoteMetadataMatchesTarget } from "../../market-data/quotes/metadata";
@@ -881,7 +882,9 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     const target = cloudInstrumentTarget(ticker, exchange);
     return withCloudFallback(async () => {
       const response = await apiClient.getCloudCorporateActions(target.symbol, target.exchange);
-      return unwrapRequiredCloudResponse(response, `Cloud corporate actions are unavailable for ${ticker}`) as CloudCorporateActionsPayload;
+      const actions = unwrapRequiredCloudResponse(response, `Cloud corporate actions are unavailable for ${ticker}`) as CloudCorporateActionsPayload;
+      return isIndianEtfListing(actions.exchange || target.exchange, actions.name)
+        ? fundCorporateActions(actions, { uncertainEmptyPayouts: true }) : actions;
     }, `Cloud corporate actions are unavailable for ${ticker}`);
   }
 

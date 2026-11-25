@@ -35,6 +35,7 @@ import { beatMissSeries, slotAxis, slotPoints } from "../shared/beat-miss-chart"
 import { useEventData } from "./event-data";
 import { useEventRowDetail } from "./event-detail";
 import { buildEarningsHeader, buildNextUp, formatEventMetric, isFundListing, nextCatalystOf, nextCatalystQuery, type EventSummaryFigure } from "./event-model";
+import { INCOMPLETE_DISTRIBUTIONS } from "../../../market-data/fund-actions";
 import { dividendYearDetail, dividendYearLabel, dividendYears, dividendYearSpan, earningsQuarters, splitMarks, type DividendYear, type EarningsQuarter } from "./event-charts";
 
 type ViewProps = { focused: boolean; width: number; height: number; footerPaneId?: string };
@@ -312,7 +313,9 @@ export function EventsDividendsView({ focused, width, height, footerPaneId = "co
     if (symbol) createPaneFromTemplate("dividend-yield-pane", { symbol, symbols: [symbol], ...(ticker ? { ticker } : {}) });
   }, [createPaneFromTemplate, openResearchTab, symbol, ticker]);
 
-  usePaneStatusFooter({ registrationId: footerPaneId, loading: data.loading, error: data.error });
+  const incompletePayouts = data.actionsData?.coverage?.dividends === "unavailable";
+  usePaneStatusFooter({ registrationId: footerPaneId, loading: data.loading,
+    error: data.error ?? (incompletePayouts && years.length ? INCOMPLETE_DISTRIBUTIONS : null) });
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => handleRefreshKey(event, data.reload, { stopPropagation: true }), [data.reload]);
   if (data.authWall) return <SignInWall placement="corporate-actions-signin" action="view corporate actions" needsVerification={data.cloudSession.needsVerification} />;
 
@@ -334,7 +337,7 @@ export function EventsDividendsView({ focused, width, height, footerPaneId = "co
       selection={{ kind: "index", selectedIndex: selected ? years.indexOf(selected) : -1, onChange: (index) => setSelectedKey(years[index]?.id ?? null) }}
       getExportMetadata={() => (currency ? [["Currency", currency]] : [])}
       status={{ loading: data.loading && !years.length, error: !data.loading && !years.length ? data.error : null, subject: "dividends" }}
-      emptyStateTitle="No dividends on record"
+      emptyStateTitle={incompletePayouts ? INCOMPLETE_DISTRIBUTIONS : "No dividends on record"}
       rootBefore={figures.length || chart ? (
         <ChartTableHeader width={width} height={height} tableRows={years.length} tableColumns={columns} figures={figures} chart={chart} />
       ) : undefined}
@@ -350,13 +353,7 @@ export function EventsResearchEarnings(props: TickerResearchTabProps) {
 
 function useFundListing(): boolean {
   const { financials } = usePaneTicker();
-  const quoteType = financials?.quote?.instrumentType;
-  const metadataType = financials?.quoteMetadata?.instrumentType;
-  return isFundListing(quoteType || metadataType ? {
-    quarterlyStatements: [],
-    quote: quoteType ? { currency: financials?.quote?.currency ?? "", instrumentType: quoteType } : null,
-    quoteMetadata: metadataType ? { instrumentType: metadataType } : null,
-  } : null);
+  return isFundListing(financials ?? null);
 }
 
 const EVENT_VIEWS = [{ value: "earnings", label: "Earnings" }, { value: "dividends", label: "Dividends" }];

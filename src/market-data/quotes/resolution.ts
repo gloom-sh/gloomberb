@@ -526,6 +526,8 @@ export function resolveCanonicalQuote(
     low52w: resolved.low52w as Quote["low52w"],
     // Said of the range, so it comes with the provider whose range it is.
     yearRangeBasis: contributions.find((quote) => quote.high52w === resolved.high52w && quote.low52w === resolved.low52w)?.yearRangeBasis,
+    dayRangeBasis: contributions.find((quote) => quote.high === resolved.high && quote.low === resolved.low &&
+      quote.changeSessionDate === resolved.changeSessionDate)?.dayRangeBasis,
     ...dayRangeBasis(contributions, resolved),
     // Said of the price, so it comes with it.
     dailyClose: priceProvider?.dailyClose,

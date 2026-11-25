@@ -660,6 +660,24 @@ test("a windowed series prints the dated points the export keeps, not just the s
   expect(report.tables?.tables[0]?.rows).toEqual(points.slice(1).map(({ date, value }) => [date, value]));
 });
 
+test("tail overrides the text preview and selects the same newest dated rows in text and exports", async () => {
+  const rows = [24, 23, 22].map((day) => ({ date: `2026-11-${day}`, value: day }));
+  const report = await reportOf({ shape: "bundle", argument: { kind: "none" }, options: [], load: () => ({
+    sections: [
+      { title: "History", textPreview: { title: "History, latest 1 session", limit: 1 }, columns: [{ key: "date", header: "Session" }, { key: "value", header: "Value" }], rows },
+      { title: "Windows", rows: [{ bars: 10 }, { bars: 30 }, { bars: 90 }] },
+    ],
+  }) }, "", { tail: 2 });
+  expect(report.text).toContain("2026-11-24");
+  expect(report.text).toContain("2026-11-23");
+  expect(report.text).not.toContain("2026-11-22");
+  expect(report.text).not.toContain("latest 1 session");
+  expect(report.text).toContain("History: newest 2 of 3 rows (--tail 2)");
+  expect(report.text).toContain("Windows: last 2 of 3 rows (--tail 2)");
+  expect(report.data).toMatchObject({ rowCount: 4, sections: [{ rows: rows.slice(0, 2) }, { rows: [{ bars: 30 }, { bars: 90 }] }] });
+  expect(report.tables?.tables[0]?.rows).toEqual(rows.slice(0, 2).map(({ date, value }) => [date, value]));
+});
+
 function csvOf(report: Awaited<ReturnType<typeof reportOf>>, section?: string): string[] {
   return serializeCliResult({ data: report.data }, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, {
     text: () => report.text, tables: selectReportTables(report.tables, section),
