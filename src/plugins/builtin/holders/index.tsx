@@ -91,7 +91,9 @@ export const holdersModule: PluginModule = {
         argOnlySelects: true,
         argPlaceholder: "big | deposits | conc | sb | B01955",
       },
-      createInstance: (_ctx, options) => {
+      createInstance: (context, options) => {
+        const open = context.layout.instances.filter((instance) => instance.paneId === CCASS_MARKET_PANE_ID);
+        const pane = open.find((instance) => instance.instanceId === context.focusedPaneId) ?? open[0];
         const arg = options?.arg?.trim() ?? "";
         const upper = arg.toUpperCase();
         const params = /^[A-Z]\d{4,6}$/.test(upper) || upper.startsWith("CIP:")
@@ -104,6 +106,7 @@ export const holdersModule: PluginModule = {
                 ? commandTabParams("southbound")
                 : commandTabParams("changes");
         return {
+          instanceId: pane?.instanceId ?? CCASS_MARKET_PANE_ID,
           title: "HK CCASS",
           params,
         };
