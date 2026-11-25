@@ -536,6 +536,20 @@ describe("PluginRegistry capabilities", () => {
     expect(registry.getEnabledCapabilities("asset-data").map((entry) => entry.sourceId)).toEqual(["source-b"]);
   });
 
+  test("refuses a capability without an id and leaves the plugin unregistered", async () => {
+    const registry = createRegistry();
+    await expect(registry.register({
+      id: "source-plugin",
+      name: "Source Plugin",
+      version: "1.0.0",
+      capabilities: [source("source-a"), { ...source("source-b"), id: undefined } as never],
+    })).rejects.toThrow('Plugin "source-plugin" registered a capability');
+
+    expect(registry.allPlugins.has("source-plugin")).toBe(false);
+    expect(registry.getCapability("asset-data.source-a")).toBeNull();
+    expect(registry.getEnabledCapabilities("asset-data")).toEqual([]);
+  });
+
   test("can skip plugin capability handlers in renderer registries", async () => {
     const registry = createRegistry({ enableCapabilityHandlers: false });
     await registry.register({
