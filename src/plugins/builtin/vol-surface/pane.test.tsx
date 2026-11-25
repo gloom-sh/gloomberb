@@ -281,7 +281,9 @@ test("with no live quote the latest stored close stands in, labelled as such", a
   const frame = tui.frame();
   expect(frame).not.toContain("did not pass cleaning.");
   expect(frame).toContain("Stored close");
-  expect(frame).toContain("2026-09-22");
+  // The stored close's day reads first, as the table's expiries do.
+  expect(frame).toContain("Date 22 Sep 2026");
+  expect(frame).not.toContain("2026-09-22");
 });
 
 test("without a usable spot or saved surface, the pane settles without asking for a chain", async () => {

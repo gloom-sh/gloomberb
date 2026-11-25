@@ -324,10 +324,6 @@ export function cspScreenCriteriaText(criteria: CspScreenCriteria, now: number):
     + (criteria.expiration == null ? ` (${criteria.days} days)` : "");
 }
 
-/**
- * `before 2026-11-04`, `after 2027-01-19`, `unknown`: whether the next report falls before the put (or a trade's first leg)
- * expires, and its date; `unavailable` when the earnings calendar could not be read.
- */
 /** `before 28 Oct`: a screen's Earnings cell, the flag and the day without its year, which the next report never needs. */
 export function cspEarningsCell(row: { earningsDate?: unknown; earningsBeforeExpiry?: unknown; earnings?: unknown }): string {
   const date = typeof row.earningsDate === "string" ? row.earningsDate : null;
@@ -335,6 +331,10 @@ export function cspEarningsCell(row: { earningsDate?: unknown; earningsBeforeExp
   return `${row.earningsBeforeExpiry ? "before" : "after"} ${formatDay(date, "no-year")}`;
 }
 
+/**
+ * `before 2026-11-04`, `after 2027-01-19`, `unknown`: whether the next report falls before the put (or a trade's first leg)
+ * expires, and its date; `unavailable` when the earnings calendar could not be read.
+ */
 export function cspEarningsText(csp: Pick<CashSecuredPut, "earnings"> | null): string {
   if (!csp) return MISSING_VALUE;
   const { beforeExpiry, date, unavailable } = csp.earnings;

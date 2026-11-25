@@ -241,7 +241,8 @@ export function CspScreenPane({ width, height, focused }: PaneProps) {
       case "midYield": return { text: percentText(row.midYield, 2), color: colors.textDim };
       case "bidYield": return { text: percentText(row.bidYield, 2), color: colors.positive };
       case "ivRank": return { text: typeof row.ivRank === "number" ? row.ivRank.toFixed(0) : MISSING_VALUE };
-      case "earnings": return { text: cspEarningsCell(row), value: row.earningsDate, color: row.earningsBeforeExpiry === true ? colors.warning : colors.textDim };
+      // The export keeps the flag with the ISO day (`before 2026-11-04`), or the word for none.
+      case "earnings": return { text: cspEarningsCell(row), value: String(row.earnings), color: row.earningsBeforeExpiry === true ? colors.warning : colors.textDim };
       default: return { text: "" };
     }
   };

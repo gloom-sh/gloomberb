@@ -374,16 +374,16 @@ export function returnClockZone(venue: string | undefined): string | null {
   return sessionCalendarTimeZone(venue);
 }
 
-/**
- * A bar as the table dates it: an intraday bar's open on its venue's clock
- * (`2026-10-23 09:30`), a daily or longer bar its session day.
- */
 /** An intraday return's time as the table writes it, its day first: `25 Nov 2026 11:30`, `25 Nov 11:30` short. */
 export function returnTimeLabel(text: string, short = false): string {
   const [day, time] = text.split(" ");
   return time ? `${formatDay(day, short ? "no-year" : "full")} ${time}` : text;
 }
 
+/**
+ * A bar as the table dates it: an intraday bar's open on its venue's clock
+ * (`2026-10-23 09:30`), a daily or longer bar its session day.
+ */
 export function returnTimeText(timestamp: number, resolution: ManualChartResolution, venue: string | undefined): string {
   if (!isIntradayResolution(resolution)) return barSessionDay(timestamp, venue);
   const zone = returnClockZone(venue);
