@@ -36,17 +36,14 @@ import {
   DEFAULT_IMPACT_FILTER,
   FILTER_CYCLE,
   attachEconCalendarPersistence,
-  actualColor,
-  actualMayBeBlank,
-  AWAITING_FIGURE_CELL,
   awaitsConsensus,
   figureGap,
   figureGapText,
-  NO_FIGURE_CELL,
   calendarDisplayRows,
   CALENDAR_TIME_ZONE_LABEL,
   dayLabel,
   econEventName,
+  econFigureCell,
   filteredEmptyTitle,
   formatStaleness,
   getCalendarCache,
@@ -77,7 +74,6 @@ import {
   type EconCalendarLoadResult,
   type ImpactFilter,
 } from "./calendar-model";
-import { figureWithCurrency } from "./figures";
 import { MISSING_VALUE } from "../../../utils/format";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
@@ -333,8 +329,8 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       ...showCountry ? [{ id: "country" as const, ...countryColumn, align: "left" as const }] : [],
       { id: "event", label: "EVENT", width: eventWidth, align: "left" },
       { id: "actual", label: actualLabel, title: "Actual", width: actualWidth, align: "right" },
-      { id: "forecast", label: forecastLabel, title: "Forecast", width: forecastWidth, align: "right", mayBeBlank: true },
-      { id: "prior", label: "PRIOR", width: priorWidth, align: "right", mayBeBlank: true },
+      { id: "forecast", label: forecastLabel, title: "Forecast", width: forecastWidth, align: "right" },
+      { id: "prior", label: "PRIOR", width: priorWidth, align: "right" },
     ];
   }, [countryFilter, filtered, flagged, readerZone, width]);
   const separatorBg = blendHex(colors.bg, colors.border, 0.3);
@@ -514,21 +510,10 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       }
       case "event":
         return { text: econEventName(ev), color: colors.text };
-      // An amount reads with its currency beside it (-556.5B JPY), where the server says it.
       case "actual":
-        // A release past its time whose figure is not in yet says so, or that the source has none; the footer says it whole.
-        const gap = figureGap(ev, now, events);
-        if (gap) return { text: gap === "none" ? NO_FIGURE_CELL : AWAITING_FIGURE_CELL, color: colors.warning, value: null };
-        return {
-          text: figureWithCurrency(ev.actual, ev.currency) ?? MISSING_VALUE,
-          color: actualColor(ev.actual, ev.forecast),
-          // A release still to come, or one with no figure to print: its dash is no figure lost.
-          ...(actualMayBeBlank(ev, now) ? { mayBeBlank: true } : {}),
-        };
       case "forecast":
-        return { text: figureWithCurrency(ev.forecast, ev.currency) ?? MISSING_VALUE, color: colors.textDim };
       case "prior":
-        return { text: figureWithCurrency(ev.prior, ev.currency) ?? MISSING_VALUE, color: colors.textDim };
+        return econFigureCell(column.id, ev, now, events);
     }
   }, [events, flagged, now, readerZone]);
 

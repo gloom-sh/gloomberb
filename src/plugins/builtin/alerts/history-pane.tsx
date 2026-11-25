@@ -89,11 +89,14 @@ export function AlertHistoryPane({ focused, width, height }: PaneProps) {
     { id: "time", label: "Time (UTC)", width: 16, align: "left" },
     { id: "kind", label: "Event", width: 15, align: "left" },
     { id: "alert", label: "Alert", width: 20, flexGrow: 1, align: "left" },
-    ...(width >= 70 ? [{ id: "value", label: "Value", width: 16, align: "left" as const, mayBeBlank: true }] : []),
+    // Value, Quote and Source are left empty, never dashed, on a line that has none: a rule change or a dated event
+    // has no figure, no quote and no feed. An empty cell is no placeholder to a capture, so none of the three is marked
+    // as one that may be blank. A figure's line with no quote time cannot be told from one whose time was lost.
+    ...(width >= 70 ? [{ id: "value", label: "Value", width: 16, align: "left" as const }] : []),
     ...(width >= 115
       ? [
-          { id: "quote", label: "Quote (UTC)", width: 16, align: "left" as const, mayBeBlank: true },
-          { id: "source", label: "Source", width: 14, align: "left" as const, mayBeBlank: true },
+          { id: "quote", label: "Quote (UTC)", width: 16, align: "left" as const },
+          { id: "source", label: "Source", width: 14, align: "left" as const },
           { id: "via", label: "Via", width: 10, align: "left" as const },
         ]
       : []),

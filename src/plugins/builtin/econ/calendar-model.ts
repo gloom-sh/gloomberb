@@ -1,5 +1,5 @@
 import { createPluginCache } from "../../../data/plugin-cache";
-import type { DataTableColumn } from "../../../components";
+import type { DataTableCell, DataTableColumn } from "../../../components";
 import { colors } from "../../../theme/colors";
 import { displayWidth, MISSING_VALUE } from "../../../utils/format";
 import { fetchEconCalendar } from "./calendar-source";
@@ -550,6 +550,41 @@ export function actualMayBeBlank(
   return now < event.date.getTime() + (hasNoReleaseTime(event) ? AWAITING_FIGURE_MS : 0);
 }
 
+/** Whether a row prints a figure, by the two a row beside `field` has: a speech or a meeting has none of the three. */
+function printsFigureBeside(event: Pick<EconEvent, "actual" | "forecast" | "prior">, field: "forecast" | "prior"): boolean {
+  const others = field === "forecast" ? [event.actual, event.prior] : [event.actual, event.forecast];
+  return others.some((figure) => !!figure?.trim());
+}
+
+/**
+ * Whether a row's FORECAST is blank with no consensus missing: the row prints
+ * no figure (a speech, a meeting: neither an actual nor a prior), or it is
+ * past the end of the listing, where no feed carries a consensus yet.
+ *
+ * A figure row inside the listing owes one. The calendar cannot tell a release
+ * nobody forecasts, or one whose consensus is not in yet, from a forecast it
+ * lost: all three arrive as a null `forecast`. So a capture whose every such
+ * row has none fails on the column, and the pane's own note on a row still to
+ * come (NO_CONSENSUS_NOTE) is the only word on which it is.
+ */
+function forecastMayBeBlank(event: Pick<EconEvent, "actual" | "forecast" | "prior" | "pastListing">): boolean {
+  if (event.forecast?.trim()) return false;
+  return pastReleaseListing(event) || !printsFigureBeside(event, "forecast");
+}
+
+/**
+ * Whether a row's PRIOR is blank with nothing missing: the row prints no
+ * figure (neither an actual nor a forecast).
+ *
+ * A figure row owes one. An indicator's first release has no prior either,
+ * which the calendar cannot tell from a prior it lost (both a null `prior`),
+ * so a capture whose every figure row has none fails on the column.
+ */
+function priorMayBeBlank(event: Pick<EconEvent, "actual" | "forecast" | "prior">): boolean {
+  if (event.prior?.trim()) return false;
+  return !printsFigureBeside(event, "prior");
+}
+
 /** What a release awaiting its figure says in place of it: "due 07:00 UTC, awaiting figure". */
 function awaitingFigureText(event: Pick<EconEvent, "date">): string {
   return `due ${timeLabel(event.date)} ${CALENDAR_TIME_ZONE_LABEL}, awaiting figure`;
@@ -564,10 +599,40 @@ export function figureGapText(event: Pick<EconEvent, "date">, gap: "awaiting" | 
 }
 
 /** The ACTUAL cell of a release awaiting its figure, where the whole text has no room; the row's time is beside it. */
-export const AWAITING_FIGURE_CELL = "awaiting";
+const AWAITING_FIGURE_CELL = "awaiting";
 
 /** The ACTUAL cell of a release whose source has no figure; the footer says it whole. */
-export const NO_FIGURE_CELL = "no figure";
+const NO_FIGURE_CELL = "no figure";
+
+/**
+ * A release's ACTUAL, FORECAST or PRIOR cell. An amount reads with its
+ * currency beside it (-556.5B JPY), where the server says it. A dash is
+ * marked as one that may be blank only where the row says no figure is owed
+ * (actualMayBeBlank, forecastMayBeBlank, priorMayBeBlank), never by the dash.
+ */
+export function econFigureCell(
+  field: "actual" | "forecast" | "prior",
+  event: EconEvent,
+  now: number,
+  calendar: readonly EconEvent[] = [],
+): DataTableCell {
+  if (field === "actual") {
+    // A release past its time whose figure is not in yet says so, or that the source has none; the footer says it whole.
+    const gap = figureGap(event, now, calendar);
+    if (gap) return { text: gap === "none" ? NO_FIGURE_CELL : AWAITING_FIGURE_CELL, color: colors.warning, value: null };
+    return {
+      text: figureWithCurrency(event.actual, event.currency) ?? MISSING_VALUE,
+      color: actualColor(event.actual, event.forecast),
+      ...(actualMayBeBlank(event, now) ? { mayBeBlank: true } : {}),
+    };
+  }
+  const mayBeBlank = field === "forecast" ? forecastMayBeBlank(event) : priorMayBeBlank(event);
+  return {
+    text: figureWithCurrency(event[field], event.currency) ?? MISSING_VALUE,
+    color: colors.textDim,
+    ...(mayBeBlank ? { mayBeBlank: true } : {}),
+  };
+}
 
 /** What a dash under Forecast means on a row still to come. */
 export const NO_CONSENSUS_NOTE = `${MISSING_VALUE} forecast = no consensus yet`;

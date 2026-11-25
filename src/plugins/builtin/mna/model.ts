@@ -418,6 +418,20 @@ export function dealSpread(
   return { ...priced, annualized, legs };
 }
 
+/**
+ * Whether a spread's ANN. is blank with no figure missing: the offer is for
+ * part of the shares, the spread is not positive, or the expected close has
+ * come, none of which has an annual return to state (dealSpread).
+ *
+ * A spread with no close date to annualize to owes one: it follows the CLOSE
+ * the deal owes, and the list cannot tell a deal that gives no date from one
+ * whose date was lost.
+ */
+export function annualizedMayBeBlank(deal: Pick<MnaDeal, "terms" | "expectedClose">, spread: DealSpread): boolean {
+  if (spread.annualized != null) return false;
+  return deal.terms.partial || spread.spread <= 0 || expectedCloseDate(deal.expectedClose) != null;
+}
+
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 

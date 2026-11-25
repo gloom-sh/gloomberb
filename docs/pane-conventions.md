@@ -529,9 +529,18 @@ this, except:
   their rows with the same column but are otherwise unrelated.
 
 **Unavailable table columns.** Check the source before treating an empty column
-as missing coverage: fix a dropped field rather than hiding it. A value waiting
-on an event, such as reported EPS and its basis before earnings, uses
-`DataTableColumn.mayBeBlank`. For structurally unavailable coverage, opt that
+as missing coverage: fix a dropped field rather than hiding it. A value every
+row can be waiting on, such as reported EPS and its basis before earnings, uses
+`DataTableColumn.mayBeBlank`, which exempts the whole column from a strict
+capture's blank-column check. Where only some rows wait on the value or are of
+a kind that has none (ECO's ACTUAL before the release, the terms of a deal
+still in talks), mark those cells with `DataTableCell.mayBeBlank` and leave the
+column unmarked, so the capture still fails when the rows that owe the value
+have none. Decide it from what else the row says (its status, its kind, its
+time), never from the blank itself: a null is not thereby optional. Where the
+row cannot say whether its null is a value lost (a deal's undisclosed terms, a
+fill with no commission), leave the cell unmarked and write the limit down
+beside the rule and in `docs/usage.md`. For structurally unavailable coverage, opt that
 column into `omitWhenEmpty: true`: it leaves the pane only while every data row
 renders a missing value, and returns as soon as any row has one. Zero and N/M
 are values, not missing data. A chronological history with coverage only in

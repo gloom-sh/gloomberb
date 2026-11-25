@@ -93,6 +93,35 @@ export function callPeriod(call: Omit<NamedCall, "ticker">): string {
   return formatPeriod(call.fiscalYear, call.fiscalQuarter, call.fiscalHalf);
 }
 
+/**
+ * Whether a call's PERIOD is blank with no period missing: an event that is
+ * not an earnings call (`eventKind: "other"`) has no fiscal period, and reads
+ * by its label where it has one ("Analyst", "Inv day"), which is its period
+ * column's data.
+ *
+ * An earnings call owes its period, and so does a call whose kind is unclear
+ * (`eventKind` null, or an older server that sends none): the list cannot tell
+ * such a call from an earnings call whose period was lost, so a capture whose
+ * every such row has none fails on the column.
+ */
+export function callPeriodMayBeBlank(call: Pick<CloudEarningsCallPayload, "eventKind">): boolean {
+  return call.eventKind === "other";
+}
+
+/**
+ * Whether a call's LENGTH is blank with nothing missing: a call with no
+ * transcript has no recording to time yet (it is still to come, or not yet
+ * produced).
+ *
+ * A transcribed call owes one. A transcript read from a document has no
+ * recording either, which the list cannot tell from a recording whose length
+ * was lost (both a null `durationSeconds` on a transcribed call), so a capture
+ * whose every transcribed row has none fails on the column.
+ */
+export function callLengthMayBeBlank(call: Pick<CloudEarningsCallPayload, "hasTranscript">): boolean {
+  return !call.hasTranscript;
+}
+
 /** Title for the detail stack: names the call so the body need not repeat it. */
 export function callTitle(call: NamedCall): string {
   const label = eventLabelOf(call);
