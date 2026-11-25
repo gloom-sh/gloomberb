@@ -667,8 +667,28 @@ describe("what is next", () => {
       event("this month", "2098-11", "month"),
       event("later", "2098-12-02", "day"),
     ];
-    expect(nextCatalystOf(events, "2098-11-24")).toEqual({ date: "2098-11", label: "this month" });
-    expect(nextCatalystOf(events.slice(0, 2), "2098-11-24")).toBeNull();
+    expect(nextCatalystOf({ events }, "2098-11-24")).toEqual({ date: "2098-11", label: "this month" });
+    expect(nextCatalystOf({ events: events.slice(0, 2) }, "2098-11-24")).toBeNull();
+    // A date known only to its month comes after that month's days, as the calendar orders its rows.
+    expect(nextCatalystOf({ events: [event("december", "2098-12", "month"), event("christmas", "2098-12-25", "day")] }, "2098-11-24"))
+      .toEqual({ date: "2098-12-25", label: "christmas" });
+  });
+
+  /** A free preview shows the head of the calendar and holds the rest back (`lockedUpcoming`): live, the head was always Pro's. */
+  test("a preview's first row is the next catalyst only while its rows come earliest first; otherwise none is named", () => {
+    const event = (id: string, deadlineDate: string) => ({ ...catalystFixture, id, title: id, deadlineDate,
+      datePrecision: { ...catalystFixture.datePrecision, deadline: "day" as const } });
+    const preview = { pro: false, lockedRows: 200, previewLimit: 3, lockedUpcoming: 200 };
+    const head = [event("first", "2098-11-29"), event("second", "2098-11-30"), event("third", "2098-12-02")];
+    expect(nextCatalystOf({ events: head, access: preview }, "2098-11-24")).toEqual({ date: "2098-11-29", label: "first" });
+    // Out of order, a held-back row could be earlier than any shown: no guess.
+    const shuffled = [head[1]!, head[0]!, head[2]!];
+    expect(nextCatalystOf({ events: shuffled, access: preview }, "2098-11-24")).toBeNull();
+    // Nothing held back (Pro, or a preview with every row in it), the earliest shown is the next whatever the order.
+    expect(nextCatalystOf({ events: shuffled, access: { pro: true, lockedRows: 0, previewLimit: 3 } }, "2098-11-24")?.label).toBe("first");
+    expect(nextCatalystOf({ events: shuffled, access: { pro: false, lockedRows: 0, previewLimit: 3, lockedUpcoming: 0 } }, "2098-11-24")?.label).toBe("first");
+    // Every upcoming row held back: none to name.
+    expect(nextCatalystOf({ events: [], access: preview }, "2098-11-24")).toBeNull();
   });
 
   test("EE's figures are the next report with its consensus and the last surprise", () => {

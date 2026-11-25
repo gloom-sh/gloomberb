@@ -9,6 +9,8 @@ const EARNINGS_QUARTERS = 12;
 /** One quarter of the Earnings view: a reported one, or the next one with its consensus alone. */
 export interface EarningsQuarter {
   id: string;
+  /** The event row it is drawn from (the report, or the estimate of a quarter not dated yet): what Enter opens. */
+  rowId: string;
   /** The report's day, or for a quarter with no report dated yet, the day it ends. */
   date: string;
   /** As the fiscal calendar names it (`Q3 FY2026`), else by the month it ends in. */
@@ -52,7 +54,7 @@ export function earningsQuarters(rows: readonly EventRow[], today: string): Earn
     .map((row): EarningsQuarter => {
       const period = row.period && row.period !== MISSING_VALUE ? row.period : quarterLabel(row.fiscalPeriodEnd ?? row.date);
       return {
-        id: row.id, date: row.date, period, axisLabel: axisLabel(period, row.fiscalPeriodEnd ?? row.date), upcoming: false,
+        id: row.id, rowId: row.id, date: row.date, period, axisLabel: axisLabel(period, row.fiscalPeriodEnd ?? row.date), upcoming: false,
         ...(row.epsActual != null ? { eps: row.epsActual } : {}),
         ...(row.epsEstimate != null ? { estimate: row.epsEstimate } : {}),
         ...(row.surprisePercent != null ? { surprisePercent: row.surprisePercent } : {}),
@@ -71,7 +73,7 @@ export function earningsQuarters(rows: readonly EventRow[], today: string): Earn
   const period = report && report.period !== MISSING_VALUE ? report.period : quarter ? quarterName(quarter).replace(/ qtr$/, "") : MISSING_VALUE;
   const estimate = report?.epsEstimate ?? quarter?.qEps;
   const next: EarningsQuarter = {
-    id: `next:${ahead.id}`, date: ahead.date, period, axisLabel: axisLabel(period, quarter?.date ?? ahead.date), upcoming: true,
+    id: `next:${ahead.id}`, rowId: ahead.id, date: ahead.date, period, axisLabel: axisLabel(period, quarter?.date ?? ahead.date), upcoming: true,
     ...(estimate != null ? { estimate } : {}),
     ...(quarter?.qRevenue != null ? { revenueEstimate: quarter.qRevenue } : {}),
     ...((report?.epsEstimate != null ? report.epsCurrency : quarter?.epsCurrency) ? { epsCurrency: (report?.epsEstimate != null ? report.epsCurrency : quarter?.epsCurrency)! } : {}),

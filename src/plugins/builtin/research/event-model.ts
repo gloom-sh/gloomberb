@@ -1,5 +1,5 @@
 import { splitShareTerms } from "../../../market-data/split-terms";
-import type { CatalystEvent, CatalystFilters } from "../../../api-client/catalysts";
+import type { CatalystEvent, CatalystFilters, CatalystResponse } from "../../../api-client/catalysts";
 import { catalystDate } from "../catalysts/model";
 import type {
   AnalystEstimateRecord,
@@ -634,18 +634,41 @@ export function nextCatalystQuery(symbol: string): CatalystFilters {
 }
 
 /**
+ * Where a catalyst's date falls in the calendar's own order, which the service
+ * sorts its upcoming rows by: a date known only to its month or year at the
+ * end of it, so `Dec 2026` comes after `25 Dec 2026`.
+ */
+function catalystOrderKey(date: string): string {
+  return date.length === 4 ? `${date}-12-31` : date.length === 7 ? `${date}-31` : date;
+}
+
+/**
  * The earliest catalyst dated today or later among a company's upcoming ones,
  * read as the Catalysts view lists them. One dated to its month or year only
  * counts while that month or year is not over; one whose date is withheld
  * does not count.
+ *
+ * A free preview holds rows back (`access.lockedUpcoming`). The service sends
+ * a calendar's rows earliest first and the preview is the head of that order
+ * (checked live, 2026-11-25: the free rows were Pro's first rows for every
+ * ticker read), so the held-back rows all come later and the first shown is
+ * the next. Should the shown rows ever come in another order, a held-back row
+ * may be the next one: then none is named, rather than a later one as next.
  */
-export function nextCatalystOf(events: readonly CatalystEvent[], today: string): NextCatalyst | null {
+export function nextCatalystOf(
+  payload: { events: readonly CatalystEvent[]; access?: CatalystResponse["access"] },
+  today: string,
+): NextCatalyst | null {
   const read = { upcoming: true, dateField: "any" as const };
-  const ahead = events
+  const ahead = payload.events
     .map((event) => ({ event, date: catalystDate(event, read) }))
     .filter(({ date }) => /^\d{4}(-\d{2}){0,2}$/.test(date) && date >= today.slice(0, date.length))
-    .sort((left, right) => left.date.localeCompare(right.date))[0];
-  return ahead ? { date: ahead.date, label: ahead.event.title } : null;
+    .map((entry) => ({ ...entry, key: catalystOrderKey(entry.date) }));
+  const access = payload.access;
+  const held = access?.pro === false ? access.lockedUpcoming ?? access.lockedRows : 0;
+  if (held > 0 && ahead.some((entry, index) => index > 0 && entry.key < ahead[index - 1]!.key)) return null;
+  const next = ahead.sort((left, right) => left.key.localeCompare(right.key))[0];
+  return next ? { date: next.date, label: next.event.title } : null;
 }
 
 export interface NextUpOptions {

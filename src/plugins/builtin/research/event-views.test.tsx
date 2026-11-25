@@ -9,6 +9,8 @@ import { createTestDataProvider } from "../../../test-support/data-provider";
 import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { colors } from "../../../theme/colors";
+import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
+import type { DataProvider, SecFilingDocument, SecFilingItem } from "../../../types/data-provider";
 import type { AnalystResearchData, CorporateActionsData, TickerFinancials } from "../../../types/financials";
 import type { GloomPluginContext } from "../../../types/plugin-context";
 import type { TickerResearchTabDef } from "../../../types/plugin-contributions";
@@ -67,7 +69,14 @@ beforeEach(() => {
     return answerCatalysts();
   });
 });
-afterEach(() => { catalystsSpy.mockRestore(); catalystCache.reset(); });
+let coordinator: MarketDataCoordinator | null = null;
+afterEach(() => {
+  catalystsSpy.mockRestore();
+  catalystCache.reset();
+  coordinator?.destroy();
+  coordinator = null;
+  setSharedMarketDataCoordinator(null);
+});
 
 interface MountOptions {
   symbol?: string;
@@ -76,6 +85,8 @@ interface MountOptions {
   financials?: Partial<TickerFinancials>;
   paneState?: AppState["paneState"];
   content?: (body: { width: number; height: number }) => ReactNode;
+  /** The SEC reads an opened report's detail makes, which go through the shared market data. */
+  sec?: Pick<DataProvider, "getSecFilings" | "getSecFilingDocuments" | "getSecFilingContent">;
 }
 
 async function settle(frames = 6) {
@@ -98,7 +109,13 @@ async function mount(options: MountOptions = {}) {
   const provider = createTestDataProvider({
     getCorporateActions: options.actions ?? (async () => structuredClone(ACTIONS)),
     getAnalystResearch: options.estimates ?? (async () => structuredClone(ESTIMATES)),
+    ...options.sec,
   });
+  if (options.sec) {
+    coordinator?.destroy();
+    coordinator = new MarketDataCoordinator(provider);
+    setSharedMarketDataCoordinator(coordinator);
+  }
   const runtime = createTestPluginRuntime({ getMarketData: () => provider, createPaneFromTemplate: (template, args) => { opened.push([template, args]); } });
   const app = { state: initial };
   function Harness() {
@@ -171,6 +188,93 @@ describe("EVT's Earnings view", () => {
     await mount();
     expect(tui.frame()).not.toContain("Next catalyst");
     expect(tui.frame()).not.toContain("Gloom Cloud requires");
+  });
+});
+
+describe("an earnings quarter's detail", () => {
+  // TEST's Q2 results, filed the day it reported them, with the press release as its exhibit.
+  const filing: SecFilingItem = { accessionNumber: "0000000001-26-000042", form: "8-K", filingDate: new Date("2026-07-30T00:00:00Z"),
+    cik: "1", companyName: "Test Inc", primaryDocument: "results.htm", items: "2.02,9.01", primaryDocDescription: "Results of operations",
+    filingUrl: "https://www.sec.gov/Archives/1/index.htm", primaryDocumentUrl: "https://www.sec.gov/Archives/1/results.htm" };
+  const sec = {
+    getSecFilings: async () => [filing],
+    getSecFilingDocuments: async (): Promise<SecFilingDocument[]> => [
+      { document: "results.htm", type: "8-K", url: filing.primaryDocumentUrl!, isPrimary: true },
+      { document: "release.htm", type: "EX-99.1", description: "Press release", url: "https://www.sec.gov/Archives/1/release.htm", isPrimary: false },
+    ],
+    getSecFilingContent: async () => "Quarterly revenue rose to a record on services.",
+  } satisfies MountOptions["sec"];
+  const detailOf = (app: { state: AppState }) => app.state.paneState["corporate-actions:TEST"]?.pluginState?.research as
+    { openRowId?: string | null; earningsQuarter?: string | null } | undefined;
+
+  test("Enter opens a reported quarter as EE does, with its filing, documents and exhibit; Back returns to that quarter", async () => {
+    const { app } = await mount({ sec });
+    await tui.emitKeypress({ name: "down" });
+    await tui.emitKeypress({ name: "down" });
+    await settle();
+    await tui.emitKeypress({ name: "return" });
+    await settle(10);
+    const detail = tui.frame();
+    expect(detail).toContain("Earnings | 2026-07-30");
+    expect(detail).toMatch(/Actual\s+1\.57 USD/);
+    expect(detail).toMatch(/Consensus\s+1\.43 USD/);
+    expect(detail).toMatch(/Surprise\s+9\.79/);
+    expect(detail).toMatch(/Form\s+8-K\s+filed 2026-07-30/);
+    expect(detail).toContain("0000000001-26-000042");
+    expect(detail).toContain("release.htm");
+    expect(detail).toContain("Quarterly revenue rose to a record on services.");
+    const open = detailOf(app);
+    expect(open?.openRowId).toBeTruthy();
+    expect(open?.earningsQuarter).toBe(open?.openRowId);
+    await tui.emitKeypress({ name: "escape", sequence: "\u001b" });
+    await settle();
+    expect(tui.frame()).toContain("Next report");
+    expect(detailOf(app)).toMatchObject({ openRowId: null, earningsQuarter: open?.earningsQuarter });
+    // The same quarter again, from where Back left the selection.
+    await tui.emitKeypress({ name: "return" });
+    await settle(10);
+    expect(tui.frame()).toContain("Earnings | 2026-07-30");
+    // A click selects another quarter's row and a second opens it, as in EE.
+    await tui.emitKeypress({ name: "escape", sequence: "\u001b" });
+    await settle();
+    await tui.clickFrameText("30 Apr 2026");
+    await settle();
+    expect(tui.frame()).not.toContain("Earnings | ");
+    await tui.clickFrameText("30 Apr 2026");
+    await settle(10);
+    expect(tui.frame()).toContain("Earnings | 2026-04-30");
+  });
+
+  test("the next report opens with its consensus, and a layout saved with a quarter open opens on it", async () => {
+    const { app } = await mount({ sec });
+    await tui.emitKeypress({ name: "return" });
+    await settle(10);
+    expect(tui.frame()).toContain("Earnings | 2027-01-28");
+    expect(tui.frame()).toMatch(/Consensus\s+2\.67 USD\s+30 analysts/);
+    expect(tui.frame()).toMatch(/Report date\s+2027-01-28\s+confirmed/);
+    // Reopened from the saved pane state, on the open quarter.
+    await mount({ sec, paneState: app.state.paneState });
+    expect(tui.frame()).toContain("Earnings | 2027-01-28");
+    // A row no listed quarter is drawn from (a layout saved on a dividend in the old table) opens on the quarters instead.
+    await mount({ sec, paneState: { "corporate-actions:TEST": { pluginState: { research: { openRowId: "dividend:2019-05-10" } } } } });
+    expect(tui.frame()).toContain("Next report");
+    expect(tui.frame()).not.toContain("Earnings | ");
+  });
+});
+
+describe("the next catalyst from a free preview", () => {
+  const preview = (...events: ReturnType<typeof event>[]) => async (): Promise<CatalystResponse> => ({ ...catalysts(...events), total: 200,
+    access: { pro: false, lockedRows: 197, previewLimit: 3, lockedUpcoming: 197 } });
+
+  test("is its first row while the rows come earliest first, and none when they do not", async () => {
+    answerCatalysts = preview(event("next", "2027-03-15", "FDA decision"), event("later", "2027-06-01", "Court hearing"));
+    await mount();
+    expect(line("Next catalyst")).toContain("FDA decision");
+    catalystCache.reset();
+    answerCatalysts = preview(event("later", "2027-06-01", "Court hearing"), event("next", "2027-03-15", "FDA decision"));
+    await mount();
+    expect(tui.frame()).not.toContain("Next catalyst");
+    expect(tui.frame()).not.toContain("Catalysts unavailable");
   });
 });
 
