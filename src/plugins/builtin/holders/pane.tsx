@@ -51,16 +51,18 @@ import {
   hasHolderChanges,
   buildRows,
   DEFAULT_SORT,
+  holderTabs,
   nextViewMode,
   sortRows,
-  VIEW_TABS,
-  DISCLOSURE_TABS,
 } from "./table-model";
 import { classSharesAsOf, classSharesToday, loadHolderData } from "./client";
 import { HoldersTreemap } from "./treemap";
 import { disclosureListing } from "../../../api-client/ownership-disclosures";
+import { hkCcassCode } from "../../../api-client/hk-ccass";
 import { OwnershipDisclosureView } from "./disclosures-view";
+import { CcassStockView } from "./ccass-view";
 import { BeneficialOwnersView } from "./beneficial-view";
+import { useCommandTab } from "../shared/command-tab";
 import { useIssuerListing } from "../shared/ticker-request";
 import type { HolderColumn, HolderColumnId, HolderRow, SortPreference, ViewMode } from "./types";
 import { loadHolder13FMatches, type Holder13FMatch } from "./thirteenf-match";
@@ -133,7 +135,12 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   const dataProvider = useAssetData();
   const scope = useCloudDisplayScope();
   const { createPaneFromTemplate } = usePluginAppActions();
-  const [preferredView, setViewMode] = usePluginPaneState<ViewMode>("viewMode", "table");
+  const [preferredView, setViewMode] = useCommandTab<ViewMode>(
+    "holders",
+    "viewMode",
+    ["table", "chart", "13dg", "disclosures", "ccass"],
+    "table",
+  );
   const [sortPreference, setSortPreference] = usePluginPaneState<SortPreference>("sortPreference", DEFAULT_SORT);
   const [fundMatches, setFundMatches] = useState<Map<string, Holder13FMatch>>(() => new Map());
   const [fundMatching, setFundMatching] = useState(false);
@@ -143,8 +150,16 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
 
   const exchange = ticker?.metadata.exchange ?? "";
   const localListing = disclosureListing(symbol, exchange);
-  const tabs = localListing ? DISCLOSURE_TABS : VIEW_TABS;
-  const viewMode = !localListing && preferredView === "disclosures" ? "table" : preferredView;
+  const ccassTarget = hkCcassCode(symbol, exchange);
+  const tabs = useMemo(
+    () => holderTabs({ hasDisclosures: !!localListing, hasCcass: !!ccassTarget }),
+    [ccassTarget, localListing],
+  );
+  const viewMode =
+    (!localListing && preferredView === "disclosures") ||
+    (!ccassTarget && preferredView === "ccass")
+      ? "table"
+      : preferredView;
   const savedCurrency = ticker?.metadata.currency ?? "";
   const issuerListing = useIssuerListing(ticker);
   const loadHolders = useMemo(() => symbol ? async (forceRefresh: boolean) => {
@@ -486,6 +501,8 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
         />
       ) : viewMode === "disclosures" && localListing ? (
         <OwnershipDisclosureView listing={localListing} focused={focused} width={width} onCycle={toggleView} />
+      ) : viewMode === "ccass" && ccassTarget ? (
+        <CcassStockView code={ccassTarget.code} viaAdr={ccassTarget.viaAdr} focused={focused} width={width} onCycle={toggleView} />
       ) : viewMode === "13dg" ? (
         <BeneficialOwnersView
           focused={focused}

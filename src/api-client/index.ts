@@ -1195,6 +1195,11 @@ class GloomApiClient {
   getFundChanges = this.data.getFundChanges.bind(this.data);
   getFundFacts = this.data.getFundFacts.bind(this.data);
   getOwnershipDisclosures = this.data.getOwnershipDisclosures.bind(this.data);
+  getHkCcassStock = this.data.getHkCcassStock.bind(this.data);
+  getHkCcassBigChanges = this.data.getHkCcassBigChanges.bind(this.data);
+  getHkCcassConcentration = this.data.getHkCcassConcentration.bind(this.data);
+  getHkCcassSouthbound = this.data.getHkCcassSouthbound.bind(this.data);
+  getHkCcassParticipant = this.data.getHkCcassParticipant.bind(this.data);
   getCloudExchangeAnnouncements = this.data.getCloudExchangeAnnouncements.bind(this.data);
   getCloudThemes = this.data.getCloudThemes.bind(this.data);
   getCloudThemeMembers = this.data.getCloudThemeMembers.bind(this.data);

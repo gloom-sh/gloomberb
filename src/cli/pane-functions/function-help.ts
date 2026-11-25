@@ -1124,6 +1124,22 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: same("13F quarterly as filed; 13D and 13G as filed"),
     bloomberg: ["HDS"],
   },
+  CCASS: {
+    summary: "Hong Kong CCASS broker custody holdings, Top-5 and Top-10 concentration, Stock Connect Southbound share, and 1D/5D/30D participant shifts for HKEX equities and dual-listed US China ADRs. Opens HDS on its CCASS tab.",
+    usage: ["CCASS 0700.HK", "CCASS BABA"],
+    keys: [OPEN, key("o", "pen broker"), key("m", "arket scanner")],
+    data: same("Daily HKEX settlement custody; historical archive from 2007"),
+    bloomberg: [],
+    docs: "HDS",
+  },
+  CCASSM: {
+    summary: "Hong Kong CCASS market scanner: daily big participant moves, pre-placement physical share deposits, Top-10 concentration rankings, Stock Connect Southbound flows, and reverse broker portfolio lookup by participant ID.",
+    usage: ["CCASSM", "CCASSM deposits", "CCASSM B01955"],
+    keys: [TABS, OPEN],
+    data: same("Daily HKEX settlement custody; historical archive from 2007"),
+    bloomberg: [],
+    docs: "HDS",
+  },
   "13F": {
     summary: "Institutional 13F filings by fund, ticker or CIK with estimated long-book performance, holdings and filing history. Option values are underlying notional.",
     usage: ["13F", "13F Berkshire"],
