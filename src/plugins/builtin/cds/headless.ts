@@ -1,4 +1,5 @@
-import { MISSING_VALUE } from "../../../utils/format";
+import { MISSING_VALUE } from "../../../utils/format";import { MISSING_VALUE } from "../../../utils/format";
+import { formatDay } from "../../../utils/day-format";
 import type {
   HeadlessBundleResult,
   HeadlessBundleSection,
@@ -81,7 +82,7 @@ const ISSUER_COLUMNS: HeadlessPaneColumn[] = [
   quotedColumn("level", "5Y", false),
   quotedColumn("change1W", "1W", true),
   quotedColumn("change1M", "1M", true),
-  { key: "spread5yDate", header: "5Y date", shrink: false, format: (value: unknown) => (typeof value === "string" ? value : MISSING_VALUE) },
+  { key: "spread5yDate", header: "5Y date", shrink: false, format: (value: unknown) => (typeof value === "string" ? formatDay(value) : MISSING_VALUE) },
 ];
 
 /**
@@ -219,7 +220,7 @@ function spreadEntries(history: CdsSpreadHistory): HeadlessPaneEntry[] {
     value: unit === "pts"
       ? { lowPts: summary.range.low, highPts: summary.range.high, since: summary.range.since }
       : { lowBp: summary.range.low, highBp: summary.range.high, since: summary.range.since },
-    formatted: `${formatSpreadRange(unit, summary.range)} since ${summary.range.since}`,
+    formatted: `${formatSpreadRange(unit, summary.range)} since ${formatDay(summary.range.since)}`,
   } : null;
   // A level that is the day's settlement price says so beside its date; one from trades says nothing.
   const kind = summary.settlement ? [{ key: "kind", label: "Level", value: "settlement" }] : [];

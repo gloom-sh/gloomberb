@@ -48,7 +48,7 @@ describe("VCA dates", () => {
       row("NVDA", reading("2026-10-09", "quote-mid", 0.293), "2026-10-09"),
       row("AAPL", reading("2026-10-09", "quote-mid", 0.265), "2026-10-09"),
     ]);
-    expect(title.endsWith("· 2026-10-09 close")).toBe(true);
+    expect(title.endsWith("· 09 Oct 2026 close")).toBe(true);
     expect(title).not.toContain("live");
     expect(keys).not.toContain("date");
     expect(keys).not.toContain("rankDate");
@@ -57,7 +57,7 @@ describe("VCA dates", () => {
 
   test("a trade-close reading on its rank date says so once", async () => {
     const { title } = await load([row("SPY", reading("2026-10-09", "trade-close", 0.123), "2026-10-09")]);
-    expect(title.endsWith("· 2026-10-09 close")).toBe(true);
+    expect(title.endsWith("· 09 Oct 2026 close")).toBe(true);
   });
 
   test("rows ranked on different closes get a date column, and the footer is the newest", async () => {
@@ -68,7 +68,7 @@ describe("VCA dates", () => {
     ]);
     expect(title).toBe("Rich/cheap · Custom symbols");
     expect(keys).toContain("date");
-    expect([0, 1, 2].map((index) => cell("date", index))).toEqual(["2026-10-09 close", "2026-10-09 close", "2026-10-08 close"]);
+    expect([0, 1, 2].map((index) => cell("date", index))).toEqual(["09 Oct 2026 close", "09 Oct 2026 close", "08 Oct 2026 close"]);
     // Each rank is its row's close, which the As of column already dates: no Rank as of column.
     expect(keys).not.toContain("rankDate");
     expect(footer).toContain(" · Fri 9 Oct 2026 · ");
@@ -79,7 +79,7 @@ describe("VCA dates", () => {
       row("NVDA", reading("2026-10-09", "quote-mid", 0.293), "2026-10-08"),
       row("AAPL", reading("2026-10-09", "quote-mid", 0.265), "2026-10-08"),
     ]);
-    expect(title.endsWith("· 2026-10-08 close")).toBe(true);
+    expect(title.endsWith("· 08 Oct 2026 close")).toBe(true);
     expect(keys).not.toContain("rankDate");
     expect(cell("iv30", 0)).toBe("30.0%");
   });
@@ -392,7 +392,7 @@ describe("HIVG exports for scripts", () => {
     // The row says what the meeting did, as MDAY's does; the export keeps the rate before it, in % as its header says.
     expect(lines.find((line) => line.startsWith("Release,"))!.split(",").slice(3, 6)).toEqual(["Decision", "Actual (%)", "Prior (%)"]);
     expect(lines.find((line) => line.startsWith("ECB,"))!.split(",").slice(3, 6)).toEqual(["raised 25bp", "2.5", "2.25"]);
-    expect(text).toMatch(/2026-09-10\s+raised 25bp\s+2\.50%\s+2026-09-10\s+12\.6/);
+    expect(text).toMatch(/10 Sep 2026\s+raised 25bp\s+2\.50%\s+10 Sep 2026\s+12\.6/);
     expect(result.notes).toContain("1 earlier ECB release predates the IV history, which starts 2026-09-01.");
     expect(result.notes).toContain("Left out ECB 2026-10-29: no closing reading yet for its session at --offset 0.");
   });

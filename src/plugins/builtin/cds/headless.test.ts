@@ -113,9 +113,9 @@ describe("CDS report", () => {
     expect(text).toMatch(/5Y spread\s+157bp/);
     expect(text).toMatch(/1W change\s+\+12\.0bp/);
     expect(text).toMatch(/1M change\s+\+17\.0bp/);
-    expect(text).toMatch(/Range\s+129 to 276bp since 2024-10-11/);
+    expect(text).toMatch(/Range\s+129 to 276bp since 11 Oct 2024/);
     // ISO times, and the upfront without a side it does not have.
-    expect(text).toContain("2026-10-09 13:21");
+    expect(text).toContain("09 Oct 2026 13:21");
     expect(text).not.toMatch(/\d{2}\/\d{2} \d{2}:\d{2}/);
     expect(text).toContain("Abs upfront");
     // One upfront currency heads the column instead of trailing each amount.
@@ -151,7 +151,7 @@ describe("CDS report", () => {
       ["2026-10-09", 157, "2031-12-20"],
       ["2026-09-04", 140, "2031-06-20"],
     ]);
-    expect(text).toMatch(/2026-09-04\s+140bp\s+3\s+Jun 2031/);
+    expect(text).toMatch(/04 Sep 2026\s+140bp\s+3\s+Jun 2031/);
     // `fn CDS F --csv --section daily`: that table alone, a row per day, the contract as its maturity.
     const daily = renderReportCsv(selectReportTables(tables, "daily")).split("\n");
     expect(daily[0]).toMatch(/^Date,5Y spread \(bp\),Prints,Contract/);
@@ -216,7 +216,7 @@ describe("CDS report", () => {
       ["Whirlpool Corporation", null, null],
     ]);
     // One name, one currency and no spread on any print: the rows say what differs.
-    expect(text).toMatch(new RegExp(String.raw`2028-12-20\s+5M\+\s+${MISSING_VALUE}\s+6\.5 pts\s+319\.9k\n`));
+    expect(text).toMatch(new RegExp(String.raw`20 Dec 2028\s+5M\+\s+${MISSING_VALUE}\s+6\.5 pts\s+319\.9k\n`));
     expect(text).toMatch(/ 895\.0k\n/);
     expect(text).not.toMatch(/Whirlpool Corp\s|WHIRLPOOL/);
     const csv = renderReportCsv(selectReportTables(tables, "trades")).split("\n");
@@ -300,7 +300,7 @@ describe("CDS report", () => {
       ["Amazon.com, Inc.", 73],
       ["Ford Motor Company", null],
     ]);
-    expect(text).toMatch(/Amazon\.com, Inc\.\s+3\s+2026-10-09 19:55\s+73bp\s+\+3\.0bp\s+\+5\.8bp\s+2026-10-09/);
+    expect(text).toMatch(/Amazon\.com, Inc\.\s+3\s+09 Oct 2026 19:55\s+73bp\s+\+3\.0bp\s+\+5\.8bp\s+09 Oct 2026/);
     expect(text.trimEnd().split("\n").at(-1)).toBe("Source: DTCC · last trade 2026-10-09 19:55 UTC · 43 hours old");
  
     // Each export row is its issuer's, in bp, dated by its own 5Y level (Issuer 7's from two days before its
@@ -390,8 +390,8 @@ describe("CDS report", () => {
     ]);
     // The bp level stays beside the quote, with the coupon the points are on.
     expect(rows[2]).toMatchObject({ quote: "upfront", spread5yBp: 18654.4, couponBp: 500 });
-    expect(text).toMatch(/VIRGIN MEDIA FINANCE PLC\s+1\s+2026-10-09 18:00\s+57\.6 pts\s+\+10\.9 pts\s+\+36\.1 pts\s+2026-10-08/);
-    expect(text).toMatch(new RegExp(String.raw`American Airlines Group Inc\.\s+1\s+2026-10-09 17:00\s+512bp\s+${MISSING_VALUE}\s+${MISSING_VALUE}\s+2026-10-01`));
+    expect(text).toMatch(/VIRGIN MEDIA FINANCE PLC\s+1\s+09 Oct 2026 18:00\s+57\.6 pts\s+\+10\.9 pts\s+\+36\.1 pts\s+08 Oct 2026/);
+    expect(text).toMatch(new RegExp(String.raw`American Airlines Group Inc\.\s+1\s+09 Oct 2026 17:00\s+512bp\s+${MISSING_VALUE}\s+${MISSING_VALUE}\s+01 Oct 2026`));
     expect(text).not.toContain("18654");
     // Exports write the number and its unit, as the index board's do.
     const csv = renderReportCsv(tables).split("\n");
@@ -437,8 +437,8 @@ describe("CDS report", () => {
     expect(text).toMatch(/5Y upfront\s+57\.6 pts/);
     expect(text).toMatch(/Coupon\s+500bp/);
     expect(text).toMatch(/1M change\s+\+36\.1 pts/);
-    expect(text).toMatch(/Range\s+21\.6 to 57\.6 pts since 2026-09-15/);
-    expect(text).toMatch(/2026-10-08\s+18654bp\s+57\.6 pts\s+3\s+Dec 2031/);
+    expect(text).toMatch(/Range\s+21\.6 to 57\.6 pts since 15 Sep 2026/);
+    expect(text).toMatch(/08 Oct 2026\s+18654bp\s+57\.6 pts\s+3\s+Dec 2031/);
     const daily = renderReportCsv(selectReportTables(tables, "daily")).split("\n");
     expect(daily[0]).toMatch(/^Date,5Y spread \(bp\),5Y upfront \(pts\),Prints,Contract/);
     expect(daily[1]!.split(",").slice(0, 4)).toEqual(["2026-10-08", "18654.4", "57.65", "3"]);

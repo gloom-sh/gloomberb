@@ -1,4 +1,4 @@
-import { formatDayTime } from "../../../utils/day-format";
+import { formatDay, formatDayTime } from "../../../utils/day-format";
 import type { CloudCdsHistoryPointPayload, CloudCdsLevelPayload, CloudCdsTradePayload } from "../../../api-client";
 import type { DataTableColumn, StatItem } from "../../../components";
 import type { TimeSeriesPoint } from "../../../time-series/types";
@@ -943,7 +943,7 @@ export function spreadFigures(line: CdsSpreadLine): StatItem[] {
   const summary = spreadSummary(line);
   if (!summary) return [];
   const { unit } = summary;
-  const dated = summary.settlement ? `${summary.date} · ${SETTLEMENT_TEXT}` : summary.date;
+  const dated = summary.settlement ? `${formatDay(summary.date)} · ${SETTLEMENT_TEXT}` : formatDay(summary.date);
   return [
     unit === "pts"
       ? {
@@ -959,7 +959,7 @@ export function spreadFigures(line: CdsSpreadLine): StatItem[] {
       id: "range",
       label: "Range",
       value: formatSpreadRange(unit, summary.range),
-      detail: `since ${summary.range.since}`,
+      detail: `since ${formatDay(summary.range.since)}`,
     }] : []),
   ];
 }
