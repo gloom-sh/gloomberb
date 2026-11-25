@@ -1616,12 +1616,7 @@
           {
             "code": "MOST",
             "name": "Market Movers",
-            "description": "Top gainers, losers, most active, and trending tickers, pre-market and after-hours movers, and gaps.",
-            "targets": [
-              "cli",
-              "tui",
-              "desktop"
-            ]
+            "description": "Top gainers, losers, most active, and trending tickers, pre-market and after-hours movers, and gaps."
           },
           {
             "code": "HILO",

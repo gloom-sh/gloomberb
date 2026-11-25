@@ -6,7 +6,7 @@
 
 ## Accounts and data
 
-- Many functions open signed out, including 13F funds (`13F`), earnings (`ERN`, `EVTS`), institutional holders (`HDS`), Treasury auctions (`AUCT`), the bond tape (`TRACE`), trading halts (`HALT`), Fear & Greed (`FNG`), comment letters (`CLTR`), prediction markets (`PM`) and polls (`POLL`). Free access has rate limits, higher when signed in.
+- Many functions open signed out, including Market Movers (`MOST`), 13F funds (`13F`), earnings (`ERN`, `EVTS`), institutional holders (`HDS`), Treasury auctions (`AUCT`), the bond tape (`TRACE`), trading halts (`HALT`), Fear & Greed (`FNG`), comment letters (`CLTR`), prediction markets (`PM`) and polls (`POLL`). Free access has rate limits, higher when signed in. The Gaps tab in Market Movers requires Pro.
 - Some panes, such as filings and insider transactions, need a free, verified Gloom Cloud account; others need Pro. Chat needs a free account and is read-only until its email is verified.
 - Free data is delayed: equity and options quotes by 15 minutes, news by 12 hours. Pro adds real-time data and more datasets.
 - Signed out, after a minute in the workspace, Chrome and Edge may offer to sign you in with Google. Picking an account signs you in, or creates a free account, and closing the prompt keeps it away for a week.
@@ -24,6 +24,6 @@ The browser app does not install plugins: a plugin is code that would run with y
 
 ## Not in the browser
 
-Brokers and native integrations, filesystem notes, local AI, plugin installation, the updater and debug tools, application menus, native window controls and context menus, pop-out windows, custom RSS feeds and Substack, market movers, and TV.
+Brokers and native integrations, filesystem notes, local AI, plugin installation, the updater and debug tools, application menus, native window controls and context menus, pop-out windows, custom RSS feeds and Substack, and TV.
 
 For local development and deployment, see [Contributing](../CONTRIBUTING.md#browser-development).

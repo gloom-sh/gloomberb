@@ -50,7 +50,7 @@ import { roadmapModule } from "./builtin/roadmap";
 import { chartComposerModule } from "./builtin/chart-composer";
 import { connectionsModule } from "./builtin/connections";
 import { relativeRotationModule } from "./builtin/relative-rotation";
-import { equityScreenerModule } from "./builtin/equity-screener";
+import { screenersPlugin } from "./builtin/composite/screeners";
 import { correlationModule } from "./builtin/correlation";
 import { cdsModule } from "./builtin/cds";
 import { creditBoardsModule } from "./builtin/credit-boards";
@@ -94,7 +94,6 @@ import { backtestModule } from "./builtin/backtest";
 import { composeBuiltinPlugin, type PluginModule } from "./builtin/plugin-module";
 import { portfolioListModule } from "./builtin/portfolio-list";
 import { researchModule } from "./builtin/research";
-import { scannerModule } from "./builtin/scanner";
 import { sectorsModule } from "./builtin/sectors";
 import { tickerDetailModule } from "./builtin/ticker-detail";
 import { treasuryAuctionsModule } from "./builtin/treasury-auctions";
@@ -120,7 +119,6 @@ import {
   futuresCommoditiesPluginMeta,
   globalMarketsPluginMeta,
   quantPluginMeta,
-  screenersPluginMeta,
   newsPluginMeta,
   portfolioPluginMeta,
 } from "./builtin/builtin-plugin-meta";
@@ -199,17 +197,9 @@ const browserNewsPlugin = composeBuiltinPlugin({
   modules: [tickerNewsModule, browserNewsWireModule],
 });
 
-// Market Overview's successors with the modules it had on the web: all of
-// them but top movers.
 const browserGlobalMarketsPlugin = composeBuiltinPlugin({
   ...globalMarketsPluginMeta,
   modules: [worldIndicesModule, worldVenueMapModule, sectorsModule, fxMatrixModule, relativeRotationModule],
-});
-
-const browserScreenersPlugin = composeBuiltinPlugin({
-  ...screenersPluginMeta,
-  description: "Equity screener, session highs and lows, and unusual options flow.",
-  modules: [equityScreenerModule, scannerModule],
 });
 
 const browserFuturesCommoditiesPlugin = composeBuiltinPlugin({
@@ -316,7 +306,7 @@ export const browserBuiltinPlugins: readonly GloomPlugin[] = [
   browserApplicationPlugin,
   browserNewsPlugin,
   browserGlobalMarketsPlugin,
-  browserScreenersPlugin,
+  screenersPlugin,
   browserFuturesCommoditiesPlugin,
   browserCryptoPlugin,
   browserAltDataPlugin,

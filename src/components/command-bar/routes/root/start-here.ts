@@ -24,7 +24,7 @@ const START_HERE_ROWS: readonly StartHereRow[] = [
   // offered, and relative valuation compares that one with its peers.
   { label: "Compare stocks", codes: ["CMP", "RV"] },
   { label: "See who reports earnings", codes: ["ERN"] },
-  // The web has no market movers; the heat map shows the same day.
+  // Fall back to the heat map if Screeners & Movers is disabled.
   { label: "See what is moving today", codes: ["MOST", "HM"] },
   { label: "Read the top news", codes: ["TOP"] },
   { label: "Screen for ideas", codes: ["EQS"] },

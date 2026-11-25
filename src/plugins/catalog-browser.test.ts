@@ -8,7 +8,6 @@ import { createDefaultConfig, createPaneInstance } from "../types/config";
 import type { PluginRegistry } from "./registry";
 
 const ids = browserBuiltinPlugins.map((plugin) => plugin.id);
-const paneIds = browserBuiltinPlugins.flatMap((plugin) => plugin.panes?.map((pane) => pane.id) ?? []);
 const templateIds = new Set(browserBuiltinPlugins.flatMap((plugin) => plugin.paneTemplates?.map((template) => template.id) ?? []));
 
 describe("browser plugin catalog", () => {
@@ -26,10 +25,6 @@ describe("browser plugin catalog", () => {
     expect(unavailable).toEqual([]);
   });
 
-  test("omits unsupported modules inside otherwise browser-safe product areas", () => {
-    expect(paneIds).not.toContain("market-movers");
-  });
-
   test.each([
     ["browser", browserBuiltinPlugins],
     ["desktop and terminal", getLoadablePlugins()],
@@ -45,6 +40,7 @@ describe("browser plugin catalog", () => {
       getPaneTemplatePluginId: (id: string) => contributions.paneTemplatesMap.owners.get(id),
     } as PluginRegistry;
     const functions = [
+      ["MOST", "market-movers"],
       ["13F", "thirteenf-funds"],
       ["ERN", "earnings-calendar"],
       ["EVTS", "earnings-calendar"],
