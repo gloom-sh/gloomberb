@@ -36,8 +36,8 @@ const COLUMNS: DataTableColumn[] = [
   { id: "change", label: "CHG", width: 11, align: "right" },
   { id: "percentile", label: "PCTL", width: 5, align: "right" },
   { id: "oi", label: "OPEN INT", width: 10, align: "right" },
-  // The session the open interest counts, a day or so before the last trade.
-  { id: "oiDate", label: "OI DATE", width: 11, align: "left" },
+  // The session the open interest counts, a day or so before the last trade: its day and month say which.
+  { id: "oiDate", label: "OI DATE", width: 7, align: "left" },
   { id: "volume", label: "VOLUME", width: 10, align: "right" },
   { id: "asOf", label: "AS OF UTC", width: 17, align: "left" },
 ];
@@ -200,7 +200,7 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle, standInNote
       detail: [data.slope.state, spreadBasis, spreadRank, slopeDate].filter(Boolean).join(" · ") },
     ...spotPremium ? [
       { id: "spot", label: spotPremium.label, value: spotPremium.close == null ? MISSING_VALUE : spotPremium.close.toFixed(2),
-        detail: spotPremium.date ? `${spotPremium.date.slice(5)} close` : undefined },
+        detail: spotPremium.date ? `${formatDay(spotPremium.date, "no-year")} close` : undefined },
       { id: "premium", label: "Front premium", value: curveChangeText(spotPremium.premium, root),
         ...spotPremium.premium == null ? { tone: "warning" as const, detail: spotPremium.reason ?? undefined }
           : { detail: spotPremium.frontSymbol ? `${curveContractCode(spotPremium.frontSymbol)} settle` : undefined } },
@@ -212,7 +212,7 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle, standInNote
   const bodyHeight = Math.max(1, height - tabRows - 1 - (dateError ? 1 : 0));
   // A Cboe price is the settlement itself, so its curve has no separate last trade.
   const settlesOnly = data?.source === "cboe";
-  const settleLabel = data?.settlementDate ? `SETTLE ${data.settlementDate.slice(5)}` : "SETTLE";
+  const settleLabel = data?.settlementDate ? `SETTLE ${formatDay(data.settlementDate, "no-year")}` : "SETTLE";
   // Cash-settled roots (ES, CL's Brent, VX) have no first notice day to show.
   const noNotice = !data?.contracts.some((row) => row.firstNotice);
   const shortDated = curveTab && curveRows.some((row) => shortDatedBasis(basis.get(row.symbol)));
@@ -330,7 +330,7 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle, standInNote
     }
     if (column.id === "percentile") return { text: row.samples < 2 || row.percentile == null ? MISSING_VALUE : row.percentile.toFixed(0) };
     if (column.id === "oi") return { text: integer(row.openInterest) };
-    if (column.id === "oiDate") return { ...dayCell(curveInterestDate(row)), color: colors.textMuted };
+    if (column.id === "oiDate") return { ...dayCell(curveInterestDate(row), "no-year"), color: colors.textMuted };
     if (column.id === "volume") return { text: integer(row.volume) };
     // A month with no trade since the settlement it shows is dated by that settlement, as the curve marks it.
     const settled = data && !requestedDate ? curveSettleShown(row, data) : null;

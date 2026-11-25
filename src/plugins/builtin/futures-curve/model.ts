@@ -346,7 +346,7 @@ export function futuresCurveSeries(data: FuturesCurvePayload, palette?: CurvePal
   return [{
     id: "current", label: currentLabel, asOf: newestQuote(contracts), color: palette?.current,
     points: contracts.map(point),
-  }, ...settled.length ? [{ id: "settle", label: `Settle ${data.settlementDate!.slice(5)}, no trade since`, role: "marker" as const,
+  }, ...settled.length ? [{ id: "settle", label: `Settle ${formatDay(data.settlementDate!, "no-year")}, no trade since`, role: "marker" as const,
     color: palette?.settle, points: settled.map(point) }] : [],
   ...data.ghosts.map((ghost) => {
     // The payload dates a ghost by its oldest point, which can be a contract beyond the charted horizon.
@@ -565,7 +565,7 @@ export function curveSpotPremium(data: Pick<FuturesCurvePayload, "root" | "contr
   const close = bar ? bar.close : null;
   const settle = front ? front.settlement ?? front.price : null;
   const premium = close != null && positive(settle) ? curveRoundedPrice(settle - close, data.root) : null;
-  const reason = !date ? "the curve has no settlement date" : close == null ? `no ${index.symbol} close on ${date}`
+  const reason = !date ? "the curve has no settlement date" : close == null ? `no ${index.symbol} close on ${formatDay(date)}`
     : premium == null ? "no front settlement" : null;
   return { symbol: index.symbol, label: index.label, close, date, frontSymbol: front?.symbol ?? null, premium, reason };
 }
@@ -971,7 +971,7 @@ export function noTradeChangeNote(rows: readonly Pick<FuturesContract, "symbol" 
   const untraded = rows.filter((row) => curveNoTradeSince(row, data) != null).map((row) => curveContractCode(row.symbol));
   if (!untraded.length) return null;
   const named = options.count ? `on ${untraded.length} contract${untraded.length === 1 ? "" : "s"}` : `for ${untraded.join(", ")}`;
-  return `Change blank ${named} (no trade since ${data.settlementDate})${options.count ? "" : "."}`;
+  return `Change blank ${named} (no trade since ${formatDay(data.settlementDate!)})${options.count ? "" : "."}`;
 }
 
 /** Most contract codes a partial curve's status line names before it counts the rest. */

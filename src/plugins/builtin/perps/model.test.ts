@@ -182,8 +182,8 @@ test("open interest is listed with its own read, source and USD basis, never the
   const binance = venueRow("binance", { observedAt: "2026-11-23T06:16:30.000Z", openInterestBase: 92_190, openInterestUsd: 5_690e6, openInterestSource: source() });
   expect(openInterestFields(binance).map((field) => [field.label, field.text, field.detail])).toEqual([
     ["Open interest", "92.2k BTC · 5.69B USD", "USD = mark × contracts, USDT valued at 1 USD"],
-    ["OI observed", "2026-11-23 06:10 UTC", undefined],
-    ["OI source as of", "2026-11-23 06:10 UTC", undefined],
+    ["OI observed", "23 Nov 2026 06:10 UTC", undefined],
+    ["OI source as of", "23 Nov 2026 06:10 UTC", undefined],
     ["OI source", "https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT", undefined]]);
   // A streamed mark beside the open interest the last poll read is dated by the older read.
   expect(rowReadAt(binance)).toBe(read);

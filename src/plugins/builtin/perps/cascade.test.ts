@@ -21,8 +21,8 @@ test("a band wider than the book the venue returned reads as at least what the b
   // A book not read for 2.5 hours is marked and left out: the totals are the current books'.
   const gone = depthRow({ marketId: "bybit:ETHUSDT", venue: "bybit", observedAt: "2026-10-26T03:15:00.000Z", bid1: 9e9, ask1: 9e9, stale: true });
   expect(depthFigures([...depth().rows, gone]).map((figure) => figure.value)).toEqual(["≥193.66M", "≥217.87M", "≥293.61M"]);
-  expect(depthCellText(gone, "observedAt")).toBe("10-26 03:15 stale");
-  expect(depthCellText(depthRow(), "observedAt")).toBe("10-26 06:52");
+  expect(depthCellText(gone, "observedAt")).toBe("26 Oct 03:15 stale");
+  expect(depthCellText(depthRow(), "observedAt")).toBe("26 Oct 06:52");
   expect(depthStaleNote([...depth().rows, gone])).toBe("One book not read for 2.5 hours is marked stale and left out of the band totals.");
   expect(depthStaleNote(depth().rows)).toBeNull();
   expect(depthFigures([gone])).toEqual([]);
@@ -45,17 +45,17 @@ test("liquidations read by side, and windows that start before collection say wh
   expect(liquidationCellText(data.markets[0]!, "long24h")).toBe("3.1k");
   expect(liquidationCellText(data.markets[2]!, "lastEventAt")).toBe(MISSING_VALUE);
   expect(["eventAt", "side", "priceKind", "notionalUsd", "receivedAt"].map((id) => printCellText(data.largest[0]!, id as never)))
-    .toEqual(["10-26 07:00:49", "Short", "Fill", "32.0k", "07:00:50"]);
+    .toEqual(["26 Oct 07:00:49", "Short", "Fill", "32.0k", "07:00:50"]);
   const figures = liquidationFigures(data, colors);
   expect(figures.map((figure) => [figure.label, figure.value, figure.color, figure.detail])).toEqual([
     ["Longs 24h", "3.2k", "red", "since 06:52 UTC"], ["Shorts 24h", "29.2k", "green", "since 06:52 UTC"],
     ["Longs 7d", "3.2k", "red", "since 06:52 UTC"], ["Shorts 7d", "29.2k", "green", "since 06:52 UTC"]]);
   // Started on an earlier day: the date is said.
-  expect(liquidationFigures(liquidations({ collectingSince: "2026-10-24T21:05:00.000Z" }), colors)[2]!.detail).toBe("since 10-24 21:05 UTC");
+  expect(liquidationFigures(liquidations({ collectingSince: "2026-10-24T21:05:00.000Z" }), colors)[2]!.detail).toBe("since 24 Oct 21:05 UTC");
   // A week of collection behind it: the windows are whole and need no date.
   expect(liquidationFigures(liquidations({ collectingSince: "2026-10-01T00:00:00.000Z" }), colors).every((figure) => !figure.detail)).toBeTrue();
   // A stream that is down is said with the figures' date; it is not a feed.
-  expect(liquidationFreshness(data)).toEqual({ source: "Binance, OKX, Hyperliquid", asOf, maxAgeMinutes: 10, note: "OKX stream down since 10-26 07:01 UTC" });
+  expect(liquidationFreshness(data)).toEqual({ source: "Binance, OKX, Hyperliquid", asOf, maxAgeMinutes: 10, note: "OKX stream down since 26 Oct 07:01 UTC" });
 });
 
 test("payloads are validated, and a pair reads as the base asset it stands for", async () => {
@@ -82,8 +82,8 @@ test("fn PERP --tab liquidations and depth: totals, contracts and prints free, t
   expect(liq.text.split("\n")[0]).toBe("Perpetual liquidations across venues");
   expect(liq.text).toContain('Showing ETH for "ETH-USD".');
   expect(liq.text).toMatch(/Longs liquidated 24h\s+3\.2k USD/);
-  expect(liq.text).toMatch(/Binance\s+ETHUSDT\s+3\.1k\s+29\.2k\s+3\.1k\s+29\.2k\s+10\s+10-26 07:10/);
-  expect(liq.text).toMatch(/10-26 07:00:49\s+Binance\s+ETHUSDC\s+Short\s+32\.0k\s+2,321\.94\s+Fill/);
+  expect(liq.text).toMatch(/Binance\s+ETHUSDT\s+3\.1k\s+29\.2k\s+3\.1k\s+29\.2k\s+10\s+26 Oct 07:10/);
+  expect(liq.text).toMatch(/26 Oct 07:00:49\s+Binance\s+ETHUSDC\s+Short\s+32\.0k\s+2,321\.94\s+Fill/);
   // The prints are the week's, beside 24h totals; the heading names the window, the JSON keeps its section name.
   expect(liq.text).toContain("Largest prints, 7 days\n");
   expect(liq.text).toContain("Binance sends at most one liquidation per contract each second");
@@ -99,7 +99,7 @@ test("fn PERP --tab liquidations and depth: totals, contracts and prints free, t
   expect(books.text).toMatch(/Binance 06:52 · Bybit 03:15 · OKX 06:54 UTC/);
   // The band totals are the current books'; the stale one is marked in the table and said in the notes.
   expect(books.text).toMatch(/±1% of mid\s+≥217\.87M USD \(bids 103\.19M · asks 114\.69M, 2 books\)/);
-  expect(books.text).toMatch(/Bybit\s+ETHUSDT\s+.*10-26 03:15 stale/);
+  expect(books.text).toMatch(/Bybit\s+ETHUSDT\s+.*26 Oct 03:15 stale/);
   expect(books.text).toContain("One book not read for 2.5 hours is marked stale and left out of the band totals.");
   const depthJson = serializeHeadlessPaneResult(perpsHeadless, books.result) as { sections: Array<{ title: string; entries?: Array<{ value: unknown }> }> };
   expect(depthJson.sections[0]).toMatchObject({ title: "Band totals" });

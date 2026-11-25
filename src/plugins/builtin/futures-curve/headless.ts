@@ -67,9 +67,9 @@ function contractColumns(root: string, settlementDate: string | null, options: {
     { key: "lastTrade", header: "Last Trade", shrink: false, format: date },
     // Cash-settled roots have no first notice day.
     ...options.notice || exported ? [{ key: "firstNotice", header: "1st Notice", shrink: false,
-      format: (value: unknown, row: Record<string, unknown>) => typeof value === "string" ? `${value}${row.inDelivery ? " passed" : ""}` : MISSING_VALUE }] : [],
+      format: (value: unknown, row: Record<string, unknown>) => typeof value === "string" ? `${formatDay(value)}${row.inDelivery ? " passed" : ""}` : MISSING_VALUE }] : [],
     // One header whatever the session: an export dates each settlement in its own column, the text in the header.
-    { key: "settlement", header: "Settle", ...settlementDate ? { textHeader: `Settle ${settlementDate}` } : {}, align: "right", format: price },
+    { key: "settlement", header: "Settle", ...settlementDate ? { textHeader: `Settle ${formatDay(settlementDate)}` } : {}, align: "right", format: price },
     ...options.text ? [] : [{ key: "settlementDate", header: "settle_date", literalHeader: true, shrink: false, format: date }],
     // A Cboe price is the settlement itself, with no separate last trade: an export leaves its Last blank.
     ...options.last || exported ? [{ key: "price", header: "Last", align: "right" as const, format: options.last ? price : () => MISSING_VALUE }] : [],
@@ -137,7 +137,7 @@ const thirtySecondsFormat = (root: string, key: string): Record<string, Headless
 function spotPremiumEntries(premium: CurveSpotPremium, root: string): HeadlessPaneEntry[] {
   return [
     { key: "spot", label: premium.label, value: premium.close,
-      formatted: premium.close == null ? MISSING_VALUE : `${premium.close.toFixed(2)}${premium.date ? `, ${premium.date} close` : ""}` },
+      formatted: premium.close == null ? MISSING_VALUE : `${premium.close.toFixed(2)}${premium.date ? `, ${formatDay(premium.date)} close` : ""}` },
     { key: "frontPremium", label: "Front premium", value: premium.premium,
       formatted: premium.premium == null ? MISSING_VALUE
         : `${curveChangeText(premium.premium, root)}${premium.frontSymbol ? `, ${curveContractCode(premium.frontSymbol)} settle less spot` : ""}` },
