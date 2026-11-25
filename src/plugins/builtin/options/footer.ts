@@ -138,7 +138,15 @@ export function useOptionsAccessFooter({
       const stamp = snapshot.asOf?.replace("T", " ").replace(/(?:\.\d+)?Z$/, " UTC");
       const stale = snapshot.status === "stale";
       const title = stale ? `Stale options snapshot${stamp ? ` · ${stamp}` : ""}` : snapshot.note;
-      return [{ ...segment, id: "options-snapshot", title, parts: [{ text: stale ? "stale options" : "undated", tone: "warning" }] }];
+      const snapshotStatus: PaneFooterSegment = { ...segment, id: "options-snapshot", title,
+        parts: [{ text: stale ? "stale snapshot" : "undated snapshot", tone: "warning" }] };
+      if (quoteCoverage.status === "live" || quoteCoverage.status === "mixed") {
+        const quotes: PaneFooterSegment = quoteCoverage.status === "live"
+          ? { id: "options-access", parts: [{ text: "live bids/asks", tone: "positive" }] }
+          : { id: "options-access", title: "Real-time bids/asks mixed with snapshot quotes", parts: [{ text: "mixed option quotes", tone: "warning" }] };
+        return [quotes, snapshotStatus];
+      }
+      return [snapshotStatus];
     }
     const coverage = proCoverage ? optionsCoverageSegment(quoteCoverage.status, coverageDelay) : null;
     if (coverage) return [coverage];

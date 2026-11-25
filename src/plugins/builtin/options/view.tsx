@@ -513,11 +513,6 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   // A refresh that failed keeps the last chain, which is then stale.
   const asOfEntry = strikeChain == null ? null : strikeChain === expirationChain ? expirationChainEntry : initialChainEntry;
   const snapshot = asOfChain ? optionSnapshotFreshness(asOfChain, now, expiryVenue, asOfEntry?.error != null) : null;
-  useRemoteUiNode(snapshot ? {
-    role: "report-freshness",
-    label: "Chain freshness",
-    getMetadata: () => snapshot,
-  } : null);
   // A report of the pane (`gloom fn OMON`) says how many strikes it lists of how many the expiry has.
   useRemoteUiNode(strikeChain ? {
     role: "report-notice",
@@ -585,10 +580,41 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   // analytics) reads this chain rather than the snapshot.
   // The snapshot object itself comes back while nothing streamed, so the
   // memos below only recompute when a quote actually landed.
-  const liveChain = useMemo(
-    () => strikeChain ? overlayOptionChainQuotes(strikeChain, optionQuoteEntries, optionQuoteFreshness, optionQuoteBroker).chain : null,
+  const overlay = useMemo(
+    () => strikeChain ? overlayOptionChainQuotes(strikeChain, optionQuoteEntries, optionQuoteFreshness, optionQuoteBroker) : null,
     [optionQuoteEntries, optionQuoteFreshness, strikeChain, optionQuoteBroker],
   );
+  const liveChain = overlay?.chain ?? null;
+  const optionQuoteCoverage = useMemo(
+    () => resolveOptionQuoteCoverage(optionQuoteTargets, optionQuoteEntries, optionQuoteFreshness, overlay?.liveBookTimes),
+    [optionQuoteEntries, optionQuoteFreshness, optionQuoteTargets, overlay?.liveBookTimes],
+  );
+  const { status: quoteStatus, oldestLiveAt, liveCount, totalCount } = optionQuoteCoverage;
+  const fullLive = quoteStatus === "live" && oldestLiveAt != null;
+  useRemoteUiNode(snapshot ? {
+    role: "report-freshness",
+    label: "Option quotes",
+    getMetadata: () => fullLive ? {
+      status: "live",
+      asOf: new Date(oldestLiveAt).toISOString(),
+      asOfLabel: "Visible bids/asks",
+      observations: [{ updatedAt: oldestLiveAt, dataSource: "live", stale: false }],
+    }
+      : quoteStatus === "mixed" ? { ...snapshot, asOfLabel: "Stored snapshot" } : snapshot,
+  } : null);
+  useRemoteUiNode(snapshot && liveCount > 0 ? {
+    role: "report-notice",
+    label: "Quote coverage",
+    getMetadata: () => {
+      const stored = snapshot.asOf ? `Stored snapshot ${formatSpotTime(Date.parse(snapshot.asOf))}${snapshot.status === "stale" ? " (stale)" : ""}.`
+        : "Stored snapshot time not reported.";
+      return {
+        text: `${fullLive ? "Visible bids/asks are real-time." : "Visible bids/asks mix real-time and snapshot quotes."} ${stored}`,
+        key: "quoteCoverage",
+        value: { status: quoteStatus, liveCount, totalCount, snapshot },
+      };
+    },
+  } : null);
   // IV and the Greeks are valued at one spot and instant, which the footer
   // names: the close a chain from the close was quoted against, else the
   // latest price (docs/research-data.md#greeks-spot-and-time).
@@ -765,14 +791,6 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
       title: analyticsAsOfRows(enrichment).map((row) => `${row.label}: ${row.value}`).join("\n"),
       parts: [{ text: `Analytics ${enrichment.asOf.slice(0, 16).replace("T", " ")} UTC`, tone: "muted" as const }] }] : []),
   ] }), [enrichmentState.loading, enrichment]);
-  const optionQuoteCoverage = useMemo(
-    () => resolveOptionQuoteCoverage(
-      optionQuoteTargets,
-      optionQuoteEntries,
-      optionQuoteFreshness,
-    ),
-    [optionQuoteEntries, optionQuoteFreshness, optionQuoteTargets],
-  );
   const optionColumns = useMemo<OptionColumn[]>(() => createOptionColumns(shownFieldIds).map((column) => ({
     ...column,
     headerColor: optionColumnColor(column, colors.panel),

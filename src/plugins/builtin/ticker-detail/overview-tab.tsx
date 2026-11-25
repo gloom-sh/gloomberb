@@ -5,7 +5,7 @@ import { resolveTickerInstrumentKind } from "../../../tickers/instrument-kind";
 import { mayBeUsEquityOrFundTicker } from "../../../utils/sec";
 import { ResearchTradeActions, researchTradeMatches, useResearchTrading } from "../shared/research-trading";
 import { instrumentFromTicker } from "../../../market-data/request-types";
-import { useMemo, type ReactNode } from "react";
+import { useCallback, useMemo, type ReactNode } from "react";
 import { EmptyState, ExternalLinkText, PaneLinkMenu, PaneStatusBody, SectionHeading, unavailableText, usePaneMenuItems, usePaneNoticeFooter } from "../../../components";
 import { CompositeChart, pricePointsToResolvedSeries } from "../../../components/chart/composite";
 import { CompanyLogo, resolveCompanyLogoSrc } from "../../../components/company-logo";
@@ -50,7 +50,9 @@ import {
 } from "../../../utils/fundamentals";
 import { servedRatesNotMeaningful } from "../../../utils/served-rates";
 import { atRegularSessionPrice, regularSessionMarketCapitalization } from "../../../market-data/quotes/regular-session-valuation";
-import { listingEnterpriseValue } from "../../../market-data/quotes/listing-enterprise-value";
+import { balanceSheetRateWanted, listingEnterpriseValue } from "../../../market-data/quotes/listing-enterprise-value";
+import { loadBalanceSheetRate } from "../../../market-data/quotes/balance-sheet-rate";
+import { useAsyncResource } from "../../../react/async-resource";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
 import { sharesOutstandingInReceipts } from "../../../utils/depositary-receipt";
 import { isReceiptSide, listingCedearRatio, listingDepositaryPair } from "../../../market-data/depositary-pair";
@@ -231,6 +233,13 @@ function ResolvedOverviewTab({
     () => (fundamentals ? ttmAtAppRate(withFinancialEnterpriseValue(fundamentals, profile), ttmRate) : fundamentals),
     [fundamentals, profile, ttmRate?.rate, ttmRate?.asOf],
   );
+  const evFinancials = financials && { ...financials, quote, fundamentals: shownFundamentals };
+  const { from: sheetCurrency, to: capCurrency, date: sheetDate } = evFinancials ? balanceSheetRateWanted(evFinancials) ?? {} : {};
+  const loadEvRate = useCallback(() => sheetCurrency && capCurrency && sheetDate
+    ? loadBalanceSheetRate({ from: sheetCurrency, to: capCurrency, date: sheetDate }) : Promise.resolve(null),
+  [sheetCurrency, capCurrency, sheetDate]);
+  const { data: evRate } = useAsyncResource(sheetDate ? loadEvRate : null);
+  const evInputs = evFinancials && (evRate ? { ...evFinancials, balanceSheetRate: evRate } : evFinancials);
   const quoteCurrency = quote?.currency || ticker.metadata.currency || baseCurrency;
   const toBase = (value: number, fromCurrency: string) =>
     convertCurrency(value, fromCurrency, baseCurrency, exchangeRates);
@@ -326,7 +335,7 @@ function ResolvedOverviewTab({
   // regular session price the EV beside it is shown at. A gap of a few percent is the valuation panes' detail.
   const pricedForEnterpriseValue = atRegularSessionPrice({ quote, fundamentals: withFinancialEnterpriseValue(fundamentals, profile) }).fundamentals;
   const enterpriseValueNote = enterpriseValueGapIsLarge(pricedForEnterpriseValue)
-    ? enterpriseValueReconciliationNote(pricedForEnterpriseValue, undefined, financials ?? undefined) : undefined;
+    ? enterpriseValueReconciliationNote(pricedForEnterpriseValue, undefined, evInputs ?? undefined) : undefined;
   // Months of cash, for a company that burns it, and an offering since its balance sheet that the cash is not in yet.
   const unadjustedRunway = useMemo(() => financials ? cashRunway(financials) : null, [financials]);
   const offerings = useRunwayOfferings(ticker.metadata.ticker, ticker.metadata.exchange,
@@ -507,7 +516,7 @@ function ResolvedOverviewTab({
     baseCurrency,
     toBase,
     marketCapExchangeRates: exchangeRates,
-    enterpriseValue: financials ? listingEnterpriseValue({ ...financials, quote, fundamentals: shownFundamentals }) : undefined,
+    enterpriseValue: evInputs ? listingEnterpriseValue(evInputs) : undefined,
     nextEarnings: financials?.nextEarnings,
     depositaryReceipt: sharesOutstandingInReceipts(quote, fundamentals, description),
     depositaryPair: depositaryPair ? { pair: depositaryPair, receiptSide: isReceiptSide(financials) } : null,

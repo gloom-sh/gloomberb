@@ -250,7 +250,7 @@ export function UpcomingCallsView({ focused, width, height, view, renderCompany 
     return (
       <SignInWall
         placement="calls-signin" width={width} height={height} symbol={null}
-        action="browse earnings call transcripts" needsVerification={verificationRequired}
+        action="browse earnings call transcripts" needsVerification={verificationRequired} pro
       />
     );
   }

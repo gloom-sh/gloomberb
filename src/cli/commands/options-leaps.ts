@@ -2,7 +2,7 @@ import type { OptionContract, OptionsChain, TickerFinancials } from "../../types
 import type { CliCommandContext } from "../../types/plugin";
 import type { MarketContext } from "../types";
 import type { CliResultColumn } from "../result";
-import { listingReadNotes, requireCliListing, loadListingQuote, type CliListing } from "../listing-arg";
+import { listingIdentity, listingReadNotes, requireCliListing, loadListingQuote, type CliListing } from "../listing-arg";
 import { rowsFreshness } from "../freshness";
 import { formatCountCell } from "../helpers";
 import { cliStyles, renderTable, type CliTableColumn } from "../../utils/cli-output";
@@ -13,13 +13,13 @@ import { dateOptionError, readCalendarDate } from "../../utils/calendar-date";
 import { isFundType } from "../../utils/sec";
 import { daysToExpiryFrom, optionMid, type OptionSide } from "../../plugins/builtin/shared/volatility";
 import { optionSnapshotFreshness } from "../../plugins/builtin/shared/volatility/option-snapshot";
-import { optionQuoteValuationTime } from "../../plugins/builtin/vol-surface/model";
+import { formatModelSpotPrice, formatSpotTime, type OptionModelSpot } from "../../plugins/builtin/options/model-spot";
 import { optionBreakeven, optionCarry, optionCarryNet, optionSpreadPercent } from "../../plugins/builtin/options/carry";
 import { parseDeltaBand } from "../../plugins/builtin/options/strike-window";
 import { ivRankReason, ivSymbol, loadIvScreen, type IvScreenRow } from "../../plugins/builtin/iv-history/client";
 import { newYorkDay, resolveListingEvents, upcomingReportDate } from "../../plugins/builtin/shared/earnings-calendar";
 import {
-  chainWithModelFigures, loadOptionModelInputs, loadUnderlyingFinancials, OPTION_MODEL_RATE, type OptionModelInputs,
+  loadOptionModelInputs, loadUnderlyingFinancials, OPTION_MODEL_RATE, valueChainAtModelSpot,
 } from "./options-chain";
 import { takeFlag, takeOption } from "./command-utils";
 
@@ -274,6 +274,9 @@ export type LeapsRow = {
   /** Extrinsic as a percent of spot per year to expiry. */
   extrinsicPerYearPercent: number;
   spot: number;
+  spotBasis: OptionModelSpot["basis"] | NonNullable<OptionModelSpot["session"]>;
+  spotAsOf: string;
+  valuationTime: string;
   currency: string;
   /** When the chain was observed. */
   asOf: string | null;
@@ -324,20 +327,22 @@ function leapsExpirations(expirations: readonly number[], window: LeapsWindow, n
  * The contracts of one chain that pass the screen: one side, inside the
  * window, delta in the band, a two-sided quote no wider than the cap, enough
  * open interest, and a carry that can be read. `chain` carries modeled IV and
- * deltas (`chainWithModelFigures`). The `--columns` figures that are the
+ * deltas (`valueChainAtModelSpot`). The `--columns` figures that are the
  * contract's own are added here; the underlying's are added per symbol.
  */
 function screenLeapsChain(
   symbol: string,
   chain: OptionsChain,
   criteria: LeapsCriteria,
-  inputs: OptionModelInputs,
+  modelSpot: OptionModelSpot,
+  dividendYield: number | undefined,
   now: number,
   venue?: string,
 ): { rows: LeapsRow[]; scanned: number } {
-  const spot = inputs.spot;
+  const { price: spot, valuationTime } = modelSpot;
+  const spotAsOf = new Date(modelSpot.observedAt).toISOString();
+  const valuationStamp = new Date(valuationTime).toISOString();
   const contracts = (criteria.side === "call" ? chain.calls : chain.puts) as Array<OptionContract & { delta?: number | null; iv?: number | null }>;
-  const valuationTime = optionQuoteValuationTime(chain, now);
   const snapshot = optionSnapshotFreshness(chain, now, venue);
   const wants = new Set(criteria.columns);
   const rows: LeapsRow[] = [];
@@ -346,7 +351,7 @@ function screenLeapsChain(
     if (!inLeapsWindow(contract.expiration, criteria, now)) continue;
     const days = daysToExpiryFrom(contract.expiration, now);
     scanned += 1;
-    if (spot == null || contract.delta == null || !Number.isFinite(contract.delta)) continue;
+    if (contract.delta == null || !Number.isFinite(contract.delta)) continue;
     const delta = Math.abs(contract.delta);
     if (delta < criteria.minDelta - DELTA_TOLERANCE || delta > criteria.maxDelta + DELTA_TOLERANCE) continue;
     const spreadPercent = optionSpreadPercent(contract);
@@ -370,6 +375,9 @@ function screenLeapsChain(
       extrinsic: round(carry.extrinsic, 4),
       extrinsicPerYearPercent: round(carry.extrinsicPerYear * 100, 3),
       spot,
+      spotBasis: modelSpot.session ?? modelSpot.basis,
+      spotAsOf,
+      valuationTime: valuationStamp,
       currency: contract.currency,
       asOf: snapshot.asOf,
       dataSource: snapshot.status ?? null,
@@ -390,7 +398,7 @@ function screenLeapsChain(
     }
     if (wants.has("carry-net")) {
       // An unknown dividend yield counts as none, as the delta beside it is valued.
-      const net = optionCarryNet(carry, criteria.side, contract.strike, spot, OPTION_MODEL_RATE, inputs.dividendYield ?? 0);
+      const net = optionCarryNet(carry, criteria.side, contract.strike, spot, OPTION_MODEL_RATE, dividendYield ?? 0);
       row.carryNetPerYearPercent = net == null ? null : round(net * 100, 3);
     }
     rows.push(row);
@@ -604,8 +612,8 @@ async function screenSymbol(
   // One read of the financials gives delta its dividend yield and --columns the ex-dividend date.
   const financials = loadUnderlyingFinancials(market.dataProvider, listing, refresh);
   const inputsPromise = loadOptionModelInputs(market.dataProvider, listing, quote, refresh, financials);
-  const fail = (error: string, spot: number | null = null) => ({
-    result: { symbol, spot, expirations: [], scanned: 0, matched: 0, error },
+  const fail = (error: string) => ({
+    result: { symbol, spot: null, expirations: [], scanned: 0, matched: 0, error },
     rows: [],
     warning: `${symbol}: ${error}`,
   });
@@ -616,17 +624,16 @@ async function screenSymbol(
     return fail(`options chain unavailable (${errorMessage(error) ?? "no response"})`);
   }
   const inputs = await inputsPromise;
-  const spot = inputs.spot ?? null;
   const listed = leapsExpirations(catalogue.expirationDates, criteria, now);
   if (listed.length === 0) {
     const all = [...catalogue.expirationDates].sort((left, right) => left - right);
     const last = all.at(-1);
-    if (last == null) return fail("no listed options", spot);
+    if (last == null) return fail("no listed options");
     return fail(isDefaultWindow(criteria)
       ? `no expiry more than a year out (last ${expiryIsoDate(last)})`
-      : `no expiry in the window, ${describeWindow(criteria)} (listed ${expiryIsoDate(all[0]!)} to ${expiryIsoDate(last)})`, spot);
+      : `no expiry in the window, ${describeWindow(criteria)} (listed ${expiryIsoDate(all[0]!)} to ${expiryIsoDate(last)})`);
   }
-  if (spot == null) return fail("no current quote to value delta and carry", null);
+  if (!inputs.quote) return fail("no current quote to value delta and carry");
   // A window holding more expiries than one run reads keeps those nearest its start, and says which it left.
   const expirations = listed.slice(0, MAX_LEAPS_EXPIRIES);
   const skipped = listed.slice(MAX_LEAPS_EXPIRIES).map(expiryIsoDate);
@@ -635,17 +642,23 @@ async function screenSymbol(
   const rows: LeapsRow[] = [];
   let scanned = 0;
   const missed: string[] = [];
+  const modelSpots = new Set<number>();
+  const { symbol: requestSymbol, exchange } = listing.request;
+  const expiryVenue = optionExpiryVenue(requestSymbol, exchange);
+  const modelExchange = listingIdentity(listing, await quote).exchange;
   for (const loaded of chains) {
     if ("error" in loaded) {
       missed.push(expiryIsoDate(loaded.expiration));
       continue;
     }
-    const screened = screenLeapsChain(symbol, chainWithModelFigures(loaded.chain, { ...inputs, now }), criteria, inputs, now,
-      optionExpiryVenue(listing.request.symbol, listing.request.exchange));
+    const valued = valueChainAtModelSpot(loaded.chain, inputs, now, modelExchange);
+    if (!valued.spot) continue;
+    modelSpots.add(valued.spot.price);
+    const screened = screenLeapsChain(symbol, valued.chain, criteria, valued.spot, inputs.dividendYield, now, expiryVenue);
     rows.push(...screened.rows);
     scanned += screened.scanned;
   }
-  if (missed.length === expirations.length) return fail(`options chain unavailable for ${missed.join(", ")}`, spot);
+  if (missed.length === expirations.length) return fail(`options chain unavailable for ${missed.join(", ")}`);
   const columns = new Set(criteria.columns);
   const underlying: { figures: LeapsUnderlying; missing: string[] } = columns.size === 0
     ? { figures: {}, missing: [] }
@@ -665,7 +678,8 @@ async function screenSymbol(
   ].filter((note): note is string => note != null);
   return {
     result: {
-      symbol, spot, expirations: expirations.map(expiryIsoDate), ...(skipped.length > 0 ? { skippedExpirations: skipped } : {}),
+      symbol, spot: modelSpots.size === 1 ? [...modelSpots][0]! : null,
+      expirations: expirations.map(expiryIsoDate), ...(skipped.length > 0 ? { skippedExpirations: skipped } : {}),
       scanned, matched: rows.length, ...underlying.figures,
     },
     rows,
@@ -697,6 +711,9 @@ const LEAPS_COLUMNS: CliResultColumn<LeapsRow>[] = [
   { key: "extrinsic", header: "Extrinsic", align: "right", format: formatPrice },
   { key: "extrinsicPerYearPercent", header: "Extrinsic/yr %", align: "right", format: formatPercent },
   { key: "spot", header: "Spot", align: "right", format: formatPrice },
+  { key: "spotBasis", header: "Spot Basis" },
+  { key: "spotAsOf", header: "Spot As Of" },
+  { key: "valuationTime", header: "Valuation As Of" },
   { key: "currency", header: "Currency" },
   { key: "asOf", header: "As Of" },
   { key: "dataSource", header: "Quotes" },
@@ -818,7 +835,10 @@ export async function runLeapsScreen(
   const { format, limit: rowLimit, tail } = ctx.cliOptions;
   const capped = format === "text" && rowLimit == null && tail == null && rows.length > LEAPS_TEXT_ROWS;
   const describe = (data: readonly LeapsRow[]) => {
-    const criteriaLine = describeLeapsCriteria(criteria);
+    const closes = new Set(data.filter((row) => row.spotBasis === "close").map((row) =>
+      `${row.symbol} ${formatModelSpotPrice(row.spot)} (${formatSpotTime(Date.parse(row.spotAsOf))})`));
+    const criteriaLine = describeLeapsCriteria(criteria)
+      + (closes.size ? `\nRegular closes used: ${[...closes].join("; ")}.` : "");
     const underlying = underlyingTable(symbols, criteria.columns);
     const head = underlying ? `${criteriaLine}\n\n${underlying}` : criteriaLine;
     if (data.length === 0) {
@@ -835,7 +855,7 @@ export async function runLeapsScreen(
     metadata: {
       criteria,
       symbols,
-      // What delta and carry are valued from; spot per symbol is on each row and in `symbols`.
+      // Each row dates its spot and valuation; a symbol only names a spot if its chains share it.
       model: { rate: OPTION_MODEL_RATE },
     },
     ...(warnings.length > 0 ? { warnings } : {}),
