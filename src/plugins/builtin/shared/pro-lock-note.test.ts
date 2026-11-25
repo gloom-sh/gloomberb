@@ -136,8 +136,7 @@ test("a route check that stalls past the deadline or fails is no data for that n
 test("a function whose free routes all answer that the listing has none says so, and names no command for that listing", async () => {
   const chains: Record<string, () => Promise<unknown>> = {
     DAL: async () => ({ underlyingSymbol: "DAL", expirationDates: [1_800_000_000], calls: [], puts: [] }),
-    IAG: async () => { throw new Error("No options provider available for IAG"); },
-    SAP: async () => { throw new Error("Service unavailable"); },
+    FAIL: async () => { throw new Error("No options provider available for FAIL"); },
     EMPTY: async () => ({ expirationDates: [], calls: [], puts: [] }),
   };
   const context = {
@@ -153,10 +152,10 @@ test("a function whose free routes all answer that the listing has none says so,
     "Options on LSE listings (IAG:LSE) are not served, so FLOW has no prints of it.",
   ]);
   // A check that failed is not known to have none: no route is named, and the command keeps the ticker.
-  const failed = await flow("SAP:XETRA");
+  const failed = await flow("FAIL:NYSE");
   expect(failed).not.toContain("gloom options");
   expect(failed).not.toMatch(/not (available|served)/);
-  expect(failed).toContain("gloom fn FLOW SAP:XETRA then reads");
+  expect(failed).toContain("gloom fn FLOW FAIL:NYSE then reads");
   const empty = await flow("EMPTY");
   expect(empty).not.toContain("gloom options");
   expect(empty).toContain("gloom fn FLOW EMPTY then reads");
