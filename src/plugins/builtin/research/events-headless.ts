@@ -8,8 +8,10 @@ import type {
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
-import { buildEventRows, buildNextUp, eventSourceNotice, formatEventMetric, isFundListing, recentDividends, CORPORATE_ACTION_COVERAGE } from "./event-model";
-import { dividendYearLabel, dividendYears, earningsQuarters } from "./event-charts";
+import { buildEventRows, buildNextUp, eventSourceNotice, formatEventMetric, isFundListing, nextCatalystOf, nextCatalystQuery, CORPORATE_ACTION_COVERAGE, type NextCatalyst } from "./event-model";
+import { dividendYearDetail, dividendYearLabel, dividendYears, earningsQuarters, splitMarks } from "./event-charts";
+import { fetchCatalysts } from "../catalysts/client";
+import { isCloudSessionRequired } from "../shared/research-cloud-session";
 import { MISSING_VALUE, distributionAmountsDigits, formatPercentRaw } from "../../../utils/format";
 import type { HeadlessBundleSection, HeadlessPaneColumn } from "../../../types/headless";
 import { EVENT_COLUMNS, eventSummarySection, loadEventSources } from "./event-sources";
@@ -52,6 +54,7 @@ const YEAR_TEXT_COLUMNS: HeadlessPaneColumn[] = [
   { key: "special", header: "Special", align: "right" },
   { key: "payments", header: "Payments", align: "right" },
   { key: "change", header: "Change", align: "right" },
+  { key: "detail", header: "Detail" },
 ];
 
 export interface EventsHeadlessDependencies {
@@ -107,15 +110,24 @@ export function createEventsHeadless(
       const hidden = rows.length - own.length;
       const ended = lastTrade ? `${noQuoteLastTradeNote(symbol, lastTrade)}.${hidden > 0
         ? ` ${hidden} later ${hidden === 1 ? "report is" : "reports are"} another listing's (${other}), not shown.` : ""}` : null;
-      // The pane's list: the last few years of dividends, the rest DVD's.
-      const { earlier, before } = recentDividends(data.actions?.dividends ?? []);
-      const toDvd = earlier > 0 ? `The exports list the dividends of the last three years; every payment is in DVD: gloom fn DVD ${symbol}` : null;
-      const notes = [ended, toDvd].filter((note): note is string => !!note);
+      const notes = ended ? [ended] : [];
       // As the pane reads: what is next, the quarters of its Earnings view and the years of its Dividends view.
       // The exports keep every event row.
       const today = listingDay(parsePublicTickerKey(symbol).exchange);
       const fund = isFundListing(data.financials);
-      const summary = buildNextUp(own, { today, fund, statedExDate: data.financials?.fundamentals?.exDividendDate });
+      // The next catalyst, as the Earnings view asks the calendar for it; a failed read is said, the rest stands.
+      let catalyst: NextCatalyst | null = null;
+      // A context without the cloud client (a test's) reads no catalysts.
+      if (!fund && (ctx.apiClient as Partial<typeof ctx.apiClient> | undefined)?.getCloudCatalysts) {
+        try {
+          catalyst = nextCatalystOf((await fetchCatalysts(nextCatalystQuery(symbol), ctx.apiClient, ctx.signal)).events, today);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          // Signed out, as in the pane, the figure is left out: the Catalysts report says why.
+          if (!isCloudSessionRequired(message)) errors.push(`Catalysts unavailable: ${message}`);
+        }
+      }
+      const summary = buildNextUp(own, { today, fund, statedExDate: data.financials?.fundamentals?.exDividendDate, catalyst });
       const quarters = fund ? [] : earningsQuarters(own, today);
       const quarterRows = quarters.map((quarter) => ({
         date: quarter.date, period: quarter.period,
@@ -125,7 +137,7 @@ export function createEventsHeadless(
         revenue: quarter.upcoming ? "" : formatEventMetric(quarter.revenue, quarter.revenueCurrency, "revenue"),
         detail: quarter.detail,
       }));
-      const years = dividendYears(data.actions?.dividends ?? [], today);
+      const years = dividendYears(data.actions?.dividends ?? [], today, splitMarks(own));
       const currency = data.actions?.currency ?? data.currency;
       const digits = Math.min(4, distributionAmountsDigits(years.flatMap((year) => (year.total == null ? [] : [year.total])), currency || "USD"));
       const yearRows = years.map((year) => ({
@@ -134,6 +146,7 @@ export function createEventsHeadless(
         special: year.special > 0 ? year.special.toFixed(digits) : "",
         payments: year.payments ? String(year.payments) : "",
         change: year.change == null ? "" : formatPercentRaw(year.change * 100),
+        detail: dividendYearDetail(year),
       }));
       // The Special column only where the issuer's forms mark one, as the pane shows it.
       const yearColumns = years.some((year) => year.special > 0) ? YEAR_TEXT_COLUMNS : YEAR_TEXT_COLUMNS.filter((column) => column.key !== "special");
@@ -150,7 +163,6 @@ export function createEventsHeadless(
           coverageNote: CORPORATE_ACTION_COVERAGE, epsBasis: EPS_BASIS_NOTE,
           actionsFetchedAt: data.actions?.fetchedAt, estimatesFetchedAt: data.estimates?.fetchedAt,
           ...(summary.length ? { nextUp: summary } : {}),
-          ...(earlier > 0 ? { earlierDividends: { count: earlier, latestExDate: before } } : {}),
           ...(notice ? { notice: notice.text } : {}),
         },
       };

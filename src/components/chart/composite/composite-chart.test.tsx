@@ -456,6 +456,25 @@ describe("CompositeChart", () => {
     expect(frame.match(/3 Jan/g)).toHaveLength(1);
   });
 
+  /** Review, 25 Nov 2026: EVT's terminal axis printed the selected estimate twice, its tag a row under the cursor's label. */
+  test("a keyboard cursor's value reads once on the axis, as its series' tag", async () => {
+    const columns = (id: string, color: string, values: Array<number | null>) => createTestResolvedSeries({
+      id, label: id, color, unit: "USD", unitGroup: "eps", style: "columns", axis: "right",
+      points: values.map((value, index) => point(`2025-01-0${index + 1}`, value as number)),
+    });
+    await tui.render(
+      <CompositeChart width={58} height={16} panels={[{ id: "main" }]} cursorDate={new Date("2025-01-04T00:00:00.000Z")}
+        series={[columns("estimate", "#999999", [0.37, 0.64, 0.59, 0.24]), columns("miss", "#ff0000", [0.22, 0.48, 0.54, null])]} />,
+      { width: 60, height: 18 },
+    );
+    await act(async () => {
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
+    });
+    const axis = tui.frame().split("\n").slice(1).map((line) => line.trimEnd().split(/\s+/).at(-1));
+    expect(axis.filter((label) => label === "$0.24")).toHaveLength(1);
+  });
+
   test("a futures price reads in the legend as its number and contract unit, while its axis keeps the currency", async () => {
     const heatingOil = { ...series("price", "main", "left", "USD / gallon", [2.5, 2.6125, 2.55]),
       label: "HO=F Price", unitGroup: "price:USD", statedUnit: "USD / gallon", priceAssetCategory: "FUTURE" };
@@ -2334,7 +2353,10 @@ describe("CompositeChart", () => {
     expect(tui.frame().split("\n").find((line) => line.includes("Draft 104"))!.indexOf("Draft")).toBeGreaterThan(40);
     const plotWidth = capturedSurfaceProps?.width;
     // Bitmap hosts may omit their children. Labels must be siblings of the surface.
-    expect(JSON.stringify(capturedSurfaceProps?.children?.map((child: any) => child.props.children))).not.toContain("Draft");
+    // Each row is runs of text, a series' in a span of its colour.
+    const textOf = (node: any): string => typeof node === "string" ? node : Array.isArray(node) ? node.map(textOf).join("") : node?.props ? textOf(node.props.children) : "";
+    expect(textOf(capturedSurfaceProps?.children)).not.toContain("Draft");
+    expect(textOf(capturedSurfaceProps?.children)).toContain("•");
     await act(async () => move(106));
     await tui.waitForFrameToContain("Draft 106");
     expect(tui.frame()).not.toContain("Draft 104");

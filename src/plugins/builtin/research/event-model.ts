@@ -1,4 +1,6 @@
 import { splitShareTerms } from "../../../market-data/split-terms";
+import type { CatalystEvent, CatalystFilters } from "../../../api-client/catalysts";
+import { catalystDate } from "../catalysts/model";
 import type {
   AnalystEstimateRecord,
   AnalystResearchData,
@@ -10,7 +12,6 @@ import type {
 } from "../../../types/financials";
 import {
   MISSING_VALUE,
-  distributionAmountsDigits,
   formatDistributionAmount,
   formatCompact,
   formatNumber,
@@ -380,25 +381,6 @@ function upcomingEarningsDetail(earning: CorporateActionsData["earnings"][number
   return [...parts.slice(0, at), time, ...parts.slice(at)].join(", ");
 }
 
-/** How far back from the latest paid dividend the events list goes; DVD lists the whole history. */
-const EVENT_DIVIDEND_YEARS = 3;
-
-/**
- * The paid dividends the events list shows: those within EVENT_DIVIDEND_YEARS
- * of the latest one, so thirty years of a Shanghai payer's history do not
- * bury its next report. Counted from the latest payment rather than today, a
- * dividend that stopped still shows its last years. `earlier` is how many are
- * left to DVD, the latest of them `before`.
- */
-export function recentDividends(dividends: readonly DividendAction[]): { shown: DividendAction[]; earlier: number; before?: string } {
-  const latest = dividends.reduce<string | undefined>((newest, dividend) => (!newest || dividend.exDate > newest ? dividend.exDate : newest), undefined);
-  if (!latest) return { shown: [], earlier: 0 };
-  const from = `${String(Number(latest.slice(0, 4)) - EVENT_DIVIDEND_YEARS).padStart(4, "0")}${latest.slice(4)}`;
-  const shown = dividends.filter((dividend) => dividend.exDate > from);
-  const left = dividends.filter((dividend) => dividend.exDate <= from);
-  return { shown, earlier: left.length, ...(left.length ? { before: left.reduce((newest, dividend) => (dividend.exDate > newest ? dividend.exDate : newest), left[0]!.exDate) } : {}) };
-}
-
 /** "special" when every dividend the issuer's forms say a paid row holds is one, "incl. special" when some are. */
 function dividendSpecial(dividend: DividendAction): "special" | "incl. special" | null {
   const parts = dividend.parts ?? [];
@@ -511,17 +493,10 @@ export function buildEventRows(
     });
   }
 
-  // The last few years of the paid history (DVD lists all of it) and what is declared, to one count of decimals.
   const dividendCurrency = data?.currency ?? currency;
-  const paid = recentDividends(data?.dividends ?? []).shown;
-  const declared = declaredDividends(data);
-  const digits = distributionAmountsDigits([
-    ...paid.map((dividend) => dividend.amount),
-    ...declared.filter((dividend) => !dividend.cashEstimate?.declaredAmount).map((dividend) => dividend.amount),
-  ], dividendCurrency);
   // The paid history is stated on today's shares: an amount before a split or bonus issue on record is that split's.
   const splitDates = (data?.splits ?? []).filter((split) => splitShareTerms(split)).map((split) => split.date);
-  for (const dividend of paid) {
+  for (const dividend of data?.dividends ?? []) {
     const special = dividendSpecial(dividend);
     const adjusted = splitDates.some((date) => date > dividend.exDate);
     rows.push({
@@ -533,14 +508,14 @@ export function buildEventRows(
       detail: [special, dividend.payDate ? `payable ${dividend.payDate}` : null, adjusted ? "split-adjusted" : null].filter(Boolean).join(", "),
       ...(special === "special" ? { special: true as const } : {}),
       ...(dividend.payDate ? { payDate: dividend.payDate } : {}),
-      value: formatDistributionAmount(dividend.amount, dividendCurrency, digits),
+      value: formatDistributionAmount(dividend.amount, dividendCurrency),
       // An amount is no gain or loss: it takes no tone.
       tone: "text",
     });
   }
 
   // Declared and unpaid: its own row at its ex-date, apart from the paid distributions above.
-  for (const dividend of declared) {
+  for (const dividend of declaredDividends(data)) {
     const cash = declaredDividendCash(dividend, dividendCurrency);
     rows.push({
       id: `div-declared:${dividend.exDate}`,
@@ -552,7 +527,7 @@ export function buildEventRows(
       declared: true,
       ...(dividend.special ? { special: true as const } : {}),
       ...(dividend.payDate ? { payDate: dividend.payDate } : {}),
-      value: cash.estimate || !dividendCurrency ? cash.amount : formatDistributionAmount(dividend.amount, dividendCurrency, digits),
+      value: cash.amount,
       tone: "text",
     });
   }
@@ -597,11 +572,8 @@ export interface EventSummaryFigure {
 export interface EventSummaryOptions {
   /** The listing's own day, YYYY-MM-DD: a report or ex-date from it on is ahead. */
   today: string;
-  variant: "corporate-actions" | "earnings-estimates";
   fund: boolean;
-  /** The ex-date the listing's figures state (fundamentals' exDividendDate), which can be the next one before its amount is declared. */
-  statedExDate?: string;
-  /** The currencies the table's EPS and revenue columns are headed with: an amount in it is bare. */
+  /** The currencies EE's EPS and revenue columns are headed with: an amount in it is bare. */
   epsUnit?: string;
   revenueUnit?: string;
 }
@@ -650,9 +622,40 @@ function daysAhead(today: string, day: string): string {
   return days <= 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`;
 }
 
-export interface NextUpOptions extends Omit<EventSummaryOptions, "variant"> {
+/** A catalyst the opening block names: its day (or month or year, as dated) and title. */
+export interface NextCatalyst {
+  date: string;
+  label: string;
+}
+
+/** How the Events views and `fn EVT` ask the catalyst calendar for a company's next catalysts. */
+export function nextCatalystQuery(symbol: string): CatalystFilters {
+  return { symbol, upcoming: true, dateField: "any", limit: 20, offset: 0 };
+}
+
+/**
+ * The earliest catalyst dated today or later among a company's upcoming ones,
+ * read as the Catalysts view lists them. One dated to its month or year only
+ * counts while that month or year is not over; one whose date is withheld
+ * does not count.
+ */
+export function nextCatalystOf(events: readonly CatalystEvent[], today: string): NextCatalyst | null {
+  const read = { upcoming: true, dateField: "any" as const };
+  const ahead = events
+    .map((event) => ({ event, date: catalystDate(event, read) }))
+    .filter(({ date }) => /^\d{4}(-\d{2}){0,2}$/.test(date) && date >= today.slice(0, date.length))
+    .sort((left, right) => left.date.localeCompare(right.date))[0];
+  return ahead ? { date: ahead.date, label: ahead.event.title } : null;
+}
+
+export interface NextUpOptions {
+  /** The listing's own day, YYYY-MM-DD: a report or ex-date from it on is ahead. */
+  today: string;
+  fund: boolean;
+  /** The ex-date the listing's figures state (fundamentals' exDividendDate), which can be the next one before its amount is declared. */
+  statedExDate?: string;
   /** The company's next dated catalyst (a regulatory decision, a court date), when one is on record. */
-  catalyst?: { date: string; label: string } | null;
+  catalyst?: NextCatalyst | null;
 }
 
 /**
@@ -720,11 +723,9 @@ export function buildNextUp(rows: readonly EventRow[], options: NextUpOptions): 
 }
 
 /**
- * What the pane is opened for, over its table: the next report with its
- * consensus, the last surprise, and the next ex-date with its amount (the last
- * one while none is known). The next report is the calendar's, else the
- * earliest quarter analysts still estimate, undated. A fund has no reports,
- * and shows its next ex-date only: its last one is the table's first row.
+ * EE's figures over its table: the next report with its consensus, and the
+ * last surprise. The next report is the calendar's, else the earliest quarter
+ * analysts still estimate, undated. A fund has neither.
  */
 export function buildEventSummary(rows: readonly EventRow[], options: EventSummaryOptions): EventSummaryFigure[] {
   const { today } = options;
@@ -775,24 +776,6 @@ export function buildEventSummary(rows: readonly EventRow[], options: EventSumma
     }
   }
 
-  if (options.variant === "corporate-actions") {
-    const dividends = rows.filter((row) => row.status === "Dividend");
-    const declared = dividends.filter((row) => row.declared && row.date >= today).sort((left, right) => left.date.localeCompare(right.date))[0];
-    const latestPaid = dividends.find((row) => !row.declared);
-    const stated = options.statedExDate && /^\d{4}-\d{2}-\d{2}$/.test(options.statedExDate) ? options.statedExDate : undefined;
-    if (declared) {
-      figures.push({
-        id: "next-ex", label: "Next ex", value: date(declared.date),
-        ...detailForms([declared.value, declared.special ? "special" : null, declared.payDate ? `payable ${date(declared.payDate)}` : null],
-          [declared.value, declared.special ? "special" : null]),
-      });
-    } else if (stated && stated >= today && (!latestPaid || stated > latestPaid.date)) {
-      // Dated before its amount is declared: the last payment is what it is likely to be.
-      figures.push({ id: "next-ex", label: "Next ex", value: date(stated), ...detailForms(latestPaid ? [`last paid ${latestPaid.value}`] : []) });
-    } else if (latestPaid && !options.fund) {
-      figures.push({ id: "last-ex", label: "Last ex", value: date(latestPaid.date), detail: latestPaid.value });
-    }
-  }
   return figures;
 }
 

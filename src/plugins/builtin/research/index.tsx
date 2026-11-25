@@ -1,7 +1,7 @@
 import type { PluginModule } from "../plugin-module";
 import { parseTickerListInput, formatTickerListInput } from "../../../tickers/list";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
-import { CorporateActionsView } from "./corporate-actions-pane";
+import { EarningsEstimatesView } from "./corporate-actions-pane";
 import { EventsDividendsView, EventsPane, EventsResearchEarnings } from "./event-views";
 import { relativeValuationHeadless } from "./relative-valuation-headless";
 import { AUTO_PEERS_SETTING, relativeValuationTitle } from "./relative-valuation-peers";
@@ -11,15 +11,6 @@ import { eventsHeadless } from "./events-headless";
 import { earningsEstimatesHeadless } from "./headless";
 
 
-function EarningsEstimatesPane(props: { focused: boolean; width: number; height: number }) {
-  return (
-    <CorporateActionsView
-      {...props}
-      footerPaneId="earnings-estimates"
-      variant="earnings-estimates"
-    />
-  );
-}
 
 export const researchModule: PluginModule = {
   setup(ctx) {
@@ -113,7 +104,7 @@ export const researchModule: PluginModule = {
       id: "earnings-estimates",
       name: "Earnings Estimates",
       icon: "E",
-      component: EarningsEstimatesPane,
+      component: EarningsEstimatesView,
       defaultPosition: "right",
       shareItem: { ticker: true },
       tickerFollower: true,
@@ -150,7 +141,7 @@ export const researchModule: PluginModule = {
       id: "corporate-actions-pane",
       paneId: "corporate-actions",
       label: "Corporate Actions",
-      description: "Dividends, splits, reported earnings, and analyst estimates.",
+      description: "What is next, reported earnings against estimates by quarter, and dividends and splits by year.",
       keywords: ["events", "corporate", "actions", "dividend", "split", "earnings", "estimate", "revenue", "evt"],
       shortcut: "EVT",
       publicShare: true,

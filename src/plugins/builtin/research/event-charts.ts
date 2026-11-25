@@ -67,7 +67,8 @@ export function earningsQuarters(rows: readonly EventRow[], today: string): Earn
   const latest = reported[0]?.date ?? "";
   const ahead = report ?? (quarter && quarter.date > latest ? quarter : undefined);
   if (!ahead) return reported;
-  const period = report && report.period !== MISSING_VALUE ? report.period : quarter ? quarterName(quarter) : MISSING_VALUE;
+  // Named as the reported rows under it are: `Q4 FY2026`, else the month it ends in.
+  const period = report && report.period !== MISSING_VALUE ? report.period : quarter ? quarterName(quarter).replace(/ qtr$/, "") : MISSING_VALUE;
   const estimate = report?.epsEstimate ?? quarter?.qEps;
   const next: EarningsQuarter = {
     id: `next:${ahead.id}`, date: ahead.date, period, axisLabel: axisLabel(period, quarter?.date ?? ahead.date), upcoming: true,
@@ -96,15 +97,24 @@ export interface DividendYear {
   partial: boolean;
   /** Against the year before, as a fraction, when both are whole years with payments. */
   change?: number;
+  /** The splits that went ex in the year, in share terms (`4-for-1`): the amounts before them are on today's shares. */
+  splits: string[];
+}
+
+/** A split on record, in share terms, by the day it went ex. */
+export interface SplitMark {
+  date: string;
+  terms: string;
 }
 
 /**
  * The paid history summed by calendar year of ex-date, newest first, from
  * the first payment on. Years without one stay in as a gap, a run of them as
- * one entry (AAPL's 1996-2011), so the paying years keep the room. Amounts
- * are on today's shares, as the history states them.
+ * one entry (AAPL's 1996-2011), so the paying years keep the room; a year a
+ * split went ex in is its own entry, to say so. Amounts are on today's shares,
+ * as the history states them.
  */
-export function dividendYears(dividends: readonly DividendAction[], today: string): DividendYear[] {
+export function dividendYears(dividends: readonly DividendAction[], today: string, splits: readonly SplitMark[] = []): DividendYear[] {
   const byYear = new Map<number, { total: number; special: number; payments: number }>();
   for (const dividend of dividends) {
     if (!Number.isFinite(dividend.amount)) continue;
@@ -119,15 +129,21 @@ export function dividendYears(dividends: readonly DividendAction[], today: strin
   const years = [...byYear.keys()];
   const first = Math.min(...years);
   const last = Math.max(...years);
+  const splitsIn = new Map<number, string[]>();
+  for (const split of [...splits].sort((left, right) => left.date.localeCompare(right.date))) {
+    const year = Number(split.date.slice(0, 4));
+    if (year >= first && year <= last) splitsIn.set(year, [...(splitsIn.get(year) ?? []), split.terms]);
+  }
   const thisYear = Number(today.slice(0, 4));
   const result: DividendYear[] = [];
   for (let year = last; year >= first; year -= 1) {
     const entry = byYear.get(year);
+    const yearSplits = splitsIn.get(year) ?? [];
     if (!entry) {
       let from = year;
-      while (from - 1 >= first && !byYear.has(from - 1)) from -= 1;
+      if (!yearSplits.length) while (from - 1 >= first && !byYear.has(from - 1) && !splitsIn.has(from - 1)) from -= 1;
       result.push({
-        id: String(year), year, ...(from < year ? { fromYear: from } : {}), total: null, special: 0, payments: 0, partial: year >= thisYear,
+        id: String(year), year, ...(from < year ? { fromYear: from } : {}), total: null, special: 0, payments: 0, partial: year >= thisYear, splits: yearSplits,
       });
       year = from;
       continue;
@@ -135,11 +151,24 @@ export function dividendYears(dividends: readonly DividendAction[], today: strin
     const before = byYear.get(year - 1);
     const partial = year >= thisYear;
     result.push({
-      id: String(year), year, total: entry.total, special: entry.special, payments: entry.payments, partial,
+      id: String(year), year, total: entry.total, special: entry.special, payments: entry.payments, partial, splits: yearSplits,
       ...(before && before.total > 0 && !partial ? { change: entry.total / before.total - 1 } : {}),
     });
   }
   return result;
+}
+
+/** What a year's row says beside its figures: no payment, paid so far, a special, a split. */
+export function dividendYearDetail(year: DividendYear): string {
+  const paid = year.total == null
+    ? year.fromYear != null ? `no dividend for ${year.year - year.fromYear + 1} years` : "no dividend"
+    : year.partial ? "so far" : year.special > 0 ? "incl. special" : null;
+  return [paid, ...year.splits.map((terms) => `${terms} split`)].filter(Boolean).join(" · ");
+}
+
+/** The splits among an event list's rows, in share terms, as the Dividends view marks them. */
+export function splitMarks(rows: readonly EventRow[]): SplitMark[] {
+  return rows.filter((row) => row.status === "Split").map((row) => ({ date: row.date, terms: row.detail }));
 }
 
 /** How the year reads in the table and under its bar: `2026 YTD`, `1996-2011`, `2025`. */

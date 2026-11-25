@@ -1,12 +1,12 @@
 import { useMemo, type ComponentProps, type RefObject } from "react";
-import { ChartSurface, Text, useUiCapabilities, type BoxRenderable } from "../../../../ui";
+import { ChartSurface, Span, Text, useUiCapabilities, type BoxRenderable } from "../../../../ui";
 import { useCursorScene, useValueStore, type CompositeCursorSource, type ValueStore } from "../cursor-source";
 import type { CompositeAxisValueFormatter } from "../format";
 import { writeLevelText, type ProjectedLevel } from "../levels";
 import type { useCompositePanelBitmap } from "../panel-bitmap";
 import { cursorAxisLabel, resolvePanelCrosshair, resolveSeriesAxisTags, resolveSeriesCursorYRatio } from "../panel-labels";
 import { PriceAxisLabels } from "../price-axis-labels";
-import { renderCompositePanelText } from "../text-renderer";
+import { renderCompositePanelCells, type CompositePanelCells } from "../text-renderer";
 import type { CompositeAxisSide, CompositePanelScene } from "../types";
 import type { KeyboardToolDrag } from "../use-composite-chart-keyboard";
 import type { LevelGrab } from "./panel-levels";
@@ -56,6 +56,7 @@ export function PanelPlotSurface({
   bitmap,
   crosshairColor,
   textColor,
+  fallColor,
   textFallback,
   plotWidth,
   projectedLevels,
@@ -68,6 +69,8 @@ export function PanelPlotSurface({
   bitmap: ReturnType<typeof useCompositePanelBitmap>;
   crosshairColor: string;
   textColor: string;
+  /** A falling candle or volume column in a terminal without graphics. */
+  fallColor: string;
   textFallback: boolean;
   plotWidth: number;
   projectedLevels: readonly ProjectedLevel[];
@@ -80,16 +83,11 @@ export function PanelPlotSurface({
     () => resolvePanelCrosshair(panel, bitmap, scene, pointerCursorYRatio, crosshairColor),
     [bitmap, crosshairColor, panel, pointerCursorYRatio, scene],
   );
-  const textLines = useMemo(
-    () => textFallback
-      ? writeLevelText(
-        renderCompositePanelText(panel, plotWidth, scene.cursorXRatio, pointerCursorYRatio),
-        projectedLevels,
-        selectedLevelId,
-      )
-      : [],
-    [panel, plotWidth, pointerCursorYRatio, projectedLevels, scene.cursorXRatio, selectedLevelId, textFallback],
-  );
+  const textLines = useMemo(() => {
+    if (!textFallback) return [];
+    const cells = renderCompositePanelCells(panel, plotWidth, scene.cursorXRatio, pointerCursorYRatio, { negative: fallColor });
+    return tintedRuns(cells, writeLevelText(cells.lines, projectedLevels, selectedLevelId));
+  }, [fallColor, panel, plotWidth, pointerCursorYRatio, projectedLevels, scene.cursorXRatio, selectedLevelId, textFallback]);
   const grab = typeof levelGrab === "function" ? cursorYRatio !== null && levelGrab(cursorYRatio) : levelGrab;
   return (
     <ChartSurface
@@ -99,9 +97,31 @@ export function PanelPlotSurface({
       cursor={grab && surface.cursor ? "ns-resize" : surface.cursor}
       crosshair={crosshair}
     >
-      {textLines.map((line, index) => <Text key={index} fg={textColor}>{line}</Text>)}
+      {textLines.map((runs, index) => (
+        <Text key={index} fg={textColor}>
+          {runs.map((run, at) => (run.color ? <Span key={at} fg={run.color}>{run.text}</Span> : run.text))}
+        </Text>
+      ))}
     </ChartSurface>
   );
+}
+
+/**
+ * Each row as runs of one colour: a series' marks in its colour, the rest
+ * (and any level drawn over a mark) in the text colour.
+ */
+function tintedRuns(cells: CompositePanelCells, lines: readonly string[]): Array<Array<{ text: string; color: string | null }>> {
+  return lines.map((line, y) => {
+    const drawn = Array.from(cells.lines[y] ?? "");
+    const runs: Array<{ text: string; color: string | null }> = [];
+    Array.from(line).forEach((char, x) => {
+      const color = char === drawn[x] ? cells.tints[y]?.[x] ?? null : null;
+      const last = runs.at(-1);
+      if (last && last.color === color) last.text += char;
+      else runs.push({ text: char, color });
+    });
+    return runs;
+  });
 }
 
 /** A value axis, with the cursor's value and each series' observation at that time. */
@@ -125,13 +145,16 @@ export function PanelValueAxis({
     () => resolveSeriesAxisTags(panel, scene, formatAxisValue).filter((tag) => tag.side === side),
     [formatAxisValue, panel, scene, side],
   );
+  const cursorLabel = cursorAxisLabel(panel, side, axisCursorYRatio, formatAxisValue);
   return (
     <PriceAxisLabels
       {...axis}
       side={side}
       cursorRow={activeCursorYRatio === null ? null : Math.round(activeCursorYRatio * Math.max(panel.height - 1, 0))}
       cursorPixelY={activeCursorYRatio === null ? null : activeCursorYRatio * Math.max(panel.height * cellHeightPx - 1, 0)}
-      cursorLabel={cursorAxisLabel(panel, side, axisCursorYRatio, formatAxisValue)}
+      // A keyboard cursor sits on a series' value, which that series' tag already gives in its colour:
+      // the terminal rounds the two to rows of their own, and would print the value twice.
+      cursorLabel={cursorLabel !== null && seriesTags.some((tag) => tag.label === cursorLabel) ? null : cursorLabel}
       seriesTags={seriesTags}
     />
   );

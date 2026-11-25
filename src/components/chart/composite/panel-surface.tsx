@@ -266,6 +266,7 @@ export function CompositePanelSurface({
         bitmap={bitmap}
         crosshairColor={colors.crosshair}
         textColor={colors.text}
+        fallColor={colors.negative}
         textFallback={!isDesktopWeb && showTextFallback}
         plotWidth={plotWidth}
         projectedLevels={projectedLevels}

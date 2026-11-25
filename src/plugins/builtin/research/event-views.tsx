@@ -26,13 +26,12 @@ import { usePlanAccess } from "../../../api-client/plan-access";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { useOpenResearchTab } from "../ticker-detail/research-tab-navigation";
 import { SignInWall } from "../cloud/auth-actions";
-import { useResearchCloudSession } from "../shared/research-cloud-session";
+import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { loadCatalysts } from "../catalysts/client";
-import { catalystDate } from "../catalysts/model";
 import type { TickerResearchTabProps } from "../../../types/plugin-contributions";
 import { useEventData } from "./event-data";
-import { buildNextUp, formatEventMetric, isFundListing, type EventSummaryFigure } from "./event-model";
-import { dividendYearLabel, dividendYears, dividendYearSpan, earningsQuarters, type DividendYear, type EarningsQuarter } from "./event-charts";
+import { buildNextUp, formatEventMetric, isFundListing, nextCatalystOf, nextCatalystQuery, type EventSummaryFigure } from "./event-model";
+import { dividendYearDetail, dividendYearLabel, dividendYears, dividendYearSpan, earningsQuarters, splitMarks, type DividendYear, type EarningsQuarter } from "./event-charts";
 
 type ViewProps = { focused: boolean; width: number; height: number; footerPaneId?: string };
 
@@ -84,24 +83,19 @@ function slotAxis<T>(bars: readonly T[], label: (bar: T) => string, cursor: (bar
 /**
  * The company's next dated catalyst on record (a regulatory decision, a court
  * date), for the opening block. Nothing while it loads, for a plan that does
- * not see the calendar, or when none is ahead.
+ * not see the calendar, or when none is ahead; a failed read is the footer's.
  */
 function useNextCatalyst(symbol: string | null, enabled: boolean, today: string) {
   const access = usePlanAccess();
   const session = useResearchCloudSession();
   // As the Catalysts view keys its reads: what the calendar answers differs by session and plan.
   const accessKey = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
-  const loader = useCallback((force: boolean) => loadCatalysts(
-    { symbol: symbol!, upcoming: true, dateField: "any", limit: 20, offset: 0 }, accessKey, force,
-  ).then((result) => {
-    const read = { upcoming: true, dateField: "any" as const };
-    const ahead = result.payload.events
-      .map((event) => ({ event, date: catalystDate(event, read) }))
-      .filter(({ date }) => /^\d{4}(-\d{2}){0,2}$/.test(date) && date >= today.slice(0, date.length))
-      .sort((left, right) => left.date.localeCompare(right.date))[0];
-    return ahead ? { date: ahead.date, label: ahead.event.title } : null;
-  }).catch(() => null), [accessKey, symbol, today]);
-  return useAsyncResource(enabled && symbol ? loader : null).data ?? null;
+  const loader = useCallback((force: boolean) => (
+    loadCatalysts(nextCatalystQuery(symbol!), accessKey, force).then((result) => nextCatalystOf(result.payload.events, today))
+  ), [accessKey, symbol, today]);
+  const { data, error } = useAsyncResource(enabled && symbol ? loader : null);
+  // Signed out, the Catalysts view says so; the opening block leaves the figure out.
+  return { catalyst: data ?? null, error: error && !isCloudSessionRequired(error) ? `Catalysts unavailable: ${error}` : null };
 }
 
 type QuarterColumnId = "date" | "period" | "eps" | "estimate" | "surprise" | "revenue" | "detail";
@@ -131,7 +125,7 @@ function EventsEarningsView({ focused, width, height, footerPaneId = "corporate-
   const data = useEventData();
   const { symbol, today, allRows, fund } = data;
   const quarters = useMemo(() => earningsQuarters(allRows, today), [allRows, today]);
-  const catalyst = useNextCatalyst(symbol, !fund, today);
+  const { catalyst, error: catalystError } = useNextCatalyst(symbol, !fund, today);
   const figures = useMemo(() => buildNextUp(allRows, { today, fund, statedExDate: data.statedExDate, catalyst }).map(toStat),
     [allRows, catalyst, data.statedExDate, fund, today]);
   const epsUnit = sharedCurrency(quarters.flatMap((quarter) => [
@@ -194,7 +188,8 @@ function EventsEarningsView({ focused, width, height, footerPaneId = "corporate-
     }
   }, [epsUnit, revenueUnit]);
 
-  usePaneStatusFooter({ registrationId: footerPaneId, loading: data.loading, error: data.error ?? (data.sourceNotice?.failed ? data.sourceNotice.text : null) });
+  usePaneStatusFooter({ registrationId: footerPaneId, loading: data.loading,
+    error: data.error ?? (data.sourceNotice?.failed ? data.sourceNotice.text : null) ?? catalystError });
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => handleRefreshKey(event, data.reload, { stopPropagation: true }), [data.reload]);
   if (data.authWall) return <SignInWall placement="corporate-actions-signin" action="view corporate actions" needsVerification={data.cloudSession.needsVerification} />;
 
@@ -230,13 +225,14 @@ type YearColumn = DataTableColumn & { id: YearColumnId };
 /**
  * The Dividends view: the ex-date next or last, then one bar per year of what
  * was paid, a special beside it in its own colour and the year not over yet
- * in a muted one, over the years' totals. Each payment is DVD's: Enter opens it.
+ * in a muted one, over the years' totals and the splits that went ex in them.
+ * Each payment is DVD's: Enter opens it.
  */
 export function EventsDividendsView({ focused, width, height, footerPaneId = "corporate-actions:dividends" }: ViewProps) {
   const data = useEventData();
   const { symbol, ticker, today, allRows, actionsData } = data;
   const currency = actionsData?.currency ?? data.currency ?? "";
-  const years = useMemo(() => dividendYears(actionsData?.dividends ?? [], today), [actionsData?.dividends, today]);
+  const years = useMemo(() => dividendYears(actionsData?.dividends ?? [], today, splitMarks(allRows)), [actionsData?.dividends, allRows, today]);
   // A year's total to one count of decimals, at most four: a sum needs no more to compare years by.
   const digits = useMemo(() => Math.min(YEAR_TOTAL_DIGITS,
     distributionAmountsDigits(years.flatMap((year) => (year.total == null ? [] : [year.total])), currency || "USD")), [currency, years]);
@@ -297,8 +293,7 @@ export function EventsDividendsView({ focused, width, height, footerPaneId = "co
       case "paid": return year.total == null ? { text: "" } : { text: year.total.toFixed(digits), value: year.total, color: colors.text };
       case "special": return year.special > 0 ? { text: amount(year.special), value: year.special, color: colors.warning } : { text: "" };
       case "payments": return { text: year.payments ? String(year.payments) : "", value: year.payments, color: colors.textDim };
-      case "detail": return { text: year.total == null ? (year.fromYear != null ? `no dividend for ${year.year - year.fromYear + 1} years` : "no dividend")
-        : year.partial ? "so far" : year.special > 0 ? "incl. special" : "", color: colors.textDim };
+      case "detail": return { text: dividendYearDetail(year), color: colors.textDim };
       case "change": return year.change == null ? { text: "" }
         : { text: formatPercentRaw(year.change * 100), value: year.change * 100, color: year.change > 0 ? colors.positive : year.change < 0 ? colors.negative : colors.textDim };
     }
@@ -360,13 +355,18 @@ function useFundListing(): boolean {
 }
 
 const EVENT_VIEWS = [{ value: "earnings", label: "Earnings" }, { value: "dividends", label: "Dividends" }];
+// A fund reports no earnings: its strip keeps both views, Earnings not to be picked.
+const FUND_EVENT_VIEWS = [{ ...EVENT_VIEWS[0]!, disabled: true }, EVENT_VIEWS[1]!];
 
-/** EVT on its own: its Earnings and Dividends views under one strip; a fund has its distributions only. */
+/**
+ * EVT on its own: its Earnings and Dividends views under one strip, there from
+ * the first frame whatever loads or fails. A fund opens on its distributions.
+ */
 export function EventsPane({ focused, width, height }: { focused: boolean; width: number; height: number }) {
   const fund = useFundListing();
   const [view, setView] = usePluginPaneState<string>("eventsView", "earnings");
-  const shown = fund ? "dividends" : view === "dividends" ? "dividends" : "earnings";
-  const { strip, rows } = usePaneTabs(fund ? null : { tabs: EVENT_VIEWS, activeValue: shown, onSelect: setView, focused, dense: true });
+  const shown = fund || view === "dividends" ? "dividends" : "earnings";
+  const { strip, rows } = usePaneTabs({ tabs: fund ? FUND_EVENT_VIEWS : EVENT_VIEWS, activeValue: shown, onSelect: setView, focused, dense: true });
   const bodyHeight = Math.max(1, height - rows);
   return (
     <Box flexDirection="column" width={width} height={height}>

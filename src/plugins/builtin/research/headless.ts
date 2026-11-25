@@ -77,7 +77,7 @@ function projectEarningsEstimatesHeadless(
   // The figures over the pane's table: the next report with its consensus and the last surprise.
   const symbol = args.symbols[0] ?? String(args.argument ?? "");
   const summary = buildEventSummary(all.filter((row) => matchesKind(row, "all")), {
-    today: listingDay(parsePublicTickerKey(symbol).exchange), variant: "earnings-estimates", fund: isFundListing(sources.financials),
+    today: listingDay(parsePublicTickerKey(symbol).exchange), fund: isFundListing(sources.financials),
   });
   const rows = matching.slice(0, limit).map((row) => ({ ...row,
     ...(row.status === "Q Est" || row.status === "FY Est" ? {
