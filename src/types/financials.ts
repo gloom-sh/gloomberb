@@ -1433,6 +1433,13 @@ export interface OptionContract {
    */
   quoteStale?: boolean;
   /**
+   * The source's bid was above its ask, which no one can trade. After a
+   * stock's options close at 16:00 New York some exchanges keep quoting while
+   * the others' closing quotes stand, and a move after the close crosses the
+   * two. Gloom Cloud serves such a quote with bid and ask 0, `quoteStale` set.
+   */
+  quoteCrossed?: boolean;
+  /**
    * A contract adjusted for a corporate action (root ETHA1 beside ETHA): it
    * prices another deliverable, so a chain lists it only when asked to, with
    * what it delivers ("15 ETHA + 120.5 USD cash"; null when the source does not say).
