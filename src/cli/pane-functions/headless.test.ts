@@ -147,6 +147,24 @@ describe("headless pane printer", () => {
     });
   });
 
+  test("the text leaves out a column every row prints alike or blank, and JSON keeps it", () => {
+    const definition: HeadlessPaneDefinition<"rows"> = {
+      shape: "rows", argument: { kind: "none" }, options: [], load: () => ({ rows: [] }),
+      columns: [
+        { key: "name", header: "Name" },
+        { key: "period", header: "Period", omitWhenSame: true },
+        { key: "spread", header: "Spread", omitWhenEmpty: true },
+      ],
+    };
+    const header = (rows: HeadlessRowsResult["rows"]) => renderHeadlessPaneText(definition, { rows }, args, "Rows").split("\n").find((line) => line.startsWith("Name"))!;
+    const shared = [{ name: "A", period: "2026-06-30", spread: null }, { name: "B", period: "2026-06-30", spread: null }];
+    expect(header(shared)).not.toMatch(/Period|Spread/);
+    expect(jsonData(definition, { rows: shared })).toMatchObject({ data: { rows: shared } });
+    expect(header([...shared, { name: "C", period: "2026-03-31", spread: 120 }])).toMatch(/Name\s+Period\s+Spread/);
+    // A lone row keeps its period: nothing says the next would share it.
+    expect(header([shared[0]!])).toContain("Period");
+  });
+
   test("report rows keep midnight instants while calendar series dates stay short", () => {
     const definition: HeadlessPaneDefinition<"rows"> = {
       shape: "rows", argument: { kind: "none" }, options: [], load: () => ({ rows: [] }),

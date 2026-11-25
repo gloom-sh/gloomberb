@@ -231,6 +231,8 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
     getMetadata: () => ({ note: INDEX_UNREAD, noteVariants: ["short list"] }),
   } : null);
   const periodsDiffer = useMemo(() => holderPeriodsDiffer(rows), [rows]);
+  // The SEC index lists 13F filers only: a 13F mark on every row tells none apart, and Enter still opens each.
+  const everyFund = rows.length > 1 && rows.every((row) => fundMatches.has(row.id));
   const sortedRows = useMemo(() => sortRows(rows, sortPreference, marketCap), [marketCap, rows, sortPreference]);
   // Change columns only when the source reports a change; otherwise every row would read as missing.
   const showChange = useMemo(() => hasHolderChanges(rows), [rows]);
@@ -379,7 +381,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
     switch (column.id) {
       case "holder": {
         const color = rowState.selected ? colors.selectedText : colors.textBright;
-        return holderNameCell(row.name, { receipts: holderShareBasisMarker(row), fund: fundMatches.has(row.id) }, color, column.width);
+        return holderNameCell(row.name, { receipts: holderShareBasisMarker(row), fund: !everyFund && fundMatches.has(row.id) }, color, column.width);
       }
       case "value":
         return { text: formatMoneyCompact(row.value, currency, { code: currencyCode }), color: colors.text };
@@ -403,7 +405,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
       case "reportDate":
         return { text: displayDate(row.reportDate), color: colors.textDim };
     }
-  }, [currency, currencyCode, fundMatches, marketCap]);
+  }, [currency, currencyCode, everyFund, fundMatches, marketCap]);
 
   // Holders read from the company's home line say whose; the SEC index's rows are the listing's own.
   useCompanyDataFooter(indexed ? null : listData?.companyFrom, viewMode !== "13dg" && viewMode !== "disclosures");

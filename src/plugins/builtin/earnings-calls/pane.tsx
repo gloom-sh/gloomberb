@@ -68,6 +68,12 @@ function isReaderTab(value: string): value is ReaderTab {
 
 type CallColumn = DataTableColumn;
 
+/**
+ * The list's columns. One company's calls (`CALLS 600690`) name it in the
+ * title, so no column repeats it and the period, an event's name among them
+ * ("written results"), takes its room. A length no call states (a written
+ * call has none) leaves the table.
+ */
 export function callListColumns(width: number, showTicker: boolean): CallColumn[] {
   const tickerWidth = showTicker ? 8 : 0;
   const dateWidth = 10;
@@ -82,11 +88,13 @@ export function callListColumns(width: number, showTicker: boolean): CallColumn[
 
   const columns: CallColumn[] = [];
   if (showTicker) columns.push({ id: "ticker", label: "TICKER", width: tickerWidth, align: "left" });
+  if (showTicker) columns.push({ id: "company", label: "COMPANY", width: companyWidth, align: "left" });
   columns.push(
-    { id: "company", label: "COMPANY", width: companyWidth, align: "left" },
     { id: "date", label: "DATE", width: dateWidth, align: "left" },
-    { id: "period", label: "PERIOD", width: periodWidth, align: "left" },
-    { id: "length", label: "LENGTH", width: lengthWidth, align: "right" },
+    showTicker
+      ? { id: "period", label: "PERIOD", width: periodWidth, align: "left" }
+      : { id: "period", label: "PERIOD", width: Math.max(periodWidth, width - dateWidth - lengthWidth - sentimentWidth - 6), align: "left", flexGrow: 1 },
+    { id: "length", label: "LENGTH", width: lengthWidth, align: "right", omitWhenEmpty: true },
     { id: "sentiment", label: "TONE", width: sentimentWidth, align: "right" },
   );
   return columns;

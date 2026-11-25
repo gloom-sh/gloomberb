@@ -42,8 +42,8 @@ describe("EVTS rows", () => {
   test("a reported row shows its EPS and surprise; a press release's EPS reads quieter until the calendar's arrives", () => {
     expect(TRV).toMatchObject({ epsActual: 9.18, provisional: true });
     expect(TRV.epsSurprise).toBeCloseTo(0.2984, 4);
-    expect(cell(TRV, "epsActual")).toEqual({ text: "9.18", color: colors.textMuted });
-    expect(cell(PEP, "epsActual")).toEqual({ text: "2.29", color: colors.text });
+    expect(cell(TRV, "epsActual")).toEqual({ text: "9.18", value: 9.18, color: colors.textMuted });
+    expect(cell(PEP, "epsActual")).toEqual({ text: "2.29", value: 2.29, color: colors.text });
     expect(cell(TRV, "epsSurprise")).toEqual({ text: "+29.8%", color: colors.positive });
     expect(cell(TRV, "basis")).toEqual({ text: "adj", color: colors.textMuted });
   });
@@ -114,23 +114,22 @@ describe("EVTS with listings abroad", () => {
   // Alibaba the day it reports as BABA and as 9988:HKEX: the board's BABA row carries the listing's lines.
   const BABA = boardReport(calendarReport({ symbol: "BABA", epsEstimate: 2.12, listings: ["9988:HKEX"] }), new Map());
   const CCB = boardReport(calendarReport({ symbol: "601939:SSE", currency: "CNY", listings: ["601939:SSE", "0939:HKEX"] }), new Map());
-  const ids = (width: number, currencies: boolean, kind: "upcoming" | "reported" = "upcoming") =>
-    boardColumns(width, { currencies, kind }).map((entry) => entry.id);
-
-  test("a board with a report in another currency shows CCY before the figures it is the currency of, and says its cap is in dollars", () => {
+  test("a report in another currency writes its code after each figure, a dollar one bare, and no column says USD down the board", () => {
     expect(boardHasCurrencies([row(LADR), row(BABA)])).toBe(false);
     expect(boardHasCurrencies([row(LADR), row(TENCENT)])).toBe(true);
     const wide = boardColumns(2000, { currencies: true });
-    const at = wide.map((entry) => entry.id);
-    expect(at.slice(at.indexOf("ccy"), at.indexOf("ccy") + 2)).toEqual(["ccy", "epsEstimate"]);
+    expect(wide.map((entry) => entry.label)).not.toContain("CCY");
     expect(wide.find((entry) => entry.id === "cap")).toMatchObject({ label: "MKT CAP $", width: 9 });
+    // The figures take the room for " CNY".
+    expect(wide.find((entry) => entry.id === "epsEstimate")?.width).toBe(11);
     // A board of US reports looks as it always has.
-    expect(ids(2000, false)).not.toContain("ccy");
     expect(boardColumns(2000).find((entry) => entry.id === "cap")).toMatchObject({ label: "MKT CAP", width: 8 });
-    const ccy = wide.find((entry) => entry.id === "ccy")!;
+    expect(boardColumns(2000).find((entry) => entry.id === "epsEstimate")?.width).toBe(7);
     const context: BoardCellContext = { statusShown: true, move: () => null };
-    expect(renderBoardCell(row(TENCENT), ccy, context)).toEqual({ text: "CNY", color: colors.textDim });
-    expect(renderBoardCell(row(LADR), ccy, context)).toEqual({ text: "USD", color: colors.textDim });
+    const column = (id: string) => wide.find((entry) => entry.id === id)!;
+    expect(renderBoardCell(row(TENCENT), column("epsEstimate"), context)).toEqual({ text: "7.21 CNY", value: 7.21, color: colors.textDim });
+    expect(renderBoardCell(row(TENCENT), column("revenueEstimate"), context).text).toBe("210.24B CNY");
+    expect(renderBoardCell(row(LADR), column("epsEstimate"), context).text).not.toContain("USD");
     expect(cell(TENCENT, "cap")).toEqual({ text: "459.65B", color: colors.textDim });
     expect(cell(TENCENT, "when")).toEqual({ text: MISSING_VALUE, color: colors.textDim });
   });
@@ -140,16 +139,6 @@ describe("EVTS with listings abroad", () => {
     expect(boardSymbolWidth([row(LADR), row(CCB)])).toBe(10);
     expect(boardSymbolWidth([row(LADR), row(BABA)])).toBe(6);
     expect(boardColumns(2000, { symbolWidth: 10 }).find((entry) => entry.id === "symbol")?.width).toBe(10);
-  });
-
-  test("narrow, CCY stays while any EPS or sales figure does, and goes with the last", () => {
-    for (const kind of ["upcoming", "reported"] as const) {
-      for (let width = 40; width <= 200; width += 1) {
-        const shown = new Set(ids(width, true, kind));
-        const figures = (["epsEstimate", "epsActual", "revenueEstimate"] as const).some((id) => shown.has(id));
-        expect([width, kind, shown.has("ccy")]).toEqual([width, kind, figures]);
-      }
-    }
   });
 
   test("a listing is found as typed, by another of its company's lines, or as the US line shown for it; a US ticker only as itself", () => {

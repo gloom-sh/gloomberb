@@ -575,6 +575,23 @@ function seriesValue(series: HeadlessSeries, value: number | null): string {
     ? `${whole!.replace(/\B(?=(\d{3})+$)/g, ",")}${fraction ? `.${fraction}` : ""}` : plain;
 }
 
+const blankText = (text: string) => text === "" || text === MISSING_VALUE;
+
+/** The columns the text prints: an `omitWhenEmpty` one blank in every row, or an `omitWhenSame` one every row prints alike, leaves. */
+function withoutFillerColumns(
+  rows: readonly HeadlessPaneRow[],
+  columns: HeadlessPaneColumn[],
+  cell: (row: HeadlessPaneRow, column: HeadlessPaneColumn) => string,
+): HeadlessPaneColumn[] {
+  if (!columns.some((column) => column.omitWhenEmpty || column.omitWhenSame)) return columns;
+  return columns.filter((column) => {
+    if (!column.omitWhenEmpty && !column.omitWhenSame) return true;
+    const texts = rows.map((row) => cell(row, column).trim());
+    if (column.omitWhenEmpty && texts.every(blankText)) return false;
+    return !(column.omitWhenSame && texts.length >= 2 && texts.every((text) => text === texts[0] || (blankText(text) && blankText(texts[0]!))));
+  });
+}
+
 function renderRows(
   rows: HeadlessPaneRow[],
   ownColumns: HeadlessPaneColumn[] | undefined,
@@ -582,14 +599,14 @@ function renderRows(
   empty?: string,
 ): string {
   if (rows.length === 0) return empty ?? "No data.";
-  const all = columnsFor(rows, ownColumns, fallbackColumns);
-  const columns = all.filter((column) => !column.underRow);
-  const under = all.filter((column) => column.underRow);
   const cell = (row: HeadlessPaneRow, column: HeadlessPaneColumn) => {
     const value = row[column.key];
     const format = column.textFormat ?? column.format;
     return format ? format(value, row) : displayValue(value);
   };
+  const all = withoutFillerColumns(rows, columnsFor(rows, ownColumns, fallbackColumns), cell);
+  const columns = all.filter((column) => !column.underRow);
+  const under = all.filter((column) => column.underRow);
   return renderTable(
     columns.map((column) => ({
       header: column.textHeader ?? displayedHeader(column),

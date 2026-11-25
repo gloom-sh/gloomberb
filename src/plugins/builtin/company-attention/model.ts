@@ -109,6 +109,8 @@ const day = (value: string | null | undefined) => value ? formatShortDate(value.
 const facts = (entries: Array<[string, string | number | null | undefined]>): AttentionFact[] =>
   entries.flatMap(([label, value]) => value == null || value === "" ? [] : [{ label, value: String(value) }]);
 const CAPTURES: Record<string, string> = { complete: "Complete", partial: "Partial", unknown: "Coverage not known" };
+/** Columns that date a row by when it was observed: one date on every row is the footer's, not a column. */
+export const OBSERVED_LABELS: ReadonlySet<string> = new Set(["Observed", "As of"]);
 const column = (id: string, label: string, width: number, numeric = false, flex = false): DataTableColumn => ({ id, label, width, align: numeric ? "right" : "left", ...(flex ? { flexGrow: 1 } : {}) });
 const roleFamily = (value: string | null) => value === "data_ai" || value === "data ai" ? "Data / AI" : value ? humanLabel(value) : null;
 const COMPANY_COLUMNS = [column("symbol", "Ticker", 12), column("name", "Company", 24, false, true), column("open", "Open roles", 12, true), column("net", "Net vs prior", 13, true), column("remote", "Remote %", 17, true), column("z", "Z-score", 10, true), column("signal", "Signal", 12), column("date", "As of", 12)];

@@ -1,7 +1,7 @@
 import type { CreditDocumentsPayload, CreditFact, CreditInstrument, CreditObligor, CreditScreenPayload } from "../../../api-client/credit-documents";
 import type { HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneRow } from "../../../types/plugin";
-import { capitalCell, capitalColumns, comparatorSymbol, covenantFact, covenantNumber, creditAmount, creditCurrencies, creditMaturityRows, creditPercent, factValue, fieldLabel,
-  instrumentOutstanding, isClosed, maturityShares, NO_VALUE, outstandingText, screenSignal, sentence } from "./model";
+import { capitalCell, capitalColumns, comparatorSymbol, covenantFact, covenantNumber, creditCurrencies, creditFigure, creditMaturityRows, creditPercent, factValue, fieldLabel,
+  instrumentOutstanding, isClosed, maturityShares, NO_VALUE, screenSignal, sentence } from "./model";
 
 /** A column the text report leaves out: the exports keep it, for ids and figures a spreadsheet reads whole. */
 type ExportColumn = HeadlessPaneColumn & { exportOnly?: boolean };
@@ -30,10 +30,11 @@ const CAPITAL: ExportColumn[] = [
   { key: "name", header: "Instrument", minWidth: 20, textFormat: (value, row) => isClosed({ lifecycle: row.lifecycle as string | null }) ? `${value} (${row.lifecycle})` : String(value) },
   { key: "lifecycle", header: "Status", exportOnly: true },
   { key: "facilityType", header: "Type", format: (value) => value ? fieldLabel(String(value)) : NO_VALUE },
-  { key: "coupon", header: "Coupon/Margin" },
+  { key: "coupon", header: "Coupon", align: "right" },
+  { key: "margin", header: "Margin" },
   { key: "maturity", header: "Maturity" },
-  { key: "outstanding", header: "Outstanding", align: "right", textFormat: (value, row) => outstandingText(number(value), number(row.commitment)) },
-  { key: "commitment", header: "Commitment", align: "right", exportOnly: true },
+  { key: "outstanding", header: "Outstanding", align: "right", textFormat: (value) => creditFigure(number(value)) },
+  { key: "commitment", header: "Commitment", align: "right", textFormat: (value) => creditFigure(number(value)) },
   { key: "currency", header: "CCY" },
   { key: "ranking", header: "Rank", minWidth: 12 },
   { key: "controlPut", header: "CoC put", align: "right" },
@@ -41,20 +42,25 @@ const CAPITAL: ExportColumn[] = [
   INSTRUMENT_ID,
 ];
 /** The pane's capital column behind each export column; the others are not in the pane's own list. */
-const PANE_COLUMN: Record<string, string> = { name: "name", facilityType: "facility", coupon: "coupon", maturity: "maturity", outstanding: "principal", currency: "currency", ranking: "ranking", controlPut: "control" };
+const PANE_COLUMN: Record<string, string> = { name: "name", facilityType: "facility", coupon: "coupon", margin: "margin", maturity: "maturity", outstanding: "principal", commitment: "commitment", currency: "currency", ranking: "ranking", controlPut: "control" };
 
 function capitalRows(data: CreditDocumentsPayload, instruments: readonly CreditInstrument[]): HeadlessPaneRow[] {
   return instruments.map((row) => ({
     name: row.name, lifecycle: row.lifecycle ?? null, facilityType: row.facilityType,
-    coupon: blank(capitalCell(row, "coupon", data)), maturity: row.maturity, outstanding: instrumentOutstanding(row), commitment: row.commitment,
+    coupon: blank(capitalCell(row, "coupon", data)), margin: blank(capitalCell(row, "margin", data)), maturity: row.maturity, outstanding: instrumentOutstanding(row), commitment: row.commitment,
     currency: row.currency, ranking: blank(capitalCell(row, "ranking", data)), controlPut: blank(capitalCell(row, "control", data)),
     obligor: name(row.obligor), instrumentId: row.id,
   }));
 }
-/** The instruments as the Capital tab lists them; a column the pane leaves out as undisclosed stays out of the text report. */
+/**
+ * The instruments as the Capital tab lists them: a column the pane leaves out
+ * (undisclosed, or the same on every row) stays out of the text report, and
+ * the amounts carry a shared currency in their headers as the pane's do.
+ */
 export function capitalSection(data: CreditDocumentsPayload, title = "Capital structure", instruments: readonly CreditInstrument[] = data.instruments): Section {
-  const shown = new Set(capitalColumns(data, Number.MAX_SAFE_INTEGER).map((column) => column.id));
-  return table(title, CAPITAL, capitalRows(data, instruments), { textKeys: CAPITAL.map((column) => column.key).filter((key) => !(key in PANE_COLUMN) || shown.has(PANE_COLUMN[key]!)) });
+  const shown = new Map(capitalColumns(data, Number.MAX_SAFE_INTEGER).map((column) => [column.id, column.label]));
+  const section = table(title, CAPITAL, capitalRows(data, instruments), { textKeys: CAPITAL.map((column) => column.key).filter((key) => !(key in PANE_COLUMN) || shown.has(PANE_COLUMN[key]!)) });
+  return { ...section, textColumns: section.textColumns?.map((column) => ({ ...column, header: shown.get(PANE_COLUMN[column.key] ?? "") ?? column.header })) };
 }
 
 /** The unit a covenant row's figures are in, read from the fact its columns carry. */
@@ -90,7 +96,7 @@ function maturityColumns(preview: boolean): ExportColumn[] {
   return [
     { key: "year", header: "Year" },
     { key: "currency", header: "CCY" },
-    { key: "principal", header: "Principal", align: "right", textFormat: (value) => creditAmount(number(value)) },
+    { key: "principal", header: "Principal", align: "right", textFormat: (value) => creditFigure(number(value)) },
     ...preview ? [] : [
       { key: "share", header: "Share", align: "right", format: (value: unknown) => creditPercent(number(value)) } as ExportColumn,
       { key: "cumulative", header: "Cumulative", align: "right", format: (value: unknown) => creditPercent(number(value)) } as ExportColumn,
@@ -117,7 +123,7 @@ export function maturitySection(data: CreditDocumentsPayload): Section {
 const CONTROL: ExportColumn[] = [
   wide("instrument", "Instrument", { minWidth: 20 }),
   { key: "putPercent", header: "Put", align: "right", format: (value) => value == null ? "" : `${value}%` },
-  { key: "principal", header: "Principal", align: "right", textFormat: (value) => creditAmount(number(value)) },
+  { key: "principal", header: "Principal", align: "right", textFormat: (value) => creditFigure(number(value)) },
   { key: "currency", header: "CCY" },
   wide("trigger", "Trigger", { minWidth: 24 }),
   OBLIGOR,

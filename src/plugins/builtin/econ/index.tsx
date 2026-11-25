@@ -289,7 +289,9 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     const timeLabelText = CALENDAR_TIME_ZONE_LABEL;
     const timeWidth = tableColumnWidth({ width: filtered.some(isAllDayEvent) ? "All day".length : 5, label: timeLabelText });
     const compact = width < 58;
-    const showCountry = !compact || !/^[A-Z]{2}$/.test(countryFilter) || countryFilter === "EU";
+    // One country, or one impact level, is the filter's: no column repeats it on each row.
+    const showCountry = !/^[A-Z]{2}$/.test(countryFilter) || countryFilter === "EU";
+    const showImpact = impactFilter === "all";
     const actualLabel = compact ? "ACT" : "ACTUAL";
     const forecastLabel = compact ? "EST" : "FORECAST";
     const actualWidth = tableColumnWidth({ width: valueColumnWidth(filtered, "actual", compact ? 3 : 9), label: actualLabel });
@@ -303,7 +305,8 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     // Padding, one gap per column boundary, and the vertical scrollbar lane;
     // one column short of that clipped the PRIOR values at the right edge.
     const roomBeside = (count: number, timesWidth: number) => (impactWidth: number, countryWidth: number) => (
-      width - 3 - count + (showCountry ? 0 : 1) - (timesWidth + impactWidth + (showCountry ? countryWidth : 0) + actualWidth + forecastWidth + priorWidth)
+      width - 3 - count + (showCountry ? 0 : 1) + (showImpact ? 0 : 1)
+        - (timesWidth + (showImpact ? impactWidth : 0) + (showCountry ? countryWidth : 0) + actualWidth + forecastWidth + priorWidth)
     );
     const codeWidth = 2 + (flagged ? COUNTRY_FLAG_CELLS : 0);
     // The reader's column only where the event names keep room to read beside it, under the short headers.
@@ -325,14 +328,14 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     return [
       { id: "time", label: timeLabelText, width: timeWidth, align: "left" },
       ...withReader ? [{ id: "readerTime" as const, label: readerLabel!, width: readerWidth, align: "left" as const, title: readerZone! }] : [],
-      { id: "impact", ...impactColumn, align: "left" },
+      ...showImpact ? [{ id: "impact" as const, ...impactColumn, align: "left" as const }] : [],
       ...showCountry ? [{ id: "country" as const, ...countryColumn, align: "left" as const }] : [],
       { id: "event", label: "EVENT", width: eventWidth, align: "left" },
       { id: "actual", label: actualLabel, title: "Actual", width: actualWidth, align: "right" },
       { id: "forecast", label: forecastLabel, title: "Forecast", width: forecastWidth, align: "right" },
       { id: "prior", label: "PRIOR", width: priorWidth, align: "right" },
     ];
-  }, [countryFilter, filtered, flagged, readerZone, width]);
+  }, [countryFilter, filtered, flagged, impactFilter, readerZone, width]);
   const separatorBg = blendHex(colors.bg, colors.border, 0.3);
   const staleness = fetchedAt ? formatStaleness(fetchedAt, now) : "";
   // The calendar has events and the filters hid them all: say which, with the way back.

@@ -167,6 +167,7 @@ export function haltStatusLabel(status: HaltStatus): string {
   }
 }
 
+/** A halt in force in red, quoting before trading in amber; a resumed one is back to normal and takes no colour. */
 export function haltStatusColor(status: HaltStatus): string {
   switch (status) {
     case "halted":
@@ -174,7 +175,7 @@ export function haltStatusColor(status: HaltStatus): string {
     case "quote":
       return colors.warning;
     case "resumed":
-      return colors.positive;
+      return colors.text;
   }
 }
 
@@ -278,18 +279,19 @@ const REASON_MIN_WIDTH = 14;
 const HALT_COLUMNS: readonly HaltColumn[] = [
   { id: "symbol", label: "SYMBOL", width: 8, align: "left" },
   // "Non NASDAQ" and "NYSE Arca" are real feed values, so MKT holds all ten cells.
-  { id: "market", label: "MKT", width: 10, align: "left" },
+  { id: "market", label: "MKT", width: 10, align: "left", omitWhenSame: true },
   { id: "company", label: "COMPANY", width: COMPANY_MIN_WIDTH, align: "left", flexGrow: 1 },
-  { id: "code", label: "CODE", width: 6, align: "left" },
+  { id: "code", label: "CODE", width: 6, align: "left", omitWhenSame: true },
   { id: "reason", label: "REASON", width: REASON_MIN_WIDTH, align: "left", flexGrow: 1 },
-  { id: "date", label: "DATE ET", width: 10, align: "left" },
+  { id: "date", label: "DATE ET", width: 10, align: "left", omitWhenSame: true },
   { id: "age", label: "AGE", width: 6, align: "right" },
   { id: "halted", label: "HALT ET", width: 9, align: "left" },
-  // Set when quoting and trading resume: a halt still in force has neither.
-  { id: "quote", label: "QUOTE ET", width: 12, align: "left", mayBeBlank: true },
-  { id: "trade", label: "TRADE ET", width: 12, align: "left", mayBeBlank: true },
+  // Set when quoting and trading resume: a halt still in force has neither, so a list of halts in force has no column for them.
+  { id: "quote", label: "QUOTE ET", width: 12, align: "left", mayBeBlank: true, omitWhenEmpty: true },
+  { id: "trade", label: "TRADE ET", width: 12, align: "left", mayBeBlank: true, omitWhenEmpty: true },
   { id: "duration", label: "HALTED FOR", width: 12, align: "right" },
-  { id: "status", label: "STATUS", width: 8, align: "left" },
+  // The list is the whole feed, so one status on every row (the Active or Resumed tab) needs no column.
+  { id: "status", label: "STATUS", width: 8, align: "left", omitWhenSame: true },
 ];
 
 /**

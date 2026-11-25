@@ -12,16 +12,17 @@ export function formatShares(value: number | null | undefined): string {
   return formatCompact(value, { fixedDecimals: true });
 }
 
+/** Two decimals at every size, so a column of them keeps one precision: 22.00% over 5.01%, never 22.0%. */
 export function formatPercentMaybe(value: number | null | undefined): string {
   if (value == null) return MISSING_VALUE;
   const sign = value > 0 ? "+" : "";
-  return `${sign}${(value * 100).toFixed(Math.abs(value) >= 0.1 ? 1 : 2)}%`;
+  return `${sign}${(value * 100).toFixed(2)}%`;
 }
 
-/** Portfolio weights are shares of a whole, so they carry no sign. */
+/** Portfolio weights are shares of a whole, so they carry no sign; two decimals at every size, as formatPercentMaybe. */
 export function formatWeightMaybe(value: number | null | undefined): string {
   if (value == null) return MISSING_VALUE;
-  return `${(value * 100).toFixed(Math.abs(value) >= 0.1 ? 1 : 2)}%`;
+  return `${(value * 100).toFixed(2)}%`;
 }
 
 export function formatRawPercentMaybe(value: number | null | undefined): string {

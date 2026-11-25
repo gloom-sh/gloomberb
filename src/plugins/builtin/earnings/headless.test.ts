@@ -230,6 +230,10 @@ test("EVTS with a ticker stays the market board and says whether that ticker is 
   });
   const highlight = async (symbol: string) => (await board.load({ ...args, rawArgument: symbol, argument: symbol, symbols: [symbol] }, context)).metadata?.highlight;
   expect(await highlight("SAN")).toEqual({ symbol: "SAN", onBoard: true, date: day, row: "SAN" });
+  // With --kind, of that view's reports alone: SAN's is still to come, so it is not among those out.
+  const reported = await board.load({ ...args, rawArgument: "SAN", argument: "SAN", symbols: ["SAN"], options: { kind: "reported" } }, context);
+  expect(reported.metadata?.highlight).toEqual({ symbol: "SAN", onBoard: false, date: null, row: null });
+  expect(reported.metadata?.notices).toEqual([expect.stringContaining("(Reported), not one company's: SAN is not on it")]);
   // Sanofi in Paris is not the US board's SAN.
   expect(await highlight("SAN:EPA")).toEqual({ symbol: "SAN:EPA", onBoard: false, date: null, row: null });
 });

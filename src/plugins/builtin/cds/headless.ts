@@ -38,8 +38,10 @@ import {
   formatSpreadMove,
   formatSpreadRange,
   formatUpfront,
+  sharedUpfrontCurrency,
   hasPointsQuotes,
   issuerListSort,
+  sharedTradeCoupon,
   quotedLevel,
   lastTradeOf,
   noLevelMessage,
@@ -164,7 +166,8 @@ function tradeForFormatting(row: Record<string, unknown>): CdsTrade {
 
 const TRADE_COLUMNS: HeadlessPaneColumn[] = [
   { key: "eventAt", header: "Time UTC", shrink: false, format: (value: unknown) => formatEventTime(Number(value)) },
-  { key: "issuer", header: "Issuer" },
+  // One name's trades: its name heads the report, not every row.
+  { key: "issuer", header: "Issuer", omitWhenSame: true },
   { key: "maturity", header: "Maturity" },
   {
     key: "notional",
@@ -172,9 +175,10 @@ const TRADE_COLUMNS: HeadlessPaneColumn[] = [
     align: "right" as const,
     format: (_value: unknown, row: Record<string, unknown>) => formatNotional(tradeForFormatting(row)),
   },
-  { key: "currency", header: "CCY" },
-  { key: "couponBp", header: "Coupon", align: "right" as const, format: (value: unknown) => formatBp(value as number | null) },
-  { key: "spreadBp", header: "Spread", align: "right" as const, format: (value: unknown) => formatBp(value as number | null) },
+  // As the pane: a currency, a coupon every print shares and a spread none carries leave the text; exports keep them.
+  { key: "currency", header: "CCY", omitWhenSame: true },
+  { key: "couponBp", header: "Coupon", align: "right" as const, format: (value: unknown) => formatBp(value as number | null), omitWhenSame: true },
+  { key: "spreadBp", header: "Spread", align: "right" as const, format: (value: unknown) => formatBp(value as number | null), omitWhenEmpty: true },
   {
     key: "upfront",
     header: "Abs upfront",
@@ -271,8 +275,11 @@ function projectCdsHeadless({ activity, history, levels, sort, days = DAILY_DAYS
     else if (unmatched) {
       if (!unmatched.nearest.length) notes.push("fn CDS lists the covered issuers.");
     } else if (line && entries.length === 0) notes.push(`No 5Y spread level for ${name} in the last two years.`);
+    const coupon = line && spreadSummary(line)?.unit === "pts" ? null : sharedTradeCoupon(activity.trades);
+    if (coupon != null) notes.push(`Every trade is on a ${formatBp(coupon)} running coupon.`);
     // The 5Y figures are dated by their level's day, each trade and each daily level by its own.
     const levelDate = line ? spreadSummary(line)?.date : undefined;
+    const upfrontCurrency = sharedUpfrontCurrency(activity.trades);
     const sections: HeadlessBundleSection[] = [
       ...(!entries.length ? [{ title: "Level coverage", columns: [
         { key: "issuer", header: "Issuer" }, { key: "tenor", header: "Tenor" }, { key: "status", header: "Status" }, { key: "reason", header: "Reason" },
@@ -282,6 +289,11 @@ function projectCdsHeadless({ activity, history, levels, sort, days = DAILY_DAYS
       {
         title: "Trades",
         columns: tradeColumns(hasPointsQuotes(activity.trades)),
+        // As the pane: one upfront currency for every print heads the column instead of trailing each amount.
+        ...(upfrontCurrency ? { textColumns: tradeColumns(hasPointsQuotes(activity.trades)).map((column) => column.key === "upfront"
+          ? { ...column, textHeader: `Abs upfront ${upfrontCurrency}`,
+            format: (_value: unknown, row: Record<string, unknown>) => formatUpfront(tradeForFormatting(row), upfrontCurrency) }
+          : column) } : {}),
         rows: sortTrades(activity.trades, DEFAULT_TRADE_SORT).map((trade) => ({ ...trade })),
         empty,
         rowSymbolKey: "issuer",

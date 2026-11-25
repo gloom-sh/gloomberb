@@ -458,9 +458,10 @@ test("DDIS prints a ladder in its filing's own bands as reported, with its basis
   const freshness = deriveHeadlessFreshness(debtMaturitiesHeadless, result, Date.parse("2026-11-06T12:00:00Z"));
   const text = renderHeadlessPaneText(debtMaturitiesHeadless, result, args, "DDIS", freshness);
   expect(text).toContain("Maturity schedule as reported (Carrying amounts, IFRS)");
-  expect(text).toMatch(/Maturity +Carrying amount +Currency +% total/);
-  expect(text).toMatch(/Within 1 year +17\.17B +HKD +19\.4%/);
-  expect(text).toMatch(/After 5 years +11\.10B +HKD +12\.5%/);
+  // One filing's currency, date and form are said once, not on every band.
+  expect(text).toMatch(/Maturity +Carrying amount +% total\n/);
+  expect(text).toMatch(/Within 1 year +17\.17B +19\.4%/);
+  expect(text).toMatch(/After 5 years +11\.10B +12\.5%/);
   // No yearly split, no principal history.
   expect(text).not.toContain("Year 2");
   expect(text).not.toContain("Annual filing history");

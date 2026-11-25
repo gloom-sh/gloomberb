@@ -38,7 +38,8 @@ const SEC_COLUMNS: HeadlessPaneColumn[] = [
   },
   { key: "acceptanceReported", header: "SEC-reported acceptance" },
   { key: "form", header: "Form" },
-  { key: "companyName", header: "Issuer" },
+  // As the pane: one issuer's filings name it once, in the title; a filer's several issuers name each row's.
+  { key: "companyName", header: "Issuer", omitWhenSame: true },
   { key: "filing", header: "Filing" },
   { key: "items", header: "Items" },
   { key: "accessionNumber", header: "Accession" },

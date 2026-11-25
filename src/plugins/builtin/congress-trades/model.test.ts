@@ -132,6 +132,16 @@ describe("congress trade asset label", () => {
     expect(label("Apple Inc. - Common Stock", null)).toBe("OPTION · Apple Inc.");
     expect(label("Apple Inc. - Common Stock", "Call options", "ST")).toBe("Apple Inc. - Common Stock");
   });
+
+  test("a Senate partnership names what each row was held through, without the kind note", () => {
+    const label = (description: string) => tradeAssetLabel({ assetName: "MH Built to Last LLC Description: Partnership", assetType: "Other", description });
+    expect(label("Company: MH Built to Last LLC (New York, NY) · Underlying Asset of Summa I LLC")).toBe("MH Built to Last LLC via Summa I LLC");
+    expect(label("Underlying Asset of Peter L. Malkin Family 9 LLC · Filer notified 2026-11-06")).toBe("MH Built to Last LLC via Peter L. Malkin Family 9 LLC");
+    expect(label("Company: MH Built to Last LLC (New York, NY)")).toBe("MH Built to Last LLC");
+    // The row names the LLC it is held through, not the one that LLC is owned through in turn.
+    expect(label("Company: MH Four Winds LLC (New York, NY) · Underlying asset of 3M's Partners LLC, owned through Peter L. Malkin Family 9 LLC"))
+      .toBe("MH Built to Last LLC via 3M's Partners LLC");
+  });
 });
 
 describe("congress return columns", () => {

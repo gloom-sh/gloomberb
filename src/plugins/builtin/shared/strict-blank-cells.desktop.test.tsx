@@ -77,7 +77,7 @@ const call = (index: number, overrides: Partial<CloudEarningsCallPayload>): Clou
   callTimeKnown: true, eventKind: "earnings", eventLabel: null, ...overrides,
 });
 
-test("CALLS fails on PERIOD and LENGTH for earnings calls and recordings with none, beside labelled events too, and not for events or calls still to come", async () => {
+test("CALLS fails on PERIOD for earnings calls with none, beside labelled events too, on LENGTH where the list keeps it, and not for events or calls still to come", async () => {
   const read = (calls: CloudEarningsCallPayload[]) => strict(callListColumns(100, true), calls, (row, column) => callListCell(row, column, NOW));
   const lost = times(3, (index) => call(index, { fiscalYear: null, fiscalQuarter: null, durationSeconds: null }));
   // An event that is not an earnings call has no fiscal period, and a call with no transcript has no recording yet.
@@ -89,9 +89,12 @@ test("CALLS fails on PERIOD and LENGTH for earnings calls and recordings with no
   // A call whose kind is unclear is not thereby an event: its missing period is still owed.
   const unclear = times(3, (index) => call(30 + index, { eventKind: null, fiscalYear: null, fiscalQuarter: null }));
 
-  expect(await read(lost)).toMatchObject(blank("PERIOD", "LENGTH"));
+  // A length no call states leaves the list, so the period alone is named.
+  expect(await read(lost)).toMatchObject(blank("PERIOD"));
   expect(await read(unlabelled)).toMatchObject(USABLE);
-  expect(await read([...lost, ...unlabelled])).toMatchObject(blank("PERIOD", "LENGTH"));
+  expect(await read([...lost, ...unlabelled])).toMatchObject(blank("PERIOD"));
+  // A recording not yet transcribed keeps the column in the list, and its length is none for the transcribed calls beside it.
+  expect(await read([...lost, call(40, { hasTranscript: false, status: "processing", durationSeconds: 1_800 })])).toMatchObject(blank("LENGTH"));
   expect(await read(analyst)).toMatchObject(USABLE);
   // The label fills no period for the earnings calls beside it, whose own are still lost. Each analyst call has its length.
   expect(await read([...lost, ...analyst])).toMatchObject(blank("PERIOD"));

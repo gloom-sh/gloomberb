@@ -116,8 +116,10 @@ export function callPeriodMayBeBlank(call: Pick<CloudEarningsCallPayload, "event
  *
  * A transcribed call owes one. A transcript read from a document has no
  * recording either, which the list cannot tell from a recording whose length
- * was lost (both a null `durationSeconds` on a transcribed call), so a capture
- * whose every transcribed row has none fails on the column.
+ * was lost (both a null `durationSeconds` on a transcribed call). The list
+ * drops the column while no call states a length (`omitWhenEmpty`), so a
+ * capture fails on it only where it stays: a call with no transcript shows
+ * one, and every transcribed row has none.
  */
 export function callLengthMayBeBlank(call: Pick<CloudEarningsCallPayload, "hasTranscript">): boolean {
   return !call.hasTranscript;
