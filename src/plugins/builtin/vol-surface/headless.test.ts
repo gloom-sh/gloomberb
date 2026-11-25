@@ -6,6 +6,7 @@ import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test
 import type { OptionContract, OptionsChain } from "../../../types/financials";
 import type { HeadlessBundleResult, HeadlessPaneApiClient } from "../../../types/headless";
 import { parseOptionExpiration } from "../../../utils/option-expiry";
+import { formatDay } from "../../../utils/day-format";
 import { DEFAULT_OPTION_CALC_DRAFT } from "../options-calculator/model";
 import { daysToExpiryFrom, valueOption } from "../shared/volatility";
 import { volSurfaceHeadless } from "./headless";
@@ -86,7 +87,7 @@ describe("OVDV report", () => {
   test("--expiration takes a date and selects that expiry's smile", async () => {
     const date = new Date(listed[3]! * 1000).toISOString().slice(0, 10);
     const { titles, result } = await load({ tab: "smile", expiration: parseOptionExpiration(date)! });
-    expect(titles).toEqual([`Smile ${date}`, "Clean quotes"]);
+    expect(titles).toEqual([`Smile ${formatDay(date)}`, "Clean quotes"]);
     expect(result.errors).toEqual([]);
     // A date the chain does not list names the listed ones, once.
     const missing = await load({ tab: "smile", expiration: parseOptionExpiration("2026-10-03")! });
@@ -109,8 +110,8 @@ test("the term tab reads the next FOMC off the expiries either side of it, with 
   expect(titles).toEqual(["Term structure", "Scheduled releases"]);
   const first = new Date(listed[0]! * 1000).toISOString().slice(0, 10);
   // The first expiry past the decision names it.
-  expect(table("Term structure").rows[0]).toMatchObject({ expiry: first, event: "FOMC 09-23" });
-  expect(table("Scheduled releases").rows[0]).toMatchObject({ event: "FOMC 09-23", between: `now to ${first}` });
+  expect(table("Term structure").rows[0]).toMatchObject({ expiry: first, event: "FOMC 23 Sep" });
+  expect(table("Scheduled releases").rows[0]).toMatchObject({ event: "FOMC 23 Sep", between: `now to ${first}` });
   // 50% for three days against 14.6% the week after it: the decision prices a move of about 3.5%, read as approximate.
   expect(cell("Scheduled releases", "impliedMove", 0)).toMatch(/^≈3\.\d\d%$/);
   expect(cell("Scheduled releases", "forwardVol", 0)).toBe("50.00%");

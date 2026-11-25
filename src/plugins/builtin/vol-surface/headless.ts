@@ -133,14 +133,15 @@ function termSection(snapshot: SurfaceSnapshot, readings: readonly SurfaceEventR
  * underlying on each release's days. Releases between the same two expiries
  * are one row.
  */
+const ISO_DAY_IN_TEXT = /\b\d{4}-\d{2}-\d{2}\b/g;
 function scheduledReleasesSection(readings: readonly SurfaceEventReading[]): HeadlessBundleSection {
   return { title: "Scheduled releases", columns: [
-    { key: "event", header: "Event" }, { key: "between", header: "Between expiries" },
+    { key: "event", header: "Event" }, { key: "between", header: "Between expiries", textFormat: (value) => typeof value === "string" ? value.replace(ISO_DAY_IN_TEXT, (day) => formatDay(day)) : MISSING_VALUE },
     { key: "forwardVol", header: "Forward vol", format: iv },
     { key: "impliedMove", header: "Implied |move|", format: (value) => approximatePercent(typeof value === "number" ? value : null) },
     { key: "mdayMove", header: "MDAY avg |move|" }, { key: "mdayDays", header: "MDAY days" },
   ], rows: readings.map((reading) => ({ event: surfaceReadingLabel(reading),
-    between: reading.after == null ? "none listed after it" : `${reading.before == null ? "now" : expiryLabel(reading.before)} to ${expiryLabel(reading.after)}`,
+    between: reading.after == null ? "none listed after it" : `${reading.before == null ? "now" : expiryStamp(reading.before)} to ${expiryStamp(reading.after)}`,
     forwardVol: reading.forwardVol, impliedMove: reading.impliedMove, mdayMove: surfaceEventHistory(reading.events),
     mdayDays: reading.events.map((event) => event.history?.count ?? 0).join("/") })) };
 }
@@ -289,7 +290,8 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
     // An expiry that failed as the whole surface did (no connection) is not listed again under its own date.
     const surfaceWide = new Set(snapshot.failures.filter((failure) => failure.expiration == null).map((failure) => failure.message));
     const loadErrors = snapshot.failures.filter((failure) => failure.expiration == null || !surfaceWide.has(failure.message))
-      .map((failure) => failure.expiration == null ? failure.message : `${expiryLabel(failure.expiration)}: ${failure.message}`);
+      // An error names the expiry as --expiration takes it, as its message names the listed ones.
+      .map((failure) => failure.expiration == null ? failure.message : `${expiryStamp(failure.expiration)}: ${failure.message}`);
     // A symbol with no option chain at all says what became of it when something did (FB is a fund now,
     // Meta trades as META) in place of the chain's own error; a chain without clean quotes is the symbol's own.
     const fate = !snapshot.stored && !available && snapshot.catalogue.length === 0
