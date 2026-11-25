@@ -64,7 +64,6 @@ export function renderCongressTradeCell(
     case "ticker":
       return {
         text: trade.ticker ?? (column.assetFallback && trade.assetName ? congressRowAsset(trade) : MISSING_VALUE),
-        keepEnd: !trade.ticker && column.assetFallback && trade.assetName ? congressRowLineCount(trade) || undefined : undefined,
         content: trade.ticker ? (
           <TickerBadgeList
             symbols={[trade.ticker]}
@@ -81,6 +80,7 @@ export function renderCongressTradeCell(
         color: colors.textBright,
       };
     case "asset":
+      // The ASSET column keeps a fold's count whole and cuts the name before it; the narrow TICKER fallback lets the name lead.
       return { text: congressRowAsset(trade), keepEnd: congressRowLineCount(trade) || undefined, color: colors.text };
     case "owner":
       return { text: trade.owner, color: colors.textDim };
