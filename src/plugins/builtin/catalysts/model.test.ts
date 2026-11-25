@@ -1,5 +1,6 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { enrollmentSeries } from "./history";
+import { buildSectionedRows } from "../../../components/data-table/sections";
 import { describe, expect, test } from "bun:test";
 import { catalystFixture, catalystPayload } from "./test-fixture";
 import { catalystBasisWidth, catalystCell, catalystChangeText, catalystColumns, catalystDate, catalystDateBasis, catalystEmptyTitle, catalystParties, catalystQuery, catalystSection, catalystSections, catalystStatusTone } from "./model";
@@ -115,6 +116,9 @@ describe("catalyst provenance and dates", () => {
       ["October 2026:1", "October 2026", "c"],
       ["September 2026", "September 2026", "de"],
     ]);
+    // A month earns a heading line from three rows; fewer follow the month before, read by their dates.
+    const headed = buildSectionedRows(catalystSections([...rows, on("f", "2026-09-02")], "any", false), (item) => item.id, { minItemsForHeader: 3 });
+    expect(headed.map((row) => row.kind === "section" ? row.label : row.key)).toEqual(["a", "b", "c", "September 2026", "d", "e", "f"]);
   });
   test("rejects cross-event history, duplicate event IDs and unsafe document URLs", () => {
     expect(() => validateCatalystDetail({ event, history: [{ ...event, id: "other" }], asOf: event.observedAt })).toThrow("invalid event history");

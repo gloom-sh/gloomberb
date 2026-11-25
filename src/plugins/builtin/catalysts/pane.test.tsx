@@ -12,7 +12,7 @@ import { catalystFixture, catalystPayload } from "./test-fixture";
 
 const tui = createOpenTuiTestHarness();
 afterEach(() => { setCloudApiFetchTransport(null); catalystCache.reset(); catalystDetailCache.reset(); });
-test("default filters load once, compact rows preserve date precision, and Enter opens the matching evidence", async () => {
+test("the calendar opens on the kind with something coming up, loads it once, keeps date precision, and Enter opens the evidence", async () => {
   catalystCache.attach(new MemoryPluginPersistence()); catalystDetailCache.attach(new MemoryPluginPersistence());
   let calls = 0;
   setCloudApiFetchTransport(async (url) => {
@@ -30,12 +30,16 @@ test("default filters load once, compact rows preserve date precision, and Enter
   const frame = await tui.waitForFrameToContain("Primary completion");
   expect(frame).toContain("2027-04");
   expect(frame).toContain("Deadline");
+  // The fixture is a trial: the Trials view, with its sponsor and trial columns.
+  expect(frame).toMatch(/Company +Drugs +Trials +Regulation +Legal +Changes/);
+  expect(frame).toMatch(/SPONSOR +TRIAL/);
   await tui.renderFrames(6);
-  expect(calls).toBe(1);
+  // One read of the whole calendar picks the view, then the view's one type is read.
+  expect(calls).toBe(2);
   await tui.emitKeypress({ name: "return" });
   expect(await tui.waitForFrameToContain("Confidence")).toContain("Confidence");
   expect(tui.frame()).toContain("Evidence");
-  expect(calls).toBe(2);
+  expect(calls).toBe(3);
 });
 
 test("an alert opens its exact event even when it is absent from the calendar page", async () => {

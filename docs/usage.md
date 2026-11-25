@@ -874,8 +874,9 @@ FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 fo
 **`IPO`** lists deals on the main US, Asia-Pacific and European exchanges from the last three months and the next six (the All, US, APAC and Europe tabs pick the region). The list runs in this order: deals in their offer now (`offering`), upcoming deals, `overdue` ones (listing day passed with no pricing or first session reported), priced and listed deals, then postponed deals.
 
 - `/` searches company names in either script, tickers, markets, countries, status and the region's name. The word `pending` lists deals not priced yet. `IPO japan` opens the pane on that search, as `gloom fn IPO japan` reads it.
+- The List filter splits the deals: **Upcoming**, the deals not trading yet with their status, price or range and size, and **Recent listings**, the deals that have listed (or priced and reached their listing day) with RETURN. The pane opens on Upcoming, or on the list holding a search's matches, and an empty list says how many match on the other. Status is coloured only where it says something: amber while offering, red when withdrawn.
 - DATE is the listing date in the venue's calendar, dimmed while expected. PRICE is the offer price once set, else the range, in the deal's currency (London in pence). SIZE is the money raised in US dollars. RETURN is the first session's close against the offer price. Enter or click opens a deal's ticker once it has one.
-- `gloom fn IPO --region apac --status upcoming --json` returns the same deals. `--status filed` or `--status withdrawn` returns the filings and withdrawn deals the pane leaves out.
+- `gloom fn IPO --region apac --status upcoming --json` returns the same deals; `--list upcoming` or `--list listed` returns one list under the pane's columns for it. `--status filed` or `--status withdrawn` returns the filings and withdrawn deals the pane leaves out.
 - An [IPO alert](#filing-event-alerts) follows a company or keyword on this calendar: `gloom alerts add ipo Stripe`, or **Add Event Alert**.
 
 `PERP` opens the [perpetuals board](perpetuals.md), and `PERP [market]` that market's History.

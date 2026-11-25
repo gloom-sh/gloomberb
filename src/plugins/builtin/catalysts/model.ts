@@ -62,6 +62,19 @@ function catalystListedField(event: CatalystEvent, read: CatalystDateRead): Date
   return "any";
 }
 
+/**
+ * The days the date a row is listed under covers, as the service orders the
+ * calendar by them; null for an undated or withheld row and the change feed.
+ */
+export function catalystListedSpan(event: CatalystEvent, read: CatalystDateRead = "any"): [string, string] | null {
+  const field = catalystListedField(event, read);
+  if (field === "observed" || catalystDateWithheld(event, field)) return null;
+  const key = field === "announced" || field === "effective" || field === "deadline" ? field
+    : event.deadlineDate ? "deadline" : event.effectiveDate ? "effective" : "announced";
+  const value = event[`${key}Date`];
+  return value ? dateSpan(value, event.datePrecision[key]) : null;
+}
+
 export const catalystDate = (event: CatalystEvent, read: CatalystDateRead = "any"): string => {
   const field = catalystListedField(event, read);
   if (field === "observed") return event.observedAt.slice(0, 16).replace("T", " ");
@@ -72,7 +85,7 @@ export const catalystDate = (event: CatalystEvent, read: CatalystDateRead = "any
   if (!value) return MISSING_VALUE;
   return value.slice(0, event.datePrecision[key] === "year" ? 4 : event.datePrecision[key] === "month" ? 7 : 10);
 };
-type FitColumn = DataTableColumn & { min?: number };
+export type FitColumn = DataTableColumn & { min?: number };
 
 /** Cells a table needs for `columns`: a gap after each, both edge paddings and the scrollbar. */
 const tableNeed = (columns: readonly FitColumn[]) => columns.reduce((sum, column) => sum + column.width + 1, 3);
@@ -80,12 +93,13 @@ const tableNeed = (columns: readonly FitColumn[]) => columns.reduce((sum, column
 /**
  * The columns that fit `width`. The wide-only columns go first, then every
  * column gives up its slack down to `min`, then the date basis and the
- * parties go; date, ticker, event and status always stay.
+ * parties go; date, ticker, event and status always stay. `keep` names a
+ * wide-only column a view reads first (a rule's agency), which stays as they do.
  */
-function fitColumns(columns: FitColumn[], width: number): DataTableColumn[] {
+export function fitCatalystColumns(columns: FitColumn[], width: number, keep: readonly string[] = []): DataTableColumn[] {
   let kept = columns;
   const drop = (id: string) => { if (tableNeed(kept) > width) kept = kept.filter((column) => column.id !== id); };
-  for (const id of ["country", "agency", "type"]) drop(id);
+  for (const id of ["country", "agency", "type", "phase"]) if (!keep.includes(id)) drop(id);
   // A long date basis gives up only the cells the table lacks before every column shrinks.
   const over = tableNeed(kept) - width;
   if (over > 0) kept = kept.map((column) => column.id === "basis" ? { ...column, width: Math.max(column.min ?? column.width, column.width - over) } : column);
@@ -99,7 +113,7 @@ export const catalystBasisWidth = (events: readonly CatalystEvent[], read: Catal
   Math.min(27, events.reduce((widest, event) => Math.max(widest, catalystDateBasis(event, read).length), 10));
 
 export function catalystColumns(width: number, changes: boolean, litigation: boolean, basisWidth = 10): DataTableColumn[] {
-  return fitColumns([
+  return fitCatalystColumns([
     { id: "date", label: changes ? "Observed (UTC)" : "Date", width: changes ? 16 : 10, align: "left" },
     ...(!changes ? [{ id: "basis", label: "Date basis", width: basisWidth, min: 10, align: "left" as const }] : []),
     ...(!litigation ? [{ id: "ticker", label: "Ticker", width: width < 110 ? 12 : 14, min: 10, align: "left" as const }] : []),
@@ -117,7 +131,7 @@ type Party = CatalystEvent["parties"][number];
 
 /** Legal forms dropped from a party in a cell: `Vertex Pharmaceuticals Incorporated` reads `Vertex Pharmaceuticals`. */
 const LEGAL_FORM = /(?:,?\s+(?:inc|incorporated|corp|corporation|co|company|llc|l\.l\.c|ltd|limited|plc|p\.l\.c|lp|l\.p|ag|sa|s\.a|se|nv|n\.v|bv|b\.v|a\/s|as|ab|asa|oyj|spa|s\.p\.a|gmbh|kgaa|holdings?)\.?)+$/i;
-const shortPartyName = (name: string) => name.trim().replace(LEGAL_FORM, "").trim() || name.trim();
+export const shortPartyName = (name: string) => name.trim().replace(LEGAL_FORM, "").trim() || name.trim();
 
 /**
  * Federal Register titles name the filer before the action: `Self-Regulatory
@@ -282,12 +296,12 @@ const FILTER_KEYS = ["type", "agency", "country", "sector", "status", "source", 
  * company. Litigation also says which court dockets are not collected, since
  * an empty list there otherwise reads as a company with no cases.
  */
-export function catalystEmptyTitle(data: Pick<CatalystResponse, "coverage"> | null | undefined, query: CatalystFilters, changes: boolean): string {
+export function catalystEmptyTitle(data: Pick<CatalystResponse, "coverage"> | null | undefined, query: CatalystFilters, changes: boolean, noun = "events"): string {
   if (data?.coverage.totalEvents === 0) return "Catalyst history is collecting.";
   if (changes) return "No observed status or date changes match.";
   const filtered = FILTER_KEYS.some((key) => !!query[key]) || (query.dateField ?? "any") !== "any";
   if (filtered || !query.symbol) return "No events match these filters.";
-  if (!query.litigation) return `No events linked to ${query.symbol} yet.`;
+  if (!query.litigation) return `No ${noun} linked to ${query.symbol} yet.`;
   const courts = [...new Set(data?.coverage.sources.filter((source) => !source.enabled && /court/i.test(source.agency)).map((source) => `${source.jurisdiction} court dockets`) ?? [])];
   return `No cases linked to ${query.symbol}.${courts.length ? ` ${courts.join(" and ")} are not collected yet, so only agency and regulator actions show.` : ""}`;
 }
