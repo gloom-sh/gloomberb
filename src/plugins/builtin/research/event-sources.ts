@@ -54,7 +54,7 @@ export function quarterTextColumns(quarters: readonly EarningsQuarter[]): Headle
   const basis = quartersEpsBasis(quarters);
   return QUARTER_TEXT_COLUMNS.map((column) => column.key === "eps" && basis ? { ...column, header: basis === "GAAP" ? "GAAP EPS" : "Adj EPS" } : column);
 }
-export const QUARTER_TEXT_COLUMNS: HeadlessPaneColumn[] = [
+const QUARTER_TEXT_COLUMNS: HeadlessPaneColumn[] = [
   { key: "date", header: "Date" },
   { key: "period", header: "Quarter" },
   { key: "eps", header: "EPS", align: "right" },

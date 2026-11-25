@@ -349,7 +349,7 @@ const SPARSE_CAPITAL = new Set<CapitalColumnId>(["ranking", "control"]);
  * columns' labels then carry instead of a CCY column; null for several, or an
  * amount whose currency the filing does not give.
  */
-export function capitalSharedCurrency(data: Pick<CreditDocumentsPayload, "instruments">): string | null {
+function capitalSharedCurrency(data: Pick<CreditDocumentsPayload, "instruments">): string | null {
   const priced = data.instruments.filter((row) => instrumentOutstanding(row) != null || row.commitment != null);
   const currencies = new Set(data.instruments.map((row) => row.currency).filter(Boolean));
   return priced.length > 0 && currencies.size === 1 && priced.every((row) => row.currency) ? [...currencies][0]! : null;

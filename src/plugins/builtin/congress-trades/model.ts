@@ -129,7 +129,7 @@ export function plainAssetName(name: string): string {
  * family LLCs files four rows that differ only there. The holder it is held
  * through in turn ("…, owned through …") stays in the description.
  */
-export function tradeVehicleSuffix(trade: Pick<CloudCongressTradePayload, "description">): string {
+function tradeVehicleSuffix(trade: Pick<CloudCongressTradePayload, "description">): string {
   const vehicle = /Underlying Asset of\s+(.+?)\s*(?:,\s*(?:owned|held)\b|·|$)/i.exec(trade.description ?? "")?.[1]?.trim();
   return vehicle ? ` via ${vehicle}` : "";
 }
