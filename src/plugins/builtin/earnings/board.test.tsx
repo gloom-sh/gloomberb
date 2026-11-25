@@ -329,6 +329,18 @@ test("reports to come and reports out are two views, each with its own columns; 
     const opened = await tui.waitForFrameToContain("EPS ACT", 40);
     expect(opened).toContain("JPM");
     expect(opened).not.toContain("NFLX");
+    // `shot EVTS JPM --kind upcoming`: the named view wins over the one JPM's report, already out, is in.
+    const named = createInitialState(createTestPaneConfig("/tmp/gloomberb-ern-kinds-tui-test", {
+      paneId: "earnings-calendar", instanceId: `${instance}:named`, settings: { kind: "upcoming" } }));
+    named.focusedPaneId = `${instance}:named`;
+    await act(async () => {
+      await tui.render(<LiveBoard initial={named} runtime={runtime} highlight="JPM" onFooter={() => {}} />, { width: 150, height: 12 });
+    });
+    const upcomingNamed = await tui.waitForFrameToContain("NFLX", 40);
+    await settleFrame(tui.setup(), 8);
+    expect(tui.frame()).toMatch(/STATUS/);
+    expect(tui.frame()).not.toContain("EPS ACT");
+    expect(upcomingNamed).not.toContain("JPM ");
   } finally {
     calendarRequests.mockImplementation(defaultCalendar);
     resetEarningsCloudCaches();

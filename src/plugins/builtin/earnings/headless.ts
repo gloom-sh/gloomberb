@@ -172,16 +172,18 @@ const NO_OWNERSHIP = new Map();
 /**
  * EVTS with a ticker: the board is the market's whatever the ticker, so the
  * report says so once, whether the ticker is on it and when, and where its
- * own report dates are.
+ * own report dates are. `board` is what the report lists: with `--kind`, that
+ * view's reports alone, which `kind` names.
  */
-function boardTickerNotice(symbol: string, board: ReadonlyArray<Pick<BoardReport, "symbol" | "listings" | "date">>, from: string, to: string): { notice: string; date: string | null; row: string | null } {
+function boardTickerNotice(symbol: string, board: ReadonlyArray<Pick<BoardReport, "symbol" | "listings" | "date">>, from: string, to: string, kind?: string | null): { notice: string; date: string | null; row: string | null } {
   const report = board.find((entry) => boardRowOf(entry, symbol));
   // CCB named by its H share is on the board under its A share.
   const shownAs = report?.listings && !sameHistoryListing(report.symbol, boardKey(symbol)) ? ` (as ${report.symbol})` : "";
   const where = report ? `${symbol} reports on ${report.date}${shownAs}` : `${symbol} is not on it`;
   const days = from === to ? from : `${from} to ${to}`;
+  const view = kind === "upcoming" ? " (Upcoming)" : kind === "reported" ? " (Reported)" : "";
   return {
-    notice: `EVTS is the market's earnings board for ${days}, not one company's: ${where}. For ${symbol}'s own report dates run \`gloom fn ERN ${symbol}\`.`,
+    notice: `EVTS is the market's earnings board for ${days}${view}, not one company's: ${where}. For ${symbol}'s own report dates run \`gloom fn ERN ${symbol}\`.`,
     date: report?.date ?? null,
     row: report?.symbol ?? null,
   };
@@ -275,7 +277,8 @@ async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContex
     impliedMove: report.impliedMove,
     averageMove: report.averageMove,
   }));
-  const ticker = highlight ? boardTickerNotice(highlight, all, query.from, query.to) : null;
+  // Said of the reports listed: with `--kind`, the view's.
+  const ticker = highlight ? boardTickerNotice(highlight, listed, query.from, query.to, kind) : null;
   // As the pane's Upcoming and Reported views: the reports to come first, those out under them.
   const kinds = listed.slice(0, limit).map((report) => boardReportKind(report, today));
   const upcoming = rows.filter((_row, index) => kinds[index] === "upcoming");

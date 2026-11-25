@@ -355,9 +355,15 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
       candidate.kind === "report" && boardRowOf(candidate.report, highlight))?.report;
     if (!report) return;
     highlighted.current = highlight;
-    setKind(boardReportKind(report, today));
+    // A view named by `--kind` or a layout's `kind` wins: the ticker's report is selected only in it.
+    const reportKind = boardReportKind(report, today);
+    if (isBoardKind(requestedKind)) {
+      if (requestedKind === reportKind) setSelectedKey(report.key);
+      return;
+    }
+    setKind(reportKind);
     setSelectedKey(report.key);
-  }, [data, days, highlight, setKind, setSelectedKey, sort, today]);
+  }, [data, days, highlight, requestedKind, setKind, setSelectedKey, sort, today]);
 
   useAutoRefresh(resource.updatedAt, resource.load);
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
