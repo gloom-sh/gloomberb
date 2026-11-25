@@ -34,7 +34,7 @@ export function useEventData(variant: "corporate-actions" | "earnings-estimates"
   const quoteCurrency = tickerFinancials?.quote?.currency;
   // The listing's type, as `fn EVT` reads it: a fund's events are its distributions, never a feed's EPS rows.
   const quoteType = tickerFinancials?.quote?.instrumentType;
-  const metadataType = tickerFinancials?.quoteMetadata?.instrumentType;
+  const metadataType = tickerFinancials?.quoteMetadata?.instrumentType ?? binding.ticker?.metadata.assetCategory;
   const financialsData = useMemo<EventFinancials | null>(
     () => (quarterlyStatements || financialCurrency || trailingEps != null || quoteType || metadataType ? {
       quarterlyStatements: quarterlyStatements ?? [],
@@ -84,7 +84,7 @@ export function useEventData(variant: "corporate-actions" | "earnings-estimates"
     loading: analystLoading,
     error: analystError,
     reload: reloadAnalyst,
-  } = useTickerRequest<AnalystResearchData | null>(analystLoader, symbol, exchange);
+  } = useTickerRequest<AnalystResearchData | null>(analystLoader, symbol, exchange, undefined, !fund);
   const displayCurrency = actionsData?.currency ?? analystData?.currency ?? currency;
   const allRows = useMemo(() => (
     buildEventRows(actionsData, analystData, financialsData, displayCurrency)

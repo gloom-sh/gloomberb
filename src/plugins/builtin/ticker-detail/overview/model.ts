@@ -36,10 +36,11 @@ import type { OverviewFunctionLink, PositionTableRow, StatField } from "./types"
 import type { OverviewDividendState } from "./dividend";
 import { lapseValue, UNEVEN_REGULAR_PAYMENTS } from "../../../../utils/forward-dividend";
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl, portfolioPnlPercent, signedPositionDirection } from "../../../../portfolio/position-metrics";
-import { listingDividendYield, liveForwardPE, liveMarketCapitalization, liveTrailingPE } from "../../../../market-data/quotes/live-valuation";
-import { atRegularSessionPrice } from "../../../../market-data/quotes/regular-session-valuation";
+import { listingDividendYield, liveForwardPE, liveTrailingPE } from "../../../../market-data/quotes/live-valuation";
+import { atRegularSessionPrice, regularSessionMarketCapitalization } from "../../../../market-data/quotes/regular-session-valuation";
+import { listingEnterpriseValue, type ListingEnterpriseValue } from "../../../../market-data/quotes/listing-enterprise-value";
 import { formatReportedMoney, REPORTING_CURRENCY_NOT_SOURCED } from "../../../../utils/reported-money";
-import { enterpriseValueCheck, enterpriseValueComputed, enterpriseValueNotMeaningful, fundamentalsCurrency, financialEnterpriseValue, fundamentalsEpsCurrency, reportedEnterpriseValue } from "../../../../utils/fundamentals";
+import { enterpriseValueCheck, enterpriseValueComputed, fundamentalsCurrency, financialEnterpriseValue, fundamentalsEpsCurrency } from "../../../../utils/fundamentals";
 import { formatShortDate } from "../../../../utils/datetime-format";
 import { safeExternalUrl } from "../../../../utils/external-url";
 import type { FundBondFacts } from "../../../../api-client/fund-facts";
@@ -182,6 +183,7 @@ export function buildOverviewStats({
   quoteCurrency,
   baseCurrency,
   marketCapExchangeRates = new Map(),
+  enterpriseValue = listingEnterpriseValue({ quote, fundamentals, profile: undefined }),
   nextEarnings,
   depositaryReceipt = false,
   depositaryPair = null,
@@ -204,6 +206,7 @@ export function buildOverviewStats({
   baseCurrency: string;
   toBase: CurrencyConverter;
   marketCapExchangeRates?: ReadonlyMap<string, number>;
+  enterpriseValue?: ListingEnterpriseValue;
   nextEarnings?: NextEarnings;
   /** The share count is in depositary receipts, not ordinary shares. */
   depositaryReceipt?: boolean;
@@ -265,7 +268,7 @@ export function buildOverviewStats({
     const converted = convertMarketCapitalization(value, currency, baseCurrency, marketCapExchangeRates);
     return converted == null ? undefined : formatCompactCurrency(converted, baseCurrency, { fixedDecimals: true });
   };
-  const capitalization = liveMarketCapitalization(quote, fundamentals)
+  const capitalization = regularSessionMarketCapitalization({ quote, fundamentals })
     ?? (coin?.marketCap == null ? null : { value: coin.marketCap, currency: "USD" });
   if (capitalization) {
     stats.push({
@@ -409,29 +412,28 @@ export function buildOverviewStats({
   }
   // At the regular session price, as the market cap above it is, with the check moved beside it.
   const priced = atRegularSessionPrice({ quote, fundamentals }).fundamentals;
-  const enterpriseValue = reportedEnterpriseValue(priced);
   // At or below zero, N/M as a P/E over a loss reads, with why in the space a stat has; valuation gives the full reason.
-  if (enterpriseValueNotMeaningful(priced)) {
+  if (enterpriseValue.kind === "not-meaningful") {
     // A bank's deposits and an insurer's float are funding, not debt (withFinancialEnterpriseValue);
     // any other's cash exceeds the rest.
     const financial = financialEnterpriseValue(priced);
     stats.push({ label: "EV", value: formatPriceEarnings(NOT_MEANINGFUL),
       detail: financial ? financial.replace(/^n\/m /, "") : ["cash > cap + debt", "cash > cap"] });
-  } else if (fundamentals?.unavailableFields?.includes("enterpriseValue")) {
-    stats.push({ label: "EV", value: MISSING_VALUE });
-  } else if (enterpriseValue != null) {
+  } else if (enterpriseValue.kind === "value") {
     // Market cap + debt - cash (+ minority interest) where the provider's is more than 5% from it, as every view
     // shows it; the notice under the pane gives its inputs where the provider's is far off (enterpriseValueGapIsLarge).
     const check = enterpriseValueCheck(priced);
     const minority = (check?.minorityAndPreferred ?? 0) > 0 ? " + minority" : "";
     stats.push({
       label: "EV",
-      value: formatCompactCurrency(enterpriseValue, quoteCurrency),
+      value: formatCompactCurrency(enterpriseValue.value, enterpriseValue.currency),
       // An insurer's: its investment book is not netted as cash. How it was reached comes before the base figure.
-      detail: enterpriseValueComputed(priced)
+      detail: enterpriseValue.basis === "computed" || enterpriseValueComputed(priced)
         ? [`cap + debt - cash${minority}`, "computed"]
-        : check?.investmentsKept ? ["investments in", "inv. in"] : inBase(enterpriseValue, quoteCurrency),
+        : check?.investmentsKept ? ["investments in", "inv. in"] : inBase(enterpriseValue.value, enterpriseValue.currency),
     });
+  } else if (fundamentals?.unavailableFields?.includes("enterpriseValue")) {
+    stats.push({ label: "EV", value: MISSING_VALUE });
   }
   if (finite(fundamentals?.shortPercentOfFloat)) {
     stats.push({

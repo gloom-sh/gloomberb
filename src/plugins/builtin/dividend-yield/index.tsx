@@ -39,7 +39,7 @@ function createDividendYieldModule({
 
       ctx.registerTickerResearchTab({
         id: "dividend-yield",
-        name: "Dividends",
+        name: "Dividend Yield",
         order: 38,
         component,
         instruments: ["equity", "fund"],

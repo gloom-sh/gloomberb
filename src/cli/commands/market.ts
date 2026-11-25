@@ -69,7 +69,7 @@ import {
   ratingReason,
 } from "../../plugins/builtin/research/analyst-model";
 import { hasAnalystCoverage, loadAnalystResearch, noAnalystCoverageText } from "../../plugins/builtin/research/client";
-import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../../market-data/published-us-sessions";
+import { optionExpiryFacts, optionSnapshotFreshness } from "../../plugins/builtin/options/snapshot";
 import {
   awaitingFirstDelayedPrint, dailyCloseSessionLabel, dailyCloseText, isQuoteStaleForCurrentSession, noPrintsTodayText, nominalPriceText,
   nominalSessionLabel,
@@ -252,7 +252,7 @@ import { quoteBarNotes } from "../../market-data/quotes/intraday-bar";
 import { cedearRatioText, depositaryPairText, isReceiptSide, listingCedearRatio, listingDepositaryPair } from "../../market-data/depositary-pair";
 import { isPesoDollarPair, loadPesoDollarRates, pesoDollarRateLines, pesoDollarRatesJson } from "../peso-dollar-rates";
 import { withBalanceSheetRate } from "../../market-data/quotes/balance-sheet-rate";
-import { regularSessionValuationPrice } from "../../market-data/quotes/regular-session-valuation";
+import { regularSessionMarketCapitalization, regularSessionValuationPrice } from "../../market-data/quotes/regular-session-valuation";
 import { atLivePriceEarnings } from "../../market-data/quotes/live-valuation";
 import { quoteSourceName } from "../../market-data/quotes/export-identity";
 import { viewMarketCapitalization } from "../../utils/market-capitalization";
@@ -1224,20 +1224,6 @@ function corporateActionRows(data: CorporateActionsData) {
       detail: demergerDetail(event),
     })),
   ].sort((left, right) => right.date.localeCompare(left.date));
-}
-
-/**
- * After a US open, a chain whose latest trade predates it still carries the
- * prior session's quotes and volume. The delayed feed lags the open by about
- * fifteen minutes, so this is expected early in the session.
- */
-function priorSessionChainWarning(chain: OptionsChain, exchange: string, now: number): string | null {
-  const observed = chain.asOf ? Date.parse(chain.asOf) : Number.NaN;
-  if (!Number.isFinite(observed) || (exchange && !getPublishedUsEquityCalendarYears(exchange))) return null;
-  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now);
-  const session = getPublishedUsEquitySession(exchange || "NYSE", today);
-  if (session?.kind !== "session" || now < session.open || observed >= session.open) return null;
-  return `No option trades this session yet (last trade ${chain.asOf})`;
 }
 
 /** Per-share earnings to the cent, as reported; consensus averages carry more digits. */
@@ -3208,7 +3194,7 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       // Market cap, the multiples and the yield at the regular session price, as the text gives them; the quote stays as sent.
       const priced = atLivePriceEarnings(financials);
       // One market cap per view: the share count times the price where the provider's sits more than 2% from it.
-      const capitalization = viewMarketCapitalization(priced.quote, priced.fundamentals, regularSessionValuationPrice(priced.quote));
+      const capitalization = regularSessionMarketCapitalization(financials);
       // The filings behind the latest statements, and for a bank its deposits, uninsured share and CRE.
       const [statementFilings, bank] = view === "fundamentals"
         ? await Promise.all([
@@ -4363,9 +4349,10 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     // contracts deliver something other than 100 shares, so the spot values none of them.
     const { chain, spot: modelSpot } = adjusted ? { chain: loaded, spot: null }
       : valueChainAtModelSpot(loaded, inputs, Date.now(), identity.exchange);
+    const snapshot = optionSnapshotFreshness(chain, now, expiryVenue, result?.refreshError != null);
     const basis: OptionsChainBasis = { spot: modelSpot, dividendYield: inputs.dividendYield ?? null,
       openInterest: await loadOptionsChainOpenInterest(symbol, chain), ivFilled: chainHasFilledIv(chain),
-      volumeSession: optionQuoteSession(chain, identity.exchange || undefined) };
+      volumeSession: optionQuoteSession(chain, identity.exchange || undefined), staleSnapshot: snapshot.status === "stale" };
     const basisFields = optionsBasisFields(basis);
     const currency = [...chain.calls, ...chain.puts].find((contract) => contract.currency?.trim())?.currency.trim().toUpperCase()
       ?? quote?.currency ?? null;
@@ -4374,7 +4361,6 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const refreshWarning = result?.refreshError == null || isTransientFailure(result.refreshError) ? null
       : `Options refresh failed; showing the chain stored ${new Date(result.fetchedAt).toISOString()}`
         + (chain.asOf ? ` (last trade ${chain.asOf})` : "");
-    const sessionWarning = refreshWarning ? null : priorSessionChainWarning(chain, identity.exchange, Date.now());
     // A venue that marks its contracts (Deribit) states IV and greeks without a quote.
     const marked = isMarkedChain(chain);
     const coin = chainCoinCurrency(chain);
@@ -4386,20 +4372,21 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       // FB's chain is the fund listed there now; a listing that stopped trading has none.
       ...listingFateNotes(await fate(), { served: listed }),
       ...await listingChoiceNotes(listing, market, quote, venues),
-      ...[refreshWarning ?? sessionWarning, modelWarning].filter((warning): warning is string => warning != null),
+      ...[refreshWarning, modelWarning].filter((warning): warning is string => warning != null),
     ];
     // Dated by the chain's last trade; a chain that failed to refresh is the stored one, stale.
-    const freshness = rowsFreshness([], { asOf: chain.asOf ?? null }, {
-      ...(chain.dataSource ? { dataSource: chain.dataSource } : {}),
-      ...(chain.delayMinutes != null ? { delayMinutes: chain.delayMinutes } : {}),
-      stale: refreshWarning != null,
-    });
+    const freshness = rowsFreshness([], snapshot);
     const contractCount = chain.calls.length + chain.puts.length;
+    const contractExpiries = new Set([...chain.calls, ...chain.puts].map((contract) => contract.expiration));
+    const expiry = expirationDate ?? (contractExpiries.size === 1 ? contractExpiries.values().next().value : undefined);
+    const expiryFacts = expiry == null ? null : optionExpiryFacts(expiry, now, expiryVenue);
     ctx.printResult({
       data: chain,
       metadata: {
         ...listingMetadata(identity),
         expirations: chain.expirationDates,
+        expiry: expiryFacts,
+        snapshot,
         currency,
         interval: OPTIONS_EXPORT_INTERVAL,
         // `iv` is annualised volatility and `delta` the option's change per 1.00 move in the underlying, both decimals.
@@ -4425,7 +4412,8 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       heading: chain.venue ? `${cliStyles.bold(identity.name || identity.symbol)}${cliStyles.muted(`  ·  ${chain.venue}`)}` : listingHeading(identity),
       rows: (data: OptionsChain) => optionRows(data).map((row) => ({ ...row, ...basisFields })),
       // Choosing an expiry needs the list; once one is chosen the table is that expiry.
-      summary: (data: OptionsChain) => expirationDate == null ? formatExpiryList(data.expirationDates) : "",
+      summary: (data: OptionsChain) => [expiryFacts ? `Expiry ${expiryFacts.date} (${expiryFacts.expired ? "expired" : `${expiryFacts.daysToExpiry}d`})` : "",
+        expirationDate == null ? formatExpiryList(data.expirationDates) : ""].filter(Boolean).join("\n"),
       empty: adjusted ? `No adjusted option contracts for ${listingTitle(identity)} on this expiry.` : `No option contracts for ${listingTitle(identity)}.`,
       ...(contractCount > 0 ? { footnote: optionsBasisFootnote(basis, chain) } : {}),
       exportIdentity: { symbolOrSeries: listing.key, currencyOrUnit: currency, interval: OPTIONS_EXPORT_INTERVAL },

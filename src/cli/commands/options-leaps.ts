@@ -8,13 +8,14 @@ import { formatCountCell } from "../helpers";
 import { cliStyles, renderTable, type CliTableColumn } from "../../utils/cli-output";
 import { errorMessage } from "../../utils/errors";
 import { numberErrorMessage, rangeErrorMessage } from "../../utils/decimal-comma";
-import { expirationHint, expiryIsoDate, OPTION_EXPIRATION_FORMAT, parseOptionExpiration } from "../../utils/option-expiry";
+import { expirationHint, expiryIsoDate, OPTION_EXPIRATION_FORMAT, optionExpiryVenue, parseOptionExpiration } from "../../utils/option-expiry";
 import { dateOptionError, readCalendarDate } from "../../utils/calendar-date";
 import { isFundType } from "../../utils/sec";
 import { daysToExpiryFrom, optionMid, type OptionSide } from "../../plugins/builtin/shared/volatility";
 import { optionQuoteValuationTime } from "../../plugins/builtin/vol-surface/model";
 import { optionBreakeven, optionCarry, optionCarryNet, optionSpreadPercent } from "../../plugins/builtin/options/carry";
 import { parseDeltaBand } from "../../plugins/builtin/options/strike-window";
+import { optionSnapshotFreshness } from "../../plugins/builtin/options/snapshot";
 import { ivRankReason, ivSymbol, loadIvScreen, type IvScreenRow } from "../../plugins/builtin/iv-history/client";
 import { newYorkDay, resolveListingEvents, upcomingReportDate } from "../../plugins/builtin/shared/earnings-calendar";
 import {
@@ -276,7 +277,8 @@ export type LeapsRow = {
   currency: string;
   /** When the chain was observed. */
   asOf: string | null;
-  dataSource: "live" | "delayed" | null;
+  dataSource: "live" | "delayed" | "stale" | "unreported" | null;
+  stale?: true;
   delayMinutes: number | null;
   // The fields below are on a row only when `--columns` asked for them.
   /** `iv`: the implied volatility the contract's delta is valued at, percent a year. */
@@ -331,10 +333,12 @@ function screenLeapsChain(
   criteria: LeapsCriteria,
   inputs: OptionModelInputs,
   now: number,
+  venue?: string,
 ): { rows: LeapsRow[]; scanned: number } {
   const spot = inputs.spot;
   const contracts = (criteria.side === "call" ? chain.calls : chain.puts) as Array<OptionContract & { delta?: number | null; iv?: number | null }>;
   const valuationTime = optionQuoteValuationTime(chain, now);
+  const snapshot = optionSnapshotFreshness(chain, now, venue);
   const wants = new Set(criteria.columns);
   const rows: LeapsRow[] = [];
   let scanned = 0;
@@ -367,9 +371,10 @@ function screenLeapsChain(
       extrinsicPerYearPercent: round(carry.extrinsicPerYear * 100, 3),
       spot,
       currency: contract.currency,
-      asOf: chain.asOf ?? null,
-      dataSource: chain.dataSource ?? null,
-      delayMinutes: chain.delayMinutes ?? null,
+      asOf: snapshot.asOf,
+      dataSource: snapshot.status ?? null,
+      delayMinutes: snapshot.delayMinutes ?? null,
+      ...(snapshot.status === "stale" ? { stale: true } : {}),
     };
     if (wants.has("iv")) {
       row.ivPercent = contract.iv != null && Number.isFinite(contract.iv) ? round(contract.iv * 100, 2) : null;
@@ -635,7 +640,8 @@ async function screenSymbol(
       missed.push(expiryIsoDate(loaded.expiration));
       continue;
     }
-    const screened = screenLeapsChain(symbol, chainWithModelFigures(loaded.chain, { ...inputs, now }), criteria, inputs, now);
+    const screened = screenLeapsChain(symbol, chainWithModelFigures(loaded.chain, { ...inputs, now }), criteria, inputs, now,
+      optionExpiryVenue(listing.request.symbol, listing.request.exchange));
     rows.push(...screened.rows);
     scanned += screened.scanned;
   }

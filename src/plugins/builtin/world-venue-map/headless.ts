@@ -86,13 +86,17 @@ async function venueRows(context: HeadlessPaneContext, query: string, start: Map
         nextChange: remaining == null ? null : venue.isOpen ? "closes" : "opens",
         nextChangeAt: remaining == null || stated == null ? null : new Date(checkedAt + stated * 1_000).toISOString(),
         nextText: remaining == null ? null : `${venue.isOpen ? "closes" : "opens"} ${formatVenueCountdown(remaining)}`,
+        ...(venue.hours ? { hours: venue.hours } : {}),
         lon: venue.longitude,
         lat: venue.latitude,
       };
     }),
     freshness: REFERENCE_DATA,
     errors: start.note ? [start.note] : [],
-    notes: pageCutNote(shown.length, venues.length, limit),
+    notes: [...pageCutNote(shown.length, venues.length, limit), ...shown.flatMap((venue) => {
+      const hours = venue.hours;
+      return hours ? [`${venue.title} (local time): scheduled ${hours.open}–${hours.close}; continuous ${hours.continuousOpen}–${hours.continuousClose}.`] : [];
+    })],
     // The service's states are stale once a session it stated should have opened or closed since it read them: the
     // flag the footer reads, which the response and its payload each carry.
     metadata: { layer: "venues", stale: response.stale === true || response.data.stale === true, total: venues.length,

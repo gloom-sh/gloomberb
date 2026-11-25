@@ -49,7 +49,8 @@ import {
   ttmConversionNote, withFinancialEnterpriseValue,
 } from "../../../utils/fundamentals";
 import { servedRatesNotMeaningful } from "../../../utils/served-rates";
-import { atRegularSessionPrice } from "../../../market-data/quotes/regular-session-valuation";
+import { atRegularSessionPrice, regularSessionMarketCapitalization } from "../../../market-data/quotes/regular-session-valuation";
+import { listingEnterpriseValue } from "../../../market-data/quotes/listing-enterprise-value";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
 import { sharesOutstandingInReceipts } from "../../../utils/depositary-receipt";
 import { isReceiptSide, listingCedearRatio, listingDepositaryPair } from "../../../market-data/depositary-pair";
@@ -72,8 +73,8 @@ import { buildOverviewStats, buildPositionRows, buildProfileFields, FINANCIALS }
 import { hasStatementFinancials } from "./financials/model";
 import type { OverviewFunctionLink, StatField } from "./overview/types";
 import type { CryptoMarketAsset } from "../../../api-client/crypto-markets";
-import { describeFundamentalMarketCap } from "../../../utils/market-capitalization";
-import { liveFiftyTwoWeekRange, liveMarketCapitalization } from "../../../market-data/quotes/live-valuation";
+import { describeFundamentalMarketCap, marketCapBasisNote } from "../../../utils/market-capitalization";
+import { liveFiftyTwoWeekRange } from "../../../market-data/quotes/live-valuation";
 import { instrumentTypeLabel } from "../../../tickers/instrument-kind";
 import { ClippedText } from "../../../components/ui/display";
 import { DelayedMark, delayedMarkWidth, useDelayedMarkMinutes } from "../../../components/ui/delayed-mark";
@@ -201,7 +202,7 @@ function ResolvedOverviewTab({
     getMetadata: () => ({ observations: [quoteObservation(quote, Date.now())] }),
   } : null);
   const fundamentals = financials?.fundamentals;
-  const capitalization = liveMarketCapitalization(quote, fundamentals);
+  const capitalization = regularSessionMarketCapitalization({ quote, fundamentals });
   const profile = financials?.profile;
   const instrumentType = quote?.instrumentType?.trim()
     || financials?.quoteMetadata?.instrumentType?.trim()
@@ -337,6 +338,7 @@ function ResolvedOverviewTab({
     ? ttmConversionNote(shownFundamentals) : undefined;
   // A cap shown in the base currency too (7.80T ARS, 5.03B USD) says at what rate, and when it was read.
   const capRateNote = capitalization ? baseCurrencyFiguresNote(capitalization.currency, baseCurrency, fxObservations) : undefined;
+  const capBasisNote = marketCapBasisNote(capitalization);
   // FB lists a fund now, and Meta trades as META: said for someone who typed FB meaning the company, as `quote FB` says it.
   const changeNote = useTickerChangeNote(ticker.metadata.ticker, ticker, quote);
   const returnIntegrityNotice = priceReturnIntegrityNotice(performanceFields);
@@ -353,7 +355,8 @@ function ResolvedOverviewTab({
       ...(enterpriseValueNote ? [enterpriseValueNote] : []),
       ...(ttmNote ? [ttmNote] : []),
       ...(capRateNote ? [capRateNote] : []),
-      ...(capitalization?.provenance.kind === "fundamentals" && !capitalization.live
+      ...(capBasisNote ? [capBasisNote] : []),
+      ...(capitalization?.provenance.kind === "fundamentals"
         ? [`Market cap: ${describeFundamentalMarketCap(capitalization.provenance)}.`] : []),
     ],
     focused,
@@ -504,6 +507,7 @@ function ResolvedOverviewTab({
     baseCurrency,
     toBase,
     marketCapExchangeRates: exchangeRates,
+    enterpriseValue: financials ? listingEnterpriseValue({ ...financials, quote, fundamentals: shownFundamentals }) : undefined,
     nextEarnings: financials?.nextEarnings,
     depositaryReceipt: sharesOutstandingInReceipts(quote, fundamentals, description),
     depositaryPair: depositaryPair ? { pair: depositaryPair, receiptSide: isReceiptSide(financials) } : null,

@@ -399,6 +399,17 @@ describe("EVT's Dividends view", () => {
     expect(tui.frame()).not.toContain("Next report");
     expect(catalystReads).toEqual([]);
   });
+
+  test.each([["AFK", EventsResearchEarnings], ["IQQ5:XETRA", EventsDividendsView]] as const)(
+    "%s renders distributions without requesting analyst research", async (symbol, View) => {
+      let estimates = 0;
+      await mount({ symbol, financials: FUND, content: (body) => <View {...body} focused onCapture={() => {}} />,
+        estimates: async () => { estimates++; throw new Error("UPSTREAM_ERROR"); } });
+      expect(tui.frame()).toContain("Paying since");
+      expect(tui.frame()).not.toContain("UPSTREAM_ERROR");
+      expect(estimates).toBe(0);
+    },
+  );
 });
 
 describe("the strip stays", () => {

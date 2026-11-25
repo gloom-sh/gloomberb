@@ -252,7 +252,9 @@ test("Enter opens the cursor's contract on its broker, and with trading t opens 
 });
 
 test("a broker's chain says nothing of Gloom Cloud's delay: a free account sees no 15m clock or upsell on it", async () => {
-  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getOptionsChain: async () => makeChain([100, 101], 101) })));
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getOptionsChain: async () => ({
+    ...makeChain([100, 101], 101), asOf: new Date(Date.now() - 900_000).toISOString(),
+  }) })));
   const profile: BrokerInstanceConfig = { id: "sim", brokerType: "demo", label: "Demo", enabled: true, config: {} };
   const brokerTicker = createTestTicker("AAPL", "AAPL", { assetCategory: "STK",
     broker_contracts: [{ brokerId: "demo", brokerInstanceId: "sim", symbol: "AAPL", secType: "STK", exchange: "SMART", currency: "USD" }] });
@@ -359,25 +361,28 @@ test("keeps table geometry and scroll steady while a cold expiry loads", async (
   expect((tui.setup().renderer.root.findDescendantById("options-table-body-scroll") as ScrollBoxRenderable).scrollTop).toBeGreaterThan(0);
 });
 
-test("a typed expiry date opens that expiry, and its report names it with the chain's as-of and delay", async () => {
-  const chain: OptionsChain = { ...makeChain([100, 101], 101, [1_781_049_600, 1_782_345_600]),
-    asOf: "2026-06-01T20:00:00.000Z", dataSource: "delayed", delayMinutes: 15 };
+test("AFK's expiry counts from today while its old chain is reported as stale", async () => {
+  setSystemTime(new Date("2026-11-25T17:29:00Z"));
+  const expiration = Date.parse("2026-12-18") / 1000;
+  const fixture = makeChain([100, 101], 101, [expiration]);
+  const chain: OptionsChain = { ...fixture, underlyingSymbol: "AFK",
+    calls: fixture.calls.map((contract) => ({ ...contract, expiration })), puts: fixture.puts.map((contract) => ({ ...contract, expiration })),
+    asOf: "2026-11-18T17:29:00.000Z", dataSource: "delayed", delayMinutes: 15 };
   const provider = createTestDataProvider({ getOptionsChain: async () => chain });
   setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
   const registry = createRemoteUiRegistry();
-  // `fn OMON --expiration 2026-06-25` leaves the date as text in the pane setting.
   await act(async () => {
     await tui.render(<RemoteUiRegistryProvider registry={registry}>
-      <OptionsHarness ticker={makeTicker("AAPL")} quotePrice={101} settings={{ expiration: "2026-06-25" }} />
+      <OptionsHarness ticker={makeTicker("AFK")} quotePrice={101} settings={{ expiration: "2026-12-18" }} />
     </RemoteUiRegistryProvider>, { width: 124, height: 16 });
   });
   await renderSettled();
-  expect(tui.frame()).toMatch(/Expiry\s+25 Jun '26\s+\(24d\)/);
+  expect(tui.frame()).toMatch(/Expiry\s+18 Dec '26\s+\(23d\)/);
   expect(tui.frame()).not.toContain("NaN");
   const report = renderedReportNotices(registry.snapshot());
-  expect(report.notices[0]).toBe("Expiry 2026-06-25 (24d)");
-  expect(report.facts.expiry).toEqual({ date: "2026-06-25", daysToExpiry: 24 });
-  expect(renderedReportFreshness(registry.snapshot())).toEqual({ asOf: "2026-06-01T20:00:00.000Z", status: "delayed", delayMinutes: 15 });
+  expect(report.notices[0]).toBe("Expiry 2026-12-18 (23d)");
+  expect(report.facts.expiry).toEqual({ date: "2026-12-18", daysToExpiry: 23, expired: false });
+  expect(renderedReportFreshness(registry.snapshot())).toEqual({ asOf: "2026-11-18T17:29:00.000Z", status: "stale" });
   expect(renderedReportFailure(registry.snapshot())).toBeNull();
 });
 
@@ -399,6 +404,7 @@ test("a typed expiry the chain does not list fails its report with the options c
 test("a strike whose IV was filled from its neighbours prints ~, says so in the footer, and its report carries the notice", async () => {
   // No bid on the 120 call: it has no two-sided quote to solve, so its IV is read off the strikes either side.
   const chain = makeChain([100, 101, 120], 101);
+  chain.asOf = new Date(Date.now() - 900_000).toISOString();
   chain.calls = chain.calls.map((contract) => contract.strike === 120 ? { ...contract, bid: 0, ask: 0.05, lastPrice: 0.02 } : contract);
   // The 120 put is quoted above its 19.00 intrinsic, so the strike has a market to fill.
   chain.puts = chain.puts.map((contract) => contract.strike === 120 ? { ...contract, bid: 19.9, ask: 20.1, lastPrice: 20 } : contract);

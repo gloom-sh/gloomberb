@@ -1298,6 +1298,8 @@ KO's November 27, 2026 bull put spread on Friday 23 October's close: sell the 90
 
 ### Greeks spot and time
 
+DES Options, OMON and `options` count the calendar days to expiry from today in New York, not from the model's valuation date. The chain's timestamp is separate: a prior close remains current until the delayed feed reaches the next session's open. A chain that predates the latest session the feed should cover reads stale; one without a usable timestamp reads undated.
+
 A chain's IV and Greeks (`options`, OMON) are valued at one spot and one instant, which the pane and every export name; OVDV values its surface at the same spot:
 
 - When the underlying's quote carries the official close of the regular session the chain's quotes were taken in, as it does before the next open and early in it while the chain is still the close's, the spot is that close and time to expiry runs from the chain's time. A pre-market or after-hours print does not move the delta of a chain still quoting the close.

@@ -354,6 +354,11 @@ test("a pane behind the sign-in wall reports what it needs instead of the wall's
     "Verify your email to run the Equity Diagnostic. Requires a verified email on your Gloom account: open the app (gloom) and resend the "
       + "verification email from the command bar (Ctrl+P, Resend Verification Email).",
   );
+  for (const action of ["read risk factors", "read earnings calls", "follow hiring"]) {
+    const report = await wall(`Gloom Cloud Pro: Sign in to ${action}. Sign up free ↵ Log in`);
+    expect(report).toContain("upgrade if your account does not have Gloom Cloud Pro");
+    expect(report).not.toContain("Requires a free Gloom sign-in");
+  }
 });
 
 test("a pane walled whole cites no source, and one that says how to reach it says that instead of the wall", async () => {

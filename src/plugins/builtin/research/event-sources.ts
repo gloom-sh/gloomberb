@@ -4,7 +4,7 @@ import type {
   CorporateActionsData,
   TickerFinancials,
 } from "../../../types/financials";
-import { formatEventMetric, type EventSummaryFigure } from "./event-model";
+import { formatEventMetric, isFundListing, type EventSummaryFigure } from "./event-model";
 import type { HeadlessBundleSection, HeadlessPaneColumn } from "../../../types/headless";
 import type { EarningsQuarter } from "./event-charts";
 import { loadAnalystResearch } from "./client";
@@ -127,17 +127,21 @@ export async function loadEventSources(
   symbol: string,
   today = listingDay(parsePublicTickerKey(symbol).exchange),
 ): Promise<EventSources> {
-  const [actions, estimates, financials, calendar] = await Promise.allSettled([
+  const financialsRead = Promise.allSettled([provider.getTickerFinancials(symbol, "")]).then(([financials]) => financials);
+  const estimatesRead = financialsRead.then((financials) => (
+    !isFundListing(financials.status === "fulfilled" ? financials.value : null) && provider.getAnalystResearch
+      ? loadAnalystResearch(provider, symbol, "") : null
+  ));
+  const [actions, estimates, calendar] = await Promise.allSettled([
     provider.getCorporateActions?.(symbol, "") ?? null,
-    // A listing no analyst covers answers with no estimates, not a failure.
-    provider.getAnalystResearch ? loadAnalystResearch(provider, symbol, "") : null,
-    provider.getTickerFinancials(symbol, ""),
+    estimatesRead,
     loadEarningsCalendar(provider, [symbol]),
   ]);
+  const financials = await financialsRead;
   const event = calendar.status === "fulfilled" ? calendarEventOf(calendar.value.events, symbol) : null;
   const actionsData = actions.status === "fulfilled" && actions.value ? withResolvedEarnings(actions.value, event, today) : null;
-  const estimatesData = estimates.status === "fulfilled" ? estimates.value : null;
   const financialsData = financials.status === "fulfilled" ? financials.value : null;
+  const estimatesData = estimates.status === "fulfilled" ? estimates.value : null;
   return {
     actions: actionsData,
     estimates: estimatesData,
