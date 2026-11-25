@@ -77,6 +77,12 @@ export function periodColumns(currency: string | null): DataTableColumn[] {
   ];
 }
 
+/** The actual less the estimate, as served, else from the two; none without both. */
+export function estimateDifference(row: Pick<EstimateSurprise, "actual" | "estimate" | "difference">): number | null {
+  if (row.difference != null && Number.isFinite(row.difference)) return row.difference;
+  return row.actual != null && row.estimate != null ? row.actual - row.estimate : null;
+}
+
 /**
  * A report's EPS surprise as Surprises shows and sorts it: the actual over the
  * estimate, as EVT and ERN work it out (N/M against a loss or zero estimate),

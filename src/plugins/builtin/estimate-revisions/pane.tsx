@@ -62,6 +62,7 @@ import {
   estimatePercent as percent,
   estimatePercentile,
   estimatePoints,
+  estimateDifference,
   estimateSurprise,
   NO_ESTIMATE_PERIODS_TITLE,
   periodColumns,
@@ -123,7 +124,9 @@ function surpriseColumns(rows: readonly EstimateSurprise[], width: number): Data
     { id: "actual", label: `ACT EPS${unit}`, width: Math.max(8, 7 + unit.length), align: "right" },
     { id: "percent", label: "SURPRISE", width: 9, align: "right" },
     { id: "percentile", label: "PCTL 1Y", width: 8, align: "right", omitWhenEmpty: true },
-  ], width, ["dateType", "percentile"]);
+    // The beat or miss in EPS, as EVT's detail says it; it takes the width the figures leave, so they sit together.
+    { id: "difference", label: "VS EST", width: 8, align: "left", flexGrow: 1 },
+  ], width, ["dateType", "percentile", "difference"]);
 }
 
 /** The consensus over time, recorded and as lookbacks reported it, as the Revisions chart and a period's detail draw it. */
@@ -391,6 +394,11 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
         if (rate == null) return { text: MISSING_VALUE, color: colors.textDim };
         const value = rate * 100;
         return { text: formatPercentRaw(value), value, color: value > 0 ? colors.positive : value < 0 ? colors.negative : colors.textDim };
+      }
+      case "difference": {
+        const difference = estimateDifference(row);
+        return difference == null ? { text: MISSING_VALUE, color: colors.textDim }
+          : { text: `${difference > 0 ? "+" : ""}${eps(difference)}`, value: difference, color: colors.textDim };
       }
       default: return { text: estimatePercentile(row.percentile), value: row.percentile, color: colors.textDim };
     }

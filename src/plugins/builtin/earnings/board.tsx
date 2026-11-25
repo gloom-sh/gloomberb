@@ -162,7 +162,9 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   const [requestedDate] = usePaneSettingValue<string>("date", "");
   const [requestedWeek] = usePaneSettingValue<string>("week", "");
   const [chosenRange, setRange] = usePluginPaneState<BoardRange | null>("range", null);
-  // The table's Upcoming or Reported view; until one is chosen, the reports to come while the range has any.
+  // The table's Upcoming or Reported view: a layout's or `shot`'s `kind` setting, else the reports to come while the
+  // range has any; a choice made in the pane wins.
+  const [requestedKind] = usePaneSettingValue<string>("kind", "");
   const [chosenKind, setKind] = usePluginPaneState<BoardKind | null>("kind", null);
   // The calendar's groups opened past their "+N more" slot, by `calendarGroupKey`.
   const [expanded, setExpanded] = useState(NONE_EXPANDED);
@@ -284,7 +286,8 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
     for (const report of data?.reports ?? []) split[boardReportKind(report, today)].push(report);
     return split;
   }, [data, today]);
-  const kind: BoardKind = chosenKind ?? (kinds.upcoming.length > 0 || kinds.reported.length === 0 ? "upcoming" : "reported");
+  const kind: BoardKind = chosenKind ?? (isBoardKind(requestedKind) ? requestedKind
+    : kinds.upcoming.length > 0 || kinds.reported.length === 0 ? "upcoming" : "reported");
   const rows = useMemo(() => boardRows(kinds[kind], days, sort, order === "mine"), [days, kind, kinds, order, sort]);
   const reportRows = useMemo(() => rows.filter((row): row is BoardRow & { kind: "report" } => row.kind === "report"), [rows]);
   const slotsPerRow = calendarSlotsPerRow(width);

@@ -143,8 +143,8 @@ test("Surprises charts each report's estimate beside its actual over the reports
   const lines = await renderDetail(120, 28, false, "surprises");
   expect(lines.find((line) => line.includes("● Estimate"))).toMatch(/● Estimate .*● Beat .*● Miss/);
   const header = lines.findIndex((line) => line.includes("EST EPS"));
-  expect(lines[header]).toMatch(/DATE \S\s+EST EPS USD\s+ACT EPS USD\s+SURPRISE\s*$/);
+  expect(lines[header]).toMatch(/DATE \S\s+EST EPS USD\s+ACT EPS USD\s+SURPRISE\s+VS EST\s*$/);
   // The surprise is the actual's on the estimate, as EVT's, where the server sent none.
-  expect(lines[header + 1]).toMatch(/2026-07-30\s+1\.43\s+1\.57\s+\+9\.79%/);
-  expect(lines[header + 2]).toMatch(/2026-04-30\s+1\.70\s+1\.65\s+-2\.94%/);
+  expect(lines[header + 1]).toMatch(/2026-07-30\s+1\.43\s+1\.57\s+\+9\.79%\s+\+0\.14\s*$/);
+  expect(lines[header + 2]).toMatch(/2026-04-30\s+1\.70\s+1\.65\s+-2\.94%\s+-0\.05\s*$/);
 });

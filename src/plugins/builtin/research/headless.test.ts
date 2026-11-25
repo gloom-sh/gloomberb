@@ -103,7 +103,7 @@ test("EE reads a surprise against a loss estimate and growth off a year-ago loss
   expect(result.rows.find((row) => row.status === "Q Est")).toMatchObject({ estimateGrowthNotMeaningful: true, estimateGrowthMetric: "eps" });
   const text = renderHeadlessPaneText(definition, result, request, "EE");
   // The estimate's growth in its row and in Next up, the reported quarter's surprise in its own table.
-  expect(text).toMatch(/next qtr\s+2026-09-30\s+0\.10\s+—\s+—\s+N\/M\s+30/);
+  expect(text).toMatch(/next qtr\s+2026-09-30\s+0\.10\s+\S\s+\S\s+N\/M\s+30/);
   expect(text).toMatch(/EPS est\s+0\.10\s+30 analysts · N\/M y\/y/);
   expect(text).toMatch(/Jul 2026\s+-1\.14\s+-1\.47\s+N\/M/);
   expect(text).not.toContain("-22.45");

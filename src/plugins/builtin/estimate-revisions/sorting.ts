@@ -2,7 +2,7 @@ import type {
   EstimateObservation,
   EstimateSurprise,
 } from "../../../api-client/estimate-revisions";
-import { estimateSurprise } from "./model";
+import { estimateDifference, estimateSurprise } from "./model";
 
 export interface EstimateSort {
   column: string;
@@ -86,6 +86,8 @@ export function sortEstimateSurprises(
           const surprise = estimateSurprise(row);
           return typeof surprise === "number" ? surprise : null;
         }
+        case "difference":
+          return estimateDifference(row);
         case "dateType":
         case "currency":
         case "estimate":
