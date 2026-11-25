@@ -103,3 +103,19 @@ test("a point with a disclosed tolerance prints the full management range", asyn
   expect(renderHeadlessPaneText(definition, result, args, "GUIDE", deriveHeadlessFreshness(definition, result))).toContain("$17 billion plus or minus 3%");
   expect(result.sections[0]?.rows?.[0]).toMatchObject({ point: 17e9, rangeText: row.rangeText });
 });
+
+test("--period lists one kind of period, its change named by what it is set against", async () => {
+  const quarter = observation();
+  const year = observation({ id: "actual:fy", seriesKey: "arr:reported:GBP:year", value: 480_000_000,
+    period: { start: "2025-07-01", end: "2026-06-30", kind: "year", fiscalYear: 2026, fiscalQuarter: null, label: "FY2026" } });
+  const series = (latest: typeof quarter) => ({ key: latest.seriesKey, metric: latest.metric, unit: latest.unit, currency: latest.currency, basis: latest.basis, dimensions: {}, latest, observations: [latest] });
+  const client = { getCloudCompanyKpis: async () => kpisPayload({ series: [series(quarter), series(year)], totalRows: 2 }) } as unknown as typeof apiClient;
+  const load = (options: Record<string, string>) => companyHeadless("kpis").load(createTestHeadlessArgs({ symbols: [quarter.symbol], options }), createTestHeadlessContext({ apiClient: client }));
+  const annual = await load({ period: "year" });
+  expect(annual.sections[0]!.rows!.map((row) => row.id)).toEqual(["actual:fy"]);
+  expect(annual.sections[0]!.columns!.map((column) => column.header)).toContain("Y/Y change");
+  // Without it the report keeps every kind, as before.
+  const all = await load({});
+  expect(all.sections[0]!.rows!.map((row) => row.id)).toEqual(["actual:q2", "actual:fy"]);
+  expect(all.sections[0]!.columns!.map((column) => column.header)).toContain("Prior change");
+});

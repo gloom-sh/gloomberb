@@ -10,7 +10,7 @@ import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { Box } from "../../../ui";
 import { companyKpisCache } from "./client";
 import { CompanyGuidancePane, CompanyKpisPane } from "./pane";
-import { guide, guidancePayload, kpisPayload } from "./test-fixture";
+import { guide, guidancePayload, kpisPayload, observation } from "./test-fixture";
 
 const tui = createOpenTuiTestHarness();
 afterEach(() => { setCloudApiFetchTransport(null); companyKpisCache.reset(); });
@@ -101,4 +101,17 @@ test("the tracker keeps Issued in view at 90 cells and says what the guide did i
   const frame = await tui.waitForFrameToContain("Raised");
   expect(frame).toContain("ISSUED");
   expect(frame).toContain("2026-02-01");
+});
+
+test("quarterly and annual KPIs are separate views, each with its own change column", async () => {
+  const quarter = observation();
+  const year = observation({ id: "actual:fy", seriesKey: "arr:reported:GBP:year", value: 480_000_000,
+    period: { start: "2025-07-01", end: "2026-06-30", kind: "year", fiscalYear: 2026, fiscalQuarter: null, label: "FY2026" } });
+  const series = (latest: typeof quarter) => ({ key: latest.seriesKey, metric: latest.metric, unit: latest.unit, currency: latest.currency, basis: latest.basis, dimensions: {}, latest, observations: [latest] });
+  setCloudApiFetchTransport(async () => Response.json(kpisPayload({ series: [series(year), series(quarter)], totalRows: 2 })));
+  await mount();
+  const frame = await tui.waitForFrameToContain("125.00M");
+  expect(frame).toContain("Q/Q CHANGE");
+  expect(frame).not.toContain("480.00M");
+  expect(frame).toContain("Annual");
 });
