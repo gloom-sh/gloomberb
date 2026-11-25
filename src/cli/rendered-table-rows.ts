@@ -27,14 +27,14 @@ export function readRenderedTableRows(
 ): { rows: DesktopPaneShotRenderedRow[]; clipped: boolean } {
   const normalize = (value: unknown) => String(value || "").replace(/\s+/g, " ").trim();
   const textOf = (element: Element) => normalize((element as HTMLElement).innerText || element.textContent);
-  const headers = [...table.querySelectorAll('[data-gloom-role="data-table-header-cell"]')].map(textOf);
+  const headers = Array.from(table.querySelectorAll('[data-gloom-role="data-table-header-cell"]')).map(textOf);
   const rows: DesktopPaneShotRenderedRow[] = [];
   let clipped = false;
-  const rowElements = [...table.querySelectorAll(
+  const rowElements = Array.from(table.querySelectorAll(
     '[data-gloom-role="data-table-row"], [data-gloom-role="data-table-section-header"]',
-  )].filter(isVisible);
+  )).filter(isVisible);
   rowElements.forEach((row, rowIndex) => {
-    const cellElements = [...row.querySelectorAll('[data-gloom-role="data-table-cell"]')];
+    const cellElements = Array.from(row.querySelectorAll('[data-gloom-role="data-table-cell"]'));
     const values = cellElements.length > 0 ? cellElements : [row];
     const rowKey = row.getAttribute("data-gloom-row-key");
     const cells = values.map((cell, cellIndex) => {
@@ -42,7 +42,7 @@ export function readRenderedTableRows(
       const text = textOf(cell);
       if (
         /…|\.\.\./.test(text)
-        || [cell, ...cell.querySelectorAll("*")].some((node) => isVisible(node) && node.scrollWidth > node.clientWidth + 1)
+        || [cell, ...Array.from(cell.querySelectorAll("*"))].some((node) => isVisible(node) && node.scrollWidth > node.clientWidth + 1)
       ) {
         clipped = true;
       }
