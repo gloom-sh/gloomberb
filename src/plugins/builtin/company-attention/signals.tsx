@@ -1,4 +1,5 @@
 import { dayCell } from "../../../components/ui/day-cell";
+import { isoDay } from "../../../utils/day-format";
 import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useMemo, useRef, type ReactNode } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
@@ -159,6 +160,8 @@ export function HiringSignalsView({ group, symbol, width, height, focused, acces
         }
         if ((column.id === "label" || column.id === "location") && row.values.country) return withCountryFlag({ text: value, value, color: column.id === "label" ? colors.textBright : colors.text }, String(row.values.country), desktop);
         if ((column.id === "date" || column.id === "week") && typeof value === "string") return { ...dayCell(value), color: colors.textDim };
+        // Since draws the first watched week without its year; an export keeps the ISO day.
+        if (column.id === "since" && typeof value === "string") return { text: value, value: isoDay(row.signal?.history.watchedSince) ?? value, color: colors.textDim };
         return { text: value, value, color: column.id === "name" || column.id === "title" || column.id === "label" ? colors.textBright : column.id === "date" || column.id === "week" || column.id === "since" ? colors.textDim : colors.text };
       }} selectedTextOverridesCellColor showHorizontalScrollbar resetScrollKey={`${scope}:${sectionId}:${filter}`}
       emptyStateTitle={section?.empty ?? ""} bodyAfter={lockedRows && desktop ? <LockedOverlay rows={lockedRows} text={upgradeText} onPress={upgrade} role="attention-upgrade" /> : undefined} />}

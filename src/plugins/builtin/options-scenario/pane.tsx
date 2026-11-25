@@ -1,4 +1,4 @@
-import { formatDay } from "../../../components/ui/day-cell";
+import { dayCell, formatDay } from "../../../components/ui/day-cell";
 import { MISSING_VALUE } from "../../../utils/format";
 import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -442,10 +442,10 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
       sortColumnId={sort.columnId} sortDirection={sort.direction} onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id))}
       emptyStateTitle="No position legs." columns={legColumns} getItemKey={(leg) => leg.id}
       selection={{ kind: "id", selectedId: selected?.id ?? null, getId: (leg) => leg.id, onChange: (id) => setSelectedId(id) }}
-      onActivate={edit} renderCell={(leg, column) => ({ text: column.id === "expiration" ? formatDay(leg.expiration * 1000)
-        : column.id === "volatility" ? (leg.volatility * 100).toFixed(2)
-        : column.id === "price" || column.id === "strike" ? money(leg[column.id])
-        : String(leg[column.id as keyof ScenarioLeg]), color: column.id === "quantity" ? leg.quantity > 0 ? colors.positive : colors.negative : colors.text })} />;
+      onActivate={edit} renderCell={(leg, column) => ({ ...column.id === "expiration" ? dayCell(leg.expiration * 1000)
+        : { text: column.id === "volatility" ? (leg.volatility * 100).toFixed(2)
+          : column.id === "price" || column.id === "strike" ? money(leg[column.id])
+          : String(leg[column.id as keyof ScenarioLeg]) }, color: column.id === "quantity" ? leg.quantity > 0 ? colors.positive : colors.negative : colors.text })} />;
   const root = <>
     {tabStrip}
     {scenario && <>

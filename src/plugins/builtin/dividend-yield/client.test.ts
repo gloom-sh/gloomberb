@@ -8,6 +8,7 @@ import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { createDividendYieldHeadless, projectDividendYieldHeadless } from "./headless";
 import { chartResponse, hsbcIssuerDividendRead, marketTransport, summaryFields } from "./test-fixture";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { formatDay } from "../../../utils/day-format";
 import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 
 afterEach(() => { setHttpFetchTransport(null); setSystemTime(); });
@@ -729,7 +730,7 @@ describe("cash distribution calculations", () => {
     expect(data.summaryError).toBe("Dividend summary unavailable (last tried 2026-10-27 15:38 UTC); no payout ratio or pay date.");
     const request = { rawArgument: "DUK", argument: "DUK", symbols: ["DUK"], options: {} };
     expect(projectDividendYieldHeadless(data, request).sections[0]?.textEntries?.find((entry) => entry.label === "Forward yield")?.formatted)
-      .toBe(`3.50% (annualized from the declared distribution, ex ${day(16)})`);
+      .toBe(`3.50% (annualized from the declared distribution, ex ${formatDay(day(16))})`);
     // A rate stated in another currency than the cash is not taken.
     const pounds = await fetchDividendData("DUK", 124, "", "USD", { loadStatedForwardRate: async () => ({ ...stated, currency: "GBP" }) });
     expect(pounds.metrics.forwardRate).toBeNull();

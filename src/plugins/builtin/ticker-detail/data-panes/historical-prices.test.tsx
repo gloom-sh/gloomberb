@@ -74,7 +74,7 @@ test("a month still running is month to date in the table, footer and export, no
   expect(csv).toContain("2026-10-01");
   expect(csv).not.toContain("MTD");
   expect(csv).toContain("Bar size,monthly");
-  expect(csv).toContain('Partial bar,"2026-10-01, month to date, through Thu 15 Oct 2026"');
+  expect(csv).toContain("Partial bar,2026-10-01,\"month to date, through Thu 15 Oct 2026\"");
 });
 
 test("a week still running is week to date, and a finished week is not", async () => {
@@ -125,7 +125,7 @@ test("today's bar while the session trades is the quote's, marked as today so fa
   expect(frame).toContain("today so far");
   expect(csv).toContain("2026-10-16,346.08,347.82,340.46,341.57,-0.43");
   expect(csv).not.toContain("DTD");
-  expect(csv).toContain('Partial bar,"2026-10-16, today so far"');
+  expect(csv).toContain("Partial bar,2026-10-16,today so far");
 });
 
 test("with no current quote the session's snapshot is left out, and a closed session keeps its bar", async () => {

@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { daysInTextCell } from "../../../components/ui/day-cell";
 import { usePaneInstance } from "../../../state/app/context";
 import { useCatalystEvidence } from "./evidence";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -206,10 +207,11 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
     if (column.id === "type") return { text, color: toneColor(catalystTypeTone(event.type), colors) };
     // The column has room for the flag beside a code.
     if (column.id === "country") return withCountryFlag({ text, color: colors.textDim }, text, desktop);
-    if (column.id === "status") return { text, color: tab === "changes" ? colors.text : toneColor(catalystStatusTone(catalystShownStatus(event)), colors) };
+    if (column.id === "status") return { ...daysInTextCell(text), color: tab === "changes" ? colors.text : toneColor(catalystStatusTone(catalystShownStatus(event)), colors) };
     // A withheld date says so, quieter than a day.
     if (column.id === "date" && catalystDateWithheld(event, query.dateField)) return { text, color: colors.textMuted };
-    return { text, color: column.id === "title" || column.id === "date" || column.id === "phase" ? colors.text : colors.textDim };
+    // A date drawn day first exports as its ISO day, an observation with its UTC time.
+    return { ...column.id === "date" ? daysInTextCell(text) : { text }, color: column.id === "title" || column.id === "date" || column.id === "phase" ? colors.text : colors.textDim };
   };
   if (isCloudSessionRequired(error?.message)) return <SignInWall placement="catalysts-signin" action="view catalysts" needsVerification={session.needsVerification} />;
   return <Box width={width} height={height} flexDirection="column">

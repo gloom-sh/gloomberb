@@ -1,4 +1,4 @@
-import { dayCell, formatDay } from "../../../../components/ui/day-cell";
+import { dayCell, daysInTextCell, formatDay } from "../../../../components/ui/day-cell";
 import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import {
   DataTableStackView,
@@ -377,7 +377,7 @@ function DesignationsList({ kind, exchange, ...props }: ListProps & { kind: stri
         case "exchange": return { text: exchangeLabel(row.exchange), color: muted };
         case "status": {
           const label = designationKindLabel(row.kind);
-          return { text: row.ended_at ? `${label}, ended ${formatDay(isoDay(row.ended_at))}` : label, color: tone(designationTone(row)) };
+          return { ...daysInTextCell(row.ended_at ? `${label}, ended ${isoDay(row.ended_at)}` : label), color: tone(designationTone(row)) };
         }
         default: return { text: "" };
       }

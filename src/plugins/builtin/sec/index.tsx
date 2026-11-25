@@ -19,6 +19,7 @@ import { EmptyState, ExternalLinkText, FeedDataTableStackView, PaneLinkMenu, Que
 import { useCompanyDataFooter } from "../../../components/layout/pane/status-footer";
 import { displayWidth } from "../../../utils/format";
 import { formatFilingDate } from "../../../utils/datetime-format";
+import { isoDaysInText } from "../../../utils/day-format";
 import type { DetailFact } from "../../../components/reader/detail-reader";
 import type { ThemeColors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -252,12 +253,16 @@ function toFeedItems(
         : []),
     ];
 
+    // A ticker shared by several filers names the filer on each row.
+    const title = showIssuer && filing.companyName ? `${filing.companyName}: ${summary}` : summary;
+    // A period end or fund year the summary dates day first exports as its ISO day.
+    const titleValue = isoDaysInText(title);
     return {
       id: filing.accessionNumber,
       eyebrow: filing.form,
       eyebrowColor: toneColor(filingTone(filing, direction), colors),
-      // A ticker shared by several filers names the filer on each row.
-      title: showIssuer && filing.companyName ? `${filing.companyName}: ${summary}` : summary,
+      title,
+      ...(titleValue !== title ? { titleValue } : {}),
       timestamp: filing.filingDate,
       detailTitle: enrichedTitle,
       detailFacts: facts,

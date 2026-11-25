@@ -10,7 +10,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, useRendererHost, useUiCapabilities } from "../../../ui";
 import { withCountryFlag } from "../../../components/ui/country-flag";
-import { formatDay } from "../../../components/ui/day-cell";
+import { daysInTextCell, formatDay } from "../../../components/ui/day-cell";
 import { logFailure } from "../../../utils/log-failure";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
@@ -221,7 +221,8 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
       case "symbol": return row.symbol.includes(",") ? { text: row.symbol, color: colors.textBright } : listingCell(row.symbol, colors, state.selected);
       case "value": return { text: row.driver ? driverValue(row.driver) : MISSING_VALUE, value: row.driver?.value ?? null, color: colors.textBright };
       case "units": return { text: row.driver ? driverUnits(row.driver) : "", color: colors.textDim };
-      case "scope": return { text: row.driver ? driverScope(row.driver) : "", color: colors.textDim };
+      // A day in the scope or the period reads first and exports as its ISO day.
+      case "scope": return { ...daysInTextCell(row.driver ? driverScope(row.driver) : ""), color: colors.textDim };
       case "label": {
         const cell = { text: exposureCellText(row, "label"), color: unknown ? colors.textDim : colors.text };
         // Grouped by country, each target leads with its flag on the desktop and the web.
@@ -234,7 +235,7 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
         color: row.classification === "disclosed" ? colors.borderFocused : unknown ? colors.textMuted : colors.textDim, keepColorWhenSelected: row.classification === "disclosed" };
       case "impact": return !row.impact ? missingCell(colors) : { text: exposureCellText(row, "impact"), value: row.impact.low,
         color: row.concentration ? colors.text : row.impact.high < 0 ? colors.negative : row.impact.low > 0 ? colors.positive : colors.text };
-      case "period": return row.period ? { text: exposureCellText(row, "period"), color: colors.textDim } : missingCell(colors);
+      case "period": return row.period ? { ...daysInTextCell(exposureCellText(row, "period")), color: colors.textDim } : missingCell(colors);
       default: return { text: exposureCellText(row, "weight"), value: row.weight === null ? null : row.weight * 100, color: colors.text };
     }
   };

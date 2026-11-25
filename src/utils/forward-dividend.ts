@@ -56,8 +56,8 @@ function statedDeclaration(exDate: string, options: DeclaredBasisOptions): { amo
 
 /**
  * `latest distribution annualized, as of 20 Aug 2026`, or for a rate dated
- * ahead, `annualized from the declared $0.98 payable 2026-12-10, ex
- * 2026-11-19`, the amount and pay date when they are stated; the basis alone
+ * ahead, `annualized from the declared $0.98 payable 10 Dec 2026, ex
+ * 19 Nov 2026`, the amount and pay date when they are stated; the basis alone
  * when the date is unknown. `payDate` is the pay date a source states beside
  * that ex-date without a declared row (DVD's summary).
  */
@@ -69,7 +69,7 @@ export function forwardDividendBasis(
   if (!isDeclared(exDate, options.now ?? new Date())) return exDate ? `${LATEST_DISTRIBUTION}, as of ${formatDay(exDate)}` : LATEST_DISTRIBUTION;
   const stated = statedDeclaration(exDate, options);
   const payDate = stated?.payDate ?? isoDay(options.payDate);
-  return `annualized from the declared ${stated?.amount ?? "distribution"}${payDate ? ` payable ${payDate}` : ""}, ex ${exDate}`;
+  return `annualized from the declared ${stated?.amount ?? "distribution"}${payDate ? ` payable ${formatDay(payDate)}` : ""}, ex ${formatDay(exDate)}`;
 }
 
 const DAY_MS = 86_400_000;

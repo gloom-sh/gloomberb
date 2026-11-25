@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { daysInTextCell } from "../../../components/ui/day-cell";
 import {
   PaneStatusBody, useExternalLinkFooter, usePaneNoticeFooter, type DataTableCell,
   type DataTableColumn,
@@ -109,7 +110,8 @@ function cellsFor(view: StatViewModel): Record<ColumnId, DataTableCell> {
       text: view.previous ? view.stat.formatValue(view.previous.value) : MISSING_VALUE,
       color: colors.textMuted,
     },
-    period: { text: view.period, color: colors.textMuted },
+    // A daily or weekly print's day reads day first and exports as its ISO day; a month or quarter stays as named.
+    period: { ...daysInTextCell(view.period), color: colors.textMuted },
     percentile: { text: formatNumber(view.percentile, 0), color: colors.textMuted },
   };
 }

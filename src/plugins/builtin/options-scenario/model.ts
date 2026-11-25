@@ -386,17 +386,17 @@ function scenarioGridDates(asOf: number, expiry: number, selected: number): numb
   return [...fixed, ...steps].sort((a, b) => a - b);
 }
 
-/**
- * Each grid date as its column heads it: the UTC day, with the time where
- * another column is on the same day (a position valued on its expiry day:
- * `2026-11-20 14:30` and `2026-11-20 21:00`), so no two columns read alike.
- */
 /** A scenario date's label as a table heads its column, day first: `03 Nov 2026`, `03 Nov 13:00` where one day has two times. */
 export function scenarioDayText(label: string, form: DayCellForm = "full"): string {
   const [day, time] = label.split(" ");
   return `${formatDay(day!, form)}${time ? ` ${time}` : ""}`;
 }
 
+/**
+ * Each grid date as its column heads it: the UTC day, with the time where
+ * another column is on the same day (a position valued on its expiry day:
+ * `2026-11-20 14:30` and `2026-11-20 21:00`), so no two columns read alike.
+ */
 export function scenarioDateLabels(dates: readonly number[]): string[] {
   const days = dates.map(utcDay);
   return dates.map((date, index) => days.indexOf(days[index]!) !== days.lastIndexOf(days[index]!)

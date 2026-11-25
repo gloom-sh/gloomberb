@@ -49,6 +49,32 @@ export function dayFromText(text: string): string | null {
   return match && month >= 0 ? `${match[3]}-${String(month + 1).padStart(2, "0")}-${match[1]}` : null;
 }
 
+const DAYS_IN_TEXT = /\b(\d{2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{4})\b/g;
+
+/**
+ * Words with every day `formatDaysInText` wrote day first back as ISO days, as
+ * an export writes them (`ended 16 Nov 2026` is `ended 2026-11-16`). A day
+ * without its year (`16 Nov`) stays as it is.
+ */
+export function isoDaysInText(text: string): string {
+  return text.replace(DAYS_IN_TEXT, (day) => dayFromText(day) ?? day);
+}
+
+const DAY_TIME_TEXT = /^(\d{2} [A-Z][a-z]{2} \d{4}) (\d{2}:\d{2})$/;
+
+/**
+ * A day or instant a table drew day first, as an export writes it: `21 Aug
+ * 2026` is `2026-08-21`, `09 Oct 2026 13:21` is `2026-10-09 13:21`. Null for
+ * any other text, a day without its year (`21 Aug`) included.
+ */
+export function isoFromDayText(text: string): string | null {
+  const trimmed = text.trim();
+  const timed = DAY_TIME_TEXT.exec(trimmed);
+  if (!timed) return dayFromText(trimmed);
+  const day = dayFromText(timed[1]!);
+  return day ? `${day} ${timed[2]}` : null;
+}
+
 const dayTimeFormatters = new Map<string, Intl.DateTimeFormat>();
 
 /**

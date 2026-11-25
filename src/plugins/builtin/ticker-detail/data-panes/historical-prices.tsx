@@ -1,4 +1,4 @@
-import { formatDayTime } from "../../../../utils/day-format";
+import { formatDayTime, formatDaysInText } from "../../../../utils/day-format";
 import { useCallback, useMemo } from "react";
 import { TextAttributes } from "../../../../ui";
 import {
@@ -398,7 +398,7 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
   ];
   const barInfo = useMemo<PaneFooterSegment[]>(() => [
     ...rows.length > 0 ? [{ id: "bars", parts: [{
-      text: allStart ? `${historyBarSizeText(size)} from ${allStart}` : historyBarSizeText(size), tone: "muted" as const,
+      text: allStart ? `${historyBarSizeText(size)} from ${formatDaysInText(allStart)}` : historyBarSizeText(size), tone: "muted" as const,
     }] }] : [],
     ...forming && newestDate ? [{ id: "forming", parts: [{ text: formingHistoryBarText(forming, newestDate), tone: "muted" as const }] }] : [],
     ...dayToDate ? [{ id: "forming", parts: [{ text: DAY_SO_FAR_TEXT, tone: "muted" as const }] }] : [],
@@ -407,7 +407,8 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
 
   usePaneNoticeFooter({
     registrationId: "historical-prices:integrity",
-    notices: [integrityNotice, openNotice, wickNotice, rescaleNotice, volumeNotice, ...gapNotices].filter((notice): notice is string => !!notice),
+    // A day in a gap or roll note reads first, as the DATE column writes it; the export's notes keep ISO days.
+    notices: [integrityNotice, openNotice, wickNotice, rescaleNotice, volumeNotice, ...gapNotices.map((notice) => formatDaysInText(notice))].filter((notice): notice is string => !!notice),
     focused,
     title: "Price history data",
   });
@@ -450,8 +451,9 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
         ["Requested range", range],
         ...(rows.length > 0 ? [["Bar size", historyBarSizeWord(size)]] : []),
         ["Time zone", "UTC"],
-        ...(forming && newestDate ? [["Partial bar", `${newestDate}, ${formingHistoryBarText(forming, newestDate)}`]] : []),
-        ...(dayToDate && newestDate ? [["Partial bar", `${newestDate}, ${DAY_SO_FAR_TEXT}`]] : []),
+        // The partial bar's own day, as its DATE cell exports it, then what it is in words.
+        ...(forming && newestDate ? [["Partial bar", newestDate, formingHistoryBarText(forming, newestDate)]] : []),
+        ...(dayToDate && newestDate ? [["Partial bar", newestDate, DAY_SO_FAR_TEXT]] : []),
         ["Price units", priceUnit ?? "As served in the history; currency and price-basis metadata are unavailable"],
         ["Status", error ? (rows.length ? "Retained after refresh failure" : "Unavailable")
           : loading ? (rows.length ? "Refreshing" : "Loading") : rows.length ? "Available" : "Empty"],

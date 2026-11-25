@@ -1,8 +1,8 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { formatDay } from "../../../utils/day-format";
 import { findListedExpiry, settlementStampTime } from "../../../utils/option-expiry";
-import { buildSurfaceGrid, evaluateSurfaceSmile, type SurfaceExpiry, type SurfaceSnapshot } from "./model";
-import { modelSpotStamp } from "../options/model-spot";
+import { buildSurfaceGrid, evaluateSurfaceSmile, type SurfaceExpiry, type SurfaceGridRow, type SurfaceSnapshot } from "./model";
+import { formatModelSpotPrice, modelSpotStamp } from "../options/model-spot";
 
 export const formatIv = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? MISSING_VALUE : `${(value * 100).toFixed(2)}%`;
 export const formatPrice = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? MISSING_VALUE : value.toFixed(2);
@@ -188,6 +188,49 @@ export function surfaceForwardRow(expiry: SurfaceExpiry, snapshot: SurfaceSnapsh
   return { expiration: expiry.expiration, forward: expiry.forward, basis: expiry.forward == null ? null : expiry.forward - snapshot.spot,
     dividendYield: dividendYieldHidden ? null : expiry.dividendYield, dividendYieldHidden,
     rate: expiry.rate, pairs: snapshot.stored ? null : expiry.parity.pairs.length };
+}
+
+/** A table cell the expiry tables draw: its text, and what an export writes for a day the text puts first. */
+export interface SurfaceTableCell { text: string; value?: string }
+
+/**
+ * The Skew and Forwards tables: their columns after Expiry, each column's sort
+ * value and each cell. Expiry draws `15 Jan 2027` and exports its stamp
+ * (`expiryStamp`); the forwards' As of draws its day first and exports its ISO day.
+ */
+export function surfaceExpiryTable(snapshot: SurfaceSnapshot & { stored?: unknown }, forwards: boolean) {
+  // IVs in percent, IV differences in vol points; a missing 25-delta figure says why.
+  const fields = forwards ? ["Forward", "Basis", "Div %", "Rate %", "Pairs", "As of"] : ["25d put %", "25d call %", "RR pts", "BF pts", "90/110 pts", "Slope pts/yr"];
+  const integerColumn = forwards ? "4" : null;
+  const rowsByExpiry = new Map(snapshot.expiries.map((entry) => [entry.expiration,
+    { skew: surfaceSkewRow(entry), forward: surfaceForwardRow(entry, snapshot) }]));
+  const value = (entry: SurfaceExpiry, id: string): number | string | null => {
+    if (id === "expiry") return entry.expiration;
+    const { skew, forward } = rowsByExpiry.get(entry.expiration)!;
+    return (forwards ? [forward.forward, forward.basis, forward.dividendYield == null ? null : forward.dividendYield * 100,
+      forward.rate == null ? null : forward.rate * 100, forward.pairs, entry.asOf?.slice(0, 10) ?? null]
+      : [skew.put25, skew.call25, skew.riskReversal, skew.butterfly, skew.moneynessSkew, skew.termSlope])[Number(id)] ?? null;
+  };
+  const missing = (entry: SurfaceExpiry, id: string) => {
+    const { skew, forward } = rowsByExpiry.get(entry.expiration)!;
+    if (forwards) return id === "2" && forward.dividendYieldHidden ? HIDDEN_YIELD_TEXT : MISSING_VALUE;
+    return (id === "2" || id === "3" ? skew.gap : id === "4" ? skew.moneynessGap : id === "5" && skew.termSlopeHidden ? HIDDEN_SLOPE_TEXT : null) ?? MISSING_VALUE;
+  };
+  const cell = (entry: SurfaceExpiry, id: string): SurfaceTableCell => {
+    if (id === "expiry") return { text: expiryLabel(entry.expiration), value: expiryStamp(entry.expiration) };
+    const raw = value(entry, id);
+    if (raw == null) return { text: missing(entry, id) };
+    if (typeof raw === "string") return { text: formatDay(raw), value: raw };
+    return { text: id === integerColumn ? String(raw)
+      : forwards ? (id === "0" ? formatModelSpotPrice(raw) : id === "1" && raw > 0 ? `+${formatPrice(raw)}` : formatPrice(raw)) : formatVolPoints(raw) };
+  };
+  return { fields, value, cell };
+}
+
+/** A grid row's Expiry / tenor cell: a listed expiry's day first (`15 Jan 2027 E`), exported as its ISO day (`2027-01-15 E`); a tenor (`1M`) as it is. */
+export function surfaceTenorCell(row: Pick<SurfaceGridRow, "label" | "extrapolated" | "interpolated">): SurfaceTableCell {
+  const mark = row.extrapolated ? " E" : row.interpolated ? " I" : "";
+  return { text: `${formatDay(row.label)}${mark}`, value: `${row.label}${mark}` };
 }
 
 /** When and how an expiry's quotes were observed, as a report reads its freshness from each row. */
