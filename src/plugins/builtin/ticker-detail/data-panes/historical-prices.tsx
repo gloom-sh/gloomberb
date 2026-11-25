@@ -393,7 +393,8 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
   const priceUnit = listing && quote ? quoteExportUnit(listing, quote) : null;
   const exportIdentityCells = [
     "", listing, priceUnit ?? "", rows.length > 0 && size !== "intraday" ? size : "",
-    quote && (!quote.providerId || quote.providerId === "gloomberb-cloud") ? "Gloom Cloud" : "", newestRowDate.slice(0, 10),
+    // The export's as_of is the newest bar's own day, as its DATE cells write it, not the day-first text the table shows.
+    quote && (!quote.providerId || quote.providerId === "gloomberb-cloud") ? "Gloom Cloud" : "", (rows[0]?.exportDate ?? "").slice(0, 10),
   ];
   const barInfo = useMemo<PaneFooterSegment[]>(() => [
     ...rows.length > 0 ? [{ id: "bars", parts: [{
