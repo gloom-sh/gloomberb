@@ -315,7 +315,7 @@ function DividendTickerPane({ focused, width, height, loadData = fetchDividendDa
     declared: dividendAmountDigits(rows.flatMap((row) => row.declared ? [row.declared] : [])),
   }), [rows, convertedFrom, convertedSubUnit]);
   const renderRowCell = useCallback((row: DividendRow, column: DividendColumn) => renderCell(row, column, digits, !!convertedFrom, convertedSubUnit),
-    [convertedFrom, convertedSubUnit]);
+    [convertedFrom, convertedSubUnit, digits]);
   const fullFigures = metrics ? buildMetricItems(metrics, currency, sortedRows.length > 0, false, data?.declared, bond, convertedFrom, convertedSubUnit) : [];
   const keptFigures = chartTableLayout({
     width, height, figures: fullFigures, tableRows: sortedRows.length, tableChromeRows, chart: chartPoints.length >= 2 ? {} : null,
