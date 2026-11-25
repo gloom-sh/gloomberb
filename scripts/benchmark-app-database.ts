@@ -14,11 +14,20 @@
  * on CI. Then a timeline of each run's slow moments (100 ms or more on the
  * app's thread, and the checkpoints), to tell what a pause coincided with.
  *
- *   bun scripts/benchmark-app-database.ts --base ../base [--seconds 45] [--runs 2] [--dir <folder>] [--out results.json]
+ * On Windows a commit made while the checkpointer flushes waits for the flush
+ * to end, which the real disk and antivirus decide. Elsewhere it does not, so
+ * `--flush-ms 1500` stretches every flush to that long and counts the commits
+ * of the app that land inside one: each would have waited out the rest of the
+ * flush on Windows. A model of the exposure, not a freeze measured.
+ *
+ * `--cache-only` leaves out the saves of user data (the session snapshot,
+ * plugin state), for the flushes a stream of cached quotes sets off alone.
+ *
+ *   bun scripts/benchmark-app-database.ts --base ../base [--seconds 45] [--runs 2] [--flush-ms 0] [--cache-only] [--dir <folder>] [--out results.json]
  */
 import { spawnSync } from "child_process";
 import { randomBytes } from "crypto";
-import { appendFileSync, closeSync, copyFileSync, existsSync, fsyncSync, mkdirSync, openSync, rmSync, writeFileSync } from "fs";
+import { appendFileSync, closeSync, copyFileSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join, resolve } from "path";
 import { pathToFileURL } from "url";
@@ -56,6 +65,8 @@ interface RunResult {
   /** From the checkout's own perf trace, where it has them. */
   checkpoints: Moment[];
   statements: Moment[];
+  /** With `--flush-ms`: each stretched flush, and when into it (ms) a commit of the app landed. */
+  flushes: { at: number; flushMs: number; landed: number[] }[];
 }
 
 /** `perf <name> <ms>ms t=<ms since the process started> <metadata>` (utils/perf-marks.ts). */
@@ -194,10 +205,45 @@ function percentile(sorted: number[], fraction: number): number {
   return sorted[Math.min(sorted.length - 1, Math.floor(fraction * sorted.length))]!;
 }
 
+/**
+ * Makes each checkpoint of the checkpointer's thread last `flushMs` more, and
+ * has it note when another connection (the app's) commits meanwhile, from
+ * the database's data version. Both checkouts build the thread's code from
+ * the same text, so the change is made to the Blob that carries it.
+ */
+function stretchFlushes(flushMs: number, logPath: string): void {
+  const Plain = globalThis.Blob;
+  const marker = 'const result = db.query("PRAGMA wal_checkpoint(PASSIVE)").get();';
+  const stretched = `${marker}
+      {
+        const sleeper = new Int32Array(new SharedArrayBuffer(4));
+        const version = () => db.query("PRAGMA data_version").get().data_version;
+        let last = version();
+        const flushStartedAt = performance.now();
+        const landed = [];
+        while (performance.now() - flushStartedAt < ${flushMs}) {
+          Atomics.wait(sleeper, 0, 0, 1);
+          const seen = version();
+          for (let commit = last; commit < seen; commit += 1) landed.push(performance.now() - flushStartedAt);
+          last = seen;
+        }
+        appendFileSync(${JSON.stringify(logPath)}, JSON.stringify({ at: performance.timeOrigin + flushStartedAt, flushMs: ${flushMs}, landed }) + "\\n");
+      }`;
+  globalThis.Blob = class extends Plain {
+    constructor(parts?: BlobPart[], options?: BlobPropertyBag) {
+      super(parts?.map((part) => (typeof part === "string" && part.includes(marker)
+        ? `import { appendFileSync } from "fs";\n${part.replace(marker, stretched)}`
+        : part)), options);
+    }
+  } as typeof Blob;
+}
+
 /** One checkout's run: opened as the app opens it, driven for `seconds`, then closed. */
-async function runWorkload(source: string, dbPath: string, seconds: number): Promise<RunResult> {
+async function runWorkload(source: string, dbPath: string, seconds: number, flushMs: number, flushLog: string, cacheOnly: boolean): Promise<RunResult> {
+  if (flushMs > 0) stretchFlushes(flushMs, flushLog);
   const { AppPersistence } = await import(pathToFileURL(join(source, "src/data/app-persistence.ts")).href);
-  const persistence = new AppPersistence(dbPath, { interactive: true });
+  // As on Windows, where the app's commits wait out a flush; a base checkout without the option ignores it.
+  const persistence = new AppPersistence(dbPath, { interactive: true, holdCommitsDuringFlush: true });
   const ops: OpSamples = {};
   const slow: Moment[] = [];
   const time = (name: string, fn: () => unknown) => {
@@ -227,10 +273,10 @@ async function runWorkload(source: string, dbPath: string, seconds: number): Pro
   await new Promise<void>((done) => {
     const tick = setInterval(() => {
       elapsed += TICK_MS;
-      if (elapsed % 1_000 === 0) {
+      if (!cacheOnly && elapsed % 1_000 === 0) {
         time("save session snapshot", () => persistence.sessions.set("app", sessionSnapshot(revision++)));
       }
-      if (elapsed % 4_000 === 0) {
+      if (!cacheOnly && elapsed % 4_000 === 0) {
         time("save plugin state", () => persistence.pluginState.setMany([
           { pluginId: "watchlist", key: "selection", value: { symbol: `SYM${revision % 60}`, at: Date.now() } },
           { pluginId: "news", key: "read", value: Array.from({ length: 20 }, (_, index) => `story-${revision}-${index}`) },
@@ -295,6 +341,7 @@ async function runWorkload(source: string, dbPath: string, seconds: number): Pro
     slow,
     checkpoints: [],
     statements: [],
+    flushes: [],
   };
 }
 
@@ -310,6 +357,8 @@ interface Summary {
   /** Pauses of SLOW_MS or more on the app's thread, and how many of them overlapped a checkpoint. */
   slowPauses: number;
   slowPausesDuringCheckpoint: number;
+  /** With `--flush-ms`: flushes, the app's commits that landed in them, and what each would have waited on Windows. */
+  stretched: { flushes: number; commitsInFlush: number; longestWaitMs: number; totalWaitMs: number } | null;
 }
 
 function overlaps(moment: Moment, others: Moment[]): boolean {
@@ -337,6 +386,18 @@ function summarize(label: string, results: RunResult[]): Summary {
     checkpoints: { count: checkpointMs.length, p50: percentile(checkpointMs, 0.5), p95: percentile(checkpointMs, 0.95), max: checkpointMs.at(-1) ?? 0 },
     slowPauses: pauses.length,
     slowPausesDuringCheckpoint: pauses.filter(({ moment, checkpoints }) => overlaps(moment, checkpoints)).length,
+    stretched: stretchedSummary(results.flatMap((result) => result.flushes)),
+  };
+}
+
+function stretchedSummary(flushes: RunResult["flushes"]): Summary["stretched"] {
+  if (flushes.length === 0) return null;
+  const waits = flushes.flatMap((flush) => flush.landed.map((offset) => flush.flushMs - offset));
+  return {
+    flushes: flushes.length,
+    commitsInFlush: waits.length,
+    longestWaitMs: Math.max(0, ...waits),
+    totalWaitMs: waits.reduce((sum, wait) => sum + wait, 0),
   };
 }
 
@@ -375,11 +436,22 @@ function table(summaries: Summary[]): string {
   const during = `| pauses of ${SLOW_MS} ms or more during a checkpoint | ${summaries.map((summary) => (
     summary.checkpoints.count === 0 ? "not traced" : `${summary.slowPausesDuringCheckpoint} of ${summary.slowPauses}`
   )).join(" | ")} |`;
-  return [header, rule, ...rows, pauses, close, checkpoints, during].join("\n");
+  const stretched = summaries.some((summary) => summary.stretched)
+    ? [
+      `| commits of the app inside a stretched flush | ${summaries.map((summary) => (
+        summary.stretched ? `${summary.stretched.commitsInFlush} in ${summary.stretched.flushes} flushes` : "-"
+      )).join(" | ")} |`,
+      `| wait those commits would have had, longest / total | ${summaries.map((summary) => (
+        summary.stretched ? `${formatMs(summary.stretched.longestWaitMs)} / ${formatMs(summary.stretched.totalWaitMs)}` : "-"
+      )).join(" | ")} |`,
+    ]
+    : [];
+  return [header, rule, ...rows, pauses, close, checkpoints, during, ...stretched].join("\n");
 }
 
 async function child(): Promise<void> {
-  const result = await runWorkload(resolve(arg("source")!), resolve(arg("db")!), Number(arg("seconds") ?? 45));
+  const flushLog = resolve(arg("flush-log") ?? "flushes.log");
+  const result = await runWorkload(resolve(arg("source")!), resolve(arg("db")!), Number(arg("seconds") ?? 45), Number(arg("flush-ms") ?? 0), flushLog, process.argv.includes("--cache-only"));
   process.stdout.write(`\nRESULT ${JSON.stringify(result)}\n`);
   process.exit(0);
 }
@@ -404,6 +476,7 @@ async function main(): Promise<void> {
   const base = arg("base");
   const seconds = Number(arg("seconds") ?? 45);
   const runs = Number(arg("runs") ?? 2);
+  const flushMs = Number(arg("flush-ms") ?? 0);
   const dir = resolve(arg("dir") ?? join(tmpdir(), "gloom-app-database-bench"));
   const out = arg("out");
   rmSync(dir, { recursive: true, force: true });
@@ -426,7 +499,8 @@ async function main(): Promise<void> {
       const dbPath = join(runDir, ".gloomberb-cache.db");
       copyFileSync(master, dbPath);
       flushToDisk(dbPath);
-      const spawned = spawnSync(process.execPath, [SCRIPT, "--child", "--source", checkout.source, "--db", dbPath, "--seconds", String(seconds)], {
+      const flushLog = join(runDir, "flushes.log");
+      const spawned = spawnSync(process.execPath, [SCRIPT, "--child", "--source", checkout.source, "--db", dbPath, "--seconds", String(seconds), "--flush-ms", String(flushMs), "--flush-log", flushLog, ...(process.argv.includes("--cache-only") ? ["--cache-only"] : [])], {
         cwd: checkout.source,
         encoding: "utf8",
         maxBuffer: 256 * MB,
@@ -438,7 +512,10 @@ async function main(): Promise<void> {
         throw new Error(`${checkout.label} run ${run + 1} failed (${spawned.status}):\n${spawned.stderr}`);
       }
       const result = JSON.parse(line.slice("RESULT ".length)) as RunResult;
-      results.get(checkout.label)!.push({ ...result, ...traceMoments(spawned.stderr, result.timeOrigin) });
+      const flushes = existsSync(flushLog)
+        ? readFileSync(flushLog, "utf8").split("\n").filter(Boolean).map((text) => JSON.parse(text) as RunResult["flushes"][number])
+        : [];
+      results.get(checkout.label)!.push({ ...result, ...traceMoments(spawned.stderr, result.timeOrigin), flushes });
       rmSync(runDir, { recursive: true, force: true });
       console.log(`${checkout.label}: run ${run + 1} of ${runs} done`);
     }
@@ -447,7 +524,7 @@ async function main(): Promise<void> {
 
   const summaries = checkouts.map((checkout) => summarize(checkout.label, results.get(checkout.label)!));
   const report = [
-    `### App database on the app's thread (${process.platform}, ${runs} runs of ${seconds} s each, ${(seed.bytes / MB).toFixed(0)} MB cache)`,
+    `### App database on the app's thread (${process.platform}, ${runs} runs of ${seconds} s each, ${(seed.bytes / MB).toFixed(0)} MB cache${flushMs > 0 ? `, flushes stretched to ${flushMs} ms` : ""}${process.argv.includes("--cache-only") ? ", cached data only" : ""})`,
     "",
     table(summaries),
     "",
