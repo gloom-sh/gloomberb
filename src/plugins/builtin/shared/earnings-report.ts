@@ -10,7 +10,7 @@ import { growthRate, type NotMeaningful } from "../../../utils/growth";
  * from naming it differently.
  */
 
-const BASES: ReadonlySet<string> = new Set<EarningsEpsBasis>(["gaap", "adjusted"]);
+const BASES: ReadonlySet<string> = new Set<EarningsEpsBasis>(["gaap", "adjusted", "company-adjusted"]);
 const STATUSES: ReadonlySet<string> = new Set<EarningsDateStatus>(["reported", "confirmed", "projected"]);
 
 /** A server value read defensively: anything unrecognised is an unknown basis. */
@@ -27,14 +27,14 @@ export function dateStatusFromEstimateFlag(isDateEstimate: boolean | null | unde
   return isDateEstimate === true ? "projected" : isDateEstimate === false ? "confirmed" : null;
 }
 
-export type EpsBasisName = "GAAP" | "adjusted" | "unknown";
+export type EpsBasisName = "GAAP" | "adjusted" | "company-adjusted" | "unknown";
 
 /** What the basis names mean, in every report's metadata. */
-export const EPS_BASIS_NOTE = "One reported EPS per quarter. GAAP: the quarter's diluted statement EPS. adjusted: the consensus-basis figure the estimate is measured against, which leaves out items the statements include. unknown: no statement on a comparable share basis to tell. An upcoming report's estimate is labelled with the basis every quarter of the past year that the statements label (at least two) was measured on, and adjusted when it is the consensus on the adjusted basis the company's reports are on (a REIT's FFO), not a GAAP forecast; a company that changed basis has none.";
+export const EPS_BASIS_NOTE = "GAAP: diluted statement EPS. Adjusted: the street measure used for the comparison. Company-adjusted (coAdj): diluted EPS as the company defines it. A separately identified street actual includes stock compensation; no surprise is shown when the estimate's basis is unconfirmed. Unknown: no statement on a comparable share basis to tell. An upcoming estimate takes a basis only when prior reported quarters support it.";
 
 /** The basis as rows, exports and tools name it. */
 export function epsBasisName(basis: EarningsEpsBasis | null): EpsBasisName {
-  return basis === "gaap" ? "GAAP" : basis === "adjusted" ? "adjusted" : "unknown";
+  return basis === "gaap" ? "GAAP" : basis ?? "unknown";
 }
 
 /** Whether a row names a basis: a reported figure always does, an upcoming estimate only when Gloom Cloud labels it. */
@@ -85,8 +85,8 @@ export function actualPending(
 export const NO_CONSENSUS_SHORT = "no est";
 
 /** A beat stated without its estimate (`difference`) still had a consensus. */
-export function lacksConsensus(row: { epsActual?: number | null; epsEstimate?: number | null; difference?: number | null }): boolean {
-  return row.epsActual != null && row.epsEstimate == null && row.difference == null;
+export function lacksConsensus(row: { epsActual?: number | null; epsEstimate?: number | null; difference?: number | null; epsBasis?: unknown }): boolean {
+  return row.epsBasis !== "company-adjusted" && row.epsActual != null && row.epsEstimate == null && row.difference == null;
 }
 
 /** What a provisional figure is, in every report's metadata. */
@@ -94,7 +94,7 @@ export const PROVISIONAL_NOTE = "A provisional EPS (or sales) figure is the comp
 
 /** The basis in a table cell or a detail line. */
 export function epsBasisShort(basis: EarningsEpsBasis | null): string {
-  return basis === "gaap" ? "GAAP" : basis === "adjusted" ? "adj" : "?";
+  return basis === "company-adjusted" ? "coAdj" : basis === "gaap" ? "GAAP" : basis === "adjusted" ? "adj" : "?";
 }
 
 /**
@@ -103,7 +103,7 @@ export function epsBasisShort(basis: EarningsEpsBasis | null): string {
  * est"), so the detail leaves it out; the row's `epsBasis`, its drilldown and
  * ERN's column still say it.
  */
-const BASIS_TEXT: Record<EpsBasisName, string> = { GAAP: "GAAP", adjusted: "adj", unknown: "" };
+const BASIS_TEXT: Record<EpsBasisName, string> = { GAAP: "GAAP", adjusted: "adj", "company-adjusted": "company-adjusted diluted", unknown: "" };
 
 type EarningsRecord = CorporateActionsData["earnings"][number];
 

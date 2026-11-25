@@ -225,6 +225,11 @@ export function buildEventDetail({
       [row.epsAnalysts != null ? `${row.epsAnalysts} analysts` : null,
         row.epsActual == null && row.epsBasis === "adjusted" ? "adjusted" : null].filter(Boolean).join(", ") || undefined),
   ];
+  if (row.streetEps && row.epsBasis === "company-adjusted") comparison.push(
+    detailRow("GAAP diluted EPS", earningsInput(row.gaapEps, row.epsCurrency)),
+    detailRow("Street actual", earningsInput(row.streetEps.actual, row.epsCurrency), "includes stock compensation"),
+    detailRow("Street estimate", earningsInput(row.streetEps.estimate ?? undefined, row.epsCurrency), "basis unconfirmed"),
+  );
   if (row.epsDifference != null) comparison.push(detailRow("Difference", earningsInput(row.epsDifference, row.epsCurrency)));
   if (row.surpriseNotMeaningful) {
     comparison.push(detailRow("Surprise", NOT_MEANINGFUL_TEXT, "against a loss or zero estimate"));

@@ -114,7 +114,7 @@ const HISTORY_COLUMNS: HeadlessPaneColumn[] = [
   // The quarter as the company names it; its end month where the company's calls do not say. Exports keep both.
   { key: "fiscalQuarter", header: "Quarter", format: (value, row) => typeof value === "string" ? value : fiscalPeriodText(typeof row.fiscalPeriod === "string" ? row.fiscalPeriod : undefined) },
   // A reported quarter with no consensus on record says so (exports: in the status column), never a bare blank.
-  { key: "epsEstimate", header: "EPS est", align: right, format: (value, row) => lacksConsensus({ epsActual: num(row.epsActual), epsEstimate: num(value) }) ? NO_CONSENSUS : epsText(num(value)) },
+  { key: "epsEstimate", header: "EPS est", align: right, format: (value, row) => lacksConsensus({ epsActual: num(row.epsActual), epsEstimate: num(value), epsBasis: row.epsBasis }) ? NO_CONSENSUS : epsText(num(value)) },
   { key: "epsAnalysts", header: "Ests", align: right },
   // A report out with no actual yet says so (exports: in the status column), never a bare blank.
   { key: "epsActual", header: "EPS act", align: right, format: (value, row) => actualPending({ date: typeof row.date === "string" ? row.date : null, epsActual: num(value), dateStatus: typeof row.dateStatus === "string" ? row.dateStatus : null }, pendingAbroad(row)) ? ACTUAL_PENDING : epsText(num(value)) },
@@ -259,6 +259,7 @@ async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContex
     epsEstimate: report.epsEstimate,
     epsAnalysts: report.epsAnalysts,
     epsActual: report.epsActual,
+    ...(report.streetEps ? { streetEps: report.streetEps, gaapEps: report.gaapEps } : {}),
     epsActualProvisional: report.provisional,
     epsBasis: showsEpsBasis(report) ? epsBasisName(report.epsBasis) : null,
     ...surpriseFields("epsSurprise", report.epsSurprise),
@@ -361,6 +362,7 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
     epsEstimate: row.epsEstimate,
     epsAnalysts: row.epsAnalysts,
     epsActual: row.epsActual,
+    ...(row.streetEps ? { streetEps: row.streetEps, gaapEps: row.gaapEps } : {}),
     epsActualProvisional: row.provisional,
     epsBasis: !showsEpsBasis(row) ? null : !row.epsBasis && row.epsDilution === "basic" ? "basic" : epsBasisName(row.epsBasis),
     ...surpriseFields("epsSurprise", row.epsSurprise),

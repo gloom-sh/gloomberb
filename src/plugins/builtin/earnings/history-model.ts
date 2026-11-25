@@ -4,14 +4,14 @@ import { scalarPoint } from "../../../components/chart/static/series";
 import type { TimeSeriesPoint } from "../../../time-series/types";
 import { formatMonthYear } from "../../../utils/datetime-format";
 import type { EarningsEvent } from "../../../types/data-provider";
-import type { EarningsDateStatus, EarningsEpsBasis } from "../../../types/financials";
+import type { EarningsDateStatus, EarningsEpsBasis, FilingEpsDetails } from "../../../types/financials";
 import { earningsDateStatus, earningsEpsBasis, isProvisionalActual } from "../shared/earnings-report";
 import { resolveReportRows, type ReportRowAdapter } from "../shared/earnings-calendar";
 import { addDays, MIN_AVERAGE_REPORTS } from "./board-model";
 import { fiscalQuarterOf, fiscalPeriodText, placedPeriod, type FiscalQuarter } from "./fiscal-quarter";
 import { datedYear, epsText, fiscalMonth, impliedText, moveSize, shortDate, surprise, TIMING_LABEL, type Surprise } from "./format";
 
-export interface HistoryRow {
+export interface HistoryRow extends FilingEpsDetails {
   key: string;
   date: string;
   timing: EarningsTiming | null;
@@ -234,6 +234,7 @@ export function historyRows(
       epsActual: report.epsActual,
       provisional: isProvisionalActual(report),
       epsBasis: earningsEpsBasis(report.epsBasis),
+      ...(report.streetEps ? { streetEps: report.streetEps, gaapEps: report.gaapEps } : {}),
       epsDilution: abroad && report.epsDilution === "basic" ? "basic" : null,
       epsSurprise: surprise(report.epsActual, report.epsEstimate),
       revenueEstimate: report.revenueEstimate,
@@ -284,7 +285,15 @@ function daysUntil(date: string, today: string): string {
 }
 
 /** Most important first: the chart-table layout drops figures from the end. */
-export function historyFigures(rows: readonly HistoryRow[], today: string): StatItem[] {
+export function historyFigures(rows: readonly HistoryRow[], today: string, selected?: HistoryRow | null): StatItem[] {
+  if (selected?.epsBasis === "company-adjusted" && selected.streetEps) {
+    return [
+      { id: "filed", label: "Company-adjusted EPS", value: epsText(selected.epsActual), detail: "diluted" },
+      { id: "gaap", label: "GAAP diluted", value: epsText(selected.gaapEps) },
+      { id: "street", label: "Street actual", value: epsText(selected.streetEps.actual), detail: "includes stock comp" },
+      { id: "street-estimate", label: "Street estimate", value: epsText(selected.streetEps.estimate), detail: "basis unconfirmed" },
+    ];
+  }
   const next = rows.find((row) => row.upcoming);
   const past = rows.filter((row) => !row.upcoming).slice(0, AVERAGE_OVER);
   const moves = past.flatMap((row) => (row.move == null ? [] : [Math.abs(row.move)]));

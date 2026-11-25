@@ -757,12 +757,17 @@ export interface SplitHistory {
  * quarter's diluted EPS as the statements report it; `adjusted` is the
  * consensus-basis figure, which leaves out items the statements include.
  */
-export type EarningsEpsBasis = "gaap" | "adjusted";
+export type EarningsEpsBasis = "gaap" | "adjusted" | "company-adjusted";
+
+export interface FilingEpsDetails {
+  gaapEps?: number;
+  streetEps?: { actual: number; estimate: number | null; analysts: number | null; actualBasis: "including-stock-compensation" };
+}
 
 /** A report that is out, a date the company announced, or a date projected from its past reports. */
 export type EarningsDateStatus = "reported" | "confirmed" | "projected";
 
-export interface EarningsAction {
+export interface EarningsAction extends FilingEpsDetails {
   date: string;
   /** Known release/acceptance timestamp, when the calendar has one. */
   reportedAt?: string;
@@ -781,7 +786,7 @@ export interface EarningsAction {
   epsBasis?: EarningsEpsBasis | null;
   dateStatus?: EarningsDateStatus;
   /** `press-release` when `epsActual` is the company's release's, provisional until the calendar has the quarter. */
-  epsActualSource?: "press-release";
+  epsActualSource?: "press-release" | "filing";
 }
 
 export interface CorporateActionsData {
