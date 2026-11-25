@@ -375,6 +375,7 @@ export function NewsArticleStackView({
         const category = formatNewsCategoryForColumn(item.categories[0]);
         return {
           text: category && category === impliedCategory ? "" : category || MISSING_VALUE,
+          ...(category && category === impliedCategory ? { value: category } : {}),
           color: tone(colors.textDim),
         };
       }

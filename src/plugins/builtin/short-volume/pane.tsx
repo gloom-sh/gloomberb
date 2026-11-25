@@ -24,7 +24,7 @@ const rowDate = (row: ShortVolumeObservation) => row.ratioPercent == null ? null
 function renderCell(row: ShortVolumeObservation, column: VolumeColumn, _index: number, state: { selected: boolean }): DataTableCell {
   const text = column.id === "date" ? row.date : column.id === "ratioPercent" ? volumePercent(row.ratioPercent)
     : column.id === "status" ? volumeRowStatus(row) : volumeQuantity(row[column.id]);
-  return { text, color: state.selected ? colors.selectedText : column.id === "ratioPercent" ? colors.warning
+  return { text, ...(column.id === "status" ? { value: volumePointStatus(row) } : {}), color: state.selected ? colors.selectedText : column.id === "ratioPercent" ? colors.warning
     : row.unavailableReason ? colors.textMuted : colors.text };
 }
 function VolumeDetail({ row, width, height }: { row: ShortVolumeObservation; width: number; height: number }) {
