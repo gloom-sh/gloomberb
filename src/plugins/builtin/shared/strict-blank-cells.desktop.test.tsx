@@ -150,15 +150,27 @@ test("MA fails on TERMS, VALUE and CLOSE for agreed deals with none, on the spre
   const at = (spread: number, annualized: number | null): DealSpread => ({
     offer: 10.5, price: 10.5 / (1 + spread), spread, annualized, basis: { kind: "close", session: "2026-11-24" }, latest: null, legs: [],
   });
+  const partial = (row: MnaDeal): MnaDeal => ({ ...row, terms: { ...row.terms, partial: true } });
+  const closing = (row: MnaDeal): MnaDeal => ({ ...row, expectedClose: "2026-11-26" });
   // A spread of zero is a figure, and has no annual return to state; neither has a partial offer's.
   expect(await read(priced, () => at(0, null))).toMatchObject(USABLE);
-  expect(await read(priced.map((row) => ({ ...row, terms: { ...row.terms, partial: true } })), () => at(0.02, null))).toMatchObject(USABLE);
+  expect(await read(priced.map(partial), () => at(0.02, null))).toMatchObject(USABLE);
   // A positive spread with no close date to annualize to follows the CLOSE it owes.
   expect(await read(priced.map((row) => ({ ...row, expectedClose: null })), () => at(0.02, null))).toMatchObject(blank("ANN.", "CLOSE"));
   // A positive spread on a close months out has an annual return, so its blank is a lost figure however well the date reads.
   expect(await read(priced, () => at(0.02, null))).toMatchObject(blank("ANN."));
   // Less than a day from the close there is none to state.
-  expect(await read(priced.map((row) => ({ ...row, expectedClose: "2026-11-26" })), () => at(0.02, null))).toMatchObject(USABLE);
+  expect(await read(priced.map(closing), () => at(0.02, null))).toMatchObject(USABLE);
+
+  // The deal says both of those itself, so they hold with no quote: three such offers the list has no price for owe no
+  // ANN. beside a quoted one that has none either, and that one fills the columns a quote gives.
+  const mixed = [...priced, deal(30, {})];
+  const lastQuoted = (spread: DealSpread) => (row: MnaDeal) => (row.id === "d30" ? spread : null);
+  for (const excluded of [partial, closing]) {
+    expect(await read(mixed.map(excluded), lastQuoted(at(0.02, null)))).toMatchObject(USABLE);
+  }
+  // A full offer months from its close owes one, with a quote or without: the quoted row's flat spread is no figure for it.
+  expect(await read(mixed, lastQuoted(at(0, null)))).toMatchObject(blank("ANN."));
 });
 
 test("an IPO list fails on PRICE for priced and listed offerings with none, and not for deals yet to price", async () => {

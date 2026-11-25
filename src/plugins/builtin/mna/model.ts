@@ -427,22 +427,28 @@ function daysToExpectedClose(deal: Pick<MnaDeal, "expectedClose">, now: number):
 }
 
 /**
- * Whether a spread's ANN. is blank with no figure missing, by the terms
- * dealSpread states no annual return on: the offer is for part of the shares,
- * the spread is not positive, or the expected close is less than a day off
- * (MIN_ANNUALIZED_DAYS, the one boundary both read).
+ * Whether the ANN. of a deal that has a spread to read is blank with no
+ * figure missing, by the terms dealSpread states no annual return on: the
+ * offer is for part of the shares, the expected close is less than a day off
+ * (MIN_ANNUALIZED_DAYS, the one boundary both read), or the spread is not
+ * positive.
  *
- * Every other spread owes the figure. A positive one on a close a day or more
- * out has an annual return, so its blank is a figure the list lost, however
- * well the date reads. One with no close date to annualize to follows the
- * CLOSE the deal owes: the list cannot tell a deal that gives no date from
- * one whose date was lost.
+ * The first two are the deal's own, so they hold with no quote too (`spread`
+ * null): such a deal never has the figure, whatever its price turns out to
+ * be. The third takes a quote to know.
+ *
+ * Every other deal owes the figure. A full offer a day or more from its close
+ * has an annual return wherever its spread is positive, so its blank is a
+ * figure the list lost, or a quote it lost, however well the date reads. One
+ * with no close date to annualize to follows the CLOSE the deal owes: the
+ * list cannot tell a deal that gives no date from one whose date was lost.
  */
-export function annualizedMayBeBlank(deal: Pick<MnaDeal, "terms" | "expectedClose">, spread: DealSpread, now: number): boolean {
-  if (spread.annualized != null) return false;
-  if (deal.terms.partial || spread.spread <= 0) return true;
+export function annualizedMayBeBlank(deal: Pick<MnaDeal, "terms" | "expectedClose">, spread: DealSpread | null, now: number): boolean {
+  if (spread?.annualized != null) return false;
+  if (deal.terms.partial) return true;
   const days = daysToExpectedClose(deal, now);
-  return days != null && days < MIN_ANNUALIZED_DAYS;
+  if (days != null && days < MIN_ANNUALIZED_DAYS) return true;
+  return spread != null && spread.spread <= 0;
 }
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
