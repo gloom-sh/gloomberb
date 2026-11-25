@@ -46,9 +46,10 @@ function paymentColumns(converted: boolean, digits: DividendAmountDigits, subUni
     { key: "amount", header: "Amount", align: "right" as const,
       format: (value: unknown, row: Record<string, unknown>) => typeof value === "number" && typeof row.currency === "string" && row.currency
         ? `${row.cashEstimate ? "estimated " : ""}${amount(value, row.currency)}` : value == null ? MISSING_VALUE : String(value) },
-    { key: "currency", header: "CCY" },
+    // As the pane: a currency or type every row shares is no column (the amounts carry the currency).
+    { key: "currency", header: "CCY", omitWhenSame: true },
     // A regular payment and an extra one on one ex-date are one row of the history, which says so.
-    { key: "type", header: "Type", format: (value: unknown, row: Record<string, unknown>) => typeof value !== "string" ? MISSING_VALUE
+    { key: "type", header: "Type", omitWhenSame: true, format: (value: unknown, row: Record<string, unknown>) => typeof value !== "string" ? MISSING_VALUE
       : row.combined === true ? `${value}, ${COMBINED_PAYMENT}: regular + extra` : value },
   ];
 }
