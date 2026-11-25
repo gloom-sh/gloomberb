@@ -5,7 +5,7 @@ import type { HeadlessBundleResult, HeadlessBundleSection, HeadlessPaneContext }
 import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import fixture from "./fico.fixture.json";
 import { creditHeadless } from "./headless";
-import { creditCoupon, creditMargin } from "./model";
+import { creditCoupon, creditMargin, namedCoupon } from "./model";
 
 const payload = () => structuredClone(fixture) as CreditDocumentsPayload;
 const quote = "\u201cApplicable Margin\u201d means 1.48%.";
@@ -40,6 +40,21 @@ describe("credit-document margin", () => {
     expect(creditMargin(loan([["coupon", 5.25, "percent"]]))).toBe(MISSING_VALUE);
     expect(creditCoupon(loan([["margin", 1.48, "percent"]]))).toBe(MISSING_VALUE);
     expect(creditCoupon(loan([]))).toBe(MISSING_VALUE);
+  });
+
+  test("a note the filing gives no coupon for reads the rate its name states, a floating line none", () => {
+    expect(namedCoupon("3.500% Notes due 2027")).toEqual({ value: 3.5, digits: 3 });
+    expect(namedCoupon("6 7/8% Senior Notes due 2031")).toEqual({ value: 6.875, digits: 3 });
+    expect(namedCoupon("Senior Notes (5%) due 2029")).toEqual({ value: 5, digits: 0 });
+    expect(namedCoupon("Floating Rate Notes due 2027")).toBeNull();
+    expect(namedCoupon("Term loan (SOFR + 1.75%)")).toBeNull();
+    expect(namedCoupon("2026 Notes")).toBeNull();
+    const note = (name: string, facts: Array<[string, CreditFact["value"], string | null]> = []) => ({ ...loan(facts), name });
+    expect(creditCoupon(note("3.500% Notes due 2027"))).toBe("3.500%");
+    // A margin on the line makes it floating, whatever its name holds.
+    expect(creditCoupon(note("4.25% Notes due 2030", [["margin", 1.48, "percent"]]))).toBe(MISSING_VALUE);
+    // The filing's own coupon wins over its name.
+    expect(creditCoupon(note("3.500% Notes due 2027", [["coupon", 3.45, "percent"]]))).toBe("3.45%");
   });
 });
 

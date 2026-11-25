@@ -180,6 +180,16 @@ describe("report tables", () => {
     expect(volumes.rows).toEqual([["ES", 7864.25, 1_193_314]]);
   });
 
+  test("a day drawn day first exports as its ISO day, from an instant or a day", () => {
+    const day = (value: unknown) => value == null ? "-" : `${String(new Date(value as number | string).getUTCDate()).padStart(2, "0")} Aug 2026`;
+    const table = exportRowsTable("Dividends", [
+      { key: "exDate", header: "Ex-date", format: day },
+      { key: "paidAt", header: "Paid", format: day },
+    ], [{ exDate: "2026-08-21", paidAt: Date.UTC(2026, 7, 28, 4, 0) }]);
+    // A day, not the midnight or the hour of the instant the day was read from.
+    expect(table.rows).toEqual([["2026-08-21", "2026-08-28"]]);
+  });
+
   test("a reason drawn for a missing figure goes to status, and the columns are the same with or without one", () => {
     const points = (value: unknown, row: Record<string, unknown>) => typeof value === "number" ? (value * 100).toFixed(2) : String(row.gap ?? "--");
     const iv = (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : "--";
