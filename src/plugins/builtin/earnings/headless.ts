@@ -87,13 +87,22 @@ const BOARD_COLUMNS: HeadlessPaneColumn[] = [
 
 /**
  * The text report's tables, as the pane's views are: reports to come with their date's status and analysts,
- * reports out with their actual and surprise. CCY only where a report is in another currency than dollars.
- * The exports keep BOARD_COLUMNS for every row.
+ * reports out with their actual and surprise. No currency column: a report in another currency than dollars
+ * writes its code after each EPS and sales figure ("7.21 CNY"), as the pane does. The exports keep
+ * BOARD_COLUMNS for every row.
  */
 const UPCOMING_TEXT_COLUMNS = BOARD_COLUMNS.filter((column) => !["epsActual", "epsBasis", "epsSurprise"].includes(column.key));
 const REPORTED_TEXT_COLUMNS = BOARD_COLUMNS.filter((column) => !["dateStatus", "epsAnalysts"].includes(column.key));
-const textColumnsFor = (columns: HeadlessPaneColumn[], rows: ReadonlyArray<{ currency?: unknown }>) =>
-  rows.some((row) => row.currency != null && row.currency !== "USD") ? columns : columns.filter((column) => column.key !== "currency");
+const REPORT_CURRENCY_FIGURES = new Set(["epsEstimate", "epsActual", "revenueEstimate"]);
+const inRowCurrency = (column: HeadlessPaneColumn): HeadlessPaneColumn => ({
+  ...column,
+  format: (value, row) => {
+    const text = column.format ? column.format(value, row) : value == null ? MISSING_VALUE : String(value);
+    return typeof row.currency === "string" && row.currency !== "USD" && text !== MISSING_VALUE && text !== ACTUAL_PENDING ? `${text} ${row.currency}` : text;
+  },
+});
+const textColumnsFor = (columns: HeadlessPaneColumn[]) => columns.filter((column) => column.key !== "currency")
+  .map((column) => REPORT_CURRENCY_FIGURES.has(column.key) ? inRowCurrency(column) : column);
 
 /** What the board's currency and cap are, and which listings abroad it has, in its metadata. */
 const BOARD_CURRENCY_NOTE = "currency is the ISO currency of a report's EPS and sales figures: dollars for US listings, a listing abroad's own (CNY for Tencent), never converted. marketCap is in dollars for every company, so the board ranks them together. Besides US listings the board has the Hong Kong, China A and Singapore top 100's reports whose date the company confirmed or that are out, from each listing's earnings history; they have no time of day, implied or average move. A company listed on two of those markets is shown once, under its primary listing, and found by any of its lines.";
@@ -274,11 +283,11 @@ async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContex
   const [main, mainColumns] = kind === "reported" || (!kind && !upcoming.length && reported.length)
     ? [reported, REPORTED_TEXT_COLUMNS] : [upcoming, UPCOMING_TEXT_COLUMNS];
   const textSections: HeadlessBundleSection[] = main === upcoming && reported.length
-    ? [{ title: "Reported", columns: textColumnsFor(REPORTED_TEXT_COLUMNS, reported), rows: reported }] : [];
+    ? [{ title: "Reported", columns: textColumnsFor(REPORTED_TEXT_COLUMNS), rows: reported }] : [];
   return {
     columns: BOARD_COLUMNS,
     rows,
-    textColumns: textColumnsFor(mainColumns, main),
+    textColumns: textColumnsFor(mainColumns),
     textRows: main,
     ...(textSections.length ? { textSections } : {}),
     // The pane's words for a view with none while the other has some.

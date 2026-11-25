@@ -284,9 +284,10 @@ test("EVTS 0700.HK: the market board reads the listings abroad, lands on Tencent
     // Scrolled to it, below twenty larger US companies.
     expect(frame).toContain("0700:HKEX");
     expect(frame).not.toContain("US10 ");
-    // A board with a listing abroad's report says each report's currency, and that the cap is in dollars.
-    expect(frame).toContain("CCY");
-    expect(frame).toContain("CNY");
+    // A listing abroad's report says its currency after its figures, and the cap that it is in dollars.
+    expect(frame).not.toContain("CCY");
+    expect(frame).toMatch(/\d CNY/);
+    expect(frame).toContain("MKT CAP $");
   } finally {
     calendarRequests.mockImplementation(async (query: EarningsCalendarQuery) => ({
       asOf: "2026-10-14T15:00:00Z", from: query.from, to: query.to, reports: [entry("JPM", "2026-10-14"), entry("NFLX", "2026-10-15")],

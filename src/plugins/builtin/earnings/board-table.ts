@@ -12,7 +12,7 @@ import type { BoardKind, BoardReport, BoardRow, BoardSort } from "./board-model"
 import { epsText, impliedText, moneyText, moveSize, signedPercent, TIMING_LABEL, weekday, type Surprise } from "./format";
 
 type BoardColumnId =
-  | "owned" | "symbol" | "name" | "when" | "status" | "cap" | "ccy" | "epsEstimate" | "analysts" | "epsActual" | "basis"
+  | "owned" | "symbol" | "name" | "when" | "status" | "cap" | "epsEstimate" | "analysts" | "epsActual" | "basis"
   | "epsSurprise" | "revenueEstimate" | "implied" | "move" | "average";
 
 export type BoardColumn = DataTableColumn & { id: BoardColumnId };
@@ -34,8 +34,6 @@ const ALL_COLUMNS: BoardColumn[] = [
   { id: "implied", label: "IMPLIED", width: 7, align: "right", omitWhenEmpty: "visible" },
   { id: "move", label: "MOVE", width: 7, align: "right", mayBeBlank: true, omitWhenEmpty: "visible" },
   { id: "average", label: "AVG MOVE", width: 8, align: "right", omitWhenEmpty: "visible" },
-  // The currency of the EPS and sales figures, on a board with a listing abroad's (CNY for Tencent).
-  { id: "ccy", label: "CCY", width: 3, align: "left" },
   { id: "epsEstimate", label: "EPS EST", width: 7, align: "right" },
   { id: "analysts", label: "ESTS", width: 4, align: "right" },
   // A report out without its actual yet says it is pending.
@@ -53,8 +51,8 @@ const ALL_COLUMNS: BoardColumn[] = [
  * status: the view says it is out.
  */
 const KIND_COLUMNS: Record<BoardKind, ReadonlySet<BoardColumnId>> = {
-  upcoming: new Set(["owned", "symbol", "name", "when", "status", "implied", "average", "ccy", "epsEstimate", "analysts", "revenueEstimate", "cap"]),
-  reported: new Set(["owned", "symbol", "name", "when", "implied", "move", "average", "ccy", "epsEstimate", "epsActual", "basis", "epsSurprise", "revenueEstimate", "cap"]),
+  upcoming: new Set(["owned", "symbol", "name", "when", "status", "implied", "average", "epsEstimate", "analysts", "revenueEstimate", "cap"]),
+  reported: new Set(["owned", "symbol", "name", "when", "implied", "move", "average", "epsEstimate", "epsActual", "basis", "epsSurprise", "revenueEstimate", "cap"]),
 };
 
 /**
@@ -63,13 +61,27 @@ const KIND_COLUMNS: Record<BoardKind, ReadonlySet<BoardColumnId>> = {
  * average stay beside the name. WHEN quiets a projected date once STATUS goes.
  */
 const DROP_ORDER: Record<BoardKind, BoardColumnId[]> = {
-  upcoming: ["analysts", "status", "cap", "revenueEstimate", "epsEstimate", "ccy", "owned"],
+  upcoming: ["analysts", "status", "cap", "revenueEstimate", "epsEstimate", "owned"],
   // Out, the report is the news: EPS ACT, then EPS SURP, outrank SALES EST, MKT CAP and AVG MOVE, which go first.
-  reported: ["basis", "average", "cap", "revenueEstimate", "epsSurprise", "epsActual", "epsEstimate", "ccy", "owned"],
+  reported: ["basis", "average", "cap", "revenueEstimate", "epsSurprise", "epsActual", "epsEstimate", "owned"],
 };
 
-/** The columns in the report's currency, which CCY names. */
-const CURRENCY_FIGURES: BoardColumnId[] = ["epsEstimate", "epsActual", "revenueEstimate"];
+/**
+ * The columns in the report's currency. A report in another currency than
+ * dollars (a listing abroad's) writes its code after each figure ("7.21 CNY"),
+ * and these columns take the room for it; dollars stay bare, so no column
+ * says USD down the board.
+ */
+const CURRENCY_FIGURES: ReadonlySet<BoardColumnId> = new Set(["epsEstimate", "epsActual", "revenueEstimate"]);
+/** " CNY" after a figure. */
+const CURRENCY_CODE_WIDTH = 4;
+
+/** A figure with its report's currency after it when that is not dollars; a missing or pending one bare. */
+function inReportCurrency(cell: DataTableCell, report: BoardReport): DataTableCell {
+  const currency = report.currency;
+  return currency && currency !== "USD" && cell.text !== MISSING_VALUE && cell.text !== ACTUAL_PENDING
+    ? { ...cell, text: `${cell.text} ${currency}` } : cell;
+}
 
 /** Header clicks sort these; the rest keep the ranking. */
 export const SORTABLE: Partial<Record<BoardColumnId, BoardSort["column"]>> = {
@@ -78,8 +90,9 @@ export const SORTABLE: Partial<Record<BoardColumnId, BoardSort["column"]>> = {
 
 /**
  * Whether a report on the board is in another currency than dollars (a
- * listing abroad's): the board then shows CCY, and says its market cap is in
- * dollars (boardColumns). A board of US reports looks as it always has.
+ * listing abroad's): the board then makes room for a code after its figures,
+ * and says its market cap is in dollars (boardColumns). A board of US reports
+ * looks as it always has.
  */
 export function boardHasCurrencies(rows: readonly BoardRow[]): boolean {
   return rows.some((row) => row.kind === "report" && row.report.currency != null && row.report.currency !== "USD");
@@ -95,22 +108,21 @@ export function boardColumns(
   width: number,
   { kind = "upcoming", currencies = false, symbolWidth = SYMBOL_WIDTH }: { kind?: BoardKind; currencies?: boolean; symbolWidth?: number } = {},
 ): BoardColumn[] {
-  // Every column but the name, with the space a left-aligned column keeps from a right-aligned one before it (CCY after
-  // AVG MOVE, BASIS after EPS ACT), so the last column is never cut at the pane's edge.
+  // Every column but the name, with the space a left-aligned column keeps from a right-aligned one before it (BASIS
+  // after EPS ACT), so the last column is never cut at the pane's edge.
   const fixed = (list: BoardColumn[]) =>
     list.reduce((sum, column, index) =>
       sum + tableColumnLeadGap(list, index, TABLE_COLUMN_GAP) + (column.id === "name" ? 0 : tableColumnWidth(column)) + TABLE_COLUMN_GAP, 2);
   // Beside figures in yuan or Hong Kong dollars, the cap says it is in dollars.
-  let columns = ALL_COLUMNS.filter((column) => KIND_COLUMNS[kind].has(column.id) && (currencies || column.id !== "ccy")).map((column) =>
+  let columns = ALL_COLUMNS.filter((column) => KIND_COLUMNS[kind].has(column.id)).map((column) =>
     column.id === "cap" && currencies ? { ...column, label: "MKT CAP $", width: 9 }
       : column.id === "symbol" ? { ...column, width: symbolWidth }
-        : column);
+        : currencies && CURRENCY_FIGURES.has(column.id) ? { ...column, width: column.width + CURRENCY_CODE_WIDTH }
+          : column);
   for (const id of DROP_ORDER[kind]) {
     if (fixed(columns) + NAME_MIN_WIDTH <= width) break;
     columns = columns.filter((column) => column.id !== id);
   }
-  // CCY is the currency of the figures beside it; with none left it goes too.
-  if (!columns.some((column) => CURRENCY_FIGURES.includes(column.id))) columns = columns.filter((column) => column.id !== "ccy");
   // The name takes what the other columns leave.
   const nameWidth = Math.max(NAME_MIN_WIDTH, width - fixed(columns));
   return columns.map((column) => (column.id === "name" ? { ...column, width: nameWidth } : column));
@@ -164,16 +176,14 @@ export function renderBoardCell(row: BoardRow, column: BoardColumn, context: Boa
       return { text: report.dateStatus ?? MISSING_VALUE, color: report.dateStatus === "projected" ? colors.textMuted : dim };
     case "cap":
       return { text: moneyText(report.marketCap), color: dim };
-    case "ccy":
-      return { text: report.currency ?? MISSING_VALUE, color: dim };
     case "epsEstimate":
-      return { text: epsText(report.epsEstimate), color: dim };
+      return inReportCurrency({ text: epsText(report.epsEstimate), color: dim }, report);
     case "analysts":
       return { text: report.epsAnalysts == null ? MISSING_VALUE : String(report.epsAnalysts), color: dim };
     case "epsActual":
       // A report out with no actual yet says so; the company's press release's figure reads quieter until the calendar's replaces it.
       if (actualPending(report, listingAbroadVenue(report.symbol) != null)) return { text: ACTUAL_PENDING, color: dim };
-      return { text: epsText(report.epsActual), color: report.epsActual == null ? dim : report.provisional ? colors.textMuted : colors.text };
+      return inReportCurrency({ text: epsText(report.epsActual), color: report.epsActual == null ? dim : report.provisional ? colors.textMuted : colors.text }, report);
     case "basis":
       return !showsEpsBasis(report)
         ? { text: MISSING_VALUE, color: dim }
@@ -181,7 +191,7 @@ export function renderBoardCell(row: BoardRow, column: BoardColumn, context: Boa
     case "epsSurprise":
       return signed(report.epsSurprise);
     case "revenueEstimate":
-      return { text: moneyText(report.revenueEstimate), color: dim };
+      return inReportCurrency({ text: moneyText(report.revenueEstimate), color: dim }, report);
     case "implied":
       return { text: impliedText(report.impliedMove), color: colors.textBright };
     case "move": {
