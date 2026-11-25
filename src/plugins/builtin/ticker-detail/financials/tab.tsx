@@ -18,7 +18,7 @@ import { notMeaningfulColor } from "../../../../components/ui/not-meaningful";
 import { isNotMeaningful } from "../../../../utils/growth";
 import { useRemoteUiNode } from "../../../../remote/semantic-tree";
 import { fiscalYearEndMonth } from "../../../../utils/fiscal-period";
-import { displayWidth, padTo } from "../../../../utils/format";
+import { displayWidth } from "../../../../utils/format";
 import { filledPeriodPublications, filledPeriodsNote, stalePeriodNote } from "../../../../utils/financial-statements";
 import {
   FINANCIAL_COL_W,
@@ -29,9 +29,11 @@ import {
   collectDefaultCollapsedGroupIds,
   collectGroupIds,
   financialCellParts,
+  financialColumnName,
   financialColumnPeriod,
-  financialFiscalHeader,
   financialGrowthNotice,
+  financialPeriodEnd,
+  financialPeriodHeaderLabel,
   formatFinancialCell,
   formatFinancialCellValue,
   financialStatementCurrency,
@@ -65,7 +67,17 @@ import {
   visibleRatios,
   type RatioAmount,
 } from "./ratios";
-import { PeriodEndHistoryLoader, RatioTable, ratioMetricColumn, type PeriodEndHistoryState, type RatioTableColumn } from "./ratio-table";
+import {
+  PERIOD_END_NAME_CELL,
+  PERIOD_END_ROW,
+  PeriodEndHistoryLoader,
+  RatioTable,
+  periodEndCell,
+  ratioMetricColumn,
+  type PeriodEndHistoryState,
+  type PeriodEndRow,
+  type RatioTableColumn,
+} from "./ratio-table";
 import { useExchangeResultsNotes } from "./exchange-results";
 import { latestBalanceSheetDate, useOfferingNote, useRunwayOfferings } from "./offerings";
 import { burnsCash, cashRunway, runwayOfferingNote } from "../../../../utils/cash-runway";
@@ -76,7 +88,7 @@ const RATIOS_SEGMENT = "ratios";
 
 type FinancialTableColumn = DataTableColumn & (
   | { id: "metric"; kind: "metric" }
-  | { id: string; kind: "statement"; statement: FinancialTableStatement }
+  | { id: string; kind: "statement"; statement: FinancialTableStatement; /** The table's last column. */ last: boolean }
 );
 
 const NO_COLLAPSED_GROUPS: ReadonlySet<string> = new Set();
@@ -105,19 +117,23 @@ export function financialGroupNameCell(
     ),
   };
 }
-const financialRowKey = (row: FinancialTableRow) => row.id;
-const financialRowBackground = (row: FinancialTableRow) => (
+/** The statement's lines under the day each period ends. */
+type StatementTableRow = FinancialTableRow | PeriodEndRow;
+
+const financialRowKey = (row: StatementTableRow) => row.id;
+const financialRowBackground = (row: StatementTableRow) => (
   row.kind === "group" && row.depth === 0 ? colors.panel : undefined
 );
+const isStatementLine = (row: StatementTableRow) => row.kind !== "period-end";
 
-/** The fiscal period, plus the column's currency when the table has no single one. */
+/** The fiscal period, plus the column's currency when the table has no single one. The day it ends is the first row. */
 function financialColumnHeader(
   statement: FinancialTableStatement,
   kind: FinancialPeriod,
   yearEndMonth: number | null,
   sharedCurrency: string | undefined,
 ): string {
-  const header = financialFiscalHeader(statement, kind, yearEndMonth);
+  const header = financialColumnName(statement, kind, yearEndMonth);
   return !sharedCurrency && statement.currency ? `${header} ${statement.currency}` : header;
 }
 
@@ -363,40 +379,50 @@ export function ResolvedFinancialsTab({
     yearEndMonth,
     comparisonCurrency,
   )), [annualDates, comparisonCurrency, displayStatements, resolvedPeriod, yearEndMonth]);
-  // In the terminal a period is as wide as its widest value and growth, so each pair sits as far from the next
-  // as from its own growth and more periods fit. The ratio tabs keep the statement columns' width. Every line of
-  // the statement counts, a collapsed group's too, so opening or closing one leaves the periods where they are.
+  // The day each period ends: the table's first row, under the fiscal period that heads the column.
+  const periodEnds = useMemo(() => displayStatements.map((statement) => financialPeriodEnd(statement) ?? ""), [displayStatements]);
+  const datedPeriods = periodEnds.some(Boolean);
+  // A period is as wide as its widest value and growth, so each pair sits as far from the next as from its own
+  // growth and more periods fit; its header and its end date fit too. The ratio tabs keep their fixed width. Every
+  // line of the statement counts, a collapsed group's too, so opening or closing one leaves the periods where they
+  // are.
   const periodWidth = useMemo(() => {
-    if (nativePaneChrome || ratioTab) return Math.max(FINANCIAL_COL_W, financialPeriodWidth([], periodHeaders));
+    if (ratioTab) return Math.max(FINANCIAL_COL_W, financialPeriodWidth([], periodHeaders, periodEnds));
     const everyRow = shareFinancialUnit(buildFinancialRows(subTab.rows, displayStatements, NO_COLLAPSED_GROUPS)).rows;
     const values = [...everyRow, ...rows].flatMap((row) => displayStatements.map((statement) => (
       formatFinancialCellValue(row, statement)
     )));
-    return financialPeriodWidth(values, periodHeaders);
-  }, [displayStatements, nativePaneChrome, periodHeaders, ratioTab, rows, subTab.rows]);
+    return financialPeriodWidth(values, periodHeaders, periodEnds);
+  }, [displayStatements, periodEnds, periodHeaders, ratioTab, rows, subTab.rows]);
+  const tableRows = useMemo<StatementTableRow[]>(() => datedPeriods ? [PERIOD_END_ROW, ...rows] : rows, [datedPeriods, rows]);
   const columns = useMemo<FinancialTableColumn[]>(() => [
     {
       id: "metric",
       kind: "metric",
       label: metricHeader,
-      width: financialLabelWidth(width, periodWidth),
+      width: financialLabelWidth(width, periodWidth, displayStatements.length, nativePaneChrome),
       align: "left",
     },
     ...displayStatements.map((statement, index): FinancialTableColumn => ({
       id: `statement:${statement.date}:${index}`,
       kind: "statement",
       statement,
-      label: padTo(periodHeaders[index]!, periodWidth, "center"),
+      last: index === displayStatements.length - 1,
+      label: financialPeriodHeaderLabel(periodHeaders[index]!, periodWidth),
       width: periodWidth,
       align: "right",
       headerColor: statement.date === "TTM" ? colors.textBright : colors.textDim,
     })),
-  ], [displayStatements, metricHeader, periodHeaders, periodWidth, width]);
+  ], [displayStatements, metricHeader, nativePaneChrome, periodHeaders, periodWidth, width]);
   const periodEnd = latestFinancialPeriodEnd(displayStatements);
   const renderCell = useCallback((
-    row: FinancialTableRow,
+    row: StatementTableRow,
     column: FinancialTableColumn,
   ): DataTableCell => {
+    if (row.kind === "period-end") {
+      if (column.kind === "metric") return PERIOD_END_NAME_CELL;
+      return periodEndCell(financialPeriodEnd(column.statement), column.width, nativePaneChrome || column.last);
+    }
     if (column.kind === "metric") {
       if (row.kind === "group") {
         const labelColor = row.depth === 0 ? colors.textBright : colors.textDim;
@@ -449,7 +475,7 @@ export function ResolvedFinancialsTab({
         </Box>
       ),
     };
-  }, [comparisonCurrency, previousStatementMap, toggleGroup]);
+  }, [comparisonCurrency, nativePaneChrome, previousStatementMap, toggleGroup]);
   useEffect(() => {
     if (rows.length === 0) {
       if (selectedRowId !== null) setSelectedRowId(null);
@@ -607,7 +633,7 @@ export function ResolvedFinancialsTab({
           rootBefore={queryBar(comparisonCurrency ?? "")}
         />
       ) : (
-        <DataTableView<FinancialTableRow, FinancialTableColumn>
+        <DataTableView<StatementTableRow, FinancialTableColumn>
           focused={focused}
           headerScrollRef={headerScrollRef}
           scrollRef={bodyScrollRef}
@@ -617,12 +643,15 @@ export function ResolvedFinancialsTab({
           columns={columns}
           // Fiscal periods, oldest to newest: an axis, not columns to arrange.
           columnReorder={false}
-          items={rows}
+          items={tableRows}
+          // The cursor walks the statement's lines; the period ends are part of the heading.
+          isNavigable={isStatementLine}
           selection={{
             kind: "id",
             selectedId: selectedRowId,
             getId: (row) => row.id,
             onChange: (_id, row, _index, reason) => {
+              if (row.kind === "period-end") return;
               setSelectedRowId(row.id);
               if (reason === "pointer" && row.kind === "group" && row.toggleable) {
                 toggleGroup(row.id);

@@ -108,8 +108,8 @@
     "why": "Pads a figure or a period header to its table column, right-aligned or centred, so a column of figures lines up; the figures are formatted to fit the column."
   },
   "src/plugins/builtin/ticker-detail/financials/ratio-table.tsx": {
-    "uses": 2,
-    "why": "Pads a figure or a period header to its table column, right-aligned or centred, so a column of figures lines up; the figures are formatted to fit the column."
+    "uses": 3,
+    "why": "Pads a figure, a period header or the day a period ends to its table column, right-aligned or centred, so a column of figures lines up and the day sits under its header; the figures are formatted to fit the column and the column is as wide as the day."
   },
   "src/plugins/builtin/ticker-detail/financials/tab.tsx": {
     "uses": 1,
