@@ -205,6 +205,7 @@ exports[`the runtime exports of every public subpath are the reviewed ones 1`] =
   "./i18n": [
     "registerTranslations",
     "t",
+    "tPlugin",
     "tc",
     "tf",
     "useAppLanguage",

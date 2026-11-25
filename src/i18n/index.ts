@@ -74,7 +74,6 @@ function detectLanguage(): AppLanguage {
 let currentLanguage: AppLanguage = detectLanguage();
 const languageListeners = new Set<() => void>();
 
-/** Bumps on every language change and every plugin registration. */
 let translationRevision = 0;
 
 function notifyLanguageListeners(): void {
@@ -82,11 +81,6 @@ function notifyLanguageListeners(): void {
   for (const listener of languageListeners) listener();
 }
 
-/**
- * Changes whenever what `t` returns may have changed: the language, or the
- * entries plugins registered. A cache keyed on the language alone misses the
- * second.
- */
 export function getTranslationRevision(): number {
   return translationRevision;
 }
@@ -141,61 +135,64 @@ export function applyLanguagePreference(preference: LanguagePreference): void {
   );
 }
 
-type TranslatedLanguage = Exclude<AppLanguage, "en">;
+type TranslatedLanguage = keyof typeof DICTIONARIES;
+const pluginTranslations = new Map<string, Map<TranslatedLanguage, Map<string, string>[]>>();
+let disabledTranslationPlugins = new Set<string>();
 
-/**
- * Entries plugins registered, consulted before the built-in tables so a
- * plugin can add strings the app does not translate and correct ones it
- * does. The latest registration wins.
- */
-const registeredTables = new Map<TranslatedLanguage, Array<Record<string, string>>>();
-
-function lookup(language: TranslatedLanguage, key: string): string | undefined {
-  const tables = registeredTables.get(language);
-  if (tables) {
-    for (let index = tables.length - 1; index >= 0; index -= 1) {
-      const value = tables[index]![key];
-      if (value !== undefined) return value;
-    }
-  }
-  return DICTIONARIES[language][key];
+export function setDisabledTranslationPlugins(pluginIds: readonly string[]): void {
+  const next = new Set(pluginIds);
+  const language = currentLanguage;
+  const changed = language !== "en" && [...pluginTranslations].some(([pluginId, languages]) =>
+    languages.has(language) && next.has(pluginId) !== disabledTranslationPlugins.has(pluginId));
+  disabledTranslationPlugins = next;
+  if (changed) notifyLanguageListeners();
 }
 
 /**
- * Adds translation entries for one language, keyed like the built-in tables:
- * the English source text, or context + text for `tc`. Returns a function that
- * removes them, for the plugin's `dispose`. Panes re-render through
- * `useAppLanguage` when the active language's entries change.
+ * Registers a plugin's own keys for one language. The latest entry for a key
+ * in this plugin and language wins until its disposer is called.
  */
 export function registerTranslations(
+  pluginId: string,
   language: TranslatedLanguage,
-  entries: Record<string, string>,
+  entries: Readonly<Record<string, string>>,
 ): () => void {
-  if (!(language in DICTIONARIES)) {
+  if (!Object.hasOwn(DICTIONARIES, language)) {
     throw new Error(`Cannot register translations for unsupported language "${language}".`);
   }
-  const table = { ...entries };
-  const tables = registeredTables.get(language) ?? [];
+  const table = new Map(Object.entries(entries));
+  const languages = pluginTranslations.get(pluginId) ?? new Map<TranslatedLanguage, Map<string, string>[]>();
+  const tables = languages.get(language) ?? [];
   tables.push(table);
-  registeredTables.set(language, tables);
-  if (currentLanguage === language) notifyLanguageListeners();
+  languages.set(language, tables);
+  pluginTranslations.set(pluginId, languages);
+  if (currentLanguage === language && !disabledTranslationPlugins.has(pluginId)) notifyLanguageListeners();
   return () => {
-    const current = registeredTables.get(language);
-    const index = current?.indexOf(table) ?? -1;
-    if (index === -1) return;
-    current!.splice(index, 1);
-    if (currentLanguage === language) notifyLanguageListeners();
+    const index = tables.indexOf(table);
+    if (index < 0) return;
+    tables.splice(index, 1);
+    if (!tables.length) languages.delete(language);
+    if (!languages.size) pluginTranslations.delete(pluginId);
+    if (currentLanguage === language && !disabledTranslationPlugins.has(pluginId)) notifyLanguageListeners();
   };
 }
 
-/**
- * The entry for exactly `key` in the active language, or undefined: no
- * fallback to a plain entry or to English. For sinks that translate only what
- * a dictionary or plugin explicitly provides for them.
- */
-export function translateExact(key: string): string | undefined {
-  if (currentLanguage === "en") return undefined;
-  return lookup(currentLanguage, key);
+/** Looks up only the specified plugin's key, falling back to the supplied text. */
+export function tPlugin(pluginId: string, key: string, fallback: string): string {
+  if (currentLanguage === "en" || disabledTranslationPlugins.has(pluginId)) return fallback;
+  const tables = pluginTranslations.get(pluginId)?.get(currentLanguage);
+  if (tables) {
+    for (let index = tables.length - 1; index >= 0; index -= 1) {
+      const value = tables[index]!.get(key);
+      if (value !== undefined) return value;
+    }
+  }
+  return fallback;
+}
+
+function lookup(language: TranslatedLanguage, key: string): string | undefined {
+  const dictionary = DICTIONARIES[language];
+  return Object.hasOwn(dictionary, key) ? dictionary[key] : undefined;
 }
 
 /**

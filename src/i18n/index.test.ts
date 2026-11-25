@@ -8,6 +8,7 @@ import {
   subscribeLanguage,
   t,
   tc,
+  tPlugin,
 } from ".";
 import { es } from "./es";
 import { ja } from "./ja";
@@ -115,33 +116,48 @@ describe("registerTranslations", () => {
     setLanguage(previousLanguage);
   });
 
-  test("layers over the built-in table, latest wins, and its disposer restores the table", () => {
+  test("looks up only own keys within a plugin and disposes each registration once", () => {
     setLanguage("zh-CN");
     const builtIn = t("Save");
-    const removeFirst = registerTranslations("zh-CN", { "Plugin only label": "插件标签", Save: "存" });
-    const removeSecond = registerTranslations("zh-CN", { Save: "存盘" });
-    expect(t("Plugin only label")).toBe("插件标签");
-    expect(t("Save")).toBe("存盘");
-    expect(tc("no-such-context", "Save")).toBe("存盘");
-    removeSecond();
-    expect(t("Save")).toBe("存");
-    removeFirst();
-    expect(t("Save")).toBe(builtIn);
-    expect(t("Plugin only label")).toBe("Plugin only label");
+    const entries = Object.assign(Object.create({ inherited: "not a translation" }), { Save: "存" });
+    const removeFirst = registerTranslations("first", "zh-CN", entries);
+    const removeLatest = registerTranslations("first", "zh-CN", { Save: "存盘" });
+    const removeOther = registerTranslations("other", "zh-CN", { Save: "保存文件" });
+    try {
+      expect(tPlugin("first", "Save", "Fallback")).toBe("存盘");
+      expect(tPlugin("other", "Save", "Fallback")).toBe("保存文件");
+      expect(tPlugin("first", "inherited", "Fallback")).toBe("Fallback");
+      expect(tPlugin("first", "constructor", "Fallback")).toBe("Fallback");
+      expect(tPlugin("missing", "Save", "Fallback")).toBe("Fallback");
+      expect(t("Save")).toBe(builtIn);
+      expect(tc("no-such-context", "Save")).toBe(builtIn);
+      expect(t("constructor")).toBe("constructor");
+      expect(tc("to", "String")).toBe("String");
+      removeLatest();
+      removeLatest();
+      expect(tPlugin("first", "Save", "Fallback")).toBe("存");
+      removeFirst();
+      expect(tPlugin("first", "Save", "Fallback")).toBe("Fallback");
+    } finally {
+      removeLatest();
+      removeFirst();
+      removeOther();
+    }
   });
 
   test("notifies subscribers only for the active language", () => {
     setLanguage("zh-CN");
     let notifications = 0;
     const unsubscribe = subscribeLanguage(() => { notifications += 1; });
-    const removeJa = registerTranslations("ja", { "Only Japanese": "日本語のみ" });
-    expect(notifications).toBe(0);
-    expect(t("Only Japanese")).toBe("Only Japanese");
-    const removeZh = registerTranslations("zh-CN", { "Only Chinese": "仅中文" });
-    expect(notifications).toBe(1);
-    removeZh();
-    expect(notifications).toBe(2);
-    removeJa();
-    unsubscribe();
+    const removeJa = registerTranslations("first", "ja", { label: "日本語のみ" });
+    try {
+      expect(notifications).toBe(0);
+      expect(tPlugin("first", "label", "Only Japanese")).toBe("Only Japanese");
+      removeJa();
+      expect(notifications).toBe(0);
+    } finally {
+      removeJa();
+      unsubscribe();
+    }
   });
 });

@@ -2,10 +2,13 @@ import { useSyncExternalStore } from "react";
 import { getLanguage, getTranslationRevision, subscribeLanguage } from ".";
 
 export function useAppLanguage() {
-  return useSyncExternalStore(subscribeLanguage, getLanguage, getLanguage);
+  useTranslationRevision();
+  return getLanguage();
 }
 
-/** Re-renders when the language or any plugin-registered entry changes. */
-export function useTranslationRevision() {
-  return useSyncExternalStore(subscribeLanguage, getTranslationRevision, getTranslationRevision);
+const staticRevision = () => 0;
+
+export function useTranslationRevision(enabled = true) {
+  const getSnapshot = enabled ? getTranslationRevision : staticRevision;
+  return useSyncExternalStore(subscribeLanguage, getSnapshot, getSnapshot);
 }

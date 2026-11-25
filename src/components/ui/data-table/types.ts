@@ -6,6 +6,8 @@ export type DataTableColumn = Pick<
   ColumnConfig,
   "id" | "label" | "width" | "align"
 > & {
+  /** Opts the drawn header into a plugin translation. The raw `label` remains the fallback and export/report label. */
+  labelTranslation?: { pluginId: string; key: string };
   headerColor?: string;
   headerBackgroundColor?: string;
   /**

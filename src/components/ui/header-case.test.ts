@@ -1,27 +1,10 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
-import { getLanguage, registerTranslations, setLanguage } from "../../i18n";
-import { translateHeaderLabel } from "./header-case";
+import { expect, test } from "bun:test";
+import { titleCase } from "./header-case";
 
-let previousLanguage: ReturnType<typeof getLanguage>;
-beforeEach(() => {
-  previousLanguage = getLanguage();
-});
-afterEach(() => {
-  setLanguage(previousLanguage);
-});
-
-test("headers stay in English unless a plugin registers a header entry", () => {
-  setLanguage("zh-CN");
-  // Plain UI entries exist for these words (Open is the verb 打开), but a
-  // header only takes an explicit table-header entry.
-  expect(translateHeaderLabel("Open")).toBe("Open");
-  expect(translateHeaderLabel("Volume")).toBe("Volume");
-  const remove = registerTranslations("zh-CN", { "table-headerOPEN": "开盘" });
-  expect(translateHeaderLabel("Open")).toBe("开盘");
-  expect(translateHeaderLabel("OPEN")).toBe("开盘");
-  setLanguage("en");
-  expect(translateHeaderLabel("Open")).toBe("Open");
-  setLanguage("zh-CN");
-  remove();
-  expect(translateHeaderLabel("Open")).toBe("Open");
+test("title case capitalises lower-case words and keeps acronyms and minor words", () => {
+  expect(titleCase("Open roles by posting age")).toBe("Open Roles by Posting Age");
+  expect(titleCase("EPS comparison")).toBe("EPS Comparison");
+  expect(titleCase("Split/adjustment factor")).toBe("Split/Adjustment Factor");
+  expect(titleCase("what it is for")).toBe("What It Is For");
+  expect(titleCase("iShares core (bp)")).toBe("iShares Core (bp)");
 });
