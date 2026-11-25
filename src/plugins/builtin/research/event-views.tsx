@@ -14,9 +14,9 @@ import {
   type DataTableKeyEvent,
 } from "../../../components";
 import { fitChartTableColumns } from "../../../components/chart-table";
-import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
+import { staticSeries } from "../../../components/chart/static/series";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
-import type { ChartPanelSpec, ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
+import type { ChartPanelSpec, ResolvedSeries } from "../../../time-series/types";
 import { blendHex, colors } from "../../../theme/colors";
 import { MISSING_VALUE, distributionAmountsDigits, formatDistributionAmount, formatPercentRaw } from "../../../utils/format";
 import { formatFilingDate } from "../../../utils/datetime-format";
@@ -31,19 +31,20 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { loadCatalysts } from "../catalysts/client";
 import type { TickerResearchTabProps } from "../../../types/plugin-contributions";
 import { useCompanyDisclosureLinks } from "../company-kpis/related";
+import { beatMissSeries, slotAxis, slotPoints } from "../shared/beat-miss-chart";
 import { useEventData } from "./event-data";
-import { useEventRowDetail } from "./corporate-actions-pane";
-import { buildNextUp, formatEventMetric, isFundListing, nextCatalystOf, nextCatalystQuery, type EventSummaryFigure } from "./event-model";
+import { useEventRowDetail } from "./event-detail";
+import { buildEarningsHeader, buildNextUp, formatEventMetric, isFundListing, nextCatalystOf, nextCatalystQuery, type EventSummaryFigure } from "./event-model";
 import { dividendYearDetail, dividendYearLabel, dividendYears, dividendYearSpan, earningsQuarters, splitMarks, type DividendYear, type EarningsQuarter } from "./event-charts";
 
 type ViewProps = { focused: boolean; width: number; height: number; footerPaneId?: string };
 
-const DAY_MS = 86_400_000;
 const EARNINGS_PANELS: ChartPanelSpec[] = [{ id: "main" }];
 const DIVIDEND_PANELS = EARNINGS_PANELS;
 const YEAR_TOTAL_DIGITS = 4;
 
-const toStat = (figure: EventSummaryFigure) => ({
+/** A figure of the opening block as the kit's StatGrid takes it. */
+export const toStat = (figure: EventSummaryFigure) => ({
   id: figure.id, label: figure.label, value: figure.value,
   ...(figure.detail ? { detail: figure.detail } : {}),
   ...(figure.detailVariants ? { detailVariants: figure.detailVariants } : {}),
@@ -55,32 +56,6 @@ function sharedCurrency(values: ReadonlyArray<{ value: number | undefined; curre
   const present = values.filter((entry) => entry.value != null);
   const first = present[0]?.currency;
   return first && present.every((entry) => entry.currency === first) ? first : undefined;
-}
-
-/**
- * One slot per bar, oldest first, with an empty slot at each end so the outer
- * bars sit inside the plot, as ERN's report bars do.
- */
-function slotPoints<T extends { date: string }>(bars: readonly T[], value: (bar: T) => number | null | undefined): TimeSeriesPoint[] {
-  if (!bars.length) return [];
-  const at = (date: string, days = 0) => new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS);
-  return [
-    scalarPoint(at(bars[0]!.date, -1), null),
-    ...bars.map((bar) => scalarPoint(at(bar.date), value(bar) ?? null)),
-    scalarPoint(at(bars.at(-1)!.date, 1), null),
-  ];
-}
-
-/** A tick under each bar; where they are too close the axis drops some rather than run them together. */
-function slotAxis<T>(bars: readonly T[], label: (bar: T) => string, cursor: (bar: T) => string) {
-  const slots = bars.length + 1;
-  return {
-    ticks: bars.map((bar, index) => ({ label: label(bar), ratio: (index + 1) / slots })),
-    formatCursor: (ratio: number) => {
-      const bar = bars[Math.max(0, Math.min(bars.length - 1, Math.round(ratio * slots) - 1))];
-      return bar ? cursor(bar) : "";
-    },
-  };
 }
 
 /**
@@ -118,45 +93,42 @@ function quarterColumns(width: number, epsUnit: string | undefined, revenueUnit:
   return fitChartTableColumns(columns, width, ["detail", "revenue"]);
 }
 
+type EarningsViewProps = ViewProps & {
+  /**
+   * EE's Reported view: EE's sign-in wall and source notice, and EE's header
+   * (the next report and the trailing twelve months) in place of EVT's, which
+   * adds the ex-dates and the next catalyst.
+   */
+  estimates?: boolean;
+};
+
 /**
- * The Earnings view of EVT and the Events tab: what is next over a chart of
- * the last quarters, the reported EPS against its estimate with the surprise
- * in the beat or miss colour under it, and the quarters' exact figures in the
- * table, one selection across both. Enter or a click opens a quarter's detail
- * as EE does: the EPS comparison and, for a US report, its SEC filing.
+ * The Earnings view of EVT and the Events tab, and EE's Reported view: what is
+ * next over a chart of the last quarters, the reported EPS against its
+ * estimate with the surprise in the beat or miss colour under it, and the
+ * quarters' exact figures in the table, one selection across both. Enter or a
+ * click opens a quarter's detail: the EPS comparison and, for a US report, its
+ * SEC filing.
  */
-function EventsEarningsView({ focused, width, height, footerPaneId = "corporate-actions" }: ViewProps) {
-  const data = useEventData();
+export function EventsEarningsView({ focused, width, height, footerPaneId = "corporate-actions", estimates = false }: EarningsViewProps) {
+  const data = useEventData(estimates ? "earnings-estimates" : "corporate-actions");
   const { symbol, ticker, exchange, today, allRows, fund } = data;
   useCompanyDisclosureLinks(symbol);
   const quarters = useMemo(() => earningsQuarters(allRows, today), [allRows, today]);
-  const { catalyst, error: catalystError, reload: reloadCatalyst } = useNextCatalyst(symbol, !fund, today);
-  const figures = useMemo(() => buildNextUp(allRows, { today, fund, statedExDate: data.statedExDate, catalyst }).map(toStat),
-    [allRows, catalyst, data.statedExDate, fund, today]);
+  const { catalyst, error: catalystError, reload: reloadCatalyst } = useNextCatalyst(symbol, !fund && !estimates, today);
+  const figures = useMemo(() => (estimates
+    ? buildEarningsHeader(allRows, { today, fund })
+    : buildNextUp(allRows, { today, fund, statedExDate: data.statedExDate, catalyst })).map(toStat),
+  [allRows, catalyst, data.statedExDate, estimates, fund, today]);
   const epsUnit = sharedCurrency(quarters.flatMap((quarter) => [
     { value: quarter.eps, currency: quarter.epsCurrency }, { value: quarter.estimate, currency: quarter.epsCurrency }]));
   const revenueUnit = sharedCurrency(quarters.map((quarter) => ({ value: quarter.revenue, currency: quarter.revenueCurrency })));
   const columns = useMemo(() => quarterColumns(width, epsUnit, revenueUnit), [epsUnit, revenueUnit, width]);
 
   const bars = useMemo(() => quarters.toReversed(), [quarters]);
-  // Each quarter is its estimate beside what was reported, the reported bar in the beat or miss colour, so a
-  // quarter reads at a glance; one with no estimate to measure against (or exactly on it) is the plain EPS bar.
-  const series = useMemo<ResolvedSeries[]>(() => {
-    if (bars.length < 2) return [];
-    const outcome = (quarter: EarningsQuarter) => (quarter.eps == null ? null
-      : quarter.estimate == null || quarter.eps === quarter.estimate ? "eps" : quarter.eps > quarter.estimate ? "beat" : "miss");
-    const reported = (id: "beat" | "miss" | "eps", label: string, color: string): ResolvedSeries => ({
-      ...staticSeries(slotPoints(bars, (quarter) => (outcome(quarter) === id ? quarter.eps : null)), { id, label, color, style: "columns" }),
-      unit: epsUnit ?? "", unitGroup: "eps",
-    });
-    return [
-      { ...staticSeries(slotPoints(bars, (quarter) => quarter.estimate), { id: "estimate", label: "Estimate", color: colors.textMuted, style: "columns" }),
-        unit: epsUnit ?? "", unitGroup: "eps" },
-      reported("beat", "Beat", colors.positive),
-      reported("miss", "Miss", colors.negative),
-      ...(bars.some((quarter) => outcome(quarter) === "eps") ? [reported("eps", "EPS", colors.textBright)] : []),
-    ];
-  }, [bars, epsUnit]);
+  // Each quarter is its estimate beside what was reported, in the beat or miss colour: EM's Surprises draws the same.
+  const series = useMemo<ResolvedSeries[]>(() => beatMissSeries(bars, { actual: (quarter) => quarter.eps, estimate: (quarter) => quarter.estimate }, epsUnit ?? ""),
+    [bars, epsUnit]);
   const axis = useMemo(() => slotAxis(bars, (quarter) => quarter.axisLabel, (quarter) => quarter.period), [bars]);
 
   const [selectedKey, setSelectedKey] = usePluginPaneState<string | null>("earningsQuarter", null);
@@ -214,7 +186,11 @@ function EventsEarningsView({ focused, width, height, footerPaneId = "corporate-
   // A refresh asks the catalyst calendar again too, so a failed read does not outlast it.
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => handleRefreshKey(event, () => { data.reload(); reloadCatalyst(); }, { stopPropagation: true }),
     [data.reload, reloadCatalyst]);
-  if (data.authWall) return <SignInWall placement="corporate-actions-signin" action="view corporate actions" needsVerification={data.cloudSession.needsVerification} />;
+  if (data.authWall) {
+    return estimates
+      ? <SignInWall placement="earnings-estimates-signin" action="view earnings estimates" needsVerification={data.cloudSession.needsVerification} />
+      : <SignInWall placement="corporate-actions-signin" action="view corporate actions" needsVerification={data.cloudSession.needsVerification} />;
+  }
 
   return (
     <DataTableStackView<EarningsQuarter, QuarterColumn>

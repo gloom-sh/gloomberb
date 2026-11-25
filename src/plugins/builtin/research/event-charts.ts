@@ -40,15 +40,32 @@ function axisLabel(period: string, date: string): string {
   return `${MONTHS[Number(date.slice(5, 7)) - 1]} '${date.slice(2, 4)}`;
 }
 
+/** A report comes within this long after the quarter it reports ends (see `docs/research-data.md`, Dates and timing). */
+const REPORT_LAG_MS = 100 * 86_400_000;
+
+/**
+ * A reported fiscal period end that no report covers: a quarter the feed knows
+ * only by its end, which is then its only row. One a reported announcement
+ * covers (in its quarter, or within REPORT_LAG_MS after it) is that report's.
+ */
+function uncoveredPeriodEnd(row: EventRow, announced: readonly EventRow[]): boolean {
+  const end = Date.parse(row.providerPeriodDate ?? row.date);
+  return !announced.some((report) => (row.period !== MISSING_VALUE && report.period === row.period)
+    || (Date.parse(report.date) >= end && Date.parse(report.date) - end <= REPORT_LAG_MS));
+}
+
 /**
  * The quarters the Earnings view charts and lists, newest first: the next
  * report with the consensus for the quarter it covers (or, undated, the next
  * quarter analysts estimate), then up to EARNINGS_QUARTERS reported ones with
- * their actual against the estimate. A fiscal period end is not a report.
+ * their actual against the estimate. A fiscal period end is no report of its
+ * own, unless it is all the feed has of that quarter.
  */
 export function earningsQuarters(rows: readonly EventRow[], today: string): EarningsQuarter[] {
-  const reported = rows
-    .filter((row) => row.status === "Earnings" && row.earningsState === "reported" && row.dateType !== "fiscal-period-end")
+  const out = rows.filter((row) => row.status === "Earnings" && row.earningsState === "reported");
+  const announced = out.filter((row) => row.dateType !== "fiscal-period-end");
+  const reported = out
+    .filter((row) => row.dateType !== "fiscal-period-end" || uncoveredPeriodEnd(row, announced))
     .sort((left, right) => right.date.localeCompare(left.date))
     .slice(0, EARNINGS_QUARTERS)
     .map((row): EarningsQuarter => {

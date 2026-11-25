@@ -28,6 +28,7 @@ import { getHeadlessPaneDefinition } from "./capabilities";
 import { tickerDetailModule } from "../../plugins/builtin/ticker-detail";
 import { catalystsModule } from "../../plugins/builtin/catalysts";
 import { earningsModule } from "../../plugins/builtin/earnings";
+import { researchModule } from "../../plugins/builtin/research";
 import { dividendYieldModule } from "../../plugins/builtin/dividend-yield";
 import { portfolioRiskHeadless } from "../../plugins/builtin/analytics/risk-headless";
 import { capabilityPluginState } from "./capabilities";
@@ -478,6 +479,26 @@ test("only a template that opens on a list takes one as symbols: shot DVD KO JNJ
   expect((await resolvePaneFunction(catalog, context, parsePaneFunctionArgs(["DVD", "KO"]), { command: "shot" })).createOptions?.symbols).toBeUndefined();
   const many = Array.from({ length: 26 }, (_, index) => `T${index}`).join(",");
   await expect(resolvePaneFunction(catalog, context, parsePaneFunctionArgs(["DVD", many]), { command: "shot" })).rejects.toThrow("DVD accepts at most 25 symbols.");
+});
+
+test("shot opens EE on its Reported view and ERN or EVTS on the board's Reported view, and fn takes the same flags", async () => {
+  const modules = [researchModule, earningsModule];
+  const catalog: PaneFunctionCatalog = {
+    panes: new Map(modules.flatMap((module) => module.panes ?? []).map((entry) => [entry.id, entry])),
+    paneTemplates: new Map(modules.flatMap((module) => module.paneTemplates ?? []).map((entry) => [entry.id, entry])),
+    destroy: () => {},
+  };
+  const shot = (args: string[]) => resolvePaneFunction(catalog, context, parsePaneFunctionArgs(args), { command: "shot" });
+  expect((await shot(["EE", "AAPL", "--view", "reported"])).instance.settings).toMatchObject({ view: "reported" });
+  expect((await shot(["ERN", "--week", "this", "--kind", "reported"])).instance.settings).toMatchObject({ week: "this", kind: "reported" });
+  expect((await shot(["EVTS", "--kind", "upcoming"])).instance.settings).toMatchObject({ kind: "upcoming" });
+  // EE's --kind filters the rows and is no view; a view neither pane has is refused by name.
+  await expect(shot(["EE", "AAPL", "--view", "upcoming"])).rejects.toThrow('Invalid --view value "upcoming"');
+  await expect(shot(["ERN", "--kind", "estimates"])).rejects.toThrow('Invalid --kind value "estimates"');
+  // fn, which refuses a flag its report does not declare, takes both.
+  const report = (args: string[]) => resolvePaneFunction(catalog, context, parsePaneFunctionArgs(args), { strictHeadlessOptions: true });
+  expect((await report(["EE", "AAPL", "--view", "reported"])).options).toMatchObject({ view: "reported" });
+  expect((await report(["ERN", "--kind", "reported"])).options).toMatchObject({ kind: "reported" });
 });
 
 test("a moved ticker whose new symbol cannot be resolved is read by that symbol alone, never on the old symbol's listing", async () => {

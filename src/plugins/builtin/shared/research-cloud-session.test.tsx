@@ -12,7 +12,7 @@ import { buildDividendMetrics, type fetchDividendData } from "../dividend-yield/
 import { AnalystResearchView } from "../research/analyst-pane";
 import { catalystCache } from "../catalysts/client";
 import { catalystPayload } from "../catalysts/test-fixture";
-import { EarningsEstimatesView } from "../research/corporate-actions-pane";
+import { EarningsEstimatesView } from "../research/earnings-estimates-pane";
 import { EventsPane } from "../research/event-views";
 import { isCloudSessionRequired } from "./research-cloud-session";
 
@@ -127,7 +127,7 @@ test.each([...panes])("%s recovers from sign-in and verification while preservin
   state.failure = undefined;
   await tui.emitKeypress({ name: "r" });
   for (let i = 0; i < 5; i++) await frame();
-  const loaded = { "dividend-yield": "TTM/share", "analyst-research": "Fixture Research", "corporate-actions": "Jun 2026", "earnings-estimates": "Earnings" }[pane];
+  const loaded = { "dividend-yield": "TTM/share", "analyst-research": "Fixture Research", "corporate-actions": "Jun 2026", "earnings-estimates": "cur qtr" }[pane];
   expect(tui.frame()).toContain(loaded);
   expect(tui.frame()).not.toContain("Research provider timed out");
   // A usable non-Cloud source remains available without any signed-in account.

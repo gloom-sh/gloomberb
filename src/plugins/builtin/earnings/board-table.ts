@@ -8,7 +8,7 @@ import { isNotMeaningful } from "../../../utils/growth";
 import { TextAttributes } from "../../../ui";
 import { ACTUAL_PENDING, actualPending, epsBasisShort, showsEpsBasis } from "../shared/earnings-report";
 import { listingAbroadVenue } from "../../../utils/sec";
-import type { BoardReport, BoardRow, BoardSort } from "./board-model";
+import type { BoardKind, BoardReport, BoardRow, BoardSort } from "./board-model";
 import { epsText, impliedText, moneyText, moveSize, signedPercent, TIMING_LABEL, weekday, type Surprise } from "./format";
 
 type BoardColumnId =
@@ -32,13 +32,13 @@ const ALL_COLUMNS: BoardColumn[] = [
   // while no report in view has one: small caps list no options and too few
   // reports to average, and a move is only measured on the day a report is out.
   { id: "implied", label: "IMPLIED", width: 7, align: "right", omitWhenEmpty: "visible" },
-  // The move, the actual EPS and its surprise come with the report: an upcoming one has none.
   { id: "move", label: "MOVE", width: 7, align: "right", mayBeBlank: true, omitWhenEmpty: "visible" },
   { id: "average", label: "AVG MOVE", width: 8, align: "right", omitWhenEmpty: "visible" },
   // The currency of the EPS and sales figures, on a board with a listing abroad's (CNY for Tencent).
   { id: "ccy", label: "CCY", width: 3, align: "left" },
   { id: "epsEstimate", label: "EPS EST", width: 7, align: "right" },
   { id: "analysts", label: "ESTS", width: 4, align: "right" },
+  // A report out without its actual yet says it is pending.
   { id: "epsActual", label: "EPS ACT", width: 7, align: "right", mayBeBlank: true },
   { id: "basis", label: "BASIS", width: 5, align: "left", mayBeBlank: true },
   { id: "epsSurprise", label: "EPS SURP", width: 8, align: "right", mayBeBlank: true },
@@ -47,21 +47,26 @@ const ALL_COLUMNS: BoardColumn[] = [
 ];
 
 /**
- * Dropped first when narrow, the report's labels before its figures; the
- * implied move, the move on the report and their average stay beside the name.
- * CCY goes only with the last figure it is the currency of.
+ * Each kind of report has its own columns. One to come has its date's status
+ * (confirmed or projected), its implied move and its analysts, and nothing of
+ * a report yet. One out has the move on it, its actual and surprise, and no
+ * status: the view says it is out.
  */
-const DROP_ORDER: BoardColumnId[] = ["basis", "analysts", "epsSurprise", "status", "epsActual", "cap", "revenueEstimate", "epsEstimate", "ccy", "owned"];
+const KIND_COLUMNS: Record<BoardKind, ReadonlySet<BoardColumnId>> = {
+  upcoming: new Set(["owned", "symbol", "name", "when", "status", "implied", "average", "ccy", "epsEstimate", "analysts", "revenueEstimate", "cap"]),
+  reported: new Set(["owned", "symbol", "name", "when", "implied", "move", "average", "ccy", "epsEstimate", "epsActual", "basis", "epsSurprise", "revenueEstimate", "cap"]),
+};
 
 /**
- * With an actual on the board the report is the news: EPS ACT, then EPS SURP,
- * outrank SALES EST, MKT CAP and AVG MOVE, which go first, the average before
- * the cap before the sales estimate. WHEN carries the status (✓) once STATUS
- * goes. Without one, those two columns would be empty, so DROP_ORDER holds.
+ * Dropped first when narrow, labels before figures. Upcoming: the analysts,
+ * the status, then the cap and the estimates; the implied move and its
+ * average stay beside the name. WHEN quiets a projected date once STATUS goes.
  */
-const REPORTED_DROP_ORDER: BoardColumnId[] = [
-  "basis", "analysts", "status", "average", "cap", "revenueEstimate", "epsSurprise", "epsActual", "epsEstimate", "ccy", "owned",
-];
+const DROP_ORDER: Record<BoardKind, BoardColumnId[]> = {
+  upcoming: ["analysts", "status", "cap", "revenueEstimate", "epsEstimate", "ccy", "owned"],
+  // Out, the report is the news: EPS ACT, then EPS SURP, outrank SALES EST, MKT CAP and AVG MOVE, which go first.
+  reported: ["basis", "average", "cap", "revenueEstimate", "epsSurprise", "epsActual", "epsEstimate", "ccy", "owned"],
+};
 
 /** The columns in the report's currency, which CCY names. */
 const CURRENCY_FIGURES: BoardColumnId[] = ["epsEstimate", "epsActual", "revenueEstimate"];
@@ -70,14 +75,6 @@ const CURRENCY_FIGURES: BoardColumnId[] = ["epsEstimate", "epsActual", "revenueE
 export const SORTABLE: Partial<Record<BoardColumnId, BoardSort["column"]>> = {
   symbol: "symbol", cap: "cap", implied: "implied", average: "average",
 };
-
-/**
- * Whether any report on the board is out, with its actual or still pending: the narrow board then keeps EPS ACT and
- * EPS SURP (boardColumns), so a report out today says its actual is pending rather than dropping the column.
- */
-export function boardHasActuals(rows: readonly BoardRow[]): boolean {
-  return rows.some((row) => row.kind === "report" && (row.report.epsActual != null || actualPending(row.report, listingAbroadVenue(row.report.symbol) != null)));
-}
 
 /**
  * Whether a report on the board is in another currency than dollars (a
@@ -96,7 +93,7 @@ export function boardSymbolWidth(rows: readonly BoardRow[]): number {
 
 export function boardColumns(
   width: number,
-  { actuals = false, currencies = false, symbolWidth = SYMBOL_WIDTH }: { actuals?: boolean; currencies?: boolean; symbolWidth?: number } = {},
+  { kind = "upcoming", currencies = false, symbolWidth = SYMBOL_WIDTH }: { kind?: BoardKind; currencies?: boolean; symbolWidth?: number } = {},
 ): BoardColumn[] {
   // Every column but the name, with the space a left-aligned column keeps from a right-aligned one before it (CCY after
   // AVG MOVE, BASIS after EPS ACT), so the last column is never cut at the pane's edge.
@@ -104,11 +101,11 @@ export function boardColumns(
     list.reduce((sum, column, index) =>
       sum + tableColumnLeadGap(list, index, TABLE_COLUMN_GAP) + (column.id === "name" ? 0 : tableColumnWidth(column)) + TABLE_COLUMN_GAP, 2);
   // Beside figures in yuan or Hong Kong dollars, the cap says it is in dollars.
-  let columns = (currencies ? ALL_COLUMNS : ALL_COLUMNS.filter((column) => column.id !== "ccy")).map((column) =>
+  let columns = ALL_COLUMNS.filter((column) => KIND_COLUMNS[kind].has(column.id) && (currencies || column.id !== "ccy")).map((column) =>
     column.id === "cap" && currencies ? { ...column, label: "MKT CAP $", width: 9 }
       : column.id === "symbol" ? { ...column, width: symbolWidth }
         : column);
-  for (const id of actuals ? REPORTED_DROP_ORDER : DROP_ORDER) {
+  for (const id of DROP_ORDER[kind]) {
     if (fixed(columns) + NAME_MIN_WIDTH <= width) break;
     columns = columns.filter((column) => column.id !== id);
   }
@@ -125,7 +122,7 @@ export function renderBoardSection(row: BoardRow) {
 
 /** What a board cell draws besides its report. */
 export interface BoardCellContext {
-  /** Whether the STATUS column is on screen; without it the WHEN cell says which reports are out. */
+  /** Whether the STATUS column is on screen; without it WHEN quiets a projected date, as STATUS would. */
   statusShown: boolean;
   /** The move on the report (boardMove): so far for one out today, across it for one out before; "loading" while today's quote is. */
   move: (report: BoardReport) => number | "loading" | null;
@@ -157,12 +154,10 @@ export function renderBoardCell(row: BoardRow, column: BoardColumn, context: Boa
     case "when": {
       const timing = report.timing ? TIMING_LABEL[report.timing] : MISSING_VALUE;
       const text = row.showDay ? `${weekday(report.date)} ${timing}` : timing;
-      // An expected time, from the company's last reports, reads quieter than an announced one.
-      if (context.statusShown) return { text, color: report.expectedTiming ? colors.textMuted : dim };
-      // Narrow, with no STATUS column: a report that is out is checked, and a projected date reads quieter, as its status would.
-      return report.dateStatus === "reported"
-        ? { text: `${text} ✓`, color: report.expectedTiming ? colors.textMuted : dim }
-        : { text, color: report.expectedTiming || report.dateStatus === "projected" ? colors.textMuted : dim };
+      // An expected time, from the company's last reports, reads quieter than an announced one; so does a projected
+      // date once no STATUS column says it is.
+      const quiet = report.expectedTiming || (!context.statusShown && report.dateStatus === "projected");
+      return { text, color: quiet ? colors.textMuted : dim };
     }
     case "status":
       // A projected date reads quieter than an announced one, as an expected time does.

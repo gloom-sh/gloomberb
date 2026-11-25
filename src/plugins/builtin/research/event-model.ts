@@ -197,7 +197,7 @@ const NAMED_ESTIMATE_PERIOD = /^(?:cur|next) (?:qtr|yr)$/;
  * An estimate's growth over its year-ago figure: the source's, except off a year-ago figure at or below zero, where
  * it is N/M whatever the source worked out (a loss of 0.40 to a profit of 0.10 is no +125%). Undefined where there is none.
  */
-function estimateRate(estimate: AnalystEstimateRecord | undefined): Rate | undefined {
+export function estimateRate(estimate: AnalystEstimateRecord | undefined): Rate | undefined {
   if (!estimate) return undefined;
   const yearAgo = estimate.yearAgo;
   if (typeof yearAgo === "number" && Number.isFinite(yearAgo) && yearAgo <= 0) {
@@ -560,22 +560,13 @@ export function buildEventRows(
 
 /** One figure of the summary over the events table, in the shape the kit's StatGrid takes. */
 export interface EventSummaryFigure {
-  id: "next-report" | "last-surprise" | "next-ex" | "last-ex" | "eps-estimate" | "revenue-estimate" | "next-catalyst";
+  id: "next-report" | "next-ex" | "last-ex" | "eps-estimate" | "revenue-estimate" | "next-catalyst" | "ttm-eps" | "ttm-revenue";
   label: string;
   value: string;
   detail?: string;
   /** Shorter forms of `detail`, longest first. */
   detailVariants?: string[];
   tone?: "positive" | "negative" | "muted";
-}
-
-export interface EventSummaryOptions {
-  /** The listing's own day, YYYY-MM-DD: a report or ex-date from it on is ahead. */
-  today: string;
-  fund: boolean;
-  /** The currencies EE's EPS and revenue columns are headed with: an amount in it is bare. */
-  epsUnit?: string;
-  revenueUnit?: string;
 }
 
 /** A quarter as the company's fiscal calendar names it: `Q1 FY2027`. */
@@ -681,6 +672,13 @@ export interface NextUpOptions {
   catalyst?: NextCatalyst | null;
 }
 
+/** An estimate's growth on the year before as the figures say it: N/M off a year-ago loss or zero, as the tables draw it. */
+function yearOnYear(estimate: AnalystEstimateRecord | undefined): string | null {
+  const rate = estimateRate(estimate);
+  if (isNotMeaningful(rate)) return `${NOT_MEANINGFUL_TEXT} y/y`;
+  return rate == null ? null : `${formatPercentRaw(rate * 100)} y/y`;
+}
+
 /**
  * The Events tab's opening block: what is next, each with how far away it is.
  * The next report and its consensus EPS and revenue for the quarter it covers,
@@ -705,21 +703,15 @@ export function buildNextUp(rows: readonly EventRow[], options: NextUpOptions): 
     const epsCurrency = report?.epsEstimate != null ? report.epsCurrency : quarter?.epsCurrency;
     if (eps != null) {
       const analysts = report?.epsEstimate != null ? report.epsAnalysts : quarter?.estimateInputs?.eps?.analysts;
-      const growth = quarter?.estimateInputs?.eps?.growth;
+      const growth = yearOnYear(quarter?.estimateInputs?.eps);
       figures.push({ id: "eps-estimate", label: "EPS est", value: formatEventMetric(eps, epsCurrency, "eps"),
-        ...detailForms(
-          [analysts ? `${analysts} ${analysts === 1 ? "analyst" : "analysts"}` : null, growth != null ? `${formatPercentRaw(growth * 100)} y/y` : null],
-          [growth != null ? `${formatPercentRaw(growth * 100)} y/y` : null],
-        ) });
+        ...detailForms([analysts ? `${analysts} ${analysts === 1 ? "analyst" : "analysts"}` : null, growth], [growth]) });
     }
     if (quarter?.qRevenue != null) {
       const analysts = quarter.estimateInputs?.revenue?.analysts;
-      const growth = quarter.estimateInputs?.revenue?.growth;
+      const growth = yearOnYear(quarter.estimateInputs?.revenue);
       figures.push({ id: "revenue-estimate", label: "Revenue est", value: formatEventMetric(quarter.qRevenue, quarter.revenueCurrency, "revenue"),
-        ...detailForms(
-          [analysts ? `${analysts} ${analysts === 1 ? "analyst" : "analysts"}` : null, growth != null ? `${formatPercentRaw(growth * 100)} y/y` : null],
-          [growth != null ? `${formatPercentRaw(growth * 100)} y/y` : null],
-        ) });
+        ...detailForms([analysts ? `${analysts} ${analysts === 1 ? "analyst" : "analysts"}` : null, growth], [growth]) });
     }
   }
   const dividends = rows.filter((row) => row.status === "Dividend");
@@ -745,60 +737,38 @@ export function buildNextUp(rows: readonly EventRow[], options: NextUpOptions): 
   return figures;
 }
 
+/** The forward estimates as EE's Estimates view lists them: the quarters, then the years, each nearest first. */
+export function forwardEstimates(rows: readonly EventRow[]): { quarters: EventRow[]; years: EventRow[] } {
+  const byDate = (left: EventRow, right: EventRow) => left.date.localeCompare(right.date);
+  return {
+    quarters: rows.filter((row) => row.status === "Q Est").sort(byDate),
+    years: rows.filter((row) => row.status === "FY Est").sort(byDate),
+  };
+}
+
+/** Statuses that are corporate actions, not earnings: EE's header leaves them out. */
+const CORPORATE_ACTIONS: ReadonlySet<EventStatus> = new Set(["Dividend", "Split", "Factor"]);
+
 /**
- * EE's figures over its table: the next report with its consensus, and the
- * last surprise. The next report is the calendar's, else the earliest quarter
- * analysts still estimate, undated. A fund has neither.
+ * EE's header, over both its views: what is next (the report and the
+ * consensus EPS and revenue for the quarter it covers) and the trailing twelve
+ * months, EPS and revenue. The trailing EPS is the GAAP diluted figure
+ * `ticker` prints (the TTM row's), named so. No ex-dates or catalysts, which
+ * are EVT's. A fund has none of it.
  */
-export function buildEventSummary(rows: readonly EventRow[], options: EventSummaryOptions): EventSummaryFigure[] {
-  const { today } = options;
-  const figures: EventSummaryFigure[] = [];
-  const metric = (value: number | undefined, currency: string | undefined, unit: string | undefined, kind: "eps" | "revenue") => (
-    formatEventMetric(value, unit && currency === unit ? undefined : currency, kind)
-  );
-  const date = (day: string) => formatFilingDate(day, day);
-
-  if (!options.fund) {
-    const { report, quarter } = nextReportOf(rows, today);
-    if (report || quarter) {
-      const epsFromReport = report?.epsEstimate != null;
-      const eps = epsFromReport ? report!.epsEstimate : quarter?.qEps;
-      const epsText = eps == null ? null : `EPS est ${metric(eps, epsFromReport ? report!.epsCurrency : quarter?.epsCurrency, options.epsUnit, "eps")}`;
-      const revenueText = quarter?.qRevenue == null ? null : `rev est ${metric(quarter.qRevenue, quarter.revenueCurrency, options.revenueUnit, "revenue")}`;
-      // A quarter the fiscal calendar does not name is said by the month it ends in, never by its place from today.
-      const quarterName = quarter && (NAMED_FISCAL_QUARTER.test(quarter.period) ? quarter.period : `${quarterLabel(quarter.date)} qtr`);
-      const period = report && report.period !== MISSING_VALUE ? report.period : quarterName;
-      const projected = report?.dateStatus === "projected" ? "projected" : null;
-      figures.push({
-        id: "next-report",
-        label: "Next report",
-        // Undated, the report is named by its quarter.
-        value: report ? date(report.date) : period ?? MISSING_VALUE,
-        ...detailForms(
-          [report ? period : null, projected, epsText, revenueText],
-          [projected, epsText, revenueText],
-          [projected, epsText],
-        ),
-      });
-    }
-
-    const last = rows.find((row) => row.status === "Earnings" && row.earningsState === "reported"
-      && (row.surprisePercent != null || row.surpriseNotMeaningful));
-    if (last) {
-      // The currency once, after both: `0.38 vs 0.49 CNY`, bare under a column headed with it.
-      const code = last.epsCurrency && last.epsCurrency !== options.epsUnit ? ` ${last.epsCurrency}` : "";
-      const versus = last.epsActual != null && last.epsEstimate != null
-        ? `${formatEventMetric(last.epsActual, undefined, "eps")} vs ${formatEventMetric(last.epsEstimate, undefined, "eps")}${code}` : null;
-      figures.push({
-        id: "last-surprise",
-        label: "Surprise",
-        value: last.value,
-        ...(last.tone === "positive" || last.tone === "negative" || last.tone === "muted" ? { tone: last.tone } : {}),
-        ...detailForms([last.period !== MISSING_VALUE ? last.period : null, versus], [last.period !== MISSING_VALUE ? last.period : null]),
-      });
-    }
+export function buildEarningsHeader(rows: readonly EventRow[], options: { today: string; fund: boolean }): EventSummaryFigure[] {
+  if (options.fund) return [];
+  const figures = buildNextUp(rows.filter((row) => !CORPORATE_ACTIONS.has(row.status)), { today: options.today, fund: false });
+  const ttm = rows.find((row) => row.status === "TTM");
+  if (!ttm) return figures;
+  const through = ttm.date ? `4 qtrs to ${formatFilingDate(ttm.date, ttm.date)}` : "4 qtrs";
+  if (ttm.annualEps != null) {
+    figures.push({ id: "ttm-eps", label: "EPS TTM", value: formatEventMetric(ttm.annualEps, ttm.epsCurrency, "eps"),
+      ...detailForms([ttm.detail, through], [ttm.detail]) });
   }
-
+  if (ttm.annualRevenue != null) {
+    figures.push({ id: "ttm-revenue", label: "Revenue TTM", value: formatEventMetric(ttm.annualRevenue, ttm.revenueCurrency, "revenue"), detail: through });
+  }
   return figures;
 }
 
