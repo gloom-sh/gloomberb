@@ -50,7 +50,7 @@ import {
   type BoardRow,
   type BoardSort,
 } from "./board-model";
-import { boardColumns, boardHasCurrencies, boardSymbolWidth, renderBoardCell, renderBoardSection, SORTABLE, type BoardCellContext, type BoardColumn } from "./board-table";
+import { BOARD_CURRENCY_EXPORT, boardColumns, boardHasCurrencies, boardSymbolWidth, renderBoardCell, renderBoardSection, SORTABLE, type BoardCellContext, type BoardColumn } from "./board-table";
 import { EarningsCalendarView, CALENDAR_GROUP_ROWS, calendarSlotsPerRow } from "./calendar";
 import {
   boardRangeDays,
@@ -532,6 +532,8 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
         isNavigable={(row) => row.kind === "report"}
         renderSectionHeader={renderBoardSection}
         renderCell={renderCell}
+        // The figures export bare; a board with a report in another currency names each row's after them.
+        exportIdentity={currencies ? BOARD_CURRENCY_EXPORT : undefined}
         getRowVersion={rowVersion}
         selectedTextOverridesCellColor
         sortColumnId={sortColumn}

@@ -42,8 +42,8 @@ describe("EVTS rows", () => {
   test("a reported row shows its EPS and surprise; a press release's EPS reads quieter until the calendar's arrives", () => {
     expect(TRV).toMatchObject({ epsActual: 9.18, provisional: true });
     expect(TRV.epsSurprise).toBeCloseTo(0.2984, 4);
-    expect(cell(TRV, "epsActual")).toEqual({ text: "9.18", color: colors.textMuted });
-    expect(cell(PEP, "epsActual")).toEqual({ text: "2.29", color: colors.text });
+    expect(cell(TRV, "epsActual")).toEqual({ text: "9.18", value: 9.18, color: colors.textMuted });
+    expect(cell(PEP, "epsActual")).toEqual({ text: "2.29", value: 2.29, color: colors.text });
     expect(cell(TRV, "epsSurprise")).toEqual({ text: "+29.8%", color: colors.positive });
     expect(cell(TRV, "basis")).toEqual({ text: "adj", color: colors.textMuted });
   });
@@ -127,7 +127,7 @@ describe("EVTS with listings abroad", () => {
     expect(boardColumns(2000).find((entry) => entry.id === "epsEstimate")?.width).toBe(7);
     const context: BoardCellContext = { statusShown: true, move: () => null };
     const column = (id: string) => wide.find((entry) => entry.id === id)!;
-    expect(renderBoardCell(row(TENCENT), column("epsEstimate"), context)).toEqual({ text: "7.21 CNY", color: colors.textDim });
+    expect(renderBoardCell(row(TENCENT), column("epsEstimate"), context)).toEqual({ text: "7.21 CNY", value: 7.21, color: colors.textDim });
     expect(renderBoardCell(row(TENCENT), column("revenueEstimate"), context).text).toBe("210.24B CNY");
     expect(renderBoardCell(row(LADR), column("epsEstimate"), context).text).not.toContain("USD");
     expect(cell(TENCENT, "cap")).toEqual({ text: "459.65B", color: colors.textDim });

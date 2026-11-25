@@ -76,12 +76,23 @@ const CURRENCY_FIGURES: ReadonlySet<BoardColumnId> = new Set(["epsEstimate", "ep
 /** " CNY" after a figure. */
 const CURRENCY_CODE_WIDTH = 4;
 
-/** A figure with its report's currency after it when that is not dollars; a missing or pending one bare. */
-function inReportCurrency(cell: DataTableCell, report: BoardReport): DataTableCell {
+/**
+ * A figure with its report's currency after it when that is not dollars; a
+ * missing or pending one bare. The figure itself is the cell's value, so an
+ * export writes numbers down a column whose rows show different codes, and
+ * names each row's currency in its own column (BOARD_CURRENCY_EXPORT).
+ */
+function inReportCurrency(cell: DataTableCell, report: BoardReport, figure: number | null | undefined): DataTableCell {
+  if (figure == null || cell.text === MISSING_VALUE || cell.text === ACTUAL_PENDING) return cell;
   const currency = report.currency;
-  return currency && currency !== "USD" && cell.text !== MISSING_VALUE && cell.text !== ACTUAL_PENDING
-    ? { ...cell, text: `${cell.text} ${currency}` } : cell;
+  return { ...cell, value: figure, ...(currency && currency !== "USD" ? { text: `${cell.text} ${currency}` } : {}) };
 }
+
+/** A board with a report in another currency than dollars exports each report's currency after the table's columns. */
+export const BOARD_CURRENCY_EXPORT = {
+  headers: ["CCY"],
+  cells: (row: BoardRow): readonly unknown[] | null => (row.kind === "report" ? [row.report.currency ?? ""] : null),
+} as const;
 
 /** Header clicks sort these; the rest keep the ranking. */
 export const SORTABLE: Partial<Record<BoardColumnId, BoardSort["column"]>> = {
@@ -177,13 +188,13 @@ export function renderBoardCell(row: BoardRow, column: BoardColumn, context: Boa
     case "cap":
       return { text: moneyText(report.marketCap), color: dim };
     case "epsEstimate":
-      return inReportCurrency({ text: epsText(report.epsEstimate), color: dim }, report);
+      return inReportCurrency({ text: epsText(report.epsEstimate), color: dim }, report, report.epsEstimate);
     case "analysts":
       return { text: report.epsAnalysts == null ? MISSING_VALUE : String(report.epsAnalysts), color: dim };
     case "epsActual":
       // A report out with no actual yet says so; the company's press release's figure reads quieter until the calendar's replaces it.
       if (actualPending(report, listingAbroadVenue(report.symbol) != null)) return { text: ACTUAL_PENDING, color: dim };
-      return inReportCurrency({ text: epsText(report.epsActual), color: report.epsActual == null ? dim : report.provisional ? colors.textMuted : colors.text }, report);
+      return inReportCurrency({ text: epsText(report.epsActual), color: report.epsActual == null ? dim : report.provisional ? colors.textMuted : colors.text }, report, report.epsActual);
     case "basis":
       return !showsEpsBasis(report)
         ? { text: MISSING_VALUE, color: dim }
@@ -191,7 +202,7 @@ export function renderBoardCell(row: BoardRow, column: BoardColumn, context: Boa
     case "epsSurprise":
       return signed(report.epsSurprise);
     case "revenueEstimate":
-      return inReportCurrency({ text: moneyText(report.revenueEstimate), color: dim }, report);
+      return inReportCurrency({ text: moneyText(report.revenueEstimate), color: dim }, report, report.revenueEstimate);
     case "implied":
       return { text: impliedText(report.impliedMove), color: colors.textBright };
     case "move": {
