@@ -48,6 +48,7 @@ import { isRecord } from "../../utils/guards";
 import { displayTickerKey } from "../../utils/exchanges";
 import { splitSymbolWords } from "../symbol-args";
 import { formatUtcTime, localTimeSuffix } from "../../utils/utc-time";
+import { formatDay } from "../../utils/day-format";
 import { MISSING_VALUE, formatCompact, formatSignificant } from "../../utils/format";
 import { deriveHeadlessFreshness, formatFreshnessLine, staleRowsText, withSavedCopy, type ReportFreshness } from "./freshness";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE } from "../../utils/network-failure";
@@ -427,9 +428,12 @@ function displayValue(value: unknown): string {
   if (typeof value === "number") return displayNumber(value);
   if (typeof value === "object") return JSON.stringify(value);
   if (typeof value === "string" && ISO_INSTANT.test(value)) return displayInstant(value);
+  // A calendar day reads as the pane writes it (docs/pane-conventions.md, "One date format").
+  if (typeof value === "string" && ISO_DAY_ONLY.test(value)) return formatDay(value);
   return String(value);
 }
 
+const ISO_DAY_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})$/;
 
 /**

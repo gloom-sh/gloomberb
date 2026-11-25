@@ -1,3 +1,4 @@
+import { dayCell, formatDay } from "../../../components/ui/day-cell";
 import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
@@ -65,7 +66,7 @@ const AUTHOR_TONE: Record<CommentLetter["author"], StateTone> = { staff: "warnin
 
 function letterColumns(width: number, issuerView: boolean): LetterColumn[] {
   return [
-    { id: "filed", label: "Filed", width: 10, align: "left" },
+    { id: "filed", label: "Filed", width: 11, align: "left" },
     { id: "from", label: "From", width: 9, align: "left" },
     ...(width >= 64 || issuerView
       ? [{ id: "form" as const, label: "Form", width: 7, align: "left" as const, ...(issuerView ? { flexGrow: 1 } : {}) }]
@@ -78,7 +79,7 @@ function letterColumns(width: number, issuerView: boolean): LetterColumn[] {
 }
 
 const formatDate = (date: Date): string =>
-  Number.isNaN(date.getTime()) ? MISSING_VALUE : date.toISOString().slice(0, 10);
+  Number.isNaN(date.getTime()) ? MISSING_VALUE : formatDay(date);
 
 const companyLabel = (letter: CommentLetter): string =>
   letter.companyName || `CIK ${Number(letter.cik)}`;
@@ -203,7 +204,7 @@ export function CommentLettersPane({ width, height, focused }: PaneProps) {
   const renderCell = useCallback((letter: CommentLetter, column: LetterColumn): DataTableCell => {
     switch (column.id) {
       case "filed":
-        return { text: formatDate(letter.filingDate), value: letter.filingDate, color: colors.textMuted };
+        return { ...dayCell(letter.filingDate), color: colors.textMuted };
       case "from":
         return { text: AUTHOR_LABEL[letter.author], color: toneColor(AUTHOR_TONE[letter.author], colors) };
       case "form":

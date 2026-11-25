@@ -1,5 +1,6 @@
 import type { CorporateActionsData, DeclaredDividendAction, Fundamentals } from "../types/financials";
 import { declaredDividendCash, declaredDividends } from "./declared-dividends";
+import { formatDay } from "./day-format";
 
 /**
  * What a forward dividend yield is everywhere it shows (fundamentals, DVD,
@@ -65,7 +66,7 @@ export function forwardDividendBasis(
   options: DeclaredBasisOptions & { payDate?: string | Date | null } = {},
 ): string {
   const exDate = isoDay(asOf);
-  if (!isDeclared(exDate, options.now ?? new Date())) return exDate ? `${LATEST_DISTRIBUTION}, as of ${exDate}` : LATEST_DISTRIBUTION;
+  if (!isDeclared(exDate, options.now ?? new Date())) return exDate ? `${LATEST_DISTRIBUTION}, as of ${formatDay(exDate)}` : LATEST_DISTRIBUTION;
   const stated = statedDeclaration(exDate, options);
   const payDate = stated?.payDate ?? isoDay(options.payDate);
   return `annualized from the declared ${stated?.amount ?? "distribution"}${payDate ? ` payable ${payDate}` : ""}, ex ${exDate}`;
@@ -247,7 +248,7 @@ export function monthlyHistoryEnd(history: DistributionHistory | null | undefine
 
 /** `distribution history ends 2026-09-01`: what a monthly payer's ended history says in place of a yield it cannot give. */
 export function historyEndsText(day: string): string {
-  return `distribution history ends ${day}`;
+  return `distribution history ends ${formatDay(day)}`;
 }
 
 export const NO_CURRENT_DIVIDEND = "no current dividend";
@@ -262,7 +263,7 @@ export function lapseValue(lapse: DividendLapse): string {
 /** `last paid 2026-02-27` beside "no current dividend", `last ex 2026-09-01` beside "history ends"; null when the date is unknown. */
 export function lastPaidNote(lapse: DividendLapse): string | null {
   if (!lapse.lastPaid) return null;
-  return lapse.historyEnds ? `last ex ${lapse.lastPaid}` : `last paid ${lapse.lastPaid}`;
+  return lapse.historyEnds ? `last ex ${formatDay(lapse.lastPaid)}` : `last paid ${formatDay(lapse.lastPaid)}`;
 }
 
 /**
@@ -280,7 +281,7 @@ export function noCurrentDividend(lapse: DividendLapse): string {
 export function forwardDividendNote(asOf: string | Date | null | undefined, options: DeclaredBasisOptions = {}): string | null {
   const exDate = isoDay(asOf);
   if (!exDate) return null;
-  if (!isDeclared(exDate, options.now ?? new Date())) return `as of ${exDate}`;
+  if (!isDeclared(exDate, options.now ?? new Date())) return `as of ${formatDay(exDate)}`;
   const stated = statedDeclaration(exDate, options);
   return stated ? `declared ${stated.amount}` : "declared";
 }

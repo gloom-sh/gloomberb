@@ -1,3 +1,4 @@
+import { formatDay } from "../../../utils/day-format";
 import type { CryptoEtfFlowsPayload } from "../../../api-client/crypto-etf-flows";
 import type { HeadlessPaneColumn, HeadlessPaneFreshness } from "../../../types/headless";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
@@ -38,7 +39,7 @@ function flowColumns(payload: CryptoEtfFlowsPayload): HeadlessPaneColumn[] {
 /** "Net flows of the US spot bitcoin ETFs in US$ millions. 2026-10-19 to 2026-10-23: +$301.20M over 5 trading days." */
 function windowSummaryLine(payload: CryptoEtfFlowsPayload, window: PriceWindow, days: CryptoEtfFlowsPayload["days"]): string {
   const total = days.some((day) => day.total != null) ? days.reduce((sum, day) => sum + (day.total ?? 0), 0) : null;
-  return `Net flows of the US spot ${cryptoEtfFlowAssetLabel(payload.asset).toLowerCase()} ETFs in US$ millions. ${window.from} to ${window.to}: `
+  return `Net flows of the US spot ${cryptoEtfFlowAssetLabel(payload.asset).toLowerCase()} ETFs in US$ millions. ${formatDay(window.from)} to ${formatDay(window.to)}: `
     + `${formatFlowAmount(total)} over ${days.length} trading ${days.length === 1 ? "day" : "days"}.`;
 }
 
@@ -51,8 +52,8 @@ function summaryLine(payload: CryptoEtfFlowsPayload): string {
     `${summary.latest?.date ?? payload.asOf}: ${formatFlowAmount(summary.latest?.total)}${pending ? ` (${pending})` : ""};`,
     [
       // A day still pending is left out of the rolling sums, which say the day they end on.
-      summary.week != null ? `5 days${summary.through ? ` through ${summary.through}` : ""} ${formatFlowAmount(summary.week)}` : null,
-      summary.month != null ? `20 days${summary.through ? ` through ${summary.through}` : ""} ${formatFlowAmount(summary.month)}` : null,
+      summary.week != null ? `5 days${summary.through ? ` through ${formatDay(summary.through)}` : ""} ${formatFlowAmount(summary.week)}` : null,
+      summary.month != null ? `20 days${summary.through ? ` through ${formatDay(summary.through)}` : ""} ${formatFlowAmount(summary.month)}` : null,
       summary.firstDate ? `since ${summary.firstDate} ${formatFlowAmount(summary.sinceLaunch)}` : null,
     ].filter(Boolean).join(", ") + ".",
   ].join(" ");
@@ -170,7 +171,7 @@ export const cryptoEtfFlowsHeadless: HeadlessPaneDefinition<"rows"> = {
     return {
       rows,
       columns: flowColumns(payload),
-      ...(window && !days.length ? { errors: [`No US trading day with flows from ${window.from} to ${window.to}.`] } : {}),
+      ...(window && !days.length ? { errors: [`No US trading day with flows from ${formatDay(window.from)} to ${formatDay(window.to)}.`] } : {}),
       notes: [window ? windowSummaryLine(payload, window, days) : summaryLine(payload), ...funds ? [funds] : [], `Source: ${payload.source.publisher}, ${payload.source.url}`],
       complete: !payload.stale,
       ...(payload.stale ? { warnings: [`The flows were last read ${payload.fetchedAt.slice(0, 10)}; newer days may be missing.`] } : {}),

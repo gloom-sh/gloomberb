@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { formatDay } from "../../../components/ui/day-cell";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { DataProvider } from "../../../types/data-provider";
 import type { HeadlessPaneFreshness } from "../../../types/plugin";
@@ -317,9 +318,9 @@ export async function loadCspScreen(
     freshness: screened.freshness };
 }
 
-/** `nearest 0.30 delta · expiry nearest 2026-11-21 (30 days)`: what each name's put is. */
+/** `nearest 0.30 delta · expiry nearest 21 Nov 2026 (30 days)`: what each name's put is. */
 export function cspScreenCriteriaText(criteria: CspScreenCriteria, now: number): string {
-  return `nearest ${criteria.delta.toFixed(2)} delta · expiry nearest ${cspTargetDate(criteria, now)}`
+  return `nearest ${criteria.delta.toFixed(2)} delta · expiry nearest ${formatDay(cspTargetDate(criteria, now))}`
     + (criteria.expiration == null ? ` (${criteria.days} days)` : "");
 }
 
@@ -327,6 +328,13 @@ export function cspScreenCriteriaText(criteria: CspScreenCriteria, now: number):
  * `before 2026-11-04`, `after 2027-01-19`, `unknown`: whether the next report falls before the put (or a trade's first leg)
  * expires, and its date; `unavailable` when the earnings calendar could not be read.
  */
+/** `before 28 Oct`: a screen's Earnings cell, the flag and the day without its year, which the next report never needs. */
+export function cspEarningsCell(row: { earningsDate?: unknown; earningsBeforeExpiry?: unknown; earnings?: unknown }): string {
+  const date = typeof row.earningsDate === "string" ? row.earningsDate : null;
+  if (!date || typeof row.earningsBeforeExpiry !== "boolean") return String(row.earnings ?? MISSING_VALUE);
+  return `${row.earningsBeforeExpiry ? "before" : "after"} ${formatDay(date, "no-year")}`;
+}
+
 export function cspEarningsText(csp: Pick<CashSecuredPut, "earnings"> | null): string {
   if (!csp) return MISSING_VALUE;
   const { beforeExpiry, date, unavailable } = csp.earnings;

@@ -16,15 +16,16 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { cachedShortVolume, loadShortVolume } from "./client";
 import { shortVolumeHeadless } from "./headless";
 import { reportFooterSegment } from "../shared/source-footer";
+import { formatDay } from "../../../components/ui/day-cell";
 import { exactQuantity, sortedVolumeHistory, VOLUME_COLUMNS, volumeChange, volumeHistoryPoints, volumePercent, volumePointStatus, volumeQuantity, volumeRowStatus, type VolumeColumn, type VolumeSort } from "./model";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
 const DETAIL_LABEL_WIDTH = 26;
 const rowDate = (row: ShortVolumeObservation) => row.ratioPercent == null ? null : new Date(row.date);
 function renderCell(row: ShortVolumeObservation, column: VolumeColumn, _index: number, state: { selected: boolean }): DataTableCell {
-  const text = column.id === "date" ? row.date : column.id === "ratioPercent" ? volumePercent(row.ratioPercent)
+  const text = column.id === "date" ? formatDay(row.date) : column.id === "ratioPercent" ? volumePercent(row.ratioPercent)
     : column.id === "status" ? volumeRowStatus(row) : volumeQuantity(row[column.id]);
-  return { text, ...(column.id === "status" ? { value: volumePointStatus(row) } : {}), color: state.selected ? colors.selectedText : column.id === "ratioPercent" ? colors.warning
+  return { text, ...(column.id === "status" ? { value: volumePointStatus(row) } : column.id === "date" ? { value: row.date } : {}), color: state.selected ? colors.selectedText : column.id === "ratioPercent" ? colors.warning
     : row.unavailableReason ? colors.textMuted : colors.text };
 }
 function VolumeDetail({ row, width, height }: { row: ShortVolumeObservation; width: number; height: number }) {
@@ -101,7 +102,7 @@ export function ShortVolumePane({ width, height, focused }: Pick<PaneProps, "wid
         getItemKey={rowKey} renderCell={renderCell} resetScrollKey={identity}
         selection={{ kind: "index", selectedIndex: rows.length ? selectedIndex : -1, onChange: (index) => setSelectedId(rows[index] ? rowKey(rows[index]!) : null) }}
         onActivate={(row) => setOpenId(rowKey(row))} detailOpen={!!openRow} onBack={() => setOpenId(null)}
-        detailTitle={openRow?.date} detailContent={openRow ? <VolumeDetail row={openRow} width={width} height={Math.max(3, height - 2)} /> : null}
+        detailTitle={openRow ? formatDay(openRow.date) : undefined} detailContent={openRow ? <VolumeDetail row={openRow} width={width} height={Math.max(3, height - 2)} /> : null}
         sortColumnId={sort.column} sortDirection={sort.direction}
         onHeaderClick={(column) => setSort((current) => ({ column: column as VolumeSort["column"], direction: current.column === column && current.direction === "desc" ? "asc" : "desc" }))}
         rootBefore={<ChartTableHeader width={width} height={height} tableRows={rows.length} tableColumns={VOLUME_COLUMNS} figures={figures} chart={{

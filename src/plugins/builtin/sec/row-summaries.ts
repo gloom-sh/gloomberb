@@ -1,3 +1,4 @@
+import { formatDay } from "../../../utils/day-format";
 import type { SecFilingItem } from "../../../types/data-provider";
 import { decodeHtmlEntities } from "../../../utils/html-entities";
 import { formatCompact } from "../../../utils/format";
@@ -92,7 +93,7 @@ function fundFlowSummary(xml: string): RowSummary | null {
   const yearEnd = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(tagText(xml, "lastDayOfFiscalYear"));
   const net = sold - redeemed;
   return {
-    title: `${yearEnd ? `Year to ${yearEnd[3]}-${yearEnd[1]}-${yearEnd[2]}: ` : ""}net flow ${signedMoney(net)} (sold ${money(sold)}, redeemed ${money(redeemed)})`,
+    title: `${yearEnd ? `Year to ${formatDay(`${yearEnd[3]}-${yearEnd[1]}-${yearEnd[2]}`)}: ` : ""}net flow ${signedMoney(net)} (sold ${money(sold)}, redeemed ${money(redeemed)})`,
     direction: net > 0 ? "buy" : net < 0 ? "sell" : null,
   };
 }

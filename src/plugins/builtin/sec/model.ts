@@ -1,3 +1,4 @@
+import { formatDay } from "../../../utils/day-format";
 import type { SecFilingItem } from "../../../types/data-provider";
 import { secFilingItemCodes } from "../../../utils/sec";
 import { currentReportItemNames, form4TradeText, isCurrentReportForm as isCurrentReport } from "../../../utils/sec-filings";
@@ -75,7 +76,7 @@ export function getFilingColumnText(filing: SecFilingItem): string {
     const items = isCurrentReport(filing.form) ? currentReportItemNames(filing.items) : null;
     if (items) return /\/A$/i.test(filing.form.trim()) ? `${items} (amended)` : items;
     const period = periodicReportPeriod(filing);
-    if (period) return `${meaning || "Report"}, period ended ${period}`;
+    if (period) return `${meaning || "Report"}, period ended ${formatDay(period)}`;
     return meaning || "Filing";
   }
   return meaning && normalizeComparableText(description) !== normalizeComparableText(meaning)

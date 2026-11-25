@@ -1,3 +1,4 @@
+import { formatDay } from "../../../components/ui/day-cell";
 import { MISSING_VALUE } from "../../../utils/format";
 import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -254,7 +255,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
     const choices = saved.filter((entry) => entry.position.symbol === underlying && (!exchange || entry.position.exchange === exchange));
     if (!choices.length) { notify({ body: "No saved strategies for this ticker." }); return; }
     const id = await dialog.prompt<string>({ content: (ctx: PromptContext<string>) => <ChoiceDialog {...ctx} title="Load strategy"
-      choices={choices.map((entry) => ({ id: entry.id, label: entry.name, detail: dateLabel(entry.position.asOf) }))} /> }).catch(logFailure("options-scenario.pane", "Open saved strategy choices failed", ""));
+      choices={choices.map((entry) => ({ id: entry.id, label: entry.name, detail: formatDay(entry.position.asOf) }))} /> }).catch(logFailure("options-scenario.pane", "Open saved strategy choices failed", ""));
     const selected = choices.find((entry) => entry.id === id);
     // A saved strategy opens at its saved spot, date and vols; following the market is an explicit choice.
     if (selected) { setPosition(selected.position); setControls(selected.controls); setFollow(false); setLocalError(null); }
@@ -441,7 +442,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
       sortColumnId={sort.columnId} sortDirection={sort.direction} onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id))}
       emptyStateTitle="No position legs." columns={legColumns} getItemKey={(leg) => leg.id}
       selection={{ kind: "id", selectedId: selected?.id ?? null, getId: (leg) => leg.id, onChange: (id) => setSelectedId(id) }}
-      onActivate={edit} renderCell={(leg, column) => ({ text: column.id === "expiration" ? dateLabel(leg.expiration * 1000)
+      onActivate={edit} renderCell={(leg, column) => ({ text: column.id === "expiration" ? formatDay(leg.expiration * 1000)
         : column.id === "volatility" ? (leg.volatility * 100).toFixed(2)
         : column.id === "price" || column.id === "strike" ? money(leg[column.id])
         : String(leg[column.id as keyof ScenarioLeg]), color: column.id === "quantity" ? leg.quantity > 0 ? colors.positive : colors.negative : colors.text })} />;
@@ -452,7 +453,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
         width={width}
         filters={[
           { id: "date", label: "Scenario date", controlRef: dateControl, value: String(scenario.controls.date),
-            options: scenario.dates.map((date) => ({ value: String(date), label: `${dateLabel(date)} +${((date - scenario.position.asOf) / 86_400_000).toFixed(1)}d` })),
+            options: scenario.dates.map((date) => ({ value: String(date), label: `${formatDay(date)} +${((date - scenario.position.asOf) / 86_400_000).toFixed(1)}d` })),
             onChange: (value: string) => setControls({ ...scenario.controls, date: Number(value) }) },
           // No shift reads as the "0" placeholder, so the field offers its reset only once there is a shift.
           { id: "vol", kind: "text", label: "Vol shift (pts)", width: 12, placeholder: "0", debounceMs: 0,

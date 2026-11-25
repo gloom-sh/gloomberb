@@ -1,3 +1,4 @@
+import { formatDay } from "../../../../components/ui/day-cell";
 import type { ReactNode } from "react";
 import type { CloudFilingEventPayload } from "../../../../api-client";
 import type {
@@ -159,8 +160,8 @@ export function GoingConcernDetail({ row, width }: { row: GoingConcernDisclosure
   const paragraphs = plainText(row.text).split(/\n+/).map((line) => line.trim()).filter(Boolean);
   return (
     <Body width={width}>
-      <Field label="Filed" value={`${isoDay(row.filed_at)} · ${row.form}`} width={bodyWidth} />
-      <Field label="Period end" value={isoDay(row.period_end)} width={bodyWidth} />
+      <Field label="Filed" value={`${formatDay(isoDay(row.filed_at))} · ${row.form}`} width={bodyWidth} />
+      <Field label="Period end" value={formatDay(isoDay(row.period_end))} width={bodyWidth} />
       <Field label="Ticker" value={row.ticker ? cellText(row.ticker) : "No trading symbol"} width={bodyWidth} />
       {cik ? <Field label="CIK" value={cik} width={bodyWidth} /> : null}
       <Field label="Disclosure" value={VERDICT_LABELS[row.verdict]} width={bodyWidth} bright />
@@ -214,8 +215,8 @@ export function DesignationDetail({ row, width, attributions }: { row: DistressD
       {row.symbol ? <Field label="Symbol" value={row.symbol} width={bodyWidth} /> : null}
       <Field label="Name" value={cellText(row.entity_name)} width={bodyWidth} />
       {row.entity_name_en ? <Field label="English name" value={cellText(row.entity_name_en)} width={bodyWidth} /> : null}
-      <Field label="On list as of" value={isoDay(row.last_seen_at)} width={bodyWidth} />
-      {row.ended_at ? <Field label="Removed" value={`${isoDay(row.ended_at)}, no longer on the exchange's list`} width={bodyWidth} /> : null}
+      <Field label="On list as of" value={formatDay(isoDay(row.last_seen_at))} width={bodyWidth} />
+      {row.ended_at ? <Field label="Removed" value={`${formatDay(isoDay(row.ended_at))}, no longer on the exchange's list`} width={bodyWidth} /> : null}
       {remarks.map((line, index) => <Field key={line} label={index === 0 ? "Remarks" : ""} value={line} width={bodyWidth} />)}
       <Gap />
       {row.notice_url ? <LinkField label="Notice" url={row.notice_url} width={bodyWidth} /> : null}
@@ -234,8 +235,8 @@ export function InsolvencyDetail({ row, width, attributions }: { row: Insolvency
       <Field label="Procedure" value={insolvencyKindLabel(row.kind)} width={bodyWidth} bright />
       <Field label="Notice" value={insolvencyNoticeLabel(row)} width={bodyWidth} />
       {!france && row.raw_code.trim() ? <Field label="Notice code" value={cellText(row.raw_code)} width={bodyWidth} /> : null}
-      <Field label={france ? "Judgment date" : "Procedure date"} value={isoDay(row.notice_date)} width={bodyWidth} />
-      <Field label="Published" value={isoDay(row.published_date)} width={bodyWidth} />
+      <Field label={france ? "Judgment date" : "Procedure date"} value={formatDay(isoDay(row.notice_date))} width={bodyWidth} />
+      <Field label="Published" value={formatDay(isoDay(row.published_date))} width={bodyWidth} />
       {row.court.trim() ? <Field label="Court" value={cellText(row.court)} width={bodyWidth} /> : null}
       <Field label={registryLabel(row.country)} value={row.registry_id} width={bodyWidth} />
       <Field label="Country" value={france ? "France" : row.country === "GB" ? "United Kingdom" : row.country} country={row.country} width={bodyWidth} />

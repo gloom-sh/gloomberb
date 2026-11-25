@@ -7,6 +7,7 @@ import { CME_CRYPTO_FUTURES, FUTURES_CONTRACTS, futuresBoardContractForTicker, f
 import { futuresContractCode } from "../../../market-data/futures-contract";
 import { contractMonthLabel } from "../../../utils/contract-month";
 import { MISSING_VALUE, formatPercentileRank } from "../../../utils/format";
+import { formatDay, formatDayTime } from "../../../components/ui/day-cell";
 import { formatThirtySeconds } from "../../../market-data/market/format";
 import { cryptoPairCoin, isFuturesSymbol } from "../shared/crypto-pair";
 import { formatUtcDayTime, newestReportTime, oldestReportTime, parseReportTime } from "../../../utils/utc-time";
@@ -295,6 +296,12 @@ export function curveContractMonth(symbol: string, expiration: string): string {
 
 export function curveTimestamp(value: string | null): string {
   return value?.replace("T", " ").slice(0, 16) ?? MISSING_VALUE;
+}
+
+/** A stamp as the table writes it: `24 Nov 2026 21:00` for an instant, `24 Nov 2026` for a session. */
+export function curveStampText(value: string | null): string {
+  if (!value) return MISSING_VALUE;
+  return value.includes("T") ? formatDayTime(value) : formatDay(value);
 }
 
 /** The rank against the contract's own history; one observation ranks nothing. */

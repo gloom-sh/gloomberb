@@ -2,9 +2,10 @@ import type { FuturesContract, FuturesCurvePayload } from "../../../api-client/f
 import { futuresSpecLines } from "../../../market-data/futures-contract";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneEntry, HeadlessPaneFreshness } from "../../../types/plugin";
 import { MISSING_VALUE, formatPercentRaw } from "../../../utils/format";
+import { formatDay } from "../../../components/ui/day-cell";
 import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 import { loadFuturesCurve, loadCurveSpot, loadCurveSpotBars, loadCurveSpotCloses, loadFuturesCurveAsOf } from "./client";
-import { curveReportFreshness, basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveCache, curveSpotBars, curveBasisPercent, curveInterestDate, curveBasisRows, curveChangeText, curveContractCode, curveIncompleteDetail, curvePrice, curveReadsThirtySeconds, curveRoundedPrice, curveSpotSource, curveSpotPremium, curveSpreadLabel, curveTimestamp, curveNoTradeSince, curveSessionNote, curveSettleShown, curveStandIn, curveUnitLabel, curveRootNamed, noTradeChangeNote, normalizeCurveRoot, shortDatedBasisNote, skippedSpreadNotice, spotIndexSymbol, thinSpreadNotice, unpairedContractCount, unsupportedCurveRootMessage, type ContractBasis, type CurveSpotPremium } from "./model";
+import { curveReportFreshness, basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveCache, curveSpotBars, curveBasisPercent, curveInterestDate, curveBasisRows, curveStampText, curveChangeText, curveContractCode, curveIncompleteDetail, curvePrice, curveReadsThirtySeconds, curveRoundedPrice, curveSpotSource, curveSpotPremium, curveSpreadLabel, curveTimestamp, curveNoTradeSince, curveSessionNote, curveSettleShown, curveStandIn, curveUnitLabel, curveRootNamed, noTradeChangeNote, normalizeCurveRoot, shortDatedBasisNote, skippedSpreadNotice, spotIndexSymbol, thinSpreadNotice, unpairedContractCount, unsupportedCurveRootMessage, type ContractBasis, type CurveSpotPremium } from "./model";
 import { COMMODITIES_VIEW_STATE } from "../commodities-energy/view-state";
 import { knownGapMessage } from "../../../cli/known-gaps";
 
@@ -58,7 +59,7 @@ function contractRow(row: FuturesContract, data: FuturesCurvePayload, root: stri
  */
 function contractColumns(root: string, settlementDate: string | null, options: { basis: boolean; last: boolean; notice: boolean; text?: boolean }): HeadlessPaneColumn[] {
   const price = (value: unknown) => typeof value === "number" ? curvePrice(value, root) : MISSING_VALUE;
-  const date = (value: unknown) => typeof value === "string" ? value : MISSING_VALUE;
+  const date = (value: unknown) => typeof value === "string" ? formatDay(value) : MISSING_VALUE;
   // An export has every column whatever the root, so CL's and GC's headers are the same; the text drops the ones a root leaves blank.
   const exported = !options.text;
   return [
@@ -82,11 +83,11 @@ function contractColumns(root: string, settlementDate: string | null, options: {
     // the text says so, an export leaves the cell empty (settle_date dates it).
     { key: "asOf", header: "As Of UTC", shrink: false,
       format: (value, row) => typeof row.settleShown === "string" ? MISSING_VALUE : typeof value === "string" ? curveTimestamp(value) : MISSING_VALUE,
-      textFormat: (value, row) => typeof row.settleShown === "string" ? `settle ${row.settleShown}` : typeof value === "string" ? curveTimestamp(value) : MISSING_VALUE },
+      textFormat: (value, row) => typeof row.settleShown === "string" ? `settle ${formatDay(row.settleShown)}` : typeof value === "string" ? curveStampText(value) : MISSING_VALUE },
     { key: "openInterest", header: "Open Int", align: "right", format: (value) => typeof value === "number" ? value.toLocaleString("en-US") : MISSING_VALUE },
     // Its own session beside it: the text says `n/a` for a count it cannot date, an export leaves the cell empty.
     { key: "openInterestAsOf", header: "OI Date", shrink: false, format: date,
-      textFormat: (value, row) => curveInterestDate({ openInterest: typeof row.openInterest === "number" ? row.openInterest : null, openInterestAsOf: typeof value === "string" ? value : null }) },
+      textFormat: (value, row) => formatDay(curveInterestDate({ openInterest: typeof row.openInterest === "number" ? row.openInterest : null, openInterestAsOf: typeof value === "string" ? value : null })) },
     { key: "volume", header: "Volume", align: "right", format: (value) => typeof value === "number" ? value.toLocaleString("en-US") : MISSING_VALUE },
     { key: "percentile", header: "Pctl", align: "right", format: (value) => typeof value === "number" ? String(value) : MISSING_VALUE },
   ];

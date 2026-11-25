@@ -13,6 +13,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { withCountryFlag } from "../../../components/ui/country-flag";
+import { dayCell } from "../../../components/ui/day-cell";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { MISSING_VALUE, truncateToDisplayWidth } from "../../../utils/format";
 import { wrapTextLines } from "../../../utils/text-wrap";
@@ -25,7 +26,7 @@ import { AwardDetail } from "./detail";
 import { useAwardAlerts } from "./alerts";
 import { AWARDS_UNAVAILABLE, fetchAwards, loadAward, loadAwards, validateAwards } from "./client";
 import { useAwardsEvidence } from "./evidence";
-import { AWARD_TABS, aggregateId, amountWithheld, awardHistorySeries, awardPercent, awardPeriod, awardsAmountNotices, awardsAttributions, awardScope, awardsCoverageNotes, awardsPreviewNote,
+import { AWARD_TABS, aggregateId, amountWithheld, awardHistorySeries, awardPercent, awardPeriod, awardPeriodValue, awardsAmountNotices, awardsAttributions, awardScope, awardsCoverageNotes, awardsPreviewNote,
   awardAmountLabel, awardsQueryShared, awardTab, awardTypeLabel, futureAwardDatesNote, money, rankedAggregates, WITHHELD_AMOUNT, type AwardsQueryShared } from "./model";
 import { logFailure } from "../../../utils/log-failure";
 
@@ -51,7 +52,7 @@ const COLUMN = {
   ticker: { id: "ticker", label: "Ticker", width: 10, align: "left" }, currency: { id: "currency", label: "CCY", width: 5, align: "left" },
   value: { id: "value", label: "Value", width: 11, align: "right", omitWhenEmpty: true }, obligated: { id: "obligated", label: "Obligated", width: 11, align: "right", omitWhenEmpty: true },
   ceiling: { id: "ceiling", label: "Ceiling", width: 11, align: "right", omitWhenEmpty: true }, agency: { id: "agency", label: "Agency", width: 24, align: "left" },
-  country: { id: "country", label: "Country", width: 8, align: "left" }, period: { id: "period", label: "Performance period", width: 24, align: "left" },
+  country: { id: "country", label: "Country", width: 8, align: "left" }, period: { id: "period", label: "Performance period", width: 25, align: "left" },
   title: { id: "title", label: "Contract", width: 36, flexGrow: 1, align: "left" },
   dateBasis: { id: "dateBasis", label: "Date basis", width: 14, align: "left" },
 } satisfies Record<string, DataTableColumn>;
@@ -292,19 +293,19 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
                 : { ...shareCell(`${item.row.sharePercent.toFixed(1)}%`, maxShare ? item.row.sharePercent / maxShare : null, column.width, colors, state.selected), value: item.row.sharePercent };
             }
             const award = item.row;
-            if (column.id === "date") return { text: award.awardDate, value: award.awardDate };
+            if (column.id === "date") return dayCell(award.awardDate);
             if (column.id === "dateBasis") return { text: award.dateBasis === "period-start" ? "Period start" : award.dateBasis === "publication" ? "Publication" : "Award date", color: colors.textDim };
             if (column.id === "recipient") return { text: award.recipient.name, color: colors.textBright };
             if (column.id === "ticker") return award.entity ? { text: award.entity.ticker, content: <Badge label={award.entity.ticker} /> } : missingCell(colors);
             if (column.id === "agency") return { text: award.agency.name, color: colors.text };
             // The column has room for the flag beside a code.
             if (column.id === "country") return withCountryFlag({ text: award.jurisdiction, color: colors.textDim }, award.jurisdiction, desktop);
-            if (column.id === "period") return { text: awardPeriod(award), color: colors.textDim };
+            if (column.id === "period") return { text: awardPeriod(award), value: awardPeriodValue(award), color: colors.textDim };
             if (column.id === "title") return { text: award.title, color: colors.text };
             if (column.id === "ratio") return { text: awardPercent(award), value: award.revenueComparison?.percent ?? null, color: colors.warning, attributes: TextAttributes.BOLD, keepColorWhenSelected: true };
             if (column.id === "revenue") return { text: money(award.revenueComparison?.annualRevenue), value: award.revenueComparison?.annualRevenue ?? null };
             if (column.id === "basis") return { text: award.revenueComparison?.basis === "obligated" ? "Obligated" : "Award value", color: colors.textDim };
-            return { text: award.revenueComparison?.periodEnd ?? MISSING_VALUE, color: colors.textDim };
+            return { ...dayCell(award.revenueComparison?.periodEnd), color: colors.textDim };
           }}
           emptyStateTitle={tab === "company" && !ticker ? "Enter a company ticker." : tab === "events" ? "No revenue-comparable awards in this scope." : "No awards match these filters."}
           rootAfter={attribution ? <Box paddingX={1} height={attributionRows} flexShrink={0}><Notice tone="muted">{attribution}</Notice></Box> : undefined}

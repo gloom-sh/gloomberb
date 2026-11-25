@@ -1,3 +1,4 @@
+import { dayCell, formatDay } from "../../../components/ui/day-cell";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import {
@@ -72,8 +73,7 @@ function growthItem(id: string, label: string, growth: number | null, payments: 
 }
 
 function formatDate(date: Date | null): string {
-  if (!date) return MISSING_VALUE;
-  return date.toISOString().slice(0, 10);
+  return date ? formatDay(date) : MISSING_VALUE;
 }
 
 function formatFrequency(freq: DividendMetrics["paymentFrequency"]): string {
@@ -127,7 +127,7 @@ function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory
     ...(metrics.forwardEstimate ? [{ id: "forward-fx", essential: true, label: metrics.forwardEstimate.fixingDate ? "FX fixing" : "FX basis",
       value: metrics.forwardEstimate.fixingDate ?? `${metrics.forwardEstimate.declaredCurrency}, ${metrics.forwardEstimate.declaredAmount != null ? "not fixed" : "FX unknown"}` }] : []),
     // The 30-day SEC yield as the fund's sponsor publishes it, dated.
-    ...(sec ? [{ id: "sec-yield", label: short ? "SEC yld" : "SEC yield", value: sec.text, ...(sec.date ? { detail: `as of ${sec.date}` } : {}) }] : []),
+    ...(sec ? [{ id: "sec-yield", label: short ? "SEC yld" : "SEC yield", value: sec.text, ...(sec.date ? { detail: `as of ${formatDay(sec.date)}` } : {}) }] : []),
     { id: "ttm-rate", essential: false, label: short ? "TTM/sh" : "TTM/share", value: formatRate(metrics.trailingRate, currency, !!convertedFrom, convertedSubUnit),
       ...metrics.trailingRate != null ? converted : {} },
     // The trailing year's total says so here too, as beside the forward yield.
@@ -168,7 +168,7 @@ function renderCell(
 ): DataTableCell {
   switch (column.id) {
     case "exDate":
-      return { text: row.exDate, color: colors.textDim };
+      return { ...dayCell(row.exDate), color: colors.textDim };
     case "amount":
       return {
         text: formatDividendRowAmount(row, converted, subUnit, digits.amount),

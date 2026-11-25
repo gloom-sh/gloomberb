@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { formatDay, formatDayTime } from "../../../components/ui/day-cell";
 import type { CatalystEvent, CatalystFilters, CatalystResponse, CatalystType } from "../../../api-client/catalysts";
 import type { DataTableColumn, TableSection } from "../../../components";
 import { markHiddenTableColumns } from "../../../components/ui/table-layout";
@@ -86,6 +87,16 @@ export const catalystDate = (event: CatalystEvent, read: CatalystDateRead = "any
   if (!value) return MISSING_VALUE;
   return value.slice(0, event.datePrecision[key] === "year" ? 4 : event.datePrecision[key] === "month" ? 7 : 10);
 };
+/**
+ * A catalyst's date as its table and detail write it: a day first
+ * (`02 Nov 2026`), an observation with its UTC time; a month or year stays
+ * as the source dates it. `catalystDate` stays the ISO value exports keep.
+ */
+export const catalystDateText = (event: CatalystEvent, read: CatalystDateRead = "any"): string => {
+  if (catalystListedField(event, read) === "observed") return formatDayTime(event.observedAt);
+  const date = catalystDate(event, read);
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? formatDay(date) : date;
+};
 export type FitColumn = DataTableColumn & { min?: number };
 
 /** Cells a table needs for `columns`: a gap after each, both edge paddings and the scrollbar. */
@@ -115,7 +126,7 @@ export const catalystBasisWidth = (events: readonly CatalystEvent[], read: Catal
 
 export function catalystColumns(width: number, changes: boolean, litigation: boolean, basisWidth = 10): DataTableColumn[] {
   return fitCatalystColumns([
-    { id: "date", label: changes ? "Observed (UTC)" : "Date", width: changes ? 16 : 10, align: "left" },
+    { id: "date", label: changes ? "Observed (UTC)" : "Date", width: changes ? 17 : 11, align: "left" },
     ...(!changes ? [{ id: "basis", label: "Date basis", width: basisWidth, min: 10, align: "left" as const }] : []),
     ...(!litigation ? [{ id: "ticker", label: "Ticker", width: width < 110 ? 12 : 14, min: 10, align: "left" as const }] : []),
     // The entity the event is about, which the title alone buries.
@@ -210,6 +221,7 @@ function changeValue(value: unknown): string {
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (Array.isArray(value)) return value.map(changeValue).join(", ") || "None";
   if (typeof value === "object") return Object.entries(value).map(([key, part]) => `${humanLabel(key)}: ${changeValue(part)}`).join("; ") || "None";
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return formatDay(value);
   return String(value);
 }
 function partyList(value: unknown): Party[] | null {
@@ -265,7 +277,7 @@ export function catalystSections(rows: readonly CatalystEvent[], read: CatalystD
 
 /** The calendar groups by the month of the date it shows; the change feed by the day a change was observed. */
 export function catalystSection(event: CatalystEvent, read: CatalystDateRead, changes: boolean): string {
-  if (changes) return event.observedAt.slice(0, 10);
+  if (changes) return formatDay(event.observedAt);
   const field = catalystListedField(event, read);
   if (catalystDateWithheld(event, field)) return CATALYST_DATE_WITHHELD;
   const date = catalystDate(event, field);
@@ -280,7 +292,7 @@ function changeSummary(event: CatalystEvent): string {
 }
 export const catalystCell = (event: CatalystEvent, column: string, read: CatalystDateRead, changes: boolean): string => {
   switch (column) {
-    case "date": return catalystDate(event, changes ? "observed" : read);
+    case "date": return catalystDateText(event, changes ? "observed" : read);
     case "basis": return catalystDateBasis(event, read);
     case "ticker": return catalystTickers(event) || "Unlinked";
     case "parties": return catalystParties(event);

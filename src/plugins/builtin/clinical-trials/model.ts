@@ -304,7 +304,7 @@ const TABLE_CHROME = 1 + 2;
 const TITLE_ROOM_WITH_DRUG = 24;
 const TITLE_ROOM_WITH_DATE = 36;
 /** An ISO day, as every date column reads. */
-const DATE_WIDTH = 10;
+const DATE_WIDTH = 11;
 
 /**
  * The title takes what is left; phase, status and ticker stay narrow and the

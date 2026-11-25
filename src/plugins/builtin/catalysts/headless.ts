@@ -83,7 +83,7 @@ function definition(litigation: boolean): HeadlessPaneDefinition<"bundle"> {
       // As LITI's pane: a ticker, date basis, type, agency or country every case shares prints once, not on each row.
       const shared = litigation ? { omitWhenSame: true } : {};
       return { ...(locked ? { complete: false, errors: [`${locked} ${data.access?.lockedRows === 1 ? "needs" : "need"} Gloom Pro`] } : {}), sections: [{ title: litigation ? "Company dockets" : "Catalyst events", columns: [
-        { key: "date", header: changes ? "Observed (UTC)" : "Date" }, ...(!changes ? [{ key: "basis", header: "Date basis", ...shared }] : []),
+        { key: "date", header: changes ? "Observed (UTC)" : "Date", textFormat: cell("date") }, ...(!changes ? [{ key: "basis", header: "Date basis", ...shared }] : []),
         { key: "tickers", header: "Tickers", ...shared }, { key: "parties", header: "Parties", format: (_value, row) => catalystParties(row as unknown as CatalystEvent) }, { key: "title", header: litigation ? "Case / docket" : "Event", textFormat: cell("title") },
         { key: "type", header: "Type", textFormat: cell("type"), ...shared },
         ...(changes ? [{ key: "changeSummary", header: "Changes" }] : [{ key: "status", header: "Status", textFormat: cell("status") }]),

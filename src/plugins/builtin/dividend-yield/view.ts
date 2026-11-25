@@ -1,3 +1,4 @@
+import { formatDay } from "../../../utils/day-format";
 import type { DividendMetrics, DividendPayment, GrowthPayments } from "./types";
 import { MISSING_VALUE, distributionAmountsDigits, formatDistributionAmount } from "../../../utils/format";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
@@ -68,7 +69,7 @@ export function forwardEstimateText(metrics: DividendMetrics): string | null {
 
 function cashEstimateText(estimate: NonNullable<DividendMetrics["forwardEstimate"]>): string {
   const declared = estimate.declaredAmount == null ? estimate.declaredCurrency : `${estimate.declaredAmount} ${estimate.declaredCurrency}/share`;
-  return `estimated from ${declared}; FX ${estimate.fixingDate ? `fixing ${estimate.fixingDate}` : "fixing unavailable"}${estimate.basis ? `; ${estimate.basis}` : ""}`;
+  return `estimated from ${declared}; FX ${estimate.fixingDate ? `fixing ${formatDay(estimate.fixingDate)}` : "fixing unavailable"}${estimate.basis ? `; ${estimate.basis}` : ""}`;
 }
 
 /**
@@ -118,7 +119,7 @@ export function growthPaymentsText(payments: GrowthPayments): string {
 /** A history served stale, dated by its read when the source gave it. */
 export function staleHistoryText(fetchedAt: string | undefined): string {
   const day = fetchedAt && /^\d{4}-\d{2}-\d{2}/.test(fetchedAt) ? fetchedAt.slice(0, 10) : null;
-  return `Stale cash history${day ? ` as of ${day}` : ""}; recent distributions may be missing.`;
+  return `Stale cash history${day ? ` as of ${formatDay(day)}` : ""}; recent distributions may be missing.`;
 }
 
 /** Cash history does not contain historical share prices, so cannot establish historical yields. */
