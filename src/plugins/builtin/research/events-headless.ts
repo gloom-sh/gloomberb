@@ -8,13 +8,13 @@ import type {
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
-import { buildEventRows, buildNextUp, eventSourceNotice, formatEventMetric, isFundListing, nextCatalystOf, nextCatalystQuery, CORPORATE_ACTION_COVERAGE, type NextCatalyst } from "./event-model";
+import { buildEventRows, buildNextUp, eventSourceNotice, isFundListing, nextCatalystOf, nextCatalystQuery, CORPORATE_ACTION_COVERAGE, type NextCatalyst } from "./event-model";
 import { dividendYearDetail, dividendYearLabel, dividendYears, earningsQuarters, splitMarks } from "./event-charts";
 import { fetchCatalysts } from "../catalysts/client";
 import { isCloudSessionRequired } from "../shared/research-cloud-session";
-import { MISSING_VALUE, distributionAmountsDigits, formatPercentRaw } from "../../../utils/format";
+import { distributionAmountsDigits, formatPercentRaw } from "../../../utils/format";
 import type { HeadlessBundleSection, HeadlessPaneColumn } from "../../../types/headless";
-import { EVENT_COLUMNS, eventSummarySection, loadEventSources } from "./event-sources";
+import { EVENT_COLUMNS, eventSummarySection, loadEventSources, QUARTER_TEXT_COLUMNS, quarterTextRows } from "./event-sources";
 import { listingDay } from "../shared/earnings-calendar";
 import { REPORTED_DATA } from "../shared/report-freshness";
 import { EPS_BASIS_NOTE } from "../shared/earnings-report";
@@ -35,17 +35,6 @@ interface EventHeadlessData {
 
 /** The rows drawn from the research served under a symbol (its reports and estimates), not from its own corporate actions. */
 const RESEARCH_EVENTS: ReadonlySet<EventStatus> = new Set(["Earnings", "Q Est", "FY Est", "TTM"]);
-
-/** The Earnings view's table, as the text report prints it: one row per quarter, the next one first. */
-const QUARTER_TEXT_COLUMNS: HeadlessPaneColumn[] = [
-  { key: "date", header: "Date" },
-  { key: "period", header: "Quarter" },
-  { key: "eps", header: "EPS", align: "right" },
-  { key: "estimate", header: "Est", align: "right" },
-  { key: "surprise", header: "Surprise", align: "right" },
-  { key: "revenue", header: "Revenue", align: "right" },
-  { key: "detail", header: "Detail" },
-];
 
 /** The Dividends view's table: one row per year of ex-dates, newest first. */
 const YEAR_TEXT_COLUMNS: HeadlessPaneColumn[] = [
@@ -129,14 +118,7 @@ export function createEventsHeadless(
       }
       const summary = buildNextUp(own, { today, fund, statedExDate: data.financials?.fundamentals?.exDividendDate, catalyst });
       const quarters = fund ? [] : earningsQuarters(own, today);
-      const quarterRows = quarters.map((quarter) => ({
-        date: quarter.date, period: quarter.period,
-        eps: quarter.upcoming ? "" : formatEventMetric(quarter.eps, quarter.epsCurrency, "eps"),
-        estimate: formatEventMetric(quarter.estimate, quarter.epsCurrency, "eps"),
-        surprise: quarter.upcoming ? "" : quarter.surprisePercent != null ? formatPercentRaw(quarter.surprisePercent) : MISSING_VALUE,
-        revenue: quarter.upcoming ? "" : formatEventMetric(quarter.revenue, quarter.revenueCurrency, "revenue"),
-        detail: quarter.detail,
-      }));
+      const quarterRows = quarterTextRows(quarters);
       const years = dividendYears(data.actions?.dividends ?? [], today, splitMarks(own));
       const currency = data.actions?.currency ?? data.currency;
       const digits = Math.min(4, distributionAmountsDigits(years.flatMap((year) => (year.total == null ? [] : [year.total])), currency || "USD"));

@@ -11,7 +11,7 @@ import type {
   HeadlessRowsResult,
 } from "../../../types/plugin";
 import type { EarningsEvent } from "../../../types/data-provider";
-import { addDays, boardKey, boardReport, boardRowOf, fallbackReport, historyListing, MIN_AVERAGE_REPORTS, newYorkToday, type BoardReport } from "./board-model";
+import { addDays, boardKey, boardReport, boardReportKind, boardRowOf, fallbackReport, historyListing, MIN_AVERAGE_REPORTS, newYorkToday, type BoardKind, type BoardReport } from "./board-model";
 import { BOARD_WEEKS, boardRangeDays, boardRangeLabel, isBoardWeek, requestedBoardRange, type BoardRange } from "./calendar-model";
 import { fetchEarningsCalendar, fetchEarningsHistory, noHistoryAbroad, sameHistoryListing } from "./client";
 import { loadEarningsCalendar } from "./data/cache";
@@ -27,7 +27,7 @@ import { findUsListingOfCompany } from "../../../tickers/us-listing";
 import { shortCompanyName } from "../../../tickers/company-name";
 import { REPORT_ROWS } from "../shared/headless-options";
 import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
-import type { HeadlessPaneOptionDef } from "../../../types/headless";
+import type { HeadlessBundleSection, HeadlessPaneOptionDef } from "../../../types/headless";
 
 const right = "right" as const;
 const num = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
@@ -84,6 +84,16 @@ const BOARD_COLUMNS: HeadlessPaneColumn[] = [
   { key: "impliedMove", header: "Implied", align: right, format: (value) => impliedText(num(value)) },
   { key: "averageMove", header: "Avg move", align: right, format: (value) => moveSize(num(value)) },
 ];
+
+/**
+ * The text report's tables, as the pane's views are: reports to come with their date's status and analysts,
+ * reports out with their actual and surprise. CCY only where a report is in another currency than dollars.
+ * The exports keep BOARD_COLUMNS for every row.
+ */
+const UPCOMING_TEXT_COLUMNS = BOARD_COLUMNS.filter((column) => !["epsActual", "epsBasis", "epsSurprise"].includes(column.key));
+const REPORTED_TEXT_COLUMNS = BOARD_COLUMNS.filter((column) => !["dateStatus", "epsAnalysts"].includes(column.key));
+const textColumnsFor = (columns: HeadlessPaneColumn[], rows: ReadonlyArray<{ currency?: unknown }>) =>
+  rows.some((row) => row.currency != null && row.currency !== "USD") ? columns : columns.filter((column) => column.key !== "currency");
 
 /** What the board's currency and cap are, and which listings abroad it has, in its metadata. */
 const BOARD_CURRENCY_NOTE = "currency is the ISO currency of a report's EPS and sales figures: dollars for US listings, a listing abroad's own (CNY for Tencent), never converted. marketCap is in dollars for every company, so the board ranks them together. Besides US listings the board has the Hong Kong, China A and Singapore top 100's reports whose date the company confirmed or that are out, from each listing's earnings history; they have no time of day, implied or average move. A company listed on two of those markets is shown once, under its primary listing, and found by any of its lines.";
@@ -233,7 +243,10 @@ async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContex
   const extra = uncovered.map((event) => stored.get(event) ?? fallbackReport(event, NO_OWNERSHIP, today));
   const limit = Number(args.options.limit ?? 200);
   const all = [...reports, ...extra].sort((left, right) => left.date.localeCompare(right.date) || (right.marketCap ?? 0) - (left.marketCap ?? 0));
-  const rows = all.slice(0, limit).map((report) => ({
+  // `--kind` lists one of the pane's views alone, as `shot` opens on it: the reports to come, or those out.
+  const kind = boardKindOption(args.options);
+  const listed = kind ? all.filter((report) => boardReportKind(report, today) === kind) : all;
+  const rows = listed.slice(0, limit).map((report) => ({
     date: report.date,
     dateStatus: report.dateStatus,
     timing: report.timing ? TIMING_LABEL[report.timing] : null,
@@ -254,11 +267,24 @@ async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContex
     averageMove: report.averageMove,
   }));
   const ticker = highlight ? boardTickerNotice(highlight, all, query.from, query.to) : null;
+  // As the pane's Upcoming and Reported views: the reports to come first, those out under them.
+  const kinds = listed.slice(0, limit).map((report) => boardReportKind(report, today));
+  const upcoming = rows.filter((_row, index) => kinds[index] === "upcoming");
+  const reported = rows.filter((_row, index) => kinds[index] === "reported");
+  const [main, mainColumns] = kind === "reported" || (!kind && !upcoming.length && reported.length)
+    ? [reported, REPORTED_TEXT_COLUMNS] : [upcoming, UPCOMING_TEXT_COLUMNS];
+  const textSections: HeadlessBundleSection[] = main === upcoming && reported.length
+    ? [{ title: "Reported", columns: textColumnsFor(REPORTED_TEXT_COLUMNS, reported), rows: reported }] : [];
   return {
     columns: BOARD_COLUMNS,
     rows,
-    complete: rows.length === all.length && cloud.status !== "rejected",
-    ...(rows.length < all.length ? { notes: [`Showing ${rows.length} of ${all.length} reports. Retrieve all with --limit ${all.length}.`] } : {}),
+    textColumns: textColumnsFor(mainColumns, main),
+    textRows: main,
+    ...(textSections.length ? { textSections } : {}),
+    // The pane's words for a view with none while the other has some.
+    ...(kind && !listed.length && all.length ? { empty: kind === "upcoming" ? "Every report on these days is out." : "None of these reports is out yet." } : {}),
+    complete: rows.length === listed.length && cloud.status !== "rejected",
+    ...(rows.length < listed.length ? { notes: [`Showing ${rows.length} of ${listed.length} reports. Retrieve all with --limit ${listed.length}.`] } : {}),
     errors: cloud.status === "rejected" ? [String(cloud.reason instanceof Error ? cloud.reason.message : cloud.reason)] : undefined,
     metadata: {
       ...(ticker ? { notices: [ticker.notice], highlight: { symbol: highlight, onBoard: ticker.date != null, date: ticker.date, row: ticker.row } } : {}),
@@ -270,9 +296,10 @@ async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContex
       provisional: PROVISIONAL_NOTE,
       marketCap: MARKET_CAP_NOTE,
       currency: BOARD_CURRENCY_NOTE,
-      total: all.length,
+      ...(kind ? { kind } : {}),
+      total: listed.length,
       returned: rows.length,
-      truncated: rows.length < all.length,
+      truncated: rows.length < listed.length,
     },
   };
 }
@@ -382,6 +409,17 @@ const BOARD_RANGE_OPTIONS: HeadlessPaneOptionDef[] = [
     description: "A week's reports, Monday to Friday: last, this or next. Without it or --date, the days ahead." },
 ];
 
+/** The board's Upcoming or Reported view, which `shot` opens on and `fn` lists alone. */
+const BOARD_KIND_OPTION: HeadlessPaneOptionDef = {
+  key: "kind", type: "enum", settingKey: "kind", values: [{ value: "upcoming" }, { value: "reported" }],
+  example: "--kind reported", exampleWithoutArgument: true,
+  description: "One view of the board: upcoming, the reports to come, or reported, the reports out. Without it, the pane opens on Upcoming while a report is to come and the text report prints both.",
+};
+
+function boardKindOption(options: HeadlessPaneLoadArgs["options"]): BoardKind | null {
+  return options.kind === "upcoming" || options.kind === "reported" ? options.kind : null;
+}
+
 /** The days `--date` or `--week` asks for; the days ahead without either. */
 function boardRange(options: HeadlessPaneLoadArgs["options"]): BoardRange {
   if (options.date && isBoardWeek(options.week)) throw new Error("Use --date or --week, not both.");
@@ -395,6 +433,7 @@ export function createEarningsBoardHeadless(deps: EarningsHeadlessDependencies =
     argument: { kind: "ticker", placeholder: "ticker", description: "Optional; the board is the same.", minimum: 0, maximum: 1 },
     options: [
       ...BOARD_RANGE_OPTIONS,
+      BOARD_KIND_OPTION,
       { key: "limit", shot: REPORT_ROWS, description: "Maximum rows.", type: "integer", defaultValue: 200, minimum: 1, maximum: 1000 },
     ],
     columns: BOARD_COLUMNS,
@@ -421,6 +460,7 @@ export function createEarningsHeadless(deps: EarningsHeadlessDependencies = defa
     },
     options: [
       ...BOARD_RANGE_OPTIONS,
+      BOARD_KIND_OPTION,
       { key: "limit", shot: REPORT_ROWS, description: "Maximum rows on the market board or a ticker list.", type: "integer", defaultValue: 200, minimum: 1, maximum: 1000 },
     ],
     columns: BOARD_COLUMNS,
@@ -434,6 +474,11 @@ export function createEarningsHeadless(deps: EarningsHeadlessDependencies = defa
       if (args.symbols.length === 1 && range) {
         const symbol = args.symbols[0]!;
         throw new Error(`ERN ${symbol} is its report history, past reports included; --date and --week pick the board's days. Run \`gloom fn EVTS ${symbol} ${args.options.date ? `--date ${args.options.date}` : `--week ${args.options.week}`}\` for the market's.`);
+      }
+      const kind = boardKindOption(args.options);
+      if (args.symbols.length === 1 && kind) {
+        const symbol = args.symbols[0]!;
+        throw new Error(`ERN ${symbol} is its report history, reports to come and out together; --kind picks one view of the board. Run \`gloom fn EVTS ${symbol} --kind ${kind}\` for the market's.`);
       }
       return args.symbols.length === 1 ? historyReport(args.symbols[0]!, context, deps) : boardRows(args, context, deps, undefined, range);
     },

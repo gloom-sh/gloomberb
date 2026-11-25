@@ -280,7 +280,7 @@ When Gloom Cloud is too busy to search, the list says `Search is busy` rather th
 | `GF <tickers>` | Fundamental statement graph |
 | `GE <tickers>` | Valuation multiple graph |
 | `GR <tickers>` | Ratio, rolling correlation and regression of two tickers (`GR GC=F SI=F`) |
-| `EE <ticker>` | Events view with earnings and revenue estimates |
+| `EE <ticker>` | EPS and revenue estimates for the quarters and years ahead, and the reported quarters in a view of their own (`--view reported`) |
 | `ERN [tickers]` | Earnings history with implied and realized moves. Several tickers, their upcoming reports. Nothing active, the market's report days |
 | `EVTS [ticker]` | The market's report days with implied and average moves, and each report's actual, surprise and move |
 | `SRCH [query]` | Full-text search across earnings call transcripts, news, and SEC filings |
@@ -324,7 +324,7 @@ When Gloom Cloud is too busy to search, the list says `Search is busy` rather th
 For panes with tabs, `gloom fn` and `gloom shot` accept the displayed tab label or its ID as `--tab`, regardless of case. Quote labels that contain spaces.
 
 - **`GR`:** beta and alpha regress the first ticker's daily returns on the second's and say so (`EQT on UNG: beta`). Text prints the rolling correlation to three decimals, `--json` and `--csv` keep every digit.
-- **`ERN`:** the bar's Range looks back or ahead, as in `EVTS`. Names narrows the reports to Mine, one portfolio or watchlist, a broad sector, or an industry. Sectors and industries are grouped separately, with each fund named beside its group.
+- **`ERN`:** the bar's Range looks back or ahead, as in `EVTS`. Upcoming and Reported split the reports to come from the reports out, each view with its own columns; `--kind upcoming` or `--kind reported` opens on one. Names narrows the reports to Mine, one portfolio or watchlist, a broad sector, or an industry. Sectors and industries are grouped separately, with each fund named beside its group.
 - **`EVTS`:** in the pane and `gloom shot EVTS`, a ticker opens the market board on its next report day, or its latest past report when no next date is known, and selects its row. A date outside the stored board's horizon keeps the named company's report from `ERN`. If no date is known, the footer says so. An explicit week or day, or a range chosen in the pane, stays put; the footer says when the ticker reports outside it. The text report says whether the ticker is on its board (`ERN <ticker>` has its own dates). The bar's Range gives a week (`gloom fn EVTS --week last`, `this` or `next`), or one day (`--date 2026-10-15`) whose reports carry their actuals and surprises. Without a ticker, the default is today, the next session and the rest of its week.
 - **`CALLS`:** with a ticker, the company's calls, the next one on its own line with its start here and in New York. Alone, the calendar of every company's calls today, the next session and the rest of the week. `--view transcripts` lists the latest transcribed calls instead.
 - **`DVD`:** `gloom fn DVD KO PEP JNJ` ranks several tickers by yield, with payout, growth, last ex-date and pay date. A bond fund's SEC yield sits beside its distribution yield, and `gloom fn DVD MUB --tax-rate 40.8` adds a muni fund's tax-equivalent yield and muni/Treasury ratio, as `fn ETF`, `fn DES` and `fundamentals` do with it; `gloom fn DVD MUB VTEB SUB LQD --tax-rate 40.8` ranks them with yield to worst, duration and both figures ([research data](research-data.md#bond-funds-sec-yield-tax-equivalent-yield-and-the-munitreasury-ratio)).

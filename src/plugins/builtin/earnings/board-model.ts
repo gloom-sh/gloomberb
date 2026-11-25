@@ -166,6 +166,18 @@ export function boardReport(report: EarningsCalendarReport, owned: ReadonlyMap<s
   };
 }
 
+/** Whether a board row is a report already out or one still to come, each with columns of its own. */
+export type BoardKind = "upcoming" | "reported";
+
+/**
+ * A report is out once the calendar says so, once it has an actual or a
+ * measured move on it, or once its day has gone by; until then it is to come,
+ * confirmed or projected.
+ */
+export function boardReportKind(report: Pick<BoardReport, "date" | "dateStatus" | "epsActual" | "realizedMove">, today: string): BoardKind {
+  return report.dateStatus === "reported" || report.epsActual != null || report.realizedMove != null || report.date < today ? "reported" : "upcoming";
+}
+
 /**
  * A listing as the board and Gloom Cloud's earnings history key it, however it
  * was typed: a vendor's suffix as the venue it names (0700.HK, 700.HK and

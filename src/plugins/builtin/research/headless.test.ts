@@ -88,6 +88,26 @@ describe("earnings estimates headless", () => {
     expect(result.metadata).toMatchObject({ kind: "estimates", total: 2, truncated: true });
     expect(result.rows[0]?.epsBasis).toBe("unknown");
   });
+
+  test("--view prints one of the pane's views under Next up, while --kind keeps picking the rows", async () => {
+    const definition = createEarningsEstimatesHeadless({ loadSources: async () => sources });
+    const text = async (options: Record<string, string>) => {
+      const request = args({ kind: "all", ...options });
+      const result = await definition.load(request, context);
+      return { result, text: renderHeadlessPaneText(definition, result, request, "EE") };
+    };
+    const reported = await text({ view: "reported" });
+    expect(reported.text).toMatch(/Date\s+Quarter\s+EPS\s+Est\s+Surprise/);
+    expect(reported.text).toContain("Next up");
+    expect(reported.text).not.toContain("EPS low");
+    expect(reported.text).not.toContain("Reported quarters");
+    expect(reported.result.metadata).toMatchObject({ kind: "all", view: "reported" });
+    // The exports keep every row --kind asks for.
+    expect(reported.result.rows.map((row) => row.status)).toEqual(expect.arrayContaining(["Earnings", "Q Est", "FY Est"]));
+    const estimates = await text({ view: "estimates" });
+    expect(estimates.text).toMatch(/Period\s+Ends\s+EPS\s+EPS low/);
+    expect(estimates.text).not.toContain("Reported quarters");
+  });
 });
 
 test("EE reads a surprise against a loss estimate and growth off a year-ago loss N/M, as EVTS does, and exports no figure for either", async () => {
@@ -102,8 +122,10 @@ test("EE reads a surprise against a loss estimate and growth off a year-ago loss
   expect(result.rows.find((row) => row.status === "Earnings")).toMatchObject({ surpriseNotMeaningful: true, surprisePercent: undefined });
   expect(result.rows.find((row) => row.status === "Q Est")).toMatchObject({ estimateGrowthNotMeaningful: true, estimateGrowthMetric: "eps" });
   const text = renderHeadlessPaneText(definition, result, request, "EE");
-  expect(text).toMatch(/\bN\/M\b/);
-  expect(text).toContain("N/M EPS");
+  // The estimate's growth in its row and in Next up, the reported quarter's surprise in its own table.
+  expect(text).toMatch(/next qtr\s+2026-09-30\s+0\.10\s+\S\s+\S\s+N\/M\s+30/);
+  expect(text).toMatch(/EPS est\s+0\.10\s+30 analysts · N\/M y\/y/);
+  expect(text).toMatch(/Jul 2026\s+-1\.14\s+-1\.47\s+N\/M/);
   expect(text).not.toContain("-22.45");
   expect(text).not.toContain("+125");
   const csv = renderReportCsv(headlessReportTables(definition, result, request, "EE", deriveHeadlessFreshness(definition, result), { complete: true, unavailableSymbols: [] }));

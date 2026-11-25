@@ -5,7 +5,8 @@ import type {
   TickerFinancials,
 } from "../../../types/financials";
 import { formatEventMetric, type EventSummaryFigure } from "./event-model";
-import type { HeadlessBundleSection } from "../../../types/headless";
+import type { HeadlessBundleSection, HeadlessPaneColumn } from "../../../types/headless";
+import type { EarningsQuarter } from "./event-charts";
 import { loadAnalystResearch } from "./client";
 import { MISSING_VALUE, formatPercent, formatPercentRaw } from "../../../utils/format";
 import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
@@ -33,7 +34,7 @@ export const EVENT_COLUMNS = [
   { key: "detail", header: "Detail" },
 ];
 
-/** The figures over the events views (buildNextUp, buildEventSummary), as the text reports print them under their rows. */
+/** The figures over the events views (buildNextUp, buildEarningsHeader), as the text reports print them under their rows. */
 export function eventSummarySection(figures: readonly EventSummaryFigure[]): HeadlessBundleSection {
   return {
     title: "Next up",
@@ -42,6 +43,29 @@ export function eventSummarySection(figures: readonly EventSummaryFigure[]): Hea
       formatted: figure.detail ? `${figure.value}  ${figure.detail}` : figure.value,
     })),
   };
+}
+
+/** The Earnings view's table (EVT's, and EE's Reported), as the text reports print it: one row per quarter, the next one first. */
+export const QUARTER_TEXT_COLUMNS: HeadlessPaneColumn[] = [
+  { key: "date", header: "Date" },
+  { key: "period", header: "Quarter" },
+  { key: "eps", header: "EPS", align: "right" },
+  { key: "estimate", header: "Est", align: "right" },
+  { key: "surprise", header: "Surprise", align: "right" },
+  { key: "revenue", header: "Revenue", align: "right" },
+  { key: "detail", header: "Detail" },
+];
+
+export function quarterTextRows(quarters: readonly EarningsQuarter[]): Record<string, string>[] {
+  return quarters.map((quarter) => ({
+    date: quarter.date, period: quarter.period,
+    eps: quarter.upcoming ? "" : formatEventMetric(quarter.eps, quarter.epsCurrency, "eps"),
+    estimate: formatEventMetric(quarter.estimate, quarter.epsCurrency, "eps"),
+    surprise: quarter.upcoming ? "" : quarter.surpriseNotMeaningful ? NOT_MEANINGFUL_TEXT
+      : quarter.surprisePercent != null ? formatPercentRaw(quarter.surprisePercent) : MISSING_VALUE,
+    revenue: quarter.upcoming ? "" : formatEventMetric(quarter.revenue, quarter.revenueCurrency, "revenue"),
+    detail: quarter.detail,
+  }));
 }
 
 /**
