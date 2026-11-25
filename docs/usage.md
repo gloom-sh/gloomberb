@@ -2681,6 +2681,7 @@ Gloom includes English, Spanish, Simplified Chinese, Traditional Chinese, Japane
 - Supported `LANG` / `LC_ALL` and desktop system locales select the matching interface automatically.
 - `LANG` in the command bar (Ctrl+P) cycles languages, or use `LANG auto`, `LANG en`, `LANG es`, `LANG zh-CN`, `LANG zh-TW`, `LANG ja`, `LANG ko`. The choice is saved in `config.json`.
 - `GLOOMBERB_LANG=ja gloomberb` overrides it for one run.
+- A plugin can add or override translations with `registerTranslations(language, entries)` from `gloomberb/i18n`. Its entries take precedence over the built-in tables, the latest registration wins, and the function it returns removes them again. The data table leaves its headers in English unless an entry keyed `table-header` plus the upper-case header (for example `table-headerOPEN`) translates them, so a column like "Open" is never read as the verb. A pane that translates its own column labels before handing them to the table, as the portfolio list does, still shows those translations.
 
 ## Built-in plugins
 

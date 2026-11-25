@@ -74,10 +74,27 @@ function detectLanguage(): AppLanguage {
 let currentLanguage: AppLanguage = detectLanguage();
 const languageListeners = new Set<() => void>();
 
+/** Bumps on every language change and every plugin registration. */
+let translationRevision = 0;
+
+function notifyLanguageListeners(): void {
+  translationRevision += 1;
+  for (const listener of languageListeners) listener();
+}
+
+/**
+ * Changes whenever what `t` returns may have changed: the language, or the
+ * entries plugins registered. A cache keyed on the language alone misses the
+ * second.
+ */
+export function getTranslationRevision(): number {
+  return translationRevision;
+}
+
 function updateLanguage(language: AppLanguage): void {
   if (currentLanguage === language) return;
   currentLanguage = language;
-  for (const listener of languageListeners) listener();
+  notifyLanguageListeners();
 }
 
 export function getLanguage(): AppLanguage {
@@ -124,6 +141,63 @@ export function applyLanguagePreference(preference: LanguagePreference): void {
   );
 }
 
+type TranslatedLanguage = Exclude<AppLanguage, "en">;
+
+/**
+ * Entries plugins registered, consulted before the built-in tables so a
+ * plugin can add strings the app does not translate and correct ones it
+ * does. The latest registration wins.
+ */
+const registeredTables = new Map<TranslatedLanguage, Array<Record<string, string>>>();
+
+function lookup(language: TranslatedLanguage, key: string): string | undefined {
+  const tables = registeredTables.get(language);
+  if (tables) {
+    for (let index = tables.length - 1; index >= 0; index -= 1) {
+      const value = tables[index]![key];
+      if (value !== undefined) return value;
+    }
+  }
+  return DICTIONARIES[language][key];
+}
+
+/**
+ * Adds translation entries for one language, keyed like the built-in tables:
+ * the English source text, or context + text for `tc`. Returns a function that
+ * removes them, for the plugin's `dispose`. Panes re-render through
+ * `useAppLanguage` when the active language's entries change.
+ */
+export function registerTranslations(
+  language: TranslatedLanguage,
+  entries: Record<string, string>,
+): () => void {
+  if (!(language in DICTIONARIES)) {
+    throw new Error(`Cannot register translations for unsupported language "${language}".`);
+  }
+  const table = { ...entries };
+  const tables = registeredTables.get(language) ?? [];
+  tables.push(table);
+  registeredTables.set(language, tables);
+  if (currentLanguage === language) notifyLanguageListeners();
+  return () => {
+    const current = registeredTables.get(language);
+    const index = current?.indexOf(table) ?? -1;
+    if (index === -1) return;
+    current!.splice(index, 1);
+    if (currentLanguage === language) notifyLanguageListeners();
+  };
+}
+
+/**
+ * The entry for exactly `key` in the active language, or undefined: no
+ * fallback to a plain entry or to English. For sinks that translate only what
+ * a dictionary or plugin explicitly provides for them.
+ */
+export function translateExact(key: string): string | undefined {
+  if (currentLanguage === "en") return undefined;
+  return lookup(currentLanguage, key);
+}
+
 /**
  * Translates a user-visible string. Keys are the original English text;
  * anything missing from the active dictionary falls back to English, so
@@ -131,7 +205,7 @@ export function applyLanguagePreference(preference: LanguagePreference): void {
  */
 export function t(text: string): string {
   if (currentLanguage === "en") return text;
-  return DICTIONARIES[currentLanguage][text] ?? text;
+  return lookup(currentLanguage, text) ?? text;
 }
 
 /**
@@ -142,8 +216,7 @@ export function t(text: string): string {
  */
 export function tc(context: string, text: string): string {
   if (currentLanguage === "en") return text;
-  const dictionary = DICTIONARIES[currentLanguage];
-  return dictionary[`${context}${text}`] ?? dictionary[text] ?? text;
+  return lookup(currentLanguage, `${context}${text}`) ?? lookup(currentLanguage, text) ?? text;
 }
 
 /**

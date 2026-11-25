@@ -12,6 +12,6 @@
  * Compatibility commitment: see the note in `./utils.ts`.
  */
 
-export { t, tc, tf } from "../i18n";
+export { registerTranslations, t, tc, tf } from "../i18n";
 export type { AppLanguage } from "../i18n";
 export { useAppLanguage } from "../i18n/react";

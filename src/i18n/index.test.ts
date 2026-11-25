@@ -3,8 +3,11 @@ import {
   applyLanguageFromConfig,
   applyLanguagePreference,
   getLanguage,
+  registerTranslations,
   setLanguage,
   subscribeLanguage,
+  t,
+  tc,
 } from ".";
 import { es } from "./es";
 import { ja } from "./ja";
@@ -100,5 +103,45 @@ describe("language selection", () => {
         JSON.stringify(placeholders(dictionary[key] ?? "")) !== JSON.stringify(placeholders(key))
       ))).toEqual([]);
     }
+  });
+});
+
+describe("registerTranslations", () => {
+  let previousLanguage: ReturnType<typeof getLanguage>;
+  beforeEach(() => {
+    previousLanguage = getLanguage();
+  });
+  afterEach(() => {
+    setLanguage(previousLanguage);
+  });
+
+  test("layers over the built-in table, latest wins, and its disposer restores the table", () => {
+    setLanguage("zh-CN");
+    const builtIn = t("Save");
+    const removeFirst = registerTranslations("zh-CN", { "Plugin only label": "插件标签", Save: "存" });
+    const removeSecond = registerTranslations("zh-CN", { Save: "存盘" });
+    expect(t("Plugin only label")).toBe("插件标签");
+    expect(t("Save")).toBe("存盘");
+    expect(tc("no-such-context", "Save")).toBe("存盘");
+    removeSecond();
+    expect(t("Save")).toBe("存");
+    removeFirst();
+    expect(t("Save")).toBe(builtIn);
+    expect(t("Plugin only label")).toBe("Plugin only label");
+  });
+
+  test("notifies subscribers only for the active language", () => {
+    setLanguage("zh-CN");
+    let notifications = 0;
+    const unsubscribe = subscribeLanguage(() => { notifications += 1; });
+    const removeJa = registerTranslations("ja", { "Only Japanese": "日本語のみ" });
+    expect(notifications).toBe(0);
+    expect(t("Only Japanese")).toBe("Only Japanese");
+    const removeZh = registerTranslations("zh-CN", { "Only Chinese": "仅中文" });
+    expect(notifications).toBe(1);
+    removeZh();
+    expect(notifications).toBe(2);
+    removeJa();
+    unsubscribe();
   });
 });
