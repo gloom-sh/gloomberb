@@ -661,6 +661,43 @@ describe("a filing's holdings and the reader's sign-in", () => {
     expect(spy.mock.calls).toHaveLength(3);
   });
 
+  test("a credential replaced under the account still shown reuses neither the copy nor the read in flight of the one before", async () => {
+    attachThirteenFApiPersistence(new MemoryPluginPersistence());
+    signIn();
+    apiClient.restoreCachedUser({ id: "synthetic-reader", name: "Reader", email: "", emailVerified: true });
+    // Each answer's lines are numbered from the credential generation (a count) it was sent under.
+    const sentUnder: number[] = [];
+    spies.push(spyOn(apiClient, "getCloudSec13F").mockImplementation((async () => {
+      const generation = apiClient.getCredentialGeneration();
+      sentUnder.push(generation);
+      await new Promise<void>((resolve) => asked.push({ signedIn: true, release: resolve }));
+      return { rows: holdingRows("filing", generation * 10_000, 3_856), complete: true };
+    }) as never));
+    const answeredUnder = (answer: { rows: ThirteenFHoldingRecord[] }) => Math.floor((answer.rows[0]!.value ?? 0) / 10_000);
+    const first = apiClient.getCredentialGeneration();
+    expect(answeredUnder(await settle(read()))).toBe(first);
+    // Its copy answers that credential again without asking.
+    expect(answeredUnder(await read())).toBe(first);
+    expect(sentUnder).toEqual([first]);
+    // A new credential, the account shown still the one before: the copy is not its, so it asks.
+    apiClient.setSessionToken("synthetic-13f-reader-replaced");
+    expect(apiClient.getCurrentUser()?.id).toBe("synthetic-reader");
+    const second = apiClient.getCredentialGeneration();
+    expect(answeredUnder(await settle(read()))).toBe(second);
+    expect(sentUnder).toEqual([first, second]);
+    // Replaced again while another filing's read is out: a read after it does not join that one, and the one out is
+    // not answered with what it was sent, but with the new credential's book.
+    const other = () => listThirteenFFormHoldings("1603466", "other", undefined, { entries: 3_856 });
+    const pending = other();
+    for (let count = 0; count < 20 && sentUnder.length < 3; count++) await tick();
+    apiClient.setSessionToken("synthetic-13f-reader-replaced-again");
+    const third = apiClient.getCredentialGeneration();
+    const after = other();
+    const [late, fresh] = await Promise.all([settle(pending), settle(after)]);
+    expect(sentUnder.slice(0, 4)).toEqual([first, second, second, third]);
+    expect([answeredUnder(late), answeredUnder(fresh)]).toEqual([third, third]);
+  });
+
   test("a cut answer to a session the service did not take is not kept as the signed-in copy", async () => {
     attachThirteenFApiPersistence(new MemoryPluginPersistence());
     signIn();
@@ -772,6 +809,15 @@ describe("a filing's holdings and the reader's sign-in", () => {
     const signedIn = await listThirteenFFormHoldings("1603466", "filing", undefined, {});
     expect(signedIn.rows.map((row) => row.value)).toEqual(Array.from({ length: 1_500 }, (_, index) => index + 1));
     expect(written()).toEqual([]);
+    // A filing's own list, read a page at a time as its detail view scrolls: each page as asked, more after a full one.
+    const page = await loadFilingPositions("1603466", "filing", undefined, { offset: 250, limit: 100 });
+    expect(page.rows.map((row) => row.value)).toEqual(Array.from({ length: 100 }, (_, index) => 251 + index));
+    expect(page.hasMore).toBe(true);
+    const last = await loadFilingPositions("1603466", "filing", undefined, { offset: 1_450, limit: 100 });
+    expect(last.rows.map((row) => row.value)).toEqual(Array.from({ length: 50 }, (_, index) => 1_451 + index));
+    expect(last.hasMore).toBe(false);
+    // What is kept is the page asked, not the rest of the filing the answer held.
+    expect(written()).toEqual([[250, 100], [1_450, 50]]);
   });
 
   test("a sign-out while the prior quarter loads takes down what was shown, and both quarters are read again signed out", async () => {

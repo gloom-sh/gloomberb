@@ -478,6 +478,59 @@ describe("ThirteenFPane", () => {
     }
   });
 
+  test("a credential replaced under the account still shown takes the open fund's book down, while the new read is out and after it fails", async () => {
+    const holdings = { "0000000001-26-000001": { value: 1200, ssh_prnamt: 100 }, "0000000001-25-000004": { value: 1000, ssh_prnamt: 10 } };
+    const replacement = Promise.withResolvers<void>();
+    // Synthetic credentials and account: made-up tokens, reads told apart by the credential's generation (a count).
+    apiClient.setSessionToken("synthetic-13f-credential");
+    apiClient.restoreCachedUser({ id: "synthetic-reader", name: "Reader", email: "", emailVerified: true });
+    const first = apiClient.getCredentialGeneration();
+    const reads: number[] = [];
+    const spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async (path: string, params: Record<string, unknown>) => {
+      if (path === "/forms") return [
+        { cik: "0000000001", accession_number: "0000000001-26-000001", submission_type: "13F-HR", period_of_report: "2026-03-31", filed_as_of_date: "2026-05-15", company_name: "Alpha Capital", table_value_total: 1200, table_entry_total: 1, is_amendment: false },
+        { cik: "0000000001", accession_number: "0000000001-25-000004", submission_type: "13F-HR", period_of_report: "2025-12-31", filed_as_of_date: "2026-02-14", company_name: "Alpha Capital", table_value_total: 1000, table_entry_total: 1, is_amendment: false },
+      ];
+      if (path !== "/holdings") return [];
+      const generation = apiClient.getCredentialGeneration();
+      reads.push(generation - first);
+      // The new credential's read is held, then fails.
+      if (generation !== first) {
+        await replacement.promise;
+        throw new ApiRequestError("Service unavailable", 503);
+      }
+      const accession = String(params.accession_number) as keyof typeof holdings;
+      return { rows: [{ cik: "0000000001", accession_number: accession, name_of_issuer: "KLA Corp", title_of_class: "COM", cusip: "482480100", ticker: "KLAC", ssh_prnamt_type: "SH", ...holdings[accession] }], complete: true };
+    }) as never);
+    const marketData = createTestDataProvider({
+      getCorporateActions: async () => ({ symbol: "KLAC", dividends: [], earnings: [], splits: [{ date: "2026-02-05", fromFactor: 1, toFactor: 10 }] }),
+    });
+    try {
+      await act(async () => { await tui.render(<FundHarness marketData={marketData} />, { width: 100, height: 24 }); });
+      expect(await tui.waitForFrameToContain("$200")).toContain("KLAC");
+      expect(reads).toEqual([0, 0]);
+      // A new credential; the account shown has not changed, as before the new one's account is read.
+      await act(async () => { apiClient.setSessionToken("synthetic-13f-credential-replaced"); });
+      expect(apiClient.getCurrentUser()?.id).toBe("synthetic-reader");
+      await renderFrames(4);
+      // Read again under it, and while that is out the book read with the one before and its split figure are gone.
+      expect(reads).toEqual([0, 0, 1, 1]);
+      const waiting = tui.frame();
+      expect(waiting).toContain("Loading 13F filing");
+      expect(waiting).not.toContain("KLAC");
+      expect(waiting).not.toContain("$200");
+      await act(async () => { replacement.resolve(); });
+      await renderFrames(4);
+      const failed = tui.frame();
+      expect(failed).toContain("13F fund unavailable.");
+      expect(failed).not.toContain("KLAC");
+      expect(failed).not.toContain("$200");
+    } finally {
+      spy.mockRestore();
+      apiClient.setSessionToken(null);
+    }
+  });
+
   test("filing detail owns refresh requests and backspace returns to filings", async () => {
     const urls: string[] = [];
     installAlpha13FTransport(urls);
