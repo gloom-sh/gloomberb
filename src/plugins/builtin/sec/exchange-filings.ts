@@ -18,7 +18,7 @@ export function localFilingRows(payload: ExchangeAnnouncementsPayload, all: bool
   }));
 }
 
-export function latestFilingRows(sec: HeadlessPaneRow[], local: ReturnType<typeof localFilingRows>, limit: number) {
+export function latestFilingRows(sec: HeadlessPaneRow[], local: ReturnType<typeof localFilingRows>, limit: number): HeadlessPaneRow[] {
   return [...sec.map(row => ({ ...row, source: "SEC EDGAR" })), ...local]
     .sort((left: HeadlessPaneRow, right: HeadlessPaneRow) => String(right.filedAt).localeCompare(String(left.filedAt)))
     .slice(0, limit);
