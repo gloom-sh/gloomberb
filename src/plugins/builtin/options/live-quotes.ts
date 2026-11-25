@@ -156,12 +156,13 @@ export function overlayOptionContractQuote(
     && (contract.volume == null || !Number.isFinite(contract.volume) || quote.volume >= contract.volume)
     ? quote.volume : contract.volume;
   // A streamed bid and ask newer than the snapshot are a market now: the snapshot's stale mark (quoted before the
-  // session, or under intrinsic) no longer applies. The pane checks the new quote against intrinsic again.
-  const { quoteStale, ...snapshot } = contract;
+  // session, under intrinsic, or crossed) no longer applies. The pane checks the new quote against intrinsic again.
+  const { quoteStale, quoteCrossed, ...snapshot } = contract;
   const freshBook = isFiniteNumber(quote.bid) && isFiniteNumber(quote.ask);
   return {
     ...snapshot,
     ...(quoteStale && !freshBook ? { quoteStale } : {}),
+    ...(quoteCrossed && !freshBook ? { quoteCrossed } : {}),
     // Generic quote.price may itself be a midpoint. LAST must remain an
     // executed trade, with its own timestamp, even while the bid/ask updates.
     lastPrice: hasNewTrade ? quote.lastTradePrice! : contract.lastPrice,
