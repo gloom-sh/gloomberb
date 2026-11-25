@@ -345,6 +345,7 @@ export const ja: Record<string, string> = {
   "Earnings Monitor": "決算モニター",
   "Economic Calendar": "経済指標カレンダー",
   "Corporate Actions": "コーポレートアクション",
+  "Dividend Yield": "配当利回り",
   "Analyst Research": "アナリストリサーチ",
   "Analyst": "アナリスト",
   "Analysts": "アナリスト",

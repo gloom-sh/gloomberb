@@ -345,6 +345,7 @@ export const zhTW: Record<string, string> = {
   "Earnings Monitor": "財報監控",
   "Economic Calendar": "經濟行事曆",
   "Corporate Actions": "公司行動",
+  "Dividend Yield": "股利殖利率",
   "Analyst Research": "分析師研究",
   "Analyst": "分析師",
   "Analysts": "分析師",
