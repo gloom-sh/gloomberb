@@ -12,6 +12,8 @@ import { useOptionalPaneInstanceId } from "../../../state/app/context";
 import { registerPaneTableExporter } from "../../../state/pane-table-export-registry";
 import { createDataTableCsv } from "../../data-table/export";
 import { headerCase } from "../header-case";
+import { tPlugin } from "../../../i18n";
+import { useTranslationRevision } from "../../../i18n/react";
 import { figureColumnCells } from "./render-cell";
 import { useDataTableColumnOrder } from "./use-column-order";
 import { dataTableDisplayColumns } from "./display-columns";
@@ -147,14 +149,15 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
     // Read for this table alone: a confirmation names the row a call would open.
     getDetail: () => ({ rows: ownProps.rowSource ? reportedRows(reportProps) : cachedReportedRows(reportProps, reportedRowsRef) }),
   });
-  // Header labels read the same in every table whatever case a pane wrote
-  // them in. Exports and automation keep the pane's own labels.
+  // Only the drawn headers use translated labels. Exports and automation keep the raw columns.
+  const translationRevision = useTranslationRevision(displayColumns.some((column) => column.labelTranslation));
   const columns = useMemo(
     () => displayColumns.map((column) => {
-      const label = headerCase(column.label);
+      const translation = column.labelTranslation;
+      const label = headerCase(translation ? tPlugin(translation.pluginId, translation.key, column.label) : column.label);
       return label === column.label ? column : { ...column, label };
     }),
-    [displayColumns],
+    [displayColumns, translationRevision],
   );
   const HostDataTable = useUiHost().DataTable as
     | ComponentType<DataTableProps<T, C>>
