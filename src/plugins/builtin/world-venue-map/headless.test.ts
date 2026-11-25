@@ -198,3 +198,16 @@ test("Singapore and Sydney publish the early-close date without treating freshne
     setSystemTime();
   }
 });
+
+test.each([
+  ["XSES", "Asia/Singapore", "2026-12-24T04:20:00Z"],
+  ["XASX", "Australia/Sydney", "2026-12-24T03:15:00Z"],
+])("%s advances the early-close date at its cutoff without showing the time", (mic, timezone, cutoff) => {
+  const boundary = Date.parse(cutoff);
+  const before = nextVenueExceptions(mic, timezone, boundary - 60_000);
+  expect(before.earlyClose).toEqual({ date: "2026-12-24", at: null, local: null });
+  expect(nextVenueExceptions(mic, timezone, boundary - 1)).toBe(before);
+  const after = nextVenueExceptions(mic, timezone, boundary);
+  expect(after.earlyClose).toEqual({ date: "2026-12-31", at: null, local: null });
+  expect(nextVenueExceptions(mic, timezone, boundary + 60_000)).toBe(after);
+});

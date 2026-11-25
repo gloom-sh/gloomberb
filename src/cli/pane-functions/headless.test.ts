@@ -697,6 +697,28 @@ test("EVT tail renders the same payout record as CSV instead of slicing the annu
   expect(report.tables?.tables[0]?.rows.map((row) => row.slice(0, 2))).toEqual([["2022-03-15", "Dividend"]]);
 });
 
+test("EVT row windows show a stock's latest dividend instead of an older earnings quarter", async () => {
+  const symbol = "TEST";
+  const definition = createEventsHeadless({ load: async () => ({
+    currency: "USD", estimates: null, financials: null,
+    actions: { symbol, currency: "USD", splits: [], dividends: [{ exDate: "2022-11-15", amount: 0.5 }],
+      earnings: [{ date: "2022-10-27", dateType: "announcement", fiscalPeriod: "2022-09", epsActual: 1.27, currency: "USD" }] },
+  }) });
+  const loaded = await definition.load({ ...args, symbols: [symbol] }, createTestHeadlessContext());
+  const headless = { ...definition, argument: { kind: "none" } as const, load: () => loaded };
+  const summary = await reportOf(headless);
+  expect(summary.text).toMatch(/^2022-10-27\s+/m);
+  expect(summary.text).toContain("Dividends by year");
+  for (const window of [{ tail: 1 }, { limit: 1 }]) {
+    const report = await reportOf(headless, "", window);
+    expect(report.text).toMatch(/^2022-11-15\s+Dividend\b/m);
+    expect(report.text).not.toMatch(/^2022-10-27\s+/m);
+    expect(report.data).toMatchObject({ rowCount: 1, rows: [{ date: "2022-11-15", status: "Dividend" }] });
+    expect(csvOf(report).filter((line) => /^2022-/.test(line)).map((line) => line.split(",").slice(0, 2)))
+      .toEqual([["2022-11-15", "Dividend"]]);
+  }
+});
+
 function csvOf(report: Awaited<ReturnType<typeof reportOf>>, section?: string): string[] {
   return serializeCliResult({ data: report.data }, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, {
     text: () => report.text, tables: selectReportTables(report.tables, section),

@@ -399,6 +399,21 @@ describe("EVT's Dividends view", () => {
     expect(tui.frame()).not.toContain("Next report");
     expect(catalystReads).toEqual([]);
   });
+
+  test.each(["EVT", "DES Events"])("%s routes a named ETF to its distributions when financials are unavailable", async (view) => {
+    let actionReads = 0;
+    const { app } = await mount({
+      actions: async () => {
+        actionReads++;
+        return { ...structuredClone(ACTIONS), name: "Test Index ETF", dividends: [], coverage: { ...ACTIONS.coverage, dividends: "unavailable" } };
+      },
+      content: view === "DES Events" ? (body) => <EventsResearchEarnings focused {...body} onCapture={() => {}} /> : undefined,
+    });
+    expect(app.state.financials.get("TEST")).toBeUndefined();
+    expect(tui.frame()).toMatch(/2022\s+4-for-1 split · Distribution history incomplete/);
+    expect(tui.frame()).not.toMatch(/\bEPS\b|Next report/);
+    expect(actionReads).toBe(1);
+  });
 });
 
 describe("the strip stays", () => {

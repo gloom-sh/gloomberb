@@ -15,6 +15,8 @@
 
 A venue's session is `open` while its core session trades, `holiday` on a full-day closure its exchange published (Nasdaq Riga on Latvia's Proclamation Day), `pre-market` or `after-hours` for a US venue trading around its core session, and `closed` otherwise. `gloom fn MAP venues --json` keeps `open` for the core session beside `session`.
 
+The selected venue and `gloom fn MAP venues` show the next published closure and early close when known. When the calendar provides a date but the app cannot verify an exact closing time, MAP shows only the date. Once that shortened session is over, MAP moves to the next listed early close.
+
 Put a place after the layers. Coordinates are latitude,longitude; names come from the app's countries, venue cities and layer search (including ports, airports and chokepoints), with no outside geocoder. An unknown place opens the world and says so in the footer. In pane settings, **Home area** sets where new maps without a place start; blank means world. The table starts with nearby results first, including in `gloom fn MAP ships Sydney` and `gloom shot MAP ships Sydney`. The terminal always draws the whole world. On desktop and web, moving the map switches layer tables to the visible area at the layer's supported zoom, and the pane keeps its own saved pan and zoom.
 
 ## Layers

@@ -138,7 +138,7 @@ export function createEventsHeadless(
         rows: own.map((row) => ({ ...row })),
         textColumns: fund ? yearColumns : QUARTER_TEXT_COLUMNS,
         textRows: fund ? yearRows : quarterRows,
-        textRowsUseRecordsWhenWindowed: fund,
+        textRowsUseRecordsWhenWindowed: true,
         ...(sections.length ? { textSections: sections } : {}),
         ...(notes.length ? { notes } : {}),
         errors: errors.length > 0 ? errors : undefined,

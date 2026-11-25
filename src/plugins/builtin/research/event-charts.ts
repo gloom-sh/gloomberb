@@ -116,6 +116,7 @@ export interface DividendYear {
   /** The year is not over: what is paid so far. */
   partial: boolean;
   coverageIncomplete?: true;
+  splitOnly?: true;
   /** Against the year before, as a fraction, when both are whole years with payments. */
   change?: number;
   /** The splits that went ex in the year, in share terms (`4-for-1`): the amounts before them are on today's shares. */
@@ -135,7 +136,7 @@ export interface SplitMark {
  * split went ex in is its own entry, to say so. Amounts are on today's shares,
  * as the history states them.
  */
-export function dividendYears(dividends: readonly DividendAction[], today: string, splits: readonly SplitMark[] = [], coverage?: "available" | "unavailable"): DividendYear[] {
+export function dividendYears(dividends: readonly DividendAction[], today: string, splits: readonly SplitMark[] = [], coverage?: "available" | "unavailable", { includeSplitOnly = false } = {}): DividendYear[] {
   const byYear = new Map<number, { total: number; special: number; payments: number }>();
   for (const dividend of dividends) {
     if (!Number.isFinite(dividend.amount)) continue;
@@ -146,16 +147,21 @@ export function dividendYears(dividends: readonly DividendAction[], today: strin
     entry.payments += 1;
     byYear.set(year, entry);
   }
-  if (!byYear.size) return [];
+  const splitOnly = !byYear.size && includeSplitOnly;
+  if (!byYear.size && !splitOnly) return [];
   const years = [...byYear.keys()];
   const first = Math.min(...years);
   const last = Math.max(...years);
   const splitsIn = new Map<number, string[]>();
   for (const split of [...splits].sort((left, right) => left.date.localeCompare(right.date))) {
     const year = Number(split.date.slice(0, 4));
-    if (year >= first && year <= last) splitsIn.set(year, [...(splitsIn.get(year) ?? []), split.terms]);
+    if (splitOnly || (year >= first && year <= last)) splitsIn.set(year, [...(splitsIn.get(year) ?? []), split.terms]);
   }
   const thisYear = Number(today.slice(0, 4));
+  if (splitOnly) return [...splitsIn].reverse().map(([year, terms]) => ({
+    id: String(year), year, total: null, special: 0, payments: 0, partial: year >= thisYear, splits: terms, splitOnly: true,
+    ...(coverage === "unavailable" ? { coverageIncomplete: true } : {}),
+  }));
   const result: DividendYear[] = [];
   for (let year = last; year >= first; year -= 1) {
     const entry = byYear.get(year);
@@ -186,7 +192,8 @@ export function dividendYearDetail(year: DividendYear): string {
     ? year.coverageIncomplete ? INCOMPLETE_DISTRIBUTIONS
       : year.fromYear != null ? `no dividend for ${year.year - year.fromYear + 1} years` : "no dividend"
     : year.partial ? "so far" : year.special > 0 ? "incl. special" : null;
-  return [paid, ...year.splits.map((terms) => `${terms} split`)].filter(Boolean).join(" · ");
+  const splits = year.splits.map((terms) => `${terms} split`);
+  return (year.splitOnly ? [...splits, paid] : [paid, ...splits]).filter(Boolean).join(" · ");
 }
 
 /** The splits among an event list's rows, in share terms, as the Dividends view marks them. */

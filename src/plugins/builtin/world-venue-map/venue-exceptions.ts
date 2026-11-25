@@ -1,7 +1,7 @@
 import { hasPublishedApacCalendar, isPublishedApacClosure, publishedApacEarlyClose } from "../../../market-data/published-apac-sessions";
 import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../../../market-data/published-us-sessions";
 import { canonicalExchange } from "../../../utils/exchanges";
-import { zonedDateKey, zonedDayStart } from "../../../utils/zoned-date-time";
+import { zonedDateKey, zonedDayStart, zonedWallClockToUtcMs } from "../../../utils/zoned-date-time";
 
 const DAY_MS = 86_400_000;
 type VenueExceptions = {
@@ -39,8 +39,14 @@ export function nextVenueExceptions(mic: string, timezone: string, now: number):
       const time = new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(close);
       earlyClose = { date, at: new Date(close).toISOString(), local: `${time} ET` };
       until = Math.min(until, close);
-    } else if (!us && publishedApacEarlyClose(exchange, date) != null) {
+    } else if (!us) {
+      const minutes = publishedApacEarlyClose(exchange, date);
+      if (minutes == null) continue;
+      const cutoff = zonedWallClockToUtcMs(timeZone, day.getUTCFullYear(), day.getUTCMonth() + 1, day.getUTCDate(),
+        Math.floor(minutes / 60), minutes % 60, 0);
+      if (cutoff <= now) continue;
       earlyClose = { date, at: null, local: null };
+      until = Math.min(until, cutoff);
     }
   }
   const exceptions = { closure, earlyClose };
