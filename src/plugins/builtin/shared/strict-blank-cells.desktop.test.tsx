@@ -8,6 +8,10 @@ import { createDomTestHarness } from "../../../renderers/dom/test-utils";
 import { captureStrictTable } from "../../../test-support/strict-table-capture";
 import { colors } from "../../../theme/colors";
 import type { BrokerExecution } from "../../../types/trading";
+import type { FiredAlert } from "../alerts/fired-log";
+import type { AlertHistoryItem } from "../alerts/history";
+import { alertHistoryCell, alertHistoryColumns, alertHistoryLine } from "../alerts/history-pane";
+import { mergeAlertHistory } from "../alerts/history-rows";
 import { activityColumns, renderExecutionCell } from "../broker-trading/orders";
 import { calendarCallCell, calendarColumns } from "../earnings-calls/calendar";
 import { callListCell, callListColumns } from "../earnings-calls/pane";
@@ -173,4 +177,37 @@ test("a broker's fills fail on Fees when no fill has a commission, and a commiss
   expect(await read(times(3, (index) => fill(index)))).toMatchObject(blank("Fees"));
   expect(await read(times(3, (index) => fill(index, 0)))).toMatchObject(USABLE);
   expect(await read([fill(0), fill(1), fill(2, 1.25)])).toMatchObject(USABLE);
+});
+
+test("alert history fails on Value when the alerts fired on a figure have none, and not for rule changes, dated events or bare deliveries", async () => {
+  const fired = (index: number, overrides: Partial<FiredAlert>): FiredAlert => ({
+    id: `f${index}`, firedAt: new Date(NOW - index * 60_000).toISOString(), kind: "price", ruleId: `r${index}`, rule: `T${index} above 10`,
+    value: 10.5, unit: "USD", quoteAt: new Date(NOW - index * 60_000 - 5_000).toISOString(), source: "real-time", symbol: `T${index}`, ...overrides,
+  });
+  const delivered = (index: number): AlertHistoryItem => ({
+    id: `c${index}`, kind: "breaking_news", title: `Headline ${index}`, body: "", deliveredAt: new Date(NOW - 3_600_000 - index * 60_000).toISOString(),
+  });
+  const read = (log: FiredAlert[], cloud: AlertHistoryItem[] = []) => strict(
+    alertHistoryColumns(160), mergeAlertHistory(log, cloud).map(alertHistoryLine), (row, column) => alertHistoryCell(row, column, false),
+  );
+  // The figure the app fired on, lost: a price, a move (the words beside it are no figure) and a valuation reading.
+  const lost = [
+    fired(0, { value: null }),
+    fired(1, { kind: "move", value: null, unit: "%", detail: "since Tue close" }),
+    fired(2, { kind: "pe", value: null, unit: "x" }),
+  ];
+  // Lines that owe none: a rule change, a dated event, and a delivery that carried a title alone.
+  const unquoted = { value: null, unit: undefined, quoteAt: null, source: null };
+  const changes = times(3, (index) => fired(10 + index, { ...unquoted, action: "created", detail: "Created" }));
+  const events = times(3, (index) => fired(20 + index, { ...unquoted, kind: "earnings_date", detail: `T${index} reports tomorrow` }));
+  const bare = times(4, delivered);
+
+  expect(await read(lost)).toMatchObject(blank("Value"));
+  expect(await read([...changes, ...events], bare)).toMatchObject(USABLE);
+  expect(await read([], bare)).toMatchObject(USABLE);
+  expect(await read(lost, bare)).toMatchObject(blank("Value"));
+  // One alert with its figure fills the column, and a move of zero is a figure.
+  expect(await read([...lost.slice(1), fired(3, { kind: "move", value: 0, unit: "%" })], bare)).toMatchObject(USABLE);
+  // A rule change says what was done in Value, and that text fills the column for a capture: no gap is named beside one.
+  expect(await read([...lost, ...changes])).toMatchObject(USABLE);
 });

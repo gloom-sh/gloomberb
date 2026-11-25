@@ -5,6 +5,7 @@ import {
   usePagedRows,
   usePaneFooter,
   useTableLoadMore,
+  type DataTableCell,
   type DataTableColumn,
   type PageRequest,
 } from "../../../components";
@@ -12,12 +13,13 @@ import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import type { ScrollBoxRenderable } from "../../../ui";
+import { MISSING_VALUE } from "../../../utils/format";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { usePluginState } from "../../runtime";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { FIRED_LOG_KEY, readFiredAlerts } from "./fired-log";
 import { alertKindLabel, fetchAlertHistory, type AlertHistoryItem } from "./history";
-import { mergeAlertHistory, type AlertHistoryRow, type AlertHistoryVia } from "./history-rows";
+import { mergeAlertHistory, owesAlertFigure, type AlertHistoryRow, type AlertHistoryVia } from "./history-rows";
 import { formatAlertHistoryValue, relativeTime } from "./format";
 import { alertTarget, alertViewHints, deliveredAlertSubject, useOpenAlertTarget, type AlertSubject } from "./targets";
 
@@ -32,22 +34,79 @@ interface HistoryRow {
   time: string;
   kind: string;
   alert: string;
-  /** The figure in its unit, or what the alert said. */
+  /** The figure in its unit, or what the alert said; empty with neither, and for a figure the line owes and has not. */
   value: string;
+  /** An alert this app fired on a figure: its Value is that figure, never the words beside it. */
+  owesFigure: boolean;
   quoteAt: string | null;
   source: string;
   via: AlertHistoryVia;
   subject: AlertSubject;
 }
 
-function historyRow(row: AlertHistoryRow): HistoryRow {
+/** A line as History draws it. */
+export function alertHistoryLine(row: AlertHistoryRow): HistoryRow {
   const figure = formatAlertHistoryValue(row.value, row.kind, row.unit ?? "");
+  const owesFigure = owesAlertFigure(row);
   return {
-    id: row.id, time: row.time, kind: row.kind, alert: row.alert, value: figure ?? row.detail,
+    id: row.id, time: row.time, kind: row.kind, alert: row.alert, value: figure ?? (owesFigure ? "" : row.detail), owesFigure,
     quoteAt: row.quoteAt, source: row.source ?? "", via: row.via,
     subject: row.fired
       ? { kind: row.fired.kind, symbol: row.fired.symbol, exchange: row.fired.exchange }
       : deliveredAlertSubject(row.delivered!),
+  };
+}
+
+/**
+ * History's columns at a pane width.
+ *
+ * Value is owed by an alert this app fired on a figure (owesAlertFigure), and
+ * by no other line: a rule change says what was done there, a dated event
+ * what it announced. That text fills the column for a capture, so a figure
+ * missing from every alert is named only in a history with no such line.
+ * Quote and Source are owed by none. The app writes a quote's time and how
+ * current its feed is only where the quote states them, a rule change and a
+ * dated event have neither, and a delivery names only a daily close. So a
+ * line without one leaves the cell empty, which is no placeholder to a
+ * capture, and neither column is marked as one that may be blank.
+ */
+export function alertHistoryColumns(width: number): DataTableColumn[] {
+  return [
+    { id: "time", label: "Time (UTC)", width: 16, align: "left" },
+    { id: "kind", label: "Event", width: 15, align: "left" },
+    { id: "alert", label: "Alert", width: 20, flexGrow: 1, align: "left" },
+    ...(width >= 70 ? [{ id: "value", label: "Value", width: 16, align: "left" as const }] : []),
+    ...(width >= 115
+      ? [
+          { id: "quote", label: "Quote (UTC)", width: 16, align: "left" as const },
+          { id: "source", label: "Source", width: 14, align: "left" as const },
+          { id: "via", label: "Via", width: 10, align: "left" as const },
+        ]
+      : []),
+  ];
+}
+
+/**
+ * One cell of a line. A Value with nothing to show is a dash, which a strict
+ * capture reads where it reads no empty cell: a gap on a line that owes the
+ * figure, and marked as one that may be blank on a line that owes none (a
+ * delivery that carried a title alone).
+ */
+export function alertHistoryCell(item: HistoryRow, column: Pick<DataTableColumn, "id">, selected: boolean): DataTableCell {
+  if (column.id === "value" && !item.value) {
+    return { text: MISSING_VALUE, color: selected ? colors.selectedText : colors.textMuted, ...(item.owesFigure ? {} : { mayBeBlank: true }) };
+  }
+  return {
+    text:
+      column.id === "time" ? stamp(item.time)
+        : column.id === "kind" ? alertKindLabel(item.kind)
+        : column.id === "alert" ? item.alert
+        : column.id === "value" ? item.value
+        : column.id === "quote" ? (item.quoteAt ? stamp(item.quoteAt) : "")
+        : column.id === "via" ? VIA_TEXT[item.via]
+        : item.source,
+    color: selected ? colors.selectedText
+      : column.id === "time" || column.id === "quote" || column.id === "source" || column.id === "via" ? colors.textMuted : colors.text,
   };
 }
 
@@ -74,7 +133,7 @@ export function AlertHistoryPane({ focused, width, height }: PaneProps) {
     : null;
   // One line per alert: a delivery of one this app fired too joins its line.
   const items = useMemo(
-    () => mergeAlertHistory(fired, data?.status === "unavailable" ? [] : history.rows).map(historyRow),
+    () => mergeAlertHistory(fired, data?.status === "unavailable" ? [] : history.rows).map(alertHistoryLine),
     [fired, data, history.rows],
   );
   const loadingMore = history.loadingMore;
@@ -85,22 +144,7 @@ export function AlertHistoryPane({ focused, width, height }: PaneProps) {
   const selectedTarget = useMemo(() => selectedItem ? alertTarget(selectedItem.subject) : null, [selectedItem]);
   const openTarget = useOpenAlertTarget();
 
-  const columns: DataTableColumn[] = [
-    { id: "time", label: "Time (UTC)", width: 16, align: "left" },
-    { id: "kind", label: "Event", width: 15, align: "left" },
-    { id: "alert", label: "Alert", width: 20, flexGrow: 1, align: "left" },
-    // Value, Quote and Source are left empty, never dashed, on a line that has none: a rule change or a dated event
-    // has no figure, no quote and no feed. An empty cell is no placeholder to a capture, so none of the three is marked
-    // as one that may be blank. A figure's line with no quote time cannot be told from one whose time was lost.
-    ...(width >= 70 ? [{ id: "value", label: "Value", width: 16, align: "left" as const }] : []),
-    ...(width >= 115
-      ? [
-          { id: "quote", label: "Quote (UTC)", width: 16, align: "left" as const },
-          { id: "source", label: "Source", width: 14, align: "left" as const },
-          { id: "via", label: "Via", width: 10, align: "left" as const },
-        ]
-      : []),
-  ];
+  const columns = alertHistoryColumns(width);
   usePaneFooter(
     "alert-history",
     () => ({
@@ -141,18 +185,7 @@ export function AlertHistoryPane({ focused, width, height }: PaneProps) {
         onRootKeyDown={(event) => handleRefreshKey(event, history.reload)}
         sortColumnId={null}
         sortDirection="desc"
-        renderCell={(item, column, _index, row) => ({
-          text:
-            column.id === "time" ? stamp(item.time)
-              : column.id === "kind" ? alertKindLabel(item.kind)
-              : column.id === "alert" ? item.alert
-              : column.id === "value" ? item.value
-              : column.id === "quote" ? (item.quoteAt ? stamp(item.quoteAt) : "")
-              : column.id === "via" ? VIA_TEXT[item.via]
-              : item.source,
-          color: row.selected ? colors.selectedText
-            : column.id === "time" || column.id === "quote" || column.id === "source" || column.id === "via" ? colors.textMuted : colors.text,
-        })}
+        renderCell={(item, column, _index, row) => alertHistoryCell(item, column, row.selected)}
         emptyStateTitle={access.signedIn ? "No alerts in the last 90 days" : "No alerts fired yet"}
         emptyStateHint={access.signedIn
           ? data?.deviceEnabled ? undefined : "Alerts push to the Gloom phone app once it is signed in."
