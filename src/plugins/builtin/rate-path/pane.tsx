@@ -1,3 +1,4 @@
+import { dayCell, formatDay, formatDayTime } from "../../../components/ui/day-cell";
 import { formatShortDate } from "../../../utils/datetime-format";
 import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useMemo, useState } from "react";
@@ -53,6 +54,8 @@ const meetingDate = (row: RateMeeting) => new Date(row.date);
 const DAY_MS = 86_400_000;
 
 function timestamp(value: string | null): string { return value?.replace("T", " ").slice(0, 16) ?? MISSING_VALUE; }
+/** A stamp as the table writes it, day first: `25 Nov 2026 16:16`. */
+function stampText(value: string | null): string { return !value ? MISSING_VALUE : value.includes("T") ? formatDayTime(value) : formatDay(value); }
 function percentile(value: number | null): string { return value == null ? MISSING_VALUE : value.toFixed(0); }
 /** Hikes up, cuts down, by the sign the text shows, so a move that rounds to zero stays neutral. */
 function signColor(value: number | null, digits: number): string {
@@ -66,20 +69,20 @@ function daysUntil(date: string, today = new Date().toISOString().slice(0, 10)):
   return days === 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`;
 }
 function meetingCell(row: RateMeeting, column: DataTableColumn, moves: ReadonlyMap<string, number | null>): DataTableCell {
-  if (column.id === "date") return { text: row.date };
+  if (column.id === "date") return dayCell(row.date);
   if (column.id === "moves") { const priced = movesPriced(row); return { text: movesText(priced), color: signColor(priced, 2) }; }
   if (column.id === "odds") return { text: moveOddsText(moves.get(row.date) ?? null) };
   if (column.id === "rate") return { text: rateText(row.impliedRate) };
   if (column.id === "change") return { text: bpText(row.changeBps), color: signColor(row.changeBps, 1) };
   if (column.id === "percentile") return { text: percentile(row.percentile) };
-  return { text: timestamp(row.asOf), color: colors.textDim };
+  return { text: stampText(row.asOf), ...(row.asOf ? { value: row.asOf } : {}), color: colors.textDim };
 }
 function contractCell(row: RateContract, column: DataTableColumn): DataTableCell {
   if (column.id === "symbol") return { text: row.symbol };
   if (column.id === "price") return { text: row.price?.toFixed(3) ?? MISSING_VALUE };
   if (column.id === "rate") return { text: rateText(row.impliedRate) };
   if (column.id === "percentile") return { text: percentile(row.percentile) };
-  return { text: timestamp(row.asOf), color: row.stale ? colors.warning : colors.textDim };
+  return { text: stampText(row.asOf), ...(row.asOf ? { value: row.asOf } : {}), color: row.stale ? colors.warning : colors.textDim };
 }
 
 export function RatePathPane({ width, height, focused }: PaneProps) {
@@ -202,7 +205,7 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
           getItemKey={meetingKey} rootWidth={width} rootHeight={bodyHeight} emptyStateTitle="Meeting probabilities unavailable"
           rootBefore={header(probabilityColumns, data.meetings.length)}
           renderCell={(row, column) => {
-            if (column.id === "date") return { text: row.date };
+            if (column.id === "date") return dayCell(row.date);
             const probability = meetingProbability(row, Number(column.id));
             return { text: probability == null ? MISSING_VALUE : `${(probability * 100).toFixed(1)}%`,
               backgroundColor: probability == null ? undefined : blendHex(colors.bg, colors.positive, probability * 0.7),

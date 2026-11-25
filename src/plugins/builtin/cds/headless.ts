@@ -29,7 +29,7 @@ import {
   cdsFreshness,
   displayIssuerName,
   formatBp,
-  formatEventTime,
+  formatEventStamp, formatEventTime,
   formatNotional,
   formatPoints,
   formatPointsMove,
@@ -77,7 +77,7 @@ const quotedColumn = (key: string, header: string, move: boolean): HeadlessPaneC
 const ISSUER_COLUMNS: HeadlessPaneColumn[] = [
   { key: "issuer", header: "Issuer" },
   { key: "trades", header: "Trades", align: "right" as const },
-  { key: "lastTradeAt", header: "Last UTC", shrink: false, format: (value: unknown) => formatEventTime(Number(value)) },
+  { key: "lastTradeAt", header: "Last UTC", shrink: false, format: (value: unknown) => formatEventTime(Number(value)), textFormat: (value: unknown) => formatEventStamp(Number(value)) },
   quotedColumn("level", "5Y", false),
   quotedColumn("change1W", "1W", true),
   quotedColumn("change1M", "1M", true),
@@ -165,7 +165,7 @@ function tradeForFormatting(row: Record<string, unknown>): CdsTrade {
 }
 
 const TRADE_COLUMNS: HeadlessPaneColumn[] = [
-  { key: "eventAt", header: "Time UTC", shrink: false, format: (value: unknown) => formatEventTime(Number(value)) },
+  { key: "eventAt", header: "Time UTC", shrink: false, format: (value: unknown) => formatEventTime(Number(value)), textFormat: (value: unknown) => formatEventStamp(Number(value)) },
   // One name's trades: its name heads the report, not every row.
   { key: "issuer", header: "Issuer", omitWhenSame: true },
   { key: "maturity", header: "Maturity" },

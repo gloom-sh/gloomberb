@@ -1,3 +1,4 @@
+import { dayCell } from "../../../components/ui/day-cell";
 import { useCallback, useMemo, useState } from "react";
 import { apiClient } from "../../../api-client";
 import {
@@ -131,7 +132,7 @@ export function CcassMarketPane({ width, height, focused }: Pick<PaneProps, "wid
     const stockW = Math.max(14, Math.floor((width - 8 - fixed) * 0.42));
     const partW = Math.max(16, width - 8 - fixed - stockW);
     return [
-      { id: "date", label: "DATE", width: 10, align: "left" },
+      { id: "date", label: "DATE", width: 11, align: "left" },
       { id: "symbol", label: "CODE", width: 9, align: "left" },
       { id: "stock", label: "STOCK", width: stockW, align: "left" },
       { id: "participant", label: "PARTICIPANT", width: partW, align: "left" },
@@ -180,7 +181,7 @@ export function CcassMarketPane({ width, height, focused }: Pick<PaneProps, "wid
       { id: "shares", label: "SHARES", width: 10, align: "right" },
       { id: "deltaShares", label: "1D SH", width: 10, align: "right" },
       { id: "deltaPct", label: "1D%", width: 8, align: "right" },
-      { id: "changed", label: "CHANGED", width: 10, align: "right" },
+      { id: "changed", label: "CHANGED", width: 11, align: "right" },
     ];
   }, [width]);
 
@@ -241,7 +242,7 @@ export function CcassMarketPane({ width, height, focused }: Pick<PaneProps, "wid
             emptyStateTitle={activeTab === "deposits" ? "No pre-placement deposits recorded." : "No CCASS big changes recorded."}
             renderCell={(row, col): DataTableCell => {
               switch (col.id) {
-                case "date": return { text: row.date, color: colors.textDim };
+                case "date": return { ...dayCell(row.date), color: colors.textDim };
                 case "symbol": return { text: row.symbol, color: colors.textBright, attributes: TextAttributes.BOLD };
                 case "stock": return { text: row.stockName || row.stockNameZh || row.symbol, color: colors.text };
                 case "participant": return { text: row.participantName, color: colors.textMuted };
@@ -350,7 +351,7 @@ export function CcassMarketPane({ width, height, focused }: Pick<PaneProps, "wid
                 case "shares": return { text: formatCompact(row.shares), color: colors.text };
                 case "deltaShares": return { text: fmtSignedCompact(row.deltaShares), color: signColor(row.deltaShares) };
                 case "deltaPct": return { text: fmtSignedPct(row.deltaPct), color: signColor(row.deltaPct) };
-                case "changed": return { text: row.lastChanged, color: colors.textDim };
+                case "changed": return { ...dayCell(row.lastChanged), color: colors.textDim };
                 default: return { text: MISSING_VALUE };
               }
             }}
