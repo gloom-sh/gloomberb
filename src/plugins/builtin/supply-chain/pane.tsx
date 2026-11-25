@@ -107,7 +107,8 @@ export function tableColumns(width: number, desktop: boolean, locked: boolean, v
   const share: DataTableColumn = { id: "pct", label: "Share", width: shareWidth, align: "left" };
   let columns: DataTableColumn[] = [
     name,
-    { id: "evidence", label: "Evidence", width: 12, align: "left" },
+    // One kind of evidence for every row (filings alone) is no column; the filter names the kinds shown.
+    { id: "evidence", label: "Evidence", width: 12, align: "left", omitWhenSame: true },
     // A listing as every function writes it: 000063:SZSE whole.
     ...(medium ? [{ id: "ticker", label: "Ticker", width: 11, align: "left" as const }] : []),
     { id: "role", label: "Role", width: 11, align: "left" },

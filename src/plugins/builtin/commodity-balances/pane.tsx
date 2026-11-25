@@ -48,7 +48,8 @@ const BALANCE_COLUMNS: BalanceColumn[] = [
   { id: "attribute", label: "Attribute", width: 14, align: "left" },
   { id: "value", label: "Value", width: 12, align: "right" },
   { id: "unit", label: "Unit", width: 20, align: "left", flexGrow: 1 },
-  { id: "year", label: "Year", width: 8, align: "left" },
+  // The footer names the market year; a table of several years brings the column back.
+  { id: "year", label: "Year", width: 8, align: "left", omitWhenSame: true },
 ];
 
 const PRICE_COLUMNS: PriceColumn[] = [

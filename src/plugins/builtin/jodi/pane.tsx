@@ -23,6 +23,7 @@ import {
   balanceColumns,
   formatBalance,
   formatBalanceMonth,
+  sharedBalanceUnit,
   type BalanceCommodity,
   type BalanceRow,
 } from "./model";
@@ -71,7 +72,11 @@ export function JodiPane({ focused, width, height }: PaneProps) {
     queryBarWidth: width,
   });
   const info = useMemo(
-    () => (resource.error || !board ? [] : [{ id: "month", parts: [{ text: formatBalanceMonth(board.month) }] }]),
+    () => {
+      if (resource.error || !board) return [];
+      const unit = sharedBalanceUnit(board.rows);
+      return [{ id: "month", parts: [{ text: `${formatBalanceMonth(board.month)}${unit ? ` · ${unit}` : ""}` }] }];
+    },
     [board, resource.error],
   );
   usePaneStatusFooter({

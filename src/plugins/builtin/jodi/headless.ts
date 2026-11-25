@@ -1,6 +1,6 @@
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchBalances } from "./client";
-import { balanceTitle, formatBalance, formatBalanceMonth, type BalanceCommodity, type BalanceRow } from "./model";
+import { balanceTitle, formatBalance, formatBalanceMonth, sharedBalanceUnit, type BalanceCommodity, type BalanceRow } from "./model";
 import { COMMODITIES_VIEW_STATE } from "../commodities-energy/view-state";
 
 const number = (value: unknown) => typeof value === "number" ? formatBalance(value) : "—";
@@ -13,7 +13,8 @@ const COLUMNS: HeadlessPaneColumn[] = [
   { key: "imports", header: "Imports", align: "right", format: number },
   { key: "exports", header: "Exports", align: "right", format: number },
   { key: "stocks", header: "Stocks", align: "right", format: number, description: "Closing stocks. Thousand barrels for crude; million cubic metres for natural gas." },
-  { key: "unit", header: "Unit" },
+  // One unit for every country heads the table instead (sharedBalanceUnit).
+  { key: "unit", header: "Unit", omitWhenSame: true },
 ];
 
 function commodityOf(value: unknown): BalanceCommodity {
@@ -57,7 +58,7 @@ export const jodiHeadless: HeadlessPaneDefinition<"bundle"> = {
     if (!board) throw new Error("Gas balances are unavailable.");
     return {
       sections: [{
-        title: balanceTitle(board),
+        title: `${balanceTitle(board)}${sharedBalanceUnit(board.rows) ? ` (${sharedBalanceUnit(board.rows)})` : ""}`,
         columns: board.commodity === "oil" ? COLUMNS.filter((column) => column.key !== "demand") : COLUMNS,
         rows: board.rows.map(reportRow),
       }],

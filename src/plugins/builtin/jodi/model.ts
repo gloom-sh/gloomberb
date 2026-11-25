@@ -30,6 +30,12 @@ export function balanceTitle(board: Board): string {
   return `${name}, ${formatBalanceMonth(board.month)}`;
 }
 
+/** The unit every country's figures are in ("kb/d, kbbl" for crude), said once beside the month instead of on each row; null when they differ. */
+export function sharedBalanceUnit(rows: readonly BalanceRow[]): string | null {
+  const units = new Set(rows.map((row) => row.unit));
+  return rows.length > 0 && units.size === 1 && rows[0]!.unit ? rows[0]!.unit : null;
+}
+
 /**
  * Crude has no demand flow in the primary table, so its balance has no Demand
  * column. Countries report on their own schedules, so each row says its month;
@@ -44,7 +50,8 @@ export function balanceColumns(commodity: BalanceCommodity): DataTableColumn[] {
     { id: "imports", label: "Imports", width: 11, align: "right" },
     { id: "exports", label: "Exports", width: 11, align: "right" },
     { id: "stocks", label: "Stocks", width: 11, align: "right" },
-    { id: "unit", label: "Unit", width: 11, align: "left" },
+    // One unit for every country is said in the footer instead (sharedBalanceUnit).
+    { id: "unit", label: "Unit", width: 11, align: "left", omitWhenSame: true },
   ];
   return commodity === "oil" ? columns.filter((column) => column.id !== "demand") : columns;
 }

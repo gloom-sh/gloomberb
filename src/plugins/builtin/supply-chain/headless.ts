@@ -31,7 +31,8 @@ function tableColumns(rows: HeadlessPaneRow[], sources: ReadonlyMap<HeadlessPane
     // (the Role says whether it is a related party); a cohort or an undisclosed name already says what it is.
     { key: "counterparty", header: "Counterparty", format: cell(counterpartyName),
       textFormat: cell((row) => counterpartyKind(row) === "company" && row.entityScope === "group" ? `${counterpartyName(row)} (group)` : counterpartyName(row)) },
-    { key: "evidenceTier", header: "Evidence" },
+    // As the pane: one kind of evidence for every row is no column.
+    { key: "evidenceTier", header: "Evidence", omitWhenSame: true },
     { key: "ticker", header: "Ticker" },
     // A related-party trade reads as one, never as a plain supplier or customer.
     { key: "role", header: "Role", format: cell(relationshipLabel) },

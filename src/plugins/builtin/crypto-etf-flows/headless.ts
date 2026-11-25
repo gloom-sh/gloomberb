@@ -31,7 +31,7 @@ function flowColumns(payload: CryptoEtfFlowsPayload): HeadlessPaneColumn[] {
       key: fund.ticker, header: fund.ticker, literalHeader: true, align: "right",
       format: (value, row) => value == null && Array.isArray(row.pending) && row.pending.includes(fund.ticker) ? "pending" : flowCell(value),
     })),
-    { key: "pending", header: "Pending", format: (value) => Array.isArray(value) && value.length ? value.join(", ") : "" },
+    { key: "pending", header: "Pending", omitWhenEmpty: true, format: (value) => Array.isArray(value) && value.length ? value.join(", ") : "" },
   ];
 }
 
