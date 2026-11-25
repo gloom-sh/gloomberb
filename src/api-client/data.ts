@@ -1,5 +1,6 @@
 import type { JpxShortPositions } from "./jpx-short-positions";
 import type { SgxShortSales, KoreanShortPositions, KoreanVenue, MainlandLendingBalances, MainlandVenue, TaiwanShortBalances, TaiwanVenue } from "./exchange-short-balances";
+import type { StockConnectReport, StockConnectVenue } from "./stock-connect";
 import type { SfcShortPositions } from "./sfc-short-positions";
 import type { AttentionPayload, AttentionWindow } from "./attention";
 import type { HiringBoard, HiringBuildingBoard, HiringBuildingFilter, HiringCompanyBuilding, HiringCompanyMoves, HiringCompanySignals, HiringMovesBoard, HiringMovesFilter, HiringPayload, HiringSignalGroup, HiringSignalsBoard, HiringSignalsFilter } from "./hiring";
@@ -784,6 +785,13 @@ export class CloudDataApi {
 
   getTaiwanShortBalances(symbol: string, exchange: TaiwanVenue, asOf?: string) {
     return this.exchangeBalanceReport<TaiwanShortBalances>("taiwan-short-balances", symbol, exchange, asOf);
+  }
+
+  async getStockConnect(symbol: string, exchange: StockConnectVenue): Promise<StockConnectReport> {
+    const params = new URLSearchParams({ symbol, exchange });
+    const response = await this.request<CloudMarketResponse<StockConnectReport>>(`/market/stock-connect?${params}`);
+    if (!response.data) throw new Error(response.message || "Stock Connect list unavailable.");
+    return response.data;
   }
 
   async getSfcShortPositions(symbol: string, asOf?: string): Promise<SfcShortPositions> {

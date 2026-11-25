@@ -1150,6 +1150,7 @@ class GloomApiClient {
   getKoreanShortPositions = this.data.getKoreanShortPositions.bind(this.data);
   getMainlandLendingBalances = this.data.getMainlandLendingBalances.bind(this.data);
   getTaiwanShortBalances = this.data.getTaiwanShortBalances.bind(this.data);
+  getStockConnect = this.data.getStockConnect.bind(this.data);
   getSfcShortPositions = this.data.getSfcShortPositions.bind(this.data);
   getCloudShortInterest = this.data.getCloudShortInterest.bind(this.data);
   getCloudAnalystResearch = this.data.getCloudAnalystResearch.bind(this.data);
