@@ -26,19 +26,21 @@ export interface NewsIndustryCode {
   code: string;
   label: string;
   topic?: string;
+  /** The story category the topic is (M&A's stories are filed M&A), as the news table labels it: the list says it once, not on each row. */
+  category?: string;
   sector?: typeof SECTOR_NEWS_SECTORS[number];
   letters?: true;
 }
 
 export const NEWS_INDUSTRY_CODES: readonly NewsIndustryCode[] = [
   { code: "ALL", label: "All" },
-  { code: "MNA", label: "M&A", topic: "mna" },
-  { code: "CB", label: "Central banks", topic: "cb" },
+  { code: "MNA", label: "M&A", topic: "mna", category: "M&A" },
+  { code: "CB", label: "Central banks", topic: "cb", category: "Policy" },
   { code: "ENERGY", label: "Energy", topic: "energy" },
   { code: "METALS", label: "Metals", topic: "metals" },
-  { code: "REG", label: "Regulation", topic: "reg" },
+  { code: "REG", label: "Regulation", topic: "reg", category: "Regulatory" },
   { code: "CRYPTO", label: "Crypto", topic: "crypto" },
-  { code: "EARN", label: "Earnings", topic: "earn" },
+  { code: "EARN", label: "Earnings", topic: "earn", category: "Earnings" },
   { code: "IPO", label: "IPOs", topic: "ipo" },
   { code: "LTR", label: "Letters", letters: true },
   { code: "TECH", label: "Tech", sector: "information_technology" },

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { AnalystResearchData, CorporateActionsData } from "../../../types/financials";
-import { dividendYearDetail, dividendYearLabel, dividendYears, dividendYearSpan, earningsQuarters, splitMarks } from "./event-charts";
+import { dividendYearDetail, dividendYearLabel, dividendYears, dividendYearSpan, earningsQuarters, quartersEpsBasis, splitMarks } from "./event-charts";
 import { buildEventRows } from "./event-model";
 
 describe("the Earnings view's quarters", () => {
@@ -39,6 +39,24 @@ describe("the Earnings view's quarters", () => {
     // Nothing is ahead when the earliest quarter estimated is already reported.
     expect(quarters({ earnings: [{ date: "2099-01-30", dateType: "announcement", currency: "USD", fiscalPeriod: "2098-12", epsActual: 0.7, epsEstimate: 0.6 }] })
       .map((quarter) => quarter.upcoming)).toEqual([false]);
+  });
+});
+
+describe("the Earnings view's DETAIL", () => {
+  const today = "2098-11-24";
+  const quarter = (index: number, epsBasis: "gaap" | "adjusted") => ({ date: `2098-0${index + 1}-28`, dateType: "announcement" as const, currency: "USD",
+    fiscalPeriod: `2097-${String(index * 3 + 3).padStart(2, "0")}`, epsActual: 1 + index / 10, epsEstimate: 1, epsBasis });
+
+  test("says what the figures do not: a basis only where it is not the one the EPS heading names, never the beat", () => {
+    const list = earningsQuarters(buildEventRows({ symbol: "TEST", currency: "USD", dividends: [], splits: [], earnings: [
+      quarter(0, "gaap"), quarter(1, "adjusted"), quarter(2, "adjusted"), quarter(3, "adjusted"),
+      { date: "2099-02-10", dateType: "announcement", epsEstimate: 0.61, currency: "USD", dateStatus: "confirmed", epsBasis: "adjusted", epsAnalysts: 17, time: "After Hours" },
+    ] }, null, null, "USD"), today);
+    expect(quartersEpsBasis(list)).toBe("adjusted");
+    // The report to come keeps its date's status, time and analysts.
+    expect(list[0]!.detail).toBe("confirmed, After Hours, 17 analysts");
+    // Newest first: three on the table's basis say nothing, the GAAP one says so; SURPRISE and the detail have the beat.
+    expect(list.slice(1).map((entry) => entry.detail)).toEqual(["", "", "", "GAAP"]);
   });
 });
 

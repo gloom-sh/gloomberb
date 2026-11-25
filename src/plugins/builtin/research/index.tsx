@@ -16,7 +16,8 @@ export const researchModule: PluginModule = {
   setup(ctx) {
     ctx.registerTickerResearchTab({
       id: "analyst-research",
-      name: "Analyst",
+      // Not "Analyst" under Analysts (FORMER_VIEW_NAMES): its ratings and price targets.
+      name: "Coverage",
       order: 32,
       get component(): typeof import("./analyst-pane").AnalystResearchView { const { AnalystResearchView } = require("./analyst-pane"); return AnalystResearchView; },
       instruments: ["equity"],

@@ -222,13 +222,14 @@ export function InsiderSignalsView({ width, height, focused, renderCompany }: In
         // Muted, as a role reads in INS's trades and the opened company's insiders.
         return role === INSIDER_SIGNAL_NONE ? missingCell(colors) : { text: role, color: colors.textMuted };
       }
-      case "nth": return factCell(insiderSignalRowFacts(row).nth, dataSide, colors, state.selected);
-      case "usual": return factCell(insiderSignalRowFacts(row).usual, dataSide, colors, state.selected);
+      // Every row is on one side, so only a figure against it keeps a tone.
+      case "nth": return factCell(insiderSignalRowFacts(row).nth, dataSide, colors, state.selected, undefined, true);
+      case "usual": return factCell(insiderSignalRowFacts(row).usual, dataSide, colors, state.selected, undefined, true);
       // The terminal sets content in the column's own cells; the desktop's cell aligns it.
-      case "stake": return factCell(insiderSignalRowFacts(row).stake, dataSide, colors, state.selected, nativePaneChrome ? undefined : column.width);
+      case "stake": return factCell(insiderSignalRowFacts(row).stake, dataSide, colors, state.selected, nativePaneChrome ? undefined : column.width, true);
       case "insiders": return { text: String(row.insiders), value: row.insiders, color: colors.text };
-      // Every row is buying, or selling, drawn as INS draws a buy or a sale.
-      case "value": return { text: formatSignalValue(row.value), value: row.value, color: dataSide === "sell" ? colors.negative : colors.positive };
+      // Every row is buying, or selling: the Side filter says which, so the figure is plain.
+      case "value": return { text: formatSignalValue(row.value), value: row.value, color: colors.text };
       case "lastBuy": return { text: formatSignalDay(row.lastBuy), value: row.lastBuy, color: colors.textDim };
     }
   }, [colors, dataSide, nativePaneChrome]);

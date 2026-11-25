@@ -5,7 +5,7 @@ import type { HeadlessBundleResult, HeadlessBundleSection, HeadlessPaneContext }
 import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import fixture from "./fico.fixture.json";
 import { creditHeadless } from "./headless";
-import { creditCoupon } from "./model";
+import { creditCoupon, creditMargin } from "./model";
 
 const payload = () => structuredClone(fixture) as CreditDocumentsPayload;
 const quote = "\u201cApplicable Margin\u201d means 1.48%.";
@@ -29,14 +29,16 @@ const tables = (sections: HeadlessBundleSection[]) => sections.flatMap((section)
 const cells = (sections: HeadlessBundleSection[]) => tables(sections).flatMap((section) => section.rows.flatMap((row) => Object.entries(row)));
 
 describe("credit-document margin", () => {
-  test("a floating margin is a spread in basis points over its base, a fixed coupon stays a percentage", () => {
-    expect(creditCoupon(loan([["margin", 1.48, "percent"]], null))).toBe("S+148");
-    expect(creditCoupon(loan([["margin", 1.48, "percent"]]))).toBe("S+148");
-    expect(creditCoupon(loan([["reference_rate", "Term SOFR", null], ["margin", 175, "bps"]]))).toBe("S+175");
-    expect(creditCoupon(loan([["reference_rate", "EURIBOR", null], ["margin", 2.25, "percent"]], "EUR"))).toBe("EURIBOR+225");
+  test("a floating margin is a spread in basis points over its base, a fixed coupon stays a percentage in its own column", () => {
+    expect(creditMargin(loan([["margin", 1.48, "percent"]], null))).toBe("S+148");
+    expect(creditMargin(loan([["margin", 1.48, "percent"]]))).toBe("S+148");
+    expect(creditMargin(loan([["reference_rate", "Term SOFR", null], ["margin", 175, "bps"]]))).toBe("S+175");
+    expect(creditMargin(loan([["reference_rate", "EURIBOR", null], ["margin", 2.25, "percent"]], "EUR"))).toBe("EURIBOR+225");
     // No base is named and the instrument is not in dollars: the margin is not guessed to be over SOFR.
-    expect(creditCoupon(loan([["margin", 1.5, "percent"]], "EUR"))).toBe("+150");
+    expect(creditMargin(loan([["margin", 1.5, "percent"]], "EUR"))).toBe("+150");
     expect(creditCoupon(loan([["coupon", 5.25, "percent"]]))).toBe("5.25%");
+    expect(creditMargin(loan([["coupon", 5.25, "percent"]]))).toBe(MISSING_VALUE);
+    expect(creditCoupon(loan([["margin", 1.48, "percent"]]))).toBe(MISSING_VALUE);
     expect(creditCoupon(loan([]))).toBe(MISSING_VALUE);
   });
 });
@@ -64,14 +66,15 @@ describe("credit-document exports", () => {
 
   test("the capital structure is the pane's columns with a margin as S+148, and the obligor by name", async () => {
     const [capital] = tables((await load({}, data())).sections);
-    expect(capital!.columns!.map((column) => column.header)).toEqual(["Instrument", "Status", "Type", "Coupon/Margin", "Maturity", "Outstanding", "Commitment", "CCY", "Rank", "CoC put", "Obligor", "Instrument ID"]);
+    expect(capital!.columns!.map((column) => column.header)).toEqual(["Instrument", "Status", "Type", "Coupon", "Margin", "Maturity", "Outstanding", "Commitment", "CCY", "Rank", "CoC put", "Obligor", "Instrument ID"]);
     const row = capital!.rows.find((entry) => entry.instrumentId === "loan")!;
-    expect(row).toMatchObject({ name: "Class A-L credit agreement", coupon: "S+148", outstanding: 250_000_000, controlPut: "101%", obligor: "Owl Rock CLO XXVI, LLC" });
-    // The text report leaves out what the pane leaves out (no ranking is disclosed for most instruments here) and the figures only a spreadsheet reads.
-    const text = capital!.textColumns!.map((column) => column.key);
-    expect(text).toEqual(expect.arrayContaining(["name", "coupon", "outstanding", "obligor", "instrumentId"]));
-    expect(text).not.toContain("ranking");
-    expect(text).not.toContain("commitment");
+    expect(row).toMatchObject({ name: "Class A-L credit agreement", coupon: null, margin: "S+148", outstanding: 250_000_000, controlPut: "101%", obligor: "Owl Rock CLO XXVI, LLC" });
+    // The text report leaves out what the pane leaves out (no ranking is disclosed for most instruments here, one currency goes in the amounts' headers).
+    const text = capital!.textColumns!;
+    expect(text.map((column) => column.key)).toEqual(expect.arrayContaining(["name", "coupon", "margin", "outstanding", "commitment", "obligor", "instrumentId"]));
+    expect(text.map((column) => column.key)).not.toContain("ranking");
+    expect(text.map((column) => column.key)).not.toContain("currency");
+    expect(text.find((column) => column.key === "outstanding")?.header).toBe("Outstanding USD");
   });
 
   test("each table keeps the instrument id that --instrument opens, and quotes are only in the instrument view", async () => {

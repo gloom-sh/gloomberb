@@ -527,8 +527,8 @@ describe("ThirteenFPane", () => {
     const frame = tui.frame();
     expect(frame).toContain("SPY holdings");
     expect(frame).toContain("IVV file");
-    expect(frame).toMatch(/Overlap\s+13\.0%\s+active share 87\.0%/);
-    expect(frame).toMatch(/AAPL\s+Apple Inc\.\s+60\.0%\s+7\.00%\s+7\.00%/);
+    expect(frame).toMatch(/Overlap\s+13\.00%\s+active share 87\.00%/);
+    expect(frame).toMatch(/AAPL\s+Apple Inc\.\s+60\.00%\s+7\.00%\s+7\.00%/);
     expect(frame).toContain("SPY %");
     // Back returns to the picker, the fund still open.
     await emitKeypress({ name: "backspace", sequence: "\u007f" });

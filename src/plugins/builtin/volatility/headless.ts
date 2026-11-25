@@ -37,7 +37,7 @@ function projectVolatilityHeadless(data: VolatilityData): HeadlessBundleResult {
     { title: "Cross-asset volatility", columns: [
       { key: "label", header: "Index" }, { key: "symbol", header: "Symbol" },
       { key: "value", header: "Level", align: "right", format: formattedValue },
-      { key: "date", header: "As of" },
+      { key: "date", header: "As of", omitWhenSame: true },
       { key: "change1d", header: "1D points", align: "right", format: formattedValue },
       { key: "change1dPercent", header: "1D %", align: "right", format: formattedValue },
       { key: "percentile1y", header: "1Y percentile", align: "right", format: formattedPercentile },

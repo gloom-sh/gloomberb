@@ -29,6 +29,7 @@ import {
   holdingSplitNotes,
   isOptionType,
   isStaleFiling,
+  fundPositionText,
   markedPositionType,
   nextFilingText,
   OPTION_ROWS_NOTE,
@@ -129,6 +130,12 @@ function positionNotes(rows: readonly { type?: unknown }[]): string[] {
 }
 
 const TYPE_COLUMN: HeadlessPaneColumn = { key: "type", header: "Type", textFormat: markedPositionType };
+
+/** A ticker's holder's position after its fund, CIK and type. */
+const TICKER_HOLDER_FIGURES: HeadlessPaneColumn[] = [
+  { key: "value", header: "Value (USD)", align: "right", format: money }, { key: "shares", header: "Shares", align: "right", format: shares },
+  { key: "weight", header: "13F weight", align: "right", format: weight }, { key: "action", header: "Action" },
+];
 
 const HOLDING_COLUMNS: HeadlessPaneColumn[] = [
   { key: "ticker", header: "Ticker" },
@@ -746,7 +753,9 @@ export function createThirteenFHeadless(
         const summary = summarizeTickerHoldings({ ...metadata, offset, limit, loaded: rows });
         const shown = rows.slice(0, limit).map(row => ({ ...row }));
         return {
-          columns: [{ key: "fund", header: "Fund" }, { key: "cik", header: "CIK" }, TYPE_COLUMN, { key: "value", header: "Value (USD)", align: "right", format: money }, { key: "shares", header: "Shares", align: "right", format: shares }, { key: "weight", header: "13F weight", align: "right", format: weight }, { key: "action", header: "Action" }],
+          columns: [{ key: "fund", header: "Fund" }, { key: "cik", header: "CIK" }, TYPE_COLUMN, ...TICKER_HOLDER_FIGURES],
+          // As the pane: a type other than shares follows its fund, so no column reads SH down the page.
+          textColumns: [{ key: "fund", header: "Fund", textFormat: fundPositionText }, { key: "cik", header: "CIK" }, ...TICKER_HOLDER_FIGURES],
           rows: shown,
           notes: positionNotes(shown),
           metadata: {

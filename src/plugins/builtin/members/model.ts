@@ -213,7 +213,9 @@ export function memberColumns(width: number, movers = false): DataTableColumn[] 
   return fit([column("symbol", "Ticker", 8, "left"), column("name", "Name", 22, "left"),
     column("weight", compact ? "Wt. %" : "Weight %", compact ? 7 : 10), ...(movers ? [column("contribution", compact ? "pp" : "Contrib. pp", compact ? 7 : 13)] : []),
     ...(!movers ? [column("shares", "Shares", 14), column("price", "Price $", 11)] : []),
-    column("changePercent", "1D", compact ? 8 : 9), ...(!movers ? [column("return1WPercent", "1W", 9), column("return1MPercent", "1M", 9), column("returnYtdPercent", "YTD", 9), column("sector", "Sector", 22, "left")] : [])], width,
+    column("changePercent", "1D", compact ? 8 : 9), ...(!movers ? [column("return1WPercent", "1W", 9), column("return1MPercent", "1M", 9), column("returnYtdPercent", "YTD", 9),
+      // Most sponsors' holdings files give no sector (SPDR's, Invesco's, Vanguard's); iShares' do.
+      { ...column("sector", "Sector", 22, "left"), omitWhenEmpty: true }] : [])], width,
     ["sector", "shares", "returnYtdPercent", "return1MPercent", "return1WPercent", "price", "name"]);
 }
 export function stockHoldingLabel(row: StockFund): string | undefined {
