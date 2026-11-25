@@ -114,10 +114,32 @@ function marginBasisPoints(margin: CreditFact): number | null {
 }
 /** SOFR is written `S`, as a floating spread is quoted; any other named base keeps its name. */
 const baseLabel = (reference: string) => /\bSOFR\b/i.test(reference) ? "S" : reference;
-/** A fixed coupon as its percentage; a floating line's rate is its margin. */
-export function creditCoupon(row: CreditInstrument): string {
+/** A coupon stated as a number of percent, or null. */
+function couponPercent(row: CreditInstrument): number | null {
   const coupon = instrumentFact(row, "coupon");
-  return coupon ? factValue(coupon) : NO_VALUE;
+  return coupon && typeof coupon.value === "number" && Number.isFinite(coupon.value) && ["percent", "%"].includes(coupon.unit ?? "") ? coupon.value : null;
+}
+const couponDigitsByData = new WeakMap<object, number>();
+/**
+ * The decimals a column of coupons shares: the finest any states, at most
+ * three, so 4.400% sits over 7.087% as the notes' own names write them.
+ */
+function couponDigits(data: Pick<CreditDocumentsPayload, "instruments">): number {
+  const known = couponDigitsByData.get(data);
+  if (known !== undefined) return known;
+  const digits = Math.min(3, Math.max(0, ...data.instruments.map((row) => {
+    const value = couponPercent(row);
+    return value === null ? 0 : (String(value).split(".")[1]?.length ?? 0);
+  })));
+  couponDigitsByData.set(data, digits);
+  return digits;
+}
+/** A fixed coupon as its percentage, in the decimals its column shares; a floating line's rate is its margin. */
+export function creditCoupon(row: CreditInstrument, data?: Pick<CreditDocumentsPayload, "instruments">): string {
+  const coupon = instrumentFact(row, "coupon");
+  if (!coupon) return NO_VALUE;
+  const value = couponPercent(row);
+  return value !== null && data ? `${value.toFixed(couponDigits(data))}%` : factValue(coupon);
 }
 /**
  * What a floating line pays over its base, in basis points (`S+148`,
@@ -363,7 +385,7 @@ export function capitalCell(row: CreditInstrument, column: string, data: CreditD
     case "commitment": return creditFigure(row.commitment);
     case "currency": return row.currency ?? NO_VALUE;
     case "maturity": return row.maturity ?? NO_VALUE;
-    case "coupon": return creditCoupon(row);
+    case "coupon": return creditCoupon(row, data);
     case "margin": return creditMargin(row);
     case "facility": return row.facilityType ? fieldLabel(row.facilityType) : NO_VALUE;
     case "ranking": return rankText(row);
