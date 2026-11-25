@@ -217,8 +217,8 @@ test("the stablecoin tab charts supply above its rows, the legend and the table 
   expect(frame).toMatch(/30D change\s+\+1\.80B/);
   // ALL starts on the count's first day, which the header says as the DeFi tab says its own.
   // Its publisher and day as the DeFi tab says its own, not the service that serves it.
-  expect(frame).toMatch(/Source\s+DefiLlama\s+daily since 2026-09-19/);
-  expect(frame).toContain("as of 2026-09-23 UTC close");
+  expect(frame).toMatch(/Source\s+DefiLlama\s+daily since 19 Sep 2026/);
+  expect(frame).toContain("as of 23 Sep 2026 UTC close");
   // The legend reads each coin's own supply, not the stack's height at it.
   expect(frame).toMatch(/USDT 180\.00B \+ USDC 72\.00B × Other 48\.00B/);
   expect(frame).toMatch(/MCAP\s+SUPPLY\s+SUP 7D%\s+SUP 7D\s+SUP 30D%\s+SUP 30D\s+SHARE/);
@@ -249,9 +249,9 @@ test("the DeFi tab asks for TVL only once shown, dates every figure and its sour
   await tui.clickFrameText("DeFi");
   const frame = await tui.waitForFrameToContain("Aave");
   expect(defi).toHaveBeenCalledTimes(1);
-  expect(frame).toMatch(/Total DeFi TVL\s+92\.40B\s+as of 2026-09-23/);
+  expect(frame).toMatch(/Total DeFi TVL\s+92\.40B\s+as of 23 Sep 2026/);
   expect(frame).toMatch(/7D change\s+\+2\.01B\s+\+2\.22%/);
-  expect(frame).toMatch(/Source\s+DefiLlama\s+daily since 2026-09-19/);
+  expect(frame).toMatch(/Source\s+DefiLlama\s+daily since 19 Sep 2026/);
   // Protocols are the source's latest read, not the day's close.
   expect(frame).toContain("as of 2026-09-22 16:17 UTC");
   expect(frame).toMatch(/1\s+Aave\s+Lending\s+17\.88B/);

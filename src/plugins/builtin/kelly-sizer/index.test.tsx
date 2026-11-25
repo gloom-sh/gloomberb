@@ -217,8 +217,8 @@ describe("KellySizerPane", () => {
         marketData: createTestDataProvider(sources(dated)) }),
     );
     try {
-      for (const [dated, window] of [[true, "2021-10-29 to 2026-10-30, 60 monthly returns"],
-        [false, "2021-11-30 to 2026-10-30, 59 monthly returns"]] as const) {
+      for (const [dated, window] of [[true, "29 Oct 2021 to 30 Oct 2026, 60 monthly returns"],
+        [false, "30 Nov 2021 to 30 Oct 2026, 59 monthly returns"]] as const) {
         const result = await report(dated);
         expect(result.sections![0]!.entries!.find((entry) => entry.key === "window")!.formatted).toBe(window);
         const fullKelly = result.sections![1]!.rows!.find((row) => row.id === "full")!.fraction as number;

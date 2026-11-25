@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { formatDay } from "../../../components/ui/day-cell";
 import type { CryptoAssetKind, CryptoMarketAsset, CryptoPeg } from "../../../api-client/crypto-markets";
 import type { DataTableColumn } from "../../../components";
 import { getTableWidth } from "../../../components/ui/table-layout";
@@ -453,7 +454,7 @@ export function formatCryptoPercent(value: number | null): string {
  * day's close. The DeFi and stablecoin tabs date theirs the same way.
  */
 export function utcCloseAsOfText(asOf: string): string {
-  return `as of ${asOf} UTC close`;
+  return `as of ${formatDay(asOf)} UTC close`;
 }
 
 // Sorting ---------------------------------------------------------------------

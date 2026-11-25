@@ -75,12 +75,12 @@ function detailEntries(view: StatViewModel, cutoffShown: boolean, text: boolean)
     {
       label: "High",
       value: view.high,
-      formatted: `${format(view.high.value)} ${view.high.date}`,
+      formatted: `${format(view.high.value)} ${view.highPeriod}`,
     },
     {
       label: "Low",
       value: view.low,
-      formatted: `${format(view.low.value)} ${view.low.date}`,
+      formatted: `${format(view.low.value)} ${view.lowPeriod}`,
     },
     // A daily rate's last moves, in bp, ranked by size against every move since the series began.
     ...view.moves.map((move): HeadlessPaneEntry => ({

@@ -25,7 +25,7 @@ const loadBundle = (force: boolean) => loadStatsBundle({ force });
 
 const LIST_WIDTH = 60;
 const NAME_MIN_WIDTH = 13;
-const PERIOD_WIDTH = 10;
+const PERIOD_WIDTH = 11;
 
 const RANGE_OPTIONS = [
   { value: "5Y" as const, label: "5Y" },

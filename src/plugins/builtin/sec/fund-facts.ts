@@ -7,6 +7,7 @@ import { createPluginCache } from "../../../data/plugin-cache";
 import type { HeadlessPaneEntry } from "../../../types/plugin";
 import { errorMessage } from "../../../utils/errors";
 import { MISSING_VALUE, formatCompact, formatCurrency } from "../../../utils/format";
+import { formatDay, formatDaysInText } from "../../../utils/day-format";
 import { bondClassText, bondFigures, DV01_FROM_DURATION, durationDv01PerShare, formatDv01PerShare } from "../../../market-data/bond-funds";
 import { readFundFacts, validateFundFacts } from "../../../market-data/fund-facts";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
@@ -239,7 +240,7 @@ export function fundFactItems(facts: FundFactsPayload): StatItem[] {
   const items: StatItem[] = [];
   const dated = datedFigures(facts);
   const cell = (id: string, label: string, value: string, figure: DatedFigure): StatItem => ({
-    id, label, value, ...(figure.detail ? { detail: figure.detail } : {}), ...(figure.marked ? { tone: "warning" as const } : {}),
+    id, label, value, ...(figure.detail ? { detail: formatDaysInText(figure.detail) } : {}), ...(figure.marked ? { tone: "warning" as const } : {}),
   });
   if (facts.nav) {
     // A sponsor's estimate is a range: its midpoint is the figure, the range follows its date.
@@ -292,7 +293,7 @@ export function fundFactItems(facts: FundFactsPayload): StatItem[] {
   const structure = facts.structure ? PANE_STRUCTURE[facts.structure] : undefined;
   if (structure) items.push({ id: "structure", label: "Structure", value: t(structure) });
   if (facts.sponsor) items.push({ id: "sponsor", label: "Sponsor", value: facts.sponsor.value });
-  if (facts.inception) items.push({ id: "inception", label: "Inception", value: facts.inception.value });
+  if (facts.inception) items.push({ id: "inception", label: "Inception", value: formatDay(facts.inception.value) });
   // A leveraged or inverse fund's objective, dated by the sponsor page it was read from, beside its benchmark.
   if (facts.leverage) {
     items.push(cell("objective", OBJECTIVE_LABEL, leverageObjectiveText(facts.leverage), { detail: facts.leverage.asOf ?? undefined, marked: false }));
@@ -331,10 +332,11 @@ interface FundFactOverviewField {
 export function fundFactOverviewFields(facts: FundFactsPayload): FundFactOverviewField[] {
   const fields: FundFactOverviewField[] = [];
   const dated = datedFigures(facts);
-  // A narrow column takes the date without its year (`10-16 close`), then the bare date, before none.
-  const withoutYear = (text: string) => text.replace(/\b\d{4}-(\d{2}-\d{2})\b/, "$1");
+  // A narrow column takes the date without its year (`16 Oct close`), then the bare date, before none.
+  const withYear = (text: string) => formatDaysInText(text);
+  const withoutYear = (text: string) => formatDaysInText(text, "no-year");
   const field = (label: string, value: string, figure: DatedFigure, short?: string): FundFactOverviewField => {
-    const forms = figure.detail ? [figure.detail, withoutYear(figure.detail), ...(short ? [short, withoutYear(short)] : [])] : [];
+    const forms = figure.detail ? [withYear(figure.detail), withoutYear(figure.detail), ...(short ? [withYear(short), withoutYear(short)] : [])] : [];
     return { label, value, ...(forms.length ? { detail: [...new Set(forms)] } : {}), ...(figure.marked ? { warn: true } : {}) };
   };
   if (facts.nav) fields.push(field("NAV", fundPrice(facts, facts.nav.value), dated.nav));
@@ -349,7 +351,7 @@ export function fundFactOverviewFields(facts: FundFactsPayload): FundFactOvervie
     const label = kind === "sponsor-fee" ? "Sponsor Fee" : kind === "management-fee" ? "Mgmt Fee" : "Exp Ratio";
     fields.push(field(label, formatFeePercent(facts.expenseRatio.value), dated.fee, facts.expenseRatio.asOf ?? undefined));
   }
-  if (facts.inception) fields.push({ label: "Inception", value: facts.inception.value });
+  if (facts.inception) fields.push({ label: "Inception", value: formatDay(facts.inception.value) });
   return fields;
 }
 
@@ -367,7 +369,7 @@ function premiumBasis(premium: NonNullable<FundFactsPayload["premiumDiscount"]>)
   return price?.kind === "nominal" ? "nominal closing price vs NAV" : "closing price vs NAV";
 }
 
-/** Where a figure came from and when, for text reports: `2026-10-16 · iShares`. */
+/** Where a figure came from and when, for text reports: `16 Oct 2026 · iShares`. */
 function provenance(...parts: (string | null | undefined)[]): string {
   return parts.filter(Boolean).join(" · ");
 }
@@ -379,8 +381,9 @@ function provenance(...parts: (string | null | undefined)[]): string {
  */
 export function fundFactEntries(facts: FundFactsPayload): HeadlessPaneEntry[] {
   const entries: HeadlessPaneEntry[] = [];
+  // The text says each date as the pane does (`16 Oct 2026`); JSON keeps the raw value, and a link is left whole.
   const add = (key: string, label: string, value: unknown, formatted: string, unit?: string) =>
-    entries.push({ key, label, value, formatted, ...(unit ? { unit } : {}) });
+    entries.push({ key, label, value, formatted: key === "url" ? formatted : formatDaysInText(formatted), ...(unit ? { unit } : {}) });
   if (facts.name) add("name", "Name", facts.name, facts.name);
   if (facts.structure) add("structure", "Structure", facts.structure, structureLabel(facts.structure));
   if (facts.expenseRatio) {
@@ -461,8 +464,8 @@ function noteStructureText(note: Pick<FundNoteFacts, "issuer">): string {
   return `Exchange-traded note: an unsecured note of ${note.issuer}, not a fund`;
 }
 
-/** The supplement a note's terms come from: `2026-02-13 pricing supplement (424B2)`. */
-const noteSupplement = (note: FundNoteFacts) => `${note.filing.filedAt} pricing supplement (${note.filing.form})`;
+/** The supplement a note's terms come from: `13 Feb 2026 pricing supplement (424B2)`. */
+const noteSupplement = (note: FundNoteFacts) => `${formatDay(note.filing.filedAt)} pricing supplement (${note.filing.form})`;
 
 /**
  * An exchange-traded note's terms as report entries: its issuer, yearly fee
@@ -489,7 +492,7 @@ export function fundNoteItems(note: FundNoteFacts): StatItem[] {
   return [
     { id: "structure", label: "Structure", value: tf("Exchange-traded note: an unsecured note of {issuer}, not a fund", { issuer: note.issuer }), wide: true },
     ...note.yearlyFee != null
-      ? [{ id: "fee", label: "Yearly fee", value: formatFeePercent(note.yearlyFee), detail: tf("{date} pricing supplement", { date: note.filing.filedAt }) }]
+      ? [{ id: "fee", label: "Yearly fee", value: formatFeePercent(note.yearlyFee), detail: tf("{date} pricing supplement", { date: formatDay(note.filing.filedAt) }) }]
       : [],
     ...note.index ? [{ id: "index", label: "Index", value: note.index, wide: true }] : [],
   ];

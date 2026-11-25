@@ -1,4 +1,4 @@
-import { formatDay } from "../../../utils/day-format";
+import { formatDay, formatDaysInText } from "../../../utils/day-format";
 import { MISSING_VALUE } from "../../../utils/format";
 import type { Quote } from "../../../types/financials";
 import type { HeadlessBundleSection, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessPaneLoadArgs, HeadlessPaneRow } from "../../../types/plugin";
@@ -133,10 +133,9 @@ function termSection(snapshot: SurfaceSnapshot, readings: readonly SurfaceEventR
  * underlying on each release's days. Releases between the same two expiries
  * are one row.
  */
-const ISO_DAY_IN_TEXT = /\b\d{4}-\d{2}-\d{2}\b/g;
 function scheduledReleasesSection(readings: readonly SurfaceEventReading[]): HeadlessBundleSection {
   return { title: "Scheduled releases", columns: [
-    { key: "event", header: "Event" }, { key: "between", header: "Between expiries", textFormat: (value) => typeof value === "string" ? value.replace(ISO_DAY_IN_TEXT, (day) => formatDay(day)) : MISSING_VALUE },
+    { key: "event", header: "Event" }, { key: "between", header: "Between expiries", textFormat: (value) => typeof value === "string" ? formatDaysInText(value) : MISSING_VALUE },
     { key: "forwardVol", header: "Forward vol", format: iv },
     { key: "impliedMove", header: "Implied |move|", format: (value) => approximatePercent(typeof value === "number" ? value : null) },
     { key: "mdayMove", header: "MDAY avg |move|" }, { key: "mdayDays", header: "MDAY days" },

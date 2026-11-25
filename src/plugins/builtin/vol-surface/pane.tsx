@@ -292,7 +292,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const snapshot: DatedSurfaceSnapshot | null | undefined = shownDate ? stored.data : liveSnapshot;
   // IV30 and its rank rate the latest stored close, so they sit beside the live surface only.
   const ivStats: StatItem[] = ivRank && snapshot && !snapshot.stored ? [
-    { id: "iv30", label: "IV30", value: `${(ivRank.value * 100).toFixed(1)}%`, detail: `${ivRank.date.slice(5)} close` },
+    { id: "iv30", label: "IV30", value: `${(ivRank.value * 100).toFixed(1)}%`, detail: `${formatDay(ivRank.date, "no-year")} close` },
     { id: "ivr", label: "IV rank", value: wholeNumber(ivRank.rank) },
     { id: "ivp", label: "IV pctl", value: wholeNumber(ivRank.percentile) },
   ] : coin && snapshot && !snapshot.stored ? dvolStats(dvol.data?.payload, surfaceThirtyDayAtm(snapshot)) : [];

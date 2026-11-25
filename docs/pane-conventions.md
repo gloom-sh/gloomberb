@@ -583,9 +583,11 @@ keeps the ISO day as the cell's `value`, so CSV and JSON still read
 `2026-11-02`. A column short of room drops the year (`02 Nov`), never the
 order, and a time beside a day follows it (`02 Nov 2026 13:21`, `formatDayTime`)
 with its zone in the header. A day inside a cell's words (`ended 19 Nov 2026`,
-a period `25 Nov 2026 / 31 Mar 2027`) is written the same way. A text report
-prints what its pane shows (`formatDay` in the column's `format`); a figure an
-agency names in its own text (a contract title) stays as written.
+a period `25 Nov 2026 / 31 Mar 2027`) is written the same way, and so is the
+date beside a figure or labeled value over a table (`NAV $718.51 24 Nov 2026`,
+`formatDaysInText` for a dated detail). A text report prints what its pane
+shows (`formatDay` in the column's `format`); a figure an agency names in its
+own text (a contract title) stays as written.
 
 **Country flags.** Wherever a row or a field names a country (ECO's country,
 a balance's or a board's country or jurisdiction, a venue's market, an IPO's

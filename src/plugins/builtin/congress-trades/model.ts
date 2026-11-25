@@ -222,7 +222,12 @@ function foldedRow(lines: CloudCongressTradePayload[]): CongressTradeRow {
 
 /** A row's asset cell: the asset as tradeAssetLabel names it, and the count of lines a folded row stands for (`· 32 lines`). */
 export function congressRowAsset(row: Pick<CongressTradeRow, "assetName" | "assetType" | "description" | "lines">): string {
-  return row.lines ? `${tradeAssetLabel(row)} · ${row.lines.length} lines` : tradeAssetLabel(row);
+  return `${tradeAssetLabel(row)}${congressRowLineCount(row)}`;
+}
+
+/** A folded row's count (` · 8 lines`), which a narrow column keeps whole and cuts the name before. */
+export function congressRowLineCount(row: Pick<CongressTradeRow, "lines">): string {
+  return row.lines ? ` · ${row.lines.length} lines` : "";
 }
 
 function compareText(left: string, right: string): number {

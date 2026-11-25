@@ -1,3 +1,4 @@
+import { formatDay } from "../../../utils/day-format";
 import type { HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/headless";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { MarketDataCoordinator, resolveEntryValue } from "../../../market-data/coordinator";
@@ -33,7 +34,7 @@ function inputEntries(inputs: KellyHistoryInputs, edge: number) {
   const payoff = inputs.downsideReturn < 0 ? inputs.upsideReturn / -inputs.downsideReturn : null;
   return [
     { key: "window", label: "Window", value: { start: inputs.start, end: inputs.end, months: inputs.periods },
-      formatted: `${inputs.start} to ${inputs.end}, ${inputs.periods} monthly returns${inputs.rollNote ? `, ${inputs.rollNote}` : ""}` },
+      formatted: `${formatDay(inputs.start)} to ${formatDay(inputs.end)}, ${inputs.periods} monthly returns${inputs.rollNote ? `, ${inputs.rollNote}` : ""}` },
     { key: "winRate", label: "Win rate", value: inputs.winProbability,
       formatted: `${formatPct(inputs.winProbability)} (${inputs.wins} of ${inputs.periods} months up)` },
     { key: "averageGain", label: "Average gain", value: inputs.upsideReturn, formatted: `${formatSignedPct(inputs.upsideReturn)} a month` },

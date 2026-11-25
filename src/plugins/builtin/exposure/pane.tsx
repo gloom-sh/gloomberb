@@ -50,7 +50,7 @@ function ExposureDetail({ row, data, width }: { row: ExposureRow | null; data: E
     {row?.driver ? <>
       <KeyValueRow labelWidth={20} label="Value / units" value={`${driverValue(row.driver)} ${driverUnits(row.driver)}`} />
       <KeyValueRow labelWidth={20} label="Period" value={row.driver.period ? periodText(row.driver.period) : "Unknown"} />
-      <KeyValueRow labelWidth={20} label="As of" value={row.driver.asOf?.slice(0, 10) ?? "Unknown"} />
+      <KeyValueRow labelWidth={20} label="As of" value={row.driver.asOf ? formatDay(row.driver.asOf) : "Unknown"} />
       {row.driver.valueText ? <KeyValueRow labelWidth={20} label="Reported wording" value={row.driver.valueText} /> : null}
       {row.driver.status ? <KeyValueRow labelWidth={20} label="Status" value={humanLabel(row.driver.status)} /> : null}
       {row.driver.basis ? <KeyValueRow labelWidth={20} label="Basis" value={humanLabel(row.driver.basis)} /> : null}
@@ -243,7 +243,7 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
     exposure: null, impact: null, weight: null, classification: "unknown", incomplete: false, components: [], unknowns: [] }))], [rows, lockedRows]);
   const figures: StatItem[] = data ? tab === "drivers" ? [
     { label: "Dataset", value: selected?.driver ? selected.driver.kind === "kpi" ? "KPI" : humanLabel(selected.driver.kind) : MISSING_VALUE },
-    { label: "As of", value: selected?.driver?.asOf?.slice(0, 10) ?? MISSING_VALUE },
+    { label: "As of", value: formatDay(selected?.driver?.asOf) },
     { label: "Basis", value: selected?.driver?.basis ? humanLabel(selected.driver.basis) : MISSING_VALUE },
   ] : tab === "portfolio" ? [
     { label: "Gross holdings", value: fraction(data.portfolio.grossWeight) }, { label: "Net holdings", value: fraction(data.portfolio.netWeight) },

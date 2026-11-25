@@ -28,6 +28,17 @@ export function formatDay(value: unknown, form: DayCellForm = "full"): string {
   return form === "no-year" ? formatShortDate(day, { year: false, day: "2-digit", utc: true }) : formatFilingDate(day);
 }
 
+const ISO_DAYS_IN_TEXT = /\b\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])\b/g;
+
+/**
+ * Words with every ISO day in them written day first, for a figure's dated
+ * detail (`2026-10-16 close` is `16 Oct 2026 close`). A timestamp's day
+ * (`2026-10-16T13:21Z`) is not a day on its own and stays as it is.
+ */
+export function formatDaysInText(text: string, form: DayCellForm = "full"): string {
+  return text.replace(ISO_DAYS_IN_TEXT, (day) => formatDay(day, form));
+}
+
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const DAY_TEXT = /^(\d{2}) ([A-Z][a-z]{2}) (\d{4})$/;
 

@@ -50,6 +50,6 @@ test("the latest print names the period it is a reading of, not the first day FR
   const monthly = ["2026-04-01", "2026-05-01", "2026-06-01", "2026-07-01", "2026-08-01"];
   expect(reading("cpi-yoy", monthly)).toBe("Aug 2026");
   expect(reading("real-gdp", ["2025-07-01", "2025-10-01", "2026-01-01", "2026-04-01"])).toBe("Q2 2026");
-  expect(reading("initial-claims", ["2026-09-19", "2026-09-26", "2026-10-03"])).toBe("week ending 2026-10-03");
-  expect(reading("ten-year", ["2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09"])).toBe("2026-10-09");
+  expect(reading("initial-claims", ["2026-09-19", "2026-09-26", "2026-10-03"])).toBe("week ending 03 Oct 2026");
+  expect(reading("ten-year", ["2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09"])).toBe("09 Oct 2026");
 });

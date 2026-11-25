@@ -383,7 +383,8 @@ export function buildOverviewStats({
     // Which twelve months the revenue, net income and margin are, as Financials' TTM column names them.
     const end = fundamentals.trailingPeriodEnd;
     const revenue = money(fundamentals.revenue);
-    stats.push({ label: "Revenue", ...revenue, ...(end && ISO_DATE.test(end) && !revenue.detail ? { detail: [`TTM to ${end}`, `to ${end}`] } : {}) });
+    const through = end && ISO_DATE.test(end) && !revenue.detail ? [formatDay(end), formatDay(end, "no-year")] : null;
+    stats.push({ label: "Revenue", ...revenue, ...(through ? { detail: [`TTM to ${through[0]}`, ...through.map((day) => `to ${day}`)] } : {}) });
   }
   if (fundamentals?.netIncome != null) {
     stats.push({ label: "Net Income", ...money(fundamentals.netIncome) });

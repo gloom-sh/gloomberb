@@ -77,9 +77,9 @@ export function ShortVolumePane({ width, height, focused }: Pick<PaneProps, "wid
   const figures: StatItem[] = [
     { id: "ratio", label: scope === "otc" ? "OTC short %" : "Short %", value: volumePercent(latest?.ratioPercent ?? null),
       detail: formatPercentileRank(stats?.value, stats?.completeWindow ? "1Y" : "sample") },
-    { id: "change", label: "Daily change", value: volumeChange(latest?.changePp ?? null), detail: latest?.previousDate ? `since ${latest.previousDate}` : undefined },
+    { id: "change", label: "Daily change", value: volumeChange(latest?.changePp ?? null), detail: latest?.previousDate ? `since ${formatDay(latest.previousDate)}` : undefined },
     { id: "range", label: stats?.completeWindow ? "1Y range" : "Sample range", value: `${volumePercent(stats?.min ?? null)} to ${volumePercent(stats?.max ?? null)}`,
-      detail: stats ? `${stats.historyStart ?? MISSING_VALUE} to ${stats.historyEnd ?? MISSING_VALUE}` : undefined },
+      detail: stats ? `${formatDay(stats.historyStart)} to ${formatDay(stats.historyEnd)}` : undefined },
   ];
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => resource.reload(), { focused });

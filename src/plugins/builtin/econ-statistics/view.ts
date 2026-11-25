@@ -3,6 +3,7 @@ import { latestMoveRank, MOVE_HORIZONS, type MoveRank } from "../shared/move-ran
 import { periodsPerYear, type StatPoint } from "../shared/stat-transform";
 import { sigmaVsTrend } from "../shared/trend";
 import { periodReleasedText, periodStartPeriodicity, releasedText } from "../../../utils/release-date";
+import { formatDay } from "../../../utils/day-format";
 import type { FredProvenance } from "../../../sources/gloomberb-cloud/fred-attribution";
 import { fredCitation, fredPublisher } from "../../../sources/gloomberb-cloud/fred-publisher";
 import type { StatBuild } from "./client";
@@ -50,6 +51,9 @@ export interface StatViewModel {
   mean: number;
   high: StatPoint;
   low: StatPoint;
+  /** The period the high and the low are readings of, as `period` names the latest's: "Jun 2022", "21 Nov 2026". */
+  highPeriod: string;
+  lowPeriod: string;
   visible: StatPoint[];
   /** The dates the chart shows: the whole history when the range reaches past its start. */
   span: HistorySpan | null;
@@ -97,7 +101,7 @@ function formatStatPeriod(date: string, perYear: number): string {
   if (!name) return date;
   if (perYear <= 4) return `Q${Math.ceil(month / 3)} ${date.slice(0, 4)}`;
   if (perYear <= 12) return `${name} ${date.slice(0, 4)}`;
-  return `${date.slice(5)} ${date.slice(0, 4)}`;
+  return formatDay(date);
 }
 
 /**
@@ -111,7 +115,7 @@ function formatStatReading(date: string, perYear: number): string {
   if (!name) return date;
   if (perYear <= 4) return `Q${Math.ceil(month / 3)} ${date.slice(0, 4)}`;
   if (perYear <= 12) return `${name} ${date.slice(0, 4)}`;
-  return perYear <= 52 ? `week ending ${date}` : date;
+  return perYear <= 52 ? `week ending ${formatDay(date)}` : formatDay(date);
 }
 
 function extreme(points: readonly StatPoint[], pick: "high" | "low"): StatPoint {
@@ -149,6 +153,8 @@ export function projectStat(
   const visible = sliceByRange(points, range);
   const atOrBelow = visible.filter((point) => point.value <= latest.value).length;
   const reading = formatStatReading(latest.date, perYear);
+  const high = extreme(visible, "high");
+  const low = extreme(visible, "low");
   const releasedOn = build.releasedOn ?? null;
 
   return {
@@ -166,14 +172,16 @@ export function projectStat(
     readingReleased: periodReleasedText(reading, releasedOn, latest.date),
     periodicity: periodStartPeriodicity(latest.date, perYear),
     previous,
-    previousReading: previous ? nowcast ? previous.date : formatStatReading(previous.date, perYear) : null,
+    previousReading: previous ? nowcast ? formatDay(previous.date) : formatStatReading(previous.date, perYear) : null,
     yearAgo,
     changeOnPrevious: previous ? latest.value - previous.value : null,
     percentile: visible.length === 0 ? 0 : (100 * atOrBelow) / visible.length,
     sigmaVsTrend: sigmaVsTrend(trend, latest.value, latest.date),
     mean: visible.reduce((total, point) => total + point.value, 0) / visible.length,
-    high: extreme(visible, "high"),
-    low: extreme(visible, "low"),
+    high,
+    low,
+    highPeriod: formatStatPeriod(high.date, perYear),
+    lowPeriod: formatStatPeriod(low.date, perYear),
     visible,
     span: historySpan(points[0]!.date, visible, STAT_RANGE_WINDOWS_MS[range]),
     moves: stat.rankMoves ? statMoves(points) : [],

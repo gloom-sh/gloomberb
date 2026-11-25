@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { formatDay } from "../../../components/ui/day-cell";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataTableStackView, DataTableView, KeyValueRow, QueryBar, usePagedRows, usePaneNoticeFooter, useQueryBarSearch, useTableLoadMore, type DataTableColumn, type PageRequest } from "../../../components";
 import { useShortcut } from "../../../react/input";
@@ -42,7 +43,7 @@ const etfWeightText = (row: ManagerEtfRow) => row.etfWeight == null ? "no ticker
 /** The quarter compared, and the fund's newer latest quarter when it has one. */
 function periodDetail(data: FundDetailData | null, period: string | null): string | undefined {
   const latest = data?.latestForm?.periodOfReport;
-  return period && latest && latest !== period ? `${period} · latest ${latest}` : latest;
+  return period && latest && latest !== period ? `${formatDay(period)} · latest ${formatDay(latest)}` : latest ? formatDay(latest) : latest;
 }
 
 export function FundOverlapView({ data, focused, width }: { data: FundDetailData; focused: boolean; width: number }) {

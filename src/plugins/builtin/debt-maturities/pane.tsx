@@ -283,7 +283,7 @@ function BandFilingDetail({
         <KeyValueRow
           labelWidth={20}
           label="Expense period"
-          value={`${expense.start} to ${expense.end}`}
+          value={`${formatDay(expense.start)} to ${formatDay(expense.end)}`}
         />
       ) : null}
     </DetailScroll>
@@ -333,7 +333,7 @@ function FilingDetail({
         <KeyValueRow
           labelWidth={20}
           label="Expense period"
-          value={`${expense.start} to ${expense.end}`}
+          value={`${formatDay(expense.start)} to ${formatDay(expense.end)}`}
         />
       ) : null}
       {cost ? (
@@ -370,7 +370,7 @@ function FilingDetail({
         labelWidth={20}
         label="Comparable filings"
         value={String(latest.totalPrincipal.percentile.sampleCount)}
-        detail={`${latest.totalPrincipal.percentile.historyStart ?? MISSING_VALUE} to ${latest.totalPrincipal.percentile.historyEnd ?? MISSING_VALUE}`}
+        detail={`${formatDay(latest.totalPrincipal.percentile.historyStart ?? MISSING_VALUE)} to ${formatDay(latest.totalPrincipal.percentile.historyEnd ?? MISSING_VALUE)}`}
       />
       {quarter ? (
         <>
