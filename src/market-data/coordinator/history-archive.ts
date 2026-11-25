@@ -4,7 +4,7 @@ import type { QueryEntry } from "../result-types";
 const BAR_COLUMNS = 6;
 const optionalColumns = ["open", "high", "low", "volume"] as const;
 const barFields = new Set<string>(["date", "close", ...optionalColumns]);
-const packedHistories = new WeakMap<PricePoint[], PackedBars>();
+const packedHistories = new WeakMap<PricePoint[], PackedBars | null>();
 
 interface PackedBars {
   values: Float64Array;
@@ -14,38 +14,50 @@ interface PackedBars {
   other: Map<number, PricePoint>;
 }
 
-function packBars(points: PricePoint[]): PackedBars {
-  const values = new Float64Array(points.length * BAR_COLUMNS);
-  const missing = new Uint8Array(points.length);
-  const other = new Map<number, PricePoint>();
-  bars: for (let index = 0; index < points.length; index++) {
+function readBarOptions(point: PricePoint, optional: number[]): number | null {
+  if (!(point.date instanceof Date) || typeof point.close !== "number") return null;
+  for (const key of Object.keys(point)) {
+    if (!barFields.has(key)) return null;
+  }
+  let mask = 0;
+  for (let column = 0; column < optionalColumns.length; column++) {
+    const key = optionalColumns[column]!;
+    const value = point[key];
+    if (value !== undefined && (typeof value !== "number" || Number.isNaN(value))) return null;
+    if (!Object.hasOwn(point, key)) mask |= 1 << column;
+    optional[column] = value ?? Number.NaN;
+  }
+  return mask;
+}
+
+function packBars(points: PricePoint[]): PackedBars | null {
+  let packed: PackedBars | null = null;
+  const optional = new Array<number>(optionalColumns.length);
+  for (let index = 0; index < points.length; index++) {
     const point = points[index]!;
-    if (!(point.date instanceof Date) || typeof point.close !== "number") {
-      other.set(index, point);
+    const mask = readBarOptions(point, optional);
+    if (mask === null) {
+      packed?.other.set(index, point);
       continue;
     }
-    for (const key of Object.keys(point)) {
-      if (barFields.has(key)) continue;
-      other.set(index, point);
-      continue bars;
+    if (!packed) {
+      const other = new Map<number, PricePoint>();
+      for (let earlier = 0; earlier < index; earlier++) other.set(earlier, points[earlier]!);
+      packed = {
+        values: new Float64Array(points.length * BAR_COLUMNS),
+        missing: new Uint8Array(points.length),
+        decoded: new WeakRef(points),
+        other,
+      };
     }
+    const { values, missing } = packed;
     const offset = index * BAR_COLUMNS;
-    let mask = 0;
-    for (let column = 0; column < optionalColumns.length; column++) {
-      const key = optionalColumns[column]!;
-      const value = point[key];
-      if (value !== undefined && (typeof value !== "number" || Number.isNaN(value))) {
-        other.set(index, point);
-        continue bars;
-      }
-      if (!Object.hasOwn(point, key)) mask |= 1 << column;
-      values[offset + 2 + column] = value ?? Number.NaN;
-    }
     missing[index] = mask;
     values[offset] = point.date.getTime();
     values[offset + 1] = point.close;
+    values.set(optional, offset + 2);
   }
-  return { values, missing, other, decoded: new WeakRef(points) };
+  return packed;
 }
 
 function unpackBars(packed: PackedBars): PricePoint[] {
@@ -98,8 +110,8 @@ function restoreEntry<T>(metadata: Omit<QueryEntry<T>, "data" | "lastGoodData">,
 function archiveBars(points: PricePoint[]): (() => PricePoint[]) | null {
   if (!points.length) return null;
   let packed = packedHistories.get(points);
-  if (!packed) packedHistories.set(points, packed = packBars(points));
-  return readPackedBars(packed);
+  if (packed === undefined) packedHistories.set(points, packed = packBars(points));
+  return packed && readPackedBars(packed);
 }
 
 function readPackedBars(packed: PackedBars): () => PricePoint[] {

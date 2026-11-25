@@ -24,21 +24,33 @@ function restoreWithoutDecodedBars<T>(restore: () => T): T {
 
 test("archives exact chart values and keeps the last good answer on a failed refresh", () => {
   const bars: PricePoint[] = [
-    { date: new Date("2025-01-06"), close: 103.123456789, high: 104, low: undefined, volume: -0 },
-    { date: new Date("2025-01-13"), close: 105, open: 103, venueVolume: { venue: "test", volume: 55 }, partial: true },
+    { date: new Date("2025-01-06"), close: 105, open: 103, venueVolume: { venue: "test", volume: 55 }, partial: true },
+    { date: new Date("2025-01-13"), close: 103.123456789, high: 104, low: undefined, volume: -0 },
     { date: new Date("2025-01-20"), close: NaN, low: NaN },
   ];
   const entry = { ...createIdleEntry<PricePoint[]>(), phase: "ready" as const, data: bars, lastGoodData: bars, fetchedAt: 12 };
   const restored = restoreWithoutDecodedBars(archiveChartEntry(entry)!);
   expect(restored).toStrictEqual(entry);
   expect(restored.data).toBe(restored.lastGoodData);
-  expect(restored.data![0]).not.toBe(bars[0]);
-  expect(restored.data![0]!.volume).toBe(-0);
-  expect(Object.hasOwn(restored.data![0]!, "low")).toBe(true);
-  expect(Object.hasOwn(restored.data![0]!, "open")).toBe(false);
+  expect(restored.data![0]).toBe(bars[0]);
+  expect(restored.data![1]).not.toBe(bars[1]);
+  expect(restored.data![1]!.volume).toBe(-0);
+  expect(Object.hasOwn(restored.data![1]!, "low")).toBe(true);
+  expect(Object.hasOwn(restored.data![1]!, "open")).toBe(false);
 
   const failed = { ...entry, phase: "error" as const, data: null, error: { reasonCode: "TIMEOUT", message: "Timed out" } };
   expect(archiveChartEntry(failed)!()).toStrictEqual(failed);
+});
+
+test("leaves all-irregular histories unarchived in both stores", () => {
+  const priceHistory: PricePoint[] = [
+    { date: new Date("2025-01-06"), close: 105, venueVolume: { venue: "test", volume: 55 } },
+    { date: "2025-01-13" as unknown as Date, close: 103 },
+  ];
+  const chart = { ...createIdleEntry<PricePoint[]>(), data: priceHistory, lastGoodData: priceHistory };
+  const snapshot = createTestFinancials({ priceHistory });
+  expect(archiveChartEntry(chart)).toBeNull();
+  expect(archiveSnapshotEntry({ ...createIdleEntry<TickerFinancials>(), data: snapshot, lastGoodData: snapshot })).toBeNull();
 });
 
 test("packs shared chart and snapshot bars once, including after restoring them", () => {
