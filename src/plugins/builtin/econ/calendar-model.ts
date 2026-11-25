@@ -550,7 +550,11 @@ export function actualMayBeBlank(
   return now < event.date.getTime() + (hasNoReleaseTime(event) ? AWAITING_FIGURE_MS : 0);
 }
 
-/** Whether a row prints a figure, by the two a row beside `field` has: a speech or a meeting has none of the three. */
+/**
+ * Whether a row prints a figure, by the two a row has beside `field`: a speech
+ * or a meeting has none of the three. A feed's row names no kind, so a release
+ * that lost all three reads as one that prints none, and is not named.
+ */
 function printsFigureBeside(event: Pick<EconEvent, "actual" | "forecast" | "prior">, field: "forecast" | "prior"): boolean {
   const others = field === "forecast" ? [event.actual, event.prior] : [event.actual, event.forecast];
   return others.some((figure) => !!figure?.trim());
