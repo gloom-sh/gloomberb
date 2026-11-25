@@ -11,7 +11,8 @@ import type { TickerResearchTabProps } from "../../../../types/plugin";
 import { Box } from "../../../../ui";
 import { useOpenDescription } from "../../shared/open-description";
 import { adrPairComparison, adrPairFigures, adrPairInputRows, adrPairLegs, adrPairQuotes, ahPairFigures, ahPairInputRows, type AdrPairInputRow } from "./model";
-import { useAhPair } from "./ah";
+import { mayBeAhLine, useAhPair } from "./ah";
+import { useIssuerListings } from "../overview/issuer-listings";
 
 // The price and its time first: a narrow pane keeps them and drops the role.
 const COLUMNS: DataTableColumn[] = [
@@ -52,8 +53,10 @@ export function AdrPairResearchTab({ width, height, focused }: TickerResearchTab
   const observed = useFxRateObservations([homeCurrency]).get(homeCurrency);
   const spot = spotFromUsdValue(observed?.rate, observed?.asOf);
   const comparison = legs ? adrPairComparison(legs, { receipt: receiptQuote, home: homeQuote }, spot) : null;
-  const ah = useAhPair(ticker?.metadata.ticker ?? symbol, ticker?.metadata.exchange || financials?.quote?.listingExchangeName,
-    resolveEntryData(ownEntry) ?? financials?.quote);
+  const listing = ticker?.metadata.ticker ?? symbol;
+  const exchange = ticker?.metadata.exchange || financials?.quote?.listingExchangeName;
+  const issuer = useIssuerListings(mayBeAhLine(listing, exchange) ? listing : null, exchange);
+  const ah = useAhPair(issuer, listing, exchange, resolveEntryData(ownEntry) ?? financials?.quote);
   const ahComparison = ah?.comparison ?? null;
   const openDescription = useOpenDescription();
   const [selectedIndex, setSelectedIndex] = useState(0);

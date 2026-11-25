@@ -133,8 +133,9 @@ interface OverviewTabProps {
   dividend?: OverviewDividendState;
   /** An A+H company's other line and how the two prices compare (useAhPair); none for any other listing. */
   ah?: AhPairState | null;
-  /** The shares one lot of an HKEX or SGX line trades in (useListingBoardLot); none elsewhere. */
+  /** The shares one lot of an HKEX or SGX line trades in; none elsewhere. */
   boardLot?: number | null;
+  relatedListings?: ReactNode;
   /** Where the ticker's snapshot load stands (useTickerSnapshotState), for the state shown before anything of it is in. */
   snapshot?: TickerSnapshotState;
   /** The rates `fn DES --tax-rate` set (taxRatesFromSettings): a fund's tax-equivalent yield and muni/Treasury ratio follow its facts. */
@@ -175,7 +176,7 @@ export function OverviewTab(props: OverviewTabProps) {
 const FUND_FACTS_LINK: OverviewFunctionLink = { name: "Fund Facts", templateId: "sec-etf-pane" };
 
 function ResolvedOverviewTab({
-  width, height, focused = false, ticker, financials, beta, onOpenChart, onOpenFunction, perpetuals, news, coin, dividend, ah = null, boardLot = null, tax = null,
+  width, height, focused = false, ticker, financials, beta, onOpenChart, onOpenFunction, perpetuals, news, coin, dividend, ah = null, boardLot = null, relatedListings, tax = null,
   chartScale: chartScaleChoice = "auto", onChartScaleChange,
 }: OverviewTabProps & { ticker: TickerRecord }) {
   const trade = useResearchTrading();
@@ -495,7 +496,7 @@ function ResolvedOverviewTab({
   const contractGridColumns = futuresFields.length > 0 ? contractColumns : textGridColumns(optionFields, contentWidth);
   const depositaryPair = listingDepositaryPair(financials);
   const stats = buildOverviewStats({
-    ahPair: ah ? { other: ah.side === "h" ? ah.pair.a : ah.pair.h, side: ah.side, premiumPercent: ah.comparison?.premiumPercent ?? null, linked: !!depositaryPair } : null,
+    ahPremium: ah?.comparison?.premiumPercent,
     quote,
     fundamentals: shownFundamentals,
     coin,
@@ -652,6 +653,8 @@ function ResolvedOverviewTab({
             />
           )}
         </Box>
+
+        {relatedListings}
 
         {perpetuals && <PaneLinkMenu>{typeof perpetuals === "function" ? perpetuals(contentWidth) : perpetuals}</PaneLinkMenu>}
 

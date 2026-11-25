@@ -53,3 +53,17 @@ test("metadata-aware desktop history preserves typed retention errors and does n
   const legacy = transport({ id: "legacy", name: "Legacy", getPriceHistory: async () => [] } as unknown as DataProvider);
   expect(legacy.registry.manifests()[0]!.operations.some(op => op.id.endsWith("WithMetadata"))).toBe(false);
 });
+
+test("the desktop advertises issuer listings and carries a venue-qualified related lookup to the provider", async () => {
+  const result = { issuer: "byd", name: "BYD", country: "CN", listings: [
+    { symbol: "1211:HKEX", exchange: "HKEX", name: "BYD", primary: false, boardLot: 100 },
+  ] };
+  const calls: unknown[] = [];
+  const desktop = transport({ id: "listings", name: "Listings", getIssuerListings: async (symbol, exchange, options) => {
+    calls.push([symbol, exchange, options?.related]);
+    return result;
+  }} as DataProvider);
+  expect(desktop.registry.manifests()[0]!.operations.find(op => op.id === "getIssuerListings")?.rendererSafe).toBe(true);
+  expect(await desktop.request("getIssuerListings", { symbol: "002594", exchange: "SZSE", related: true })).toEqual(result);
+  expect(calls).toEqual([["002594", "SZSE", true]]);
+});

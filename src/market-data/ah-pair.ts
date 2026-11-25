@@ -34,7 +34,7 @@ function listingKey(line: { symbol: string; exchange: string }): string {
  * any other company, and for one with more lines there than one of each.
  */
 export function ahPairOf(issuer: Pick<IssuerListings, "listings"> | null | undefined): AhPair | null {
-  const lines = issuer?.listings ?? [];
+  const lines = issuer?.listings.filter(line => !line.directoryOnly) ?? [];
   const h = lines.filter((line) => canonicalExchange(line.exchange) === "HKEX");
   const a = lines.filter((line) => A_SHARE_VENUES.has(canonicalExchange(line.exchange)));
   return h.length === 1 && a.length === 1 ? { h: listingKey(h[0]!), a: listingKey(a[0]!) } : null;

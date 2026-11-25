@@ -185,7 +185,7 @@ export function buildOverviewStats({
   nextEarnings,
   depositaryReceipt = false,
   depositaryPair = null,
-  ahPair = null,
+  ahPremium = null,
   cedearRatio = null,
   boardLot = null,
   today,
@@ -209,11 +209,8 @@ export function buildOverviewStats({
   depositaryReceipt?: boolean;
   /** The receipt pair the listing is a side of, as Gloom Cloud serves it; `receiptSide` when the listing is the receipt. */
   depositaryPair?: { pair: DepositaryPair; receiptSide: boolean } | null;
-  /**
-   * An A+H company's other line (`useAhPair`): the A share on the H line's DES, the H share on the A line's, with
-   * the H price over the A price at spot. `linked` when this DES has the ADR vs Home tab that shows them.
-   */
-  ahPair?: { other: string; side: "h" | "a"; premiumPercent: number | null; linked: boolean } | null;
+  /** H share premium or discount to the A share at spot. */
+  ahPremium?: number | null;
   /** A Buenos Aires CEDEAR's ratio in its company's shares, as Gloom Cloud serves it. */
   cedearRatio?: CedearRatio | null;
   /** The shares one lot of the listing trades in, as its exchange states it (an HKEX or SGX line). */
@@ -301,15 +298,8 @@ export function buildOverviewStats({
       ? { label: "ADR Ratio", value: `1:${count}`, detail: [adrRatioText(pair.ratio, pair.ordinary[0])!, `${count} sh per ADR`], link: ADR_PAIR }
       : { label: "ADR", value: pair.receipt, detail: [`1 ADR = ${count} of these shares`, `1:${count}`], link: ADR_PAIR });
   }
-  // An A+H company's other line, and the H price over the A price at spot, as ADR vs Home shows them.
-  if (ahPair) {
-    const premium = ahPair.premiumPercent == null ? null : premiumText(ahPair.premiumPercent);
-    stats.push({
-      label: ahPair.side === "h" ? "A Share" : "H Share",
-      value: ahPair.other,
-      ...(premium ? { detail: [`H ${premium} at spot`, `H ${premium.replace(/ (?:premium|discount|at par)$/, "")}`] } : {}),
-      ...(ahPair.linked ? { link: ADR_PAIR } : {}),
-    });
+  if (ahPremium != null) {
+    stats.push({ label: "H vs A", value: premiumText(ahPremium), link: ADR_PAIR });
   }
   if (cedearRatio) {
     const receipts = ratioCount(cedearRatio.receipts);

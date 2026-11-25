@@ -449,7 +449,7 @@ export class AssetDataRouter implements DataProvider {
   }
 
   /** The first source that holds the company's listings; one that fails is passed over. */
-  async getIssuerListings(symbol: string, exchange?: string, options?: { signal?: AbortSignal }): Promise<IssuerListings | null> {
+  async getIssuerListings(symbol: string, exchange?: string, options?: { signal?: AbortSignal; related?: boolean }): Promise<IssuerListings | null> {
     for (const provider of this.providersInPriorityOrder()) {
       if (!provider.getIssuerListings) continue;
       try {

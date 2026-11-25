@@ -73,6 +73,8 @@ export function assetDataProvider(provider: AssetDataProvider): AssetDataCapabil
       }, "query"),
       ...(provider.getSplitHistoryBatch ? { getSplitHistoryBatch: op((input: any) =>
         provider.getSplitHistoryBatch!(input.symbols ?? []), "query") } : {}),
+      ...(provider.getIssuerListings ? { getIssuerListings: op((input: any, { signal }) =>
+        provider.getIssuerListings!(input.symbol, input.exchange, { signal, related: input.related }), "query") } : {}),
       getTickerChanges: op((input: any) => provider.getTickerChanges?.(input.symbol) ?? Promise.resolve(null), "query"),
       getEarningsCalendar: op((input: any) => {
         if (!provider.getEarningsCalendar) throw new Error(`${provider.name} does not provide earnings calendar.`);

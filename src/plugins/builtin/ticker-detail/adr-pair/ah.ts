@@ -1,5 +1,4 @@
-import { useCallback } from "react";
-import { useAsyncResource } from "../../../../react/async-resource";
+import type { IssuerListings } from "../../../../types/issuer-listings";
 import { useFxRateObservations, useQuoteEntry } from "../../../../market-data/hooks";
 import { resolveEntryData } from "../../../../market-data/selectors";
 import { pairPriceInput } from "../../../../market-data/depositary-pair";
@@ -8,7 +7,6 @@ import {
 } from "../../../../market-data/ah-pair";
 import type { Quote } from "../../../../types/financials";
 import { canonicalExchange, parsePublicTickerKey } from "../../../../utils/exchanges";
-import { useAssetData } from "../../../runtime";
 
 /** Venues an A+H company's lines trade on. */
 const AH_VENUES = new Set(["HKEX", "SSE", "SZSE"]);
@@ -39,15 +37,8 @@ export interface AhPairState {
  * a listing off those venues or of a company that is no A+H pair. `ownQuote`
  * is the listing's own price as the pane already shows it.
  */
-export function useAhPair(symbol: string | null | undefined, exchange: string | null | undefined, ownQuote: Quote | null | undefined): AhPairState | null {
-  const dataProvider = useAssetData();
-  const reads = mayBeAhLine(symbol, exchange) && !!dataProvider?.getIssuerListings;
-  const loader = useCallback(
-    () => dataProvider!.getIssuerListings!(symbol!, exchange ?? undefined),
-    [dataProvider, exchange, symbol],
-  );
-  const issuer = useAsyncResource(reads ? loader : null);
-  const pair = reads ? ahPairOf(issuer.data) : null;
+export function useAhPair(issuer: IssuerListings | null, symbol: string | null | undefined, exchange: string | null | undefined, ownQuote: Quote | null | undefined): AhPairState | null {
+  const pair = ahPairOf(issuer);
   const side = pair && symbol ? ahPairSide(pair, symbol, exchange) : null;
   const other = pair && side ? (side === "h" ? pair.a : pair.h) : null;
   const otherEntry = useQuoteEntry(other, null);

@@ -202,7 +202,7 @@ export function listingSuffixExchange(ticker: string): string | undefined {
  * them as 0700 and 0005.
  */
 export function hongKongListingCode(ticker: string, exchange: string): string {
-  return isHongKongExchange(exchange) && /^\d+$/.test(ticker) ? ticker.padStart(4, "0") : ticker;
+  return isHongKongExchange(exchange) && /^(?:\d{1,3}|0\d{4})$/.test(ticker) && Number(ticker) > 0 ? String(Number(ticker)).padStart(4, "0") : ticker;
 }
 
 function normalizeListingTicker(ticker: string, exchange: string): string {
