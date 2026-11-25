@@ -24,6 +24,8 @@ export interface QueryStoreOptions<T> extends QueryStoreRetention {
    * source (a streamed FX rate over a loaded one) on whatever writes it.
    */
   project?: (key: string, entry: QueryEntry<T>) => QueryEntry<T>;
+  /** Keeps a compact, synchronously readable answer once no pane is watching it. */
+  archive?: (entry: QueryEntry<T>) => (() => QueryEntry<T>) | null;
   /**
    * Keeps each answer as a saved copy under this name (data/pane-saved-copies.ts):
    * a key nothing has loaded yet this run starts from its copy, of any age, as
@@ -35,8 +37,14 @@ export interface QueryStoreOptions<T> extends QueryStoreRetention {
 /** What a saved copy keeps of an entry: its data and where and when it came from. */
 type SavedEntry<T> = Pick<QueryEntry<T>, "data" | "history" | "source" | "asOf" | "delayMinutes">;
 
+interface ArchivedEntry<T> {
+  restore: () => QueryEntry<T>;
+  decoded: WeakRef<QueryEntry<T>>;
+  saved: boolean;
+}
+
 export class QueryStore<T> {
-  private readonly entries = new Map<string, QueryEntry<T>>();
+  private readonly entries = new Map<string, QueryEntry<T> | ArchivedEntry<T>>();
   private readonly hydratedScopes = new Map<string, string>();
   private readonly savedEntries = new WeakSet<QueryEntry<T>>();
   /** Stored keys no pane is watching, least recently used first. */
@@ -53,7 +61,8 @@ export class QueryStore<T> {
   }
 
   get(key: string): QueryEntry<T> {
-    const entry = this.entries.get(key);
+    const held = this.entries.get(key);
+    const entry = held && this.decode(held);
     const hydratedScope = this.hydratedScopes.get(key);
     if (entry && hydratedScope === undefined) return entry;
     const scope = this.options.savedCopies?.scope() ?? null;
@@ -72,13 +81,17 @@ export class QueryStore<T> {
   }
 
   set(key: string, entry: QueryEntry<T>): void {
-    this.save(key, this.store(key, entry));
-    this.onChange(key);
+    this.publish(key, entry);
   }
 
   update(key: string, updater: (current: QueryEntry<T>) => QueryEntry<T>): QueryEntry<T> {
-    const next = this.store(key, updater(this.get(key)));
+    return this.publish(key, updater(this.get(key)));
+  }
+
+  private publish(key: string, entry: QueryEntry<T>): QueryEntry<T> {
+    const next = this.store(key, entry);
     this.save(key, next);
+    if (this.unwatched.has(key)) this.archive(key);
     this.onChange(key);
     return next;
   }
@@ -119,8 +132,11 @@ export class QueryStore<T> {
   /** A pane started watching `key`, so it is kept until released. */
   watch(key: string): void {
     this.unwatched.delete(key);
-    const entry = this.entries.get(key);
-    if (entry && this.options.savedCopies?.observedOnly) this.save(key, entry);
+    const held = this.entries.get(key);
+    if (!held) return;
+    const entry = this.decode(held);
+    if (held !== entry) this.entries.set(key, entry);
+    if (this.options.savedCopies?.observedOnly) this.save(key, entry);
   }
 
   /** The last pane let go. Keep live results in the LRU, but leave restored copies on disk. */
@@ -131,7 +147,9 @@ export class QueryStore<T> {
       this.options.onEvict?.(key);
       return;
     }
-    if (this.entries.has(key)) this.retain(key);
+    if (!this.entries.has(key)) return;
+    this.retain(key);
+    if (this.unwatched.has(key)) this.archive(key);
   }
 
   /** Entries held right now. */
@@ -144,6 +162,24 @@ export class QueryStore<T> {
     this.entries.set(key, next);
     this.retain(key);
     return next;
+  }
+
+  private decode(held: QueryEntry<T> | ArchivedEntry<T>): QueryEntry<T> {
+    if (!("restore" in held)) return held;
+    const existing = held.decoded.deref();
+    if (existing) return existing;
+    const entry = held.restore();
+    held.decoded = new WeakRef(entry);
+    if (held.saved) this.savedEntries.add(entry);
+    return entry;
+  }
+
+  private archive(key: string): void {
+    if (!this.options.archive || this.hydratedScopes.has(key)) return;
+    const entry = this.entries.get(key);
+    if (!entry || "restore" in entry) return;
+    const restore = this.options.archive(entry);
+    if (restore) this.entries.set(key, { restore, decoded: new WeakRef(entry), saved: this.savedEntries.has(entry) });
   }
 
   /**

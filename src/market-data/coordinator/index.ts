@@ -6,7 +6,7 @@ import type { CorporateActionsData, OptionsChain, PricePoint, Quote, TickerFinan
 import { fetchHistoryResult, type HistoryResultRequest } from "../../sources/history-result";
 import type { ChartRequest, InstrumentRef, OptionsRequest, SecFilingsRequest } from "../request-types";
 import { QueryStore, type QueryStoreRetention } from "../query-store";
-import type { QueryEntry } from "../result-types";
+import { createIdleEntry, type QueryEntry } from "../result-types";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE, isNetworkFailure } from "../../utils/network-failure";
 import { cachedValueSavedAt, type CachedQueryHandle } from "../../data/cached-query";
 import {
@@ -37,6 +37,7 @@ import {
   freshChartFallback,
   normalizeFreshChartData,
 } from "./chart";
+import { archiveChartEntry, archiveSnapshotEntry } from "./history-archive";
 import { MarketDataCoordinatorEvents } from "./events";
 import type { DataFrameScheduler } from "../frame-scheduler";
 import {
@@ -156,10 +157,16 @@ interface RememberedReload {
   batch?: { kind: "quote" | "snapshot"; instrument: InstrumentRef };
 }
 
-// A store hands out a fresh idle entry for every key it has never seen, so
-// two idle reads of the same key must count as the same entry.
-function sameQueryEntry<T>(left: QueryEntry<T>, right: QueryEntry<T>): boolean {
-  return left === right || (left.phase === "idle" && right.phase === "idle" && left.data === null && right.data === null);
+const IDLE_MEMO_KEY = createIdleEntry<never>();
+
+function financialsMemoKey<T>(entry: QueryEntry<T>): QueryEntry<T> {
+  return entry.phase === "idle" && entry.data === null && entry.lastGoodData === null ? IDLE_MEMO_KEY : entry;
+}
+
+interface FinancialsMemo {
+  streamDownSince: number | null;
+  interrupted: boolean;
+  financials: TickerFinancials | null;
 }
 
 export interface MarketDataCoordinatorOptions {
@@ -226,17 +233,6 @@ export class MarketDataCoordinator {
   };
 
   /**
-   * The merged financials view below is derived from a snapshot entry and keyed
-   * the same way, so it has to go when that entry does. Left behind it would
-   * hold its own normalized copy of the price history, which is the larger half
-   * of what the snapshot key costs.
-   */
-  private readonly retainedSnapshots: QueryStoreRetention = {
-    ...this.retained,
-    onEvict: (key) => { this.financialsSnapshotCache.delete(key); },
-  };
-
-  /**
    * Options, filings and article summaries mirror a provider query that holds
    * the same value. Evicting the entry only frees it once the subscription to
    * that query goes too; the router then drops queries nothing holds.
@@ -258,8 +254,16 @@ export class MarketDataCoordinator {
   private readonly quoteStore = new QueryStore<Quote>((key) => this.events.bump(key), {
     savedCopies: { name: "quote", scope: this.displayScope, writeIntervalMs: 30_000, mark: quoteServedFromSavedCopy },
   });
-  private readonly snapshotStore = new QueryStore<TickerFinancials>((key) => this.events.bump(key), { ...this.retainedSnapshots, savedCopies: { name: "snapshot", scope: this.displayScope, observedOnly: true } });
-  private readonly chartStore = new QueryStore<PricePoint[]>((key) => this.events.bump(key), { ...this.retained, savedCopies: { name: "chart", scope: this.displayScope, observedOnly: true } });
+  private readonly snapshotStore = new QueryStore<TickerFinancials>((key) => this.events.bump(key), {
+    ...this.retained,
+    archive: archiveSnapshotEntry,
+    savedCopies: { name: "snapshot", scope: this.displayScope, observedOnly: true },
+  });
+  private readonly chartStore = new QueryStore<PricePoint[]>((key) => this.events.bump(key), {
+    ...this.retained,
+    archive: archiveChartEntry,
+    savedCopies: { name: "chart", scope: this.displayScope, observedOnly: true },
+  });
   private readonly optionsStore = new QueryStore<OptionsChain>((key) => this.events.bump(key), { ...this.retainedCachedQueries, savedCopies: { name: "options", scope: this.displayScope } });
   private readonly secFilingsStore = new QueryStore<SecFilingItem[]>((key) => this.events.bump(key), { ...this.retainedCachedQueries, savedCopies: { name: "sec-filings", scope: this.displayScope } });
   private readonly secDocumentsStore = new QueryStore<SecFilingDocument[]>((key) => this.events.bump(key), this.retainedCachedQueries);
@@ -462,23 +466,14 @@ export class MarketDataCoordinator {
   }
 
   /**
-   * Building the merged view re-normalizes the whole price history, and every
-   * consumer asks for it on every render. The result is kept per instrument
-   * until one of the three store entries is replaced, so callers also get a
-   * stable identity to memoize on.
+   * Readers get a stable merged view while all three source entries live.
+   * The memo must not keep a chart or snapshot alive after its store lets go,
+   * including when the other source entries are still cached or never loaded.
    */
-  private readonly financialsSnapshotCache = new Map<string, {
-    snapshotEntry: QueryEntry<TickerFinancials>;
-    quoteEntry: QueryEntry<Quote>;
-    chartEntry: QueryEntry<PricePoint[]>;
-    streamDownSince: number | null;
-    /** Whether the quote read as interrupted: a market that opens while the stream is down turns it. */
-    interrupted: boolean;
-    financials: TickerFinancials | null;
-  }>();
+  private readonly financialsSnapshotCache = new WeakMap<QueryEntry<PricePoint[]>,
+    WeakMap<QueryEntry<TickerFinancials>, WeakMap<QueryEntry<Quote>, FinancialsMemo>>>();
 
   getTickerFinancialsSync(instrument: InstrumentRef): TickerFinancials | null {
-    const key = buildSnapshotKey(instrument);
     const quoteKey = buildQuoteKey(instrument);
     const snapshotEntry = this.getSnapshotEntry(instrument);
     // The quote as stored: it is resolved against the snapshot's first, and marked stale after.
@@ -486,15 +481,13 @@ export class MarketDataCoordinator {
     const chartEntry = this.getChartEntry(createBaselineChartRequest(instrument));
     const streamDownSince = this.quoteStreamDownSince;
     const interrupted = this.isInterruptedQuote(quoteKey, quoteEntry, [quoteEntry, snapshotEntry]);
-    const cached = this.financialsSnapshotCache.get(key);
-    if (
-      cached
-      && sameQueryEntry(cached.snapshotEntry, snapshotEntry)
-      && sameQueryEntry(cached.quoteEntry, quoteEntry)
-      && sameQueryEntry(cached.chartEntry, chartEntry)
-      && cached.streamDownSince === streamDownSince
-      && cached.interrupted === interrupted
-    ) {
+    const chartMemoKey = financialsMemoKey(chartEntry);
+    const snapshotMemoKey = financialsMemoKey(snapshotEntry);
+    const quoteMemoKey = financialsMemoKey(quoteEntry);
+    let bySnapshot = this.financialsSnapshotCache.get(chartMemoKey);
+    let byQuote = bySnapshot?.get(snapshotMemoKey);
+    const cached = byQuote?.get(quoteMemoKey);
+    if (cached && cached.streamDownSince === streamDownSince && cached.interrupted === interrupted) {
       return cached.financials;
     }
     let financials = buildTickerFinancialsSnapshot(snapshotEntry, quoteEntry, chartEntry);
@@ -502,7 +495,9 @@ export class MarketDataCoordinator {
     if (financials?.quote && financials.quote.stale !== true && interrupted) {
       financials = { ...financials, quote: { ...financials.quote, stale: true } };
     }
-    this.financialsSnapshotCache.set(key, { snapshotEntry, quoteEntry, chartEntry, streamDownSince, interrupted, financials });
+    if (!bySnapshot) this.financialsSnapshotCache.set(chartMemoKey, bySnapshot = new WeakMap());
+    if (!byQuote) bySnapshot.set(snapshotMemoKey, byQuote = new WeakMap());
+    byQuote.set(quoteMemoKey, { streamDownSince, interrupted, financials });
     return financials;
   }
 
@@ -573,7 +568,11 @@ export class MarketDataCoordinator {
     }
   }
 
-  /** Remembers how to ask again for `key` (`reloadAfterOutage`). */
+  /**
+   * Remembers how to ask again for `key` (`reloadAfterOutage`). Bind chart
+   * retries rather than sharing a closure context with the load: that context
+   * can hold the previously displayed bars long after the store lets go.
+   */
   private rememberReload<T>(key: string, store: QueryStore<T>, reload: () => Promise<unknown>, batch?: RememberedReload["batch"]): void {
     this.reloads.set(key, { entry: () => store.get(key), reload, batch });
     if (this.reloads.size <= this.reloadsPruneAt) return;
@@ -751,7 +750,7 @@ export class MarketDataCoordinator {
   ): Promise<QueryEntry<PricePoint[]>> {
     const key = buildChartKey(request);
     this.chartRequests.set(key, request);
-    this.rememberReload(key, this.chartStore, () => this.loadChart(request));
+    this.rememberReload(key, this.chartStore, this.loadChart.bind(this, request));
     const current = this.chartStore.get(key);
     const currentData = normalizeFreshChartData(resolveEntryData(current), request, current.history, current.fetchedAt);
     if (!options.forceRefresh && currentData.length > 0 && hasFreshEntryData(current, CHART_CACHE_TTL_MS)) {
