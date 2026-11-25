@@ -316,7 +316,7 @@ export function PortfolioTickerTable({
       priceColumn.width,
     ))
     : 0, [columnContext.valuationBasis, priceColumn, resolveCell, sortedTickers, tableFinancialsMap]);
-  // BOOK UTC grows to show a book's session and feed marks whole (◷AH Tue 23:40), as LAST grows for its session mark.
+  // BOOK UTC grows to show a book's session and feed marks whole (◷AH 11-24 23:40), as LAST grows for its session mark.
   const bookColumn = columns.find((column) => column.id === "book_time");
   const bookWidth = useMemo(() => bookColumn ? Math.min(QUOTE_BOOK_CELL_MAX_WIDTH, sortedTickers.reduce(
     (widest, ticker) => Math.max(widest, displayWidth(resolveCell(bookColumn, ticker, tableFinancialsMap.get(ticker.metadata.ticker)).text)),

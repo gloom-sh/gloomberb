@@ -2134,13 +2134,13 @@ A row's LAST, CHG and CHG% are the price its value uses, so LAST times the share
 
 ### BOOK UTC in the PF pane
 
-BOOK UTC is when a row's bid and ask were quoted, which is not when its last trade was. It reads as AS OF UTC does (`Wed 14:58` over the last week, then `18 Sep`), with what the book is as a mark before the time:
+BOOK UTC is when a row's bid and ask were quoted, which is not when its last trade was. Every row gives the calendar day and the clock, today's too: `11-24 23:40` is 24 November, month before day as in an ISO date, and a book from another year leads with it (`2025-09-19 00:30`). What the book is stands as a mark before the time:
 
 - The session, where it is not the regular one: `PM`, `AH`, `lunch` for a venue's midday break, and `closed` for a quote left while the market was shut. No mark is the regular session, or a venue whose hours are not known.
-- The feed, first, by the book's own source, which can differ from the price's: `◷` for a delayed feed (`◷AH Tue 23:40`) and `snap` for a snapshot. No mark is a real-time book, or a source that does not say.
+- The feed, first, by the book's own source, which can differ from the price's: `◷` for a delayed feed (`◷AH 11-24 23:40`) and `snap` for a snapshot. No mark is a real-time book, or a source that does not say.
 - `not dated` is a book its source sent without a time. It is never given the trade's time, and its marks are the quote's own state.
 
-The column is 10 cells and widens to its longest row, 22 at most. `gloom ticker`, DES and the order ticket say the same in words (`Tue 24 Nov 23:40 UTC · after-hours · delayed`), and a CSV export of the table keeps the whole time in UTC.
+The column is 11 cells and widens to its longest row, 28 at most (`snap closed 2025-09-19 00:30`). `gloom ticker`, DES and the order ticket say the same in words (`Tue 24 Nov 23:40 UTC · after-hours · delayed`), and a CSV export of the table keeps the whole time in UTC.
 
 ### Futures
 

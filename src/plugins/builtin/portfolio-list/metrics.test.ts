@@ -746,7 +746,7 @@ describe("watchlist and portfolio LAST, CHG and CHG% around the close", () => {
     const context: ColumnContext = { ...defaultColumnContext, now: Date.parse("2026-10-09T01:00:00Z") };
     const bookAt = Date.parse("2026-10-08T23:40:10.250Z");
     const dated = createFinancials({ quote: { ...afterHours, bid: 165.3, ask: 165.5, bidAskTime: bookAt, dataSource: "delayed" } });
-    expect(getColumnValue(column("book_time"), ticker, dated, context)).toEqual({ text: "◷AH Thu 23:40", value: "2026-10-08T23:40:10.250Z" });
+    expect(getColumnValue(column("book_time"), ticker, dated, context)).toEqual({ text: "◷AH 10-08 23:40", value: "2026-10-08T23:40:10.250Z" });
     expect(getSortValue(column("book_time"), ticker, dated, context)).toBe(bookAt);
     const undated = createFinancials({ quote: { ...afterHours, bid: 165.3, ask: 165.5, dataSource: "delayed" } });
     expect(getColumnValue(column("book_time"), ticker, undated, context)).toEqual({ text: "◷AH not dated", color: colors.textDim });
