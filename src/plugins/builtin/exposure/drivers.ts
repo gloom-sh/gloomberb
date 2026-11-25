@@ -1,4 +1,4 @@
-import { formatDay } from "../../../utils/day-format";
+import { formatDay, isoDay } from "../../../utils/day-format";
 import type { ExposureExtensionObservation, ExposurePayload } from "../../../api-client/exposure";
 import { formatCompact, formatNumber } from "../../../utils/format";
 import type { ExposureRow } from "./model";
@@ -15,7 +15,9 @@ export function driverValue(row: ExposureExtensionObservation): string {
   if (row.range?.low != null && row.range.high != null) return `${qualifier}${number(row.range.low)} to ${number(row.range.high)}`;
   if (row.range?.low != null) return `${row.qualifier === "greater_than" ? ">" : "≥"} ${number(row.range.low)}`;
   if (row.range?.high != null) return `${row.qualifier === "less_than" ? "<" : "≤"} ${number(row.range.high)}`;
-  return row.valueText ?? (row.status ? row.status.charAt(0).toUpperCase() + row.status.slice(1) : "Unknown");
+  // A date the filing states (a maturity) reads day first, as every table writes a day.
+  if (row.valueText != null) return isoDay(row.valueText) === row.valueText ? formatDay(row.valueText) : row.valueText;
+  return (row.status ? row.status.charAt(0).toUpperCase() + row.status.slice(1) : "Unknown");
 }
 /** The value with its unit in one cell, as the report prints it: 201.18B USD, ≈ 70%. Wording without a number stands alone. */
 export function driverAmount(row: ExposureExtensionObservation): string {

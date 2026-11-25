@@ -6,7 +6,7 @@ import { fiscalLabel } from "../company-kpis/model";
 import { humanLabel } from "../shared/research-cells";
 import { freePreviewNote } from "../shared/free-preview";
 import { fetchExposure, fetchScenarios } from "./client";
-import { DEFAULT_SCENARIO, exposureCellText, LIBRARY_SCENARIO_IDS, parseCustomScenario, parseHoldings, pathRows, portfolioRows, scenarioTitle, tableRows, TABS, type ExposureRow } from "./model";
+import { DEFAULT_SCENARIO, exposureCellText, LIBRARY_SCENARIO_IDS, parseCustomScenario, parseHoldings, pathRows, periodText, portfolioRows, scenarioTitle, tableRows, TABS, type ExposureRow } from "./model";
 import { portfolioHoldings, watchlistHoldings } from "./holdings";
 import { describeCollections, findNamedCollection } from "../../../portfolio/collection-name";
 import { driverAmount, driverRows, driverScope } from "./drivers";
@@ -139,12 +139,15 @@ const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "
 function driverPeriod(driver: ExposureExtensionObservation): { short: string; long: string } {
   const text = driver.period?.trim() || MISSING_VALUE;
   const match = /^(?:full\s+)?(?:Q([1-4])\s+)?(?:fiscal(?:\s+year)?\s+|FY\s?)(\d{4})(?:\s+ended\s+(.+))?$/i.exec(text);
-  if (!match) return { short: text, long: text };
+  if (!match) {
+    const day = periodText(text);
+    return { short: day, long: day };
+  }
   const quarter = match[1] ? Number(match[1]) : null;
   const short = fiscalLabel({ period: { start: null, end: null, kind: quarter ? "quarter" : "year", fiscalYear: Number(match[2]), fiscalQuarter: quarter, label: text } });
   const ended = /^([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})$/.exec(match[3]?.trim() ?? "");
   const month = ended && MONTHS.includes(ended[1]!.toLowerCase()) ? `${ended[1]!.charAt(0).toUpperCase()}${ended[1]!.slice(1).toLowerCase()}` : null;
-  return { short, long: month ? `${short} · ${ended![2]} ${month} ${ended![3]}` : short };
+  return { short, long: month ? `${short} · ${ended![2]!.padStart(2, "0")} ${month} ${ended![3]}` : short };
 }
 const DRIVER_COLUMNS = [holding("Holding"), column("label", "Company driver", row => row.driver ? driverLabel(row.driver) : row.label, { min: NAME }),
   column("value", "Value", row => row.driver ? driverAmount(row.driver) : MISSING_VALUE, { right: true }),

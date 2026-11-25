@@ -165,7 +165,7 @@ describe("headless pane printer", () => {
     expect(header([shared[0]!])).toContain("Period");
   });
 
-  test("report rows keep midnight instants while calendar series dates stay short", () => {
+  test("report rows keep midnight instants while calendar days print day first, as tables write them", () => {
     const definition: HeadlessPaneDefinition<"rows"> = {
       shape: "rows", argument: { kind: "none" }, options: [], load: () => ({ rows: [] }),
     };
@@ -177,7 +177,7 @@ describe("headless pane printer", () => {
     const lines = renderHeadlessPaneText(definition, result, args, "Times").split("\n");
     expect(lines.find((line) => line.startsWith("Date"))).toContain("2026-10-09 00:00 UTC");
     expect(lines.find((line) => line.startsWith("ISO"))).toContain("2026-10-09 00:00 UTC");
-    expect(lines.find((line) => line.startsWith("Calendar"))?.trim()).toEndWith("2026-10-09");
+    expect(lines.find((line) => line.startsWith("Calendar"))?.trim()).toEndWith("09 Oct 2026");
     const series: HeadlessPaneDefinition<"series"> = {
       shape: "series", argument: { kind: "none" }, options: [], load: () => ({ series: [] }),
     };
@@ -241,7 +241,7 @@ describe("headless pane printer", () => {
     };
 
     const text = renderHeadlessPaneText(definition, result, args, "Price");
-    expect(text).toContain("2026-09-02");
+    expect(text).toContain("02 Sep 2026");
     expect(text).toContain("Statistics");
     expect(jsonData(definition, result)).toMatchObject({
       ok: true,
@@ -633,9 +633,9 @@ test("a series of a reported total prints compact in text, while JSON and CSV ke
     { id: "eps", label: "CSCO EPS", unit: "USD/share", textCompact: true, points: [{ date: "2026-07-25", value: 2.2 }] },
   ] };
   const lines = renderHeadlessPaneText(definition, result, args, "Fundamental Graph").split("\n");
-  expect(lines.find((line) => line.startsWith("CSCO Revenue"))).toMatch(/2026-07-25 +63\.33B +USD/);
+  expect(lines.find((line) => line.startsWith("CSCO Revenue"))).toMatch(/25 Jul 2026 +63\.33B +USD/);
   // A figure under a thousand is not compacted into a different number.
-  expect(lines.find((line) => line.startsWith("CSCO EPS"))).toMatch(/2026-07-25 +2\.2 +USD\/share/);
+  expect(lines.find((line) => line.startsWith("CSCO EPS"))).toMatch(/25 Jul 2026 +2\.2 +USD\/share/);
   expect(JSON.stringify(jsonData(definition, result))).not.toContain("textCompact");
   expect(JSON.stringify(jsonData(definition, result))).toContain("63325000000");
   const freshness = deriveHeadlessFreshness(definition, result);
@@ -651,7 +651,7 @@ test("a series observed by the day is dated without a time in text and CSV, one 
       { date: Date.parse("2026-10-15T00:00:00Z"), value: 31.5428571428 }, { date: Date.parse("2026-10-16T23:59:49Z"), value: 17.9383219955 }] },
   ] };
   const lines = renderHeadlessPaneText(definition, result, args, "Custom Chart").split("\n");
-  expect(lines.find((line) => line.startsWith("VIX 3M / VIX ratio"))).toMatch(/ 2026-10-16 +1\.026 +ratio /);
+  expect(lines.find((line) => line.startsWith("VIX 3M / VIX ratio"))).toMatch(/ 16 Oct 2026 +1\.026 +ratio /);
   expect(lines.find((line) => line.startsWith("Fear & Greed index"))).toMatch(/ 2026-10-16 23:59 UTC +17\.9 +score /);
   // The export keeps every digit, dated as the text is.
   const freshness = deriveHeadlessFreshness(definition, result);
@@ -672,7 +672,7 @@ test("a windowed series prints the dated points the export keeps, not just the s
   const report = await reportOf({ shape: "series", argument: { kind: "none" }, options: [], load: () => ({
     series: [{ id: "transits", label: "Transits", unit: "vessels", points }],
   }) }, "", { tail: 3 });
-  expect(report.text.replace(/^─[^\n]*\n/gm, "")).toMatch(/Transits \(vessels\)\s+Date\s+Value\s+2026-11-14\s+4\s+2026-11-15\s+5\s+2026-11-16\s+6/);
+  expect(report.text.replace(/^─[^\n]*\n/gm, "")).toMatch(/Transits \(vessels\)\s+Date\s+Value\s+14 Nov 2026\s+4\s+15 Nov 2026\s+5\s+16 Nov 2026\s+6/);
   expect(report.text).not.toContain("2026-11-13");
   expect(report.text).toContain("newest 3 of 4 rows");
   expect(report.tables?.tables[0]?.rows).toEqual(points.slice(1).map(({ date, value }) => [date, value]));

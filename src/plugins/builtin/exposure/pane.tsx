@@ -9,7 +9,8 @@ import { useAppSelector, useAsyncResource, useAutoRefresh, useMarketData, usePan
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, useRendererHost, useUiCapabilities } from "../../../ui";
-import { withCountryFlag } from "../../../components/ui/country-flag";
+import { withCountryFlag } from "../../../components/ui/country-flag";import { withCountryFlag } from "../../../components/ui/country-flag";
+import { formatDay } from "../../../components/ui/day-cell";
 import { logFailure } from "../../../utils/log-failure";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
@@ -29,7 +30,7 @@ function EvidenceItem({ item }: { item: ExposureEvidence }) {
   const colors = useThemeColors();
   const host = useRendererHost();
   return <Box flexDirection="column" paddingY={1}>
-    <KeyValueRow labelWidth={20} label="Evidence" value={`${item.tier} · ${item.asOf ?? "undated"}`} detail={item.confidence === null ? undefined : `${Math.round(item.confidence * 100)}% confidence`} />
+    <KeyValueRow labelWidth={20} label="Evidence" value={`${item.tier} · ${item.asOf ? formatDay(item.asOf) : "undated"}`} detail={item.confidence === null ? undefined : `${Math.round(item.confidence * 100)}% confidence`} />
     <KeyValueRow labelWidth={20} label="Period / units" value={`${item.period ? periodText(item.period) : "unknown"} · ${item.units}${item.currency ? ` ${item.currency}` : ""}`} />
     {item.revision ? <KeyValueRow labelWidth={20} label="Revision" value={item.revision} /> : null}
     {item.quote ? <Text fg={colors.textBright}>{item.quote}</Text> : <Text fg={colors.textDim}>{item.tier === "user" ? "User-supplied assumption" : "Structured observation; no verbatim quote"}</Text>}
@@ -48,7 +49,7 @@ function ExposureDetail({ row, data, width }: { row: ExposureRow | null; data: E
   return <ScrollBox flexGrow={1} flexBasis={0} minHeight={0} scrollY contentOptions={{ paddingX: 1 }}>
     {row?.driver ? <>
       <KeyValueRow labelWidth={20} label="Value / units" value={`${driverValue(row.driver)} ${driverUnits(row.driver)}`} />
-      <KeyValueRow labelWidth={20} label="Period" value={row.driver.period ?? "Unknown"} />
+      <KeyValueRow labelWidth={20} label="Period" value={row.driver.period ? periodText(row.driver.period) : "Unknown"} />
       <KeyValueRow labelWidth={20} label="As of" value={row.driver.asOf?.slice(0, 10) ?? "Unknown"} />
       {row.driver.valueText ? <KeyValueRow labelWidth={20} label="Reported wording" value={row.driver.valueText} /> : null}
       {row.driver.status ? <KeyValueRow labelWidth={20} label="Status" value={humanLabel(row.driver.status)} /> : null}

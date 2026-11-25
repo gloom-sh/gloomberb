@@ -34,8 +34,8 @@ test("real disclosure snapshot shows the actual scenario and evidence stack reta
   expect(frame).toContain("15.5%");
   await tui.emitKeypress({ name: "e" });
   const evidence = await tui.waitForFrameToContain("Period / units");
-  expect(evidence).toContain("2026-01-25");
-  expect(evidence).toContain("primary");
+  expect(evidence).toContain("25 Jan 2026");
+  expect(evidence).toContain("primary · 25 Feb 2026");
   await tui.emitKeypress({ name: "escape" });
   expect(await tui.waitForFrameToContain("HOLDING")).toContain("NVDA");
   await tui.emitKeypress({ name: "v" });

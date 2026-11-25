@@ -31,14 +31,14 @@ describe("MarketBoardStack", () => {
   test("a stale or partial row reads its whole date and the word at wide and narrow widths", async () => {
     for (const width of [100, 64, 56]) {
       const frame = await board(width, [row("DGS2", "stale"), row("DGS10", "available")]);
-      expect(frame).toMatch(/(2026-)?10-09 stale/);
+      expect(frame).toMatch(/09 Oct( 2026)? stale/);
       expect(frame).not.toContain("…");
       const partial = await board(width, [row("DGS2", "partial"), row("DGS10", "available")]);
-      expect(partial).toMatch(/(2026-)?10-09 so far/);
+      expect(partial).toMatch(/09 Oct( 2026)? so far/);
       expect(partial).not.toContain("…");
     }
     const fresh = await board(100, [row("DGS2", "available")]);
-    expect(fresh).toContain("2026-10-09");
+    expect(fresh).toContain("09 Oct 2026");
     expect(fresh).not.toContain("stale");
   });
 });
@@ -60,6 +60,6 @@ test("a narrow board keeps the value and its date, giving up the change and the 
     expect(frame).toContain("5Y");
     expect(frame).toContain("1276.6bp");
     expect(frame).toContain("AS OF");
-    expect(frame).toMatch(/(2026-)?10-09/);
+    expect(frame).toMatch(/09 Oct( 2026)?/);
   }
 });
