@@ -17,6 +17,14 @@ export const VIEW_TABS: Array<{ label: string; value: ViewMode }> = [
 /** `s` steps through the views in tab order. */
 export const DISCLOSURE_TABS = [...VIEW_TABS, { label: "Disclosures", value: "disclosures" as const }];
 
+export function holderTabs(options: { hasDisclosures: boolean; hasCcass: boolean }): Array<{ label: string; value: ViewMode }> {
+  return [
+    ...VIEW_TABS,
+    ...(options.hasDisclosures ? [{ label: "Disclosures", value: "disclosures" as const }] : []),
+    ...(options.hasCcass ? [{ label: "CCASS", value: "ccass" as const }] : []),
+  ];
+}
+
 export function nextViewMode(current: ViewMode, tabs = VIEW_TABS): ViewMode {
   const index = tabs.findIndex((tab) => tab.value === current);
   return tabs[(index + 1) % tabs.length]!.value;

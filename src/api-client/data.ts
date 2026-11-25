@@ -546,6 +546,81 @@ export class CloudDataApi {
     );
   }
 
+  /** Hong Kong CCASS custody holdings, bucketed flows and daily deltas for an HK code or linked ADR. */
+  getHkCcassStock(
+    code: string,
+    options: { from?: string; date?: string; limit?: number; signal?: AbortSignal } = {},
+  ) {
+    const qs = new URLSearchParams();
+    if (options.from) qs.set("from", options.from);
+    if (options.date) qs.set("date", options.date);
+    if (options.limit) qs.set("limit", String(options.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return this.request<import("./hk-ccass").HkCcassStockPayload>(
+      `/cloud/hk-ccass/stocks/${encodeURIComponent(code)}${suffix}`,
+      options.signal ? { signal: options.signal } : undefined,
+    );
+  }
+
+  /** Market-wide Hong Kong CCASS big changes and pre-placement deposits. */
+  getHkCcassBigChanges(
+    options: { depositsOnly?: boolean; minPct?: number; code?: string; limit?: number; signal?: AbortSignal } = {},
+  ) {
+    const qs = new URLSearchParams();
+    if (options.depositsOnly) qs.set("depositsOnly", "true");
+    if (options.minPct != null) qs.set("minPct", String(options.minPct));
+    if (options.code) qs.set("code", options.code);
+    if (options.limit) qs.set("limit", String(options.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return this.request<import("./hk-ccass").HkCcassBigChangesPayload>(
+      `/cloud/hk-ccass/big-changes${suffix}`,
+      options.signal ? { signal: options.signal } : undefined,
+    );
+  }
+
+  /** Market-wide Hong Kong CCASS Top-5 and Top-10 concentration rankings. */
+  getHkCcassConcentration(
+    options: { sortBy?: "top5" | "top10" | "top10_non_ccass" | "ccass_pct" | "deposit"; limit?: number; signal?: AbortSignal } = {},
+  ) {
+    const qs = new URLSearchParams();
+    if (options.sortBy) qs.set("sortBy", options.sortBy);
+    if (options.limit) qs.set("limit", String(options.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return this.request<import("./hk-ccass").HkCcassConcentrationPayload>(
+      `/cloud/hk-ccass/concentration${suffix}`,
+      options.signal ? { signal: options.signal } : undefined,
+    );
+  }
+
+  /** Stock Connect Southbound (A00003 + A00004) holdings and daily flow rankings. */
+  getHkCcassSouthbound(
+    options: { sortBy?: "pct" | "shares" | "delta_pct" | "delta_shares"; limit?: number; signal?: AbortSignal } = {},
+  ) {
+    const qs = new URLSearchParams();
+    if (options.sortBy) qs.set("sortBy", options.sortBy);
+    if (options.limit) qs.set("limit", String(options.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return this.request<import("./hk-ccass").HkCcassSouthboundPayload>(
+      `/cloud/hk-ccass/southbound${suffix}`,
+      options.signal ? { signal: options.signal } : undefined,
+    );
+  }
+
+  /** Reverse portfolio lookup of all HK stocks held by a single CCASS participant ID. */
+  getHkCcassParticipant(
+    partId: string,
+    options: { sortBy?: "pct" | "shares" | "delta_pct"; limit?: number; signal?: AbortSignal } = {},
+  ) {
+    const qs = new URLSearchParams();
+    if (options.sortBy) qs.set("sortBy", options.sortBy);
+    if (options.limit) qs.set("limit", String(options.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return this.request<import("./hk-ccass").HkCcassParticipantPortfolioPayload>(
+      `/cloud/hk-ccass/participants/${encodeURIComponent(partId)}${suffix}`,
+      options.signal ? { signal: options.signal } : undefined,
+    );
+  }
+
   getCloudExchangeAnnouncements(params: { symbol: string; exchange: string; limit?: number; kind?: "results" }) {
     return this.request<import("./exchange-announcements").ExchangeAnnouncementsPayload>(
       cloudExchangeAnnouncementsPath(params),
