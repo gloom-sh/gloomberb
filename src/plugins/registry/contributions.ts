@@ -67,6 +67,24 @@ function withLazyComponent<T extends { component: (props: never) => ReactNode }>
   }) as T;
 }
 
+/**
+ * The id a contribution is stored under, or an error a plugin author can act on.
+ * A contribution without one would be filed under the key `undefined`, and every
+ * list that reads ids as strings would then fail for as long as the plugin loaded.
+ */
+export function requireContributionId(pluginId: string, kind: string, definition: unknown): string {
+  const fields = (definition ?? {}) as { id?: unknown; label?: unknown; name?: unknown };
+  if (typeof fields.id === "string" && fields.id !== "") return fields.id;
+  const title = [fields.label, fields.name].find((value): value is string => typeof value === "string" && value !== "");
+  const problem = fields.id === undefined || fields.id === null ? "has no id"
+    : fields.id === "" ? "has an empty id"
+      : `has an id that is not a string (${typeof fields.id})`;
+  throw new Error(
+    `Plugin "${pluginId}" registered a ${kind}${title ? ` ("${title}")` : ""} that ${problem}. `
+    + `Give every ${kind} a non-empty string \`id\`.`,
+  );
+}
+
 /** Registration and ownership change together, including explicit withdrawal. */
 class OwnedContributions<T> extends Map<string, T> {
   readonly owners = new Map<string, string>();
@@ -121,31 +139,38 @@ export class RegistryContributions {
   }
 
   registerPane(pluginId: string, pane: PaneDef): void {
-    this.panesMap.register(pluginId, pane.id, withLazyComponent(
+    const id = requireContributionId(pluginId, "pane", pane);
+    this.panesMap.register(pluginId, id, withLazyComponent(
       pane,
       (component) => this.options.wrapComponent(pluginId, component),
     ));
   }
 
   registerPaneTemplate(pluginId: string, template: PaneTemplateDef, replace = false): () => void {
+    const id = requireContributionId(pluginId, "pane template", template);
     const registered = withFunctionShortcutArgument(template, this.panesMap.get(template.paneId));
-    return this.paneTemplatesMap.register(pluginId, template.id, registered, replace);
+    return this.paneTemplatesMap.register(pluginId, id, registered, replace);
   }
 
   registerCommand(pluginId: string, command: CommandDef): void {
-    this.commandsMap.register(pluginId, command.id, command);
+    this.commandsMap.register(pluginId, requireContributionId(pluginId, "command", command), command);
   }
 
   registerCommandBarSearchProvider(pluginId: string, provider: CommandBarSearchProvider): () => void {
-    return this.commandBarSearchProvidersMap.register(pluginId, provider.id, provider);
+    return this.commandBarSearchProvidersMap.register(
+      pluginId,
+      requireContributionId(pluginId, "command bar search provider", provider),
+      provider,
+    );
   }
 
   registerColumn(pluginId: string, column: CustomColumnDef): void {
-    this.columnsMap.register(pluginId, column.id, column);
+    this.columnsMap.register(pluginId, requireContributionId(pluginId, "column", column), column);
   }
 
   registerBroker(pluginId: string, broker: BrokerAdapter): void {
-    this.brokersMap.register(pluginId, broker.id, this.options.wrapBrokerAdapter?.(broker, pluginId) ?? broker);
+    const id = requireContributionId(pluginId, "broker", broker);
+    this.brokersMap.register(pluginId, id, this.options.wrapBrokerAdapter?.(broker, pluginId) ?? broker);
   }
 
   registerCapability(pluginId: string, capabilityId: string): void {
@@ -153,22 +178,24 @@ export class RegistryContributions {
   }
 
   registerTickerResearchTab(pluginId: string, tab: TickerResearchTabDef): void {
-    this.tickerResearchTabsMap.register(pluginId, tab.id, withLazyComponent(
+    const id = requireContributionId(pluginId, "ticker research tab", tab);
+    this.tickerResearchTabsMap.register(pluginId, id, withLazyComponent(
       tab,
       (component) => this.options.wrapComponent(pluginId, component),
     ));
   }
 
   registerShortcut(pluginId: string, shortcut: KeyboardShortcut): void {
-    this.shortcutsMap.register(pluginId, shortcut.id, shortcut);
+    this.shortcutsMap.register(pluginId, requireContributionId(pluginId, "shortcut", shortcut), shortcut);
   }
 
   registerTickerAction(pluginId: string, action: TickerAction): void {
-    this.tickerActionsMap.register(pluginId, action.id, action);
+    this.tickerActionsMap.register(pluginId, requireContributionId(pluginId, "ticker action", action), action);
   }
 
   registerContextMenuProvider(pluginId: string, provider: ContextMenuProviderDef): void {
-    this.contextMenuProvidersMap.register(pluginId, `${pluginId}:${provider.id}`, { pluginId, provider }, true);
+    const id = requireContributionId(pluginId, "context menu provider", provider);
+    this.contextMenuProvidersMap.register(pluginId, `${pluginId}:${id}`, { pluginId, provider }, true);
   }
 
   unregister(pluginId: string): void {

@@ -338,7 +338,7 @@ describe("switching plugins", () => {
 
 describe("activating an installed plugin", () => {
   /** The registry's listeners redraw while a plugin registers: what they read of its entry then is what shows. */
-  function bindActivationRuntime(externalPlugins: LoadedExternalPlugin[], cleanupFails = false) {
+  function bindActivationRuntime(externalPlugins: LoadedExternalPlugin[], cleanupFails = false, registryExtras: object = {}) {
     const iconDuringRegister: Array<string | null> = [];
     const allPlugins = new Map<string, unknown>(externalPlugins.filter((entry) => !entry.duplicateOf).map((entry) => [entry.plugin.id, entry.plugin]));
     const pluginRegistry = {
@@ -356,6 +356,7 @@ describe("activating an installed plugin", () => {
         allPlugins.set(plugin.id, plugin);
       },
       bindHost(actions: object) { Object.assign(this, actions); return () => {}; },
+      ...registryExtras,
     } as any;
     const state = createInitialState(createDefaultConfig("/tmp/gloomberb-plugin-activation-test"));
     bindAppPanePluginRegistry({
@@ -420,6 +421,27 @@ describe("activating an installed plugin", () => {
       { id: "aries (duplicate)", directory: "aries", toggleable: false, duplicateOf: "aries-download", loadError: skipped.error },
     ]);
     expect(host.listInstalled()[0]).not.toHaveProperty("loadError");
+  });
+
+  test("the contributions list skips an entry stored without an id and falls back to the id for a missing label", () => {
+    const { host } = bindActivationRuntime([aries("data:image/webp;base64,icon")], false, {
+      commands: new Map<unknown, unknown>([
+        ["aries:run", { id: "aries:run", label: "Run" }],
+        [undefined, { label: "Stored without an id" }],
+        ["aries:setup", { id: "aries:setup", label: "Set up" }],
+        ["aries:unlabelled", { id: "aries:unlabelled" }],
+      ]),
+      paneTemplates: new Map(),
+      getPluginPaneTemplateIds: () => [],
+      getCommandPluginId: () => "aries",
+      capabilities: { manifests: () => [] },
+      brokers: new Map(),
+    });
+
+    expect(host.contributions("aries").commands).toEqual([
+      { id: "aries:run", label: "Run" },
+      { id: "aries:unlabelled", label: "aries:unlabelled" },
+    ]);
   });
 
   test("failed view cleanup retains the installed entry as needing restart and refuses a no-op retry", async () => {
