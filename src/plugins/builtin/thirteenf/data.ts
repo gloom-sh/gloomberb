@@ -669,6 +669,11 @@ type FundDetailOptions = Pick<Forms13FReadOptions, "forceRefresh" | "onSavedCopy
   filingGap?: boolean;
   /** The fund as it fills in; null when what it showed is thrown away, read for a sign-in the reader left. */
   onProgress?: (detail: FundDetailData | null) => void;
+  /**
+   * The sign-in of the read this fund is part of (a pane's, a report's), which reads it again itself: a change fails
+   * this load instead of reading the fund again here.
+   */
+  session?: HoldingsSession;
 };
 
 /**
@@ -687,7 +692,11 @@ export async function loadFundDetail(
   signal?: AbortSignal,
   options: FundDetailOptions = {},
 ): Promise<FundDetailData> {
-  return inHoldingsSession((session) => fundDetailIn(session, cik, fallbackName, signal, options), signal, () => options.onProgress?.(null));
+  const { session, ...read } = options;
+  return inHoldingsSession((bound) => fundDetailIn(bound, cik, fallbackName, signal, read), signal, {
+    onRestart: () => read.onProgress?.(null),
+    ...(session ? { session } : {}),
+  });
 }
 
 async function fundDetailIn(

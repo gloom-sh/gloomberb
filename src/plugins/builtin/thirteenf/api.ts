@@ -191,6 +191,11 @@ function bindReaderSession(): SessionBinding {
   return { session: readerSession(), changes: signInChanges };
 }
 
+/** The reader's sign-in now, as a holdings read started now is bound to it. */
+export function currentHoldingsSession(): HoldingsSession {
+  return bindReaderSession();
+}
+
 /** Whether the sign-in a read is bound to is still the reader's: what it read may be shown, compared or kept. */
 export function holdingsSessionCurrent(binding: HoldingsSession): boolean {
   return binding.changes === signInChanges && readerSession() === binding.session;
@@ -225,23 +230,25 @@ const SIGN_IN_REREADS = 2;
  * the sign-in when it comes back, after every wait under it (a copy, a joined
  * request), so nothing read for a sign-in the reader left is used; such a read
  * is thrown away (`onRestart`, for what it showed) and read again in the new
- * sign-in, at most SIGN_IN_REREADS times.
+ * sign-in, at most SIGN_IN_REREADS times. Given the `session` of a read it is
+ * part of (a pane's, a report's), it is read once in that one, and a change
+ * fails it for that read's own boundary.
  */
 export async function inHoldingsSession<T>(
   read: (session: HoldingsSession) => Promise<T>,
   signal?: AbortSignal,
-  onRestart?: () => void,
+  options: { onRestart?: () => void; session?: HoldingsSession } = {},
 ): Promise<T> {
   for (let attempt = 0; ; attempt += 1) {
-    const binding = bindReaderSession();
+    const binding = options.session ?? bindReaderSession();
     try {
       const value = await read(binding);
       assertBound(binding);
       return value;
     } catch (error) {
-      if (!(error instanceof SignInChangedError) || attempt >= SIGN_IN_REREADS) throw error;
+      if (!(error instanceof SignInChangedError) || options.session || attempt >= SIGN_IN_REREADS) throw error;
       signal?.throwIfAborted();
-      onRestart?.();
+      options.onRestart?.();
     }
   }
 }
@@ -604,7 +611,9 @@ export async function listThirteenFForms(
  * One page of a filing's information table. Standalone (a filing's own list,
  * read as far as it is scrolled) it is the same for every reader. As part of a
  * complete holdings read (`session`) it is that read's sign-in's: kept, and
- * joined, for that sign-in alone.
+ * joined, for that sign-in alone, and no longer than it asked, which signed out
+ * is also no further than the filing's first 1,000 lines. A longer answer is
+ * cut before it is kept or read, a copy of one saved before as well.
  */
 export async function listThirteenFFormHoldingsPage(
   cik: string,
@@ -615,12 +624,19 @@ export async function listThirteenFFormHoldingsPage(
   const { session, ...read } = options;
   const offset = Math.max(0, read.offset ?? 0);
   const limit = Math.max(1, read.limit ?? FORM_PAGE_LIMIT);
+  const allowed = session?.session === "signed-out" ? Math.min(limit, Math.max(0, SIGNED_OUT_FILING_ROWS - offset)) : limit;
   const raw = await fetchForms13F<unknown>("/form", {
     cik: normalizeCik(cik),
     accession_number: accessionNumber,
     limit,
     offset,
-  }, { ...read, signal, ...(session ? { binding: session, memoryOnly: session.session === "signed-in" } : {}) });
+  }, {
+    ...read, signal,
+    ...(session ? {
+      binding: session, memoryOnly: session.session === "signed-in",
+      shape: (page: unknown) => (Array.isArray(page) && page.length > allowed ? page.slice(0, allowed) : page),
+    } : {}),
+  });
   const rows = arrayResponse(raw).map(mapHolding).filter((holding): holding is ThirteenFHoldingRecord => !!holding);
   return { rows, hasMore: rows.length >= limit && offset + rows.length < MAX_FORM_ROWS };
 }

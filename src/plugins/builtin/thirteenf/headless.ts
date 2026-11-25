@@ -7,7 +7,7 @@ import type {
   HeadlessShotState,
 } from "../../../types/plugin";
 import { servedFromSavedCopy } from "../../../data/saved-copies";
-import { normalizeCik, searchThirteenFFunds, TOP_FUNDS_MAX_LIMIT } from "./api";
+import { type HoldingsSession, inHoldingsSession, normalizeCik, searchThirteenFFunds, TOP_FUNDS_MAX_LIMIT } from "./api";
 import { ApiRequestError } from "../../../api-client/errors";
 import { REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
 import { buildFundOverlap, buildManagerEtfOverlap, overlapPeriod } from "./overlap";
@@ -216,11 +216,13 @@ export interface ThirteenFHeadlessDependencies {
     args: HeadlessPaneLoadArgs,
     ctx: HeadlessPaneContext,
   ): Promise<BrowserLoadResult>;
+  /** A fund read in the report's sign-in (`session`), which reads it again itself when that changes. */
   loadDetail(
     cik: string,
     name: string,
     args: HeadlessPaneLoadArgs,
     ctx: HeadlessPaneContext,
+    session?: HoldingsSession,
   ): Promise<FundDetailData>;
   /** The split factor of each of a fund's split candidates between its two quarter ends (loadSplitFactors), for its Est P&L; with `only`, of those rows alone. */
   loadSplitFactors?(detail: FundDetailData, ctx: HeadlessPaneContext, only?: ReadonlySet<string>): Promise<SplitFactors>;
@@ -279,7 +281,9 @@ const defaultDependencies: Required<ThirteenFHeadlessDependencies> = {
     { limit, onSavedCopy: noteSavedCopy(ctx) },
   ),
   // An overlap never shows a fund's missed quarter, so it does not ask EDGAR.
-  loadDetail: (cik, name, args, ctx) => loadFundDetail(cik, name, ctx.signal, { filingGap: !isOverlapLoad(args), onSavedCopy: noteSavedCopy(ctx) }),
+  loadDetail: (cik, name, args, ctx, session) => loadFundDetail(cik, name, ctx.signal, {
+    filingGap: !isOverlapLoad(args), onSavedCopy: noteSavedCopy(ctx), ...(session ? { session } : {}),
+  }),
   loadSplitFactors: (detail, ctx, only) => loadSplitFactors(
     detail,
     corporateSplitLookup(ctx.marketData),
@@ -296,6 +300,19 @@ const defaultDependencies: Required<ThirteenFHeadlessDependencies> = {
   loadEtfFunds: async (ctx) => (await fetchFunds(ctx.apiClient)).funds,
   loadEtfHoldings: (ticker, ctx) => fetchMembers(ticker, ctx.apiClient),
 };
+
+/**
+ * A report's 13F books and every input it waits on with them (a split lookup,
+ * a second fund, an ETF's holdings file), read in one sign-in from the first
+ * book to the last input. One that changes before they are all in throws them
+ * away, with the saved copies they answered from, and reads them again in the
+ * new one; a sign-in that keeps changing fails the report (inHoldingsSession).
+ */
+function inReportSession<T>(ctx: HeadlessPaneContext, read: (session: HoldingsSession) => Promise<T>): Promise<T> {
+  const entry = savedCopies.get(ctx);
+  const before = entry?.savedAt ?? null;
+  return inHoldingsSession(read, ctx.signal, { onRestart: () => { if (entry) entry.savedAt = before; } });
+}
 
 function isOverlapLoad(args: HeadlessPaneLoadArgs): boolean {
   return args.options.view === "overlap" || (typeof args.options.compare === "string" && args.options.compare.trim() !== "");
@@ -647,7 +664,9 @@ export function createThirteenFHeadless(
         const fund = await resolveFund(query, args, ctx, dependencies);
         const other = await resolveComparison(compare, args, ctx, dependencies);
         if (other.kind === "etf") {
-          const [first, etf] = await Promise.all([dependencies.loadDetail(fund.cik, fund.name, args, ctx), dependencies.loadEtfHoldings(other.ticker, ctx)]);
+          const [first, etf] = await inReportSession(ctx, (session) => Promise.all([
+            dependencies.loadDetail(fund.cik, fund.name, args, ctx, session), dependencies.loadEtfHoldings(other.ticker, ctx),
+          ]));
           const overlap = buildManagerEtfOverlap(first, etf.members);
           const period = first.latestForm?.periodOfReport ?? null;
           const filed = first.latestForm?.filedAsOfDate ?? null;
@@ -691,7 +710,9 @@ export function createThirteenFHeadless(
             },
           };
         }
-        const [first, second] = await Promise.all([dependencies.loadDetail(fund.cik, fund.name, args, ctx), dependencies.loadDetail(other.cik, other.name, args, ctx)]);
+        const [first, second] = await inReportSession(ctx, (session) => Promise.all([
+          dependencies.loadDetail(fund.cik, fund.name, args, ctx, session), dependencies.loadDetail(other.cik, other.name, args, ctx, session),
+        ]));
         const comparedPeriod = overlapPeriod(first, second);
         const rows = buildFundOverlap(first, second);
         const cut = cutText(rows.length, limit, "positions");
@@ -781,7 +802,15 @@ export function createThirteenFHeadless(
 
       if (view === "holdings" || view === "filings") {
         const fund = await resolveFund(query, args, ctx, dependencies);
-        const detail = await dependencies.loadDetail(fund.cik, fund.name, args, ctx);
+        // A line that moved as across a split gets its Est P&L from its corporate actions: split-adjusted, as a trade, or none.
+        // The rows go largest value first, which no split moves, so only the rows shown have theirs read: a large
+        // filer's book holds hundreds of such lines (Citadel's 264 took 27 s), its top 50 a handful.
+        const { detail, splitFactors } = await inReportSession(ctx, async (session) => {
+          const detail = await dependencies.loadDetail(fund.cik, fund.name, args, ctx, session);
+          if (view === "filings") return { detail, splitFactors: undefined };
+          const shown = new Set(sortHoldingRows(buildFundHoldingRows(detail), DEFAULT_HOLDING_SORT).slice(0, limit).map((row) => row.id));
+          return { detail, splitFactors: await dependencies.loadSplitFactors(detail, ctx, shown) };
+        });
         const latestPeriod = detail.latestForm?.periodOfReport ?? null;
         const quartersBehind = quartersBehindLatest(latestPeriod);
         const gap = detail.filingGap ?? null;
@@ -811,14 +840,7 @@ export function createThirteenFHeadless(
             },
           };
         }
-        // A line that moved as across a split gets its Est P&L from its corporate actions: split-adjusted, as a trade, or none.
-        // The rows go largest value first, which no split moves, so only the rows shown have theirs read: a large
-        // filer's book holds hundreds of such lines (Citadel's 264 took 27 s), its top 50 a handful.
-        const shown = new Set(sortHoldingRows(buildFundHoldingRows(detail), DEFAULT_HOLDING_SORT).slice(0, limit).map((row) => row.id));
-        const all = sortHoldingRows(
-          buildFundHoldingRows(detail, await dependencies.loadSplitFactors(detail, ctx, shown)),
-          DEFAULT_HOLDING_SORT,
-        );
+        const all = sortHoldingRows(buildFundHoldingRows(detail, splitFactors), DEFAULT_HOLDING_SORT);
         const previousPeriod = detail.previousForm?.periodOfReport ?? null;
         const comparable = hasComparable13FQuarter(detail);
         const nextDue = nextThirteenFDue(latestPeriod);
