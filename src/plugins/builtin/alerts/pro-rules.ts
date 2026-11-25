@@ -14,6 +14,7 @@ const PRO_RULE_NAMES: Readonly<Record<string, string>> = {
   iv_spike: "IV spike",
   catalyst: "catalyst",
   hiring_move: "hiring move",
+  buyback: "buyback",
   perps_threshold: "perpetuals threshold",
 };
 

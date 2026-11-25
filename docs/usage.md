@@ -350,7 +350,7 @@ A company's page has eleven tabs, and a tab with several views shows them as cho
 | Options | Options |
 | Events | Earnings, Dividends, Catalysts, M&A |
 | Filings | SEC, 8-K, Risks |
-| Ownership | Holders, Insider, 13F, Congress, Short Interest |
+| Ownership | Holders, Insider, Buybacks (Hong Kong listings), 13F, Congress, Short Interest |
 | People | Exec, Hiring, Hiring momentum |
 | Buzz | News, Tweets, Apps |
 | Notes | Thesis, Notes |
@@ -1004,6 +1004,7 @@ Rules sync with your price alerts. Push needs Cloud sync and a registered mobile
 - confirmed earnings date (days before), SEC filing type (8-K, 10-K, 10-Q, S-1, SC 13D/G, 6-K, 20-F), news keyword (symbol optional), analyst upgrade or downgrade, new 52-week high or low
 - unusual volume (multiple of the prior 20-session average), short interest change (percent between FINRA settlements), open-market insider buy or sell
 - an option IV spike for one OCC contract (Pro), and an IV level on a symbol
+- a Hong Kong buyback (Pro): a listing that starts buying its shares back after more than 20 sessions without a buy, or stops for 10 sessions after buying, with the results blackout the stop falls in. Name it by its code (`0700` or `0700.HK`)
 - options flow (Pro): a print at or above a premium (default $1M, typed as `1,000,000`, `$250k` or `1.5m`) on one symbol, or on any name in your portfolio and watchlists when the symbol is blank, optionally calls or puts only and sweeps or blocks only
 
 The **Events** tab shows each rule's last checked value with its one-year percentile and date when the pane is wide enough, and a flow rule its latest matching print. **History** lists the alerts that went off, newest first, with the rule, the figure and the quote behind it (`r` refreshes). The phone's notification settings have one switch for these market and research alerts.
@@ -1033,6 +1034,7 @@ gloom alerts add TSLA insider sell         # insider alone: buys or sells
 gloom alerts add GME short interest increase 20%
 gloom alerts add AAPL analyst downgrade    # analyst alone: upgrades or downgrades
 gloom alerts add ADYEN:AMS hiring slowing  # any listing HIRE covers
+gloom alerts add 0700.HK buyback stopped   # or buyback started; buyback alone for either
 gloom alerts add ipo Stripe                # a company or keyword on the IPO calendar
 gloom alerts add perps hyperliquid:default:BTC funding above 0.05%   # funding, oi, premium or closed-premium; the market id keeps its case (kPEPE)
 gloom alerts add catalyst                  # your portfolio and watchlists; PFE catalyst, catalyst type clinical, catalyst agency FDA, catalyst country US
@@ -1043,9 +1045,9 @@ gloom alerts add BRK.B filing 13F          # the 13F of the company's own filer,
 
 An IV level, earnings, CPI, FOMC or calendar date alert can run while signed out. Other event alerts require either sign-in or Pro. A rule that only needs an account reads `needs sign-in` in `gloom alerts list` and **Needs sign-in** in **Events** and `fn ALRT --tab events` until you sign in.
 
-Options flow, IV spike, catalyst, hiring move and perpetuals threshold alerts require Pro to be checked. **Add Event Alert** marks them (Pro). If you save one while signed out or on Free, it reads `needs Pro` in `gloom alerts list` and **Needs Pro** in **Events** and `fn ALRT --tab events`.
+Options flow, IV spike, catalyst, hiring move, buyback and perpetuals threshold alerts require Pro to be checked. **Add Event Alert** marks them (Pro). If you save one while signed out or on Free, it reads `needs Pro` in `gloom alerts list` and **Needs Pro** in **Events** and `fn ALRT --tab events`.
 
-A symbol is read as `gloom quote` reads it and must be a US listing, as in the dialog; a hiring rule or a catalyst's company may list anywhere, and an IV level also takes `BTC-USD` and `ETH-USD`. A news rule on a coin points to a keyword alert, which reads every story, on the words typed when they name the coin (`alerts add BTC-USD news bitcoin ETF` points to `gloom alerts add news "bitcoin ETF"`), else on its name: `gloom alerts add news bitcoin`. An IV spike's contract may be typed as OCC writes it or as traders do (`SPY 680C 11/19`, `SPY Nov 19 680 call`, `SPY261119C680`): one that names exactly one listed contract is read as it (`Read "SPY 680C 11/19" as SPY261119C00680000`), a date without a year being the next listed one; one that names none is refused with the OCC form and a listed contract to copy. The contract must be live: one past its expiry is refused (`Not a live contract: IBIT200101C00045000 expired on 2020-01-01.`). `gloom help alerts` lists every form, and words none of them reads are refused with the kinds there are. Adding a rule that already exists names the existing alert's ID and adds nothing.
+A symbol is read as `gloom quote` reads it and must be a US listing, as in the dialog; a hiring rule or a catalyst's company may list anywhere, a buyback rule names a Hong Kong listing, and an IV level also takes `BTC-USD` and `ETH-USD`. A news rule on a coin points to a keyword alert, which reads every story, on the words typed when they name the coin (`alerts add BTC-USD news bitcoin ETF` points to `gloom alerts add news "bitcoin ETF"`), else on its name: `gloom alerts add news bitcoin`. An IV spike's contract may be typed as OCC writes it or as traders do (`SPY 680C 11/19`, `SPY Nov 19 680 call`, `SPY261119C680`): one that names exactly one listed contract is read as it (`Read "SPY 680C 11/19" as SPY261119C00680000`), a date without a year being the next listed one; one that names none is refused with the OCC form and a listed contract to copy. The contract must be live: one past its expiry is refused (`Not a live contract: IBIT200101C00045000 expired on 2020-01-01.`). `gloom help alerts` lists every form, and words none of them reads are refused with the kinds there are. Adding a rule that already exists names the existing alert's ID and adds nothing.
 
 `v` (view, also in the footer and the pane menu) opens what the selected row follows, on **Prices**, **Events** and **History**:
 
@@ -2685,7 +2687,7 @@ Each built-in plugin can be switched on or off in `PL`. The Commodities & Energy
 |--------|-----------|
 | Ticker Research | The research pane, DES, FA, QQ, HP, RETURN, the G charts, CAT, ANR, DIAG, EVT, RV, EE, EM, GUID, KPIS, GUIDE, SEG, DVD, RDCF, PEB, EXEC, TAS |
 | Options & Volatility | OMON, OPX, GEX, OVME, OSA, CSP, OVDV, HVG, HVT, HIVG, VCA |
-| Ownership & Insiders | HDS, 13F, INS, SI, SIW, SIV, the Congress tab |
+| Ownership & Insiders | HDS, 13F, INS, SI, SIW, SIV, the Buybacks and Congress tabs |
 | Filings & Events | SEC, ETF, RISK, EK, CATL, LITI, MA, DIST |
 | Credit & Bonds | CDS, CDX, SOVR, CRD, AUCT, YAS, CRDOC, COVN, DDIS |
 | Earnings | ERN, EVTS, CALLS, RIPL |
@@ -2697,7 +2699,7 @@ Each built-in plugin can be switched on or off in `PL`. The Commodities & Energy
 | Commodities & Energy | FUT, CTM, COT, DOE, NGS, PSD, JODI |
 | Crypto & Perps | CRYP, ETFF, PERP |
 
-A research tab belongs to the plugin of its function: switching off Ownership & Insiders removes the Holders, 13F, Insider, Short Interest and Congress tabs. Switching a plugin off hides its panes without closing them, and they come back with their state when it is switched on. Typing one of its codes in the command bar offers **Turn on**.
+A research tab belongs to the plugin of its function: switching off Ownership & Insiders removes the Holders, 13F, Insider, Buybacks, Short Interest and Congress tabs. Switching a plugin off hides its panes without closing them, and they come back with their state when it is switched on. Typing one of its codes in the command bar offers **Turn on**.
 
 The old ids `ticker-research`, `macro` and `market-overview` still switch a whole group (`gloom plugin disable macro` turns off every successor). Credit & Bonds and Earnings belong to both Ticker Research and Macro, and Supply Chain & Alt Data and Quant to both Ticker Research and Market Overview.
 
@@ -2924,6 +2926,10 @@ Besides valuation, growth, margins, short interest, insider and 13F activity and
   - **INST OWN%** (`institutionalOwnershipPercent`): shares 13F filers reported for the latest complete quarter, each filer once, over the balance-sheet share count at that quarter end, as of the quarter end. Unavailable where no balance sheet falls within 7 days of the quarter end, or where the 13F holdings and the share count may not be the same shares, such as across a split or a CUSIP change. Over 100% is shown as partial with its reason: lent shares are reported by the lender and by the fund that bought them.
 
   A settlement more than 45 days old, a count no filing dates or a float above the shares outstanding leaves the field unavailable with its reason, never an old or mismatched value. Partial values screen and sort like any other: `floatShares lte 20M` with `shortPercentOfFloat gte 20` finds small, heavily shorted floats. There is no insider ownership field: the stored Form 4 filings do not reach every insider's holdings.
+- **Buybacks**, Hong Kong listings, Pro, from the companies' next day disclosure returns (see [Hong Kong buybacks](research-data.md#hong-kong-buybacks)):
+  - **BUYBACK 5D %VOL** (`buybackVolume5dPercent`): shares bought on the Exchange over the last five sessions every return is in for, as a percent of those sessions' volume. 0 for a listing that bought none, which has no percentile: buyers rank among buyers.
+  - **MANDATE LEFT %AUTH** (`buybackMandateLeftPercent`): the shares the current mandate still allows, as a percent of the most it authorises, not of the shares in issue.
+  - **TO BLACKOUT** (`buybackBlackoutDays`): days until the next results blackout opens, 0 inside one. Partial when the results date is estimated from the year before or bounded by the Listing Rules' deadline.
 - **Quality**, on the bases `FA` and `EE` use, so a screen and `FA` agree for the same company and period:
   - **ROIC%** (`roicPercent`), **FCF YLD%** (`fcfYieldPercent`), **ND/EBITDA** (`netDebtToEbitda`) and **D/E** (`debtToEquity`): `FA`'s profitability, valuation and leverage ratios for its leading annual column, the trailing four quarters or the fiscal year when those quarters are it, each as of that period's end. FCF yield prices the period at its own close, as `FA`'s Valuation tab does.
   - **REV CAGR 3Y%**, **REV CAGR 5Y%**, **EPS CAGR 3Y%** and **EPS CAGR 5Y%** (`revenueCagr3YPercent`, ...): compound annual growth from the fiscal year three or five years before the latest. Both years come from the stored statements, or both from the annual SEC filings `GF` charts (US filers), never one of each. EPS is diluted, on today's share basis.

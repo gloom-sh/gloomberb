@@ -1,6 +1,7 @@
 import type { JpxShortPositions } from "./jpx-short-positions";
 import type { SgxShortSales, KoreanShortPositions, KoreanVenue, MainlandLendingBalances, MainlandVenue, TaiwanShortBalances, TaiwanVenue } from "./exchange-short-balances";
 import type { SfcShortPositions } from "./sfc-short-positions";
+import type { BuybacksPayload } from "./buybacks";
 import type { AttentionPayload, AttentionWindow } from "./attention";
 import type { HiringBoard, HiringBuildingBoard, HiringBuildingFilter, HiringCompanyBuilding, HiringCompanyMoves, HiringCompanySignals, HiringMovesBoard, HiringMovesFilter, HiringPayload, HiringSignalGroup, HiringSignalsBoard, HiringSignalsFilter } from "./hiring";
 import type { AppAttentionFilter, AppAttentionPayload, AppRankPayload } from "./app-attention";
@@ -794,6 +795,11 @@ export class CloudDataApi {
     );
     if (!response.data) throw new Error(response.message || "SFC weekly positions unavailable.");
     return response.data;
+  }
+
+  /** A Hong Kong listing's share repurchases by session, its mandate and its blackout windows. */
+  async getCloudBuybacks(symbol: string, request?: { signal?: AbortSignal }): Promise<BuybacksPayload> {
+    return this.request<BuybacksPayload>(`/cloud/buybacks/${encodeURIComponent(symbol)}`, request);
   }
 
   async getCloudShortInterest(

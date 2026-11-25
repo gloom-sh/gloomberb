@@ -37,7 +37,7 @@ const TICKER_RESEARCH_GROUPS: readonly TickerResearchGroupDef[] = [
   { id: "options", name: "Options", views: ["options"] },
   { id: "events", name: "Events", views: ["corporate-actions", "event-dividends", "catalysts", "mna", PHARMA_SIGNALS_TAB_ID] },
   { id: "filings", name: "Filings", views: ["sec", "filing-events", "risk-factors"] },
-  { id: "ownership", name: "Ownership", views: ["holders", "insider", "thirteenf", "congress", "short-interest"] },
+  { id: "ownership", name: "Ownership", views: ["holders", "insider", "buybacks", "thirteenf", "congress", "short-interest"] },
   { id: "people", name: "People", views: ["executives", "jobs", "hiring-momentum"] },
   { id: "buzz", name: "Buzz", views: ["news", "ticker-tweets", "app-attention"] },
   { id: "notes", name: "Notes", views: ["thesis", "notes"] },

@@ -16,6 +16,7 @@ const RESEARCH_ALERT_KINDS = [
   "perps_threshold",
   "hiring_move",
   "ipo",
+  "buyback",
 ] as const
 export type ResearchAlertKind = (typeof RESEARCH_ALERT_KINDS)[number]
 export interface ResearchAlertConfig {
@@ -163,6 +164,14 @@ export function normalizeResearchRule(
           : ""
       if (!/^[A-Z0-9][A-Z0-9.:-]{0,31}$/.test(symbol)) return null
       result.symbol = symbol
+    } else if (kind === "buyback") {
+      // A Hong Kong listing, by its code (700, 0700, 0700:HKEX, 0700.HK), as Cloud stores it: 0700:HKEX.
+      const code =
+        typeof input.symbol === "string"
+          ? /^0*(\d{1,5})(?::HKEX|\.HK)?$/i.exec(input.symbol.trim())?.[1]
+          : undefined
+      if (!code || !(Number(code) > 0)) return null
+      result.symbol = `${code.padStart(4, "0")}:HKEX`
     } else if (kind === "ipo") {
       // A company or keyword looked for on the IPO calendar: no listing yet, so no symbol.
     } else if (
@@ -289,6 +298,9 @@ export function normalizeResearchRule(
         break
       case "hiring_move":
         direction(["either", "accelerating", "slowing"], "either")
+        break
+      case "buyback":
+        direction(["either", "started", "stopped"], "either")
         break
       case "iv_spike":
         numeric("threshold", 5, 0.1, 100)
