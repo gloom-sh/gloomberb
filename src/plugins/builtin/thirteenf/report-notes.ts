@@ -30,6 +30,19 @@ export function isOptionType(type: unknown): boolean {
   return text === "CALL" || text === "PUT";
 }
 
+/** The type a ticker's holder row names after its fund: a put, a call or principal, never shares (`SH`), which nearly every row is. */
+export function fundPositionType(type: unknown): string {
+  const text = typeof type === "string" ? type.trim().toUpperCase() : "";
+  return text === "SH" || text === MISSING_VALUE ? "" : text;
+}
+
+/** A ticker's holder as the text report prints it: the fund, then a type other than shares (`BlackRock, Inc. PUT*`). */
+export function fundPositionText(fund: unknown, row: { type?: unknown }): string {
+  const name = typeof fund === "string" && fund ? fund : MISSING_VALUE;
+  const type = fundPositionType(row.type);
+  return type ? `${name} ${markedPositionType(type)}` : name;
+}
+
 /** A position type as the text report prints it: `CALL*` for an option, which `OPTION_ROWS_NOTE` explains. */
 export function markedPositionType(type: unknown): string {
   const text = typeof type === "string" && type ? type : MISSING_VALUE;

@@ -37,7 +37,8 @@ export const shortVolumeHeadless: HeadlessPaneDefinition<"bundle"> = {
         { key: "shortVolume", header: "Short volume", align: "right", format: (value) => volumeQuantity(value as string | null) },
         { key: "totalVolume", header: "Total volume", align: "right", format: (value) => volumeQuantity(value as string | null) },
         { key: "shortExemptVolume", header: "Exempt volume", align: "right", format: (value) => volumeQuantity(value as string | null) },
-        { key: "status", header: "Status" },
+        // A reported day, nearly every day, prints no status; exports keep it.
+        { key: "status", header: "Status", textFormat: (value) => value === "Reported" ? "" : String(value ?? ""), omitWhenEmpty: true },
       ], rows: data.history.toReversed().map((point) => ({ ...point, status: volumePointStatus(point) })) }],
       metadata: { ...data },
     };

@@ -220,6 +220,12 @@ export function buildColumns(width: number, requestedIds: NewsColumnId[], timeZo
 }
 
 interface NewsArticleStackViewProps extends NewsArticleStackBaseProps {
+  /**
+   * The category the feed is chosen by (M&A for NI MNA): a story of it shows
+   * no category, since the topic says it, and a list of only such stories has
+   * no CATEGORY column. A story filed under another category still names it.
+   */
+  impliedCategory?: string;
   initialScrollIndex?: number | null;
   onVisibleRangeChange?: (range: { start: number; end: number }) => void;
   visibleRangeKey?: string;
@@ -264,13 +270,15 @@ export function NewsArticleStackView({
   emptyStateTitle,
   emptyStateHint,
   titleForArticle,
+  impliedCategory,
 }: NewsArticleStackViewProps) {
   const sortedArticles = useMemo(
     () => sortNewsArticles(articles, sortPreference),
     [articles, sortPreference],
   );
   const selectedIdx = sortedArticles.findIndex((article) => article.id === selectedArticleId);
-  const columns = useMemo(() => buildColumns(width, columnIds), [columnIds, width]);
+  const columns = useMemo(() => buildColumns(width, columnIds).map((column) => impliedCategory && column.id === "categories"
+    ? { ...column, omitWhenEmpty: true } : column), [columnIds, impliedCategory, width]);
 
   const openArticle = useCallback((article: MarketNewsItem) => {
     onArticleRead?.(article.id);
@@ -363,11 +371,13 @@ export function NewsArticleStackView({
           color: colors.textBright,
         };
       }
-      case "categories":
+      case "categories": {
+        const category = formatNewsCategoryForColumn(item.categories[0]);
         return {
-          text: formatNewsCategoryForColumn(item.categories[0]) || MISSING_VALUE,
+          text: category && category === impliedCategory ? "" : category || MISSING_VALUE,
           color: tone(colors.textDim),
         };
+      }
       case "sentiment": {
         const sentiment = item.sentiment;
         return {
@@ -387,7 +397,7 @@ export function NewsArticleStackView({
           color: tone(item.importance >= 80 ? colors.positive : colors.textDim),
         };
     }
-  }, [pinnedAt, readArticleIds, titleForArticle]);
+  }, [impliedCategory, pinnedAt, readArticleIds, titleForArticle]);
 
   return (
     <DataTableStackView<MarketNewsItem, NewsTableColumn>
