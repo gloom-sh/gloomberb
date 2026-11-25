@@ -29,10 +29,19 @@ async function report(quote: Partial<Quote>, { json = false } = {}) {
   let data: any;
   let text = "";
   const asked: { symbol: string; exchange?: string | null }[] = [];
+  const fundFactsReads: string[] = [];
   const log = spyOn(console, "log").mockImplementation((line?: unknown) => { text += `${String(line)}\n`; });
   try {
     await ticker("HAWK", {
       listingIpo: async (listing) => { asked.push(listing); return HAWK; },
+      readFundFacts: async (symbol) => {
+        fundFactsReads.push(symbol);
+        return {
+          ticker: symbol, covered: false, name: null, structure: null,
+          expenseRatio: null, nav: null, closingPrice: null, premiumDiscount: null,
+          netAssets: null, sponsor: null, inception: null, index: null, stale: false, fetchedAt: null,
+        };
+      },
       initMarketData: async () => ({
         config, dataDir: "/tmp/gloom-ticker-ipo-unused",
         store: { loadTicker: async () => null }, persistence: { close: () => {} },
@@ -51,7 +60,7 @@ async function report(quote: Partial<Quote>, { json = false } = {}) {
   } finally {
     log.mockRestore();
   }
-  return { data, asked, text: text.replace(/\u001b\[[0-9;]*m/g, "") };
+  return { data, asked, fundFactsReads, text: text.replace(/\u001b\[[0-9;]*m/g, "") };
 }
 
 test("a stock that listed in the last year shows its IPO, the move since and the lock-up estimate", async () => {
@@ -71,7 +80,8 @@ test("a stock that listed in the last year shows its IPO, the move since and the
 });
 
 test("a fund is never read for an IPO", async () => {
-  const { text, asked } = await report({ instrumentType: "ETF" });
+  const { text, asked, fundFactsReads } = await report({ instrumentType: "ETF" });
+  expect(fundFactsReads).toEqual(["HAWK"]);
   expect(asked).toEqual([]);
   expect(text).not.toContain("\nIPO\n");
 });
