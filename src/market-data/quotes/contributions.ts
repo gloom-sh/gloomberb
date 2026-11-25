@@ -351,7 +351,7 @@ export function quoteContributionValues(map: QuoteContributionMap | undefined): 
   return Object.values(map ?? {});
 }
 
-export function seedQuoteContributions(financials: TickerFinancials | null | undefined): QuoteContributionMap | undefined {
+export function seedQuoteContributions(financials: Pick<TickerFinancials, "quote" | "quoteContributions"> | null | undefined): QuoteContributionMap | undefined {
   if (!financials) return undefined;
   if (financials.quoteContributions && Object.keys(financials.quoteContributions).length > 0) {
     return cloneQuoteContributionMap(financials.quoteContributions);

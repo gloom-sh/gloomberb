@@ -23,7 +23,7 @@ import {
   resolveEntryData,
   toMarketDataContext,
 } from "../selectors";
-import { resolveTickerFinancialsQuoteState } from "../quotes/resolution";
+import { resolveFinancialsQuote, type FinancialsQuoteFields } from "../quotes/resolution";
 import { couldQuoteHavePrintedSince } from "../quotes/freshness";
 import { measurePerf } from "../../utils/perf-marks";
 import { startTickerChangeLookup, type TickerChangeLookup } from "../../tickers/ticker-changes";
@@ -163,6 +163,12 @@ function financialsMemoKey<T>(entry: QueryEntry<T>): QueryEntry<T> {
   return entry.phase === "idle" && entry.data === null && entry.lastGoodData === null ? IDLE_MEMO_KEY : entry;
 }
 
+function financialsQuoteFields(financials: TickerFinancials | null): FinancialsQuoteFields | null {
+  if (!financials) return null;
+  const { quote, quoteContributions } = financials;
+  return { quote, quoteContributions };
+}
+
 interface FinancialsMemo {
   streamDownSince: number | null;
   interrupted: boolean;
@@ -197,7 +203,7 @@ export class MarketDataCoordinator {
   private readonly quoteSubscriptionManager: QuoteSubscriptionManager;
   private destroyed = false;
   private readonly cachedQueries = new Map<string, { query: CachedQueryHandle<unknown>; dispose: () => void }>();
-  private readonly streamQuoteBaselines = new Map<string, { baseline: TickerFinancials | null; readAt: number }>();
+  private readonly streamQuoteBaselines = new Map<string, { baseline: FinancialsQuoteFields | null; readAt: number }>();
   /** Each followed key's readers, with the ranges they have not taken yet. */
   private readonly streamTickFollowers = new Map<string, Set<{ ranges: Map<string, StreamTickRange> }>>();
   /**
@@ -254,9 +260,10 @@ export class MarketDataCoordinator {
   private readonly quoteStore = new QueryStore<Quote>((key) => this.events.bump(key), {
     savedCopies: { name: "quote", scope: this.displayScope, writeIntervalMs: 30_000, mark: quoteServedFromSavedCopy },
   });
-  private readonly snapshotStore = new QueryStore<TickerFinancials>((key) => this.events.bump(key), {
+  private readonly snapshotStore = new QueryStore<TickerFinancials, FinancialsQuoteFields | null>((key) => this.events.bump(key), {
     ...this.retained,
     archive: archiveSnapshotEntry,
+    summarize: (entry) => financialsQuoteFields(resolveEntryData(entry)),
     savedCopies: { name: "snapshot", scope: this.displayScope, observedOnly: true },
   });
   private readonly chartStore = new QueryStore<PricePoint[]>((key) => this.events.bump(key), {
@@ -1151,7 +1158,7 @@ export class MarketDataCoordinator {
   }
 
   private resolveIncomingQuote(instrument: InstrumentRef, quote: Quote): Quote {
-    const snapshot = resolveEntryData(this.snapshotStore.get(buildSnapshotKey(instrument)));
+    const snapshot = this.snapshotStore.getSummary(buildSnapshotKey(instrument));
     if (snapshot?.quote) {
       if (hasLikelyQuoteUnitMismatch(snapshot.quote, quote)) return quote;
       if (
@@ -1163,7 +1170,7 @@ export class MarketDataCoordinator {
       }
     }
     const cachedFinancials = snapshot ?? this.streamQuoteBaseline(instrument);
-    return resolveTickerFinancialsQuoteState(cachedFinancials, quote)?.quote ?? quote;
+    return resolveFinancialsQuote(cachedFinancials, quote).quote ?? quote;
   }
 
   /**
@@ -1175,21 +1182,13 @@ export class MarketDataCoordinator {
    * one read per instrument per minute is enough, because a snapshot takes
    * over as soon as one loads and the record on disk is not moving meanwhile.
    */
-  private streamQuoteBaseline(instrument: InstrumentRef): TickerFinancials | null {
+  private streamQuoteBaseline(instrument: InstrumentRef): FinancialsQuoteFields | null {
     const key = buildSnapshotKey(instrument);
     const now = Date.now();
     const memo = this.streamQuoteBaselines.get(key);
     if (memo && now - memo.readAt < STREAM_QUOTE_BASELINE_TTL_MS) return memo.baseline;
 
-    const cached = this.readCachedFinancialsForInstrument(instrument);
-    const baseline: TickerFinancials | null = cached && {
-      annualStatements: [],
-      quarterlyStatements: [],
-      priceHistory: [],
-      quote: cached.quote,
-      quoteMetadata: cached.quoteMetadata,
-      quoteContributions: cached.quoteContributions,
-    };
+    const baseline = financialsQuoteFields(this.readCachedFinancialsForInstrument(instrument));
     if (this.streamQuoteBaselines.size >= STREAM_QUOTE_BASELINE_LIMIT) {
       for (const [staleKey, entry] of this.streamQuoteBaselines) {
         if (now - entry.readAt >= STREAM_QUOTE_BASELINE_TTL_MS) this.streamQuoteBaselines.delete(staleKey);

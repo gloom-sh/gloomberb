@@ -633,6 +633,23 @@ export function upsertQuoteContributionMap(
   };
 }
 
+export type FinancialsQuoteFields = Pick<TickerFinancials, "quote" | "quoteContributions">;
+
+export function resolveFinancialsQuote(
+  financials: FinancialsQuoteFields | null | undefined,
+  incomingQuote?: Quote | QuoteContribution | null,
+): FinancialsQuoteFields {
+  let quoteContributions = seedQuoteContributions(financials);
+  if (incomingQuote) {
+    quoteContributions = upsertQuoteContributionMap(quoteContributions, incomingQuote, {
+      rejectUnitMismatch: true,
+    });
+  }
+
+  const { quote } = resolveCanonicalQuote(quoteContributions);
+  return { quote, quoteContributions };
+}
+
 export function resolveTickerFinancialsQuoteState(
   financials: TickerFinancials | null | undefined,
   incomingQuote?: Quote | QuoteContribution | null,
@@ -644,15 +661,7 @@ export function resolveTickerFinancialsQuoteState(
     quarterlyStatements: [],
     priceHistory: [],
   };
-
-  let quoteContributions = seedQuoteContributions(baseFinancials);
-  if (incomingQuote) {
-    quoteContributions = upsertQuoteContributionMap(quoteContributions, incomingQuote, {
-      rejectUnitMismatch: true,
-    });
-  }
-
-  const { quote } = resolveCanonicalQuote(quoteContributions);
+  const { quote, quoteContributions } = resolveFinancialsQuote(baseFinancials, incomingQuote);
   const metadataQuote = quote ?? incomingQuote ?? baseFinancials.quote;
   return {
     ...baseFinancials,

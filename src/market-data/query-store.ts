@@ -18,7 +18,7 @@ export interface QueryStoreRetention {
   onEvict?: (key: string) => void;
 }
 
-export interface QueryStoreOptions<T> extends QueryStoreRetention {
+export interface QueryStoreOptions<T, Summary = unknown> extends QueryStoreRetention {
   /**
    * Sees every entry before it is stored, so a store can overlay a newer
    * source (a streamed FX rate over a loaded one) on whatever writes it.
@@ -26,6 +26,8 @@ export interface QueryStoreOptions<T> extends QueryStoreRetention {
   project?: (key: string, entry: QueryEntry<T>) => QueryEntry<T>;
   /** Keeps a compact, synchronously readable answer once no pane is watching it. */
   archive?: (entry: QueryEntry<T>) => (() => QueryEntry<T>) | null;
+  /** Small fields that a caller can read without restoring the archived answer. */
+  summarize?: (entry: QueryEntry<T>) => Summary;
   /**
    * Keeps each answer as a saved copy under this name (data/pane-saved-copies.ts):
    * a key nothing has loaded yet this run starts from its copy, of any age, as
@@ -37,14 +39,15 @@ export interface QueryStoreOptions<T> extends QueryStoreRetention {
 /** What a saved copy keeps of an entry: its data and where and when it came from. */
 type SavedEntry<T> = Pick<QueryEntry<T>, "data" | "history" | "source" | "asOf" | "delayMinutes">;
 
-interface ArchivedEntry<T> {
+interface ArchivedEntry<T, Summary> {
   restore: () => QueryEntry<T>;
   decoded: WeakRef<QueryEntry<T>>;
   saved: boolean;
+  summary: Summary | undefined;
 }
 
-export class QueryStore<T> {
-  private readonly entries = new Map<string, QueryEntry<T> | ArchivedEntry<T>>();
+export class QueryStore<T, Summary = unknown> {
+  private readonly entries = new Map<string, QueryEntry<T> | ArchivedEntry<T, Summary>>();
   private readonly hydratedScopes = new Map<string, string>();
   private readonly savedEntries = new WeakSet<QueryEntry<T>>();
   /** Stored keys no pane is watching, least recently used first. */
@@ -52,7 +55,7 @@ export class QueryStore<T> {
 
   constructor(
     private readonly onChange: (key: string) => void,
-    private readonly options: QueryStoreOptions<T> = {},
+    private readonly options: QueryStoreOptions<T, Summary> = {},
   ) {}
 
   hasSaved(key: string): boolean {
@@ -78,6 +81,11 @@ export class QueryStore<T> {
     this.hydratedScopes.set(key, scope);
     // Kept as the key's entry, without a change event: reading it is not news.
     return this.store(key, saved);
+  }
+
+  getSummary(key: string): Summary | undefined {
+    const held = this.entries.get(key);
+    return held && "restore" in held ? held.summary : this.options.summarize?.(this.get(key));
   }
 
   set(key: string, entry: QueryEntry<T>): void {
@@ -164,7 +172,7 @@ export class QueryStore<T> {
     return next;
   }
 
-  private decode(held: QueryEntry<T> | ArchivedEntry<T>): QueryEntry<T> {
+  private decode(held: QueryEntry<T> | ArchivedEntry<T, Summary>): QueryEntry<T> {
     if (!("restore" in held)) return held;
     const existing = held.decoded.deref();
     if (existing) return existing;
@@ -179,7 +187,9 @@ export class QueryStore<T> {
     const entry = this.entries.get(key);
     if (!entry || "restore" in entry) return;
     const restore = this.options.archive(entry);
-    if (restore) this.entries.set(key, { restore, decoded: new WeakRef(entry), saved: this.savedEntries.has(entry) });
+    if (restore) {
+      this.entries.set(key, { restore, decoded: new WeakRef(entry), saved: this.savedEntries.has(entry), summary: this.options.summarize?.(entry) });
+    }
   }
 
   /**

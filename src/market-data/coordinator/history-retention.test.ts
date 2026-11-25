@@ -1,12 +1,17 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { setSavedCopyStore } from "../../data/pane-saved-copies";
 import { createTestDataProvider, createTestFinancials, createTestQuote } from "../../test-support/data-provider";
-import type { PricePoint } from "../../types/financials";
+import { useRegularMarketSession } from "../../test-support/market-session";
+import type { QuoteSubscriptionTarget } from "../../types/data-provider";
+import type { PricePoint, Quote, TickerFinancials } from "../../types/financials";
+import { createManualFrameDriver, DataFrameScheduler } from "../frame-scheduler";
 import { createIdleEntry } from "../result-types";
 import { buildChartKey, buildQuoteKey, buildSnapshotKey } from "../selectors";
 import { createBaselineChartRequest } from "./chart";
-import { archiveChartEntry } from "./history-archive";
+import { archiveChartEntry, archiveSnapshotEntry } from "./history-archive";
 import { MarketDataCoordinator } from "./index";
+
+useRegularMarketSession();
 
 test("archives exact chart values and keeps the last good answer on a failed refresh", () => {
   const bars: PricePoint[] = [
@@ -25,6 +30,56 @@ test("archives exact chart values and keeps the last good answer on a failed ref
 
   const failed = { ...entry, phase: "error" as const, data: null, error: { reasonCode: "TIMEOUT", message: "Timed out" } };
   expect(archiveChartEntry(failed)!()).toStrictEqual(failed);
+});
+
+test("packs shared chart and snapshot bars once, including after restoring them", () => {
+  const date = new Date("2025-01-06");
+  const priceHistory = [{ date, close: 103 }];
+  const timestamp = spyOn(date, "getTime");
+  const chart = archiveChartEntry({ ...createIdleEntry<PricePoint[]>(), data: priceHistory })!;
+  const snapshot = archiveSnapshotEntry({ ...createIdleEntry<TickerFinancials>(), data: createTestFinancials({ priceHistory }) })!;
+  expect(timestamp).toHaveBeenCalledTimes(1);
+
+  const reopenedChart = chart();
+  const reopenedSnapshot = snapshot();
+  const chartTimestamp = spyOn(reopenedChart.data![0]!.date, "getTime");
+  const snapshotTimestamp = spyOn(reopenedSnapshot.data!.priceHistory[0]!.date, "getTime");
+  expect(archiveChartEntry(reopenedChart)).not.toBeNull();
+  expect(archiveSnapshotEntry(reopenedSnapshot)).not.toBeNull();
+  expect(chartTimestamp).not.toHaveBeenCalled();
+  expect(snapshotTimestamp).not.toHaveBeenCalled();
+});
+
+test("a quote frame uses an archived snapshot without decoding its bars", async () => {
+  const savedStore = setSavedCopyStore(null);
+  const clock = createManualFrameDriver(0);
+  const instrument = { symbol: "NVDA", exchange: "NASDAQ" };
+  const quote = createTestQuote({ symbol: instrument.symbol, listingExchangeName: instrument.exchange, dataSource: "live" });
+  let streamed: ((target: QuoteSubscriptionTarget, quote: Quote) => void) | undefined;
+  const coordinator = new MarketDataCoordinator(createTestDataProvider({
+    getTickerFinancials: async () => createTestFinancials({ quote, priceHistory: [{ date: new Date("2025-01-06"), close: 103 }] }),
+    subscribeQuotes: (_targets, onQuote) => {
+      streamed = onQuote;
+      return () => {};
+    },
+  }), { frames: new DataFrameScheduler(clock.driver) });
+  try {
+    await coordinator.loadSnapshot(instrument);
+    const archived = coordinator["snapshotStore"]["entries"].get(buildSnapshotKey(instrument));
+    if (!archived || !("restore" in archived)) throw new Error("Expected an unwatched snapshot archive");
+    spyOn(archived.decoded, "deref").mockReturnValue(undefined);
+    const restore = spyOn(archived, "restore");
+
+    const stop = coordinator.subscribeQuotes([{ instrument }]);
+    streamed!(instrument, { ...quote, price: quote.price + 1, lastUpdated: quote.lastUpdated - 1 });
+    clock.advance(0);
+    expect(coordinator.getQuoteEntry(instrument).data).toMatchObject({ price: quote.price, receivedAt: expect.any(Number) });
+    expect(restore).not.toHaveBeenCalled();
+    stop();
+  } finally {
+    coordinator.destroy();
+    setSavedCopyStore(savedStore);
+  }
 });
 
 test("long ticker browsing bounds decoded histories without displacing a watched chart or refetching a recent one", async () => {
