@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import { useShortcut, type KeyEventLike, type ShortcutOptions } from "../../../../react/input";
 import { createOpenTuiTestHarness } from "../../../../renderers/opentui/test-utils";
 import { TestShellPaneKeys } from "../../../../test-support/shell-pane-keys";
@@ -264,6 +264,8 @@ const ESC = { name: "escape", sequence: "\u001b" };
 const press = () => tui.emitKeypress(ESC, { trackPropagation: true });
 
 describe("double Esc", () => {
+  beforeEach(() => setSystemTime(new Date("2026-03-02T10:00:00Z")));
+
   test("closes a pane that took the first Esc to go back, and hands the focus to the next floating pane", async () => {
     let backs = 0;
     const closes = await mountEscPane(() => { backs += 1; });

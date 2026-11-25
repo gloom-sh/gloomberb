@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import { act } from "react";
 import { TestShellPaneKeys } from "../../../test-support/shell-pane-keys";
 import { ONE_SHOT_COOLDOWN_MS } from "../../../utils/one-shot";
@@ -61,6 +61,8 @@ function releaseEsc() {
 afterEach(() => setSystemTime());
 
 describe("double Esc in the chat", () => {
+  beforeEach(() => setSystemTime(new Date("2026-05-10T00:00:00Z")));
+
   test("closes the chat, even when the first Esc clears a selection", async () => {
     const closes = await mountChatPane();
 
@@ -91,6 +93,7 @@ describe("double Esc in the chat", () => {
     await emitKeypress(ESC);
     expect(closes.count).toBe(1);
 
+    releaseEsc();
     await focusComposer("draft");
     const leaveDraft = await emitKeypress(ESC);
     expect(leaveDraft.propagationStopped).toBe(true);
