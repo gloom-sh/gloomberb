@@ -29,6 +29,7 @@ const PAGES: Readonly<Record<string, (code: string) => ExchangeAnnouncementsPage
   SFB: () => NASDAQ_NORDIC, HEL: () => NASDAQ_NORDIC, CPH: () => NASDAQ_NORDIC, ICEX: () => NASDAQ_NORDIC,
   XETRA: () => ({ name: "Unternehmensregister", url: "https://www.unternehmensregister.de/" }),
   FWB2: () => PAGES.XETRA!(""),
+  HNX: (code) => ({ name: "Hanoi Stock Exchange issuer disclosures", url: `https://www.hnx.vn/cophieu-etfs/chi-tiet-chung-khoan-ny-${encodeURIComponent(code.toLowerCase())}.html?_des_tab=3` }),
   HOSE: () => ({ name: "Ho Chi Minh Stock Exchange issuer disclosures", url: "https://www.hsx.vn/vi/tin-tuc/tin-to-chuc-niem-yet" }),
   JPX: () => ({ name: "TDnet timely disclosures", url: "https://www.release.tdnet.info/inbs/I_main_00.html" }),
   HKEX: () => ({ name: "HKEXnews", url: "https://www1.hkexnews.hk/search/titlesearch.xhtml?lang=en" }),
@@ -61,7 +62,7 @@ function exchangeAnnouncementsPage(symbol: string, exchange: string | null | und
 const PUBLISHERS: Readonly<Record<string, string>> = {
   TWSE: "MOPS", TPEX: "MOPS",
   ASX: "ASX", CXA: "ASX", HKEX: "HKEXnews", SWX: "SIX Swiss Exchange",
-  JPX: "TDnet", HOSE: "HOSE", KRX: "DART", KOSDAQ: "DART", SGX: "SGX", SSE: "CNINFO", SZSE: "CNINFO",
+  JPX: "TDnet", HNX: "HNX", HOSE: "HOSE", KRX: "DART", KOSDAQ: "DART", SGX: "SGX", SSE: "CNINFO", SZSE: "CNINFO",
 };
 
 /**
