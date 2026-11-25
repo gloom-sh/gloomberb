@@ -16,6 +16,27 @@ function quote(overrides: Partial<Quote> = {}): Quote {
   };
 }
 
+test("a newer broker price cannot re-date or claim retained NSE endpoints", () => {
+  const previous = quote({ symbol: "NIFTYBEES.NS", currency: "INR", listingExchangeName: "NSE", instrumentType: "ETF",
+    lastUpdated: Date.parse("2026-11-24T10:00:00Z"), changeSessionDate: "2026-11-24", marketState: "CLOSED",
+    price: 292.5, low: 291.12, high: 295.75, dayRangeBasis: "daily-bar" });
+  const newer = Date.parse("2026-11-25T03:55:00Z");
+  const retained = mergeQuoteContribution(normalizeQuoteContribution(previous), { ...previous, lastUpdated: newer,
+    changeSessionDate: "2026-11-25", marketState: "PRE", high: undefined, low: undefined, dayRangeBasis: undefined });
+  const broker = normalizeQuoteContribution({ ...previous, providerId: "ibkr", dataSource: "live", price: 294,
+    lastUpdated: newer, changeSessionDate: "2026-11-25", marketState: "PRE", high: undefined, low: undefined, dayRangeBasis: undefined })!;
+  const result = resolveCanonicalQuote({ ibkr: broker, "gloomberb-cloud": retained }, newer);
+  expect(result.quote).toMatchObject({ price: 294, changeSessionDate: "2026-11-25", low: 291.12, high: 295.75,
+    dayRangeSessionDate: "2026-11-24", dayRangeBasis: "daily-bar" });
+  expect(result.provenance?.fields).toMatchObject({ high: { providerId: "gloomberb-cloud" }, low: { providerId: "gloomberb-cloud" },
+    dayRangeSessionDate: { providerId: "gloomberb-cloud" } });
+  const coincidentHigh = { ...broker, high: 295.75 };
+  const mixed = resolveCanonicalQuote({ ibkr: coincidentHigh, "gloomberb-cloud": retained }, newer);
+  expect(mixed.provenance?.fields?.high?.providerId).toBe("ibkr");
+  expect(mixed.quote?.dayRangeSessionDate).toBeNull();
+  expect(mixed.quote?.dayRangeBasis).toBeUndefined();
+});
+
 test("cloud snapshots include the latest regular trade beyond a lagging daily bar", () => {
   // The production Cloud quote had no venue, only an explicit session date.
   const nvda = mapQuote(quote({ price: 217.77, low: 217.79, listingExchangeName: undefined,

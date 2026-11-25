@@ -93,6 +93,8 @@ describe("the Dividends view's years", () => {
       ["2023", 0.05, ""],
     ]);
     expect(years.map((year) => (year.change == null ? null : Number(year.change.toFixed(4))))).toEqual([null, null, 0.0803, null]);
+    // A year paid on two bases has no total but was paid: the span runs 2023 to 2026.
+    expect(dividendYearSpan(years)).toBe(4);
   });
 
   /** AAPL paid nothing from 1996 to 2011: sixteen blank bars and rows squeezed the years it pays. */
@@ -103,7 +105,8 @@ describe("the Dividends view's years", () => {
     expect(dividendYearDetail(plain[2]!)).toBe("no dividend for 16 years");
     expect(dividendYearSpan(plain)).toBe(19);
     const splits = splitMarks(buildEventRows({ symbol: "TEST", currency: "USD", earnings: [], dividends,
-      splits: [{ date: "2005-02-28", fromFactor: 1, toFactor: 2 }, { date: "2013-06-09", fromFactor: 1, toFactor: 7 }] }, null, null, "USD"));
+      splits: [{ date: "2005-02-28", fromFactor: 1, toFactor: 2 }, { date: "2013-06-09", fromFactor: 1, toFactor: 7 },
+        { date: "2014-06-09", fromFactor: 1, toFactor: 4 }] }, null, null, "USD"));
     const marked = dividendYears(dividends, today, splits);
     expect(marked.map(dividendYearLabel)).toEqual(["2013", "2012", "2006-2011", "2005", "1996-2004", "1995"]);
     expect(marked.map(dividendYearDetail)).toEqual(["7-for-1 split", "", "no dividend for 6 years", "no dividend · 2-for-1 split", "no dividend for 9 years", ""]);

@@ -23,6 +23,8 @@ import {
 import { formatFilingDate } from "../../../utils/datetime-format";
 import { computeTTM } from "../ticker-detail/financials/aggregation";
 import { classifyInstrumentType } from "../../../tickers/instrument-kind";
+import { isIndianEtfListing } from "../../../market-data/fund-actions";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { declaredDividendCash, declaredDividends } from "../../../utils/declared-dividends";
 import { fiscalPeriodText, fiscalQuarterInYear, fiscalQuarterText, fiscalYearText } from "../earnings/fiscal-quarter";
 import { fiscalYearEndMonth } from "../../../utils/fiscal-period";
@@ -245,7 +247,7 @@ export type EventFinancials = Pick<TickerFinancials, "quarterlyStatements" | "fi
   annualStatements?: readonly Pick<FinancialStatement, "date">[];
   fundamentals?: Pick<NonNullable<TickerFinancials["fundamentals"]>, "eps" | "epsCurrency" | "financialCurrency" | "marketCapCurrency" | "trailingEpsSource"> | null;
   /** The listing's currency, which says whether an unlabelled EPS can be in the statements' (fundamentalsCurrency), and its type. */
-  quote?: Pick<NonNullable<TickerFinancials["quote"]>, "currency" | "instrumentType"> | null;
+  quote?: Pick<NonNullable<TickerFinancials["quote"]>, "currency" | "instrumentType" | "exchangeName" | "listingExchangeName" | "name"> | null;
   quoteMetadata?: Pick<NonNullable<TickerFinancials["quoteMetadata"]>, "instrumentType"> | null;
 };
 
@@ -253,8 +255,12 @@ export type EventFinancials = Pick<TickerFinancials, "quarterlyStatements" | "fi
  * A fund (an ETF, a closed-end fund) reports no earnings: a feed's EPS rows, estimates and statements for one
  * are another company's or noise, so its events are its distributions and splits alone.
  */
-export function isFundListing(financials: EventFinancials | null): boolean {
-  return [financials?.quote?.instrumentType, financials?.quoteMetadata?.instrumentType].some((type) => classifyInstrumentType(type) === "fund");
+export function isFundListing(financials: EventFinancials | null, actions?: CorporateActionsData | null): boolean {
+  const quote = financials?.quote;
+  return [quote?.instrumentType, financials?.quoteMetadata?.instrumentType].some((type) => classifyInstrumentType(type) === "fund")
+    || isIndianEtfListing(quote?.listingExchangeName || quote?.exchangeName, quote?.name)
+    || (!!actions && (isIndianEtfListing(actions.exchange || parsePublicTickerKey(actions.symbol).exchange, actions.name)
+      || /\bETF(?: Trust)?$/i.test(actions.name?.trim() ?? "")));
 }
 
 /**
@@ -407,7 +413,7 @@ export function buildEventRows(
   currency: string,
 ): EventRow[] {
   const rows: EventRow[] = [];
-  const fund = isFundListing(financials);
+  const fund = isFundListing(financials, data);
   const quarterlyStatements = fund ? [] : sortedQuarterlyStatements(financials);
   const earnings = fund ? [] : data?.earnings ?? [];
   const ttm = ttmRow(quarterlyStatements, earnings, financials);

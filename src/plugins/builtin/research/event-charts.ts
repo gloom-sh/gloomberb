@@ -1,4 +1,5 @@
 import type { DividendAction } from "../../../types/financials";
+import { INCOMPLETE_DISTRIBUTIONS } from "../../../market-data/fund-actions";
 import { publishedDividend } from "../../../market-data/price-adjustments";
 import { MISSING_VALUE } from "../../../utils/format";
 import { epsBasisShort, NO_CONSENSUS, quarterLabel, type EpsBasisName } from "../shared/earnings-report";
@@ -159,8 +160,8 @@ export interface DividendYear {
   /** The first year of a run with no payment, when the run is longer than one. */
   fromYear?: number;
   /**
-   * Everything paid in the year; null for years with no payment between two that have one, and for a year whose
-   * amounts are on different bases (`mixedBasis`), which no sum states.
+   * The known amount paid in the year; null when no payment is recorded, and for a year whose amounts are on
+   * different bases (`mixedBasis`), which no sum states.
    */
   total: number | null;
   /** What the issuer's own forms mark special, where they say. */
@@ -168,6 +169,8 @@ export interface DividendYear {
   payments: number;
   /** The year is not over: what is paid so far. */
   partial: boolean;
+  coverageIncomplete?: true;
+  splitOnly?: true;
   /** Against the year before, as a fraction, when both are whole years with payments on the same basis. */
   change?: number;
   /**
@@ -209,7 +212,7 @@ function amountBasis(dividend: DividendAction, marks: readonly SplitMark[]): str
  * as the history states them, on today's shares, or as published: a year is
  * summed, and compared with the year before, only on one basis.
  */
-export function dividendYears(dividends: readonly DividendAction[], today: string, splits: readonly SplitMark[] = []): DividendYear[] {
+export function dividendYears(dividends: readonly DividendAction[], today: string, splits: readonly SplitMark[] = [], coverage?: "available" | "unavailable", { includeSplitOnly = false } = {}): DividendYear[] {
   const byYear = new Map<number, { total: number; special: number; payments: number; bases: Set<string> }>();
   for (const dividend of dividends) {
     if (!Number.isFinite(dividend.amount)) continue;
@@ -222,14 +225,14 @@ export function dividendYears(dividends: readonly DividendAction[], today: strin
     byYear.set(year, entry);
   }
   const basisOf = (entry: { bases: Set<string> } | undefined) => (entry?.bases.size === 1 ? [...entry.bases][0]! : null);
-  if (!byYear.size) return [];
+  if (!byYear.size && !includeSplitOnly) return [];
   const years = [...byYear.keys()];
   const first = Math.min(...years);
   const last = Math.max(...years);
   const splitsIn = new Map<number, string[]>();
   for (const split of [...splits].sort((left, right) => left.date.localeCompare(right.date))) {
     const year = Number(split.date.slice(0, 4));
-    if (year >= first && year <= last) splitsIn.set(year, [...(splitsIn.get(year) ?? []), split.terms]);
+    if (includeSplitOnly || (year >= first && year <= last)) splitsIn.set(year, [...(splitsIn.get(year) ?? []), split.terms]);
   }
   const thisYear = Number(today.slice(0, 4));
   const result: DividendYear[] = [];
@@ -241,6 +244,7 @@ export function dividendYears(dividends: readonly DividendAction[], today: strin
       if (!yearSplits.length) while (from - 1 >= first && !byYear.has(from - 1) && !splitsIn.has(from - 1)) from -= 1;
       result.push({
         id: String(year), year, ...(from < year ? { fromYear: from } : {}), total: null, special: 0, payments: 0, partial: year >= thisYear, splits: yearSplits,
+        ...(coverage === "unavailable" ? { coverageIncomplete: true } : {}),
       });
       year = from;
       continue;
@@ -259,15 +263,26 @@ export function dividendYears(dividends: readonly DividendAction[], today: strin
       ...(comparable ? { change: entry.total / before.total - 1 } : {}),
     });
   }
-  return result;
+  if (!includeSplitOnly) return result;
+  for (const [year, terms] of splitsIn) {
+    if (year >= first && year <= last) continue;
+    result.push({
+      id: String(year), year, total: null, special: 0, payments: 0, partial: year >= thisYear, splits: terms, splitOnly: true,
+      ...(coverage === "unavailable" ? { coverageIncomplete: true } : {}),
+    });
+  }
+  return result.sort((left, right) => right.year - left.year);
 }
 
 /** What a year's row says beside its figures: no payment, amounts not summed, paid so far, a special, as published, a split. */
 export function dividendYearDetail(year: DividendYear): string {
   const paid = year.mixedBasis ? `${year.payments} payments on different bases, not summed`
-    : year.total == null ? year.fromYear != null ? `no dividend for ${year.year - year.fromYear + 1} years` : "no dividend"
+    : year.total == null
+      ? year.coverageIncomplete ? INCOMPLETE_DISTRIBUTIONS
+        : year.fromYear != null ? `no dividend for ${year.year - year.fromYear + 1} years` : "no dividend"
       : year.partial ? "so far" : year.special > 0 ? "incl. special" : null;
-  return [paid, year.published ? "as published" : null, ...year.splits].filter(Boolean).join(" · ");
+  // The marks are said in full already (`4-for-1 split`, `VYLR spin-off`); a year with only a split leads with it.
+  return (year.splitOnly ? [...year.splits, paid] : [paid, year.published ? "as published" : null, ...year.splits]).filter(Boolean).join(" · ");
 }
 
 /**
@@ -295,9 +310,9 @@ export function dividendYearLabel(year: DividendYear): string {
   return year.partial ? `${year.year} YTD` : String(year.year);
 }
 
-/** The calendar years from the first payment to the last, gaps included. */
+/** The calendar years from the first payment to the last, gaps included: a year paid on different bases is paid. */
 export function dividendYearSpan(years: readonly DividendYear[]): number {
-  const newest = years[0];
-  const oldest = years.at(-1);
-  return newest && oldest ? newest.year - (oldest.fromYear ?? oldest.year) + 1 : 0;
+  const newest = years.find((year) => year.payments > 0);
+  const oldest = years.findLast((year) => year.payments > 0);
+  return newest && oldest ? newest.year - oldest.year + 1 : 0;
 }
