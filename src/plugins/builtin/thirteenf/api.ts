@@ -52,11 +52,13 @@ export interface Forms13FReadOptions {
 interface Forms13FRequestOptions extends Forms13FReadOptions {
   cache?: boolean;
   /**
-   * The sign-in state the answer is for, when it depends on it (a filing's
-   * holdings: the first 1,000 lines signed out, the whole book signed in). Its
-   * saved copy and a request in flight serve only that state.
+   * The sign-in the answer is for, when it depends on it (a filing's holdings:
+   * the first 1,000 lines signed out, the whole book signed in). Its saved
+   * copy serves only that state and a request in flight only readers bound to
+   * the same sign-in. One the sign-in left before it went out, or before it
+   * answered, is not sent, kept or answered: it fails with SignInChangedError.
    */
-  session?: ReaderSession;
+  binding?: SessionBinding;
   /** Whether an answer may be saved; every answer by default. */
   keep?: (value: unknown) => boolean;
   signal?: AbortSignal;
@@ -130,6 +132,64 @@ type ReaderSession = "signed-in" | "signed-out";
 
 function readerSession(): ReaderSession {
   return apiClient.isSignedIn() ? "signed-in" : "signed-out";
+}
+
+/**
+ * The sign-in a read was asked in: its state and the count of sign-in changes
+ * then. Signing in and out again while a read is out leaves the state as it
+ * was but not the count, so that read is still not the reader's.
+ */
+interface SessionBinding {
+  session: ReaderSession;
+  changes: number;
+}
+
+let signInChanges = 0;
+let watchedSignIn: string | null = null;
+
+/** Who is signed in, as far as a 13F answer can differ: signed out, or which account. */
+function signInIdentity(): string {
+  return apiClient.isSignedIn() ? `in:${apiClient.getCurrentUser()?.id ?? ""}` : "out";
+}
+
+function bindReaderSession(): SessionBinding {
+  if (watchedSignIn == null) {
+    watchedSignIn = signInIdentity();
+    // Told of every account change, a plan's or a profile's too: only one that changes who is signed in counts.
+    apiClient.subscribeCurrentUser(() => {
+      const identity = signInIdentity();
+      if (identity !== watchedSignIn) signInChanges += 1;
+      watchedSignIn = identity;
+    });
+  }
+  return { session: readerSession(), changes: signInChanges };
+}
+
+function stillBound(binding: SessionBinding): boolean {
+  return binding.changes === signInChanges && readerSession() === binding.session;
+}
+
+/** A read the reader's sign-in changed under: what it would send, keep or answer is for a state they left. */
+class SignInChangedError extends Error {
+  constructor() {
+    super("The sign-in changed while this 13F filing was read: read it again.");
+    this.name = "SignInChangedError";
+  }
+}
+
+/** How many times a read the sign-in changed under is asked again, in the new sign-in. */
+const SIGN_IN_REREADS = 2;
+
+/** A read bound to the reader's sign-in as it is now, asked again in the new one when it changes under it. */
+async function inReaderSession<T>(read: (binding: SessionBinding) => Promise<T>, signal?: AbortSignal): Promise<T> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await read(bindReaderSession());
+    } catch (error) {
+      if (!(error instanceof SignInChangedError) || attempt >= SIGN_IN_REREADS) throw error;
+      signal?.throwIfAborted();
+    }
+  }
 }
 
 const isRateLimited = (error: unknown): error is ApiRequestError => error instanceof ApiRequestError && error.status === 429;
@@ -219,14 +279,18 @@ async function fetchForms13F<T>(
     searchParams.set(key, String(value));
   }
 
-  const key = cacheKey(path, searchParams, options.session);
+  const { binding } = options;
+  const key = cacheKey(path, searchParams, binding?.session);
+  // A request in flight is joined only by a reader bound to the same sign-in, never one asked after it changed.
+  const flightKey = binding ? `${key}@${binding.changes}` : key;
+  const bound = () => binding == null || stillBound(binding);
   const store = forms13FPersistence;
   const cacheOptions = { sourceKey: CACHE_SOURCE, schemaVersion: CACHE_SCHEMA_VERSION };
   const cached = options.cache !== false ? store?.getResource<T>(CACHE_KIND, key, cacheOptions) ?? null : null;
   if (cached != null && !options.forceRefresh && !cached.stale && !failedRefreshes.has(key)) return cached.value;
 
   if (!options.forceRefresh) {
-    const pending = activeRequests.get(key) as Promise<T> | undefined;
+    const pending = activeRequests.get(flightKey) as Promise<T> | undefined;
     if (pending) {
       if (cached != null) return cached.value;
       // Another reader's request, which that reader may stop (a fund read ahead
@@ -239,12 +303,15 @@ async function fetchForms13F<T>(
   }
 
   const slot: { promise?: Promise<T> } = {};
-  const current = () => forms13FPersistence === store && activeRequests.get(key) === slot.promise;
+  // Only the newest request for the key, in the sign-in it was asked in, writes.
+  const current = () => forms13FPersistence === store && activeRequests.get(flightKey) === slot.promise && bound();
   const promise = (async (): Promise<T> => {
     // Yield once so the caller can publish this promise before a synchronous abort settles it.
     await Promise.resolve();
     try {
       options.signal?.throwIfAborted();
+      // Signed in or out since it was asked: sent now, it would carry the new sign-in under the old one's key.
+      if (!bound()) throw new SignInChangedError();
       let value: T;
       try {
         value = await apiClient.getCloudSec13F(path, params, { signal: options.signal }) as T;
@@ -270,6 +337,8 @@ async function fetchForms13F<T>(
         value = await response.json() as T;
       }
       options.signal?.throwIfAborted();
+      // An answer for a sign-in the reader has left is neither kept nor theirs.
+      if (!bound()) throw new SignInChangedError();
       // The service's stored copy, while its 13F source is unavailable: said like a saved copy, and
       // not kept as a fresh one, so the next read asks again.
       const storedAt = storedCopyTime(value);
@@ -287,6 +356,9 @@ async function fetchForms13F<T>(
       return value;
     } catch (error) {
       options.signal?.throwIfAborted();
+      // A failure the old sign-in met (its limit, its refusal) is not the new one's, nor is its saved copy.
+      if (error instanceof SignInChangedError) throw error;
+      if (!bound()) throw new SignInChangedError();
       if (current()) failedRefreshes.add(key);
       // A saved copy answers only for a failure asking again may get past; a refusal or a reply that
       // fails validation is the error, and a missing or denied resource also drops its copy.
@@ -301,14 +373,14 @@ async function fetchForms13F<T>(
       options.onSavedCopy(retained.fetchedAt);
       return retained.value;
     } finally {
-      if (activeRequests.get(key) === slot.promise) activeRequests.delete(key);
+      if (activeRequests.get(flightKey) === slot.promise) activeRequests.delete(flightKey);
     }
   })();
   slot.promise = promise;
-  activeRequests.set(key, promise);
+  activeRequests.set(flightKey, promise);
   if (cached != null && !options.forceRefresh) {
     void promise.catch((error: unknown) => {
-      if (!options.signal?.aborted) logFailure("thirteenf.api", "Refresh cached filing data failed")(error);
+      if (!options.signal?.aborted && !(error instanceof SignInChangedError)) logFailure("thirteenf.api", "Refresh cached filing data failed")(error);
     });
     return cached.value;
   }
@@ -474,12 +546,12 @@ export async function listThirteenFFormHoldingsPage(
 ): Promise<{ rows: ThirteenFHoldingRecord[]; hasMore: boolean }> {
   const offset = Math.max(0, options.offset ?? 0);
   const limit = Math.max(1, options.limit ?? FORM_PAGE_LIMIT);
-  const raw = await fetchForms13F<unknown>("/form", {
+  const raw = await inReaderSession((binding) => fetchForms13F<unknown>("/form", {
     cik: normalizeCik(cik),
     accession_number: accessionNumber,
     limit,
     offset,
-  }, { ...options, signal, session: readerSession() });
+  }, { ...options, signal, binding }), signal);
   const rows = arrayResponse(raw).map(mapHolding).filter((holding): holding is ThirteenFHoldingRecord => !!holding);
   return { rows, hasMore: rows.length >= limit && offset + rows.length < MAX_FORM_ROWS };
 }
@@ -546,36 +618,38 @@ export async function listThirteenFFormHoldings(
     ...(entries != null && entries > 0 ? { entries } : {}),
   };
   // Signed out, the service sends the first 1,000 lines; signed in, the whole book. Each is kept for its own state,
-  // and an answer the limit cut is never kept as a signed-in reader's (a session the service did not accept).
-  const session = readerSession();
-  const whole = fetchForms13F<unknown>("/holdings", params, {
-    ...readOptions, signal, cloudOnly: true, session,
-    keep: (raw) => session === "signed-out" || asRecord(raw).signedOutLimit == null,
-  });
-  let answered = false;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  if (onFirstRows && entries != null && entries > FIRST_ROWS) {
-    timer = setTimeout(() => {
-      if (answered) return;
-      void fetchForms13F<unknown>("/holdings", { ...params, limit: FIRST_ROWS }, { signal, cloudOnly: true, cache: false, session })
-        .then((raw) => { if (!answered) onFirstRows(filingRows(raw)); })
-        .catch(() => {
-          // Intentional ignore: the first rows only come ahead of the whole filing, which reports its own failure.
-        });
-    }, FIRST_ROWS_AFTER_MS);
-  }
-  try {
-    return filingHoldings(await whole);
-  } catch (error) {
-    signal?.throwIfAborted();
-    const missing = error instanceof ApiRequestError && error.status === 404;
-    if (!missing && !isNetworkFailure(error)) throw error;
-    if (missing) wholeFilingsMissing = true;
-    return { rows: await listPagedHoldings(cik, accessionNumber, signal, readOptions) };
-  } finally {
-    answered = true;
-    clearTimeout(timer);
-  }
+  // and an answer the limit cut is never kept as a signed-in reader's (a session the service did not accept). The
+  // read, and its first rows, are the sign-in's it was asked in: one that changes under them reads it again.
+  return inReaderSession(async (binding) => {
+    const whole = fetchForms13F<unknown>("/holdings", params, {
+      ...readOptions, signal, cloudOnly: true, binding,
+      keep: (raw) => binding.session === "signed-out" || asRecord(raw).signedOutLimit == null,
+    });
+    let answered = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    if (onFirstRows && entries != null && entries > FIRST_ROWS) {
+      timer = setTimeout(() => {
+        if (answered || !stillBound(binding)) return;
+        void fetchForms13F<unknown>("/holdings", { ...params, limit: FIRST_ROWS }, { signal, cloudOnly: true, cache: false, binding })
+          .then((raw) => { if (!answered && stillBound(binding)) onFirstRows(filingRows(raw)); })
+          .catch(() => {
+            // Intentional ignore: the first rows only come ahead of the whole filing, which reports its own failure.
+          });
+      }, FIRST_ROWS_AFTER_MS);
+    }
+    try {
+      return filingHoldings(await whole);
+    } catch (error) {
+      signal?.throwIfAborted();
+      const missing = error instanceof ApiRequestError && error.status === 404;
+      if (!missing && !isNetworkFailure(error)) throw error;
+      if (missing) wholeFilingsMissing = true;
+      return { rows: await listPagedHoldings(cik, accessionNumber, signal, readOptions) };
+    } finally {
+      answered = true;
+      clearTimeout(timer);
+    }
+  }, signal);
 }
 
 /** A filing read a page at a time, a few pages at once, until a page comes back short. */

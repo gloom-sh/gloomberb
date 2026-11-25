@@ -2314,11 +2314,12 @@ async function loadListingHistory(
   const demergers = lookups ? await actions.demergers() : [];
   const bars = forming?.rows ?? served;
   // CTVA's daily bars before 2026-10-01 are adjusted for the VYLR spin-off (6665:1000): said, and its bar flagged.
-  const adjusted = bars.some((row) => row.date.length > 10) ? { rows: bars, adjustments: [] }
+  const adjusted = bars.some((row) => row.date.length > 10) ? { rows: bars, adjustments: [], traded: [] }
     : withPriceAdjustmentFlags(bars, splits, demergers);
-  // A spin-off the bars are adjusted for is no fall in them, and no demerger break.
+  // A spin-off the bars are adjusted for, or whose closes do not tell, is no fall in them, and no demerger break. One
+  // whose bars fell by its factor is its demerger, however small the fall (1101:1000, from 100 to 90.83).
   const explained = new Set(adjusted.adjustments.flatMap(({ adjustment }) => (adjustment.demerger ? [adjustment.demerger.exDate] : [])));
-  const demerged = await listingDemergerFlags(adjusted.rows, actions, explained);
+  const demerged = await listingDemergerFlags(adjusted.rows, actions, explained, adjusted.traded);
   const flaggedSplits = withSplitFlags(demerged.rows, splits, demergers);
   const data = flaggedSplits.rows;
   const splitNote = historySplitNote(listing.symbol, flaggedSplits.splits);
@@ -2425,14 +2426,22 @@ function shareActionsReader(market: MarketContext, listing: CliListing, instrume
   };
 }
 
-/** A share's bars with the bar each demerger falls in flagged (withDemergerFlags), read only when a close falls a fifth or more below the one before. */
+/**
+ * A share's bars with the bar each demerger falls in flagged (withDemergerFlags): one whose bars fell by its own
+ * price-adjustment factor (`traded`), and any other read only when a close falls a fifth or more below the one before.
+ */
 async function listingDemergerFlags(
   rows: HistoryRow[],
   actions: ReturnType<typeof shareActionsReader>,
   explained: ReadonlySet<string> = new Set(),
+  traded: readonly DemergerAction[] = [],
 ): Promise<{ rows: HistoryRow[]; breaks: Array<{ date: string; action: DemergerAction }> }> {
-  if (!actions.share || !hasPriceBreak(rows)) return { rows, breaks: [] };
-  return withDemergerFlags(rows, (await actions.demergers()).filter((action) => !explained.has(action.exDate)));
+  if (!actions.share) return { rows, breaks: [] };
+  const witnessed = new Set(traded.map((action) => action.exDate));
+  const broken = hasPriceBreak(rows)
+    ? (await actions.demergers()).filter((action) => !explained.has(action.exDate) && !witnessed.has(action.exDate)) : [];
+  if (traded.length === 0 && broken.length === 0) return { rows, breaks: [] };
+  return withDemergerFlags(rows, [...traded, ...broken]);
 }
 
 /**

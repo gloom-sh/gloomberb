@@ -582,28 +582,36 @@ describe("a filing read in part", () => {
 });
 
 describe("a filing's holdings and the reader's sign-in", () => {
-  let signedIn = false;
-  const asked: Array<{ signedIn: boolean; release: () => void }> = [];
-  // The service as it answers: the first 1,000 lines with the limit's marker signed out, the whole book signed in.
+  // Synthetic sign-ins: a made-up session token set on the app's client and cleared, as signing in and out do.
+  const signIn = () => apiClient.setSessionToken("synthetic-13f-reader");
+  const signOut = () => apiClient.setSessionToken(null);
+  const asked: Array<{ signedIn: boolean; limit?: number; release: () => void }> = [];
+  /** Whether each request went out signed in, in the order sent. */
+  const sent: boolean[] = [];
   const spies: Array<{ mockRestore(): void }> = [];
+  // The service as it answers the sign-in a request goes out with: the first 1,000 lines with the limit's marker
+  // signed out, the whole book (or the first rows asked for) signed in.
   const serve = (expired = false) => {
-    spies.push(spyOn(apiClient, "isSignedIn").mockImplementation(() => signedIn));
-    const spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async () => {
-      const session = signedIn && !expired;
-      await new Promise<void>((resolve) => asked.push({ signedIn, release: resolve }));
-      return session ? { rows: holdingRows("filing", 0, 3_856), complete: true }
+    const spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async (_path: string, params: { limit?: number }) => {
+      const signedIn = apiClient.isSignedIn();
+      sent.push(signedIn);
+      await new Promise<void>((resolve) => asked.push({ signedIn, ...(params.limit ? { limit: params.limit } : {}), release: resolve }));
+      const lines = Math.min(params.limit ?? 3_856, 3_856);
+      return signedIn && !expired ? { rows: holdingRows("filing", 0, lines), complete: lines === 3_856 }
         : { rows: holdingRows("filing", 0, 1_000), complete: false, signedOutLimit: 1_000 };
     }) as never);
     spies.push(spy);
     return spy;
   };
-  const read = () => listThirteenFFormHoldings("1603466", "filing", undefined, { entries: 3_856 });
+  const read = (onFirstRows?: (rows: ThirteenFHoldingRecord[]) => void) =>
+    listThirteenFFormHoldings("1603466", "filing", undefined, { entries: 3_856, ...(onFirstRows ? { onFirstRows } : {}) });
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
   // Lets every request asked so far, and any it leads to, answer.
   const settle = async <T>(pending: Promise<T>) => {
     let done = false;
     void pending.finally(() => { done = true; });
-    for (let tick = 0; tick < 50 && !done; tick++) {
-      await new Promise((resolve) => setTimeout(resolve, 0));
+    for (let count = 0; count < 50 && !done; count++) {
+      await tick();
       for (const request of asked.splice(0)) request.release();
     }
     return pending;
@@ -611,39 +619,78 @@ describe("a filing's holdings and the reader's sign-in", () => {
 
   afterEach(() => {
     for (const spy of spies.splice(0)) spy.mockRestore();
-    signedIn = false;
+    signOut();
     asked.length = 0;
+    sent.length = 0;
   });
 
-  test("a copy or a request in flight serves only the state it was read in", async () => {
+  test("a copy or a request in flight serves only the sign-in it was read in", async () => {
     attachThirteenFApiPersistence(new MemoryPluginPersistence());
     const spy = serve();
     // Signed out, then signing in while that read is still out: the signed-in read asks for itself.
     const signedOut = read();
     await Promise.resolve();
-    signedIn = true;
+    signIn();
     const afterSignIn = read();
     await Promise.resolve();
     await Promise.resolve();
-    expect(asked.map((request) => request.signedIn)).toEqual([false, true]);
-    expect(await settle(signedOut)).toMatchObject({ complete: false, signedOutLimit: 1_000 });
+    expect(sent).toEqual([false, true]);
+    // The cut answer comes after the reader signed in: it is not theirs, so the first read is answered as the second.
+    expect((await settle(signedOut)).rows).toHaveLength(3_856);
     expect((await settle(afterSignIn)).rows).toHaveLength(3_856);
-    // Each state's copy answers that state again without asking; neither answers the other.
-    const calls = spy.mock.calls.length;
+    expect(sent).toEqual([false, true]);
+    // The signed-in copy answers that state again without asking; the cut one was not kept, so signed out asks.
     expect((await read()).rows).toHaveLength(3_856);
-    signedIn = false;
+    signOut();
+    expect(await settle(read())).toMatchObject({ complete: false, signedOutLimit: 1_000 });
     expect(await read()).toMatchObject({ complete: false, signedOutLimit: 1_000 });
-    expect(spy.mock.calls.length).toBe(calls);
+    expect(spy.mock.calls).toHaveLength(3);
   });
 
   test("a cut answer to a session the service did not take is not kept as the signed-in copy", async () => {
     attachThirteenFApiPersistence(new MemoryPluginPersistence());
-    signedIn = true;
+    signIn();
     const spy = serve(true);
     expect(await settle(read())).toMatchObject({ signedOutLimit: 1_000 });
     // Asked again, not answered from that cut copy.
     expect(await settle(read())).toMatchObject({ signedOutLimit: 1_000 });
     expect(spy.mock.calls).toHaveLength(2);
+  });
+
+  test("signing in after a read looked for its copy but before it went out sends it signed in, and keeps nothing signed out", async () => {
+    attachThirteenFApiPersistence(new MemoryPluginPersistence());
+    serve();
+    const pending = read();
+    signIn();
+    expect((await settle(pending)).rows).toHaveLength(3_856);
+    expect(sent).toEqual([true]);
+    // That book is the signed-in copy alone: signed out, the read asks and is sent the first 1,000 lines.
+    signOut();
+    expect(await settle(read())).toMatchObject({ complete: false, signedOutLimit: 1_000 });
+    expect(sent).toEqual([true, false]);
+  });
+
+  test("signing out while a large filing's first rows are out shows none of them, and the book is read again signed out", async () => {
+    attachThirteenFApiPersistence(new MemoryPluginPersistence());
+    signIn();
+    serve();
+    const shown: number[] = [];
+    const pending = read((rows) => shown.push(rows.length));
+    // The whole book is asked at once, its first rows once it has not come in time.
+    for (let count = 0; count < 100 && asked.length < 2; count++) await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(asked.map((request) => [request.signedIn, request.limit ?? null])).toEqual([[true, null], [true, 2_000]]);
+    signOut();
+    // The first rows answer after it: the signed-in reader's are not shown to the signed-out one.
+    asked.splice(1, 1)[0]!.release();
+    await tick();
+    expect(shown).toEqual([]);
+    // Nor is the whole book, nor is it kept: the filing is read again signed out.
+    expect(await settle(pending)).toMatchObject({ complete: false, signedOutLimit: 1_000 });
+    expect(shown).toEqual([]);
+    expect(sent).toEqual([true, true, false]);
+    signIn();
+    expect((await settle(read())).rows).toHaveLength(3_856);
+    expect(sent).toEqual([true, true, false, true]);
   });
 });
 
