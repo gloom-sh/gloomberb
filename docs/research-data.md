@@ -121,7 +121,7 @@ The Weekdays tab reads daily bars instead: every session of the last five years,
 
 ## Stock Connect
 
-Open `DES` on a Shanghai, Shenzhen or Hong Kong stock or ETF to see its Stock Connect routes. HKEX dates its northbound buy/sell and sell-only files for the following northbound trading session. Hong Kong listings show the Shanghai and Shenzhen southbound buy lists separately. “Off buy list” leaves selling eligibility unconfirmed. The dates belong to the exchange lists. Select a status to open its exchange source.
+Open `DES` on a Shanghai, Shenzhen or Hong Kong stock or ETF to see its Stock Connect routes. HKEX dates its northbound buy/sell and sell-only files for the following northbound trading session. Hong Kong listings show the Shanghai and Shenzhen southbound buy lists separately. “Off buy list” leaves selling eligibility unconfirmed. Each route shows the exchange list date, or the check time when the exchange provides an undated workbook. Select a status to open its exchange source.
 
 ## P/E band
 

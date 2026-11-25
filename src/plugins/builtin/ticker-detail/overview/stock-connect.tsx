@@ -31,7 +31,8 @@ export function StockConnectSection({ symbol, exchange, width }: { symbol: strin
   const fields: StatField[] = resource.data?.routes.map(route => ({
     label: route.venue === "SSE" ? "Shanghai" : "Shenzhen",
     value: statusText[route.status],
-    detail: route.publishedOn ? (north ? "Session after " : "List dated ") + route.publishedOn : undefined,
+    detail: route.publishedOn ? (north ? "Session after " : "List dated ") + route.publishedOn
+      : route.checkedAt ? "Checked " + route.checkedAt.slice(0, 16).replace("T", " ") + " UTC" : undefined,
     url: route.sourceUrl,
   })) ?? [{ label: "Eligibility", value: resource.loading ? "Loading…" : "Unverified" }];
   return (
