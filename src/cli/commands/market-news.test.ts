@@ -518,6 +518,29 @@ test("a word that resolves to a ticker with no stories says so and lists the sto
   expect(text).toContain("Bigger US corn stocks");
 });
 
+test("a hyphened word search reads as a name, whose listing has no stories, lists the stories that mention the word", async () => {
+  // `news spin-off` on 25 Nov 2026 read the S&P U.S. Spin-Off Index and said it had no news; `news spinoff` listed the spin-offs.
+  const requests = serveSearch([story("ctva", "Corteva completes global seed business spin-off", "2026-11-18T17:00:00.000Z")]);
+  const index = { symbol: "^SPUSSOUN", name: "S&P U.S. Spin-Off Index NTR", exchangeName: "NYSE", instrumentType: "INDEX",
+    price: 2_150, currency: "USD", change: 0, changePercent: 0, lastUpdated: Date.parse("2026-11-24T21:00:00Z") };
+  const cli = createTestCliContext({
+    dataProvider: {
+      getNews: async () => [],
+      search: async () => [{ providerId: "test", symbol: index.symbol, name: index.name, exchange: "NYSE", type: "INDEX", currency: "USD" }],
+      getQuote: async (symbol: string) => {
+        if (symbol.toUpperCase().split(":")[0] !== index.symbol) throw new Error(`Not a ticker: ${symbol}.`);
+        return index;
+      },
+    },
+  });
+  await news.execute(["spin-off"], cli.context);
+
+  expect(requests.map((url) => url.searchParams.get("query"))).toEqual(["spin-off"]);
+  const text = render(cli.printed[0]!);
+  expect(text.split("\n")[0]).toBe('Stories matching "spin-off"  ·  no stories filed under ^SPUSSOUN (S&P U.S. Spin-Off Index NTR)');
+  expect(text).toContain("Corteva completes global seed business spin-off");
+});
+
 test("a coin pair whose stories came from searching the coin says so, with the name its quote gives to search", async () => {
   const queries: Array<{ ticker?: string; listingName?: string }> = [];
   const cli = createTestCliContext({

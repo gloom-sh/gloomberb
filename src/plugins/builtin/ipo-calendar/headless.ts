@@ -199,10 +199,15 @@ export const ipoCalendarHeadless: HeadlessPaneDefinition<"rows"> = {
   argument: {
     kind: "free-text",
     placeholder: "company or ticker",
-    description: "Optional company, ticker, market, country, region or status filter; pending lists the deals not priced yet.",
+    description: "Optional company, ticker, market, country, region or status filter; pending lists the deals not priced yet, lockup the US lock-up expiries soonest first, spac the SPACs' IPOs.",
     optional: true,
   },
   discovery: {
+    // The kinds of deal a search lists (ipoKeyword): `fn lockup` is the lock-up expiry list, `catalog spac` finds it.
+    opens: [
+      { words: ["lockup", "lockups", "lock-up", "lock-ups", "lockup expiry", "lock-up expiry", "lockup expiration", "lock-up expiration"], argument: "lockup" },
+      { words: ["spac", "spacs", "de-spac", "despac"], argument: "spac" },
+    ],
     dataRequirements: ["Gloom Cloud IPO calendar, merged from each exchange's own listings"],
     limitations: ["Return from the offer price uses the first trade until the first session's close is available."],
   },

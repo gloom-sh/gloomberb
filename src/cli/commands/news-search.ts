@@ -78,6 +78,15 @@ export function newsSearchTextProblem(text: string): string | null {
 }
 
 /**
+ * A word typed as one, not as a symbol: letters, three or more, hyphened
+ * between words ("spin-off", "lock-up"), with a lower-case letter, as a
+ * word is and a ticker rarely is. BRK-B and CORN are symbols.
+ */
+export function isTypedNewsWord(text: string): boolean {
+  return text.length >= MIN_FALLBACK_LENGTH && /^[A-Za-z]+(?:-[A-Za-z]{2,})*$/.test(text) && /[a-z]/.test(text);
+}
+
+/**
  * The word a symbol lookup found no stories for, as text to search stories for.
  * Null under three characters, where the word is mostly a piece of other
  * names (ZN in Telomir-Zn) and the lookup's own answer is the better one.

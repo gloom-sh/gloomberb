@@ -223,6 +223,7 @@ import {
   commonWordCandidate,
   metalCodeNewsRoute,
   type MetalNewsRoute,
+  isTypedNewsWord,
   metalNewsHeading,
   metalNewsRoute,
   newsFallbackText,
@@ -3556,7 +3557,8 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     const identity = listing ? listingIdentity(listing, quote) : null;
     const resolved = quote !== null || identity?.name != null;
     // A window of days with no story in it says so: the searches below read the newest stories, not those days'.
-    const unfiled = !!listing && !listing.exchange && !feed && !window && articles.length === 0;
+    // A venue search found for a name ("spin-off": ^SPUSSOUN:NYSE) is no venue the user typed.
+    const unfiled = !!listing && (!listing.exchange || listing.venueFromSearch === true) && !exchangeOption && !feed && !window && articles.length === 0;
     // A future's news is its commodity's: news is filed under company tickers, so KC=F (or a bare code
     // no security keeps, CT) searches the stories of coffee, which the service matches to KC=F's links too.
     const future = unfiled && isFuturesInstrument(listing!.symbol, quote?.instrumentType)
@@ -3566,9 +3568,10 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     // to its future: the stories that mention the word are the news.
     const word = commodity ?? (unfiled ? newsFallbackText(args[0]!) : null);
     const futuresCode = !!word && !!bareFuturesCode(word) && isFuturesInstrument(listing!.symbol, quote?.instrumentType);
-    // A word typed as a word ("corn", not CORN) that a ticker answers to but no story is filed under: the stories
-    // that mention the word, said to be that (Teucrium Corn Fund had none on 5 Nov 2026; corn's market had plenty).
-    const typedWord = !!word && /^[A-Za-z]{3,}$/.test(word) && /[a-z]/.test(word);
+    // A word typed as a word ("corn", not CORN; "spin-off", hyphened) that a ticker answers to but no story is filed
+    // under: the stories that mention the word, said to be that (Teucrium Corn Fund had none on 5 Nov 2026; corn's
+    // market had plenty; the S&P spin-off index has none, spin-offs have plenty).
+    const typedWord = !!word && isTypedNewsWord(word);
     const reason = commodity ? `the commodity ${future!.symbol} trades`
       : !resolved ? "no ticker by that name" : futuresCode ? "a futures code, not a ticker"
         : typedWord ? `no stories filed under ${listing!.symbol}${identity?.name ? ` (${identity.name})` : ""}` : null;
