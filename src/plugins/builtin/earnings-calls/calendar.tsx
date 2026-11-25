@@ -34,12 +34,14 @@ import { usePluginPaneState } from "../../runtime";
 import { newYorkToday } from "../earnings/board-model";
 import { ProWall, SignInWall } from "../cloud/auth-actions";
 import { cachedUpcomingCalls, calendarAway, loadUpcomingCalls, statusOf, upcomingCutNotice, type UpcomingCallsResult } from "./data";
-import { callPeriod } from "./format";
+import { callPeriod, callPeriodMayBeBlank } from "./format";
 import {
   calendarDays,
   calendarSections,
+  callDay,
   callLocalClock,
   callNewYorkClock,
+  callTimeKnown,
   clockIsNewYork,
   DEFAULT_CALENDAR_SORT,
   isUpcomingCall,
@@ -64,9 +66,9 @@ const MISSING = MISSING_VALUE;
 const ALL_COLUMNS: CalendarColumn[] = [
   { id: "ticker", label: "TICKER", width: 6, align: "left" },
   { id: "company", label: "COMPANY", width: COMPANY_MIN_WIDTH, align: "left" },
-  { id: "local", label: "LOCAL", width: 5, align: "left", mayBeBlank: true },
-  { id: "newYork", label: "ET", width: 5, align: "left", mayBeBlank: true },
-  { id: "period", label: "PERIOD", width: 7, align: "left", mayBeBlank: true },
+  { id: "local", label: "LOCAL", width: 5, align: "left" },
+  { id: "newYork", label: "ET", width: 5, align: "left" },
+  { id: "period", label: "PERIOD", width: 7, align: "left" },
   // "in 23h 59m" and "in progress" are the longest.
   { id: "away", label: "IN", width: 11, align: "right" },
 ];
@@ -79,7 +81,7 @@ const SORTABLE: Partial<Record<CalendarColumnId, CalendarSort["column"]>> = {
   ticker: "ticker", company: "company", local: "time", newYork: "time",
 };
 
-function calendarColumns(width: number, { localClock }: { localClock: boolean }): CalendarColumn[] {
+export function calendarColumns(width: number, { localClock }: { localClock: boolean }): CalendarColumn[] {
   const fixed = (list: CalendarColumn[]) =>
     list.reduce((sum, column) => sum + (column.id === "company" ? 0 : tableColumnWidth(column)) + TABLE_COLUMN_GAP, 2);
   const original = localClock ? ALL_COLUMNS : ALL_COLUMNS.filter((column) => column.id !== "local");
@@ -92,12 +94,21 @@ function calendarColumns(width: number, { localClock }: { localClock: boolean })
   return markHiddenTableColumns(original, columns.map((column) => (column.id === "company" ? { ...column, width: companyWidth } : column)));
 }
 
-function renderCalendarCell(row: CalendarRow, column: CalendarColumn, now: number): DataTableCell {
-  if (!isSectionedItemRow(row)) return { text: "" };
-  const call = row.item;
+/**
+ * One cell of a call in the calendar.
+ *
+ * A call known by its day alone has no start to show: its LOCAL and ET are
+ * blank with no time missing, which the row says itself (`callTimeKnown`, on a
+ * call that has its day). A row with no day at all owes both. The calendar
+ * cannot tell a company that has not announced a time from a time the service
+ * did not read: both arrive as a day alone, and are read as the former.
+ */
+export function calendarCallCell(call: CloudEarningsCallPayload, column: CalendarColumn, now: number): DataTableCell {
   // A call already over is shown and quieter, as a row that no longer applies is.
   const over = !isUpcomingCall(call, now);
   const tone = (color: string) => (over ? colors.textMuted : color);
+  const dayAlone = callDay(call) !== null && !callTimeKnown(call);
+  const noStart = { text: MISSING, color: colors.textMuted, ...(dayAlone ? { mayBeBlank: true } : {}) };
   switch (column.id) {
     case "ticker":
       return { text: call.ticker, color: tone(colors.text), attributes: over ? undefined : TextAttributes.BOLD };
@@ -105,14 +116,14 @@ function renderCalendarCell(row: CalendarRow, column: CalendarColumn, now: numbe
       return { text: call.companyName ?? call.ticker, color: tone(colors.text) };
     case "local": {
       const clock = callLocalClock(call);
-      return clock ? { text: clock, color: tone(colors.text) } : { text: MISSING, color: colors.textMuted };
+      return clock ? { text: clock, color: tone(colors.text) } : noStart;
     }
     case "newYork": {
       const clock = callNewYorkClock(call);
-      return clock ? { text: clock, color: tone(colors.textDim) } : { text: MISSING, color: colors.textMuted };
+      return clock ? { text: clock, color: tone(colors.textDim) } : noStart;
     }
     case "period":
-      return { text: callPeriod(call), color: tone(colors.textDim) };
+      return { text: callPeriod(call), color: tone(colors.textDim), ...(callPeriodMayBeBlank(call) ? { mayBeBlank: true } : {}) };
     case "away":
       return { text: calendarAway(call, now), color: over ? colors.textMuted : colors.textBright };
   }
@@ -204,7 +215,9 @@ export function UpcomingCallsView({ focused, width, height, view, renderCompany 
     ?? null;
   const localClock = useMemo(() => !clockIsNewYork(calls, now), [calls, now]);
   const columns = useMemo(() => calendarColumns(width, { localClock }), [localClock, width]);
-  const renderCell = useCallback((row: CalendarRow, column: CalendarColumn) => renderCalendarCell(row, column, now), [now]);
+  const renderCell = useCallback((row: CalendarRow, column: CalendarColumn): DataTableCell => (
+    isSectionedItemRow(row) ? calendarCallCell(row.item, column, now) : { text: "" }
+  ), [now]);
 
   const openCall = openTicker ? calls.find((call) => call.ticker === openTicker) ?? null : null;
   const detailOpen = !!openTicker && entitled;

@@ -27,6 +27,8 @@ import {
 import { deriveHeadlessFreshness } from "./freshness";
 import { renderReportCsv, selectReportTables } from "../report-tables";
 import { setCliWidthOverride } from "../../utils/cli-output";
+import { createEventsHeadless } from "../../plugins/builtin/research/events-headless";
+import { createTestHeadlessContext } from "../../test-support/headless";
 
 const args: HeadlessPaneLoadArgs = {
   rawArgument: "",
@@ -676,6 +678,93 @@ test("a windowed series prints the dated points the export keeps, not just the s
   expect(report.text).not.toContain("2026-11-13");
   expect(report.text).toContain("newest 3 of 4 rows");
   expect(report.tables?.tables[0]?.rows).toEqual(points.slice(1).map(({ date, value }) => [date, value]));
+});
+
+test("tail overrides the text preview and selects the same newest dated rows in text and exports", async () => {
+  const rows = [24, 23, 22].map((day) => ({ date: `2026-11-${day}`, value: day }));
+  const report = await reportOf({ shape: "bundle", argument: { kind: "none" }, options: [], load: () => ({
+    sections: [
+      { title: "History", textPreview: { title: "History, latest 1 session", limit: 1 }, columns: [{ key: "date", header: "Session" }, { key: "value", header: "Value" }], rows },
+      { title: "Windows", rows: [{ bars: 10 }, { bars: 30 }, { bars: 90 }] },
+    ],
+  }) }, "", { tail: 2 });
+  expect(report.text).toContain("2026-11-24");
+  expect(report.text).toContain("2026-11-23");
+  expect(report.text).not.toContain("2026-11-22");
+  expect(report.text).not.toContain("latest 1 session");
+  expect(report.text).toContain("History: newest 2 of 3 rows (--tail 2)");
+  expect(report.text).toContain("Windows: last 2 of 3 rows (--tail 2)");
+  expect(report.data).toMatchObject({ rowCount: 4, sections: [{ rows: rows.slice(0, 2) }, { rows: [{ bars: 30 }, { bars: 90 }] }] });
+  expect(report.tables?.tables[0]?.rows).toEqual(rows.slice(0, 2).map(({ date, value }) => [date, value]));
+});
+
+test("EVT tail renders the same payout record as CSV instead of slicing the annual summary", async () => {
+  const symbol = "NIFTYBEES.NS";
+  const definition = createEventsHeadless({ load: async () => ({
+    currency: "INR", estimates: null, financials: { annualStatements: [], quarterlyStatements: [], priceHistory: [] },
+    actions: { symbol, exchange: "NSE", name: "Nippon India ETF Nifty 50 BeES", currency: "INR", splits: [], earnings: [],
+      dividends: [{ exDate: "2022-03-15", amount: 0.5 }, { exDate: "2019-02-18", amount: 0.8 }] },
+  }) });
+  const loaded = await definition.load({ ...args, symbols: [symbol] }, createTestHeadlessContext());
+  const headless = { ...definition, argument: { kind: "none" } as const, load: () => loaded };
+  const summary = await reportOf(headless);
+  expect(summary.text).toMatch(/^2022\s+0\.50 INR/m);
+  expect(summary.text).toMatch(/^2019\s+0\.80 INR/m);
+  const report = await reportOf(headless, "", { tail: 1 });
+  expect(report.text).toMatch(/2022-03-15\s+Dividend/);
+  expect(report.text).not.toContain("2019");
+  expect(report.text).toContain("newest 1 of 2 rows (--tail 1)");
+  expect(report.data).toMatchObject({ rowCount: 1, rows: [{ date: "2022-03-15", status: "Dividend" }] });
+  expect(report.tables?.tables[0]?.rows.map((row) => row.slice(0, 2))).toEqual([["2022-03-15", "Dividend"]]);
+});
+
+test("EVT row windows show a stock's latest dividend instead of an older earnings quarter", async () => {
+  const symbol = "TEST";
+  const definition = createEventsHeadless({ load: async () => ({
+    currency: "USD", estimates: null, financials: null,
+    actions: { symbol, currency: "USD", splits: [], dividends: [{ exDate: "2022-11-15", amount: 0.5 }, { exDate: "2021-11-15", amount: 0.25 }],
+      earnings: [{ date: "2022-10-27", dateType: "announcement", fiscalPeriod: "2022-09", epsActual: 1.27, currency: "USD" }] },
+  }) });
+  const loaded = await definition.load({ ...args, symbols: [symbol] }, createTestHeadlessContext());
+  const headless = { ...definition, argument: { kind: "none" } as const, load: () => loaded };
+  const summary = await reportOf(headless);
+  expect(summary.text).toMatch(/^2022-10-27\s+/m);
+  expect(summary.text).toContain("Dividends by year");
+  expect(summary.text).toMatch(/^2022\s+0\.50 USD/m);
+  expect(summary.text).toMatch(/^2021\s+0\.25 USD/m);
+  for (const window of [{ tail: 1 }, { limit: 1 }]) {
+    const report = await reportOf(headless, "", window);
+    const events = [...report.text.matchAll(/^(\d{4}-\d{2}-\d{2})\s+(\S+)/gm)].map((match) => match.slice(1));
+    expect(events).toEqual([["2022-11-15", "Dividend"]]);
+    expect(report.text).not.toContain("Dividends by year");
+    expect(report.data).toMatchObject({ rowCount: 1, rows: [{ date: "2022-11-15", status: "Dividend" }] });
+    expect(csvOf(report).filter((line) => /^\d{4}-\d{2}-\d{2},/.test(line)).map((line) => line.split(",").slice(0, 2)))
+      .toEqual(events);
+  }
+});
+
+test.each([["without payouts", false], ["after a recorded payout", true]] as const)("EVT summarizes a named ETF's split %s", async (_case, hasPayout) => {
+  const symbol = "TEST";
+  const definition = createEventsHeadless({ load: async () => ({
+    currency: "USD", estimates: null, financials: null,
+    actions: { symbol, name: "Test Index ETF", currency: "USD", coverage: { dividends: "unavailable" },
+      dividends: hasPayout ? [{ exDate: "2021-05-10", amount: 0.25 }] : [], earnings: [], splits: [{ date: "2022-08-31", fromFactor: 1, toFactor: 4 }] },
+  }) });
+  const loaded = await definition.load({ ...args, symbols: [symbol] }, createTestHeadlessContext());
+  const headless = { ...definition, argument: { kind: "none" } as const, load: () => loaded };
+  const summary = await reportOf(headless);
+  expect(summary.text).toMatch(/^2022[ \t—]+4-for-1 split · Distribution history incomplete[ \t]*$/m);
+  expect(summary.text).not.toContain("No data.");
+  if (hasPayout) expect(summary.text).toMatch(/^2021\s+0\.25 USD\s+1\b/m);
+  expect(csvOf(summary).filter((line) => /^\d{4}-\d{2}-\d{2},/.test(line)).map((line) => line.split(",").slice(0, 2)))
+    .toEqual(hasPayout ? [["2022-08-31", "Split"], ["2021-05-10", "Dividend"]] : [["2022-08-31", "Split"]]);
+  for (const window of [{ tail: 1 }, { limit: 1 }]) {
+    const report = await reportOf(headless, "", window);
+    expect(report.text).toMatch(/^2022-08-31\s+Split\b/m);
+    expect(report.text).not.toMatch(/^2022\s+/m);
+    expect(csvOf(report).filter((line) => line.startsWith("2022-")).map((line) => line.split(",").slice(0, 2)))
+      .toEqual([["2022-08-31", "Split"]]);
+  }
 });
 
 function csvOf(report: Awaited<ReturnType<typeof reportOf>>, section?: string): string[] {

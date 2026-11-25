@@ -38,6 +38,29 @@ const EVENT_MATCH_MS = 24 * 3_600_000;
 
 const upper = (value: unknown) => (typeof value === "string" && value ? value.toUpperCase() : null);
 
+/** The valuation and technical rules, each checked on a reading of its listing. */
+const METRIC_KINDS = ["pe", "ps", "rsi", "ma_cross", "close_ma", "rs_ratio", "rrg"];
+
+/**
+ * The kinds this app fires only on a figure it has just read, so their log
+ * entry always states one: the price or the move of the quote that set it
+ * off, a valuation or technical reading, an implied volatility level.
+ */
+const FIGURE_KINDS = new Set(["price", "move", "iv_level", ...METRIC_KINDS]);
+
+/**
+ * Whether a line owes History the figure that set it off: an alert this app
+ * fired on one. With no figure its Value is a gap, never a blank that fits.
+ *
+ * Nothing else owes one. A rule change and a dated event have no figure; a
+ * live scan logs its first condition's reading, which a match can come
+ * without; and a delivery carries a figure only from a server that sends one,
+ * which the line cannot tell from one that lost it.
+ */
+export function owesAlertFigure(row: Pick<AlertHistoryRow, "fired">): boolean {
+  return !!row.fired && !row.fired.action && FIGURE_KINDS.has(row.fired.kind);
+}
+
 /**
  * Whether a Cloud delivery is the same alert the app fired: the same price
  * alert (Gloom Cloud names its id), or the same kind of alert on the same
@@ -48,7 +71,7 @@ function sameAlert(entry: FiredAlert, item: AlertHistoryItem): boolean {
   if (entry.action || item.kind !== entry.kind) return false;
   const apart = Math.abs(Date.parse(item.deliveredAt) - Date.parse(entry.firedAt));
   if (!Number.isFinite(apart)) return false;
-  if (entry.kind === "price" || ["pe", "ps", "rsi", "ma_cross", "close_ma", "rs_ratio", "rrg"].includes(entry.kind)) return item.data?.alertId === entry.ruleId && apart <= PRICE_MATCH_MS;
+  if (entry.kind === "price" || METRIC_KINDS.includes(entry.kind)) return item.data?.alertId === entry.ruleId && apart <= PRICE_MATCH_MS;
   const symbol = upper(item.data?.symbol);
   return !!symbol && symbol === upper(entry.symbol) && apart <= EVENT_MATCH_MS;
 }

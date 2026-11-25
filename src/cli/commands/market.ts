@@ -343,6 +343,7 @@ import { isCryptoPairSymbol, isRoundTheClockCoin } from "../../utils/crypto-pair
 import { canonicalExchange, isUsEquityExchange, isUsListingExchange } from "../../utils/exchanges";
 import { listingSuffixVenue } from "../../sources/listing-symbols";
 import { classifyInstrumentType, resolveTickerInstrumentKind } from "../../tickers/instrument-kind";
+import { fundCorporateActions, INCOMPLETE_DISTRIBUTIONS, isIndianEtfListing } from "../../market-data/fund-actions";
 import {
   describeFormerIssuer, describeTickerChange, movedAwayChange, startTickerChangeLookup, tickerChangeLine, type FormerIssuer, type TickerChange,
 } from "../../tickers/ticker-changes";
@@ -4219,7 +4220,10 @@ async function runEvents(rawArgs: string[], ctx: Parameters<CliCommandDef["execu
       quoted,
       calendar,
     ]);
-    const data = withResolvedEarnings(recorded, calendarEventOf(events, listing.key), newYorkDay());
+    const indianEtf = isIndianEtfListing(recorded.exchange || listing.request.exchange, recorded.name ?? quote?.name);
+    const fund = indianEtf || classifyInstrumentType(quote?.instrumentType) === "fund";
+    const data = fund ? fundCorporateActions(recorded, { uncertainEmptyPayouts: indianEtf })
+      : withResolvedEarnings(recorded, calendarEventOf(events, listing.key), newYorkDay());
     const identity = listingIdentity(listing, quote);
     const choice = await listingChoiceNotes(listing, market, quote, venues);
     ctx.printResult({
@@ -4228,7 +4232,7 @@ async function runEvents(rawArgs: string[], ctx: Parameters<CliCommandDef["execu
       // Dated by when it was read, as EE and fn EVT date the same events: a row's
       // date is when the event happens, and the newest past one is no as-of.
       freshness: rowsFreshness([], { ...REPORTED_DATA, basis: "corporate actions", oldest: null }),
-      ...(choice.length > 0 ? { warnings: choice } : {}),
+      warnings: [...choice, ...(data.coverage?.dividends === "unavailable" ? [INCOMPLETE_DISTRIBUTIONS] : [])],
     }, {
       heading: listingHeading(identity),
       rows: corporateActionRows,

@@ -588,6 +588,8 @@ export interface HeadlessRowsResult extends HeadlessPaneResultBase {
   rows: HeadlessPaneRow[];
   /** The rows `textColumns` read, when the text report adds lines that are no record (the position under its lots); `rows` when absent. CSV, NDJSON and JSON keep `rows`. */
   textRows?: HeadlessPaneRow[];
+  /** Replace full-report text rows and sections with the selected records when a row window is requested. */
+  textRowsUseRecordsWhenWindowed?: boolean;
   /** What the report says when `rows` is empty, in place of "No data.": why there are none. */
   empty?: string;
   /**
@@ -642,6 +644,8 @@ export type HeadlessBundleSection =
     textColumns?: HeadlessPaneColumn[];
     /** The rows `textColumns` read, when the pane's rows are not the records (one per holding and scenario shock); `rows` when absent. */
     textRows?: HeadlessPaneRow[];
+    /** Default text-only preview. An explicit row window replaces it. */
+    textPreview?: { title: string; limit: number };
     /**
      * The currency or unit the rows' figures are in (`USD per 1% move`),
      * which every exported row names in `currency_or_unit`.

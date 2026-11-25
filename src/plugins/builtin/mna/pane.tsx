@@ -26,7 +26,7 @@ import { usePlanAccess } from "../../../api-client/plan-access";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useShortcut } from "../../../public/react";
 import { usePaneInstance } from "../../../state/app/context";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
-import { blendHex } from "../../../theme/colors";
+import { blendHex, type ThemeColors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
 import { Box, Text, useUiCapabilities, type InputRenderable, type ScrollBoxRenderable } from "../../../ui";
@@ -40,6 +40,7 @@ import { appendMnaDeals, cachedMnaDeals, fetchMnaDeals, loadMnaDeals } from "./c
 import { MnaDealDetail, mnaDealTitle } from "./detail";
 import { DistressBoard } from "./distress/pane";
 import {
+  annualizedMayBeBlank,
   dealSpread,
   dealsSymbol,
   emptyDealsTitle,
@@ -58,6 +59,7 @@ import {
   spreadBasisLabel,
   stageLabel,
   termsLabel,
+  type DealSpread,
   type MnaTermsView,
 } from "./model";
 import { formatFeedTime } from "../../../utils/datetime-format";
@@ -88,14 +90,14 @@ const COLUMNS: Record<ColumnId, DataTableColumn> = {
   date: { id: "date", label: "DATE", width: 8, align: "left" },
   target: { id: "target", label: "TARGET", width: 16, align: "left", flexGrow: 1 },
   acquirer: { id: "acquirer", label: "ACQUIRER", width: 16, align: "left", flexGrow: 1 },
-  terms: { id: "terms", label: "TERMS", width: 18, align: "left", mayBeBlank: true },
-  value: { id: "value", label: "VALUE", width: 8, align: "right", mayBeBlank: true },
+  terms: { id: "terms", label: "TERMS", width: 18, align: "left" },
+  value: { id: "value", label: "VALUE", width: 8, align: "right" },
   price: { id: "price", label: "PRICE", width: 9, align: "right" },
   spread: { id: "spread", label: "SPREAD", width: 7, align: "right" },
-  annualized: { id: "annualized", label: "ANN.", width: 7, align: "right", mayBeBlank: true },
+  annualized: { id: "annualized", label: "ANN.", width: 7, align: "right" },
   // What the spread's prices are: a session's closes (`Mon close`), or trades and when (`15:42`, `8h apart`).
   basis: { id: "basis", label: "AS OF", width: 12, align: "left" },
-  close: { id: "close", label: "CLOSE", width: 7, align: "left", mayBeBlank: true },
+  close: { id: "close", label: "CLOSE", width: 7, align: "left" },
   stage: { id: "stage", label: "STAGE", width: 16, align: "left" },
 };
 
@@ -120,7 +122,7 @@ const COLUMNS_BY_STATUS: Record<ColumnSet, ColumnId[]> = {
 const DROP_ORDER: ColumnId[] = ["price", "date", "close", "value", "annualized", "terms", "stage", "acquirer", "spread"];
 
 /** Columns that fit `width`; `targetWidth` widens the target column, e.g. for the unlock prompt. */
-function mnaColumns(status: ColumnSet, width: number, targetWidth = COLUMNS.target.width): DataTableColumn[] {
+export function mnaColumns(status: ColumnSet, width: number, targetWidth = COLUMNS.target.width): DataTableColumn[] {
   const widthOf = (id: ColumnId) => (id === "target" ? Math.max(COLUMNS.target.width, targetWidth) : COLUMNS[id].width);
   let ids = [...COLUMNS_BY_STATUS[status]];
   const need = (list: ColumnId[]) => list.reduce((sum, id) => sum + widthOf(id) + 1, 0);
@@ -135,6 +137,87 @@ function mnaColumns(status: ColumnSet, width: number, targetWidth = COLUMNS.targ
     ...(id === "close" && ended ? { label: "CLOSED" } : {}),
     ...(id === "terms" && status === "unpriced" ? { label: "CONSIDERATION" } : {}),
   }));
+}
+
+/**
+ * One cell of a deal, at the spread its quotes give (null with no quote, or
+ * for a deal that has none to read).
+ *
+ * A dash is marked as one that may be blank only where the deal itself says
+ * nothing is owed:
+ * - TERMS, VALUE and CLOSE of a deal in talks: nothing is agreed, so there are
+ *   no terms, no announced value and no close to expect.
+ * - PRICE, SPREAD and AS OF of a deal with no spread to read: it is not
+ *   pending, its target is not listed, or it states no per-share terms.
+ * - ANN. of such a deal, and of one with no annual figure to state at `now`:
+ *   a partial offer or a close less than a day off, with a quote or without,
+ *   and a quoted spread that is not positive (annualizedMayBeBlank). A full
+ *   offer further from its close owes it, so a missing quote is still named.
+ *
+ * An agreed deal owes the rest, and the list cannot tell these apart from a
+ * figure it lost: terms the parties did not disclose (`consideration:
+ * "undisclosed"`, which is also what a deal reads as before its terms are
+ * read), a value nobody announced (a null `value`), and a close the deal gives
+ * no date for (a null `expectedClose` or `closed`). A capture whose every
+ * agreed deal has none fails on that column.
+ */
+export function mnaDealCell(
+  deal: MnaDeal,
+  column: Pick<DataTableColumn, "id">,
+  spread: DealSpread | null,
+  colors: ThemeColors,
+  selected = false,
+  now = Date.now(),
+): DataTableCell {
+  const expectsSpread = deal.status === "pending" && !!deal.target.symbol && mnaTermsView(deal) === "priced";
+  const agreed = deal.status !== "talks";
+  const base = selected ? colors.selectedText : colors.text;
+  const muted = selected ? colors.selectedText : colors.textMuted;
+  switch (column.id) {
+    case "date": return { text: formatListDate(deal.announced), color: muted };
+    case "target": return { text: partyCell(deal.target, true), color: base };
+    case "acquirer": return deal.acquirer ? { text: deal.acquirer.name, color: base } : { text: "Undisclosed", color: muted };
+    case "terms": {
+      const text = termsLabel(deal.terms);
+      return { text, color: text === MISSING ? muted : base, mayBeBlank: !agreed };
+    }
+    case "value": return { text: formatDealValue(deal.value, deal.valueCurrency), color: base, mayBeBlank: !agreed };
+    case "price":
+      return { text: spread ? formatPrice(spread.price) : MISSING, color: spread ? base : muted, mayBeBlank: !expectsSpread };
+    case "spread": {
+      if (!spread) return { text: MISSING, color: muted, mayBeBlank: !expectsSpread };
+      // Negative: the market expects better terms than the ones on the table.
+      return { text: formatPercentShort(spread.spread), color: spread.spread < 0 && !selected ? colors.warning : base };
+    }
+    case "annualized": {
+      const annualized = spread?.annualized ?? null;
+      return annualized == null
+        ? { text: MISSING, color: muted, mayBeBlank: !expectsSpread || annualizedMayBeBlank(deal, spread, now) }
+        : { text: formatPercentShort(annualized), color: base };
+    }
+    case "basis": {
+      if (!spread) return { text: MISSING, color: muted, mayBeBlank: !expectsSpread };
+      // Trades too far apart to be one moment's take the warning tone every stale mark has.
+      const apart = legsApart(spread.basis);
+      return { text: spreadBasisLabel(spread.basis, (at) => formatFeedTime(at), now, { timed: false }), color: apart && !selected ? colors.warning : muted };
+    }
+    case "close": {
+      const ended = deal.status === "completed" || deal.status === "terminated";
+      return ended
+        ? { text: deal.closed ? formatListDate(deal.closed) : MISSING, color: muted }
+        : { text: formatExpectedClose(deal.expectedClose), color: deal.expectedClose ? base : muted, mayBeBlank: !agreed };
+    }
+    case "stage": {
+      const tone = selected ? colors.selectedText
+        : deal.status === "completed" ? colors.positive
+          : deal.status === "terminated" ? colors.negative
+            : deal.status === "talks" || deal.stale ? colors.textMuted
+              : deal.hostile ? colors.warning
+                : colors.text;
+      return { text: stageLabel(deal), color: tone };
+    }
+    default: return { text: "" };
+  }
 }
 
 /** Deals a split list loads, page after page, to fill its rows before the reader scrolls. */
@@ -400,57 +483,7 @@ function MnaDealsView({ focused, width, height, symbol }: {
       }
       return { text: "░".repeat(size), color: placeholder, onMouseDown: openUpgrade };
     }
-    const { deal } = item;
-    const hasTradableTarget = deal.status === "pending" && !!deal.target.symbol;
-    const base = state.selected ? colors.selectedText : colors.text;
-    const muted = state.selected ? colors.selectedText : colors.textMuted;
-    switch (column.id) {
-      case "date": return { text: formatListDate(deal.announced), color: muted };
-      case "target": return { text: partyCell(deal.target, true), color: base };
-      case "acquirer": return deal.acquirer ? { text: deal.acquirer.name, color: base } : { text: "Undisclosed", color: muted };
-      case "terms": {
-        const text = termsLabel(deal.terms);
-        return { text, color: text === MISSING ? muted : base };
-      }
-      case "value": return { text: formatDealValue(deal.value, deal.valueCurrency), color: base };
-      case "price": {
-        const spread = spreadOf(deal);
-        return { text: spread ? formatPrice(spread.price) : MISSING, color: spread ? base : muted, mayBeBlank: !hasTradableTarget };
-      }
-      case "spread": {
-        const spread = spreadOf(deal);
-        if (!spread) return { text: MISSING, color: muted, mayBeBlank: !hasTradableTarget };
-        // Negative: the market expects better terms than the ones on the table.
-        return { text: formatPercentShort(spread.spread), color: spread.spread < 0 && !state.selected ? colors.warning : base };
-      }
-      case "annualized": {
-        const annualized = spreadOf(deal)?.annualized ?? null;
-        return { text: annualized == null ? MISSING : formatPercentShort(annualized), color: annualized == null ? muted : base };
-      }
-      case "basis": {
-        const spread = spreadOf(deal);
-        if (!spread) return { text: MISSING, color: muted, mayBeBlank: !hasTradableTarget };
-        // Trades too far apart to be one moment's take the warning tone every stale mark has.
-        const apart = legsApart(spread.basis);
-        return { text: spreadBasisLabel(spread.basis, (at) => formatFeedTime(at), Date.now(), { timed: false }), color: apart && !state.selected ? colors.warning : muted };
-      }
-      case "close": {
-        const ended = deal.status === "completed" || deal.status === "terminated";
-        return ended
-          ? { text: deal.closed ? formatListDate(deal.closed) : MISSING, color: muted }
-          : { text: formatExpectedClose(deal.expectedClose), color: deal.expectedClose ? base : muted };
-      }
-      case "stage": {
-        const tone = state.selected ? colors.selectedText
-          : deal.status === "completed" ? colors.positive
-            : deal.status === "terminated" ? colors.negative
-              : deal.status === "talks" || deal.stale ? colors.textMuted
-                : deal.hostile ? colors.warning
-                  : colors.text;
-        return { text: stageLabel(deal), color: tone };
-      }
-      default: return { text: "" };
-    }
+    return mnaDealCell(item.deal, column, spreadOf(item.deal), colors, state.selected);
   }, [colors, isDesktopWeb, lockedText, openUpgrade, placeholder, spreadOf]);
 
   const openDeal = allDeals.find((deal) => deal.id === openId) ?? null;

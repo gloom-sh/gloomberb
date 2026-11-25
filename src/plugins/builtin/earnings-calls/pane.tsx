@@ -54,7 +54,7 @@ import {
 import { isPermanentClientError } from "../../../api-client/errors";
 import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { STALE_SEGMENT } from "../../../components/layout/pane/status-footer";
-import { callPeriod, callTitle, eventLabelOf, formatCallDate, formatDuration, formatSentiment, noCallsText, searchingCallsTitle } from "./format";
+import { callLengthMayBeBlank, callPeriod, callPeriodMayBeBlank, callTitle, eventLabelOf, formatCallDate, formatDuration, formatSentiment, noCallsText, searchingCallsTitle } from "./format";
 import { findCallForQuarter, findInLines, MIN_FIND_LENGTH, originalIsMachineTranscript, translatedFrom, turnParagraphs } from "./model";
 import { READER_TABS, TranscriptView, type ReaderTab, type TranscriptPlayback } from "./transcript-view";
 import { PLAYBACK_RATES, SEEK_STEP_SECONDS, useCallPlayback } from "./use-call-playback";
@@ -74,7 +74,7 @@ type CallColumn = DataTableColumn;
  * ("written results"), takes its room. A length no call states (a written
  * call has none) leaves the table.
  */
-function buildColumns(width: number, showTicker: boolean): CallColumn[] {
+export function callListColumns(width: number, showTicker: boolean): CallColumn[] {
   const tickerWidth = showTicker ? 8 : 0;
   const dateWidth = 10;
   const periodWidth = 8;
@@ -92,15 +92,16 @@ function buildColumns(width: number, showTicker: boolean): CallColumn[] {
   columns.push(
     { id: "date", label: "DATE", width: dateWidth, align: "left" },
     showTicker
-      ? { id: "period", label: "PERIOD", width: periodWidth, align: "left", mayBeBlank: true }
-      : { id: "period", label: "PERIOD", width: Math.max(periodWidth, width - dateWidth - lengthWidth - sentimentWidth - 6), align: "left", mayBeBlank: true, flexGrow: 1 },
-    { id: "length", label: "LENGTH", width: lengthWidth, align: "right", mayBeBlank: true, omitWhenEmpty: true },
+      ? { id: "period", label: "PERIOD", width: periodWidth, align: "left" }
+      : { id: "period", label: "PERIOD", width: Math.max(periodWidth, width - dateWidth - lengthWidth - sentimentWidth - 6), align: "left", flexGrow: 1 },
+    { id: "length", label: "LENGTH", width: lengthWidth, align: "right", omitWhenEmpty: true },
     { id: "sentiment", label: "TONE", width: sentimentWidth, align: "right" },
   );
   return columns;
 }
 
-function renderCell(call: CloudEarningsCallPayload, column: CallColumn, now: number): DataTableCell {
+/** One cell of a call in the list. PERIOD and LENGTH say per row when their dash is no value lost (format.ts). */
+export function callListCell(call: CloudEarningsCallPayload, column: CallColumn, now: number): DataTableCell {
   switch (column.id) {
     case "ticker":
       return { text: call.ticker };
@@ -109,9 +110,9 @@ function renderCell(call: CloudEarningsCallPayload, column: CallColumn, now: num
     case "date":
       return { text: formatCallDate(call.callAt), color: colors.textDim };
     case "period":
-      return { text: callPeriod(call) };
+      return { text: callPeriod(call), ...(callPeriodMayBeBlank(call) ? { mayBeBlank: true } : {}) };
     case "length":
-      return { text: formatDuration(call.durationSeconds), color: colors.textDim };
+      return { text: formatDuration(call.durationSeconds), color: colors.textDim, ...(callLengthMayBeBlank(call) ? { mayBeBlank: true } : {}) };
     case "sentiment": {
       // A call still to come says how far away it is, not that it is queued.
       if (isUpcomingCall(call, now)) return { text: callCountdown(call, now), color: colors.text };
@@ -753,8 +754,8 @@ function CallsListView({
     (!access.hasProAccess || listError?.status === 402);
   const transcriptProRequired = transcriptError?.status === 402;
 
-  const columns = useMemo(() => buildColumns(width, !ticker), [width, ticker]);
-  const renderRow = useCallback((call: CloudEarningsCallPayload, column: CallColumn) => renderCell(call, column, now), [now]);
+  const columns = useMemo(() => callListColumns(width, !ticker), [width, ticker]);
+  const renderRow = useCallback((call: CloudEarningsCallPayload, column: CallColumn) => callListCell(call, column, now), [now]);
 
   const isSearchUp = useSearchFocusUp();
   const handleRootKey = useCallback(

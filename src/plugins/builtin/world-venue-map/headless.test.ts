@@ -7,6 +7,7 @@ import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { mapHeadless } from "./headless";
 import { worldVenueMapModule } from "./index";
 import { buildMapSettingsDef, HOME_AREA_SETTING_KEY } from "./layers";
+import { nextVenueExceptions, venueExceptionLines } from "./venue-exceptions";
 
 afterEach(() => resetGeoCatalogCache());
 
@@ -146,4 +147,67 @@ test("a venue says when it next opens or closes, as the pane's header does, and 
   } finally {
     setSystemTime();
   }
+});
+
+test("Thanksgiving closure and early close are separate from the NYSE clock and fit a narrow header", async () => {
+  const now = Date.parse("2026-11-25T16:00:00Z");
+  setSystemTime(now);
+  try {
+    const client = { ...apiClient, getCloudWorldVenues: async () => ({ data: { checkedAt: now, venues: [{ mic: "XNYS",
+      title: "NYSE", country: "United States", city: "New York", timezone: "America/New_York", latitude: 40.7, longitude: -74,
+      isOpen: true, session: "open", timeToCloseSeconds: 18_000 }] } }) } as unknown as HeadlessPaneContext["apiClient"];
+    const args = createTestHeadlessArgs({ argument: "venues", options: { query: "XNYS" } });
+    const report = await mapHeadless.load(args, createTestHeadlessContext({ apiClient: client }));
+    expect(report.rows[0]).toMatchObject({ nextChangeAt: "2026-11-25T21:00:00.000Z", nextClosure: "2026-11-26",
+      nextEarlyCloseAt: "2026-11-27T18:00:00.000Z", nextEarlyCloseLocal: "13:00 ET" });
+    const exceptions = nextVenueExceptions("XNYS", "America/New_York", now);
+    expect(nextVenueExceptions("XNYS", "America/New_York", now + 1_000)).toBe(exceptions);
+    expect(nextVenueExceptions("XNYS", "America/New_York", Date.parse("2026-11-26T05:00:00Z"))).not.toBe(exceptions);
+    expect(venueExceptionLines(exceptions, 24)).toEqual([
+      "Nov 26 closed", "Nov 27 early close", "13:00 ET / 18:00 UTC",
+    ]);
+    const beforeClose = nextVenueExceptions("XNYS", "America/New_York", Date.parse("2026-11-27T17:59:00Z"));
+    expect(beforeClose.earlyClose?.date).toBe("2026-11-27");
+    expect(nextVenueExceptions("XNYS", "America/New_York", Date.parse("2026-11-27T18:00:00Z")).earlyClose?.date).toBe("2026-12-24");
+  } finally {
+    setSystemTime();
+  }
+});
+
+test("Singapore and Sydney publish the early-close date without treating freshness cutoffs as exact times", async () => {
+  const now = Date.parse("2026-12-23T00:00:00Z");
+  setSystemTime(now);
+  try {
+    const venues = [{ mic: "XSES", timezone: "Asia/Singapore", latitude: 1.28, longitude: 103.85 },
+      { mic: "XASX", timezone: "Australia/Sydney", latitude: -33.86, longitude: 151.21 }].map((venue) => ({
+      ...venue, name: venue.mic, title: venue.mic, city: "", country: "", countryCode: "", isOpen: false, session: "closed" as const,
+    }));
+    const client = { ...apiClient, getCloudWorldVenues: async () => ({ data: { checkedAt: now, venues } }) } as unknown as HeadlessPaneContext["apiClient"];
+    const args = createTestHeadlessArgs({ argument: "venues" });
+    const report = await mapHeadless.load(args, createTestHeadlessContext({ apiClient: client }));
+    expect(report.rows).toHaveLength(2);
+    for (const row of report.rows) expect(row).toMatchObject({ nextEarlyClose: "2026-12-24", nextEarlyCloseDate: "2026-12-24",
+      nextEarlyCloseAt: null, nextEarlyCloseLocal: null });
+    for (const { mic, timezone } of venues) {
+      expect(venueExceptionLines(nextVenueExceptions(mic, timezone, now), 24)).toEqual(["Dec 25 closed", "Dec 24 early close"]);
+    }
+    const text = renderHeadlessPaneText(mapHeadless, report, args, "MAP");
+    expect(text).toMatch(/^XASX .*2026-12-24$/m);
+    expect(text).toMatch(/^XSES .*2026-12-24$/m);
+  } finally {
+    setSystemTime();
+  }
+});
+
+test.each([
+  ["XSES", "Asia/Singapore", "2026-12-24T04:20:00Z"],
+  ["XASX", "Australia/Sydney", "2026-12-24T03:15:00Z"],
+])("%s advances the early-close date at its cutoff without showing the time", (mic, timezone, cutoff) => {
+  const boundary = Date.parse(cutoff);
+  const before = nextVenueExceptions(mic, timezone, boundary - 60_000);
+  expect(before.earlyClose).toEqual({ date: "2026-12-24", at: null, local: null });
+  expect(nextVenueExceptions(mic, timezone, boundary - 1)).toBe(before);
+  const after = nextVenueExceptions(mic, timezone, boundary);
+  expect(after.earlyClose).toEqual({ date: "2026-12-31", at: null, local: null });
+  expect(nextVenueExceptions(mic, timezone, boundary + 60_000)).toBe(after);
 });

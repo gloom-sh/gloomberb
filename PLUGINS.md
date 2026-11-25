@@ -1914,6 +1914,58 @@ The full set of pane conventions (anatomy, where actions and status go, table + 
 - Use `usePaneTicker()` inside pane/tab components so multi-pane layouts keep working correctly.
 - On the desktop and the web no text is selectable unless it opts in, so a stray double click or Ctrl/Cmd+A never highlights the interface. Text people copy by hand (an article, an answer, a log, code) takes `<Text selectable>` for a run, or `data-gloom-selectable="true"` on the `Box` around a block; `MarkdownText` and the article reader already do. Text fields keep their own selection. Anything else is a copy action or an export. The terminal selects with the mouse as before.
 
+## Plugin translations
+
+Use `t`, `tc` and `tf` for shared app strings. To provide your own strings,
+register keys under your plugin's ID in `setup` and call the returned disposers
+in `dispose`. The registry calls `dispose` when it unregisters the plugin or
+if `setup` fails. Disabling a plugin leaves it registered but hides its
+translations until it is enabled again. Keep each disposer as soon as
+registration succeeds so a partial setup is cleaned up too.
+
+```tsx
+import { registerTranslations, tPlugin, useAppLanguage } from "gloomberb/i18n";
+import type { GloomPlugin } from "gloomberb/types/plugin";
+
+const pluginId = "market-tool";
+const disposers: Array<() => void> = [];
+
+const plugin: GloomPlugin = {
+  id: pluginId,
+  name: "Market Tool",
+  version: "1.0.0",
+  setup() {
+    disposers.push(registerTranslations(pluginId, "es", { ready: "Listo", "opening-price": "Apertura" }));
+    disposers.push(registerTranslations(pluginId, "ja", { ready: "準備完了", "opening-price": "始値" }));
+  },
+  dispose() {
+    for (const dispose of disposers.splice(0)) dispose();
+  },
+};
+export default plugin;
+
+export function useMarketToolStatus() {
+  useAppLanguage();
+  return tPlugin(pluginId, "ready", "Ready");
+}
+
+const openColumn = {
+  id: "open", label: "Open", width: 12, align: "right" as const,
+  labelTranslation: { pluginId, key: "opening-price" },
+};
+```
+
+`useAppLanguage()` still returns the language string and also re-renders when
+entries for that language change. Read `tPlugin` during render rather than
+memoizing its result by language alone. It returns your fallback in English or
+when the active language has no entry for the key. Registrations never override
+shared app strings; only registrations for the same plugin, language and key
+can replace one another, and each disposer can be called more than once.
+
+On a `DataTable` or `DataTableView` column, `labelTranslation` opts in only
+that drawn header. The `label` remains the fallback and is what CSV exports
+and automation read. Columns without this property behave exactly as before.
+
 ## Example: adding a command
 
 ```typescript

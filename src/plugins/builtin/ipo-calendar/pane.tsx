@@ -43,6 +43,7 @@ import {
   IPO_TABS,
   ipoBoardStatus,
   ipoListStatus,
+  ipoPriceMayBeBlank,
   ipoShownDate,
   isIpoList,
   ipoTickerKey,
@@ -59,6 +60,12 @@ import {
   type IpoSortPreference,
   type IpoTab,
 } from "./model";
+
+/** A deal's PRICE: its offer price or range, with a dash marked as one that may be blank only on a deal that owes none. */
+export function ipoPriceCell(deal: IpoDeal, colors: Pick<ThemeColors, "text" | "textMuted">): DataTableCell {
+  const text = formatIpoPrice(deal);
+  return { text, color: text === MISSING ? colors.textMuted : colors.text, ...(ipoPriceMayBeBlank(deal) ? { mayBeBlank: true } : {}) };
+}
 
 const NO_DEALS: IpoDeal[] = [];
 const TABS = IPO_TABS.map((tab) => ({ label: tab.label, value: tab.value as string }));
@@ -207,10 +214,8 @@ export function IpoCalendarPane({ focused, width, height }: PaneProps) {
       }
       case "status":
         return { text: ipoListStatus(deal, list, now), color: statusColor(ipoBoardStatus(deal, now), colors) };
-      case "price": {
-        const text = formatIpoPrice(deal);
-        return { text, color: text === MISSING ? colors.textMuted : colors.text };
-      }
+      case "price":
+        return ipoPriceCell(deal, colors);
       case "size":
         return { text: formatIpoSize(deal.offerSizeUsd), value: deal.offerSizeUsd, color: colors.textDim };
       case "return": {

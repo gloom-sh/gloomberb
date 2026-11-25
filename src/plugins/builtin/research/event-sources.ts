@@ -5,6 +5,7 @@ import type {
   TickerFinancials,
 } from "../../../types/financials";
 import { formatEventMetric, isFundListing, type EventSummaryFigure } from "./event-model";
+import { fundCorporateActions } from "../../../market-data/fund-actions";
 import type { HeadlessBundleSection, HeadlessPaneColumn } from "../../../types/headless";
 import { quartersEpsBasis, type EarningsQuarter } from "./event-charts";
 import { loadAnalystResearch } from "./client";
@@ -135,28 +136,29 @@ export async function loadEventSources(
   symbol: string,
   today = listingDay(parsePublicTickerKey(symbol).exchange),
 ): Promise<EventSources> {
-  const financialsRead = Promise.allSettled([provider.getTickerFinancials(symbol, "")]).then(([financials]) => financials);
-  const estimatesRead = financialsRead.then((financials) => (
-    !isFundListing(financials.status === "fulfilled" ? financials.value : null) && provider.getAnalystResearch
-      ? loadAnalystResearch(provider, symbol, "") : null
-  ));
-  const [actions, estimates, calendar] = await Promise.allSettled([
+  const listingRead = Promise.allSettled([
     provider.getCorporateActions?.(symbol, "") ?? null,
-    estimatesRead,
+    provider.getTickerFinancials(symbol, ""),
+  ]).then(([actions, financials]) => {
+    const recordedActions = actions.status === "fulfilled" ? actions.value : null;
+    const financialsData = financials.status === "fulfilled" ? financials.value : null;
+    return { actions, financials, recordedActions, financialsData, fund: isFundListing(financialsData, recordedActions) };
+  });
+  const [calendar, estimates] = await Promise.allSettled([
     loadEarningsCalendar(provider, [symbol]),
+    listingRead.then(({ fund }) => !fund && provider.getAnalystResearch ? loadAnalystResearch(provider, symbol, "") : null),
   ]);
-  const financials = await financialsRead;
+  const { actions, financials, recordedActions, financialsData, fund } = await listingRead;
   const event = calendar.status === "fulfilled" ? calendarEventOf(calendar.value.events, symbol) : null;
-  const actionsData = actions.status === "fulfilled" && actions.value ? withResolvedEarnings(actions.value, event, today) : null;
-  const financialsData = financials.status === "fulfilled" ? financials.value : null;
-  const estimatesData = estimates.status === "fulfilled" ? estimates.value : null;
+  const actionsData = recordedActions ? (fund ? fundCorporateActions(recordedActions) : withResolvedEarnings(recordedActions, event, today)) : null;
+  const estimatesData = !fund && estimates.status === "fulfilled" ? estimates.value : null;
   return {
     actions: actionsData,
     estimates: estimatesData,
     financials: financialsData,
     currency: actionsData?.currency ?? estimatesData?.currency ?? financialsData?.quote?.currency ?? "",
     actionsError: settledError(actions),
-    estimatesError: settledError(estimates),
+    estimatesError: fund ? null : settledError(estimates),
     financialsError: settledError(financials),
   };
 }
