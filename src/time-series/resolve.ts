@@ -57,7 +57,7 @@ import { currencySeries } from "./currency-conversion";
 import {
   bufferPriceComparison,
   clipPriceComparison,
-  comparisonSplitNotice,
+  comparisonSplitAssessment,
   observationDate,
   priceComparisonBoundsForSeries,
   priceComparisonSeriesIds,
@@ -302,16 +302,16 @@ async function resolveChartSpecWindow(
  * The splits a comparison's listings took inside their windows, read from
  * each listing's corporate actions (once per chart, as total returns read
  * them), and any jump of a leg's closes no split-adjusted series makes
- * (comparisonSplitNotice). A listing whose actions cannot be read names no
+ * (comparisonSplitAssessment). A listing whose actions cannot be read names no
  * split; its jumps are still named.
  */
-async function comparedSplitNotice(
+async function assessComparedSplits(
   spec: ChartSpec,
   comparison: PriceComparison,
   series: readonly ResolvedSeries[],
   loadActions: (source: Extract<ChartSeriesSpec["source"], { kind: "security" }>) => Promise<CorporateActionsData | null>,
   now: number,
-): Promise<string | null> {
+) {
   const legs = await Promise.all(Object.keys(comparison.legs ?? {}).map(async (id) => {
     const source = spec.series.find((entry) => entry.id === id)?.source;
     if (source?.kind !== "security") return null;
@@ -319,9 +319,9 @@ async function comparedSplitNotice(
       logFailure("time-series-resolve", "Loading splits for a comparison failed")(error);
       return null;
     });
-    return { id, label: source.instrument.symbol, splits: actions?.splits ?? [], points: series.find((entry) => entry.id === id)?.points };
+    return { id, label: source.instrument.symbol, splits: actions?.splits ?? [], series: series.find((entry) => entry.id === id) };
   }));
-  return comparisonSplitNotice(comparison, legs.filter((leg) => leg !== null), now);
+  return comparisonSplitAssessment(comparison, legs.filter((leg) => leg !== null), now);
 }
 
 /** The price fields whose returns a distribution adds to. */
@@ -1235,7 +1235,11 @@ async function resolveChartSpecPass(
     priceComparison = resolvePriceComparison(spec, rawSeries, bounds, comparisonResolution, requestBounds ? null : spec.viewport.dateWindow,
       { ...comparisonOptions, atSessionClose: timed.timing.atSessionClose, closedEnds: timed.timing.closedEnds });
   }
-  const splitNotice = priceComparison?.legs ? await comparedSplitNotice(spec, priceComparison, rawSeries, loadDistributions, comparisonOptions.now) : null;
+  const splitAssessment = priceComparison?.legs ? await assessComparedSplits(spec, priceComparison, rawSeries, loadDistributions, comparisonOptions.now) : null;
+  const splitNotice = splitAssessment?.notice;
+  if (priceComparison && splitAssessment?.dropped.length) {
+    priceComparison = { ...priceComparison, dropped: [...priceComparison.dropped ?? [], ...splitAssessment.dropped] };
+  }
   const comparedBounds = comparisonDisplayBounds(bounds, priceComparison);
   const displayBounds = spec.viewport.dateWindow?.endAtLatestObservation && !requestBounds
     ? endAtNewestObservation(comparedBounds, rawSeries) : comparedBounds;

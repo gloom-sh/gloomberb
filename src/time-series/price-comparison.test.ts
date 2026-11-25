@@ -95,15 +95,40 @@ describe("normalized market price comparison", () => {
     const resolve = async (history: Record<string, PricePoint[]>) => {
       const base = sources(history);
       const getCorporateActions = async (symbol: string): Promise<CorporateActionsData> => ({ symbol, dividends: [], splits: splits[symbol] ?? [], earnings: [] });
-      return (await resolveChartSpecData(spec("1d"), { ...base, dataProvider: new Proxy(base.dataProvider, { get: (target, property, receiver) => (
+      return resolveChartSpecData(spec("1d"), { ...base, dataProvider: new Proxy(base.dataProvider, { get: (target, property, receiver) => (
         property === "getCorporateActions" ? getCorporateActions : Reflect.get(target, property, receiver)
-      ) }) })).splitNotice;
+      ) }) });
     };
-    expect(await resolve(jumped)).toBe("Splits in range: NEWER 1-for-20 reverse on Fri 2 Jun 2023. OLDER falls 18.5× on Mon 9 May 2022 with no split "
-      + "recorded that day; NEWER rises 20× on Fri 2 Jun 2023, the day of its 1-for-20 reverse split, unadjusted, so the returns across them are unreliable.");
-    // NEWER's closes adjusted for its split: OLDER's jump alone is named, though OLDER has no split at all.
-    expect(await resolve({ ...jumped, NEWER: histories.NEWER })).toBe("Splits in range: NEWER 1-for-20 reverse on Fri 2 Jun 2023. "
-      + "OLDER falls 18.5× on Mon 9 May 2022 with no split recorded that day, so the returns across it are unreliable.");
+    const both = await resolve(jumped);
+    expect(both.series.map((entry) => entry.points.length)).toEqual([0, 0]);
+    expect(both.splitNotice).toContain("NEWER: close rises 20× on Fri 2 Jun 2023 near the Fri 2 Jun 2023 split.");
+    const one = await resolve({ ...jumped, NEWER: histories.NEWER });
+    expect(one.series[0]?.points).toEqual([]);
+    expect(one.bufferedSeries?.[0]?.points).toEqual([]);
+    expect(one.series[1]?.points.length).toBeGreaterThan(0);
+    expect(one.splitNotice).toContain("OLDER: close falls 18.5× on Mon 9 May 2022 with no split recorded nearby. A consistent price basis cannot be verified; returns withheld.");
+  });
+
+  test("a monthly split-basis break is not a daily move; later windows still show returns", async () => {
+    const data = {
+      OLDER: rows([["2023-07-01", 10], ["2023-08-01", 10], ["2023-09-01", 11], ["2023-10-01", 11], ["2023-11-01", 12]]),
+      NEWER: rows([["2023-07-01", 1.55], ["2023-08-01", 1.417], ["2023-09-01", 11.898], ["2023-10-01", 11.77], ["2023-11-01", 12.38]]),
+    };
+    const chart = (start: string): ChartSpec => ({ ...spec(), viewport: { range: "ALL", resolution: "1mo",
+      dateWindow: { start, end: "2023-11-30" }, totalReturn: true } });
+    const base = sources(data);
+    const actions = async (symbol: string): Promise<CorporateActionsData> => ({ symbol, currency: "USD", coverage: { dividends: "available" },
+      dividends: [], earnings: [], splits: symbol === "NEWER" ? [{ date: "2023-08-31", fromFactor: 10, toFactor: 1, ratio: 0.1 }] : [] });
+    const dataProvider = new Proxy(base.dataProvider, { get: (target, property, receiver) =>
+      property === "getCorporateActions" ? actions : Reflect.get(target, property, receiver) });
+    const mixed = await resolveChartSpecData(chart("2023-07-01"), { ...base, dataProvider });
+    expect(mixed.splitNotice).toContain("close rises 8.4× in the monthly bar dated Fri 1 Sep 2023 near the Thu 31 Aug 2023 split");
+    expect(mixed.series.map((entry) => entry.points.length)).toEqual([5, 0]);
+    const history = new Map(chart("2023-07-01").series.map((entry) => [chartQuoteOverrideKeyForSource(entry.source), data[entry.id as keyof typeof data]]));
+    expect(seedChartResolutionResult(chart("2023-07-01"), history, base.now)).toBeNull();
+    const later = await resolveChartSpecData(chart("2023-10-01"), { ...base, dataProvider });
+    expect(later.splitNotice).toBeUndefined();
+    expect(later.series.map((entry) => entry.points.length)).toEqual([2, 2]);
   });
 
   test("total return reinvests each leg's cash at its ex-date close, names its basis, and leaves a leg without a history on price", async () => {

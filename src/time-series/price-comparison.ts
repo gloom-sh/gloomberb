@@ -8,6 +8,7 @@ import { zonedDateTimeParts } from "../utils/zoned-date-time";
 import { isCurrencyCode } from "../utils/currency-pair";
 import { priceComparisonCloseTimes } from "./coin-session-close";
 import { barLastSession } from "../market-data/market/bar-period";
+import { priceBasisBreaks, priceBasisFactor } from "../market-data/market/split-price-basis";
 import {
   barCloseDay, isIntradayDailyBar, isReturnPeriod, LATEST_INTRADAY_TEXT, periodBaseDay, periodBaseIndex, periodDayText,
 } from "../market-data/market/period-return";
@@ -214,63 +215,19 @@ function splitTerms(split: SplitAction): string | null {
   return `${to}-for-${from}${to! < from! ? " reverse" : ""}`;
 }
 
-/** A close more than this many times the one before it, or less than its fraction, is no day a split-adjusted series moves by. */
-const UNEXPLAINED_JUMP = 5;
-
-/** `18.4`, `20`, `5.23`: a jump's factor in three digits. */
-function jumpFactorText(ratio: number): string {
-  return String(Number(Math.max(ratio, 1 / ratio).toPrecision(3)));
-}
-
 /**
- * Each jump of a leg's closes inside its window: a close over UNEXPLAINED_JUMP
- * times the one before it or under its fraction. "SOXS falls 18.4× on Tue 26
- * May with no split recorded that day", or on a split's own day, "the day of
- * its 1-for-20 reverse split, unadjusted".
+ * Describe recorded splits separately from breaks in the served bars. A split record alone cannot tell
+ * which bars are on which basis. Withhold returns only for the legs whose windows cross a break.
  */
-function legJumps(
-  label: string,
-  points: ReadonlyArray<{ date: Date; value: number | null }>,
-  window: { baseDay: string; endDay: string },
-  splits: readonly SplitAction[],
-  currentYear: number,
-): string[] {
-  const jumps: string[] = [];
-  let previous: number | null = null;
-  for (const point of points) {
-    const value = point.value;
-    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) continue;
-    const day = point.date.toISOString().slice(0, 10);
-    const ratio = previous === null ? 1 : value / previous;
-    previous = value;
-    if (day <= window.baseDay || day > window.endDay || (ratio <= UNEXPLAINED_JUMP && ratio >= 1 / UNEXPLAINED_JUMP)) continue;
-    const split = splits.find((entry) => entry.date.slice(0, 10) === day);
-    const terms = split ? splitTerms(split) : null;
-    jumps.push(`${label} ${ratio < 1 ? "falls" : "rises"} ${jumpFactorText(ratio)}× on ${periodDayText(day, currentYear)}${
-      terms ? `, the day of its ${terms} split, unadjusted` : " with no split recorded that day"}`);
-  }
-  return jumps;
-}
-
-/**
- * The splits a comparison's returns run across, by leg: one that took effect
- * after a leg's base close and by its end (its `PriceComparison.legs` days).
- * The closes compared are split-adjusted, so a fund that reverse-split twice
- * reads its return, not its share price: "Splits in range: SOXS 1-for-20
- * reverse on Thu 5 Mar and 1-for-10 reverse on Wed 15 Jul; returns are
- * split-adjusted." That is said only when no leg's closes jump inside its
- * window (legJumps): a jump is named instead, a split or not, and the returns
- * across it called unreliable. Null when no leg has a split or a jump.
- */
-export function comparisonSplitNotice(
+export function comparisonSplitAssessment(
   comparison: Pick<PriceComparison, "legs">,
-  legs: ReadonlyArray<{ id: string; label: string; splits: readonly SplitAction[]; points?: ReadonlyArray<{ date: Date; value: number | null }> }>,
+  legs: ReadonlyArray<{ id: string; label: string; splits: readonly SplitAction[]; series?: ResolvedSeries }>,
   now = Date.now(),
-): string | null {
+): { notice: string | null; dropped: NonNullable<PriceComparison["dropped"]> } {
   const currentYear = new Date(now).getUTCFullYear();
   const named: string[] = [];
-  const jumps: string[] = [];
-  for (const { id, label, splits, points } of legs) {
+  const dropped: NonNullable<PriceComparison["dropped"]> = [];
+  for (const { id, label, splits, series } of legs) {
     const window = comparison.legs?.[id];
     if (!window) continue;
     const inside = splits
@@ -281,12 +238,24 @@ export function comparisonSplitNotice(
         return terms ? [`${terms} on ${periodDayText(split.date, currentYear)}`] : [];
       });
     if (inside.length) named.push(`${label} ${listLabels(inside)}`);
-    if (points) jumps.push(...legJumps(label, points, window, splits, currentYear));
+    if (!series) continue;
+    const bars = series.points.map((point) => ({ date: observationDate(point.date.getTime(), series),
+      close: point.close ?? point.value, high: point.high, low: point.low }));
+    const breaks = priceBasisBreaks(bars, splits, { ...window, interval: series.historyResolution, venue: legVenue(series), includeUnrecorded: true });
+    if (breaks.length) {
+      const period = series.historyResolution === "1mo" ? "monthly" : series.historyResolution === "1wk" ? "weekly" : null;
+      const descriptions = breaks.map(({ day, ratio, kind, split }) => {
+        const move = kind === "close" ? `close ${ratio < 1 ? "falls" : "rises"}` : "high/low range is";
+        return `${move} ${priceBasisFactor(ratio)}× ${period ? `in the ${period} bar dated` : "on"} ${periodDayText(day, currentYear)}${split
+          ? ` near the ${periodDayText(split.date.slice(0, 10), currentYear)} split` : " with no split recorded nearby"}`;
+      });
+      dropped.push({ seriesId: id, label, reason: `${descriptions.join("; ")}. A consistent price basis cannot be verified` });
+    }
   }
   const splitsLine = named.length ? `Splits in range: ${named.join("; ")}` : null;
-  if (!jumps.length) return splitsLine && `${splitsLine}; returns are split-adjusted.`;
-  const jumpsLine = `${jumps.join("; ")}, so the returns across ${jumps.length === 1 ? "it" : "them"} are unreliable.`;
-  return splitsLine ? `${splitsLine}. ${jumpsLine}` : jumpsLine;
+  const notice = dropped.length ? [splitsLine && `${splitsLine}.`, ...dropped.map(({ label, reason }) => `${label}: ${reason}; returns withheld.`)]
+    .filter(Boolean).join(" ") : splitsLine && `${splitsLine}; returns are split-adjusted.`;
+  return { notice, dropped };
 }
 
 /**
@@ -516,6 +485,7 @@ export function bufferPriceComparison(
   view: { start: number | null; end: number | null },
 ): ResolvedSeries {
   if (!comparison?.seriesIds.includes(series.id)) return series;
+  if (comparison.dropped?.some((entry) => entry.seriesId === series.id)) return { ...series, points: [] };
   return {
     ...series,
     latestChangePercent: undefined,

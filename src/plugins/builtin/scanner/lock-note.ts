@@ -11,10 +11,10 @@ const OPTIONS_ROUTE: FreeRoute = {
   text: (ticker, company) => `gloom options ${ticker} lists ${company}'s option chain, each contract with its volume and open interest.`,
   answers: async (symbol, context) => {
     const { symbol: ticker, exchange } = await resolveHeadlessInstrument(context, symbol);
-    if (!context.marketData.getOptionsChain) return false;
+    if (!context.marketData.getOptionsChain) return null;
     try {
       const chain = await context.marketData.getOptionsChain(ticker, exchange ?? "");
-      return chain.expirationDates.length + chain.calls.length + chain.puts.length > 0;
+      return chain.expirationDates.length + chain.calls.length + chain.puts.length > 0 ? true : null;
     } catch (error) {
       if (isOptionsUnavailableError(error)) return false;
       throw error;

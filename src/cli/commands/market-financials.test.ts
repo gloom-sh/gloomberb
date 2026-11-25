@@ -102,7 +102,7 @@ test("valuation --csv is one clean table; financials --csv writes raw amounts un
     "# Publication time: not published",
     // The years served are the ones it says it has: this report holds two, from 2024, and the line takes the year from them.
     // GF's extended history holds the same two years, so the report points nowhere further.
-    "# note: annual history from 2024; older years not available for this listing",
+    "# note: annual history from 2024; GF has no earlier revenue observations",
   ]);
   expect(statements.at(-2)).toStartWith("# Retrieval time: ");
   // NDJSON writes the statement rows flat, each ending with the same five fields.

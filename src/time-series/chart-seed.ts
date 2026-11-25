@@ -12,7 +12,7 @@ import { isMarketFieldId } from "./field-catalog";
 import { chartPriceHistoryIntegrityNotices } from "./market";
 import { activeStudyInputSeriesIds, resolveStudies } from "./studies/resolve";
 import { clipSeriesToWindow } from "./alignment";
-import { bufferPriceComparison, clipPriceComparison, priceComparisonBoundsForSeries, resolvePriceComparison } from "./price-comparison";
+import { bufferPriceComparison, clipPriceComparison, comparisonSplitAssessment, priceComparisonBoundsForSeries, resolvePriceComparison } from "./price-comparison";
 import { readSeedListingFacts } from "./parsed-history-cache";
 import { getPricePointTimestamp } from "../utils/price-history";
 import type {
@@ -114,6 +114,8 @@ export function seedChartResolutionResult(
   const resolutionSupport = support.length === series.length ? intersectChartResolutionSupport(support) : [];
   const priceComparison = resolvePriceComparison(spec, series, bounds, resolution, spec.viewport.dateWindow,
     { preset: explicitBounds(spec) || runtimeRequestBounds(options) ? null : spec.viewport.range, now: referenceNow?.getTime() ?? Date.now() });
+  if (priceComparison?.legs && comparisonSplitAssessment(priceComparison,
+    series.map((entry) => ({ id: entry.id, label: entry.label, series: entry, splits: [] }))).dropped.length) return null;
   const displayBounds = comparisonDisplayBounds(bounds, priceComparison);
   const comparisonBounds = priceComparison && priceComparison.start !== null
     ? priceComparison : bounds;

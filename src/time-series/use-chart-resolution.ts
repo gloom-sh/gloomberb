@@ -10,6 +10,7 @@ import {
   type ChartResolveSources,
 } from "./resolve-context";
 import { chartSeedResolution, seedChartResolutionResult } from "./chart-seed";
+import { priceComparisonSeriesIds } from "./price-comparison";
 import { reconcileChartTail } from "./tail-reconcile";
 import type { ChartResolutionResult, ChartSpec } from "./types";
 import {
@@ -247,7 +248,7 @@ export function useChartResolution(
   const scope = options.savedCopyScope;
   const publicSpecKey = useMemo(() => publicChartSpecKey(spec, scope), [spec, scope]);
   const specKey = publicSpecKey ?? JSON.stringify([scope, spec]);
-  const savedKey = !snapshot && publicSpecKey ? { version: 2, key: ["chart-resolution", publicSpecKey,
+  const savedKey = !snapshot && publicSpecKey ? { version: priceComparisonSeriesIds(spec) ? 3 : 2, key: ["chart-resolution", publicSpecKey,
     options.requestViewport?.start, options.requestViewport?.end, options.autoViewport?.start, options.autoViewport?.end,
     options.autoViewport ? options.targetPointCount : null] } : null;
   const seedResult = () => {
