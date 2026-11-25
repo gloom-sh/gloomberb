@@ -1772,7 +1772,7 @@
           {
             "code": "EVT",
             "name": "Corporate Actions",
-            "description": "Dividends, splits, reported earnings, and analyst estimates."
+            "description": "What is next, reported earnings against estimates by quarter, and dividends and splits by year."
           },
           {
             "code": "EE",
