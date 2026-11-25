@@ -16,6 +16,7 @@ import {
   roundCongressReturn,
   FILING_DAY_FORMAT,
   tradeAssetLabel,
+  tradeVehicleSuffix,
   type MemberColumn,
   type TradeColumn,
   type TickerColumn,
@@ -35,6 +36,12 @@ function sideColor(side: CloudCongressTradePayload["side"]): string {
   if (side === "SELL") return colors.negative;
   if (side === "EXCHANGE") return colors.text;
   return colors.textDim;
+}
+
+/** A cut asset keeps what it was held through, the part that tells a vehicle's rows apart. */
+function assetEnd(trade: CloudCongressTradePayload): Pick<DataTableCell, "keepEnd"> {
+  const suffix = trade.assetType === "OP" ? "" : tradeVehicleSuffix(trade);
+  return suffix ? { keepEnd: suffix } : {};
 }
 
 export function renderCongressTradeCell(
@@ -57,7 +64,8 @@ export function renderCongressTradeCell(
       return { text: trade.side, color: sideColor(trade.side), attributes: TextAttributes.BOLD };
     case "ticker":
       return {
-        text: trade.ticker ?? (column.assetFallback && trade.assetName ? trade.assetName : MISSING_VALUE),
+        text: trade.ticker ?? (column.assetFallback && trade.assetName ? tradeAssetLabel(trade) : MISSING_VALUE),
+        ...(!trade.ticker && column.assetFallback ? assetEnd(trade) : {}),
         content: trade.ticker ? (
           <TickerBadgeList
             symbols={[trade.ticker]}
@@ -74,7 +82,7 @@ export function renderCongressTradeCell(
         color: colors.textBright,
       };
     case "asset":
-      return { text: tradeAssetLabel(trade), color: colors.text };
+      return { text: tradeAssetLabel(trade), ...assetEnd(trade), color: colors.text };
     case "owner":
       return { text: trade.owner, color: colors.textDim };
   }

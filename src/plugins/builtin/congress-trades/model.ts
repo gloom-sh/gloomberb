@@ -118,12 +118,28 @@ function isoOptionDate(value: string): string {
   return `${year}-${match[1]!.padStart(2, "0")}-${match[2]!.padStart(2, "0")}`;
 }
 
+/** A Senate asset cell carries the asset's kind after its name ("MH Four Winds LLC Description: Partnership"). */
+export function plainAssetName(name: string): string {
+  return name.replace(/\s+Description:\s.*$/i, "").trim() || name;
+}
+
+/**
+ * What a trade was held through, when the filing says ("Underlying Asset of
+ * Summa I LLC"), as " via Summa I LLC": one partnership held through four
+ * family LLCs files four rows that differ only there.
+ */
+export function tradeVehicleSuffix(trade: Pick<CloudCongressTradePayload, "description">): string {
+  const vehicle = /Underlying Asset of\s+(.+?)\s*(?:·|$)/i.exec(trade.description ?? "")?.[1]?.trim();
+  return vehicle ? ` via ${vehicle}` : "";
+}
+
 /**
  * Filings name an option by its underlying stock ("... Common Stock") and put
  * the contract terms in the description, so option rows lead with the terms.
+ * Anything else is its name and what it was held through.
  */
 export function tradeAssetLabel(trade: Pick<CloudCongressTradePayload, "assetName" | "assetType" | "description">): string {
-  if (trade.assetType !== "OP") return trade.assetName;
+  if (trade.assetType !== "OP") return `${plainAssetName(trade.assetName)}${tradeVehicleSuffix(trade)}`;
   const text = trade.description ?? "";
   const right = /\b(call|put)s?\b/i.exec(text)?.[1]?.toUpperCase() ?? "OPTION";
   const strike = /strike(?:\s+price)?(?:\s+of)?:?\s*\$\s*([\d,]+(?:\.\d+)?)/i.exec(text)?.[1];
