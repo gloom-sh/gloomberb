@@ -118,3 +118,50 @@ test("Overview and valuation use the same dated FX close for a withdrawn EV on a
     setSystemTime();
   }
 });
+
+test.each([true, false])("IAG Overview and valuation agree when a withdrawn EV has a valid bridge (%s)", async (hasBridge) => {
+  setSystemTime(new Date("2026-11-25T20:05:00Z"));
+  const listing = createTestTicker("IAG:LSE", "International Consolidated Airlines Group", { exchange: "LSE", currency: "GBP" });
+  const quote = createTestQuote({ symbol: "IAG", currency: "GBP", listingExchangeName: "LSE", price: 4.11 });
+  const financials = createTestFinancials({ quote, financialCurrency: "EUR", fundamentals: {
+    marketCap: 18.87e9, marketCapCurrency: "GBP", unavailableFields: ["enterpriseValue"],
+    enterpriseValueCheck: { status: "withdrawn", currency: "GBP", source: 20.67e9, marketCap: 18.86e9,
+      ...(hasBridge ? { computed: 22.91e9, totalDebt: 5.99e9, leases: 5.95e9, cash: 7.9e9,
+        balanceSheetDate: "2026-06-30", fx: { from: "EUR", rate: 0.86135 } }
+        : { reason: "The source EV was not checked against the balance sheet" }) },
+  } });
+  const overview = createOpenTuiTestHarness();
+  let notes: string[] = [];
+  try {
+    const cli = createTestCliContext({ dataProvider: createTestDataProvider({ getTickerFinancials: async () => financials,
+      getQuote: async () => quote }) });
+    await marketDataCliCommands.find((command) => command.name === "valuation")!.execute(["IAG:LSE"], cli.context);
+    const { result, options } = cli.printed[0]!;
+    const report = options!.text!(result.data);
+    await act(async () => {
+      await overview.render(<TestPaneFrame state={createInitialState(config)} paneId="overview" pluginId="ticker-research"
+        runtime={createTestPluginRuntime()} width={116} height={50}>
+        {(body, footer) => {
+          notes = footer.info.flatMap((info) => info.notes ?? []);
+          return <OverviewTab {...body} focused ticker={listing} financials={financials} />;
+        }}
+      </TestPaneFrame>, { width: 116, height: 50 });
+    });
+    await settleFrame(overview.setup(), 5);
+    if (hasBridge) {
+      expect(overview.frame()).toMatch(/\bEV\s+22\.92B GBP/);
+      const bridgeNote = notes.find((note) => note.startsWith("EV 22.92B GBP"))!;
+      expect(bridgeNote).toContain("+ leases 5.95B");
+      expect(bridgeNote).toContain("balance sheet 2026-06-30, EUR/GBP 0.86135 at its date's close");
+      expect(report).toContain(bridgeNote);
+      expect(notes.join(" ")).not.toContain("EV unavailable");
+    } else {
+      expect(report).toMatch(/^Enterprise Value\s+unavailable$/m);
+      expect(overview.frame()).not.toMatch(/\bEV\s+\d/);
+      expect(notes.join(" ")).toContain("EV unavailable");
+    }
+  } finally {
+    await overview.destroy();
+    setSystemTime();
+  }
+});

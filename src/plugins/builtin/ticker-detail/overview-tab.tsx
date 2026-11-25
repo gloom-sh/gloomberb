@@ -50,7 +50,7 @@ import {
 } from "../../../utils/fundamentals";
 import { servedRatesNotMeaningful } from "../../../utils/served-rates";
 import { atRegularSessionPrice, regularSessionMarketCapitalization } from "../../../market-data/quotes/regular-session-valuation";
-import { balanceSheetRateWanted, listingEnterpriseValue } from "../../../market-data/quotes/listing-enterprise-value";
+import { balanceSheetRateWanted, enterpriseValueBridgeNote, listingEnterpriseValue } from "../../../market-data/quotes/listing-enterprise-value";
 import { loadBalanceSheetRate } from "../../../market-data/quotes/balance-sheet-rate";
 import { useAsyncResource } from "../../../react/async-resource";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
@@ -240,6 +240,7 @@ function ResolvedOverviewTab({
   [sheetCurrency, capCurrency, sheetDate]);
   const { data: evRate } = useAsyncResource(sheetDate ? loadEvRate : null);
   const evInputs = evFinancials && (evRate ? { ...evFinancials, balanceSheetRate: evRate } : evFinancials);
+  const enterpriseValue = evInputs ? listingEnterpriseValue(evInputs) : undefined;
   const quoteCurrency = quote?.currency || ticker.metadata.currency || baseCurrency;
   const toBase = (value: number, fromCurrency: string) =>
     convertCurrency(value, fromCurrency, baseCurrency, exchangeRates);
@@ -334,8 +335,9 @@ function ResolvedOverviewTab({
   // A provider EV well off market cap + debt - cash, or why a withdrawn one is unavailable, at the
   // regular session price the EV beside it is shown at. A gap of a few percent is the valuation panes' detail.
   const pricedForEnterpriseValue = atRegularSessionPrice({ quote, fundamentals: withFinancialEnterpriseValue(fundamentals, profile) }).fundamentals;
-  const enterpriseValueNote = enterpriseValueGapIsLarge(pricedForEnterpriseValue)
-    ? enterpriseValueReconciliationNote(pricedForEnterpriseValue, undefined, evInputs ?? undefined) : undefined;
+  const bridgeNote = enterpriseValue?.kind === "value" ? enterpriseValueBridgeNote(enterpriseValue) : null;
+  const enterpriseValueNote = bridgeNote ?? (enterpriseValueGapIsLarge(pricedForEnterpriseValue)
+    ? enterpriseValueReconciliationNote(pricedForEnterpriseValue, undefined, evInputs ?? undefined) : undefined);
   // Months of cash, for a company that burns it, and an offering since its balance sheet that the cash is not in yet.
   const unadjustedRunway = useMemo(() => financials ? cashRunway(financials) : null, [financials]);
   const offerings = useRunwayOfferings(ticker.metadata.ticker, ticker.metadata.exchange,
@@ -520,7 +522,7 @@ function ResolvedOverviewTab({
     baseCurrency,
     toBase,
     marketCapExchangeRates: exchangeRates,
-    enterpriseValue: evInputs ? listingEnterpriseValue(evInputs) : undefined,
+    enterpriseValue,
     nextEarnings: financials?.nextEarnings,
     depositaryReceipt: sharesOutstandingInReceipts(quote, fundamentals, description),
     depositaryPair: depositaryPair ? { pair: depositaryPair, receiptSide: isReceiptSide(financials) } : null,
