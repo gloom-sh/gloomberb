@@ -12,9 +12,10 @@ export const MISSING = MISSING_VALUE;
 
 const MS_PER_DAY = 86_400_000;
 
-/** What the deal table says with no rows: the search that matched none, or the company with no deal. */
-export function emptyDealsTitle(symbol: string | null, query: string): string {
-  return query ? "No matching deals." : symbol ? `No deals involving ${symbol}.` : "No deals.";
+/** What the deal table says with no rows: the search that matched none, or the company with no deal; on a split pending list, which half. */
+export function emptyDealsTitle(symbol: string | null, query: string, terms: "priced" | "unpriced" | null = null): string {
+  const kind = terms === "priced" ? "priced deals" : terms === "unpriced" ? "deals without terms" : "deals";
+  return query ? `No matching ${kind}.` : symbol ? `No ${kind} involving ${symbol}.` : `No ${kind}.`;
 }
 
 const CURRENCY_SIGNS: Record<string, string> = { USD: "$", EUR: "€", GBP: "£", JPY: "¥", CNY: "¥", INR: "₹", KRW: "₩" };
@@ -84,6 +85,32 @@ export function termsLabel(terms: MnaTerms): string {
   if (terms.cvr) label += " + CVR";
   if (terms.partial) label += ", partial";
   return label;
+}
+
+/**
+ * Pending deals split by whether they say what one target share gets: a deal
+ * with cash or an exchange ratio per share has a spread to read (merger
+ * arbitrage), one announced as "cash" or with no terms yet has none, and
+ * its own shorter row.
+ */
+export type MnaTermsView = "priced" | "unpriced";
+
+export const MNA_TERMS_VIEWS: readonly { value: MnaTermsView; label: string }[] = [
+  { value: "priced", label: "Priced" },
+  { value: "unpriced", label: "No terms" },
+];
+
+export function isMnaTermsView(value: unknown): value is MnaTermsView {
+  return value === "priced" || value === "unpriced";
+}
+
+/** Cash or shares per target share: what a spread prices. */
+export function hasPerShareTerms(terms: MnaTerms): boolean {
+  return terms.cashPerShare != null || terms.exchangeRatio != null;
+}
+
+export function mnaTermsView(deal: Pick<MnaDeal, "terms">): MnaTermsView {
+  return hasPerShareTerms(deal.terms) ? "priced" : "unpriced";
 }
 
 const STATUS_LABELS: Record<MnaStatus, string> = {

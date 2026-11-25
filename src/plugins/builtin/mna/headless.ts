@@ -1,7 +1,7 @@
-import type { MnaDeal, MnaDealsParams, MnaOutsideDate, MnaRegionFilter, MnaStatusFilter, MnaTargetFilter } from "../../../api-client/mna";
+import type { MnaDeal, MnaDealsParams, MnaDealsPayload, MnaOutsideDate, MnaRegionFilter, MnaStatusFilter, MnaTargetFilter } from "../../../api-client/mna";
 import type { HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneDefinition } from "../../../types/plugin";
 import type { Quote } from "../../../types/financials";
-import { fetchMnaDeals } from "./client";
+import { appendMnaDeals, fetchMnaDeals } from "./client";
 import { companyDataNotes } from "../../../types/company-from";
 import {
   apartText,
@@ -11,12 +11,15 @@ import {
   formatDealValue,
   formatExpectedClose,
   formatPercentShort,
+  isMnaTermsView,
   legsApart,
+  mnaTermsView,
   outsideDateParts,
   printWhen,
   stageLabel,
   termsLabel,
   type DealSpread,
+  type MnaTermsView,
   type SpreadBasis,
 } from "./model";
 import { REPORT_ROWS } from "../shared/headless-options";
@@ -78,6 +81,28 @@ const COLUMNS: HeadlessPaneColumn[] = [
 const TEXT_COLUMNS: HeadlessPaneColumn[] = [
   ANNOUNCED, TARGET, SYMBOL, ACQUIRER, TERMS, VALUE, SPREAD, SPREAD_AS_OF, LATEST, STAGE, CLOSE, OUTSIDE, CLOSED,
 ];
+
+/** A deal with no per-share terms has no spread: its rows end at the stage and the dates, as the pane's No terms list does. */
+const SPREAD_KEYS = new Set([SPREAD.key, SPREAD_AS_OF.key, LATEST.key, LATEST_AS_OF.key]);
+const withoutSpread = (columns: HeadlessPaneColumn[]) => columns.filter((column) => !SPREAD_KEYS.has(column.key));
+
+/** Pages read to find `--terms` rows, which the server does not filter by: a page holds up to 100 deals. */
+const TERMS_PAGES = 5;
+
+/**
+ * The deals `--terms` keeps, read page after page until `limit` of them are
+ * in or the list ends; without it, the one page asked for.
+ */
+async function loadDeals(params: MnaDealsParams, terms: MnaTermsView | null, ctx: HeadlessPaneContext): Promise<MnaDealsPayload> {
+  if (!terms) return fetchMnaDeals(params, ctx.apiClient);
+  const limit = params.limit ?? 50;
+  let payload = await fetchMnaDeals({ ...params, limit: 100 }, ctx.apiClient);
+  for (let page = 1; page < TERMS_PAGES && payload.hasMore && payload.deals.filter((deal) => mnaTermsView(deal) === terms).length < limit; page += 1) {
+    payload = appendMnaDeals(payload, await fetchMnaDeals({ ...params, limit: 100, offset: payload.nextOffset }, ctx.apiClient));
+  }
+  const kept = payload.deals.filter((deal) => mnaTermsView(deal) === terms);
+  return { ...payload, deals: kept.slice(0, limit), hasMore: payload.hasMore || kept.length > limit };
+}
 
 /** The quotes of the listings pending deals' spreads are priced at, by symbol; none when the batch fails or is not offered. */
 async function legQuotes(deals: readonly MnaDeal[], ctx: HeadlessPaneContext): Promise<Map<string, Quote>> {
@@ -144,10 +169,17 @@ export const mnaHeadless: HeadlessPaneDefinition<"rows"> = {
     { key: "status", description: "Deal status.", type: "enum", defaultValue: "pending", values: ["pending", "talks", "completed", "terminated", "all"].map((value) => ({ value })) },
     { key: "target", description: "Public or private targets.", type: "enum", defaultValue: "public", values: ["all", "public", "private"].map((value) => ({ value })) },
     { key: "region", description: "US or international targets.", type: "enum", defaultValue: "all", values: ["all", "us", "intl"].map((value) => ({ value })) },
+    {
+      key: "terms",
+      description: "Deals with per-share cash or shares (priced, the ones a spread is read on) or announced without them (unpriced), as the pane's Terms lists split pending deals.",
+      type: "enum",
+      values: [{ value: "priced" }, { value: "unpriced", aliases: ["none", "no-terms"] }],
+    },
     { key: "query", shot: { reportOnly: "searches the text report, and the pane opens without a search" }, description: "Company name or ticker.", type: "string" },
     { key: "limit", shot: REPORT_ROWS, aliases: ["count", "rows"], description: "Maximum rows.", type: "integer", defaultValue: 50, minimum: 1, maximum: 100 },
   ],
-  describe: (args) => `M&A${args.symbols[0] ? ` | ${args.symbols[0]}` : ""} | ${text(args.options.status) || "pending"}`,
+  describe: (args) => `M&A${args.symbols[0] ? ` | ${args.symbols[0]}` : ""} | ${text(args.options.status) || "pending"}${
+    args.options.terms === "priced" ? " | priced" : args.options.terms === "unpriced" ? " | no terms" : ""}`,
   // The filters the pane keeps, as asked for; one company's deals keep their status apart and have no target or region filter.
   shotState: (args, _load, given) => {
     const symbol = args.symbols[0];
@@ -156,7 +188,7 @@ export const mnaHeadless: HeadlessPaneDefinition<"rows"> = {
       throw new Error(`One company's deals have no ${unused.map((key) => `--${key}`).join(" or ")} filter. Drop it from shot, or leave out ${symbol} for the market's deals.`);
     }
     const prefix = symbol ? "ticker." : "";
-    const state = Object.fromEntries(["status", "target", "region"].filter((key) => given.has(key)).map((key) => [`${prefix}${key}`, args.options[key]]));
+    const state = Object.fromEntries(["status", "target", "region", "terms"].filter((key) => given.has(key)).map((key) => [`${prefix}${key}`, args.options[key]]));
     return Object.keys(state).length ? { pluginState: { "ticker-research": state } } : {};
   },
   async load(args, ctx) {
@@ -171,7 +203,8 @@ export const mnaHeadless: HeadlessPaneDefinition<"rows"> = {
       query: text(args.options.query) || undefined,
       limit: Number(args.options.limit ?? 50),
     };
-    const payload = await fetchMnaDeals(params, ctx.apiClient);
+    const terms = isMnaTermsView(args.options.terms) ? args.options.terms : null;
+    const payload = await loadDeals(params, terms, ctx);
     const quotes = await legQuotes(payload.deals, ctx);
     const spreadOf = (deal: MnaDeal) => quotes.size === 0 || !deal.target.symbol ? null
       : dealSpread(deal, quotes.get(deal.target.symbol) ?? null, deal.terms.ratioSymbol ? quotes.get(deal.terms.ratioSymbol) ?? null : null);
@@ -181,8 +214,8 @@ export const mnaHeadless: HeadlessPaneDefinition<"rows"> = {
       : {};
     return {
       ...none,
-      columns: COLUMNS,
-      textColumns: TEXT_COLUMNS,
+      columns: terms === "unpriced" ? withoutSpread(COLUMNS) : COLUMNS,
+      textColumns: terms === "unpriced" ? withoutSpread(TEXT_COLUMNS) : TEXT_COLUMNS,
       rows: payload.deals.map((deal) => ({
         id: deal.id,
         announced: deal.announced,

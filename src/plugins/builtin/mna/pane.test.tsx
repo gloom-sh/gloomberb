@@ -69,7 +69,7 @@ afterEach(() => {
 /** The ticker the pane is linked to: its key, and the venue the saved ticker names. */
 interface Listing { key: string; exchange: string }
 
-async function mount(width = 130, height = 10, listing?: Listing, as: "pane" | "tab" = "pane", quote?: (symbol: string) => Quote) {
+async function mount(width = 130, height = 10, listing?: Listing, as: "pane" | "tab" = "pane", quote?: (symbol: string) => Quote, pluginState?: Record<string, unknown>) {
   mnaDealsCache.attach(new MemoryPluginPersistence());
   mnaDealCache.attach(new MemoryPluginPersistence());
   const paneId = "mna:test";
@@ -85,7 +85,7 @@ async function mount(width = 130, height = 10, listing?: Listing, as: "pane" | "
   const runtime = createTestPluginRuntime({ getMarketData: () => provider as never });
   function Harness() {
     // The open deal is pane state, so the harness needs a reducer.
-    const [paneState, setPaneState] = useState<AppState["paneState"]>({});
+    const [paneState, setPaneState] = useState<AppState["paneState"]>(pluginState ? { [paneId]: { pluginState: { "ticker-research": pluginState } } } : {});
     state.paneState = paneState;
     const dispatch = (action: AppAction) => setPaneState(appReducer(state, action).paneState);
     return (
@@ -111,7 +111,7 @@ async function mount(width = 130, height = 10, listing?: Listing, as: "pane" | "
   return tui.frame();
 }
 
-test("a delayed list shows locked rows for the newest deals, terms, private targets and the upgrade key", async () => {
+test("a delayed list shows locked rows for the newest deals, terms and the upgrade key", async () => {
   const requests: string[] = [];
   setCloudApiFetchTransport(async (input) => {
     requests.push(String(input));
@@ -126,15 +126,45 @@ test("a delayed list shows locked rows for the newest deals, terms, private targ
   // Live spread against the 10.46 quote.
   expect(frame).toContain("0.38%");
   expect(frame).toContain("Tender offer");
-  expect(frame).toContain("COL Group");
-  expect(frame).toContain("€810.00M");
-  expect(frame).toContain("Q1 27");
+  // A deal with no per-share terms is on the other list.
+  expect(frame).not.toContain("COL Group");
   expect(frame).toContain("[$]upgrade");
   // AS OF is drawn beside the spread, but Export CSV keeps CLOSE and STAGE where an earlier export had them.
   await exportPaneTable("mna:test", "mna.csv");
   const header = takeSavedTextFile()!.text.split("\n")[0]!.split(",");
   expect(header.findIndex((name) => /^as of/i.test(name))).toBe(header.length - 1);
   expect(header.findIndex((name) => /^stage/i.test(name))).toBe(header.length - 2);
+});
+
+test("pending deals announced without per-share terms are their own list, with no price or spread columns", async () => {
+  setCloudApiFetchTransport(async () => Response.json(delayed));
+  const frame = await mount(130, 10, undefined, "pane", undefined, { terms: "unpriced" });
+  expect(frame).toContain("COL Group");
+  expect(frame).toContain("€810.00M");
+  expect(frame).toContain("Q1 27");
+  expect(frame).not.toContain("ACVA");
+  const header = frame.split("\n").find((line) => line.includes("TARGET"))!;
+  expect(header).toContain("CONSIDERATION");
+  for (const label of ["PRICE", "SPREAD", "AS OF"]) expect(header).not.toContain(label);
+});
+
+test("a split list reads further pages until its rows fill the pane", async () => {
+  const unpriced = (id: string): MnaDeal => ({ ...delayed.deals[1]!, id, target: { name: `Private ${id}`, symbol: null, country: "US" } });
+  const pages: MnaDealsPayload[] = [
+    // A first page of deals without terms: nothing for the Priced list yet.
+    { ...delayed, access: "full", lockedDeals: 0, deals: ["a", "b", "c"].map(unpriced), hasMore: true, nextOffset: 3 },
+    { ...delayed, access: "full", lockedDeals: 0, deals: [delayed.deals[0]!], hasMore: false, nextOffset: 4 },
+  ];
+  const offsets: string[] = [];
+  setCloudApiFetchTransport(async (input) => {
+    const offset = new URL(String(input), "https://cloud.test").searchParams.get("offset") ?? "0";
+    offsets.push(offset);
+    return Response.json(offset === "0" ? pages[0] : pages[1]);
+  });
+  const frame = await mount();
+  expect(offsets).toEqual(["0", "3"]);
+  expect(frame).toContain("ACVA");
+  expect(frame).not.toContain("Private a");
 });
 
 // The detail read "Spread 0.39%" from two trades 8.6 hours apart, beside a chart of Monday's closes, with nothing dating either.
