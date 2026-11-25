@@ -460,10 +460,14 @@ test("a tile sized by the day's move is sized by the move its colour shows, afte
   expect(await biggestTile({ liveStreaming: true, sessionBasis: "regular-session" }, board)).toBe("AAAA");
 });
 
+/** A real-time tile the server's live read did not price, as the server sends it: the tile older apps draw blank, and its delayed figures. */
+const unpricedTile = (asset: MarketHeatmapAsset, delayedQuote: NonNullable<MarketHeatmapAsset["delayedQuote"]>): MarketHeatmapAsset => ({
+  ...asset, price: 0, change: 0, changePercent: 0, hasChange: false, volume: null, regularChangePercent: null, delayedQuote,
+});
+
 test("a Pro board's tile the server could not price live is grey with its delayed move marked, until the stream prices it", async () => {
   const now = Date.now();
-  const delayed: MarketHeatmapAsset = { ...stock("AAAA", 400, 0), price: 0, change: null, changePercent: null, volume: null, regularChangePercent: null,
-    delayedQuote: { price: 98.5, changePercent: -1.5, volume: 900, printedAt: now - 20 * 60_000 } };
+  const delayed = unpricedTile(stock("AAAA", 400, 0), { price: 98.5, changePercent: -1.5, volume: 900, printedAt: now - 20 * 60_000 });
   const board: MarketHeatmapResult = { universe: "us-equity", source: "gloom", fetchedAt: now - 2_000, pricesAsOf: now - 2_000, session: "REGULAR",
     regularSessionDate: null, access: "realtime", assets: [delayed, { ...stock("BBBB", 200, 1.1), regularChangePercent: null }] };
   const api = spyOn(apiClient, "getMarketHeatmap").mockResolvedValue({ status: "success", data: board });
@@ -490,8 +494,7 @@ test("a streamed live quote replaces a tile's delayed figures", async () => {
       ? entry
       : IDLE_COORDINATOR_QUOTES.getQuoteEntry()),
   } as never);
-  const delayed: MarketHeatmapAsset = { ...stock("AAAA", 400, 0), price: 0, change: null, changePercent: null, volume: null, regularChangePercent: null,
-    delayedQuote: { price: 98.5, changePercent: -1.5, volume: 900, printedAt: now - 20 * 60_000 } };
+  const delayed = unpricedTile(stock("AAAA", 400, 0), { price: 98.5, changePercent: -1.5, volume: 900, printedAt: now - 20 * 60_000 });
   const api = spyOn(apiClient, "getMarketHeatmap").mockResolvedValue({ status: "success", data: {
     universe: "us-equity", source: "gloom", fetchedAt: now - 2_000, pricesAsOf: now - 2_000, session: "REGULAR", regularSessionDate: null,
     access: "realtime", assets: [delayed, { ...stock("BBBB", 200, 1.1), regularChangePercent: null }] } });

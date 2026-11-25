@@ -37,9 +37,9 @@ export interface MarketHeatmapAsset {
   symbol: string;
   name: string;
   price: number;
-  /** Null on a real-time board's tile the live read did not price (`delayedQuote`). */
+  /** Null once this client holds a tile by its delayed figures only (`delayedQuote`); the server sends a number. */
   change: number | null;
-  /** Null on a real-time board's tile the live read did not price (`delayedQuote`). */
+  /** Null once this client holds a tile by its delayed figures only (`delayedQuote`); the server sends a number. */
   changePercent: number | null;
   /**
    * Whether the source actually carried a session change. `changePercent` keeps
@@ -64,11 +64,13 @@ export interface MarketHeatmapAsset {
   regularChangePercent?: number | null;
   /**
    * On a real-time board while the session trades, a name the server's live
-   * read did not price: its tile carries no price or move of its own
-   * (`price` 0, `changePercent` null), and these are the delayed figures it
-   * last had, as of `printedAt` (epoch milliseconds, null when unknown). A
-   * client shows them only as delayed, on that tile, and its own live quote
-   * of the name replaces them. Absent on every other tile.
+   * read did not price: the server sends its tile with no move and no price
+   * (`hasChange` false, `changePercent` 0, `price` 0), as older clients draw
+   * a blank tile, and these are the delayed figures it last had, as of
+   * `printedAt` (epoch milliseconds, null when unknown). A client reads them
+   * whatever `hasChange` says, shows them only as delayed, on that tile, and
+   * its own live quote of the name replaces them (holdDelayedHeatmapTiles).
+   * Absent on every other tile.
    */
   delayedQuote?: MarketHeatmapDelayedQuote | null;
 }

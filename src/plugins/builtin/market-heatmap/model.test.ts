@@ -140,8 +140,12 @@ test("a board is as of when its prices printed, which the snapshot time is alway
 test("a real-time tile the server could not price live has no move, only its delayed figures, until a live move replaces them", () => {
   const printedAt = Date.parse("2026-11-24T16:21:40Z");
   const delayedQuote = { price: 151.02, changePercent: -1.4, volume: 1_200, printedAt };
-  // As the server sends it: no price, no move, the delayed figures beside them.
-  const tile = { ...asset("NVDA", 4_000, null, "Tech"), hasChange: true, changePercent: null, price: 0, delayedQuote };
+  // As the server sends it, no move and no price (the tile older apps draw blank), and as this client holds it
+  // (holdDelayedHeatmapTiles): a move of the session not priced live. Either way the delayed figures show.
+  const sent = { ...asset("NVDA", 4_000, null, "Tech"), price: 0, delayedQuote };
+  const tile = { ...sent, hasChange: true, changePercent: null };
+  expect(heatmapMove(sent)).toBeNull();
+  expect(heatmapDelayedQuote(sent)).toBe(delayedQuote);
   expect(heatmapMove(tile)).toBeNull();
   expect(heatmapDelayedQuote(tile)).toBe(delayedQuote);
   expect(summarizeHeatmapGroups([tile, asset("AMD", 300, 2, "Tech")], "sector").board).toMatchObject({ move: 2, moved: 1, up: 1, down: 0 });

@@ -85,8 +85,9 @@ describe("fn HM report", () => {
   test("a Pro board's names without a live price are left out of the moves and listed with their delayed print", async () => {
     const MON = Date.UTC(2026, 10, 23, 16, 46);
     const printedAt = Date.UTC(2026, 10, 23, 16, 21);
-    const delayed = { ...asset("S0", 100, null), hasChange: true, changePercent: null, price: 0,
-      delayedQuote: { price: 151.33, changePercent: -1.4, volume: 900, printedAt } } as unknown as MarketHeatmapAsset;
+    // As the server sends it: no move and no price, as older apps draw a blank tile, and the delayed figures beside it.
+    const delayed: MarketHeatmapAsset = { ...asset("S0", 100, null), price: 0, volume: null, regularChangePercent: null,
+      delayedQuote: { price: 151.33, changePercent: -1.4, volume: 900, printedAt } };
     const assets = [delayed, ...board(1, 40).slice(1)];
     const result = await load(assets, false, { fetchedAt: MON - 5_000, session: "REGULAR", access: "realtime", pricesAsOf: MON - 5_000 });
     expect(result.complete).toBe(true);
