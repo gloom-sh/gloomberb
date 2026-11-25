@@ -367,6 +367,7 @@ describe("createPaneTemplateOrThrow", () => {
         [101, undefined, { tab: "changes" }],
         [102, "deposits", { tab: "deposits" }],
         [103, "b01955", { tab: "broker", partId: "B01955" }],
+        [104, "b01955", { tab: "broker", partId: "B01955" }],
       ] as const) {
         setSystemTime(new Date(time));
         await createPaneTemplateOrThrow(template.id, arg === undefined ? undefined : { arg }, deps);
