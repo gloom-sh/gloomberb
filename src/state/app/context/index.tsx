@@ -380,15 +380,23 @@ export function usePaneSettingValue<T>(
   return [value, setValue];
 }
 
-/** Persist related pane settings in one layout update. */
+/**
+ * Persist related pane settings in one layout update. `retitle` gets the
+ * pane's title as saved and returns the one that goes with the new settings,
+ * or null to leave it.
+ */
 export function useUpdatePaneSettings(paneId?: string) {
   const scopedPaneId = useScopedPaneId(paneId);
   const updateLayout = useUpdatePaneLayout();
-  return useCallback((patch: Record<string, unknown>) => {
+  return useCallback((patch: Record<string, unknown>, retitle?: (title: string | undefined) => string | null) => {
     updateLayout((layout) => {
       const pane = findPaneInstance(layout, scopedPaneId);
-      if (!pane || Object.entries(patch).every(([key, value]) => Object.is(pane.settings?.[key], value))) return layout;
-      return setPaneSettings(layout, scopedPaneId, { ...pane.settings, ...patch });
+      if (!pane) return layout;
+      const title = retitle?.(pane.title) ?? null;
+      const settled = Object.entries(patch).every(([key, value]) => Object.is(pane.settings?.[key], value));
+      if (settled && (title === null || title === pane.title)) return layout;
+      const next = settled ? layout : setPaneSettings(layout, scopedPaneId, { ...pane.settings, ...patch });
+      return title === null || title === pane.title ? next : updatePaneInstance(next, scopedPaneId, (instance) => ({ ...instance, title }));
     });
   }, [scopedPaneId, updateLayout]);
 }

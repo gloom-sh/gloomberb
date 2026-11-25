@@ -549,6 +549,8 @@ Series are separated by commas, and tickers separated by spaces are a list too: 
 
 The `CMP` 1D preset uses intraday bars from the latest session, as `GP` does. Returns start at the first shared bar and end at the last shared bar. For US listings, use Extended hours (or `--extended-hours` in `fn` and `shot`) to include pre-market and after-hours bars. The 1W preset still compares daily closes.
 
+A ticker's price added to a comparison, from **Series** (`s`) or **+ add series**, joins it as one more leg: its close drawn like the other legs, rebased on the same axis. This holds for any chart whose prices are drawn as % change or an index of 100. Volume, fundamentals, FRED series and indicators are added as on any other chart. A chart still titled after its series (`CMP SMH · QQQ · RSP`) names the series added or removed, and counts those past the third (`CMP SMH · QQQ · RSP +1`). A title you gave the pane stays.
+
 A formula adds and subtracts series, each times a number, and charts the result in the Formula panel. The number goes on either side of its series (`HO=F*42`), and only the whole formula, in brackets, is divided or multiplied by a number or a series:
 
 ```text
