@@ -1,16 +1,20 @@
-import { useCallback, useState } from "react";
-import { cloudDisplayScope, useCloudDisplayScope } from "../../../api-client/plan-access";
+import { useCallback, useState, useSyncExternalStore } from "react";
+import { apiClient } from "../../../api-client";
+import { cloudDisplayScope } from "../../../api-client/plan-access";
 import { currentHoldingsSession, type HoldingsSession } from "./api";
 
 /**
  * What a pane shows of 13F books is the sign-in's it was read in. The scope
- * key names that sign-in (the holdings session a read is bound to) and the
+ * key names that sign-in (the holdings session a read is bound to, its
+ * credential's generation among it: a count, never the credential) and the
  * account and plan the pane shows it under; a read started now carries the
  * key of now, and what it shows is the pane's only while that key is.
  */
 function scopeKey(session: HoldingsSession, display: string | null): string {
-  return JSON.stringify([session.session, session.changes, display]);
+  return JSON.stringify([session.session, session.changes, session.credential, display]);
 }
+
+const liveScopeKey = () => scopeKey(currentHoldingsSession(), cloudDisplayScope());
 
 /** A pane's 13F read: the sign-in it is bound to (loadFundDetail's `session`) and the key what it shows is kept under. */
 interface ScopedRead {
@@ -24,10 +28,13 @@ export function beginScopedRead(): ScopedRead {
   return { session, key: scopeKey(session, cloudDisplayScope()) };
 }
 
-/** The reader's scope key, rendered again on every sign-in, account or plan change: a load that depends on it reruns. */
+/**
+ * The reader's scope key, rendered again on every sign-in, credential, account
+ * or plan change, a credential replaced before its account is known as well: a
+ * load that depends on it reruns.
+ */
 export function useHoldingsScopeKey(): string {
-  const display = useCloudDisplayScope();
-  return scopeKey(currentHoldingsSession(), display);
+  return useSyncExternalStore((onChange) => apiClient.subscribeCurrentUser(onChange), liveScopeKey, liveScopeKey);
 }
 
 /**
@@ -40,7 +47,7 @@ export function useHoldingsScopeKey(): string {
 export function useScopedShown<T>(key: string): readonly [T | null, (readKey: string, next: (current: T | null) => T | null) => void] {
   const [state, setState] = useState<{ key: string; value: T } | null>(null);
   const show = useCallback((readKey: string, next: (current: T | null) => T | null) => {
-    if (readKey !== scopeKey(currentHoldingsSession(), cloudDisplayScope())) return;
+    if (readKey !== liveScopeKey()) return;
     setState((current) => {
       const value = next(current?.key === readKey ? current.value : null);
       return value == null ? null : { key: readKey, value };

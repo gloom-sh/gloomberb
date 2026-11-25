@@ -141,6 +141,8 @@ class GloomApiClient {
   private sessionTransition: Promise<void> | null = null;
   /** Device adoption and external session installs supersede pending email auth. */
   private sessionInstallationGeneration = 0;
+  /** How many times the session credential was replaced (getCredentialGeneration): a count, never the credential. */
+  private credentialGeneration = 0;
   private sessionRevalidationGeneration = 0;
   private sessionRevalidationTimer: ReturnType<typeof setTimeout> | null = null;
   private sessionChecked = false;
@@ -225,9 +227,19 @@ class GloomApiClient {
     return this.transport.getWebSocketToken();
   }
 
+  /**
+   * Changes each time the session credential is replaced (a token installed, changed or cleared, the cookie mode
+   * switched), before the account it belongs to is known: a non-secret count, for answers that must not outlive the
+   * credential they were sent with.
+   */
+  getCredentialGeneration(): number {
+    return this.credentialGeneration;
+  }
+
   setCookieSessionMode(enabled: boolean): void {
     this.cancelSessionRevalidation();
     this.sessionInstallationGeneration += 1;
+    this.credentialGeneration += 1;
     this.sessionChecked = false;
     this.cookieIdentity = "ready";
     this.verifiedSessionIdentity = null;
@@ -247,7 +259,10 @@ class GloomApiClient {
     const changed = this.transport.getSessionToken() !== token;
     this.sessionChecked = false;
     this.transport.setSessionToken(token);
-    if (changed) this.verifiedSessionIdentity = null;
+    if (changed) {
+      this.verifiedSessionIdentity = null;
+      this.credentialGeneration += 1;
+    }
     this.traceAuth(changed ? "setSessionToken:changed" : "setSessionToken:same");
     if (!token) {
       this.cancelSessionRevalidation();

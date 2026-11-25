@@ -155,13 +155,17 @@ function readerSession(): ReaderSession {
 }
 
 /**
- * The sign-in a read was asked in: its state and the count of sign-in changes
- * then. Signing in and out again while a read is out leaves the state as it
- * was but not the count, so that read is still not the reader's.
+ * The sign-in a read was asked in: its state, the count of sign-in changes
+ * then and the credential's generation (a count of credential replacements,
+ * never the credential). Signing in and out again while a read is out leaves
+ * the state as it was but not the count, so that read is still not the
+ * reader's; nor is it once the credential is replaced, before the account the
+ * new one belongs to is known.
  */
 interface SessionBinding {
   session: ReaderSession;
   changes: number;
+  credential: number;
 }
 
 /** The sign-in a complete holdings read is bound to: every filing, page and first rows of it are read in this one. */
@@ -170,9 +174,13 @@ export type HoldingsSession = SessionBinding;
 let signInChanges = 0;
 let watchedSignIn: string | null = null;
 
-/** Who is signed in, as far as a 13F answer can differ: signed out, or which account. */
+/**
+ * Who is signed in, as far as a 13F answer can differ: signed out, or which
+ * account with which credential. A credential replaced under the same account
+ * shown (the new one's account not read yet) is another sign-in.
+ */
 function signInIdentity(): string {
-  return apiClient.isSignedIn() ? `in:${apiClient.getCurrentUser()?.id ?? ""}` : "out";
+  return apiClient.isSignedIn() ? `in:${apiClient.getCurrentUser()?.id ?? ""}:${apiClient.getCredentialGeneration()}` : "out";
 }
 
 function bindReaderSession(): SessionBinding {
@@ -188,7 +196,7 @@ function bindReaderSession(): SessionBinding {
       watchedSignIn = identity;
     });
   }
-  return { session: readerSession(), changes: signInChanges };
+  return { session: readerSession(), changes: signInChanges, credential: apiClient.getCredentialGeneration() };
 }
 
 /** The reader's sign-in now, as a holdings read started now is bound to it. */
@@ -198,7 +206,8 @@ export function currentHoldingsSession(): HoldingsSession {
 
 /** Whether the sign-in a read is bound to is still the reader's: what it read may be shown, compared or kept. */
 export function holdingsSessionCurrent(binding: HoldingsSession): boolean {
-  return binding.changes === signInChanges && readerSession() === binding.session;
+  return binding.changes === signInChanges && readerSession() === binding.session
+    && apiClient.getCredentialGeneration() === binding.credential;
 }
 
 const stillBound = holdingsSessionCurrent;
@@ -608,12 +617,12 @@ export async function listThirteenFForms(
 }
 
 /**
- * One page of a filing's information table. Standalone (a filing's own list,
- * read as far as it is scrolled) it is the same for every reader. As part of a
- * complete holdings read (`session`) it is that read's sign-in's: kept, and
- * joined, for that sign-in alone, and no longer than it asked, which signed out
- * is also no further than the filing's first 1,000 lines. A longer answer is
- * cut before it is kept or read, a copy of one saved before as well.
+ * One page of a filing's information table, no longer than it asked: a longer
+ * answer is cut before it is read or kept, a copy of one saved before as well.
+ * Standalone (a filing's own list, read as far as it is scrolled) it is the
+ * same for every reader. As part of a complete holdings read (`session`) it is
+ * that read's sign-in's: kept, and joined, for that sign-in alone, and signed
+ * out no further than the filing's first 1,000 lines.
  */
 export async function listThirteenFFormHoldingsPage(
   cik: string,
@@ -632,10 +641,8 @@ export async function listThirteenFFormHoldingsPage(
     offset,
   }, {
     ...read, signal,
-    ...(session ? {
-      binding: session, memoryOnly: session.session === "signed-in",
-      shape: (page: unknown) => (Array.isArray(page) && page.length > allowed ? page.slice(0, allowed) : page),
-    } : {}),
+    shape: (page: unknown) => (Array.isArray(page) && page.length > allowed ? page.slice(0, allowed) : page),
+    ...(session ? { binding: session, memoryOnly: session.session === "signed-in" } : {}),
   });
   const rows = arrayResponse(raw).map(mapHolding).filter((holding): holding is ThirteenFHoldingRecord => !!holding);
   return { rows, hasMore: rows.length >= limit && offset + rows.length < MAX_FORM_ROWS };
