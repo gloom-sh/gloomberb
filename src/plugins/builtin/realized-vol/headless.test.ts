@@ -62,5 +62,5 @@ test("HVG's export has the daily series it draws, a column per window in percent
   expect(history.columns![1]!.format!(newest.values[20], {})).toBe(`${(newest.values[20]! * 100).toFixed(2)}%`);
   // The text report prints the latest sessions.
   const text = renderHeadlessPaneText(definition, result, args, "HVG");
-  expect([...text.matchAll(/^\d{4}-\d{2}-\d{2}\s+\S+/gm)].map(([row]) => row.slice(0, 10))).toEqual(history.rows!.slice(0, 10).map((row) => row.date));
+  expect([...text.matchAll(/^\d{4}-\d{2}-\d{2}\s+\S+/gm)].map(([row]) => row.slice(0, 10))).toEqual(history.rows!.slice(0, 10).map((row) => String(row.date)));
 });
