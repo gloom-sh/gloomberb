@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { buildDividendMetrics, toDividendPayment } from "./client";
 import { buildTrailingCashChartPoints } from "./view";
+import { trailingCashAt } from "../../../utils/trailing-dividend";
 
 test("cash chart uses complete calendar-year cash totals without inventing historical price yields", () => {
   const payments = Array.from({ length: 25 }, (_, month) => toDividendPayment(
@@ -123,4 +124,47 @@ test("the chart of the past holds a year's cash until a late payment in its slot
   expect(points.at(-1)!.date).toEqual(now);
   expect(points.at(-1)!.close).toBe(buildDividendMetrics(haier, null, 30, { now }).trailingRate!);
   expect(points.at(-1)!.close).toBe(0.89151);
+});
+
+/** An annual payer's finals each July, from 2022, then `later` as given. */
+function annualPayer(later: [string, number][]) {
+  return [["2022-07-12", 1], ["2023-07-11", 1], ["2024-07-10", 1], ...later]
+    .map(([date, amount]) => toDividendPayment(date as string, amount as number, "USD")!);
+}
+
+/** The chart's value on each day from `from` to `to`, as the step it holds then. */
+function chartDays(points: ReturnType<typeof buildTrailingCashChartPoints>, from: string, to: string): { day: string; close: number }[] {
+  const days: { day: string; close: number }[] = [];
+  for (let time = Date.parse(`${from}T00:00:00Z`); time <= Date.parse(`${to}T00:00:00Z`); time += 86_400_000) {
+    const day = new Date(time).toISOString().slice(0, 10);
+    days.push({ day, close: points.filter((point) => point.date.toISOString().slice(0, 10) <= day).at(-1)!.close });
+  }
+  return days;
+}
+
+test("a final that moved weeks earlier is the year's cash in its predecessor's place, never beside it, when an interim follows", () => {
+  // The 2025 final went ex 51 days before the 2024 one's anniversary, and an interim was added in October.
+  const payments = annualPayer([["2025-05-20", 1], ["2025-10-15", 0.3]]);
+  const points = buildTrailingCashChartPoints(payments, new Date("2026-03-01T12:00:00Z"));
+  // As known, the 2025 final superseded the 2024 one; the interim is no slot successor of the 2024 final.
+  expect(trailingCashAt(payments, new Date("2025-08-01T00:00:00Z"))).toBe(1);
+  for (const { day, close } of chartDays(points, "2025-05-20", "2025-10-14")) expect([day, close]).toEqual([day, 1]);
+  for (const { day, close } of chartDays(points, "2025-10-15", "2026-03-01")) expect([day, Number(close.toFixed(9))]).toEqual([day, 1.3]);
+});
+
+test("a final that moved weeks earlier with no interim after it reads as known on every day", () => {
+  const payments = annualPayer([["2025-05-20", 1], ["2026-05-19", 1]]);
+  const now = new Date("2026-08-01T12:00:00Z");
+  const points = buildTrailingCashChartPoints(payments, now);
+  for (const { day, close } of chartDays(points, "2023-08-01", "2026-07-31")) {
+    expect([day, close]).toEqual([day, trailingCashAt(payments, new Date(`${day}T00:00:00Z`))]);
+  }
+});
+
+test("a cut final that went ex early reads the cut at once, never the old figure beside or instead of it", () => {
+  // The 2025 final was cut to 0.40 and went ex in May; an interim of 0.20 followed in October.
+  const payments = annualPayer([["2025-05-20", 0.4], ["2025-10-15", 0.2]]);
+  const points = buildTrailingCashChartPoints(payments, new Date("2026-03-01T12:00:00Z"));
+  for (const { day, close } of chartDays(points, "2025-05-20", "2025-10-14")) expect([day, close]).toEqual([day, 0.4]);
+  for (const { day, close } of chartDays(points, "2025-10-15", "2026-03-01")) expect([day, Number(close.toFixed(9))]).toEqual([day, 0.6]);
 });
