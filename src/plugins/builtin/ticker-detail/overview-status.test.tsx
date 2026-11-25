@@ -140,16 +140,17 @@ test.each([true, false])("IAG Overview and valuation agree when a withdrawn EV h
     const report = options!.text!(result.data);
     await act(async () => {
       await overview.render(<TestPaneFrame state={createInitialState(config)} paneId="overview" pluginId="ticker-research"
-        runtime={createTestPluginRuntime()} width={116} height={50}>
+        runtime={createTestPluginRuntime()} width={224} height={50}>
         {(body, footer) => {
           notes = footer.info.flatMap((info) => info.notes ?? []);
           return <OverviewTab {...body} focused ticker={listing} financials={financials} />;
         }}
-      </TestPaneFrame>, { width: 116, height: 50 });
+      </TestPaneFrame>, { width: 224, height: 50 });
     });
     await settleFrame(overview.setup(), 5);
     if (hasBridge) {
-      expect(overview.frame()).toMatch(/\bEV\s+22\.92B GBP/);
+      expect(overview.frame()).toMatch(/\bEV\s+22\.92B GBP\s+computed/);
+      expect(report).toMatch(/^Enterprise Value\s+22\.92B GBP$/m);
       const bridgeNote = notes.find((note) => note.startsWith("EV 22.92B GBP"))!;
       expect(bridgeNote).toContain("+ leases 5.95B");
       expect(bridgeNote).toContain("balance sheet 2026-06-30, EUR/GBP 0.86135 at its date's close");

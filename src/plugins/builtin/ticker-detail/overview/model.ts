@@ -424,12 +424,13 @@ export function buildOverviewStats({
     // shows it; the notice under the pane gives its inputs where the provider's is far off (enterpriseValueGapIsLarge).
     const check = enterpriseValueCheck(priced);
     const minority = (check?.minorityAndPreferred ?? 0) > 0 ? " + minority" : "";
+    const computedDetail = (enterpriseValue.bridge?.leases ?? 0) > 0 ? "computed" : [`cap + debt - cash${minority}`, "computed"];
     stats.push({
       label: "EV",
       value: formatCompactCurrency(enterpriseValue.value, enterpriseValue.currency),
       // An insurer's: its investment book is not netted as cash. How it was reached comes before the base figure.
       detail: enterpriseValue.basis === "computed" || enterpriseValueComputed(priced)
-        ? [`cap + debt - cash${minority}`, "computed"]
+        ? computedDetail
         : check?.investmentsKept ? ["investments in", "inv. in"] : inBase(enterpriseValue.value, enterpriseValue.currency),
     });
   } else if (fundamentals?.unavailableFields?.includes("enterpriseValue")) {

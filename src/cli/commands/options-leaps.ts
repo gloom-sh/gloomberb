@@ -8,7 +8,7 @@ import { formatCountCell } from "../helpers";
 import { cliStyles, renderTable, type CliTableColumn } from "../../utils/cli-output";
 import { errorMessage } from "../../utils/errors";
 import { numberErrorMessage, rangeErrorMessage } from "../../utils/decimal-comma";
-import { expirationHint, expiryIsoDate, OPTION_EXPIRATION_FORMAT, optionExpiryVenue, parseOptionExpiration } from "../../utils/option-expiry";
+import { daysToExpiry, expirationHint, expiryIsoDate, OPTION_EXPIRATION_FORMAT, optionExpiryVenue, parseOptionExpiration } from "../../utils/option-expiry";
 import { dateOptionError, readCalendarDate } from "../../utils/calendar-date";
 import { isFundType } from "../../utils/sec";
 import { daysToExpiryFrom, optionMid, type OptionSide } from "../../plugins/builtin/shared/volatility";
@@ -129,9 +129,9 @@ function parseExpiryDate(flag: string, value: string, example: string): string |
   return readCalendarDate(value) ?? { error: `Invalid ${flag} "${value}". ${dateOptionError(value, flag, { subject: "an expiry date", example })}` };
 }
 
-/** Whole calendar days to an expiry date's close, as the Days column counts them. */
+/** Whole calendar days to an expiry date, as the Days column counts them. */
 function wholeDaysTo(date: string, now: number): number {
-  return Math.floor(daysToExpiryFrom(parseOptionExpiration(date)!, now));
+  return daysToExpiry(parseOptionExpiration(date)!, now);
 }
 
 /** A lower bound to suggest under an upper one of `days`. */
@@ -310,7 +310,7 @@ const round = (value: number, digits: number) => Number(value.toFixed(digits));
 function inLeapsWindow(expiration: number, window: LeapsWindow, now: number): boolean {
   const remaining = daysToExpiryFrom(expiration, now);
   if (!(remaining > 0)) return false;
-  const days = Math.floor(remaining);
+  const days = daysToExpiry(expiration, now);
   const date = expiryIsoDate(expiration);
   return (window.minDays == null || days >= window.minDays) && (window.maxDays == null || days <= window.maxDays)
     && (window.expiryFrom == null || date >= window.expiryFrom) && (window.expiryTo == null || date <= window.expiryTo);
@@ -349,7 +349,6 @@ function screenLeapsChain(
   let scanned = 0;
   for (const contract of contracts) {
     if (!inLeapsWindow(contract.expiration, criteria, now)) continue;
-    const days = daysToExpiryFrom(contract.expiration, now);
     scanned += 1;
     if (contract.delta == null || !Number.isFinite(contract.delta)) continue;
     const delta = Math.abs(contract.delta);
@@ -363,7 +362,7 @@ function screenLeapsChain(
     const row: LeapsRow = {
       symbol,
       expiration: expiryIsoDate(contract.expiration),
-      days: Math.floor(days),
+      days: daysToExpiry(contract.expiration, now),
       side: criteria.side,
       contract: contract.contractSymbol,
       strike: contract.strike,
