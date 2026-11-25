@@ -311,7 +311,7 @@ test("a statements report points to GF only when GF holds older periods, and a h
   };
   // GF reads the same years: no pointer to it.
   const same = await statementsReport("annual", financials, { annualStatements: [{ date: "2015-06-30", totalAssets: 9_000 }, ...years] });
-  expect(same.text).toContain("annual history from 2024; GF has no earlier revenue observations");
+  expect(same.text).toContain("annual history from 2024; no earlier revenue in GF's latest 40 periods");
   expect(same.text).not.toContain("fn GF");
   // GF goes back to 2015: the pointer stays.
   const deeper = await statementsReport("annual", financials, { annualStatements: [{ date: "2015-06-30", totalRevenue: 15_000 }, ...years] });

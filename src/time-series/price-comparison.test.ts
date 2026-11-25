@@ -131,6 +131,63 @@ describe("normalized market price comparison", () => {
     expect(later.series.map((entry) => entry.points.length)).toEqual([2, 2]);
   });
 
+  test("a mixed monthly base bar is checked even when the next close is on the same basis", async () => {
+    const data = {
+      OLDER: rows([["2023-08-01", 100], ["2023-09-01", 105], ["2023-10-01", 110]]),
+      NEWER: [{ date: date("2023-08-01"), open: 1.4, low: 1.4, high: 14, close: 12 },
+        ...rows([["2023-09-01", 13], ["2023-10-01", 14]])],
+    };
+    const chart = (start: string): ChartSpec => ({ ...spec(), viewport: { range: "ALL", resolution: "1mo",
+      dateWindow: { start, end: "2023-10-31" } } });
+    const inputs = sources(data);
+    inputs.dataProvider.getCorporateActions = async (symbol) => ({ symbol, dividends: [], earnings: [],
+      splits: symbol === "NEWER" ? [{ date: "2023-08-31", fromFactor: 10, toFactor: 1, ratio: 0.1 }] : [] });
+    const result = await resolveChartSpecData(chart("2023-08-01"), inputs);
+    expect(result.priceComparison?.legs?.NEWER?.baseDay).toBe("2023-08-31");
+    expect(result.splitNotice).toContain("NEWER: high/low range is 10× in the monthly bar dated Tue 1 Aug 2023 near the Thu 31 Aug 2023 split");
+    expect(result.series.map((entry) => entry.points.length)).toEqual([3, 0]);
+    const history = new Map(chart("2023-08-01").series.map((entry) => [chartQuoteOverrideKeyForSource(entry.source), data[entry.id as keyof typeof data]]));
+    expect(seedChartResolutionResult(chart("2023-08-01"), history, inputs.now)).toBeNull();
+    const later = await resolveChartSpecData(chart("2023-09-01"), inputs);
+    expect(later.splitNotice).toBeUndefined();
+    expect(later.series.map((entry) => entry.points.at(-1)?.rawValue)).toEqual([110, 14]);
+    expect(seedChartResolutionResult(chart("2023-09-01"), history, inputs.now)?.series[1]?.points).toHaveLength(2);
+  });
+
+  test("intraday integrity includes the selected endpoint but neither neighbor outside the window", async () => {
+    const hours = ["13:30", "14:30", "15:30", "16:30", "17:30"].map((hour) => `2025-07-01T${hour}:00Z`);
+    const data = {
+      OLDER: rows(hours.map((hour, index) => [hour, 100 + index])),
+      NEWER: rows(hours.map((hour, index) => [hour, [1, 10, 11, 110, 1100][index]!])),
+    };
+    const chart = (end: string): ChartSpec => ({ ...spec(), viewport: { range: "1D", resolution: "1h",
+      dateWindow: { start: hours[1]!, end } } });
+    const clean = await resolveChartSpecData(chart(hours[2]!), sources(data));
+    expect(clean.splitNotice).toBeUndefined();
+    expect(clean.series.map((entry) => entry.points.map((point) => point.rawValue))).toEqual([[101, 102], [10, 11]]);
+    const broken = await resolveChartSpecData(chart(hours[3]!), sources(data));
+    expect(broken.splitNotice?.match(/close rises/g)).toHaveLength(1);
+    expect(broken.splitNotice).toContain("NEWER: close rises 10×");
+    expect(broken.series.map((entry) => entry.points.length)).toEqual([3, 0]);
+  });
+
+  test("cash reinvestment cannot mask a break in the selected native bars", async () => {
+    const chart = { ...spec(), viewport: { ...spec().viewport, totalReturn: true } };
+    const inputs = sources({
+      OLDER: rows([["2023-08-30", 100], ["2023-08-31", 10]]),
+      NEWER: rows([["2023-08-30", 50], ["2023-08-31", 55]]),
+    });
+    inputs.dataProvider.getCorporateActions = async (symbol) => ({ symbol, currency: "USD", coverage: { dividends: "available" },
+      splits: [], earnings: [], dividends: symbol === "OLDER" ? [{ exDate: "2023-08-31", amount: 15 }] : [] });
+    inputs.dataProvider.getQuoteMetadata = async (symbol) => ({ symbol, currency: "USD", instrumentType: "EQUITY", listingExchangeName: "NASDAQ", source: {} });
+    const rawAxis = { ...chart, series: chart.series.map((entry) => ({ ...entry, transform: "raw" as const })) };
+    const reinvested = await resolveChartSpecData(rawAxis, inputs);
+    expect(reinvested.series[0]?.points.map((point) => point.value)).toEqual([100, 25]);
+    const compared = await resolveChartSpecData(chart, inputs);
+    expect(compared.splitNotice).toContain("OLDER: close falls 10×");
+    expect(compared.series.map((entry) => entry.points.at(-1)?.value)).toEqual([undefined, 10]);
+  });
+
   test("total return reinvests each leg's cash at its ex-date close, names its basis, and leaves a leg without a history on price", async () => {
     const chart = { ...spec(), viewport: { ...spec().viewport, totalReturn: true } };
     const data = {

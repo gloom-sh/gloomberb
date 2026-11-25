@@ -11,7 +11,7 @@ import {
   setSharedMarketDataCoordinator,
 } from "../market-data/coordinator";
 import { createIdleEntry } from "../market-data/result-types";
-import { IDLE_COORDINATOR_QUOTES } from "../test-support/quote-store";
+import { createQuoteStoreFixture, IDLE_COORDINATOR_QUOTES } from "../test-support/quote-store";
 import { connectionHealth, DESKTOP_BRIDGE_CONNECTION_ID } from "../core/connection-health";
 import { CONNECTION_LOST_MESSAGE, RpcTimeoutError } from "../utils/rpc-timeout-error";
 import type { ChartResolveSources } from "./resolve-context";
@@ -157,6 +157,84 @@ afterEach(() => {
 });
 
 describe("useChartResolution", () => {
+  test.each(["refresh", "live"])("an all-withheld %s replaces the plot and its saved copy", async (mode) => {
+    const previous = setSavedCopyStore(new MemoryResourceStore());
+    const drawn = Promise.withResolvers<void>();
+    const reopened = Promise.withResolvers<void>();
+    const listings = ["A", "B"].map((suffix) => ({ symbol: `WITHHELD-${mode.toUpperCase()}-${suffix}`, exchange: "NASDAQ" }));
+    const spec: ChartSpec = {
+      ...SPEC, viewport: { range: "1Y", resolution: "1d" },
+      series: listings.map((instrument) => ({ ...SPEC.series[0]!, id: instrument.symbol, style: "line", transform: "percent",
+        source: { kind: "security", instrument, fieldId: "market.close" } })),
+    };
+    const broken = [{ ...INITIAL_HISTORY[0]!, open: 10, low: 10 }, INITIAL_HISTORY[1]!];
+    const firstActions = Promise.withResolvers<void>();
+    let actionReads = 0;
+    let corroborated = false;
+    const quotes = createQuoteStoreFixture();
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => EMPTY_FINANCIALS,
+      getPriceHistoryForResolution: async () => mode === "live" || corroborated ? broken : INITIAL_HISTORY,
+      getCorporateActions: async (symbol) => {
+        actionReads += 1;
+        if (mode === "live" && !corroborated) await firstActions.promise;
+        return { symbol, dividends: [], earnings: [], splits: corroborated ? [{ date: "2025-01-02", fromFactor: 10, toFactor: 1, ratio: 0.1 }] : [] };
+      },
+    });
+    const sources = sourcesFor(provider);
+    for (const listing of listings) rememberSeedListingFacts(listing, { quoteMetadata: null });
+    setSharedMarketDataCoordinator({
+      ...IDLE_COORDINATOR_QUOTES, ...quotes,
+      subscribe: () => () => {}, getVersion: () => 1, getKeysVersion: () => 1,
+      getChartEntry: () => ({ ...createIdleEntry<PricePoint[]>(), phase: "ready",
+        data: broken, lastGoodData: broken, source: "test", fetchedAt: Date.now() }),
+    } as never);
+    const requestViewport = { start: new Date("2025-01-02"), end: new Date("2025-01-04") };
+    const pointCount = () => latestResult?.series.reduce((total, entry) => total + entry.points.length, 0);
+    function Plot() {
+      latestResult = useChartResolution(spec, sources, { savedCopyScope: "comparison:free", requestViewport });
+      return <text>{`points:${pointCount()}`}</text>;
+    }
+    try {
+      await tui.render(<Plot key="start" />);
+      if (mode === "live") {
+        expect(latestResult?.loading).toBe(true);
+        expect(pointCount()).toBe(0);
+        await waitFor(() => actionReads === listings.length);
+        firstActions.reject(new Error("split history temporarily unavailable"));
+      }
+      await waitFor(() => latestResult?.loading === false && pointCount() === 4);
+
+      setSavedCopyFrameGate(() => drawn.promise);
+      if (mode === "refresh") {
+        await tui.render(<Plot key="refresh" />);
+        expect(pointCount()).toBe(4);
+        corroborated = true;
+        drawn.resolve();
+      } else {
+        corroborated = true;
+        const listing = listings[0]!;
+        await act(async () => quotes.emit(listing, { symbol: listing.symbol, currency: "USD", price: 104,
+          lastUpdated: Date.now(), change: 0, changePercent: 0 }));
+      }
+      await waitFor(() => latestResult?.loading === false && pointCount() === 0);
+      expect(latestResult?.priceComparison?.dropped?.map((entry) => entry.seriesId)).toEqual(listings.map(({ symbol }) => symbol));
+
+      setSavedCopyFrameGate(() => reopened.promise);
+      await tui.render(<Plot key="reopen" />);
+      expect(latestResult?.loading).toBe(false);
+      expect(pointCount()).toBe(0);
+      expect(latestResult?.splitNotice).toContain("returns withheld");
+    } finally {
+      await tui.destroy();
+      firstActions.resolve();
+      drawn.resolve();
+      reopened.resolve();
+      setSavedCopyFrameGate(null);
+      setSavedCopyStore(previous);
+    }
+  });
+
   test("a plot saved with ticker metadata opens before refresh using the same resolved listing", async () => {
     const previous = setSavedCopyStore(new MemoryResourceStore());
     const drawn = Promise.withResolvers<void>();

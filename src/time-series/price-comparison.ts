@@ -220,9 +220,10 @@ function splitTerms(split: SplitAction): string | null {
  * which bars are on which basis. Withhold returns only for the legs whose windows cross a break.
  */
 export function comparisonSplitAssessment(
-  comparison: Pick<PriceComparison, "legs">,
+  comparison: Pick<PriceComparison, "legs" | "sourceBounds">,
   legs: ReadonlyArray<{ id: string; label: string; splits: readonly SplitAction[]; series?: ResolvedSeries }>,
   now = Date.now(),
+  provisional = false,
 ): { notice: string | null; dropped: NonNullable<PriceComparison["dropped"]> } {
   const currentYear = new Date(now).getUTCFullYear();
   const named: string[] = [];
@@ -238,10 +239,15 @@ export function comparisonSplitAssessment(
         return terms ? [`${terms} on ${periodDayText(split.date, currentYear)}`] : [];
       });
     if (inside.length) named.push(`${label} ${listLabels(inside)}`);
-    if (!series) continue;
-    const bars = series.points.map((point) => ({ date: observationDate(point.date.getTime(), series),
-      close: point.close ?? point.value, high: point.high, low: point.low }));
-    const breaks = priceBasisBreaks(bars, splits, { ...window, interval: series.historyResolution, venue: legVenue(series), includeUnrecorded: true });
+    const bounds = comparison.sourceBounds?.[id];
+    if (!series || !bounds) continue;
+    const bars = series.points.flatMap((point) => {
+      const time = point.date.getTime();
+      return time >= bounds.start && time <= bounds.end ? [{ date: observationDate(time, series),
+        close: point.close ?? point.value, high: point.high, low: point.low }] : [];
+    });
+    const breaks = priceBasisBreaks(bars, splits, { interval: series.historyResolution, venue: legVenue(series),
+      includeUnrecorded: true, includeUnrecordedRange: provisional });
     if (breaks.length) {
       const period = series.historyResolution === "1mo" ? "monthly" : series.historyResolution === "1wk" ? "weekly" : null;
       const descriptions = breaks.map(({ day, ratio, kind, split }) => {

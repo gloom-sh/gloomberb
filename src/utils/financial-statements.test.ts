@@ -222,7 +222,7 @@ describe("statementHistoryNotes", () => {
     ]);
     // GF holds nothing older (IAG on LSE starts in 2022 there too): no pointer to the same years.
     expect(statementHistoryNotes("annual", ["2024-06-30", "2025-06-30"], "SAN:EPA", false))
-      .toEqual(["annual history from 2024; GF has no earlier revenue observations"]);
+      .toEqual(["annual history from 2024; no earlier revenue in GF's latest 40 periods"]);
     expect(statementHistoryNotes("quarterly", ["2026-06-30", "2025-03-28"], "KO", true)).toEqual([
       "quarterly history from 2025-03-28; older quarters not served",
       "earlier revenue: gloom fn GF KO --period quarterly --periods 40",

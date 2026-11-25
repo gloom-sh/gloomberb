@@ -32,7 +32,7 @@ export function statementHistoryNotes(
   const oldest = oldestPeriod(dates);
   if (!oldest || older === null) return [];
   const [from, unit] = period === "annual" ? [oldest.slice(0, 4), "years"] : [oldest, "quarters"];
-  if (older === false) return [`${period} history from ${from}; GF has no earlier revenue observations`];
+  if (older === false) return [`${period} history from ${from}; no earlier revenue in GF's latest ${HISTORY_LINK_PERIODS} periods`];
   return [
     `${period} history from ${from}; older ${unit} not served`,
     `earlier revenue: gloom fn GF ${symbol} --period ${period} --periods ${HISTORY_LINK_PERIODS}`,

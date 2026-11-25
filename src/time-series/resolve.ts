@@ -308,7 +308,7 @@ async function resolveChartSpecWindow(
 async function assessComparedSplits(
   spec: ChartSpec,
   comparison: PriceComparison,
-  series: readonly ResolvedSeries[],
+  nativeSeries: ReadonlyMap<string, ResolvedSeries>,
   loadActions: (source: Extract<ChartSeriesSpec["source"], { kind: "security" }>) => Promise<CorporateActionsData | null>,
   now: number,
 ) {
@@ -319,7 +319,7 @@ async function assessComparedSplits(
       logFailure("time-series-resolve", "Loading splits for a comparison failed")(error);
       return null;
     });
-    return { id, label: source.instrument.symbol, splits: actions?.splits ?? [], series: series.find((entry) => entry.id === id) };
+    return { id, label: source.instrument.symbol, splits: actions?.splits ?? [], series: nativeSeries.get(id) };
   }));
   return comparisonSplitAssessment(comparison, legs.filter((leg) => leg !== null), now);
 }
@@ -878,6 +878,7 @@ async function resolveChartSpecPass(
   const realizedVolInputs = new Set(spec.studies.filter((study) => study.kind === "realized-vol" && study.visible !== false)
     .flatMap((study) => study.inputSeriesIds));
   const historicalPriceSeries = new Map<string, ResolvedSeries>();
+  const nativeComparisonSeries = new Map<string, ResolvedSeries>();
   const loaded = await Promise.all(spec.series.map(async (seriesSpec, index) => {
     if (!calculationSeriesIds.has(seriesSpec.id)) return null;
     const { warnings, errors, priorityWarnings, coverageNotices } = quietSeriesIds.has(seriesSpec.id)
@@ -1078,6 +1079,7 @@ async function resolveChartSpecPass(
       if (!base) throw new Error(`Unknown field ${source.fieldId}.`);
       if (returnHistory?.note) base.returnRollNote = returnHistory.note;
       let result = builtBars ? withBuiltBarSize(base, builtBars) : base;
+      if (comparedSeriesIds.has(seriesSpec.id)) nativeComparisonSeries.set(seriesSpec.id, result);
       if (spec.viewport.totalReturn === true && totalReturnFieldId(source.fieldId)) {
         const outcome = await totalReturnSeries(result, () => loadDistributions(resolvedSource),
           merged.quote?.currency || quoteMetadata?.currency, referenceNow);
@@ -1235,7 +1237,8 @@ async function resolveChartSpecPass(
     priceComparison = resolvePriceComparison(spec, rawSeries, bounds, comparisonResolution, requestBounds ? null : spec.viewport.dateWindow,
       { ...comparisonOptions, atSessionClose: timed.timing.atSessionClose, closedEnds: timed.timing.closedEnds });
   }
-  const splitAssessment = priceComparison?.legs ? await assessComparedSplits(spec, priceComparison, rawSeries, loadDistributions, comparisonOptions.now) : null;
+  const splitAssessment = priceComparison?.legs
+    ? await assessComparedSplits(spec, priceComparison, nativeComparisonSeries, loadDistributions, comparisonOptions.now) : null;
   const splitNotice = splitAssessment?.notice;
   if (priceComparison && splitAssessment?.dropped.length) {
     priceComparison = { ...priceComparison, dropped: [...priceComparison.dropped ?? [], ...splitAssessment.dropped] };

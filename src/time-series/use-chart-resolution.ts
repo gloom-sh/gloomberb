@@ -1,5 +1,5 @@
 import { logFailure } from "../utils/log-failure";
-import { afterSavedCopyFrame, readSavedCopy, writeSavedCopy, type SavedCopyKey } from "../data/pane-saved-copies";
+import { afterSavedCopyFrame, deleteSavedCopy, readSavedCopy, writeSavedCopy, type SavedCopyKey } from "../data/pane-saved-copies";
 import { reuseSavedData } from "../data/reuse-saved-data";
 import { useSavedCopyFooter } from "../components/layout/pane/footer/registration";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -88,6 +88,15 @@ function hasRenderableData(result: ChartResolutionResult): boolean {
   return (result.bufferedSeries ?? result.series).some((series) => series.points.length > 0);
 }
 
+function withheldReturns(result: ChartResolutionResult) {
+  const comparison = result.priceComparison;
+  return comparison?.dropped?.filter(({ seriesId }) => comparison.legs?.[seriesId] !== undefined) ?? [];
+}
+
+function hasChartData(result: ChartResolutionResult): boolean {
+  return hasRenderableData(result) || withheldReturns(result).length > 0;
+}
+
 function publicChartSpecKey(spec: ChartSpec, scope: string | null | undefined): string | null {
   if (!scope || spec.series.length === 0) return null;
   if (spec.series.some(({ source }) => source.kind === "capability" || (source.kind === "security"
@@ -101,11 +110,19 @@ function publicChartSpecKey(spec: ChartSpec, scope: string | null | undefined): 
   return JSON.stringify([scope, { ...spec, series }]);
 }
 
-function saveChartResolution(key: SavedCopyKey | null, result: ChartResolutionResult): void {
-  if (key && hasRenderableData(result) && result.savedAt == null && result.errors.length === 0) {
-    const { bufferedSeries: _buffer, ...visible } = result;
-    if (hasRenderableData(visible)) writeSavedCopy(key, visible, Date.now(), TAIL_RECONCILE_MIN_SPACING_MS);
+function saveChartResolution(key: SavedCopyKey | null, result: ChartResolutionResult, previous: ChartResolutionResult): void {
+  if (!key) return;
+  const withheld = withheldReturns(result);
+  if (result.savedAt != null || result.errors.length > 0) {
+    if (withheld.length) deleteSavedCopy(key);
+    return;
   }
+  const { bufferedSeries: _buffer, ...visible } = result;
+  const hasPoints = hasRenderableData(visible);
+  if (!hasPoints && !withheld.length) return;
+  const previouslyWithheld = withheldReturns(previous);
+  const newlyWithheld = withheld.some(({ seriesId }) => !previouslyWithheld.some((entry) => entry.seriesId === seriesId));
+  writeSavedCopy(key, visible, Date.now(), !hasPoints || newlyWithheld ? 0 : TAIL_RECONCILE_MIN_SPACING_MS);
 }
 
 function seedWindowIsCurrent(spec: ChartSpec, now: number, options: ChartResolveOptions): boolean {
@@ -248,7 +265,7 @@ export function useChartResolution(
   const scope = options.savedCopyScope;
   const publicSpecKey = useMemo(() => publicChartSpecKey(spec, scope), [spec, scope]);
   const specKey = publicSpecKey ?? JSON.stringify([scope, spec]);
-  const savedKey = !snapshot && publicSpecKey ? { version: priceComparisonSeriesIds(spec) ? 3 : 2, key: ["chart-resolution", publicSpecKey,
+  const savedKey = !snapshot && publicSpecKey ? { version: priceComparisonSeriesIds(spec) ? 4 : 2, key: ["chart-resolution", publicSpecKey,
     options.requestViewport?.start, options.requestViewport?.end, options.autoViewport?.start, options.autoViewport?.end,
     options.autoViewport ? options.targetPointCount : null] } : null;
   const seedResult = () => {
@@ -273,7 +290,7 @@ export function useChartResolution(
   useSavedCopyFooter(state.key === specKey && !snapshot ? state.savedAt : null, result.errors.length === 0);
   // A seed bridges an in-flight request. Once that request settles, an empty
   // or failed result must not be replaced with a fresh loading seed forever.
-  const needsSeed = !snapshot && !hasRenderableData(result)
+  const needsSeed = !snapshot && !hasChartData(result)
     && (state.key !== specKey || result.loading);
   const subscribeSeed = useCallback((listener: () => void) => {
     if (!needsSeed || !coordinator) return () => {};
@@ -287,7 +304,7 @@ export function useChartResolution(
   const seeded = needsSeed
     ? seedResult()
     : null;
-  const displayed = hasRenderableData(result) ? result : (seeded ?? result);
+  const displayed = seeded ?? result;
   const resultRef = useRef(displayed);
   resultRef.current = displayed;
   const stateKey = state.key;
@@ -416,7 +433,7 @@ export function useChartResolution(
           request.options,
         );
         if (!current()) return;
-        saveChartResolution(request.savedKey, next);
+        saveChartResolution(request.savedKey, next, resultRef.current);
         const requestKey = request.specKey;
         // A pass that brought in no source data changed at most the newest points.
         const settled = cache.revision === dataRevision;
@@ -426,8 +443,8 @@ export function useChartResolution(
           if (state.key !== requestKey) return { key: requestKey, result: next };
           if ((state.savedAt != null || request.options.autoViewport || request.options.requestViewport)
             && !state.result.loading
-            && hasRenderableData(state.result)
-            && !hasRenderableData(next)) return state;
+            && hasChartData(state.result)
+            && !hasChartData(next)) return state;
           const shown = revisions.get(state.result);
           const edge = settled && shown?.cache === cache && shown.revision === dataRevision ? LIVE_COMPARE_EDGE_POINTS : undefined;
           if (state.savedAt != null || !sameChartResolution(state.result, next, edge)) return { key: requestKey, result: next };
@@ -562,7 +579,7 @@ export function useChartResolution(
     const cache = resolveCacheRef.current;
     const dataRevision = cache.revision;
     const opening = resultRef.current;
-    const backgroundRefresh = stateKey === specKey && hasRenderableData(opening) && !opening.loading && (!isExplicitReload || stateSavedAt != null);
+    const backgroundRefresh = stateKey === specKey && hasChartData(opening) && !opening.loading && (!isExplicitReload || stateSavedAt != null);
     if (!backgroundRefresh) {
       setState({ key: specKey, result: { ...opening, loading: true, errors: [] } });
     }
@@ -577,12 +594,12 @@ export function useChartResolution(
     (frame ? frame.then(() => generationRef.current === generation ? resolve() : EMPTY_RESULT) : resolve())
       .then((next) => {
         if (generationRef.current !== generation) return;
-        if (backgroundRefresh && !hasRenderableData(next)) {
+        if (backgroundRefresh && !hasChartData(next)) {
           setState((current) => current.key === specKey && current.savedAt != null
             ? { ...current, result: { ...current.result, errors: next.errors, warnings: next.warnings } } : current);
           return;
         }
-        saveChartResolution(savedKey, next);
+        saveChartResolution(savedKey, next, resultRef.current);
         const series = stateSavedAt != null && !next.bufferedSeries ? reuseSavedData(resultRef.current.series, next.series) : next.series;
         const result = series === next.series ? next : { ...next, series };
         if (cache.revision === dataRevision) resultRevisionsRef.current.set(result, { cache, revision: dataRevision });
