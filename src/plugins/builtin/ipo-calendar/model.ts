@@ -219,8 +219,38 @@ function matchesIpoQuery(deal: IpoDeal, query: string, now: Date): boolean {
   ].some((value) => !!value && value.toLowerCase().includes(needle));
 }
 
-export function filterIpoDeals(deals: readonly IpoDeal[], tab: IpoTab, query = "", now = new Date()): IpoDeal[] {
-  return deals.filter((deal) => (tab === "all" || deal.region === tab) && matchesIpoQuery(deal, query, now));
+export function filterIpoDeals(deals: readonly IpoDeal[], tab: IpoTab, query = "", now = new Date(), list?: IpoList): IpoDeal[] {
+  return deals.filter((deal) => (tab === "all" || deal.region === tab) && (!list || ipoList(deal, now) === list) && matchesIpoQuery(deal, query, now));
+}
+
+/**
+ * The board's two lists, each with its own columns: the deals not trading
+ * yet, with their price range or offer price and size, and the deals that
+ * have listed, with their first-day return.
+ */
+export type IpoList = "upcoming" | "listed";
+
+export const IPO_LISTS: readonly { value: IpoList; label: string }[] = [
+  { value: "upcoming", label: "Upcoming" },
+  { value: "listed", label: "Recent listings" },
+];
+
+export function isIpoList(value: unknown): value is IpoList {
+  return value === "upcoming" || value === "listed";
+}
+
+/**
+ * Which list a deal is on. A listed deal is a recent listing, and so is a
+ * priced one whose first session has a price or whose listing day has come at
+ * its venue (its first close may not be in yet). Everything else, priced ahead
+ * of its day, in its book, filed, postponed or withdrawn, is upcoming: it has
+ * no return to show.
+ */
+export function ipoList(deal: IpoDeal, now = new Date()): IpoList {
+  if (deal.status === "listed") return "listed";
+  if (deal.status !== "priced") return "upcoming";
+  if (deal.firstDay || deal.opening) return "listed";
+  return deal.listingDate && deal.listingDate <= venueToday(deal.timezone, now) ? "listed" : "upcoming";
 }
 
 export type IpoColumnId = "ticker" | "company" | "market" | "date" | "status" | "price" | "size" | "return";
@@ -258,27 +288,49 @@ export function calendarDate(deal: IpoDeal): string | null {
 }
 
 /**
- * Upcoming deals: the ones in their offer now, then the ones still ahead
- * soonest first, then undated ones, then the overdue ones most recent first,
- * so the board opens on what is next. Everything after them most recent first,
- * a delayed deal among the ones that stopped.
+ * The date a deal's row shows: its calendar date, except that a deal priced
+ * on a book that has closed, with no listing day named yet, has no date ahead
+ * of it. The book's closing day is behind it and says nothing of when it
+ * lists, so it shows none rather than a day gone by.
  */
-function calendarOrder(boardStatus: (deal: IpoDeal) => IpoBoardStatus): (a: IpoDeal, b: IpoDeal) => number {
-  const groupOf = (deal: IpoDeal) => boardStatus(deal) === "delayed" ? calendarGroup("postponed") : calendarGroup(deal.status);
-  const upcomingRank = (deal: IpoDeal) => {
+export function ipoShownDate(deal: IpoDeal, now = new Date()): string | null {
+  const date = calendarDate(deal);
+  if (deal.status !== "priced" || deal.listingDate || deal.firstDay || deal.opening || !date) return date;
+  return date < venueToday(deal.timezone, now) ? null : date;
+}
+
+/**
+ * One date order per list. Upcoming reads soonest first throughout: the deals
+ * in their offer now, then the ones dated ahead, set or priced alike, then
+ * those with no date ahead (a priced deal waiting for its listing day among
+ * them), then the overdue ones, then the filings, then the deals that
+ * stopped, a delayed one among them. Recent listings read latest first.
+ */
+function calendarOrder(boardStatus: (deal: IpoDeal) => IpoBoardStatus, now: Date): (a: IpoDeal, b: IpoDeal) => number {
+  const shown = new Map<IpoDeal, string | null>();
+  const dateOf = (deal: IpoDeal) => {
+    if (!shown.has(deal)) shown.set(deal, ipoShownDate(deal, now));
+    return shown.get(deal)!;
+  };
+  const listed = (deal: IpoDeal) => ipoList(deal, now) === "listed";
+  const groupOf = (deal: IpoDeal) => {
+    if (listed(deal)) return 1;
+    if (boardStatus(deal) === "delayed") return calendarGroup("postponed");
+    return deal.status === "priced" ? 0 : calendarGroup(deal.status);
+  };
+  const rankOf = (deal: IpoDeal) => {
+    if (groupOf(deal) !== 0) return 0;
     const status = boardStatus(deal);
     if (status === "offering") return 0;
     if (status === "overdue") return 3;
-    return calendarDate(deal) === null ? 2 : 1;
+    return dateOf(deal) === null ? 2 : 1;
   };
   return (a, b) => {
     const group = groupOf(a) - groupOf(b);
     if (group !== 0) return group;
-    const upcoming = a.status === "upcoming" && boardStatus(a) !== "delayed";
-    const rank = upcoming ? upcomingRank(a) - upcomingRank(b) : 0;
+    const rank = rankOf(a) - rankOf(b);
     if (rank !== 0) return rank;
-    const ascending = upcoming && upcomingRank(a) < 3;
-    const date = compareSortValues(calendarDate(a), calendarDate(b), ascending ? "asc" : "desc");
+    const date = compareSortValues(dateOf(a), dateOf(b), groupOf(a) === 1 ? "desc" : "asc");
     return date || a.company.localeCompare(b.company) || a.id.localeCompare(b.id);
   };
 }
@@ -293,12 +345,12 @@ function usdPrice(deal: IpoDeal): number | null {
   return price * (deal.offerSizeUsd / deal.offerSize);
 }
 
-function sortValue(columnId: IpoColumnId, deal: IpoDeal, status: IpoBoardStatus): string | number | null {
+function sortValue(columnId: IpoColumnId, deal: IpoDeal, status: IpoBoardStatus, now: Date): string | number | null {
   switch (columnId) {
     case "ticker": return deal.symbol;
     case "company": return deal.company;
     case "market": return deal.venue;
-    case "date": return calendarDate(deal);
+    case "date": return ipoShownDate(deal, now);
     case "status": return IPO_BOARD_STATUSES.indexOf(status);
     case "price": return usdPrice(deal);
     case "size": return deal.offerSizeUsd;
@@ -310,9 +362,9 @@ export function sortIpoDeals(deals: readonly IpoDeal[], sort: IpoSortPreference,
   const { columnId } = sort;
   const statuses = new Map(deals.map((deal) => [deal, ipoBoardStatus(deal, now)]));
   const boardStatus = (deal: IpoDeal) => statuses.get(deal)!;
-  const order = calendarOrder(boardStatus);
+  const order = calendarOrder(boardStatus, now);
   const sorted = [...deals].sort(!columnId ? order : (a, b) => (
-    compareSortValues(sortValue(columnId, a, boardStatus(a)), sortValue(columnId, b, boardStatus(b)), sort.direction) || order(a, b)
+    compareSortValues(sortValue(columnId, a, boardStatus(a), now), sortValue(columnId, b, boardStatus(b), now), sort.direction) || order(a, b)
   ));
   return rankTickerMatches(sorted, query, (deal) => [deal.symbol, deal.company, deal.companyLocal]);
 }
@@ -324,7 +376,7 @@ export function firstIpoSortDirection(columnId: IpoColumnId): "asc" | "desc" {
 
 const COMPANY_MIN_WIDTH = 16;
 
-/** Every column at its narrowest; COMPANY takes what the pane has left. */
+/** Every column at its narrowest; COMPANY takes what the pane has left. Each list shows its own (IPO_LIST_COLUMNS). */
 const IPO_COLUMNS: readonly IpoColumn[] = [
   // NSE symbols run to ten letters; the rest are far shorter.
   { id: "ticker", label: "TICKER", width: 10, align: "left" },
@@ -341,11 +393,40 @@ const IPO_COLUMNS: readonly IpoColumn[] = [
 ];
 
 /**
+ * The columns each list has. An upcoming deal has no return yet; a recent
+ * listing ends on its return. STATUS shows only a status other than the
+ * list's own (ipoListStatus), so a deal priced, in its book or late stands out
+ * among the upcoming ones, and one priced on its listing day among those listed.
+ */
+const IPO_LIST_COLUMNS: Record<IpoList, readonly IpoColumnId[]> = {
+  upcoming: ["ticker", "company", "market", "date", "status", "price", "size"],
+  listed: ["ticker", "company", "market", "date", "status", "price", "size", "return"],
+};
+
+/** The status every deal on a list has, which its STATUS column leaves blank. */
+const IPO_LIST_STATUS: Record<IpoList, IpoBoardStatus> = { upcoming: "upcoming", listed: "listed" };
+
+/** What a deal's STATUS cell says on `list`: its status where it differs from the list's own, else nothing. */
+export function ipoListStatus(deal: IpoDeal, list: IpoList | null | undefined, now = new Date()): string {
+  const status = ipoBoardStatus(deal, now);
+  return list && status === IPO_LIST_STATUS[list] ? "" : status;
+}
+
+/**
  * What a narrow pane gives up first, so COMPANY and RETURN stay. SIZE is
  * only filled once terms are out, STATUS follows from the calendar's order,
  * the date and a return, and MKT goes before the date a deal lists on.
  */
 const NARROW_DROP_ORDER: readonly IpoColumnId[] = ["size", "status", "price", "market", "date", "ticker"];
+
+/**
+ * Upcoming deals keep COMPANY, the date and the status the longest: what is
+ * next, and whether its book is open, priced or late, is the list's point.
+ */
+const NARROW_DROP_ORDER_BY_LIST: Record<IpoList, readonly IpoColumnId[]> = {
+  upcoming: ["size", "market", "price", "ticker", "status", "date"],
+  listed: NARROW_DROP_ORDER,
+};
 
 /** The table's own width for these columns, plus a cell for the scrollbar. */
 export function ipoTableWidth(columns: readonly IpoColumn[]): number {
@@ -358,9 +439,12 @@ export function marketColumnWidth(deals: readonly IpoDeal[]): number {
   return Math.min(14, Math.max(5, longest));
 }
 
-export function buildIpoColumns(width: number, marketWidth = 10): IpoColumn[] {
-  const columns = IPO_COLUMNS.map((column) => (column.id === "market" ? { ...column, width: marketWidth } : column));
-  return dropColumnsToFit(columns, width - 1, NARROW_DROP_ORDER);
+/** The columns of every deal, or of one list's (`list`), that fit `width`. */
+export function buildIpoColumns(width: number, marketWidth = 10, list?: IpoList): IpoColumn[] {
+  const columns = IPO_COLUMNS
+    .filter((column) => !list || IPO_LIST_COLUMNS[list].includes(column.id))
+    .map((column) => (column.id === "market" ? { ...column, width: marketWidth } : column));
+  return dropColumnsToFit(columns, width - 1, list ? NARROW_DROP_ORDER_BY_LIST[list] : NARROW_DROP_ORDER);
 }
 
 /**

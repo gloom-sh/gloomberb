@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DataTableStackView,
   EmptyState,
@@ -49,12 +49,16 @@ import {
   formatListDate,
   formatPercentShort,
   formatPrice,
+  isMnaTermsView,
   legsApart,
   MISSING,
+  MNA_TERMS_VIEWS,
+  mnaTermsView,
   partyCell,
   spreadBasisLabel,
   stageLabel,
   termsLabel,
+  type MnaTermsView,
 } from "./model";
 import { formatFeedTime } from "../../../utils/datetime-format";
 import { createDataTableCsv } from "../../../components/data-table/export";
@@ -95,8 +99,13 @@ const COLUMNS: Record<ColumnId, DataTableColumn> = {
   stage: { id: "stage", label: "STAGE", width: 16, align: "left" },
 };
 
-const COLUMNS_BY_STATUS: Record<MnaStatusFilter, ColumnId[]> = {
+/** The pending deals with no per-share terms are their own list: no price, no spread. */
+type ColumnSet = MnaStatusFilter | "unpriced";
+
+const COLUMNS_BY_STATUS: Record<ColumnSet, ColumnId[]> = {
   pending: ["date", "target", "acquirer", "terms", "value", "price", "spread", "annualized", "basis", "close", "stage"],
+  // What the deal pays in, when it says (cash, stock), stands where the terms would be.
+  unpriced: ["date", "target", "acquirer", "terms", "value", "close", "stage"],
   talks: ["date", "target", "acquirer", "value", "stage"],
   completed: ["date", "target", "acquirer", "terms", "value", "close"],
   terminated: ["date", "target", "acquirer", "terms", "value", "close"],
@@ -111,7 +120,7 @@ const COLUMNS_BY_STATUS: Record<MnaStatusFilter, ColumnId[]> = {
 const DROP_ORDER: ColumnId[] = ["price", "date", "close", "value", "annualized", "terms", "stage", "acquirer", "spread"];
 
 /** Columns that fit `width`; `targetWidth` widens the target column, e.g. for the unlock prompt. */
-function mnaColumns(status: MnaStatusFilter, width: number, targetWidth = COLUMNS.target.width): DataTableColumn[] {
+function mnaColumns(status: ColumnSet, width: number, targetWidth = COLUMNS.target.width): DataTableColumn[] {
   const widthOf = (id: ColumnId) => (id === "target" ? Math.max(COLUMNS.target.width, targetWidth) : COLUMNS[id].width);
   let ids = [...COLUMNS_BY_STATUS[status]];
   const need = (list: ColumnId[]) => list.reduce((sum, id) => sum + widthOf(id) + 1, 0);
@@ -124,8 +133,12 @@ function mnaColumns(status: MnaStatusFilter, width: number, targetWidth = COLUMN
     ...COLUMNS[id],
     width: widthOf(id),
     ...(id === "close" && ended ? { label: "CLOSED" } : {}),
+    ...(id === "terms" && status === "unpriced" ? { label: "CONSIDERATION" } : {}),
   }));
 }
+
+/** Deals a split list loads, page after page, to fill its rows before the reader scrolls. */
+const SPLIT_FILL_DEALS = 300;
 
 const NO_DEALS: MnaDeal[] = [];
 
@@ -207,6 +220,10 @@ function MnaDealsView({ focused, width, height, symbol }: {
   // Listed targets first: the spread is what makes the pending list worth opening.
   const [target, setTarget] = usePluginPaneState<MnaTargetFilter>(`${prefix}target`, "public");
   const [region, setRegion] = usePluginPaneState<MnaRegionFilter>(`${prefix}region`, "all");
+  // Pending deals: the priced ones a spread is read on, or the ones announced without per-share terms.
+  const [storedTerms, setTerms] = usePluginPaneState<MnaTermsView>(`${prefix}terms`, "priced");
+  const termsView: MnaTermsView = isMnaTermsView(storedTerms) ? storedTerms : "priced";
+  const split = status === "pending";
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>(`${prefix}selected`, null);
   // A closed detail is stored as "": pane state reads null as unset.
   const [storedOpen, setOpen] = usePluginPaneState<string>(`${prefix}open`, "");
@@ -262,7 +279,13 @@ function MnaDealsView({ focused, width, height, symbol }: {
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => resource.reload(), { focused, enabled: !openId });
 
-  const deals = data?.deals ?? NO_DEALS;
+  const allDeals = data?.deals ?? NO_DEALS;
+  const deals = useMemo(() => (split ? allDeals.filter((deal) => mnaTermsView(deal) === termsView) : allDeals), [allDeals, split, termsView]);
+  // The server pages every pending deal, priced or not: a split list asks for more until its rows fill the pane.
+  const shortOfRows = split && !!data?.hasMore && deals.length < height && allDeals.length < SPLIT_FILL_DEALS;
+  useEffect(() => {
+    if (shortOfRows) loadMore();
+  }, [loadMore, shortOfRows]);
   const quoteSymbols = useMemo(() => {
     const set = new Set<string>();
     for (const deal of deals) {
@@ -310,8 +333,8 @@ function MnaDealsView({ focused, width, height, symbol }: {
   const lockedText = `Unlock ${locked} newer deal${locked === 1 ? "" : "s"}`;
   // The prompt sits in the target column, which widens to hold it.
   const columns = useMemo(
-    () => mnaColumns(status, width, locked > 0 ? Math.min(lockedText.length + 3, Math.floor(width / 3)) : undefined),
-    [locked, lockedText, status, width],
+    () => mnaColumns(split && termsView === "unpriced" ? "unpriced" : status, width, locked > 0 ? Math.min(lockedText.length + 3, Math.floor(width / 3)) : undefined),
+    [locked, lockedText, split, status, termsView, width],
   );
   // Export CSV keeps the columns an earlier export had where they were: AS OF, drawn beside the spread, comes last.
   const exportColumns = useMemo(
@@ -430,7 +453,7 @@ function MnaDealsView({ focused, width, height, symbol }: {
     }
   }, [colors, isDesktopWeb, lockedText, openUpgrade, placeholder, spreadOf]);
 
-  const openDeal = deals.find((deal) => deal.id === openId) ?? null;
+  const openDeal = allDeals.find((deal) => deal.id === openId) ?? null;
   const queryBar = (
     <QueryBar
       width={width}
@@ -447,6 +470,7 @@ function MnaDealsView({ focused, width, height, symbol }: {
       }}
       filters={[
         { id: "status", label: "Status", value: status, defaultValue: symbol ? "all" : "pending", options: STATUS_OPTIONS, onChange: setStatus, controlRef: statusControl },
+        ...(split ? [{ id: "terms", label: "Terms", inline: true, value: termsView, options: MNA_TERMS_VIEWS, onChange: setTerms }] : []),
         ...(symbol ? [] : [
           { id: "target", label: "Target", value: target, defaultValue: "public", options: TARGET_OPTIONS, onChange: setTarget },
           { id: "region", label: "Region", value: region, defaultValue: "all", options: REGION_OPTIONS, onChange: setRegion },
@@ -492,8 +516,8 @@ function MnaDealsView({ focused, width, height, symbol }: {
       exportCsv={() => createDataTableCsv({ columns: exportColumns, items, renderCell })}
       scrollRef={scrollRef}
       onBodyScrollActivity={onScroll}
-      resetScrollKey={paramsKey}
-      emptyStateTitle={emptyDealsTitle(symbol, query)}
+      resetScrollKey={`${paramsKey}:${split ? termsView : ""}`}
+      emptyStateTitle={emptyDealsTitle(symbol, query, split ? termsView : null)}
       detailOpen={!!openId}
       onBack={() => setOpen("")}
       detailTitle={openDeal ? mnaDealTitle(openDeal) : undefined}

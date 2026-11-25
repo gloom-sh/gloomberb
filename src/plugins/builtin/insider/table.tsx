@@ -2,7 +2,7 @@ import { Box, Text, useUiCapabilities } from "../../../ui";
 import { ClippedText } from "../../../components/ui/display";
 import type { DataTableCell } from "../../../components";
 import { colors, inactiveSelectedText } from "../../../theme/colors";
-import { blendForContrast } from "../../../theme/color-utils";
+import { blendForContrast, blendHex } from "../../../theme/color-utils";
 import { clipToDisplayWidth, displayWidth } from "../../../utils/format";
 import type { InsiderTypeTone } from "./display";
 import {
@@ -20,15 +20,20 @@ import {
 /** The contrast a buy or sell keeps against the selected row. */
 const SELECTED_TONE_MIN_CONTRAST = 3.6;
 
-/** The theme's gain and loss colours, as every pane draws a buy and a sale. */
-export function insiderToneColor(tone: InsiderTypeTone): string {
-  return tone === "buy" ? colors.positive : tone === "sell" ? colors.negative : colors.textDim;
+/**
+ * The theme's gain and loss colours, as every pane draws a buy and a sale. A
+ * trade under a Rule 10b5-1 plan, set up in advance, takes the side's colour
+ * muted, as the chart draws Plan buys and Plan sales.
+ */
+export function insiderToneColor(tone: InsiderTypeTone, plan = false): string {
+  const color = tone === "buy" ? colors.positive : tone === "sell" ? colors.negative : colors.textDim;
+  return plan && tone !== "neutral" ? blendHex(color, colors.textDim, 0.55) : color;
 }
 
-function typeColor(tone: InsiderTypeTone, selected: boolean, inactive: boolean): string {
+function typeColor(tone: InsiderTypeTone, plan: boolean, selected: boolean, inactive: boolean): string {
   // On the quieter fill of a pane without the keys, the row keeps its own colours, lifted to read there.
   if (tone === "neutral") return !selected ? colors.textDim : inactive ? inactiveSelectedText(colors.textDim) : colors.selectedText;
-  const color = insiderToneColor(tone);
+  const color = insiderToneColor(tone, plan);
   if (!selected) return color;
   return inactive ? inactiveSelectedText(color) : blendForContrast(color, colors.selected, colors.selectedText, SELECTED_TONE_MIN_CONTRAST);
 }
@@ -75,14 +80,17 @@ export function renderInsiderCell(
       return { text: row.role, color: colors.textMuted };
     case "type": {
       const inactive = rowState.inactive === true;
-      const color = typeColor(row.tone, rowState.selected, inactive);
-      const text = insiderTypeText(row, column.plan === true);
-      const markers = insiderTypeMarkers(row, column.plan === true);
-      if (markers.length === 0) return { text, color, keepColorWhenSelected: true };
+      const color = typeColor(row.tone, row.plan, rowState.selected, inactive);
+      const text = insiderTypeText(row);
+      // A plan trade says so in the export, where no chart names the tone.
+      const exported = row.plan ? { value: insiderTypeText(row, true) } : {};
+      const markers = insiderTypeMarkers(row);
+      if (markers.length === 0) return { text, ...exported, color, keepColorWhenSelected: true };
       // The markers read after the type in a quieter colour.
       const markerColor = !rowState.selected ? colors.textMuted : inactive ? inactiveSelectedText(colors.textMuted) : colors.selectedText;
       return {
         text,
+        ...exported,
         content: <InsiderTypeCell type={row.type} markers={markers.join(" ")} width={column.width} color={color} markerColor={markerColor} />,
       };
     }

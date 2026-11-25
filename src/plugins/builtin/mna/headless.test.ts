@@ -81,3 +81,26 @@ test("the CSV keeps an earlier export's columns where they were, the spread's an
   const added = ["Spread", "As of", "Latest", "Latest as of", "Outside"].map((name) => columns.findIndex((column) => column.startsWith(name)));
   expect(added.every((index) => index > columns.indexOf("Closed"))).toBe(true);
 });
+
+test("--terms keeps the deals with per-share terms or the ones without, reading pages until the limit is met", async () => {
+  const noTerms = { ...payload.deals[0]!, terms: { ...payload.deals[0]!.terms, consideration: "cash" as const, cashPerShare: null, exchangeRatio: null, ratioSymbol: null } };
+  const pages = [
+    { ...payload, deals: [{ ...noTerms, id: "a" }, { ...noTerms, id: "b" }], hasMore: true, nextOffset: 2 },
+    { ...payload, deals: [{ ...payload.deals[0]!, id: "priced" }, { ...noTerms, id: "c" }], hasMore: false, nextOffset: 4 },
+  ];
+  const requests: MnaDealsParams[] = [];
+  const ctx = createTestHeadlessContext({
+    apiClient: { getCloudMnaDeals: async (params: MnaDealsParams) => { requests.push(params); return pages[params.offset ? 1 : 0]!; } } as unknown as HeadlessPaneContext["apiClient"],
+  });
+  const run = (terms: string, limit = 2) => mnaHeadless.load(createTestHeadlessArgs({ rawArgument: "", argument: null, symbols: [], options: { terms, limit } }), ctx);
+  const priced = await run("priced");
+  expect(priced.rows.map((row) => row.id)).toEqual(["priced"]);
+  expect(requests.map((params) => params.offset ?? 0)).toEqual([0, 2]);
+  requests.length = 0;
+  // Two deals without terms are on the first page: no second read, and no spread columns.
+  const unpriced = await run("unpriced");
+  expect(unpriced.rows.map((row) => row.id)).toEqual(["a", "b"]);
+  expect(requests).toHaveLength(1);
+  expect(unpriced.columns!.map((column) => column.key)).not.toContain("spread");
+  expect(unpriced.metadata?.hasMore).toBe(true);
+});

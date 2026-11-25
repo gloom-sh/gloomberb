@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { FailsToDeliverPayload, OtcVolumePayload } from "../../../api-client/short-side-publications";
 import { fetchPublication, validatePublication } from "./publications-client";
-import { publicationRows } from "./publications-model";
+import { publicationAxisValue, publicationChartSeries, publicationRows } from "./publications-model";
 import { publicationHeadless } from "./publications-headless";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
 
@@ -77,4 +77,26 @@ test("weekly off-exchange history preserves fractional shares while trade counts
   expect(validatePublication(payload, "AAPL", "ats").history[0]).toEqual(row);
   row.atsTrades = 1.5;
   expect(() => validatePublication(payload, "AAPL", "ats")).toThrow("invalid");
+});
+
+test("the chart over fails reads one issue's fail shares against its price, oldest first, and never adds several CUSIPs' fails", () => {
+  const palette = { warning: "#fa0", text: "#fff" };
+  const one = ftd();
+  one.history = ["2026-09-01", "2026-09-15", "2026-09-30"].map((date, index) => ({
+    date, cusip: "037833100", quantity: 1000 * (index + 1), price: index === 1 ? null : 230 + index, description: "APPLE INC", sourceUrl: "https://www.sec.gov/files/ftd.zip",
+  }));
+  const [fails, price] = publicationChartSeries("ftd", publicationRows(one), palette);
+  expect(fails!.points.map((point) => [point.date.toISOString().slice(0, 10), point.value])).toEqual([["2026-09-01", 1000], ["2026-09-15", 2000], ["2026-09-30", 3000]]);
+  expect([fails!.style, fails!.axis, price!.axis]).toEqual(["columns", "left", "right"]);
+  // A settlement with no reported price is a gap in the line, not a zero.
+  expect(price!.points.map((point) => point.value)).toEqual([230, null, 232]);
+  // Each axis in its own unit.
+  expect(publicationAxisValue(232, { unitGroup: price!.unitGroup, min: 230, max: 232 } as never)).toStartWith("$");
+  expect(publicationChartSeries("ftd", publicationRows(ftd()), palette)).toEqual([]);
+  // Weekly ATS: the ATS share by week, once there are a few weeks to read.
+  const weeks = ats();
+  weeks.history = ["2026-09-07", "2026-09-14", "2026-09-21"].map((weekStart, index) => ({ ...ats().history[0]!, weekStart, atsSharePercent: 20 + index }));
+  const [share] = publicationChartSeries("ats", publicationRows(weeks), palette);
+  expect(share!.points.map((point) => point.value)).toEqual([20, 21, 22]);
+  expect(publicationChartSeries("ats", publicationRows(ats()), palette)).toEqual([]);
 });
