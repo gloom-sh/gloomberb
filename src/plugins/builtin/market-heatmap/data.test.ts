@@ -1,6 +1,7 @@
 import { afterEach, expect, setSystemTime, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
-import { dedupeHeatmapAssets, fetchMarketHeatmap, resetMarketHeatmapCache } from "./data";
+import type { MarketHeatmapAsset } from "../../../api-client/market-discovery";
+import { dedupeHeatmapAssets, fetchMarketHeatmap, holdDelayedHeatmapTiles, resetMarketHeatmapCache } from "./data";
 let restore: (() => void) | undefined;
 afterEach(() => { restore?.(); restore = undefined; resetMarketHeatmapCache(); });
 test("a read with the cache off, or through another client, neither uses nor fills the shared board", async () => {
@@ -122,4 +123,23 @@ test("a company listed twice gets one tile, the larger listing, in its place", (
   ];
   expect(dedupeHeatmapAssets(assets)).toEqual([assets[0]!, assets[1]!, assets[2]!]);
   expect(dedupeHeatmapAssets([assets[3]!, assets[1]!]).map((asset) => asset.exchange)).toEqual(["NASDAQ"]);
+});
+
+test("a real-time tile the server could not price is held as a move not priced live, whatever hasChange it was sent with", async () => {
+  const tile = (symbol: string, fields: Partial<MarketHeatmapAsset>): MarketHeatmapAsset => ({
+    symbol, name: symbol, price: 100, change: 1, changePercent: 1, hasChange: true, size: 1e9, sizeKind: "market-cap", volume: 10,
+    currency: "USD", exchange: "NASDAQ", sector: null, industry: null, marketState: null, source: "gloom", ...fields,
+  });
+  const delayedQuote = { price: 98.5, changePercent: -1.5, volume: 900, printedAt: 1 };
+  // As the server sends it: the tile older apps draw blank, with its delayed figures beside it.
+  const sent = tile("AAAA", { price: 0, change: 0, changePercent: 0, hasChange: false, volume: null, regularChangePercent: null, delayedQuote });
+  const live = tile("BBBB", {});
+  const answer = { status: "success" as const, data: { universe: "us-equity" as const, source: "gloom" as const, fetchedAt: 123, assets: [sent, live] } };
+  const api = spyOn(apiClient, "getMarketHeatmap").mockResolvedValue(answer);
+  restore = () => api.mockRestore();
+  const board = await fetchMarketHeatmap("us-equity", { count: 2 });
+  // No figure the stream could take for a live one: no price, no move, no volume; a live quote then gives it its move.
+  expect(board.assets[0]).toMatchObject({ symbol: "AAAA", price: 0, change: null, changePercent: null, hasChange: true, volume: null, delayedQuote });
+  expect(board.assets[1]).toBe(live);
+  expect(holdDelayedHeatmapTiles([live])[0]).toBe(live);
 });

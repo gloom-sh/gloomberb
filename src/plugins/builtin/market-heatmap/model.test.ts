@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { heatmapBoardCaption, heatmapExtendedPrintTime, heatmapMove, heatmapNameCount, regularSessionHeatmapAssets, summarizeHeatmapGroups } from "./model";
+import {
+  heatmapBoardCaption,
+  heatmapDelayedPrintTime,
+  heatmapDelayedQuote,
+  heatmapExtendedPrintTime,
+  heatmapMove,
+  heatmapNameCount,
+  regularSessionHeatmapAssets,
+  summarizeHeatmapGroups,
+} from "./model";
 
 function asset(symbol: string, size: number, changePercent: number | null, sector: string | null, industry: string | null = null) {
   return { symbol, size, changePercent: changePercent ?? 0, hasChange: changePercent != null, sector, industry };
@@ -126,6 +135,28 @@ test("a board is as of when its prices printed, which the snapshot time is alway
   expect(heatmapBoardCaption(trading, { now: now + 86_400_000 })).toBe("top 500 · as of 20 Oct 13:20 ET");
   // An older server, or a print it cannot date, keeps the snapshot's time.
   for (const pricesAsOf of [undefined, null]) expect(heatmapBoardCaption({ ...trading, pricesAsOf }, { now })).toBe("top 500 · snapshot 13:55 ET");
+});
+
+test("a real-time tile the server could not price live has no move, only its delayed figures, until a live move replaces them", () => {
+  const printedAt = Date.parse("2026-11-24T16:21:40Z");
+  const delayedQuote = { price: 151.02, changePercent: -1.4, volume: 1_200, printedAt };
+  // As the server sends it, no move and no price (the tile older apps draw blank), and as this client holds it
+  // (holdDelayedHeatmapTiles): a move of the session not priced live. Either way the delayed figures show.
+  const sent = { ...asset("NVDA", 4_000, null, "Tech"), price: 0, delayedQuote };
+  const tile = { ...sent, hasChange: true, changePercent: null };
+  expect(heatmapMove(sent)).toBeNull();
+  expect(heatmapDelayedQuote(sent)).toBe(delayedQuote);
+  expect(heatmapMove(tile)).toBeNull();
+  expect(heatmapDelayedQuote(tile)).toBe(delayedQuote);
+  expect(summarizeHeatmapGroups([tile, asset("AMD", 300, 2, "Tech")], "sector").board).toMatchObject({ move: 2, moved: 1, up: 1, down: 0 });
+  // A streamed quote gives the tile a live move: the delayed figures no longer show.
+  expect(heatmapDelayedQuote({ ...tile, changePercent: -1.1 })).toBeNull();
+  expect(heatmapDelayedQuote(asset("AMD", 300, 2, "Tech"))).toBeNull();
+  // Dated in New York time, with the day when it is not today there.
+  const now = Date.parse("2026-11-24T16:46:00Z");
+  expect(heatmapDelayedPrintTime(delayedQuote, now)).toBe("delayed 11:21 ET");
+  expect(heatmapDelayedPrintTime({ printedAt: Date.parse("2026-11-23T20:59:00Z") }, now)).toBe("delayed 23 Nov 15:59 ET");
+  expect(heatmapDelayedPrintTime({ printedAt: null }, now)).toBe("delayed");
 });
 
 test("a saved name count is read from the dialog's text or a number, and anything else is all 500", () => {
