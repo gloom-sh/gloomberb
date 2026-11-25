@@ -12,10 +12,10 @@ import { expirationHint, expiryIsoDate, OPTION_EXPIRATION_FORMAT, optionExpiryVe
 import { dateOptionError, readCalendarDate } from "../../utils/calendar-date";
 import { isFundType } from "../../utils/sec";
 import { daysToExpiryFrom, optionMid, type OptionSide } from "../../plugins/builtin/shared/volatility";
+import { optionSnapshotFreshness } from "../../plugins/builtin/shared/volatility/option-snapshot";
 import { optionQuoteValuationTime } from "../../plugins/builtin/vol-surface/model";
 import { optionBreakeven, optionCarry, optionCarryNet, optionSpreadPercent } from "../../plugins/builtin/options/carry";
 import { parseDeltaBand } from "../../plugins/builtin/options/strike-window";
-import { optionSnapshotFreshness } from "../../plugins/builtin/options/snapshot";
 import { ivRankReason, ivSymbol, loadIvScreen, type IvScreenRow } from "../../plugins/builtin/iv-history/client";
 import { newYorkDay, resolveListingEvents, upcomingReportDate } from "../../plugins/builtin/shared/earnings-calendar";
 import {

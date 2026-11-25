@@ -73,7 +73,7 @@ import {
   resolveChainRefreshIntervalMs,
 } from "./live-quotes";
 import { useOptionsAccessFooter } from "./footer";
-import { optionExpiryFacts, optionSnapshotFreshness } from "./snapshot";
+import { optionExpiryFacts, optionSnapshotFreshness } from "../shared/volatility/option-snapshot";
 import { AnalyticsAsOfDialog, analyticsAsOfRows } from "./analytics-as-of";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { signedPositionDirection } from "../../../portfolio/position-metrics";

@@ -9,7 +9,7 @@ import { usePaneStatusFooter } from "../../../components/layout/pane/status-foot
 import { CLOUD_QUOTE_DELAY_MINUTES } from "../../../api-client/plan-access";
 import type { OptionQuoteCoverage, OptionQuoteCoverageStatus } from "./live-quotes";
 import { formatOptionPrice, optionSpread, type OptionMarketReference } from "./market-reference";
-import type { optionSnapshotFreshness } from "./snapshot";
+import type { optionSnapshotFreshness } from "../shared/volatility/option-snapshot";
 
 /**
  * Stream coverage the pane reports once the account is entitled to real-time

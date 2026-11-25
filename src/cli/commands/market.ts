@@ -69,7 +69,7 @@ import {
   ratingReason,
 } from "../../plugins/builtin/research/analyst-model";
 import { hasAnalystCoverage, loadAnalystResearch, noAnalystCoverageText } from "../../plugins/builtin/research/client";
-import { optionExpiryFacts, optionSnapshotFreshness } from "../../plugins/builtin/options/snapshot";
+import { optionExpiryFacts, optionSnapshotFreshness } from "../../plugins/builtin/shared/volatility/option-snapshot";
 import {
   awaitingFirstDelayedPrint, dailyCloseSessionLabel, dailyCloseText, isQuoteStaleForCurrentSession, noPrintsTodayText, nominalPriceText,
   nominalSessionLabel,
