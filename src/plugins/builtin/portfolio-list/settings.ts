@@ -51,8 +51,9 @@ const PORTFOLIO_COLUMN_DEFS: ColumnConfig[] = [
   { id: "spread", label: "SPREAD", width: 10, align: "right", format: "currency" },
   { id: "spread_pct", label: "SPR%", width: 7, align: "right", format: "percent" },
   { id: "bid_ask_size", label: "B/A SZ", width: 9, align: "right", format: "compact" },
-  // When the bid and ask were quoted, which is not when the last trade was.
-  { id: "book_time", label: "BOOK TIME", width: 53, align: "right" },
+  // When the bid and ask were quoted, which is not when the last trade was. The table widens it for a row's session
+  // and feed marks (◷AH Tue 23:40), up to QUOTE_BOOK_CELL_MAX_WIDTH.
+  { id: "book_time", label: "BOOK UTC", width: 10, align: "right" },
   { id: "change", label: "CHG", width: 9, align: "right", format: "currency" },
   { id: "ext_hours", label: "EXT%", width: 8, align: "right", format: "percent" },
   { id: "dividend_yield", label: "DIV%", width: 7, align: "right", format: "percent" },
@@ -210,7 +211,7 @@ function describeColumnOption(column: ColumnConfig): string {
   if (column.id === "perp_premium") return "Premium of the stock's perpetual to its last price.";
   if (column.id === "perp_funding") return "Funding of the stock's perpetual, per 8 hours.";
   if (column.id === "as_of") return "When each row's price is from: its last print, or the regular close.";
-  if (column.id === "book_time") return "When each row's bid and ask were quoted, or not dated when the source gives no time.";
+  if (column.id === "book_time") return "When each row's bid and ask were quoted, marked by session (PM, AH, lunch, closed) and feed (◷ delayed, snap), or not dated when the source gives no time.";
   if (column.id === "currency") return "The currency each row is priced in; shown by default once a row is in another currency than the totals.";
   return PORTFOLIO_ONLY_COLUMN_IDS.has(column.id)
     ? "Visible only when this pane is showing a portfolio."

@@ -2131,6 +2131,16 @@ A row's LAST, CHG and CHG% are the price its value uses, so LAST times the share
 - At the regular close, LAST is the regular session as `quote` heads it, with the extended print in EXT%. A watchlist values nothing and shows LAST the same way.
 - The header's totals read to the unit (`Val 1,588`, `Day -101.10`), compact only from a billion (`1.23B`).
 
+### BOOK UTC in the PF pane
+
+BOOK UTC is when a row's bid and ask were quoted, which is not when its last trade was. It reads as AS OF UTC does (`Wed 14:58` over the last week, then `18 Sep`), with what the book is as a mark before the time:
+
+- The session, where it is not the regular one: `PM`, `AH`, `lunch` for a venue's midday break, and `closed` for a quote left while the market was shut. No mark is the regular session, or a venue whose hours are not known.
+- The feed, first, by the book's own source, which can differ from the price's: `◷` for a delayed feed (`◷AH Tue 23:40`) and `snap` for a snapshot. No mark is a real-time book, or a source that does not say.
+- `not dated` is a book its source sent without a time. It is never given the trade's time, and its marks are the quote's own state.
+
+The column is 10 cells and widens to its longest row, 22 at most. `gloom ticker`, DES and the order ticket say the same in words (`Tue 24 Nov 23:40 UTC · after-hours · delayed`), and a CSV export of the table keeps the whole time in UTC.
+
 ### Futures
 
 A future has no regular close. At the close it is priced at its exchange settlement, the `Settle` `quote` shows, dated by its session (`Fri 16 Oct settle` in `As of`), never at the Globex print after it. A future with no confirmed settlement yet is not valued, and a line under the table says so.

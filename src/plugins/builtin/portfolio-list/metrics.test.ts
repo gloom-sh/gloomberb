@@ -742,6 +742,18 @@ describe("watchlist and portfolio LAST, CHG and CHG% around the close", () => {
     expect(totals.dailyPnl).toBeCloseTo(-70.3, 8);
   });
 
+  test("BOOK UTC shortens the book's time and keeps the instant whole for an export and the sort, and an undated book has neither", () => {
+    const context: ColumnContext = { ...defaultColumnContext, now: Date.parse("2026-10-09T01:00:00Z") };
+    const bookAt = Date.parse("2026-10-08T23:40:10.250Z");
+    const dated = createFinancials({ quote: { ...afterHours, bid: 165.3, ask: 165.5, bidAskTime: bookAt, dataSource: "delayed" } });
+    expect(getColumnValue(column("book_time"), ticker, dated, context)).toEqual({ text: "◷AH Thu 23:40", value: "2026-10-08T23:40:10.250Z" });
+    expect(getSortValue(column("book_time"), ticker, dated, context)).toBe(bookAt);
+    const undated = createFinancials({ quote: { ...afterHours, bid: 165.3, ask: 165.5, dataSource: "delayed" } });
+    expect(getColumnValue(column("book_time"), ticker, undated, context)).toEqual({ text: "◷AH not dated", color: colors.textDim });
+    expect(getSortValue(column("book_time"), ticker, undated, context)).toBeNull();
+    expect(getColumnValue(column("book_time"), ticker, createFinancials({ quote: afterHours }), context).text).toBe("—");
+  });
+
   test("valued at the latest print, LAST is that print marked by its session, so LAST, CHG, MKT VAL and DAY agree and the header names the print", () => {
     // NVDA on Wed 11 Nov 2026 after 20:00 New York: up 2.87% to a 173.73 close, then 158.78 after hours.
     const nvda = createFinancials({ quote: { symbol: "NVDA", price: 158.78, change: -10.11, changePercent: -5.9862,
