@@ -318,6 +318,16 @@ test("reports to come and reports out are two views, each with its own columns; 
     // Nothing out yet: no actual, surprise or move to wait on, and no `pending` in their place.
     expect(upcoming).not.toMatch(/EPS ACT|EPS SURP|\bMOVE\b|pending/);
     expect(upcoming).toMatch(/STATUS/);
+    // A layout's or shot's `kind` setting opens on that view, though a report is to come.
+    const set = createInitialState(createTestPaneConfig("/tmp/gloomberb-ern-kinds-tui-test", {
+      paneId: "earnings-calendar", instanceId: `${instance}:set`, settings: { kind: "reported" } }));
+    set.focusedPaneId = `${instance}:set`;
+    await act(async () => {
+      await tui.render(<LiveBoard initial={set} runtime={runtime} highlight="" onFooter={() => {}} />, { width: 150, height: 12 });
+    });
+    const opened = await tui.waitForFrameToContain("EPS ACT", 40);
+    expect(opened).toContain("JPM");
+    expect(opened).not.toContain("NFLX");
   } finally {
     calendarRequests.mockImplementation(defaultCalendar);
     resetEarningsCloudCaches();

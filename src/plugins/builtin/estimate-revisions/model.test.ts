@@ -252,6 +252,21 @@ test("fn EM reads a bare ticker with no saved listing on its primary venue", asy
   expect(result.metadata).toMatchObject({ symbol: "AAPL", exchange: "NASDAQ" });
 });
 
+test("fn EM's surprises are the Surprises tab's: the actual over the estimate, N/M against a loss, with the difference", async () => {
+  const report = (date: string, estimate: number, actual: number, percent: number | null) => ({
+    date, dateType: "announcement" as const, currency: null, estimate, actual, difference: null, percent, percentile: null, samples: 0, source: "gloom" });
+  const client = { getCloudEstimateRevisions: async (_symbol: string, exchange: string) => ({ ...fixture(), exchange,
+    // The source's percent is blank, or off the absolute estimate for a loss: the pane reads neither.
+    surprises: [report("2026-10-30", 1.98, 2.1, null), report("2026-07-30", -0.5, -0.4, 20)] }) };
+  const ctx = createTestHeadlessContext({ apiClient: client as HeadlessPaneContext["apiClient"], resolveInstrument: async () => ({ symbol: "AAPL", exchange: "NASDAQ" }) });
+  const result = await estimateRevisionsHeadless.load(createTestHeadlessArgs({ symbols: ["AAPL"], argument: "AAPL", rawArgument: "AAPL" }), ctx);
+  const surprises = result.sections.find((section) => section.title === "Surprises");
+  expect(surprises?.rows ? surprises.rows.map((row) => [row.percent, row.percentNotMeaningful, row.difference]) : null).toEqual([
+    [6.06, undefined, 0.12],
+    [null, true, 0.1],
+  ]);
+});
+
 test("a listing that names its venue is never searched for", async () => {
   const route = routeSpy();
   const { dataProvider, asked } = listings([listing("XETR")], "XETR");

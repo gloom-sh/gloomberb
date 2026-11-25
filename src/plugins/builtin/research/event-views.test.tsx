@@ -332,6 +332,22 @@ describe("EE's views", () => {
     // Narrow, the counts and ranges give way before the period end, which says which quarter or year a row is.
     expect(estimateColumns(90).map(({ id }) => id)).toEqual(["period", "ends", "eps", "epsLow", "epsHigh", "epsGrowth", "revenue", "revenueGrowth"]);
   });
+
+  test("a quarter the feed has only by its period end is listed, and opens on its own figures, never a same-day pending announcement's", async () => {
+    await mount({ actions: async () => ({ symbol: "TEST", currency: "USD", dividends: [], splits: [], earnings: [
+      { date: "2026-09-30", dateType: "announcement", epsEstimate: 2.2 },
+      { date: "2026-09-30", dateType: "fiscal-period-end", epsActual: 2, epsEstimate: 1.8, currency: "USD" },
+    ] }) });
+    expect(line("30 Sep 2026")).toMatch(/Sep 2026\s+2\.00\s+1\.80\s+\+11\.11%/);
+    // Under the next quarter analysts estimate.
+    await tui.emitKeypress({ name: "down" });
+    await settle();
+    await tui.emitKeypress({ name: "return" });
+    await settle(10);
+    expect(tui.frame()).toMatch(/Actual\s+2 USD/);
+    expect(tui.frame()).toMatch(/Consensus\s+1\.8 USD/);
+    expect(tui.frame()).not.toMatch(/Consensus\s+2\.2/);
+  });
 });
 
 describe("the next catalyst from a free preview", () => {

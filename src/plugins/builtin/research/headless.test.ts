@@ -88,6 +88,26 @@ describe("earnings estimates headless", () => {
     expect(result.metadata).toMatchObject({ kind: "estimates", total: 2, truncated: true });
     expect(result.rows[0]?.epsBasis).toBe("unknown");
   });
+
+  test("--view prints one of the pane's views under Next up, while --kind keeps picking the rows", async () => {
+    const definition = createEarningsEstimatesHeadless({ loadSources: async () => sources });
+    const text = async (options: Record<string, string>) => {
+      const request = args({ kind: "all", ...options });
+      const result = await definition.load(request, context);
+      return { result, text: renderHeadlessPaneText(definition, result, request, "EE") };
+    };
+    const reported = await text({ view: "reported" });
+    expect(reported.text).toMatch(/Date\s+Quarter\s+EPS\s+Est\s+Surprise/);
+    expect(reported.text).toContain("Next up");
+    expect(reported.text).not.toContain("EPS low");
+    expect(reported.text).not.toContain("Reported quarters");
+    expect(reported.result.metadata).toMatchObject({ kind: "all", view: "reported" });
+    // The exports keep every row --kind asks for.
+    expect(reported.result.rows.map((row) => row.status)).toEqual(expect.arrayContaining(["Earnings", "Q Est", "FY Est"]));
+    const estimates = await text({ view: "estimates" });
+    expect(estimates.text).toMatch(/Period\s+Ends\s+EPS\s+EPS low/);
+    expect(estimates.text).not.toContain("Reported quarters");
+  });
 });
 
 test("EE reads a surprise against a loss estimate and growth off a year-ago loss N/M, as EVTS does, and exports no figure for either", async () => {

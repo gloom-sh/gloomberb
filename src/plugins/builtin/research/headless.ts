@@ -130,7 +130,10 @@ function projectEarningsEstimatesHeadless(
   const estimateRows = [...quarters, ...years].map(estimateTextRow).slice(0, limit);
   const quarterRows = quarterTextRows(fund ? [] : earningsQuarters(all, today).slice(0, limit));
   const quarterSection: HeadlessBundleSection = { title: "Reported quarters", columns: QUARTER_TEXT_COLUMNS, rows: quarterRows };
-  const sections = [...(summary.length ? [eventSummarySection(summary)] : []), ...(kind === "all" && quarterRows.length ? [quarterSection] : [])];
+  // `--view` prints one of the pane's views under Next up, as `shot` opens on it; without it, `--kind` says which.
+  const view = args.options.view === "estimates" || args.options.view === "reported" ? args.options.view : null;
+  const reportedText = view ? view === "reported" : kind === "reported";
+  const sections = [...(summary.length ? [eventSummarySection(summary)] : []), ...(!view && kind === "all" && quarterRows.length ? [quarterSection] : [])];
   const notice = eventSourceNotice({ variant: "earnings-estimates", symbol: args.symbols[0] ?? String(args.argument ?? ""),
     actions: sources.actions, estimates: sources.estimates,
     actionsError: sources.actions ? null : "Source unavailable", estimatesError: sources.estimates ? null : "Source unavailable",
@@ -141,8 +144,8 @@ function projectEarningsEstimatesHeadless(
   return {
     columns: ESTIMATE_COLUMNS,
     rows,
-    textColumns: kind === "reported" ? QUARTER_TEXT_COLUMNS : ESTIMATE_TEXT_COLUMNS,
-    textRows: kind === "reported" ? quarterRows : estimateRows,
+    textColumns: reportedText ? QUARTER_TEXT_COLUMNS : ESTIMATE_TEXT_COLUMNS,
+    textRows: reportedText ? quarterRows : estimateRows,
     ...(sections.length ? { textSections: sections } : {}),
     errors: errors.length ? errors : undefined,
     metadata: {
@@ -150,6 +153,7 @@ function projectEarningsEstimatesHeadless(
       asOf: newestRead(sources.actions?.fetchedAt, sources.estimates?.fetchedAt),
       currency: sources.currency,
       kind,
+      ...(view ? { view } : {}),
       total: matching.length,
       returned: rows.length,
       truncated: rows.length < matching.length,
@@ -185,6 +189,18 @@ export function createEarningsEstimatesHeadless(
           { value: "reported" },
         ],
         defaultValue: "all",
+      },
+      {
+        // Not `--kind`, which filters the rows every format lists: this is which of the pane's two views it shows.
+        key: "view",
+        settingKey: "view",
+        description: "The pane's view: estimates, the quarters and years ahead, or reported, the reported quarters charted over their table. The text report prints that view's table under Next up; --kind still picks the rows CSV and JSON list.",
+        type: "enum",
+        values: [
+          { value: "estimates" },
+          { value: "reported" },
+        ],
+        example: "--view reported",
       },
       {
         key: "limit",
