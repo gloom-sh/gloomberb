@@ -205,6 +205,10 @@ export interface Quote extends DepositaryReceiptFacts {
   regularChangePercent?: number;
   /** Provider's exchange-local session date for the daily quote reference. */
   changeSessionDate?: string;
+  /** Range from the listing's settled regular-session daily bar. */
+  dayRangeBasis?: "daily-bar";
+  /** Date belonging to both range endpoints, not to the last price; null after reconciliation if unknown. */
+  dayRangeSessionDate?: string | null;
   high52w?: number;
   low52w?: number;
   /**

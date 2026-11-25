@@ -36,6 +36,16 @@ function makeSearchResult(
   };
 }
 
+test("a fresh exact coin-name search offers spot before tracker listings, without rewriting explicit searches", () => {
+  const tracker = makeSearchResult("BITCOIN.XBT", "Bitcoin Tracker One XBT Provider", { exchange: "SFB", type: "ETF" });
+  const spot = makeSearchResult("BTC-USD", "Bitcoin", { exchange: "CCC", type: "CRYPTOCURRENCY" });
+  const search = (query: string, providerResults: InstrumentSearchResult[]) =>
+    buildTickerSearchCandidates({ query, providerResults, tickers: new Map() }).map((row) => row.symbol);
+  expect(search("bitcoin", [tracker])).toEqual(["BTC-USD", "BITCOIN.XBT"]);
+  expect(search("Bitcoin", [tracker, spot])).toEqual(["BTC-USD", "BITCOIN.XBT"]);
+  for (const query of ["Bitcoin Tracker One", "BITCOIN.XBT", "BTC"]) expect(search(query, [tracker])).not.toContain("BTC-USD");
+});
+
 function makeDataProvider(results: InstrumentSearchResult[]): DataProvider {
   return createTestDataProvider({
     id: "test",

@@ -31,7 +31,7 @@ import { activeLayerTokens, isPlainMap, LAYERS_SETTING_KEY, resolveActiveLayers,
 import { useMapKeyboard, WorldVenueMap } from "./map";
 import { filterWorldVenues, formatVenueLocalTime } from "./model";
 import { useGeoCatalog } from "./use-geo";
-import { SelectedVenueHeader } from "./venue-header";
+import { SelectedVenueHeader, venueHeaderLines } from "./venue-header";
 import { cloudGeoRequest } from "./client";
 import { initialMapFocus, mapHomeArea, nearestPlaces, resolveMapPlace, type MapStart } from "./place";
 import { useWorldMapEvidence } from "./evidence";
@@ -178,7 +178,8 @@ function VenueMapView({ focused, width, height, start }: PaneProps & { start: Ma
   const mapWidth = horizontal ? Math.max(1, width - sidebarWidth) : width;
   const mapSectionHeight = horizontal ? height : Math.max(8, Math.floor(height * 0.52));
   const tableHeight = horizontal ? height : Math.max(4, height - mapSectionHeight);
-  const mapHeight = Math.max(2, mapSectionHeight - 2);
+  const headerLines = selectedVenue && data ? venueHeaderLines(selectedVenue, data.checkedAt, now, mapWidth) : [];
+  const mapHeight = Math.max(2, mapSectionHeight - Math.max(2, 1 + headerLines.length));
   const columns = useMemo(() => venueColumns(listWidth), [listWidth]);
 
   const renderCell = useCallback((
@@ -250,7 +251,7 @@ function VenueMapView({ focused, width, height, start }: PaneProps & { start: Ma
 
   const map = (
     <Box key="map" flexDirection="column" width={mapWidth} height={mapSectionHeight} overflow="hidden">
-      <SelectedVenueHeader venue={selectedVenue} checkedAt={data.checkedAt} now={now} width={mapWidth} />
+      <SelectedVenueHeader venue={selectedVenue} width={mapWidth} lines={headerLines} />
       <WorldVenueMap
         venues={venues}
         selectedMic={selectedMic}
