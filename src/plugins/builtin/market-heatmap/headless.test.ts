@@ -99,6 +99,39 @@ describe("fn HM report", () => {
     expect(result.metadata?.asOf).toBe(new Date(MON - 5_000).toISOString());
   });
 
+  test("a Pro board in the session reads live only while it has live moves and is current", async () => {
+    const MON = Date.UTC(2026, 10, 23, 16, 46);
+    const line = (result: Awaited<ReturnType<typeof load>>, now = MON) => formatFreshnessLine(deriveHeadlessFreshness(marketHeatmapHeadless, result, now));
+    // A name the live read did not price, as the server sends it.
+    const unpriced = (symbol: string): MarketHeatmapAsset => ({ ...asset(symbol, 100, null), price: 0, volume: null, regularChangePercent: null,
+      delayedQuote: { price: 151.33, changePercent: -1.4, volume: 900, printedAt: MON - 25 * 60_000 } });
+    const inSession = { fetchedAt: MON - 5_000, pricesAsOf: MON - 5_000, session: "REGULAR" as const, access: "realtime" as const };
+    // Live moves with a few names beside their tiles: live, as before.
+    const mixed = await load([unpriced("S0"), ...board(0, 40).slice(1)], false, inSession);
+    expect(mixed.freshness?.status).toBe("live");
+    expect(line(mixed)).toContain("· live ·");
+    // The server says the board is stale (its live read is old): stale, not live.
+    const stale = await load(board(0, 40), true, { ...inSession, fetchedAt: MON - 60_000, pricesAsOf: MON - 60_000 });
+    expect(stale.freshness?.status).toBe("stale");
+    expect(line(stale)).toContain("· stale (1 min old) ·");
+    expect(line(stale)).not.toContain("live");
+    // No live read yet, or nothing traded since the open: every figure is a delayed one beside its tile.
+    const names = Array.from({ length: 40 }, (_, index) => unpriced(`S${index}`));
+    const unread = await load(names, true, { ...inSession, fetchedAt: MON - 10 * 60_000, pricesAsOf: null });
+    expect(unread.freshness?.status).toBe("stale");
+    expect(line(unread)).not.toContain("live");
+    const untraded = await load(names, false, { ...inSession, fetchedAt: MON - 10 * 60_000, pricesAsOf: null });
+    expect(untraded.freshness?.status).toBe("delayed");
+    expect(line(untraded)).toContain("· delayed ·");
+    expect(untraded.metadata?.delayed).toHaveLength(40);
+    // Outside the session a Pro board reads as it did.
+    const SAT = Date.UTC(2026, 10, 21, 15);
+    const closed = await load(board(0, 40), false, { fetchedAt: SAT - 60_000, session: "CLOSED", access: "realtime",
+      regularSessionDate: "2026-11-20", regularSessionClosedAt: Date.UTC(2026, 10, 20, 21) });
+    expect(closed.freshness?.status).toBe("live");
+    expect(line(closed, SAT)).toContain("· live ·");
+  });
+
   test("a stale snapshot is incomplete and says so", async () => {
     const result = await load(board(0, 40), true);
     expect(result.complete).toBe(false);

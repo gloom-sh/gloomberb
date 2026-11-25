@@ -2681,6 +2681,7 @@ Gloom includes English, Spanish, Simplified Chinese, Traditional Chinese, Japane
 - Supported `LANG` / `LC_ALL` and desktop system locales select the matching interface automatically.
 - `LANG` in the command bar (Ctrl+P) cycles languages, or use `LANG auto`, `LANG en`, `LANG es`, `LANG zh-CN`, `LANG zh-TW`, `LANG ja`, `LANG ko`. The choice is saved in `config.json`.
 - `GLOOMBERB_LANG=ja gloomberb` overrides it for one run.
+- Plugins can supply their own translations, including for table headers they explicitly opt in. This does not change other panes' labels, CSV headers, or automation. See [Plugin translations](../PLUGINS.md#plugin-translations).
 
 ## Built-in plugins
 

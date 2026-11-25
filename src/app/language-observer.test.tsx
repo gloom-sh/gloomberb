@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, type Dispatch } from "react";
-import { getLanguage, setLanguage, t } from "../i18n";
+import { getLanguage, registerTranslations, setDisabledTranslationPlugins, setLanguage, t, tPlugin } from "../i18n";
 import { useAppLanguage } from "../i18n/react";
 import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import {
@@ -26,6 +26,7 @@ function LanguageProbe() {
 
 afterEach(() => {
   dispatch = null;
+  setDisabledTranslationPlugins([]);
   setLanguage("en");
 });
 
@@ -37,6 +38,32 @@ async function renderSettled() {
 }
 
 describe("AppLanguageConfigObserver", () => {
+  test("disabling a plugin hides its translations until enabled again", async () => {
+    const pluginId = "translation-fixture";
+    const config = { ...createDefaultConfig(":memory:"), language: "es" as const, disabledPlugins: [pluginId] };
+    const dispose = registerTranslations(pluginId, "es", { status: "Listo" });
+    function PluginProbe() {
+      useAppLanguage();
+      return <text>{tPlugin(pluginId, "status", "Ready")}</text>;
+    }
+    try {
+      await tui.render(<AppProvider config={config}>
+        <AppLanguageConfigObserver />
+        <DispatchCapture />
+        <PluginProbe />
+      </AppProvider>, { width: 20, height: 2 });
+      expect(await tui.waitForFrameToContain("Ready")).not.toContain("Listo");
+
+      act(() => { dispatch?.({ type: "SET_DISABLED_PLUGINS", disabledPlugins: [] }); });
+      await tui.waitForFrameToContain("Listo");
+      act(() => { dispatch?.({ type: "SET_DISABLED_PLUGINS", disabledPlugins: [pluginId] }); });
+      expect(await tui.waitForFrameToContain("Ready")).not.toContain("Listo");
+    } finally {
+      await tui.destroy();
+      dispose();
+    }
+  });
+
   test("tracks language changes from config replacement and desktop hydration", async () => {
     const config = { ...createDefaultConfig("/tmp/gloomberb-language-observer"), language: "en" as const };
     await tui.render(
