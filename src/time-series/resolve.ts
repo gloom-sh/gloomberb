@@ -301,9 +301,8 @@ async function resolveChartSpecWindow(
 /**
  * The splits a comparison's listings took inside their windows, read from
  * each listing's corporate actions (once per chart, as total returns read
- * them), and any jump of a leg's closes no split-adjusted series makes
- * (comparisonSplitAssessment). A listing whose actions cannot be read names no
- * split; its jumps are still named.
+ * them), and any price basis breaks in the listing's native bars. Unavailable
+ * split history cannot clear a suspicious high/low range.
  */
 async function assessComparedSplits(
   spec: ChartSpec,
@@ -319,7 +318,8 @@ async function assessComparedSplits(
       logFailure("time-series-resolve", "Loading splits for a comparison failed")(error);
       return null;
     });
-    return { id, label: source.instrument.symbol, splits: actions?.splits ?? [], series: nativeSeries.get(id) };
+    const splits = actions?.coverage?.splits === "unavailable" ? null : actions?.splits ?? null;
+    return { id, label: source.instrument.symbol, splits, series: nativeSeries.get(id) };
   }));
   return comparisonSplitAssessment(comparison, legs.filter((leg) => leg !== null), now);
 }

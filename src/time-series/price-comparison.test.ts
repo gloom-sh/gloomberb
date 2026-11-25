@@ -152,6 +152,12 @@ describe("normalized market price comparison", () => {
     expect(later.splitNotice).toBeUndefined();
     expect(later.series.map((entry) => entry.points.at(-1)?.rawValue)).toEqual([110, 14]);
     expect(seedChartResolutionResult(chart("2023-09-01"), history, inputs.now)?.series[1]?.points).toHaveLength(2);
+
+    inputs.dataProvider.getCorporateActions = async (symbol) => ({ symbol, dividends: [], earnings: [], splits: [],
+      coverage: { splits: "unavailable" } });
+    const unavailable = await resolveChartSpecData(chart("2023-08-01"), inputs);
+    expect(unavailable.series.map((entry) => entry.points.length)).toEqual([3, 0]);
+    expect(unavailable.splitNotice).toContain("with split history unavailable");
   });
 
   test("intraday integrity includes the selected endpoint but neither neighbor outside the window", async () => {

@@ -115,7 +115,7 @@ export function seedChartResolutionResult(
   const priceComparison = resolvePriceComparison(spec, series, bounds, resolution, spec.viewport.dateWindow,
     { preset: explicitBounds(spec) || runtimeRequestBounds(options) ? null : spec.viewport.range, now: referenceNow?.getTime() ?? Date.now() });
   if (priceComparison?.legs && comparisonSplitAssessment(priceComparison,
-    series.map((entry) => ({ id: entry.id, label: entry.label, series: entry, splits: [] })), now.getTime(), true).dropped.length) return null;
+    series.map((entry) => ({ id: entry.id, label: entry.label, series: entry, splits: null })), now.getTime()).dropped.length) return null;
   const displayBounds = comparisonDisplayBounds(bounds, priceComparison);
   const comparisonBounds = priceComparison && priceComparison.start !== null
     ? priceComparison : bounds;

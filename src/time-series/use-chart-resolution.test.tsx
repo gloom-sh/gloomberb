@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { act, useState } from "react";
 import { MemoryResourceStore } from "../data/memory-resource-store";
 import { setSavedCopyFrameGate, setSavedCopyStore } from "../data/pane-saved-copies";
@@ -161,6 +161,7 @@ describe("useChartResolution", () => {
     const previous = setSavedCopyStore(new MemoryResourceStore());
     const drawn = Promise.withResolvers<void>();
     const reopened = Promise.withResolvers<void>();
+    const reopenedAgain = Promise.withResolvers<void>();
     const listings = ["A", "B"].map((suffix) => ({ symbol: `WITHHELD-${mode.toUpperCase()}-${suffix}`, exchange: "NASDAQ" }));
     const spec: ChartSpec = {
       ...SPEC, viewport: { range: "1Y", resolution: "1d" },
@@ -171,12 +172,14 @@ describe("useChartResolution", () => {
     const firstActions = Promise.withResolvers<void>();
     let actionReads = 0;
     let corroborated = false;
+    let failActions = false;
     const quotes = createQuoteStoreFixture();
     const provider = createTestDataProvider({
       getTickerFinancials: async () => EMPTY_FINANCIALS,
       getPriceHistoryForResolution: async () => mode === "live" || corroborated ? broken : INITIAL_HISTORY,
       getCorporateActions: async (symbol) => {
         actionReads += 1;
+        if (failActions) throw new Error("split history temporarily unavailable");
         if (mode === "live" && !corroborated) await firstActions.promise;
         return { symbol, dividends: [], earnings: [], splits: corroborated ? [{ date: "2025-01-02", fromFactor: 10, toFactor: 1, ratio: 0.1 }] : [] };
       },
@@ -190,7 +193,8 @@ describe("useChartResolution", () => {
         data: broken, lastGoodData: broken, source: "test", fetchedAt: Date.now() }),
     } as never);
     const requestViewport = { start: new Date("2025-01-02"), end: new Date("2025-01-04") };
-    const pointCount = () => latestResult?.series.reduce((total, entry) => total + entry.points.length, 0);
+    const pointCount = () => (latestResult?.bufferedSeries ?? latestResult?.series)
+      ?.reduce((total, entry) => total + entry.points.length, 0);
     function Plot() {
       latestResult = useChartResolution(spec, sources, { savedCopyScope: "comparison:free", requestViewport });
       return <text>{`points:${pointCount()}`}</text>;
@@ -201,18 +205,17 @@ describe("useChartResolution", () => {
         expect(latestResult?.loading).toBe(true);
         expect(pointCount()).toBe(0);
         await waitFor(() => actionReads === listings.length);
-        firstActions.reject(new Error("split history temporarily unavailable"));
+        firstActions.resolve();
       }
       await waitFor(() => latestResult?.loading === false && pointCount() === 4);
 
       setSavedCopyFrameGate(() => drawn.promise);
+      await tui.render(<Plot key="populated-copy" />);
+      expect(pointCount()).toBe(4);
+      corroborated = true;
       if (mode === "refresh") {
-        await tui.render(<Plot key="refresh" />);
-        expect(pointCount()).toBe(4);
-        corroborated = true;
         drawn.resolve();
       } else {
-        corroborated = true;
         const listing = listings[0]!;
         await act(async () => quotes.emit(listing, { symbol: listing.symbol, currency: "USD", price: 104,
           lastUpdated: Date.now(), change: 0, changePercent: 0 }));
@@ -225,11 +228,28 @@ describe("useChartResolution", () => {
       expect(latestResult?.loading).toBe(false);
       expect(pointCount()).toBe(0);
       expect(latestResult?.splitNotice).toContain("returns withheld");
+
+      if (mode === "refresh") {
+        setSystemTime(Date.now() + 31_000);
+        failActions = true;
+        reopened.resolve();
+        await waitFor(() => latestResult?.bufferedSeries !== undefined);
+        const refreshedPoints = pointCount();
+        const refreshedNotice = latestResult?.splitNotice;
+
+        setSavedCopyFrameGate(() => reopenedAgain.promise);
+        await tui.render(<Plot key="reopen-after-failure" />);
+        expect([refreshedPoints, pointCount()]).toEqual([0, 0]);
+        expect(refreshedNotice).toContain("split history unavailable");
+        expect(latestResult?.splitNotice).toBe(refreshedNotice);
+      }
     } finally {
       await tui.destroy();
       firstActions.resolve();
       drawn.resolve();
       reopened.resolve();
+      reopenedAgain.resolve();
+      setSystemTime();
       setSavedCopyFrameGate(null);
       setSavedCopyStore(previous);
     }

@@ -218,12 +218,12 @@ function splitTerms(split: SplitAction): string | null {
 /**
  * Describe recorded splits separately from breaks in the served bars. A split record alone cannot tell
  * which bars are on which basis. Withhold returns only for the legs whose windows cross a break.
+ * Null split history is unavailable or not yet read, not a successful empty result.
  */
 export function comparisonSplitAssessment(
   comparison: Pick<PriceComparison, "legs" | "sourceBounds">,
-  legs: ReadonlyArray<{ id: string; label: string; splits: readonly SplitAction[]; series?: ResolvedSeries }>,
+  legs: ReadonlyArray<{ id: string; label: string; splits: readonly SplitAction[] | null; series?: ResolvedSeries }>,
   now = Date.now(),
-  provisional = false,
 ): { notice: string | null; dropped: NonNullable<PriceComparison["dropped"]> } {
   const currentYear = new Date(now).getUTCFullYear();
   const named: string[] = [];
@@ -231,7 +231,8 @@ export function comparisonSplitAssessment(
   for (const { id, label, splits, series } of legs) {
     const window = comparison.legs?.[id];
     if (!window) continue;
-    const inside = splits
+    const recordedSplits = splits ?? [];
+    const inside = recordedSplits
       .filter((split) => /^\d{4}-\d{2}-\d{2}/.test(split.date) && split.date.slice(0, 10) > window.baseDay && split.date.slice(0, 10) <= window.endDay)
       .sort((left, right) => left.date.localeCompare(right.date))
       .flatMap((split) => {
@@ -246,14 +247,15 @@ export function comparisonSplitAssessment(
       return time >= bounds.start && time <= bounds.end ? [{ date: observationDate(time, series),
         close: point.close ?? point.value, high: point.high, low: point.low }] : [];
     });
-    const breaks = priceBasisBreaks(bars, splits, { interval: series.historyResolution, venue: legVenue(series),
-      includeUnrecorded: true, includeUnrecordedRange: provisional });
+    const breaks = priceBasisBreaks(bars, recordedSplits, { interval: series.historyResolution, venue: legVenue(series),
+      includeUnrecorded: true, includeUnrecordedRange: splits === null });
     if (breaks.length) {
       const period = series.historyResolution === "1mo" ? "monthly" : series.historyResolution === "1wk" ? "weekly" : null;
       const descriptions = breaks.map(({ day, ratio, kind, split }) => {
         const move = kind === "close" ? `close ${ratio < 1 ? "falls" : "rises"}` : "high/low range is";
-        return `${move} ${priceBasisFactor(ratio)}× ${period ? `in the ${period} bar dated` : "on"} ${periodDayText(day, currentYear)}${split
-          ? ` near the ${periodDayText(split.date.slice(0, 10), currentYear)} split` : " with no split recorded nearby"}`;
+        const evidence = split ? `near the ${periodDayText(split.date.slice(0, 10), currentYear)} split`
+          : splits === null ? "with split history unavailable" : "with no split recorded nearby";
+        return `${move} ${priceBasisFactor(ratio)}× ${period ? `in the ${period} bar dated` : "on"} ${periodDayText(day, currentYear)} ${evidence}`;
       });
       dropped.push({ seriesId: id, label, reason: `${descriptions.join("; ")}. A consistent price basis cannot be verified` });
     }
