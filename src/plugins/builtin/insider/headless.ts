@@ -89,7 +89,8 @@ const INSIDER_COLUMNS: HeadlessPaneColumn[] = [
     key: "side",
     header: "Side",
     // A filing without transaction lines, matching the pane's "Form 4 disclosure" row. An open-market
-    // trade on a form with the Rule 10b5-1 box checked is marked as the pane marks it: BUY 10b5-1.
+    // trade on a form with the Rule 10b5-1 box checked is marked in words, as the pane's export writes
+    // it (BUY 10b5-1): text has no plan tone for a chart legend to name.
     format: (value, row) => typeof value === "string"
       ? `${value}${row.rule10b51 === true && isOpenMarketTrade(typeof row.transactionCode === "string" ? row.transactionCode : null) ? " 10b5-1" : ""}`
       : row.status === "disclosure" ? "DISCLOSURE" : MISSING_VALUE,

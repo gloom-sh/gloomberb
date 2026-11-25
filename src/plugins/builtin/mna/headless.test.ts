@@ -101,6 +101,6 @@ test("--terms keeps the deals with per-share terms or the ones without, reading 
   const unpriced = await run("unpriced");
   expect(unpriced.rows.map((row) => row.id)).toEqual(["a", "b"]);
   expect(requests).toHaveLength(1);
-  expect(unpriced.columns.map((column) => column.key)).not.toContain("spread");
+  expect(unpriced.columns!.map((column) => column.key)).not.toContain("spread");
   expect(unpriced.metadata?.hasMore).toBe(true);
 });
