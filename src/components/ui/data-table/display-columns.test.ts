@@ -43,3 +43,18 @@ test("omitting a drawn column never removes its CSV field or turns null into a n
   expect(dataTableDisplayColumns(props)).toHaveLength(1);
   expect(createDataTableCsv(props as DataTableProps<Row>)).toBe("\uFEFFID,Value\nempty,");
 });
+
+test("a column every row shows alike leaves, blank or not; one row, one differing row or a section header keep it", () => {
+  const same = (items: Row[]) => ({ ...table(items), columns: columns.map((column) => column.id === "value" ? { ...column, omitWhenEmpty: undefined, omitWhenSame: true } : column) });
+  const ids = (props: ReturnType<typeof same>) => dataTableDisplayColumns(props).map((column) => column.id);
+  expect(ids(same([{ id: "a", value: 2 }, { id: "b", value: 2 }, { id: "c", value: 2 }]))).toEqual(["id"]);
+  expect(ids(same([{ id: "a", value: null }, { id: "b", value: null }]))).toEqual(["id"]);
+  expect(ids(same([{ id: "a", value: 2 }, { id: "b", value: 3 }]))).toEqual(["id", "value"]);
+  expect(ids(same([{ id: "a", value: 2 }, { id: "b", value: null }]))).toEqual(["id", "value"]);
+  // A lone row says nothing about what the others would show.
+  expect(ids(same([{ id: "a", value: 2 }]))).toEqual(["id", "value"]);
+  expect(ids(same([{ id: "a", value: 2 }, { id: "group", value: 9, section: true }, { id: "b", value: 2 }]))).toEqual(["id"]);
+  // The CSV keeps the column a view shares.
+  const props = same([{ id: "a", value: 2 }, { id: "b", value: 2 }]);
+  expect(createDataTableCsv(props as DataTableProps<Row>)).toBe("﻿ID,Value\na,2\nb,2");
+});

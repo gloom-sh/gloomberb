@@ -1,6 +1,6 @@
 import { KeybindingsProvider, resolveKeybindings } from "../../app/keybindings";
 import { describe, expect, jest, test } from "bun:test";
-import { act, useState } from "react";
+import { act, createRef, useState, type RefObject } from "react";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { createOpenTuiTestHarness, type TestKeyEvent } from "../../renderers/opentui/test-utils";
 import {
@@ -13,7 +13,7 @@ import { PaneKeyboardScrollController } from "../../state/pane-scroll-registry";
 import { createStaticAppStore } from "../../test-support/app-store";
 import { createDefaultConfig } from "../../types/config";
 import { Box, Text } from "../../ui";
-import type { DataTableCell, DataTableColumn } from "../ui";
+import type { DataTableCell, DataTableColumn, DataTableVisibleRange } from "../ui";
 import { DataTableView } from "./view";
 
 type Row =
@@ -524,6 +524,112 @@ test("an external selection and scroll request cannot be reversed by the previou
   const body = tui.setup().renderer.root.findDescendantById("deferred-scroll-body") as ScrollBoxRenderable;
   expect(body.scrollTop).toBe(500 - Math.floor(body.viewport.height / 2));
   expect(tui.frame()).toContain("Row 500");
+});
+
+type StatementLine = { id: string; kind: "period-end" | "heading" | "line"; title: string };
+/** A statement: a Period end row and a heading the cursor passes over, around lines it stops on. */
+const statementLines: StatementLine[] = [
+  { id: "period-end", kind: "period-end", title: "Period end" },
+  ...Array.from({ length: 30 }, (_, index) => ({ id: `income-${index}`, kind: "line" as const, title: `Income ${index}` })),
+  { id: "balance", kind: "heading", title: "Balance sheet" },
+  ...Array.from({ length: 30 }, (_, index) => ({ id: `balance-${index}`, kind: "line" as const, title: `Balance ${index}` })),
+];
+const BALANCE_HEADING = 31;
+
+function ScrollHarness({ items, navigable, scrollRef, ranges }: {
+  items: StatementLine[];
+  navigable: boolean;
+  scrollRef: RefObject<ScrollBoxRenderable | null>;
+  ranges: DataTableVisibleRange[];
+}) {
+  const [selectedIndex, setSelectedIndex] = useState(navigable ? 1 : 0);
+  const state = createInitialState(createDefaultConfig("/tmp/gloomberb-data-table-view-scroll-test"));
+  return (
+    <AppContext value={createStaticAppStore(state)}>
+      <PaneInstanceProvider paneId="data-table-view-scroll-test">
+        <DataTableView<StatementLine, Column>
+          focused
+          isNavigable={navigable ? (line) => line.kind === "line" : undefined}
+          selection={{ kind: "index", selectedIndex, onChange: (index) => setSelectedIndex(index) }}
+          scrollRef={scrollRef}
+          onVisibleRangeChange={(range) => ranges.push(range)}
+          columns={columns}
+          items={items}
+          sortColumnId={null}
+          sortDirection="asc"
+          getItemKey={(line) => line.id}
+          renderSectionHeader={(line) => line.kind === "heading" ? { text: line.title } : null}
+          renderCell={(line): DataTableCell => ({ text: line.kind === "heading" ? "" : line.title })}
+          emptyStateTitle="No rows"
+        />
+      </PaneInstanceProvider>
+    </AppContext>
+  );
+}
+
+const DOWN: TestKeyEvent = { name: "down", sequence: "\u001B[B" };
+const UP: TestKeyEvent = { name: "up", sequence: "\u001B[A" };
+
+async function pressKeys(event: TestKeyEvent, count = 1) {
+  await emitKeypressBatch(Array.from({ length: count }, () => event));
+  await renderSettled();
+}
+
+// FA's Period end row: back up a statement by key, the cursor stopped on the first figure and Period end stayed hidden above it.
+test("the rows the cursor passes over above its first row come back into view as it returns there", async () => {
+  const scrollRef = createRef<ScrollBoxRenderable>();
+  const ranges: DataTableVisibleRange[] = [];
+  await tui.render(<ScrollHarness items={statementLines} navigable scrollRef={scrollRef} ranges={ranges} />, { width: 60, height: 12 });
+  await renderSettled();
+  expect(tui.frame()).toContain("Period end");
+
+  const returns: Array<[string, TestKeyEvent, number]> = [
+    ["up", UP, 40],
+    ["home", { name: "home", sequence: "\u001B[H" }, 1],
+    ["page up", { name: "pageup", sequence: "\u001B[5~" }, 10],
+  ];
+  for (const [label, key, count] of returns) {
+    await pressKeys(DOWN, 40);
+    expect(scrollRef.current!.scrollTop, label).toBeGreaterThan(0);
+    expect(tui.frame(), label).not.toContain("Period end");
+    await pressKeys(key, count);
+    expect(tui.frame(), label).toContain("Period end");
+    expect(scrollRef.current!.scrollTop, label).toBe(0);
+    expect(ranges.at(-1)?.start, label).toBe(0);
+  }
+
+  // A section's first line brings its heading along, which then heads the view.
+  await pressKeys({ name: "end", sequence: "\u001B[F" });
+  await pressKeys(UP, 29);
+  expect(scrollRef.current!.scrollTop).toBe(BALANCE_HEADING);
+  expect(tui.frame()).toContain("Balance sheet");
+
+  // A press scrolls nothing: the row under the pointer stays put for a second click.
+  await act(async () => { scrollRef.current!.scrollTo(1); });
+  await renderSettled();
+  await tui.clickFrameText("Income 0");
+  await renderSettled();
+  expect(scrollRef.current!.scrollTop).toBe(1);
+});
+
+test("a table the cursor stops on every row of scrolls one row at a time, as it always has", async () => {
+  const scrollRef = createRef<ScrollBoxRenderable>();
+  const ranges: DataTableVisibleRange[] = [];
+  const items = statementLines.filter((line) => line.kind === "line");
+  await tui.render(<ScrollHarness items={items} navigable={false} scrollRef={scrollRef} ranges={ranges} />, { width: 60, height: 12 });
+  await renderSettled();
+  const height = scrollRef.current!.viewport.height;
+
+  await pressKeys(DOWN, 40);
+  expect(scrollRef.current!.scrollTop).toBe(40 - height + 1);
+  // Up to the top row on screen moves no rows; the step past it moves one.
+  await pressKeys(UP, height - 1);
+  expect(scrollRef.current!.scrollTop).toBe(40 - height + 1);
+  await pressKeys(UP);
+  expect(scrollRef.current!.scrollTop).toBe(40 - height);
+  await pressKeys({ name: "home", sequence: "\u001B[H" });
+  expect(scrollRef.current!.scrollTop).toBe(0);
+  expect(ranges.at(-1)?.start).toBe(0);
 });
 
 // Help's wrapped rows: pressing a row's second line did nothing, since that line is not a row the cursor stops on.

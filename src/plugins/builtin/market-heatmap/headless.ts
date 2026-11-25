@@ -1,3 +1,4 @@
+import type { HeadlessFreshnessStatus } from "../../../types/headless";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { formatCompact, formatPercentRaw } from "../../../utils/format";
 import { MARKET_HEATMAP_REQUEST_COUNT, MARKET_HEATMAP_UNIVERSES, fetchMarketHeatmap, type MarketHeatmapBoard, type MarketHeatmapUniverseId } from "./data";
@@ -79,6 +80,21 @@ function boardObservation(board: Pick<MarketHeatmapBoard, "fetchedAt" | "regular
   const asOf = typeof pricedAt === "number" && pricedAt > 0 ? new Date(pricedAt).toISOString()
     : board.regularSessionDate || new Date(board.fetchedAt).toISOString();
   return { asOf, sessionExchange: "NYSE" };
+}
+
+/**
+ * How current the report's figures are. A Pro account's board is priced from a
+ * live read and everyone else's is fifteen minutes behind. While the regular
+ * session trades, a Pro board the server says is stale is stale, and one with
+ * no name moving at all is delayed: it has no live read yet, or nothing has
+ * traded since the open, so every figure it holds is a delayed one beside its
+ * tile. Outside the session a Pro board reads as live, as before.
+ */
+function boardFreshness(result: Pick<MarketHeatmapBoard, "access" | "session" | "stale">, moved: number): HeadlessFreshnessStatus {
+  if (result.access !== "realtime") return "delayed";
+  if (result.session !== "REGULAR") return "live";
+  if (result.stale) return "stale";
+  return moved > 0 ? "live" : "delayed";
 }
 
 function projectRow(summary: HeatmapGroupSummary, groupBy: HeatmapGroupBy, whole = false) {
@@ -164,8 +180,7 @@ export const marketHeatmapHeadless: HeadlessPaneDefinition<"rows"> = {
       columns: columns(universe, groupBy, flat),
       rows: groups.map((summary) => projectRow(summary, groupBy, flat)),
       complete: !result.stale && covered,
-      // A Pro account's board is priced from a live read.
-      freshness: { status: result.access === "realtime" ? "live" : "delayed", tradingDayMarket: "US" },
+      freshness: { status: boardFreshness(result, board.moved), tradingDayMarket: "US" },
       unavailableSymbols: covered ? [] : [...delayedSymbols, ...noMove],
       metadata: {
         universe,

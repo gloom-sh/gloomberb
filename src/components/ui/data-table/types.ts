@@ -6,6 +6,8 @@ export type DataTableColumn = Pick<
   ColumnConfig,
   "id" | "label" | "width" | "align"
 > & {
+  /** Opts the drawn header into a plugin translation. The raw `label` remains the fallback and export/report label. */
+  labelTranslation?: { pluginId: string; key: string };
   headerColor?: string;
   headerBackgroundColor?: string;
   /**
@@ -36,6 +38,17 @@ export type DataTableColumn = Pick<
    * CSV exports keep the column and its raw cells.
    */
   omitWhenEmpty?: boolean | "visible";
+  /**
+   * Leave this column out while every data row, two or more, renders the same
+   * text, blank included: a value the whole view shares (one period, one
+   * currency, one status) says nothing about any row. Set it only where the
+   * rows are all the view holds: a paged feed whose next page may differ sets
+   * it once nothing is left to load, or where its query fixes the value. A
+   * lone row keeps its columns. A pane that should still say the shared value
+   * puts it once in its header or footer. Reports and CSV exports keep the
+   * column and its cells.
+   */
+  omitWhenSame?: boolean;
 };
 
 export interface DataTableCell {
@@ -334,6 +347,12 @@ export interface DataTableProps<
    */
   reportColumns?: readonly C[];
   scrollToIndex?: number | null;
+  /**
+   * A row above `scrollToIndex` that comes into view with it, and every row
+   * between: as many as fit with `scrollToIndex` still on screen. Ignored
+   * when the target is centered.
+   */
+  scrollToIndexFrom?: number | null;
   scrollToIndexAlign?: DataTableScrollAlign;
   scrollToIndexVersion?: number;
 }

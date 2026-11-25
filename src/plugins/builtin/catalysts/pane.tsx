@@ -34,6 +34,9 @@ const isSelectable = (row: Row) => row.kind === "item" || row.kind === "locked";
 const EMPTY_FILTERS: Record<string, unknown> = {};
 const EMPTY_DETAILS: Record<string, CatalystDetail> = {};
 
+/** Litigation columns a docket list can share on every case. */
+const LITIGATION_SHARED = new Set(["basis", "type", "agency", "country"]);
+
 export function CatalystsPane(props: PaneProps) {
   const { symbol: bound } = usePaneTickerIdentity();
   const [scope] = usePaneSettingValue<string>("symbol", "");
@@ -174,7 +177,9 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
   const widths = useMemo(() => kindView ? catalystKindWidths(rows, query, kindView, self) : undefined, [kindView, rows, query, self]);
   const columns = kindView
     ? catalystKindColumns(width, { kind: kindView, self: self ? { hasOthers } : null, fold, widths })
-    : catalystColumns(width, tab === "changes", litigation, catalystBasisWidth(rows, query));
+    : catalystColumns(width, tab === "changes", litigation, catalystBasisWidth(rows, query))
+      // A docket list wholly loaded says once, not on each row, a date basis, type, agency or country its cases share.
+      .map((column) => litigation && !resource.hasMore && LITIGATION_SHARED.has(column.id) ? { ...column, omitWhenSame: true } : column);
   const renderCell = (row: Row, column: (typeof columns)[number], _index: number, state: { selected: boolean }): DataTableCell => {
     if (row.kind === "locked") {
       if (!desktop && column.id === "title" && row.key === "locked:0") return { text: upgradeText, content: <UpgradeLabel text={upgradeText} onPress={openUpgrade} role="catalysts-upgrade" />, onMouseDown: openUpgrade };

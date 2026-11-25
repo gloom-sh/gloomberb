@@ -50,4 +50,15 @@ describe("data table visible range", () => {
     expect(resolveDataTableScrollTop(1, 8, 5, 20, "nearest")).toBe(1);
     expect(resolveDataTableScrollTop(18, 0, 5, 20, "center")).toBe(15);
   });
+
+  test("brings the rows from fromIndex in above the target, as many as fit with the target on screen", () => {
+    expect(resolveDataTableScrollTop(6, 5, 5, 20, "nearest", 4)).toBe(4);
+    expect(resolveDataTableScrollTop(6, 9, 5, 20, "start", 4)).toBe(4);
+    // More rows than fit: the target goes to the bottom edge rather than out of view.
+    expect(resolveDataTableScrollTop(12, 12, 5, 20, "nearest", 3)).toBe(8);
+    // Already in view, or moving down to the bottom edge: nothing changes.
+    expect(resolveDataTableScrollTop(6, 4, 5, 20, "nearest", 4)).toBe(4);
+    expect(resolveDataTableScrollTop(12, 0, 5, 20, "nearest", 10)).toBe(8);
+    expect(resolveDataTableScrollTop(18, 0, 5, 20, "center", 10)).toBe(15);
+  });
 });

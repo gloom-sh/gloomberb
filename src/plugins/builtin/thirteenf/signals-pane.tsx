@@ -12,6 +12,7 @@ import { usePaneStatusFooter } from "../../../components/layout/pane/status-foot
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
 import { actionLabel, formatMoneyCompact, formatShares, formatWeightMaybe } from "./format";
+import { fundPositionType } from "./report-notes";
 import { FundDetailView } from "./pane";
 import { appendTickerHoldings, holdersTicker, loadCrowding, loadTickerHoldings, quarterFallbackFooter, type Crowding, type CrowdingRow, type TickerHolderRow } from "./signals";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
@@ -69,7 +70,6 @@ export function ThirteenFTickerHoldingsView({ symbol, focused, width, height, qu
   usePaneNoticeFooter({ registrationId: "13f-ticker-notice", enabled: !fund, focused, notices: data?.warnings ?? [] });
   const columns: DataTableColumn[] = [
     { id: "fund", label: "FUND", width: 20, align: "left", flexGrow: 1 },
-    { id: "type", label: "TYPE", width: 6, align: "left" },
     { id: "value", label: "VALUE", width: 12, align: "right" },
     { id: "shares", label: "SHARES", width: 12, align: "right" },
     { id: "weight", label: "13F %", width: 9, align: "right" },
@@ -97,10 +97,22 @@ export function ThirteenFTickerHoldingsView({ symbol, focused, width, height, qu
     onActivate={row => setFund({ cik: row.cik, name: row.fund })}
     sortColumnId={sort.id} sortDirection={sort.desc ? "desc" : "asc"}
     onHeaderClick={id => setSort(current => ({ id, desc: current.id === id ? !current.desc : id !== "fund" }))}
-    renderCell={(row, column, _index, state) => ({ text: column.id === "value" ? formatMoneyCompact(row.value) : column.id === "shares" ? formatShares(row.shares) : column.id === "weight" ? formatWeightMaybe(row.weight) : column.id === "action" ? actionLabel(row.action) : String(row[column.id as keyof TickerHolderRow] ?? MISSING_VALUE), color: state.selected ? colors.selectedText : colors.text })}
+    renderCell={(row, column, _index, state) => column.id === "fund"
+      ? { ...fundPositionCell(row.fund, row.type), color: state.selected ? colors.selectedText : colors.text }
+      : { text: column.id === "value" ? formatMoneyCompact(row.value) : column.id === "shares" ? formatShares(row.shares) : column.id === "weight" ? formatWeightMaybe(row.weight) : column.id === "action" ? actionLabel(row.action) : String(row[column.id as keyof TickerHolderRow] ?? MISSING_VALUE), color: state.selected ? colors.selectedText : colors.text }}
     emptyStateTitle={loading ? "Loading 13F holders..." : error ? "13F holders unavailable." : "No reported holders."}
   />;
 }
+/**
+ * A fund's row of a ticker's holders: nearly every position is shares, so a
+ * TYPE column would read SH down every page. A put, a call or principal says
+ * its type after the fund, kept whole when the name is cut.
+ */
+function fundPositionCell(fund: string, type: string): { text: string; keepEnd?: string } {
+  const marked = fundPositionType(type);
+  return marked ? { text: `${fund} ${marked}`, keepEnd: ` ${marked}` } : { text: fund };
+}
+
 function compareCells(a: object, b: object, id: string, desc: boolean) {
   const left = (a as Record<string, unknown>)[id], right = (b as Record<string, unknown>)[id];
   if (left == null) return right == null ? 0 : 1;

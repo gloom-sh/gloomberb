@@ -82,6 +82,7 @@ export const WEB_LINK_ONLY_HOSTS: ReadonlySet<string> = new Set([
   "www.nzx.com",
   "www.release.tdnet.info",
   "www.cninfo.com.cn",
+  "www.hnx.vn",
   "www.hsx.vn",
   // Rheinmetall's investor relations results page, opened from filings; the web app does not fetch it.
   "www.rheinmetall.com",

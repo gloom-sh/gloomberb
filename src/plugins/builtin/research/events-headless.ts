@@ -14,7 +14,7 @@ import { fetchCatalysts } from "../catalysts/client";
 import { isCloudSessionRequired } from "../shared/research-cloud-session";
 import { distributionAmountsDigits, formatPercentRaw } from "../../../utils/format";
 import type { HeadlessBundleSection, HeadlessPaneColumn } from "../../../types/headless";
-import { EVENT_COLUMNS, eventSummarySection, loadEventSources, QUARTER_TEXT_COLUMNS, quarterTextRows } from "./event-sources";
+import { EVENT_COLUMNS, eventSummarySection, loadEventSources, quarterTextColumns, quarterTextRows } from "./event-sources";
 import { listingDay } from "../shared/earnings-calendar";
 import { REPORTED_DATA } from "../shared/report-freshness";
 import { EPS_BASIS_NOTE } from "../shared/earnings-report";
@@ -136,7 +136,7 @@ export function createEventsHeadless(
       const sections = [...(summary.length ? [eventSummarySection(summary)] : []), ...(fund || !yearRows.length ? [] : [yearSection])];
       return {
         rows: own.map((row) => ({ ...row })),
-        textColumns: fund ? yearColumns : QUARTER_TEXT_COLUMNS,
+        textColumns: fund ? yearColumns : quarterTextColumns(quarters),
         textRows: fund ? yearRows : quarterRows,
         textRowsUseRecordsWhenWindowed: true,
         ...(sections.length ? { textSections: sections } : {}),

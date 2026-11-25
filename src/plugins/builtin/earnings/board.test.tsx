@@ -5,8 +5,9 @@ import type { EarningsCalendarPayload, EarningsCalendarQuery, EarningsCalendarRe
 import { MemoryResourceStore } from "../../../data/memory-resource-store";
 import { setSavedCopyStore } from "../../../data/pane-saved-copies";
 import type { CombinedPaneFooter } from "../../../components/layout/pane/footer";
-import { createOpenTuiTestHarness, settleFrame } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, settleFrame, takeSavedTextFile } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
+import { exportPaneTable } from "../../../state/pane-table-export-registry";
 import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
@@ -247,7 +248,7 @@ test("EVTS on a small company's past report day: moves no report in view has lea
   }
 });
 
-test("EVTS 0700.HK: the market board reads the listings abroad, lands on Tencent's row below the US companies, and says its currency", async () => {
+test("EVTS 0700.HK: the market board reads the listings abroad, lands on Tencent's row below the US companies, says its currency, and exports bare figures with each row's currency", async () => {
   resetEarningsCloudCaches();
   const asked: EarningsCalendarQuery[] = [];
   // The footer's [t]icker opens the selected row's company.
@@ -255,7 +256,7 @@ test("EVTS 0700.HK: the market board reads the listings abroad, lands on Tencent
   const recording = createTestPluginRuntime({ navigateTicker: (symbol: string) => { opened.push(symbol); } });
   let boardFooter: CombinedPaneFooter | null = null;
   // Twenty US companies larger than Tencent that day, then Tencent: off screen until the board lands on it.
-  const us = Array.from({ length: 20 }, (_, index) => ({ ...entry(`US${index + 10}`, "2026-10-15"), marketCap: (900 - index) * 1e9 }));
+  const us = Array.from({ length: 20 }, (_, index) => ({ ...entry(`US${index + 10}`, "2026-10-15"), marketCap: (900 - index) * 1e9, revenueEstimate: 1.2e9 }));
   const tencent: EarningsCalendarReport = {
     ...entry("0700:HKEX", "2026-10-15"), name: "Tencent Holdings Limited", timing: null, timingSource: null, marketCap: 459.65e9,
     epsEstimate: 7.21, epsAnalysts: 12, revenueEstimate: 210.24e9, dateStatus: "confirmed", currency: "CNY", listings: ["0700:HKEX"],
@@ -284,9 +285,19 @@ test("EVTS 0700.HK: the market board reads the listings abroad, lands on Tencent
     // Scrolled to it, below twenty larger US companies.
     expect(frame).toContain("0700:HKEX");
     expect(frame).not.toContain("US10 ");
-    // A board with a listing abroad's report says each report's currency, and that the cap is in dollars.
-    expect(frame).toContain("CCY");
-    expect(frame).toContain("CNY");
+    // A listing abroad's report says its currency after its figures, and the cap that it is in dollars.
+    expect(frame).not.toContain("CCY");
+    expect(frame).toMatch(/\d CNY/);
+    expect(frame).toContain("MKT CAP $");
+    // The export keeps numbers down each figure's column, whatever currency a row shows, and names each row's.
+    await exportPaneTable(instance, "evts.csv");
+    const [header, ...lines] = takeSavedTextFile()!.text.trim().split("\n").map((line) => line.split(","));
+    const exported = (ticker: string) => {
+      const line = lines.find((cells) => cells[header!.indexOf("TICKER")] === ticker);
+      return ["EPS EST", "SALES EST", "CCY"].map((label) => line?.[header!.indexOf(label)]);
+    };
+    expect(exported("US10")).toEqual(["1", "1200000000", "USD"]);
+    expect(exported("0700:HKEX")).toEqual(["7.21", "210240000000", "CNY"]);
   } finally {
     calendarRequests.mockImplementation(async (query: EarningsCalendarQuery) => ({
       asOf: "2026-10-14T15:00:00Z", from: query.from, to: query.to, reports: [entry("JPM", "2026-10-14"), entry("NFLX", "2026-10-15")],
@@ -328,6 +339,18 @@ test("reports to come and reports out are two views, each with its own columns; 
     const opened = await tui.waitForFrameToContain("EPS ACT", 40);
     expect(opened).toContain("JPM");
     expect(opened).not.toContain("NFLX");
+    // `shot EVTS JPM --kind upcoming`: the named view wins over the one JPM's report, already out, is in.
+    const named = createInitialState(createTestPaneConfig("/tmp/gloomberb-ern-kinds-tui-test", {
+      paneId: "earnings-calendar", instanceId: `${instance}:named`, settings: { kind: "upcoming" } }));
+    named.focusedPaneId = `${instance}:named`;
+    await act(async () => {
+      await tui.render(<LiveBoard initial={named} runtime={runtime} highlight="JPM" onFooter={() => {}} />, { width: 150, height: 12 });
+    });
+    const upcomingNamed = await tui.waitForFrameToContain("NFLX", 40);
+    await settleFrame(tui.setup(), 8);
+    expect(tui.frame()).toMatch(/STATUS/);
+    expect(tui.frame()).not.toContain("EPS ACT");
+    expect(upcomingNamed).not.toContain("JPM ");
   } finally {
     calendarRequests.mockImplementation(defaultCalendar);
     resetEarningsCloudCaches();

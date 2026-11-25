@@ -34,6 +34,7 @@ import {
   buildMemberTradeColumns,
   formatCongressReturn,
   formatLag,
+  plainAssetName,
   sortedTrades,
   type TradeColumn,
   type TradeColumnId,
@@ -78,7 +79,7 @@ export function TradeDetail({
         <KeyValueRow {...DETAIL_ROW} label="chamber" value={`${trade.chamber === "senate" ? "Senate" : "House"}${trade.stateDistrict ? ` · ${trade.stateDistrict}` : ""}`} tone="muted" />
         <KeyValueRow {...DETAIL_ROW} label="party" value={trade.party ?? MISSING_VALUE} />
         <KeyValueRow {...DETAIL_ROW} label="side" value={trade.transactionType} tone={trade.side === "BUY" ? "positive" : trade.side === "SELL" ? "negative" : trade.side === "OTHER" ? "muted" : undefined} />
-        <KeyValueRow {...DETAIL_ROW} label="asset" value={fit(trade.assetName)} />
+        <KeyValueRow {...DETAIL_ROW} label="asset" value={fit(plainAssetName(trade.assetName))} />
         <KeyValueRow {...DETAIL_ROW} label="amount" value={trade.amount} color={colors.textBright} />
         <KeyValueRow {...DETAIL_ROW} label="owner" value={trade.owner} />
         <ReturnRow label="tx return" value={trade.returnSinceTx} unavailable={congressReturnUnavailableText(trade, "transaction")} />

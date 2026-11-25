@@ -1,7 +1,7 @@
 import type { DividendAction } from "../../../types/financials";
 import { INCOMPLETE_DISTRIBUTIONS } from "../../../market-data/fund-actions";
 import { MISSING_VALUE } from "../../../utils/format";
-import { quarterLabel } from "../shared/earnings-report";
+import { epsBasisShort, NO_CONSENSUS, quarterLabel, type EpsBasisName } from "../shared/earnings-report";
 import { nextReportOf, quarterName, type EventRow } from "./event-model";
 
 /** How many reported quarters the Earnings chart and table show; EE and ERN have the older ones. */
@@ -27,8 +27,51 @@ export interface EarningsQuarter {
   revenueEstimate?: number;
   epsCurrency?: string;
   revenueCurrency?: string;
-  /** What the row says beside its figures: the EPS basis and the difference, or the report's date status and time. */
+  /**
+   * What the row says that its figures do not (earningsQuarters): a reported
+   * one's basis where it is not the table's (quartersEpsBasis), a provisional
+   * figure, no consensus on record, a period end standing for its report; one
+   * to come, its date's status, time and analysts. The beat in EPS is the
+   * quarter's detail's, beside its estimate and actual.
+   */
   detail: string;
+  /** The reported figure's basis, or an estimate's where Gloom Cloud labels it. */
+  basis?: EpsBasisName;
+}
+
+/** How a basis reads in a heading or a detail: `ADJ`, `GAAP`; unknown as a phrase, since "?" reads as no figure. */
+const basisText = (basis: EpsBasisName) => basis === "unknown" ? "basis unknown" : epsBasisShort(basis === "GAAP" ? "gaap" : "adjusted");
+
+/**
+ * The basis the reported quarters' EPS are on, which the EPS column's heading
+ * names once (`ADJ EPS`): the one most of them share, null when none is known
+ * or two tie. A quarter on another says its own in DETAIL.
+ */
+export function quartersEpsBasis(quarters: readonly Pick<EarningsQuarter, "upcoming" | "basis">[]): Exclude<EpsBasisName, "unknown"> | null {
+  const counts = new Map<EpsBasisName, number>();
+  for (const quarter of quarters) if (!quarter.upcoming && quarter.basis) counts.set(quarter.basis, (counts.get(quarter.basis) ?? 0) + 1);
+  const [first, second] = [...counts].sort((left, right) => right[1] - left[1]);
+  if (!first || first[0] === "unknown" || (second && second[1] === first[1])) return null;
+  return first[0];
+}
+
+/** The EPS heading with the basis it names: `ADJ EPS`, `GAAP EPS`. */
+export const epsHeading = (basis: EpsBasisName | null, label = "EPS") => basis ? `${basisText(basis).toUpperCase()} ${label}` : label;
+
+/** A quarter's DETAIL once the table's basis is known: its own basis only where it differs. */
+function quarterDetail(quarter: EarningsQuarter, row: EventRow | undefined, basis: EpsBasisName | null): string {
+  if (quarter.upcoming) {
+    // A report to come keeps its date's status, time and analysts; an estimate on the table's basis says nothing more.
+    const own = quarter.basis && quarter.basis !== basis ? basisText(quarter.basis) : null;
+    const parts = quarter.detail.split(", ").filter((part) => !quarter.basis || part !== basisText(quarter.basis));
+    return [...parts, ...(own ? [own] : [])].join(", ") || "Pending";
+  }
+  const parts = [
+    quarter.basis && quarter.basis !== basis && (basis || quarter.basis !== "unknown") ? basisText(quarter.basis) : null,
+    row?.epsProvisional ? "provisional" : null,
+    row && row.epsActual != null && row.epsEstimate == null && row.epsDifference == null ? NO_CONSENSUS : null,
+  ].filter((part): part is string => !!part).join(", ");
+  return row?.dateType === "fiscal-period-end" ? ["Period end", parts].filter(Boolean).join("; ") : parts;
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -80,13 +123,19 @@ export function earningsQuarters(rows: readonly EventRow[], today: string): Earn
         ...(row.qRevenue != null ? { revenue: row.qRevenue } : {}),
         ...(row.epsCurrency ? { epsCurrency: row.epsCurrency } : {}),
         ...(row.revenueCurrency ? { revenueCurrency: row.revenueCurrency } : {}),
+        ...(row.epsBasis ? { basis: row.epsBasis } : {}),
         detail: row.detail,
       };
     });
   const { report, quarter } = nextReportOf(rows, today);
   const latest = reported[0]?.date ?? "";
   const ahead = report ?? (quarter && quarter.date > latest ? quarter : undefined);
-  if (!ahead) return reported;
+  const withDetails = (quarters: EarningsQuarter[]) => {
+    const basis = quartersEpsBasis(quarters);
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    return quarters.map((entry) => ({ ...entry, detail: quarterDetail(entry, byId.get(entry.rowId), basis) }));
+  };
+  if (!ahead) return withDetails(reported);
   // Named as the reported rows under it are: `Q4 FY2026`, else the month it ends in.
   const period = report && report.period !== MISSING_VALUE ? report.period : quarter ? quarterName(quarter).replace(/ qtr$/, "") : MISSING_VALUE;
   const estimate = report?.epsEstimate ?? quarter?.qEps;
@@ -96,9 +145,10 @@ export function earningsQuarters(rows: readonly EventRow[], today: string): Earn
     ...(quarter?.qRevenue != null ? { revenueEstimate: quarter.qRevenue } : {}),
     ...((report?.epsEstimate != null ? report.epsCurrency : quarter?.epsCurrency) ? { epsCurrency: (report?.epsEstimate != null ? report.epsCurrency : quarter?.epsCurrency)! } : {}),
     ...(quarter?.revenueCurrency ? { revenueCurrency: quarter.revenueCurrency } : {}),
+    ...(report?.epsBasis ? { basis: report.epsBasis } : {}),
     detail: report ? report.detail : "not dated yet",
   };
-  return [next, ...reported];
+  return withDetails([next, ...reported]);
 }
 
 /** One calendar year of paid dividends, by ex-date. */

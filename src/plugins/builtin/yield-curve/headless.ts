@@ -33,7 +33,8 @@ const MATURITY_COLUMNS = [
   },
   { key: "yield", header: "Yield", align: "right" as const, format: percent },
 ];
-const AS_OF_COLUMN = { key: "asOf", header: "As of" };
+/** As the pane: only tenors from different sessions need their dates; the source line dates one session. */
+const AS_OF_COLUMN = { key: "asOf", header: "As of", omitWhenSame: true };
 /** The move since the previous session with a yield, per tenor. */
 const COLUMNS = [
   ...MATURITY_COLUMNS,

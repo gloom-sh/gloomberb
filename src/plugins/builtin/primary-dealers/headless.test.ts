@@ -40,13 +40,16 @@ async function report() {
 test("the report sets a breakdown in under its total, and the export names the total and the unit beside each number", async () => {
   const { text, csv } = await report();
   const lines = text.split("\n");
-  expect(lines.find((line) => line.startsWith("Treasuries"))).toMatch(/2026-10-07\s+444,683\s+432,032\s+\+12,651/);
-  expect(lines.find((line) => line.includes("  Bills"))).toMatch(/^ {2}Bills\s+2026-10-07\s+109,081\s+109,645\s+-564/);
+  // One release date for every position is said once, not in a column; the export keeps it on each row.
+  expect(lines.find((line) => line.startsWith("Position"))).not.toContain("As of");
+  expect(lines.find((line) => line.startsWith("Treasuries"))).toMatch(/^Treasuries\s+444,683\s+432,032\s+\+12,651/);
+  expect(lines.find((line) => line.includes("  Bills"))).toMatch(/^ {2}Bills\s+109,081\s+109,645\s+-564/);
   expect(lines.find((line) => line.includes("Treasuries ex-TIPS, fails to deliver"))).toMatch(/121,178\s+130,689\s+-9,511/);
 
   const header = csv.find((line) => line.startsWith("Position"))!;
   expect(header).toContain("Group");
   expect(header).toContain("Latest $mn");
+  expect(csv.find((line) => line.startsWith("Bills,"))).toContain("2026-10-07");
   expect(csv.find((line) => line.startsWith("Bills,"))).toContain("Treasuries");
   expect(csv.find((line) => line.startsWith("TBA,"))).toContain("-421068");
   expect(csv.find((line) => line.startsWith("Bills,"))).toContain("USD millions");

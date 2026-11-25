@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { formatFilingDate } from "../../../utils/datetime-format";
 import type {
   EstimateObservation,
   EstimatePeriod,
@@ -26,6 +27,14 @@ export const estimateCurrent = (period: EstimatePeriod) =>
   period.current ?? period.recorded.at(-1) ?? null;
 export const periodLabel = (period: EstimatePeriod) =>
   `${period.frequency === "annual" ? "FY" : "Q"} ${period.periodEnd}`;
+/**
+ * A calendar day as every pane writes one, day first ("02 Nov 2026"); the
+ * value itself when it is no date. Exports keep the ISO day.
+ */
+export const estimateDay = (value: string | null | undefined) => value ? formatFilingDate(value, value) : MISSING_VALUE;
+/** A period as the pane names it, its fiscal end day first: "Q 31 Dec 2026". */
+export const periodTitle = (period: EstimatePeriod) =>
+  `${period.frequency === "annual" ? "FY" : "Q"} ${estimateDay(period.periodEnd)}`;
 export function revisionNotices(data: EstimateRevisionsPayload) {
   return [
     ...Object.entries(data.sources).flatMap(([source, state]) =>
@@ -73,7 +82,8 @@ export function periodColumns(currency: string | null): DataTableColumn[] {
     { id: "change", label: "CHANGE %", width: 9, align: "right" },
     { id: "breadth", label: "UP/DN 30D", width: 10, align: "right", title: "Estimates revised up and down in the last 30 days" },
     { id: "range", label: "HI-LO", width: 7, align: "right", omitWhenEmpty: true, title: "Highest estimate less the lowest" },
-    { id: "asOf", label: "AS OF", width: 11, align: "left", flexGrow: 1 },
+    // One day for every period is the figures' (EPS's detail), and the column goes.
+    { id: "asOf", label: "AS OF", width: 11, align: "left", flexGrow: 1, omitWhenSame: true },
   ];
 }
 

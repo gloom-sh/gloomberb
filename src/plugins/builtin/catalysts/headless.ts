@@ -80,12 +80,14 @@ function definition(litigation: boolean): HeadlessPaneDefinition<"bundle"> {
       const changes = args.options.tab === "changes";
       // The text reads like the pane's cells; exports keep the service's codes (`clinical`, `ACTIVE_NOT_RECRUITING`).
       const cell = (column: string) => (_value: unknown, row: Record<string, unknown>) => catalystCell(row as unknown as CatalystEvent, column, query, changes);
+      // As LITI's pane: a ticker, date basis, type, agency or country every case shares prints once, not on each row.
+      const shared = litigation ? { omitWhenSame: true } : {};
       return { ...(locked ? { complete: false, errors: [`${locked} ${data.access?.lockedRows === 1 ? "needs" : "need"} Gloom Pro`] } : {}), sections: [{ title: litigation ? "Company dockets" : "Catalyst events", columns: [
-        { key: "date", header: changes ? "Observed (UTC)" : "Date" }, ...(!changes ? [{ key: "basis", header: "Date basis" }] : []),
-        { key: "tickers", header: "Tickers" }, { key: "parties", header: "Parties", format: (_value, row) => catalystParties(row as unknown as CatalystEvent) }, { key: "title", header: litigation ? "Case / docket" : "Event", textFormat: cell("title") },
-        { key: "type", header: "Type", textFormat: cell("type") },
+        { key: "date", header: changes ? "Observed (UTC)" : "Date" }, ...(!changes ? [{ key: "basis", header: "Date basis", ...shared }] : []),
+        { key: "tickers", header: "Tickers", ...shared }, { key: "parties", header: "Parties", format: (_value, row) => catalystParties(row as unknown as CatalystEvent) }, { key: "title", header: litigation ? "Case / docket" : "Event", textFormat: cell("title") },
+        { key: "type", header: "Type", textFormat: cell("type"), ...shared },
         ...(changes ? [{ key: "changeSummary", header: "Changes" }] : [{ key: "status", header: "Status", textFormat: cell("status") }]),
-        { key: "agency", header: "Agency", textFormat: cell("agency") }, { key: "country", header: "Country", textFormat: cell("country") }, { key: "sourceUrl", header: "Primary source" },
+        { key: "agency", header: "Agency", textFormat: cell("agency"), ...shared }, { key: "country", header: "Country", textFormat: cell("country"), ...shared }, { key: "sourceUrl", header: "Primary source" },
       ], rows: data.events.map((event) => ({ ...event, date: catalystDate(event, query), ...(!changes ? { basis: catalystDateBasis(event, query) } : {}),
         tickers: catalystTickers(event), ...(changes ? { changeSummary: catalystCell(event, "status", query.dateField, true) } : {}) })),
         ...(data.events.length ? {} : { empty: catalystEmptyTitle(data, query, changes) }) }],
