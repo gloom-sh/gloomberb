@@ -30,18 +30,28 @@ export function balanceTitle(board: Board): string {
   return `${name}, ${formatBalanceMonth(board.month)}`;
 }
 
-/** The unit every country's figures are in ("kb/d, kbbl" for crude), said once beside the month instead of on each row; null when they differ. */
-export function sharedBalanceUnit(rows: readonly BalanceRow[]): string | null {
+/**
+ * The units every country's figures share, which head the figure columns
+ * instead of filling a column: crude's flows in kb/d and its stocks in kbbl
+ * ("kb/d, kbbl"), gas's all in one. Null when countries differ, and each row
+ * then says its own.
+ */
+export function balanceUnits(rows: readonly BalanceRow[]): { flow: string; stock: string } | null {
   const units = new Set(rows.map((row) => row.unit));
-  return rows.length > 0 && units.size === 1 && rows[0]!.unit ? rows[0]!.unit : null;
+  const unit = rows.length > 0 && units.size === 1 ? rows[0]!.unit : "";
+  const [flow, stock = flow] = unit.split(/,\s*/);
+  return flow ? { flow, stock: stock! } : null;
 }
+
+/** The figure columns a unit heads: the flows, then the closing stocks. */
+export const BALANCE_FLOW_KEYS = new Set(["production", "demand", "imports", "exports"]);
 
 /**
  * Crude has no demand flow in the primary table, so its balance has no Demand
  * column. Countries report on their own schedules, so each row says its month;
  * narrower columns keep crude within the width it had.
  */
-export function balanceColumns(commodity: BalanceCommodity): DataTableColumn[] {
+export function balanceColumns(commodity: BalanceCommodity, units: { flow: string; stock: string } | null = null): DataTableColumn[] {
   const columns: DataTableColumn[] = [
     { id: "country", label: "Country", width: 15, align: "left" },
     { id: "month", label: "Month", width: 9, align: "left" },
@@ -50,8 +60,15 @@ export function balanceColumns(commodity: BalanceCommodity): DataTableColumn[] {
     { id: "imports", label: "Imports", width: 11, align: "right" },
     { id: "exports", label: "Exports", width: 11, align: "right" },
     { id: "stocks", label: "Stocks", width: 11, align: "right" },
-    // One unit for every country is said in the footer instead (sharedBalanceUnit).
-    { id: "unit", label: "Unit", width: 11, align: "left", omitWhenSame: true },
+    { id: "unit", label: "Unit", width: 11, align: "left" },
   ];
-  return commodity === "oil" ? columns.filter((column) => column.id !== "demand") : columns;
+  // One set of units for every country heads the figures instead of a Unit column (balanceUnits).
+  const headed = units ? columns.flatMap((column): DataTableColumn[] => {
+    if (column.id === "unit") return [];
+    const unit = BALANCE_FLOW_KEYS.has(column.id) ? units.flow : column.id === "stocks" ? units.stock : null;
+    if (!unit) return [column];
+    const label = `${column.label} ${unit}`;
+    return [{ ...column, label, width: Math.max(column.width, label.length) }];
+  }) : columns;
+  return commodity === "oil" ? headed.filter((column) => column.id !== "demand") : headed;
 }

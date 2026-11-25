@@ -38,6 +38,7 @@ import {
   formatSpreadMove,
   formatSpreadRange,
   formatUpfront,
+  sharedUpfrontCurrency,
   hasPointsQuotes,
   issuerListSort,
   sharedTradeCoupon,
@@ -165,7 +166,8 @@ function tradeForFormatting(row: Record<string, unknown>): CdsTrade {
 
 const TRADE_COLUMNS: HeadlessPaneColumn[] = [
   { key: "eventAt", header: "Time UTC", shrink: false, format: (value: unknown) => formatEventTime(Number(value)) },
-  { key: "issuer", header: "Issuer" },
+  // One name's trades: its name heads the report, not every row.
+  { key: "issuer", header: "Issuer", omitWhenSame: true },
   { key: "maturity", header: "Maturity" },
   {
     key: "notional",
@@ -277,6 +279,7 @@ function projectCdsHeadless({ activity, history, levels, sort, days = DAILY_DAYS
     if (coupon != null) notes.push(`Every trade is on a ${formatBp(coupon)} running coupon.`);
     // The 5Y figures are dated by their level's day, each trade and each daily level by its own.
     const levelDate = line ? spreadSummary(line)?.date : undefined;
+    const upfrontCurrency = sharedUpfrontCurrency(activity.trades);
     const sections: HeadlessBundleSection[] = [
       ...(!entries.length ? [{ title: "Level coverage", columns: [
         { key: "issuer", header: "Issuer" }, { key: "tenor", header: "Tenor" }, { key: "status", header: "Status" }, { key: "reason", header: "Reason" },
@@ -286,6 +289,11 @@ function projectCdsHeadless({ activity, history, levels, sort, days = DAILY_DAYS
       {
         title: "Trades",
         columns: tradeColumns(hasPointsQuotes(activity.trades)),
+        // As the pane: one upfront currency for every print heads the column instead of trailing each amount.
+        ...(upfrontCurrency ? { textColumns: tradeColumns(hasPointsQuotes(activity.trades)).map((column) => column.key === "upfront"
+          ? { ...column, textHeader: `Abs upfront ${upfrontCurrency}`,
+            format: (_value: unknown, row: Record<string, unknown>) => formatUpfront(tradeForFormatting(row), upfrontCurrency) }
+          : column) } : {}),
         rows: sortTrades(activity.trades, DEFAULT_TRADE_SORT).map((trade) => ({ ...trade })),
         empty,
         rowSymbolKey: "issuer",

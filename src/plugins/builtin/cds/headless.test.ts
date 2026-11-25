@@ -118,7 +118,9 @@ describe("CDS report", () => {
     expect(text).toContain("2026-10-09 13:21");
     expect(text).not.toMatch(/\d{2}\/\d{2} \d{2}:\d{2}/);
     expect(text).toContain("Abs upfront");
-    expect(text).toContain("762.5k USD");
+    // One upfront currency heads the column instead of trailing each amount.
+    expect(text).toContain("Abs upfront USD");
+    expect(text).toMatch(/ 762\.5k\n/);
     expect(text).not.toMatch(/\+[\d.]+k USD/);
     // Dated by the last trade, not the fetch, the line the pane and the shot end with.
     expect(freshness).toMatchObject({ source: "DTCC", asOf: "2026-10-09T13:21:00.000Z", observation: "last trade" });
@@ -213,7 +215,9 @@ describe("CDS report", () => {
       ["Whirlpool Corporation", null, 15.25],
       ["Whirlpool Corporation", null, null],
     ]);
-    expect(text).toMatch(new RegExp(String.raw`Whirlpool Corporation\s+2028-12-20\s+5M\+\s+USD\s+${MISSING_VALUE}\s+${MISSING_VALUE}\s+6\.5 pts\s+319\.9k USD`));
+    // One name, one currency and no spread on any print: the rows say what differs.
+    expect(text).toMatch(new RegExp(String.raw`2028-12-20\s+5M\+\s+${MISSING_VALUE}\s+6\.5 pts\s+319\.9k\n`));
+    expect(text).toMatch(/ 895\.0k\n/);
     expect(text).not.toMatch(/Whirlpool Corp\s|WHIRLPOOL/);
     const csv = renderReportCsv(selectReportTables(tables, "trades")).split("\n");
     expect(csv[0]).toMatch(/^Time UTC,Issuer,Maturity,Notional,CCY,Coupon \(bp\),Spread \(bp\),Points,Abs upfront \(USD\),/);

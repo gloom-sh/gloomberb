@@ -629,9 +629,19 @@ export function formatNotional(trade: Pick<CdsTrade, "notional" | "notionalCappe
  * public, so it is an absolute amount: never signed, and labelled `abs`
  * where it is shown.
  */
-export function formatUpfront(trade: Pick<CdsTrade, "upfront" | "upfrontCurrency">): string {
+/** An upfront with its currency, unless that is the one the column's header names (sharedUpfrontCurrency). */
+export function formatUpfront(trade: Pick<CdsTrade, "upfront" | "upfrontCurrency">, headerCurrency: string | null = null): string {
   if (trade.upfront == null) return MISSING_VALUE;
-  return `${formatCompact(Math.abs(trade.upfront))}${trade.upfrontCurrency ? ` ${trade.upfrontCurrency}` : ""}`;
+  const code = trade.upfrontCurrency && trade.upfrontCurrency !== headerCurrency ? ` ${trade.upfrontCurrency}` : "";
+  // Fixed decimals in the text as in the pane, so 895.0k sits over 319.9k, never 895k.
+  return `${formatCompact(Math.abs(trade.upfront), { fixedDecimals: true })}${code}`;
+}
+
+/** The currency every upfront of two or more is paid in, which heads the column instead of trailing each amount. */
+export function sharedUpfrontCurrency(trades: readonly Pick<CdsTrade, "upfront" | "upfrontCurrency">[]): string | null {
+  const paid = trades.filter((trade) => trade.upfront != null);
+  const currency = paid[0]?.upfrontCurrency ?? null;
+  return paid.length >= 2 && currency && paid.every((trade) => trade.upfrontCurrency === currency) ? currency : null;
 }
 
 /**
@@ -748,7 +758,8 @@ export function sharedTradeCoupon(trades: readonly Pick<CdsTrade, "couponBp">[])
   return trades.length >= 2 && coupon != null && trades.every((trade) => trade.couponBp === coupon) ? coupon : null;
 }
 
-export function buildTradeColumns(width: number, points = false): TradeColumn[] {
+export function buildTradeColumns(width: number, points = false, upfrontCurrency: string | null = null): TradeColumn[] {
+  const upfrontLabel = upfrontCurrency ? `ABS UPFRONT ${upfrontCurrency}` : "ABS UPFRONT";
   const maturityWidth = Math.max(10, Math.min(12, width - 59 - (points ? 9 : 0)));
   return [
     { id: "time", label: "TIME UTC", width: 16, align: "left" },
@@ -760,7 +771,7 @@ export function buildTradeColumns(width: number, points = false): TradeColumn[] 
     // Prints of a name quoted upfront carry no spread at all.
     { id: "spread", label: "SPREAD", width: 10, align: "right", omitWhenEmpty: true },
     ...(points ? [{ id: "points" as const, label: "POINTS", width: 9, align: "right" as const }] : []),
-    { id: "upfront", label: "ABS UPFRONT", width: 13, align: "right" },
+    { id: "upfront", label: upfrontLabel, width: Math.max(13, upfrontLabel.length), align: "right" },
   ];
 }
 

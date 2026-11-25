@@ -117,8 +117,9 @@ export function tableColumns(width: number, desktop: boolean, locked: boolean, v
     { id: "fy", label: "Period", width: periodWidth, align: "left" },
     ...(wide ? [
       { id: "filed", label: "Published", width: 10, align: "left" as const },
-      { id: "publisher", label: "Publisher", width: 16, align: "left" as const },
-      { id: "corroboration", label: "Origins", width: 8, align: "right" as const },
+      // One publisher (the company's own filings) or one origin for every row is no column either.
+      { id: "publisher", label: "Publisher", width: 16, align: "left" as const, omitWhenSame: true },
+      { id: "corroboration", label: "Origins", width: 8, align: "right" as const, omitWhenSame: true },
     ] : []),
   ];
   const preferred = { share: share.width, name: name.width };

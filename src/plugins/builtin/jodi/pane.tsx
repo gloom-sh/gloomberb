@@ -23,7 +23,7 @@ import {
   balanceColumns,
   formatBalance,
   formatBalanceMonth,
-  sharedBalanceUnit,
+  balanceUnits,
   type BalanceCommodity,
   type BalanceRow,
 } from "./model";
@@ -49,8 +49,8 @@ export function JodiPane({ focused, width, height }: PaneProps) {
   // The desktop and the web lead each country with its flag.
   const flagged = useUiCapabilities().nativePaneChrome === true;
   const columns = useMemo(
-    () => balanceColumns(tab).map((column) => (column.id === "country" ? withFlagRoom(column, flagged) : column)),
-    [flagged, tab],
+    () => balanceColumns(tab, balanceUnits(rows)).map((column) => (column.id === "country" ? withFlagRoom(column, flagged) : column)),
+    [flagged, rows, tab],
   );
   const refresh = useCallback(() => {
     resource.reload();
@@ -72,11 +72,7 @@ export function JodiPane({ focused, width, height }: PaneProps) {
     queryBarWidth: width,
   });
   const info = useMemo(
-    () => {
-      if (resource.error || !board) return [];
-      const unit = sharedBalanceUnit(board.rows);
-      return [{ id: "month", parts: [{ text: `${formatBalanceMonth(board.month)}${unit ? ` · ${unit}` : ""}` }] }];
-    },
+    () => (resource.error || !board ? [] : [{ id: "month", parts: [{ text: formatBalanceMonth(board.month) }] }]),
     [board, resource.error],
   );
   usePaneStatusFooter({
