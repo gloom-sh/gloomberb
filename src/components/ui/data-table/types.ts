@@ -334,6 +334,12 @@ export interface DataTableProps<
    */
   reportColumns?: readonly C[];
   scrollToIndex?: number | null;
+  /**
+   * A row above `scrollToIndex` that comes into view with it, and every row
+   * between: as many as fit with `scrollToIndex` still on screen. Ignored
+   * when the target is centered.
+   */
+  scrollToIndexFrom?: number | null;
   scrollToIndexAlign?: DataTableScrollAlign;
   scrollToIndexVersion?: number;
 }

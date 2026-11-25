@@ -384,6 +384,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   showHorizontalScrollbar = true,
   freezeFirstColumn: freezeFirstColumnProp,
   scrollToIndex,
+  scrollToIndexFrom,
   scrollToIndexAlign = "nearest",
   scrollToIndexVersion = 0,
 }: DataTableProps<T, C>) {
@@ -779,6 +780,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
       visibleHeight,
       items.length,
       scrollToIndexAlign,
+      scrollToIndexFrom,
     );
 
     if (nextTop === currentTop) return true;
@@ -791,6 +793,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     scrollRef,
     scrollToIndex,
     scrollToIndexAlign,
+    scrollToIndexFrom,
   ]);
 
   useEffect(() => {
@@ -839,6 +842,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
 
     const scrollRequestKey = [
       scrollToIndex,
+      scrollToIndexFrom ?? "",
       scrollToIndexVersion,
       scrollToIndexAlign,
       measuredViewportHeight ?? "pending",
@@ -858,6 +862,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     scrollRef,
     scrollToIndex,
     scrollToIndexAlign,
+    scrollToIndexFrom,
     scrollToIndexVersion,
     scrollVersion,
   ]);

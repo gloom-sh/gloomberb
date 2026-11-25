@@ -112,6 +112,12 @@ interface SelectionCommitTarget {
   id?: string;
 }
 
+/** The cursor's row to scroll into view, and the first row above it that comes with it. */
+interface SelectionScrollTarget {
+  index: number;
+  from: number;
+}
+
 export interface DataTableViewProps<
   T,
   C extends DataTableColumn = DataTableColumn,
@@ -124,6 +130,7 @@ export interface DataTableViewProps<
     | "isSelected"
     | "onSelect"
     | "onActivate"
+    | "scrollToIndexFrom"
   > {
   focused?: boolean;
   selection: DataTableSelection<T>;
@@ -331,9 +338,21 @@ export function DataTableView<
       : defaultCursorIndex;
   const effectiveSelectedIndexRef = useRef(effectiveSelectedIndex);
   effectiveSelectedIndexRef.current = effectiveSelectedIndex;
+  // The row the cursor last reached by a key. It scrolls into view with the
+  // rows straight above it that the cursor passes over (a leading Period end,
+  // a section's heading), which no key can reach. A row reached by a press
+  // scrolls only itself, so nothing moves under the pointer between clicks.
+  const keyboardCursorIndexRef = useRef<number | null>(null);
+  const firstRowShownWithRef = useRef((index: number) => index);
+  firstRowShownWithRef.current = (index) => {
+    if (!isNavigable || index >= tableProps.items.length) return index;
+    let first = index;
+    while (first > 0 && !isNavigable(tableProps.items[first - 1]!, first - 1)) first -= 1;
+    return first;
+  };
   const [selectionScrollVersion, setSelectionScrollVersion] = useState(0);
-  const [selectionScrollTarget, setSelectionScrollTarget] = useState<number | null>(null);
-  const selectionScrollTargetRef = useRef<number | null>(null);
+  const [selectionScrollTarget, setSelectionScrollTarget] = useState<SelectionScrollTarget | null>(null);
+  const selectionScrollTargetRef = useRef<SelectionScrollTarget | null>(null);
   const lastExternalSelectionScrollRef = useRef<{
     kind: DataTableSelection<T>["kind"];
     key: string | number | null;
@@ -357,23 +376,28 @@ export function DataTableView<
     }
     onVisibleRangeChange?.(range);
   }, [onVisibleRangeChange, restoreIndex, restoring, tableProps.items.length]);
+  const selectionScrollActive = !restoring && !controlledScrollRequestChanged && selectionScrollTarget !== null;
   const effectiveScrollToIndex = restoring ? restoreIndex : controlledScrollRequestChanged
     ? scrollToIndex
-    : selectionScrollTarget ?? scrollToIndex;
+    : selectionScrollTarget?.index ?? scrollToIndex;
 
   const requestSelectionScroll = useCallback((index: number) => {
-    if (index < 0 || selectionScrollTargetRef.current === index) return;
+    if (index < 0) return;
+    const from = keyboardCursorIndexRef.current === index ? firstRowShownWithRef.current(index) : index;
+    const pending = selectionScrollTargetRef.current;
+    if (pending?.index === index && pending.from === from) return;
     const scrollBox = effectiveScrollRef.current;
     const viewportHeight = scrollBox?.viewport?.height;
     const scrollTop = scrollBox?.scrollTop;
     if (
       typeof viewportHeight === "number"
       && typeof scrollTop === "number"
-      && index >= Math.floor(scrollTop)
+      && from >= Math.floor(scrollTop)
       && index < Math.floor(scrollTop) + Math.max(1, Math.floor(viewportHeight))
     ) return;
-    selectionScrollTargetRef.current = index;
-    setSelectionScrollTarget(index);
+    const target = { index, from };
+    selectionScrollTargetRef.current = target;
+    setSelectionScrollTarget(target);
     setSelectionScrollVersion((current) => current + 1);
   }, [effectiveScrollRef]);
   const clearSelectionScrollTarget = useCallback(() => {
@@ -594,6 +618,7 @@ export function DataTableView<
       return;
     }
     effectiveSelectedIndexRef.current = index;
+    keyboardCursorIndexRef.current = options.commit === "deferred" ? index : null;
     setCursorIndex(index);
     onCursorChange?.(item, index, reason);
     if (options.commit === "deferred") {
@@ -897,6 +922,7 @@ export function DataTableView<
         onBodyScrollActivity={handleBodyScrollActivity}
         onVisibleRangeChange={restoring || onVisibleRangeChange ? reportVisibleRange : undefined}
         scrollToIndex={effectiveScrollToIndex}
+        scrollToIndexFrom={selectionScrollActive ? selectionScrollTarget?.from : undefined}
         scrollToIndexAlign={restoring ? "start" : scrollToIndexAlign}
         scrollToIndexVersion={scrollToIndexVersion + selectionScrollVersion}
         isSelected={isItemSelected}
