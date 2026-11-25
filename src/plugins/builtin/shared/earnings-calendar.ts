@@ -286,10 +286,16 @@ export interface ResolvedEarningsEvent extends EarningsEvent, FilingEpsDetails {
 const TIMING_OF_TEXT: Record<string, EarningsEvent["timing"]> = { "Pre Market": "BMO", "After Hours": "AMC" };
 
 /** The calendar's event without its consensus, which is another quarter's than the report's. */
-function withoutConsensus(event: EarningsEvent): EarningsEvent {
-  const stripped: EarningsEvent = { ...event, epsEstimate: null, revenueEstimate: null, epsBasis: null };
-  delete stripped.estimateBasis;
-  for (const field of EARNINGS_ESTIMATE_FIELDS) if (stripped[field] != null) stripped[field] = null;
+function withoutConsensus(event: EarningsEvent, epsOnly = false): EarningsEvent {
+  const stripped: EarningsEvent = { ...event, epsBasis: null };
+  const basis = { ...event.estimateBasis };
+  for (const field of EARNINGS_ESTIMATE_FIELDS) {
+    if (epsOnly && !field.startsWith("eps")) continue;
+    if (stripped[field] != null) stripped[field] = null;
+    delete basis[field];
+  }
+  if (epsOnly && Object.keys(basis).length) stripped.estimateBasis = basis;
+  else delete stripped.estimateBasis;
   return stripped;
 }
 
@@ -308,8 +314,8 @@ function eventOfRow(event: EarningsEvent, row: EarningsAction, report: CalendarR
   const earningsDate = ownDate ? event.earningsDate : new Date(`${row.date}T00:00:00.000Z`);
   const rowTiming = TIMING_OF_TEXT[row.time ?? ""];
   if (report) {
-    const base = report.ownConsensus ? event : withoutConsensus(event);
     const filed = row.epsActual != null && row.epsBasis === "company-adjusted";
+    const base = !report.ownConsensus ? withoutConsensus(event) : filed ? withoutConsensus(event, true) : event;
     const recordFigures = row.epsActual != null && (event.epsActual == null || filed);
     return {
       ...base,

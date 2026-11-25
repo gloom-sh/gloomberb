@@ -18,11 +18,14 @@ function event(symbol: string, earningsDate: string, fields: Partial<EarningsEve
 
 test("an already reported company's EPS keeps its own comparison when the ticker calendar still has the street pair", () => {
   const date = "2026-11-24";
-  const calendar = event("DELL", `${date}T21:00:00Z`, { epsActual: 9.16, epsEstimate: 6.55, epsAnalysts: 8, surprise: 39.85 });
+  const calendar = event("DELL", `${date}T21:00:00Z`, { epsActual: 9.16, epsEstimate: 6.55, epsAnalysts: 8, epsHigh: 6.9,
+    estimateBasis: { epsHigh: CONSENSUS, revenueEstimate: CONSENSUS }, revenueEstimate: 49273922220, surprise: 39.85 });
   const filed: EarningsAction = { date, dateStatus: "reported", epsActual: 9.45, epsBasis: "company-adjusted", gaapEps: 8.82,
     streetEps: { actual: 9.16, estimate: 6.55, actualBasis: "including-stock-compensation", analysts: 8 } };
   expect(resolveEarningsActions([filed], calendar, date)).toEqual([filed]);
-  expect(resolveCalendarEvent(calendar, [filed], date)).toMatchObject({ epsActual: 9.45, epsBasis: "company-adjusted", streetEps: filed.streetEps, epsEstimate: null, epsAnalysts: null, surprise: null });
+  const resolved = resolveCalendarEvent(calendar, [filed], date);
+  expect(resolved).toMatchObject({ epsActual: 9.45, epsBasis: "company-adjusted", streetEps: filed.streetEps, epsEstimate: null, epsAnalysts: null, epsHigh: null, surprise: null });
+  expect(resolved.estimateBasis).toEqual({ revenueEstimate: CONSENSUS });
 });
 
 type HistoryReport = EarningsHistoryPayload["reports"][number];
