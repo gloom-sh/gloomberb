@@ -7,6 +7,13 @@ import { mergeStatementGaps } from "./statement-gaps";
 
 export const FINANCIAL_VINTAGE_NOTICE = "Latest available statements may include restatements. Historical as-of values are not reconstructed.";
 
+/**
+ * The key of a statement or ratio table's first row in the pane, the day each
+ * period ends: part of the heading, not a line of figures, so a capture's
+ * checks on a table's values leave it out.
+ */
+export const PERIOD_END_ROW_ID = "period-end";
+
 /** The oldest dated period of a report's columns (a TTM column has no date), or null when none has one. */
 function oldestPeriod(dates: readonly string[]): string | null {
   return dates.filter((date) => /^\d{4}-\d{2}-\d{2}/.test(date)).map((date) => date.slice(0, 10)).sort()[0] ?? null;

@@ -13,10 +13,11 @@ import type { PricePoint } from "../../../../types/financials";
 import type { FxCloses } from "../../../../market-data/fx-closes";
 import { apiClient } from "../../../../api-client";
 import { loadValuationFx } from "../../../../time-series/valuation-currency";
+import { PERIOD_END_ROW_ID } from "../../../../utils/financial-statements";
 import { displayWidth, padTo } from "../../../../utils/format";
 import { useBoundTicker, useTickerRequest } from "../../shared/ticker-request";
 import type { FinancialTableStatement } from "./aggregation";
-import { FINANCIAL_COL_W, PERIOD_END_ROW_ID, financialLabelWidth, financialPeriodHeaderLabel } from "./model";
+import { FINANCIAL_COL_W, financialLabelWidth, financialPeriodHeaderLabel } from "./model";
 import { loadPeriodEndHistory } from "./period-end-history";
 import {
   formatRatioInput,

@@ -11,7 +11,7 @@ import { paneEvidenceGaps, paneEvidenceMismatches, paneScreenshotEvidenceHook } 
 import { collectShotSymbols } from "./data";
 import { renderedReportNotices } from "./report-notices";
 import { financialRatioRenderMismatches, financialRatioShotGap, shotRatioTab } from "./financial-ratio-shot";
-import { PERIOD_END_ROW_ID } from "../../plugins/builtin/ticker-detail/financials/model";
+import { PERIOD_END_ROW_ID } from "../../utils/financial-statements";
 import { paneFitsRows, COLLECTION_PANE_IDS } from "./screenshot-payload";
 import { stripDesktopShotCredentials } from "./screenshot-bridge";
 import type { PaneScreenshotExpectedSelection, PaneScreenshotReadinessSignals, PaneScreenshotResult } from "./screenshot-types";

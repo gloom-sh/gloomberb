@@ -375,9 +375,6 @@ export function financialColumnLabel(
   return ttmPeriodLabel(periodEnd, yearEndMonth, interimMonths);
 }
 
-/** The key of a statement or ratio table's first row, the day each period ends: part of the heading, not a line of figures. */
-export const PERIOD_END_ROW_ID = "period-end";
-
 /** The day a column's period ends: a statement's own date, a TTM's last quarter or half. */
 export function financialPeriodEnd(statement: FinancialTableStatement): string | undefined {
   return statement.date === "TTM" ? statement.aggregation?.periodEnd : statement.date.slice(0, 10);
@@ -403,7 +400,7 @@ export function financialColumnName(statement: FinancialTableStatement, kind: Fi
   return end && name.endsWith(` ${end}`) ? name.slice(0, -end.length - 1) : name;
 }
 
-export function financialFiscalHeader(statement: FinancialTableStatement, kind: FinancialPeriod, yearEndMonth: number | null): string {
+function financialFiscalHeader(statement: FinancialTableStatement, kind: FinancialPeriod, yearEndMonth: number | null): string {
   const end = financialPeriodEnd(statement);
   const name = financialPeriodName(statement, kind, yearEndMonth);
   return end && !name.endsWith(end) ? `${name} ${end}` : name;
