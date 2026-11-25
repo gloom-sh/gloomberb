@@ -11,6 +11,7 @@ import { paneEvidenceGaps, paneEvidenceMismatches, paneScreenshotEvidenceHook } 
 import { collectShotSymbols } from "./data";
 import { renderedReportNotices } from "./report-notices";
 import { financialRatioRenderMismatches, financialRatioShotGap, shotRatioTab } from "./financial-ratio-shot";
+import { PERIOD_END_ROW_ID } from "../../plugins/builtin/ticker-detail/financials/model";
 import { paneFitsRows, COLLECTION_PANE_IDS } from "./screenshot-payload";
 import { stripDesktopShotCredentials } from "./screenshot-bridge";
 import type { PaneScreenshotExpectedSelection, PaneScreenshotReadinessSignals, PaneScreenshotResult } from "./screenshot-types";
@@ -180,7 +181,8 @@ export function assessPaneScreenshot(
   // The capture's refusal of a request (chat, a team's) drawn where the pane's content goes is not the pane.
   const refused = shotShowsRefusal(render);
   // A column with no value in any row is data the pane lost, as Market Movers' VOL and V/AVG did before the open.
-  const blankColumns = interactive ? [] : shotBlankColumns(render.rows);
+  // A statement's period-end row dates every column, one with no figure in it too, so it is not read as a value.
+  const blankColumns = interactive ? [] : shotBlankColumns(render.rows.filter((row) => row.key !== PERIOD_END_ROW_ID));
   // A column past the edge of its table is data the picture left out (AUCT's after view at 720px lost +5D, +20D and the CUSIP).
   // It is a warning, not a reason the picture is unusable, while nineteen panes still cut one at 720px.
   const cutColumns = interactive ? [] : cleanColumnLabels(render.cutColumns ?? []);

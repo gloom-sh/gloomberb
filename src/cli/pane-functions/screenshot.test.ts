@@ -517,7 +517,7 @@ describe("financial analysis ratio screenshots", () => {
       }))],
     }] : []);
     const render: DesktopPaneShotRenderResult = {
-      visibleText: ["FA MSFT Statement Income Cash Flow Balance Sheet Ratios Ratio", tab.name, "USD Annual Quarterly RATIO FY2026 2026-06-30",
+      visibleText: ["FA MSFT Statement Income Cash Flow Balance Sheet Ratios Ratio", tab.name, "USD Annual Quarterly RATIO FY2026 Period end 2026-06-30",
         ...rows.flatMap(({ cells }) => cells.map(({ text }) => text))].join(" "),
       rows, truncated: false, truncationReasons: [], loadingStateDetected: false, errorStateDetected: false, errorStateMarkers: [],
       emptyStateDetected: false, emptyStateMarkers: [], visibleKeyValues: [],
@@ -822,6 +822,13 @@ describe("a capture of a pane that marks no rows", () => {
     expect(filled).not.toHaveProperty("blankColumns");
     // Two rows are a short list's gaps, not a lost column.
     expect(assess(diag, { rows: [row(1, "—", "—"), row(2, "—", "—")] })).toMatchObject({ usable: true });
+    // A statement's period-end row dates a period that has no figure: the column is still blank.
+    const periodEnd = { tableIndex: 0, rowIndex: 0, key: "period-end", selected: false, cells: [
+      { columnId: "rank", columnLabel: "#", text: "Period end" }, { columnId: "symbol", columnLabel: "TICKER", text: "2026-10-31" },
+      { columnId: "volume", columnLabel: "VOL", text: "2026-10-31" }, { columnId: "volumeRatio", columnLabel: "V/AVG", text: "2026-10-31" },
+    ] };
+    expect(assess(diag, { rows: [periodEnd, row(1, "—", "—"), row(2, "—", "—"), row(3, "—", "—")] }))
+      .toMatchObject({ usable: false, blankColumns: ["VOL", "V/AVG"] });
   });
 
   // ECO at 00:07Z on 17 Nov 2026 failed "ACTUAL blank in every row" with every listed release still to come.
@@ -1361,8 +1368,11 @@ describe("pane screenshot structured data evidence", () => {
       resolved("financial-statements", { statement: "cashflow", period: "annual" }),
       payload([["NVDA", financials]]),
     );
-    expect(shotExpectedText(resolved("financial-statements", { statement: "cashflow", period: "annual" }),
-      ["NVDA"], payload([["NVDA", financials]]))).toContain("FY2026 2026-01-31");
+    // The column's header and, in the table's first row, the day it ends.
+    const expectedText = shotExpectedText(resolved("financial-statements", { statement: "cashflow", period: "annual" }),
+      ["NVDA"], payload([["NVDA", financials]]));
+    expect(expectedText).toContain("FY2026");
+    expect(expectedText).toContain("2026-01-31");
     expect(statementEvidence).toMatchObject({
       kind: "financial-statement",
       symbol: "NVDA",
