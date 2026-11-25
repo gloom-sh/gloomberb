@@ -11,10 +11,10 @@ const events = marketDataCliCommands.find((command) => command.name === "events"
 beforeAll(() => { setSystemTime(new Date("2026-10-15T12:00:00Z")); });
 afterAll(() => { setSystemTime(); });
 
-async function eventRows(earnings: unknown[]) {
+async function eventRows(earnings: unknown[], actions: { dividends?: unknown[]; splits?: unknown[] } = {}) {
   const run = createTestCliContext({
     dataProvider: {
-      getCorporateActions: async () => ({ symbol: "PLTR", currency: "USD", dividends: [], splits: [], earnings }),
+      getCorporateActions: async () => ({ symbol: "PLTR", currency: "USD", dividends: [], splits: [], earnings, ...actions }),
       getQuote: async () => ({ symbol: "PLTR", price: 200, currency: "USD", name: "Palantir Technologies Inc." }),
     },
   });
@@ -60,4 +60,24 @@ test("events is dated by when it was read: a row's date is when its event happen
   const { result } = await eventRows(PLTR);
   expect(result.freshness).toMatchObject({ asOf: null, status: "not-a-feed", basis: "corporate actions" });
   expect(formatFreshnessLine(result.freshness!)).toMatch(/^Source: Gloom Cloud · retrieved \w{3} \d+ \w{3} \d{4} \d{2}:\d{2} UTC · not a live feed \(corporate actions\)$/);
+});
+
+// `events CTVA` listed its 6665:1000 of 2026-10-01 as a split and the $0.18 dividends before it as $0.027007.
+test("a spin-off's price adjustment is named, the dividends before it are shown as paid, and the EPS it divides says so", async () => {
+  const { rows, result } = await eventRows([
+    { date: "2026-11-11", currency: "USD", epsActual: -0.04, epsEstimate: 0.09 },
+    { date: "2026-07-30", currency: "USD", epsActual: 0.345086, epsEstimate: 0.336084 },
+  ], {
+    dividends: [{ exDate: "2026-09-01", amount: 0.027007 }],
+    splits: [{ date: "2026-10-01", ratio: 6.665, fromFactor: 1000, toFactor: 6665, description: "6665:1000" }],
+  });
+  expect(rows.map((row) => `${row.date} ${row.type} ${row.detail}`)).toEqual([
+    "2026-11-11 earnings eps -$0.04",
+    "2026-10-01 spin-off price adjustment 6665:1000, not a share split: prices, EPS and dividends before it ÷6.665 at source",
+    "2026-09-01 dividend $0.18 paid ($0.027007 spin-off-adjusted, ÷6.665)",
+    "2026-07-30 earnings eps $0.35, EPS spin-off-adjusted ÷6.665",
+  ]);
+  // JSON keeps the history's amount, with what was paid beside it.
+  expect(result.data.dividends[0]).toEqual({ exDate: "2026-09-01", amount: 0.027007, paidAmount: 0.18, spinOffDivisor: 6.665 });
+  expect(result.data.splits[0]).toMatchObject({ kind: "spin-off adjustment" });
 });

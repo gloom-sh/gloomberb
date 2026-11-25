@@ -131,7 +131,7 @@ export interface SplitMark {
  * the first payment on. Years without one stay in as a gap, a run of them as
  * one entry (AAPL's 1996-2011), so the paying years keep the room; a year a
  * split went ex in is its own entry, to say so. Amounts are on today's shares,
- * as the history states them.
+ * as paid (asPaidDividends undoes a spin-off's price adjustment first).
  */
 export function dividendYears(dividends: readonly DividendAction[], today: string, splits: readonly SplitMark[] = []): DividendYear[] {
   const byYear = new Map<number, { total: number; special: number; payments: number }>();

@@ -13,6 +13,7 @@ import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery } from "../../../market-data/hooks";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { mayBeUsEquityTicker } from "../../../utils/sec";
+import { spinOffDivisorText } from "../../../market-data/spin-off-adjustments";
 import {
   documentContentKey,
   formatCompactDocumentLabel,
@@ -200,16 +201,20 @@ export function buildEventDetail({
       detailRow("Ex-date", row.date),
       ...(row.payDate ? [detailRow("Payable", row.payDate)] : []),
       detailRow("Per share", row.value, [row.declared ? "declared" : null, row.special ? "special" : null].filter(Boolean).join(", ") || undefined),
+      // As paid, where the history divides it by a later spin-off's price adjustment (CTVA's 6.665).
+      ...(row.spinOffAdjusted?.value
+        ? [detailRow("Spin-off-adjusted", row.spinOffAdjusted.value, spinOffDivisorText(row.spinOffAdjusted.divisor))]
+        : []),
       // The paid history is stated on today's shares; a declared amount is as declared.
-      ...(row.declared ? [] : [detailNote("Per share as the shares stand today: an amount paid before a later split or bonus issue is adjusted for it.")]),
+      ...(row.declared ? [] : [detailNote("Per share as the shares stand today: an amount paid before a later split or bonus issue is adjusted for it; one before a spin-off is as paid.")]),
     ] }];
   }
 
   const sections: EventDetailSection[] = [];
   const summary = eventSummaryLine(row);
   if (summary) sections.push({ title: "Summary", blocks: [{ kind: "prose", text: summary }] });
-  if (row.status === "Factor" && row.providerDescription) {
-    sections.push({ title: "Split/adjustment factor", blocks: [detailRow("Description", row.providerDescription)] });
+  if ((row.status === "Factor" || row.status === "Spin-off") && row.providerDescription) {
+    sections.push({ title: row.status === "Spin-off" ? "Spin-off adjustment" : "Split/adjustment factor", blocks: [detailRow("Description", row.providerDescription)] });
   }
   if (row.status !== "Earnings") return sections;
 

@@ -1,4 +1,5 @@
 import { splitShareTerms } from "../../market-data/split-terms";
+import { paidDividend, spinOffAdjustment, spinOffAdjustments, spinOffDivisor, spinOffDivisorText, withSpinOffAdjustments } from "../../market-data/spin-off-adjustments";
 import { logFailure } from "../../utils/log-failure";
 import { isTransientFailure } from "../../api-client/errors";
 import { normalizeTickerSymbol } from "../../tickers/search/ranking";
@@ -150,7 +151,7 @@ import {
 import { historyCoverageNotice, WindowBeforeFirstBarError } from "../../sources/history-coverage";
 import { fetchHistoryResult } from "../../sources/history-result";
 import { settleWithin } from "../../utils/async-deadline";
-import { demergerRuns, demergerSuccessor, hasPriceBreak, historyDemergerNote, SPLIT_FLAG, withDemergerFlags, withSplitFlags } from "../history-demergers";
+import { demergerRuns, demergerSuccessor, hasPriceBreak, historyDemergerNote, historySpinOffNote, SPLIT_FLAG, withDemergerFlags, withSpinOffFlags, withSplitFlags } from "../history-demergers";
 import type { FxInterventionsPayload } from "../../api-client/fx-interventions";
 import {
   fxInterventionLatestNote, fxInterventionPair, fxInterventionWindowNote, loadFxInterventions, type FxInterventionPair,
@@ -1174,6 +1175,9 @@ function corporateActionRows(data: CorporateActionsData) {
       : !unit ? formatNumber(value, 2)
         : /^[A-Z]{3}$/.test(unit) ? formatCurrency(value, unit, 2) : `${formatNumber(value, 2)} ${unit}`
   );
+  // CTVA's 6665:1000 of 2026-10-01 is a spin-off's price adjustment: the feed divides the EPS and dividends before it.
+  const spinOffs = spinOffAdjustments(data.splits);
+  const amount = (value: number) => (currency ? formatDistributionAmount(value, currency) : cleanDecimal(value));
   return [
     ...data.earnings.map((event) => {
       const unit = event.currency?.trim() || earningsCurrency;
@@ -1181,12 +1185,14 @@ function corporateActionRows(data: CorporateActionsData) {
       const basis = earningsEpsBasis(event.epsBasis);
       // History rows are keyed by fiscal quarter end, upcoming ones by announcement date.
       const note = [event.dateType === "fiscal-period-end" ? "period end" : null, quarter === MISSING_VALUE ? null : quarter].filter(Boolean).join(", ");
+      const divisor = event.epsActual == null && event.epsEstimate == null ? 1 : spinOffDivisor(spinOffs, event.date);
       return {
         type: "earnings",
         date: event.date,
         // The basis, beat, date status and analysts are the words EE uses for the same row.
         detail: [event.epsActual == null ? `est ${eps(event.epsEstimate, unit)}` : `eps ${eps(event.epsActual, unit)}`,
-          ...earningsDetailParts(event)].join(", ") + (note ? ` (${note})` : ""),
+          ...earningsDetailParts(event)].join(", ") + (note ? ` (${note})` : "")
+          + (divisor === 1 ? "" : `, EPS spin-off-adjusted ${spinOffDivisorText(divisor)}`),
         epsActual: event.epsActual,
         epsEstimate: event.epsEstimate,
         epsBasis: showsEpsBasis({ epsActual: event.epsActual, epsBasis: basis }) ? epsBasisName(basis) : undefined,
@@ -1196,11 +1202,16 @@ function corporateActionRows(data: CorporateActionsData) {
         fiscalPeriod: event.fiscalPeriod,
       };
     }),
-    ...data.dividends.map((event) => ({
-      type: "dividend",
-      date: event.exDate,
-      detail: currency ? formatDistributionAmount(event.amount, currency) : cleanDecimal(event.amount),
-    })),
+    // What was paid, with the history's spin-off-adjusted amount beside it.
+    ...data.dividends.map((event) => {
+      const paid = paidDividend(event, spinOffs);
+      return {
+        type: "dividend",
+        date: event.exDate,
+        detail: paid.adjusted == null ? amount(event.amount)
+          : `${amount(paid.amount)} paid (${amount(paid.adjusted)} spin-off-adjusted, ${spinOffDivisorText(paid.divisor!)})`,
+      };
+    }),
     // Declared and unpaid, at its ex-date beside the paid rows, never one of them.
     ...declaredDividends(data).map((event) => {
       const cash = declaredDividendCash(event, currency);
@@ -1212,12 +1223,20 @@ function corporateActionRows(data: CorporateActionsData) {
         ...(event.cashEstimate ? { cashEstimate: event.cashEstimate } : {}),
       };
     }),
-    // In share terms where the factor states them (11-for-10, 1 new share for every 10 held), else as its source writes it.
-    ...data.splits.map((event) => ({
-      type: "split",
-      date: event.date,
-      detail: splitShareTerms(event) ?? event.description ?? `${event.toFactor ?? ""}:${event.fromFactor ?? ""}`,
-    })),
+    // In share terms where the factor states them (11-for-10, 1 new share for every 10 held), a spin-off's price
+    // adjustment as one, else as its source writes it.
+    ...data.splits.map((event) => {
+      const spinOff = spinOffAdjustment(event);
+      return spinOff ? {
+        type: "spin-off",
+        date: event.date,
+        detail: `price adjustment ${event.toFactor}:${event.fromFactor}, not a share split: prices, EPS and dividends before it ${spinOffDivisorText(spinOff.factor)} at source`,
+      } : {
+        type: "split",
+        date: event.date,
+        detail: splitShareTerms(event) ?? event.description ?? `${event.toFactor ?? ""}:${event.fromFactor ?? ""}`,
+      };
+    }),
     // A business demerged out of the listing: its price fell by that business's value on the day, no market move.
     ...(data.demergers ?? []).map((event) => ({
       type: "demerger",
@@ -2293,7 +2312,10 @@ async function loadListingHistory(
   // bar it took effect in is flagged. A long list skips the read, as it skips the other lookups.
   const splits = lookups ? await actions.splits() : [];
   const flaggedSplits = withSplitFlags(demerged.rows, splits);
-  const data = flaggedSplits.rows;
+  // CTVA's daily bars before 2026-10-01 are divided by 6.665, a spin-off's price adjustment: said, and its bar flagged.
+  const spinOffs = flaggedSplits.rows.some((row) => row.date.length > 10) ? { rows: flaggedSplits.rows, spinOffs: [] }
+    : withSpinOffFlags(flaggedSplits.rows, splits);
+  const data = spinOffs.rows;
   const splitNote = historySplitNote(listing.symbol, flaggedSplits.splits);
   const interval = data[0]?.interval ?? null;
   // Intraday bars print in UTC, as the charts and time and sales label them, not the host zone.
@@ -2363,6 +2385,7 @@ async function loadListingHistory(
     historyRollNote(listing.symbol, data, { mostTraded }) ?? [], historyThinNote(data) ?? [],
     historyDemergerNote(data, demerged.breaks, historyPrice(historyPriceDecimals(data, listing.saved?.metadata.assetCategory, priceDivisor))) ?? [],
     splitNote ?? [],
+    historySpinOffNote(listing.symbol, data, spinOffs.spinOffs, historyPrice(historyPriceDecimals(data, listing.saved?.metadata.assetCategory, priceDivisor))) ?? [],
     historyBarStatusNote(forming ? served : data, { tradingDay: venueTradingDay(venue, Date.now()) }) ?? [],
     await interventionWindowNote(interventions, interventionPair, data) ?? [],
   ].flat();
@@ -4240,7 +4263,7 @@ async function runEvents(rawArgs: string[], ctx: Parameters<CliCommandDef["execu
     const identity = listingIdentity(listing, quote);
     const choice = await listingChoiceNotes(listing, market, quote, venues);
     ctx.printResult({
-      data,
+      data: withSpinOffAdjustments(data),
       metadata: listingMetadata(identity),
       // Dated by when it was read, as EE and fn EVT date the same events: a row's
       // date is when the event happens, and the newest past one is no as-of.

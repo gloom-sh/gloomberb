@@ -1,10 +1,13 @@
 import type { DemergerAction, SplitAction } from "../types/financials";
 import { splitShareTerms } from "../market-data/split-terms";
+import { spinOffAdjustments, spinOffDivisor, spinOffDivisorText, type SpinOffAdjustment } from "../market-data/spin-off-adjustments";
 
 /** The flag a bar takes when a business was demerged out of the listing at it. */
 export const DEMERGER_FLAG = "demerger";
 /** The flag the bar a split took effect in takes: the first in post-split shares. */
 export const SPLIT_FLAG = "split";
+/** The flag the bar a spin-off's price adjustment took effect in takes: the first the source did not divide by it. */
+export const SPIN_OFF_FLAG = "spin-off";
 
 /**
  * A close this far below the one before can be a business leaving the line
@@ -86,6 +89,77 @@ export function withSplitFlags<Row extends DemergerRow>(rows: readonly Row[], sp
     flagged.push({ split, barBefore: index > 0 });
   }
   return { rows: marked, splits: flagged };
+}
+
+/** A spin-off adjustment that divides bars in a history: at the bar flagged for it, or after the last (`at` null). */
+export interface BarsSpinOff {
+  adjustment: SpinOffAdjustment;
+  at: string | null;
+}
+
+/**
+ * The rows with the bar each spin-off's price adjustment took effect in
+ * flagged `spin-off` (CTVA's 6.665 on 2026-10-01), and every adjustment that
+ * divides any of them, oldest first: the source divides the prices before it
+ * (and multiplies the volume), so one after the last bar divides them all.
+ */
+export function withSpinOffFlags<Row extends DemergerRow>(rows: readonly Row[], splits: readonly SplitAction[]): {
+  rows: Row[];
+  spinOffs: BarsSpinOff[];
+} {
+  const marked = [...rows];
+  const spinOffs: BarsSpinOff[] = [];
+  const first = rows[0]?.date.slice(0, 10);
+  if (!first) return { rows: marked, spinOffs };
+  for (const adjustment of spinOffAdjustments(splits)) {
+    if (adjustment.date <= first) continue;
+    const index = actionBarIndex(marked, adjustment.date, true);
+    if (index < 0) {
+      // Past the last bar: every bar shown is divided by it.
+      if (adjustment.date > rows.at(-1)!.date.slice(0, 10)) spinOffs.push({ adjustment, at: null });
+      continue;
+    }
+    const row = marked[index]!;
+    const codes = (row.flag ?? "").split(",").filter(Boolean);
+    if (!codes.includes(SPIN_OFF_FLAG)) marked[index] = { ...row, flag: [...codes, SPIN_OFF_FLAG].join(",") };
+    spinOffs.push({ adjustment, at: row.date });
+  }
+  return { rows: marked, spinOffs };
+}
+
+/** A divided close multiplied back: to the cent where the divided figure's rounding allows (11.65041 × 6.665 is 77.65). */
+function undividedPrice(close: number, divisor: number, price: (value: number) => string): string {
+  const value = close * divisor;
+  const cents = Math.round(value * 100) / 100;
+  return Math.abs(value - cents) <= 1e-5 * divisor ? cents.toFixed(2) : price(value);
+}
+
+/**
+ * "On 2026-10-01 CTVA's bars take a spin-off's price adjustment, not a share
+ * split: prices before it are divided by 6.665 and volumes multiplied by it at
+ * source, so they are not the prices that traded (the 2026-09-30 close, 11.65041
+ * here, is 77.65 before the adjustment) (flag spin-off)". Null without one.
+ */
+export function historySpinOffNote(
+  symbol: string,
+  rows: readonly DemergerRow[],
+  spinOffs: readonly BarsSpinOff[],
+  price: (value: number) => string,
+): string | null {
+  if (spinOffs.length === 0) return null;
+  const adjustments = spinOffs.map(({ adjustment }) => adjustment);
+  const parts = spinOffs.map(({ adjustment, at }) => {
+    const index = at == null ? rows.length : rows.findIndex((row) => row.date === at);
+    const before = rows.slice(0, index).findLast((row) => row.close != null && row.close > 0);
+    const divided = spinOffDivisorText(adjustment.factor).slice(1);
+    const close = before?.close != null
+      ? ` (the ${before.date.slice(0, 10)} close, ${price(before.close)} here, is ${undividedPrice(before.close, spinOffDivisor(adjustments, before.date), price)} before the adjustment)`
+      : "";
+    return at == null
+      ? `${symbol}'s bars here are divided by ${divided} and their volumes multiplied by it at source, for a spin-off's price adjustment on ${adjustment.date} (not a share split), so they are not the prices that traded${close}`
+      : `On ${adjustment.date} ${symbol}'s bars take a spin-off's price adjustment, not a share split: prices before it are divided by ${divided} and volumes multiplied by it at source, so they are not the prices that traded${close} (flag ${SPIN_OFF_FLAG})`;
+  });
+  return `${parts.join("; ")}.`;
 }
 
 /**

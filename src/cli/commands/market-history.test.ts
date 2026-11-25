@@ -1403,8 +1403,9 @@ test("the bar a split took effect in is flagged and the note says the bars befor
     const cli = createTestCliContext({ config: createDefaultConfig("/tmp/gloom-history-split-fixture"), dataProvider }, { format: "json" });
     await history.execute(["NFLX", "--from", from, "--to", "2025-11-20"], cli.context);
     const result = cli.printed[0]!.result;
-    const flagged = (result.data as Array<{ date: string; flag: string | null }>).filter((row) => row.flag?.split(",").includes("split"));
-    return { warnings: result.warnings ?? [], flagged: flagged.map((row) => row.date) };
+    const rows = result.data as Array<{ date: string; flag: string | null }>;
+    const flagged = (code: string) => rows.filter((row) => row.flag?.split(",").includes(code)).map((row) => row.date);
+    return { warnings: result.warnings ?? [], flagged: flagged("split"), ...(flagged("spin-off").length ? { spinOff: flagged("spin-off") } : {}) };
   };
   const tenForOne = { date: "2025-11-17", fromFactor: 1, toFactor: 10, ratio: 10 };
   expect(await run("2025-11-12", [tenForOne])).toEqual({
@@ -1420,7 +1421,19 @@ test("the bar a split took effect in is flagged and the note says the bars befor
     warnings: expect.arrayContaining(["Splits in range: NFLX 10-for-1 on 2025-11-17 (flag split)."]), flagged: ["2025-11-17"],
   });
   expect(await run("2025-11-18", [tenForOne])).toMatchObject({ flagged: [] });
-  expect(await run("2025-11-12", [{ date: "2025-11-17", fromFactor: 1000, toFactor: 1253, ratio: 1.253 }])).toMatchObject({ flagged: [] });
+  // GE's 1253:1000 is a spin-off's price adjustment, no split: the source divided the bars before it, which say so
+  // (CTVA's before 2026-10-01 read 11.65 for 77.65), its bar flagged, and a window wholly before it too.
+  const spinOff = { date: "2025-11-17", fromFactor: 1000, toFactor: 1253, ratio: 1.253 };
+  const across = await run("2025-11-12", [spinOff]);
+  expect(across).toMatchObject({ flagged: [], spinOff: ["2025-11-17"] });
+  expect(across.warnings).toContain("On 2025-11-17 NFLX's bars take a spin-off's price adjustment, not a share split: prices before it are divided by "
+    + "1.253 and volumes multiplied by it at source, so they are not the prices that traded (the 2025-11-14 close, 102.00 here, is 127.81 before "
+    + "the adjustment) (flag spin-off).");
+  const before = await run("2025-11-12", [{ ...spinOff, date: "2025-11-21" }]);
+  expect(before.spinOff).toBeUndefined();
+  expect(before.warnings).toContain("NFLX's bars here are divided by 1.253 and their volumes multiplied by it at source, for a spin-off's price "
+    + "adjustment on 2025-11-21 (not a share split), so they are not the prices that traded (the 2025-11-20 close, 106.00 here, is 132.82 before the adjustment).");
+  expect((await run("2025-11-18", [spinOff])).warnings.some((warning) => warning.includes("spin-off"))).toBe(false);
 });
 
 test("a split inside the last weekly or monthly bar's period is flagged on that bar and named in the note", async () => {
