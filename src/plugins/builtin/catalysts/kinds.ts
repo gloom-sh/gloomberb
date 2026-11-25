@@ -24,7 +24,7 @@ export const isCatalystKind = (value: unknown): value is CatalystKind => CATALYS
 export const catalystKindOf = (type: CatalystType): CatalystKind => CATALYST_KINDS.find((kind) => kind.types.includes(type))?.value ?? "regulation";
 export const catalystKindTypes = (kind: CatalystKind): readonly CatalystType[] => CATALYST_KINDS.find((entry) => entry.value === kind)!.types;
 
-export const utcToday = (now = new Date()) => now.toISOString().slice(0, 10);
+const utcToday = (now = new Date()) => now.toISOString().slice(0, 10);
 
 /**
  * The view a calendar opens on: the kind of the type a filter names (an old
@@ -48,7 +48,7 @@ const order = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
  * dates not over by `today` first, soonest ending first; then past dates,
  * latest first; then undated rows; ties newest id first.
  */
-export function compareCatalystOrder(a: CatalystEvent, b: CatalystEvent, read: CatalystDateRead, today: string): number {
+function compareCatalystOrder(a: CatalystEvent, b: CatalystEvent, read: CatalystDateRead, today: string): number {
   const rank = (event: CatalystEvent): { group: number; keys: string[] } => {
     const span = catalystListedSpan(event, read);
     return !span ? { group: 2, keys: [] } : span[1] >= today ? { group: 0, keys: [span[1], span[0]] } : { group: 1, keys: [span[0]] };
@@ -228,7 +228,7 @@ export function trialPhase(event: Pick<CatalystEvent, "metadata">): string {
 }
 
 /** A trial's date basis in the fewest words: its primary completion, estimated or reached, or the registry's last update. */
-export function trialDateBasis(event: CatalystEvent, read: CatalystDateRead): string {
+function trialDateBasis(event: CatalystEvent, read: CatalystDateRead): string {
   const basis = catalystDateBasis(event, read);
   return basis === "Primary completion (est.)" ? "Est. completion" : basis === "Primary completion (actual)" ? "Completed" : basis === "Primary completion" ? "Completion" : basis;
 }

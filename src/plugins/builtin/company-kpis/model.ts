@@ -81,7 +81,7 @@ export function kpiPeriodView(stored: string | null | undefined, views: readonly
 const CHANGE_LABELS: Record<PeriodKind, string> = {
   quarter: "Q/Q change", half: "H/H change", ytd: "Y/Y change", year: "Y/Y change", instant: "Prior change", other: "Prior change",
 };
-export const periodChangeLabel = (kind: PeriodKind | null | undefined) => kind ? CHANGE_LABELS[kind] : "Prior change";
+const periodChangeLabel = (kind: PeriodKind | null | undefined) => kind ? CHANGE_LABELS[kind] : "Prior change";
 const BASIS_ORDER = ["reported", "adjusted", "constant_currency", "organic"];
 /** Series in reading order: by metric, the consolidated figure before its parts, reported before other bases, a quarter before its year. */
 export function seriesOrder(a: CompanyRow, b: CompanyRow): number {

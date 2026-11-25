@@ -105,7 +105,7 @@ export function isMnaTermsView(value: unknown): value is MnaTermsView {
 }
 
 /** Cash or shares per target share: what a spread prices. */
-export function hasPerShareTerms(terms: MnaTerms): boolean {
+function hasPerShareTerms(terms: MnaTerms): boolean {
   return terms.cashPerShare != null || terms.exchangeRatio != null;
 }
 
