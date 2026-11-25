@@ -24,7 +24,7 @@ const FOOTER_MARGIN = 6;
 const COLUMNS: DataTableColumn[] = [
   { id: "symbol", label: "Symbol", width: 8, align: "left" },
   { id: "iv30", label: "IV30", width: 7, align: "right" },
-  { id: "date", label: "As of", width: 11, align: "right" },
+  { id: "date", label: "As of", width: 12, align: "right" },
   { id: "spot", label: "Spot", width: 9, align: "right" },
   { id: "rank", label: "IVR", width: 5, align: "right" },
   { id: "percentile", label: "IVP", width: 5, align: "right" },
@@ -34,7 +34,7 @@ const COLUMNS: DataTableColumn[] = [
   { id: "termSlope", label: "30-90", width: 7, align: "right" },
   { id: "riskReversal", label: "25D RR", width: 9, align: "right" },
   { id: "riskReversalPercentile", label: "RR pctl", width: 8, align: "right" },
-  { id: "skewDate", label: "RR as of", width: 11, align: "right" },
+  { id: "skewDate", label: "RR as of", width: 12, align: "right" },
   { id: "hv", label: `HV${HV_WINDOW}`, width: 7, align: "right" },
   { id: "hvDate", label: "HV as of", width: 9, align: "right" },
   { id: "ivHv", label: "IV/HV", width: 6, align: "right" },
@@ -91,7 +91,7 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
   // A date every row shares moves to the footer; a column no row fills, or whose dates agree, is left out.
   const hasSkew = useMemo(() => rows.some((row) => row.riskReversal != null), [rows]);
   // A close solved from quote midpoints names itself, which a date alone has no room for.
-  const dateWidth = useMemo(() => rows.some((row) => !row.stale && readingSource(row.method, row.basis) === "close mid") ? 15 : 11, [rows]);
+  const dateWidth = useMemo(() => rows.some((row) => !row.stale && readingSource(row.method, row.basis) === "close mid") ? 16 : 12, [rows]);
   const columns = useMemo(() => COLUMNS.filter((column) => {
     switch (column.id) {
       case "date": return !dates.reading;
@@ -131,7 +131,7 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
       case "spot": return { text: formatSpot(row.spot), color: colors.textDim };
       case "date": return { text: row.date ? readingLabel(row.date, row.method, true, { basis: row.basis, stale: row.stale })
         : row.status === "queued" || row.status === "backfilling" ? row.status : row.warning ? "not collected" : MISSING_VALUE,
-        color: row.stale ? colors.warning : colors.textDim };
+        ...(row.date ? { value: row.date } : {}), color: row.stale ? colors.warning : colors.textDim };
       case "rank": return { text: formatRank(row.rank) };
       case "percentile": return { text: formatRank(row.percentile) };
       case "verdict": return { text: verdictLabel(row.verdict), color: row.verdict === "rich" ? colors.negative : row.verdict === "cheap" ? colors.positive : colors.textDim };
@@ -140,9 +140,9 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
       case "termSlope": return { text: formatPoints(row.termSlope), color: row.termSlope != null && row.termSlope > 0 ? colors.negative : colors.text };
       case "riskReversal": return { text: formatPoints(row.riskReversal) };
       case "riskReversalPercentile": return { text: formatRank(row.riskReversalPercentile) };
-      case "skewDate": return { text: row.skewDate ? readingLabel(row.skewDate, row.skewMethod, true) : MISSING_VALUE, color: colors.textDim };
+      case "skewDate": return { text: row.skewDate ? readingLabel(row.skewDate, row.skewMethod, true) : MISSING_VALUE, ...(row.skewDate ? { value: row.skewDate } : {}), color: colors.textDim };
       case "hv": return { text: hv.has(row.symbol) ? formatVol(row.hv) : "...", color: colors.positive };
-      case "hvDate": return { text: row.hvDate ? shortDate(row.hvDate) : MISSING_VALUE, color: colors.textDim };
+      case "hvDate": return { text: row.hvDate ? shortDate(row.hvDate) : MISSING_VALUE, ...(row.hvDate ? { value: row.hvDate } : {}), color: colors.textDim };
       case "ivHv": return { text: row.ivHv == null ? MISSING_VALUE : row.ivHv.toFixed(2) };
       default: return { text: "" };
     }

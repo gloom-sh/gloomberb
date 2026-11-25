@@ -1,3 +1,4 @@
+import { formatDay } from "../../../utils/day-format";
 import { MISSING_VALUE } from "../../../utils/format";
 import type { DataTableColumn } from "../../../components";
 import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
@@ -7,7 +8,7 @@ import type { HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneDefinition 
 import { withoutQuietColumns } from "../shared/research-cells";
 import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 import { companyQuery, fetchCompanyData, type CompanyDataset, type CompanyMode } from "./client";
-import { allGuidance, allObservations, companyCellText, companyColumns, companyEmptyState, companyPreviewNote, guidanceIssueNote, KPI_COVERAGE_NOTE, kpiFreeLimitNote, QUIET_COLUMNS,
+import { allGuidance, allObservations, companyCellDay, companyCellText, companyColumns, companyEmptyState, companyPreviewNote, guidanceIssueNote, KPI_COVERAGE_NOTE, kpiFreeLimitNote, QUIET_COLUMNS,
   type CompanyRow } from "./model";
 import type { KpiPeriod } from "../../../api-client/company-kpis";
 import type { KpiObservation } from "../../../api-client/company-kpis";
@@ -32,10 +33,13 @@ function reportColumns(mode: CompanyMode, history: boolean, revisions: boolean, 
     ...(revisions ? [{ id: "revision", label: "Revision", width: 12, align: "left" as const }] : [])];
   return [...withoutQuietColumns(columns, rows, (row, id) => companyCellText(row, id, observations), QUIET_COLUMNS).map((column): HeadlessPaneColumn => ({
     key: column.id === "value" && mode === "guidance" ? "rangeText" : ROW_KEYS[column.id] ?? column.id, header: column.label, align: column.align === "right" ? "right" : "left",
-    format: (_value, row) => mode === "guidance" && column.id === "value" && typeof row.rangeText === "string" && /plus or minus|±/i.test(row.rangeText)
+    // A dated cell exports its ISO day; the text writes it as the pane does.
+    ...(column.id === "issued" || column.id === "published" ? { textFormat: (_value: unknown, row: Record<string, unknown>) => companyCellText(row as unknown as CompanyRow, column.id, observations) } : {}),
+    format: (_value, row) => column.id === "issued" || column.id === "published" ? companyCellDay(row as unknown as CompanyRow, column.id) ?? MISSING_VALUE
+      : mode === "guidance" && column.id === "value" && typeof row.rangeText === "string" && /plus or minus|±/i.test(row.rangeText)
       ? `${row.rangeText}${row.currency ? ` ${row.currency}` : ""}`
       : companyCellText(row as unknown as CompanyRow, column.id, observations),
-  })), { key: "asOf", header: "As of", format: (value) => typeof value === "string" ? value.slice(0, 10) : MISSING_VALUE }];
+  })), { key: "asOf", header: "As of", format: (value) => typeof value === "string" ? value.slice(0, 10) : MISSING_VALUE, textFormat: (value) => typeof value === "string" ? formatDay(value) : MISSING_VALUE }];
 }
 
 const PERIOD_KINDS: readonly KpiPeriod["kind"][] = ["quarter", "half", "ytd", "year", "instant", "other"];

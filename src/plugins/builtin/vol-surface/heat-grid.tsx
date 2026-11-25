@@ -1,3 +1,4 @@
+import { formatDay } from "../../../utils/day-format";
 import { MISSING_VALUE } from "../../../utils/format";
 import { DataTableView, Notice, type DataTableColumn } from "../../../components";
 import { turbo } from "../../../components/chart/surface3d/model";
@@ -96,7 +97,7 @@ export function SurfaceHeatGrid({ grid, range, ticks, selected, onSelect, width,
       onActivate={(row) => onSelect({ tenorIndex: row.index, moneynessIndex: selected?.moneynessIndex ?? 0 })} freezeFirstColumn
       sortColumnId={null} sortDirection="asc"
       renderCell={(row, column) => {
-        if (column.id === "tenor") return { text: row.label, color: colors.textDim };
+        if (column.id === "tenor") return { text: formatDay(row.label), color: colors.textDim };
         const index = Number(column.id), value = grid.volatilities[row.index]?.[index] ?? null;
         const chosen = selected?.tenorIndex === row.index && selected.moneynessIndex === index;
         const onMouseDown = () => onSelect({ tenorIndex: row.index, moneynessIndex: index });

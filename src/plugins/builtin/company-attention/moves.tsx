@@ -1,3 +1,4 @@
+import { dayCell } from "../../../components/ui/day-cell";
 import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useMemo, useRef, type ReactNode } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
@@ -156,6 +157,7 @@ export function HiringMovesView({ symbol, width, height, focused, accessKey, com
           return { text: movesNumber(column.id, value), value, color: MOVES_SIGNED_COLUMNS.has(column.id) ? signedColor(value, colors) : column.id === "mean" ? colors.textDim : colors.text };
         }
         if (column.id === "location") return withCountryFlag({ text: value, value, color: colors.text }, String(row.values.country ?? ""), desktop);
+        if ((column.id === "date" || column.id === "week") && typeof value === "string") return { ...dayCell(value), color: colors.textDim };
         return { text: value, value, color: column.id === "name" || column.id === "title" ? colors.textBright : column.id === "date" || column.id === "week" || column.id === "excluded" ? colors.textDim : colors.text };
       }} selectedTextOverridesCellColor showHorizontalScrollbar resetScrollKey={`${scope}:${sectionId}:${filter}`}
       emptyStateTitle={section?.empty ?? ""} bodyAfter={lockedRows && desktop ? <LockedOverlay rows={lockedRows} text={upgradeText} onPress={upgrade} role="attention-upgrade" /> : undefined} />}

@@ -1,3 +1,4 @@
+import { formatDay } from "../../../utils/day-format";
 import { MISSING_VALUE } from "../../../utils/format";
 import type { PowerAggregate, PowerBoard, PowerCoverage, PowerExposure, PowerHistoryPoint, PowerProject, PowerRates } from "../../../api-client/power";
 import { staticSeries, type DataTableColumn } from "../../../components";
@@ -109,6 +110,14 @@ export function historySeries(points: readonly PowerHistoryPoint[], selected: Po
   return [{ ...staticSeries(rows.map((p) => ({ date: historyDate(p), observedAt: new Date(p.observedAt), value: p.unknownCapacity ? null : p.capacityMw })),
     { id: historyKey(selected), label: `${powerRegion(selected.region, selected.sourceId)} ${titleCase(selected.fuel)} ${titleCase(selected.status)}`, color, style: "step", calendarSpaced: true }),
     unit: "MW", unitGroup: "power-mw", interpolation: "step-after" as const }];
+}
+/** Columns that hold a day or a UTC stamp, written day first. */
+export const POWER_DATE_COLUMNS: ReadonlySet<string> = new Set(["proposedDate", "asOf", "observedAt", "date"]);
+const POWER_STAMP = /^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2})(?::\d{2}(?:\.\d+)?)?Z?)?$/;
+/** A day or a UTC stamp as the tables write it, day first (`25 Nov 2026 13:36`); a period or other text as given. */
+export function powerStampText(value: string): string {
+  const match = POWER_STAMP.exec(value);
+  return match ? `${formatDay(match[1])}${match[2] ? ` ${match[2]}` : ""}` : value;
 }
 const col = (id: string, label: string, width: number, numeric = false, flexGrow?: number): DataTableColumn => ({ id, label, width, align: numeric ? "right" : "left", ...(flexGrow ? { flexGrow } : {}) });
 export const PROJECT_COLUMNS = [col("name", "Project / area", 30, false, 1), col("capacityMw", "MW", 11, true), col("region", "Region", 16), col("fuel", "Fuel", 10), col("status", "Status", 11), col("scope", "Record scope", 18), col("ticker", "Ticker", 13), col("developer", "Developer / utility", 26), col("location", "Location", 24), col("proposedDate", "Proposed service", 17), col("asOf", "As of", 12)];

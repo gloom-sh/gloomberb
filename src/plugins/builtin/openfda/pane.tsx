@@ -1,3 +1,4 @@
+import { dayCell, formatDay } from "../../../components/ui/day-cell";
 import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import {
@@ -76,7 +77,7 @@ const MAX_FILL_PAGES = 4;
 /** Products FDA's product data does not cover (most vaccines) have no labeler on any row. */
 const QUIET_COLUMNS = { labeler: [MISSING_VALUE] } as const;
 
-const formatDate = (date: Date | null): string => (date ? date.toISOString().slice(0, 10) : MISSING_VALUE);
+const formatDate = (date: Date | null): string => (date ? formatDay(date) : MISSING_VALUE);
 
 const capitalize = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
 
@@ -122,7 +123,7 @@ function cellFor(record: OpenFdaRecord, column: ColumnId, colors: ThemeColors, s
   const toned = (text: string | null): DataTableCell => (text
     ? { text, color: toneColor(recordTone(column, text), colors) }
     : missing);
-  if (column === "date") return { text: formatDate(record.date), value: record.date, color: colors.textMuted };
+  if (column === "date") return { ...dayCell(record.date), color: colors.textMuted };
   switch (record.dataset) {
     case "drug":
       if (column === "product") return { text: isSearchedDrug(record, searched) ? "" : record.product, value: record.product, color: colors.textBright };

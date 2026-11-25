@@ -1,3 +1,4 @@
+import { formatDay } from "../../../utils/day-format";
 import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { splitDelayedStatus, DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGridRows, usePaneFooter, usePaneMenuItems,
@@ -50,7 +51,7 @@ import { VolatilitySurface } from "./surface";
 import { SmileChart, TermChart } from "./charts";
 import { loadSurfaceEvents, releaseSearchDay, surfaceEventReadings } from "./events";
 import { surfaceCoordinateLabel } from "./headless";
-import { expiryLabel, formatIv, formatPrice, formatVolPoints, HIDDEN_SLOPE_TEXT, HIDDEN_YIELD_TEXT, selectSurfaceExpiry, surfaceForwardRow,
+import { expiryLabel, expiryStamp, formatIv, formatPrice, formatVolPoints, HIDDEN_SLOPE_TEXT, HIDDEN_YIELD_TEXT, selectSurfaceExpiry, surfaceForwardRow,
   surfaceSkewRow, surfaceSpotBasisLabel } from "./tables";
 import { findListedExpiry, unlistedExpiryText } from "../../../utils/option-expiry";
 import { dvolCurrency, dvolGap, loadDvol, type DvolPayload } from "../volatility/dvol";
@@ -530,10 +531,10 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   ], [expiryCount, surface3d, !!denseGrid?.moneyness.length]);
   const exportMetadata = () => [["method", ...(snapshot?.stored ? ["recomputed", "mid", `stored close ${snapshot.stored.sessionDate}`, snapshot.stored.capturedAt] : [ivSource, priceSide])], ["filters", JSON.stringify(snapshot?.settings)],
     ["underlying", snapshot?.symbol, snapshot?.spot], ["rate source", "Treasury", snapshot?.rateAsOf],
-    ["warnings", ...notices], ...(snapshot?.expiries.map((expiry) => ["expiry", expiryLabel(expiry.expiration), expiry.asOf,
+    ["warnings", ...notices], ...(snapshot?.expiries.map((expiry) => ["expiry", expiryStamp(expiry.expiration), expiry.asOf,
       expiry.fit?.method, expiry.fit?.residual, expiry.rateMethod, JSON.stringify(expiry.filterCounts)]) ?? [])];
   // Sized to the labels and IVs they hold (the table keeps each header whole), so a narrow pane shows more of the smile.
-  const tenorLabel = (row: SurfaceGridRow) => `${row.label}${row.extrapolated ? " E" : row.interpolated ? " I" : ""}`;
+  const tenorLabel = (row: SurfaceGridRow) => `${formatDay(row.label)}${row.extrapolated ? " E" : row.interpolated ? " I" : ""}`;
   const cellWidth = Math.max(1, ...(grid?.rows ?? []).flatMap((row) => row.cells.map((cell) => formatIv(cell.volatility).length)));
   const columns: DataTableColumn[] = [{ id: "tenor", label: "Expiry / tenor", align: "left",
     width: Math.max(1, ...(grid?.rows ?? []).map((row) => tenorLabel(row).length)) },
@@ -669,7 +670,7 @@ function ExpiryTable({ snapshot, selected, onSelect, forwards, width, height, fo
   const cellText = (entry: SurfaceExpiry, id: string) => {
     const raw = value(entry, id);
     return id === "expiry" ? expiryLabel(entry.expiration)
-      : raw == null ? missing(entry, id) : typeof raw === "string" ? raw : id === integerColumn ? String(raw)
+      : raw == null ? missing(entry, id) : typeof raw === "string" ? formatDay(raw) : id === integerColumn ? String(raw)
         : forwards ? (id === "0" ? formatModelSpotPrice(raw) : id === "1" && raw > 0 ? `+${formatPrice(raw)}` : formatPrice(raw)) : formatVolPoints(raw);
   };
   // Each column as wide as its widest cell (the table keeps its header and sort arrow whole), so a narrow pane

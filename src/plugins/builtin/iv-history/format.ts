@@ -1,3 +1,4 @@
+import { formatDay } from "../../../utils/day-format";
 import { MISSING_VALUE } from "../../../utils/format";
 import type { IvCloseBasis, IvMethod } from "./client";
 import { readingSource, type IvStatRow, type IvStatUnit, type RichCheap, type RichCheapDates } from "./model";
@@ -39,7 +40,7 @@ export const formatPoints = (value: number | null | undefined) =>
   value == null || !Number.isFinite(value) ? MISSING_VALUE : `${value >= 0 ? "+" : ""}${(value * 100).toFixed(1)}`;
 export const formatRank = (value: number | null | undefined, suffix = "") =>
   value == null || !Number.isFinite(value) ? MISSING_VALUE : `${Math.round(value)}${suffix ? ` ${suffix}` : ""}`;
-export const shortDate = (date: string | null | undefined) => date ? date.slice(5) : MISSING_VALUE;
+export const shortDate = (date: string | null | undefined) => date ? formatDay(date, "no-year") : MISSING_VALUE;
 export const verdictLabel = (verdict: RichCheap) => verdict === "rich" ? "Rich" : verdict === "cheap" ? "Cheap" : verdict === "fair" ? "Fair" : MISSING_VALUE;
 
 /** A statistic in its own unit: volatility %, volatility points, or a plain ratio. */
@@ -57,14 +58,14 @@ export function statSource(row: Pick<IvStatRow, "method"> & { basis?: IvCloseBas
   return row.method === "prices" ? "closes" : row.method ? readingSource(row.method, row.basis) : "";
 }
 /**
- * "2026-10-09 quote": the session a reading belongs to and how it was taken.
- * A stale reading says so instead, "2026-05-18 close, stale", and in the short
- * form "05-18 stale".
+ * "09 Oct 2026 quote": the session a reading belongs to and how it was taken.
+ * A stale reading says so instead, "18 May 2026 close, stale", and in the short
+ * form "18 May stale".
  */
 export function readingLabel(date: string, method: IvMethod | null | undefined, short = false,
   extra: { basis?: IvCloseBasis | null; stale?: boolean } = {}): string {
-  if (extra.stale) return short ? `${shortDate(date)} stale` : `${date} ${readingSource(method, extra.basis)}, stale`;
-  return `${short ? shortDate(date) : date} ${readingSource(method, extra.basis)}`;
+  if (extra.stale) return short ? `${shortDate(date)} stale` : `${formatDay(date)} ${readingSource(method, extra.basis)}, stale`;
+  return `${short ? shortDate(date) : formatDay(date)} ${readingSource(method, extra.basis)}`;
 }
 /**
  * The dates every row agrees on, said once: the reading's, and the trade close
@@ -74,5 +75,5 @@ export function readingLabel(date: string, method: IvMethod | null | undefined, 
 export function sharedDates({ reading, rank }: Pick<RichCheapDates, "reading" | "rank">, short = false): string[] {
   if (reading?.method === "trade-close" && reading.date === rank) return [readingLabel(reading.date, reading.method, short, { basis: reading.basis })];
   return [reading && `IV30 ${readingLabel(reading.date, reading.method, short, { basis: reading.basis })}`,
-    rank && (short ? `IVR/IVP ${shortDate(rank)} close` : `IVR/IVP vs 52 weeks to ${rank} close`)].filter((part): part is string => !!part);
+    rank && (short ? `IVR/IVP ${shortDate(rank)} close` : `IVR/IVP vs 52 weeks to ${formatDay(rank)} close`)].filter((part): part is string => !!part);
 }

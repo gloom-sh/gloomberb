@@ -1,3 +1,4 @@
+import { formatDay } from "../../../utils/day-format";
 import type { ExposureExtensionObservation, ExposurePayload } from "../../../api-client/exposure";
 import { formatCompact, formatNumber } from "../../../utils/format";
 import type { ExposureRow } from "./model";
@@ -27,7 +28,7 @@ const NAMED_DIMENSIONS = ["segment", "product", "geography", "region", "cohort"]
 /** What a figure covers, in words, the segment, product or geography it names first: Americas · geographic segment. */
 export function driverScope(row: ExposureExtensionObservation): string {
   const rank = (key: string) => NAMED_DIMENSIONS.includes(key) ? 0 : key === "comparison" ? 2 : 1;
-  return Object.entries(row.dimensions ?? {}).sort(([a], [b]) => rank(a) - rank(b)).map(([, value]) => value.replaceAll("_", " ")).join(" · ");
+  return Object.entries(row.dimensions ?? {}).sort(([a], [b]) => rank(a) - rank(b)).map(([, value]) => /^\d{4}-\d{2}-\d{2}$/.test(value) ? formatDay(value) : value.replaceAll("_", " ")).join(" · ");
 }
 export function driverRows(data: ExposurePayload): ExposureRow[] {
   return data.holdings.flatMap(holding => (holding.extensions ?? []).map(driver => ({

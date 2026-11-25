@@ -1,3 +1,4 @@
+import { formatDayTime } from "../../../../utils/day-format";
 import { useCallback, useMemo } from "react";
 import { TextAttributes } from "../../../../ui";
 import {
@@ -59,7 +60,7 @@ type HistoryColumn = DataTableColumn & { id: HistoryColumnId };
 export type HistoricalPriceRow = {
   key: string;
   point: ReturnType<typeof pricePointValues>;
-  /** The bar's date as the table reads it: `2026-10 MTD` for a month still running, `2026-10-16 DTD` for today's session. */
+  /** The bar's date as the table reads it: `2026-10 MTD` for a month still running, `16 Oct 2026 DTD` for today's session. */
   date: string;
   /** What a CSV export writes for the date: the bar's own date, whatever the table says of its period. */
   exportDate: string;
@@ -182,7 +183,7 @@ function buildHistoricalPriceRows(points: PricePoint[], venue: string | undefine
     return {
       key: `${date.toISOString()}:${sourceIndex}`,
       point,
-      date: timed ? shown : historyBarDate(shown, size, partial),
+      date: timed ? formatDayTime(date) : historyBarDate(shown, size, partial),
       exportDate: shown,
       timed,
       time: date.getTime(),
@@ -213,7 +214,7 @@ const HISTORY_NUMERIC_IDS = ["open", "high", "low", "close", "change", "changePe
  */
 function buildHistoryColumns(width: number, intraday: boolean, size: HistoryBarSize, newestDate: string, closeWidth = 0): HistoryColumn[] {
   // A month reads as `2026-10`; the newest bar, when its week or month runs on, adds `MTD` or `WTD`.
-  const dateWidth = Math.max(intraday ? 16 : size === "1mo" ? 7 : 10, newestDate.length);
+  const dateWidth = Math.max(intraday ? 17 : size === "1mo" ? 7 : 11, newestDate.length);
   const numeric: number[] = HISTORY_NUMERIC_IDS.map((id) => id === "changePercent" ? HISTORY_PERCENT_WIDTH
     : id === "close" ? Math.max(HISTORY_PRICE_WIDTH, closeWidth) : HISTORY_PRICE_WIDTH);
   // One gap per column plus the table's inset on both sides.

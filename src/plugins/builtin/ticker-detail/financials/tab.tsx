@@ -1,3 +1,4 @@
+import { formatDay } from "../../../../utils/day-format";
 import { Box, Text, useUiCapabilities } from "../../../../ui";
 import { TextAttributes, type ScrollBoxRenderable } from "../../../../ui";
 import { useShortcut } from "../../../../react/input";
@@ -387,12 +388,12 @@ export function ResolvedFinancialsTab({
   // line of the statement counts, a collapsed group's too, so opening or closing one leaves the periods where they
   // are.
   const periodWidth = useMemo(() => {
-    if (ratioTab) return Math.max(FINANCIAL_COL_W, financialPeriodWidth([], periodHeaders, periodEnds));
+    if (ratioTab) return Math.max(FINANCIAL_COL_W, financialPeriodWidth([], periodHeaders, periodEnds.map((end) => end && formatDay(end))));
     const everyRow = shareFinancialUnit(buildFinancialRows(subTab.rows, displayStatements, NO_COLLAPSED_GROUPS)).rows;
     const values = [...everyRow, ...rows].flatMap((row) => displayStatements.map((statement) => (
       formatFinancialCellValue(row, statement)
     )));
-    return financialPeriodWidth(values, periodHeaders, periodEnds);
+    return financialPeriodWidth(values, periodHeaders, periodEnds.map((end) => end && formatDay(end)));
   }, [displayStatements, periodEnds, periodHeaders, ratioTab, rows, subTab.rows]);
   const tableRows = useMemo<StatementTableRow[]>(() => datedPeriods ? [PERIOD_END_ROW, ...rows] : rows, [datedPeriods, rows]);
   const columns = useMemo<FinancialTableColumn[]>(() => [

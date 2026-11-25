@@ -28,6 +28,16 @@ export function formatDay(value: unknown, form: DayCellForm = "full"): string {
   return form === "no-year" ? formatShortDate(day, { year: false, day: "2-digit", utc: true }) : formatFilingDate(day);
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const DAY_TEXT = /^(\d{2}) ([A-Z][a-z]{2}) (\d{4})$/;
+
+/** The ISO day `formatDay` wrote (`21 Aug 2026` is `2026-08-21`), so an export of a drawn day keeps the day; null for other text. */
+export function dayFromText(text: string): string | null {
+  const match = DAY_TEXT.exec(text.trim());
+  const month = match ? MONTHS.indexOf(match[2]!) : -1;
+  return match && month >= 0 ? `${match[3]}-${String(month + 1).padStart(2, "0")}-${match[1]}` : null;
+}
+
 const dayTimeFormatters = new Map<string, Intl.DateTimeFormat>();
 
 /**

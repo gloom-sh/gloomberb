@@ -17,6 +17,7 @@ import {
   type DisplayNumber,
 } from "../utils/display-number";
 import { isEpochMilliseconds, parseReportTime } from "../utils/utc-time";
+import { dayFromText } from "../utils/day-format";
 import type { ReportFreshness } from "./pane-functions/freshness";
 import {
   EXPORT_DATING_COLUMNS,
@@ -250,8 +251,10 @@ function atColumnScale(cells: Cell[]): Cell[] {
 
 function timeCell(instant: number, dateOnly: boolean, shown: string | null, raw?: string): Cell {
   if (!Number.isFinite(instant)) return shown ? { kind: "textual", text: shown } : BLANK;
-  // A date the text drew from an instant (a monthly bar) stays the date it shows.
+  // A date the text drew from an instant (a monthly bar) stays the date it shows, day first as tables write it too.
   if (shown != null && DATE_ONLY.test(shown)) return time(shown);
+  const day = shown == null ? null : dayFromText(shown);
+  if (day) return time(day);
   if (raw != null && shown == null) return time(raw);
   return time(dateOnly ? new Date(instant).toISOString().slice(0, 10) : isoInstant(instant));
 }

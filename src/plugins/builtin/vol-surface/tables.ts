@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { formatDay } from "../../../utils/day-format";
 import { findListedExpiry, settlementStampTime } from "../../../utils/option-expiry";
 import { buildSurfaceGrid, evaluateSurfaceSmile, type SurfaceExpiry, type SurfaceSnapshot } from "./model";
 import { modelSpotStamp } from "../options/model-spot";
@@ -7,13 +8,20 @@ export const formatIv = (value: number | null | undefined) => value == null || !
 export const formatPrice = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? MISSING_VALUE : value.toFixed(2);
 /**
  * `2027-01-15` for an expiry dated by its day; `2026-10-30 08:00 UTC` for one
- * stamped with the time it settles (Deribit's, at 08:00 UTC).
+ * stamped with the time it settles (Deribit's, at 08:00 UTC): what an export writes.
  */
-export const expiryLabel = (expiration: number) => {
+export const expiryStamp = (expiration: number) => {
   const date = new Date(expiration * 1000).toISOString().slice(0, 10);
   const time = settlementStampTime(expiration);
   return time ? `${date} ${time}` : date;
 };
+/** An expiry stamp (`expiryStamp`) as tables and text write it, its day first: `30 Oct 2026 08:00 UTC`. */
+export const expiryStampText = (stamp: string) => {
+  const [day, ...time] = stamp.split(" ");
+  return [formatDay(day), ...time].join(" ");
+};
+/** An expiry as the pane and its text write it: `15 Jan 2027`, `30 Oct 2026 08:00 UTC`. */
+export const expiryLabel = (expiration: number) => expiryStampText(expiryStamp(expiration));
 
 /**
  * What a surface that drew some expiries leaves out, in the words a report's

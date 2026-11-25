@@ -128,11 +128,11 @@ function longShareNote(rows: readonly PerpBoardRow[]): string | null {
   const buckets = new Map<string, Set<string>>();
   for (const row of rows) {
     const bucket = row.longShortRatio?.bucketAt;
-    if (bucket) buckets.set(observed(bucket), (buckets.get(observed(bucket)) ?? new Set()).add(venueName(row.venue)));
+    if (bucket) buckets.set(bucket.slice(0, 16), (buckets.get(bucket.slice(0, 16)) ?? new Set()).add(venueName(row.venue)));
   }
   if (!buckets.size) return null;
-  const when = buckets.size === 1 ? `from ${[...buckets.keys()][0]} UTC`
-    : `(${[...buckets].sort(([a], [b]) => a.localeCompare(b)).map(([bucket, venues]) => `${[...venues].sort().join(", ")} ${bucket}`).join("; ")} UTC)`;
+  const when = buckets.size === 1 ? `from ${observed([...buckets.keys()][0])} UTC`
+    : `(${[...buckets].sort(([a], [b]) => a.localeCompare(b)).map(([bucket, venues]) => `${[...venues].sort().join(", ")} ${observed(bucket)}`).join("; ")} UTC)`;
   return `Long % is each venue's hourly account bucket ${when}, not its Observed time.`;
 }
 // The APR % column is the current rate carried forward a year at each market's own interval, so a table that shows it says how;

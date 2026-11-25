@@ -1,3 +1,4 @@
+import { formatDay } from "../../../utils/day-format";
 import type { GuidancePayload, KpiGuidance, KpiObservation, KpiSeries, KpiUnit, KpisPayload } from "../../../api-client/company-kpis";
 import type { DataTableColumn } from "../../../components";
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
@@ -275,6 +276,11 @@ export function guidanceSeries(rows: KpiGuidance[], selected: KpiGuidance | unde
 }
 /** Columns that say nothing while every row is the company's consolidated, as-reported figure. */
 export const QUIET_COLUMNS = { basis: ["Reported"], scope: ["Consolidated"] };
+/** The ISO day a dated cell (Issued, Published) exports, which its text writes day first; null for any other cell. */
+export function companyCellDay(row: CompanyRow, column: string): string | null {
+  if (column === "issued") return isGuidance(row) ? row.issuedDate : null;
+  return column === "published" ? row.evidence[0]?.publishedAt.slice(0, 10) ?? null : null;
+}
 /** The text of a table cell as the pane draws it; the report prints the same words. */
 export function companyCellText(row: CompanyRow, column: string, observations: KpiObservation[]): string {
   const guide = isGuidance(row) ? row : null;
@@ -282,8 +288,8 @@ export function companyCellText(row: CompanyRow, column: string, observations: K
   return column === "metric" ? row.metric.name : column === "period" ? fiscalLabel(row) : column === "value" ? `${guide ? rangeText(guide) : observationValue(row as KpiObservation)}${guide?.status === "withdrawn" || guide?.hedge === "qualitative" ? "" : unitSuffix(row)}`
     : column === "unit" ? unitLabel(row)
     : column === "basis" ? basisLabel(row.basis) : column === "scope" ? dimensionLabel(row.dimensions) || "Consolidated"
-    : column === "issued" ? guide?.issuedDate ?? MISSING_VALUE : column === "actual" ? guide?.actual ? `${valueText(row, guide.actual.value)}${unitSuffix(row)}` : MISSING_VALUE
-    : column === "outcome" ? guide ? outcomeLabel(guide) : MISSING_VALUE : column === "published" ? row.evidence[0]!.publishedAt.slice(0, 10)
+    : column === "issued" ? formatDay(guide?.issuedDate) : column === "actual" ? guide?.actual ? `${valueText(row, guide.actual.value)}${unitSuffix(row)}` : MISSING_VALUE
+    : column === "outcome" ? guide ? outcomeLabel(guide) : MISSING_VALUE : column === "published" ? formatDay(row.evidence[0]!.publishedAt)
     : column === "confidence" ? `${Math.round(row.confidence * 100)}%` : column === "revision" ? `${row.revision} ${row.current ? "current" : "superseded"}` : row.evidence[0]!.quote;
 }
 /**
@@ -346,7 +352,7 @@ export function fitCompanyColumns(columns: readonly DataTableColumn[], width: nu
 
 export function guidanceIssueNote(row: KpiGuidance, rows: readonly KpiGuidance[]): string | null {
   const newest = rows.reduce((date, guide) => guide.issuedDate > date ? guide.issuedDate : date, row.issuedDate);
-  return row.issuedDate < newest ? `Issued ${row.issuedDate}; newer outlook ${newest}` : null;
+  return row.issuedDate < newest ? `Issued ${formatDay(row.issuedDate)}; newer outlook ${formatDay(newest)}` : null;
 }
 
 /** Companies to point an empty pane at, one that has data and one for when the pane is for the first. */
