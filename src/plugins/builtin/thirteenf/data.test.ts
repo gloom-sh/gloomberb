@@ -747,6 +747,33 @@ describe("a filing's holdings and the reader's sign-in", () => {
     expect(pages.slice(5)).toEqual([0, 250, 500, 750].map((offset) => ({ signedIn: false, offset })));
   });
 
+  test("an older service's page longer than asked is cut to the page, signed out to the first 1,000 lines, before it is kept or read", async () => {
+    const persistence = new MemoryPluginPersistence();
+    const writes = spyOn(persistence, "setResource");
+    spies.push(writes);
+    attachThirteenFApiPersistence(persistence);
+    // An older service, which reads a filing a page at a time, and answers each page with the rest of the 1,500 lines.
+    spies.push(spyOn(apiClient, "getCloudSec13F").mockImplementation((async (path: string, params: Record<string, unknown>) => {
+      if (path === "/holdings") throw new ApiRequestError("Unknown 13F path /holdings", 404);
+      const offset = Number(params.offset);
+      return holdingRows("filing", offset, Math.max(0, 1_500 - offset));
+    }) as never));
+    const written = () => writes.mock.calls.filter(([, key]) => String(key).startsWith("/form"))
+      .map(([, key, value]) => [Number(new URLSearchParams(String(key).split("?")[1]).get("offset")?.split("#")[0]), (value as unknown[]).length])
+      .sort(([left], [right]) => Number(left) - Number(right));
+    const anonymous = await listThirteenFFormHoldings("1603466", "filing", undefined, {});
+    expect(anonymous).toMatchObject({ complete: false, signedOutLimit: 1_000 });
+    expect(anonymous.rows.map((row) => row.value)).toEqual(Array.from({ length: 1_000 }, (_, index) => index + 1));
+    // Each page is kept as asked, and none past the filing's first 1,000 lines.
+    expect(written()).toEqual([[0, 250], [250, 250], [500, 250], [750, 250]]);
+    // Signed in, each page is cut to the page as well, so the book is each line once, and none of it is written.
+    writes.mockClear();
+    signIn();
+    const signedIn = await listThirteenFFormHoldings("1603466", "filing", undefined, {});
+    expect(signedIn.rows.map((row) => row.value)).toEqual(Array.from({ length: 1_500 }, (_, index) => index + 1));
+    expect(written()).toEqual([]);
+  });
+
   test("a sign-out while the prior quarter loads takes down what was shown, and both quarters are read again signed out", async () => {
     attachThirteenFApiPersistence(new MemoryPluginPersistence());
     signIn();

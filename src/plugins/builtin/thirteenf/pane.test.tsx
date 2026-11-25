@@ -1,4 +1,6 @@
-import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
+import { apiClient } from "../../../api-client";
+import { ApiRequestError } from "../../../api-client/errors";
 import { outage } from "../../../test-support/outage";
 import { act, useReducer } from "react";
 import { createOpenTuiTestHarness, takeSavedTextFile, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
@@ -14,7 +16,7 @@ import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { setSharedRegistryForTests, type PluginRegistry } from "../../registry";
 import { TickerResearchPane } from "../ticker-detail/pane";
 import { TICKER_RESEARCH_BUILTIN_TABS } from "../ticker-detail/research-tabs";
-import { ThirteenFPane } from "./pane";
+import { FundDetailView, ThirteenFPane } from "./pane";
 import { ThirteenFTickerPane } from "./signals-pane";
 import { TestPaneFrame, TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
@@ -52,6 +54,18 @@ function Harness({ marketData = null }: { marketData?: DataProvider | null }) {
         width={96}
         height={18}
       />
+    </TestPaneProvider>
+  );
+}
+
+/** One fund open, as the 13F and Research panes open it. */
+function FundHarness({ marketData }: { marketData: DataProvider }) {
+  const initialState = createInitialState(createDefaultConfig("/tmp/gloomberb-thirteenf-pane-test"));
+  initialState.focusedPaneId = PANE_ID;
+  const [state, dispatch] = useReducer(appReducer, initialState);
+  return (
+    <TestPaneProvider state={state} dispatch={dispatch} paneId={PANE_ID} pluginId="ticker-research" runtime={createTestPluginRuntime({ getMarketData: () => marketData })}>
+      <FundDetailView focused seed={{ cik: "0000000001", name: "Alpha Capital" }} width={96} />
     </TestPaneProvider>
   );
 }
@@ -413,6 +427,55 @@ describe("ThirteenFPane", () => {
     const answered = tui.frame();
     expect(answered).toContain("$200");
     expect(answered).not.toContain("-$880");
+  });
+
+  test("a book read signed out leaves the open fund once the reader signs in, while its replacement is out and after it fails", async () => {
+    // KLAC 10:1 between the quarters: once its corporate actions answer, the book's split-adjusted Est P&L is +$200.
+    const holdings = { "0000000001-26-000001": { value: 1200, ssh_prnamt: 100 }, "0000000001-25-000004": { value: 1000, ssh_prnamt: 10 } };
+    const replacement = Promise.withResolvers<void>();
+    const reads: boolean[] = [];
+    // Synthetic sign-ins: the service answers the signed-out reader's book, and the signed-in read is held, then fails.
+    const spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async (path: string, params: Record<string, unknown>) => {
+      if (path === "/forms") return [
+        { cik: "0000000001", accession_number: "0000000001-26-000001", submission_type: "13F-HR", period_of_report: "2026-03-31", filed_as_of_date: "2026-05-15", company_name: "Alpha Capital", table_value_total: 1200, table_entry_total: 1, is_amendment: false },
+        { cik: "0000000001", accession_number: "0000000001-25-000004", submission_type: "13F-HR", period_of_report: "2025-12-31", filed_as_of_date: "2026-02-14", company_name: "Alpha Capital", table_value_total: 1000, table_entry_total: 1, is_amendment: false },
+      ];
+      if (path !== "/holdings") return [];
+      reads.push(apiClient.isSignedIn());
+      if (apiClient.isSignedIn()) {
+        await replacement.promise;
+        throw new ApiRequestError("Service unavailable", 503);
+      }
+      const accession = String(params.accession_number) as keyof typeof holdings;
+      return { rows: [{ cik: "0000000001", accession_number: accession, name_of_issuer: "KLA Corp", title_of_class: "COM", cusip: "482480100", ticker: "KLAC", ssh_prnamt_type: "SH", ...holdings[accession] }], complete: true };
+    }) as never);
+    const marketData = createTestDataProvider({
+      getCorporateActions: async () => ({ symbol: "KLAC", dividends: [], earnings: [], splits: [{ date: "2026-02-05", fromFactor: 1, toFactor: 10 }] }),
+    });
+    try {
+      await act(async () => { await tui.render(<FundHarness marketData={marketData} />, { width: 100, height: 24 }); });
+      // The whole book, its split factor answered.
+      expect(await tui.waitForFrameToContain("$200")).toContain("KLAC");
+      expect(reads).toEqual([false, false]);
+      await act(async () => { apiClient.setSessionToken("synthetic-13f-reader"); });
+      await renderFrames(4);
+      // Read again signed in, and while that is out the signed-out book and its split figure are not on screen.
+      expect(reads).toEqual([false, false, true, true]);
+      const waiting = tui.frame();
+      expect(waiting).toContain("Loading 13F filing");
+      expect(waiting).not.toContain("KLAC");
+      expect(waiting).not.toContain("$200");
+      // Nor once it fails: the failure is shown, not the book it was to replace.
+      await act(async () => { replacement.resolve(); });
+      await renderFrames(4);
+      const failed = tui.frame();
+      expect(failed).toContain("13F fund unavailable.");
+      expect(failed).not.toContain("KLAC");
+      expect(failed).not.toContain("$200");
+    } finally {
+      spy.mockRestore();
+      apiClient.setSessionToken(null);
+    }
   });
 
   test("filing detail owns refresh requests and backspace returns to filings", async () => {

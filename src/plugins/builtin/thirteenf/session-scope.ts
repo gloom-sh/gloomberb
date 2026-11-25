@@ -13,7 +13,7 @@ function scopeKey(session: HoldingsSession, display: string | null): string {
 }
 
 /** A pane's 13F read: the sign-in it is bound to (loadFundDetail's `session`) and the key what it shows is kept under. */
-export interface ScopedRead {
+interface ScopedRead {
   session: HoldingsSession;
   key: string;
 }
