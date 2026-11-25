@@ -112,6 +112,15 @@ test("Treasury prices read in 32nds, as quote and FUT write them, and contracts 
   expect(curveContractMonth("VX/V6", "2026-10-21")).toBe("Oct 2026");
 });
 
+test("routes curve-only contracts without making a bare security ticker a future", () => {
+  const roots = ["NES", "NNQ", "MBT"];
+  expect(roots.map((root) => normalizeCurveRoot(` ${root.toLowerCase()}=f `))).toEqual(roots);
+  expect(roots.map((root) => curveRootForTicker(`${root}=F`))).toEqual(roots);
+  expect(roots.map(curveRootForTicker)).toEqual([null, null, null]);
+  expect(curveRootForTicker("BTC-USD")).toBe("BTC");
+  expect([curvePrice(7198.5, "NES"), curvePrice(26094.5, "NNQ"), curvePrice(60340, "MBT")]).toEqual(["7198.50", "26094.50", "60340.00"]);
+});
+
 test("CME crypto roots are listed with prices at their tick, and FUT's board keeps its own list", () => {
   expect(CURVE_ROOTS.filter((row) => ["BTC", "ETH", "SOL", "XRP"].includes(row.value)).map((row) => row.label)).toEqual(["BTC Bitcoin", "ETH Ether", "SOL Solana", "XRP"]);
   expect(futuresCurveModule.paneTemplates?.[0]?.shortcut?.argOptions?.().map((row) => row.value)).toEqual(expect.arrayContaining(["BTC", "ETH", "SOL", "XRP"]));
