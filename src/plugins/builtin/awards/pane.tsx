@@ -26,7 +26,7 @@ import { useAwardAlerts } from "./alerts";
 import { AWARDS_UNAVAILABLE, fetchAwards, loadAward, loadAwards, validateAwards } from "./client";
 import { useAwardsEvidence } from "./evidence";
 import { AWARD_TABS, aggregateId, amountWithheld, awardHistorySeries, awardPercent, awardPeriod, awardsAmountNotices, awardsAttributions, awardScope, awardsCoverageNotes, awardsPreviewNote,
-  awardTab, awardTypeLabel, futureAwardDatesNote, money, rankedAggregates, WITHHELD_AMOUNT } from "./model";
+  awardAmountLabel, awardsQueryShared, awardTab, awardTypeLabel, futureAwardDatesNote, money, rankedAggregates, WITHHELD_AMOUNT, type AwardsQueryShared } from "./model";
 import { logFailure } from "../../../utils/log-failure";
 
 type Item = { kind: "award"; row: AwardRow } | { kind: "aggregate"; row: AwardAggregate } | { kind: "leader"; row: AwardCompanyLeader } | { kind: "locked"; id: string }
@@ -63,6 +63,19 @@ const COLUMN = {
 const FEED_COLUMNS: DataTableColumn[] = [COLUMN.date, COLUMN.recipient, COLUMN.ticker, COLUMN.title, COLUMN.agency, COLUMN.currency,
   ...[COLUMN.value, COLUMN.obligated, COLUMN.ceiling].map((column) => ({ ...column, omitWhenEmpty: "visible" as const })),
   COLUMN.country, COLUMN.period, COLUMN.dateBasis];
+/**
+ * The feed's columns, without what every award of the query shares: the ticker
+ * it is filtered to, its one currency, named in the amounts' headers instead,
+ * and its one country. A date basis the whole list shares, all of it loaded,
+ * goes too.
+ */
+function feedColumns(shared: AwardsQueryShared, complete: boolean): DataTableColumn[] {
+  return FEED_COLUMNS.flatMap((column) => {
+    if (column.id === "ticker" && shared.ticker || column.id === "currency" && shared.currency || column.id === "country" && shared.country) return [];
+    if (column.id === "value" || column.id === "obligated" || column.id === "ceiling") return [{ ...column, label: awardAmountLabel(column.label, shared.currency) }];
+    return [column.id === "dateBasis" && complete ? { ...column, omitWhenSame: true } : column];
+  });
+}
 const EVENT_COLUMNS: DataTableColumn[] = [COLUMN.date, COLUMN.recipient, COLUMN.ticker,
   { id: "ratio", label: "% revenue", width: 11, align: "right" }, COLUMN.currency, { ...COLUMN.value, label: "Compared value" },
   { id: "revenue", label: "Annual revenue", width: 14, align: "right" }, { id: "basis", label: "Value basis", width: 13, align: "left" },
@@ -223,7 +236,7 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
     view={tab === "sectors" ? { value: leaderView, options: [{ value: "companies", label: "Companies" }, { value: "sectors", label: "Sectors" }], onChange: setLeaderView } : undefined} />;
   const columns = showLeaders ? LEADER_COLUMNS.filter((column) => column.id !== "scope" && column.id !== "currency")
     : aggregated ? AGG_COLUMNS.filter((column) => column.id !== "scope" && column.id !== "currency").map((column) => column.id === "label" ? { ...column, label: tab === "agencies" ? "Agency" : "Sector" } : column)
-    : tab === "events" ? EVENT_COLUMNS : FEED_COLUMNS;
+    : tab === "events" ? EVENT_COLUMNS : feedColumns(awardsQueryShared(data, filter), !paged.hasMore);
   const maxShare = Math.max(0, ...items.map((item) => item.kind === "aggregate" || item.kind === "leader" ? item.row.sharePercent ?? 0 : 0));
   // A preview's cohorts are the latest of any company, so they never chart as the ticker's.
   const charted = data?.locked ? [] : series;
