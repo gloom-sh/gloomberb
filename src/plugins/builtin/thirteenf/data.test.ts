@@ -358,6 +358,8 @@ test("a filing comes whole in one request, and a page at a time, a few at once, 
   }) as never);
   // Nothing falls through to the public source while Gloom Cloud answers.
   setHttpFetchTransport(async (url) => { throw new Error(`unexpected ${url}`); });
+  // Signed in (a synthetic session), the whole book.
+  apiClient.setSessionToken("synthetic-13f-reader");
   try {
     const detail = await loadFundDetail("1067983", "Fund", undefined, { filingGap: false });
     expect(detail.latestHoldings).toHaveLength(1_234);
@@ -383,7 +385,16 @@ test("a filing comes whole in one request, and a page at a time, a few at once, 
     asked.length = 0;
     await loadFundDetail("1067983", "Fund", undefined, { filingGap: false, forceRefresh: true });
     expect(asked.some((request) => request.path === "/holdings")).toBe(false);
+
+    // Signed out, the pages stop at the first 1,000 lines, as the service's own answer would, and the filing says so.
+    apiClient.setSessionToken(null);
+    asked.length = 0;
+    const anonymous = await loadFundDetail("1067983", "Fund", undefined, { filingGap: false, forceRefresh: true });
+    expect(asked.filter((request) => request.path === "/form").map((page) => page.offset).sort((a, b) => a! - b!)).toEqual([0, 250, 500, 750]);
+    expect(anonymous.latestHoldings).toHaveLength(1_000);
+    expect(anonymous.latestReport).toMatchObject({ complete: false, capped: { loaded: 1_000, entries: 1_234, limit: 1_000 } });
   } finally {
+    apiClient.setSessionToken(null);
     spy.mockRestore();
   }
 });
@@ -459,9 +470,11 @@ test("a large filing shows its first rows, then the whole filing, then the quart
     return { rows: holdingRows("current", 0, 5_000), complete: true };
   }) as never);
   setHttpFetchTransport(async (url) => { throw new Error(`unexpected ${url}`); });
-  const seen: FundDetailData[] = [];
+  const seen: Array<FundDetailData | null> = [];
   let shown!: () => void;
   const firstShown = new Promise<void>((resolve) => { shown = resolve; });
+  // Signed in (a synthetic session): the whole book follows its first rows.
+  apiClient.setSessionToken("synthetic-13f-reader");
   try {
     const loaded = loadFundDetail("1067983", "Fund", undefined, {
       filingGap: false,
@@ -485,6 +498,7 @@ test("a large filing shows its first rows, then the whole filing, then the quart
     expect(detail.latestHoldings).toHaveLength(5_000);
     expect(detail.previousHoldings).toHaveLength(10);
   } finally {
+    apiClient.setSessionToken(null);
     spy.mockRestore();
   }
 });
@@ -692,7 +706,112 @@ describe("a filing's holdings and the reader's sign-in", () => {
     expect((await settle(read())).rows).toHaveLength(3_856);
     expect(sent).toEqual([true, true, false, true]);
   });
+
+  test("a warm signed-in copy that comes back after the reader signed out is not theirs: the filing is read again signed out", async () => {
+    attachThirteenFApiPersistence(new MemoryPluginPersistence());
+    signIn();
+    serve();
+    expect((await settle(read())).rows).toHaveLength(3_856);
+    // The copy answers without asking, but only after the read's await, by when the reader has signed out.
+    const pending = read();
+    signOut();
+    expect(await settle(pending)).toMatchObject({ complete: false, signedOutLimit: 1_000 });
+    expect(sent).toEqual([true, false]);
+  });
+
+  test("a sign-out after a filing's first page came in throws its pages away and reads it again signed out, to its first 1,000 lines", async () => {
+    attachThirteenFApiPersistence(new MemoryPluginPersistence());
+    signIn();
+    const pages: Array<{ signedIn: boolean; offset: number }> = [];
+    let releasePages!: () => void;
+    const gate = new Promise<void>((resolve) => { releasePages = resolve; });
+    spies.push(spyOn(apiClient, "getCloudSec13F").mockImplementation((async (path: string, params: Record<string, unknown>) => {
+      // An older service, which reads a filing a page at a time.
+      if (path === "/holdings") throw new ApiRequestError("Unknown 13F path /holdings", 404);
+      const signedIn = apiClient.isSignedIn();
+      const offset = Number(params.offset);
+      pages.push({ signedIn, offset });
+      if (signedIn && offset > 0) await gate;
+      return holdingRows("filing", offset, Math.max(0, Math.min(Number(params.limit), 1_500 - offset)));
+    }) as never));
+    const pending = listThirteenFFormHoldings("1603466", "filing", undefined, { entries: 1_500 });
+    for (let count = 0; count < 50 && pages.length < 5; count++) await tick();
+    // The first page is in, the next four are out.
+    expect(pages.map((page) => [page.signedIn, page.offset])).toEqual([[true, 0], [true, 250], [true, 500], [true, 750], [true, 1_000]]);
+    signOut();
+    releasePages();
+    const answer = await pending;
+    expect(answer).toMatchObject({ complete: false, signedOutLimit: 1_000 });
+    expect(answer.rows.map((row) => row.value)).toEqual(Array.from({ length: 1_000 }, (_, index) => index + 1));
+    // Read again from its first page, signed out, and no page past the limit asked.
+    expect(pages.slice(5)).toEqual([0, 250, 500, 750].map((offset) => ({ signedIn: false, offset })));
+  });
+
+  test("a sign-out while the prior quarter loads takes down what was shown, and both quarters are read again signed out", async () => {
+    attachThirteenFApiPersistence(new MemoryPluginPersistence());
+    signIn();
+    let releasePrevious!: () => void;
+    const previousGate = new Promise<void>((resolve) => { releasePrevious = resolve; });
+    const filings: Array<[string, boolean]> = [];
+    spies.push(spyOn(apiClient, "getCloudSec13F").mockImplementation((async (path: string, params: Record<string, unknown>) => {
+      if (path === "/forms") return [filedForm("current", "2026-09-30", 3_856), filedForm("previous", "2026-06-30", 3_923)];
+      const signedIn = apiClient.isSignedIn();
+      const accession = String(params.accession_number);
+      filings.push([accession, signedIn]);
+      if (accession === "previous" && signedIn) await previousGate;
+      return signedIn ? { rows: holdingRows(accession, 0, accession === "current" ? 3_856 : 3_923), complete: true }
+        : { rows: holdingRows(accession, 0, 1_000), complete: false, signedOutLimit: 1_000 };
+    }) as never));
+    setHttpFetchTransport(async (url) => { throw new Error(`unexpected ${url}`); });
+    const shown: Array<number | null> = [];
+    const loaded = loadFundDetail("1603466", "Fund", undefined, {
+      filingGap: false, onProgress: (detail) => shown.push(detail ? detail.latestHoldings.length : null),
+    });
+    for (let count = 0; count < 50 && shown.length < 1; count++) await tick();
+    // The latest quarter's whole book is shown while the prior quarter is still out.
+    expect(shown).toEqual([3_856]);
+    signOut();
+    releasePrevious();
+    const detail = await loaded;
+    // What was shown is taken down; every part after it is the signed-out reader's, both quarters cut alike.
+    expect(shown).toEqual([3_856, null, 1_000, 1_000]);
+    expect(filings).toEqual([["current", true], ["previous", true], ["current", false], ["previous", false]]);
+    expect([detail.latestHoldings.length, detail.previousHoldings.length]).toEqual([1_000, 1_000]);
+    expect(detail.latestReport?.capped).toEqual({ loaded: 1_000, entries: 3_856, limit: 1_000 });
+    expect(hasComparable13FQuarter(detail)).toBe(false);
+  });
+
+  test("asked signed out while a session is still resolving, a fuller answer is cut to the anonymous lines before it is shown or kept", async () => {
+    const persistence = new MemoryPluginPersistence();
+    const writes = spyOn(persistence, "setResource");
+    spies.push(writes);
+    attachThirteenFApiPersistence(persistence);
+    // A browser session not resolved yet: its cookie goes out with the request, but no token or user says who is in.
+    apiClient.setCookieSessionMode(true);
+    try {
+      expect(apiClient.isSignedIn()).toBe(false);
+      // The transport answers as it would the signed-in session.
+      const spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async () => ({ rows: holdingRows("filing", 0, 3_856), complete: true })) as never);
+      spies.push(spy);
+      const answer = await read();
+      expect(answer).toMatchObject({ complete: false, signedOutLimit: 1_000 });
+      expect(answer.rows).toHaveLength(1_000);
+      // Only the anonymous lines are written, and the copy answers the next signed-out read as they are.
+      const kept = writes.mock.calls.filter(([, key]) => String(key).startsWith("/holdings"));
+      expect(kept.map(([, , value]) => asRecordRows(value))).toEqual([1_000]);
+      expect((await read()).rows).toHaveLength(1_000);
+      expect(spy.mock.calls).toHaveLength(1);
+    } finally {
+      apiClient.setCookieSessionMode(false);
+    }
+  });
 });
+
+/** How many rows a whole-filing answer holds. */
+function asRecordRows(value: unknown): number {
+  const rows = (value as { rows?: unknown[] } | null)?.rows;
+  return Array.isArray(rows) ? rows.length : -1;
+}
 
 test("a signed-out limit shows the service's own message, and says how long to wait when it sent none", () => {
   const service = new ApiRequestError("Too many 13F reads without signing in: try again in 40 s, or sign in to lift the limit", 429, 39_200);

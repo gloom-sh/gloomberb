@@ -32,6 +32,7 @@ import { ThirteenFCrowdingPane, ThirteenFTickerHoldingsView } from "./signals-pa
 import { PaneFooterScope, savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { useClaimResearchTabKeys } from "../ticker-detail/research-tab-keys";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import {
   DEFAULT_BROWSER_SORT,
   DEFAULT_FILING_POSITION_SORT,
@@ -386,8 +387,9 @@ export function FundDetailView({
     setError(null);
     void loadFundDetail(seed.cik, seed.name, controller.signal, {
       forceRefresh: refresh,
-      // A first load shows the fund as it fills in; a refresh keeps what is on screen until it answers whole.
-      ...(refresh ? {} : { onProgress: (partial: FundDetailData) => { if (abortRef.current === controller) setData(partial); } }),
+      // A first load shows the fund as it fills in; a refresh keeps what is on screen until it answers whole. What it
+      // showed for a sign-in the reader left is taken down (null) while the fund is read again.
+      ...(refresh ? {} : { onProgress: (partial: FundDetailData | null) => { if (abortRef.current === controller) setData(partial); } }),
     })
       .then((nextData) => {
         if (abortRef.current !== controller) return;
@@ -415,13 +417,15 @@ export function FundDetailView({
       });
   }, [seed.cik, seed.name]);
 
+  // Signing in or out reads the fund again: a book read for the sign-in the reader left is not left on screen.
+  const scope = useCloudDisplayScope();
   useEffect(() => {
     load(false);
     return () => {
       abortRef.current?.abort();
       abortRef.current = null;
     };
-  }, [load]);
+  }, [load, scope]);
 
   const holdingRows = useMemo(() => buildFundHoldingRows(data, splitFactors ?? undefined), [data, splitFactors]);
   const visibleHoldingRows = useMemo(() => (

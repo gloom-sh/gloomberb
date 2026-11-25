@@ -1,5 +1,9 @@
 import {
   type Forms13FReadOptions,
+  type HoldingsSession,
+  holdingsSessionCurrent,
+  inHoldingsSession,
+  isSignInChange,
   listThirteenFFormHoldings,
   listThirteenFFormHoldingsPage,
   listThirteenFForms,
@@ -548,10 +552,21 @@ export async function loadFundPerformance(
   signal?: AbortSignal,
   options: Pick<Forms13FReadOptions, "forceRefresh" | "onSavedCopy"> & { splitFactor?: SplitFactorLookup; splitBudgetMs?: number } = {},
 ): Promise<FundPerformanceResult> {
+  // The estimate is drawn from the fund's holdings: both are the one sign-in's, read again whole if it changes.
+  return inHoldingsSession((session) => fundPerformanceIn(session, cik, fallbackName, signal, options), signal);
+}
+
+async function fundPerformanceIn(
+  session: HoldingsSession,
+  cik: string,
+  fallbackName: string,
+  signal: AbortSignal | undefined,
+  options: Pick<Forms13FReadOptions, "forceRefresh" | "onSavedCopy"> & { splitFactor?: SplitFactorLookup; splitBudgetMs?: number },
+): Promise<FundPerformanceResult> {
   const warnings: string[] = [];
   const saved = savedCopies(options.onSavedCopy);
   const apiOptions = { forceRefresh: options.forceRefresh, onSavedCopy: saved.note, onWarning: (warning: string) => warnings.push(warning) };
-  const detail = await loadFundDetail(cik, fallbackName, signal, options);
+  const detail = await fundDetailIn(session, cik, fallbackName, signal, options);
   const period = detail.latestForm?.periodOfReport;
   const quarter = period ? periodToQuarter(period) : null;
   const quarters = quarter ? priorQuarters(quarter) : [];
@@ -620,7 +635,8 @@ export async function prefetchFundDetail(cik: string, signal: AbortSignal): Prom
   const filings = buildPeriodReports(forms).slice(0, 2).flatMap((report) => report.filings);
   const rows = filings.reduce((sum, form) => sum + (form.tableEntryTotal ?? Infinity), 0);
   if (!filings.length || rows > PREFETCH_HOLDINGS_MAX) return;
-  await Promise.all(filings.map((form) => listThirteenFFormHoldings(cik, form.accessionNumber, signal, { entries: form.tableEntryTotal })));
+  await inHoldingsSession((session) => Promise.all(filings.map((form) => (
+    listThirteenFFormHoldings(cik, form.accessionNumber, signal, { entries: form.tableEntryTotal, session })))), signal);
 }
 
 /**
@@ -648,22 +664,38 @@ export function createFundPrefetcher(prefetch: (cik: string, signal: AbortSignal
   };
 }
 
+type FundDetailOptions = Pick<Forms13FReadOptions, "forceRefresh" | "onSavedCopy"> & {
+  /** `filingGap: false` skips EDGAR's filing list, for a load that never shows it (an overlap). */
+  filingGap?: boolean;
+  /** The fund as it fills in; null when what it showed is thrown away, read for a sign-in the reader left. */
+  onProgress?: (detail: FundDetailData | null) => void;
+};
+
 /**
  * A fund's latest report and the one before it, with their holdings. With
  * `onProgress`, the fund as it fills in: the latest report's holdings as
  * soon as they are read (a large filing's first rows before the rest), then
  * the prior quarter they are compared with and EDGAR's filing list, each
  * part still loading named in `loading`. The answer is the whole fund.
+ * Every filing of both quarters, each page of them and each part shown is
+ * read in one sign-in: one that changes under them throws them away (a null
+ * progress) and the fund is read again in the new one.
  */
 export async function loadFundDetail(
   cik: string,
   fallbackName: string,
   signal?: AbortSignal,
-  /** `filingGap: false` skips EDGAR's filing list, for a load that never shows it (an overlap). */
-  options: Pick<Forms13FReadOptions, "forceRefresh" | "onSavedCopy"> & {
-    filingGap?: boolean;
-    onProgress?: (detail: FundDetailData) => void;
-  } = {},
+  options: FundDetailOptions = {},
+): Promise<FundDetailData> {
+  return inHoldingsSession((session) => fundDetailIn(session, cik, fallbackName, signal, options), signal, () => options.onProgress?.(null));
+}
+
+async function fundDetailIn(
+  session: HoldingsSession,
+  cik: string,
+  fallbackName: string,
+  signal: AbortSignal | undefined,
+  options: FundDetailOptions,
 ): Promise<FundDetailData> {
   const now = new Date();
   const warnings: string[] = [];
@@ -710,9 +742,11 @@ export async function loadFundDetail(
     };
   };
   let failed = false;
-  // The fund is shown once its latest holdings, or a large filing's first rows, are in.
+  // The fund is shown once its latest holdings, or a large filing's first rows, are in, and only while they are the
+  // reader's sign-in's: after it changes, nothing of this read is shown.
   const progress = () => {
-    if (!options.onProgress || failed || signal?.aborted || (parts.loading.positions && !parts.latestHoldings.length)) return;
+    if (!options.onProgress || failed || signal?.aborted || !holdingsSessionCurrent(session)
+      || (parts.loading.positions && !parts.latestHoldings.length)) return;
     options.onProgress(detail());
   };
   async function loadReport(report: ThirteenFPeriodReport | undefined, onFirstRows?: (rows: ThirteenFHoldingRecord[]) => void): Promise<ThirteenFHoldingRecord[]> {
@@ -721,6 +755,7 @@ export async function loadFundDetail(
     const read = await Promise.all(report.filings.map((form, index) => listThirteenFFormHoldings(cik, form.accessionNumber, signal, {
       ...apiOptions,
       entries: form.tableEntryTotal,
+      session,
       ...(index === 0 && onFirstRows ? { onFirstRows } : {}),
     })));
     const filings = read.map((filing) => filing.rows);
@@ -762,7 +797,8 @@ export async function loadFundDetail(
       progress();
     }),
     loadReport(previousReport).catch((error) => {
-      if (signal?.aborted) throw error;
+      // A prior quarter the sign-in changed under is no failed comparison: the fund is read again.
+      if (signal?.aborted || isSignInChange(error)) throw error;
       if (previousReport) previousReport.complete = false;
       // The service's signed-out limit says signing in lifts it, as the quarter's line then does.
       const refused = thirteenFReadError(error);

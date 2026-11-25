@@ -14,6 +14,7 @@ import { usePaneStatusFooter } from "../../../components/layout/pane/status-foot
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { useAsyncResource } from "../../../react/async-resource";
+import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { cachedFunds, cachedMembers, loadFunds, loadMembers } from "../members/client";
 import { coveredFund } from "../members/model";
 import { normalizeCik, searchThirteenFFunds } from "./api";
@@ -85,6 +86,8 @@ export function FundOverlapView({ data, focused, width }: { data: FundDetailData
   const etfFile = useAsyncResource(etfTicker ? loadEtfFile : null, { initialData: useCallback(() => etfTicker ? cachedMembers(etfTicker) : null, [etfTicker]) });
   const etfPayload = etf ? etfFile.data?.payload ?? null : null;
   const etfOverlap = useMemo(() => etfPayload ? buildManagerEtfOverlap(data, etfPayload.members) : null, [data, etfPayload]);
+  // Signing in or out reads the other fund again, as the open one is.
+  const scope = useCloudDisplayScope();
   useEffect(() => {
     const controller = new AbortController();
     setError(null); setPeer(null);
@@ -97,7 +100,7 @@ export function FundOverlapView({ data, focused, width }: { data: FundDetailData
       .catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : String(cause)); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => { controller.abort(); };
-  }, [target, refresh]);
+  }, [target, refresh, scope]);
   const loadingMore = paged.loadingMore;
   const onScroll = useTableLoadMore(scrollRef, paged.hasMore && !loadingMore && !loading && !open, paged.loadMore);
   const refreshData = useCallback(() => {
