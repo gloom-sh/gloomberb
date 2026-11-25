@@ -66,8 +66,9 @@ test("a kind report reads its types together in calendar order, under the pane's
   expect(types.sort()).toEqual(["deal_closing", "investor_day", "merger_vote", "results", "shareholder_meeting"]);
   const [section] = (result as unknown as { sections: Array<{ title: string; columns: Array<{ header: string }>; rows: Array<{ id: string; with?: string }> }> }).sections;
   expect(section!.title).toBe("Company events");
-  // PFE's own calendar: the other party, not PFE again; two types, so the Type column stays.
-  expect(section!.columns.map((column) => column.header)).toEqual(["Date", "With", "Event", "Type", "Status", "Filed with", "Primary source"]);
+  // PFE's own calendar: the other party, not PFE again; two types, so the Type column stays,
+  // and what every row says alike (scheduled, filed with one body) is left out, as in the pane.
+  expect(section!.columns.map((column) => column.header)).toEqual(["Date", "With", "Event", "Type", "Primary source"]);
   expect(section!.rows.map((row) => [row.id, row.with])).toEqual([["vote", "Metsera"], ["results", ""]]);
   expect(renderHeadlessPaneText(catalystsHeadless, result, args, "CATL")).toMatch(/2027-01-20 +Metsera +Vote on the merger +Merger vote/);
 });

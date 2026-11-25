@@ -2,7 +2,7 @@ import { CATALYST_TYPES, type CatalystEvent } from "../../../api-client/catalyst
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
 import { fetchCatalystDetail, fetchCatalysts } from "./client";
-import { catalystKindCell, catalystKindFields, catalystKindNoun, catalystKindOf, catalystKindTypes, catalystSelf, catalystWith, CATALYST_KINDS, createCatalystKindLoader, isCatalystKind } from "./kinds";
+import { catalystKindCell, catalystKindFields, catalystKindFold, catalystKindNoun, catalystKindOf, catalystKindTypes, catalystSelf, catalystWith, CATALYST_KINDS, createCatalystKindLoader, isCatalystKind } from "./kinds";
 import { catalystCell, catalystChangeText, catalystDate, catalystDateBasis, catalystEmptyTitle, catalystLockedText, catalystParties, catalystQuery, catalystTickers } from "./model";
 import { REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
 
@@ -13,7 +13,7 @@ function definition(litigation: boolean): HeadlessPaneDefinition<"bundle"> {
     argument: { kind: "ticker", optional: !litigation, description: litigation ? "Company ticker, including exchange-qualified international listings." : "Optional ticker; omit for market-wide events." },
     options: [
       { key: "tab", type: "enum", values: [{ value: "calendar", label: litigation ? "Dockets" : "Calendar" }, { value: "changes" }], defaultValue: "calendar", description: "Dated events or observed revisions." },
-      ...(!litigation ? [{ key: "kind", type: "enum" as const, values: CATALYST_KINDS.map(({ value, label }) => ({ value, label })), description: "One kind of event with its own columns: company dates, drug decisions, trials, rules or legal actions." }] : []),
+      ...(!litigation ? [{ key: "kind", type: "enum" as const, values: CATALYST_KINDS.map(({ value, label }) => ({ value, label })), description: "One kind of event with its own columns: company dates, drug decision days, approvals, trials, rules or legal actions." }] : []),
       { key: "type", type: "enum", values: CATALYST_TYPES.map((value) => ({ value })), description: "Event type." },
       ...["agency", "country", "sector", "status"].map((key) => ({ key, type: "string" as const, description: `Filter by ${key}.` })),
       { key: "search", type: "string", description: "Filter by text." },
@@ -57,8 +57,9 @@ function definition(litigation: boolean): HeadlessPaneDefinition<"bundle"> {
         }
         const data = { ...page.payload, events: listed.slice(offset, offset + limit), offset };
         const self = symbol ? catalystSelf(data.events, symbol) : null;
+        // The pane's columns for the rows listed: what they say alike is left out, as there.
         const fields = catalystKindFields({ kind, self: self ? { hasOthers: data.events.some((event) => catalystWith(event, self) !== "") } : null,
-          oneType: types.length === 1 || (!page.hasMore && new Set(listed.map((event) => event.type)).size <= 1) });
+          fold: catalystKindFold(data.events, query, kind) });
         const cell = (column: string) => (_value: unknown, row: Record<string, unknown>) => catalystKindCell(row as unknown as CatalystEvent, column, query, kind, self);
         const locked = catalystLockedText(data.access, "event");
         const noun = catalystKindNoun(kind);
@@ -68,7 +69,7 @@ function definition(litigation: boolean): HeadlessPaneDefinition<"bundle"> {
             : ["date", "basis", "with", "phase"].includes(id) ? { key: id, header: label }
             : { key: id, header: label, textFormat: cell(id) }),
           { key: "sourceUrl", header: "Primary source" },
-        ], rows: data.events.map((event) => ({ ...event, date: catalystDate(event, query), tickers: catalystTickers(event),
+        ], rows: data.events.map((event) => ({ ...event, date: catalystKindCell(event, "date", query, kind, self), tickers: catalystTickers(event),
           ...Object.fromEntries(["basis", "with", "phase"].filter((id) => fields.some((field) => field.id === id)).map((id) => [id, catalystKindCell(event, id, query, kind, self)])) })),
           ...(data.events.length ? {} : { empty: catalystEmptyTitle(data, query, false, noun) }) }],
         metadata: { asOf: data.asOf, kind, total: data.total, offset, limit, access: data.access, coverage: data.coverage, complete: data.access?.pro !== false && offset + data.events.length >= data.total } };

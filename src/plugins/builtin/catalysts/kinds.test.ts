@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { CatalystEvent, CatalystResponse, CatalystType } from "../../../api-client/catalysts";
 import { catalystFixture, catalystPayload } from "./test-fixture";
-import { catalystKindCell, catalystKindColumns, catalystOpeningKind, catalystSelf, catalystWith, createCatalystKindLoader, trialPhase } from "./kinds";
+import { catalystKindCell, catalystKindColumns, catalystKindFold, catalystKindWidths, catalystOpeningKind, catalystSelf, catalystWith, createCatalystKindLoader, trialPhase } from "./kinds";
 
 const TODAY = "2026-12-15";
 const on = (id: string, type: CatalystType, date: string | null): CatalystEvent =>
@@ -66,6 +66,7 @@ describe("a kind read across its event types", () => {
   test("opens on a filter's kind, else the chosen one, else the first kind in tab order with something coming up", () => {
     const trial = on("t", "clinical", "2026-12-20"), results = on("r", "results", "2026-11-01"), vote = on("v", "merger_vote", "2027-02-01");
     expect(catalystOpeningKind("pdufa", "trials", null, TODAY)).toBe("drugs");
+    expect(catalystOpeningKind("approval", "drugs", null, TODAY)).toBe("approvals");
     expect(catalystOpeningKind(undefined, "legal", null, TODAY)).toBe("legal");
     expect(catalystOpeningKind(undefined, "nonsense", null, TODAY)).toBeNull();
     // A company's past results do not outrank a trial still to complete; a vote coming up does.
@@ -79,17 +80,58 @@ describe("a kind read across its event types", () => {
 describe("a kind's columns", () => {
   test("each kind heads its own columns, and a company's own calendar names only the other parties", () => {
     const ids = (columns: { id: string }[]) => columns.map((column) => column.id);
-    const trials = catalystKindColumns(158, { kind: "trials", oneType: true });
+    const trials = catalystKindColumns(158, { kind: "trials" });
     expect(ids(trials)).toEqual(["date", "basis", "ticker", "parties", "title", "phase", "status"]);
     expect(trials.find((column) => column.id === "parties")!.label).toBe("Sponsor");
-    expect(ids(catalystKindColumns(158, { kind: "trials", oneType: true, self: { hasOthers: true } }))).toEqual(["date", "basis", "with", "title", "phase", "status"]);
-    expect(ids(catalystKindColumns(158, { kind: "company", self: { hasOthers: false }, oneType: true }))).toEqual(["date", "title", "status", "agency"]);
+    expect(ids(catalystKindColumns(158, { kind: "trials", self: { hasOthers: true } }))).toEqual(["date", "basis", "with", "title", "phase", "status"]);
+    expect(ids(catalystKindColumns(158, { kind: "company", self: { hasOthers: false } }))).toEqual(["date", "title", "type", "status", "agency"]);
     // A rule's agency leads, and shrinks with the rest before it goes.
     expect(ids(catalystKindColumns(100, { kind: "regulation" }))).toEqual(["date", "basis", "agency", "parties", "title", "status"]);
     for (const width of [78, 110, 158]) {
       const need = catalystKindColumns(width, { kind: "legal" }).reduce((sum, column) => sum + column.width + 1, 3);
       expect(need).toBeLessThanOrEqual(width);
     }
+  });
+
+  test("a column the rows say alike goes, per type or on every row, and a shared basis heads the date", () => {
+    const ids = (columns: { id: string; label: string }[]) => columns.map((column) => column.id);
+    const decision = (id: string, deadline: string, withheld = false): CatalystEvent => ({ ...catalystFixture, id, type: "pdufa", status: "company-reported target",
+      agency: "SEC / company disclosure", announcedDate: "2026-10-01", deadlineDate: deadline, datePrecision: { deadline: "day" }, metadata: withheld ? { dateWithheld: true } : {} });
+    const meeting = { ...catalystFixture, id: "m", type: "advisory-meeting" as CatalystType, status: "Notice", agency: "FDA", source: "fda_advisory",
+      announcedDate: "2026-10-01", deadlineDate: "2027-01-21", datePrecision: { deadline: "day" }, metadata: { deadlineMeaning: "Advisory committee meeting" } };
+    // A PDUFA date is always a company's target, an advisory meeting the FDA's: only the type tells them apart.
+    const drugs = [decision("p1", "2026-12-20"), decision("p2", "2027-02-01"), decision("p3", "2027-03-01", true), meeting];
+    const fold = catalystKindFold(drugs, "any", "drugs");
+    expect([...fold.hidden].sort()).toEqual(["agency", "basis", "status"]);
+    expect(ids(catalystKindColumns(158, { kind: "drugs", fold }))).toEqual(["date", "ticker", "parties", "title", "type"]);
+    expect(catalystKindCell(meeting, "type", "any", "drugs", null, true)).toBe("Advisory meeting");
+    // A withheld date says so where its basis would; the dated rows still share theirs.
+    expect(catalystKindCell(drugs[2]!, "date", "any", "drugs", null, true)).toBe("Undisclosed");
+    const pdufas = catalystKindFold(drugs.slice(0, 3), "any", "drugs");
+    expect(pdufas.basis).toBe("Deadline");
+    expect(catalystKindColumns(158, { kind: "drugs", fold: pdufas })[0]!.label).toBe("Deadline");
+
+    const trial = (id: string, status: string, completion: "ESTIMATED" | "ACTUAL") => ({ ...catalystFixture, id, status,
+      metadata: { phases: ["PHASE3"], primaryCompletion: { type: completion }, deadlineDateMeaning: "Primary completion" } });
+    const ahead = [trial("t1", "RECRUITING", "ESTIMATED"), trial("t2", "ACTIVE_NOT_RECRUITING", "ESTIMATED")];
+    const trials = catalystKindFold(ahead, "any", "trials");
+    const columns = catalystKindColumns(158, { kind: "trials", fold: trials, widths: catalystKindWidths(ahead, "any", "trials") });
+    expect(ids(columns)).toEqual(["date", "ticker", "parties", "title", "status"]);
+    expect(columns[0]!.label).toBe("Est. completion");
+    // Nothing cut where the pane has room: the status column holds its longest status.
+    expect(columns.find((column) => column.id === "status")!.width).toBeGreaterThanOrEqual("Active not recruiting".length);
+    // A completed trial on a later page brings the basis back.
+    expect(catalystKindFold([...ahead, trial("t3", "COMPLETED", "ACTUAL")], "any", "trials").hidden.has("basis")).toBe(false);
+  });
+
+  test("a cell reads short where the full wording would be cut, and a date ahead leaves out the status every one has", () => {
+    const rule = { ...catalystFixture, type: "rulemaking" as CatalystType, agency: "Federal Aviation Administration", status: "Proposed Rule" };
+    expect(catalystKindCell(rule, "agency", "any", "regulation", null, true)).toBe("FAA");
+    expect(catalystKindCell(rule, "agency", "any", "regulation", null)).toBe("Federal Aviation Administration");
+    const results = { ...catalystFixture, type: "results" as CatalystType, status: "scheduled", agency: "Company investor relations" };
+    expect(catalystKindCell(results, "status", "any", "company", null, true)).toBe("");
+    expect(catalystKindCell({ ...results, datePassed: true }, "status", "any", "company", null, true)).toBe("Date passed");
+    expect(catalystKindCell(results, "agency", "any", "company", null, true)).toBe("Company IR");
   });
 
   test("the With cell drops the company under any of its names, and a trial reads its phase and basis short", () => {

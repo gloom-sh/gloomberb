@@ -23,8 +23,8 @@ import { logFailure } from "../../../utils/log-failure";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { loadCatalystDetail, loadCatalysts, validateCatalysts } from "./client";
 import { CatalystEventDetail } from "./detail";
-import { catalystAgency, catalystBasisWidth, catalystCell, catalystColumns, catalystEmptyTitle, catalystLabel, catalystLockedText, catalystQuery, catalystSections, catalystShownStatus, catalystStatusTone, catalystSymbol, catalystTab, catalystTypeTone, CATALYST_TABS } from "./model";
-import { CATALYST_KINDS, catalystKindBasisWidth, catalystKindCell, catalystKindColumns, catalystKindNoun, catalystKindOf, catalystKindTypes, catalystOpeningKind, catalystSelf, catalystStreamLimit, catalystWith, createCatalystKindLoader, isCatalystKind, type CatalystKind, type CatalystKindPage } from "./kinds";
+import { catalystAgency, catalystBasisWidth, catalystCell, catalystColumns, catalystDateWithheld, catalystEmptyTitle, catalystLabel, catalystLockedText, catalystQuery, catalystSections, catalystShownStatus, catalystStatusTone, catalystSymbol, catalystTab, catalystTypeTone, CATALYST_TABS } from "./model";
+import { CATALYST_KINDS, catalystKindCell, catalystKindColumns, catalystKindFold, catalystKindNoun, catalystKindOf, catalystKindTypes, catalystKindWidths, catalystOpeningKind, catalystSelf, catalystStreamLimit, catalystWith, createCatalystKindLoader, isCatalystKind, type CatalystKind, type CatalystKindPage } from "./kinds";
 
 type Row = SectionedRow<CatalystEvent> | { kind: "locked"; key: string };
 const rowKey = (row: Row) => row.key;
@@ -169,9 +169,11 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
   // A company's own calendar names the others in a row, not the company again.
   const self = useMemo(() => kindView && symbol ? catalystSelf(rows, symbol) : null, [kindView, symbol, rows]);
   const hasOthers = useMemo(() => !!self && rows.some((event) => catalystWith(event, self) !== ""), [self, rows]);
-  const oneType = !!kindView && (!!query.type || catalystKindTypes(kindView).length === 1 || (!resource.hasMore && rows.length > 0 && rows.every((event) => event.type === rows[0]!.type)));
+  // A kind shows only what tells its rows apart, each column as wide as what it holds.
+  const fold = useMemo(() => kindView ? catalystKindFold(rows, query, kindView) : null, [kindView, rows, query]);
+  const widths = useMemo(() => kindView ? catalystKindWidths(rows, query, kindView) : undefined, [kindView, rows, query]);
   const columns = kindView
-    ? catalystKindColumns(width, { kind: kindView, self: self ? { hasOthers } : null, oneType, basisWidth: catalystKindBasisWidth(rows, query, kindView) })
+    ? catalystKindColumns(width, { kind: kindView, self: self ? { hasOthers } : null, fold, widths })
     : catalystColumns(width, tab === "changes", litigation, catalystBasisWidth(rows, query));
   const renderCell = (row: Row, column: (typeof columns)[number], _index: number, state: { selected: boolean }): DataTableCell => {
     if (row.kind === "locked") {
@@ -180,7 +182,7 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
     }
     if (!isEventRow(row)) return EMPTY_TABLE_CELL;
     const event = row.item;
-    const text = kindView ? catalystKindCell(event, column.id, query, kindView, self) : catalystCell(event, column.id, query, tab === "changes");
+    const text = kindView ? catalystKindCell(event, column.id, query, kindView, self, true) : catalystCell(event, column.id, query, tab === "changes");
     if (column.id === "with") {
       if (!text) return { text: MISSING_VALUE, color: colors.textMuted };
       // A listed party reads as the Ticker column does, any others counted after it.
@@ -200,6 +202,8 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
     // The column has room for the flag beside a code.
     if (column.id === "country") return withCountryFlag({ text, color: colors.textDim }, text, desktop);
     if (column.id === "status") return { text, color: tab === "changes" ? colors.text : toneColor(catalystStatusTone(catalystShownStatus(event)), colors) };
+    // A withheld date says so, quieter than a day.
+    if (column.id === "date" && catalystDateWithheld(event, query.dateField)) return { text, color: colors.textMuted };
     return { text, color: column.id === "title" || column.id === "date" || column.id === "phase" ? colors.text : colors.textDim };
   };
   if (isCloudSessionRequired(error?.message)) return <SignInWall placement="catalysts-signin" action="view catalysts" needsVerification={session.needsVerification} />;

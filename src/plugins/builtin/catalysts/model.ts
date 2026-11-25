@@ -203,7 +203,8 @@ const TYPE_TONES: Record<CatalystType, StateTone> = {
   regulatory: "muted", rulemaking: "muted",
   results: "text", shareholder_meeting: "text", merger_vote: "text", deal_closing: "text", investor_day: "text",
 };
-export const catalystTypeTone = (type: CatalystType): StateTone => TYPE_TONES[type] ?? "text";
+/** `advisory-meeting`, as the service names an advisory committee's meeting, takes its type's tone. */
+export const catalystTypeTone = (type: CatalystType): StateTone => TYPE_TONES[type] ?? TYPE_TONES[type.split("-")[0] as CatalystType] ?? "text";
 function changeValue(value: unknown): string {
   if (value == null) return MISSING_VALUE;
   if (typeof value === "boolean") return value ? "Yes" : "No";
@@ -285,7 +286,7 @@ export const catalystCell = (event: CatalystEvent, column: string, read: Catalys
     case "parties": return catalystParties(event);
     // A filer read from the title is in the Parties column; the event is the rest.
     case "title": return titleFiler(event)?.rest ?? titleAfterParty(event);
-    case "type": return catalystLabel(event.type);
+    case "type": return catalystLabel(event.type.replaceAll("-", " "));
     case "status": return changes ? changeSummary(event) : humanLabel(catalystShownStatus(event));
     case "agency": return catalystAgency(event.agency);
     case "country": return event.country ?? event.jurisdiction;

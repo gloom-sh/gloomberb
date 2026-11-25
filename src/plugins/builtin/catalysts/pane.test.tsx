@@ -29,10 +29,10 @@ test("the calendar opens on the kind with something coming up, loads it once, ke
   await act(async () => { await tui.render(<Harness />, { width: 90, height: 20 }); });
   const frame = await tui.waitForFrameToContain("Primary completion");
   expect(frame).toContain("2027-04");
-  expect(frame).toContain("Deadline");
-  // The fixture is a trial: the Trials view, with its sponsor and trial columns.
-  expect(frame).toMatch(/Company +Drugs +Trials +Regulation +Legal +Changes/);
-  expect(frame).toMatch(/SPONSOR +TRIAL/);
+  // The fixture is a trial: the Trials view, with its sponsor and trial columns. Its one row's
+  // basis heads the date, and a status or phase said on every row is not a column.
+  expect(frame).toMatch(/Company +Drugs +Approvals +Trials +Regulation +Legal +Changes/);
+  expect(frame).toMatch(/DEADLINE +TICKER +SPONSOR +TRIAL\s/);
   await tui.renderFrames(6);
   // One read of the whole calendar picks the view, then the view's one type is read.
   expect(calls).toBe(2);
