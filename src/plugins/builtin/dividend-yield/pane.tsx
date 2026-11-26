@@ -29,6 +29,7 @@ import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { forwardDividendNote, lapseValue, lastPaidNote, UNEVEN_REGULAR_PAYMENTS } from "../../../utils/forward-dividend";
+import { logFailure } from "../../../utils/log-failure";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
@@ -208,6 +209,9 @@ export function DividendYieldPane(props: DividendPaneProps) {
 function DividendTickerPane({ focused, width, height, loadData = fetchDividendData }: DividendPaneProps) {
   const { symbol, ticker, financials } = usePaneTicker();
   const rendererHost = useRendererHost();
+  const openNotice = useCallback((url: string) => {
+    void rendererHost.openExternal(url).catch(logFailure("dividend-yield.pane", "Open dividend notice failed"));
+  }, [rendererHost]);
   const { nativePaneChrome } = useUiCapabilities();
   // Yields are repriced from the quote on every render, so streaming it is all
   // it takes for them to move with the stock. A yield to two decimals needs
@@ -330,8 +334,8 @@ function DividendTickerPane({ focused, width, height, loadData = fetchDividendDa
   const selectedSchedule = sortedRows.find((row) => row.key === selectedId)?.sourceScheduleUrl;
   usePaneMenuItems("dividend-notice-schedule", () => selectedSchedule ? [{
     id: "dividend-notice-schedule", label: "Open dividend schedule",
-    onSelect: () => { void rendererHost.openExternal(selectedSchedule); },
-  }] : [], [rendererHost, selectedSchedule]);
+    onSelect: () => openNotice(selectedSchedule),
+  }] : [], [openNotice, selectedSchedule]);
   const link = useChartTableSelection({
     rows: sortedRows, getId: rowKey, getDate: rowDate, selectedId, onSelect: setSelectedKey, focused,
   });
@@ -376,7 +380,7 @@ function DividendTickerPane({ focused, width, height, loadData = fetchDividendDa
     <DataTableView<DividendRow, DividendColumn>
       focused={focused}
       selection={{ kind: "id", selectedId, getId: rowKey, onChange: (id) => setSelectedKey(id) }}
-      onActivate={(row) => { if (row.sourceUrl) void rendererHost.openExternal(row.sourceUrl); }}
+      onActivate={(row) => { if (row.sourceUrl) openNotice(row.sourceUrl); }}
       rowNote={(row) => row.payDate ? `Payable ${formatDay(row.payDate)}` : null}
       onRootKeyDown={handleKeyDown}
       resetScrollKey={symbol}
