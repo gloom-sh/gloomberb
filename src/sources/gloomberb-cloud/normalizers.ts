@@ -395,6 +395,7 @@ export function mapCloudFinancials(
     statementHistory: financials.statementHistory,
     annualStatements: (financials.annualStatements ?? []).map((row) => mapCloudStatement(row, derive)),
     quarterlyStatements: (financials.quarterlyStatements ?? []).map((row) => mapCloudStatement(row, derive)),
+    ...(financials.reportedQuarters?.length ? { reportedQuarters: financials.reportedQuarters } : {}),
     ...(financials.trailingStatement
       ? { trailingStatement: { ...mapCloudStatement(financials.trailingStatement, derive), trailing: financials.trailingStatement.trailing } }
       : {}),

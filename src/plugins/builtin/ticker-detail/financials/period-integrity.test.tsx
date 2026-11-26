@@ -13,6 +13,7 @@ import type { HeadlessRowsResult } from "../../../../types/headless";
 import { Box } from "../../../../ui";
 import { financialStatementsHeadless } from "../headless";
 import { ResolvedFinancialsTab } from "./tab";
+import { mapCloudFinancials } from "../../../../sources/gloomberb-cloud/normalizers";
 
 type Period = "annual" | "quarterly";
 
@@ -116,6 +117,26 @@ function columns(result: HeadlessRowsResult): StatementColumn[] {
 function frame() {
   return tui.frame();
 }
+
+test("observed consolidated profit stays out of ordinary columns, CSV, growth and TTM", async () => {
+  const observed = { date: "2026-06-30", accountingScope: "consolidated" as const, currency: "TWD",
+    amounts: { profitAttributableToOwnersOfParent: 63_839_675_000, basicEps: 4.27 },
+    evidence: { sha256: "a".repeat(64), byteLength: 1128885, url: "https://example.org/quarter", publishedAt: null, firstObservedAt: "2026-11-21T05:12:00Z" } };
+  const financials = mapCloudFinancials({ annualStatements: [],
+    quarterlyStatements: ["2025-06-30", "2025-09-30", "2025-12-31"].map((date) => ({ date, currency: "TWD", totalRevenue: 100 })),
+    reportedQuarters: [observed], priceHistory: [] });
+  await mount(financials, "quarterly");
+  const { result, csv, text } = await outputs(financials, "quarterly");
+  expect(result.metadata?.reportedQuarters).toEqual([observed]);
+  expect(text).toContain("TWD 63,839,675,000 (first observed 2026-11-21; filing date unknown)");
+  expect(columns(result).map(({ date }) => date)).not.toContain("2026-06-30");
+  expect(columns(result).map(({ date }) => date)).not.toContain("TTM");
+  expect(csv).not.toContain("63839675000");
+  expect(csv).not.toContain("2026-06-30");
+  const caughtUp = { ...financials, quarterlyStatements: [...financials.quarterlyStatements, { date: observed.date, currency: "TWD", totalRevenue: 200 }] };
+  const caughtUpReport = await cli(caughtUp, "quarterly");
+  expect(JSON.stringify(caughtUpReport)).not.toContain("profitAttributableToOwnersOfParent");
+});
 
 test("actual financial table and CSV retain the derived TTM window and known field publication dates", async () => {
   const quarterEnds = ["2024-03-31", "2024-06-30", "2024-09-30", "2024-12-31"];

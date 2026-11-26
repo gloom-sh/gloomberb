@@ -1384,6 +1384,24 @@ export interface EpsEstimateHistory {
   snapshots: ConsensusEpsSnapshot[];
 }
 
+export interface ReportObservation {
+  sha256: string;
+  byteLength: number;
+  url: string;
+  firstObservedAt: string;
+  publishedAt: string | null;
+}
+
+export interface ReportedQuarter {
+  date: string;
+  currency: string;
+  accountingScope: "consolidated";
+  amounts: Partial<Record<"profitAttributableToOwnersOfParent" | "revenue" | "basicEps" | "dilutedEps" | "totalAssets" | "totalLiabilities" | "operatingCashFlow", number>>;
+  evidence: ReportObservation;
+  yearToDate?: { start: string; end: string; operatingCashFlow: number };
+  derivations?: { operatingCashFlow: { method: "ytd-difference"; availableAt: string; operands: ReportObservation[]; value: number } };
+}
+
 export interface TickerFinancials {
   /** Reported earnings-release events retained with daily valuation snapshots. */
   earningsReleases?: EarningsAction[];
@@ -1401,6 +1419,7 @@ export interface TickerFinancials {
   nextEarnings?: NextEarnings;
   annualStatements: FinancialStatement[];
   quarterlyStatements: FinancialStatement[];
+  reportedQuarters?: ReportedQuarter[];
   /** Twelve months to the latest half or quarter where the quarters do not give them (a half-yearly reporter). */
   trailingStatement?: FinancialStatement & { trailing: StatementTrailing };
   priceHistory: PricePoint[];

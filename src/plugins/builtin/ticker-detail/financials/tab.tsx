@@ -80,6 +80,7 @@ import {
   type RatioTableColumn,
 } from "./ratio-table";
 import { useExchangeResultsNotes } from "./exchange-results";
+import { missingReportedQuarters, reportedQuarterNotes } from "../../../../utils/reported-quarters";
 import { latestBalanceSheetDate, useOfferingNote, useRunwayOfferings } from "./offerings";
 import { burnsCash, cashRunway, runwayOfferingNote } from "../../../../utils/cash-runway";
 import { useBoundTicker } from "../../shared/ticker-request";
@@ -548,6 +549,7 @@ export function ResolvedFinancialsTab({
   usePaneNoticeFooter({
     registrationId: "financials-notices",
     notices: [
+      ...(resolvedPeriod === "quarterly" && section.key === "income" ? reportedQuarterNotes(missingReportedQuarters(financials)) : []),
       ...(notInYetLine ? [notInYetLine] : []),
       ...(blankRatioLine ? [blankRatioLine] : []),
       ...exchangeResults,

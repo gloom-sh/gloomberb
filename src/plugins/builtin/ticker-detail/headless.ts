@@ -1,4 +1,5 @@
 import { formatDay } from "../../../utils/day-format";
+import { missingReportedQuarters, reportedQuarterNotes } from "../../../utils/reported-quarters";
 import {
   FINANCIAL_VINTAGE_NOTICE, fillDate, filledPeriodPublications, filledPeriodsNote, reportsHalfYearly, stalePeriodNote,
   statementHistoryNotes,
@@ -326,6 +327,7 @@ async function loadFinancialReport(symbol: string, options: HeadlessPaneOptionVa
   {
     const financials = await loadHeadlessFinancials(ctx, symbol);
     const requestedPeriod = options.period === "quarterly" ? "quarterly" : "annual";
+    const reports = requestedPeriod === "quarterly" ? missingReportedQuarters(financials) : [];
     const hasRequestedStatements = (requestedPeriod === "quarterly"
       ? financials.quarterlyStatements : financials.annualStatements).length > 0;
     const ratioTab = findRatioTab(resolveFinancialSectionKey(String(options.statement ?? "income")));
@@ -424,12 +426,14 @@ async function loadFinancialReport(symbol: string, options: HeadlessPaneOptionVa
       rowUnitKey: "unit", rowAsOfKey: "periodEnd", interval: requestedPeriod,
       // The report closes with how old its latest period is, how far back its periods go, and how to read further.
       notes: [...notInYet ? [notInYet] : [], ...newerRelease ? [newerRelease] : [], ...announced, ...stale ? [stale] : [], ...filled ? [filled] : [], ...offering ? [offering] : [],
+        ...(table?.subTab.key === "income" ? reportedQuarterNotes(reports) : []),
         ...statementHistoryNotes(requestedPeriod, periodDates, symbol, await reportOlderStatements(ctx, symbol, requestedPeriod, periodDates)),
         ...table?.subTab.key === "cashflow" ? [CASH_FLOW_NOTE] : [], ...dateSourceNotes(dates)],
       metadata: {
         symbol, name: financials.quote?.name ?? symbol, currency: statementCurrency ?? null, unit: table?.unit ?? null, quoteCurrency: financials.quote?.currency ?? null,
         statement: table?.subTab.key ?? options.statement, statementLabel: table?.subTab.name ?? null,
         period: requestedPeriod, growthBasis: requestedPeriod === "quarterly" ? "QoQ" : "YoY", columns: dates,
+        ...(reports.length ? { reportedQuarters: reports } : {}),
         shareBasis: shareBases.size === 1 ? [...shareBases][0] ?? null : null,
         ...(receiptPeriods.length > 0 ? { adrRatio: financials.fundamentals?.adrRatio ?? financials.quote?.adrRatio ?? null } : {}),
         notices: rows.length ? [FINANCIAL_VINTAGE_NOTICE, financialGrowthNotice(requestedPeriod, table?.statements ?? []),
