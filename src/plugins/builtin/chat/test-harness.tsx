@@ -18,6 +18,7 @@ import { ChatContent } from "./content";
 import { ChatController, chatController } from "./controller";
 import { chatSidebarStore } from "./sidebar-store";
 import { chatHandlePromptStore } from "./handle-prompt";
+import { clearChatPaneRequest } from "./pane-requests";
 
 const TRANSCRIPT_KIND = "channel-transcript";
 const TRANSCRIPT_KEY = "everyone";
@@ -66,6 +67,7 @@ export function cleanupChatTest(): void {
   // Release every fixture's channels and timers before restoring shared APIs.
   for (const controller of testControllers) controller.dispose();
   testControllers.clear();
+  clearChatPaneRequest();
 
   // The sidebar's width and folded sections are a process-wide singleton.
   chatSidebarStore.reset();

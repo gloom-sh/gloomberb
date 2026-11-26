@@ -29,6 +29,12 @@ export function requestChatPaneAction(request: ChatPaneRequest, now = Date.now()
   emit();
 }
 
+export function clearChatPaneRequest(): void {
+  if (!pending) return;
+  pending = null;
+  emit();
+}
+
 /**
  * Hands the request to the pane on `channelId` and clears it. Null when there
  * is none for that pane or it went stale.
@@ -37,13 +43,11 @@ export function takeChatPaneRequest(channelId: string, now = Date.now()): ChatPa
   if (!pending) return null;
   const { request, at } = pending;
   if (now - at > REQUEST_TTL_MS) {
-    pending = null;
-    emit();
+    clearChatPaneRequest();
     return null;
   }
   if (request.action === "compose" && request.channelId !== channelId) return null;
-  pending = null;
-  emit();
+  clearChatPaneRequest();
   return request;
 }
 
