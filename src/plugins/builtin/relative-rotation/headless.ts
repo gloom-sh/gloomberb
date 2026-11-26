@@ -81,7 +81,8 @@ export const rotationHeadless: HeadlessPaneDefinition<"bundle"> = {
             { key: "strengthPercentile", header: "Pctl 1Y", align: "right", format: (value) => fixed(value, 0) },
             { key: "momentum", header: "Momentum", align: "right", format: (value) => fixed(value, 2) },
             { key: "momentumPercentile", header: "Pctl 1Y", align: "right", format: (value) => fixed(value, 0) },
-            { key: "asOf", header: "As of" },
+            // The source line dates one week's closes; symbols from different weeks bring the column back.
+            { key: "asOf", header: "As of", omitWhenSame: true },
           ],
           rows: data.rows.map((row) => ({
             ...row,

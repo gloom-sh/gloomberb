@@ -1,3 +1,4 @@
+import { formatDay } from "../../../../utils/day-format";
 import { Box, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../../../ui";
 import { useCallback, useEffect, useMemo, useState, type ReactNode, type RefObject } from "react";
 import {
@@ -55,10 +56,11 @@ export const PERIOD_END_NAME_CELL: DataTableCell = { text: "Period end", color: 
  */
 export function periodEndCell(end: string | undefined, width: number, flush: boolean): DataTableCell {
   if (!end) return { text: "" };
-  const day = financialPeriodHeaderLabel(end, width);
+  const shown = formatDay(end);
+  const day = financialPeriodHeaderLabel(shown, width);
   return {
-    // An ISO date, not a figure: exported as written.
-    text: end,
+    // A day, not a figure: written day first, exported as its ISO date.
+    text: shown,
     value: end,
     color: colors.textMuted,
     content: (

@@ -10,6 +10,24 @@ import { servedRatesNotMeaningful } from "../../../../utils/served-rates";
 import { notMeaningfulColor } from "../../../../components/ui/not-meaningful";
 import { createTestQuote } from "../../../../test-support/data-provider";
 import { cryptoFixture } from "../../crypto-board/test-fixture";
+import { regularSessionMarketCapitalization } from "../../../../market-data/quotes/regular-session-valuation";
+import { marketCapBasisNote } from "../../../../utils/market-capitalization";
+
+test("GGAL's overview uses valuation's receipt-equivalent cap only on a matching basis", () => {
+  const quote = createTestQuote({ symbol: "GGAL", marketState: "REGULAR", price: 25.08, marketCap: 4.35e9,
+    currency: "USD", lastUpdated: Date.parse("2026-11-25T15:18:00Z") });
+  const cap = (sharesOutstanding: number) => {
+    const fundamentals = { sharesOutstanding };
+    return { stats: buildOverviewStats({ quote, fundamentals, quoteCurrency: "USD", baseCurrency: "EUR", toBase: (value) => value,
+      marketCapExchangeRates: new Map([["EUR", 1.25]]), depositaryReceipt: true }), cap: regularSessionMarketCapitalization({ quote, fundamentals }) };
+  };
+  const matched = cap(160.63e6);
+  expect(matched.stats.find((stat) => stat.label === "Market Cap")).toMatchObject({ value: "4.03B USD", detail: "3.22B EUR" });
+  expect(marketCapBasisNote(matched.cap)).toContain("4.35B USD");
+  const other = cap(1.6063e9);
+  expect(other.stats.find((stat) => stat.label === "Market Cap")).toMatchObject({ value: "4.35B USD" });
+  expect(marketCapBasisNote(other.cap)).toContain("does not rest on the");
+});
 
 function overview(fundamentals: Fundamentals, financialCurrency?: string) {
   return Object.fromEntries(overviewFields(fundamentals, financialCurrency).map(({ label, value }) => [label, value]));
@@ -64,7 +82,7 @@ test("summary money falls back to the statements' reporting currency, and a zero
   expect(overview(figures, "ZAR")).toEqual({ EPS: "ZAR\u00a031.43", Revenue: "202.08B ZAR", "Net Income": "46.98B ZAR", FCF: "36.96B ZAR" });
   expect(overview({ ...figures, financialCurrency: "USD" }, "ZAR")).toMatchObject({ Revenue: "202.08B USD" });
   expect(overview(figures, " ")).toMatchObject({ EPS: "31.43", Revenue: "202.08B" });
-  expect(overview({ ...figures, enterpriseValue: 5e9 }, "ZAR")).toMatchObject({ EV: "5B HKD" });
+  expect(overview({ ...figures, enterpriseValue: 5e9, marketCapCurrency: "HKD" }, "ZAR")).toMatchObject({ EV: "5B HKD" });
   // A listing quoted in another currency than the statements: an unlabelled block's currency is unknown.
   const listed = (currency: string, fundamentals: Fundamentals) => Object.fromEntries(buildOverviewStats({
     quote: { symbol: "YPFD", price: 8350, currency, change: 0, changePercent: 0, lastUpdated: 0 }, fundamentals, financialCurrency: "USD",
@@ -287,7 +305,7 @@ test("DES omits runway for a cash-generating TTM and shows quarter-only burn wit
   expect(stats(quarters.slice(0, 3)).find((row) => row.label === "Runway")).toBeUndefined();
   const burning = quarters.map((row) => ({ ...row, operatingCashFlow: -20 }));
   expect(stats(burning).find((row) => row.label === "Runway")).toMatchObject({
-    value: "> 120 mo", detail: expect.arrayContaining(["qtr to 06-30 · TTM > 120 mo"]),
+    value: "> 120 mo", detail: expect.arrayContaining(["qtr to 30 Jun · TTM > 120 mo"]),
   });
 });
 

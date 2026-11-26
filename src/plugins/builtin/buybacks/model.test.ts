@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { BuybackDay, BuybacksPayload } from "../../../api-client/buybacks";
-import { cellText, lastBoughtFigure, mandateUsedPercent, ofAuthorised } from "./model";
+import { boughtKnownFrom, boughtPoints, cellText, lastBoughtFigure, mandateUsedPercent, ofAuthorised } from "./model";
 
 const sum = { shares: 0, sharesOnExchange: 0, paidOnExchange: 0, percentOfVolume: 0, days: 0, sessions: 5 };
 const day: BuybackDay = {
@@ -30,5 +30,48 @@ describe("buybacks model", () => {
     expect(cellText(day, "mandateUsed")).toBe("50.47M");
     expect(ofAuthorised(mandateUsedPercent(day, data), data.mandate?.authorised)).toBe("5.5% of 911.80M authorised");
     expect(ofAuthorised(null, 1)).toBeNull();
+  });
+
+  describe("the chart's buying", () => {
+    // Six sessions; bought on the 2nd (in Hong Kong and London), 4th and 6th.
+    const dates = ["2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15", "2026-10-16", "2026-10-19"];
+    const bought = (date: string, onExchange: number, elsewhere = 0): BuybackDay => ({
+      ...day, date, shares: onExchange + elsewhere, sharesOnExchange: onExchange,
+      venues: [{ ...day.venues[0]!, shares: onExchange }, ...(elsewhere ? [{ venue: "LSE", shares: elsewhere, paid: null, currency: "GBP", high: null, low: null }] : [])],
+    });
+    const all = [bought("2026-10-13", 100, 50), bought("2026-10-15", 200), bought("2026-10-19", 300)];
+    const chart = (access: BuybacksPayload["access"], days: BuybackDay[], lockedDays: number): BuybacksPayload => ({
+      ...payload("2026-10-19"), access, totalDays: days.length + lockedDays, previewDays: access === "preview" ? 2 : null, lockedDays, truncated: lockedDays > 0,
+      history: dates.map((date) => ({ date, close: 400, volume: 1 })), days,
+    });
+    const values = (data: BuybacksPayload, where: "exchange" | "elsewhere") => boughtPoints(data, where).map((point) => point.value);
+
+    test("the full history: every session, zero where nothing was bought, on the Exchange and elsewhere", () => {
+      const data = chart("full", all, 0);
+      expect(boughtKnownFrom(data)).toBeNull();
+      expect(values(data, "exchange")).toEqual([0, 100, 0, 200, 0, 300]);
+      expect(values(data, "elsewhere")).toEqual([0, 50, 0, 0, 0, 0]);
+      expect(boughtPoints(data, "exchange").map((point) => point.date.toISOString().slice(0, 10))).toEqual(dates);
+    });
+
+    test("a preview withholding older sessions: blank before the oldest sent, zero only where a session is known to have none", () => {
+      // The newest two sent, the 13 Oct buy withheld.
+      const data = chart("preview", all.slice(1), 1);
+      expect(boughtKnownFrom(data)).toBe("2026-10-15");
+      expect(values(data, "exchange")).toEqual([null, null, null, 200, 0, 300]);
+      expect(values(data, "elsewhere")).toEqual([null, null, null, 0, 0, 0]);
+      // Each session keeps its place, so the close above stays aligned with it.
+      expect(boughtPoints(data, "exchange")).toHaveLength(dates.length);
+    });
+
+    test("a preview that withholds nothing draws like the full history", () => {
+      const data = chart("preview", all, 0);
+      expect(boughtKnownFrom(data)).toBeNull();
+      expect(values(data, "exchange")).toEqual([0, 100, 0, 200, 0, 300]);
+    });
+
+    test("every session withheld: no buying is known", () => {
+      expect(values(chart("preview", [], 3), "exchange")).toEqual([null, null, null, null, null, null]);
+    });
   });
 });

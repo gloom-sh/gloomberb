@@ -23,12 +23,16 @@ async function usdClose(currency: string, date: string, client: FxHistoryClient)
 export async function withBalanceSheetRate<T extends TickerFinancials>(financials: T, client: FxHistoryClient = apiClient): Promise<T> {
   const wanted = balanceSheetRateWanted(financials);
   if (!wanted) return financials;
+  const rate = await loadBalanceSheetRate(wanted, client);
+  return rate ? { ...financials, balanceSheetRate: rate } : financials;
+}
+
+export function loadBalanceSheetRate(wanted: Omit<BalanceSheetRate, "rate" | "closeDate">, client: FxHistoryClient = apiClient): Promise<BalanceSheetRate | null> {
   const read = async (): Promise<BalanceSheetRate | null> => {
     const [from, to] = await Promise.all([usdClose(wanted.from, wanted.date, client), usdClose(wanted.to, wanted.date, client)]);
     if (!from || !to || !(from.rate > 0) || !(to.rate > 0)) return null;
     const closeDate = from.date < to.date ? from.date : to.date;
     return { ...wanted, rate: from.rate / to.rate, closeDate };
   };
-  const rate = await settleWithin(read(), BALANCE_SHEET_RATE_BUDGET_MS);
-  return rate ? { ...financials, balanceSheetRate: rate } : financials;
+  return settleWithin(read(), BALANCE_SHEET_RATE_BUDGET_MS);
 }

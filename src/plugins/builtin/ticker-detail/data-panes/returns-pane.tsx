@@ -47,6 +47,7 @@ import {
   isTodayReturnRow,
   returnBaseCloseDay,
   returnTimeHeader,
+  returnTimeLabel,
   returnTimeText,
   defaultReturnInterval,
   RETURN_RANGES,
@@ -76,7 +77,7 @@ const SEARCH_MIN_ROWS = 8;
 const NO_SUPPORT: readonly ChartResolutionSupport[] = [];
 
 const COLUMNS: ReturnColumn[] = [
-  { id: "time", label: "TIME", width: 16, align: "left" },
+  { id: "time", label: "TIME", width: 17, align: "left" },
   { id: "price", label: "PRICE", width: 10, align: "right", flexGrow: 1 },
   { id: "intervalChange", label: "INT $", width: 10, align: "right", flexGrow: 1 },
   { id: "intervalPercent", label: "INT %", width: 9, align: "right", flexGrow: 1 },
@@ -197,7 +198,11 @@ export function ReturnsPane({ focused, width, height }: PaneProps) {
     const searchable = !chartView && returnRows.length >= SEARCH_MIN_ROWS;
     const needle = searchable ? query.trim().toLowerCase() : "";
     const rows = (needle
-      ? returnRows.filter((row) => returnTimeText(row.timestamp, barSize, venue).includes(needle))
+      ? returnRows.filter((row) => {
+        const text = returnTimeText(row.timestamp, barSize, venue);
+        const shown = isIntradayResolution(barSize) ? returnTimeLabel(text) : historyBarDate(text, barSize);
+        return text.includes(needle) || shown.toLowerCase().includes(needle);
+      })
       : returnRows.slice()
     ).sort((left, right) => compareSortValues(sortValue(left, sort.columnId), sortValue(right, sort.columnId), sort.direction));
     return { rows, searchable };
@@ -270,7 +275,9 @@ export function ReturnsPane({ focused, width, height }: PaneProps) {
     const { total, best, worst } = summarizeReturns(returnRows);
     const moveItem = (id: string, label: string, row: ReturnRow | null): StatItem[] => {
       if (row?.intervalPercent == null) return [];
-      const when = historyBarDate(returnTimeText(row.timestamp, barSize, venue), barSize, false);
+      const text = returnTimeText(row.timestamp, barSize, venue);
+      const intraday = isIntradayResolution(barSize);
+      const when = intraday ? returnTimeLabel(text) : historyBarDate(text, barSize, false);
       return [{
         id,
         label,
@@ -278,7 +285,7 @@ export function ReturnsPane({ focused, width, height }: PaneProps) {
         tone: moveTone(row.intervalPercent),
         detail: when,
         // A narrow pane keeps the day without its year, so the three figures stay on one row.
-        ...isIntradayResolution(barSize) ? { detailVariants: [when.slice(5)] } : {},
+        ...intraday ? { detailVariants: [returnTimeLabel(text, true)] } : {},
       }];
     };
     return [
@@ -298,7 +305,7 @@ export function ReturnsPane({ focused, width, height }: PaneProps) {
         const shown = returnTimeText(row.timestamp, barSize, venue);
         // A daily or longer bar is a date; a month's reads as the month, and one still running says so.
         return {
-          text: isIntradayResolution(barSize) ? shown : historyBarDate(shown, barSize, row.key === formingKey),
+          text: isIntradayResolution(barSize) ? returnTimeLabel(shown) : historyBarDate(shown, barSize, row.key === formingKey),
           value: new Date(row.timestamp).toISOString(),
           color: colors.textDim,
         };

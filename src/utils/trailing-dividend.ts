@@ -201,6 +201,53 @@ export function trailingSpecialCash(payments: readonly CashDistribution[], asOf:
     && Number.isFinite(payment.amount) && payment.amount > 0).reduce((sum, payment) => sum + payment.amount, 0);
 }
 
+/**
+ * Trailing cash at a past `asOf` read with what came after it: trailingCashAt,
+ * plus each payment that has left the trailing year while the payment in its
+ * slot a year on had not gone ex yet but did, no later than half a period past
+ * the anniversary (SAME_SLOT_DAYS where the payer had no regular cadence).
+ * As known on the day, an annual payer's cash fell to nothing for the days its
+ * ex-date came later than the year before (Haier's 2019 final, 62 days past
+ * the 2018 one's anniversary, past the late grace), and a payer that added an
+ * interim read only the interim until its final went ex: a chart of the past
+ * has the later payment to say the payer kept paying. A slot nothing filled
+ * in time (Haier paid no dividend in 1999) still falls to nothing, a
+ * payment whose counterpart a year on already went ex (by trailingPayments'
+ * pairing, however early) is never carried beside it, and a typed special is
+ * never carried. The latest point is as known: what comes next is not yet
+ * paid.
+ */
+export function trailingCashInHindsight<Payment extends CashDistribution>(payments: readonly Payment[], asOf: Date): number {
+  const cash = trailingCashAt(payments, asOf);
+  const regular = payments.filter((payment) => Number.isFinite(payment.amount) && payment.amount > 0 && !typedSpecial(payment))
+    .sort((left, right) => left.exDate.getTime() - right.exDate.getTime());
+  if (!regular.some((payment) => payment.exDate > asOf)) return cash;
+  const known = trailingPayments(regular, asOf);
+  const counted = new Set(known.counted);
+  // How far from its anniversary trailingPayments pairs a payment with the one that supersedes it.
+  const pairing = known.cadence ? REGULAR_CADENCE[known.cadence]?.halfPeriodDays : undefined;
+  const cutoff = calendarMonthsBefore(asOf, 12);
+  // No slot is filled later than an annual payer's half period past its anniversary.
+  const earliest = cutoff.getTime() - REGULAR_CADENCE.annual!.halfPeriodDays * DAY;
+  let carried = 0;
+  for (const payment of regular) {
+    if (payment.exDate > cutoff) break;
+    if (payment.exDate.getTime() <= earliest || counted.has(payment)) continue;
+    const anniversary = new Date(payment.exDate);
+    anniversary.setUTCFullYear(anniversary.getUTCFullYear() + 1);
+    // Its counterpart already went ex, as trailingPayments pairs them (a final moved weeks earlier): the year holds
+    // that one in its place, and carrying this beside it would count the slot twice.
+    if (pairing !== undefined && regular.some((other) => other.exDate > payment.exDate && other.exDate <= asOf
+      && Math.abs(other.exDate.getTime() - anniversary.getTime()) < pairing * DAY)) continue;
+    const next = regular.find((other) => other.exDate.getTime() >= anniversary.getTime() - SAME_SLOT_DAYS * DAY);
+    if (!next || next.exDate <= asOf) continue;
+    const cadence = inferCadence(regular, payment.exDate) ?? inferCadence(regular, next.exDate);
+    const reach = (cadence ? REGULAR_CADENCE[cadence]?.halfPeriodDays : undefined) ?? SAME_SLOT_DAYS;
+    if (next.exDate.getTime() <= anniversary.getTime() + reach * DAY) carried += payment.amount;
+  }
+  return cash + carried;
+}
+
 /** How many payments trailing cash counts against how many a year the issuer's cadence pays. */
 export interface TrailingPayments {
   counted: number;

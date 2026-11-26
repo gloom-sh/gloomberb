@@ -43,7 +43,9 @@ test("unreported amounts leave the feed, not its export, and any reported amount
   expect(empty).not.toMatch(/VALUE|OBLIGATED|CEILING/);
   await exportPaneTable("awards:test", "awards.csv");
   const [header, record] = takeSavedTextFile()!.text.trim().split("\n").map((line) => line.split(","));
-  for (const label of ["Value", "Obligated", "Ceiling"]) {
+  // The query's one currency heads the amounts; the export keeps its column too.
+  expect(header).toContain("CCY");
+  for (const label of ["Value USD", "Obligated USD", "Ceiling USD"]) {
     expect(header).toContain(label);
     expect(record![header!.indexOf(label)]).toBe("");
   }
@@ -52,9 +54,9 @@ test("unreported amounts leave the feed, not its export, and any reported amount
   rows = [missing, awardRow({ id: "reported", recipient: { name: "Reported contractor" }, awardAmount: "0", obligatedAmount: "2500000", ceilingAmount: "0" })];
   await mount("feed", 240, 26);
   const populated = await tui.waitForFrameToContain("Reported contractor");
-  expect(populated).toMatch(/VALUE\s+OBLIGATED\s+CEILING/);
-  expect(populated.split("\n").find((line) => line.includes("Reported contractor"))).toMatch(/USD\s+0\s+2\.50M\s+0/);
-  expect(populated.split("\n").find((line) => line.includes("Contractor Corporation"))).toMatch(new RegExp(`USD\\s+${MISSING_VALUE}\\s+${MISSING_VALUE}\\s+${MISSING_VALUE}`));
+  expect(populated).toMatch(/VALUE USD\s+OBLIGATED USD\s+CEILING USD/);
+  expect(populated.split("\n").find((line) => line.includes("Reported contractor"))).toMatch(/\s0\s+2\.50M\s+0/);
+  expect(populated.split("\n").find((line) => line.includes("Contractor Corporation"))).toMatch(new RegExp(`\\s${MISSING_VALUE}\\s+${MISSING_VALUE}\\s+${MISSING_VALUE}`));
   await exportPaneTable("awards:test", "awards.csv");
   expect(takeSavedTextFile()!.text).toContain("USD,0,2500000,0");
 });
@@ -131,7 +133,7 @@ test("preview retains original award evidence and keyboard navigation opens veri
   await tui.emitKeypress({ name: "g" });
   expect(navigation).toEqual([["chart-composer-pane", "2330:TWSE"]]);
   await tui.emitKeypress({ name: "return" });
-  expect(await tui.waitForFrameToContain("Performance period")).toContain("2028-09-30");
+  expect(await tui.waitForFrameToContain("Performance period")).toContain("30 Sep 2028");
   await tui.emitKeypress({ name: "escape" });
   expect(await tui.waitForFrameToContain("AWARDEE")).toContain("Contractor Corporation");
 });

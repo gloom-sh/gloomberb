@@ -99,13 +99,13 @@ test.each([80, 120])("mixed cached observation dates stay attached to credit val
   const rowLine = (frame: string, label: string) => frame.split("\n").find((line) => line.includes(label));
   const mixed = tui.frame();
   expect(mixed).toContain("AS OF");
-  expect(rowLine(mixed, "BBB")).toContain("08-17");
-  expect(rowLine(mixed, "AAA")).toContain("08-18");
+  expect(rowLine(mixed, "BBB")).toContain("17 Aug 2026");
+  expect(rowLine(mixed, "AAA")).toContain("18 Aug 2026");
   expect(requestSpy).not.toHaveBeenCalled();
 
   await act(async () => { tui.setup().mockInput.pressKey("r"); });
   await settle();
   const common = tui.frame();
   expect(requestSpy).toHaveBeenCalledTimes(CREDIT_SERIES.length);
-  expect(rowLine(common, "BBB")).toContain("08-18");
+  expect(rowLine(common, "BBB")).toContain("18 Aug 2026");
 });

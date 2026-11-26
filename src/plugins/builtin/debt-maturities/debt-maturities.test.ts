@@ -458,9 +458,10 @@ test("DDIS prints a ladder in its filing's own bands as reported, with its basis
   const freshness = deriveHeadlessFreshness(debtMaturitiesHeadless, result, Date.parse("2026-11-06T12:00:00Z"));
   const text = renderHeadlessPaneText(debtMaturitiesHeadless, result, args, "DDIS", freshness);
   expect(text).toContain("Maturity schedule as reported (Carrying amounts, IFRS)");
-  expect(text).toMatch(/Maturity +Carrying amount +Currency +% total/);
-  expect(text).toMatch(/Within 1 year +17\.17B +HKD +19\.4%/);
-  expect(text).toMatch(/After 5 years +11\.10B +HKD +12\.5%/);
+  // One filing's currency, date and form are said once, not on every band.
+  expect(text).toMatch(/Maturity +Carrying amount +% total\n/);
+  expect(text).toMatch(/Within 1 year +17\.17B +19\.4%/);
+  expect(text).toMatch(/After 5 years +11\.10B +12\.5%/);
   // No yearly split, no principal history.
   expect(text).not.toContain("Year 2");
   expect(text).not.toContain("Annual filing history");
@@ -627,8 +628,8 @@ test("DDIS prints the newer 10-Q's debt as its own table and is dated by it; an 
   data.latestQuarter = quarterOf(data);
   const quarterly = await load(data);
   expect(quarterly.result.sections.map((section) => section.title)).toEqual(["Principal maturity schedule", "Latest 10-Q", "Annual filing history"]);
-  const row = quarterly.text.split("\n").find((line) => line.startsWith("2025-12-31"));
-  for (const cell of ["10-Q", "21.00M", "684.00M", "EUR", "2026-02-10"]) expect(row).toContain(cell);
+  const row = quarterly.text.split("\n").find((line) => line.startsWith("31 Dec 2025"));
+  for (const cell of ["10-Q", "21.00M", "684.00M", "EUR", "10 Feb 2026"]) expect(row).toContain(cell);
   expect(quarterly.line).toBe("Source: SEC EDGAR · 10-Q Wed 31 Dec 2025 · not a live feed (filed data)");
 });
 

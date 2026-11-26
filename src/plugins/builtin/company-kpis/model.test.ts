@@ -14,7 +14,7 @@ test("a newer outlook for another metric dates an older guide without claiming i
   const older = guide({ issuedDate: "2026-05-20" });
   const newer = guide({ id: "guide:newer", issuedDate: "2026-08-19", metric: { ...older.metric, id: "revenue", name: "Revenue" } });
   expect(guidanceIssueNote(older, [older])).toBeNull();
-  expect(guidanceIssueNote(older, [newer, older])).toBe("Issued 2026-05-20; newer outlook 2026-08-19");
+  expect(guidanceIssueNote(older, [newer, older])).toBe("Issued 20 May 2026; newer outlook 19 Aug 2026");
   expect(guidanceIssueNote(newer, [older, newer])).toBeNull();
 });
 test("runtime boundary rejects nonfinite values, inverted ranges, unsafe evidence and mismatched series", () => {

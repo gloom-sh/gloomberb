@@ -1,3 +1,4 @@
+import { dayCell } from "../../../components/ui/day-cell";
 import { useCallback, useMemo, useState } from "react";
 import { apiClient } from "../../../api-client";
 import {
@@ -217,7 +218,7 @@ export function CcassStockView({
     const pctWidth = 8;
     const deltaWidth = 10;
     const deltaPctWidth = 8;
-    const dateWidth = 10;
+    const dateWidth = 11;
     const fixed = idWidth + groupWidth + sharesWidth + pctWidth + deltaWidth + deltaPctWidth + dateWidth;
     const nameWidth = Math.max(18, width - 10 - fixed);
     return [
@@ -250,7 +251,7 @@ export function CcassStockView({
         case "deltaPct":
           return { text: fmtSignedPct(row.deltaPct), color: deltaColor(row.deltaPct) };
         case "lastChanged":
-          return { text: row.lastChanged, color: colors.textDim };
+          return { ...dayCell(row.lastChanged), color: colors.textDim };
       }
     },
     [],

@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { daysInTextCell } from "../../../components/ui/day-cell";
 import { usePaneInstance } from "../../../state/app/context";
 import { useCatalystEvidence } from "./evidence";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -33,6 +34,9 @@ const isSelectable = (row: Row) => row.kind === "item" || row.kind === "locked";
 
 const EMPTY_FILTERS: Record<string, unknown> = {};
 const EMPTY_DETAILS: Record<string, CatalystDetail> = {};
+
+/** Litigation columns a docket list can share on every case. */
+const LITIGATION_SHARED = new Set(["basis", "type", "agency", "country"]);
 
 export function CatalystsPane(props: PaneProps) {
   const { symbol: bound } = usePaneTickerIdentity();
@@ -174,7 +178,9 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
   const widths = useMemo(() => kindView ? catalystKindWidths(rows, query, kindView, self) : undefined, [kindView, rows, query, self]);
   const columns = kindView
     ? catalystKindColumns(width, { kind: kindView, self: self ? { hasOthers } : null, fold, widths })
-    : catalystColumns(width, tab === "changes", litigation, catalystBasisWidth(rows, query));
+    : catalystColumns(width, tab === "changes", litigation, catalystBasisWidth(rows, query))
+      // A docket list wholly loaded says once, not on each row, a date basis, type, agency or country its cases share.
+      .map((column) => litigation && !resource.hasMore && LITIGATION_SHARED.has(column.id) ? { ...column, omitWhenSame: true } : column);
   const renderCell = (row: Row, column: (typeof columns)[number], _index: number, state: { selected: boolean }): DataTableCell => {
     if (row.kind === "locked") {
       if (!desktop && column.id === "title" && row.key === "locked:0") return { text: upgradeText, content: <UpgradeLabel text={upgradeText} onPress={openUpgrade} role="catalysts-upgrade" />, onMouseDown: openUpgrade };
@@ -201,10 +207,11 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
     if (column.id === "type") return { text, color: toneColor(catalystTypeTone(event.type), colors) };
     // The column has room for the flag beside a code.
     if (column.id === "country") return withCountryFlag({ text, color: colors.textDim }, text, desktop);
-    if (column.id === "status") return { text, color: tab === "changes" ? colors.text : toneColor(catalystStatusTone(catalystShownStatus(event)), colors) };
+    if (column.id === "status") return { ...daysInTextCell(text), color: tab === "changes" ? colors.text : toneColor(catalystStatusTone(catalystShownStatus(event)), colors) };
     // A withheld date says so, quieter than a day.
     if (column.id === "date" && catalystDateWithheld(event, query.dateField)) return { text, color: colors.textMuted };
-    return { text, color: column.id === "title" || column.id === "date" || column.id === "phase" ? colors.text : colors.textDim };
+    // A date drawn day first exports as its ISO day, an observation with its UTC time.
+    return { ...column.id === "date" ? daysInTextCell(text) : { text }, color: column.id === "title" || column.id === "date" || column.id === "phase" ? colors.text : colors.textDim };
   };
   if (isCloudSessionRequired(error?.message)) return <SignInWall placement="catalysts-signin" action="view catalysts" needsVerification={session.needsVerification} />;
   return <Box width={width} height={height} flexDirection="column">

@@ -1,3 +1,4 @@
+import { formatDay } from "../../../components/ui/day-cell";
 import { MISSING_VALUE } from "../../../utils/format";
 import { useMemo, useRef } from "react";
 import type { AwardRow } from "../../../api-client/awards";
@@ -54,7 +55,7 @@ export function AwardDetail({ row, accessKey, width, height, focused, openAward,
       <KeyValueRow label="Awardee" value={current.recipient.name} labelWidth={labelWidth} />
       <KeyValueRow label={current.entity?.parentName && current.entity.parentName !== current.recipient.name ? "Listed parent" : "Listed company"} value={current.entity ? `${current.entity.ticker} · ${current.entity.parentName ?? current.entity.legalName}` : "Unresolved"} labelWidth={labelWidth} />
       <KeyValueRow label="Agency" value={current.agency.name} detail={current.agency.parentName && current.agency.parentName !== current.agency.name ? current.agency.parentName : undefined} labelWidth={labelWidth} />
-      <KeyValueRow label={current.dateBasis === "period-start" ? "Period start date" : current.dateBasis === "publication" ? "Published" : "Awarded"} value={current.awardDate} detail={`${current.jurisdiction} · ${awardTypeLabel(current.awardType)}`} labelWidth={labelWidth} />
+      <KeyValueRow label={current.dateBasis === "period-start" ? "Period start date" : current.dateBasis === "publication" ? "Published" : "Awarded"} value={formatDay(current.awardDate)} detail={`${current.jurisdiction} · ${awardTypeLabel(current.awardType)}`} labelWidth={labelWidth} />
       {current.awardStatus ? <KeyValueRow label="Status" value={current.awardStatus} labelWidth={labelWidth} /> : null}
       {current.dataBasis === "bulk-latest-transaction" ? <KeyValueRow label="Record basis" value="Latest published transaction" labelWidth={labelWidth} /> : null}
       <KeyValueRow label="Performance period" value={awardPeriod(current)} labelWidth={labelWidth} />
@@ -69,7 +70,7 @@ export function AwardDetail({ row, accessKey, width, height, focused, openAward,
     {current.revenueComparison ? <Section title="Annual revenue comparison" width={width - 2}>
       <KeyValueRow label="Award / revenue" value={`${current.revenueComparison.percent.toFixed(2)}%`} detail={current.revenueComparison.basis === "obligated" ? "Obligated amount" : "Award value"} labelWidth={labelWidth} />
       <KeyValueRow label="Annual revenue" value={`${current.currency} ${money(current.revenueComparison.annualRevenue)}`} labelWidth={labelWidth} />
-      <KeyValueRow label="Revenue period" value={`${current.revenueComparison.periodStart} / ${current.revenueComparison.periodEnd}`} labelWidth={labelWidth} />
+      <KeyValueRow label="Revenue period" value={`${formatDay(current.revenueComparison.periodStart)} / ${formatDay(current.revenueComparison.periodEnd)}`} labelWidth={labelWidth} />
       <KeyValueRow label="Revenue filed" value={current.revenueComparison.filedAt.slice(0, 10)} labelWidth={labelWidth} />
       <KeyValueRow label="Revenue filing" value={current.revenueComparison.sourceUrl} labelWidth={labelWidth} />
       <ActionRow label="Open annual revenue filing" onPress={() => void host.openExternal(current.revenueComparison!.sourceUrl)} />
@@ -94,8 +95,8 @@ export function AwardDetail({ row, accessKey, width, height, focused, openAward,
             <KeyValueRow label="Record" value={revision.id} detail={revision.supersedes ? `Supersedes ${revision.supersedes}` : "Original observation"} labelWidth={labelWidth} />
             <KeyValueRow label="Awardee" value={revision.award.recipient.name} labelWidth={labelWidth} />
             <KeyValueRow label="Agency" value={revision.award.agency.name} labelWidth={labelWidth} />
-            <KeyValueRow label="Award date / value" value={`${revision.award.awardDate} · ${amountWithheld(revision.award) ? WITHHELD_AMOUNT : `${revision.award.currency} ${money(revision.award.awardAmount)}`}`} labelWidth={labelWidth} />
-            <KeyValueRow label="Performance period" value={`${revision.award.periodStart ?? MISSING_VALUE} / ${revision.award.periodEnd ?? MISSING_VALUE}`} labelWidth={labelWidth} />
+            <KeyValueRow label="Award date / value" value={`${formatDay(revision.award.awardDate)} · ${amountWithheld(revision.award) ? WITHHELD_AMOUNT : `${revision.award.currency} ${money(revision.award.awardAmount)}`}`} labelWidth={labelWidth} />
+            <KeyValueRow label="Performance period" value={`${formatDay(revision.award.periodStart)} / ${formatDay(revision.award.periodEnd)}`} labelWidth={labelWidth} />
             <Text fg={colors.textDim} width={width - 2} wrapMode="word" wrapText>{revision.award.title}</Text>
             {revision.award.evidenceQuote ? <Text fg={colors.text} width={width - 2} wrapMode="word" wrapText>{revision.award.evidenceQuote}</Text> : null}
             <ActionRow label="Open revision source" onPress={() => void host.openExternal(revision.award.sourceUrl)} />

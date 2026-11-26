@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { formatDay } from "../../../utils/day-format";
 import type {
   HeadlessPaneContext,
   HeadlessPaneDefinition,
@@ -33,7 +34,8 @@ const MATURITY_COLUMNS = [
   },
   { key: "yield", header: "Yield", align: "right" as const, format: percent },
 ];
-const AS_OF_COLUMN = { key: "asOf", header: "As of" };
+/** As the pane: only tenors from different sessions need their dates; the source line dates one session. */
+const AS_OF_COLUMN = { key: "asOf", header: "As of", omitWhenSame: true };
 /** The move since the previous session with a yield, per tenor. */
 const COLUMNS = [
   ...MATURITY_COLUMNS,
@@ -60,7 +62,7 @@ const RANK_NOTE = "pctl is the share of the tenor's 1D (or 1W) moves since the y
 const compareColumns = (compareAsOf: string | null) => [
   ...MATURITY_COLUMNS,
   AS_OF_COLUMN,
-  { key: "compare", header: compareAsOf ? `vs ${compareAsOf}` : "Compare", align: "right" as const, format: percent },
+  { key: "compare", header: compareAsOf ? `vs ${compareAsOf}` : "Compare", ...compareAsOf ? { textHeader: `vs ${formatDay(compareAsOf)}` } : {}, align: "right" as const, format: percent },
   { key: "changeBasisPoints", header: "Chg bp", align: "right" as const, format: basisPoints },
 ];
 const WORLD_COLUMNS = [

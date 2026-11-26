@@ -19,6 +19,7 @@ export interface CloudWorldVenuePayload {
   timeAfterOpenSeconds?: number;
   timeToOpenSeconds?: number;
   timeToCloseSeconds?: number;
+  hours?: { open: string; close: string; continuousOpen: string; continuousClose: string };
 }
 
 export type WorldVenueSession = "open" | "pre-market" | "after-hours" | "closed" | "holiday";

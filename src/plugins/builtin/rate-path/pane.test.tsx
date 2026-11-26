@@ -60,14 +60,14 @@ test("the path fits the body: short panes give the meetings the room instead of 
     const frame = lines.join("\n");
     expect(frame).not.toContain("TENOR");
     expect(frame).toContain("MEETING");
-    expect(frame).toContain("2026-10-28");
+    expect(frame).toContain("28 Oct 2026");
     expect(lines.findIndex((line) => line.includes("as of 2026-09-22 14:00 UTC"))).toBe(height - 1);
   }
   // With room the chart draws above the meetings, and the last meeting sits on the footer.
   const lines = await render(84, 29);
   expect(lines.join("\n")).toContain("Implied meeting rate");
   expect(lines.join("\n")).not.toContain("TENOR");
-  expect(lines[27]).toContain("2027-09-15");
+  expect(lines[27]).toContain("15 Sep 2027");
 });
 
 test("the path names what it plots: one target range, the SEP dots, meetings by month", async () => {
@@ -123,11 +123,11 @@ test("a short pane keeps its meetings: the path becomes a strip, then goes", asy
   let header = lines.findIndex((line) => line.includes("MEETING"));
   expect(lines[header - 1]).toContain("● Implied EFFR");
   expect(lines[header - 1]).toContain("Oct '26 3.90%");
-  expect(lines.slice(header + 1).filter((line) => /20\d\d-\d\d-\d\d/.test(line)).length).toBeGreaterThanOrEqual(4);
+  expect(lines.slice(header + 1).filter((line) => /\d\d [A-Z][a-z]{2} 20\d\d/.test(line)).length).toBeGreaterThanOrEqual(4);
   lines = await render(22, 10);
   header = lines.findIndex((line) => line.includes("MEETING"));
   expect(lines.join("\n")).not.toContain("●");
-  expect(lines.slice(header + 1).filter((line) => /20\d\d-\d\d-\d\d/.test(line)).length).toBeGreaterThanOrEqual(4);
+  expect(lines.slice(header + 1).filter((line) => /\d\d [A-Z][a-z]{2} 20\d\d/.test(line)).length).toBeGreaterThanOrEqual(4);
 });
 
 test("meetings that differ keep their rank and quote time", async () => {
@@ -145,11 +145,12 @@ test("a meeting already past prints its date instead of today", async () => {
   data.meetings[0] = { ...data.meetings[0]!, date: "2020-01-15" };
   spy = spyOn(apiClient, "getCloudRatePath").mockResolvedValue(data);
   const frame = (await render(120, 40)).join("\n");
-  expect(frame).toContain("15 Jan · 2020-01-15");
-  expect(frame).not.toContain("15 Jan · today");
+  expect(frame).toMatch(/Next FOMC +40% cut +15 Jan 2020 *\n/);
+  expect(frame).not.toContain("today");
 });
 
 test("the first screen leads with the next meeting's odds and prices every meeting in moves", async () => {
+  setSystemTime(new Date("2026-09-22T15:00:00Z"));
   spy = spyOn(apiClient, "getCloudRatePath").mockResolvedValue(payload());
   const lines = await render(120, 40);
   const frame = lines.join("\n");
@@ -159,6 +160,6 @@ test("the first screen leads with the next meeting's odds and prices every meeti
   expect(frame).not.toContain("Last-first");
   const header = lines.findIndex((line) => line.includes("MEETING"));
   expect(lines[header]).toMatch(/MEETING.*MOVES +P\(MOVE\) +VS NOW +EFFR/);
-  expect(lines[header + 1]).toMatch(/2026-10-28 +-0\.40 +40% cut +-10\.0bp +3\.90%/);
-  expect(lines[header + 8]).toMatch(/2027-09-15 +-3\.20 +40% cut +-80\.0bp +3\.20%/);
+  expect(lines[header + 1]).toMatch(/28 Oct 2026 +-0\.40 +40% cut +-10\.0bp +3\.90%/);
+  expect(lines[header + 8]).toMatch(/15 Sep 2027 +-3\.20 +40% cut +-80\.0bp +3\.20%/);
 });

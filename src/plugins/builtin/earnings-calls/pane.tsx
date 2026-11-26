@@ -54,7 +54,7 @@ import {
 import { isPermanentClientError } from "../../../api-client/errors";
 import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { STALE_SEGMENT } from "../../../components/layout/pane/status-footer";
-import { callPeriod, callTitle, eventLabelOf, formatCallDate, formatDuration, formatSentiment, noCallsText, searchingCallsTitle } from "./format";
+import { callLengthMayBeBlank, callPeriod, callPeriodMayBeBlank, callTitle, eventLabelOf, formatCallDate, formatDuration, formatSentiment, noCallsText, searchingCallsTitle } from "./format";
 import { findCallForQuarter, findInLines, MIN_FIND_LENGTH, originalIsMachineTranscript, translatedFrom, turnParagraphs } from "./model";
 import { READER_TABS, TranscriptView, type ReaderTab, type TranscriptPlayback } from "./transcript-view";
 import { PLAYBACK_RATES, SEEK_STEP_SECONDS, useCallPlayback } from "./use-call-playback";
@@ -68,7 +68,13 @@ function isReaderTab(value: string): value is ReaderTab {
 
 type CallColumn = DataTableColumn;
 
-function buildColumns(width: number, showTicker: boolean): CallColumn[] {
+/**
+ * The list's columns. One company's calls (`CALLS 600690`) name it in the
+ * title, so no column repeats it and the period, an event's name among them
+ * ("written results"), takes its room. A length no call states (a written
+ * call has none) leaves the table.
+ */
+export function callListColumns(width: number, showTicker: boolean): CallColumn[] {
   const tickerWidth = showTicker ? 8 : 0;
   const dateWidth = 10;
   const periodWidth = 8;
@@ -82,17 +88,20 @@ function buildColumns(width: number, showTicker: boolean): CallColumn[] {
 
   const columns: CallColumn[] = [];
   if (showTicker) columns.push({ id: "ticker", label: "TICKER", width: tickerWidth, align: "left" });
+  if (showTicker) columns.push({ id: "company", label: "COMPANY", width: companyWidth, align: "left" });
   columns.push(
-    { id: "company", label: "COMPANY", width: companyWidth, align: "left" },
     { id: "date", label: "DATE", width: dateWidth, align: "left" },
-    { id: "period", label: "PERIOD", width: periodWidth, align: "left", mayBeBlank: true },
-    { id: "length", label: "LENGTH", width: lengthWidth, align: "right", mayBeBlank: true },
+    showTicker
+      ? { id: "period", label: "PERIOD", width: periodWidth, align: "left" }
+      : { id: "period", label: "PERIOD", width: Math.max(periodWidth, width - dateWidth - lengthWidth - sentimentWidth - 6), align: "left", flexGrow: 1 },
+    { id: "length", label: "LENGTH", width: lengthWidth, align: "right", omitWhenEmpty: true },
     { id: "sentiment", label: "TONE", width: sentimentWidth, align: "right" },
   );
   return columns;
 }
 
-function renderCell(call: CloudEarningsCallPayload, column: CallColumn, now: number): DataTableCell {
+/** One cell of a call in the list. PERIOD and LENGTH say per row when their dash is no value lost (format.ts). */
+export function callListCell(call: CloudEarningsCallPayload, column: CallColumn, now: number): DataTableCell {
   switch (column.id) {
     case "ticker":
       return { text: call.ticker };
@@ -101,9 +110,9 @@ function renderCell(call: CloudEarningsCallPayload, column: CallColumn, now: num
     case "date":
       return { text: formatCallDate(call.callAt), color: colors.textDim };
     case "period":
-      return { text: callPeriod(call) };
+      return { text: callPeriod(call), ...(callPeriodMayBeBlank(call) ? { mayBeBlank: true } : {}) };
     case "length":
-      return { text: formatDuration(call.durationSeconds), color: colors.textDim };
+      return { text: formatDuration(call.durationSeconds), color: colors.textDim, ...(callLengthMayBeBlank(call) ? { mayBeBlank: true } : {}) };
     case "sentiment": {
       // A call still to come says how far away it is, not that it is queued.
       if (isUpcomingCall(call, now)) return { text: callCountdown(call, now), color: colors.text };
@@ -745,8 +754,8 @@ function CallsListView({
     (!access.hasProAccess || listError?.status === 402);
   const transcriptProRequired = transcriptError?.status === 402;
 
-  const columns = useMemo(() => buildColumns(width, !ticker), [width, ticker]);
-  const renderRow = useCallback((call: CloudEarningsCallPayload, column: CallColumn) => renderCell(call, column, now), [now]);
+  const columns = useMemo(() => callListColumns(width, !ticker), [width, ticker]);
+  const renderRow = useCallback((call: CloudEarningsCallPayload, column: CallColumn) => callListCell(call, column, now), [now]);
 
   const isSearchUp = useSearchFocusUp();
   const handleRootKey = useCallback(
@@ -983,7 +992,7 @@ function CallsListView({
         placement={detailOpen ? "calls-transcript-signin" : "calls-signin"}
         width={width} height={height} symbol={detailOpen ? selected?.ticker ?? symbol : symbol} exchange={exchange}
         action="browse earnings call transcripts"
-        needsVerification={verificationRequired}
+        needsVerification={verificationRequired} pro
       />
     );
   }

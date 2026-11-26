@@ -345,7 +345,7 @@ test("a chart of weekly bars dates its latest close and the report by the week's
     const result = await definition.load(args, { ...fixture().context, marketData: provider, settings: { chartSpec: spec } });
     expect(result.freshness).toMatchObject({ basis: "weekly bars", asOf: "2026-10-16" });
     const text = renderHeadlessPaneText(definition, result, args, "Custom Chart");
-    expect(text).toMatch(/SPY:NYSE Price\s+2026-10-16\s+763/);
+    expect(text).toMatch(/SPY:NYSE Price\s+16 Oct 2026\s+763/);
     expect(text).toContain("Fri 16 Oct 2026 · not a live feed (weekly bars)");
   } finally {
     setSystemTime();
@@ -372,7 +372,7 @@ test("a month still forming is dated by its value's own day, the quote it ends o
     // Tue 10 Nov 2026 02:10 UTC: `fn G BTC-USD ^NDX GC=F` listed ^NDX "Latest 2026-11-01" beside BTC's 2026-11-10.
     setSystemTime(new Date("2026-11-10T02:10:00Z"));
     const result = await definition.load(args, { ...fixture().context, marketData: provider, settings: { chartSpec: spec } });
-    expect(renderHeadlessPaneText(definition, result, args, "Custom Chart")).toMatch(/\^NDX\S* Price\s+(\S.*\s+)?2026-11-09\s/);
+    expect(renderHeadlessPaneText(definition, result, args, "Custom Chart")).toMatch(/\^NDX\S* Price\s+(\S.*\s+)?09 Nov 2026\s/);
   } finally {
     setSystemTime();
   }
@@ -738,7 +738,7 @@ test("a company's reported total asks the text report for its compact form, a pr
   const definition = chartHeadless("fundamental-graph-pane");
   const revenue = await definition.load(args, { ...fixture().context, marketData: provider, settings: { chartSpec: spec } }) as ChartPaneModel;
   expect(revenue.series[0]).toMatchObject({ textCompact: true, points: [{ value: 56_998_000_000 }, { value: 63_325_000_000 }] });
-  expect(renderHeadlessPaneText(definition, revenue, args, "Fundamental Graph")).toMatch(/2026-07-25 +63\.33B +\w+ +2/);
+  expect(renderHeadlessPaneText(definition, revenue, args, "Fundamental Graph")).toMatch(/25 Jul 2026 +63\.33B +\w+ +2/);
   // The price chart's latest close is a price, printed as it is.
   expect((await fixture().load()).series.some((series) => series.textCompact)).toBe(false);
 });

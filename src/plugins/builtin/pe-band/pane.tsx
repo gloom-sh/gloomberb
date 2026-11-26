@@ -1,3 +1,4 @@
+import { dayCell } from "../../../components/ui/day-cell";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { ChartTableHeader, DataTableView, EmptyState, PaneStatusBody, QueryBar, scalarPoint, spanAxisFormatter, staticSeries,
   useChartTableSelection, usePaneFooter, usePaneNoticeFooter, usePaneTicker, type DataTableCell, type DataTableColumn,
@@ -48,7 +49,7 @@ function renderCell(row: PeBandRow, column: DataTableColumn, colors: ReturnType<
   switch (column.id) {
     case "period": return { text: periodLabel(row) };
     // A figure with no publication date on record steps at its period end.
-    case "known": return row.dated ? { text: row.knownAt.toISOString().slice(0, 10), value: row.knownAt.toISOString().slice(0, 10) }
+    case "known": return row.dated ? dayCell(row.knownAt)
       : { text: "period end", color: colors.textMuted };
     case "eps": return { text: row.eps == null ? MISSING_VALUE : `${formatPerShare(row.eps)}${fxTarget && row.currency ? ` ${row.currency}` : ""}`, value: row.eps,
       color: row.eps != null && row.eps <= 0 ? colors.negative : undefined };

@@ -11,6 +11,16 @@ function detailText(sections: EventDetailSection[]): string {
 }
 
 describe("event detail", () => {
+  test("the earnings drilldown distinguishes diluted filing measures from the street observations", () => {
+    const row = buildEventRows({ symbol: "DELL", splits: [], dividends: [], earnings: [{ date: "2026-11-24", currency: "USD", epsActual: 9.45, gaapEps: 8.82,
+      epsBasis: "company-adjusted", streetEps: { actual: 9.16, estimate: 6.55, analysts: 8, actualBasis: "including-stock-compensation" } }] }, null, null, "USD")[0]!;
+    const text = detailText(buildEventDetail({ row, secFilingsLoading: false, filing: null, documents: [], documentsLoading: false,
+      inlineContent: new Map(), primaryContent: null, primaryContentLoading: false }));
+    expect(row.detail).toContain("company-adjusted diluted");
+    for (const figure of ["Actual: 9.45 USD", "GAAP diluted EPS: 8.82 USD", "Street actual: 9.16 USD", "Street estimate: 6.55 USD"]) expect(text).toContain(figure);
+    expect(text).not.toContain("Surprise:");
+  });
+
   test("estimate drilldown and JSON retain distinct EPS/revenue inputs, currencies and attribution", () => {
     const eps = { date: "2026-09-30", period: "current quarter", currency: "USD", average: 4.4, low: 4, high: 5, yearAgo: 0, growth: 0, analysts: 12 };
     const revenue = { date: eps.date, period: eps.period, currency: "TWD", average: 1.45e12, low: 1.4e12, high: 1.5e12, yearAgo: 1e12, growth: .45, analysts: 20 };

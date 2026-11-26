@@ -13,8 +13,9 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { withCountryFlag } from "../../../components/ui/country-flag";
+import { dayCell } from "../../../components/ui/day-cell";
 import { publicTickerKey } from "../../../utils/exchanges";
-import { MISSING_VALUE, truncateToDisplayWidth } from "../../../utils/format";
+import { truncateToDisplayWidth } from "../../../utils/format";
 import { wrapTextLines } from "../../../utils/text-wrap";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
@@ -25,8 +26,8 @@ import { AwardDetail } from "./detail";
 import { useAwardAlerts } from "./alerts";
 import { AWARDS_UNAVAILABLE, fetchAwards, loadAward, loadAwards, validateAwards } from "./client";
 import { useAwardsEvidence } from "./evidence";
-import { AWARD_TABS, aggregateId, amountWithheld, awardHistorySeries, awardPercent, awardPeriod, awardsAmountNotices, awardsAttributions, awardScope, awardsCoverageNotes, awardsPreviewNote,
-  awardTab, awardTypeLabel, futureAwardDatesNote, money, rankedAggregates, WITHHELD_AMOUNT } from "./model";
+import { AWARD_TABS, aggregateId, amountWithheld, awardHistorySeries, awardPercent, awardPeriod, awardPeriodValue, awardsAmountNotices, awardsAttributions, awardScope, awardsCoverageNotes, awardsPreviewNote,
+  awardAmountLabel, awardsQueryShared, awardTab, awardTypeLabel, futureAwardDatesNote, money, rankedAggregates, WITHHELD_AMOUNT, type AwardsQueryShared } from "./model";
 import { logFailure } from "../../../utils/log-failure";
 
 type Item = { kind: "award"; row: AwardRow } | { kind: "aggregate"; row: AwardAggregate } | { kind: "leader"; row: AwardCompanyLeader } | { kind: "locked"; id: string }
@@ -51,7 +52,7 @@ const COLUMN = {
   ticker: { id: "ticker", label: "Ticker", width: 10, align: "left" }, currency: { id: "currency", label: "CCY", width: 5, align: "left" },
   value: { id: "value", label: "Value", width: 11, align: "right", omitWhenEmpty: true }, obligated: { id: "obligated", label: "Obligated", width: 11, align: "right", omitWhenEmpty: true },
   ceiling: { id: "ceiling", label: "Ceiling", width: 11, align: "right", omitWhenEmpty: true }, agency: { id: "agency", label: "Agency", width: 24, align: "left" },
-  country: { id: "country", label: "Country", width: 8, align: "left" }, period: { id: "period", label: "Performance period", width: 24, align: "left" },
+  country: { id: "country", label: "Country", width: 8, align: "left" }, period: { id: "period", label: "Performance period", width: 25, align: "left" },
   title: { id: "title", label: "Contract", width: 36, flexGrow: 1, align: "left" },
   dateBasis: { id: "dateBasis", label: "Date basis", width: 14, align: "left" },
 } satisfies Record<string, DataTableColumn>;
@@ -63,6 +64,19 @@ const COLUMN = {
 const FEED_COLUMNS: DataTableColumn[] = [COLUMN.date, COLUMN.recipient, COLUMN.ticker, COLUMN.title, COLUMN.agency, COLUMN.currency,
   ...[COLUMN.value, COLUMN.obligated, COLUMN.ceiling].map((column) => ({ ...column, omitWhenEmpty: "visible" as const })),
   COLUMN.country, COLUMN.period, COLUMN.dateBasis];
+/**
+ * The feed's columns, leaving out of the table what every award of the query
+ * shares: the ticker it is filtered to, its one currency, named in the
+ * amounts' headers instead, and its one country. A date basis the whole list
+ * shares, all of it loaded, goes too. The export keeps every column.
+ */
+function feedColumns(shared: AwardsQueryShared, complete: boolean): DataTableColumn[] {
+  return FEED_COLUMNS.map((column) => {
+    if (column.id === "ticker" && shared.ticker || column.id === "currency" && shared.currency || column.id === "country" && shared.country) return { ...column, omitWhenSame: true };
+    if (column.id === "value" || column.id === "obligated" || column.id === "ceiling") return { ...column, label: awardAmountLabel(column.label, shared.currency) };
+    return column.id === "dateBasis" && complete ? { ...column, omitWhenSame: true } : column;
+  });
+}
 const EVENT_COLUMNS: DataTableColumn[] = [COLUMN.date, COLUMN.recipient, COLUMN.ticker,
   { id: "ratio", label: "% revenue", width: 11, align: "right" }, COLUMN.currency, { ...COLUMN.value, label: "Compared value" },
   { id: "revenue", label: "Annual revenue", width: 14, align: "right" }, { id: "basis", label: "Value basis", width: 13, align: "left" },
@@ -223,7 +237,7 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
     view={tab === "sectors" ? { value: leaderView, options: [{ value: "companies", label: "Companies" }, { value: "sectors", label: "Sectors" }], onChange: setLeaderView } : undefined} />;
   const columns = showLeaders ? LEADER_COLUMNS.filter((column) => column.id !== "scope" && column.id !== "currency")
     : aggregated ? AGG_COLUMNS.filter((column) => column.id !== "scope" && column.id !== "currency").map((column) => column.id === "label" ? { ...column, label: tab === "agencies" ? "Agency" : "Sector" } : column)
-    : tab === "events" ? EVENT_COLUMNS : FEED_COLUMNS;
+    : tab === "events" ? EVENT_COLUMNS : feedColumns(awardsQueryShared(data, filter), !paged.hasMore);
   const maxShare = Math.max(0, ...items.map((item) => item.kind === "aggregate" || item.kind === "leader" ? item.row.sharePercent ?? 0 : 0));
   // A preview's cohorts are the latest of any company, so they never chart as the ticker's.
   const charted = data?.locked ? [] : series;
@@ -279,19 +293,19 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
                 : { ...shareCell(`${item.row.sharePercent.toFixed(1)}%`, maxShare ? item.row.sharePercent / maxShare : null, column.width, colors, state.selected), value: item.row.sharePercent };
             }
             const award = item.row;
-            if (column.id === "date") return { text: award.awardDate, value: award.awardDate };
+            if (column.id === "date") return dayCell(award.awardDate);
             if (column.id === "dateBasis") return { text: award.dateBasis === "period-start" ? "Period start" : award.dateBasis === "publication" ? "Publication" : "Award date", color: colors.textDim };
             if (column.id === "recipient") return { text: award.recipient.name, color: colors.textBright };
             if (column.id === "ticker") return award.entity ? { text: award.entity.ticker, content: <Badge label={award.entity.ticker} /> } : missingCell(colors);
             if (column.id === "agency") return { text: award.agency.name, color: colors.text };
             // The column has room for the flag beside a code.
             if (column.id === "country") return withCountryFlag({ text: award.jurisdiction, color: colors.textDim }, award.jurisdiction, desktop);
-            if (column.id === "period") return { text: awardPeriod(award), color: colors.textDim };
+            if (column.id === "period") return { text: awardPeriod(award), value: awardPeriodValue(award), color: colors.textDim };
             if (column.id === "title") return { text: award.title, color: colors.text };
             if (column.id === "ratio") return { text: awardPercent(award), value: award.revenueComparison?.percent ?? null, color: colors.warning, attributes: TextAttributes.BOLD, keepColorWhenSelected: true };
             if (column.id === "revenue") return { text: money(award.revenueComparison?.annualRevenue), value: award.revenueComparison?.annualRevenue ?? null };
             if (column.id === "basis") return { text: award.revenueComparison?.basis === "obligated" ? "Obligated" : "Award value", color: colors.textDim };
-            return { text: award.revenueComparison?.periodEnd ?? MISSING_VALUE, color: colors.textDim };
+            return { ...dayCell(award.revenueComparison?.periodEnd), color: colors.textDim };
           }}
           emptyStateTitle={tab === "company" && !ticker ? "Enter a company ticker." : tab === "events" ? "No revenue-comparable awards in this scope." : "No awards match these filters."}
           rootAfter={attribution ? <Box paddingX={1} height={attributionRows} flexShrink={0}><Notice tone="muted">{attribution}</Notice></Box> : undefined}

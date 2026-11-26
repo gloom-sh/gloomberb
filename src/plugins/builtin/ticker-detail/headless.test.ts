@@ -550,7 +550,7 @@ test("historical prices mark a monthly bar whose month runs on and date it by th
     // A month's bar reads as the month, and the one still running says so; the export keeps the day and adds a Partial column.
     expect(text).toContain("2026-10 MTD");
     expect(text).toMatch(/Month\s+Open/);
-    expect(text).not.toContain("2026-10-01");
+    expect(text).not.toContain("01 Oct 2026");
     expect(result.metadata).toMatchObject({ interval: "1mo" });
     expect(result.columns!.map((column) => column.key)).toContain("partial");
     expect(result.columns![0]!.format!(result.rows[2]!.date, result.rows[2]!)).toBe("2026-10-01");
@@ -619,7 +619,7 @@ test("historical prices take today's bar from the quote while the session trades
     // Dated by the quote it was read from, and the line says the newest bar is not a close.
     expect(result.freshness).toMatchObject({ basis: "daily bars", asOf: "2026-10-16T18:59:30.000Z", note: "the newest bar is today so far" });
     const text = renderHeadlessPaneText(historicalPricesHeadless, result, args(["AAPL"]), "HP AAPL");
-    expect(text).toContain("2026-10-16 DTD");
+    expect(text).toContain("16 Oct 2026 DTD");
     expect(text).toContain("today so far");
     expect(text).not.toContain("341.995");
 
@@ -703,7 +703,7 @@ test("returns mark a monthly bar whose month runs on, as historical prices do", 
     const text = renderHeadlessPaneText(returnsHeadless, result, input, "RETURN CSCO");
     expect(text).toContain("2026-10 MTD");
     expect(text).toContain("2026-09");
-    expect(text).not.toContain("2026-10-01");
+    expect(text).not.toContain("01 Oct 2026");
     // Without October's bar, September's is complete and dated by its last session.
     const september = createTestHeadlessContext({
       resolveInstrument: async () => ({ symbol: "CSCO", exchange: "NASDAQ" }),
@@ -735,7 +735,7 @@ test("a coin's weekly returns are dated on its own calendar: Sunday closes, and 
     });
     const input = args(["BTC-USD"], { from: "2026-09-28", to: "2026-11-09", interval: "1wk" });
     const text = renderHeadlessPaneText(returnsHeadless, await returnsHeadless.load(input, ctx), input, "RETURN BTC-USD");
-    expect(text).toMatch(/peak [\d,.]+ on 2026-10-04, trough [\d,.]+ on 2026-11-08, not back to the peak by 2026-11-09/);
+    expect(text).toMatch(/peak [\d,.]+ on 04 Oct 2026, trough [\d,.]+ on 08 Nov 2026, not back to the peak by 09 Nov 2026/);
     expect(text).toContain("Sun 27 Sep");
     expect(text).not.toMatch(/Fri \d+ (Sep|Oct|Nov)/);
   } finally {
@@ -769,6 +769,9 @@ test("RETURN without --interval grows its bars with the range, and dates a month
     const monthly = await returnsHeadless.load(args(["VXX"], { range: "ALL", interval: "1mo" }), ctx);
     expect(monthly.metadata!.notices).toContain(
       "Max drawdown -21.6% (monthly closes): peak 35.70 on 2026-03-31, trough 28.00 on 2026-04-30, not back to the peak by 2026-05-29");
+    // The text writes the days first; JSON keeps the notice's days in ISO.
+    expect(monthly.textNotices).toContain(
+      "Max drawdown -21.6% (monthly closes): peak 35.70 on 31 Mar 2026, trough 28.00 on 30 Apr 2026, not back to the peak by 29 May 2026");
   } finally {
     setSystemTime();
   }

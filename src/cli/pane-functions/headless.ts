@@ -48,6 +48,7 @@ import { isRecord } from "../../utils/guards";
 import { displayTickerKey } from "../../utils/exchanges";
 import { splitSymbolWords } from "../symbol-args";
 import { formatUtcTime, localTimeSuffix } from "../../utils/utc-time";
+import { formatDay } from "../../utils/day-format";
 import { MISSING_VALUE, formatCompact, formatSignificant } from "../../utils/format";
 import { deriveHeadlessFreshness, formatFreshnessLine, staleRowsText, withSavedCopy, type ReportFreshness } from "./freshness";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE } from "../../utils/network-failure";
@@ -427,9 +428,12 @@ function displayValue(value: unknown): string {
   if (typeof value === "number") return displayNumber(value);
   if (typeof value === "object") return JSON.stringify(value);
   if (typeof value === "string" && ISO_INSTANT.test(value)) return displayInstant(value);
+  // A calendar day reads as the pane writes it (docs/pane-conventions.md, "One date format").
+  if (typeof value === "string" && ISO_DAY_ONLY.test(value)) return formatDay(value);
   return String(value);
 }
 
+const ISO_DAY_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})$/;
 
 /**
@@ -575,6 +579,23 @@ function seriesValue(series: HeadlessSeries, value: number | null): string {
     ? `${whole!.replace(/\B(?=(\d{3})+$)/g, ",")}${fraction ? `.${fraction}` : ""}` : plain;
 }
 
+const blankText = (text: string) => text === "" || text === MISSING_VALUE;
+
+/** The columns the text prints: an `omitWhenEmpty` one blank in every row, or an `omitWhenSame` one every row prints alike, leaves. */
+function withoutFillerColumns(
+  rows: readonly HeadlessPaneRow[],
+  columns: HeadlessPaneColumn[],
+  cell: (row: HeadlessPaneRow, column: HeadlessPaneColumn) => string,
+): HeadlessPaneColumn[] {
+  if (!columns.some((column) => column.omitWhenEmpty || column.omitWhenSame)) return columns;
+  return columns.filter((column) => {
+    if (!column.omitWhenEmpty && !column.omitWhenSame) return true;
+    const texts = rows.map((row) => cell(row, column).trim());
+    if (column.omitWhenEmpty && texts.every(blankText)) return false;
+    return !(column.omitWhenSame && texts.length >= 2 && texts.every((text) => text === texts[0] || (blankText(text) && blankText(texts[0]!))));
+  });
+}
+
 function renderRows(
   rows: HeadlessPaneRow[],
   ownColumns: HeadlessPaneColumn[] | undefined,
@@ -582,14 +603,14 @@ function renderRows(
   empty?: string,
 ): string {
   if (rows.length === 0) return empty ?? "No data.";
-  const all = columnsFor(rows, ownColumns, fallbackColumns);
-  const columns = all.filter((column) => !column.underRow);
-  const under = all.filter((column) => column.underRow);
   const cell = (row: HeadlessPaneRow, column: HeadlessPaneColumn) => {
     const value = row[column.key];
     const format = column.textFormat ?? column.format;
     return format ? format(value, row) : displayValue(value);
   };
+  const all = withoutFillerColumns(rows, columnsFor(rows, ownColumns, fallbackColumns), cell);
+  const columns = all.filter((column) => !column.underRow);
+  const under = all.filter((column) => column.underRow);
   return renderTable(
     columns.map((column) => ({
       header: column.textHeader ?? displayedHeader(column),
@@ -632,9 +653,9 @@ function renderBundle(
   return sections.filter((section) => !isLockedSection(section)).flatMap((section, index) => [
     ...(index > 0 ? [""] : []),
     // A section with no title is its rows, or its empty message, alone.
-    ...(section.title ? [renderSection(section.textTitle ?? section.title)] : []),
+    ...(section.title ? [renderSection(("textPreview" in section ? section.textPreview?.title : undefined) ?? section.textTitle ?? section.title)] : []),
     "rows" in section && section.rows
-      ? renderRows(section.textRows ?? section.rows, section.textColumns ?? section.columns, definition.columns, section.empty)
+      ? renderRows(section.textRows ?? section.rows.slice(0, section.textPreview?.limit), section.textColumns ?? section.columns, definition.columns, section.empty)
       : renderEntries(section.textEntries ?? section.entries),
   ]);
 }
@@ -879,10 +900,16 @@ function emptyReportReason(
   return narrowed ? `No data for ${symbols.join(", ")} with these options.` : `No data for ${symbols.join(", ")}: not covered${token ? ` by ${token}` : ""}.`;
 }
 
-function textNotices(result: HeadlessPaneResult): string[] {
-  const notices = result.metadata?.notices;
+function textNotices(result: HeadlessPaneResult, text = false): string[] {
+  const notices = text && result.textNotices ? result.textNotices : result.metadata?.notices;
   if (!Array.isArray(notices)) return [];
   return [...new Set(notices.filter((notice): notice is string => typeof notice === "string" && notice.trim().length > 0))];
+}
+
+/** The notes the text report prints: `textNotes` for the load's own, then any added after it (a row window's). */
+function printedNotes(result: HeadlessPaneResult): string[] | undefined {
+  if (!result.textNotes) return result.notes;
+  return [...result.textNotes, ...(result.notes ?? []).slice(result.textNotes.length)];
 }
 
 /**
@@ -1071,7 +1098,7 @@ export function renderHeadlessPaneText(
   // A long title wraps to a narrow --width like the text under a table; each line stays bold.
   const lines = [...wrapToTerminal(reportTitle(definition, args, result, fallbackTitle)).split("\n").map(cliStyles.bold), ""];
   // A notice wraps to a narrow --width, as the notes and errors under the tables do.
-  const notices = textNotices(result).map((notice) => wrapToTerminal(notice));
+  const notices = textNotices(result, true).map((notice) => wrapToTerminal(notice));
   if (notices.length) lines.push(...notices, "");
   const gate = reportGate(definition, result);
   const reason = emptyReportReason(definition, result, args, token, gate);
@@ -1101,7 +1128,8 @@ export function renderHeadlessPaneText(
       return _exhaustive;
     }
   }
-  if (result.notes?.length) lines.push("", ...renderMessages("Notes", result.notes));
+  const notes = printedNotes(result);
+  if (notes?.length) lines.push("", ...renderMessages("Notes", notes));
   const { failed } = splitErrors(result);
   // One Pro line per report, whatever its tables lock; a report the free view left empty said it above.
   const pro = gate ? gateLine(gate) : null;
@@ -1180,27 +1208,35 @@ function withUnreached(
  * (`fn CTM CL --limit 3`): the first or last n of each table, of a series' points the oldest or newest n, as every
  * command that prints a list keeps them; the notes say what was cut.
  */
-function windowHeadlessResult(shape: HeadlessPaneDefinition["shape"], result: HeadlessPaneResult, window: RowWindowOptions): HeadlessPaneResult {
+function windowHeadlessResult(definition: HeadlessPaneDefinition, result: HeadlessPaneResult, window: RowWindowOptions): HeadlessPaneResult {
   const notes: string[] = [];
+  const rowDate = (columns: readonly HeadlessPaneColumn[] | undefined) => columns?.some(({ key, header }) => key === "date" && /^(?:date|session)$/i.test(header))
+    ? (row: HeadlessPaneRow) => row.date : undefined;
   const cut = <Row,>(rows: readonly Row[], table?: string, dateOf?: (row: Row) => unknown): Row[] => {
     const kept = windowRows(rows, window, dateOf);
     const note = rowWindowCutNote(window, { ...kept, shown: kept.rows.length }, { table });
     if (note) notes.push(note);
     return kept.rows;
   };
-  const quiet = <Row,>(rows: readonly Row[] | undefined) => rows ? windowRows(rows, window).rows : undefined;
+  const quiet = (rows: HeadlessPaneRow[], dateOf?: (row: HeadlessPaneRow) => unknown) => windowRows(rows, window, dateOf).rows;
   let windowed: HeadlessPaneResult;
-  switch (shape) {
+  switch (definition.shape) {
     case "rows": {
       const rows = result as HeadlessRowsResult;
-      windowed = { ...rows, rows: cut(rows.rows), ...(rows.textRows ? { textRows: quiet(rows.textRows)! } : {}) };
+      const dateOf = rowDate(rows.columns ?? definition.columns);
+      windowed = { ...rows, rows: cut(rows.rows, undefined, dateOf), ...(rows.textRowsUseRecordsWhenWindowed
+        ? { textColumns: undefined, textRows: undefined, textSections: undefined }
+        : rows.textRows ? { textRows: quiet(rows.textRows, dateOf) } : {}) };
       break;
     }
     case "bundle": {
       const bundle = result as HeadlessBundleResult;
       const several = bundle.sections.filter((section) => section.rows).length > 1;
-      windowed = { ...bundle, sections: bundle.sections.map((section) => !section.rows ? section : {
-        ...section, rows: cut(section.rows, several ? section.title : undefined), ...(section.textRows ? { textRows: quiet(section.textRows)! } : {}),
+      windowed = { ...bundle, sections: bundle.sections.map((section) => {
+        if (!section.rows) return section;
+        const dateOf = rowDate(section.columns ?? definition.columns);
+        return { ...section, textPreview: undefined, rows: cut(section.rows, several ? section.title : undefined, dateOf),
+          ...(section.textRows ? { textRows: quiet(section.textRows, dateOf) } : {}) };
       }) };
       break;
     }
@@ -1217,7 +1253,7 @@ function windowHeadlessResult(shape: HeadlessPaneDefinition["shape"], result: He
       break;
     }
     default: {
-      const _exhaustive: never = shape;
+      const _exhaustive: never = definition.shape;
       return _exhaustive;
     }
   }
@@ -1232,7 +1268,7 @@ export async function buildHeadlessFunctionReport(
   let loaded: LoadedHeadlessPaneModel;
   try {
     loaded = await loadResolvedHeadlessPaneModel(resolved, context, rawArgument);
-    if (resolved.rowWindow) loaded = { ...loaded, result: windowHeadlessResult(loaded.definition.shape, loaded.result, resolved.rowWindow) };
+    if (resolved.rowWindow) loaded = { ...loaded, result: windowHeadlessResult(loaded.definition, loaded.result, resolved.rowWindow) };
   } catch (error) {
     // A Pro pane the server refused reports what its wall covers, as its rendered view does.
     const locked = await lockedHeadlessReport(resolved, error, () => (

@@ -68,7 +68,8 @@ export const commodityBalancesHeadless: HeadlessPaneDefinition<"bundle"> = {
             { key: "attribute", header: "Attribute" },
             { key: "value", header: "Value", align: "right", format: amount },
             { key: "unit", header: "Unit" },
-            { key: "year", header: "Year" },
+            // The title names the market year; several years bring the column back.
+            { key: "year", header: "Year", omitWhenSame: true },
           ],
           rows: data.rows.map((row) => ({
             crop: row.crop,

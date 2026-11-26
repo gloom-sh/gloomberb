@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { formatDay } from "../../../components/ui/day-cell";
 import { useCallback, useMemo } from "react";
 import { ChartTableHeader, DataTableStackView, EmptyState, PaneStatusBody, useChartTableSelection, usePaneNoticeFooter, usePaneStatusLinkFooter, type ChartTableChart, type DataTableCell, type StatItem } from "../../../components";
 import { ageFooterSegment } from "../../../components/layout/pane/footer";
@@ -79,7 +80,7 @@ export function ShortSidePublicationPane({ kind, width, height, focused }: Pick<
       getItemKey={rowKey} renderCell={renderCell} resetScrollKey={`${kind}:${symbol}`}
       selection={{ kind: "index", selectedIndex: rows.length ? selectedIndex : -1, onChange: (index) => setSelectedId(rows[index] ? rowKey(rows[index]!) : null) }}
       onActivate={(row) => setOpenId(rowKey(row))} detailOpen={!!openRow} onBack={() => setOpenId(null)}
-      detailTitle={openRow ? kind === "ftd" ? `${openRow.date} · ${openRow.cusip}` : `Week of ${openRow.date}` : undefined}
+      detailTitle={openRow ? kind === "ftd" ? `${formatDay(openRow.date)} · ${openRow.cusip}` : `Week of ${formatDay(openRow.date)}` : undefined}
       detailContent={openRow ? <DetailReader width={width} resetScrollKey={rowKey(openRow)} facts={[
         ...detailColumns.filter((column) => column.id !== "date" && column.id !== "cusip").map((column) => ({ label: column.detailLabel,
           value: openRow[column.id] == null ? "Not published" : typeof openRow[column.id] === "number" && column.id !== "atsSharePercent" && column.id !== "price"

@@ -1,3 +1,4 @@
+import { formatDay } from "../../../utils/day-format";
 import { useCallback, useMemo, useRef, type ReactNode, type RefObject } from "react";
 import type { CreditFact, CreditHeadroom, CreditInstrument } from "../../../api-client/credit-documents";
 import { Button, ChartTableHeader, DataTableStackView, DetailScrollBody, ExternalLinkText, KeyValueRow, Notice, PaneStatusBody, QueryBar, Section, usePaneStatusFooter, type StatItem } from "../../../components";
@@ -100,7 +101,7 @@ export function CreditInstrumentDetail({ symbol, instrument, width, height, focu
   return <DataTableStackView<CreditFact> columns={columns} items={rows} sortColumnId={view === "history" ? "filed" : "field"} sortDirection={view === "history" ? "desc" : "asc"} focused={focused} rootWidth={width} rootHeight={height}
     rootBefore={header}
     getItemKey={(row) => row.id} selection={{ kind: "id", selectedId: selected?.id ?? null, getId: (row) => row.id, onChange: setSelected }}
-    renderCell={(row, column) => ({ text: column.id === "field" ? fieldLabel(row.field) : column.id === "value" ? factValue(row) : column.id === "asOf" ? row.asOf : column.id === "filed" ? row.filedAt : fieldLabel(row.status),
+    renderCell={(row, column) => ({ text: column.id === "field" ? fieldLabel(row.field) : column.id === "value" ? factValue(row) : column.id === "asOf" ? formatDay(row.asOf) : column.id === "filed" ? formatDay(row.filedAt) : fieldLabel(row.status),
       color: row.status === "superseded" ? colors.textDim : row.status === "pending" && column.id === "status" ? colors.warning : column.id === "field" ? colors.textBright : colors.text,
       keepColorWhenSelected: row.status === "pending" && column.id === "status" })}
     onActivate={(row) => setOpen(row.id)} detailOpen={!!open} onBack={() => setOpen(null)} detailTitle={open ? fieldLabel(open.field) : undefined}

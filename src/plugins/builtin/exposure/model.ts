@@ -1,3 +1,4 @@
+import { formatDay } from "../../../utils/day-format";
 import { MISSING_VALUE } from "../../../utils/format";
 import type { ExposureBasis, ExposureComponent, ExposureExtensionObservation, ExposureHolding, ExposurePayload, ExposureRange, ExposureScenario } from "../../../api-client/exposure";
 import { quarterLabel } from "../shared/earnings-report";
@@ -25,7 +26,7 @@ export const hopsText = (count: number) => `${count} hop${count === 1 ? "" : "s"
  */
 export function periodText(period: string): string {
   const quarter = /^quarter:(\d{4}-\d{2}(?:-\d{2})?)$/.exec(period);
-  return quarter ? quarterLabel(quarter[1]) : period;
+  return quarter ? quarterLabel(quarter[1]) : /^\d{4}-\d{2}-\d{2}$/.test(period) ? formatDay(period) : period;
 }
 
 /** A weighted list is entirely explicit. Never silently fill missing weights or normalize shorts. */

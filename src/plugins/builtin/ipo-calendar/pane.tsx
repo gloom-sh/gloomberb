@@ -35,6 +35,7 @@ import {
   filterIpoDeals,
   firstIpoSortDirection,
   formatIpoDate,
+  formatIpoLockupDate,
   formatIpoPrice,
   formatIpoReturn,
   formatIpoSize,
@@ -42,7 +43,9 @@ import {
   IPO_LISTS,
   IPO_TABS,
   ipoBoardStatus,
+  ipoDateColumnWidths,
   ipoListStatus,
+  ipoPriceMayBeBlank,
   ipoShownDate,
   isIpoList,
   ipoTickerKey,
@@ -60,11 +63,17 @@ import {
   type IpoTab,
 } from "./model";
 
+/** A deal's PRICE: its offer price or range, with a dash marked as one that may be blank only on a deal that owes none. */
+export function ipoPriceCell(deal: IpoDeal, colors: Pick<ThemeColors, "text" | "textMuted">): DataTableCell {
+  const text = formatIpoPrice(deal);
+  return { text, color: text === MISSING ? colors.textMuted : colors.text, ...(ipoPriceMayBeBlank(deal) ? { mayBeBlank: true } : {}) };
+}
+
 const NO_DEALS: IpoDeal[] = [];
 const TABS = IPO_TABS.map((tab) => ({ label: tab.label, value: tab.value as string }));
 const dealKey = (deal: IpoDeal) => deal.id;
-/** A STATUS column whose cells are all blank: every deal has the list's own status. */
-const QUIET_STATUS = { status: [""] };
+/** A STATUS column whose cells are all blank (every deal has the list's own status), and a LOCKUP column with no estimate in it. */
+const QUIET_COLUMNS = { status: [""], lockup: [MISSING] };
 
 /**
  * A deal's status, shown only where it differs from its list's own, in colour
@@ -131,9 +140,12 @@ export function IpoCalendarPane({ focused, width, height }: PaneProps) {
   // The desktop and the web lead each venue with its country's flag.
   const flagged = useUiCapabilities().nativePaneChrome === true;
   const marketWidth = useMemo(() => marketColumnWidth(deals) + (flagged ? COUNTRY_FLAG_CELLS : 0), [deals, flagged]);
-  // STATUS says only what differs from the list's own (priced among the upcoming deals), and goes when nothing does.
-  const columns = useMemo(() => withoutQuietColumns(buildIpoColumns(width, marketWidth, list), rows,
-    (deal, id) => (id === "status" ? ipoListStatus(deal, list, now) : null), QUIET_STATUS) as IpoColumn[], [list, marketWidth, now, rows, width]);
+  const dateWidths = useMemo(() => ipoDateColumnWidths(deals, now), [deals, now]);
+  // STATUS says only what differs from the list's own (priced among the upcoming deals), and goes when nothing does;
+  // LOCKUP goes when no deal listed has an estimate (one outside the US).
+  const columns = useMemo(() => withoutQuietColumns(buildIpoColumns(width, marketWidth, list, dateWidths), rows,
+    (deal, id) => (id === "status" ? ipoListStatus(deal, list, now) : id === "lockup" ? formatIpoLockupDate(deal.lockup?.endsOn, now) : null),
+    QUIET_COLUMNS) as IpoColumn[], [dateWidths, list, marketWidth, now, rows, width]);
 
   const openDeal = useCallback((deal: IpoDeal) => {
     const key = ipoTickerKey(deal);
@@ -200,17 +212,15 @@ export function IpoCalendarPane({ focused, width, height }: PaneProps) {
         // date nobody has named. A priced deal whose book has closed has no date ahead.
         const date = ipoShownDate(deal, now);
         return {
-          text: formatIpoDate(date),
+          text: formatIpoDate(date, now),
           value: date,
           color: !deal.listingDate || deal.dateKind === "expected" ? colors.textMuted : colors.text,
         };
       }
       case "status":
         return { text: ipoListStatus(deal, list, now), color: statusColor(ipoBoardStatus(deal, now), colors) };
-      case "price": {
-        const text = formatIpoPrice(deal);
-        return { text, color: text === MISSING ? colors.textMuted : colors.text };
-      }
+      case "price":
+        return ipoPriceCell(deal, colors);
       case "size":
         return { text: formatIpoSize(deal.offerSizeUsd), value: deal.offerSizeUsd, color: colors.textDim };
       case "return": {
@@ -219,6 +229,15 @@ export function IpoCalendarPane({ focused, width, height }: PaneProps) {
           text: value != null && deal.opening && !deal.firstDay ? `${formatIpoReturn(value)} open` : formatIpoReturn(value),
           value: value == null ? null : value * 100,
           color: value == null ? colors.textMuted : priceColor(value, colors),
+        };
+      }
+      case "lockup": {
+        // An estimate (~), as `fn IPO` gives it; one that has ended reads quieter than one ahead.
+        const endsOn = deal.lockup?.endsOn ?? null;
+        return {
+          text: formatIpoLockupDate(endsOn, now),
+          value: endsOn,
+          color: !endsOn || endsOn < now.toISOString().slice(0, 10) ? colors.textMuted : colors.text,
         };
       }
     }

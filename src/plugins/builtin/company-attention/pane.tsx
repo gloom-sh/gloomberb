@@ -1,3 +1,4 @@
+import { dayCell } from "../../../components/ui/day-cell";
 import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useMemo, useRef } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
@@ -25,7 +26,7 @@ import { humanLabel, listingCell, missingCell, shareCell, signedColor, toneColor
 import { AppRankView } from "./app-rank";
 import { useAttentionEvidence } from "./evidence";
 import { cachedAttention, fetchAttention, fetchPostingDetail, loadAttention, validateAttention, type AttentionPayload } from "./client";
-import { appsModel, attentionNumber, attentionPaneTabs, attentionSeries, count, hiringModel, remoteText, SIGNED_COLUMNS, sortAttentionRows, type AttentionKind, type AttentionPaneTab, type AttentionRow, type AttentionTab } from "./model";
+import { appsModel, attentionNumber, attentionPaneTabs, attentionSeries, count, hiringModel, OBSERVED_LABELS, remoteText, SIGNED_COLUMNS, sortAttentionRows, type AttentionKind, type AttentionPaneTab, type AttentionRow, type AttentionTab } from "./model";
 import { HiringMovesView } from "./moves";
 import { HiringSignalsView } from "./signals";
 import { HiringBuildingView } from "./building";
@@ -146,8 +147,11 @@ function AttentionView({ kind, symbol, width, height, focused, initialTab }: Siz
   useAttentionEvidence(kind, data ?? null, paneTab, rows.filter((row) => !row.id.startsWith("locked:")).map(rowId));
   const dataRows = useMemo(() => rows.filter((row) => !row.id.startsWith("locked:")), [rows]);
   // A company's own apps all carry its ticker; the column only earns its room on the board.
+  // The day a whole list was observed on is the footer's, not a column: once every page is in, one shared date leaves.
+  const complete = !paginated || (paged.status !== "idle" && !paged.hasMore);
   const columns = useMemo(() => !section ? [] : withoutQuietColumns(section.columns.filter((column) => !(column.id === "symbol" && kind === "apps" && symbol && tab !== "peers")),
-    dataRows, (row, id) => row.values[id] ?? "", QUIET_COLUMNS), [section, dataRows, kind, symbol, tab]);
+    dataRows, (row, id) => row.values[id] ?? "", QUIET_COLUMNS).map((column) => complete && OBSERVED_LABELS.has(column.label) ? { ...column, omitWhenSame: true } : column),
+  [complete, section, dataRows, kind, symbol, tab]);
   const maxShare = Math.max(0, ...dataRows.map((row) => typeof row.values.share === "number" ? row.values.share : 0));
   const selected = rows.find((row) => row.id === selectedId) ?? rows[0] ?? null;
   const evidence = rows.find((row) => row.id === openEvidence) ?? null;
@@ -247,6 +251,7 @@ function AttentionView({ kind, symbol, width, height, focused, initialTab }: Siz
             if (column.id === "country" || (kind === "hiring" && tab === "mix" && mix === "countries" && column.id === "label")) {
               return withCountryFlag({ text, value, color: colors.text }, String(value), desktop);
             }
+            if ((column.id === "date" || column.id === "week") && typeof value === "string") return { ...dayCell(value), color: colors.textDim };
             return { text, value, color: numeric && SIGNED_COLUMNS.has(column.id) ? signedColor(value, colors)
               : column.id === "name" || column.id === "title" ? colors.textBright : column.id === "date" || column.id === "observed" || column.id === "confidence" ? colors.textDim : colors.text };
           }} selectedTextOverridesCellColor showHorizontalScrollbar resetScrollKey={`${kind}:${symbol}:${tab}:${mix}:${country}:${chart}`}

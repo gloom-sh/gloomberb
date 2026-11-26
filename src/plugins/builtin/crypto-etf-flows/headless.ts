@@ -1,3 +1,4 @@
+import { formatDay } from "../../../utils/day-format";
 import type { CryptoEtfFlowsPayload } from "../../../api-client/crypto-etf-flows";
 import type { HeadlessPaneColumn, HeadlessPaneFreshness } from "../../../types/headless";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
@@ -31,29 +32,33 @@ function flowColumns(payload: CryptoEtfFlowsPayload): HeadlessPaneColumn[] {
       key: fund.ticker, header: fund.ticker, literalHeader: true, align: "right",
       format: (value, row) => value == null && Array.isArray(row.pending) && row.pending.includes(fund.ticker) ? "pending" : flowCell(value),
     })),
-    { key: "pending", header: "Pending", format: (value) => Array.isArray(value) && value.length ? value.join(", ") : "" },
+    { key: "pending", header: "Pending", omitWhenEmpty: true, format: (value) => Array.isArray(value) && value.length ? value.join(", ") : "" },
   ];
 }
 
+/** A day as a note writes it: ISO, as JSON and CSV keep it, or day first (`formatDay`) in the text. */
+type NoteDay = (day: string) => string;
+const isoNoteDay: NoteDay = (day) => day;
+
 /** "Net flows of the US spot bitcoin ETFs in US$ millions. 2026-10-19 to 2026-10-23: +$301.20M over 5 trading days." */
-function windowSummaryLine(payload: CryptoEtfFlowsPayload, window: PriceWindow, days: CryptoEtfFlowsPayload["days"]): string {
+function windowSummaryLine(payload: CryptoEtfFlowsPayload, window: PriceWindow, days: CryptoEtfFlowsPayload["days"], day: NoteDay = isoNoteDay): string {
   const total = days.some((day) => day.total != null) ? days.reduce((sum, day) => sum + (day.total ?? 0), 0) : null;
-  return `Net flows of the US spot ${cryptoEtfFlowAssetLabel(payload.asset).toLowerCase()} ETFs in US$ millions. ${window.from} to ${window.to}: `
+  return `Net flows of the US spot ${cryptoEtfFlowAssetLabel(payload.asset).toLowerCase()} ETFs in US$ millions. ${day(window.from)} to ${day(window.to)}: `
     + `${formatFlowAmount(total)} over ${days.length} trading ${days.length === 1 ? "day" : "days"}.`;
 }
 
 /** "Net flows of the US spot bitcoin ETFs in US$ millions. 2026-10-20: -$6.70M (IBIT pending); 5 days ..., since 2024-01-11 +$57.47B." */
-function summaryLine(payload: CryptoEtfFlowsPayload): string {
+function summaryLine(payload: CryptoEtfFlowsPayload, day: NoteDay = isoNoteDay): string {
   const summary = cryptoEtfFlowSummary(payload);
   const pending = pendingText(summary.latest);
   return [
     `Net flows of the US spot ${cryptoEtfFlowAssetLabel(payload.asset).toLowerCase()} ETFs in US$ millions.`,
-    `${summary.latest?.date ?? payload.asOf}: ${formatFlowAmount(summary.latest?.total)}${pending ? ` (${pending})` : ""};`,
+    `${day(summary.latest?.date ?? payload.asOf)}: ${formatFlowAmount(summary.latest?.total)}${pending ? ` (${pending})` : ""};`,
     [
       // A day still pending is left out of the rolling sums, which say the day they end on.
-      summary.week != null ? `5 days${summary.through ? ` through ${summary.through}` : ""} ${formatFlowAmount(summary.week)}` : null,
-      summary.month != null ? `20 days${summary.through ? ` through ${summary.through}` : ""} ${formatFlowAmount(summary.month)}` : null,
-      summary.firstDate ? `since ${summary.firstDate} ${formatFlowAmount(summary.sinceLaunch)}` : null,
+      summary.week != null ? `5 days${summary.through ? ` through ${day(summary.through)}` : ""} ${formatFlowAmount(summary.week)}` : null,
+      summary.month != null ? `20 days${summary.through ? ` through ${day(summary.through)}` : ""} ${formatFlowAmount(summary.month)}` : null,
+      summary.firstDate ? `since ${day(summary.firstDate)} ${formatFlowAmount(summary.sinceLaunch)}` : null,
     ].filter(Boolean).join(", ") + ".",
   ].join(" ");
 }
@@ -172,6 +177,8 @@ export const cryptoEtfFlowsHeadless: HeadlessPaneDefinition<"rows"> = {
       columns: flowColumns(payload),
       ...(window && !days.length ? { errors: [`No US trading day with flows from ${window.from} to ${window.to}.`] } : {}),
       notes: [window ? windowSummaryLine(payload, window, days) : summaryLine(payload), ...funds ? [funds] : [], `Source: ${payload.source.publisher}, ${payload.source.url}`],
+      // The text reads the days first, as the pane does; JSON and CSV keep them in ISO.
+      textNotes: [window ? windowSummaryLine(payload, window, days, formatDay) : summaryLine(payload, formatDay), ...funds ? [funds] : [], `Source: ${payload.source.publisher}, ${payload.source.url}`],
       complete: !payload.stale,
       ...(payload.stale ? { warnings: [`The flows were last read ${payload.fetchedAt.slice(0, 10)}; newer days may be missing.`] } : {}),
       freshness: cryptoEtfFlowFreshness(payload, asOf, !(window && asOf !== payload.asOf)),

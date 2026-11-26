@@ -8,6 +8,7 @@ import {
 } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { StatChartDetail } from "../../../components/market-board";
+import { formatDay } from "../../../components/ui/day-cell";
 import { useAsyncResource, useAutoRefresh, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { usePaneInstance } from "../../../state/app/context";
 import { blendHex } from "../../../theme/colors";
@@ -71,7 +72,7 @@ function GasDetail({ row, width, height, focused }: { row: GasStorageRow; width:
     { id: "injection", label: "Inject GWh/d", value: formatGasFlow(row.injection) },
     { id: "withdrawal", label: "Withdraw GWh/d", value: formatGasFlow(row.withdrawal) },
     { id: "change", label: "1D pp", value: formatGasPoints(row.change), ...(row.previousGasDay ? { detail: `vs ${row.previousGasDay}` } : {}) },
-    { id: "year", label: "1Y ago %", value: formatGasFull(row.yearAgo?.full), ...(row.yearAgo ? { detail: row.yearAgo.gasDay } : {}) },
+    { id: "year", label: "1Y ago %", value: formatGasFull(row.yearAgo?.full), ...(row.yearAgo ? { detail: formatDay(row.yearAgo.gasDay) } : {}) },
     { id: "range", label: `${gasRangeLabel(five?.years.length ?? 0)} range %`,
       value: five ? `${formatGasFull(five.min)} to ${formatGasFull(five.max)}` : MISSING_VALUE,
       ...(five ? { detail: `avg ${formatGasFull(five.average)}${five.years.length < 5 ? `, ${five.years.length} of 5 years` : ""}` } : {}) },
@@ -143,7 +144,7 @@ export function GasStorageView({ width, height, focused, snapshot }: {
             viewport: axis?.viewport, xAxis: axis?.xAxis, cursorDate, formatValue: formatLegend, formatAxisValue: formatAxis, remoteKind: "gas-storage-seasonal" } : null} />}
         selectedId={selected?.id ?? null} onSelectedIdChange={setSelectedId} openId={open?.id ?? null} onOpenIdChange={setOpenId}
         labelHeader="AREA" labelWidth={14} valueLabel="% FULL" valueWidth={8} changeLabel="1D PP" percentileLabel="IN 5Y"
-        asOfWidth={14} extraColumns={EXTRA_COLUMNS} emptyTitle={GAS_STORAGE_NOT_AVAILABLE}
+        asOfWidth={15} extraColumns={EXTRA_COLUMNS} emptyTitle={GAS_STORAGE_NOT_AVAILABLE}
         renderDetail={(row) => <GasDetail row={row.gas} width={width} height={Math.max(5, height - 2)} focused={focused} />} /> : null}
     </PaneStatusBody>
   </Box>;

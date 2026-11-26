@@ -1,17 +1,19 @@
-import { describe, expect, test } from "bun:test";
-import { cloneLayout, createDefaultConfig, findPaneInstance, type LayoutConfig } from "../../../types/config";
+import { describe, expect, setSystemTime, test } from "bun:test";
+import { cloneLayout, createDefaultConfig, createPaneInstance, findPaneInstance, type LayoutConfig } from "../../../types/config";
 import { createInitialState, type AppState } from "../../../state/app/context";
 import { PANE_LOCK_SETTING_KEY } from "../../../pane-settings";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { applyPaneSettingFieldValue, createPaneTemplateOrThrow, resolveTickerInput, resolveTickerInputOrThrow, resolveTickerListInput } from "./ops";
 import type { TickerRecord } from "../../../types/ticker";
-import { bringToFront } from "../../../layout/pane-manager/floating-actions";
+import { addPaneFloating, bringToFront } from "../../../layout/pane-manager/floating-actions";
 import { JsonTickerRepository } from "../../../data/json-ticker-repository";
 import { createTestTicker } from "../../../test-support/ticker";
 import { AppPersistence } from "../../../data/app-persistence";
 import { TickerRepository } from "../../../data/ticker-repository";
 import { PluginRegistry } from "../../../plugins/registry";
 import { PluginOffError } from "../../../plugins/plugin-off";
+import { holdersModule } from "../../../plugins/builtin/holders";
+import { CCASS_MARKET_PANE_ID, CCASS_MARKET_TEMPLATE_ID } from "../../../plugins/builtin/holders/ccass-market-pane";
 import { insiderModule } from "../../../plugins/builtin/insider";
 
 type TemplateDeps = Parameters<typeof createPaneTemplateOrThrow>[2];
@@ -328,6 +330,56 @@ describe("createPaneTemplateOrThrow", () => {
       "financial-analysis",
       expect.objectContaining({ instanceId: "financial-analysis:AAPL" }),
     ]);
+  });
+
+  test.each([
+    ["a new scanner", null],
+    ["a saved scanner", "older-scanner:7"],
+  ])("CCASSM keeps %s in one window as targets and timestamps change", async (_label, savedId) => {
+    const config = createDefaultConfig(":memory:");
+    const template = holdersModule.paneTemplates!.find((entry) => entry.id === CCASS_MARKET_TEMPLATE_ID)!;
+    const pane = holdersModule.panes!.find((entry) => entry.id === CCASS_MARKET_PANE_ID)!;
+    const empty: LayoutConfig = { dockRoot: null, instances: [], floating: [], detached: [] };
+    const layout = savedId ? addPaneFloating(empty, createPaneInstance(pane.id, {
+      instanceId: savedId,
+      params: { tab: "southbound", tabAt: "42" },
+    }), 160, 50, pane) : empty;
+    const state = createInitialState({ ...config, layout });
+    const deps = templateDeps(state, {
+      template: { ...template },
+      pane: { id: pane.id },
+      registry: {
+        updateLayout: (next: LayoutConfig) => { state.config.layout = next; },
+        focusPane: (id: string, next?: LayoutConfig) => {
+          state.config.layout = bringToFront(next ?? state.config.layout, id);
+          state.focusedPaneId = id;
+        },
+      },
+      buildPaneInstance: createPaneInstance,
+      placePaneInstance: (instance) => {
+        state.config.layout = addPaneFloating(state.config.layout, instance, 160, 50, pane);
+      },
+    });
+
+    try {
+      for (const [time, arg, params] of [
+        [100, undefined, { tab: "changes" }],
+        [101, undefined, { tab: "changes" }],
+        [102, "deposits", { tab: "deposits" }],
+        [103, "b01955", { tab: "broker", partId: "B01955" }],
+        [104, "b01955", { tab: "broker", partId: "B01955" }],
+      ] as const) {
+        setSystemTime(new Date(time));
+        await createPaneTemplateOrThrow(template.id, arg === undefined ? undefined : { arg }, deps);
+
+        expect(state.config.layout.floating).toHaveLength(1);
+        expect(state.config.layout.instances.map((instance) => instance.params)).toEqual([{ ...params, tabAt: String(time) }]);
+      }
+      expect(state.config.layout.floating[0]?.instanceId).toBe(savedId ?? CCASS_MARKET_PANE_ID);
+      expect(state.focusedPaneId).toBe(savedId ?? CCASS_MARKET_PANE_ID);
+    } finally {
+      setSystemTime();
+    }
   });
 
   // `PDUFA` and `runway` in the bar open the view `fn` opens for them: one preset is a

@@ -16,7 +16,8 @@ export const researchModule: PluginModule = {
   setup(ctx) {
     ctx.registerTickerResearchTab({
       id: "analyst-research",
-      name: "Analyst",
+      // Not "Analyst" under Analysts (FORMER_VIEW_NAMES): its ratings and price targets.
+      name: "Coverage",
       order: 32,
       get component(): typeof import("./analyst-pane").AnalystResearchView { const { AnalystResearchView } = require("./analyst-pane"); return AnalystResearchView; },
       instruments: ["equity"],
@@ -141,8 +142,8 @@ export const researchModule: PluginModule = {
       id: "corporate-actions-pane",
       paneId: "corporate-actions",
       label: "Corporate Actions",
-      description: "What is next, reported earnings against estimates by quarter, and dividends and splits by year.",
-      keywords: ["events", "corporate", "actions", "dividend", "split", "earnings", "estimate", "revenue", "evt"],
+      description: "What is next, reported earnings against estimates by quarter, and dividends, splits and spin-off adjustments by year.",
+      keywords: ["events", "corporate", "actions", "dividend", "split", "spin-off", "spinoff", "demerger", "earnings", "estimate", "revenue", "evt"],
       shortcut: "EVT",
       publicShare: true,
     }),

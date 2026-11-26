@@ -1,4 +1,7 @@
 import { splitShareTerms } from "../../market-data/split-terms";
+import {
+  adjustedForText, adjustmentsAfter, demergerSuccessor, priceAdjustment, priceAdjustments, publishedDividend, publishedEps, withPriceAdjustmentKinds,
+} from "../../market-data/price-adjustments";
 import { logFailure } from "../../utils/log-failure";
 import { isTransientFailure } from "../../api-client/errors";
 import { normalizeTickerSymbol } from "../../tickers/search/ranking";
@@ -54,7 +57,9 @@ import {
   quoteChangeText,
 } from "../helpers";
 import { cliArrow, cliStyles, colorBySign, renderSection, renderStats } from "../../utils/cli-output";
-import { filledPeriodsNote, hasOlderStatements, stalePeriodNote, statementHistoryNotes } from "../../utils/financial-statements";
+import { filledPeriodsNote, stalePeriodNote, statementHistoryNotes } from "../../utils/financial-statements";
+import { hasEarlierGfRevenue } from "../../time-series/fundamentals/history-link";
+import { priceBasisBreaks, priceBasisFactor } from "../../market-data/market/split-price-basis";
 import { formatPerShareNumber } from "../../utils/reported-money";
 import { isCurrencyPairListing } from "../../utils/fx-market-hours";
 import {
@@ -69,7 +74,7 @@ import {
   ratingReason,
 } from "../../plugins/builtin/research/analyst-model";
 import { hasAnalystCoverage, loadAnalystResearch, noAnalystCoverageText } from "../../plugins/builtin/research/client";
-import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../../market-data/published-us-sessions";
+import { optionExpiryFacts, optionSnapshotFreshness } from "../../plugins/builtin/shared/volatility/option-snapshot";
 import {
   awaitingFirstDelayedPrint, dailyCloseSessionLabel, dailyCloseText, isQuoteStaleForCurrentSession, noPrintsTodayText, nominalPriceText,
   nominalSessionLabel,
@@ -150,7 +155,7 @@ import {
 import { historyCoverageNotice, WindowBeforeFirstBarError } from "../../sources/history-coverage";
 import { fetchHistoryResult } from "../../sources/history-result";
 import { settleWithin } from "../../utils/async-deadline";
-import { demergerRuns, demergerSuccessor, hasPriceBreak, historyDemergerNote, SPLIT_FLAG, withDemergerFlags, withSplitFlags } from "../history-demergers";
+import { demergerRuns, hasPriceBreak, historyAdjustmentNote, historyDemergerNote, SPLIT_FLAG, withDemergerFlags, withPriceAdjustmentFlags, withSplitFlags } from "../history-demergers";
 import type { FxInterventionsPayload } from "../../api-client/fx-interventions";
 import {
   fxInterventionLatestNote, fxInterventionPair, fxInterventionWindowNote, loadFxInterventions, type FxInterventionPair,
@@ -223,6 +228,7 @@ import {
   commonWordCandidate,
   metalCodeNewsRoute,
   type MetalNewsRoute,
+  isTypedNewsWord,
   metalNewsHeading,
   metalNewsRoute,
   newsFallbackText,
@@ -252,7 +258,7 @@ import { quoteBarNotes } from "../../market-data/quotes/intraday-bar";
 import { cedearRatioText, depositaryPairText, isReceiptSide, listingCedearRatio, listingDepositaryPair } from "../../market-data/depositary-pair";
 import { isPesoDollarPair, loadPesoDollarRates, pesoDollarRateLines, pesoDollarRatesJson } from "../peso-dollar-rates";
 import { withBalanceSheetRate } from "../../market-data/quotes/balance-sheet-rate";
-import { regularSessionValuationPrice } from "../../market-data/quotes/regular-session-valuation";
+import { regularSessionMarketCapitalization, regularSessionValuationPrice } from "../../market-data/quotes/regular-session-valuation";
 import { atLivePriceEarnings } from "../../market-data/quotes/live-valuation";
 import { quoteSourceName } from "../../market-data/quotes/export-identity";
 import { viewMarketCapitalization } from "../../utils/market-capitalization";
@@ -343,6 +349,7 @@ import { isCryptoPairSymbol, isRoundTheClockCoin } from "../../utils/crypto-pair
 import { canonicalExchange, isUsEquityExchange, isUsListingExchange } from "../../utils/exchanges";
 import { listingSuffixVenue } from "../../sources/listing-symbols";
 import { classifyInstrumentType, resolveTickerInstrumentKind } from "../../tickers/instrument-kind";
+import { fundCorporateActions, INCOMPLETE_DISTRIBUTIONS, isIndianEtfListing } from "../../market-data/fund-actions";
 import {
   describeFormerIssuer, describeTickerChange, movedAwayChange, startTickerChangeLookup, tickerChangeLine, type FormerIssuer, type TickerChange,
 } from "../../tickers/ticker-changes";
@@ -1154,9 +1161,9 @@ function cleanDecimal(value: number | undefined): string {
   return value == null || !Number.isFinite(value) ? "" : String(Number(value.toFixed(6)));
 }
 
-/** "commercial vehicles into TMCV:NSE (Tata Motors Limited), 1 share per share, listed 2025-11-12". */
+/** "commercial vehicles business into TMCV:NSE (Tata Motors Limited), 1 share per share, listed 2025-11-12". */
 function demergerDetail(event: DemergerAction): string {
-  return [`${event.business ? `${event.business} ` : ""}into ${demergerSuccessor(event)}`,
+  return [`${event.business ? `${event.business} business ` : ""}into ${demergerSuccessor(event)}`,
     event.ratio ? `${cleanDecimal(event.ratio)} share per share` : null,
     event.successor.listedOn ? `listed ${event.successor.listedOn}` : "not yet listed"].filter(Boolean).join(", ");
 }
@@ -1173,6 +1180,11 @@ function corporateActionRows(data: CorporateActionsData) {
       : !unit ? formatNumber(value, 2)
         : /^[A-Z]{3}$/.test(unit) ? formatCurrency(value, unit, 2) : `${formatNumber(value, 2)} ${unit}`
   );
+  // CTVA's 6665:1000 of 2026-10-01 is the VYLR spin-off's price adjustment: the history's EPS and dividends before it
+  // say they are adjusted for it, as any factor in no share terms says it adjusts them. A figure the company published
+  // (a release's EPS, a dividend its own forms state) is as published, whatever its date.
+  const adjustments = priceAdjustments(data.splits, data.demergers);
+  const amount = (value: number) => (currency ? formatDistributionAmount(value, currency) : cleanDecimal(value));
   return [
     ...data.earnings.map((event) => {
       const unit = event.currency?.trim() || earningsCurrency;
@@ -1180,13 +1192,17 @@ function corporateActionRows(data: CorporateActionsData) {
       const basis = earningsEpsBasis(event.epsBasis);
       // History rows are keyed by fiscal quarter end, upcoming ones by announcement date.
       const note = [event.dateType === "fiscal-period-end" ? "period end" : null, quarter === MISSING_VALUE ? null : quarter].filter(Boolean).join(", ");
+      const adjustedFor = (event.epsActual == null && event.epsEstimate == null) || publishedEps(event) ? ""
+        : adjustedForText(adjustmentsAfter(adjustments, event.date));
       return {
         type: "earnings",
         date: event.date,
         // The basis, beat, date status and analysts are the words EE uses for the same row.
         detail: [event.epsActual == null ? `est ${eps(event.epsEstimate, unit)}` : `eps ${eps(event.epsActual, unit)}`,
-          ...earningsDetailParts(event)].join(", ") + (note ? ` (${note})` : ""),
+          ...earningsDetailParts(event)].join(", ") + (note ? ` (${note})` : "")
+          + (adjustedFor ? `, EPS ${adjustedFor}` : ""),
         epsActual: event.epsActual,
+        ...(event.streetEps ? { streetEps: event.streetEps, gaapEps: event.gaapEps } : {}),
         epsEstimate: event.epsEstimate,
         epsBasis: showsEpsBasis({ epsActual: event.epsActual, epsBasis: basis }) ? epsBasisName(basis) : undefined,
         ...(isProvisionalActual(event) ? { epsProvisional: true } : {}),
@@ -1195,11 +1211,11 @@ function corporateActionRows(data: CorporateActionsData) {
         fiscalPeriod: event.fiscalPeriod,
       };
     }),
-    ...data.dividends.map((event) => ({
-      type: "dividend",
-      date: event.exDate,
-      detail: currency ? formatDistributionAmount(event.amount, currency) : cleanDecimal(event.amount),
-    })),
+    // As the history states it, labelled where a later price adjustment changed it; a published row stands as published.
+    ...data.dividends.map((event) => {
+      const adjustedFor = publishedDividend(event) ? "" : adjustedForText(adjustmentsAfter(adjustments, event.exDate));
+      return { type: "dividend", date: event.exDate, detail: [amount(event.amount), adjustedFor].filter(Boolean).join(", ") };
+    }),
     // Declared and unpaid, at its ex-date beside the paid rows, never one of them.
     ...declaredDividends(data).map((event) => {
       const cash = declaredDividendCash(event, currency);
@@ -1211,33 +1227,28 @@ function corporateActionRows(data: CorporateActionsData) {
         ...(event.cashEstimate ? { cashEstimate: event.cashEstimate } : {}),
       };
     }),
-    // In share terms where the factor states them (11-for-10, 1 new share for every 10 held), else as its source writes it.
-    ...data.splits.map((event) => ({
-      type: "split",
-      date: event.date,
-      detail: splitShareTerms(event) ?? event.description ?? `${event.toFactor ?? ""}:${event.fromFactor ?? ""}`,
-    })),
+    // In share terms where the factor states them (11-for-10, 1 new share for every 10 held), a split whatever its date.
+    // One in no share terms on a demerger's ex-date is that spin-off's price adjustment, one row for both; any other in
+    // no share terms is a factor, no more.
+    ...data.splits.map((event) => {
+      const adjustment = priceAdjustment(event, data.demergers ?? []);
+      if (adjustment?.demerger) {
+        return { type: "spin-off", date: event.date, detail: `${demergerDetail(adjustment.demerger)}; price adjustment ${adjustment.terms}` };
+      }
+      if (adjustment) return { type: "adjustment", date: event.date, detail: `factor ${adjustment.terms}, in no share terms` };
+      return {
+        type: "split",
+        date: event.date,
+        detail: splitShareTerms(event) ?? event.description ?? `${event.toFactor ?? ""}:${event.fromFactor ?? ""}`,
+      };
+    }),
     // A business demerged out of the listing: its price fell by that business's value on the day, no market move.
-    ...(data.demergers ?? []).map((event) => ({
+    ...(data.demergers ?? []).filter((event) => !adjustments.some((adjustment) => adjustment.demerger === event)).map((event) => ({
       type: "demerger",
       date: event.exDate,
       detail: demergerDetail(event),
     })),
   ].sort((left, right) => right.date.localeCompare(left.date));
-}
-
-/**
- * After a US open, a chain whose latest trade predates it still carries the
- * prior session's quotes and volume. The delayed feed lags the open by about
- * fifteen minutes, so this is expected early in the session.
- */
-function priorSessionChainWarning(chain: OptionsChain, exchange: string, now: number): string | null {
-  const observed = chain.asOf ? Date.parse(chain.asOf) : Number.NaN;
-  if (!Number.isFinite(observed) || (exchange && !getPublishedUsEquityCalendarYears(exchange))) return null;
-  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now);
-  const session = getPublishedUsEquitySession(exchange || "NYSE", today);
-  if (session?.kind !== "session" || now < session.open || observed >= session.open) return null;
-  return `No option trades this session yet (last trade ${chain.asOf})`;
 }
 
 /** Per-share earnings to the cent, as reported; consensus averages carry more digits. */
@@ -1260,6 +1271,7 @@ function earningsRows(events: ResolvedEarningsEvent[]) {
     epsEstimate: event.epsEstimate,
     epsActual: event.epsActual,
     revenueEstimate: event.revenueEstimate,
+    ...(event.streetEps ? { epsBasis: event.epsBasis, streetEps: event.streetEps, gaapEps: event.gaapEps } : {}),
     revenueActual: event.revenueActual,
   }));
 }
@@ -1961,6 +1973,7 @@ interface ListingHistory {
   catalogSeries?: true;
   /** The bars a business was demerged out of the listing at (flag `demerger`): a drawdown is measured within the runs between them. */
   demergers?: Array<{ date: string; action: DemergerAction }>;
+  unverifiedPriceBasis?: boolean;
 }
 
 /**
@@ -2287,14 +2300,24 @@ async function loadListingHistory(
   // commercial vehicles on 2025-10-14): its corporate actions say, and that bar is flagged rather than read as a crash.
   // One read of the listing's corporate actions serves both, asked only for a share or a fund.
   const actions = shareActionsReader(market, listing, instrumentType);
-  const demerged = await listingDemergerFlags(forming?.rows ?? served, actions);
   // NFLX's bars across its 10-for-1 split are in post-split shares, as META's FB-era bars say they were FB's, and the
   // bar it took effect in is flagged. A long list skips the read, as it skips the other lookups.
   const splits = lookups ? await actions.splits() : [];
-  const flaggedSplits = withSplitFlags(demerged.rows, splits);
+  const demergers = lookups ? await actions.demergers() : [];
+  const bars = forming?.rows ?? served;
+  // CTVA's daily bars before 2026-10-01 are adjusted for the VYLR spin-off (6665:1000): said, and its bar flagged.
+  const adjusted = bars.some((row) => row.date.length > 10) ? { rows: bars, adjustments: [], traded: [] }
+    : withPriceAdjustmentFlags(bars, splits, demergers);
+  // A spin-off the bars are adjusted for, or whose closes do not tell, is no fall in them, and no demerger break. One
+  // whose bars fell by its factor is its demerger, however small the fall (1101:1000, from 100 to 90.83).
+  const explained = new Set(adjusted.adjustments.flatMap(({ adjustment }) => (adjustment.demerger ? [adjustment.demerger.exDate] : [])));
+  const demerged = await listingDemergerFlags(adjusted.rows, actions, explained, adjusted.traded);
+  const flaggedSplits = withSplitFlags(demerged.rows, splits, demergers);
   const data = flaggedSplits.rows;
-  const splitNote = historySplitNote(listing.symbol, flaggedSplits.splits);
   const interval = data[0]?.interval ?? null;
+  const basisBreak = priceBasisBreaks(data, splits, { interval, venue })[0];
+  const basisBreakDate = interval === "1wk" || interval === "1mo" ? `in the ${BAR_INTERVAL_LABELS[interval]} bar dated` : "on";
+  const splitNote = historySplitNote(listing.symbol, flaggedSplits.splits, !basisBreak);
   // Intraday bars print in UTC, as the charts and time and sales label them, not the host zone.
   const intraday = data.some((row) => row.date.length > 10);
   // A bar history: dated by its last bar, stale once bars of its size stop arriving.
@@ -2362,6 +2385,8 @@ async function loadListingHistory(
     historyRollNote(listing.symbol, data, { mostTraded }) ?? [], historyThinNote(data) ?? [],
     historyDemergerNote(data, demerged.breaks, historyPrice(historyPriceDecimals(data, listing.saved?.metadata.assetCategory, priceDivisor))) ?? [],
     splitNote ?? [],
+    ...basisBreak ? [`${listing.symbol}: ${basisBreak.kind === "close" ? "close jumps" : "high/low range is"} ${priceBasisFactor(basisBreak.ratio)}× ${basisBreakDate} ${basisBreak.day} near the ${basisBreak.split!.date.slice(0, 10)} split. A consistent split-adjusted price basis cannot be verified; no split rescaling was applied and drawdown is withheld.`] : [],
+    historyAdjustmentNote(listing.symbol, adjusted.adjustments) ?? [],
     historyBarStatusNote(forming ? served : data, { tradingDay: venueTradingDay(venue, Date.now()) }) ?? [],
     await interventionWindowNote(interventions, interventionPair, data) ?? [],
   ].flat();
@@ -2369,6 +2394,7 @@ async function loadListingHistory(
     listing, identity, unit, data, resolution, interval, intraday, volume, freshness, notes, mostTraded,
     decimals: historyPriceDecimals(data, listing.saved?.metadata.assetCategory, priceDivisor),
     ...demerged.breaks.length > 0 ? { demergers: demerged.breaks } : {},
+    ...basisBreak ? { unverifiedPriceBasis: true } : {},
   };
 }
 
@@ -2396,13 +2422,22 @@ function shareActionsReader(market: MarketContext, listing: CliListing, instrume
   };
 }
 
-/** A share's bars with the bar each demerger falls in flagged (withDemergerFlags), read only when a close falls a fifth or more below the one before. */
+/**
+ * A share's bars with the bar each demerger falls in flagged (withDemergerFlags): one whose bars fell by its own
+ * price-adjustment factor (`traded`), and any other read only when a close falls a fifth or more below the one before.
+ */
 async function listingDemergerFlags(
   rows: HistoryRow[],
   actions: ReturnType<typeof shareActionsReader>,
+  explained: ReadonlySet<string> = new Set(),
+  traded: readonly DemergerAction[] = [],
 ): Promise<{ rows: HistoryRow[]; breaks: Array<{ date: string; action: DemergerAction }> }> {
-  if (!actions.share || !hasPriceBreak(rows)) return { rows, breaks: [] };
-  return withDemergerFlags(rows, await actions.demergers());
+  if (!actions.share) return { rows, breaks: [] };
+  const witnessed = new Set(traded.map((action) => action.exDate));
+  const broken = hasPriceBreak(rows)
+    ? (await actions.demergers()).filter((action) => !explained.has(action.exDate) && !witnessed.has(action.exDate)) : [];
+  if (traded.length === 0 && broken.length === 0) return { rows, breaks: [] };
+  return withDemergerFlags(rows, [...traded, ...broken]);
 }
 
 /**
@@ -2410,11 +2445,11 @@ async function listingDemergerFlags(
  * flagged for (withSplitFlags), which the bars run across in post-split shares, whatever bar size holds them. Null
  * with none.
  */
-function historySplitNote(symbol: string, flagged: ReadonlyArray<{ split: SplitAction; barBefore: boolean }>): string | null {
+function historySplitNote(symbol: string, flagged: ReadonlyArray<{ split: SplitAction; barBefore: boolean }>, clearBasis: boolean): string | null {
   if (flagged.length === 0) return null;
   const named = flagged.map(({ split }) => `${splitShareTerms(split)!.split(",")[0]} on ${split.date.slice(0, 10)}`);
   // A window that opens on the split's bar has no bar before it to adjust.
-  const adjusted = flagged.some(({ barBefore }) => barBefore) ? `; bars before ${named.length === 1 ? "it" : "each"} are split-adjusted` : "";
+  const adjusted = clearBasis && flagged.some(({ barBefore }) => barBefore) ? `; bars before ${named.length === 1 ? "it" : "each"} are split-adjusted` : "";
   return `Splits in range: ${symbol} ${named.join(" and ")} (flag ${SPLIT_FLAG})${adjusted}.`;
 }
 
@@ -2634,7 +2669,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     // Nor from a close that held a business the listing demerged to one that did not (TMPV before 2025-10-14): split
     // before each bar flagged `demerger`, whatever date its close is given, and named by the demerger's own day.
     const demergedOn = history.demergers?.map((entry) => entry.action.exDate) ?? [];
-    const contractDrawdown = demergedOn.length > 0
+    const contractDrawdown = history.unverifiedPriceBasis ? null : demergedOn.length > 0
       ? deepestRunDrawdown(demergerRuns(closes).map((run) => historyContractDrawdown(run, yieldUnits ? "yield" : "return")))
       : historyContractDrawdown(closes, yieldUnits ? "yield" : "return");
     // A window's last week can close after the dates asked for (--to 2003, a week ending Fri 2 Jan 2004): measured to its end.
@@ -3208,7 +3243,7 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       // Market cap, the multiples and the yield at the regular session price, as the text gives them; the quote stays as sent.
       const priced = atLivePriceEarnings(financials);
       // One market cap per view: the share count times the price where the provider's sits more than 2% from it.
-      const capitalization = viewMarketCapitalization(priced.quote, priced.fundamentals, regularSessionValuationPrice(priced.quote));
+      const capitalization = regularSessionMarketCapitalization(financials);
       // The filings behind the latest statements, and for a bank its deposits, uninsured share and CRE.
       const [statementFilings, bank] = view === "fundamentals"
         ? await Promise.all([
@@ -3270,7 +3305,7 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       new Set(["totalRevenue", "netIncome"]));
     // GF is pointed to only when the listing's extended history goes further back than these years.
     const dates = rows.map((row) => row.date);
-    const older = await hasOlderStatements(() => market.dataProvider.getTickerFinancials(listing.request.symbol, listing.request.exchange,
+    const older = await hasEarlierGfRevenue(() => market.dataProvider.getTickerFinancials(listing.request.symbol, listing.request.exchange,
       { statementHistory: "extended" }), "annual", dates);
     const historyNotes = [...stale ? [stale] : [], ...filled ? [filled] : [], ...statementHistoryNotes("annual", dates, listing.key, older)];
     // No year to list says why, and where its quarters are, rather than "No results.".
@@ -3556,7 +3591,8 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     const identity = listing ? listingIdentity(listing, quote) : null;
     const resolved = quote !== null || identity?.name != null;
     // A window of days with no story in it says so: the searches below read the newest stories, not those days'.
-    const unfiled = !!listing && !listing.exchange && !feed && !window && articles.length === 0;
+    // A venue search found for a name ("spin-off": ^SPUSSOUN:NYSE) is no venue the user typed.
+    const unfiled = !!listing && (!listing.exchange || listing.venueFromSearch === true) && !exchangeOption && !feed && !window && articles.length === 0;
     // A future's news is its commodity's: news is filed under company tickers, so KC=F (or a bare code
     // no security keeps, CT) searches the stories of coffee, which the service matches to KC=F's links too.
     const future = unfiled && isFuturesInstrument(listing!.symbol, quote?.instrumentType)
@@ -3566,9 +3602,11 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     // to its future: the stories that mention the word are the news.
     const word = commodity ?? (unfiled ? newsFallbackText(args[0]!) : null);
     const futuresCode = !!word && !!bareFuturesCode(word) && isFuturesInstrument(listing!.symbol, quote?.instrumentType);
-    // A word typed as a word ("corn", not CORN) that a ticker answers to but no story is filed under: the stories
-    // that mention the word, said to be that (Teucrium Corn Fund had none on 5 Nov 2026; corn's market had plenty).
-    const typedWord = !!word && /^[A-Za-z]{3,}$/.test(word) && /[a-z]/.test(word);
+    // A word typed as a word ("corn", not CORN; "spin-off", hyphened) that a ticker answers to but no story is filed
+    // under: the stories that mention the word, said to be that (Teucrium Corn Fund had none on 5 Nov 2026; corn's
+    // market had plenty; the S&P spin-off index has none, spin-offs have plenty). A hyphened code that is the listing
+    // itself (btc-usd for BTC-USD) is that symbol, typed in lower case.
+    const typedWord = !!word && isTypedNewsWord(word, listing?.symbol);
     const reason = commodity ? `the commodity ${future!.symbol} trades`
       : !resolved ? "no ticker by that name" : futuresCode ? "a futures code, not a ticker"
         : typedWord ? `no stories filed under ${listing!.symbol}${identity?.name ? ` (${identity.name})` : ""}` : null;
@@ -4233,16 +4271,19 @@ async function runEvents(rawArgs: string[], ctx: Parameters<CliCommandDef["execu
       quoted,
       calendar,
     ]);
-    const data = withResolvedEarnings(recorded, calendarEventOf(events, listing.key), newYorkDay());
+    const indianEtf = isIndianEtfListing(recorded.exchange || listing.request.exchange, recorded.name ?? quote?.name);
+    const fund = indianEtf || classifyInstrumentType(quote?.instrumentType) === "fund";
+    const data = fund ? fundCorporateActions(recorded, { uncertainEmptyPayouts: indianEtf })
+      : withResolvedEarnings(recorded, calendarEventOf(events, listing.key), newYorkDay());
     const identity = listingIdentity(listing, quote);
     const choice = await listingChoiceNotes(listing, market, quote, venues);
     ctx.printResult({
-      data,
+      data: withPriceAdjustmentKinds(data),
       metadata: listingMetadata(identity),
       // Dated by when it was read, as EE and fn EVT date the same events: a row's
       // date is when the event happens, and the newest past one is no as-of.
       freshness: rowsFreshness([], { ...REPORTED_DATA, basis: "corporate actions", oldest: null }),
-      ...(choice.length > 0 ? { warnings: choice } : {}),
+      warnings: [...choice, ...(data.coverage?.dividends === "unavailable" ? [INCOMPLETE_DISTRIBUTIONS] : [])],
     }, {
       heading: listingHeading(identity),
       rows: corporateActionRows,
@@ -4363,9 +4404,10 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     // contracts deliver something other than 100 shares, so the spot values none of them.
     const { chain, spot: modelSpot } = adjusted ? { chain: loaded, spot: null }
       : valueChainAtModelSpot(loaded, inputs, Date.now(), identity.exchange);
+    const snapshot = optionSnapshotFreshness(chain, now, expiryVenue, result?.refreshError != null);
     const basis: OptionsChainBasis = { spot: modelSpot, dividendYield: inputs.dividendYield ?? null,
       openInterest: await loadOptionsChainOpenInterest(symbol, chain), ivFilled: chainHasFilledIv(chain),
-      volumeSession: optionQuoteSession(chain, identity.exchange || undefined) };
+      volumeSession: optionQuoteSession(chain, identity.exchange || undefined), staleSnapshot: snapshot.status === "stale" };
     const basisFields = optionsBasisFields(basis);
     const currency = [...chain.calls, ...chain.puts].find((contract) => contract.currency?.trim())?.currency.trim().toUpperCase()
       ?? quote?.currency ?? null;
@@ -4374,7 +4416,6 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const refreshWarning = result?.refreshError == null || isTransientFailure(result.refreshError) ? null
       : `Options refresh failed; showing the chain stored ${new Date(result.fetchedAt).toISOString()}`
         + (chain.asOf ? ` (last trade ${chain.asOf})` : "");
-    const sessionWarning = refreshWarning ? null : priorSessionChainWarning(chain, identity.exchange, Date.now());
     // A venue that marks its contracts (Deribit) states IV and greeks without a quote.
     const marked = isMarkedChain(chain);
     const coin = chainCoinCurrency(chain);
@@ -4386,20 +4427,21 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       // FB's chain is the fund listed there now; a listing that stopped trading has none.
       ...listingFateNotes(await fate(), { served: listed }),
       ...await listingChoiceNotes(listing, market, quote, venues),
-      ...[refreshWarning ?? sessionWarning, modelWarning].filter((warning): warning is string => warning != null),
+      ...[refreshWarning, modelWarning].filter((warning): warning is string => warning != null),
     ];
     // Dated by the chain's last trade; a chain that failed to refresh is the stored one, stale.
-    const freshness = rowsFreshness([], { asOf: chain.asOf ?? null }, {
-      ...(chain.dataSource ? { dataSource: chain.dataSource } : {}),
-      ...(chain.delayMinutes != null ? { delayMinutes: chain.delayMinutes } : {}),
-      stale: refreshWarning != null,
-    });
+    const freshness = rowsFreshness([], snapshot);
     const contractCount = chain.calls.length + chain.puts.length;
+    const contractExpiries = new Set([...chain.calls, ...chain.puts].map((contract) => contract.expiration));
+    const expiry = expirationDate ?? (contractExpiries.size === 1 ? contractExpiries.values().next().value : undefined);
+    const expiryFacts = expiry == null ? null : optionExpiryFacts(expiry, now, expiryVenue);
     ctx.printResult({
       data: chain,
       metadata: {
         ...listingMetadata(identity),
         expirations: chain.expirationDates,
+        expiry: expiryFacts,
+        snapshot,
         currency,
         interval: OPTIONS_EXPORT_INTERVAL,
         // `iv` is annualised volatility and `delta` the option's change per 1.00 move in the underlying, both decimals.
@@ -4425,7 +4467,8 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       heading: chain.venue ? `${cliStyles.bold(identity.name || identity.symbol)}${cliStyles.muted(`  ·  ${chain.venue}`)}` : listingHeading(identity),
       rows: (data: OptionsChain) => optionRows(data).map((row) => ({ ...row, ...basisFields })),
       // Choosing an expiry needs the list; once one is chosen the table is that expiry.
-      summary: (data: OptionsChain) => expirationDate == null ? formatExpiryList(data.expirationDates) : "",
+      summary: (data: OptionsChain) => [expiryFacts ? `Expiry ${expiryFacts.date} (${expiryFacts.expired ? "expired" : `${expiryFacts.daysToExpiry}d`})` : "",
+        expirationDate == null ? formatExpiryList(data.expirationDates) : ""].filter(Boolean).join("\n"),
       empty: adjusted ? `No adjusted option contracts for ${listingTitle(identity)} on this expiry.` : `No option contracts for ${listingTitle(identity)}.`,
       ...(contractCount > 0 ? { footnote: optionsBasisFootnote(basis, chain) } : {}),
       exportIdentity: { symbolOrSeries: listing.key, currencyOrUnit: currency, interval: OPTIONS_EXPORT_INTERVAL },

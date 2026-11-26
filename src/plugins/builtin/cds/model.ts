@@ -1,3 +1,4 @@
+import { formatDay, formatDayTime } from "../../../utils/day-format";
 import type { CloudCdsHistoryPointPayload, CloudCdsLevelPayload, CloudCdsTradePayload } from "../../../api-client";
 import type { DataTableColumn, StatItem } from "../../../components";
 import type { TimeSeriesPoint } from "../../../time-series/types";
@@ -629,9 +630,19 @@ export function formatNotional(trade: Pick<CdsTrade, "notional" | "notionalCappe
  * public, so it is an absolute amount: never signed, and labelled `abs`
  * where it is shown.
  */
-export function formatUpfront(trade: Pick<CdsTrade, "upfront" | "upfrontCurrency">): string {
+/** An upfront with its currency, unless that is the one the column's header names (sharedUpfrontCurrency). */
+export function formatUpfront(trade: Pick<CdsTrade, "upfront" | "upfrontCurrency">, headerCurrency: string | null = null): string {
   if (trade.upfront == null) return MISSING_VALUE;
-  return `${formatCompact(Math.abs(trade.upfront))}${trade.upfrontCurrency ? ` ${trade.upfrontCurrency}` : ""}`;
+  const code = trade.upfrontCurrency && trade.upfrontCurrency !== headerCurrency ? ` ${trade.upfrontCurrency}` : "";
+  // Fixed decimals in the text as in the pane, so 895.0k sits over 319.9k, never 895k.
+  return `${formatCompact(Math.abs(trade.upfront), { fixedDecimals: true })}${code}`;
+}
+
+/** The currency every upfront of two or more is paid in, which heads the column instead of trailing each amount. */
+export function sharedUpfrontCurrency(trades: readonly Pick<CdsTrade, "upfront" | "upfrontCurrency">[]): string | null {
+  const paid = trades.filter((trade) => trade.upfront != null);
+  const currency = paid[0]?.upfrontCurrency ?? null;
+  return paid.length >= 2 && currency && paid.every((trade) => trade.upfrontCurrency === currency) ? currency : null;
 }
 
 /**
@@ -641,6 +652,11 @@ export function formatUpfront(trade: Pick<CdsTrade, "upfront" | "upfrontCurrency
 export function formatEventTime(eventAt: number): string {
   if (!Number.isFinite(eventAt)) return MISSING_VALUE;
   return new Date(eventAt).toISOString().slice(0, 16).replace("T", " ");
+}
+
+/** A print's time as the tables write it, day first in UTC: `25 Nov 2026 16:16`. */
+export function formatEventStamp(eventAt: number): string {
+  return Number.isFinite(eventAt) ? formatDayTime(eventAt) : MISSING_VALUE;
 }
 
 export function formatMaturity(maturity: string | null): string {
@@ -677,7 +693,7 @@ export function buildIssuerColumns(): IssuerColumn[] {
   return [
     { id: "issuer", label: "ISSUER", width: 16, align: "left", flexGrow: 1 },
     { id: "trades", label: "TRADES", width: 7, align: "right" },
-    { id: "last", label: "LAST UTC", width: 16, align: "left" },
+    { id: "last", label: "LAST UTC", width: 17, align: "left" },
     { id: "spread", label: "5Y", width: 10, align: "right" },
     { id: "1w", label: "1W", width: 10, align: "right" },
     { id: "1m", label: "1M", width: 10, align: "right" },
@@ -742,17 +758,26 @@ export function tradeSortColumnIds(points: boolean): readonly TradeColumnId[] {
 }
 
 /** A Points column sits beside Spread only when a print was quoted in points. */
-export function buildTradeColumns(width: number, points = false): TradeColumn[] {
-  const maturityWidth = Math.max(10, Math.min(12, width - 59 - (points ? 9 : 0)));
+/** The running coupon every trade of two or more is on, which the pane and the report say once rather than on each print. */
+export function sharedTradeCoupon(trades: readonly Pick<CdsTrade, "couponBp">[]): number | null {
+  const coupon = trades[0]?.couponBp ?? null;
+  return trades.length >= 2 && coupon != null && trades.every((trade) => trade.couponBp === coupon) ? coupon : null;
+}
+
+export function buildTradeColumns(width: number, points = false, upfrontCurrency: string | null = null): TradeColumn[] {
+  const upfrontLabel = upfrontCurrency ? `ABS UPFRONT ${upfrontCurrency}` : "ABS UPFRONT";
+  const maturityWidth = Math.max(11, Math.min(12, width - 59 - (points ? 9 : 0)));
   return [
-    { id: "time", label: "TIME UTC", width: 16, align: "left" },
+    { id: "time", label: "TIME UTC", width: 17, align: "left" },
     { id: "maturity", label: "MATURITY", width: maturityWidth, align: "left" },
     { id: "notional", label: "NOTIONAL", width: 11, align: "right" },
-    { id: "currency", label: "CCY", width: 5, align: "left" },
-    { id: "coupon", label: "COUPON", width: 9, align: "right" },
-    { id: "spread", label: "SPREAD", width: 10, align: "right" },
+    // A currency every print shares is the upfront's own, and a shared coupon goes above the table (sharedTradeCoupon).
+    { id: "currency", label: "CCY", width: 5, align: "left", omitWhenSame: true },
+    { id: "coupon", label: "COUPON", width: 9, align: "right", omitWhenSame: true },
+    // Prints of a name quoted upfront carry no spread at all.
+    { id: "spread", label: "SPREAD", width: 10, align: "right", omitWhenEmpty: true },
     ...(points ? [{ id: "points" as const, label: "POINTS", width: 9, align: "right" as const }] : []),
-    { id: "upfront", label: "ABS UPFRONT", width: 13, align: "right" },
+    { id: "upfront", label: upfrontLabel, width: Math.max(13, upfrontLabel.length), align: "right" },
   ];
 }
 
@@ -918,7 +943,7 @@ export function spreadFigures(line: CdsSpreadLine): StatItem[] {
   const summary = spreadSummary(line);
   if (!summary) return [];
   const { unit } = summary;
-  const dated = summary.settlement ? `${summary.date} · ${SETTLEMENT_TEXT}` : summary.date;
+  const dated = summary.settlement ? `${formatDay(summary.date)} · ${SETTLEMENT_TEXT}` : formatDay(summary.date);
   return [
     unit === "pts"
       ? {
@@ -934,7 +959,7 @@ export function spreadFigures(line: CdsSpreadLine): StatItem[] {
       id: "range",
       label: "Range",
       value: formatSpreadRange(unit, summary.range),
-      detail: `since ${summary.range.since}`,
+      detail: `since ${formatDay(summary.range.since)}`,
     }] : []),
   ];
 }

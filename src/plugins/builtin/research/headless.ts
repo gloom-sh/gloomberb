@@ -15,7 +15,7 @@ import { MISSING_VALUE, formatPercent } from "../../../utils/format";
 import { isNotMeaningful, NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import { buildEarningsHeader, buildEventRows, estimateRate, eventSourceNotice, formatEventMetric, forwardEstimates, isFundListing, type EventRow } from "./event-model";
 import { earningsQuarters } from "./event-charts";
-import { EARNINGS_ESTIMATE_COLUMNS, eventSummarySection, loadEventSources, QUARTER_TEXT_COLUMNS, quarterTextRows } from "./event-sources";
+import { EARNINGS_ESTIMATE_COLUMNS, eventSummarySection, loadEventSources, quarterTextColumns, quarterTextRows } from "./event-sources";
 import { listingDay } from "../shared/earnings-calendar";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { REPORTED_DATA } from "../shared/report-freshness";
@@ -117,7 +117,7 @@ function projectEarningsEstimatesHeadless(
   // The figures over the pane's views: the next report with its consensus, and the trailing twelve months.
   const symbol = args.symbols[0] ?? String(args.argument ?? "");
   const today = listingDay(parsePublicTickerKey(symbol).exchange);
-  const fund = isFundListing(sources.financials);
+  const fund = isFundListing(sources.financials, sources.actions);
   const summary = buildEarningsHeader(all, { today, fund });
   const rows = matching.slice(0, limit).map((row) => ({ ...row,
     ...(row.status === "Q Est" || row.status === "FY Est" ? {
@@ -128,15 +128,17 @@ function projectEarningsEstimatesHeadless(
   // keep every row of the kind asked for.
   const { quarters, years } = forwardEstimates(all);
   const estimateRows = [...quarters, ...years].map(estimateTextRow).slice(0, limit);
-  const quarterRows = quarterTextRows(fund ? [] : earningsQuarters(all, today).slice(0, limit));
-  const quarterSection: HeadlessBundleSection = { title: "Reported quarters", columns: QUARTER_TEXT_COLUMNS, rows: quarterRows };
+  const listedQuarters = fund ? [] : earningsQuarters(all, today).slice(0, limit);
+  const quarterRows = quarterTextRows(listedQuarters);
+  const quarterColumns = quarterTextColumns(listedQuarters);
+  const quarterSection: HeadlessBundleSection = { title: "Reported quarters", columns: quarterColumns, rows: quarterRows };
   // `--view` prints one of the pane's views under Next up, as `shot` opens on it; without it, `--kind` says which.
   const view = args.options.view === "estimates" || args.options.view === "reported" ? args.options.view : null;
   const reportedText = view ? view === "reported" : kind === "reported";
   const sections = [...(summary.length ? [eventSummarySection(summary)] : []), ...(!view && kind === "all" && quarterRows.length ? [quarterSection] : [])];
   const notice = eventSourceNotice({ variant: "earnings-estimates", symbol: args.symbols[0] ?? String(args.argument ?? ""),
-    actions: sources.actions, estimates: sources.estimates,
-    actionsError: sources.actions ? null : "Source unavailable", estimatesError: sources.estimates ? null : "Source unavailable",
+    actions: sources.actions, estimates: fund ? null : sources.estimates,
+    actionsError: sources.actions ? null : "Source unavailable", estimatesError: fund || sources.estimates ? null : "Source unavailable",
   });
   const errors = [...(sources.errors ?? []), ...(notice?.failed ? [notice.text] : [])];
   const unmatchedReportedPeriods = matching.filter((row) => row.earningsState === "reported" && !row.fiscalPeriodEnd).map((row) => row.date);
@@ -144,7 +146,7 @@ function projectEarningsEstimatesHeadless(
   return {
     columns: ESTIMATE_COLUMNS,
     rows,
-    textColumns: reportedText ? QUARTER_TEXT_COLUMNS : ESTIMATE_TEXT_COLUMNS,
+    textColumns: reportedText ? quarterColumns : ESTIMATE_TEXT_COLUMNS,
     textRows: reportedText ? quarterRows : estimateRows,
     ...(sections.length ? { textSections: sections } : {}),
     errors: errors.length ? errors : undefined,

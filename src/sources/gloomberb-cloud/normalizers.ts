@@ -159,6 +159,7 @@ export function mapQuote(
     open: sessionPrice(quote.open),
     high: sessionPrice(quote.high),
     low: sessionPrice(quote.low),
+    dayRangeBasis: quote.dayRangeBasis === "daily-bar" ? "daily-bar" : undefined,
     mark: normalizePriceValueByDivisor(quote.mark, divisor),
     lastTradePrice: normalizePriceValueByDivisor(quote.lastTradePrice, divisor),
     preMarketPrice: normalizePriceValueByDivisor(quote.preMarketPrice, divisor),

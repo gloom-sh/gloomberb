@@ -1,25 +1,50 @@
 import type { DividendMetrics, DividendPayment, GrowthPayments } from "./types";
-import { MISSING_VALUE, formatDistributionAmount } from "../../../utils/format";
+import { MISSING_VALUE, distributionAmountsDigits, formatDistributionAmount } from "../../../utils/format";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import { calendarMonthsBefore } from "../../../utils/calendar-date";
 import { NOT_MEANINGFUL, formatPriceEarnings } from "../../../utils/price-earnings";
 import { UNEVEN_REGULAR_PAYMENTS } from "../../../utils/forward-dividend";
-import { CADENCE_GRACE_DAYS, LATE_GRACE_DAYS, OFF_CYCLE_DAYS, trailingCashAt, type TrailingPayments } from "../../../utils/trailing-dividend";
+import { CADENCE_GRACE_DAYS, LATE_GRACE_DAYS, OFF_CYCLE_DAYS, trailingCashAt, trailingCashInHindsight, type TrailingPayments } from "../../../utils/trailing-dividend";
 
 const DAY = 24 * 60 * 60 * 1000;
 
-/** An amount converted from the currency the company declares in, in the unit its history is in (pence for a London line), as any distribution is written. */
-export function formatConvertedAmount(value: number | null | undefined, currency: string, subUnit?: string): string {
-  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
+/**
+ * The decimals a column of amounts shares in each unit it writes them in
+ * (dividendAmountDigits): Haier's 0.89151 over 0.26920, never beside 0.2692.
+ */
+export type DividendAmountDigits = ReadonlyMap<string, number>;
+
+/** The unit an amount is written in and its value there: a converted amount in its history's sub-unit (pence for a London line). */
+function shownAmount(value: number, currency: string, subUnit?: string): { value: number; unit: string } {
   const unit = subUnit ? resolveCurrencyUnit(subUnit) : null;
-  return unit && unit.divisor !== 1 && unit.currency === currency
-    ? formatDistributionAmount(value * unit.divisor, subUnit!)
-    : formatDistributionAmount(value, currency);
+  return unit && unit.divisor !== 1 && unit.currency === currency ? { value: value * unit.divisor, unit: subUnit! } : { value, unit: currency };
 }
 
-export function formatDividendRowAmount(row: Pick<DividendRow, "amount" | "currency" | "cashEstimate" | "combined" | "special">, converted = false, subUnit?: string): string {
-  const cash = converted ? formatConvertedAmount(row.amount, row.currency, subUnit) : formatDistributionAmount(row.amount, row.currency);
+/** An amount converted from the currency the company declares in, in the unit its history is in (pence for a London line), as any distribution is written. */
+export function formatConvertedAmount(value: number | null | undefined, currency: string, subUnit?: string, digits?: DividendAmountDigits): string {
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
+  const shown = shownAmount(value, currency, subUnit);
+  return formatDistributionAmount(shown.value, shown.unit, digits?.get(shown.unit));
+}
+
+/**
+ * The decimals each unit's amounts share down a column of them, from every
+ * amount the column holds (distributionAmountsDigits): one precision per
+ * column, as the table's other figures keep.
+ */
+export function dividendAmountDigits(amounts: readonly { amount: number; currency: string }[], converted = false, subUnit?: string): DividendAmountDigits {
+  const values = new Map<string, number[]>();
+  for (const { amount, currency } of amounts) {
+    if (!Number.isFinite(amount) || !currency) continue;
+    const shown = converted ? shownAmount(amount, currency, subUnit) : { value: amount, unit: currency };
+    values.set(shown.unit, [...values.get(shown.unit) ?? [], shown.value]);
+  }
+  return new Map([...values].map(([unit, list]) => [unit, distributionAmountsDigits(list, unit)]));
+}
+
+export function formatDividendRowAmount(row: Pick<DividendRow, "amount" | "currency" | "cashEstimate" | "combined" | "special">, converted = false, subUnit?: string, digits?: DividendAmountDigits): string {
+  const cash = converted ? formatConvertedAmount(row.amount, row.currency, subUnit, digits) : formatDistributionAmount(row.amount, row.currency, digits?.get(row.currency));
   return `${row.cashEstimate ? "estimated " : ""}${row.combined ? `${COMBINED_PAYMENT} ` : ""}${row.special ? `${SPECIAL_PAYMENT} ` : ""}${cash}`;
 }
 
@@ -134,7 +159,8 @@ export function buildTrailingCashChartPoints(payments: DividendPayment[], now = 
     const date = new Date(timestamp);
     // Avoid drawing the first partial year of a fund's history as a full-year cash rate.
     if (calendarMonthsBefore(date, 12) < firstDate) continue;
-    const cash = trailingCashAt(sorted, date);
+    // The past reads with what was paid after it; the latest point is as known.
+    const cash = timestamp === now.getTime() ? trailingCashAt(sorted, date) : trailingCashInHindsight(sorted, date);
     // A step series only needs its changes and the current value.
     if (points.at(-1)?.close === cash && timestamp !== now.getTime()) continue;
     points.push({ date, open: cash, high: cash, low: cash, close: cash, volume: 0 });

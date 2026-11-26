@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { formatDay } from "../../../components/ui/day-cell";
 import type { AwardAggregate, AwardFilter, AwardHistoryPoint, AwardRow, AwardsPayload, AwardType } from "../../../api-client/awards";
 import { staticSeries } from "../../../components/chart/static/series";
 import type { ResolvedSeries } from "../../../time-series/types";
@@ -17,7 +18,9 @@ export function money(value: string | number | null | undefined): string {
   }
   return amount.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
-export const awardPeriod = (row: AwardRow) => row.periodStart || row.periodEnd ? `${row.periodStart ?? MISSING_VALUE} / ${row.periodEnd ?? MISSING_VALUE}` : MISSING_VALUE;
+export const awardPeriod = (row: AwardRow) => row.periodStart || row.periodEnd ? `${formatDay(row.periodStart)} / ${formatDay(row.periodEnd)}` : MISSING_VALUE;
+/** The period as exports write it: ISO days. */
+export const awardPeriodValue = (row: AwardRow) => row.periodStart || row.periodEnd ? `${row.periodStart ?? ""} / ${row.periodEnd ?? ""}` : null;
 export const awardPercent = (row: AwardRow) => row.revenueComparison ? `${row.revenueComparison.percent.toFixed(2)}%` : MISSING_VALUE;
 export const aggregateId = (row: AwardAggregate) => JSON.stringify([row.key, row.source, row.currency, row.awardType]);
 const historyDate = (row: AwardHistoryPoint) => new Date(`${row.month.slice(0, 7)}-01T00:00:00Z`);
@@ -54,6 +57,38 @@ function previewIgnoredFilters(filter: AwardFilter): string[] {
 const filterList = (names: readonly string[]) => names.length === 1 ? names[0]! : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 
 /** The lock line of a free preview, in the same words in the pane, `fn AWARDS` and its JSON. */
+/** The one country a source publishes awards of; EU notices (TED) name many, and are in none. */
+const SOURCE_COUNTRY: Record<string, string> = { usaspending: "US", "usaspending-subawards": "US", "usaspending-transactions": "US", dod: "US", sam: "US",
+  "uk-contracts-finder": "GB", "uk-find-tender": "GB", "ca-contracts": "CA" };
+
+/** What every award a feed query lists shares, so the feed says it once rather than on each row. */
+export interface AwardsQueryShared { ticker: string | null; currency: string | null; country: string | null }
+
+/**
+ * What every award of a feed query shares, whichever page is loaded: the ticker
+ * and the currency and country it is filtered to, and else the one currency
+ * and country its agency totals name, which cover the whole query unless they
+ * are cut short. A preview applies no filter and has no totals of the query,
+ * so it shares nothing.
+ */
+export function awardsQueryShared(data: AwardsPayload | null | undefined, filter: Pick<AwardFilter, "ticker" | "currency" | "jurisdiction">): AwardsQueryShared {
+  if (!data || data.locked || data.access !== "full") return { ticker: null, currency: null, country: null };
+  const totals = data.truncated?.agencies || data.agencies.length === 0 ? null : data.agencies;
+  const one = (values: readonly (string | undefined)[]) => {
+    const distinct = new Set(values);
+    return distinct.size === 1 ? [...distinct][0] ?? null : null;
+  };
+  const rowsAgree = (value: string | null, pick: (row: AwardRow) => string) => value && data.rows.every((row) => pick(row) === value) ? value : null;
+  return {
+    ticker: filter.ticker || null,
+    currency: filter.currency || rowsAgree(totals ? one(totals.map((row) => row.currency)) : null, (row) => row.currency),
+    country: filter.jurisdiction || rowsAgree(totals ? one(totals.map((row) => SOURCE_COUNTRY[row.source])) : null, (row) => row.jurisdiction),
+  };
+}
+
+/** An amount column's header once the feed shares one currency: `Obligated USD`. */
+export const awardAmountLabel = (label: string, currency: string | null) => currency ? `${label} ${currency}` : label;
+
 export function awardsPreviewNote(data: AwardsPayload, filter: AwardFilter): string | null {
   if (!data.locked) return null;
   const ignored = previewIgnoredFilters(filter);

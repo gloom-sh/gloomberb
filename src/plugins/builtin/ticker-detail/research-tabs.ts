@@ -25,7 +25,8 @@ export const TICKER_RESEARCH_BUILTIN_TABS: TickerResearchTabDef[] = [
   },
   {
     id: "financials",
-    name: "Financials",
+    // Not "Financials": the group it opens is named that (FORMER_VIEW_NAMES).
+    name: "Statements",
     order: 20,
     component: FinancialsResearchTab,
     isVisible: ({ financials }) => hasStatementFinancials(financials),

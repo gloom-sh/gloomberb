@@ -1,4 +1,4 @@
-import { formatShortDate } from "../../../utils/datetime-format";
+import { formatDay, formatDayTime } from "../../../utils/day-format";
 import type { DataTableColumn, StatItem } from "../../../components";
 import type { HiringCompanySignals, HiringMovePosting, HiringSignalFlag, HiringSignalGroup, HiringSignalHold, HiringSignalKind, HiringSignalSkip, HiringSignalsBoard, HiringSignalsFilter, HiringWeekSignal } from "../../../api-client/hiring";
 import { MISSING_VALUE, formatNumber } from "../../../utils/format";
@@ -52,8 +52,7 @@ const isFirst = (signal: Pick<HiringWeekSignal, "kind">) => signal.kind === "new
 
 /** "12 Oct": a week's Monday or a first read's day. */
 function dayLabel(value: string | null | undefined, year = false): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value ?? "");
-  return match ? formatShortDate(match[0], { year: year ? "numeric" : false, utc: true, fallback: MISSING_VALUE }) : MISSING_VALUE;
+  return /^\d{4}-\d{2}-\d{2}/.test(value ?? "") ? formatDay(value, year ? "full" : "no-year") : MISSING_VALUE;
 }
 const pace = (value: number | null | undefined) => value == null ? MISSING_VALUE : `${formatNumber(value, Math.abs(value) >= 10 ? 0 : 1)}x`;
 const count = (value: number | null | undefined) => value == null ? MISSING_VALUE : formatNumber(value, 0);
@@ -94,7 +93,7 @@ export function signalFacts(signal: HiringWeekSignal): Array<{ label: string; va
     ...(signal.places.length ? [{ label: signal.dimension === "country" ? "Cities" : "Where", value: signal.places.map((row) => `${row.label} (${count(row.count)})`).join(", ") }] : []),
     ...(signal.topTitles.length ? [{ label: "Top titles", value: signal.topTitles.map((row) => `${row.title.trim()} (${count(row.count)})`).join(", ") }] : []),
     { label: "Boards", value: signal.sourceTickers.join(", ") },
-    { label: "First computed", value: signal.firstComputedAt },
+    { label: "First computed", value: `${formatDayTime(signal.firstComputedAt)} UTC` },
   ];
 }
 

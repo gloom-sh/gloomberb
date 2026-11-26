@@ -36,17 +36,14 @@ import {
   DEFAULT_IMPACT_FILTER,
   FILTER_CYCLE,
   attachEconCalendarPersistence,
-  actualColor,
-  actualMayBeBlank,
-  AWAITING_FIGURE_CELL,
   awaitsConsensus,
   figureGap,
   figureGapText,
-  NO_FIGURE_CELL,
   calendarDisplayRows,
   CALENDAR_TIME_ZONE_LABEL,
   dayLabel,
   econEventName,
+  econFigureCell,
   filteredEmptyTitle,
   formatStaleness,
   getCalendarCache,
@@ -77,7 +74,6 @@ import {
   type EconCalendarLoadResult,
   type ImpactFilter,
 } from "./calendar-model";
-import { figureWithCurrency } from "./figures";
 import { MISSING_VALUE } from "../../../utils/format";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
@@ -293,7 +289,9 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     const timeLabelText = CALENDAR_TIME_ZONE_LABEL;
     const timeWidth = tableColumnWidth({ width: filtered.some(isAllDayEvent) ? "All day".length : 5, label: timeLabelText });
     const compact = width < 58;
-    const showCountry = !compact || !/^[A-Z]{2}$/.test(countryFilter) || countryFilter === "EU";
+    // One country, or one impact level, is the filter's: no column repeats it on each row.
+    const showCountry = !/^[A-Z]{2}$/.test(countryFilter) || countryFilter === "EU";
+    const showImpact = impactFilter === "all";
     const actualLabel = compact ? "ACT" : "ACTUAL";
     const forecastLabel = compact ? "EST" : "FORECAST";
     const actualWidth = tableColumnWidth({ width: valueColumnWidth(filtered, "actual", compact ? 3 : 9), label: actualLabel });
@@ -307,7 +305,8 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     // Padding, one gap per column boundary, and the vertical scrollbar lane;
     // one column short of that clipped the PRIOR values at the right edge.
     const roomBeside = (count: number, timesWidth: number) => (impactWidth: number, countryWidth: number) => (
-      width - 3 - count + (showCountry ? 0 : 1) - (timesWidth + impactWidth + (showCountry ? countryWidth : 0) + actualWidth + forecastWidth + priorWidth)
+      width - 3 - count + (showCountry ? 0 : 1) + (showImpact ? 0 : 1)
+        - (timesWidth + (showImpact ? impactWidth : 0) + (showCountry ? countryWidth : 0) + actualWidth + forecastWidth + priorWidth)
     );
     const codeWidth = 2 + (flagged ? COUNTRY_FLAG_CELLS : 0);
     // The reader's column only where the event names keep room to read beside it, under the short headers.
@@ -329,14 +328,14 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     return [
       { id: "time", label: timeLabelText, width: timeWidth, align: "left" },
       ...withReader ? [{ id: "readerTime" as const, label: readerLabel!, width: readerWidth, align: "left" as const, title: readerZone! }] : [],
-      { id: "impact", ...impactColumn, align: "left" },
+      ...showImpact ? [{ id: "impact" as const, ...impactColumn, align: "left" as const }] : [],
       ...showCountry ? [{ id: "country" as const, ...countryColumn, align: "left" as const }] : [],
       { id: "event", label: "EVENT", width: eventWidth, align: "left" },
       { id: "actual", label: actualLabel, title: "Actual", width: actualWidth, align: "right" },
-      { id: "forecast", label: forecastLabel, title: "Forecast", width: forecastWidth, align: "right", mayBeBlank: true },
-      { id: "prior", label: "PRIOR", width: priorWidth, align: "right", mayBeBlank: true },
+      { id: "forecast", label: forecastLabel, title: "Forecast", width: forecastWidth, align: "right" },
+      { id: "prior", label: "PRIOR", width: priorWidth, align: "right" },
     ];
-  }, [countryFilter, filtered, flagged, readerZone, width]);
+  }, [countryFilter, filtered, flagged, impactFilter, readerZone, width]);
   const separatorBg = blendHex(colors.bg, colors.border, 0.3);
   const staleness = fetchedAt ? formatStaleness(fetchedAt, now) : "";
   // The calendar has events and the filters hid them all: say which, with the way back.
@@ -514,21 +513,10 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       }
       case "event":
         return { text: econEventName(ev), color: colors.text };
-      // An amount reads with its currency beside it (-556.5B JPY), where the server says it.
       case "actual":
-        // A release past its time whose figure is not in yet says so, or that the source has none; the footer says it whole.
-        const gap = figureGap(ev, now, events);
-        if (gap) return { text: gap === "none" ? NO_FIGURE_CELL : AWAITING_FIGURE_CELL, color: colors.warning, value: null };
-        return {
-          text: figureWithCurrency(ev.actual, ev.currency) ?? MISSING_VALUE,
-          color: actualColor(ev.actual, ev.forecast),
-          // A release still to come, or one with no figure to print: its dash is no figure lost.
-          ...(actualMayBeBlank(ev, now) ? { mayBeBlank: true } : {}),
-        };
       case "forecast":
-        return { text: figureWithCurrency(ev.forecast, ev.currency) ?? MISSING_VALUE, color: colors.textDim };
       case "prior":
-        return { text: figureWithCurrency(ev.prior, ev.currency) ?? MISSING_VALUE, color: colors.textDim };
+        return econFigureCell(column.id, ev, now, events);
     }
   }, [events, flagged, now, readerZone]);
 

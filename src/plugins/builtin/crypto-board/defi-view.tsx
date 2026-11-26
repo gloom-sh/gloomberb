@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import { formatDay } from "../../../components/ui/day-cell";
 import {
   ChartTableHeader,
   DataTableView,
@@ -146,7 +147,7 @@ export function DefiTvlView({
       { id: "total", label: "Total DeFi TVL", value: formatTvl(total.tvl), ...(payload.asOf ? { detail: utcCloseAsOfText(payload.asOf) } : {}) },
       changeFigure("change-7d", "7D change", total.change7d, total.change7dPercent),
       changeFigure("change-30d", "30D change", total.change30d, total.change30dPercent),
-      { id: "source", label: "Source", value: payload.source.name, ...(since ? { detail: `daily since ${since}` } : {}) },
+      { id: "source", label: "Source", value: payload.source.name, ...(since ? { detail: `daily since ${formatDay(since)}` } : {}) },
     ];
   }, [payload]);
 

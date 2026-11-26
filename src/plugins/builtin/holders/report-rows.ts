@@ -105,6 +105,8 @@ export const HOLDER_REPORT_COLUMNS: HeadlessPaneColumn[] = [
     key: "reportDate",
     header: "Period",
     format: (value) => displayDate(typeof value === "string" ? value : undefined),
+    // One period for every holder is the value basis's date, not a column.
+    omitWhenSame: true,
   },
 ];
 

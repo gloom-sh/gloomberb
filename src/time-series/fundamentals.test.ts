@@ -97,6 +97,44 @@ describe("fundamental series extraction", () => {
     expect(q4?.fieldAvailability?.totalRevenue).toBe("2025-02-15");
   });
 
+  // VYLR's carve-out year of 10.07B came beside nine months of 13.49B on its former parent's scope: no quarter is the difference.
+  test("derives no fiscal Q4 flow from quarters that sum above their year, and keeps a reported loss quarter", () => {
+    const other = [{ date: "2025-03-31", totalRevenue: 4_420, netIncome: 520 }, { date: "2025-06-30", totalRevenue: 6_450, netIncome: 1_200 },
+      { date: "2025-09-30", totalRevenue: 2_621, netIncome: -320 }];
+    const year = { date: "2025-12-31", totalRevenue: 10_067, netIncome: 376, totalAssets: 22_019 };
+    const q4 = deriveQuarterlyStatements(other, [year]).find((statement) => statement.date === "2025-12-31");
+    expect(q4).toMatchObject({ totalAssets: 22_019 });
+    expect([q4?.totalRevenue, q4?.netIncome]).toEqual([undefined, undefined]);
+    // Quarters of the year's own measure still give it, a loss included.
+    const own = [{ date: "2025-03-31", totalRevenue: 2_700, netIncome: 400 }, { date: "2025-06-30", totalRevenue: 4_500, netIncome: 1_100 },
+      { date: "2025-09-30", totalRevenue: 917, netIncome: -368 }];
+    expect(deriveQuarterlyStatements(own, [year]).find((statement) => statement.date === "2025-12-31"))
+      .toMatchObject({ totalRevenue: 1_950, netIncome: -756 });
+  });
+
+  test("a fourth quarter that reports the year less its quarters, below zero, still gets the flows it lacks", () => {
+    // A year of 90 after quarters of 100: the fourth quarter's own -10 says the two are one measure.
+    const quarters = [{ date: "2025-03-31", totalRevenue: 30, netIncome: 3 }, { date: "2025-06-30", totalRevenue: 30, netIncome: 3 },
+      { date: "2025-09-30", totalRevenue: 40, netIncome: 4 }, { date: "2025-12-31", totalRevenue: -10 }];
+    const year = { date: "2025-12-31", totalRevenue: 90, netIncome: 9 };
+    expect(deriveQuarterlyStatements(quarters, [year]).find((statement) => statement.date === "2025-12-31"))
+      .toMatchObject({ totalRevenue: -10, netIncome: -1 });
+    // A fourth quarter that states another figure is still no difference of these.
+    const other = deriveQuarterlyStatements([...quarters.slice(0, 3), { date: "2025-12-31", totalRevenue: 25 }], [year])
+      .find((statement) => statement.date === "2025-12-31");
+    expect([other?.totalRevenue, other?.netIncome]).toEqual([25, undefined]);
+  });
+
+  test("a quarter missing its revenue leaves the guard to the quarters derivation would take: the December before is not one", () => {
+    // Q1's revenue is missing, so the three latest with revenue reach back to the last fiscal year's December.
+    const quarters = [{ date: "2024-12-31", totalRevenue: 50, netIncome: 5 }, { date: "2025-03-31", netIncome: 2 },
+      { date: "2025-06-30", totalRevenue: 30, netIncome: 3 }, { date: "2025-09-30", totalRevenue: 40, netIncome: 4 }];
+    const q4 = deriveQuarterlyStatements(quarters, [{ date: "2025-12-31", totalRevenue: 100, netIncome: 12 }])
+      .find((statement) => statement.date === "2025-12-31");
+    expect(q4?.netIncome).toBe(3);
+    expect(q4?.totalRevenue).toBeUndefined();
+  });
+
   test("delays derived Q4 until a later amended input is available", () => {
     const derived = deriveQuarterlyStatements([
       {

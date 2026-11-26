@@ -54,17 +54,18 @@ import { savedCopyMark, unansweredRefreshError } from "../../../data/saved-copie
 
 const optionalErrors = (error: string | null) => error ? [error] : undefined;
 
+/** As the pane: one company's calls print no ticker or company on each row, and a length or event none has leaves the text. */
 const CALL_COLUMNS = [
-  { key: "ticker", header: "Ticker" },
-  { key: "company", header: "Company" },
+  { key: "ticker", header: "Ticker", omitWhenSame: true },
+  { key: "company", header: "Company", omitWhenSame: true },
   // A call known by its day alone prints the day, never a midnight it was not held at.
   { key: "callAt", header: "Call date", textFormat: (value: unknown, row: HeadlessPaneRow) => callDateText(value, row.timeKnown !== false) },
   { key: "fiscalYear", header: "FY", align: "right" as const },
   // A half year's results read H1, never a blank quarter beside the year's.
   { key: "fiscalQuarter", header: "FQ", align: "right" as const, textFormat: (value: unknown, row: HeadlessPaneRow) => String(fiscalQuarterText({ fiscalQuarter: value as number | null, fiscalHalf: row.fiscalHalf as number | undefined }) ?? "—") },
-  { key: "event", header: "Event" },
+  { key: "event", header: "Event", omitWhenEmpty: true },
   { key: "status", header: "Status" },
-  { key: "durationSeconds", header: "Seconds", align: "right" as const },
+  { key: "durationSeconds", header: "Seconds", align: "right" as const, omitWhenEmpty: true },
   { key: "wordCount", header: "Words", align: "right" as const },
   { key: "sentiment", header: "Tone", align: "right" as const },
 ];

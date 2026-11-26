@@ -104,7 +104,7 @@ test("the Expansion board opens a company on its own Expansion tab", async () =>
   await mount("expansion", () => {}, false, { symbol: null, settings: { expansionSnapshot: realExpansion } });
   expect(await tui.waitForFrameToContain("Mexico")).toContain("First seen since");
   await tui.emitKeypress({ name: "return" });
-  const frame = await tui.waitForFrameToContain("2026-10-12");
+  const frame = await tui.waitForFrameToContain("12 Oct 2026");
   expect(frame).toContain("New country");
   expect(frame).toContain("18 Sep");
   expect(requests.some((url) => url.includes("/cloud/hiring/signals/company/JBHT"))).toBe(true);

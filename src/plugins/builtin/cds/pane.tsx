@@ -1,3 +1,4 @@
+import { dayCell } from "../../../components/ui/day-cell";
 import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
@@ -44,9 +45,11 @@ import {
   ISSUER_SORT_COLUMN_IDS,
   buildIssuerColumns,
   buildTradeColumns,
+  sharedUpfrontCurrency,
+  sharedTradeCoupon,
   cdsFreshness,
   formatBp,
-  formatEventTime,
+  formatEventStamp,
   formatMaturity,
   formatNotional,
   formatPoints,
@@ -95,7 +98,7 @@ function renderIssuerCell(
     case "trades":
       return { text: String(row.trades), color: colors.text };
     case "last":
-      return { text: formatEventTime(row.lastTradeAt), color: colors.textMuted };
+      return { text: formatEventStamp(row.lastTradeAt), ...(Number.isFinite(row.lastTradeAt) ? { value: new Date(row.lastTradeAt).toISOString() } : {}), color: colors.textMuted };
     case "spread": {
       const { unit, level } = quotedLevel(row);
       return { text: formatQuoted(unit, level), color: level == null ? colors.textDim : colors.text };
@@ -124,13 +127,13 @@ const tradeKey = (trade: CdsTrade) => trade.id;
  * Trades on another contract than the one the 5Y line follows are dimmed, so
  * the headline, the line and the bright rows describe the same instrument.
  */
-function renderTradeCell(row: CdsTrade, column: TradeColumn, lineMaturity: string | null): DataTableCell {
+function renderTradeCell(row: CdsTrade, column: TradeColumn, lineMaturity: string | null, upfrontCurrency: string | null): DataTableCell {
   const dimmed = lineMaturity && row.maturity !== lineMaturity ? colors.textDim : undefined;
   switch (column.id) {
     case "time":
-      return { text: formatEventTime(row.eventAt), color: dimmed ?? colors.textMuted };
+      return { text: formatEventStamp(row.eventAt), ...(Number.isFinite(row.eventAt) ? { value: new Date(row.eventAt).toISOString() } : {}), color: dimmed ?? colors.textMuted };
     case "maturity":
-      return { text: formatMaturity(row.maturity), color: dimmed ?? colors.text };
+      return { ...dayCell(formatMaturity(row.maturity)), color: dimmed ?? colors.text };
     case "notional":
       return { text: formatNotional(row), color: dimmed ?? colors.textBright };
     case "currency":
@@ -149,7 +152,7 @@ function renderTradeCell(row: CdsTrade, column: TradeColumn, lineMaturity: strin
       };
     case "upfront":
       return {
-        text: formatUpfront(row),
+        text: formatUpfront(row, upfrontCurrency),
         color: dimmed ?? (row.upfront == null ? colors.textDim : colors.text),
       };
   }
@@ -185,10 +188,12 @@ function CdsTradeTable({
   emptyMessage: string;
 }) {
   const points = hasPointsQuotes(trades);
-  const columns = useMemo(() => buildTradeColumns(width, points), [points, width]);
+  // One upfront currency for every print heads the column instead of trailing each amount.
+  const upfrontCurrency = useMemo(() => sharedUpfrontCurrency(trades), [trades]);
+  const columns = useMemo(() => buildTradeColumns(width, points, upfrontCurrency), [points, upfrontCurrency, width]);
   const renderTradeRow = useCallback((trade: CdsTrade, column: TradeColumn) => (
-    renderTradeCell(trade, column, lineMaturity)
-  ), [lineMaturity]);
+    renderTradeCell(trade, column, lineMaturity, upfrontCurrency)
+  ), [lineMaturity, upfrontCurrency]);
   return (
     <DataTableView<CdsTrade, TradeColumn>
       focused={focused}
@@ -273,10 +278,13 @@ function IssuerHeader({ issuer, line, trades, width, height, focused, loading, s
     : spreadFigures(line);
   const why = !points.length ? noLevelMessage(line.noLevelReason, null) : null;
   const moves = shown.filter((item) => item.id === "spread" || item.id === "1w" || item.id === "1m");
+  // A coupon every print shares leaves the table; an upfront level already names its coupon.
+  const coupon = unit === "pts" ? null : sharedTradeCoupon(trades);
   const figures: StatItem[] = [
     ...moves,
     ...(issuer ? [{ id: "issuer", label: "Issuer", value: issuer }] : []),
     ...shown.filter((item) => !moves.includes(item)),
+    ...(coupon != null ? [{ id: "coupon", label: "Coupon", value: formatBp(coupon) }] : []),
   ];
   const series = useMemo(() => [staticSeries(spreadChartPoints(charted), {
     id: "cds-5y", label: unit === "pts" ? "5Y upfront" : "5Y spread", color: colors.positive, calendarSpaced: true,
@@ -288,7 +296,7 @@ function IssuerHeader({ issuer, line, trades, width, height, focused, loading, s
   });
   return (
     <ChartTableHeader width={width} height={height} tableRows={trades.length} figures={figures}
-      tableColumns={buildTradeColumns(width, hasPointsQuotes(trades))}
+      tableColumns={buildTradeColumns(width, hasPointsQuotes(trades), sharedUpfrontCurrency(trades))}
       chart={points.length >= 2 || loading || why ? {
         series,
         formatValue: (value: number) => formatQuoted(unit, value),

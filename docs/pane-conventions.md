@@ -529,15 +529,79 @@ this, except:
   their rows with the same column but are otherwise unrelated.
 
 **Unavailable table columns.** Check the source before treating an empty column
-as missing coverage: fix a dropped field rather than hiding it. A value waiting
-on an event, such as reported EPS and its basis before earnings, uses
-`DataTableColumn.mayBeBlank`. For structurally unavailable coverage, opt that
+as missing coverage: fix a dropped field rather than hiding it. A value every
+row can be waiting on, such as reported EPS and its basis before earnings, uses
+`DataTableColumn.mayBeBlank`, which exempts the whole column from a strict
+capture's blank-column check. Where only some rows wait on the value or are of
+a kind that has none (ECO's ACTUAL before the release, the terms of a deal
+still in talks), mark those cells with `DataTableCell.mayBeBlank` and leave the
+column unmarked, so the capture still fails when the rows that owe the value
+have none. Decide it from what else the row says (its status, its kind, its
+time), never from the cell: a null is not thereby optional, and words in the
+value's place are not the value. The capture leaves a marked cell out whatever
+it shows, so mark a row of a kind that has no value even where its cell says
+something else (an event's label under a call's PERIOD, "Created" under an
+alert's Value), and never mark a row that owes the value: its figure, zero
+included, is what fills the column. Where the
+row cannot say whether its null is a value lost (a deal's undisclosed terms, a
+fill with no commission), leave the cell unmarked and write the limit down
+beside the rule and in `docs/usage.md`. For structurally unavailable coverage, opt that
 column into `omitWhenEmpty: true`: it leaves the pane only while every data row
 renders a missing value, and returns as soon as any row has one. Zero and N/M
 are values, not missing data. A chronological history with coverage only in
 older reports can use `omitWhenEmpty: "visible"`, so scrolling into those
 reports restores their column. This changes presentation only; JSON reports
 and CSV exports retain the fields and missing values.
+
+**No filler columns.** A column whose value is the same on every row, or
+blank on every row, says nothing a row needs: drop it, or say its value once
+in the header meta (a figure above the table, a column label such as
+`EPS USD` or `Obligated USD`, a section heading, a title), never down every
+row. Judge on what the view holds, not on one row: a lone row or a section
+header keeps its columns, and so does one page of a paged feed whose next
+page may differ.
+
+- `DataTableColumn.omitWhenSame` leaves a column out while every data row
+  (two or more) renders the same text, blank included; set it only where the
+  rows are all the view holds (a complete list, or a query that fixes the
+  value: a docket list, a ticker's awards, a period every holder filed for).
+  `omitWhenEmpty` is its blank-only sibling. Both are presentation only:
+  CSV and JSON keep the field, and the text report follows the pane through
+  `HeadlessPaneColumn.omitWhenSame` and `omitWhenEmpty`.
+- A value the query or the view already names (NI MNA's M&A category, ECO's
+  High impact, a searched drug and its labeler, a ticker's company on its own
+  CALLS) is blank on the rows that share it, with the field's `value` kept for
+  export, and the column goes when every row does.
+- A code that is the same nearly everywhere (USD on ERN's board) is written
+  only where it differs, next to its figure (`7.21 CNY`), with no column.
+- Rows of different kinds that would share a column meaning different things
+  (CRDOC's notes and credit lines, coupon against margin) get their own
+  columns or sections.
+- Colour carries meaning only where it differs between rows. A status every
+  row has (HALT's RESUMED), the side a whole board is filtered to (INS's
+  buys), or a filter's own value is plain text; tone stays for what goes
+  against the rest (a holding cut on a buy board, a breach).
+
+**One precision per column.** Every figure in a column has the same number of
+decimals, so the column reads and lines up: distribution amounts share the
+finest one needs (`distributionAmountsDigits`: Haier's 0.89151 over 0.26920),
+compact figures keep theirs (below), and a cell built as a string formats with
+the column's precision, not its own. A financial statement column (FA,
+Statements), whose rows are different line items, keeps its magnitude tiers
+(`formatFinancialAmount`: one decimal from 100, two from 1, three below): its
+figures are not one quantity.
+
+**One date format.** Every table writes a calendar day the same way: day
+first (`02 Nov 2026`), through `dayCell` (`components/ui/day-cell.ts`), which
+keeps the ISO day as the cell's `value`, so CSV and JSON still read
+`2026-11-02`. A column short of room drops the year (`02 Nov`), never the
+order, and a time beside a day follows it (`02 Nov 2026 13:21`, `formatDayTime`)
+with its zone in the header. A day inside a cell's words (`ended 19 Nov 2026`,
+a period `25 Nov 2026 / 31 Mar 2027`) is written the same way, and so is the
+date beside a figure or labeled value over a table (`NAV $718.51 24 Nov 2026`,
+`formatDaysInText` for a dated detail). A text report prints what its pane
+shows (`formatDay` in the column's `format`); a figure an agency names in its
+own text (a contract title) stays as written.
 
 **Country flags.** Wherever a row or a field names a country (ECO's country,
 a balance's or a board's country or jurisdiction, a venue's market, an IPO's

@@ -1,6 +1,7 @@
 import { daysToExpiryFrom, valueOption, type OptionValuation } from "../shared/volatility";
 import { isFiniteNumber } from "../../../utils/guards";
 import { isUsListingExchange } from "../../../utils/exchanges";
+import { formatDay, type DayCellForm } from "../../../utils/day-format";
 
 /** What the pane says before any leg is added. */
 export const EMPTY_POSITION_TITLE = "Build an options position.";
@@ -383,6 +384,12 @@ function scenarioGridDates(asOf: number, expiry: number, selected: number): numb
     return true;
   });
   return [...fixed, ...steps].sort((a, b) => a - b);
+}
+
+/** A scenario date's label as a table heads its column, day first: `03 Nov 2026`, `03 Nov 13:00` where one day has two times. */
+export function scenarioDayText(label: string, form: DayCellForm = "full"): string {
+  const [day, time] = label.split(" ");
+  return `${formatDay(day!, form)}${time ? ` ${time}` : ""}`;
 }
 
 /**

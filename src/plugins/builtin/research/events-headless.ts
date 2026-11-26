@@ -14,7 +14,7 @@ import { fetchCatalysts } from "../catalysts/client";
 import { isCloudSessionRequired } from "../shared/research-cloud-session";
 import { distributionAmountsDigits, formatPercentRaw } from "../../../utils/format";
 import type { HeadlessBundleSection, HeadlessPaneColumn } from "../../../types/headless";
-import { EVENT_COLUMNS, eventSummarySection, loadEventSources, QUARTER_TEXT_COLUMNS, quarterTextRows } from "./event-sources";
+import { EVENT_COLUMNS, eventSummarySection, loadEventSources, quarterTextColumns, quarterTextRows } from "./event-sources";
 import { listingDay } from "../shared/earnings-calendar";
 import { REPORTED_DATA } from "../shared/report-freshness";
 import { EPS_BASIS_NOTE } from "../shared/earnings-report";
@@ -82,9 +82,10 @@ export function createEventsHeadless(
     async load(args, ctx) {
       const symbol = args.symbols[0]!;
       const data = await dependencies.load(args, symbol, ctx.marketData);
+      const fund = isFundListing(data.financials, data.actions);
       const notice = eventSourceNotice({ variant: "corporate-actions", symbol,
         actions: data.actions, actionsError: data.actionsError ?? null,
-        estimates: data.estimates, estimatesError: data.estimatesError ?? null });
+        estimates: fund ? null : data.estimates, estimatesError: fund ? null : data.estimatesError ?? null });
       const errors = [notice?.failed ? notice.text : null,
         data.financialsError ? `Financial statements unavailable: ${data.financialsError}` : null,
       ].filter((error): error is string => !!error);
@@ -103,7 +104,6 @@ export function createEventsHeadless(
       // As the pane reads: what is next, the quarters of its Earnings view and the years of its Dividends view.
       // The exports keep every event row.
       const today = listingDay(parsePublicTickerKey(symbol).exchange);
-      const fund = isFundListing(data.financials);
       // The next catalyst, as the Earnings view asks the calendar for it; a failed read is said, the rest stands.
       let catalyst: NextCatalyst | null = null;
       // A context without the cloud client (a test's) reads no catalysts.
@@ -119,7 +119,7 @@ export function createEventsHeadless(
       const summary = buildNextUp(own, { today, fund, statedExDate: data.financials?.fundamentals?.exDividendDate, catalyst });
       const quarters = fund ? [] : earningsQuarters(own, today);
       const quarterRows = quarterTextRows(quarters);
-      const years = dividendYears(data.actions?.dividends ?? [], today, splitMarks(own));
+      const years = dividendYears(data.actions?.dividends ?? [], today, splitMarks(own), data.actions?.coverage?.dividends, { includeSplitOnly: fund });
       const currency = data.actions?.currency ?? data.currency;
       const digits = Math.min(4, distributionAmountsDigits(years.flatMap((year) => (year.total == null ? [] : [year.total])), currency || "USD"));
       const yearRows = years.map((year) => ({
@@ -136,8 +136,9 @@ export function createEventsHeadless(
       const sections = [...(summary.length ? [eventSummarySection(summary)] : []), ...(fund || !yearRows.length ? [] : [yearSection])];
       return {
         rows: own.map((row) => ({ ...row })),
-        textColumns: fund ? yearColumns : QUARTER_TEXT_COLUMNS,
+        textColumns: fund ? yearColumns : quarterTextColumns(quarters),
         textRows: fund ? yearRows : quarterRows,
+        textRowsUseRecordsWhenWindowed: true,
         ...(sections.length ? { textSections: sections } : {}),
         ...(notes.length ? { notes } : {}),
         errors: errors.length > 0 ? errors : undefined,

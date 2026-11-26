@@ -1,3 +1,5 @@
+import { dayCell, formatDay } from "../../../components/ui/day-cell";
+import { formatDaysInText } from "../../../utils/day-format";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import {
@@ -32,7 +34,7 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { fetchDividendData, repriceDividendMetrics, statedForwardRate, type DividendData } from "./client";
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import { useTickerQuoteStream } from "../../../state/hooks/live-ticker-financials";
-import { buildTrailingCashChartPoints, convertedFromText, formatConvertedAmount, formatDividendRowAmount, formatDividendYield, forwardEstimateText, growthPaymentsDetail, PAYOUT_BASIS, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText, trailingSpecialText, type DividendRow } from "./view";
+import { buildTrailingCashChartPoints, convertedFromText, dividendAmountDigits, formatConvertedAmount, formatDividendRowAmount, formatDividendYield, forwardEstimateText, growthPaymentsDetail, PAYOUT_BASIS, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText, trailingSpecialText, type DividendAmountDigits, type DividendRow } from "./view";
 import {
   DEFAULT_SORT_PREFERENCE,
   buildDividendColumns,
@@ -72,8 +74,7 @@ function growthItem(id: string, label: string, growth: number | null, payments: 
 }
 
 function formatDate(date: Date | null): string {
-  if (!date) return MISSING_VALUE;
-  return date.toISOString().slice(0, 10);
+  return date ? formatDay(date) : MISSING_VALUE;
 }
 
 function formatFrequency(freq: DividendMetrics["paymentFrequency"]): string {
@@ -102,9 +103,11 @@ function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory
     ? [{ id: "next-ex", label: "Next ex", value: formatDate(metrics.nextExDividendDate), essential: true,
       ...metrics.nextExDividendDateListing ? { detail: `from ${metrics.nextExDividendDateListing}` } : {} }]
     : hasHistory ? [] : [{ id: "last-ex", label: "Last ex", value: formatDate(metrics.lastExDividendDate) }];
-  const dated = metrics.lapse ? lastPaidNote(metrics.lapse)
+  const basis = metrics.lapse ? lastPaidNote(metrics.lapse)
     : metrics.forwardYield == null ? null
     : forwardEstimateText(metrics) ?? (metrics.forwardBasis === "uneven" ? UNEVEN_REGULAR_PAYMENTS : forwardDividendNote(metrics.forwardRateAsOf, { declared, currency }));
+  // Its day reads first, as the figures' dates do.
+  const dated = basis ? formatDaysInText(basis) : null;
   // "not SEC" in the grid: the SEC yield is the next cell, and the long form costs the header a column.
   const notSec = (note: string | null) => bond ? [note, "not SEC"].filter(Boolean).join(", ") : note;
   const forwardNote = metrics.forwardEstimate ? null : notSec(dated);
@@ -125,9 +128,9 @@ function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory
       : { id: "forward-yield", essential: true, label: fwdLabel, value: `${formatDividendYield(metrics.forwardYield)}${metrics.forwardEstimate ? " estimated" : ""}`, color: priceColor(metrics.forwardYield ?? 0),
         ...(forwardNote ? { detail: forwardNote } : {}) },
     ...(metrics.forwardEstimate ? [{ id: "forward-fx", essential: true, label: metrics.forwardEstimate.fixingDate ? "FX fixing" : "FX basis",
-      value: metrics.forwardEstimate.fixingDate ?? `${metrics.forwardEstimate.declaredCurrency}, ${metrics.forwardEstimate.declaredAmount != null ? "not fixed" : "FX unknown"}` }] : []),
+      value: metrics.forwardEstimate.fixingDate ? formatDay(metrics.forwardEstimate.fixingDate) : `${metrics.forwardEstimate.declaredCurrency}, ${metrics.forwardEstimate.declaredAmount != null ? "not fixed" : "FX unknown"}` }] : []),
     // The 30-day SEC yield as the fund's sponsor publishes it, dated.
-    ...(sec ? [{ id: "sec-yield", label: short ? "SEC yld" : "SEC yield", value: sec.text, ...(sec.date ? { detail: `as of ${sec.date}` } : {}) }] : []),
+    ...(sec ? [{ id: "sec-yield", label: short ? "SEC yld" : "SEC yield", value: sec.text, ...(sec.date ? { detail: `as of ${formatDay(sec.date)}` } : {}) }] : []),
     { id: "ttm-rate", essential: false, label: short ? "TTM/sh" : "TTM/share", value: formatRate(metrics.trailingRate, currency, !!convertedFrom, convertedSubUnit),
       ...metrics.trailingRate != null ? converted : {} },
     // The trailing year's total says so here too, as beside the forward yield.
@@ -162,20 +165,21 @@ const rowKey = (row: DividendRow) => row.key;
 function renderCell(
   row: DividendRow,
   column: DividendColumn,
+  digits: { amount: DividendAmountDigits; declared: DividendAmountDigits },
   converted = false,
   subUnit?: string,
 ): DataTableCell {
   switch (column.id) {
     case "exDate":
-      return { text: row.exDate, color: colors.textDim };
+      return { ...dayCell(row.exDate), color: colors.textDim };
     case "amount":
       return {
-        text: formatDividendRowAmount(row, converted, subUnit),
+        text: formatDividendRowAmount(row, converted, subUnit, digits.amount),
         color: colors.textBright,
         attributes: TextAttributes.BOLD,
       };
     case "declared":
-      return { text: row.declared ? formatDistributionAmount(row.declared.amount, row.declared.currency) : "", color: colors.textDim };
+      return { text: row.declared ? formatDistributionAmount(row.declared.amount, row.declared.currency, digits.declared.get(row.declared.currency)) : "", color: colors.textDim };
     case "currency":
       return { text: row.currency, color: colors.textDim };
     case "source":
@@ -308,8 +312,13 @@ function DividendTickerPane({ focused, width, height, loadData = fetchDividendDa
   });
   // The header row, plus the scrollbar row once the columns overflow the pane.
   const tableChromeRows = chartTableChromeRows(columns, width);
-  const renderRowCell = useCallback((row: DividendRow, column: DividendColumn) => renderCell(row, column, !!convertedFrom, convertedSubUnit),
-    [convertedFrom, convertedSubUnit]);
+  // One precision down each amount column, in each unit it writes.
+  const digits = useMemo(() => ({
+    amount: dividendAmountDigits(rows, !!convertedFrom, convertedSubUnit),
+    declared: dividendAmountDigits(rows.flatMap((row) => row.declared ? [row.declared] : [])),
+  }), [rows, convertedFrom, convertedSubUnit]);
+  const renderRowCell = useCallback((row: DividendRow, column: DividendColumn) => renderCell(row, column, digits, !!convertedFrom, convertedSubUnit),
+    [convertedFrom, convertedSubUnit, digits]);
   const fullFigures = metrics ? buildMetricItems(metrics, currency, sortedRows.length > 0, false, data?.declared, bond, convertedFrom, convertedSubUnit) : [];
   const keptFigures = chartTableLayout({
     width, height, figures: fullFigures, tableRows: sortedRows.length, tableChromeRows, chart: chartPoints.length >= 2 ? {} : null,

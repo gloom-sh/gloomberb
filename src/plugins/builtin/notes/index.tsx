@@ -70,7 +70,8 @@ export const notesPlugin: GloomPlugin = {
 
     ctx.registerTickerResearchTab({
       id: "notes",
-      name: "Notes",
+      // Not "Notes" under Notes (FORMER_VIEW_NAMES).
+      name: "Notebook",
       order: 50,
       component: NotesTab,
     });

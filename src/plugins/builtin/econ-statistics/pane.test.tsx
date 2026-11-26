@@ -37,7 +37,7 @@ test("the selected yield cites its latest observation while other statistics sti
   try {
     await act(async () => { await tui.render(<Harness />, { width: 160, height: 38 }); });
     await tui.waitForFrameToContain("U.S. Treasury, published 2026-11-20");
-    expect(tui.frame()).toContain("reading for 2026-11-19 15:30 ET");
+    expect(tui.frame()).toContain("reading for 19 Nov 2026 15:30 ET");
     await tui.emitKeypress({ name: "down" });
     await tui.waitForFrameToContain("Federal Reserve Board via FRED");
     expect(tui.frame()).not.toContain("published 2026-11-20");
@@ -159,14 +159,14 @@ test.each([
   });
   // The High row passes on the way down; the History row under Low pushes it off the last screen at 48 columns.
   await scroll(1);
-  expect(tui.frame()).toMatch(/High\s+124\.00%\s+2021-01-01/);
+  expect(tui.frame()).toMatch(/High\s+124\.00%\s+Jan 2021/);
   await scroll(7);
   const scrolled = tui.frame();
   expect(scrolled).toContain("FRED T10Y2Y");
   expect(scrolled).toContain("10Y minus 2Y");
-  expect(scrolled).toMatch(/Low\s+100\.00%\s+2019-01-01/);
+  expect(scrolled).toMatch(/Low\s+100\.00%\s+Jan 2019/);
   // Two years of readings under the 20Y range: the figures say where the history starts.
-  expect(scrolled).toMatch(/History\s+2019-01-01\s+to 2021-01-01/);
+  expect(scrolled).toMatch(/History\s+01 Jan 2019\s+to 01 Jan 2021/);
   expect(scrolled).toContain("20Y");
   expect(scrolled).toContain("All");
   if (partial) {
