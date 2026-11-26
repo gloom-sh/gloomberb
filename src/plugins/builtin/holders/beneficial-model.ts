@@ -236,7 +236,7 @@ const FORM_WIDTH = 6;
 const PERCENT_WIDTH = 9;
 const CHANGE_WIDTH = 8;
 const SHARES_WIDTH = 8;
-const DATE_WIDTH = 10;
+const DATE_WIDTH = 11;
 const THIRTEEN_F_WIDTH = 5;
 const MIN_FILER_WIDTH = 14;
 /** The longest filer names and a group count; a wider pane keeps the figures beside the names. */

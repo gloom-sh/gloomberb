@@ -133,7 +133,7 @@ test("preview retains original award evidence and keyboard navigation opens veri
   await tui.emitKeypress({ name: "g" });
   expect(navigation).toEqual([["chart-composer-pane", "2330:TWSE"]]);
   await tui.emitKeypress({ name: "return" });
-  expect(await tui.waitForFrameToContain("Performance period")).toContain("2028-09-30");
+  expect(await tui.waitForFrameToContain("Performance period")).toContain("30 Sep 2028");
   await tui.emitKeypress({ name: "escape" });
   expect(await tui.waitForFrameToContain("AWARDEE")).toContain("Contractor Corporation");
 });

@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { EXCEL_CSV_BOM } from "../../utils/csv";
 import type { DataTableCell, DataTableColumn } from "../ui";
 import { createDataTableCsv } from "./export";
+import { daysInTextCell } from "../ui/day-cell";
 
 function csvRows(
   columns: DataTableColumn[],
@@ -73,6 +74,33 @@ test("a cell's own value wins: full precision numbers and ISO dates", () => {
     "2026-09-25,1234567,3.45,112.5",
     ",,,",
   ]);
+});
+
+test("a day a table draws first exports in ISO, by its value or, given none, read back from a whole-cell day or time", () => {
+  expect(csvRows(
+    [left("day", "Day"), right("at", "At"), left("words", "Status"), left("short", "Last")],
+    [
+      // No value: what an ISO day became when a table started writing it day first.
+      { day: "21 Aug 2026", at: "09 Oct 2026 13:21", words: daysInTextCell("Trading suspended, ended 2026-11-16"), short: "21 Aug" },
+      { day: "TBD", at: "—", words: daysInTextCell("Announced: 02 Nov 2026 → 16 Nov 2026"), short: { text: "16 Nov", value: "2026-11-16" } },
+    ],
+  )).toEqual([
+    "Day,At,Status,Last",
+    "2026-08-21,2026-10-09 13:21,\"Trading suspended, ended 2026-11-16\",21 Aug",
+    "TBD,,Announced: 2026-11-02 → 2026-11-16,2026-11-16",
+  ]);
+  // A zone the time names stays. A name that ends in a day, or a figure shaped like one, is not a day: it exports as drawn.
+  expect(csvRows([left("at", "First computed"), left("name", "Bond"), left("figure", "Code")], [
+    { at: "09 Oct 2026 13:21 UTC", name: "Treasury 4.25% 15 Mar 2027", figure: "31 Feb 2026" },
+    { at: "09 Oct 2026 25:10", name: "Dec 2026", figure: "12 Mar 2026 1.5" },
+  ])).toEqual([
+    "First computed,Bond,Code",
+    "2026-10-09 13:21 UTC,Treasury 4.25% 15 Mar 2027,31 Feb 2026",
+    "09 Oct 2026 25:10,Dec 2026,12 Mar 2026 1.5",
+  ]);
+  // The words are drawn day first either way.
+  expect(daysInTextCell("ended 2026-11-16").text).toBe("ended 16 Nov 2026");
+  expect(daysInTextCell("Week of 2026-11-16", "no-year")).toEqual({ text: "Week of 16 Nov", value: "Week of 2026-11-16" });
 });
 
 test("a column whose rows carry different units names none in its header", () => {

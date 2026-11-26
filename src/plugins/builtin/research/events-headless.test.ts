@@ -15,14 +15,15 @@ describe("corporate actions headless model", () => {
     const symbol = "DELL", fiscalPeriod = "2026-10";
     const marketData = createTestDataProvider({
       getCorporateActions: async () => ({ symbol, dividends: [], splits: [], earnings: [{ date: "2026-11-24", dateStatus: "reported", dateType: "announcement",
-        fiscalPeriod, epsActual: 9.45, currency: "USD", reportedRevenue: { fiscalPeriod, periodKind: "quarter", source: "press-release", currency: "USD", amount: 54_937_000_000 } }] }),
+        fiscalPeriod, epsActual: 9.45, currency: "USD", epsBasis: "company-adjusted", epsActualSource: "filing",
+        reportedRevenue: { fiscalPeriod, periodKind: "quarter", source: "press-release", currency: "USD", amount: 54_937_000_000 } }] }),
       getTickerFinancials: async () => ({ annualStatements: [{ date: "2026-01-30" }], quarterlyStatements: [], priceHistory: [] }),
       getAnalystResearch: async () => null as never,
     });
     for (const route of [createEventsHeadless(), createEarningsEstimatesHeadless()]) {
       const result = await route.load({ ...args, rawArgument: symbol, argument: symbol, symbols: [symbol], options: { view: "reported" } }, { marketData } as HeadlessPaneContext);
       expect(result.textRows).toContainEqual(expect.objectContaining({ date: "2026-11-24", eps: "9.45 USD", revenue: "54.94B USD" }));
-      expect(result.rows).toContainEqual(expect.objectContaining({ period: "Q3 FY2027", qRevenue: 54_937_000_000 }));
+      expect(result.rows).toContainEqual(expect.objectContaining({ period: "Q3 FY2027", epsBasis: "company-adjusted", qRevenue: 54_937_000_000 }));
     }
   });
   test("named ETF actions disqualify calendar EPS even without financials and keep splits and uncertain payout gaps", async () => {
@@ -103,7 +104,7 @@ describe("corporate actions headless model", () => {
     expect(result.rows.filter((row) => row.status === "Dividend")).toHaveLength(8);
     expect(result.rows.find((row) => row.status === "Split")).toMatchObject({ date: "2020-08-31", detail: "4-for-1" });
     expect(result.notes).toBeUndefined();
-    expect(result.textRows?.map((row) => [row.date, row.eps, row.estimate, row.surprise])).toEqual([["2024-08-01", "1.40 USD", "1.35 USD", "+3.70%"]]);
+    expect(result.textRows?.map((row) => [row.date, row.eps, row.estimate, row.surprise])).toEqual([["2024-08-01", "1.40 USD", "1.35 USD", "—"]]);
     const [nextUp, years] = result.textSections ?? [];
     expect(nextUp?.entries?.map((entry) => entry.formatted)).toEqual(["10 May 2024  $0.25"]);
     expect(years?.rows?.map((row) => `${row.year} ${row.paid} ${row.detail}`.trim())).toEqual([

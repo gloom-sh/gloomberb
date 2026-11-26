@@ -1,4 +1,6 @@
 import { useCallback, useMemo, useRef } from "react";
+import { daysInTextCell } from "../../../components/ui/day-cell";
+import { isoDay } from "../../../utils/day-format";
 import { apiClient } from "../../../api-client";
 import {
   DataTableView,
@@ -124,8 +126,10 @@ export function DividendRankingView({ symbols, focused, width, height, loadData 
     const text = cellText(column.source, row);
     const value = row[column.id];
     if (column.id === "symbol") return { text, color: colors.textBright, attributes: TextAttributes.BOLD };
-    if (column.id === "note") return { text, color: colors.warning };
-    if (DATE_COLUMNS.has(column.id) || column.id === "yieldBasis") return { text, color: colors.textDim };
+    if (column.id === "note") return { ...daysInTextCell(text), color: colors.warning };
+    // A day reads day first and exports as its ISO day, without the listing a carried pay date names.
+    if (DATE_COLUMNS.has(column.id)) return { text, ...(isoDay(value) ? { value: isoDay(value) } : {}), color: colors.textDim };
+    if (column.id === "yieldBasis") return { ...daysInTextCell(text), color: colors.textDim };
     if (SIGNED_COLUMNS.has(column.id) && typeof value === "number") {
       return { text, color: value > 0 ? colors.positive : value < 0 ? colors.negative : colors.text };
     }

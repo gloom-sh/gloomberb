@@ -5,6 +5,7 @@ import type { HeadlessBundleSection } from "../../../types/headless";
 import type { PricePoint } from "../../../types/financials";
 import { realizedVolHeadless } from "./headless";
 import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
+import { formatDay } from "../../../utils/day-format";
 
 // Three hundred weekday closes up to Wed 11 Nov 2026, wobbling so every window has a volatility.
 const closes: PricePoint[] = Array.from({ length: 300 }, (_, index) => {
@@ -60,7 +61,8 @@ test("HVG's export has the daily series it draws, a column per window in percent
   const newest = model.series.at(-1)!;
   expect(history.rows![0]).toEqual({ date: newest.date.toISOString().slice(0, 10), hv20: newest.values[20] });
   expect(history.columns![1]!.format!(newest.values[20], {})).toBe(`${(newest.values[20]! * 100).toFixed(2)}%`);
-  // The text report prints the latest sessions.
+  // The text report prints the latest sessions, day first as the pane writes them.
   const text = renderHeadlessPaneText(definition, result, args, "HVG");
-  expect([...text.matchAll(/^\d{4}-\d{2}-\d{2}\s+\S+/gm)].map(([row]) => row.slice(0, 10))).toEqual(history.rows!.slice(0, 10).map((row) => String(row.date)));
+  expect([...text.matchAll(/^(\d{2} [A-Z][a-z]{2} \d{4})\s+\S+/gm)].map(([, day]) => day))
+    .toEqual(history.rows!.slice(0, 10).map((row) => formatDay(row.date)));
 });

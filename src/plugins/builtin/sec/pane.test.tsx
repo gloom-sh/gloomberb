@@ -340,7 +340,7 @@ test("the fund view leads with the fund's facts, each dated, and cites who publi
     await settleFrame(tui.setup(), 8);
     const shown = frame();
     expect(facts).toHaveBeenCalledWith("IVV");
-    for (const text of ["NAV", "$766.76", "2026-10-16", "Expense ratio", "0.03%", "net 2026-10-16", "Fund net assets", "$712.34B", "Premium/discount", "+0.01%", "2026-10-16 close", "Benchmark", "S&P 500"]) {
+    for (const text of ["NAV", "$766.76", "16 Oct 2026", "Expense ratio", "0.03%", "net 16 Oct 2026", "Fund net assets", "$712.34B", "Premium/discount", "+0.01%", "16 Oct 2026 close", "Benchmark", "S&P 500"]) {
       expect(shown).toContain(text);
     }
     // The filings stay below the facts.
@@ -408,9 +408,9 @@ test("a stale NAV marks the figures and says since when; month-end net assets re
     await mount(createTestDataProvider({ getSecFilings: async () => [{ ...filing, form: "485BPOS" }] }));
     await settleFrame(tui.setup(), 8);
     const shown = frame().replace(/\s+/g, " ");
-    expect(shown).toContain("2026-10-01 stale");
-    expect(shown).toContain("2026-09-30 month-end");
-    expect(shown).toContain("net 2026-04-28");
+    expect(shown).toContain("01 Oct 2026 stale");
+    expect(shown).toContain("30 Sep 2026 month-end");
+    expect(shown).toContain("net 28 Apr 2026");
     expect(shown).toContain("VOO's newest NAV is from 2026-10-01; its sponsor has not published one since.");
     expect(JSON.stringify(footer)).toContain('{"text":"Vanguard","tone":"value"}');
   } finally {
@@ -477,7 +477,7 @@ test("a company listed abroad is looked up by the SEC, and one that files nothin
     expect(shown).toContain("8058:JPX (JPX) files no SEC reports. TDnet timely disclosures: release.tdnet.info");
     expect(filings).toEqual(["8058:JPX"]);
     expect(footer.menu?.map((item) => ("label" in item ? item.label : null))).toEqual(["Open release.tdnet.info"]);
-    expect(exchange).toHaveBeenCalledWith({ symbol: "8058:JPX", exchange: "JPX", limit: 50 });
+    expect(exchange).toHaveBeenCalledWith({ symbol: "8058:JPX", exchange: "JPX", limit: 200 });
   } finally {
     exchange.mockRestore();
   }

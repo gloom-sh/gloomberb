@@ -58,6 +58,8 @@ export const AUCTION_ARCHIVE_PAGE_SIZE = 5000;
 const FISCAL_DATA_MAX_PAGE_SIZE = 10_000;
 /** Three times the longest walk's pages; the bound only exists so bad metadata cannot loop. */
 export const AUCTION_MAX_PAGES = 12;
+export const EMPTY_AUCTION_HISTORY = Symbol("empty auction history");
+export type AuctionHistory = TreasuryAuction[] | typeof EMPTY_AUCTION_HISTORY;
 
 /** One walk: auctions on or after `from` and, when set, before `before`. */
 export interface AuctionQuery {
@@ -113,8 +115,10 @@ export function buildAuctionsUrl(query: AuctionQuery, page = 1): string {
 
 /** Fiscal Data reports the page count as `meta["total-pages"]`. */
 export function totalPages(body: unknown, page = 1): number {
-  const meta = (body as { meta?: Record<string, unknown> } | null)?.meta;
+  const { data, meta } = (body as { data?: unknown; meta?: Record<string, unknown> } | null) ?? {};
   const value = meta?.["total-pages"];
+  if (page === 1 && value === 0 && meta?.count === 0 && meta["total-count"] === 0
+    && Array.isArray(data) && data.length === 0) return 0;
   const pages = typeof value === "number" || (typeof value === "string" && value.trim())
     ? Number(value) : NaN;
   if (!Number.isSafeInteger(pages) || pages < 1) {
@@ -218,7 +222,7 @@ export function parseTreasuryAuctionsPayload(body: unknown): TreasuryAuction[] {
  */
 export async function fetchAuctionPages(
   loadPage: (page: number) => Promise<unknown>,
-): Promise<TreasuryAuction[]> {
+): Promise<AuctionHistory> {
   const auctions: TreasuryAuction[] = [];
   const seen = new Set<string>();
   let pages = 1;
@@ -226,6 +230,7 @@ export async function fetchAuctionPages(
   for (let page = 1; page <= Math.min(pages, AUCTION_MAX_PAGES); page += 1) {
     const body = await loadPage(page);
     const declaredPages = totalPages(body, page);
+    if (declaredPages === 0) return EMPTY_AUCTION_HISTORY;
     if (page === 1) pages = declaredPages;
     else if (declaredPages !== pages) {
       throw new Error(`Treasury auction page count changed on page ${page}`);
@@ -237,7 +242,7 @@ export async function fetchAuctionPages(
     if (!Array.isArray(data)) {
       throw new Error(`Treasury auction page ${page} has invalid data`);
     }
-    if ((page > 1 || pages > 1) && data.length === 0) {
+    if (data.length === 0) {
       throw new Error(`Treasury auction page ${page} is missing`);
     }
     // A declared page must be usable in full before any of the walk can be
@@ -256,7 +261,7 @@ export async function fetchAuctionPages(
 
 export async function fetchTreasuryAuctions(
   query: AuctionQuery = auctionWindowQuery(AUCTION_HISTORY_DAYS),
-): Promise<TreasuryAuction[]> {
+): Promise<AuctionHistory> {
   return fetchAuctionPages(async (page) => {
     const response = await TREASURY_FETCH.fetch(buildAuctionsUrl(query, page));
     // The status stays: an overloaded server is a failure a saved board may answer for, a refusal is not.

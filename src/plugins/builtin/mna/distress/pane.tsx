@@ -1,3 +1,4 @@
+import { dayCell, daysInTextCell, formatDay } from "../../../../components/ui/day-cell";
 import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import {
   DataTableStackView,
@@ -277,7 +278,7 @@ function FilingsList({ kind, ...props }: ListProps & { kind: DistressFilingKind 
     },
     cell: (event, column, muted, base, tone) => {
       switch (column) {
-        case "filed": return { text: filingDate(event), color: muted };
+        case "filed": return { ...dayCell(filingDate(event)), color: muted };
         case "company": return { text: cellText(event.company.name), color: base };
         case "ticker": return { text: filingTicker(event) ?? MISSING, color: filingTicker(event) ? base : muted };
         case "event": return { text: filingEventLabel(event), color: tone(filingTone(event)) };
@@ -317,14 +318,14 @@ function GoingConcernList({ verdict, ...props }: ListProps & { verdict: GoingCon
     ticker: (row) => venueTicker(row.ticker),
     cell: (row, column, muted, base, tone) => {
       switch (column) {
-        case "filed": return { text: isoDay(row.filed_at), color: muted };
+        case "filed": return { ...dayCell(isoDay(row.filed_at)), color: muted };
         case "company": return { text: goingConcernTitle(row), color: base };
         case "ticker": {
           const ticker = venueTicker(row.ticker);
           return { text: ticker?.label ?? MISSING, color: ticker ? base : muted };
         }
         case "form": return { text: row.form, color: muted };
-        case "period": return { text: isoDay(row.period_end), color: muted };
+        case "period": return { ...dayCell(isoDay(row.period_end)), color: muted };
         case "verdict": return { text: VERDICT_LABELS[row.verdict], color: tone(VERDICT_TONES[row.verdict]) };
         default: return { text: "" };
       }
@@ -369,14 +370,14 @@ function DesignationsList({ kind, exchange, ...props }: ListProps & { kind: stri
     ticker: designationTicker,
     cell: (row, column, muted, base, tone) => {
       switch (column) {
-        case "date": return { text: designationDate(row), color: row.date_basis === "first_observed" ? muted : base };
+        case "date": return { ...dayCell(designationDate(row)), color: row.date_basis === "first_observed" ? muted : base };
         case "basis": return { text: DATE_BASIS_LABELS[row.date_basis], color: muted };
         case "code": return { text: row.local_code, color: base };
         case "name": return { text: designationName(row), color: base };
         case "exchange": return { text: exchangeLabel(row.exchange), color: muted };
         case "status": {
           const label = designationKindLabel(row.kind);
-          return { text: row.ended_at ? `${label}, ended ${isoDay(row.ended_at)}` : label, color: tone(designationTone(row)) };
+          return { ...daysInTextCell(row.ended_at ? `${label}, ended ${isoDay(row.ended_at)}` : label), color: tone(designationTone(row)) };
         }
         default: return { text: "" };
       }
@@ -385,7 +386,7 @@ function DesignationsList({ kind, exchange, ...props }: ListProps & { kind: stri
     // Exchanges publish these lists daily; the newest sighting says how current the list is.
     footerInfo: (rows) => {
       const seen = rows.reduce((latest, row) => (row.last_seen_at > latest ? row.last_seen_at : latest), "");
-      return seen ? [{ id: "seen", parts: [{ text: `as of ${isoDay(seen)}`, tone: "muted" }] }] : [];
+      return seen ? [{ id: "seen", parts: [{ text: `as of ${formatDay(isoDay(seen))}`, tone: "muted" }] }] : [];
     },
   }), []);
   return (
@@ -430,7 +431,7 @@ function InsolvencyList({ country, kind, namePrefix: prefix, search, searching, 
     ticker: () => null,
     cell: (row, column, muted, base, tone) => {
       switch (column) {
-        case "published": return { text: isoDay(row.published_date), color: muted };
+        case "published": return { ...dayCell(isoDay(row.published_date)), color: muted };
         case "company": return { text: cellText(row.entity_name), color: base };
         case "country": return withCountryFlag({ text: row.country, color: muted }, row.country, flagged);
         case "registry": return { text: row.registry_id, color: muted };

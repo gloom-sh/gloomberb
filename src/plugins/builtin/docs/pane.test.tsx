@@ -92,7 +92,7 @@ describe("DOCS in the terminal", () => {
     serve(false);
     await mount("fn:GP");
     const entry = await tui.waitForFrameToContain("GP · Price chart");
-    expect(entry).toContain("offline, saved copy");
+    expect(entry).toContain("offline, bundled documentation");
     await tui.clickFrameText("Academy: Reading a price chart");
     expect(await tui.waitForFrameToContain("This lesson is not saved for offline reading.")).toContain("Retry");
   });

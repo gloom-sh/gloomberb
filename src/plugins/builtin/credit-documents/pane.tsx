@@ -1,3 +1,4 @@
+import { formatDay, isoDay } from "../../../utils/day-format";
 import { useCallback, useMemo } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
@@ -157,9 +158,12 @@ function CreditView({ symbol, width, height, focused, accessKey, needsVerificati
     if (row.locked) return desktop ? { text: "", content: <Blurred><Text fg={colors.textDim}>{column.id === lockedColumn ? tab === "screen" ? "Additional signal" : "Additional credit document" : "Hidden"}</Text></Blurred> }
       : { text: column.id === lockedColumn && row.id === "locked:0" ? lockedText : "░░░░", color: colors.textDim, ...(column.id === lockedColumn && row.id === "locked:0" ? { content: <UpgradeLabel text={lockedText} onPress={openUpgrade} /> } : {}) };
     if (column.id === "usage" && row.covenant) return { text: "", content: <HeadroomGauge covenant={row.covenant} width={column.width} selected={state.selected} /> };
-    const text = row.values[column.id] ?? "";
+    const raw = row.values[column.id] ?? "";
+    // A day sorts and exports as its ISO date and reads day first.
+    const day = column.id === "maturity" || column.id === "date" ? isoDay(raw) : null;
+    const text = day ? formatDay(day) : raw;
     const number = row.numbers?.[column.id];
-    const value = column.align === "right" && row.numbers && column.id in row.numbers ? number ?? null : undefined;
+    const value = day ?? (column.align === "right" && row.numbers && column.id in row.numbers ? number ?? null : undefined);
     if (text === NO_VALUE) return { text, value, color: colors.textMuted };
     if (row.closed) return { text, value, color: colors.textDim };
     if (column.id === "headroom" && row.covenant) {

@@ -48,7 +48,7 @@ test("the week draws each report as its logo with the ticker under it, before th
       onMore={() => {}}
       reports={[
         report("JPM", { marketCap: 700e9 }),
-        report("NFLX", { timing: "amc", marketCap: 400e9, epsActual: 1.2 }),
+        report("NFLX", { timing: "amc", marketCap: 400e9, epsActual: 1.2, epsBasis: "gaap", epsActualSource: "press-release" }),
         report("WBA", { timing: "amc", marketCap: 9e9, epsActual: 0.8 }),
         report("TSLA", { date: "2026-10-14", timing: "amc" }),
       ]}

@@ -13,7 +13,7 @@ import { pluginDirectory, pluginInstallRef, pluginLaneEnv, planPlugins, type Fun
 const READ_ONLY = new Set(`adverse-events analyst-research apps attention-trending awards backtest buildout buildout-company
  catalysts ccass-market central-bank-rates chart-composer comment-letters commodities-energy company-kpis congress-trades corporate-actions
  correlation cpi crypto-board crypto-etf-flows csp-screen custom-view data-catalog dividend-yield earnings-calendar earnings-calls
- earnings-estimates earnings-ripple econ-calendar econ-statistics equity-screener estimate-revisions executives exposure fear-greed
+ earnings-estimates earnings-ripple econ-calendar econ-statistics equity-dilution equity-screener estimate-revisions executives exposure fear-greed
  filing-events financial-analysis fixed-income fx-matrix gpu company-guidance hiring historical-prices holders insider ipo-calendar
  iv-history iv-screen jobs kelly-sizer litigation macro-day market-halts market-heatmap market-movers market-valuation members mna
  money-markets news-breaking news-feed news-industry news-top options options-calculator options-positioning options-scenario pe-band
@@ -224,7 +224,8 @@ const PROSE_TOKENS = new Set(["HN", "x-feed"]);
 export const REVIEWED_EMPTY: Record<string, ["no-coverage" | "expected-empty" | "unsupported" | "market-closed", RegExp]> = {
   APPS: ["no-coverage", /^\S+ has no mapped apps in the observed App Store and Google Play charts\.$/],
   CALLS: ["no-coverage", /^Earnings calls for \S+ are not yet available\. Calls appear once the company's investor site or filings list a webcast\.$/],
-  CATL: ["expected-empty", /^No events linked to \S+ yet\.$/],
+  CATL: ["expected-empty", /^No (?:company )?events linked to (\S+) yet\.$/],
+  EE: ["no-coverage", /^No analyst estimates for (\S+)$/],
   EM: ["no-coverage", /^No covered estimate periods\.$/],
   COVN: ["no-coverage", /^(?:No debt instrument has been read from this issuer's filings yet|This is not an issuer the credit documents cover)\.$/],
   CRDOC: ["no-coverage", /^(?:No debt instrument has been read from this issuer's filings yet|This is not an issuer the credit documents cover)\.$/],
@@ -266,6 +267,15 @@ export const EXPECTED_EMPTY: Record<string, RegExp> = {
 export const REVIEWED_PENDING: Record<string, RegExp> = {
   CALLS: /^Looking for \S+'s earnings calls\.\.\.$/,
 };
+
+function emptyCompanyCalendar(evidence: Record<string, unknown>, symbol: string): boolean {
+  const payload = evidence.payload;
+  return evidence.kind === "catalysts" && evidence.ready === true && evidence.complete === true
+    && evidence.tab === "calendar" && evidence.openId === null && Array.isArray(evidence.rowIds) && evidence.rowIds.length === 0
+    && isRecord(payload) && isRecord(payload.filters) && payload.filters.symbol === symbol
+    && payload.total === 0 && Array.isArray(payload.events) && payload.events.length === 0
+    && isRecord(payload.coverage) && typeof payload.coverage.totalEvents === "number" && payload.coverage.totalEvents > 0;
+}
 
 export function assessCapture(result: CommandResult, token: string): Assessment {
   const base = { reason: null, states: [], stateText: {}, visibleText: "", reasonCodes: [], blankColumns: [] };
@@ -335,7 +345,20 @@ export function assessCapture(result: CommandResult, token: string): Assessment 
   }
   const said = [...(stateText.empty ?? []), ...(render.emptyStateText ?? []), ...(render.emptyStateMarkers ?? [])].join("\n");
   let expected: "pending" | "no-coverage" | "market-closed" | "expected-empty" | "unsupported" | null = negativeFcf ? "unsupported" : missingIv ? "no-coverage" : null;
-  if (!shot.usable && hasEmpty && (shot.empty || shot.rowCount === 0)) {
+  if (hasEmpty && (token === "CATL" || token === "EE")) {
+    const [status, pattern] = REVIEWED_EMPTY[token]!;
+    const texts = [stateText.empty, render.emptyStateText, render.emptyStateMarkers].flatMap((lines) => lines ?? []);
+    const symbol = shot.symbols?.length === 1 ? shot.symbols[0] : undefined;
+    const complete = shot.complete && !shot.gaps && !shot.unavailableSymbols?.length;
+    const correctView = token === "CATL" ? symbol && shot.rowCount === 0 && (shot.options?.tab ?? "calendar") === "calendar"
+      && emptyCompanyCalendar(details, symbol) && (complete || (!shot.complete && shot.gaps === `no data for ${symbol}`
+        && shot.unavailableSymbols?.length === 1 && shot.unavailableSymbols[0] === symbol))
+      : (shot.options?.view ?? "estimates") === "estimates" && complete;
+    if (symbol && correctView && !shot.usable && shot.empty && render.emptyStateDetected && !render.rows?.length && !render.reportRows?.length
+      && !render.tableRowTotals?.some((total) => total != null && total > 0)
+      && !(Array.isArray(details.errors) && details.errors.length)
+      && texts.length && texts.every((text) => pattern.exec(text.trim())?.[1] === symbol)) expected = status;
+  } else if (!shot.usable && hasEmpty && (shot.empty || shot.rowCount === 0)) {
     const reviewed = REVIEWED_EMPTY[token];
     const pending = REVIEWED_PENDING[token];
     const texts = [stateText.empty, render.emptyStateText, render.emptyStateMarkers].filter((lines) => lines?.length).map((lines) => lines!.join(" ").replace(/\s+/g, " ").trim());

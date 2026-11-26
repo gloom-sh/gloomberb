@@ -716,7 +716,7 @@ export function getColumnValue(
       return { text: `${formatTradeSize(quote?.bidSize, { compact: true })}/${formatTradeSize(quote?.askSize, { compact: true })}` };
     }
     case "book_time": {
-      // In UTC, as the header says, behind its session and feed marks (◷AH 11-24 23:40); the words are the ticket's and DES's.
+      // In UTC, as the header says, behind its session and feed marks (◷AH 24 Nov 23:40); the words are the ticket's and DES's.
       const book = formatQuoteBookCell(quote, ctx.now);
       if (!book) return { text: MISSING_VALUE };
       // A book the source sent without its time says so, never borrows the trade's, and exports no time.

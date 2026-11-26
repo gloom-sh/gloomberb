@@ -7,6 +7,10 @@ import type { HeadlessPaneContext } from "../../../types/headless";
 import { catalystsHeadless, litigationHeadless } from "./headless";
 import { catalystFixture, catalystPayload } from "./test-fixture";
 
+function exportCsv(result: Awaited<ReturnType<typeof catalystsHeadless.load>>, args: ReturnType<typeof createTestHeadlessArgs>): string {
+  return renderReportCsv(headlessReportTables(catalystsHeadless, result, args, "CATL", deriveHeadlessFreshness(catalystsHeadless, result), { complete: true, unavailableSymbols: [] }));
+}
+
 async function report(definition: typeof catalystsHeadless, access: { pro: boolean; lockedRows: number; lockedUpcoming?: number }) {
   const ctx = createTestHeadlessContext({
     apiClient: { getCloudCatalysts: async () => ({ ...catalystPayload(), total: 1 + access.lockedRows, access: { ...access, previewLimit: 3 } }) } as unknown as HeadlessPaneContext["apiClient"],
@@ -70,5 +74,23 @@ test("a kind report reads its types together in calendar order, under the pane's
   // and what every row says alike (scheduled, filed with one body) is left out, as in the pane.
   expect(section!.columns.map((column) => column.header)).toEqual(["Date", "With", "Event", "Type", "Primary source"]);
   expect(section!.rows.map((row) => [row.id, row.with])).toEqual([["vote", "Metsera"], ["results", ""]]);
-  expect(renderHeadlessPaneText(catalystsHeadless, result, args, "CATL")).toMatch(/2027-01-20 +Metsera +Vote on the merger +Merger vote/);
+  expect(renderHeadlessPaneText(catalystsHeadless, result, args, "CATL")).toMatch(/20 Jan 2027 +Metsera +Vote on the merger +Merger vote/);
+  // The text draws the day first; JSON and CSV keep the ISO day, as the default calendar does.
+  expect((serializeHeadlessPaneResult(catalystsHeadless, result) as { sections: Array<{ rows: Array<{ date: string }> }> }).sections[0]!.rows.map((row) => row.date))
+    .toEqual(["2027-01-20", "2027-02-03"]);
+  expect(exportCsv(result, args).split("\n").slice(1, 3).map((line) => line.split(",")[0])).toEqual(["2027-01-20", "2027-02-03"]);
+});
+
+test("a change reads its days first in the text and keeps them in ISO in JSON and CSV", async () => {
+  const ctx = createTestHeadlessContext({ apiClient: { getCloudCatalysts: async () => catalystPayload(),
+    getCloudCatalystEvent: async () => ({ event: catalystFixture, history: [catalystFixture], historyTotal: 1, historyOffset: 0, historyHasMore: false, historyTruncated: false,
+      asOf: catalystFixture.observedAt, access: { pro: true, lockedRows: 0, previewLimit: 3 } }) } as unknown as HeadlessPaneContext["apiClient"] });
+  for (const options of [{ tab: "changes" }, { event: "event-1" }] as Array<Record<string, string>>) {
+    const args = createTestHeadlessArgs({ rawArgument: "PFE", argument: "PFE", options });
+    const result = await catalystsHeadless.load(args, ctx);
+    expect(renderHeadlessPaneText(catalystsHeadless, result, args, "CATL")).toContain("Deadline: 01 Mar 2027 → 01 Apr 2027");
+    const sections = (serializeHeadlessPaneResult(catalystsHeadless, result) as { sections: Array<{ rows?: Array<{ changeSummary: string }> }> }).sections;
+    expect(sections.find((section) => section.rows)!.rows![0]!.changeSummary).toBe("Deadline: 2027-03-01 → 2027-04-01");
+    expect(exportCsv(result, args)).toContain("Deadline: 2027-03-01 → 2027-04-01");
+  }
 });

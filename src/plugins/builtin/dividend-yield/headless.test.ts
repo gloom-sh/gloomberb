@@ -229,10 +229,10 @@ describe("a bond fund's yields", () => {
     const definition = createDividendYieldHeadless({ loadData: async () => mubData, loadBond: async () => MUB });
     const text = await report(definition);
     expect(text).toContain("Trailing distribution yield (not SEC yield)  3.34% (last 12 months of distributions)");
-    expect(text).toContain("Forward distribution yield (not SEC yield)   3.27% (latest distribution annualized, as of 2026-10-01)");
-    expect(text).toContain("30-day SEC yield                             4.04% (as of 2026-10-15)");
-    expect(text).toContain("Yield to worst                               4.16% (as of 2026-10-15)");
-    expect(text).toContain("Effective duration                           7.13 yrs (as of 2026-10-15)");
+    expect(text).toContain("Forward distribution yield (not SEC yield)   3.27% (latest distribution annualized, as of 01 Oct 2026)");
+    expect(text).toContain("30-day SEC yield                             4.04% (as of 15 Oct 2026)");
+    expect(text).toContain("Yield to worst                               4.16% (as of 15 Oct 2026)");
+    expect(text).toContain("Effective duration                           7.13 yrs (as of 15 Oct 2026)");
     expect(text).not.toContain("Tax-equivalent yield");
 
     // A stock, or a fund with no bond facts, reads as before.
@@ -276,8 +276,8 @@ describe("a bond fund's yields", () => {
     const text = renderHeadlessPaneText(definition, result, request, "DVD");
     expect(text).toMatch(/Ticker +Yield TTM +Fwd yield +SEC yield +SEC as of +YTW +Duration +TEY +Muni\/Tsy +Tenor +Payout/);
     // The ratio to one decimal, as single-ticker DVD and DES draw it.
-    expect(text).toMatch(/\nMUB +3\.34% +3\.27% +4\.04% +2026-10-15 +4\.16% +7\.13 yrs +6\.83% +81\.2% +7Y /);
-    expect(text).toMatch(/\nLQD +4\.40% .*5\.92% +2026-11-04 +5\.10% +8\.20 yrs +— +— +— .*taxable fund/);
+    expect(text).toMatch(/\nMUB +3\.34% +3\.27% +4\.04% +15 Oct 2026 +4\.16% +7\.13 yrs +6\.83% +81\.2% +7Y /);
+    expect(text).toMatch(/\nLQD +4\.40% .*5\.92% +04 Nov 2026 +5\.10% +8\.20 yrs +— +— +— .*taxable fund/);
     expect(text).toMatch(/\nKO .*not a fund\n/);
     expect(text).not.toContain("Note");
     expect(result.complete).not.toBe(false);
@@ -317,7 +317,7 @@ describe("a bond fund's yields", () => {
     expect(csv).toContain(`Tax-equivalent yield (%),6.8274,MUB,pct,,Gloom Cloud,2026-10-15,${freshness.retrievedAt}`);
     // The ratio is as old as the older of the two yields it divides.
     expect(csv).toContain(`Muni/Treasury ratio (%),81.16,MUB,pct,,Gloom Cloud,2026-10-15,${freshness.retrievedAt}`);
-    expect(csv.join("\n")).not.toContain("(as of 2026-10-15)");
+    expect(csv.join("\n")).not.toContain("(as of 15 Oct 2026)");
     // A figure missing with its reason names no unit.
     const metrics = result.sections[0]!;
     const missing = { ...result, sections: [{ ...metrics, entries: metrics.entries!.map((entry) => entry.label === "Payout (TTM diluted EPS)"
@@ -325,12 +325,12 @@ describe("a bond fund's yields", () => {
     expect(renderReportCsv(headlessReportTables(definition, missing, request, "DVD", freshness, { complete: true, unavailableSymbols: [] }), freshness))
       .toContain("Payout (TTM diluted EPS),n/a: 11 of 12 payments,MUB,,,Gloom Cloud,");
     // The text report is as it was.
-    expect(renderHeadlessPaneText(definition, result, request, "DVD")).toContain("30-day SEC yield                             4.04% (as of 2026-10-15)");
+    expect(renderHeadlessPaneText(definition, result, request, "DVD")).toContain("30-day SEC yield                             4.04% (as of 15 Oct 2026)");
   });
 
   test("a bond facts read that fails leaves the report as it was", async () => {
     const definition = createDividendYieldHeadless({ loadData: async () => mubData, loadBond: async () => { throw new Error("offline"); } });
-    expect(await report(definition)).toMatch(/\nForward yield +3\.27% \(latest distribution annualized, as of 2026-10-01\)\n/);
+    expect(await report(definition)).toMatch(/\nForward yield +3\.27% \(latest distribution annualized, as of 01 Oct 2026\)\n/);
   });
 
   test("a ranking with a bond fund says its yields are distribution yields and gives each its SEC yield, dated; one without reads as before", async () => {
@@ -354,7 +354,7 @@ describe("a bond fund's yields", () => {
     const { result, text, csv } = await rank(async (symbol) => bonds[symbol] ?? null);
     expect(text).toContain("Ranked by trailing yield; payout is over TTM diluted EPS; a bond fund's yields are distribution yields, not SEC yield");
     expect(text).toMatch(/Ticker +Yield TTM +Fwd yield +SEC yield +SEC as of +Payout/);
-    expect(text).toMatch(/\nMUB +3\.34% +3\.27% +4\.04% +2026-10-15 /);
+    expect(text).toMatch(/\nMUB +3\.34% +3\.27% +4\.04% +15 Oct 2026 /);
     expect(text).toMatch(/\nKO +2\.91% +2\.94% +— +— /);
     // Each row still names its ticker, the percent unit and its price's time; the SEC yield has its own date.
     expect(csv[0]).toStartWith("Ticker,Yield TTM (%),Fwd yield (%),SEC yield (%),SEC as of,Payout (%),");

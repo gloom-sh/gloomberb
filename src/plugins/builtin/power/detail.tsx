@@ -9,16 +9,19 @@ import { Box, Text, type ScrollBoxRenderable } from "../../../ui";
 import type { RefObject } from "react";
 import { PowerGeneration } from "./generation";
 import { loadPowerDetail } from "./client";
-import { powerNumber, powerPercent, titleCase, type PowerRow } from "./model";
+import { powerNumber, powerPercent, powerStampText, titleCase, type PowerRow } from "./model";
+
+/** A recorded day or stamp, day first as the table writes it. */
+const stamp = (value: string | null | undefined) => value ? powerStampText(value) : value ?? null;
 
 function ProjectFacts({ row }: { row: PowerProject }) {
   const colors = useThemeColors();
   const facts: Array<[string, string | number | null]> = [
     ["Status", row.statusRaw ?? titleCase(row.status)], ["Capacity (MW)", row.capacityMw], ["Technology", row.technology ?? titleCase(row.fuel)],
     ["Location", [row.county, row.state, row.country].filter(Boolean).join(", ")], ["Grid / zone", [row.region, row.zone].filter(Boolean).join(" · ")],
-    ["Developer", row.developer], ["Utility", row.utility], ["Requested", row.requestedDate], ["Proposed service", row.proposedDate],
-    ["Completed", row.completedDate], ["Withdrawn", row.withdrawnDate], ["Period", row.period], ["Published as of", row.asOf],
-    ["Observed UTC", row.observedAt], ["Revision", row.revision], ["Confidence", powerPercent(row.confidence)],
+    ["Developer", row.developer], ["Utility", row.utility], ["Requested", stamp(row.requestedDate)], ["Proposed service", stamp(row.proposedDate)],
+    ["Completed", stamp(row.completedDate)], ["Withdrawn", stamp(row.withdrawnDate)], ["Period", row.period], ["Published as of", stamp(row.asOf)],
+    ["Observed UTC", stamp(row.observedAt)], ["Revision", row.revision], ["Confidence", powerPercent(row.confidence)],
   ];
   return <>
     {facts.map(([label, value]) => <KeyValueRow key={label} label={label} value={typeof value === "number" ? powerNumber(value) : value ?? MISSING_VALUE} detail={typeof value === "string" && ["Requested", "Proposed service", "Completed", "Withdrawn", "Published as of"].includes(label) ? /^\d{4}$/.test(value) ? "year precision" : /^\d{4}-Q[1-4]$/.test(value) ? "quarter precision" : /^\d{4}-\d{2}$/.test(value) ? "month precision" : /^\d{4}-\d{2}-\d{2}$/.test(value) ? "day precision" : undefined : undefined} labelWidth={20} />)}
@@ -61,14 +64,14 @@ export function PowerDetailView({ row, scope, scrollRef, snapshot, focused, widt
         <KeyValueRow key={key} label={titleCase(key.replace(/([a-z])([A-Z])/g, "$1 $2"))} value={value == null ? MISSING_VALUE : /Rate$/.test(key) ? powerPercent(Number(value)) : String(value)} labelWidth={22} />)}
       {row.history ? <>
         <KeyValueRow label="History basis" value={row.history.basis === "published" ? "Published period" : "Observed snapshot"} labelWidth={22} />
-        <KeyValueRow label="Published as of" value={row.history.asOf ?? MISSING_VALUE} labelWidth={22} />
-        <KeyValueRow label="Observed UTC" value={row.history.observedAt} labelWidth={22} />
+        <KeyValueRow label="Published as of" value={stamp(row.history.asOf) ?? MISSING_VALUE} labelWidth={22} />
+        <KeyValueRow label="Observed UTC" value={stamp(row.history.observedAt) ?? MISSING_VALUE} labelWidth={22} />
         <SectionHeading title="Primary evidence" />
         <PaneLinkMenu>{row.history.sourceUrls.map((url, index) => <Box key={url} paddingBottom={1}><ExternalLinkText url={url} label={`Open primary document ${index + 1}`} /></Box>)}</PaneLinkMenu>
       </> : null}
       {row.exposure ? <>
-        <KeyValueRow label="Published as of" value={row.exposure.asOf ?? MISSING_VALUE} labelWidth={22} />
-        <KeyValueRow label="Observed UTC" value={row.exposure.observedAt} labelWidth={22} />
+        <KeyValueRow label="Published as of" value={stamp(row.exposure.asOf) ?? MISSING_VALUE} labelWidth={22} />
+        <KeyValueRow label="Observed UTC" value={stamp(row.exposure.observedAt) ?? MISSING_VALUE} labelWidth={22} />
         <SectionHeading title="Primary evidence" />
         <PaneLinkMenu>{row.exposure.sourceUrls.map((url, index) => <Box key={url} paddingBottom={1}><ExternalLinkText url={url} label={`Open primary document ${index + 1}`} /></Box>)}</PaneLinkMenu>
       </> : null}

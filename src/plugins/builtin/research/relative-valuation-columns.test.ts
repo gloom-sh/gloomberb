@@ -228,3 +228,52 @@ test("a listing abroad gets the same columns: gross margin over the trailing twe
   expect(unrated.rows).toEqual([{ symbol: "2330:TWSE", targetMean: 3_409.8, targetCurrency: "TWD" }]);
   expect(unrated.unconverted).toEqual([{ currency: "TWD", symbols: ["2330:TWSE"] }]);
 });
+
+test("cross-currency HKEX issuer without quarterly D&A falls back to annual EBITDA and converts EV/S and FCF yield (Haier 6690:HKEX)", async () => {
+  const haier = mapCloudFinancials({
+    annualStatements: [
+      { date: "2025-12-31", currency: "CNY", totalRevenue: 319.3e9, operatingIncome: 25.0e9, depreciationAndAmortization: 7.22e9, ebitda: 32.22e9 },
+    ],
+    quarterlyStatements: [
+      { date: "2025-12-31", currency: "CNY", totalRevenue: 80e9, operatingIncome: 6e9 },
+      { date: "2026-03-31", currency: "CNY", totalRevenue: 79e9, operatingIncome: 6.2e9 },
+      { date: "2026-06-30", currency: "CNY", totalRevenue: 82e9, operatingIncome: 6.5e9 },
+      { date: "2026-09-30", currency: "CNY", totalRevenue: 78e9, operatingIncome: 6.3e9 },
+    ],
+    priceHistory: [],
+    financialCurrency: "CNY",
+    quote: { symbol: "6690", price: 24.5, change: 0, changePercent: 0, currency: "HKD", lastUpdated: Date.parse("2026-11-26T04:00:00Z"), marketState: "CLOSED" },
+    fundamentals: {
+      financialCurrency: "CNY",
+      marketCap: 230e9,
+      marketCapCurrency: "HKD",
+      enterpriseValue: 223.19e9,
+      revenue: 319.3e9,
+      freeCashFlow: 20e9,
+      enterpriseValueCheck: {
+        status: "differs",
+        source: 170e9,
+        computed: 215e9,
+        minorityAndPreferred: 8.19e9,
+        currency: "HKD",
+        marketCap: 230e9,
+        totalDebt: 38e9,
+        cash: 53e9,
+        balanceSheetDate: "2026-06-30",
+        fx: { from: "CNY", rate: 1.17024 },
+      },
+    },
+  } as unknown as CloudFinancialsPayload);
+  const ctx = { signal: new AbortController().signal, marketData: createTestDataProvider({
+    async getTickerFinancials() { return haier; },
+  }) } as HeadlessPaneContext;
+  const report = await relativeValuationHeadless.load(
+    { symbols: ["6690:HKEX"], argument: ["6690:HKEX"], rawArgument: "6690:HKEX", options: { columns: "evEbitda" } },
+    ctx,
+  );
+  const row = report.rows[0]!;
+  expect(row.evEbitda as number).toBeCloseTo(223.19e9 / (32.22e9 * 1.17024), 4);
+  expect(row.evEbitdaAsOf).toBe("2025-12-31");
+  expect(row.evSales as number).toBeCloseTo(223.19e9 / (319.3e9 * 1.17024), 4);
+  expect(row.fcfYield as number).toBeCloseTo((20e9 * 1.17024) / 230e9, 4);
+});

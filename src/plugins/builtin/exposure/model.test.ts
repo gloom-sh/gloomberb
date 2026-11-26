@@ -95,7 +95,7 @@ test("company drivers retain native scale, range qualifiers and unknown credit h
 test("a quarter key reads as the month it ends in, a date or the source's own words as they are, and one hop is not hops", () => {
   expect(periodText("quarter:2026-07-31")).toBe("Jul 2026");
   expect(periodText("quarter:2025-12")).toBe("Dec 2025");
-  expect(periodText("2026-01-25")).toBe("2026-01-25");
+  expect(periodText("2026-01-25")).toBe("25 Jan 2026");
   expect(periodText("Q2 FY27")).toBe("Q2 FY27");
   const row = tableRows(payload()).find(item => item.period)!;
   expect(exposureCellText({ ...row, period: "quarter:2026-07-31" }, "period")).toBe("Jul 2026");

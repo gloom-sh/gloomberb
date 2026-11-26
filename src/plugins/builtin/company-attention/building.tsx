@@ -1,3 +1,4 @@
+import { dayCell } from "../../../components/ui/day-cell";
 import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useMemo, useRef, type ReactNode } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
@@ -169,6 +170,7 @@ export function HiringBuildingView({ symbol, width, height, focused, accessKey, 
           return { text, value, color: BUILDING_SIGNED_COLUMNS.has(column.id) ? signedColor(buildingSign(column.id, value), colors) : column.id === "before" || column.id === "beforeRoles" ? colors.textDim : colors.text };
         }
         if (column.id === "location" && row.values.country) return withCountryFlag({ text: value, value, color: colors.text }, String(row.values.country), desktop);
+        if ((column.id === "date" || column.id === "week") && typeof value === "string") return { ...dayCell(value), color: colors.textDim };
         return { text: value, value, color: column.id === "name" || column.id === "title" || column.id === "label" ? colors.textBright : column.id === "date" || column.id === "week" || column.id === "weeks" ? colors.textDim : colors.text };
       }} selectedTextOverridesCellColor showHorizontalScrollbar resetScrollKey={`${scope}:${sectionId}:${filter}`}
       emptyStateTitle={section?.empty ?? ""} bodyAfter={lockedRows && desktop ? <LockedOverlay rows={lockedRows} text={upgradeText} onPress={upgrade} role="attention-upgrade" /> : undefined} />}

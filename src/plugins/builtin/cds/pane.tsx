@@ -1,3 +1,4 @@
+import { dayCell } from "../../../components/ui/day-cell";
 import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
@@ -48,7 +49,7 @@ import {
   sharedTradeCoupon,
   cdsFreshness,
   formatBp,
-  formatEventTime,
+  formatEventStamp,
   formatMaturity,
   formatNotional,
   formatPoints,
@@ -97,7 +98,7 @@ function renderIssuerCell(
     case "trades":
       return { text: String(row.trades), color: colors.text };
     case "last":
-      return { text: formatEventTime(row.lastTradeAt), color: colors.textMuted };
+      return { text: formatEventStamp(row.lastTradeAt), ...(Number.isFinite(row.lastTradeAt) ? { value: new Date(row.lastTradeAt).toISOString() } : {}), color: colors.textMuted };
     case "spread": {
       const { unit, level } = quotedLevel(row);
       return { text: formatQuoted(unit, level), color: level == null ? colors.textDim : colors.text };
@@ -130,9 +131,9 @@ function renderTradeCell(row: CdsTrade, column: TradeColumn, lineMaturity: strin
   const dimmed = lineMaturity && row.maturity !== lineMaturity ? colors.textDim : undefined;
   switch (column.id) {
     case "time":
-      return { text: formatEventTime(row.eventAt), color: dimmed ?? colors.textMuted };
+      return { text: formatEventStamp(row.eventAt), ...(Number.isFinite(row.eventAt) ? { value: new Date(row.eventAt).toISOString() } : {}), color: dimmed ?? colors.textMuted };
     case "maturity":
-      return { text: formatMaturity(row.maturity), color: dimmed ?? colors.text };
+      return { ...dayCell(formatMaturity(row.maturity)), color: dimmed ?? colors.text };
     case "notional":
       return { text: formatNotional(row), color: dimmed ?? colors.textBright };
     case "currency":

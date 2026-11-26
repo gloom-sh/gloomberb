@@ -1,3 +1,4 @@
+import { formatDay } from "../../../utils/day-format";
 import { expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import { fetchDefiTvl, validateDefiTvl } from "./client";
@@ -16,9 +17,11 @@ test("the history says the day it starts, counts a range back from its newest da
   expect(defiHistory({ ...payload, history: { start: "2026-01-01", total: Array.from({ length: 100 }, (_, day) => day) } }, "1M")!.dates).toHaveLength(31);
   expect(defiHistory({ ...payload, history: { start: "2026-09-23", total: [92.4e9] } }, "ALL")).toBeNull();
 
+  // JSON keeps the line's days in ISO; the text writes them day first.
   expect(defiSummaryLine(defiTvlFixture())).toBe(
     "Total DeFi TVL 92.40B · 7D +2.01B (+2.22%) · 30D -1.06B (-1.13%) · as of 2026-09-23 UTC close · DefiLlama, daily since 2026-09-19",
   );
+  expect(defiSummaryLine(defiTvlFixture(), formatDay)).toContain("as of 23 Sep 2026 UTC close · DefiLlama, daily since 19 Sep 2026");
   // A chain's figures are the day's; a protocol's are the source's latest read.
   expect(defiListAsOf(payload, "chain")).toBe("2026-09-23");
   expect(defiListAsOf(payload, "protocol")).toBe("2026-09-22 16:17 UTC");

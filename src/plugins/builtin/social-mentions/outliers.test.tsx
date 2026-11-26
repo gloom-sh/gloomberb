@@ -113,10 +113,10 @@ test("BUZZ alone ranks the outliers; Enter opens the ticker's BUZZ here and Esc 
   expect(asked).toEqual([{ window: "day", minPosts: 25, limit: 100 }]);
   expect(frame).toMatch(/Window\s+Latest day\s+Today/);
   expect(frame).toMatch(/TICKER\s+COMPANY\s+DATE\s+POSTS\s+30D MEDIAN\s+VS MEDIAN ▼\s+STANCE\s+PRICE %/);
-  expect(frame).toMatch(/NWBI\s+Northwind Biologics Inc\s+2026-11-05\s+1,826\s+200\s+9\.1x\s+\+0\.42\s+\+3\.25%/);
-  expect(frame).toMatch(/CTSO\s+Contoso Energy Corp\s+2026-11-05\s+840\s+160\s+5\.3x\s+-0\.31\s+-2\.10%/);
+  expect(frame).toMatch(/NWBI\s+Northwind Biologics Inc\s+05 Nov 2026\s+1,826\s+200\s+9\.1x\s+\+0\.42\s+\+3\.25%/);
+  expect(frame).toMatch(/CTSO\s+Contoso Energy Corp\s+05 Nov 2026\s+840\s+160\s+5\.3x\s+-0\.31\s+-2\.10%/);
   // No stance scored and no price: dashes, never zeros.
-  expect(frame).toMatch(new RegExp(String.raw`FBKM\s+Fabrikam Bancorp\s+2026-11-05\s+96\s+40\s+2\.4x\s+${MISSING_VALUE}\s+${MISSING_VALUE}`));
+  expect(frame).toMatch(new RegExp(String.raw`FBKM\s+Fabrikam Bancorp\s+05 Nov 2026\s+96\s+40\s+2\.4x\s+${MISSING_VALUE}\s+${MISSING_VALUE}`));
 
   await tui.emitKeypress({ name: "down", sequence: "\u001b[B" }, { trackPropagation: true });
   await act(async () => { tui.setup().mockInput.pressEnter(); });
@@ -164,7 +164,7 @@ test("Today reads today's counts, dated by when they were read; the filters narr
   const frame = tui.frame();
   expect(frame).toMatch(/TICKER\s+COMPANY\s+AS OF\s+POSTS/);
   expect(frame).toMatch(/NWBI\s+Northwind Biologics Inc\s+16:05 UTC\s+1,826/);
-  expect(frame).not.toContain("2026-11-05");
+  expect(frame).not.toContain("05 Nov 2026");
 
   seed = { "social-mentions:outliers:minPosts": 500, "social-mentions:outliers:cap": "small", "social-mentions:outliers:window": "today" };
   socialOutliersCache.reset();
@@ -230,9 +230,9 @@ test("tickers are named as ticker search names them, in one batched search: capi
     outlier("FBKM", null, 96, 40),
   ]));
   const frame = tui.frame();
-  expect(frame).toMatch(/NWBI\s+Northwind Biologics, Inc\.\s+2026-11-05/);
-  expect(frame).toMatch(/CTSO\s+Contoso Energy Corporation\s+2026-11-05/);
-  expect(frame).toMatch(/FBKM\s+Fabrikam Semiconductor ETF\s+2026-11-05/);
+  expect(frame).toMatch(/NWBI\s+Northwind Biologics, Inc\.\s+05 Nov 2026/);
+  expect(frame).toMatch(/CTSO\s+Contoso Energy Corporation\s+05 Nov 2026/);
+  expect(frame).toMatch(/FBKM\s+Fabrikam Semiconductor ETF\s+05 Nov 2026/);
   expect(frame).not.toMatch(new RegExp(String.raw`NORTHWIND|CONTOSO|FBKM\s+${MISSING_VALUE}`));
   // One request for the whole ranking, never one a row.
   expect(batches).toEqual([["NWBI", "CTSO", "FBKM"]]);

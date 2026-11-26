@@ -2,9 +2,13 @@ import { CATALYST_TYPES, type CatalystEvent } from "../../../api-client/catalyst
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
 import { fetchCatalystDetail, fetchCatalysts } from "./client";
-import { catalystKindCell, catalystKindFields, catalystKindFold, catalystKindNoun, catalystKindOf, catalystKindTypes, catalystSelf, catalystWith, CATALYST_KINDS, createCatalystKindLoader, isCatalystKind } from "./kinds";
+import { catalystKindCell, catalystKindDate, catalystKindFields, catalystKindFold, catalystKindNoun, catalystKindOf, catalystKindTypes, catalystSelf, catalystWith, CATALYST_KINDS, createCatalystKindLoader, isCatalystKind } from "./kinds";
 import { catalystCell, catalystChangeText, catalystDate, catalystDateBasis, catalystEmptyTitle, catalystLockedText, catalystParties, catalystQuery, catalystTickers } from "./model";
 import { REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
+import { formatDaysInText } from "../../../utils/day-format";
+
+/** A change's days read day first in the text, as the pane draws them; JSON and CSV keep them in ISO. */
+const changeText = (value: unknown) => formatDaysInText(String(value ?? ""));
 
 function definition(litigation: boolean): HeadlessPaneDefinition<"bundle"> {
   return {
@@ -36,7 +40,7 @@ function definition(litigation: boolean): HeadlessPaneDefinition<"bundle"> {
         const data = await fetchCatalystDetail(args.options.event, ctx.apiClient, undefined, { offset: Math.max(0, Number(args.options.offset) || 0), limit: Math.min(200, Math.max(1, Number(args.options.limit) || 100)) });
         const lockedHistory = data.access?.pro === false && data.historyTruncated === true;
         return { ...(lockedHistory ? { complete: false, errors: ["Older revisions need Gloom Pro"] } : {}), sections: [{ title: "Event evidence", entries: Object.entries(data.event).map(([label, value]) => ({ label, value: typeof value === "object" ? JSON.stringify(value) : String(value ?? "") })) },
-          { title: "Revision history", columns: [{ key: "revision", header: "Revision" }, { key: "observedAt", header: "Observed (UTC)" }, { key: "status", header: "Status" }, { key: "changeSummary", header: "Changes" }], rows: data.history.map((event) => ({ ...event, changeSummary: event.changes.map(catalystChangeText).join("; ") || "First observed" })) }],
+          { title: "Revision history", columns: [{ key: "revision", header: "Revision" }, { key: "observedAt", header: "Observed (UTC)" }, { key: "status", header: "Status" }, { key: "changeSummary", header: "Changes", textFormat: changeText }], rows: data.history.map((event) => ({ ...event, changeSummary: event.changes.map(catalystChangeText).join("; ") || "First observed" })) }],
           metadata: { asOf: data.asOf, access: data.access, historyTotal: data.historyTotal, historyOffset: data.historyOffset, historyHasMore: data.historyHasMore, historyTruncated: data.historyTruncated, complete: data.access?.pro !== false && !data.historyTruncated } };
       }
       const symbol = Array.isArray(args.argument) ? args.argument[0] : args.argument;
@@ -66,10 +70,12 @@ function definition(litigation: boolean): HeadlessPaneDefinition<"bundle"> {
         return { ...(locked ? { complete: false, errors: [`${locked} ${data.access?.lockedRows === 1 ? "needs" : "need"} Gloom Pro`] } : {}), sections: [{ title: noun.replace(/^./, (c) => c.toUpperCase()), columns: [
           ...fields.map(({ id, label }) => id === "parties" ? { key: "parties", header: label, format: (_value: unknown, row: Record<string, unknown>) => catalystParties(row as unknown as CatalystEvent) }
             : id === "ticker" ? { key: "tickers", header: label }
-            : ["date", "basis", "with", "phase"].includes(id) ? { key: id, header: label }
+            // The date reads day first, as the pane draws it; the row keeps its ISO day for exports.
+            : id === "date" ? { key: id, header: label, textFormat: cell(id) }
+            : ["basis", "with", "phase"].includes(id) ? { key: id, header: label }
             : { key: id, header: label, textFormat: cell(id) }),
           { key: "sourceUrl", header: "Primary source" },
-        ], rows: data.events.map((event) => ({ ...event, date: catalystKindCell(event, "date", query, kind, self), tickers: catalystTickers(event),
+        ], rows: data.events.map((event) => ({ ...event, date: catalystKindDate(event, query), tickers: catalystTickers(event),
           ...Object.fromEntries(["basis", "with", "phase"].filter((id) => fields.some((field) => field.id === id)).map((id) => [id, catalystKindCell(event, id, query, kind, self)])) })),
           ...(data.events.length ? {} : { empty: catalystEmptyTitle(data, query, false, noun) }) }],
         metadata: { asOf: data.asOf, kind, total: data.total, offset, limit, access: data.access, coverage: data.coverage, complete: data.access?.pro !== false && offset + data.events.length >= data.total } };
@@ -83,10 +89,10 @@ function definition(litigation: boolean): HeadlessPaneDefinition<"bundle"> {
       // As LITI's pane: a ticker, date basis, type, agency or country every case shares prints once, not on each row.
       const shared = litigation ? { omitWhenSame: true } : {};
       return { ...(locked ? { complete: false, errors: [`${locked} ${data.access?.lockedRows === 1 ? "needs" : "need"} Gloom Pro`] } : {}), sections: [{ title: litigation ? "Company dockets" : "Catalyst events", columns: [
-        { key: "date", header: changes ? "Observed (UTC)" : "Date" }, ...(!changes ? [{ key: "basis", header: "Date basis", ...shared }] : []),
+        { key: "date", header: changes ? "Observed (UTC)" : "Date", textFormat: cell("date") }, ...(!changes ? [{ key: "basis", header: "Date basis", ...shared }] : []),
         { key: "tickers", header: "Tickers", ...shared }, { key: "parties", header: "Parties", format: (_value, row) => catalystParties(row as unknown as CatalystEvent) }, { key: "title", header: litigation ? "Case / docket" : "Event", textFormat: cell("title") },
         { key: "type", header: "Type", textFormat: cell("type"), ...shared },
-        ...(changes ? [{ key: "changeSummary", header: "Changes" }] : [{ key: "status", header: "Status", textFormat: cell("status") }]),
+        ...(changes ? [{ key: "changeSummary", header: "Changes", textFormat: changeText }] : [{ key: "status", header: "Status", textFormat: cell("status") }]),
         { key: "agency", header: "Agency", textFormat: cell("agency"), ...shared }, { key: "country", header: "Country", textFormat: cell("country"), ...shared }, { key: "sourceUrl", header: "Primary source" },
       ], rows: data.events.map((event) => ({ ...event, date: catalystDate(event, query), ...(!changes ? { basis: catalystDateBasis(event, query) } : {}),
         tickers: catalystTickers(event), ...(changes ? { changeSummary: catalystCell(event, "status", query.dateField, true) } : {}) })),

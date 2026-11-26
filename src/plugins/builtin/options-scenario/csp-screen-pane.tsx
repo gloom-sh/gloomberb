@@ -1,6 +1,7 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { scenarioQuoteTimesLabel } from "./freshness";
-import { formatShortDate } from "../../../utils/datetime-format";
+import { dayCell } from "../../../components/ui/day-cell";
+import { formatDaysInText } from "../../../utils/day-format";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DataTableView, PaneStatusBody, QueryBar, usePaneFooter, usePaneNoticeFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type DataTableKeyEvent,
@@ -22,7 +23,7 @@ import {
   cspScreenNotes, cspScreenReportRow, rewardRiskText, STRATEGY_MONEY_UNIT, strategyScreenReportRow, type CspScreenReportRow,
   type StrategyScreenReportRow,
 } from "./csp-screen-headless";
-import { CSP_SCREEN_DEFAULTS, CSP_SCREEN_LIMIT, cspScreenCriteriaText, cspTargetDate, loadCspScreen, readCspScreenCriteria, type CspScreenRow } from "./csp-screen";
+import { CSP_SCREEN_DEFAULTS, CSP_SCREEN_LIMIT, cspEarningsCell, cspScreenCriteriaText, cspTargetDate, loadCspScreen, readCspScreenCriteria, type CspScreenRow } from "./csp-screen";
 import { formatHedgePrice } from "./hedge";
 import {
   loadStrategyScreen, readStrategyFamily, readStrategyScreenCriteria, STRATEGY_TABS, strategyFamilyDef, strategyRankedBy,
@@ -35,7 +36,7 @@ type TradeRow = StrategyScreenReportRow & { source: StrategyScreenRow };
 const COLUMNS: DataTableColumn[] = [
   { id: "rank", label: "#", width: 3, align: "right" },
   { id: "symbol", label: "Symbol", width: 7, align: "left" },
-  { id: "expiry", label: "Expiry", width: 10, align: "right" },
+  { id: "expiry", label: "Expiry", width: 11, align: "right" },
   { id: "days", label: "DTE", width: 4, align: "right" },
   { id: "strike", label: "Strike", width: 8, align: "right" },
   { id: "bid", label: "Bid", width: 7, align: "right" },
@@ -46,7 +47,7 @@ const COLUMNS: DataTableColumn[] = [
   { id: "midYield", label: "Mid yield/yr", width: 12, align: "right" },
   { id: "bidYield", label: "Bid yield/yr", width: 12, align: "right" },
   { id: "ivRank", label: "IVR", width: 4, align: "right" },
-  { id: "earnings", label: "Earnings", width: 17, align: "left" },
+  { id: "earnings", label: "Earnings", width: 13, align: "left" },
 ];
 
 /** At a narrow width the put screen keeps the put, its yield and its risks; its expiry and the mid's yield give way first. */
@@ -106,12 +107,6 @@ const percentText = (value: unknown, digits: number) => typeof value === "number
 const priceText = (value: unknown) => typeof value === "number" ? formatHedgePrice(value) : MISSING_VALUE;
 const moneyText = (value: number) => value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const riskText = (value: number | null, unlimited: boolean) => value != null ? moneyText(value) : unlimited ? "unlimited" : MISSING_VALUE;
-/** `before Oct 28`: the flag and the date without its year, which the next report never needs. */
-const earningsCell = (row: { earningsDate: string | null; earningsBeforeExpiry: boolean | null; earnings: string }) => {
-  const date = row.earningsDate;
-  if (!date || row.earningsBeforeExpiry == null) return row.earnings;
-  return `${row.earningsBeforeExpiry ? "before" : "after"} ${formatShortDate(`${date}T00:00:00Z`, { year: false, utc: true })}`;
-};
 /** A column's value to sort on: earnings by date, a flag as a number, an unlimited gain or loss above every limit. */
 function sortValue(row: Record<string, unknown>, columnId: string): string | number | null {
   if (columnId === "earnings") return typeof row.earningsDate === "string" ? row.earningsDate : null;
@@ -208,7 +203,8 @@ export function CspScreenPane({ width, height, focused }: PaneProps) {
     ...(resource.loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
   ] }), [resource.loading]);
   const now = Date.now();
-  const criteriaText = criteria.value ? cspScreenCriteriaText(criteria.value, now) : criteria.trade ? strategyScreenCriteriaText(criteria.trade, now) : "";
+  // The expiry reads day first in the pane; the report's heading keeps the ISO day `--expiration` takes.
+  const criteriaText = formatDaysInText(criteria.value ? cspScreenCriteriaText(criteria.value, now) : criteria.trade ? strategyScreenCriteriaText(criteria.trade, now) : "");
   // Enter opens the name's trade in OSA: the put at the strike and expiry the screen read, any other trade as its legs.
   const openScenario = (row: ScreenRow | TradeRow) => {
     if ("csp" in row.source) {
@@ -236,7 +232,7 @@ export function CspScreenPane({ width, height, focused }: PaneProps) {
     switch (id) {
       case "rank": return { text: row.rank == null ? "" : String(row.rank), color: colors.textDim };
       case "symbol": return { text: row.symbol, color: colors.textBright };
-      case "expiry": return { text: String(row.expiry ?? MISSING_VALUE), color: colors.textDim };
+      case "expiry": return { ...dayCell(row.expiry), color: colors.textDim };
       case "days": return { text: row.days == null ? MISSING_VALUE : String(row.days) };
       case "strike": return { text: row.strike == null ? MISSING_VALUE : String(row.strike) };
       case "bid": return { text: priceText(row.bid) };
@@ -247,7 +243,8 @@ export function CspScreenPane({ width, height, focused }: PaneProps) {
       case "midYield": return { text: percentText(row.midYield, 2), color: colors.textDim };
       case "bidYield": return { text: percentText(row.bidYield, 2), color: colors.positive };
       case "ivRank": return { text: typeof row.ivRank === "number" ? row.ivRank.toFixed(0) : MISSING_VALUE };
-      case "earnings": return { text: String(row.earnings), color: row.earningsBeforeExpiry === true ? colors.warning : colors.textDim };
+      // The export keeps the flag with the ISO day (`before 2026-11-04`), or the word for none.
+      case "earnings": return { text: cspEarningsCell(row), value: String(row.earnings), color: row.earningsBeforeExpiry === true ? colors.warning : colors.textDim };
       default: return { text: "" };
     }
   };
@@ -269,7 +266,7 @@ export function CspScreenPane({ width, height, focused }: PaneProps) {
       case "rewardRisk": return { text: rewardRiskText(row.rewardRisk, row.unlimited), value: row.rewardRisk };
       case "ivRank": return { text: typeof row.ivRank === "number" ? row.ivRank.toFixed(0) : MISSING_VALUE };
       case "spread": return { text: `${percentText(row.spread, 1)}${row.wide ? " wide" : ""}`, color: row.wide ? colors.warning : undefined };
-      case "earnings": return { text: earningsCell(row), value: row.earningsDate,
+      case "earnings": return { text: cspEarningsCell(row), value: row.earningsDate,
         color: row.earningsBeforeExpiry === true ? colors.warning : colors.textDim };
       default: return { text: "" };
     }

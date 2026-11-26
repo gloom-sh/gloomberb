@@ -1,3 +1,4 @@
+import { formatDay } from "../../../utils/day-format";
 import { MISSING_VALUE } from "../../../utils/format";
 import type { IvCloseBasis, IvMethod } from "./client";
 import { readingSource, type IvStatRow, type IvStatUnit, type RichCheap, type RichCheapDates } from "./model";
@@ -39,7 +40,7 @@ export const formatPoints = (value: number | null | undefined) =>
   value == null || !Number.isFinite(value) ? MISSING_VALUE : `${value >= 0 ? "+" : ""}${(value * 100).toFixed(1)}`;
 export const formatRank = (value: number | null | undefined, suffix = "") =>
   value == null || !Number.isFinite(value) ? MISSING_VALUE : `${Math.round(value)}${suffix ? ` ${suffix}` : ""}`;
-export const shortDate = (date: string | null | undefined) => date ? date.slice(5) : MISSING_VALUE;
+export const shortDate = (date: string | null | undefined) => date ? formatDay(date, "no-year") : MISSING_VALUE;
 export const verdictLabel = (verdict: RichCheap) => verdict === "rich" ? "Rich" : verdict === "cheap" ? "Cheap" : verdict === "fair" ? "Fair" : MISSING_VALUE;
 
 /** A statistic in its own unit: volatility %, volatility points, or a plain ratio. */
@@ -56,23 +57,33 @@ export function formatStat(value: number | null | undefined, unit: IvStatUnit): 
 export function statSource(row: Pick<IvStatRow, "method"> & { basis?: IvCloseBasis | null }): string {
   return row.method === "prices" ? "closes" : row.method ? readingSource(row.method, row.basis) : "";
 }
+type ReadingExtra = { basis?: IvCloseBasis | null; stale?: boolean };
+/** What follows a reading's day: how it was taken, or, for a stale one, that it is stale. */
+function readingWords(method: IvMethod | null | undefined, short: boolean, extra: ReadingExtra): string {
+  if (extra.stale) return short ? "stale" : `${readingSource(method, extra.basis)}, stale`;
+  return readingSource(method, extra.basis);
+}
 /**
- * "2026-10-09 quote": the session a reading belongs to and how it was taken.
- * A stale reading says so instead, "2026-05-18 close, stale", and in the short
- * form "05-18 stale".
+ * "09 Oct 2026 quote": the session a reading belongs to and how it was taken.
+ * A stale reading says so instead, "18 May 2026 close, stale", and in the short
+ * form "18 May stale".
  */
-export function readingLabel(date: string, method: IvMethod | null | undefined, short = false,
-  extra: { basis?: IvCloseBasis | null; stale?: boolean } = {}): string {
-  if (extra.stale) return short ? `${shortDate(date)} stale` : `${date} ${readingSource(method, extra.basis)}, stale`;
-  return `${short ? shortDate(date) : date} ${readingSource(method, extra.basis)}`;
+export function readingLabel(date: string, method: IvMethod | null | undefined, short = false, extra: ReadingExtra = {}): string {
+  return `${short ? shortDate(date) : formatDay(date)} ${readingWords(method, short, extra)}`;
+}
+/** The same as an export keeps it: the ISO day, then the same words, so a stale reading never exports as current. */
+export function readingValue(date: string, method: IvMethod | null | undefined, short = false, extra: ReadingExtra = {}): string {
+  return `${date} ${readingWords(method, short, extra)}`;
 }
 /**
  * The dates every row agrees on, said once: the reading's, and the trade close
  * its rank is measured on. `short` is for a footer with little room: month and
  * day, and no window.
  */
-export function sharedDates({ reading, rank }: Pick<RichCheapDates, "reading" | "rank">, short = false): string[] {
-  if (reading?.method === "trade-close" && reading.date === rank) return [readingLabel(reading.date, reading.method, short, { basis: reading.basis })];
-  return [reading && `IV30 ${readingLabel(reading.date, reading.method, short, { basis: reading.basis })}`,
-    rank && (short ? `IVR/IVP ${shortDate(rank)} close` : `IVR/IVP vs 52 weeks to ${rank} close`)].filter((part): part is string => !!part);
+export function sharedDates({ reading, rank }: Pick<RichCheapDates, "reading" | "rank">, short = false, exported = false): string[] {
+  // An export's title keeps the ISO days it always had; the pane and the text draw them day first.
+  const label = exported ? readingValue : readingLabel;
+  if (reading?.method === "trade-close" && reading.date === rank) return [label(reading.date, reading.method, short, { basis: reading.basis })];
+  return [reading && `IV30 ${label(reading.date, reading.method, short, { basis: reading.basis })}`,
+    rank && (short ? `IVR/IVP ${shortDate(rank)} close` : `IVR/IVP vs 52 weeks to ${exported ? rank : formatDay(rank)} close`)].filter((part): part is string => !!part);
 }

@@ -3,6 +3,9 @@ import type { HeadlessPaneRow } from "../../../types/plugin";
 import { exchangeAnnouncementsPublisher, isRoutineReturn } from "../../../utils/exchange-announcements";
 import { nonUsSecListingVenue } from "../../../utils/sec";
 
+// JPX sends a bounded issuer archive in one response. The pane reveals its rows as the user scrolls.
+export const JPX_FILING_HISTORY_LIMIT = 200;
+
 export function localFilingListing(symbol: string, exchange?: string) {
   const venue = nonUsSecListingVenue(symbol, exchange);
   const publisher = exchangeAnnouncementsPublisher(venue);
@@ -12,12 +15,13 @@ export function localFilingListing(symbol: string, exchange?: string) {
 export function localFilingRows(payload: ExchangeAnnouncementsPayload, all: boolean) {
   return payload.announcements.filter(item => all || !isRoutineReturn(item)).map(item => ({
     filedAt: item.date, filing: item.headline, form: item.types.join(", ") || "Announcement",
-    companyName: payload.name, url: item.url, source: exchangeAnnouncementsPublisher(payload.exchange) ?? payload.exchange,
+    companyName: payload.name, url: item.url, source: item.publisher ?? exchangeAnnouncementsPublisher(payload.exchange) ?? payload.exchange,
     documentKey: item.documentKey,
+    ...(item.dateBasis ? { dateBasis: item.dateBasis } : {}),
   }));
 }
 
-export function latestFilingRows(sec: HeadlessPaneRow[], local: ReturnType<typeof localFilingRows>, limit: number) {
+export function latestFilingRows(sec: HeadlessPaneRow[], local: ReturnType<typeof localFilingRows>, limit: number): HeadlessPaneRow[] {
   return [...sec.map(row => ({ ...row, source: "SEC EDGAR" })), ...local]
     .sort((left: HeadlessPaneRow, right: HeadlessPaneRow) => String(right.filedAt).localeCompare(String(left.filedAt)))
     .slice(0, limit);

@@ -57,6 +57,46 @@ describe("SEC headless model", () => {
     expect(exchangeReads).toBe(1);
   });
 
+  test("Korean IR materials retain the exchange publisher and the catalogue date", async () => {
+    const url = "https://kind.krx.co.kr/external/dst/irReference/19612/KRAFTON-3Q26%20Earnings_Release_KOR.pdf";
+    const headless = createSecHeadless({
+      loadFilings: async () => [],
+      loadExchange: async () => ({
+        exchange: "KRX", symbol: "259960", name: "Krafton", page: "https://dart.fss.or.kr/",
+        total: null, retrievedAt: "2026-11-25T12:00:00Z", announcements: [{
+          date: "2026-11-16", dateBasis: "catalogue", headline: "KRAFTON-3Q26 Earnings Release",
+          types: ["Investor relations material"], publisher: "KRX KIND", priceSensitive: null,
+          fileSize: null, documentKey: url, url,
+        }],
+      }),
+    });
+    const result = await headless.load({ ...args(15), symbols: ["259960:KRX"] }, createTestHeadlessContext());
+    expect(result.columns?.[0]).toMatchObject({ header: "Date" });
+    expect(result.rows[0]).toMatchObject({ filedAt: "2026-11-16", dateBasis: "catalogue", url, source: "KRX KIND" });
+  });
+
+  test("an extended JPX filing read retains an earnings Q&A beyond the first 50 rows", async () => {
+    const url = "https://www2.jpx.co.jp/disc/72030/140120260804507923.pdf";
+    const announcement = {
+      date: "2026-08-04", headline: "Q&A summary of the earnings briefing",
+      types: ["Financial information"], priceSensitive: null, fileSize: null,
+      documentKey: "140120260804507923", url,
+    };
+    const recent = Array.from({ length: 50 }, (_, i) => ({
+      ...announcement, date: "2026-11-05", headline: "More recent disclosure", documentKey: String(i),
+    }));
+    const headless = createSecHeadless({
+      loadFilings: async () => [],
+      loadExchange: async ({ limit }) => ({
+        exchange: "JPX", symbol: "7203", name: "Toyota Motor Corporation",
+        page: "https://www.jpx.co.jp/english/listing/co-search/index.html", total: null,
+        retrievedAt: "2026-11-25T12:00:00Z", announcements: [...recent, announcement].slice(0, limit),
+      }),
+    });
+    const result = await headless.load({ ...args(200), symbols: ["7203:JPX"] }, createTestHeadlessContext());
+    expect(result.rows[50]).toMatchObject({ filedAt: announcement.date, filing: announcement.headline, url });
+  });
+
   test("projects filing rows and honors the page limit", async () => {
     const requestedLimits: number[] = [];
     const headless = createSecHeadless({
@@ -257,6 +297,8 @@ test("ETF leads with the fund's facts, each figure dated and credited, then its 
   });
   // JSON keeps each raw number.
   expect(facts!.entries!.find((entry) => entry.key === "netAssets")!.value).toBe(712_340_000_000);
+  // Only the text reads the days first, as the pane does.
+  expect(facts!.textEntries!.find((entry) => entry.key === "nav")!.formatted).toBe("$702.31 · 15 Oct 2026 · State Street");
   expect(filed!.rows!.map((row) => row.form)).toEqual(["485BPOS"]);
   // The report's source is the facts' publisher, named the same way for every fund.
   expect(result.freshness).toMatchObject({ source: "State Street", publisher: "State Street", asOf: "2026-10-15" });

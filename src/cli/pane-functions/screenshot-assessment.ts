@@ -162,6 +162,7 @@ export function assessPaneScreenshot(
     ...intradayChartEvidenceMismatchesFor(resolved, payload, render.semanticUi),
     ...paneEvidenceMismatches(resolved, payload, render),
     ...financialRatioRenderMismatches(resolved, payload, render),
+    ...earningsQuarterCellMismatches(resolved, render.rows),
     // The 2D grid that stands in for a sheet too few expiries can make draws every quoted value: no picture of the
     // 3D surface asked for, so not usable, but neither empty nor at odds with the data.
     ...surfaceNotDrawnMismatches(render).filter((gap) => gap !== SURFACE_GRID_STAND_IN),
@@ -312,6 +313,16 @@ function requiresStructuredDataEvidence(resolved: ResolvedPaneFunction): boolean
 }
 
 const PLACEHOLDER_VALUE = /^(?:[-\u2013\u2014]+|n\/?a)?$/i;
+
+function earningsQuarterCellMismatches(resolved: ResolvedPaneFunction, rows: readonly DesktopPaneShotRenderedRow[]): string[] {
+  if (resolved.pane.id !== "corporate-actions" && resolved.pane.id !== "earnings-estimates") return [];
+  return rows.flatMap((row) => {
+    if (row.section || !row.cells.some((cell) => cell.columnId === "period" && cell.columnLabel === "QUARTER")) return [];
+    const blank = row.cells.filter((cell) => ["eps", "estimate", "surprise"].includes(cell.columnId ?? "")
+      && !cell.mayBeBlank && PLACEHOLDER_VALUE.test(cell.text.trim()));
+    return blank.length ? [`${namedColumns(blank.map((cell) => cell.columnLabel))} missing for ${row.key ?? `quarter ${row.rowIndex + 1}`}`] : [];
+  });
+}
 
 /**
  * Rows a table must draw before a column that is blank in all of them reads

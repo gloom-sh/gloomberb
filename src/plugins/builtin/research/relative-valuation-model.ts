@@ -6,7 +6,7 @@ import {
   financialEnterpriseValue, reportedEnterpriseToRevenue, reportedEnterpriseValue, withFinancialEnterpriseValue,
 } from "../../../utils/fundamentals";
 import { sourceStatements } from "../../../time-series/fundamentals/source-statements";
-import { getExtendedSessionDisplay, getQuoteSessionFields } from "../../../market-data/market/status";
+import { extendedPrintTime, getExtendedSessionDisplay, getQuoteSessionFields, quoteHeadlineTime } from "../../../market-data/market/status";
 import { atRegularSessionPrice, movePriceDerivedFigures, regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { fiscalPeriodLabel, fiscalYearEndMonth } from "../../../utils/fiscal-period";
 import { latestFinancialPeriod, latestReportedPeriod } from "../../../utils/latest-financial-period";
@@ -116,6 +116,7 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
   const fundamentals = financials?.fundamentals;
   const quoteStale = quote?.stale === true;
   const session = getQuoteSessionFields(quoteStale ? null : quote);
+  const headlineAt = quote ? quoteHeadlineTime(quote) : null;
   // An overnight price that is the session's bid and ask midpoint, nothing having traded in it.
   const extendedMark = !quoteStale && getExtendedSessionDisplay(quote)?.mark === true;
   // The cap `valuation` shows: the share count times the price where the provider's sits more than 2% from it.
@@ -141,19 +142,32 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
     ...(evSalesNotMeaningful ? { evSales: evSalesNotMeaningful } : {}),
   };
   // A provider EV Gloom Cloud withdrew falls back to the market cap + total debt - cash it was checked against.
+  const listing = snapshot ? listingEnterpriseValue(snapshot) : null;
+  const fxRateFor = (from: string | undefined, to: string | undefined): number | null => {
+    if (!from || !to) return null;
+    if (from === to) return 1;
+    if (listing?.kind === "value" && listing.currency === to && listing.fx?.from === from
+      && finiteNumber(listing.fx.rate) && listing.fx.rate > 0) return listing.fx.rate;
+    const ttm = fundamentals?.ttmConversion;
+    if (ttm?.from === from && fundamentals?.marketCapCurrency === to && finiteNumber(ttm.rate) && ttm.rate > 0)
+      return ttm.rate;
+    return null;
+  };
   const fallback = snapshot && enterpriseValueWithdrawn(fundamentals) ? computedEnterpriseValueSales(snapshot, fundamentals) : null;
   const evSalesWithdrawn = enterpriseValueWithdrawn(fundamentals) && !fallback;
+  const revenueRate = !compatibleCurrency ? fxRateFor(currency, quote?.currency) : 1;
   const evSales = fallback ? fallback.evSales
-    : !compatibleCurrency || enterpriseValueGap || evSalesNotMeaningful ? null
-      : reportedEnterpriseToRevenue(fundamentals) != null
+    : enterpriseValueGap || evSalesNotMeaningful ? null
+      : compatibleCurrency && reportedEnterpriseToRevenue(fundamentals) != null
         ? reportedEnterpriseToRevenue(fundamentals)!
-        : enterpriseValue != null && fundamentals?.revenue != null && fundamentals.revenue > 0
-          ? enterpriseValue / fundamentals.revenue : null;
+        : enterpriseValue != null && fundamentals?.revenue != null && fundamentals.revenue > 0 && revenueRate != null
+          ? enterpriseValue / (fundamentals.revenue * revenueRate) : null;
   // The served trailing free cash flow, else the one the filed quarters sum.
   const filedFreeCashFlow = financials && !finiteNumber(fundamentals?.freeCashFlow) ? filedTrailingFreeCashFlow(financials) : null;
   const freeCashFlow = finiteNumber(fundamentals?.freeCashFlow) ? { value: fundamentals.freeCashFlow, currency } : filedFreeCashFlow;
-  const fcfYield = capitalization && freeCashFlow && freeCashFlow.currency === capitalization.currency && capitalization.value > 0
-    ? freeCashFlow.value / capitalization.value : null;
+  const fcfRate = freeCashFlow && capitalization ? fxRateFor(freeCashFlow.currency, capitalization.currency) : null;
+  const fcfYield = capitalization && freeCashFlow && fcfRate != null && capitalization.value > 0
+    ? (freeCashFlow.value * fcfRate) / capitalization.value : null;
   // Growth off revenue at or below zero a year earlier, and a margin over revenue at or below zero, are N/M, as DES
   // and `ticker` read them (servedRatesNotMeaningful).
   const served = servedRatesNotMeaningful(fundamentals, snapshot ?? financials);
@@ -190,7 +204,8 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
     ...session,
     extendedMark,
     quoteStale: quote?.stale ?? null,
-    quoteAsOf: quote && Number.isFinite(quote.lastUpdated) && quote.lastUpdated > 0 ? quote.lastUpdated : null,
+    quoteAsOf: finiteNumber(headlineAt) && headlineAt > 0 ? headlineAt : null,
+    extendedUpdatedAt: session.extendedSession ? extendedPrintTime(quote) : null,
     // The observation as sent, apart from the values used for comparison: a rejected stale quote, or the print the source priced.
     reportedQuote: reported ? {
       price: reported.price, changePercent: reported.changePercent, marketCap: reported.marketCap ?? null,

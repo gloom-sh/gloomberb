@@ -9,6 +9,26 @@ import type {
   HkCcassSouthboundPayload,
   HkCcassStockPayload,
 } from "./hk-ccass";
+import {
+  cloudDilutionCompanyPath,
+  cloudDilutionForm144Path,
+  cloudDilutionShelvesPath,
+  type DilutionCompanyPayload,
+  type DilutionForm144FeedPayload,
+  type DilutionShelvesFeedPayload,
+} from "./dilution";
+import {
+  cloudTaiwanStockRevenuePath,
+  cloudTaiwanUsReadthroughPath,
+  type TaiwanStockRevenuePayload,
+  type TaiwanUsReadthroughPayload,
+} from "./taiwan-revenue";
+import {
+  cloudHkCbbcOverviewPath,
+  cloudHkCbbcUnderlyingPath,
+  type HkCbbcOverviewPayload,
+  type HkCbbcUnderlyingPayload,
+} from "./hk-cbbc";
 import type { AttentionPayload, AttentionWindow } from "./attention";
 import type { HiringBoard, HiringBuildingBoard, HiringBuildingFilter, HiringCompanyBuilding, HiringCompanyMoves, HiringCompanySignals, HiringMovesBoard, HiringMovesFilter, HiringPayload, HiringSignalGroup, HiringSignalsBoard, HiringSignalsFilter } from "./hiring";
 import type { AppAttentionFilter, AppAttentionPayload, AppRankPayload } from "./app-attention";
@@ -1910,5 +1930,41 @@ export class CloudDataApi {
       cloudTweetSearchPath(params),
     );
     return normalizeTweetSearchResponse(response);
+  }
+
+  async getDilutionCompany(symbol: string): Promise<DilutionCompanyPayload> {
+    return this.request<DilutionCompanyPayload>(cloudDilutionCompanyPath(symbol));
+  }
+
+  async getDilutionForm144(options: {
+    symbol?: string;
+    plan10b51Only?: boolean;
+    limit?: number;
+  } = {}): Promise<DilutionForm144FeedPayload> {
+    return this.request<DilutionForm144FeedPayload>(cloudDilutionForm144Path(options));
+  }
+
+  async getDilutionShelves(options: {
+    atmOnly?: boolean;
+    babyShelfOnly?: boolean;
+    limit?: number;
+  } = {}): Promise<DilutionShelvesFeedPayload> {
+    return this.request<DilutionShelvesFeedPayload>(cloudDilutionShelvesPath(options));
+  }
+
+  async getTaiwanStockRevenue(code: string, limit = 36): Promise<TaiwanStockRevenuePayload> {
+    return this.request<TaiwanStockRevenuePayload>(cloudTaiwanStockRevenuePath(code, limit));
+  }
+
+  async getTaiwanUsReadthrough(ticker: string, months = 24): Promise<TaiwanUsReadthroughPayload> {
+    return this.request<TaiwanUsReadthroughPayload>(cloudTaiwanUsReadthroughPath(ticker, months));
+  }
+
+  async getHkCbbcUnderlying(underlying: string, limit = 40): Promise<HkCbbcUnderlyingPayload> {
+    return this.request<HkCbbcUnderlyingPayload>(cloudHkCbbcUnderlyingPath(underlying, limit));
+  }
+
+  async getHkCbbcOverview(limit = 40): Promise<HkCbbcOverviewPayload> {
+    return this.request<HkCbbcOverviewPayload>(cloudHkCbbcOverviewPath(limit));
   }
 }

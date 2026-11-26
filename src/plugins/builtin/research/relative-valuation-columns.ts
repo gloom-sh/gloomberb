@@ -343,22 +343,31 @@ function derivedOperatingIncomeNote(financials: TickerFinancials, statement: Fin
  * for the note under the table, the rate an ADR's statements took and any
  * derived operating income (`detail`).
  */
-function evEbitdaSource(financials: TickerFinancials, enterpriseValue: ReturnType<typeof listingEnterpriseValue>, statement: FinancialStatement): { source: string; detail: string | null } {
+function evEbitdaSource(
+  financials: TickerFinancials,
+  enterpriseValue: ReturnType<typeof listingEnterpriseValue>,
+  statement: FinancialStatement,
+  annual?: boolean,
+): { source: string; detail: string | null } {
   const ev = enterpriseValue.kind === "value" && enterpriseValue.basis === "computed" ? "Market cap + total debt - cash" : "Gloom Cloud enterprise value";
   const conversion = listingStatementConversion(financials, statement);
+  const periodEnd = statement.date.slice(0, 10);
   const detail = [
+    ...annual ? [`annual EBITDA (${periodEnd})`] : [],
     ...conversion ? [`statements in ${conversion.from} at ${conversion.rate.toPrecision(4)} ${conversion.to}`] : [],
     ...[derivedOperatingIncomeNote(financials, statement) ?? []].flat(),
   ].join("; ") || null;
-  return { source: `${ev} over trailing operating income plus D&A${detail ? `; ${detail}` : ""}`, detail };
+  const basis = annual ? "annual operating income plus D&A" : "trailing operating income plus D&A";
+  return { source: `${ev} over ${basis}${detail ? `; ${detail}` : ""}`, detail };
 }
 
 /**
  * EV/EBITDA as GE's trailing series ends on it (currentTrailingValuation):
  * the listing's enterprise value at the regular session price over the latest
- * four quarters of operating income plus D&A, an ADR's converted at its EV
- * check's rate. N/M where either is at or below zero, and for a bank or an
- * insurer; otherwise a blank says why.
+ * four quarters of operating income plus D&A (or latest fiscal year when
+ * interim reports omit D&A), an ADR's converted at its EV check's rate. N/M
+ * where either is at or below zero, and for a bank or an insurer; otherwise a
+ * blank says why.
  */
 function evEbitdaFields(financials: TickerFinancials): HeadlessPaneRow & { evEbitdaNote?: string } {
   if (isBankOrInsurerIndustry(financials.profile?.industry)) {
@@ -369,7 +378,7 @@ function evEbitdaFields(financials: TickerFinancials): HeadlessPaneRow & { evEbi
   if (enterpriseValue.kind === "not-meaningful") return { evEbitda: null, evEbitdaNotMeaningful: enterpriseValue.reason };
   const current = currentTrailingValuation(financials, "evEbitda");
   if (current) {
-    const { source, detail } = evEbitdaSource(financials, enterpriseValue, current.statement);
+    const { source, detail } = evEbitdaSource(financials, enterpriseValue, current.statement, current.annual);
     const dated = { evEbitdaSource: source, evEbitdaAsOf: current.periodEnd };
     if (current.value === null) {
       return { evEbitda: null, evEbitdaNotMeaningful: current.notMeaningful, evEbitdaNote: `N/M, ${current.notMeaningful!.charAt(0).toLowerCase()}${current.notMeaningful!.slice(1)}`, ...dated };
@@ -380,10 +389,13 @@ function evEbitdaFields(financials: TickerFinancials): HeadlessPaneRow & { evEbi
   const trailing = latestTrailingStatement(financials);
   const statementCurrency = trailing?.currency ?? financials.financialCurrency;
   const quoteCurrency = financials.quote?.currency;
-  if (trailing && statementCurrency && quoteCurrency && statementCurrency !== quoteCurrency) return { evEbitdaGap: `statements in ${statementCurrency}` };
-  if (trailing && typeof trailing.ebitda !== "number") {
+  const convertible = trailing ? listingStatementConversion(financials, trailing) !== null : false;
+  if (trailing && typeof trailing.ebitda !== "number" && (convertible || !statementCurrency || statementCurrency === quoteCurrency)) {
     const quarters = financials.quarterlyStatements;
     return { evEbitdaGap: quarters.some(ebitdaLacksDepreciation) || ebitdaLacksDepreciation(trailing) ? "no D&A" : "no EBITDA" };
+  }
+  if (trailing && statementCurrency && quoteCurrency && statementCurrency !== quoteCurrency && !convertible) {
+    return { evEbitdaGap: `statements in ${statementCurrency}` };
   }
   if (!trailing) return { evEbitdaGap: trailingGap(financials, "EBITDA") };
   return { evEbitdaGap: enterpriseValue.kind === "unavailable" ? "EV unavailable" : "not reported" };

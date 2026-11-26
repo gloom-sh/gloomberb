@@ -247,6 +247,8 @@ export function BulletList({ items, width, color }: BulletListProps) {
 }
 
 export interface FigureListItem {
+  /** What tells the figure apart where two read alike (the same label and value); the label and value otherwise. */
+  id?: string;
   value: string;
   label: string;
   note?: string;
@@ -269,7 +271,7 @@ export function FigureList({ figures, width, minValueWidth = 0, maxValueWidth = 
   );
   return figures.map((figure) => (
     <Prose
-      key={`${figure.label}-${figure.value}`}
+      key={figure.id ?? `${figure.label}-${figure.value}`}
       text={[figure.label, figure.note].filter(Boolean).join(", ")}
       width={width}
       color={colors.textDim}

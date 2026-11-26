@@ -22,10 +22,10 @@ afterEach(() => setLanguage("en"));
 
 test("every figure carries its own date; one older than the NAV beside it is marked, month-end net assets are not", () => {
   const current = byId(IVV);
-  expect(current.nav).toMatchObject({ detail: "2026-10-16" });
-  expect(current.premium).toMatchObject({ detail: "2026-10-16 close" });
-  expect(current.fee).toMatchObject({ detail: "net 2026-10-16" });
-  expect(current.assets).toMatchObject({ detail: "2026-10-16" });
+  expect(current.nav).toMatchObject({ detail: "16 Oct 2026" });
+  expect(current.premium).toMatchObject({ detail: "16 Oct 2026 close" });
+  expect(current.fee).toMatchObject({ detail: "net 16 Oct 2026" });
+  expect(current.assets).toMatchObject({ detail: "16 Oct 2026" });
   expect(Object.values(current).some((item) => item.tone)).toBe(false);
 
   const lagging = byId({
@@ -33,22 +33,22 @@ test("every figure carries its own date; one older than the NAV beside it is mar
     premiumDiscount: { ...IVV.premiumDiscount!, asOf: "2026-10-15" },
     netAssets: { ...IVV.netAssets!, asOf: "2026-10-15" },
   });
-  expect(lagging.premium).toMatchObject({ detail: "2026-10-15 close", tone: "warning" });
-  expect(lagging.assets).toMatchObject({ detail: "2026-10-15", tone: "warning" });
+  expect(lagging.premium).toMatchObject({ detail: "15 Oct 2026 close", tone: "warning" });
+  expect(lagging.assets).toMatchObject({ detail: "15 Oct 2026", tone: "warning" });
   expect(lagging.nav!.tone).toBeUndefined();
 
   const monthEnd = byId({ ...IVV, netAssets: { value: 1e12, asOf: "2026-09-30", source: "Vanguard", scope: "share-class", period: "month-end" } });
-  expect(monthEnd.assets).toMatchObject({ detail: "2026-09-30 month-end" });
+  expect(monthEnd.assets).toMatchObject({ detail: "30 Sep 2026 month-end" });
   expect(monthEnd.assets!.tone).toBeUndefined();
 
   // A stale NAV marks every dated figure, and DES colours the same ones.
   const stale = byId({ ...IVV, stale: true });
-  expect(stale.nav).toMatchObject({ detail: "2026-10-16 stale", tone: "warning" });
+  expect(stale.nav).toMatchObject({ detail: "16 Oct 2026 stale", tone: "warning" });
   for (const id of ["premium", "fee", "assets"]) expect(stale[id]!.tone).toBe("warning");
   expect(stale.sponsor!.tone).toBeUndefined();
   expect(fundFactOverviewFields({ ...IVV, stale: true }).filter((field) => field.warn).map((field) => field.label))
     .toEqual(["NAV", "Prem/Disc", "Net Assets", "Exp Ratio"]);
-  expect(fundFactOverviewFields(IVV).find((field) => field.label === "Prem/Disc")!.detail).toEqual(["2026-10-16 close", "10-16 close", "2026-10-16", "10-16"]);
+  expect(fundFactOverviewFields(IVV).find((field) => field.label === "Prem/Disc")!.detail).toEqual(["16 Oct 2026 close", "16 Oct close", "16 Oct 2026", "16 Oct"]);
   expect(fundFactsStaleText("IVV", { ...IVV, stale: true })).toBe("IVV's newest NAV is from 2026-10-16; its sponsor has not published one since.");
   expect(fundFactsStaleText("IVV", IVV)).toBeNull();
 });
@@ -62,9 +62,9 @@ test("the footer names the fund's sponsor, not the close a premium was computed 
 test("the pane's labels, dates and notices are translated", () => {
   setLanguage("es");
   const items = byId({ ...IVV, stale: true });
-  expect(items.premium!.detail).toBe("2026-10-16 cierre");
-  expect(items.fee!.detail).toBe("neto 2026-10-16");
-  expect(items.nav!.detail).toBe("2026-10-16 desactualizado");
+  expect(items.premium!.detail).toBe("16 Oct 2026 cierre");
+  expect(items.fee!.detail).toBe("neto 16 Oct 2026");
+  expect(items.nav!.detail).toBe("16 Oct 2026 desactualizado");
   expect(t(items.premium!.label)).toBe("Prima/descuento");
   expect(fundFactOverviewFields(IVV).map((field) => t(field.label))).toEqual(["Valor liquidativo", "Prima/Desc.", "Patrimonio", "Ratio gastos", "Lanzamiento"]);
   expect(fundFactsEmptyText("USO", { ...IVV, covered: false, structure: "trust" })).toStartWith("USO está registrado ante la SEC como fideicomiso");
@@ -73,7 +73,7 @@ test("the pane's labels, dates and notices are translated", () => {
   expect(fundFactsStaleText("IVV", { ...IVV, stale: true })).toBe("El valor liquidativo más reciente de IVV es del 2026-10-16; su patrocinador no ha publicado otro desde entonces.");
   setLanguage("ja");
   expect(t("Premium/discount")).toBe("乖離率");
-  expect(byId(IVV).premium!.detail).toBe("2026-10-16 終値");
+  expect(byId(IVV).premium!.detail).toBe("16 Oct 2026 終値");
 });
 
 const DFAC: FundFactsPayload = {
@@ -87,16 +87,16 @@ const DFAC: FundFactsPayload = {
 test("figures from the SEC's data sets say which filing they come from: the prospectus's fee, net or gross, and N-PORT's month-end net assets of the whole fund", () => {
   const items = byId(DFAC);
   expect(Object.keys(items)).toEqual(["fee", "assets"]);
-  expect(items.fee).toMatchObject({ value: "0.17%", detail: "gross, prospectus 2026-02-27" });
-  expect(byId({ ...DFAC, expenseRatio: { ...DFAC.expenseRatio!, kind: "net" } }).fee!.detail).toBe("net, prospectus 2026-02-27");
-  expect(byId({ ...DFAC, expenseRatio: { ...DFAC.expenseRatio!, kind: undefined as never } }).fee!.detail).toBe("prospectus 2026-02-27");
+  expect(items.fee).toMatchObject({ value: "0.17%", detail: "gross, prospectus 27 Feb 2026" });
+  expect(byId({ ...DFAC, expenseRatio: { ...DFAC.expenseRatio!, kind: "net" } }).fee!.detail).toBe("net, prospectus 27 Feb 2026");
+  expect(byId({ ...DFAC, expenseRatio: { ...DFAC.expenseRatio!, kind: undefined as never } }).fee!.detail).toBe("prospectus 27 Feb 2026");
   // N-PORT's figure is the whole fund's, every share class: the label says so.
-  expect(items.assets).toMatchObject({ label: "Fund net assets", detail: "2026-07-31 month-end · N-PORT" });
+  expect(items.assets).toMatchObject({ label: "Fund net assets", detail: "31 Jul 2026 month-end · N-PORT" });
   // Without a NAV to compare with, neither is marked.
   expect(items.fee!.tone).toBeUndefined();
   expect(items.assets!.tone).toBeUndefined();
   expect(fundFactOverviewFields(DFAC).find((field) => field.label === "Fund Assets")!.detail)
-    .toEqual(["2026-07-31 month-end · N-PORT", "07-31 month-end · N-PORT", "2026-07-31 month-end", "07-31 month-end"]);
+    .toEqual(["31 Jul 2026 month-end · N-PORT", "31 Jul month-end · N-PORT", "31 Jul 2026 month-end", "31 Jul month-end"]);
   expect(fundFactEntries(DFAC).find((entry) => entry.key === "netAssets")!.formatted)
     .toBe("$47.89B · 2026-07-31 month-end N-PORT · all share classes · SEC EDGAR");
   // A share class's own figure (Vanguard's) and a trust's are plain net assets.
@@ -109,8 +109,8 @@ test("figures from the SEC's data sets say which filing they come from: the pros
   expect(soxl.assets!.tone).toBeUndefined();
   expect(fundFactPublishers({ ...DFAC, nav: { value: 107.36, asOf: "2026-10-15", source: "Direxion" } })).toEqual(["Direxion", "SEC EDGAR"]);
   setLanguage("es");
-  expect(byId(DFAC).fee!.detail).toBe("bruto, folleto 2026-02-27");
-  expect(byId(DFAC).assets!.detail).toBe("2026-07-31 fin de mes · N-PORT");
+  expect(byId(DFAC).fee!.detail).toBe("bruto, folleto 27 Feb 2026");
+  expect(byId(DFAC).assets!.detail).toBe("31 Jul 2026 fin de mes · N-PORT");
   expect(t(byId(DFAC).assets!.label)).toBe("Patrimonio neto del fondo");
 });
 
@@ -137,15 +137,15 @@ test("a pool's total expense ratio reads as an expense ratio, gross, though the 
     expenseRatio: { value: 0.86, asOf: "2026-10-16", source: "USCF", kind: "gross" },
     netAssets: { value: 1.897e9, asOf: "2026-10-16", source: "USCF", scope: "fund", period: "day" },
   };
-  expect(byId(uso).fee).toMatchObject({ label: "Expense ratio", value: "0.86%", detail: "gross 2026-10-16" });
+  expect(byId(uso).fee).toMatchObject({ label: "Expense ratio", value: "0.86%", detail: "gross 16 Oct 2026" });
   expect(fundFactOverviewFields(uso).find((field) => field.value === "0.86%")!.label).toBe("Exp Ratio");
   expect(fundFactEntries(uso).find((entry) => entry.key === "expenseRatioPercent")).toMatchObject({
     label: "Expense ratio", formatted: "0.86% gross · 2026-10-16 · USCF",
   });
   // A trust's net assets are the trust's: no share classes to speak of.
-  expect(byId(uso).assets!.detail).toBe("2026-10-16");
+  expect(byId(uso).assets!.detail).toBe("16 Oct 2026");
   const ibit: FundFactsPayload = { ...uso, ticker: "IBIT", expenseRatio: { value: 0.25, asOf: "2026-10-16", source: "iShares", kind: "sponsor-fee" } };
-  expect(byId(ibit).fee).toMatchObject({ label: "Sponsor fee", detail: "2026-10-16" });
+  expect(byId(ibit).fee).toMatchObject({ label: "Sponsor fee", detail: "16 Oct 2026" });
   expect(fundFactOverviewFields(ibit).find((field) => field.value === "0.25%")!.label).toBe("Sponsor Fee");
 });
 
@@ -161,17 +161,17 @@ const MUB: FundFactsPayload = {
 
 test("a bond fund's SEC yield, yield to worst and duration follow its net assets, each dated, and its class is a report line", () => {
   expect(fundFactItems(MUB).map((item) => [item.label, item.value, item.detail])).toEqual([
-    ["NAV", "$766.76", "2026-10-16"],
-    ["Premium/discount", "+0.01%", "2026-10-16 close"],
-    ["Expense ratio", "0.03%", "net 2026-10-16"],
-    ["Net assets", "$879B", "2026-10-16"],
-    ["SEC yield", "4.04%", "2026-10-15"],
-    ["Yield to worst", "4.16%", "2026-10-15"],
-    ["Effective duration", "7.13 yrs", "2026-10-15"],
+    ["NAV", "$766.76", "16 Oct 2026"],
+    ["Premium/discount", "+0.01%", "16 Oct 2026 close"],
+    ["Expense ratio", "0.03%", "net 16 Oct 2026"],
+    ["Net assets", "$879B", "16 Oct 2026"],
+    ["SEC yield", "4.04%", "15 Oct 2026"],
+    ["Yield to worst", "4.16%", "15 Oct 2026"],
+    ["Effective duration", "7.13 yrs", "15 Oct 2026"],
     // Derived for sizing a trade: the closing price times the duration, per basis point.
     ["DV01", "$0.5464 per share", "price × duration ÷ 10,000"],
     ["Sponsor", "BlackRock (iShares)", undefined],
-    ["Inception", "2000-05-15", undefined],
+    ["Inception", "15 May 2000", undefined],
   ]);
   const entries = Object.fromEntries(fundFactEntries(MUB).map((entry) => [entry.key, [entry.value, entry.formatted, entry.unit]]));
   expect(entries).toMatchObject({
@@ -184,7 +184,7 @@ test("a bond fund's SEC yield, yield to worst and duration follow its net assets
   // Vanguard's average duration is a month end's; a single-state fund names its state.
   const vtec: FundFactsPayload = { ...MUB, bond: { kind: "municipal", state: "CA", secYield: null, yieldToWorst: null,
     duration: { value: 7, asOf: "2026-09-30", source: "Vanguard", measure: "average" } } };
-  expect(byId(vtec).duration).toMatchObject({ label: "Average duration", value: "7.00 yrs", detail: "2026-09-30 month-end" });
+  expect(byId(vtec).duration).toMatchObject({ label: "Average duration", value: "7.00 yrs", detail: "30 Sep 2026 month-end" });
   expect(fundFactEntries(vtec).find((entry) => entry.key === "bondClass")?.formatted).toBe("Municipal, CA (single-state)");
   // A fund the server sends no bond facts for, or an older server, shows none; the IVV cells are unchanged.
   expect(fundFactItems(IVV).map((item) => item.id)).toEqual(["nav", "premium", "fee", "assets", "sponsor", "inception"]);
@@ -209,9 +209,9 @@ test("a metal trust's ounces and tonnes in trust follow its net assets, with the
     .rejects.toThrow("Unreadable fund facts response");
 
   expect(fundFactItems(gld).map((item) => [item.label, item.value, item.detail])).toEqual([
-    ["NAV", "$378.04", "2026-10-20"],
-    ["Gold in trust", "1,060.18 t", "34.09M oz · 2026-10-20"],
-    ["Day change", "+1.71 t", "+54,995 oz · since 2026-10-19"],
+    ["NAV", "$378.04", "20 Oct 2026"],
+    ["Gold in trust", "1,060.18 t", "34.09M oz · 20 Oct 2026"],
+    ["Day change", "+1.71 t", "+54,995 oz · since 19 Oct 2026"],
   ]);
   const entries = Object.fromEntries(fundFactEntries(gld).map((entry) => [entry.key, [entry.value, entry.formatted, entry.unit]]));
   expect(entries).toMatchObject({
@@ -241,12 +241,12 @@ const ECC: FundFactsPayload = {
 
 test("a closed-end fund's NAV is a month end's, its sponsor's estimate range beside it, and neither it nor its premium reads as lagging", async () => {
   const items = byId(ECC);
-  expect(items.nav).toMatchObject({ value: "$4.17", detail: "2026-09-30 month-end · est. $4.12 to $4.22" });
+  expect(items.nav).toMatchObject({ value: "$4.17", detail: "30 Sep 2026 month-end · est. $4.12 to $4.22" });
   // Against the estimate's midpoint, the premium is an estimate too.
-  expect(items.premium).toMatchObject({ value: "-6.47%", detail: "2026-09-30 close · est." });
+  expect(items.premium).toMatchObject({ value: "-6.47%", detail: "30 Sep 2026 close · est." });
   expect(items.structure).toMatchObject({ label: "Structure", value: "Closed-end fund" });
   expect(Object.values(items).some((item) => item.tone)).toBe(false);
-  expect(fundFactOverviewFields(ECC).find((field) => field.label === "NAV")!.detail).toEqual(["2026-09-30 month-end", "09-30 month-end"]);
+  expect(fundFactOverviewFields(ECC).find((field) => field.label === "NAV")!.detail).toEqual(["30 Sep 2026 month-end", "30 Sep month-end"]);
   const entries = Object.fromEntries(fundFactEntries(ECC).map((entry) => [entry.key, entry.formatted]));
   expect(entries).toMatchObject({
     structure: "Closed-end fund",
@@ -274,7 +274,7 @@ test("a BDC and a closed-end fund each by its own structure, never as a register
   };
   const items = byId(arcc);
   expect(items.structure).toMatchObject({ label: "Structure", value: "BDC" });
-  expect(items.premium).toMatchObject({ value: "+7.33%", detail: "2026-05-29 close" });
+  expect(items.premium).toMatchObject({ value: "+7.33%", detail: "29 May 2026 close" });
   const entries = Object.fromEntries(fundFactEntries(arcc).map((entry) => [entry.key, entry.formatted]));
   expect(entries).toMatchObject({
     structure: "Business development company (BDC)",
@@ -298,11 +298,11 @@ test("an ETF's shares outstanding and its month's flows follow net assets; a cov
     flows: { period: "1M", shares: 12_350_000, value: 625_247_000, from: "2026-09-21", asOf: "2026-10-23", source: "Janus Henderson" },
   };
   expect(fundFactItems(jaaa).filter((item) => item.id === "shares" || item.id === "flows").map((item) => [item.label, item.value, item.detail])).toEqual([
-    ["Shares outstanding", "642.35M", "2026-10-23"],
-    ["1M flows", "+$625.25M", "+12.35M shares · since 2026-09-21"],
+    ["Shares outstanding", "642.35M", "23 Oct 2026"],
+    ["1M flows", "+$625.25M", "+12.35M shares · since 21 Sep 2026"],
   ]);
   // A day without a NAV leaves the dollars out: the shares are the figure.
-  expect(byId({ ...jaaa, flows: { ...jaaa.flows!, shares: -3_100_000, value: null } }).flows).toMatchObject({ value: "-3.1M shares", detail: "since 2026-09-21" });
+  expect(byId({ ...jaaa, flows: { ...jaaa.flows!, shares: -3_100_000, value: null } }).flows).toMatchObject({ value: "-3.1M shares", detail: "since 21 Sep 2026" });
   expect(fundFactEntries(jaaa).find((entry) => entry.key === "flows1M")).toMatchObject({
     value: 625_247_000, formatted: "+$625.25M · +12.35M shares · 2026-09-21 to 2026-10-23 · Janus Henderson", unit: "USD",
   });
@@ -315,7 +315,7 @@ test("an ETF's shares outstanding and its month's flows follow net assets; a cov
     .toBe("No NAV for OXSQ: its SEC filings state net assets but no NAV per share, and its sponsor's NAV is not one Gloom reads.");
   setLanguage("es");
   expect(fundFactsNavReasonText("DFAC", noNav)).toStartWith("No hay valor liquidativo para DFAC");
-  expect(byId(ECC).nav!.detail).toBe("2026-09-30 fin de mes · est. $4.12 to $4.22");
+  expect(byId(ECC).nav!.detail).toBe("30 Sep 2026 fin de mes · est. $4.12 to $4.22");
 });
 
 test("an HK counter's nominal close says so, and its premium names the traded counter it is measured from, or that it is nominal", () => {
@@ -330,10 +330,10 @@ test("an HK counter's nominal close says so, and its premium names the traded co
   const entries = Object.fromEntries(fundFactEntries(usdCounter).map((entry) => [entry.key, entry.formatted]));
   expect(entries.closingPrice).toBe("$1.172 · 2026-11-06 · nominal, no trades · Gloom Cloud");
   expect(entries.premiumDiscountPercent).toBe("+0.12% · 2026-11-06 · 3042:HKEX close HK$9.18 at the NAVs' rate vs NAV · Gloom Cloud");
-  expect(byId(usdCounter).premium).toMatchObject({ detail: "2026-11-06 close · 3042:HKEX" });
+  expect(byId(usdCounter).premium).toMatchObject({ detail: "06 Nov 2026 close · 3042:HKEX" });
   // No counter traded: the premium is the nominal close's, and says so.
   const untraded = { ...usdCounter, premiumDiscount: { ...usdCounter.premiumDiscount!, price: { kind: "nominal" as const } } };
   expect(fundFactEntries(untraded).find((entry) => entry.key === "premiumDiscountPercent")!.formatted)
     .toBe("+0.12% · 2026-11-06 · nominal closing price vs NAV · Gloom Cloud");
-  expect(byId(untraded).premium).toMatchObject({ detail: "2026-11-06 close · nominal" });
+  expect(byId(untraded).premium).toMatchObject({ detail: "06 Nov 2026 close · nominal" });
 });

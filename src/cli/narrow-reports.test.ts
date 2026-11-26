@@ -122,14 +122,14 @@ test("at 40 and 60 columns CBR, WIRP, BTMM and fred --list fit, keep every date 
       expect({ name, width, cut: lines.filter((line) => /[\d%.,:+-]…/.test(line)) }).toEqual({ name, width, cut: [] });
     }
     const cbr = await reports.CBR!();
-    for (const date of ["2026-10-11", "2026-09-17", "2026-10-06", "2026-09-24", "2026-01-23"]) expect(cbr).toContain(date);
+    for (const date of ["11 Oct 2026", "17 Sep 2026", "06 Oct 2026", "24 Sep 2026", "23 Jan 2026"]) expect(cbr).toContain(date);
     expect(cbr).toContain("Uncollateralized overnight");
     const wirp = await reports.WIRP!();
     // The odds of the next two meetings only, whole.
     expect(wirp).toContain("3.875% 82% / 4.125% 18%");
     expect(wirp).toContain("3.875% 3% / 4.125% 97%");
     expect(wirp).not.toContain("3.875% 56% / 4.125% 44%");
-    expect(wirp).toContain("2027-01-27");
+    expect(wirp).toContain("27 Jan 2027");
     const fred = await reports["fred --list rate"]!();
     expect(fred).toContain("Lower Limit");
     expect(fred).toContain("Upper Limit");

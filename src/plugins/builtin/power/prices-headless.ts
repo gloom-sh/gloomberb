@@ -2,6 +2,7 @@ import { MISSING_VALUE } from "../../../utils/format";
 import { apiClient } from "../../../api-client";
 import type { CarbonBoard, EuropePowerBoard, GasStorageBoard, GasStorageRow, PowerPriceRow } from "../../../api-client/europe-energy";
 import type { HeadlessBundleResult, HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
+import { formatDay } from "../../../components/ui/day-cell";
 import { fetchGasHistory, fetchGasStorage } from "./gas-client";
 import { formatGasFlow, formatGasFull, formatGasPoints, formatGasTwh, gasRangePosition, parseGasQuery, type GasStorageArea } from "./gas-model";
 import { fetchCarbonPrice, fetchPowerPriceHistory, fetchPowerPrices } from "./prices-client";
@@ -18,7 +19,7 @@ const text = (value: unknown) => typeof value === "string" && value ? value : MI
 /** A board's columns, in its words: prices to the cent in the board's unit, each row dated by its own day. */
 const boardColumns = (unit: string, label = "Market"): HeadlessPaneColumn[] => [
   { key: "market", header: label },
-  { key: "date", header: "As of", format: text, shrink: false },
+  { key: "date", header: "As of", format: (value) => formatDay(value), shrink: false },
   { key: "price", header: unit, align: "right", format: price },
   { key: "change", header: "1D", align: "right", format: (value) => typeof value === "number" ? formatPowerChange(value) : MISSING_VALUE },
   { key: "average7", header: "7D avg", align: "right", format: price },
@@ -30,7 +31,7 @@ const boardColumns = (unit: string, label = "Market"): HeadlessPaneColumn[] => [
 ];
 const COLUMNS = boardColumns(POWER_PRICE_UNIT);
 const AUCTION_COLUMNS: HeadlessPaneColumn[] = [
-  { key: "date", header: "Date", shrink: false },
+  { key: "date", header: "Date", format: (value) => formatDay(value), shrink: false },
   { key: "zone", header: "Zone", format: text },
   { key: "status", header: "Status" },
   { key: "price", header: CARBON_PRICE_UNIT, align: "right", format: price },
@@ -86,7 +87,7 @@ const failure = (error: unknown) => error instanceof Error ? error.message : Str
 const number = (format: (value: number | null) => string) => (value: unknown) => typeof value === "number" ? format(value) : MISSING_VALUE;
 const GAS_COLUMNS: HeadlessPaneColumn[] = [
   { key: "area", header: "Area" },
-  { key: "gasDay", header: "Gas day", format: text, shrink: false },
+  { key: "gasDay", header: "Gas day", format: (value) => formatDay(value), shrink: false },
   { key: "status", header: "Status", format: text },
   { key: "full", header: "% full", align: "right", format: number(formatGasFull) },
   { key: "change", header: "1D pp", align: "right", format: number(formatGasPoints) },

@@ -32,7 +32,7 @@ test("comparison aligns by release rather than by trading session and keeps miss
     expect(result.unavailableSymbols).toEqual(["GLD"]);
     const text = renderHeadlessPaneText(macroDayHeadless, result, args, "MDAY", deriveHeadlessFreshness(macroDayHeadless, result, Date.now()));
     expect(text).toMatch(/SPY %\s+UUP %\s+\^TNX bp\s+GLD %/);
-    expect(text).toMatch(/2026-04-03\s+Jobs\s+\+1\.00%\s+-1\.00%\s+\+4\.0\s+—/);
+    expect(text).toMatch(/03 Apr 2026\s+Jobs\s+\+1\.00%\s+-1\.00%\s+\+4\.0\s+—/);
     expect(text).toContain("Daily close-to-close");
     expect(days).toHaveBeenCalledTimes(1);
   } finally {
@@ -63,7 +63,7 @@ test("an FOMC day's row is named FOMC, its decision a field of its own, and the 
   const day = section && "rows" in section ? section.rows?.[0] : undefined;
   expect(day).toMatchObject({ date: "2026-10-28", event: "FOMC", decision: "held", actual: "3.75-4.00%" });
   const text = renderHeadlessPaneText(macroDayHeadless, result, args, "MDAY", deriveHeadlessFreshness(macroDayHeadless, result, Date.now()));
-  expect(text).toMatch(/2026-10-28\s+FOMC held\s+3\.75-4\.00%/);
+  expect(text).toMatch(/28 Oct 2026\s+FOMC held\s+3\.75-4\.00%/);
 });
 
 test("an ECB day before the economic calendar has its rates and lacks only the forecast, and the note says that, not that it has nothing", async () => {
@@ -88,7 +88,7 @@ test("an ECB day before the economic calendar has its rates and lacks only the f
     return { notes: result.notes ?? [], text: renderHeadlessPaneText(macroDayHeadless, result, args, "MDAY", deriveHeadlessFreshness(macroDayHeadless, result, Date.now())) };
   };
   const ecb = await load("ecb");
-  expect(ecb.text).toMatch(/2025-10-30\s+ECB held\s+2\.00%/);
+  expect(ecb.text).toMatch(/30 Oct 2025\s+ECB held\s+2\.00%/);
   expect(ecb.notes).toContain("Forecasts start 2026-01-01, with Gloom Cloud's economic calendar: ECB days before it have an actual and prior, no forecast or surprise.");
   expect(ecb.notes.some((note) => note.includes("have no actual, forecast or prior"))).toBe(false);
   // A US day before the calendar has no figures at all, and is named by its kind.

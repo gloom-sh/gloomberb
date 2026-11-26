@@ -1,3 +1,4 @@
+import { formatDayTime } from "../../../utils/day-format";
 import { formatShortDate } from "../../../utils/datetime-format";
 import type { DataTableColumn, StatItem } from "../../../components";
 import type { HiringCompanyMoves, HiringMove, HiringMoveExclusion, HiringMoveFlag, HiringMovePosting, HiringMovesBoard, HiringMovesFilter } from "../../../api-client/hiring";
@@ -102,7 +103,7 @@ export function moveFacts(move: HiringMove): Array<{ label: string; value: strin
     { label: "Open roles", value: count(move.openRoles) },
     { label: "Boards", value: move.sourceTickers.join(", ") },
     ...(alertText(move) ? [{ label: "Alert", value: alertText(move)! }] : []),
-    { label: "First computed", value: move.firstComputedAt },
+    { label: "First computed", value: `${formatDayTime(move.firstComputedAt)} UTC` },
   ];
 }
 

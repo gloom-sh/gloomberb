@@ -2,7 +2,7 @@ import type { DividendAction } from "../../../types/financials";
 import { INCOMPLETE_DISTRIBUTIONS } from "../../../market-data/fund-actions";
 import { publishedDividend } from "../../../market-data/price-adjustments";
 import { MISSING_VALUE } from "../../../utils/format";
-import { epsBasisShort, NO_CONSENSUS, quarterLabel, type EpsBasisName } from "../shared/earnings-report";
+import { EPS_BASIS_UNCONFIRMED, epsBasisShort, NO_CONSENSUS, quarterLabel, type EpsBasisName } from "../shared/earnings-report";
 import { nextReportOf, quarterName, type EventRow } from "./event-model";
 
 /** How many reported quarters the Earnings chart and table show; EE and ERN have the older ones. */
@@ -20,6 +20,7 @@ export interface EarningsQuarter {
   /** Under its bar: `Q3 FY26`, `Sep '26`. */
   axisLabel: string;
   upcoming: boolean;
+  withoutConsensus?: true;
   eps?: number;
   estimate?: number;
   surprisePercent?: number;
@@ -68,9 +69,10 @@ function quarterDetail(quarter: EarningsQuarter, row: EventRow | undefined, basi
     return [...parts, ...(own ? [own] : [])].join(", ") || "Pending";
   }
   const parts = [
+    row?.epsComparisonUnconfirmed ? EPS_BASIS_UNCONFIRMED : null,
     quarter.basis && quarter.basis !== basis && (basis || quarter.basis !== "unknown") ? basisText(quarter.basis) : null,
     row?.epsProvisional ? "provisional" : null,
-    row && row.epsActual != null && row.epsEstimate == null && row.epsDifference == null ? NO_CONSENSUS : null,
+    quarter.withoutConsensus ? NO_CONSENSUS : null,
   ].filter((part): part is string => !!part).join(", ");
   return row?.dateType === "fiscal-period-end" ? ["Period end", parts].filter(Boolean).join("; ") : parts;
 }
@@ -117,6 +119,8 @@ export function earningsQuarters(rows: readonly EventRow[], today: string): Earn
       const period = row.period && row.period !== MISSING_VALUE ? row.period : quarterLabel(row.fiscalPeriodEnd ?? row.date);
       return {
         id: row.id, rowId: row.id, date: row.date, period, axisLabel: axisLabel(period, row.fiscalPeriodEnd ?? row.date), upcoming: false,
+        ...(row.epsActual != null && row.epsEstimate == null && row.epsDifference == null && row.surprisePercent == null && !row.surpriseNotMeaningful
+          ? { withoutConsensus: true } : {}),
         ...(row.epsActual != null ? { eps: row.epsActual } : {}),
         ...(row.epsEstimate != null ? { estimate: row.epsEstimate } : {}),
         ...(row.surprisePercent != null ? { surprisePercent: row.surprisePercent } : {}),

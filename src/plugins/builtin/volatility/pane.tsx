@@ -1,3 +1,4 @@
+import { formatDay } from "../../../components/ui/day-cell";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChartTableHeader, CurveSurface, curveGhostColors, DataTableView, formatPercentAxis, PaneStatusBody, useChartTableSelection,
   usePaneFooter, usePaneNoticeFooter, usePaneTabs, type DataTableColumn, type StatItem } from "../../../components";
@@ -256,13 +257,14 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
             : column.id === "percentile1y" ? percentile(row.percentile1y)
             : ["value", "change1d", "change1dPercent"].includes(column.id)
               ? number(row[column.id as "value" | "change1d" | "change1dPercent"], column.id.startsWith("change"))
-              : String(row.date ?? MISSING_VALUE),
+              : formatDay(row.date),
+            ...(column.id === "date" && row.date ? { value: row.date } : {}),
             // Changes take the sign; vol high for its year is the warning a rise used to carry.
             color: column.id.startsWith("change") && row.change1d != null ? signColor(row.change1d)
               : column.id === "percentile1y" && row.percentile1y != null && Math.round(row.percentile1y) >= 80 ? colors.warning
               : row.value == null ? colors.textMuted : colors.text })} />
         {selected && <>
-          <Box height={1} paddingX={1}><Text fg={colors.textDim}>{`${selected.id.toUpperCase() === selected.label ? selected.label : `${selected.id.toUpperCase()} · ${selected.label}`} · ${selected.unit} · ${selected.date ?? MISSING_VALUE}`}</Text></Box>
+          <Box height={1} paddingX={1}><Text fg={colors.textDim}>{`${selected.id.toUpperCase() === selected.label ? selected.label : `${selected.id.toUpperCase()} · ${selected.label}`} · ${selected.unit} · ${formatDay(selected.date)}`}</Text></Box>
           <VolatilityIndexHistoryChart row={selected} width={width} height={Math.max(3, contentHeight - boardHeight - 1)} focused={focused} />
         </>}
       </>}

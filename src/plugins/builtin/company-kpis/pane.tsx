@@ -1,3 +1,4 @@
+import { formatDay } from "../../../utils/day-format";
 import { useCallback, useMemo, useRef } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
@@ -21,7 +22,7 @@ import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedCompanyData, loadCompanyData, KPI_UNAVAILABLE, validateCompanyData, type CompanyDataset, type CompanyMode } from "./client";
 import { useCompanyEvidence } from "./screenshot-evidence";
-import { allGuidance, allObservations, basisLabel, changeText, changeTone, companyCellText, companyColumns, companyEmptyState, dimensionLabel, directionLabel, directionTone, fitCompanyColumns, guideGroupKey, guidanceSeries, guidanceIssueNote, fiscalLabel,
+import { allGuidance, allObservations, basisLabel, changeText, changeTone, companyCellDay, companyCellText, companyColumns, companyEmptyState, dimensionLabel, directionLabel, directionTone, fitCompanyColumns, guideGroupKey, guidanceSeries, guidanceIssueNote, fiscalLabel,
   isGuidance, exactObservation, kpiPeriodView, kpiPeriodViews, observationValue, observationChange, observationChart, periodOrder, outcomeLabel, QUIET_COLUMNS, rangeText, scopeWords, seriesDetail, seriesLabel, seriesLabels, seriesName,
   seriesOrder, unitLabel, valueText, companyPreviewNote, type CompanyRow } from "./model";
 import { PriceSparkline } from "../../../components/price-sparkline/view";
@@ -29,6 +30,8 @@ import type { PricePoint } from "../../../types/financials";
 import { toneColor, withoutQuietColumns } from "../shared/research-cells";
 import { logFailure } from "../../../utils/log-failure";
 import { currentKpiSeries } from "./latest";
+import { taiwanRevenueCode, taiwanUsReadthroughTicker } from "../../../api-client/taiwan-revenue";
+import { TaiwanMonthlyStockView, TaiwanUsReadthroughView } from "./taiwan-monthly-view";
 
 /** A locked placeholder, or with `note` the line above them saying what free shows and what Pro adds. */
 type Item = { id: string; row: CompanyRow } | { id: string; row: null; note?: string };
@@ -41,16 +44,16 @@ function DisclosureEvidence({ row, sourceId, onSource, width }: { row: CompanyRo
   // The desktop's detail body already holds the pane's inset.
   return <Box flexDirection="column" paddingX={desktop ? 0 : 1}>
     {row.evidence.length > 1 ? <QueryBar width={Math.max(1, width - 4)} filters={[{ id: "source", label: "Document", value: evidence.id,
-      options: row.evidence.map((entry) => ({ value: entry.id, label: `${entry.publishedAt.slice(0, 10)} · ${entry.title}` })), onChange: onSource }]} /> : null}
+      options: row.evidence.map((entry) => ({ value: entry.id, label: `${formatDay(entry.publishedAt)} · ${entry.title}` })), onChange: onSource }]} /> : null}
     <KeyValueRow label="Value" value={isGuidance(row) ? rangeText(row) : observationValue(row)} detail={row.currency || row.unit === "volume" || row.unit === "count" ? unitLabel(row) : undefined} labelWidth={18} />
-    <KeyValueRow label="Fiscal period" value={row.period.label} detail={row.period.end ? row.period.start ? `${row.period.start} to ${row.period.end}` : `${row.period.kind === "instant" ? "As of" : "Ended"} ${row.period.end}` : "Calendar dates unavailable"} labelWidth={18} />
+    <KeyValueRow label="Fiscal period" value={row.period.label} detail={row.period.end ? row.period.start ? `${formatDay(row.period.start)} to ${formatDay(row.period.end)}` : `${row.period.kind === "instant" ? "As of" : "Ended"} ${formatDay(row.period.end)}` : "Calendar dates unavailable"} labelWidth={18} />
     <KeyValueRow label="Basis" value={basisLabel(row.basis)} labelWidth={18} />
     <KeyValueRow label="Scope" value={(desktop ? scopeWords(seriesLabels(row)) : dimensionLabel(row.dimensions)) || "Consolidated"} labelWidth={18} />
     <KeyValueRow label="Definition" value={row.metric.definition} labelWidth={18} />
     <KeyValueRow label="Revision" value={`${row.revision}${row.current ? " · current" : " · superseded"}${!isGuidance(row) && (row.conflict || row.contested) ? " · conflicting disclosures" : ""}`} labelWidth={18} />
     {row.revisionReason ? <KeyValueRow label="Correction" value={row.revisionReason} labelWidth={18} /> : null}
     {isGuidance(row) ? <>
-      <KeyValueRow label="Issued" value={row.issuedDate} detail={directionLabel(row)} labelWidth={18} />
+      <KeyValueRow label="Issued" value={formatDay(row.issuedDate)} detail={directionLabel(row)} labelWidth={18} />
       <KeyValueRow label="Source range" value={row.rangeText} labelWidth={18} />
       {row.conditions ? <KeyValueRow label="Conditions" value={row.conditions} labelWidth={18} /> : null}
       <KeyValueRow label="Later actual" value={row.actual ? valueText(row, row.actual.value) : "Pending"} detail={row.actual ? outcomeLabel(row) : undefined} labelWidth={18} />
@@ -58,7 +61,7 @@ function DisclosureEvidence({ row, sourceId, onSource, width }: { row: CompanyRo
     <Box key={evidence.id} flexDirection="column" paddingTop={1}>
       <SectionHeading title="Source evidence" />
       <KeyValueRow label="Document" value={evidence.title} labelWidth={18} />
-      <KeyValueRow label="Published" value={evidence.publishedAt.slice(0, 10)} detail={`${evidence.country} · ${evidence.language}`} labelWidth={18} />
+      <KeyValueRow label="Published" value={formatDay(evidence.publishedAt)} detail={`${evidence.country} · ${evidence.language}`} labelWidth={18} />
       <KeyValueRow label="Confidence" value={`${Math.round(evidence.confidence * 100)}%`} detail={evidence.quoteMatchMode === "exact" ? "Exact text match" : "Normalized text match"} labelWidth={18} />
       {/* The filing's own words: on the desktop, the quote block. */}
       {desktop
@@ -101,9 +104,12 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
   const data = resource.data?.payload;
   const kpis = data && "series" in data ? data : null;
   const guidance = data && "guidance" in data ? data : null;
-  const [openingTab] = usePaneSettingValue("tab", "table");
+  const twCode = mode === "kpis" ? taiwanRevenueCode(symbol, exchange) : null;
+  const twUsTicker = mode === "kpis" && !twCode ? taiwanUsReadthroughTicker(symbol, exchange) : null;
+  const hasTwMonthly = Boolean(twCode || twUsTicker);
+  const [openingTab] = usePaneSettingValue("tab", twCode ? "monthly" : "table");
   const [tabValue, setTab] = usePluginPaneState<string>("company:tab", openingTab);
-  const tab = ["table", "chart", "evidence", ...(mode === "guidance" ? ["history"] : [])].includes(tabValue) ? tabValue : "table";
+  const tab = ["table", "chart", "evidence", ...(mode === "guidance" ? ["history"] : []), ...(hasTwMonthly ? ["monthly"] : [])].includes(tabValue) ? tabValue : twCode ? "monthly" : "table";
   const [openingMetric] = usePaneSettingValue("metric", "all");
   const [metric, setMetric] = usePluginPaneState<string>("company:metric", openingMetric);
   const [plotKey, setPlotKey] = usePluginPaneState<string>("company:plot", "");
@@ -186,7 +192,9 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
     selectedId: selected?.id ?? null, onSelect: setSelected, focused: focused && !openRow, enabled: tab === "chart" });
   const signInWall = !data && isCloudSessionRequired(resource.error);
   const { strip, rows: tabRows } = usePaneTabs(symbol && !signInWall ? { tabs: [{ value: "table", label: mode === "guidance" ? "Tracker" : "Table" }, { value: "chart", label: "Chart" },
-    ...(mode === "guidance" ? [{ value: "history", label: "History" }] : []), { value: "evidence", label: "Evidence" }], activeValue: tab,
+    ...(mode === "guidance" ? [{ value: "history", label: "History" }] : []),
+    ...(twCode ? [{ value: "monthly", label: "Monthly Sales" }] : twUsTicker ? [{ value: "monthly", label: "TW Supply Chain" }] : []),
+    { value: "evidence", label: "Evidence" }], activeValue: tab,
     onSelect: (value) => { setTab(value); setOpen(null); }, focused, dense: true } : null);
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => resource.reload(), { focused });
@@ -251,7 +259,7 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
     const text = column.id === "metric" && !columns.some((entry) => entry.id === "basis")
       ? [row.metricId === "eps" ? "EPS" : row.metric.name, seriesDetail(row)].filter(Boolean).join(" · ")
       : companyCellText(row, column.id, observations);
-    return { text, ...(column.id === "value" && !guide ? { value: exactObservation(row as KpiObservation) ? (row as KpiObservation).value : observationValue(row as KpiObservation) } : column.id === "actual" ? { value: guide?.actual?.value } : {}),
+    return { text, ...(column.id === "value" && !guide ? { value: exactObservation(row as KpiObservation) ? (row as KpiObservation).value : observationValue(row as KpiObservation) } : column.id === "actual" ? { value: guide?.actual?.value } : column.id === "issued" || column.id === "published" ? { value: companyCellDay(row, column.id) } : {}),
       color: column.id === "metric" ? colors.textBright : column.id === "value" || column.id === "actual" ? colors.textBright
         : column.id === "outcome" && guide?.actual ? guide.actual.favorable === "beat" ? colors.positive : guide.actual.favorable === "miss" ? colors.negative : colors.text
         : column.id === "period" || column.id === "basis" || column.id === "scope" || column.id === "issued" || column.id === "published" || column.id === "revision" || column.id === "confidence" ? colors.textDim : colors.text,
@@ -259,7 +267,9 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
   };
   return <Box width={width} height={height} flexDirection="column">
     {strip}
-    <PaneStatusBody loading={!data && resource.loading} error={!data && resource.error !== KPI_UNAVAILABLE ? resource.error : null}
+    {tab === "monthly" && twCode ? <TaiwanMonthlyStockView code={twCode} width={width} height={bodyHeight} focused={focused} />
+      : tab === "monthly" && twUsTicker ? <TaiwanUsReadthroughView usTicker={twUsTicker} width={width} height={bodyHeight} focused={focused} />
+      : <PaneStatusBody loading={!data && resource.loading} error={!data && resource.error !== KPI_UNAVAILABLE ? resource.error : null}
       empty={!data && resource.error === KPI_UNAVAILABLE} emptyTitle={KPI_UNAVAILABLE} subject="company disclosures">
       {data ? <DataTableStackView<Item> focused={focused} rootWidth={width} rootHeight={bodyHeight} columns={columns} items={items} getItemKey={getId}
         selection={{ kind: "id", selectedId: selected?.id ?? null, getId, onChange: setSelected }}
@@ -281,6 +291,6 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
           {lockedCount && desktop ? <LockedOverlay rows={lockedCount} text="Upgrade for all disclosures and history" onPress={openUpgrade} /> : null}
         </Box>}
       /> : null}
-    </PaneStatusBody>
+    </PaneStatusBody>}
   </Box>;
 }

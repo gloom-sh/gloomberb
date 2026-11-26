@@ -2,6 +2,10 @@
 interface ExchangeAnnouncement {
   /** Release time, ISO 8601 UTC. */
   date: string;
+  /** The date named in the publisher's catalogue when a publication timestamp is unavailable. */
+  dateBasis?: "catalogue";
+  /** The official publisher when a result combines multiple sources. */
+  publisher?: string;
   headline: string;
   /** The exchange's announcement types ("Quarterly Activities Report", "Interim Results"). */
   types: string[];

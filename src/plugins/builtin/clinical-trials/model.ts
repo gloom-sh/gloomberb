@@ -303,8 +303,8 @@ const TABLE_CHROME = 1 + 2;
 /** The title is what the list is read by: the drug and then the date give way before it has less than this. */
 const TITLE_ROOM_WITH_DRUG = 24;
 const TITLE_ROOM_WITH_DATE = 36;
-/** An ISO day, as every date column reads. */
-const DATE_WIDTH = 10;
+/** A day first (`21 Aug 2026`), as every date column reads. */
+const DATE_WIDTH = 11;
 
 /**
  * The title takes what is left; phase, status and ticker stay narrow and the

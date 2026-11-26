@@ -628,8 +628,8 @@ test("DDIS prints the newer 10-Q's debt as its own table and is dated by it; an 
   data.latestQuarter = quarterOf(data);
   const quarterly = await load(data);
   expect(quarterly.result.sections.map((section) => section.title)).toEqual(["Principal maturity schedule", "Latest 10-Q", "Annual filing history"]);
-  const row = quarterly.text.split("\n").find((line) => line.startsWith("2025-12-31"));
-  for (const cell of ["10-Q", "21.00M", "684.00M", "EUR", "2026-02-10"]) expect(row).toContain(cell);
+  const row = quarterly.text.split("\n").find((line) => line.startsWith("31 Dec 2025"));
+  for (const cell of ["10-Q", "21.00M", "684.00M", "EUR", "10 Feb 2026"]) expect(row).toContain(cell);
   expect(quarterly.line).toBe("Source: SEC EDGAR · 10-Q Wed 31 Dec 2025 · not a live feed (filed data)");
 });
 

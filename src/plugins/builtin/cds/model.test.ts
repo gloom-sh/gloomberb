@@ -377,14 +377,14 @@ describe("5Y spread chart", () => {
       level("2026-09-11", 181),
       level("2026-09-25", 235),
     ], -0.04, 13))).toEqual([
-      { id: "spread", label: "5Y spread", value: "235bp", detail: "2026-09-25" },
+      { id: "spread", label: "5Y spread", value: "235bp", detail: "25 Sep 2026" },
       { id: "1w", label: "1W", value: "0.0bp" },
       { id: "1m", label: "1M", value: "+13.0bp" },
-      { id: "range", label: "Range", value: "181 to 235bp", detail: "since 2026-07-24" },
+      { id: "range", label: "Range", value: "181 to 235bp", detail: "since 24 Jul 2026" },
     ]);
     // A day without enough trades stands on its settlement price, and the level says so beside its date.
     expect(spreadFigures(line([level("2026-09-24", 233), { ...level("2026-09-25", 235), prints: 0, kind: "settlement" }]))[0]?.detail)
-      .toBe("2026-09-25 · settlement");
+      .toBe("25 Sep 2026 · settlement");
     // Without a comparable level the move is left out, not shown as zero.
     expect(spreadFigures(line([level("2026-06-01", 72.5), level("2026-09-25", 60)])).map((item) => item.id))
       .toEqual(["spread", "range"]);
@@ -423,10 +423,10 @@ describe("5Y spread chart", () => {
       range: { low: 21.55, high: 57.65, since: "2026-09-15" },
     });
     expect(spreadFigures(virgin)).toEqual([
-      { id: "spread", label: "5Y upfront", value: "57.6 pts", detail: "2026-10-15 · 500bp coupon" },
+      { id: "spread", label: "5Y upfront", value: "57.6 pts", detail: "15 Oct 2026 · 500bp coupon" },
       { id: "1w", label: "1W", value: "+10.9 pts" },
       { id: "1m", label: "1M", value: "+36.1 pts" },
-      { id: "range", label: "Range", value: "21.6 to 57.6 pts", detail: "since 2026-09-15" },
+      { id: "range", label: "Range", value: "21.6 to 57.6 pts", detail: "since 15 Sep 2026" },
     ]);
     expect([formatPoints(58.2), formatPointsMove(-0.04), formatPointsMove(null)]).toEqual(["58.2 pts", "0.0 pts", MISSING_VALUE]);
   });

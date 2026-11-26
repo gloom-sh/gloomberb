@@ -44,13 +44,13 @@ test("reported percentages fit at normal width and dated rows remain usable thro
   await settleFrame(tui.setup(), 6);
   for (let i = 0; i < 4; i++) await tui.emitKeypress({ name: "right", ctrl: true });
   await settleFrame(tui.setup(), 6);
-  expect(tui.frame()).toContain("2026-08-31");
-  expect(tui.frame()).toContain("2026-08-14");
+  expect(tui.frame()).toContain("31 Aug 2026");
+  expect(tui.frame()).toContain("14 Aug 2026");
   expect(tui.frame()).toContain("25.00%");
   await exportPaneTable("si", "narrow.csv"); expect(takeSavedTextFile()!.text).toBe(full);
   updated = true;
   await tui.emitKeypress({ name: "r" }); await settleFrame(tui.setup(), 10);
-  expect(tui.frame()).toContain("2026-09-15");
+  expect(tui.frame()).toContain("15 Sep 2026");
   expect(cloud).toHaveBeenCalledTimes(2);
   await tui.emitKeypress({ name: "r", ctrl: true }); await settleFrame(tui.setup(), 6);
   expect(cloud).toHaveBeenCalledTimes(2);
@@ -76,7 +76,7 @@ test("the settlements table drives the shares-short chart and keeps its rows in 
   await settleFrame(tui.setup(), 10);
   let frame = tui.frame();
   // Figures lead with the latest settlement, then the legend names the plotted series.
-  expect(frame.split("\n")[0]).toMatch(/Shares short\s+27M\s+2026-09-28/);
+  expect(frame.split("\n")[0]).toMatch(/Shares short\s+27M\s+28 Sep 2026/);
   expect(frame).toMatch(/Change\s+\+3\.8%\s+\+1M/);
   expect(frame).toContain("● Shares short 27M");
   expect(frame).toMatch(/\d+M\s*\n/);
@@ -90,7 +90,7 @@ test("the settlements table drives the shares-short chart and keeps its rows in 
   for (let i = 0; i < 12; i++) await tui.emitKeypress({ name: "down" });
   await settleFrame(tui.setup(), 200);
   frame = tui.frame();
-  expect(frame).toContain("2026-02-28");
+  expect(frame).toContain("28 Feb 2026");
   expect(frame).toContain("● Shares short 13M");
   // Ten rows: one row of figures, the strip, and the table keeps its rows.
   await act(async () => { resize(10); tui.setup().resize(88, 10); });
@@ -100,6 +100,6 @@ test("the settlements table drives the shares-short chart and keeps its rows in 
   const header = lines.findIndex((line) => line.includes("DATE"));
   expect(header).toBe(2);
   expect(lines[1]).toMatch(/^ ● [⠀-⣿]/);
-  expect(lines.slice(header + 1).filter((line) => /\d{4}-\d{2}-\d{2}/.test(line)).length).toBeGreaterThanOrEqual(4);
+  expect(lines.slice(header + 1).filter((line) => /\d{2} [A-Z][a-z]{2} \d{4}/.test(line)).length).toBeGreaterThanOrEqual(4);
   expect(frame).not.toContain("● Shares short");
 });

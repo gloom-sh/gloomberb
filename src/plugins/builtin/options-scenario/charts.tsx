@@ -4,6 +4,7 @@ import { Box, Text } from "../../../ui";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { useThemeColors } from "../../../theme/theme-context";
 import { displayWidth } from "../../../utils/format";
+import { formatDay } from "../../../utils/day-format";
 import { ClippedText } from "../../../components/ui/display";
 import { currencyLabel, scenarioLegsText, scenarioValueUnit, type buildScenario } from "./model";
 
@@ -26,7 +27,7 @@ export function ScenarioPayoffChart({ scenario, width, height, focused = false, 
     const ticks = [0, .25, .5, .75, 1].map((ratio) => ({ ratio, label: (first + ratio * span).toFixed(2) }));
     return { points, overlays, ticks, first, span };
   }, [scenario, colors]);
-  const date = (value: number) => new Date(value).toISOString().slice(0, 10);
+  const date = (value: number) => formatDay(value);
   // The legs the curves value, and the session when it is not the regular one.
   const valued = session ? `valued ${session}` : "";
   const legsRoom = Math.max(0, width - 2 - (valued ? displayWidth(valued) + 3 : 0));
