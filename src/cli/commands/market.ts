@@ -3721,6 +3721,8 @@ function announcementRows(payload: ExchangeAnnouncementsPayload, all: boolean) {
     type: item.types.join("; "),
     priceSensitive: item.priceSensitive,
     url: item.url,
+    ...(item.publisher ? { source: item.publisher } : {}),
+    ...(item.dateBasis ? { dateBasis: item.dateBasis } : {}),
   }));
 }
 

@@ -57,6 +57,24 @@ describe("SEC headless model", () => {
     expect(exchangeReads).toBe(1);
   });
 
+  test("Korean IR materials retain the exchange publisher and the catalogue date", async () => {
+    const url = "https://kind.krx.co.kr/external/dst/irReference/19612/KRAFTON-3Q26%20Earnings_Release_KOR.pdf";
+    const headless = createSecHeadless({
+      loadFilings: async () => [],
+      loadExchange: async () => ({
+        exchange: "KRX", symbol: "259960", name: "Krafton", page: "https://dart.fss.or.kr/",
+        total: null, retrievedAt: "2026-11-25T12:00:00Z", announcements: [{
+          date: "2026-11-16", dateBasis: "catalogue", headline: "KRAFTON-3Q26 Earnings Release",
+          types: ["Investor relations material"], publisher: "KRX KIND", priceSensitive: null,
+          fileSize: null, documentKey: url, url,
+        }],
+      }),
+    });
+    const result = await headless.load({ ...args(15), symbols: ["259960:KRX"] }, createTestHeadlessContext());
+    expect(result.columns?.[0]).toMatchObject({ header: "Date" });
+    expect(result.rows[0]).toMatchObject({ filedAt: "2026-11-16", dateBasis: "catalogue", url, source: "KRX KIND" });
+  });
+
   test("an extended JPX filing read retains an earnings Q&A beyond the first 50 rows", async () => {
     const url = "https://www2.jpx.co.jp/disc/72030/140120260804507923.pdf";
     const announcement = {
