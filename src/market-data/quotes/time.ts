@@ -111,17 +111,23 @@ function readQuoteBook(quote: Quote | null | undefined, now: number): QuoteBookR
 /**
  * Date the book on its own clock, never the trade's. Only today's regular
  * session can omit the date and session. Missing time is explicit.
+ *
+ * `weekday: false` dates it as a table does (`26 Nov 00:59 UTC`, bookStamp),
+ * for a place too narrow for `Thu 26 Nov 00:59 UTC`: the date stays, the
+ * weekday that repeats it goes.
  */
 export function quoteBookTimeParts(
   quote: Quote | null | undefined,
   now = Date.now(),
+  { weekday = true }: { weekday?: boolean } = {},
 ): string[] {
   const book = readQuoteBook(quote, now);
   if (!book) return [];
   const feed = book.dataSource === "live" ? "real-time" : book.dataSource === "snapshot" ? "snapshot" : book.dataSource === "delayed" ? "delayed" : null;
   if (book.time == null) return [QUOTE_BOOK_UNDATED, book.sessionWords, feed].filter((part): part is string => part != null);
   if (book.current) return [asOfClock(book.time, now), ...(feed ? [feed] : [])];
-  return [`${formatUtcDayTime({ time: book.time, dateOnly: false }, now)} UTC`, book.sessionWords!, ...(feed ? [feed] : [])];
+  const dated = weekday ? formatUtcDayTime({ time: book.time, dateOnly: false }, now) : bookStamp(book.time, now);
+  return [`${dated} UTC`, book.sessionWords!, ...(feed ? [feed] : [])];
 }
 
 export function formatQuoteBookTime(quote: Quote | null | undefined, now = Date.now()): string | null {
