@@ -5,7 +5,7 @@ import { hasStatementGap } from "./statement-gaps";
 const DAY_MS = 86_400_000;
 
 /** A per-share amount the row reports: finite, not declared unavailable, and diluted EPS on a resolved share basis. */
-function reportedEarnings(row: FinancialStatement, field: EarningsField): number | null {
+export function reportedEarnings(row: FinancialStatement, field: EarningsField): number | null {
   if (hasStatementGap(row, field) || (field === "eps" && row.epsBasis?.status === "unresolved")) return null;
   const value = row[field];
   return typeof value === "number" && Number.isFinite(value) ? value : null;

@@ -75,8 +75,47 @@ describe("SEC headless model", () => {
     expect(result.rows[0]).toMatchObject({ filedAt: "2026-11-16", dateBasis: "catalogue", url, source: "KRX KIND" });
   });
 
-  test("an extended JPX filing read retains an earnings Q&A beyond the first 50 rows", async () => {
-    const url = "https://www2.jpx.co.jp/disc/72030/140120260804507923.pdf";
+  test.each(["ICT:XPHS", "ICT.PS"])("%s opens the Philippine issuer's original dated filing", async (symbol) => {
+    const url = "https://cdnweb.ictsi.com/s3fs-public/2026-11/SEC%20Form%2017-Q%20%28Quarterly%20Report%29%20Q3%202026.pdf";
+    const headless = createSecHeadless({
+      loadFilings: async () => [],
+      loadExchange: async (listing) => {
+        expect(listing).toMatchObject({ symbol, exchange: "XPHS" });
+        return { exchange: "XPHS", symbol: "ICT", name: "ICTSI", page: "https://investors.ictsi.com/company-disclosures/sec-filings",
+          total: 1, retrievedAt: "2026-11-26T12:00:00Z", announcements: [{
+            date: "2026-11-11T00:00:00.000Z", dateBasis: "catalogue", headline: "SEC Form 17-Q (Quarterly Report) Q3 2026",
+            types: ["SEC Form 17-Q"], publisher: "Issuer IR", priceSensitive: null, fileSize: null, documentKey: url, url,
+          }] };
+      },
+    });
+    const result = await headless.load({ ...args(15), symbols: [symbol] }, createTestHeadlessContext());
+    expect(result.rows[0]).toMatchObject({ url, source: "Issuer IR", filedAt: "2026-11-11T00:00:00.000Z" });
+  });
+
+  test.each(["1023:XKLS", "1023.KL"])("%s reads the same issuer filing catalogue", async (symbol) => {
+    const url = "https://www.cimb.com/content/3q26-cimb-group-financial-statement.pdf";
+    const dateSource = "https://www.cimb.com/en/investor-relations/announcements-events/investor-engagements.html";
+    const headless = createSecHeadless({
+      loadFilings: async () => [],
+      loadExchange: async (request) => {
+        expect(request).toMatchObject({ symbol, exchange: "BURSAMY" });
+        return { exchange: "BURSAMY", symbol: "1023", name: "CIMB Group Holdings", page: "https://www.cimb.com/", dateSource,
+          total: 1, retrievedAt: "2026-11-25T12:00:00Z", announcements: [{
+            date: "2026-11-25", dateBasis: "catalogue", headline: "Third-quarter results",
+            types: ["Financial Results"], publisher: "Issuer IR", priceSensitive: null, fileSize: null, documentKey: url, url,
+          }],
+        };
+      },
+    });
+    const result = await headless.load({ ...args(15), argument: symbol, symbols: [symbol] }, createTestHeadlessContext());
+    expect(result.rows[0]).toMatchObject({ filedAt: "2026-11-25", dateBasis: "catalogue", url, source: "Issuer IR" });
+    expect(result.metadata?.exchangeDateSource).toBe(dateSource);
+  });
+
+  test.each([
+    { exchange: "JPX", symbol: "7203:JPX", url: "https://www2.jpx.co.jp/disc/72030/140120260804507923.pdf" },
+    { exchange: "BURSAMY", symbol: "5200:XKLS", url: "https://www.insage.com.my/ir/cmn/Announcement.aspx?NewsID=202610215100007&Symbol=5200" },
+  ])("an extended $exchange filing read retains disclosures beyond the first 50 rows", async ({ exchange, symbol, url }) => {
     const announcement = {
       date: "2026-08-04", headline: "Q&A summary of the earnings briefing",
       types: ["Financial information"], priceSensitive: null, fileSize: null,
@@ -88,12 +127,11 @@ describe("SEC headless model", () => {
     const headless = createSecHeadless({
       loadFilings: async () => [],
       loadExchange: async ({ limit }) => ({
-        exchange: "JPX", symbol: "7203", name: "Toyota Motor Corporation",
-        page: "https://www.jpx.co.jp/english/listing/co-search/index.html", total: null,
+        exchange, symbol, name: null, page: url, total: null,
         retrievedAt: "2026-11-25T12:00:00Z", announcements: [...recent, announcement].slice(0, limit),
       }),
     });
-    const result = await headless.load({ ...args(200), symbols: ["7203:JPX"] }, createTestHeadlessContext());
+    const result = await headless.load({ ...args(200), symbols: [symbol] }, createTestHeadlessContext());
     expect(result.rows[50]).toMatchObject({ filedAt: announcement.date, filing: announcement.headline, url });
   });
 

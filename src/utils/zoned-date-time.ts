@@ -148,6 +148,7 @@ const TIME_ZONE_LABELS: Readonly<Record<string, string | SeasonNames>> = {
   "Asia/Kolkata": "IST",
   "Asia/Hong_Kong": "HKT",
   "Asia/Singapore": "SGT",
+  "Asia/Manila": "PHT",
   "Asia/Tokyo": "JST",
   "Asia/Seoul": "KST",
   "Australia/Sydney": "AET",

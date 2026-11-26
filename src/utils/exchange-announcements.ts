@@ -1,5 +1,6 @@
 import { listingSuffixExchange } from "../sources/listing-symbols";
-import { canonicalExchange, parsePublicTickerKey } from "./exchanges";
+import { canonicalExchange, parsePublicTickerKey, typedExchangeVenue } from "./exchanges";
+import { nonUsSecListingVenue } from "./sec";
 
 /** Where a listing's company announcements are published: the venue's page for the company, or its disclosure search. */
 export interface ExchangeAnnouncementsPage {
@@ -14,7 +15,7 @@ const NASDAQ_NORDIC = { name: "Nasdaq Nordic company news", url: "https://www.na
 const IDX_ALIASES = new Set(["IDX", "XIDX", "JKT"]);
 
 export function exchangeAnnouncementsVenue(exchange?: string | null): string {
-  const venue = canonicalExchange(exchange ?? "");
+  const venue = typedExchangeVenue(exchange ?? undefined) ?? canonicalExchange(exchange ?? undefined);
   return IDX_ALIASES.has(venue) ? "JAKARTA" : venue;
 }
 
@@ -38,6 +39,7 @@ const PAGES: Readonly<Record<string, (code: string) => ExchangeAnnouncementsPage
   HNX: (code) => ({ name: "Hanoi Stock Exchange issuer disclosures", url: `https://www.hnx.vn/cophieu-etfs/chi-tiet-chung-khoan-ny-${encodeURIComponent(code.toLowerCase())}.html?_des_tab=3` }),
   HOSE: () => ({ name: "Ho Chi Minh Stock Exchange issuer disclosures", url: "https://www.hsx.vn/vi/tin-tuc/tin-to-chuc-niem-yet" }),
   JAKARTA: () => ({ name: "Indonesia Stock Exchange disclosures", url: "https://www.idx.id/en/listed-companies/disclosure" }),
+  XPHS: () => ({ name: "Philippine Stock Exchange company announcements", url: "https://edge.pse.com.ph/announcements/form.do" }),
   JPX: () => ({ name: "TDnet timely disclosures", url: "https://www.release.tdnet.info/inbs/I_main_00.html" }),
   HKEX: () => ({ name: "HKEXnews", url: "https://www1.hkexnews.hk/search/titlesearch.xhtml?lang=en" }),
   SWX: () => ({ name: "SIX Swiss Exchange", url: "https://www.six-group.com/en/market-data/news-tools/equity-issuer-news.html" }),
@@ -47,6 +49,7 @@ const PAGES: Readonly<Record<string, (code: string) => ExchangeAnnouncementsPage
   TPEX: () => PAGES.TWSE!(""),
   NSE: () => ({ name: "NSE corporate announcements", url: "https://www.nseindia.in/companies-listing/corporate-filings-announcements" }),
   BSE: () => ({ name: "BSE corporate announcements", url: "https://www.bseindia.com/corporates/ann.html" }),
+  BURSAMY: () => ({ name: "Bursa Malaysia company announcements", url: "https://www.bursamalaysia.com/market_information/announcements/company_announcement" }),
   SSE: () => ({ name: "CNINFO filings", url: "https://www.cninfo.com.cn/new/index" }),
   SZSE: () => PAGES.SSE!(""),
   SGX: () => ({ name: "SGX company announcements", url: "https://www.sgx.com/securities/company-announcements" }),
@@ -55,11 +58,14 @@ const PAGES: Readonly<Record<string, (code: string) => ExchangeAnnouncementsPage
   BIST: () => ({ name: "KAP disclosures", url: "https://www.kap.org.tr/en/bildirim-sorgu" }),
 };
 
-/**
- * The announcements page for a listing on a venue abroad: NST on
- * ASX is ASX's announcements page for NST, a TSX listing SEDAR+. Null for a
- * US venue and for a venue Gloom knows no page for.
- */
+export function issuerFilingSuffixVenue(symbol: string): string | undefined {
+  if (/^\d{4}\.KL$/i.test(symbol)) return "BURSAMY";
+  if (/^[A-Z]{4}\.JK$/i.test(symbol)) return "JAKARTA";
+  if (/^[A-Z0-9][A-Z0-9&-]*\.BK$/i.test(symbol)) return "SET";
+  return nonUsSecListingVenue(symbol) ?? undefined;
+}
+
+/** The overseas venue's disclosure page, when the listing has one. */
 function exchangeAnnouncementsPage(symbol: string, exchange: string | null | undefined): ExchangeAnnouncementsPage | null {
   const page = PAGES[exchangeAnnouncementsVenue(exchange)];
   const code = symbol.trim().toUpperCase();
@@ -68,7 +74,9 @@ function exchangeAnnouncementsPage(symbol: string, exchange: string | null | und
 
 const PUBLISHERS: Readonly<Record<string, string>> = {
   TWSE: "MOPS", TPEX: "MOPS",
+  BURSAMY: "Bursa Malaysia",
   JAKARTA: "Indonesia Stock Exchange",
+  XPHS: "Philippine Stock Exchange",
   ASX: "ASX", CXA: "ASX", HKEX: "HKEXnews", SWX: "SIX Swiss Exchange", NSE: "NSE", SET: "SET",
   JPX: "TDnet", HNX: "HNX", HOSE: "HOSE", KRX: "DART", KOSDAQ: "DART", SGX: "SGX", SSE: "CNINFO", SZSE: "CNINFO",
 };
@@ -110,8 +118,7 @@ export function isRoutineReturn(item: { category?: string | null }): boolean {
  */
 export function listingAnnouncementsPage(key: string, exchange?: string | null): ExchangeAnnouncementsPage | null {
   const parsed = parsePublicTickerKey(key.trim());
-  const suffixed = parsed.exchange ? null
-    : listingSuffixExchange(parsed.symbol) ?? (/\.JK$/i.test(parsed.symbol) ? "JAKARTA" : null);
+  const suffixed = parsed.exchange ? null : listingSuffixExchange(parsed.symbol) ?? issuerFilingSuffixVenue(parsed.symbol);
   const venue = parsed.exchange || suffixed || exchange;
   const symbol = suffixed ? parsed.symbol.replace(/\.[A-Z]+$/i, "") : parsed.symbol;
   const issuerPage = !listsExchangeAnnouncements(venue) && ISSUER_RESULTS_PAGES[`${symbol.toUpperCase()}:${canonicalExchange(venue ?? "")}`];

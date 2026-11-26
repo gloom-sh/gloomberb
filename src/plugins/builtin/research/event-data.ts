@@ -26,6 +26,7 @@ export function useEventData(variant: "corporate-actions" | "earnings-estimates"
   const { financials: tickerFinancials } = usePaneTicker();
   const quarterlyStatements = tickerFinancials?.quarterlyStatements;
   const annualStatements = tickerFinancials?.annualStatements;
+  const statementScope = tickerFinancials?.statementScope;
   const financialCurrency = tickerFinancials?.financialCurrency;
   const trailingEps = tickerFinancials?.fundamentals?.eps;
   const trailingEpsCurrency = tickerFinancials?.fundamentals?.epsCurrency;
@@ -43,13 +44,14 @@ export function useEventData(variant: "corporate-actions" | "earnings-estimates"
       quarterlyStatements: quarterlyStatements ?? [],
       // Their last end names the fiscal quarters (Q1 FY2027), as GUIDE and ERN name them.
       annualStatements: annualStatements ?? [],
+      statementScope,
       financialCurrency,
       fundamentals: { eps: trailingEps, epsCurrency: trailingEpsCurrency, financialCurrency: fundamentalsCurrency, marketCapCurrency, trailingEpsSource },
       quote: quoteCurrency || quoteType || quoteName ? { currency: quoteCurrency ?? "", instrumentType: quoteType, name: quoteName, exchangeName: quoteExchange } : null,
       quoteMetadata: metadataType ? { instrumentType: metadataType } : null,
     } : null),
     [annualStatements, financialCurrency, fundamentalsCurrency, marketCapCurrency, metadataType, quarterlyStatements, quoteCurrency, quoteExchange, quoteName, quoteType,
-      trailingEps, trailingEpsCurrency, trailingEpsSource],
+      statementScope, trailingEps, trailingEpsCurrency, trailingEpsSource],
   );
   const actionsLoader = useCallback((nextSymbol: string, nextExchange: string, forceRefresh: boolean) => {
     if (!dataProvider?.getCorporateActions) throw new Error("Corporate actions source unavailable");

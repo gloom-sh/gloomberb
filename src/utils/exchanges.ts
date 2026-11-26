@@ -47,6 +47,7 @@ export const EXCHANGE_TIME_ZONES: Record<string, string> = {
   LSE: "Europe/London",
   ASX: "Australia/Sydney",
   SGX: "Asia/Singapore",
+  XPHS: "Asia/Manila",
   HOSE: "Asia/Ho_Chi_Minh",
   HNX: "Asia/Ho_Chi_Minh",
   KRX: "Asia/Seoul",
