@@ -1,4 +1,5 @@
 import { splitShareTerms } from "../../../market-data/split-terms";
+import { isIsoCurrencyCode } from "../../../utils/crypto-pair";
 import type { CatalystEvent, CatalystFilters, CatalystResponse } from "../../../api-client/catalysts";
 import { catalystDate } from "../catalysts/model";
 import type {
@@ -136,19 +137,33 @@ function sortedQuarterlyStatements(
     .sort((left, right) => left.date.localeCompare(right.date));
 }
 
-function statementForEarningsDate(
+function matchingEarningsStatements(
   quarterlyStatements: readonly FinancialStatement[],
   earning: CorporateActionsData["earnings"][number],
-): FinancialStatement | undefined {
+): FinancialStatement[] {
   // Announcement proximity cannot establish which quarter a result describes:
   // only a stated fiscal quarter can. Vendor period aliases are usable only
   // when the statement retains that identity.
-  const matches = earning.fiscalPeriod
+  return earning.fiscalPeriod
     ? quarterlyStatements.filter((statement) => inFiscalMonth(statement.date, earning.fiscalPeriod))
     : earning.dateType === "fiscal-period-end"
       ? quarterlyStatements.filter((statement) => statement.date === earning.date || statement.providerDate === earning.date)
       : [];
+}
+
+function statementForEarningsDate(quarterlyStatements: readonly FinancialStatement[], earning: CorporateActionsData["earnings"][number]): FinancialStatement | undefined {
+  const matches = matchingEarningsStatements(quarterlyStatements, earning);
   return matches.length === 1 ? matches[0] : undefined;
+}
+
+function releaseRevenueFor(earning: CorporateActionsData["earnings"][number], statementCurrency?: string) {
+  const release = earning.reportedRevenue;
+  if (!release || release.source !== "press-release" || release.periodKind !== "quarter"
+    || earning.dateStatus !== "reported" || !Number.isFinite(earning.epsActual) || earning.dateType !== "announcement"
+    || !/^\d{4}-(0[1-9]|1[0-2])$/.test(release.fiscalPeriod) || release.fiscalPeriod !== earning.fiscalPeriod
+    || !Number.isFinite(release.amount) || release.amount < 0 || !isIsoCurrencyCode(release.currency)
+    || (statementCurrency && statementCurrency !== release.currency)) return undefined;
+  return release;
 }
 
 function estimateKey(estimate: AnalystEstimateRecord): string {
@@ -421,7 +436,10 @@ export function buildEventRows(
   const reportedCurrency = feedCurrency && fundamentalsEpsCurrency(financials) === feedCurrency ? feedCurrency : undefined;
   for (const [index, earning] of earnings.entries()) {
     // A pending announcement must never inherit the previous report's actuals.
-    const statement = earning.epsActual == null ? undefined : statementForEarningsDate(quarterlyStatements, earning);
+    const matches = earning.epsActual == null ? [] : matchingEarningsStatements(quarterlyStatements, earning);
+    const statement = matches.length === 1 ? matches[0] : undefined;
+    const statementCurrency = statement?.currency ?? financials?.financialCurrency;
+    const release = matches.length <= 1 && statement?.totalRevenue == null ? releaseRevenueFor(earning, statementCurrency) : undefined;
     const surprise = epsSurprise(earning.epsActual, earning.epsEstimate);
     // Against a loss or zero estimate no percentage is shown, the source's either.
     const surpriseNotMeaningful = earning.epsActual != null && isNotMeaningful(surprise);
@@ -438,10 +456,10 @@ export function buildEventRows(
       ...(earning.time?.trim() ? { reportTime: earning.time.trim() } : {}),
       detail: upcomingEarningsDetail(earning),
       epsCurrency: earning.currency ?? (earning.epsActual == null ? feedCurrency : reportedCurrency),
-      revenueCurrency: statement ? statement.currency ?? financials?.financialCurrency : undefined,
+      revenueCurrency: release?.currency ?? (statement ? statementCurrency : undefined),
       qEps: earning.epsActual ?? earning.epsEstimate,
       ...(earning.streetEps ? { streetEps: earning.streetEps, gaapEps: earning.gaapEps } : {}),
-      qRevenue: statement?.totalRevenue,
+      qRevenue: statement?.totalRevenue ?? release?.amount,
       earningsState: earning.epsActual == null ? "pending" : "reported",
       epsActual: earning.epsActual,
       epsEstimate: earning.epsEstimate,

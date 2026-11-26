@@ -231,12 +231,13 @@ function definedFields<T extends object>(row: T): T {
 /** Corporate-actions earnings rows, as events, EE and the `earnings` resolution read them. */
 const ACTION_ROWS: ReportRowAdapter<EarningsAction> = {
   slot: (row) => ({ date: row.date, dateStatus: earningsDateStatus(row.dateStatus), epsActual: row.epsActual }),
-  reported: (row, epsActual) => withSurprise({ ...row, dateStatus: "reported", ...(row.epsActual == null && epsActual != null ? { epsActual } : {}) }, row),
+  reported: ({ reportedRevenue: _, ...row }, epsActual) => withSurprise({ ...row, dateStatus: "reported", ...(row.epsActual == null && epsActual != null ? { epsActual } : {}) }, row),
   fromCalendar(report, row) {
     // The calendar's consensus goes with its date; without one, the record's stays.
     const estimate = report.epsEstimate != null;
     return withSurprise(definedFields<EarningsAction>({
       ...row,
+      reportedRevenue: undefined,
       date: report.date,
       dateType: "announcement",
       time: report.timing ? TIME_TEXT[report.timing] : row?.time,

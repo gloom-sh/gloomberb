@@ -244,7 +244,7 @@ export function buildEventDetail({
   if (row.dateEvidence) comparison.push(detailRow("Period evidence", row.dateEvidence.accessionNumber, `filed ${row.dateEvidence.filed}`));
   if (row.fetchedAt) comparison.push(detailRow("As of", row.fetchedAt));
   if (row.qRevenue == null && row.earningsState === "reported") {
-    comparison.push(detailNote("Quarterly revenue unavailable: no matching statement period was identified."));
+    comparison.push(detailNote("Quarterly revenue unavailable for this report."));
   }
   sections.push({ title: "EPS comparison", blocks: comparison });
 
