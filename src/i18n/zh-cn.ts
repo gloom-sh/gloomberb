@@ -1922,7 +1922,7 @@ export const zhCN: Record<string, string> = {
   "Manage Pro plan": "管理 Pro 套餐",
   "also": "另外",
   "The chart tool icons sit over its top-left corner. Most terminals keep shift-drag and option-drag for their own text selection, so pick the tool there instead.": "图表工具图标位于左上角。多数终端把 shift 拖动和 option 拖动留给自身的文本选择，请改在那里选择工具。",
-  "also {target}": "另见 {target}",
+  "also {target}": "也绑定到 {target}",
   "custom, default {chord}": "自定义，默认 {chord}",
   "none": "无",
   "That key would fire while typing. Use Ctrl, Cmd, Alt or a function key.": "这个键在打字时会被触发，请使用 Ctrl、Cmd、Alt 或功能键。",

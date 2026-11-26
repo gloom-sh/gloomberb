@@ -1922,7 +1922,7 @@ export const zhTW: Record<string, string> = {
   "Manage Pro plan": "管理 Pro 方案",
   "also": "另見",
   "The chart tool icons sit over its top-left corner. Most terminals keep shift-drag and option-drag for their own text selection, so pick the tool there instead.": "圖表工具圖示位於左上角。多數終端機會把 shift 拖曳和 option 拖曳保留給自身的文字選取，請改在那裡選擇工具。",
-  "also {target}": "另見 {target}",
+  "also {target}": "也綁定到 {target}",
   "custom, default {chord}": "自訂，預設 {chord}",
   "none": "無",
   "That key would fire while typing. Use Ctrl, Cmd, Alt or a function key.": "這個鍵在打字時會被觸發，請使用 Ctrl、Cmd、Alt 或功能鍵。",
