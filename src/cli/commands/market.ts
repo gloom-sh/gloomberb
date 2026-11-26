@@ -1190,6 +1190,7 @@ function corporateActionRows(data: CorporateActionsData) {
         detail: [event.epsActual == null ? `est ${eps(event.epsEstimate, unit)}` : `eps ${eps(event.epsActual, unit)}`,
           ...earningsDetailParts(event)].join(", ") + (note ? ` (${note})` : ""),
         epsActual: event.epsActual,
+        ...(event.streetEps ? { streetEps: event.streetEps, gaapEps: event.gaapEps } : {}),
         epsEstimate: event.epsEstimate,
         epsBasis: showsEpsBasis({ epsActual: event.epsActual, epsBasis: basis }) ? epsBasisName(basis) : undefined,
         ...(isProvisionalActual(event) ? { epsProvisional: true } : {}),
@@ -1249,6 +1250,7 @@ function earningsRows(events: ResolvedEarningsEvent[]) {
     epsEstimate: event.epsEstimate,
     epsActual: event.epsActual,
     revenueEstimate: event.revenueEstimate,
+    ...(event.streetEps ? { epsBasis: event.epsBasis, streetEps: event.streetEps, gaapEps: event.gaapEps } : {}),
     revenueActual: event.revenueActual,
   }));
 }

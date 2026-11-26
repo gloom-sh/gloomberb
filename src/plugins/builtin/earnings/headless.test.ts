@@ -61,6 +61,18 @@ test("ERN rows carry each quarter's basis, the estimate's analysts and whether t
   ]);
 });
 
+test("ERN history and the reported board do not pair company-adjusted diluted EPS with a street consensus", async () => {
+  const streetEps = { actual: 9.16, actualBasis: "including-stock-compensation" as const, estimate: 6.55, analysts: 8 };
+  const filed = report({ symbol: "DELL", date: today, epsActual: 9.45, epsBasis: "company-adjusted", epsActualSource: "filing", dateStatus: "reported", gaapEps: 8.82, streetEps });
+  const sources = {
+    calendar: async () => ({ asOf: history.asOf, from: today, to: today, reports: [{ ...filed, averageReports: 0, averageMove: null }] }),
+    history: async () => ({ ...history, symbol: "DELL", reports: [filed] }), upcoming: async () => [],
+  };
+  const single = await createEarningsHeadless(sources).load({ ...args, argument: "DELL", symbols: ["DELL"], rawArgument: "DELL" }, context);
+  const board = await createEarningsBoardHeadless(sources).load({ ...args, argument: null, symbols: [], rawArgument: "" }, context);
+  for (const result of [single, board]) expect(result.rows[0]).toMatchObject({ epsActual: 9.45, epsBasis: "company-adjusted", epsEstimate: null, epsSurprise: null, epsActualProvisional: false, gaapEps: 8.82, streetEps });
+});
+
 test("a REIT's next report shows the calendar's FFO consensus labelled adjusted, on ERN <ticker> and the board", async () => {
   const pld = report({ symbol: "PLD", name: "Prologis, Inc.", date: addDays(today, 2), timing: "bmo", timingSource: "calendar",
     fiscalPeriod: "2026-09", epsEstimate: 1.58, epsAnalysts: 2, epsBasis: "adjusted", dateStatus: "confirmed" });
