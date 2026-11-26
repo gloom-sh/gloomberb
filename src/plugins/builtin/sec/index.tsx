@@ -3,7 +3,7 @@ import type { PluginModule } from "../plugin-module";
 import type { SecFilingDocument, SecFilingItem } from "../../../types/data-provider";
 import { apiClient } from "../../../api-client";
 import { useAsyncResource } from "../../../public/react";
-import { localFilingListing, localFilingRows } from "./exchange-filings";
+import { JPX_FILING_HISTORY_LIMIT, localFilingListing, localFilingRows } from "./exchange-filings";
 import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery, useTickerFinancials } from "../../../market-data/hooks";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { useShortcut } from "../../../react/input";
@@ -374,7 +374,11 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   const local = ticker && !forms && eligibleTicker ? localFilingListing(ticker.metadata.ticker, ticker.metadata.exchange) : null;
   const localSymbol = local?.symbol;
   const localVenue = local?.exchange;
-  const readLocal = useCallback(() => apiClient.getCloudExchangeAnnouncements({ symbol: localSymbol!, exchange: localVenue!, limit: 50 }), [localSymbol, localVenue]);
+  const readLocal = useCallback(() => apiClient.getCloudExchangeAnnouncements({
+    symbol: localSymbol!,
+    exchange: localVenue!,
+    limit: localVenue === "JPX" ? JPX_FILING_HISTORY_LIMIT : 50,
+  }), [localSymbol, localVenue]);
   const localFeed = useAsyncResource(localSymbol && localVenue ? readLocal : null);
   const localRows = useMemo(() => localFeed.data && localVenue && formGroup === ALL_FORMS && issuerCik === ALL_FORMS
     ? localFilingRows(localFeed.data, showSupplements) : [], [localFeed.data, localSymbol, localVenue, formGroup, issuerCik, showSupplements]);
