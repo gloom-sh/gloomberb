@@ -117,15 +117,63 @@ function frame() {
   return tui.frame();
 }
 
-test("the historical statement's basis travels with both its visible quarter and its export", async () => {
-  const statementScope = { registrant: "0002128626", entity: "corteva-consolidated", basis: "predecessor" as const, label: "Corteva consolidated (accounting predecessor)" };
-  const data = { annualStatements: [], quarterlyStatements: [{ statementScope, date: "2026-09-30", currency: "USD", totalRevenue: 2458e6 }], priceHistory: [], statementScope };
-  await mount(data, "quarterly", 160);
-  expect(frame()).toContain(statementScope.label);
-  const { result, csv } = await outputs(data, "quarterly");
-  expect(row(result, "income:revenue").cells[0]?.value).toBe(2458e6);
-  expect(csv).toContain(`Statement basis,${statementScope.label}`);
-  expect(csv).toContain("2026-09-30");
+const PREDECESSOR = { registrant: "0002128626", entity: "corteva-consolidated", basis: "predecessor" as const, label: "Corteva consolidated (accounting predecessor)" };
+
+/** A spun-off listing's quarter, filed in its predecessor's accounts when scoped. */
+function predecessorQuarter(scoped: boolean, review?: "pending"): TickerFinancials {
+  const scope = scoped ? { statementScope: PREDECESSOR } : {};
+  return {
+    annualStatements: [],
+    quarterlyStatements: [{ ...scope, date: "2026-09-30", currency: "USD", totalRevenue: 2458e6 }],
+    priceHistory: [],
+    ...scope,
+    ...(review ? { statementReview: { status: review, reviewedThrough: "2026-11-01" } } : {}),
+  };
+}
+
+/** The frame's text without its spacing, so a note wraps wherever the width breaks it. */
+const unspaced = (text: string) => text.replace(/[\s│┌┐└┘─]/g, "");
+const frameText = () => unspaced(frame());
+
+async function pressSection(key: string) {
+  await act(async () => {
+    tui.setup().mockInput.pressKey(key);
+    await tui.setup().renderOnce();
+  });
+  await act(async () => tui.setup().renderOnce());
+}
+
+// The query bar's meta gives way first, so the basis is said under it, whole at any width.
+for (const width of [52, 160]) {
+  for (const review of [undefined, "pending"] as const) {
+    test(`a scoped series says its basis whole on statements and ratios at ${width} columns${review ? " with a filing under review" : ""}`, async () => {
+      const data = predecessorQuarter(true, review);
+      const note = `Statement basis: ${PREDECESSOR.label}.${review ? " New filing under review." : ""}`;
+      await mount(data, "quarterly", width);
+      expect(frameText()).toContain(unspaced(note));
+      const statements = await outputs(data, "quarterly");
+      expect(row(statements.result, "income:revenue").cells[0]?.value).toBe(2458e6);
+      expect(statements.csv).toContain(`\nAs of,2026-09-30\nStatement basis,${PREDECESSOR.label}\nCurrency,USD\nUnit,bn\nGrowth,QoQ`);
+
+      await pressSection("4");
+      expect(frame()).toContain("Profitability");
+      expect(frameText()).toContain(unspaced(note));
+      await exportPaneTable(PANE_ID, "financials.csv");
+      expect(takeSavedTextFile()!.text).toContain(`\nAs of,2026-09-30\nStatement basis,${PREDECESSOR.label}\nCurrency,USD`);
+    });
+  }
+}
+
+test("statements with no scope add no basis note and keep a filing under review in the query bar", async () => {
+  for (const width of [52, 160]) {
+    await mount(predecessorQuarter(false), "quarterly", width);
+    expect(frameText()).not.toContain("Statementbasis");
+    const { csv } = await outputs(predecessorQuarter(false), "quarterly");
+    expect(csv).not.toContain("Statement basis");
+  }
+  await mount(predecessorQuarter(false, "pending"), "quarterly", 160);
+  expect(frame().split("\n")[0]).toContain("New filing under review · QoQ");
+  expect(frameText()).not.toContain("Statementbasis");
 });
 
 test("actual financial table and CSV retain the derived TTM window and known field publication dates", async () => {
