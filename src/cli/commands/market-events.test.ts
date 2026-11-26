@@ -3,6 +3,7 @@ import { createTestCliContext } from "../../test-support/cli-context";
 import { serializeCliResult } from "../result";
 import { DEFAULT_CLI_OPTIONS } from "../options";
 import { formatFreshnessLine } from "../pane-functions/freshness";
+import type { EarningsAction } from "../../types/financials";
 import { marketDataCliCommands } from "./market";
 
 const events = marketDataCliCommands.find((command) => command.name === "events")!;
@@ -25,7 +26,7 @@ async function eventRows(earnings: unknown[], actions: { dividends?: unknown[]; 
 }
 
 // PLTR as Gloom Cloud serves it: two adjusted quarters, two GAAP ones, an older one with no basis, and the next report.
-const PLTR = [
+const PLTR: EarningsAction[] = [
   { date: "2026-11-02", dateType: "announcement", currency: "USD", fiscalPeriod: "2026-09", epsEstimate: 0.41222, epsAnalysts: 24,
     epsBasis: null, dateStatus: "confirmed" },
   { date: "2026-08-03", dateType: "announcement", currency: "USD", fiscalPeriod: "2026-06", epsEstimate: 0.28, epsActual: 0.31,
@@ -41,7 +42,7 @@ test("events preserve earnings inputs in NDJSON while formatting known bases, pe
   expect(rows.map((row) => row.detail)).toEqual([
     "est $0.41, confirmed, 24 analysts (Sep 2026)",
     "eps $0.31, EPS basis unconfirmed (Jun 2026)",
-    "eps $0.24, GAAP, +0.07 vs est (Dec 2025)",
+    "eps $0.24, GAAP (Dec 2025)",
     "eps $0.04",
   ]);
   expect(rows[0]).toMatchObject({ type: "earnings", date: "2026-11-02", epsEstimate: 0.41222, epsAnalysts: 24, dateStatus: "confirmed", fiscalPeriod: "2026-09" });
@@ -59,24 +60,39 @@ test("events preserve earnings inputs in NDJSON while formatting known bases, pe
   expect(csv.split("\n")[0]).not.toContain("eps");
 });
 
-test.each([PLTR[1]!, PLTR[2]!, PLTR[3]!])("calendar and events agree on the EPS comparison for $date", async (report) => {
+const release: EarningsAction = { ...PLTR[2]!, epsActualSource: "press-release" };
+const loss: EarningsAction = { ...release, epsActual: -1.14, epsEstimate: -1.47, difference: 0.33, surprisePercent: -22.45 };
+
+test.each([
+  { name: "legacy adjusted label", report: PLTR[1]!, basis: null },
+  { name: "GAAP actual only", report: PLTR[2]!, basis: "gaap" },
+  { name: "unknown actual basis", report: PLTR[3]!, basis: null },
+  { name: "matched release beat", report: release, basis: "gaap", difference: 0.07, percent: 41.18 },
+  { name: "matched release miss", report: { ...release, epsActual: 0.1 }, basis: "gaap", difference: -0.07, percent: -41.18 },
+  { name: "matched release against loss estimate", report: loss, basis: "gaap", difference: 0.33, notMeaningful: true },
+  { name: "unmatched loss estimate", report: { ...loss, epsActualSource: undefined }, basis: "gaap" },
+])("earnings and events exports agree for $name", async ({ report, basis, difference, percent, notMeaningful }) => {
   const run = createTestCliContext({ dataProvider: {
     getCorporateActions: async () => ({ symbol: "PLTR", currency: "USD", dividends: [], splits: [], earnings: [report] }),
     getEarningsCalendar: async () => [{ symbol: "PLTR:NASDAQ", name: "Palantir Technologies Inc.", earningsDate: new Date(`${report.date}T20:00:00Z`),
-      isDateEstimate: false, epsEstimate: report.epsEstimate, epsActual: null, surprise: null, revenueEstimate: null, revenueActual: null, timing: "AMC" }],
+      isDateEstimate: false, epsEstimate: report.epsEstimate ?? null, epsActual: null, surprise: report.surprisePercent ?? null, revenueEstimate: null, revenueActual: null, timing: "AMC" }],
   } });
   await calendar.execute(["PLTR:NASDAQ"], run.context);
   await events.execute(["PLTR:NASDAQ"], run.context);
-  const calendarRow = run.printed[0]!.result.data[0];
-  const eventsRow = run.printed[1]!.result.data.earnings[0];
-  const comparable = report.epsBasis === "gaap";
-  const observations = { epsActual: report.epsActual, epsEstimate: report.epsEstimate, epsBasis: comparable ? "gaap" : null };
-  expect(calendarRow).toMatchObject({ ...observations, surprise: comparable ? report.surprisePercent : null });
-  expect(eventsRow).toMatchObject(observations);
-  if (comparable) expect(eventsRow).toMatchObject({ difference: report.difference, surprisePercent: report.surprisePercent });
-  else {
-    expect(eventsRow).not.toHaveProperty("difference");
-    expect(eventsRow).not.toHaveProperty("surprisePercent");
+  const exportRow = (index: number, format: "json" | "ndjson") => {
+    const { result, options } = run.printed[index]!;
+    return JSON.parse(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format }, options));
+  };
+  const calendarRow = exportRow(0, "json").data[0];
+  const eventsRow = exportRow(1, "json").data.earnings[0];
+  const observations = { epsActual: report.epsActual, epsEstimate: report.epsEstimate };
+  expect(calendarRow).toMatchObject({ ...observations, epsBasis: basis, surprise: percent ?? null });
+  expect(eventsRow).toMatchObject({ ...observations, epsBasis: basis });
+  expect(eventsRow.surprisePercent).toBe(percent);
+  for (const row of [calendarRow, eventsRow, exportRow(0, "ndjson"), exportRow(1, "ndjson")]) {
+    expect(row).toMatchObject(observations);
+    expect(row.difference).toBe(difference);
+    expect(row.surpriseNotMeaningful).toBe(notMeaningful);
   }
 });
 

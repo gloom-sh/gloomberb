@@ -293,21 +293,21 @@ test("an unconfirmed adjusted actual also says when there is no consensus", () =
 
 test("a beat against a negative estimate: its surprise N/M, in N/M's tone, and the difference says it beat", () => {
   const [row] = buildEventRows({ symbol: "CRWV", dividends: [], splits: [], earnings: [
-    { date: "2026-08-11", dateType: "announcement", epsEstimate: -1.47, epsActual: -1.14, difference: 0.33, surprisePercent: -22.45, epsBasis: "gaap" },
+    { date: "2026-08-11", dateType: "announcement", epsEstimate: -1.47, epsActual: -1.14, difference: 0.33, surprisePercent: -22.45, epsBasis: "gaap", epsActualSource: "press-release" },
   ] }, null, null, "USD");
   // A loss narrower than expected is no percentage of the loss expected: the source's -22.45% is not shown either.
-  expect(row).toMatchObject({ value: "N/M", tone: NOT_MEANINGFUL_TONE, detail: "GAAP, +0.33 vs est", surpriseNotMeaningful: true });
+  expect(row).toMatchObject({ value: "N/M", tone: NOT_MEANINGFUL_TONE, detail: "GAAP, provisional, +0.33 vs est", surpriseNotMeaningful: true });
   expect(row!.surprisePercent).toBeUndefined();
   const [miss] = buildEventRows({ symbol: "CRWV", dividends: [], splits: [], earnings: [
-    { date: "2026-05-07", dateType: "announcement", epsEstimate: -1.17, epsActual: -1.38, difference: -0.21, epsBasis: "gaap" },
+    { date: "2026-05-07", dateType: "announcement", epsEstimate: -1.17, epsActual: -1.38, difference: -0.21, epsBasis: "gaap", epsActualSource: "press-release" },
   ] }, null, null, "USD");
-  expect(miss).toMatchObject({ value: "N/M", tone: NOT_MEANINGFUL_TONE, detail: "GAAP, -0.21 vs est" });
+  expect(miss).toMatchObject({ value: "N/M", tone: NOT_MEANINGFUL_TONE, detail: "GAAP, provisional, -0.21 vs est" });
   const [zero] = buildEventRows({ symbol: "X", dividends: [], splits: [], earnings: [
-    { date: "2026-05-07", dateType: "announcement", epsEstimate: 0, epsActual: 0.02, epsBasis: "gaap" },
+    { date: "2026-05-07", dateType: "announcement", epsEstimate: 0, epsActual: 0.02, epsBasis: "gaap", epsActualSource: "press-release" },
   ] }, null, null, "USD");
   expect(zero).toMatchObject({ value: "N/M", tone: NOT_MEANINGFUL_TONE });
   const [positive] = buildEventRows({ symbol: "X", dividends: [], splits: [], earnings: [
-    { date: "2026-05-07", dateType: "announcement", epsEstimate: 0.5, epsActual: 0.55, epsBasis: "gaap" },
+    { date: "2026-05-07", dateType: "announcement", epsEstimate: 0.5, epsActual: 0.55, epsBasis: "gaap", epsActualSource: "press-release" },
   ] }, null, null, "USD");
   expect(positive).toMatchObject({ surprisePercent: 10, value: "+10.00%", tone: "positive" });
 });

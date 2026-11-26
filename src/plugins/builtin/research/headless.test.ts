@@ -114,7 +114,7 @@ test("EE reads a surprise against a loss estimate and growth off a year-ago loss
   const definition = createEarningsEstimatesHeadless({ loadSources: async () => ({
     ...sources,
     actions: { ...sources.actions!, earnings: [
-      { date: "2026-07-28", epsEstimate: -1.47, epsActual: -1.14, surprisePercent: -22.45, epsBasis: "gaap" },
+      { date: "2026-07-28", epsEstimate: -1.47, epsActual: -1.14, surprisePercent: -22.45, epsBasis: "gaap", epsActualSource: "press-release" },
       { date: "2026-04-28", epsEstimate: -1.47, epsActual: -1.14, difference: 0.33, surprisePercent: -22.45 },
     ] },
     estimates: { ...sources.estimates!, revenueEstimates: [],
@@ -142,7 +142,7 @@ test("EE reads a surprise against a loss estimate and growth off a year-ago loss
   const growth = columns.findIndex((column) => column.startsWith("YoY growth"));
   const status = columns.indexOf("status");
   expect([surprise, growth, status].every((index) => index > -1)).toBe(true);
-  const earnings = lines.find((line) => line.includes("2026-07-28,Earnings,"))!.split(",");
+  const earnings = lines.find((line) => line.includes("2026-07-28,Earnings,"))!.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/);
   expect(earnings[surprise]).toBe("");
   expect(earnings[status]).toContain("EPS surp: n/m");
   const unverified = lines.find((line) => line.includes("2026-04-28,Earnings,"))!.split(",");

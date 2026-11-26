@@ -37,6 +37,15 @@ const historyReport = (fields: Partial<HistoryReport> & Pick<HistoryReport, "dat
 });
 const history = (...reports: HistoryReport[]): EarningsHistoryPayload => ({ asOf: `${TODAY}T15:00:00Z`, symbol: "X", name: null, reports });
 
+test("ERN never inherits an estimate's basis or comparison when the calendar supplies the actual", () => {
+  const date = "2026-10-21";
+  const payload = { ...history(historyReport({ date, epsEstimate: 1, epsBasis: "gaap" })), consensusBasis: "gaap" as const };
+  const calendar = event("X", `${date}T20:00:00Z`, { epsActual: 1.1, epsEstimate: 1.05, surprise: 4.76 });
+  expect(historyRows(payload, TODAY, calendar)[0]).toMatchObject({ epsActual: 1.1, epsEstimate: 1, epsBasis: null, epsSurprise: null });
+  expect(historyRows(payload, date, calendar)[0]).toMatchObject({ epsActual: 1.1, epsEstimate: 1.05, epsBasis: null, epsSurprise: null });
+  expect(historyRows(payload, date, { ...calendar, epsEstimate: null })[0]).toMatchObject({ epsActual: 1.1, epsEstimate: 1, epsBasis: null, epsSurprise: null });
+});
+
 test("a confirmed date beats an estimated one, whichever source has it", async () => {
   // JPM: corporate actions carry the feed's 2027-01-13 with no status and no estimate; the calendar has 2027-01-14 confirmed.
   const jpm = event("JPM", "2027-01-14T12:30:00Z", { epsEstimate: 5.9, epsAnalysts: 12, estimateBasis: { epsEstimate: CONSENSUS, epsAnalysts: CONSENSUS } });
@@ -102,17 +111,14 @@ test("a date gone by is reported, with the actual and the estimate it was measur
   expect(withResolvedEarnings(actions, null, TODAY).earnings[0]!.dateStatus).toBe("reported");
 });
 
-test("a surprise against a loss estimate is N/M: no percentage, the record's either, and the difference kept", () => {
+test("a calendar fill keeps the actual and estimate without treating the loss comparison as verified", () => {
   // CRWV's June quarter: a loss of 1.14 against 1.47 expected.
   const record: EarningsAction[] = [{ date: "2026-08-11", epsEstimate: -1.47, surprisePercent: -22.45, dateStatus: "confirmed" }];
   const out = event("CRWV", "2026-08-11T20:05:00Z", { timing: "AMC", epsEstimate: -1.47, epsActual: -1.14, epsBasis: "gaap" });
   const [row] = resolveEarningsActions(record, out, "2026-08-12");
-  expect(row).toMatchObject({ date: "2026-08-11", dateStatus: "reported", epsActual: -1.14, epsEstimate: -1.47, difference: 0.33 });
+  expect(row).toMatchObject({ date: "2026-08-11", dateStatus: "reported", epsActual: -1.14, epsEstimate: -1.47, epsBasis: null });
+  expect(row!.difference).toBeUndefined();
   expect(row!.surprisePercent).toBeUndefined();
-  // Against a profit expected, the percentage stands.
-  const [profit] = resolveEarningsActions([{ date: "2026-08-11", epsEstimate: 0.5, dateStatus: "confirmed" }],
-    event("X", "2026-08-11T20:05:00Z", { timing: "AMC", epsEstimate: 0.5, epsActual: 0.55, epsBasis: "gaap" }), "2026-08-12");
-  expect(profit).toMatchObject({ epsActual: 0.55, difference: 0.05, surprisePercent: 10 });
 });
 
 test("a reported calendar event keeps the revenue, range and basis it carries for its report", () => {
@@ -134,7 +140,9 @@ test("a calendar actual does not inherit a pending estimate's basis or a differe
   expect(filled!.surprisePercent).toBeUndefined();
   const report: EarningsAction = { date, epsActual: 1.1, epsEstimate: 1.05, epsBasis: "gaap", surprisePercent: 4.76 };
   expect(resolveCalendarEvent(calendar, [report], TODAY)).toMatchObject({ epsActual: 1.1, epsEstimate: 1, epsBasis: null, surprise: null });
-  expect(resolveCalendarEvent({ ...calendar, epsBasis: "gaap" }, null, TODAY)).toMatchObject({ epsBasis: "gaap", surprise: 10 });
+  expect(resolveCalendarEvent({ ...calendar, epsBasis: "gaap" }, null, TODAY)).toMatchObject({ epsBasis: null, surprise: null });
+  const release: EarningsAction = { ...report, epsEstimate: 1, epsActualSource: "press-release" };
+  expect(resolveCalendarEvent(calendar, [release], TODAY)).toMatchObject({ epsBasis: null, surprise: null });
 });
 
 test("a report out today is reported in every source once Gloom Cloud has it out, its actual once known", () => {

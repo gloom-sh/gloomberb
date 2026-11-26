@@ -1,6 +1,6 @@
 import type { CorporateActionsData, EarningsDateStatus, EarningsEpsBasis } from "../../../types/financials";
 import { formatNumber, MISSING_VALUE } from "../../../utils/format";
-import { growthRate, type NotMeaningful } from "../../../utils/growth";
+import { growthRate, isNotMeaningful, type NotMeaningful } from "../../../utils/growth";
 
 /**
  * How every earnings surface (ERN, EE, the corporate-actions events and
@@ -30,11 +30,12 @@ export function dateStatusFromEstimateFlag(isDateEstimate: boolean | null | unde
 export type EpsBasisName = "GAAP" | "adjusted" | "company-adjusted" | "unknown";
 
 /** What the basis names mean, in every report's metadata. */
-export const EPS_BASIS_NOTE = "GAAP: diluted statement EPS. Company-adjusted (coAdj): diluted EPS as the company defines it. A separately identified street actual includes stock compensation. A street actual that differs from statement EPS does not establish an adjusted basis or prove that the estimate is comparable. No surprise is shown when the comparison basis is unknown or unconfirmed.";
+export const EPS_BASIS_NOTE = "GAAP: diluted statement EPS. Company-adjusted (coAdj): diluted EPS as the company defines it. A separately identified street actual includes stock compensation. An actual's basis does not establish the estimate's basis. Comparisons use only a release actual identified as being on the basis of the estimate served with it.";
 export const EPS_BASIS_UNCONFIRMED = "EPS basis unconfirmed";
 
 interface EpsComparisonRow {
   epsActual?: number | null;
+  epsEstimate?: number | null;
   epsBasis?: unknown;
   epsActualSource?: string | null;
   epsComparisonUnconfirmed?: true;
@@ -50,9 +51,13 @@ export function displayEarningsEpsBasis(row: EpsComparisonRow): EarningsEpsBasis
   return unconfirmedAdjustedEps(row) ? null : earningsEpsBasis(row.epsBasis);
 }
 
-export function canCompareReportedEps(row: EpsComparisonRow): boolean {
+/** A provisional release actual with a known basis was selected upstream against this report's own consensus. */
+export function reportedEpsComparison(row: EpsComparisonRow): { difference: number; surprise: NonNullable<Surprise> } | null {
   const basis = displayEarningsEpsBasis(row);
-  return row.epsActual != null && (basis === "gaap" || basis === "adjusted");
+  const { epsActual, epsEstimate } = row;
+  if (row.epsActualSource !== "press-release" || (basis !== "gaap" && basis !== "adjusted") || epsActual == null || epsEstimate == null) return null;
+  const surprise = epsSurprise(epsActual, epsEstimate);
+  return surprise == null ? null : { difference: Math.round((epsActual - epsEstimate) * 100) / 100, surprise };
 }
 
 /** The basis as rows, exports and tools name it. */
@@ -129,10 +134,13 @@ const BASIS_TEXT: Record<EpsBasisName, string> = { GAAP: "GAAP", adjusted: "adj"
 
 type EarningsRecord = CorporateActionsData["earnings"][number];
 
-export function earningsActionForReport(row: EarningsRecord): EarningsRecord & { epsComparisonUnconfirmed?: true } {
-  if (canCompareReportedEps(row)) return row;
+export function earningsActionForReport(row: EarningsRecord): EarningsRecord & { epsComparisonUnconfirmed?: true; surpriseNotMeaningful?: true } {
   const { difference: _difference, surprisePercent: _surprise, ...inputs } = row;
-  return unconfirmedAdjustedEps(row) ? { ...inputs, epsBasis: null, epsComparisonUnconfirmed: true } : inputs;
+  if (unconfirmedAdjustedEps(row)) return { ...inputs, epsBasis: null, epsComparisonUnconfirmed: true };
+  const comparison = reportedEpsComparison(row);
+  if (!comparison) return inputs;
+  return { ...inputs, difference: comparison.difference,
+    ...(isNotMeaningful(comparison.surprise) ? { surpriseNotMeaningful: true } : { surprisePercent: Math.round(comparison.surprise * 10_000) / 100 }) };
 }
 
 /**
@@ -149,9 +157,10 @@ export function earningsDetailParts(earning: EarningsRecord & Pick<EpsComparison
       earningsEpsBasis(earning.epsBasis) === "adjusted" ? BASIS_TEXT.adjusted : null].filter((part): part is string => !!part);
   }
   const basis = unconfirmedAdjustedEps(earning) ? EPS_BASIS_UNCONFIRMED : BASIS_TEXT[epsBasisName(earningsEpsBasis(earning.epsBasis))];
+  const comparison = reportedEpsComparison(earning);
   return [basis, isProvisionalActual(earning) ? "provisional" : null,
     lacksConsensus(earning) ? NO_CONSENSUS
-      : !canCompareReportedEps(earning) || earning.difference == null ? null : `${earning.difference > 0 ? "+" : ""}${formatNumber(earning.difference, 2)} vs est`]
+      : comparison == null ? null : `${comparison.difference > 0 ? "+" : ""}${formatNumber(comparison.difference, 2)} vs est`]
     .filter((part): part is string => !!part);
 }
 

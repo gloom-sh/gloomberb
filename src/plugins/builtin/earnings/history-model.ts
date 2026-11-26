@@ -5,7 +5,7 @@ import type { TimeSeriesPoint } from "../../../time-series/types";
 import { formatMonthYear } from "../../../utils/datetime-format";
 import type { EarningsEvent } from "../../../types/data-provider";
 import type { EarningsDateStatus, EarningsEpsBasis, FilingEpsDetails } from "../../../types/financials";
-import { canCompareReportedEps, displayEarningsEpsBasis, earningsDateStatus, earningsEpsBasis, isProvisionalActual } from "../shared/earnings-report";
+import { displayEarningsEpsBasis, earningsDateStatus, earningsEpsBasis, isProvisionalActual, reportedEpsComparison } from "../shared/earnings-report";
 import { resolveReportRows, type ReportRowAdapter } from "../shared/earnings-calendar";
 import { addDays, MIN_AVERAGE_REPORTS } from "./board-model";
 import { fiscalQuarterOf, fiscalPeriodText, placedPeriod, type FiscalQuarter } from "./fiscal-quarter";
@@ -131,8 +131,8 @@ const historyAdapter = (today: string, abroad: boolean): ReportRowAdapter<Histor
   reported: (row, epsActual, report) => {
     // A listing abroad's row takes the calendar's figure only as a quarter's, in the currency its own figures are in.
     const fits = !abroad || (row.periodKind === "quarter" && row.currency != null && report?.currency === row.currency);
-    const actual = row.epsActual ?? (fits ? epsActual : null);
-    return { ...row, dateStatus: "reported", epsActual: actual, epsSurprise: surprise(actual, row.epsEstimate) };
+    if (row.epsActual != null || epsActual == null || !fits) return { ...row, dateStatus: "reported" };
+    return { ...row, dateStatus: "reported", epsActual, epsBasis: null, epsActualSource: undefined, epsDilution: null, provisional: false, epsSurprise: null };
   },
   fromCalendar(report, row) {
     // A listing abroad's consensus goes with its date only in the currency its figures are in: an unlabelled figure would read as dollars.
@@ -142,7 +142,9 @@ const historyAdapter = (today: string, abroad: boolean): ReportRowAdapter<Histor
     const inCurrency = !abroad || (report.currency != null && report.currency === currency);
     const estimate = report.epsEstimate != null && quarter && inCurrency;
     const epsEstimate = estimate ? report.epsEstimate : row?.epsEstimate ?? null;
-    const epsActual = (quarter && inCurrency ? report.epsActual : null) ?? row?.epsActual ?? null;
+    const estimateBasis = estimate ? report.epsBasis ?? (epsEstimate === row?.epsEstimate ? row?.epsBasis : null) : row?.epsBasis;
+    const calendarActual = quarter && inCurrency ? report.epsActual : null;
+    const epsActual = calendarActual ?? row?.epsActual ?? null;
     const move = row?.move ?? null;
     const dateStatus = report.dateStatus;
     const revenueEstimate = quarter && (!abroad || (report.revenueCurrency != null && report.revenueCurrency === currency)) ? report.revenueEstimate : null;
@@ -165,11 +167,11 @@ const historyAdapter = (today: string, abroad: boolean): ReportRowAdapter<Histor
       epsEstimate,
       epsAnalysts: estimate ? report.epsAnalysts : row?.epsAnalysts ?? null,
       epsActual,
-      provisional: row?.provisional ?? false,
-      // The consensus's basis is the company's (Gloom Cloud names it from the reports it was measured against).
-      epsBasis: estimate ? report.epsBasis ?? row?.epsBasis ?? null : row?.epsBasis ?? null,
-      epsDilution: row?.epsDilution ?? null,
-      epsSurprise: surprise(epsActual, epsEstimate),
+      ...(calendarActual == null ? { epsActualSource: row?.epsActualSource } : {}),
+      provisional: calendarActual == null && (row?.provisional ?? false),
+      epsBasis: calendarActual != null ? null : epsActual == null ? estimateBasis ?? null : row?.epsBasis ?? null,
+      epsDilution: calendarActual == null ? row?.epsDilution ?? null : null,
+      epsSurprise: calendarActual == null && !estimate ? row?.epsSurprise ?? null : null,
       revenueEstimate: revenueEstimate ?? row?.revenueEstimate ?? null,
       revenueActual: row?.revenueActual ?? null,
       revenueCurrency: row?.revenueCurrency ?? null,
@@ -235,10 +237,10 @@ export function historyRows(
       epsActual: report.epsActual,
       epsActualSource: report.epsActualSource,
       provisional: isProvisionalActual(report),
-      epsBasis: earningsEpsBasis(report.epsBasis),
+      epsBasis: displayEarningsEpsBasis(report),
       ...(report.streetEps ? { streetEps: report.streetEps, gaapEps: report.gaapEps } : {}),
       epsDilution: abroad && report.epsDilution === "basic" ? "basic" : null,
-      epsSurprise: surprise(report.epsActual, report.epsEstimate),
+      epsSurprise: reportedEpsComparison(report)?.surprise ?? null,
       revenueEstimate: report.revenueEstimate,
       revenueActual: revenue?.amount ?? null,
       revenueCurrency: revenue?.currency ?? null,
@@ -256,8 +258,7 @@ export function historyRows(
   const basis = earningsEpsBasis(payload?.consensusBasis);
   const rows = resolveReportRows(recorded, upcoming, today, historyAdapter(today, abroad))
     // The calendar's next report past the stored horizon is on the basis the company's reports were measured on.
-    .map((row) => (basis && row.upcoming && row.epsEstimate != null && row.epsBasis == null ? { ...row, epsBasis: basis } : row))
-    .map((row) => canCompareReportedEps(row) ? row : { ...row, epsBasis: displayEarningsEpsBasis(row), epsSurprise: null })
+    .map((row) => (basis && row.upcoming && row.epsActual == null && row.epsEstimate != null && row.epsBasis == null ? { ...row, epsBasis: basis } : row))
     .map((row) => withFiscalQuarter(row, anchor))
     .sort((left, right) => right.date.localeCompare(left.date));
   const upcomingRows = rows.filter((row) => row.upcoming).slice(-1);

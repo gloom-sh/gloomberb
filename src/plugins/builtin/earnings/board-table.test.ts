@@ -263,11 +263,11 @@ describe("surprises against a loss or zero estimate", () => {
   const report = (fields: Partial<Report> & Pick<Report, "date">): Report => ({
     symbol: "CRWV", name: "CoreWeave", timing: "amc", timingSource: "filing", reportedAt: null, fiscalPeriod: "2026-06",
     marketCap: null, epsEstimate: null, epsActual: null, epsAnalysts: null, revenueEstimate: null, revenueAnalysts: null,
-    implied: null, realized: null, revenueActual: null, dateStatus: "reported", epsBasis: "gaap", ...fields,
+    implied: null, realized: null, revenueActual: null, dateStatus: "reported", epsBasis: "gaap", epsActualSource: "press-release", ...fields,
   });
 
   test("read N/M in EVTS and ERN, in N/M's colour as every pane draws it, and still count a narrower loss as a beat", () => {
-    const loss = boardReport(calendarReport({ symbol: "CRWV", epsEstimate: -1.47, epsActual: -1.14, epsActualSource: "calendar", dateStatus: "reported", epsBasis: "gaap" }), new Map());
+    const loss = boardReport(calendarReport({ symbol: "CRWV", epsEstimate: -1.47, epsActual: -1.14, epsActualSource: "press-release", dateStatus: "reported", epsBasis: "gaap" }), new Map());
     expect(loss.epsSurprise).toBe("not-meaningful");
     expect(cell(loss, "epsSurprise")).toEqual({ text: "N/M", color: notMeaningfulColor() });
     const rows = historyRows({ asOf: `${TODAY}T15:00:00Z`, symbol: "CRWV", name: null, reports: [

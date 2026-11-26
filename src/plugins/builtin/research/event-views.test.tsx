@@ -30,14 +30,14 @@ beforeAll(() => { setSystemTime(new Date("2026-11-24T15:00:00Z")); });
 afterAll(() => { setSystemTime(); });
 
 const reported = (date: string, fiscalPeriod: string, epsActual: number, epsEstimate: number) => (
-  { date, dateType: "announcement" as const, fiscalPeriod, epsActual, epsEstimate, epsBasis: "gaap" as const, currency: "USD" });
+  { date, dateType: "announcement" as const, fiscalPeriod, epsActual, epsEstimate, epsBasis: "gaap" as const, epsActualSource: "press-release" as const, currency: "USD" });
 const paid = (exDate: string, amount: number) => ({ exDate, amount });
 
 const ACTIONS: CorporateActionsData = {
   symbol: "TEST", currency: "USD",
   coverage: { dividends: "available", earnings: "available", splits: "available" },
   earnings: [
-    reported("2025-10-30", "2025-09", 1.85, 1.77),
+    { ...reported("2025-10-30", "2025-09", 1.85, 1.77), epsActualSource: undefined },
     reported("2026-01-29", "2025-12", 2.84, 2.67),
     reported("2026-04-30", "2026-03", 1.65, 1.7),
     reported("2026-07-30", "2026-06", 1.57, 1.43),
@@ -169,6 +169,8 @@ describe("EVT's Earnings view", () => {
     expect(table[0]).toMatch(/28 Jan 2027 Dec 2026\s+2\.67\s+confirmed, 30 analysts/);
     expect(table[1]).toMatch(/29 Oct 2026 Sep 2026\s+1\.85\s+1\.77\s+\+4\.52%/);
     expect(table[3]).toMatch(/30 Apr 2026 Mar 2026\s+1\.65\s+1\.70\s+-2\.94%/);
+    expect(table[5]).toMatch(/30 Oct 2025 Sep 2025\s+1\.85\s+1\.77\s+—/);
+    expect(line("● Estimate")).toContain("● EPS");
     // In a terminal the bars are cell characters: a beat's in the positive colour, a miss's in the negative.
     const chartRows = tui.setup().captureSpans().lines.slice(0, lines().findIndex((row) => /DATE\s+QUARTER/.test(row)));
     const barColours = new Set(chartRows.flatMap((row) => row.spans).filter((span) => /[█▄▀▌▐]/.test(span.text)).map((span) => span.fg.toInts().join(",")));
@@ -338,7 +340,7 @@ describe("EE's views", () => {
       { date: "2026-09-30", dateType: "announcement", epsEstimate: 2.2 },
       { date: "2026-09-30", dateType: "fiscal-period-end", epsActual: 2, epsEstimate: 1.8, epsBasis: "gaap", currency: "USD" },
     ] }) });
-    expect(line("30 Sep 2026")).toMatch(/Sep 2026\s+2\.00\s+1\.80\s+\+11\.11%/);
+    expect(line("30 Sep 2026")).toMatch(/Sep 2026\s+2\.00\s+1\.80\s+—/);
     // Under the next quarter analysts estimate.
     await tui.emitKeypress({ name: "down" });
     await settle();
@@ -346,6 +348,7 @@ describe("EE's views", () => {
     await settle(10);
     expect(tui.frame()).toMatch(/Actual\s+2 USD/);
     expect(tui.frame()).toMatch(/Consensus\s+1\.8 USD/);
+    expect(tui.frame()).not.toMatch(/Surprise\s+11\.11/);
     expect(tui.frame()).not.toMatch(/Consensus\s+2\.2/);
   });
 });

@@ -597,7 +597,7 @@ test("ERN reads a half-yearly reporter's own reports and its projected next date
 test("a surprise against a loss estimate exports null with its NotMeaningful flag, never text; the text report draws N/M", async () => {
   const definition = createEarningsHeadless({
     calendar: async () => { throw new Error("unused"); },
-    history: async () => ({ ...history, reports: history.reports.map((row) => row.epsBasis === null ? { ...row, epsBasis: "gaap" } : row) }),
+    history: async () => ({ ...history, reports: history.reports.map((row) => row.epsBasis === null ? { ...row, epsBasis: "gaap", epsActualSource: "press-release" } : row) }),
     upcoming: async () => [],
   });
   const result = await definition.load(args, context);

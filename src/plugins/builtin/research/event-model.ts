@@ -34,13 +34,12 @@ import { fundamentalsEpsCurrency, SERVED_TRAILING_EPS } from "../../../utils/fun
 import { isNotMeaningful, NOT_MEANINGFUL, NOT_MEANINGFUL_TEXT, NOT_MEANINGFUL_TONE, type Rate } from "../../../utils/growth";
 import {
   ACTUAL_PENDING,
-  canCompareReportedEps,
   displayEarningsEpsBasis,
   earningsDateStatus,
   earningsDetail,
   earningsDetailParts,
   epsBasisName,
-  epsSurprise,
+  reportedEpsComparison,
   inFiscalMonth,
   isProvisionalActual,
   quarterLabel,
@@ -440,13 +439,12 @@ export function buildEventRows(
   for (const [index, earning] of earnings.entries()) {
     // A pending announcement must never inherit the previous report's actuals.
     const statement = earning.epsActual == null ? undefined : statementForEarningsDate(quarterlyStatements, earning);
-    const comparableEps = canCompareReportedEps(earning);
     const basis = displayEarningsEpsBasis(earning);
-    const surprise = comparableEps ? epsSurprise(earning.epsActual, earning.epsEstimate) : null;
+    const comparison = reportedEpsComparison(earning);
+    const surprise = comparison?.surprise;
     // Against a loss or zero estimate no percentage is shown, the source's either.
     const surpriseNotMeaningful = earning.epsActual != null && isNotMeaningful(surprise);
-    const surprisePercent = !comparableEps || earning.epsActual == null || surpriseNotMeaningful ? undefined
-      : typeof surprise === "number" ? Math.round(surprise * 10_000) / 100 : earning.surprisePercent;
+    const surprisePercent = typeof surprise === "number" ? Math.round(surprise * 10_000) / 100 : undefined;
     const adjustedEps = (earning.epsActual == null && earning.epsEstimate == null) || publishedEps(earning) ? [] : adjustmentsAfter(adjustments, earning.date);
     rows.push({
       id: earningsIds[index]!,
@@ -467,7 +465,7 @@ export function buildEventRows(
       earningsState: earning.epsActual == null ? "pending" : "reported",
       epsActual: earning.epsActual,
       epsEstimate: earning.epsEstimate,
-      epsDifference: !comparableEps || earning.epsActual == null ? undefined : earning.difference,
+      epsDifference: comparison?.difference,
       surprisePercent,
       ...(surpriseNotMeaningful ? { surpriseNotMeaningful: true as const } : {}),
       epsBasis: showsEpsBasis({ epsActual: earning.epsActual, epsBasis: basis }) ? epsBasisName(basis) : undefined,
