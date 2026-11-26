@@ -1,5 +1,6 @@
 import { buildSplitAroundNode, getDockedInstanceIds } from "../../../layout/pane-manager/dock-tree";
-import { normalizeDockNode, type DockLayoutNode } from "../../../types/config";
+import { normalizeDockNode } from "../../../layout/pane-manager/dock-normalization";
+import type { DockLayoutNode } from "../../../types/config";
 import { applyProfileEdits, diffProfile, sameProfileJson, type ProfileJson } from "../../profile-merge";
 
 type JsonObject = { [key: string]: ProfileJson };

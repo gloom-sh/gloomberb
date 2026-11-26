@@ -1,7 +1,7 @@
 import type { Portfolio, Watchlist } from "./ticker";
 import type { BrokerContractRef, TickerListingRef } from "./instrument";
 import type { LanguagePreference } from "../i18n/languages";
-import { buildDockStack } from "../layout/pane-manager/dock-stack";
+import { getDockedPaneIdsFromNode, normalizeDockNode } from "../layout/pane-manager/dock-normalization";
 
 export const CURRENT_CONFIG_VERSION = 28;
 
@@ -678,15 +678,6 @@ const BLANK_LAYOUT: LayoutConfig = {
 
 let nextPaneInstanceSeq = 0;
 
-function clampDockRatio(ratio: number | undefined): number {
-  if (typeof ratio !== "number" || !Number.isFinite(ratio)) return 0.5;
-  return Math.max(0.1, Math.min(0.9, ratio));
-}
-
-function isDockAxis(value: unknown): value is DockSplitNode["axis"] {
-  return value === "horizontal" || value === "vertical";
-}
-
 function cloneDockNode(node: DockLayoutNode): DockLayoutNode {
   if (node.kind === "pane") {
     return { kind: "pane", instanceId: node.instanceId };
@@ -699,57 +690,6 @@ function cloneDockNode(node: DockLayoutNode): DockLayoutNode {
     second: cloneDockNode(node.second),
     ...(node.tabs ? { tabs: { active: node.tabs.active } } : {}),
   };
-}
-
-export function normalizeDockNode(
-  node: DockLayoutNode | null | undefined,
-  validInstanceIds: Set<string>,
-  seenPaneIds: Set<string>,
-): DockLayoutNode | null {
-  if (!node || typeof node !== "object") return null;
-
-  if ((node as DockPaneNode).kind === "pane") {
-    const instanceId = (node as DockPaneNode).instanceId;
-    if (typeof instanceId !== "string" || !validInstanceIds.has(instanceId) || seenPaneIds.has(instanceId)) {
-      return null;
-    }
-    seenPaneIds.add(instanceId);
-    return { kind: "pane", instanceId };
-  }
-
-  if ((node as DockSplitNode).kind !== "split") return null;
-  const split = node as DockSplitNode;
-  if (split.tabs) {
-    // Whatever is under a stack is its tabs, nested or not: a pane put back
-    // at a place inside it (its remembered spot) joins it.
-    const plain: DockSplitNode = { kind: "split", axis: split.axis, ratio: split.ratio, first: split.first, second: split.second };
-    const flat = normalizeDockNode(plain, validInstanceIds, seenPaneIds);
-    const active = typeof split.tabs.active === "string" ? split.tabs.active : null;
-    return flat ? buildDockStack(getDockedPaneIdsFromNode(flat), active) : null;
-  }
-  const first = normalizeDockNode(split.first, validInstanceIds, seenPaneIds);
-  const second = normalizeDockNode(split.second, validInstanceIds, seenPaneIds);
-  if (!first && !second) return null;
-  if (!first) return second;
-  if (!second) return first;
-  return {
-    kind: "split",
-    axis: isDockAxis(split.axis) ? split.axis : "horizontal",
-    ratio: clampDockRatio(split.ratio),
-    first,
-    second,
-  };
-}
-
-function getDockedPaneIdsFromNode(node: DockLayoutNode | null, result: string[] = []): string[] {
-  if (!node) return result;
-  if (node.kind === "pane") {
-    result.push(node.instanceId);
-    return result;
-  }
-  getDockedPaneIdsFromNode(node.first, result);
-  getDockedPaneIdsFromNode(node.second, result);
-  return result;
 }
 
 export function getPlacedPaneInstanceIds(layout: LayoutConfig): string[] {
