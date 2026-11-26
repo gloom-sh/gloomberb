@@ -210,7 +210,7 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       if (exchange?.coverage) notes.push(exchange.coverage);
       if ((exchangeRows.length || presentations) && listing && exchange) {
         const combined = latestFilingRows(rows, exchangeRows, limit);
-        const hasCatalogueDate = combined.some(row => row.dateBasis === "catalogue");
+        const hasCatalogueDate = presentations || combined.some(row => row.dateBasis === "catalogue");
         const columns: HeadlessPaneColumn[] = [
           hasCatalogueDate ? { ...SEC_COLUMNS[0]!, header: "Date" } : SEC_COLUMNS[0]!,
           { key: "source", header: "Source" }, SEC_COLUMNS[2]!, SEC_COLUMNS[4]!, { key: "url", header: "Document" },
