@@ -25,7 +25,7 @@ export const expiryLabel = (expiration: number) => expiryStampText(expiryStamp(e
 
 /**
  * What a surface that drew some expiries leaves out, in the words a report's
- * and a capture's status name it by: "4 of 7 expiries ready; empty:
+ * and a capture's status name it by, each expiry as --expiration takes it: "4 of 7 expiries ready; empty:
  * 2026-11-27 (no paired two-sided quotes after cleaning), 2026-12-18 (fewer
  * than two cleaned OTM strikes are available)". Each expiry not ready is named
  * with why: its error, else the warning that stopped its fit (the last it
@@ -54,7 +54,7 @@ export function surfaceExpiryGaps(
     ["stale", expiries.filter((expiry) => expiry.state === "ready" && expiry.stale)],
   ];
   const named = groups.filter(([, members]) => members.length > 0).map(([state, members]) =>
-    `${state}: ${members.map((expiry) => `${expiryLabel(expiry.expiration)}${state === "stale" || state === "loading" ? "" : why(expiry)}`).join(", ")}`);
+    `${state}: ${members.map((expiry) => `${expiryStamp(expiry.expiration)}${state === "stale" || state === "loading" ? "" : why(expiry)}`).join(", ")}`);
   // Expiries asked for that never came back as entries are counted, not named.
   const unread = total - expiries.length;
   return [`${ready} of ${total} expiries ready`, ...named, ...unread > 0 ? [`${unread} not loaded`] : []].join("; ");

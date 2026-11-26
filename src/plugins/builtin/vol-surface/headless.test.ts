@@ -6,7 +6,6 @@ import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test
 import type { OptionContract, OptionsChain } from "../../../types/financials";
 import type { HeadlessBundleResult, HeadlessPaneApiClient } from "../../../types/headless";
 import { parseOptionExpiration } from "../../../utils/option-expiry";
-import { formatDay } from "../../../utils/day-format";
 import { DEFAULT_OPTION_CALC_DRAFT } from "../options-calculator/model";
 import { daysToExpiryFrom, valueOption } from "../shared/volatility";
 import { volSurfaceHeadless } from "./headless";
@@ -87,7 +86,8 @@ describe("OVDV report", () => {
   test("--expiration takes a date and selects that expiry's smile", async () => {
     const date = new Date(listed[3]! * 1000).toISOString().slice(0, 10);
     const { titles, result } = await load({ tab: "smile", expiration: parseOptionExpiration(date)! });
-    expect(titles).toEqual([`Smile ${formatDay(date)}`, "Clean quotes"]);
+    // The title names the expiry as --expiration and --section take it.
+    expect(titles).toEqual([`Smile ${date}`, "Clean quotes"]);
     expect(result.errors).toEqual([]);
     // A date the chain does not list names the listed ones, once.
     const missing = await load({ tab: "smile", expiration: parseOptionExpiration("2026-10-03")! });

@@ -625,7 +625,7 @@ describe("volatility surface screenshot evidence", () => {
       .toContain("rendered volatility symbol does not match");
     expect(shotUnavailableSymbols(request, arca, nodes(drawn))).toEqual([]);
     expect(paneEvidenceGaps(request, arca, nodes(drawn))).toBe("1 of 3 expiries ready; empty: "
-      + "27 Nov 2026 (no paired two-sided quotes after cleaning), 18 Dec 2026 (fewer than two cleaned OTM strikes are available)");
+      + "2026-11-27 (no paired two-sided quotes after cleaning), 2026-12-18 (fewer than two cleaned OTM strikes are available)");
   });
 });
 

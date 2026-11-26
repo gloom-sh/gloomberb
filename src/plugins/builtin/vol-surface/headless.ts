@@ -25,7 +25,7 @@ import { surfaceQuoteCoverage, uncleanSurfaceDetail, uncleanSurfaceTitle } from 
 import { loadIvHistory, loadSurfaceDates } from "../iv-history/client";
 import { logFailure } from "../../../utils/log-failure";
 import {
-  expiryFeedFields, expiryLabel, expiryStamp, expiryStampText, formatIv, formatPrice, formatVolPoints, HIDDEN_SLOPE_TEXT, HIDDEN_YIELD_TEXT, selectSurfaceExpiry, surfaceForwardRow, surfaceSkewRow,
+  expiryFeedFields, expiryStamp, expiryStampText, formatIv, formatPrice, formatVolPoints, HIDDEN_SLOPE_TEXT, HIDDEN_YIELD_TEXT, selectSurfaceExpiry, surfaceForwardRow, surfaceSkewRow,
   surfaceExpiryGaps, surfaceSettlementTime, surfaceSmileRows, surfaceSpotBasisLabel, surfaceTermRows, surfaceThirtyDayAtm, TERM_SLOPE_MIN_DAYS,
   type SurfaceForwardRow, type SurfaceSkewRow,
 } from "./tables";
@@ -93,10 +93,11 @@ function smileSections(snapshot: SurfaceSnapshot, requested: number | null): {
   const freshness: HeadlessPaneFreshness = { asOf: expiry.asOf, ...expiry.stale ? { status: "stale" as const }
     : expiry.dataSource ? { status: expiry.dataSource } : {}, ...expiry.delayMinutes ? { delayMinutes: expiry.delayMinutes } : {} };
   if (!expiry.fit || expiry.points.length < 2) {
-    return { sections: [], freshness, errors: [`${expiryLabel(expiry.expiration)}: no clean quoted smile`] };
+    return { sections: [], freshness, errors: [`${expiryStamp(expiry.expiration)}: no clean quoted smile`] };
   }
   return { errors: [], freshness, sections: [
-    { title: `Smile ${expiryLabel(expiry.expiration)}`, entries: [
+    // The title names the expiry as --expiration and --section take it.
+    { title: `Smile ${expiryStamp(expiry.expiration)}`, entries: [
       { key: "days", label: "Days to expiry", value: expiry.years * 365, formatted: days(expiry.years * 365) },
       { key: "forward", label: "Forward", value: expiry.forward, formatted: level(expiry.forward) },
       { key: "atm", label: "ATM IV (at spot)", value: expiry.atmIV, formatted: iv(expiry.atmIV) },
@@ -301,7 +302,7 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
     const axis = args.options.axis as SurfaceAxis;
     const readings = events ? surfaceEventReadings(snapshot.expiries, snapshot.catalogue, events.events) : [];
     const expiryWarnings = snapshot.expiries.flatMap((expiry) => expiry.warnings.map((warning) =>
-      ({ expiry: expiryLabel(expiry.expiration), warning })));
+      ({ expiry: expiryStamp(expiry.expiration), warning })));
     const perExpiry = new Set(expiryWarnings.map((row) => row.warning));
     // Calendar arbitrage compares expiries, so it belongs to the whole surface.
     const warnings = [...expiryWarnings, ...snapshot.warnings.filter((warning) => !perExpiry.has(warning))
@@ -341,7 +342,7 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
         ...(dvol && !(dvol instanceof Error) ? [dvolSection(dvol, available ? snapshot : null)] : []),
         ...view,
         // The pane lists these (arbitrage, SVI fallback) beside the surface; here each names its expiry.
-        ...(warnings.length ? [{ title: "Warnings", columns: [{ key: "expiry", header: "Expiry" }, { key: "warning", header: "Warning" }],
+        ...(warnings.length ? [{ title: "Warnings", columns: [{ key: "expiry", header: "Expiry", textFormat: expiryText }, { key: "warning", header: "Warning" }],
           rows: warnings }] : []),
       ],
       complete: available && snapshot.failures.length === 0 && snapshot.expiries.every((expiry) => expiry.state === "ready"),
