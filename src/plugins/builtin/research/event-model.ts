@@ -720,7 +720,7 @@ function yearOnYear(estimate: AnalystEstimateRecord | undefined): string | null 
 
 /**
  * The Events tab's opening block: what is next, each with how far away it is.
- * The next report and its consensus EPS and revenue for the quarter it covers,
+ * The next report with calendar EPS (or quarter EPS if absent), quarter revenue,
  * the next ex-date with its amount (the last one while none is known), and the
  * next catalyst. A fund has its ex-dates only.
  */
@@ -738,12 +738,12 @@ export function buildNextUp(rows: readonly EventRow[], options: NextUpOptions): 
     } else if (quarter) {
       figures.push({ id: "next-report", label: "Next report", value: quarterName(quarter), detail: "not dated yet" });
     }
-    const eps = report?.epsEstimate ?? quarter?.qEps;
-    const epsCurrency = report?.epsEstimate != null ? report.epsCurrency : quarter?.epsCurrency;
-    if (eps != null) {
-      const analysts = report?.epsEstimate != null ? report.epsAnalysts : quarter?.estimateInputs?.eps?.analysts;
-      const growth = yearOnYear(quarter?.estimateInputs?.eps);
-      figures.push({ id: "eps-estimate", label: "EPS est", value: formatEventMetric(eps, epsCurrency, "eps"),
+    const quarterEps = quarter?.estimateInputs?.eps;
+    const { amount, currency, analysts, growth } = report?.epsEstimate != null
+      ? { amount: report.epsEstimate, currency: report.epsCurrency, analysts: report.epsAnalysts, growth: null }
+      : { amount: quarter?.qEps, currency: quarter?.epsCurrency, analysts: quarterEps?.analysts, growth: yearOnYear(quarterEps) };
+    if (amount != null) {
+      figures.push({ id: "eps-estimate", label: "EPS est", value: formatEventMetric(amount, currency, "eps"),
         ...detailForms([analysts ? `${analysts} ${analysts === 1 ? "analyst" : "analysts"}` : null, growth], [growth]) });
     }
     if (quarter?.qRevenue != null) {

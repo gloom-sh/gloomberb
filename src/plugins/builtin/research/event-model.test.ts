@@ -673,13 +673,13 @@ describe("what is next", () => {
       { date: "2098-12-31", period: "current_quarter", average: 11.2e9, currency: "USD", analysts: 1, growth: -0.02 },
       { date: "2099-03-31", period: "next_quarter", average: 12.5e9, currency: "USD" },
     ] };
-  const rows = (earnings: CorporateActionsData["earnings"], extra = {}) => buildEventRows({
+  const rows = (earnings: CorporateActionsData["earnings"], extra = {}, consensus: AnalystResearchData | null = estimates) => buildEventRows({
     symbol: "KO", currency: "USD", splits: [], dividends: [{ exDate: "2098-09-15", amount: 0.53 }], earnings, ...extra,
-  }, estimates, null, "USD");
+  }, consensus, null, "USD");
   const figures = (built: ReturnType<typeof rows>, options: Partial<Parameters<typeof buildNextUp>[1]> = {}) =>
     buildNextUp(built, { today, fund: false, ...options }).map((figure) => [figure.id, figure.label, figure.value, figure.detail]);
 
-  test("the next report counts the days to it and carries the consensus for the quarter it covers", () => {
+  test("the next report keeps calendar EPS and analyst count separate from quarter revenue and growth", () => {
     const built = rows([
       { date: "2098-10-21", epsActual: 0.82, epsEstimate: 0.78, currency: "USD", fiscalPeriod: "2098-09" },
       { date: "2099-02-10", epsEstimate: 0.61, currency: "USD", dateStatus: "projected", epsAnalysts: 20 },
@@ -687,10 +687,28 @@ describe("what is next", () => {
     expect(figures(built)).toEqual([
       // The quarter it covers is the last one estimated to end before it, not the one after.
       ["next-report", "Next report", "10 Feb 2099", "in 78 days · projected · Dec 2098 qtr"],
-      ["eps-estimate", "EPS est", "0.61 USD", "20 analysts · +5.00% y/y"],
+      ["eps-estimate", "EPS est", "0.61 USD", "20 analysts"],
       ["revenue-estimate", "Revenue est", "11.2B USD", "1 analyst · -2.00% y/y"],
       ["last-ex", "Last ex", "15 Sep 2098", "$0.53"],
     ]);
+  });
+
+  test.each([12, undefined])("matching displayed EPS with calendar count %s does not prove shared consensus", (epsAnalysts) => {
+    const built = rows([{ date: "2099-02-10", epsEstimate: 0.6001, currency: "USD", epsAnalysts }]);
+    expect(figures(built).find(([id]) => id === "eps-estimate"))
+      .toEqual(["eps-estimate", "EPS est", "0.60 USD", epsAnalysts ? "12 analysts" : undefined]);
+  });
+
+  test.each([false, true])("a dated report without EPS uses quarter EPS and all its details (year-ago loss: %s)", (yearAgoLoss) => {
+    const consensus = yearAgoLoss ? { ...estimates, earningsEstimates: [{ ...estimates.earningsEstimates[0]!, yearAgo: -0.2 }] } : estimates;
+    const built = rows([{ date: "2099-02-10", currency: "EUR", epsAnalysts: 20 }], {}, consensus);
+    expect(figures(built).find(([id]) => id === "eps-estimate"))
+      .toEqual(["eps-estimate", "EPS est", "0.60 USD", `12 analysts · ${yearAgoLoss ? "N/M" : "+5.00%"} y/y`]);
+  });
+
+  test("Siemens calendar-only EPS keeps its EUR amount and count", () => {
+    const built = rows([{ date: "2099-02-10", epsEstimate: 2.75, currency: "EUR", epsAnalysts: 4 }], { symbol: "SIE" }, null);
+    expect(figures(built).find(([id]) => id === "eps-estimate")).toEqual(["eps-estimate", "EPS est", "2.75 EUR", "4 analysts"]);
   });
 
   test("undated, the next report is the earliest quarter analysts estimate, with its consensus", () => {
@@ -758,7 +776,7 @@ describe("what is next", () => {
     const header = buildEarningsHeader(built, { today, fund: false });
     expect(header.map((figure) => [figure.id, figure.value, figure.detail])).toEqual([
       ["next-report", "10 Feb 2099", "in 78 days · projected · Dec 2098 qtr"],
-      ["eps-estimate", "0.61 USD", "+5.00% y/y"],
+      ["eps-estimate", "0.61 USD", undefined],
       ["revenue-estimate", "11.2B USD", "1 analyst · -2.00% y/y"],
       ["ttm-eps", "2.80 USD", "GAAP diluted (statements) · 4 qtrs to 30 Sep 2098"],
       ["ttm-revenue", "44B USD", "4 qtrs to 30 Sep 2098"],
