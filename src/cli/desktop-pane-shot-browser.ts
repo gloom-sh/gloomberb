@@ -56,6 +56,7 @@ const CDP_CALL_TIMEOUT_MS = 10_000;
 const CHROME_START_TIMEOUT_MS = 30_000;
 const PAGE_LOAD_TIMEOUT_MS = 45_000;
 const CHROME_EXIT_TIMEOUT_MS = 5_000;
+const GROUP_EXIT_TIMEOUT_MS = 2_000;
 
 type CdpMessage = {
   id?: number;
@@ -223,6 +224,29 @@ async function drain(stream: ReadableStream<Uint8Array>, onText: (text: string) 
   }
 }
 
+async function stopChromeGroup(pid: number): Promise<void> {
+  if (!Number.isInteger(pid) || pid <= 1) throw new Error("Invalid screenshot browser process group.");
+  const signalGroup = (signal: NodeJS.Signals | 0) => {
+    try {
+      process.kill(-pid, signal);
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+      throw error;
+    }
+  };
+  for (const signal of ["SIGTERM", "SIGKILL"] as const) {
+    if (!signalGroup(signal)) return;
+    const deadline = performance.now() + GROUP_EXIT_TIMEOUT_MS;
+    for (;;) {
+      if (!signalGroup(0)) return;
+      if (performance.now() >= deadline) break;
+      await Bun.sleep(25);
+    }
+  }
+  throw new Error("The screenshot browser process group did not exit.");
+}
+
 /**
  * Chrome with DevTools on fds 3 (to the browser) and 4 (from it): messages are JSON, each ended by a NUL.
  *
@@ -231,12 +255,13 @@ async function drain(stream: ReadableStream<Uint8Array>, onText: (text: string) 
  * (`stdio: [..., "pipe", "pipe"]`), Bun closes those descriptors more than once as the browser exits, and goes on
  * to use them. By then another child's pipes can hold the same numbers, and that child sees its own pipes closed
  * under it: a stdout that cannot be registered (EBADF), a read that never ends, or a second browser start that
- * finds its connection closed. `exec` keeps the browser's pid the child's, so `kill` reaches the browser itself.
+ * finds its connection closed. `exec` keeps the browser's pid the child's. Only the sweep uses `detached`, so
+ * its directly spawned PID also names a new POSIX process group that can be stopped after the leader exits.
  */
-function launchOverPipe(chrome: string, args: string[], env?: NodeJS.ProcessEnv): LaunchedChrome {
+function launchOverPipe(chrome: string, args: string[], { privatePipe: detached, env }: { privatePipe?: boolean; env?: NodeJS.ProcessEnv }): LaunchedChrome {
   const child = Bun.spawn(
     ["sh", "-c", 'exec "$0" "$@" 3<&0 4>&1 </dev/null >/dev/null', chrome, ...args, "--remote-debugging-pipe", "about:blank"],
-    { stdin: "pipe", stdout: "pipe", stderr: "pipe", env },
+    { stdin: "pipe", stdout: "pipe", stderr: "pipe", env, detached },
   );
   // Read to the end, so a chatty browser never blocks on a full pipe; only the start is kept.
   let stderrText = "";
@@ -265,16 +290,26 @@ function launchOverPipe(chrome: string, args: string[], env?: NodeJS.ProcessEnv)
       // Intentional ignore: a browser that cannot be waited for has gone, and the connection says so.
     }
   })();
-  void exited.then(closed);
+  let stopping: Promise<void> | undefined;
+  const stop = () => stopping ??= (async () => {
+    connection.close();
+    if (detached) {
+      await stopChromeGroup(child.pid);
+      await exited;
+      return;
+    }
+    child.kill();
+    const timer = setTimeout(() => child.kill("SIGKILL"), CHROME_EXIT_TIMEOUT_MS);
+    await exited;
+    clearTimeout(timer);
+  })();
+  void exited.then(() => {
+    closed();
+    if (detached) return stop();
+  }).catch(logFailure("cli.screenshot", "Stop screenshot browser group failed"));
   return {
     connection,
-    stop: async () => {
-      connection.close();
-      child.kill();
-      const timer = setTimeout(() => child.kill("SIGKILL"), CHROME_EXIT_TIMEOUT_MS);
-      await exited;
-      clearTimeout(timer);
-    },
+    stop,
     stderr: async () => {
       await exited;
       await Promise.race([stderrDone, new Promise((resolve) => setTimeout(resolve, 1_000))]);
@@ -378,12 +413,12 @@ export async function launchShotBrowserProcess(
 async function startShotBrowser(
   chrome: string,
   args: string[],
-  options: { userDataDir: string; env?: NodeJS.ProcessEnv; signal?: AbortSignal },
+  options: { userDataDir: string; privatePipe?: boolean; env?: NodeJS.ProcessEnv; signal?: AbortSignal },
 ): Promise<ShotBrowserProcess> {
   options.signal?.throwIfAborted();
   const launched = process.platform === "win32"
     ? await launchOverPort(chrome, args, options.userDataDir)
-    : launchOverPipe(chrome, args, options.env);
+    : launchOverPipe(chrome, args, options);
   const { connection } = launched;
   let closing: Promise<void> | undefined;
   const close = () => closing ??= launched.stop();

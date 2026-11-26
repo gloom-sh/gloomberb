@@ -19,8 +19,14 @@ async function withFakeChrome(run: (fixture: { folder: string; env: Record<strin
     await mkdir(env.HOME!, { recursive: true });
     await mkdir(env.TMPDIR!, { recursive: true });
     await writeFile(join(folder, "config.json"), JSON.stringify({ dataDir: folder, onboardingComplete: true }));
+    await writeFile(join(folder, "helper.ts"), String.raw`
+import { appendFileSync, existsSync } from "node:fs";
+process.on("SIGTERM", () => {});
+appendFileSync(import.meta.dir + "/events", "helper " + process.pid + "\n");
+setInterval(() => { if (!existsSync(import.meta.dir)) process.exit(0); }, 50);
+`);
     await writeFile(chrome, `#!${process.execPath}\nconst logPath = ${JSON.stringify(logPath)};\n` + String.raw`
-import { appendFileSync, createReadStream, writeSync } from "node:fs";
+import { appendFileSync, createReadStream, readFileSync, writeSync } from "node:fs";
 const log = (text) => appendFileSync(logPath, text + "\n");
 if (!process.argv.includes("--remote-debugging-pipe") || process.argv.some((arg) => arg.startsWith("--remote-debugging-port"))) process.exit(2);
 log("start");
@@ -53,7 +59,13 @@ async function dispatch({ id, method, params, sessionId }) {
     reply({ method: "Page.loadEventFired", sessionId });
   } else if (method === "Runtime.evaluate") {
     if (params.expression === "hang") { log("hang " + sessionId); return; }
-    if (params.expression === "crash") { log("crash"); process.exit(7); }
+    if (["crash", "interrupt"].includes(params.expression)) {
+      Bun.spawn([process.execPath, import.meta.dir + "/helper.ts"], { stderr: "inherit" });
+      while (!readFileSync(logPath, "utf8").includes("helper ")) await Bun.sleep(10);
+      log(params.expression);
+      if (params.expression === "crash") process.exit(7);
+      return;
+    }
     const ready = params.expression.includes("__GLOOM_CLI_SHOT_READY__");
     result = { result: { value: ready ? { ready: true } : {
       visibleText: context.fixture, rows: [], contentFigures: 24,
@@ -81,6 +93,21 @@ createReadStream("", { fd: 3, encoding: "utf8" }).on("data", (chunk) => {
 }
 
 const cli = [process.execPath, "--no-env-file", join(import.meta.dir, "../../src/cli/entry.ts")];
+
+function request(expression: string) {
+  return ["-e", `process.send({ id: 1, method: "Runtime.evaluate", params: { expression: ${JSON.stringify(expression)} } });
+    process.on("message", () => process.exit(1)); setInterval(() => {}, 1000);`];
+}
+
+function helperPid(events: string[]) {
+  const match = events.find((event) => event.startsWith("helper "))?.match(/^helper (\d+)$/);
+  if (!match) throw new Error("Fake Chrome did not start its helper.");
+  return Number(match[1]);
+}
+
+function expectHelperGone(events: string[]) {
+  expect(() => process.kill(helperPid(events), 0)).toThrow(/ESRCH/);
+}
 
 test.skipIf(process.platform === "win32")("strict sweep shots lease separate contexts and keep failed evidence; standalone shot owns its browser", async () => {
   await withFakeChrome(async ({ folder, env, log }) => {
@@ -113,23 +140,45 @@ test.skipIf(process.platform === "win32")("strict sweep shots lease separate con
   });
 }, 65_000);
 
-test.skipIf(process.platform === "win32")("a timed-out worker loses its context and a crashed browser is never replaced", async () => {
+test.skipIf(process.platform === "win32")("a timed-out worker loses its context and Chrome's helper is reaped after a crash without a relaunch", async () => {
   await withFakeChrome(async ({ folder, env, log }) => {
     const signal = new AbortController().signal;
     const sweep = createSweepShot([process.execPath], async () => ({ profile: join(folder, "browser"), env }), signal);
-    function request(expression: string) {
-      return ["-e", `process.send({ id: 1, method: "Runtime.evaluate", params: { expression: ${JSON.stringify(expression)} } });
-        process.on("message", () => process.exit(1)); setInterval(() => {}, 1000);`];
-    }
     try {
       expect((await sweep.run(request("hang"), env, 1_500)).timedOut).toBe(true);
       expect(await log()).toEqual(["start", "create 1", "hang 1", "dispose 1"]);
       expect((await sweep.run(request("crash"), env, 5_000)).exitCode).toBe(1);
+      expectHelperGone(await log());
       const unavailable = await sweep.run(request("hang"), env, 5_000);
       expect(unavailable.stderr).toContain("Chrome DevTools connection closed");
     } finally {
       await sweep.close();
     }
-    expect(await log()).toEqual(["start", "create 1", "hang 1", "dispose 1", "create 2", "crash"]);
+    expect((await log()).filter((event) => !event.startsWith("helper "))).toEqual(["start", "create 1", "hang 1", "dispose 1", "create 2", "crash"]);
+  });
+}, 15_000);
+
+test.skipIf(process.platform === "win32")("an interrupted sweep waits for forced cleanup of Chrome's persistent helper", async () => {
+  await withFakeChrome(async ({ folder, env, log }) => {
+    const interruption = new AbortController();
+    const sweep = createSweepShot([process.execPath], async () => ({ profile: join(folder, "browser"), env }), interruption.signal);
+    const capture = sweep.run(request("interrupt"), env, 5_000);
+    try {
+      const deadline = Date.now() + 4_000;
+      let events: string[];
+      do {
+        await Bun.sleep(25);
+        events = await log().catch(() => []);
+      } while (!events.includes("interrupt") && Date.now() < deadline);
+      expect(events).toContain("interrupt");
+      expect(process.kill(helperPid(events), 0)).toBe(true);
+    } finally {
+      interruption.abort(new Error("Sweep interrupted (SIGTERM)"));
+      try { expect((await capture).timedOut).toBe(true); }
+      finally { await sweep.close(); }
+    }
+    const events = await log();
+    expectHelperGone(events);
+    expect(events).toContain("exit");
   });
 }, 15_000);

@@ -50,9 +50,10 @@ temporary profiles are cleaned up on completion, failures, SIGINT and SIGTERM;
 allow cleanup to finish rather than sending SIGKILL.
 
 Defaults are at most 40 captures, 600 seconds overall and 90 seconds per command.
-Each shot child has its own process group. A timeout stops the child and disposes
-its context; if the browser crashes or a context cannot safely be reclaimed, the
-sweep closes that browser and reports further captures as errors without restarting it.
+Each shot child and the sweep's Chrome have separate process groups. A timeout
+stops the child and disposes its context. If Chrome crashes or a context cannot
+safely be reclaimed, the sweep stops Chrome's group, including helpers that
+outlived the browser, and reports further captures as errors without restarting it.
 Use `--max-cases`, `--max-seconds` and `--timeout-seconds` to change those bounds.
 Use `--only ANR,MOST` or `--only ANR/us-micro` for targeted checks; unknown selections
 fail. `--shard 1/8` selects stable case IDs, not catalog positions; rotate through
