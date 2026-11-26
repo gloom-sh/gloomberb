@@ -141,19 +141,32 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
     ...(evSalesNotMeaningful ? { evSales: evSalesNotMeaningful } : {}),
   };
   // A provider EV Gloom Cloud withdrew falls back to the market cap + total debt - cash it was checked against.
+  const listing = snapshot ? listingEnterpriseValue(snapshot) : null;
+  const fxRateFor = (from: string | undefined, to: string | undefined): number | null => {
+    if (!from || !to) return null;
+    if (from === to) return 1;
+    if (listing?.kind === "value" && listing.currency === to && listing.fx?.from === from
+      && finiteNumber(listing.fx.rate) && listing.fx.rate > 0) return listing.fx.rate;
+    const ttm = fundamentals?.ttmConversion;
+    if (ttm?.from === from && fundamentals?.marketCapCurrency === to && finiteNumber(ttm.rate) && ttm.rate > 0)
+      return ttm.rate;
+    return null;
+  };
   const fallback = snapshot && enterpriseValueWithdrawn(fundamentals) ? computedEnterpriseValueSales(snapshot, fundamentals) : null;
   const evSalesWithdrawn = enterpriseValueWithdrawn(fundamentals) && !fallback;
+  const revenueRate = !compatibleCurrency ? fxRateFor(currency, quote?.currency) : 1;
   const evSales = fallback ? fallback.evSales
-    : !compatibleCurrency || enterpriseValueGap || evSalesNotMeaningful ? null
-      : reportedEnterpriseToRevenue(fundamentals) != null
+    : enterpriseValueGap || evSalesNotMeaningful ? null
+      : compatibleCurrency && reportedEnterpriseToRevenue(fundamentals) != null
         ? reportedEnterpriseToRevenue(fundamentals)!
-        : enterpriseValue != null && fundamentals?.revenue != null && fundamentals.revenue > 0
-          ? enterpriseValue / fundamentals.revenue : null;
+        : enterpriseValue != null && fundamentals?.revenue != null && fundamentals.revenue > 0 && revenueRate != null
+          ? enterpriseValue / (fundamentals.revenue * revenueRate) : null;
   // The served trailing free cash flow, else the one the filed quarters sum.
   const filedFreeCashFlow = financials && !finiteNumber(fundamentals?.freeCashFlow) ? filedTrailingFreeCashFlow(financials) : null;
   const freeCashFlow = finiteNumber(fundamentals?.freeCashFlow) ? { value: fundamentals.freeCashFlow, currency } : filedFreeCashFlow;
-  const fcfYield = capitalization && freeCashFlow && freeCashFlow.currency === capitalization.currency && capitalization.value > 0
-    ? freeCashFlow.value / capitalization.value : null;
+  const fcfRate = freeCashFlow && capitalization ? fxRateFor(freeCashFlow.currency, capitalization.currency) : null;
+  const fcfYield = capitalization && freeCashFlow && fcfRate != null && capitalization.value > 0
+    ? (freeCashFlow.value * fcfRate) / capitalization.value : null;
   // Growth off revenue at or below zero a year earlier, and a margin over revenue at or below zero, are N/M, as DES
   // and `ticker` read them (servedRatesNotMeaningful).
   const served = servedRatesNotMeaningful(fundamentals, snapshot ?? financials);
