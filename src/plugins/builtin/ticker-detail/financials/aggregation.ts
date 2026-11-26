@@ -179,8 +179,7 @@ function aggregateQuarterlyStatements(
   // statements provider used a different definition for that line.
   const mixed = statements.some(({ filledFrom }) =>
     filledFrom?.source === "results"
-    && filledFrom.documents.some((document) => document.source === "mops")
-    && filledFrom.definitions?.some(({ field }) => statements.some((statement) =>
+    && filledFrom.definitions?.some(({ field }) => filledFrom.fields.includes(field) && statements.some((statement) =>
       statement.filledFrom?.source !== "results" || !statement.filledFrom.fields.includes(field),
     )),
   );

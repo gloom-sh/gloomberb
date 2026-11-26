@@ -265,6 +265,7 @@ function filledLine(statement: FinancialStatement, key: keyof FinancialStatement
 function comparableLine(current: FinancialStatement, previous: FinancialStatement, key: keyof FinancialStatement): boolean {
   const fill = current.filledFrom;
   if (fill?.source !== "results" || filledLine(previous, key)) return false;
+  if (fill.definitions?.some(({ field }) => field === key)) return false;
   if (fill.comparable) return fill.comparable.some((field) => field === key);
   const days = (Date.parse(current.date) - Date.parse(previous.date)) / 86_400_000;
   return !fill.periodMonths && days >= 300 && days <= 430;

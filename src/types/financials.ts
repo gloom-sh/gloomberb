@@ -925,13 +925,14 @@ export type StatementFilingKind = "annual_results" | "interim_results" | "quarte
 
 /** A results announcement or report on HKEXnews or SGXNet, with when it was published and read. */
 export interface StatementFilingDocument {
-  source: "hkex" | "sgx" | "lse" | "cninfo" | "ir" | "mops";
+  source: "hkex" | "sgx" | "lse" | "cninfo" | "ir" | "mops" | "nse";
   kind: StatementFilingKind;
   title: string;
   url: string;
   publishedAt: string;
   firstObserved?: true;
   fetchedAt: string;
+  dataUrl?: string;
 }
 
 /** A row's lines read from the company's results announcement or report, for a period the statements source lags on. */
@@ -946,6 +947,7 @@ export interface ResultsStatementFill {
     document: number;
     page: number | null;
     subtract?: { document: number; page: number | null };
+    xbrl?: { concept: string; context: string };
   }>>;
   /** The months the row's flows cover where the list's usual is another: 6 for a half in the quarterly list. */
   periodMonths?: number;
