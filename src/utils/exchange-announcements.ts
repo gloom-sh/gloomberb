@@ -61,7 +61,7 @@ function exchangeAnnouncementsPage(symbol: string, exchange: string | null | und
 
 const PUBLISHERS: Readonly<Record<string, string>> = {
   TWSE: "MOPS", TPEX: "MOPS",
-  ASX: "ASX", CXA: "ASX", HKEX: "HKEXnews", SWX: "SIX Swiss Exchange", NSE: "NSE",
+  ASX: "ASX", CXA: "ASX", HKEX: "HKEXnews", SWX: "SIX Swiss Exchange", NSE: "NSE", SET: "SET",
   JPX: "TDnet", HNX: "HNX", HOSE: "HOSE", KRX: "DART", KOSDAQ: "DART", SGX: "SGX", SSE: "CNINFO", SZSE: "CNINFO",
 };
 
