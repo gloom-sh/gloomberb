@@ -232,6 +232,11 @@ describe("cash distribution calculations", () => {
     expect(entries.find((entry) => entry.label === "Forward yield")?.formatted).toBe("distribution history ends 01 Sep 2026");
     expect(entries.find((entry) => entry.label === "Trailing yield")?.formatted).toContain("distribution history ends 01 Sep 2026");
     expect(entries.find((entry) => entry.label === "Last ex-dividend")?.formatted).toBe("01 Sep 2026");
+    // JSON and CSV keep the days in ISO, as they always wrote them.
+    const exported = projectDividendYieldHeadless({ payments: history, metrics, price: 100, currency: "USD" },
+      { rawArgument: "IEF", argument: "IEF", symbols: ["IEF"], options: {} }).sections[0]!.entries!;
+    expect(exported.find((entry) => entry.label === "Forward yield")?.formatted).toBe("distribution history ends 2026-09-01");
+    expect(exported.find((entry) => entry.label === "Last ex-dividend")?.formatted).toBe("2026-09-01");
     // Once the missing months are filled the fund is current, and its stated rate stands.
     const filled = buildDividendMetrics([...history, payment("2026-10-01", 0.3), payment("2026-11-02", 0.3)], summary, 100, { now: at });
     expect(filled).toMatchObject({ forwardRate: 3.6, forwardRateAsOf: "2026-11-02", lapse: null, lastExDividendDate: new Date("2026-11-02") });
@@ -607,7 +612,7 @@ describe("cash distribution calculations", () => {
     expect(data.fetchedAt).toBe("2026-10-20T02:31:00.000Z");
     const result = projectDividendYieldHeadless(data, { rawArgument: "BP:LSE", argument: "BP:LSE", symbols: ["BP:LSE"], options: {} });
     expect(result.sections[0]?.entries?.find((entry) => entry.label === "History status")?.value)
-      .toBe("Stale cash history as of 20 Oct 2026; recent distributions may be missing.");
+      .toBe("Stale cash history as of 2026-10-20; recent distributions may be missing.");
     // The pence are a conversion of the dollars declared: the history says so, and JSON keeps every decimal.
     const history = result.sections.find((section) => section.title === "Dividend history (amounts converted from USD)")!;
     expect(history.columns?.map((column) => column.key)).toEqual(["exDate", "amount", "declared", "currency", "type"]);

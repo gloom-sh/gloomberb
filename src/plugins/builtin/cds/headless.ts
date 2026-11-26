@@ -1,5 +1,6 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { formatDay } from "../../../utils/day-format";
+import { isoDayEntries } from "../shared/day-entries";
 import type {
   HeadlessBundleResult,
   HeadlessBundleSection,
@@ -208,7 +209,7 @@ const tradeColumns = (points: boolean): HeadlessPaneColumn[] => (
  * The pane's figures over its 5Y chart, as label and value lines: the level,
  * its date, the 1W and 1M moves through the roll and the range charted, in
  * bp, or for a name quoted upfront in points with its coupon. JSON keeps the
- * numbers; text and CSV read as the pane does.
+ * numbers; text and CSV read as the pane does, CSV with its days in ISO.
  */
 function spreadEntries(history: CdsSpreadHistory): HeadlessPaneEntry[] {
   const summary = spreadSummary(history);
@@ -220,7 +221,7 @@ function spreadEntries(history: CdsSpreadHistory): HeadlessPaneEntry[] {
     value: unit === "pts"
       ? { lowPts: summary.range.low, highPts: summary.range.high, since: summary.range.since }
       : { lowBp: summary.range.low, highBp: summary.range.high, since: summary.range.since },
-    formatted: `${formatSpreadRange(unit, summary.range)} since ${formatDay(summary.range.since)}`,
+    formatted: `${formatSpreadRange(unit, summary.range)} since ${summary.range.since}`,
   } : null;
   // A level that is the day's settlement price says so beside its date; one from trades says nothing.
   const kind = summary.settlement ? [{ key: "kind", label: "Level", value: "settlement" }] : [];
@@ -286,7 +287,8 @@ function projectCdsHeadless({ activity, history, levels, sort, days = DAILY_DAYS
         { key: "issuer", header: "Issuer" }, { key: "tenor", header: "Tenor" }, { key: "status", header: "Status" }, { key: "reason", header: "Reason" },
       ], rows: [{ issuer: name, tenor: "5Y", status: history instanceof Error ? "check-failed" : unmatched ? "not-covered" : why ? "not-derivable" : "no-traded-level",
         spreadBp: null, reason: history instanceof Error ? "The spread history check failed." : unmatched ? empty : why ?? `No traded 5Y level on file for ${name} in the last two years.` }] }] : []),
-      ...(entries.length ? [{ title: name, entries, symbol: name, ...(levelDate ? { asOf: levelDate } : {}) }] : []),
+      // The figures' days read first in the text; JSON and CSV keep them in ISO.
+      ...(entries.length ? [{ title: name, ...isoDayEntries(entries), symbol: name, ...(levelDate ? { asOf: levelDate } : {}) }] : []),
       {
         title: "Trades",
         columns: tradeColumns(hasPointsQuotes(activity.trades)),

@@ -124,18 +124,21 @@ export function companyHeadless(mode: CompanyMode): HeadlessPaneDefinition<"bund
       };
       const latest = ("series" in data ? currentKpiSeries(data.series).map((series) => series.latest) : data.guidance).filter(keep);
       const ignored = data.access === "preview" ? PRO_FILTERS.filter((key) => typeof args.options[key] === "string" && args.options[key] !== "") : [];
-      const notes = [ageNote(data, latest, mode),
+      // An older outlook's days read first in the text; JSON and CSV keep them in ISO.
+      const reportNotes = (day?: (iso: string) => string) => [ageNote(data, latest, mode),
         ...("guidance" in data ? data.guidance.filter(keep).flatMap((row) => {
-          const note = guidanceIssueNote(row, data.guidance);
+          const note = guidanceIssueNote(row, data.guidance, day);
           return note ? [`${row.metric.name}: ${note}.`] : [];
         }) : []),
         ignored.length ? `The free preview is fixed: ${ignored.map(optionFlag).join(", ")} ${ignored.length > 1 ? "need" : "needs"} Gloom Pro.` : null,
         ...companyDataNotes(data.companyFrom)].filter((note): note is string => !!note);
+      const notes = reportNotes((iso) => iso);
+      const textNotes = reportNotes();
       // A company with nothing on file says so once, as the pane does, rather than "not covered".
       const nothingOnFile = datasetRows(data).length === 0 && data.lockedRows === 0 && !requested;
       const { title, hint } = companyEmptyState(mode, symbol, { tab: "table", hasRows: !nothingOnFile }, "cli");
       return { complete: !data.truncated, ...(nothingOnFile ? { empty: [title, hint].filter(Boolean).join(" ") } : {}), errors: data.truncated ? [data.access === "preview" ? companyPreviewNote(data, mode === "guidance") : "Response limit reached; narrow the metric or date range"] : [],
-        ...(notes.length ? { notes } : {}),
+        ...(notes.length ? { notes, textNotes } : {}),
         sections: "series" in data ? [
           section("Latest KPIs", currentKpiSeries(data.series).map((series) => series.latest), { first: true }),
           section("KPI history", data.series.flatMap((series) => series.observations)),

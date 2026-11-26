@@ -18,7 +18,7 @@ import type { Quote } from "../../../types/financials";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { dividendPriceStatus, dividendQuotePriceMetadata } from "./reference-price";
 import { logFailure } from "../../../utils/log-failure";
-import { formatDay } from "../../../utils/day-format";
+import { dayFirstTextEntries } from "../shared/day-entries";
 import { projectDividendRanking, roundedRatio } from "./ranking";
 import { MAX_RANKED_SYMBOLS, readDividendRanking, type DividendRankingReads } from "./ranking-reads";
 import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
@@ -168,7 +168,7 @@ const PAYOUT_LABEL = `Payout (${PAYOUT_BASIS})`;
 
 /** A date, with the company's other listing it is stated by where it is not this one's: `2026-12-17 (from HSBA:LSE)`. */
 function dateEntry(label: string, date: Date | null, listing?: string) {
-  return { label, value: date, formatted: date ? `${formatDay(date.toISOString().slice(0, 10))}${listing ? ` ${carriedDateText(listing)}` : ""}` : "—" };
+  return { label, value: date, formatted: date ? `${date.toISOString().slice(0, 10)}${listing ? ` ${carriedDateText(listing)}` : ""}` : "—" };
 }
 
 /** The next pay date, when it is the one stated beside the ex-date the forward rate is dated by. */
@@ -272,8 +272,9 @@ export function projectDividendYieldHeadless(
     sections: [
       {
         title: "Dividend metrics",
-        // What the text report says of each figure: its basis, its date and why one is missing, in one line.
-        textEntries: [
+        // What the text report says of each figure: its basis, its date and why one is missing, in one line, each day
+        // drawn first as the pane draws it; JSON and CSV keep the entries below with their ISO days.
+        textEntries: dayFirstTextEntries([
           { label: "Price", value: data.price, ...(data.price != null && currency ? { formatted: formatMarketPriceWithCurrency(data.price, currency, {
             minimumFractionDigits: currencyPriceMinDigits(currency), ...data.priceQuotedUnitDivisor ? { quotedUnitDivisor: data.priceQuotedUnitDivisor } : {} }) } : {}) },
           ...(data.stale ? [{ label: "History status", value: staleHistoryText(data.fetchedAt) }] : []),
@@ -289,7 +290,7 @@ export function projectDividendYieldHeadless(
           ...figures.map((figure) => ({
             label: figureLabel(figure),
             value: figure.value,
-            formatted: `${figure.text}${figure.date ? ` (as of ${formatDay(figure.date)})` : ""}`,
+            formatted: `${figure.text}${figure.date ? ` (as of ${figure.date})` : ""}`,
           })),
           { label: "Trailing rate", value: metrics.trailingRate, formatted: cashRate(metrics.trailingRate, trailingEstimated) },
           { label: "Forward rate", value: metrics.forwardRate, formatted: `${cashRate(metrics.forwardRate, forwardEstimated)}${trailingForward ? ` (${UNEVEN_REGULAR_PAYMENTS})` : ""}` },
@@ -299,7 +300,7 @@ export function projectDividendYieldHeadless(
           growthEntry("3Y Cash CAGR", metrics.growth3Y, metrics.growth3YPayments, metrics.growth3YNotMeaningful),
           { label: "Frequency", value: metrics.paymentFrequency },
           ...datesAndCash,
-        ],
+        ]),
         // What exports and JSON keep: each figure as a number in its unit, dated by its own observation (the price a
         // yield is over, the day a sponsor gives a figure as of, the ex-date a rate is from), as the multi-fund ranking writes.
         entries: [

@@ -1,6 +1,5 @@
 import type { CorporateActionsData, DeclaredDividendAction, Fundamentals } from "../types/financials";
 import { declaredDividendCash, declaredDividends } from "./declared-dividends";
-import { formatDay } from "./day-format";
 
 /**
  * What a forward dividend yield is everywhere it shows (fundamentals, DVD,
@@ -55,21 +54,22 @@ function statedDeclaration(exDate: string, options: DeclaredBasisOptions): { amo
 }
 
 /**
- * `latest distribution annualized, as of 20 Aug 2026`, or for a rate dated
- * ahead, `annualized from the declared $0.98 payable 10 Dec 2026, ex
- * 19 Nov 2026`, the amount and pay date when they are stated; the basis alone
+ * `latest distribution annualized, as of 2026-08-20`, or for a rate dated
+ * ahead, `annualized from the declared $0.98 payable 2026-12-10, ex
+ * 2026-11-19`, the amount and pay date when they are stated; the basis alone
  * when the date is unknown. `payDate` is the pay date a source states beside
- * that ex-date without a declared row (DVD's summary).
+ * that ex-date without a declared row (DVD's summary). Its days are ISO, as
+ * exports keep them; DVD's pane and text draw them day first.
  */
 export function forwardDividendBasis(
   asOf: string | Date | null | undefined,
   options: DeclaredBasisOptions & { payDate?: string | Date | null } = {},
 ): string {
   const exDate = isoDay(asOf);
-  if (!isDeclared(exDate, options.now ?? new Date())) return exDate ? `${LATEST_DISTRIBUTION}, as of ${formatDay(exDate)}` : LATEST_DISTRIBUTION;
+  if (!isDeclared(exDate, options.now ?? new Date())) return exDate ? `${LATEST_DISTRIBUTION}, as of ${exDate}` : LATEST_DISTRIBUTION;
   const stated = statedDeclaration(exDate, options);
   const payDate = stated?.payDate ?? isoDay(options.payDate);
-  return `annualized from the declared ${stated?.amount ?? "distribution"}${payDate ? ` payable ${formatDay(payDate)}` : ""}, ex ${formatDay(exDate)}`;
+  return `annualized from the declared ${stated?.amount ?? "distribution"}${payDate ? ` payable ${payDate}` : ""}, ex ${exDate}`;
 }
 
 const DAY_MS = 86_400_000;
@@ -246,13 +246,13 @@ export function monthlyHistoryEnd(history: DistributionHistory | null | undefine
   return distributionIntervalDays(days) === CADENCE_DAYS[0] ? last : null;
 }
 
-/** `distribution history ends 01 Sep 2026`: what a monthly payer's ended history says in place of a yield it cannot give. */
+/** `distribution history ends 2026-09-01`: what a monthly payer's ended history says in place of a yield it cannot give. */
 export function historyEndsText(day: string): string {
-  return `distribution history ends ${formatDay(day)}`;
+  return `distribution history ends ${day}`;
 }
 
 export const NO_CURRENT_DIVIDEND = "no current dividend";
-/** What a short cell reads for a monthly payer's history that ends (DividendLapse.historyEnds), beside `last ex 01 Sep 2026`. */
+/** What a short cell reads for a monthly payer's history that ends (DividendLapse.historyEnds), beside `last ex 2026-09-01`. */
 const HISTORY_ENDS = "history ends";
 
 /** What a short cell reads in place of a lapsed forward yield: `history ends` for a history that ends, else `no current dividend`. */
@@ -260,16 +260,16 @@ export function lapseValue(lapse: DividendLapse): string {
   return lapse.historyEnds && lapse.lastPaid ? HISTORY_ENDS : NO_CURRENT_DIVIDEND;
 }
 
-/** `last paid 27 Feb 2026` beside "no current dividend", `last ex 01 Sep 2026` beside "history ends"; null when the date is unknown. */
+/** `last paid 2026-02-27` beside "no current dividend", `last ex 2026-09-01` beside "history ends"; null when the date is unknown. */
 export function lastPaidNote(lapse: DividendLapse): string | null {
   if (!lapse.lastPaid) return null;
-  return lapse.historyEnds ? `last ex ${formatDay(lapse.lastPaid)}` : `last paid ${formatDay(lapse.lastPaid)}`;
+  return lapse.historyEnds ? `last ex ${lapse.lastPaid}` : `last paid ${lapse.lastPaid}`;
 }
 
 /**
- * `no current dividend (last paid 27 Feb 2026)`, what a lapsed forward yield
+ * `no current dividend (last paid 2026-02-27)`, what a lapsed forward yield
  * reads instead of a percentage; for a monthly payer's history that ends
- * early, `distribution history ends 01 Sep 2026`.
+ * early, `distribution history ends 2026-09-01`.
  */
 export function noCurrentDividend(lapse: DividendLapse): string {
   if (lapse.historyEnds && lapse.lastPaid) return historyEndsText(lapse.lastPaid);
@@ -277,11 +277,11 @@ export function noCurrentDividend(lapse: DividendLapse): string {
   return note ? `${NO_CURRENT_DIVIDEND} (${note})` : NO_CURRENT_DIVIDEND;
 }
 
-/** The same basis as a pane's short note under the figure: `as of 20 Aug 2026`, or `declared $0.98` beside the next ex-date it shows. */
+/** The same basis as a pane's short note under the figure: `as of 2026-08-20`, or `declared $0.98` beside the next ex-date it shows. */
 export function forwardDividendNote(asOf: string | Date | null | undefined, options: DeclaredBasisOptions = {}): string | null {
   const exDate = isoDay(asOf);
   if (!exDate) return null;
-  if (!isDeclared(exDate, options.now ?? new Date())) return `as of ${formatDay(exDate)}`;
+  if (!isDeclared(exDate, options.now ?? new Date())) return `as of ${exDate}`;
   const stated = statedDeclaration(exDate, options);
   return stated ? `declared ${stated.amount}` : "declared";
 }

@@ -1,4 +1,3 @@
-import { formatDay } from "../../../utils/day-format";
 import type { DividendMetrics, DividendPayment, GrowthPayments } from "./types";
 import { MISSING_VALUE, distributionAmountsDigits, formatDistributionAmount } from "../../../utils/format";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
@@ -69,19 +68,19 @@ export function forwardEstimateText(metrics: DividendMetrics): string | null {
 
 function cashEstimateText(estimate: NonNullable<DividendMetrics["forwardEstimate"]>): string {
   const declared = estimate.declaredAmount == null ? estimate.declaredCurrency : `${estimate.declaredAmount} ${estimate.declaredCurrency}/share`;
-  return `estimated from ${declared}; FX ${estimate.fixingDate ? `fixing ${formatDay(estimate.fixingDate)}` : "fixing unavailable"}${estimate.basis ? `; ${estimate.basis}` : ""}`;
+  return `estimated from ${declared}; FX ${estimate.fixingDate ? `fixing ${estimate.fixingDate}` : "fixing unavailable"}${estimate.basis ? `; ${estimate.basis}` : ""}`;
 }
 
 /**
  * What an estimated figure is estimated from, as a report says it once beside the figures it marks: `$0.10 declared,
- * FX fixing 07 Dec 2026`, the declared amount in the distribution's own formatting, `FX fixing unavailable` while
+ * FX fixing 2026-12-07`, the declared amount in the distribution's own formatting, `FX fixing unavailable` while
  * no fixing is known. Each distinct estimate is named once, whichever figures it marks.
  */
 export function distinctEstimateTexts(estimates: readonly NonNullable<DividendMetrics["forwardEstimate"]>[]): string[] {
   return [...new Set(estimates.map((estimate) => {
     const declared = estimate.declaredAmount == null ? `declared in ${estimate.declaredCurrency}`
       : `${formatDistributionAmount(estimate.declaredAmount, estimate.declaredCurrency)} declared`;
-    return `${declared}, FX ${estimate.fixingDate ? `fixing ${formatDay(estimate.fixingDate)}` : "fixing unavailable"}`;
+    return `${declared}, FX ${estimate.fixingDate ? `fixing ${estimate.fixingDate}` : "fixing unavailable"}`;
   }))];
 }
 
@@ -119,7 +118,7 @@ export function growthPaymentsText(payments: GrowthPayments): string {
 /** A history served stale, dated by its read when the source gave it. */
 export function staleHistoryText(fetchedAt: string | undefined): string {
   const day = fetchedAt && /^\d{4}-\d{2}-\d{2}/.test(fetchedAt) ? fetchedAt.slice(0, 10) : null;
-  return `Stale cash history${day ? ` as of ${formatDay(day)}` : ""}; recent distributions may be missing.`;
+  return `Stale cash history${day ? ` as of ${day}` : ""}; recent distributions may be missing.`;
 }
 
 /** Cash history does not contain historical share prices, so cannot establish historical yields. */

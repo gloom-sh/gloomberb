@@ -1,4 +1,5 @@
 import { dayCell, formatDay } from "../../../components/ui/day-cell";
+import { formatDaysInText } from "../../../utils/day-format";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import {
@@ -102,9 +103,11 @@ function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory
     ? [{ id: "next-ex", label: "Next ex", value: formatDate(metrics.nextExDividendDate), essential: true,
       ...metrics.nextExDividendDateListing ? { detail: `from ${metrics.nextExDividendDateListing}` } : {} }]
     : hasHistory ? [] : [{ id: "last-ex", label: "Last ex", value: formatDate(metrics.lastExDividendDate) }];
-  const dated = metrics.lapse ? lastPaidNote(metrics.lapse)
+  const basis = metrics.lapse ? lastPaidNote(metrics.lapse)
     : metrics.forwardYield == null ? null
     : forwardEstimateText(metrics) ?? (metrics.forwardBasis === "uneven" ? UNEVEN_REGULAR_PAYMENTS : forwardDividendNote(metrics.forwardRateAsOf, { declared, currency }));
+  // Its day reads first, as the figures' dates do.
+  const dated = basis ? formatDaysInText(basis) : null;
   // "not SEC" in the grid: the SEC yield is the next cell, and the long form costs the header a column.
   const notSec = (note: string | null) => bond ? [note, "not SEC"].filter(Boolean).join(", ") : note;
   const forwardNote = metrics.forwardEstimate ? null : notSec(dated);

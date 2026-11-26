@@ -65,7 +65,7 @@ const PROPOSED_SALE = `<ns2:edgarSubmission xmlns:ns2="http://www.sec.gov/edgar/
 test("XML filings read for their rows: a 144 names the seller and size, a 24F-2NT the year's net flow", () => {
   expect(rowSummary("144", PROPOSED_SALE)).toEqual({ title: "John Ternus: proposed sale of 25.4k shares ($8.48M)", direction: null });
   expect(rowSummary("24F-2NT", FUND_FLOWS)).toEqual({
-    title: "Year to 30 Sep 2025: net flow -$3.8B (sold $992.59B, redeemed $996.39B)",
+    title: "Year to 2025-09-30: net flow -$3.8B (sold $992.59B, redeemed $996.39B)",
     direction: "sell",
   });
   expect(rowSummary("8-K", PROPOSED_SALE)).toBeNull();

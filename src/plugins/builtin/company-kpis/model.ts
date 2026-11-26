@@ -350,9 +350,10 @@ export function fitCompanyColumns(columns: readonly DataTableColumn[], width: nu
   return markHiddenTableColumns(columns, narrow(shown));
 }
 
-export function guidanceIssueNote(row: KpiGuidance, rows: readonly KpiGuidance[]): string | null {
+/** `Issued 21 Aug 2026; newer outlook 06 Nov 2026`, its days as `day` writes them (an export's ISO). */
+export function guidanceIssueNote(row: KpiGuidance, rows: readonly KpiGuidance[], day: (iso: string) => string = formatDay): string | null {
   const newest = rows.reduce((date, guide) => guide.issuedDate > date ? guide.issuedDate : date, row.issuedDate);
-  return row.issuedDate < newest ? `Issued ${formatDay(row.issuedDate)}; newer outlook ${formatDay(newest)}` : null;
+  return row.issuedDate < newest ? `Issued ${day(row.issuedDate)}; newer outlook ${day(newest)}` : null;
 }
 
 /** Companies to point an empty pane at, one that has data and one for when the pane is for the first. */

@@ -40,7 +40,7 @@ test("a dividend that stopped by its own cadence is 0 and dated by its last dist
     expect(await loadModelDividendYield({ dividendYield, dividendYieldBasis: dividendYield ? "forward" : undefined, exDividendDate: "2026-02-27" },
       "WHR", async () => whr, { now })).toEqual(stopped);
   }
-  expect(modelDividendYieldNote(stopped as never)).toBe("no current dividend, last paid 27 Feb 2026");
+  expect(modelDividendYieldNote(stopped as never)).toBe("no current dividend, last paid 2026-02-27");
   // A history that cannot be read leaves a stated yield as it is.
   const forward = { dividendYield: 0.1291, dividendYieldBasis: "forward" as const, exDividendDate: "2026-02-27" };
   expect(await loadModelDividendYield(forward, "WHR", async () => ({ ...whr, stale: true }), { now })).toEqual({ value: 0.1291, basis: "stated" });
@@ -63,6 +63,6 @@ test("a monthly payer's history that ends keeps its stated yield and says where 
   const at = { now: Date.UTC(2026, 10, 6) };
   const ended = await loadModelDividendYield({ dividendYield: 0.0299, dividendYieldBasis: "forward", exDividendDate: "2026-09-01" }, "MUB", async () => mub, at);
   expect(ended).toEqual({ value: 0.0299, basis: "stated", historyEnds: "2026-09-01" });
-  expect(modelDividendYieldNote(ended)).toBe("distribution history ends 01 Sep 2026");
+  expect(modelDividendYieldNote(ended)).toBe("distribution history ends 2026-09-01");
   expect(await loadModelDividendYield(null, "MUB", async () => mub, at)).toBeNull();
 });

@@ -318,9 +318,9 @@ export async function loadCspScreen(
     freshness: screened.freshness };
 }
 
-/** `nearest 0.30 delta · expiry nearest 21 Nov 2026 (30 days)`: what each name's put is. */
+/** `nearest 0.30 delta · expiry nearest 2026-11-21 (30 days)`: what each name's put is, as the strategy screen's says its trade. */
 export function cspScreenCriteriaText(criteria: CspScreenCriteria, now: number): string {
-  return `nearest ${criteria.delta.toFixed(2)} delta · expiry nearest ${formatDay(cspTargetDate(criteria, now))}`
+  return `nearest ${criteria.delta.toFixed(2)} delta · expiry nearest ${cspTargetDate(criteria, now)}`
     + (criteria.expiration == null ? ` (${criteria.days} days)` : "");
 }
 

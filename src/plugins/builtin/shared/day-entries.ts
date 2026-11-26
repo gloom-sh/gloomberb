@@ -23,8 +23,19 @@ export function dayFirstEntries(entries: HeadlessPaneEntry[]): DayEntries {
  * link or an identifier, left as it is.
  */
 export function isoDayEntries(entries: HeadlessPaneEntry[], whole: readonly string[] = []): DayEntries {
-  return {
-    entries,
-    textEntries: entries.map((entry) => entry.formatted && !whole.includes(entry.key) ? { ...entry, formatted: formatDaysInText(entry.formatted) } : entry),
-  };
+  return { entries, textEntries: dayFirstTextEntries(entries, whole) };
+}
+
+/**
+ * Text-report lines with each ISO day drawn first: a line's words, or a value
+ * that is words (`Stale cash history as of 2026-11-20; …`). For a section
+ * whose `textEntries` are already their own lines; `whole` as above.
+ */
+export function dayFirstTextEntries(entries: HeadlessPaneEntry[], whole: readonly string[] = []): HeadlessPaneEntry[] {
+  return entries.map((entry) => {
+    if (entry.key && whole.includes(entry.key)) return entry;
+    if (entry.formatted) return { ...entry, formatted: formatDaysInText(entry.formatted) };
+    const shown = typeof entry.value === "string" ? formatDaysInText(entry.value) : null;
+    return shown != null && shown !== entry.value ? { ...entry, formatted: shown } : entry;
+  });
 }

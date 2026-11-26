@@ -114,6 +114,8 @@ describe("CDS report", () => {
     expect(text).toMatch(/1W change\s+\+12\.0bp/);
     expect(text).toMatch(/1M change\s+\+17\.0bp/);
     expect(text).toMatch(/Range\s+129 to 276bp since 11 Oct 2024/);
+    // JSON and CSV keep the range's day in ISO, as they always wrote it.
+    expect(result.sections[0]!.entries!.find((entry) => entry.key === "range")!.formatted).toBe("129 to 276bp since 2024-10-11");
     // ISO times, and the upfront without a side it does not have.
     expect(text).toContain("09 Oct 2026 13:21");
     expect(text).not.toMatch(/\d{2}\/\d{2} \d{2}:\d{2}/);

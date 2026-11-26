@@ -1,6 +1,7 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { scenarioQuoteTimesLabel } from "./freshness";
 import { dayCell } from "../../../components/ui/day-cell";
+import { formatDaysInText } from "../../../utils/day-format";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DataTableView, PaneStatusBody, QueryBar, usePaneFooter, usePaneNoticeFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type DataTableKeyEvent,
@@ -202,7 +203,8 @@ export function CspScreenPane({ width, height, focused }: PaneProps) {
     ...(resource.loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
   ] }), [resource.loading]);
   const now = Date.now();
-  const criteriaText = criteria.value ? cspScreenCriteriaText(criteria.value, now) : criteria.trade ? strategyScreenCriteriaText(criteria.trade, now) : "";
+  // The expiry reads day first in the pane; the report's heading keeps the ISO day `--expiration` takes.
+  const criteriaText = formatDaysInText(criteria.value ? cspScreenCriteriaText(criteria.value, now) : criteria.trade ? strategyScreenCriteriaText(criteria.trade, now) : "");
   // Enter opens the name's trade in OSA: the put at the strike and expiry the screen read, any other trade as its legs.
   const openScenario = (row: ScreenRow | TradeRow) => {
     if ("csp" in row.source) {
