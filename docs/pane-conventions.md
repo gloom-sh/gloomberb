@@ -588,6 +588,15 @@ at any width. A pane does nothing for this, except say what matters:
   (`width - getTableWidth(columns)`), never by a constant: one that forgets
   the gaps makes the table wider than its pane at every width, and its last
   column is the one that leaves.
+- A cell the pane draws itself (`content`) says how wide it draws whole
+  (`contentWidth`), so the terminal fits its column to it, and lays itself
+  out in the width its column is given. Where the terminal's edge still cuts
+  that column, the cell is made again with the cells that show as the
+  column's width, so it gives up a piece whole rather than have the edge cut
+  it, and in a column left no cells it draws nothing. DVD's source cell
+  links the notice and the schedule where both fit whole and the notice
+  alone in less: the pane sizes that column to its width by the table's own
+  measure, and the schedule stays on the selected row's menu.
 
 `shot` names a column a capture cut in a warning (`cutColumns`), which does
 not fail `--strict`; a table drawn outside the kit owes the same fit.
