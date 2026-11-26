@@ -1,3 +1,4 @@
+import { formatDay } from "../../../utils/day-format";
 import { MISSING_VALUE } from "../../../utils/format";
 import type { PerpDepthPayload, PerpDepthRow, PerpDepthSnapshot, PerpLiquidationMarket, PerpLiquidationPrint, PerpLiquidationsPayload } from "../../../api-client/perps";
 import type { DataTableCell, DataTableColumn, StatItem } from "../../../components";
@@ -12,7 +13,7 @@ import { compact, price, venueName } from "./model";
 
 type Colors = Pick<ThemeColors, "positive" | "negative" | "text" | "textBright" | "textMuted" | "textDim">;
 /** Month to second, or to minute: the header names UTC. */
-const stamp = (s: string | null | undefined, seconds = false) => s ? `${s.slice(5, 10)} ${s.slice(11, seconds ? 19 : 16)}` : MISSING_VALUE;
+const stamp = (s: string | null | undefined, seconds = false) => s ? `${formatDay(s, "no-year")} ${s.slice(11, seconds ? 19 : 16)}` : MISSING_VALUE;
 const venueOrder = (venue: string) => { const at = ["binance", "bybit", "okx", "hyperliquid"].indexOf(venue); return at < 0 ? 9 : at; };
 /** The venues behind some rows, in the order the tabs list them. */
 const venuesIn = (rows: readonly { venue: string }[]) => [...new Set(rows.map((row) => row.venue))].sort((a, b) => venueOrder(a) - venueOrder(b));
@@ -46,7 +47,7 @@ const LIQUIDATION_COLUMNS: Record<LiquidationColumnId, DataTableColumn> = {
   long7d: { id: "long7d", label: "Longs 7d USD", width: 12, align: "right" },
   short7d: { id: "short7d", label: "Shorts 7d USD", width: 13, align: "right" },
   count24h: { id: "count24h", label: "Events 24h", width: 10, align: "right" },
-  lastEventAt: { id: "lastEventAt", label: "Last UTC", width: 11, align: "left" },
+  lastEventAt: { id: "lastEventAt", label: "Last UTC", width: 12, align: "left" },
 };
 export const LIQUIDATION_COLUMN_IDS: LiquidationColumnId[] = ["venue", "symbol", "long24h", "short24h", "long7d", "short7d", "count24h", "lastEventAt"];
 export const liquidationColumns = (width: number) => fit(LIQUIDATION_COLUMNS, LIQUIDATION_COLUMN_IDS, [["lastEventAt"], ["count24h"], ["long7d", "short7d"]], width);
@@ -72,7 +73,7 @@ export function liquidationCell(row: PerpLiquidationMarket, id: LiquidationColum
 
 export type PrintColumnId = "eventAt" | "venue" | "symbol" | "side" | "price" | "priceKind" | "quantity" | "notionalUsd" | "receivedAt";
 const printColumnsFor = (base: string): Record<PrintColumnId, DataTableColumn> => ({
-  eventAt: { id: "eventAt", label: "Time UTC", width: 14, align: "left" },
+  eventAt: { id: "eventAt", label: "Time UTC", width: 15, align: "left" },
   venue: { id: "venue", label: "Venue", width: 11, align: "left" },
   symbol: { id: "symbol", label: "Contract", width: 14, align: "left" },
   side: { id: "side", label: "Side", width: 5, align: "left" },

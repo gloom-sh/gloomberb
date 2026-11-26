@@ -79,7 +79,7 @@ describe("catalyst provenance and dates", () => {
     expect(catalystBasisWidth([event, trial("ACTUAL")], "any")).toBe(27);
     const basis = (width: number) => catalystColumns(width, false, false, 27).find((column) => column.id === "basis")?.width;
     expect(basis(158)).toBe(27);
-    expect(basis(130)).toBe(26);
+    expect(basis(130)).toBe(25);
     expect(basis(110)).toBe(10);
   });
   // CRMD's PDUFA without its day was dated by the 8-K that mentioned it.

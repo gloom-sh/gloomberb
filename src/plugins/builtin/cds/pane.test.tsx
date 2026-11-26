@@ -179,8 +179,8 @@ describe("CdsPane", () => {
     expect(requests).toBe(1);
     expect(frame).toMatch(/ 5Y\s+1W\s+1M/);
     // The moves as the index board prints them; one that rounds to 0.0 reads 0.0bp, none reads --.
-    expect(frame).toMatch(/Oracle Corporation\s+2\s+2026-08-25 12:00\s+235bp\s+\+28\.1bp\s+\+75\.4bp/);
-    expect(frame).toMatch(new RegExp(String.raw`Ford Motor Company\s+1\s+2026-08-25 11:00\s+157bp\s+0\.0bp\s+${MISSING_VALUE}`));
+    expect(frame).toMatch(/Oracle Corporation\s+2\s+25 Aug 2026 12:00\s+235bp\s+\+28\.1bp\s+\+75\.4bp/);
+    expect(frame).toMatch(new RegExp(String.raw`Ford Motor Company\s+1\s+25 Aug 2026 11:00\s+157bp\s+0\.0bp\s+${MISSING_VALUE}`));
     // The last trade, never the fetch time, with its age in days.
     expect(frame).toMatch(/Source: DTCC · last trade 2026-08-25 12:00 UTC · \d+ days old/);
     expect(frame).not.toContain("as of");
@@ -194,8 +194,8 @@ describe("CdsPane", () => {
       },
     });
     const frame = tui.frame();
-    expect(frame).toMatch(new RegExp(String.raw`Oracle Corporation\s+2\s+2026-08-25 12:00\s+${MISSING_VALUE}\s+${MISSING_VALUE}\s+${MISSING_VALUE}`));
-    expect(frame).toMatch(new RegExp(String.raw`Ford Motor Company\s+1\s+2026-08-25 11:00\s+${MISSING_VALUE}\s+${MISSING_VALUE}\s+${MISSING_VALUE}`));
+    expect(frame).toMatch(new RegExp(String.raw`Oracle Corporation\s+2\s+25 Aug 2026 12:00\s+${MISSING_VALUE}\s+${MISSING_VALUE}\s+${MISSING_VALUE}`));
+    expect(frame).toMatch(new RegExp(String.raw`Ford Motor Company\s+1\s+25 Aug 2026 11:00\s+${MISSING_VALUE}\s+${MISSING_VALUE}\s+${MISSING_VALUE}`));
     // The failure is the footer's data warning, not an empty list.
     expect(frame).toContain("⚠");
   });
@@ -247,7 +247,7 @@ describe("CdsPane", () => {
     ]);
     await renderPane({ sort: "spread", activity, loadLevels: levels });
     const frame = tui.frame();
-    expect(frame).toMatch(/VIRGIN MEDIA FINANCE PLC\s+3\s+2026-08-25 09:40\s+57\.6 pts\s+\+10\.9 pts\s+\+36\.1 pts/);
+    expect(frame).toMatch(/VIRGIN MEDIA FINANCE PLC\s+3\s+25 Aug 2026 09:40\s+57\.6 pts\s+\+10\.9 pts\s+\+36\.1 pts/);
     expect(frame).not.toContain("18654");
     // Widest first among the bp names, then the names quoted in points.
     expect(frame.indexOf("Oracle Corporation")).toBeLessThan(frame.indexOf("Ford Motor Company"));
@@ -281,8 +281,8 @@ describe("CdsPane", () => {
     expect(frame).toContain("100bp");
     expect(frame).toContain(MISSING_VALUE);
     expect(frame).not.toContain("Ford Motor Company");
-    // ISO times, and an upfront with no side: unsigned, under an absolute header.
-    expect(frame).toContain("2026-08-25 12:00");
+    // Day-first times, and an upfront with no side: unsigned, under an absolute header.
+    expect(frame).toContain("25 Aug 2026 12:00");
     expect(frame).toContain("ABS UPFRONT");
     expect(frame).toContain("762.5k USD");
     expect(frame).not.toContain("+762.5k");
@@ -306,7 +306,7 @@ describe("CdsPane", () => {
     // The resolved company name drives the history, with no second search.
     expect(requested).toEqual(["Oracle Corporation"]);
     expect(frame).toContain("235bp");
-    expect(frame).toContain("2026-09-25");
+    expect(frame).toContain("25 Sep 2026");
     // A month back is the Jun 2031 contract: the move chains through the roll, as the index board's does.
     expect(frame).toMatch(/1W\s+\+27\.0bp/);
     expect(frame).toMatch(/1M\s+\+75\.4bp/);
@@ -368,7 +368,7 @@ describe("CdsPane", () => {
     lines = tui.frame().split("\n");
     const tableHeader = lines.findIndex((line) => line.includes("TIME UTC"));
     expect(lines[tableHeader - 1]).toContain("●");
-    expect(lines.filter((line) => /\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(line))).toHaveLength(3);
+    expect(lines.filter((line) => /\d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}/.test(line))).toHaveLength(3);
   });
 
   test("still lists trades when the history request fails", async () => {

@@ -1,3 +1,4 @@
+import { dayCell, formatDay } from "../../../components/ui/day-cell";
 import { useCallback, useMemo } from "react";
 import type { CryptoEtfFlowAsset, CryptoEtfFlowDay } from "../../../api-client/crypto-etf-flows";
 import { isAccessDenied } from "../../../api-client/errors";
@@ -89,7 +90,7 @@ export function CryptoEtfFlowsPane({ focused, width, height }: PaneProps) {
     const points = cumulativeFlows(data).filter((point) => point.date >= first)
       .map((point) => scalarPoint(new Date(`${point.date}T00:00:00Z`), point.value * 1_000_000));
     const launch = data.days.at(-1)?.date;
-    return [staticSeries(points, { id: `etf-flows:${asset}`, label: `${label} ETF net flows since ${launch ?? "launch"}`, color: colors.positive, calendarSpaced: true })];
+    return [staticSeries(points, { id: `etf-flows:${asset}`, label: `${label} ETF net flows since ${launch ? formatDay(launch) : "launch"}`, color: colors.positive, calendarSpaced: true })];
   }, [asset, data, days, label]);
   const link = useChartTableSelection({ rows: days, getId: rowId, getDate: rowDate, selectedId, onSelect: selectDay, focused });
 
@@ -97,12 +98,12 @@ export function CryptoEtfFlowsPane({ focused, width, height }: PaneProps) {
   const pending = pendingText(latest);
   const figures: StatItem[] = summary ? [
     { id: "latest", label: "Latest day", value: formatFlowAmount(latest?.total), color: flowColor(latest?.total, colors),
-      detail: [latest?.date, pending].filter(Boolean).join(" · ") || undefined },
+      detail: [latest?.date ? formatDay(latest.date) : null, pending].filter(Boolean).join(" · ") || undefined },
     // The rolling sums leave out a day still pending, and say the day they end on.
     { id: "week", label: "5 days", value: formatFlowAmount(summary.week), color: flowColor(summary.week, colors),
-      ...summary.through ? { detail: `through ${summary.through}` } : {} },
+      ...summary.through ? { detail: `through ${formatDay(summary.through)}` } : {} },
     { id: "month", label: "20 days", value: formatFlowAmount(summary.month), color: flowColor(summary.month, colors),
-      ...summary.through ? { detail: `through ${summary.through}` } : {} },
+      ...summary.through ? { detail: `through ${formatDay(summary.through)}` } : {} },
   ] : [];
 
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
@@ -143,7 +144,7 @@ export function CryptoEtfFlowsPane({ focused, width, height }: PaneProps) {
   }, [range, refresh, resetChartView, selectRange]);
 
   const renderCell = useCallback((day: CryptoEtfFlowDay, column: CryptoEtfFlowColumn): DataTableCell => {
-    if (column.id === "date") return { text: day.date, value: day.date, color: colors.text };
+    if (column.id === "date") return { ...dayCell(day.date), color: colors.text };
     if (column.id === "total") return { text: formatFlow(day.total), value: day.total, color: flowColor(day.total, colors) };
     if (column.id === "price") return { text: formatPriceChange(day.priceChangePct), value: day.priceChangePct ?? null, color: flowColor(day.priceChangePct, colors) };
     const ticker = fundTickerOfColumn(column.id) ?? "";

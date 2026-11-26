@@ -399,6 +399,29 @@ describe("EVT's Dividends view", () => {
     expect(tui.frame()).not.toContain("Next report");
     expect(catalystReads).toEqual([]);
   });
+
+  test.each(["EVT", "DES Events"])("%s routes a named ETF to its distributions when financials are unavailable", async (view) => {
+    let actionReads = 0;
+    const { app } = await mount({
+      actions: async () => {
+        actionReads++;
+        return { ...structuredClone(ACTIONS), name: "Test Index ETF", dividends: [], coverage: { ...ACTIONS.coverage, dividends: "unavailable" } };
+      },
+      content: view === "DES Events" ? (body) => <EventsResearchEarnings focused {...body} onCapture={() => {}} /> : undefined,
+    });
+    expect(app.state.financials.get("TEST")).toBeUndefined();
+    expect(tui.frame()).toMatch(/2022\s+4-for-1 split · Distribution history incomplete/);
+    expect(tui.frame()).not.toMatch(/\bEPS\b|Next report/);
+    expect(actionReads).toBe(1);
+  });
+
+  test("shows a fund's split after its last recorded payout without assuming no dividend", async () => {
+    await mount({ actions: async () => ({ ...ACTIONS, name: "Test Index ETF",
+      dividends: [paid("2021-05-10", 0.25)], coverage: { ...ACTIONS.coverage, dividends: "unavailable" } }) });
+    expect(tui.frame()).toMatch(/^\s*2022\s+4-for-1 split · Distribution history incomplete/m);
+    expect(tui.frame()).toMatch(/^\s*2021\s+0\.25\s+1\b/m);
+    expect(line("Paying since")).toMatch(/2021\s+1 of 1\b/);
+  });
 });
 
 describe("the strip stays", () => {
@@ -447,4 +470,15 @@ describe("what saved layouts, --tab and shortcuts name", () => {
     await mount({ content: (body) => <EventsResearchEarnings focused {...body} onCapture={() => {}} /> });
     expect(tui.frame()).toContain("Next report");
   });
+
+  test.each([["AFK", EventsResearchEarnings], ["IQQ5:XETRA", EventsDividendsView]] as const)(
+    "%s renders distributions without requesting analyst research", async (symbol, View) => {
+      let estimates = 0;
+      await mount({ symbol, financials: FUND, content: (body) => <View {...body} focused onCapture={() => {}} />,
+        estimates: async () => { estimates++; throw new Error("UPSTREAM_ERROR"); } });
+      expect(tui.frame()).toContain("Paying since");
+      expect(tui.frame()).not.toContain("UPSTREAM_ERROR");
+      expect(estimates).toBe(0);
+    },
+  );
 });

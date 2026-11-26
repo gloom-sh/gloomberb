@@ -1,3 +1,4 @@
+import { formatDay } from "../../../../utils/day-format";
 import { subtractTimeRange } from "../../../../time-series/date-window";
 import type { TimeRange } from "../../../../time-series/range";
 import {
@@ -371,6 +372,12 @@ export function returnBaseCloseDay(
 export function returnClockZone(venue: string | undefined): string | null {
   if (!venue || isAlwaysOpenExchange(venue)) return null;
   return sessionCalendarTimeZone(venue);
+}
+
+/** An intraday return's time as the table writes it, its day first: `25 Nov 2026 11:30`, `25 Nov 11:30` short. */
+export function returnTimeLabel(text: string, short = false): string {
+  const [day, time] = text.split(" ");
+  return time ? `${formatDay(day, short ? "no-year" : "full")} ${time}` : text;
 }
 
 /**

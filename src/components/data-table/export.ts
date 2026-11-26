@@ -1,5 +1,6 @@
 import type { DataTableCell, DataTableColumn, DataTableProps } from "../ui";
 import { serializeCsv } from "../../utils/csv";
+import { isoFromDayText } from "../../utils/day-format";
 import { figureColumnCells } from "../ui/data-table/render-cell";
 import {
   BLANK_DISPLAY as BLANK,
@@ -24,9 +25,10 @@ function exportColumn(column: DataTableColumn, cells: readonly DataTableCell[]):
   // Values in a unit their text leaves out (a market cap in the base currency) name it in the header, when they share one.
   const valueUnits = new Set(cells.flatMap((cell) => cell.value != null && cell.valueUnit ? [cell.valueUnit] : []));
   const label = valueUnits.size === 1 ? labelWithUnit(column.label.trim(), [...valueUnits][0]!) : column.label.trim();
+  // A day drawn day first (`21 Aug 2026`) with no value of its own still exports as ISO, as `report --csv` writes it.
   const shown = (cell: DataTableCell) => cell.value !== undefined
     ? rawExportValue(cell.value)
-    : PLACEHOLDER.test(cell.text.trim()) ? "" : cell.text;
+    : PLACEHOLDER.test(cell.text.trim()) ? "" : isoFromDayText(cell.text) ?? cell.text;
   if (column.align !== "right") return { label, values: cells.map(shown) };
 
   const parsed = cells.map((cell) => parseDisplayNumber(cell.text));

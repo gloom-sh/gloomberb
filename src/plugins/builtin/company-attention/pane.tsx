@@ -1,3 +1,4 @@
+import { dayCell } from "../../../components/ui/day-cell";
 import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useMemo, useRef } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
@@ -250,6 +251,7 @@ function AttentionView({ kind, symbol, width, height, focused, initialTab }: Siz
             if (column.id === "country" || (kind === "hiring" && tab === "mix" && mix === "countries" && column.id === "label")) {
               return withCountryFlag({ text, value, color: colors.text }, String(value), desktop);
             }
+            if ((column.id === "date" || column.id === "week") && typeof value === "string") return { ...dayCell(value), color: colors.textDim };
             return { text, value, color: numeric && SIGNED_COLUMNS.has(column.id) ? signedColor(value, colors)
               : column.id === "name" || column.id === "title" ? colors.textBright : column.id === "date" || column.id === "observed" || column.id === "confidence" ? colors.textDim : colors.text };
           }} selectedTextOverridesCellColor showHorizontalScrollbar resetScrollKey={`${kind}:${symbol}:${tab}:${mix}:${country}:${chart}`}

@@ -83,7 +83,7 @@ test("the text report prints every section as the pane draws it within 100 colum
   // The title names the scenario, so its one shock is not a column.
   expect(text).toStartWith("Exposure | NVDA=.3 AAPL=.25 AMD=.15 LIN=.15 FANG=.1 | Taiwan disruption (TW -100%)");
   expect(text).not.toContain("Shock");
-  expect(line(/^NVDA +Revenue/)).toMatch(/^NVDA +Revenue +19\.6% +Estimated · partial +-19\.6% +2026-01-25 +30\.0%$/);
+  expect(line(/^NVDA +Revenue/)).toMatch(/^NVDA +Revenue +19\.6% +Estimated · partial +-19\.6% +25 Jan 2026 +30\.0%$/);
   expect(line(/^AAPL +Revenue/)).toMatch(/0\.0 to 15\.5% +Estimated +-15\.5 to 0\.0%/);
   // Drivers: compact value with its unit, the fiscal period as KPIS prints it (no end dates: the table
   // would not fit them), the scope whole in the room left, a credit figure without its instrument.
@@ -92,19 +92,19 @@ test("the text report prints every section as the pane draws it within 100 colum
   expect(line(/^AAPL +Earnings per share +0\.62/)).toMatch(/0\.62 USD\/share +Q3 FY2026 +Adjusted · diluted$/);
   expect(line(/^AAPL +Earnings per share +2\.58/)).toMatch(/2\.58 to 2\.63 USD\/share +FY2026 +Adjusted$/);
   // What cannot fit is cut after a whole word.
-  expect(text).toMatch(/^AAPL +Drawn +265\.00M USD +2026-03-31 +\$1\.0 billion revolving line of…\n/m);
-  expect(text).toMatch(/^AAPL +Consolidated leverage… +Uncomputable +2025-12-31 .*\n {2}Covenant boundary inclusivity is not established\n/m);
-  expect(line(/^NVDA +NVDA → 2317/)).toMatch(new RegExp(String.raw`Unknown +Unknown +${MISSING_VALUE} +2026-01-25$`));
+  expect(text).toMatch(/^AAPL +Drawn +265\.00M USD +31 Mar 2026 +\$1\.0 billion revolving line…\n/m);
+  expect(text).toMatch(/^AAPL +Consolidated leverage… +Uncomputable +31 Dec 2025 .*\n {2}Covenant boundary inclusivity is not established\n/m);
+  expect(line(/^NVDA +NVDA → 2317/)).toMatch(new RegExp(String.raw`Unknown +Unknown +${MISSING_VALUE} +25 Jan 2026$`));
   // Stress lines say how much of the book they could not see; concentrations name their kind and holding.
-  expect(text).toMatch(/^NVDA +Revenue +5\.9% +-5\.9% +2026-01-25 +30\.0%\n {2}Unknown gross holding weight: 65\.0%\n/m);
-  expect(line(/^Country +NVDA +United States/)).toMatch(/Revenue +20\.8% +2026-01-25 +30\.0%$/);
+  expect(text).toMatch(/^NVDA +Revenue +5\.9% +-5\.9% +25 Jan 2026 +30\.0%\n {2}Unknown gross holding weight: 65\.0%\n/m);
+  expect(line(/^Country +NVDA +United States/)).toMatch(/Revenue +20\.8% +25 Jan 2026 +30\.0%$/);
   expect(line(/^Supplier +NVDA +Hon Hai/)).toContain("Hon Hai Precision Industry");
   expect(text).not.toMatch(/[{}[\]]|kpi:|taiwan:/);
   expect(widest(text.split("\n"))).toBeLessThanOrEqual(100);
   // A narrower terminal narrows the names first, still at a word.
   const narrow = render(80);
   expect(widest(tableLines(narrow))).toBeLessThanOrEqual(80);
-  expect(narrow).toMatch(/^AAPL +Drawn +265\.00M USD +2026-03-31 +\$1\.0 billion…$/m);
+  expect(narrow).toMatch(/^AAPL +Drawn +265\.00M USD +31 Mar 2026 +\$1\.0 billion…$/m);
 
   // The text-only tables never reach an export: JSON and CSV are byte for byte the records' own.
   const raw = { ...result, sections: result.sections.map(({ textColumns: _columns, textRows: _rows, ...section }) => section) } as HeadlessBundleResult;
@@ -130,10 +130,10 @@ test("a one-holding preview prints the period's end date when it fits and leaves
   expect(text).toMatch(/^AAPL +Revenue +167\.04B USD +FY2024 · 28 Sep 2024 +Americas · geographic segment$/m);
   expect(text).toContain("Portfolio operating stress\nNo data.");
   expect(text).toMatch(/^Kind +Target +Basis +Gross exp\. % +Bound +Period$/m);
-  expect(text).toMatch(/^Country +United States +Revenue +9\.1% +Partial +2025-09-27$/m);
-  expect(text).toMatch(/^Country +Greater China +Revenue +3\.9% +2025-09-27$/m);
+  expect(text).toMatch(/^Country +United States +Revenue +9\.1% +Partial +27 Sep 2025$/m);
+  expect(text).toMatch(/^Country +Greater China +Revenue +3\.9% +27 Sep 2025$/m);
   // An anonymous counterparty leads with its filing's name; the Kind column already says supplier.
-  expect(text).toMatch(new RegExp(String.raw`^Supplier +Vendor two \(undisclosed\) +${MISSING_VALUE} +Unknown +2026-06-30$`, "m"));
+  expect(text).toMatch(new RegExp(String.raw`^Supplier +Vendor two \(undisclosed\) +${MISSING_VALUE} +Unknown +30 Jun 2026$`, "m"));
   // The preview is the standard Pro line; what the server says about the subset's weights is a note, never an error.
   const flat = text.replace(/\n(?! )/g, " ");
   expect(flat).toContain("Pro: Free shows the first holding, one relationship hop deep. Gloom Pro adds the other 4 holdings and paths up to four hops · gloom.sh/cloud");

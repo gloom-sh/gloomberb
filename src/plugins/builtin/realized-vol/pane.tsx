@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { formatDay } from "../../../utils/day-format";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGridRows, useChartTableSelection, usePaneFooter, usePaneNoticeFooter, usePaneTabs,
   usePaneTicker, type DataTableColumn, type StatItem } from "../../../components";
@@ -213,7 +214,7 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
       : proxyData ? [
         // A stale IV30 is marked here and said in the footer ("FXB has no IV30 since 2026-05-18").
         { id: "proxy-iv", label: fxProxyLabel(proxyData), value: percent(proxyData.iv30?.value),
-          detail: proxyData.iv30 ? `${proxyData.iv30.date.slice(5)} close` : undefined, tone: proxySpread.stale ? "warning" : undefined },
+          detail: proxyData.iv30 ? `${formatDay(proxyData.iv30.date, "no-year")} close` : undefined, tone: proxySpread.stale ? "warning" : undefined },
         { id: "proxy-spread", label: "IV30 - HV20", value: proxySpread.spread == null ? MISSING_VALUE : points(proxySpread.spread), detail: "pts" },
         { id: "proxy-chain", label: fxProxyChainLabel(proxyData), ...(!proxyChain ? { value: MISSING_VALUE }
           : proxyChain.reopen ? { value: proxyChain.count, detail: proxyChain.reopen.short ? `closed until ${proxyChain.reopen.short}` : "closed",

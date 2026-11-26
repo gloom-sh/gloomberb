@@ -1,4 +1,4 @@
-import type { EarningsDateStatus, EarningsEpsBasis } from "../types/financials";
+import type { EarningsDateStatus, EarningsEpsBasis, FilingEpsDetails } from "../types/financials";
 
 /** Before the open, during the session, after the close. */
 export type EarningsTiming = "bmo" | "dmh" | "amc";
@@ -33,7 +33,7 @@ type EarningsActualSource = "calendar" | "press-release" | "filing";
 /** What a report's figures cover; a US report is always a quarter. */
 export type EarningsPeriodKind = "quarter" | "half" | "ytd" | "year";
 
-export interface EarningsReport {
+export interface EarningsReport extends FilingEpsDetails {
   symbol: string;
   name: string | null;
   /** Report date, New York. */

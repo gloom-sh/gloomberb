@@ -21,7 +21,6 @@ import { blendHex, colors } from "../../../theme/colors";
 import { MISSING_VALUE, distributionAmountsDigits, formatDistributionAmount, formatPercentRaw } from "../../../utils/format";
 import { formatFilingDate } from "../../../utils/datetime-format";
 import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
-import { usePaneTicker } from "../../../state/app/context";
 import { useAsyncResource } from "../../../react/async-resource";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
@@ -32,13 +31,15 @@ import { loadCatalysts } from "../catalysts/client";
 import type { TickerResearchTabProps } from "../../../types/plugin-contributions";
 import { useCompanyDisclosureLinks } from "../company-kpis/related";
 import { beatMissSeries, slotAxis, slotPoints } from "../shared/beat-miss-chart";
+import type { EpsBasisName } from "../shared/earnings-report";
 import { useEventData } from "./event-data";
 import { useEventRowDetail } from "./event-detail";
-import { buildEarningsHeader, buildNextUp, formatEventMetric, isFundListing, nextCatalystOf, nextCatalystQuery, type EventSummaryFigure } from "./event-model";
+import { buildEarningsHeader, buildNextUp, formatEventMetric, nextCatalystOf, nextCatalystQuery, type EventSummaryFigure } from "./event-model";
+import { INCOMPLETE_DISTRIBUTIONS } from "../../../market-data/fund-actions";
 import { dividendYearDetail, dividendYearLabel, dividendYears, dividendYearSpan, earningsQuarters, epsHeading, quartersEpsBasis, splitMarks, type DividendYear, type EarningsQuarter } from "./event-charts";
-import type { EpsBasisName } from "../shared/earnings-report";
 
 type ViewProps = { focused: boolean; width: number; height: number; footerPaneId?: string };
+type EventViewData = ReturnType<typeof useEventData>;
 
 const EARNINGS_PANELS: ChartPanelSpec[] = [{ id: "main" }];
 const DIVIDEND_PANELS = EARNINGS_PANELS;
@@ -113,8 +114,12 @@ type EarningsViewProps = ViewProps & {
  * click opens a quarter's detail: the EPS comparison and, for a US report, its
  * SEC filing.
  */
-export function EventsEarningsView({ focused, width, height, footerPaneId = "corporate-actions", estimates = false }: EarningsViewProps) {
-  const data = useEventData(estimates ? "earnings-estimates" : "corporate-actions");
+export function EventsEarningsView(props: EarningsViewProps) {
+  const data = useEventData(props.estimates ? "earnings-estimates" : "corporate-actions");
+  return <EventsEarningsBody {...props} data={data} />;
+}
+
+function EventsEarningsBody({ focused, width, height, footerPaneId = "corporate-actions", estimates = false, data }: EarningsViewProps & { data: EventViewData }) {
   const { symbol, ticker, exchange, today, allRows, fund } = data;
   useCompanyDisclosureLinks(symbol);
   const quarters = useMemo(() => earningsQuarters(allRows, today), [allRows, today]);
@@ -171,13 +176,14 @@ export function EventsEarningsView({ focused, width, height, footerPaneId = "cor
     switch (column.id) {
       case "date": return { text: formatFilingDate(quarter.date, quarter.date), value: quarter.date, color: colors.textDim };
       case "period": return { text: quarter.period, color: colors.textBright, attributes: TextAttributes.BOLD };
-      case "eps": return { text: quarter.upcoming ? "" : metric(quarter.eps, quarter.epsCurrency, epsUnit, "eps"), ...(quarter.eps != null ? { value: quarter.eps } : {}), color: colors.text };
-      case "estimate": return { text: metric(quarter.estimate, quarter.epsCurrency, epsUnit, "eps"), ...(quarter.estimate != null ? { value: quarter.estimate } : {}), color: colors.textDim };
+      case "eps": return { text: quarter.upcoming ? "" : metric(quarter.eps, quarter.epsCurrency, epsUnit, "eps"), mayBeBlank: quarter.upcoming, ...(quarter.eps != null ? { value: quarter.eps } : {}), color: colors.text };
+      case "estimate": return { text: metric(quarter.estimate, quarter.epsCurrency, epsUnit, "eps"), mayBeBlank: quarter.withoutConsensus, ...(quarter.estimate != null ? { value: quarter.estimate } : {}), color: colors.textDim };
       case "surprise": {
-        if (quarter.upcoming) return { text: "" };
+        if (quarter.upcoming) return { text: "", mayBeBlank: true };
         if (quarter.surpriseNotMeaningful) return { text: NOT_MEANINGFUL_TEXT, color: colors.textDim };
         const surprise = quarter.surprisePercent;
         return { text: surprise == null ? MISSING_VALUE : formatPercentRaw(surprise), ...(surprise != null ? { value: surprise } : {}),
+          mayBeBlank: quarter.withoutConsensus,
           color: surprise == null ? colors.textDim : surprise > 0 ? colors.positive : surprise < 0 ? colors.negative : colors.textDim };
       }
       case "revenue": return { text: quarter.upcoming ? "" : metric(quarter.revenue, quarter.revenueCurrency, revenueUnit, "revenue"), ...(quarter.revenue != null ? { value: quarter.revenue } : {}), color: colors.text };
@@ -237,26 +243,33 @@ type YearColumn = DataTableColumn & { id: YearColumnId };
  * in a muted one, over the years' totals and the splits that went ex in them.
  * Each payment is DVD's: Enter opens it.
  */
-export function EventsDividendsView({ focused, width, height, footerPaneId = "corporate-actions:dividends" }: ViewProps) {
+export function EventsDividendsView(props: ViewProps) {
   const data = useEventData();
-  const { symbol, ticker, today, allRows, actionsData } = data;
+  return <EventsDividendsBody {...props} data={data} />;
+}
+
+function EventsDividendsBody({ focused, width, height, footerPaneId = "corporate-actions:dividends", data }: ViewProps & { data: EventViewData }) {
+  const { symbol, ticker, today, allRows, actionsData, fund } = data;
   const currency = actionsData?.currency ?? data.currency ?? "";
-  const years = useMemo(() => dividendYears(actionsData?.dividends ?? [], today, splitMarks(allRows)), [actionsData?.dividends, allRows, today]);
+  const coverage = actionsData?.coverage?.dividends;
+  const years = useMemo(() => dividendYears(actionsData?.dividends ?? [], today, splitMarks(allRows), coverage, { includeSplitOnly: fund }),
+    [actionsData?.dividends, allRows, coverage, fund, today]);
   // A year's total to one count of decimals, at most four: a sum needs no more to compare years by.
   const digits = useMemo(() => Math.min(YEAR_TOTAL_DIGITS,
     distributionAmountsDigits(years.flatMap((year) => (year.total == null ? [] : [year.total])), currency || "USD")), [currency, years]);
   const amount = useCallback((value: number) => (currency ? formatDistributionAmount(value, currency, digits) : value.toFixed(digits)), [currency, digits]);
   const figures = useMemo(() => {
     const exDate = buildNextUp(allRows, { today, fund: true, statedExDate: data.statedExDate }).map(toStat);
-    const full = years.find((year) => !year.partial && year.total != null);
-    const current = years.find((year) => year.partial && year.total != null);
-    const paying = years.filter((year) => year.total != null);
+    // The latest whole year and the one not over yet; one whose amounts are on different bases has no total to show.
+    const full = years.find((year) => !year.partial && year.payments > 0);
+    const current = years.find((year) => year.partial && year.payments > 0);
+    const paying = years.filter((year) => year.payments > 0);
     const first = paying.at(-1);
     return [
       ...exDate,
-      ...(current ? [{ id: "so-far", label: `${current.year} so far`, value: amount(current.total!),
+      ...(current?.total != null ? [{ id: "so-far", label: `${current.year} so far`, value: amount(current.total),
         detail: `${current.payments} ${current.payments === 1 ? "payment" : "payments"}` }] : []),
-      ...(full ? [{ id: "last-year", label: `${full.year} paid`, value: amount(full.total!),
+      ...(full?.total != null ? [{ id: "last-year", label: `${full.year} paid`, value: amount(full.total),
         ...(full.change != null ? { detail: `${formatPercentRaw(full.change * 100)} y/y` } : {}) }] : []),
       ...(first ? [{ id: "since", label: "Paying since", value: String(first.year),
         detail: `${paying.length} of ${dividendYearSpan(years)} years` }] : []),
@@ -316,7 +329,9 @@ export function EventsDividendsView({ focused, width, height, footerPaneId = "co
     if (symbol) createPaneFromTemplate("dividend-yield-pane", { symbol, symbols: [symbol], ...(ticker ? { ticker } : {}) });
   }, [createPaneFromTemplate, openResearchTab, symbol, ticker]);
 
-  usePaneStatusFooter({ registrationId: footerPaneId, loading: data.loading, error: data.error });
+  const incompletePayouts = data.actionsData?.coverage?.dividends === "unavailable";
+  usePaneStatusFooter({ registrationId: footerPaneId, loading: data.loading,
+    error: data.error ?? (incompletePayouts && years.length ? INCOMPLETE_DISTRIBUTIONS : null) });
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => handleRefreshKey(event, data.reload, { stopPropagation: true }), [data.reload]);
   if (data.authWall) return <SignInWall placement="corporate-actions-signin" action="view corporate actions" needsVerification={data.cloudSession.needsVerification} />;
 
@@ -336,9 +351,9 @@ export function EventsDividendsView({ focused, width, height, footerPaneId = "co
       onRootKeyDown={handleKeyDown}
       onActivate={openDividends}
       selection={{ kind: "index", selectedIndex: selected ? years.indexOf(selected) : -1, onChange: (index) => setSelectedKey(years[index]?.id ?? null) }}
-      getExportMetadata={() => (currency ? [["Currency", currency]] : [])}
+      getExportMetadata={() => [...(currency ? [["Currency", currency]] : []), ...(incompletePayouts ? [["Coverage", INCOMPLETE_DISTRIBUTIONS]] : [])]}
       status={{ loading: data.loading && !years.length, error: !data.loading && !years.length ? data.error : null, subject: "dividends" }}
-      emptyStateTitle="No dividends on record"
+      emptyStateTitle={incompletePayouts ? INCOMPLETE_DISTRIBUTIONS : "No dividends on record"}
       rootBefore={figures.length || chart ? (
         <ChartTableHeader width={width} height={height} tableRows={years.length} tableColumns={columns} figures={figures} chart={chart} />
       ) : undefined}
@@ -348,19 +363,8 @@ export function EventsDividendsView({ focused, width, height, footerPaneId = "co
 
 /** Ticker Research's Earnings view: a fund has none, so its Events tab opens on its distributions. */
 export function EventsResearchEarnings(props: TickerResearchTabProps) {
-  const fund = useFundListing();
-  return fund ? <EventsDividendsView {...props} /> : <EventsEarningsView {...props} />;
-}
-
-function useFundListing(): boolean {
-  const { financials } = usePaneTicker();
-  const quoteType = financials?.quote?.instrumentType;
-  const metadataType = financials?.quoteMetadata?.instrumentType;
-  return isFundListing(quoteType || metadataType ? {
-    quarterlyStatements: [],
-    quote: quoteType ? { currency: financials?.quote?.currency ?? "", instrumentType: quoteType } : null,
-    quoteMetadata: metadataType ? { instrumentType: metadataType } : null,
-  } : null);
+  const data = useEventData();
+  return data.fund ? <EventsDividendsBody {...props} data={data} /> : <EventsEarningsBody {...props} data={data} />;
 }
 
 const EVENT_VIEWS = [{ value: "earnings", label: "Earnings" }, { value: "dividends", label: "Dividends" }];
@@ -372,7 +376,8 @@ const FUND_EVENT_VIEWS = [{ ...EVENT_VIEWS[0]!, disabled: true }, EVENT_VIEWS[1]
  * the first frame whatever loads or fails. A fund opens on its distributions.
  */
 export function EventsPane({ focused, width, height }: { focused: boolean; width: number; height: number }) {
-  const fund = useFundListing();
+  const data = useEventData();
+  const { fund } = data;
   const [view, setView] = usePluginPaneState<string>("eventsView", "earnings");
   const shown = fund || view === "dividends" ? "dividends" : "earnings";
   const { strip, rows } = usePaneTabs({ tabs: fund ? FUND_EVENT_VIEWS : EVENT_VIEWS, activeValue: shown, onSelect: setView, focused, dense: true });
@@ -381,8 +386,8 @@ export function EventsPane({ focused, width, height }: { focused: boolean; width
     <Box flexDirection="column" width={width} height={height}>
       {strip}
       {shown === "dividends"
-        ? <EventsDividendsView focused={focused} width={width} height={bodyHeight} />
-        : <EventsEarningsView focused={focused} width={width} height={bodyHeight} />}
+        ? <EventsDividendsBody focused={focused} width={width} height={bodyHeight} data={data} />
+        : <EventsEarningsBody focused={focused} width={width} height={bodyHeight} data={data} />}
     </Box>
   );
 }

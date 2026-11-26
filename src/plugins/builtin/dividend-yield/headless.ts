@@ -18,6 +18,7 @@ import type { Quote } from "../../../types/financials";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { dividendPriceStatus, dividendQuotePriceMetadata } from "./reference-price";
 import { logFailure } from "../../../utils/log-failure";
+import { dayFirstTextEntries } from "../shared/day-entries";
 import { projectDividendRanking, roundedRatio } from "./ranking";
 import { MAX_RANKED_SYMBOLS, readDividendRanking, type DividendRankingReads } from "./ranking-reads";
 import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
@@ -271,8 +272,9 @@ export function projectDividendYieldHeadless(
     sections: [
       {
         title: "Dividend metrics",
-        // What the text report says of each figure: its basis, its date and why one is missing, in one line.
-        textEntries: [
+        // What the text report says of each figure: its basis, its date and why one is missing, in one line, each day
+        // drawn first as the pane draws it; JSON and CSV keep the entries below with their ISO days.
+        textEntries: dayFirstTextEntries([
           { label: "Price", value: data.price, ...(data.price != null && currency ? { formatted: formatMarketPriceWithCurrency(data.price, currency, {
             minimumFractionDigits: currencyPriceMinDigits(currency), ...data.priceQuotedUnitDivisor ? { quotedUnitDivisor: data.priceQuotedUnitDivisor } : {} }) } : {}) },
           ...(data.stale ? [{ label: "History status", value: staleHistoryText(data.fetchedAt) }] : []),
@@ -298,7 +300,7 @@ export function projectDividendYieldHeadless(
           growthEntry("3Y Cash CAGR", metrics.growth3Y, metrics.growth3YPayments, metrics.growth3YNotMeaningful),
           { label: "Frequency", value: metrics.paymentFrequency },
           ...datesAndCash,
-        ],
+        ]),
         // What exports and JSON keep: each figure as a number in its unit, dated by its own observation (the price a
         // yield is over, the day a sponsor gives a figure as of, the ex-date a rate is from), as the multi-fund ranking writes.
         entries: [

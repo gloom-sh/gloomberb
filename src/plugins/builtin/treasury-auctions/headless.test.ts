@@ -18,7 +18,7 @@ test("a TIPS rate reads as a real yield and an FRN's as a spread in the text, an
   ] };
   const args = createTestHeadlessArgs();
   const lines = renderHeadlessPaneText(treasuryAuctionsHeadless, result, args, "AUCT").split("\n");
-  const rates = lines.filter((line) => /^2026-09-23/.test(line)).map((line) => line.replace(/^\S+\s+\S+\s+\S+\s+/, "").split(/\s{2,}/)[0]);
+  const rates = lines.filter((line) => /^23 Sep 2026/.test(line)).map((line) => line.replace(/^23 Sep 2026\s+\S+\s+\S+\s+/, "").split(/\s{2,}/)[0]);
   expect(rates).toEqual(["4.048%", "5.300%", "2.653% real", "4.0bp spread", "results not published"]);
 
   const freshness = deriveHeadlessFreshness(treasuryAuctionsHeadless, result);
@@ -72,7 +72,7 @@ test("a bill board heads its rate as the investment rate and lists the discount 
   });
   const args = createTestHeadlessArgs({ argument: "6-Week", options: { historyDays: "120", filter: "all" } });
   const result = await headless.load(args, createTestHeadlessContext());
-  const [header, line] = renderHeadlessPaneText(headless, result, args, "AUCT").split("\n").filter((entry) => /^(Date|2026)/.test(entry));
+  const [header, line] = renderHeadlessPaneText(headless, result, args, "AUCT").split("\n").filter((entry) => /^(Date|03 Nov 2026)/.test(entry));
   expect(header).toMatch(/Investment rate\s+Discount rate\s+Stop-out vs median \(bp\)/);
   expect(line).toMatch(/4\.013%\s+3\.940%\s+3\.0/);
   // The text says median; exports keep the name scripts read the spread by, whichever figure Treasury published.

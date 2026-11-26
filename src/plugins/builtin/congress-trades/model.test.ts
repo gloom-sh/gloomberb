@@ -8,6 +8,8 @@ import {
   buildMemberTradeColumns,
   buildTradeColumns,
   canLoadMoreCongress,
+  congressRowAsset,
+  foldFilingLines,
   formatCongressReturn,
   congressScanNotice,
   mergeCongressPages,
@@ -144,6 +146,40 @@ describe("congress trade asset label", () => {
   });
 });
 
+describe("congress filing lines", () => {
+  const line = (id: string, overrides: Partial<CloudCongressHousePayload["trades"][number]> = {}): CloudCongressHousePayload["trades"][number] => ({
+    id, chamber: "senate", filingId: "f1", docId: "d1", memberName: "Peter Malkin", stateDistrict: "NY", filingDate: "2026-11-06",
+    transactionDate: "2026-10-01", notificationDate: null, lagDays: 36, side: "SELL", transactionType: "Sale", ticker: null,
+    assetName: "MH Four Winds LLC Description: Partnership", assetType: "Other", owner: "Spouse", rawOwner: "SP",
+    amount: "$1,001 - $15,000", amountLow: 1_001, amountHigh: 15_000, capGainsOver200: null, filingStatus: null, subholdingOf: null,
+    description: `Underlying Asset of Peter L. Malkin Family ${id} LLC`, sourceUrl: "", ...overrides,
+  });
+
+  test("one filing's lines for one asset, date and side fold into a row with their count and combined range", () => {
+    const lines = [line("1"), line("2", { owner: "Joint" }), line("3", { amountLow: 15_001, amountHigh: 50_000 })];
+    const rows = foldFilingLines([...lines, line("4", { side: "BUY" }), line("5", { transactionDate: "2026-10-02" }), line("6", { filingId: "f2" })]);
+    expect(rows.map((row) => row.id)).toEqual(["1:lines", "4", "5", "6"]);
+    const folded = rows[0]!;
+    expect(folded.lines).toEqual(lines);
+    expect(folded).toMatchObject({ amountLow: 17_003, amountHigh: 80_000, amount: "$17k-80k", owner: "2 owners", description: null });
+    // What each line was held through stays in its own line, so the row names the asset alone.
+    expect(congressRowAsset(folded)).toBe("MH Four Winds LLC · 3 lines");
+    expect(congressRowAsset(rows[1]!)).toBe("MH Four Winds LLC via Peter L. Malkin Family 4 LLC");
+    // A line with no amount leaves the combined range unknown rather than understated.
+    expect(foldFilingLines([line("1"), line("2", { amountLow: null, amountHigh: null })])[0]).toMatchObject({ amountLow: null, amountHigh: null, amount: MISSING_VALUE });
+  });
+
+  test("options on one name fold only when their terms match", () => {
+    const option = (id: string, description: string) => line(id, { assetType: "OP", ticker: "WMB", assetName: "Williams Companies, Inc. (The) Common Stock", description });
+    const rows = foldFilingLines([
+      option("1", "Option Type: Call Strike price: $75.00 Expires: 2026-08-21"),
+      option("2", "Option Type: Call Strike price: $75.00 Expires: 2026-08-21"),
+      option("3", "Option Type: Call Strike price: $80.00 Expires: 2026-08-21"),
+    ]);
+    expect(rows.map((row) => row.lines?.length ?? 1)).toEqual([2, 1]);
+  });
+});
+
 describe("congress return columns", () => {
   const ids = (columns: { id: string }[]) => columns.map((column) => column.id);
   const width = (columns: { id: string; width: number }[], id: string) => columns.find((column) => column.id === id)?.width;
@@ -153,12 +189,12 @@ describe("congress return columns", () => {
     expect(ids(wide).slice(-3)).toEqual(["returnSinceTx", "returnSinceFiling", "excessSinceFiling"]);
     expect(getTableWidth(wide)).toBe(160);
     // TX RET% stays while member names keep 18 cells beside it; a ticker's pane has no ticker column.
-    expect(ids(buildTradeColumns(129))).toContain("returnSinceTx");
-    expect(ids(buildTradeColumns(128))).toEqual(["filed", "tx", "lag", "member", "side", "ticker", "amount", "owner", "returnSinceFiling", "excessSinceFiling"]);
-    expect(ids(buildTradeColumns(116, true))).toContain("returnSinceTx");
-    expect(width(buildTradeColumns(115, true), "member")).toBe(28);
+    expect(ids(buildTradeColumns(131))).toContain("returnSinceTx");
+    expect(ids(buildTradeColumns(130))).toEqual(["filed", "tx", "lag", "member", "side", "ticker", "amount", "owner", "returnSinceFiling", "excessSinceFiling"]);
+    expect(ids(buildTradeColumns(118, true))).toContain("returnSinceTx");
+    expect(width(buildTradeColumns(117, true), "member")).toBe(28);
     // The default floating pane: the dates lose their year before anything else goes.
-    expect(ids(buildTradeColumns(112))).toEqual(ids(buildTradeColumns(128)));
+    expect(ids(buildTradeColumns(112))).toEqual(ids(buildTradeColumns(130)));
     expect(width(buildTradeColumns(112), "filed")).toBe(7);
   });
 

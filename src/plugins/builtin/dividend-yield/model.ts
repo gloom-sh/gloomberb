@@ -29,7 +29,7 @@ export function buildDividendColumns(rows: readonly Pick<DividendRow, "amount" |
   const declared = rows.flatMap((row) => row.declared ? [row.declared] : []);
   const declaredDigits = dividendAmountDigits(declared);
   return [
-    { id: "exDate", label: "EX-DATE", width: 10, align: "left" },
+    { id: "exDate", label: "EX-DATE", width: 11, align: "left" },
     { id: "amount", label: "AMOUNT", width: Math.max(12, ...rows.map((row) => displayWidth(formatDividendRowAmount(row, converted, subUnit, digits)))), align: "right" },
     ...(declared.length ? [{ id: "declared" as const, label: "DECLARED", width: Math.max(10, ...declared.map((entry) => displayWidth(formatDistributionAmount(entry.amount, entry.currency, declaredDigits.get(entry.currency))))), align: "right" as const }] : []),
     ...(mixed ? [{ id: "currency" as const, label: "CCY", width: 6, align: "left" as const }] : []),

@@ -1,3 +1,4 @@
+import { formatDayTime, formatDaysInText } from "../../../../utils/day-format";
 import { useCallback, useMemo } from "react";
 import { TextAttributes } from "../../../../ui";
 import {
@@ -59,7 +60,7 @@ type HistoryColumn = DataTableColumn & { id: HistoryColumnId };
 export type HistoricalPriceRow = {
   key: string;
   point: ReturnType<typeof pricePointValues>;
-  /** The bar's date as the table reads it: `2026-10 MTD` for a month still running, `2026-10-16 DTD` for today's session. */
+  /** The bar's date as the table reads it: `2026-10 MTD` for a month still running, `16 Oct 2026 DTD` for today's session. */
   date: string;
   /** What a CSV export writes for the date: the bar's own date, whatever the table says of its period. */
   exportDate: string;
@@ -182,7 +183,7 @@ function buildHistoricalPriceRows(points: PricePoint[], venue: string | undefine
     return {
       key: `${date.toISOString()}:${sourceIndex}`,
       point,
-      date: timed ? shown : historyBarDate(shown, size, partial),
+      date: timed ? formatDayTime(date) : historyBarDate(shown, size, partial),
       exportDate: shown,
       timed,
       time: date.getTime(),
@@ -213,7 +214,7 @@ const HISTORY_NUMERIC_IDS = ["open", "high", "low", "close", "change", "changePe
  */
 function buildHistoryColumns(width: number, intraday: boolean, size: HistoryBarSize, newestDate: string, closeWidth = 0): HistoryColumn[] {
   // A month reads as `2026-10`; the newest bar, when its week or month runs on, adds `MTD` or `WTD`.
-  const dateWidth = Math.max(intraday ? 16 : size === "1mo" ? 7 : 10, newestDate.length);
+  const dateWidth = Math.max(intraday ? 17 : size === "1mo" ? 7 : 11, newestDate.length);
   const numeric: number[] = HISTORY_NUMERIC_IDS.map((id) => id === "changePercent" ? HISTORY_PERCENT_WIDTH
     : id === "close" ? Math.max(HISTORY_PRICE_WIDTH, closeWidth) : HISTORY_PRICE_WIDTH);
   // One gap per column plus the table's inset on both sides.
@@ -392,11 +393,12 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
   const priceUnit = listing && quote ? quoteExportUnit(listing, quote) : null;
   const exportIdentityCells = [
     "", listing, priceUnit ?? "", rows.length > 0 && size !== "intraday" ? size : "",
-    quote && (!quote.providerId || quote.providerId === "gloomberb-cloud") ? "Gloom Cloud" : "", newestRowDate.slice(0, 10),
+    // The export's as_of is the newest bar's own day, as its DATE cells write it, not the day-first text the table shows.
+    quote && (!quote.providerId || quote.providerId === "gloomberb-cloud") ? "Gloom Cloud" : "", (rows[0]?.exportDate ?? "").slice(0, 10),
   ];
   const barInfo = useMemo<PaneFooterSegment[]>(() => [
     ...rows.length > 0 ? [{ id: "bars", parts: [{
-      text: allStart ? `${historyBarSizeText(size)} from ${allStart}` : historyBarSizeText(size), tone: "muted" as const,
+      text: allStart ? `${historyBarSizeText(size)} from ${formatDaysInText(allStart)}` : historyBarSizeText(size), tone: "muted" as const,
     }] }] : [],
     ...forming && newestDate ? [{ id: "forming", parts: [{ text: formingHistoryBarText(forming, newestDate), tone: "muted" as const }] }] : [],
     ...dayToDate ? [{ id: "forming", parts: [{ text: DAY_SO_FAR_TEXT, tone: "muted" as const }] }] : [],
@@ -405,7 +407,8 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
 
   usePaneNoticeFooter({
     registrationId: "historical-prices:integrity",
-    notices: [integrityNotice, openNotice, wickNotice, rescaleNotice, volumeNotice, ...gapNotices].filter((notice): notice is string => !!notice),
+    // A day in a gap or roll note reads first, as the DATE column writes it; the export's notes keep ISO days.
+    notices: [integrityNotice, openNotice, wickNotice, rescaleNotice, volumeNotice, ...gapNotices.map((notice) => formatDaysInText(notice))].filter((notice): notice is string => !!notice),
     focused,
     title: "Price history data",
   });
@@ -448,8 +451,9 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
         ["Requested range", range],
         ...(rows.length > 0 ? [["Bar size", historyBarSizeWord(size)]] : []),
         ["Time zone", "UTC"],
-        ...(forming && newestDate ? [["Partial bar", `${newestDate}, ${formingHistoryBarText(forming, newestDate)}`]] : []),
-        ...(dayToDate && newestDate ? [["Partial bar", `${newestDate}, ${DAY_SO_FAR_TEXT}`]] : []),
+        // The partial bar's own day, as its DATE cell exports it, then what it is in words.
+        ...(forming && newestDate ? [["Partial bar", newestDate, formingHistoryBarText(forming, newestDate)]] : []),
+        ...(dayToDate && newestDate ? [["Partial bar", newestDate, DAY_SO_FAR_TEXT]] : []),
         ["Price units", priceUnit ?? "As served in the history; currency and price-basis metadata are unavailable"],
         ["Status", error ? (rows.length ? "Retained after refresh failure" : "Unavailable")
           : loading ? (rows.length ? "Refreshing" : "Loading") : rows.length ? "Available" : "Empty"],

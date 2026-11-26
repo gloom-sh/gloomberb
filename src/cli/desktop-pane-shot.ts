@@ -21,6 +21,7 @@ import type { PaneAccessGate } from "./pane-functions/access-gate";
 import { countContentFigures } from "./content-figures";
 import { retrievedAtOf, savedCopyAt, savedCopyShownAt } from "../data/saved-copies";
 import { readVisibleKeyValues } from "./visible-key-values";
+import { readRenderedTableRows } from "./rendered-table-rows";
 import { rowViewportVisibility, scrollTruncationReasons } from "./scroll-truncation";
 import {
   SHOT_API_PROXY_PREFIX,
@@ -181,8 +182,9 @@ export interface DesktopPaneShotBridge {
 interface DesktopPaneShotRenderedCell {
   /**
    * The cell can be blank with nothing missing: its whole column can
-   * (DataTableColumn.mayBeBlank), or its row is still waiting on the value
-   * (DataTableCell.mayBeBlank).
+   * (DataTableColumn.mayBeBlank), or its row owes no value here
+   * (DataTableCell.mayBeBlank). A strict capture leaves it out of a blank
+   * column's count whatever its text.
    */
   mayBeBlank?: true;
   columnId?: string;
@@ -273,6 +275,7 @@ export interface DesktopPaneShotRenderResult {
   cutColumns?: string[];
   /** A wall that needs an account, or a Pro lock on part of the pane. */
   accessGate?: PaneAccessGate | null;
+  signInGate?: "verify-email" | "pro" | "free";
   /**
    * The blocks of text with a figure in them that the pane's body shows
    * outside its controls, chrome, notices, charts and labels
@@ -1060,6 +1063,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
       const rows = [];
       const truncationReasons = new Set();
       const scrollReasons = (${scrollTruncationReasons.toString()});
+      const readTableRows = (${readRenderedTableRows.toString()});
       const visibleTables = [...root.querySelectorAll('[data-gloom-role="data-table"]')].filter(isVisible);
       // A table that publishes every row has nothing cut from a report, whatever the viewport shows.
       const reportedRowsOf = (tableIndex) => {
@@ -1119,49 +1123,12 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
               if (!cutColumns.includes(label)) cutColumns.push(label);
             });
           }
-          const rowElements = [...table.querySelectorAll(
-            '[data-gloom-role="data-table-row"], [data-gloom-role="data-table-section-header"]',
-          )].filter(isVisible);
-          rowElements.forEach((row, rowIndex) => {
-            const cellElements = [...row.querySelectorAll('[data-gloom-role="data-table-cell"]')];
-            const values = cellElements.length > 0 ? cellElements : [row];
-            const rowKey = row.getAttribute("data-gloom-row-key");
-            const cells = values.map((cell, cellIndex) => {
-              const semanticColumn = semanticColumns[cellIndex] || {};
-              const text = normalize(cell.innerText || cell.textContent);
-              const textNodes = [cell, ...cell.querySelectorAll('*')];
-              if (
-                /\\u2026|\\.\\.\\./.test(text)
-                || textNodes.some((node) => (
-                  node instanceof HTMLElement
-                  && isVisible(node)
-                  && node.scrollWidth > node.clientWidth + 1
-                ))
-              ) {
-                truncationReasons.add("one or more cells are visibly clipped");
-                if (!reportedTables.has(table)) reportTruncationReasons.add("one or more cells are visibly clipped");
-              }
-              const instant = cell.getAttribute("data-gloom-cell-instant");
-              const exact = Number(cell.getAttribute("data-gloom-cell-value") || "NaN");
-              return {
-                ...(typeof semanticColumn.id === "string" ? { columnId: semanticColumn.id } : {}),
-                ...(semanticColumn.mayBeBlank === true || cell.getAttribute("data-gloom-cell-may-be-blank") === "true" ? { mayBeBlank: true } : {}),
-                columnLabel: typeof semanticColumn.label === "string"
-                  ? semanticColumn.label
-                  : headers[cellIndex] || (values.length === 1 ? "Row" : String(cellIndex + 1)),
-                text,
-                ...(instant ? { instant } : {}),
-                ...(Number.isFinite(exact) ? { value: exact } : {}),
-              };
-            }).filter((cell) => cell.text.length > 0);
-            if (cells.length === 0) return;
-            const captured = {
-              tableIndex,
-              rowIndex,
-              ...(rowKey ? { key: rowKey } : {}),
-              selected: row.getAttribute("data-selected") === "true",
-              cells,
-            };
+          const drawn = readTableRows(table, tableIndex, semanticColumns, isVisible);
+          if (drawn.clipped) {
+            truncationReasons.add("one or more cells are visibly clipped");
+            if (!reportedTables.has(table)) reportTruncationReasons.add("one or more cells are visibly clipped");
+          }
+          drawn.rows.forEach((captured) => {
             rows.push(captured);
             if (!reportedTables.has(table)) reportRows.push(captured);
           });
@@ -1263,6 +1230,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
         // The shared sign-in wall and the Pro lock prompt every gated pane draws.
         accessGate: [...root.querySelectorAll('[data-gloom-ui="sign-in-wall"]')].some(isVisible) ? "sign-in"
           : [...root.querySelectorAll('[data-gloom-ui="pro-lock"]')].some(isVisible) ? "pro" : "",
+        signInGate: [...root.querySelectorAll('[data-gloom-sign-in]')].find(isVisible)?.getAttribute("data-gloom-sign-in"),
         rows,
         truncated: truncationReasons.size > 0,
         truncationReasons: [...truncationReasons],
@@ -1293,6 +1261,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
         contentFigures?: number;
         cutColumns?: unknown;
         accessGate?: string;
+        signInGate?: string;
         rows?: DesktopPaneShotRenderedRow[];
         truncated?: boolean;
         truncationReasons?: string[];
@@ -1311,8 +1280,9 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
   const loadingStateMarkers = markers.loading;
   const errorStateMarkers = markers.error;
   const emptyStateMarkers = markers.empty;
-  const accessGate: PaneAccessGate | null = value?.accessGate === "sign-in" || markers.signIn ? "sign-in"
-    : value?.accessGate === "pro" || markers.pro ? "pro" : null;
+  const accessGate: PaneAccessGate | null = value?.accessGate === "sign-in" || value?.accessGate === "pro" ? value.accessGate
+    : markers.signIn ? "sign-in" : markers.pro ? "pro" : null;
+  const signInGate = value?.signInGate;
   const rows = Array.isArray(value?.rows) ? value.rows : [];
   const textShowsEllipsis = rows.some((row) => row.cells.some((cell) => /\u2026|\.\.\./.test(cell.text)));
   const truncationReasons = Array.isArray(value?.truncationReasons)
@@ -1350,6 +1320,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
     ...(Array.isArray(value?.emptyStateText) && value.emptyStateText.length > 0
       ? { emptyStateText: value.emptyStateText.filter((line): line is string => typeof line === "string" && line.length > 0) } : {}),
     accessGate,
+    ...(signInGate === "verify-email" || signInGate === "pro" || signInGate === "free" ? { signInGate } : {}),
     ...shotStateText(value?.stateText),
     ...(typeof value?.contentFigures === "number" ? { contentFigures: value.contentFigures } : {}),
     ...(Array.isArray(value?.cutColumns) && value.cutColumns.length > 0

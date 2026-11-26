@@ -123,6 +123,11 @@ test("building the catalog sends no request to an open pane and leaves none for 
 test("the morning's European words lead to the index board, a question asked signed out to the functions its topic names, and VIEW to a spec that runs", async () => {
   const channels = spyOn(apiClient, "getChannels").mockResolvedValue([]);
   const geo = spyOn(apiClient, "geo").mockResolvedValue({ series: [] });
+  const search = spyOn(apiClient, "searchInstrumentsBatch").mockImplementation(async (queries) => {
+    const listings = [["IAG", "XLON"], ["LHA", "XETR"], ["AF", "XPAR"]];
+    return new Map(queries.map((query) => [query, listings.filter(([symbol, exchange]) => `${symbol}:${exchange}` === query)
+      .map(([symbol, exchange]) => ({ symbol: symbol!, exchange, name: symbol!, type: "Common Stock" }))]));
+  });
   const context = { config: createDefaultConfig("/synthetic/catalog-test") } as MarketContext;
   const registry = await createPaneCatalog(context, getLoadablePlugins());
   try {
@@ -147,6 +152,10 @@ test("the morning's European words lead to the index board, a question asked sig
     ]);
     // Signed out, "What moved DAL UAL and AAL from November 9 to November 13, 2026?" was offered 13F, ALRT and HDS.
     const ask = async (question: string) => (await functionsForQuestion(registry, question)).map((entry) => [entry.command, entry.input ?? null]);
+    expect(await ask("Compare IAG:LSE, LHA:XETRA and AF:EPA earnings and price moves")).toEqual([
+      ["gloom fn CMP IAG:LSE,LHA:XETRA,AF:EPA", "CMP IAG:LSE,LHA:XETRA,AF:EPA"],
+      ["gloom fn CN IAG:LSE", "CN IAG:LSE"], ["gloom fn ANR IAG:LSE", "ANR IAG:LSE"],
+    ]);
     expect(await ask("What moved DAL UAL and AAL from November 9 to November 13, 2026?")).toEqual([
       ["gloom fn CMP DAL,UAL,AAL --from 2026-11-09 --to 2026-11-13", "CMP DAL,UAL,AAL"], ["gloom fn CN DAL", "CN DAL"], ["gloom fn ANR DAL", "ANR DAL"],
     ]);
@@ -174,6 +183,7 @@ test("the morning's European words lead to the index board, a question asked sig
     const [example] = entries.find((entry) => entry.token === "VIEW")?.argExamples ?? [];
     expect(parseViewSpec(example!.replace(/^'|'$/g, ""))?.source).toEqual({ kind: "inline", pane: "WEI" });
   } finally {
+    search.mockRestore();
     registry.destroy();
     channels.mockRestore();
     geo.mockRestore();
@@ -246,7 +256,9 @@ test("a lone match found only through a word of its description is labelled the 
     const entries = await buildPaneCatalogEntries(registry, context);
     const searched = (query: string) => renderPaneCatalogReport(filterPaneCatalogEntries(entries, query), parsePaneCatalogArgs([query]))
       .replace(/\x1b\[[0-9;]*m/g, "");
-    expect(searched("managers")).toStartWith('Closest match for "managers": no function is named for it.\n\nECO  Economic Calendar');
+    expect(searched("managers")).toStartWith('Closest match for "managers": no function is named for it. Try gloom fn ECO <countries>.\n\nECO  Economic Calendar');
+    // One that takes a ticker leads with it: EVT lists spin-offs, the IPO calendar none.
+    expect(searched("spin-off")).toStartWith('Closest match for "spin-off": no function is named for it. Try gloom fn EVT <ticker>.\n\nEVT  Corporate Actions');
     expect(searched("vix")).toStartWith("VIX  VIX Curve");
   } finally {
     registry.destroy();

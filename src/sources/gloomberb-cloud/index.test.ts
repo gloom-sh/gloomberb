@@ -7,6 +7,8 @@ import type { QuoteSubscriptionTarget } from "../../types/data-provider";
 import { ProviderBusyError, ProviderMissError, providerMissReason } from "../provider-errors";
 import { verifiedUser } from "../../test-support/cloud-api";
 import { providerQuoteMatchesTarget } from "../provider-router/financials";
+import { totalReturnSeries } from "../../time-series/total-return";
+import { createTestResolvedSeries } from "../../test-support/time-series";
 
 const originalEnsureVerifiedSession = apiClient.ensureVerifiedSession.bind(apiClient);
 const originalGetCloudSecFilings = apiClient.getCloudSecFilings.bind(apiClient);
@@ -600,6 +602,28 @@ describe("GloomberbCloudProvider", () => {
     expect((await provider.getHolders("AAPL", "NASDAQ")).symbol).toBe("AAPL");
     expect((await provider.getCorporateActions("AAPL", "NASDAQ")).symbol).toBe("AAPL");
     expect(sessionChecks).toBe(0);
+  });
+
+  test("an India-listed ETF's empty payouts do not become a zero-distribution total return", async () => {
+    const split = { date: "2019-12-19", ratio: 10 };
+    const paid = { exDate: "2015-02-18", recordDate: "2015-02-20", amount: 8 };
+    const provider = new GloomberbCloudProvider();
+    const serve = (dividends: typeof paid[]) => {
+      apiClient.getCloudCorporateActions = async () => ({ status: "success", data: {
+        symbol: "NIFTYBEES", exchange: "NSE", name: "Nippon India ETF Nifty BeES", currency: "INR",
+        coverage: { dividends: "available", splits: "available", earnings: "available" },
+        dividends, splits: [split], earnings: [{ date: "2026-06-26", epsActual: 0.05 }],
+      } });
+    };
+    serve([]);
+    const load = () => provider.getCorporateActions("NIFTYBEES.NS");
+    expect(await load()).toMatchObject({ coverage: { dividends: "unavailable", splits: "available" }, splits: [split], earnings: [] });
+    const series = createTestResolvedSeries({ id: "fund", label: "Fund Close", unit: "INR", points: [] });
+    expect(await totalReturnSeries(series, load, "INR", new Date("2026-11-25"))).toMatchObject({
+      series: { returnBasis: "price" }, notice: "distribution history unavailable; showing the price return.",
+    });
+    serve([paid]);
+    expect(await load()).toMatchObject({ coverage: { dividends: "available" }, dividends: [paid], splits: [split], earnings: [] });
   });
 
   test("fetches detailed intraday chart history with cloud intervals", async () => {

@@ -23,7 +23,7 @@ export interface FreeRoute {
    * takes. A read that fails, or is still out after a few seconds, counts as
    * no data; pass `context.signal` on to reads that take one.
    */
-  answers?(symbol: string, context: HeadlessPaneContext): Promise<boolean>;
+  answers?(symbol: string, context: HeadlessPaneContext): Promise<boolean | null>;
 }
 
 /** A refused read asks for its note twice (the error it throws, then the report), so an answer is kept a while. */
@@ -36,7 +36,7 @@ const ANSWER_TTL_MS = 5 * 60_000;
  */
 const ROUTE_CHECK_WAIT_MS = 3_000;
 
-const answers = new WeakMap<FreeRoute, TtlCache<boolean>>();
+const answers = new WeakMap<FreeRoute, TtlCache<boolean | null>>();
 
 /**
  * Whether the route has data for the symbol, null when its check failed or was
@@ -45,7 +45,7 @@ const answers = new WeakMap<FreeRoute, TtlCache<boolean>>();
  * rather than hiding the route for minutes over one slow read.
  */
 async function routeAnswers(route: FreeRoute, check: NonNullable<FreeRoute["answers"]>, symbol: string, context: HeadlessPaneContext, deadline: number): Promise<boolean | null> {
-  const bySymbol = answers.get(route) ?? createTtlCache<boolean>({ ttlMs: ANSWER_TTL_MS });
+  const bySymbol = answers.get(route) ?? createTtlCache<boolean | null>({ ttlMs: ANSWER_TTL_MS });
   answers.set(route, bySymbol);
   const key = symbol.trim().toUpperCase();
   const kept = bySymbol.load(key, () => {
@@ -122,11 +122,8 @@ export async function proLockNote(
      * For a function that reads what its free routes read (RISK the SEC's
      * 10-Ks and 20-Fs, FLOW the listing's options): the sentence the note
      * says when every route answered that the symbol has none. The note then
-     * names no command for the symbol, which would read nothing once unlocked
-     * either: IAG:LSE files neither form, and LHA:XETRA has no options served.
-     * A function that reads only the one ticker has nothing to unlock for it,
-     * so the note does not ask for an upgrade; a board (FLOW) still has the
-     * rest of the market.
+     * gives no unlock instructions for that request: upgrading won't add
+     * coverage for that listing.
      */
     noneFor?: (ticker: string) => string;
   },
@@ -147,13 +144,12 @@ export async function proLockNote(
   const { route: free, noneHasData } = pane.free ? await answeringFreeRoute(lock, pane.free) : { route: null, noneHasData: false };
   // Unlocking reads nothing for a symbol none of the function's own data covers: it is named only where it has some.
   const uncovered = noneHasData && !!pane.noneFor;
-  const bare = pane.argument === "none" || (pane.argument === "optional" && (!symbol || uncovered));
-  const command = bare ? `gloom fn ${token}` : `gloom fn ${token} ${uncovered ? "<ticker>" : ticker}`;
-  const nothingToUnlock = uncovered && (pane.argument ?? "ticker") === "ticker";
+  const bare = pane.argument === "none" || (pane.argument === "optional" && !symbol);
+  const command = bare ? `gloom fn ${token}` : `gloom fn ${token} ${ticker}`;
   return [
     `${token} ${what}: ${pane.does}. ${without} it shows none of ${pane.shows}.`,
     ...free ? [`Free, with no sign-in: ${free.text(ticker, symbol ?? "the company")}`] : [],
     ...uncovered ? [pane.noneFor!(ticker)] : [],
-    ...nothingToUnlock ? [] : [`${unlock}; ${command} then reads with that session.`],
+    ...uncovered ? [] : [`${unlock}; ${command} then reads with that session.`],
   ].join("\n");
 }

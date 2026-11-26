@@ -134,9 +134,9 @@ export { MarkdownText } from "./markdown-text";
 // reaches plugins only once it is added here.
 export {
   ActionRow, Badge, BulletList, Button, ButtonActionScope, Card, Checkbox, ChoiceDialog, ColumnGrid, ColumnGridPair, ConfirmDialog, confirmDialog,
-  COUNTRY_FLAG_CELLS, CountryFlag, CountryFlagLead, DataTable,
+  COUNTRY_FLAG_CELLS, CountryFlag, CountryFlagLead, DataTable, dayCell,
   DetailScrollBody, DialogFrame, DisclosureMarker, Divider, EmptyState, ExternalLink, ExternalLinkText, FieldGrid, FieldLabel,
-  fieldFrameStyle, fieldGridColumns, FRAMED_TEXTAREA_DESKTOP_STYLE, fieldGridRows, FigureList, getMessageComposerBlockHeight, GridFieldView, Icon, ICON_GLYPHS,
+  fieldFrameStyle, fieldGridColumns, FRAMED_TEXTAREA_DESKTOP_STYLE, fieldGridRows, FigureList, formatDay, formatDayTime, getMessageComposerBlockHeight, GridFieldView, Icon, ICON_GLYPHS,
   IconButton, InlineQuickAddRow, KeyValueRow, ListView, loadingText, Menu, MenuPopover,
   MessageComposer, MultiSelectDialogButton, MultiSelectDialogContent, Notice, NumberField, RowNote,
   NumberPromptDialog, openUrl, PageStackView, PaneLinkMenu, PaneStatusBody, Popover, Prose,
@@ -147,7 +147,7 @@ export {
 export type {
   ActionRowProps, BadgeProps, BulletListProps, ButtonProps, ButtonVariant, CardProps, CheckboxProps, ChoiceDialogChoice, ColumnGridCell,
   ColumnGridColumn, ColumnGridLink, ColumnGridPairProps, ColumnGridProps, ConfirmDialogOptions, CountryFlagProps,
-  DataTableCell, DataTableColumn, DataTableColumnReorder, DataTableProps, DataTableRowSource, DataTableVisibleRange, DetailScrollBodyProps, DialogFrameProps,
+  DataTableCell, DataTableColumn, DataTableColumnReorder, DataTableProps, DataTableRowSource, DataTableVisibleRange, DayCellForm, DetailScrollBodyProps, DialogFrameProps,
   DisclosureMarkerProps, DividerProps, EmptyStateProps, FieldGridProps, FieldLabelProps, FieldRing, FieldRingOptions,
   FigureListItem, FigureListProps, GridField,
   IconButtonPressEvent, IconButtonProps, IconName, IconProps, InlineQuickAddRowProps,

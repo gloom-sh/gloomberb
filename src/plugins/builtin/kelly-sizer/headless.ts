@@ -18,6 +18,7 @@ import {
 import { historyReadUnanswered } from "../../../time-series/calendar-month-returns";
 import { formatPct, formatSignedPct } from "./view";
 import { logFailure } from "../../../utils/log-failure";
+import { isoDayEntries } from "../shared/day-entries";
 import { loadFuturesContractTerms } from "../../../market-data/futures-contract";
 import { kellyCount, kellyCountMultiplier, type KellyCount } from "./units";
 
@@ -168,7 +169,8 @@ export const kellyHeadless: HeadlessPaneDefinition<"bundle"> = {
       freshness: { asOf: inputs.latest },
       notes,
       sections: [
-        { title: "Inputs", entries: inputEntries(inputs, solve.expectedReturn) },
+        // The window's days read first in the text; JSON and CSV keep them in ISO.
+        { title: "Inputs", ...isoDayEntries(inputEntries(inputs, solve.expectedReturn)) },
         {
           title: bankroll == null ? "Sizing" : `Sizing on ${formatNumber(bankroll, 0)} ${baseCurrency}`,
           columns: [

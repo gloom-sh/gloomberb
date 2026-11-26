@@ -6,29 +6,30 @@ import type {
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
 import type { CloudCongressHousePayload } from "../../../api-client";
-import { formatShortDate } from "../../../utils/datetime-format";
+import { formatDay } from "../../../utils/day-format";
 import { loadCongressHouse } from "./client";
 import { latestCongressFiling } from "./footer";
 import {
   CONGRESS_FILING_LIMIT,
   CONGRESS_TRADE_LIMIT,
+  congressRowAsset,
+  foldFilingLines,
   formatAmountRange,
   formatCongressReturn,
   formatLag,
-  FILING_DAY_FORMAT,
   nextCongressPage,
   previousCongressYearPage,
   sortedMembers,
   sortedTrades,
   sortedTickers,
-  tradeAssetLabel,
+  type CongressTradeRow,
 } from "./model";
 import type { CloudCongressHouseParams } from "../../../api-client/paths";
 import { REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
 
 const TRADE_COLUMNS: HeadlessPaneColumn[] = [
-  { key: "filingDate", header: "Filed", format: (value) => formatShortDate(typeof value === "string" ? value : null, FILING_DAY_FORMAT) },
-  { key: "transactionDate", header: "Tx", format: (value) => formatShortDate(typeof value === "string" ? value : null, FILING_DAY_FORMAT) },
+  { key: "filingDate", header: "Filed", format: (value) => formatDay(value) },
+  { key: "transactionDate", header: "Tx", format: (value) => formatDay(value) },
   { key: "lagDays", header: "Lag", align: "right", format: (value) => formatLag(typeof value === "number" ? value : null) },
   { key: "memberName", header: "Member" },
   { key: "side", header: "Side" },
@@ -36,10 +37,12 @@ const TRADE_COLUMNS: HeadlessPaneColumn[] = [
   {
     key: "assetName",
     header: "Asset",
-    format: (value, row) => tradeAssetLabel({
+    // A folded text row counts its lines (`· 32 lines`); the exports list each line.
+    format: (value, row) => congressRowAsset({
       assetName: typeof value === "string" ? value : "",
       assetType: typeof row.assetType === "string" ? row.assetType : null,
       description: typeof row.description === "string" ? row.description : null,
+      lines: (row as unknown as CongressTradeRow).lines,
     }),
   },
   {
@@ -74,7 +77,7 @@ const MEMBER_COLUMNS: HeadlessPaneColumn[] = [
       typeof row.estimatedHigh === "number" ? row.estimatedHigh : null,
     ),
   },
-  { key: "lastFilingDate", header: "Last", format: (value) => formatShortDate(typeof value === "string" ? value : null, FILING_DAY_FORMAT) },
+  { key: "lastFilingDate", header: "Last", format: (value) => formatDay(value) },
   { key: "avgLagDays", header: "Avg", align: "right", format: (value) => formatLag(typeof value === "number" ? value : null) },
   { key: "medianReturn", header: "Median return", format: value => formatCongressReturn(typeof value === "number" ? value : null) },
   { key: "pricedTradeCount", header: "Priced trades" },
@@ -234,10 +237,11 @@ export function createCongressHeadless(
           .map((member) => ({ ...member }));
         return { columns: MEMBER_COLUMNS, rows, metadata: pagedMetadata, ...empty(rows) };
       }
-      const rows = sortedTrades(payload.trades, { columnId: "filed", direction: "desc" })
-        .slice(0, limit)
-        .map((trade) => ({ ...trade }));
-      return { columns: TRADE_COLUMNS, rows, metadata: pagedMetadata, ...empty(rows) };
+      const lines = sortedTrades(payload.trades, { columnId: "filed", direction: "desc" }).slice(0, limit);
+      const rows = lines.map((trade) => ({ ...trade }));
+      // The text reads as the pane: the lines one filing reports alike are one row; the exports keep each line.
+      const textRows = foldFilingLines(lines).map((trade) => ({ ...trade }));
+      return { columns: TRADE_COLUMNS, rows, ...(textRows.length < rows.length ? { textRows } : {}), metadata: pagedMetadata, ...empty(rows) };
     },
   };
 }

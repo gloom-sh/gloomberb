@@ -7,6 +7,7 @@ import type { ResolvedSeries } from "../../../time-series/types";
 import type { HeadlessPaneColumn } from "../../../types/plugin";
 import type { PublicationKind, PublicationPayload } from "./publications-client";
 import { MISSING_VALUE, formatCompact } from "../../../utils/format";
+import { formatDay } from "../../../components/ui/day-cell";
 
 export interface PublicationRow {
   id: string;
@@ -21,15 +22,16 @@ export interface PublicationColumn extends DataTableColumn {
 const shares = (value: string | number | null) => value == null ? MISSING_VALUE : formatCompact(Number(value), { fixedDecimals: true });
 const percentage = (value: string | number | null) => value == null ? MISSING_VALUE : `${Number(value).toFixed(2)}%`;
 const price = (value: string | number | null) => value == null ? MISSING_VALUE : `$${Number(value).toFixed(2)}`;
+const day = (value: string | number | null) => formatDay(value);
 const FTD_COLUMNS: PublicationColumn[] = [
-  { id: "date", label: "SETTLEMENT", detailLabel: "Settlement date", width: 12, align: "left" },
+  { id: "date", label: "SETTLEMENT", detailLabel: "Settlement date", width: 12, align: "left", format: day },
   { id: "quantity", label: "FAIL SHARES", detailLabel: "Outstanding fail shares", width: 14, align: "right", format: shares },
   { id: "cusip", label: "CUSIP", detailLabel: "CUSIP", width: 11, align: "left" },
   { id: "price", label: "PRICE (USD)", detailLabel: "Reported price (USD)", width: 13, align: "right", format: price },
   { id: "description", label: "SECURITY", detailLabel: "Security", width: 20, flexGrow: 1, align: "left" },
 ];
 const ATS_COLUMNS: PublicationColumn[] = [
-  { id: "date", label: "WEEK OF", detailLabel: "Week starting", width: 12, align: "left" },
+  { id: "date", label: "WEEK OF", detailLabel: "Week starting", width: 12, align: "left", format: day },
   { id: "atsShares", label: "ATS SHARES", detailLabel: "ATS shares", width: 14, align: "right", format: shares },
   { id: "nonAtsShares", label: "NON-ATS SHARES", detailLabel: "Non-ATS shares", width: 16, align: "right", format: shares },
   { id: "atsSharePercent", label: "ATS %", title: "ATS shares / published ATS plus non-ATS shares (%)", detailLabel: "ATS %", width: 14, align: "right", format: percentage },

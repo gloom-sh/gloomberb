@@ -10,6 +10,7 @@ import type { DataTableColumn } from "../../../components";
 import { scalarPoint } from "../../../components/chart/static/series";
 import type { TimeSeriesPoint } from "../../../time-series/types";
 import { MISSING_VALUE, formatCompact, formatPercentileRank } from "../../../utils/format";
+import { formatDay } from "../../../components/ui/day-cell";
 
 export type DebtLatest = NonNullable<DebtMaturitiesPayload["latest"]>;
 export type DebtBucket = DebtLatest["buckets"][number];
@@ -22,7 +23,7 @@ export const debtMetricValue = (metric: DebtMetric) =>
     ? debtPercent(metric.value)
     : `${debtAmount(metric.value)} ${metric.unit}`;
 export const debtMetricCaption = (metric: DebtMetric) =>
-  `${formatPercentileRank(metric.percentile.value, "10Y")} · ${metric.asOf}`;
+  `${formatPercentileRank(metric.percentile.value, "10Y")} · ${formatDay(metric.asOf)}`;
 export function bucketShare(
   bucket: DebtBucket,
   latest: DebtLatest,

@@ -49,8 +49,8 @@ test("a Deribit expiry runs to its 08:00 UTC settlement, a US one to its date's 
   expect(daysToExpiryFrom(SETTLES, NOW)).toBeCloseTo((SETTLES * 1000 - NOW) / 86_400_000, 10);
   // The date's midnight stamp still runs to 20:00 UTC, the close in New York in October.
   expect(daysToExpiryFrom(Date.UTC(2026, 9, 30) / 1000, NOW)).toBeCloseTo((Date.UTC(2026, 9, 30, 20) - NOW) / 86_400_000, 10);
-  expect(expiryLabel(SETTLES)).toBe("2026-10-30 08:00 UTC");
-  expect(expiryLabel(Date.UTC(2026, 9, 30) / 1000)).toBe("2026-10-30");
+  expect(expiryLabel(SETTLES)).toBe("30 Oct 2026 08:00 UTC");
+  expect(expiryLabel(Date.UTC(2026, 9, 30) / 1000)).toBe("30 Oct 2026");
 });
 
 test("a marked contract keeps the venue's IV and greeks, with its coin premiums beside the dollar ones", () => {

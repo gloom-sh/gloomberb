@@ -78,7 +78,7 @@ test("every exported board row carries its own observation date, series and unit
 
   const text = renderHeadlessPaneText(cdxHeadless, result, args, "CDX").split("\n");
   expect(text.find((line) => line.startsWith("CDX HY"))).toMatch(/^CDX HY\s+106\.00\s.*357\.5bp\s+\d+\s/);
-  expect(text.find((line) => line.startsWith("iTraxx Main"))).toMatch(/64\.7bp\s+-1\.1bp.*2026-10-19\s+so far, 38 prints, last 08:09 UTC$/);
+  expect(text.find((line) => line.startsWith("iTraxx Main"))).toMatch(/64\.7bp\s+-1\.1bp.*19 Oct 2026\s+so far, 38 prints, last 08:09 UTC$/);
 
   // The named index's history dates each row by its day and flags only today's.
   const named = await cdxHeadless.load({ ...args, rawArgument: "main", argument: "main" }, context) as HeadlessBundleResult;

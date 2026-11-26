@@ -1,3 +1,4 @@
+import { dayCell } from "../../../components/ui/day-cell";
 import { useCallback, useMemo, useState } from "react";
 import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities } from "../../../ui";
 import {
@@ -215,9 +216,9 @@ export function BeneficialOwnersView({
       case "shares":
         return { text: formatOwnerShares(filing.shares), value: filing.shares, color: tone };
       case "eventDate":
-        return { text: filing.eventDate ?? MISSING_VALUE, value: filing.eventDate, color: colors.textDim };
+        return { ...dayCell(filing.eventDate), color: colors.textDim };
       case "filingDate":
-        return { text: filing.filingDate, value: filing.filingDate, color: colors.textDim };
+        return { ...dayCell(filing.filingDate), color: colors.textDim };
       case "thirteenF": {
         const action = row.thirteenF;
         if (!action) return { text: MISSING_VALUE, value: null, color: colors.textDim };

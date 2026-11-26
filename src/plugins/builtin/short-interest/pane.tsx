@@ -18,6 +18,7 @@ import { dropColumnsToFit } from "../../../components/ui/table-layout";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { colors } from "../../../theme/colors";
+import { dayCell } from "../../../components/ui/day-cell";
 import { Box, TextAttributes } from "../../../ui";
 import { isKnownNonUsEquityTicker } from "../../../utils/sec";
 import { nextHeaderSort } from "../../../utils/sort-values";
@@ -104,9 +105,9 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
   ): DataTableCell => {
     switch (column.id) {
       case "settlementDate":
-        return { text: row.settlementDate, color: colors.textDim };
+        return { ...dayCell(row.settlementDate), color: colors.textDim };
       case "publishedDate":
-        return { text: row.publishedDate, color: colors.textDim };
+        return { ...dayCell(row.publishedDate), color: colors.textDim };
       case "sharesShort":
         return { text: row.sharesShort, color: colors.textBright, attributes: TextAttributes.BOLD };
       case "shortRatio":
@@ -116,7 +117,7 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
       case "shortPercentFloat":
         return { text: row.shortPercentFloat, color: colors.text };
       case "floatAsOf":
-        return { text: row.floatAsOf, color: colors.textDim };
+        return { ...dayCell(row.floatAsOf), color: colors.textDim };
     }
   }, []);
 

@@ -343,6 +343,7 @@ export const ko: Record<string, string> = {
   "Earnings Monitor": "실적 모니터",
   "Economic Calendar": "경제 캘린더",
   "Corporate Actions": "기업행사",
+  "Dividend Yield": "배당수익률",
   "Analyst Research": "애널리스트 리서치",
   "Analyst": "애널리스트",
   "Analysts": "애널리스트",

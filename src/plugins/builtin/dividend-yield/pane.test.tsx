@@ -7,6 +7,7 @@ import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils"
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { DividendYieldPane } from "./pane";
 import { fetchDividendData } from "./client";
+import { formatDay } from "../../../utils/day-format";
 import { chartResponse, hsbcIssuerDividendRead, marketTransport } from "./test-fixture";
 
 const tui = createOpenTuiTestHarness();
@@ -48,9 +49,9 @@ test.each([44, 60])("an ex-dated unfixed sterling declaration keeps its row, est
     setSystemTime();
   }
   const text = await renderLoaded(data, width, 24);
-  expect(text).toMatch(/2026-11-05\s+estimated 7\.5835p\s+\$0\.10/);
-  expect(text).toContain("2026-12-07");
-  expect(text).toContain("2026-12-17");
+  expect(text).toMatch(/05 Nov 2026\s+estimated 7\.5835p\s+\$0\.10/);
+  expect(text).toContain("07 Dec 2026");
+  expect(text).toContain("17 Dec 2026");
 });
 
 test("summary failures retain cash and recover dated payment information through refresh", async () => {
@@ -77,7 +78,7 @@ test("summary failures retain cash and recover dated payment information through
     throw new Error(`Unexpected controlled request: ${url}`);
   }));
   await mountDividendPane("INCOME");
-  expect(await frame()).toContain(new Date(payDate * 1000).toISOString().slice(0, 10));
+  expect(await frame()).toContain(formatDay(new Date(payDate * 1000).toISOString().slice(0, 10)));
   for (const nextMode of ["failed", "invalid-ex", "invalid-pay", "valid"] as const) {
     mode = nextMode;
     const requestsBefore = chartRequests;
@@ -87,7 +88,7 @@ test("summary failures retain cash and recover dated payment information through
     expect(current).toContain("4.00%");
     if (mode === "valid") {
       expect(current).not.toContain("summary");
-      expect(current).toContain(new Date(payDate * 1000).toISOString().slice(0, 10));
+      expect(current).toContain(formatDay(new Date(payDate * 1000).toISOString().slice(0, 10)));
     } else {
       expect(current.match(/Dividend summary unavailable|Invalid dividend summary date/g)).toHaveLength(1);
       expect(current.trimEnd().split("\n").at(-1)).toContain("summary");
@@ -149,7 +150,7 @@ test.each([48, 80, 120])("native dividend refresh keeps the selected price's tim
 test.each([48, 80, 120])("cash integrity failures preserve usable rows and recover through the existing refresh action at %d columns", async (width) => {
   const day = new Date(new Date().toISOString().slice(0, 10)).getTime() / 1000;
   const recent = day - 10 * 86_400 + 14 * 3600;
-  const recentDate = new Date(recent * 1000).toISOString().slice(0, 10);
+  const recentDate = formatDay(new Date(recent * 1000).toISOString().slice(0, 10));
   let mode: "complete" | "partial" | "invalid" | "empty" | "unknown-currency" = "complete";
   setHttpFetchTransport(marketTransport(async (url) => {
     if (url.includes("/chart/")) {
@@ -217,7 +218,7 @@ test.each(["invalid", "unknown-currency"] as const)("direct %s integrity failure
   const width = 80;
   const day = new Date(new Date().toISOString().slice(0, 10)).getTime() / 1000;
   const recent = day - 10 * 86400 + 14 * 3600;
-  const recentDate = new Date(recent * 1000).toISOString().slice(0, 10);
+  const recentDate = formatDay(new Date(recent * 1000).toISOString().slice(0, 10));
   let mode: "complete" | "empty" | "failure" = "complete";
   const cashCurrency = failure === "unknown-currency" ? "GBP" : "USD";
   const cashLabel = cashCurrency === "GBP" ? "£4.00" : "$4.00";
@@ -329,19 +330,19 @@ test("short dividend panes keep the yields and every payment row within reach", 
     const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - index, 1));
     return toDividendPayment(date.toISOString().slice(0, 10), 0.25 + index / 100, "USD")!;
   });
-  const latest = payments[0]!.exDate.toISOString().slice(0, 10);
+  const latest = formatDay(payments[0]!.exDate.toISOString().slice(0, 10));
   const lines = (await renderLoaded({ payments, currency: "USD", price: 50, historyAvailable: true,
     metrics: { ...buildDividendMetrics(payments, null, 50), nextPayDate: new Date("2030-01-15T00:00:00Z") } }, 40, 9)).split("\n");
   // One row of figures, the strip, then the table with its header and rows.
   expect(lines[0]).toContain("7.32%");
   expect(lines.join("\n")).toContain("Fwd yield");
-  expect(lines.join("\n")).toContain("2030-01-15");
+  expect(lines.join("\n")).toContain("15 Jan 2030");
   expect(lines.join("\n")).toContain("EX-DATE");
   expect(lines.join("\n")).toContain(latest);
   await tui.emitKeypress(Array.from({ length: 8 }, () => ({ name: "down" })), { trackPropagation: true });
   const moved = await frame();
   expect(moved.split("EX-DATE")[1]).not.toContain(latest);
-  expect(moved).toContain(payments[8]!.exDate.toISOString().slice(0, 10));
+  expect(moved).toContain(formatDay(payments[8]!.exDate.toISOString().slice(0, 10)));
 });
 
 test("the TTM dividend steps up at each raise and follows the selected payment", async () => {

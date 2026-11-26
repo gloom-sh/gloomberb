@@ -118,7 +118,7 @@ test("the text reads the average yield as RATE, an FRN's spread in bp and EF pap
   const text = renderHeadlessPaneText(headless, result, args, "AUCT");
   const line = (needle: string) => text.split("\n").find((entry) => entry.includes(needle))!.trim().split(/\s{2,}/);
   expect(text).toMatch(/Date\s+Type\s+Term\s+Rate\s+B\/C\s+Size\s+Issue/);
-  expect(line("2026-10-28")).toEqual(["2026-10-28", "EFB", "3-Month", "2.827%", "2.46", "≈HK$65.7B"]);
+  expect(line("28 Oct 2026")).toEqual(["28 Oct 2026", "EFB", "3-Month", "2.827%", "2.46", "≈HK$65.7B"]);
   // A re-opening of a 3-year bond that matures in July 2028, tendered in October 2026.
   expect(line("03GB2807001")).toEqual(["2026-10", "HKGB", "1-Year 9-Month", "1.401%", "9.93", "RMB750M", "03GB2807001"]);
   expect(line("01GH2705001")).toEqual(["2026-05", "FRN", "1-Year", "20.0bp spread", "4.44", "HK$1.5B", "01GH2705001"]);

@@ -77,6 +77,26 @@ describe("the Dividends view's years", () => {
     expect(years.map(dividendYearDetail)).toEqual(["so far", "", "incl. special"]);
   });
 
+  test("a year is summed, and compared with the one before, only on one basis: the history's, or as published", () => {
+    const published = (exDate: string, amount: number) => ({ exDate, amount,
+      parts: [{ amount, special: false, type: "interim", form: { url: "", publishedOn: exDate } }] });
+    const years = dividendYears([
+      paid("2023-03-01", 0.025), paid("2023-09-01", 0.025), paid("2024-03-01", 0.027007), paid("2024-09-01", 0.027007),
+      // A filing's amounts before the spin-off, as published: summed with each other, not set against the history's.
+      published("2025-03-03", 0.18), published("2025-09-02", 0.18),
+      paid("2026-06-01", 0.027007), published("2026-09-01", 0.18),
+    ], "2027-01-15", [{ date: "2026-10-01", terms: "VYLR spin-off" }]);
+    expect(years.map((year) => [dividendYearLabel(year), year.total == null ? null : Number(year.total.toFixed(6)), dividendYearDetail(year)])).toEqual([
+      ["2026", null, "2 payments on different bases, not summed · VYLR spin-off"],
+      ["2025", 0.36, "as published"],
+      ["2024", 0.054014, ""],
+      ["2023", 0.05, ""],
+    ]);
+    expect(years.map((year) => (year.change == null ? null : Number(year.change.toFixed(4))))).toEqual([null, null, 0.0803, null]);
+    // A year paid on two bases has no total but was paid: the span runs 2023 to 2026.
+    expect(dividendYearSpan(years)).toBe(4);
+  });
+
   /** AAPL paid nothing from 1996 to 2011: sixteen blank bars and rows squeezed the years it pays. */
   test("a run of years with no dividend is one gap, broken where a split went ex, so the split is said", () => {
     const dividends = [paid("1995-05-10", 0.1), paid("2012-08-10", 0.4), paid("2013-02-10", 0.4)];
@@ -85,7 +105,8 @@ describe("the Dividends view's years", () => {
     expect(dividendYearDetail(plain[2]!)).toBe("no dividend for 16 years");
     expect(dividendYearSpan(plain)).toBe(19);
     const splits = splitMarks(buildEventRows({ symbol: "TEST", currency: "USD", earnings: [], dividends,
-      splits: [{ date: "2005-02-28", fromFactor: 1, toFactor: 2 }, { date: "2013-06-09", fromFactor: 1, toFactor: 7 }] }, null, null, "USD"));
+      splits: [{ date: "2005-02-28", fromFactor: 1, toFactor: 2 }, { date: "2013-06-09", fromFactor: 1, toFactor: 7 },
+        { date: "2014-06-09", fromFactor: 1, toFactor: 4 }] }, null, null, "USD"));
     const marked = dividendYears(dividends, today, splits);
     expect(marked.map(dividendYearLabel)).toEqual(["2013", "2012", "2006-2011", "2005", "1996-2004", "1995"]);
     expect(marked.map(dividendYearDetail)).toEqual(["7-for-1 split", "", "no dividend for 6 years", "no dividend · 2-for-1 split", "no dividend for 9 years", ""]);

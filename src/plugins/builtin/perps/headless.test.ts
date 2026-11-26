@@ -67,7 +67,7 @@ test("history report reads as units and the rows keep every raw field", async ()
   expect(text).toContain("-0.041%");
   expect(text).toContain("1.23B");
   expect(text).toContain("-0.12%");
-  expect(text).toContain("2026-10-03 23:20 UTC");
+  expect(text).toContain("03 Oct 2026 23:20 UTC");
   // A missing figure is "--", never undefined, NaN or a stray hyphen.
   expect(text).toMatch(new RegExp(String.raw`${MISSING_VALUE}\s+${MISSING_VALUE}\s+${MISSING_VALUE}\s+${MISSING_VALUE}\s`));
   expect(text).not.toMatch(/undefined|NaN|\d\.\d{9,}/);
@@ -81,13 +81,13 @@ test("history report reads as units and the rows keep every raw field", async ()
   expect(json.sections[2]!.rows).toEqual(history.funding);
   expect(json.sections[3]!.rows).toEqual(history.candles);
   expect(json.sections[4]!.rows).toEqual(history.longShortRatio!);
-  expect(text).toMatch(/2026-10-03 23:00 UTC\s+61\.83%\s+38\.17%\s+1\.62\s+Published/);
+  expect(text).toMatch(/03 Oct 2026 23:00 UTC\s+61\.83%\s+38\.17%\s+1\.62\s+Published/);
 });
 
 test("an underlying without data and the revision payloads stay short and honest", async () => {
   const { result, text } = await report("evidence", [bare]);
   expect(text).toContain("xyz:TSLA");
-  expect(text).toContain("Superseded 2026-10-04 01:00 UTC");
+  expect(text).toContain("Superseded 04 Oct 2026 01:00 UTC");
   expect(text).toContain("9f2c41d7");
   expect(text).not.toContain("9f2c41d7a0");
   expect(text).not.toMatch(/undefined|NaN|payload|\d\.\d{9,}/);
@@ -103,10 +103,13 @@ test("evidence reads an OKX reading as derived from its ratio, keeps raw fractio
   expect(text).toMatch(/Short accounts\s+32\.02%/);
   expect(text).toMatch(/Long \/ short ratio\s+2\.1229/);
   expect(text).toContain("Derived from the published ratio");
-  expect(text).toContain("2026-10-09 11:00 UTC · OKX 1h");
+  expect(text).toContain("09 Oct 2026 11:00 UTC · OKX 1h");
   expect(longest(text)).toBeLessThanOrEqual(140);
-  const json = serializeHeadlessPaneResult(perpsHeadless, result) as { sections: Array<{ title: string; entries?: Array<{ key: string; value: unknown }> }> };
-  expect(json.sections.find((section) => section.title === "Positioning")!.entries!.find((entry) => entry.key === "longShare")!.value).toBe(okxLongShort.longShare);
+  const json = serializeHeadlessPaneResult(perpsHeadless, result) as { sections: Array<{ title: string; entries?: Array<{ key: string; value: unknown; formatted?: string }> }> };
+  const positioning = json.sections.find((section) => section.title === "Positioning")!.entries!;
+  expect(positioning.find((entry) => entry.key === "longShare")!.value).toBe(okxLongShort.longShare);
+  // JSON keeps the line's day in ISO as it always wrote it; only the text reads it day first.
+  expect(positioning.map((entry) => entry.formatted).join("\n")).toContain("2026-10-09 11:00 UTC · OKX 1h");
 
   const hyperliquid = await report("evidence", [perpRow({ longShortRatio: null, longShortRatioReason: "unsupported" })]);
   expect(hyperliquid.text).toMatch(/Long accounts\s+This venue publishes no per-contract account ratio/);
@@ -280,7 +283,9 @@ test("an exported comparison cites every row apart: its venue, URL, observed tim
     as_of: new Date(market.observedAt).toISOString() });
   // The text keeps the pane's columns and says once what OI USD assumes and when Long % was counted.
   expect(result.notes).toContain("OI USD values USDT at 1 USD.");
+  // JSON and CSV keep the hour as they always wrote it; the text writes it day first.
   expect(result.notes).toContain("Long % is each venue's hourly account bucket from 11-04 06:00 UTC, not its Observed time.");
+  expect(result.textNotes).toContain("Long % is each venue's hourly account bucket from 04 Nov 06:00 UTC, not its Observed time.");
   const text = renderHeadlessPaneText(perpsHeadless, result, args, "PERP");
   expect(text).toContain("77,915.80 USDT");
   expect(text).not.toContain("Source URL");

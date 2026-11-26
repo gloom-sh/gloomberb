@@ -1,3 +1,4 @@
+import { formatDay, formatDaysInText } from "../../../utils/day-format";
 import { MISSING_VALUE } from "../../../utils/format";
 import type { Quote } from "../../../types/financials";
 import type { HeadlessBundleSection, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessPaneLoadArgs, HeadlessPaneRow } from "../../../types/plugin";
@@ -24,7 +25,7 @@ import { surfaceQuoteCoverage, uncleanSurfaceDetail, uncleanSurfaceTitle } from 
 import { loadIvHistory, loadSurfaceDates } from "../iv-history/client";
 import { logFailure } from "../../../utils/log-failure";
 import {
-  expiryFeedFields, expiryLabel, formatIv, formatPrice, formatVolPoints, HIDDEN_SLOPE_TEXT, HIDDEN_YIELD_TEXT, selectSurfaceExpiry, surfaceForwardRow, surfaceSkewRow,
+  expiryFeedFields, expiryStamp, expiryStampText, formatIv, formatPrice, formatVolPoints, HIDDEN_SLOPE_TEXT, HIDDEN_YIELD_TEXT, selectSurfaceExpiry, surfaceForwardRow, surfaceSkewRow,
   surfaceExpiryGaps, surfaceSettlementTime, surfaceSmileRows, surfaceSpotBasisLabel, surfaceTermRows, surfaceThirtyDayAtm, TERM_SLOPE_MIN_DAYS,
   type SurfaceForwardRow, type SurfaceSkewRow,
 } from "./tables";
@@ -75,9 +76,9 @@ function surfaceSections(snapshot: SurfaceSnapshot, axis: SurfaceAxis, tenors: "
     ], rows: grid.rows.map((row) => ({ tenor: `${row.label}${row.extrapolated ? " E" : row.interpolated ? " I" : ""}`,
       ...Object.fromEntries(row.cells.map((cell, index) => [String(index), cell.volatility])) })) },
     { title: "Expiries", columns: [
-      { key: "expiry", header: "Expiry" }, { key: "state", header: "State" }, { key: "forward", header: "Forward", format: level },
+      { key: "expiry", header: "Expiry", textFormat: expiryText }, { key: "state", header: "State" }, { key: "forward", header: "Forward", format: level },
       { key: "rate", header: "Rate", format: (value) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : MISSING_VALUE }, { key: "fit", header: "Fit" }, { key: "asOf", header: "As of" },
-    ], rows: snapshot.expiries.map((expiry) => ({ ...expiry, expiry: expiryLabel(expiry.expiration), fit: expiry.fit?.method ?? null })) },
+    ], rows: snapshot.expiries.map((expiry) => ({ ...expiry, expiry: expiryStamp(expiry.expiration), fit: expiry.fit?.method ?? null })) },
   ];
 }
 
@@ -92,10 +93,11 @@ function smileSections(snapshot: SurfaceSnapshot, requested: number | null): {
   const freshness: HeadlessPaneFreshness = { asOf: expiry.asOf, ...expiry.stale ? { status: "stale" as const }
     : expiry.dataSource ? { status: expiry.dataSource } : {}, ...expiry.delayMinutes ? { delayMinutes: expiry.delayMinutes } : {} };
   if (!expiry.fit || expiry.points.length < 2) {
-    return { sections: [], freshness, errors: [`${expiryLabel(expiry.expiration)}: no clean quoted smile`] };
+    return { sections: [], freshness, errors: [`${expiryStamp(expiry.expiration)}: no clean quoted smile`] };
   }
   return { errors: [], freshness, sections: [
-    { title: `Smile ${expiryLabel(expiry.expiration)}`, entries: [
+    // The title names the expiry as --expiration and --section take it.
+    { title: `Smile ${expiryStamp(expiry.expiration)}`, entries: [
       { key: "days", label: "Days to expiry", value: expiry.years * 365, formatted: days(expiry.years * 365) },
       { key: "forward", label: "Forward", value: expiry.forward, formatted: level(expiry.forward) },
       { key: "atm", label: "ATM IV (at spot)", value: expiry.atmIV, formatted: iv(expiry.atmIV) },
@@ -114,15 +116,21 @@ function smileSections(snapshot: SurfaceSnapshot, requested: number | null): {
 
 function termSection(snapshot: SurfaceSnapshot, readings: readonly SurfaceEventReading[]): HeadlessBundleSection {
   // The first expiry past a scheduled release names it: the step in its IV is the release's.
-  const marks = new Map(readings.flatMap((reading) => reading.after == null ? [] : [[reading.after, surfaceReadingLabel(reading)] as const]));
+  const marks = new Map(readings.flatMap((reading) => reading.after == null ? [] : [[reading.after, surfaceReadingLabel(reading, true)] as const]));
   return { title: "Term structure", columns: [
-    { key: "expiry", header: "Expiry" }, { key: "days", header: "Days", format: days },
+    { key: "expiry", header: "Expiry", textFormat: expiryText }, { key: "days", header: "Days", format: days },
     { key: "atm", header: "ATM IV", format: iv }, { key: "put25", header: "25D put IV", format: iv }, { key: "call25", header: "25D call IV", format: iv },
     { key: "straddle", header: "Straddle", format: price }, { key: "sigma", header: "1-sigma", format: price },
     { key: "sigmaPercent", header: "1-sigma %", format: (value) => typeof value === "number" ? `${value.toFixed(2)}%` : MISSING_VALUE },
-    ...(marks.size ? [{ key: "event", header: "Event" }] : []),
-  ], rows: surfaceTermRows(snapshot).map((row) => ({ ...row, expiry: expiryLabel(row.expiration),
+    ...(marks.size ? [{ key: "event", header: "Event", textFormat: eventText(readings) }] : []),
+  ], rows: surfaceTermRows(snapshot).map((row) => ({ ...row, expiry: expiryStamp(row.expiration),
     ...(marks.size ? { event: marks.get(row.expiration) ?? "" } : {}) })) };
+}
+
+/** A release's name as the text writes it, day first ("FOMC 09 Dec"); JSON and CSV keep "FOMC 12-09". */
+function eventText(readings: readonly SurfaceEventReading[]): (value: unknown) => string {
+  const shown = new Map(readings.map((reading) => [surfaceReadingLabel(reading, true), surfaceReadingLabel(reading)]));
+  return (value) => typeof value === "string" ? shown.get(value) ?? value : MISSING_VALUE;
 }
 
 /**
@@ -134,12 +142,12 @@ function termSection(snapshot: SurfaceSnapshot, readings: readonly SurfaceEventR
  */
 function scheduledReleasesSection(readings: readonly SurfaceEventReading[]): HeadlessBundleSection {
   return { title: "Scheduled releases", columns: [
-    { key: "event", header: "Event" }, { key: "between", header: "Between expiries" },
+    { key: "event", header: "Event", textFormat: eventText(readings) }, { key: "between", header: "Between expiries", textFormat: (value) => typeof value === "string" ? formatDaysInText(value) : MISSING_VALUE },
     { key: "forwardVol", header: "Forward vol", format: iv },
     { key: "impliedMove", header: "Implied |move|", format: (value) => approximatePercent(typeof value === "number" ? value : null) },
     { key: "mdayMove", header: "MDAY avg |move|" }, { key: "mdayDays", header: "MDAY days" },
-  ], rows: readings.map((reading) => ({ event: surfaceReadingLabel(reading),
-    between: reading.after == null ? "none listed after it" : `${reading.before == null ? "now" : expiryLabel(reading.before)} to ${expiryLabel(reading.after)}`,
+  ], rows: readings.map((reading) => ({ event: surfaceReadingLabel(reading, true),
+    between: reading.after == null ? "none listed after it" : `${reading.before == null ? "now" : expiryStamp(reading.before)} to ${expiryStamp(reading.after)}`,
     forwardVol: reading.forwardVol, impliedMove: reading.impliedMove, mdayMove: surfaceEventHistory(reading.events),
     mdayDays: reading.events.map((event) => event.history?.count ?? 0).join("/") })) };
 }
@@ -154,7 +162,7 @@ const EVENT_NOTES = [
 function skewSection(snapshot: SurfaceSnapshot): HeadlessBundleSection {
   const gap = (value: unknown, row: HeadlessPaneRow) => typeof value === "number" ? points(value) : (row as unknown as SurfaceSkewRow).gap ?? MISSING_VALUE;
   return { title: "Skew", columns: [
-    { key: "expiry", header: "Expiry" }, { key: "days", header: "Days", format: days },
+    { key: "expiry", header: "Expiry", textFormat: expiryText }, { key: "days", header: "Days", format: days },
     { key: "put25", header: "25D put IV", format: iv }, { key: "call25", header: "25D call IV", format: iv },
     // Each difference names its sign: the risk reversal is call minus put here and in VCA and HIVG's rr25d.
     { key: "riskReversal", header: skewHeader("RR", "call-put"), format: gap }, { key: "butterfly", header: skewHeader("BF", "wings-ATM"), format: gap },
@@ -162,7 +170,7 @@ function skewSection(snapshot: SurfaceSnapshot): HeadlessBundleSection {
       : (row as unknown as SurfaceSkewRow).moneynessGap ?? MISSING_VALUE },
     { key: "termSlope", header: "Slope pts/yr", format: (value, row) => typeof value === "number" ? points(value)
       : (row as unknown as SurfaceSkewRow).termSlopeHidden ? HIDDEN_SLOPE_TEXT : MISSING_VALUE },
-  ], rows: snapshot.expiries.map((expiry) => ({ ...surfaceSkewRow(expiry), ...expiryFeedFields(expiry), expiry: expiryLabel(expiry.expiration) })) };
+  ], rows: snapshot.expiries.map((expiry) => ({ ...surfaceSkewRow(expiry), ...expiryFeedFields(expiry), expiry: expiryStamp(expiry.expiration) })) };
 }
 
 /**
@@ -192,15 +200,19 @@ export function dvolSection(dvol: DvolPayload, snapshot: SurfaceSnapshot | null)
   ] };
 }
 
+/** An expiry stamp in a text report, day first as the pane writes it; an export keeps the stamp. */
+function expiryText(value: unknown): string {
+  return typeof value === "string" ? expiryStampText(value) : MISSING_VALUE;
+}
 function forwardsSection(snapshot: SurfaceSnapshot): HeadlessBundleSection {
   const percent = (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : MISSING_VALUE;
   return { title: "Forwards", columns: [
-    { key: "expiry", header: "Expiry" }, { key: "forward", header: "Forward", format: level },
+    { key: "expiry", header: "Expiry", textFormat: expiryText }, { key: "forward", header: "Forward", format: level },
     { key: "basis", header: "Basis", format: (value) => typeof value === "number" ? `${value > 0 ? "+" : ""}${formatPrice(value)}` : MISSING_VALUE },
     { key: "dividendYield", header: "Div yield", format: (value, row) => typeof value === "number" ? percent(value)
       : (row as unknown as SurfaceForwardRow).dividendYieldHidden ? HIDDEN_YIELD_TEXT : MISSING_VALUE }, { key: "rate", header: "Rate", format: percent },
-    { key: "pairs", header: "Pairs" }, { key: "asOf", header: "As of", format: (value) => typeof value === "string" ? value.slice(0, 10) : MISSING_VALUE },
-  ], rows: snapshot.expiries.map((expiry) => ({ ...surfaceForwardRow(expiry, snapshot), ...expiryFeedFields(expiry), expiry: expiryLabel(expiry.expiration) })) };
+    { key: "pairs", header: "Pairs" }, { key: "asOf", header: "As of", format: (value) => typeof value === "string" ? value.slice(0, 10) : MISSING_VALUE, textFormat: (value) => typeof value === "string" ? formatDay(value) : MISSING_VALUE },
+  ], rows: snapshot.expiries.map((expiry) => ({ ...surfaceForwardRow(expiry, snapshot), ...expiryFeedFields(expiry), expiry: expiryStamp(expiry.expiration) })) };
 }
 
 export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
@@ -284,7 +296,8 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
     // An expiry that failed as the whole surface did (no connection) is not listed again under its own date.
     const surfaceWide = new Set(snapshot.failures.filter((failure) => failure.expiration == null).map((failure) => failure.message));
     const loadErrors = snapshot.failures.filter((failure) => failure.expiration == null || !surfaceWide.has(failure.message))
-      .map((failure) => failure.expiration == null ? failure.message : `${expiryLabel(failure.expiration)}: ${failure.message}`);
+      // An error names the expiry as --expiration takes it, as its message names the listed ones.
+      .map((failure) => failure.expiration == null ? failure.message : `${expiryStamp(failure.expiration)}: ${failure.message}`);
     // A symbol with no option chain at all says what became of it when something did (FB is a fund now,
     // Meta trades as META) in place of the chain's own error; a chain without clean quotes is the symbol's own.
     const fate = !snapshot.stored && !available && snapshot.catalogue.length === 0
@@ -295,7 +308,7 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
     const axis = args.options.axis as SurfaceAxis;
     const readings = events ? surfaceEventReadings(snapshot.expiries, snapshot.catalogue, events.events) : [];
     const expiryWarnings = snapshot.expiries.flatMap((expiry) => expiry.warnings.map((warning) =>
-      ({ expiry: expiryLabel(expiry.expiration), warning })));
+      ({ expiry: expiryStamp(expiry.expiration), warning })));
     const perExpiry = new Set(expiryWarnings.map((row) => row.warning));
     // Calendar arbitrage compares expiries, so it belongs to the whole surface.
     const warnings = [...expiryWarnings, ...snapshot.warnings.filter((warning) => !perExpiry.has(warning))
@@ -335,7 +348,7 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
         ...(dvol && !(dvol instanceof Error) ? [dvolSection(dvol, available ? snapshot : null)] : []),
         ...view,
         // The pane lists these (arbitrage, SVI fallback) beside the surface; here each names its expiry.
-        ...(warnings.length ? [{ title: "Warnings", columns: [{ key: "expiry", header: "Expiry" }, { key: "warning", header: "Warning" }],
+        ...(warnings.length ? [{ title: "Warnings", columns: [{ key: "expiry", header: "Expiry", textFormat: expiryText }, { key: "warning", header: "Warning" }],
           rows: warnings }] : []),
       ],
       complete: available && snapshot.failures.length === 0 && snapshot.expiries.every((expiry) => expiry.state === "ready"),

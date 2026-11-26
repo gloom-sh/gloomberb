@@ -13,6 +13,7 @@ import { filterWorldVenues, formatVenueCountdown, formatVenueLocalTime, venueRem
 import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
 import { rowWindowCutNote } from "../../../cli/row-window";
 import { mapHomeArea, mapPlaceBbox, nearestPlaces, resolveMapPlace, type MapStart } from "./place";
+import { nextVenueExceptions } from "./venue-exceptions";
 
 /**
  * A layer's status from its own cadence, as the pane's footer shows it. The
@@ -52,6 +53,9 @@ const VENUE_COLUMNS: HeadlessPaneColumn[] = [
   { key: "localTime", header: "Local" },
   // When the core session next opens or closes, as the pane's header says it (opens 36h 54m); an export writes the instant.
   { key: "nextChangeAt", header: "Next", textFormat: (_value, row) => typeof row.nextText === "string" ? row.nextText : "" },
+  { key: "nextClosure", header: "Next closure", textFormat: (value) => typeof value === "string" ? value : "" },
+  { key: "nextEarlyClose", header: "Next early close", textFormat: (value, row) => typeof row.nextEarlyCloseAt === "string"
+    ? `${row.nextEarlyCloseDate} ${row.nextEarlyCloseLocal} / ${row.nextEarlyCloseAt.slice(11, 16)} UTC` : typeof value === "string" ? value : "" },
 ];
 
 /** What a page of rows the server cut at `--limit` says of the rest: "first 6 of 137 rows (--limit 6)". */
@@ -75,6 +79,7 @@ async function venueRows(context: HeadlessPaneContext, query: string, start: Map
       // Counted from when the service read the sessions, as the pane counts it.
       const remaining = Number.isFinite(checkedAt) ? venueRemainingSeconds(venue, checkedAt, now) : null;
       const stated = venue.isOpen ? venue.timeToCloseSeconds : venue.timeToOpenSeconds;
+      const { closure, earlyClose } = nextVenueExceptions(venue.mic, venue.timezone, now);
       return {
         mic: venue.mic,
         name: venue.title,
@@ -86,13 +91,22 @@ async function venueRows(context: HeadlessPaneContext, query: string, start: Map
         nextChange: remaining == null ? null : venue.isOpen ? "closes" : "opens",
         nextChangeAt: remaining == null || stated == null ? null : new Date(checkedAt + stated * 1_000).toISOString(),
         nextText: remaining == null ? null : `${venue.isOpen ? "closes" : "opens"} ${formatVenueCountdown(remaining)}`,
+        nextClosure: closure,
+        nextEarlyClose: earlyClose?.at ?? earlyClose?.date ?? null,
+        nextEarlyCloseDate: earlyClose?.date ?? null,
+        nextEarlyCloseAt: earlyClose?.at ?? null,
+        nextEarlyCloseLocal: earlyClose?.local ?? null,
         lon: venue.longitude,
         lat: venue.latitude,
+        ...(venue.hours ? { hours: venue.hours } : {}),
       };
     }),
     freshness: REFERENCE_DATA,
     errors: start.note ? [start.note] : [],
-    notes: pageCutNote(shown.length, venues.length, limit),
+    notes: [...pageCutNote(shown.length, venues.length, limit), ...shown.flatMap((venue) => {
+      const hours = venue.hours;
+      return hours ? [`${venue.title} (local time): scheduled ${hours.open}–${hours.close}; continuous ${hours.continuousOpen}–${hours.continuousClose}.`] : [];
+    })],
     // The service's states are stale once a session it stated should have opened or closed since it read them: the
     // flag the footer reads, which the response and its payload each carry.
     metadata: { layer: "venues", stale: response.stale === true || response.data.stale === true, total: venues.length,

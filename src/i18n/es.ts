@@ -344,6 +344,7 @@ export const es: Record<string, string> = {
   "Earnings Monitor": "Monitor de resultados",
   "Economic Calendar": "Calendario económico",
   "Corporate Actions": "Eventos corporativos",
+  "Dividend Yield": "Rendimiento por dividendo",
   "Analyst Research": "Informes de analistas",
   "Analyst": "Analista",
   "Analysts": "Analistas",

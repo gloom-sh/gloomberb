@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { formatDaysInText } from "../../../utils/day-format";
 import type {
   HeadlessBundleResult,
   HeadlessPaneColumn,
@@ -14,7 +15,7 @@ import type { FundFactsPayload } from "../../../api-client/fund-facts";
 import { errorMessage } from "../../../utils/errors";
 import { filingStoryNote, loadFilingStories, type FilingStory } from "../insider/filing-stories";
 import { logFailure } from "../../../utils/log-failure";
-import { latestFilingRows, localFilingListing, localFilingRows } from "./exchange-filings";
+import { JPX_FILING_HISTORY_LIMIT, latestFilingRows, localFilingListing, localFilingRows } from "./exchange-filings";
 import { loadSecFilings } from "./client";
 import { ETF_FILING_FORMS, filterFilingsByForms, fundSeriesFilings, loadShownSecFilings, SEC_FILING_FETCH_LIMIT } from "./forms";
 import { hiddenFilingsMetadata, hiddenFilingsNote } from "../../../utils/sec-filings";
@@ -22,6 +23,7 @@ import { buildSecFilingRows, secFilingIssuers, SEC_ACCEPTANCE_NOTE } from "./mod
 import { SEC_FILINGS } from "../shared/report-freshness";
 import { fetchFundFacts, fundFactEntries, fundFactPublishers, fundFactsEmpty, fundFactsErrorText, fundFactsStaleNote, fundNoteEntries, listNames } from "./fund-facts";
 import { REPORT_ROWS } from "../shared/headless-options";
+import { isoDayEntries } from "../shared/day-entries";
 import { fundAbroadProfile, venueAbroad, type FundAbroadProfile } from "./fund-abroad";
 import { listingAnnouncementsPage } from "../../../utils/exchange-announcements";
 import { companyDataNotes } from "../../../types/company-from";
@@ -40,7 +42,8 @@ const SEC_COLUMNS: HeadlessPaneColumn[] = [
   { key: "form", header: "Form" },
   // As the pane: one issuer's filings name it once, in the title; a filer's several issuers name each row's.
   { key: "companyName", header: "Issuer", omitWhenSame: true },
-  { key: "filing", header: "Filing" },
+  // A period end reads day first in the text; JSON and CSV keep it in ISO.
+  { key: "filing", header: "Filing", textFormat: (value) => typeof value === "string" ? formatDaysInText(value) : MISSING_VALUE },
   { key: "items", header: "Items" },
   { key: "accessionNumber", header: "Accession" },
 ];
@@ -181,9 +184,12 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       // A form filter searches every filing listed for the issuer and keeps the supplements it names; without
       // one, a bank's pricing supplements and a trust's other funds stay out unless --all, as in `filings`.
       const listing = !form ? localFilingListing(symbol) : null;
+      const localLimit = listing?.exchange === "JPX"
+        ? Math.min(JPX_FILING_HISTORY_LIMIT, limit)
+        : listing?.exchange === "HKEX" && args.options.all !== true ? 100 : Math.min(50, limit);
       const [us, local] = await Promise.allSettled([
         loadShownSecFilings(load, limit, { form: form || null, all: args.options.all === true }),
-        listing && dependencies.loadExchange ? dependencies.loadExchange({ ...listing, limit: listing.exchange === "HKEX" && args.options.all !== true ? 100 : Math.min(50, limit) }, ctx) : Promise.resolve(null),
+        listing && dependencies.loadExchange ? dependencies.loadExchange({ ...listing, limit: localLimit }, ctx) : Promise.resolve(null),
       ]);
       const exchange = local.status === "fulfilled" ? local.value : null;
       const exchangeRows = exchange ? localFilingRows(exchange, args.options.all === true) : [];
@@ -289,7 +295,8 @@ function fundAbroadFactsResult(symbol: string, venue: string, facts: FundFactsPa
   const publishers = fundFactPublishers(facts);
   const stale = fundFactsStaleNote(symbol, facts);
   return {
-    sections: [{ title: "Fund facts", entries: fundFactEntries(facts) }],
+    // Each line's days read first in the text; JSON and CSV keep them in ISO.
+    sections: [{ title: "Fund facts", ...isoDayEntries(fundFactEntries(facts), ["url"]) }],
     complete: true,
     ...(stale ? { notes: [stale] } : {}),
     freshness: {
@@ -378,8 +385,9 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
       // The filings line already sends a fund without fund forms to SEC; the facts line does not say it twice.
       const filingsPointToSec = filingsResult.status === "fulfilled" && filings.length === 0 && issuerFilings.length > 0;
       const factsSection = facts?.covered
-        ? { title: "Fund facts", entries: fundFactEntries(facts) }
-        : etn ? { title: "Note terms", entries: fundNoteEntries(etn) }
+        // Each line's days read first in the text; JSON and CSV keep them in ISO.
+        ? { title: "Fund facts", ...isoDayEntries(fundFactEntries(facts), ["url"]) }
+        : etn ? { title: "Note terms", ...isoDayEntries(fundNoteEntries(etn), ["url"]) }
         : { title: "Fund facts", rows: [], empty: factsResult.status === "rejected"
           ? fundFactsErrorText(factsResult.reason)
           : fundFactsEmpty(symbol, facts, !filingsPointToSec) };

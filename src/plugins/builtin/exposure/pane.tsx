@@ -10,6 +10,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, useRendererHost, useUiCapabilities } from "../../../ui";
 import { withCountryFlag } from "../../../components/ui/country-flag";
+import { daysInTextCell, formatDay } from "../../../components/ui/day-cell";
 import { logFailure } from "../../../utils/log-failure";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
@@ -29,7 +30,7 @@ function EvidenceItem({ item }: { item: ExposureEvidence }) {
   const colors = useThemeColors();
   const host = useRendererHost();
   return <Box flexDirection="column" paddingY={1}>
-    <KeyValueRow labelWidth={20} label="Evidence" value={`${item.tier} · ${item.asOf ?? "undated"}`} detail={item.confidence === null ? undefined : `${Math.round(item.confidence * 100)}% confidence`} />
+    <KeyValueRow labelWidth={20} label="Evidence" value={`${item.tier} · ${item.asOf ? formatDay(item.asOf) : "undated"}`} detail={item.confidence === null ? undefined : `${Math.round(item.confidence * 100)}% confidence`} />
     <KeyValueRow labelWidth={20} label="Period / units" value={`${item.period ? periodText(item.period) : "unknown"} · ${item.units}${item.currency ? ` ${item.currency}` : ""}`} />
     {item.revision ? <KeyValueRow labelWidth={20} label="Revision" value={item.revision} /> : null}
     {item.quote ? <Text fg={colors.textBright}>{item.quote}</Text> : <Text fg={colors.textDim}>{item.tier === "user" ? "User-supplied assumption" : "Structured observation; no verbatim quote"}</Text>}
@@ -48,8 +49,8 @@ function ExposureDetail({ row, data, width }: { row: ExposureRow | null; data: E
   return <ScrollBox flexGrow={1} flexBasis={0} minHeight={0} scrollY contentOptions={{ paddingX: 1 }}>
     {row?.driver ? <>
       <KeyValueRow labelWidth={20} label="Value / units" value={`${driverValue(row.driver)} ${driverUnits(row.driver)}`} />
-      <KeyValueRow labelWidth={20} label="Period" value={row.driver.period ?? "Unknown"} />
-      <KeyValueRow labelWidth={20} label="As of" value={row.driver.asOf?.slice(0, 10) ?? "Unknown"} />
+      <KeyValueRow labelWidth={20} label="Period" value={row.driver.period ? periodText(row.driver.period) : "Unknown"} />
+      <KeyValueRow labelWidth={20} label="As of" value={row.driver.asOf ? formatDay(row.driver.asOf) : "Unknown"} />
       {row.driver.valueText ? <KeyValueRow labelWidth={20} label="Reported wording" value={row.driver.valueText} /> : null}
       {row.driver.status ? <KeyValueRow labelWidth={20} label="Status" value={humanLabel(row.driver.status)} /> : null}
       {row.driver.basis ? <KeyValueRow labelWidth={20} label="Basis" value={humanLabel(row.driver.basis)} /> : null}
@@ -220,7 +221,8 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
       case "symbol": return row.symbol.includes(",") ? { text: row.symbol, color: colors.textBright } : listingCell(row.symbol, colors, state.selected);
       case "value": return { text: row.driver ? driverValue(row.driver) : MISSING_VALUE, value: row.driver?.value ?? null, color: colors.textBright };
       case "units": return { text: row.driver ? driverUnits(row.driver) : "", color: colors.textDim };
-      case "scope": return { text: row.driver ? driverScope(row.driver) : "", color: colors.textDim };
+      // A day in the scope or the period reads first and exports as its ISO day.
+      case "scope": return { ...daysInTextCell(row.driver ? driverScope(row.driver) : ""), color: colors.textDim };
       case "label": {
         const cell = { text: exposureCellText(row, "label"), color: unknown ? colors.textDim : colors.text };
         // Grouped by country, each target leads with its flag on the desktop and the web.
@@ -233,7 +235,7 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
         color: row.classification === "disclosed" ? colors.borderFocused : unknown ? colors.textMuted : colors.textDim, keepColorWhenSelected: row.classification === "disclosed" };
       case "impact": return !row.impact ? missingCell(colors) : { text: exposureCellText(row, "impact"), value: row.impact.low,
         color: row.concentration ? colors.text : row.impact.high < 0 ? colors.negative : row.impact.low > 0 ? colors.positive : colors.text };
-      case "period": return row.period ? { text: exposureCellText(row, "period"), color: colors.textDim } : missingCell(colors);
+      case "period": return row.period ? { ...daysInTextCell(exposureCellText(row, "period")), color: colors.textDim } : missingCell(colors);
       default: return { text: exposureCellText(row, "weight"), value: row.weight === null ? null : row.weight * 100, color: colors.text };
     }
   };
@@ -242,7 +244,7 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
     exposure: null, impact: null, weight: null, classification: "unknown", incomplete: false, components: [], unknowns: [] }))], [rows, lockedRows]);
   const figures: StatItem[] = data ? tab === "drivers" ? [
     { label: "Dataset", value: selected?.driver ? selected.driver.kind === "kpi" ? "KPI" : humanLabel(selected.driver.kind) : MISSING_VALUE },
-    { label: "As of", value: selected?.driver?.asOf?.slice(0, 10) ?? MISSING_VALUE },
+    { label: "As of", value: formatDay(selected?.driver?.asOf) },
     { label: "Basis", value: selected?.driver?.basis ? humanLabel(selected.driver.basis) : MISSING_VALUE },
   ] : tab === "portfolio" ? [
     { label: "Gross holdings", value: fraction(data.portfolio.grossWeight) }, { label: "Net holdings", value: fraction(data.portfolio.netWeight) },

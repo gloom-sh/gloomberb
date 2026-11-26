@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { formatDay } from "../../../components/ui/day-cell";
 import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { DataTableStackView, DataTableView, EmptyState, QueryBar, usePagedRows, usePaneNoticeFooter, useTableLoadMore, type DataTableColumn, type PageRequest, type DataTableKeyEvent, type DataTableRootKeyContext, type PaneHint, StatGrid, type StatItem } from "../../../components";
 import { useShortcut } from "../../../react/input";
@@ -82,10 +83,10 @@ export function ThirteenFTickerHoldingsView({ symbol, focused, width, height, qu
   // list has paged in, not something about the ticker, so they stay out.
   const net = data ? data.newCount - data.exitCount : 0;
   const statItems: StatItem[] = data ? [
-    ...(queryBar ? [] : [{ id: "period", label: "Period", value: data.period }]),
+    ...(queryBar ? [] : [{ id: "period", label: "Period", value: formatDay(data.period) }]),
     { id: "net", label: "Net funds", value: `${net > 0 ? "+" : ""}${net}`, detail: `${data.newCount} new, ${data.exitCount} exited`, tone: net > 0 ? "positive" : net < 0 ? "negative" : undefined },
   ] : [];
-  const header = queryBar || data ? <>{queryBar?.(data?.period)}<StatGrid items={statItems} width={width} /></> : undefined;
+  const header = queryBar || data ? <>{queryBar?.(data?.period ? formatDay(data.period) : undefined)}<StatGrid items={statItems} width={width} /></> : undefined;
   return <DataTableStackView<TickerHolderRow, DataTableColumn>
     focused={focused} detailOpen={!!fund} onBack={() => setFund(null)} detailTitle={fund?.name}
     detailContent={fund ? <FundDetailView focused={focused} seed={fund} width={width} /> : <Box />}

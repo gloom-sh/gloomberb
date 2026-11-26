@@ -100,10 +100,26 @@ const point = (day: string, value: number | null): TimeSeriesPoint => {
 };
 /** The line's closes over the window. */
 export const closePoints = (data: BuybacksPayload) => data.history.map((row) => point(row.date, row.close));
-/** Shares bought each session on the Exchange (or elsewhere), zero on a session without one so the columns keep their place. */
+/**
+ * The first session whose buying the payload states in full, when sessions
+ * are withheld (the free preview sends the newest few): the oldest one sent,
+ * since a withheld session can fall anywhere before it. Null when nothing is
+ * withheld.
+ */
+export function boughtKnownFrom(data: BuybacksPayload): string | null {
+  if (!data.lockedDays) return null;
+  // Every session withheld: none of the history is known.
+  return data.days.reduce((oldest, day) => day.date < oldest ? day.date : oldest, "9999-12-31");
+}
+/**
+ * Shares bought each session on the Exchange (or elsewhere), zero on a
+ * session without one so the columns keep their place, and blank (null)
+ * before the sessions a preview withholds start, where buying is not known.
+ */
 export function boughtPoints(data: BuybacksPayload, where: "exchange" | "elsewhere"): TimeSeriesPoint[] {
   const bought = new Map(data.days.map((day) => [day.date, where === "exchange" ? day.sharesOnExchange : day.shares - day.sharesOnExchange]));
-  return data.history.map((row) => point(row.date, bought.get(row.date) ?? 0));
+  const knownFrom = boughtKnownFrom(data);
+  return data.history.map((row) => point(row.date, knownFrom && row.date < knownFrom ? null : bought.get(row.date) ?? 0));
 }
 export const boughtElsewhere = (data: BuybacksPayload) => data.days.some((day) => day.shares > day.sharesOnExchange);
 

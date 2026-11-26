@@ -20,6 +20,7 @@ import type { TickerRecord } from "../../../types/ticker";
 import { useTickerFinancials } from "../../../market-data/hooks";
 import { useLiveTickerFinancials } from "../../../state/hooks/live-ticker-financials";
 import { blendHex, colors } from "../../../theme/colors";
+import { dayCell } from "../../../components/ui/day-cell";
 import { MISSING_VALUE, formatPercent } from "../../../utils/format";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { useAssetData } from "../../runtime";
@@ -245,7 +246,7 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
   ): DataTableCell => {
     switch (column.id) {
       case "date":
-        return { text: row.date, color: colors.textDim };
+        return { ...dayCell(row.date), color: colors.textDim };
       case "firm":
         return { text: row.firm, color: colors.textBright, attributes: TextAttributes.BOLD };
       case "action":

@@ -162,6 +162,7 @@ export function assessPaneScreenshot(
     ...intradayChartEvidenceMismatchesFor(resolved, payload, render.semanticUi),
     ...paneEvidenceMismatches(resolved, payload, render),
     ...financialRatioRenderMismatches(resolved, payload, render),
+    ...earningsQuarterCellMismatches(resolved, render.rows),
     // The 2D grid that stands in for a sheet too few expiries can make draws every quoted value: no picture of the
     // 3D surface asked for, so not usable, but neither empty nor at odds with the data.
     ...surfaceNotDrawnMismatches(render).filter((gap) => gap !== SURFACE_GRID_STAND_IN),
@@ -313,6 +314,16 @@ function requiresStructuredDataEvidence(resolved: ResolvedPaneFunction): boolean
 
 const PLACEHOLDER_VALUE = /^(?:[-\u2013\u2014]+|n\/?a)?$/i;
 
+function earningsQuarterCellMismatches(resolved: ResolvedPaneFunction, rows: readonly DesktopPaneShotRenderedRow[]): string[] {
+  if (resolved.pane.id !== "corporate-actions" && resolved.pane.id !== "earnings-estimates") return [];
+  return rows.flatMap((row) => {
+    if (row.section || !row.cells.some((cell) => cell.columnId === "period" && cell.columnLabel === "QUARTER")) return [];
+    const blank = row.cells.filter((cell) => ["eps", "estimate", "surprise"].includes(cell.columnId ?? "")
+      && !cell.mayBeBlank && PLACEHOLDER_VALUE.test(cell.text.trim()));
+    return blank.length ? [`${namedColumns(blank.map((cell) => cell.columnLabel))} missing for ${row.key ?? `quarter ${row.rowIndex + 1}`}`] : [];
+  });
+}
+
 /**
  * Rows a table must draw before a column that is blank in all of them reads
  * as a column the pane lost, rather than a short list's gaps.
@@ -325,9 +336,12 @@ const BLANK_COLUMN_MIN_ROWS = 3;
  * and V/AVG did before the open. A column some rows leave empty is a sparse
  * marker (an event column), not a blank one, and neither is a column the pane
  * says can be blank (`mayBeBlank`: a value that comes after an event, such as
- * an upcoming report's move). A row the pane says is still waiting on the
- * value (a cell's `mayBeBlank`: ECO's ACTUAL before the release) is left out:
- * the column is blank when every other row is, and there are at least
+ * an upcoming report's move). A row the pane says does not owe the value (a
+ * cell's `mayBeBlank`: ECO's ACTUAL before the release) is left out whatever
+ * its cell shows, a dash or words of its own: an event's label under PERIOD and
+ * a rule change's "Created" under Value are no period and no figure, and
+ * neither fills the column for the rows that owe one. The column is blank when
+ * every row that owes the value is, and there are at least
  * BLANK_COLUMN_MIN_ROWS of them. Section headers and tables of fewer than
  * BLANK_COLUMN_MIN_ROWS rows are not read.
  */
@@ -341,21 +355,21 @@ function shotBlankColumns(rows: readonly Pick<DesktopPaneShotRenderedRow, "table
   const blank: string[] = [];
   for (const tableRows of tables.values()) {
     if (tableRows.length < BLANK_COLUMN_MIN_ROWS) continue;
-    const columns = new Map<string, { label: string; placeholders: number; waiting: number; filled: boolean }>();
+    const columns = new Map<string, { label: string; placeholders: number; exempt: number; filled: boolean }>();
     for (const row of tableRows) {
       for (const cell of row.cells) {
         const key = cell.columnId ?? cell.columnLabel;
-        const column = columns.get(key) ?? { label: cell.columnLabel, placeholders: 0, waiting: 0, filled: false };
-        // A row still waiting on the value (an upcoming release's ACTUAL) is neither a gap nor a value.
-        if (cell.mayBeBlank && PLACEHOLDER_VALUE.test(cell.text.trim())) column.waiting += 1;
+        const column = columns.get(key) ?? { label: cell.columnLabel, placeholders: 0, exempt: 0, filled: false };
+        // A row that does not owe the value is neither a gap nor a value, whether its cell is a dash or says why.
+        if (cell.mayBeBlank) column.exempt += 1;
         else if (PLACEHOLDER_VALUE.test(cell.text.trim())) column.placeholders += 1;
         else column.filled = true;
         columns.set(key, column);
       }
     }
-    for (const { label, placeholders, waiting, filled } of columns.values()) {
+    for (const { label, placeholders, exempt, filled } of columns.values()) {
       // Blank in every row that should have the value, and in enough of them to be no short list's gaps.
-      const owed = tableRows.length - waiting;
+      const owed = tableRows.length - exempt;
       if (!filled && owed >= BLANK_COLUMN_MIN_ROWS && placeholders === owed && !blank.includes(label)) blank.push(label);
     }
   }

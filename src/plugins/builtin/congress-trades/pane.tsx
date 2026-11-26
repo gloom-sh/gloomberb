@@ -25,7 +25,6 @@ import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useInlineTickerOpener } from "../../../state/hooks/inline-tickers";
 import {
   type CloudCongressMemberPayload,
-  type CloudCongressTradePayload,
   type CloudCongressTickerPayload,
 } from "../../../api-client";
 import type { PaneProps } from "../../../types/plugin";
@@ -40,6 +39,7 @@ import {
   buildMemberColumns,
   buildTradeColumns,
   congressScanNotice,
+  foldFilingLines,
   previousCongressYearPage,
   selectedIndexById,
   sortedMembers,
@@ -49,6 +49,7 @@ import {
   type TickerColumn,
   type TickerColumnId,
   type CongressTab,
+  type CongressTradeRow,
   type DetailMode,
   type MemberColumn,
   type MemberColumnId,
@@ -161,7 +162,10 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
   const members = summaries.members;
   const tickerRows = useMemo(() => sortedTickers(summaries.tickers, tickerSort), [summaries.tickers, tickerSort]);
   const tickerColumns = useMemo(() => buildTickerColumns(width), [width]);
-  const tradeRows = useMemo(() => sortedTrades(visibleTrades, tradeSort), [visibleTrades, tradeSort]);
+  // One filing's alike lines are one row; Export CSV writes each line.
+  const tradeRows = useMemo(() => sortedTrades(foldFilingLines(visibleTrades), tradeSort), [visibleTrades, tradeSort]);
+  const tradeLines = useMemo(() => sortedTrades(visibleTrades, tradeSort), [visibleTrades, tradeSort]);
+  const foldedTrades = useMemo(() => foldFilingLines(trades), [trades]);
   const memberRows = useMemo(() => sortedMembers(members, memberSort), [members, memberSort]);
   const tradeColumns = useMemo(() => buildTradeColumns(width, !!tickerFilter), [width, tickerFilter]);
   const memberColumns = useMemo(() => buildMemberColumns(width), [width]);
@@ -170,7 +174,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
   const selectedTrade = tradeRows[selectedTradeIndex] ?? null;
   const selectedMember = memberRows[selectedMemberIndex] ?? null;
   const detailTrade = detailMode?.kind === "trade"
-    ? trades.find((trade) => trade.id === detailMode.tradeId) ?? null
+    ? foldedTrades.find((trade) => trade.id === detailMode.tradeId) ?? null
     : null;
   const detailMember = detailMode?.kind === "member"
     ? members.find((member) => member.id === detailMode.memberId) ?? null
@@ -359,7 +363,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
     <Box flexDirection="column" width={width} height={height}>
       {tabs}
       {activeTab === "trades" ? (
-        <DataTableStackView<CloudCongressTradePayload, TradeColumn>
+        <DataTableStackView<CongressTradeRow, TradeColumn>
           focused={focused}
           detailOpen={detailMode !== null}
           onBack={() => setDetailMode(null)}
@@ -383,6 +387,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
           rootHeight={Math.max(1, height - tabRows - filterHeight)}
           columns={tradeColumns}
           items={tradeRows}
+          exportItems={tradeLines}
           sortColumnId={tradeSort.columnId}
           sortDirection={tradeSort.direction}
           onHeaderClick={(columnId) => setTradeSort((current) => nextHeaderSort(current, columnId as TradeColumnId, { firstDirection: columnId === "member" || columnId === "ticker" || columnId === "asset" ? "asc" : "desc" }))}
