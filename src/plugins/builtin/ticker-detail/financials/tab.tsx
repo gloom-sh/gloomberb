@@ -7,6 +7,7 @@ import { usePaneStateValue, usePaneTicker } from "../../../../state/app/context"
 import {
   DataTableView,
   DisclosureMarker,
+  Notice,
   PaneStatusBody,
   QueryBar,
   usePaneFooter,
@@ -37,6 +38,7 @@ import {
   financialPeriodHeaderLabel,
   formatFinancialCell,
   formatFinancialCellValue,
+  financialStatementBasisNote,
   financialStatementCurrency,
   financialStatementLimitations,
   financialStatementPeriods,
@@ -574,7 +576,11 @@ export function ResolvedFinancialsTab({
     );
   }
 
-  const queryBar = (meta: string) => (
+  // A scoped series says what it is filed as, and a newer filing under review, under the bar at every width: the bar's
+  // meta gives way first and would cut it. Statements with no scope keep their meta as it was.
+  const basisNote = financialStatementBasisNote(financials);
+  const pendingReview = !basisNote && financials.statementReview?.status === "pending" ? "New filing under review" : undefined;
+  const queryBar = (meta: string) => (<>
     <QueryBar
       width={Math.max(1, width - 2)}
       filters={[
@@ -600,9 +606,11 @@ export function ResolvedFinancialsTab({
         ],
         onChange: (value: string) => setPeriod(value as FinancialPeriod),
       }}
-      meta={[financials.statementScope?.label, financials.statementReview?.status === "pending" ? "New filing under review" : undefined, meta].filter(Boolean).join(" · ") || undefined}
+      meta={[pendingReview, meta].filter(Boolean).join(" · ") || undefined}
     />
-  );
+    {/* Lined up with the bar's text and the table's; on the desktop the notice takes the pane's inset itself. */}
+    {basisNote ? <Box flexShrink={0} paddingX={nativePaneChrome ? 0 : 1}><Notice tone="muted">{basisNote}</Notice></Box> : null}
+  </>);
 
   return (
     <Box
