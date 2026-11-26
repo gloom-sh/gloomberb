@@ -98,6 +98,8 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
     />
   ) : undefined;
   const actionProps = { state, index, beginReplyTo, beginEditMessage, retryMessage, reactAction, reactionPickerOpen, actionKeysShown };
+  // A grouped message floats its actions over its first row, inside the row's right padding.
+  const floatingActions = state.grouped ? <ChatMessageActions floating floatRight={DESKTOP_MESSAGE_RIGHT_PADDING} {...actionProps} /> : null;
   const { links: paneLinks, content } = chatMessagePaneLinks(msg);
   // A share link sent with one picture, such as a pasted screenshot: the
   // picture is the chip's thumbnail rather than a second copy below it.
@@ -214,7 +216,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
               onUserContextMenu={onUserContextMenu}
             />
           </Box>
-          {state.grouped && <ChatMessageActions floating {...actionProps} />}
+          {floatingActions}
         </Box>
       )}
       {showChips && (
@@ -237,7 +239,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
               />
             ))}
           </Box>
-          {state.grouped && !showBody && <ChatMessageActions floating {...actionProps} />}
+          {!showBody && floatingActions}
         </Box>
       )}
       {showImages && (
@@ -256,7 +258,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
             dimmed={dimmed}
             onLoadError={onImageLoadError}
           />
-          {state.grouped && !showBody && !showChips && <ChatMessageActions floating {...actionProps} />}
+          {!showBody && !showChips && floatingActions}
         </Box>
       )}
       {(msg.reactions?.length ?? 0) > 0 && (

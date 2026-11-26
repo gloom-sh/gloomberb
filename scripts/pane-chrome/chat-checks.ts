@@ -919,6 +919,33 @@ export const chatSteps: ChatStep[] = [
     },
   },
   {
+    // The icons once floated at the row's very edge. WebKit takes a press on a
+    // scrolling list's last pixels for its overlay scrollbar, so the last icon
+    // did nothing there; this Chromium runs without scrollbars and cannot see it.
+    name: "chat list: a grouped message's floated actions end where its text does, clear of the list's scrollbar",
+    scenario: "chat",
+    async run(cdp) {
+      await ready(cdp);
+      const id = await evaluate<string | null>(cdp, `(() => {
+        const s = __chat.scroller().getBoundingClientRect();
+        const row = __chat.rows().find((r) => {
+          const actions = r.querySelector('[data-gloom-role=chat-message-reply-action]');
+          const b = r.getBoundingClientRect();
+          return actions && getComputedStyle(actions).position === 'absolute' && b.top >= s.top && b.bottom <= s.bottom;
+        });
+        return row?.getAttribute('data-gloom-chat-message-id') ?? null;
+      })()`) ?? fail("no grouped message in view");
+      await hoverRow(cdp, id);
+      expectMarked(await marked(cdp), [id], "pointer on a grouped row");
+      const edges = await evaluate<{ actions: number; text: number }>(cdp, `(() => {
+        const actions = document.querySelector('[data-gloom-chat-message-id="${id}"] [data-gloom-role=chat-message-reply-action]');
+        const row = actions.closest('[data-gloom-role=chat-message-row]');
+        return { actions: actions.getBoundingClientRect().right, text: row.getBoundingClientRect().right - parseFloat(getComputedStyle(row).paddingRight) };
+      })()`);
+      if (edges.actions > edges.text + 0.5) fail("the floated actions run into the row's right padding, under the scrollbar", edges);
+    },
+  },
+  {
     name: "chat list: the row under a pointer that stays still is let go when the list scrolls, and one row is marked again on the next move",
     scenario: "chat",
     async run(cdp) {

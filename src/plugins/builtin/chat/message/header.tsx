@@ -46,6 +46,7 @@ export function ChatMessageActions({
   state,
   index,
   floating = false,
+  floatRight = 0,
   row,
   beginReplyTo,
   beginEditMessage,
@@ -55,6 +56,13 @@ export function ChatMessageActions({
   actionKeysShown = false,
 }: ChatMessageActionProps & {
   floating?: boolean;
+  /**
+   * Cells between a floating group and its row's right edge. The desktop
+   * gives its rows' right padding, so the icons end where the text does and
+   * stay clear of an overlay scrollbar: WebKit takes a press on the list's
+   * last pixels for its scrollbar, which would swallow the last icon.
+   */
+  floatRight?: number;
   /**
    * Terminal: the row's width in cells and where the actions start in it, so
    * the name of the one under the pointer goes where it covers none of them.
@@ -68,7 +76,7 @@ export function ChatMessageActions({
   if (state.showRetryAction && retryMessage) {
     return (
       <Box
-        {...(floating ? { position: "absolute" as const, top: 0, right: 0 } : {})}
+        {...(floating ? { position: "absolute" as const, top: 0, right: floatRight } : {})}
         width={MESSAGE_RETRY_ACTION_WIDTH}
         height={1}
         flexDirection="row"
@@ -115,7 +123,7 @@ export function ChatMessageActions({
   return (
     <Box
       // Relative where it sits in its row, so the terminal's name of the action under the pointer goes beside it.
-      {...(floating ? { position: "absolute" as const, top: 0, right: 0 } : { position: "relative" as const })}
+      {...(floating ? { position: "absolute" as const, top: 0, right: floatRight } : { position: "relative" as const })}
       // The terminal's icons are a glyph and a space either side; the desktop's size themselves.
       width={nativePaneChrome ? undefined : width}
       height={1}
