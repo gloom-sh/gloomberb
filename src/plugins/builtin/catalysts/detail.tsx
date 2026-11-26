@@ -1,5 +1,6 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { daysInTextCell } from "../../../components/ui/day-cell";
+import { formatDaysInText } from "../../../utils/day-format";
 import { enrollmentBasis, enrollmentSeries, enrollmentValue } from "./history";
 import { useCallback, useMemo, useRef } from "react";
 import type { CatalystDetail, CatalystEvent } from "../../../api-client/catalysts";
@@ -43,7 +44,7 @@ function Evidence({ event, width, height }: { event: CatalystEvent; width: numbe
       <KeyValueRow label="Expected impact" value={catalystLabel(event.opinion.direction)} detail={`${Math.round(event.opinion.confidence * 100)}% confidence`} labelWidth={18} />
       <Text fg={colors.text} wrapText width="100%">{event.opinion.rationale}</Text><Text fg={colors.textDim} wrapText width="100%">{event.opinion.quote}</Text>
     </Section> : null}
-    {event.changes.length ? <Section title="Revision changes" width={Math.max(20, width - 2)}>{event.changes.map((change, i) => <Text key={`${change.field}:${i}`} fg={colors.textBright} wrapText width="100%">{catalystChangeText(change)}</Text>)}</Section> : null}
+    {event.changes.length ? <Section title="Revision changes" width={Math.max(20, width - 2)}>{event.changes.map((change, i) => <Text key={`${change.field}:${i}`} fg={colors.textBright} wrapText width="100%">{formatDaysInText(catalystChangeText(change))}</Text>)}</Section> : null}
   </ScrollBox>;
 }
 export function CatalystEventDetail({ event, accessKey, snapshot, width, height, focused, initialTab = "evidence", openUpgrade }: {

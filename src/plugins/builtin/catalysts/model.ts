@@ -1,5 +1,6 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { formatDay, formatDayTime } from "../../../components/ui/day-cell";
+import { formatDaysInText } from "../../../utils/day-format";
 import type { CatalystEvent, CatalystFilters, CatalystResponse, CatalystType } from "../../../api-client/catalysts";
 import type { DataTableColumn, TableSection } from "../../../components";
 import { markHiddenTableColumns } from "../../../components/ui/table-layout";
@@ -221,7 +222,6 @@ function changeValue(value: unknown): string {
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (Array.isArray(value)) return value.map(changeValue).join(", ") || "None";
   if (typeof value === "object") return Object.entries(value).map(([key, part]) => `${humanLabel(key)}: ${changeValue(part)}`).join("; ") || "None";
-  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return formatDay(value);
   return String(value);
 }
 function partyList(value: unknown): Party[] | null {
@@ -284,7 +284,10 @@ export function catalystSection(event: CatalystEvent, read: CatalystDateRead, ch
   if (date === MISSING_VALUE) return "Undated";
   return /^\d{4}-\d{2}/.test(date) ? `${MONTHS[Number(date.slice(5, 7)) - 1]} ${date.slice(0, 4)}` : date;
 }
-/** The first change in words, before and after: `Deadline 2027-03-01 → 2027-04-01`. */
+/**
+ * The first change in words, before and after, its days in ISO as exports keep
+ * them: `Deadline: 2027-03-01 → 2027-04-01`. A table draws them day first.
+ */
 function changeSummary(event: CatalystEvent): string {
   const [first, ...rest] = event.changes;
   if (!first) return "First observed";
@@ -362,7 +365,7 @@ export function catalystFacts(event: CatalystEvent): Array<{ label: string; valu
     if (typeof metadata.enrollment === "number" && Number.isFinite(metadata.enrollment)) add("Enrollment", `${metadata.enrollment.toLocaleString("en-US")} participants${typeof metadata.enrollmentType === "string" ? ` · ${metadata.enrollmentType.toLowerCase()}` : ""}`);
     const completion = metadata.primaryCompletion;
     if (completion && typeof completion === "object") add("Completion basis", "type" in completion ? String(completion.type).toLowerCase() : "");
-    if (typeof metadata.hasResults === "boolean") add("Results", metadata.hasResults ? `Posted${date(metadata.resultsPosted) ? ` ${date(metadata.resultsPosted)}` : ""}` : "Not posted");
+    if (typeof metadata.hasResults === "boolean") add("Results", metadata.hasResults ? `Posted${date(metadata.resultsPosted) ? ` ${formatDaysInText(date(metadata.resultsPosted))}` : ""}` : "Not posted");
     if (Array.isArray(metadata.conditions)) add("Conditions", metadata.conditions.filter((value) => typeof value === "string").join(", "));
     if (Array.isArray(metadata.countries)) add("Study countries", metadata.countries.filter((value) => typeof value === "string").join(", "));
   }
@@ -372,7 +375,7 @@ export function catalystFacts(event: CatalystEvent): Array<{ label: string; valu
   // A company says the same date again in later filings; the row is its latest.
   if (event.restatedTimes && event.restatedTimes > 0) add("Restated", `${event.restatedTimes} ${event.restatedTimes === 1 ? "time" : "times"} in other filings; this is the latest`);
   // A later filing moved the date: the event stays, out of the calendar, and says where to.
-  if (event.supersededBy) add("Moved to", `${event.supersededBy.date} by a filing of ${event.supersededBy.announcedDate}`);
+  if (event.supersededBy) add("Moved to", formatDaysInText(`${event.supersededBy.date} by a filing of ${event.supersededBy.announcedDate}`));
   return facts;
 }
 

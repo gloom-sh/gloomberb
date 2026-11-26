@@ -3,7 +3,7 @@ import type { DataTableColumn } from "../../../components";
 import type { CloudResource } from "../shared/cloud-resource";
 import { parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { displayWidth, MISSING_VALUE } from "../../../utils/format";
-import { catalystAgency, catalystCell, catalystDateBasis, catalystDateWithheld, catalystListedSpan, fitCatalystColumns, shortPartyName, type CatalystDateRead, type FitColumn } from "./model";
+import { catalystAgency, catalystCell, catalystDate, catalystDateBasis, catalystDateWithheld, catalystListedSpan, fitCatalystColumns, shortPartyName, type CatalystDateRead, type FitColumn } from "./model";
 
 /**
  * The calendar's kinds of event, each a view with its own columns: what a
@@ -384,6 +384,9 @@ const QUIET_STATUSES = new Set(["scheduled"]);
 
 /** What a withheld date reads in a kind's Date column, which says it in place of a basis. */
 const DATE_WITHHELD = "Undisclosed";
+/** A kind row's date as exports keep it: the ISO day the pane draws first, or that it is withheld. */
+export const catalystKindDate = (event: CatalystEvent, read: CatalystDateRead): string =>
+  catalystDateWithheld(event, typeof read === "string" ? read : read?.dateField) ? DATE_WITHHELD : catalystDate(event, read);
 
 /**
  * A cell of a kind's table as text: the shared calendar cells, with a trial's
