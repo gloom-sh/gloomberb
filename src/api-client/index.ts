@@ -141,8 +141,8 @@ class GloomApiClient {
   private sessionTransition: Promise<void> | null = null;
   /** Device adoption and external session installs supersede pending email auth. */
   private sessionInstallationGeneration = 0;
-  /** How many times the session credential was replaced (getCredentialGeneration): a count, never the credential. */
-  private credentialGeneration = 0;
+  /** Set while this client replaces the credential itself: it tells listeners once its own state is in place. */
+  private replacingCredential = false;
   private sessionRevalidationGeneration = 0;
   private sessionRevalidationTimer: ReturnType<typeof setTimeout> | null = null;
   private sessionChecked = false;
@@ -154,7 +154,7 @@ class GloomApiClient {
   private sessionRequest: PendingSessionRequest | null = null;
   private sessionRequestGeneration = 0;
   private readonly currentUserListeners = new Set<() => void>();
-  private readonly transport = new CloudApiRequestTransport();
+  private readonly transport = new CloudApiRequestTransport({ onCredentialChange: () => this.credentialReplaced() });
   private readonly auth: CloudAuthApi = new CloudAuthApi({
     getCurrentUser: () => this.currentUser,
     getSessionToken: () => this.transport.getSessionToken(),
@@ -228,22 +228,41 @@ class GloomApiClient {
   }
 
   /**
-   * Changes each time the session credential is replaced (a token installed, changed or cleared, the cookie mode
-   * switched), before the account it belongs to is known: a non-secret count, for answers that must not outlive the
-   * credential they were sent with.
+   * Changes each time the session credential is replaced (a token installed, changed or cleared, one taken from a
+   * response's headers, the cookie mode switched), before the account it belongs to is known: a non-secret count,
+   * for answers that must not outlive the credential they were sent with.
    */
   getCredentialGeneration(): number {
-    return this.credentialGeneration;
+    return this.transport.getCredentialGeneration();
+  }
+
+  /**
+   * The transport replaced the credential. Taken from a response's headers, listeners are told now, with the body
+   * still out and the account it belongs to not read yet; replaced here, they are told once by the caller.
+   */
+  private credentialReplaced(): void {
+    if (this.replacingCredential) return;
+    this.traceAuth("sessionToken:fromResponse");
+    this.emitCurrentUserChange();
+  }
+
+  /** Replaces the credential in the transport without telling listeners: the caller does, once its state is set. */
+  private replaceCredential(replace: () => void): void {
+    this.replacingCredential = true;
+    try {
+      replace();
+    } finally {
+      this.replacingCredential = false;
+    }
   }
 
   setCookieSessionMode(enabled: boolean): void {
     this.cancelSessionRevalidation();
     this.sessionInstallationGeneration += 1;
-    this.credentialGeneration += 1;
     this.sessionChecked = false;
     this.cookieIdentity = "ready";
     this.verifiedSessionIdentity = null;
-    this.transport.setCookieSessionMode(enabled);
+    this.replaceCredential(() => this.transport.setCookieSessionMode(enabled));
     this.emitCurrentUserChange();
   }
 
@@ -258,11 +277,8 @@ class GloomApiClient {
   private installSessionToken(token: string | null): void {
     const changed = this.transport.getSessionToken() !== token;
     this.sessionChecked = false;
-    this.transport.setSessionToken(token);
-    if (changed) {
-      this.verifiedSessionIdentity = null;
-      this.credentialGeneration += 1;
-    }
+    this.replaceCredential(() => this.transport.setSessionToken(token));
+    if (changed) this.verifiedSessionIdentity = null;
     this.traceAuth(changed ? "setSessionToken:changed" : "setSessionToken:same");
     if (!token) {
       this.cancelSessionRevalidation();
