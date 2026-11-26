@@ -39,6 +39,12 @@ const moveColumns = (basis: MacroDayMoveBasis): DataTableColumn[] => [
   { id: "move", label: basis === "yield" ? "Move bp" : "Move", width: 9, align: "right" },
   { id: "multiple", label: "vs Normal", width: 10, align: "right" },
 ];
+/**
+ * What a narrow desktop pane gives up first: the figures the economic calendar
+ * also holds, from the prior print to the actual. The day, its release and the
+ * move are what the pane is for.
+ */
+const COLUMN_DROP_ORDER = ["prior", "forecast", "surprise", "actual"] as const;
 /** What each release came out with, under the labels the economic calendar gives them. */
 const FIGURES = [["actual", "Actual"], ["forecast", "Forecast"], ["prior", "Prior"]] as const;
 
@@ -282,7 +288,7 @@ function SingleMacroDayPane({ width, height, focused }: PaneProps) {
       error={!model ? history.error ?? identityError ?? null : null} empty={!!model && !model.events.length}>
       {model ? <>
         <StatGrid items={stats} width={width} maxLines={statMaxLines} />
-        <DataTableView<MacroDayEvent> focused={focused} columns={columns} items={rows} rootWidth={width} rootHeight={contentHeight}
+        <DataTableView<MacroDayEvent> focused={focused} columns={columns} columnDropOrder={COLUMN_DROP_ORDER} items={rows} rootWidth={width} rootHeight={contentHeight}
           getItemKey={macroDayKey} emptyStateTitle={surprise === "all" ? "No release days." : `No ${MACRO_SURPRISE_LABELS[surprise].toLowerCase()} prints.`} sortColumnId={null} sortDirection="desc" selectedTextOverridesCellColor
           selection={{ kind: "id", selectedId: selectedRow, getId: macroDayKey, onChange: setSelectedRow }}
           getExportMetadata={() => [["symbol", model.symbol], ["from", model.start ?? ""], ["to", model.asOf ?? ""],

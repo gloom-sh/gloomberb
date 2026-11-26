@@ -260,6 +260,7 @@ async function main(): Promise<void> {
     const widths = takeOption(args, "--widths") ?? "640,1280";
     const web = resolve(takeOption(args, "--web") ?? cacheDir("ui-tokens-web"));
     const build = !args.includes("--no-build");
+    const offlineConcurrency = takeOption(args, "--concurrency") ?? process.env.UI_TOKENS_CONCURRENCY ?? "2";
     const audit = (pass: { out: string; offline: boolean; build: boolean }) => {
       const command = [
         "bun", join(import.meta.dir, "ui-audit.ts"), "--registry", "--no-shots", "--no-report", "--themes", "white",
@@ -267,7 +268,7 @@ async function main(): Promise<void> {
         "--out", pass.out,
         "--web", web,
         "--replay", replayDir,
-        ...(pass.offline ? ["--offline"] : []),
+        ...(pass.offline ? ["--offline", "--concurrency", offlineConcurrency] : []),
         ...(pass.build ? ["--build"] : []),
         ...(shard ? ["--shard", shard] : []),
         ...(only ? ["--only", only] : []),

@@ -8,11 +8,12 @@ export interface DocsFeedState {
   feed: DocsFeed | null;
   /** The site could not be read; the reader shows the saved or shipped copy. */
   offline: boolean;
+  bundled: boolean;
   reload: () => void;
 }
 
 export function useDocsFeed(): DocsFeedState {
-  const [state, setState] = useState<{ feed: DocsFeed | null; offline: boolean }>(() => ({ feed: savedDocsFeed(), offline: false }));
+  const [state, setState] = useState<Omit<DocsFeedState, "reload">>(() => ({ feed: savedDocsFeed(), offline: false, bundled: false }));
   const [request, setRequest] = useState({ force: false, token: 0 });
   useEffect(() => {
     let live = true;

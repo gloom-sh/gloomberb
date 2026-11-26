@@ -3,8 +3,9 @@ import { applyTheme, colors } from "../../../theme/colors";
 import { contrastRatio } from "../../../theme/color-utils";
 import { DEFAULT_THEME, getThemeIds } from "../../../theme/themes";
 import type { OptionContract } from "../../../types/financials";
+import { fitDataTableColumns } from "../../../components/ui/data-table/column-fit";
 import { getTableWidth } from "../../../components/ui/table-layout";
-import { createOptionColumns, DEFAULT_OPTION_FIELD_IDS, fitOptionFieldIds, formatIv, optionColumnColor, renderOptionCell } from "./table";
+import { createOptionColumns, DEFAULT_OPTION_FIELD_IDS, fitOptionFieldIds, formatIv, OPTION_COLUMN_DROP_ORDER, optionColumnColor, renderOptionCell } from "./table";
 import type { OptionColumn, OptionTableRow } from "./types";
 
 // The band has to clear the neighbouring one by this much to read as a band at
@@ -148,4 +149,29 @@ test("a narrow chain gives up the same fields on both sides, quotes last, so the
   // Settings' order is kept, a put-only field counts once, and the bid never goes.
   expect(fitOptionFieldIds(["iv", "costOfSpot", "ask", "bid"], 56)).toEqual(["iv", "ask", "bid"]);
   expect(fitOptionFieldIds(DEFAULT_OPTION_FIELD_IDS, 10)).toEqual(["bid"]);
+});
+
+test("a desktop chain with Last moved first keeps its strike and gives up a field on both sides or on neither", () => {
+  const fields = ["last", ...DEFAULT_OPTION_FIELD_IDS.filter((field) => field !== "last")] as const;
+  const columns = createOptionColumns(fields);
+  expect(columns[0]!.id).toBe("callLast");
+  const drawn = (cells: number) => fitDataTableColumns(columns, cells, { anchoredColumns: 1, sortColumnId: null, dropOrder: OPTION_COLUMN_DROP_ORDER });
+  const ids = (cells: number) => drawn(cells).map((column) => column.id).join(" ");
+
+  // The first column is the reader's choice, not what the row is: kept as the row's name it stood without its put,
+  // and the strike was free to leave.
+  expect(ids(86)).toBe("callBid callAsk callIv callDelta callOpenInterest strike putOpenInterest putDelta putIv putAsk putBid");
+  expect(ids(40)).toBe("callBid strike putBid");
+  // No room for a strike between one field's call and put: every column, in a table that scrolls sideways.
+  expect(drawn(24)).toBe(columns);
+
+  for (let cells = 20; cells <= getTableWidth(columns); cells += 1) {
+    const shown = new Set(drawn(cells).map((column) => column.id));
+    expect(shown.has("strike")).toBe(true);
+    for (const column of columns) {
+      if (column.side !== "call") continue;
+      const put = columns.find((other) => other.side === "put" && other.field === column.field)!;
+      expect(`${cells} ${put.id} ${shown.has(put.id)}`).toBe(`${cells} ${put.id} ${shown.has(column.id)}`);
+    }
+  }
 });

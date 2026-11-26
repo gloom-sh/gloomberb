@@ -7,6 +7,9 @@ on:
   pull_request:
     branches:
       - main
+  schedule:
+    # 04:15 UTC nightly safety net running full tsc alongside PR bun check.
+    - cron: "15 4 * * *"
 
 permissions:
   contents: read
@@ -24,6 +27,7 @@ env:
 
 jobs:
   typecheck:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -56,6 +60,7 @@ jobs:
         run: bun run web:proxy-hosts:check
 
   build-and-test:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -65,7 +70,7 @@ jobs:
           desktop: "true"
 
       - name: Test
-        run: bun test
+        run: bun run test:ci
 
       - name: Build Electrobun view
         run: bun run desktop:view:build
@@ -90,15 +95,19 @@ jobs:
 
   # Fails when a plugin the registry lists, at the commit the registry
   # reviewed or the ref it would install, imports a host export this change
-  # does not have. Not a deploy gate: it reads other repositories, and a
+  # does not have, or fails to load in the packaged terminal binary and the
+  # desktop's bundled terminal entry. Compiling against sources alone does not
+  # reach what a packaged host serves to a plugin (v0.19.3 to v0.19.5 shipped a
+  # binary whose React had no named exports, and every plugin failed to load).
+  # Not a deploy gate: it reads other repositories, and the registry or a
   # plugin's own breakage only warns.
   #
-  # This job and the next run code from other repositories. They leave no
-  # token on disk. They restore no Actions cache either, but code in them
-  # could still write one, through the runner's token: what matters is that
-  # no job that signs, publishes or deploys restores any (setup-bun's cache
-  # is off unless a job asks).
+  # Runs code from other repositories. Leaves no token on disk and restores no
+  # Actions cache (code in it could still write one through the runner's token:
+  # what matters is that no job that signs, publishes or deploys restores any,
+  # and setup-bun's cache is off unless a job asks).
   registry-plugins:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -109,22 +118,6 @@ jobs:
 
       - name: Compile registry plugins against this host
         run: bun run plugins:registry:check
-
-  # Loads every plugin the registry lists in the terminal as it ships: the
-  # compiled binary and the desktop's bundled terminal entry. Compiling
-  # against sources does not reach what a packaged host serves to a plugin
-  # (v0.19.3 to v0.19.5 shipped a binary whose React had no named exports, and
-  # every plugin failed to load). A host that does not serve what a plugin
-  # imports fails the job; the registry or a plugin's own breakage only warns.
-  # Not a deploy gate, for the same reason as the job above.
-  registry-plugins-packaged:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          persist-credentials: false
-
-      - uses: ./.github/actions/setup-bun
 
       # build.ts also runs the x64 binary on an emulated CPU without AVX2.
       - name: Install QEMU's user-mode emulator
@@ -176,3 +169,19 @@ jobs:
           done
           echo "term.gloom.sh did not become healthy at $GITHUB_SHA" >&2
           exit 1
+
+  tsc-nightly:
+    name: Nightly tsc safety net
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-bun
+        with:
+          desktop: "true"
+
+      - name: Run full tsc across all projects
+        run: bun run scripts/typecheck-all.ts --tsc

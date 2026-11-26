@@ -1,6 +1,7 @@
 import { crossFxCloseOnOrBefore, dailyFxLeg, loadDailyFxCloses, type FxCloses, type FxHistoryClient } from "../market-data/fx-closes";
 import type { FinancialStatement, TickerFinancials } from "../types/financials";
 import { resolveCurrencyUnit, type CurrencyUnitInfo } from "../utils/currency-units";
+import { listingOwnsRow } from "../utils/statement-scope";
 import { logFailure } from "../utils/log-failure";
 
 function knownUnit(currency?: string): CurrencyUnitInfo | null {
@@ -36,6 +37,7 @@ export function createValuationCurrencyContext(financials: TickerFinancials, fx?
 
   return {
     priceInStatementUnits(row: FinancialStatement, price: number, date = row.date.slice(0, 10)): number | null {
+      if (!listingOwnsRow(financials.statementScope, row)) return null;
       const rate = rateFor(row, date);
       return rate == null ? null : price * rate;
     },

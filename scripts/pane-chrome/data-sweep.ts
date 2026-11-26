@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -8,12 +7,14 @@ import { PANE_SWEEP_EVIDENCE_PATH, type PaneScreenshotResult } from "../../src/c
 import snapshot from "../../src/docs/snapshot.json";
 import type { RegistryPlugin } from "../../src/plugins/marketplace/model";
 import { isRecord } from "../../src/utils/guards";
+import { runCommand, type CommandResult } from "./data-sweep-command";
+import { createSweepShot } from "./data-sweep-shot";
 import { pluginDirectory, pluginInstallRef, pluginLaneEnv, planPlugins, type FunctionCard } from "./data-sweep-plugins";
 
 const READ_ONLY = new Set(`adverse-events analyst-research apps attention-trending awards backtest buildout buildout-company
  catalysts ccass-market central-bank-rates chart-composer comment-letters commodities-energy company-kpis congress-trades corporate-actions
  correlation cpi crypto-board crypto-etf-flows csp-screen custom-view data-catalog dividend-yield earnings-calendar earnings-calls
- earnings-estimates earnings-ripple econ-calendar econ-statistics equity-screener estimate-revisions executives exposure fear-greed
+ earnings-estimates earnings-ripple econ-calendar econ-statistics equity-dilution equity-screener estimate-revisions executives exposure fear-greed
  filing-events financial-analysis fixed-income fx-matrix gpu company-guidance hiring historical-prices holders insider ipo-calendar
  iv-history iv-screen jobs kelly-sizer litigation macro-day market-halts market-heatmap market-movers market-valuation members mna
  money-markets news-breaking news-feed news-industry news-top options options-calculator options-positioning options-scenario pe-band
@@ -193,7 +194,6 @@ export function planSweep(entries: readonly PaneCatalogEntry[], cards: readonly 
   })];
 }
 
-export interface CommandResult { stdout: string; stderr: string; exitCode: number; timedOut: boolean }
 export interface Assessment {
   status: "pass" | "partial" | "pending" | "expected-empty" | "no-coverage" | "market-closed" | "unsupported" | "failure" | "timeout" | "invalid-output" | "command-error";
   reason: string | null;
@@ -381,37 +381,6 @@ export function assessCapture(result: CommandResult, token: string): Assessment 
   return { ...evidence, status: shot.usable && !states.length && result.exitCode === 0 ? shot.complete && !truncation ? "pass" : "partial" : "failure" };
 }
 
-export async function runCommand(argv: string[], env: NodeJS.ProcessEnv, timeoutMs: number): Promise<CommandResult> {
-  return new Promise((resolveResult, reject) => {
-    const child = spawn(argv[0]!, argv.slice(1), { env, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    let killTimer: ReturnType<typeof setTimeout> | undefined;
-    const signal = (name: NodeJS.Signals) => {
-      try {
-        if (child.pid && process.platform !== "win32") process.kill(-child.pid, name);
-        else child.kill(name);
-      } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") reject(error); }
-    };
-    const stop = () => {
-      timedOut = true;
-      signal("SIGTERM");
-      killTimer ??= setTimeout(() => signal("SIGKILL"), 2_000);
-    };
-    const timer = setTimeout(stop, timeoutMs);
-    child.stdout.on("data", (chunk: Buffer) => { stdout = (stdout + chunk.toString()).slice(0, 16_000_001); if (stdout.length > 16_000_000) stop(); });
-    child.stderr.on("data", (chunk: Buffer) => { stderr = (stderr + chunk.toString()).slice(-64_000); });
-    child.on("error", (error) => { clearTimeout(timer); if (killTimer) clearTimeout(killTimer); reject(error); });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      if (killTimer) clearTimeout(killTimer);
-      signal("SIGKILL");
-      resolveResult({ stdout, stderr, exitCode: code ?? -1, timedOut });
-    });
-  });
-}
-
 interface Selection { only: string[]; shard: [number, number]; maxCases: number }
 type SweepResult = Omit<SweepCase, "status" | "reason"> & Omit<Partial<Assessment>, "status"> & {
   status: NonNullable<SweepCase["status"]> | Assessment["status"];
@@ -473,17 +442,19 @@ export function sessionlessAssessment<T extends Pick<Assessment, "status" | "rea
 
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 
-async function main() {
+async function main(signal: AbortSignal) {
   const args = process.argv.slice(2);
   if (args.includes("--help")) {
-    console.log("bun run check:pane-data --out DIR [--lanes pro|plugins|pro,plugins] [--only ANR,MOST] [--shard 1/8] [--max-cases 40] [--max-seconds 600] [--timeout-seconds 90] [--cli /path/to/gloom]");
+    console.log("bun run check:pane-data --out DIR [--lanes pro|plugins|pro,plugins] [--only ANR,MOST] [--shard 1/8] [--max-cases 40] [--max-seconds 600] [--timeout-seconds 90]");
     return;
   }
+  if (args.includes("--cli")) throw new Error("--cli is no longer supported: run check:pane-data from the source checkout whose CLI you want to sweep.");
+  if (process.platform === "win32") throw new Error("check:pane-data requires Chrome's private DevTools pipe, unavailable on Windows. Run the sweep on macOS or Linux.");
   const options = new Map<string, string>();
   for (let index = 0; index < args.length; index += 2) {
     const key = args[index]!;
     const value = args[index + 1];
-    if (!["--out", "--lanes", "--only", "--shard", "--max-cases", "--max-seconds", "--timeout-seconds", "--cli"].includes(key) || !value || options.has(key)) throw new Error(`Invalid option ${key}`);
+    if (!["--out", "--lanes", "--only", "--shard", "--max-cases", "--max-seconds", "--timeout-seconds"].includes(key) || !value || options.has(key)) throw new Error(`Invalid option ${key}`);
     options.set(key, value);
   }
   if (!options.get("--out")) throw new Error("--out DIR is required; all evidence stays there");
@@ -507,7 +478,7 @@ async function main() {
   await mkdir(root, { recursive: true });
   const session = process.env.GLOOMBERB_SESSION_TOKEN?.trim();
   const redact = (text: string) => session ? text.replaceAll(session, "[redacted]") : text;
-  const cli = options.has("--cli") ? [resolve(options.get("--cli")!)] : [process.execPath, resolve(import.meta.dir, "../../src/cli/entry.ts")];
+  const cli = [process.execPath, "--no-env-file", resolve(import.meta.dir, "../../src/cli/entry.ts")];
   const started = new Date().toISOString();
   const deadline = Date.now() + maxSeconds * 1_000;
   const remaining = (limitMs: number) => Math.max(1, Math.min(limitMs, deadline - Date.now()));
@@ -530,8 +501,15 @@ async function main() {
     await rm(profile, { recursive: true, force: true });
     profiles.delete(profile);
   };
+  const shot = createSweepShot(cli, async () => {
+    const profile = await newProfile("pane-data-browser-");
+    const env = pluginLaneEnv(process.env, profile);
+    await mkdir(env.HOME!, { recursive: true });
+    return { profile, env };
+  }, signal);
   // One strict capture, saved and judged the same way in either lane.
   const capture = async (item: SweepCase, run: (argv: string[], evidencePath: string) => Promise<CommandResult>) => {
+    signal.throwIfAborted();
     if (Date.now() >= deadline) { results.set(item.id, { ...item, status: "skipped", reason: "Global time budget exhausted" }); return; }
     const stem = String(++captures).padStart(4, "0");
     const png = `${stem}.png`;
@@ -551,8 +529,9 @@ async function main() {
     let feed: RegistryPlugin[] | null = null;
     try {
       const { readRegistryOnce } = await import("../../src/plugins/marketplace/feed");
-      feed = await readRegistryOnce(remaining(15_000));
+      feed = await readRegistryOnce(remaining(15_000), signal);
     } catch (error) { registryError = redact(message(error)); }
+    signal.throwIfAborted();
 
     // The Pro lane: the session, a verified Pro plan and the built-in catalog, in a profile with no plugins.
     let pro: { profile: string; env: NodeJS.ProcessEnv } | null = null;
@@ -561,7 +540,9 @@ async function main() {
       const pluginsDir = join(pro!.profile, "plugins");
       await mkdir(pluginsDir, { recursive: true });
       if ((await readdir(pluginsDir)).length) throw new Error("Refusing to load external plugins beside credentials");
-      return runCommand([...cli, ...argv], { ...pro!.env, [PANE_SWEEP_EVIDENCE_PATH]: evidencePath }, remaining(timeoutSeconds * 1_000));
+      const limit = remaining(timeoutSeconds * 1_000);
+      return evidencePath ? shot.run(argv, { ...pro!.env, [PANE_SWEEP_EVIDENCE_PATH]: evidencePath }, limit)
+        : runCommand([...cli, ...argv], pro!.env, limit, { signal });
     };
     if (lanes.has("pro")) {
       try {
@@ -573,13 +554,16 @@ async function main() {
         const { apiClient } = await import("../../src/api-client");
         const { resolvePlanAccess } = await import("../../src/api-client/plan-rules");
         apiClient.setSessionToken(session);
-        let accountTimer: ReturnType<typeof setTimeout> | undefined;
+        const accountSignal = AbortSignal.any([signal, AbortSignal.timeout(remaining(timeoutSeconds * 1_000))]);
+        let aborted: (() => void) | undefined;
         try {
+          accountSignal.throwIfAborted();
           const account = await Promise.race([apiClient.getAccountProfile(), new Promise<never>((resolveAccount, reject) => {
-            accountTimer = setTimeout(() => reject(new Error("Account read timed out; no Pro coverage")), remaining(timeoutSeconds * 1_000));
+            aborted = () => reject(signal.aborted ? signal.reason : new Error("Account read timed out; no Pro coverage"));
+            accountSignal.addEventListener("abort", aborted, { once: true });
           })]);
           proVerified = resolvePlanAccess(account).hasProAccess;
-        } finally { if (accountTimer) clearTimeout(accountTimer); apiClient.setSessionToken(null); }
+        } finally { if (aborted) accountSignal.removeEventListener("abort", aborted); apiClient.setSessionToken(null); }
         if (!proVerified) throw new Error("Current account read did not verify Pro; no Pro coverage");
         const listing = await proCommand(["catalog", "--all", "--json"]);
         await writeFile(join(out, "catalog.json"), redact(listing.stdout));
@@ -594,6 +578,7 @@ async function main() {
         pro = null;
       }
     }
+    signal.throwIfAborted();
 
     const cards = functionCards();
     const pluginPlan = planPlugins(feed, cards).map((item): SweepCase => item.id === "registry/feed" && registryError ? { ...item, reason: `${item.reason}: ${registryError}` }
@@ -609,6 +594,7 @@ async function main() {
       } catch (error) { fatal.push(redact(message(error))); }
       finally { await removeProfile(pro.profile); }
     }
+    signal.throwIfAborted();
 
     // The plugin lane: reviewed gloom-sh plugins, installed by the app's own installer into a profile with no session.
     const pluginItems = planned.filter((item) => !item.status && item.plugin);
@@ -623,11 +609,13 @@ async function main() {
           await mkdir(pluginsDir, { recursive: true });
           const unexpected = (await readdir(pluginsDir)).filter((name) => !expected.has(name));
           if (unexpected.length) throw new Error(`Refusing to run beside plugin folders nobody reviewed: ${unexpected.join(", ")}`);
-          return runCommand([...cli, ...argv], evidencePath ? { ...env, [PANE_SWEEP_EVIDENCE_PATH]: evidencePath } : env, remaining(limitMs));
+          return evidencePath ? shot.run(argv, { ...env, [PANE_SWEEP_EVIDENCE_PATH]: evidencePath }, remaining(limitMs))
+            : runCommand([...cli, ...argv], env, remaining(limitMs), { signal });
         };
         const failed = new Map<string, string>();
         const unstarted = new Set<string>();
         for (const id of new Set(pluginItems.map((item) => item.plugin!))) {
+          signal.throwIfAborted();
           const ref = pluginInstallRef(id);
           const listed = feed?.find((candidate) => candidate.id === id);
           const record: InstalledPluginRecord = { id, repo: ref.slice("https://github.com/".length), directory: pluginDirectory(id),
@@ -654,7 +642,7 @@ async function main() {
           const row = rows.find((candidate) => candidate.name === record.directory);
           const listedCommit = typeof row?.commit === "string" ? row.commit : "";
           // The listing shortens the commit; the record keeps all of it.
-          const head = await runCommand(["git", "-C", join(pluginsDir, record.directory), "rev-parse", "HEAD"], env, remaining(10_000));
+          const head = await runCommand(["git", "-C", join(pluginsDir, record.directory), "rev-parse", "HEAD"], env, remaining(10_000), { signal });
           const full = head.stdout.trim();
           record.commit = /^[0-9a-f]{40}$/.test(full) && listedCommit && full.startsWith(listedCommit) ? full : listedCommit || null;
           record.version = typeof row?.version === "string" && row.version ? row.version : null;
@@ -677,7 +665,10 @@ async function main() {
   } catch (error) {
     fatal.push(redact(message(error)));
   } finally {
-    for (const profile of [...profiles]) await removeProfile(profile);
+    try { await shot.close(); } catch (error) { fatal.push(redact(message(error))); }
+    for (const profile of profiles) {
+      try { await removeProfile(profile); } catch (error) { fatal.push(redact(message(error))); }
+    }
   }
   const stopped = fatal.length ? fatal.join("; ") : null;
   const ordered = planned.map((item): SweepResult => results.get(item.id)
@@ -710,4 +701,16 @@ async function main() {
   if (stopped || ordered.some((result) => result.evidenceError || ["failure", "timeout", "invalid-output", "command-error", "missing"].includes(result.status))) process.exitCode = 1;
 }
 
-if (import.meta.main) await main();
+if (import.meta.main) {
+  const interruption = new AbortController();
+  const interrupt = () => interruption.abort(new Error("Sweep interrupted (SIGINT)"));
+  const terminate = () => interruption.abort(new Error("Sweep interrupted (SIGTERM)"));
+  process.on("SIGINT", interrupt);
+  process.on("SIGTERM", terminate);
+  try { await main(interruption.signal); }
+  finally {
+    process.off("SIGINT", interrupt);
+    process.off("SIGTERM", terminate);
+    if (interruption.signal.aborted) process.exitCode = interruption.signal.reason.message.includes("SIGINT") ? 130 : 143;
+  }
+}

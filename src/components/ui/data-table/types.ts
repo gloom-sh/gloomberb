@@ -23,6 +23,14 @@ export type DataTableColumn = Pick<
   title?: string;
   flexGrow?: number;
   /**
+   * This column says what each row is though it does not come first: a
+   * chain's strike between its calls and its puts. A table fitted to its
+   * width never leaves it out, wherever the reader moved the other columns
+   * (`DataTableProps.columnDropOrder`). Unset on every column, the leading
+   * columns name the row (`anchoredColumns`).
+   */
+  identifiesRow?: boolean;
+  /**
    * Every row can leave this column blank with nothing missing: its value
    * comes after an event the row is still waiting on (an earnings move, an
    * IPO's first-day return, a halt's resumption). `shot --strict` counts a
@@ -182,6 +190,24 @@ export interface DataTableColumnReorder {
   };
 }
 
+/**
+ * What a table that fits its columns to its width says about the fit and
+ * takes back (`DataTableProps.columnFitRef`): set by `DataTable`, read by the
+ * keys that step a table sideways.
+ */
+export interface DataTableColumnFit {
+  /** How many columns the fit left out for width; 0 where every column is drawn. */
+  hidden: number;
+  /** The table is drawn fitted to its width: a column left out, or one set to grow narrowed. */
+  fitted: boolean;
+  /** Every column is drawn at the reader's asking, the table scrolling sideways past its edge. */
+  all: boolean;
+  /** Draws every column at its set width and scrolls to the first one the fit had left out. */
+  showAll: () => void;
+  /** Fits the columns to the width again. */
+  fit: () => void;
+}
+
 /** Where `scrollToIndex` puts its row: the nearest edge, the middle, or the top of the viewport. */
 export type DataTableScrollAlign = "nearest" | "center" | "start";
 
@@ -245,6 +271,39 @@ export interface DataTableProps<
   onColumnMove?: (columnId: string, toIndex: number) => void;
   /** Set by `DataTable` with `onColumnMove`: the leading columns a drag neither moves nor drops before. */
   anchoredColumns?: number;
+  /**
+   * The columns this table gives up first where it is too narrow for all of
+   * them, least needed first. An entry of several ids is a set that means
+   * little apart (a call's field and the put's, a figure and the date it is
+   * as of): it leaves whole, and stays whole while one of it names the row
+   * or is the sorted column. Sets that share a column the table draws are
+   * one set, so two figures that each list the date they share leave with it
+   * or stay with it. On the desktop and the web a table too narrow
+   * for its columns draws whole columns only: a column set to grow
+   * (`flexGrow`) narrows first, then these leave, then the ones not listed
+   * from the last back, never the columns that name the row
+   * (`DataTableColumn.identifiesRow`, else the leading ones) or the one it is
+   * sorted by, and never the row's last figure (`fitColumnsToWidth`). Where
+   * what must stay does not fit, nothing is left out and the table scrolls
+   * sideways. The table names what left (`2 hidden · FY2023, FY2022`), and
+   * More, Shift+Right or Show All Columns in the pane menu draws them all
+   * and scrolls sideways. Exports and reports keep every column. Unset, the
+   * trailing columns leave first: list an order where a later column matters
+   * more than an earlier one (a figure the pane is for, an as-of date). The
+   * terminal fits what its columns hold and scrolls the rest
+   * (`fitTableColumns`). A table set not to scroll sideways
+   * (`showHorizontalScrollbar={false}`) narrows its columns to the pane there
+   * and leaves none out.
+   */
+  columnDropOrder?: readonly (string | readonly string[])[];
+  /** Set by `DataTable` for a renderer that cuts a column at its edge: the body's width in cells, as it measures it. */
+  onViewportWidthChange?: (cells: number) => void;
+  /** Set by `DataTable` while its fit left columns out: the press on the line that names them draws them all. */
+  onShowAllColumns?: () => void;
+  /** Set by `DataTable`: the column to scroll sideways into view, each time `version` changes. */
+  scrollToColumn?: { id: string; version: number };
+  /** Set by `DataTableView`: the table's fit, for the keys that step it sideways. */
+  columnFitRef?: RefObject<DataTableColumnFit | null>;
   headerScrollRef: RefObject<ScrollBoxRenderable | null>;
   scrollRef: RefObject<ScrollBoxRenderable | null>;
   syncHeaderScroll: () => void;

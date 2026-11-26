@@ -49,6 +49,8 @@ import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import {
   COIN_OPTIONS_HINT, isCoinWithoutOptions, optionsUnavailableHint, optionsUnavailableTitle, unservedOptionsVenue,
 } from "../../../market-data/options-alternatives";
+import { hkCbbcUnderlying } from "../../../api-client/hk-cbbc";
+import { CbbcPositioningView } from "./cbbc-view";
 import {
   loadGamma,
   loadOpenInterest,
@@ -198,7 +200,20 @@ function PositioningChart(props: PositioningChartProps) {
 const UNDERLYING_STATE_KEY = /^opx:(expiry|gammaExpiry|strike|expiryRow|gammaStrike)(:|$)/;
 
 export function OptionsPositioningPane(props: PaneProps) {
-  const { symbol } = usePaneTickerIdentity();
+  const { symbol, ticker } = usePaneTickerIdentity();
+  const [openingMode] = usePaneSettingValue("tab", "strikes");
+  const cbbcCode = hkCbbcUnderlying(symbol, ticker?.metadata.exchange);
+  if (cbbcCode || openingMode === "cbbc") {
+    return (
+      <CbbcPositioningView
+        key={cbbcCode ?? "HSI"}
+        initialUnderlying={cbbcCode ?? "HSI"}
+        width={props.width}
+        height={props.height}
+        focused={props.focused}
+      />
+    );
+  }
   // A coin nothing lists options on (SOL-USD) says which coins have them, before any request.
   if (symbol && isCoinWithoutOptions(symbol)) return <EmptyState title={optionsUnavailableTitle(parsePublicTickerKey(symbol).symbol)} hint={COIN_OPTIONS_HINT} />;
   // So does a listing whose venue lists options Gloom does not serve (0700 on HKEX), never "no listed options".

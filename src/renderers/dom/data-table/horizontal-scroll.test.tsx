@@ -48,6 +48,14 @@ async function renderDataTableView<T>(
   return { container, body, bodyRef, headerRef };
 }
 
+/**
+ * A table too narrow for its columns fits whole ones to its width; the press
+ * on More draws them all, and the table scrolls sideways as these tests read it.
+ */
+async function showAllColumns(container: HTMLElement) {
+  await act(async () => { (container.querySelector('button[aria-label="Show all columns"]') as HTMLElement).click(); });
+}
+
 /** happy-dom has no layout engine, so supply the measured viewport and content widths, in cells. */
 function setScrollExtent(body: HTMLElement, clientCells: number, scrollCells: number) {
   Object.defineProperty(body, "clientWidth", { configurable: true, value: clientCells * WEB_CELL_WIDTH });
@@ -172,6 +180,9 @@ test("a table wider than its pane keeps its scrollbar drawn at rest, and one tha
   });
   try {
     const wide = await table([6, 10, 10, 10, 10, 10]);
+    // Fitted to its width it has nothing to scroll to; with every column drawn it does.
+    expect(wide.body.getAttribute("data-gloom-scrollbar-x")).toBe("hidden");
+    await showAllColumns(wide.container);
     expect(wide.body.getAttribute("data-gloom-scrollbar-x")).toBe("visible");
     expect(thumb(wide.body)).not.toBe("transparent");
     const fits = await table([6, 10, 10]);
@@ -196,6 +207,7 @@ test("DOM table that pins by default pins once scrolled, and draws as before at 
       getItemKey: (row) => row,
       renderCell: (row, column) => ({ text: column.id === "symbol" ? row : "12.3" }),
     }, { frozen: undefined });
+    await showAllColumns(container);
     setScrollExtent(body, 40, 62);
     const first = () => container.querySelector('[data-gloom-role="data-table-row"]')!.children[0] as HTMLElement;
     // Unscrolled nothing is under it: no sticky cell for a drag or resize to carry.

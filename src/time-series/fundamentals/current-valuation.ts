@@ -9,6 +9,7 @@ import { liveForwardPE, liveTrailingPE } from "../../market-data/quotes/live-val
 import { listingEnterpriseValue } from "../../market-data/quotes/listing-enterprise-value";
 import { BANK_OR_INSURER_EBITDA, isBankOrInsurerIndustry } from "../../utils/ebitda";
 import { comparablePriceEarnings } from "../../utils/price-earnings";
+import { listingOwnsSeries } from "../../utils/statement-scope";
 import { buildTtmStatements, deriveQuarterlyStatements } from "./quarterly-ttm";
 import { sourceStatements, valuationStatements } from "./source-statements";
 import { type InternalStatement, validDate } from "./statement";
@@ -114,6 +115,11 @@ function currentDerivedValuation(
   if (!quoteDate || !isFiniteNumber(quote?.price) || quote.price <= 0) return null;
   const current = currentValuationPrice(quote);
   if (!current) return null;
+  if (metric === "trailingPE" && financials.statementScope) {
+    const earnings = financials.fundamentals?.scopedEarnings;
+    const statement = earnings && [...financials.quarterlyStatements, ...financials.annualStatements].find(row => row.date === earnings.periodEnd);
+    return statement ? { value: servedTrailingPE(financials), date: current.date, statement } : null;
+  }
   const quoteTime = quoteDate.getTime();
   // Select the latest known period first. Missing inputs, a loss or incompatible
   // currency cannot make an older period's denominator current again.
@@ -178,15 +184,33 @@ export function currentDerivedValuationPoint(
  * it is not meaningful (`notMeaningful`, GE's N/M); null where GE draws no
  * current point and has no reason for it.
  */
+const ANNUAL_EBITDA_MAX_AGE_MS = 550 * 86_400_000;
+
 export function currentTrailingValuation(
   financials: TickerFinancials,
   metric: "evEbitda" | "evSales",
-): { value: number | null; notMeaningful?: string; periodEnd: string; statement: FinancialStatement } | null {
+): { value: number | null; notMeaningful?: string; periodEnd: string; statement: FinancialStatement; annual?: true } | null {
+  if (!listingOwnsSeries(financials)) return null;
   const current = currentValuation(financials, "ttm", metric);
-  if (!current) return null;
-  const dated = { periodEnd: current.statement.date.slice(0, 10), statement: current.statement };
-  if (current.value !== null) return { value: current.value, ...dated };
-  const notMeaningful = metric === "evEbitda" ? ebitdaNotMeaningful(financials, current.statement) : undefined;
+  if (current) {
+    const dated = { periodEnd: current.statement.date.slice(0, 10), statement: current.statement };
+    if (current.value !== null) return { value: current.value, ...dated };
+    const notMeaningful = metric === "evEbitda" ? ebitdaNotMeaningful(financials, current.statement) : undefined;
+    if (notMeaningful) return { value: null, notMeaningful, ...dated };
+  }
+  // HK/CN issuers often omit D&A in Q1/Q3 reports: fall back to the latest
+  // fiscal year (within 550 days of the quote) when trailing quarters lack it.
+  if (metric !== "evEbitda") return null;
+  const quoteTime = validDate(financials.quote?.lastUpdated)?.getTime();
+  if (!quoteTime) return null;
+  const annualStatements = sourceStatements(financials, "annual", metric).statements;
+  const annual = currentDerivedValuation(financials, annualStatements, metric, createValuationCurrencyContext(financials));
+  if (!annual) return null;
+  const annualTime = Date.parse(annual.statement.date);
+  if (!Number.isFinite(annualTime) || quoteTime - annualTime > ANNUAL_EBITDA_MAX_AGE_MS) return null;
+  const dated = { periodEnd: annual.statement.date.slice(0, 10), statement: annual.statement, annual: true as const };
+  if (annual.value !== null) return { value: annual.value, ...dated };
+  const notMeaningful = ebitdaNotMeaningful(financials, annual.statement);
   return notMeaningful ? { value: null, notMeaningful, ...dated } : null;
 }
 
@@ -229,6 +253,7 @@ export function valuationNotMeaningful(financials: TickerFinancials, source: Sec
  * its year): the latest one, or null when the latest window is incomplete.
  */
 export function latestTrailingStatement(financials: TickerFinancials): FinancialStatement | null {
+  if (!listingOwnsSeries(financials)) return null;
   const selected = sourceStatements(financials, "ttm");
   return selected.statements.at(-1) ?? null;
 }

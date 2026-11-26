@@ -4,13 +4,13 @@ import { getPublishedUsEquityCalendarDay } from "../../../market-data/published-
 import type { EarningsEvent } from "../../../types/data-provider";
 import type { EarningsDateStatus, EarningsEpsBasis, FilingEpsDetails, Quote } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
-import { earningsDateStatus, earningsEpsBasis, isProvisionalActual } from "../shared/earnings-report";
+import { displayEarningsEpsBasis, earningsDateStatus, isProvisionalActual, reportedEpsComparison } from "../shared/earnings-report";
 import { calendarReport } from "../shared/earnings-calendar";
 import { listingSuffixCandidate } from "../../../sources/listing-symbols";
 import { isUsListingExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { listingAbroadVenue } from "../../../utils/sec";
 import { sameHistoryListing } from "./client";
-import { shortDate, surprise, weekday, type Surprise } from "./format";
+import { shortDate, weekday, type Surprise } from "./format";
 
 /** A held name is in a portfolio; a watched one only in watchlists. */
 export type Ownership = "held" | "watched";
@@ -153,9 +153,9 @@ export function boardReport(report: EarningsCalendarReport, owned: ReadonlyMap<s
     epsAnalysts: report.epsAnalysts,
     epsActual: report.epsActual,
     provisional: isProvisionalActual(report),
-    epsBasis: earningsEpsBasis(report.epsBasis),
+    epsBasis: displayEarningsEpsBasis(report),
     ...(report.streetEps ? { streetEps: report.streetEps, gaapEps: report.gaapEps } : {}),
-    epsSurprise: surprise(report.epsActual, report.epsEstimate),
+    epsSurprise: reportedEpsComparison(report)?.surprise ?? null,
     revenueEstimate: report.revenueEstimate,
     impliedMove: report.implied?.move ?? null,
     averageMove: report.averageReports >= MIN_AVERAGE_REPORTS ? report.averageMove : null,

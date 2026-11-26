@@ -1203,6 +1203,11 @@
             "description": "Net dealer gamma by strike, its total, flip level, call and put walls and the range for the dealer assumption."
           },
           {
+            "code": "CBBC",
+            "name": "Hong Kong CBBC Map",
+            "description": "HKEX Callable Bull/Bear Contract (CBBC) knock-out call-level street map, bull/bear ratios, equivalent HSI futures delta and heavy kill zones."
+          },
+          {
             "code": "OVME",
             "name": "Options Calculator",
             "description": "European Black-Scholes or American CRR value, Greeks, implied volatility and cash dividends."
@@ -1273,6 +1278,7 @@
       "contributes": {
         "panes": [
           "ccass-market",
+          "equity-dilution",
           "holders",
           "insider",
           "short-interest",
@@ -1306,6 +1312,11 @@
             "code": "INS",
             "name": "Insider",
             "description": "Insider transactions for a ticker; for several, their insiders; alone, the companies whose insiders are buying or selling."
+          },
+          {
+            "code": "DILU",
+            "name": "Equity Dilution & Form 144",
+            "description": "Active SEC shelves (S-3/S-3ASR/F-3), Rule 415 expiry, I.B.6 baby-shelf 1/3 cap, 424B5/424B7 ATM offerings, Form 144 insider sales, IPO lock-ups and HK CCASS physical deposits."
           },
           {
             "code": "SI",

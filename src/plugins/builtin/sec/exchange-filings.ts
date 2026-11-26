@@ -1,13 +1,32 @@
-import type { ExchangeAnnouncementsPayload } from "../../../api-client/exchange-announcements";
+import type { ExchangeAnnouncementsPayload, ExchangeAnnouncementsRequest } from "../../../api-client/exchange-announcements";
 import type { HeadlessPaneRow } from "../../../types/plugin";
-import { exchangeAnnouncementsPublisher, isRoutineReturn } from "../../../utils/exchange-announcements";
+import { exchangeAnnouncementsPublisher, exchangeAnnouncementsVenue, issuerFilingSuffixVenue, isRoutineReturn } from "../../../utils/exchange-announcements";
 import { nonUsSecListingVenue } from "../../../utils/sec";
 
-// JPX sends a bounded issuer archive in one response. The pane reveals its rows as the user scrolls.
-export const JPX_FILING_HISTORY_LIMIT = 200;
+export const PRESENTATIONS_FORM = "presentations";
+
+interface ExchangeFilingForm {
+  value: string;
+  label: string;
+  kind: NonNullable<ExchangeAnnouncementsRequest["kind"]>;
+}
+
+const presentations: ExchangeFilingForm = { value: PRESENTATIONS_FORM, label: "Presentations", kind: PRESENTATIONS_FORM };
+const sgxResults: ExchangeFilingForm = { value: "sgx-results", label: "Results & presentations", kind: "results" };
+
+export function exchangeFilingForm(venue: string | undefined): ExchangeFilingForm | undefined {
+  if (venue === "TWSE" || venue === "TPEX") return presentations;
+  if (venue === "SGX") return sgxResults;
+}
+
+// The extended archives are bounded. The pane reveals their rows as the user scrolls.
+export function exchangeFilingHistoryLimit(venue: string | undefined, kind?: ExchangeAnnouncementsRequest["kind"]): number {
+  return kind || venue === "JPX" || venue === "BURSAMY" ? 200 : 50;
+}
 
 export function localFilingListing(symbol: string, exchange?: string) {
-  const venue = nonUsSecListingVenue(symbol, exchange);
+  const venue = exchangeAnnouncementsVenue(nonUsSecListingVenue(symbol, exchange)
+    ?? (!exchange ? issuerFilingSuffixVenue(symbol) : undefined));
   const publisher = exchangeAnnouncementsPublisher(venue);
   return venue && publisher ? { symbol, exchange: venue, publisher } : null;
 }

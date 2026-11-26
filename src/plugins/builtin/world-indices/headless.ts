@@ -47,7 +47,8 @@ const COLUMNS = [
     key: "marketState",
     header: "Session",
     shrink: false,
-    format: (value: unknown, row: Record<string, unknown>) => isGap(row) ? "" : typeof value === "string" && value ? marketStateLabel(value as MarketState) ?? value : MISSING_VALUE,
+    format: (value: unknown, row: Record<string, unknown>) => isGap(row) ? "" : row.stale === true ? "STALE"
+      : typeof value === "string" && value ? marketStateLabel(value as MarketState) ?? value : MISSING_VALUE,
   },
   {
     key: "lastUpdated",
@@ -90,10 +91,11 @@ function projectWorldIndicesHeadless(
       if (regionEntries.length === 0) return [];
       const rows = regionEntries.map((entry) => {
         const quote = loaded.quotes.get(entry.symbol);
+        const freshness = quoteFreshnessFields(quote);
         // Last and Change are the regular session, as `ticker` reads them.
         const { price, change, changePercent, ...extended } = getQuoteSessionFields(quote);
         return {
-          ...quoteFreshnessFields(quote),
+          ...freshness,
           ...entry,
           price,
           unit: "index points",
@@ -101,7 +103,7 @@ function projectWorldIndicesHeadless(
           change,
           changePercent,
           ...extended,
-          marketState: quote?.marketState ?? null,
+          marketState: freshness.stale ? null : freshness.marketState ?? quote?.marketState ?? null,
           lastUpdated: quote?.lastUpdated ?? null,
           ...(isGapEntry(entry) ? { unavailable: true } : {}),
         };

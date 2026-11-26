@@ -9,6 +9,7 @@ import type { PaneTemplateCreateOptions, PaneTemplateDef } from "../../../types/
 import { CHAT_KEEP_CONVERSATION_VALUE, openChatConversation, openChatNewDm } from "./command-bar";
 import { chatController } from "./controller";
 import { chatModule } from "./index";
+import { clearChatPaneRequest } from "./pane-requests";
 
 const created = "2026-09-01T00:00:00.000Z";
 const channel = (id: string, kind: ChatChannel["kind"] = "public"): ChatChannel => ({ id, name: id, kind, created_at: created });
@@ -83,6 +84,7 @@ describe("opening a conversation while a Chat window is open", () => {
   });
   afterEach(() => {
     (chatController as any).channelCatalog.channels = original;
+    clearChatPaneRequest();
   });
 
   // A notification, a chat deep link, a share link and the unread list name a message.

@@ -4,6 +4,10 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { chromeSandboxRefused, findChromeExecutable, launchShotBrowser, startsWithoutSandbox } from "./desktop-pane-shot-browser";
+import { readRenderedPaneState } from "./desktop-pane-shot";
+import { buildDomPaneReportFromRender } from "./pane-functions/dom";
+import type { ResolvedPaneFunction } from "./pane-functions/resolver";
+import type { PaneScreenshotResult } from "./pane-functions/screenshot-types";
 
 const chrome = await findChromeExecutable().catch(() => null);
 
@@ -39,6 +43,39 @@ test.skipIf(chrome === null || process.platform === "win32")("the capture browse
     await browser.close();
     server.stop(true);
     await rm(userDataDir, { recursive: true, force: true });
+  }
+}, 60_000);
+
+test.skipIf(chrome === null)("rendered reports omit decorative figures from rows and prose without changing the preview", async () => {
+  const folder = await mkdtemp(join(tmpdir(), "gloom-shot-preview-"));
+  const decorative = '<span data-gloom-report-ignore="true" style="filter: blur(5px)"><span>Sample only</span></span>';
+  const cell = (text: string) => `<span data-gloom-role="data-table-cell">${text}</span>`;
+  const row = (text: string) => `<div data-gloom-role="data-table-row">${text}</div>`;
+  const html = `<div id="root"><div>Read this ${decorative}</div><div data-gloom-role="data-table">
+    <span data-gloom-role="data-table-header-cell">Revenue</span>
+    ${row(cell(`12.3B ${decorative}`))}${row(cell(decorative))}
+    </div><div data-gloom-ui="key-value-row"><span>Latest ${decorative}</span><span> 12.3B ${decorative}</span></div>
+    <div data-gloom-ui="pro-lock">Upgrade to see every product</div></div>`;
+  const browser = await launchShotBrowser(chrome!, { widthPx: 400, heightPx: 300, userDataDir: folder });
+  try {
+    await browser.open(`data:text/html,${encodeURIComponent(html)}`);
+    const render = await readRenderedPaneState(browser.page);
+    const resolved = { token: "DES", label: "Revenue", capability: { id: "ticker-research" }, options: {}, pane: {}, instance: {} } as ResolvedPaneFunction;
+    const report = await buildDomPaneReportFromRender(resolved, { render, symbols: ["EXAMPLE"] } as PaneScreenshotResult);
+    expect(report.text).toContain("12.3B");
+    expect(report.text).not.toContain("Sample only");
+    expect(report.data).toMatchObject({ rowCount: 1, rows: [{ cells: [{ text: "12.3B" }] }] });
+    expect(JSON.stringify(report.data)).not.toContain("Sample only");
+    expect(render.visibleText).toContain("Read this");
+    expect(render.visibleKeyValues).toEqual([{ label: "Latest", text: "Latest 12.3B" }]);
+    expect(render.accessGate).toBe("pro");
+    const { result } = await browser.page.send("Runtime.evaluate", {
+      expression: "document.body.innerText.includes('Sample only')", returnByValue: true,
+    }) as { result: { value: boolean } };
+    expect(result.value).toBe(true);
+  } finally {
+    await browser.close();
+    await rm(folder, { recursive: true, force: true });
   }
 }, 60_000);
 

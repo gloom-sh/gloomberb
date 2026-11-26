@@ -23,6 +23,7 @@ import {
 } from "../../../utils/format";
 import { formatFilingDate } from "../../../utils/datetime-format";
 import { computeTTM } from "../ticker-detail/financials/aggregation";
+import { listingOwnsRow } from "../../../utils/statement-scope";
 import { classifyInstrumentType } from "../../../tickers/instrument-kind";
 import { isIndianEtfListing } from "../../../market-data/fund-actions";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
@@ -34,16 +35,17 @@ import { fundamentalsEpsCurrency, SERVED_TRAILING_EPS } from "../../../utils/fun
 import { isNotMeaningful, NOT_MEANINGFUL, NOT_MEANINGFUL_TEXT, NOT_MEANINGFUL_TONE, type Rate } from "../../../utils/growth";
 import {
   ACTUAL_PENDING,
+  displayEarningsEpsBasis,
   earningsDateStatus,
   earningsDetail,
   earningsDetailParts,
-  earningsEpsBasis,
   epsBasisName,
-  epsSurprise,
+  reportedEpsComparison,
   inFiscalMonth,
   isProvisionalActual,
   quarterLabel,
   showsEpsBasis,
+  unconfirmedAdjustedEps,
   type EpsBasisName,
 } from "../shared/earnings-report";
 
@@ -80,6 +82,7 @@ export interface EventRow extends FilingEpsDetails {
   surpriseNotMeaningful?: true;
   /** A reported figure's basis, or an upcoming estimate's when it is adjusted; the same quarter is named the same way in ERN. The TTM row's EPS is GAAP. */
   epsBasis?: EpsBasisName;
+  epsComparisonUnconfirmed?: true;
   /** The reported figure is the company's press release's, provisional until the calendar's replaces it. */
   epsProvisional?: true;
   /** Analysts behind `epsEstimate`, when known. */
@@ -140,10 +143,10 @@ function isFiscalEstimatePeriod(period: string): boolean {
 }
 
 function sortedQuarterlyStatements(
-  financials: Pick<TickerFinancials, "quarterlyStatements"> | null,
+  financials: Pick<TickerFinancials, "quarterlyStatements" | "statementScope"> | null,
 ): FinancialStatement[] {
-  return [...(financials?.quarterlyStatements ?? [])]
-    .filter((statement) => statement.date)
+  return (financials?.quarterlyStatements ?? [])
+    .filter((statement) => statement.date && listingOwnsRow(financials?.statementScope, statement))
     .sort((left, right) => left.date.localeCompare(right.date));
 }
 
@@ -243,9 +246,9 @@ function estimateValue(growth: Rate | undefined): string {
  * What the TTM row reads: the statements for its four quarters and revenue, and the trailing EPS of the fundamentals,
  * the figure `ticker` prints as EPS (TTM) (the filed quarters' when they give one, see time-series/filed-trailing-eps).
  */
-export type EventFinancials = Pick<TickerFinancials, "quarterlyStatements" | "financialCurrency"> & {
+export type EventFinancials = Pick<TickerFinancials, "quarterlyStatements" | "financialCurrency" | "statementScope"> & {
   /** The years, whose last end names the fiscal quarters (`Q1 FY2027`) as GUIDE and ERN do. */
-  annualStatements?: readonly Pick<FinancialStatement, "date">[];
+  annualStatements?: readonly Pick<FinancialStatement, "date" | "statementScope">[];
   fundamentals?: Pick<NonNullable<TickerFinancials["fundamentals"]>, "eps" | "epsCurrency" | "financialCurrency" | "marketCapCurrency" | "trailingEpsSource"> | null;
   /** The listing's currency, which says whether an unlabelled EPS can be in the statements' (fundamentalsCurrency), and its type. */
   quote?: Pick<NonNullable<TickerFinancials["quote"]>, "currency" | "instrumentType" | "exchangeName" | "listingExchangeName" | "name"> | null;
@@ -278,7 +281,7 @@ function adjustedQuarterSum(
     const matches = reported.filter((earning) => statementForEarningsDate([statement], earning) === statement);
     return matches.length === 1 ? matches[0]! : null;
   });
-  if (quarters.some((earning) => earning == null || earningsEpsBasis(earning.epsBasis) !== "adjusted")) return null;
+  if (quarters.some((earning) => earning == null || displayEarningsEpsBasis(earning) !== "adjusted")) return null;
   if (new Set(quarters.map((earning) => earning!.currency)).size !== 1) return null;
   return quarters.reduce((sum, earning) => sum + earning!.epsActual!, 0);
 }
@@ -300,7 +303,7 @@ function ttmRow(
   const latest = latestFour.at(-1);
   const trailingEps = financials?.fundamentals?.eps;
   const served = typeof trailingEps === "number" && Number.isFinite(trailingEps);
-  const eps = served ? trailingEps : ttm.eps;
+  const eps = served ? trailingEps : financials?.statementScope ? undefined : ttm.eps;
   const adjusted = eps == null ? null : adjustedQuarterSum(latestFour, earnings);
   return {
     id: `ttm:${latest?.date ?? ""}`,
@@ -422,7 +425,7 @@ export function buildEventRows(
 
   const earningsIds = earningsRowIds(earnings);
   // Quarters and years by the names GUIDE and ERN give them (Q1 FY2027), where the company's years say when they end.
-  const yearEnd = fiscalYearEndMonth(financials?.annualStatements ?? []);
+  const yearEnd = fiscalYearEndMonth(financials?.annualStatements?.filter(row => listingOwnsRow(financials.statementScope, row)) ?? []);
   // An upcoming report often arrives without a currency; the feed's reported
   // quarters give it when they all agree on one.
   const feedCurrencies = new Set(earnings.map((earning) => earning.currency).filter(Boolean));
@@ -430,18 +433,20 @@ export function buildEventRows(
   // So do the oldest reported quarters (before 2024), which the feed leaves unlabelled, but only where the
   // company's own EPS is in that currency too: one company's EPS then reads in one unit down the table, and an
   // unlabelled figure nothing else vouches for stays unlabelled.
-  const reportedCurrency = feedCurrency && fundamentalsEpsCurrency(financials) === feedCurrency ? feedCurrency : undefined;
+  const listingCurrency = !financials?.statementScope || financials.statementScope.basis === "standalone" ? fundamentalsEpsCurrency(financials) : undefined;
+  const reportedCurrency = feedCurrency && listingCurrency === feedCurrency ? feedCurrency : undefined;
   // The history's EPS before a price adjustment is adjusted for it (CTVA's before the VYLR spin-off of 2026-10-01): said
   // on the row. A release's own EPS is as the company reported it, whatever its date.
   const adjustments = priceAdjustments(data?.splits, data?.demergers);
   for (const [index, earning] of earnings.entries()) {
     // A pending announcement must never inherit the previous report's actuals.
     const statement = earning.epsActual == null ? undefined : statementForEarningsDate(quarterlyStatements, earning);
-    const surprise = epsSurprise(earning.epsActual, earning.epsEstimate);
+    const basis = displayEarningsEpsBasis(earning);
+    const comparison = reportedEpsComparison(earning);
+    const surprise = comparison?.surprise;
     // Against a loss or zero estimate no percentage is shown, the source's either.
     const surpriseNotMeaningful = earning.epsActual != null && isNotMeaningful(surprise);
-    const surprisePercent = earning.epsActual == null || surpriseNotMeaningful ? undefined
-      : typeof surprise === "number" ? Math.round(surprise * 10_000) / 100 : earning.surprisePercent;
+    const surprisePercent = typeof surprise === "number" ? Math.round(surprise * 10_000) / 100 : undefined;
     const adjustedEps = (earning.epsActual == null && earning.epsEstimate == null) || publishedEps(earning) ? [] : adjustmentsAfter(adjustments, earning.date);
     rows.push({
       id: earningsIds[index]!,
@@ -454,7 +459,7 @@ export function buildEventRows(
       ...(earning.time?.trim() ? { reportTime: earning.time.trim() } : {}),
       detail: [upcomingEarningsDetail(earning), adjustedEps.length ? `EPS ${adjustedForText(adjustedEps, false)}` : ""].filter(Boolean).join(", "),
       ...(adjustedEps.length ? { adjustedFor: `EPS ${adjustedForText(adjustedEps)}` } : {}),
-      epsCurrency: earning.currency ?? (earning.epsActual == null ? feedCurrency : reportedCurrency),
+      epsCurrency: earning.currency ?? (earning.epsActual == null ? feedCurrency : unconfirmedAdjustedEps(earning) ? undefined : reportedCurrency),
       revenueCurrency: statement ? statement.currency ?? financials?.financialCurrency : undefined,
       qEps: earning.epsActual ?? earning.epsEstimate,
       ...(earning.streetEps ? { streetEps: earning.streetEps, gaapEps: earning.gaapEps } : {}),
@@ -462,11 +467,11 @@ export function buildEventRows(
       earningsState: earning.epsActual == null ? "pending" : "reported",
       epsActual: earning.epsActual,
       epsEstimate: earning.epsEstimate,
-      epsDifference: earning.epsActual == null ? undefined : earning.difference,
+      epsDifference: comparison?.difference,
       surprisePercent,
       ...(surpriseNotMeaningful ? { surpriseNotMeaningful: true as const } : {}),
-      epsBasis: showsEpsBasis({ epsActual: earning.epsActual, epsBasis: earningsEpsBasis(earning.epsBasis) })
-        ? epsBasisName(earningsEpsBasis(earning.epsBasis)) : undefined,
+      epsBasis: showsEpsBasis({ epsActual: earning.epsActual, epsBasis: basis }) ? epsBasisName(basis) : undefined,
+      ...(unconfirmedAdjustedEps(earning) ? { epsComparisonUnconfirmed: true as const } : {}),
       ...(isProvisionalActual(earning) ? { epsProvisional: true as const } : {}),
       epsAnalysts: earning.epsAnalysts,
       dateStatus: earningsDateStatus(earning.dateStatus) ?? undefined,
@@ -717,7 +722,7 @@ function yearOnYear(estimate: AnalystEstimateRecord | undefined): string | null 
 
 /**
  * The Events tab's opening block: what is next, each with how far away it is.
- * The next report and its consensus EPS and revenue for the quarter it covers,
+ * The next report with calendar EPS (or quarter EPS if absent), quarter revenue,
  * the next ex-date with its amount (the last one while none is known), and the
  * next catalyst. A fund has its ex-dates only.
  */
@@ -735,12 +740,12 @@ export function buildNextUp(rows: readonly EventRow[], options: NextUpOptions): 
     } else if (quarter) {
       figures.push({ id: "next-report", label: "Next report", value: quarterName(quarter), detail: "not dated yet" });
     }
-    const eps = report?.epsEstimate ?? quarter?.qEps;
-    const epsCurrency = report?.epsEstimate != null ? report.epsCurrency : quarter?.epsCurrency;
-    if (eps != null) {
-      const analysts = report?.epsEstimate != null ? report.epsAnalysts : quarter?.estimateInputs?.eps?.analysts;
-      const growth = yearOnYear(quarter?.estimateInputs?.eps);
-      figures.push({ id: "eps-estimate", label: "EPS est", value: formatEventMetric(eps, epsCurrency, "eps"),
+    const quarterEps = quarter?.estimateInputs?.eps;
+    const { amount, currency, analysts, growth } = report?.epsEstimate != null
+      ? { amount: report.epsEstimate, currency: report.epsCurrency, analysts: report.epsAnalysts, growth: null }
+      : { amount: quarter?.qEps, currency: quarter?.epsCurrency, analysts: quarterEps?.analysts, growth: yearOnYear(quarterEps) };
+    if (amount != null) {
+      figures.push({ id: "eps-estimate", label: "EPS est", value: formatEventMetric(amount, currency, "eps"),
         ...detailForms([analysts ? `${analysts} ${analysts === 1 ? "analyst" : "analysts"}` : null, growth], [growth]) });
     }
     if (quarter?.qRevenue != null) {

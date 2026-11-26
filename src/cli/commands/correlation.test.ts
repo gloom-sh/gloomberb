@@ -5,6 +5,8 @@ import { createDefaultConfig } from "../../types/config";
 import { createTestCliContext, type PrintedCliResult } from "../../test-support/cli-context";
 import { createTestDataProvider, createTestFinancials, createTestQuote } from "../../test-support/data-provider";
 import { captureConsole } from "../../test-support/console";
+import { DEFAULT_CLI_OPTIONS } from "../options";
+import { serializeCliError, serializeCliResult } from "../result";
 import { overviewCliCommands } from "./overview";
 
 const correlation = overviewCliCommands.find((command) => command.name === "correlation")!;
@@ -18,6 +20,9 @@ const QUOTES: Record<string, ReturnType<typeof createTestQuote>> = {
   BTC: createTestQuote({ symbol: "BTC", name: "Grayscale Bitcoin Mini Trust ETF", currency: "USD", instrumentType: "ETF", listingExchangeName: "ARCA" }),
   "BTC-USD": createTestQuote({ symbol: "BTC-USD", name: "Bitcoin USD", currency: "USD", instrumentType: "CRYPTOCURRENCY", listingExchangeName: "CCC" }),
   "ETH-USD": createTestQuote({ symbol: "ETH-USD", name: "Ethereum USD", currency: "USD", instrumentType: "CRYPTOCURRENCY", listingExchangeName: "CCC" }),
+  "HYPE-USD": createTestQuote({ symbol: "HYPE-USD", name: "Hyperliquid USD", currency: "USD", instrumentType: "CRYPTOCURRENCY", listingExchangeName: "CCC" }),
+  "HYPE:CSE": createTestQuote({ symbol: "HYPE", name: "Example Technologies", currency: "CAD", instrumentType: "EQUITY", listingExchangeName: "CSE" }),
+  "HYPE:XETRA": createTestQuote({ symbol: "HYPE", name: "Example Corporate Bond ETF", currency: "EUR", instrumentType: "ETF", listingExchangeName: "XETRA" }),
   3046: createTestQuote({ symbol: "3046", name: "Samsung Ethereum Futures Active ETF", currency: "HKD", instrumentType: "ETF", listingExchangeName: "HKEX" }),
 };
 const bars = (drift: number) => Array.from({ length: 30 }, (_, day) => {
@@ -33,8 +38,11 @@ async function run(args: string[], history?: (symbol: string) => ReturnType<type
   };
   const dataProvider = createTestDataProvider({
     search: async (query) => {
-      const quote = QUOTES[query.trim().toUpperCase()];
-      return quote ? [{ providerId: "test", symbol: quote.symbol, name: quote.name!, exchange: quote.listingExchangeName!, type: quote.instrumentType!, currency: "USD" }] : [];
+      const key = query.trim().toUpperCase();
+      const listings = key === "HYPE" ? [QUOTES["HYPE:CSE"], QUOTES["HYPE:XETRA"]] : [QUOTES[key]];
+      return listings.filter((quote) => quote != null).map((quote) => ({
+        providerId: "test", symbol: quote.symbol, name: quote.name!, exchange: quote.listingExchangeName!, type: quote.instrumentType!, currency: quote.currency!,
+      }));
     },
     getQuote: async (symbol) => quoteOf(symbol),
     getTickerFinancials: async (symbol) => createTestFinancials({ quote: quoteOf(symbol), priceHistory: bars(1) }),
@@ -57,6 +65,29 @@ test("correlation with the bare BTC says it read the Grayscale fund and names th
   const coinNote = (warnings: string[] | undefined) => (warnings ?? []).filter((line) => line.includes("For bitcoin use"));
   expect(coinNote((await run(["RIOT", "BTC-USD"])).result.warnings)).toEqual([]);
   expect(coinNote((await run(["RIOT", "BTC:ARCA"])).result.warnings)).toEqual([]);
+});
+
+test("correlation refuses unlabeled bars for an ambiguous bare code, but accepts either explicitly named instrument", async () => {
+  const historyRequests: string[] = [];
+  const history = (symbol: string) => { historyRequests.push(symbol); return bars(1); };
+  const error = await run(["RIOT", "HYPE"], history).catch(({ message, details }) => ({ code: "cli_error", message, details }));
+  expect(historyRequests).not.toContain("HYPE");
+  if (!("message" in error)) throw new Error("Expected a listing choice");
+  expect(error.message).toBe("Choose an exchange for HYPE.");
+  const text = serializeCliError(error, { ...DEFAULT_CLI_OPTIONS, format: "text" });
+  expect(text).toContain("gloom correlation RIOT HYPE:CSE");
+  expect(text).toContain("For hyperliquid use HYPE-USD.");
+  expect(JSON.parse(serializeCliError(error, { ...DEFAULT_CLI_OPTIONS, format: "json" }))).toMatchObject({ ok: false, error });
+
+  for (const symbol of ["HYPE-USD", "HYPE:CSE"]) {
+    const { result, options } = await run(["RIOT", symbol], history);
+    expect(historyRequests).toContain(symbol);
+    expect(result.warnings?.join("\n") ?? "").not.toContain("For hyperliquid use");
+    expect(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "text" }, options)).toContain(`RIOT / ${symbol}`);
+    expect(JSON.parse(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "json" }, options))).toMatchObject({
+      ok: true, data: [{ left: "RIOT", right: symbol }],
+    });
+  }
 });
 
 test("an HK ETF with a few contradictory bars correlates against its coin over the bars history keeps, and a side with none says so", async () => {

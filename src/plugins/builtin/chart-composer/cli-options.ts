@@ -68,7 +68,7 @@ export function applyChartComposerCapabilityOptions(
   let next = spec;
   if ((options.rangePreset ?? options.range) === "YTD") {
     // A year of daily bars, shown from the prior year's last close.
-    next = { ...next, viewport: { ...next.viewport, range: "1Y", dateWindow: { ...yearToDateWindow(next), endAtLatestObservation: true } } };
+    next = { ...next, viewport: { ...next.viewport, range: "1Y", dateWindow: { ...yearToDateWindow(next), endAtLatestObservation: true, returnPeriod: "YTD" } } };
   }
   const selectedRange = chartRange(options);
   const range = capabilityId === "intraday-price-chart" && typeof options.session === "string"

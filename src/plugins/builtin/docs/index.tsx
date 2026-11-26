@@ -38,7 +38,7 @@ export const docsModule: PluginModule = {
       name: "Docs",
       icon: "?",
       get component(): typeof import("./pane").DocsPane { const { DocsPane } = require("./pane"); return DocsPane; },
-      reportFreshness: { status: "not-a-feed", basis: "documentation", local: true },
+      reportFreshness: { source: "Gloom documentation", status: "not-a-feed", basis: "documentation", local: true },
       // A page reads whole in a report, not cut at the first screen.
       shotFitsReader: true,
       defaultPosition: "right",
