@@ -212,7 +212,8 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
     const hasIv1y = rows.some((row) => row.iv1y != null), hasIv1yRank = rows.some((row) => row.iv1yPercentile != null);
     const dated = (value: unknown) => typeof value === "string" ? value : MISSING_VALUE;
     return {
-      sections: [{ title: ["Rich/cheap", universe.label, ...sharedDates(dates)].join(" · "), columns: [
+      sections: [{ title: ["Rich/cheap", universe.label, ...sharedDates(dates, false, true)].join(" · "),
+        textTitle: ["Rich/cheap", universe.label, ...sharedDates(dates)].join(" · "), columns: [
         { key: "symbol", header: "Symbol" }, { key: "iv30", header: "IV30", format: percent },
         // The text reads the day first; CSV keeps the ISO day, with the same words.
         ...(dates.reading ? [] : [{ key: "date", header: "As of", format: (value: unknown, row?: unknown) =>

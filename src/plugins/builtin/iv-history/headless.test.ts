@@ -43,7 +43,7 @@ const load = async (rows: IvScreenRow[], marketData: DataProvider = createTestDa
     return column.textFormat ? column.textFormat(section.rows[index]![key], section.rows[index]!) : cell(key, index);
   };
   const footer = formatFreshnessLine(deriveHeadlessFreshness(ivScreenHeadless, result, Date.parse("2026-10-10T02:40:00Z")));
-  return { title: section.title, keys: section.columns!.map((column) => column.key),
+  return { title: section.title, textTitle: section.textTitle, keys: section.columns!.map((column) => column.key),
     header: (key: string) => section.columns!.find((column) => column.key === key)?.header, cell, text, footer, result };
 };
 
@@ -53,7 +53,7 @@ describe("VCA dates", () => {
       row("NVDA", reading("2026-10-09", "quote-mid", 0.293), "2026-10-09"),
       row("AAPL", reading("2026-10-09", "quote-mid", 0.265), "2026-10-09"),
     ]);
-    expect(title.endsWith("· 09 Oct 2026 close")).toBe(true);
+    expect(title.endsWith("· 2026-10-09 close")).toBe(true);
     expect(title).not.toContain("live");
     expect(keys).not.toContain("date");
     expect(keys).not.toContain("rankDate");
@@ -61,8 +61,10 @@ describe("VCA dates", () => {
   });
 
   test("a trade-close reading on its rank date says so once", async () => {
-    const { title } = await load([row("SPY", reading("2026-10-09", "trade-close", 0.123), "2026-10-09")]);
-    expect(title.endsWith("· 09 Oct 2026 close")).toBe(true);
+    const { title, textTitle } = await load([row("SPY", reading("2026-10-09", "trade-close", 0.123), "2026-10-09")]);
+    // The text reads the day first; JSON and CSV keep the title's ISO day.
+    expect(textTitle!.endsWith("· 09 Oct 2026 close")).toBe(true);
+    expect(title.endsWith("· 2026-10-09 close")).toBe(true);
   });
 
   test("rows ranked on different closes get a date column, and the footer is the newest", async () => {
@@ -86,7 +88,7 @@ describe("VCA dates", () => {
       row("NVDA", reading("2026-10-09", "quote-mid", 0.293), "2026-10-08"),
       row("AAPL", reading("2026-10-09", "quote-mid", 0.265), "2026-10-08"),
     ]);
-    expect(title.endsWith("· 08 Oct 2026 close")).toBe(true);
+    expect(title.endsWith("· 2026-10-08 close")).toBe(true);
     expect(keys).not.toContain("rankDate");
     expect(cell("iv30", 0)).toBe("30.0%");
   });

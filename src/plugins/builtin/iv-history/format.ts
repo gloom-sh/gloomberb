@@ -80,8 +80,10 @@ export function readingValue(date: string, method: IvMethod | null | undefined, 
  * its rank is measured on. `short` is for a footer with little room: month and
  * day, and no window.
  */
-export function sharedDates({ reading, rank }: Pick<RichCheapDates, "reading" | "rank">, short = false): string[] {
-  if (reading?.method === "trade-close" && reading.date === rank) return [readingLabel(reading.date, reading.method, short, { basis: reading.basis })];
-  return [reading && `IV30 ${readingLabel(reading.date, reading.method, short, { basis: reading.basis })}`,
-    rank && (short ? `IVR/IVP ${shortDate(rank)} close` : `IVR/IVP vs 52 weeks to ${formatDay(rank)} close`)].filter((part): part is string => !!part);
+export function sharedDates({ reading, rank }: Pick<RichCheapDates, "reading" | "rank">, short = false, exported = false): string[] {
+  // An export's title keeps the ISO days it always had; the pane and the text draw them day first.
+  const label = exported ? readingValue : readingLabel;
+  if (reading?.method === "trade-close" && reading.date === rank) return [label(reading.date, reading.method, short, { basis: reading.basis })];
+  return [reading && `IV30 ${label(reading.date, reading.method, short, { basis: reading.basis })}`,
+    rank && (short ? `IVR/IVP ${shortDate(rank)} close` : `IVR/IVP vs 52 weeks to ${exported ? rank : formatDay(rank)} close`)].filter((part): part is string => !!part);
 }
