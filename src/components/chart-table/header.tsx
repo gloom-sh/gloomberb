@@ -31,6 +31,7 @@ export interface ChartStripSpec {
 export interface ChartTableChart {
   /** Series the kit chart draws. Their labels are the chart's caption, so name what is plotted. */
   series?: readonly ResolvedSeries[];
+  allowSinglePoint?: boolean;
   panels?: ChartPanelSpec[];
   /** A chart the kit does not draw itself (a curve, a scatter), given the band's size. */
   render?: (size: { width: number; height: number }) => ReactNode;
@@ -88,13 +89,13 @@ export interface ChartTableHeaderProps {
 }
 
 /** The first shown series with a line to draw, and its values. */
-function plottable(series: readonly ResolvedSeries[] | undefined): { entry: ResolvedSeries; values: number[] } | null {
+function plottable({ series, allowSinglePoint }: ChartTableChart): { entry: ResolvedSeries; values: number[] } | null {
   for (const entry of series ?? []) {
     if (entry.hidden) continue;
     const values = entry.points.flatMap((point) => (
       point.value != null && Number.isFinite(point.value) ? [point.value] : []
     ));
-    if (values.length >= 2) return { entry, values };
+    if (values.length >= (allowSinglePoint ? 1 : 2)) return { entry, values };
   }
   return null;
 }
@@ -114,7 +115,7 @@ function seriesSpan(series: readonly ResolvedSeries[]): { first: number; last: n
 }
 
 function stripFromSeries(chart: ChartTableChart): ChartStripSpec | null {
-  const line = plottable(chart.series);
+  const line = plottable(chart);
   const latest = line?.values.at(-1);
   if (!line || latest == null) return null;
   return {
@@ -178,7 +179,7 @@ export function ChartStrip({ strip, width, figures = [] }: {
 /** Where a pane puts its chart when it wants the kit's layout without the kit's header. */
 export function useChartTableLayout(props: ChartTableHeaderProps): ChartTableLayout {
   const { chart } = props;
-  const hasChart = !!chart && (!!chart.render || !!plottable(chart.series) || !!chart.loading || !!chart.empty);
+  const hasChart = !!chart && (!!chart.render || !!plottable(chart) || !!chart.loading || !!chart.empty);
   return chartTableLayout({
     width: props.width,
     height: props.height,
@@ -234,7 +235,7 @@ export function ChartTableHeader(props: ChartTableHeaderProps) {
   if (chart && layout.mode === "full") {
     // No padding: the legend's own one-cell inset lines it up with the figures and the table.
     const size = { width: Math.max(1, width), height: layout.chartRows };
-    const ready = !!chart.render || !!plottable(series);
+    const ready = !!chart.render || !!plottable(chart);
     band = (
       <Box height={layout.chartRows} flexShrink={0} overflow="hidden">
         {!ready ? (

@@ -4,6 +4,7 @@ import { projectPeBand } from "../plugins/builtin/pe-band/model";
 import { buildEventRows } from "../plugins/builtin/research/event-model";
 import { relativeValuationValues } from "../plugins/builtin/research/relative-valuation-model";
 import { mapCloudFinancials } from "../sources/gloomberb-cloud/normalizers";
+import { scopedFixture, scopedNyseCloseFixture } from "../test-support/scoped-earnings";
 import { mergeFinancials, mergeMissingStatementArrays, mergeRefreshedFinancials } from "../sources/provider-router/financials";
 import { extractFundamentalSeries } from "./fundamentals";
 import { renderFundamentalsReport } from "../cli/commands/ticker";
@@ -23,19 +24,6 @@ const headline = (fundamentals: Fundamentals) => {
   return { eps: priced.eps, trailingPE: priced.trailingPE, source: priced.trailingEpsSource };
 };
 const FILED = { eps: 4, trailingPE: 25, source: "filed-quarters" } as const;
-
-function scopedFixture() {
-  const after = Date.parse("2028-02-18T17:00Z"), before = Date.parse("2028-02-16T17:00Z");
-  const scope = { basis: "standalone" as const, entity: "vylor-standalone", registrant: "0002128626", label: "Vylor standalone (as filed)" };
-  const end = "2027-12-31", filed = "2028-02-17";
-  const quote = { symbol: "VYLR", price: 65, currency: "USD", change: 0, changePercent: 0, lastUpdated: after, listingExchangeName: "NYSE" };
-  const quarters = ["03-31", "06-30", "09-30", "12-31"].map((day, index) => ({ date: `2027-${day}`, availableAt: filed,
-    currency: "USD", statementScope: scope, eps: [0.75, 0.75, 1, 0.75][index], totalRevenue: 30e6 }));
-  const raw = { annualStatements: [{ ...quarters[3]!, eps: 3, availableAt: "2028-02-15" }], quarterlyStatements: quarters,
-    priceHistory: [before, after].map(time => ({ date: new Date(time), close: 65 })), financialCurrency: "USD", statementScope: scope,
-    statementReview: { status: "reviewed" as const, reviewedThrough: filed }, fundamentals: { eps: 3.25, epsCurrency: "USD", trailingPeriodEnd: end, trailingPE: 20 } };
-  return { raw, quarters, scope, end, filed, quote, before, after };
-}
 
 test("decimal quarter EPS corroborates the admitted annual amount only at the later field date", () => {
   const { raw, quarters, filed, quote, before, after } = scopedFixture();
@@ -80,12 +68,7 @@ test("decimal quarter EPS corroborates the admitted annual amount only at the la
 });
 
 test("a scoped filing steps at effective closes, not the midnight label of a later NYSE close", () => {
-  const { raw, quarters, quote, filed } = scopedFixture();
-  const onFilingDay = (hour: number) => new Date(`${filed}T${String(hour).padStart(2, "0")}:00:00Z`);
-  const data = { ...mapCloudFinancials({ ...raw, quarterlyStatements: quarters.map(row => ({ ...row, fieldAvailability: { eps: onFilingDay(17).toISOString() } })) }),
-    quote: { ...quote, stale: true }, priceHistory: [
-      { date: onFilingDay(0), close: 78 }, { date: onFilingDay(16), close: 65 }, { date: onFilingDay(18), close: 65 },
-    ] };
+  const { data, onFilingDay } = scopedNyseCloseFixture();
   const series = (period: "daily" | "annual") => extractFundamentalSeries(data, { kind: "security", instrument: { symbol: "VYLR" }, fieldId: "valuation.trailingPE", period });
   const band = () => projectPeBand({ ...data, quote: { ...data.quote, listingExchangeName: undefined } }, [{ date: new Date("2028-02-14"), close: 999 }],
     { symbol: "VYLR", exchange: "NYSE", lookbackYears: 1, daily: data.priceHistory });

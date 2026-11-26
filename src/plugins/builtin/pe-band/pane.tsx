@@ -175,7 +175,7 @@ export function PeBandPane({ width, height, focused }: PaneProps) {
             : "EPS and price in the listing currency; P/E at the close of the day the EPS became known"]]}
         renderCell={(row, column) => renderCell(row, column, colors, showFx ? currency : undefined)}
         rootBefore={<ChartTableHeader width={width} height={height} tableRows={rows.length} tableColumns={columns} query={query} figures={figures}
-          chart={(scoped ? model.points : model.weeks).length >= 2 ? { series, formatValue: formatPrice, formatAxisValue: formatAxis, remoteKind: "pe-band", ...link } : null} />} />
+          chart={scoped || model.weeks.length >= 2 ? { series, allowSinglePoint: scoped, formatValue: formatPrice, formatAxisValue: formatAxis, remoteKind: "pe-band", ...link } : null} />} />
         : null}
     </PaneStatusBody>
   </Box>;
