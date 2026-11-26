@@ -369,7 +369,7 @@ function premiumBasis(premium: NonNullable<FundFactsPayload["premiumDiscount"]>)
   return price?.kind === "nominal" ? "nominal closing price vs NAV" : "closing price vs NAV";
 }
 
-/** Where a figure came from and when, for text reports: `16 Oct 2026 · iShares`. */
+/** Where a figure came from and when, for text reports: `2026-10-16 · iShares`, which the text draws day first. */
 function provenance(...parts: (string | null | undefined)[]): string {
   return parts.filter(Boolean).join(" · ");
 }
@@ -381,9 +381,8 @@ function provenance(...parts: (string | null | undefined)[]): string {
  */
 export function fundFactEntries(facts: FundFactsPayload): HeadlessPaneEntry[] {
   const entries: HeadlessPaneEntry[] = [];
-  // The text says each date as the pane does (`16 Oct 2026`); JSON keeps the raw value, and a link is left whole.
   const add = (key: string, label: string, value: unknown, formatted: string, unit?: string) =>
-    entries.push({ key, label, value, formatted: key === "url" ? formatted : formatDaysInText(formatted), ...(unit ? { unit } : {}) });
+    entries.push({ key, label, value, formatted, ...(unit ? { unit } : {}) });
   if (facts.name) add("name", "Name", facts.name, facts.name);
   if (facts.structure) add("structure", "Structure", facts.structure, structureLabel(facts.structure));
   if (facts.expenseRatio) {
@@ -464,8 +463,8 @@ function noteStructureText(note: Pick<FundNoteFacts, "issuer">): string {
   return `Exchange-traded note: an unsecured note of ${note.issuer}, not a fund`;
 }
 
-/** The supplement a note's terms come from: `13 Feb 2026 pricing supplement (424B2)`. */
-const noteSupplement = (note: FundNoteFacts) => `${formatDay(note.filing.filedAt)} pricing supplement (${note.filing.form})`;
+/** The supplement a note's terms come from: `2026-02-13 pricing supplement (424B2)`. */
+const noteSupplement = (note: FundNoteFacts) => `${note.filing.filedAt} pricing supplement (${note.filing.form})`;
 
 /**
  * An exchange-traded note's terms as report entries: its issuer, yearly fee

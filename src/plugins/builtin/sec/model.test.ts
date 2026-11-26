@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { SecFilingItem } from "../../../types/data-provider";
-import { COMPANY_FORM_GROUPS, filingTone, filterFilingsByGroup, FUND_FORM_GROUPS, getFilingColumnText } from "./model";
+import { buildSecFilingRows, COMPANY_FORM_GROUPS, filingTone, filterFilingsByGroup, FUND_FORM_GROUPS, getFilingColumnText } from "./model";
 import { ownerNames, rowSummary, rowSummaryTarget } from "./row-summaries";
 
 const filing = (form: string, extra: Partial<SecFilingItem> = {}): SecFilingItem => ({
@@ -17,6 +17,8 @@ test("a row says what the filing reports: 8-K items in words, a periodic report'
   expect(getFilingColumnText(filing("8-K/A", { items: "5.02" }))).toBe("Officer or director change (amended)");
   expect(getFilingColumnText(filing("8-K", { items: "9.01" }))).toBe("Exhibits");
   expect(getFilingColumnText(filing("10-Q", { primaryDocument: "aapl-20260627.htm" }))).toBe("Quarterly Report, period ended 27 Jun 2026");
+  // JSON and CSV keep the period end in ISO, as they always wrote it.
+  expect(buildSecFilingRows([filing("10-Q", { primaryDocument: "aapl-20260627.htm" })])[0]!.filing).toBe("Quarterly Report, period ended 2026-06-27");
   // A document date after the filing is not a period end.
   expect(getFilingColumnText(filing("10-Q", { primaryDocument: "aapl-20261231.htm" }))).toBe("Quarterly Report");
   expect(getFilingColumnText(filing("SD"))).toBe("Conflict Minerals Report");

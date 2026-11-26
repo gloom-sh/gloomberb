@@ -248,15 +248,17 @@ test("ETF leads with the fund's facts, each figure dated and credited, then its 
   const [facts, filed] = result.sections;
   expect(facts!.title).toBe("Fund facts");
   expect(Object.fromEntries(facts!.entries!.map((entry) => [entry.key, entry.formatted]))).toMatchObject({
-    expenseRatioPercent: "0.0945% gross · 15 Oct 2026 · State Street",
-    nav: "$702.31 · 15 Oct 2026 · State Street",
-    premiumDiscountPercent: "+0.01% · 15 Oct 2026 · State Street",
-    netAssets: "$712.34B · 15 Oct 2026 · all share classes · State Street",
+    expenseRatioPercent: "0.0945% gross · 2026-10-15 · State Street",
+    nav: "$702.31 · 2026-10-15 · State Street",
+    premiumDiscountPercent: "+0.01% · 2026-10-15 · State Street",
+    netAssets: "$712.34B · 2026-10-15 · all share classes · State Street",
     sponsor: "State Street Global Advisors",
-    inception: "22 Jan 1993",
+    inception: "1993-01-22",
   });
   // JSON keeps each raw number.
   expect(facts!.entries!.find((entry) => entry.key === "netAssets")!.value).toBe(712_340_000_000);
+  // Only the text reads the days first, as the pane does.
+  expect(facts!.textEntries!.find((entry) => entry.key === "nav")!.formatted).toBe("$702.31 · 15 Oct 2026 · State Street");
   expect(filed!.rows!.map((row) => row.form)).toEqual(["485BPOS"]);
   // The report's source is the facts' publisher, named the same way for every fund.
   expect(result.freshness).toMatchObject({ source: "State Street", publisher: "State Street", asOf: "2026-10-15" });
@@ -292,7 +294,7 @@ test("an inverse fund's objective reads as its factor, reset and direction; a se
   };
   const result = await createFundHeadless({ loadFacts: async () => sqqq, loadFilings: async () => [] }).load(fundArgs("SQQQ"), createTestHeadlessContext());
   const entries = result.sections[0]!.entries!;
-  expect(entries.find((entry) => entry.key === "leverageFactor")).toMatchObject({ label: "Objective", value: -3, formatted: "-3× daily, inverse · 21 Oct 2026 · ProShares" });
+  expect(entries.find((entry) => entry.key === "leverageFactor")).toMatchObject({ label: "Objective", value: -3, formatted: "-3× daily, inverse · 2026-10-21 · ProShares" });
   expect(entries.find((entry) => entry.key === "index")!.formatted).toBe("Nasdaq-100 Index · ProShares");
 
   const client = (payload: unknown) => ({ getFundFacts: async () => payload as FundFactsPayload });
@@ -304,7 +306,7 @@ test("a computed premium says it is the closing price against the NAV and who co
   const computed: FundFactsPayload = { ...SPY_FACTS, premiumDiscount: { value: -0.0123, asOf: "2026-10-15", source: "Gloom Cloud", basis: "computed" } };
   const result = await createFundHeadless({ loadFacts: async () => computed, loadFilings: async () => [] }).load(fundArgs("SPY"), createTestHeadlessContext());
   expect(result.sections[0]!.entries!.find((entry) => entry.key === "premiumDiscountPercent")!.formatted)
-    .toBe("-0.01% · 15 Oct 2026 · closing price vs NAV · Gloom Cloud");
+    .toBe("-0.01% · 2026-10-15 · closing price vs NAV · Gloom Cloud");
   expect(result.freshness).toMatchObject({ source: "State Street", publisher: "State Street" });
 });
 
@@ -315,7 +317,7 @@ test("month-end net assets say so, and a stale NAV adds the note saying since wh
     netAssets: { value: 1e12, asOf: "2026-09-30", source: "Vanguard", scope: "share-class", period: "month-end" },
   };
   const result = await createFundHeadless({ loadFacts: async () => vanguard, loadFilings: async () => [] }).load(fundArgs("VOO"), createTestHeadlessContext());
-  expect(result.sections[0]!.entries!.find((entry) => entry.key === "netAssets")!.formatted).toBe("$1T · 30 Sep 2026 month-end · Vanguard");
+  expect(result.sections[0]!.entries!.find((entry) => entry.key === "netAssets")!.formatted).toBe("$1T · 2026-09-30 month-end · Vanguard");
   expect(result.notes).toEqual(["VOO's newest NAV is from 2026-10-01; its sponsor has not published one since."]);
 });
 
@@ -358,8 +360,8 @@ test("fn ETF VXX: an exchange-traded note reads as its issuer's note, with the f
     name: "iPath Series B S&P 500 VIX Short-Term Futures ETN",
     structure: "Exchange-traded note: an unsecured note of Barclays Bank PLC, not a fund",
     issuer: "Barclays Bank PLC",
-    yearlyFeePercent: "0.89% · 13 Feb 2026 pricing supplement (424B2) · SEC EDGAR",
-    index: "S&P 500 VIX Short-Term Futures Index TR · 13 Feb 2026 pricing supplement (424B2)",
+    yearlyFeePercent: "0.89% · 2026-02-13 pricing supplement (424B2) · SEC EDGAR",
+    index: "S&P 500 VIX Short-Term Futures Index TR · 2026-02-13 pricing supplement (424B2)",
     url,
   });
   expect(emptyOf(filed)).toBe("VXX is a note of Barclays Bank PLC, which files no fund forms for it. Its issuer's filings: fn SEC VXX.");
@@ -422,13 +424,13 @@ test("ETF for a Hong Kong spot coin fund gives its issuer's figures in the count
   expect(result.sections).toHaveLength(1);
   expect(result.sections[0]!.entries!.map((entry) => [entry.label, entry.formatted, entry.unit])).toEqual([
     ["Name", "ChinaAMC Ether ETF (HKD counter)", undefined],
-    ["Management fee", "0.99% · 04 Nov 2026 · ChinaAMC (Hong Kong)", "%"],
-    ["NAV", "HK$5.2842 · 03 Nov 2026 · ChinaAMC (Hong Kong)", "HKD"],
-    ["Closing price", "HK$5.295 · 03 Nov 2026 · Gloom Cloud", "HKD"],
-    ["Premium/discount", "+0.20% · 03 Nov 2026 · closing price vs NAV · Gloom Cloud", "%"],
-    ["Shares outstanding", "60,200,000 · 03 Nov 2026 · ChinaAMC (Hong Kong)", "shares"],
-    ["Units per ETH", "3,262 · 03 Nov 2026 · ChinaAMC (Hong Kong)", "units per ETH"],
-    ["Coins held", "18,453 ETH · 03 Nov 2026 · ChinaAMC (Hong Kong)", "ETH"],
+    ["Management fee", "0.99% · 2026-11-04 · ChinaAMC (Hong Kong)", "%"],
+    ["NAV", "HK$5.2842 · 2026-11-03 · ChinaAMC (Hong Kong)", "HKD"],
+    ["Closing price", "HK$5.295 · 2026-11-03 · Gloom Cloud", "HKD"],
+    ["Premium/discount", "+0.20% · 2026-11-03 · closing price vs NAV · Gloom Cloud", "%"],
+    ["Shares outstanding", "60,200,000 · 2026-11-03 · ChinaAMC (Hong Kong)", "shares"],
+    ["Units per ETH", "3,262 · 2026-11-03 · ChinaAMC (Hong Kong)", "units per ETH"],
+    ["Coins held", "18,453 ETH · 2026-11-03 · ChinaAMC (Hong Kong)", "ETH"],
     ["Sponsor", "ChinaAMC (Hong Kong)", undefined],
     ["Issuer page", CHINAAMC_PAGE, undefined],
   ]);

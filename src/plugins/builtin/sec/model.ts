@@ -65,8 +65,12 @@ function periodicReportPeriod(filing: Pick<SecFilingItem, "form" | "primaryDocum
   return days >= 0 && days <= 460 ? iso : null;
 }
 
-/** The adjacent FORM column already identifies the form. Keep its meaning here: what the filing reports. */
-export function getFilingColumnText(filing: SecFilingItem): string {
+/**
+ * The adjacent FORM column already identifies the form. Keep its meaning here:
+ * what the filing reports, a period end day first as the pane draws it
+ * (`period ended 26 Sep 2026`), or as `day` writes it.
+ */
+export function getFilingColumnText(filing: SecFilingItem, day: (iso: string) => string = formatDay): string {
   // A Form 4 Gloom Cloud read says its trade, and whose shares when they are another company's.
   const trade = form4TradeText(filing);
   if (trade) return trade;
@@ -76,7 +80,7 @@ export function getFilingColumnText(filing: SecFilingItem): string {
     const items = isCurrentReport(filing.form) ? currentReportItemNames(filing.items) : null;
     if (items) return /\/A$/i.test(filing.form.trim()) ? `${items} (amended)` : items;
     const period = periodicReportPeriod(filing);
-    if (period) return `${meaning || "Report"}, period ended ${formatDay(period)}`;
+    if (period) return `${meaning || "Report"}, period ended ${day(period)}`;
     return meaning || "Filing";
   }
   return meaning && normalizeComparableText(description) !== normalizeComparableText(meaning)
@@ -224,7 +228,8 @@ export function buildSecFilingRows(filings: readonly SecFilingItem[]) {
       acceptedAtRaw: filing.acceptedAtRaw ?? null,
       acceptanceReported: secReportedAcceptance(filing),
       form: filing.form,
-      filing: getFilingColumnText(filing),
+      // JSON and CSV keep a period end in ISO, as they always wrote it; the text draws it day first.
+      filing: getFilingColumnText(filing, (iso) => iso),
       items: secFilingItemCodes(filing.items),
       accessionNumber: filing.accessionNumber,
       primaryDocument: filing.primaryDocument ?? null,

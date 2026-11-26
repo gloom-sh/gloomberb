@@ -98,7 +98,7 @@ test("figures from the SEC's data sets say which filing they come from: the pros
   expect(fundFactOverviewFields(DFAC).find((field) => field.label === "Fund Assets")!.detail)
     .toEqual(["31 Jul 2026 month-end · N-PORT", "31 Jul month-end · N-PORT", "31 Jul 2026 month-end", "31 Jul month-end"]);
   expect(fundFactEntries(DFAC).find((entry) => entry.key === "netAssets")!.formatted)
-    .toBe("$47.89B · 31 Jul 2026 month-end N-PORT · all share classes · SEC EDGAR");
+    .toBe("$47.89B · 2026-07-31 month-end N-PORT · all share classes · SEC EDGAR");
   // A share class's own figure (Vanguard's) and a trust's are plain net assets.
   expect(byId({ ...DFAC, netAssets: { ...DFAC.netAssets!, scope: "share-class" } }).assets!.label).toBe("Net assets");
   expect(byId({ ...DFAC, structure: "trust" }).assets!.label).toBe("Net assets");
@@ -140,7 +140,7 @@ test("a pool's total expense ratio reads as an expense ratio, gross, though the 
   expect(byId(uso).fee).toMatchObject({ label: "Expense ratio", value: "0.86%", detail: "gross 16 Oct 2026" });
   expect(fundFactOverviewFields(uso).find((field) => field.value === "0.86%")!.label).toBe("Exp Ratio");
   expect(fundFactEntries(uso).find((entry) => entry.key === "expenseRatioPercent")).toMatchObject({
-    label: "Expense ratio", formatted: "0.86% gross · 16 Oct 2026 · USCF",
+    label: "Expense ratio", formatted: "0.86% gross · 2026-10-16 · USCF",
   });
   // A trust's net assets are the trust's: no share classes to speak of.
   expect(byId(uso).assets!.detail).toBe("16 Oct 2026");
@@ -176,10 +176,10 @@ test("a bond fund's SEC yield, yield to worst and duration follow its net assets
   const entries = Object.fromEntries(fundFactEntries(MUB).map((entry) => [entry.key, [entry.value, entry.formatted, entry.unit]]));
   expect(entries).toMatchObject({
     bondClass: ["municipal", "Municipal, national", undefined],
-    secYieldPercent: [4.0418, "4.04% · 15 Oct 2026 · iShares", "%"],
-    yieldToWorstPercent: [4.16, "4.16% · 15 Oct 2026 · iShares", "%"],
-    durationYears: [7.12591, "7.13 yrs · 15 Oct 2026 · iShares", "years"],
-    dv01PerShare: [766.8 * 7.12591 / 10_000, "$0.5464 per share · price × duration ÷ 10,000 · closing price 16 Oct 2026", "USD per bp"],
+    secYieldPercent: [4.0418, "4.04% · 2026-10-15 · iShares", "%"],
+    yieldToWorstPercent: [4.16, "4.16% · 2026-10-15 · iShares", "%"],
+    durationYears: [7.12591, "7.13 yrs · 2026-10-15 · iShares", "years"],
+    dv01PerShare: [766.8 * 7.12591 / 10_000, "$0.5464 per share · price × duration ÷ 10,000 · closing price 2026-10-16", "USD per bp"],
   });
   // Vanguard's average duration is a month end's; a single-state fund names its state.
   const vtec: FundFactsPayload = { ...MUB, bond: { kind: "municipal", state: "CA", secYield: null, yieldToWorst: null,
@@ -215,8 +215,8 @@ test("a metal trust's ounces and tonnes in trust follow its net assets, with the
   ]);
   const entries = Object.fromEntries(fundFactEntries(gld).map((entry) => [entry.key, [entry.value, entry.formatted, entry.unit]]));
   expect(entries).toMatchObject({
-    metalOunces: [34085936.5, "34,085,936.5 troy oz · 1,060.18 tonnes · 20 Oct 2026 · SPDR Gold Shares", "troy oz"],
-    metalChangeOunces: [54994.78, "+54,994.78 troy oz · +1.71 tonnes · since 19 Oct 2026", "troy oz"],
+    metalOunces: [34085936.5, "34,085,936.5 troy oz · 1,060.18 tonnes · 2026-10-20 · SPDR Gold Shares", "troy oz"],
+    metalChangeOunces: [54994.78, "+54,994.78 troy oz · +1.71 tonnes · since 2026-10-19", "troy oz"],
   });
 
   // SLV's first stored day has no change yet, says so, and its stale day is marked.
@@ -224,7 +224,7 @@ test("a metal trust's ounces and tonnes in trust follow its net assets, with the
     ounces: 497876480.1, tonnes: 15485.69, change: null, stale: true, source: { ...gld.metalHoldings!.source, publisher: "iShares" } } };
   expect(fundFactItems(slv).filter((item) => item.id?.startsWith("metal")).map((item) => [item.label, item.value, item.tone]))
     .toEqual([["Silver in trust", "15,485.69 t", "warning"]]);
-  expect(fundFactEntries(slv).find((entry) => entry.key === "metalChangeOunces")).toMatchObject({ value: null, formatted: "— · 21 Oct 2026 is the first day stored" });
+  expect(fundFactEntries(slv).find((entry) => entry.key === "metalChangeOunces")).toMatchObject({ value: null, formatted: "— · 2026-10-21 is the first day stored" });
   expect(fundFactPublishers(slv)).toEqual(["SPDR Gold Shares", "iShares"]);
 });
 
@@ -250,9 +250,9 @@ test("a closed-end fund's NAV is a month end's, its sponsor's estimate range bes
   const entries = Object.fromEntries(fundFactEntries(ECC).map((entry) => [entry.key, entry.formatted]));
   expect(entries).toMatchObject({
     structure: "Closed-end fund",
-    nav: "$4.17 · 30 Sep 2026 month-end · estimate $4.12 to $4.22 · Eagle Point",
-    premiumDiscountPercent: "-6.47% · 30 Sep 2026 · closing price vs NAV estimate midpoint · Gloom Cloud",
-    netAssets: "$599.48M · 30 Jun 2026 month-end N-PORT · SEC EDGAR",
+    nav: "$4.17 · 2026-09-30 month-end · estimate $4.12 to $4.22 · Eagle Point",
+    premiumDiscountPercent: "-6.47% · 2026-09-30 · closing price vs NAV estimate midpoint · Gloom Cloud",
+    netAssets: "$599.48M · 2026-06-30 month-end N-PORT · SEC EDGAR",
   });
   // A range upside down is refused; a server before ranges, shares and flows still reads.
   await expect(fetchFundFacts("ECC", { getFundFacts: async () => ({ ...ECC, nav: { ...ECC.nav!, estimate: { low: 4.3, high: 4.2 } } }) }))
@@ -278,8 +278,8 @@ test("a BDC and a closed-end fund each by its own structure, never as a register
   const entries = Object.fromEntries(fundFactEntries(arcc).map((entry) => [entry.key, entry.formatted]));
   expect(entries).toMatchObject({
     structure: "Business development company (BDC)",
-    closingPrice: "$20.50 · 29 May 2026 · Gloom Cloud",
-    premiumDiscountPercent: "+7.33% · 31 May 2026 · closing price vs NAV · Gloom Cloud",
+    closingPrice: "$20.50 · 2026-05-29 · Gloom Cloud",
+    premiumDiscountPercent: "+7.33% · 2026-05-31 · closing price vs NAV · Gloom Cloud",
   });
   expect(fundFactsNavReasonText("ARCC", { ...arcc, nav: null, navReason: "No NAV for ARCC." }))
     .toBe("No NAV for ARCC: its SEC filings state net assets but no NAV per share, and its sponsor's NAV is not one Gloom reads.");
@@ -304,7 +304,7 @@ test("an ETF's shares outstanding and its month's flows follow net assets; a cov
   // A day without a NAV leaves the dollars out: the shares are the figure.
   expect(byId({ ...jaaa, flows: { ...jaaa.flows!, shares: -3_100_000, value: null } }).flows).toMatchObject({ value: "-3.1M shares", detail: "since 21 Sep 2026" });
   expect(fundFactEntries(jaaa).find((entry) => entry.key === "flows1M")).toMatchObject({
-    value: 625_247_000, formatted: "+$625.25M · +12.35M shares · 21 Sep 2026 to 23 Oct 2026 · Janus Henderson", unit: "USD",
+    value: 625_247_000, formatted: "+$625.25M · +12.35M shares · 2026-09-21 to 2026-10-23 · Janus Henderson", unit: "USD",
   });
   const noNav = { ...DFAC, navReason: "No NAV for DFAC: its sponsor's site is not one Gloom reads, and the SEC's prospectus and N-PORT data sets state no NAV." };
   expect(fundFactsNavReasonText("DFAC", noNav)).toBe(noNav.navReason);
@@ -328,12 +328,12 @@ test("an HK counter's nominal close says so, and its premium names the traded co
       price: { kind: "counter", ticker: "3042:HKEX", close: 9.18, currency: "HKD" } },
   };
   const entries = Object.fromEntries(fundFactEntries(usdCounter).map((entry) => [entry.key, entry.formatted]));
-  expect(entries.closingPrice).toBe("$1.172 · 06 Nov 2026 · nominal, no trades · Gloom Cloud");
-  expect(entries.premiumDiscountPercent).toBe("+0.12% · 06 Nov 2026 · 3042:HKEX close HK$9.18 at the NAVs' rate vs NAV · Gloom Cloud");
+  expect(entries.closingPrice).toBe("$1.172 · 2026-11-06 · nominal, no trades · Gloom Cloud");
+  expect(entries.premiumDiscountPercent).toBe("+0.12% · 2026-11-06 · 3042:HKEX close HK$9.18 at the NAVs' rate vs NAV · Gloom Cloud");
   expect(byId(usdCounter).premium).toMatchObject({ detail: "06 Nov 2026 close · 3042:HKEX" });
   // No counter traded: the premium is the nominal close's, and says so.
   const untraded = { ...usdCounter, premiumDiscount: { ...usdCounter.premiumDiscount!, price: { kind: "nominal" as const } } };
   expect(fundFactEntries(untraded).find((entry) => entry.key === "premiumDiscountPercent")!.formatted)
-    .toBe("+0.12% · 06 Nov 2026 · nominal closing price vs NAV · Gloom Cloud");
+    .toBe("+0.12% · 2026-11-06 · nominal closing price vs NAV · Gloom Cloud");
   expect(byId(untraded).premium).toMatchObject({ detail: "06 Nov 2026 close · nominal" });
 });
