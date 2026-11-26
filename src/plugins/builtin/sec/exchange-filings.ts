@@ -1,6 +1,6 @@
 import type { ExchangeAnnouncementsPayload, ExchangeAnnouncementsRequest } from "../../../api-client/exchange-announcements";
 import type { HeadlessPaneRow } from "../../../types/plugin";
-import { exchangeAnnouncementsPublisher, isRoutineReturn } from "../../../utils/exchange-announcements";
+import { exchangeAnnouncementsPublisher, exchangeAnnouncementsVenue, isRoutineReturn } from "../../../utils/exchange-announcements";
 import { nonUsSecListingVenue } from "../../../utils/sec";
 
 // The extended archives are bounded. The pane reveals their rows as the user scrolls.
@@ -22,7 +22,8 @@ export function exchangeFilingForm(venue: string | undefined): ExchangeFilingFor
 }
 
 export function localFilingListing(symbol: string, exchange?: string) {
-  const venue = nonUsSecListingVenue(symbol, exchange);
+  const venue = exchangeAnnouncementsVenue(nonUsSecListingVenue(symbol, exchange)
+    ?? (!exchange && /^[A-Z]{4}\.JK$/i.test(symbol) ? "JAKARTA" : null));
   const publisher = exchangeAnnouncementsPublisher(venue);
   return venue && publisher ? { symbol, exchange: venue, publisher } : null;
 }
