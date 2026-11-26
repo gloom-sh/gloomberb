@@ -216,8 +216,8 @@ test("a quarterly statistic's lines, and a daily rate's, are as of their own rel
 test("nowcasts retain published rates and signed indexes, ranked against their own history", async () => {
   const cases = [
     { id: "gdpnow", dates: ["2025-10-01", "2026-01-01", "2026-04-01"], values: [-1, 4, 2], formatted: "2.0%", reading: "Q2 2026", staleOn: "2026-08-15" },
-    { id: "nfci", dates: ["2026-06-05", "2026-06-12", "2026-06-19"], values: [-0.7, 0.4, -0.2], formatted: "-0.20", reading: "week ending 19 Jun 2026", staleOn: "2026-07-11" },
-    { id: "financial-stress", dates: ["2026-06-05", "2026-06-12", "2026-06-19"], values: [-1.5, 1, -0.5], formatted: "-0.50", reading: "week ending 19 Jun 2026", staleOn: "2026-07-11" },
+    { id: "nfci", dates: ["2026-06-05", "2026-06-12", "2026-06-19"], values: [-0.7, 0.4, -0.2], formatted: "-0.20", reading: "week ending 2026-06-19", staleOn: "2026-07-11" },
+    { id: "financial-stress", dates: ["2026-06-05", "2026-06-12", "2026-06-19"], values: [-1.5, 1, -0.5], formatted: "-0.50", reading: "week ending 2026-06-19", staleOn: "2026-07-11" },
     { id: "median-cpi", dates: ["2026-04-01", "2026-05-01", "2026-06-01"], values: [3, 6, 4], formatted: "4.0%", reading: "Jun 2026", staleOn: "2026-08-31" },
   ];
   const bundle = await loadStatsBundle({
@@ -243,6 +243,10 @@ test("nowcasts retain published rates and signed indexes, ranked against their o
       latest: item.values[2], formattedLatest: item.formatted, reading: item.reading,
     });
   }
+  // JSON and CSV keep a week's ISO day; the text reads it day first.
+  const text = renderHeadlessPaneText(econStatisticsHeadless, report, { rawArgument: "", argument: null, symbols: [], options: {} } as HeadlessPaneLoadArgs, "ECST");
+  expect(text).toContain("week ending 19 Jun 2026");
+  expect(text).not.toContain("2026-06-19");
 });
 
 test("GDPNow dates the revision and compares it with the preceding update of the same quarter", async () => {

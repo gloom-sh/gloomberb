@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { daysInTextCell } from "../../../components/ui/day-cell";
+import { formatDaysInText } from "../../../utils/day-format";
 import {
   PaneStatusBody, useExternalLinkFooter, usePaneNoticeFooter, type DataTableCell,
   type DataTableColumn,
@@ -168,7 +169,7 @@ export function EconStatisticsPane({ focused, width, height }: PaneProps) {
     const cutoff = selected.stat.cutoff ? ` ${selected.stat.cutoff}` : "";
     const info: PaneFooterSegment[] = [
       { id: "publisher", parts: [{ text: selected.attribution.source, tone: "muted" }] },
-      { id: "as-of", parts: [{ text: `reading for ${cutoff ? selected.reading : selected.readingReleased}${cutoff}`, tone: "muted" }] },
+      { id: "as-of", parts: [{ text: `reading for ${formatDaysInText(cutoff ? selected.reading : selected.readingReleased)}${cutoff}`, tone: "muted" }] },
     ];
     const lag = laggingSeriesNote(selected.stat.seriesId);
     if (lag) info.push({ id: "publication-lag", parts: [{ text: lag, tone: "warning" }] });

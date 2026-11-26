@@ -26,7 +26,10 @@ export interface StatViewModel {
   attribution: FredProvenance;
   /** The latest print's period at the series' own cadence: "Sep 21", "Aug", "Q2". */
   period: string;
-  /** What the latest print is a reading of, in full: "Aug 2026", "Q2 2026", "week ending 2026-10-03", "2026-10-09". */
+  /**
+   * What the latest print is a reading of, in full: "Aug 2026", "Q2 2026", "week ending 2026-10-03", "2026-10-09".
+   * Exports keep it so; the pane and the text draw its day first.
+   */
   reading: string;
   /** The day the latest print was released (`YYYY-MM-DD`), when FRED says; null for a daily rate. */
   releasedOn: string | null;
@@ -115,7 +118,7 @@ function formatStatReading(date: string, perYear: number): string {
   if (!name) return date;
   if (perYear <= 4) return `Q${Math.ceil(month / 3)} ${date.slice(0, 4)}`;
   if (perYear <= 12) return `${name} ${date.slice(0, 4)}`;
-  return perYear <= 52 ? `week ending ${formatDay(date)}` : formatDay(date);
+  return perYear <= 52 ? `week ending ${date}` : date;
 }
 
 function extreme(points: readonly StatPoint[], pick: "high" | "low"): StatPoint {
@@ -172,7 +175,7 @@ export function projectStat(
     readingReleased: periodReleasedText(reading, releasedOn, latest.date),
     periodicity: periodStartPeriodicity(latest.date, perYear),
     previous,
-    previousReading: previous ? nowcast ? formatDay(previous.date) : formatStatReading(previous.date, perYear) : null,
+    previousReading: previous ? nowcast ? previous.date : formatStatReading(previous.date, perYear) : null,
     yearAgo,
     changeOnPrevious: previous ? latest.value - previous.value : null,
     percentile: visible.length === 0 ? 0 : (100 * atOrBelow) / visible.length,
