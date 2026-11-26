@@ -483,12 +483,14 @@ test("a company listed abroad is looked up by the SEC, and one that files nothin
   }
 });
 
-test("SGX results search the full source window without mixing in other filings", async () => {
-  firstSymbol = "O39:SGX";
-  firstListing = { exchange: "SGX", currency: "SGD", assetCategory: "STK" };
-  const url = "https://links.sgx.com/1.0.0/corporate-announcements/A9CW58STOPTDX0HG/50dad2d3f2e1374d94921a9cad3497846885577d0c43cf2e1fe14c8c7f4764a6";
+test.each([
+  { venue: "SGX", symbol: "O39", name: "OCBC", currency: "SGD", url: "https://links.sgx.com/1.0.0/corporate-announcements/A9CW58STOPTDX0HG/50dad2d3f2e1374d94921a9cad3497846885577d0c43cf2e1fe14c8c7f4764a6", page: "https://www.sgx.com/securities/company-announcements" },
+  { venue: "JPX", symbol: "7203", name: "Toyota Motor Corporation", currency: "JPY", url: "https://www2.jpx.co.jp/disc/72030/140120260205548944.pdf", page: "https://www.jpx.co.jp/english/listing/co-search/index.html" },
+])("$venue results search the full source window without mixing in other filings", async ({ venue, symbol, name, currency, url, page }) => {
+  firstSymbol = `${symbol}:${venue}`;
+  firstListing = { exchange: venue, currency, assetCategory: "STK" };
   const exchange = spyOn(apiClient, "getCloudExchangeAnnouncements").mockImplementation(async ({ kind }) => ({
-    exchange: "SGX", symbol: "O39", name: "OCBC", page: "https://www.sgx.com/securities/company-announcements",
+    exchange: venue, symbol, name, page,
     announcements: [{
       date: "2026-11-05T22:59:27.000Z",
       headline: kind === "results" ? "Third Quarter Results" : "Use of Treasury Shares",
@@ -506,7 +508,7 @@ test("SGX results search the full source window without mixing in other filings"
     const shown = await tui.waitForFrameToContain("Third Quarter Results");
     expect(shown).not.toContain("Use of Treasury Shares");
     expect(shown).not.toContain("US issuer filing");
-    expect(exchange).toHaveBeenCalledWith({ symbol: "O39:SGX", exchange: "SGX", limit: 200, kind: "results" });
+    expect(exchange).toHaveBeenCalledWith({ symbol: firstSymbol, exchange: venue, limit: 200, kind: "results" });
   } finally {
     exchange.mockRestore();
   }
