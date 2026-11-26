@@ -1,6 +1,9 @@
 import { useMemo } from "react";
 import type { ThemeColors } from "../../../theme/colors";
+import { blendForContrast, higherContrast } from "../../../theme/color-utils";
 import { useThemeColors } from "../../../theme/theme-context";
+import { TONE_TEXT_MIN } from "../../../theme/themes";
+import { usePaneSurface } from "../../../components/layout/pane/surface";
 import {
   EmptyState,
   PaneStatusBody,
@@ -47,7 +50,14 @@ function previousScoreItems(data: FearGreedData, palette: ThemeColors): StatItem
 
 export function FearGreedPane({ paneId, focused, width, height }: PaneProps) {
   const isDesktopWeb = useUiHost().kind === "desktop-web";
-  const palette = useThemeColors();
+  const theme = useThemeColors();
+  const surface = usePaneSurface() ?? theme.bg;
+  const palette = useMemo(() => {
+    const fallback = higherContrast(theme.text, theme.textBright, surface);
+    const readable = (color: string) => blendForContrast(color, surface, fallback, TONE_TEXT_MIN);
+    return { ...theme, positive: readable(theme.positive), negative: readable(theme.negative),
+      neutral: readable(theme.neutral), warning: readable(theme.warning) };
+  }, [surface, theme]);
   const segments = useMemo(() => fearGreedGaugeSegments(palette), [palette]);
   const resource = useAsyncResource<FearGreedLoadResult>(loadFearGreed, { initialData: getCachedFearGreedData });
   const { loading, reload: refresh } = resource;
