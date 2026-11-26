@@ -8,10 +8,10 @@ import { VCA_COLUMN_DROP_ORDER, VCA_COLUMNS, vcaColumns } from "./screen-pane";
 function screened(symbol: string, date: string, skewDate: string): IvScreenRow {
   return {
     symbol, status: "ready", iv90: null,
-    iv30: { value: 0.1574, date, method: "trade-close", basis: "trade", spot: 752.69, rank: 20, percentile: 15, low: 0.12, high: 0.3, samples: 250, windowStart: "2025-11-07" },
+    iv30: { value: 0.1574, date, method: "trade-close", basis: "print", spot: 752.69, rank: 20, percentile: 15, low: 0.12, high: 0.3, samples: 250, windowStart: "2025-11-07" },
     rr25: { value: -0.051, put25: 0.188, call25: 0.137, date: skewDate, method: "trade-close", rank: 30, percentile: 12, low: -0.09, high: -0.02, samples: 250,
       windowStart: "2025-11-07", minSamples: 20, fullYear: true },
-    latest: { date, method: "trade-close", basis: "trade", capturedAt: "", spot: 752.69, iv7: null, iv30: 0.1574, iv60: null, iv90: 0.17, iv180: null, iv365: null },
+    latest: { date, method: "trade-close", basis: "print", capturedAt: "", spot: 752.69, iv7: null, iv30: 0.1574, iv60: null, iv90: 0.17, iv180: null, iv365: null },
     skew: { date: skewDate, put25: 0.188, call25: 0.137, skew: 0.051 },
   };
 }
