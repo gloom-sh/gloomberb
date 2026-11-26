@@ -272,19 +272,21 @@ import {
   SEC_FILINGS,
 } from "../../plugins/builtin/shared/report-freshness";
 import {
+  displayEarningsEpsBasis,
+  earningsActionForReport,
   earningsDateStatus,
   earningsDetailParts,
-  earningsEpsBasis,
   epsBasisName,
   isProvisionalActual,
   quarterLabel,
   showsEpsBasis,
+  unconfirmedAdjustedEps,
 } from "../../plugins/builtin/shared/earnings-report";
 import {
   calendarEventOf,
-  calendarStatus,
   listingDay,
   newYorkDay,
+  resolveCalendarEvent,
   resolveListingEvents,
   withResolvedEarnings,
   type ResolvedEarningsEvent,
@@ -1187,9 +1189,10 @@ function corporateActionRows(data: CorporateActionsData) {
   const amount = (value: number) => (currency ? formatDistributionAmount(value, currency) : cleanDecimal(value));
   return [
     ...data.earnings.map((event) => {
-      const unit = event.currency?.trim() || earningsCurrency;
+      const unit = event.currency?.trim() || (unconfirmedAdjustedEps(event) ? undefined : earningsCurrency);
       const quarter = quarterLabel(event.fiscalPeriod);
-      const basis = earningsEpsBasis(event.epsBasis);
+      const basis = displayEarningsEpsBasis(event);
+      const { difference, surprisePercent, surpriseNotMeaningful } = earningsActionForReport(event);
       // History rows are keyed by fiscal quarter end, upcoming ones by announcement date.
       const note = [event.dateType === "fiscal-period-end" ? "period end" : null, quarter === MISSING_VALUE ? null : quarter].filter(Boolean).join(", ");
       const adjustedFor = (event.epsActual == null && event.epsEstimate == null) || publishedEps(event) ? ""
@@ -1204,6 +1207,9 @@ function corporateActionRows(data: CorporateActionsData) {
         epsActual: event.epsActual,
         ...(event.streetEps ? { streetEps: event.streetEps, gaapEps: event.gaapEps } : {}),
         epsEstimate: event.epsEstimate,
+        ...(difference == null ? {} : { difference }),
+        ...(surprisePercent == null ? {} : { surprisePercent }),
+        ...(surpriseNotMeaningful ? { surpriseNotMeaningful } : {}),
         epsBasis: showsEpsBasis({ epsActual: event.epsActual, epsBasis: basis }) ? epsBasisName(basis) : undefined,
         ...(isProvisionalActual(event) ? { epsProvisional: true } : {}),
         epsAnalysts: event.epsAnalysts,
@@ -1270,6 +1276,9 @@ function earningsRows(events: ResolvedEarningsEvent[]) {
       event.timing === "AMC" ? "amc" : event.timing === "BMO" ? "bmo" : null, displayTimeZone(), event.releaseAt) ?? "",
     epsEstimate: event.epsEstimate,
     epsActual: event.epsActual,
+    ...(event.difference == null ? {} : { difference: event.difference }),
+    ...(event.surprise == null ? {} : { surprise: event.surprise }),
+    ...(event.surpriseNotMeaningful ? { surpriseNotMeaningful: event.surpriseNotMeaningful } : {}),
     revenueEstimate: event.revenueEstimate,
     ...(event.streetEps ? { epsBasis: event.epsBasis, streetEps: event.streetEps, gaapEps: event.gaapEps } : {}),
     revenueActual: event.revenueActual,
@@ -4283,7 +4292,7 @@ async function runEvents(rawArgs: string[], ctx: Parameters<CliCommandDef["execu
     const identity = listingIdentity(listing, quote);
     const choice = await listingChoiceNotes(listing, market, quote, venues);
     ctx.printResult({
-      data: withPriceAdjustmentKinds(data),
+      data: withPriceAdjustmentKinds({ ...data, earnings: data.earnings.map(earningsActionForReport) }),
       metadata: listingMetadata(identity),
       // Dated by when it was read, as EE and fn EVT date the same events: a row's
       // date is when the event happens, and the newest past one is no as-of.
@@ -4291,7 +4300,7 @@ async function runEvents(rawArgs: string[], ctx: Parameters<CliCommandDef["execu
       warnings: [...choice, ...(data.coverage?.dividends === "unavailable" ? [INCOMPLETE_DISTRIBUTIONS] : [])],
     }, {
       heading: listingHeading(identity),
-      rows: corporateActionRows,
+      rows: () => corporateActionRows(data),
       columns: [
         { key: "date", header: "Date" },
         { key: "type", header: "Type" },
@@ -5020,11 +5029,11 @@ async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["exe
     const dayOf = (listing: CliListing) => listingDay(listing.request.exchange || listing.exchange, now);
     const resolved = await resolveListingEvents(services.dataProvider, listings.map((listing) => ({
       key: listing.key, symbol: listing.request.symbol, exchange: listing.request.exchange, today: dayOf(listing),
-    })), calendar, today);
+    })), calendar, today, { includeReportedFiling: true });
     const events: ResolvedEarningsEvent[] = calendar
       .map((event) => {
         const listing = listings.find((entry) => entry.key.toUpperCase() === event.symbol.toUpperCase());
-        return resolved.get(event.symbol.toUpperCase()) ?? { ...event, dateStatus: calendarStatus(event, listing ? dayOf(listing) : today) };
+        return resolved.get(event.symbol.toUpperCase()) ?? resolveCalendarEvent(event, null, listing ? dayOf(listing) : today);
       })
       .sort((left, right) => left.earningsDate.getTime() - right.earningsDate.getTime());
     const eventOf = (listing: CliListing) => events.find((event) => event.symbol.toUpperCase() === listing.key.toUpperCase());

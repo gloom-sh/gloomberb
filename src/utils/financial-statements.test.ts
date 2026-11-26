@@ -446,3 +446,27 @@ describe("expense lines served blank", () => {
     expect(filledPeriodsNote([other!])).toBeNull();
   });
 });
+
+test("an undated MOPS report is dated by first observation without a publication date", () => {
+  const statement: FinancialStatement = {
+    date: "2026-06-30",
+    currency: "TWD",
+    netIncome: 63_839_675_000,
+    filledFrom: {
+      source: "results",
+      fields: ["netIncome"],
+      documents: [{
+        source: "mops",
+        kind: "interim_report",
+        title: "2881 2026 Q2 consolidated financial statements",
+        url: "https://mopsov.twse.com.tw/server-java/t164sb01?step=3&SYEAR=2026&file_name=tifrs-fr2-m1-fh-cr-2881-2026Q2.html",
+        firstObserved: true,
+        publishedAt: "2026-11-25T14:30:00Z",
+        fetchedAt: "2026-11-26T02:00:00Z",
+      }],
+      lines: { netIncome: { document: 0, page: null } },
+    },
+  };
+  expect(fillDateText(fillDate(statement)!)).toBe("first observed 2026-11-25");
+  expect(filledPeriodPublications([statement])).toEqual([]);
+});

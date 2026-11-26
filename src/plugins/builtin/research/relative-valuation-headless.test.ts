@@ -123,7 +123,7 @@ test("RV's forward P/E names the fiscal year of its consensus, as valuation does
   const header = renderReportCsv(headlessReportTables(relativeValuationHeadless, result, input, "RV", freshness,
     { complete: true, unavailableSymbols: [] }), freshness).split("\n")[0]!.split(",");
   expect(header.slice(header.indexOf("Fwd P/E"), header.indexOf("Fwd P/E") + 2)).toEqual(["Fwd P/E", "EV/S"]);
-  expect(header.slice(-3)).toEqual(["as_of", "retrieved_at", "Fwd P/E period"]);
+  expect(header.slice(-6)).toEqual(["as_of", "retrieved_at", "Fwd P/E period", "Pre-Market Updated", "After Hours Updated", "Overnight Updated"]);
 });
 
 test("relative valuation does not divide unconverted foreign cash flows by a USD market value", () => {
@@ -421,8 +421,10 @@ test("RV's export writes each peer's Last as a number in its own currency, named
     const both = await csvOf(["NESN:SWX", "AAPL"]);
     expect(both.header.slice(0, 4)).toEqual(["Ticker", "Name", "Last", "Chg%"]);
     // Last stays in francs; the cap is compared in dollars beside AAPL's.
-    expect(both.row("NESN:SWX")).toMatchObject({ Last: "84.37", symbol_or_series: "NESN:SWX", currency_or_unit: "CHF", "Mkt Cap unit": "USD" });
-    expect(both.row("AAPL")).toMatchObject({ Last: "336.64", "After Hours": "337.2", symbol_or_series: "AAPL", currency_or_unit: "USD" });
+    expect(both.row("NESN:SWX")).toMatchObject({ Last: "84.37", symbol_or_series: "NESN:SWX", currency_or_unit: "CHF", "Mkt Cap unit": "USD",
+      as_of: "2026-10-23T15:30:00.000Z", "After Hours Updated": "" });
+    expect(both.row("AAPL")).toMatchObject({ Last: "336.64", "After Hours": "337.2", symbol_or_series: "AAPL", currency_or_unit: "USD",
+      as_of: "2026-10-23T20:00:00.000Z", "After Hours Updated": "2026-10-23T20:55:00Z" });
     expect(Number(both.row("AAPL")["After Hours Chg%"])).toBeCloseTo(0.1663, 4);
     // A figure a peer does not have is empty, its reason in status, never words in a column of numbers.
     expect(both.row("AAPL")).toMatchObject({ "Fwd P/E": "", "P/E": "20" });

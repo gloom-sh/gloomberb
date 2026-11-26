@@ -254,7 +254,11 @@ export function DocsPane({ focused, width, height }: PaneProps) {
   const instance = usePaneInstance();
   const requestKey = instance?.params?.topic ?? null;
   const requestAt = instance?.params?.at ?? null;
-  const { feed, offline, reload } = useDocsFeed();
+  const { feed, offline, bundled, reload } = useDocsFeed();
+  useRemoteUiNode(bundled ? {
+    role: "report-freshness", label: "Documentation source",
+    getMetadata: () => ({ source: "Bundled documentation" }),
+  } : null);
   usePaneRefreshKey(reload, { focused });
   const [stack, setStack] = usePluginPaneState<string[]>("stack", []);
   const [query, setQuery] = usePluginPaneState<string>("query", "");
@@ -363,8 +367,8 @@ export function DocsPane({ focused, width, height }: PaneProps) {
   }, [rendererHost, topic]);
 
   const footerInfo = useMemo<PaneFooterSegment[]>(() => (
-    offline ? [{ id: "docs-offline", parts: [{ text: "offline, saved copy", tone: "warning" }] }] : []
-  ), [offline]);
+    offline ? [{ id: "docs-offline", parts: [{ text: bundled ? "offline, bundled documentation" : "offline, saved copy", tone: "warning" }] }] : []
+  ), [offline, bundled]);
   const footerHints = useMemo<PaneHint[]>(() => {
     const hints: PaneHint[] = [];
     if (topic?.kind === "function" && feed && findDocsFunction(feed, topic.code)) {

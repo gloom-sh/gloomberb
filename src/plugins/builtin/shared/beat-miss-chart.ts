@@ -46,12 +46,13 @@ function outcome(actual: number | null | undefined, estimate: number | null | un
  */
 export function beatMissSeries<T extends { date: string }>(
   bars: readonly T[],
-  read: { actual: (bar: T) => number | null | undefined; estimate: (bar: T) => number | null | undefined },
+  read: { actual: (bar: T) => number | null | undefined; estimate: (bar: T) => number | null | undefined; comparable?: (bar: T) => boolean },
   unit = "",
 ): ResolvedSeries[] {
   if (bars.length < 2) return [];
+  const result = (bar: T) => outcome(read.actual(bar), read.comparable?.(bar) === false ? null : read.estimate(bar));
   const reported = (id: "beat" | "miss" | "eps", label: string, color: string): ResolvedSeries => ({
-    ...staticSeries(slotPoints(bars, (bar) => (outcome(read.actual(bar), read.estimate(bar)) === id ? read.actual(bar) : null)),
+    ...staticSeries(slotPoints(bars, (bar) => (result(bar) === id ? read.actual(bar) : null)),
       { id, label, color, style: "columns" }),
     unit, unitGroup: "eps",
   });
@@ -60,6 +61,6 @@ export function beatMissSeries<T extends { date: string }>(
       unit, unitGroup: "eps" },
     reported("beat", "Beat", colors.positive),
     reported("miss", "Miss", colors.negative),
-    ...(bars.some((bar) => outcome(read.actual(bar), read.estimate(bar)) === "eps") ? [reported("eps", "EPS", colors.textBright)] : []),
+    ...(bars.some((bar) => result(bar) === "eps") ? [reported("eps", "EPS", colors.textBright)] : []),
   ];
 }

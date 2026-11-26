@@ -1,9 +1,9 @@
 import type { DataProvider, EarningsEvent } from "../../../types/data-provider";
 import type { CorporateActionsData, EarningsAction, EarningsDateStatus, EarningsEpsBasis, FilingEpsDetails } from "../../../types/financials";
+import { canonicalExchange, canonicalTickerKey, parsePublicTickerKey } from "../../../utils/exchanges";
 import { logFailure } from "../../../utils/log-failure";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
-import { isNotMeaningful } from "../../../utils/growth";
-import { dateStatusFromEstimateFlag, earningsDateStatus, earningsEpsBasis, epsSurprise } from "./earnings-report";
+import { dateStatusFromEstimateFlag, displayEarningsEpsBasis, earningsActionForReport, earningsDateStatus, earningsEpsBasis } from "./earnings-report";
 import { coherentEarningsValue, EARNINGS_ESTIMATE_FIELDS } from "./earnings-estimate-basis";
 import { listingTimeZone } from "../../../market-data/market/trading-sessions";
 
@@ -54,7 +54,7 @@ function calendarDay(event: Pick<EarningsEvent, "earningsDate">): string {
  * A calendar event's status on `today`: reported once the report is out
  * (Gloom Cloud says so, or has its figure) or its date has passed.
  */
-export function calendarStatus(
+function calendarStatus(
   event: Pick<EarningsEvent, "earningsDate" | "epsActual" | "isDateEstimate" | "dateStatus">,
   today: string,
 ): EarningsDateStatus | null {
@@ -205,25 +205,6 @@ export function resolveReportRows<T>(rows: readonly T[], event: EarningsEvent | 
 
 const TIME_TEXT = { bmo: "Pre Market", amc: "After Hours" } as const;
 
-/**
- * A row's beat, measured as Gloom Cloud measures it, once the calendar gives it a figure or an estimate it lacked.
- * Against a loss or zero estimate it has no surprise percentage (N/M), the record's either; the difference stands.
- */
-function withSurprise(row: EarningsAction, before: EarningsAction | null): EarningsAction {
-  const { epsActual: actual, epsEstimate: estimate } = row;
-  if (actual == null || estimate == null) return row;
-  const surprise = epsSurprise(actual, estimate);
-  const unchanged = actual === before?.epsActual && estimate === before.epsEstimate;
-  if (unchanged && !isNotMeaningful(surprise)) return row;
-  const cents = (value: number) => Math.round(value * 100) / 100;
-  const { difference: _difference, surprisePercent: _surprise, ...rest } = row;
-  return {
-    ...rest,
-    difference: unchanged && row.difference != null ? row.difference : cents(actual - estimate),
-    ...(typeof surprise === "number" ? { surprisePercent: cents(surprise * 100) } : {}),
-  };
-}
-
 function definedFields<T extends object>(row: T): T {
   return Object.fromEntries(Object.entries(row).filter(([, value]) => value !== undefined)) as T;
 }
@@ -231,12 +212,17 @@ function definedFields<T extends object>(row: T): T {
 /** Corporate-actions earnings rows, as events, EE and the `earnings` resolution read them. */
 const ACTION_ROWS: ReportRowAdapter<EarningsAction> = {
   slot: (row) => ({ date: row.date, dateStatus: earningsDateStatus(row.dateStatus), epsActual: row.epsActual }),
-  reported: (row, epsActual) => withSurprise({ ...row, dateStatus: "reported", ...(row.epsActual == null && epsActual != null ? { epsActual } : {}) }, row),
+  reported(row, epsActual) {
+    if (epsActual == null) return { ...row, dateStatus: "reported" };
+    const { epsActualSource: _source, difference: _difference, surprisePercent: _surprise, ...inputs } = row;
+    return { ...inputs, dateStatus: "reported", epsActual, epsBasis: null };
+  },
   fromCalendar(report, row) {
     // The calendar's consensus goes with its date; without one, the record's stays.
     const estimate = report.epsEstimate != null;
-    return withSurprise(definedFields<EarningsAction>({
-      ...row,
+    const { epsActualSource: _source, difference: _difference, surprisePercent: _surprise, ...inputs } = row ?? {};
+    return definedFields<EarningsAction>({
+      ...inputs,
       date: report.date,
       dateType: "announcement",
       time: report.timing ? TIME_TEXT[report.timing] : row?.time,
@@ -245,9 +231,9 @@ const ACTION_ROWS: ReportRowAdapter<EarningsAction> = {
       epsAnalysts: estimate ? report.epsAnalysts ?? undefined : row?.epsAnalysts,
       epsActual: report.epsActual ?? row?.epsActual,
       fiscalPeriod: row?.fiscalPeriod ?? report.fiscalPeriod ?? undefined,
-      epsBasis: estimate ? report.epsBasis : row?.epsBasis,
+      epsBasis: report.epsActual != null ? null : estimate ? report.epsBasis : row?.epsBasis,
       dateStatus: report.dateStatus ?? undefined,
-    }), row);
+    });
   },
 };
 
@@ -281,11 +267,13 @@ function needsRecordedQuarters(event: EarningsEvent, today: string): boolean {
 export interface ResolvedEarningsEvent extends EarningsEvent, FilingEpsDetails {
   /** Out, announced or projected, after resolution; null when no source says. */
   dateStatus: EarningsDateStatus | null;
+  difference?: number;
+  surpriseNotMeaningful?: true;
 }
 
 const TIMING_OF_TEXT: Record<string, EarningsEvent["timing"]> = { "Pre Market": "BMO", "After Hours": "AMC" };
 
-/** The calendar's event without its consensus, which is another quarter's than the report's. */
+/** The calendar's event without estimates from a different period or a displaced EPS forecast. */
 function withoutConsensus(event: EarningsEvent, epsOnly = false): EarningsEvent {
   const stripped: EarningsEvent = { ...event, epsBasis: null };
   const basis = { ...event.estimateBasis };
@@ -302,21 +290,29 @@ function withoutConsensus(event: EarningsEvent, epsOnly = false): EarningsEvent 
 const statusFlag = (status: EarningsDateStatus | null) => status === "projected" ? true : status === "confirmed" ? false : null;
 
 /**
- * The resolved event for a row. The calendar's own report keeps every figure
- * the calendar carries (revenue, ranges, bases), but its consensus only when
- * it is the report's, and takes the row's status and, when the record has the
- * actual the calendar lacks, the record's EPS figures, measured against the
- * record's estimate. Another report on record is that row alone.
+ * The resolved event for a row. The calendar's own report keeps its revenue
+ * and same-report consensus. If the record supplies EPS instead, its EPS
+ * figures replace the calendar's forecast and its metadata together.
+ * Another report on record is that row alone.
  */
 function eventOfRow(event: EarningsEvent, row: EarningsAction, report: CalendarReport | null): ResolvedEarningsEvent {
   const ownDate = row.date === calendarDay(event);
   const dateStatus = earningsDateStatus(row.dateStatus);
   const earningsDate = ownDate ? event.earningsDate : new Date(`${row.date}T00:00:00.000Z`);
   const rowTiming = TIMING_OF_TEXT[row.time ?? ""];
+  const recordBasis = displayEarningsEpsBasis(row);
+  const { difference, surprisePercent, surpriseNotMeaningful } = earningsActionForReport(row);
+  const comparison = {
+    surprise: surprisePercent ?? null,
+    ...(difference == null ? {} : { difference }),
+    ...(surpriseNotMeaningful ? { surpriseNotMeaningful } : {}),
+  };
   if (report) {
     const filed = row.epsActual != null && row.epsBasis === "company-adjusted";
-    const base = !report.ownConsensus ? withoutConsensus(event) : filed ? withoutConsensus(event, true) : event;
     const recordFigures = row.epsActual != null && (event.epsActual == null || filed);
+    const base = !report.ownConsensus ? withoutConsensus(event) : recordFigures ? withoutConsensus(event, true) : event;
+    const epsActual = recordFigures ? row.epsActual! : event.epsActual ?? null;
+    const epsEstimate = recordFigures ? row.epsEstimate ?? null : base.epsEstimate ?? row.epsEstimate ?? null;
     return {
       ...base,
       ...(filed ? { streetEps: row.streetEps, gaapEps: row.gaapEps } : {}),
@@ -325,11 +321,11 @@ function eventOfRow(event: EarningsEvent, row: EarningsAction, report: CalendarR
       // The company's time is for its own date, never another the record places the report on.
       releaseAt: ownDate ? event.releaseAt ?? null : null,
       isDateEstimate: statusFlag(dateStatus) ?? (dateStatus === "reported" ? base.isDateEstimate ?? null : null),
-      epsEstimate: recordFigures ? row.epsEstimate ?? null : base.epsEstimate ?? row.epsEstimate ?? null,
+      epsEstimate,
       epsAnalysts: recordFigures ? row.epsAnalysts ?? null : base.epsAnalysts ?? row.epsAnalysts ?? null,
-      epsActual: recordFigures ? row.epsActual! : event.epsActual ?? row.epsActual ?? null,
-      epsBasis: recordFigures ? row.epsBasis ?? null : base.epsBasis ?? row.epsBasis ?? null,
-      surprise: recordFigures ? row.surprisePercent ?? null : base.surprise ?? row.surprisePercent ?? null,
+      epsActual,
+      epsBasis: recordFigures ? recordBasis : epsActual == null ? earningsEpsBasis(base.epsBasis) ?? recordBasis : null,
+      ...(recordFigures ? comparison : { surprise: null }),
       timing: (ownDate && event.timing) || rowTiming || event.timing,
       dateStatus,
     };
@@ -344,10 +340,10 @@ function eventOfRow(event: EarningsEvent, row: EarningsAction, report: CalendarR
     epsAnalysts: row.epsAnalysts ?? null,
     epsActual: row.epsActual ?? null,
     ...(row.streetEps ? { streetEps: row.streetEps, gaapEps: row.gaapEps } : {}),
-    epsBasis: row.epsBasis ?? null,
+    epsBasis: recordBasis,
     revenueEstimate: null,
     revenueActual: null,
-    surprise: row.surprisePercent ?? null,
+    ...comparison,
     timing: rowTiming ?? "",
     dateStatus,
   };
@@ -362,7 +358,7 @@ function eventOfRow(event: EarningsEvent, row: EarningsAction, report: CalendarR
  */
 export function resolveCalendarEvent(event: EarningsEvent, earnings: readonly EarningsAction[] | null | undefined, today: string): ResolvedEarningsEvent {
   const status = calendarStatus(event, today);
-  if (!earnings && status !== "reported") return { ...event, dateStatus: status };
+  if (!earnings && status !== "reported") return { ...event, dateStatus: status, surprise: null };
   const { rows, calendarRow } = resolveReportRowsWithCalendar(earnings ?? [], event, today, ACTION_ROWS);
   const next = rows
     .filter((row) => !isOut(ACTION_ROWS.slot(row), today))
@@ -446,17 +442,36 @@ export function noNextReportText(last: LastReport | null): string {
 /** Calendar events need their quarters on record read at most this many at a time. */
 const RECORD_CONCURRENCY = 4;
 
+function matchingReportedFiling(actions: CorporateActionsData, listing: EarningsListing, event: EarningsEvent): EarningsAction | undefined {
+  const requested = parsePublicTickerKey(canonicalTickerKey(listing.symbol, listing.exchange));
+  const returned = parsePublicTickerKey(actions.symbol);
+  if (returned.symbol !== requested.symbol) return;
+  const venues = [requested.exchange, returned.exchange, canonicalExchange(actions.exchange), canonicalExchange(actions.micCode)].filter(Boolean);
+  if (new Set(venues).size > 1) return;
+  const date = calendarDay(event);
+  const basis = event.estimateBasis?.epsEstimate;
+  const period = basis?.periodEndDate?.slice(0, 7);
+  return actions.earnings.find((row) => row.date === date && row.dateType !== "fiscal-period-end"
+    && (!period || !row.fiscalPeriod || row.fiscalPeriod === period)
+    && (!basis?.currency || row.currency === basis.currency)
+    && row.epsActualSource === "filing" && row.epsBasis === "company-adjusted"
+    && Number.isFinite(row.epsActual) && Number.isFinite(row.gaapEps)
+    && row.streetEps?.actualBasis === "including-stock-compensation" && Number.isFinite(row.streetEps.actual));
+}
+
 /**
  * Each listing's calendar event, resolved: the corporate actions of those
- * whose date has come are read for their actual and the next quarter on
- * record. A listing the calendar has nothing for is absent; one whose
- * record cannot be read resolves on the calendar alone.
+ * whose date has come are read for a missing actual and the next quarter on
+ * record. The earnings command also checks populated actuals for a matching
+ * filing without looking for another date. Absent or failed records leave
+ * the calendar alone.
  */
 export async function resolveListingEvents(
   provider: Pick<DataProvider, "getCorporateActions">,
   listings: readonly EarningsListing[],
   events: readonly EarningsEvent[],
   today: string,
+  options: { includeReportedFiling?: boolean } = {},
 ): Promise<Map<string, ResolvedEarningsEvent>> {
   const resolved = new Map<string, ResolvedEarningsEvent>();
   const pending = listings.flatMap((listing) => {
@@ -466,10 +481,13 @@ export async function resolveListingEvents(
   for (let index = 0; index < pending.length; index += RECORD_CONCURRENCY) {
     await Promise.all(pending.slice(index, index + RECORD_CONCURRENCY).map(async ({ listing, event }) => {
       const day = listing.today ?? today;
-      const earnings = needsRecordedQuarters(event, day) && provider.getCorporateActions
+      const filingOnly = options.includeReportedFiling && event.epsActual != null;
+      const actions = (filingOnly || needsRecordedQuarters(event, day)) && provider.getCorporateActions
         ? await provider.getCorporateActions(listing.symbol, listing.exchange)
-          .then((actions) => actions.earnings, logFailure("earnings-calendar", "Read corporate actions for a past report date failed", null))
+          .catch(logFailure("earnings-calendar", "Read corporate actions for a past report date failed", null))
         : null;
+      const filing = filingOnly && actions ? matchingReportedFiling(actions, listing, event) : null;
+      const earnings = filingOnly ? (filing ? [filing] : null) : actions?.earnings;
       resolved.set(listing.key.toUpperCase(), resolveCalendarEvent(event, earnings, day));
     }));
   }

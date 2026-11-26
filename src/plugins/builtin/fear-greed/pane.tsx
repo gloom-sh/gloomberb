@@ -1,4 +1,9 @@
 import { useMemo } from "react";
+import type { ThemeColors } from "../../../theme/colors";
+import { blendForContrast, higherContrast } from "../../../theme/color-utils";
+import { useThemeColors } from "../../../theme/theme-context";
+import { TONE_TEXT_MIN } from "../../../theme/themes";
+import { usePaneSurface } from "../../../components/layout/pane/surface";
 import {
   EmptyState,
   PaneStatusBody,
@@ -21,13 +26,13 @@ import { getCachedFearGreedData, loadFearGreed, type FearGreedLoadResult } from 
 import { IndexHistoryChart, IndicatorChart } from "./charts";
 import type { FearGreedData } from "./data";
 import {
-  FEAR_GREED_GAUGE_SEGMENTS,
+  fearGreedGaugeSegments,
   formatScore,
   ratingColor,
   ratingLabel,
 } from "./format";
 
-function previousScoreItems(data: FearGreedData): StatItem[] {
+function previousScoreItems(data: FearGreedData, palette: ThemeColors): StatItem[] {
   return [
     { id: "close", label: "Prev close", value: data.overall.previousClose },
     { id: "week", label: "1 week ago", value: data.overall.previousWeek },
@@ -39,12 +44,21 @@ function previousScoreItems(data: FearGreedData): StatItem[] {
     value: formatScore(value),
     ...(value == null
       ? { tone: "muted" as const }
-      : { color: ratingColor(value < 25 ? "extreme fear" : value < 45 ? "fear" : value <= 55 ? "neutral" : "greed") }),
+      : { color: ratingColor(value < 25 ? "extreme fear" : value < 45 ? "fear" : value <= 55 ? "neutral" : "greed", palette) }),
   }));
 }
 
 export function FearGreedPane({ paneId, focused, width, height }: PaneProps) {
   const isDesktopWeb = useUiHost().kind === "desktop-web";
+  const theme = useThemeColors();
+  const surface = usePaneSurface() ?? theme.bg;
+  const palette = useMemo(() => {
+    const fallback = higherContrast(theme.text, theme.textBright, surface);
+    const readable = (color: string) => blendForContrast(color, surface, fallback, TONE_TEXT_MIN);
+    return { ...theme, positive: readable(theme.positive), negative: readable(theme.negative),
+      neutral: readable(theme.neutral), warning: readable(theme.warning) };
+  }, [surface, theme]);
+  const segments = useMemo(() => fearGreedGaugeSegments(palette), [palette]);
   const resource = useAsyncResource<FearGreedLoadResult>(loadFearGreed, { initialData: getCachedFearGreedData });
   const { loading, reload: refresh } = resource;
   const data = resource.data?.data ?? null;
@@ -65,7 +79,7 @@ export function FearGreedPane({ paneId, focused, width, height }: PaneProps) {
     ...(data ? [{
       id: "score",
       parts: [
-        { text: `${formatScore(data.overall.score)} ${ratingLabel(data.overall.rating)}`, color: ratingColor(data.overall.rating), bold: true },
+        { text: `${formatScore(data.overall.score)} ${ratingLabel(data.overall.rating)}`, color: ratingColor(data.overall.rating, palette), bold: true },
       ],
     }] : []),
     // Its source and when CNN published the reading, as `fn FNG` ends, a stale one with its warning beside it;
@@ -75,10 +89,10 @@ export function FearGreedPane({ paneId, focused, width, height }: PaneProps) {
       ...(stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
     ]),
     ...(updatedAgo ? [ageFooterSegment(updatedAgo, { id: "age", verb: "updated", tone: "value" })] : []),
-  ], [data, loaded, savedAt, stale, updatedAgo, utcDay]);
+  ], [data, loaded, savedAt, stale, updatedAgo, utcDay, palette]);
   usePaneStatusFooter({ registrationId: paneId, loading, error, info: footerInfo });
 
-  const previousScores = useMemo(() => (data ? previousScoreItems(data) : []), [data]);
+  const previousScores = useMemo(() => (data ? previousScoreItems(data, palette) : []), [data, palette]);
 
   if (loading && !data) {
     return (
@@ -101,7 +115,7 @@ export function FearGreedPane({ paneId, focused, width, height }: PaneProps) {
             value={data.overall.score}
             valueLabel={ratingLabel(data.overall.rating)}
             width={width}
-            segments={FEAR_GREED_GAUGE_SEGMENTS}
+            segments={segments}
             minWidth={isDesktopWeb ? Math.min(34, Math.max(1, width - 2)) : undefined}
           />
           <IndexHistoryChart data={data} width={width} focused={focused} />
