@@ -246,13 +246,13 @@ export function monthlyHistoryEnd(history: DistributionHistory | null | undefine
   return distributionIntervalDays(days) === CADENCE_DAYS[0] ? last : null;
 }
 
-/** `distribution history ends 2026-09-01`: what a monthly payer's ended history says in place of a yield it cannot give. */
+/** `distribution history ends 01 Sep 2026`: what a monthly payer's ended history says in place of a yield it cannot give. */
 export function historyEndsText(day: string): string {
   return `distribution history ends ${formatDay(day)}`;
 }
 
 export const NO_CURRENT_DIVIDEND = "no current dividend";
-/** What a short cell reads for a monthly payer's history that ends (DividendLapse.historyEnds), beside `last ex 2026-09-01`. */
+/** What a short cell reads for a monthly payer's history that ends (DividendLapse.historyEnds), beside `last ex 01 Sep 2026`. */
 const HISTORY_ENDS = "history ends";
 
 /** What a short cell reads in place of a lapsed forward yield: `history ends` for a history that ends, else `no current dividend`. */
@@ -260,16 +260,16 @@ export function lapseValue(lapse: DividendLapse): string {
   return lapse.historyEnds && lapse.lastPaid ? HISTORY_ENDS : NO_CURRENT_DIVIDEND;
 }
 
-/** `last paid 2026-02-27` beside "no current dividend", `last ex 2026-09-01` beside "history ends"; null when the date is unknown. */
+/** `last paid 27 Feb 2026` beside "no current dividend", `last ex 01 Sep 2026` beside "history ends"; null when the date is unknown. */
 export function lastPaidNote(lapse: DividendLapse): string | null {
   if (!lapse.lastPaid) return null;
   return lapse.historyEnds ? `last ex ${formatDay(lapse.lastPaid)}` : `last paid ${formatDay(lapse.lastPaid)}`;
 }
 
 /**
- * `no current dividend (last paid 2026-02-27)`, what a lapsed forward yield
+ * `no current dividend (last paid 27 Feb 2026)`, what a lapsed forward yield
  * reads instead of a percentage; for a monthly payer's history that ends
- * early, `distribution history ends 2026-09-01`.
+ * early, `distribution history ends 01 Sep 2026`.
  */
 export function noCurrentDividend(lapse: DividendLapse): string {
   if (lapse.historyEnds && lapse.lastPaid) return historyEndsText(lapse.lastPaid);
