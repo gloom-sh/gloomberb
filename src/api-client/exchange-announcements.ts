@@ -39,8 +39,8 @@ export interface ExchangeAnnouncementsPayload {
 }
 
 /**
- * `/cloud/announcements?symbol=NST&exchange=ASX&limit=15`. `kind: "results"` asks an HKEX company's results
- * announcements and business updates alone, which a day's buyback return never pushes out of the list.
+ * `/cloud/announcements?symbol=NST&exchange=ASX&limit=15`. `kind: "results"` asks for an HKEX or SGX company's
+ * results, business updates and the related materials its venue publishes.
  */
 export function cloudExchangeAnnouncementsPath(params: { symbol: string; exchange: string; limit?: number; kind?: "results" }): string {
   const search = new URLSearchParams({ symbol: params.symbol, exchange: params.exchange });

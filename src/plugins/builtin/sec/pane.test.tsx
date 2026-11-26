@@ -483,6 +483,35 @@ test("a company listed abroad is looked up by the SEC, and one that files nothin
   }
 });
 
+test("SGX results search the full source window without mixing in other filings", async () => {
+  firstSymbol = "O39:SGX";
+  firstListing = { exchange: "SGX", currency: "SGD", assetCategory: "STK" };
+  const url = "https://links.sgx.com/1.0.0/corporate-announcements/A9CW58STOPTDX0HG/50dad2d3f2e1374d94921a9cad3497846885577d0c43cf2e1fe14c8c7f4764a6";
+  const exchange = spyOn(apiClient, "getCloudExchangeAnnouncements").mockImplementation(async ({ kind }) => ({
+    exchange: "SGX", symbol: "O39", name: "OCBC", page: "https://www.sgx.com/securities/company-announcements",
+    announcements: [{
+      date: "2026-11-05T22:59:27.000Z",
+      headline: kind === "results" ? "Third Quarter Results" : "Use of Treasury Shares",
+      types: ["Announcement"], priceSensitive: null, fileSize: null, documentKey: url, url,
+    }],
+    total: 1,
+    retrievedAt: "2026-11-26T00:00:00Z",
+  }));
+  try {
+    await mount(createTestDataProvider({ getSecFilings: async () => [{ ...filing, primaryDocDescription: "US issuer filing" }] }));
+    await tui.waitForFrameToContain("Use of Treasury Shares");
+    await tui.clickFrameText("All forms");
+    await tui.waitForFrameToContain("Results & presentations");
+    await tui.clickFrameText("Results & presentations");
+    const shown = await tui.waitForFrameToContain("Third Quarter Results");
+    expect(shown).not.toContain("Use of Treasury Shares");
+    expect(shown).not.toContain("US issuer filing");
+    expect(exchange).toHaveBeenCalledWith({ symbol: "O39:SGX", exchange: "SGX", limit: 200, kind: "results" });
+  } finally {
+    exchange.mockRestore();
+  }
+});
+
 test("a Hong Kong spot coin fund shows its issuer's figures in its counter's currency, with units per coin", async () => {
   paneSettings = { forms: ETF_FORMS_SETTING };
   // A bare code on HKEX: the server is asked for 3046:XHKG, its Hong Kong listing, not a US 3046.

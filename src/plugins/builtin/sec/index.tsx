@@ -348,18 +348,23 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
     () => (forms ? filterFilingsByForms(fundSeriesFilings(issuerFilings), forms) : issuerFilings),
     [forms, issuerFilings],
   );
+  const local = ticker && !forms && eligibleTicker ? localFilingListing(ticker.metadata.ticker, ticker.metadata.exchange) : null;
+  const localSymbol = local?.symbol;
+  const localVenue = local?.exchange;
   // The fund view (ETF) has its own groups; each view keeps its own choice.
   const groups = forms ? FUND_FORM_GROUPS : COMPANY_FORM_GROUPS;
   const [storedGroup, setFormGroup] = usePluginPaneState<string>(forms ? "fundFormGroup" : "formGroup", ALL_FORMS);
-  const formGroup = groups.some((group) => group.value === storedGroup) ? storedGroup : ALL_FORMS;
+  const sgxResults = localVenue === "SGX" && storedGroup === "sgx-results";
+  const formGroup = sgxResults || groups.some((group) => group.value === storedGroup) ? storedGroup : ALL_FORMS;
   // A ticker can map to more than one filer (CIK); each can be listed alone.
   const issuers = useMemo(() => secFilingIssuers(formFilings), [formFilings]);
   const [storedIssuer, setIssuer] = usePluginPaneState<string>("issuerCik", ALL_FORMS);
   const issuerCik = issuers.some((issuer) => issuer.cik === storedIssuer) ? storedIssuer : ALL_FORMS;
   const scopedFilings = useMemo(() => {
+    if (sgxResults) return NO_FILINGS;
     const grouped = filterFilingsByGroup(formFilings, groups, formGroup);
     return issuerCik === ALL_FORMS ? grouped : grouped.filter((filing) => filing.cik === issuerCik);
-  }, [formFilings, formGroup, groups, issuerCik]);
+  }, [formFilings, formGroup, groups, issuerCik, sgxResults]);
   // A bank files a pricing supplement for each note it sells, hundreds a week, which bury its
   // reports; they stay out until asked for, counted among the filings the other filters keep.
   const [showSupplements, setShowSupplements] = usePluginPaneState<boolean>("pricingSupplements", false);
@@ -371,17 +376,15 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
     [isSupplement, scopedFilings, showSupplements, supplementCount],
   );
   const host = useRendererHost();
-  const local = ticker && !forms && eligibleTicker ? localFilingListing(ticker.metadata.ticker, ticker.metadata.exchange) : null;
-  const localSymbol = local?.symbol;
-  const localVenue = local?.exchange;
   const readLocal = useCallback(() => apiClient.getCloudExchangeAnnouncements({
     symbol: localSymbol!,
     exchange: localVenue!,
-    limit: localVenue === "JPX" ? JPX_FILING_HISTORY_LIMIT : 50,
-  }), [localSymbol, localVenue]);
+    limit: sgxResults ? 200 : localVenue === "JPX" ? JPX_FILING_HISTORY_LIMIT : 50,
+    ...(sgxResults ? { kind: "results" as const } : {}),
+  }), [localSymbol, localVenue, sgxResults]);
   const localFeed = useAsyncResource(localSymbol && localVenue ? readLocal : null);
-  const localRows = useMemo(() => localFeed.data && localVenue && formGroup === ALL_FORMS && issuerCik === ALL_FORMS
-    ? localFilingRows(localFeed.data, showSupplements) : [], [localFeed.data, localSymbol, localVenue, formGroup, issuerCik, showSupplements]);
+  const localRows = useMemo(() => localFeed.data && localVenue && (sgxResults || (formGroup === ALL_FORMS && issuerCik === ALL_FORMS))
+    ? localFilingRows(localFeed.data, showSupplements) : [], [localFeed.data, localVenue, formGroup, issuerCik, sgxResults, showSupplements]);
 
   const openLocal = localRows.find(row => `exchange:${row.url}` === openItemId);
   const timeline = useMemo(() => {
@@ -403,7 +406,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   useEffect(() => {
     setVisibleCount(SEC_FILING_PAGE_SIZE);
   }, [ticker?.metadata.ticker, ticker?.metadata.exchange, formsSetting, formGroup, issuerCik, showSupplements]);
-  const loading = filingsEntry?.phase === "loading" || filingsEntry?.phase === "refreshing";
+  const loading = !sgxResults && (filingsEntry?.phase === "loading" || filingsEntry?.phase === "refreshing");
   // A restored or shared open filing can sit past the first page, or be gone
   // from the feed entirely.
   useEffect(() => {
@@ -420,10 +423,10 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
       setVisibleCount(Math.ceil((index + 1) / SEC_FILING_PAGE_SIZE) * SEC_FILING_PAGE_SIZE);
     }
   }, [timeline, isSupplement, loading, localFeed.loading, openItemId, scopedFilings, setOpenItemId, setShowSupplements, showSupplements, visibleCount]);
-  const error = filingsEntry?.error && filingsEntry.error.reasonCode !== "NO_DATA" ? filingsEntry.error.message : null;
+  const error = !sgxResults && filingsEntry?.error && filingsEntry.error.reasonCode !== "NO_DATA" ? filingsEntry.error.message : null;
   // Hosted, the only filings source is Gloom Cloud, which needs an account.
   const cloudSession = useResearchCloudSession();
-  const authWall = !localFeed.loading && !localRows.length && formFilings.length === 0 && (isCloudSessionRequired(error) || isCloudSessionRequired(localFeed.error));
+  const authWall = !localFeed.loading && !localRows.length && (sgxResults || formFilings.length === 0) && (isCloudSessionRequired(error) || isCloudSessionRequired(localFeed.error));
 
   const openFiling = openItemId
     ? filings.find((filing) => filing.accessionNumber === openItemId) ?? null
@@ -560,7 +563,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
       : [],
     focused,
     enabled: !openFiling,
-    title: "Fund filings",
+    title: sgxResults ? "SGX results" : "Fund filings",
   });
 
   const queryFilters = useMemo<QueryBarFilter[]>(() => [
@@ -569,10 +572,14 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
       label: "Form",
       value: formGroup,
       defaultValue: ALL_FORMS,
-      options: [{ value: ALL_FORMS, label: forms ? "All fund forms" : "All forms" }, ...groups.map((group) => ({ value: group.value, label: group.label }))],
+      options: [
+        { value: ALL_FORMS, label: forms ? "All fund forms" : "All forms" },
+        ...(localVenue === "SGX" ? [{ value: "sgx-results", label: "Results & presentations" }] : []),
+        ...groups.map((group) => ({ value: group.value, label: group.label })),
+      ],
       onChange: (value: string) => { setFormGroup(value); setSelectedIdx(0, { immediate: true }); setOpenItemId(null); },
     },
-    ...(issuers.length > 1 ? [{
+    ...(!sgxResults && issuers.length > 1 ? [{
       id: "issuer",
       label: "Filer",
       value: issuerCik,
@@ -589,7 +596,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
       defaultValue: false,
       onChange: (value: boolean) => { setShowSupplements(value); setSelectedIdx(0, { immediate: true }); setOpenItemId(null); },
     }] : []),
-  ], [formGroup, forms, groups, issuerCik, issuers, setFormGroup, setIssuer, setOpenItemId, setSelectedIdx, setShowSupplements, showSupplements, supplementCount]);
+  ], [formGroup, forms, groups, issuerCik, issuers, localVenue, setFormGroup, setIssuer, setOpenItemId, setSelectedIdx, setShowSupplements, sgxResults, showSupplements, supplementCount]);
   // The ticker and the filer once, beside the filters: every row is their filing.
   const issuerMeta = issuers.length === 1 ? secIssuerLabel(issuers[0]!).replace(/CIK 0+/, "CIK ") : undefined;
   const queryBar = (
@@ -711,6 +718,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
       titleLabel="Filing"
       timeColumn={localRows.some(row => row.dateBasis === "catalogue") ? { ...FILED_COLUMN, label: "Date" } : FILED_COLUMN}
       emptyStateTitle={forms && formFilings.length === 0 ? fundEmptyTitle
+        : sgxResults ? "No SGX results or presentations."
         : supplementCount > 0 && !showSupplements ? "Only pricing supplements."
         : formGroup === ALL_FORMS ? "No SEC filings." : "No filings of these forms."}
       emptyStateHint={forms && formFilings.length === 0 ? fundEmptyHint
