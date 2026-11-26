@@ -6,6 +6,7 @@ import { colors } from "../../../theme/colors";
 import {
   EmptyState,
   FieldGrid,
+  KeyValueRow,
   QueryBar,
   StatGrid,
   fieldGridColumns,
@@ -23,6 +24,7 @@ import { buildChartKey } from "../../../market-data/selectors";
 import { useLiveTickerFinancials, useLiveTickerFinancialsMap } from "../../../state/hooks/live-ticker-financials";
 import { buildPortfolioFinancialsMap } from "../../../market-data/portfolio-financials";
 import { convertCurrency } from "../../../utils/format";
+import { formatUtcTime } from "../../../utils/utc-time";
 import {
   useAppDispatch,
   getFocusedCollectionId,
@@ -561,14 +563,13 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
     }),
   ];
   const resultRows = statGridRows(resultItems, width, gridColumns);
-  // Query bar, the mode strip when it is not in the title bar, inputs, results.
-  const bodyRows = Math.max(0, height - 1 - tabRows - gridRows - resultRows);
+  const priceLine = sizingPrice ? formatKellySizingPrice(sizingPrice) : null;
+  const splitPriceLine = sizingPrice?.asOf != null && priceLine != null && width < priceLine.length + 8;
+  const priceRows = priceLine ? splitPriceLine ? 2 : 1 : 0;
+  const bodyRows = Math.max(0, height - 1 - tabRows - gridRows - resultRows - priceRows);
   const chartHeight = showSensitivity ? 0 : bodyRows;
   const showChart = !showSensitivity && chartHeight >= 6 && curvePoints.length > 0;
-  // The search shows the ticker and the Portfolio filter the account, so the
-  // context is the price first, then the account only when there is no filter.
   const meta = [
-    sizingPrice ? formatKellySizingPrice(sizingPrice) : null,
     portfolioTabs.length > 1 ? null : activePortfolio?.name ?? null,
     bankrollOverride != null || currentValueOverride != null ? "override" : null,
     tickerSearchStatus,
@@ -645,6 +646,15 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
       />
 
       {tabStrip && <Box height={1} paddingX={1}>{tabStrip}</Box>}
+
+      {sizingPrice && priceLine && (
+        <Box flexDirection="column" paddingX={1} flexShrink={0}>
+          <KeyValueRow label="Price" value={splitPriceLine ? formatKellySizingPrice({ ...sizingPrice, asOf: null }) : priceLine}
+            labelWidth={6} width={width - 2} emphasis={false} />
+          {splitPriceLine && sizingPrice.asOf != null && <KeyValueRow label="As of" value={formatUtcTime(sizingPrice.asOf)}
+            labelWidth={6} width={width - 2} emphasis={false} />}
+        </Box>
+      )}
 
       <FieldGrid
         fields={gridFields}
