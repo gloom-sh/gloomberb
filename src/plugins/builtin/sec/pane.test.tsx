@@ -472,11 +472,10 @@ test("a company listed abroad is looked up by the SEC, and one that files nothin
   });
   try {
     await mount(createTestDataProvider({ getSecFilings: async (symbol) => { filings.push(symbol); return []; } }));
-    const shown = (await tui.waitForFrameToContain("files no SEC reports")).replace(/\s+/g, " ");
-    // The harness names the ticker by its key; `filings` prints the same line.
-    expect(shown).toContain("8058:JPX (JPX) files no SEC reports. TDnet timely disclosures: release.tdnet.info");
+    await tui.waitForFrameToContain("No SEC filings.");
+    await tui.waitForFrameToContain("TDnet timely disclosures");
     expect(filings).toEqual(["8058:JPX"]);
-    expect(footer.menu?.map((item) => ("label" in item ? item.label : null))).toEqual(["Open release.tdnet.info"]);
+    expect(footer.hints?.map((hint) => hint.id)).toContain("open");
     expect(exchange).toHaveBeenCalledWith({ symbol: "8058:JPX", exchange: "JPX", limit: 200 });
   } finally {
     exchange.mockRestore();

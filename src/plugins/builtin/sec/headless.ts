@@ -162,7 +162,7 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       {
         key: "form",
         shot: { reportOnly: "picks the report's rows by form; the pane's Form filter picks a group of forms" },
-        description: "Only this SEC form and its amendments, such as 8-K, 10-K or 13D. Use presentations for Taiwan investor conference decks or results for Singapore results and presentations.",
+        description: "Only this SEC form and its amendments, such as 8-K, 10-K or 13D. Use presentations for Taiwan investor conference decks or results for Japan and Singapore results and presentations.",
         type: "string",
         placeholder: "form",
         example: "--form 8-K",
@@ -224,7 +224,7 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
           freshness: { source: publishers, status: "not-a-feed", basis: hasCatalogueDate ? "filings and catalogue dates" : "filed data", observedKey: "filedAt" },
           ...(localKind && !combined.length ? { empty: presentations
             ? exchange.stale ? "MOPS presentation archive incomplete." : "No investor conference presentations in the past year."
-            : exchange.stale ? "SGX results archive incomplete." : "No SGX results or presentations in the past year." } : {}),
+            : exchange.stale ? "Exchange results archive incomplete." : "No results or presentations in the exchange archive." } : {}),
           metadata: { symbol, returned: combined.length, exchangePage: exchange.page,
             ...(localKind ? { form: localKind, total: exchange.total, retrievedAt: exchange.retrievedAt, stale: exchange.stale ?? false } : {}),
             ...hiddenFilingsMetadata(hidden) } };
