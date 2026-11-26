@@ -26,7 +26,7 @@ import {
   type IpoList,
   type IpoTab,
 } from "./model";
-import { ipoDetailSentences, loadIpoLockupNews, type IpoLockupStory } from "./listing-ipo";
+import { ipoDetailSentences, ipoPriceNow, loadIpoLockupNews, type IpoLockupStory, type IpoPriceNow } from "./listing-ipo";
 import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
 import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
 import { logFailure } from "../../../utils/log-failure";
@@ -40,7 +40,7 @@ const COLUMNS: HeadlessPaneColumn[] = [
   { key: "status", header: "Status" },
   { key: "price", header: "Price", align: "right" },
   { key: "offerSizeUsd", header: "Size", align: "right", format: (value) => formatIpoSize(value as number | null) },
-  { key: "firstDayReturn", header: "Return", align: "right", format: (value, row) => formatIpoReturn((value ?? row.openingReturn) as number | null),
+  { key: "firstDayReturn", header: "Day 1", align: "right", format: (value, row) => formatIpoReturn((value ?? row.openingReturn) as number | null),
     textFormat: (value, row) => value == null && row.openingReturn != null ? `${formatIpoReturn(row.openingReturn as number)} open` : formatIpoReturn(value as number | null) },
   // A US IPO's estimated lock-up end: "~2026-11-02".
   { key: "lockupEnds", header: "Lockup ends", format: (value) => formatIpoLockupEnd(typeof value === "string" ? value : null) },
@@ -130,9 +130,9 @@ function toRow(deal: IpoDeal, now: Date) {
   };
 }
 
-/** One deal found: its IPO in words, as `ticker` gives it, with its price now and its lock-up news. */
+/** One deal found: its IPO in words, as `ticker` gives it, with its price as `quote` reads it and its lock-up news. */
 interface IpoDealDetail {
-  price: number | null;
+  price: IpoPriceNow | null;
   news: IpoLockupStory[];
 }
 
@@ -165,7 +165,8 @@ export function projectIpoCalendarHeadless(
   const found = filterIpoDeals(payload.deals, region, query, now, list ?? undefined).filter((deal) => atStatus(deal, status, now));
   const matching = keyword === "lockup" ? byLockupEnd(found, now) : sortIpoDeals(found, DEFAULT_IPO_SORT, now, query);
   const rows = matching.slice(0, limit).map((deal) => toRow(deal, now));
-  const behind = marketsBehindText(marketsBehind(payload.sources, region, payload.deals));
+  // A search that found deals speaks for their markets alone: HAWK's report says nothing of London's.
+  const behind = marketsBehindText(marketsBehind(payload.sources, region, payload.deals, query && matching.length ? matching : undefined));
   const single = matching.length === 1 && query && !keyword ? matching[0]! : null;
   const notes = [
     ...rows.length < matching.length
@@ -198,10 +199,15 @@ export const ipoCalendarHeadless: HeadlessPaneDefinition<"rows"> = {
   argument: {
     kind: "free-text",
     placeholder: "company or ticker",
-    description: "Optional company, ticker, market, country, region or status filter; pending lists the deals not priced yet.",
+    description: "Optional company, ticker, market, country, region or status filter; pending lists the deals not priced yet, lockup the US lock-up expiries soonest first, spac the SPACs' IPOs.",
     optional: true,
   },
   discovery: {
+    // The kinds of deal a search lists (ipoKeyword): `fn lockup` is the lock-up expiry list, `catalog spac` finds it.
+    opens: [
+      { words: ["lockup", "lockups", "lock-up", "lock-ups", "lockup expiry", "lock-up expiry", "lockup expiration", "lock-up expiration"], argument: "lockup" },
+      { words: ["spac", "spacs", "de-spac", "despac"], argument: "spac" },
+    ],
     dataRequirements: ["Gloom Cloud IPO calendar, merged from each exchange's own listings"],
     limitations: ["Return from the offer price uses the first trade until the first session's close is available."],
   },
@@ -276,7 +282,7 @@ export const ipoCalendarHeadless: HeadlessPaneDefinition<"rows"> = {
     if (!matched?.symbol) return projected;
     const [price, news] = await Promise.all([
       matched.status === "listed"
-        ? ctx.marketData.getQuote(matched.symbol, matched.exchange ?? undefined).then((quote) => quote.price ?? null,
+        ? ctx.marketData.getQuote(matched.symbol, matched.exchange ?? undefined).then(ipoPriceNow,
           logFailure("plugins.ipo-calendar", "Load the price of an IPO failed", null))
         : Promise.resolve(null),
       loadIpoLockupNews(ctx.apiClient, matched).catch(logFailure("plugins.ipo-calendar", "Load an IPO's lock-up news failed", [] as IpoLockupStory[])),

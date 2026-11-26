@@ -30,7 +30,7 @@ import { zonedDateKey } from "../utils/zoned-date-time";
 import { cleanFloat32Price, decimalPlaces } from "../utils/float32-price";
 import { futuresBoardContract } from "../market-data/futures-board";
 import { futuresPriceUnit, isFuturesInstrument } from "../market-data/futures-contract";
-import { DEMERGER_FLAG, SPLIT_FLAG } from "./history-demergers";
+import { ADJUSTMENT_FLAG, DEMERGER_FLAG, SPIN_OFF_FLAG, SPLIT_FLAG } from "./history-demergers";
 
 /** A float32 price as the decimal it is, which a quote's dated close is cleaned with too (utils/float32-price). */
 export { cleanFloat32Price };
@@ -397,9 +397,9 @@ export function withDailyRebuiltBars(rows: readonly HistoryRow[], daily: readonl
 
 /** The codes of a bar left blank for prices that contradict each other: not a break before it, nor a withheld wick or open. */
 function blankingCodes(row: Pick<HistoryRow, "flag">): string[] {
-  // A split day keeps its prices: it is the first bar in post-split shares, not a contradiction.
+  // A split or price adjustment day keeps its prices: it is the first bar the adjustment no longer touches, not a contradiction.
   return flagCodes(row).filter((code) => !BREAK_FLAGS.has(code) && !isWickFlag(code) && !isRescaleFlag(code) && code !== OPEN_WITHHELD_FLAG
-    && code !== SPLIT_FLAG
+    && code !== SPLIT_FLAG && code !== SPIN_OFF_FLAG && code !== ADJUSTMENT_FLAG
     && !isCopiedCloseFlag(code));
 }
 
