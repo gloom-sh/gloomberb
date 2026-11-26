@@ -108,6 +108,22 @@ describe("the question in the app", () => {
     expect(calls).toEqual(["shown", "tiktok"]);
   });
 
+  for (const action of ["enter", "escape"]) {
+    test(`AI is kept at once; ${action} ${action === "enter" ? "saves the note" : "discards the draft"}`, async () => {
+      const calls = signedInAs(true);
+      await tui.render(<HeardFromQuestionHost />, { width: 100, height: 40 });
+      await act(async () => markHeardFromDue("u1"));
+      await tui.waitForFrameToContain(TITLE);
+      await press(...Array.from({ length: 6 }, () => "down"), "enter");
+      await tui.waitForFrameToContain("Which AI, and what did you ask?");
+      expect(calls).toEqual(["shown", "ai_assistant"]);
+      const note = "Synthetic AI: explain a bond ladder";
+      await press(note, action);
+      await tui.waitForFrameToExclude(TITLE);
+      expect(calls).toEqual(action === "enter" ? ["shown", "ai_assistant", `ai_assistant: ${note}`] : ["shown", "ai_assistant"]);
+    });
+  }
+
   test("waits for the card already up (the companies to follow) to close", async () => {
     const calls = signedInAs(true);
     const release = holdSetupCard();

@@ -1624,6 +1624,7 @@ export const zhCN: Record<string, string> = {
   "Article or newsletter": "文章或新闻通讯",
   "Where?": "在哪里？",
   "Which account or post?": "哪个账号或帖子？",
+  "Which AI, and what did you ask?": "你用了哪个 AI，问了什么？",
   "Skip": "跳过",
   "Equities": "股票",
   "Futures & commodities": "期货与大宗商品",

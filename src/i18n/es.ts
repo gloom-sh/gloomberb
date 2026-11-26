@@ -1627,6 +1627,7 @@ export const es: Record<string, string> = {
   "Article or newsletter": "Un artículo o newsletter",
   "Where?": "¿Dónde?",
   "Which account or post?": "¿Qué cuenta o publicación?",
+  "Which AI, and what did you ask?": "¿Qué IA usaste y qué le preguntaste?",
   "Skip": "Omitir",
   "Equities": "Renta variable",
   "Futures & commodities": "Futuros y materias primas",

@@ -23,17 +23,16 @@ export const HEARD_FROM_ANSWERS = [
 export type HeardFromAnswer = (typeof HEARD_FROM_ANSWERS)[number];
 
 /**
- * The answers that name a feed: after one of them the app offers one optional
- * field, "Which account or post?". The answer is kept the moment it is picked;
+ * Answers with an optional follow-up. The answer is kept the moment it is picked;
  * the note is sent after it, with the same answer, if written.
  */
-const HEARD_FROM_NOTE_ANSWERS: ReadonlySet<HeardFromAnswer> = new Set(["youtube", "tiktok", "instagram", "x"]);
+const HEARD_FROM_NOTE_ANSWERS: ReadonlySet<HeardFromAnswer> = new Set(["youtube", "tiktok", "instagram", "x", "ai_assistant"]);
 
 export function heardFromAsksForNote(answer: HeardFromAnswer): boolean {
   return HEARD_FROM_NOTE_ANSWERS.has(answer);
 }
 
-/** The longest note the service keeps (Other's, or the account or post), in characters. */
+/** The longest note the service keeps, in characters. */
 export const HEARD_FROM_NOTE_MAX_LENGTH = 120;
 
 export interface HeardFromState {
@@ -69,9 +68,8 @@ export class CloudHeardFromApi {
   }
 
   /**
-   * An answer, with Other's text or the account or post an Instagram, TikTok,
-   * YouTube or X answer names. A repeat or a later answer changes nothing; the
-   * same answer again with its note adds the note (a service without notes
+   * An answer, with Other's text or an optional follow-up. A repeat or a later
+   * answer changes nothing; the same answer again with its note adds it (a service without notes
    * refuses it, and the answer stays).
    */
   async answerHeardFrom(answer: HeardFromAnswer, note?: string): Promise<void> {
