@@ -30,6 +30,8 @@ import type { PricePoint } from "../../../types/financials";
 import { toneColor, withoutQuietColumns } from "../shared/research-cells";
 import { logFailure } from "../../../utils/log-failure";
 import { currentKpiSeries } from "./latest";
+import { taiwanRevenueCode, taiwanUsReadthroughTicker } from "../../../api-client/taiwan-revenue";
+import { TaiwanMonthlyStockView, TaiwanUsReadthroughView } from "./taiwan-monthly-view";
 
 /** A locked placeholder, or with `note` the line above them saying what free shows and what Pro adds. */
 type Item = { id: string; row: CompanyRow } | { id: string; row: null; note?: string };
@@ -102,9 +104,12 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
   const data = resource.data?.payload;
   const kpis = data && "series" in data ? data : null;
   const guidance = data && "guidance" in data ? data : null;
-  const [openingTab] = usePaneSettingValue("tab", "table");
+  const twCode = mode === "kpis" ? taiwanRevenueCode(symbol, exchange) : null;
+  const twUsTicker = mode === "kpis" && !twCode ? taiwanUsReadthroughTicker(symbol, exchange) : null;
+  const hasTwMonthly = Boolean(twCode || twUsTicker);
+  const [openingTab] = usePaneSettingValue("tab", twCode ? "monthly" : "table");
   const [tabValue, setTab] = usePluginPaneState<string>("company:tab", openingTab);
-  const tab = ["table", "chart", "evidence", ...(mode === "guidance" ? ["history"] : [])].includes(tabValue) ? tabValue : "table";
+  const tab = ["table", "chart", "evidence", ...(mode === "guidance" ? ["history"] : []), ...(hasTwMonthly ? ["monthly"] : [])].includes(tabValue) ? tabValue : twCode ? "monthly" : "table";
   const [openingMetric] = usePaneSettingValue("metric", "all");
   const [metric, setMetric] = usePluginPaneState<string>("company:metric", openingMetric);
   const [plotKey, setPlotKey] = usePluginPaneState<string>("company:plot", "");
@@ -187,7 +192,9 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
     selectedId: selected?.id ?? null, onSelect: setSelected, focused: focused && !openRow, enabled: tab === "chart" });
   const signInWall = !data && isCloudSessionRequired(resource.error);
   const { strip, rows: tabRows } = usePaneTabs(symbol && !signInWall ? { tabs: [{ value: "table", label: mode === "guidance" ? "Tracker" : "Table" }, { value: "chart", label: "Chart" },
-    ...(mode === "guidance" ? [{ value: "history", label: "History" }] : []), { value: "evidence", label: "Evidence" }], activeValue: tab,
+    ...(mode === "guidance" ? [{ value: "history", label: "History" }] : []),
+    ...(twCode ? [{ value: "monthly", label: "Monthly Sales" }] : twUsTicker ? [{ value: "monthly", label: "TW Supply Chain" }] : []),
+    { value: "evidence", label: "Evidence" }], activeValue: tab,
     onSelect: (value) => { setTab(value); setOpen(null); }, focused, dense: true } : null);
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => resource.reload(), { focused });
@@ -260,7 +267,9 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
   };
   return <Box width={width} height={height} flexDirection="column">
     {strip}
-    <PaneStatusBody loading={!data && resource.loading} error={!data && resource.error !== KPI_UNAVAILABLE ? resource.error : null}
+    {tab === "monthly" && twCode ? <TaiwanMonthlyStockView code={twCode} width={width} height={bodyHeight} focused={focused} />
+      : tab === "monthly" && twUsTicker ? <TaiwanUsReadthroughView usTicker={twUsTicker} width={width} height={bodyHeight} focused={focused} />
+      : <PaneStatusBody loading={!data && resource.loading} error={!data && resource.error !== KPI_UNAVAILABLE ? resource.error : null}
       empty={!data && resource.error === KPI_UNAVAILABLE} emptyTitle={KPI_UNAVAILABLE} subject="company disclosures">
       {data ? <DataTableStackView<Item> focused={focused} rootWidth={width} rootHeight={bodyHeight} columns={columns} items={items} getItemKey={getId}
         selection={{ kind: "id", selectedId: selected?.id ?? null, getId, onChange: setSelected }}
@@ -282,6 +291,6 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
           {lockedCount && desktop ? <LockedOverlay rows={lockedCount} text="Upgrade for all disclosures and history" onPress={openUpgrade} /> : null}
         </Box>}
       /> : null}
-    </PaneStatusBody>
+    </PaneStatusBody>}
   </Box>;
 }

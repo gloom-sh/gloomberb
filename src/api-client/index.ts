@@ -1231,6 +1231,13 @@ class GloomApiClient {
   getHkCcassConcentration = this.data.getHkCcassConcentration.bind(this.data);
   getHkCcassSouthbound = this.data.getHkCcassSouthbound.bind(this.data);
   getHkCcassParticipant = this.data.getHkCcassParticipant.bind(this.data);
+  getDilutionCompany = this.data.getDilutionCompany.bind(this.data);
+  getDilutionForm144 = this.data.getDilutionForm144.bind(this.data);
+  getDilutionShelves = this.data.getDilutionShelves.bind(this.data);
+  getTaiwanStockRevenue = this.data.getTaiwanStockRevenue.bind(this.data);
+  getTaiwanUsReadthrough = this.data.getTaiwanUsReadthrough.bind(this.data);
+  getHkCbbcUnderlying = this.data.getHkCbbcUnderlying.bind(this.data);
+  getHkCbbcOverview = this.data.getHkCbbcOverview.bind(this.data);
   getCloudExchangeAnnouncements = this.data.getCloudExchangeAnnouncements.bind(this.data);
   getCloudThemes = this.data.getCloudThemes.bind(this.data);
   getCloudThemeMembers = this.data.getCloudThemeMembers.bind(this.data);
