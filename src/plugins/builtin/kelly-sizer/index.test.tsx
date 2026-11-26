@@ -8,6 +8,7 @@ import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test
 import type { PricePoint } from "../../../types/financials";
 import { kellyHeadless } from "./headless";
 import { formatPct } from "./view";
+import { formatDaysInText } from "../../../utils/day-format";
 
 const tui = createOpenTuiTestHarness();
 
@@ -227,7 +228,8 @@ describe("KellySizerPane", () => {
         await renderPane({ paneState: { mode: "history" } });
         const [range, count] = window.split(", ");
         const frame = await tui.waitForFrameToContain(count!);
-        expect(frame).toContain(range!);
+        // The pane reads the window's days first; the report's JSON keeps them in ISO.
+        expect(frame).toContain(formatDaysInText(range!));
         expect(frame).toContain(`${wins}/${periods}`);
         // The same Full Kelly as the report, to the pane's one decimal.
         expect(frame).toMatch(new RegExp(`Full Kelly\\s+${formatPct(fullKelly, 1).replace(".", "\\.")}`));

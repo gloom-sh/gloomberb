@@ -1,6 +1,7 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import type { GasStorageHistory, GasStorageRow, GasStorageSeasonal } from "../../../api-client/europe-energy";
 import { staticSeries } from "../../../components/chart/static/series";
+import { formatDay } from "../../../components/ui/day-cell";
 import type { SeriesDefinition, SeriesLoadResult } from "../../../series/types";
 import type { ResolvedSeries } from "../../../time-series/types";
 import { fetchGasHistory } from "./gas-client";
@@ -78,7 +79,7 @@ export const gasRangeLabel = (years: number) => `${years > 0 && years < 5 ? year
 
 /** A gas day and its flag, the way a row is dated: `2026-10-12 est`. */
 export const gasDayText = (row: Pick<GasStorageRow, "gasDay" | "status">) =>
-  row.gasDay ? `${row.gasDay}${row.status === "estimated" ? " est" : ""}` : MISSING_VALUE;
+  row.gasDay ? `${formatDay(row.gasDay)}${row.status === "estimated" ? " est" : ""}` : MISSING_VALUE;
 
 /** The benchmark areas a search lists first; the rest follow by name. */
 const LEAD_AREAS = ["EU", "DE", "IT", "FR", "NL", "AT"];

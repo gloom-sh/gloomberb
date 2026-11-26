@@ -1,3 +1,4 @@
+import { dayCell, formatDay } from "../../../components/ui/day-cell";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGridRows, usePaneFooter, usePaneNoticeFooter,
   usePaneTicker, type DataTableCell, type DataTableColumn, type StatItem } from "../../../components";
@@ -32,7 +33,7 @@ const SURPRISE_OPTIONS = [{ value: "all", label: "All" }, ...MACRO_SURPRISES.map
 
 const times = (value: number | null | undefined) => value == null ? MISSING_VALUE : `${value.toFixed(1)}x`;
 
-const DATE: DataTableColumn = { id: "date", label: "Date", width: 19, align: "left" };
+const DATE: DataTableColumn = { id: "date", label: "Date", width: 20, align: "left" };
 /** The move and its multiple of a normal day's; a yield's move is in basis points, and its header says so. */
 const moveColumns = (basis: MacroDayMoveBasis): DataTableColumn[] => [
   { id: "move", label: basis === "yield" ? "Move bp" : "Move", width: 9, align: "right" },
@@ -160,7 +161,7 @@ function MacroDayComparisonPane({ width, height, focused, list }: PaneProps & { 
   const scoped = useMemo(() => compareMacroDays(models).filter((event) => release === "all" || event.kind === release), [models, release]);
   const rows = useMemo(() => scoped.filter((event) => matchesSurprise(event, surprise)), [scoped, surprise]);
   const columns = useMemo<DataTableColumn[]>(() => [
-    { ...DATE, width: 10 }, { id: "release", label: "Release", width: 12, align: "left" },
+    { ...DATE, width: 11 }, { id: "release", label: "Release", width: 12, align: "left" },
     ...models.map((model) => ({ id: model.symbol, label: macroDayComparisonHeader(model),
       width: Math.max(8, displayWidth(macroDayComparisonHeader(model))), align: "right" as const })),
     ...figureColumns(rows),
@@ -182,7 +183,7 @@ function MacroDayComparisonPane({ width, height, focused, list }: PaneProps & { 
     { id: "basis", parts: [{ text: "daily close-to-close", tone: "muted" as const }] },
   ] }), [stale]);
   const renderCell = (event: MacroDayComparisonRow, column: DataTableColumn): DataTableCell => {
-    if (column.id === "date") return { text: event.date };
+    if (column.id === "date") return dayCell(event.date);
     if (column.id === "release") return { text: macroDayEventLabel(event) };
     if (column.id === "actual" || column.id === "forecast" || column.id === "prior") return { text: event.figures?.[column.id] ?? "" };
     if (column.id === "surprise") return { text: macroSurpriseText(event) };
@@ -255,7 +256,7 @@ function SingleMacroDayPane({ width, height, focused }: PaneProps) {
   ] }), [history.loading, history.data?.stale, history.data?.earnings.stale, model?.start, model?.asOf]);
 
   const renderCell = useCallback((event: MacroDayEvent, column: DataTableColumn): DataTableCell => {
-    if (column.id === "date") return { text: event.session === event.date ? event.date : `${event.date} → ${event.session.slice(5)}`, value: event.date };
+    if (column.id === "date") return { text: event.session === event.date ? formatDay(event.date) : `${formatDay(event.date)} → ${formatDay(event.session, "no-year")}`, value: event.date };
     if (column.id === "release") return { text: release === "all" ? macroDayEventLabel(event) : macroDayEventNote(event) };
     // The print colored against the consensus, as the economic calendar colors it.
     if (column.id === "actual") return { text: event.figures?.actual ?? "", color: event.figures?.surprise === "hot" ? colors.positive

@@ -63,12 +63,12 @@ test("the pane leads with the last closed day against its median, then the daily
   if (process.env.SOCIAL_PANE_PRINT) console.log(frame);
   expect(frame).toContain("30D median");
   expect(frame).toContain("1,592");
-  expect(frame).toContain("2026-09-27");
+  expect(frame).toContain("27 Sep 2026");
   expect(frame).toContain("@AIStockSavvy");
   expect(frame).toContain("+0.42");
   expect(frame).toContain("Wiki views");
   expect(frame).toContain("REDDIT");
-  expect(frame).toContain("4.0x median · 09-26");
+  expect(frame).toContain("4.0x median · 26 Sep");
   expect(frame).toContain("3,600");
 });
 
@@ -91,8 +91,8 @@ test("uncovered Wikipedia and a zero median omit only their columns; one zero vi
   const mixed = await render(120, 30);
   expect(mixed).toContain("VS MEDIAN");
   expect(mixed).toMatch(/\bWIKI\b/);
-  expect(mixed.split("\n").find((line) => line.includes("2026-09-26"))).toContain("0");
-  expect(mixed.split("\n").find((line) => line.includes("2026-09-25"))).toContain("—");
+  expect(mixed.split("\n").find((line) => line.includes("26 Sep 2026"))).toContain("0");
+  expect(mixed.split("\n").find((line) => line.includes("25 Sep 2026"))).toContain("—");
 });
 
 test("an alphanumeric overseas ticker requests its cashtag history", async () => {

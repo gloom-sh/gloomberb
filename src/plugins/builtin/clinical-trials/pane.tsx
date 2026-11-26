@@ -1,3 +1,4 @@
+import { dayCell, formatDay } from "../../../components/ui/day-cell";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DataTableStackView,
@@ -72,7 +73,7 @@ const TICKER_WAIT_MS = 2000;
 /** As precise as the registry gave it, marked when it is the sponsor's estimate. */
 function formatDate(date: Date | null, precision: DatePrecision = "day", type?: TrialDateType): string {
   if (!date || Number.isNaN(date.getTime()) || date.getTime() === 0) return NO_VALUE;
-  const text = date.toISOString().slice(0, precision === "year" ? 4 : precision === "month" ? 7 : 10);
+  const text = precision === "year" || precision === "month" ? date.toISOString().slice(0, precision === "year" ? 4 : 7) : formatDay(date);
   return type === "ESTIMATED" ? `${text} (est.)` : text;
 }
 
@@ -372,8 +373,7 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
   const renderCell = useCallback((trial: ClinicalTrial, column: TrialColumn, _index: number, rowState: { selected: boolean }): DataTableCell => {
     switch (column.id) {
       case "updated": {
-        const updated = formatDate(trial.lastUpdatePostDate);
-        return trial.lastUpdatePostDate ? { text: updated, value: updated, color: colors.textDim } : missingCell(colors);
+        return trial.lastUpdatePostDate ? { ...dayCell(trial.lastUpdatePostDate), color: colors.textDim } : missingCell(colors);
       }
       case "phase": {
         if (!hasTrialPhase(trial.phases)) return missingCell(colors);

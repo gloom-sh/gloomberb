@@ -1,4 +1,4 @@
-import { formatShortDate } from "../../../utils/datetime-format";
+import { formatDay, formatDayTime } from "../../../utils/day-format";
 import type { DataTableColumn, StatItem } from "../../../components";
 import type { HiringBuildingBoard, HiringBuildingFilter, HiringBuildingHold, HiringBuildingShift, HiringBuildingSkip, HiringCompanyBuilding, HiringMixRow, HiringMovePosting } from "../../../api-client/hiring";
 import { MISSING_VALUE, formatNumber } from "../../../utils/format";
@@ -40,8 +40,7 @@ const kindText = (shift: Pick<HiringBuildingShift, "dimension">) => shift.dimens
 
 /** "12 Oct": a week's Monday. */
 function dayLabel(value: string | null | undefined, year = false): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value ?? "");
-  return match ? formatShortDate(match[0], { year: year ? "numeric" : false, utc: true, fallback: MISSING_VALUE }) : MISSING_VALUE;
+  return /^\d{4}-\d{2}-\d{2}/.test(value ?? "") ? formatDay(value, year ? "full" : "no-year") : MISSING_VALUE;
 }
 const count = (value: number | null | undefined) => value == null ? MISSING_VALUE : formatNumber(value, 0);
 /** A share: whole percents from 10%, a tenth under it. */
@@ -85,7 +84,7 @@ export function shiftFacts(shift: HiringBuildingShift): Array<{ label: string; v
     ...(shift.topTitles.length ? [{ label: "Top titles", value: shift.topTitles.map((row) => `${row.title.trim()} (${count(row.count)})`).join(", ") }] : []),
     { label: "Boards", value: shift.sourceTickers.join(", ") },
     { label: "Week of", value: dayLabel(shift.week, true) },
-    { label: "First computed", value: shift.firstComputedAt },
+    { label: "First computed", value: `${formatDayTime(shift.firstComputedAt)} UTC` },
   ];
 }
 

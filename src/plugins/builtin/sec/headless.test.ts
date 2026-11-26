@@ -257,6 +257,8 @@ test("ETF leads with the fund's facts, each figure dated and credited, then its 
   });
   // JSON keeps each raw number.
   expect(facts!.entries!.find((entry) => entry.key === "netAssets")!.value).toBe(712_340_000_000);
+  // Only the text reads the days first, as the pane does.
+  expect(facts!.textEntries!.find((entry) => entry.key === "nav")!.formatted).toBe("$702.31 · 15 Oct 2026 · State Street");
   expect(filed!.rows!.map((row) => row.form)).toEqual(["485BPOS"]);
   // The report's source is the facts' publisher, named the same way for every fund.
   expect(result.freshness).toMatchObject({ source: "State Street", publisher: "State Street", asOf: "2026-10-15" });

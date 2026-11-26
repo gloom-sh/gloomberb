@@ -345,6 +345,7 @@ export const zhCN: Record<string, string> = {
   "Earnings Monitor": "财报监控",
   "Economic Calendar": "经济日历",
   "Corporate Actions": "公司行动",
+  "Dividend Yield": "股息率",
   "Analyst Research": "分析师研究",
   "Analyst": "分析师",
   "Analysts": "分析师",

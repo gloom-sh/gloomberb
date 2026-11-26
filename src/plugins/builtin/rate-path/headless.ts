@@ -1,3 +1,4 @@
+import { formatDay, formatDayTime } from "../../../utils/day-format";
 import { MISSING_VALUE } from "../../../utils/format";
 import type { RateMeeting, RatePathPayload } from "../../../api-client/rates";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
@@ -20,6 +21,8 @@ const POLICY_LABELS: Record<string, string> = {
 const policyLabel = (value: unknown) => POLICY_LABELS[String(value)] ?? String(value);
 const yesNo = (value: unknown) => value === true ? "yes" : value === false ? "no" : MISSING_VALUE;
 const timestamp = (value: unknown) => typeof value === "string" ? value.replace("T", " ").slice(0, 16) : MISSING_VALUE;
+/** The stamp as the pane writes it, day first; an export keeps `timestamp`. */
+const stampText = (value: unknown) => typeof value !== "string" ? MISSING_VALUE : value.includes("T") ? formatDayTime(value) : formatDay(value);
 const probabilities = (value: unknown) => {
   const outcomes = Array.isArray(value) ? value as RateMeeting["probabilities"] : [];
   return outcomes.length === 0 ? MISSING_VALUE
@@ -35,7 +38,7 @@ const contractColumns: HeadlessPaneColumn[] = [
   { key: "impliedRate", header: "Implied rate", align: "right", format: rate },
   { key: "percentile", header: "Pctl 1Y", align: "right", stackPriority: 4, stackRows: 0, format: pctl },
   { key: "samples", header: "Samples", align: "right", stackPriority: 6, stackRows: 0 },
-  { key: "asOf", header: "As of UTC", shrink: false, stackPriority: 3, stackRows: 0, format: timestamp },
+  { key: "asOf", header: "As of UTC", shrink: false, stackPriority: 3, stackRows: 0, format: timestamp, textFormat: stampText },
   { key: "status", header: "Status", stackPriority: 5, stackRows: 0 }, STALE_COLUMN,
 ];
 /** The text says once which rows are stale, under the tables (`staleNote`), not "no" on every row; JSON keeps the column. */
@@ -93,7 +96,7 @@ export const ratePathHeadless: HeadlessPaneDefinition<"bundle"> = {
           { key: "changeBps", header: "Change", align: "right", format: bps },
           { key: "percentile", header: "Pctl 1Y", align: "right", stackPriority: 7, stackRows: 0, format: pctl },
           { key: "samples", header: "Samples", align: "right", stackPriority: 8, stackRows: 0 },
-          { key: "asOf", header: "As of UTC", shrink: false, stackPriority: 5, stackRows: 0, format: timestamp },
+          { key: "asOf", header: "As of UTC", shrink: false, stackPriority: 5, stackRows: 0, format: timestamp, textFormat: stampText },
           { key: "probabilities", header: "Probabilities", shrink: false, stackPriority: 4, stackRows: 2, format: probabilities },
           { key: "method", header: "Method", stackPriority: 9, stackRows: 0 }, { key: "reason", header: "Reason", stackPriority: 10 },
         ], rows: data.meetings.map((meeting) => ({ ...meeting, moves: movesPriced(meeting), moveOdds: moves.get(meeting.date) ?? null })) },

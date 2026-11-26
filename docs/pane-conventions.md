@@ -589,10 +589,19 @@ compact figures keep theirs (below), and a cell built as a string formats with
 the column's precision, not its own. A financial statement column (FA,
 Statements), whose rows are different line items, keeps its magnitude tiers
 (`formatFinancialAmount`: one decimal from 100, two from 1, three below): its
-figures are not one quantity. The dates in one table share one format; the
-filing, estimate and event tables (SEC, INS, EM, GUID, EVT) write a calendar
-day first (`formatFilingDate`, `02 Nov 2026`), with the ISO day as the cell's
-`value`, and a time beside a date is `formatDetailDate`'s, with its zone.
+figures are not one quantity.
+
+**One date format.** Every table writes a calendar day the same way: day
+first (`02 Nov 2026`), through `dayCell` (`components/ui/day-cell.ts`), which
+keeps the ISO day as the cell's `value`, so CSV and JSON still read
+`2026-11-02`. A column short of room drops the year (`02 Nov`), never the
+order, and a time beside a day follows it (`02 Nov 2026 13:21`, `formatDayTime`)
+with its zone in the header. A day inside a cell's words (`ended 19 Nov 2026`,
+a period `25 Nov 2026 / 31 Mar 2027`) is written the same way, and so is the
+date beside a figure or labeled value over a table (`NAV $718.51 24 Nov 2026`,
+`formatDaysInText` for a dated detail). A text report prints what its pane
+shows (`formatDay` in the column's `format`); a figure an agency names in its
+own text (a contract title) stays as written.
 
 **Country flags.** Wherever a row or a field names a country (ECO's country,
 a balance's or a board's country or jurisdiction, a venue's market, an IPO's

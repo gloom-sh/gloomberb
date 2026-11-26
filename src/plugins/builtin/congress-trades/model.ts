@@ -1,6 +1,5 @@
 import type { DataTableColumn } from "../../../components";
 import { dropColumnsToFit, getTableWidth, markHiddenTableColumns } from "../../../components/ui/table-layout";
-import type { ShortDateOptions } from "../../../utils/datetime-format";
 import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 import type { SortDirection } from "../../../utils/sort-values";
 import type {
@@ -69,7 +68,7 @@ export function buildTickerColumns(width: number): TickerColumn[] {
     { id: "sellCount", label: "SELL", width: 6, align: "right" },
     { id: "memberCount", label: "MEMBERS", width: 8, align: "right" },
     { id: "range", label: "EST RANGE", width: 25, align: "right" },
-    { id: "lastFilingDate", label: "LAST FILED", width: 10, align: "left" },
+    { id: "lastFilingDate", label: "LAST FILED", width: 11, align: "left" },
   ];
 }
 
@@ -82,9 +81,6 @@ export function sortedTickers(tickers: CloudCongressTickerPayload[], sort: { col
     return (sort.direction === "asc" ? comparison : -comparison) || a.ticker.localeCompare(b.ticker);
   });
 }
-
-/** Filing dates are "YYYY-MM-DD" calendar days, shown as "Jan 5". */
-export const FILING_DAY_FORMAT: ShortDateOptions = { year: false, utc: true, fallback: MISSING_VALUE };
 
 function dateValue(value: string | null): number {
   if (!value) return 0;
@@ -130,8 +126,13 @@ export function plainAssetName(name: string): string {
  * through in turn ("…, owned through …") stays in the description.
  */
 function tradeVehicleSuffix(trade: Pick<CloudCongressTradePayload, "description">): string {
-  const vehicle = /Underlying Asset of\s+(.+?)\s*(?:,\s*(?:owned|held)\b|·|$)/i.exec(trade.description ?? "")?.[1]?.trim();
+  const vehicle = tradeVehicle(trade);
   return vehicle ? ` via ${vehicle}` : "";
+}
+
+/** What a line was held through, when its filing says ("Underlying Asset of Summa I LLC" is Summa I LLC); null when it does not. */
+export function tradeVehicle(trade: Pick<CloudCongressTradePayload, "description">): string | null {
+  return /Underlying Asset of\s+(.+?)\s*(?:,\s*(?:owned|held)\b|·|$)/i.exec(trade.description ?? "")?.[1]?.trim() || null;
 }
 
 /**
@@ -152,6 +153,81 @@ export function tradeAssetLabel(trade: Pick<CloudCongressTradePayload, "assetNam
   ].filter(Boolean).join(" ");
   const underlying = trade.assetName.replace(/\s*(?:-\s*)?Common Stock\s*$/i, "").trim();
   return underlying ? `${terms} · ${underlying}` : terms;
+}
+
+/** A trades table row: one line of a filing, or the lines one filing reports alike (foldFilingLines). */
+export interface CongressTradeRow extends CloudCongressTradePayload {
+  /** The filing's lines the row stands for, two or more, in the order they came; absent on a row of one line. */
+  lines?: CloudCongressTradePayload[];
+}
+
+/** The asset a line names, as alike lines share it: its ticker, kind and name (an option's terms), not what it was held through. */
+function lineAssetKey(trade: CloudCongressTradePayload): string {
+  const name = trade.assetType === "OP" ? tradeAssetLabel(trade) : plainAssetName(trade.assetName);
+  return [trade.ticker ?? "", trade.assetType ?? "", name.toLowerCase()].join("\u0000");
+}
+
+function sumOrNull(values: readonly (number | null)[]): number | null {
+  return values.every((value) => value != null) ? values.reduce<number>((total, value) => total + value!, 0) : null;
+}
+
+/**
+ * One filing can report a trade in one asset as many lines: a partnership
+ * held through several family LLCs is a line for each LLC, alike but for
+ * what it was held through, and they would fill the table. The lines of
+ * one filing, transaction date, side and asset fold into one row with their
+ * count and combined amount range; the row keeps them (`lines`) for its
+ * detail and exports, which list each one.
+ */
+export function foldFilingLines(trades: readonly CloudCongressTradePayload[]): CongressTradeRow[] {
+  const groups = new Map<string, CloudCongressTradePayload[]>();
+  for (const trade of trades) {
+    const key = [trade.filingId, trade.transactionDate ?? "", trade.side, lineAssetKey(trade)].join("\u0001");
+    const group = groups.get(key);
+    if (group) group.push(trade);
+    else groups.set(key, [trade]);
+  }
+  return [...groups.values()].map((lines) => lines.length === 1 ? lines[0]! : foldedRow(lines));
+}
+
+function foldedRow(lines: CloudCongressTradePayload[]): CongressTradeRow {
+  const first = lines[0]!;
+  const shared = <K extends keyof CloudCongressTradePayload>(key: K) => lines.every((line) => line[key] === first[key]) ? first[key] : undefined;
+  const owners = new Set(lines.map((line) => line.owner));
+  const amountLow = sumOrNull(lines.map((line) => line.amountLow));
+  const amountHigh = sumOrNull(lines.map((line) => line.amountHigh));
+  return {
+    ...first,
+    id: `${first.id}:lines`,
+    assetName: plainAssetName(first.assetName),
+    // An option's terms are its description; another asset's differ by what each line was held through.
+    description: first.assetType === "OP" ? first.description : shared("description") ?? null,
+    owner: owners.size === 1 ? first.owner : `${owners.size} owners`,
+    rawOwner: shared("rawOwner") ?? "",
+    amount: amountLow == null && amountHigh == null ? MISSING_VALUE : formatAmountRange(amountLow, amountHigh),
+    amountLow,
+    amountHigh,
+    capGainsOver200: shared("capGainsOver200") ?? null,
+    filingStatus: shared("filingStatus") ?? null,
+    subholdingOf: shared("subholdingOf") ?? null,
+    returnSinceTx: shared("returnSinceTx") ?? null,
+    returnSinceFiling: shared("returnSinceFiling") ?? null,
+    spyReturnSinceTx: shared("spyReturnSinceTx") ?? null,
+    spyReturnSinceFiling: shared("spyReturnSinceFiling") ?? null,
+    excessSinceTx: shared("excessSinceTx") ?? null,
+    excessSinceFiling: shared("excessSinceFiling") ?? null,
+    lines,
+  };
+}
+
+/** A row's asset cell: the asset as tradeAssetLabel names it, and the count of lines a folded row stands for (`· 32 lines`). */
+export function congressRowAsset(row: Pick<CongressTradeRow, "assetName" | "assetType" | "description" | "lines">): string {
+  return `${tradeAssetLabel(row)}${congressRowLineCount(row)}`;
+}
+
+/** A folded row's count (` · 8 lines`), which a narrow column keeps whole and cuts the name before. */
+export function congressRowLineCount(row: Pick<CongressTradeRow, "lines">): string {
+  return row.lines ? ` · ${row.lines.length} lines` : "";
 }
 
 function compareText(left: string, right: string): number {
@@ -258,8 +334,8 @@ function tradeColumns(tickerView: boolean, dateWidth: number, memberWidth: numbe
 }
 
 export function buildTradeColumns(width: number, tickerView = false): TradeColumn[] {
-  // Full dates while dropping TX RET% is enough, then short ones and the rest of the order.
-  const long = dropColumnsToFit(tradeColumns(tickerView, 10, MEMBER_READABLE_WIDTH, null), width, TRADE_DROP_ORDER.slice(0, 1));
+  // Full dates (02 Nov 2026) while dropping TX RET% is enough, then short ones (02 Nov) and the rest of the order.
+  const long = dropColumnsToFit(tradeColumns(tickerView, 11, MEMBER_READABLE_WIDTH, null), width, TRADE_DROP_ORDER.slice(0, 1));
   const fitted = getTableWidth(long) <= width ? long : dropColumnsToFit(tradeColumns(tickerView, 7, MEMBER_READABLE_WIDTH, null), width, TRADE_DROP_ORDER);
   const shown = new Set(fitted.map((column) => column.id));
   const dateWidth = fitted[0]!.width;
@@ -328,10 +404,10 @@ export function buildMemberColumns(width: number): MemberColumn[] {
   return markHiddenTableColumns(all, all.filter((column) => shown.has(column.id)));
 }
 
-export function sortedTrades(
-  trades: CloudCongressTradePayload[],
+export function sortedTrades<T extends CloudCongressTradePayload>(
+  trades: readonly T[],
   sort: { columnId: TradeColumnId; direction: SortDirection },
-): CloudCongressTradePayload[] {
+): T[] {
   return [...trades].sort((left, right) => {
     const comparison = compareTrade(left, right, sort.columnId);
     if (comparison !== 0) return sort.direction === "asc" ? comparison : -comparison;

@@ -25,7 +25,7 @@ import { PowerDetailView } from "./detail";
 import { PowerPricesView } from "./prices";
 import { blendHex } from "../../../theme/colors";
 import { missingCell, PartsBar, signedColor, toneColor, withoutQuietColumns, type StateTone } from "../shared/research-cells";
-import { COVERAGE_COLUMNS, EXPOSURE_COLUMNS, HISTORY_COLUMNS, GENERATION_COLUMNS, UTILITY_COLUMNS, POWER_TABS, PROJECT_COLUMNS, RATE_COLUMNS, historyDate, historyId, historySeries, otherRows, powerCoverageNote, powerFigures, powerRegion, powerNumber, powerPercent, powerTab, powerTickerEmpty, projectRows, titleCase, UNMAPPED, type PowerRow, type PowerTickerScope } from "./model";
+import { POWER_DATE_COLUMNS, powerStampText, COVERAGE_COLUMNS, EXPOSURE_COLUMNS, HISTORY_COLUMNS, GENERATION_COLUMNS, UTILITY_COLUMNS, POWER_TABS, PROJECT_COLUMNS, RATE_COLUMNS, historyDate, historyId, historySeries, otherRows, powerCoverageNote, powerFigures, powerRegion, powerNumber, powerPercent, powerTab, powerTickerEmpty, projectRows, titleCase, UNMAPPED, type PowerRow, type PowerTickerScope } from "./model";
 
 const rowId = (r: PowerRow) => r.id;
 const isRecord = (r: PowerRow) => !r.section;
@@ -207,7 +207,7 @@ function PowerView({ width, height, focused, scope, canSave, needsVerification }
     // The ticker map: a record no listed company is mapped to says so.
     if (column.id === "ticker" && value == null && (row.project || row.exposure)) return { text: UNMAPPED, color: colors.textMuted };
     if (value == null || value === "") return missingCell(colors);
-    const text = typeof value === "number" ? /Rate$/.test(column.id) ? powerPercent(value) : powerNumber(value) : String(value);
+    const text = typeof value === "number" ? /Rate$/.test(column.id) ? powerPercent(value) : powerNumber(value) : POWER_DATE_COLUMNS.has(column.id) ? powerStampText(value) : String(value);
     const numeric = typeof value === "number" && /Rate$/.test(column.id) ? value * 100 : value;
     if (column.id === "status") return { text, color: toneColor(STATUS_TONES[text] ?? "text", colors) };
     if (column.id === "changeMw" && typeof value === "number") return { text: `${value > 0 ? "+" : ""}${text}`, value, color: signedColor(value, colors) };

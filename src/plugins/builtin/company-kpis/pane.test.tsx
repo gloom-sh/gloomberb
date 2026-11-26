@@ -44,7 +44,7 @@ test("preview keeps real values and evidence navigable at narrow size while lock
   await tui.emitKeypress({ name: "return" });
   const detail = await tui.waitForFrameToContain("Annualized recurring");
   expect(detail).toContain("GBP");
-  expect(detail).toContain("2026-04-01 to 2026-06-30");
+  expect(detail).toContain("01 Apr 2026 to 30 Jun 2026");
   await tui.emitKeypress({ name: "escape" });
   expect(await tui.waitForFrameToContain("METRIC")).toContain("125.00M");
 });
@@ -55,7 +55,7 @@ test.each([46, 52, 60])("a %s-column guide keeps its value and wraps its access 
   await mount({ guidance: true, width, height: 30 });
   const frame = await tui.waitForFrameToContain("110.00M");
   expect(frame).toContain("120.00M");
-  expect(frame).toContain("2026-05-20");
+  expect(frame).toContain("20 May 2026");
   expect(frame.replace(/\s+/g, " ")).toContain("Gloom Pro");
 });
 
@@ -100,7 +100,7 @@ test("the tracker keeps Issued in view at 90 cells and says what the guide did i
   await mount({ guidance: true, width: 90 });
   const frame = await tui.waitForFrameToContain("Raised");
   expect(frame).toContain("ISSUED");
-  expect(frame).toContain("2026-02-01");
+  expect(frame).toContain("01 Feb 2026");
 });
 
 test("quarterly and annual KPIs are separate views, each with its own change column", async () => {

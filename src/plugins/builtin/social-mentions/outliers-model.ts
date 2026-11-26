@@ -1,3 +1,4 @@
+import { formatDay } from "../../../components/ui/day-cell";
 import type { DataTableColumn } from "../../../components";
 import type { SelectButtonOption } from "../../../components/ui/select-button";
 import type { SocialOutlierRow, SocialOutlierWindow } from "../../../api-client/social-mentions";
@@ -64,7 +65,7 @@ export interface SocialOutlierColumn extends DataTableColumn {
 }
 
 /** The ranked day as the ticker's own table dates it. */
-export const outlierDay = (row: Pick<SocialOutlierRow, "day">) => row.day;
+export const outlierDay = (row: Pick<SocialOutlierRow, "day">) => formatDay(row.day);
 /** When today's count was read: the column header says UTC. */
 export const outlierCountedAt = (row: Pick<SocialOutlierRow, "countedAt">) => {
   const time = new Date(row.countedAt);

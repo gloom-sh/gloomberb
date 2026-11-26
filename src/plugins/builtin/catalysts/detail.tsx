@@ -1,4 +1,6 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { daysInTextCell } from "../../../components/ui/day-cell";
+import { formatDaysInText } from "../../../utils/day-format";
 import { enrollmentBasis, enrollmentSeries, enrollmentValue } from "./history";
 import { useCallback, useMemo, useRef } from "react";
 import type { CatalystDetail, CatalystEvent } from "../../../api-client/catalysts";
@@ -7,7 +9,7 @@ import { usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, ScrollBox, Text, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { UpgradeLabel } from "../shared/locked-rows";
-import { CATALYST_DATE_WITHHELD, catalystAgency, catalystChangeText, catalystDate, catalystDateBasis, catalystDateWithheld, catalystFacts, catalystLabel, catalystShownStatus } from "./model";
+import { CATALYST_DATE_WITHHELD, catalystAgency, catalystChangeText, catalystDateBasis, catalystDateText, catalystDateWithheld, catalystFacts, catalystLabel, catalystShownStatus } from "./model";
 import { humanLabel } from "../shared/research-cells";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { loadCatalystDetail } from "./client";
@@ -22,11 +24,11 @@ function Evidence({ event, width, height }: { event: CatalystEvent; width: numbe
   return <ScrollBox scrollY width={width} height={desktop ? undefined : height} flexGrow={1} flexBasis={0} contentOptions={{ paddingX: 1 }}>
     <KeyValueRow label="Classification" value={`${catalystLabel(event.type)} · ${catalystAgency(event.agency)} · ${event.country ?? event.jurisdiction}`} labelWidth={18} />
     <KeyValueRow label="Status" value={humanLabel(catalystShownStatus(event))} detail={`Revision ${event.revision}`} labelWidth={18} />
-    <KeyValueRow label="Announced" value={catalystDate(event, "announced")} labelWidth={18} />
-    {event.effectiveDate ? <KeyValueRow label={catalystDateBasis(event, "effective")} value={catalystDate(event, "effective")} labelWidth={18} /> : null}
-    {event.deadlineDate ? <KeyValueRow label={catalystDateBasis(event, "deadline")} value={catalystDate(event, "deadline")} labelWidth={18} />
+    <KeyValueRow label="Announced" value={catalystDateText(event, "announced")} labelWidth={18} />
+    {event.effectiveDate ? <KeyValueRow label={catalystDateBasis(event, "effective")} value={catalystDateText(event, "effective")} labelWidth={18} /> : null}
+    {event.deadlineDate ? <KeyValueRow label={catalystDateBasis(event, "deadline")} value={catalystDateText(event, "deadline")} labelWidth={18} />
       : catalystDateWithheld(event) ? <KeyValueRow label={catalystLabel("deadline")} value={CATALYST_DATE_WITHHELD} labelWidth={18} /> : null}
-    <KeyValueRow label="Observed (UTC)" value={catalystDate(event, "observed")} labelWidth={18} />
+    <KeyValueRow label="Observed (UTC)" value={catalystDateText(event, "observed")} labelWidth={18} />
     <KeyValueRow label="Confidence" value={`${Math.round(event.confidence * 100)}%`} labelWidth={18} />
     {facts.map((fact) => <KeyValueRow key={fact.label} label={fact.label} value={fact.value} labelWidth={18} />)}
     {event.summary && event.summary !== event.title && event.summary !== event.quote ? <Box paddingY={1}><Text fg={colors.text} wrapText width="100%">{event.summary}</Text></Box> : null}
@@ -42,7 +44,7 @@ function Evidence({ event, width, height }: { event: CatalystEvent; width: numbe
       <KeyValueRow label="Expected impact" value={catalystLabel(event.opinion.direction)} detail={`${Math.round(event.opinion.confidence * 100)}% confidence`} labelWidth={18} />
       <Text fg={colors.text} wrapText width="100%">{event.opinion.rationale}</Text><Text fg={colors.textDim} wrapText width="100%">{event.opinion.quote}</Text>
     </Section> : null}
-    {event.changes.length ? <Section title="Revision changes" width={Math.max(20, width - 2)}>{event.changes.map((change, i) => <Text key={`${change.field}:${i}`} fg={colors.textBright} wrapText width="100%">{catalystChangeText(change)}</Text>)}</Section> : null}
+    {event.changes.length ? <Section title="Revision changes" width={Math.max(20, width - 2)}>{event.changes.map((change, i) => <Text key={`${change.field}:${i}`} fg={colors.textBright} wrapText width="100%">{formatDaysInText(catalystChangeText(change))}</Text>)}</Section> : null}
   </ScrollBox>;
 }
 export function CatalystEventDetail({ event, accessKey, snapshot, width, height, focused, initialTab = "evidence", openUpgrade }: {
@@ -67,7 +69,7 @@ export function CatalystEventDetail({ event, accessKey, snapshot, width, height,
   usePaneRefreshKey(resource.reload, { focused });
   const revision = rows.find((row) => row.revisionId === revisionId) ?? data?.event ?? event;
   const series = useMemo(() => enrollmentSeries(rows, colors), [rows, colors]);
-  const columns = useMemo<DataTableColumn[]>(() => [{ id: "revision", label: "Rev", width: 4, align: "right" }, { id: "observed", label: "Observed (UTC)", width: 16, align: "left" },
+  const columns = useMemo<DataTableColumn[]>(() => [{ id: "revision", label: "Rev", width: 4, align: "right" }, { id: "observed", label: "Observed (UTC)", width: 17, align: "left" },
     { id: "status", label: "Status", width: width < 100 ? 15 : 20, align: "left" }, ...(event.type === "clinical" ? [{ id: "enrollment", label: "Participants", width: width < 100 ? 18 : 22, align: "right" as const }] : []),
     { id: "changes", label: "Changes", width: width < 100 ? 18 : 24, flexGrow: 1, align: "left" }], [width, event.type]);
   const link = useChartTableSelection({ rows, getId: (row) => row.revisionId, getDate: (row) => enrollmentValue(row) === null ? null : new Date(row.observedAt), selectedId: revision.revisionId, onSelect: setRevisionId, focused: focused && tab === "history", enabled: series.length > 0 });
@@ -82,7 +84,11 @@ export function CatalystEventDetail({ event, accessKey, snapshot, width, height,
       rootWidth={width} rootHeight={Math.max(3, height - tabRows)} focused={focused} getItemKey={(row) => row.revisionId}
       selection={{ kind: "id", selectedId: revision.revisionId, getId: (row) => row.revisionId, onChange: setRevisionId }}
       onActivate={(row) => { setRevisionId(row.revisionId); setTab("evidence"); }}
-      renderCell={(row, column) => ({ text: column.id === "revision" ? String(row.revision) : column.id === "observed" ? catalystDate(row, "observed") : column.id === "status" ? humanLabel(row.status) : column.id === "enrollment" ? enrollmentValue(row) === null ? MISSING_VALUE : `${enrollmentValue(row)?.toLocaleString("en-US")} ${enrollmentBasis(row)}` : row.changes.map(catalystChangeText).join("; ") || "First observed" })}
+      renderCell={(row, column) => {
+        const text = column.id === "revision" ? String(row.revision) : column.id === "observed" ? catalystDateText(row, "observed") : column.id === "status" ? humanLabel(row.status) : column.id === "enrollment" ? enrollmentValue(row) === null ? MISSING_VALUE : `${enrollmentValue(row)?.toLocaleString("en-US")} ${enrollmentBasis(row)}` : row.changes.map(catalystChangeText).join("; ") || "First observed";
+        // The days an observation and its changes draw first export as ISO.
+        return column.id === "observed" || column.id === "changes" ? daysInTextCell(text) : { text };
+      }}
       bodyAfter={data?.access && data.access.lockedRows > 0 ? <UpgradeLabel text="Upgrade for complete event history" onPress={openUpgrade} role="catalyst-history-upgrade" /> : undefined}
       emptyStateTitle="History is collecting." /></PaneStatusBody>
       : <Evidence event={revision} width={width} height={Math.max(3, height - tabRows)} />}

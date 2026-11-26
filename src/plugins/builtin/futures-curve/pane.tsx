@@ -11,6 +11,8 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, type InputRenderable } from "../../../ui";
 import { MISSING_VALUE, formatPercentRaw } from "../../../utils/format";
+import { dayCell, formatDay } from "../../../components/ui/day-cell";
+import { formatDaysInText } from "../../../utils/day-format";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { futuresSessionRefreshInterval } from "../shared/futures-session";
@@ -18,7 +20,7 @@ import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { useQuoteBoard } from "../shared/use-quote-board";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { getCachedFuturesCurve, loadCurveSpotBars, loadCurveSpotCloses, loadFuturesCurve, loadFuturesCurveAsOf } from "./client";
-import { curveFreshnessObservations, curveReportFreshness, BASIS_CONVENTION, basisSpotSymbol, blankBasisNote, curveAsOfDate, curveAxisGrid, curveAxisPrice, curveBasisPercent, curveBasisRows, curveCache, curveChangeText, curveContractChanges, curveInterestDate, curveContractCode, curvePrice, curveRank, curveSessionNote, curveSettleShown, curveSpot, curveSpotBars, curveSpotLabel, curveSpotPremium, curveSpotSource, curveSpreadBasis, curveSpreadLabel, curveTimestamp, curveStandIn, curveTitle, curveUnitLabel, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, noTradeChangeNote, normalizeCurveRoot, paneCurveRoot, shortDatedBasis, shortDatedBasisNote, skippedSpreadNotice, sortCurveContracts, spotIndexSymbol, thinSpreadNotice, unsupportedCurveRootMessage, type CurveContractChanges, type CurveSpot } from "./model";
+import { curveFreshnessObservations, curveReportFreshness, BASIS_CONVENTION, basisSpotSymbol, blankBasisNote, curveAsOfDate, curveAxisGrid, curveAxisPrice, curveBasisPercent, curveBasisRows, curveCache, curveChangeText, curveContractChanges, curveInterestDate, curveContractCode, curvePrice, curveRank, curveSessionNote, curveSettleShown, curveSpot, curveSpotBars, curveSpotLabel, curveSpotPremium, curveSpotSource, curveSpreadBasis, curveSpreadLabel, curveStampText, curveTimestamp, curveStandIn, curveTitle, curveUnitLabel, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, noTradeChangeNote, normalizeCurveRoot, paneCurveRoot, shortDatedBasis, shortDatedBasisNote, skippedSpreadNotice, sortCurveContracts, spotIndexSymbol, thinSpreadNotice, unsupportedCurveRootMessage, type CurveContractChanges, type CurveSpot } from "./model";
 
 const TABS = [{ value: "curve", label: "Curve" }, { value: "contracts", label: "Contracts" }];
 // One column order for every root. SETTLE is the exchange settlement for the
@@ -26,8 +28,8 @@ const TABS = [{ value: "curve", label: "Curve" }, { value: "contracts", label: "
 const COLUMNS: DataTableColumn[] = [
   // The longest symbol is a three-letter root with its month and venue: RTYH27.CME.
   { id: "symbol", label: "CONTRACT", width: 11, align: "left" },
-  { id: "expiry", label: "EXPIRY", width: 10, align: "left" },
-  { id: "notice", label: "1ST NOTICE", width: 10, align: "left" },
+  { id: "expiry", label: "EXPIRY", width: 11, align: "left" },
+  { id: "notice", label: "1ST NOTICE", width: 11, align: "left" },
   // A Treasury price keeps its 1/256 tick: 103.50000000.
   { id: "settle", label: "SETTLE", width: 12, align: "right" },
   { id: "price", label: "LAST", width: 12, align: "right" },
@@ -35,10 +37,10 @@ const COLUMNS: DataTableColumn[] = [
   { id: "change", label: "CHG", width: 11, align: "right" },
   { id: "percentile", label: "PCTL", width: 5, align: "right" },
   { id: "oi", label: "OPEN INT", width: 10, align: "right" },
-  // The session the open interest counts, a day or so before the last trade.
-  { id: "oiDate", label: "OI DATE", width: 10, align: "left" },
+  // The session the open interest counts, a day or so before the last trade: its day and month say which.
+  { id: "oiDate", label: "OI DATE", width: 7, align: "left" },
   { id: "volume", label: "VOLUME", width: 10, align: "right" },
-  { id: "asOf", label: "AS OF UTC", width: 16, align: "left" },
+  { id: "asOf", label: "AS OF UTC", width: 17, align: "left" },
 ];
 // Open interest and the session it counts go together.
 const INTEREST: readonly string[] = ["oi", "oiDate"];
@@ -199,9 +201,9 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle, standInNote
       detail: [data.slope.state, spreadBasis, spreadRank, slopeDate].filter(Boolean).join(" · ") },
     ...spotPremium ? [
       { id: "spot", label: spotPremium.label, value: spotPremium.close == null ? MISSING_VALUE : spotPremium.close.toFixed(2),
-        detail: spotPremium.date ? `${spotPremium.date.slice(5)} close` : undefined },
+        detail: spotPremium.date ? `${formatDay(spotPremium.date, "no-year")} close` : undefined },
       { id: "premium", label: "Front premium", value: curveChangeText(spotPremium.premium, root),
-        ...spotPremium.premium == null ? { tone: "warning" as const, detail: spotPremium.reason ?? undefined }
+        ...spotPremium.premium == null ? { tone: "warning" as const, detail: spotPremium.reason ? formatDaysInText(spotPremium.reason) : undefined }
           : { detail: spotPremium.frontSymbol ? `${curveContractCode(spotPremium.frontSymbol)} settle` : undefined } },
     ] : [],
     ...data.spec ? [{ id: "contract", label: "Contract", value: data.spec.size, detail: `tick ${futuresTickText(data.spec)}` }] : [],
@@ -211,7 +213,7 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle, standInNote
   const bodyHeight = Math.max(1, height - tabRows - 1 - (dateError ? 1 : 0));
   // A Cboe price is the settlement itself, so its curve has no separate last trade.
   const settlesOnly = data?.source === "cboe";
-  const settleLabel = data?.settlementDate ? `SETTLE ${data.settlementDate.slice(5)}` : "SETTLE";
+  const settleLabel = data?.settlementDate ? `SETTLE ${formatDay(data.settlementDate, "no-year")}` : "SETTLE";
   // Cash-settled roots (ES, CL's Brent, VX) have no first notice day to show.
   const noNotice = !data?.contracts.some((row) => row.firstNotice);
   const shortDated = curveTab && curveRows.some((row) => shortDatedBasis(basis.get(row.symbol)));
@@ -266,8 +268,9 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle, standInNote
   // A long in these can be assigned delivery: the hedge a trader rolls before first notice.
   const delivering = data?.contracts.filter((row) => row.inDelivery).map((row) => curveContractCode(row.symbol)) ?? [];
   // A blank Change on Contracts says why, as a blank basis does: no trade since the settlement it is measured from.
-  const untraded = data && !requestedDate && columns.some((entry) => entry.id === "change")
+  const untradedNote = data && !requestedDate && columns.some((entry) => entry.id === "change")
     ? noTradeChangeNote(tableRows, data, { count: true }) : null;
+  const untraded = untradedNote ? formatDaysInText(untradedNote) : null;
   usePaneNoticeFooter({ registrationId: "futures-curve:notices", focused,
     notices: emptyPast ? [] : [...standInNote ? [standInNote] : [], ...sessionNote ? [sessionNote] : [], ...data?.gaps ?? [], ...data?.notes ?? [], ...thinSpread ? [thinSpread] : [], ...skippedSpread ? [skippedSpread] : [], ...basisNotes, ...untraded ? [untraded] : [],
       ...delivering.length ? [`${delivering.join(", ")} ${delivering.length === 1 ? "is" : "are"} past first notice.`] : []] });
@@ -301,8 +304,8 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle, standInNote
   const renderCell = useCallback((row: FuturesContract, column: DataTableColumn) => {
     // A contract past first notice can be assigned delivery.
     if (column.id === "symbol") return { text: row.symbol, color: row.inDelivery ? colors.warning : undefined };
-    if (column.id === "expiry") return { text: row.lastTrade ?? row.expiration, color: colors.textMuted };
-    if (column.id === "notice") return { text: row.firstNotice ?? MISSING_VALUE, color: row.inDelivery ? colors.warning : colors.textMuted };
+    if (column.id === "expiry") return { ...dayCell(row.lastTrade ?? row.expiration), color: colors.textMuted };
+    if (column.id === "notice") return { ...dayCell(row.firstNotice), color: row.inDelivery ? colors.warning : colors.textMuted };
     if (column.id === "settle") return { text: curvePrice(row.settlement ?? null, root) };
     // A past curve's settled row has no separate last trade: its price is the settlement.
     if (column.id === "price") {
@@ -329,12 +332,12 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle, standInNote
     }
     if (column.id === "percentile") return { text: row.samples < 2 || row.percentile == null ? MISSING_VALUE : row.percentile.toFixed(0) };
     if (column.id === "oi") return { text: integer(row.openInterest) };
-    if (column.id === "oiDate") return { text: curveInterestDate(row), color: colors.textMuted };
+    if (column.id === "oiDate") return { ...dayCell(curveInterestDate(row), "no-year"), color: colors.textMuted };
     if (column.id === "volume") return { text: integer(row.volume) };
     // A month with no trade since the settlement it shows is dated by that settlement, as the curve marks it.
     const settled = data && !requestedDate ? curveSettleShown(row, data) : null;
     if (settled) return { text: `settle ${settled}`, color: colors.textMuted };
-    return { text: curveTimestamp(row.asOf), color: row.stale ? colors.warning : colors.textMuted };
+    return { text: curveStampText(row.asOf), ...(row.asOf ? { value: row.asOf } : {}), color: row.stale ? colors.warning : colors.textMuted };
   }, [basis, changes, colors, curveTab, data, requestedDate, root]);
   return <Box width={width} height={height} flexDirection="column">
     {tabStrip}
@@ -347,7 +350,7 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle, standInNote
         if (!dateActive && !value.trim() && requestedDate) selectDate("");
       },
       onSubmit: selectDate,
-    }]} meta={requestedDate && data?.asOf && data.asOf !== requestedDate ? `as of ${data.asOf}` : undefined} />
+    }]} meta={requestedDate && data?.asOf && data.asOf !== requestedDate ? `as of ${formatDay(data.asOf)}` : undefined} />
     {dateError ? <Notice tone="negative">{dateError}</Notice> : null}
     <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null}
       empty={!!data && !data.contracts.length} subject="futures curve"

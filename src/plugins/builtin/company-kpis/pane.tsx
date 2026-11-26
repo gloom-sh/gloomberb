@@ -1,3 +1,4 @@
+import { formatDay } from "../../../utils/day-format";
 import { useCallback, useMemo, useRef } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
@@ -21,7 +22,7 @@ import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedCompanyData, loadCompanyData, KPI_UNAVAILABLE, validateCompanyData, type CompanyDataset, type CompanyMode } from "./client";
 import { useCompanyEvidence } from "./screenshot-evidence";
-import { allGuidance, allObservations, basisLabel, changeText, changeTone, companyCellText, companyColumns, companyEmptyState, dimensionLabel, directionLabel, directionTone, fitCompanyColumns, guideGroupKey, guidanceSeries, guidanceIssueNote, fiscalLabel,
+import { allGuidance, allObservations, basisLabel, changeText, changeTone, companyCellDay, companyCellText, companyColumns, companyEmptyState, dimensionLabel, directionLabel, directionTone, fitCompanyColumns, guideGroupKey, guidanceSeries, guidanceIssueNote, fiscalLabel,
   isGuidance, exactObservation, kpiPeriodView, kpiPeriodViews, observationValue, observationChange, observationChart, periodOrder, outcomeLabel, QUIET_COLUMNS, rangeText, scopeWords, seriesDetail, seriesLabel, seriesLabels, seriesName,
   seriesOrder, unitLabel, valueText, companyPreviewNote, type CompanyRow } from "./model";
 import { PriceSparkline } from "../../../components/price-sparkline/view";
@@ -41,16 +42,16 @@ function DisclosureEvidence({ row, sourceId, onSource, width }: { row: CompanyRo
   // The desktop's detail body already holds the pane's inset.
   return <Box flexDirection="column" paddingX={desktop ? 0 : 1}>
     {row.evidence.length > 1 ? <QueryBar width={Math.max(1, width - 4)} filters={[{ id: "source", label: "Document", value: evidence.id,
-      options: row.evidence.map((entry) => ({ value: entry.id, label: `${entry.publishedAt.slice(0, 10)} · ${entry.title}` })), onChange: onSource }]} /> : null}
+      options: row.evidence.map((entry) => ({ value: entry.id, label: `${formatDay(entry.publishedAt)} · ${entry.title}` })), onChange: onSource }]} /> : null}
     <KeyValueRow label="Value" value={isGuidance(row) ? rangeText(row) : observationValue(row)} detail={row.currency || row.unit === "volume" || row.unit === "count" ? unitLabel(row) : undefined} labelWidth={18} />
-    <KeyValueRow label="Fiscal period" value={row.period.label} detail={row.period.end ? row.period.start ? `${row.period.start} to ${row.period.end}` : `${row.period.kind === "instant" ? "As of" : "Ended"} ${row.period.end}` : "Calendar dates unavailable"} labelWidth={18} />
+    <KeyValueRow label="Fiscal period" value={row.period.label} detail={row.period.end ? row.period.start ? `${formatDay(row.period.start)} to ${formatDay(row.period.end)}` : `${row.period.kind === "instant" ? "As of" : "Ended"} ${formatDay(row.period.end)}` : "Calendar dates unavailable"} labelWidth={18} />
     <KeyValueRow label="Basis" value={basisLabel(row.basis)} labelWidth={18} />
     <KeyValueRow label="Scope" value={(desktop ? scopeWords(seriesLabels(row)) : dimensionLabel(row.dimensions)) || "Consolidated"} labelWidth={18} />
     <KeyValueRow label="Definition" value={row.metric.definition} labelWidth={18} />
     <KeyValueRow label="Revision" value={`${row.revision}${row.current ? " · current" : " · superseded"}${!isGuidance(row) && (row.conflict || row.contested) ? " · conflicting disclosures" : ""}`} labelWidth={18} />
     {row.revisionReason ? <KeyValueRow label="Correction" value={row.revisionReason} labelWidth={18} /> : null}
     {isGuidance(row) ? <>
-      <KeyValueRow label="Issued" value={row.issuedDate} detail={directionLabel(row)} labelWidth={18} />
+      <KeyValueRow label="Issued" value={formatDay(row.issuedDate)} detail={directionLabel(row)} labelWidth={18} />
       <KeyValueRow label="Source range" value={row.rangeText} labelWidth={18} />
       {row.conditions ? <KeyValueRow label="Conditions" value={row.conditions} labelWidth={18} /> : null}
       <KeyValueRow label="Later actual" value={row.actual ? valueText(row, row.actual.value) : "Pending"} detail={row.actual ? outcomeLabel(row) : undefined} labelWidth={18} />
@@ -58,7 +59,7 @@ function DisclosureEvidence({ row, sourceId, onSource, width }: { row: CompanyRo
     <Box key={evidence.id} flexDirection="column" paddingTop={1}>
       <SectionHeading title="Source evidence" />
       <KeyValueRow label="Document" value={evidence.title} labelWidth={18} />
-      <KeyValueRow label="Published" value={evidence.publishedAt.slice(0, 10)} detail={`${evidence.country} · ${evidence.language}`} labelWidth={18} />
+      <KeyValueRow label="Published" value={formatDay(evidence.publishedAt)} detail={`${evidence.country} · ${evidence.language}`} labelWidth={18} />
       <KeyValueRow label="Confidence" value={`${Math.round(evidence.confidence * 100)}%`} detail={evidence.quoteMatchMode === "exact" ? "Exact text match" : "Normalized text match"} labelWidth={18} />
       {/* The filing's own words: on the desktop, the quote block. */}
       {desktop
@@ -251,7 +252,7 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
     const text = column.id === "metric" && !columns.some((entry) => entry.id === "basis")
       ? [row.metricId === "eps" ? "EPS" : row.metric.name, seriesDetail(row)].filter(Boolean).join(" · ")
       : companyCellText(row, column.id, observations);
-    return { text, ...(column.id === "value" && !guide ? { value: exactObservation(row as KpiObservation) ? (row as KpiObservation).value : observationValue(row as KpiObservation) } : column.id === "actual" ? { value: guide?.actual?.value } : {}),
+    return { text, ...(column.id === "value" && !guide ? { value: exactObservation(row as KpiObservation) ? (row as KpiObservation).value : observationValue(row as KpiObservation) } : column.id === "actual" ? { value: guide?.actual?.value } : column.id === "issued" || column.id === "published" ? { value: companyCellDay(row, column.id) } : {}),
       color: column.id === "metric" ? colors.textBright : column.id === "value" || column.id === "actual" ? colors.textBright
         : column.id === "outcome" && guide?.actual ? guide.actual.favorable === "beat" ? colors.positive : guide.actual.favorable === "miss" ? colors.negative : colors.text
         : column.id === "period" || column.id === "basis" || column.id === "scope" || column.id === "issued" || column.id === "published" || column.id === "revision" || column.id === "confidence" ? colors.textDim : colors.text,

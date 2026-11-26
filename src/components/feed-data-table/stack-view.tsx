@@ -28,6 +28,8 @@ export interface FeedDataTableItem {
   /** A tone for the source cell, such as a form that matters; the text carries the meaning. */
   eyebrowColor?: string;
   title: string;
+  /** What an export writes for the title when it differs from the text: its days in ISO where the text puts them first. */
+  titleValue?: string;
   timestamp?: Date | string | null;
   detailTitle?: string;
   /** Short lines over the text; the terminal's form of the facts when both are given. */
@@ -251,6 +253,7 @@ export function FeedDataTableStackView({
       case "title":
         return {
           text: row.item.title,
+          ...(row.item.titleValue !== undefined ? { value: row.item.titleValue } : {}),
           color: colors.text,
           attributes: isItemRead
             ? isItemRead(row.item)

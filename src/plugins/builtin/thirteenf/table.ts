@@ -4,6 +4,7 @@ import { TickerBadgeList } from "../../../components/ticker/badge/list";
 import { TextAttributes } from "../../../ui";
 import type { DataTableCell } from "../../../components";
 import { colors, priceColor } from "../../../theme/colors";
+import { dayCell } from "../../../components/ui/day-cell";
 import {
   holdingActionLabel,
   formatChangeShares,
@@ -45,10 +46,10 @@ export function renderBrowserCell(
     case "cik":
       return { text: row.cik, color: colors.textDim };
     case "period":
-      return { text: row.periodOfReport ?? MISSING_VALUE, color: colors.textDim };
+      return { ...dayCell(row.periodOfReport), color: colors.textDim };
     case "filed":
       // With its year, as PERIOD: a fund that stopped filing did so years ago.
-      return { text: row.filedAsOfDate || MISSING_VALUE, color: colors.textDim };
+      return { ...dayCell(row.filedAsOfDate), color: colors.textDim };
     case "value":
       return { text: formatMoneyCompact(row.tableValueTotal), color: colors.text };
     case "rows":
@@ -158,13 +159,13 @@ export function renderTimelineCell(
   switch (column.id) {
     case "period":
       return {
-        text: row.periodOfReport,
+        ...dayCell(row.periodOfReport),
         color: colors.textBright,
         attributes: TextAttributes.BOLD,
       };
     case "filed":
       // The whole day, as the period beside it: the list spans years.
-      return { text: row.filedAsOfDate || MISSING_VALUE, color: colors.textDim };
+      return { ...dayCell(row.filedAsOfDate), color: colors.textDim };
     case "value":
       return { text: formatMoneyCompact(row.tableValueTotal), color: colors.text };
     case "rows":

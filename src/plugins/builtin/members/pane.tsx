@@ -1,3 +1,4 @@
+import { dayCell, formatDay } from "../../../components/ui/day-cell";
 import { MISSING_VALUE } from "../../../utils/format";
 import { Breadth } from "./breadth-pane";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -155,7 +156,7 @@ function Changes({ fund, width, height, focused, active }: ViewProps) {
         {detail.headline && <Prose text={detail.headline} width={Math.max(8, width - 4)} />}
         {detail.reason !== detail.headline && <Prose text={detail.reason} width={Math.max(8, width - 4)} />}
         {detail.estimates.map((estimate) => <KeyValueRow key={estimate.symbol} label={`${estimate.symbol} est. ADV days`} labelWidth={24} value={percent(estimate.days, "")} />)}
-        {!!detail.estimates.length && <KeyValueRow label="Holdings as of" labelWidth={24} value={detail.estimates[0]!.asOf} />}
+        {!!detail.estimates.length && <KeyValueRow label="Holdings as of" labelWidth={24} value={formatDay(detail.estimates[0]!.asOf)} />}
         {!!detail.estimates.length && <Prose text={data.estimateLabel} width={Math.max(8, width - 4)} />}
         {detail.kind === "history" && data.attribution && <Prose text={data.attribution.text} width={Math.max(8, width - 4)} />}
       </DetailScrollBody>} emptyStateTitle="No stored index changes." />}
@@ -194,7 +195,7 @@ function FundPicker({ width, height, focused, choose }: Pick<PaneProps, "width" 
     {resource.data && <DataTableView items={resource.data.payload.funds} emptyStateTitle="No covered funds." rootWidth={width} rootHeight={height} focused={focused}
       columns={[{ id: "ticker", label: "Fund", align: "left", width: 8 }, { id: "name", label: "Index", align: "left", width: 24, flexGrow: 1 }, { id: "asOf", label: "Holdings as of", align: "left", width: 16 }]}
       getItemKey={(row) => row.ticker} selection={{ kind: "id", selectedId: selected, getId: (row) => row.ticker, onChange: (id) => setSelected(String(id)) }}
-      onActivate={(row) => choose(row.ticker)} sortColumnId={null} sortDirection="asc" renderCell={(row, col) => ({ text: String(row[col.id as "ticker"] ?? MISSING_VALUE) })} />}
+      onActivate={(row) => choose(row.ticker)} sortColumnId={null} sortDirection="asc" renderCell={(row, col) => col.id === "asOf" ? dayCell(row.asOf) : ({ text: String(row[col.id as "ticker"] ?? MISSING_VALUE) })} />}
   </PaneStatusBody>;
 }
 type ListProps = Pick<PaneProps, "width" | "height" | "focused">;

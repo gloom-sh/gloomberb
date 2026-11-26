@@ -1,3 +1,4 @@
+import { formatDay, formatDayTime } from "../../../utils/day-format";
 import type { CloudCdsHistoryPointPayload, CloudCdsLevelPayload, CloudCdsTradePayload } from "../../../api-client";
 import type { DataTableColumn, StatItem } from "../../../components";
 import type { TimeSeriesPoint } from "../../../time-series/types";
@@ -653,6 +654,11 @@ export function formatEventTime(eventAt: number): string {
   return new Date(eventAt).toISOString().slice(0, 16).replace("T", " ");
 }
 
+/** A print's time as the tables write it, day first in UTC: `25 Nov 2026 16:16`. */
+export function formatEventStamp(eventAt: number): string {
+  return Number.isFinite(eventAt) ? formatDayTime(eventAt) : MISSING_VALUE;
+}
+
 export function formatMaturity(maturity: string | null): string {
   return maturity ?? MISSING_VALUE;
 }
@@ -687,7 +693,7 @@ export function buildIssuerColumns(): IssuerColumn[] {
   return [
     { id: "issuer", label: "ISSUER", width: 16, align: "left", flexGrow: 1 },
     { id: "trades", label: "TRADES", width: 7, align: "right" },
-    { id: "last", label: "LAST UTC", width: 16, align: "left" },
+    { id: "last", label: "LAST UTC", width: 17, align: "left" },
     { id: "spread", label: "5Y", width: 10, align: "right" },
     { id: "1w", label: "1W", width: 10, align: "right" },
     { id: "1m", label: "1M", width: 10, align: "right" },
@@ -760,9 +766,9 @@ export function sharedTradeCoupon(trades: readonly Pick<CdsTrade, "couponBp">[])
 
 export function buildTradeColumns(width: number, points = false, upfrontCurrency: string | null = null): TradeColumn[] {
   const upfrontLabel = upfrontCurrency ? `ABS UPFRONT ${upfrontCurrency}` : "ABS UPFRONT";
-  const maturityWidth = Math.max(10, Math.min(12, width - 59 - (points ? 9 : 0)));
+  const maturityWidth = Math.max(11, Math.min(12, width - 59 - (points ? 9 : 0)));
   return [
-    { id: "time", label: "TIME UTC", width: 16, align: "left" },
+    { id: "time", label: "TIME UTC", width: 17, align: "left" },
     { id: "maturity", label: "MATURITY", width: maturityWidth, align: "left" },
     { id: "notional", label: "NOTIONAL", width: 11, align: "right" },
     // A currency every print shares is the upfront's own, and a shared coupon goes above the table (sharedTradeCoupon).
@@ -937,7 +943,7 @@ export function spreadFigures(line: CdsSpreadLine): StatItem[] {
   const summary = spreadSummary(line);
   if (!summary) return [];
   const { unit } = summary;
-  const dated = summary.settlement ? `${summary.date} · ${SETTLEMENT_TEXT}` : summary.date;
+  const dated = summary.settlement ? `${formatDay(summary.date)} · ${SETTLEMENT_TEXT}` : formatDay(summary.date);
   return [
     unit === "pts"
       ? {
@@ -953,7 +959,7 @@ export function spreadFigures(line: CdsSpreadLine): StatItem[] {
       id: "range",
       label: "Range",
       value: formatSpreadRange(unit, summary.range),
-      detail: `since ${summary.range.since}`,
+      detail: `since ${formatDay(summary.range.since)}`,
     }] : []),
   ];
 }

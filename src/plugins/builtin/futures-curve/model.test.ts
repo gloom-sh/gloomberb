@@ -495,13 +495,13 @@ describe("past curves", () => {
       row("ALIZ26.CMX", "2026-12-29", 3228.75, { tradeDate: "2026-10-23", volume: 51, settled: true })]), { "1W": null, "1M": null }, "2026-10-24T12:00:00.000Z");
     expect(aluminium.slope).toMatchObject({ state: "thin", thinSymbol: "ALIX26.CMX", basis: "settle", asOf: "2026-10-23" });
     expect(thinSpreadNotice(aluminium)).toBe("ALIZ26-ALIX26 is thin (ALIX26 traded 4 lots): no contango or backwardation call");
-    expect(curveSpreadBasis(aluminium.slope, aluminium.asOf)).toBe("settle 10-23");
+    expect(curveSpreadBasis(aluminium.slope, aluminium.asOf)).toBe("settle 23 Oct");
   });
 
   test("a live spread says which prices it subtracts, timed when they are last trades", () => {
     expect(curveSpreadBasis({ basis: "last", asOf: "2026-10-23T20:58:00.000Z" }, "2026-10-23T20:59:35.000Z")).toBe("last 20:58");
-    expect(curveSpreadBasis({ basis: "last", asOf: "2026-10-22T20:58:00.000Z" }, "2026-10-23T20:59:35.000Z")).toBe("last 10-22 20:58");
-    expect(curveSpreadBasis({ basis: "settle", asOf: "2026-10-22" }, "2026-10-23T20:59:35.000Z")).toBe("settle 10-22");
+    expect(curveSpreadBasis({ basis: "last", asOf: "2026-10-22T20:58:00.000Z" }, "2026-10-23T20:59:35.000Z")).toBe("last 22 Oct 20:58");
+    expect(curveSpreadBasis({ basis: "settle", asOf: "2026-10-22" }, "2026-10-23T20:59:35.000Z")).toBe("settle 22 Oct");
     // A server that does not say leaves the figure as it was.
     expect(curveSpreadBasis({ asOf: "2026-10-22" }, null)).toBeNull();
   });

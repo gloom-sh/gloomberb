@@ -1,4 +1,6 @@
 import { useMemo } from "react";
+import { daysInTextCell } from "../../../components/ui/day-cell";
+import { formatDaysInText } from "../../../utils/day-format";
 import {
   PaneStatusBody, useExternalLinkFooter, usePaneNoticeFooter, type DataTableCell,
   type DataTableColumn,
@@ -25,7 +27,7 @@ const loadBundle = (force: boolean) => loadStatsBundle({ force });
 
 const LIST_WIDTH = 60;
 const NAME_MIN_WIDTH = 13;
-const PERIOD_WIDTH = 10;
+const PERIOD_WIDTH = 11;
 
 const RANGE_OPTIONS = [
   { value: "5Y" as const, label: "5Y" },
@@ -109,7 +111,8 @@ function cellsFor(view: StatViewModel): Record<ColumnId, DataTableCell> {
       text: view.previous ? view.stat.formatValue(view.previous.value) : MISSING_VALUE,
       color: colors.textMuted,
     },
-    period: { text: view.period, color: colors.textMuted },
+    // A daily or weekly print's day reads day first and exports as its ISO day; a month or quarter stays as named.
+    period: { ...daysInTextCell(view.period), color: colors.textMuted },
     percentile: { text: formatNumber(view.percentile, 0), color: colors.textMuted },
   };
 }
@@ -166,7 +169,7 @@ export function EconStatisticsPane({ focused, width, height }: PaneProps) {
     const cutoff = selected.stat.cutoff ? ` ${selected.stat.cutoff}` : "";
     const info: PaneFooterSegment[] = [
       { id: "publisher", parts: [{ text: selected.attribution.source, tone: "muted" }] },
-      { id: "as-of", parts: [{ text: `reading for ${cutoff ? selected.reading : selected.readingReleased}${cutoff}`, tone: "muted" }] },
+      { id: "as-of", parts: [{ text: `reading for ${formatDaysInText(cutoff ? selected.reading : selected.readingReleased)}${cutoff}`, tone: "muted" }] },
     ];
     const lag = laggingSeriesNote(selected.stat.seriesId);
     if (lag) info.push({ id: "publication-lag", parts: [{ text: lag, tone: "warning" }] });

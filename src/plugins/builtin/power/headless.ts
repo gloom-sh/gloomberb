@@ -8,6 +8,7 @@ import { powerQuery } from "./query";
 import { loadPowerPricesReport } from "./prices-headless";
 import { isCarbonQuery, powerPriceMarket } from "./prices-model";
 import {
+  POWER_DATE_COLUMNS, powerStampText,
   COVERAGE_COLUMNS, EXPOSURE_COLUMNS, GENERATION_COLUMNS, HISTORY_COLUMNS, POWER_TABS, PROJECT_COLUMNS, RATE_COLUMNS, UTILITY_COLUMNS,
   historyRows, powerCoverageNote, powerLoadedSources, powerNumber, powerPercent, powerRegion, powerScopeOptions, powerTab, powerTickerEmpty, projectRows, tickerLabel, titleCase, UNMAPPED, type PowerTab,
 } from "./model";
@@ -62,7 +63,9 @@ function reportColumns(tab: PowerTab, context: unknown): HeadlessPaneColumn[] {
   };
   // The pane groups outcomes under region headings; the report names the region on each row.
   return [...(tab === "outcomes" ? [{ id: "region", label: "Region", width: 16, align: "left" as const }] : []), ...columns].filter((column) => !GRAPHIC_COLUMNS.has(column.id))
-    .map((column) => ({ key: column.id, header: column.label, align: column.align === "right" ? "right" as const : "left" as const, format: format(column) }));
+    .map((column) => ({ key: column.id, header: column.label, align: column.align === "right" ? "right" as const : "left" as const, format: format(column),
+      // A day or a stamp reads day first, as the pane writes it; an export keeps it as recorded.
+      ...(POWER_DATE_COLUMNS.has(column.id) ? { textFormat: (value: unknown) => typeof value === "string" ? powerStampText(value) : MISSING_VALUE } : {}) }));
 }
 
 export const powerHeadless: HeadlessPaneDefinition<"bundle"> = {

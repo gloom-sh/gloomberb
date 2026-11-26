@@ -1,4 +1,5 @@
 import { forwardFiscalYear, forwardPEAsked, formatPriceEarnings, NOT_MEANINGFUL } from "../../../../utils/price-earnings";
+import { formatDay } from "../../../../utils/day-format";
 import { convertMarketCapitalization } from "../../../../utils/market-capitalization";
 import { priceColor } from "../../../../theme/colors";
 import { notMeaningfulColor } from "../../../../components/ui/not-meaningful";
@@ -163,7 +164,7 @@ function runwayStat(runway: CashRunway | null | undefined): StatField | null {
   const { periodEnd } = runway;
   const quarter = runway.quarter?.kind === "months" ? runway.quarter : null;
   const trailing = runway.trailing?.kind === "months" ? runway.trailing : null;
-  const dates = [periodEnd, periodEnd.slice(5)];
+  const dates = [formatDay(periodEnd), formatDay(periodEnd, "no-year")];
   if (!quarter) return trailing ? { label: "Runway", value: runwayText(trailing), detail: [...dates.map((date) => `TTM to ${date}`), "TTM"], link: FINANCIALS } : null;
   const ttm = trailing ? ` · TTM ${runwayText(trailing)}` : "";
   return {
@@ -281,7 +282,7 @@ export function buildOverviewStats({
   if (coin?.maxSupply != null) stats.push({ label: "Max Supply", value: formatCompact(coin.maxSupply) });
   if (coin) stats.push({ label: "Rank", value: `#${coin.rank}`, detail: coin.kind === "stablecoin" ? "stablecoins" : ["by market cap", "mkt cap"] });
   // A count read off a 10-K or 10-Q cover says when it was counted; the source's own is undated.
-  const counted = (asOf: string | undefined) => (asOf ? { detail: [`as of ${asOf}`, `as of ${asOf.slice(5)}`] } : {});
+  const counted = (asOf: string | undefined) => (asOf ? { detail: [`as of ${formatDay(asOf)}`, `as of ${formatDay(asOf, "no-year")}`] } : {});
   if (fundamentals?.sharesOutstanding) {
     stats.push({
       label: "Shares Out",
@@ -385,7 +386,8 @@ export function buildOverviewStats({
     // Which twelve months the revenue, net income and margin are, as Financials' TTM column names them.
     const end = fundamentals.trailingPeriodEnd;
     const revenue = money(fundamentals.revenue);
-    stats.push({ label: "Revenue", ...revenue, ...(end && ISO_DATE.test(end) && !revenue.detail ? { detail: [`TTM to ${end}`, `to ${end}`] } : {}) });
+    const through = end && ISO_DATE.test(end) && !revenue.detail ? [formatDay(end), formatDay(end, "no-year")] : null;
+    stats.push({ label: "Revenue", ...revenue, ...(through ? { detail: [`TTM to ${through[0]}`, ...through.map((day) => `to ${day}`)] } : {}) });
   }
   if (fundamentals?.netIncome != null) {
     stats.push({ label: "Net Income", ...money(fundamentals.netIncome) });

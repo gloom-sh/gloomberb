@@ -100,8 +100,8 @@ test("the funds' price move shows beside the flows once the server sends it, and
   try {
     await tui.render(<Harness />);
     const frame = await tui.waitForFrameToContain("PRICE %");
-    expect(frame).toMatch(/2026-10-20\s+\+123\.0\s+\+2\.15%\s+\+123\.0/);
-    expect(frame).toMatch(/2026-10-19\s+—\s+—\s+—/);
+    expect(frame).toMatch(/20 Oct 2026\s+\+123\.0\s+\+2\.15%\s+\+123\.0/);
+    expect(frame).toMatch(/19 Oct 2026\s+—\s+—\s+—/);
   } finally {
     await tui.destroy();
     stub.mockRestore();

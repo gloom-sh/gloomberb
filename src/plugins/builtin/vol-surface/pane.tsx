@@ -1,3 +1,4 @@
+import { formatDay } from "../../../utils/day-format";
 import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { splitDelayedStatus, DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGridRows, usePaneFooter, usePaneMenuItems,
@@ -50,8 +51,7 @@ import { VolatilitySurface } from "./surface";
 import { SmileChart, TermChart } from "./charts";
 import { loadSurfaceEvents, releaseSearchDay, surfaceEventReadings } from "./events";
 import { surfaceCoordinateLabel } from "./headless";
-import { expiryLabel, formatIv, formatPrice, formatVolPoints, HIDDEN_SLOPE_TEXT, HIDDEN_YIELD_TEXT, selectSurfaceExpiry, surfaceForwardRow,
-  surfaceSkewRow, surfaceSpotBasisLabel } from "./tables";
+import { expiryLabel, expiryStamp, formatIv, formatPrice, selectSurfaceExpiry, surfaceExpiryTable, surfaceSpotBasisLabel, surfaceTenorCell } from "./tables";
 import { findListedExpiry, unlistedExpiryText } from "../../../utils/option-expiry";
 import { dvolCurrency, dvolGap, loadDvol, type DvolPayload } from "../volatility/dvol";
 import {
@@ -291,7 +291,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const snapshot: DatedSurfaceSnapshot | null | undefined = shownDate ? stored.data : liveSnapshot;
   // IV30 and its rank rate the latest stored close, so they sit beside the live surface only.
   const ivStats: StatItem[] = ivRank && snapshot && !snapshot.stored ? [
-    { id: "iv30", label: "IV30", value: `${(ivRank.value * 100).toFixed(1)}%`, detail: `${ivRank.date.slice(5)} close` },
+    { id: "iv30", label: "IV30", value: `${(ivRank.value * 100).toFixed(1)}%`, detail: `${formatDay(ivRank.date, "no-year")} close` },
     { id: "ivr", label: "IV rank", value: wholeNumber(ivRank.rank) },
     { id: "ivp", label: "IV pctl", value: wholeNumber(ivRank.percentile) },
   ] : coin && snapshot && !snapshot.stored ? dvolStats(dvol.data?.payload, surfaceThirtyDayAtm(snapshot)) : [];
@@ -455,9 +455,9 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     ...[...expiryWarnings].map(([warning, expirations]) => `${expirations.length > 1 && expirations.length === snapshot?.expiries.length
       ? "All expiries" : expirations.map(expiryLabel).join(", ")}: ${warning}`),
     ...(!spotAvailable && symbol && !historyDate ? ["Underlying price unavailable or stale"] : []),
-    ...(historyDate && !stored.loading && !stored.data && !stored.error ? [`No stored ${underlying} surface for ${historyDate}`] : []),
+    ...(historyDate && !stored.loading && !stored.data && !stored.error ? [`No stored ${underlying} surface for ${formatDay(historyDate)}`] : []),
     // The stored close stands in for quotes that did not pass cleaning; outside the session, so does when options reopen.
-    ...(fallbackDate ? [`${uncleanSurfaceTitle(liveQuotes)}; showing the ${fallbackDate} close.${closedUnfitted
+    ...(fallbackDate ? [`${uncleanSurfaceTitle(liveQuotes)}; showing the ${formatDay(fallbackDate)} close.${closedUnfitted
       ? ` ${optionsClosedText(usOptionsReopen(Date.now()) ?? { at: null })}` : ""}`] : []),
     ...(pinned != null && snapshot && !resource.loading && !snapshot.catalogue.includes(pinned)
       && !snapshot.failures.some((failure) => failure.expiration === pinned)
@@ -479,7 +479,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     : selectedCell?.point
       ? `nearest ${selectedCell.point.contract.contractSymbol} · mid ${formatPrice(selectedCell.point.mid)} · spread ${formatPrice(selectedCell.point.spread)} · OI ${selectedCell.point.openInterest ?? MISSING_VALUE} · residual ${formatIv(selectedCell.fitResidual)}`
       : selectedCell?.volatility != null
-        ? `${selectedRow?.label} · K ${selectedCell.strike == null ? MISSING_VALUE : formatStrikeLabel(selectedCell.strike)} · fitted IV ${formatIv(selectedCell.volatility)}`
+        ? `${formatDay(selectedRow?.label)} · K ${selectedCell.strike == null ? MISSING_VALUE : formatStrikeLabel(selectedCell.strike)} · fitted IV ${formatIv(selectedCell.volatility)}`
         : "no clean quote at this cell";
   usePaneNoticeFooter({ registrationId: "ovdv-notices", notices: [...new Set(notices)], focused });
   const savedAts = [snapshot && !snapshot.stored ? snapshot.savedAt : undefined, ivStats.length && coin ? dvol.data?.savedAt : undefined]
@@ -530,13 +530,12 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   ], [expiryCount, surface3d, !!denseGrid?.moneyness.length]);
   const exportMetadata = () => [["method", ...(snapshot?.stored ? ["recomputed", "mid", `stored close ${snapshot.stored.sessionDate}`, snapshot.stored.capturedAt] : [ivSource, priceSide])], ["filters", JSON.stringify(snapshot?.settings)],
     ["underlying", snapshot?.symbol, snapshot?.spot], ["rate source", "Treasury", snapshot?.rateAsOf],
-    ["warnings", ...notices], ...(snapshot?.expiries.map((expiry) => ["expiry", expiryLabel(expiry.expiration), expiry.asOf,
+    ["warnings", ...notices], ...(snapshot?.expiries.map((expiry) => ["expiry", expiryStamp(expiry.expiration), expiry.asOf,
       expiry.fit?.method, expiry.fit?.residual, expiry.rateMethod, JSON.stringify(expiry.filterCounts)]) ?? [])];
   // Sized to the labels and IVs they hold (the table keeps each header whole), so a narrow pane shows more of the smile.
-  const tenorLabel = (row: SurfaceGridRow) => `${row.label}${row.extrapolated ? " E" : row.interpolated ? " I" : ""}`;
   const cellWidth = Math.max(1, ...(grid?.rows ?? []).flatMap((row) => row.cells.map((cell) => formatIv(cell.volatility).length)));
   const columns: DataTableColumn[] = [{ id: "tenor", label: "Expiry / tenor", align: "left",
-    width: Math.max(1, ...(grid?.rows ?? []).map((row) => tenorLabel(row).length)) },
+    width: Math.max(1, ...(grid?.rows ?? []).map((row) => surfaceTenorCell(row).text.length)) },
     ...(grid?.rows[0]?.cells.map((cell, index) => ({ id: String(index), width: cellWidth, align: "right" as const,
       label: surfaceCoordinateLabel(axis, cell.coordinate, index) })) ?? [])];
   const sortedRows = [...(grid?.rows ?? [])].sort((a, b) => {
@@ -552,7 +551,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     // The selected strike's column (ATM until one is picked) sits mid-table, where a narrow pane would otherwise show 80% to 95%.
     revealColumnId={String(tableCellIndex)}
     renderCell={(row, column) => {
-      if (column.id === "tenor") return { text: tenorLabel(row), color: colors.textDim };
+      if (column.id === "tenor") return { ...surfaceTenorCell(row), color: colors.textDim };
       const index = Number(column.id), cell = row.cells[index]!;
       const chosen = row.label === tableSelectedRow?.label && index === tableCellIndex;
       return { text: formatIv(cell.volatility), color: chosen ? (selectionFill.lit ? colors.selectedText : selectionFill.ink(colors.textBright)) : colors.textBright,
@@ -595,18 +594,18 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
             options: barSnapshot.catalogue.map((value) => ({ value: String(value), label: expiryLabel(value) })),
             onChange: (value: string) => setExpiration(Number(value)) },
           ...(storedDates.length ? [{ id: "date", label: "Date", value: shownDate ?? "", defaultValue: "",
-            options: [{ value: "", label: "Live" }, ...storedDates.map((date) => ({ value: date, label: date }))],
+            options: [{ value: "", label: "Live" }, ...storedDates.map((date) => ({ value: date, label: formatDay(date) }))],
             onChange: (value: string) => setHistoryDate(value || null) }] : []),
         ]}
         meta={!snapshot ? undefined : snapshot.stored
           ? `Stored close · spot ${formatModelSpotPrice(snapshot.spot)} · captured ${formatCaptureTime(snapshot.stored.capturedAt)} New York`
           : fitMetaParts([`Spot ${formatModelSpotPrice(snapshot.spot)}${quote?.currency ? ` ${quote.currency}` : ""}`,
             // The close a closed session's chain is priced at dates the chain too.
-            spotBasis, snapshot.spotBasis?.basis === "close" ? null : selectedExpiry?.asOf?.slice(0, 10)],
+            spotBasis, snapshot.spotBasis?.basis === "close" || !selectedExpiry?.asOf ? null : formatDay(selectedExpiry.asOf)],
           // A narrow terminal row keeps the spot whole and leaves out what follows it; the desktop clips in CSS.
           nativePaneChrome ? null : width - 2 - QUERY_BAR_GAP
             - ("Expiry ".length + expiryLabel(pinned ?? barExpiry?.expiration ?? 0).length + QUERY_BAR_GAP)
-            - (storedDates.length ? "Date ".length + (shownDate ?? "Live").length + QUERY_BAR_GAP : 0))} /> : null}
+            - (storedDates.length ? "Date ".length + (shownDate ? formatDay(shownDate) : "Live").length + QUERY_BAR_GAP : 0))} /> : null}
       <PaneStatusBody loading={active.loading && !snapshot && !fateNote}
       error={!snapshot && !fateNote ? active.error : null} empty={!!fateNote || !snapshot && !active.loading}
       emptyTitle={fateNote ?? undefined} subject="volatility surface">
@@ -643,45 +642,23 @@ function ExpiryTable({ snapshot, selected, onSelect, forwards, width, height, fo
   forwards: boolean; width: number; height: number; focused: boolean;
   onKey: (event: DataTableKeyEvent) => boolean; metadata: () => unknown[][];
 }) {
-  // IVs in percent, IV differences in vol points; a missing 25-delta figure says why.
-  const fields = forwards ? ["Forward", "Basis", "Div %", "Rate %", "Pairs", "As of"] : ["25d put %", "25d call %", "RR pts", "BF pts", "90/110 pts", "Slope pts/yr"];
-  const integerColumn = forwards ? "4" : null;
   const [sort, setSort] = useState<{ columnId: string; direction: SortDirection }>({ columnId: "expiry", direction: "asc" });
-  const rowsByExpiry = useMemo(() => new Map(snapshot.expiries.map((entry) => [entry.expiration,
-    { skew: surfaceSkewRow(entry), forward: surfaceForwardRow(entry, snapshot) }])), [snapshot]);
-  const value = (entry: SurfaceExpiry, id: string): number | string | null => {
-    if (id === "expiry") return entry.expiration;
-    const { skew, forward } = rowsByExpiry.get(entry.expiration)!;
-    return (forwards ? [forward.forward, forward.basis, forward.dividendYield == null ? null : forward.dividendYield * 100,
-      forward.rate == null ? null : forward.rate * 100, forward.pairs, entry.asOf?.slice(0, 10) ?? null]
-      : [skew.put25, skew.call25, skew.riskReversal, skew.butterfly, skew.moneynessSkew, skew.termSlope])[Number(id)] ?? null;
-  };
-  const missing = (entry: SurfaceExpiry, id: string) => {
-    const { skew, forward } = rowsByExpiry.get(entry.expiration)!;
-    if (forwards) return id === "2" && forward.dividendYieldHidden ? HIDDEN_YIELD_TEXT : MISSING_VALUE;
-    return (id === "2" || id === "3" ? skew.gap : id === "4" ? skew.moneynessGap : id === "5" && skew.termSlopeHidden ? HIDDEN_SLOPE_TEXT : null) ?? MISSING_VALUE;
-  };
+  const { fields, value, cell } = useMemo(() => surfaceExpiryTable(snapshot, forwards), [snapshot, forwards]);
   const rows = [...snapshot.expiries].sort((a, b) => {
     const x = value(a, sort.columnId), y = value(b, sort.columnId);
     const difference = typeof x === "number" && typeof y === "number" ? x - y : String(x ?? "").localeCompare(String(y ?? ""));
     return sort.direction === "asc" ? difference : -difference;
   });
-  const cellText = (entry: SurfaceExpiry, id: string) => {
-    const raw = value(entry, id);
-    return id === "expiry" ? expiryLabel(entry.expiration)
-      : raw == null ? missing(entry, id) : typeof raw === "string" ? raw : id === integerColumn ? String(raw)
-        : forwards ? (id === "0" ? formatModelSpotPrice(raw) : id === "1" && raw > 0 ? `+${formatPrice(raw)}` : formatPrice(raw)) : formatVolPoints(raw);
-  };
   // Each column as wide as its widest cell (the table keeps its header and sort arrow whole), so a narrow pane
   // shows the 25D put and call IVs and the risk reversal beside them before it scrolls.
   const columns = [{ id: "expiry", label: "Expiry" }, ...fields.map((label, i) => ({ id: String(i), label }))].map((column): DataTableColumn => ({
     ...column, align: column.id === "expiry" ? "left" : "right",
-    width: Math.max(1, ...rows.map((entry) => cellText(entry, column.id).length)),
+    width: Math.max(1, ...rows.map((entry) => cell(entry, column.id).text.length)),
   }));
   return <DataTableView<SurfaceExpiry> focused={focused} rootWidth={width} rootHeight={height} items={rows}
     columns={columns}
     getItemKey={(entry) => String(entry.expiration)} selection={{ kind: "id", selectedId: String(selected?.expiration), getId: (entry) => String(entry.expiration), onChange: (_id, entry) => onSelect(entry) }}
     onActivate={onSelect} onRootKeyDown={onKey} getExportMetadata={metadata} freezeFirstColumn
     sortColumnId={sort.columnId} sortDirection={sort.direction} onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id))}
-    renderCell={(entry, column) => ({ text: cellText(entry, column.id) })} emptyStateTitle="No expiry observations." />;
+    renderCell={(entry, column) => cell(entry, column.id)} emptyStateTitle="No expiry observations." />;
 }

@@ -92,7 +92,7 @@ describe("yield curve headless model", () => {
     const lines = renderHeadlessPaneText(headless, result, args, "GC").split("\n");
     const cells = (maturity: string) => lines.find((line) => line.startsWith(`${maturity} `))!.split(/\s+/);
     expect(lines.find((line) => line.startsWith("Maturity"))!.split(/\s+/)).toEqual(["Maturity", "Years", "Yield", "1D", "bp", "As", "of"]);
-    expect(cells("2Y")).toEqual(["2Y", "2", "4.80%", "+5bp", "2026-10-09"]);
+    expect(cells("2Y")).toEqual(["2Y", "2", "4.80%", "+5bp", "09", "Oct", "2026"]);
     expect(cells("10Y")[3]).toBe("-1bp");
     expect(cells("30Y")[3]).toBe("0bp");
     expect(cells("5Y")[3]).toBe(MISSING_VALUE);
@@ -149,9 +149,9 @@ describe("yield curve headless model", () => {
     const result = await headless.load({ ...args, options: { compare: "1D" } }, {} as HeadlessPaneContext);
     expect(result.metadata).toMatchObject({ compare: "1D", compareAsOf: "2026-10-08" });
     const lines = renderHeadlessPaneText(headless, result, args, "GC").split("\n");
-    expect(lines.find((line) => line.startsWith("Maturity"))!.split(/\s+/)).toEqual(["Maturity", "Years", "Yield", "As", "of", "vs", "2026-10-08", "Chg", "bp"]);
-    expect(lines.find((line) => line.startsWith("2Y "))!.split(/\s+/)).toEqual(["2Y", "2", "4.80%", "2026-10-09", "4.75%", "+5bp"]);
-    expect(lines.find((line) => line.startsWith("10Y"))!.split(/\s+/)).toEqual(["10Y", "10", "5.24%", "2026-10-09", "5.30%", "-6bp"]);
+    expect(lines.find((line) => line.startsWith("Maturity"))!.split(/\s+/)).toEqual(["Maturity", "Years", "Yield", "As", "of", "vs", "08", "Oct", "2026", "Chg", "bp"]);
+    expect(lines.find((line) => line.startsWith("2Y "))!.split(/\s+/)).toEqual(["2Y", "2", "4.80%", "09", "Oct", "2026", "4.75%", "+5bp"]);
+    expect(lines.find((line) => line.startsWith("10Y"))!.split(/\s+/)).toEqual(["10Y", "10", "5.24%", "09", "Oct", "2026", "5.30%", "-6bp"]);
   });
 
   test("a null yield on a past date stays blank; a gap in the latest curve is still an error", async () => {
