@@ -105,8 +105,11 @@ test("evidence reads an OKX reading as derived from its ratio, keeps raw fractio
   expect(text).toContain("Derived from the published ratio");
   expect(text).toContain("09 Oct 2026 11:00 UTC · OKX 1h");
   expect(longest(text)).toBeLessThanOrEqual(140);
-  const json = serializeHeadlessPaneResult(perpsHeadless, result) as { sections: Array<{ title: string; entries?: Array<{ key: string; value: unknown }> }> };
-  expect(json.sections.find((section) => section.title === "Positioning")!.entries!.find((entry) => entry.key === "longShare")!.value).toBe(okxLongShort.longShare);
+  const json = serializeHeadlessPaneResult(perpsHeadless, result) as { sections: Array<{ title: string; entries?: Array<{ key: string; value: unknown; formatted?: string }> }> };
+  const positioning = json.sections.find((section) => section.title === "Positioning")!.entries!;
+  expect(positioning.find((entry) => entry.key === "longShare")!.value).toBe(okxLongShort.longShare);
+  // JSON keeps the line's day in ISO as it always wrote it; only the text reads it day first.
+  expect(positioning.map((entry) => entry.formatted).join("\n")).toContain("2026-10-09 11:00 UTC · OKX 1h");
 
   const hyperliquid = await report("evidence", [perpRow({ longShortRatio: null, longShortRatioReason: "unsupported" })]);
   expect(hyperliquid.text).toMatch(/Long accounts\s+This venue publishes no per-contract account ratio/);
@@ -280,7 +283,9 @@ test("an exported comparison cites every row apart: its venue, URL, observed tim
     as_of: new Date(market.observedAt).toISOString() });
   // The text keeps the pane's columns and says once what OI USD assumes and when Long % was counted.
   expect(result.notes).toContain("OI USD values USDT at 1 USD.");
-  expect(result.notes).toContain("Long % is each venue's hourly account bucket from 04 Nov 06:00 UTC, not its Observed time.");
+  // JSON and CSV keep the hour as they always wrote it; the text writes it day first.
+  expect(result.notes).toContain("Long % is each venue's hourly account bucket from 11-04 06:00 UTC, not its Observed time.");
+  expect(result.textNotes).toContain("Long % is each venue's hourly account bucket from 04 Nov 06:00 UTC, not its Observed time.");
   const text = renderHeadlessPaneText(perpsHeadless, result, args, "PERP");
   expect(text).toContain("77,915.80 USDT");
   expect(text).not.toContain("Source URL");
