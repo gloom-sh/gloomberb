@@ -10,6 +10,7 @@ import { nextHeaderSort } from "../../utils/sort-values";
 import { toTimestampMillis } from "../../utils/timestamp";
 import { DataTableStackView } from "../data-table/stack-view";
 import { usePaneFooter } from "../layout/pane/footer";
+import { usePinnedList } from "../use-pinned-moment";
 import type { DataTableKeyEvent, DataTableRootKeyContext } from "../data-table/view";
 import {
   activeStackIndex,
@@ -55,6 +56,14 @@ export interface FeedDataTableTimeColumn {
   label: string;
   width: number;
   format: (timestamp: Date | string) => string;
+  /**
+   * Each item's `timestamp` is an instant, to the minute or finer, so the
+   * feed follows the tab's pinned crosshair: it selects the newest item out
+   * by the pinned moment and mutes the later ones. The default column (how
+   * long ago) is one. Leave it unset for a day, such as a filing date: a day
+   * cannot say whether it came before a moment in it.
+   */
+  instant?: boolean;
 }
 
 interface FeedDataTableStackViewProps {
@@ -84,10 +93,17 @@ interface FeedDataTableStackViewProps {
 }
 
 function timestampValue(item: FeedDataTableItem): number {
-  if (!item.timestamp) return 0;
-  const timestamp = toTimestampMillis(item.timestamp);
-  return Number.isFinite(timestamp) ? timestamp : 0;
+  return itemMoment(item) ?? 0;
 }
+
+function itemMoment(item: FeedDataTableItem): number | null {
+  if (!item.timestamp) return null;
+  const timestamp = toTimestampMillis(item.timestamp);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+const rowId = (row: DetailRow) => row.item.id;
+const rowMoment = (row: DetailRow) => itemMoment(row.item);
 
 function compareText(a: string, b: string): number {
   return a.localeCompare(b, "en-US", { sensitivity: "base" });
@@ -233,6 +249,23 @@ export function FeedDataTableStackView({
     }
   }, [items.length, onSelect, selectedIdx]);
 
+  // Items out at an instant follow the tab's pinned crosshair, as the news
+  // feeds do: the newest out by then is selected when the pin moves, the
+  // later ones read muted.
+  const selectRow = useCallback((id: string) => {
+    const row = sortedRows.find((entry) => entry.item.id === id);
+    if (row) onSelect(row.itemIndex);
+  }, [onSelect, sortedRows]);
+  const { isAfterPin } = usePinnedList<DetailRow>("feed-table:pin", {
+    follows: timeColumn ? timeColumn.instant === true : true,
+    enabled: !openItem,
+    rows: sortedRows,
+    getId: rowId,
+    moment: rowMoment,
+    selectedId: items[selectedIdx]?.id ?? null,
+    select: selectRow,
+  });
+
   const renderCell = useCallback((
     row: DetailRow,
     column: DetailColumn,
@@ -310,6 +343,7 @@ export function FeedDataTableStackView({
         )}
       getItemKey={(row) => row.item.id}
       renderCell={renderCell}
+      isRowMuted={isAfterPin}
       selectedTextOverridesCellColor
       emptyStateTitle={t(emptyStateTitle)}
       emptyStateHint={emptyStateHint}

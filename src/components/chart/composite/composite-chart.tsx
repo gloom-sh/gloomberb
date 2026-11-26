@@ -112,6 +112,7 @@ const NO_EVENTS: readonly CompositeChartEvent[] = [];
 const NO_PROJECTED_EVENTS: readonly { event: CompositeChartEvent; guide: CompositeEventGuide }[] = [];
 const subscribeToNothing = () => () => {};
 const holdsNothing = () => false;
+const pinsNothing = () => null;
 
 function finiteTimestampOrNull(date: Date | null | undefined): number | null {
   const timestamp = date?.getTime() ?? null;
@@ -235,6 +236,8 @@ function ThemedCompositeChart({
   emptyDetail,
   formatValue,
   onCursorDateChange,
+  pinKeys = false,
+  onPinnedMomentChange,
   onViewportChange,
   onActivate,
   onPress,
@@ -581,6 +584,12 @@ function ThemedCompositeChart({
   const showsSharedCursor = useSyncExternalStore(subscribeToLink, useCallback(() => sharedTime?.() != null, [sharedTime]));
   const holdsSharedCursor = useSyncExternalStore(subscribeToLink, link?.held ?? holdsNothing);
   const pinnedCursor = useSyncExternalStore(subscribeToLink, link?.pinned ?? holdsNothing);
+  // An owner that follows the pin (a table under the chart) is told where it
+  // moves, so only a chart that shares the tab's crosshair moves the owner.
+  const pinnedMoment = useSyncExternalStore(subscribeToLink, link?.pinnedMoment ?? pinsNothing);
+  useEffect(() => {
+    onPinnedMomentChange?.(pinnedMoment);
+  }, [onPinnedMomentChange, pinnedMoment]);
   const publishCursor = link?.publish;
   const cursorSource = useMemo<CompositeCursorSource | null>(() => baseScene ? createCompositeCursorSource({
     baseScene,
@@ -773,6 +782,7 @@ function ThemedCompositeChart({
     restingCursor,
     updateCursor: updateKeyboardCursor,
     pin: pinnable ? { pinned: pinnedCursor, toggle: togglePin } : null,
+    pinKeys,
     onActivate,
     timePick,
     pricePick,

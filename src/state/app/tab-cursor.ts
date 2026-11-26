@@ -14,6 +14,19 @@ interface TabCursor {
   time: number;
   /** The chart the cursor is on; it never follows its own time back. */
   sourceId: string;
+  /** A pinned cursor's number, new each time the pin is set or moved; see `PinnedMoment`. */
+  serial?: number;
+}
+
+/**
+ * The moment a tab's crosshair is pinned at, as a list that follows it reads
+ * it: `serial` is new each time the pin is set or moved, so a list mounted
+ * again under the same pin (a tab switch) can tell it already followed it,
+ * and one pinned again at the same time follows again.
+ */
+export interface PinnedMoment {
+  at: number;
+  serial: number;
 }
 
 const cursors = new Map<string, TabCursor>();
@@ -25,6 +38,7 @@ const PINNED = "\u0000pinned";
 /** How many charts in each tab are mounted to show its pin; see `useTabCursorLink`. */
 const pinViewers = new Map<string, number>();
 const listeners = new Set<() => void>();
+let pinSerial = 0;
 
 /** A time a Date can hold. A pin is never NaN, infinite or past the Date range, whatever asks for it. */
 function isMoment(time: number): boolean {
@@ -41,7 +55,7 @@ function setTabCursorTime(tabKey: string, sourceId: string | null, time: number 
     cursors.delete(tabKey);
   } else {
     if (sourceId === null || (current?.sourceId === sourceId && current.time === time)) return;
-    cursors.set(tabKey, { time, sourceId });
+    cursors.set(tabKey, sourceId === PINNED ? { time, sourceId, serial: ++pinSerial } : { time, sourceId });
   }
   for (const listener of listeners) listener();
 }
@@ -67,6 +81,8 @@ export interface TabCursorLink {
   pinned?(): boolean;
   /** Pins the tab's cursor at `time`, which no chart's pointer moves, or unpins it with null. */
   pin?(time: number | null): void;
+  /** The tab's pinned moment, the same object until the pin moves; null while nothing is pinned. */
+  pinnedMoment?(): PinnedMoment | null;
 }
 
 /** A layout tab is named by its id; older saved tabs have none, and go by position. */
@@ -153,6 +169,7 @@ export function useTabCursorLink(sourceId: string | null, { viewer = true }: { v
     pin: (time) => {
       if (time === null || isMoment(time)) setTabCursorTime(tabKey, PINNED, time);
     },
+    pinnedMoment: () => pinnedMomentOf(cursors.get(tabKey)),
   }, [sourceId, tabKey]);
   useEffect(() => {
     if (app && "subscribe" in app) watchTabs(app);
@@ -199,12 +216,26 @@ export function useTabCursorLink(sourceId: string | null, { viewer = true }: { v
  * never on a pointer move.
  */
 export function usePinnedTabTime(): number | null {
+  return usePinnedTabMoment()?.at ?? null;
+}
+
+/** A pinned cursor as the moment a list follows, the same object until the pin moves. */
+const pinnedMoments = new WeakMap<TabCursor, PinnedMoment>();
+function pinnedMomentOf(cursor: TabCursor | undefined): PinnedMoment | null {
+  if (cursor?.sourceId !== PINNED) return null;
+  let moment = pinnedMoments.get(cursor);
+  if (!moment) {
+    moment = { at: cursor.time, serial: cursor.serial ?? 0 };
+    pinnedMoments.set(cursor, moment);
+  }
+  return moment;
+}
+
+/** `usePinnedTabTime` with the pin's serial, for a list that follows the pin once each time it moves. */
+export function usePinnedTabMoment(): PinnedMoment | null {
   const tabKey = useOptionalAppSelector<string | null>(selectTabKey, null);
-  const pinnedTime = useCallback(() => {
-    const cursor = tabKey === null ? undefined : cursors.get(tabKey);
-    return cursor?.sourceId === PINNED ? cursor.time : null;
-  }, [tabKey]);
-  return useSyncExternalStore(subscribe, pinnedTime);
+  const pinned = useCallback(() => tabKey === null ? null : pinnedMomentOf(cursors.get(tabKey)), [tabKey]);
+  return useSyncExternalStore(subscribe, pinned);
 }
 
 /** The moment the active layout tab has its crosshair pinned at, outside React: a shared link opens there. */

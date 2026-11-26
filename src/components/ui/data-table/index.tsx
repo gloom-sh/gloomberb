@@ -15,6 +15,7 @@ import { headerCase } from "../header-case";
 import { tPlugin } from "../../../i18n";
 import { useTranslationRevision } from "../../../i18n/react";
 import { figureColumnCells } from "./render-cell";
+import { mutedRowCells } from "./muted-row";
 import { useDataTableColumnOrder } from "./use-column-order";
 import { dataTableDisplayColumns } from "./display-columns";
 import { sameVisibleRange } from "./visible-range";
@@ -36,7 +37,10 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
   ownProps: DataTableProps<T, C>,
 ) {
   // Every renderer, report and export reads the cells through this, so a column of figures lines up everywhere.
-  const drawnCell = useMemo(() => figureColumnCells(ownProps.renderCell), [ownProps.renderCell]);
+  const drawnCell = useMemo(
+    () => mutedRowCells(figureColumnCells(ownProps.renderCell), ownProps.isRowMuted),
+    [ownProps.isRowMuted, ownProps.renderCell],
+  );
   // A row source's reports and exports read each row's current data; a row on screen is drawn from it already.
   const renderCell = useMemo((): DataTableProps<T, C>["renderCell"] => {
     const source = ownProps.rowSource;

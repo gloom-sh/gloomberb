@@ -23,6 +23,8 @@ import { useDialog, type PromptContext } from "../../../ui/dialog";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import type { CloudTweetPayload, CloudTweetSearchResponse } from "../../../api-client";
 import { formatTimeAgo } from "../../../utils/datetime-format";
+import { toTimestampMillis } from "../../../utils/timestamp";
+import { usePinnedList } from "../../../components/use-pinned-moment";
 import { tokenizeInlineContent } from "../../../utils/inline-content-tokenizer";
 import { isPlainKey } from "../../../utils/keyboard";
 import { colors } from "../../../theme/colors";
@@ -51,6 +53,12 @@ import {
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneStatusLinkFooter } from "../../../components/layout/pane/status-footer";
 import { logFailure } from "../../../utils/log-failure";
+
+const tweetId = (tweet: CloudTweetPayload) => tweet.id;
+const tweetMoment = (tweet: CloudTweetPayload) => {
+  const at = toTimestampMillis(tweet.createdAt);
+  return Number.isFinite(at) ? at : null;
+};
 
 function isAuthError(error: string | null): boolean {
   return !!error && /unauthorized|verification/i.test(error);
@@ -404,6 +412,18 @@ export function TweetSearchTable({
     hints: linkHints,
   });
 
+  // A crosshair pinned in the tab picks the newest post out by then, whatever
+  // the sort, and mutes the later ones, ticker badges too; the selection
+  // follows the pin when it moves, not when a refresh merges posts in.
+  const { pinnedRow, isAfterPin } = usePinnedList<CloudTweetPayload>(`${footerId}:pin`, {
+    enabled: !detailOpen,
+    rows,
+    getId: tweetId,
+    moment: tweetMoment,
+    selectedId: selectedTweet?.id ?? null,
+    select: setSelectedTweetId,
+  });
+
   useEffect(() => {
     if (rows.length === 0) {
       if (selectedTweetId !== null) setSelectedTweetId(null);
@@ -411,9 +431,9 @@ export function TweetSearchTable({
       return;
     }
     if (!selectedTweetId || selectedIndex < 0) {
-      setSelectedTweetId(rows[0]!.id);
+      setSelectedTweetId((pinnedRow ?? rows[0]!).id);
     }
-  }, [rows, selectedIndex, selectedTweetId]);
+  }, [pinnedRow, rows, selectedIndex, selectedTweetId]);
 
   const handleHeaderClick = useCallback((columnId: string) => {
     if (!isTweetSortColumnId(columnId)) return;
@@ -545,6 +565,7 @@ export function TweetSearchTable({
       onHeaderClick={handleHeaderClick}
       getItemKey={(tweet) => tweet.id}
       renderCell={renderCell}
+      isRowMuted={isAfterPin}
       selectedTextOverridesCellColor
       emptyContent={emptyContent}
       emptyStateTitle={emptyStateTitle ?? "No tweets"}

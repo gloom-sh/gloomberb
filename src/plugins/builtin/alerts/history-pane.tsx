@@ -10,6 +10,7 @@ import {
   type PageRequest,
 } from "../../../components";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
+import { usePinnedList } from "../../../components/use-pinned-moment";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import type { ScrollBoxRenderable } from "../../../ui";
@@ -25,6 +26,11 @@ import { alertTarget, alertViewHints, deliveredAlertSubject, useOpenAlertTarget,
 
 const stamp = (value: string) => value.slice(0, 16).replace("T", " ");
 const itemId = (item: AlertHistoryItem) => item.id;
+const historyRowId = (row: HistoryRow) => row.id;
+const historyRowMoment = (row: HistoryRow) => {
+  const at = Date.parse(row.time);
+  return Number.isFinite(at) ? at : null;
+};
 /** Where a line comes from, in the Via column's few cells. */
 const VIA_TEXT: Record<AlertHistoryVia, string> = { app: "App", cloud: "Cloud", both: "App, Cloud" };
 
@@ -125,7 +131,7 @@ export function AlertHistoryPane({ focused, width, height }: PaneProps) {
   const session = useResearchCloudSession();
   const [firedLog] = usePluginState<unknown>(FIRED_LOG_KEY, []);
   const fired = useMemo(() => readFiredAlerts(firedLog), [firedLog]);
-  const [selected, setSelected] = useState(0);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   // A new session starts the history over. A failed later page leaves what is
   // loaded, and the next scroll to the end asks again.
   const loadPage = useCallback(async ({ offset }: PageRequest) => {
@@ -145,8 +151,16 @@ export function AlertHistoryPane({ focused, width, height }: PaneProps) {
   const loadingMore = history.loadingMore;
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const loadMoreOnScroll = useTableLoadMore(scrollRef, history.hasMore && !loadingMore, history.loadMore);
-  const selectedIndex = Math.min(selected, Math.max(0, items.length - 1));
+  // By id, so an alert going off while one is picked leaves it picked.
+  const selectedIndex = Math.max(0, items.findIndex((item) => item.id === selectedId));
   const selectedItem = items[selectedIndex];
+  // A crosshair pinned in the tab picks the newest alert that went off by
+  // then and mutes the later ones; the selection follows the pin when it
+  // moves, not when an alert comes in.
+  const { isAfterPin } = usePinnedList<HistoryRow>("alert-history:pin", {
+    rows: items, getId: historyRowId, moment: historyRowMoment,
+    selectedId: selectedItem?.id ?? null, select: setSelectedId,
+  });
   const selectedTarget = useMemo(() => selectedItem ? alertTarget(selectedItem.subject) : null, [selectedItem]);
   const openTarget = useOpenAlertTarget();
 
@@ -186,12 +200,13 @@ export function AlertHistoryPane({ focused, width, height }: PaneProps) {
         items={items}
         scrollRef={scrollRef}
         onBodyScrollActivity={loadMoreOnScroll}
-        selection={{ kind: "index", selectedIndex, onChange: setSelected }}
+        selection={{ kind: "id", selectedId: selectedItem?.id ?? null, getId: historyRowId, onChange: setSelectedId }}
         getItemKey={(item) => item.id}
         onRootKeyDown={(event) => handleRefreshKey(event, history.reload)}
         sortColumnId={null}
         sortDirection="desc"
         renderCell={(item, column, _index, row) => alertHistoryCell(item, column, row.selected)}
+        isRowMuted={isAfterPin}
         emptyStateTitle={access.signedIn ? "No alerts in the last 90 days" : "No alerts fired yet"}
         emptyStateHint={access.signedIn
           ? data?.deviceEnabled ? undefined : "Alerts push to the Gloom phone app once it is signed in."
