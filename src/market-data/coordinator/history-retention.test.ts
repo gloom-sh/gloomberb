@@ -27,12 +27,14 @@ test("archives exact chart values and keeps the last good answer on a failed ref
     { date: new Date("2025-01-06"), close: 105, open: 103, venueVolume: { venue: "test", volume: 55 }, partial: true },
     { date: new Date("2025-01-13"), close: 103.123456789, high: 104, low: undefined, volume: -0 },
     { date: new Date("2025-01-20"), close: NaN, low: NaN },
+    ...Array.from({ length: 5 }, (_, index) => ({ date: new Date(2025, 0, 27 + index * 7), close: 100 + index })),
   ];
   const entry = { ...createIdleEntry<PricePoint[]>(), phase: "ready" as const, data: bars, lastGoodData: bars, fetchedAt: 12 };
   const restored = restoreWithoutDecodedBars(archiveChartEntry(entry)!);
   expect(restored).toStrictEqual(entry);
   expect(restored.data).toBe(restored.lastGoodData);
   expect(restored.data![0]).toBe(bars[0]);
+  expect(restored.data![2]).toBe(bars[2]);
   expect(restored.data![1]).not.toBe(bars[1]);
   expect(restored.data![1]!.volume).toBe(-0);
   expect(Object.hasOwn(restored.data![1]!, "low")).toBe(true);
@@ -51,6 +53,15 @@ test("leaves all-irregular histories unarchived in both stores", () => {
   const snapshot = createTestFinancials({ priceHistory });
   expect(archiveChartEntry(chart)).toBeNull();
   expect(archiveSnapshotEntry({ ...createIdleEntry<TickerFinancials>(), data: snapshot, lastGoodData: snapshot })).toBeNull();
+});
+
+test.each([0, 9_999])("leaves a sparse history unarchived with its only regular bar at %i", (regularIndex) => {
+  const venueVolume = { venue: "test", volume: 55 };
+  const bars = Array.from({ length: 10_000 }, (_, index): PricePoint => {
+    const bar = { date: new Date(index), close: 100 + index };
+    return index === regularIndex ? bar : { ...bar, venueVolume };
+  });
+  expect(archiveChartEntry({ ...createIdleEntry<PricePoint[]>(), data: bars, lastGoodData: bars })).toBeNull();
 });
 
 test("packs shared chart and snapshot bars once, including after restoring them", () => {

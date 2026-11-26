@@ -2,6 +2,7 @@ import type { PricePoint, TickerFinancials } from "../../types/financials";
 import type { QueryEntry } from "../result-types";
 
 const BAR_COLUMNS = 6;
+const MAX_IRREGULAR_FRACTION = 0.25;
 const optionalColumns = ["open", "high", "low", "volume"] as const;
 const barFields = new Set<string>(["date", "close", ...optionalColumns]);
 const packedHistories = new WeakMap<PricePoint[], PackedBars | null>();
@@ -31,26 +32,27 @@ function readBarOptions(point: PricePoint, optional: number[]): number | null {
 }
 
 function packBars(points: PricePoint[]): PackedBars | null {
-  let packed: PackedBars | null = null;
   const optional = new Array<number>(optionalColumns.length);
+  const maxIrregular = Math.floor(points.length * MAX_IRREGULAR_FRACTION);
+  let irregular = 0;
+  for (const point of points) {
+    if (readBarOptions(point, optional) === null && ++irregular > maxIrregular) return null;
+  }
+
+  const packed: PackedBars = {
+    values: new Float64Array(points.length * BAR_COLUMNS),
+    missing: new Uint8Array(points.length),
+    decoded: new WeakRef(points),
+    other: new Map(),
+  };
+  const { values, missing, other } = packed;
   for (let index = 0; index < points.length; index++) {
     const point = points[index]!;
     const mask = readBarOptions(point, optional);
     if (mask === null) {
-      packed?.other.set(index, point);
+      other.set(index, point);
       continue;
     }
-    if (!packed) {
-      const other = new Map<number, PricePoint>();
-      for (let earlier = 0; earlier < index; earlier++) other.set(earlier, points[earlier]!);
-      packed = {
-        values: new Float64Array(points.length * BAR_COLUMNS),
-        missing: new Uint8Array(points.length),
-        decoded: new WeakRef(points),
-        other,
-      };
-    }
-    const { values, missing } = packed;
     const offset = index * BAR_COLUMNS;
     missing[index] = mask;
     values[offset] = point.date.getTime();
