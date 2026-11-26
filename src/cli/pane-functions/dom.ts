@@ -44,11 +44,13 @@ function asksToVerifyEmail(visibleText: string): boolean {
  * A pane behind the sign-in wall, as a report reads it: the wall's headline
  * without its buttons, and what it needs in place of them.
  */
-function signInWallText(visibleText: string): string {
+function signInWallText(visibleText: string, signInGate: "verify-email" | "pro" | "free" | undefined): string {
   const headline = visibleText.replace(SIGN_IN_WALL_BUTTONS, "").trim();
-  const needs = asksToVerifyEmail(visibleText)
+  const needs = signInGate === "verify-email" || (signInGate == null && asksToVerifyEmail(visibleText))
     ? "Requires a verified email on your Gloom account: open the app (gloom) and resend the verification email from the command bar (Ctrl+P, Resend Verification Email)."
-    : "Requires a free Gloom sign-in: open the app (gloom) and log in or sign up free from the command bar (Ctrl+P, Log In or Sign Up); this command then reads with that session.";
+    : signInGate === "pro" || (signInGate == null && /\bGloom Cloud Pro:\s*Sign in\b/i.test(headline))
+      ? "Sign in from the command bar (Ctrl+P, Log In or Sign Up), then upgrade if your account does not have Gloom Cloud Pro."
+      : "Requires a free Gloom sign-in: open the app (gloom) and log in or sign up free from the command bar (Ctrl+P, Log In or Sign Up); this command then reads with that session.";
   return headline ? `${headline} ${needs}` : needs;
 }
 
@@ -320,7 +322,8 @@ export async function buildDomPaneReportFromRender(
       gate,
       symbol: result.symbols[0] ?? null,
       token: resolved.token,
-      ...gate === "sign-in" && asksToVerifyEmail(result.render.visibleText ?? "") ? { verifyEmail: true } : {},
+      ...gate === "sign-in" && (result.render.signInGate === "verify-email"
+        || (result.render.signInGate == null && asksToVerifyEmail(result.render.visibleText ?? ""))) ? { verifyEmail: true } : {},
       ...context ? { context } : {},
     }) ?? null
     : null;
@@ -334,7 +337,7 @@ export async function buildDomPaneReportFromRender(
     // A pane with nothing but its empty state says that, not its filters' labels (`No trials match ZZQX.`).
     textLines.push(...result.render.emptyStateText.flatMap((line) => wrapText(line, Math.min(cliTerminalWidth() ?? 100, 100))));
   } else if (result.render.visibleText) {
-    textLines.push(...(gate === "sign-in" ? [signInWallText(result.render.visibleText)] : proseLines(result.render, resolved.label)));
+    textLines.push(...(gate === "sign-in" ? [signInWallText(result.render.visibleText, result.render.signInGate)] : proseLines(result.render, resolved.label)));
   } else {
     textLines.push(failureReason ?? "No rendered values were available.");
   }

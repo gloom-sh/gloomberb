@@ -1,7 +1,8 @@
 import {
-  FINANCIAL_VINTAGE_NOTICE, fillDate, filledPeriodPublications, filledPeriodsNote, hasOlderStatements, reportsHalfYearly, stalePeriodNote,
+  FINANCIAL_VINTAGE_NOTICE, fillDate, filledPeriodPublications, filledPeriodsNote, reportsHalfYearly, stalePeriodNote,
   statementHistoryNotes,
 } from "../../../utils/financial-statements";
+import { hasEarlierGfRevenue } from "../../../time-series/fundamentals/history-link";
 import { canonicalExchange, isUsEquityExchange } from "../../../utils/exchanges";
 import { hasValidQuoteObservationTime } from "../../../market-data/quotes/freshness";
 import { quotesSourceName } from "../../../market-data/quotes/export-identity";
@@ -484,7 +485,7 @@ async function newerQuarterRelease(ctx: HeadlessContext, symbol: string, financi
 
 /** Whether GF, reading the listing's extended statement history, goes back further than the report (statementHistoryNotes). */
 function reportOlderStatements(ctx: HeadlessContext, symbol: string, period: "annual" | "quarterly", dates: readonly string[]) {
-  return hasOlderStatements(async () => {
+  return hasEarlierGfRevenue(async () => {
     const { symbol: bare, exchange } = await resolveHeadlessInstrument(ctx, symbol);
     return ctx.marketData.getTickerFinancials(bare, exchange ?? "", { statementHistory: "extended" });
   }, period, dates);

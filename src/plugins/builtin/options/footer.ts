@@ -9,6 +9,7 @@ import { usePaneStatusFooter } from "../../../components/layout/pane/status-foot
 import { CLOUD_QUOTE_DELAY_MINUTES } from "../../../api-client/plan-access";
 import type { OptionQuoteCoverage, OptionQuoteCoverageStatus } from "./live-quotes";
 import { formatOptionPrice, optionSpread, type OptionMarketReference } from "./market-reference";
+import type { optionSnapshotFreshness } from "../shared/volatility/option-snapshot";
 
 /**
  * Stream coverage the pane reports once the account is entitled to real-time
@@ -85,6 +86,7 @@ export function resolveOptionsDelayLabel(chain: OptionsChain | null | undefined)
 export function useOptionsAccessFooter({
   broker = false,
   chain,
+  snapshot,
   error,
   focused,
   hints,
@@ -98,6 +100,7 @@ export function useOptionsAccessFooter({
   /** The chain is a broker profile's, quoted by that broker: it has no Gloom Cloud delay to report or upgrade from. */
   broker?: boolean;
   chain: OptionsChain | null | undefined;
+  snapshot: ReturnType<typeof optionSnapshotFreshness> | null;
   error?: string | null;
   focused: boolean;
   hints?: PaneHint[];
@@ -131,10 +134,24 @@ export function useOptionsAccessFooter({
   const coverageDelay = broker && !(chain?.delayMinutes && chain.delayMinutes > 0) ? undefined : delayLabel;
   const accessInfo = useMemo<PaneFooterSegment[]>(() => {
     if (unserved) return [];
+    if (snapshot?.status === "stale" || snapshot?.status === "unreported") {
+      const stamp = snapshot.asOf?.replace("T", " ").replace(/(?:\.\d+)?Z$/, " UTC");
+      const stale = snapshot.status === "stale";
+      const title = stale ? `Stale options snapshot${stamp ? ` · ${stamp}` : ""}` : snapshot.note;
+      const snapshotStatus: PaneFooterSegment = { ...segment, id: "options-snapshot", title,
+        parts: [{ text: stale ? "stale snapshot" : "undated snapshot", tone: "warning" }] };
+      if (quoteCoverage.status === "live" || quoteCoverage.status === "mixed") {
+        const quotes: PaneFooterSegment = quoteCoverage.status === "live"
+          ? { id: "options-access", parts: [{ text: "live bids/asks", tone: "positive" }] }
+          : { id: "options-access", title: "Real-time bids/asks mixed with snapshot quotes", parts: [{ text: "mixed option quotes", tone: "warning" }] };
+        return [quotes, snapshotStatus];
+      }
+      return [snapshotStatus];
+    }
     const coverage = proCoverage ? optionsCoverageSegment(quoteCoverage.status, coverageDelay) : null;
     if (coverage) return [coverage];
     return segment ? [segment] : [];
-  }, [coverageDelay, proCoverage, quoteCoverage.status, segment, unserved]);
+  }, [coverageDelay, proCoverage, quoteCoverage.status, segment, snapshot, unserved]);
 
   // Rebuilt every render so the quote and trade ages keep counting with the
   // stream; the registration compares by value, so only a changed label

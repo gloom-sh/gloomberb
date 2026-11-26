@@ -23,7 +23,8 @@ import type { BrokerInstanceConfig } from "../../../types/config";
 import type { PinTickerOptions } from "../../../types/plugin";
 import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../../test-support/pane";
 import { RemoteUiRegistryProvider, createRemoteUiRegistry } from "../../../remote/semantic-tree";
-import { renderedReportFailure, renderedReportFreshness, renderedReportNotices } from "../../../cli/pane-functions/report-notices";
+import { deriveRenderedFreshness } from "../../../cli/pane-functions/freshness";
+import { renderedReportFailure, renderedReportFreshness, renderedReportNotices, renderedReportObservations } from "../../../cli/pane-functions/report-notices";
 import { missingExpiryMessage } from "../../../utils/option-expiry";
 import { installOptionsReferenceFixtures } from "./test-fixture";
 
@@ -252,7 +253,9 @@ test("Enter opens the cursor's contract on its broker, and with trading t opens 
 });
 
 test("a broker's chain says nothing of Gloom Cloud's delay: a free account sees no 15m clock or upsell on it", async () => {
-  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getOptionsChain: async () => makeChain([100, 101], 101) })));
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getOptionsChain: async () => ({
+    ...makeChain([100, 101], 101), asOf: new Date(Date.now() - 900_000).toISOString(),
+  }) })));
   const profile: BrokerInstanceConfig = { id: "sim", brokerType: "demo", label: "Demo", enabled: true, config: {} };
   const brokerTicker = createTestTicker("AAPL", "AAPL", { assetCategory: "STK",
     broker_contracts: [{ brokerId: "demo", brokerInstanceId: "sim", symbol: "AAPL", secType: "STK", exchange: "SMART", currency: "USD" }] });
@@ -359,26 +362,71 @@ test("keeps table geometry and scroll steady while a cold expiry loads", async (
   expect((tui.setup().renderer.root.findDescendantById("options-table-body-scroll") as ScrollBoxRenderable).scrollTop).toBeGreaterThan(0);
 });
 
-test("a typed expiry date opens that expiry, and its report names it with the chain's as-of and delay", async () => {
-  const chain: OptionsChain = { ...makeChain([100, 101], 101, [1_781_049_600, 1_782_345_600]),
-    asOf: "2026-06-01T20:00:00.000Z", dataSource: "delayed", delayMinutes: 15 };
-  const provider = createTestDataProvider({ getOptionsChain: async () => chain });
+test.each(["2026-11-18T17:29:00.000Z", undefined])("AFK separates expiry and stream coverage from the snapshot (%s)", async (asOf) => {
+  setSystemTime(new Date("2026-11-25T17:29:00Z"));
+  const expiration = Date.parse("2026-12-18") / 1000;
+  const fixture = makeChain([100, 101], 101, [expiration]);
+  const chain: OptionsChain = { ...fixture, underlyingSymbol: "AFK",
+    calls: fixture.calls.map((contract) => ({ ...contract, expiration })), puts: fixture.puts.map((contract) => ({ ...contract, expiration })),
+    asOf, dataSource: "delayed", delayMinutes: 15 };
+  const snapshot: ReturnType<typeof renderedReportFreshness> = asOf
+    ? { asOf, status: "stale" } : { status: "unreported", note: "Option snapshot time not reported" };
+  const snapshotLabel = asOf ? "stale snapshot" : "undated snapshot";
+  let subscription: { targets: QuoteSubscriptionTarget[]; emit: (target: QuoteSubscriptionTarget, quote: Quote) => void } | undefined;
+  const provider = createTestDataProvider({ getOptionsChain: async () => chain, subscribeQuotes: (targets, emit) => {
+    subscription = { targets, emit };
+    return () => {};
+  } });
   setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
   const registry = createRemoteUiRegistry();
-  // `fn OMON --expiration 2026-06-25` leaves the date as text in the pane setting.
+  let footerLabels: string[] = [];
+  const reportFreshness = () => {
+    const nodes = registry.snapshot();
+    return deriveRenderedFreshness(renderedReportFreshness(nodes), {
+      footerText: footerLabels.join(" · "), cellTimes: [], observed: renderedReportObservations(nodes),
+    });
+  };
   await act(async () => {
     await tui.render(<RemoteUiRegistryProvider registry={registry}>
-      <OptionsHarness ticker={makeTicker("AAPL")} quotePrice={101} settings={{ expiration: "2026-06-25" }} />
+      <OptionsHarness ticker={makeTicker("AFK")} quotePrice={101} settings={{ expiration: "2026-12-18" }}
+        showFooter width={124} height={16} onFooter={(footer) => { footerLabels = footer.info.flatMap((segment) => segment.parts.map((part) => part.text)); }} />
     </RemoteUiRegistryProvider>, { width: 124, height: 16 });
   });
   await renderSettled();
-  expect(tui.frame()).toMatch(/Expiry\s+25 Jun '26\s+\(24d\)/);
+  expect(tui.frame()).toMatch(/Expiry\s+18 Dec '26\s+\(23d\)/);
   expect(tui.frame()).not.toContain("NaN");
   const report = renderedReportNotices(registry.snapshot());
-  expect(report.notices[0]).toBe("Expiry 2026-06-25 (24d)");
-  expect(report.facts.expiry).toEqual({ date: "2026-06-25", daysToExpiry: 24 });
-  expect(renderedReportFreshness(registry.snapshot())).toEqual({ asOf: "2026-06-01T20:00:00.000Z", status: "delayed", delayMinutes: 15 });
+  expect(report.notices[0]).toBe("Expiry 2026-12-18 (23d)");
+  expect(report.facts.expiry).toEqual({ date: "2026-12-18", daysToExpiry: 23, expired: false });
+  expect(renderedReportFreshness(registry.snapshot())).toEqual(snapshot);
   expect(renderedReportFailure(registry.snapshot())).toBeNull();
+  expect(footerLabels).toContain(snapshotLabel);
+
+  const visible = subscription!.targets.filter((target) => target.exchange === "OPTIONS" && target.visible);
+  expect(visible).toHaveLength(4);
+  const emitBook = (target: QuoteSubscriptionTarget, twoSided = true) => subscription!.emit(target, createTestQuote({
+    symbol: target.symbol, bid: 2, ...(twoSided ? { ask: 2.1 } : {}),
+    lastUpdated: Date.now(), dataSource: "live", delivery: "stream", stale: false,
+  }));
+  await act(async () => {
+    emitBook(visible[0]!);
+    emitBook(visible[1]!, false);
+  });
+  await renderSettled();
+  expect(footerLabels).toContain("mixed option quotes");
+  expect(footerLabels).not.toContain("live bids/asks");
+  expect(renderedReportFreshness(registry.snapshot())).toEqual({ ...snapshot, asOfLabel: "Stored snapshot" });
+  expect(reportFreshness()).toMatchObject({ status: snapshot.status, asOf: asOf ?? null });
+  expect(renderedReportNotices(registry.snapshot()).facts.quoteCoverage).toMatchObject({ status: "mixed", liveCount: 1, totalCount: 4 });
+
+  await act(async () => { for (const target of visible.slice(1)) emitBook(target); });
+  await renderSettled();
+  expect(footerLabels).toContain("live bids/asks");
+  expect(footerLabels).toContain(snapshotLabel);
+  expect(renderedReportFreshness(registry.snapshot())).toEqual({ status: "live", asOf: "2026-11-25T17:29:00.000Z", asOfLabel: "Visible bids/asks" });
+  expect(reportFreshness()).toMatchObject({ status: "live", asOf: "2026-11-25T17:29:00.000Z", asOfLabel: "Visible bids/asks" });
+  expect(renderedReportNotices(registry.snapshot()).facts.quoteCoverage).toMatchObject({ status: "live", liveCount: 4,
+    snapshot });
 });
 
 test("a typed expiry the chain does not list fails its report with the options command's error, and names no expiry", async () => {
@@ -399,6 +447,7 @@ test("a typed expiry the chain does not list fails its report with the options c
 test("a strike whose IV was filled from its neighbours prints ~, says so in the footer, and its report carries the notice", async () => {
   // No bid on the 120 call: it has no two-sided quote to solve, so its IV is read off the strikes either side.
   const chain = makeChain([100, 101, 120], 101);
+  chain.asOf = new Date(Date.now() - 900_000).toISOString();
   chain.calls = chain.calls.map((contract) => contract.strike === 120 ? { ...contract, bid: 0, ask: 0.05, lastPrice: 0.02 } : contract);
   // The 120 put is quoted above its 19.00 intrinsic, so the strike has a market to fill.
   chain.puts = chain.puts.map((contract) => contract.strike === 120 ? { ...contract, bid: 19.9, ask: 20.1, lastPrice: 20 } : contract);

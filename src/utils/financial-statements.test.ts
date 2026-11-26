@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  coalesceFinancialPeriodAliases, fillDate, fillDateText, filledPeriodPublications, filledPeriodsNote, halfYearGrowthPeriod, hasOlderStatements, mergeFinancialStatementRows, reportsHalfYearly, stalePeriodNote, statementHistoryNotes,
+  coalesceFinancialPeriodAliases, fillDate, fillDateText, filledPeriodPublications, filledPeriodsNote, halfYearGrowthPeriod, mergeFinancialStatementRows, reportsHalfYearly, stalePeriodNote, statementHistoryNotes,
 } from "./financial-statements";
 import { computeTTM } from "../plugins/builtin/ticker-detail/financials/aggregation";
 import { exchangeResultsNotes, matchExchangeResults } from "./exchange-results";
@@ -218,14 +218,14 @@ describe("statementHistoryNotes", () => {
     // A trailing-twelve-months column has no date; the oldest year is the oldest period end.
     expect(statementHistoryNotes("annual", ["TTM", "2025-12-31", "2024-12-31", "2023-12-31"], "KO", true)).toEqual([
       "annual history from 2023; older years not served",
-      "earlier years, one metric at a time: gloom fn GF KO --period annual --periods 40",
+      "earlier revenue: gloom fn GF KO --period annual --periods 40",
     ]);
     // GF holds nothing older (IAG on LSE starts in 2022 there too): no pointer to the same years.
     expect(statementHistoryNotes("annual", ["2024-06-30", "2025-06-30"], "SAN:EPA", false))
-      .toEqual(["annual history from 2024; older years not available for this listing"]);
+      .toEqual(["annual history from 2024; no earlier revenue in GF's latest 40 periods"]);
     expect(statementHistoryNotes("quarterly", ["2026-06-30", "2025-03-28"], "KO", true)).toEqual([
       "quarterly history from 2025-03-28; older quarters not served",
-      "earlier quarters, one metric at a time: gloom fn GF KO --period quarterly --periods 40",
+      "earlier revenue: gloom fn GF KO --period quarterly --periods 40",
     ]);
     // Unknown (the history was not read in time): nothing is said of older quarters.
     expect(statementHistoryNotes("quarterly", ["2025-03-28"], "KO", null)).toEqual([]);
@@ -234,26 +234,6 @@ describe("statementHistoryNotes", () => {
     expect(statementHistoryNotes("annual", ["TTM"], "KO", true)).toEqual([]);
   });
 
-  test("hasOlderStatements reads the extended history for a period older than the report's oldest", async () => {
-    const extended = { annualStatements: [{ date: "2019-12-31" }, { date: "2023-12-31" }], quarterlyStatements: [{ date: "2025-03-31" }] };
-    const load = async () => extended;
-    expect(await hasOlderStatements(load, "annual", ["TTM", "2024-12-31", "2023-12-31"])).toBe(true);
-    expect(await hasOlderStatements(load, "annual", ["2019-12-31", "2023-12-31"])).toBe(false);
-    expect(await hasOlderStatements(load, "quarterly", ["2025-03-31"])).toBe(false);
-    // Nothing dated to compare against, or a failed read: unknown.
-    expect(await hasOlderStatements(load, "annual", ["TTM"])).toBeNull();
-    expect(await hasOlderStatements(async () => { throw new Error("down"); }, "annual", ["2023-12-31"])).toBeNull();
-  });
-
-  test("hasOlderStatements stops waiting at its deadline, so a slow history leaves the report on time", async () => {
-    let answer: (value: { annualStatements: FinancialStatement[]; quarterlyStatements: FinancialStatement[] }) => void = () => {};
-    const slow = () => new Promise<{ annualStatements: FinancialStatement[]; quarterlyStatements: FinancialStatement[] }>((resolve) => { answer = resolve; });
-    const started = Date.now();
-    expect(await hasOlderStatements(slow, "annual", ["2023-12-31"], 20)).toBeNull();
-    expect(Date.now() - started).toBeLessThan(1_000);
-    // The answer arriving after it changes nothing.
-    answer({ annualStatements: [{ date: "2019-12-31" }], quarterlyStatements: [] });
-  });
 });
 
 test("reportsHalfYearly: an Australian or New Zealand listing, or periods half a year apart", () => {
