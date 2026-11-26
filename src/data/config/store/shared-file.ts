@@ -1,7 +1,8 @@
 import { constants, watch, type FSWatcher } from "fs";
 import { open, readFile, rm, stat } from "fs/promises";
 import { basename, dirname } from "path";
-import { applyProfileEdits, diffProfile, type ProfileEdit, type ProfileJson } from "../../profile-merge";
+import type { ProfileJson } from "../../profile-merge";
+import { diffSharedConfig } from "./shared-layout";
 import { debugLog } from "../../../utils/debug-log";
 
 /**
@@ -41,7 +42,7 @@ const POLL_MS = 3_000;
 export interface SharedFileChange {
   /** The change's place among the ones found: a config holding it has a count past this. */
   readonly index: number;
-  readonly edits: readonly ProfileEdit[];
+  readonly apply: ReturnType<typeof diffSharedConfig>["apply"];
 }
 
 interface SharedFileState {
@@ -126,11 +127,11 @@ function noteContents(path: string, state: SharedFileState, contents: string | n
   const before = parse(known);
   const after = parse(contents);
   if (before === undefined || after === undefined) return;
-  const edits = diffProfile(before, after);
-  if (edits.length === 0) return;
-  const change: SharedFileChange = { index: state.changes.length, edits };
+  const delta = diffSharedConfig(before, after);
+  if (delta.count === 0) return;
+  const change: SharedFileChange = { index: state.changes.length, apply: delta.apply };
   state.changes.push(change);
-  log.info("config.changed.elsewhere", { edits: edits.length });
+  log.info("config.changed.elsewhere", { edits: delta.count });
   for (const listener of state.listeners) {
     try {
       listener(change);
@@ -171,7 +172,7 @@ function foldChanges(contents: string, changes: readonly SharedFileChange[]): st
   const mine = parse(contents);
   if (mine === undefined) return contents;
   let merged = mine;
-  for (const change of changes) merged = applyProfileEdits(merged, change.edits);
+  for (const change of changes) merged = change.apply(merged);
   return merged === mine ? contents : JSON.stringify(merged, null, 2);
 }
 
