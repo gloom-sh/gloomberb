@@ -121,6 +121,15 @@ test("a wider pane takes its columns back, and a fitted table exports every colu
   expect(wide.more()).toBeNull();
 });
 
+test("a table set not to scroll sideways keeps its columns, which the desktop narrows to the pane", async () => {
+  viewportCells = 40;
+  // TRIAL's list gave up its ticker to a fit by set widths, though all six columns had fitted narrowed.
+  const table = await mount({ showHorizontalScrollbar: false });
+  expect(table.headers()).toBe("TICKER LAST CHG VOL CAP ASOF");
+  expect(table.hidden()).toBeNull();
+  expect(table.more()).toBeNull();
+});
+
 test("a report draws every column whatever the width, for fn's rows to read", async () => {
   viewportCells = 40;
   const table = await mount({}, { everyColumn: true });

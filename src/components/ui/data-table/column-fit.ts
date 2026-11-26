@@ -14,6 +14,12 @@ interface ColumnFitOptions {
   anchoredColumns: number;
   /** The column the table is sorted by stays: rows in an order no column shows read as unsorted. */
   sortColumnId: string | null;
+  /**
+   * False for a table set not to scroll sideways: the desktop narrows its
+   * columns to the pane instead of drawing them at their set widths, so
+   * there is no column for the pane's edge to cut and none to leave out.
+   */
+  scrollsSideways: boolean;
   dropOrder: TableColumnDropOrder | undefined;
   columnGap: number | undefined;
   horizontalPadding: number | undefined;
@@ -21,9 +27,10 @@ interface ColumnFitOptions {
 
 /**
  * The columns a table draws at the width its renderer reports
- * (`onViewportWidthChange`): all of them where they fit or the renderer
- * reports none (the terminal, which fits what its columns hold), else the
- * ones `fitColumnsToWidth` keeps. `showAll` draws them all at the reader's
+ * (`onViewportWidthChange`): all of them where they fit, where the renderer
+ * reports none (the terminal, which fits what its columns hold) or where the
+ * table narrows its columns rather than scroll sideways, else the ones
+ * `fitColumnsToWidth` keeps. `showAll` draws them all at the reader's
  * asking and names the first one the fit had left out, for the renderer to
  * scroll to; `fit` goes back. Both are in the pane menu while there is
  * something to show or to fit, and the asking is forgotten once every column
@@ -45,13 +52,13 @@ export function useDataTableColumnFit<C extends DataTableColumn>(columns: readon
   orderRef.current = options.dropOrder;
   const orderKey = options.dropOrder ? JSON.stringify(options.dropOrder) : "";
   const fittedIds = useMemo(() => {
-    if (!enabled || viewportCells == null) return null;
+    if (!enabled || !options.scrollsSideways || viewportCells == null) return null;
     const keep = [...columns.slice(0, options.anchoredColumns).map((column) => column.id), ...options.sortColumnId ? [options.sortColumnId] : []];
     const fitted = fitColumnsToWidth(columns, viewportCells, {
       dropOrder: orderRef.current, keep, columnGap: options.columnGap, horizontalPadding: options.horizontalPadding,
     });
     return fitted.length === columns.length ? null : new Set(fitted.map((column) => column.id));
-  }, [columns, enabled, options.anchoredColumns, options.columnGap, options.horizontalPadding, options.sortColumnId, orderKey, viewportCells]);
+  }, [columns, enabled, options.anchoredColumns, options.columnGap, options.horizontalPadding, options.scrollsSideways, options.sortColumnId, orderKey, viewportCells]);
   const hidden = fittedIds ? columns.length - fittedIds.size : 0;
   // Wide enough for every column again: the next narrow width starts from the fit.
   useEffect(() => {

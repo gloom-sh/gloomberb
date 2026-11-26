@@ -72,6 +72,7 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
   const columnFit = useDataTableColumnFit(shownColumns, {
     anchoredColumns: props.columns.slice(0, props.anchoredColumns ?? 1).filter((column) => shownColumns.includes(column)).length,
     sortColumnId: props.sortColumnId,
+    scrollsSideways: props.showHorizontalScrollbar !== false,
     dropOrder: props.columnDropOrder,
     columnGap: props.columnGap,
     horizontalPadding: props.horizontalPadding,

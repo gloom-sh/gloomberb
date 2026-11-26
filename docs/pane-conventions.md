@@ -554,6 +554,13 @@ at any width. A pane does nothing for this, except say what matters:
 - `dropColumnsToFit` in the pane is for a column that leaves in the terminal
   too, by the pane's own width (PF's valuation columns, AUCT's); the same
   line names it. The table's fit then covers what that order did not.
+- A table set not to scroll sideways (`showHorizontalScrollbar={false}`: a
+  list read down, such as TRIAL or the news wire) narrows its columns to the
+  pane instead and leaves none out.
+- Size a column that takes what the pane has left by the table's own measure
+  (`width - getTableWidth(columns)`), never by a constant: one that forgets
+  the gaps makes the table wider than its pane at every width, and its last
+  column is the one that leaves.
 
 `shot --strict` fails a capture that cut a column, and names it; a table drawn
 outside the kit owes the same fit.

@@ -269,7 +269,9 @@ export interface DataTableProps<
    * reports keep every column. Unset, the trailing columns leave first: list
    * an order where a later column matters more than an earlier one (a figure
    * the pane is for, an as-of date). The terminal fits what its columns hold
-   * and scrolls the rest (`fitTableColumns`).
+   * and scrolls the rest (`fitTableColumns`). A table set not to scroll
+   * sideways (`showHorizontalScrollbar={false}`) narrows its columns to the
+   * pane there and leaves none out.
    */
   columnDropOrder?: readonly (string | readonly string[])[];
   /** Set by `DataTable` for a renderer that cuts a column at its edge: the body's width in cells, as it measures it. */
