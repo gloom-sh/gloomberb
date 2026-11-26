@@ -121,7 +121,7 @@ function frame() {
 test("observed consolidated profit stays out of ordinary columns, CSV, growth and TTM", async () => {
   const observed = { date: "2026-06-30", accountingScope: "consolidated" as const, currency: "TWD",
     amounts: { profitAttributableToOwnersOfParent: 63_839_675_000, basicEps: 4.27 },
-    evidence: { sha256: "a".repeat(64), byteLength: 1128885, url: "https://example.org/quarter", publishedAt: null, firstObservedAt: "2026-11-21T05:12:00Z" } };
+    evidence: { revisionRef: "gloom-rev-qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqo", sha256: "a".repeat(64), byteLength: 1128885, publishedAt: null, firstObservedAt: "2026-11-21T05:12:00Z" } };
   const financials = mapCloudFinancials({ annualStatements: [],
     quarterlyStatements: ["2025-06-30", "2025-09-30", "2025-12-31"].map((date) => ({ date, currency: "TWD", totalRevenue: 100 })),
     reportedQuarters: [observed], priceHistory: [] });

@@ -1385,9 +1385,9 @@ export interface EpsEstimateHistory {
 }
 
 export interface ReportObservation {
+  revisionRef: string;
   sha256: string;
   byteLength: number;
-  url: string;
   firstObservedAt: string;
   publishedAt: string | null;
 }
