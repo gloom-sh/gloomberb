@@ -3,7 +3,8 @@ import { createTestCliContext } from "../../test-support/cli-context";
 import { serializeCliResult } from "../result";
 import { DEFAULT_CLI_OPTIONS } from "../options";
 import { formatFreshnessLine } from "../pane-functions/freshness";
-import type { EarningsAction } from "../../types/financials";
+import type { EarningsEvent } from "../../types/data-provider";
+import type { CorporateActionsData, EarningsAction } from "../../types/financials";
 import { marketDataCliCommands } from "./market";
 
 const events = marketDataCliCommands.find((command) => command.name === "events")!;
@@ -94,6 +95,66 @@ test.each([
     expect(row.difference).toBe(difference);
     expect(row.surpriseNotMeaningful).toBe(notMeaningful);
   }
+});
+
+async function calendarExport(event: EarningsEvent, getCorporateActions: (symbol: string, exchange: string) => Promise<CorporateActionsData>) {
+  const run = createTestCliContext({ dataProvider: { getCorporateActions, getEarningsCalendar: async () => [event] } }, { format: "json" });
+  await calendar.execute([event.symbol], run.context);
+  const { result, options } = run.printed[0]!;
+  return JSON.parse(serializeCliResult(result, run.context.cliOptions, options)).data[0];
+}
+
+const dellDate = "2026-11-24";
+const dellStreetEps = { actual: 9.16, estimate: 6.55, actualBasis: "including-stock-compensation", analysts: 8 } as const;
+const dellFiling: EarningsAction = { date: dellDate, dateType: "announcement", fiscalPeriod: "2026-10", dateStatus: "reported",
+  epsActual: 9.45, epsBasis: "company-adjusted", epsActualSource: "filing", currency: "USD", gaapEps: 8.82, streetEps: dellStreetEps };
+const dellCalendar: EarningsEvent = { symbol: "DELL:NYSE", name: "Dell Technologies Inc.", earningsDate: new Date(`${dellDate}T21:00:00Z`),
+  epsActual: 9.16, epsEstimate: 6.55, epsAnalysts: 8, dateStatus: "reported", timing: "AMC", surprise: 39.85,
+  revenueEstimate: null, revenueActual: null, estimateBasis: { epsEstimate: { source: "calendarEvents", sourceValue: 6.55, period: null, periodEndDate: "2026-10-30", currency: "USD" } } };
+
+test("earnings exports the verified filing and separate street pair even when the calendar has a reported actual", async () => {
+  const reads: string[][] = [];
+  const row = await calendarExport(dellCalendar, async (symbol, exchange) => {
+    reads.push([symbol, exchange]);
+    return { symbol: "DELL", exchange: "NYSE", dividends: [], splits: [], earnings: [dellFiling, { date: "2099-02-25", dateStatus: "confirmed" }] };
+  });
+  expect(reads).toEqual([["DELL:NYSE", "NYSE"]]);
+  expect(row).toMatchObject({ symbol: "DELL:NYSE", earningsDate: `${dellDate}T21:00:00.000Z`, dateStatus: "reported",
+    epsActual: 9.45, epsBasis: "company-adjusted", gaapEps: 8.82, streetEps: dellStreetEps, epsEstimate: null, epsAnalysts: null, surprise: null });
+  expect(row).not.toHaveProperty("difference");
+});
+
+test.each([
+  { name: "another report date", filing: { ...dellFiling, date: "2026-11-23" } },
+  { name: "another fiscal period", filing: { ...dellFiling, fiscalPeriod: "2026-07" } },
+  { name: "another currency", filing: { ...dellFiling, currency: "CAD" } },
+  { name: "another venue", filing: dellFiling, exchange: "NASDAQ" },
+  { name: "no filing attribution", filing: { ...dellFiling, epsActualSource: undefined } },
+  { name: "a failed read", filing: null },
+])("earnings keeps the calendar's observations for $name", async ({ filing, exchange }) => {
+  const row = await calendarExport(dellCalendar, async () => {
+    if (!filing) throw new Error("corporate actions unavailable");
+    return { symbol: "DELL", exchange: exchange ?? "NYSE", dividends: [], splits: [], earnings: [filing] };
+  });
+  expect(row).toMatchObject({ symbol: "DELL:NYSE", epsActual: 9.16, epsEstimate: 6.55, epsAnalysts: 8, surprise: null });
+  expect(row).not.toHaveProperty("streetEps");
+  expect(row).not.toHaveProperty("gaapEps");
+});
+
+test("earnings drops the displaced EPS forecast metadata but keeps same-report revenue", async () => {
+  const date = "2026-10-14";
+  const basis = { source: "calendarEvents", sourceValue: 1.05, period: null, periodEndDate: "2026-09-30", currency: "USD" } as const;
+  const revenueBasis = { ...basis, sourceValue: 500 };
+  const row = await calendarExport({ symbol: "PLTR:NASDAQ", name: "Palantir Technologies Inc.", earningsDate: new Date(`${date}T20:00:00Z`),
+    dateStatus: "reported", timing: "AMC", epsActual: null, epsEstimate: 1.05, epsAnalysts: 15, epsLow: 0.95, epsHigh: 1.15,
+    epsTrend7dAgo: 1.03, epsRevisionUp7d: 3, revenueEstimate: 500, revenueHigh: 550, revenueActual: 520, surprise: null,
+    estimateBasis: { epsEstimate: basis, epsAnalysts: basis, epsLow: basis, epsHigh: basis, epsTrend7dAgo: basis, epsRevisionUp7d: basis, revenueEstimate: revenueBasis },
+  }, async (symbol) => ({ symbol, dividends: [], splits: [], earnings: [
+    { ...release, date, fiscalPeriod: "2026-09", epsActual: 1.1, epsEstimate: 1, epsAnalysts: 8 },
+  ] }));
+  expect(row).toMatchObject({ epsActual: 1.1, epsEstimate: 1, epsAnalysts: 8, epsBasis: "gaap", difference: 0.1, surprise: 10,
+    epsLow: null, epsHigh: null, epsTrend7dAgo: null, epsRevisionUp7d: null, revenueEstimate: 500, revenueHigh: 550, revenueActual: 520 });
+  expect(row.estimateBasis).toEqual({ revenueEstimate: revenueBasis });
 });
 
 test("events is dated by when it was read: a row's date is when its event happens, so the newest past one is no as-of", async () => {

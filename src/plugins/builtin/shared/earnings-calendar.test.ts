@@ -75,9 +75,12 @@ test("a confirmed date beats an estimated one, whichever source has it", async (
     },
   };
   const listing = (key: string) => ({ key, symbol: key, exchange: "" });
-  const listed = await resolveListingEvents(provider, [listing("JPM"), listing("GS")], [estimated, event("GS", "2027-01-19T12:30:00Z")], TODAY);
+  const reported = event("PEP", "2026-10-08T12:30:00Z", { epsActual: 2.29 });
+  const listed = await resolveListingEvents(provider, [listing("JPM"), listing("GS"), listing("PEP")],
+    [estimated, event("GS", "2027-01-19T12:30:00Z"), reported], TODAY);
   expect(listed.get("JPM")).toMatchObject({ dateStatus: "confirmed", isDateEstimate: false });
   expect(upcomingReportDate(listed.get("JPM"))).toBe("2027-01-13");
+  expect(listed.get("PEP")).toMatchObject({ dateStatus: "reported", epsActual: 2.29 });
   expect(read).toEqual(["JPM"]);
   // On the same date, the record's confirmed status stands and the calendar's figures stay.
   const sameDay = event("JPM", "2027-01-13T12:30:00Z", { isDateEstimate: true, epsEstimate: 5.9, revenueEstimate: 51e9 });

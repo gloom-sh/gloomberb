@@ -5024,7 +5024,7 @@ async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["exe
     const dayOf = (listing: CliListing) => listingDay(listing.request.exchange || listing.exchange, now);
     const resolved = await resolveListingEvents(services.dataProvider, listings.map((listing) => ({
       key: listing.key, symbol: listing.request.symbol, exchange: listing.request.exchange, today: dayOf(listing),
-    })), calendar, today);
+    })), calendar, today, { includeReportedFiling: true });
     const events: ResolvedEarningsEvent[] = calendar
       .map((event) => {
         const listing = listings.find((entry) => entry.key.toUpperCase() === event.symbol.toUpperCase());

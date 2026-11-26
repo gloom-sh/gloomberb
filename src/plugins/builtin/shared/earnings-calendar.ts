@@ -1,5 +1,6 @@
 import type { DataProvider, EarningsEvent } from "../../../types/data-provider";
 import type { CorporateActionsData, EarningsAction, EarningsDateStatus, EarningsEpsBasis, FilingEpsDetails } from "../../../types/financials";
+import { canonicalTickerKey, sameListingKey } from "../../../utils/exchanges";
 import { logFailure } from "../../../utils/log-failure";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
 import { dateStatusFromEstimateFlag, displayEarningsEpsBasis, earningsActionForReport, earningsDateStatus, earningsEpsBasis } from "./earnings-report";
@@ -272,7 +273,7 @@ export interface ResolvedEarningsEvent extends EarningsEvent, FilingEpsDetails {
 
 const TIMING_OF_TEXT: Record<string, EarningsEvent["timing"]> = { "Pre Market": "BMO", "After Hours": "AMC" };
 
-/** The calendar's event without its consensus, which is another quarter's than the report's. */
+/** The calendar's event without estimates from a different period or a displaced EPS forecast. */
 function withoutConsensus(event: EarningsEvent, epsOnly = false): EarningsEvent {
   const stripped: EarningsEvent = { ...event, epsBasis: null };
   const basis = { ...event.estimateBasis };
@@ -289,11 +290,10 @@ function withoutConsensus(event: EarningsEvent, epsOnly = false): EarningsEvent 
 const statusFlag = (status: EarningsDateStatus | null) => status === "projected" ? true : status === "confirmed" ? false : null;
 
 /**
- * The resolved event for a row. The calendar's own report keeps every figure
- * the calendar carries (revenue, ranges, bases), but its consensus only when
- * it is the report's, and takes the row's status and, when the record has the
- * actual the calendar lacks, the record's EPS figures, measured against the
- * record's estimate. Another report on record is that row alone.
+ * The resolved event for a row. The calendar's own report keeps its revenue
+ * and same-report consensus. If the record supplies EPS instead, its EPS
+ * figures replace the calendar's forecast and its metadata together.
+ * Another report on record is that row alone.
  */
 function eventOfRow(event: EarningsEvent, row: EarningsAction, report: CalendarReport | null): ResolvedEarningsEvent {
   const ownDate = row.date === calendarDay(event);
@@ -309,8 +309,8 @@ function eventOfRow(event: EarningsEvent, row: EarningsAction, report: CalendarR
   };
   if (report) {
     const filed = row.epsActual != null && row.epsBasis === "company-adjusted";
-    const base = !report.ownConsensus ? withoutConsensus(event) : filed ? withoutConsensus(event, true) : event;
     const recordFigures = row.epsActual != null && (event.epsActual == null || filed);
+    const base = !report.ownConsensus ? withoutConsensus(event) : recordFigures ? withoutConsensus(event, true) : event;
     const epsActual = recordFigures ? row.epsActual! : event.epsActual ?? null;
     const epsEstimate = recordFigures ? row.epsEstimate ?? null : base.epsEstimate ?? row.epsEstimate ?? null;
     return {
@@ -442,17 +442,32 @@ export function noNextReportText(last: LastReport | null): string {
 /** Calendar events need their quarters on record read at most this many at a time. */
 const RECORD_CONCURRENCY = 4;
 
+function matchingReportedFiling(actions: CorporateActionsData, listing: EarningsListing, event: EarningsEvent): EarningsAction | undefined {
+  if (!sameListingKey(canonicalTickerKey(actions.symbol, actions.exchange), canonicalTickerKey(listing.symbol, listing.exchange))) return;
+  const date = calendarDay(event);
+  const basis = event.estimateBasis?.epsEstimate;
+  const period = basis?.periodEndDate?.slice(0, 7);
+  return actions.earnings.find((row) => row.date === date && row.dateType !== "fiscal-period-end"
+    && (!period || !row.fiscalPeriod || row.fiscalPeriod === period)
+    && (!basis?.currency || row.currency === basis.currency)
+    && row.epsActualSource === "filing" && row.epsBasis === "company-adjusted"
+    && Number.isFinite(row.epsActual) && Number.isFinite(row.gaapEps)
+    && row.streetEps?.actualBasis === "including-stock-compensation" && Number.isFinite(row.streetEps.actual));
+}
+
 /**
  * Each listing's calendar event, resolved: the corporate actions of those
- * whose date has come are read for their actual and the next quarter on
- * record. A listing the calendar has nothing for is absent; one whose
- * record cannot be read resolves on the calendar alone.
+ * whose date has come are read for a missing actual and the next quarter on
+ * record. The earnings command also checks populated actuals for a matching
+ * filing without looking for another date. Absent or failed records leave
+ * the calendar alone.
  */
 export async function resolveListingEvents(
   provider: Pick<DataProvider, "getCorporateActions">,
   listings: readonly EarningsListing[],
   events: readonly EarningsEvent[],
   today: string,
+  options: { includeReportedFiling?: boolean } = {},
 ): Promise<Map<string, ResolvedEarningsEvent>> {
   const resolved = new Map<string, ResolvedEarningsEvent>();
   const pending = listings.flatMap((listing) => {
@@ -462,10 +477,13 @@ export async function resolveListingEvents(
   for (let index = 0; index < pending.length; index += RECORD_CONCURRENCY) {
     await Promise.all(pending.slice(index, index + RECORD_CONCURRENCY).map(async ({ listing, event }) => {
       const day = listing.today ?? today;
-      const earnings = needsRecordedQuarters(event, day) && provider.getCorporateActions
+      const filingOnly = options.includeReportedFiling && event.epsActual != null;
+      const actions = (filingOnly || needsRecordedQuarters(event, day)) && provider.getCorporateActions
         ? await provider.getCorporateActions(listing.symbol, listing.exchange)
-          .then((actions) => actions.earnings, logFailure("earnings-calendar", "Read corporate actions for a past report date failed", null))
+          .catch(logFailure("earnings-calendar", "Read corporate actions for a past report date failed", null))
         : null;
+      const filing = filingOnly && actions ? matchingReportedFiling(actions, listing, event) : null;
+      const earnings = filingOnly ? (filing ? [filing] : null) : actions?.earnings;
       resolved.set(listing.key.toUpperCase(), resolveCalendarEvent(event, earnings, day));
     }));
   }
