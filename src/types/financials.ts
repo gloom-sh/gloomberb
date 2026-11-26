@@ -1063,7 +1063,8 @@ export interface EarningsResultProvenance { version: 1; reported: ReportedEarnin
 
 export interface StatementScope {
   registrant: string;
-  basis: "predecessor" | "carve-out";
+  entity?: string;
+  basis: "predecessor" | "carve-out" | "standalone";
   label: string;
 }
 
@@ -1379,6 +1380,7 @@ export interface EpsEstimateHistory {
 
 export interface TickerFinancials {
   statementScope?: StatementScope;
+  statementReview?: { status: "reviewed" | "pending" | "index-unavailable"; reviewedThrough: string };
   /** Reported earnings-release events retained with daily valuation snapshots. */
   earningsReleases?: EarningsAction[];
   statementHistory?: StatementHistoryAttempt;

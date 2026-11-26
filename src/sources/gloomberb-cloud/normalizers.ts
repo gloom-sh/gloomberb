@@ -394,6 +394,7 @@ export function mapCloudFinancials(
     financialCurrency: financials.financialCurrency,
     statementHistory: financials.statementHistory,
     ...(financials.statementScope ? { statementScope: financials.statementScope } : {}),
+    ...(financials.statementReview ? { statementReview: financials.statementReview } : {}),
     annualStatements: (financials.annualStatements ?? []).map((row) => mapCloudStatement(row, derive)),
     quarterlyStatements: (financials.quarterlyStatements ?? []).map((row) => mapCloudStatement(row, derive)),
     ...(financials.trailingStatement

@@ -599,7 +599,7 @@ export function ResolvedFinancialsTab({
         ],
         onChange: (value: string) => setPeriod(value as FinancialPeriod),
       }}
-      meta={[financials.statementScope?.label, meta].filter(Boolean).join(" · ") || undefined}
+      meta={[financials.statementScope?.label, financials.statementReview?.status === "pending" ? "New filing under review" : undefined, meta].filter(Boolean).join(" · ") || undefined}
     />
   );
 

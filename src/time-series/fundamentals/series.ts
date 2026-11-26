@@ -1,5 +1,6 @@
 // Extracts a fundamental or valuation series from a ticker's financials, with the warnings and issues that explain it.
 import type { TickerFinancials } from "../../types/financials";
+import { listingOwnsSeries } from "../../utils/statement-scope";
 import { fiscalYearEndMonth } from "../../utils/fiscal-period";
 import { canonicalTimeSeriesFieldId, getTimeSeriesField } from "../field-catalog";
 import { dailyForwardPeHistory, forwardPeHistory, realizedNtmPeHistory } from "../forward-valuation";
@@ -54,7 +55,7 @@ export function extractFundamentalSeries(
   }
 
   if (namespace !== "valuation" || !VALUATION_IDS.has(metric)) return [];
-  if (financials.statementScope && metric !== "forwardPE") return [];
+  if (metric !== "forwardPE" && !listingOwnsSeries(financials)) return [];
   // A warrant's, a right's, a unit's or an unratioed receipt's price over its company's EPS is no P/E at any date.
   if (SHARE_PRICE_EARNINGS.has(metric) && notTheShare(financials)) return [];
   // A bank's or an insurer's EBITDA measures nothing: its EV/EBITDA is N/M throughout (valuationNotMeaningful).

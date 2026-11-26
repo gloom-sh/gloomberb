@@ -1,5 +1,6 @@
 import type { Fundamentals, FinancialStatement, TickerFinancials } from "../types/financials";
 import { resolveCurrencyUnit } from "../utils/currency-units";
+import { listingOwnsSeries } from "../utils/statement-scope";
 import { areNearbyFinancialPeriodEnds, statementFieldAvailability } from "../utils/financial-statements";
 import { extractFundamentalSeries, knownWhenFiled } from "./fundamentals";
 import type { SecuritySeriesSource, TimeSeriesPoint } from "./types";
@@ -49,7 +50,7 @@ export function trailingEpsSteps(
   financials: TickerFinancials,
   known: (row: FinancialStatement) => FinancialStatement = knownWhenFiled,
 ): EpsStep[] {
-  if (financials.statementScope) return [];
+  if (!listingOwnsSeries(financials)) return [];
   const adjusted = { ...financials, quarterlyStatements: financials.quarterlyStatements.map(known),
     annualStatements: financials.annualStatements.map(known) };
   const toStep = (basis: EpsStep["basis"]) => (point: TimeSeriesPoint): EpsStep => ({
@@ -80,7 +81,7 @@ interface FiledTrailingEps {
  */
 const SERVED_EPS_RATIO_LIMIT = 1.5;
 
-type TrailingEpsInputs = Pick<TickerFinancials, "quote" | "fundamentals" | "annualStatements" | "quarterlyStatements" | "financialCurrency">;
+type TrailingEpsInputs = Pick<TickerFinancials, "quote" | "fundamentals" | "annualStatements" | "quarterlyStatements" | "financialCurrency" | "statementScope">;
 
 const isReceipt = (financials: TrailingEpsInputs) => !!(
   financials.quote?.isDepositaryReceipt || financials.fundamentals?.isDepositaryReceipt
@@ -107,7 +108,7 @@ const rowKey = (row: FinancialStatement) => [
 /** The trailing EPS step for the last period on record, null when that period gives none. */
 function latestStep(financials: TrailingEpsInputs): LatestStep {
   const rows = [...financials.quarterlyStatements, ...financials.annualStatements];
-  if (rows.some(row => row.statementScope)) return null;
+  if (!listingOwnsSeries(financials)) return null;
   const latest = rows.map((row) => row.date).filter((date) => Number.isFinite(Date.parse(date))).sort().at(-1);
   if (!latest) return null;
   const recent = (row: FinancialStatement) => Date.parse(latest) - Date.parse(row.date) <= LATEST_WINDOW_MS;
@@ -115,7 +116,7 @@ function latestStep(financials: TrailingEpsInputs): LatestStep {
   const annualStatements = financials.annualStatements.filter(recent);
   const key = [financials.financialCurrency ?? "", quarterlyStatements.map(rowKey).join(";"), annualStatements.map(rowKey).join(";")].join("#");
   if (latestSteps.has(key)) return latestSteps.get(key)!;
-  const found = trailingEpsSteps({ financialCurrency: financials.financialCurrency, priceHistory: [], quarterlyStatements, annualStatements })
+  const found = trailingEpsSteps({ financialCurrency: financials.financialCurrency, statementScope: financials.statementScope, priceHistory: [], quarterlyStatements, annualStatements })
     .find((candidate) => areNearbyFinancialPeriodEnds(candidate.periodEnd, latest));
   const filed = [...quarterlyStatements, ...annualStatements]
     .flatMap((row) => typeof row.eps === "number" ? [statementFieldAvailability(row, "eps")?.slice(0, 10)] : [])
@@ -144,6 +145,7 @@ function filedTrailingEps(financials: TrailingEpsInputs, now = Date.now()): File
   if (!financials.quote || price.divisor !== 1 || !/^[A-Z]{3}$/.test(price.currency) || isReceipt(financials)) return null;
   const step = latestStep(financials);
   if (!step || now - Date.parse(step.periodEnd) > STALE_TRAILING_EPS_MS) return null;
+  if (financials.statementScope && Date.parse(step.filed) > now) return null;
   const currency = resolveCurrencyUnit(step.currency);
   if (currency.currency !== price.currency || currency.divisor !== 1) return null;
   // The trailing block's amounts are in another currency: an EPS beside them in this one would be read as theirs.

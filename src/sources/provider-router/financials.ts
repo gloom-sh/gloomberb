@@ -536,8 +536,10 @@ function mergeFundamentals(primary: Fundamentals | undefined, fallback: Fundamen
 }
 
 function scopedResearch(primary: TickerFinancials, fallback: TickerFinancials) {
-  const owned = primary.statementScope ? primary : fallback.statementScope ? fallback : undefined;
-  return owned ? { statementScope: owned.statementScope, financialCurrency: owned.financialCurrency,
+  const owned = !primary.statementScope ? (fallback.statementScope ? fallback : undefined) : !fallback.statementScope ? primary
+    : primary.statementScope.basis !== fallback.statementScope.basis ? (fallback.statementScope.basis === "standalone" ? fallback : primary)
+    : (fallback.statementReview?.reviewedThrough ?? "") > (primary.statementReview?.reviewedThrough ?? "") ? fallback : primary;
+  return owned ? { statementScope: owned.statementScope, statementReview: owned.statementReview, financialCurrency: owned.financialCurrency,
     annualStatements: owned.annualStatements, quarterlyStatements: owned.quarterlyStatements,
     trailingStatement: owned.trailingStatement, fundamentals: owned.fundamentals } : {
     annualStatements: mergeFinancialStatementRows(primary.annualStatements, fallback.annualStatements),
