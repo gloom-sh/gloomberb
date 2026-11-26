@@ -1,3 +1,4 @@
+import type { PaneTemplateContext } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { commandTabParams, withCommandTab } from "../shared/command-tab";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
@@ -63,19 +64,28 @@ export const holdersModule: PluginModule = {
       }),
       headless: holdersHeadless,
     },
-    withCommandTab(
-      createTickerSurfacePaneTemplate({
-        id: "ccass-pane",
-        paneId: "holders",
-        label: "Hong Kong CCASS Custody",
-        description: "Daily HKEX CCASS broker custody holdings, bucketed flows and pre-placement deposits for Hong Kong stocks and dual-listed China ADRs.",
-        keywords: [
-          "ccass", "hkex", "custody", "brokers", "southbound", "stock connect", "hong kong", "webb-site",
-        ],
-        shortcut: "CCASS",
-      }),
-      "ccass",
-    ),
+    (() => {
+      const ccassTemplate = withCommandTab(
+        createTickerSurfacePaneTemplate({
+          id: "ccass-pane",
+          paneId: "holders",
+          label: "Hong Kong CCASS Custody",
+          description: "Daily HKEX CCASS broker custody holdings, bucketed flows and pre-placement deposits for Hong Kong stocks and dual-listed China ADRs.",
+          keywords: [
+            "ccass", "hkex", "custody", "brokers", "southbound", "stock connect", "hong kong", "webb-site",
+          ],
+          shortcut: "CCASS",
+        }),
+        "ccass",
+      );
+      const withDefaultHk = (context: PaneTemplateContext): PaneTemplateContext =>
+        context.activeTicker ? context : { ...context, activeTicker: "0700.HK" };
+      return {
+        ...ccassTemplate,
+        canCreate: (context, createOptions) => ccassTemplate.canCreate?.(withDefaultHk(context), createOptions) ?? true,
+        createInstance: (context, createOptions) => ccassTemplate.createInstance?.(withDefaultHk(context), createOptions) ?? null,
+      };
+    })(),
     {
       id: CCASS_MARKET_TEMPLATE_ID,
       paneId: CCASS_MARKET_PANE_ID,

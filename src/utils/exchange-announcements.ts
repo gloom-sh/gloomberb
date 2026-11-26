@@ -11,6 +11,12 @@ export interface ExchangeAnnouncementsPage {
 const EURONEXT = { name: "Euronext company news", url: "https://live.euronext.com/en/products/equities/company-news" };
 const SEDAR = { name: "SEDAR+ filings", url: "https://www.sedarplus.ca/landingpage/" };
 const NASDAQ_NORDIC = { name: "Nasdaq Nordic company news", url: "https://www.nasdaqomxnordic.com/news/companynews" };
+const IDX_ALIASES = new Set(["IDX", "XIDX", "JKT"]);
+
+export function exchangeAnnouncementsVenue(exchange?: string | null): string {
+  const venue = typedExchangeVenue(exchange ?? undefined) ?? canonicalExchange(exchange ?? undefined);
+  return IDX_ALIASES.has(venue) ? "JAKARTA" : venue;
+}
 
 /**
  * The page each venue abroad publishes its listed companies' announcements
@@ -31,6 +37,7 @@ const PAGES: Readonly<Record<string, (code: string) => ExchangeAnnouncementsPage
   FWB2: () => PAGES.XETRA!(""),
   HNX: (code) => ({ name: "Hanoi Stock Exchange issuer disclosures", url: `https://www.hnx.vn/cophieu-etfs/chi-tiet-chung-khoan-ny-${encodeURIComponent(code.toLowerCase())}.html?_des_tab=3` }),
   HOSE: () => ({ name: "Ho Chi Minh Stock Exchange issuer disclosures", url: "https://www.hsx.vn/vi/tin-tuc/tin-to-chuc-niem-yet" }),
+  JAKARTA: () => ({ name: "Indonesia Stock Exchange disclosures", url: "https://www.idx.id/en/listed-companies/disclosure" }),
   JPX: () => ({ name: "TDnet timely disclosures", url: "https://www.release.tdnet.info/inbs/I_main_00.html" }),
   HKEX: () => ({ name: "HKEXnews", url: "https://www1.hkexnews.hk/search/titlesearch.xhtml?lang=en" }),
   SWX: () => ({ name: "SIX Swiss Exchange", url: "https://www.six-group.com/en/market-data/news-tools/equity-issuer-news.html" }),
@@ -49,20 +56,16 @@ const PAGES: Readonly<Record<string, (code: string) => ExchangeAnnouncementsPage
   BIST: () => ({ name: "KAP disclosures", url: "https://www.kap.org.tr/en/bildirim-sorgu" }),
 };
 
-/** Resolve typed venue aliases for disclosure requests without changing saved listing keys. */
-export function announcementVenue(exchange?: string | null): string {
-  return typedExchangeVenue(exchange ?? undefined) ?? canonicalExchange(exchange ?? undefined);
-}
-
 export function issuerFilingSuffixVenue(symbol: string): string | undefined {
   if (/^\d{4}\.KL$/i.test(symbol)) return "BURSAMY";
+  if (/^[A-Z]{4}\.JK$/i.test(symbol)) return "JAKARTA";
   if (/^[A-Z0-9][A-Z0-9&-]*\.BK$/i.test(symbol)) return "SET";
   return undefined;
 }
 
 /** The overseas venue's disclosure page, when the listing has one. */
 function exchangeAnnouncementsPage(symbol: string, exchange: string | null | undefined): ExchangeAnnouncementsPage | null {
-  const page = PAGES[announcementVenue(exchange)];
+  const page = PAGES[exchangeAnnouncementsVenue(exchange)];
   const code = symbol.trim().toUpperCase();
   return page && code ? page(code) : null;
 }
@@ -70,6 +73,7 @@ function exchangeAnnouncementsPage(symbol: string, exchange: string | null | und
 const PUBLISHERS: Readonly<Record<string, string>> = {
   TWSE: "MOPS", TPEX: "MOPS",
   BURSAMY: "Bursa Malaysia",
+  JAKARTA: "Indonesia Stock Exchange",
   ASX: "ASX", CXA: "ASX", HKEX: "HKEXnews", SWX: "SIX Swiss Exchange", NSE: "NSE", SET: "SET",
   JPX: "TDnet", HNX: "HNX", HOSE: "HOSE", KRX: "DART", KOSDAQ: "DART", SGX: "SGX", SSE: "CNINFO", SZSE: "CNINFO",
 };
@@ -80,7 +84,7 @@ const PUBLISHERS: Readonly<Record<string, string>> = {
  * trade under ASX codes), "HKEXnews". Null for a venue it lists none for.
  */
 export function exchangeAnnouncementsPublisher(exchange: string | null | undefined): string | null {
-  const venue = announcementVenue(exchange);
+  const venue = exchangeAnnouncementsVenue(exchange);
   return PUBLISHERS[venue] ?? null;
 }
 

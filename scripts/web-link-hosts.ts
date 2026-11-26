@@ -75,6 +75,7 @@ export const WEB_LINK_ONLY_HOSTS: ReadonlySet<string> = new Set([
   "www.bseindia.com",
   "www.bursamalaysia.com",
   "www.ibge.gov.br",
+  "www.idx.id",
   "www.kap.org.tr",
   "www.londonstockexchange.com",
   "www.nasdaqomxnordic.com",

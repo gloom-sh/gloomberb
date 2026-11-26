@@ -46,7 +46,7 @@ export function usSessionAt(now: number): UsSession {
   const published = getPublishedUsEquitySession("NYSE", date);
   let phase: CloudSessionPhase;
   if (!published) {
-    const active = activeUsMarketSession(now);
+    const active = activeUsMarketSession(now, "NYSE");
     phase = active === "PRE" ? "pre" : active === "REGULAR" ? "regular" : active === "POST" ? "post" : "closed";
   } else if (published.kind === "closed" || now < at(4)) {
     phase = "closed";

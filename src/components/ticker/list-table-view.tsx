@@ -205,6 +205,8 @@ export interface TickerListTableViewProps {
   overscan?: number;
   /** How the header drags reorder the columns (`DataTableProps.columnReorder`). */
   columnReorder?: false | DataTableColumnReorder;
+  /** What the list gives up first where it is too narrow for its columns (`DataTableProps.columnDropOrder`). */
+  columnDropOrder?: readonly (string | readonly string[])[];
 }
 
 const FLASHABLE_QUOTE_COLUMN_IDS = new Set([
@@ -356,6 +358,7 @@ export function TickerListTableView({
   exportName,
   exportAsOf,
   columnReorder,
+  columnDropOrder,
 }: TickerListTableViewProps) {
   const commandBarShortcut = useCommandBarShortcut();
   const resolvedEmptyHint = emptyHint ?? tf("Press {shortcut} to add one.", { shortcut: addTickerShortcut ?? commandBarShortcut });
@@ -561,6 +564,7 @@ export function TickerListTableView({
       focused={focused}
       columns={columns}
       columnReorder={columnReorder}
+      columnDropOrder={columnDropOrder}
       items={items}
       isNavigable={summaries.length ? isNavigableRow : undefined}
       sortColumnId={sortColumnId ?? null}

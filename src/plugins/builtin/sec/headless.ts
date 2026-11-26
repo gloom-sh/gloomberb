@@ -15,7 +15,8 @@ import type { FundFactsPayload } from "../../../api-client/fund-facts";
 import { errorMessage } from "../../../utils/errors";
 import { filingStoryNote, loadFilingStories, type FilingStory } from "../insider/filing-stories";
 import { logFailure } from "../../../utils/log-failure";
-import { JPX_FILING_HISTORY_LIMIT, latestFilingRows, localFilingListing, localFilingRows } from "./exchange-filings";
+import { EXCHANGE_FILING_HISTORY_LIMIT, exchangeFilingForm, latestFilingRows, localFilingListing, localFilingRows, PRESENTATIONS_FORM } from "./exchange-filings";
+import type { ExchangeAnnouncementsPayload, ExchangeAnnouncementsRequest } from "../../../api-client/exchange-announcements";
 import { loadSecFilings } from "./client";
 import { ETF_FILING_FORMS, filterFilingsByForms, fundSeriesFilings, loadShownSecFilings, SEC_FILING_FETCH_LIMIT } from "./forms";
 import { hiddenFilingsMetadata, hiddenFilingsNote } from "../../../utils/sec-filings";
@@ -113,7 +114,7 @@ export interface SecHeadlessDependencies {
     args: HeadlessPaneLoadArgs,
     ctx: HeadlessPaneContext,
   ): Promise<SecFilingItem[]>;
-  loadExchange?: (listing: { symbol: string; exchange: string; limit: number }, ctx: HeadlessPaneContext) => Promise<import("../../../api-client/exchange-announcements").ExchangeAnnouncementsPayload>;
+  loadExchange?: (listing: ExchangeAnnouncementsRequest & { limit: number }, ctx: HeadlessPaneContext) => Promise<ExchangeAnnouncementsPayload>;
   /** The stories reporting each Form 4, by accession number (Gloom Cloud's match); none asked when absent. */
   loadFilingStories?(accessions: readonly string[], ctx: HeadlessPaneContext): Promise<Map<string, FilingStory[]>>;
 }
@@ -161,7 +162,7 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       {
         key: "form",
         shot: { reportOnly: "picks the report's rows by form; the pane's Form filter picks a group of forms" },
-        description: "Only this form and its amendments, such as 8-K, 10-K or 13D, from every filing listed for the issuer.",
+        description: "Only this SEC form and its amendments, such as 8-K, 10-K or 13D. Use presentations for Taiwan investor conference decks.",
         type: "string",
         placeholder: "form",
         example: "--form 8-K",
@@ -180,17 +181,23 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       const symbol = args.symbols[0]!;
       const limit = Number(args.options.limit);
       const form = typeof args.options.form === "string" ? args.options.form.trim() : "";
+      const localListing = localFilingListing(symbol);
+      const presentations = form.toLowerCase() === PRESENTATIONS_FORM && exchangeFilingForm(localListing?.exchange)?.kind === PRESENTATIONS_FORM;
       const load = (count: number) => dependencies.loadFilings(symbol, count, args, ctx);
       // A form filter searches every filing listed for the issuer and keeps the supplements it names; without
       // one, a bank's pricing supplements and a trust's other funds stay out unless --all, as in `filings`.
-      const listing = !form ? localFilingListing(symbol) : null;
-      const localLimit = listing?.exchange === "JPX"
-        ? Math.min(JPX_FILING_HISTORY_LIMIT, limit)
+      const listing = !form || presentations ? localListing : null;
+      const localLimit = presentations || listing?.exchange === "JPX"
+        ? Math.min(EXCHANGE_FILING_HISTORY_LIMIT, limit)
         : listing?.exchange === "HKEX" && args.options.all !== true ? 100 : Math.min(50, limit);
       const [us, local] = await Promise.allSettled([
-        loadShownSecFilings(load, limit, { form: form || null, all: args.options.all === true }),
-        listing && dependencies.loadExchange ? dependencies.loadExchange({ ...listing, limit: localLimit }, ctx) : Promise.resolve(null),
+        presentations ? Promise.resolve({ filings: [], hidden: null })
+          : loadShownSecFilings(load, limit, { form: form || null, all: args.options.all === true }),
+        listing && dependencies.loadExchange ? dependencies.loadExchange({
+          ...listing, limit: localLimit, ...(presentations ? { kind: PRESENTATIONS_FORM } : {}),
+        }, ctx) : Promise.resolve(null),
       ]);
+      if (presentations && local.status === "rejected") throw local.reason;
       const exchange = local.status === "fulfilled" ? local.value : null;
       const exchangeRows = exchange ? localFilingRows(exchange, args.options.all === true) : [];
       if (us.status === "rejected" && !exchangeRows.length) throw us.reason;
@@ -201,9 +208,9 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       if (us.status === "rejected") notes.push(`SEC filings unavailable: ${errorMessage(us.reason)}`);
       if (local.status === "rejected" && listing) notes.push(`${listing.publisher} filings unavailable: ${errorMessage(local.reason)}`);
       if (exchange?.coverage) notes.push(exchange.coverage);
-      if (exchangeRows.length && listing && exchange) {
+      if ((exchangeRows.length || presentations) && listing && exchange) {
         const combined = latestFilingRows(rows, exchangeRows, limit);
-        const hasCatalogueDate = combined.some(row => row.dateBasis === "catalogue");
+        const hasCatalogueDate = presentations || combined.some(row => row.dateBasis === "catalogue");
         const columns: HeadlessPaneColumn[] = [
           hasCatalogueDate ? { ...SEC_COLUMNS[0]!, header: "Date" } : SEC_COLUMNS[0]!,
           { key: "source", header: "Source" }, SEC_COLUMNS[2]!, SEC_COLUMNS[4]!, { key: "url", header: "Document" },
@@ -213,8 +220,13 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
           : rows.length ? `SEC EDGAR, ${listing.publisher}` : listing.publisher;
         return { rows: combined, columns, textColumns: columns.slice(0, -1), notes: [...notes, ...companyDataNotes(filings[0]?.companyFrom)],
           freshness: { source: publishers, status: "not-a-feed", basis: hasCatalogueDate ? "filings and catalogue dates" : "filed data", observedKey: "filedAt" },
+          ...(presentations && !combined.length
+            ? { empty: exchange.stale ? "MOPS presentation archive incomplete." : "No investor conference presentations in the past year." }
+            : {}),
           metadata: { symbol, returned: combined.length, exchangePage: exchange.page,
-            ...(exchange.dateSource ? { exchangeDateSource: exchange.dateSource } : {}), ...hiddenFilingsMetadata(hidden) } };
+            ...(exchange.dateSource ? { exchangeDateSource: exchange.dateSource } : {}),
+            ...(presentations ? { form: PRESENTATIONS_FORM, total: exchange.total, retrievedAt: exchange.retrievedAt, stale: exchange.stale ?? false } : {}),
+            ...hiddenFilingsMetadata(hidden) } };
       }
       // A listing abroad whose company files nothing with the SEC says where its exchange publishes its announcements.
       const page = !form && filings.length === 0 ? listingAnnouncementsPage(symbol) : null;

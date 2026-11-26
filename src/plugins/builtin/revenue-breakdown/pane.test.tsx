@@ -3,6 +3,8 @@ import { act } from "react";
 import { setCloudApiFetchTransport } from "../../../api-client";
 import type { RevenueBreakdownPayload } from "../../../api-client/revenue-breakdown";
 import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
+import { renderedReportNotices } from "../../../cli/pane-functions/report-notices";
+import { createRemoteUiRegistry, RemoteUiRegistryProvider } from "../../../remote/semantic-tree";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
 import { createTestPaneConfig, createTestTicker, TestPaneProvider } from "../../../test-support/pane";
@@ -42,7 +44,7 @@ afterEach(() => {
   revenueBreakdownCache.reset();
 });
 
-async function mount(width = 110, height = 12) {
+async function mount(width = 110, height = 12, registry = createRemoteUiRegistry()) {
   revenueBreakdownCache.attach(new MemoryPluginPersistence());
   const paneId = "revenue-breakdown:test";
   const state = createInitialState(createTestPaneConfig("/tmp/revenue-breakdown-test", {
@@ -50,14 +52,16 @@ async function mount(width = 110, height = 12) {
   }));
   state.tickers.set("AAPL", createTestTicker("AAPL", "Apple Inc.", { exchange: "NASDAQ" }));
   await tui.render(
-    <TestPaneProvider state={state} paneId={paneId} pluginId="ticker-research" runtime={createTestPluginRuntime()}>
-      <PaneFooterProvider>{(footer) => (
-        <Box width={width} height={height} flexDirection="column">
-          <Box height={height - 1}><RevenueBreakdownPane paneId={paneId} paneType="revenue-breakdown" focused width={width} height={height - 1} /></Box>
-          <PaneFooterBar footer={footer} focused width={width} />
-        </Box>
-      )}</PaneFooterProvider>
-    </TestPaneProvider>,
+    <RemoteUiRegistryProvider registry={registry}>
+      <TestPaneProvider state={state} paneId={paneId} pluginId="ticker-research" runtime={createTestPluginRuntime()}>
+        <PaneFooterProvider>{(footer) => (
+          <Box width={width} height={height} flexDirection="column">
+            <Box height={height - 1}><RevenueBreakdownPane paneId={paneId} paneType="revenue-breakdown" focused width={width} height={height - 1} /></Box>
+            <PaneFooterBar footer={footer} focused width={width} />
+          </Box>
+        )}</PaneFooterProvider>
+      </TestPaneProvider>
+    </RemoteUiRegistryProvider>,
     { width, height },
   );
   for (let i = 0; i < 4; i++) await act(async () => {
@@ -69,7 +73,8 @@ async function mount(width = 110, height = 12) {
 
 test("a preview shows the two largest rows, locked rows and the upgrade key", async () => {
   setCloudApiFetchTransport(async () => Response.json(preview));
-  const frame = await mount();
+  const registry = createRemoteUiRegistry();
+  const frame = await mount(110, 12, registry);
   expect(frame).toContain("iPhone");
   expect(frame).toContain("54.3B");
   expect(frame).toContain("+21.7%");
@@ -77,6 +82,9 @@ test("a preview shows the two largest rows, locked rows and the upgrade key", as
   expect(frame.match(/░{5}/g)?.length).toBeGreaterThan(4);
   expect(frame).toContain("[$]upgrade");
   expect(frame).toContain("filed 2026-07-31");
+  expect(renderedReportNotices(registry.snapshot())).toEqual({
+    notices: ["Preview: 3 rows held back (Gloom Pro)."], facts: { lockedRows: 3 },
+  });
 });
 
 test("a company without a breakdown is empty, not failed", async () => {

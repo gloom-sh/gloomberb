@@ -84,8 +84,9 @@ export async function loadRegistry(options: { force?: boolean } = {}): Promise<F
  * nothing is left running once it gives up. It shares nothing with
  * `loadRegistry`; its caller keeps what it read.
  */
-export async function readRegistryOnce(timeoutMs: number): Promise<RegistryPlugin[]> {
-  const response = await httpFetch(REGISTRY_URL, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(timeoutMs) });
+export async function readRegistryOnce(timeoutMs: number, signal?: AbortSignal): Promise<RegistryPlugin[]> {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  const response = await httpFetch(REGISTRY_URL, { headers: { Accept: "application/json" }, signal: signal ? AbortSignal.any([timeout, signal]) : timeout });
   if (!response.ok) throw new Error(`Registry request failed (${response.status})`);
   return parseFeed(await response.json());
 }

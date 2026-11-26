@@ -117,6 +117,30 @@ describe("SEC headless model", () => {
     expect(result.rows[50]).toMatchObject({ filedAt: announcement.date, filing: announcement.headline, url });
   });
 
+  test("Taiwan presentations are read directly without competing with SEC filings", async () => {
+    const url = "https://doc.twse.com.tw/nas/STR/622320260601E001.pdf";
+    const headless = createSecHeadless({
+      loadFilings: async () => { throw new Error("Unexpected SEC read"); },
+      loadExchange: async ({ kind, limit }) => {
+        expect(kind).toBe("presentations");
+        expect(limit).toBe(200);
+        return {
+          exchange: "TPEX", symbol: "6223", name: "MPI",
+          page: "https://mopsov.twse.com.tw/mops/web/t100sb02_1", total: 1,
+          retrievedAt: "2026-11-26T12:00:00Z", announcements: [{
+            date: "2026-06-01", dateBasis: "catalogue", headline: "Conference (English)",
+            types: ["Investor conference presentation"], publisher: "MOPS", priceSensitive: null,
+            fileSize: null, documentKey: url, url,
+          }],
+        };
+      },
+    });
+    const input = { ...args(200), symbols: ["6223:TPEX"], options: { limit: 200, form: "presentations" } };
+    const result = await headless.load(input, createTestHeadlessContext());
+    expect(result.rows).toEqual([expect.objectContaining({ filedAt: "2026-06-01", dateBasis: "catalogue", url, source: "MOPS" })]);
+    expect(result.metadata).toMatchObject({ form: "presentations", total: 1 });
+  });
+
   test("projects filing rows and honors the page limit", async () => {
     const requestedLimits: number[] = [];
     const headless = createSecHeadless({
