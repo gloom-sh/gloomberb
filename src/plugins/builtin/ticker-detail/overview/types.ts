@@ -21,6 +21,8 @@ export interface StatField {
   /** Descriptive context (a SIC title) that may be cut to fit instead. */
   clipDetail?: boolean;
   link?: OverviewFunctionLink;
+  /** A listing whose DES the figure opens (`1211:HKEX`), in place of a research function. */
+  opens?: string;
   /** An address the value opens in the browser. */
   url?: string;
 }

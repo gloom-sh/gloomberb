@@ -70,7 +70,10 @@ const ASSET_DATA_OPERATION_SPECS: Readonly<Record<string, AssetDataOperationSpec
     summary: "Share splits of several bare symbols, without the rest of their corporate actions",
     fields: [required("symbols", "array")],
   },
-  getIssuerListings: { summary: "Listings of the same issuer across exchanges", fields: [required("symbol", "string"), optional("exchange", "string"), optional("related", "boolean")] },
+  getIssuerListings: {
+    summary: "Every listing of the company a listing belongs to",
+    fields: [required("symbol", "string"), optional("exchange", "string")],
+  },
   getTickerChanges: { summary: "Symbol changes a listing went through", fields: [required("symbol", "string")] },
   getEarningsCalendar: { summary: "Upcoming and recent earnings dates", fields: [required("symbols", "array"), optional("context", "object")] },
   getSecFilingDocuments: { summary: "Documents of one SEC filing", fields: [required("filing", "object")] },

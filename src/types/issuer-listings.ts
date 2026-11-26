@@ -5,26 +5,18 @@
  */
 
 /** One listing, written as the service writes it: bare on a US venue (RCI), SYMBOL:EXCHANGE elsewhere (RCI.B:TSX). */
-export interface IssuerListing {
+interface IssuerListing {
   symbol: string;
   /** The canonical venue code. */
   exchange: string;
   name: string;
   /** The company's primary line. */
   primary: boolean;
-  isin?: string;
-  depositary?: boolean;
-  /** A supplemental trading venue, outside the issuer universe used for A/H pairing. */
-  directoryOnly?: boolean;
-  underlyingIsin?: string;
-  sharesPerReceipt?: number;
   /** The shares one lot trades in, where the line's exchange states it (an HKEX or SGX line); absent elsewhere. */
   boardLot?: number;
 }
 
 export interface IssuerListings {
-  /** The listing the service resolved, after venue aliases and share-class spellings. */
-  requestedSymbol?: string;
   /** The service's key for the company (cik:733099). */
   issuer: string;
   name: string;

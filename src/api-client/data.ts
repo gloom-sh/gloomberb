@@ -971,11 +971,10 @@ export class CloudDataApi {
   async getCloudIssuerListings(
     symbol: string,
     exchange = "",
-    options: { signal?: AbortSignal; related?: boolean } = {},
+    options: { signal?: AbortSignal } = {},
   ): Promise<CloudMarketResponse<IssuerListings>> {
     const params = new URLSearchParams({ symbol: symbol.trim().toUpperCase() });
     if (exchange.trim()) params.set("exchange", exchange.trim().toUpperCase());
-    if (options.related) params.set("related", "1");
     return this.request<CloudMarketResponse<IssuerListings>>(
       `/market/issuer-listings?${params}`,
       options.signal ? { signal: options.signal } : undefined,

@@ -928,7 +928,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     return cloudTickerChangesBatch(symbols, options);
   }
 
-  async getIssuerListings(symbol: string, exchange = "", options: { signal?: AbortSignal; related?: boolean } = {}): Promise<IssuerListings | null> {
+  async getIssuerListings(symbol: string, exchange = "", options: { signal?: AbortSignal } = {}): Promise<IssuerListings | null> {
     const response = await apiClient.getCloudIssuerListings(symbol, exchange, options);
     // "empty" is an answer: the service holds no company for the listing.
     return response.status === "success" || response.status === "partial" ? response.data : null;

@@ -408,7 +408,7 @@ export interface AssetDataProvider {
    * Every listing of the company a listing belongs to (RCI and RCI.B:TSX are
    * Rogers). Null when the source does not hold the company.
    */
-  getIssuerListings?(symbol: string, exchange?: string, options?: { signal?: AbortSignal; related?: boolean }): Promise<IssuerListings | null>;
+  getIssuerListings?(symbol: string, exchange?: string, options?: { signal?: AbortSignal }): Promise<IssuerListings | null>;
   /**
    * Several searches in a few requests, each answered with the rows `search`
    * gives it from this source (up to `limit`), by query as asked. A query the

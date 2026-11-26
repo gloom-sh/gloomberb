@@ -21,11 +21,16 @@ export interface AhPair {
 
 const A_SHARE_VENUES = new Set(["SSE", "SZSE"]);
 
-/** A listing of the company universe as a key: `1088:HKEX`, `601088:SSE`. */
+/**
+ * A listing of the company universe as a key: `1088:HKEX`, `601088:SSE`. A
+ * Hong Kong code in the five digits HKEX writes it in (`01211`, as a ticker
+ * may be saved) is the four-digit line the company universe lists (`1211`).
+ */
 function listingKey(line: { symbol: string; exchange: string }): string {
   const { symbol, exchange } = parsePublicTickerKey(line.symbol);
   const venue = canonicalExchange(exchange ?? line.exchange);
-  return `${hongKongListingCode(symbol, venue)}:${venue}`;
+  const code = venue === "HKEX" && /^0\d{4}$/.test(symbol) ? symbol.slice(1) : symbol;
+  return `${hongKongListingCode(code, venue)}:${venue}`;
 }
 
 /**
@@ -34,7 +39,7 @@ function listingKey(line: { symbol: string; exchange: string }): string {
  * any other company, and for one with more lines there than one of each.
  */
 export function ahPairOf(issuer: Pick<IssuerListings, "listings"> | null | undefined): AhPair | null {
-  const lines = issuer?.listings.filter(line => !line.directoryOnly) ?? [];
+  const lines = issuer?.listings ?? [];
   const h = lines.filter((line) => canonicalExchange(line.exchange) === "HKEX");
   const a = lines.filter((line) => A_SHARE_VENUES.has(canonicalExchange(line.exchange)));
   return h.length === 1 && a.length === 1 ? { h: listingKey(h[0]!), a: listingKey(a[0]!) } : null;

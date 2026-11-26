@@ -16,13 +16,11 @@ import { usePluginAppActions } from "../../../runtime";
 import { getTickerResearchPaneSettings } from "../settings";
 import { OverviewTab } from "../overview-tab";
 import { useOpenResearchTab } from "../research-tab-navigation";
+import { useOpenDescription } from "../../shared/open-description";
 import type { OverviewFunctionLink } from "./types";
 import { useOverviewDividend } from "./dividend";
 import { useAhPair } from "../adr-pair/ah";
-import { useIssuerListings } from "./issuer-listings";
-import { listingBoardLot, statesBoardLot } from "../../../../market-data/ah-pair";
-import { resolveTickerInstrumentKind } from "../../../../tickers/instrument-kind";
-import { RelatedListings } from "./related-listings";
+import { useListingBoardLot } from "./board-lot";
 import { useTickerSnapshotState } from "../../../../market-data/hooks";
 import { taxRatesFromSettings } from "../../../../market-data/tax-equivalent";
 import { PaneLinkMenu } from "../../../../components";
@@ -56,14 +54,12 @@ export function OverviewResearchTab({ width, height, focused }: TickerResearchTa
   const paneInstance = usePaneInstance();
   const openResearchTab = useOpenResearchTab();
   const { createPaneFromTemplate } = usePluginAppActions();
+  const openDescription = useOpenDescription();
   const dividend = useOverviewDividend(ticker?.metadata.ticker ?? null, ticker?.metadata.exchange ?? "", financials?.fundamentals);
-  const listing = ticker?.metadata.ticker;
-  const exchange = ticker?.metadata.exchange || financials?.quote?.listingExchangeName;
-  const equity = resolveTickerInstrumentKind(ticker, financials) === "equity";
-  const hasLot = statesBoardLot(listing, exchange);
-  const issuer = useIssuerListings(equity || hasLot ? listing : null, exchange, equity);
-  const ah = useAhPair(issuer, listing, exchange, financials?.quote);
-  const boardLot = hasLot && listing ? listingBoardLot(issuer, listing, exchange) : null;
+  // An A+H company's other line and the premium between them, beside the ADR row; the row opens that line's DES.
+  const ah = useAhPair(ticker?.metadata.ticker ?? null, ticker?.metadata.exchange || financials?.quote?.listingExchangeName, financials?.quote);
+  // A Hong Kong or Singapore line's board lot, the shares one lot trades in.
+  const boardLot = useListingBoardLot(ticker?.metadata.ticker ?? null, ticker?.metadata.exchange || financials?.quote?.listingExchangeName);
   // A pane locked to one tab has nowhere to go.
   const lockedToOneTab = getTickerResearchPaneSettings(paneInstance?.settings).hideTabs;
   // The chart's scale, once set from the pane menu, holds for every ticker the pane shows.
@@ -90,8 +86,8 @@ export function OverviewResearchTab({ width, height, focused }: TickerResearchTa
       coin={coin}
       onOpenChart={paneId && !lockedToOneTab ? openChart : undefined}
       onOpenFunction={openFunction}
+      onOpenListing={openDescription}
       dividend={dividend}
-      relatedListings={equity && issuer && listing ? <RelatedListings key={listing + exchange} issuer={issuer} symbol={listing} exchange={exchange} /> : null}
       ah={ah}
       boardLot={boardLot}
       snapshot={snapshot}
