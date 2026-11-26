@@ -4,7 +4,7 @@ import { isLeverageFactor } from "../../../time-series/leverage";
 import { priceComparisonSeriesIds } from "../../../time-series/price-comparison";
 import { isUsListingExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { MAX_CHART_COMPOSER_SERIES } from "./chart-spec";
-import { buildSeriesSpec, reconcilePanels } from "./chart-spec-edit";
+import { buildComparisonLeg, reconcilePanels } from "./chart-spec-edit";
 import { normalizeInstrument } from "./series-expression";
 
 /** A fund's daily objective as CMP draws it: `factor` times the index fund `proxy` each session. */
@@ -85,9 +85,7 @@ export function withLeverageOverlay(spec: ChartSpec, objectives: ReadonlyMap<str
     if (!index) {
       const instrument = normalizeInstrument(objective.proxy, true);
       if (!instrument || series.length >= MAX_CHART_COMPOSER_SERIES) continue;
-      index = buildSeriesSpec({ kind: "security", ...instrument, fieldId: fund.source.fieldId }, series.length, {
-        style: fund.style, transform: fund.transform, axis: fund.axis, panelId: fund.panelId,
-      });
+      index = buildComparisonLeg(instrument, { ...fund, source: fund.source }, series.length);
       series.push(index);
     }
     const parameters = { factor: objective.factor };

@@ -1195,7 +1195,7 @@
           {
             "code": "OPX",
             "name": "Options Positioning",
-            "description": "Open interest by strike and expiry, max pain, walls and dealer gamma (GEX); BTC-USD and ETH-USD from Deribit."
+            "description": "Open interest by strike and expiry, max pain, walls and dealer gamma (GEX); BTC-USD and ETH-USD options as listed on Deribit."
           },
           {
             "code": "GEX",
@@ -1258,7 +1258,7 @@
     {
       "id": "ownership",
       "name": "Ownership & Insiders",
-      "description": "Holders, 13F funds, insider trades, short interest and volume, and congressional trades.",
+      "description": "Holders, 13F funds, insider trades, Hong Kong buybacks, short interest and volume, and congressional trades.",
       "tagline": "Holders, 13F funds, insiders, short interest.",
       "categories": [
         "research"
@@ -1272,6 +1272,7 @@
       ],
       "contributes": {
         "panes": [
+          "ccass-market",
           "holders",
           "insider",
           "short-interest",
@@ -1284,7 +1285,17 @@
           {
             "code": "HDS",
             "name": "Holders",
-            "description": "Institutional holders from 13F filings, and 13D/13G beneficial owners: activist and passive stakes over 5% of the class."
+            "description": "Institutional holders from 13F filings, 13D/13G beneficial owners, exchange disclosures and Hong Kong CCASS custody."
+          },
+          {
+            "code": "CCASS",
+            "name": "Hong Kong CCASS Custody",
+            "description": "Daily HKEX CCASS broker custody holdings, bucketed flows and pre-placement deposits for Hong Kong stocks and dual-listed China ADRs."
+          },
+          {
+            "code": "CCASSM",
+            "name": "HK CCASS Scanner",
+            "description": "Market-wide Hong Kong CCASS big changes, pre-placement deposits, Top-10 concentration rankings, Southbound Connect flows and broker portfolio lookup."
           },
           {
             "code": "13F",
@@ -1767,7 +1778,7 @@
           {
             "code": "EVT",
             "name": "Corporate Actions",
-            "description": "What is next, reported earnings against estimates by quarter, and dividends and splits by year."
+            "description": "What is next, reported earnings against estimates by quarter, and dividends, splits and spin-off adjustments by year."
           },
           {
             "code": "EE",

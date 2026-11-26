@@ -4,7 +4,7 @@ import { ApiRequestError } from "../../../api-client/errors";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { cachedCompanyData, companyKpisCache, fetchCompanyData, loadCompanyData, validateCompanyData } from "./client";
 import { getTableWidth } from "../../../components/ui/table-layout";
-import { allObservations, changeText, changeTone, companyColumns, companyEmptyState, directionLabel, directionTone, fiscalLabel, fitCompanyColumns, guidanceSeries, observationChange, observationChart, outcomeLabel, rangeText, observationValue, guideGroupKey, seriesDetail, seriesName,
+import { allObservations, changeText, changeTone, companyColumns, companyEmptyState, directionLabel, directionTone, fiscalLabel, fitCompanyColumns, guidanceSeries, kpiPeriodView, kpiPeriodViews, observationChange, observationChart, outcomeLabel, rangeText, observationValue, guideGroupKey, seriesDetail, seriesName,
   seriesOrder, guidanceIssueNote } from "./model";
 import { guide, guidancePayload, kpisPayload, observation } from "./test-fixture";
 import { NOT_MEANINGFUL_TONE } from "../../../utils/growth";
@@ -248,4 +248,20 @@ test("an empty table says a company has nothing on file and names one that has, 
   expect(companyEmptyState("guidance", "wmt", { tab: "table", hasRows: false }).hint).toBe("Try GUIDE DAL.");
   expect(companyEmptyState("guidance", "WMT", { tab: "history", hasRows: true })).toEqual({ title: "Actuals have not been matched to these guidance periods yet." });
   expect(companyEmptyState("kpis", "AAPL", { tab: "table", hasRows: true })).toEqual({ title: "No disclosed observations for this selection yet." });
+});
+
+test("the KPI table lists one kind of period at a time, quarters first, and names the change each kind is set against", () => {
+  const quarter = observation();
+  const year = observation({ id: "actual:fy", period: { start: "2025-07-01", end: "2026-06-30", kind: "year", fiscalYear: 2026, fiscalQuarter: null, label: "FY2026" } });
+  const balance = observation({ id: "actual:at", period: { start: null, end: "2026-06-30", kind: "instant", fiscalYear: 2026, fiscalQuarter: null, label: "At 30 June" } });
+  const views = kpiPeriodViews([year, balance, quarter, year]);
+  expect(views).toEqual([{ value: "quarter", label: "Quarterly" }, { value: "year", label: "Annual" }, { value: "instant", label: "Balances" }]);
+  expect(kpiPeriodView("year", views)).toBe("year");
+  // A stored kind the company no longer has opens the first one, and a table with no rows has no view.
+  expect(kpiPeriodView("half", views)).toBe("quarter");
+  expect(kpiPeriodView("quarter", kpiPeriodViews([year]))).toBe("year");
+  expect(kpiPeriodView("quarter", [])).toBeNull();
+  const change = (kind: Parameters<typeof companyColumns>[5]) => companyColumns(false, false, false, false, false, kind).find((column) => column.id === "change")!.label;
+  expect([change("quarter"), change("half"), change("ytd"), change("year"), change("instant"), change(null)])
+    .toEqual(["Q/Q change", "H/H change", "Y/Y change", "Y/Y change", "Prior change", "Prior change"]);
 });

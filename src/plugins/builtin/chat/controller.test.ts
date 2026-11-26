@@ -14,7 +14,7 @@ import { MemoryPluginPersistence as MemoryPersistence } from "../../../test-supp
 import { installTestWebSocket } from "../../../test-support/cloud-api";
 import type { AppNotificationRequest } from "../../../types/plugin";
 import { ChatController } from "./controller";
-import { SESSION_RETRY_MS } from "./controller/state";
+import { DRAFT_SYNC_DEBOUNCE_MS, DRAFT_SYNC_MAX_WAIT_MS, SESSION_RETRY_MS } from "./controller/state";
 
 const testControllers = new Set<ChatController>();
 
@@ -404,6 +404,42 @@ describe("ChatController", () => {
     expect(persistence.getState<{ draft: string }>("channel:everyone", { schemaVersion: 1 })).toMatchObject({
       draft: "he",
     });
+  });
+
+  // A draft saved only on a pause of 250 ms is not saved at all for a typist
+  // who never pauses that long: a crash lost all of a long message.
+  test("saves the draft of a user who keeps typing, without waiting for a pause", () => {
+    jest.useFakeTimers();
+    const persistence = new TrackingPersistence();
+    const controller = createController();
+    controller.attachPersistence(persistence);
+    persistence.stateWrites = 0;
+    const saved = () => persistence.getState<{ draft: string }>("channel:everyone", { schemaVersion: 1 })?.draft;
+
+    let typed = "";
+    for (let elapsed = 0; elapsed < DRAFT_SYNC_MAX_WAIT_MS - DRAFT_SYNC_DEBOUNCE_MS; elapsed += DRAFT_SYNC_DEBOUNCE_MS / 2) {
+      typed += "x";
+      controller.setDraft(typed);
+      jest.advanceTimersByTime(DRAFT_SYNC_DEBOUNCE_MS / 2);
+    }
+    expect(persistence.stateWrites).toBe(0);
+    expect(saved()).toBeUndefined();
+
+    for (let elapsed = 0; elapsed < 2 * DRAFT_SYNC_DEBOUNCE_MS; elapsed += DRAFT_SYNC_DEBOUNCE_MS / 2) {
+      typed += "y";
+      controller.setDraft(typed);
+      jest.advanceTimersByTime(DRAFT_SYNC_DEBOUNCE_MS / 2);
+    }
+    expect(saved()?.startsWith("xxxxxxxxxxxxxx")).toBe(true);
+    expect(saved()).not.toBe(typed);
+
+    // The pause saves the rest, and nothing is written once it is all saved.
+    jest.advanceTimersByTime(DRAFT_SYNC_DEBOUNCE_MS);
+    expect(saved()).toBe(typed);
+    const writes = persistence.stateWrites;
+    jest.advanceTimersByTime(DRAFT_SYNC_MAX_WAIT_MS * 2);
+    expect(persistence.stateWrites).toBe(writes);
+    controller.dispose();
   });
 
   test("pauses verification polling while the app is backgrounded", () => {

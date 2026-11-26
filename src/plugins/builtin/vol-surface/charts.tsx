@@ -69,7 +69,9 @@ export function SmileChart({ snapshot, expiry, overlay, axis, width, height, foc
       ticks: Array.from({ length: 5 }, (_, i) => ({ ratio: i / 4, label: tickLabel(left + (right - left) * i / 4, axis) })),
       left, right };
   }, [axis, colors, expiry, overlay, snapshot]);
-  if (!model) return <EmptyState title="Smile unavailable." hint="No clean quoted smile for this expiry." />;
+  // An expiry left unfitted says why, as the Table's expiry list does.
+  const reason = expiry?.state === "empty" || expiry?.state === "error" ? expiry.error ?? expiry.warnings.at(-1) : null;
+  if (!model) return <EmptyState title="Smile unavailable." hint={reason ? `${reason}.` : "No clean quoted smile for this expiry."} />;
   const axisLabel = axis === "strike" ? "Strike" : axis === "delta" ? "100 x (1 - call delta)" : `${axis === "forward" ? "Forward" : "Spot"} %`;
   return <Box flexDirection="column" width={width} height={height}>
     <Box height={1} flexDirection="row" gap={3} paddingX={1}>

@@ -12,6 +12,9 @@ import { exportPaneTable } from "../../../state/pane-table-export-registry";
 import { takeSavedTextFile } from "../../../renderers/opentui/test-utils";
 import { UiHostProvider, useRendererHost, useUiHost } from "../../../ui/host";
 import type { DataTableProps } from "./types";
+import { getLanguage, setLanguage } from "../../../i18n";
+import { registerTranslations, tPlugin, useAppLanguage } from "../../../public/i18n";
+import { Text } from "../../../ui";
 
 const tui = createOpenTuiTestHarness();
 
@@ -67,6 +70,62 @@ async function renderTable(selectedId: string | null, reportEveryRow?: boolean) 
 }
 
 describe("DataTable remote metadata", () => {
+  test("refreshes opted-in headers and plugin UI without translating other tables, CSV or automation", async () => {
+    const previousLanguage = getLanguage();
+    const registry = createRemoteUiRegistry();
+    const state = createInitialState(createDefaultConfig(":memory:"));
+    const items = [{ id: "one", name: "One" }];
+    function Status() {
+      const language = useAppLanguage();
+      return <Text>{language}: {tPlugin("market-tool", "status", "Ready")}</Text>;
+    }
+    function PriceTable({ translated }: { translated?: boolean }) {
+      const scrollRef = useRef<ScrollBoxRenderable>(null);
+      return <DataTable columns={[{ id: "open", label: "Open", width: 18, align: "left",
+        ...(translated ? { labelTranslation: { pluginId: "market-tool", key: "opening-price" } } : {}) }]}
+        items={items} sortColumnId={null} sortDirection="asc" scrollRef={scrollRef} headerScrollRef={scrollRef}
+        syncHeaderScroll={() => {}} onBodyScrollActivity={() => {}} getItemKey={(row) => row.id}
+        isSelected={() => false} onSelect={() => {}} renderCell={(row) => ({ text: row.name })}
+        emptyStateTitle="No rows" reportEveryRow />;
+    }
+    let removeEs: (() => void) | undefined;
+    const removeJa = registerTranslations("market-tool", "ja", { "opening-price": "始値", status: "準備完了" });
+    try {
+      setLanguage("es");
+      await tui.render(<RemoteUiRegistryProvider registry={registry}><AppContext value={createStaticAppStore(state)}>
+        <Status />
+        <PaneInstanceProvider paneId="translated-header"><PriceTable translated /></PaneInstanceProvider>
+        <PaneInstanceProvider paneId="unrelated-header"><PriceTable /></PaneInstanceProvider>
+      </AppContext></RemoteUiRegistryProvider>, { width: 50, height: 16 });
+      expect(await tui.waitForFrameToContain("es: Ready")).not.toContain("APERTURA LOCAL");
+      await act(async () => {
+        removeEs = registerTranslations("market-tool", "es", { "opening-price": "apertura local", status: "Listo" });
+      });
+      const translated = await tui.waitForFrameToContain("APERTURA LOCAL");
+      expect(translated).toContain("es: Listo");
+      expect(translated.match(/\bOPEN\b/g)).toHaveLength(1);
+      const table = registry.snapshot().find((entry) => entry.metadata?.paneInstanceId === "translated-header" && entry.role === "table");
+      expect(table?.metadata?.columns).toEqual([{ id: "open", label: "Open" }]);
+      await exportPaneTable("translated-header", "translated.csv");
+      expect(takeSavedTextFile()?.text).toBe("\uFEFFOpen\nOne");
+
+      await act(async () => { setLanguage("ja"); });
+      const japanese = await tui.waitForFrameToContain("始値");
+      expect(japanese).toContain("ja: 準備完了");
+      expect(japanese.match(/\bOPEN\b/g)).toHaveLength(1);
+
+      await act(async () => { removeJa(); });
+      const disposed = await tui.waitForFrameToContain("ja: Ready");
+      expect(disposed).not.toContain("始値");
+      expect(disposed.match(/\bOPEN\b/g)).toHaveLength(2);
+    } finally {
+      await tui.destroy();
+      removeJa();
+      removeEs?.();
+      setLanguage(previousLanguage);
+    }
+  });
+
   test("reports and exports the latest externally updated row without rerendering the table", async () => {
     const original = { id: "one", name: "Before" };
     let current = original;

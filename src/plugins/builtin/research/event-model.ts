@@ -1,12 +1,15 @@
 import { splitShareTerms } from "../../../market-data/split-terms";
+import { adjustedForText, adjustmentsAfter, demergerSuccessor, priceAdjustment, priceAdjustments, publishedDividend, publishedEps } from "../../../market-data/price-adjustments";
 import type { CatalystEvent, CatalystFilters, CatalystResponse } from "../../../api-client/catalysts";
 import { catalystDate } from "../catalysts/model";
 import type {
   AnalystEstimateRecord,
   AnalystResearchData,
   CorporateActionsData,
+  DemergerAction,
   DividendAction,
   EarningsDateStatus,
+  FilingEpsDetails,
   FinancialStatement,
   TickerFinancials,
 } from "../../../types/financials";
@@ -21,6 +24,8 @@ import {
 import { formatFilingDate } from "../../../utils/datetime-format";
 import { computeTTM } from "../ticker-detail/financials/aggregation";
 import { classifyInstrumentType } from "../../../tickers/instrument-kind";
+import { isIndianEtfListing } from "../../../market-data/fund-actions";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { declaredDividendCash, declaredDividends } from "../../../utils/declared-dividends";
 import { fiscalPeriodText, fiscalQuarterInYear, fiscalQuarterText, fiscalYearText } from "../earnings/fiscal-quarter";
 import { fiscalYearEndMonth } from "../../../utils/fiscal-period";
@@ -42,11 +47,11 @@ import {
   type EpsBasisName,
 } from "../shared/earnings-report";
 
-export const CORPORATE_ACTION_COVERAGE = "Split-feed factors may include spinoff price adjustments. Merger terms, spinoff distributions, and security conversions are not covered.";
+export const CORPORATE_ACTION_COVERAGE = "A price-adjustment factor is named a spin-off only where the demerger is on record; any other factor in no share terms is shown as a factor. The history's dividends and EPS before one are shown as adjusted for it; what the company published is shown as published. Merger terms and security conversions are not covered.";
 
-export type EventStatus = "Earnings" | "Q Est" | "FY Est" | "TTM" | "Dividend" | "Split" | "Factor";
+export type EventStatus = "Earnings" | "Q Est" | "FY Est" | "TTM" | "Dividend" | "Split" | "Spin-off" | "Factor";
 
-export interface EventRow {
+export interface EventRow extends FilingEpsDetails {
   id: string;
   date: string;
   dateType?: "announcement" | "fiscal-period-end";
@@ -101,6 +106,15 @@ export interface EventRow {
   special?: true;
   /** A dividend row's payable date, YYYY-MM-DD, where the source states one. */
   payDate?: string;
+  /**
+   * A paid dividend's or a report's: what the later price adjustments its figures are adjusted for are
+   * ("adjusted for the VYLR spin-off of 2026-10-01 (6665:1000)"). Its value stays as the history states it.
+   */
+  adjustedFor?: string;
+  /** A spin-off row's demerger on record, which its price-adjustment factor is for. */
+  demerger?: DemergerAction;
+  /** A paid dividend as its issuer's forms or a fund's sponsor published it, shown as that. */
+  published?: true;
   value: string;
   tone: "positive" | "negative" | "muted" | "text";
 }
@@ -197,7 +211,7 @@ const NAMED_ESTIMATE_PERIOD = /^(?:cur|next) (?:qtr|yr)$/;
  * An estimate's growth over its year-ago figure: the source's, except off a year-ago figure at or below zero, where
  * it is N/M whatever the source worked out (a loss of 0.40 to a profit of 0.10 is no +125%). Undefined where there is none.
  */
-function estimateRate(estimate: AnalystEstimateRecord | undefined): Rate | undefined {
+export function estimateRate(estimate: AnalystEstimateRecord | undefined): Rate | undefined {
   if (!estimate) return undefined;
   const yearAgo = estimate.yearAgo;
   if (typeof yearAgo === "number" && Number.isFinite(yearAgo) && yearAgo <= 0) {
@@ -234,7 +248,7 @@ export type EventFinancials = Pick<TickerFinancials, "quarterlyStatements" | "fi
   annualStatements?: readonly Pick<FinancialStatement, "date">[];
   fundamentals?: Pick<NonNullable<TickerFinancials["fundamentals"]>, "eps" | "epsCurrency" | "financialCurrency" | "marketCapCurrency" | "trailingEpsSource"> | null;
   /** The listing's currency, which says whether an unlabelled EPS can be in the statements' (fundamentalsCurrency), and its type. */
-  quote?: Pick<NonNullable<TickerFinancials["quote"]>, "currency" | "instrumentType"> | null;
+  quote?: Pick<NonNullable<TickerFinancials["quote"]>, "currency" | "instrumentType" | "exchangeName" | "listingExchangeName" | "name"> | null;
   quoteMetadata?: Pick<NonNullable<TickerFinancials["quoteMetadata"]>, "instrumentType"> | null;
 };
 
@@ -242,8 +256,12 @@ export type EventFinancials = Pick<TickerFinancials, "quarterlyStatements" | "fi
  * A fund (an ETF, a closed-end fund) reports no earnings: a feed's EPS rows, estimates and statements for one
  * are another company's or noise, so its events are its distributions and splits alone.
  */
-export function isFundListing(financials: EventFinancials | null): boolean {
-  return [financials?.quote?.instrumentType, financials?.quoteMetadata?.instrumentType].some((type) => classifyInstrumentType(type) === "fund");
+export function isFundListing(financials: EventFinancials | null, actions?: CorporateActionsData | null): boolean {
+  const quote = financials?.quote;
+  return [quote?.instrumentType, financials?.quoteMetadata?.instrumentType].some((type) => classifyInstrumentType(type) === "fund")
+    || isIndianEtfListing(quote?.listingExchangeName || quote?.exchangeName, quote?.name)
+    || (!!actions && (isIndianEtfListing(actions.exchange || parsePublicTickerKey(actions.symbol).exchange, actions.name)
+      || /\bETF(?: Trust)?$/i.test(actions.name?.trim() ?? "")));
 }
 
 /**
@@ -362,6 +380,7 @@ function eventSortRank(status: EventStatus): number {
     case "TTM": return 3;
     case "Dividend": return 4;
     case "Split":
+    case "Spin-off":
     case "Factor": return 5;
   }
 }
@@ -395,7 +414,7 @@ export function buildEventRows(
   currency: string,
 ): EventRow[] {
   const rows: EventRow[] = [];
-  const fund = isFundListing(financials);
+  const fund = isFundListing(financials, data);
   const quarterlyStatements = fund ? [] : sortedQuarterlyStatements(financials);
   const earnings = fund ? [] : data?.earnings ?? [];
   const ttm = ttmRow(quarterlyStatements, earnings, financials);
@@ -412,6 +431,9 @@ export function buildEventRows(
   // company's own EPS is in that currency too: one company's EPS then reads in one unit down the table, and an
   // unlabelled figure nothing else vouches for stays unlabelled.
   const reportedCurrency = feedCurrency && fundamentalsEpsCurrency(financials) === feedCurrency ? feedCurrency : undefined;
+  // The history's EPS before a price adjustment is adjusted for it (CTVA's before the VYLR spin-off of 2026-10-01): said
+  // on the row. A release's own EPS is as the company reported it, whatever its date.
+  const adjustments = priceAdjustments(data?.splits, data?.demergers);
   for (const [index, earning] of earnings.entries()) {
     // A pending announcement must never inherit the previous report's actuals.
     const statement = earning.epsActual == null ? undefined : statementForEarningsDate(quarterlyStatements, earning);
@@ -420,6 +442,7 @@ export function buildEventRows(
     const surpriseNotMeaningful = earning.epsActual != null && isNotMeaningful(surprise);
     const surprisePercent = earning.epsActual == null || surpriseNotMeaningful ? undefined
       : typeof surprise === "number" ? Math.round(surprise * 10_000) / 100 : earning.surprisePercent;
+    const adjustedEps = (earning.epsActual == null && earning.epsEstimate == null) || publishedEps(earning) ? [] : adjustmentsAfter(adjustments, earning.date);
     rows.push({
       id: earningsIds[index]!,
       // An announcement keeps its date beside ERN's; a period-end row moves to its statement's.
@@ -429,10 +452,12 @@ export function buildEventRows(
       // The fiscal quarter, never the time of day ("After Hours"), which the row keeps as reportTime.
       period: fiscalPeriodText(earning.fiscalPeriod ?? statement?.date, fiscalQuarterInYear(earning.fiscalPeriod ?? statement?.date, yearEnd)),
       ...(earning.time?.trim() ? { reportTime: earning.time.trim() } : {}),
-      detail: upcomingEarningsDetail(earning),
+      detail: [upcomingEarningsDetail(earning), adjustedEps.length ? `EPS ${adjustedForText(adjustedEps, false)}` : ""].filter(Boolean).join(", "),
+      ...(adjustedEps.length ? { adjustedFor: `EPS ${adjustedForText(adjustedEps)}` } : {}),
       epsCurrency: earning.currency ?? (earning.epsActual == null ? feedCurrency : reportedCurrency),
       revenueCurrency: statement ? statement.currency ?? financials?.financialCurrency : undefined,
       qEps: earning.epsActual ?? earning.epsEstimate,
+      ...(earning.streetEps ? { streetEps: earning.streetEps, gaapEps: earning.gaapEps } : {}),
       qRevenue: statement?.totalRevenue,
       earningsState: earning.epsActual == null ? "pending" : "reported",
       epsActual: earning.epsActual,
@@ -498,16 +523,24 @@ export function buildEventRows(
   const splitDates = (data?.splits ?? []).filter((split) => splitShareTerms(split)).map((split) => split.date);
   for (const dividend of data?.dividends ?? []) {
     const special = dividendSpecial(dividend);
-    const adjusted = splitDates.some((date) => date > dividend.exDate);
+    // A row the issuer's forms or a fund's sponsor published stands as published: its date before a split or an
+    // adjustment says nothing of its basis. The history's own rows before one are adjusted for it, and say so.
+    const published = publishedDividend(dividend);
+    const adjusted = !published && splitDates.some((date) => date > dividend.exDate);
+    const adjustedBy = published ? [] : adjustmentsAfter(adjustments, dividend.exDate);
     rows.push({
       id: `div:${dividend.exDate}`,
       date: dividend.exDate,
       status: "Dividend",
       period: "",
       // Only what the row does not say already: its date is the ex-date.
-      detail: [special, dividend.payDate ? `payable ${dividend.payDate}` : null, adjusted ? "split-adjusted" : null].filter(Boolean).join(", "),
+      detail: [special, dividend.payDate ? `payable ${dividend.payDate}` : null, adjusted ? "split-adjusted" : null,
+        adjustedBy.length ? adjustedForText(adjustedBy, false) : null,
+      ].filter(Boolean).join(", "),
       ...(special === "special" ? { special: true as const } : {}),
       ...(dividend.payDate ? { payDate: dividend.payDate } : {}),
+      ...(adjustedBy.length ? { adjustedFor: adjustedForText(adjustedBy) } : {}),
+      ...(published ? { published: true as const } : {}),
       value: formatDistributionAmount(dividend.amount, dividendCurrency),
       // An amount is no gain or loss: it takes no tone.
       tone: "text",
@@ -534,14 +567,17 @@ export function buildEventRows(
 
   for (const split of data?.splits ?? []) {
     // A factor of whole share counts is a split, said in its terms (DBS's bonus issue: 11-for-10, 1 new share for
-    // every 10 held); any other may be a spinoff's price adjustment, and says no more than that.
+    // every 10 held), whatever its date. One in no share terms on a demerger's ex-date is that spin-off's price
+    // adjustment (CTVA's 6665:1000, VYLR's), one row for both; any other says no more than that it is a factor.
+    const demerger = priceAdjustment(split, data?.demergers)?.demerger;
     const terms = splitShareTerms(split);
     rows.push({
       id: `split:${split.date}:${split.description ?? ""}`,
       date: split.date,
-      status: terms ? "Split" : "Factor",
+      status: demerger ? "Spin-off" : terms ? "Split" : "Factor",
       period: "",
-      detail: terms ?? "Split/adjustment",
+      detail: demerger ? spinOffDetail(demerger) : terms ?? "Split/adjustment",
+      ...(demerger ? { demerger } : {}),
       providerDescription: split.description,
       adjustmentFactor: split.fromFactor && split.toFactor ? split.toFactor / split.fromFactor : split.ratio,
       value: split.fromFactor && split.toFactor
@@ -560,22 +596,13 @@ export function buildEventRows(
 
 /** One figure of the summary over the events table, in the shape the kit's StatGrid takes. */
 export interface EventSummaryFigure {
-  id: "next-report" | "last-surprise" | "next-ex" | "last-ex" | "eps-estimate" | "revenue-estimate" | "next-catalyst";
+  id: "next-report" | "next-ex" | "last-ex" | "eps-estimate" | "revenue-estimate" | "next-catalyst" | "ttm-eps" | "ttm-revenue";
   label: string;
   value: string;
   detail?: string;
   /** Shorter forms of `detail`, longest first. */
   detailVariants?: string[];
   tone?: "positive" | "negative" | "muted";
-}
-
-export interface EventSummaryOptions {
-  /** The listing's own day, YYYY-MM-DD: a report or ex-date from it on is ahead. */
-  today: string;
-  fund: boolean;
-  /** The currencies EE's EPS and revenue columns are headed with: an amount in it is bare. */
-  epsUnit?: string;
-  revenueUnit?: string;
 }
 
 /** A quarter as the company's fiscal calendar names it: `Q1 FY2027`. */
@@ -681,6 +708,13 @@ export interface NextUpOptions {
   catalyst?: NextCatalyst | null;
 }
 
+/** An estimate's growth on the year before as the figures say it: N/M off a year-ago loss or zero, as the tables draw it. */
+function yearOnYear(estimate: AnalystEstimateRecord | undefined): string | null {
+  const rate = estimateRate(estimate);
+  if (isNotMeaningful(rate)) return `${NOT_MEANINGFUL_TEXT} y/y`;
+  return rate == null ? null : `${formatPercentRaw(rate * 100)} y/y`;
+}
+
 /**
  * The Events tab's opening block: what is next, each with how far away it is.
  * The next report and its consensus EPS and revenue for the quarter it covers,
@@ -705,21 +739,15 @@ export function buildNextUp(rows: readonly EventRow[], options: NextUpOptions): 
     const epsCurrency = report?.epsEstimate != null ? report.epsCurrency : quarter?.epsCurrency;
     if (eps != null) {
       const analysts = report?.epsEstimate != null ? report.epsAnalysts : quarter?.estimateInputs?.eps?.analysts;
-      const growth = quarter?.estimateInputs?.eps?.growth;
+      const growth = yearOnYear(quarter?.estimateInputs?.eps);
       figures.push({ id: "eps-estimate", label: "EPS est", value: formatEventMetric(eps, epsCurrency, "eps"),
-        ...detailForms(
-          [analysts ? `${analysts} ${analysts === 1 ? "analyst" : "analysts"}` : null, growth != null ? `${formatPercentRaw(growth * 100)} y/y` : null],
-          [growth != null ? `${formatPercentRaw(growth * 100)} y/y` : null],
-        ) });
+        ...detailForms([analysts ? `${analysts} ${analysts === 1 ? "analyst" : "analysts"}` : null, growth], [growth]) });
     }
     if (quarter?.qRevenue != null) {
       const analysts = quarter.estimateInputs?.revenue?.analysts;
-      const growth = quarter.estimateInputs?.revenue?.growth;
+      const growth = yearOnYear(quarter.estimateInputs?.revenue);
       figures.push({ id: "revenue-estimate", label: "Revenue est", value: formatEventMetric(quarter.qRevenue, quarter.revenueCurrency, "revenue"),
-        ...detailForms(
-          [analysts ? `${analysts} ${analysts === 1 ? "analyst" : "analysts"}` : null, growth != null ? `${formatPercentRaw(growth * 100)} y/y` : null],
-          [growth != null ? `${formatPercentRaw(growth * 100)} y/y` : null],
-        ) });
+        ...detailForms([analysts ? `${analysts} ${analysts === 1 ? "analyst" : "analysts"}` : null, growth], [growth]) });
     }
   }
   const dividends = rows.filter((row) => row.status === "Dividend");
@@ -731,9 +759,9 @@ export function buildNextUp(rows: readonly EventRow[], options: NextUpOptions): 
       ...detailForms([declared.value, declared.special ? "special" : null, daysAhead(today, declared.date)], [declared.value, daysAhead(today, declared.date)], [declared.value]) });
   } else if (stated && stated >= today && (!latestPaid || stated > latestPaid.date)) {
     figures.push({ id: "next-ex", label: "Next ex", value: date(stated),
-      ...detailForms([daysAhead(today, stated), latestPaid ? `last paid ${latestPaid.value}` : null], [daysAhead(today, stated)]) });
+      ...detailForms([daysAhead(today, stated), latestPaid ? `last paid ${paidValue(latestPaid)}` : null], [daysAhead(today, stated)]) });
   } else if (latestPaid) {
-    figures.push({ id: "last-ex", label: "Last ex", value: date(latestPaid.date), detail: latestPaid.value });
+    figures.push({ id: "last-ex", label: "Last ex", value: date(latestPaid.date), detail: paidValue(latestPaid) });
   }
   if (options.catalyst && !options.fund) {
     // A source can date a catalyst to its month or year only (a trial's completion): it is said that way.
@@ -745,60 +773,49 @@ export function buildNextUp(rows: readonly EventRow[], options: NextUpOptions): 
   return figures;
 }
 
+/** The forward estimates as EE's Estimates view lists them: the quarters, then the years, each nearest first. */
+export function forwardEstimates(rows: readonly EventRow[]): { quarters: EventRow[]; years: EventRow[] } {
+  const byDate = (left: EventRow, right: EventRow) => left.date.localeCompare(right.date);
+  return {
+    quarters: rows.filter((row) => row.status === "Q Est").sort(byDate),
+    years: rows.filter((row) => row.status === "FY Est").sort(byDate),
+  };
+}
+
+/** A paid row's amount, said to be adjusted where a later price adjustment changed it: "$0.027007 (adjusted)". */
+function paidValue(row: EventRow): string {
+  return row.adjustedFor ? `${row.value} (adjusted)` : row.value;
+}
+
+/** A spin-off row's detail: "Seed business into VYLR:NYSE (Vylor Inc.), 1 share per share". */
+function spinOffDetail(demerger: DemergerAction): string {
+  const what = demerger.business ? `${demerger.business.charAt(0).toUpperCase()}${demerger.business.slice(1)} business into` : "Into";
+  return [`${what} ${demergerSuccessor(demerger)}`, demerger.ratio ? `${demerger.ratio} share per share` : null].filter(Boolean).join(", ");
+}
+
+/** Statuses that are corporate actions, not earnings: EE's header leaves them out. */
+const CORPORATE_ACTIONS: ReadonlySet<EventStatus> = new Set(["Dividend", "Split", "Spin-off", "Factor"]);
+
 /**
- * EE's figures over its table: the next report with its consensus, and the
- * last surprise. The next report is the calendar's, else the earliest quarter
- * analysts still estimate, undated. A fund has neither.
+ * EE's header, over both its views: what is next (the report and the
+ * consensus EPS and revenue for the quarter it covers) and the trailing twelve
+ * months, EPS and revenue. The trailing EPS is the GAAP diluted figure
+ * `ticker` prints (the TTM row's), named so. No ex-dates or catalysts, which
+ * are EVT's. A fund has none of it.
  */
-export function buildEventSummary(rows: readonly EventRow[], options: EventSummaryOptions): EventSummaryFigure[] {
-  const { today } = options;
-  const figures: EventSummaryFigure[] = [];
-  const metric = (value: number | undefined, currency: string | undefined, unit: string | undefined, kind: "eps" | "revenue") => (
-    formatEventMetric(value, unit && currency === unit ? undefined : currency, kind)
-  );
-  const date = (day: string) => formatFilingDate(day, day);
-
-  if (!options.fund) {
-    const { report, quarter } = nextReportOf(rows, today);
-    if (report || quarter) {
-      const epsFromReport = report?.epsEstimate != null;
-      const eps = epsFromReport ? report!.epsEstimate : quarter?.qEps;
-      const epsText = eps == null ? null : `EPS est ${metric(eps, epsFromReport ? report!.epsCurrency : quarter?.epsCurrency, options.epsUnit, "eps")}`;
-      const revenueText = quarter?.qRevenue == null ? null : `rev est ${metric(quarter.qRevenue, quarter.revenueCurrency, options.revenueUnit, "revenue")}`;
-      // A quarter the fiscal calendar does not name is said by the month it ends in, never by its place from today.
-      const quarterName = quarter && (NAMED_FISCAL_QUARTER.test(quarter.period) ? quarter.period : `${quarterLabel(quarter.date)} qtr`);
-      const period = report && report.period !== MISSING_VALUE ? report.period : quarterName;
-      const projected = report?.dateStatus === "projected" ? "projected" : null;
-      figures.push({
-        id: "next-report",
-        label: "Next report",
-        // Undated, the report is named by its quarter.
-        value: report ? date(report.date) : period ?? MISSING_VALUE,
-        ...detailForms(
-          [report ? period : null, projected, epsText, revenueText],
-          [projected, epsText, revenueText],
-          [projected, epsText],
-        ),
-      });
-    }
-
-    const last = rows.find((row) => row.status === "Earnings" && row.earningsState === "reported"
-      && (row.surprisePercent != null || row.surpriseNotMeaningful));
-    if (last) {
-      // The currency once, after both: `0.38 vs 0.49 CNY`, bare under a column headed with it.
-      const code = last.epsCurrency && last.epsCurrency !== options.epsUnit ? ` ${last.epsCurrency}` : "";
-      const versus = last.epsActual != null && last.epsEstimate != null
-        ? `${formatEventMetric(last.epsActual, undefined, "eps")} vs ${formatEventMetric(last.epsEstimate, undefined, "eps")}${code}` : null;
-      figures.push({
-        id: "last-surprise",
-        label: "Surprise",
-        value: last.value,
-        ...(last.tone === "positive" || last.tone === "negative" || last.tone === "muted" ? { tone: last.tone } : {}),
-        ...detailForms([last.period !== MISSING_VALUE ? last.period : null, versus], [last.period !== MISSING_VALUE ? last.period : null]),
-      });
-    }
+export function buildEarningsHeader(rows: readonly EventRow[], options: { today: string; fund: boolean }): EventSummaryFigure[] {
+  if (options.fund) return [];
+  const figures = buildNextUp(rows.filter((row) => !CORPORATE_ACTIONS.has(row.status)), { today: options.today, fund: false });
+  const ttm = rows.find((row) => row.status === "TTM");
+  if (!ttm) return figures;
+  const through = ttm.date ? `4 qtrs to ${formatFilingDate(ttm.date, ttm.date)}` : "4 qtrs";
+  if (ttm.annualEps != null) {
+    figures.push({ id: "ttm-eps", label: "EPS TTM", value: formatEventMetric(ttm.annualEps, ttm.epsCurrency, "eps"),
+      ...detailForms([ttm.detail, through], [ttm.detail]) });
   }
-
+  if (ttm.annualRevenue != null) {
+    figures.push({ id: "ttm-revenue", label: "Revenue TTM", value: formatEventMetric(ttm.annualRevenue, ttm.revenueCurrency, "revenue"), detail: through });
+  }
   return figures;
 }
 

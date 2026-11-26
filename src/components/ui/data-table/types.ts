@@ -6,6 +6,8 @@ export type DataTableColumn = Pick<
   ColumnConfig,
   "id" | "label" | "width" | "align"
 > & {
+  /** Opts the drawn header into a plugin translation. The raw `label` remains the fallback and export/report label. */
+  labelTranslation?: { pluginId: string; key: string };
   headerColor?: string;
   headerBackgroundColor?: string;
   /**
@@ -25,6 +27,10 @@ export type DataTableColumn = Pick<
    * comes after an event the row is still waiting on (an earnings move, an
    * IPO's first-day return, a halt's resumption). `shot --strict` counts a
    * column blank in every row as data the pane lost, except this one.
+   *
+   * It exempts the whole column, so it is for a column no row ever owes, or a
+   * column of controls. Where some rows owe the value, mark the cells that do
+   * not (DataTableCell.mayBeBlank) and leave the column unmarked.
    */
   mayBeBlank?: boolean;
   /**
@@ -36,6 +42,17 @@ export type DataTableColumn = Pick<
    * CSV exports keep the column and its raw cells.
    */
   omitWhenEmpty?: boolean | "visible";
+  /**
+   * Leave this column out while every data row, two or more, renders the same
+   * text, blank included: a value the whole view shares (one period, one
+   * currency, one status) says nothing about any row. Set it only where the
+   * rows are all the view holds: a paged feed whose next page may differ sets
+   * it once nothing is left to load, or where its query fixes the value. A
+   * lone row keeps its columns. A pane that should still say the shared value
+   * puts it once in its header or footer. Reports and CSV exports keep the
+   * column and its cells.
+   */
+  omitWhenSame?: boolean;
 };
 
 export interface DataTableCell {
@@ -63,11 +80,20 @@ export interface DataTableCell {
    */
   valueUnit?: string;
   /**
-   * This row has no value here yet, with nothing missing: it comes after an
-   * event the row is still waiting on (an economic release not yet out). The
-   * column-wide form is DataTableColumn.mayBeBlank; this one is for a column
-   * whose other rows must have the value. `shot --strict` counts a column
-   * blank in every other row as data the pane lost, and leaves this row out.
+   * This row owes no value here, with nothing missing: it comes after an event
+   * the row is still waiting on (an economic release not yet out), or the row
+   * is of a kind that has none (a deal in talks has no terms). The column-wide
+   * form is DataTableColumn.mayBeBlank; this one is for a column whose other
+   * rows must have the value. `shot --strict` counts a column blank in every
+   * other row as data the pane lost, and leaves this row out whatever its cell
+   * shows: a dash, or words in place of the value (an event's label where a
+   * call has its period). A marked cell never fills the column for the rows
+   * that owe it, so a row that owes the value is never marked, filled or not.
+   *
+   * Set it from what else the row says (its status, its kind, its time), never
+   * from the cell: a value that is null is not thereby optional, and words in
+   * its place are not the value. Where the row cannot say which it is, leave
+   * the cell unmarked and write the limit down beside the rule.
    */
   mayBeBlank?: boolean;
   content?: ReactNode;
@@ -334,6 +360,12 @@ export interface DataTableProps<
    */
   reportColumns?: readonly C[];
   scrollToIndex?: number | null;
+  /**
+   * A row above `scrollToIndex` that comes into view with it, and every row
+   * between: as many as fit with `scrollToIndex` still on screen. Ignored
+   * when the target is centered.
+   */
+  scrollToIndexFrom?: number | null;
   scrollToIndexAlign?: DataTableScrollAlign;
   scrollToIndexVersion?: number;
 }

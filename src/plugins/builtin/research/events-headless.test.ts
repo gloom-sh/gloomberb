@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { createEventsHeadless } from "./events-headless";
+import { createEarningsEstimatesHeadless } from "./headless";
+import { loadEventSources } from "./event-sources";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { catalystFixture, catalystPayload } from "../catalysts/test-fixture";
 
@@ -9,6 +11,31 @@ const args: HeadlessPaneLoadArgs = {
 };
 
 describe("corporate actions headless model", () => {
+  test("named ETF actions disqualify calendar EPS even without financials and keep splits and uncertain payout gaps", async () => {
+    const symbol = "NIFTYBEES.NS";
+    const fundArgs = { ...args, rawArgument: symbol, argument: symbol, symbols: [symbol] };
+    let analystReads = 0;
+    const marketData = createTestDataProvider({
+      getCorporateActions: async () => ({ symbol, name: "Nippon India ETF Nifty 50 BeES", exchange: "NSE", currency: "INR",
+        coverage: { dividends: "unavailable" }, splits: [{ date: "2020-03-02", fromFactor: 1, toFactor: 10 }],
+        dividends: [{ exDate: "2019-02-18", amount: 0.8 }, { exDate: "2021-02-18", amount: 0.5 }], earnings: [] }),
+      getTickerFinancials: async () => { throw new Error("Financials source timed out"); },
+      getAnalystResearch: async () => { analystReads++; throw new Error("Analyst source unavailable"); },
+      getEarningsCalendar: async () => [{ symbol, name: "Nifty 50 BeES", earningsDate: new Date("2099-03-01"), isDateEstimate: true,
+        epsEstimate: 6, epsActual: null, revenueEstimate: null, revenueActual: null, surprise: null, timing: "" }],
+    });
+    const sources = await loadEventSources(marketData, symbol);
+    expect(sources.actions?.earnings).toEqual([]);
+    const context = { marketData } as HeadlessPaneContext;
+    const events = await createEventsHeadless().load(fundArgs, context);
+    expect(events.rows.map((row) => row.status)).toEqual(["Dividend", "Split", "Dividend"]);
+    expect(events.textRows?.find((row) => row.year === "2020")?.detail).toBe("Distribution history incomplete · 10-for-1 split");
+    expect(events.metadata?.coverage).toMatchObject({ dividends: "unavailable" });
+    const estimates = await createEarningsEstimatesHeadless().load(fundArgs, context);
+    expect(estimates.rows).toEqual([]);
+    expect(estimates.metadata?.nextUp).toBeUndefined();
+    expect(analystReads).toBe(0);
+  });
   test("keeps successful events while reporting failed estimates and statements", async () => {
     const marketData = createTestDataProvider({
       getCorporateActions: async () => ({ symbol: "NVDA", currency: "USD", dividends: [{ exDate: "2024-03-05", amount: 0.004 }], splits: [], earnings: [] }),

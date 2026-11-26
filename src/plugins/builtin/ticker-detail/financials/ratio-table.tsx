@@ -1,4 +1,4 @@
-import { Box, Text, type ScrollBoxRenderable } from "../../../../ui";
+import { Box, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../../../ui";
 import { useCallback, useEffect, useMemo, useState, type ReactNode, type RefObject } from "react";
 import {
   DataTableView,
@@ -13,14 +13,16 @@ import type { PricePoint } from "../../../../types/financials";
 import type { FxCloses } from "../../../../market-data/fx-closes";
 import { apiClient } from "../../../../api-client";
 import { loadValuationFx } from "../../../../time-series/valuation-currency";
+import { PERIOD_END_ROW_ID } from "../../../../utils/financial-statements";
 import { displayWidth, padTo } from "../../../../utils/format";
 import { useBoundTicker, useTickerRequest } from "../../shared/ticker-request";
 import type { FinancialTableStatement } from "./aggregation";
-import { FINANCIAL_COL_W, financialLabelWidth } from "./model";
+import { FINANCIAL_COL_W, financialLabelWidth, financialPeriodHeaderLabel } from "./model";
 import { loadPeriodEndHistory } from "./period-end-history";
 import {
   formatRatioInput,
   formatRatioValue,
+  ratioPeriodEnd,
   type RatioAmount,
   type RatioTableModel,
   type RatioTableRow,
@@ -31,7 +33,46 @@ export type RatioTableColumn = DataTableColumn & (
   | { id: string; kind: "statement"; statement: FinancialTableStatement; index: number }
 );
 
-const ratioRowKey = (row: RatioTableRow) => row.id;
+/**
+ * The first row of a statement or ratio table: the day each column's period
+ * ends, under the fiscal period that heads it (`FY2026` over `2026-01-25`).
+ * It is part of the heading, so the cursor passes it.
+ */
+export interface PeriodEndRow {
+  kind: "period-end";
+  id: typeof PERIOD_END_ROW_ID;
+}
+export const PERIOD_END_ROW: PeriodEndRow = { kind: "period-end", id: PERIOD_END_ROW_ID };
+
+/** The period-end row's name, in the metric column: under the column's own header, as its second line. */
+export const PERIOD_END_NAME_CELL: DataTableCell = { text: "Period end", color: colors.textMuted };
+
+/**
+ * A statement's period-end cell: the day, centred in the cells the header
+ * over it is centred in. The table draws a header against its column's right
+ * edge on the desktop and the web and in the last column (`flush`), and a
+ * cell short of it elsewhere, so the day is drawn the same way.
+ */
+export function periodEndCell(end: string | undefined, width: number, flush: boolean): DataTableCell {
+  if (!end) return { text: "" };
+  const day = financialPeriodHeaderLabel(end, width);
+  return {
+    // An ISO date, not a figure: exported as written.
+    text: end,
+    value: end,
+    color: colors.textMuted,
+    content: (
+      <Box flexDirection="row" width={width} justifyContent="flex-end">
+        <Text fg={colors.textMuted}>{flush ? day : `${day} `}</Text>
+      </Box>
+    ),
+  };
+}
+
+type RatioTableViewRow = RatioTableRow | PeriodEndRow;
+
+const ratioRowKey = (row: RatioTableViewRow) => row.id;
+const isRatioLine = (row: RatioTableViewRow) => row.kind !== "period-end";
 
 /**
  * A ratio's name in the metric column, after its disclosure, a cell apart: as wide as it says
@@ -121,6 +162,7 @@ export function RatioTable({
   rootBefore: ReactNode;
 }) {
   const { rows, cells } = model;
+  const { nativePaneChrome } = useUiCapabilities();
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   useEffect(() => {
     if (rows.length === 0 || (selectedRowId && rows.some((row) => row.id === selectedRowId))) return;
@@ -129,7 +171,11 @@ export function RatioTable({
     setSelectedRowId((owner ?? rows[0]!).id);
   }, [rows, selectedRowId]);
 
-  const renderCell = useCallback((row: RatioTableRow, column: RatioTableColumn): DataTableCell => {
+  const renderCell = useCallback((row: RatioTableViewRow, column: RatioTableColumn): DataTableCell => {
+    if (row.kind === "period-end") {
+      if (column.kind === "metric") return PERIOD_END_NAME_CELL;
+      return periodEndCell(ratioPeriodEnd(column.statement), column.width, nativePaneChrome || column === columns[columns.length - 1]);
+    }
     if (column.kind === "metric") {
       if (row.kind === "input") {
         return { text: `    ${row.unitLabel}`, color: colors.textDim };
@@ -159,12 +205,13 @@ export function RatioTable({
       text: padTo(formatRatioValue(row.def.format, cell.value), FINANCIAL_COL_W, "right"),
       color: amountColor(cell.value, tone),
     };
-  }, [cells, onToggle]);
+  }, [cells, columns, nativePaneChrome, onToggle]);
 
   const selectedIndex = useMemo(() => rows.findIndex((row) => row.id === selectedRowId), [rows, selectedRowId]);
+  const tableRows = useMemo<RatioTableViewRow[]>(() => rows.length ? [PERIOD_END_ROW, ...rows] : rows, [rows]);
 
   return (
-    <DataTableView<RatioTableRow, RatioTableColumn>
+    <DataTableView<RatioTableViewRow, RatioTableColumn>
       focused={focused}
       headerScrollRef={headerScrollRef}
       scrollRef={bodyScrollRef}
@@ -174,12 +221,15 @@ export function RatioTable({
       columns={columns}
       // The statements' fiscal periods: an axis, not columns to arrange.
       columnReorder={false}
-      items={rows}
+      items={tableRows}
+      // The cursor walks the ratios; the period ends are part of the heading.
+      isNavigable={isRatioLine}
       selection={{
         kind: "id",
         selectedId: selectedIndex >= 0 ? selectedRowId : null,
         getId: (row) => row.id,
         onChange: (_id, row, _index, reason) => {
+          if (row.kind === "period-end") return;
           setSelectedRowId(row.id);
           if (reason === "pointer" && row.kind === "ratio") onToggle(row.id);
         },
@@ -187,7 +237,9 @@ export function RatioTable({
       sortColumnId={null}
       sortDirection="desc"
       getItemKey={ratioRowKey}
-      onActivate={(row) => onToggle(row.kind === "ratio" ? row.id : row.def.id)}
+      onActivate={(row) => {
+        if (row.kind !== "period-end") onToggle(row.kind === "ratio" ? row.id : row.def.id);
+      }}
       renderCell={renderCell}
       emptyStateTitle="No financial data"
       getExportMetadata={exportMetadata}

@@ -742,6 +742,8 @@ test("alerts add takes every kind Add Event Alert offers, by the words a desk ty
   expect(rule("GME short interest increase 20%")).toMatchObject({ event: "short_interest_change", values: { direction: "increase", threshold: "20" } });
   expect(rule("AAPL analyst downgrade")).toMatchObject({ event: "analyst_change", values: { direction: "downgrade" } });
   expect(rule("ADYEN:AMS hiring slowing")).toMatchObject({ event: "hiring_move", listing: "any", values: { direction: "slowing" } });
+  expect(rule("0700.HK buyback stopped")).toMatchObject({ event: "buyback", listing: "any", values: { direction: "stopped" } });
+  expect(rule("0700.HK buybacks")).toMatchObject({ event: "buyback", values: { direction: "either" } });
   expect(rule("perps hyperliquid:default:BTC funding above 0.05%")).toMatchObject({
     event: "perps_threshold", symbol: null, values: { marketId: "hyperliquid:default:BTC", metric: "funding8h", direction: "above", threshold: "0.05" } });
   // A market id keeps its case past the venue, as Add Event Alert saves it; only the venue is lowered.

@@ -7,8 +7,9 @@ import { graphRowsForFinancials, limitGraphRowsBySymbol, metricDef } from "../..
 import { getTimeSeriesField } from "../../time-series/field-catalog";
 import {
   buildFinancialTableModel,
+  financialColumnName,
   financialColumnPeriod,
-  financialFiscalHeader,
+  financialPeriodEnd,
 } from "../../plugins/builtin/ticker-detail/financials/model";
 import { ratioTableForFinancials } from "../../plugins/builtin/ticker-detail/financials/ratios";
 import { fiscalYearEndMonth } from "../../utils/fiscal-period";
@@ -371,7 +372,9 @@ export function shotExpectedText(
       if (table && latestStatement) {
         const annual = financials.annualStatements ?? [];
         const kind = financialColumnPeriod(latestStatement, table.period, new Set(annual.map(({ date }) => date)));
-        expected.push(financialFiscalHeader(latestStatement, kind, fiscalYearEndMonth(annual)));
+        // The column's header, and the day it ends in the table's first row.
+        expected.push(financialColumnName(latestStatement, kind, fiscalYearEndMonth(annual)));
+        expected.push(financialPeriodEnd(latestStatement) ?? "");
       }
       const firstLabel = ratioTab ? ratioTab.ratios[0]?.label : firstMetric?.unitLabel;
       if (firstLabel) expected.push(firstLabel);

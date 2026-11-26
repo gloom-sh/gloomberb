@@ -280,7 +280,7 @@ When Gloom Cloud is too busy to search, the list says `Search is busy` rather th
 | `GF <tickers>` | Fundamental statement graph |
 | `GE <tickers>` | Valuation multiple graph |
 | `GR <tickers>` | Ratio, rolling correlation and regression of two tickers (`GR GC=F SI=F`) |
-| `EE <ticker>` | Events view with earnings and revenue estimates |
+| `EE <ticker>` | EPS and revenue estimates for the quarters and years ahead, and the reported quarters in a view of their own (`--view reported`) |
 | `ERN [tickers]` | Earnings history with implied and realized moves. Several tickers, their upcoming reports. Nothing active, the market's report days |
 | `EVTS [ticker]` | The market's report days with implied and average moves, and each report's actual, surprise and move |
 | `SRCH [query]` | Full-text search across earnings call transcripts, news, and SEC filings |
@@ -323,8 +323,9 @@ When Gloom Cloud is too busy to search, the list says `Search is busy` rather th
 
 For panes with tabs, `gloom fn` and `gloom shot` accept the displayed tab label or its ID as `--tab`, regardless of case. Quote labels that contain spaces.
 
+- **`EVT`:** `--limit` and `--tail` select individual dated events in text, CSV and JSON. Without a row window, text shows earnings by quarter and dividends by year, including recorded fund splits when payout history is unavailable.
 - **`GR`:** beta and alpha regress the first ticker's daily returns on the second's and say so (`EQT on UNG: beta`). Text prints the rolling correlation to three decimals, `--json` and `--csv` keep every digit.
-- **`ERN`:** the bar's Range looks back or ahead, as in `EVTS`. Names narrows the reports to Mine, one portfolio or watchlist, a broad sector, or an industry. Sectors and industries are grouped separately, with each fund named beside its group.
+- **`ERN`:** the bar's Range looks back or ahead, as in `EVTS`. Upcoming and Reported split the reports to come from the reports out, each view with its own columns; `--kind upcoming` or `--kind reported` opens on one. Names narrows the reports to Mine, one portfolio or watchlist, a broad sector, or an industry. Sectors and industries are grouped separately, with each fund named beside its group.
 - **`EVTS`:** in the pane and `gloom shot EVTS`, a ticker opens the market board on its next report day, or its latest past report when no next date is known, and selects its row. A date outside the stored board's horizon keeps the named company's report from `ERN`. If no date is known, the footer says so. An explicit week or day, or a range chosen in the pane, stays put; the footer says when the ticker reports outside it. The text report says whether the ticker is on its board (`ERN <ticker>` has its own dates). The bar's Range gives a week (`gloom fn EVTS --week last`, `this` or `next`), or one day (`--date 2026-10-15`) whose reports carry their actuals and surprises. Without a ticker, the default is today, the next session and the rest of its week.
 - **`CALLS`:** with a ticker, the company's calls, the next one on its own line with its start here and in New York. Alone, the calendar of every company's calls today, the next session and the rest of the week. `--view transcripts` lists the latest transcribed calls instead.
 - **`DVD`:** `gloom fn DVD KO PEP JNJ` ranks several tickers by yield, with payout, growth, last ex-date and pay date. A bond fund's SEC yield sits beside its distribution yield, and `gloom fn DVD MUB --tax-rate 40.8` adds a muni fund's tax-equivalent yield and muni/Treasury ratio, as `fn ETF`, `fn DES` and `fundamentals` do with it; `gloom fn DVD MUB VTEB SUB LQD --tax-rate 40.8` ranks them with yield to worst, duration and both figures ([research data](research-data.md#bond-funds-sec-yield-tax-equivalent-yield-and-the-munitreasury-ratio)).
@@ -345,17 +346,17 @@ A company's page has eleven tabs, and a tab with several views shows them as cho
 |-----|-------|
 | Overview | Overview |
 | Chart | Chart, Trade (with a connected broker) |
-| Financials | Financials, Revenue, Diagnostic, Dividends, ADR vs Home (for a listing with a known receipt pair) |
-| Analysts | Analyst, Calls |
+| Financials | Statements, Revenue, Diagnostic, Dividend Yield, ADR vs Home (for a listing with a known receipt pair) |
+| Analysts | Coverage, Calls |
 | Options | Options |
 | Events | Earnings, Dividends, Catalysts, M&A |
 | Filings | SEC, 8-K, Risks |
-| Ownership | Holders, Insider, 13F, Congress, Short Interest |
+| Ownership | Holders, Insider, Buybacks (Hong Kong listings), 13F, Congress, Short Interest |
 | People | Exec, Hiring, Hiring momentum |
 | Buzz | News, Tweets, Apps |
-| Notes | Thesis, Notes |
+| Notes | Thesis, Notebook |
 
-`h` and `l` move between the tabs, `{` and `}` between the views of the one you are on, and a tab opens on the view last chosen in it, except Chart, which always opens on the chart: Trade opens only when you ask for the ticket. The pane menu's **Go to Tab…** lists every view under its tab. A plugin's tab gets a tab of its own after Notes. A view keeps its own id: `--tab risk-factors`, `?tab=risk-factors` and a pane locked to Risks open the same view as before.
+`h` and `l` move between the tabs, `{` and `}` between the views of the one you are on, and a tab opens on the view last chosen in it, except Chart, which always opens on the chart: Trade opens only when you ask for the ticket. The pane menu's **Go to Tab…** lists every view under its tab. A plugin's tab gets a tab of its own after Notes. A view keeps its own id: `--tab risk-factors`, `?tab=risk-factors` and a pane locked to Risks open the same view as before. No view is named like its tab: Statements was Financials, Coverage (analyst ratings and price targets) was Analyst and Notebook was Notes, and the old names still open them (`--tab analyst`). Dividend Yield, once a second Dividends, is `--tab dividend-yield`; `--tab dividends` opens Events > Dividends.
 
 Ticker Research shows the views that can have data for the instrument. A tab with none of them is left out, and a tab with one opens it directly.
 
@@ -548,6 +549,8 @@ Series are separated by commas, and tickers separated by spaces are a list too: 
 `CMP` and normalized price overlays measure every line to the last shared observation. Daily comparisons name the ending session above the plot. They use a forming daily bar only when every line has one for that session; otherwise they end together on an earlier shared close. A preset measures back from that common endpoint, using each listing's close on or before the baseline date.
 
 The `CMP` 1D preset uses intraday bars from the latest session, as `GP` does. Returns start at the first shared bar and end at the last shared bar. For US listings, use Extended hours (or `--extended-hours` in `fn` and `shot`) to include pre-market and after-hours bars. The 1W preset still compares daily closes.
+
+A ticker's price added to a comparison, from **Series** (`s`) or **+ add series**, joins it as one more leg: its close drawn like the other legs, rebased on the same axis. This holds for any chart whose prices are drawn as % change or an index of 100. Volume, fundamentals, FRED series and indicators are added as on any other chart. A chart still titled after its series (`CMP SMH · QQQ · RSP`) names the series added or removed, and counts those past the third (`CMP SMH · QQQ · RSP +1`). A title you gave the pane stays.
 
 A formula adds and subtracts series, each times a number, and charts the result in the Formula panel. The number goes on either side of its series (`HO=F*42`), and only the whole formula, in brackets, is divided or multiplied by a number or a series:
 
@@ -871,11 +874,12 @@ FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 fo
 - Select a row (Enter or click) for the source instrument, reporting lag, one-year range and each bank's next decision from its published calendar. `o` opens the official source, `r` refreshes.
 - `gloom fn CBR --json` carries each row's central bank, source series, link, next meeting and a citation line (`--history` adds the one-year history).
 
-**`IPO`** lists deals on the main US, Asia-Pacific and European exchanges from the last three months and the next six (the All, US, APAC and Europe tabs pick the region). The list runs in this order: deals in their offer now (`offering`), upcoming deals, `overdue` ones (listing day passed with no pricing or first session reported), priced and listed deals, then postponed deals.
+**`IPO`** lists deals on the main US, Asia-Pacific and European exchanges from the last three months and the next six (the All, US, APAC and Europe tabs pick the region). Upcoming reads soonest first throughout: deals in their offer now (`offering`), then every deal dated ahead, priced or not, then those with no date ahead, then `overdue` ones (listing day passed with no pricing or first session reported), filings and postponed deals. Recent listings read latest first.
 
 - `/` searches company names in either script, tickers, markets, countries, status and the region's name. The word `pending` lists deals not priced yet. `IPO japan` opens the pane on that search, as `gloom fn IPO japan` reads it.
-- DATE is the listing date in the venue's calendar, dimmed while expected. PRICE is the offer price once set, else the range, in the deal's currency (London in pence). SIZE is the money raised in US dollars. RETURN is the first session's close against the offer price. Enter or click opens a deal's ticker once it has one.
-- `gloom fn IPO --region apac --status upcoming --json` returns the same deals. `--status filed` or `--status withdrawn` returns the filings and withdrawn deals the pane leaves out.
+- The two views at the start of the bar split the deals: **Upcoming**, the deals not trading yet with their price or range and size, and **Recent listings**, the deals that have listed (or priced and reached their listing day) with RETURN. The pane opens on Upcoming, or on the list holding a search's matches, and an empty list says how many match on the other. STATUS shows a deal's status only where it differs from its list's (`priced`, `offering` or `overdue` among the upcoming deals, `priced` among recent listings whose first close is not in), and is left out when no row differs. It is coloured only where it says something: amber while offering, red when withdrawn.
+- DATE is the listing date in the venue's calendar, dimmed while expected, else the book's (dimmed too). A deal priced on a book that has closed, with no listing day named yet, shows no date and lists after the dated deals. PRICE is the offer price once set, else the range, in the deal's currency (London in pence). SIZE is the money raised in US dollars. RETURN is the first session's close against the offer price. Enter or click opens a deal's ticker once it has one.
+- `gloom fn IPO --region apac --status upcoming --json` returns the same deals; `--list upcoming` or `--list listed` returns one list under the pane's columns for it. `--status filed` or `--status withdrawn` returns the filings and withdrawn deals the pane leaves out.
 - An [IPO alert](#filing-event-alerts) follows a company or keyword on this calendar: `gloom alerts add ipo Stripe`, or **Add Event Alert**.
 
 `PERP` opens the [perpetuals board](perpetuals.md), and `PERP [market]` that market's History.
@@ -1004,6 +1008,7 @@ Rules sync with your price alerts. Push needs Cloud sync and a registered mobile
 - confirmed earnings date (days before), SEC filing type (8-K, 10-K, 10-Q, S-1, SC 13D/G, 6-K, 20-F), news keyword (symbol optional), analyst upgrade or downgrade, new 52-week high or low
 - unusual volume (multiple of the prior 20-session average), short interest change (percent between FINRA settlements), open-market insider buy or sell
 - an option IV spike for one OCC contract (Pro), and an IV level on a symbol
+- a Hong Kong buyback (Pro): a listing that starts buying its shares back after more than 20 sessions without a buy, or stops for 10 sessions after buying, with the results blackout the stop falls in. Name it by its code (`0700` or `0700.HK`)
 - options flow (Pro): a print at or above a premium (default $1M, typed as `1,000,000`, `$250k` or `1.5m`) on one symbol, or on any name in your portfolio and watchlists when the symbol is blank, optionally calls or puts only and sweeps or blocks only
 
 The **Events** tab shows each rule's last checked value with its one-year percentile and date when the pane is wide enough, and a flow rule its latest matching print. **History** lists the alerts that went off, newest first, with the rule, the figure and the quote behind it (`r` refreshes). The phone's notification settings have one switch for these market and research alerts.
@@ -1033,6 +1038,7 @@ gloom alerts add TSLA insider sell         # insider alone: buys or sells
 gloom alerts add GME short interest increase 20%
 gloom alerts add AAPL analyst downgrade    # analyst alone: upgrades or downgrades
 gloom alerts add ADYEN:AMS hiring slowing  # any listing HIRE covers
+gloom alerts add 0700.HK buyback stopped   # or buyback started; buyback alone for either
 gloom alerts add ipo Stripe                # a company or keyword on the IPO calendar
 gloom alerts add perps hyperliquid:default:BTC funding above 0.05%   # funding, oi, premium or closed-premium; the market id keeps its case (kPEPE)
 gloom alerts add catalyst                  # your portfolio and watchlists; PFE catalyst, catalyst type clinical, catalyst agency FDA, catalyst country US
@@ -1043,9 +1049,9 @@ gloom alerts add BRK.B filing 13F          # the 13F of the company's own filer,
 
 An IV level, earnings, CPI, FOMC or calendar date alert can run while signed out. Other event alerts require either sign-in or Pro. A rule that only needs an account reads `needs sign-in` in `gloom alerts list` and **Needs sign-in** in **Events** and `fn ALRT --tab events` until you sign in.
 
-Options flow, IV spike, catalyst, hiring move and perpetuals threshold alerts require Pro to be checked. **Add Event Alert** marks them (Pro). If you save one while signed out or on Free, it reads `needs Pro` in `gloom alerts list` and **Needs Pro** in **Events** and `fn ALRT --tab events`.
+Options flow, IV spike, catalyst, hiring move, buyback and perpetuals threshold alerts require Pro to be checked. **Add Event Alert** marks them (Pro). If you save one while signed out or on Free, it reads `needs Pro` in `gloom alerts list` and **Needs Pro** in **Events** and `fn ALRT --tab events`.
 
-A symbol is read as `gloom quote` reads it and must be a US listing, as in the dialog; a hiring rule or a catalyst's company may list anywhere, and an IV level also takes `BTC-USD` and `ETH-USD`. A news rule on a coin points to a keyword alert, which reads every story, on the words typed when they name the coin (`alerts add BTC-USD news bitcoin ETF` points to `gloom alerts add news "bitcoin ETF"`), else on its name: `gloom alerts add news bitcoin`. An IV spike's contract may be typed as OCC writes it or as traders do (`SPY 680C 11/19`, `SPY Nov 19 680 call`, `SPY261119C680`): one that names exactly one listed contract is read as it (`Read "SPY 680C 11/19" as SPY261119C00680000`), a date without a year being the next listed one; one that names none is refused with the OCC form and a listed contract to copy. The contract must be live: one past its expiry is refused (`Not a live contract: IBIT200101C00045000 expired on 2020-01-01.`). `gloom help alerts` lists every form, and words none of them reads are refused with the kinds there are. Adding a rule that already exists names the existing alert's ID and adds nothing.
+A symbol is read as `gloom quote` reads it and must be a US listing, as in the dialog; a hiring rule or a catalyst's company may list anywhere, a buyback rule names a Hong Kong listing, and an IV level also takes `BTC-USD` and `ETH-USD`. A news rule on a coin points to a keyword alert, which reads every story, on the words typed when they name the coin (`alerts add BTC-USD news bitcoin ETF` points to `gloom alerts add news "bitcoin ETF"`), else on its name: `gloom alerts add news bitcoin`. An IV spike's contract may be typed as OCC writes it or as traders do (`SPY 680C 11/19`, `SPY Nov 19 680 call`, `SPY261119C680`): one that names exactly one listed contract is read as it (`Read "SPY 680C 11/19" as SPY261119C00680000`), a date without a year being the next listed one; one that names none is refused with the OCC form and a listed contract to copy. The contract must be live: one past its expiry is refused (`Not a live contract: IBIT200101C00045000 expired on 2020-01-01.`). `gloom help alerts` lists every form, and words none of them reads are refused with the kinds there are. Adding a rule that already exists names the existing alert's ID and adds nothing.
 
 `v` (view, also in the footer and the pane menu) opens what the selected row follows, on **Prices**, **Events** and **History**:
 
@@ -1174,7 +1180,7 @@ If the next earnings date has not been announced, the rule is saved and waits fo
 
 `gloom fn ALRT` lists your price alerts, `--tab events` your event alerts with their event date, lead time and state, and `--tab history` the alerts that went off. `gloom shot ALRT --tab events` draws that tab.
 
-**Alert history.** Every alert the app fires (price, IV level, earnings, CPI, FOMC and other economic releases) is kept on this device, the last 1,000, with when it went off, the rule, the figure and the quote time and feed. **History** and `fn ALRT --tab history` list that log with no sign-in.
+**Alert history.** Every alert the app fires (price, IV level, earnings, CPI, FOMC and other economic releases) is kept on this device, the last 1,000, with when it went off, the rule, the figure and the quote time and feed. **History** and `fn ALRT --tab history` list that log with no sign-in. In **History**, an alert that went off on a figure (a price, a move, a valuation or technical reading, an IV level) shows that figure in Value, and a dash if the log has none for it.
 
 Signed in, they also merge in the alerts Gloom Cloud delivered to your phone or email over the last 90 days, and the Via column says which sent each: this app, Gloom Cloud or both.
 
@@ -1675,7 +1681,10 @@ A command exits 0 when it worked and 1 when it failed (bad input, no data found,
 **`shot`** saves its PNG, prints the Reason line and exits 0 even when the pane drew an error, was still loading, was behind an access gate, or drew a table column with no value in any row. A pane that drew nothing but its empty state ("No ticker selected.") exits 1, as `fn` does for an empty report. `shot --strict` exits 2 in all those cases without writing or replacing a PNG (`--json` carries `saved`, `usable` and `unusableReason`). `fn` fails on `--strict`. A table column the picture cuts at its edge is a warning that names the columns (`warning:` on stderr, `warnings` and `cutColumns` in `--json`): a wider `--width` shows them, and the picture stays usable.
 
 - The Reason quotes what an error or empty state said (`The pane rendered an empty state. It reads "No movers returned."`) and names a column blank in every row (`The VOL and V/AVG columns are blank in every row.`); `--json` lists those columns in `blankColumns`.
-- A column is blank when every row of a table of three rows or more shows a dash or `n/a` in it. Expected blanks do not count: an unfired rule's **Alerted** cell in `ALRT`, an IPO's first-day return, or a halt's resumption time. A plugin marks these with `mayBeBlank` on the column or on the individual rows where the value does not apply.
+- A column is blank when every row of a table of three rows or more shows a dash or `n/a` in it. Expected blanks do not count: an unfired rule's **Alerted** cell in `ALRT`, an IPO's first-day return, or a halt's resumption time. A plugin marks these with `mayBeBlank`: on the column when no row ever owes the value, otherwise on the individual rows where it does not apply or is not due yet. A row is marked by what else it says (its status, its kind, its time), never by the dash itself, and a marked row is left out whatever its cell shows: a dash, or words in place of the value (an analyst call's `Analyst` under **Period**, a rule change's `Created` under **Value**). Three rows or more that owe the value and all show a dash fail the capture whatever the other rows are, and the Reason's "blank in every row" then means every row that owes it.
+- A row that cannot say whether its dash is a value lost counts as owing it. So these columns fail a capture in which every row that owes them is blank, though nothing may be missing: `ECO`'s **Forecast** and **Prior** on a row that prints a figure (a release nobody forecasts, a consensus not in yet and an indicator's first release read the same as a lost figure; a speech, and a row past the listing's end, owe no forecast), `CALLS`' **Period** on an earnings call (an event such as an analyst call reads by its label and owes no period, and the label is none for the calls beside it; **Length** is not among these, as the list drops it while no call has one), `MA`'s **Terms**, **Value** and **Close** on an agreed deal (terms the parties did not disclose, a value nobody announced and a close with no date read the same as a lost one; a deal in talks owes none) and **Ann.** on a positive spread with no close date to annualize to (it follows **Close**; a partial offer and a close less than a day off have no annual return and owe none, with a quote or without, and neither does a quoted spread that is not positive; a full offer further from its close owes one, so its missing quote or figure is named), `IPO`'s **Price** on a priced or listed offering, and **Fees** on a broker's fills (a commission of zero is a figure; a broker that reports none is not told apart).
+- The other way round, a row is read as owing nothing by its other fields, so a value lost together with them is not named: an `ECO` row with no actual, forecast or prior reads as a speech, and an `MA` deal with no cash or ratio per share reads as one with no spread, so its **Spread** and **As of** are not owed.
+- `ALRT`'s History owes a **Value** on an alert this app fired on a figure (a price, a move, a valuation or technical reading, an implied volatility level): with none it shows a dash, and three such lines or more with no figure among them fail the capture, whatever other lines are listed. No other line owes one, and none counts for those that do: a rule change says what was done there (`Created`), a dated event what it announced, and a delivery carries a figure only from a server that sends one. **Quote** and **Source** are owed by no line: the app writes a quote's time and how current its feed is only where the quote states them.
 
 - `shot` takes a function's options as `fn` reads them: `shot 13F 0001067983 --compare SPY` opens the fund's Overlap against SPY's holdings, and a filter the pane keeps opens it filtered (`shot MA --status completed`, `shot INS AAPL --name "COOK TIMOTHY D"`, `shot CG --chamber senate --side BUY`, `shot HDS AAPL --sort change`, `shot RISK AAPL --year 2024`).
 - An option only the report reads (`--limit`, `--offset`, `--explain`, `--section`, or a report filter like `--availability` on `CALLS`) fails with exit 1 and names the `fn` command that reads it. So do `--limit` or `--tail` on a function with no such option (`shot HP AAPL --tail 5`) and a slip of an option's name (`--veiw`).
@@ -1988,6 +1997,8 @@ A row's own `symbol` and `currency` fill the first two when a command does not s
 
 **Period headers.** `fn FA` heads each column with the fiscal period, as the pane names it, then the day it ends, the currency and the table's unit: `FY2026 2026-09-30 USD bn (SEC date)`, `TTM Q3 FY26 2026-09-30 USD`. `(SEC date)` is the period end the company's 10-K or 10-Q states; `(provider date)` is the statements source's date for it, which can be a few days off. The notes say which the table has. Every money row is in the table's one unit, a small line to three decimals (`0.001`), so no row names a unit of its own.
 
+**In the pane.** `FA` and a ticker's Statements view (Financials tab) head each column with the fiscal period alone (`FY2026`, `TTM Q3 FY26`) and give the day it ends in the first row, **Period end**, on the statements and on the ratio tabs. A statement column is as wide as its figures, so more periods show side by side: five in a 96-column terminal, three in the browser's research pane, two on a phone. The metric names give up room for a whole period, never for part of one. The cursor passes the Period end row, and a CSV export keeps it as its first row.
+
 **Several companies.** `gloom fn FA V MCO CPRT --statement profitability` (up to 10 tickers) is one long table, a row per ticker, fiscal period and metric: `Ticker`, `Period` (`FY2026`, `TTM Q3 FY26`), `Period End`, `Metric`, `Value` and, in the text, `Unit`. Money is in the unit most of the tables take (`USD bn`), percents are in percent, and an input several ratios share (Net Income under ROE, ROA and Net Margin) is one row. Its CSV names each row's unit in `currency_or_unit` and its period end in `as_of`; a figure that is missing is empty, its reason (`needs prior period`, `not reported`) in `status`. `--layout long` lays one ticker out the same way; `--layout wide` is one ticker's periods as columns, the default for one. `shot FA` captures one ticker's pane. With `--csv` a wide table also names each row's unit (`USD bn`, `%`), `interval` (`annual` or `quarterly`) and its newest period end in `as_of`.
 
 **Periods from results announcements.** In Hong Kong, for A+H companies and in Singapore, Gloom Cloud fills the latest year and half from the company's results announcements. `fn FA` heads a filled column with the day it was announced alone (`FY2025 2025-12-31 CNY bn (announced 2026-03-25)`), and `--json` gives it as `announced`. A column read from a later period's comparative figures (last year's half in this year's interim report) is dated by the first announcement of that later period (`H1 FY25 2025-06-30 CNY bn (comparative in the 2026-08-20 announcement)`, `comparativeIn` in `--json`), never by a report published after it. A half in `--period quarterly` is headed as one (`H1 FY26 2026-06-30`), and its growth is against the same half a year earlier. A filled year has its year-on-year growth; where Gloom Cloud says which lines its announcement restates as the statements have them, only those. The TTM of a half-yearly reporter is the year plus the half since it, less the same half a year earlier, and the notes say so. A quarterly reporter missing a quarter's revenue gets the same TTM instead of four incomplete quarters.
@@ -2122,6 +2133,16 @@ A row's LAST, CHG and CHG% are the price its value uses, so LAST times the share
 - At the latest print, after the close or before the open, LAST is the extended-hours print, marked by its session (`AH 158.78`, `PM`, `ON`). Its CHG% is measured from the same close as DAY, and the header's Day names both (`Day -101.10 (-5.99%) AH vs Tue 10 Nov close`). The EXT% column keeps the print's move from the regular close (`-8.61%`), as `quote`'s After Hours line does.
 - At the regular close, LAST is the regular session as `quote` heads it, with the extended print in EXT%. A watchlist values nothing and shows LAST the same way.
 - The header's totals read to the unit (`Val 1,588`, `Day -101.10`), compact only from a billion (`1.23B`).
+
+### BOOK UTC in the PF pane
+
+BOOK UTC is when a row's bid and ask were quoted, which is not when its last trade was. Every row gives the calendar day and the clock, today's too: `11-24 23:40` is 24 November, month before day as in an ISO date, and a book from another year leads with it (`2025-09-19 00:30`). What the book is stands as a mark before the time:
+
+- The session, where it is not the regular one: `PM`, `AH`, `lunch` for a venue's midday break, and `closed` for a quote left while the market was shut. No mark is the regular session, or a venue whose hours are not known.
+- The feed, first, by the book's own source, which can differ from the price's: `◷` for a delayed feed (`◷AH 11-24 23:40`) and `snap` for a snapshot. No mark is a real-time book, or a source that does not say.
+- `not dated` is a book its source sent without a time. It is never given the trade's time, and its marks are the quote's own state.
+
+The column is 11 cells and widens to its longest row, 28 at most (`snap closed 2025-09-19 00:30`). `gloom ticker`, DES and the order ticket say the same in words (`Tue 24 Nov 23:40 UTC · after-hours · delayed`), and a CSV export of the table keeps the whole time in UTC.
 
 ### Futures
 
@@ -2511,7 +2532,7 @@ A pane that shows your own data asks once before Share makes its link, `Copy a p
 |---------------|-------|
 | `This shows your holdings.` | Your portfolios (not watchlists), Portfolio Analytics, the position sizer, Earnings Ripple on your holdings, a heat map of a portfolio, Relative Rotation and `VCA` linked to a portfolio, Ticker Research and `OMON` on a ticker you hold |
 | `This shows your account details.` | Brokers, ACM and Team |
-| `This shows private messages.` | A DM, group or team chat, Unread Chat, Quick Notes, Ticker Research on its Notes tab and Ask Gloom |
+| `This shows private messages.` | A DM, group or team chat, Unread Chat, Quick Notes, Ticker Research on its Notebook view and Ask Gloom |
 
 To show a picture of a pane in chat, copy it with Copy Screenshot and paste it into the message field on the desktop or the web.
 
@@ -2588,7 +2609,7 @@ Closing the pane keeps the conversation (opening it with a question starts a new
 
 Every pane can be asked about: the spark beside the `?` in its header on the desktop and the web, **Ask Gloom** in its pane menu, or `Alt+A` (`Cmd+Shift+A` or `Ctrl+Shift+A` on the desktop). Where a browser keeps `Ctrl+Shift+A` for itself (Chrome's tab search), use `Alt+A`.
 
-Ask Gloom opens with a new conversation, the pane attached above the question field (the x takes it off), and the field holds `What does this pane show?` to edit or send. Nothing is asked until you press Enter. What goes with the pane is its function and how it is set (`DES AAPL` on its Financials tab, a chart's range) and a short summary of the text it shows.
+Ask Gloom opens with a new conversation, the pane attached above the question field (the x takes it off), and the field holds `What does this pane show?` to edit or send. Nothing is asked until you press Enter. What goes with the pane is its function and how it is set (`DES AAPL` on its Statements view, a chart's range) and a short summary of the text it shows.
 
 A pane that shows your own data asks first, the same panes that ask before Share (see Share): `y` or Attach sends what it shows, `n` or Leave out sends only which function it is.
 
@@ -2674,6 +2695,7 @@ Gloom includes English, Spanish, Simplified Chinese, Traditional Chinese, Japane
 - Supported `LANG` / `LC_ALL` and desktop system locales select the matching interface automatically.
 - `LANG` in the command bar (Ctrl+P) cycles languages, or use `LANG auto`, `LANG en`, `LANG es`, `LANG zh-CN`, `LANG zh-TW`, `LANG ja`, `LANG ko`. The choice is saved in `config.json`.
 - `GLOOMBERB_LANG=ja gloomberb` overrides it for one run.
+- Plugins can supply their own translations, including for table headers they explicitly opt in. This does not change other panes' labels, CSV headers, or automation. See [Plugin translations](../PLUGINS.md#plugin-translations).
 
 ## Built-in plugins
 
@@ -2683,7 +2705,7 @@ Each built-in plugin can be switched on or off in `PL`. The Commodities & Energy
 |--------|-----------|
 | Ticker Research | The research pane, DES, FA, QQ, HP, RETURN, the G charts, CAT, ANR, DIAG, EVT, RV, EE, EM, GUID, KPIS, GUIDE, SEG, DVD, RDCF, PEB, EXEC, TAS |
 | Options & Volatility | OMON, OPX, GEX, OVME, OSA, CSP, OVDV, HVG, HVT, HIVG, VCA |
-| Ownership & Insiders | HDS, 13F, INS, SI, SIW, SIV, the Congress tab |
+| Ownership & Insiders | HDS, 13F, INS, SI, SIW, SIV, the Buybacks and Congress tabs |
 | Filings & Events | SEC, ETF, RISK, EK, CATL, LITI, MA, DIST |
 | Credit & Bonds | CDS, CDX, SOVR, CRD, AUCT, YAS, CRDOC, COVN, DDIS |
 | Earnings | ERN, EVTS, CALLS, RIPL |
@@ -2695,7 +2717,7 @@ Each built-in plugin can be switched on or off in `PL`. The Commodities & Energy
 | Commodities & Energy | FUT, CTM, COT, DOE, NGS, PSD, JODI |
 | Crypto & Perps | CRYP, ETFF, PERP |
 
-A research tab belongs to the plugin of its function: switching off Ownership & Insiders removes the Holders, 13F, Insider, Short Interest and Congress tabs. Switching a plugin off hides its panes without closing them, and they come back with their state when it is switched on. Typing one of its codes in the command bar offers **Turn on**.
+A research tab belongs to the plugin of its function: switching off Ownership & Insiders removes the Holders, 13F, Insider, Buybacks, Short Interest and Congress tabs. Switching a plugin off hides its panes without closing them, and they come back with their state when it is switched on. Typing one of its codes in the command bar offers **Turn on**.
 
 The old ids `ticker-research`, `macro` and `market-overview` still switch a whole group (`gloom plugin disable macro` turns off every successor). Credit & Bonds and Earnings belong to both Ticker Research and Macro, and Supply Chain & Alt Data and Quant to both Ticker Research and Market Overview.
 
@@ -2922,6 +2944,10 @@ Besides valuation, growth, margins, short interest, insider and 13F activity and
   - **INST OWN%** (`institutionalOwnershipPercent`): shares 13F filers reported for the latest complete quarter, each filer once, over the balance-sheet share count at that quarter end, as of the quarter end. Unavailable where no balance sheet falls within 7 days of the quarter end, or where the 13F holdings and the share count may not be the same shares, such as across a split or a CUSIP change. Over 100% is shown as partial with its reason: lent shares are reported by the lender and by the fund that bought them.
 
   A settlement more than 45 days old, a count no filing dates or a float above the shares outstanding leaves the field unavailable with its reason, never an old or mismatched value. Partial values screen and sort like any other: `floatShares lte 20M` with `shortPercentOfFloat gte 20` finds small, heavily shorted floats. There is no insider ownership field: the stored Form 4 filings do not reach every insider's holdings.
+- **Buybacks**, Hong Kong listings, Pro, from the companies' next day disclosure returns (see [Hong Kong buybacks](research-data.md#hong-kong-buybacks)):
+  - **BUYBACK 5D %VOL** (`buybackVolume5dPercent`): shares bought on the Exchange over the last five sessions every return is in for, as a percent of those sessions' volume. 0 for a listing that bought none, which has no percentile: buyers rank among buyers.
+  - **MANDATE LEFT %AUTH** (`buybackMandateLeftPercent`): the shares the current mandate still allows, as a percent of the most it authorises, not of the shares in issue.
+  - **TO BLACKOUT** (`buybackBlackoutDays`): days until the next results blackout opens, 0 inside one. Partial when the results date is estimated from the year before or bounded by the Listing Rules' deadline.
 - **Quality**, on the bases `FA` and `EE` use, so a screen and `FA` agree for the same company and period:
   - **ROIC%** (`roicPercent`), **FCF YLD%** (`fcfYieldPercent`), **ND/EBITDA** (`netDebtToEbitda`) and **D/E** (`debtToEquity`): `FA`'s profitability, valuation and leverage ratios for its leading annual column, the trailing four quarters or the fiscal year when those quarters are it, each as of that period's end. FCF yield prices the period at its own close, as `FA`'s Valuation tab does.
   - **REV CAGR 3Y%**, **REV CAGR 5Y%**, **EPS CAGR 3Y%** and **EPS CAGR 5Y%** (`revenueCagr3YPercent`, ...): compound annual growth from the fiscal year three or five years before the latest. Both years come from the stored statements, or both from the annual SEC filings `GF` charts (US filers), never one of each. EPS is diluted, on today's share basis.

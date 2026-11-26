@@ -30,6 +30,12 @@ export const OPTION_VOLATILITY_FIELDS = ["iv30Percent", "ivPercentile", "iv30Cha
  */
 export const OWNERSHIP_FIELDS = ["sharesOutstanding", "floatShares", "shortPercentOfFloat", "institutionalOwnershipPercent"] as const;
 /**
+ * A Hong Kong listing's buyback: shares it bought on the Exchange over the last five sessions as a % of their volume,
+ * the share of its repurchase mandate left, and the days until its next results blackout starts (0 inside one); Pro,
+ * listed only when asked (`include=buybacks`), and omitted by a server from before them.
+ */
+export const BUYBACK_FIELDS = ["buybackVolume5dPercent", "buybackMandateLeftPercent", "buybackBlackoutDays"] as const;
+/**
  * ROIC, FCF yield, leverage, revenue and EPS CAGRs and consensus growth, on the bases `FA` and `EE` use; listed only
  * when asked (`include=quality`), and omitted by a server from before them.
  */
@@ -110,6 +116,7 @@ export const NUMERIC_FIELDS = [
   "ivToHv",
   ...OPTION_VOLATILITY_FIELDS,
   ...OWNERSHIP_FIELDS,
+  ...BUYBACK_FIELDS,
   ...QUALITY_FIELDS,
   ...SCORE_FIELDS,
   ...GRADE_FIELDS,

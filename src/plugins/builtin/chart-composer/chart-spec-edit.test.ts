@@ -9,6 +9,7 @@ import {
   rebindResearchChartSpec,
 } from "./chart-spec-edit";
 import { setBuiltinStudies } from "./studies";
+import { priceComparisonSeriesIds } from "../../../time-series/price-comparison";
 import { setStandaloneSeriesCatalog } from "../../../series/standalone-catalog";
 import { GOVERNMENT_BOND_SERIES, TREASURY_SERIES } from "../yield-curve/series";
 import { CENTRAL_BANK_SERIES } from "../central-bank-rates/series";
@@ -146,6 +147,42 @@ describe("chart composer series placement", () => {
       panelId: "main",
     });
     expect(parseChartSpec(appended.spec)).not.toBeNull();
+  });
+
+  // SPY added to `CMP SMH, QQQ, RSP` from the Series search or + add series drew raw candles on a dollar axis of its
+  // own beside the legs' % lines, and the chart stopped comparing them (no shared endpoints, no leverage overlay).
+  test("a ticker's price added to a rebased comparison joins it as one more leg", () => {
+    const comparison = buildComparisonChartPreset(["SMH", "QQQ", "RSP"]);
+    for (const fieldId of ["market.ohlcv", "market.close"]) {
+      const suggestion = { id: "spy", label: "SPY · Price", description: "", detail: "", expression: { kind: "security" as const, symbol: "SPY", exchange: "NYSEARCA", fieldId } };
+      const added = appendCatalogSuggestion(comparison, suggestion);
+      const { id: _id, source, ...presentation } = added.series;
+      const { id: _legId, source: legSource, ...legPresentation } = comparison.series[0]!;
+      expect(presentation).toEqual(legPresentation);
+      expect(source).toEqual({ ...legSource, instrument: { symbol: "SPY", exchange: "NYSEARCA" } } as typeof source);
+      expect(priceComparisonSeriesIds(added.spec)).toEqual(added.spec.series.map((series) => series.id));
+      expect(added.spec.panels).toEqual(comparison.panels);
+    }
+
+    // An index of 100, as the Series dialog's transform sets it, or legs moved to another axis, are joined as they are.
+    const indexed = { ...comparison, series: comparison.series.map((series) => ({ ...series, transform: "index100" as const, axis: "right" as const })) };
+    expect(appendChartSeries(indexed, { kind: "security", symbol: "SPY", fieldId: "market.ohlcv" }).series)
+      .toMatchObject({ style: "line", transform: "index100", axis: "right", panelId: "main" });
+  });
+
+  test("other series added to a comparison, and prices added to a chart of raw prices, keep their own defaults", () => {
+    const comparison = buildComparisonChartPreset(["SMH", "QQQ"]);
+    expect(appendChartSeries(comparison, { kind: "security", symbol: "SPY", fieldId: "market.volume" }).series)
+      .toMatchObject({ style: "columns", transform: "raw", panelId: "volume", source: { fieldId: "market.volume" } });
+    expect(appendChartSeries(comparison, { kind: "security", symbol: "SPY", fieldId: "fundamental.totalRevenue" }).series)
+      .toMatchObject({ style: "columns", transform: "raw", panelId: "fundamentals", source: { timestampMode: "available-at" } });
+    expect(appendChartSeries(comparison, { kind: "economic", provider: "fred", seriesId: "DGS10" }).series)
+      .toMatchObject({ transform: "raw", axis: "auto" });
+
+    // Unrebased closes (`G SMH:close, QQQ:close`) take a price at its own defaults.
+    const closes = buildCustomChartPreset("SMH:close, QQQ:close");
+    expect(appendChartSeries(closes, { kind: "security", symbol: "SPY", fieldId: "market.ohlcv" }).series)
+      .toMatchObject({ style: "candles", transform: "raw", axis: "auto", source: { fieldId: "market.ohlcv" } });
   });
 
   test("keeps bulk custom price expressions valid with one OHLC presentation per panel", () => {

@@ -117,8 +117,8 @@ export const timeSalesHeadless: HeadlessPaneDefinition<"bundle"> = {
       description: "End of the window, as --from takes it; without --from the window starts at 04:00 New York time.",
       normalize: normalizeTapeClock },
   ],
-  discovery: { aliases: ["TAS", "QR"], dataRequirements: ["Gloom Cloud SIP trade and quote feed"],
-    limitations: ["Bounded observed window, not a complete session.", "SIP is delayed fifteen minutes without realtime entitlement.", "Quote sizes are round lots.", "No Level 2 or inferred aggressor side."] },
+  discovery: { aliases: ["TAS", "QR"], dataRequirements: ["Gloom Cloud consolidated US trades and quotes"],
+    limitations: ["Bounded observed window, not a complete session.", "Trades and quotes are delayed fifteen minutes without realtime entitlement.", "Quote sizes are round lots.", "No Level 2 or inferred aggressor side."] },
   // QR is the NBBO view of the same tape: its report leads with the quotes, named as such.
   describe: (args, result) => `${result?.metadata?.view === "quotes" ? "Quote recap" : "Time and sales"} ${args.argument ?? ""}`,
   async load(args, ctx) {
@@ -162,7 +162,7 @@ export const timeSalesHeadless: HeadlessPaneDefinition<"bundle"> = {
     ];
     // Each low says what it is the low of: the window's every print, the session's as quote and GIP read it.
     const lows = [...notes, tapeRangeBasis(tape[0]!.title)];
-    return { freshness, notes: lows, sections: quotesView ? [nbbo, ...tape] : [...tape, nbbo], errors: data.gaps, metadata: { source: data.source, feed: data.feed, delaySeconds: data.delaySeconds,
+    return { freshness, notes: lows, sections: quotesView ? [nbbo, ...tape] : [...tape, nbbo], errors: data.gaps, metadata: { source: data.source, access: data.access, delaySeconds: data.delaySeconds,
       asOf: data.asOf, observedFrom: data.observedFrom, generatedAt: data.generatedAt, status: data.status, ...(windowed ? { window: windowed.range } : {}),
       complete: data.status === "available", capacity: data.capacity, dropped: data.dropped, corrections: data.corrections, cancels: data.cancels, connected: data.connected,
       ...(quotesView ? { view: "quotes" } : {}) } };

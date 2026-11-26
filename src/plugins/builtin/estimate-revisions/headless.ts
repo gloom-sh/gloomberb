@@ -3,7 +3,28 @@ import { explainRefusal } from "../shared/cloud-denied";
 import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 import { fetchEstimates } from "./client";
 import { estimateRevisionsLockNote } from "./lock-note";
-import { estimateCurrent, periodLabel, pinnedEstimatePeriods } from "./model";
+import { estimateCurrent, estimateDifference, estimateSurprise, periodLabel, pinnedEstimatePeriods } from "./model";
+import type { EstimateSurprise } from "../../../api-client/estimate-revisions";
+import { isNotMeaningful } from "../../../utils/growth";
+
+/**
+ * A report as the Surprises tab reads it: `percent` is the surprise the pane
+ * shows, the actual over the estimate (the source's own only when either is
+ * missing), and null with `percentNotMeaningful` against a loss or zero estimate;
+ * `difference` is its VS EST, the actual less the estimate.
+ */
+function surpriseRow(row: EstimateSurprise) {
+  const surprise = estimateSurprise(row);
+  const difference = estimateDifference(row);
+  return {
+    ...row,
+    // Worked out from two cent figures, without the float's noise (2.10 - 1.98).
+    difference: difference == null ? null : Number(difference.toFixed(4)),
+    percent: typeof surprise === "number" ? Number((surprise * 100).toFixed(2)) : null,
+    ...(isNotMeaningful(surprise) ? { percentNotMeaningful: true } : {}),
+  };
+}
+
 export const estimateRevisionsHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
   freshness: { status: "not-a-feed", basis: "analyst estimates" },
@@ -88,7 +109,7 @@ export const estimateRevisionsHeadless: HeadlessPaneDefinition<"bundle"> = {
             period.breadth.map((row) => ({ period: period.id, ...row })),
           ),
         },
-        { title: "Surprises", rows: data.surprises.map((row) => ({ ...row })) },
+        { title: "Surprises", rows: data.surprises.map(surpriseRow) },
         {
           title: "Guidance",
           rows: data.guidance ? [{ ...data.guidance }] : [],

@@ -12,9 +12,10 @@ export const MISSING = MISSING_VALUE;
 
 const MS_PER_DAY = 86_400_000;
 
-/** What the deal table says with no rows: the search that matched none, or the company with no deal. */
-export function emptyDealsTitle(symbol: string | null, query: string): string {
-  return query ? "No matching deals." : symbol ? `No deals involving ${symbol}.` : "No deals.";
+/** What the deal table says with no rows: the search that matched none, or the company with no deal; on a split pending list, which half. */
+export function emptyDealsTitle(symbol: string | null, query: string, terms: "priced" | "unpriced" | null = null): string {
+  const kind = terms === "priced" ? "priced deals" : terms === "unpriced" ? "deals without terms" : "deals";
+  return query ? `No matching ${kind}.` : symbol ? `No ${kind} involving ${symbol}.` : `No ${kind}.`;
 }
 
 const CURRENCY_SIGNS: Record<string, string> = { USD: "$", EUR: "€", GBP: "£", JPY: "¥", CNY: "¥", INR: "₹", KRW: "₩" };
@@ -84,6 +85,32 @@ export function termsLabel(terms: MnaTerms): string {
   if (terms.cvr) label += " + CVR";
   if (terms.partial) label += ", partial";
   return label;
+}
+
+/**
+ * Pending deals split by whether they say what one target share gets: a deal
+ * with cash or an exchange ratio per share has a spread to read (merger
+ * arbitrage), one announced as "cash" or with no terms yet has none, and
+ * its own shorter row.
+ */
+export type MnaTermsView = "priced" | "unpriced";
+
+export const MNA_TERMS_VIEWS: readonly { value: MnaTermsView; label: string }[] = [
+  { value: "priced", label: "Priced" },
+  { value: "unpriced", label: "No terms" },
+];
+
+export function isMnaTermsView(value: unknown): value is MnaTermsView {
+  return value === "priced" || value === "unpriced";
+}
+
+/** Cash or shares per target share: what a spread prices. */
+function hasPerShareTerms(terms: MnaTerms): boolean {
+  return terms.cashPerShare != null || terms.exchangeRatio != null;
+}
+
+export function mnaTermsView(deal: Pick<MnaDeal, "terms">): MnaTermsView {
+  return hasPerShareTerms(deal.terms) ? "priced" : "unpriced";
 }
 
 const STATUS_LABELS: Record<MnaStatus, string> = {
@@ -383,12 +410,45 @@ export function dealSpread(
   } else {
     priced = { ...latest, latest: null };
   }
-  const close = expectedCloseDate(deal.expectedClose);
-  const days = close ? (close.getTime() - now) / MS_PER_DAY : null;
-  const annualized = !deal.terms.partial && priced.spread > 0 && days != null && days >= 1
+  const days = daysToExpectedClose(deal, now);
+  const annualized = !deal.terms.partial && priced.spread > 0 && days != null && days >= MIN_ANNUALIZED_DAYS
     ? priced.spread * 365 / days
     : null;
   return { ...priced, annualized, legs };
+}
+
+/** A close nearer than this, or past, has no annual rate to state: the spread is all that is left of the return. */
+const MIN_ANNUALIZED_DAYS = 1;
+
+/** Days from `now` to the expected close, negative once it has come; null with no date to read. */
+function daysToExpectedClose(deal: Pick<MnaDeal, "expectedClose">, now: number): number | null {
+  const close = expectedCloseDate(deal.expectedClose);
+  return close ? (close.getTime() - now) / MS_PER_DAY : null;
+}
+
+/**
+ * Whether the ANN. of a deal that has a spread to read is blank with no
+ * figure missing, by the terms dealSpread states no annual return on: the
+ * offer is for part of the shares, the expected close is less than a day off
+ * (MIN_ANNUALIZED_DAYS, the one boundary both read), or the spread is not
+ * positive.
+ *
+ * The first two are the deal's own, so they hold with no quote too (`spread`
+ * null): such a deal never has the figure, whatever its price turns out to
+ * be. The third takes a quote to know.
+ *
+ * Every other deal owes the figure. A full offer a day or more from its close
+ * has an annual return wherever its spread is positive, so its blank is a
+ * figure the list lost, or a quote it lost, however well the date reads. One
+ * with no close date to annualize to follows the CLOSE the deal owes: the
+ * list cannot tell a deal that gives no date from one whose date was lost.
+ */
+export function annualizedMayBeBlank(deal: Pick<MnaDeal, "terms" | "expectedClose">, spread: DealSpread | null, now: number): boolean {
+  if (spread?.annualized != null) return false;
+  if (deal.terms.partial) return true;
+  const days = daysToExpectedClose(deal, now);
+  if (days != null && days < MIN_ANNUALIZED_DAYS) return true;
+  return spread != null && spread.spread <= 0;
 }
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;

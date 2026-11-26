@@ -1,5 +1,5 @@
 import type { DataProvider, EarningsEvent } from "../../../types/data-provider";
-import type { CorporateActionsData, EarningsAction, EarningsDateStatus, EarningsEpsBasis } from "../../../types/financials";
+import type { CorporateActionsData, EarningsAction, EarningsDateStatus, EarningsEpsBasis, FilingEpsDetails } from "../../../types/financials";
 import { logFailure } from "../../../utils/log-failure";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
 import { isNotMeaningful } from "../../../utils/growth";
@@ -278,7 +278,7 @@ function needsRecordedQuarters(event: EarningsEvent, today: string): boolean {
   return event.epsActual == null && (calendarDay(event) <= today || calendarStatus(event, today) !== "confirmed");
 }
 
-export interface ResolvedEarningsEvent extends EarningsEvent {
+export interface ResolvedEarningsEvent extends EarningsEvent, FilingEpsDetails {
   /** Out, announced or projected, after resolution; null when no source says. */
   dateStatus: EarningsDateStatus | null;
 }
@@ -286,10 +286,16 @@ export interface ResolvedEarningsEvent extends EarningsEvent {
 const TIMING_OF_TEXT: Record<string, EarningsEvent["timing"]> = { "Pre Market": "BMO", "After Hours": "AMC" };
 
 /** The calendar's event without its consensus, which is another quarter's than the report's. */
-function withoutConsensus(event: EarningsEvent): EarningsEvent {
-  const stripped: EarningsEvent = { ...event, epsEstimate: null, revenueEstimate: null, epsBasis: null };
-  delete stripped.estimateBasis;
-  for (const field of EARNINGS_ESTIMATE_FIELDS) if (stripped[field] != null) stripped[field] = null;
+function withoutConsensus(event: EarningsEvent, epsOnly = false): EarningsEvent {
+  const stripped: EarningsEvent = { ...event, epsBasis: null };
+  const basis = { ...event.estimateBasis };
+  for (const field of EARNINGS_ESTIMATE_FIELDS) {
+    if (epsOnly && !field.startsWith("eps")) continue;
+    if (stripped[field] != null) stripped[field] = null;
+    delete basis[field];
+  }
+  if (epsOnly && Object.keys(basis).length) stripped.estimateBasis = basis;
+  else delete stripped.estimateBasis;
   return stripped;
 }
 
@@ -308,10 +314,12 @@ function eventOfRow(event: EarningsEvent, row: EarningsAction, report: CalendarR
   const earningsDate = ownDate ? event.earningsDate : new Date(`${row.date}T00:00:00.000Z`);
   const rowTiming = TIMING_OF_TEXT[row.time ?? ""];
   if (report) {
-    const base = report.ownConsensus ? event : withoutConsensus(event);
-    const recordFigures = row.epsActual != null && event.epsActual == null;
+    const filed = row.epsActual != null && row.epsBasis === "company-adjusted";
+    const base = !report.ownConsensus ? withoutConsensus(event) : filed ? withoutConsensus(event, true) : event;
+    const recordFigures = row.epsActual != null && (event.epsActual == null || filed);
     return {
       ...base,
+      ...(filed ? { streetEps: row.streetEps, gaapEps: row.gaapEps } : {}),
       earningsDate,
       earningsCallDate: ownDate ? event.earningsCallDate ?? null : null,
       // The company's time is for its own date, never another the record places the report on.
@@ -319,7 +327,7 @@ function eventOfRow(event: EarningsEvent, row: EarningsAction, report: CalendarR
       isDateEstimate: statusFlag(dateStatus) ?? (dateStatus === "reported" ? base.isDateEstimate ?? null : null),
       epsEstimate: recordFigures ? row.epsEstimate ?? null : base.epsEstimate ?? row.epsEstimate ?? null,
       epsAnalysts: recordFigures ? row.epsAnalysts ?? null : base.epsAnalysts ?? row.epsAnalysts ?? null,
-      epsActual: event.epsActual ?? row.epsActual ?? null,
+      epsActual: recordFigures ? row.epsActual! : event.epsActual ?? row.epsActual ?? null,
       epsBasis: recordFigures ? row.epsBasis ?? null : base.epsBasis ?? row.epsBasis ?? null,
       surprise: recordFigures ? row.surprisePercent ?? null : base.surprise ?? row.surprisePercent ?? null,
       timing: (ownDate && event.timing) || rowTiming || event.timing,
@@ -335,6 +343,7 @@ function eventOfRow(event: EarningsEvent, row: EarningsAction, report: CalendarR
     epsEstimate: row.epsEstimate ?? null,
     epsAnalysts: row.epsAnalysts ?? null,
     epsActual: row.epsActual ?? null,
+    ...(row.streetEps ? { streetEps: row.streetEps, gaapEps: row.gaapEps } : {}),
     epsBasis: row.epsBasis ?? null,
     revenueEstimate: null,
     revenueActual: null,

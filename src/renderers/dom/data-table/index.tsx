@@ -157,6 +157,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   showHorizontalScrollbar = true,
   freezeFirstColumn: freezeFirstColumnProp,
   scrollToIndex,
+  scrollToIndexFrom,
   scrollToIndexAlign = "nearest",
   scrollToIndexVersion = 0,
 }: DataTableProps<T, C>) {
@@ -326,14 +327,14 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
       }
       return;
     }
-    const scrollRequestKey = `${scrollToIndex}:${scrollToIndexVersion}:${scrollToIndexAlign}`;
+    const scrollRequestKey = `${scrollToIndex}:${scrollToIndexFrom ?? ""}:${scrollToIndexVersion}:${scrollToIndexAlign}`;
     if (lastAppliedScrollRequestRef.current === scrollRequestKey) return;
     const targetIndex = Math.max(0, Math.min(scrollToIndex, items.length - 1));
     const element = bodyElementRef.current;
     if (!element) return;
     const viewportRows = Math.max(1, Math.floor((element.clientHeight - tableHeaderPx()) / WEB_CELL_HEIGHT));
     const currentTop = toCellY(element.scrollTop);
-    const nextTop = resolveDataTableScrollTop(targetIndex, currentTop, viewportRows, items.length, scrollToIndexAlign);
+    const nextTop = resolveDataTableScrollTop(targetIndex, currentTop, viewportRows, items.length, scrollToIndexAlign, scrollToIndexFrom);
     if (nextTop !== currentTop) {
       element.scrollTop = nextTop * WEB_CELL_HEIGHT;
       // A controlled scroll is navigation requested by the app. Reporting it
@@ -349,6 +350,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     items.length,
     scrollToIndex,
     scrollToIndexAlign,
+    scrollToIndexFrom,
     scrollToIndexVersion,
     scheduleControlledScrollActivity,
     scheduleVisibleRangeMeasure,

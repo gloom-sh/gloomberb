@@ -9,7 +9,7 @@ import { occContractExample } from "./option-contract";
 export const MACRO_EVENT_NAMES: Record<MacroAlertEvent, string> = { cpi: "CPI release", fomc: "FOMC decision" };
 /** CPI and FOMC and any other calendar release are one kind of alert to the reader, whichever list keeps the rule. */
 export const RESEARCH_LABELS: Record<ResearchAlertKind, string> = {
-  perps_threshold: "Perpetual threshold", earnings_date: "Earnings date", macro_event: "Macro event", calendar_event: "Macro event", ipo: "IPO", filing_type: "SEC filing", news_keyword: "News keyword", analyst_change: "Analyst change", fifty_two_week: "52-week range", unusual_volume: "Unusual volume", short_interest_change: "Short interest", insider_trade: "Insider trade", iv_spike: "IV spike", iv_level: "IV level", options_flow: "Options flow", hiring_move: "Hiring move",
+  perps_threshold: "Perpetual threshold", earnings_date: "Earnings date", macro_event: "Macro event", calendar_event: "Macro event", ipo: "IPO", filing_type: "SEC filing", news_keyword: "News keyword", analyst_change: "Analyst change", fifty_two_week: "52-week range", unusual_volume: "Unusual volume", short_interest_change: "Short interest", insider_trade: "Insider trade", iv_spike: "IV spike", iv_level: "IV level", options_flow: "Options flow", hiring_move: "Hiring move", buyback: "HK buyback",
 };
 /** What an IV level rule follows, as the form, a list and a notification name it. */
 export const IV_LEVEL_NAMES: Record<IvLevelMetric, string> = { atm: "30d ATM IV", rr: "30d 25D RR" };
@@ -39,6 +39,8 @@ export const researchWizardFields: Field[] = RESEARCH_FORM_KINDS.flatMap(kind =>
     : kind === "macro_event" ? [{key:"event", label:"Release", type:"select", defaultValue:"cpi", options:MACRO_ALERT_EVENTS.map((value) => ({value, label:MACRO_EVENT_NAMES[value]}))}]
     // HIRE covers listings worldwide; a non-US one is written with its venue.
     : kind === "hiring_move" ? [{key:"symbol", label:"Symbol", type:"text", placeholder:"RIVN or ADYEN:AMS", required:true}]
+    // A Hong Kong listing: its buyback returns are what Cloud reads.
+    : kind === "buyback" ? [{key:"symbol", label:"Hong Kong code", type:"text", placeholder:"0700", required:true}]
     // A deal on the IPO calendar has no listing to name yet: it is followed by its name.
     : kind === "ipo" ? [{key:"keyword", label:"Company or keyword", type:"text", placeholder:"Stripe", required:true}]
     : [{key:"symbol",label:kind === "news_keyword" ? "Symbol (optional)" : kind === "options_flow" ? "Symbol (blank: portfolio and watchlists)" : "Symbol",type:"text",placeholder:"AAPL", required:kind !== "news_keyword" && kind !== "options_flow"},
@@ -51,7 +53,7 @@ export const researchWizardFields: Field[] = RESEARCH_FORM_KINDS.flatMap(kind =>
   if (kind === "filing_type") fields.push({key:"form",label:"Filing type",type:"select",defaultValue:"8-K",options:choices([...RESEARCH_ALERT_FORMS])});
   if (kind === "news_keyword") fields.push({key:"keyword",label:"Keyword or phrase",type:"text",required:true,placeholder:"buyback"});
   if (kind === "iv_level") fields.push({key:"metric",label:"Measure",type:"select",defaultValue:"atm",options:[{value:"atm",label:"30d ATM IV (%)"},{value:"rr",label:"30d 25D risk reversal (vol pts)"}]});
-  const directions: Partial<Record<ResearchAlertKind, string[]>> = {iv_level:["above","below"],analyst_change:["any","upgrade","downgrade"],fifty_two_week:["high","low"],short_interest_change:["either","increase","decrease"],insider_trade:["either","buy","sell"],options_flow:["any","calls","puts"],hiring_move:["either","accelerating","slowing"]};
+  const directions: Partial<Record<ResearchAlertKind, string[]>> = {iv_level:["above","below"],analyst_change:["any","upgrade","downgrade"],fifty_two_week:["high","low"],short_interest_change:["either","increase","decrease"],insider_trade:["either","buy","sell"],options_flow:["any","calls","puts"],hiring_move:["either","accelerating","slowing"],buyback:["either","started","stopped"]};
   const direction = directions[kind as ResearchAlertKind];
   if (direction) fields.push({key:"direction",label:kind === "options_flow" ? "Calls or puts" : "Direction",type:"select",defaultValue:direction[0],options:choices(direction)});
   if (kind === "options_flow") {
@@ -94,6 +96,7 @@ export function createResearchAlert(kind: string, values: Record<string,string>,
     ? "Check the symbol and US exchange. The minimum premium is $50,000."
     : kind === "hiring_move" ? "Check the symbol. Write a non-US listing with its exchange, as ADYEN:AMS."
     : kind === "ipo" ? "Name a company or keyword of 2 to 80 characters, such as Stripe."
+    : kind === "buyback" ? "Name a Hong Kong listing by its code, such as 0700 or 0700.HK."
     : kind === "iv_level"
       ? "Check the symbol and US exchange. An ATM IV level is 1 to 500 (%), a risk reversal -50 to 50 (vol pts)."
       : kind === "iv_spike"
@@ -153,6 +156,7 @@ export function researchAlertDescription(rule: EventAlertRule): string {
     case "analyst_change": case "insider_trade": return `${symbol} · ${config.direction}`;
     case "hiring_move": return `${symbol} · ${config.direction === "either" ? "accelerating or slowing" : config.direction}`;
     case "ipo": return config.keyword ?? "";
+    case "buyback": return `${symbol} · ${config.direction === "either" ? "starts or stops buying back" : `${config.direction} buying back`}`;
     case "fifty_two_week": return `${symbol} · 52w ${config.direction}`;
     case "unusual_volume": return `${symbol} · ≥${config.threshold}× 20d`;
     case "short_interest_change": return `${symbol} · ${config.direction} ≥${config.threshold}%`;

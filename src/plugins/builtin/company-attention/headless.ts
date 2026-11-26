@@ -6,7 +6,7 @@ import type { HiringBoard, HiringPayload } from "../../../api-client/hiring";
 import { fetchAppRank, fetchAttention, fetchBuilding, fetchMoves, fetchSignals, type BuildingPayload, type SignalsPayload } from "./client";
 import { companyDataNotes } from "../../../types/company-from";
 import { BUILDING_FILTERS, BUILDING_VIEWS, buildingBoardModel, buildingNumber, buildingPreviewNote, companyBuildingModel, isBuildingFilter, type BuildingSection } from "./building-model";
-import { appsModel, appsPreviewNote, attentionNumber, attentionSectionTitle, attentionTabs, hiringModel, hiringPreviewNote, remoteText, type AttentionKind } from "./model";
+import { appsModel, appsPreviewNote, attentionNumber, attentionSectionTitle, attentionTabs, hiringModel, hiringPreviewNote, OBSERVED_LABELS, remoteText, type AttentionKind } from "./model";
 import { companyMovesModel, isMovesFilter, movesBoardModel, movesNumber, movesPreviewNote, MOVES_FILTERS, MOVES_VIEWS, type MovesSection } from "./moves-model";
 import type { HiringMovesFilter, HiringSignalGroup } from "../../../api-client/hiring";
 import { companySignalsModel, holdText, isSignalsFilter, signalsBoardModel, signalsNumber, signalsPreviewNote, SIGNAL_FILTERS, SIGNAL_GROUPS, SIGNALS_VIEWS, type SignalsSection } from "./signals-model";
@@ -18,7 +18,7 @@ import { REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
  * is measured on. Exports keep the full value.
  */
 function reportColumn(column: DataTableColumn): HeadlessPaneColumn {
-  if (column.align !== "right") return { key: column.id, header: column.label, align: column.align };
+  if (column.align !== "right") return { key: column.id, header: column.label, align: column.align, ...(OBSERVED_LABELS.has(column.label) ? { omitWhenSame: true } : {}) };
   const format = (value: unknown) => typeof value === "number" ? attentionNumber(column.id, value) : value == null ? MISSING_VALUE : String(value);
   return { key: column.id, header: column.label, align: column.align, format,
     ...(column.id === "remote" ? { textFormat: (value: unknown, row: HeadlessPaneRow) => typeof value === "number"

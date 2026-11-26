@@ -1,6 +1,6 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useMemo } from "react";
-import { DataTableStackView, EmptyState, PaneStatusBody, StatGrid, usePaneNoticeFooter, usePaneStatusLinkFooter, type DataTableCell, type StatItem } from "../../../components";
+import { ChartTableHeader, DataTableStackView, EmptyState, PaneStatusBody, useChartTableSelection, usePaneNoticeFooter, usePaneStatusLinkFooter, type ChartTableChart, type DataTableCell, type StatItem } from "../../../components";
 import { ageFooterSegment } from "../../../components/layout/pane/footer";
 import { DetailReader } from "../../../components/reader/detail-reader";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
@@ -13,7 +13,7 @@ import { listingIdentity } from "../shared/ticker-request";
 import { cachedPublication, loadPublication, type PublicationKind } from "./publications-client";
 import { publicationHeadless } from "./publications-headless";
 import { reportFooterSegment } from "../shared/source-footer";
-import { publicationCell, publicationColumns, publicationRows, sharedFailIdentity, type PublicationColumn, type PublicationRow } from "./publications-model";
+import { publicationAxisValue, publicationCell, publicationChartSeries, publicationChartValue, publicationColumns, publicationRows, sharedFailIdentity, type PublicationColumn, type PublicationRow } from "./publications-model";
 
 function renderCell(row: PublicationRow, column: PublicationColumn, _index: number, state: { selected: boolean }): DataTableCell {
   const value = row[column.id] ?? null;
@@ -44,6 +44,15 @@ export function ShortSidePublicationPane({ kind, width, height, focused }: Pick<
   const selectedIndex = Math.max(0, rows.findIndex((row) => rowKey(row) === selectedId));
   const openRow = rows.find((row) => rowKey(row) === openId);
   const selected = openRow ?? rows[selectedIndex];
+  // Fail shares against the reported price, or the ATS share by week, over the rows: one selection across both.
+  const series = useMemo(() => publicationChartSeries(kind, rows, { warning: colors.warning, text: colors.text }), [kind, rows]);
+  const link = useChartTableSelection({
+    rows, getId: rowKey, getDate: (row) => new Date(`${row.date}T00:00:00Z`), selectedId: rows[selectedIndex] ? rowKey(rows[selectedIndex]!) : null,
+    onSelect: setSelectedId, focused: focused && !openRow,
+  });
+  const chart = useMemo<ChartTableChart | null>(() => series.length ? {
+    series, formatValue: publicationChartValue, formatAxisValue: publicationAxisValue, remoteKind: `short-side-${kind}-history`, ...link,
+  } : null, [kind, link, series]);
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => resource.reload(), { focused });
@@ -63,7 +72,9 @@ export function ShortSidePublicationPane({ kind, width, height, focused }: Pick<
     {data ? <DataTableStackView<PublicationRow, PublicationColumn>
       focused={focused} rootWidth={width} rootHeight={height} columns={columns} items={rows} freezeFirstColumn
       sortColumnId={null} sortDirection="desc" emptyStateTitle={`No published ${subject} for this stock.`}
-      rootBefore={identity.length ? <StatGrid items={identity} width={width} /> : undefined}
+      rootBefore={identity.length || chart
+        ? <ChartTableHeader width={width} height={height} tableRows={rows.length} tableColumns={columns} figures={identity} chart={chart} />
+        : undefined}
       getExportMetadata={() => [...(shared?.cusip ? [["cusip", shared.cusip]] : []), ...(shared?.security ? [["security", shared.security]] : [])]}
       getItemKey={rowKey} renderCell={renderCell} resetScrollKey={`${kind}:${symbol}`}
       selection={{ kind: "index", selectedIndex: rows.length ? selectedIndex : -1, onChange: (index) => setSelectedId(rows[index] ? rowKey(rows[index]!) : null) }}

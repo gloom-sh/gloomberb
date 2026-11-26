@@ -1,5 +1,6 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { enrollmentSeries } from "./history";
+import { buildSectionedRows } from "../../../components/data-table/sections";
 import { describe, expect, test } from "bun:test";
 import { catalystFixture, catalystPayload } from "./test-fixture";
 import { catalystBasisWidth, catalystCell, catalystChangeText, catalystColumns, catalystDate, catalystDateBasis, catalystEmptyTitle, catalystParties, catalystQuery, catalystSection, catalystSections, catalystStatusTone } from "./model";
@@ -36,6 +37,9 @@ describe("catalyst parties, tones and columns", () => {
     const heading = { ...event, parties: [], title: "Airworthiness Directives; Airbus Helicopters" };
     expect(catalystParties(heading)).toBe(MISSING_VALUE);
     expect(catalystCell(heading, "title", "any", false)).toBe(heading.title);
+    // A title led by a party reads without it; one led by anything else keeps its opening.
+    expect(catalystCell({ ...event, title: "PolyPid Ltd.: PDUFA target date for D-PLEX", parties: [party("PolyPid Ltd", "PYPD")] }, "title", "any", false)).toBe("PDUFA target date for D-PLEX");
+    expect(catalystCell({ ...event, title: "Stelo SPARK Study: Glucose Visibility" }, "title", "any", false)).toBe("Stelo SPARK Study: Glucose Visibility");
   });
   test("tones a status by what it means for the company", () => {
     expect(catalystStatusTone("complete response letter")).toBe("negative");
@@ -115,6 +119,9 @@ describe("catalyst provenance and dates", () => {
       ["October 2026:1", "October 2026", "c"],
       ["September 2026", "September 2026", "de"],
     ]);
+    // A month earns a heading line from three rows; fewer follow the month before, read by their dates.
+    const headed = buildSectionedRows(catalystSections([...rows, on("f", "2026-09-02")], "any", false), (item) => item.id, { minItemsForHeader: 3 });
+    expect(headed.map((row) => row.kind === "section" ? row.label : row.key)).toEqual(["a", "b", "c", "September 2026", "d", "e", "f"]);
   });
   test("rejects cross-event history, duplicate event IDs and unsafe document URLs", () => {
     expect(() => validateCatalystDetail({ event, history: [{ ...event, id: "other" }], asOf: event.observedAt })).toThrow("invalid event history");

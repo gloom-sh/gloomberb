@@ -5,7 +5,7 @@ import { colors } from "../../../theme/colors";
 import { notMeaningfulColor } from "../../../components/ui/not-meaningful";
 import type { Quote } from "../../../types/financials";
 import { boardReport, boardRowOf, newYorkToday, reportMove, type BoardRow } from "./board-model";
-import { boardColumns, boardHasActuals, boardHasCurrencies, boardSymbolWidth, renderBoardCell, type BoardCellContext, type BoardColumn } from "./board-table";
+import { boardColumns, boardHasCurrencies, boardSymbolWidth, renderBoardCell, type BoardCellContext, type BoardColumn } from "./board-table";
 import { historyFigures, historyRows } from "./history-model";
 
 test("the next-report figure retains a rounded consensus independently of dropped narrow table columns", () => {
@@ -34,7 +34,7 @@ const HDB = boardReport(calendarReport({ symbol: "HDB", timing: null, epsEstimat
 const LADR = boardReport(calendarReport({ symbol: "LADR", timing: "bmo", timingSource: "calendar", epsEstimate: 0.33, dateStatus: "confirmed" }), new Map());
 
 const row = (report: typeof TRV): BoardRow => ({ kind: "report", key: report.key, report, showDay: false });
-const column = (id: BoardColumn["id"]) => boardColumns(2000).find((entry) => entry.id === id)!;
+const column = (id: BoardColumn["id"]) => [...boardColumns(2000, { kind: "reported" }), ...boardColumns(2000)].find((entry) => entry.id === id)!;
 const cell = (report: typeof TRV, id: BoardColumn["id"], context?: Partial<BoardCellContext>) =>
   renderBoardCell(row(report), column(id), { statusShown: true, move: () => null, ...context });
 
@@ -42,16 +42,10 @@ describe("EVTS rows", () => {
   test("a reported row shows its EPS and surprise; a press release's EPS reads quieter until the calendar's arrives", () => {
     expect(TRV).toMatchObject({ epsActual: 9.18, provisional: true });
     expect(TRV.epsSurprise).toBeCloseTo(0.2984, 4);
-    expect(cell(TRV, "epsActual")).toEqual({ text: "9.18", color: colors.textMuted });
-    expect(cell(PEP, "epsActual")).toEqual({ text: "2.29", color: colors.text });
+    expect(cell(TRV, "epsActual")).toEqual({ text: "9.18", value: 9.18, color: colors.textMuted });
+    expect(cell(PEP, "epsActual")).toEqual({ text: "2.29", value: 2.29, color: colors.text });
     expect(cell(TRV, "epsSurprise")).toEqual({ text: "+29.8%", color: colors.positive });
     expect(cell(TRV, "basis")).toEqual({ text: "adj", color: colors.textMuted });
-  });
-
-  test("pending EPS ACT, EPS SURP and BASIS wait for the report without hiding a reported basis", () => {
-    for (const id of ["epsActual", "epsSurprise", "basis"] as const) expect(cell(LADR, id)).toEqual({ text: MISSING_VALUE, color: colors.textDim });
-    expect(column("basis").mayBeBlank).toBe(true);
-    expect(cell(TRV, "basis").text).toBe("adj");
   });
 
   test("a report out with no actual yet says pending, and keeps EPS ACT on a narrow board", () => {
@@ -59,14 +53,10 @@ describe("EVTS rows", () => {
     const today = newYorkToday();
     const DIS = boardReport(calendarReport({ symbol: "DIS", date: today, reportedAt: `${today}T10:45:00.000Z`, epsEstimate: 1.06, epsAnalysts: 17, dateStatus: "reported" }), new Map());
     expect(cell(DIS, "epsActual")).toEqual({ text: "pending", color: colors.textDim });
-    // Still to come, it waits with a dash.
-    expect(cell(LADR, "epsActual").text).toBe(MISSING_VALUE);
-    expect(boardHasActuals([row(LADR), row(DIS)])).toBe(true);
-    expect(boardColumns(88, { actuals: true }).map((entry) => entry.id)).toContain("epsActual");
+    expect(boardColumns(88, { kind: "reported" }).map((entry) => entry.id)).toContain("epsActual");
     // A listing abroad's figures come from its own documents, with Gloom Pro: one out without them is waiting on nothing.
     const FN = boardReport(calendarReport({ symbol: "F99:SGX", currency: "SGD", dateStatus: "reported" }), new Map());
     expect(cell(FN, "epsActual").text).toBe(MISSING_VALUE);
-    expect(boardHasActuals([row(LADR), row(FN)])).toBe(false);
     // Past the week the calendar reads a date for, none is coming: the dash again.
     const OLD = boardReport(calendarReport({ symbol: "OXY", date: "2026-10-01", dateStatus: "reported" }), new Map());
     expect(cell(OLD, "epsActual").text).toBe(MISSING_VALUE);
@@ -76,16 +66,12 @@ describe("EVTS rows", () => {
     expect(cell(TRV, "move", { move: () => 0.0123 })).toEqual({ text: "+1.2%", color: colors.positive });
     expect(cell(TRV, "move", { move: () => "loading" })).toEqual({ text: "…", color: colors.textDim });
     expect(cell(LADR, "move")).toEqual({ text: MISSING_VALUE, color: colors.textDim });
-    const ids = boardColumns(2000).map((entry) => entry.id);
+    const ids = boardColumns(2000, { kind: "reported" }).map((entry) => entry.id);
     expect(ids.slice(ids.indexOf("implied"), ids.indexOf("implied") + 3)).toEqual(["implied", "move", "average"]);
   });
 
-  test("narrow, without STATUS, WHEN checks a report that is out and quiets a projected date", () => {
-    const narrow = boardColumns(88).map((entry) => entry.id);
-    expect(narrow).not.toContain("status");
-    // The move on the report stays beside the implied move and its average.
-    expect(narrow).toEqual(expect.arrayContaining(["implied", "move", "average"]));
-    expect(cell(TRV, "when", { statusShown: false })).toEqual({ text: "BMO ✓", color: colors.textDim });
+  test("narrow, without STATUS, WHEN quiets a projected date", () => {
+    expect(boardColumns(88).map((entry) => entry.id)).not.toContain("status");
     expect(cell(HDB, "when", { statusShown: false })).toEqual({ text: MISSING_VALUE, color: colors.textMuted });
     expect(cell(LADR, "when", { statusShown: false })).toEqual({ text: "BMO", color: colors.textDim });
     // With STATUS on screen WHEN is the time alone.
@@ -95,29 +81,27 @@ describe("EVTS rows", () => {
 });
 
 describe("EVTS when narrow", () => {
-  const ids = (width: number, actuals?: boolean) => boardColumns(width, { actuals }).map((entry) => entry.id);
-  // The board's width at 720px, where the dropped columns used to hide the actuals.
+  const ids = (width: number, kind: "upcoming" | "reported" = "upcoming") => boardColumns(width, { kind }).map((entry) => entry.id);
+  // The board's width at 720px.
   const NARROW = 88;
 
-  test("with no actual on the board, keeps today's order and spends no space on empty actual columns", () => {
-    expect(boardHasActuals([row(LADR), row(HDB), { kind: "section", key: "today", label: "Today" } as BoardRow])).toBe(false);
-    expect(ids(NARROW)).toEqual(["owned", "symbol", "name", "when", "implied", "move", "average", "epsEstimate", "revenueEstimate"]);
-    for (let width = 50; width <= 160; width += 1) expect(ids(width, false)).toEqual(ids(width));
+  test("reports to come spend no space on an actual, a surprise or a move none of them has yet", () => {
+    expect(ids(2000)).toEqual(["owned", "symbol", "name", "when", "status", "implied", "average", "epsEstimate", "analysts", "revenueEstimate", "cap"]);
+    expect(ids(NARROW)).toEqual(["owned", "symbol", "name", "when", "implied", "average", "epsEstimate", "revenueEstimate", "cap"]);
   });
 
-  test("with an actual on the board, EPS ACT and then EPS SURP outrank SALES EST, MKT CAP and AVG MOVE", () => {
-    expect(boardHasActuals([row(LADR), row(TRV)])).toBe(true);
-    expect(ids(NARROW, true)).toEqual(["owned", "symbol", "name", "when", "implied", "move", "epsEstimate", "epsActual", "epsSurprise"]);
+  test("reports out: EPS ACT and then EPS SURP outrank SALES EST, MKT CAP and AVG MOVE, and no STATUS or ESTS says what is past", () => {
+    expect(ids(2000, "reported")).not.toContain("status");
+    expect(ids(2000, "reported")).not.toContain("analysts");
+    expect(ids(NARROW, "reported")).toEqual(["owned", "symbol", "name", "when", "implied", "move", "epsEstimate", "epsActual", "epsSurprise"]);
     for (let width = 50; width <= 160; width += 1) {
-      const shown = new Set(ids(width, true));
+      const shown = new Set(ids(width, "reported"));
       const context = ["revenueEstimate", "cap", "average"].filter((id) => shown.has(id as BoardColumn["id"]));
       if (context.length > 0) expect([width, shown.has("epsActual"), shown.has("epsSurprise")]).toEqual([width, true, true]);
       if (shown.has("epsSurprise")) expect([width, shown.has("epsActual")]).toEqual([width, true]);
       // The implied move and the move on the report never go.
       expect([width, shown.has("implied"), shown.has("move")]).toEqual([width, true, true]);
     }
-    // Wide enough, every column shows either way.
-    expect(ids(2000, true)).toEqual(ids(2000));
   });
 });
 
@@ -130,23 +114,22 @@ describe("EVTS with listings abroad", () => {
   // Alibaba the day it reports as BABA and as 9988:HKEX: the board's BABA row carries the listing's lines.
   const BABA = boardReport(calendarReport({ symbol: "BABA", epsEstimate: 2.12, listings: ["9988:HKEX"] }), new Map());
   const CCB = boardReport(calendarReport({ symbol: "601939:SSE", currency: "CNY", listings: ["601939:SSE", "0939:HKEX"] }), new Map());
-  const ids = (width: number, currencies: boolean, actuals = false) =>
-    boardColumns(width, { currencies, actuals }).map((entry) => entry.id);
-
-  test("a board with a report in another currency shows CCY before the figures it is the currency of, and says its cap is in dollars", () => {
+  test("a report in another currency writes its code after each figure, a dollar one bare, and no column says USD down the board", () => {
     expect(boardHasCurrencies([row(LADR), row(BABA)])).toBe(false);
     expect(boardHasCurrencies([row(LADR), row(TENCENT)])).toBe(true);
     const wide = boardColumns(2000, { currencies: true });
-    const at = wide.map((entry) => entry.id);
-    expect(at.slice(at.indexOf("ccy"), at.indexOf("ccy") + 2)).toEqual(["ccy", "epsEstimate"]);
+    expect(wide.map((entry) => entry.label)).not.toContain("CCY");
     expect(wide.find((entry) => entry.id === "cap")).toMatchObject({ label: "MKT CAP $", width: 9 });
+    // The figures take the room for " CNY".
+    expect(wide.find((entry) => entry.id === "epsEstimate")?.width).toBe(11);
     // A board of US reports looks as it always has.
-    expect(ids(2000, false)).not.toContain("ccy");
     expect(boardColumns(2000).find((entry) => entry.id === "cap")).toMatchObject({ label: "MKT CAP", width: 8 });
-    const ccy = wide.find((entry) => entry.id === "ccy")!;
+    expect(boardColumns(2000).find((entry) => entry.id === "epsEstimate")?.width).toBe(7);
     const context: BoardCellContext = { statusShown: true, move: () => null };
-    expect(renderBoardCell(row(TENCENT), ccy, context)).toEqual({ text: "CNY", color: colors.textDim });
-    expect(renderBoardCell(row(LADR), ccy, context)).toEqual({ text: "USD", color: colors.textDim });
+    const column = (id: string) => wide.find((entry) => entry.id === id)!;
+    expect(renderBoardCell(row(TENCENT), column("epsEstimate"), context)).toEqual({ text: "7.21 CNY", value: 7.21, color: colors.textDim });
+    expect(renderBoardCell(row(TENCENT), column("revenueEstimate"), context).text).toBe("210.24B CNY");
+    expect(renderBoardCell(row(LADR), column("epsEstimate"), context).text).not.toContain("USD");
     expect(cell(TENCENT, "cap")).toEqual({ text: "459.65B", color: colors.textDim });
     expect(cell(TENCENT, "when")).toEqual({ text: MISSING_VALUE, color: colors.textDim });
   });
@@ -156,16 +139,6 @@ describe("EVTS with listings abroad", () => {
     expect(boardSymbolWidth([row(LADR), row(CCB)])).toBe(10);
     expect(boardSymbolWidth([row(LADR), row(BABA)])).toBe(6);
     expect(boardColumns(2000, { symbolWidth: 10 }).find((entry) => entry.id === "symbol")?.width).toBe(10);
-  });
-
-  test("narrow, CCY stays while any EPS or sales figure does, and goes with the last", () => {
-    for (const actuals of [false, true]) {
-      for (let width = 40; width <= 200; width += 1) {
-        const shown = new Set(ids(width, true, actuals));
-        const figures = (["epsEstimate", "epsActual", "revenueEstimate"] as const).some((id) => shown.has(id));
-        expect([width, actuals, shown.has("ccy")]).toEqual([width, actuals, figures]);
-      }
-    }
   });
 
   test("a listing is found as typed, by another of its company's lines, or as the US line shown for it; a US ticker only as itself", () => {

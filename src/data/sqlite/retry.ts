@@ -51,7 +51,7 @@ function sleepSync(delayMs: number): void {
  * tries it took, and whether it waited on another connection's lock (a busy
  * answer came back) or was simply slow (a large write, the disk).
  */
-function reportIfBlocking(operationName: string, startedAt: number, attempts: number, lockWait: boolean): void {
+export function reportIfBlocking(operationName: string, startedAt: number, attempts: number, lockWait: boolean): void {
   const elapsedMs = now() - startedAt;
   if (elapsedMs < SQLITE_BLOCKING_REPORT_MS) return;
   recordPerfSample("sqlite.blocked", elapsedMs, { operation: operationName, attempts, lockWait });

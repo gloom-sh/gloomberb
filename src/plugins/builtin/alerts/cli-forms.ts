@@ -155,6 +155,9 @@ function symbolRule(symbol: string, words: readonly string[]): RuleAddRequest | 
   if (kind === "hiring") {
     return rule("hiring_move", { direction: choose(words.slice(1), { accelerating: "accelerating", accelerate: "accelerating", up: "accelerating", slowing: "slowing", slow: "slowing", down: "slowing", either: "either", any: "either" }, "either", `${example("hiring accelerating")} or hiring slowing, or hiring alone for either`) }, "any");
   }
+  if (kind === "buyback" || kind === "buybacks") {
+    return rule("buyback", { direction: choose(words.slice(1), { started: "started", start: "started", starts: "started", stopped: "stopped", stop: "stopped", stops: "stopped", either: "either", any: "either" }, "either", `${example("buyback started")} or buyback stopped, or buyback alone for either`) }, "any");
+  }
   if (kind === "catalyst" || kind === "catalysts") {
     if (words.length > 1) throw new Error(`A catalyst alert on a company takes nothing after it: ${example("catalyst")}; for an event type, agency or country leave the symbol out (alerts add catalyst type clinical).`);
     return { kind: "rule", event: "catalyst-ticker", symbol, listing: "any", values: {} };

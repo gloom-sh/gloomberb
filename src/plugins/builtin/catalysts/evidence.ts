@@ -3,6 +3,7 @@ import type { PaneScreenshotEvidenceHook } from "../../../cli/pane-functions/scr
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { isRecord } from "../../../utils/guards";
 import { fetchCatalystDetail, fetchCatalysts, validateCatalysts } from "./client";
+import { catalystOpeningKind, catalystKindTypes, createCatalystKindLoader, isCatalystKind } from "./kinds";
 import { catalystQuery } from "./model";
 
 interface CatalystEvidence {
@@ -18,12 +19,19 @@ function screenshotEvidence(paneId: string): PaneScreenshotEvidenceHook<Catalyst
     paneId, kind: "catalysts", label: "catalyst events",
     async prepare({ resolved }) {
       const symbol = resolved.createOptions?.symbol ?? resolved.createOptions?.arg;
-      const query = catalystQuery(resolved.options, symbol, paneId === "litigation");
-      const payload = await fetchCatalysts({ ...query, limit: 100 });
+      const litigation = paneId === "litigation";
+      const query = catalystQuery(resolved.options, symbol, litigation);
+      // The calendar shows one kind at a time, opening on the one the pane would.
+      const calendar = !litigation && !query.changed;
+      const probe = calendar && !query.type && !isCatalystKind(resolved.options.kind) ? (await fetchCatalysts({ ...query, limit: 100 })).events : null;
+      const kind = calendar ? catalystOpeningKind(query.type, resolved.options.kind, probe) : null;
+      const readKind = kind ? createCatalystKindLoader(query.type ? [query.type] : catalystKindTypes(kind),
+        async (type, offset) => ({ payload: await fetchCatalysts({ ...query, type, limit: 100, offset }), stale: false, refreshError: null }), query) : null;
+      const payload = readKind ? (await readKind({ offset: 0, force: false, signal: new AbortController().signal })).payload : await fetchCatalysts({ ...query, limit: 100 });
       const openId = typeof resolved.options.event === "string" ? resolved.options.event : null;
       const detail = openId ? await fetchCatalystDetail(openId) : null;
       if (detail && !payload.events.some((event) => event.id === openId)) payload.events = [detail.event, ...payload.events];
-      return { settings: { catalystSnapshot: payload, filters: resolved.options, ...(openId && detail ? { open: openId, catalystDetails: { [openId]: detail } } : {}) },
+      return { settings: { catalystSnapshot: payload, filters: resolved.options, ...(kind ? { kind } : {}), ...(openId && detail ? { open: openId, catalystDetails: { [openId]: detail } } : {}) },
         financials: symbol ? [[symbol, { annualStatements: [], quarterlyStatements: [], priceHistory: [] }]] : [] };
     },
     read(value) {

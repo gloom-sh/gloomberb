@@ -10,7 +10,7 @@ import type { TickerRecord } from "../types/ticker";
 import type { PeriodPnlRow } from "./period-pnl";
 import type { ReportTime } from "../utils/utc-time";
 import { colors, priceColor, shownPriceColor } from "../theme/colors";
-import { formatQuoteAgeWithSource, formatQuoteBookTime, resolveQuoteAgeTimestamp } from "../market-data/quotes/time";
+import { formatQuoteAgeWithSource, formatQuoteBookCell, resolveQuoteAgeTimestamp } from "../market-data/quotes/time";
 import { delistingStateLabel } from "../market-data/quotes/delisting";
 import { formatFeedTime, formatShortDate, parseDisplayDate, type ShortDateOptions } from "../utils/datetime-format";
 import { MISSING_VALUE, convertCurrency, formatCompact, formatCompactAmount, formatNumber, formatPercentRaw, formatTradeSize } from "../utils/format";
@@ -716,14 +716,13 @@ export function getColumnValue(
       return { text: `${formatTradeSize(quote?.bidSize, { compact: true })}/${formatTradeSize(quote?.askSize, { compact: true })}` };
     }
     case "book_time": {
-      const text = formatQuoteBookTime(quote, ctx.now);
-      if (!text) return { text: MISSING_VALUE };
-      const at = quote?.bidAskTime;
-      if (at == null || !Number.isFinite(at) || at <= 0) return { text, color: colors.textDim };
-      return {
-        text,
-        value: new Date(at).toISOString(),
-      };
+      // In UTC, as the header says, behind its session and feed marks (◷AH 11-24 23:40); the words are the ticket's and DES's.
+      const book = formatQuoteBookCell(quote, ctx.now);
+      if (!book) return { text: MISSING_VALUE };
+      // A book the source sent without its time says so, never borrows the trade's, and exports no time.
+      if (!book.dated) return { text: book.text, color: colors.textDim };
+      // An export writes the instant whole, as ISO: the cell leaves out the year and the seconds.
+      return { text: book.text, value: new Date(quote!.bidAskTime!).toISOString() };
     }
     case "change_pct": {
       if (quote?.delisting) return { text: delistingStateLabel(quote.delisting), color: colors.warning };

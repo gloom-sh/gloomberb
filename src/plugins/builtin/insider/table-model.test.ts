@@ -3,7 +3,7 @@ import type { SecFilingItem } from "../../../types/data-provider";
 import { colors } from "../../../theme/colors";
 import { DEFAULT_INSIDER_TYPE_FILTER, matchesInsiderTypeFilter, parseInsiderFiling, type ParsedInsiderFiling } from "./model";
 import { buildInsiderColumns, buildInsiderTableRows, type InsiderColumn } from "./table-model";
-import { renderInsiderCell } from "./table";
+import { insiderToneColor, renderInsiderCell } from "./table";
 
 function filing(accessionNumber: string, form = "4"): SecFilingItem {
   return { accessionNumber, form, filingDate: new Date("2026-09-17T00:00:00Z"), cik: "1", filingUrl: `https://www.sec.gov/${accessionNumber}` };
@@ -53,9 +53,10 @@ describe("insider table rows", () => {
     const selectedBuy = renderInsiderCell(rows[1]!, type, 0, { selected: true });
     expect(selectedBuy.keepColorWhenSelected).toBe(true);
     expect(selectedBuy.color).not.toBe(colors.textDim);
-    // The 10b5-1 marker rides with a sale only when the column has room for it.
-    expect(renderInsiderCell(rows[0]!, { ...type, plan: true }, 0, { selected: false }).text).toBe("SELL 10b5-1");
-    expect(renderInsiderCell(rows[0]!, type, 0, { selected: false }).text).toBe("SELL");
+    // A plan sale reads SELL in the plan tone the chart names once, never "10b5-1" on every row; the export keeps the words.
+    const planSale = renderInsiderCell(rows[0]!, type, 0, { selected: false });
+    expect(planSale).toMatchObject({ text: "SELL", value: "SELL 10b5-1", color: insiderToneColor("sell", true) });
+    expect(planSale.color).not.toBe(colors.negative);
     expect(renderInsiderCell(rows[3]!, type, 0, { selected: false }).text).toBe("SELL 4/A");
   });
 });
@@ -82,14 +83,12 @@ describe("insider columns", () => {
     const columns = buildInsiderColumns(120, rows);
     expect(columns.map((column) => column.id)).toEqual(["date", "insider", "role", "type", "security", "shares", "price", "value"]);
     expect(columns.filter((column) => column.align === "right").map((column) => column.id)).toEqual(["shares", "price", "value"]);
-    expect(columns.find((column) => column.id === "type")?.plan).toBe(true);
     expect(buildInsiderColumns(120, rows.filter((row) => !row.security)).map((column) => column.id)).not.toContain("security");
   });
 
-  test("narrower panes drop the role, then the price, the 10b5-1 marker, the security and the shares", () => {
+  test("narrower panes drop the role, then the price, the security and the shares", () => {
     expect(ids(79)).toEqual(["date", "insider", "type", "security", "shares", "price", "value"]);
     expect(ids(69)).toEqual(["date", "insider", "type", "security", "shares", "value"]);
-    expect(buildInsiderColumns(59, rows).find((column) => column.id === "type")?.plan).toBe(false);
     expect(ids(51)).toEqual(["date", "insider", "type", "value"]);
     for (const width of [120, 90, 79, 69, 59, 51, 40]) expect(total(width)).toBeLessThanOrEqual(width);
   });

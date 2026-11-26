@@ -1,4 +1,4 @@
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { afterEach, expect, setSystemTime, spyOn, test } from "bun:test";
 import { act, useReducer, type Dispatch } from "react";
 import { apiClient } from "../../../api-client";
 import type { MarketHeatmapAsset, MarketHeatmapResult } from "../../../api-client/market-discovery";
@@ -465,23 +465,30 @@ const unpricedTile = (asset: MarketHeatmapAsset, delayedQuote: NonNullable<Marke
   ...asset, price: 0, change: 0, changePercent: 0, hasChange: false, volume: null, regularChangePercent: null, delayedQuote,
 });
 
-test("a Pro board's tile the server could not price live is grey with its delayed move marked, until the stream prices it", async () => {
-  const now = Date.now();
-  const delayed = unpricedTile(stock("AAAA", 400, 0), { price: 98.5, changePercent: -1.5, volume: 900, printedAt: now - 20 * 60_000 });
-  const board: MarketHeatmapResult = { universe: "us-equity", source: "gloom", fetchedAt: now - 2_000, pricesAsOf: now - 2_000, session: "REGULAR",
-    regularSessionDate: null, access: "realtime", assets: [delayed, { ...stock("BBBB", 200, 1.1), regularChangePercent: null }] };
-  const api = spyOn(apiClient, "getMarketHeatmap").mockResolvedValue({ status: "success", data: board });
-  const user = spyOn(apiClient, "getCurrentUser").mockReturnValue({ id: "pro", emailVerified: true, plan: "pro" } as never);
-  restore = () => { api.mockRestore(); user.mockRestore(); };
+// The footer dates a print from another New York day: at 00:11 ET a print twenty minutes back was "24 Nov 23:51 ET".
+for (const [label, now, printedAt, mark] of [
+  ["the same day", "2026-11-24T16:46:00Z", "2026-11-24T16:26:00Z", "◷ delayed 11:26 ET"],
+  ["the day before", "2026-11-25T05:11:00Z", "2026-11-25T04:51:00Z", "◷ delayed 24 Nov 23:51 ET"],
+] as const) {
+  test(`a Pro board's tile the server could not price live is grey with its delayed move marked, printed ${label}`, async () => {
+    setSystemTime(new Date(now));
+    const at = Date.parse(now);
+    const delayed = unpricedTile(stock("AAAA", 400, 0), { price: 98.5, changePercent: -1.5, volume: 900, printedAt: Date.parse(printedAt) });
+    const board: MarketHeatmapResult = { universe: "us-equity", source: "gloom", fetchedAt: at - 2_000, pricesAsOf: at - 2_000, session: "REGULAR",
+      regularSessionDate: null, access: "realtime", assets: [delayed, { ...stock("BBBB", 200, 1.1), regularChangePercent: null }] };
+    const api = spyOn(apiClient, "getMarketHeatmap").mockResolvedValue({ status: "success", data: board });
+    const user = spyOn(apiClient, "getCurrentUser").mockReturnValue({ id: "pro", emailVerified: true, plan: "pro" } as never);
+    restore = () => { api.mockRestore(); user.mockRestore(); setSystemTime(); };
 
-  // Sized by market cap, so AAAA is the first tile, and selected.
-  const pane = await mountHeatmap({ liveStreaming: false, sizeBy: "market-cap" });
-  expect(tui.frame()).toContain("-1.5%");
-  expect(tui.frame()).toContain("◷");
-  expect(pane.footer()).toMatch(/"text":"AAAA","tone":"label"\},\{"text":"-1\.50%","tone":"muted","bold":true\},\{"text":"◷ delayed \d\d:\d\d ET","tone":"warning"\},\{"text":"\$98\.50","tone":"muted"\}/);
-  // Only BBBB is coloured by a move.
-  expect(await publishedEvidence("us-equity")).toMatchObject({ tiles: 2, moved: 1 });
-});
+    // Sized by market cap, so AAAA is the first tile, and selected.
+    const pane = await mountHeatmap({ liveStreaming: false, sizeBy: "market-cap" });
+    expect(tui.frame()).toContain("-1.5%");
+    expect(tui.frame()).toContain("◷");
+    expect(pane.footer()).toContain(`{"text":"AAAA","tone":"label"},{"text":"-1.50%","tone":"muted","bold":true},{"text":"${mark}","tone":"warning"},{"text":"$98.50","tone":"muted"}`);
+    // Only BBBB is coloured by a move.
+    expect(await publishedEvidence("us-equity")).toMatchObject({ tiles: 2, moved: 1 });
+  });
+}
 
 test("a streamed live quote replaces a tile's delayed figures", async () => {
   const now = Date.now();

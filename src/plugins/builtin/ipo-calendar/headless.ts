@@ -7,7 +7,6 @@ import type {
 } from "../../../types/plugin";
 import { fetchIpoCalendar } from "./client";
 import {
-  calendarDate,
   filterIpoDeals,
   formatIpoLockupEnd,
   formatIpoPrice,
@@ -16,14 +15,18 @@ import {
   IPO_STATUSES,
   ipoBoardStatus,
   ipoKeyword,
+  ipoListStatus,
+  ipoShownDate,
+  isIpoList,
   isIpoTab,
   marketsBehind,
   marketsBehindText,
   sortIpoDeals,
   DEFAULT_IPO_SORT,
+  type IpoList,
   type IpoTab,
 } from "./model";
-import { ipoDetailSentences, loadIpoLockupNews, type IpoLockupStory } from "./listing-ipo";
+import { ipoDetailSentences, ipoPriceNow, loadIpoLockupNews, type IpoLockupStory, type IpoPriceNow } from "./listing-ipo";
 import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
 import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
 import { logFailure } from "../../../utils/log-failure";
@@ -37,7 +40,7 @@ const COLUMNS: HeadlessPaneColumn[] = [
   { key: "status", header: "Status" },
   { key: "price", header: "Price", align: "right" },
   { key: "offerSizeUsd", header: "Size", align: "right", format: (value) => formatIpoSize(value as number | null) },
-  { key: "firstDayReturn", header: "Return", align: "right", format: (value, row) => formatIpoReturn((value ?? row.openingReturn) as number | null),
+  { key: "firstDayReturn", header: "Day 1", align: "right", format: (value, row) => formatIpoReturn((value ?? row.openingReturn) as number | null),
     textFormat: (value, row) => value == null && row.openingReturn != null ? `${formatIpoReturn(row.openingReturn as number)} open` : formatIpoReturn(value as number | null) },
   // A US IPO's estimated lock-up end: "~2026-11-02".
   { key: "lockupEnds", header: "Lockup ends", format: (value) => formatIpoLockupEnd(typeof value === "string" ? value : null) },
@@ -60,6 +63,28 @@ function regionOption(args: HeadlessPaneLoadArgs): IpoTab {
   return isIpoTab(value) ? value : "all";
 }
 
+/** The pane's list, when one is asked for; without it the report lists every deal. */
+function listOption(args: HeadlessPaneLoadArgs): IpoList | null {
+  const value = args.options.list;
+  return isIpoList(value) ? value : null;
+}
+
+/**
+ * One list's columns, as its pane view has them: an upcoming deal has no
+ * return or lock-up yet. Status reads only where it differs from the list's
+ * own (a priced deal among the upcoming ones), and goes when none does;
+ * the rows keep every status.
+ */
+function listColumns(list: IpoList | null, deals: readonly IpoDeal[], now: Date): HeadlessPaneColumn[] {
+  if (!list) return COLUMNS;
+  const quiet = deals.every((deal) => ipoListStatus(deal, list, now) === "");
+  return COLUMNS.flatMap((column) => {
+    if (list === "upcoming" && (column.key === "firstDayReturn" || column.key === "lockupEnds")) return [];
+    if (column.key !== "status") return [column];
+    return quiet ? [] : [{ ...column, textFormat: (value: unknown) => (value === (list === "upcoming" ? "upcoming" : "listed") ? "" : String(value ?? "")) }];
+  });
+}
+
 function statusOption(args: HeadlessPaneLoadArgs): StatusOption {
   const value = String(args.options.status ?? "all");
   return STATUS_OPTIONS.includes(value) ? value as StatusOption : "all";
@@ -77,7 +102,8 @@ function toRow(deal: IpoDeal, now: Date) {
     segment: deal.segment,
     country: deal.country,
     region: deal.region,
-    date: calendarDate(deal),
+    // As the pane's DATE: none for a priced deal whose book closed with no listing day named.
+    date: ipoShownDate(deal, now),
     listingDate: deal.listingDate,
     dateKind: deal.dateKind,
     subscriptionOpen: deal.subscriptionOpen,
@@ -104,9 +130,9 @@ function toRow(deal: IpoDeal, now: Date) {
   };
 }
 
-/** One deal found: its IPO in words, as `ticker` gives it, with its price now and its lock-up news. */
+/** One deal found: its IPO in words, as `ticker` gives it, with its price as `quote` reads it and its lock-up news. */
 interface IpoDealDetail {
-  price: number | null;
+  price: IpoPriceNow | null;
   news: IpoLockupStory[];
 }
 
@@ -133,12 +159,14 @@ export function projectIpoCalendarHeadless(
   const query = typeof args.argument === "string" ? args.argument.trim() : "";
   const region = regionOption(args);
   const status = statusOption(args);
+  const list = listOption(args);
   const limit = Number(args.options.limit ?? 50);
   const keyword = ipoKeyword(query);
-  const found = filterIpoDeals(payload.deals, region, query, now).filter((deal) => atStatus(deal, status, now));
+  const found = filterIpoDeals(payload.deals, region, query, now, list ?? undefined).filter((deal) => atStatus(deal, status, now));
   const matching = keyword === "lockup" ? byLockupEnd(found, now) : sortIpoDeals(found, DEFAULT_IPO_SORT, now, query);
   const rows = matching.slice(0, limit).map((deal) => toRow(deal, now));
-  const behind = marketsBehindText(marketsBehind(payload.sources, region, payload.deals));
+  // A search that found deals speaks for their markets alone: HAWK's report says nothing of London's.
+  const behind = marketsBehindText(marketsBehind(payload.sources, region, payload.deals, query && matching.length ? matching : undefined));
   const single = matching.length === 1 && query && !keyword ? matching[0]! : null;
   const notes = [
     ...rows.length < matching.length
@@ -148,7 +176,7 @@ export function projectIpoCalendarHeadless(
     ...keyword === "spac" || keyword === "de-spac" ? [SPAC_NOTE] : [],
   ];
   return {
-    columns: COLUMNS,
+    columns: listColumns(list, matching.slice(0, limit), now),
     rows,
     ...(behind ? { errors: [behind] } : {}),
     ...(notes.length ? { notes } : {}),
@@ -160,6 +188,7 @@ export function projectIpoCalendarHeadless(
       query: query || null,
       region,
       status,
+      list,
     },
   };
 }
@@ -170,10 +199,15 @@ export const ipoCalendarHeadless: HeadlessPaneDefinition<"rows"> = {
   argument: {
     kind: "free-text",
     placeholder: "company or ticker",
-    description: "Optional company, ticker, market, country, region or status filter; pending lists the deals not priced yet.",
+    description: "Optional company, ticker, market, country, region or status filter; pending lists the deals not priced yet, lockup the US lock-up expiries soonest first, spac the SPACs' IPOs.",
     optional: true,
   },
   discovery: {
+    // The kinds of deal a search lists (ipoKeyword): `fn lockup` is the lock-up expiry list, `catalog spac` finds it.
+    opens: [
+      { words: ["lockup", "lockups", "lock-up", "lock-ups", "lockup expiry", "lock-up expiry", "lockup expiration", "lock-up expiration"], argument: "lockup" },
+      { words: ["spac", "spacs", "de-spac", "despac"], argument: "spac" },
+    ],
     dataRequirements: ["Gloom Cloud IPO calendar, merged from each exchange's own listings"],
     limitations: ["Return from the offer price uses the first trade until the first session's close is available."],
   },
@@ -186,6 +220,14 @@ export const ipoCalendarHeadless: HeadlessPaneDefinition<"rows"> = {
       values: ["all", "us", "apac", "europe"].map((value) => ({ value })),
       // The pane's tab, so a screenshot shows the region the report lists.
       pluginState: { pluginId: "ipo-calendar", key: "region" },
+    },
+    {
+      key: "list",
+      description: "Upcoming deals or recent listings, each with the columns its pane view shows; every deal when omitted.",
+      type: "enum",
+      values: [{ value: "upcoming" }, { value: "listed", aliases: ["recent"] }],
+      // The pane's list, so a screenshot shows the deals the report lists.
+      pluginState: { pluginId: "ipo-calendar", key: "list" },
     },
     {
       key: "status",
@@ -220,6 +262,8 @@ export const ipoCalendarHeadless: HeadlessPaneDefinition<"rows"> = {
     const region = regionOption(args);
     const status = statusOption(args);
     if (region !== "all") parts.push(region === "us" ? "US" : region === "apac" ? "APAC" : "Europe");
+    const list = listOption(args);
+    if (list) parts.push(list === "upcoming" ? "Upcoming" : "Recent listings");
     if (status !== "all") parts.push(status);
     return parts.join(" | ");
   },
@@ -238,7 +282,7 @@ export const ipoCalendarHeadless: HeadlessPaneDefinition<"rows"> = {
     if (!matched?.symbol) return projected;
     const [price, news] = await Promise.all([
       matched.status === "listed"
-        ? ctx.marketData.getQuote(matched.symbol, matched.exchange ?? undefined).then((quote) => quote.price ?? null,
+        ? ctx.marketData.getQuote(matched.symbol, matched.exchange ?? undefined).then(ipoPriceNow,
           logFailure("plugins.ipo-calendar", "Load the price of an IPO failed", null))
         : Promise.resolve(null),
       loadIpoLockupNews(ctx.apiClient, matched).catch(logFailure("plugins.ipo-calendar", "Load an IPO's lock-up news failed", [] as IpoLockupStory[])),

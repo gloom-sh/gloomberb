@@ -61,6 +61,18 @@ test("ERN rows carry each quarter's basis, the estimate's analysts and whether t
   ]);
 });
 
+test("ERN history and the reported board do not pair company-adjusted diluted EPS with a street consensus", async () => {
+  const streetEps = { actual: 9.16, actualBasis: "including-stock-compensation" as const, estimate: 6.55, analysts: 8 };
+  const filed = report({ symbol: "DELL", date: today, epsActual: 9.45, epsBasis: "company-adjusted", epsActualSource: "filing", dateStatus: "reported", gaapEps: 8.82, streetEps });
+  const sources = {
+    calendar: async () => ({ asOf: history.asOf, from: today, to: today, reports: [{ ...filed, averageReports: 0, averageMove: null }] }),
+    history: async () => ({ ...history, symbol: "DELL", reports: [filed] }), upcoming: async () => [],
+  };
+  const single = await createEarningsHeadless(sources).load({ ...args, argument: "DELL", symbols: ["DELL"], rawArgument: "DELL" }, context);
+  const board = await createEarningsBoardHeadless(sources).load({ ...args, argument: null, symbols: [], rawArgument: "" }, context);
+  for (const result of [single, board]) expect(result.rows[0]).toMatchObject({ epsActual: 9.45, epsBasis: "company-adjusted", epsEstimate: null, epsSurprise: null, epsActualProvisional: false, gaapEps: 8.82, streetEps });
+});
+
 test("a REIT's next report shows the calendar's FFO consensus labelled adjusted, on ERN <ticker> and the board", async () => {
   const pld = report({ symbol: "PLD", name: "Prologis, Inc.", date: addDays(today, 2), timing: "bmo", timingSource: "calendar",
     fiscalPeriod: "2026-09", epsEstimate: 1.58, epsAnalysts: 2, epsBasis: "adjusted", dateStatus: "confirmed" });
@@ -181,6 +193,42 @@ test("ERN board rows carry the status, analysts and basis ERN <ticker> shows, ra
     ["KO", "confirmed", 0.88024, 18, null, null, 386.37e9],
     ["SAP", "projected", null, null, null, null, null],
   ]);
+  // The text report draws the pane's two views: reports to come, then those out, each with its own columns.
+  const text = renderHeadlessPaneText(definition, result, { ...args, rawArgument: "PEP GOOGL KO SAP" }, "ERN").split("\n");
+  const upcoming = text.find((line) => line.includes("Status"))!;
+  expect(upcoming).toMatch(/Date\s+Status\s+When\s+Ticker/);
+  expect(upcoming).not.toMatch(/EPS act|EPS surp|Basis|Ccy/);
+  const reported = text.findIndex((line) => line.includes("Reported"));
+  expect(reported).toBeGreaterThan(text.findIndex((line) => line.includes("KO")));
+  expect(text[reported + 1]).toMatch(/EPS act\s+Basis\s+EPS surp/);
+  expect(text[reported + 1]).not.toMatch(/Status|Ests|Ccy/);
+  expect(text.slice(reported + 1).join("\n")).toContain("PEP");
+  expect(text.slice(0, reported).join("\n")).not.toContain("PEP");
+});
+
+test("--kind lists one view of the board, as shot opens on it, and ERN <ticker> refuses it", async () => {
+  const day = addDays(today, 1);
+  const calendarReport = (fields: Partial<HistoryReport> & Pick<HistoryReport, "symbol" | "date">) =>
+    ({ ...report(fields), averageMove: null, averageReports: 0 });
+  const definition = createEarningsHeadless({
+    calendar: async () => ({ asOf: `${today}T12:00:00.000Z`, from: today, to: addDays(today, 6), reports: [
+      calendarReport({ symbol: "PEP", date: today, marketCap: 210e9, epsEstimate: 2.26, epsActual: 2.29, epsBasis: "adjusted", dateStatus: "reported" }),
+      calendarReport({ symbol: "KO", date: day, marketCap: 386e9, epsEstimate: 0.88, epsAnalysts: 18, dateStatus: "confirmed" }),
+    ] }),
+    history: async () => history,
+    upcoming: async () => [],
+  });
+  const board = (options: Record<string, string>) => ({ rawArgument: "", argument: null, symbols: [], options });
+  const reported = await definition.load(board({ kind: "reported" }), context);
+  expect(reported.rows.map((row) => row.symbol)).toEqual(["PEP"]);
+  expect(reported.metadata).toMatchObject({ kind: "reported", total: 1 });
+  const text = renderHeadlessPaneText(definition, reported, board({ kind: "reported" }), "ERN");
+  expect(text).toMatch(/EPS act\s+Basis\s+EPS surp/);
+  expect(text).not.toMatch(/Status|KO/);
+  const upcoming = await definition.load(board({ kind: "upcoming" }), context);
+  expect(upcoming.rows.map((row) => row.symbol)).toEqual(["KO"]);
+  expect(renderHeadlessPaneText(definition, upcoming, board({ kind: "upcoming" }), "ERN")).not.toMatch(/EPS act|Reported/);
+  await expect(definition.load({ ...args, options: { kind: "reported" } }, context)).rejects.toThrow("gloom fn EVTS CRWV --kind reported");
 });
 
 test("EVTS with a ticker stays the market board and says whether that ticker is on it", async () => {
@@ -194,6 +242,10 @@ test("EVTS with a ticker stays the market board and says whether that ticker is 
   });
   const highlight = async (symbol: string) => (await board.load({ ...args, rawArgument: symbol, argument: symbol, symbols: [symbol] }, context)).metadata?.highlight;
   expect(await highlight("SAN")).toEqual({ symbol: "SAN", onBoard: true, date: day, row: "SAN" });
+  // With --kind, of that view's reports alone: SAN's is still to come, so it is not among those out.
+  const reported = await board.load({ ...args, rawArgument: "SAN", argument: "SAN", symbols: ["SAN"], options: { kind: "reported" } }, context);
+  expect(reported.metadata?.highlight).toEqual({ symbol: "SAN", onBoard: false, date: null, row: null });
+  expect(reported.metadata?.notices).toEqual([expect.stringContaining("(Reported), not one company's: SAN is not on it")]);
   // Sanofi in Paris is not the US board's SAN.
   expect(await highlight("SAN:EPA")).toEqual({ symbol: "SAN:EPA", onBoard: false, date: null, row: null });
 });

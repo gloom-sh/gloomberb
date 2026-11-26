@@ -171,7 +171,7 @@ export const cotHeadless: HeadlessPaneDefinition<"bundle"> = {
       unit: COT_UNIT, interval: COT_INTERVAL, rowSymbolKey: "root", rowAsOfKey: "reportDate",
       columns: [{ key: "marketName", header: "Market" }, { key: "contractCode", header: "Code" },
         ...POSITION_COLUMNS.map((column) => column.key === "net" ? { ...column, textHeader: cotBoardNetHeader(family, traderClass) } : column),
-        { key: "openInterest", header: "Open interest", align: "right", format: count }, { key: "reportDate", header: "As of" }],
+        { key: "openInterest", header: "Open interest", align: "right", format: count }, { key: "reportDate", header: "As of", omitWhenSame: true }],
       rows: rows.map((row) => ({ contractCode: row.contractCode, root: cotRoot(row.contractCode) ?? row.contractCode, marketName: cotMarketName(row.marketName), reportDate: row.reportDate, openInterest: row.openInterest, ...cotPositionRow(row.position) })) }],
     errors: data.gaps, metadata: { ...data, scope, publishedAt, complete: data.status === "available" }, ...cotReleased(publishedAt, data.source) };
   },

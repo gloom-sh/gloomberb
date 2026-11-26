@@ -27,6 +27,8 @@ const board: IpoCalendarPayload = {
       id: "arm", company: "Arm Holdings", symbol: "ARM", offerPrice: 51, status: "listed", listingDate: "2026-09-20",
       firstDay: { session: "2026-09-20", open: 56.1, close: 63.75, returnPct: 0.25 },
     }),
+    // Still ahead, in its book: on the Upcoming list, with no return to show.
+    ipoDeal({ id: "next", company: "Next Robotics", symbol: "NXRB", priceLow: 18, priceHigh: 20, listingDate: "2099-01-15" }),
   ],
   sources: [
     { id: "hkex", mics: ["XHKG"], ok: true, asOf: "2026-09-29T00:00:00Z" },
@@ -41,11 +43,12 @@ afterEach(() => {
   ipoCalendarCache.reset();
 });
 
-async function mount(width = 110, height = 10, params?: Record<string, string>) {
+async function mount(width = 110, height = 10, params?: Record<string, string>, list: "upcoming" | "listed" | null = "listed") {
   ipoCalendarCache.attach(new MemoryPluginPersistence());
   setCloudApiFetchTransport(async () => Response.json(board));
   const id = "ipo-calendar";
-  const initial = createInitialState(createTestPaneConfig(":memory:", { instanceId: id, paneId: id, settings: {}, ...(params ? { params } : {}) }));
+  const config = createInitialState(createTestPaneConfig(":memory:", { instanceId: id, paneId: id, settings: {}, ...(params ? { params } : {}) }));
+  const initial: AppState = list ? { ...config, paneState: { ...config.paneState, [id]: { ...config.paneState[id], pluginState: { "ipo-calendar": { list } } } } } : config;
   const pins: { symbol: string; options?: PinTickerOptions }[] = [];
   let update: (change: (state: AppState) => AppState) => void = () => {};
   function Harness() {
@@ -61,7 +64,7 @@ async function mount(width = 110, height = 10, params?: Record<string, string>) 
     );
   }
   await act(async () => { await tui.render(<Harness />, { width, height }); });
-  await tui.waitForFrameToContain(params?.search ? "ARM" : "3750");
+  await tui.waitForFrameToContain(params?.search ? "ARM" : list === "listed" ? "3750" : "NXRB");
   return { pins, update };
 }
 
@@ -91,12 +94,27 @@ test("Enter opens a Hong Kong code on its own exchange, never a US ticker of the
   expect(pins.map((pin) => pin.symbol)).toEqual(["3750:XHKG"]);
 });
 
-test("IPO opens on the search the command names, as fn IPO reads it, and a later request replaces it", async () => {
+test("upcoming deals and recent listings are two lists, each with its own columns", async () => {
+  await mount(110, 10, undefined, null);
+  const header = tui.frame().split("\n").find((line) => line.includes("COMPANY"))!;
+  // Every deal here is upcoming, which the list says already: no STATUS column, and no return yet.
+  expect(header).not.toContain("STATUS");
+  expect(header).not.toContain("DAY 1");
+  // The two lists are the bar's view, unlabelled, ahead of the search.
+  expect(tui.frame()).toMatch(/Upcoming +Recent listings/);
+  expect(tui.frame()).not.toContain("List");
+  expect(tui.frame()).toContain("$18-20");
+  expect(tui.frame()).not.toContain("3750");
+});
+
+test("IPO opens on the search the command names, on the list its deals are on, and a later request replaces it", async () => {
   const create = ipoCalendarPlugin.paneTemplates![0]!.createInstance!;
   const context = { layout: { dockRoot: null, instances: [], floating: [], detached: [] }, focusedPaneId: null } as unknown as PaneTemplateContext;
   const params = (await create(context, { arg: " arm " }))?.params;
   expect(params).toEqual({ search: "arm", tabAt: expect.stringMatching(/^\d+$/) });
-  const { update } = await mount(110, 10, params);
+  // A pane that never chose a list opens on Upcoming, and ARM listed: it moves to Recent listings.
+  const { update } = await mount(110, 10, params, null);
+  expect(tui.frame().split("\n").find((line) => line.includes("COMPANY"))).toContain("DAY 1");
   expect(tui.frame()).toContain("/ arm");
   expect(tui.frame()).toContain("ARM");
   expect(tui.frame()).not.toContain("3750");

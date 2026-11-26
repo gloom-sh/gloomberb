@@ -163,6 +163,7 @@ import { editPriceLevels, parsePriceLevels, PRICE_LEVELS_KEY, priceLevelTickerKe
 import { canonicalExchange } from "../../../utils/exchanges";
 import { resolveInstrumentForPane } from "../../../core/state/app/instrument";
 import { CHART_FOLLOW_SERIES_SETTING_KEY, rebindFollowChartSpec, resolveFollowSeriesIds } from "./follow-binding";
+import { retitledChart } from "./chart-title";
 import type { InstrumentRef } from "../../../market-data/request-types";
 
 const RANGE_OPTIONS = RANGES.map((range, index) => ({ label: range, value: range, hint: String(index + 1) }));
@@ -1515,10 +1516,17 @@ export function ChartComposerPane({ paneId, focused, width, height }: PaneProps)
     () => follows ? rebindFollowChartSpec(stored, previousTarget.current, target, ownedIds) : unlinkedFrom ?? stored,
     [follows, ownedIds, stored, target, unlinkedFrom],
   );
-  const setSpec = useCallback((next: ChartSpec) => updateSettings({
+  const setSpec = useCallback((next: ChartSpec, retitle?: (title: string | undefined) => string | null) => updateSettings({
     [CHART_SPEC_SETTING_KEY]: next,
     ...(follows ? { [CHART_FOLLOW_SERIES_SETTING_KEY]: resolveFollowSeriesIds(next, target, target, ownedIds) } : {}),
-  }), [follows, ownedIds, target, updateSettings]);
+  }, retitle), [follows, ownedIds, target, updateSettings]);
+  // A title the chart's series gave it (`CMP SMH · QQQ · RSP`) follows the series the user adds or removes.
+  const specRef = useRef(spec);
+  specRef.current = spec;
+  const editSpec = useCallback(
+    (next: ChartSpec) => setSpec(next, (title) => retitledChart(title, specRef.current, next)),
+    [setSpec],
+  );
   // The rebound spec is saved once per target. A spec synced in from another device, whose list
   // cursor sits elsewhere, is rebound for display only: saving it would push it back, and two
   // devices following the same list would rewrite each other on every sync.
@@ -1565,7 +1573,7 @@ export function ChartComposerPane({ paneId, focused, width, height }: PaneProps)
   return (
     <ChartComposerSurface
       spec={spec}
-      setSpec={setSpec}
+      setSpec={editSpec}
       focused={focused}
       width={width}
       height={height}

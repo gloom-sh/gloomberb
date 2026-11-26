@@ -159,6 +159,7 @@ function IndustryNewsBody({ focused, width, height, entry, code, codeFilter }: P
       {...stack}
       rootHeight={height}
       rootBefore={rootBefore}
+      impliedCategory={entry?.category}
       emptyContent={entry ? (
         <PaneStatusBody
           loading={loaded.loading}

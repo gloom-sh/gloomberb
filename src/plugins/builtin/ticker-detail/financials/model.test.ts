@@ -6,6 +6,9 @@ import {
   computeGrowth,
   computeTTM,
   financialColumnLabel,
+  financialColumnName,
+  financialLabelWidth,
+  financialPeriodEnd,
   financialPeriodWidth,
   formatFinancialCell,
   financialStatementCurrency,
@@ -37,7 +40,7 @@ function createFinancials(): TickerFinancials {
 }
 
 describe("financial statement table model", () => {
-  test("a terminal period holds its widest value and the widest growth whole, or its header where that is wider", () => {
+  test("a period holds its widest value and the widest growth whole, or its header or the day it ends where that is wider", () => {
     const values = ["43.49", "-987.65", "1.2"];
     const width = financialPeriodWidth(values, ["FY2024", "FY2023"]);
     for (const value of values) {
@@ -49,8 +52,35 @@ describe("financial statement table model", () => {
     }
     // The widest value ends the column against its growth, with no blank before it.
     expect(formatFinancialCell("-987.65", 0.1, width).valueText).toBe("-987.65");
-    expect(financialPeriodWidth(["1.2"], ["Dec 2025 USD (restated)"])).toBe(23);
+    // A header and the two cells the table keeps after one; a day and the same two, drawn in the header's cells.
+    expect(financialPeriodWidth(["1.2"], ["Dec 2025 USD (restated)"])).toBe(25);
+    expect(financialPeriodWidth(["1.2"], ["FY2025"], ["2025-12-31"])).toBe(12);
     expect(financialPeriodWidth([], [])).toBe(7);
+  });
+
+  test("a column is headed by its fiscal period alone, the day it ends left to the first row", () => {
+    const year = { date: "2025-09-27", totalRevenue: 1 } as FinancialStatement;
+    expect(financialColumnName(year, "annual", 9)).toBe("FY2025");
+    expect(financialPeriodEnd(year)).toBe("2025-09-27");
+  });
+
+  test("the metric column gives its room to whole periods, and a phone to a second one", () => {
+    // 13 cells a period and its gap: three fit a 76-cell web pane beside names 28 wide; five a 96-column terminal.
+    expect(financialLabelWidth(76, 13, 6, true)).toBe(28);
+    expect(financialLabelWidth(96, 13, 6)).toBe(21);
+    // Every period shown: the names keep 28 and the rest is blank.
+    expect(financialLabelWidth(160, 13, 6)).toBe(28);
+    // A 390 px phone is 48 cells: two periods beside names 15 wide. The terminal, whose names are indented, keeps one.
+    expect(financialLabelWidth(48, 13, 6, true)).toBe(15);
+    expect(financialLabelWidth(48, 13, 6)).toBe(28);
+    // No narrower than 14 for the pair: one period, as before.
+    expect(financialLabelWidth(46, 13, 6, true)).toBe(27);
+    // Too narrow for a period beside whole names: the names shrink, never below 12.
+    expect(financialLabelWidth(36, 13, 6)).toBe(17);
+    expect(financialLabelWidth(24, 13, 6)).toBe(12);
+    // The ratio tabs' one fixed period, as it was.
+    expect(financialLabelWidth(120)).toBe(28);
+    expect(financialLabelWidth(40)).toBe(16);
   });
 
   test("large growth fits beside precise EPS without truncating its sign or percent unit", () => {
@@ -416,6 +446,8 @@ test("a filled half is never summed as a quarter, compared with one, or headed a
   // Not even one a quarter after it.
   const offCycle = buildFinancialTableModel({ ...financials, quarterlyStatements: [...quarters, half("2026-03-31", 170)] }, { period: "quarterly", statement: "income" })!;
   expect(financialColumnLabel(offCycle.statements[0]!, "quarterly", 12)).toBe("6M 2026-03-31");
+  // The pane's header leaves the day to the Period end row.
+  expect(financialColumnName(offCycle.statements[0]!, "quarterly", 12)).toBe("6M");
   expect(offCycle.rows.find(({ key, summaryKey }) => (key ?? summaryKey) === "totalRevenue")!.cells[0]!.growth).toBeUndefined();
 });
 

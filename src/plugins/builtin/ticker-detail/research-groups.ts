@@ -37,11 +37,24 @@ const TICKER_RESEARCH_GROUPS: readonly TickerResearchGroupDef[] = [
   { id: "options", name: "Options", views: ["options"] },
   { id: "events", name: "Events", views: ["corporate-actions", "event-dividends", "catalysts", "mna", PHARMA_SIGNALS_TAB_ID] },
   { id: "filings", name: "Filings", views: ["sec", "filing-events", "risk-factors"] },
-  { id: "ownership", name: "Ownership", views: ["holders", "insider", "thirteenf", "congress", "short-interest"] },
+  { id: "ownership", name: "Ownership", views: ["holders", "insider", "buybacks", "thirteenf", "congress", "short-interest"] },
   { id: "people", name: "People", views: ["executives", "jobs", "hiring-momentum"] },
   { id: "buzz", name: "Buzz", views: ["news", "ticker-tweets", "app-attention"] },
   { id: "notes", name: "Notes", views: ["thesis", "notes"] },
 ];
+
+/**
+ * What a view was called before it was named apart from its group (Financials
+ * > Financials, Analysts > Analyst, Notes > Notes): `--tab analyst` and a
+ * typed label still open it. Ids never changed; Financials > Dividends, now
+ * Dividend Yield, keeps no alias, as `--tab dividends` has always opened
+ * Events > Dividends.
+ */
+export const FORMER_VIEW_NAMES: Readonly<Record<string, readonly string[]>> = {
+  financials: ["Financials"],
+  "analyst-research": ["Analyst"],
+  notes: ["Notes"],
+};
 
 /** One top tab: a group with the views this ticker has, or a view of its own. */
 export interface TickerResearchTabGroup {

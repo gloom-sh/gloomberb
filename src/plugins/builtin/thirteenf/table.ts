@@ -4,7 +4,6 @@ import { TickerBadgeList } from "../../../components/ticker/badge/list";
 import { TextAttributes } from "../../../ui";
 import type { DataTableCell } from "../../../components";
 import { colors, priceColor } from "../../../theme/colors";
-import { formatShortDate } from "../../../utils/datetime-format";
 import {
   holdingActionLabel,
   formatChangeShares,
@@ -13,7 +12,6 @@ import {
   formatWeightMaybe,
   formatRawPercentMaybe,
   formatShares,
-  FILING_DAY_FORMAT,
 } from "./format";
 import { amendmentKind, positionType } from "./model";
 import type {
@@ -49,7 +47,8 @@ export function renderBrowserCell(
     case "period":
       return { text: row.periodOfReport ?? MISSING_VALUE, color: colors.textDim };
     case "filed":
-      return { text: formatShortDate(row.filedAsOfDate, FILING_DAY_FORMAT), color: colors.textDim };
+      // With its year, as PERIOD: a fund that stopped filing did so years ago.
+      return { text: row.filedAsOfDate || MISSING_VALUE, color: colors.textDim };
     case "value":
       return { text: formatMoneyCompact(row.tableValueTotal), color: colors.text };
     case "rows":

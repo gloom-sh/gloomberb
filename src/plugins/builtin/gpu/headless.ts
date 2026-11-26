@@ -31,15 +31,17 @@ const columns = [
   { key: "gpu", header: "GPU" }, { key: "source", header: "Source" }, { key: "basis", header: "Basis" },
   { key: "price", header: "$/GPU-hr", align: "right" as const, format: price },
   { key: "change1d", header: "1D", align: "right" as const, format: change }, { key: "change7d", header: "7D", align: "right" as const, format: change },
-  { key: "change30d", header: "30D", align: "right" as const, format: change }, { key: "availability", header: "Avail" },
+  { key: "change30d", header: "30D", align: "right" as const, format: change, omitWhenEmpty: true }, { key: "availability", header: "Avail" },
   { key: "observedAt", header: "As of", format: minute },
 ];
 
 const settleColumns = [
-  { key: "gpu", header: "GPU" }, { key: "status", header: "Settle" },
+  // A status and settle time every GPU shares are no columns: the source line dates the settle.
+  { key: "gpu", header: "GPU" }, { key: "status", header: "Settle", omitWhenSame: true },
   { key: "price", header: "$/GPU-hr", align: "right" as const, format: price },
   { key: "change1d", header: "1D", align: "right" as const, format: percent }, { key: "change7d", header: "7D", align: "right" as const, format: percent },
-  { key: "change30d", header: "30D", align: "right" as const, format: percent }, { key: "settleAt", header: "Settled", format: minute },
+  { key: "change30d", header: "30D", align: "right" as const, format: percent, omitWhenEmpty: true },
+  { key: "settleAt", header: "Settled", format: minute, omitWhenSame: true },
 ];
 
 export const gpuHeadless: HeadlessPaneDefinition<"bundle"> = {
@@ -126,7 +128,11 @@ export const gpuHeadless: HeadlessPaneDefinition<"bundle"> = {
     const settles = gpuSettleRows(board.settles, model).map(({ settle }) => ({ gpu: gpuLabel(settle), status: settle.status === "settled" ? "settled" : "no settle",
       price: settle.pricePerGpuHr, change1d: settle.change1d, change7d: settle.change7d, change30d: settle.change30d, settleAt: settle.settleAt,
       date: settle.date, ...(settle.kind === "correction" ? { corrected: true } : {}) }));
-    return { sections: [...(settles.length ? [{ title: GPU_SETTLE_SECTION, columns: settleColumns, rows: settles }] : []),
+    // One settle time for every GPU heads the table instead of filling a column.
+    const settleTimes = new Set(settles.map((row) => row.settleAt));
+    const settleTitle = settles.length > 1 && settleTimes.size === 1 && settles[0]!.settleAt
+      ? `${GPU_SETTLE_SECTION}, ${minute(settles[0]!.settleAt)}` : GPU_SETTLE_SECTION;
+    return { sections: [...(settles.length ? [{ title: GPU_SETTLE_SECTION, textTitle: settleTitle, columns: settleColumns, rows: settles }] : []),
       { title: "GPU rental prices", columns, rows: boardRows, empty: `No ${model ? `${model} ` : ""}rental prices have been observed yet.` }],
       freshness, complete: !board.access?.locked, metadata, errors: [...locks, ...board.gaps] };
   },

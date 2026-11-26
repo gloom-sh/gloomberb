@@ -401,6 +401,18 @@ test("a fresh streamed bid and ask clear the snapshot's stale mark; a trade alon
   expect(trade).toMatchObject({ bid: 30, ask: 31, quoteStale: true });
 });
 
+test("a fresh streamed bid and ask clear a crossed mark too; a trade alone keeps it", () => {
+  // A quote served crossed after the close: no sides, marked stale and crossed.
+  const crossed = { ...contract(100, "C"), bid: 0, ask: 0, quoteStale: true, quoteCrossed: true };
+  const quote: Quote = { symbol: crossed.contractSymbol, price: 42.5, currency: "USD", change: 0, changePercent: 0,
+    lastUpdated: 1_800_000_000_000, bid: 42.4, ask: 42.6 };
+  const live = overlayOptionContractQuote(crossed, quote)!;
+  expect(live).toMatchObject({ bid: 42.4, ask: 42.6 });
+  expect(live.quoteCrossed).toBeUndefined();
+  expect(overlayOptionContractQuote(crossed, { ...quote, bid: undefined, ask: undefined })!)
+    .toMatchObject({ bid: 0, ask: 0, quoteStale: true, quoteCrossed: true });
+});
+
 test("streamed session volume grows the contract's volume and never shrinks it", () => {
   const original = contract(100, "C");
   const quote: Quote = { symbol: original.contractSymbol, price: 1, currency: "USD", change: 0, changePercent: 0,

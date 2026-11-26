@@ -11,7 +11,7 @@ import { isRecord } from "../../src/utils/guards";
 import { pluginDirectory, pluginInstallRef, pluginLaneEnv, planPlugins, type FunctionCard } from "./data-sweep-plugins";
 
 const READ_ONLY = new Set(`adverse-events analyst-research apps attention-trending awards backtest buildout buildout-company
- catalysts central-bank-rates chart-composer comment-letters commodities-energy company-kpis congress-trades corporate-actions
+ catalysts ccass-market central-bank-rates chart-composer comment-letters commodities-energy company-kpis congress-trades corporate-actions
  correlation cpi crypto-board crypto-etf-flows csp-screen custom-view data-catalog dividend-yield earnings-calendar earnings-calls
  earnings-estimates earnings-ripple econ-calendar econ-statistics equity-screener estimate-revisions executives exposure fear-greed
  filing-events financial-analysis fixed-income fx-matrix gpu company-guidance hiring historical-prices holders insider ipo-calendar

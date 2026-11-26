@@ -2,7 +2,7 @@ import type { EarningsCalendarReport, EarningsTiming } from "../../../api-client
 import { getExtendedSessionDisplay, getRegularSessionMoveDisplay } from "../../../market-data/market/status";
 import { getPublishedUsEquityCalendarDay } from "../../../market-data/published-us-sessions";
 import type { EarningsEvent } from "../../../types/data-provider";
-import type { EarningsDateStatus, EarningsEpsBasis, Quote } from "../../../types/financials";
+import type { EarningsDateStatus, EarningsEpsBasis, FilingEpsDetails, Quote } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { earningsDateStatus, earningsEpsBasis, isProvisionalActual } from "../shared/earnings-report";
 import { calendarReport } from "../shared/earnings-calendar";
@@ -15,7 +15,7 @@ import { shortDate, surprise, weekday, type Surprise } from "./format";
 /** A held name is in a portfolio; a watched one only in watchlists. */
 export type Ownership = "held" | "watched";
 
-export interface BoardReport {
+export interface BoardReport extends FilingEpsDetails {
   key: string;
   symbol: string;
   name: string;
@@ -154,6 +154,7 @@ export function boardReport(report: EarningsCalendarReport, owned: ReadonlyMap<s
     epsActual: report.epsActual,
     provisional: isProvisionalActual(report),
     epsBasis: earningsEpsBasis(report.epsBasis),
+    ...(report.streetEps ? { streetEps: report.streetEps, gaapEps: report.gaapEps } : {}),
     epsSurprise: surprise(report.epsActual, report.epsEstimate),
     revenueEstimate: report.revenueEstimate,
     impliedMove: report.implied?.move ?? null,
@@ -164,6 +165,18 @@ export function boardReport(report: EarningsCalendarReport, owned: ReadonlyMap<s
     currency: report.currency ?? "USD",
     ...report.listings?.length ? { listings: report.listings } : {},
   };
+}
+
+/** Whether a board row is a report already out or one still to come, each with columns of its own. */
+export type BoardKind = "upcoming" | "reported";
+
+/**
+ * A report is out once the calendar says so, once it has an actual or a
+ * measured move on it, or once its day has gone by; until then it is to come,
+ * confirmed or projected.
+ */
+export function boardReportKind(report: Pick<BoardReport, "date" | "dateStatus" | "epsActual" | "realizedMove">, today: string): BoardKind {
+  return report.dateStatus === "reported" || report.epsActual != null || report.realizedMove != null || report.date < today ? "reported" : "upcoming";
 }
 
 /**

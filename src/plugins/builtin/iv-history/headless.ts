@@ -134,7 +134,7 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
     const statColumns = [
       { key: "label", header: "Measure" },
       { key: "value", header: "Current", format: (value: unknown, row?: unknown) => formatStat(value as number | null, (row as IvStatRow).unit) },
-      { key: "date", header: "As of" }, { key: "method", header: "Method" },
+      { key: "date", header: "As of", omitWhenSame: true }, { key: "method", header: "Method" },
       { key: "low", header: "52w low", format: (value: unknown, row?: unknown) => formatStat(value as number | null, (row as IvStatRow).unit) },
       { key: "high", header: "52w high", format: (value: unknown, row?: unknown) => formatStat(value as number | null, (row as IvStatRow).unit) },
       { key: "rank", header: "Rank", format: (value: unknown) => formatRank(value as number | null) },

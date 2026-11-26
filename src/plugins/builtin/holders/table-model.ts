@@ -8,14 +8,19 @@ export const DEFAULT_SORT: SortPreference = {
   direction: "desc",
 };
 
-export const VIEW_TABS: Array<{ label: string; value: ViewMode }> = [
+const VIEW_TABS: Array<{ label: string; value: ViewMode }> = [
   { label: "Table", value: "table" },
   { label: "Chart", value: "chart" },
   { label: "13D/G", value: "13dg" },
 ];
 
-/** `s` steps through the views in tab order. */
-export const DISCLOSURE_TABS = [...VIEW_TABS, { label: "Disclosures", value: "disclosures" as const }];
+export function holderTabs(options: { hasDisclosures: boolean; hasCcass: boolean }): Array<{ label: string; value: ViewMode }> {
+  return [
+    ...VIEW_TABS,
+    ...(options.hasDisclosures ? [{ label: "Disclosures", value: "disclosures" as const }] : []),
+    ...(options.hasCcass ? [{ label: "CCASS", value: "ccass" as const }] : []),
+  ];
+}
 
 export function nextViewMode(current: ViewMode, tabs = VIEW_TABS): ViewMode {
   const index = tabs.findIndex((tab) => tab.value === current);
@@ -56,7 +61,8 @@ export function buildColumns(width: number, showChange: boolean): HolderColumn[]
       { id: "changePercent", label: "CHG%", width: changePercentWidth, align: "right" },
     ] satisfies HolderColumn[] : []),
     { id: "percentHeld", label: "HELD", width: heldWidth, align: "right" },
-    { id: "reportDate", label: "PERIOD", width: dateWidth, align: "right" },
+    // One period for every holder is the footer's date, not a column.
+    { id: "reportDate", label: "PERIOD", width: dateWidth, align: "right", omitWhenSame: true },
   ];
 }
 

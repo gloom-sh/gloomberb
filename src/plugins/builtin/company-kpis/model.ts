@@ -59,6 +59,29 @@ export function seriesDetail(row: Pick<CompanyRow, "basis" | "dimensions" | "ser
 /** A series named in plain words: "Revenue · Data Center", for a chart's series list and a detail title. */
 export const seriesName = (row: Pick<CompanyRow, "metric" | "basis" | "dimensions" | "seriesLabels">) => [row.metric.name, seriesDetail(row)].filter(Boolean).join(" · ");
 const KIND_ORDER = ["quarter", "half", "ytd", "year", "instant", "other"];
+type PeriodKind = CompanyRow["period"]["kind"];
+const PERIOD_VIEW_LABELS: Record<PeriodKind, string> = {
+  quarter: "Quarterly", half: "Half-yearly", ytd: "Year to date", year: "Annual", instant: "Balances", other: "Other periods",
+};
+/**
+ * The period kinds a KPI table has rows of, as its views, in reading order:
+ * Quarterly, Half-yearly, Year to date, Annual, Balances, Other periods. A
+ * company's quarterly and annual figures of one metric are separate series,
+ * and listed together they read as one series twice with two kinds of change.
+ */
+export function kpiPeriodViews(rows: readonly Pick<CompanyRow, "period">[]): { value: PeriodKind; label: string }[] {
+  const kinds = new Set(rows.map((row) => row.period.kind));
+  return (KIND_ORDER as PeriodKind[]).filter((kind) => kinds.has(kind)).map((kind) => ({ value: kind, label: PERIOD_VIEW_LABELS[kind] }));
+}
+/** The view a stored choice names while the table has it, else the first: quarters, when the company reports them. */
+export function kpiPeriodView(stored: string | null | undefined, views: readonly { value: PeriodKind }[]): PeriodKind | null {
+  return views.find((view) => view.value === stored)?.value ?? views[0]?.value ?? null;
+}
+/** What the change column sets a figure against, one comparison per view (observationChange). */
+const CHANGE_LABELS: Record<PeriodKind, string> = {
+  quarter: "Q/Q change", half: "H/H change", ytd: "Y/Y change", year: "Y/Y change", instant: "Prior change", other: "Prior change",
+};
+const periodChangeLabel = (kind: PeriodKind | null | undefined) => kind ? CHANGE_LABELS[kind] : "Prior change";
 const BASIS_ORDER = ["reported", "adjusted", "constant_currency", "organic"];
 /** Series in reading order: by metric, the consolidated figure before its parts, reported before other bases, a quarter before its year. */
 export function seriesOrder(a: CompanyRow, b: CompanyRow): number {
@@ -266,13 +289,15 @@ export function companyCellText(row: CompanyRow, column: string, observations: K
 /**
  * The table's columns. `named` is the desktop's: the metric cell names the
  * series in plain words (seriesDetail), so no basis or scope column repeats it.
+ * `period` is the one kind of period the rows are, which names the change.
  */
-export function companyColumns(guidance: boolean, evidence: boolean, history: boolean, trend = false, named = false): DataTableColumn[] {
+export function companyColumns(guidance: boolean, evidence: boolean, history: boolean, trend = false, named = false, period: PeriodKind | null = null): DataTableColumn[] {
   const columns: DataTableColumn[] = [
     { id: "metric", label: "Metric", width: 27, flexGrow: 1, align: "left" },
     { id: "period", label: "Fiscal period", width: 14, align: "left" },
     { id: "value", label: guidance ? "Guide" : "Value", width: guidance ? 26 : 16, align: "right" },
-    { id: "change", label: guidance ? "Action" : "Prior change", width: 13, align: "right" },
+    // One period kind's rows are set against one kind of prior period, which the header names.
+    { id: "change", label: guidance ? "Action" : periodChangeLabel(period), width: 13, align: "right" },
     ...(trend ? [{ id: "trend", label: "Trend", width: 16, align: "left" as const }] : []),
     ...(guidance ? [{ id: "issued", label: "Issued", width: 11, align: "left" as const },
       ...(history ? [{ id: "actual", label: "Actual", width: 16, align: "right" as const }, { id: "outcome", label: "Outcome", width: 10, align: "left" as const }] : [])] : []),

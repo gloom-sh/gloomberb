@@ -4,8 +4,10 @@ import type {
   CorporateActionsData,
   TickerFinancials,
 } from "../../../types/financials";
-import { formatEventMetric, type EventSummaryFigure } from "./event-model";
-import type { HeadlessBundleSection } from "../../../types/headless";
+import { formatEventMetric, isFundListing, type EventSummaryFigure } from "./event-model";
+import { fundCorporateActions } from "../../../market-data/fund-actions";
+import type { HeadlessBundleSection, HeadlessPaneColumn } from "../../../types/headless";
+import { quartersEpsBasis, type EarningsQuarter } from "./event-charts";
 import { loadAnalystResearch } from "./client";
 import { MISSING_VALUE, formatPercent, formatPercentRaw } from "../../../utils/format";
 import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
@@ -33,7 +35,7 @@ export const EVENT_COLUMNS = [
   { key: "detail", header: "Detail" },
 ];
 
-/** The figures over the events views (buildNextUp, buildEventSummary), as the text reports print them under their rows. */
+/** The figures over the events views (buildNextUp, buildEarningsHeader), as the text reports print them under their rows. */
 export function eventSummarySection(figures: readonly EventSummaryFigure[]): HeadlessBundleSection {
   return {
     title: "Next up",
@@ -42,6 +44,37 @@ export function eventSummarySection(figures: readonly EventSummaryFigure[]): Hea
       formatted: figure.detail ? `${figure.value}  ${figure.detail}` : figure.value,
     })),
   };
+}
+
+/**
+ * The Earnings view's table (EVT's, and EE's Reported), as the text reports
+ * print it: one row per quarter, the next one first, the EPS heading naming
+ * the basis most reported quarters share (`Adj EPS`), as the pane's does.
+ */
+export function quarterTextColumns(quarters: readonly EarningsQuarter[]): HeadlessPaneColumn[] {
+  const basis = quartersEpsBasis(quarters);
+  return QUARTER_TEXT_COLUMNS.map((column) => column.key === "eps" && basis ? { ...column, header: basis === "GAAP" ? "GAAP EPS" : "Adj EPS" } : column);
+}
+const QUARTER_TEXT_COLUMNS: HeadlessPaneColumn[] = [
+  { key: "date", header: "Date" },
+  { key: "period", header: "Quarter" },
+  { key: "eps", header: "EPS", align: "right" },
+  { key: "estimate", header: "Est", align: "right" },
+  { key: "surprise", header: "Surprise", align: "right" },
+  { key: "revenue", header: "Revenue", align: "right" },
+  { key: "detail", header: "Detail" },
+];
+
+export function quarterTextRows(quarters: readonly EarningsQuarter[]): Record<string, string>[] {
+  return quarters.map((quarter) => ({
+    date: quarter.date, period: quarter.period,
+    eps: quarter.upcoming ? "" : formatEventMetric(quarter.eps, quarter.epsCurrency, "eps"),
+    estimate: formatEventMetric(quarter.estimate, quarter.epsCurrency, "eps"),
+    surprise: quarter.upcoming ? "" : quarter.surpriseNotMeaningful ? NOT_MEANINGFUL_TEXT
+      : quarter.surprisePercent != null ? formatPercentRaw(quarter.surprisePercent) : MISSING_VALUE,
+    revenue: quarter.upcoming ? "" : formatEventMetric(quarter.revenue, quarter.revenueCurrency, "revenue"),
+    detail: quarter.detail,
+  }));
 }
 
 /**
@@ -103,24 +136,29 @@ export async function loadEventSources(
   symbol: string,
   today = listingDay(parsePublicTickerKey(symbol).exchange),
 ): Promise<EventSources> {
-  const [actions, estimates, financials, calendar] = await Promise.allSettled([
+  const listingRead = Promise.allSettled([
     provider.getCorporateActions?.(symbol, "") ?? null,
-    // A listing no analyst covers answers with no estimates, not a failure.
-    provider.getAnalystResearch ? loadAnalystResearch(provider, symbol, "") : null,
     provider.getTickerFinancials(symbol, ""),
+  ]).then(([actions, financials]) => {
+    const recordedActions = actions.status === "fulfilled" ? actions.value : null;
+    const financialsData = financials.status === "fulfilled" ? financials.value : null;
+    return { actions, financials, recordedActions, financialsData, fund: isFundListing(financialsData, recordedActions) };
+  });
+  const [calendar, estimates] = await Promise.allSettled([
     loadEarningsCalendar(provider, [symbol]),
+    listingRead.then(({ fund }) => !fund && provider.getAnalystResearch ? loadAnalystResearch(provider, symbol, "") : null),
   ]);
+  const { actions, financials, recordedActions, financialsData, fund } = await listingRead;
   const event = calendar.status === "fulfilled" ? calendarEventOf(calendar.value.events, symbol) : null;
-  const actionsData = actions.status === "fulfilled" && actions.value ? withResolvedEarnings(actions.value, event, today) : null;
-  const estimatesData = estimates.status === "fulfilled" ? estimates.value : null;
-  const financialsData = financials.status === "fulfilled" ? financials.value : null;
+  const actionsData = recordedActions ? (fund ? fundCorporateActions(recordedActions) : withResolvedEarnings(recordedActions, event, today)) : null;
+  const estimatesData = !fund && estimates.status === "fulfilled" ? estimates.value : null;
   return {
     actions: actionsData,
     estimates: estimatesData,
     financials: financialsData,
     currency: actionsData?.currency ?? estimatesData?.currency ?? financialsData?.quote?.currency ?? "",
     actionsError: settledError(actions),
-    estimatesError: settledError(estimates),
+    estimatesError: fund ? null : settledError(estimates),
     financialsError: settledError(financials),
   };
 }

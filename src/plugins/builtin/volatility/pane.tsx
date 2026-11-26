@@ -40,7 +40,8 @@ const BOARD_COLUMNS: DataTableColumn[] = [
   { id: "change1d", label: "1D pts", width: 9, align: "right" },
   { id: "change1dPercent", label: "1D %", width: 9, align: "right" },
   { id: "percentile1y", label: "1Y pctl", width: 9, align: "right" },
-  { id: "date", label: "As of", width: 12, align: "left" },
+  // The footer dates the selected index; indexes from different sessions bring the column back.
+  { id: "date", label: "As of", width: 12, align: "left", omitWhenSame: true },
 ];
 /**
  * What a narrow board gives up before its dates: the name (the selected row's

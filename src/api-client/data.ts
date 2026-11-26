@@ -1,6 +1,14 @@
 import type { JpxShortPositions } from "./jpx-short-positions";
 import type { SgxShortSales, KoreanShortPositions, KoreanVenue, MainlandLendingBalances, MainlandVenue, TaiwanShortBalances, TaiwanVenue } from "./exchange-short-balances";
 import type { SfcShortPositions } from "./sfc-short-positions";
+import type { BuybacksPayload } from "./buybacks";
+import type {
+  HkCcassBigChangesPayload,
+  HkCcassConcentrationPayload,
+  HkCcassParticipantPortfolioPayload,
+  HkCcassSouthboundPayload,
+  HkCcassStockPayload,
+} from "./hk-ccass";
 import type { AttentionPayload, AttentionWindow } from "./attention";
 import type { HiringBoard, HiringBuildingBoard, HiringBuildingFilter, HiringCompanyBuilding, HiringCompanyMoves, HiringCompanySignals, HiringMovesBoard, HiringMovesFilter, HiringPayload, HiringSignalGroup, HiringSignalsBoard, HiringSignalsFilter } from "./hiring";
 import type { AppAttentionFilter, AppAttentionPayload, AppRankPayload } from "./app-attention";
@@ -545,6 +553,81 @@ export class CloudDataApi {
     );
   }
 
+  /** Hong Kong CCASS custody holdings, bucketed flows and daily deltas for an HK code or linked ADR. */
+  getHkCcassStock(
+    code: string,
+    options: { from?: string; date?: string; limit?: number; signal?: AbortSignal } = {},
+  ) {
+    const qs = new URLSearchParams();
+    if (options.from) qs.set("from", options.from);
+    if (options.date) qs.set("date", options.date);
+    if (options.limit) qs.set("limit", String(options.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return this.request<HkCcassStockPayload>(
+      `/cloud/hk-ccass/stocks/${encodeURIComponent(code)}${suffix}`,
+      options.signal ? { signal: options.signal } : undefined,
+    );
+  }
+
+  /** Market-wide Hong Kong CCASS big changes and pre-placement deposits. */
+  getHkCcassBigChanges(
+    options: { depositsOnly?: boolean; minPct?: number; code?: string; limit?: number; signal?: AbortSignal } = {},
+  ) {
+    const qs = new URLSearchParams();
+    if (options.depositsOnly) qs.set("depositsOnly", "true");
+    if (options.minPct != null) qs.set("minPct", String(options.minPct));
+    if (options.code) qs.set("code", options.code);
+    if (options.limit) qs.set("limit", String(options.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return this.request<HkCcassBigChangesPayload>(
+      `/cloud/hk-ccass/big-changes${suffix}`,
+      options.signal ? { signal: options.signal } : undefined,
+    );
+  }
+
+  /** Market-wide Hong Kong CCASS Top-5 and Top-10 concentration rankings. */
+  getHkCcassConcentration(
+    options: { sortBy?: "top5" | "top10" | "top10_non_ccass" | "ccass_pct" | "deposit"; limit?: number; signal?: AbortSignal } = {},
+  ) {
+    const qs = new URLSearchParams();
+    if (options.sortBy) qs.set("sortBy", options.sortBy);
+    if (options.limit) qs.set("limit", String(options.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return this.request<HkCcassConcentrationPayload>(
+      `/cloud/hk-ccass/concentration${suffix}`,
+      options.signal ? { signal: options.signal } : undefined,
+    );
+  }
+
+  /** Stock Connect Southbound (A00003 + A00004) holdings and daily flow rankings. */
+  getHkCcassSouthbound(
+    options: { sortBy?: "pct" | "shares" | "delta_pct" | "delta_shares"; limit?: number; signal?: AbortSignal } = {},
+  ) {
+    const qs = new URLSearchParams();
+    if (options.sortBy) qs.set("sortBy", options.sortBy);
+    if (options.limit) qs.set("limit", String(options.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return this.request<HkCcassSouthboundPayload>(
+      `/cloud/hk-ccass/southbound${suffix}`,
+      options.signal ? { signal: options.signal } : undefined,
+    );
+  }
+
+  /** Reverse portfolio lookup of all HK stocks held by a single CCASS participant ID. */
+  getHkCcassParticipant(
+    partId: string,
+    options: { sortBy?: "pct" | "shares" | "delta_pct"; limit?: number; signal?: AbortSignal } = {},
+  ) {
+    const qs = new URLSearchParams();
+    if (options.sortBy) qs.set("sortBy", options.sortBy);
+    if (options.limit) qs.set("limit", String(options.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return this.request<HkCcassParticipantPortfolioPayload>(
+      `/cloud/hk-ccass/participants/${encodeURIComponent(partId)}${suffix}`,
+      options.signal ? { signal: options.signal } : undefined,
+    );
+  }
+
   getCloudExchangeAnnouncements(params: { symbol: string; exchange: string; limit?: number; kind?: "results" }) {
     return this.request<import("./exchange-announcements").ExchangeAnnouncementsPayload>(
       cloudExchangeAnnouncementsPath(params),
@@ -794,6 +877,11 @@ export class CloudDataApi {
     );
     if (!response.data) throw new Error(response.message || "SFC weekly positions unavailable.");
     return response.data;
+  }
+
+  /** A Hong Kong listing's share repurchases by session, its mandate and its blackout windows. */
+  async getCloudBuybacks(symbol: string, request?: { signal?: AbortSignal }): Promise<BuybacksPayload> {
+    return this.request<BuybacksPayload>(`/cloud/buybacks/${encodeURIComponent(symbol)}`, request);
   }
 
   async getCloudShortInterest(

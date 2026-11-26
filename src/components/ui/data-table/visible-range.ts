@@ -34,13 +34,18 @@ export function sameVisibleRange(a: DataTableVisibleRange, b: DataTableVisibleRa
   return a.start === b.start && a.end === b.end && a.wholeStart === b.wholeStart && a.wholeEnd === b.wholeEnd;
 }
 
-/** The first visible row, in rows, that brings `targetIndex` into view. */
+/**
+ * The first visible row, in rows, that brings `targetIndex` into view. With
+ * `fromIndex` above it, the rows from there down come into view too, as many
+ * as fit with the target still on screen; a centered target stays centered.
+ */
 export function resolveDataTableScrollTop(
   targetIndex: number,
   currentTop: number,
   visibleHeight: number,
   itemCount: number,
   align: DataTableScrollAlign,
+  fromIndex?: number | null,
 ): number {
   const maxTop = Math.max(0, itemCount - visibleHeight);
   let nextTop = currentTop;
@@ -52,6 +57,9 @@ export function resolveDataTableScrollTop(
     nextTop = targetIndex;
   } else if (targetIndex >= currentTop + visibleHeight) {
     nextTop = targetIndex - visibleHeight + 1;
+  }
+  if (align !== "center" && fromIndex != null && fromIndex < targetIndex && fromIndex < nextTop) {
+    nextTop = Math.max(fromIndex, targetIndex - visibleHeight + 1);
   }
   return Math.max(0, Math.min(maxTop, nextTop));
 }

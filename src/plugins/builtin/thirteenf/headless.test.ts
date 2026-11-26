@@ -8,6 +8,7 @@ import { mapForm } from "./api";
 import { createThirteenFHeadless, thirteenFHeadless } from "./headless";
 import { AS_FILED_VALUE, filingGapText, OPTION_ROWS_NOTE, THIRTEENF_LIMITS } from "./report-notes";
 import type { FundPerformanceResult } from "./data";
+import type { FundMembersPayload } from "../../../api-client/members";
 import type { FundDetailData } from "./types";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createTestHeadlessContext } from "../../../test-support/headless";
@@ -231,6 +232,56 @@ describe("13F headless model", () => {
     expect(result.rows.map((holding) => holding.ticker)).toEqual(["BIG", "MID"]);
     expect(asked).toHaveLength(1);
     expect(asked[0]!.map((id) => id.split("|")[0])).toEqual(["BIG", "MID"]);
+  });
+
+  // Synthetic sign-ins: a made-up session token set on the app's client and cleared, as signing in and out do.
+  test("a report's book and what it waits on with it are of one sign-in: a change while the other input is out reads both again", async () => {
+    const sessions: string[] = [];
+    const loadDetail = async (_cik: string, _name: string, _args: HeadlessPaneLoadArgs, _ctx: unknown, session?: { session: string }) => {
+      sessions.push(session?.session ?? "unbound");
+      return { ...detail, name: `Berkshire Hathaway, read ${session?.session ?? "unbound"}` };
+    };
+    const until = async (done: () => boolean) => {
+      for (let count = 0; count < 50 && !done(); count++) await new Promise((resolve) => setTimeout(resolve, 0));
+    };
+    try {
+      // Holdings: the book is in, its split lookup is out, and the reader signs in.
+      const splits = Promise.withResolvers<Map<string, number | null>>();
+      let lookups = 0;
+      const holdings = createThirteenFHeadless({
+        loadBrowser: async () => ({ rows: [] }),
+        loadDetail,
+        loadSplitFactors: () => (++lookups === 1 ? splits.promise : Promise.resolve(new Map())),
+      }).load(args("holdings"), createTestHeadlessContext());
+      await until(() => lookups === 1);
+      apiClient.setSessionToken("synthetic-13f-reader");
+      splits.resolve(new Map());
+      const held = await holdings;
+      expect(sessions).toEqual(["signed-out", "signed-in"]);
+      expect(lookups).toBe(2);
+      expect(held.metadata?.fund).toBe("Berkshire Hathaway, read signed-in");
+
+      // Overlap with an ETF: the fund is in, the ETF's holdings file is out, and the reader signs out.
+      sessions.length = 0;
+      const file = Promise.withResolvers<FundMembersPayload>();
+      let files = 0;
+      const etfFile = { fund: { ticker: "IVV", name: "S&P 500", aliases: ["SPY"], changes: "sp500" }, asOf: "2026-10-08", stale: false, members: [{ symbol: "AAPL", weight: 1 }] } as never;
+      const overlap = createThirteenFHeadless({
+        loadBrowser: async () => ({ rows: [] }),
+        loadDetail,
+        loadEtfFunds: async () => [{ ticker: "IVV", name: "S&P 500", aliases: ["SPY"], changes: "sp500" as const, asOf: "2026-10-08" }],
+        loadEtfHoldings: () => (++files === 1 ? file.promise : Promise.resolve(etfFile)),
+      }).load({ ...args("auto"), options: { view: "auto", limit: 50, compare: "SPY" } }, createTestHeadlessContext());
+      await until(() => files === 1 && sessions.length === 1);
+      apiClient.setSessionToken(null);
+      file.resolve(etfFile);
+      const compared = await overlap;
+      expect(sessions).toEqual(["signed-in", "signed-out"]);
+      expect(files).toBe(2);
+      expect(compared.metadata).toMatchObject({ comparedWith: "etf", firstFund: "Berkshire Hathaway, read signed-out" });
+    } finally {
+      apiClient.setSessionToken(null);
+    }
   });
 
   test("projects browser rows and switches to fund holdings", async () => {
@@ -530,9 +581,9 @@ describe("13F headless model", () => {
 
       // A ticker with no CUSIP moves on to its holders' books; when that lookup fails, the failure is the answer.
       failure = new ApiRequestError("No 13F CUSIP found for AAPL", 404);
-      holders = "Forms13F 503 for /holders";
+      holders = "13F source 503 for /holders";
       const failed = await load("AAPL");
-      expect(failed.errors).toEqual(["Forms13F 503 for /holders"]);
+      expect(failed.errors).toEqual(["13F source 503 for /holders"]);
       expect(renderHeadlessPaneText(headless, failed, args("auto"), "13F")).not.toContain("matches");
     });
   });

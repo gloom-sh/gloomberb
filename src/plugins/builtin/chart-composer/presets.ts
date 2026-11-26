@@ -165,7 +165,7 @@ function appendChartFormula(spec: ChartSpec, expression: string, catalog?: Catal
   const inputs = terms.map((leg, index) => {
     const charted = next.series.find((series) => key(series) === legs[index]);
     if (charted) return charted;
-    const appended = appendChartSeries(next, leg.series);
+    const appended = appendChartSeries(next, leg.series, { joinComparison: false });
     const placed = index < formula.legs.length
       ? placeFormulaLeg(formula, index, appended.series)
       : placeFormulaFactor(next, appended.series);
