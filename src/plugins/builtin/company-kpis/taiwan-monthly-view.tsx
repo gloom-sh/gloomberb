@@ -18,6 +18,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import { Box, TextAttributes, useRendererHost } from "../../../ui";
 import { MISSING_VALUE } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
+import { logFailure } from "../../../utils/log-failure";
 import { usePluginAppActions } from "../../runtime";
 import {
   buildBasketRevenueSeries,
@@ -107,7 +108,9 @@ export function TaiwanMonthlyStockView({
       if (handleRefreshKey(key, res.reload, { stopPropagation: true })) return true;
       if (isPlainKey(key, "o") && data) {
         const row = data.history.find((h) => h.yearMonth === selectedMonth) ?? data.latest;
-        if (row?.sourceUrl) void host.openExternal(row.sourceUrl);
+        if (row?.sourceUrl) {
+          void host.openExternal(row.sourceUrl).catch(logFailure("taiwan-revenue", "open external filing failed"));
+        }
         return true;
       }
       return false;
@@ -156,7 +159,9 @@ export function TaiwanMonthlyStockView({
               getId: (r) => r.yearMonth,
               onChange: setSelectedMonth,
             }}
-            onActivate={(row) => void host.openExternal(row.sourceUrl)}
+            onActivate={(row) => {
+              void host.openExternal(row.sourceUrl).catch(logFailure("taiwan-revenue", "open external filing failed"));
+            }}
             onRootKeyDown={handleKey}
             renderCell={(row, col): DataTableCell => {
               switch (col.id) {

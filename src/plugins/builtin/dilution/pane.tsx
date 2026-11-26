@@ -25,6 +25,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes, useRendererHost } from "../../../ui";
 import { MISSING_VALUE } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
+import { logFailure } from "../../../utils/log-failure";
 import { usePluginAppActions } from "../../runtime";
 import { useCommandTab } from "../shared/command-tab";
 import {
@@ -156,7 +157,7 @@ export function DilutionPane({ width, height, focused }: PaneProps) {
 
   const openFiling = useCallback(() => {
     if (selectedSourceUrl) {
-      void host.openExternal(selectedSourceUrl);
+      void host.openExternal(selectedSourceUrl).catch(logFailure("equity-dilution", "open external filing failed"));
     }
   }, [host, selectedSourceUrl]);
 
@@ -453,7 +454,9 @@ export function DilutionPane({ width, height, focused }: PaneProps) {
                       getId: (r) => r.accession,
                       onChange: setSelectedId,
                     }}
-                    onActivate={(row) => void host.openExternal(row.sourceUrl)}
+                    onActivate={(row) => {
+                      void host.openExternal(row.sourceUrl).catch(logFailure("equity-dilution", "open external filing failed"));
+                    }}
                     onRootKeyDown={handleKey}
                     emptyStateTitle="No SEC shelf registrations on record."
                     renderCell={(row, col): DataTableCell => {
@@ -499,7 +502,9 @@ export function DilutionPane({ width, height, focused }: PaneProps) {
                     getId: (r) => r.accession,
                     onChange: setSelectedId,
                   }}
-                  onActivate={(row) => void host.openExternal(row.sourceUrl)}
+                  onActivate={(row) => {
+                    void host.openExternal(row.sourceUrl).catch(logFailure("equity-dilution", "open external filing failed"));
+                  }}
                   onRootKeyDown={handleKey}
                   emptyStateTitle={`No 424B5/424B7 offerings recorded for ${company.symbol}.`}
                   renderCell={(row, col): DataTableCell => {
@@ -554,7 +559,9 @@ export function DilutionPane({ width, height, focused }: PaneProps) {
                       getId: (r) => r.accession,
                       onChange: setSelectedId,
                     }}
-                    onActivate={(row) => void host.openExternal(row.sourceUrl)}
+                    onActivate={(row) => {
+                      void host.openExternal(row.sourceUrl).catch(logFailure("equity-dilution", "open external filing failed"));
+                    }}
                     onRootKeyDown={handleKey}
                     emptyStateTitle={`No Form 144 notices on record for ${company.symbol}.`}
                     renderCell={(row, col): DataTableCell => {
