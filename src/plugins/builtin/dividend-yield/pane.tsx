@@ -295,6 +295,7 @@ function DividendTickerPane({ focused, width, height, loadData = fetchDividendDa
     enabled: !authWall,
   });
   const metrics = data?.metrics ? repriceDividendMetrics(data.metrics, currentPrice) : undefined;
+  const nextPayDate = metrics?.nextPayDate?.toISOString().slice(0, 10);
   const rows = useMemo(() => {
     const paid = toDividendRows(payments);
     const pending = (data?.declared ?? []).flatMap((dividend): DividendRow[] => dividend.source && currency ? [{
@@ -381,7 +382,8 @@ function DividendTickerPane({ focused, width, height, loadData = fetchDividendDa
       focused={focused}
       selection={{ kind: "id", selectedId, getId: rowKey, onChange: (id) => setSelectedKey(id) }}
       onActivate={(row) => { if (row.sourceUrl) openNotice(row.sourceUrl); }}
-      rowNote={(row) => row.payDate ? `Payable ${formatDay(row.payDate)}` : null}
+      rowNote={(row) => row.payDate && row.payDate !== nextPayDate
+        ? { text: `Payable ${formatDay(row.payDate)}`, tone: "muted" } : null}
       onRootKeyDown={handleKeyDown}
       resetScrollKey={symbol}
       rootWidth={width}
