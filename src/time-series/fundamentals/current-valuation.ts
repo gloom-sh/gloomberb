@@ -178,15 +178,32 @@ export function currentDerivedValuationPoint(
  * it is not meaningful (`notMeaningful`, GE's N/M); null where GE draws no
  * current point and has no reason for it.
  */
+const ANNUAL_EBITDA_MAX_AGE_MS = 550 * 86_400_000;
+
 export function currentTrailingValuation(
   financials: TickerFinancials,
   metric: "evEbitda" | "evSales",
-): { value: number | null; notMeaningful?: string; periodEnd: string; statement: FinancialStatement } | null {
+): { value: number | null; notMeaningful?: string; periodEnd: string; statement: FinancialStatement; annual?: true } | null {
   const current = currentValuation(financials, "ttm", metric);
-  if (!current) return null;
-  const dated = { periodEnd: current.statement.date.slice(0, 10), statement: current.statement };
-  if (current.value !== null) return { value: current.value, ...dated };
-  const notMeaningful = metric === "evEbitda" ? ebitdaNotMeaningful(financials, current.statement) : undefined;
+  if (current) {
+    const dated = { periodEnd: current.statement.date.slice(0, 10), statement: current.statement };
+    if (current.value !== null) return { value: current.value, ...dated };
+    const notMeaningful = metric === "evEbitda" ? ebitdaNotMeaningful(financials, current.statement) : undefined;
+    if (notMeaningful) return { value: null, notMeaningful, ...dated };
+  }
+  // HK/CN issuers often omit D&A in Q1/Q3 reports: fall back to the latest
+  // fiscal year (within 550 days of the quote) when trailing quarters lack it.
+  if (metric !== "evEbitda") return null;
+  const quoteTime = validDate(financials.quote?.lastUpdated)?.getTime();
+  if (!quoteTime) return null;
+  const annualStatements = sourceStatements(financials, "annual", metric).statements;
+  const annual = currentDerivedValuation(financials, annualStatements, metric, createValuationCurrencyContext(financials));
+  if (!annual) return null;
+  const annualTime = Date.parse(annual.statement.date);
+  if (!Number.isFinite(annualTime) || quoteTime - annualTime > ANNUAL_EBITDA_MAX_AGE_MS) return null;
+  const dated = { periodEnd: annual.statement.date.slice(0, 10), statement: annual.statement, annual: true as const };
+  if (annual.value !== null) return { value: annual.value, ...dated };
+  const notMeaningful = ebitdaNotMeaningful(financials, annual.statement);
   return notMeaningful ? { value: null, notMeaningful, ...dated } : null;
 }
 
