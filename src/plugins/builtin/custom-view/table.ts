@@ -69,24 +69,29 @@ export function viewCellColumns(spec: ViewSpec, columns: readonly HeadlessPaneCo
   });
 }
 
-/** A source format's text, or null where it has none to give: none set, an empty cell for a value it prints elsewhere, or a row it cannot read. */
-function formattedText(format: HeadlessPaneColumn["format"], value: unknown, row: ViewRow): string | null {
-  if (!format) return null;
-  let text: string;
+/** A source format's text, or null where the row is one it cannot read. */
+function formattedText(format: NonNullable<HeadlessPaneColumn["format"]>, value: unknown, row: ViewRow): string | null {
   try {
-    text = format(value, row);
+    return format(value, row);
   } catch {
     // Intentional ignore: a source's format written for its own rows that cannot read a live or flattened one shows the plain value.
     return null;
   }
-  // A report that prints a value under its row (a story's link) leaves its column blank; a view shows it.
-  return text === "" && value != null && value !== "" ? null : text;
+}
+
+/**
+ * The format a source draws a column's cells with: the text report's, which
+ * says more than an export's (a time to the second, a list joined), except
+ * for a value the report prints under its row rather than in its column.
+ */
+function sourceFormat(column: HeadlessPaneColumn): HeadlessPaneColumn["format"] {
+  return column.underRow ? column.format : column.textFormat ?? column.format;
 }
 
 /**
  * A cell's text: the spec's transform when the column names one, else the
  * text the source draws the value with (the row's own section's format where
- * it has one, the text report's before the export's), else the plain value.
+ * it has one), else the plain value.
  * `base` and `decimals` are formatViewValue's.
  */
 export function viewCellText(row: ViewRow, column: Pick<ViewCellColumn, "key" | "transform" | "source">, base?: number, decimals?: number): string {
@@ -97,7 +102,8 @@ export function viewCellText(row: ViewRow, column: Pick<ViewCellColumn, "key" | 
     if (written !== undefined) return written;
     // A row with columns of its own never takes another section's format for a key they leave out.
     const source = own ? own.columns.get(column.key) : column.source;
-    const text = source ? formattedText(source.textFormat, value, row) ?? formattedText(source.format, value, row) : null;
+    const format = source ? sourceFormat(source) : undefined;
+    const text = format ? formattedText(format, value, row) : null;
     if (text !== null) return text;
   }
   return formatViewValue(value, column.transform, base, decimals);
@@ -117,8 +123,14 @@ export function viewCellExportValue(row: ViewRow, column: Pick<ViewCellColumn, "
 
 /** Text no wider than this is a code, whatever it says: a ticker, a currency, an exchange, a short date. */
 const CODE_WIDTH = 12;
-/** The widest a column of names or sentences is set; past it, it takes what the pane has spare. */
+/** The widest a column of names or sentences is set; the cells past it end in an ellipsis. */
 const TEXT_WIDTH = 40;
+/**
+ * The width the column that grows is set to: it takes what the pane has
+ * beyond the other columns, up to its whole text, so a narrow pane cuts a
+ * long name before it pushes a figure out of view.
+ */
+const GROWING_WIDTH = 20;
 /** The widest a column of codes or figures is set, so one odd value cannot take the pane. */
 const FIGURE_WIDTH = 32;
 /** The rows a column is measured on; a longer list is read that far. */
@@ -145,9 +157,10 @@ function isWording(texts: readonly string[]): boolean {
  * codes are as wide as their widest text, a cell more for a figure that
  * streams (`live`), whose next tick can be a digit longer. A column of names
  * or sentences (the source's `shrink`, or text longer than a code that is
- * mostly letters) is set to its widest text up to TEXT_WIDTH and grows with
- * the pane, so a name gets the pane's spare width and a ticker does not. A
- * width the spec set is kept.
+ * mostly letters) is set to its widest text up to TEXT_WIDTH, except the one
+ * with the longest text, which is set to at most GROWING_WIDTH and grows
+ * with the pane: a name or a headline gets the pane's spare width, and a
+ * ticker, a date or a publisher does not. A width the spec set is kept.
  */
 export function sizeViewColumns(
   columns: readonly ViewCellColumn[],
@@ -156,22 +169,31 @@ export function sizeViewColumns(
   live: ReadonlySet<string> = new Set(),
 ): ViewTableColumn[] {
   const measured = rows.length > MEASURED_ROWS ? rows.slice(0, MEASURED_ROWS) : rows;
-  return columns.map((column) => {
+  const read = columns.map((column) => {
     const texts = measured.map((row) => text(row, column));
     const widest = texts.reduce((most, cell) => Math.max(most, displayWidth(cell)), 0);
     const values = measured.map((row) => row[column.key]).filter((value) => value !== null && value !== undefined && value !== "");
     const numeric = values.length > 0 && values.every((value) => typeof value === "number");
     const wording = !numeric && column.source?.shrink !== false
       && (column.source?.shrink === true || (widest > CODE_WIDTH && isWording(texts)));
-    const width = column.width
-      ?? (wording ? Math.min(widest, TEXT_WIDTH) : Math.min(widest + (numeric && live.has(column.key) ? 1 : 0), FIGURE_WIDTH));
+    return { column, widest, numeric, wording };
+  });
+  // The first of the widest, so a name ahead of a description of the same length keeps the room.
+  const grows = read.reduce<(typeof read)[number] | null>((best, entry) => (
+    entry.wording && (!best || entry.widest > best.widest) ? entry : best
+  ), null);
+  return read.map((entry) => {
+    const { column, widest, numeric, wording } = entry;
+    const width = column.width ?? (entry === grows ? Math.min(widest, GROWING_WIDTH)
+      : wording ? Math.min(widest, TEXT_WIDTH)
+        : Math.min(widest + (numeric && live.has(column.key) ? 1 : 0), FIGURE_WIDTH));
     return {
       id: column.key,
       key: column.key,
       label: column.label,
       align: column.align ?? (numeric ? "right" : "left"),
       width: Math.max(1, width),
-      ...(wording ? { flexGrow: 1 } : {}),
+      ...(entry === grows ? { flexGrow: 1 } : {}),
       ...(column.transform ? { transform: column.transform } : {}),
       ...(column.source ? { source: column.source } : {}),
     };

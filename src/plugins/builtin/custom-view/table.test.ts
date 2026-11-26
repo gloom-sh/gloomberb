@@ -29,8 +29,8 @@ test("MOST's projection gives the name the spare width and keeps the ticker and 
     MOST_COLUMNS, MOVERS, new Set(["price", "changePercent", "volume"]));
   expect(columns.map(({ id, width, align, flexGrow }) => ({ id, width, align, flexGrow }))).toEqual([
     { id: "symbol", width: 5, align: "left", flexGrow: undefined },
-    // Whole, the longest name first: no name is cut where the pane has room for it.
-    { id: "name", width: 28, align: "left", flexGrow: 1 },
+    // Set short and grown to the pane: a narrow pane cuts a name before it hides a figure, a wide one shows it whole.
+    { id: "name", width: 20, align: "left", flexGrow: 1 },
     // A streamed figure keeps a cell for a tick that adds a digit.
     { id: "price", width: 8, align: "right", flexGrow: undefined },
     { id: "changePercent", width: 7, align: "right", flexGrow: undefined },
@@ -39,13 +39,13 @@ test("MOST's projection gives the name the spare width and keeps the ticker and 
   expect(MOVERS.map((row) => viewCellText(row, columns[4]!))).toEqual(["212.35M", "61.00M", "3.40M"]);
 });
 
-test("a column's kind comes from what it holds: times and codes stay compact, wording grows, the spec's width stays", () => {
+test("a column's kind comes from what it holds: times and codes stay compact, the longest wording grows, the spec's width stays", () => {
   const rows: ViewRow[] = [
-    { at: "2026-11-27T14:30:00Z", venue: "XNAS", count: 12, headline: "Chipmaker lifts its outlook on data center demand", contract: "Crude Oil Jan 2027" },
-    { at: "2026-11-27T15:05:00Z", venue: "XNYS", count: 3, headline: "Retailer cuts guidance", contract: "Crude Oil Feb 2027" },
+    { at: "2026-11-27T14:30:00Z", venue: "XNAS", count: 12, publisher: "Business Times", headline: "Chipmaker lifts its outlook on data center demand", contract: "Crude Oil Jan 2027" },
+    { at: "2026-11-27T15:05:00Z", venue: "XNYS", count: 3, publisher: "Reuters", headline: "Retailer cuts guidance", contract: "Crude Oil Feb 2027" },
   ];
   const columns = sized(
-    { source: { pane: "X" }, projection: { columns: ["at", "venue", "count", { key: "headline", width: 30 }, "contract"] } },
+    { source: { pane: "X" }, projection: { columns: ["at", "venue", "count", "publisher", { key: "headline", width: 30 }, "contract"] } },
     [{ key: "contract", header: "Contract", shrink: false }],
     rows,
   );
@@ -54,10 +54,22 @@ test("a column's kind comes from what it holds: times and codes stay compact, wo
     { id: "venue", width: 4, align: "left", flexGrow: undefined },
     // Numbers a source does not align read right, as figures do.
     { id: "count", width: 2, align: "right", flexGrow: undefined },
+    // Wording too, but the headline says more: one column takes the pane's spare width.
+    { id: "publisher", width: 14, align: "left", flexGrow: undefined },
     { id: "headline", width: 30, align: "left", flexGrow: 1 },
     // A source that keeps a column whole keeps it from growing too.
     { id: "contract", width: 18, align: "left", flexGrow: undefined },
   ]);
+});
+
+test("a cell reads as the source's text report writes it, except a value the report prints under its row", () => {
+  const spec = normalizeViewSpec({ source: { pane: "N" }, projection: { columns: ["tickers", "summary"] } });
+  const [tickers, summary] = viewCellColumns(spec, [
+    { key: "tickers", header: "Tickers", textFormat: (value) => (Array.isArray(value) ? value.join(", ") : "") },
+    { key: "summary", header: "Summary", underRow: "line", textFormat: () => "" },
+  ]);
+  expect([{ tickers: ["KO", "PEP"] }, { tickers: [] }].map((row) => viewCellText(row, tickers!))).toEqual(["KO, PEP", ""]);
+  expect(viewCellText({ summary: "Bottled water faces new checks." }, summary!)).toBe("Bottled water faces new checks.");
 });
 
 test("a cell exports the source's figure unless a transform shows another number", () => {
