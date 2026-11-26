@@ -95,8 +95,10 @@ describe("SEC headless model", () => {
     expect(result.metadata?.exchangeDateSource).toBe(dateSource);
   });
 
-  test("an extended JPX filing read retains an earnings Q&A beyond the first 50 rows", async () => {
-    const url = "https://www2.jpx.co.jp/disc/72030/140120260804507923.pdf";
+  test.each([
+    { exchange: "JPX", symbol: "7203:JPX", url: "https://www2.jpx.co.jp/disc/72030/140120260804507923.pdf" },
+    { exchange: "BURSAMY", symbol: "5200:XKLS", url: "https://www.insage.com.my/ir/cmn/Announcement.aspx?NewsID=202610215100007&Symbol=5200" },
+  ])("an extended $exchange filing read retains disclosures beyond the first 50 rows", async ({ exchange, symbol, url }) => {
     const announcement = {
       date: "2026-08-04", headline: "Q&A summary of the earnings briefing",
       types: ["Financial information"], priceSensitive: null, fileSize: null,
@@ -108,12 +110,11 @@ describe("SEC headless model", () => {
     const headless = createSecHeadless({
       loadFilings: async () => [],
       loadExchange: async ({ limit }) => ({
-        exchange: "JPX", symbol: "7203", name: "Toyota Motor Corporation",
-        page: "https://www.jpx.co.jp/english/listing/co-search/index.html", total: null,
+        exchange, symbol, name: null, page: url, total: null,
         retrievedAt: "2026-11-25T12:00:00Z", announcements: [...recent, announcement].slice(0, limit),
       }),
     });
-    const result = await headless.load({ ...args(200), symbols: ["7203:JPX"] }, createTestHeadlessContext());
+    const result = await headless.load({ ...args(200), symbols: [symbol] }, createTestHeadlessContext());
     expect(result.rows[50]).toMatchObject({ filedAt: announcement.date, filing: announcement.headline, url });
   });
 

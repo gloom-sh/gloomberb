@@ -3,8 +3,6 @@ import type { HeadlessPaneRow } from "../../../types/plugin";
 import { exchangeAnnouncementsPublisher, exchangeAnnouncementsVenue, issuerFilingSuffixVenue, isRoutineReturn } from "../../../utils/exchange-announcements";
 import { nonUsSecListingVenue } from "../../../utils/sec";
 
-// The extended archives are bounded. The pane reveals their rows as the user scrolls.
-export const EXCHANGE_FILING_HISTORY_LIMIT = 200;
 export const PRESENTATIONS_FORM = "presentations";
 
 interface ExchangeFilingForm {
@@ -19,6 +17,11 @@ const sgxResults: ExchangeFilingForm = { value: "sgx-results", label: "Results &
 export function exchangeFilingForm(venue: string | undefined): ExchangeFilingForm | undefined {
   if (venue === "TWSE" || venue === "TPEX") return presentations;
   if (venue === "SGX") return sgxResults;
+}
+
+// The extended archives are bounded. The pane reveals their rows as the user scrolls.
+export function exchangeFilingHistoryLimit(venue: string | undefined, kind?: ExchangeAnnouncementsRequest["kind"]): number {
+  return kind || venue === "JPX" || venue === "BURSAMY" ? 200 : 50;
 }
 
 export function localFilingListing(symbol: string, exchange?: string) {
