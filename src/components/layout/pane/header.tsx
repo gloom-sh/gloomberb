@@ -9,6 +9,7 @@ import { capturePointerDrag } from "../../../ui/pointer-drag";
 import { Tabs } from "../../ui/tabs";
 import { Divider } from "../../ui/display";
 import { ICON_GLYPHS, Icon, IconButton } from "../../ui/icon";
+import { TerminalHoverLabel, terminalHoverLabelSide } from "../../ui/terminal-hover-label";
 import { Button } from "../../ui/button";
 import { t } from "../../../i18n";
 import type { PaneHeaderTabsRegistration } from "./header-tabs";
@@ -320,16 +321,13 @@ function quickSettingTitle(setting: Pick<PaneHeaderQuickSetting, "label" | "acti
   return `${setting.label}: ${setting.active ? "on" : "off"}`;
 }
 
-/** Terminal: a hover label shorter than this (its padding and a letter with the ellipsis) is not drawn. */
-const QUICK_SETTING_LABEL_MIN_WIDTH = 4;
-
 /**
  * Terminal: where the label of the quick setting under the pointer goes in
  * its header's row, in cells from the header's left edge, and its text with
  * a space either side. It sits over the row beside the glyph, so nothing in
  * the header moves and the title keeps its width: after the glyph when it
  * fits before the frame's corner, else before it, else on the roomier side,
- * cut to fit. It never covers the glyph, which keeps the pointer.
+ * cut to fit (`terminalHoverLabelSide`).
  */
 export function terminalQuickSettingLabelPlacement(
   label: string,
@@ -343,18 +341,15 @@ export function terminalQuickSettingLabelPlacement(
   },
 ): { left: number; text: string } | null {
   const corner = framed ? 2 : 0;
-  const after = Math.max(0, width - corner - (buttonStart + buttonWidth));
-  const before = Math.max(0, buttonStart - corner);
-  const text = ` ${label} `;
-  const textWidth = displayWidth(text);
-  if (textWidth <= after) return { left: buttonStart + buttonWidth, text };
-  if (textWidth <= before) return { left: buttonStart - textWidth, text };
-  const room = Math.max(after, before);
-  if (room < QUICK_SETTING_LABEL_MIN_WIDTH) return null;
-  const cut = ` ${truncateToDisplayWidth(label, room - 2)} `;
-  return after >= before
-    ? { left: buttonStart + buttonWidth, text: cut }
-    : { left: buttonStart - displayWidth(cut), text: cut };
+  const placement = terminalHoverLabelSide(label, {
+    before: Math.max(0, buttonStart - corner),
+    after: Math.max(0, width - corner - (buttonStart + buttonWidth)),
+  });
+  if (!placement) return null;
+  return {
+    left: placement.side === "after" ? buttonStart + buttonWidth : buttonStart - displayWidth(placement.text),
+    text: placement.text,
+  };
 }
 
 /** Terminal: where each quick setting's button starts, in cells from the header's left edge, after `start`. */
@@ -384,20 +379,7 @@ function TerminalQuickSettingLabel({ setting, buttonStart, width, framed }: {
     framed,
   });
   if (!placement) return null;
-  return (
-    <Box
-      position="absolute"
-      top={0}
-      left={placement.left}
-      height={1}
-      width={displayWidth(placement.text)}
-      zIndex={1}
-      backgroundColor={colors.panel}
-      data-gloom-role="pane-quick-setting-label"
-    >
-      <Text fg={colors.textBright} selectable={false}>{placement.text}</Text>
-    </Box>
-  );
+  return <TerminalHoverLabel text={placement.text} left={placement.left} role="pane-quick-setting-label" />;
 }
 
 function TerminalPaneButton({

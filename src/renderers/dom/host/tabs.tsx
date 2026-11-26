@@ -412,6 +412,7 @@ export function WebTabs({
                 icon="chevron-down"
                 label="All tabs"
                 hasPopup="menu"
+                expanded={overflowMenuOpen}
                 size={10}
                 onPress={() => setOverflowMenuOpen((open) => !open)}
               />

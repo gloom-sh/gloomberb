@@ -459,6 +459,8 @@ export function BrokerOrdersView({
         const disabled = !canRead || busy || !allowed?.enabled || !canChangeBrokerOrder(order);
         const state = brokerOrderStatus(order.status);
         const note = noteFor(order);
+        // Enter and c act on the chosen order only, so only its icons name them.
+        const keysHere = picked && focused && active && !dialogOpen;
         // One line: side and size, price, state, then edit and cancel as icons.
         return <Box key={key} position="relative" flexDirection="row" alignItems="center" gap={1} paddingLeft={1} height={native ? 1.6 : 1} backgroundColor={picked ? colors.panel : undefined}>
           {picked ? <Box position="absolute" left={0} top={0} width={1} height="100%" backgroundColor={focused ? colors.borderFocused : colors.border} style={native ? { width: 2 } : undefined} /> : null}
@@ -477,8 +479,8 @@ export function BrokerOrdersView({
             </Button>
           </Box>
           <Box flexDirection="row" flexShrink={0}>
-            <IconButton icon="edit" label="Modify order" shortcut="Enter" disabled={disabled || unsettled(order) || !broker.modifyOrder || !allowed?.modify} onPress={() => modifyOrder(order)} />
-            <IconButton icon="close" label="Cancel order" shortcut="c" color={colors.negative} disabled={disabled || !broker.cancelOrder || !allowed?.cancel} onPress={() => { void cancelOrder(order); }} />
+            <IconButton icon="edit" label="Modify order" shortcut={keysHere ? "Enter" : undefined} disabled={disabled || unsettled(order) || !broker.modifyOrder || !allowed?.modify} onPress={() => modifyOrder(order)} />
+            <IconButton icon="close" label="Cancel order" shortcut={keysHere ? "c" : undefined} color={colors.negative} disabled={disabled || !broker.cancelOrder || !allowed?.cancel} onPress={() => { void cancelOrder(order); }} />
           </Box>
         </Box>;
       }) : executions.map((execution) => <Box key={execution.execId} paddingX={1} height={native ? 1.6 : 1} flexDirection="row" alignItems="center">

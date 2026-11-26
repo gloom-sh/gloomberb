@@ -3,7 +3,7 @@ import { blendHex, colors, hoverBg } from "../../../../theme/colors";
 import type { ChatMessage } from "../../../../api-client";
 import { formatTimeAgo } from "../../../../utils/datetime-format";
 import { accentTint, terminalAccentTint } from "../../../../components/ui/quote";
-import { isGroupedWithPrevious, MESSAGE_ACTION_WIDTH } from "../layout";
+import { isGroupedWithPrevious, MESSAGE_ICON_ACTION_WIDTH, MESSAGE_RETRY_ACTION_WIDTH } from "../layout";
 import { chatAuthorNameColor } from "../people";
 
 /** The band on a message the reader was sent to: the accent at low strength, between the hover and the selection. */
@@ -118,7 +118,9 @@ export function getChatMessageRenderState({
     showReactAction: showReplyAction && canReact,
     showEditAction: showReplyAction && canEdit,
     showRetryAction: showActions && hasFailed,
-    actionsWidth: !canSend ? 0 : 1 + MESSAGE_ACTION_WIDTH * (hasFailed ? 1 : 1 + (canReact ? 1 : 0) + (canEdit ? 1 : 0)),
+    actionsWidth: !canSend
+      ? 0
+      : 1 + (hasFailed ? MESSAGE_RETRY_ACTION_WIDTH : MESSAGE_ICON_ACTION_WIDTH * (1 + (canReact ? 1 : 0) + (canEdit ? 1 : 0))),
     showPersonIcons: isSelected || hoveredIdx === index,
     isSending,
     bgColor: isSelected

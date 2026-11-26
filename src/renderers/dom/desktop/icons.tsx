@@ -189,6 +189,22 @@ const ICONS: Record<IconName, ReactNode> = {
       <path d="M2 3.4 6 6.5l4-3.1" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
     </>
   ),
+  // A reply: an arrow that turns back to the left, as a mail reply's does.
+  reply: (
+    <>
+      <path d="M4.6 2.6 1.8 5.4l2.8 2.8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2.2 5.4h4.4a3.4 3.4 0 0 1 3.4 3.4v.8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    </>
+  ),
+  // A reaction: a smiling face, outlined like the other glyphs.
+  react: (
+    <>
+      <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.2" />
+      <circle cx="4.5" cy="5" r=".75" fill="currentColor" />
+      <circle cx="7.5" cy="5" r=".75" fill="currentColor" />
+      <path d="M4.1 7.2a2.2 2.2 0 0 0 3.8 0" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+    </>
+  ),
   restore: (
     <>
       <rect x="2" y="4" width="6" height="6" rx="0.8" stroke="currentColor" strokeWidth="1.1" />
@@ -236,12 +252,14 @@ export function WebIconButton({
   title,
   shortcut,
   hasPopup,
+  expanded,
   onPress,
   pressed,
   color,
   disabled = false,
   size = 12,
   stopPropagation = true,
+  onHoverChange,
 }: IconButtonProps) {
   return (
     <button
@@ -251,6 +269,7 @@ export function WebIconButton({
       aria-pressed={pressed}
       aria-keyshortcuts={ariaKeyShortcut(shortcut)}
       aria-haspopup={hasPopup}
+      aria-expanded={expanded}
       title={title ?? (shortcut ? `${label} (${formatShortcutForHost(shortcut, "platform")})` : label)}
       disabled={disabled || !onPress}
       data-gloom-interactive={onPress && !disabled ? "true" : undefined}
@@ -259,6 +278,8 @@ export function WebIconButton({
       style={color ? { color } : undefined}
       onMouseDown={(event) => { if (stopPropagation) event.stopPropagation(); }}
       onMouseUp={(event) => { if (stopPropagation) event.stopPropagation(); }}
+      onMouseEnter={onHoverChange ? () => onHoverChange(true) : undefined}
+      onMouseLeave={onHoverChange ? () => onHoverChange(false) : undefined}
       onClick={(event) => {
         if (stopPropagation) event.stopPropagation();
         if (disabled) return;

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ChatMessage, ChatReaction } from "../../../../api-client";
-import { Button, MenuPopover, type MenuItem } from "../../../../components/ui";
+import { Button, IconButton, MenuPopover, type MenuItem } from "../../../../components/ui";
+import type { ChatMessageActionIconProps } from "./header";
 import { colors } from "../../../../theme/colors";
 import { t } from "../../../../i18n";
 import { Box, Text } from "../../../../ui";
@@ -164,32 +165,30 @@ function reactionMenuItems(msg: ChatMessage, currentUserId: string | null): Menu
 }
 
 /**
- * The React action on the desktop: a button in the message's actions that
+ * The React action on the desktop: an icon in the message's actions that
  * opens the picker beside it (also from the keyboard, on the selected message).
  */
 export function DesktopReactionAction({
   msg,
   currentUserId,
   open,
-  width,
-  variant,
+  icon,
   onOpenChange,
   onToggle,
 }: {
   msg: ChatMessage;
   currentUserId: string | null;
   open: boolean;
-  width: number;
-  variant: "primary" | "secondary";
+  /** What every icon action of the message takes: its name, its key on the keyboard's row, its colour. */
+  icon: ChatMessageActionIconProps;
   onOpenChange: (open: boolean) => void;
   onToggle: (messageId: string, emoji: string) => void;
 }) {
   const trigger = (
-    <Button
-      stopPropagation
-      label={t("React")}
-      width={width}
-      variant={variant}
+    <IconButton
+      icon="react"
+      {...icon}
+      hasPopup="menu"
       expanded={open}
       onPress={() => onOpenChange(!open)}
     />

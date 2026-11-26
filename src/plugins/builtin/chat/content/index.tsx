@@ -1053,8 +1053,9 @@ function ChatConversation({
         ? sidebarCursorRow.teamId
         : null
     : null;
+  const composing = inputFocused || newDmOpen || handleFieldFocused;
   useChatFooter({
-    composing: inputFocused || newDmOpen || handleFieldFocused,
+    composing,
     canSend,
     selectedIdx,
     // While the sidebar has the keys, a message's reply and edit are not on offer.
@@ -1196,6 +1197,8 @@ function ChatConversation({
         scheduleProfilePopoverClose={scheduleProfilePopoverClose}
         scrollRef={scrollRef}
         selectedIdx={selectedIdx}
+        // The keys that press a message's actions act on the selected one, and only while the chat has them.
+        actionKeysIdx={composing || sidebarFocused ? -1 : selectedIdx}
         setHoveredIdx={setHoveredIdx}
         showProfilePopover={hoverUserProfile}
         toggleProfilePopover={toggleUserProfile}

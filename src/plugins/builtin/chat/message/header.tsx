@@ -1,47 +1,82 @@
-import { useRef, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { Box, Text, useUiCapabilities, type BoxRenderable } from "../../../../ui";
 import { t } from "../../../../i18n";
 import { displayWidth } from "../../../../utils/format";
+import { formatShortcutForHost } from "../../../../app/keybindings/labels";
 import { chatAuthorName, isDiscordGhost } from "../ghost-user";
-import { Badge, Button } from "../../../../components/ui";
-import { MESSAGE_ACTION_WIDTH } from "../layout";
+import { Badge, Button, IconButton } from "../../../../components/ui";
+import { TerminalHoverLabel, terminalHoverLabelSide } from "../../../../components/ui/terminal-hover-label";
+import { MESSAGE_ICON_ACTION_WIDTH, MESSAGE_RETRY_ACTION_WIDTH } from "../layout";
 import { CHAT_PERSON_ICON_WIDTH, chatPersonIcons, fitChatPersonIcons } from "../people";
 import { ChatPersonIcons } from "./person-icons";
 import type { ChatMessageRenderState } from "./render-state";
 import type { ChatMessageBaseProps } from "./types";
 
-type ChatMessageActionProps = Pick<ChatMessageBaseProps, "index" | "beginReplyTo" | "beginEditMessage" | "retryMessage"> & {
+/** What every icon action of a message takes: its name, its key where it has one, its colour on the row. */
+export interface ChatMessageActionIconProps {
+  label: string;
+  shortcut?: string;
+  color?: string;
+  onHoverChange?: (hovered: boolean) => void;
+}
+
+type ChatMessageAction = "reply" | "react" | "edit";
+
+/** The keys that press each action on the row the keyboard is on (the chat's Enter, and the footer's + and e). */
+const ACTION_KEYS: Record<ChatMessageAction, string> = { reply: "Enter", react: "+", edit: "e" };
+const ACTION_LABELS: Record<ChatMessageAction, string> = { reply: "Reply", react: "React", edit: "Edit" };
+
+type ChatMessageActionProps = Pick<ChatMessageBaseProps, "index" | "beginReplyTo" | "beginEditMessage" | "retryMessage" | "actionKeysShown"> & {
   state: ChatMessageRenderState;
-  /** The React action, one action wide, where the message takes reactions. */
-  reactAction?: ReactNode;
+  /** The React action where the message takes reactions, drawn with the props every icon action takes. */
+  reactAction?: (icon: ChatMessageActionIconProps) => ReactNode;
   /** The reaction picker is open from this message: its actions stay shown. */
   reactionPickerOpen?: boolean;
 };
 
-/** Reply, React and Edit for one message, or Retry for a failed send: after the header, or floated over the first body line of a grouped message. */
+/**
+ * Reply, React and Edit for one message as icons, or Retry for a failed send:
+ * after the header, or floated over the first body line of a grouped message.
+ * Only the row the keyboard is on names their keys, so a hint never offers a
+ * key that would act on another message or type into the composer. The
+ * desktop names each in its tooltip; the terminal, which has none, names the
+ * one under the pointer beside the actions, over the row (`row`).
+ */
 export function ChatMessageActions({
   state,
   index,
   floating = false,
+  row,
   beginReplyTo,
   beginEditMessage,
   retryMessage,
   reactAction,
   reactionPickerOpen = false,
-}: ChatMessageActionProps & { floating?: boolean }) {
+  actionKeysShown = false,
+}: ChatMessageActionProps & {
+  floating?: boolean;
+  /**
+   * Terminal: the row's width in cells and where the actions start in it, so
+   * the name of the one under the pointer goes where it covers none of them.
+   * A floating group sits at the row's right edge.
+   */
+  row?: { width: number; start?: number };
+}) {
+  const { nativePaneChrome } = useUiCapabilities();
+  const [hovered, setHovered] = useState<ChatMessageAction | null>(null);
   const variant = state.isSelected ? "primary" : "secondary";
   if (state.showRetryAction && retryMessage) {
     return (
       <Box
-        {...(floating ? { position: "absolute", top: 0, right: 0 } : {})}
-        width={MESSAGE_ACTION_WIDTH}
+        {...(floating ? { position: "absolute" as const, top: 0, right: 0 } : {})}
+        width={MESSAGE_RETRY_ACTION_WIDTH}
         height={1}
         flexDirection="row"
         data-gloom-role="chat-message-retry-action"
       >
         <Button stopPropagation
           label={t("Retry")}
-          width={MESSAGE_ACTION_WIDTH}
+          width={MESSAGE_RETRY_ACTION_WIDTH}
           variant={variant}
           onPress={() => retryMessage(index)}
         />
@@ -50,39 +85,60 @@ export function ChatMessageActions({
   }
   if (!state.showReplyAction) return null;
   const showReact = state.showReactAction && !!reactAction;
-  const actionCount = 1 + (showReact ? 1 : 0) + (state.showEditAction ? 1 : 0);
+  const actions: ChatMessageAction[] = ["reply", ...(showReact ? ["react" as const] : []), ...(state.showEditAction ? ["edit" as const] : [])];
+  const width = MESSAGE_ICON_ACTION_WIDTH * actions.length;
+  const icon = (action: ChatMessageAction): ChatMessageActionIconProps => ({
+    label: ACTION_LABELS[action],
+    ...(actionKeysShown ? { shortcut: ACTION_KEYS[action] } : {}),
+    // On the selected row the icons take its text colour, as its words do.
+    ...(state.isSelected ? { color: state.selectedTextColor } : {}),
+    ...(nativePaneChrome ? {} : {
+      onHoverChange: (on: boolean) => setHovered((current) => (on ? action : current === action ? null : current)),
+    }),
+  });
+  const shownHover = hovered && actions.includes(hovered) ? hovered : null;
+  let label: ReactNode = null;
+  if (!nativePaneChrome && shownHover && row) {
+    const start = row.start ?? row.width - width;
+    const name = `${t(ACTION_LABELS[shownHover])}${actionKeysShown ? ` (${formatShortcutForHost(ACTION_KEYS[shownHover], "terminal")})` : ""}`;
+    const placement = terminalHoverLabelSide(name, { before: Math.max(0, start), after: Math.max(0, row.width - start - width) });
+    if (placement) {
+      label = (
+        <TerminalHoverLabel
+          text={placement.text}
+          left={placement.side === "after" ? width : -displayWidth(placement.text)}
+          role="chat-message-action-label"
+        />
+      );
+    }
+  }
   return (
     <Box
-      {...(floating ? { position: "absolute", top: 0, right: 0 } : {})}
-      width={MESSAGE_ACTION_WIDTH * actionCount}
+      // Relative where it sits in its row, so the terminal's name of the action under the pointer goes beside it.
+      {...(floating ? { position: "absolute" as const, top: 0, right: 0 } : { position: "relative" as const })}
+      // The terminal's icons are a glyph and a space either side; the desktop's size themselves.
+      width={nativePaneChrome ? undefined : width}
       height={1}
       flexDirection="row"
       data-gloom-role="chat-message-reply-action"
       data-picker-open={reactionPickerOpen ? "true" : undefined}
+      // Floated over a grouped message's first line, the band under the icons hides the words they cover.
+      style={nativePaneChrome && floating ? { backgroundColor: "inherit" } : undefined}
     >
-      <Button stopPropagation
-        label={t("Reply")}
-        width={MESSAGE_ACTION_WIDTH}
-        variant={variant}
-        onPress={() => beginReplyTo(index)}
-      />
-      {showReact && reactAction}
+      <IconButton icon="reply" {...icon("reply")} onPress={() => beginReplyTo(index)} />
+      {showReact && reactAction(icon("react"))}
       {state.showEditAction && (
-        <Button stopPropagation
-          label={t("Edit")}
-          width={MESSAGE_ACTION_WIDTH}
-          variant={variant}
-          onPress={() => beginEditMessage(index)}
-        />
+        <IconButton icon="edit" {...icon("edit")} onPress={() => beginEditMessage(index)} />
       )}
+      {label}
     </Box>
   );
 }
 
 /** The widest status a header shows ("just now edited", a date with " edited", "sending..."). */
 const WIDEST_HEADER_STATUS = Math.max(...["just now edited", "12/31/99 edited", "sending..."].map(displayWidth));
-/** Reply, React and Edit, after the cell before them. */
-const WIDEST_HEADER_ACTIONS = 1 + MESSAGE_ACTION_WIDTH * 3;
+/** Reply, React and Edit, or Retry, after the cell before them. */
+const WIDEST_HEADER_ACTIONS = 1 + Math.max(MESSAGE_ICON_ACTION_WIDTH * 3, MESSAGE_RETRY_ACTION_WIDTH);
 
 /**
  * Whether a header row `rowWidth` cells wide has room for every icon of its
@@ -163,6 +219,19 @@ export function ChatMessageHeader({
   // An open reaction picker keeps the row's actions, so it keeps what stands before them too.
   const showOnPoint = state.showPersonIcons || actionProps.reactionPickerOpen === true;
   const iconColor = state.isSelected ? state.selectedTextColor : undefined;
+  // Terminal: where the actions start in the row, after everything drawn before them.
+  const terminalRow = typeof rowProps.width === "number"
+    ? {
+      width: rowProps.width,
+      start: 1 + displayWidth(authorLabel)
+        + besideName.length * CHAT_PERSON_ICON_WIDTH
+        + (showAnnouncementMark ? announcementMarkWidth() : 0)
+        + (msg.origin === "discord" ? 8 : 0)
+        + 1 + displayWidth(state.headerStatus)
+        + (showOnPoint ? onPoint.length * CHAT_PERSON_ICON_WIDTH : 0)
+        + 1,
+    }
+    : undefined;
   const profileTarget: Record<string, unknown> = hasProfile
     ? {
       onMouseOver: () => onUserHover(msg.user, nameRef.current),
@@ -203,7 +272,7 @@ export function ChatMessageHeader({
       <Text fg={state.headerStatusColor}> {state.headerStatus}</Text>
       {showOnPoint && <ChatPersonIcons icons={onPoint} selectedColor={iconColor} terminalTarget={profileTarget} />}
       {(state.showReplyAction || (state.showRetryAction && actionProps.retryMessage)) && <Text fg={state.headerStatusColor}> </Text>}
-      <ChatMessageActions state={state} {...actionProps} />
+      <ChatMessageActions state={state} row={terminalRow} {...actionProps} />
     </Box>
   );
 }

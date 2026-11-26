@@ -9,8 +9,7 @@ import { DesktopChatMessageImages } from "../attachments/desktop";
 import { chatReplyQuoteText } from "../attachments/model";
 import { chatAuthorName, heldMessage, isQuotedAuthorManagedBot } from "../ghost-user";
 import { ChatBotIcon } from "./person-icons";
-import { ChatMessageActions, ChatMessageHeader, chatHeaderFitsEveryIcon } from "./header";
-import { MESSAGE_ACTION_WIDTH } from "../layout";
+import { ChatMessageActions, ChatMessageHeader, chatHeaderFitsEveryIcon, type ChatMessageActionIconProps } from "./header";
 import { canReactToMessage } from "../reactions";
 import { DesktopChatReactions, DesktopReactionAction } from "./reactions";
 import { DesktopChatMessageText } from "./inline-tokens";
@@ -38,6 +37,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
   selectedIdx,
   hoveredIdx,
   highlighted,
+  actionKeysShown = false,
   canSend,
   contentWidth,
   catalog,
@@ -84,21 +84,20 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
     host: "desktop",
   });
   const reactionPickerOpen = canReact && reactionPickerMessageId === msg.id;
-  const reactAction = canReact && toggleReaction ? (
+  const reactAction = canReact && toggleReaction ? (icon: ChatMessageActionIconProps) => (
     <DesktopReactionAction
       msg={msg}
       currentUserId={currentUserId}
       open={reactionPickerOpen}
-      width={MESSAGE_ACTION_WIDTH}
-      variant={state.isSelected ? "primary" : "secondary"}
+      icon={icon}
       onOpenChange={(open) => {
         if (open) openReactionPicker?.(index);
         else closeReactionPicker?.();
       }}
       onToggle={toggleReaction}
     />
-  ) : null;
-  const actionProps = { state, index, beginReplyTo, beginEditMessage, retryMessage, reactAction, reactionPickerOpen };
+  ) : undefined;
+  const actionProps = { state, index, beginReplyTo, beginEditMessage, retryMessage, reactAction, reactionPickerOpen, actionKeysShown };
   const { links: paneLinks, content } = chatMessagePaneLinks(msg);
   // A share link sent with one picture, such as a pasted screenshot: the
   // picture is the chip's thumbnail rather than a second copy below it.

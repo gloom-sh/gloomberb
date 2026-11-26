@@ -261,14 +261,17 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 }
 /* A row's hover band is painted from the chat's own state (data-hovered), not
    :hover, so it can be dropped when the list scrolls or fills under a pointer
-   that did not move. Its actions show with it. */
+   that did not move. Its actions show with it, on the selected row, while
+   one of them has focus and while its picker is open. A tap marks the row
+   the way a pointer does, so a touch screen reaches them too. */
 [data-gloom-role="chat-message-reply-action"] {
   opacity: 0;
   pointer-events: none;
 }
 [data-gloom-role="chat-message"][data-hovered="true"] [data-gloom-role="chat-message-reply-action"],
 [data-gloom-role="chat-message"][data-selected="true"] [data-gloom-role="chat-message-reply-action"],
-[data-gloom-role="chat-message-reply-action"][data-picker-open="true"] {
+[data-gloom-role="chat-message-reply-action"][data-picker-open="true"],
+[data-gloom-role="chat-message-reply-action"]:focus-within {
   opacity: 1;
   pointer-events: auto;
 }

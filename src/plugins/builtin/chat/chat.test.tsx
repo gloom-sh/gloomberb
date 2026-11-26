@@ -330,8 +330,8 @@ describe("ChatContent", () => {
     const headerLine = lines.find((line) => line.includes("user2"));
     const bodyLine = lines.find((line) => line.includes("message 2"));
 
-    expect(headerLine).toContain("Reply");
-    expect(bodyLine).not.toContain("Reply");
+    expect(headerLine).toContain(ICON_GLYPHS.reply);
+    expect(bodyLine).not.toContain(ICON_GLYPHS.reply);
   });
 
   test("shows the edit action next to reply for the latest own message", async () => {
@@ -348,8 +348,8 @@ describe("ChatContent", () => {
     const lines = tui.frame().split("\n");
     const headerLine = lines.find((line) => line.includes("ada"));
 
-    expect(headerLine).toContain("Reply");
-    expect(headerLine).toContain("Edit");
+    expect(headerLine).toContain(ICON_GLYPHS.reply);
+    expect(headerLine).toContain(ICON_GLYPHS.edit);
   });
 
   test("hides the edit action after the edit window expires", async () => {
@@ -366,8 +366,8 @@ describe("ChatContent", () => {
     const lines = tui.frame().split("\n");
     const headerLine = lines.find((line) => line.includes("ada"));
 
-    expect(headerLine).toContain("Reply");
-    expect(headerLine).not.toContain("Edit");
+    expect(headerLine).toContain(ICON_GLYPHS.reply);
+    expect(headerLine).not.toContain(ICON_GLYPHS.edit);
   });
 
   test("offers no edit for your latest message when it was written on Discord", async () => {
@@ -381,8 +381,8 @@ describe("ChatContent", () => {
     await flushFrame();
 
     const headerLine = tui.frame().split("\n").find((line) => line.includes("ada") && line.includes("Discord"));
-    expect(headerLine).toContain("Reply");
-    expect(headerLine).not.toContain("Edit");
+    expect(headerLine).toContain(ICON_GLYPHS.reply);
+    expect(headerLine).not.toContain(ICON_GLYPHS.edit);
   });
 
   test("up arrow from an empty focused composer edits the latest own message", async () => {
@@ -1563,7 +1563,7 @@ describe("ChatContent", () => {
 
     await mountChat(controller, { width: 70, height: 18 });
     const rows = () => tui.frame().split("\n").map((row) => row.trimEnd());
-    const { bot: botIcon, team, pro } = ICON_GLYPHS;
+    const { bot: botIcon, team, pro, reply, react } = ICON_GLYPHS;
 
     // The quote of a bot's message: the icon stands where the colon would, and the preview ends in an ellipsis inside the row.
     const quote = rows().find((row) => row.trimStart().startsWith("reply deskbot"))!;
@@ -1574,13 +1574,13 @@ describe("ChatContent", () => {
     await emitKeypress({ name: "up", sequence: "\u001b[A" });
     await flushFrame();
     const botHeader = rows().filter((row) => row.startsWith(" deskbot ")).at(-1)!;
-    expect(botHeader).toMatch(new RegExp(` deskbot ${botIcon} .*Reply +React`));
+    expect(botHeader).toMatch(new RegExp(` deskbot ${botIcon} .*${reply} +${react}`));
 
     // A 30-character staff name with Reply and React, selected: the name whole, both icons, and the actions in the row.
     await emitKeypress({ name: "up", sequence: "\u001b[A" });
     await flushFrame();
     const staffHeader = rows().find((row) => row.startsWith(` ${staff.username} `))!;
-    expect(staffHeader).toMatch(new RegExp(` ${team} ${pro} +Reply +React$`));
+    expect(staffHeader).toMatch(new RegExp(` ${team} ${pro} +${reply} +${react}$`));
 
     // Replying to the bot: the composer names it with its icon and keeps Cancel whole.
     await emitKeypress({ name: "down", sequence: "\u001b[B" });
@@ -1598,14 +1598,14 @@ describe("ChatContent", () => {
     });
 
     // One cell short of both icons once Reply is counted (the message's date is "28 Mar", or "28 Mar '26" in a later year).
-    await mountChat(controller, { width: 34 + displayWidth(formatTimeAgo("2026-03-28T00:00:00.000Z")), height: 12 });
+    await mountChat(controller, { width: 28 + displayWidth(formatTimeAgo("2026-03-28T00:00:00.000Z")), height: 12 });
     await emitKeypress({ name: "up", sequence: "\u001b[A" });
     await flushFrame();
 
     const header = tui.frame().split("\n").find((row) => row.startsWith(" longer_staff_name "))!.trimEnd();
     expect(header).toContain(` ${ICON_GLYPHS.team} `);
     expect(header).not.toContain(ICON_GLYPHS.pro);
-    expect(header).toMatch(/Reply$/);
+    expect(header.endsWith(ICON_GLYPHS.reply)).toBe(true);
 
     await tui.clickFrameText("longer_staff_name");
     await flushFrame();

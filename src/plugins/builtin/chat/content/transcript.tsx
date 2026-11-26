@@ -56,6 +56,11 @@ interface ChatTranscriptProps {
   scheduleProfilePopoverClose: () => void;
   scrollRef: MutableRef<ScrollBoxRenderable | null>;
   selectedIdx: number;
+  /**
+   * The selected message while the chat, not the composer or a dialog, has the
+   * keys: its actions name the keys that press them. -1 for none.
+   */
+  actionKeysIdx: number;
   setHoveredIdx: Dispatch<SetStateAction<number | null>>;
   showProfilePopover: (user: ChatUserSummary, anchor?: ChatUserAnchor) => void;
   /** A click on a name: pins its card, or closes the one it pinned. */
@@ -119,6 +124,7 @@ export function ChatTranscript({
   scheduleProfilePopoverClose,
   scrollRef,
   selectedIdx,
+  actionKeysIdx,
   setHoveredIdx,
   showProfilePopover,
   toggleProfilePopover,
@@ -160,6 +166,7 @@ export function ChatTranscript({
       selectedIdx={selectedIdx}
       hoveredIdx={hoveredIdx === index ? index : null}
       highlighted={msg.id === highlightedMessageId}
+      actionKeysShown={index === actionKeysIdx}
       canSend={canSend}
       contentWidth={desktopChatMessageWidth(msg, contentWidth)}
       catalog={catalog}
@@ -245,6 +252,7 @@ export function ChatTranscript({
                 selectedIdx={selectedIdx}
                 hoveredIdx={hoveredIdx === index ? index : null}
                 highlighted={msg.id === highlightedMessageId}
+                actionKeysShown={index === actionKeysIdx}
                 canSend={canSend}
                 contentWidth={contentWidth}
                 messageBodyWidth={messageBodyWidth}
