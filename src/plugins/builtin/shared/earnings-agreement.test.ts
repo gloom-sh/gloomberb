@@ -10,6 +10,7 @@ import type { HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { resetEarningsCalendarPersistence } from "../earnings/data/cache";
 import { createEarningsHeadless } from "../earnings/headless";
 import { projectPeBand } from "../pe-band/model";
+import { buildEventRows } from "../research/event-model";
 import { createEarningsEstimatesHeadless } from "../research/headless";
 import { AGREEMENT_NOW, agreementEarningsSources, createAgreementProvider, YEAR_END_NOW } from "./earnings-agreement.test-data";
 
@@ -27,7 +28,7 @@ interface Priced { eps: number; epsText: string; pe: number; peText: string }
 const COMPANIES = {
   // A cent apart from a fiscal-year reading when the fourth quarter's EPS is the results release's.
   META: { eps: 29.33, epsText: "$29.33", pe: 630.56 / 29.33, peText: "21.50",
-    report: { date: "2026-10-21", dateStatus: "reported", epsEstimate: 6.52, epsAnalysts: 6, epsActual: 7.4, epsBasis: "adjusted" } },
+    report: { date: "2026-10-21", dateStatus: "reported", epsEstimate: 6.52, epsAnalysts: 6, epsActual: 7.4, epsBasis: null } },
   // Gloom Cloud's own figure is 1.13 and 175.96.
   PLTR: { eps: 1.17, epsText: "$1.17", pe: 198.84 / 1.17, peText: "169.95",
     report: { date: "2026-11-02", dateStatus: "confirmed", epsEstimate: 0.41097, epsAnalysts: 24, epsActual: null, epsBasis: null } },
@@ -127,12 +128,15 @@ describe("between a 10-K and the next 10-Q", () => {
   test("ticker, valuation, EE, PEB and GE price the fiscal year's EPS", () => expectOneTrailingEps("ACME", ACME, YEAR_END_NOW));
 });
 
-test("a quarter whose basis Gloom Cloud cannot tell reads unknown in events as in ERN", async () => {
+test("PLTR's quarter with unknown basis keeps both observations without a surprise in ERN and events", async () => {
   const ern = await createEarningsHeadless(agreementEarningsSources).load(args(["PLTR"]), createTestHeadlessContext({ marketData: router }));
   const events = createTestCliContext({ dataProvider: router });
   await marketDataCliCommands.find((command) => command.name === "events")!.execute(["PLTR:NASDAQ"], events.context);
   const { result, options } = events.printed[0]!;
   const row = (options!.rows!(result.data) as Array<Record<string, unknown>>).find((candidate) => candidate.date === "2025-05-05");
-  expect(ern.rows.find((candidate) => candidate.date === "2025-05-05")?.epsBasis).toBe("unknown");
-  expect(row).toMatchObject({ epsBasis: "unknown", detail: "eps $0.04, -0.04 vs est (Mar 2025)" });
+  const observations = { epsActual: 0.04, epsEstimate: 0.08, epsBasis: "unknown" };
+  expect(ern.rows.find((candidate) => candidate.date === "2025-05-05")).toMatchObject(observations);
+  expect(row).toMatchObject({ ...observations, detail: "eps $0.04 (Mar 2025)" });
+  const evt = buildEventRows(await router.getCorporateActions("PLTR", "NASDAQ"), null, null, "USD").find((candidate) => candidate.date === "2025-05-05");
+  expect(evt).toMatchObject({ ...observations, epsDifference: undefined, surprisePercent: undefined });
 });

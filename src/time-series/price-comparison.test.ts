@@ -40,6 +40,27 @@ function sources(history: Record<string, PricePoint[]> = histories) {
 }
 
 describe("normalized market price comparison", () => {
+  test("generated YTD includes December 31's close, while an authored start measures from the prior close", async () => {
+    const raw = spec();
+    const generated: ChartSpec = { ...raw, viewport: { ...raw.viewport, range: "1Y",
+      dateWindow: { start: "2025-12-31", end: "2026-11-26", endAtLatestObservation: true, returnPeriod: "YTD" } } };
+    const history = {
+      OLDER: rows([["2025-12-30", 265.91], ["2025-12-31", 264.91], ["2026-11-25", 197.21]]),
+      NEWER: rows([["2025-12-30", 154.24], ["2025-12-31", 153.19], ["2026-11-25", 92.16]]),
+    };
+    const market = { ...sources(history), now: date("2026-11-26T00:22:00Z") };
+    const result = await resolveChartSpecData(generated, market);
+    expect(Object.values(result.priceComparison?.legs ?? {}).map((leg) => [leg.baseDay, leg.endDay]))
+      .toEqual([["2025-12-31", "2026-11-25"], ["2025-12-31", "2026-11-25"]]);
+    expect(result.series.map((series) => series.points.at(-1)?.value?.toFixed(2))).toEqual(["-25.56", "-39.84"]);
+    const authored = await resolveChartSpecData({ ...generated, viewport: { ...generated.viewport,
+      dateWindow: { start: "2025-12-31", end: "2026-11-26" } } }, market);
+    expect(Object.values(authored.priceComparison?.legs ?? {}).map((leg) => leg.baseDay)).toEqual(["2025-12-30", "2025-12-30"]);
+    const seeded = seedChartResolutionResult(generated, new Map(generated.series.map((series) =>
+      [chartQuoteOverrideKeyForSource(series.source), history[series.id as keyof typeof history]])), market.now);
+    expect(seeded?.priceComparison?.legs).toEqual(result.priceComparison?.legs);
+  });
+
   for (const resolution of ["1d", "1wk"] as const) {
     test(`${resolution} uses shared inception and endpoint in chart, buffered rendering and raw report`, async () => {
       const result = await resolveChartSpecData(spec(resolution), sources());

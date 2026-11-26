@@ -232,8 +232,8 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     docs: "BT",
   },
   RV: {
-    summary: "Valuation and operating metrics for a peer group in one table: market cap, P/E, EV/EBITDA, margins, growth and more.",
-    usage: ["RV NVDA, AMD, AVGO"],
+    summary: "Compare market cap, P/E, EV/sales, growth and margins. The pane auto-picks peers when opened on one ticker. The CLI compares the tickers given unless you add --peers; add --columns evEbitda for optional EV/EBITDA.",
+    usage: ["RV NVDA, AMD, AVGO", "gloom fn RV NVDA --peers"],
     keys: [OPEN],
     data: same("Daily, statements as filed"),
     bloomberg: ["RV"],

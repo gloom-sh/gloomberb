@@ -231,7 +231,7 @@
    "code": "RV",
    "name": "Relative valuation",
    "description": "Multiples across peers",
-   "detail": "Valuation and operating metrics for a peer group in one table: market cap, P/E, EV/EBITDA, margins, growth, and more.",
+   "detail": "Compare market cap, P/E, EV/sales, growth, and margins. The pane auto-picks peers when opened on one ticker. The CLI compares the tickers given unless you add --peers; add --columns evEbitda for optional EV/EBITDA.",
    "category": "research",
    "arg": "NVDA, AMD, AVGO",
    "shot": "https://gloom.sh/screenshots/fn/RV.png",

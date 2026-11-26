@@ -6,6 +6,7 @@ import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-d
 import { MISSING_VALUE, formatCompact, formatCurrency, formatLevelPercent, formatNumber, formatPercent, formatPercentRaw } from "../../../utils/format";
 import { loadHeadlessFinancials, loadHeadlessSymbols } from "../shared/headless-market-data";
 import { quoteFreshnessFields } from "../shared/report-freshness";
+import { extendedPrintTimeColumn } from "../shared/extended-print";
 import { formatUtcWeekdayTime } from "../../../utils/utc-time";
 import {
   RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE, RELATIVE_VALUATION_STALE_QUOTE_NOTICE, relativeValuationValues, type RelativeValuationGapKey,
@@ -43,7 +44,7 @@ function extendedColumn(session: ExtendedSession): HeadlessPaneColumn {
     align: "right",
     format: (value, row) => row.extendedSession === session && typeof value === "number"
       ? [`${price(value, row)}${row.extendedMark ? " mid" : ""} ${percent(row.extendedChangePercent)}`,
-        typeof row.quoteAsOf === "number" ? formatUtcWeekdayTime(row.quoteAsOf) : ""].filter(Boolean).join(" ")
+        typeof row.extendedUpdatedAt === "number" ? formatUtcWeekdayTime(row.extendedUpdatedAt) : ""].filter(Boolean).join(" ")
       : MISSING_VALUE,
   };
 }
@@ -66,6 +67,7 @@ const EXTENDED_SESSIONS = ["PRE", "POST", "OVERNIGHT"] as const;
 
 /** Every session's columns, whichever peers have a print, so the header is the same before the open and after the close. */
 const EXTENDED_EXPORT_COLUMNS = EXTENDED_SESSIONS.flatMap(extendedExportColumns);
+const EXTENDED_TIME_COLUMNS = EXTENDED_SESSIONS.map(extendedPrintTimeColumn);
 
 // Last is in each peer's own currency: an export writes the number, and the row's `currency_or_unit` names its currency.
 const QUOTE_COLUMNS: HeadlessPaneColumn[] = [
@@ -174,13 +176,14 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
   description: "P/E, forward P/E, market cap, EV/sales, FCF yield, growth and margin for each ticker, one row each.",
   freshness: { datesEachVenue: true },
   shape: "rows",
+  csvTrailingColumns: EXTENDED_TIME_COLUMNS.map(({ header }) => header),
   describe: ({ symbols }, result) => {
     const selection = peerSelectionOf(result?.metadata?.peerSelection, result?.symbols ?? symbols);
     return selection
       ? `Relative Valuation | ${selection.subject} and ${peerMethodTitle(selection)}`
       : `Relative Valuation | ${(result?.symbols ?? symbols).join(", ")}`;
   },
-  columns: [...QUOTE_COLUMNS, ...EXTENDED_EXPORT_COLUMNS, ...VALUATION_EXPORT_COLUMNS],
+  columns: [...QUOTE_COLUMNS, ...EXTENDED_EXPORT_COLUMNS, ...VALUATION_EXPORT_COLUMNS, ...EXTENDED_TIME_COLUMNS],
   async expandArgument(args, ctx) {
     if (args.options.peers !== true) return null;
     const selection = await choosePeers(args.symbols, ctx);
@@ -270,11 +273,12 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
     return {
       rows, unavailableSymbols, errors, complete: unavailableSymbols.length === 0 && errors.length === 0,
       ...(selection ? { symbols } : {}),
-      columns: [...QUOTE_COLUMNS, ...EXTENDED_EXPORT_COLUMNS, ...VALUATION_EXPORT_COLUMNS, ...added?.export ?? []],
+      columns: [...QUOTE_COLUMNS, ...EXTENDED_EXPORT_COLUMNS, ...VALUATION_EXPORT_COLUMNS, ...added?.export ?? [], ...EXTENDED_TIME_COLUMNS],
       textColumns: [...textColumns, ...added?.text ?? []],
       // Each peer's row names its ticker and the currency its prices are in.
       rowSymbolKey: "symbol",
       rowUnitKey: "currency",
+      rowAsOfKey: "quoteAsOf",
       ...(notes.length > 0 ? { notes } : {}),
       ...(warnings.length > 0 ? { warnings } : {}),
       ...(footnote ? { freshness: { note: footnote } } : {}),
@@ -285,7 +289,7 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
         ...(converted ? { marketCapConversion: { currency: capCurrency, rates: converted.conversions,
           basis: "marketCap is converted into one currency (the asked one, else the peers' own when they share one, else the base currency) at each currency's US dollar rate, the rate the app's converted totals use; marketCapNative and marketCapNativeCurrency keep the cap as served." } } : {}),
         ...(extraIds.length > 0 ? { addedColumnsBasis: "Each added column keeps its own source and as-of beside it: short interest at its FINRA settlement date, analyst targets at retrieval (converted with the caps under --currency, targetMeanNative keeping the served one), the next earnings date at the calendar's retrieval, gross margin and EV/EBITDA at the end of the latest quarter they sum. EV/EBITDA is the listing's enterprise value over the trailing four quarters of operating income plus D&A, as GE's EV/EBITDA ends." } : {}),
-        quoteBasis: "Stale quote fields are excluded from comparison; reportedQuote retains the rejected observation and quoteAsOf retains its source timestamp.",
+        quoteBasis: "quoteAsOf dates Last; extendedUpdatedAt dates the separate extended print. Stale quote fields are excluded from comparison; reportedQuote retains the source observation.",
         priceBasis: "price, change and changePercent are the regular session: after the close, its close and that close's move. A pre-market, after-hours or overnight print is in extendedPrice, extendedChange and extendedChangePercent, measured from that close (extendedMark when it is a bid and ask midpoint). marketCap, the P/E multiples, evSales (through the equity part of the enterprise value) and fcfYield are measured at that regular session price.",
         fundamentalsBasis: "Provider multiples and operating metrics retain independent fundamentalsProvenance. Retrieval time does not establish the valuation date.",
         notices: [

@@ -12,7 +12,7 @@ export const paneSchemas = {
         key: "peers",
         type: "boolean",
         settingKey: "autoPeers",
-        description: "With one symbol, add 4 to 6 competitors: the covered equities in its industry closest in market cap (an education company filed under software is compared with education companies, and an online learning company with its curated core first), or a curated list when too few are covered. The header names the method",
+        description: "The CLI uses the tickers given unless this is set. The pane picks peers by default when opened on one ticker. With one symbol, add 4 to 6 competitors: the covered equities in its industry closest in market cap (an education company filed under software is compared with education companies, and an online learning company with its curated core first), or a curated list when too few are covered. The header names the method",
         example: "--peers",
       },
       {
@@ -21,7 +21,7 @@ export const paneSchemas = {
         type: "string",
         settingKey: "extraColumns",
         placeholder: "fields",
-        description: `Report columns to add, in order: ${EXTRA_COLUMN_IDS.join(", ")}. shortInterest is FINRA short interest as a percent of float at the latest settlement, `
+        description: `Optional report columns to add, in order: ${EXTRA_COLUMN_IDS.join(", ")}. shortInterest is FINRA short interest as a percent of float at the latest settlement, `
           + "nextEarnings the next report date on the earnings calendar, target the mean analyst target and the analyst count, grossMargin the trailing twelve months' gross margin, "
           + "evEbitda the enterprise value over trailing operating income plus D&A, as GE's EV/EBITDA ends. "
           + "Short interest and earnings dates cover US listings. CSV and JSON give each cell's source and as-of. The pane keeps its own columns",
