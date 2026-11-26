@@ -5,6 +5,7 @@ import { nonUsSecListingVenue } from "../../../utils/sec";
 
 // The extended archives are bounded. The pane reveals their rows as the user scrolls.
 export const EXCHANGE_FILING_HISTORY_LIMIT = 200;
+export const HKEX_FILING_HISTORY_LIMIT = 100;
 export const PRESENTATIONS_FORM = "presentations";
 
 interface ExchangeFilingForm {
@@ -15,9 +16,11 @@ interface ExchangeFilingForm {
 
 const presentations: ExchangeFilingForm = { value: PRESENTATIONS_FORM, label: "Presentations", kind: PRESENTATIONS_FORM };
 const sgxResults: ExchangeFilingForm = { value: "sgx-results", label: "Results & presentations", kind: "results" };
+const hkexResults: ExchangeFilingForm = { value: "hkex-results", label: "Results", kind: "results" };
 
 export function exchangeFilingForm(venue: string | undefined): ExchangeFilingForm | undefined {
   if (venue === "TWSE" || venue === "TPEX") return presentations;
+  if (venue === "HKEX") return hkexResults;
   if (venue === "SGX") return sgxResults;
 }
 

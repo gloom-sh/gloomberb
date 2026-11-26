@@ -121,15 +121,19 @@ describe("SEC headless model", () => {
     expect(result.metadata).toMatchObject({ form: "presentations", total: 1 });
   });
 
-  test("Singapore results preserve the SGX filing links and archive status", async () => {
-    const url = "https://links.sgx.com/1.0.0/corporate-announcements/A9CW58STOPTDX0HG/50dad2d3f2e1374d94921a9cad3497846885577d0c43cf2e1fe14c8c7f4764a6";
+  test.each([
+    { exchange: "SGX", symbol: "O39", name: "OCBC", publisher: "SGX", maximum: 200,
+      url: "https://links.sgx.com/1.0.0/corporate-announcements/A9CW58STOPTDX0HG/50dad2d3f2e1374d94921a9cad3497846885577d0c43cf2e1fe14c8c7f4764a6" },
+    { exchange: "HKEX", symbol: "0700", name: "Tencent", publisher: "HKEXnews", maximum: 100,
+      url: "https://www1.hkexnews.hk/listedco/listconews/sehk/2026/1118/2026111800448.pdf" },
+  ])("$exchange results preserve original filing links and the source limit", async ({ exchange, symbol, name, publisher, maximum, url }) => {
     const headless = createSecHeadless({
       loadFilings: async () => { throw new Error("Unexpected SEC read"); },
       loadExchange: async ({ kind, limit }) => {
         expect(kind).toBe("results");
-        expect(limit).toBe(200);
+        expect(limit).toBe(maximum);
         return {
-          exchange: "SGX", symbol: "O39", name: "OCBC", total: 1, stale: true,
+          exchange, symbol, name, total: 1, stale: true,
           page: "https://www.sgx.com/securities/company-announcements",
           retrievedAt: "2026-11-26T12:00:00Z", announcements: [{
             date: "2026-11-05T22:59:27.000Z", headline: "Third Quarter Results",
@@ -138,8 +142,8 @@ describe("SEC headless model", () => {
         };
       },
     });
-    const result = await headless.load({ ...args(200), symbols: ["O39:SGX"], options: { limit: 200, form: "results" } }, createTestHeadlessContext());
-    expect(result.rows).toEqual([expect.objectContaining({ filedAt: "2026-11-05T22:59:27.000Z", url, source: "SGX" })]);
+    const result = await headless.load({ ...args(200), symbols: [`${symbol}:${exchange}`], options: { limit: 200, form: "results" } }, createTestHeadlessContext());
+    expect(result.rows).toEqual([expect.objectContaining({ filedAt: "2026-11-05T22:59:27.000Z", url, source: publisher })]);
     expect(result.metadata).toMatchObject({ form: "results", total: 1, stale: true });
   });
 

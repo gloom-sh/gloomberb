@@ -3,7 +3,7 @@ import type { PluginModule } from "../plugin-module";
 import type { SecFilingDocument, SecFilingItem } from "../../../types/data-provider";
 import { apiClient } from "../../../api-client";
 import { useAsyncResource } from "../../../public/react";
-import { EXCHANGE_FILING_HISTORY_LIMIT, exchangeFilingForm, localFilingListing, localFilingRows, PRESENTATIONS_FORM } from "./exchange-filings";
+import { EXCHANGE_FILING_HISTORY_LIMIT, exchangeFilingForm, HKEX_FILING_HISTORY_LIMIT, localFilingListing, localFilingRows, PRESENTATIONS_FORM } from "./exchange-filings";
 import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery, useTickerFinancials } from "../../../market-data/hooks";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { useShortcut } from "../../../react/input";
@@ -381,7 +381,8 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   const readLocal = useCallback(() => apiClient.getCloudExchangeAnnouncements({
     symbol: localSymbol!,
     exchange: localVenue!,
-    limit: localKind || localVenue === "JPX" ? EXCHANGE_FILING_HISTORY_LIMIT : 50,
+    limit: localKind && localVenue === "HKEX" ? HKEX_FILING_HISTORY_LIMIT
+      : localKind || localVenue === "JPX" ? EXCHANGE_FILING_HISTORY_LIMIT : 50,
     ...(localKind ? { kind: localKind } : {}),
   }), [localSymbol, localVenue, localKind]);
   const localFeed = useAsyncResource(localSymbol && localVenue ? readLocal : null);
@@ -727,7 +728,9 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
             : "No investor conference presentations in the past year."
         : localForm && (loading || localFeed.loading) ? "Loading filings..."
         : localForm && feedError ? "Filings unavailable."
-        : localKind === "results" ? "No SGX results or presentations."
+        : localKind === "results" ? localFeed.data?.stale
+          ? "Results archive unavailable or incomplete."
+          : "No results in the exchange archive."
         : forms && formFilings.length === 0 ? fundEmptyTitle
         : supplementCount > 0 && !showSupplements ? "Only pricing supplements."
         : formGroup === ALL_FORMS ? "No SEC filings." : "No filings of these forms."}
