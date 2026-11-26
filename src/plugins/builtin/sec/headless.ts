@@ -213,7 +213,8 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
           : rows.length ? `SEC EDGAR, ${listing.publisher}` : listing.publisher;
         return { rows: combined, columns, textColumns: columns.slice(0, -1), notes: [...notes, ...companyDataNotes(filings[0]?.companyFrom)],
           freshness: { source: publishers, status: "not-a-feed", basis: hasCatalogueDate ? "filings and catalogue dates" : "filed data", observedKey: "filedAt" },
-          metadata: { symbol, returned: combined.length, exchangePage: exchange.page, ...hiddenFilingsMetadata(hidden) } };
+          metadata: { symbol, returned: combined.length, exchangePage: exchange.page,
+            ...(exchange.dateSource ? { exchangeDateSource: exchange.dateSource } : {}), ...hiddenFilingsMetadata(hidden) } };
       }
       // A listing abroad whose company files nothing with the SEC says where its exchange publishes its announcements.
       const page = !form && filings.length === 0 ? listingAnnouncementsPage(symbol) : null;

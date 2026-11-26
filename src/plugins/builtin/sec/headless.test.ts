@@ -75,6 +75,26 @@ describe("SEC headless model", () => {
     expect(result.rows[0]).toMatchObject({ filedAt: "2026-11-16", dateBasis: "catalogue", url, source: "KRX KIND" });
   });
 
+  test.each(["1023:XKLS", "1023.KL"])("%s reads the same issuer filing catalogue", async (symbol) => {
+    const url = "https://www.cimb.com/content/3q26-cimb-group-financial-statement.pdf";
+    const dateSource = "https://www.cimb.com/en/investor-relations/announcements-events/investor-engagements.html";
+    const headless = createSecHeadless({
+      loadFilings: async () => [],
+      loadExchange: async (request) => {
+        expect(request).toMatchObject({ symbol, exchange: "BURSAMY" });
+        return { exchange: "BURSAMY", symbol: "1023", name: "CIMB Group Holdings", page: "https://www.cimb.com/", dateSource,
+          total: 1, retrievedAt: "2026-11-25T12:00:00Z", announcements: [{
+            date: "2026-11-25", dateBasis: "catalogue", headline: "Third-quarter results",
+            types: ["Financial Results"], publisher: "Issuer IR", priceSensitive: null, fileSize: null, documentKey: url, url,
+          }],
+        };
+      },
+    });
+    const result = await headless.load({ ...args(15), argument: symbol, symbols: [symbol] }, createTestHeadlessContext());
+    expect(result.rows[0]).toMatchObject({ filedAt: "2026-11-25", dateBasis: "catalogue", url, source: "Issuer IR" });
+    expect(result.metadata?.exchangeDateSource).toBe(dateSource);
+  });
+
   test("an extended JPX filing read retains an earnings Q&A beyond the first 50 rows", async () => {
     const url = "https://www2.jpx.co.jp/disc/72030/140120260804507923.pdf";
     const announcement = {

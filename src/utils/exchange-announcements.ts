@@ -1,5 +1,5 @@
 import { listingSuffixExchange } from "../sources/listing-symbols";
-import { canonicalExchange, parsePublicTickerKey } from "./exchanges";
+import { canonicalExchange, parsePublicTickerKey, typedExchangeVenue } from "./exchanges";
 
 /** Where a listing's company announcements are published: the venue's page for the company, or its disclosure search. */
 export interface ExchangeAnnouncementsPage {
@@ -40,6 +40,7 @@ const PAGES: Readonly<Record<string, (code: string) => ExchangeAnnouncementsPage
   TPEX: () => PAGES.TWSE!(""),
   NSE: () => ({ name: "NSE corporate announcements", url: "https://www.nseindia.in/companies-listing/corporate-filings-announcements" }),
   BSE: () => ({ name: "BSE corporate announcements", url: "https://www.bseindia.com/corporates/ann.html" }),
+  BURSAMY: () => ({ name: "Bursa Malaysia company announcements", url: "https://www.bursamalaysia.com/market_information/announcements/company_announcement" }),
   SSE: () => ({ name: "CNINFO filings", url: "https://www.cninfo.com.cn/new/index" }),
   SZSE: () => PAGES.SSE!(""),
   SGX: () => ({ name: "SGX company announcements", url: "https://www.sgx.com/securities/company-announcements" }),
@@ -48,19 +49,27 @@ const PAGES: Readonly<Record<string, (code: string) => ExchangeAnnouncementsPage
   BIST: () => ({ name: "KAP disclosures", url: "https://www.kap.org.tr/en/bildirim-sorgu" }),
 };
 
-/**
- * The announcements page for a listing on a venue abroad: NST on
- * ASX is ASX's announcements page for NST, a TSX listing SEDAR+. Null for a
- * US venue and for a venue Gloom knows no page for.
- */
+/** Resolve typed venue aliases for disclosure requests without changing saved listing keys. */
+export function announcementVenue(exchange?: string | null): string {
+  return typedExchangeVenue(exchange ?? undefined) ?? canonicalExchange(exchange ?? undefined);
+}
+
+export function issuerFilingSuffixVenue(symbol: string): string | undefined {
+  if (/^\d{4}\.KL$/i.test(symbol)) return "BURSAMY";
+  if (/^[A-Z0-9][A-Z0-9&-]*\.BK$/i.test(symbol)) return "SET";
+  return undefined;
+}
+
+/** The overseas venue's disclosure page, when the listing has one. */
 function exchangeAnnouncementsPage(symbol: string, exchange: string | null | undefined): ExchangeAnnouncementsPage | null {
-  const page = PAGES[canonicalExchange(exchange ?? "")];
+  const page = PAGES[announcementVenue(exchange)];
   const code = symbol.trim().toUpperCase();
   return page && code ? page(code) : null;
 }
 
 const PUBLISHERS: Readonly<Record<string, string>> = {
   TWSE: "MOPS", TPEX: "MOPS",
+  BURSAMY: "Bursa Malaysia",
   ASX: "ASX", CXA: "ASX", HKEX: "HKEXnews", SWX: "SIX Swiss Exchange", NSE: "NSE",
   JPX: "TDnet", HNX: "HNX", HOSE: "HOSE", KRX: "DART", KOSDAQ: "DART", SGX: "SGX", SSE: "CNINFO", SZSE: "CNINFO",
 };
@@ -71,7 +80,7 @@ const PUBLISHERS: Readonly<Record<string, string>> = {
  * trade under ASX codes), "HKEXnews". Null for a venue it lists none for.
  */
 export function exchangeAnnouncementsPublisher(exchange: string | null | undefined): string | null {
-  const venue = canonicalExchange(exchange ?? "");
+  const venue = announcementVenue(exchange);
   return PUBLISHERS[venue] ?? null;
 }
 
@@ -102,7 +111,7 @@ export function isRoutineReturn(item: { category?: string | null }): boolean {
  */
 export function listingAnnouncementsPage(key: string, exchange?: string | null): ExchangeAnnouncementsPage | null {
   const parsed = parsePublicTickerKey(key.trim());
-  const suffixed = parsed.exchange ? null : listingSuffixExchange(parsed.symbol);
+  const suffixed = parsed.exchange ? null : listingSuffixExchange(parsed.symbol) ?? issuerFilingSuffixVenue(parsed.symbol);
   const venue = parsed.exchange || suffixed || exchange;
   const symbol = suffixed ? parsed.symbol.replace(/\.[A-Z]+$/i, "") : parsed.symbol;
   const issuerPage = !listsExchangeAnnouncements(venue) && ISSUER_RESULTS_PAGES[`${symbol.toUpperCase()}:${canonicalExchange(venue ?? "")}`];
