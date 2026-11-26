@@ -692,17 +692,20 @@ export interface AnalystResearchData {
   revenueEstimates: AnalystEstimateRecord[];
 }
 
+export interface DividendNoticeSource {
+  publisher: string;
+  url: string;
+  /** Original timetable when the final cash amount was published separately. */
+  scheduleUrl?: string;
+}
+
 export interface DividendAction {
   exDate: string;
   amount: number;
   payDate?: string;
   recordDate?: string;
-  /**
-   * Who published the row when it is not the listing's own history: a fund's
-   * sponsor, for a distribution the history lacks (iShares, SPDR, J.P. Morgan,
-   * VanEck), and the page it is published on. Absent elsewhere and from older servers.
-   */
-  source?: { publisher: string; url: string };
+  /** Original notice or sponsor page, when it supplies facts for this row. */
+  source?: DividendNoticeSource;
   /**
    * The dividends the row holds by the issuer's own dividend announcement
    * forms (an HKEX listing's): each in the row's currency, summing to its
@@ -725,6 +728,7 @@ export interface DeclaredDividendAction {
   declarationDate?: string;
   recordDate?: string;
   payDate?: string;
+  source?: DividendNoticeSource;
   /** A one-off beside the regular payments (AIOK's $3.50), as the server marks it. */
   special?: true;
 }

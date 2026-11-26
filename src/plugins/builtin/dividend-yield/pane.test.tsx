@@ -54,6 +54,29 @@ test.each([44, 60])("an ex-dated unfixed sterling declaration keeps its row, est
   expect(text).toContain("17 Dec 2026");
 });
 
+test("an unpaid distribution with a published notice keeps its status and source links beside the paid history", async () => {
+  const source = { publisher: "KSEI", url: "https://example.com/cash.pdf", scheduleUrl: "https://example.com/schedule.pdf" };
+  setSystemTime(new Date("2026-11-26T06:00:00Z"));
+  setHttpFetchTransport(async () => Response.json({ status: "success", data: {
+    summary: null,
+    actions: { symbol: "MEDC", exchange: "JAKARTA", currency: "IDR", coverage: { dividends: "available" }, splits: [], earnings: [],
+      dividends: [{ exDate: "2026-06-23", amount: 24 }],
+      declaredDividends: [{ exDate: "2026-11-11", amount: 22.0252, payDate: "2026-12-02", source }] },
+  } }));
+  let data: Awaited<ReturnType<typeof fetchDividendData>>;
+  try {
+    data = await fetchDividendData("MEDC", null, "JAKARTA");
+  } finally {
+    setSystemTime();
+  }
+  expect(data.payments.map((payment) => payment.amount)).toEqual([24]);
+  expect(data.metrics.nextPayDate).toEqual(new Date("2026-12-02"));
+  const text = await renderLoaded(data, 80, 24);
+  expect(text).toMatch(/11 Nov 2026\s+IDR\s+22\.0252\s+Declared\s+KSEI\s+Schedule/);
+  expect(text).toMatch(/23 Jun 2026\s+IDR\s+24\.0000\s+Paid/);
+  expect(text).toContain("02 Dec 2026");
+});
+
 test("summary failures retain cash and recover dated payment information through refresh", async () => {
   const day = Math.floor(Date.now() / 86400_000) * 86400;
   const exDate = day + 10 * 86400;

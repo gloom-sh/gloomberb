@@ -176,8 +176,12 @@ export interface DividendRow {
   currency: string;
   /** The amount as the company declared it, in another currency (DividendPayment.declared). */
   declared?: { amount: number; currency: string };
-  /** Who published it when not the listing's history: the fund's sponsor (DividendPayment.source). */
+  /** The original publisher when the record cites a notice or sponsor page. */
   source?: string;
+  sourceUrl?: string;
+  sourceScheduleUrl?: string;
+  pending?: true;
+  payDate?: string;
   /** A regular payment and an extra one on the same ex-date (DividendPayment.combined). */
   combined?: true;
   /** A special, as the issuer's own form types it (DividendPayment.special). */
@@ -192,7 +196,8 @@ export function toDividendRows(payments: DividendPayment[]): DividendRow[] {
     ...(payment.cashEstimate ? { cashEstimate: payment.cashEstimate } : {}),
     currency: payment.currency,
     ...(payment.declared ? { declared: payment.declared } : {}),
-    ...(payment.source ? { source: payment.source.publisher } : {}),
+    ...(payment.source ? { source: payment.source.publisher, sourceUrl: payment.source.url,
+      ...(payment.source.scheduleUrl ? { sourceScheduleUrl: payment.source.scheduleUrl } : {}) } : {}),
     ...(payment.combined ? { combined: true as const } : {}),
     ...(payment.special ? { special: true as const } : {}),
   }));

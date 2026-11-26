@@ -1,6 +1,6 @@
 import type { DividendLapse } from "../../../utils/forward-dividend";
 import type { DistributionCadence, TrailingPayments } from "../../../utils/trailing-dividend";
-import type { DividendCashEstimate } from "../../../types/financials";
+import type { DividendCashEstimate, DividendNoticeSource } from "../../../types/financials";
 
 export interface DividendPayment {
   exDate: Date;
@@ -13,8 +13,7 @@ export interface DividendPayment {
   /** The amount as the company declared it, in another currency than `currency` (BP's dollars beside the pence its London line paid). */
   declared?: { amount: number; currency: string };
   cashEstimate?: DividendCashEstimate;
-  /** Who published it when not the listing's history: the fund's sponsor (DividendAction.source). */
-  source?: { publisher: string; url: string };
+  source?: DividendNoticeSource;
   /** The amount is a regular payment and an extra one on the same ex-date, which the history keeps as one row (combinedPaymentTimes). */
   combined?: true;
   /** The issuer's own dividend announcement form says it is a special (CashDistribution.special). */

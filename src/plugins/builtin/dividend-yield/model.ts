@@ -3,7 +3,7 @@ import { compareSortValues, type SortDirection } from "../../../utils/sort-value
 import { displayWidth, formatDistributionAmount } from "../../../utils/format";
 import { dividendAmountDigits, formatDividendRowAmount, type DividendRow } from "./view";
 
-export type DividendColumnId = "exDate" | "amount" | "declared" | "currency" | "source";
+export type DividendColumnId = "exDate" | "amount" | "declared" | "currency" | "status" | "source";
 export type DividendColumn = DataTableColumn & { id: DividendColumnId };
 
 export interface DividendSortPreference {
@@ -21,9 +21,9 @@ export const DEFAULT_SORT_PREFERENCE: DividendSortPreference = {
  * amount follows it only for a company declaring in another currency than the
  * listing pays (BP's dollars beside its pence). The currency column shows only
  * when the payments mix currencies; otherwise the amount's own symbol says it.
- * The source column shows only when a fund's sponsor gave a row its history lacks.
+ * The source column appears when a record cites an original publisher.
  */
-export function buildDividendColumns(rows: readonly Pick<DividendRow, "amount" | "currency" | "declared" | "source" | "cashEstimate" | "combined" | "special">[] = [], converted = false, subUnit?: string): DividendColumn[] {
+export function buildDividendColumns(rows: readonly Pick<DividendRow, "amount" | "currency" | "declared" | "source" | "cashEstimate" | "combined" | "special" | "pending" | "sourceScheduleUrl">[] = [], converted = false, subUnit?: string): DividendColumn[] {
   const mixed = new Set(rows.map((row) => row.currency)).size > 1;
   const digits = dividendAmountDigits(rows, converted, subUnit);
   const declared = rows.flatMap((row) => row.declared ? [row.declared] : []);
@@ -33,7 +33,9 @@ export function buildDividendColumns(rows: readonly Pick<DividendRow, "amount" |
     { id: "amount", label: "AMOUNT", width: Math.max(12, ...rows.map((row) => displayWidth(formatDividendRowAmount(row, converted, subUnit, digits)))), align: "right" },
     ...(declared.length ? [{ id: "declared" as const, label: "DECLARED", width: Math.max(10, ...declared.map((entry) => displayWidth(formatDistributionAmount(entry.amount, entry.currency, declaredDigits.get(entry.currency))))), align: "right" as const }] : []),
     ...(mixed ? [{ id: "currency" as const, label: "CCY", width: 6, align: "left" as const }] : []),
-    ...(rows.some((row) => row.source) ? [{ id: "source" as const, label: "SOURCE", width: 12, align: "left" as const }] : []),
+    ...(rows.some((row) => row.pending) ? [{ id: "status" as const, label: "STATUS", width: 10, align: "left" as const }] : []),
+    ...(rows.some((row) => row.source) ? [{ id: "source" as const, label: "SOURCE",
+      width: rows.some((row) => row.sourceScheduleUrl) ? 21 : 12, align: "left" as const }] : []),
   ];
 }
 
@@ -43,6 +45,7 @@ function getSortValue(columnId: DividendColumnId, row: DividendRow): string | nu
     case "amount": return row.amount;
     case "declared": return row.declared?.amount ?? null;
     case "currency": return row.currency;
+    case "status": return row.pending ? "Declared" : "Paid";
     case "source": return row.source ?? null;
   }
 }

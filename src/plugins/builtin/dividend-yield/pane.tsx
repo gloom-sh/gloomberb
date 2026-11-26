@@ -7,12 +7,14 @@ import {
   ChartTableHeader,
   chartTableLayout,
   DataTableView,
+  ExternalLinkText,
   scalarPoint,
   spanAxisFormatter,
   statGridColumns,
   staticSeries,
   useChartTableSelection,
   usePaneFooter,
+  usePaneMenuItems,
   usePaneNoticeFooter,
   usePaneTicker,
   type DataTableCell,
@@ -21,7 +23,7 @@ import {
 } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
 import { colors, priceColor } from "../../../theme/colors";
-import { TextAttributes, useUiCapabilities } from "../../../ui";
+import { Box, TextAttributes, useRendererHost, useUiCapabilities } from "../../../ui";
 import { MISSING_VALUE, displayWidth, formatCurrency, formatDistributionAmount, formatPercentRaw } from "../../../utils/format";
 import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
@@ -182,8 +184,16 @@ function renderCell(
       return { text: row.declared ? formatDistributionAmount(row.declared.amount, row.declared.currency, digits.declared.get(row.declared.currency)) : "", color: colors.textDim };
     case "currency":
       return { text: row.currency, color: colors.textDim };
+    case "status":
+      return { text: row.pending ? "Declared" : "Paid", color: colors.textDim };
     case "source":
-      return { text: row.source ?? "", color: colors.textDim };
+      return { text: row.source ?? "", color: colors.textDim,
+        ...(row.sourceUrl ? { content: (
+          <Box flexDirection="row" gap={1}>
+            <ExternalLinkText url={row.sourceUrl} label={row.source} width={column.width} />
+            {row.sourceScheduleUrl ? <ExternalLinkText url={row.sourceScheduleUrl} label="Schedule" width={8} /> : null}
+          </Box>
+        ) } : {}) };
   }
 }
 
@@ -197,6 +207,7 @@ export function DividendYieldPane(props: DividendPaneProps) {
 
 function DividendTickerPane({ focused, width, height, loadData = fetchDividendData }: DividendPaneProps) {
   const { symbol, ticker, financials } = usePaneTicker();
+  const rendererHost = useRendererHost();
   const { nativePaneChrome } = useUiCapabilities();
   // Yields are repriced from the quote on every render, so streaming it is all
   // it takes for them to move with the stock. A yield to two decimals needs
@@ -280,7 +291,16 @@ function DividendTickerPane({ focused, width, height, loadData = fetchDividendDa
     enabled: !authWall,
   });
   const metrics = data?.metrics ? repriceDividendMetrics(data.metrics, currentPrice) : undefined;
-  const rows = useMemo(() => toDividendRows(payments), [payments]);
+  const rows = useMemo(() => {
+    const paid = toDividendRows(payments);
+    const pending = (data?.declared ?? []).flatMap((dividend): DividendRow[] => dividend.source && currency ? [{
+      key: `declared:${dividend.exDate}`, exDate: dividend.exDate, amount: dividend.amount, currency, pending: true,
+      payDate: dividend.payDate, cashEstimate: dividend.cashEstimate, special: dividend.special,
+      source: dividend.source.publisher, sourceUrl: dividend.source.url, sourceScheduleUrl: dividend.source.scheduleUrl,
+    }] : []);
+    const pendingDates = new Set(pending.map((row) => row.exDate));
+    return [...pending, ...paid.filter((row) => !pendingDates.has(row.exDate))];
+  }, [currency, data?.declared, payments]);
   const sortedRows = useMemo(() => sortRows(rows, sortPreference), [rows, sortPreference]);
   const convertedFrom = historyData?.convertedFrom;
   const convertedSubUnit = historyData?.convertedSubUnit;
@@ -307,6 +327,11 @@ function DividendTickerPane({ focused, width, height, loadData = fetchDividendDa
     return chartSpan && time >= chartSpan.first && time <= chartSpan.last ? new Date(time) : null;
   }, [chartSpan?.first, chartSpan?.last]);
   const selectedId = sortedRows.some((row) => row.key === selectedKey) ? selectedKey : sortedRows[0]?.key ?? null;
+  const selectedSchedule = sortedRows.find((row) => row.key === selectedId)?.sourceScheduleUrl;
+  usePaneMenuItems("dividend-notice-schedule", () => selectedSchedule ? [{
+    id: "dividend-notice-schedule", label: "Open dividend schedule",
+    onSelect: () => { void rendererHost.openExternal(selectedSchedule); },
+  }] : [], [rendererHost, selectedSchedule]);
   const link = useChartTableSelection({
     rows: sortedRows, getId: rowKey, getDate: rowDate, selectedId, onSelect: setSelectedKey, focused,
   });
@@ -319,13 +344,13 @@ function DividendTickerPane({ focused, width, height, loadData = fetchDividendDa
   }), [rows, convertedFrom, convertedSubUnit]);
   const renderRowCell = useCallback((row: DividendRow, column: DividendColumn) => renderCell(row, column, digits, !!convertedFrom, convertedSubUnit),
     [convertedFrom, convertedSubUnit, digits]);
-  const fullFigures = metrics ? buildMetricItems(metrics, currency, sortedRows.length > 0, false, data?.declared, bond, convertedFrom, convertedSubUnit) : [];
+  const fullFigures = metrics ? buildMetricItems(metrics, currency, payments.length > 0, false, data?.declared, bond, convertedFrom, convertedSubUnit) : [];
   const keptFigures = chartTableLayout({
     width, height, figures: fullFigures, tableRows: sortedRows.length, tableChromeRows, chart: chartPoints.length >= 2 ? {} : null,
   }).figures;
   // The desktop grid never clips a label; the terminal shortens them rather than clip.
   const figures = metrics && !nativePaneChrome && labelsClip(keptFigures, width)
-    ? buildMetricItems(metrics, currency, sortedRows.length > 0, true, data?.declared, bond, convertedFrom, convertedSubUnit) : fullFigures;
+    ? buildMetricItems(metrics, currency, payments.length > 0, true, data?.declared, bond, convertedFrom, convertedSubUnit) : fullFigures;
 
   const handleHeaderClick = useCallback((columnId: string) => {
     setSortPreference((current) => nextHeaderSort(current, columnId as DividendColumnId, {
@@ -351,6 +376,8 @@ function DividendTickerPane({ focused, width, height, loadData = fetchDividendDa
     <DataTableView<DividendRow, DividendColumn>
       focused={focused}
       selection={{ kind: "id", selectedId, getId: rowKey, onChange: (id) => setSelectedKey(id) }}
+      onActivate={(row) => { if (row.sourceUrl) void rendererHost.openExternal(row.sourceUrl); }}
+      rowNote={(row) => row.payDate ? `Payable ${formatDay(row.payDate)}` : null}
       onRootKeyDown={handleKeyDown}
       resetScrollKey={symbol}
       rootWidth={width}
