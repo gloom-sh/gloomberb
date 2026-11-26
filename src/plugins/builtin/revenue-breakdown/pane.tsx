@@ -22,6 +22,7 @@ import type {
 } from "../../../api-client/revenue-breakdown";
 import { blendHex, priceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
+import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
@@ -112,6 +113,15 @@ function RevenueBreakdownView({ width, height, focused }: { width: number; heigh
   );
   const periodLabel = useMemo(() => revenuePeriodLabeler(resource.data?.payload.periods ?? []), [resource.data]);
   const preview = payload?.access === "preview" && payload.lockedRows > 0;
+  useRemoteUiNode(preview ? {
+    role: "report-notice",
+    label: "Revenue preview",
+    getMetadata: () => ({
+      text: `Preview: ${payload.lockedRows} ${payload.lockedRows === 1 ? "row" : "rows"} held back (Gloom Pro).`,
+      key: "lockedRows",
+      value: payload.lockedRows,
+    }),
+  } : null);
   const noun = VIEW_NOUNS[payload?.view ?? view];
   const reported = payload ? reportedPeriods(payload) : [];
   const latest = reported.at(-1);
