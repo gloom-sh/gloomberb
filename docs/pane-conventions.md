@@ -559,6 +559,12 @@ at any width. A pane does nothing for this, except say what matters:
   and stays whole while one of it is kept. OMON's call and put of a field
   are one set wherever Settings put the field, and VCA's HV, its date and
   IV/HV all stay while the table is sorted by one of them.
+- Sets that share a column the table draws are one set, kept or not. List a
+  date with each figure it dates, in a set of its own: VCA's risk reversal
+  and its percentile each list the skew's date, so where that date is drawn
+  the three leave or stay together and neither figure is read against the
+  IV's date. Where the dates agree and the pane draws no skew date, nothing
+  is shared and the percentile leaves before the reversal.
 - The columns that name the row and the sorted column never leave, whatever
   the order says and wherever the reader moved the columns. The leading
   columns name the row by default (`anchored`); where another does (OMON's

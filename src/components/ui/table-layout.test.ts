@@ -144,6 +144,26 @@ describe("table layout", () => {
     expect(ids(room(3), { dropOrder: [["cLast", "pLast", "asof"], ["cBid", "pBid"]], identifier: ["strike"], sorted: "cLast" })).toBe("scrolls");
   });
 
+  test("sets that share a column leave or stay as one, whether or not any of it is kept", () => {
+    const columns = ["id", "a", "b", "c", "value"].map((id) => ({ id, label: id.toUpperCase(), width: 8, align: "right" }));
+    const room = (count: number) => getTableWidth(columns.slice(0, count));
+    const ids = (width: number, options: Parameters<typeof fitColumnsToWidth>[2]) => {
+      const fitted = fitColumnsToWidth(columns, width, options);
+      return fitted === columns ? "scrolls" : fitted.map((column) => column.id).join(" ");
+    };
+    const shared = [["a", "b"], ["b", "c"]] as const;
+    // Room for three. The first set gone alone left C without the B it is a set with: the two go as one.
+    expect(ids(room(3), { dropOrder: shared, identifier: ["id"] })).toBe("id value");
+    expect(hiddenTableColumns(fitColumnsToWidth(columns, room(3), { dropOrder: shared, identifier: ["id"] }))).toEqual(["A", "B", "C"]);
+    // Kept by one of them, all three stay, and where they do not fit the table scrolls.
+    expect(ids(room(4), { dropOrder: shared, identifier: ["id"], sorted: "c" })).toBe("id a b c");
+    expect(ids(room(3), { dropOrder: shared, identifier: ["id"], sorted: "c" })).toBe("scrolls");
+    // A later set joins the two it shares a column with, and a row is not left with its name alone.
+    expect(ids(room(3), { dropOrder: [["a", "b"], ["c", "value"], ["b", "c"]], identifier: ["id"] })).toBe("scrolls");
+    // Sets that share only a column this table does not have stay apart, each the columns of it the table has.
+    expect(ids(room(4), { dropOrder: [["a", "date"], ["c", "date"]], identifier: ["id"] })).toBe("id b c value");
+  });
+
   test("the line names apart what More draws again and what only a wider pane shows", () => {
     const columns = ["id", "last", "cost", "month", "avg"].map((id) => ({ id, label: id.toUpperCase(), width: 8, align: "right" }));
     // The pane left two out for its own width; the table's fit then leaves one more.
@@ -189,9 +209,13 @@ describe("table layout", () => {
       const identifier = [ids[next(ids.length)]!];
       const sorted = next(2) ? ids[next(ids.length)]! : null;
       const listed = ids.filter(() => next(3) === 0).sort(() => next(3) - 1);
-      // Some of the order's entries are sets of two.
+      // Some of the order's entries are sets of two, and some of those share a column with an earlier entry.
       const dropOrder: (string | string[])[] = [];
-      while (listed.length) dropOrder.push(listed.length > 1 && next(3) === 0 ? listed.splice(0, 2) : listed.shift()!);
+      while (listed.length) {
+        const before = dropOrder.flat();
+        dropOrder.push(before.length && next(4) === 0 ? [before[next(before.length)]!, listed.shift()!]
+          : listed.length > 1 && next(3) === 0 ? listed.splice(0, 2) : listed.shift()!);
+      }
       const width = 10 + next(160);
       const fitted = fitColumnsToWidth(columns, width, { identifier, sorted, dropOrder });
       const has = (id: string) => fitted.some((column) => column.id === id);

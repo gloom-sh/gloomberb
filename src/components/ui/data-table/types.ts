@@ -272,7 +272,9 @@ export interface DataTableProps<
    * them, least needed first. An entry of several ids is a set that means
    * little apart (a call's field and the put's, a figure and the date it is
    * as of): it leaves whole, and stays whole while one of it names the row
-   * or is the sorted column. On the desktop and the web a table too narrow
+   * or is the sorted column. Sets that share a column the table draws are
+   * one set, so two figures that each list the date they share leave with it
+   * or stay with it. On the desktop and the web a table too narrow
    * for its columns draws whole columns only: a column set to grow
    * (`flexGrow`) narrows first, then these leave, then the ones not listed
    * from the last back, never the columns that name the row

@@ -12,7 +12,7 @@ import { useAutoRefresh } from "../../../react/auto-refresh";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { loadIvScreen, loadScreenVolatilities, type ScreenHv } from "./client";
 import { formatPoints, formatRank, formatSpot, formatVol, readingLabel, readingValue, sharedDates, shortDate, vcaDefinitions, verdictLabel } from "./format";
-import { projectRichCheap, readingSource, type RichCheapRow, richCheapDates, screenPaneNotices, type VcaPreset } from "./model";
+import { projectRichCheap, readingSource, type RichCheapDates, type RichCheapRow, richCheapDates, screenPaneNotices, type VcaPreset } from "./model";
 import { vcaUniverse } from "./universe";
 import { MovedTickerState } from "../../../components/layout/pane/ticker-fate-gate";
 import type { MovedTickerChange } from "../../../tickers/ticker-changes";
@@ -44,9 +44,35 @@ export const VCA_COLUMNS: DataTableColumn[] = [
  * its own year (IVR, IVP) and against realized (HV, IV/HV), each with its
  * date, so those stay; the spot, the one-year tenor and the skew go first. A
  * figure and its date are one set: they leave together, and both stay while
- * the table is sorted by either.
+ * the table is sorted by either. The risk reversal and its percentile are each
+ * as of the skew's date, so where the pane draws that date the three are one
+ * set, and neither figure is left beside the IV's "As of". Where every date
+ * agrees and the pane draws none, the percentile leaves before the reversal.
  */
-export const VCA_COLUMN_DROP_ORDER = ["spot", "iv1yPercentile", "iv1y", "riskReversalPercentile", ["riskReversal", "skewDate"], "termSlope", ["hv", "hvDate", "ivHv"]] as const;
+export const VCA_COLUMN_DROP_ORDER = ["spot", "iv1yPercentile", "iv1y", ["riskReversalPercentile", "skewDate"], ["riskReversal", "skewDate"], "termSlope",
+  ["hv", "hvDate", "ivHv"]] as const;
+
+/**
+ * The columns the screen draws for its rows. A date every row shares moves to
+ * the footer; a column no row fills, or whose dates agree with the row's own,
+ * is left out.
+ */
+export function vcaColumns(rows: readonly RichCheapRow[], dates: RichCheapDates = richCheapDates(rows)): DataTableColumn[] {
+  // A close solved from quote midpoints names itself, which a date alone has no room for.
+  const dateWidth = rows.some((row) => !row.stale && readingSource(row.method, row.basis) === "close mid") ? 16 : 12;
+  return VCA_COLUMNS.filter((column) => {
+    switch (column.id) {
+      case "date": return !dates.reading;
+      case "iv1y": return rows.some((row) => row.iv1y != null);
+      case "iv1yPercentile": return rows.some((row) => row.iv1yPercentile != null);
+      case "riskReversal": return rows.some((row) => row.riskReversal != null);
+      case "riskReversalPercentile": return rows.some((row) => row.riskReversalPercentile != null);
+      case "skewDate": return dates.skewApart;
+      case "hvDate": return dates.hvApart;
+      default: return true;
+    }
+  }).map((column) => column.id === "date" ? { ...column, width: dateWidth } : column);
+}
 
 export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
   const colors = useThemeColors();
@@ -96,22 +122,8 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
     return projected.sort((left, right) => compareSortValues(left[sort.columnId], right[sort.columnId], sort.direction));
   }, [resource.data, hv, sort]);
   const dates = useMemo(() => richCheapDates(rows), [rows]);
-  // A date every row shares moves to the footer; a column no row fills, or whose dates agree, is left out.
   const hasSkew = useMemo(() => rows.some((row) => row.riskReversal != null), [rows]);
-  // A close solved from quote midpoints names itself, which a date alone has no room for.
-  const dateWidth = useMemo(() => rows.some((row) => !row.stale && readingSource(row.method, row.basis) === "close mid") ? 16 : 12, [rows]);
-  const columns = useMemo(() => VCA_COLUMNS.filter((column) => {
-    switch (column.id) {
-      case "date": return !dates.reading;
-      case "iv1y": return rows.some((row) => row.iv1y != null);
-      case "iv1yPercentile": return rows.some((row) => row.iv1yPercentile != null);
-      case "riskReversal": return hasSkew;
-      case "riskReversalPercentile": return rows.some((row) => row.riskReversalPercentile != null);
-      case "skewDate": return dates.skewApart;
-      case "hvDate": return dates.hvApart;
-      default: return true;
-    }
-  }).map((column) => column.id === "date" ? { ...column, width: dateWidth } : column), [rows, dates, hasSkew, dateWidth]);
+  const columns = useMemo(() => vcaColumns(rows, dates), [rows, dates]);
   const [selected, setSelected] = useState<string | null>(null);
   const coverageNotices = useMemo(() => screenPaneNotices(rows), [rows]);
   // One symbol to screen whose company moved has nothing to show but where it went, as a ticker's panes say.

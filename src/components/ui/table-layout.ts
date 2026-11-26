@@ -276,7 +276,11 @@ function narrowColumnsToWidth<C extends TableWidthColumn>(columns: readonly C[],
  *   one never leave.
  * - An entry of several ids in `dropOrder` is a set that means little apart
  *   (a call's field and the put's, a figure and the date it is as of): it
- *   leaves whole, and stays whole while one of it is kept.
+ *   leaves whole, and stays whole while one of it is kept. A set is the
+ *   columns of it the table has, and sets that share one of those are one
+ *   set, whether or not any of it is kept: two figures that each name the
+ *   date they share leave with it or stay with it, and neither is left
+ *   beside another figure's date. It takes the place of its first entry.
  * - A row is never left with its identifier alone or beside nothing but a
  *   date: the last figure stays.
  *
@@ -306,32 +310,40 @@ export function fitColumnsToWidth<C extends TableWidthColumn & { id: string }>(
   if (width <= 0 || !overflows(columns)) return columns as C[];
   // Whether the columns fit once the ones set to grow are at their floor.
   const fits = (shown: readonly C[]) => !overflows(shown.map((column) => ({ ...column, width: tableColumnFitFloor(column) })));
-  const ordered = dropOrder.map((step) => typeof step === "string" ? [step] : step);
   const names = new Set(identifier);
-  const kept = new Set([...identifier, ...sorted ? [sorted] : []]);
-  // A set with one column that stays, stays whole; sets that share a column stay together.
-  for (let grew = true; grew;) {
-    grew = false;
-    for (const step of ordered) {
-      if (!step.some((id) => kept.has(id)) || step.every((id) => kept.has(id))) continue;
-      for (const id of step) kept.add(id);
-      grew = true;
+  const stays = new Set([...identifier, ...sorted ? [sorted] : []]);
+  // The order as sets of the columns this table has. Sets that share one of them are one set, in the place of the
+  // first: `named` keeps every id its entries wrote, so a set stays for a column the pane sorts by and does not draw.
+  const present = new Set(columns.map((column) => column.id));
+  const sets: { ids: string[]; named: string[] }[] = [];
+  for (const entry of dropOrder) {
+    const named = typeof entry === "string" ? [entry] : [...entry];
+    const ids = named.filter((id) => present.has(id));
+    if (!ids.length) continue;
+    const [first, ...others] = sets.filter((set) => set.ids.some((id) => ids.includes(id)));
+    if (!first) { sets.push({ ids, named }); continue; }
+    for (const joined of [...others, { ids, named }]) {
+      first.ids.push(...joined.ids.filter((id) => !first.ids.includes(id)));
+      first.named.push(...joined.named);
     }
+    for (const joined of others) sets.splice(sets.indexOf(joined), 1);
   }
-  const listed = new Set(ordered.flat());
+  const listed = new Set(dropOrder.flat());
   const unlisted = columns.filter((column) => !listed.has(column.id));
   const dates = new Set(asOf ?? columns.filter(isAsOfColumn).map((column) => column.id));
-  const steps: (readonly string[])[] = [
-    ...ordered,
-    ...unlisted.filter((column) => !dates.has(column.id)).map((column) => [column.id]).reverse(),
-    ...unlisted.filter((column) => dates.has(column.id)).map((column) => [column.id]).reverse(),
+  const alone = (column: C) => ({ ids: [column.id], named: [column.id] });
+  const steps = [
+    ...sets,
+    ...unlisted.filter((column) => !dates.has(column.id)).map(alone).reverse(),
+    ...unlisted.filter((column) => dates.has(column.id)).map(alone).reverse(),
   ];
   const hasFigure = (shown: readonly C[]) => shown.some((column) => !names.has(column.id) && !dates.has(column.id));
   let shown = [...columns];
   for (const step of steps) {
     if (fits(shown)) break;
-    if (step.some((id) => kept.has(id))) continue;
-    const rest = shown.filter((column) => !step.includes(column.id));
+    // A set with one column that stays, stays whole.
+    if (step.named.some((id) => stays.has(id))) continue;
+    const rest = shown.filter((column) => !step.ids.includes(column.id));
     if (rest.length === shown.length || (hasFigure(shown) && !hasFigure(rest))) continue;
     shown = rest;
   }
