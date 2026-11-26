@@ -16,7 +16,7 @@ test("a stale split keeps its new pane, not a closed pane or an unplaced instanc
     dockRoot: { kind: "split", axis: "vertical", ratio: 0.5, first: help.dockRoot, second: indices.dockRoot },
   };
   const closed = { ...base, dockRoot: null, instances: [hidden] };
-  const document = <Workspace>(layout: Workspace) => ({ layout, layouts: [{ id: "home", layout: help }] });
+  const document = <Workspace>(layout: Workspace) => ({ activeLayoutIndex: 0, layout, layouts: [{ id: "home", layout: help }] });
   for (const [mine, theirs] of [[opened, closed], [closed, opened]] as const) {
     const result = diffSharedConfig(document(base), document(theirs)).apply(document(mine));
     expect(result.layout.dockRoot).toEqual(indices.dockRoot);
@@ -52,12 +52,4 @@ test("independent additions to different splits keep both writers' geometry", ()
   const theirs = { ...base, instances: [...base.instances, ...calendar.instances], dockRoot: { ...root, second } };
   const { layout } = diffSharedConfig({ layout: base }, { layout: theirs }).apply({ layout: mine });
   expect(layout.dockRoot).toEqual({ ...root, first, second });
-});
-
-test("a stale edit to an id-less tab does not land on the tab that replaced it", () => {
-  const tab = (name: string) => ({ name, layout: dock(name) });
-  const home = tab("Home");
-  const change = diffSharedConfig({ layouts: [home] }, { layouts: [{ ...home, layout: dock("help") }] });
-  const replaced = { layouts: [tab("Other")] };
-  expect(change.apply(replaced)).toEqual(replaced);
 });

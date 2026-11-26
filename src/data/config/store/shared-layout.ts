@@ -4,22 +4,31 @@ import type { DockLayoutNode } from "../../../types/config";
 import { applyProfileEdits, diffProfile, sameProfileJson, type ProfileJson } from "../../profile-merge";
 
 type JsonObject = { [key: string]: ProfileJson };
+type TreeChange = { before: ProfileJson; after: ProfileJson };
+type WorkspaceKey = string | null;
 
 function isObject(value: ProfileJson | undefined): value is JsonObject {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 /** The tree describes geometry, but dock membership is an independent edit per pane. */
-function projectLayout(layout: ProfileJson): ProfileJson {
+function projectLayout(layout: ProfileJson, projectTree: (tree: ProfileJson) => ProfileJson): ProfileJson {
   if (!isObject(layout) || !Array.isArray(layout.instances) || !("dockRoot" in layout)) return layout;
   const tree = layout.dockRoot!;
-  return { ...layout, dockRoot: { tree, members: getDockedInstanceIds(tree as unknown as DockLayoutNode | null) } };
+  return { ...layout, dockRoot: { tree: projectTree(tree), members: getDockedInstanceIds(tree as unknown as DockLayoutNode | null) } };
+}
+
+/** A closed sibling changes every path in the promoted subtree. Compare all three trees in the surviving dock. */
+function mergeTree(tree: ProfileJson, change: TreeChange, members: Set<string>): ProfileJson {
+  if (sameProfileJson(tree, change.before)) return change.after;
+  if (sameProfileJson(tree, change.after)) return tree;
+  const surviving = (root: ProfileJson) => normalizeDockNode(root as unknown as DockLayoutNode | null, members, new Set()) as unknown as ProfileJson;
+  return applyProfileEdits(surviving(tree), diffProfile(surviving(change.before), surviving(change.after)));
 }
 
 /** Keep explicit window placements and surviving splits. Only a dock member lost from the tree needs a new split. */
-function restoreLayout(layout: ProfileJson): ProfileJson {
+function restoreLayout(layout: ProfileJson, change: TreeChange | undefined): ProfileJson {
   if (!isObject(layout) || !Array.isArray(layout.instances) || !isObject(layout.dockRoot) || !Array.isArray(layout.dockRoot.members)) return layout;
-  const tree = layout.dockRoot.tree as unknown as DockLayoutNode | null;
   const available = new Set(layout.instances.flatMap((entry) => isObject(entry) ? [entry.instanceId] : []));
   const restored = { ...layout };
   for (const key of ["detached", "floating"]) {
@@ -27,47 +36,93 @@ function restoreLayout(layout: ProfileJson): ProfileJson {
     if (Array.isArray(entries)) restored[key] = entries.filter((entry) => isObject(entry) && available.delete(entry.instanceId));
   }
   const members = new Set(layout.dockRoot.members.filter((id): id is string => typeof id === "string" && available.has(id)));
+  const tree = change ? mergeTree(layout.dockRoot.tree!, change, members) : layout.dockRoot.tree;
   const placed = new Set<string>();
-  let root = normalizeDockNode(tree, members, placed);
+  let root = normalizeDockNode(tree as unknown as DockLayoutNode | null, members, placed);
   for (const id of members) {
     if (!placed.has(id)) root = root ? buildSplitAroundNode(root, id, "right") : { kind: "pane", instanceId: id };
   }
   return { ...restored, dockRoot: root as unknown as ProfileJson };
 }
 
-/** Legacy tabs have no id. Only match them by position while all copies agree on the tab list. */
-function tabSlots(config: ProfileJson): ProfileJson[] | null {
-  if (!isObject(config) || !Array.isArray(config.layouts) || !config.layouts.some((tab) => isObject(tab) && !tab.id)) return null;
-  return config.layouts.map((tab) => isObject(tab) ? [tab.id ?? null, tab.name ?? null] : null);
+function selectedTab(config: JsonObject) {
+  if (!Array.isArray(config.layouts) || typeof config.activeLayoutIndex !== "number") return undefined;
+  const tab = config.layouts[config.activeLayoutIndex];
+  return isObject(tab) ? tab : undefined;
 }
 
-function mapLayouts(config: ProfileJson, direction: "project" | "restore", bySlot: boolean): ProfileJson {
+function mirrorsSelectedTab(config: ProfileJson): boolean {
+  return isObject(config) && config.layout !== undefined && sameProfileJson(config.layout, selectedTab(config)?.layout);
+}
+
+/** Use tab identity for both edits and selection. For an id-less tab only its original slot and name are safe to match. */
+function projectConfig(config: ProfileJson, projectTree = (_key: WorkspaceKey, tree: ProfileJson) => tree): ProfileJson {
   if (!isObject(config)) return config;
-  const map = direction === "project" ? projectLayout : restoreLayout;
   const result = { ...config };
-  if (config.layout !== undefined) result.layout = map(config.layout);
-  const tabs = bySlot && direction === "restore" && isObject(config.layouts) ? Object.values(config.layouts) : config.layouts;
-  if (Array.isArray(tabs)) {
-    const mapped = tabs.map((tab) => isObject(tab) && tab.layout !== undefined ? { ...tab, layout: map(tab.layout) } : tab);
-    result.layouts = bySlot && direction === "project" ? Object.fromEntries(mapped.entries()) : mapped;
+  if (config.layout !== undefined) result.layout = projectLayout(config.layout, (tree) => projectTree(null, tree));
+  if (Array.isArray(config.layouts)) {
+    result.layouts = config.layouts.map((tab, index) => {
+      if (!isObject(tab)) return tab;
+      const id = typeof tab.id === "string" ? `id:${tab.id}` : `slot:${index}:${tab.name}`;
+      const projected: JsonObject = { ...tab, id };
+      if (tab.layout !== undefined) projected.layout = projectLayout(tab.layout, (tree) => projectTree(id, tree));
+      return projected;
+    });
+    const selected = selectedTab(result);
+    if (selected) result.activeLayoutIndex = selected.id!;
+  }
+  return result;
+}
+
+function restoreConfig(config: ProfileJson, trees: Map<WorkspaceKey, TreeChange>, mirror: boolean): ProfileJson {
+  if (!isObject(config)) return config;
+  const result = { ...config };
+  if (Array.isArray(config.layouts)) {
+    if (typeof config.activeLayoutIndex === "string") {
+      result.activeLayoutIndex = Math.max(0, config.layouts.findIndex((tab) => isObject(tab) && tab.id === config.activeLayoutIndex));
+    }
+    result.layouts = config.layouts.map((tab) => {
+      if (!isObject(tab) || typeof tab.id !== "string") return tab;
+      const { id, ...rest } = tab;
+      if (id.startsWith("id:")) rest.id = id.slice(3);
+      if (tab.layout !== undefined) rest.layout = restoreLayout(tab.layout, trees.get(id));
+      return rest;
+    });
+  }
+  if (config.layout !== undefined) {
+    const selectedLayout = mirror ? selectedTab(result)?.layout : undefined;
+    result.layout = selectedLayout ?? restoreLayout(config.layout, trees.get(null));
   }
   return result;
 }
 
 /** Replay the same config delta on a stale save and on the live app before either normalizes away unreachable panes. */
 export function diffSharedConfig(before: ProfileJson, after: ProfileJson) {
-  const slots = tabSlots(before);
-  const positional = slots !== null && sameProfileJson(slots, tabSlots(after));
-  const edits = diffProfile(mapLayouts(before, "project", positional), mapLayouts(after, "project", positional));
-  const workspaceEdit = edits.some(({ path: [root] }) => !root || ("key" in root && (root.key === "layout" || root.key === "layouts")));
+  const original = new Map<WorkspaceKey, ProfileJson>();
+  const trees = new Map<WorkspaceKey, TreeChange>();
+  const base = projectConfig(before, (key, tree) => {
+    original.set(key, tree);
+    return tree;
+  });
+  const next = projectConfig(after, (key, tree) => {
+    const prior = original.get(key);
+    if (prior === undefined) return tree;
+    if (!sameProfileJson(prior, tree)) trees.set(key, { before: prior, after: tree });
+    return prior;
+  });
+  const edits = diffProfile(base, next);
+  const workspaceEdit = trees.size > 0 || edits.some(({ path: [root] }) =>
+    !root || ("key" in root && ["layout", "layouts", "activeLayoutIndex"].includes(root.key)));
+  const mirror = workspaceEdit && mirrorsSelectedTab(before) && mirrorsSelectedTab(after);
   return {
-    count: edits.length,
+    count: edits.length + trees.size,
     apply<T extends ProfileJson>(config: T): T {
       if (!workspaceEdit) return applyProfileEdits(config, edits);
-      const matchSlots = positional && sameProfileJson(slots, tabSlots(config));
-      const projected = mapLayouts(config, "project", matchSlots);
+      const projected = projectConfig(config);
       const merged = applyProfileEdits(projected, edits);
-      return merged === projected ? config : mapLayouts(merged, "restore", matchSlots) as T;
+      if (merged === projected && !trees.size) return config;
+      const restored = restoreConfig(merged, trees, mirror && mirrorsSelectedTab(config));
+      return merged === projected && sameProfileJson(restored, config) ? config : restored as T;
     },
   };
 }

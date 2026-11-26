@@ -3,8 +3,8 @@ import { mkdtemp, readdir, readFile, rm, utimes, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { initDataDir, saveConfig, watchExternalConfigChanges } from "./index";
-import { createBlankLayout, createDefaultConfig, getPlacedPaneInstanceIds, type AppConfig, type LayoutConfig } from "../../../types/config";
-import { buildSplitAroundNode } from "../../../layout/pane-manager/dock-tree";
+import { createBlankLayout, createDefaultConfig, getPlacedPaneInstanceIds, type AppConfig, type DockLayoutNode, type LayoutConfig } from "../../../types/config";
+import { buildSplitAroundNode, getDockedInstanceIds } from "../../../layout/pane-manager/dock-tree";
 
 const tempDirs: string[] = [];
 const originalHome = process.env.GLOOMBERB_HOME;
@@ -34,6 +34,80 @@ async function writeFromAnotherProgram(dataDir: string, change: string): Promise
 
 function priceAlerts(config: AppConfig): unknown[] {
   return JSON.parse(String(config.pluginConfig.alerts?.alerts ?? "[]")) as unknown[];
+}
+
+function workspace(layouts: AppConfig["layouts"], activeLayoutIndex: number) {
+  return { layouts, activeLayoutIndex, layout: layouts[activeLayoutIndex]!.layout };
+}
+
+function docked(dockRoot: DockLayoutNode | null): LayoutConfig {
+  return { ...createBlankLayout(), dockRoot, instances: getDockedInstanceIds(dockRoot).map((paneId) => ({ paneId, instanceId: paneId })) };
+}
+
+type Workspace = ReturnType<typeof workspace>;
+
+async function checkStaleSave(base: Workspace, first: Workspace, last: Workspace, expected: Workspace) {
+  const dataDir = await mkdtemp(join(tmpdir(), "gloomberb-shared-tabs-"));
+  tempDirs.push(dataDir);
+  process.env.GLOOMBERB_HOME = dataDir;
+  await saveConfig({ ...createDefaultConfig(dataDir), ...base });
+  const pending = { ...await initDataDir(dataDir), ...last };
+  await writeFromAnotherProgram(dataDir, `(config) => ({ ...config, ...${JSON.stringify(first)} })`);
+  await saveConfig(pending);
+  const raw = JSON.parse(await readFile(join(dataDir, "config.json"), "utf8")) as AppConfig;
+  for (const config of [raw, await initDataDir(dataDir)]) {
+    expect(config.activeLayoutIndex).toBe(expected.activeLayoutIndex);
+    expect(config.layouts.map(({ id, name }) => [id, name])).toEqual(expected.layouts.map(({ id, name }) => [id, name]));
+    const layouts = [config.layout, ...config.layouts.map((tab) => tab.layout)];
+    [expected.layout, ...expected.layouts.map((tab) => tab.layout)].forEach((wanted, index) => {
+      const actual = layouts[index]!;
+      expect(actual.dockRoot).toEqual(wanted.dockRoot);
+      expect(actual.instances.map(({ instanceId }) => instanceId).sort()).toEqual(getDockedInstanceIds(wanted.dockRoot).sort());
+      expect(actual.floating).toEqual([]);
+      expect(actual.detached).toEqual([]);
+    });
+  }
+}
+
+const leaf = (instanceId: string): DockLayoutNode => ({ kind: "pane", instanceId });
+
+for (const addFirst of [true, false]) {
+  describe(`stale workspace save (pane addition ${addFirst ? "first" : "last"})`, () => {
+    const verify = (base: Workspace, add: Workspace, other: Workspace, expected: Workspace) =>
+      checkStaleSave(base, addFirst ? add : other, addFirst ? other : add, expected);
+
+    test.each(["rename", "reorder"])("an unrelated legacy tab %s keeps an identified tab's split", async (edit) => {
+      const legacy = { name: "Legacy", layout: docked(null) };
+      const work = { id: "w", name: "Work", layout: docked(leaf("news")) };
+      const opened = { ...work, layout: docked(buildSplitAroundNode(leaf("news"), "help", "above")) };
+      const edited = (tab: typeof work) => edit === "rename"
+        ? workspace([{ ...legacy, name: "Renamed" }, tab], 0) : workspace([tab, legacy], 1);
+      await verify(workspace([legacy, work], 0), workspace([legacy, opened], 0), edited(work), edited(opened));
+    });
+
+    test("a replacement legacy tab does not inherit its predecessor's pane", async () => {
+      const legacy = { name: "Legacy", layout: docked(null) };
+      const work = { id: "w", name: "Work", layout: docked(null) };
+      const opened = { ...legacy, layout: docked(leaf("help")) };
+      const replaced = workspace([{ name: "Other", layout: docked(leaf("news")) }, work], 0);
+      await verify(workspace([legacy, work], 0), workspace([opened, work], 0), replaced, replaced);
+    });
+
+    test("switching tabs selects the merged saved layout without moving panes between tabs", async () => {
+      const home = { id: "a", name: "A", layout: docked(null) };
+      const news = { id: "b", name: "B", layout: docked(leaf("news")) };
+      const opened = { ...home, layout: docked(leaf("help")) };
+      await verify(workspace([home, news], 0), workspace([opened, news], 0), workspace([home, news], 1), workspace([opened, news], 1));
+    });
+
+    test("closing a sibling promotes the surviving new split with its geometry", async () => {
+      const home = (root: DockLayoutNode) => workspace([{ id: "home", name: "Home", layout: docked(root) }], 0);
+      const right = leaf("news");
+      const root = { kind: "split", axis: "horizontal", ratio: 0.6, first: leaf("help"), second: right } as const;
+      const subtree = { kind: "split", axis: "vertical", ratio: 0.35, first: leaf("world-indices"), second: right } as const;
+      await verify(home(root), home({ ...root, second: subtree }), home(right), home(subtree));
+    });
+  });
 }
 
 describe("config.json shared with another program", () => {
