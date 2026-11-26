@@ -1397,6 +1397,15 @@ export interface EpsEstimateHistory {
   snapshots: ConsensusEpsSnapshot[];
 }
 
+export interface TaiwanExchangeStatement {
+  kind: "income" | "balance";
+  periodEnd: string;
+  months: number;
+  currency: "TWD";
+  figures: { label: string; sourceLabel: string; value: number; perShare?: true }[];
+  source: { venue: "TWSE" | "TPEX"; url: string; snapshotDate: string; observedAt: string };
+}
+
 export interface TickerFinancials {
   statementScope?: StatementScope;
   statementReview?: { status: "reviewed" | "pending" | "index-unavailable"; reviewedThrough: string };
@@ -1416,6 +1425,8 @@ export interface TickerFinancials {
   nextEarnings?: NextEarnings;
   annualStatements: FinancialStatement[];
   quarterlyStatements: FinancialStatement[];
+  /** Exchange summaries have their own reporting basis and do not enter the normalized statements. */
+  taiwanExchangeStatements?: TaiwanExchangeStatement[];
   /** Twelve months to the latest half or quarter where the quarters do not give them (a half-yearly reporter). */
   trailingStatement?: FinancialStatement & { trailing: StatementTrailing };
   priceHistory: PricePoint[];
