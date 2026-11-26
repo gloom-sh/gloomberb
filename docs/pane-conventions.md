@@ -528,6 +528,70 @@ this, except:
   symbol in FUT and WEI); `key` separates two tables in one pane that name
   their rows with the same column but are otherwise unrelated.
 
+**Columns in a narrow pane.** A table never draws a column cut at its edge.
+On the desktop and the web a table too narrow for its columns draws whole
+columns only: a column set to grow gives up length first, then the least
+needed leave, a line above the header names them
+(`2 hidden · FY2023, FY2022`), and More on that line, Shift+Right or "Show All
+Columns" in the pane menu draws them all as set in a table that scrolls
+sideways (Shift+Left at its start, or "Fit Columns", fits them again). The terminal
+gives up the blank in its columns first, draws the whole ones and scrolls to
+the rest (`more ⇧→`). Exports, `fn` reports and automation keep every column
+at any width. A pane does nothing for this, except say what matters:
+
+- With no order given the trailing columns leave first, so put what the row
+  is read for first: FA gives up its oldest periods, ATS its trade counts,
+  HVT its sample count. A column headed "As of" is the exception: it leaves
+  after the others, since a figure is misread without its date.
+- Set `flexGrow` on the column that holds a name, a title or a sentence. It
+  is the one that takes up a change in the pane's width, so it narrows (to
+  half its set width, never under 12 cells or its header) before any column
+  leaves, and "Full Column Widths" in the pane menu, or Shift+Right, draws it
+  as set again. A figure, a date or a ticker is never narrowed: cut short it
+  reads as another one.
+- Where a later column outranks an earlier one, pass `columnDropOrder`, least
+  needed first. Give up a name that repeats its ticker, a second way of
+  saying a figure and wording the row's detail holds, before an identifier,
+  the figures the pane is for, or the date a figure is as of: RV gives up the
+  name and the day's move before a multiple, MDAY the prior and the forecast
+  before the move, ALRT the session before the quote's time.
+- An entry of several ids is a set that means little apart: it leaves whole,
+  and stays whole while one of it is kept. OMON's call and put of a field
+  are one set wherever Settings put the field, and VCA's HV, its date and
+  IV/HV all stay while the table is sorted by one of them.
+- Sets that share a column the table draws are one set, kept or not. List a
+  date with each figure it dates, in a set of its own: VCA's risk reversal
+  and its percentile each list the skew's date, so where that date is drawn
+  the three leave or stay together and neither figure is read against the
+  IV's date. Where the dates agree and the pane draws no skew date, nothing
+  is shared and the percentile leaves before the reversal.
+- The columns that name the row and the sorted column never leave, whatever
+  the order says and wherever the reader moved the columns. The leading
+  columns name the row by default (`anchored`); where another does (OMON's
+  strike, between the calls and the puts), mark it `identifiesRow`.
+- A row is never left with its name alone or beside nothing but a date: its
+  last figure stays. Where what must stay does not fit, the table leaves
+  nothing out and scrolls sideways with every column, as it always did.
+- The fit measures the headers as they are drawn: translated and in the
+  table's one case. A longer translation makes a column leave sooner, never
+  a cut one. Exports keep the raw labels.
+- `dropColumnsToFit` in the pane is for a column that leaves in the terminal
+  too, by the pane's own width (PF's valuation columns, AUCT's). The table's
+  fit then covers what that order did not, and the line tells the two apart:
+  `1 hidden · AVG COST` beside More, which draws it, and `3 need a wider
+  pane · AS OF UTC, 1M, COST (USD)` for the pane's own, which More cannot
+  (the menu entry then reads "Show More Columns").
+- A table set not to scroll sideways (`showHorizontalScrollbar={false}`: a
+  list read down, such as TRIAL or the news wire) narrows its columns to the
+  pane instead and leaves none out.
+- Size a column that takes what the pane has left by the table's own measure
+  (`width - getTableWidth(columns)`), never by a constant: one that forgets
+  the gaps makes the table wider than its pane at every width, and its last
+  column is the one that leaves.
+
+`shot` names a column a capture cut in a warning (`cutColumns`), which does
+not fail `--strict`; a table drawn outside the kit owes the same fit.
+
 **Unavailable table columns.** Check the source before treating an empty column
 as missing coverage: fix a dropped field rather than hiding it. A value every
 row can be waiting on, such as reported EPS and its basis before earnings, uses
