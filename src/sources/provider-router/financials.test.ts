@@ -39,8 +39,9 @@ test("a reviewed standalone statement replaces historical caches atomically and 
   const predecessor = { ...home, basis: "predecessor" as const, entity: "corteva-consolidated" };
   const year = { statementScope: home, date: "2027-12-31", availableAt: "2028-02-15", currency: "USD", eps: 3, totalRevenue: 120e6 };
   const book = mapCloudFinancials({ statementScope: home, statementReview: { status: "pending", reviewedThrough: "2028-02-15" },
-    annualStatements: [year], quarterlyStatements: [], financialCurrency: "USD", priceHistory: [], fundamentals: { marketCap: 1000 } });
-  book.quote = createTestQuote({ symbol: "VYLR", currency: "USD", price: 60, listingExchangeName: "NYSE" });
+    annualStatements: [year], quarterlyStatements: [], financialCurrency: "USD", priceHistory: [],
+    fundamentals: { marketCap: 1000, trailingPeriodEnd: year.date, epsCurrency: "USD", eps: 3, trailingPE: 20 } });
+  book.quote = createTestQuote({ symbol: "VYLR", currency: "USD", price: 60, listingExchangeName: "NYSE", lastUpdated: Date.parse("2028-02-16") });
   const old = createTestFinancials({ quarterlyStatements: [{ date: year.date, eps: 900 }], annualStatements: [] });
   for (const cached of [old, { ...old, statementScope: predecessor }]) {
     for (const result of [mergeFinancials(cached, book)!, mergeFinancials(book, cached)!, mergeMissingStatementArrays(cached, book), mergeRefreshedFinancials(book, cached)]) {

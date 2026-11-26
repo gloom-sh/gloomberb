@@ -1,4 +1,5 @@
-import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
+import { regularSessionValuationPrice, regularSessionValuationTime } from "../../../market-data/quotes/regular-session-valuation";
+import { priceScopedEarnings } from "../../../utils/statement-scope";
 import { crossFxCloseOnOrBefore, dailyFxLeg, type FxCloses } from "../../../market-data/fx-closes";
 import { knownWhenFiled } from "../../../time-series/fundamentals";
 import { STALE_TRAILING_EPS_MS, trailingEpsSteps as sharedTrailingEpsSteps, type EpsStep } from "../../../time-series/filed-trailing-eps";
@@ -122,6 +123,7 @@ export function formatEpsFx(from: string, to: string, rate: number): string {
 export function epsFxCurrencies(financials: TickerFinancials, reports: readonly ReportDate[]): Map<string, string> {
   const target = resolveCurrencyUnit(financials.quote?.currency).currency;
   const starts = new Map<string, string>();
+  if (financials.statementScope) return starts;
   if (target !== "USD" && !dailyFxLeg(target)) return starts;
   for (const step of trailingEpsSteps(financials, reports)) {
     const source = resolveCurrencyUnit(step.currency).currency;
@@ -254,6 +256,7 @@ export function projectPeBand(
   const quoteUnit = resolveCurrencyUnit(currency);
   const priced = (step: EpsStep | null): { eps: number; fx: FxClose | null } | null => {
     if (step?.eps == null) return null;
+    if (financials.statementScope) return step.currency === currency ? { eps: step.eps, fx: null } : null;
     const factor = unitScale(step);
     if (factor != null) return { eps: step.eps * factor, fx: null };
     const source = resolveCurrencyUnit(step.currency);
@@ -267,6 +270,9 @@ export function projectPeBand(
   }
 
   const now = options.now ?? Date.now();
+  const canPrice = !financials.statementScope || financials.fundamentals?.scopedEarnings?.priced === true;
+  const stepForPrice = (time: number) => financials.statementScope
+    ? (latest.knownAt.getTime() <= time && time <= now ? latest : null) : stepAt(allSteps, time);
   const firstKnown = allSteps.find((step) => step.eps != null)!.knownAt.getTime();
   const start = Math.max(firstKnown, options.lookbackYears > 0 ? now - options.lookbackYears * YEAR_MS : firstKnown);
   const sorted = closesOf(history);
@@ -274,24 +280,25 @@ export function projectPeBand(
   const dailyStart = daily[0]?.date.getTime() ?? Number.POSITIVE_INFINITY;
   /** A close as the chart reads it: with the EPS in force on its day, and the P/E they make. */
   const reading = (point: { date: Date; close: number }): PeBandWeek => {
-    const step = stepAt(allSteps, point.date.getTime());
+    const step = stepForPrice(point.date.getTime());
     const eps = step ? pricedSteps.get(step)?.eps ?? null : null;
     const positive = eps != null && eps > 0 ? eps : null;
-    return { date: point.date, close: point.close, eps: positive, pe: positive ? point.close / positive : null };
+    return { date: point.date, close: point.close, eps: positive, pe: canPrice && positive ? point.close / positive : null };
   };
   const weeks = closingSessions(sorted, daily).filter((point) => point.date.getTime() >= start).map(reading);
 
   /** The close of the day `time` falls on, or the last session before it, where the daily closes reach. */
   const dayClose = (time: number) => time >= dailyStart ? daily.findLast((point) => point.date.getTime() <= time) ?? null : null;
-  const steps = allSteps.filter((step) => step.knownAt.getTime() >= start);
+  const steps = allSteps.filter((step) => step.knownAt.getTime() >= start && (!financials.statementScope || step.knownAt.getTime() <= now));
   const rows = steps.filter((step) => step.eps != null).map((step): PeBandRow => {
     const time = step.knownAt.getTime();
-    const price = (dayClose(time) ?? sorted.findLast((point) => point.date.getTime() <= time))?.close ?? null;
+    const bar = dayClose(time) ?? sorted.findLast((point) => point.date.getTime() <= time);
+    const price = bar && (!financials.statementScope || bar.date.getTime() >= time) ? bar.close : null;
     const converted = pricedSteps.get(step);
     const eps = converted?.eps ?? null;
     const prior = allSteps.find((other) => other.eps != null && other.currency === step.currency
       && Math.abs(Date.parse(step.periodEnd) - Date.parse(other.periodEnd) - 365 * DAY_MS) <= 20 * DAY_MS);
-    return { ...step, price, pe: price != null && eps != null && eps > 0 ? price / eps : null, fx: converted?.fx ?? null,
+    return { ...step, price, pe: canPrice && price != null && eps != null && eps > 0 ? price / eps : null, fx: converted?.fx ?? null,
       yoy: step.eps != null && prior?.eps != null && step.eps > 0 && prior.eps > 0 ? step.eps / prior.eps - 1 : null };
   }).reverse();
 
@@ -299,14 +306,17 @@ export function projectPeBand(
   const pes = ranked.map((week) => week.pe!);
   const ordered = [...pes].sort((a, b) => a - b);
   // The regular session's price, as the quote headlines it: after the close, the close rather than an after-hours print.
-  const price = regularSessionValuationPrice(financials.quote) ?? sorted.at(-1)?.close ?? null;
+  const price = regularSessionValuationPrice(financials.quote) ?? (financials.statementScope ? null : sorted.at(-1)?.close ?? null);
   // Today's figure reads like every week's: one whose newest quarter has no EPS keeps the last figure, dated in the
   // table, where the headline EPS (TTM) needs that quarter's own (filed-trailing-eps) and shows Gloom Cloud's, labelled.
-  const currentStep = stepAt(allSteps, now);
+  const priceTime = financials.statementScope ? regularSessionValuationTime(financials.quote)?.time : now;
+  const currentStep = stepForPrice(priceTime ?? -Infinity);
   const currentConversion = currentStep ? pricedSteps.get(currentStep) : null;
   const currentEps = currentConversion?.eps ?? null;
   const latestFx = currentConversion?.fx;
-  const currentPe = price != null && currentEps != null && currentEps > 0 ? price / currentEps : null;
+  const currentPe = financials.statementScope && financials.fundamentals
+    ? priceScopedEarnings(financials.fundamentals, price, currency ?? undefined, priceTime, now).trailingPE ?? null
+    : price != null && currentEps != null && currentEps > 0 ? price / currentEps : null;
   const multiples = chooseMultiples(pes, currentPe);
   const above = currentPe == null ? undefined : multiples.find((multiple) => multiple >= currentPe);
   const highestClose = weeks.reduce((max, week) => Math.max(max, week.close), 0);

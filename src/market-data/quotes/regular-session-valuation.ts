@@ -1,5 +1,6 @@
 import type { EnterpriseValueCheck, Fundamentals, Quote, TickerFinancials } from "../../types/financials";
 import { priceEarningsEps } from "../../utils/fundamentals";
+import { priceScopedEarnings } from "../../utils/statement-scope";
 import type { ReportTime } from "../../utils/utc-time";
 import { latestRegularSessionClose } from "../market/freshness";
 import { getCompletedRegularSessionDisplay, getRegularSessionDisplay } from "../market/status";
@@ -177,7 +178,17 @@ const MEASURED_PRICE_TOLERANCE = 0.03;
  * the quote's and nothing moves. A stale quote, or stale fundamentals
  * (measured at some older price), are left as they are.
  */
-export function atRegularSessionPrice<T extends Pick<TickerFinancials, "quote" | "fundamentals">>(financials: T): T {
+export function atRegularSessionPrice<T extends Pick<TickerFinancials, "quote" | "fundamentals" | "statementScope">>(financials: T): T {
+  const priced = moveToRegularSession(financials);
+  const stats = priced.fundamentals;
+  if (!stats || (!financials.statementScope && stats.scopedEarnings === undefined)) return priced;
+  const scopedEarnings = financials.statementScope && financials.statementScope.basis !== "standalone" ? null : stats.scopedEarnings ?? null;
+  const quote = financials.quote;
+  return { ...priced, fundamentals: priceScopedEarnings({ ...stats, scopedEarnings }, regularSessionValuationPrice(quote),
+    quote?.currency, regularSessionValuationTime(quote)?.time) };
+}
+
+function moveToRegularSession<T extends Pick<TickerFinancials, "quote" | "fundamentals">>(financials: T): T {
   const quote = financials.quote;
   if (!quote || quote.stale || !positive(quote.price)) return financials;
   const price = regularSessionValuationPrice(quote);

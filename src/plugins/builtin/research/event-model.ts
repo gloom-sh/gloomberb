@@ -245,7 +245,7 @@ function estimateValue(growth: Rate | undefined): string {
  * What the TTM row reads: the statements for its four quarters and revenue, and the trailing EPS of the fundamentals,
  * the figure `ticker` prints as EPS (TTM) (the filed quarters' when they give one, see time-series/filed-trailing-eps).
  */
-export type EventFinancials = Pick<TickerFinancials, "quarterlyStatements" | "financialCurrency"> & {
+export type EventFinancials = Pick<TickerFinancials, "quarterlyStatements" | "financialCurrency" | "statementScope"> & {
   /** The years, whose last end names the fiscal quarters (`Q1 FY2027`) as GUIDE and ERN do. */
   annualStatements?: readonly Pick<FinancialStatement, "date">[];
   fundamentals?: Pick<NonNullable<TickerFinancials["fundamentals"]>, "eps" | "epsCurrency" | "financialCurrency" | "marketCapCurrency" | "trailingEpsSource"> | null;
@@ -302,7 +302,7 @@ function ttmRow(
   const latest = latestFour.at(-1);
   const trailingEps = financials?.fundamentals?.eps;
   const served = typeof trailingEps === "number" && Number.isFinite(trailingEps);
-  const eps = served ? trailingEps : ttm.eps;
+  const eps = served ? trailingEps : financials?.statementScope ? undefined : ttm.eps;
   const adjusted = eps == null ? null : adjustedQuarterSum(latestFour, earnings);
   return {
     id: `ttm:${latest?.date ?? ""}`,

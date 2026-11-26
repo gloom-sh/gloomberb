@@ -1,4 +1,5 @@
 import { futuresListingPriceBasis } from "../../utils/futures-generic";
+import { captureScopedEarnings } from "../../utils/statement-scope";
 import type { TimeRange } from "../../time-series/range";
 import { RANGE_HISTORY_RESOLUTION } from "../../time-series/resolution";
 import type {
@@ -384,7 +385,7 @@ export function mapCloudFinancials(
   const exchange = rawQuote?.listingExchangeName ?? rawQuote?.exchangeName ?? "";
   const coin = isRoundTheClockCoin(rawQuote?.symbol, exchange);
   const derive = !isBankOrInsurerIndustry(financials.profile?.industry);
-  return {
+  return captureScopedEarnings({
     quote,
     quoteMetadata: financials.quoteMetadata,
     quoteContributions: financials.quoteContributions,
@@ -406,7 +407,7 @@ export function mapCloudFinancials(
         : mapPricePoint(point as unknown as CloudPricePointPayload, divisor, exchange, coin),
     ),
     ...(financials.epsEstimates ? { epsEstimates: financials.epsEstimates } : {}),
-  };
+  });
 }
 
 /**

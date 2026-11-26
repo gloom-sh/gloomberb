@@ -31,6 +31,12 @@ export function historicalValuation(
 
 export function dailyStatementValuation(financials: TickerFinancials, metric: string, exchange?: string,
   currencies = createValuationCurrencyContext(financials)): TimeSeriesPoint[] {
+  if (metric === "trailingPE" && financials.statementScope) {
+    const earnings = financials.fundamentals?.scopedEarnings;
+    if (!earnings?.priced || !(earnings.eps > 0) || earnings.currency !== financials.quote?.currency) return [];
+    return dailyValuationHistory(financials.priceHistory, [{ availableAt: earnings.availableAt, observedAt: new Date(earnings.periodEnd),
+      atPrice: price => price / earnings.eps }], financials.quote.listingExchangeName || financials.quote.exchangeName || exchange);
+  }
   const earningsMetric = metric === "pegRatio" ? "trailingPE" : metric;
   const selected = sourceStatements(financials, "daily", earningsMetric, exchange);
   const yearEndMonth = fiscalYearEndMonth(financials.annualStatements);
@@ -88,6 +94,7 @@ export function dailyStatementValuation(financials: TickerFinancials, metric: st
 export function dailyValuationFallbackPeriod(financials: TickerFinancials, source: SecuritySeriesSource): "annual" | "quarterly" | "ttm" | null {
   if (source.period !== "daily") return null;
   const [namespace, metric = ""] = canonicalTimeSeriesFieldId(source.fieldId).split(".");
+  if (financials.statementScope && metric === "trailingPE") return null;
   const inputMetric = metric === "pegRatio" ? "trailingPE" : metric;
   if (namespace !== "valuation" || !QUOTE_DERIVED_VALUATION_IDS.has(inputMetric)) return null;
   const daily = sourceStatements(financials, "daily", inputMetric, source.instrument.exchange);

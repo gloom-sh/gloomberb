@@ -114,6 +114,11 @@ function currentDerivedValuation(
   if (!quoteDate || !isFiniteNumber(quote?.price) || quote.price <= 0) return null;
   const current = currentValuationPrice(quote);
   if (!current) return null;
+  if (metric === "trailingPE" && financials.statementScope) {
+    const earnings = financials.fundamentals?.scopedEarnings;
+    const statement = earnings && [...financials.quarterlyStatements, ...financials.annualStatements].find(row => row.date === earnings.periodEnd);
+    return statement ? { value: servedTrailingPE(financials), date: current.date, statement } : null;
+  }
   const quoteTime = quoteDate.getTime();
   // Select the latest known period first. Missing inputs, a loss or incompatible
   // currency cannot make an older period's denominator current again.

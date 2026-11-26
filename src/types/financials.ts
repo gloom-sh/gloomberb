@@ -534,6 +534,7 @@ export interface Fundamentals extends DepositaryReceiptFacts {
    */
   trailingEpsSource?: "filed-quarters" | "served";
   trailingEpsPeriodEnd?: string;
+  scopedEarnings?: { eps: number; currency: string; periodEnd: string; availableAt: string; priced: boolean } | null;
   /**
    * Why a multiple is withdrawn though its figures are numbers (utils/share-multiples): a warrant's price over its
    * company's EPS, a receipt's with no ratio on record, an EPS that is not net income over the shares. The multiple

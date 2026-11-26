@@ -1,7 +1,7 @@
 import type { Fundamentals, FinancialStatement, TickerFinancials } from "../types/financials";
 import { resolveCurrencyUnit } from "../utils/currency-units";
-import { listingOwnsSeries } from "../utils/statement-scope";
-import { areNearbyFinancialPeriodEnds, statementFieldAvailability } from "../utils/financial-statements";
+import { listingOwnsSeries, priceScopedEarnings } from "../utils/statement-scope";
+import { areNearbyFinancialPeriodEnds, financialAvailabilityTime, statementFieldAvailability } from "../utils/financial-statements";
 import { extractFundamentalSeries, knownWhenFiled } from "./fundamentals";
 import type { SecuritySeriesSource, TimeSeriesPoint } from "./types";
 
@@ -51,6 +51,11 @@ export function trailingEpsSteps(
   known: (row: FinancialStatement) => FinancialStatement = knownWhenFiled,
 ): EpsStep[] {
   if (!listingOwnsSeries(financials)) return [];
+  if (financials.statementScope) {
+    const earnings = financials.fundamentals?.scopedEarnings;
+    return earnings ? [{ periodEnd: earnings.periodEnd, basis: "ttm", knownAt: new Date(financialAvailabilityTime(earnings.availableAt)), dated: true,
+      eps: earnings.eps, currency: earnings.currency }] : [];
+  }
   const adjusted = { ...financials, quarterlyStatements: financials.quarterlyStatements.map(known),
     annualStatements: financials.annualStatements.map(known) };
   const toStep = (basis: EpsStep["basis"]) => (point: TimeSeriesPoint): EpsStep => ({
@@ -145,7 +150,6 @@ function filedTrailingEps(financials: TrailingEpsInputs, now = Date.now()): File
   if (!financials.quote || price.divisor !== 1 || !/^[A-Z]{3}$/.test(price.currency) || isReceipt(financials)) return null;
   const step = latestStep(financials);
   if (!step || now - Date.parse(step.periodEnd) > STALE_TRAILING_EPS_MS) return null;
-  if (financials.statementScope && Date.parse(step.filed) > now) return null;
   const currency = resolveCurrencyUnit(step.currency);
   if (currency.currency !== price.currency || currency.divisor !== 1) return null;
   // The trailing block's amounts are in another currency: an EPS beside them in this one would be read as theirs.
@@ -179,6 +183,11 @@ const positive = (value: number | null | undefined): value is number => finite(v
 export function withFiledTrailingEps<T extends TrailingEpsInputs>(financials: T, now = Date.now()): T {
   const fundamentals = financials.fundamentals;
   if (!fundamentals) return financials;
+  if (financials.statementScope) {
+    const scopedEarnings = listingOwnsSeries(financials) ? fundamentals.scopedEarnings ?? null : null;
+    const quote = financials.quote;
+    return { ...financials, fundamentals: priceScopedEarnings({ ...fundamentals, scopedEarnings }, quote?.price, quote?.currency, quote?.lastUpdated, now) };
+  }
   const filed = filedTrailingEps(financials, now);
   if (!filed) {
     const served = finite(fundamentals.eps) || finite(fundamentals.trailingPE);
