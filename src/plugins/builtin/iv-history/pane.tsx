@@ -1,4 +1,4 @@
-import { formatDay } from "../../../utils/day-format";
+import { daysInTextCell } from "../../../components/ui/day-cell";
 import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listingIdentity } from "../shared/ticker-request";
@@ -115,7 +115,9 @@ export function IvHistoryPane({ width, height, focused }: PaneProps) {
       case "label": return { text: row.label, color: colors.textBright };
       case "value": return { text: formatStat(row.value, row.unit), color: row.stale ? colors.textDim : row.id.startsWith("iv30") ? colors.warning : colors.textBright };
       // A stale reading says so in place of how it was taken: it is no current figure either way.
-      case "date": return { text: row.date ? `${formatDay(row.date)} ${row.stale ? "stale" : statSource(row)}` : MISSING_VALUE, ...(row.date ? { value: row.date } : {}), color: row.stale ? colors.warning : colors.textDim };
+      // The export keeps the ISO day and the words: a stale reading never exports as a current one.
+      case "date": return { ...row.date ? daysInTextCell(`${row.date} ${row.stale ? "stale" : statSource(row)}`) : { text: MISSING_VALUE },
+        color: row.stale ? colors.warning : colors.textDim };
       case "low": return { text: formatStat(row.low, row.unit), color: colors.textDim };
       case "high": return { text: formatStat(row.high, row.unit), color: colors.textDim };
       case "rank": return { text: formatRank(row.rank), color: tone };

@@ -10,7 +10,7 @@ import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test
 import type { DataProvider } from "../../../types/data-provider";
 import type { HeadlessBundleResult, HeadlessPaneApiClient } from "../../../types/headless";
 import type { IvHistoryPayload, IvMethod, IvPoint, IvScreenPayload, IvScreenRow } from "./client";
-import { vcaDefinitions } from "./format";
+import { readingLabel, readingValue, vcaDefinitions } from "./format";
 import { ivHistoryHeadless, ivScreenHeadless } from "./headless";
 import { MACRO_RELEASE_TABLE } from "../macro-day/release-table";
 import { macroReleaseCache } from "../macro-day/client";
@@ -37,9 +37,14 @@ const load = async (rows: IvScreenRow[], marketData: DataProvider = createTestDa
     const value = section.rows[index]![key];
     return column.format ? column.format(value, section.rows[index]!) : String(value);
   };
+  /** What the text report prints in that cell, where it reads more than the export. */
+  const text = (key: string, index: number) => {
+    const column = section.columns!.find((entry) => entry.key === key)!;
+    return column.textFormat ? column.textFormat(section.rows[index]![key], section.rows[index]!) : cell(key, index);
+  };
   const footer = formatFreshnessLine(deriveHeadlessFreshness(ivScreenHeadless, result, Date.parse("2026-10-10T02:40:00Z")));
   return { title: section.title, keys: section.columns!.map((column) => column.key),
-    header: (key: string) => section.columns!.find((column) => column.key === key)?.header, cell, footer, result };
+    header: (key: string) => section.columns!.find((column) => column.key === key)?.header, cell, text, footer, result };
 };
 
 describe("VCA dates", () => {
@@ -61,14 +66,16 @@ describe("VCA dates", () => {
   });
 
   test("rows ranked on different closes get a date column, and the footer is the newest", async () => {
-    const { title, keys, cell, footer } = await load([
+    const { title, keys, cell, text, footer } = await load([
       row("NVDA", reading("2026-10-09", "quote-mid", 0.293), "2026-10-09"),
       row("XLF", reading("2026-10-09", "trade-close", 0.171), "2026-10-09"),
       row("IWM", reading("2026-10-08", "quote-mid", 0.182), "2026-10-08"),
     ]);
     expect(title).toBe("Rich/cheap · Custom symbols");
     expect(keys).toContain("date");
-    expect([0, 1, 2].map((index) => cell("date", index))).toEqual(["09 Oct 2026 close", "09 Oct 2026 close", "08 Oct 2026 close"]);
+    // The text reads the day first; the export keeps the ISO day and the words.
+    expect([0, 1, 2].map((index) => text("date", index))).toEqual(["09 Oct 2026 close", "09 Oct 2026 close", "08 Oct 2026 close"]);
+    expect([0, 1, 2].map((index) => cell("date", index))).toEqual(["2026-10-09 close", "2026-10-09 close", "2026-10-08 close"]);
     // Each rank is its row's close, which the As of column already dates: no Rank as of column.
     expect(keys).not.toContain("rankDate");
     expect(footer).toContain(" · Fri 9 Oct 2026 · ");
@@ -94,6 +101,14 @@ describe("VCA dates", () => {
     expect(keys.slice(keys.indexOf("verdict"), keys.indexOf("verdict") + 3)).toEqual(["verdict", "iv1y", "iv1yPercentile"]);
     // The IV30's own close: the 1Y read that session, ranked; none from another.
     expect([0, 1].map((index) => [cell("iv1y", index), cell("iv1yPercentile", index)])).toEqual([["30.0%", "22"], [MISSING_VALUE, MISSING_VALUE]]);
+  });
+
+  test("a reading's export keeps the words its day-first text has: stale, or a close solved from mids", () => {
+    // The IV screen's As of cells export this value, so a stale reading never exports as a current one.
+    expect(readingLabel("2026-05-18", "trade-close", true, { stale: true })).toBe("18 May stale");
+    expect(readingValue("2026-05-18", "trade-close", true, { stale: true })).toBe("2026-05-18 stale");
+    expect(readingValue("2026-05-18", "trade-close", false, { stale: true })).toBe("2026-05-18 close, stale");
+    expect(readingValue("2026-10-09", "trade-close", true, { basis: "mid" })).toBe("2026-10-09 close mid");
   });
 
   test("skew from an older capture than the reading is dated", async () => {
