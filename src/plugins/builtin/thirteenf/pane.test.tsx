@@ -19,6 +19,7 @@ import { TICKER_RESEARCH_BUILTIN_TABS } from "../ticker-detail/research-tabs";
 import { FundDetailView, ThirteenFPane } from "./pane";
 import { ThirteenFTickerPane } from "./signals-pane";
 import { TestPaneFrame, TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
+import { replaceCredentialInResponseHeaders } from "../../../test-support/cloud-api";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { attachThirteenFApiPersistence, resetThirteenFApiPersistence } from "./api";
 import { TestShellPaneKeys } from "../../../test-support/shell-pane-keys";
@@ -478,7 +479,14 @@ describe("ThirteenFPane", () => {
     }
   });
 
-  test("a credential replaced under the account still shown takes the open fund's book down, while the new read is out and after it fails", async () => {
+  // A credential replaced as the app installs one, or as its transport takes one from a response's headers, that
+  // response's body held until every check below is done: either way the account shown has not changed.
+  const replacements = [
+    ["installed", async (token: string) => { apiClient.setSessionToken(token); return async () => {}; }],
+    ["taken from a response's headers, its body still out,", async (token: string) => (await replaceCredentialInResponseHeaders(token)).finish],
+  ] as const;
+  test.each(replacements)("a credential %s under the account still shown takes the open fund's book down, while the new read is out and after it fails", async (_way, replace) => {
+    let body = async () => {};
     const holdings = { "0000000001-26-000001": { value: 1200, ssh_prnamt: 100 }, "0000000001-25-000004": { value: 1000, ssh_prnamt: 10 } };
     const replacement = Promise.withResolvers<void>();
     // Synthetic credentials and account: made-up tokens, reads told apart by the credential's generation (a count).
@@ -510,8 +518,9 @@ describe("ThirteenFPane", () => {
       expect(await tui.waitForFrameToContain("$200")).toContain("KLAC");
       expect(reads).toEqual([0, 0]);
       // A new credential; the account shown has not changed, as before the new one's account is read.
-      await act(async () => { apiClient.setSessionToken("synthetic-13f-credential-replaced"); });
+      await act(async () => { body = await replace("synthetic-13f-credential-replaced"); });
       expect(apiClient.getCurrentUser()?.id).toBe("synthetic-reader");
+      expect(apiClient.getCredentialGeneration()).toBe(first + 1);
       await renderFrames(4);
       // Read again under it, and while that is out the book read with the one before and its split figure are gone.
       expect(reads).toEqual([0, 0, 1, 1]);
@@ -525,7 +534,10 @@ describe("ThirteenFPane", () => {
       expect(failed).toContain("13F fund unavailable.");
       expect(failed).not.toContain("KLAC");
       expect(failed).not.toContain("$200");
+      expect(apiClient.getCurrentUser()?.id).toBe("synthetic-reader");
     } finally {
+      // Only now does the body of the answer that replaced the credential come in.
+      await body();
       spy.mockRestore();
       apiClient.setSessionToken(null);
     }

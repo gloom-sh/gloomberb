@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { outage } from "../../../test-support/outage";
 import { apiClient } from "../../../api-client";
+import { replaceCredentialInResponseHeaders } from "../../../test-support/cloud-api";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import {
@@ -661,41 +662,56 @@ describe("a filing's holdings and the reader's sign-in", () => {
     expect(spy.mock.calls).toHaveLength(3);
   });
 
-  test("a credential replaced under the account still shown reuses neither the copy nor the read in flight of the one before", async () => {
+  // A credential replaced as the app installs one, or as its transport takes one from a response's headers, that
+  // response's body held until every check below is done: either way the account shown has not changed.
+  const replacements = [
+    ["installed", async (token: string) => { apiClient.setSessionToken(token); return async () => {}; }],
+    ["taken from a response's headers, its body still out,", async (token: string) => (await replaceCredentialInResponseHeaders(token)).finish],
+  ] as const;
+  test.each(replacements)("a credential %s under the account still shown reuses neither the copy nor the read in flight of the one before", async (_way, replace) => {
     attachThirteenFApiPersistence(new MemoryPluginPersistence());
-    signIn();
-    apiClient.restoreCachedUser({ id: "synthetic-reader", name: "Reader", email: "", emailVerified: true });
-    // Each answer's lines are numbered from the credential generation (a count) it was sent under.
-    const sentUnder: number[] = [];
-    spies.push(spyOn(apiClient, "getCloudSec13F").mockImplementation((async () => {
-      const generation = apiClient.getCredentialGeneration();
-      sentUnder.push(generation);
-      await new Promise<void>((resolve) => asked.push({ signedIn: true, release: resolve }));
-      return { rows: holdingRows("filing", generation * 10_000, 3_856), complete: true };
-    }) as never));
-    const answeredUnder = (answer: { rows: ThirteenFHoldingRecord[] }) => Math.floor((answer.rows[0]!.value ?? 0) / 10_000);
-    const first = apiClient.getCredentialGeneration();
-    expect(answeredUnder(await settle(read()))).toBe(first);
-    // Its copy answers that credential again without asking.
-    expect(answeredUnder(await read())).toBe(first);
-    expect(sentUnder).toEqual([first]);
-    // A new credential, the account shown still the one before: the copy is not its, so it asks.
-    apiClient.setSessionToken("synthetic-13f-reader-replaced");
-    expect(apiClient.getCurrentUser()?.id).toBe("synthetic-reader");
-    const second = apiClient.getCredentialGeneration();
-    expect(answeredUnder(await settle(read()))).toBe(second);
-    expect(sentUnder).toEqual([first, second]);
-    // Replaced again while another filing's read is out: a read after it does not join that one, and the one out is
-    // not answered with what it was sent, but with the new credential's book.
-    const other = () => listThirteenFFormHoldings("1603466", "other", undefined, { entries: 3_856 });
-    const pending = other();
-    for (let count = 0; count < 20 && sentUnder.length < 3; count++) await tick();
-    apiClient.setSessionToken("synthetic-13f-reader-replaced-again");
-    const third = apiClient.getCredentialGeneration();
-    const after = other();
-    const [late, fresh] = await Promise.all([settle(pending), settle(after)]);
-    expect(sentUnder.slice(0, 4)).toEqual([first, second, second, third]);
-    expect([answeredUnder(late), answeredUnder(fresh)]).toEqual([third, third]);
+    const bodies: Array<() => Promise<void>> = [];
+    try {
+      signIn();
+      apiClient.restoreCachedUser({ id: "synthetic-reader", name: "Reader", email: "", emailVerified: true });
+      // Each answer's lines are numbered from the credential generation (a count) it was sent under.
+      const sentUnder: number[] = [];
+      spies.push(spyOn(apiClient, "getCloudSec13F").mockImplementation((async () => {
+        const generation = apiClient.getCredentialGeneration();
+        sentUnder.push(generation);
+        await new Promise<void>((resolve) => asked.push({ signedIn: true, release: resolve }));
+        return { rows: holdingRows("filing", generation * 10_000, 3_856), complete: true };
+      }) as never));
+      const answeredUnder = (answer: { rows: ThirteenFHoldingRecord[] }) => Math.floor((answer.rows[0]!.value ?? 0) / 10_000);
+      const first = apiClient.getCredentialGeneration();
+      expect(answeredUnder(await settle(read()))).toBe(first);
+      // Its copy answers that credential again without asking.
+      expect(answeredUnder(await read())).toBe(first);
+      expect(sentUnder).toEqual([first]);
+      // A new credential, the account shown still the one before: the copy is not its, so it asks.
+      bodies.push(await replace("synthetic-13f-reader-replaced"));
+      expect(apiClient.getCurrentUser()?.id).toBe("synthetic-reader");
+      const second = apiClient.getCredentialGeneration();
+      expect(second).toBe(first + 1);
+      expect(answeredUnder(await settle(read()))).toBe(second);
+      expect(sentUnder).toEqual([first, second]);
+      // Replaced again while another filing's read is out: a read after it does not join that one, and the one out is
+      // not answered with what it was sent, but with the new credential's book.
+      const other = () => listThirteenFFormHoldings("1603466", "other", undefined, { entries: 3_856 });
+      const pending = other();
+      for (let count = 0; count < 20 && sentUnder.length < 3; count++) await tick();
+      bodies.push(await replace("synthetic-13f-reader-replaced-again"));
+      const third = apiClient.getCredentialGeneration();
+      expect(third).toBe(second + 1);
+      const after = other();
+      const [late, fresh] = await Promise.all([settle(pending), settle(after)]);
+      expect(sentUnder.slice(0, 4)).toEqual([first, second, second, third]);
+      expect([answeredUnder(late), answeredUnder(fresh)]).toEqual([third, third]);
+      expect(apiClient.getCurrentUser()?.id).toBe("synthetic-reader");
+    } finally {
+      // Only now do the bodies of the answers that replaced the credentials come in.
+      for (const finish of bodies) await finish();
+    }
   });
 
   test("a cut answer to a session the service did not take is not kept as the signed-in copy", async () => {
