@@ -69,7 +69,7 @@ import { buildCorrelationSeries } from "../../plugins/builtin/correlation/matrix
 import { alignDailyCloses, correlateDailyCloses } from "../../plugins/builtin/correlation/compute";
 import { mixedSessionCloseNote } from "../../market-data/market/session-close-note";
 import { contradictoryBarsNote, CORRELATION_RETURN_BASIS, loadCorrelationHistory, thinCorrelationNote } from "../../plugins/builtin/correlation/history";
-import { coinListingNotes, EXCHANGE_OPTION, listingIdentity, listingReadNotes, loadForListing, loadListingQuote, requireCliListing, type CliListing } from "../listing-arg";
+import { EXCHANGE_OPTION, failUnchosenListing, listingChoiceNotes, listingIdentity, loadBareVenues, loadForListing, loadListingQuoteAnswer, requireCliListing, type CliListing } from "../listing-arg";
 import { CLI_COMMAND_GROUPS } from "../help";
 import { formatChangePercentCell, formatCompactCell } from "../helpers";
 import { WORLD_INDICES } from "../../plugins/builtin/world-indices/indices";
@@ -1140,17 +1140,19 @@ async function runCorrelation(rawArgs: string[], ctx: Parameters<CliCommandDef["
     const right = rightListing!.key;
     // Same daily-return model as the CORR pane: price levels of two trending
     // assets correlate spuriously, often with the opposite sign.
-    // Each symbol's quote, read once: whether its line can have moved, and where its daily close is taken below.
-    const quotes = new Map([leftListing!, rightListing!].map((listing) => [listing, loadListingQuote(services.dataProvider, listing)] as const));
     const loadSeries = async (listing: CliListing) => {
       // A symbol whose company moved is asked again under its new symbol, the other one kept.
       const retry = (key: string) => `gloom correlation ${listing === leftListing ? `${key} ${commandWord(right)}` : `${commandWord(left)} ${key}`}`;
-      const bars = await loadForListing(
-        listing, services, ctx,
-        () => loadCorrelationHistory(services.dataProvider, listing.request.symbol, listing.request.exchange, "1Y"),
-        undefined, { command: "correlation", noun: "history", retry, quote: quotes.get(listing)! },
-      );
-      return { ...buildCorrelationSeries(listing.key, bars), bars: bars.length };
+      const { quote, error } = await loadListingQuoteAnswer(services.dataProvider, listing);
+      const request = { command: "correlation", noun: "history", retry, quote: Promise.resolve(quote) };
+      await failUnchosenListing(listing, services, ctx, request, error);
+      const [bars, notes] = await Promise.all([
+        loadForListing(listing, services, ctx,
+          () => loadCorrelationHistory(services.dataProvider, listing.request.symbol, listing.request.exchange, "1Y"),
+          undefined, request),
+        listingChoiceNotes(listing, services, quote, quote ? loadBareVenues(listing, services) : null),
+      ]);
+      return { ...buildCorrelationSeries(listing.key, bars), bars: bars.length, notes, quote };
     };
     const [leftSeries, rightSeries] = await Promise.all([loadSeries(leftListing!), loadSeries(rightListing!)]);
     const { correlation, sampleSize } = correlateDailyCloses(leftSeries.prices, rightSeries.prices);
@@ -1163,10 +1165,9 @@ async function runCorrelation(rawArgs: string[], ctx: Parameters<CliCommandDef["
         .map((series) => series.rollNote ? `${series.symbol}: ${series.rollNote}` : null),
     ].filter((note) => note != null);
     // A bare symbol names no exchange; its quote says where it lists, which sets when its daily close is taken.
-    const [leftQuote, rightQuote] = await Promise.all([leftListing!, rightListing!].map((listing) => quotes.get(listing)!));
     const sessionNote = mixedSessionCloseNote(
-      { symbol: leftListing!.symbol, exchange: listingIdentity(leftListing!, leftQuote).exchange, label: left },
-      { symbol: rightListing!.symbol, exchange: listingIdentity(rightListing!, rightQuote).exchange, label: right },
+      { symbol: leftListing!.symbol, exchange: listingIdentity(leftListing!, leftSeries.quote).exchange, label: left },
+      { symbol: rightListing!.symbol, exchange: listingIdentity(rightListing!, rightSeries.quote).exchange, label: right },
       alignDailyCloses(leftSeries.prices, rightSeries.prices).at(-1)?.dateKey,
     );
     // The daily closes used, dated by the newest last bar as the CORR report is.
@@ -1176,10 +1177,8 @@ async function runCorrelation(rawArgs: string[], ctx: Parameters<CliCommandDef["
       asOf: newestReportTime(lastBars),
       oldest: oldestReportTime(lastBars),
     });
-    // A coin's code read as a listing (BTC, the Grayscale fund) says so, as `quote BTC` does.
     const warnings = [
-      ...listingReadNotes(leftListing!), ...listingReadNotes(rightListing!),
-      ...coinListingNotes(leftListing!, leftQuote), ...coinListingNotes(rightListing!, rightQuote),
+      ...leftSeries.notes, ...rightSeries.notes,
       ...sessionNote ? [sessionNote] : [],
       ...seriesNotes,
     ];

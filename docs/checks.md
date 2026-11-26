@@ -21,7 +21,7 @@
 - **Desktop view code:** `bun run desktop:view:build`.
 - **DES report rendering** (local only, needs Chrome or Chromium on macOS or Linux): `bun --no-env-file scripts/smoke-des-render.ts` runs the fixture-backed `fn DES O8A` report in an isolated process. The regular CLI listing test does not start a browser.
 - **Web app, share page or Worker code:** `bun run web:audit` and `bun run cloudflare:dry-run`.
-- **Build scripts, the terminal entry point, the modules the host serves to plugins (`src/plugins/host-modules.ts`, `host-resolver.ts`) or dependencies (`package.json`, `bun.lock`):** `bun run build`, then `bun run plugins:registry:packaged --terminal dist/gloomberb-<target>.gz --desktop-tui`. It loads every plugin the registry lists in the compiled binary and in the desktop's bundled terminal, and needs the network; the `registry-plugins-packaged` job runs it on every pull request.
+- **Build scripts, the terminal entry point, the modules the host serves to plugins (`src/plugins/host-modules.ts`, `host-resolver.ts`) or dependencies (`package.json`, `bun.lock`):** `bun run build`, then `bun run plugins:registry:packaged --terminal dist/gloomberb-<target>.gz --desktop-tui`. It loads every plugin the registry lists in the compiled binary and in the desktop's bundled terminal, and needs the network; the `registry-plugins` job runs it on every pull request.
 
 ## UI
 

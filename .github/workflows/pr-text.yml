@@ -8,8 +8,8 @@ name: PR text
 # matches is a warning: those cannot change without a force push. With no list
 # set, the check passes.
 #
-# The second job reads every tracked file, not only the change, and fails on a
-# private reference (scripts/check-private-references.sh), or on a file over
+# The same job then reads every tracked file, not only the change, and fails on
+# a private reference (scripts/check-private-references.sh), or on a file over
 # 1 MiB or a picture outside the app's and the docs' image folders
 # (scripts/check-tracked-binaries.sh), on pull requests and on pushes to main.
 on:
@@ -32,11 +32,11 @@ concurrency:
 jobs:
   pr-text:
     name: PR text
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Check the title, description, branch and commits
+        if: github.event_name == 'pull_request'
         env:
           DENYLIST: ${{ vars.PR_TEXT_DENYLIST }}
           GH_TOKEN: ${{ github.token }}
@@ -67,14 +67,11 @@ jobs:
           [ "$status" = 0 ] && echo "No private references found."
           exit "$status"
 
-  tracked-files:
-    name: Tracked files
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        if: ${{ !cancelled() }}
 
       - name: Look for private references in tracked files
+        if: ${{ !cancelled() }}
         run: ./scripts/check-private-references.sh
 
       # Every clone downloads every file ever merged: review screenshots go in

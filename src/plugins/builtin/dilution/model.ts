@@ -4,6 +4,7 @@ import type {
   OfferingType,
 } from "../../../api-client/dilution";
 import type { DataTableColumn } from "../../../components";
+import { getTableWidth, tableColumnWidth } from "../../../components/ui/table-layout";
 import { MISSING_VALUE, formatCompact, formatNumber } from "../../../utils/format";
 
 export type DilutionTab = "overview" | "offerings" | "form144" | "scanner";
@@ -93,6 +94,18 @@ export function buildCapacityBar(metrics: DilutionMetrics, barWidth = 28): strin
   return `${"█".repeat(filled)}${"░".repeat(empty)} ${Math.round(ratio * 100)}% drawn`;
 }
 
+/**
+ * The table with one last text column in the cells the pane has left for it,
+ * by the table's own measure and never under `floor`: a width worked out
+ * without the gaps between columns made the table wider than its pane at
+ * every width, so this column was the one cut.
+ */
+function withTrailingText(columns: DataTableColumn[], last: { id: string; label: string }, width: number, floor: number): DataTableColumn[] {
+  const column: DataTableColumn = { ...last, width: floor, align: "left" };
+  const spare = Math.max(0, width - getTableWidth([...columns, column]));
+  return [...columns, { ...column, width: tableColumnWidth(column) + spare }];
+}
+
 export function shelfColumns(width: number): DataTableColumn[] {
   const cols: DataTableColumn[] = [
     { id: "form", label: "Form", width: 9, align: "left" },
@@ -101,10 +114,7 @@ export function shelfColumns(width: number): DataTableColumn[] {
     { id: "cap", label: "Registered", width: 12, align: "right" },
     { id: "status", label: "Status", width: 11, align: "left" },
   ];
-  if (width >= 90) {
-    cols.push({ id: "securities", label: "Securities", width: Math.max(18, width - 64), align: "left" });
-  }
-  return cols;
+  return width >= 90 ? withTrailingText(cols, { id: "securities", label: "Securities" }, width, 18) : cols;
 }
 
 export function offeringColumns(width: number): DataTableColumn[] {
@@ -115,10 +125,7 @@ export function offeringColumns(width: number): DataTableColumn[] {
     { id: "amount", label: "Amount $", width: 11, align: "right" },
     { id: "shares", label: "Shares", width: 10, align: "right" },
   ];
-  if (width >= 76) {
-    cols.push({ id: "agent", label: "Sales Agent / Lead", width: Math.max(18, width - 58), align: "left" });
-  }
-  return cols;
+  return width >= 76 ? withTrailingText(cols, { id: "agent", label: "Sales Agent / Lead" }, width, 18) : cols;
 }
 
 export function form144Columns(width: number, includeSymbol: boolean): DataTableColumn[] {
@@ -132,10 +139,7 @@ export function form144Columns(width: number, includeSymbol: boolean): DataTable
   if (width >= 84) {
     cols.push({ id: "plan", label: "10b5-1", width: 12, align: "left" });
   }
-  if (width >= 104) {
-    cols.push({ id: "broker", label: "Broker", width: Math.max(16, width - (includeSymbol ? 84 : 76)), align: "left" });
-  }
-  return cols;
+  return width >= 104 ? withTrailingText(cols, { id: "broker", label: "Broker" }, width, 16) : cols;
 }
 
 export function scannerShelfColumns(width: number): DataTableColumn[] {

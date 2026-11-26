@@ -368,6 +368,7 @@ async function loadFinancialReport(symbol: string, options: HeadlessPaneOptionVa
       // The day the company's results announcement published the period's filled lines, or, for a later
       // period's comparative column, that period's first announcement.
       ...(filled?.label === "published" && filled.date ? { announced: filled.date } : {}),
+      ...(filled?.label === "catalogue" && filled.date ? { catalogued: filled.date } : {}),
       ...(filled?.label === "first observed" && filled.date ? { firstObserved: filled.date } : {}),
       ...(filled?.label === "comparative" ? { comparativeIn: filled.date } : {}),
       ...(unavailableFields ? { unavailableFields } : {}),

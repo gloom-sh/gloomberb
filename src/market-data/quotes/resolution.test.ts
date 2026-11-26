@@ -1,14 +1,23 @@
 import { describe, expect, test } from "bun:test";
 import type { QuoteContributionMap } from "../../types/financials";
 import {
+  isQuoteContributionStaleForCurrentSession,
   resolveCanonicalQuote,
   resolveTickerFinancialsQuoteState,
   upsertQuoteContributionMap,
 } from "./resolution";
 import { mergeQuoteContribution, normalizeQuoteContribution } from "./contributions";
-import { createTestFinancials } from "../../test-support/data-provider";
+import { createTestFinancials, createTestQuote } from "../../test-support/data-provider";
 
 describe("quote-resolution", () => {
+  test("a price-only contribution on a published holiday follows the listing venue, not the routing venue", () => {
+    const now = Date.parse("2026-11-26T11:28:00Z");
+    const latest = createTestQuote({ symbol: "NVDA", listingExchangeName: "NASDAQ", exchangeName: "SMART",
+      marketState: undefined, lastUpdated: Date.parse("2026-11-26T00:59:59.082Z") });
+    expect(isQuoteContributionStaleForCurrentSession(latest, now)).toBe(false);
+    expect(isQuoteContributionStaleForCurrentSession({ ...latest, lastUpdated: Date.parse("2026-11-25T00:59:59.082Z") }, now)).toBe(true);
+  });
+
   test("keeps actual trade price and timestamp paired with the selected price provider", () => {
     const now = Date.parse("2026-09-10T18:00:00Z");
     const contributions: QuoteContributionMap = {

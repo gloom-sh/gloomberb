@@ -106,15 +106,16 @@ export function PeBandPane({ width, height, focused }: PaneProps) {
 
   const lookbackYears = Number(lookback);
   const model = useMemo(() => inputs.data
-    ? projectPeBand(inputs.data.financials, inputs.data.history, { symbol: symbol ?? "", lookbackYears: Number.isFinite(lookbackYears) ? lookbackYears : 10,
+    ? projectPeBand(inputs.data.financials, inputs.data.history, { symbol: symbol ?? "", exchange: instrument?.exchange, lookbackYears: Number.isFinite(lookbackYears) ? lookbackYears : 10,
       reports: inputs.data.reports, fx: inputs.data.fx, fxError: inputs.data.fxError, daily: inputs.data.daily })
-    : null, [inputs.data, lookbackYears, symbol]);
+    : null, [inputs.data, lookbackYears, symbol, instrument?.exchange]);
   const rows = model?.rows ?? [];
   const conversion = model?.conversion ?? null;
   const showFx = !!conversion || rows.some((row) => row.fx);
   const columns = useMemo(() => tableColumns(showFx), [showFx]);
   const series = useMemo(() => model && !model.error ? chartSeries(model, colors) : [], [model, colors]);
   const currency = model?.currency ?? undefined;
+  const scoped = !!inputs.data?.financials?.statementScope;
   const firstWeek = model?.weeks[0]?.date;
   const lastWeek = model?.weeks.at(-1)?.date;
   const sampleStart = model?.sample?.start;
@@ -124,7 +125,7 @@ export function PeBandPane({ width, height, focused }: PaneProps) {
       ? `${lookbackYears}Y` : `since ${sampleStart.getUTCFullYear()}`;
 
   const selected = rows.some((row) => rowKey(row) === selectedId) ? selectedId : rows[0] ? rowKey(rows[0]) : null;
-  const rowDate = useCallback((row: PeBandRow) => (firstWeek && row.knownAt >= firstWeek ? row.knownAt : null), [firstWeek?.getTime()]);
+  const rowDate = useCallback((row: PeBandRow) => row.priceAt !== undefined ? row.priceAt : (firstWeek && row.knownAt >= firstWeek ? row.knownAt : null), [firstWeek?.getTime()]);
   const link = useChartTableSelection({ rows, getId: rowKey, getDate: rowDate, selectedId: selected, onSelect: setSelectedId, focused });
 
   const undatedNotice = model?.undated
@@ -169,12 +170,12 @@ export function PeBandPane({ width, height, focused }: PaneProps) {
         selection={{ kind: "id", selectedId: selected, getId: rowKey, onChange: (id) => setSelectedId(id) }}
         selectedTextOverridesCellColor
         getExportMetadata={() => [["symbol", model.symbol], ["currency", model.currency ?? ""],
-          ["units", showFx
+          ["units", scoped ? "EPS and price in the listing currency; P/E at the first eligible close on or after EPS publication" : showFx
             ? `EPS as reported; period-end FX to ${model.currency ?? ""}; P/E at the close of the day the EPS became known`
             : "EPS and price in the listing currency; P/E at the close of the day the EPS became known"]]}
         renderCell={(row, column) => renderCell(row, column, colors, showFx ? currency : undefined)}
         rootBefore={<ChartTableHeader width={width} height={height} tableRows={rows.length} tableColumns={columns} query={query} figures={figures}
-          chart={model.weeks.length >= 2 ? { series, formatValue: formatPrice, formatAxisValue: formatAxis, remoteKind: "pe-band", ...link } : null} />} />
+          chart={scoped || model.weeks.length >= 2 ? { series, allowSinglePoint: scoped, formatValue: formatPrice, formatAxisValue: formatAxis, remoteKind: "pe-band", ...link } : null} />} />
         : null}
     </PaneStatusBody>
   </Box>;

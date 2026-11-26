@@ -33,11 +33,30 @@ export interface ShotBrowser {
   close(): Promise<void>;
 }
 
+interface ShotBrowserOptions { widthPx: number; heightPx: number; userDataDir: string }
+
+export interface ShotBrowserProcess {
+  newPage(signal?: AbortSignal): Promise<ShotBrowser>;
+  close(): Promise<void>;
+}
+
+type ShotPageFactory = (options: ShotBrowserOptions) => Promise<ShotBrowser>;
+let shotPageFactory: ShotPageFactory | undefined;
+
+export function installShotPageFactory(factory: ShotPageFactory): void {
+  shotPageFactory = factory;
+}
+
+export async function openShotPage(options: ShotBrowserOptions): Promise<ShotBrowser> {
+  return shotPageFactory ? shotPageFactory(options) : launchShotBrowser(await findChromeExecutable(), options);
+}
+
 const CDP_CALL_TIMEOUT_MS = 10_000;
 // Chrome gets 30 s to answer at all: 8 s was not enough on a busy machine.
 const CHROME_START_TIMEOUT_MS = 30_000;
 const PAGE_LOAD_TIMEOUT_MS = 45_000;
 const CHROME_EXIT_TIMEOUT_MS = 5_000;
+const GROUP_EXIT_TIMEOUT_MS = 2_000;
 
 type CdpMessage = {
   id?: number;
@@ -81,7 +100,6 @@ class CdpConnection {
     }
     const pending = this.pending.get(message.id);
     if (!pending) return;
-    this.pending.delete(message.id);
     if (message.error) pending.reject(new Error([message.error.message, message.error.data].filter(Boolean).join("\n")));
     else pending.resolve(message.result);
   }
@@ -94,21 +112,28 @@ class CdpConnection {
     for (const waiter of this.waiters) waiter.settle(false);
   }
 
-  send(method: string, params?: Record<string, unknown>, sessionId?: string, timeoutMs = CDP_CALL_TIMEOUT_MS): Promise<unknown> {
+  send(method: string, params?: Record<string, unknown>, sessionId?: string, timeoutMs = CDP_CALL_TIMEOUT_MS, signal?: AbortSignal): Promise<unknown> {
     if (this.closed) return Promise.reject(new Error("Chrome DevTools connection closed."));
+    if (signal?.aborted) return Promise.reject(signal.reason);
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new Error(`Timed out waiting for Chrome DevTools method ${method}.`));
+        this.pending.get(id)?.reject(new Error(`Timed out waiting for Chrome DevTools method ${method}.`));
       }, timeoutMs);
+      const aborted = () => this.pending.get(id)?.reject(signal!.reason);
+      const settle = () => {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", aborted);
+        this.pending.delete(id);
+      };
+      signal?.addEventListener("abort", aborted, { once: true });
       this.pending.set(id, {
         resolve: (value) => {
-          clearTimeout(timer);
+          settle();
           resolve(value);
         },
         reject: (error) => {
-          clearTimeout(timer);
+          settle();
           reject(error);
         },
       });
@@ -116,26 +141,28 @@ class CdpConnection {
         this.write(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
       } catch (error) {
         this.pending.get(id)?.reject(error instanceof Error ? error : new Error(String(error)));
-        this.pending.delete(id);
       }
     });
   }
 
   /** True once `method` arrives for the session, false when it has not within `timeoutMs` or the connection closed. */
-  waitForEvent(method: string, sessionId: string | undefined, timeoutMs: number): Promise<boolean> {
+  waitForEvent(method: string, sessionId: string | undefined, timeoutMs: number, signal: AbortSignal): Promise<boolean> {
     return new Promise((resolve) => {
-      if (this.closed) return resolve(false);
+      if (this.closed || signal.aborted) return resolve(false);
+      const aborted = () => waiter.settle(false);
       const waiter = {
         method,
         sessionId,
         settle: (seen: boolean) => {
           clearTimeout(timer);
+          signal.removeEventListener("abort", aborted);
           this.waiters.delete(waiter);
           resolve(seen);
         },
       };
       const timer = setTimeout(() => waiter.settle(false), timeoutMs);
       this.waiters.add(waiter);
+      signal.addEventListener("abort", aborted, { once: true });
     });
   }
 }
@@ -197,6 +224,31 @@ async function drain(stream: ReadableStream<Uint8Array>, onText: (text: string) 
   }
 }
 
+async function stopChromeGroup(pid: number): Promise<void> {
+  if (!Number.isInteger(pid) || pid <= 1) throw new Error("Invalid screenshot browser process group.");
+  const signalGroup = (signal: NodeJS.Signals | 0) => {
+    try {
+      process.kill(-pid, signal);
+      return true;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ESRCH") return false;
+      if (signal === 0 && code === "EPERM") return true;
+      throw error;
+    }
+  };
+  for (const signal of ["SIGTERM", "SIGKILL"] as const) {
+    if (!signalGroup(signal)) return;
+    const deadline = performance.now() + GROUP_EXIT_TIMEOUT_MS;
+    for (;;) {
+      if (!signalGroup(0)) return;
+      if (performance.now() >= deadline) break;
+      await Bun.sleep(25);
+    }
+  }
+  throw new Error("The screenshot browser process group did not exit.");
+}
+
 /**
  * Chrome with DevTools on fds 3 (to the browser) and 4 (from it): messages are JSON, each ended by a NUL.
  *
@@ -205,12 +257,13 @@ async function drain(stream: ReadableStream<Uint8Array>, onText: (text: string) 
  * (`stdio: [..., "pipe", "pipe"]`), Bun closes those descriptors more than once as the browser exits, and goes on
  * to use them. By then another child's pipes can hold the same numbers, and that child sees its own pipes closed
  * under it: a stdout that cannot be registered (EBADF), a read that never ends, or a second browser start that
- * finds its connection closed. `exec` keeps the browser's pid the child's, so `kill` reaches the browser itself.
+ * finds its connection closed. `exec` keeps the browser's pid the child's. Only the sweep uses `detached`, so
+ * its directly spawned PID also names a new POSIX process group that can be stopped after the leader exits.
  */
-function launchOverPipe(chrome: string, args: string[]): LaunchedChrome {
+function launchOverPipe(chrome: string, args: string[], { privatePipe: detached, env }: { privatePipe?: boolean; env?: NodeJS.ProcessEnv }): LaunchedChrome {
   const child = Bun.spawn(
     ["sh", "-c", 'exec "$0" "$@" 3<&0 4>&1 </dev/null >/dev/null', chrome, ...args, "--remote-debugging-pipe", "about:blank"],
-    { stdin: "pipe", stdout: "pipe", stderr: "pipe" },
+    { stdin: "pipe", stdout: "pipe", stderr: "pipe", env, detached },
   );
   // Read to the end, so a chatty browser never blocks on a full pipe; only the start is kept.
   let stderrText = "";
@@ -239,16 +292,26 @@ function launchOverPipe(chrome: string, args: string[]): LaunchedChrome {
       // Intentional ignore: a browser that cannot be waited for has gone, and the connection says so.
     }
   })();
-  void exited.then(closed);
+  let stopping: Promise<void> | undefined;
+  const stop = () => stopping ??= (async () => {
+    connection.close();
+    if (detached) {
+      await stopChromeGroup(child.pid);
+      await exited;
+      return;
+    }
+    child.kill();
+    const timer = setTimeout(() => child.kill("SIGKILL"), CHROME_EXIT_TIMEOUT_MS);
+    await exited;
+    clearTimeout(timer);
+  })();
+  void exited.then(() => {
+    closed();
+    if (detached) return stop();
+  }).catch(logFailure("cli.screenshot", "Stop screenshot browser group failed"));
   return {
     connection,
-    stop: async () => {
-      connection.close();
-      child.kill();
-      const timer = setTimeout(() => child.kill("SIGKILL"), CHROME_EXIT_TIMEOUT_MS);
-      await exited;
-      clearTimeout(timer);
-    },
+    stop,
     stderr: async () => {
       await exited;
       await Promise.race([stderrDone, new Promise((resolve) => setTimeout(resolve, 1_000))]);
@@ -325,15 +388,25 @@ class ChromeSandboxRefusedError extends Error {}
  */
 export async function launchShotBrowser(
   chrome: string,
-  options: { widthPx: number; heightPx: number; userDataDir: string },
+  options: ShotBrowserOptions,
 ): Promise<ShotBrowser> {
+  const browser = await launchShotBrowserProcess(chrome, options);
+  const page = await browser.newPage();
+  return { ...page, close: () => browser.close() };
+}
+
+export async function launchShotBrowserProcess(
+  chrome: string,
+  options: ShotBrowserOptions & { privatePipe?: boolean; env?: NodeJS.ProcessEnv; signal?: AbortSignal },
+): Promise<ShotBrowserProcess> {
+  if (options.privatePipe && process.platform === "win32") throw new Error("This sweep requires Chrome's private DevTools pipe, unavailable on Windows.");
   await mkdir(options.userDataDir, { recursive: true });
   const args = [...CHROME_ARGS, `--user-data-dir=${options.userDataDir}`, `--window-size=${options.widthPx},${options.heightPx}`];
   if (startsWithoutSandbox(process.platform, process.getuid?.())) return startShotBrowser(chrome, [...args, NO_SANDBOX], options);
   try {
     return await startShotBrowser(chrome, args, options);
   } catch (error) {
-    if (!(error instanceof ChromeSandboxRefusedError)) throw error;
+    if (options.privatePipe || !(error instanceof ChromeSandboxRefusedError)) throw error;
     logFailure("cli.screenshot", "Chrome has no sandbox on this machine; capturing without it")(error);
     return startShotBrowser(chrome, [...args, NO_SANDBOX], options);
   }
@@ -342,48 +415,65 @@ export async function launchShotBrowser(
 async function startShotBrowser(
   chrome: string,
   args: string[],
-  options: { userDataDir: string },
-): Promise<ShotBrowser> {
+  options: { userDataDir: string; privatePipe?: boolean; env?: NodeJS.ProcessEnv; signal?: AbortSignal },
+): Promise<ShotBrowserProcess> {
+  options.signal?.throwIfAborted();
   const launched = process.platform === "win32"
     ? await launchOverPort(chrome, args, options.userDataDir)
-    : launchOverPipe(chrome, args);
+    : launchOverPipe(chrome, args, options);
   const { connection } = launched;
+  let closing: Promise<void> | undefined;
+  const close = () => closing ??= launched.stop();
   try {
-    // The first answer waits for the browser to start.
-    try {
-      await connection.send("Browser.getVersion", undefined, undefined, CHROME_START_TIMEOUT_MS);
-    } catch (error) {
-      await launched.stop();
-      if (!args.includes(NO_SANDBOX) && chromeSandboxRefused(await launched.stderr())) {
-        throw new ChromeSandboxRefusedError("Chrome could not start with its sandbox.", { cause: error });
-      }
-      throw error;
-    }
-    const { browserContextId } = await connection.send("Target.createBrowserContext", { disposeOnDetach: true }) as { browserContextId: string };
-    const { targetId } = await connection.send("Target.createTarget", { url: "about:blank", browserContextId }) as { targetId: string };
-    const { sessionId } = await connection.send("Target.attachToTarget", { targetId, flatten: true }) as { sessionId: string };
-    const page: CdpPage = { send: (method, params) => connection.send(method, params, sessionId) };
-    return {
-      page,
-      async open(url) {
-        await page.send("Page.enable");
-        const loaded = connection.waitForEvent("Page.loadEventFired", sessionId, PAGE_LOAD_TIMEOUT_MS);
-        const { errorText } = await page.send("Page.navigate", { url }) as { errorText?: string };
-        if (errorText) throw new Error(`Chrome could not open the capture page: ${errorText}`);
-        await loaded;
-      },
-      close: () => launched.stop(),
-    };
+    await connection.send("Browser.getVersion", undefined, undefined, CHROME_START_TIMEOUT_MS, options.signal);
   } catch (error) {
-    await launched.stop();
+    await close();
+    if (!options.signal?.aborted && !args.includes(NO_SANDBOX) && chromeSandboxRefused(await launched.stderr())) {
+      throw new ChromeSandboxRefusedError("Chrome could not start with its sandbox.", { cause: error });
+    }
     throw error;
   }
+  return {
+    close,
+    async newPage(signal) {
+      try {
+        const send = (method: string, params: Record<string, unknown>) => connection.send(method, params, undefined, CDP_CALL_TIMEOUT_MS, signal);
+        const { browserContextId } = await send("Target.createBrowserContext", { disposeOnDetach: true }) as { browserContextId: string };
+        const { targetId } = await send("Target.createTarget", { url: "about:blank", browserContextId }) as { targetId: string };
+        const { sessionId } = await send("Target.attachToTarget", { targetId, flatten: true }) as { sessionId: string };
+        const active = new AbortController();
+        const page: CdpPage = { send: (method, params) => connection.send(method, params, sessionId, CDP_CALL_TIMEOUT_MS, active.signal) };
+        return {
+          page,
+          async open(url) {
+            await page.send("Page.enable");
+            const loaded = connection.waitForEvent("Page.loadEventFired", sessionId, PAGE_LOAD_TIMEOUT_MS, active.signal);
+            const { errorText } = await page.send("Page.navigate", { url }) as { errorText?: string };
+            if (errorText) throw new Error(`Chrome could not open the capture page: ${errorText}`);
+            await loaded;
+          },
+          async close() {
+            active.abort(new Error("Capture page closed."));
+            try {
+              await connection.send("Target.disposeBrowserContext", { browserContextId }, undefined, 2_000);
+            } catch (error) {
+              await close();
+              throw error;
+            }
+          },
+        };
+      } catch (error) {
+        await close();
+        throw error;
+      }
+    },
+  };
 }
 
 /** The Chrome or Chromium a capture draws in: `CHROME_PATH`, or where each platform installs one. */
-export async function findChromeExecutable(): Promise<string> {
+export async function findChromeExecutable(override = process.env.CHROME_PATH): Promise<string> {
   const candidates = [
-    process.env.CHROME_PATH,
+    override,
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     "/Applications/Chromium.app/Contents/MacOS/Chromium",
     Bun.which("google-chrome"),
