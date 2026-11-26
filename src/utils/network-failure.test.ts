@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
+import { apiClient } from "../api-client";
 import { ApiRequestError, markAskedTwice } from "../api-client/errors";
-import { CloudApiRequestTransport, setCloudApiFetchTransport } from "../api-client/request";
+import { CloudApiRequestTransport, forgetDataServiceReach, setCloudApiFetchTransport } from "../api-client/request";
 import { describeChatImageError } from "../plugins/builtin/chat/attachments/model";
 import { inferCliErrorOptions, printCliError } from "../cli/errors";
 import { overviewCliCommands } from "../cli/commands/overview";
@@ -37,6 +38,8 @@ function transportFor(options: ConstructorParameters<typeof CloudApiRequestTrans
 
 afterEach(() => {
   for (const transport of transports.splice(0)) transport.dispose();
+  apiClient.dispose();
+  forgetDataServiceReach();
   setCloudApiFetchTransport(null);
   if (originalProxy === undefined) delete process.env.HTTPS_PROXY;
   else process.env.HTTPS_PROXY = originalProxy;
