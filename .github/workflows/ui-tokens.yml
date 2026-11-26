@@ -20,10 +20,11 @@ name: UI tokens
 # records the week's snapshot when it has none: every view once live, then
 # checked from what it kept, as pull requests read it.
 #
-# Four shards, split by a hash of each function's token, then one job, "UI
-# tokens", that passes only when every shard did: branch protection requires
-# that one name, not the shards'. Four leave room under the organisation's
-# concurrent jobs for Verify, Pane chrome and Performance beside them.
+# Two shards (each driving two concurrent headless browsers offline), split by a
+# hash of each function's token, then one job, "UI tokens", that passes only
+# when every shard did: branch protection requires that one name, not the
+# shards'. Two shards halve runner-slot demand under the organisation's
+# concurrent job limit while keeping four parallel browsers total.
 on:
   pull_request:
     branches:
@@ -45,15 +46,67 @@ env:
   DO_NOT_TRACK: "1"
 
 jobs:
+  scope:
+    name: UI tokens scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      relevant: ${{ steps.scope.outputs.relevant }}
+    steps:
+      - id: always
+        if: github.event_name != 'pull_request'
+        run: echo "relevant=true" >> "$GITHUB_OUTPUT"
+
+      - if: github.event_name == 'pull_request'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - id: scope
+        name: Check whether the change can affect web or desktop UI tokens
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --depth=1 origin "$BASE_REF"
+          node -e '
+            const { execFileSync } = require("node:child_process");
+            const { appendFileSync } = require("node:fs");
+            const files = execFileSync("git", ["diff", "--name-only", "FETCH_HEAD", "HEAD"], { encoding: "utf8" })
+              .split("\n")
+              .filter(Boolean);
+            const nonUi = [
+              /^docs\//,
+              /\.md$/,
+              /^src\/cli\//,
+              /^src\/data\//,
+              /^src\/sync\//,
+              /^src\/renderers\/opentui\//,
+              /^src\/renderers\/electrobun\/bun\//,
+              /\.test\.tsx?$/,
+              /^scripts\/(?!build-web\.ts$|pane-chrome\/)/,
+              /^\.github\/(?!workflows\/ui-tokens\.yml$|actions\/setup-bun\/)/,
+            ];
+            const relevant = files.length === 0 || files.some((f) => !nonUi.some((re) => re.test(f)));
+            console.log(relevant ? `UI tokens relevant (${files.length} changed files)` : `All ${files.length} changed files are outside web/desktop UI; skipping shards.`);
+            appendFileSync(process.env.GITHUB_OUTPUT, `relevant=${relevant}\n`);
+          '
+
   shard:
-    name: UI tokens, shard ${{ matrix.shard }} of 4
+    name: UI tokens, shard ${{ matrix.shard }} of 2
+    needs: scope
+    if: needs.scope.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     # Recording on main opens every view live, then again offline.
     timeout-minutes: ${{ github.ref == 'refs/heads/main' && 120 || 45 }}
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -86,21 +139,21 @@ jobs:
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/gloomberb-pane-chrome/ui-replay
-          key: ui-replay-v2-${{ matrix.shard }}of4-${{ steps.keys.outputs.week }}
-          restore-keys: ${{ github.ref != 'refs/heads/main' && format('ui-replay-v2-{0}of4-', matrix.shard) || '' }}
+          key: ui-replay-v2-${{ matrix.shard }}of2-${{ steps.keys.outputs.week }}
+          restore-keys: ${{ github.ref != 'refs/heads/main' && format('ui-replay-v2-{0}of2-', matrix.shard) || '' }}
 
       - name: Hold every view to the tokens
         env:
           SHARD: ${{ matrix.shard }}
           RECORD: ${{ github.ref == 'refs/heads/main' && steps.snapshot.outputs.cache-hit != 'true' && '--record' || '' }}
-        run: bun run check:ui-tokens --shard "$((SHARD - 1))/4" --replay "$HOME/.cache/gloomberb-pane-chrome/ui-replay" $RECORD
+        run: bun run check:ui-tokens --shard "$((SHARD - 1))/2" --replay "$HOME/.cache/gloomberb-pane-chrome/ui-replay" $RECORD
 
       - name: Keep this week's snapshot
         if: github.ref == 'refs/heads/main' && steps.snapshot.outputs.cache-hit != 'true'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/gloomberb-pane-chrome/ui-replay
-          key: ui-replay-v2-${{ matrix.shard }}of4-${{ steps.keys.outputs.week }}
+          key: ui-replay-v2-${{ matrix.shard }}of2-${{ steps.keys.outputs.week }}
 
       - name: Keep the measures
         if: failure()
@@ -114,7 +167,9 @@ jobs:
 
   verdict:
     name: UI tokens
-    needs: shard
+    needs:
+      - scope
+      - shard
     # always(), not the default: a required check that is skipped counts as
     # passed, so this runs, and fails, when a shard failed or was cancelled.
     if: always()
@@ -123,7 +178,14 @@ jobs:
     steps:
       - name: Every shard passed
         env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          RELEVANT: ${{ needs.scope.outputs.relevant }}
           SHARDS: ${{ needs.shard.result }}
         run: |
-          echo "The shards: $SHARDS"
+          echo "Scope: $SCOPE_RESULT (relevant=$RELEVANT); shards: $SHARDS"
+          test "$SCOPE_RESULT" = success
+          if [ "$RELEVANT" = false ]; then
+            echo "No UI files changed; skipped 2 shards."
+            exit 0
+          fi
           test "$SHARDS" = success
