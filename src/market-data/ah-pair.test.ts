@@ -13,8 +13,10 @@ const catl = {
 test("an A+H company is one line in Hong Kong and one in Shanghai or Shenzhen", () => {
   const pair = ahPairOf(catl)!;
   expect(pair).toEqual({ h: "3750:HKEX", a: "300750:SZSE" });
+  // A ticker saved in HKEX's five digits (03750, on its venue's MIC or alias) is the same H share line.
   for (const [symbol, exchange, side] of [["3750", "HKEX", "h"], ["3750.HK", null, "h"], ["3750:HKEX", null, "h"],
-    ["300750", "SZSE", "a"], ["300750.SZ", null, "a"], ["0700", "HKEX", null]] as const)
+    ["03750", "HKEX", "h"], ["03750", "XHKG", "h"], ["03750:HKEX", null, "h"], ["13750", "HKEX", null],
+    ["300750", "SZSE", "a"], ["300750", "XSHE", "a"], ["300750.SZ", null, "a"], ["0700", "HKEX", null]] as const)
     expect(ahPairSide(pair, symbol, exchange)).toBe(side);
   expect(ahListingKey("700.HK")).toBe("0700:HKEX");
   expect(ahPairOf({ listings: [
@@ -31,7 +33,7 @@ test("a Hong Kong or Singapore line's board lot is read off its own listing, how
     { symbol: "601899:SSE", exchange: "SSE", name: "ZIJIN MINING", primary: true },
     { symbol: "2899:HKEX", exchange: "HKEX", name: "ZIJIN MINING", primary: false, boardLot: 500 },
   ] };
-  for (const [symbol, exchange] of [["2899", "HKEX"], ["2899.HK", null], ["2899:HKEX", null]] as const) {
+  for (const [symbol, exchange] of [["2899", "HKEX"], ["02899", "HKEX"], ["2899.HK", null], ["2899:HKEX", null]] as const) {
     expect(statesBoardLot(symbol, exchange)).toBe(true);
     expect(listingBoardLot(zijin, symbol, exchange)).toBe(500);
   }

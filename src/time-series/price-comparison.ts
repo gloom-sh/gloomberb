@@ -366,7 +366,7 @@ export function resolvePriceComparison(
   const sessionDay = (key: string) => (barPeriod ? barLastSession(key, barPeriod, venue, now) : null) ?? key;
   const dayOf = (leg: ComparedLeg, key: string) => calendarBars ? key : observationDate(Number(key), leg.entry);
   const preset = options.preset ?? null;
-  const period = !dateWindow && isReturnPeriod(preset) ? preset : null;
+  const period = dateWindow?.returnPeriod ?? (!dateWindow && isReturnPeriod(preset) ? preset : null);
   const shared = (keys: (leg: ComparedLeg) => readonly string[]) => {
     const sets = legs.map((leg) => new Set(keys(leg)));
     return legs.length ? keys(legs[0]!).filter((key) => sets.every((set) => set.has(key))) : [];
@@ -379,7 +379,7 @@ export function resolvePriceComparison(
     : sharedWindow.at(-1);
   // Authored dates (`--from 2026-10-19`) measure from the close before the first date, as RETURN does: the last
   // date the legs share before it. Weekly and monthly bars keep the bar the window starts in.
-  const authoredFrom = !preset && dateWindow && /^\d{4}-\d{2}-\d{2}$/.test(dateWindow.start) && (resolution === "1d" || !calendarBars)
+  const authoredFrom = !preset && !period && dateWindow && /^\d{4}-\d{2}-\d{2}$/.test(dateWindow.start) && (resolution === "1d" || !calendarBars)
     ? dateWindow.start : null;
   const firstInWindow = authoredFrom ? legs.map((leg) => leg.window[0]!).sort(order)[0] : undefined;
   const authoredBase = authoredFrom && firstInWindow !== undefined
@@ -387,7 +387,8 @@ export function resolvePriceComparison(
       && legs.every((leg) => nonzero(leg, key))).at(-1)
     : undefined;
   const sharedStart = authoredBase ?? sharedWindow.find((key) => legs.every((leg) => nonzero(leg, key)));
-  const anchor = period && sharedEnd !== undefined ? (calendarBars ? sessionDay(sharedEnd) : dayOf(legs[0]!, sharedEnd)) : null;
+  const anchor = dateWindow?.returnPeriod ? dateWindow.end
+    : period && sharedEnd !== undefined ? (calendarBars ? sessionDay(sharedEnd) : dayOf(legs[0]!, sharedEnd)) : null;
   const baseDay = anchor && period ? periodBaseDay(anchor, period) : null;
   const closeDay = (leg: ComparedLeg, key: string) => calendarBars && resolution !== "1d" ? barCloseDay(key, resolution, legVenue(leg.entry)) : key;
   // Intraday bars share their times, so their base is the last bar the legs share on or before the base day.

@@ -1,5 +1,6 @@
 import type { ResolvedSeries } from "../../../time-series/types";
 import { displayWidth } from "../../../utils/format";
+import { formatDay } from "../../../utils/day-format";
 import type { ChartStripSpec } from "../../chart-table/header";
 import { compositeAxisTagFormatter, compositeAxisTicks, type CompositeAxisValueFormatter } from "../composite/format";
 import { buildCompositeChartScene } from "../composite/scene";
@@ -56,7 +57,9 @@ export function curvePrimarySeries(series: readonly CurveSeries[], primarySeries
 
 /** Look-backs read as how long ago they were: "1W" becomes "1W ago". */
 export function curveLookbackLabel(label: string): string {
-  return /^\d+[DWMY]$/i.test(label.trim()) ? `${label.trim()} ago` : label;
+  const trimmed = label.trim();
+  // A look-back reads as how long ago; a session compared with by its date reads day first, as tables write it.
+  return /^\d+[DWMY]$/i.test(trimmed) ? `${trimmed} ago` : /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? formatDay(trimmed) : label;
 }
 
 export interface CurvePalette {

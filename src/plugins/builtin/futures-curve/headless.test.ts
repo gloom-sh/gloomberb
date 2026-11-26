@@ -178,8 +178,8 @@ describe("CTM report basis", () => {
     const text = plain(renderHeadlessPaneText(futuresCurveHeadless, result, createTestHeadlessArgs(), "CTM"));
     // The text reads each spot beside its premium and the days the rate divides by; the spot's minute is the trade's, in As Of UTC.
     expect(text).toMatch(/Contract +Last Trade +Settle +Last +Change +Spot +Vs Spot +Days +Ann Basis +As Of UTC/);
-    expect(text).toMatch(new RegExp(String.raw`BTCV26 +2026-10-30 +${MISSING_VALUE} +80740\.00 +${MISSING_VALUE} +80600\.00 +\+0\.17% +6\.6 +\+9\.6% +2026-10-24 01:33`));
-    expect(text).toMatch(new RegExp(String.raw`BTCH27 .* 83035\.00 +${MISSING_VALUE} +${MISSING_VALUE} +${MISSING_VALUE} +${MISSING_VALUE} +${MISSING_VALUE} +2026-10-24 03:52`));
+    expect(text).toMatch(new RegExp(String.raw`BTCV26 +30 Oct 2026 +${MISSING_VALUE} +80740\.00 +${MISSING_VALUE} +80600\.00 +\+0\.17% +6\.6 +\+9\.6% +24 Oct 2026 01:33`));
+    expect(text).toMatch(new RegExp(String.raw`BTCH27 .* 83035\.00 +${MISSING_VALUE} +${MISSING_VALUE} +${MISSING_VALUE} +${MISSING_VALUE} +${MISSING_VALUE} +24 Oct 2026 03:52`));
     expect(text).not.toContain("Spot Time");
     expect(text).toMatch(/\nNotes:\n {2}Ann Basis = \(Last \/ spot - 1\) × 365 \/ days to expiry.*\n {2}Basis blank for BTCZ26 .*\n {2}Ann Basis is noisy under 7 days/);
     // Other roots have no basis columns to footnote.
@@ -317,11 +317,14 @@ describe("CTM change", () => {
       ["spot", 19.42], ["frontPremium", 0.9403]]);
     expect(result.notes).toBeUndefined();
     const text = renderHeadlessPaneText(futuresCurveHeadless, result, createTestHeadlessArgs(), "CTM").replace(/\x1b\[[0-9;]*m/g, "");
-    expect(text).toContain("Spot VIX       19.42, 2026-10-30 close\nFront premium  +0.9403, VX/X6 settle less spot");
+    expect(text).toContain("Spot VIX       19.42, 30 Oct 2026 close\nFront premium  +0.9403, VX/X6 settle less spot");
+    // JSON and CSV keep the close's day in ISO as they always wrote it.
+    expect(result.sections.find((section) => section.title === "Front vs spot")?.entries?.[0]?.formatted).toBe("19.42, 2026-10-30 close");
     // Without that session's close the premium is blank and says why, never read against another day's close.
     const missing = await load([]);
     expect(missing.sections.find((section) => section.title === "Front vs spot")?.entries?.map((entry) => entry.value)).toEqual([null, null]);
     expect(missing.notes).toEqual(["Front premium blank: no ^VIX close on 2026-10-30."]);
+    expect(renderHeadlessPaneText(futuresCurveHeadless, missing, createTestHeadlessArgs(), "CTM")).toContain("Front premium blank: no ^VIX close on 30 Oct 2026.");
   });
 });
 
@@ -350,8 +353,8 @@ describe("CTM expiry", () => {
       expect(section("Front spread").rows![0]!.annualizedRollYield).toBe(Number(roll.toFixed(2)));
       const text = renderHeadlessPaneText(futuresCurveHeadless, result, createTestHeadlessArgs(), "CTM").replace(/\x1b\[[0-9;]*m/g, "");
       expect(text).toContain(`+${roll.toFixed(2)}%`);
-      expect(text).toContain("2026-10-29 15:00");
-      expect(text).not.toContain("2026-11-02");
+      expect(text).toContain("29 Oct 2026 15:00");
+      expect(text).not.toContain("02 Nov 2026");
     } finally {
       setSystemTime();
     }
@@ -398,7 +401,7 @@ describe("CTM exports and the session that has just opened", () => {
       expect(gcCsv.find((line) => line.startsWith("GCG27-GCZ26,"))).toContain("GCZ26,GCG27,");
       // The text keeps the session in the header.
       const text = renderHeadlessPaneText(futuresCurveHeadless, await load(crude), createTestHeadlessArgs(), "CTM").replace(/\x1b\[[0-9;]*m/g, "");
-      expect(text).toMatch(/Contract +Last Trade +Settle 2026-11-04 +Last/);
+      expect(text).toMatch(/Contract +Last Trade +Settle 04 Nov 2026 +Last/);
       expect(text).not.toContain("settle_date");
     } finally {
       setSystemTime();
@@ -412,8 +415,8 @@ describe("CTM exports and the session that has just opened", () => {
       expect(result.notes).toContain("Front spread pairs GCZ26 with GCG27 (77,624 open interest), skipping GCF27 (799).");
       const text = renderHeadlessPaneText(futuresCurveHeadless, result, createTestHeadlessArgs(), "CTM").replace(/\x1b\[[0-9;]*m/g, "");
       // 22:00 UTC on 11-03 is the 16:00 Chicago close, the settlement's own session: no move since, and dated as the settlement.
-      expect(text).toMatch(new RegExp(String.raw`GCU27 .* 4088\.10 +4088\.10 +${MISSING_VALUE} +settle 2026-11-03 `));
-      expect(text).toMatch(/GCZ26 .* 4072\.10 +\+131\.70 +2026-11-04 23:17 /);
+      expect(text).toMatch(new RegExp(String.raw`GCU27 .* 4088\.10 +4088\.10 +${MISSING_VALUE} +settle 03 Nov 2026 `));
+      expect(text).toMatch(/GCZ26 .* 4072\.10 +\+131\.70 +04 Nov 2026 23:17 /);
       expect(result.sections[0]!.rows!.find((row) => row.symbol === "GCU27.CMX")).toMatchObject({ change: null, noTradeSince: "2026-11-03", settleShown: "2026-11-03" });
       // The CSV has no print to date it by: As Of UTC is empty, settle_date dates the settlement it shows.
       const csv = csvOf(result);
@@ -447,7 +450,7 @@ test("each contract's open interest carries the session it counts, n/a for a cou
   expect(result.sections[0]!.rows!.map((row) => [row.openInterest, row.openInterestAsOf])).toEqual([[9_778, "2026-11-20"], [7_947, null], [null, null]]);
   const text = renderHeadlessPaneText(futuresCurveHeadless, result, createTestHeadlessArgs(), "CTM").replace(/\x1b\[[0-9;]*m/g, "");
   expect(text).toMatch(/Open Int +OI Date/);
-  expect(text).toMatch(/BTCX26 .* 9,778 +2026-11-20 /);
+  expect(text).toMatch(/BTCX26 .* 9,778 +20 Nov 2026 /);
   expect(text).toMatch(/BTCZ26 .* 7,947 +n\/a /);
   expect(text).toMatch(new RegExp(String.raw`BTCF27 .* ${MISSING_VALUE} +${MISSING_VALUE} `));
   const freshness = deriveHeadlessFreshness(futuresCurveHeadless, result);

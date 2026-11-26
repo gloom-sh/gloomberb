@@ -46,7 +46,7 @@ import {
   quoteHeadlineTime,
   quoteMarketStateLabel,
 } from "../../market-data/market/status";
-import { formatQuoteBookTime } from "../../market-data/quotes/time";
+import { asOfClock, formatQuoteBookTime } from "../../market-data/quotes/time";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
 import { changeBasisJson, closeDayLabel, futuresQuoteFromSettle, quoteChangeBasis, quotePreviousCloseDate, quoteSettleText } from "../../market-data/market/change-basis";
 import {
@@ -93,7 +93,7 @@ import { NotesFiles } from "../../plugins/builtin/notes/files";
 import { getFormDescription } from "../../plugins/builtin/sec/model";
 import { ownerNames, rowSummary, rowSummaryTarget } from "../../plugins/builtin/sec/row-summaries";
 import { fundFactsAbroadKey, hasFundFactsAbroad, isKnownNonUsListing, secFilingItemCodes, US_FUND_FACTS_ONLY } from "../../utils/sec";
-import { currentReportItemsLabel, hiddenFilingsNote, loadLatestFilings, type HiddenFilings } from "../../utils/sec-filings";
+import { currentReportItemsLabel, form4TradeText, hiddenFilingsNote, loadLatestFilings, type HiddenFilings } from "../../utils/sec-filings";
 import { canonicalExchange, exchangeLabel, isKnownExchangeCode, isUsListingExchange } from "../../utils/exchanges";
 import { exchangeResultsNotes } from "../../utils/exchange-results";
 import {
@@ -389,24 +389,24 @@ type RecentFiling = SecFilingItem & { summary?: string };
 
 /**
  * The recent filings, each insider form (3, 4, 5, 144) with its filer and what it reports, read from the
- * filing as fn SEC's rows read it: "Fred Thiel: sale of 50K shares". A filing that cannot be read keeps its
- * form's meaning alone.
+ * filing as fn SEC's rows read it: "Fred Thiel: sale of 50K shares". When its document cannot be read,
+ * use the trade summary attached to that filing, if any, as `filings` does.
  */
 async function withFilingSummaries(
   filings: readonly SecFilingItem[],
   dataProvider: { getSecFilingContent?(filing: SecFilingItem): Promise<string | null> },
 ): Promise<RecentFiling[]> {
-  if (!dataProvider.getSecFilingContent) return [...filings];
+  const read = dataProvider.getSecFilingContent?.bind(dataProvider);
   const contents = await Promise.all(filings.map(async (filing) => {
     const target = rowSummaryTarget(filing);
-    if (!target) return null;
-    return Promise.resolve().then(() => dataProvider.getSecFilingContent!(target))
+    if (!target || !read) return null;
+    return Promise.resolve().then(() => read(target))
       .catch(logFailure("cli.commands-ticker", "Read an insider filing failed", null));
   }));
   // A Form 144 names its seller freely; the insider forms read beside it say which way round.
   const knownOwners = filings.flatMap((filing, index) => ownerNames(filing.form, contents[index]));
   return filings.map((filing, index) => {
-    const summary = rowSummary(filing.form, contents[index], knownOwners)?.title;
+    const summary = rowSummary(filing.form, contents[index], knownOwners)?.title ?? form4TradeText(filing);
     return summary ? { ...filing, summary } : filing;
   });
 }
@@ -1136,8 +1136,10 @@ function valuationPriceMetrics(financials: FundamentalsReportData): Fundamentals
   const price = (value: number) => formatMarketPriceWithCurrency(value, quote.currency, options);
   const extended = getExtendedSessionDisplay(quote);
   const extendedLabel = extended ? EXTENDED_SESSION_LABELS[extended.session] : "";
+  const closeDate = extended ? headlineCloseDate(quote) : null;
+  const printedAt = extendedPrintTime(quote);
   return [
-    { label: "Last", text: price(session.price), value: session.price, unit: quote.currency },
+    { label: "Last", text: `${price(session.price)}${closeDate ? cliStyles.muted(` (${closeDayLabel(closeDate)})`) : ""}`, value: session.price, unit: quote.currency },
     session.changePercent != null && Number.isFinite(session.changePercent)
       ? {
         label: "Change",
@@ -1151,7 +1153,8 @@ function valuationPriceMetrics(financials: FundamentalsReportData): Fundamentals
       {
         label: extendedLabel,
         // "mid" when the overnight price is the session's bid and ask midpoint, as `quote` marks it.
-        text: colorBySign(`${price(extended.price)}${extended.mark ? " mid" : ""}${extended.changePercent != null ? ` (${formatPercentRaw(extended.changePercent)})` : ""}`, extended.change),
+        text: colorBySign(`${price(extended.price)}${extended.mark ? " mid" : ""}${extended.changePercent != null ? ` (${formatPercentRaw(extended.changePercent)})` : ""}`, extended.change)
+          + (printedAt == null ? "" : cliStyles.muted(` (${asOfClock(Math.min(printedAt, Date.now()))})`)),
         value: extended.price,
         unit: quote.currency,
       },

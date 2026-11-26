@@ -41,8 +41,8 @@ export function StatDetail({
   const visible = view.visible;
   const stats = useMemo<StatItem[]>(() => [
     { id: "year-ago", label: "1Y ago", value: view.yearAgo ? stat.formatValue(view.yearAgo.value) : MISSING_VALUE },
-    { id: "high", label: "High", value: stat.formatValue(view.high.value), detail: view.high.date },
-    { id: "low", label: "Low", value: stat.formatValue(view.low.value), detail: view.low.date },
+    { id: "high", label: "High", value: stat.formatValue(view.high.value), detail: view.highPeriod },
+    { id: "low", label: "Low", value: stat.formatValue(view.low.value), detail: view.lowPeriod },
     // A range longer than the history shows all of it, from where it starts.
     ...[historySpanStat(view.span)].filter((item): item is StatItem => item !== null),
     // A daily rate's last moves, in bp, and how big each was against every one since the series began.

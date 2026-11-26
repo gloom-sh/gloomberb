@@ -1,6 +1,7 @@
 import type { HeadlessBundleResult, HeadlessPaneColumn } from "../../../types/headless";
 import { MISSING_VALUE, formatPercent } from "../../../utils/format";
 import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
+import { formatDay, formatDaysInText } from "../../../utils/day-format";
 import { TOKEN_YIELD_NOTE, type DividendData } from "./client";
 import { carriedDateText, formatDividendYield, growthPaymentsDetail, PAYOUT_BASIS, PAYOUT_NOT_MEANINGFUL, trailingPaymentsText } from "./view";
 import type { FundBondFacts } from "../../../api-client/fund-facts";
@@ -215,7 +216,8 @@ const ratio = (value: unknown) => formatDividendYield(typeof value === "number" 
 const growth = (key: "growth1Y" | "growth3Y", notMeaningful = NOT_MEANINGFUL_TEXT.toLowerCase()) => (value: unknown, row: Record<string, unknown>) =>
   typeof value !== "number" && row[`${key}NotMeaningful`] === true ? notMeaningful
     : typeof value !== "number" && typeof row[`${key}Payments`] === "string" ? "n/a" : formatPercent(typeof value === "number" ? value : undefined);
-const day = (value: unknown) => typeof value === "string" && value ? value : MISSING_VALUE;
+// A day reads day first, as tables write it; the export keeps the ISO day. Other words (a tenor) stay as they are.
+const day = (value: unknown) => typeof value === "string" && value ? formatDay(value) : MISSING_VALUE;
 
 const RANKING_COLUMNS: HeadlessPaneColumn[] = [
   { key: "symbol", header: "Ticker", shrink: false },
@@ -277,11 +279,13 @@ function rankingColumns(bonds: boolean, tax = false): HeadlessPaneColumn[] {
 }
 
 /** Shown once a row is incomplete, so a missing figure never reads as a non-payer's. */
-const NOTE_COLUMN: HeadlessPaneColumn = { key: "note", header: "Note", format: (value) => typeof value === "string" ? value : "",
+// Their days read first in the text; JSON and CSV keep them in ISO.
+const noteText = (value: unknown) => typeof value === "string" ? formatDaysInText(value) : "";
+const NOTE_COLUMN: HeadlessPaneColumn = { key: "note", header: "Note", format: (value) => typeof value === "string" ? value : "", textFormat: noteText,
   description: "What the read of this ticker is missing: not read, no cash history (yields and growth), or no summary (forward yield, payout, pay date); a forward yield read from fundamentals instead is dated by its ex-date." };
 
 /** Shown once a regular payer's trailing year holds fewer payments than its cadence pays, which says nothing is missing from the read itself. */
-const YIELD_BASIS_COLUMN: HeadlessPaneColumn = { key: "yieldBasis", header: "Yield basis", format: (value) => typeof value === "string" ? value : "",
+const YIELD_BASIS_COLUMN: HeadlessPaneColumn = { key: "yieldBasis", header: "Yield basis", format: (value) => typeof value === "string" ? value : "", textFormat: noteText,
   description: "How many payments the trailing yield counts when a regular payer's year holds fewer than its cadence pays (a gap in its ex-dates), and a forward yield that is the trailing year's regular payments when they differ too widely for one to be annualized." };
 
 /** `fn DVD A B C`: one table of every symbol, ranked by trailing yield; with `--tax-rate`, each fund's bond and tax columns. */

@@ -8,6 +8,7 @@ import { createTestPaneConfig, TestPaneFrame } from "../../../test-support/pane"
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { FIXED_INCOME_PANE_ID } from "../fixed-income/model";
+import { formatDay } from "../../../utils/day-format";
 import { cdxBoardCache, sovrBoardCache } from "./client";
 import { CdxPane } from "./cdx-pane";
 import { SovrPane } from "./sovr-pane";
@@ -83,7 +84,7 @@ test("a server with the spread equivalent adds HY's beside its price, and a day 
     const frame = tui.frame();
     expect(frame).toContain("SPREAD EQ");
     expect(frame).toMatch(/CDX HY .*357\.5bp/);
-    expect(frame).toMatch(new RegExp(`iTraxx Crossover .*(${today.slice(0, 5)})?${today.slice(5)} so far`));
+    expect(frame).toMatch(new RegExp(`iTraxx Crossover .*${formatDay(today, "no-year")}( ${today.slice(0, 4)})? so far`));
   }
 });
 

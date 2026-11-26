@@ -1,4 +1,5 @@
 import type { StatItem } from "../../../components/ui";
+import { formatDay } from "../../../utils/day-format";
 
 /**
  * The dates a range of a dated history shows. A range that reaches back past
@@ -51,5 +52,5 @@ export function historyStartNotice(name: string, range: string, span: HistorySpa
 
 /** The same in a pane's detail figures: the history's dates, beside the range figures they bound. */
 export function historySpanStat(span: HistorySpan | null): StatItem | null {
-  return span?.whole ? { id: "history", label: "History", value: span.start, detail: `to ${span.end}` } : null;
+  return span?.whole ? { id: "history", label: "History", value: formatDay(span.start), detail: `to ${formatDay(span.end)}` } : null;
 }

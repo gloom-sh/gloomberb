@@ -181,6 +181,6 @@ test("a short stacked pane leads its detail with monetary basis and extrema date
   const frame = await renderPane({ indicator: "tobins-q" }, 48, 25);
   expect(frame).toContain("38.0T");
   expect(frame).toMatch(/Net worth\s+40\.0T\s+as of 2026Q1/);
-  expect(frame).toContain("2024-01-01");
-  expect(frame).toContain("2026-01-01");
+  expect(frame).toContain("01 Jan 2024");
+  expect(frame).toContain("01 Jan 2026");
 });

@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { formatDay } from "../../../utils/day-format";
 import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useMemo } from "react";
 import type { CarbonBoard, PowerPriceRow } from "../../../api-client/europe-energy";
@@ -68,10 +69,10 @@ function carbonFigures(board: CarbonBoard): StatItem[] {
   if (row.price == null) return [];
   const latest = board.auctions.find((auction) => !auction.aviation && auction.price != null);
   return [
-    { id: "eua", label: `EUA ${CARBON_PRICE_UNIT}`, value: formatPowerPrice(row.price), detail: row.date ?? undefined },
-    { id: "eua-change", label: "EUA 1D", value: formatPowerChange(row.change), ...(row.previousDate ? { detail: `vs ${row.previousDate}` } : {}) },
+    { id: "eua", label: `EUA ${CARBON_PRICE_UNIT}`, value: formatPowerPrice(row.price), detail: row.date ? formatDay(row.date) : undefined },
+    { id: "eua-change", label: "EUA 1D", value: formatPowerChange(row.change), ...(row.previousDate ? { detail: `vs ${formatDay(row.previousDate)}` } : {}) },
     { id: "eua-30d", label: "EUA 30D avg", value: formatPowerPrice(row.average30) },
-    { id: "eua-1y", label: "EUA 1Y ago", value: formatPowerPrice(row.yearAgo), ...(row.yearAgoDate ? { detail: row.yearAgoDate } : {}) },
+    { id: "eua-1y", label: "EUA 1Y ago", value: formatPowerPrice(row.yearAgo), ...(row.yearAgoDate ? { detail: formatDay(row.yearAgoDate) } : {}) },
     ...(latest?.coverRatio != null ? [{ id: "eua-cover", label: "EUA cover", value: `${latest.coverRatio.toFixed(2)}x`,
       detail: [latest.zone, compactTonnes(latest.volume)].filter(Boolean).join(" ") }] : []),
   ];
@@ -83,11 +84,11 @@ function PriceDetail({ row, width, height, focused }: { row: PowerPriceRow; widt
   const history = useAsyncResource(loader, { keepPreviousData: true });
   const series = useMemo(() => historySeries(row, history.data?.payload.points ?? [], colors.warning), [row, history.data, colors.warning]);
   const items: StatItem[] = [
-    { id: "price", label: POWER_PRICE_UNIT, value: formatPowerPrice(row.price), detail: row.date ?? undefined },
-    { id: "change", label: "1D", value: formatPowerChange(row.change), detail: row.previousDate ? `vs ${row.previousDate}` : undefined },
+    { id: "price", label: POWER_PRICE_UNIT, value: formatPowerPrice(row.price), detail: row.date ? formatDay(row.date) : undefined },
+    { id: "change", label: "1D", value: formatPowerChange(row.change), detail: row.previousDate ? `vs ${formatDay(row.previousDate)}` : undefined },
     { id: "average7", label: "7D avg", value: formatPowerPrice(row.average7) },
     { id: "average30", label: "30D avg", value: formatPowerPrice(row.average30) },
-    { id: "yearAgo", label: "1Y ago", value: formatPowerPrice(row.yearAgo), detail: row.yearAgoDate ?? undefined },
+    { id: "yearAgo", label: "1Y ago", value: formatPowerPrice(row.yearAgo), detail: row.yearAgoDate ? formatDay(row.yearAgoDate) : undefined },
     { id: "range", label: "52W range", value: `${formatPowerPrice(row.low52w)} to ${formatPowerPrice(row.high52w)}` },
   ];
   return <StatChartDetail items={items} width={width} height={height} empty={!history.loading && series[0]!.points.length < 2}

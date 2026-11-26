@@ -9,6 +9,7 @@ import {
 } from "./financials";
 import { createTestFinancials, createTestQuote } from "../../test-support/data-provider";
 import { createDailyNavQuote } from "../../test-support/daily-nav";
+import { isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
 import { mapCloudFinancials } from "../gloomberb-cloud/normalizers";
 import { withFiledTrailingEps } from "../../time-series/filed-trailing-eps";
 import { createValuationCurrencyContext } from "../../time-series/valuation-currency";
@@ -64,6 +65,32 @@ describe("provider-router financial quote usability", () => {
     clock = spyOn(Date, "now").mockReturnValue(Date.parse("2026-09-14T18:00:00Z"));
   });
   afterEach(() => clock.mockRestore());
+
+  test("price and embedded financials keep the latest Nasdaq close on Thanksgiving without an active-session age bound", () => {
+    clock.mockReturnValue(Date.parse("2026-11-26T15:00:00Z"));
+    const quote = createTestQuote({ symbol: "NVDA", listingExchangeName: "NASDAQ", marketState: "CLOSED",
+      stale: false, dataSource: "delayed", lastUpdated: Date.parse("2026-11-26T00:59:59.082Z") });
+    expect(isProviderQuoteUsableForCurrentSession(quote, "NASDAQ", "NVDA")).toBe(true);
+    const financials = { quote, annualStatements: [], quarterlyStatements: [], priceHistory: [] };
+    expect(dropUnusableProviderQuote(financials, "NASDAQ").quote).toEqual(quote);
+  });
+
+  test.each([
+    ["HKEX", "0700", "2026-10-01T03:00:00Z", "2026-09-30T08:08:00Z", "2026-09-29T08:08:00Z"],
+    ["SSE", "600519", "2026-10-01T03:00:00Z", "2026-09-30T07:04:07Z", "2026-09-29T07:04:07Z"],
+    ["SZSE", "301219", "2026-10-01T03:00:00Z", "2026-09-30T07:04:07Z", "2026-09-29T07:04:07Z"],
+    ["JPX", "7203", "2026-11-03T02:00:00Z", "2026-11-02T06:30:00Z", "2026-10-30T06:30:00Z"],
+    ["NSE", "RELIANCE", "2026-10-02T05:30:00Z", "2026-10-01T10:00:00Z", "2026-09-30T10:00:00Z"],
+  ])("a carried REGULAR label does not reopen a published %s holiday", (venue, symbol, now, close, olderClose) => {
+    clock.mockReturnValue(Date.parse(now));
+    const latest = createTestQuote({ symbol, listingExchangeName: venue, marketState: "REGULAR",
+      dataSource: "delayed", lastUpdated: Date.parse(close) });
+    const older = { ...latest, lastUpdated: Date.parse(olderClose) };
+    expect(isQuoteStaleForCurrentSession(latest)).toBe(false);
+    expect(isQuoteStaleForCurrentSession(older)).toBe(true);
+    expect(isProviderQuoteUsableForCurrentSession(latest, venue)).toBe(true);
+    expect(isProviderQuoteUsableForCurrentSession(older, venue)).toBe(false);
+  });
 
   test("accepts the dated daily NAV in quotes and embedded financials during regular hours", () => {
     clock.mockReturnValue(Date.parse("2026-10-07T15:00:00Z"));

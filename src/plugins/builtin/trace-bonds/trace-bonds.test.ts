@@ -302,8 +302,8 @@ test("a narrow tape keeps price, yield and CUSIP ahead of what describes the bon
   for (const name of ["Price", "Yield"]) expect(header).toContain(name);
   expect(text).not.toContain("WHIRLPOOL CORP");
   // Two issues of one issuer stay apart by CUSIP, and the name's room goes to their coupon and maturity.
-  expect(lines.find((line) => line.includes("963320BG0"))).toMatch(/7\.875 +2034-07-01 +88\.055/);
-  expect(lines.find((line) => line.includes("963320BF2"))).toMatch(/7\.500 +2031-07-01/);
+  expect(lines.find((line) => line.includes("963320BG0"))).toMatch(/7\.875 +01 Jul 2034 +88\.055/);
+  expect(lines.find((line) => line.includes("963320BF2"))).toMatch(/7\.500 +01 Jul 2031/);
   expect(lines.filter((line) => visibleLength(line) > 56)).toEqual([]);
 
   // A saved issuer sort, with the column left out, sorts as the default the header shows.

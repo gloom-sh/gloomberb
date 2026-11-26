@@ -1,3 +1,4 @@
+import { formatDay, isoDay } from "../../../utils/day-format";
 import type { ExposureExtensionObservation, ExposurePayload } from "../../../api-client/exposure";
 import { formatCompact, formatNumber } from "../../../utils/format";
 import type { ExposureRow } from "./model";
@@ -14,7 +15,9 @@ export function driverValue(row: ExposureExtensionObservation): string {
   if (row.range?.low != null && row.range.high != null) return `${qualifier}${number(row.range.low)} to ${number(row.range.high)}`;
   if (row.range?.low != null) return `${row.qualifier === "greater_than" ? ">" : "≥"} ${number(row.range.low)}`;
   if (row.range?.high != null) return `${row.qualifier === "less_than" ? "<" : "≤"} ${number(row.range.high)}`;
-  return row.valueText ?? (row.status ? row.status.charAt(0).toUpperCase() + row.status.slice(1) : "Unknown");
+  // A date the filing states (a maturity) reads day first, as every table writes a day.
+  if (row.valueText != null) return isoDay(row.valueText) === row.valueText ? formatDay(row.valueText) : row.valueText;
+  return (row.status ? row.status.charAt(0).toUpperCase() + row.status.slice(1) : "Unknown");
 }
 /** The value with its unit in one cell, as the report prints it: 201.18B USD, ≈ 70%. Wording without a number stands alone. */
 export function driverAmount(row: ExposureExtensionObservation): string {
@@ -27,7 +30,7 @@ const NAMED_DIMENSIONS = ["segment", "product", "geography", "region", "cohort"]
 /** What a figure covers, in words, the segment, product or geography it names first: Americas · geographic segment. */
 export function driverScope(row: ExposureExtensionObservation): string {
   const rank = (key: string) => NAMED_DIMENSIONS.includes(key) ? 0 : key === "comparison" ? 2 : 1;
-  return Object.entries(row.dimensions ?? {}).sort(([a], [b]) => rank(a) - rank(b)).map(([, value]) => value.replaceAll("_", " ")).join(" · ");
+  return Object.entries(row.dimensions ?? {}).sort(([a], [b]) => rank(a) - rank(b)).map(([, value]) => /^\d{4}-\d{2}-\d{2}$/.test(value) ? formatDay(value) : value.replaceAll("_", " ")).join(" · ");
 }
 export function driverRows(data: ExposurePayload): ExposureRow[] {
   return data.holdings.flatMap(holding => (holding.extensions ?? []).map(driver => ({

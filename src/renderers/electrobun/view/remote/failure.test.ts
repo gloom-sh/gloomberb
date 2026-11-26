@@ -5,6 +5,8 @@ import { debugLog } from "../../../../utils/debug-log";
 const requests: string[] = [];
 mock.module("../backend-rpc", () => ({
   getElectrobunBackendInitSnapshot: () => null,
+  // A run keeps the names the first mock of this module exports, so each mock of it here exports all three.
+  subscribeBackendCapability: () => () => {},
   backendRequest: async (method: string) => {
     requests.push(method);
     throw new Error("token=private portfolio=private");

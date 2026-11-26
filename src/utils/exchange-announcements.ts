@@ -38,7 +38,7 @@ const PAGES: Readonly<Record<string, (code: string) => ExchangeAnnouncementsPage
   KOSDAQ: () => PAGES.KRX!(""),
   TWSE: () => ({ name: "MOPS filings", url: "https://doc.twse.com.tw/server-java/t57sb01" }),
   TPEX: () => PAGES.TWSE!(""),
-  NSE: () => ({ name: "NSE corporate announcements", url: "https://www.nseindia.com/companies-listing/corporate-filings-announcements" }),
+  NSE: () => ({ name: "NSE corporate announcements", url: "https://www.nseindia.in/companies-listing/corporate-filings-announcements" }),
   BSE: () => ({ name: "BSE corporate announcements", url: "https://www.bseindia.com/corporates/ann.html" }),
   SSE: () => ({ name: "CNINFO filings", url: "https://www.cninfo.com.cn/new/index" }),
   SZSE: () => PAGES.SSE!(""),
@@ -61,7 +61,7 @@ function exchangeAnnouncementsPage(symbol: string, exchange: string | null | und
 
 const PUBLISHERS: Readonly<Record<string, string>> = {
   TWSE: "MOPS", TPEX: "MOPS",
-  ASX: "ASX", CXA: "ASX", HKEX: "HKEXnews", SWX: "SIX Swiss Exchange",
+  ASX: "ASX", CXA: "ASX", HKEX: "HKEXnews", SWX: "SIX Swiss Exchange", NSE: "NSE", SET: "SET",
   JPX: "TDnet", HNX: "HNX", HOSE: "HOSE", KRX: "DART", KOSDAQ: "DART", SGX: "SGX", SSE: "CNINFO", SZSE: "CNINFO",
 };
 

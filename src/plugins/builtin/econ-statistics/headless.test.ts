@@ -243,6 +243,10 @@ test("nowcasts retain published rates and signed indexes, ranked against their o
       latest: item.values[2], formattedLatest: item.formatted, reading: item.reading,
     });
   }
+  // JSON and CSV keep a week's ISO day; the text reads it day first.
+  const text = renderHeadlessPaneText(econStatisticsHeadless, report, { rawArgument: "", argument: null, symbols: [], options: {} } as HeadlessPaneLoadArgs, "ECST");
+  expect(text).toContain("week ending 19 Jun 2026");
+  expect(text).not.toContain("2026-06-19");
 });
 
 test("GDPNow dates the revision and compares it with the preceding update of the same quarter", async () => {

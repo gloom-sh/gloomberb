@@ -11,6 +11,7 @@ import {
   activeUsMarketSession,
   delayedFeedLagMs,
   isMiddayBreakPrint,
+  isPublishedEquityHoliday,
   isRegularSessionTime,
   isUsExtendedHoursSessionPrint,
   isUsPriorSessionPremarketQuote,
@@ -138,10 +139,9 @@ const ACTIVE_DELAYED_PROVIDER_QUOTE_MAX_AGE_MS = 30 * 60_000;
  * close, and that closing quote is exactly what a world board should show.
  */
 function isQuoteInActiveSession(quote: Quote, now: number): boolean {
-  if (isExtendedHoursExchange(quote)) return activeUsMarketSession(now) != null;
-  const state = quote.marketState ?? "";
-  if (state === "REGULAR") return true;
-  return false;
+  const exchange = quote.listingExchangeName || quote.exchangeName;
+  if (isExtendedHoursExchange(quote)) return activeUsMarketSession(now, exchange) != null;
+  return quote.marketState === "REGULAR" && !isPublishedEquityHoliday(exchange, now);
 }
 
 // An opening auction can print before the continuous open (Hong Kong's at 09:20).

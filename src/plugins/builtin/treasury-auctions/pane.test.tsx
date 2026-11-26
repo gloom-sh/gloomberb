@@ -21,7 +21,7 @@ import {
 } from "./cache";
 import { TreasuryAuctionsPane } from "./pane";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
-import { auction, RECORDED_NOW, recordedFiscalData, recordedTreasuryDirect } from "./test-fixture";
+import { auction, EMPTY_HISTORY_NOW, emptyHistoryPage, emptyHistoryRecentBody, RECORDED_NOW, recordedFiscalData, recordedTreasuryDirect } from "./test-fixture";
 import type { TreasuryAuction } from "./types";
 import type { HkTendersPayload } from "../../../api-client/hk-tenders";
 import hkRecording from "./fixtures/hk-tenders-20261108.json";
@@ -177,6 +177,29 @@ describe("TreasuryAuctionsPane", () => {
     expect(row("12 Nov", "30-Year")).toMatch(/Bond\s+30-Year\s+Pending/);
     expect(row("9 Nov", "3-Year")).toMatch(/Note\s+3-Year\s+Pending/);
     expect(lines.filter((line) => line.includes("Pending"))).toHaveLength(6);
+  });
+
+  test("Results stays current with zero history pages and published recent auctions", async () => {
+    setSystemTime(new Date(EMPTY_HISTORY_NOW));
+    attachTreasuryAuctionsPersistence(new MemoryPluginPersistence());
+    setHttpFetchTransport(async (url) => {
+      const request = new URL(url);
+      if (request.searchParams.get("filter") === "auction_date:gte:2026-10-27") return Response.json(emptyHistoryPage);
+      if (request.searchParams.get("startDate") === "2026-10-27") return Response.json(emptyHistoryRecentBody);
+      throw new Error("Unexpected auction request");
+    });
+    const instance = commandInstance("--history-days 30 --view results", { paneId: FIXED_INCOME_PANE_ID, instanceId: PANE_INSTANCE_ID });
+    const state = createInitialState(createTestPaneConfig("/tmp/gloomberb-auctions-pane-test", instance));
+    await tui.render(
+      <TestPaneFrame state={state} paneId={PANE_INSTANCE_ID} pluginId="macro" runtime={paneRuntime} width={150} height={24}>
+        {(body) => <TreasuryAuctionsPane paneId="treasury-auctions" paneType="treasury-auctions" focused {...body} />}
+      </TestPaneFrame>,
+      { width: 150, height: 24 },
+    );
+    const frame = await tui.waitForFrameToContain("5.459%");
+    expect(frame).toMatch(/18 Nov\s+Bond\s+20-Year\s+5\.459%.*2\.63/);
+    expect(frame).toMatch(/8 Dec\s+Note\s+3-Year\s+Pending/);
+    expect(frame).not.toMatch(/stale|saved copy|invalid page count|returned no auctions/i);
   });
 
   test("opens a detail view for the selected auction", async () => {

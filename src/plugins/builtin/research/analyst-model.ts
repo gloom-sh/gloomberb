@@ -268,7 +268,7 @@ const DEFAULT_RATING_SORT_DIRECTIONS: Record<RatingColumnId, SortDirection> = {
 };
 
 const BASE_RATING_COLUMNS: RatingColumn[] = [
-  { id: "date", label: "DATE", width: 10, align: "left" },
+  { id: "date", label: "DATE", width: 11, align: "left" },
   { id: "firm", label: "FIRM", width: 20, align: "left" },
   { id: "action", label: "ACTION", width: 10, align: "left" },
   { id: "current", label: "RATING", width: 13, align: "left" },

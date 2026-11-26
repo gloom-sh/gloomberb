@@ -3,6 +3,7 @@ import type { Quote, QuoteDataSource } from "../../types/financials";
 import { getLanguage, tf } from "../../i18n";
 import { formatUtcDayTime, formatUtcWeekdayTime } from "../../utils/utc-time";
 import { formatShortDate } from "../../utils/datetime-format";
+import { formatDay } from "../../utils/day-format";
 import { isRegularSessionTime, quoteFeedDelayMinutes } from "../market/freshness";
 import { EXTENDED_SESSION_MARKS, extendedPrintTime, quoteBookSessionLabel, quoteHeadlineTime, quoteSessionStateLabel } from "../market/status";
 import { venueSessionNow } from "../market/venue-session";
@@ -110,17 +111,23 @@ function readQuoteBook(quote: Quote | null | undefined, now: number): QuoteBookR
 /**
  * Date the book on its own clock, never the trade's. Only today's regular
  * session can omit the date and session. Missing time is explicit.
+ *
+ * `weekday: false` dates it as a table does (`26 Nov 00:59 UTC`, bookStamp),
+ * for a place too narrow for `Thu 26 Nov 00:59 UTC`: the date stays, the
+ * weekday that repeats it goes.
  */
 export function quoteBookTimeParts(
   quote: Quote | null | undefined,
   now = Date.now(),
+  { weekday = true }: { weekday?: boolean } = {},
 ): string[] {
   const book = readQuoteBook(quote, now);
   if (!book) return [];
   const feed = book.dataSource === "live" ? "real-time" : book.dataSource === "snapshot" ? "snapshot" : book.dataSource === "delayed" ? "delayed" : null;
   if (book.time == null) return [QUOTE_BOOK_UNDATED, book.sessionWords, feed].filter((part): part is string => part != null);
   if (book.current) return [asOfClock(book.time, now), ...(feed ? [feed] : [])];
-  return [`${formatUtcDayTime({ time: book.time, dateOnly: false }, now)} UTC`, book.sessionWords!, ...(feed ? [feed] : [])];
+  const dated = weekday ? formatUtcDayTime({ time: book.time, dateOnly: false }, now) : bookStamp(book.time, now);
+  return [`${dated} UTC`, book.sessionWords!, ...(feed ? [feed] : [])];
 }
 
 export function formatQuoteBookTime(quote: Quote | null | undefined, now = Date.now()): string | null {
@@ -145,19 +152,18 @@ const BOOK_SESSION_MARKS: Record<QuoteBookSession, string | null> = {
   closed: "closed",
 };
 
-/** The widest formatQuoteBookCell writes: `snap closed 2025-09-19 00:30`. */
-export const QUOTE_BOOK_CELL_MAX_WIDTH = 28;
+/** The widest formatQuoteBookCell writes: `snap closed 19 Sep 2025 00:30`. */
+export const QUOTE_BOOK_CELL_MAX_WIDTH = 29;
 
 /**
- * A book's UTC day and clock as the app writes a numeric stamp (a perps
- * row's `10-26 06:52`, an alert's quote time): month then day, in the order
- * of the ISO date they are cut from, so neither reads as the other. The year
- * leads only when it is not this one's (`2025-09-19 00:30`).
+ * A book's UTC day and clock as every table writes a time beside its day (a
+ * perps row's `26 Oct 06:52`): the day first, without its year when it is
+ * this one's, with it when not (`19 Sep 2025 00:30`).
  */
 function bookStamp(time: number, now: number): string {
   const iso = new Date(time).toISOString();
   const thisYear = iso.slice(0, 4) === new Date(now).toISOString().slice(0, 4);
-  return (thisYear ? iso.slice(5, 16) : iso.slice(0, 16)).replace("T", " ");
+  return `${formatDay(iso, thisYear ? "no-year" : "full")} ${iso.slice(11, 16)}`;
 }
 
 /**
@@ -165,7 +171,7 @@ function bookStamp(time: number, now: number): string {
  * UTC), with everything formatQuoteBookTime says in words kept as a mark:
  *
  * - When: the calendar day and the clock on every row, today's included
- *   (`11-24 23:40`, bookStamp): a weekday alone names no date. `not dated` for
+ *   (`24 Nov 23:40`, bookStamp): a weekday alone names no date. `not dated` for
  *   a book the source sent without its time; `dated` says which.
  * - Session, before it, where it is not the regular one: `PM`, `AH`, `lunch`,
  *   or `closed` for a quote left while the market was shut. No mark is the
@@ -173,7 +179,7 @@ function bookStamp(time: number, now: number): string {
  * - Feed, first: `◷` for a delayed feed and `snap` for a snapshot, by the
  *   book's own source. No mark is a real-time book, or a source that does not say.
  *
- * `◷closed 11-21 01:30`, `AH 11-24 23:40`, `◷not dated`. Null without a bid or an ask.
+ * `◷closed 21 Nov 01:30`, `AH 24 Nov 23:40`, `◷not dated`. Null without a bid or an ask.
  */
 export function formatQuoteBookCell(quote: Quote | null | undefined, now = Date.now()): { text: string; dated: boolean } | null {
   const book = readQuoteBook(quote, now);

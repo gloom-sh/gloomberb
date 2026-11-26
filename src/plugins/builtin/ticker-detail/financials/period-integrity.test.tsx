@@ -147,7 +147,7 @@ test("actual financial table and CSV retain the derived TTM window and known fie
   // A column is headed by its fiscal period; the day it ends is the first row, in the pane and in its CSV.
   expect(csv).toContain("USD k,TTM Q4 FY24,FY2023\nPeriod end,2024-12-31,2023-12-31\n");
   expect(csv).toContain("Currency,USD");
-  expect(frame()).toMatch(/USD K\s+TTM Q4 FY24\s+FY2023\s*\n\s+Period end\s+2024-12-31\s+2023-12-31\s*\n/);
+  expect(frame()).toMatch(/USD K\s+TTM Q4 FY24\s+FY2023\s*\n\s+Period end\s+31 Dec 2024\s+31 Dec 2023\s*\n/);
   expect(frame()).toMatch(/^ {2}USD K\s/m);
   expect(row(result, "income:revenue").TTM).toBe(400);
 });
@@ -188,7 +188,7 @@ test("explicit quarterly headless report fails honestly while interactive tabs i
   expect(result.rows).toEqual([]);
   expect(result.unavailableSymbols).toEqual([SYMBOL]);
   expect(text).toContain("No quarterly financial statement coverage");
-  expect(frame()).toMatch(/FY2025\s+FY2024\s*\n\s+Period end\s+2025-12-31\s+2024-12-31/);
+  expect(frame()).toMatch(/FY2025\s+FY2024\s*\n\s+Period end\s+31 Dec 2025\s+31 Dec 2024/);
 
   const unavailable = await cli(financials, "quarterly");
   expect(unavailable.data).toMatchObject({ complete: false, empty: true, unavailableSymbols: [SYMBOL] });
@@ -230,7 +230,7 @@ test("mouse period changes keep active CSV and quarterly values aligned, includi
   const quarterly = await outputs(financials, "quarterly");
   expect(quarterly.csv).toContain("Growth,QoQ");
   expect(quarterly.csv).not.toContain("TTM");
-  expect(frame()).toMatch(/Q4 FY25\s+Q3 FY25\s+Q2 FY25\s+Q1 FY25\s*\n\s+Period end\s+2025-12-31\s+2025-09-30\s+2025-06-30\s+2025-03-31/);
+  expect(frame()).toMatch(/Q4 FY25\s+Q3 FY25\s+Q2 FY25\s+Q1 FY25\s*\n\s+Period end\s+31 Dec 2025\s+30 Sep 2025\s+30 Jun 2025\s+31 Mar 2025/);
   expect(row(quarterly.result, "eps:1").cells[0]!.value).toBe(0);
 
   await clickPeriod();
@@ -240,7 +240,7 @@ test("mouse period changes keep active CSV and quarterly values aligned, includi
   expect(annual.csv).toContain("FY2025");
   expect(annual.csv).toContain("Currency,USD");
   expect(annual.csv).toContain("Growth,YoY");
-  expect(frame()).toMatch(/FY2025\s*\n\s+Period end\s+2025-12-31/);
+  expect(frame()).toMatch(/FY2025\s*\n\s+Period end\s+31 Dec 2025/);
 });
 
 for (const reportedCurrency of [undefined, "USD"]) {
@@ -265,7 +265,7 @@ for (const reportedCurrency of [undefined, "USD"]) {
     expect(row(result, "basicShares:1").cells[0]!.growth).toBe(1);
     expect(csv).toContain(`Metric,FY2025 USD,${expectedHeader}\nPeriod end,2025-12-31,2024-12-31\n`);
     expect(frame()).toMatch(reportedCurrency ? /FY2025 USD\s+FY2024 USD\s*\n/ : /FY2025 USD\s+FY2024\s*\n/);
-    expect(frame()).toMatch(/Period end\s+2025-12-31\s+2024-12-31/);
+    expect(frame()).toMatch(/Period end\s+31 Dec 2025\s+31 Dec 2024/);
     expect(text).toContain(reportedCurrency ? "2024-12-31 USD" : "2024-12-31 (provider date)");
     expect(financials.annualStatements[0]!.currency).toBe(reportedCurrency);
   });

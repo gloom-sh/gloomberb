@@ -58,7 +58,8 @@ function statedDeclaration(exDate: string, options: DeclaredBasisOptions): { amo
  * ahead, `annualized from the declared $0.98 payable 2026-12-10, ex
  * 2026-11-19`, the amount and pay date when they are stated; the basis alone
  * when the date is unknown. `payDate` is the pay date a source states beside
- * that ex-date without a declared row (DVD's summary).
+ * that ex-date without a declared row (DVD's summary). Its days are ISO, as
+ * exports keep them; DVD's pane and text draw them day first.
  */
 export function forwardDividendBasis(
   asOf: string | Date | null | undefined,

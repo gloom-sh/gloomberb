@@ -2,10 +2,13 @@ import type { FuturesContract, FuturesCurvePayload } from "../../../api-client/f
 import { futuresSpecLines } from "../../../market-data/futures-contract";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneEntry, HeadlessPaneFreshness } from "../../../types/plugin";
 import { MISSING_VALUE, formatPercentRaw } from "../../../utils/format";
+import { formatDay } from "../../../components/ui/day-cell";
+import { formatDaysInText } from "../../../utils/day-format";
 import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 import { loadFuturesCurve, loadCurveSpot, loadCurveSpotBars, loadCurveSpotCloses, loadFuturesCurveAsOf } from "./client";
-import { curveReportFreshness, basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveCache, curveSpotBars, curveBasisPercent, curveInterestDate, curveBasisRows, curveChangeText, curveContractCode, curveIncompleteDetail, curvePrice, curveReadsThirtySeconds, curveRoundedPrice, curveSpotSource, curveSpotPremium, curveSpreadLabel, curveTimestamp, curveNoTradeSince, curveSessionNote, curveSettleShown, curveStandIn, curveUnitLabel, curveRootNamed, noTradeChangeNote, normalizeCurveRoot, shortDatedBasisNote, skippedSpreadNotice, spotIndexSymbol, thinSpreadNotice, unpairedContractCount, unsupportedCurveRootMessage, type ContractBasis, type CurveSpotPremium } from "./model";
+import { curveReportFreshness, basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveCache, curveSpotBars, curveBasisPercent, curveInterestDate, curveBasisRows, curveStampText, curveChangeText, curveContractCode, curveIncompleteDetail, curvePrice, curveReadsThirtySeconds, curveRoundedPrice, curveSpotSource, curveSpotPremium, curveSpreadLabel, curveTimestamp, curveNoTradeSince, curveSessionNote, curveSettleShown, curveStandIn, curveUnitLabel, curveRootNamed, noTradeChangeNote, normalizeCurveRoot, shortDatedBasisNote, skippedSpreadNotice, spotIndexSymbol, thinSpreadNotice, unpairedContractCount, unsupportedCurveRootMessage, type ContractBasis, type CurveSpotPremium } from "./model";
 import { COMMODITIES_VIEW_STATE } from "../commodities-energy/view-state";
+import { dayFirstEntries } from "../shared/day-entries";
 import { knownGapMessage } from "../../../cli/known-gaps";
 
 /** The root a report shows when none is given. */
@@ -58,7 +61,7 @@ function contractRow(row: FuturesContract, data: FuturesCurvePayload, root: stri
  */
 function contractColumns(root: string, settlementDate: string | null, options: { basis: boolean; last: boolean; notice: boolean; text?: boolean }): HeadlessPaneColumn[] {
   const price = (value: unknown) => typeof value === "number" ? curvePrice(value, root) : MISSING_VALUE;
-  const date = (value: unknown) => typeof value === "string" ? value : MISSING_VALUE;
+  const date = (value: unknown) => typeof value === "string" ? formatDay(value) : MISSING_VALUE;
   // An export has every column whatever the root, so CL's and GC's headers are the same; the text drops the ones a root leaves blank.
   const exported = !options.text;
   return [
@@ -66,9 +69,9 @@ function contractColumns(root: string, settlementDate: string | null, options: {
     { key: "lastTrade", header: "Last Trade", shrink: false, format: date },
     // Cash-settled roots have no first notice day.
     ...options.notice || exported ? [{ key: "firstNotice", header: "1st Notice", shrink: false,
-      format: (value: unknown, row: Record<string, unknown>) => typeof value === "string" ? `${value}${row.inDelivery ? " passed" : ""}` : MISSING_VALUE }] : [],
+      format: (value: unknown, row: Record<string, unknown>) => typeof value === "string" ? `${formatDay(value)}${row.inDelivery ? " passed" : ""}` : MISSING_VALUE }] : [],
     // One header whatever the session: an export dates each settlement in its own column, the text in the header.
-    { key: "settlement", header: "Settle", ...settlementDate ? { textHeader: `Settle ${settlementDate}` } : {}, align: "right", format: price },
+    { key: "settlement", header: "Settle", ...settlementDate ? { textHeader: `Settle ${formatDay(settlementDate)}` } : {}, align: "right", format: price },
     ...options.text ? [] : [{ key: "settlementDate", header: "settle_date", literalHeader: true, shrink: false, format: date }],
     // A Cboe price is the settlement itself, with no separate last trade: an export leaves its Last blank.
     ...options.last || exported ? [{ key: "price", header: "Last", align: "right" as const, format: options.last ? price : () => MISSING_VALUE }] : [],
@@ -82,11 +85,11 @@ function contractColumns(root: string, settlementDate: string | null, options: {
     // the text says so, an export leaves the cell empty (settle_date dates it).
     { key: "asOf", header: "As Of UTC", shrink: false,
       format: (value, row) => typeof row.settleShown === "string" ? MISSING_VALUE : typeof value === "string" ? curveTimestamp(value) : MISSING_VALUE,
-      textFormat: (value, row) => typeof row.settleShown === "string" ? `settle ${row.settleShown}` : typeof value === "string" ? curveTimestamp(value) : MISSING_VALUE },
+      textFormat: (value, row) => typeof row.settleShown === "string" ? `settle ${formatDay(row.settleShown)}` : typeof value === "string" ? curveStampText(value) : MISSING_VALUE },
     { key: "openInterest", header: "Open Int", align: "right", format: (value) => typeof value === "number" ? value.toLocaleString("en-US") : MISSING_VALUE },
     // Its own session beside it: the text says `n/a` for a count it cannot date, an export leaves the cell empty.
     { key: "openInterestAsOf", header: "OI Date", shrink: false, format: date,
-      textFormat: (value, row) => curveInterestDate({ openInterest: typeof row.openInterest === "number" ? row.openInterest : null, openInterestAsOf: typeof value === "string" ? value : null }) },
+      textFormat: (value, row) => formatDay(curveInterestDate({ openInterest: typeof row.openInterest === "number" ? row.openInterest : null, openInterestAsOf: typeof value === "string" ? value : null })) },
     { key: "volume", header: "Volume", align: "right", format: (value) => typeof value === "number" ? value.toLocaleString("en-US") : MISSING_VALUE },
     { key: "percentile", header: "Pctl", align: "right", format: (value) => typeof value === "number" ? String(value) : MISSING_VALUE },
   ];
@@ -136,7 +139,7 @@ const thirtySecondsFormat = (root: string, key: string): Record<string, Headless
 function spotPremiumEntries(premium: CurveSpotPremium, root: string): HeadlessPaneEntry[] {
   return [
     { key: "spot", label: premium.label, value: premium.close,
-      formatted: premium.close == null ? MISSING_VALUE : `${premium.close.toFixed(2)}${premium.date ? `, ${premium.date} close` : ""}` },
+      formatted: premium.close == null ? MISSING_VALUE : `${premium.close.toFixed(2)}${premium.date ? `, ${formatDay(premium.date)} close` : ""}` },
     { key: "frontPremium", label: "Front premium", value: premium.premium,
       formatted: premium.premium == null ? MISSING_VALUE
         : `${curveChangeText(premium.premium, root)}${premium.frontSymbol ? `, ${curveContractCode(premium.frontSymbol)} settle less spot` : ""}` },
@@ -252,14 +255,16 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
           rows: data.contracts.map((row) => contractRow(row, data, root, !!date, bases?.get(row.symbol))) },
         { title: "Front spread", columns: spreadColumns(spreadRow, spreadFormats, false), textColumns: spreadColumns(spreadRow, spreadFormats, true),
           rows: [spreadRow] },
-        ...spotPremium ? [{ title: "Front vs spot", entries: spotPremiumEntries(spotPremium, root) }] : [],
+        // The close's day reads first in the text; JSON and CSV keep it in ISO.
+        ...spotPremium ? [{ title: "Front vs spot", ...dayFirstEntries(spotPremiumEntries(spotPremium, root)) }] : [],
         ...terms.length ? [{ title: "Contract terms", entries: terms }] : [],
         // A week- or month-back price is dated by its own session in an export's as_of, not the curve's.
         ...data.ghosts.map((ghost) => ({ title: `${ghost.label} same-contract history`, columns: fieldColumns(GHOST_FIELDS, ghost.points[0] ?? {}, thirtySecondsFormat(root, "price")),
           ...unit ? { unit } : {}, rowAsOfKey: "asOf", rows: ghost.points.map((point) => ({ ...point })) })),
       ],
       errors: data.gaps,
-      ...(notes.length ? { notes } : {}),
+      // The notes read their days first in the text; JSON and CSV keep them in ISO.
+      ...(notes.length ? { notes, textNotes: notes.map((note) => formatDaysInText(note)) } : {}),
       ...(incompleteDetail ? { incompleteDetail } : {}),
       metadata: { ...data, quoteUnit: unit, ...(spot && bases ? { spot, basisBlankedUnpaired: unpairedContractCount(bases.values()) } : {}),
         ...(spotPremium ? { spotPremium } : {}), ...(args.argument ? {} : { defaultArgument: DEFAULT_ROOT }),

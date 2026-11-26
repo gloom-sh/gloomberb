@@ -15,7 +15,7 @@ import { baseConversionLabel } from "../../../cli/base-conversion-label";
 import { loadScenarioFx, netPremiumTotal, scenarioMoneyTotals, scenarioNeedsFx } from "./base-totals";
 import { cashSecuredPut, cspReportEntries, loadNextEarningsDate } from "./csp";
 import { formatSpotTime } from "../options/model-spot";
-import { amountUnit, buildScenario, currencyLabel, exportPercent, parseLegs, scenarioDateLabels, scenarioValueUnit } from "./model";
+import { amountUnit, buildScenario, currencyLabel, exportPercent, parseLegs, scenarioDateLabels, scenarioDayText, scenarioValueUnit } from "./model";
 import { hedgeInputsFromSettings, hedgeReportEntries, scenarioHedgeBudget, seededLegQuotes } from "./hedge";
 import { collarReportEntries, scenarioCollar } from "./collar";
 import { modelDividendYieldNote } from "../../../market-data/model-dividend-yield";
@@ -210,7 +210,7 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
         { title: `Scenario grid (P&L, ${per})`, columns: [
           { key: "spot", header: "Spot/share", format: money },
           { key: "move", header: "Move", format: (value) => typeof value === "number" && Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : MISSING_VALUE },
-          ...scenarioDateLabels(scenario.dates).map((label, index) => ({ key: `date${index}`, header: label, format: money })),
+          ...scenarioDateLabels(scenario.dates).map((label, index) => ({ key: `date${index}`, header: label, textHeader: scenarioDayText(label), format: money })),
         ], rows: scenario.grid.map((row) => ({ spot: row.spot, move: row.move,
           ...Object.fromEntries(row.values.map((value, index) => [`date${index}`, value])) })) },
         ...(needsFx ? [{ title: `Base totals (${base})`, entries: [
@@ -220,7 +220,7 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
         ] }] : []),
         ...(fx ? [{ title: `Scenario grid (P&L, ${base})`, columns: [
           { key: "spot", header: `Spot/share (${exportCurrency})`, format: money },
-          ...scenarioDateLabels(scenario.dates).map((label, index) => ({ key: `date${index}`, header: label, format: money })),
+          ...scenarioDateLabels(scenario.dates).map((label, index) => ({ key: `date${index}`, header: label, textHeader: scenarioDayText(label), format: money })),
         ], rows: scenario.grid.map((row) => ({ spot: row.spot,
           ...Object.fromEntries(row.values.map((value, index) => [`date${index}`, value * fx.factor])) })) }] : []),
       ] : [],

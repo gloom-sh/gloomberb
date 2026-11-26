@@ -431,7 +431,7 @@ function fit(columns: Column[], dropOrder: string[], width: number): Column[] {
 
 export function filingColumns(width: number): Column[] {
   return fit([
-    { id: "filed", label: "Filed", width: 10, align: "left" },
+    { id: "filed", label: "Filed", width: 11, align: "left" },
     { id: "company", label: "Company", width: 22, align: "left", flexGrow: 1 },
     { id: "ticker", label: "Ticker", width: 7, align: "left" },
     { id: "event", label: "Items", width: 24, align: "left", flexGrow: 1 },
@@ -441,11 +441,11 @@ export function filingColumns(width: number): Column[] {
 
 export function goingConcernColumns(width: number, verdict: GoingConcernVerdictFilter): Column[] {
   return fit([
-    { id: "filed", label: "Filed", width: 10, align: "left" },
+    { id: "filed", label: "Filed", width: 11, align: "left" },
     { id: "company", label: "Company", width: 24, align: "left", flexGrow: 1 },
     { id: "ticker", label: "Ticker", width: 10, align: "left" },
     { id: "form", label: "Form", width: 5, align: "left" },
-    { id: "period", label: "Period", width: 10, align: "left" },
+    { id: "period", label: "Period", width: 11, align: "left" },
     // One verdict filtered means one verdict on every row.
     ...(verdict === "all" ? [{ id: "verdict", label: "Disclosure", width: 28, align: "left" as const }] : []),
   ], ["period", "form", "ticker", "verdict"], width);
@@ -453,20 +453,20 @@ export function goingConcernColumns(width: number, verdict: GoingConcernVerdictF
 
 export function designationColumns(width: number): Column[] {
   return fit([
-    { id: "date", label: "Date", width: 10, align: "left" },
+    { id: "date", label: "Date", width: 11, align: "left" },
     { id: "basis", label: "Date basis", width: 10, align: "left" },
     { id: "code", label: "Code", width: 6, align: "left" },
     { id: "name", label: "Company", width: 16, align: "left", flexGrow: 1 },
     { id: "exchange", label: "Exch", width: 5, align: "left" },
-    // Room for "Changed trading method, ended 2026-10-06" once the pane is wide.
-    { id: "status", label: "Status", width: width >= 100 ? 40 : 22, align: "left" },
+    // Room for "Changed trading method, ended 06 Oct 2026" once the pane is wide.
+    { id: "status", label: "Status", width: width >= 100 ? 41 : 22, align: "left" },
   ], ["exchange", "code"], width);
 }
 
 /** `flagRoom` widens the country column for the flag the desktop draws before its code. */
 export function insolvencyColumns(width: number, flagRoom = 0): Column[] {
   return fit([
-    { id: "published", label: "Published", width: 10, align: "left" },
+    { id: "published", label: "Published", width: 11, align: "left" },
     { id: "company", label: "Company", width: 22, align: "left", flexGrow: 1 },
     { id: "country", label: "Ctry", width: 4 + flagRoom, align: "left" },
     { id: "registry", label: "Registry no.", width: 12, align: "left" },

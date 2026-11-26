@@ -59,7 +59,7 @@ describe("scheduled releases on the term structure", () => {
     const readings = surfaceEventReadings(expiries, catalogue, [cpi, fomc]);
     expect(readings).toHaveLength(1);
     const [reading] = readings as [ReturnType<typeof surfaceEventReadings>[number]];
-    expect(surfaceReadingLabel(reading)).toBe("FOMC 12-09 + CPI 12-10");
+    expect(surfaceReadingLabel(reading)).toBe("FOMC 09 Dec + CPI 10 Dec");
     const [early, late] = expiries as [SurfaceExpiry, SurfaceExpiry];
     const variance = 0.18 ** 2 * late.years - 0.16 ** 2 * early.years;
     const eventVariance = variance - 0.16 ** 2 * (late.years - early.years - 2 / 365);

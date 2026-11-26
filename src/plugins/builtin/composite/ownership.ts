@@ -3,6 +3,7 @@ import { rendererOnly } from "./shared";
 import { ownershipPluginMeta } from "../builtin-plugin-meta";
 import { congressResearchModule } from "../congress-trades";
 import { buybacksModule } from "../buybacks";
+import { dilutionModule } from "../dilution";
 import { holdersModule } from "../holders";
 import { insiderModule } from "../insider";
 import { shortInterestModule } from "../short-interest";
@@ -17,6 +18,7 @@ export const ownershipPlugin = composeBuiltinPlugin({
     thirteenFModule,
     insiderModule,
     buybacksModule,
+    dilutionModule,
     shortInterestModule,
     shortVolumeModule,
     // The Congress research tab; the CONG pane is Gloom Cloud's.

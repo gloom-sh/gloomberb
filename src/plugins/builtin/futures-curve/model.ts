@@ -7,6 +7,7 @@ import { CME_CRYPTO_FUTURES, FUTURES_CONTRACTS, futuresBoardContractForTicker, f
 import { futuresContractCode } from "../../../market-data/futures-contract";
 import { contractMonthLabel } from "../../../utils/contract-month";
 import { MISSING_VALUE, formatPercentileRank } from "../../../utils/format";
+import { formatDay, formatDayTime } from "../../../components/ui/day-cell";
 import { formatThirtySeconds } from "../../../market-data/market/format";
 import { cryptoPairCoin, isFuturesSymbol } from "../shared/crypto-pair";
 import { formatUtcDayTime, newestReportTime, oldestReportTime, parseReportTime } from "../../../utils/utc-time";
@@ -200,16 +201,17 @@ export function curveSpreadLabel(slope: Pick<FuturesCurvePayload["slope"], "fron
 const THIN_SPREAD_LOTS = 20;
 
 /**
- * What the front spread subtracts, as its figure says it: "settle 10-22" for
+ * What the front spread subtracts, as its figure says it: "settle 22 Oct" for
  * two settlements of a session (the Settle column's date), "last 20:59" for
  * two last trades made together, dated when not the newest quote's day. Null
  * when the server does not say.
  */
 export function curveSpreadBasis(slope: Pick<FuturesCurvePayload["slope"], "basis" | "asOf">, newest: string | null): string | null {
   if (!slope.basis || !slope.asOf) return null;
-  if (slope.basis === "settle" || !slope.asOf.includes("T")) return `${slope.basis} ${slope.asOf.slice(5, 10)}`;
+  if (slope.basis === "settle" || !slope.asOf.includes("T")) return `${slope.basis} ${formatDay(slope.asOf.slice(0, 10), "no-year")}`;
   const stamp = curveTimestamp(slope.asOf);
-  return `last ${newest?.includes("T") && curveTimestamp(newest).slice(0, 10) === stamp.slice(0, 10) ? stamp.slice(11) : stamp.slice(5)}`;
+  const sameDay = newest?.includes("T") && curveTimestamp(newest).slice(0, 10) === stamp.slice(0, 10);
+  return `last ${sameDay ? stamp.slice(11) : `${formatDay(stamp.slice(0, 10), "no-year")} ${stamp.slice(11)}`}`;
 }
 
 /**
@@ -297,6 +299,12 @@ export function curveTimestamp(value: string | null): string {
   return value?.replace("T", " ").slice(0, 16) ?? MISSING_VALUE;
 }
 
+/** A stamp as the table writes it: `24 Nov 2026 21:00` for an instant, `24 Nov 2026` for a session. */
+export function curveStampText(value: string | null): string {
+  if (!value) return MISSING_VALUE;
+  return value.includes("T") ? formatDayTime(value) : formatDay(value);
+}
+
 /** The rank against the contract's own history; one observation ranks nothing. */
 export function curveRank(value: number | null, samples: number): string {
   if (value == null || samples < 2) return "pctl unavailable";
@@ -339,7 +347,7 @@ export function futuresCurveSeries(data: FuturesCurvePayload, palette?: CurvePal
   return [{
     id: "current", label: currentLabel, asOf: newestQuote(contracts), color: palette?.current,
     points: contracts.map(point),
-  }, ...settled.length ? [{ id: "settle", label: `Settle ${data.settlementDate!.slice(5)}, no trade since`, role: "marker" as const,
+  }, ...settled.length ? [{ id: "settle", label: `Settle ${formatDay(data.settlementDate!, "no-year")}, no trade since`, role: "marker" as const,
     color: palette?.settle, points: settled.map(point) }] : [],
   ...data.ghosts.map((ghost) => {
     // The payload dates a ghost by its oldest point, which can be a contract beyond the charted horizon.

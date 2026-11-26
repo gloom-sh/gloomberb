@@ -199,7 +199,8 @@ function normalizedDateWindow(value: unknown): ChartSpec["viewport"]["dateWindow
   const startTime = Date.parse(start);
   const endTime = Date.parse(end);
   if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || startTime > endTime) return undefined;
-  return { start, end, ...(window?.endAtLatestObservation === true ? { endAtLatestObservation: true } : {}) };
+  return { start, end, ...(window?.endAtLatestObservation === true ? { endAtLatestObservation: true } : {}),
+    ...(window?.returnPeriod === "YTD" ? { returnPeriod: "YTD" } : {}) };
 }
 
 function normalizePanel(value: unknown, index: number, seen: Set<string>): ChartPanelSpec | null {

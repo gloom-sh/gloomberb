@@ -1,3 +1,4 @@
+import { dayCell } from "../../../components/ui/day-cell";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataTableView, EmptyState, PaneStatusBody, usePaneFooter, usePaneNoticeFooter, usePaneTabs,
   type DataTableCell, type DataTableColumn, type PaneHint } from "../../../components";
@@ -32,7 +33,7 @@ const COLUMNS: DataTableColumn[] = [
 ];
 
 const SECOND_HOP_COLUMNS: DataTableColumn[] = [
-  { id: "date", label: "Date", width: 10, align: "left" },
+  { id: "date", label: "Date", width: 11, align: "left" },
   { id: "timing", label: "Time", width: 5, align: "left" },
   { id: "company", label: "Reports", width: 14, flexGrow: 1, align: "left" },
   { id: "link", label: "Link", width: 19, align: "left" },
@@ -99,7 +100,7 @@ const move = (row: RippleRow | SecondHopRow): DataTableCell =>
 
 function renderCell(row: RippleRow, column: DataTableColumn): DataTableCell {
   switch (column.id) {
-    case "date": return { text: row.date };
+    case "date": return dayCell(row.date);
     case "timing": return { text: row.timing?.toUpperCase() ?? MISSING_VALUE };
     case "company": return { text: `${row.company} ${row.companyName}` };
     case "link": return { text: row.link === "customer" ? "customer of" : "supplier to" };
@@ -112,7 +113,7 @@ function renderCell(row: RippleRow, column: DataTableColumn): DataTableCell {
 
 function renderSecondHopCell(row: SecondHopRow, column: DataTableColumn, firstHopWidth: number): DataTableCell {
   switch (column.id) {
-    case "date": return { text: row.date };
+    case "date": return dayCell(row.date);
     case "timing": return { text: row.timing?.toUpperCase() ?? MISSING_VALUE };
     case "company": return { text: `${row.company} ${row.companyName}` };
     case "link": return { text: row.link === "customer" ? "customer's customer" : "supplier's supplier" };

@@ -39,3 +39,13 @@ export const RECORDED_NOW = "2026-11-06T13:00:00Z";
 export const recordedFiscalData = (): TreasuryAuction[] => parseTreasuryAuctionsPayload(fiscalDataRecording);
 export const recordedTreasuryDirectBody = treasuryDirectRecording.securities;
 export const recordedTreasuryDirect = (): TreasuryAuction[] => parseDirectAuctions(treasuryDirectRecording.securities);
+
+export const EMPTY_HISTORY_NOW = "2026-11-26T06:00:00Z";
+export const emptyHistoryPage = { data: [], meta: { count: 0, "total-count": 0, "total-pages": 0 } };
+export const emptyHistoryRecentBody = [
+  { cusip: "TESTBOND1", securityType: "Bond", securityTerm: "20-Year", competitiveAuctionCloseDate: "2026-11-18", highYield: "5.459", bidToCoverRatio: "2.63" },
+  { cusip: "TESTNOTE1", securityType: "Note", securityTerm: "10-Year", competitiveAuctionCloseDate: "2026-11-10", highYield: "4.240" },
+  { cusip: "TESTBILL1", securityType: "Bill", securityTerm: "4-Week", competitiveAuctionCloseDate: "2026-11-19", investmentRate: "3.915" },
+  { cusip: "TESTNOTE2", securityType: "Note", securityTerm: "3-Year", competitiveAuctionCloseDate: "2026-12-08" },
+];
+export const emptyHistoryRecentAuctions = (): TreasuryAuction[] => parseDirectAuctions(emptyHistoryRecentBody);

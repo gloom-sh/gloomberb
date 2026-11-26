@@ -61,6 +61,7 @@ test("in another base currency a coin's units are counted at the portfolio's rat
   expect(result.metadata).toMatchObject({ priceInBase: { value: 2500, currency: "SGD" }, units: "units" });
   // The months are calendar months: nine returns from 31 Jan to 31 Oct.
   expect(result.sections![0]!.entries!.find((entry) => entry.key === "window")!.formatted).toBe("2026-01-31 to 2026-10-31, 9 monthly returns");
+  expect(result.sections![0]!.textEntries!.find((entry) => entry.key === "window")!.formatted).toBe("31 Jan 2026 to 31 Oct 2026, 9 monthly returns");
 
   // Without a rate to the base currency the column says why it is missing.
   const unpriced = await load(returns, { bankroll: 2_500_000, baseCurrency: "SGD", marketData: { ...marketData, getExchangeRate: async () => Promise.reject(new Error("no rate")) } });

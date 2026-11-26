@@ -81,7 +81,7 @@ const cases: [Pane, number, string, string][] = [
   ["earnings-estimates", 48, "12.34", "15.67"],
   ["earnings-estimates", 120, "12.34", "15.67"],
   ["corporate-actions", 80, "31 Mar 2026", "30 Jun 2026"],
-  ["historical-prices", 80, "2026-09-01", "2026-09-02"],
+  ["historical-prices", 80, "01 Sep 2026", "02 Sep 2026"],
 ];
 
 test.each(cases)("%s at %i keeps known research through a transient refresh failure", async (pane, width, original, recovered) => {

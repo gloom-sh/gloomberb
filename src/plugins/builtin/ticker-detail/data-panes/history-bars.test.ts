@@ -25,8 +25,8 @@ test("the bar size is read from the usual spacing of the bars, so a holiday's ga
 test("a month reads as the month, and a week or month still running as to date", () => {
   expect(historyBarDate("2026-09-01", "1mo")).toBe("2026-09");
   expect(historyBarDate("2026-10-01", "1mo", true)).toBe("2026-10 MTD");
-  expect(historyBarDate("2026-10-12", "1wk", true)).toBe("2026-10-12 WTD");
-  expect(historyBarDate("2026-10-12", "1d")).toBe("2026-10-12");
+  expect(historyBarDate("2026-10-12", "1wk", true)).toBe("12 Oct 2026 WTD");
+  expect(historyBarDate("2026-10-12", "1d")).toBe("12 Oct 2026");
 });
 
 test("a closed daily bar is dated by its day, never its midnight; the session still trading is not closed", () => {

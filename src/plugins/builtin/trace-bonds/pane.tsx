@@ -1,3 +1,4 @@
+import { dayCell } from "../../../components/ui/day-cell";
 import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
@@ -192,7 +193,7 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
       case "coupon":
         return { text: formatBondDecimal(row.couponRate, 3), value: row.couponRate, color: colors.text };
       case "maturity":
-        return { text: dash(row.maturityDate), value: row.maturityDate, color: colors.textMuted };
+        return { ...dayCell(row.maturityDate), color: colors.textMuted };
       case "price":
         return { text: formatBondDecimal(row.lastSalePrice, 3), value: row.lastSalePrice, color: colors.text };
       case "yield":
@@ -205,7 +206,7 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
           keepColorWhenSelected: row.priceChangeNumber != null && row.priceChangeNumber !== 0,
         };
       case "traded":
-        return { text: dash(row.lastTradeDate), value: row.lastTradeDate, color: colors.textMuted };
+        return { ...dayCell(row.lastTradeDate), color: colors.textMuted };
       case "grade":
         return { text: dash(row.traceGradeCode), color: colors.textDim };
     }

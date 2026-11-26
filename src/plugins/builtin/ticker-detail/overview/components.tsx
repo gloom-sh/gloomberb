@@ -203,6 +203,34 @@ function bookColumns(width: number): ColumnGridColumn[] {
   ];
 }
 
+const undatedInWords = (part: string) => part === QUOTE_BOOK_UNDATED ? t("not dated") : part;
+
+/**
+ * The lines of the book's Time row in a book `width` cells wide. `parts` is
+ * the clock, then its session and feed (quoteBookTimeParts); `shortParts` the
+ * same with the clock a table's (`26 Nov 00:59 UTC`).
+ *
+ * - All of it beside the label where it fits, a blank after `Time`.
+ * - Else the clock beside the label, and the session and feed on one line
+ *   under it. That line has no label, so it runs the book's whole width.
+ * - A clock that would touch its label (`TimeThu 26 Nov 00:59 UTC`, in a book
+ *   24 cells wide) gives up its weekday before it wraps.
+ */
+export function quoteBookTimeLines(parts: readonly string[], shortParts: readonly string[], width: number): { clockLines: string[]; contextLines: string[] } {
+  const [clock, ...context] = parts;
+  if (!clock) return { clockLines: [], contextLines: [] };
+  // The label, and a blank after it.
+  const room = width - BOOK_LABEL_WIDTH - 1;
+  const whole = parts.join(" · ");
+  if (displayWidth(whole) <= room) return { clockLines: [whole], contextLines: [] };
+  const shortClock = shortParts[0] ?? clock;
+  const clockLines = displayWidth(clock) <= room ? [clock] : displayWidth(shortClock) <= room ? [shortClock] : wrapTextLines(clock, Math.max(1, room));
+  const contextText = context.join(" · ");
+  const contextLines = !contextText ? [] : displayWidth(contextText) <= width ? [contextText]
+    : context.flatMap((part) => wrapTextLines(part, Math.max(1, width)));
+  return { clockLines, contextLines };
+}
+
 export function QuoteBook({ quote, assetCategory, width, desktopWidth }: {
   quote: Quote;
   assetCategory?: string;
@@ -229,13 +257,11 @@ export function QuoteBook({ quote, assetCategory, width, desktopWidth }: {
   }
 
   // The book's own time, or that its source sent none: never the trade's time in the header beside it.
-  const [clock, ...context] = quoteBookTimeParts(quote).map((part) => part === QUOTE_BOOK_UNDATED ? t("not dated") : part);
-  const room = width - BOOK_LABEL_WIDTH;
-  const bookTime = [clock, ...context].join(" · ");
-  const contextText = context.join(" · ");
-  const clockLines = !clock ? [] : displayWidth(bookTime) <= room ? [bookTime]
-    : [...wrapTextLines(clock, room), ...(displayWidth(contextText) <= room ? contextText ? [contextText] : []
-      : context.flatMap((part) => wrapTextLines(part, room)))];
+  const { clockLines, contextLines } = quoteBookTimeLines(
+    quoteBookTimeParts(quote).map(undatedInWords),
+    quoteBookTimeParts(quote, undefined, { weekday: false }).map(undatedInWords),
+    width,
+  );
   const row = (label: string, value: string, color: string): ColumnGridCell[] => [{ text: label, color: colors.textDim }, { text: value, color }];
   return (
     <Box flexDirection="column" width={nativePaneChrome ? undefined : width} flexShrink={0} style={nativePaneChrome ? { width: desktopWidth } : undefined}>
@@ -251,6 +277,12 @@ export function QuoteBook({ quote, assetCategory, width, desktopWidth }: {
           ...clockLines.map((line, index) => row(index === 0 ? t("Time") : "", line, colors.textDim)),
         ]}
       />
+      {/* Its session and feed, under the clock: no label beside them, so they have the book's whole width. */}
+      {contextLines.map((line, index) => (
+        <Box key={index} flexDirection="row" height={1} width={nativePaneChrome ? undefined : width} justifyContent="flex-end" data-gloom-role="quote-book-context">
+          <Text fg={colors.textDim}>{line}</Text>
+        </Box>
+      ))}
     </Box>
   );
 }
@@ -283,20 +315,38 @@ export function textGridColumns(fields: StatField[], width: number): number {
   return 1;
 }
 
-/** A figure that opens its research function: the whole cell is the target. */
+/** What a figure opens, named as the pane menu lists it; `key` lists the same target once. */
+interface StatTarget {
+  key: string;
+  label: string;
+  open: () => void;
+}
+
+/** A figure's target: the DES of the listing it names, else its research function; none without a handler for it. */
+function statTarget(
+  field: StatField,
+  onOpenLink: ((link: OverviewFunctionLink) => void) | undefined,
+  onOpenListing: ((ticker: string) => void) | undefined,
+): StatTarget | null {
+  const { opens, link } = field;
+  // Keyed as a ticker badge keys its listing, so the menu offers it once.
+  if (opens && onOpenListing) return { key: `ticker:${opens}`, label: tf("Open {ticker}", { ticker: opens }), open: () => onOpenListing(opens) };
+  if (link && onOpenLink) return { key: `function:${link.templateId}`, label: tf("Open {label}", { label: t(link.name) }), open: () => onOpenLink(link) };
+  return null;
+}
+
+/** A figure that opens its target: the whole cell is the target. */
 function LinkedStatCell({
-  link,
+  target,
   width,
-  onOpen,
   children,
 }: {
-  link: OverviewFunctionLink;
+  target: StatTarget;
   width: number;
-  onOpen: (link: OverviewFunctionLink) => void;
   children: ReactNode;
 }) {
-  // The pane menu lists each function once, so the keyboard reaches what a click opens.
-  usePaneLinkMenuEntry(`function:${link.templateId}`, tf("Open {label}", { label: t(link.name) }), () => onOpen(link));
+  // The pane menu lists each target once, so the keyboard reaches what a click opens.
+  usePaneLinkMenuEntry(target.key, target.label, target.open);
   const { nativePaneChrome } = useUiCapabilities();
   return (
     <Box
@@ -306,11 +356,11 @@ function LinkedStatCell({
       flexDirection="row"
       hoverBackgroundColor={hoverBg()}
       onMouseDown={(event?: { button?: number }) => {
-        if ((event?.button ?? 0) === 0) onOpen(link);
+        if ((event?.button ?? 0) === 0) target.open();
       }}
       cursor="pointer"
       data-gloom-interactive="true"
-      data-gloom-label={tf("Open {label}", { label: t(link.name) })}
+      data-gloom-label={target.label}
       data-gloom-ui="key-value-row"
     >
       {children}
@@ -335,6 +385,7 @@ export function FundamentalsGrid({
   width,
   columns,
   onOpenLink,
+  onOpenListing,
 }: {
   fields: StatField[];
   width: number;
@@ -342,6 +393,8 @@ export function FundamentalsGrid({
   columns?: number;
   /** Opens a figure's research function; without it figures are plain. */
   onOpenLink?: (link: OverviewFunctionLink) => void;
+  /** Opens the DES of the listing a figure names (`opens`); without it that figure is plain. */
+  onOpenListing?: (ticker: string) => void;
 }) {
   const { nativePaneChrome } = useUiCapabilities();
   const columnCount = columns ?? fundamentalsGridColumns(width);
@@ -383,9 +436,10 @@ export function FundamentalsGrid({
           url={field.url}
         />
       );
+      const target = statTarget(field, onOpenLink, onOpenListing);
       return {
-        content: field.link && onOpenLink
-          ? <LinkedStatCell link={field.link} width={colWidth} onOpen={onOpenLink}>{content}</LinkedStatCell>
+        content: target
+          ? <LinkedStatCell target={target} width={colWidth}>{content}</LinkedStatCell>
           : (
             <Box
               width={nativePaneChrome ? undefined : colWidth}

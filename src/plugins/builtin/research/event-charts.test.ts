@@ -45,7 +45,8 @@ describe("the Earnings view's quarters", () => {
 describe("the Earnings view's DETAIL", () => {
   const today = "2098-11-24";
   const quarter = (index: number, epsBasis: "gaap" | "adjusted") => ({ date: `2098-0${index + 1}-28`, dateType: "announcement" as const, currency: "USD",
-    fiscalPeriod: `2097-${String(index * 3 + 3).padStart(2, "0")}`, epsActual: 1 + index / 10, epsEstimate: 1, epsBasis });
+    fiscalPeriod: `2097-${String(index * 3 + 3).padStart(2, "0")}`, epsActual: 1 + index / 10, epsEstimate: 1,
+    epsBasis, epsActualSource: "filing" as const });
 
   test("says what the figures do not: a basis only where it is not the one the EPS heading names, never the beat", () => {
     const list = earningsQuarters(buildEventRows({ symbol: "TEST", currency: "USD", dividends: [], splits: [], earnings: [

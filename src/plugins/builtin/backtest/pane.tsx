@@ -1,3 +1,4 @@
+import { formatDay } from "../../../components/ui/day-cell";
 import { useCallback, useMemo, useRef, type ReactNode } from "react";
 import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import {
@@ -281,12 +282,13 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
             sortDirection="desc"
             exportCsv={exportCsv}
             renderCell={(trade, column) => ({
-              text: column.id === "entryDate" ? trade.entryDate
+              text: column.id === "entryDate" ? formatDay(trade.entryDate)
                 : column.id === "entryPrice" ? formatTradePrice(trade.entryPrice, symbol ?? "")
-                  : column.id === "exitDate" ? (trade.open ? "open" : trade.exitDate!)
+                  : column.id === "exitDate" ? (trade.open ? "open" : formatDay(trade.exitDate))
                     : column.id === "exitPrice" ? formatTradePrice(trade.exitPrice, symbol ?? "")
                       : column.id === "returnPct" ? (Math.abs(trade.returnPct) < 0.05 ? "0.0%" : `${trade.returnPct > 0 ? "+" : ""}${trade.returnPct.toFixed(1)}%`)
                         : String(trade.sessions),
+              ...(column.id === "entryDate" ? { value: trade.entryDate } : column.id === "exitDate" && !trade.open ? { value: trade.exitDate } : {}),
               color: column.id === "returnPct" ? (Math.abs(trade.returnPct) < 0.05 ? undefined : trade.returnPct > 0 ? colors.positive : colors.negative)
                 : trade.open && column.id === "exitDate" ? colors.textMuted : undefined,
             })}

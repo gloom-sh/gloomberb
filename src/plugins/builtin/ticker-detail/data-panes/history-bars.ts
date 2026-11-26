@@ -1,3 +1,4 @@
+import { formatDay } from "../../../../utils/day-format";
 import { BAR_INTERVAL_LABELS } from "../../../../cli/history-rows";
 import { periodToDateText } from "../../../../cli/pane-functions/freshness";
 import { barLastSession, barPeriodToDate, type BarPeriod, type BarPeriodToDate } from "../../../../market-data/market/bar-period";
@@ -100,12 +101,12 @@ export function closedHistoryBarDay(
 
 /**
  * A bar's day as its table dates it: a month's bar as the month (`2026-10`),
- * a week's by the day it starts, and `MTD`, `WTD` or `DTD` after one whose
- * period had not ended, so it never reads as a complete bar dated on its
- * first day. `day` is `YYYY-MM-DD`.
+ * a day's or a week's by its day, day first (`16 Oct 2026`, the day a week
+ * starts), and `MTD`, `WTD` or `DTD` after one whose period had not ended, so
+ * it never reads as a complete bar dated on its first day. `day` is `YYYY-MM-DD`.
  */
 export function historyBarDate(day: string, size: HistoryBarSize, partial = false): string {
-  const text = size === "1mo" ? day.slice(0, 7) : day;
+  const text = size === "1mo" ? day.slice(0, 7) : /^\d{4}-\d{2}-\d{2}$/.test(day) ? formatDay(day) : day;
   return partial ? `${text} ${size === "1mo" ? "MTD" : size === "1wk" ? "WTD" : "DTD"}` : text;
 }
 

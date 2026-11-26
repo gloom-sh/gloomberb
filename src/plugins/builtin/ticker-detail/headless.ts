@@ -1,3 +1,4 @@
+import { formatDay } from "../../../utils/day-format";
 import {
   FINANCIAL_VINTAGE_NOTICE, fillDate, filledPeriodPublications, filledPeriodsNote, reportsHalfYearly, stalePeriodNote,
   statementHistoryNotes,
@@ -365,6 +366,7 @@ async function loadFinancialReport(symbol: string, options: HeadlessPaneOptionVa
       // The day the company's results announcement published the period's filled lines, or, for a later
       // period's comparative column, that period's first announcement.
       ...(filled?.label === "published" && filled.date ? { announced: filled.date } : {}),
+      ...(filled?.label === "first observed" && filled.date ? { firstObserved: filled.date } : {}),
       ...(filled?.label === "comparative" ? { comparativeIn: filled.date } : {}),
       ...(unavailableFields ? { unavailableFields } : {}),
       ...(epsBasis ? { epsBasis } : {}),
@@ -821,13 +823,17 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     // A week's or month's close is dated by its last session, not the 1st its bar is dated by.
     const closes = shown.map((row) => ({ date: isDailyOrLongerBar(size) ? barCloseSession(size, row.date, venue, now) : row.date, close: row.close }));
     // A window's last week can close after the dates asked for: the fall is measured to its end.
-    const { drawdown, runUp, lines: moveLines } = closeMoves(closes, drawdownScaleOf(symbol), { basis: `${historyBarSizeWord(size)} closes`,
-      price: (value) => formatBarPrice(value, decimals), date: (value) => isDailyOrLongerBar(size) ? value.slice(0, 10) : formatUtcTime(value) }, window?.to);
+    const moves = (day: (value: string) => string) => closeMoves(closes, drawdownScaleOf(symbol), { basis: `${historyBarSizeWord(size)} closes`,
+      price: (value) => formatBarPrice(value, decimals), date: (value) => isDailyOrLongerBar(size) ? day(value.slice(0, 10)) : formatUtcTime(value) }, window?.to);
+    const { drawdown, runUp, lines: moveLines } = moves((day) => day);
     // A wick left out of the range is said, though the bar's close still counts.
     const wickNotice = priceHistoryWickNotice(points.filter((point) => pricePointWickFlags(point).length > 0).length);
     // As are bars the source served in the wrong unit, shown scaled back.
     const openNotice = priceHistoryOpenNotice(points.filter(pricePointOpenWithheld).length);
-    const reportNotices = [...moveLines, notice, openNotice, wickNotice, priceHistoryRescaleNotice(points)].filter((line): line is string => line != null);
+    const otherNotices = [notice, openNotice, wickNotice, priceHistoryRescaleNotice(points)].filter((line): line is string => line != null);
+    const reportNotices = [...moveLines, ...otherNotices];
+    // The text writes the drawdown's days first, as the pane does; JSON and CSV keep them in ISO.
+    const textReportNotices = [...moves((day) => formatDay(day)).lines, ...otherNotices];
     const flagged = rows.some((row) => row.flag);
     // Every exported bar names what it is priced in and its size, as `history --csv` does.
     const unit = await barPriceUnit(ctx, symbol, listing, exchange, quote);
@@ -841,6 +847,7 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
         (close) => penceFigure(Number(close.toFixed(Math.min(20, decimals))), quote, decimals), flagged, headerCurrency(unit)),
       freshness,
       ...(notes.length > 0 ? { notes } : {}),
+      ...(reportNotices.length ? { textNotices: textReportNotices } : {}),
       ...(notice ? { complete: false } : {}),
       unavailableSymbols: rows.some((row) => row.close !== null) ? [] : [symbol],
       metadata: { symbol, range: window ? null : range, ...(window ? { requestedWindow: window } : {}), ...(size === "intraday" ? {} : { interval: size }),
@@ -904,11 +911,12 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
     const rows = forming || dayToDate ? [...unmarked.slice(0, -1), { ...unmarked.at(-1)!, partial: true }] : unmarked;
     const price = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(decimals) : MISSING_VALUE;
     // The largest fall from a close to a later one in the window, said under the title; a yield's in bp, with its largest rise.
-    // A week's or month's close is dated by its last session, not the 1st its bar is dated by ("peak 35.70 on 2026-03-31").
+    // A week's or month's close is dated by its last session, not the 1st its bar is dated by ("peak 35.70 on 31 Mar 2026").
     const closes = unmarked.map((row) => ({ date: intraday ? row.time : barCloseSession(series.resolution, row.time, venue, now), close: row.close }));
     // A week still forming runs to today, and a window's last week can close after the dates asked for: the fall is measured to their end.
-    const { drawdown, runUp, lines: moveLines } = closeMoves(closes, drawdownScaleOf(symbol),
-      { basis: `${BAR_INTERVAL_LABELS[series.resolution]} closes`, price, date: (value) => intraday ? formatUtcTime(value) : value.slice(0, 10) }, window?.to);
+    const moves = (day: (value: string) => string) => closeMoves(closes, drawdownScaleOf(symbol),
+      { basis: `${BAR_INTERVAL_LABELS[series.resolution]} closes`, price, date: (value) => intraday ? formatUtcTime(value) : day(value.slice(0, 10)) }, window?.to);
+    const { drawdown, runUp, lines: moveLines } = moves((day) => day);
     const figures: HeadlessPaneColumn[] = [
       { key: "close", header: "Price", align: "right", format: price },
       { key: "intervalChange", header: "Int $", align: "right", format: price },
@@ -936,8 +944,7 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
     // Every exported row names what its prices are in and the bars' size, as `history --csv` does.
     const unit = rows.length ? await barPriceUnit(ctx, key, symbol, exchange, null) : null;
     // An interval the range is too long for is served in the nearest longer bar; say so rather than switch silently.
-    const notices = [
-      ...moveLines,
+    const otherNotices = [
       baseDay ? `Totals ${periodBaseText(baseDay, now)}.` : null,
       series.resolution !== requested
         ? `${getChartResolutionLabel(requested)} bars do not ${window ? `cover ${priceWindowText(window)}` : `reach back ${range}`}; these are ${getChartResolutionLabel(series.resolution)} bars.`
@@ -945,10 +952,14 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
       historyCoverageNotice(series.coverageStart, series.visibleFrom),
       priceHistoryIntegrityNotice(rows.filter((row) => row.inconsistent).length) ?? null,
     ].filter((notice): notice is string => !!notice);
+    const notices = [...moveLines, ...otherNotices];
+    // The text writes the drawdown's days first, as the pane does; JSON and CSV keep them in ISO.
+    const textNotices = [...moves((day) => formatDay(day)).lines, ...otherNotices];
     return {
       rows,
       columns,
       textColumns,
+      ...(notices.length ? { textNotices } : {}),
       ...(unit ? { unit } : {}),
       interval: series.resolution,
       unavailableSymbols: rows.length ? [] : [key],

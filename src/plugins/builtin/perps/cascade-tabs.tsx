@@ -6,6 +6,7 @@ import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box } from "../../../ui";
+import { formatDay } from "../../../utils/day-format";
 import { SignInWall } from "../cloud/auth-actions";
 import { useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { UpgradeLabel } from "../shared/locked-rows";
@@ -28,7 +29,7 @@ export interface CascadeTabProps {
   onOpenMarket: (marketId: string) => void;
 }
 
-const stamp = (s: string | null | undefined) => s ? `${s.slice(5, 10)} ${s.slice(11, 16)} UTC` : "";
+const stamp = (s: string | null | undefined) => s ? `${formatDay(s, "no-year")} ${s.slice(11, 16)} UTC` : "";
 const magnitude = (n: number) => compact(Math.abs(n));
 const HOUR = 3_600_000;
 

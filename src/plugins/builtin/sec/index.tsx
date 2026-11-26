@@ -3,7 +3,7 @@ import type { PluginModule } from "../plugin-module";
 import type { SecFilingDocument, SecFilingItem } from "../../../types/data-provider";
 import { apiClient } from "../../../api-client";
 import { useAsyncResource } from "../../../public/react";
-import { localFilingListing, localFilingRows } from "./exchange-filings";
+import { JPX_FILING_HISTORY_LIMIT, localFilingListing, localFilingRows } from "./exchange-filings";
 import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery, useTickerFinancials } from "../../../market-data/hooks";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { useShortcut } from "../../../react/input";
@@ -19,6 +19,7 @@ import { EmptyState, ExternalLinkText, FeedDataTableStackView, PaneLinkMenu, Que
 import { useCompanyDataFooter } from "../../../components/layout/pane/status-footer";
 import { displayWidth } from "../../../utils/format";
 import { formatFilingDate } from "../../../utils/datetime-format";
+import { formatDaysInText, isoDaysInText } from "../../../utils/day-format";
 import type { DetailFact } from "../../../components/reader/detail-reader";
 import type { ThemeColors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -252,12 +253,16 @@ function toFeedItems(
         : []),
     ];
 
+    // A ticker shared by several filers names the filer on each row. A period end or fund year reads day first
+    // and exports as its ISO day.
+    const title = formatDaysInText(showIssuer && filing.companyName ? `${filing.companyName}: ${summary}` : summary);
+    const titleValue = isoDaysInText(title);
     return {
       id: filing.accessionNumber,
       eyebrow: filing.form,
       eyebrowColor: toneColor(filingTone(filing, direction), colors),
-      // A ticker shared by several filers names the filer on each row.
-      title: showIssuer && filing.companyName ? `${filing.companyName}: ${summary}` : summary,
+      title,
+      ...(titleValue !== title ? { titleValue } : {}),
       timestamp: filing.filingDate,
       detailTitle: enrichedTitle,
       detailFacts: facts,
@@ -369,7 +374,11 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   const local = ticker && !forms && eligibleTicker ? localFilingListing(ticker.metadata.ticker, ticker.metadata.exchange) : null;
   const localSymbol = local?.symbol;
   const localVenue = local?.exchange;
-  const readLocal = useCallback(() => apiClient.getCloudExchangeAnnouncements({ symbol: localSymbol!, exchange: localVenue!, limit: 50 }), [localSymbol, localVenue]);
+  const readLocal = useCallback(() => apiClient.getCloudExchangeAnnouncements({
+    symbol: localSymbol!,
+    exchange: localVenue!,
+    limit: localVenue === "JPX" ? JPX_FILING_HISTORY_LIMIT : 50,
+  }), [localSymbol, localVenue]);
   const localFeed = useAsyncResource(localSymbol && localVenue ? readLocal : null);
   const localRows = useMemo(() => localFeed.data && localVenue && formGroup === ALL_FORMS && issuerCik === ALL_FORMS
     ? localFilingRows(localFeed.data, showSupplements) : [], [localFeed.data, localSymbol, localVenue, formGroup, issuerCik, showSupplements]);
@@ -679,7 +688,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
     for (const row of localRows) {
       const id = `exchange:${row.url}`;
       byId.set(id, { id, title: row.filing, timestamp: row.filedAt, eyebrow: row.source,
-        detailFacts: [{ label: "Filed", value: formatFilingDate(row.filedAt) },
+        detailFacts: [{ label: row.dateBasis === "catalogue" ? "Catalogue date" : "Filed", value: formatFilingDate(row.filedAt) },
           { label: "Document", value: row.source, link: { label: "Open filing", onOpen: () => host.openExternal(row.url).catch(logFailure("sec.pane", "Open exchange filing failed")) } }],
         detailMeta: [row.form, formatFilingDate(row.filedAt)],
       });
@@ -700,7 +709,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
       rootBefore={factsSummary ? <Box flexDirection="column" flexShrink={0}>{queryBar}{factsSummary}</Box> : queryBar}
       sourceLabel={localRows.length ? "Source / form" : "Form"}
       titleLabel="Filing"
-      timeColumn={FILED_COLUMN}
+      timeColumn={localRows.some(row => row.dateBasis === "catalogue") ? { ...FILED_COLUMN, label: "Date" } : FILED_COLUMN}
       emptyStateTitle={forms && formFilings.length === 0 ? fundEmptyTitle
         : supplementCount > 0 && !showSupplements ? "Only pricing supplements."
         : formGroup === ALL_FORMS ? "No SEC filings." : "No filings of these forms."}

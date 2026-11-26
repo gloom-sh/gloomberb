@@ -90,9 +90,11 @@ test("the report marks a fund the newest day still waits on as pending", async (
     const args: HeadlessPaneLoadArgs = { rawArgument: "", argument: null, symbols: [], options: { asset: "btc", limit: 20 } };
     const result = await cryptoEtfFlowsHeadless.load(args, {} as HeadlessPaneContext) as HeadlessRowsResult;
     const text = renderHeadlessPaneText(cryptoEtfFlowsHeadless, result, args, "ETFF", deriveHeadlessFreshness(cryptoEtfFlowsHeadless, result));
-    const latest = text.split("\n").find((line) => line.startsWith("2026-10-20"))!;
-    expect(latest).toMatch(/2026-10-20\s+-6\.7\s+pending\s+\+3\.6\s+-10\.3\s+IBIT/);
-    expect(text).toContain("2026-10-20: -$6.70M (IBIT pending)");
+    const latest = text.split("\n").find((line) => line.startsWith("20 Oct 2026"))!;
+    expect(latest).toMatch(/20 Oct 2026\s+-6\.7\s+pending\s+\+3\.6\s+-10\.3\s+IBIT/);
+    expect(text).toContain("20 Oct 2026: -$6.70M (IBIT pending)");
+    // JSON and CSV keep the note's days in ISO.
+    expect(result.notes?.[0]).toContain("2026-10-20: -$6.70M (IBIT pending)");
     expect(text).toContain("Farside Investors");
     // A column is headed by a ticker (BTC there is Grayscale's mini fund, not the coin): a note names each fund listed.
     expect(result.notes).toContain("Funds: IBIT iShares Bitcoin Trust ETF, FBTC Fidelity Wise Origin Bitcoin Fund.");
@@ -151,9 +153,9 @@ test("a dated window lists its days, a fund with no figure reads as none, and th
     // When the server last read the publisher's table, not when the report ran.
     expect(freshness?.retrievedAt).toBe("2026-10-21T02:09:34.743Z");
     const text = renderHeadlessPaneText(cryptoEtfFlowsHeadless, result, args, "ETFF", freshness);
-    expect(text.split("\n").find((line) => line.startsWith("2026-10-23"))).toMatch(/2026-10-23\s+-110\.3\s+-1\.25%\s+-110\.3\s+—\s+0\.0/);
-    expect(text.split("\n").find((line) => line.startsWith("2026-10-22"))).toMatch(/2026-10-22\s+-501\.1\s+—\s+-254\.1/);
-    expect(text).toContain("2026-10-21 to 2026-10-23: -$131.10M over 3 trading days.");
+    expect(text.split("\n").find((line) => line.startsWith("23 Oct 2026"))).toMatch(/23 Oct 2026\s+-110\.3\s+-1\.25%\s+-110\.3\s+—\s+0\.0/);
+    expect(text.split("\n").find((line) => line.startsWith("22 Oct 2026"))).toMatch(/22 Oct 2026\s+-501\.1\s+—\s+-254\.1/);
+    expect(text).toContain("21 Oct 2026 to 23 Oct 2026: -$131.10M over 3 trading days.");
   } finally {
     stub.mockRestore();
   }

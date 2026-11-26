@@ -5,7 +5,7 @@ import { mergeQuoteContribution, normalizeQuoteContribution } from "./contributi
 import { resolveCanonicalQuote } from "./resolution";
 import {
   formatQuoteAge, formatQuoteAgeWithSource, formatQuoteBookCell, formatQuoteBookTime, formatQuoteNavAsOf, QUOTE_BOOK_CELL_MAX_WIDTH,
-  QUOTE_BOOK_UNDATED,
+  QUOTE_BOOK_UNDATED, quoteBookTimeParts,
 } from "./time";
 
 describe("quote-time", () => {
@@ -69,17 +69,17 @@ test("a table cell keeps a book's calendar day and clock, with its session and f
   const at = (iso: string) => Date.parse(iso);
   // Each book as the cell writes it beside the words the ticket and DES use for the same book.
   const cases: Array<[Quote, number, string, string]> = [
-    [book({ bidAskTime: at("2026-11-20T18:56:00Z") }), at("2026-11-20T23:20:00Z"), "◷11-20 18:56", "18:56 UTC · delayed"],
-    [book({ bidAskTime: at("2026-11-20T18:56:00Z") }), now, "◷11-20 18:56", "Fri 20 Nov 18:56 UTC · regular session · delayed"],
-    [book({ bidAskTime: at("2026-11-20T12:10:00Z") }), now, "◷PM 11-20 12:10", "Fri 20 Nov 12:10 UTC · pre-market · delayed"],
-    [book({ bidAskTime: at("2026-11-21T00:55:21Z"), dataSource: "live" }), now, "AH 11-21 00:55", "Sat 21 Nov 00:55 UTC · after-hours · real-time"],
-    [book({ bidAskTime: at("2026-11-21T01:30:00Z") }), now, "◷closed 11-21 01:30", "Sat 21 Nov 01:30 UTC · last quote · delayed"],
-    [book({ bidAskTime: at("2026-11-20T04:30:00Z"), listingExchangeName: "HKEX" }), now, "◷lunch 11-20 04:30", "Fri 20 Nov 04:30 UTC · midday break · delayed"],
+    [book({ bidAskTime: at("2026-11-20T18:56:00Z") }), at("2026-11-20T23:20:00Z"), "◷20 Nov 18:56", "18:56 UTC · delayed"],
+    [book({ bidAskTime: at("2026-11-20T18:56:00Z") }), now, "◷20 Nov 18:56", "Fri 20 Nov 18:56 UTC · regular session · delayed"],
+    [book({ bidAskTime: at("2026-11-20T12:10:00Z") }), now, "◷PM 20 Nov 12:10", "Fri 20 Nov 12:10 UTC · pre-market · delayed"],
+    [book({ bidAskTime: at("2026-11-21T00:55:21Z"), dataSource: "live" }), now, "AH 21 Nov 00:55", "Sat 21 Nov 00:55 UTC · after-hours · real-time"],
+    [book({ bidAskTime: at("2026-11-21T01:30:00Z") }), now, "◷closed 21 Nov 01:30", "Sat 21 Nov 01:30 UTC · last quote · delayed"],
+    [book({ bidAskTime: at("2026-11-20T04:30:00Z"), listingExchangeName: "HKEX" }), now, "◷lunch 20 Nov 04:30", "Fri 20 Nov 04:30 UTC · midday break · delayed"],
     // Months back reads as yesterday does: no weekday stands in for a date. In another year, the year leads.
-    [book({ bidAskTime: at("2026-09-18T23:30:00Z") }), now, "◷AH 09-18 23:30", "Fri 18 Sep 23:30 UTC · after-hours · delayed"],
-    [book({ bidAskTime: at("2025-09-19T00:30:00Z"), dataSource: "snapshot" }), now, "snap closed 2025-09-19 00:30", "Fri 19 Sep 2025 00:30 UTC · last quote · snapshot"],
+    [book({ bidAskTime: at("2026-09-18T23:30:00Z") }), now, "◷AH 18 Sep 23:30", "Fri 18 Sep 23:30 UTC · after-hours · delayed"],
+    [book({ bidAskTime: at("2025-09-19T00:30:00Z"), dataSource: "snapshot" }), now, "snap closed 19 Sep 2025 00:30", "Fri 19 Sep 2025 00:30 UTC · last quote · snapshot"],
     // A source that says nothing of its feed is given no mark, as it is given no word.
-    [book({ bidAskTime: at("2026-11-20T18:56:00Z"), dataSource: undefined }), now, "11-20 18:56", "Fri 20 Nov 18:56 UTC · regular session"],
+    [book({ bidAskTime: at("2026-11-20T18:56:00Z"), dataSource: undefined }), now, "20 Nov 18:56", "Fri 20 Nov 18:56 UTC · regular session"],
     // Undated: the quote's own state names the session, and no time is made up.
     [book({ bidAskTime: undefined }), now, "◷closed not dated", "not dated · last quote · delayed"],
     [book({ bidAskTime: undefined, marketState: "POST", dataSource: "live" }), now, "AH not dated", "not dated · after-hours book · real-time"],
@@ -93,7 +93,7 @@ test("a table cell keeps a book's calendar day and clock, with its session and f
   expect(formatQuoteBookCell(book({ bid: undefined, ask: undefined }), now)).toBeNull();
   // The mark is the book's own source's: a delayed book under a real-time price is still a delayed book.
   const mixed = book({ bidAskTime: at("2026-11-20T18:56:00Z"), dataSource: "live", provenance: { fields: { bid: { providerId: "other", dataSource: "delayed" } } } });
-  expect(formatQuoteBookCell(mixed, now)!.text).toBe("◷11-20 18:56");
+  expect(formatQuoteBookCell(mixed, now)!.text).toBe("◷20 Nov 18:56");
 });
 
 test("a book is dated by its own quote time, carried and resolved with that book only, and says so when undated", () => {
@@ -107,6 +107,8 @@ test("a book is dated by its own quote time, carried and resolved with that book
     listingExchangeName: "ARCA", providerId: "gloomberb-cloud", dataSource: "delayed",
   })!;
   expect(formatQuoteBookTime(cloud, now)).toBe("Sat 21 Nov 00:55 UTC · after-hours · delayed");
+  // A book too narrow for the weekday dates it as a table does.
+  expect(quoteBookTimeParts(cloud, now, { weekday: false })).toEqual(["21 Nov 00:55 UTC", "after-hours", "delayed"]);
   expect(formatQuoteBookTime(cloud, Date.parse("2026-11-21T09:00:00Z"))).toBe("Sat 21 Nov 00:55 UTC · after-hours · delayed");
   const regular = Date.parse("2026-11-20T18:56:00Z");
   expect(formatQuoteBookTime({ ...cloud, bidAskTime: regular }, trade)).toBe("18:56 UTC · delayed");

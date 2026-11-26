@@ -93,6 +93,7 @@ import type {
   ThirteenFFund,
 } from "./types";
 import { finiteOrNull } from "../../../utils/guards";
+import { formatDaysInText } from "../../../utils/day-format";
 import { SEC_FILINGS } from "../shared/report-freshness";
 
 const money = (value: unknown) => formatMoneyCompact(finiteOrNull(value));
@@ -102,6 +103,9 @@ const weightPoints = (value: unknown) => {
   const change = finiteOrNull(value);
   return change == null ? MISSING_VALUE : `${change > 0 ? "+" : ""}${(change * 100).toFixed(2)}pp`;
 };
+
+/** A filing day as the text prints Period beside it, day first (`14 Aug 2026`); JSON and CSV keep the ISO day. */
+const filedText = (value: unknown) => (typeof value === "string" && value ? formatDaysInText(value) : MISSING_VALUE);
 
 const BROWSER_COLUMNS: HeadlessPaneColumn[] = [
   { key: "name", header: "Fund" },
@@ -121,7 +125,7 @@ const BROWSER_COLUMNS: HeadlessPaneColumn[] = [
   },
   { key: "tableEntryTotal", header: "Rows", align: "right" },
   // The day as Period gives it, with its year: a fund that stopped filing did so years ago.
-  { key: "filedAsOfDate", header: "Filed", format: (value) => (typeof value === "string" && value) || MISSING_VALUE },
+  { key: "filedAsOfDate", header: "Filed", format: (value) => (typeof value === "string" && value) || MISSING_VALUE, textFormat: filedText },
 ];
 
 /** What a 13F position report notes after its table: the filing's limits, and what the option marker means when option rows are shown. */
@@ -178,7 +182,7 @@ const HOLDING_COLUMNS: HeadlessPaneColumn[] = [
 const FILING_COLUMNS: HeadlessPaneColumn[] = [
   { key: "periodOfReport", header: "Period" },
   // The whole day, as the period beside it: the list spans years.
-  { key: "filedAsOfDate", header: "Filed", format: (value) => (typeof value === "string" && value) || MISSING_VALUE },
+  { key: "filedAsOfDate", header: "Filed", format: (value) => (typeof value === "string" && value) || MISSING_VALUE, textFormat: filedText },
   {
     key: "tableValueTotal",
     header: "Value (USD)",

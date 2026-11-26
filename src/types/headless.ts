@@ -550,12 +550,24 @@ interface HeadlessPaneResultBase {
    */
   notes?: string[];
   /**
+   * The notes as the text report prints them, one for each of `notes` in
+   * order, where it writes their days first as the pane does. JSON, CSV and
+   * NDJSON keep `notes`.
+   */
+  textNotes?: string[];
+  /**
    * What the report could not do as it was asked and did instead, such as a
    * bar size the source does not serve for the range: `fn` prints each on
    * stderr and lists them under `warnings` in JSON. One sentence each.
    */
   warnings?: string[];
   metadata?: Record<string, unknown>;
+  /**
+   * The notices (`metadata.notices`) as the text report prints them, one for
+   * each in order, days first as the pane writes them. JSON and the exports
+   * keep `metadata.notices`.
+   */
+  textNotices?: string[];
   /**
    * Options the load settled from what it was given rather than from a flag
    * (AUCT's market, from a search naming Hong Kong's paper): the report's
@@ -830,6 +842,8 @@ export interface HeadlessPaneResultByShape {
 
 export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = HeadlessPaneShape> {
   shape: Shape;
+  /** New portable CSV columns that follow even the existing export_notes column. */
+  csvTrailingColumns?: readonly string[];
   /** Optional discovery information; executors derive the rest from the definition. */
   discovery?: {
     id?: string;

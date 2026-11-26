@@ -145,13 +145,13 @@ describe("loading the docs", () => {
     expect(online.feed.functions.map((fn) => fn.code)).toEqual(["GP", "OMON", "DOCS"]);
     site = async () => { throw new Error("offline"); };
     const offline = await loadDocsFeed({ force: true });
-    expect(offline.offline).toBe(true);
+    expect(offline).toMatchObject({ offline: true, bundled: false });
     expect(offline.feed.functions.map((fn) => fn.code)).toEqual(["GP", "OMON", "DOCS"]);
   });
 
   test("with nothing kept and no site, reads the copy the app shipped with", async () => {
     const result = await loadDocsFeed();
-    expect(result.offline).toBe(true);
+    expect(result).toMatchObject({ offline: true, bundled: true });
     expect(result.feed.functions.length).toBeGreaterThan(100);
   });
 

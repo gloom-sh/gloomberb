@@ -174,7 +174,7 @@ test("compare spreads 8h funding between the venues it shows, dates each venue, 
   expect(two).toContain("0.0070pp");
   expect(two).toContain("Bybit over Binance");
   // The footer dates each venue by its own row, as `fn PERP` does, and the table keeps when each was observed.
-  expect(two).toContain("10-03 23:11");
+  expect(two).toContain("03 Oct 23:11");
   await remount();
   serve({ compare: perpBoard({ access: "preview", locked: 3, rows: [perpRow()] }) });
   await mount({ market: "", tab: "compare" });

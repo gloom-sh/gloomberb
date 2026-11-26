@@ -6,7 +6,6 @@ import { ColumnGridPair } from "../components/ui/column-grid";
 import { PaneLinkMenu } from "../components/ui/external-link";
 import { PaneFooterProvider } from "../components/layout/pane/footer";
 import { setLanguage } from "../i18n";
-import { es } from "../i18n/es";
 import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
 import { getThemeColors, syncTheme } from "../theme/colors";
 import { ThemeProvider } from "../theme/theme-context";
@@ -84,53 +83,46 @@ test("a new callback ref on a box or a text inside a box, other props unchanged,
 });
 
 test("a theme or a language change reaches a figure pair inside a box no parent re-renders", async () => {
-  // No translation of the link's menu entry ships yet; one stands in for the test.
-  const dictionary = es;
-  dictionary["Open {label}"] = "Abrir {label}";
-  try {
-    let menu: ContextMenuItem[] = [];
-    let setThemeId: (themeId: string) => void = () => {};
-    // Rendered once: only the theme context and the language store reach the pair.
-    const Figures = memo(function Figures() {
-      return (
-        <PaneLinkMenu>
-          <Box flexDirection="row" width={24} height={1}>
-            <ColumnGridPair label="Filing" labelWidth={8} width={24} value="10-K" url="https://sec.example/filing" />
-          </Box>
-        </PaneLinkMenu>
-      );
-    });
-    function Root() {
-      const [themeId, setThemeIdState] = useState(DEFAULT_THEME);
-      setThemeId = setThemeIdState;
-      return (
-        <ThemeProvider themeId={themeId}>
-          <PaneFooterProvider>{(footer) => { menu = footer.menu; return <Figures />; }}</PaneFooterProvider>
-        </ThemeProvider>
-      );
-    }
-    const labelColor = () => tui.setup().captureSpans().lines
-      .flatMap((line) => line.spans)
-      .find((span) => span.text.includes("Filing"))?.fg.toInts().join(",");
-    const dim = (themeId: string) => RGBA.fromHex(getThemeColors(themeId).textDim).toInts().join(",");
-    const menuLabels = () => menu.flatMap((item) => item.type === "divider" ? [] : [item.label]);
-
-    await tui.render(<Root />, { width: 30, height: 2 });
-    await act(async () => { await tui.setup().renderOnce(); });
-    expect(labelColor()).toBe(dim(DEFAULT_THEME));
-    expect(menuLabels()).toEqual(["Open 10-K"]);
-
-    const nextTheme = "amber";
-    expect(dim(nextTheme)).not.toBe(dim(DEFAULT_THEME));
-    await act(async () => { setThemeId(nextTheme); });
-    await act(async () => { await tui.setup().renderOnce(); });
-    expect(labelColor()).toBe(dim(nextTheme));
-
-    await act(async () => { setLanguage("es"); });
-    expect(menuLabels()).toEqual(["Abrir 10-K"]);
-  } finally {
-    delete dictionary["Open {label}"];
+  let menu: ContextMenuItem[] = [];
+  let setThemeId: (themeId: string) => void = () => {};
+  // Rendered once: only the theme context and the language store reach the pair.
+  const Figures = memo(function Figures() {
+    return (
+      <PaneLinkMenu>
+        <Box flexDirection="row" width={24} height={1}>
+          <ColumnGridPair label="Filing" labelWidth={8} width={24} value="10-K" url="https://sec.example/filing" />
+        </Box>
+      </PaneLinkMenu>
+    );
+  });
+  function Root() {
+    const [themeId, setThemeIdState] = useState(DEFAULT_THEME);
+    setThemeId = setThemeIdState;
+    return (
+      <ThemeProvider themeId={themeId}>
+        <PaneFooterProvider>{(footer) => { menu = footer.menu; return <Figures />; }}</PaneFooterProvider>
+      </ThemeProvider>
+    );
   }
+  const labelColor = () => tui.setup().captureSpans().lines
+    .flatMap((line) => line.spans)
+    .find((span) => span.text.includes("Filing"))?.fg.toInts().join(",");
+  const dim = (themeId: string) => RGBA.fromHex(getThemeColors(themeId).textDim).toInts().join(",");
+  const menuLabels = () => menu.flatMap((item) => item.type === "divider" ? [] : [item.label]);
+
+  await tui.render(<Root />, { width: 30, height: 2 });
+  await act(async () => { await tui.setup().renderOnce(); });
+  expect(labelColor()).toBe(dim(DEFAULT_THEME));
+  expect(menuLabels()).toEqual(["Open 10-K"]);
+
+  const nextTheme = "amber";
+  expect(dim(nextTheme)).not.toBe(dim(DEFAULT_THEME));
+  await act(async () => { setThemeId(nextTheme); });
+  await act(async () => { await tui.setup().renderOnce(); });
+  expect(labelColor()).toBe(dim(nextTheme));
+
+  await act(async () => { setLanguage("es"); });
+  expect(menuLabels()).toEqual(["Abrir 10-K"]);
 });
 
 test("a parent render leaves a box of pure content alone, and still renders a component that reads more than its props", async () => {

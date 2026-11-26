@@ -10,6 +10,7 @@ import {
   type ExtendedSessionDisplay,
 } from "../../../market-data/market/status";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
+import { canonicalExchange } from "../../../utils/exchanges";
 import { isFiniteNumber } from "../../../utils/guards";
 import type { Quote } from "../../../types/financials";
 import type { CloudSessionMoversCategory } from "../../../api-client/market-movers";
@@ -398,16 +399,21 @@ export function overlayMarketMoverQuotes(
     const cached = convertedOverlays.get(row);
     if (cached) return cached;
     const quote = resolveEntryData(entries.get(buildQuoteKey({ symbol: row.symbol, exchange: row.exchange })));
+    const venue = canonicalExchange(original.exchange);
+    const quotedCap = quote?.symbol === original.symbol && venue && venue === canonicalExchange(quote.listingExchangeName || quote.exchangeName)
+      && original.currency && quote.currency === original.currency ? screenerVolume(quote.marketCap) : null;
+    const marketCap = original.marketCap ?? quotedCap ?? undefined;
     const regular = quote ? getRegularSessionQuoteDisplay(quote) : null;
     let converted: MoverQuote;
     if (quote && !regular && original.closedSession !== undefined) {
-      converted = { ...original, name: row.name };
+      converted = { ...original, name: row.name, marketCap };
     } else {
       const convert = (value: number | undefined) => convertScreenerPriceUnit(value, original.currency, row.currency);
       const headline = regular ?? (quote ? getRegularSessionDisplay(quote) : null);
       const { closedSession: _listed, ...overlaid } = row;
       converted = {
         ...overlaid,
+        marketCap,
         ...(quote && headline ? {
           price: headline.price,
           change: isFiniteNumber(headline.change) ? headline.change : null,

@@ -315,13 +315,13 @@ test("the World tab is as of the pane's date: each market's session on or before
     expect(worldSpy.mock.calls.map((call) => call[0])).toEqual(["2026-11-13"]);
     // The Date field reads the whole date it opened on: it read "6-11-13".
     expect(tui.frame()).toMatch(/Date 2026-11-13/);
-    expect(tui.frame()).toMatch(/US +3\.50% .* 2026-11-13/);
-    expect(tui.frame()).not.toContain("2026-11-18");
+    expect(tui.frame()).toMatch(/US +3\.50% .* 13 Nov 2026/);
+    expect(tui.frame()).not.toContain("18 Nov 2026");
     expect(tui.frame()).toContain("[c]urrent");
     await tui.emitKeypress({ name: "c" });
     await settle();
     expect(worldSpy.mock.calls.at(-1)?.[0]).toBeNull();
-    expect(tui.frame()).toContain("2026-11-18");
+    expect(tui.frame()).toContain("18 Nov 2026");
   } finally {
     worldSpy.mockRestore();
   }

@@ -117,8 +117,14 @@ function contractField(line: FuturesContractLine): StatField {
 
 interface OverviewTabProps {
   coin?: CryptoMarketAsset | null;
-  /** The contracts on the security, given the width of the overview's content. */
+  /** A perpetual contract's own funding and premium, right under its price, given the width of the overview's content. */
   perpetuals?: ReactNode | ((contentWidth: number) => ReactNode);
+  /**
+   * The perpetual markets on a stock or a coin, one row per venue, given the width of the overview's content.
+   * Another market on the security, not its own price: it follows the security's range, chart, returns and
+   * figures, so those open the tab.
+   */
+  perpetualMarkets?: ReactNode | ((contentWidth: number) => ReactNode);
   /** The company's latest news, given the width of the overview's content; it draws nothing while there is none. */
   news?: ReactNode | ((contentWidth: number) => ReactNode);
   width?: number;
@@ -132,6 +138,8 @@ interface OverviewTabProps {
   onOpenChart?: () => void;
   /** A click on a figure opens its research function (beta to GR, holders to HDS). */
   onOpenFunction?: (link: OverviewFunctionLink) => void;
+  /** Opens a listing's DES (useOpenDescription): an A+H company's other line, from its row. */
+  onOpenListing?: (ticker: string) => void;
   /** The history the dividend yield reads (useOverviewDividend): a trailing one's cash, a forward one's lapse; without it the yield stands. */
   dividend?: OverviewDividendState;
   /** An A+H company's other line and how the two prices compare (useAhPair); none for any other listing. */
@@ -178,7 +186,7 @@ export function OverviewTab(props: OverviewTabProps) {
 const FUND_FACTS_LINK: OverviewFunctionLink = { name: "Fund Facts", templateId: "sec-etf-pane" };
 
 function ResolvedOverviewTab({
-  width, height, focused = false, ticker, financials, beta, onOpenChart, onOpenFunction, perpetuals, news, coin, dividend, ah = null, boardLot = null, tax = null,
+  width, height, focused = false, ticker, financials, beta, onOpenChart, onOpenFunction, onOpenListing, perpetuals, perpetualMarkets, news, coin, dividend, ah = null, boardLot = null, tax = null,
   chartScale: chartScaleChoice = "auto", onChartScaleChange,
 }: OverviewTabProps & { ticker: TickerRecord }) {
   const trade = useResearchTrading();
@@ -513,7 +521,7 @@ function ResolvedOverviewTab({
   const contractGridColumns = futuresFields.length > 0 ? contractColumns : textGridColumns(optionFields, contentWidth);
   const depositaryPair = listingDepositaryPair(financials);
   const stats = buildOverviewStats({
-    ahPair: ah ? { other: ah.side === "h" ? ah.pair.a : ah.pair.h, side: ah.side, premiumPercent: ah.comparison?.premiumPercent ?? null, linked: !!depositaryPair } : null,
+    ahPair: ah ? { other: ah.side === "h" ? ah.pair.a : ah.pair.h, side: ah.side, premiumPercent: ah.comparison?.premiumPercent ?? null } : null,
     quote,
     fundamentals: shownFundamentals,
     coin,
@@ -767,7 +775,7 @@ function ResolvedOverviewTab({
           <Box flexDirection="column">
             <SectionHeading title={t("Fundamentals")} />
             <PaneLinkMenu>
-              <FundamentalsGrid fields={stats} width={contentWidth} onOpenLink={onOpenFunction} />
+              <FundamentalsGrid fields={stats} width={contentWidth} onOpenLink={onOpenFunction} onOpenListing={onOpenListing} />
               {beta && <FundamentalsGrid fields={[beta]} columns={1} width={contentWidth} onOpenLink={onOpenFunction} />}
               {/* The statements behind the figures, for a company that has them. */}
               {onOpenFunction && hasStatementFinancials(financials) ? <FunctionLinkRow link={FINANCIALS} onOpen={onOpenFunction} /> : null}
@@ -781,6 +789,8 @@ function ResolvedOverviewTab({
             <FundamentalsGrid fields={taxFields} width={contentWidth} />
           </Box>
         )}
+
+        {perpetualMarkets && <PaneLinkMenu>{typeof perpetualMarkets === "function" ? perpetualMarkets(contentWidth) : perpetualMarkets}</PaneLinkMenu>}
 
         {positionRows.length > 0 && (
           <Box flexDirection="column">

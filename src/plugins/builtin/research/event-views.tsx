@@ -136,7 +136,11 @@ function EventsEarningsBody({ focused, width, height, footerPaneId = "corporate-
 
   const bars = useMemo(() => quarters.toReversed(), [quarters]);
   // Each quarter is its estimate beside what was reported, in the beat or miss colour: EM's Surprises draws the same.
-  const series = useMemo<ResolvedSeries[]>(() => beatMissSeries(bars, { actual: (quarter) => quarter.eps, estimate: (quarter) => quarter.estimate }, epsUnit ?? ""),
+  const series = useMemo<ResolvedSeries[]>(() => beatMissSeries(bars, {
+    actual: (quarter) => quarter.eps,
+    estimate: (quarter) => quarter.estimate,
+    comparable: (quarter) => quarter.surprisePercent != null || quarter.surpriseNotMeaningful === true,
+  }, epsUnit ?? ""),
     [bars, epsUnit]);
   const axis = useMemo(() => slotAxis(bars, (quarter) => quarter.axisLabel, (quarter) => quarter.period), [bars]);
 
@@ -176,13 +180,14 @@ function EventsEarningsBody({ focused, width, height, footerPaneId = "corporate-
     switch (column.id) {
       case "date": return { text: formatFilingDate(quarter.date, quarter.date), value: quarter.date, color: colors.textDim };
       case "period": return { text: quarter.period, color: colors.textBright, attributes: TextAttributes.BOLD };
-      case "eps": return { text: quarter.upcoming ? "" : metric(quarter.eps, quarter.epsCurrency, epsUnit, "eps"), ...(quarter.eps != null ? { value: quarter.eps } : {}), color: colors.text };
-      case "estimate": return { text: metric(quarter.estimate, quarter.epsCurrency, epsUnit, "eps"), ...(quarter.estimate != null ? { value: quarter.estimate } : {}), color: colors.textDim };
+      case "eps": return { text: quarter.upcoming ? "" : metric(quarter.eps, quarter.epsCurrency, epsUnit, "eps"), mayBeBlank: quarter.upcoming, ...(quarter.eps != null ? { value: quarter.eps } : {}), color: colors.text };
+      case "estimate": return { text: metric(quarter.estimate, quarter.epsCurrency, epsUnit, "eps"), mayBeBlank: quarter.withoutConsensus, ...(quarter.estimate != null ? { value: quarter.estimate } : {}), color: colors.textDim };
       case "surprise": {
-        if (quarter.upcoming) return { text: "" };
+        if (quarter.upcoming) return { text: "", mayBeBlank: true };
         if (quarter.surpriseNotMeaningful) return { text: NOT_MEANINGFUL_TEXT, color: colors.textDim };
         const surprise = quarter.surprisePercent;
         return { text: surprise == null ? MISSING_VALUE : formatPercentRaw(surprise), ...(surprise != null ? { value: surprise } : {}),
+          mayBeBlank: quarter.withoutConsensus,
           color: surprise == null ? colors.textDim : surprise > 0 ? colors.positive : surprise < 0 ? colors.negative : colors.textDim };
       }
       case "revenue": return { text: quarter.upcoming ? "" : metric(quarter.revenue, quarter.revenueCurrency, revenueUnit, "revenue"), ...(quarter.revenue != null ? { value: quarter.revenue } : {}), color: colors.text };
