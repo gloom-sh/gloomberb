@@ -450,11 +450,12 @@ export function formatCryptoPercent(value: number | null): string {
 }
 
 /**
- * "as of 2026-10-21 UTC close": a daily total's newest day, which is that UTC
- * day's close. The DeFi and stablecoin tabs date theirs the same way.
+ * "as of 21 Oct 2026 UTC close": a daily total's newest day, which is that UTC
+ * day's close. The DeFi and stablecoin tabs date theirs the same way; a
+ * report's JSON and CSV write the day in ISO (`day`).
  */
-export function utcCloseAsOfText(asOf: string): string {
-  return `as of ${formatDay(asOf)} UTC close`;
+export function utcCloseAsOfText(asOf: string, day: (value: string) => string = formatDay): string {
+  return `as of ${day(asOf)} UTC close`;
 }
 
 // Sorting ---------------------------------------------------------------------

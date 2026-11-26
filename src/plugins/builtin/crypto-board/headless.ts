@@ -226,6 +226,8 @@ async function loadDefi(list: DefiList, limit: number | null, ctx: Parameters<He
   const summary = defiSummaryLine(payload);
   const exportTables = defiExportTables(payload, list, limit);
   return {
+    // The text writes the summary's days first, as the pane does; JSON keeps them in ISO.
+    ...(summary ? { textNotices: [defiSummaryLine(payload, formatDay)!] } : {}),
     rows,
     columns: defiColumns(list, income),
     rowUnitKey: "unit",
@@ -453,6 +455,8 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
       ...(history ? { exportTables: [history] } : {}),
       errors: data.warnings,
       ...(notes.length ? { notes } : {}),
+      // The text writes the summary's days first, as the pane does; JSON keeps them in ISO.
+      ...(summary && supply ? { textNotices: [supplySummaryLine(supply, formatDay)!] } : {}),
       metadata: { ...metadata, ...(summary ? { notices: [summary] } : {}), ...(supply ? { supply: supplyMetadata(supply) } : {}) },
     };
   },

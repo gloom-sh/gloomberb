@@ -1,5 +1,4 @@
 import type { DefiTvlChain, DefiTvlPayload, DefiTvlProtocol } from "../../../api-client/crypto-markets";
-import { formatDay } from "../../../components/ui/day-cell";
 import type { DataTableColumn } from "../../../components";
 import { getTableWidth } from "../../../components/ui/table-layout";
 import { MISSING_VALUE, formatCompact, formatCompactAmount } from "../../../utils/format";
@@ -150,9 +149,10 @@ export const DEFI_DAY_CONVENTION = "UTC daily closes";
 
 /**
  * `Total DeFi TVL 92.39B · 7D +2.01B (+2.23%) · 30D -1.06B (-1.14%) · as of
- * 21 Oct 2026 UTC close · DefiLlama, daily since 12 Feb 2018`, as the CLI states it.
+ * 2026-10-21 UTC close · DefiLlama, daily since 2018-02-12`, as the CLI states it: its days ISO, as JSON and CSV
+ * keep them, and day first in the text (`day`, `formatDay`).
  */
-export function defiSummaryLine(payload: DefiTvlPayload): string | null {
+export function defiSummaryLine(payload: DefiTvlPayload, day: (value: string) => string = (value) => value): string | null {
   const total = payload.total;
   if (!total) return null;
   const since = defiHistoryStart(payload);
@@ -160,8 +160,8 @@ export function defiSummaryLine(payload: DefiTvlPayload): string | null {
     `Total DeFi TVL ${formatCompact(total.tvl, { fixedDecimals: true })}`,
     `7D ${change(total.change7d, total.change7dPercent)}`,
     `30D ${change(total.change30d, total.change30dPercent)}`,
-    ...(payload.asOf ? [utcCloseAsOfText(payload.asOf)] : []),
-    `${payload.source.name}${since ? `, daily since ${formatDay(since)}` : ""}`,
+    ...(payload.asOf ? [utcCloseAsOfText(payload.asOf, day)] : []),
+    `${payload.source.name}${since ? `, daily since ${day(since)}` : ""}`,
   ].join(" · ");
 }
 

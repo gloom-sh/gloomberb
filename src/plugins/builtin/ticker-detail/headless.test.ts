@@ -768,6 +768,9 @@ test("RETURN without --interval grows its bars with the range, and dates a month
     expect(asked.slice(0, 3)).toEqual(["1d", "1wk", "1h"]);
     const monthly = await returnsHeadless.load(args(["VXX"], { range: "ALL", interval: "1mo" }), ctx);
     expect(monthly.metadata!.notices).toContain(
+      "Max drawdown -21.6% (monthly closes): peak 35.70 on 2026-03-31, trough 28.00 on 2026-04-30, not back to the peak by 2026-05-29");
+    // The text writes the days first; JSON keeps the notice's days in ISO.
+    expect(monthly.textNotices).toContain(
       "Max drawdown -21.6% (monthly closes): peak 35.70 on 31 Mar 2026, trough 28.00 on 30 Apr 2026, not back to the peak by 29 May 2026");
   } finally {
     setSystemTime();
@@ -840,7 +843,7 @@ test("HP and RETURN read a past window's bars: HP's with no quote and its drawdo
     const hp = await historicalPricesHeadless.load(args(["JPM"], { range: "3M", from: "2015-03-01", to: "2015-03-31" }), ctx);
     expect([hp.rows.length, String(hp.rows[0]!.date).slice(0, 10), String(hp.rows.at(-1)!.date).slice(0, 10)]).toEqual([22, "2015-03-02", "2015-03-31"]);
     expect(hp.metadata).toMatchObject({ range: null, requestedWindow: { from: "2015-03-01", to: "2015-03-31" },
-      notices: ["Max drawdown -4.9% (daily closes): peak 61.00 on 02 Mar 2015, trough 58.00 on 10 Mar 2015, not back to the peak by 31 Mar 2015"] });
+      notices: ["Max drawdown -4.9% (daily closes): peak 61.00 on 2015-03-02, trough 58.00 on 2015-03-10, not back to the peak by 2015-03-31"] });
     expect(hp.freshness).toMatchObject({ status: "not-a-feed", basis: "daily bars, 2015-03-01 to 2015-03-31" });
     expect(quoted).toBe(false);
 

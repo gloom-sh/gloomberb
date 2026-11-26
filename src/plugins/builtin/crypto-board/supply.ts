@@ -1,5 +1,4 @@
 import type { StablecoinSupplyCoin, StablecoinSupplyPayload } from "../../../api-client/crypto-markets";
-import { formatDay } from "../../../components/ui/day-cell";
 import { MISSING_VALUE, formatCompact, formatCompactAmount } from "../../../utils/format";
 import { formatCryptoPercent, utcCloseAsOfText, type CryptoRowSupply } from "./model";
 
@@ -122,10 +121,11 @@ export function supplyHistoryStart(payload: StablecoinSupplyPayload | null | und
 }
 
 /**
- * `Total supply 306.33B · 7D -1.45B (-0.47%) · 30D +1.75B (+0.57%) · as of 18 Oct 2026 UTC close · DefiLlama, daily since 28 Nov 2017`,
+ * `Total supply 306.33B · 7D -1.45B (-0.47%) · 30D +1.75B (+0.57%) · as of 2026-10-18 UTC close · DefiLlama, daily since 2017-11-28`,
  * as the CLI states it and as it states the DeFi total: the start says where the count, and a chart of ALL, begins.
+ * Its days are ISO, as JSON and CSV keep them; the text writes them day first (`day`, `formatDay`).
  */
-export function supplySummaryLine(payload: StablecoinSupplyPayload): string | null {
+export function supplySummaryLine(payload: StablecoinSupplyPayload, day: (value: string) => string = (value) => value): string | null {
   const total = payload.total;
   if (!total) return null;
   const change = (amount: number | null, percent: number | null) => (
@@ -136,8 +136,8 @@ export function supplySummaryLine(payload: StablecoinSupplyPayload): string | nu
     `Total supply ${formatCompact(total.supply, { fixedDecimals: true })}`,
     `7D ${change(total.change7d, total.change7dPercent)}`,
     `30D ${change(total.change30d, total.change30dPercent)}`,
-    ...(payload.asOf ? [utcCloseAsOfText(payload.asOf)] : []),
-    `${STABLECOIN_SUPPLY_PUBLISHER}${since ? `, daily since ${formatDay(since)}` : ""}`,
+    ...(payload.asOf ? [utcCloseAsOfText(payload.asOf, day)] : []),
+    `${STABLECOIN_SUPPLY_PUBLISHER}${since ? `, daily since ${day(since)}` : ""}`,
   ].join(" · ");
 }
 

@@ -93,6 +93,8 @@ test("the report marks a fund the newest day still waits on as pending", async (
     const latest = text.split("\n").find((line) => line.startsWith("20 Oct 2026"))!;
     expect(latest).toMatch(/20 Oct 2026\s+-6\.7\s+pending\s+\+3\.6\s+-10\.3\s+IBIT/);
     expect(text).toContain("20 Oct 2026: -$6.70M (IBIT pending)");
+    // JSON and CSV keep the note's days in ISO.
+    expect(result.notes?.[0]).toContain("2026-10-20: -$6.70M (IBIT pending)");
     expect(text).toContain("Farside Investors");
     // A column is headed by a ticker (BTC there is Grayscale's mini fund, not the coin): a note names each fund listed.
     expect(result.notes).toContain("Funds: IBIT iShares Bitcoin Trust ETF, FBTC Fidelity Wise Origin Bitcoin Fund.");

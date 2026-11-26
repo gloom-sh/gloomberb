@@ -900,10 +900,16 @@ function emptyReportReason(
   return narrowed ? `No data for ${symbols.join(", ")} with these options.` : `No data for ${symbols.join(", ")}: not covered${token ? ` by ${token}` : ""}.`;
 }
 
-function textNotices(result: HeadlessPaneResult): string[] {
-  const notices = result.metadata?.notices;
+function textNotices(result: HeadlessPaneResult, text = false): string[] {
+  const notices = text && result.textNotices ? result.textNotices : result.metadata?.notices;
   if (!Array.isArray(notices)) return [];
   return [...new Set(notices.filter((notice): notice is string => typeof notice === "string" && notice.trim().length > 0))];
+}
+
+/** The notes the text report prints: `textNotes` for the load's own, then any added after it (a row window's). */
+function printedNotes(result: HeadlessPaneResult): string[] | undefined {
+  if (!result.textNotes) return result.notes;
+  return [...result.textNotes, ...(result.notes ?? []).slice(result.textNotes.length)];
 }
 
 /**
@@ -1092,7 +1098,7 @@ export function renderHeadlessPaneText(
   // A long title wraps to a narrow --width like the text under a table; each line stays bold.
   const lines = [...wrapToTerminal(reportTitle(definition, args, result, fallbackTitle)).split("\n").map(cliStyles.bold), ""];
   // A notice wraps to a narrow --width, as the notes and errors under the tables do.
-  const notices = textNotices(result).map((notice) => wrapToTerminal(notice));
+  const notices = textNotices(result, true).map((notice) => wrapToTerminal(notice));
   if (notices.length) lines.push(...notices, "");
   const gate = reportGate(definition, result);
   const reason = emptyReportReason(definition, result, args, token, gate);
@@ -1122,7 +1128,8 @@ export function renderHeadlessPaneText(
       return _exhaustive;
     }
   }
-  if (result.notes?.length) lines.push("", ...renderMessages("Notes", result.notes));
+  const notes = printedNotes(result);
+  if (notes?.length) lines.push("", ...renderMessages("Notes", notes));
   const { failed } = splitErrors(result);
   // One Pro line per report, whatever its tables lock; a report the free view left empty said it above.
   const pro = gate ? gateLine(gate) : null;
