@@ -17,6 +17,7 @@
     "scripts/heap-probe.ts",
     // Built by path in scripts/pane-chrome/page.ts.
     "scripts/pane-chrome/fixture.tsx",
+    "scripts/pane-chrome/data-sweep-shot-worker.ts",
     // Built by path in scripts/pane-chrome/sync-poll.ts.
     "scripts/pane-chrome/sync-poll-fixture.ts",
     // Run by path in .github/workflows/windows-desktop-check.yml, through a

@@ -33,18 +33,26 @@ listed-option-IV cohorts for HVG/HVT are explicit unsupported lanes. Planning
 does not fetch coverage or infer that every small/non-US equity is incompatible.
 
 Captures run sequentially as `shot --strict --json`, 500ms apart, in a newly
-created profile under `~/.cache/gloom-smoke/`. Telemetry is disabled, command
-runtime starts no sync engine, and external plugin folders must remain empty.
+created lane profile under `~/.cache/gloom-smoke/`. Telemetry is disabled,
+command runtime starts no sync engine, and the Pro lane's external plugin
+folder must remain empty. One muted Chrome runs for the sweep in a separate
+disposable profile with no credentials in its environment. Every capture gets
+a fresh browser context, disposed before the next case, even across lanes.
+The sweep owns the browser's private DevTools pipe; a shot child can drive only
+its assigned page over its inherited IPC channel, not a DevTools port.
 The sweep saves the frame behind each strict assessment, including empty, gated
 and failed panes. The JSON and strict exit code still describe the pane, not
 whether a PNG was saved. A missing evidence file is a separate sweep error;
 ordinary `shot --strict` still does not save an unusable image.
 Only the session value should be passed from a caller's credential store. Never
-copy a real profile or run third-party plugins with credentials. The profile is
-removed in `finally`; do not externally SIGKILL the script before cleanup.
+copy a real profile or run third-party plugins with credentials. The browser and
+temporary profiles are cleaned up on completion, failures, SIGINT and SIGTERM;
+allow cleanup to finish rather than sending SIGKILL.
 
 Defaults are at most 40 captures, 600 seconds overall and 90 seconds per command.
-Each child has its own process group so timeout cleanup also reaches its browser.
+Each shot child has its own process group. A timeout stops the child and disposes
+its context; if the browser crashes or a context cannot safely be reclaimed, the
+sweep closes that browser and reports further captures as errors without restarting it.
 Use `--max-cases`, `--max-seconds` and `--timeout-seconds` to change those bounds.
 Use `--only ANR,MOST` or `--only ANR/us-micro` for targeted checks; unknown selections
 fail. `--shard 1/8` selects stable case IDs, not catalog positions; rotate through
@@ -52,9 +60,13 @@ all shards for broader coverage. Bounds still apply within a shard. Every deferr
 case says why it was skipped: selection, shard, case budget or global time budget.
 A default run is deliberately partial, not a full-manifest pass.
 
-By default the script invokes this checkout's CLI with Bun. `--cli /path/to/gloom`
-uses a trusted release binary instead; it must support the current strict shot
-assessment fields and the sweep evidence path. No shell evaluates catalog arguments.
+The sweep runs this checkout's CLI with Bun on macOS or Linux. `--cli` is no
+longer supported: to sweep another revision, run from that revision's source
+checkout with sweep browser support. Older binaries cannot join the private
+session, and Windows does not support this pipe transport. Standalone `gloom shot`
+still launches and closes its own browser on supported platforms. On non-root
+Linux, a Chrome sandbox startup failure ends sweep coverage rather than trying
+a second browser. No shell evaluates catalog arguments.
 
 The specified empty output directory receives the catalog, complete plan,
 per-capture JSON/stderr and PNGs, plus `results.json` and `results.md`. Reports keep
@@ -121,7 +133,7 @@ plugin built into Gloom again is skipped for its built-in. A feed that cannot
 be read is itself missing; the reviewed plugins still run.
 
 The lane runs in its own freshly created profile under `~/.cache/gloom-smoke/`.
-Its children get an environment built from an allowlist, never a denylist:
+Its children ignore dotenv files and get an environment built from an allowlist, never a denylist:
 the path, locale, time zone and Chrome location, with the profile as `HOME`, so
 `GLOOMBERB_SESSION_TOKEN`, keys, proxies and agent sockets never sit beside
 plugin code, and git reads no user config. Each reviewed plugin is installed

@@ -32,7 +32,8 @@ import { shortWatchEmptyTitle } from "../../src/plugins/builtin/short-interest/w
 import { NO_CASHTAG_STATE } from "../../src/plugins/builtin/social-mentions/model";
 import { parseViewSpecOr } from "../../src/plugins/builtin/custom-view/view-spec";
 import type { RegistryPlugin } from "../../src/plugins/marketplace/model";
-import { assessCapture, captureEvidence, EXPECTED_EMPTY, exampleArgs, functionCards, planSweep, REVIEWED_EMPTY, REVIEWED_PENDING, runCommand, selectCases, sessionlessAssessment, type Assessment, type CommandResult } from "./data-sweep";
+import { assessCapture, captureEvidence, EXPECTED_EMPTY, exampleArgs, functionCards, planSweep, REVIEWED_EMPTY, REVIEWED_PENDING, selectCases, sessionlessAssessment, type Assessment } from "./data-sweep";
+import { runCommand, type CommandResult } from "./data-sweep-command";
 import { planPlugins, pluginInstallRef, pluginLaneEnv, REVIEWED_PLUGINS } from "./data-sweep-plugins";
 
 const entry = (changes: Partial<PaneCatalogEntry> = {}): PaneCatalogEntry => ({

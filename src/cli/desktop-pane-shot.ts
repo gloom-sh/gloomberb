@@ -45,7 +45,7 @@ import { isShotApiRequestAllowed, isShotSessionPath } from "./desktop-pane-shot-
 import { renderElectrobunViewHtml } from "../renderers/dom/build-assets";
 import { loadShotView, SHOT_VIEW_SCRIPT, SHOT_VIEW_STYLESHEET, type ShotViewFiles } from "./desktop-pane-shot-view";
 import { errorMessage } from "../utils/errors";
-import { findChromeExecutable, launchShotBrowser, type CdpPage } from "./desktop-pane-shot-browser";
+import { openShotPage, type CdpPage } from "./desktop-pane-shot-browser";
 
 export interface DesktopPaneShotIntradayHistory {
   target?: InstrumentRef;
@@ -345,13 +345,11 @@ export async function renderDesktopPaneScreenshot(
   apiProxy: DesktopPaneShotApiProxy,
   options: { captureImage?: boolean; bridge?: DesktopPaneShotBridge; statusLine?: ShotStatusLine } = {},
 ): Promise<DesktopPaneShotRenderResult & { image?: Uint8Array }> {
-  const chrome = await findChromeExecutable();
   const view = await loadShotView();
   return withShotTempDir("gloom-pane-shot-", async (tempDir) => {
     const server = serveShotPage(view, shotPageHtml(view, payload), apiProxy, options.bridge ?? null);
     try {
       return await capturePageScreenshot({
-        chrome,
         url: server.url,
         widthPx: payload.widthPx,
         heightPx: payload.heightPx,
@@ -786,7 +784,6 @@ async function shotApiResponse(response: Response, path: string): Promise<Respon
 }
 
 async function capturePageScreenshot({
-  chrome,
   url,
   widthPx,
   heightPx,
@@ -797,7 +794,6 @@ async function capturePageScreenshot({
   statusLine,
   fitRows,
 }: {
-  chrome: string;
   url: string;
   widthPx: number;
   heightPx: number;
@@ -808,7 +804,7 @@ async function capturePageScreenshot({
   statusLine?: ShotStatusLine;
   fitRows?: { heightCells: number; maxHeightCells: number; roles: readonly string[] };
 }): Promise<DesktopPaneShotRenderResult & { image?: Uint8Array }> {
-  const browser = await launchShotBrowser(chrome, { widthPx, heightPx, userDataDir });
+  const browser = await openShotPage({ widthPx, heightPx, userDataDir });
   const session = browser.page;
   try {
     await session.send("Runtime.enable");
