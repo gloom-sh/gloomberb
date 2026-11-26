@@ -21,6 +21,7 @@ export interface RealizedVolEvidenceStatus {
   errors: string[];
   /** The errors that are the current IV's alone: a chart missing only its IV point names that, not the symbol. */
   ivErrors?: string[];
+  ivOutsideCoverage?: boolean;
   /** The windows the history is too short for: their series have no values, and the capture is whole without them. */
   shortWindows?: number[];
   currentIv: { value: number; date: string; label: string; source: string | null; expiration: number } | null;
@@ -40,9 +41,9 @@ function ivPoint(status: Pick<RealizedVolEvidenceStatus, "showIv" | "currentIv" 
   return status.showIv ? status.currentIv ?? status.proxyIv ?? null : null;
 }
 
-/** Whether a capture still needs an ATM IV it does not have; an FX pair never has one. */
-const missingIv = (status: Pick<RealizedVolEvidenceStatus, "showIv" | "currentIv" | "fxPair">) =>
-  status.showIv && status.currentIv == null && status.fxPair !== true;
+/** Whether a capture still needs an ATM IV it does not have. */
+const missingIv = (status: Pick<RealizedVolEvidenceStatus, "showIv" | "currentIv" | "fxPair" | "ivOutsideCoverage">) =>
+  status.showIv && status.currentIv == null && !status.fxPair && !status.ivOutsideCoverage;
 
 /** A series a short history leaves without values: a selected window it is too short for. */
 function shortSeries(id: string, shortWindows: readonly number[] | undefined): boolean {
@@ -86,6 +87,7 @@ function readRealizedVolEvidence(value: unknown): RealizedVolEvidence | null {
     || !isStringArray(value.errors)
     || (value.shortWindows !== undefined && (!Array.isArray(value.shortWindows) || !value.shortWindows.every(isFiniteNumber)))
     || (value.ivErrors !== undefined && !isStringArray(value.ivErrors))
+    || (value.ivOutsideCoverage !== undefined && typeof value.ivOutsideCoverage !== "boolean")
     || (value.fxPair !== undefined && typeof value.fxPair !== "boolean")
     || (value.proxyStale !== undefined && typeof value.proxyStale !== "boolean")
     || (value.proxyIv != null && (!isRecord(value.proxyIv) || typeof value.proxyIv.fund !== "string"

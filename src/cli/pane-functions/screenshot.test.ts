@@ -698,6 +698,10 @@ describe("realized volatility screenshot evidence", () => {
     expect(shotUnavailableSymbols(request, source, nodes(drawn))).toEqual(["AAPL current ATM IV"]);
     // Any other error beside it still leaves the symbol unavailable.
     expect(shotUnavailableSymbols(request, source, nodes({ ...drawn, errors: [...ivErrors, "History unavailable"] }))).toEqual(["AAPL"]);
+    const foreignSource = payload([["PIRC:BIT", { quote: { price: 6.32 } }]]);
+    const foreign = realizedVolSemanticEvidence(noIv, { ...status, symbol: "PIRC:BIT", currentIv: null, ivOutsideCoverage: true });
+    expect(foreign.complete).toBe(true);
+    expect(shotUnavailableSymbols(request, foreignSource, nodes(foreign))).toEqual([]);
     // An IV the pane names must still be the point it drew.
     expect(shotDataEvidenceFor(request, source, nodes({ ...drawn, currentIv: status.currentIv }))).toBeNull();
   });

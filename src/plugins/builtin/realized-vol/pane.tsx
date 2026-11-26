@@ -186,7 +186,7 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
     role: "report-notice", label: "Chart window",
     getMetadata: () => ({ text: `Chart legend: ${legendWindow}-bar window`, key: "legendWindow", value: legendWindow }),
   } : null);
-  const ivErrors = showIv && !fxPair ? [...new Set([iv.error, ivRefresh.error, iv.data?.error, !iv.data?.reference ? "Current ATM IV unavailable" : null]
+  const ivErrors = showIv && !fxPair && !ivCoverage ? [...new Set([iv.error, ivRefresh.error, iv.data?.error, !iv.data?.reference ? "Current ATM IV unavailable" : null]
     .filter((value): value is string => !!value))] : [];
   const evidence: RealizedVolEvidenceStatus = {
     symbol: model?.symbol ?? symbol ?? "", view: view === "cone" ? "cone" : "graph", estimator, legendWindow,
@@ -197,6 +197,7 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
     errors: [...new Set([history.error, history.data?.error, ...(model?.warnings ?? []), ...ivErrors]
       .filter((value): value is string => !!value))],
     ivErrors,
+    ...(ivCoverage ? { ivOutsideCoverage: true } : {}),
     currentIv: showIv && iv.data?.reference ? { value: iv.data.reference.value * 100,
       date: iv.data.reference.date.toISOString(), label: iv.data.reference.label,
       source: iv.data.reference.source, expiration: iv.data.reference.expiration } : null,
