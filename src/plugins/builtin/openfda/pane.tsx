@@ -1,4 +1,4 @@
-import { dayCell, formatDay } from "../../../components/ui/day-cell";
+import { formatDay } from "../../../components/ui/day-cell";
 import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import {
@@ -123,7 +123,8 @@ function cellFor(record: OpenFdaRecord, column: ColumnId, colors: ThemeColors, s
   const toned = (text: string | null): DataTableCell => (text
     ? { text, color: toneColor(recordTone(column, text), colors) }
     : missing);
-  if (column === "date") return { ...dayCell(record.date), color: colors.textMuted };
+  // The instant stays the value, so an export and a rendered-view report keep it as before.
+  if (column === "date") return { text: formatDate(record.date), value: record.date, color: colors.textMuted };
   switch (record.dataset) {
     case "drug":
       if (column === "product") return { text: isSearchedDrug(record, searched) ? "" : record.product, value: record.product, color: colors.textBright };

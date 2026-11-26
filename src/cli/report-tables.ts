@@ -17,7 +17,7 @@ import {
   type DisplayNumber,
 } from "../utils/display-number";
 import { isEpochMilliseconds, parseReportTime } from "../utils/utc-time";
-import { dayFromText } from "../utils/day-format";
+import { dayFromText, isoFromDayText } from "../utils/day-format";
 import type { ReportFreshness } from "./pane-functions/freshness";
 import {
   EXPORT_DATING_COLUMNS,
@@ -632,6 +632,9 @@ export function exportTextTable(
       if (!cell) return BLANK;
       // The number behind a figure drawn short (a volume of 1.18M) exports as the source gave it.
       if (cell.instant) return exportCell(cell.instant, null);
+      // A day the pane draws first (`25 Nov 2026`) exports as its ISO day, as the pane's own Export CSV writes it.
+      const day = isoFromDayText(cell.text);
+      if (day) return exportCell(null, day);
       return exportCell(cell.value != null && COMPACT_FIGURE.test(cell.text.trim()) ? cell.value : null, cell.text);
     }),
     true,

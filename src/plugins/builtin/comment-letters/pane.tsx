@@ -1,4 +1,4 @@
-import { dayCell, formatDay } from "../../../components/ui/day-cell";
+import { formatDay } from "../../../components/ui/day-cell";
 import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
@@ -204,7 +204,8 @@ export function CommentLettersPane({ width, height, focused }: PaneProps) {
   const renderCell = useCallback((letter: CommentLetter, column: LetterColumn): DataTableCell => {
     switch (column.id) {
       case "filed":
-        return { ...dayCell(letter.filingDate), color: colors.textMuted };
+        // The instant stays the value, so an export and a rendered-view report keep it as before.
+        return { text: formatDate(letter.filingDate), value: letter.filingDate, color: colors.textMuted };
       case "from":
         return { text: AUTHOR_LABEL[letter.author], color: toneColor(AUTHOR_TONE[letter.author], colors) };
       case "form":
