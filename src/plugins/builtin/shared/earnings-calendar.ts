@@ -53,7 +53,7 @@ function calendarDay(event: Pick<EarningsEvent, "earningsDate">): string {
  * A calendar event's status on `today`: reported once the report is out
  * (Gloom Cloud says so, or has its figure) or its date has passed.
  */
-export function calendarStatus(
+function calendarStatus(
   event: Pick<EarningsEvent, "earningsDate" | "epsActual" | "isDateEstimate" | "dateStatus">,
   today: string,
 ): EarningsDateStatus | null {
