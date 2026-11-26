@@ -3855,23 +3855,26 @@ async function printExchangeAnnouncements(
   } catch (error) {
     failure = `${publisher} announcements unavailable: ${error instanceof Error ? error.message : String(error)}`;
   }
-  // The company's own page where Gloom Cloud has it (HKEXnews' search with the company filled in), else the venue's.
-  const pageLine = `${page.name}: ${payload?.page || page.url}`;
   const listed = payload ? announcementRows(payload, all) : [];
   const rows = listed.slice(0, count);
+  const publishers = [...new Set(rows.map((row) => row.source ?? publisher))];
+  const source = publishers.join(", ") || publisher;
+  const sourcePage = payload?.page || page.url;
+  const pageName = source !== publisher && sourcePage !== page.url ? "Source catalogue" : page.name;
+  const pageLine = `${pageName}: ${sourcePage}`;
   const routine = payload && !all ? payload.announcements.filter(isRoutineReturn).length : 0;
   const routineNote = routine > 0
     ? `Left out ${routine} routine ${routine === 1 ? "return" : "returns"} (next day disclosure and monthly returns) of the latest ${payload!.announcements.length}; --all lists them.`
     : null;
   const warnings = [
     ...choice,
-    ...payload?.stale ? [`${publisher} could not be reached; these are the announcements Gloom Cloud read last.`] : [],
+    ...payload?.stale ? [`${source} could not be reached; these are the documents Gloom Cloud read last.`] : [],
     ...failure ? [failure] : [],
   ];
   // Only ASX flags price-sensitive announcements; the column is left out where the exchange flags none.
   const columns = rows.some((row) => typeof row.priceSensitive === "boolean")
     ? ANNOUNCEMENT_COLUMNS : ANNOUNCEMENT_COLUMNS.filter((column) => column.key !== "priceSensitive");
-  const notes = [...routineNote ? [routineNote] : [], pageLine];
+  const notes = [...routineNote ? [routineNote] : [], ...source !== publisher && payload?.coverage ? [payload.coverage] : [], pageLine];
   ctx.printResult({
     data: rows,
     metadata: {
@@ -3879,11 +3882,11 @@ async function printExchangeAnnouncements(
       ...(payload ? { announcementsTotal: payload.total, announcementsRetrievedAt: payload.retrievedAt } : {}),
       ...(routine > 0 ? { routineReturnsHidden: routine } : {}),
     },
-    freshness: rowsFreshness(rows, { ...exchangeAnnouncementsFreshness(publisher), observedKey: "date" }),
+    freshness: rowsFreshness(rows, { ...exchangeAnnouncementsFreshness(source), observedKey: "date" }),
     ...(warnings.length > 0 ? { warnings } : {}),
   }, {
     heading: listingHeading(resolved),
-    ...(rows.length > 0 ? { summary: () => `${notice} Its latest ${publisher} announcements:` } : {}),
+    ...(rows.length > 0 ? { summary: () => `${notice} Its latest ${source} ${source === publisher ? "announcements" : "documents"}:` } : {}),
     rows: () => rows,
     columns,
     empty: `${failure ? notice : `${notice} ${publisher} lists no announcements for it.`}\n${notes.join("\n")}`,
