@@ -1036,10 +1036,23 @@ function stateMarkers(text: string, patterns: RegExp[]): string[] {
   )))];
 }
 
-async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotRenderResult> {
+/** Omit decorative placeholders from text extraction without changing the screenshot or layout. */
+function withoutReportDecorations<T>(root: HTMLElement, read: (root: HTMLElement) => T): T {
+  const selector = '[data-gloom-report-ignore="true"]';
+  if (!root.querySelector(selector)) return read(root);
+  const style = root.ownerDocument.createElement("style");
+  style.textContent = `${selector}, ${selector} * { visibility: hidden !important; }`;
+  root.ownerDocument.head.appendChild(style);
+  try {
+    return read(root);
+  } finally {
+    style.remove();
+  }
+}
+
+export async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotRenderResult> {
   const result = await session.send("Runtime.evaluate", {
-    expression: `(() => {
-      const root = document.getElementById("root") || document.body;
+    expression: `(${withoutReportDecorations.toString()})(document.getElementById("root") || document.body, (root) => {
       const semanticUi = window.__GLOOM_CLI_SHOT_SEMANTIC_UI__ || [];
       const normalize = (value) => String(value || "").replace(/\\s+/g, " ").trim();
       const isVisible = (element) => {
@@ -1114,7 +1127,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
           const tableMetadata = semanticTables[tableIndex] && semanticTables[tableIndex].metadata || {};
           const semanticColumns = Array.isArray(tableMetadata.columns) ? tableMetadata.columns : [];
           const headerCells = [...table.querySelectorAll('[data-gloom-role="data-table-header-cell"]')];
-          const headers = headerCells.map((cell) => normalize(cell.innerText || cell.textContent));
+          const headers = headerCells.map((cell) => normalize(cell.innerText));
           // A column drawn past the edge of the table's viewport, whole or in part, is one the picture cut.
           const scroller = table.querySelector('[data-gloom-role="data-table-body-scroll"]');
           if (scroller instanceof HTMLElement) {
@@ -1159,7 +1172,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
         [...root.querySelectorAll('[data-gloom-role="desktop-list-row"], [data-gloom-row="true"]')]
           .filter(isVisible)
           .forEach((row, rowIndex) => {
-            const text = normalize(row.innerText || row.textContent);
+            const text = normalize(row.innerText);
             if (!text) return;
             rows.push({
               tableIndex: 0,
@@ -1170,18 +1183,18 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
           });
       }
       return {
-        visibleText: root.innerText || root.textContent || "",
+        visibleText: root.innerText || "",
         // What the visible text fields hold, which innerText leaves out: OVME's Underlying is one.
         fieldValues: [...root.querySelectorAll("input, textarea")]
           .filter((field) => isVisible(field) && field.type !== "password" && field.type !== "hidden")
           .map((field) => normalize(field.value))
           .filter(Boolean),
         footerText: [...root.querySelectorAll('[data-gloom-role="pane-footer"]')]
-          .map((footer) => normalize(footer.innerText || footer.textContent))
+          .map((footer) => normalize(footer.innerText))
           .filter(Boolean)
           .join(" "),
         footerNotes: [...root.querySelectorAll('[data-gloom-role="pane-footer-notes"]')]
-          .map((note) => normalize(note.innerText || note.textContent))
+          .map((note) => normalize(note.innerText))
           .filter(Boolean),
         visibleKeyValues: (${readVisibleKeyValues.toString()})(root),
         surfaces: [...root.querySelectorAll('[data-gloom-surface-renderer]')].filter(isVisible).map((element) => ({
@@ -1209,7 +1222,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
           }
           return [...states[0].children]
             .filter((child) => isVisible(child) && !child.querySelector('button, [role="button"]'))
-            .map((child) => normalize(child.innerText || child.textContent))
+            .map((child) => normalize(child.innerText))
             .filter(Boolean);
         })(),
         // What each visible error and empty state says, for the Reason a strict capture gives.
@@ -1221,7 +1234,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
               const parts = state.children.length > 0 ? [...state.children] : [state];
               return parts
                 .filter((part) => isVisible(part) && !part.matches('button, [role="button"]') && !part.querySelector('button, [role="button"]'))
-                .map((part) => normalize(part.innerText || part.textContent))
+                .map((part) => normalize(part.innerText))
                 .filter(Boolean)
                 // A title and its message read as two sentences.
                 .reduce((text, part) => !text ? part : /[.!?:]$/.test(text) ? text + " " + part : text + ". " + part, "");
@@ -1247,7 +1260,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
         }),
         semanticUi,
       };
-    })()`,
+    })`,
     returnByValue: true,
   }) as {
     result?: {

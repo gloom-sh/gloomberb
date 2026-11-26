@@ -288,9 +288,10 @@ export function isQuoteContributionStaleForCurrentSession(contribution: Quote, n
   if (contribution.stale === true || !hasValidQuoteObservationTime(contribution, now)) return true;
   // A tolerated future stamp belongs to the session in progress, not the next one.
   const timestamp = Math.min(contribution.lastUpdated, now);
-  const activeSession = isExtendedHoursExchange(contribution) ? activeUsExtendedHoursSession(now) : null;
-  if (activeSession && activeUsExtendedHoursSession(timestamp) !== activeSession) return true;
-  return isTimestampStaleForExchangeSession(timestamp, contribution.listingExchangeName || contribution.exchangeName, now);
+  const exchange = contribution.listingExchangeName || contribution.exchangeName;
+  const activeSession = isExtendedHoursExchange(contribution) ? activeUsExtendedHoursSession(now, exchange) : null;
+  if (activeSession && activeUsExtendedHoursSession(timestamp, exchange) !== activeSession) return true;
+  return isTimestampStaleForExchangeSession(timestamp, exchange, now);
 }
 
 function filterFreshQuoteCandidates(
