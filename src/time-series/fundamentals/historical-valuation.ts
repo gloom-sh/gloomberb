@@ -31,6 +31,12 @@ export function historicalValuation(
 
 export function dailyStatementValuation(financials: TickerFinancials, metric: string, exchange?: string,
   currencies = createValuationCurrencyContext(financials)): TimeSeriesPoint[] {
+  if (metric === "trailingPE" && financials.statementScope) {
+    const earnings = financials.fundamentals?.scopedEarnings;
+    if (!earnings?.epsAvailableAt || !earnings.priced || financials.fundamentals?.notMeaningful?.trailingPE || !(earnings.eps > 0) || earnings.currency !== financials.quote?.currency) return [];
+    return dailyValuationHistory(financials.priceHistory, [{ availableAt: earnings.epsAvailableAt, observedAt: new Date(earnings.periodEnd),
+      atPrice: price => price / earnings.eps }], financials.quote.listingExchangeName || financials.quote.exchangeName || exchange, Date.now());
+  }
   const earningsMetric = metric === "pegRatio" ? "trailingPE" : metric;
   const selected = sourceStatements(financials, "daily", earningsMetric, exchange);
   const yearEndMonth = fiscalYearEndMonth(financials.annualStatements);
@@ -84,10 +90,24 @@ export function dailyStatementValuation(financials: TickerFinancials, metric: st
   return points.some((point) => point.value !== null) ? points : [];
 }
 
+export function scopedPeriodPE(financials: TickerFinancials, source: SecuritySeriesSource): TimeSeriesPoint | null {
+  const earnings = financials.fundamentals?.scopedEarnings;
+  if (!earnings) return null;
+  const yearEnd = financials.annualStatements.some(row => row.date === earnings.periodEnd);
+  if (source.period === "annual" && !yearEnd) return null;
+  const close = dailyStatementValuation(financials, "trailingPE", source.instrument.exchange).find(point => point.availableAt && point.value !== null);
+  if (!close?.availableAt) return null;
+  const period = source.period === "annual" || (source.period !== "ttm" && !financials.quarterlyStatements.length && yearEnd) ? "annual" : "ttm";
+  const statement = { date: earnings.periodEnd, currency: earnings.currency, eps: earnings.eps, availableAt: close.availableAt.toISOString() };
+  const point = pointForStatement(statement, "trailingPE", close.value, period, source.timestampMode, true, fiscalYearEndMonth(financials.annualStatements));
+  return point && { ...point, provenance: { ...point.provenance, ...close.provenance } };
+}
+
 /** A daily history cannot be dated at all, but the issuer still has reported figures. */
 export function dailyValuationFallbackPeriod(financials: TickerFinancials, source: SecuritySeriesSource): "annual" | "quarterly" | "ttm" | null {
   if (source.period !== "daily") return null;
   const [namespace, metric = ""] = canonicalTimeSeriesFieldId(source.fieldId).split(".");
+  if (financials.statementScope && metric === "trailingPE") return null;
   const inputMetric = metric === "pegRatio" ? "trailingPE" : metric;
   if (namespace !== "valuation" || !QUOTE_DERIVED_VALUATION_IDS.has(inputMetric)) return null;
   const daily = sourceStatements(financials, "daily", inputMetric, source.instrument.exchange);

@@ -4,11 +4,61 @@ import {
   mergeFinancials,
   mergeMissingStatementArrays,
   mergeRefreshedFinancials,
+  providerFinancialsMatchTarget,
   isProviderQuoteUsableForCurrentSession,
 } from "./financials";
 import { createTestFinancials, createTestQuote } from "../../test-support/data-provider";
 import { createDailyNavQuote } from "../../test-support/daily-nav";
 import { isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
+import { mapCloudFinancials } from "../gloomberb-cloud/normalizers";
+import { withFiledTrailingEps } from "../../time-series/filed-trailing-eps";
+import { createValuationCurrencyContext } from "../../time-series/valuation-currency";
+
+test("a filed predecessor series survives cloud normalization and cache merges without becoming the listed share's earnings", () => {
+  const statementScope = { registrant: "0002128626", basis: "predecessor" as const, label: "Corteva consolidated (accounting predecessor)" };
+  const quarter = { date: "2026-09-30", currency: "USD", totalRevenue: 2458e6, eps: -0.85, statementScope };
+  const filed = mapCloudFinancials({ statementScope, quarterlyStatements: [quarter], annualStatements: [], priceHistory: [],
+    financialCurrency: "USD", fundamentals: { marketCap: 40e9 } });
+  const old = createTestFinancials({ quote: createTestQuote({ symbol: "VYLR", listingExchangeName: "NYSE" }),
+    fundamentals: { trailingPE: 347.35 }, annualStatements: [{ date: "2025-12-31", totalRevenue: 10067e6 }],
+    quarterlyStatements: [{ date: quarter.date, totalRevenue: 905e6, netIncome: -475e6 }] });
+  expect(providerFinancialsMatchTarget(old, "VYLR", "NYSE")).toBe(false);
+  expect(providerFinancialsMatchTarget(filed, "VYLR", "NYSE")).toBe(true);
+  for (const result of [mergeFinancials(old, filed)!, mergeFinancials(filed, old)!, mergeRefreshedFinancials(old, filed), mergeMissingStatementArrays(old, filed)]) {
+    expect(result.statementScope).toEqual(statementScope);
+    expect(result.annualStatements).toEqual([]);
+    expect(result.quarterlyStatements[0]?.totalRevenue).toBe(2458e6);
+    expect(result.quarterlyStatements[0]?.netIncome).toBeUndefined();
+    expect(withFiledTrailingEps(result).fundamentals?.trailingPE).toBeUndefined();
+    expect(createValuationCurrencyContext(result).priceInStatementUnits(quarter, 70)).toBeNull();
+  }
+});
+
+test("a reviewed standalone statement replaces historical caches atomically and can price only its own earnings", () => {
+  const home = { registrant: "0002128626", basis: "standalone" as const, entity: "vylor-standalone", label: "Vylor standalone (as filed)" };
+  const predecessor = { ...home, basis: "predecessor" as const, entity: "corteva-consolidated" };
+  const year = { statementScope: home, date: "2027-12-31", availableAt: "2028-02-15", currency: "USD", eps: 3, totalRevenue: 120e6 };
+  const book = mapCloudFinancials({ statementScope: home, statementReview: { status: "pending", reviewedThrough: "2028-02-15" },
+    annualStatements: [year], quarterlyStatements: [], financialCurrency: "USD", priceHistory: [],
+    fundamentals: { marketCap: 1000, trailingPeriodEnd: year.date, epsCurrency: "USD", eps: 3, trailingPE: 20 } });
+  book.quote = createTestQuote({ symbol: "VYLR", currency: "USD", price: 60, listingExchangeName: "NYSE", lastUpdated: Date.parse("2028-02-16") });
+  const old = createTestFinancials({ quarterlyStatements: [{ date: year.date, eps: 900 }], annualStatements: [] });
+  for (const cached of [old, { ...old, statementScope: predecessor }]) {
+    for (const result of [mergeFinancials(cached, book)!, mergeFinancials(book, cached)!, mergeMissingStatementArrays(cached, book), mergeRefreshedFinancials(book, cached)]) {
+      expect(result.statementScope).toEqual(home);
+      expect(result.statementReview).toEqual(book.statementReview);
+      expect(result.quarterlyStatements).toEqual([]);
+      expect(result.annualStatements).toEqual(book.annualStatements);
+    }
+  }
+  const price = createValuationCurrencyContext(book);
+  expect(price.priceInStatementUnits(year, 60)).toBe(60);
+  expect(price.priceInStatementUnits({ ...year, statementScope: predecessor }, 60)).toBeNull();
+  expect(price.priceInStatementUnits({ ...year, statementScope: undefined }, 60)).toBeNull();
+  expect(withFiledTrailingEps(book, Date.parse("2028-02-16")).fundamentals?.trailingPE).toBe(20);
+  expect(withFiledTrailingEps(book, Date.parse("2028-02-14")).fundamentals?.trailingPE).toBeUndefined();
+  expect(withFiledTrailingEps({ ...book, quarterlyStatements: old.quarterlyStatements }, Date.parse("2028-02-16")).fundamentals?.trailingPE).toBeUndefined();
+});
 
 describe("provider-router financial quote usability", () => {
   let clock: ReturnType<typeof spyOn>;

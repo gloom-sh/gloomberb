@@ -6,6 +6,23 @@ import { catalystFixture } from "../catalysts/test-fixture";
 import { NOT_MEANINGFUL_TONE } from "../../../utils/growth";
 import { fiscalPeriodText } from "../earnings/fiscal-quarter";
 import { dividendYearDetail, dividendYears, splitMarks } from "./event-charts";
+import { latestTrailingStatement } from "../../../time-series/fundamentals";
+
+test("listing earnings keep their own report and never acquire a predecessor's sales or trailing year", () => {
+  const predecessor = { basis: "predecessor" as const, entity: "corteva-consolidated", registrant: "0002128626", label: "Corteva consolidated (accounting predecessor)" };
+  const standalone = { ...predecessor, entity: "vylor-standalone", basis: "standalone" as const };
+  const rows = ["2025-12-31", "2026-03-31", "2026-06-30", "2026-09-30"].map(date => ({ date, statementScope: predecessor, currency: "USD", totalRevenue: 2458e6, eps: -0.85 }));
+  const event = { symbol: "VYLR", dividends: [], splits: [], earnings: [{ date: "2026-11-12", fiscalPeriod: "2026-09", epsActual: 0.4, epsEstimate: 0.3, currency: "USD" }] };
+  for (const scope of [predecessor, standalone, undefined]) {
+    const book = { statementScope: scope, quarterlyStatements: rows, annualStatements: [rows[0]!], priceHistory: [] };
+    const events = buildEventRows(event, null, book, "USD");
+    expect(events.find(row => row.status === "Earnings")).toMatchObject({ epsActual: 0.4, epsEstimate: 0.3, qEps: 0.4, epsCurrency: "USD", qRevenue: undefined, fiscalPeriodEnd: undefined });
+    expect(events.find(row => row.status === "TTM")).toBeUndefined();
+    expect(latestTrailingStatement(book)).toBeNull();
+  }
+  const owned = { statementScope: standalone, quarterlyStatements: [...rows, { ...rows[3]!, statementScope: standalone, totalRevenue: 300e6 }] };
+  expect(buildEventRows(event, null, owned, "USD").find(row => row.status === "Earnings")?.qRevenue).toBe(300e6);
+});
 
 test("a statement ending in the following month does not rename the earnings calendar's quarter", () => {
   const rows = buildEventRows({ symbol: "TEST", dividends: [], splits: [], earnings: [
