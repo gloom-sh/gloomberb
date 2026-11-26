@@ -1,4 +1,3 @@
-import { formatDay } from "../../../utils/day-format";
 import type { HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/headless";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { MarketDataCoordinator, resolveEntryValue } from "../../../market-data/coordinator";
@@ -19,6 +18,7 @@ import {
 import { historyReadUnanswered } from "../../../time-series/calendar-month-returns";
 import { formatPct, formatSignedPct } from "./view";
 import { logFailure } from "../../../utils/log-failure";
+import { isoDayEntries } from "../shared/day-entries";
 import { loadFuturesContractTerms } from "../../../market-data/futures-contract";
 import { kellyCount, kellyCountMultiplier, type KellyCount } from "./units";
 
@@ -34,7 +34,7 @@ function inputEntries(inputs: KellyHistoryInputs, edge: number) {
   const payoff = inputs.downsideReturn < 0 ? inputs.upsideReturn / -inputs.downsideReturn : null;
   return [
     { key: "window", label: "Window", value: { start: inputs.start, end: inputs.end, months: inputs.periods },
-      formatted: `${formatDay(inputs.start)} to ${formatDay(inputs.end)}, ${inputs.periods} monthly returns${inputs.rollNote ? `, ${inputs.rollNote}` : ""}` },
+      formatted: `${inputs.start} to ${inputs.end}, ${inputs.periods} monthly returns${inputs.rollNote ? `, ${inputs.rollNote}` : ""}` },
     { key: "winRate", label: "Win rate", value: inputs.winProbability,
       formatted: `${formatPct(inputs.winProbability)} (${inputs.wins} of ${inputs.periods} months up)` },
     { key: "averageGain", label: "Average gain", value: inputs.upsideReturn, formatted: `${formatSignedPct(inputs.upsideReturn)} a month` },
@@ -169,7 +169,8 @@ export const kellyHeadless: HeadlessPaneDefinition<"bundle"> = {
       freshness: { asOf: inputs.latest },
       notes,
       sections: [
-        { title: "Inputs", entries: inputEntries(inputs, solve.expectedReturn) },
+        // The window's days read first in the text; JSON and CSV keep them in ISO.
+        { title: "Inputs", ...isoDayEntries(inputEntries(inputs, solve.expectedReturn)) },
         {
           title: bankroll == null ? "Sizing" : `Sizing on ${formatNumber(bankroll, 0)} ${baseCurrency}`,
           columns: [
