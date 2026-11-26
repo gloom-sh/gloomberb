@@ -830,6 +830,8 @@ export interface HeadlessPaneResultByShape {
 
 export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = HeadlessPaneShape> {
   shape: Shape;
+  /** New portable CSV columns that follow even the existing export_notes column. */
+  csvTrailingColumns?: readonly string[];
   /** Optional discovery information; executors derive the rest from the definition. */
   discovery?: {
     id?: string;

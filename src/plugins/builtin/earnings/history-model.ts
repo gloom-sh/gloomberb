@@ -5,7 +5,7 @@ import type { TimeSeriesPoint } from "../../../time-series/types";
 import { formatMonthYear } from "../../../utils/datetime-format";
 import type { EarningsEvent } from "../../../types/data-provider";
 import type { EarningsDateStatus, EarningsEpsBasis, FilingEpsDetails } from "../../../types/financials";
-import { earningsDateStatus, earningsEpsBasis, isProvisionalActual } from "../shared/earnings-report";
+import { canCompareReportedEps, displayEarningsEpsBasis, earningsDateStatus, earningsEpsBasis, isProvisionalActual } from "../shared/earnings-report";
 import { resolveReportRows, type ReportRowAdapter } from "../shared/earnings-calendar";
 import { addDays, MIN_AVERAGE_REPORTS } from "./board-model";
 import { fiscalQuarterOf, fiscalPeriodText, placedPeriod, type FiscalQuarter } from "./fiscal-quarter";
@@ -36,6 +36,7 @@ export interface HistoryRow extends FilingEpsDetails {
   /** Analysts behind `epsEstimate`. */
   epsAnalysts: number | null;
   epsActual: number | null;
+  epsActualSource?: EarningsHistoryPayload["reports"][number]["epsActualSource"];
   /** The actual is the company's press release's, until the calendar's replaces it. */
   provisional: boolean;
   /** Null when the reported figure's basis cannot be determined. */
@@ -232,6 +233,7 @@ export function historyRows(
       epsEstimate: report.epsEstimate,
       epsAnalysts: report.epsAnalysts,
       epsActual: report.epsActual,
+      epsActualSource: report.epsActualSource,
       provisional: isProvisionalActual(report),
       epsBasis: earningsEpsBasis(report.epsBasis),
       ...(report.streetEps ? { streetEps: report.streetEps, gaapEps: report.gaapEps } : {}),
@@ -255,6 +257,7 @@ export function historyRows(
   const rows = resolveReportRows(recorded, upcoming, today, historyAdapter(today, abroad))
     // The calendar's next report past the stored horizon is on the basis the company's reports were measured on.
     .map((row) => (basis && row.upcoming && row.epsEstimate != null && row.epsBasis == null ? { ...row, epsBasis: basis } : row))
+    .map((row) => canCompareReportedEps(row) ? row : { ...row, epsBasis: displayEarningsEpsBasis(row), epsSurprise: null })
     .map((row) => withFiscalQuarter(row, anchor))
     .sort((left, right) => right.date.localeCompare(left.date));
   const upcomingRows = rows.filter((row) => row.upcoming).slice(-1);

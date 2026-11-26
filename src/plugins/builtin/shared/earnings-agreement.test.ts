@@ -27,7 +27,7 @@ interface Priced { eps: number; epsText: string; pe: number; peText: string }
 const COMPANIES = {
   // A cent apart from a fiscal-year reading when the fourth quarter's EPS is the results release's.
   META: { eps: 29.33, epsText: "$29.33", pe: 630.56 / 29.33, peText: "21.50",
-    report: { date: "2026-10-21", dateStatus: "reported", epsEstimate: 6.52, epsAnalysts: 6, epsActual: 7.4, epsBasis: "adjusted" } },
+    report: { date: "2026-10-21", dateStatus: "reported", epsEstimate: 6.52, epsAnalysts: 6, epsActual: 7.4, epsBasis: null } },
   // Gloom Cloud's own figure is 1.13 and 175.96.
   PLTR: { eps: 1.17, epsText: "$1.17", pe: 198.84 / 1.17, peText: "169.95",
     report: { date: "2026-11-02", dateStatus: "confirmed", epsEstimate: 0.41097, epsAnalysts: 24, epsActual: null, epsBasis: null } },

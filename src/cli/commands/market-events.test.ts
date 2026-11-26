@@ -38,7 +38,7 @@ test("events preserve earnings inputs in NDJSON while formatting known bases, pe
   const { rows, result, options } = await eventRows(PLTR);
   expect(rows.map((row) => row.detail)).toEqual([
     "est $0.41, confirmed, 24 analysts (Sep 2026)",
-    "eps $0.31, adj, +0.03 vs est (Jun 2026)",
+    "eps $0.31, EPS basis unconfirmed (Jun 2026)",
     "eps $0.24, GAAP, +0.07 vs est (Dec 2025)",
     "eps $0.04, -0.04 vs est",
   ]);
@@ -47,10 +47,11 @@ test("events preserve earnings inputs in NDJSON while formatting known bases, pe
   const lines = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "ndjson" }, options).split("\n").map((line) => JSON.parse(line));
   expect(lines[0]).not.toHaveProperty("epsBasis");
   expect(lines[0]).toMatchObject({ type: "earnings", date: "2026-11-02", detail: "est $0.41, confirmed, 24 analysts (Sep 2026)" });
-  expect(rows[1]).toMatchObject({ epsActual: 0.31, epsBasis: "adjusted" });
+  expect(rows[1]).toMatchObject({ epsActual: 0.31, epsEstimate: 0.28, epsBasis: "unknown" });
   expect(rows[3]).toMatchObject({ epsActual: 0.04, epsBasis: "unknown" });
-  // The JSON envelope still carries the feed as served, and CSV keeps its three columns.
   expect(result.data.earnings[0].epsEstimate).toBe(0.41222);
+  expect(result.data.earnings[1]).toMatchObject({ epsActual: 0.31, epsEstimate: 0.28, epsBasis: null, epsComparisonUnconfirmed: true });
+  expect(result.data.earnings[1]).not.toHaveProperty("difference");
   const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options);
   expect(csv.split("\n")[0]).toStartWith("Date,Type,Detail,");
   expect(csv.split("\n")[0]).not.toContain("eps");

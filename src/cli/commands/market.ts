@@ -268,6 +268,7 @@ import {
   SEC_FILINGS,
 } from "../../plugins/builtin/shared/report-freshness";
 import {
+  earningsActionForReport,
   earningsDateStatus,
   earningsDetailParts,
   earningsEpsBasis,
@@ -1178,7 +1179,7 @@ function corporateActionRows(data: CorporateActionsData) {
   );
   return [
     ...data.earnings.map((event) => {
-      const unit = event.currency?.trim() || earningsCurrency;
+      const unit = event.currency?.trim() || ("epsComparisonUnconfirmed" in event ? undefined : earningsCurrency);
       const quarter = quarterLabel(event.fiscalPeriod);
       const basis = earningsEpsBasis(event.epsBasis);
       // History rows are keyed by fiscal quarter end, upcoming ones by announcement date.
@@ -4236,7 +4237,7 @@ async function runEvents(rawArgs: string[], ctx: Parameters<CliCommandDef["execu
     const identity = listingIdentity(listing, quote);
     const choice = await listingChoiceNotes(listing, market, quote, venues);
     ctx.printResult({
-      data,
+      data: { ...data, earnings: data.earnings.map(earningsActionForReport) },
       metadata: listingMetadata(identity),
       // Dated by when it was read, as EE and fn EVT date the same events: a row's
       // date is when the event happens, and the newest past one is no as-of.

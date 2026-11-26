@@ -32,16 +32,18 @@ import { fundamentalsEpsCurrency, SERVED_TRAILING_EPS } from "../../../utils/fun
 import { isNotMeaningful, NOT_MEANINGFUL, NOT_MEANINGFUL_TEXT, NOT_MEANINGFUL_TONE, type Rate } from "../../../utils/growth";
 import {
   ACTUAL_PENDING,
+  canCompareReportedEps,
+  displayEarningsEpsBasis,
   earningsDateStatus,
   earningsDetail,
   earningsDetailParts,
-  earningsEpsBasis,
   epsBasisName,
   epsSurprise,
   inFiscalMonth,
   isProvisionalActual,
   quarterLabel,
   showsEpsBasis,
+  unconfirmedAdjustedEps,
   type EpsBasisName,
 } from "../shared/earnings-report";
 
@@ -78,6 +80,7 @@ export interface EventRow extends FilingEpsDetails {
   surpriseNotMeaningful?: true;
   /** A reported figure's basis, or an upcoming estimate's when it is adjusted; the same quarter is named the same way in ERN. The TTM row's EPS is GAAP. */
   epsBasis?: EpsBasisName;
+  epsComparisonUnconfirmed?: true;
   /** The reported figure is the company's press release's, provisional until the calendar's replaces it. */
   epsProvisional?: true;
   /** Analysts behind `epsEstimate`, when known. */
@@ -267,7 +270,7 @@ function adjustedQuarterSum(
     const matches = reported.filter((earning) => statementForEarningsDate([statement], earning) === statement);
     return matches.length === 1 ? matches[0]! : null;
   });
-  if (quarters.some((earning) => earning == null || earningsEpsBasis(earning.epsBasis) !== "adjusted")) return null;
+  if (quarters.some((earning) => earning == null || displayEarningsEpsBasis(earning) !== "adjusted")) return null;
   if (new Set(quarters.map((earning) => earning!.currency)).size !== 1) return null;
   return quarters.reduce((sum, earning) => sum + earning!.epsActual!, 0);
 }
@@ -422,10 +425,12 @@ export function buildEventRows(
   for (const [index, earning] of earnings.entries()) {
     // A pending announcement must never inherit the previous report's actuals.
     const statement = earning.epsActual == null ? undefined : statementForEarningsDate(quarterlyStatements, earning);
-    const surprise = epsSurprise(earning.epsActual, earning.epsEstimate);
+    const comparableEps = canCompareReportedEps(earning);
+    const basis = displayEarningsEpsBasis(earning);
+    const surprise = comparableEps ? epsSurprise(earning.epsActual, earning.epsEstimate) : null;
     // Against a loss or zero estimate no percentage is shown, the source's either.
     const surpriseNotMeaningful = earning.epsActual != null && isNotMeaningful(surprise);
-    const surprisePercent = earning.epsActual == null || surpriseNotMeaningful ? undefined
+    const surprisePercent = !comparableEps || earning.epsActual == null || surpriseNotMeaningful ? undefined
       : typeof surprise === "number" ? Math.round(surprise * 10_000) / 100 : earning.surprisePercent;
     rows.push({
       id: earningsIds[index]!,
@@ -437,7 +442,7 @@ export function buildEventRows(
       period: fiscalPeriodText(earning.fiscalPeriod ?? statement?.date, fiscalQuarterInYear(earning.fiscalPeriod ?? statement?.date, yearEnd)),
       ...(earning.time?.trim() ? { reportTime: earning.time.trim() } : {}),
       detail: upcomingEarningsDetail(earning),
-      epsCurrency: earning.currency ?? (earning.epsActual == null ? feedCurrency : reportedCurrency),
+      epsCurrency: earning.currency ?? (earning.epsActual == null ? feedCurrency : unconfirmedAdjustedEps(earning) ? undefined : reportedCurrency),
       revenueCurrency: statement ? statement.currency ?? financials?.financialCurrency : undefined,
       qEps: earning.epsActual ?? earning.epsEstimate,
       ...(earning.streetEps ? { streetEps: earning.streetEps, gaapEps: earning.gaapEps } : {}),
@@ -445,11 +450,11 @@ export function buildEventRows(
       earningsState: earning.epsActual == null ? "pending" : "reported",
       epsActual: earning.epsActual,
       epsEstimate: earning.epsEstimate,
-      epsDifference: earning.epsActual == null ? undefined : earning.difference,
+      epsDifference: !comparableEps || earning.epsActual == null ? undefined : earning.difference,
       surprisePercent,
       ...(surpriseNotMeaningful ? { surpriseNotMeaningful: true as const } : {}),
-      epsBasis: showsEpsBasis({ epsActual: earning.epsActual, epsBasis: earningsEpsBasis(earning.epsBasis) })
-        ? epsBasisName(earningsEpsBasis(earning.epsBasis)) : undefined,
+      epsBasis: showsEpsBasis({ epsActual: earning.epsActual, epsBasis: basis }) ? epsBasisName(basis) : undefined,
+      ...(unconfirmedAdjustedEps(earning) ? { epsComparisonUnconfirmed: true as const } : {}),
       ...(isProvisionalActual(earning) ? { epsProvisional: true as const } : {}),
       epsAnalysts: earning.epsAnalysts,
       dateStatus: earningsDateStatus(earning.dateStatus) ?? undefined,

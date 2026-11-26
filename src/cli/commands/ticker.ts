@@ -46,7 +46,7 @@ import {
   quoteHeadlineTime,
   quoteMarketStateLabel,
 } from "../../market-data/market/status";
-import { formatQuoteBookTime } from "../../market-data/quotes/time";
+import { asOfClock, formatQuoteBookTime } from "../../market-data/quotes/time";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
 import { changeBasisJson, closeDayLabel, futuresQuoteFromSettle, quoteChangeBasis, quotePreviousCloseDate, quoteSettleText } from "../../market-data/market/change-basis";
 import {
@@ -1136,8 +1136,10 @@ function valuationPriceMetrics(financials: FundamentalsReportData): Fundamentals
   const price = (value: number) => formatMarketPriceWithCurrency(value, quote.currency, options);
   const extended = getExtendedSessionDisplay(quote);
   const extendedLabel = extended ? EXTENDED_SESSION_LABELS[extended.session] : "";
+  const closeDate = extended ? headlineCloseDate(quote) : null;
+  const printedAt = extendedPrintTime(quote);
   return [
-    { label: "Last", text: price(session.price), value: session.price, unit: quote.currency },
+    { label: "Last", text: `${price(session.price)}${closeDate ? cliStyles.muted(` (${closeDayLabel(closeDate)})`) : ""}`, value: session.price, unit: quote.currency },
     session.changePercent != null && Number.isFinite(session.changePercent)
       ? {
         label: "Change",
@@ -1151,7 +1153,8 @@ function valuationPriceMetrics(financials: FundamentalsReportData): Fundamentals
       {
         label: extendedLabel,
         // "mid" when the overnight price is the session's bid and ask midpoint, as `quote` marks it.
-        text: colorBySign(`${price(extended.price)}${extended.mark ? " mid" : ""}${extended.changePercent != null ? ` (${formatPercentRaw(extended.changePercent)})` : ""}`, extended.change),
+        text: colorBySign(`${price(extended.price)}${extended.mark ? " mid" : ""}${extended.changePercent != null ? ` (${formatPercentRaw(extended.changePercent)})` : ""}`, extended.change)
+          + (printedAt == null ? "" : cliStyles.muted(` (${asOfClock(Math.min(printedAt, Date.now()))})`)),
         value: extended.price,
         unit: quote.currency,
       },

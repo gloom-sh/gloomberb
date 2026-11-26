@@ -6,7 +6,7 @@ import {
   financialEnterpriseValue, reportedEnterpriseToRevenue, reportedEnterpriseValue, withFinancialEnterpriseValue,
 } from "../../../utils/fundamentals";
 import { sourceStatements } from "../../../time-series/fundamentals/source-statements";
-import { getExtendedSessionDisplay, getQuoteSessionFields } from "../../../market-data/market/status";
+import { extendedPrintTime, getExtendedSessionDisplay, getQuoteSessionFields, quoteHeadlineTime } from "../../../market-data/market/status";
 import { atRegularSessionPrice, movePriceDerivedFigures, regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { fiscalPeriodLabel, fiscalYearEndMonth } from "../../../utils/fiscal-period";
 import { latestFinancialPeriod, latestReportedPeriod } from "../../../utils/latest-financial-period";
@@ -116,6 +116,7 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
   const fundamentals = financials?.fundamentals;
   const quoteStale = quote?.stale === true;
   const session = getQuoteSessionFields(quoteStale ? null : quote);
+  const headlineAt = quote ? quoteHeadlineTime(quote) : null;
   // An overnight price that is the session's bid and ask midpoint, nothing having traded in it.
   const extendedMark = !quoteStale && getExtendedSessionDisplay(quote)?.mark === true;
   // The cap `valuation` shows: the share count times the price where the provider's sits more than 2% from it.
@@ -190,7 +191,8 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
     ...session,
     extendedMark,
     quoteStale: quote?.stale ?? null,
-    quoteAsOf: quote && Number.isFinite(quote.lastUpdated) && quote.lastUpdated > 0 ? quote.lastUpdated : null,
+    quoteAsOf: finiteNumber(headlineAt) && headlineAt > 0 ? headlineAt : null,
+    extendedUpdatedAt: session.extendedSession ? extendedPrintTime(quote) : null,
     // The observation as sent, apart from the values used for comparison: a rejected stale quote, or the print the source priced.
     reportedQuote: reported ? {
       price: reported.price, changePercent: reported.changePercent, marketCap: reported.marketCap ?? null,

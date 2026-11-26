@@ -56,9 +56,10 @@ test("ERN rows carry each quarter's basis, the estimate's analysts and whether t
   const result = await definition.load(args, context);
   expect(result.rows.map((row) => [row.dateStatus, row.epsEstimate, row.epsAnalysts, row.epsActual, row.epsBasis])).toEqual([
     ["projected", -1.52697, 18, null, null],
-    ["reported", -1.52, 5, -1.32, "adjusted"],
+    ["reported", -1.52, 5, -1.32, "unknown"],
     ["reported", -1.17, 4, -1.38, "unknown"],
   ]);
+  expect(result.rows[1]).toMatchObject({ epsSurprise: null });
 });
 
 test("ERN history and the reported board do not pair company-adjusted diluted EPS with a street consensus", async () => {
@@ -87,7 +88,7 @@ test("a REIT's next report shows the calendar's FFO consensus labelled adjusted,
   const ern = await definition.load({ ...args, rawArgument: "PLD", argument: "PLD", symbols: ["PLD"] }, context);
   expect(ern.rows.map((row) => [row.dateStatus, row.epsEstimate, row.epsAnalysts, row.epsActual, row.epsBasis])).toEqual([
     ["confirmed", 1.58, 2, null, "adjusted"],
-    ["reported", 1.53, 4, 1.63, "adjusted"],
+    ["reported", 1.53, 4, 1.63, "unknown"],
   ]);
   const board = await definition.load({ rawArgument: "PLD GOOGL", argument: ["PLD", "GOOGL"], symbols: ["PLD", "GOOGL"], options: {} }, context);
   expect(board.rows.map((row) => [row.symbol, row.epsEstimate, row.epsAnalysts, row.epsBasis])).toEqual([["PLD", 1.58, 2, "adjusted"]]);
@@ -188,7 +189,7 @@ test("ERN board rows carry the status, analysts and basis ERN <ticker> shows, ra
   });
   const result = await definition.load({ rawArgument: "PEP GOOGL KO SAP", argument: ["PEP", "GOOGL", "KO", "SAP"], symbols: ["PEP", "GOOGL", "KO", "SAP"], options: {} }, context);
   expect(result.rows.map((row) => [row.symbol, row.dateStatus, row.epsEstimate, row.epsAnalysts, row.epsActual, row.epsBasis, row.marketCap])).toEqual([
-    ["PEP", "reported", 2.26, 15, 2.29, "adjusted", 210e9],
+    ["PEP", "reported", 2.26, 15, 2.29, "unknown", 210e9],
     ["GOOGL", "confirmed", 3.02071, 43, null, null, 4.31e12],
     ["KO", "confirmed", 0.88024, 18, null, null, 386.37e9],
     ["SAP", "projected", null, null, null, null, null],
@@ -362,7 +363,7 @@ test("ERN for a Hong Kong listing reads its own reports: each in its period and 
     reports: [
       tencent({ date: next, fiscalPeriod: "2026-09", fiscalYear: 2026, fiscalQuarter: 3, epsEstimate: 7.22, dateStatus: "confirmed" }),
       tencent({ date: addDays(today, -86), timing: "amc", timingSource: "filing", fiscalPeriod: "2026-06", fiscalYear: 2026, fiscalQuarter: 2,
-        epsEstimate: 7.23544, epsActual: 7.433, epsBasis: "adjusted", revenueActual: 204.8e9, revenueActualSource: "filing",
+        epsEstimate: 7.23544, epsActual: 7.433, epsBasis: "adjusted", epsActualSource: "filing", revenueActual: 204.8e9, revenueActualSource: "filing",
         filing: { url: "https://www1.hkexnews.hk/listedco/listconews/sehk/2026/0812/2026081200296.pdf", title: "Results", publishedAt: "2026-08-12T08:31:00.000Z" } }),
       // A half the street has no quarter for: its own row, with no estimate.
       tencent({ date: addDays(today, -88), fiscalPeriod: "2026-06", periodKind: "half", periodMonths: 6, fiscalYear: 2026, fiscalHalf: 1,
@@ -432,13 +433,13 @@ test("a press release's figures are flagged provisional on the board and in the 
   });
   const board = await definition.load({ rawArgument: "TFC PEP", argument: ["TFC", "PEP"], symbols: ["TFC", "PEP"], options: {} }, context);
   expect(board.rows.map((row) => [row.symbol, row.epsActual, row.epsActualProvisional, row.epsBasis])).toEqual([
-    ["PEP", 2.29, false, "adjusted"],
+    ["PEP", 2.29, false, "unknown"],
     ["TFC", 1.16, true, "adjusted"],
   ]);
   expect(board.rows.find((row) => row.symbol === "TFC")?.epsSurprise).toBeCloseTo(-0.0085, 4);
   expect(board.metadata?.provisional).toContain("press release");
   const basis = board.columns!.find((column) => column.key === "epsBasis")!;
-  expect(board.rows.map((row) => basis.textFormat!(row.epsBasis, row))).toEqual(["adjusted", "adjusted, provisional"]);
+  expect(board.rows.map((row) => basis.textFormat!(row.epsBasis, row))).toEqual(["unknown", "adjusted, provisional"]);
   // Exports keep the basis alone; the flag is its own field.
   expect(basis.format).toBeUndefined();
 
@@ -602,12 +603,12 @@ test("a surprise against a loss estimate exports null with its NotMeaningful fla
   });
   const result = await definition.load(args, context);
   const reported = result.rows.filter((row) => row.dateStatus === "reported");
-  expect(reported.map((row) => [row.epsSurprise, row.epsSurpriseNotMeaningful])).toEqual([[null, true], [null, true]]);
+  expect(reported.map((row) => [row.epsSurprise, row.epsSurpriseNotMeaningful])).toEqual([[null, undefined], [null, true]]);
   expect(result.rows[0]).not.toHaveProperty("epsSurpriseNotMeaningful");
   const json = serializeHeadlessPaneResult(definition, result) as { rows: Array<Record<string, unknown>> };
   expect(json.rows.filter((row) => row.dateStatus === "reported").map((row) => row.epsSurprise)).toEqual([null, null]);
   const text = renderHeadlessPaneText(definition, result, args, "ERN");
-  expect(text.match(/N\/M/g)).toHaveLength(2);
+  expect(text.match(/N\/M/g)).toHaveLength(1);
   // CSV's EPS surprise column holds only numbers: the row's status column says why it is empty.
   const csv = renderReportCsv(headlessReportTables(definition, result, args, "ERN", deriveHeadlessFreshness(definition, result), { complete: true, unavailableSymbols: [] }));
   const lines = csv.split("\n");
@@ -616,10 +617,8 @@ test("a surprise against a loss estimate exports null with its NotMeaningful fla
   expect(surprise).toBeGreaterThan(-1);
   const rows = lines.slice(1).filter((line) => line.includes(",reported,")).map((line) => line.split(","));
   expect(rows).toHaveLength(2);
-  for (const row of rows) {
-    expect(row[surprise]).toBe("");
-    expect(row.at(-1)).toContain("EPS surp: n/m");
-  }
+  expect(rows.map((row) => row[surprise])).toEqual(["", ""]);
+  expect(rows.map((row) => row.at(-1)?.includes("EPS surp: n/m"))).toEqual([false, true]);
 });
 
 test("a reported quarter with no consensus on record says so in the text, the CSV status and the pane, never a bare blank", async () => {

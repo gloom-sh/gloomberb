@@ -49,7 +49,7 @@ describe("event detail", () => {
     }).flatMap((section) => section.blocks).find((block) => block.kind === "row" && block.label === "Actual");
     expect(actual("press-release")).toEqual({ kind: "row", label: "Actual", value: "9.18 USD",
       detail: "adjusted, provisional, from the company's press release" });
-    expect(actual(undefined)).toEqual({ kind: "row", label: "Actual", value: "9.18 USD", detail: "adjusted" });
+    expect(actual(undefined)).toEqual({ kind: "row", label: "Actual", value: "9.18 USD", detail: "basis unknown" });
   });
 
   test("matches reported earnings to nearby SEC earnings-release filings", () => {

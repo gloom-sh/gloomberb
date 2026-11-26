@@ -205,7 +205,7 @@ describe("ERN rows", () => {
     const mixed = [...pending, ...rows];
     const basis = historyColumns(2000, mixed).find((column) => column.id === "basis")!;
     expect(basis.mayBeBlank).toBe(true);
-    expect(mixed.map((row) => renderHistoryCell(row, basis).text)).toEqual([MISSING_VALUE, "adj", "adj"]);
+    expect(mixed.map((row) => renderHistoryCell(row, basis).text)).toEqual([MISSING_VALUE, "adj", "?"]);
   });
 
   test("mark the press release's EPS and sales quieter, as EVTS does", () => {
@@ -270,7 +270,6 @@ describe("surprises against a loss or zero estimate", () => {
     const loss = boardReport(calendarReport({ symbol: "CRWV", epsEstimate: -1.47, epsActual: -1.14, epsActualSource: "calendar", dateStatus: "reported" }), new Map());
     expect(loss.epsSurprise).toBe("not-meaningful");
     expect(cell(loss, "epsSurprise")).toEqual({ text: "N/M", color: notMeaningfulColor() });
-    expect(cell(PEP, "epsSurprise").text).toBe("+1.3%");
     const rows = historyRows({ asOf: `${TODAY}T15:00:00Z`, symbol: "CRWV", name: null, reports: [
       report({ date: "2026-08-11", epsEstimate: -1.47, epsActual: -1.14, revenueEstimate: 0, revenueActual: 2.1e9 }),
       report({ date: "2026-05-07", fiscalPeriod: "2026-03", epsEstimate: -1.17, epsActual: -1.38, revenueEstimate: 1.9e9, revenueActual: 2e9 }),

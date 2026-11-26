@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, setSystemTime, test } from "bun:test";
 import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { setCliColorEnabledOverride } from "../../../utils/cli-output";
 import type { QuoteBatchResult } from "../../../types/data-provider";
@@ -10,7 +10,7 @@ import { worldIndicesHeadless } from "./headless";
 import { WORLD_INDICES } from "./indices";
 import { renderWorldIndexCell, type WorldIndexColumn } from "./table";
 
-afterEach(() => setCliColorEnabledOverride(null));
+afterEach(() => { setCliColorEnabledOverride(null); setSystemTime(); });
 
 async function report(failure: Error) {
   const marketData = createTestDataProvider({
@@ -47,6 +47,21 @@ test("a load that failed is an error, not a gap in what the feed carries", async
   expect(text).toContain("Errors: DX-Y.NYB: request timed out");
   expect(dxy).not.toContain("not available from the feed");
   expect(result.unavailableSymbols).toBeUndefined();
+});
+
+test("WEI marks a stale open snapshot without relabeling a weekend close", async () => {
+  setSystemTime(new Date("2026-10-10T15:00:00Z"));
+  const weekendClose = sessionQuotes("^GSPC", { instrumentType: "INDEX" }).weekend;
+  const marketData = createTestDataProvider({
+    getQuotesBatch: async (targets) => targets.map((target) => ({ target, quote: target.symbol === "^GSPC" ? weekendClose
+      : target.symbol === "DX-Y.NYB" ? { ...weekendClose, symbol: target.symbol, marketState: "REGULAR", stale: true } : null })),
+  });
+  const args = createTestHeadlessArgs();
+  const result = await worldIndicesHeadless.load(args, createTestHeadlessContext({ marketData }));
+  setCliColorEnabledOverride(false);
+  const lines = renderHeadlessPaneText(worldIndicesHeadless, result, args, "World Equity Indices").split("\n");
+  expect(lines.find((line) => line.startsWith("DXY"))).toMatch(/\bSTALE\b/);
+  expect(lines.find((line) => line.startsWith("SPX"))).toMatch(/\bCLOSED\b/);
 });
 
 test("WEI and its board headline the regular session's close and move, as `ticker` does", async () => {

@@ -198,15 +198,13 @@ test("a resolved quarter shows ERN's figure, basis and fiscal quarter, and a pen
     quarter("2026-02-26", "2025-12", -0.61, -0.84), quarter("2025-11-10", "2025-09", -0.54, -0.31),
   ] }, null, { financialCurrency: "USD", quarterlyStatements: [["2025-09-30", -0.22], ["2025-12-31", -0.89], ["2026-03-31", -1.4], ["2026-06-30", -1.14]]
     .map(([date, eps]) => ({ date: date as string, eps: eps as number, totalRevenue: 2e9 })) }, "USD");
-  expect(rows.find((row) => row.date === "2026-08-11")).toMatchObject({ period: "Jun 2026", qEps: -1.32, qRevenue: 2e9, epsBasis: "adjusted",
-    detail: "adj, +0.20 vs est", value: "N/M", tone: NOT_MEANINGFUL_TONE, fiscalPeriodEnd: "2026-06-30", surpriseNotMeaningful: true });
+  expect(rows.find((row) => row.date === "2026-08-11")).toMatchObject({ period: "Jun 2026", qEps: -1.32, qRevenue: 2e9, epsBasis: "unknown",
+    detail: "EPS basis unconfirmed", value: MISSING_VALUE, fiscalPeriodEnd: "2026-06-30", surprisePercent: undefined });
   expect(rows.find((row) => row.date === "2026-11-09")).toMatchObject({ earningsState: "pending", qEps: -1.52697, epsAnalysts: 18,
     dateStatus: "projected", detail: "projected, 18 analysts" });
-  // With no trailing figure served, the TTM row is the statements' diluted EPS; all four quarters above it
-  // are adjusted, so their sum is the one thing it may add beside it.
   const ttm = rows.find((row) => row.status === "TTM");
   expect(ttm?.annualEps).toBeCloseTo(-3.65, 10);
-  expect(ttm).toMatchObject({ epsBasis: "GAAP", detail: "GAAP diluted (statements), adj sum -3.85" });
+  expect(ttm).toMatchObject({ epsBasis: "GAAP", detail: "GAAP diluted (statements)" });
 });
 
 test("an earnings row's period is its fiscal quarter, never the time of day; a report not out yet says the time in its detail", () => {
@@ -227,7 +225,8 @@ describe("the TTM row's EPS", () => {
   // PLTR: ticker prints the served trailing 1.16, the statement quarters' diluted EPS add to 1.17 and the rows above
   // are two adjusted quarters over two GAAP ones.
   const quarter = (date: string, fiscalPeriod: string, epsActual: number, epsBasis: "gaap" | "adjusted" | null) => (
-    { date, dateType: "announcement" as const, currency: "USD", fiscalPeriod, epsActual, epsBasis, dateStatus: "reported" as const }
+    { date, dateType: "announcement" as const, currency: "USD", fiscalPeriod, epsActual, epsBasis,
+      epsActualSource: "filing" as const, dateStatus: "reported" as const }
   );
   const earnings = (bases: Array<"gaap" | "adjusted" | null>) => [
     quarter("2026-08-03", "2026-06", 0.31, bases[0]!), quarter("2026-05-04", "2026-03", 0.25, bases[1]!),
@@ -279,7 +278,8 @@ test("a press release's figure reads provisional until the calendar's replaces i
   ] }, null, null, "USD").find((row) => row.date === "2026-10-16");
   expect(trv("press-release")).toMatchObject({ qEps: 9.18, epsBasis: "adjusted", epsProvisional: true, detail: "adj, provisional, +2.11 vs est" });
   const settled = trv(undefined);
-  expect(settled).toMatchObject({ qEps: 9.18, epsBasis: "adjusted", detail: "adj, +2.11 vs est" });
+  expect(settled).toMatchObject({ qEps: 9.18, epsEstimate: 7.07, epsBasis: "unknown", detail: "EPS basis unconfirmed" });
+  expect(settled?.epsDifference).toBeUndefined();
   expect(settled?.epsProvisional).toBeUndefined();
 });
 

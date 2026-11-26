@@ -30,7 +30,29 @@ export function dateStatusFromEstimateFlag(isDateEstimate: boolean | null | unde
 export type EpsBasisName = "GAAP" | "adjusted" | "company-adjusted" | "unknown";
 
 /** What the basis names mean, in every report's metadata. */
-export const EPS_BASIS_NOTE = "GAAP: diluted statement EPS. Adjusted: the street measure used for the comparison. Company-adjusted (coAdj): diluted EPS as the company defines it. A separately identified street actual includes stock compensation; no surprise is shown when the estimate's basis is unconfirmed. Unknown: no statement on a comparable share basis to tell. An upcoming estimate takes a basis only when prior reported quarters support it.";
+export const EPS_BASIS_NOTE = "GAAP: diluted statement EPS. Company-adjusted (coAdj): diluted EPS as the company defines it. A separately identified street actual includes stock compensation. A street actual that differs from statement EPS does not establish an adjusted basis or prove that the estimate is comparable. When that is all an adjusted label tells us, the basis is unconfirmed and no surprise is shown.";
+export const EPS_BASIS_UNCONFIRMED = "EPS basis unconfirmed";
+
+interface EpsComparisonRow {
+  epsActual?: number | null;
+  epsBasis?: unknown;
+  epsActualSource?: string | null;
+  epsComparisonUnconfirmed?: true;
+}
+
+/** Older adjusted labels on street actuals can mean only that they did not match statement EPS. */
+export function unconfirmedAdjustedEps(row: EpsComparisonRow): boolean {
+  return row.epsComparisonUnconfirmed === true || (row.epsActual != null && row.epsBasis === "adjusted"
+    && row.epsActualSource !== "press-release" && row.epsActualSource !== "filing");
+}
+
+export function displayEarningsEpsBasis(row: EpsComparisonRow): EarningsEpsBasis | null {
+  return unconfirmedAdjustedEps(row) ? null : earningsEpsBasis(row.epsBasis);
+}
+
+export function canCompareReportedEps(row: EpsComparisonRow): boolean {
+  return row.epsBasis !== "company-adjusted" && !unconfirmedAdjustedEps(row);
+}
 
 /** The basis as rows, exports and tools name it. */
 export function epsBasisName(basis: EarningsEpsBasis | null): EpsBasisName {
@@ -107,6 +129,12 @@ const BASIS_TEXT: Record<EpsBasisName, string> = { GAAP: "GAAP", adjusted: "adj"
 
 type EarningsRecord = CorporateActionsData["earnings"][number];
 
+export function earningsActionForReport(row: EarningsRecord): EarningsRecord & { epsComparisonUnconfirmed?: true } {
+  if (canCompareReportedEps(row)) return row;
+  const { difference: _difference, surprisePercent: _surprise, ...inputs } = row;
+  return unconfirmedAdjustedEps(row) ? { ...inputs, epsBasis: null, epsComparisonUnconfirmed: true } : inputs;
+}
+
 /**
  * What follows an earnings row's EPS, one phrase per part. A reported row
  * names its basis, whether the figure is provisional, and its beat, or that
@@ -114,15 +142,16 @@ type EarningsRecord = CorporateActionsData["earnings"][number];
  * pending; one still to come whether its date is announced; and both their
  * analysts and an adjusted estimate's basis.
  */
-export function earningsDetailParts(earning: EarningsRecord): string[] {
+export function earningsDetailParts(earning: EarningsRecord & Pick<EpsComparisonRow, "epsComparisonUnconfirmed">): string[] {
   if (earning.epsActual == null) {
     const status = earningsDateStatus(earning.dateStatus);
     return [status === "reported" ? (actualPending(earning) ? ACTUAL_PENDING : null) : status, earning.epsAnalysts != null ? `${earning.epsAnalysts} analysts` : null,
       earningsEpsBasis(earning.epsBasis) === "adjusted" ? BASIS_TEXT.adjusted : null].filter((part): part is string => !!part);
   }
+  if (unconfirmedAdjustedEps(earning)) return [EPS_BASIS_UNCONFIRMED];
   return [BASIS_TEXT[epsBasisName(earningsEpsBasis(earning.epsBasis))], isProvisionalActual(earning) ? "provisional" : null,
     lacksConsensus(earning) ? NO_CONSENSUS
-      : earning.difference == null ? null : `${earning.difference > 0 ? "+" : ""}${formatNumber(earning.difference, 2)} vs est`]
+      : !canCompareReportedEps(earning) || earning.difference == null ? null : `${earning.difference > 0 ? "+" : ""}${formatNumber(earning.difference, 2)} vs est`]
     .filter((part): part is string => !!part);
 }
 
