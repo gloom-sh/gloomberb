@@ -213,7 +213,7 @@ const US_EQUITY_EXCHANGES: ReadonlySet<string> = new Set([
  */
 export function isUsOtcVenue(value?: string): boolean {
   const venue = canonicalExchange(value);
-  return US_OTC_EXCHANGES.has(venue) || /^(?:OTC MARKETS\b|OTCPK$|OTCQX$|OTCQB$|PINX$|OTHER OTC$)/.test(venue);
+  return US_OTC_EXCHANGES.has(venue) || /^(?:OTC MARKETS\b|OTC(?:PK|QX|QB|ID|BB|B|M|Q)$|OID$|PINX$|EXPM$|NASDAQ OTCBB$|PINK SHEETS$|OTHER OTC$)/.test(venue);
 }
 
 /** A US venue a stock or fund trades on, listed or over the counter. */

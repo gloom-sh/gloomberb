@@ -702,6 +702,28 @@ describe("a quarter with only its EPS, between its earnings release and its 10-Q
     expect(notInYetNote(notInYet, income, "quarterly", 1)).toBe("Q3 FY27 is not in yet: only its EPS is on file (2.70 diluted), not its revenue.");
   });
 
+  test("a missing June income quarter does not hide the September statement or advance a March TTM", () => {
+    const financials = createTestFinancials({
+      annualStatements: [{ date: "2025-12-31", totalRevenue: 3481.9e6, totalAssets: 10_301.282e6, currency: "CAD" }],
+      quarterlyStatements: [
+        { date: "2025-06-30", totalRevenue: 877.016e6, currency: "CAD" },
+        { date: "2025-09-30", totalRevenue: 614.555e6, currency: "CAD" },
+        { date: "2025-12-31", totalRevenue: 1200.93e6, currency: "CAD" },
+        { date: "2026-03-31", totalRevenue: 845.365e6, currency: "CAD" },
+        { date: "2026-09-30", totalRevenue: 619.064e6, totalAssets: 10_377.586e6, currency: "CAD" },
+      ],
+    });
+    expect(buildFinancialTableModel(financials, { period: "annual", statement: "income" })?.statements[0]).toMatchObject({
+      aggregation: { periodEnd: "2026-03-31" },
+    });
+    expect(buildFinancialTableModel(financials, { period: "quarterly", statement: "income" })?.statements[0]).toMatchObject({
+      date: "2026-09-30", totalRevenue: 619.064e6,
+    });
+    expect(buildFinancialTableModel(financials, { period: "annual", statement: "balance" })?.statements[0]).toMatchObject({
+      date: "2026-09-30", totalAssets: 10_377.586e6,
+    });
+  });
+
   test("the ratio tabs read the same periods: the TTM to Q2 FY27, its opening a year before it", () => {
     const profitability = RATIO_TABS.find((tab) => tab.key === "profitability")!;
     const yearly = ratioTableForFinancials(financials, profitability, "annual");

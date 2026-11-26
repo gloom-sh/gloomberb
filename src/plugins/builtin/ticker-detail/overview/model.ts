@@ -393,7 +393,9 @@ export function buildOverviewStats({
     stats.push({ label: "Net Income", ...money(fundamentals.netIncome) });
   }
   if (fundamentals?.freeCashFlow != null) {
-    stats.push({ label: "FCF", ...money(fundamentals.freeCashFlow) });
+    const currency = (fundamentals.freeCashFlowCurrency === undefined ? fundamentals.financialCurrency : fundamentals.freeCashFlowCurrency)?.trim();
+    stats.push({ label: "FCF", value: formatReportedMoney(fundamentals.freeCashFlow, currency),
+      ...(!currency && Number.isFinite(fundamentals.freeCashFlow) ? { detail: ["currency unknown"] } : {}) });
   }
   const runwayField = runwayStat(runway);
   if (runwayField) stats.push(runwayField);
