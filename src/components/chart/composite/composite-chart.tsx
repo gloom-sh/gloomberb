@@ -586,9 +586,11 @@ function ThemedCompositeChart({
   const pinnedCursor = useSyncExternalStore(subscribeToLink, link?.pinned ?? holdsNothing);
   // An owner that follows the pin (a table under the chart) is told where it
   // moves, so only a chart that shares the tab's crosshair moves the owner.
+  // A chart that goes (the band folding to a strip) leaves it nothing to follow.
   const pinnedMoment = useSyncExternalStore(subscribeToLink, link?.pinnedMoment ?? pinsNothing);
   useEffect(() => {
     onPinnedMomentChange?.(pinnedMoment);
+    return () => onPinnedMomentChange?.(null);
   }, [onPinnedMomentChange, pinnedMoment]);
   const publishCursor = link?.publish;
   const cursorSource = useMemo<CompositeCursorSource | null>(() => baseScene ? createCompositeCursorSource({
