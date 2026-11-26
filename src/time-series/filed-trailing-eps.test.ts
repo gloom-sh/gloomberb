@@ -47,11 +47,44 @@ test("scoped headlines and repricing use the reviewed denominator, not the overl
   try {
     const admitted = { ...mapCloudFinancials(raw), quote };
     expect(project(admitted)).toEqual({ eps: 3.25, pe: 20, live: 20, band: 20, chart: 20, peer: 20, event: 3.25 });
-    const headline = renderFundamentalsReport({ ...withFiledTrailingEps(admitted, after), symbol: "VYLR" }, "valuation").replace(/\u001b\[[0-9;]*m/g, "").replace(/ {2,}/g, " ");
+    const report = (data: TickerFinancials) => renderFundamentalsReport({ ...data, symbol: "VYLR" }, "valuation").replace(/\u001b\[[0-9;]*m/g, "").replace(/ {2,}/g, " ");
+    const headline = report(withFiledTrailingEps(admitted, after));
     expect(headline).toContain("P/E (TTM) 20.00");
     expect(headline).toContain("EPS (TTM) $3.25");
     const daily = (data: TickerFinancials) => extractFundamentalSeries(data, { kind: "security", instrument: { symbol: "VYLR" }, fieldId: "valuation.trailingPE", period: "daily" }).map(point => point.value);
     expect(daily(admitted)).toEqual([null, 20]);
+    const periods = (data: TickerFinancials) => extractFundamentalSeries(data, { kind: "security", instrument: { symbol: "VYLR" }, fieldId: "valuation.trailingPE", period: "annual" })
+      .filter(point => point.periodLabel !== "Current" && point.value !== null);
+    const stale = { ...admitted, quote: { ...quote, stale: true } };
+    expect(project(stale)).toMatchObject({ eps: 3.25, pe: undefined, live: undefined, band: undefined, chart: undefined, peer: null });
+    expect(withFiledTrailingEps(stale, after).fundamentals?.trailingPE).toBeUndefined();
+    expect(report(stale)).not.toMatch(/P\/E \(TTM\) \d/);
+    expect(daily(stale)).toEqual([null, 20]);
+    expect(projectPeBand(stale, stale.priceHistory, { symbol: "VYLR", lookbackYears: 1, now: after }).weeks.map(week => week.pe)).toContain(20);
+    expect(periods(stale)).toMatchObject([{ periodLabel: `Year ended ${end}`, value: 20, observedAt: new Date(end), availableAt: new Date(after) }]);
+    const earlierClose = { date: new Date("2028-02-14T21:00Z"), close: 65 };
+    const history = [earlierClose, ...admitted.priceHistory];
+    expect(periods({ ...admitted, priceHistory: history }).map(point => point.value)).toEqual([20]);
+    expect(periods({ ...admitted, priceHistory: history.slice(0, -1) })).toEqual([]);
+    const ordinary = { ...mapCloudFinancials({ ...raw, statementScope: undefined, quarterlyStatements: [], annualStatements: raw.annualStatements.map(row => ({ ...row, statementScope: undefined })) }), quote, priceHistory: history };
+    expect(periods(ordinary).map(point => point.value)).toEqual([65 / 3]);
+    const delayed = { ...raw, annualStatements: raw.annualStatements.map(row => ({ ...row, availableAt: "2028-02-14" })),
+      quarterlyStatements: quarters.map(row => ({ ...row, availableAt: "2028-02-15", fieldAvailability: { eps: filed } })) };
+    const fieldDated = { ...mapCloudFinancials(delayed), quote };
+    expect(project({ ...fieldDated, quote: { ...quote, lastUpdated: before } }).pe).toBeUndefined();
+    expect(project(fieldDated).pe).toBe(20);
+    expect(daily(fieldDated)).toEqual([null, 20]);
+    expect(periods(fieldDated).map(point => point.value)).toEqual([20]);
+    const legacy = { ...fieldDated, fundamentals: JSON.parse(JSON.stringify({ ...fieldDated.fundamentals, scopedEarnings: { eps: 3.25, currency: "USD", periodEnd: end, priced: true, availableAt: "2028-02-15" } })) };
+    expect(atLivePriceEarnings(legacy).fundamentals.trailingPE).toBeUndefined();
+    expect(project({ ...legacy, quote: { ...quote, lastUpdated: before } }).pe).toBeUndefined();
+    expect(project(legacy).pe).toBe(20);
+    const noFieldDate = mapCloudFinancials({ ...delayed, quarterlyStatements: delayed.quarterlyStatements.map(row => row.date === end ? { ...row, fieldAvailability: {} } : row) });
+    expect(project({ ...noFieldDate, quote }).pe).toBeUndefined();
+    const annualOnly = mapCloudFinancials({ ...raw, quarterlyStatements: quarters.map(row => ({ ...row, availableAt: "2028-02-14", fieldAvailability: {} })),
+      annualStatements: raw.annualStatements.map(row => ({ ...row, fieldAvailability: { eps: filed } })), fundamentals: { ...raw.fundamentals, eps: 3, trailingPE: 65 / 3 } });
+    expect(project({ ...annualOnly, quote: { ...quote, lastUpdated: before } }).pe).toBeUndefined();
+    expect(project({ ...annualOnly, quote }).pe).toBeCloseTo(65 / 3);
     expect(project({ ...mapCloudFinancials({ ...raw, statementReview: { ...raw.statementReview, reviewedThrough: "2028-02-25" } }), quote })).toMatchObject({ eps: 3.25, pe: 20 });
     const timed = mapCloudFinancials({ ...raw, quarterlyStatements: quarters.map(row => ({ ...row, availableAt: `${filed}T17:00:00Z` })) });
     for (const [time, pe] of [["16:59", undefined], ["17:01", 20]] as const) {
@@ -65,6 +98,7 @@ test("scoped headlines and repricing use the reviewed denominator, not the overl
     }
     const incomplete = mapCloudFinancials({ ...raw, quarterlyStatements: quarters.map(row => row.date === end ? { ...row, eps: undefined } : row),
       fundamentals: { trailingPeriodEnd: end } });
+    expect(periods({ ...incomplete, quote, priceHistory: history })).toEqual([]);
     const old = { ...incomplete, statementScope: undefined, fundamentals: { eps: 3, trailingPE: 65 / 3 }, quote };
     expect(atLivePriceEarnings({ ...admitted, fundamentals: old.fundamentals }).fundamentals.trailingPE).toBeUndefined();
     const oldAnnual = mapCloudFinancials({ ...raw, quarterlyStatements: [], statementReview: { ...raw.statementReview, reviewedThrough: "2028-02-15" },
@@ -79,7 +113,9 @@ test("scoped headlines and repricing use the reviewed denominator, not the overl
       expect(project({ ...data, quote })).toMatchObject({ ...blank, eps: undefined, event: undefined });
       expect(daily(withFiledTrailingEps({ ...data, quote }, after)).filter(value => value !== null)).toEqual([]);
     }
-    expect(project({ ...mapCloudFinancials({ ...raw, fundamentals: { ...raw.fundamentals, trailingPE: undefined } }), quote })).toMatchObject({ ...blank, eps: 3.25 });
+    const unpriced = { ...mapCloudFinancials({ ...raw, fundamentals: { ...raw.fundamentals, trailingPE: undefined } }), quote, priceHistory: history };
+    expect(project(unpriced)).toMatchObject({ ...blank, eps: 3.25 });
+    expect(periods(unpriced)).toEqual([]);
   } finally { setSystemTime(); }
 });
 

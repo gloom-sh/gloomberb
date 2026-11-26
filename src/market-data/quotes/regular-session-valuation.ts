@@ -185,7 +185,7 @@ export function atRegularSessionPrice<T extends Pick<TickerFinancials, "quote" |
   const scopedEarnings = financials.statementScope && financials.statementScope.basis !== "standalone" ? null : stats.scopedEarnings ?? null;
   const quote = financials.quote;
   return { ...priced, fundamentals: priceScopedEarnings({ ...stats, scopedEarnings }, regularSessionValuationPrice(quote),
-    quote?.currency, regularSessionValuationTime(quote)?.time) };
+    quote, regularSessionValuationTime(quote)?.time) };
 }
 
 function moveToRegularSession<T extends Pick<TickerFinancials, "quote" | "fundamentals">>(financials: T): T {

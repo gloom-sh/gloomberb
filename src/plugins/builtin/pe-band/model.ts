@@ -315,7 +315,7 @@ export function projectPeBand(
   const currentEps = currentConversion?.eps ?? null;
   const latestFx = currentConversion?.fx;
   const currentPe = financials.statementScope && financials.fundamentals
-    ? priceScopedEarnings(financials.fundamentals, price, currency ?? undefined, priceTime, now).trailingPE ?? null
+    ? priceScopedEarnings(financials.fundamentals, price, financials.quote, priceTime, now).trailingPE ?? null
     : price != null && currentEps != null && currentEps > 0 ? price / currentEps : null;
   const multiples = chooseMultiples(pes, currentPe);
   const above = currentPe == null ? undefined : multiples.find((multiple) => multiple >= currentPe);

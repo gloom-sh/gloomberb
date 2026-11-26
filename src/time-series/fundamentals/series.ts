@@ -11,7 +11,7 @@ import type { SecuritySeriesSource, TimeSeriesPoint } from "../types";
 import { isBankOrInsurerIndustry } from "../../utils/ebitda";
 import { notTheShare } from "../../utils/share-multiples";
 import { currentDerivedValuationPoint, currentValuationStatements, providerCurrentValuationPoint } from "./current-valuation";
-import { dailyStatementValuation, dailyValuationFallbackPeriod, historicalValuation } from "./historical-valuation";
+import { dailyStatementValuation, dailyValuationFallbackPeriod, historicalValuation, scopedPeriodPE } from "./historical-valuation";
 import { FUNDAMENTAL_IDS, QUOTE_DERIVED_VALUATION_IDS, VALUATION_IDS, valuationSeriesUsesLiveQuote } from "./metric-ids";
 import { dedupeFundamentalPeriods, pointForStatement } from "./period-points";
 import { sourceStatements } from "./source-statements";
@@ -83,6 +83,12 @@ export function extractFundamentalSeries(
   if (metric === "pegRatio") {
     const current = providerCurrentValuationPoint(financials, metric);
     return current ? [current] : [];
+  }
+
+  if (metric === "trailingPE" && financials.statementScope) {
+    const historical = scopedPeriodPE(financials, source);
+    const current = currentDerivedValuationPoint(financials, [], metric, currencies);
+    return [historical, current].filter((point): point is TimeSeriesPoint => point !== null).sort((left, right) => left.date.getTime() - right.date.getTime());
   }
 
   const selected = sourceStatements(financials, source.period, metric);
@@ -158,6 +164,10 @@ export function valuationPriceIssues(financials: TickerFinancials, source: Secur
     return extractFundamentalSeries(financials, source, currencyContext).flatMap((point) => point.provenance?.valuationPriceIssues ?? []);
   }
   if (!valuationSeriesUsesLiveQuote(source.fieldId)) return [];
+  if (financials.statementScope && canonicalTimeSeriesFieldId(source.fieldId) === "valuation.trailingPE") {
+    const issue = valuationQuoteIssue(financials.quote);
+    return [...(issue ? [issue] : []), ...(scopedPeriodPE(financials, source)?.provenance?.valuationPriceIssues ?? [])];
+  }
   const currencies = currencyContext ?? createValuationCurrencyContext(financials);
   const metric = canonicalTimeSeriesFieldId(source.fieldId).split(".")[1]!;
   const selected = sourceStatements(financials, source.period, metric);

@@ -23,6 +23,7 @@ import {
 } from "../../../utils/format";
 import { formatFilingDate } from "../../../utils/datetime-format";
 import { computeTTM } from "../ticker-detail/financials/aggregation";
+import { listingOwnsRow } from "../../../utils/statement-scope";
 import { classifyInstrumentType } from "../../../tickers/instrument-kind";
 import { isIndianEtfListing } from "../../../market-data/fund-actions";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
@@ -142,10 +143,10 @@ function isFiscalEstimatePeriod(period: string): boolean {
 }
 
 function sortedQuarterlyStatements(
-  financials: Pick<TickerFinancials, "quarterlyStatements"> | null,
+  financials: Pick<TickerFinancials, "quarterlyStatements" | "statementScope"> | null,
 ): FinancialStatement[] {
-  return [...(financials?.quarterlyStatements ?? [])]
-    .filter((statement) => statement.date)
+  return (financials?.quarterlyStatements ?? [])
+    .filter((statement) => statement.date && listingOwnsRow(financials?.statementScope, statement))
     .sort((left, right) => left.date.localeCompare(right.date));
 }
 
@@ -247,7 +248,7 @@ function estimateValue(growth: Rate | undefined): string {
  */
 export type EventFinancials = Pick<TickerFinancials, "quarterlyStatements" | "financialCurrency" | "statementScope"> & {
   /** The years, whose last end names the fiscal quarters (`Q1 FY2027`) as GUIDE and ERN do. */
-  annualStatements?: readonly Pick<FinancialStatement, "date">[];
+  annualStatements?: readonly Pick<FinancialStatement, "date" | "statementScope">[];
   fundamentals?: Pick<NonNullable<TickerFinancials["fundamentals"]>, "eps" | "epsCurrency" | "financialCurrency" | "marketCapCurrency" | "trailingEpsSource"> | null;
   /** The listing's currency, which says whether an unlabelled EPS can be in the statements' (fundamentalsCurrency), and its type. */
   quote?: Pick<NonNullable<TickerFinancials["quote"]>, "currency" | "instrumentType" | "exchangeName" | "listingExchangeName" | "name"> | null;
@@ -424,7 +425,7 @@ export function buildEventRows(
 
   const earningsIds = earningsRowIds(earnings);
   // Quarters and years by the names GUIDE and ERN give them (Q1 FY2027), where the company's years say when they end.
-  const yearEnd = fiscalYearEndMonth(financials?.annualStatements ?? []);
+  const yearEnd = fiscalYearEndMonth(financials?.annualStatements?.filter(row => listingOwnsRow(financials.statementScope, row)) ?? []);
   // An upcoming report often arrives without a currency; the feed's reported
   // quarters give it when they all agree on one.
   const feedCurrencies = new Set(earnings.map((earning) => earning.currency).filter(Boolean));
@@ -432,7 +433,8 @@ export function buildEventRows(
   // So do the oldest reported quarters (before 2024), which the feed leaves unlabelled, but only where the
   // company's own EPS is in that currency too: one company's EPS then reads in one unit down the table, and an
   // unlabelled figure nothing else vouches for stays unlabelled.
-  const reportedCurrency = feedCurrency && fundamentalsEpsCurrency(financials) === feedCurrency ? feedCurrency : undefined;
+  const listingCurrency = !financials?.statementScope || financials.statementScope.basis === "standalone" ? fundamentalsEpsCurrency(financials) : undefined;
+  const reportedCurrency = feedCurrency && listingCurrency === feedCurrency ? feedCurrency : undefined;
   // The history's EPS before a price adjustment is adjusted for it (CTVA's before the VYLR spin-off of 2026-10-01): said
   // on the row. A release's own EPS is as the company reported it, whatever its date.
   const adjustments = priceAdjustments(data?.splits, data?.demergers);

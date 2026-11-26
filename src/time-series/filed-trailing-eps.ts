@@ -1,6 +1,6 @@
 import type { Fundamentals, FinancialStatement, TickerFinancials } from "../types/financials";
 import { resolveCurrencyUnit } from "../utils/currency-units";
-import { listingOwnsSeries, priceScopedEarnings } from "../utils/statement-scope";
+import { dateScopedEarnings, listingOwnsSeries, priceScopedEarnings } from "../utils/statement-scope";
 import { areNearbyFinancialPeriodEnds, financialAvailabilityTime, statementFieldAvailability } from "../utils/financial-statements";
 import { extractFundamentalSeries, knownWhenFiled } from "./fundamentals";
 import type { SecuritySeriesSource, TimeSeriesPoint } from "./types";
@@ -53,7 +53,7 @@ export function trailingEpsSteps(
   if (!listingOwnsSeries(financials)) return [];
   if (financials.statementScope) {
     const earnings = financials.fundamentals?.scopedEarnings;
-    return earnings ? [{ periodEnd: earnings.periodEnd, basis: "ttm", knownAt: new Date(financialAvailabilityTime(earnings.availableAt)), dated: true,
+    return earnings?.epsAvailableAt ? [{ periodEnd: earnings.periodEnd, basis: "ttm", knownAt: new Date(financialAvailabilityTime(earnings.epsAvailableAt)), dated: true,
       eps: earnings.eps, currency: earnings.currency }] : [];
   }
   const adjusted = { ...financials, quarterlyStatements: financials.quarterlyStatements.map(known),
@@ -184,9 +184,9 @@ export function withFiledTrailingEps<T extends TrailingEpsInputs>(financials: T,
   const fundamentals = financials.fundamentals;
   if (!fundamentals) return financials;
   if (financials.statementScope) {
-    const scopedEarnings = listingOwnsSeries(financials) ? fundamentals.scopedEarnings ?? null : null;
+    const scopedEarnings = dateScopedEarnings(financials, fundamentals.scopedEarnings);
     const quote = financials.quote;
-    return { ...financials, fundamentals: priceScopedEarnings({ ...fundamentals, scopedEarnings }, quote?.price, quote?.currency, quote?.lastUpdated, now) };
+    return { ...financials, fundamentals: priceScopedEarnings({ ...fundamentals, scopedEarnings }, quote?.price, quote, quote?.lastUpdated, now) };
   }
   const filed = filedTrailingEps(financials, now);
   if (!filed) {

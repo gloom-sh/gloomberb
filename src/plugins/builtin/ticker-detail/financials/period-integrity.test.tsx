@@ -122,8 +122,8 @@ test("the historical statement's basis travels with both its visible quarter and
   const data = { annualStatements: [], quarterlyStatements: [{ statementScope, date: "2026-09-30", currency: "USD", totalRevenue: 2458e6 }], priceHistory: [], statementScope };
   await mount(data, "quarterly", 160);
   expect(frame()).toContain(statementScope.label);
-  await exportPaneTable(PANE_ID, "financials.csv");
-  const csv = takeSavedTextFile()!.text;
+  const { result, csv } = await outputs(data, "quarterly");
+  expect(row(result, "income:revenue").cells[0]?.value).toBe(2458e6);
   expect(csv).toContain(`Statement basis,${statementScope.label}`);
   expect(csv).toContain("2026-09-30");
 });

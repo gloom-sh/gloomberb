@@ -18,6 +18,7 @@ export function dailyValuationHistory(
   history: readonly PricePoint[],
   bases: readonly DailyValuationBasis[],
   exchange?: string,
+  closesKnownBy?: number,
 ): TimeSeriesPoint[] {
   const byDate = new Map<number, PricePoint[]>();
   for (const bar of history) {
@@ -37,7 +38,8 @@ export function dailyValuationHistory(
     // Daily bars name their session at midnight. A timed report belongs to
     // that close only if it was already public, including on early closes.
     const day = new Date(time).toISOString().slice(0, 10);
-    const closeTime = regularSessionCloseOn(exchange, day) ?? time;
+    const closeTime = closesKnownBy !== undefined && time % 86_400_000 !== 0 ? time : regularSessionCloseOn(exchange, day) ?? time;
+    if (closesKnownBy !== undefined && closeTime > closesKnownBy) continue;
     while (next < releases.length && effectiveTime(releases[next]!) <= closeTime) {
       const release = releases[next++]!;
       if (!active || release.observedAt >= active.observedAt) active = release;
@@ -48,7 +50,7 @@ export function dailyValuationHistory(
     points.push({
       date,
       observedAt: date,
-      availableAt: active?.availableAt ? new Date(active.availableAt) : undefined,
+      availableAt: active?.availableAt ? new Date(closesKnownBy === undefined ? active.availableAt : closeTime) : undefined,
       value: value !== null && Number.isFinite(value) ? value : null,
       periodLabel: active?.periodLabel,
       provenance: {

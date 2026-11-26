@@ -9,6 +9,7 @@ import { liveForwardPE, liveTrailingPE } from "../../market-data/quotes/live-val
 import { listingEnterpriseValue } from "../../market-data/quotes/listing-enterprise-value";
 import { BANK_OR_INSURER_EBITDA, isBankOrInsurerIndustry } from "../../utils/ebitda";
 import { comparablePriceEarnings } from "../../utils/price-earnings";
+import { listingOwnsSeries } from "../../utils/statement-scope";
 import { buildTtmStatements, deriveQuarterlyStatements } from "./quarterly-ttm";
 import { sourceStatements, valuationStatements } from "./source-statements";
 import { type InternalStatement, validDate } from "./statement";
@@ -189,6 +190,7 @@ export function currentTrailingValuation(
   financials: TickerFinancials,
   metric: "evEbitda" | "evSales",
 ): { value: number | null; notMeaningful?: string; periodEnd: string; statement: FinancialStatement; annual?: true } | null {
+  if (!listingOwnsSeries(financials)) return null;
   const current = currentValuation(financials, "ttm", metric);
   if (current) {
     const dated = { periodEnd: current.statement.date.slice(0, 10), statement: current.statement };
@@ -251,6 +253,7 @@ export function valuationNotMeaningful(financials: TickerFinancials, source: Sec
  * its year): the latest one, or null when the latest window is incomplete.
  */
 export function latestTrailingStatement(financials: TickerFinancials): FinancialStatement | null {
+  if (!listingOwnsSeries(financials)) return null;
   const selected = sourceStatements(financials, "ttm");
   return selected.statements.at(-1) ?? null;
 }
