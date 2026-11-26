@@ -1,8 +1,8 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import type { CrowdingRow, TickerHolderRow } from "./signals";
 import { formatMoneyCompact } from "./format";
-import { formatSplitRatio } from "./model";
-import type { ThirteenFFilingGap, ThirteenFOtherManager } from "./types";
+import { adjacentQuarterPeriods, formatSplitRatio } from "./model";
+import type { FundDetailData, ThirteenFFilingGap, ThirteenFOtherManager, ThirteenFPeriodReport } from "./types";
 
 /**
  * Summary lines for the 13F text reports. Each says which quarters the rows
@@ -71,6 +71,43 @@ export function filingDayText(date: string, omitYear?: number): string {
   if (!day) return date;
   const text = `${day.getUTCDate()} ${MONTHS[day.getUTCMonth()]}`;
   return day.getUTCFullYear() === omitYear ? text : `${text} ${day.getUTCFullYear()}`;
+}
+
+/**
+ * A quarter read in part because the reader is not signed in, in a fund's
+ * warnings: "Signed out, Gloom Cloud sends a filing's first 1,000 lines:
+ * 30 Sep 2026 is 1,000 of 3,856, in the filing's order, not the largest. Sign
+ * in for the whole book."
+ */
+export function cappedReadText(report: Pick<ThirteenFPeriodReport, "periodOfReport" | "capped">): string {
+  const { loaded, entries, limit } = report.capped ?? { loaded: 0, entries: null, limit: 0 };
+  return `Signed out, Gloom Cloud sends a filing's first ${count(limit)} lines: ${filingDayText(report.periodOfReport)} `
+    + `is ${linesOf(loaded, entries)}, in the filing's order, not the largest. Sign in for the whole book.`;
+}
+
+/** "1,000 of 3,856", or "its first 1,000" when the cover counts no lines: a count the filing does not state is not made up. */
+function linesOf(loaded: number, entries: number | null): string {
+  return entries != null ? `${count(loaded)} of ${count(entries)}` : `its first ${count(loaded)}`;
+}
+
+/**
+ * What a fund's holdings say before their table when a quarter was read in
+ * part (cappedReadText): the lines shown are not the fund's largest, and QoQ
+ * and Est P&L stay blank until both quarters load whole. Null when neither
+ * was cut.
+ */
+export function cappedHoldingsText(data: Pick<FundDetailData, "latestReport" | "previousReport" | "latestForm" | "previousForm">): string | null {
+  const latest = data.latestReport?.capped;
+  const compared = adjacentQuarterPeriods(data.latestForm?.periodOfReport, data.previousForm?.periodOfReport);
+  const previous = compared ? data.previousReport?.capped : undefined;
+  if (!latest && !previous) return null;
+  const parts = [
+    latest ? `these are ${latest.entries != null ? `${count(latest.loaded)} of the ${count(latest.entries)} lines filed` : `its first ${count(latest.loaded)} lines`}, `
+      + "in the filing's order, not the fund's largest" : null,
+    previous ? `${filingDayText(data.previousReport!.periodOfReport)}'s are ${linesOf(previous.loaded, previous.entries)}` : null,
+  ].filter(Boolean);
+  return `Signed out, Gloom Cloud sends a filing's first ${count((latest ?? previous)!.limit)} lines: ${parts.join("; ")}`
+    + `${compared ? ", so QoQ and Est P&L stay blank" : ""}. Sign in for the whole book.`;
 }
 
 /** Whole days from a quarter end to the filing, or null when either date is unreadable. */

@@ -1778,7 +1778,7 @@
           {
             "code": "EVT",
             "name": "Corporate Actions",
-            "description": "What is next, reported earnings against estimates by quarter, and dividends and splits by year."
+            "description": "What is next, reported earnings against estimates by quarter, and dividends, splits and spin-off adjustments by year."
           },
           {
             "code": "EE",

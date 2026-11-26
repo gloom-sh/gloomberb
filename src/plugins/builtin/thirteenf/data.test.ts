@@ -1,17 +1,19 @@
 import { afterAll, afterEach, beforeAll, describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { outage } from "../../../test-support/outage";
 import { apiClient } from "../../../api-client";
+import { replaceCredentialInResponseHeaders } from "../../../test-support/cloud-api";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import {
   attachThirteenFApiPersistence,
+  listThirteenFFormHoldings,
   resetThirteenFApiPersistence,
   THIRTEENF_SOURCE_UNAVAILABLE,
   thirteenFReadError,
 } from "./api";
 import { ApiRequestError } from "../../../api-client/errors";
 import { corporateSplitFactor, createFundPrefetcher, prefetchFundDetail, loadBrowserRows as loadRankedRows, loadFilingGap, loadFilingPositions, loadFundDetail, loadFundPerformance, loadSplitFactors } from "./data";
-import { filingGapText } from "./report-notes";
+import { cappedHoldingsText, filingGapText } from "./report-notes";
 import { buildFundHoldingRows, comparedWith, comparedWithText, hasComparable13FQuarter } from "./model";
 import type { FundDetailData, ThirteenFFormSummary, ThirteenFHoldingRecord } from "./types";
 
@@ -335,7 +337,7 @@ function holdingRows(accession: string, from: number, count: number) {
   }));
 }
 
-function filedForm(accession: string, period: string, entries: number) {
+function filedForm(accession: string, period: string, entries: number | null) {
   return {
     accession_number: accession, cik: "1067983", company_name: "Fund", period_of_report: period,
     filed_as_of_date: period, submission_type: "13F-HR", table_value_total: 100, table_entry_total: entries,
@@ -357,6 +359,8 @@ test("a filing comes whole in one request, and a page at a time, a few at once, 
   }) as never);
   // Nothing falls through to the public source while Gloom Cloud answers.
   setHttpFetchTransport(async (url) => { throw new Error(`unexpected ${url}`); });
+  // Signed in (a synthetic session), the whole book.
+  apiClient.setSessionToken("synthetic-13f-reader");
   try {
     const detail = await loadFundDetail("1067983", "Fund", undefined, { filingGap: false });
     expect(detail.latestHoldings).toHaveLength(1_234);
@@ -382,7 +386,16 @@ test("a filing comes whole in one request, and a page at a time, a few at once, 
     asked.length = 0;
     await loadFundDetail("1067983", "Fund", undefined, { filingGap: false, forceRefresh: true });
     expect(asked.some((request) => request.path === "/holdings")).toBe(false);
+
+    // Signed out, the pages stop at the first 1,000 lines, as the service's own answer would, and the filing says so.
+    apiClient.setSessionToken(null);
+    asked.length = 0;
+    const anonymous = await loadFundDetail("1067983", "Fund", undefined, { filingGap: false, forceRefresh: true });
+    expect(asked.filter((request) => request.path === "/form").map((page) => page.offset).sort((a, b) => a! - b!)).toEqual([0, 250, 500, 750]);
+    expect(anonymous.latestHoldings).toHaveLength(1_000);
+    expect(anonymous.latestReport).toMatchObject({ complete: false, capped: { loaded: 1_000, entries: 1_234, limit: 1_000 } });
   } finally {
+    apiClient.setSessionToken(null);
     spy.mockRestore();
   }
 });
@@ -458,9 +471,11 @@ test("a large filing shows its first rows, then the whole filing, then the quart
     return { rows: holdingRows("current", 0, 5_000), complete: true };
   }) as never);
   setHttpFetchTransport(async (url) => { throw new Error(`unexpected ${url}`); });
-  const seen: FundDetailData[] = [];
+  const seen: Array<FundDetailData | null> = [];
   let shown!: () => void;
   const firstShown = new Promise<void>((resolve) => { shown = resolve; });
+  // Signed in (a synthetic session): the whole book follows its first rows.
+  apiClient.setSessionToken("synthetic-13f-reader");
   try {
     const loaded = loadFundDetail("1067983", "Fund", undefined, {
       filingGap: false,
@@ -484,6 +499,7 @@ test("a large filing shows its first rows, then the whole filing, then the quart
     expect(detail.latestHoldings).toHaveLength(5_000);
     expect(detail.previousHoldings).toHaveLength(10);
   } finally {
+    apiClient.setSessionToken(null);
     spy.mockRestore();
   }
 });
@@ -511,6 +527,380 @@ test("a prior quarter the service refused says it did not load and when to try a
     spy.mockRestore();
   }
 });
+
+// Signed out, `fn 13F 0001603466` listed 50 of Point72's first 1,000 lines (issuers A to C) as if its largest, every
+// 13F %, QoQ and Est P&L blank, and said why only in a trailing "loaded 1000 of 3856" error.
+describe("a filing read in part", () => {
+  const load = async (entries: [number | null, number | null], answer: (accession: string) => Record<string, unknown>) => {
+    const spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async (path: string, params: Record<string, unknown>) => {
+      if (path === "/forms") return [filedForm("current", "2026-09-30", entries[0]), filedForm("previous", "2026-06-30", entries[1])];
+      if (path !== "/holdings") throw new Error(`unexpected ${path}`);
+      return answer(String(params.accession_number));
+    }) as never);
+    setHttpFetchTransport(async (url) => { throw new Error(`unexpected ${url}`); });
+    try {
+      return await loadFundDetail("1603466", "Fund", undefined, { filingGap: false });
+    } finally {
+      spy.mockRestore();
+    }
+  };
+
+  test("for the signed-out limit, as the service says, says so up front and weighs its lines against the filing's own total", async () => {
+    const detail = await load([3_856, 3_923], (accession) => ({ rows: holdingRows(accession, 0, 1_000), complete: false, signedOutLimit: 1_000 }));
+    expect(detail.latestReport?.capped).toEqual({ loaded: 1_000, entries: 3_856, limit: 1_000 });
+    expect(detail.warnings).toEqual([
+      "Signed out, Gloom Cloud sends a filing's first 1,000 lines: 30 Sep 2026 is 1,000 of 3,856, in the filing's order, not the largest. Sign in for the whole book.",
+      "Signed out, Gloom Cloud sends a filing's first 1,000 lines: 30 Jun 2026 is 1,000 of 3,923, in the filing's order, not the largest. Sign in for the whole book.",
+    ]);
+    expect(cappedHoldingsText(detail)).toBe("Signed out, Gloom Cloud sends a filing's first 1,000 lines: these are 1,000 of the 3,856 lines filed, "
+      + "in the filing's order, not the fund's largest; 30 Jun 2026's are 1,000 of 3,923, so QoQ and Est P&L stay blank. Sign in for the whole book.");
+    // The filing's cover states its whole value: a line's weight is of that. No line is a buy or a sale.
+    const [top] = buildFundHoldingRows(detail).sort((left, right) => (right.value ?? 0) - (left.value ?? 0));
+    expect(top).toMatchObject({ value: 1_000, weight: 10, action: "unknown" });
+    expect(comparedWith(detail)).toEqual({ value: "2026-06-30", detail: "read in part, sign in for changes", tone: "warning" });
+  });
+
+  test("of 1,000 lines the service does not say it cut names no cause, and a whole book still compares its quarters", async () => {
+    const partial = await load([3_856, 3_923], (accession) => ({ rows: holdingRows(accession, 0, 1_000), complete: false }));
+    expect(partial.latestReport?.capped).toBeUndefined();
+    expect(cappedHoldingsText(partial)).toBeNull();
+    expect(partial.warnings).toEqual([
+      "2026-09-30: loaded 1000 of 3856 disclosed entries for current.",
+      "2026-06-30: loaded 1000 of 3923 disclosed entries for previous.",
+    ]);
+    expect(comparedWith(partial)).toEqual({ value: "2026-06-30", detail: "read in part", tone: "warning" });
+    // Both quarters whole: the line one lacks is a buy or a sale, and the quarter is compared.
+    const whole = await load([5, 5], (accession) => ({ rows: holdingRows(accession, accession === "current" ? 1 : 0, 5), complete: true }));
+    expect(hasComparable13FQuarter(whole)).toBe(true);
+    expect(comparedWith(whole)).toEqual({ value: "2026-06-30" });
+    expect(buildFundHoldingRows(whole).map((row) => row.action).sort()).toEqual(["exit", "held", "held", "held", "held", "new"]);
+  });
+
+  test("a cover that counts no lines still takes the answer's word: cut, or not whole, with no count made up and no quarter compared", async () => {
+    const capped = await load([null, null], (accession) => ({ rows: holdingRows(accession, 0, 1_000), complete: false, signedOutLimit: 1_000 }));
+    expect(capped.latestReport).toMatchObject({ complete: false, capped: { loaded: 1_000, entries: null, limit: 1_000 } });
+    expect(capped.warnings?.[0]).toBe("Signed out, Gloom Cloud sends a filing's first 1,000 lines: 30 Sep 2026 is its first 1,000, in the filing's order, "
+      + "not the largest. Sign in for the whole book.");
+    expect(cappedHoldingsText(capped)).toBe("Signed out, Gloom Cloud sends a filing's first 1,000 lines: these are its first 1,000 lines, in the filing's "
+      + "order, not the fund's largest; 30 Jun 2026's are its first 1,000, so QoQ and Est P&L stay blank. Sign in for the whole book.");
+    expect(hasComparable13FQuarter(capped)).toBe(false);
+    const partial = await load([null, null], (accession) => ({ rows: holdingRows(accession, accession === "current" ? 1 : 0, 5), complete: false }));
+    expect(partial.latestReport?.complete).toBe(false);
+    expect(partial.latestReport?.capped).toBeUndefined();
+    expect(partial.warnings).toEqual([
+      "2026-09-30: loaded 5 entries for current, not the whole filing.",
+      "2026-06-30: loaded 5 entries for previous, not the whole filing.",
+    ]);
+    expect(hasComparable13FQuarter(partial)).toBe(false);
+    expect(buildFundHoldingRows(partial).every((row) => row.action === "unknown")).toBe(true);
+  });
+});
+
+describe("a filing's holdings and the reader's sign-in", () => {
+  // Synthetic sign-ins: a made-up session token set on the app's client and cleared, as signing in and out do.
+  const signIn = () => apiClient.setSessionToken("synthetic-13f-reader");
+  const signOut = () => apiClient.setSessionToken(null);
+  const asked: Array<{ signedIn: boolean; limit?: number; release: () => void }> = [];
+  /** Whether each request went out signed in, in the order sent. */
+  const sent: boolean[] = [];
+  const spies: Array<{ mockRestore(): void }> = [];
+  // The service as it answers the sign-in a request goes out with: the first 1,000 lines with the limit's marker
+  // signed out, the whole book (or the first rows asked for) signed in.
+  const serve = (expired = false) => {
+    const spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async (_path: string, params: { limit?: number }) => {
+      const signedIn = apiClient.isSignedIn();
+      sent.push(signedIn);
+      await new Promise<void>((resolve) => asked.push({ signedIn, ...(params.limit ? { limit: params.limit } : {}), release: resolve }));
+      const lines = Math.min(params.limit ?? 3_856, 3_856);
+      return signedIn && !expired ? { rows: holdingRows("filing", 0, lines), complete: lines === 3_856 }
+        : { rows: holdingRows("filing", 0, 1_000), complete: false, signedOutLimit: 1_000 };
+    }) as never);
+    spies.push(spy);
+    return spy;
+  };
+  const read = (onFirstRows?: (rows: ThirteenFHoldingRecord[]) => void) =>
+    listThirteenFFormHoldings("1603466", "filing", undefined, { entries: 3_856, ...(onFirstRows ? { onFirstRows } : {}) });
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+  // Lets every request asked so far, and any it leads to, answer.
+  const settle = async <T>(pending: Promise<T>) => {
+    let done = false;
+    void pending.finally(() => { done = true; });
+    for (let count = 0; count < 50 && !done; count++) {
+      await tick();
+      for (const request of asked.splice(0)) request.release();
+    }
+    return pending;
+  };
+
+  afterEach(() => {
+    for (const spy of spies.splice(0)) spy.mockRestore();
+    signOut();
+    asked.length = 0;
+    sent.length = 0;
+  });
+
+  test("a copy or a request in flight serves only the sign-in it was read in", async () => {
+    attachThirteenFApiPersistence(new MemoryPluginPersistence());
+    const spy = serve();
+    // Signed out, then signing in while that read is still out: the signed-in read asks for itself.
+    const signedOut = read();
+    await Promise.resolve();
+    signIn();
+    const afterSignIn = read();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(sent).toEqual([false, true]);
+    // The cut answer comes after the reader signed in: it is not theirs, so the first read is answered as the second.
+    expect((await settle(signedOut)).rows).toHaveLength(3_856);
+    expect((await settle(afterSignIn)).rows).toHaveLength(3_856);
+    expect(sent).toEqual([false, true]);
+    // The signed-in copy answers that state again without asking; the cut one was not kept, so signed out asks.
+    expect((await read()).rows).toHaveLength(3_856);
+    signOut();
+    expect(await settle(read())).toMatchObject({ complete: false, signedOutLimit: 1_000 });
+    expect(await read()).toMatchObject({ complete: false, signedOutLimit: 1_000 });
+    expect(spy.mock.calls).toHaveLength(3);
+  });
+
+  // A credential replaced as the app installs one, or as its transport takes one from a response's headers, that
+  // response's body held until every check below is done: either way the account shown has not changed.
+  const replacements = [
+    ["installed", async (token: string) => { apiClient.setSessionToken(token); return async () => {}; }],
+    ["taken from a response's headers, its body still out,", async (token: string) => (await replaceCredentialInResponseHeaders(token)).finish],
+  ] as const;
+  test.each(replacements)("a credential %s under the account still shown reuses neither the copy nor the read in flight of the one before", async (_way, replace) => {
+    attachThirteenFApiPersistence(new MemoryPluginPersistence());
+    const bodies: Array<() => Promise<void>> = [];
+    try {
+      signIn();
+      apiClient.restoreCachedUser({ id: "synthetic-reader", name: "Reader", email: "", emailVerified: true });
+      // Each answer's lines are numbered from the credential generation (a count) it was sent under.
+      const sentUnder: number[] = [];
+      spies.push(spyOn(apiClient, "getCloudSec13F").mockImplementation((async () => {
+        const generation = apiClient.getCredentialGeneration();
+        sentUnder.push(generation);
+        await new Promise<void>((resolve) => asked.push({ signedIn: true, release: resolve }));
+        return { rows: holdingRows("filing", generation * 10_000, 3_856), complete: true };
+      }) as never));
+      const answeredUnder = (answer: { rows: ThirteenFHoldingRecord[] }) => Math.floor((answer.rows[0]!.value ?? 0) / 10_000);
+      const first = apiClient.getCredentialGeneration();
+      expect(answeredUnder(await settle(read()))).toBe(first);
+      // Its copy answers that credential again without asking.
+      expect(answeredUnder(await read())).toBe(first);
+      expect(sentUnder).toEqual([first]);
+      // A new credential, the account shown still the one before: the copy is not its, so it asks.
+      bodies.push(await replace("synthetic-13f-reader-replaced"));
+      expect(apiClient.getCurrentUser()?.id).toBe("synthetic-reader");
+      const second = apiClient.getCredentialGeneration();
+      expect(second).toBe(first + 1);
+      expect(answeredUnder(await settle(read()))).toBe(second);
+      expect(sentUnder).toEqual([first, second]);
+      // Replaced again while another filing's read is out: a read after it does not join that one, and the one out is
+      // not answered with what it was sent, but with the new credential's book.
+      const other = () => listThirteenFFormHoldings("1603466", "other", undefined, { entries: 3_856 });
+      const pending = other();
+      for (let count = 0; count < 20 && sentUnder.length < 3; count++) await tick();
+      bodies.push(await replace("synthetic-13f-reader-replaced-again"));
+      const third = apiClient.getCredentialGeneration();
+      expect(third).toBe(second + 1);
+      const after = other();
+      const [late, fresh] = await Promise.all([settle(pending), settle(after)]);
+      expect(sentUnder.slice(0, 4)).toEqual([first, second, second, third]);
+      expect([answeredUnder(late), answeredUnder(fresh)]).toEqual([third, third]);
+      expect(apiClient.getCurrentUser()?.id).toBe("synthetic-reader");
+    } finally {
+      // Only now do the bodies of the answers that replaced the credentials come in.
+      for (const finish of bodies) await finish();
+    }
+  });
+
+  test("a cut answer to a session the service did not take is not kept as the signed-in copy", async () => {
+    attachThirteenFApiPersistence(new MemoryPluginPersistence());
+    signIn();
+    const spy = serve(true);
+    expect(await settle(read())).toMatchObject({ signedOutLimit: 1_000 });
+    // Asked again, not answered from that cut copy.
+    expect(await settle(read())).toMatchObject({ signedOutLimit: 1_000 });
+    expect(spy.mock.calls).toHaveLength(2);
+  });
+
+  test("signing in after a read looked for its copy but before it went out sends it signed in, and keeps nothing signed out", async () => {
+    attachThirteenFApiPersistence(new MemoryPluginPersistence());
+    serve();
+    const pending = read();
+    signIn();
+    expect((await settle(pending)).rows).toHaveLength(3_856);
+    expect(sent).toEqual([true]);
+    // That book is the signed-in copy alone: signed out, the read asks and is sent the first 1,000 lines.
+    signOut();
+    expect(await settle(read())).toMatchObject({ complete: false, signedOutLimit: 1_000 });
+    expect(sent).toEqual([true, false]);
+  });
+
+  test("signing out while a large filing's first rows are out shows none of them, and the book is read again signed out", async () => {
+    attachThirteenFApiPersistence(new MemoryPluginPersistence());
+    signIn();
+    serve();
+    const shown: number[] = [];
+    const pending = read((rows) => shown.push(rows.length));
+    // The whole book is asked at once, its first rows once it has not come in time.
+    for (let count = 0; count < 100 && asked.length < 2; count++) await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(asked.map((request) => [request.signedIn, request.limit ?? null])).toEqual([[true, null], [true, 2_000]]);
+    signOut();
+    // The first rows answer after it: the signed-in reader's are not shown to the signed-out one.
+    asked.splice(1, 1)[0]!.release();
+    await tick();
+    expect(shown).toEqual([]);
+    // Nor is the whole book, nor is it kept: the filing is read again signed out.
+    expect(await settle(pending)).toMatchObject({ complete: false, signedOutLimit: 1_000 });
+    expect(shown).toEqual([]);
+    expect(sent).toEqual([true, true, false]);
+    signIn();
+    expect((await settle(read())).rows).toHaveLength(3_856);
+    expect(sent).toEqual([true, true, false, true]);
+  });
+
+  test("a warm signed-in copy that comes back after the reader signed out is not theirs: the filing is read again signed out", async () => {
+    attachThirteenFApiPersistence(new MemoryPluginPersistence());
+    signIn();
+    serve();
+    expect((await settle(read())).rows).toHaveLength(3_856);
+    // The copy answers without asking, but only after the read's await, by when the reader has signed out.
+    const pending = read();
+    signOut();
+    expect(await settle(pending)).toMatchObject({ complete: false, signedOutLimit: 1_000 });
+    expect(sent).toEqual([true, false]);
+  });
+
+  test("a sign-out after a filing's first page came in throws its pages away and reads it again signed out, to its first 1,000 lines", async () => {
+    attachThirteenFApiPersistence(new MemoryPluginPersistence());
+    signIn();
+    const pages: Array<{ signedIn: boolean; offset: number }> = [];
+    let releasePages!: () => void;
+    const gate = new Promise<void>((resolve) => { releasePages = resolve; });
+    spies.push(spyOn(apiClient, "getCloudSec13F").mockImplementation((async (path: string, params: Record<string, unknown>) => {
+      // An older service, which reads a filing a page at a time.
+      if (path === "/holdings") throw new ApiRequestError("Unknown 13F path /holdings", 404);
+      const signedIn = apiClient.isSignedIn();
+      const offset = Number(params.offset);
+      pages.push({ signedIn, offset });
+      if (signedIn && offset > 0) await gate;
+      return holdingRows("filing", offset, Math.max(0, Math.min(Number(params.limit), 1_500 - offset)));
+    }) as never));
+    const pending = listThirteenFFormHoldings("1603466", "filing", undefined, { entries: 1_500 });
+    for (let count = 0; count < 50 && pages.length < 5; count++) await tick();
+    // The first page is in, the next four are out.
+    expect(pages.map((page) => [page.signedIn, page.offset])).toEqual([[true, 0], [true, 250], [true, 500], [true, 750], [true, 1_000]]);
+    signOut();
+    releasePages();
+    const answer = await pending;
+    expect(answer).toMatchObject({ complete: false, signedOutLimit: 1_000 });
+    expect(answer.rows.map((row) => row.value)).toEqual(Array.from({ length: 1_000 }, (_, index) => index + 1));
+    // Read again from its first page, signed out, and no page past the limit asked.
+    expect(pages.slice(5)).toEqual([0, 250, 500, 750].map((offset) => ({ signedIn: false, offset })));
+  });
+
+  test("an older service's page longer than asked is cut to the page, signed out to the first 1,000 lines, before it is kept or read", async () => {
+    const persistence = new MemoryPluginPersistence();
+    const writes = spyOn(persistence, "setResource");
+    spies.push(writes);
+    attachThirteenFApiPersistence(persistence);
+    // An older service, which reads a filing a page at a time, and answers each page with the rest of the 1,500 lines.
+    spies.push(spyOn(apiClient, "getCloudSec13F").mockImplementation((async (path: string, params: Record<string, unknown>) => {
+      if (path === "/holdings") throw new ApiRequestError("Unknown 13F path /holdings", 404);
+      const offset = Number(params.offset);
+      return holdingRows("filing", offset, Math.max(0, 1_500 - offset));
+    }) as never));
+    const written = () => writes.mock.calls.filter(([, key]) => String(key).startsWith("/form"))
+      .map(([, key, value]) => [Number(new URLSearchParams(String(key).split("?")[1]).get("offset")?.split("#")[0]), (value as unknown[]).length])
+      .sort(([left], [right]) => Number(left) - Number(right));
+    const anonymous = await listThirteenFFormHoldings("1603466", "filing", undefined, {});
+    expect(anonymous).toMatchObject({ complete: false, signedOutLimit: 1_000 });
+    expect(anonymous.rows.map((row) => row.value)).toEqual(Array.from({ length: 1_000 }, (_, index) => index + 1));
+    // Each page is kept as asked, and none past the filing's first 1,000 lines.
+    expect(written()).toEqual([[0, 250], [250, 250], [500, 250], [750, 250]]);
+    // Signed in, each page is cut to the page as well, so the book is each line once, and none of it is written.
+    writes.mockClear();
+    signIn();
+    const signedIn = await listThirteenFFormHoldings("1603466", "filing", undefined, {});
+    expect(signedIn.rows.map((row) => row.value)).toEqual(Array.from({ length: 1_500 }, (_, index) => index + 1));
+    expect(written()).toEqual([]);
+    // A filing's own list, read a page at a time as its detail view scrolls: each page as asked, more after a full one.
+    const page = await loadFilingPositions("1603466", "filing", undefined, { offset: 250, limit: 100 });
+    expect(page.rows.map((row) => row.value)).toEqual(Array.from({ length: 100 }, (_, index) => 251 + index));
+    expect(page.hasMore).toBe(true);
+    const last = await loadFilingPositions("1603466", "filing", undefined, { offset: 1_450, limit: 100 });
+    expect(last.rows.map((row) => row.value)).toEqual(Array.from({ length: 50 }, (_, index) => 1_451 + index));
+    expect(last.hasMore).toBe(false);
+    // What is kept is the page asked, not the rest of the filing the answer held.
+    expect(written()).toEqual([[250, 100], [1_450, 50]]);
+  });
+
+  test("a sign-out while the prior quarter loads takes down what was shown, and both quarters are read again signed out", async () => {
+    attachThirteenFApiPersistence(new MemoryPluginPersistence());
+    signIn();
+    let releasePrevious!: () => void;
+    const previousGate = new Promise<void>((resolve) => { releasePrevious = resolve; });
+    const filings: Array<[string, boolean]> = [];
+    spies.push(spyOn(apiClient, "getCloudSec13F").mockImplementation((async (path: string, params: Record<string, unknown>) => {
+      if (path === "/forms") return [filedForm("current", "2026-09-30", 3_856), filedForm("previous", "2026-06-30", 3_923)];
+      const signedIn = apiClient.isSignedIn();
+      const accession = String(params.accession_number);
+      filings.push([accession, signedIn]);
+      if (accession === "previous" && signedIn) await previousGate;
+      return signedIn ? { rows: holdingRows(accession, 0, accession === "current" ? 3_856 : 3_923), complete: true }
+        : { rows: holdingRows(accession, 0, 1_000), complete: false, signedOutLimit: 1_000 };
+    }) as never));
+    setHttpFetchTransport(async (url) => { throw new Error(`unexpected ${url}`); });
+    const shown: Array<number | null> = [];
+    const loaded = loadFundDetail("1603466", "Fund", undefined, {
+      filingGap: false, onProgress: (detail) => shown.push(detail ? detail.latestHoldings.length : null),
+    });
+    for (let count = 0; count < 50 && shown.length < 1; count++) await tick();
+    // The latest quarter's whole book is shown while the prior quarter is still out.
+    expect(shown).toEqual([3_856]);
+    signOut();
+    releasePrevious();
+    const detail = await loaded;
+    // What was shown is taken down; every part after it is the signed-out reader's, both quarters cut alike.
+    expect(shown).toEqual([3_856, null, 1_000, 1_000]);
+    expect(filings).toEqual([["current", true], ["previous", true], ["current", false], ["previous", false]]);
+    expect([detail.latestHoldings.length, detail.previousHoldings.length]).toEqual([1_000, 1_000]);
+    expect(detail.latestReport?.capped).toEqual({ loaded: 1_000, entries: 3_856, limit: 1_000 });
+    expect(hasComparable13FQuarter(detail)).toBe(false);
+  });
+
+  test("asked signed out while a session is still resolving, a fuller answer is cut to the anonymous lines before it is shown or kept", async () => {
+    const persistence = new MemoryPluginPersistence();
+    const writes = spyOn(persistence, "setResource");
+    spies.push(writes);
+    attachThirteenFApiPersistence(persistence);
+    // A browser session not resolved yet: its cookie goes out with the request, but no token or user says who is in.
+    apiClient.setCookieSessionMode(true);
+    try {
+      expect(apiClient.isSignedIn()).toBe(false);
+      // The transport answers as it would the signed-in session.
+      const spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async () => ({ rows: holdingRows("filing", 0, 3_856), complete: true })) as never);
+      spies.push(spy);
+      const answer = await read();
+      expect(answer).toMatchObject({ complete: false, signedOutLimit: 1_000 });
+      expect(answer.rows).toHaveLength(1_000);
+      // Only the anonymous lines are written, and the copy answers the next signed-out read as they are.
+      const kept = writes.mock.calls.filter(([, key]) => String(key).startsWith("/holdings"));
+      expect(kept.map(([, , value]) => asRecordRows(value))).toEqual([1_000]);
+      expect((await read()).rows).toHaveLength(1_000);
+      expect(spy.mock.calls).toHaveLength(1);
+    } finally {
+      apiClient.setCookieSessionMode(false);
+    }
+  });
+});
+
+/** How many rows a whole-filing answer holds. */
+function asRecordRows(value: unknown): number {
+  const rows = (value as { rows?: unknown[] } | null)?.rows;
+  return Array.isArray(rows) ? rows.length : -1;
+}
 
 test("a signed-out limit shows the service's own message, and says how long to wait when it sent none", () => {
   const service = new ApiRequestError("Too many 13F reads without signing in: try again in 40 s, or sign in to lift the limit", 429, 39_200);

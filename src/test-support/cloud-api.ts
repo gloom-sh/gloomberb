@@ -1,5 +1,39 @@
+import { apiClient, setCloudApiFetchTransport } from "../api-client";
 import type { CloudApiSocket } from "../api-client/socket";
 import type { AuthUser } from "../api-client/types";
+
+/**
+ * A request whose response replaces the session credential in its headers, as the app's own transport takes it,
+ * with its body held: returns once the headers are in (and the client has had the chance to tell its listeners),
+ * the body still out and no account read for the new credential. `finish` lets the body in and puts the default
+ * transport back; until then any other request through the transport is answered 503. The token is the caller's
+ * synthetic value.
+ */
+export async function replaceCredentialInResponseHeaders(token: string): Promise<{ finish: () => Promise<void> }> {
+  const body = Promise.withResolvers<string>();
+  let told = false;
+  const stop = apiClient.subscribeCurrentUser(() => { told = true; });
+  let sent = 0;
+  setCloudApiFetchTransport(async () => (++sent === 1
+    ? { ok: true, status: 200, headers: new Headers({ "set-cookie": `gloomberb.session_token=${token}; Path=/; HttpOnly; SameSite=Lax` }), text: () => body.promise }
+    : Response.json({ message: "Not served here" }, { status: 503 })));
+  const request = apiClient.getChatState();
+  request.catch(() => { /* Intentional ignore: `finish` awaits it. */ });
+  // A credential the same as the one in place tells nobody: wait a few turns at most.
+  for (let turn = 0; turn < 20 && !told; turn++) await new Promise((resolve) => setTimeout(resolve, 0));
+  stop();
+  let finished: Promise<void> | null = null;
+  return {
+    finish: () => finished ??= (async () => {
+      body.resolve(JSON.stringify({ channels: [], onlineCount: 0, channelStates: [], notifications: [] }));
+      try {
+        await request;
+      } finally {
+        setCloudApiFetchTransport(null);
+      }
+    })(),
+  };
+}
 
 export const verifiedUser: AuthUser = {
   id: "user-1",
