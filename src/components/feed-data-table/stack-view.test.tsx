@@ -87,7 +87,7 @@ test("an instant feed selects the item out by the pinned moment, and a feed of d
 const streamed = (id: string, time: string): FeedDataTableItem => ({ id, eyebrow: "Wire", title: `Item ${id}`, timestamp: `2026-04-18T${time}:00Z` });
 
 /** A feed whose owner keeps the selected index, beside a chart that pins the tab's crosshair. */
-async function mountStreamingFeed(first: FeedDataTableItem[]) {
+async function mountStreamingFeed(first: FeedDataTableItem[], timeColumn?: FeedDataTableTimeColumn) {
   let link: TabCursorLink | undefined;
   let stream!: (items: FeedDataTableItem[]) => void;
   let pick!: (index: number) => void;
@@ -103,7 +103,7 @@ async function mountStreamingFeed(first: FeedDataTableItem[]) {
     pick = setSelectedIdx;
     selected = () => items[selectedIdx]?.id;
     return <FeedDataTableStackView width={80} height={10} focused items={items} selectedIdx={selectedIdx} onSelect={setSelectedIdx}
-      sourceLabel="Source" titleLabel="Headline" />;
+      sourceLabel="Source" titleLabel="Headline" timeColumn={timeColumn} />;
   }
   const state = createInitialState(createDefaultConfig("/tmp/gloomberb-feed-table-stream"));
   await tui.render(
@@ -173,4 +173,13 @@ test("a feed holds the pin's item when it was the first row shown, as an item ar
   } finally {
     await feed.pin(null);
   }
+});
+
+// A list of filings by day does not stream: its owner resets the index when a
+// filter changes the list, and the reset is what it gets.
+test("a feed dated by day keeps the owner's index as its items change", async () => {
+  const a = streamed("A", "16:00"), b = streamed("B", "14:30"), c = streamed("C", "12:00");
+  const feed = await mountStreamingFeed([b, c], { label: "Filed", width: 10, format: (value) => String(value).slice(0, 10) });
+  await feed.send([a, b, c]);
+  expect(feed.selected()).toBe("A");
 });
