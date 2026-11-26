@@ -95,7 +95,7 @@ export function scopedPeriodPE(financials: TickerFinancials, source: SecuritySer
   if (!earnings) return null;
   const yearEnd = financials.annualStatements.some(row => row.date === earnings.periodEnd);
   if (source.period === "annual" && !yearEnd) return null;
-  const close = dailyStatementValuation(financials, "trailingPE", source.instrument.exchange).find(point => point.availableAt);
+  const close = dailyStatementValuation(financials, "trailingPE", source.instrument.exchange).find(point => point.availableAt && point.value !== null);
   if (!close?.availableAt) return null;
   const period = source.period === "annual" || (source.period !== "ttm" && !financials.quarterlyStatements.length && yearEnd) ? "annual" : "ttm";
   const statement = { date: earnings.periodEnd, currency: earnings.currency, eps: earnings.eps, availableAt: close.availableAt.toISOString() };

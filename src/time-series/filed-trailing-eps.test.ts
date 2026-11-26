@@ -24,7 +24,7 @@ const headline = (fundamentals: Fundamentals) => {
 };
 const FILED = { eps: 4, trailingPE: 25, source: "filed-quarters" } as const;
 
-test("scoped headlines and repricing use the reviewed denominator, not the overlapping year or a cached multiple", () => {
+function scopedFixture() {
   const after = Date.parse("2028-02-18T17:00Z"), before = Date.parse("2028-02-16T17:00Z");
   const scope = { basis: "standalone" as const, entity: "vylor-standalone", registrant: "0002128626", label: "Vylor standalone (as filed)" };
   const end = "2027-12-31", filed = "2028-02-17";
@@ -34,6 +34,26 @@ test("scoped headlines and repricing use the reviewed denominator, not the overl
   const raw = { annualStatements: [{ ...quarters[3]!, eps: 3, availableAt: "2028-02-15" }], quarterlyStatements: quarters,
     priceHistory: [before, after].map(time => ({ date: new Date(time), close: 65 })), financialCurrency: "USD", statementScope: scope,
     statementReview: { status: "reviewed" as const, reviewedThrough: filed }, fundamentals: { eps: 3.25, epsCurrency: "USD", trailingPeriodEnd: end, trailingPE: 20 } };
+  return { raw, quarters, scope, end, filed, quote, before, after };
+}
+
+test("a scoped period point waits for the first priced close even with a stale current quote", () => {
+  const { raw, quote, end, after } = scopedFixture();
+  setSystemTime(after);
+  try {
+    const data = { ...mapCloudFinancials(raw), quote: { ...quote, stale: true }, priceHistory: [
+      { date: new Date("2028-02-18T16:00:00Z"), close: 0 }, { date: new Date(after), close: 65 },
+    ] };
+    const series = (period: "daily" | "annual") => extractFundamentalSeries(data, { kind: "security", instrument: { symbol: "VYLR" }, fieldId: "valuation.trailingPE", period });
+    expect(series("daily").map(point => point.value)).toEqual([null, 20]);
+    expect(series("annual").filter(point => point.periodLabel !== "Current")).toMatchObject([
+      { value: 20, date: new Date(after), availableAt: new Date(after), observedAt: new Date(end) },
+    ]);
+  } finally { setSystemTime(); }
+});
+
+test("scoped headlines and repricing use the reviewed denominator, not the overlapping year or a cached multiple", () => {
+  const { raw, quarters, scope, end, filed, quote, before, after } = scopedFixture();
   const project = (data: TickerFinancials) => {
     const priced = withShareMultiples(withFiledTrailingEps(data, after));
     const stats = atLivePriceEarnings(priced).fundamentals;
@@ -68,13 +88,20 @@ test("scoped headlines and repricing use the reviewed denominator, not the overl
     expect(periods({ ...admitted, priceHistory: history.slice(0, -1) })).toEqual([]);
     const ordinary = { ...mapCloudFinancials({ ...raw, statementScope: undefined, quarterlyStatements: [], annualStatements: raw.annualStatements.map(row => ({ ...row, statementScope: undefined })) }), quote, priceHistory: history };
     expect(periods(ordinary).map(point => point.value)).toEqual([65 / 3]);
-    const delayed = { ...raw, annualStatements: raw.annualStatements.map(row => ({ ...row, availableAt: "2028-02-14" })),
+    const delayed = { ...raw,
       quarterlyStatements: quarters.map(row => ({ ...row, availableAt: "2028-02-15", fieldAvailability: { eps: filed } })) };
     const fieldDated = { ...mapCloudFinancials(delayed), quote };
     expect(project({ ...fieldDated, quote: { ...quote, lastUpdated: before } }).pe).toBeUndefined();
     expect(project(fieldDated).pe).toBe(20);
     expect(daily(fieldDated)).toEqual([null, 20]);
     expect(periods(fieldDated).map(point => point.value)).toEqual([20]);
+    const bothMatch = { ...mapCloudFinancials({ ...delayed, annualStatements: delayed.annualStatements.map(row => ({ ...row, eps: 3.25 })) }), quote };
+    expect(project({ ...bothMatch, quote: { ...quote, lastUpdated: before } }).pe).toBeUndefined();
+    expect(project(bothMatch).pe).toBe(20);
+    for (const quarterlyStatements of [quarters.slice(1), quarters.map(row => ({ ...row, eps: 1 })),
+      quarters.map((row, index) => index === 0 ? { ...row, date: "2026-12-31" } : row)]) {
+      expect(project({ ...mapCloudFinancials({ ...delayed, quarterlyStatements }), quote }).eps).toBeUndefined();
+    }
     const legacy = { ...fieldDated, fundamentals: JSON.parse(JSON.stringify({ ...fieldDated.fundamentals, scopedEarnings: { eps: 3.25, currency: "USD", periodEnd: end, priced: true, availableAt: "2028-02-15" } })) };
     expect(atLivePriceEarnings(legacy).fundamentals.trailingPE).toBeUndefined();
     expect(project({ ...legacy, quote: { ...quote, lastUpdated: before } }).pe).toBeUndefined();

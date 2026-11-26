@@ -1,5 +1,6 @@
 import type { FinancialStatement, Fundamentals, Quote, StatementScope, TickerFinancials } from "../types/financials";
-import { completeAvailability, financialAvailabilityTime, statementFieldAvailability } from "./financial-statements";
+import { completeAvailability, financialAvailabilityTime, statementFieldAvailability, statementPeriodMonths } from "./financial-statements";
+import { reportedEarnings } from "./trailing-eps";
 
 export function listingOwnsRow(scope: StatementScope | undefined, row: FinancialStatement): boolean {
   if (!scope) return !row.statementScope;
@@ -15,6 +16,27 @@ export function listingOwnsSeries(data: Pick<TickerFinancials, "statementScope" 
 
 type ScopedEarnings = NonNullable<Fundamentals["scopedEarnings"]>;
 
+const DAY_MS = 86_400_000;
+
+function spansDays(start: string, end: string, min: number, max: number): boolean {
+  const days = (Date.parse(end) - Date.parse(start)) / DAY_MS + 1;
+  return days >= min && days <= max;
+}
+
+function completeQuarterWindow(rows: FinancialStatement[], end: string): boolean {
+  if (rows.length !== 4 || rows[3]!.date !== end) return false;
+  const firstStart = rows[0]!.dateEvidence?.startDate;
+  return (firstStart === undefined || spansDays(firstStart, end, 350, 380)) && rows.every((row, index) => {
+    if (row.shareBasis !== rows[0]!.shareBasis || (statementPeriodMonths(row) ?? 3) !== 3) return false;
+    const start = row.dateEvidence?.startDate;
+    if (start !== undefined && !spansDays(start, row.date, 77, 105)) return false;
+    if (index === 0) return true;
+    const previousEnd = Date.parse(rows[index - 1]!.date);
+    const days = (Date.parse(row.date) - previousEnd) / DAY_MS;
+    return days >= 77 && days <= 105 && (start === undefined || Date.parse(start) === previousEnd + DAY_MS);
+  });
+}
+
 export function dateScopedEarnings(data: Pick<TickerFinancials, "statementScope" | "statementReview" | "annualStatements" | "quarterlyStatements">,
   earnings: Omit<ScopedEarnings, "epsAvailableAt"> | null | undefined): ScopedEarnings | null {
   const reviewedThrough = data.statementReview?.reviewedThrough;
@@ -23,11 +45,15 @@ export function dateScopedEarnings(data: Pick<TickerFinancials, "statementScope"
   const { eps, currency, periodEnd, priced } = earnings;
   const quarters = data.quarterlyStatements.filter(row => row.date <= periodEnd)
     .sort((first, second) => first.date.localeCompare(second.date)).slice(-4);
-  const annual = data.annualStatements.find(row => row.date === periodEnd);
-  const sameEnd = quarters.at(-1)?.date === periodEnd;
-  const amended = annual && sameEnd && quarters.some(row => (row.availableAt ?? "") > (annual.availableAt ?? ""));
-  const inputs = annual && !amended ? [annual] : sameEnd && quarters.length === 4 ? quarters : [];
-  const epsAvailableAt = completeAvailability(inputs.map(row => row.currency === currency ? statementFieldAvailability(row, "eps") : undefined));
+  const candidates = data.annualStatements.filter(row => row.date === periodEnd
+    && (row.dateEvidence?.startDate === undefined || spansDays(row.dateEvidence.startDate, periodEnd, 350, 380))).map(row => [row]);
+  if (completeQuarterWindow(quarters, periodEnd)) candidates.push(quarters);
+  const matchingInputs = candidates.filter(rows => rows.every(row => row.currency === currency && reportedEarnings(row, "eps") !== null)
+    && rows.reduce((total, row) => total + row.eps!, 0) === eps);
+  const epsAvailableAt = completeAvailability(matchingInputs.flat().map(row => {
+    const available = statementFieldAvailability(row, "eps");
+    return available && Date.parse(available) >= Date.parse(row.date) ? available : undefined;
+  }));
   return epsAvailableAt && Date.parse(epsAvailableAt) >= Date.parse(periodEnd) && financialAvailabilityTime(epsAvailableAt) <= financialAvailabilityTime(reviewedThrough)
     ? { eps, currency, periodEnd, epsAvailableAt, priced }
     : null;
