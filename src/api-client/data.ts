@@ -648,7 +648,7 @@ export class CloudDataApi {
     );
   }
 
-  getCloudExchangeAnnouncements(params: { symbol: string; exchange: string; limit?: number; kind?: "results" }) {
+  getCloudExchangeAnnouncements(params: import("./exchange-announcements").ExchangeAnnouncementsRequest) {
     return this.request<import("./exchange-announcements").ExchangeAnnouncementsPayload>(
       cloudExchangeAnnouncementsPath(params),
     );

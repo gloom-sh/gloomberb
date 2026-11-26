@@ -17,13 +17,13 @@ How to edit this file (update it in the release commit):
   a new minor version reads fine before its section is written.
 -->
 
-## 0.20: A faster desktop app, broker CSV imports, and your own header market
+## 0.20: A faster desktop app, broker CSV imports, and safer workspaces
 
 - **A faster, lighter desktop app.** It starts about a third faster on Mac and uses less memory. (0.20.0)
 - **Import positions from your broker's CSV.** For brokers Gloom does not sync, in the app or the CLI. (0.20.2)
 - **Your tickers at a glance.** A strip shows what moved since your last visit, watchlists take named groups, and the header follows any market. (0.20.3, 0.20.16)
 - **Ask Gloom shows its sources and asks before it acts.** Every figure links to the data behind it, and it asks before it presses a button. (0.20.2, 0.20.4)
-- **Listings and reports read correctly.** Hong Kong reports keep their period and currency, company or fund names find the home line, and codes such as `KLSE` open their venue. (0.20.1, 0.20.2, 0.20.14, 0.20.20, 0.20.21)
+- **Keep both workspace edits.** Panes opened in two terminal sessions stay in the saved workspace, whichever session quits first. (0.20.22)
 
 ## 0.19: Option strategy screens, a deeper EQS, and panes that stack as tabs
 

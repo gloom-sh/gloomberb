@@ -35,6 +35,22 @@ const warning = (quote: Quote) => segments(quote).filter((segment) => segment.id
   .map((segment) => segment.parts.map((part) => part.text).join(" "));
 
 describe("ticker footer on a signed-out delayed feed", () => {
+  test.each([
+    "2026-11-26T11:28:00Z", "2026-11-26T15:00:00Z", "2026-11-26T19:00:00Z", "2026-11-27T02:00:00Z",
+  ])("does not warn for the latest Nasdaq print on Thanksgiving at %s", (time) => {
+    at(time);
+    const lastTradeTime = Date.parse("2026-11-26T00:59:59.082Z");
+    const holiday: Quote = { ...nvda, marketState: "CLOSED", regularCloseSessionDate: "2026-11-25",
+      changeSessionDate: "2026-11-25", lastUpdated: lastTradeTime, lastTradeTime, lastTradePrice: nvda.price };
+    const close = Date.parse("2026-11-25T21:00:00Z");
+    expect(warning(holiday)).toEqual([]);
+    expect(warning({ ...holiday, postMarketPrice: holiday.price })).toEqual([]);
+    expect(warning({ ...holiday, lastUpdated: close, lastTradeTime: close })).toEqual([]);
+    const older = Date.parse("2026-11-25T00:59:59.082Z");
+    expect(warning({ ...holiday, changeSessionDate: "2026-11-24", regularCloseSessionDate: "2026-11-24",
+      lastUpdated: older, lastTradeTime: older })).toEqual(["Stale quote 2026-11-25 00:59Z"]);
+  });
+
   test("US closed overnight: Tuesday's last print is the current price, with no warning", () => {
     at("2026-11-11T07:16:00Z");
     expect(warning(nvda)).toEqual([]);

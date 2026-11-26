@@ -73,7 +73,9 @@ function repriceMultiple(
 export function liveTrailingPE(quote: Quote | null | undefined, fundamentals: Fundamentals | undefined): PriceEarnings | undefined {
   // Withdrawn as no multiple of the share (utils/share-multiples).
   if (fundamentals?.notMeaningful?.trailingPE) return NOT_MEANINGFUL;
-  const stored = pricedFundamentals(quote, fundamentals)?.trailingPE;
+  const priced = pricedFundamentals(quote, fundamentals);
+  if (fundamentals?.scopedEarnings !== undefined) return priceEarningsOnEarnings(priced?.trailingPE, priced?.eps);
+  const stored = priced?.trailingPE;
   return priceEarningsOnEarnings(repriceMultiple(stored, priceEarningsEps(fundamentals, quote?.currency), quote, fundamentals), fundamentals?.eps);
 }
 
@@ -92,7 +94,7 @@ export function liveForwardPE(quote: Quote | null | undefined, fundamentals: Fun
 export function atLivePriceEarnings<T extends Pick<TickerFinancials, "quote" | "fundamentals">>(financials: T): T {
   const priced = atRegularSessionPrice(financials);
   if (!priced.fundamentals) return priced;
-  const trailing = liveTrailingPE(financials.quote, financials.fundamentals);
+  const trailing = priced.fundamentals.scopedEarnings === undefined ? liveTrailingPE(financials.quote, financials.fundamentals) : priced.fundamentals.trailingPE;
   const forward = liveForwardPE(financials.quote, financials.fundamentals);
   return {
     ...priced,

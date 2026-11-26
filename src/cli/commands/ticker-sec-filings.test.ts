@@ -166,3 +166,21 @@ test("ticker's recent filings say what each form is and who filed an insider for
   const json = await report({ filings: mara, content });
   expect(json.data.recentSecFilings[0].summary).toStartWith("Salman Hassan Khan: SELL 16k Common Stock");
 });
+
+test("ticker keeps a verified Form 4 summary on its own accession when the document is unavailable", async () => {
+  const award = filing("4", 1, { form4: {
+    ownerName: "Jane Example", issuerName: "JPMorgan Chase & Co.", issuerTicker: "JPM", issuerCik: "0000019617",
+    code: "A", side: "acquired", shares: 850, price: null,
+  } });
+  const unverified = filing("4", 2);
+  const filings = [unverified, award];
+  const { text } = await report({ json: false, filings, content: async () => null });
+  const section = text.slice(text.indexOf("Recent SEC Filings"));
+  expect(section).toContain(`Insider Transaction\nJane Example: Awarded 850 shares\n${award.filingUrl}`);
+  expect(section).toContain(`Insider Transaction\n${unverified.filingUrl}`);
+  const { data } = await report({ filings });
+  expect(data.recentSecFilings).toMatchObject([
+    { accessionNumber: unverified.accessionNumber, summary: "" },
+    { accessionNumber: award.accessionNumber, summary: "Jane Example: Awarded 850 shares" },
+  ]);
+});

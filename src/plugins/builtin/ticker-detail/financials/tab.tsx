@@ -600,7 +600,7 @@ export function ResolvedFinancialsTab({
         ],
         onChange: (value: string) => setPeriod(value as FinancialPeriod),
       }}
-      meta={meta || undefined}
+      meta={[financials.statementScope?.label, financials.statementReview?.status === "pending" ? "New filing under review" : undefined, meta].filter(Boolean).join(" · ") || undefined}
     />
   );
 
@@ -627,6 +627,7 @@ export function ResolvedFinancialsTab({
           bodyScrollId={bodyScrollId}
           onToggle={toggleGroup}
           exportMetadata={() => [
+            ...(financials.statementScope ? [["Statement basis", financials.statementScope.label]] : []),
             ["Currency", comparisonCurrency ?? "per column"],
             ...(periodEnd ? [["As of", periodEnd]] : []),
           ]}
@@ -669,6 +670,7 @@ export function ResolvedFinancialsTab({
           renderCell={renderCell}
           emptyStateTitle="No financial data"
           getExportMetadata={() => [
+            ...(financials.statementScope ? [["Statement basis", financials.statementScope.label]] : []),
             ["Currency", comparisonCurrency ?? "per column"],
             ...(unit ? [["Unit", unit]] : []),
             ["Growth", growthBasis],

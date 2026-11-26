@@ -77,6 +77,12 @@ function feedColumns(shared: AwardsQueryShared, complete: boolean): DataTableCol
     return column.id === "dateBasis" && complete ? { ...column, omitWhenSame: true } : column;
   });
 }
+/**
+ * What a narrow desktop pane gives up first: how the date was read and the
+ * period, then the agency and the contract's wording, which the award's detail
+ * holds. Who won, when and how much stay.
+ */
+const COLUMN_DROP_ORDER = ["dateBasis", "period", "agency", "title", "country"] as const;
 const EVENT_COLUMNS: DataTableColumn[] = [COLUMN.date, COLUMN.recipient, COLUMN.ticker,
   { id: "ratio", label: "% revenue", width: 11, align: "right" }, COLUMN.currency, { ...COLUMN.value, label: "Compared value" },
   { id: "revenue", label: "Annual revenue", width: 14, align: "right" }, { id: "basis", label: "Value basis", width: 13, align: "left" },
@@ -252,7 +258,7 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
         detailContent={openRow ? <AwardDetail key={openRow.id} row={openRow} accessKey={accessKey} width={width} height={bodyHeight - 1} focused={focused} openAward={setOpen} openUpgrade={openUpgrade} attribution={openAttribution} amountNotice={openAmountNotice}
           openChildren={(type) => { setParentId(openRow.id); setTicker(""); setSource(""); setQuery(""); setAgency(""); setSector(""); setCurrency(""); setJurisdiction(""); setRange("all"); setType(type); setOpen(null); setTab("feed"); }} />
           : <PaneStatusBody loading={detail.loading} error={detail.error} empty={!detail.loading && !detail.error} emptyTitle="Award no longer available." subject="award evidence" />}
-        rootContent={<DataTableView<Item> columns={columns} items={tab === "company" && !ticker ? [] : items} rootWidth={width} rootHeight={bodyHeight}
+        rootContent={<DataTableView<Item> columns={columns} columnDropOrder={COLUMN_DROP_ORDER} items={tab === "company" && !ticker ? [] : items} rootWidth={width} rootHeight={bodyHeight}
           // A filter change loads under the query bar, which stays.
           status={data ? undefined : { loading: paged.loading, error: failed?.message !== AWARDS_UNAVAILABLE ? failed?.message : null,
             empty: failed?.message === AWARDS_UNAVAILABLE, emptyTitle: AWARDS_UNAVAILABLE, subject: "government awards" }}

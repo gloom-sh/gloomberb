@@ -363,7 +363,7 @@ export function withShareMultiples<T extends EpsInputs>(financials: T): T {
   const fundamentals = financials.fundamentals;
   if (!fundamentals) return financials;
   const share = notTheShare(financials);
-  const reason = share ?? noRateForEps(financials) ?? epsAgainstIncome(financials);
+  const reason = share ?? (fundamentals.scopedEarnings === undefined ? noRateForEps(financials) ?? epsAgainstIncome(financials) : undefined);
   // A multiple an earlier pass withdrew is one the block had.
   const had = fundamentals.notMeaningful ?? {};
   const has: Record<keyof Withdrawn, boolean> = {

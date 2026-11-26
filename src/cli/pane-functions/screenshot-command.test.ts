@@ -53,7 +53,7 @@ test("shot publishes the image only when the assessed result can pass the reques
   } finally {
     if (evidencePath === undefined) delete process.env[PANE_SWEEP_EVIDENCE_PATH];
     else process.env[PANE_SWEEP_EVIDENCE_PATH] = evidencePath;
-    process.exitCode = exitCode;
+    process.exitCode = exitCode ?? 0;
     render.mockRestore();
     await rm(folder, { recursive: true, force: true });
   }

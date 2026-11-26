@@ -21,7 +21,62 @@ env:
   DO_NOT_TRACK: "1"
 
 jobs:
+  # Single lightweight scope job decides which path-scoped performance checks
+  # should grab runners, avoiding unnecessary Ubuntu, Windows and WebKit runner
+  # queues on pull requests that do not touch their areas.
+  scope:
+    name: Performance scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      tui_benchmarks: ${{ steps.paths.outputs.tui_benchmarks }}
+      pane_drag: ${{ steps.pane_drag.outputs.relevant }}
+      app_database: ${{ steps.paths.outputs.app_database }}
+      sync_budget: ${{ steps.paths.outputs.sync_budget }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: ./.github/actions/setup-bun
+        with:
+          install: "false"
+
+      - name: Fetch the base branch
+        run: git fetch --depth=1 origin "${{ github.base_ref }}"
+
+      - id: pane_drag
+        name: Check whether the change touches pane chrome
+        run: bun run scripts/pane-chrome/scope.ts FETCH_HEAD .github/workflows/performance.yml
+
+      - id: paths
+        name: Check which performance checks apply to the changed paths
+        run: |
+          bun -e '
+            import { execFileSync } from "node:child_process";
+            import { appendFileSync } from "node:fs";
+            const files = execFileSync("git", ["diff", "--name-only", "FETCH_HEAD", "HEAD"], { encoding: "utf8" })
+              .split("\n")
+              .filter(Boolean);
+            const nonTui = [
+              /^docs\//,
+              /\.md$/,
+              /^src\/renderers\/(?:dom|browser|share|cloudflare)\//,
+              /^src\/renderers\/electrobun\/view\//,
+              /^scripts\/pane-chrome\//,
+              /^\.github\/workflows\/(?!performance\.yml$)/,
+              /^\.github\/actions\/install-webkit\//,
+              /\.test\.tsx?$/,
+            ];
+            const tuiBenchmarks = files.length === 0 || files.some((f) => !nonTui.some((re) => re.test(f)));
+            const appDatabase = files.some((f) => /^(?:src\/data\/|scripts\/benchmark-app-database\.ts$|\.github\/workflows\/performance\.yml$)/.test(f));
+            const syncBudget = files.some((f) => /^(?:src\/sync\/|src\/plugins\/builtin\/analytics\/metrics\.ts$|src\/renderers\/electrobun\/|src\/utils\/http-proxy-response\.ts$|patches\/electrobun|scripts\/pane-chrome\/sync-poll|\.github\/workflows\/performance\.yml$|\.github\/actions\/install-webkit\/)/.test(f));
+            const out = process.env.GITHUB_OUTPUT!;
+            appendFileSync(out, `tui_benchmarks=${tuiBenchmarks}\napp_database=${appDatabase}\nsync_budget=${syncBudget}\n`);
+            console.log({ files: files.length, tuiBenchmarks, appDatabase, syncBudget });
+          '
+
   tui-benchmarks:
+    needs: scope
+    if: needs.scope.outputs.tui_benchmarks == 'true'
     runs-on: ubuntu-latest
     env:
       TERM: xterm-256color
@@ -48,30 +103,10 @@ jobs:
       - name: Check memory levels off while browsing tickers
         run: bun run benchmark:tui:memory
 
-  # The pane drag budget only means something for pane chrome changes: the
-  # pull_request paths of the Pane chrome workflow, or this workflow.
-  pane-drag-scope:
-    name: Pane drag scope
-    runs-on: ubuntu-latest
-    outputs:
-      relevant: ${{ steps.scope.outputs.relevant }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-
-      - uses: ./.github/actions/setup-bun
-        with:
-          install: "false"
-
-      - id: scope
-        name: Check whether the change touches pane chrome
-        run: |
-          git fetch --depth=1 origin "${{ github.base_ref }}"
-          bun run scripts/pane-chrome/scope.ts FETCH_HEAD .github/workflows/performance.yml
-
   pane-drag-budget:
     name: Pane drag frame budget
-    needs: pane-drag-scope
-    if: needs.pane-drag-scope.outputs.relevant == 'true'
+    needs: scope
+    if: needs.scope.outputs.pane_drag == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -106,40 +141,30 @@ jobs:
   # data layer, the check or this workflow.
   app-database-windows:
     name: App database on Windows
+    needs: scope
+    if: needs.scope.outputs.app_database == 'true'
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - id: scope
-        name: Check whether the change touches the data layer
-        shell: bash
-        run: |
-          git fetch --depth=1 origin "${{ github.base_ref }}"
-          if git diff --name-only FETCH_HEAD HEAD | grep -E '^(src/data/|scripts/benchmark-app-database\.ts|\.github/workflows/performance\.yml)'; then
-            echo "relevant=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "relevant=false" >> "$GITHUB_OUTPUT"
-          fi
-
       # The data layer needs no packages: Bun alone runs both checkouts.
-      - if: steps.scope.outputs.relevant == 'true'
-        uses: ./.github/actions/setup-bun
+      - uses: ./.github/actions/setup-bun
         with:
           install: "false"
 
-      - if: steps.scope.outputs.relevant == 'true'
-        name: Check out the base branch next to the PR
+      - name: Check out the base branch next to the PR
         shell: bash
-        run: git worktree add ../base FETCH_HEAD
+        run: |
+          git fetch --depth=1 origin "${{ github.base_ref }}"
+          git worktree add ../base FETCH_HEAD
 
       # The same seeded 100 MB cache and workload against both checkouts; the
       # table lands in the job summary.
-      - if: steps.scope.outputs.relevant == 'true'
-        name: Compare the app database's time on the app's thread with the base branch
+      - name: Compare the app database's time on the app's thread with the base branch
         run: bun scripts/benchmark-app-database.ts --base ../base --seconds 45 --runs 2 --out app-database.json
 
-      - if: always() && steps.scope.outputs.relevant == 'true'
+      - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: app-database-windows
@@ -151,40 +176,29 @@ jobs:
   # the desktop view's RPC path (Electrobun's patch included), or the check.
   sync-budget:
     name: Cloud sync main-thread budget
+    needs: scope
+    if: needs.scope.outputs.sync_budget == 'true'
     # Playwright 1.60's WebKit does not install on Ubuntu 26.04; lift when Playwright supports it
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - id: scope
-        name: Check whether the change touches the sync or the desktop RPC path
-        run: |
-          git fetch --depth=1 origin "${{ github.base_ref }}"
-          if git diff --name-only FETCH_HEAD HEAD | grep -E '^(src/sync/|src/plugins/builtin/analytics/metrics\.ts|src/renderers/electrobun/|src/utils/http-proxy-response\.ts|patches/electrobun|scripts/pane-chrome/sync-poll|\.github/workflows/performance\.yml|\.github/actions/install-webkit/)'; then
-            echo "relevant=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "relevant=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - if: steps.scope.outputs.relevant == 'true'
-        uses: ./.github/actions/setup-bun
+      - uses: ./.github/actions/setup-bun
         with:
           desktop: "true"
 
-      - if: steps.scope.outputs.relevant == 'true'
-        name: Install WebKit
+      - name: Install WebKit
         timeout-minutes: 8
         uses: ./.github/actions/install-webkit
 
       # Fails when an unchanged, a repriced or an edited workspace's sync, or
       # a 4 MB message through the preload codec, blocks the main thread past
       # its budget, or when an unchanged workspace is uploaded again.
-      - if: steps.scope.outputs.relevant == 'true'
-        name: Check a Cloud sync's longest main-thread block
+      - name: Check a Cloud sync's longest main-thread block
         run: bun scripts/pane-chrome/sync-poll.ts --check --label sync-poll
 
-      - if: always() && steps.scope.outputs.relevant == 'true'
+      - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: sync-poll

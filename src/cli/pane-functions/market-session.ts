@@ -86,7 +86,7 @@ function venueSession(exchange: string, marketState: string | undefined, now: nu
     if (isRegularSessionTime(exchange, now)) return { state: "open", timeZone };
     if (isUsListingExchange(exchange)) {
       const today = zonedDateKey(now, timeZone);
-      const session = activeUsMarketSession(now);
+      const session = activeUsMarketSession(now, exchange);
       if (session === "PRE" && next.date === today) return { state: "pre-market", next, last, timeZone };
       if (session === "POST" && last?.date === today) return { state: "after-hours", next, last, timeZone };
     }

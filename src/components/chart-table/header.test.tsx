@@ -48,6 +48,7 @@ function Pane({ width, height, rows = ROWS, chart }: {
   return (
     <DataTableView<Row, DataTableColumn>
       focused
+      sortColumnId={null} sortDirection="desc" emptyStateTitle="No spreads"
       rootWidth={width}
       rootHeight={height}
       rootBefore={<ChartTableHeader width={width} height={height} tableRows={rows.length} figures={FIGURES}
@@ -110,6 +111,13 @@ describe("ChartTableHeader", () => {
 
   test("without a chart the table follows the figures", async () => {
     const lines = await render(<Pane width={80} height={24} chart={null} />, 80, 24);
+    expect(headerRow(lines)).toBe(1);
+  });
+
+  test("a single observation does not open a chart band by default", async () => {
+    const date = new Date(ROWS[0]!.date);
+    const series = [staticSeries([{ date, observedAt: date, value: 150 }], { id: "spread", color: "#22c55e" })];
+    const lines = await render(<Pane width={80} height={24} chart={{ series }} />, 80, 24);
     expect(headerRow(lines)).toBe(1);
   });
 

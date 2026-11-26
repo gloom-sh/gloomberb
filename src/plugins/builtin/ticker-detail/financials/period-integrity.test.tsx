@@ -62,7 +62,7 @@ function cli(financials: TickerFinancials, period: Period) {
   return buildHeadlessFunctionReport(resolved as never, context as never, SYMBOL);
 }
 
-async function mount(financials: TickerFinancials, period: Period = "annual") {
+async function mount(financials: TickerFinancials, period: Period = "annual", width = 120) {
   const initial = createInitialState(paneConfig("/tmp/gloomberb-financials-test"));
   initial.tickers = new Map([[SYMBOL, createTestTicker(SYMBOL)]]);
   initial.financials = new Map([[SYMBOL, financials]]);
@@ -74,9 +74,9 @@ async function mount(financials: TickerFinancials, period: Period = "annual") {
         <PaneInstanceProvider paneId={PANE_ID}>
           <PaneFooterProvider>
             {(footer) => (
-              <Box width={120} height={28} flexDirection="column">
-                <Box height={27}><ResolvedFinancialsTab width={120} focused financials={financials} /></Box>
-                <PaneFooterBar footer={footer} focused width={120} />
+              <Box width={width} height={28} flexDirection="column">
+                <Box height={27}><ResolvedFinancialsTab width={width} focused financials={financials} /></Box>
+                <PaneFooterBar footer={footer} focused width={width} />
               </Box>
             )}
           </PaneFooterProvider>
@@ -84,7 +84,7 @@ async function mount(financials: TickerFinancials, period: Period = "annual") {
       </AppContext>
     );
   }
-  await tui.render(<Harness />, { width: 120, height: 28 });
+  await tui.render(<Harness />, { width, height: 28 });
   await tui.renderFrames(3);
   await act(async () => {
     tui.setup().mockInput.pressKey("e");
@@ -116,6 +116,17 @@ function columns(result: HeadlessRowsResult): StatementColumn[] {
 function frame() {
   return tui.frame();
 }
+
+test("the historical statement's basis travels with both its visible quarter and its export", async () => {
+  const statementScope = { registrant: "0002128626", entity: "corteva-consolidated", basis: "predecessor" as const, label: "Corteva consolidated (accounting predecessor)" };
+  const data = { annualStatements: [], quarterlyStatements: [{ statementScope, date: "2026-09-30", currency: "USD", totalRevenue: 2458e6 }], priceHistory: [], statementScope };
+  await mount(data, "quarterly", 160);
+  expect(frame()).toContain(statementScope.label);
+  const { result, csv } = await outputs(data, "quarterly");
+  expect(row(result, "income:revenue").cells[0]?.value).toBe(2458e6);
+  expect(csv).toContain(`Statement basis,${statementScope.label}`);
+  expect(csv).toContain("2026-09-30");
+});
 
 test("actual financial table and CSV retain the derived TTM window and known field publication dates", async () => {
   const quarterEnds = ["2024-03-31", "2024-06-30", "2024-09-30", "2024-12-31"];

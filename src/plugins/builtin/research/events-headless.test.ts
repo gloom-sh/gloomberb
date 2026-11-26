@@ -3,12 +3,31 @@ import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/p
 import { createEventsHeadless } from "./events-headless";
 import { createEarningsEstimatesHeadless } from "./headless";
 import { loadEventSources } from "./event-sources";
+import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { catalystFixture, catalystPayload } from "../catalysts/test-fixture";
 
 const args: HeadlessPaneLoadArgs = {
   rawArgument: "AAPL", argument: "AAPL", symbols: ["AAPL"], options: {},
 };
+
+test("EE and EVT keep calendar EPS and count without borrowing quarter growth in text or metadata", async () => {
+  const marketData = createTestDataProvider({
+    getCorporateActions: async () => ({ symbol: "DELL", currency: "USD", splits: [], dividends: [],
+      earnings: [{ date: "2099-02-25", currency: "USD", epsEstimate: 8.58, epsAnalysts: 22 }] }),
+    getAnalystResearch: async () => ({ symbol: "DELL", currency: "USD", ratings: [], recommendations: [], revenueEstimates: [],
+      earningsEstimates: [{ date: "2099-01-31", period: "current_quarter", average: 8.52486, analysts: 19, growth: 1.1915 }] }),
+    getTickerFinancials: async () => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
+  });
+  const request = { ...args, rawArgument: "DELL", argument: "DELL", symbols: ["DELL"] };
+  for (const [command, definition] of [["EE", createEarningsEstimatesHeadless()], ["EVT", createEventsHeadless()]] as const) {
+    const result = await definition.load(request, { marketData } as HeadlessPaneContext);
+    expect(result.metadata?.nextUp).toContainEqual({ id: "eps-estimate", label: "EPS est", value: "8.58 USD", detail: "22 analysts" });
+    const text = renderHeadlessPaneText(definition, result, request, command);
+    expect(text).toMatch(/^\s*EPS est\s+8\.58 USD\s+22 analysts *$/m);
+    expect(result.rows.find((row) => row.status === "Q Est")).toMatchObject({ estimateGrowth: 1.1915 });
+  }
+});
 
 describe("corporate actions headless model", () => {
   test("EVT and EE Reported print the quarter's release revenue before its statement is available", async () => {

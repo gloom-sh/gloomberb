@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { DilutionMetrics } from "../../../api-client/dilution";
+import { getTableWidth } from "../../../components/ui/table-layout";
 import {
   buildCapacityBar,
   fmtPct,
@@ -68,5 +69,15 @@ describe("dilution model", () => {
     expect(offeringColumns(95).length).toBe(6);
     expect(form144Columns(70, false).length).toBe(4);
     expect(form144Columns(110, true).length).toBe(7);
+  });
+
+  // A last column sized without the gaps between columns made each table wider than its pane at every
+  // width, so the column a wide pane had room for was the one cut, or left out by the table's fit.
+  test("the last text column takes exactly what the pane has left", () => {
+    for (const width of [104, 128, 160, 220]) {
+      for (const columns of [shelfColumns(width), offeringColumns(width), form144Columns(width, false), form144Columns(width, true)]) {
+        expect(getTableWidth(columns)).toBe(width);
+      }
+    }
   });
 });
