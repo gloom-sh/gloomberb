@@ -231,7 +231,9 @@ async function stopChromeGroup(pid: number): Promise<void> {
       process.kill(-pid, signal);
       return true;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ESRCH") return false;
+      if (signal === 0 && code === "EPERM") return true;
       throw error;
     }
   };
