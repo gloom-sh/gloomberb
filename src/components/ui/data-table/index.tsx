@@ -80,10 +80,12 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
   const columnFitRef = ownProps.columnFitRef;
   if (columnFitRef) columnFitRef.current = columnFit.fit;
   useEffect(() => () => { if (columnFitRef) columnFitRef.current = null; }, [columnFitRef]);
-  const displayColumns = useMemo(
-    () => columnFit.shownIds ? shownColumns.filter((column) => columnFit.shownIds!.has(column.id)) : shownColumns,
-    [columnFit.shownIds, shownColumns],
-  );
+  const displayColumns = useMemo(() => {
+    const fitted = columnFit.fitted;
+    if (!fitted) return shownColumns;
+    return shownColumns.filter((column) => fitted.ids.has(column.id))
+      .map((column) => fitted.widths.has(column.id) ? { ...column, width: fitted.widths.get(column.id)! } : column);
+  }, [columnFit.fitted, shownColumns]);
   const reportProps = {
     ...props,
     columns: displayColumns,

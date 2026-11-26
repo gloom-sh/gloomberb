@@ -27,18 +27,18 @@ interface ColumnFitOptions {
 
 /**
  * The columns a table draws at the width its renderer reports
- * (`onViewportWidthChange`): all of them where they fit, where the renderer
- * reports none (the terminal, which fits what its columns hold) or where the
- * table narrows its columns rather than scroll sideways, else the ones
- * `fitColumnsToWidth` keeps. `showAll` draws them all at the reader's
- * asking and names the first one the fit had left out, for the renderer to
- * scroll to; `fit` goes back. Both are in the pane menu while there is
- * something to show or to fit, and the asking is forgotten once every column
- * fits again.
+ * (`onViewportWidthChange`): all of them as set where they fit, where the
+ * renderer reports none (the terminal, which fits what its columns hold) or
+ * where the table narrows its columns rather than scroll sideways, else the
+ * ones `fitColumnsToWidth` keeps, at the widths it narrowed them to.
+ * `showAll` draws them all as set at the reader's asking and names the first
+ * one the fit had left out, for the renderer to scroll to; `fit` goes back.
+ * Both are in the pane menu while there is something to show or to fit, and
+ * the asking is forgotten once every column fits again.
  */
 export function useDataTableColumnFit<C extends DataTableColumn>(columns: readonly C[], options: ColumnFitOptions): {
-  /** The ids of the columns to draw; null draws them all. */
-  shownIds: ReadonlySet<string> | null;
+  /** The columns the fit draws and the width of each one it narrowed; null draws them all as set. */
+  fitted: { ids: ReadonlySet<string>; widths: ReadonlyMap<string, number> } | null;
   fit: DataTableColumnFit;
   onViewportWidthChange: (cells: number) => void;
   scrollToColumn: { id: string; version: number } | undefined;
@@ -51,37 +51,44 @@ export function useDataTableColumnFit<C extends DataTableColumn>(columns: readon
   const orderRef = useRef(options.dropOrder);
   orderRef.current = options.dropOrder;
   const orderKey = options.dropOrder ? JSON.stringify(options.dropOrder) : "";
-  const fittedIds = useMemo(() => {
+  const fitted = useMemo(() => {
     if (!enabled || !options.scrollsSideways || viewportCells == null) return null;
     const keep = [...columns.slice(0, options.anchoredColumns).map((column) => column.id), ...options.sortColumnId ? [options.sortColumnId] : []];
-    const fitted = fitColumnsToWidth(columns, viewportCells, {
+    const drawn = fitColumnsToWidth(columns, viewportCells, {
       dropOrder: orderRef.current, keep, columnGap: options.columnGap, horizontalPadding: options.horizontalPadding,
     });
-    return fitted.length === columns.length ? null : new Set(fitted.map((column) => column.id));
+    if (drawn === columns) return null;
+    const set = new Map(columns.map((column) => [column.id, column.width]));
+    return {
+      ids: new Set(drawn.map((column) => column.id)),
+      widths: new Map(drawn.filter((column) => column.width !== set.get(column.id)).map((column) => [column.id, column.width])),
+    };
   }, [columns, enabled, options.anchoredColumns, options.columnGap, options.horizontalPadding, options.scrollsSideways, options.sortColumnId, orderKey, viewportCells]);
-  const hidden = fittedIds ? columns.length - fittedIds.size : 0;
-  // Wide enough for every column again: the next narrow width starts from the fit.
+  const hidden = fitted ? columns.length - fitted.ids.size : 0;
+  // Wide enough for every column as set again: the next narrow width starts from the fit.
   useEffect(() => {
-    if (all && hidden === 0) setAll(false);
-  }, [all, hidden]);
+    if (all && !fitted) setAll(false);
+  }, [all, fitted]);
 
-  const latest = useRef({ columns, fittedIds });
-  latest.current = { columns, fittedIds };
+  const latest = useRef({ columns, fitted });
+  latest.current = { columns, fitted };
   const showAll = useCallback(() => {
-    const { columns: current, fittedIds: fitted } = latest.current;
-    const first = fitted ? current.find((column) => !fitted.has(column.id)) : undefined;
-    if (!first) return;
+    const { columns: current, fitted: fit } = latest.current;
+    if (!fit) return;
     setAll(true);
-    setScrollToColumn((previous) => ({ id: first.id, version: (previous?.version ?? 0) + 1 }));
+    const first = current.find((column) => !fit.ids.has(column.id));
+    if (first) setScrollToColumn((previous) => ({ id: first.id, version: (previous?.version ?? 0) + 1 }));
   }, []);
   const fit = useCallback(() => setAll(false), []);
-  usePaneMenuItems(`data-table-fit:${useId()}`, () => hidden === 0 ? null
-    : [all ? { id: "fit-columns", label: "Fit Columns", onSelect: fit } : { id: "show-all-columns", label: "Show All Columns", onSelect: showAll }],
-  [all, fit, hidden === 0, showAll]);
+  const isFitted = fitted != null;
+  usePaneMenuItems(`data-table-fit:${useId()}`, () => !isFitted ? null
+    : [all ? { id: "fit-columns", label: "Fit Columns", onSelect: fit }
+      : { id: "show-all-columns", label: hidden > 0 ? "Show All Columns" : "Full Column Widths", onSelect: showAll }],
+  [all, fit, hidden > 0, isFitted, showAll]);
 
   return {
-    shownIds: all ? null : fittedIds,
-    fit: useMemo(() => ({ hidden: all ? 0 : hidden, all: all && hidden > 0, showAll, fit }), [all, fit, hidden, showAll]),
+    fitted: all ? null : fitted,
+    fit: useMemo(() => ({ hidden: all ? 0 : hidden, fitted: !all && isFitted, all: all && isFitted, showAll, fit }), [all, fit, hidden, isFitted, showAll]),
     onViewportWidthChange: useCallback((cells: number) => {
       setViewportCells((current) => current === cells ? current : cells);
     }, []),

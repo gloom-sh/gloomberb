@@ -173,17 +173,69 @@ export function dropColumnsToFit<C extends TableWidthColumn & { id: string }>(
 /** A table's own narrow-pane order: the columns that leave first, least needed first (`dropColumnsToFit`). */
 export type TableColumnDropOrder = readonly (string | readonly string[])[];
 
+/** The fewest cells a column set to grow is narrowed to by a fit: under it a name or a sentence reads as nothing. */
+const FIT_TEXT_FLOOR = 12;
+
+/**
+ * The cells a column cannot go under in a table fitted to its width
+ * (`fitColumnsToWidth`). A column the pane set to grow (`flexGrow`) is the
+ * one that takes up a change in the pane's width, so it gives up length
+ * first: down to half its set width, never under `FIT_TEXT_FLOOR` cells or
+ * its own header. Any other column is drawn at its set width or not at all,
+ * since a figure or a date cut short reads as another one.
+ */
+export function tableColumnFitFloor(column: TableWidthColumn): number {
+  const width = tableColumnWidth(column);
+  if (!((column.flexGrow ?? 0) > 0)) return width;
+  const header = column.label ? displayWidth(column.label) + HEADER_RESERVED_WIDTH : 0;
+  return Math.min(width, Math.max(header, FIT_TEXT_FLOOR, Math.ceil(width / 2)));
+}
+
+/**
+ * A column headed "As of": the date the row's figures are good for, which a
+ * figure is misread without. A fit gives it up after the table's other
+ * columns unless the pane's own order names it.
+ */
+function isAsOfColumn(column: TableWidthColumn): boolean {
+  return /^as of\b/i.test(column.label?.trim() ?? "");
+}
+
+/**
+ * `columns` with the ones set to grow narrowed until the table is `width`
+ * cells wide or each is at its floor: each gives up its share of what is
+ * over, in whole cells, by how much it has to give.
+ */
+function narrowColumnsToWidth<C extends TableWidthColumn>(columns: readonly C[], width: number, columnGap: number, horizontalPadding: number): C[] {
+  const over = getTableWidth(columns, columnGap, horizontalPadding) - width;
+  const set = columns.map(tableColumnWidth);
+  const slack = columns.map((column, index) => set[index]! - tableColumnFitFloor(column));
+  const total = slack.reduce((sum, cells) => sum + cells, 0);
+  if (over <= 0 || total <= 0) return [...columns];
+  const take = Math.min(over, total);
+  const cut = slack.map((cells) => Math.floor(cells * take / total));
+  let left = take - cut.reduce((sum, cells) => sum + cells, 0);
+  // The cells a rounding left over come off the columns with the most still to give.
+  for (const index of slack.map((_, at) => at).sort((a, b) => (slack[b]! - cut[b]!) - (slack[a]! - cut[a]!))) {
+    if (left <= 0) break;
+    if (slack[index]! > cut[index]!) { cut[index]! += 1; left -= 1; }
+  }
+  return columns.map((column, index) => cut[index] ? { ...column, width: set[index]! - cut[index]! } : column);
+}
+
 /**
  * The columns a table `width` cells wide draws, where it cuts a column at its
- * edge rather than fit what the column holds (the desktop and the web): whole
- * columns leave until the rest fit, so none is drawn cut or past the edge.
- * `dropOrder` goes first, least needed first, an entry of several ids
- * together; then the columns it does not list, from the last one back, so a
- * table that names no order gives up its trailing columns. The `keep` ids (the
- * columns that name the row, the one the table is sorted by) never leave. The
- * columns that left are marked hidden, so the table names them
- * (`hiddenTableColumnText`). The same array when everything fits, by the
- * table's own measure of an overflow (`hasMeaningfulTableHorizontalOverflow`).
+ * edge rather than fit what the column holds (the desktop and the web): none
+ * is drawn cut or past the edge. The columns set to grow narrow first, to
+ * their floor (`tableColumnFitFloor`); where that is not enough whole columns
+ * leave until the rest fit. `dropOrder` goes first, least needed first, an
+ * entry of several ids together; then the columns it does not list, from the
+ * last one back, so a table that names no order gives up its trailing
+ * columns, the date its figures are as of after the others
+ * (`isAsOfColumn`). The `keep` ids (the columns that name the row, the one
+ * the table is sorted by) never leave. The columns that left are marked hidden, so the
+ * table names them (`hiddenTableColumnText`). The same array when everything
+ * fits as set, by the table's own measure of an overflow
+ * (`hasMeaningfulTableHorizontalOverflow`).
  */
 export function fitColumnsToWidth<C extends TableWidthColumn & { id: string }>(
   columns: readonly C[],
@@ -195,22 +247,26 @@ export function fitColumnsToWidth<C extends TableWidthColumn & { id: string }>(
     horizontalPadding?: number;
   } = {},
 ): C[] {
-  const fits = (shown: readonly C[]) => !hasMeaningfulTableHorizontalOverflow(getTableWidth(shown, columnGap, horizontalPadding), width, columnGap);
-  if (width <= 0 || fits(columns)) return columns as C[];
+  const overflows = (shown: readonly TableWidthColumn[]) => hasMeaningfulTableHorizontalOverflow(getTableWidth(shown, columnGap, horizontalPadding), width, columnGap);
+  if (width <= 0 || !overflows(columns)) return columns as C[];
+  // Whether the columns fit once the ones set to grow are at their floor.
+  const fits = (shown: readonly C[]) => !overflows(shown.map((column) => ({ ...column, width: tableColumnFitFloor(column) })));
   const kept = new Set(keep);
   const listed = new Set(dropOrder.flatMap((step) => typeof step === "string" ? [step] : step));
+  const unlisted = columns.filter((column) => !listed.has(column.id));
   const steps: (readonly string[])[] = [
     ...dropOrder.map((step) => typeof step === "string" ? [step] : step),
-    ...columns.filter((column) => !listed.has(column.id)).map((column) => [column.id]).reverse(),
+    ...unlisted.filter((column) => !isAsOfColumn(column)).map((column) => [column.id]).reverse(),
+    ...unlisted.filter(isAsOfColumn).map((column) => [column.id]).reverse(),
   ];
   let shown = [...columns];
   for (const step of steps) {
+    if (fits(shown)) break;
     const ids = step.filter((id) => !kept.has(id));
     if (!ids.length || !shown.some((column) => ids.includes(column.id))) continue;
     shown = shown.filter((column) => !ids.includes(column.id));
-    if (fits(shown)) break;
   }
-  return markHiddenTableColumns(columns, shown);
+  return markHiddenTableColumns(columns, narrowColumnsToWidth(shown, width, columnGap, horizontalPadding));
 }
 
 /**

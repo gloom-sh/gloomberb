@@ -25,7 +25,7 @@ import { PowerDetailView } from "./detail";
 import { PowerPricesView } from "./prices";
 import { blendHex } from "../../../theme/colors";
 import { missingCell, PartsBar, signedColor, toneColor, withoutQuietColumns, type StateTone } from "../shared/research-cells";
-import { POWER_DATE_COLUMNS, powerStampText, COVERAGE_COLUMNS, EXPOSURE_COLUMNS, HISTORY_COLUMNS, GENERATION_COLUMNS, UTILITY_COLUMNS, POWER_TABS, PROJECT_COLUMNS, RATE_COLUMNS, RECORD_COLUMN_DROP_ORDER, historyDate, historyId, historySeries, otherRows, powerCoverageNote, powerFigures, powerRegion, powerNumber, powerPercent, powerTab, powerTickerEmpty, projectRows, titleCase, UNMAPPED, type PowerRow, type PowerTickerScope } from "./model";
+import { POWER_DATE_COLUMNS, powerStampText, COVERAGE_COLUMNS, EXPOSURE_COLUMNS, HISTORY_COLUMNS, GENERATION_COLUMNS, UTILITY_COLUMNS, POWER_TABS, PROJECT_COLUMNS, RATE_COLUMNS, RECORD_COLUMN_DROP_ORDER, UTILITY_COLUMN_DROP_ORDER, COVERAGE_COLUMN_DROP_ORDER, historyDate, historyId, historySeries, otherRows, powerCoverageNote, powerFigures, powerRegion, powerNumber, powerPercent, powerTab, powerTickerEmpty, projectRows, titleCase, UNMAPPED, type PowerRow, type PowerTickerScope } from "./model";
 
 const rowId = (r: PowerRow) => r.id;
 const isRecord = (r: PowerRow) => !r.section;
@@ -221,7 +221,8 @@ function PowerView({ width, height, focused, scope, canSave, needsVerification }
   if (signInWall) return <SignInWall placement="power-signin" action="view power and interconnection data" needsVerification={needsVerification} />;
   // The strip and the query bar stay through every load: a tab or filter change waits in the table's body.
   return <Box width={width} height={height} flexDirection="column">{strip}
-    <DataTableStackView<PowerRow> columns={columns} columnDropOrder={baseColumns === PROJECT_COLUMNS || baseColumns === GENERATION_COLUMNS ? RECORD_COLUMN_DROP_ORDER : undefined} items={board ? items : []} getItemKey={rowId} focused={focused && !searchFocus.active}
+    <DataTableStackView<PowerRow> columns={columns} columnDropOrder={baseColumns === PROJECT_COLUMNS || baseColumns === GENERATION_COLUMNS ? RECORD_COLUMN_DROP_ORDER
+      : baseColumns === UTILITY_COLUMNS ? UTILITY_COLUMN_DROP_ORDER : baseColumns === COVERAGE_COLUMNS ? COVERAGE_COLUMN_DROP_ORDER : undefined} items={board ? items : []} getItemKey={rowId} focused={focused && !searchFocus.active}
       status={board ? undefined : { loading: pages.loading, error, subject: "power and interconnection data" }}
       rootWidth={width} rootHeight={bodyHeight} scrollRef={scrollRef} onBodyScrollActivity={loadMore} resetScrollKey={`${tab}:${queryKey}`}
       selection={{ kind: "id", selectedId: selected?.id ?? null, getId: rowId, onChange: setSelectedId }}

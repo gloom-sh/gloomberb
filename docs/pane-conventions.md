@@ -530,17 +530,25 @@ this, except:
 
 **Columns in a narrow pane.** A table never draws a column cut at its edge.
 On the desktop and the web a table too narrow for its columns draws whole
-columns only: the least needed leave, a line above the header names them
+columns only: a column set to grow gives up length first, then the least
+needed leave, a line above the header names them
 (`2 hidden · FY2023, FY2022`), and More on that line, Shift+Right or "Show All
-Columns" in the pane menu draws them all in a table that scrolls sideways
-(Shift+Left at its start, or "Fit Columns", fits them again). The terminal
+Columns" in the pane menu draws them all as set in a table that scrolls
+sideways (Shift+Left at its start, or "Fit Columns", fits them again). The terminal
 gives up the blank in its columns first, draws the whole ones and scrolls to
 the rest (`more ⇧→`). Exports, `fn` reports and automation keep every column
 at any width. A pane does nothing for this, except say what matters:
 
 - With no order given the trailing columns leave first, so put what the row
   is read for first: FA gives up its oldest periods, ATS its trade counts,
-  HVT its sample count.
+  HVT its sample count. A column headed "As of" is the exception: it leaves
+  after the others, since a figure is misread without its date.
+- Set `flexGrow` on the column that holds a name, a title or a sentence. It
+  is the one that takes up a change in the pane's width, so it narrows (to
+  half its set width, never under 12 cells or its header) before any column
+  leaves, and "Full Column Widths" in the pane menu, or Shift+Right, draws it
+  as set again. A figure, a date or a ticker is never narrowed: cut short it
+  reads as another one.
 - Where a later column outranks an earlier one, pass `columnDropOrder`, least
   needed first. Give up a name that repeats its ticker, a second way of
   saying a figure and wording the row's detail holds, before an identifier,

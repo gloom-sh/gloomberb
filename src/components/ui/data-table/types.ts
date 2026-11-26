@@ -186,9 +186,11 @@ export interface DataTableColumnReorder {
 export interface DataTableColumnFit {
   /** How many columns the fit left out for width; 0 where every column is drawn. */
   hidden: number;
+  /** The table is drawn fitted to its width: a column left out, or one set to grow narrowed. */
+  fitted: boolean;
   /** Every column is drawn at the reader's asking, the table scrolling sideways past its edge. */
   all: boolean;
-  /** Draws every column and scrolls to the first one the fit had left out. */
+  /** Draws every column at its set width and scrolls to the first one the fit had left out. */
   showAll: () => void;
   /** Fits the columns to the width again. */
   fit: () => void;
@@ -261,9 +263,10 @@ export interface DataTableProps<
    * The columns this table gives up first where it is too narrow for all of
    * them, least needed first; an entry of several ids leaves together (a
    * call's field and the put's). On the desktop and the web a table too narrow
-   * for its columns draws whole columns only: these leave first, then the
-   * ones not listed from the last back, never the columns that name the row
-   * or the one it is sorted by (`fitColumnsToWidth`). The table names what
+   * for its columns draws whole columns only: a column set to grow
+   * (`flexGrow`) narrows first, then these leave, then the ones not listed
+   * from the last back, never the columns that name the row or the one it is
+   * sorted by (`fitColumnsToWidth`). The table names what
    * left (`2 hidden · FY2023, FY2022`), and More, Shift+Right or Show All
    * Columns in the pane menu draws them all and scrolls sideways. Exports and
    * reports keep every column. Unset, the trailing columns leave first: list

@@ -789,10 +789,10 @@ export function DataTableView<
     const viewportWidth = body?.viewport?.width ?? 0;
     const currentLeft = body?.scrollLeft ?? 0;
     const maxLeft = Math.max(0, (body?.scrollWidth ?? 0) - viewportWidth);
-    // The step right from a table fitted to its width brings back the columns it left out, scrolled to the first
-    // of them; the step left from the start of all its columns fits them again.
+    // The step right from a table fitted to its width draws every column as set, scrolled to the first one the
+    // fit had left out; the step left from the start of all its columns fits them again.
     const fit = columnFitRef.current;
-    if (direction > 0 && fit && fit.hidden > 0) {
+    if (direction > 0 && fit?.fitted) {
       stopTableKey(event);
       fit.showAll();
       return;

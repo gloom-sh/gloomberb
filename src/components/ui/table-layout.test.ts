@@ -9,6 +9,7 @@ import {
   getTableWidth,
   hasMeaningfulTableHorizontalOverflow,
   hiddenTableColumns,
+  tableColumnFitFloor,
   tableColumnStarts,
   tableColumnWidth,
   tableRevealLeft,
@@ -107,10 +108,33 @@ describe("table layout", () => {
     expect(shown(room(2), { dropOrder: ["name", "vol"] })).toEqual({ ids: "id last", hidden: "NAME CHG VOL ASOF" });
     // The columns that name the row and the sorted one stay whatever the order says.
     expect(shown(room(3), { dropOrder: ["name", "vol"], keep: ["id", "asof", "name"] })).toEqual({ ids: "id name asof", hidden: "LAST CHG VOL" });
+    // The date the figures are as of leaves after the other columns, unless the pane's order names it.
+    const dated = columns.map((column) => column.id === "asof" ? { ...column, label: "As of" } : column);
+    expect(fitColumnsToWidth(dated, room(4)).map((column) => column.id).join(" ")).toBe("id name last asof");
+    expect(fitColumnsToWidth(dated, room(4), { dropOrder: ["asof"] }).map((column) => column.id).join(" ")).toBe("id name last chg");
     // Narrower than the kept columns alone: they stay, and the table scrolls as it did.
     expect(shown(4, { keep: ["id", "asof"] }).ids).toBe("id asof");
     // A width not measured yet fits nothing.
     expect(fitColumnsToWidth(columns, 0)).toBe(columns);
+  });
+
+  test("a column set to grow narrows to its floor before any column leaves, and a figure is never narrowed", () => {
+    // TICKER 8, NAME 30 set to grow, then three figures of 10: 74 cells as set.
+    const columns = [
+      { id: "ticker", label: "TICKER", width: 8, align: "left" },
+      { id: "name", label: "NAME", width: 30, align: "left", flexGrow: 1 },
+      ...["last", "cap", "asof"].map((id) => ({ id, label: id.toUpperCase(), width: 10, align: "right" })),
+    ];
+    const drawn = (width: number) => {
+      const fitted = fitColumnsToWidth(columns, width);
+      return { widths: fitted.map((column) => `${column.id} ${column.width}`).join(", "), hidden: hiddenTableColumns(fitted).join(" ") };
+    };
+    expect(tableColumnFitFloor(columns[1]!)).toBe(15);
+    expect(tableColumnFitFloor(columns[2]!)).toBe(10);
+    // Ten cells short: the name gives them up, and every column is still there.
+    expect(drawn(getTableWidth(columns) - 10)).toEqual({ widths: "ticker 8, name 20, last 10, cap 10, asof 10", hidden: "" });
+    // Past the name's floor a whole column leaves, and the name takes back the room that frees.
+    expect(drawn(getTableWidth(columns) - 18)).toEqual({ widths: "ticker 8, name 23, last 10, cap 10", hidden: "ASOF" });
   });
 
   test("whatever the widths and the order, the columns a fit keeps do not overflow unless only kept ones are left", () => {
@@ -119,6 +143,7 @@ describe("table layout", () => {
     for (let round = 0; round < 300; round += 1) {
       const columns = Array.from({ length: 2 + next(12) }, (_, index) => ({
         id: `c${index}`, label: "X".repeat(1 + next(12)), width: 3 + next(24), align: next(2) ? "right" : "left",
+        ...(next(4) === 0 ? { flexGrow: 1 } : {}),
       }));
       const ids = columns.map((column) => column.id);
       const keep = [ids[0]!, ...(next(2) ? [ids[next(ids.length)]!] : [])];
@@ -130,6 +155,12 @@ describe("table layout", () => {
       // Whole columns in the table's order, and every kept one among them.
       expect(fitted.map((column) => column.id)).toEqual(ids.filter((id) => fitted.some((column) => column.id === id)));
       expect(keep.every((id) => fitted.some((column) => column.id === id))).toBe(true);
+      // Only a column set to grow is narrowed, and never under its floor.
+      for (const column of fitted) {
+        const set = columns.find((candidate) => candidate.id === column.id)!;
+        expect(tableColumnWidth(column)).toBeGreaterThanOrEqual(tableColumnFitFloor(set));
+        if (!("flexGrow" in set)) expect(column.width).toBe(set.width);
+      }
     }
   });
 

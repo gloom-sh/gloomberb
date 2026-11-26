@@ -121,6 +121,25 @@ test("a wider pane takes its columns back, and a fitted table exports every colu
   expect(wide.more()).toBeNull();
 });
 
+test("a column set to grow narrows before any column leaves, and the step right draws it at its set width again", async () => {
+  // 55 cells as set, in a body of 48: the name has the seven to give, so nothing leaves and nothing scrolls.
+  viewportCells = 48;
+  const table = await mount({ columns: [
+    { id: "symbol", label: "TICKER", width: 6 },
+    { id: "name", label: "NAME", width: 24, flexGrow: 1 },
+    { id: "last", label: "LAST", width: 10, align: "right" },
+    { id: "chg", label: "CHG", width: 10, align: "right" },
+  ] });
+  expect(table.headers()).toBe("TICKER NAME LAST CHG");
+  expect(table.hidden()).toBeNull();
+  expect(table.scrolls()).toBe(false);
+  // A sentence in that column is read whole in the table that scrolls sideways, as it was before the fit.
+  await table.press("ArrowRight");
+  expect(table.scrolls()).toBe(true);
+  await table.press("ArrowLeft");
+  expect(table.scrolls()).toBe(false);
+});
+
 test("a table set not to scroll sideways keeps its columns, which the desktop narrows to the pane", async () => {
   viewportCells = 40;
   // TRIAL's list gave up its ticker to a fit by set widths, though all six columns had fitted narrowed.
