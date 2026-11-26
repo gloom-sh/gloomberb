@@ -20,6 +20,7 @@ export interface EarningsQuarter {
   /** Under its bar: `Q3 FY26`, `Sep '26`. */
   axisLabel: string;
   upcoming: boolean;
+  withoutConsensus?: true;
   eps?: number;
   estimate?: number;
   surprisePercent?: number;
@@ -70,7 +71,7 @@ function quarterDetail(quarter: EarningsQuarter, row: EventRow | undefined, basi
   const parts = [
     quarter.basis && quarter.basis !== basis && (basis || quarter.basis !== "unknown") ? basisText(quarter.basis) : null,
     row?.epsProvisional ? "provisional" : null,
-    row && row.epsActual != null && row.epsEstimate == null && row.epsDifference == null ? NO_CONSENSUS : null,
+    quarter.withoutConsensus ? NO_CONSENSUS : null,
   ].filter((part): part is string => !!part).join(", ");
   return row?.dateType === "fiscal-period-end" ? ["Period end", parts].filter(Boolean).join("; ") : parts;
 }
@@ -117,6 +118,8 @@ export function earningsQuarters(rows: readonly EventRow[], today: string): Earn
       const period = row.period && row.period !== MISSING_VALUE ? row.period : quarterLabel(row.fiscalPeriodEnd ?? row.date);
       return {
         id: row.id, rowId: row.id, date: row.date, period, axisLabel: axisLabel(period, row.fiscalPeriodEnd ?? row.date), upcoming: false,
+        ...(row.epsActual != null && row.epsEstimate == null && row.epsDifference == null && row.surprisePercent == null && !row.surpriseNotMeaningful
+          ? { withoutConsensus: true } : {}),
         ...(row.epsActual != null ? { eps: row.epsActual } : {}),
         ...(row.epsEstimate != null ? { estimate: row.epsEstimate } : {}),
         ...(row.surprisePercent != null ? { surprisePercent: row.surprisePercent } : {}),
