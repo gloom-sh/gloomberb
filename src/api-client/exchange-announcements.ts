@@ -47,7 +47,7 @@ export interface ExchangeAnnouncementsRequest {
   kind?: "results" | "presentations";
 }
 
-/** A listing's announcements, HKEX results or Taiwan investor conference presentations. */
+/** A listing's announcements, HKEX and SGX results, or Taiwan investor conference presentations. */
 export function cloudExchangeAnnouncementsPath(params: ExchangeAnnouncementsRequest): string {
   const search = new URLSearchParams({ symbol: params.symbol, exchange: params.exchange });
   if (params.limit != null) search.set("limit", String(params.limit));
