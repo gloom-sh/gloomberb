@@ -1,5 +1,5 @@
 import type { DataTableColumn } from "../../../components";
-import { getTableWidth } from "../../../components/ui/table-layout";
+import { getTableWidth, hasMeaningfulTableHorizontalOverflow } from "../../../components/ui/table-layout";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import { displayWidth, formatDistributionAmount } from "../../../utils/format";
 import { dividendAmountDigits, formatDividendRowAmount, type DividendRow } from "./view";
@@ -40,8 +40,8 @@ export function buildDividendColumns(rows: readonly Pick<DividendRow, "amount" |
   const widths = sourceColumnWidths(rows);
   if (!widths.length) return columns;
   const source = (width: number): DividendColumn[] => [...columns, { id: "source", label: "SOURCE", width, align: "left" }];
-  // Less the cell of the table's scrollbar, as every table that fits its columns to its pane counts it.
-  const fits = (width: number) => paneWidth === undefined || getTableWidth(source(width)) <= paneWidth - 1;
+  // By the table's own count of an overflow, in the pane less the cell of its scrollbar.
+  const fits = (width: number) => paneWidth === undefined || !hasMeaningfulTableHorizontalOverflow(getTableWidth(source(width)), paneWidth - 1);
   return source(widths.find(fits) ?? widths.at(-1)!);
 }
 
