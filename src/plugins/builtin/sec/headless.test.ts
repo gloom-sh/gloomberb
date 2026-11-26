@@ -75,6 +75,23 @@ describe("SEC headless model", () => {
     expect(result.rows[0]).toMatchObject({ filedAt: "2026-11-16", dateBasis: "catalogue", url, source: "KRX KIND" });
   });
 
+  test.each(["ICT:XPHS", "ICT.PS"])("%s opens the Philippine issuer's original dated filing", async (symbol) => {
+    const url = "https://cdnweb.ictsi.com/s3fs-public/2026-11/SEC%20Form%2017-Q%20%28Quarterly%20Report%29%20Q3%202026.pdf";
+    const headless = createSecHeadless({
+      loadFilings: async () => [],
+      loadExchange: async (listing) => {
+        expect(listing).toMatchObject({ symbol, exchange: "XPHS" });
+        return { exchange: "XPHS", symbol: "ICT", name: "ICTSI", page: "https://investors.ictsi.com/company-disclosures/sec-filings",
+          total: 1, retrievedAt: "2026-11-26T12:00:00Z", announcements: [{
+            date: "2026-11-11T00:00:00.000Z", dateBasis: "catalogue", headline: "SEC Form 17-Q (Quarterly Report) Q3 2026",
+            types: ["SEC Form 17-Q"], publisher: "Issuer IR", priceSensitive: null, fileSize: null, documentKey: url, url,
+          }] };
+      },
+    });
+    const result = await headless.load({ ...args(15), symbols: [symbol] }, createTestHeadlessContext());
+    expect(result.rows[0]).toMatchObject({ url, source: "Issuer IR", filedAt: "2026-11-11T00:00:00.000Z" });
+  });
+
   test.each(["1023:XKLS", "1023.KL"])("%s reads the same issuer filing catalogue", async (symbol) => {
     const url = "https://www.cimb.com/content/3q26-cimb-group-financial-statement.pdf";
     const dateSource = "https://www.cimb.com/en/investor-relations/announcements-events/investor-engagements.html";

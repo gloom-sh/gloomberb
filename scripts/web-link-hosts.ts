@@ -66,6 +66,7 @@ export const WEB_LINK_ONLY_HOSTS: ReadonlySet<string> = new Set([
 
   // Exchanges' announcement and filing pages, and published session calendars.
   "dart.fss.or.kr",
+  "edge.pse.com.ph",
   "ir.theice.com",
   "live.euronext.com",
   "mops.twse.com.tw",
