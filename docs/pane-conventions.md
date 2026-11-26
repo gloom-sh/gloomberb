@@ -782,6 +782,15 @@ write it to lead with what names the item. Rules:
 - A row that is shown but does not apply right now (an exited holder, a story
   or print after the tab's pinned moment) reads in `textMuted` and plain
   weight across the row, its value colours included, and stays selectable.
+  The table draws it: `isRowMuted` on `DataTableView` mutes every cell, and
+  content a cell draws itself (ticker badges) reads `useDataTableRowMuted`,
+  so a pane never mutes cell by cell.
+- A list of rows out at an instant follows the tab's pinned crosshair through
+  `usePinnedList` (a chart over a table gets it from
+  `useChartTableSelection`): it selects the row out by the pinned moment when
+  the pin moves, mutes the later rows, and names the pin in its footer on one
+  labelled clock. A list dated by day leaves it out (`FeedDataTableTimeColumn`
+  without `instant`): a day cannot say whether it came before a moment in it.
 - A board row whose figures are not the market now says so in a word beside
   its date, in `MarketBoardStack`'s as-of column, never by colour alone:
   `stale` (warning colour) for an observation too old to be current, `so far`

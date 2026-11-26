@@ -649,8 +649,11 @@ Charts with an x axis of their own (curves, smiles, scatter plots), the overview
 **Pinning.** `p` on a focused chart, or `pin` in its footer, pins the crosshair where it is, and every chart in the tab holds that moment (the footer then offers `unpin`).
 
 - While pinned, the arrow keys on any chart move the pin a bar at a time. Esc or `p` lifts it. Where `p` does something else (the correlation window in a relationship chart), use the pane menu (`.`).
+- In a pane with a chart above its table, such as `SIV`, `p` pins at the selected row's date. While pinned, Left and Right move the pin a bar and the selected row follows it, Up and Down still move through the table, and Esc lifts the pin.
 - The pin belongs to the tab and goes when the last chart you can move it on closes, or the tab does.
-- News feeds in the tab (`N`, `CN`, industry news) select the newest story published by the pinned moment and show later ones muted. Time and sales (`TAS`, `QR`) selects the print or quote at or just before it.
+- Lists in the tab follow it. They select the newest row out by the pinned moment, or the earliest row when the pin is before all of them, and show later rows muted, ticker badges included. The selection moves only when the pin does, so a row you pick stays picked while new rows stream in and after you unpin. The lists that follow: news (`N`, `CN`, `NI`, `TOP`, `FIRST`), time and sales (`TAS`, `QR`, the print or quote at or just before the moment), `TWIT`, `HALT`, `FLOW` prints and `ALRT` History.
+- A following list's footer says when the pin is, such as `pinned 18 Apr 10:30 ET`, focused or not. The time is on your computer's clock with its zone named, whatever zone the list's own column uses (`TAS` stays in New York time). The focused list also offers `[Esc]unpin`.
+- Lists dated by day (`SEC` filings, `BUZZ`, `NI LTR`), the economic calendar (`ECO`) and boards of current values (`SCAN`, `HILO`) do not follow the pin: a day cannot say whether it came before a moment in it.
 
 #### Pan and zoom
 
