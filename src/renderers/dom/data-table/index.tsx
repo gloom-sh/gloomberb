@@ -61,7 +61,10 @@ interface VirtualRow {
 
 /** Width of the fade that marks columns hidden past a horizontal edge. */
 const OVERFLOW_FADE_PX = 28;
-/** One part of the line that names the columns left out: cut with an ellipsis where the line is short of room. */
+/**
+ * One part of the line that names the columns left out: cut with an ellipsis where the line is short of room. Two
+ * parts give up length by how long each is, so a long one never leaves the other no room at all.
+ */
 const HIDDEN_COLUMNS_TEXT_STYLE: CSSProperties = {
   minWidth: 0, paddingInline: "var(--gloom-space-sm)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
 };
@@ -476,14 +479,15 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
       {hiddenColumns ? <div data-gloom-role="data-table-hidden-columns" style={{ flex: `0 0 ${disclosureHeight}px`, display: "flex",
         lineHeight: `${disclosureHeight}px`, color: CSS_TEXT_DIM, backgroundColor: CSS_PANEL }}>
         {/* What the pane left out for this width comes back with a wider pane only: it is named apart from what More draws. */}
-        {hiddenColumns.pane ? <span data-gloom-role="data-table-hidden-by-pane" style={{ ...HIDDEN_COLUMNS_TEXT_STYLE, flex: "1 1 0px" }}
+        {hiddenColumns.pane ? <span data-gloom-role="data-table-hidden-by-pane" style={{ ...HIDDEN_COLUMNS_TEXT_STYLE, flex: "1 1 auto" }}
           title={hiddenColumns.pane}>{hiddenColumns.pane}</span> : null}
         {hiddenColumns.restorable ? <span data-gloom-role="data-table-hidden-by-fit"
           style={{ ...HIDDEN_COLUMNS_TEXT_STYLE, flex: hiddenColumns.pane ? "0 1 auto" : "1 1 0px" }}
           title={hiddenColumns.restorable}>{hiddenColumns.restorable}</span> : null}
         {onShowAllColumns && hiddenColumns.restorable ? (
-          // The columns this table left out for width come back at a press: all drawn, scrolling sideways.
-          <button type="button" aria-label={hiddenColumns.pane ? "Show more columns" : "Show all columns"} onClick={() => { focusPane(); onShowAllColumns(); }}
+          // The columns this table left out for width come back at a press: all drawn, scrolling sideways. Beside
+          // columns the pane left out, the press is named by the word the line has for its own ("1 hidden").
+          <button type="button" aria-label={hiddenColumns.pane ? "Show hidden columns" : "Show all columns"} onClick={() => { focusPane(); onShowAllColumns(); }}
             style={{ flex: "0 0 auto", cursor: "pointer", border: 0, height: disclosureHeight, paddingBlock: 0, paddingInline: "var(--gloom-space-sm)",
               background: CSS_PANEL, color: CSS_TEXT_DIM, font: "inherit" }}>
             More

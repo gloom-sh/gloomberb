@@ -277,7 +277,7 @@ test("the line says what More draws again apart from what the pane left out, whi
   expect(table.more()).toBeNull();
   expect(table.menu()).toEqual(["Show More Columns"]);
 
-  await act(async () => { table.more("Show more columns")!.click(); });
+  await act(async () => { table.more("Show hidden columns")!.click(); });
   expect(table.headers()).toBe("TICKER QTY AVG COST LAST VALUE P&L");
   expect(table.scrolls()).toBe(true);
   // Nothing is left for More to draw: the pane's own are named as they are in a table that fits, with no button.
