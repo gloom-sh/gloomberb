@@ -85,7 +85,7 @@ test("a change reads its days first in the text and keeps them in ISO in JSON an
   const ctx = createTestHeadlessContext({ apiClient: { getCloudCatalysts: async () => catalystPayload(),
     getCloudCatalystEvent: async () => ({ event: catalystFixture, history: [catalystFixture], historyTotal: 1, historyOffset: 0, historyHasMore: false, historyTruncated: false,
       asOf: catalystFixture.observedAt, access: { pro: true, lockedRows: 0, previewLimit: 3 } }) } as unknown as HeadlessPaneContext["apiClient"] });
-  for (const options of [{ tab: "changes" }, { event: "event-1" }]) {
+  for (const options of [{ tab: "changes" }, { event: "event-1" }] as Array<Record<string, string>>) {
     const args = createTestHeadlessArgs({ rawArgument: "PFE", argument: "PFE", options });
     const result = await catalystsHeadless.load(args, ctx);
     expect(renderHeadlessPaneText(catalystsHeadless, result, args, "CATL")).toContain("Deadline: 01 Mar 2027 → 01 Apr 2027");
