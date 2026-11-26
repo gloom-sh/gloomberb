@@ -1,6 +1,6 @@
 import type { DataProvider, EarningsEvent } from "../../../types/data-provider";
 import type { CorporateActionsData, EarningsAction, EarningsDateStatus, EarningsEpsBasis, FilingEpsDetails } from "../../../types/financials";
-import { canonicalTickerKey, sameListingKey } from "../../../utils/exchanges";
+import { canonicalExchange, canonicalTickerKey, parsePublicTickerKey } from "../../../utils/exchanges";
 import { logFailure } from "../../../utils/log-failure";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
 import { dateStatusFromEstimateFlag, displayEarningsEpsBasis, earningsActionForReport, earningsDateStatus, earningsEpsBasis } from "./earnings-report";
@@ -443,7 +443,11 @@ export function noNextReportText(last: LastReport | null): string {
 const RECORD_CONCURRENCY = 4;
 
 function matchingReportedFiling(actions: CorporateActionsData, listing: EarningsListing, event: EarningsEvent): EarningsAction | undefined {
-  if (!sameListingKey(canonicalTickerKey(actions.symbol, actions.exchange), canonicalTickerKey(listing.symbol, listing.exchange))) return;
+  const requested = parsePublicTickerKey(canonicalTickerKey(listing.symbol, listing.exchange));
+  const returned = parsePublicTickerKey(actions.symbol);
+  if (returned.symbol !== requested.symbol) return;
+  const venues = [requested.exchange, returned.exchange, canonicalExchange(actions.exchange), canonicalExchange(actions.micCode)].filter(Boolean);
+  if (new Set(venues).size > 1) return;
   const date = calendarDay(event);
   const basis = event.estimateBasis?.epsEstimate;
   const period = basis?.periodEndDate?.slice(0, 7);

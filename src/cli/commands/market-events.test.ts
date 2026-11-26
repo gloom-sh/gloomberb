@@ -112,11 +112,15 @@ const dellCalendar: EarningsEvent = { symbol: "DELL:NYSE", name: "Dell Technolog
   epsActual: 9.16, epsEstimate: 6.55, epsAnalysts: 8, dateStatus: "reported", timing: "AMC", surprise: 39.85,
   revenueEstimate: null, revenueActual: null, estimateBasis: { epsEstimate: { source: "calendarEvents", sourceValue: 6.55, period: null, periodEndDate: "2026-10-30", currency: "USD" } } };
 
-test("earnings exports the verified filing and separate street pair even when the calendar has a reported actual", async () => {
+test.each([
+  { name: "a matching exchange", venue: { exchange: "NYSE" } },
+  { name: "a matching MIC without an exchange", venue: { micCode: "XNYS" } },
+  { name: "no venue metadata", venue: {} },
+])("earnings exports the verified filing and separate street pair with $name", async ({ venue }) => {
   const reads: string[][] = [];
   const row = await calendarExport(dellCalendar, async (symbol, exchange) => {
     reads.push([symbol, exchange]);
-    return { symbol: "DELL", exchange: "NYSE", dividends: [], splits: [], earnings: [dellFiling, { date: "2099-02-25", dateStatus: "confirmed" }] };
+    return { symbol: "DELL", ...venue, dividends: [], splits: [], earnings: [dellFiling, { date: "2099-02-25", dateStatus: "confirmed" }] };
   });
   expect(reads).toEqual([["DELL:NYSE", "NYSE"]]);
   expect(row).toMatchObject({ symbol: "DELL:NYSE", earningsDate: `${dellDate}T21:00:00.000Z`, dateStatus: "reported",
@@ -128,13 +132,17 @@ test.each([
   { name: "another report date", filing: { ...dellFiling, date: "2026-11-23" } },
   { name: "another fiscal period", filing: { ...dellFiling, fiscalPeriod: "2026-07" } },
   { name: "another currency", filing: { ...dellFiling, currency: "CAD" } },
-  { name: "another venue", filing: dellFiling, exchange: "NASDAQ" },
+  { name: "another exchange", filing: dellFiling, venue: { exchange: "NASDAQ" } },
+  { name: "another MIC without an exchange", filing: dellFiling, venue: { micCode: "XNAS" } },
+  { name: "another MIC with a matching exchange", filing: dellFiling, venue: { exchange: "NYSE", micCode: "XNAS" } },
+  { name: "another exchange with a matching MIC", filing: dellFiling, venue: { exchange: "NASDAQ", micCode: "XNYS" } },
+  { name: "another exchange with a matching symbol suffix", filing: dellFiling, venue: { symbol: "DELL:NYSE", exchange: "NASDAQ" } },
   { name: "no filing attribution", filing: { ...dellFiling, epsActualSource: undefined } },
   { name: "a failed read", filing: null },
-])("earnings keeps the calendar's observations for $name", async ({ filing, exchange }) => {
+])("earnings keeps the calendar's observations for $name", async ({ filing, venue }) => {
   const row = await calendarExport(dellCalendar, async () => {
     if (!filing) throw new Error("corporate actions unavailable");
-    return { symbol: "DELL", exchange: exchange ?? "NYSE", dividends: [], splits: [], earnings: [filing] };
+    return { symbol: "DELL", ...venue, dividends: [], splits: [], earnings: [filing] };
   });
   expect(row).toMatchObject({ symbol: "DELL:NYSE", epsActual: 9.16, epsEstimate: 6.55, epsAnalysts: 8, surprise: null });
   expect(row).not.toHaveProperty("streetEps");
