@@ -553,6 +553,9 @@ export class CloudApiRequestTransport {
   private lastRecoveryProbeAt = Number.NEGATIVE_INFINITY;
   /** GETs still out, by URL and headers, that an identical GET joins instead of sending its own (`readShared`). */
   private readonly sharedReads = new Map<string, SharedRead>();
+  /** How many times the session credential was replaced (`getCredentialGeneration`): a count, never the credential. */
+  private credentialGeneration = 0;
+  private readonly onCredentialChange: (() => void) | null;
 
   readonly baseUrl = getCloudApiBaseUrl();
 
@@ -563,6 +566,8 @@ export class CloudApiRequestTransport {
       connectionHealth?: ConnectionHealthRegistry;
       /** The variables the proxy is read from (isProxyRefusal); the process's by default. */
       proxyEnvironment?: ProxyEnvironment;
+      /** Told each time the session credential is replaced (`replaceSessionToken`), whichever way it was. */
+      onCredentialChange?: () => void;
     } = {},
   ) {
     this.fetchTransport = options.fetchTransport ?? null;
@@ -570,6 +575,7 @@ export class CloudApiRequestTransport {
     this.marketRequestTimeoutMs = options.marketRequestTimeoutMs ?? MARKET_REQUEST_TIMEOUT_MS;
     this.marketReadLimitOverride = options.marketRequestTimeoutMs;
     this.connectionHealth = options.connectionHealth ?? connectionHealth;
+    this.onCredentialChange = options.onCredentialChange ?? null;
   }
 
   getSessionToken(): string | null {
@@ -588,20 +594,43 @@ export class CloudApiRequestTransport {
     return this.cookieSessionMode;
   }
 
+  /**
+   * Moves on each time the session credential is replaced: a token installed, changed or cleared, a new one taken
+   * from a response's headers before its body is in, or the cookie mode switched. A non-secret count, for answers
+   * that must not outlive the credential they were sent with; the same credential again does not move it.
+   */
+  getCredentialGeneration(): number {
+    return this.credentialGeneration;
+  }
+
   setCookieSessionMode(enabled: boolean): void {
-    if (this.cookieSessionMode !== enabled) this.forgetSharedReads();
+    if (this.cookieSessionMode === enabled) return;
     this.cookieSessionMode = enabled;
+    this.credentialReplaced();
   }
 
   setSessionToken(token: string | null): void {
-    if (this.sessionToken !== token) {
-      this.sessionCookieName = null;
-      this.forgetSharedReads();
-    }
+    this.replaceSessionToken(token, this.sessionToken === token ? this.sessionCookieName : null);
+  }
+
+  /**
+   * The one place the session token changes: installed (`setSessionToken`) or taken from a response's headers
+   * (`extractSessionCookie`), so the two cannot disagree on what a new credential is. A new value is a new
+   * credential (`credentialReplaced`); the same value again only records the cookie name it came under.
+   */
+  private replaceSessionToken(token: string | null, cookieName: SessionCookieName | null): void {
+    const changed = this.sessionToken !== token;
     this.sessionToken = token;
-    if (!token) {
-      this.websocketToken = null;
-    }
+    this.sessionCookieName = cookieName;
+    if (!token) this.websocketToken = null;
+    if (changed) this.credentialReplaced();
+  }
+
+  /** No later read joins one sent with the credential before, its generation moves on, and the client is told, once. */
+  private credentialReplaced(): void {
+    this.forgetSharedReads();
+    this.credentialGeneration += 1;
+    this.onCredentialChange?.();
   }
 
   setWebSocketToken(token: string | null): void {
@@ -1178,8 +1207,8 @@ export class CloudApiRequestTransport {
         );
         const match = cookie.match(new RegExp(`${escapedCookieName}=([^;]+)`));
         if (!match) continue;
-        this.sessionToken = match[1] ?? null;
-        this.sessionCookieName = cookieName;
+        // Here, at the headers, not once the body or the account it belongs to is read.
+        this.replaceSessionToken(match[1] ?? null, cookieName);
         return;
       }
     }
