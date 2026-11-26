@@ -16,6 +16,7 @@ import { usePluginAppActions } from "../../../runtime";
 import { getTickerResearchPaneSettings } from "../settings";
 import { OverviewTab } from "../overview-tab";
 import { useOpenResearchTab } from "../research-tab-navigation";
+import { useOpenDescription } from "../../shared/open-description";
 import type { OverviewFunctionLink } from "./types";
 import { useOverviewDividend } from "./dividend";
 import { useAhPair } from "../adr-pair/ah";
@@ -53,8 +54,9 @@ export function OverviewResearchTab({ width, height, focused }: TickerResearchTa
   const paneInstance = usePaneInstance();
   const openResearchTab = useOpenResearchTab();
   const { createPaneFromTemplate } = usePluginAppActions();
+  const openDescription = useOpenDescription();
   const dividend = useOverviewDividend(ticker?.metadata.ticker ?? null, ticker?.metadata.exchange ?? "", financials?.fundamentals);
-  // An A+H company's other line and the premium between them, beside the ADR row.
+  // An A+H company's other line and the premium between them, beside the ADR row; the row opens that line's DES.
   const ah = useAhPair(ticker?.metadata.ticker ?? null, ticker?.metadata.exchange || financials?.quote?.listingExchangeName, financials?.quote);
   // A Hong Kong or Singapore line's board lot, the shares one lot trades in.
   const boardLot = useListingBoardLot(ticker?.metadata.ticker ?? null, ticker?.metadata.exchange || financials?.quote?.listingExchangeName);
@@ -84,6 +86,7 @@ export function OverviewResearchTab({ width, height, focused }: TickerResearchTa
       coin={coin}
       onOpenChart={paneId && !lockedToOneTab ? openChart : undefined}
       onOpenFunction={openFunction}
+      onOpenListing={openDescription}
       dividend={dividend}
       ah={ah}
       boardLot={boardLot}

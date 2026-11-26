@@ -7,6 +7,8 @@ let failing = false;
 let gate: Promise<void> | null = null;
 
 mock.module("../backend-rpc", () => ({
+  // A run keeps the names the first mock of this module exports, so each mock of it here exports all three.
+  subscribeBackendCapability: () => () => {},
   getElectrobunBackendInitSnapshot: () => {
     const pluginState: Record<string, Record<string, unknown>> = {};
     for (const [id, value] of saved.pluginState) {

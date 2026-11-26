@@ -283,20 +283,38 @@ export function textGridColumns(fields: StatField[], width: number): number {
   return 1;
 }
 
-/** A figure that opens its research function: the whole cell is the target. */
+/** What a figure opens, named as the pane menu lists it; `key` lists the same target once. */
+interface StatTarget {
+  key: string;
+  label: string;
+  open: () => void;
+}
+
+/** A figure's target: the DES of the listing it names, else its research function; none without a handler for it. */
+function statTarget(
+  field: StatField,
+  onOpenLink: ((link: OverviewFunctionLink) => void) | undefined,
+  onOpenListing: ((ticker: string) => void) | undefined,
+): StatTarget | null {
+  const { opens, link } = field;
+  // Keyed as a ticker badge keys its listing, so the menu offers it once.
+  if (opens && onOpenListing) return { key: `ticker:${opens}`, label: tf("Open {ticker}", { ticker: opens }), open: () => onOpenListing(opens) };
+  if (link && onOpenLink) return { key: `function:${link.templateId}`, label: tf("Open {label}", { label: t(link.name) }), open: () => onOpenLink(link) };
+  return null;
+}
+
+/** A figure that opens its target: the whole cell is the target. */
 function LinkedStatCell({
-  link,
+  target,
   width,
-  onOpen,
   children,
 }: {
-  link: OverviewFunctionLink;
+  target: StatTarget;
   width: number;
-  onOpen: (link: OverviewFunctionLink) => void;
   children: ReactNode;
 }) {
-  // The pane menu lists each function once, so the keyboard reaches what a click opens.
-  usePaneLinkMenuEntry(`function:${link.templateId}`, tf("Open {label}", { label: t(link.name) }), () => onOpen(link));
+  // The pane menu lists each target once, so the keyboard reaches what a click opens.
+  usePaneLinkMenuEntry(target.key, target.label, target.open);
   const { nativePaneChrome } = useUiCapabilities();
   return (
     <Box
@@ -306,11 +324,11 @@ function LinkedStatCell({
       flexDirection="row"
       hoverBackgroundColor={hoverBg()}
       onMouseDown={(event?: { button?: number }) => {
-        if ((event?.button ?? 0) === 0) onOpen(link);
+        if ((event?.button ?? 0) === 0) target.open();
       }}
       cursor="pointer"
       data-gloom-interactive="true"
-      data-gloom-label={tf("Open {label}", { label: t(link.name) })}
+      data-gloom-label={target.label}
       data-gloom-ui="key-value-row"
     >
       {children}
@@ -335,6 +353,7 @@ export function FundamentalsGrid({
   width,
   columns,
   onOpenLink,
+  onOpenListing,
 }: {
   fields: StatField[];
   width: number;
@@ -342,6 +361,8 @@ export function FundamentalsGrid({
   columns?: number;
   /** Opens a figure's research function; without it figures are plain. */
   onOpenLink?: (link: OverviewFunctionLink) => void;
+  /** Opens the DES of the listing a figure names (`opens`); without it that figure is plain. */
+  onOpenListing?: (ticker: string) => void;
 }) {
   const { nativePaneChrome } = useUiCapabilities();
   const columnCount = columns ?? fundamentalsGridColumns(width);
@@ -383,9 +404,10 @@ export function FundamentalsGrid({
           url={field.url}
         />
       );
+      const target = statTarget(field, onOpenLink, onOpenListing);
       return {
-        content: field.link && onOpenLink
-          ? <LinkedStatCell link={field.link} width={colWidth} onOpen={onOpenLink}>{content}</LinkedStatCell>
+        content: target
+          ? <LinkedStatCell target={target} width={colWidth}>{content}</LinkedStatCell>
           : (
             <Box
               width={nativePaneChrome ? undefined : colWidth}
