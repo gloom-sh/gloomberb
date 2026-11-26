@@ -66,7 +66,7 @@ describe("earnings estimates headless", () => {
     expect(all.rows.some((row) => row.status === "Dividend")).toBe(false);
     const reported = await definition.load(args({ kind: "reported" }), context);
     expect(reported.rows).toHaveLength(1);
-    expect(reported.rows[0]).toMatchObject({ epsActual: 0.48, epsEstimate: 0.45, epsDifference: 0.03, surprisePercent: 6.67 });
+    expect(reported.rows[0]).toMatchObject({ epsActual: 0.48, epsEstimate: 0.45, epsBasis: "unknown", epsDifference: undefined, surprisePercent: undefined });
     expect(reported.errors ?? []).toEqual([]);
     expect(reported.metadata?.unmatchedReportedPeriods).toEqual(["2026-07-28"]);
   });
@@ -113,19 +113,26 @@ describe("earnings estimates headless", () => {
 test("EE reads a surprise against a loss estimate and growth off a year-ago loss N/M, as EVTS does, and exports no figure for either", async () => {
   const definition = createEarningsEstimatesHeadless({ loadSources: async () => ({
     ...sources,
-    actions: { ...sources.actions!, earnings: [{ date: "2026-07-28", epsEstimate: -1.47, epsActual: -1.14, difference: 0.33, surprisePercent: -22.45 }] },
+    actions: { ...sources.actions!, earnings: [
+      { date: "2026-07-28", epsEstimate: -1.47, epsActual: -1.14, surprisePercent: -22.45, epsBasis: "gaap" },
+      { date: "2026-04-28", epsEstimate: -1.47, epsActual: -1.14, difference: 0.33, surprisePercent: -22.45 },
+    ] },
     estimates: { ...sources.estimates!, revenueEstimates: [],
       earningsEstimates: [{ date: "2026-09-30", period: "next_quarter", average: 0.1, yearAgo: -0.4, growth: 1.25, analysts: 30 }] },
   }) });
   const request = args({ kind: "all" });
   const result = await definition.load(request, context);
-  expect(result.rows.find((row) => row.status === "Earnings")).toMatchObject({ surpriseNotMeaningful: true, surprisePercent: undefined });
+  const quarter = (date: string) => result.rows.find((row) => row.status === "Earnings" && row.date === date);
+  expect(quarter("2026-07-28")).toMatchObject({ epsBasis: "GAAP", surpriseNotMeaningful: true, surprisePercent: undefined });
+  expect(quarter("2026-04-28")).toMatchObject({ epsActual: -1.14, epsEstimate: -1.47, epsBasis: "unknown", epsDifference: undefined, surprisePercent: undefined });
+  expect(quarter("2026-04-28")).not.toHaveProperty("surpriseNotMeaningful");
   expect(result.rows.find((row) => row.status === "Q Est")).toMatchObject({ estimateGrowthNotMeaningful: true, estimateGrowthMetric: "eps" });
   const text = renderHeadlessPaneText(definition, result, request, "EE");
   // The estimate's growth in its row and in Next up, the reported quarter's surprise in its own table.
   expect(text).toMatch(/next qtr\s+2026-09-30\s+0\.10\s+\S\s+\S\s+N\/M\s+30/);
   expect(text).toMatch(/EPS est\s+0\.10\s+30 analysts · N\/M y\/y/);
   expect(text).toMatch(/Jul 2026\s+-1\.14\s+-1\.47\s+N\/M/);
+  expect(text).toMatch(/Apr 2026\s+-1\.14\s+-1\.47\s+—/);
   expect(text).not.toContain("-22.45");
   expect(text).not.toContain("+125");
   const csv = renderReportCsv(headlessReportTables(definition, result, request, "EE", deriveHeadlessFreshness(definition, result), { complete: true, unavailableSymbols: [] }));
@@ -135,9 +142,12 @@ test("EE reads a surprise against a loss estimate and growth off a year-ago loss
   const growth = columns.findIndex((column) => column.startsWith("YoY growth"));
   const status = columns.indexOf("status");
   expect([surprise, growth, status].every((index) => index > -1)).toBe(true);
-  const earnings = lines.find((line) => line.includes(",Earnings,"))!.split(",");
+  const earnings = lines.find((line) => line.includes("2026-07-28,Earnings,"))!.split(",");
   expect(earnings[surprise]).toBe("");
   expect(earnings[status]).toContain("EPS surp: n/m");
+  const unverified = lines.find((line) => line.includes("2026-04-28,Earnings,"))!.split(",");
+  expect(unverified[surprise]).toBe("");
+  expect(unverified[status]).not.toContain("EPS surp: n/m");
   const estimate = lines.find((line) => line.includes(",Q Est,"))!.split(",");
   expect(estimate[growth]).toBe("");
   expect(estimate[status]).toContain("YoY growth: n/m");
