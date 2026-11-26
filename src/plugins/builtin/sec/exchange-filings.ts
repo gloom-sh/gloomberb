@@ -3,8 +3,11 @@ import type { HeadlessPaneRow } from "../../../types/plugin";
 import { exchangeAnnouncementsPublisher, isRoutineReturn } from "../../../utils/exchange-announcements";
 import { nonUsSecListingVenue } from "../../../utils/sec";
 
-// JPX sends a bounded issuer archive in one response. The pane reveals its rows as the user scrolls.
-export const JPX_FILING_HISTORY_LIMIT = 200;
+export const RECENT_EXCHANGE_FILING_LIMIT = 50;
+
+export function exchangeFilingHistoryLimit(venue?: string): number {
+  return venue === "JPX" || venue === "HNX" || venue === "HOSE" ? 200 : RECENT_EXCHANGE_FILING_LIMIT;
+}
 
 export function localFilingListing(symbol: string, exchange?: string) {
   const venue = nonUsSecListingVenue(symbol, exchange);

@@ -483,6 +483,43 @@ test("a company listed abroad is looked up by the SEC, and one that files nothin
   }
 });
 
+test("scrolling to older HOSE filings keeps the recent disclosures through an archive failure", async () => {
+  firstSymbol = "FPT.VN:HOSE";
+  firstListing = { exchange: "HOSE", currency: "VND", assetCategory: "STK" };
+  const older = {
+    date: "2026-01-26T17:42:16Z", headline: "FPT FY2025 business results",
+    types: ["Issuer disclosure"], priceSensitive: null, fileSize: null,
+    documentKey: "2433776", url: "https://www.hsx.vn/vi/tin-tuc/fpt-ket-qua-kinh-doanh-nam-2025/2433776",
+  };
+  const recent = Array.from({ length: 50 }, (_, index) => ({
+    ...older, date: "2026-11-20T01:00:00Z", headline: `Recent HOSE notice ${index + 1}`,
+    url: `https://www.hsx.vn/vi/tin-tuc/notice/${index + 1}`, documentKey: String(index + 1),
+  }));
+  let olderReads = 0;
+  const exchange = spyOn(apiClient, "getCloudExchangeAnnouncements").mockImplementation(async ({ limit }) => {
+    if (limit === 200 && olderReads++ === 0) throw new Error("Older filings temporarily unavailable");
+    return {
+      exchange: "HOSE", symbol: "FPT", name: "FPT", page: "https://www.hsx.vn/",
+      total: 51, retrievedAt: "2026-11-26T15:00:00Z", announcements: limit === 200 ? [...recent, older] : recent,
+    };
+  });
+  try {
+    await mount(createTestDataProvider({ getSecFilings: async () => [] }));
+    await tui.waitForFrameToContain("Recent HOSE notice 1");
+    expect(olderReads).toBe(0);
+    for (let index = 0; index < 49; index++) await press("down", "j");
+    const beforeRetry = await tui.waitForFrameToContain("Older filings temporarily unavailable");
+    expect(beforeRetry).toContain("Recent HOSE notice 50");
+    await press("r", "r");
+    await tui.waitForFrameToExclude("Older filings temporarily unavailable");
+    await press("down", "j");
+    await tui.waitForFrameToContain("FPT FY2025 business results");
+    expect(olderReads).toBe(2);
+  } finally {
+    exchange.mockRestore();
+  }
+});
+
 test("a Hong Kong spot coin fund shows its issuer's figures in its counter's currency, with units per coin", async () => {
   paneSettings = { forms: ETF_FORMS_SETTING };
   // A bare code on HKEX: the server is asked for 3046:XHKG, its Hong Kong listing, not a US 3046.

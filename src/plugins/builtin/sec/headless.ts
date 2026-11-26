@@ -15,7 +15,7 @@ import type { FundFactsPayload } from "../../../api-client/fund-facts";
 import { errorMessage } from "../../../utils/errors";
 import { filingStoryNote, loadFilingStories, type FilingStory } from "../insider/filing-stories";
 import { logFailure } from "../../../utils/log-failure";
-import { JPX_FILING_HISTORY_LIMIT, latestFilingRows, localFilingListing, localFilingRows } from "./exchange-filings";
+import { exchangeFilingHistoryLimit, latestFilingRows, localFilingListing, localFilingRows } from "./exchange-filings";
 import { loadSecFilings } from "./client";
 import { ETF_FILING_FORMS, filterFilingsByForms, fundSeriesFilings, loadShownSecFilings, SEC_FILING_FETCH_LIMIT } from "./forms";
 import { hiddenFilingsMetadata, hiddenFilingsNote } from "../../../utils/sec-filings";
@@ -184,9 +184,8 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       // A form filter searches every filing listed for the issuer and keeps the supplements it names; without
       // one, a bank's pricing supplements and a trust's other funds stay out unless --all, as in `filings`.
       const listing = !form ? localFilingListing(symbol) : null;
-      const localLimit = listing?.exchange === "JPX"
-        ? Math.min(JPX_FILING_HISTORY_LIMIT, limit)
-        : listing?.exchange === "HKEX" && args.options.all !== true ? 100 : Math.min(50, limit);
+      const localLimit = listing?.exchange === "HKEX" && args.options.all !== true
+        ? 100 : Math.min(exchangeFilingHistoryLimit(listing?.exchange), limit);
       const [us, local] = await Promise.allSettled([
         loadShownSecFilings(load, limit, { form: form || null, all: args.options.all === true }),
         listing && dependencies.loadExchange ? dependencies.loadExchange({ ...listing, limit: localLimit }, ctx) : Promise.resolve(null),

@@ -75,8 +75,11 @@ describe("SEC headless model", () => {
     expect(result.rows[0]).toMatchObject({ filedAt: "2026-11-16", dateBasis: "catalogue", url, source: "KRX KIND" });
   });
 
-  test("an extended JPX filing read retains an earnings Q&A beyond the first 50 rows", async () => {
-    const url = "https://www2.jpx.co.jp/disc/72030/140120260804507923.pdf";
+  test.each([
+    ["7203", "JPX", "https://www2.jpx.co.jp/disc/72030/140120260804507923.pdf"],
+    ["FPT.VN", "HOSE", "https://www.hsx.vn/vi/tin-tuc/fpt-ket-qua-kinh-doanh-nam-2025/2433776"],
+    ["PVS", "HNX", "https://api.gloom.sh/cloud/announcements/hnx/642808"],
+  ])("an extended read of %s:%s retains disclosures beyond the first 50 rows", async (symbol, exchange, url) => {
     const announcement = {
       date: "2026-08-04", headline: "Q&A summary of the earnings briefing",
       types: ["Financial information"], priceSensitive: null, fileSize: null,
@@ -88,12 +91,11 @@ describe("SEC headless model", () => {
     const headless = createSecHeadless({
       loadFilings: async () => [],
       loadExchange: async ({ limit }) => ({
-        exchange: "JPX", symbol: "7203", name: "Toyota Motor Corporation",
-        page: "https://www.jpx.co.jp/english/listing/co-search/index.html", total: null,
+        exchange, symbol, name: symbol, page: url, total: 51,
         retrievedAt: "2026-11-25T12:00:00Z", announcements: [...recent, announcement].slice(0, limit),
       }),
     });
-    const result = await headless.load({ ...args(200), symbols: ["7203:JPX"] }, createTestHeadlessContext());
+    const result = await headless.load({ ...args(200), symbols: [`${symbol}:${exchange}`] }, createTestHeadlessContext());
     expect(result.rows[50]).toMatchObject({ filedAt: announcement.date, filing: announcement.headline, url });
   });
 
