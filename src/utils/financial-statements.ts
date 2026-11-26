@@ -173,7 +173,7 @@ type FilledRow = Pick<FinancialStatement, "date" | "filledFrom"> & { aggregation
 
 /** How a filled row is dated: ASX's read, its own results' first publication, or the later period's whose comparative it is. */
 export interface FillDate {
-  label: "read" | "published" | "comparative";
+  label: "read" | "published" | "comparative" | "first observed";
   /** YYYY-MM-DD; null for a comparative whose later period's first announcement is not known. */
   date: string | null;
 }
@@ -202,6 +202,10 @@ export function fillDate(row: FilledRow, rows: readonly FilledRow[] = []): FillD
   if (fill.source === "asx") return { label: "read", date: fill.retrievedAt.slice(0, 10) };
   if (fill.fields.length === 0) return null;
   const periodEnd = (row.aggregation?.periodEnd ?? row.date).slice(0, 10);
+  const observed = fill.documents.filter((document) => document.firstObserved);
+  if (observed.length) {
+    return { label: "first observed", date: observed.map((document) => document.publishedAt.slice(0, 10)).sort().at(-1) ?? null };
+  }
   const dates = fill.documents.map((document) => document.publishedAt.slice(0, 10)).sort();
   // A quarter's announcement also gives the quarter before: the next period is the list's next row where it
   // has one before the same period a year on. A quarter derived from two years to date ends with the later
@@ -231,6 +235,7 @@ export function fillDate(row: FilledRow, rows: readonly FilledRow[] = []): FillD
 
 /** How a filled column's date reads: "announced 2026-08-20", "comparative in the 2026-08-20 announcement". */
 export function fillDateText(date: FillDate): string {
+  if (date.label === "first observed") return `first observed ${date.date}`;
   if (date.label === "read") return `read ${date.date}`;
   if (date.label === "published") return `announced ${date.date}`;
   return date.date ? `comparative in the ${date.date} announcement` : "comparative in a later announcement";

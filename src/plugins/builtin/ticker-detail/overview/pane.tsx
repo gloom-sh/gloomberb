@@ -75,6 +75,8 @@ export function OverviewResearchTab({ width, height, focused }: TickerResearchTa
   }, [createPaneFromTemplate, openResearchTab, ticker]);
   // A headline opens its story in this pane's News view when it has one.
   const openNewsView = useCallback(() => !!openResearchTab?.(TICKER_NEWS_TAB_ID), [openResearchTab]);
+  const instrumentType = financials?.quote?.instrumentType ?? ticker?.metadata.assetCategory;
+  const onContract = !!ticker && !!perpetualListing(ticker.metadata.ticker, ticker.metadata.exchange);
   return (
     <OverviewTab
       width={width}
@@ -99,13 +101,14 @@ export function OverviewResearchTab({ width, height, focused }: TickerResearchTa
           <PaneLinkMenu><FunctionLinkRow link={NEWS} onOpen={openFunction} /></PaneLinkMenu>
         </TickerNewsHeadlines>
       ) : undefined}
-      perpetuals={ticker ? (contentWidth: number) => {
-        const instrumentType = financials?.quote?.instrumentType ?? ticker.metadata.assetCategory;
-        // A contract's own DES shows its funding and premium; a stock or a coin lists its markets across venues.
-        return perpetualListing(ticker.metadata.ticker, ticker.metadata.exchange)
-          ? <PerpEquityRow symbol={ticker.metadata.ticker} exchange={ticker.metadata.exchange} instrumentType={instrumentType} />
-          : <PerpMarketsSection symbol={ticker.metadata.ticker} exchange={ticker.metadata.exchange} instrumentType={instrumentType} quote={financials?.quote} width={contentWidth} />;
-      } : undefined}
+      // A contract's own DES shows its funding and premium under its price; a stock or a coin lists its markets
+      // across venues after its own range, chart and figures.
+      perpetuals={ticker && onContract
+        ? <PerpEquityRow symbol={ticker.metadata.ticker} exchange={ticker.metadata.exchange} instrumentType={instrumentType} />
+        : undefined}
+      perpetualMarkets={ticker && !onContract ? (contentWidth: number) => (
+        <PerpMarketsSection symbol={ticker.metadata.ticker} exchange={ticker.metadata.exchange} instrumentType={instrumentType} quote={financials?.quote} width={contentWidth} />
+      ) : undefined}
     />
   );
 }
