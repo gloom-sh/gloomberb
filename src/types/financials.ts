@@ -925,13 +925,15 @@ export type StatementFilingKind = "annual_results" | "interim_results" | "quarte
 
 /** A results announcement or report on HKEXnews or SGXNet, with when it was published and read. */
 export interface StatementFilingDocument {
-  source: "hkex" | "sgx" | "lse" | "cninfo" | "ir" | "mops";
+  source: "hkex" | "sgx" | "lse" | "cninfo" | "idx" | "ir" | "mops";
   kind: StatementFilingKind;
   title: string;
   url: string;
   publishedAt: string;
   firstObserved?: true;
   fetchedAt: string;
+  dateBasis?: "catalogue";
+  dataUrl?: string;
 }
 
 /** A row's lines read from the company's results announcement or report, for a period the statements source lags on. */
@@ -941,11 +943,13 @@ export interface ResultsStatementFill {
   fields: ResultsFillField[];
   /** The documents, the one each line was read from first: the row is dated by the earliest publication. */
   documents: StatementFilingDocument[];
-  /** Per line, its document (an index into `documents`) and page. */
+  /** Per line, its document index and location in the original document. */
   lines: Partial<Record<ResultsFillField, {
     document: number;
     page: number | null;
     subtract?: { document: number; page: number | null };
+    subtractDocument?: number;
+    location?: { sheet: string; cell: string };
   }>>;
   /** The months the row's flows cover where the list's usual is another: 6 for a half in the quarterly list. */
   periodMonths?: number;

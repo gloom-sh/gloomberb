@@ -1,16 +1,34 @@
-import type { ExchangeAnnouncementsPayload } from "../../../api-client/exchange-announcements";
+import type { ExchangeAnnouncementsPayload, ExchangeAnnouncementsRequest } from "../../../api-client/exchange-announcements";
 import type { HeadlessPaneRow } from "../../../types/plugin";
-import { exchangeAnnouncementsPublisher, isRoutineReturn } from "../../../utils/exchange-announcements";
+import { exchangeAnnouncementsPublisher, exchangeAnnouncementsVenue, isRoutineReturn } from "../../../utils/exchange-announcements";
 import { nonUsSecListingVenue } from "../../../utils/sec";
 
+// The extended archives are bounded. The pane reveals their rows as the user scrolls.
+export const EXCHANGE_FILING_HISTORY_LIMIT = 200;
 export const RECENT_EXCHANGE_FILING_LIMIT = 50;
 
 export function exchangeFilingHistoryLimit(venue?: string): number {
-  return venue === "JPX" || venue === "HNX" || venue === "HOSE" ? 200 : RECENT_EXCHANGE_FILING_LIMIT;
+  return venue === "JPX" || venue === "HNX" || venue === "HOSE" ? EXCHANGE_FILING_HISTORY_LIMIT : RECENT_EXCHANGE_FILING_LIMIT;
+}
+export const PRESENTATIONS_FORM = "presentations";
+
+interface ExchangeFilingForm {
+  value: string;
+  label: string;
+  kind: NonNullable<ExchangeAnnouncementsRequest["kind"]>;
+}
+
+const presentations: ExchangeFilingForm = { value: PRESENTATIONS_FORM, label: "Presentations", kind: PRESENTATIONS_FORM };
+const sgxResults: ExchangeFilingForm = { value: "sgx-results", label: "Results & presentations", kind: "results" };
+
+export function exchangeFilingForm(venue: string | undefined): ExchangeFilingForm | undefined {
+  if (venue === "TWSE" || venue === "TPEX") return presentations;
+  if (venue === "SGX") return sgxResults;
 }
 
 export function localFilingListing(symbol: string, exchange?: string) {
-  const venue = nonUsSecListingVenue(symbol, exchange);
+  const venue = exchangeAnnouncementsVenue(nonUsSecListingVenue(symbol, exchange)
+    ?? (!exchange && /^[A-Z]{4}\.JK$/i.test(symbol) ? "JAKARTA" : null));
   const publisher = exchangeAnnouncementsPublisher(venue);
   return venue && publisher ? { symbol, exchange: venue, publisher } : null;
 }
