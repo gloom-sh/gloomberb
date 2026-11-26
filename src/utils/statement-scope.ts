@@ -37,6 +37,18 @@ function completeQuarterWindow(rows: FinancialStatement[], end: string): boolean
   });
 }
 
+function sumFiledDecimals(values: number[]): number {
+  if (values.length === 1) return values[0]!;
+  const terms = values.map(value => {
+    const [digits, exponent] = value.toExponential().split("e");
+    const places = digits!.split(".")[1]?.length ?? 0;
+    return { units: BigInt(digits!.replace(".", "")), power: Number(exponent) - places };
+  });
+  const power = Math.min(...terms.map(term => term.power));
+  const units = terms.reduce((sum, term) => sum + term.units * 10n ** BigInt(term.power - power), 0n);
+  return Number(`${units}e${power}`);
+}
+
 export function dateScopedEarnings(data: Pick<TickerFinancials, "statementScope" | "statementReview" | "annualStatements" | "quarterlyStatements">,
   earnings: Omit<ScopedEarnings, "epsAvailableAt"> | null | undefined): ScopedEarnings | null {
   const reviewedThrough = data.statementReview?.reviewedThrough;
@@ -48,9 +60,18 @@ export function dateScopedEarnings(data: Pick<TickerFinancials, "statementScope"
   const candidates = data.annualStatements.filter(row => row.date === periodEnd
     && (row.dateEvidence?.startDate === undefined || spansDays(row.dateEvidence.startDate, periodEnd, 350, 380))).map(row => [row]);
   if (completeQuarterWindow(quarters, periodEnd)) candidates.push(quarters);
-  const matchingInputs = candidates.filter(rows => rows.every(row => row.currency === currency && reportedEarnings(row, "eps") !== null)
-    && rows.reduce((total, row) => total + row.eps!, 0) === eps);
-  const epsAvailableAt = completeAvailability(matchingInputs.flat().map(row => {
+  const admittedTotals = new Set([eps]);
+  const totals = candidates.flatMap(rows => {
+    if (!rows.every(row => row.currency === currency && reportedEarnings(row, "eps") !== null)) return [];
+    const values = rows.map(row => row.eps!);
+    const total = sumFiledDecimals(values);
+    if (!Number.isFinite(total)) return [];
+    const roundoff = values.length * Number.EPSILON * Math.max(Math.abs(total), Math.abs(eps));
+    if (values.reduce((sum, value) => sum + value, 0) === eps && Math.abs(total - eps) <= roundoff) admittedTotals.add(total);
+    return [{ rows, total }];
+  });
+  const matchingInputs = totals.filter(({ total }) => admittedTotals.has(total)).flatMap(({ rows }) => rows);
+  const epsAvailableAt = completeAvailability(matchingInputs.map(row => {
     const available = statementFieldAvailability(row, "eps");
     return available && Date.parse(available) >= Date.parse(row.date) ? available : undefined;
   }));

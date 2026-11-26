@@ -37,6 +37,53 @@ function scopedFixture() {
   return { raw, quarters, scope, end, filed, quote, before, after };
 }
 
+test("decimal quarter EPS corroborates the admitted annual amount only at the later field date", () => {
+  const { raw, quarters, filed, quote, before, after } = scopedFixture();
+  const annualStatements = raw.annualStatements.map(row => ({ ...row, eps: 0.70 }));
+  const quarterlyStatements = quarters.map((row, index) => ({ ...row, eps: [0.10, 0.20, 0.30, 0.10][index],
+    availableAt: "2028-02-15", fieldAvailability: { eps: filed } }));
+  const admitted = (eps: number) => mapCloudFinancials({ ...raw, annualStatements, quarterlyStatements,
+    fundamentals: { ...raw.fundamentals, eps, trailingPE: 70 / eps } });
+  const at = (data: TickerFinancials, lastUpdated: number) => withFiledTrailingEps({ ...data, quote: { ...quote, price: 70, lastUpdated } }, after).fundamentals;
+  const matched = admitted(0.70);
+  expect(at(matched, before)?.trailingPE).toBeUndefined();
+  expect(matched.fundamentals?.scopedEarnings?.epsAvailableAt).toBe(filed);
+  expect(at(matched, after)).toMatchObject({ eps: 0.70, trailingPE: 100 });
+  const binarySum = quarterlyStatements.reduce((sum, row) => sum + row.eps!, 0);
+  const binaryAdmitted = mapCloudFinancials({ ...raw, fundamentals: { ...raw.fundamentals, eps: binarySum, trailingPE: 70 / binarySum },
+    annualStatements: annualStatements.map(row => ({ ...row, fieldAvailability: { eps: filed } })),
+    quarterlyStatements: quarterlyStatements.map(row => ({ ...row, fieldAvailability: { eps: "2028-02-15" } })) });
+  expect(binaryAdmitted.fundamentals?.scopedEarnings).toMatchObject({ eps: binarySum, epsAvailableAt: filed });
+  for (const unsupported of [0.70000001, 0.7000000000000002]) {
+    const unmatched = at(admitted(unsupported), after);
+    expect(unmatched?.eps).toBeUndefined();
+    expect(unmatched?.trailingPE).toBeUndefined();
+  }
+  const offsetting = mapCloudFinancials({ ...raw, annualStatements: [],
+    quarterlyStatements: quarterlyStatements.map((row, index) => ({ ...row, eps: [0.10, 0.20, -0.30, 0.001][index] })),
+    fundamentals: { ...raw.fundamentals, eps: 0.001, trailingPE: 70000 } });
+  expect(at(offsetting, after)).toMatchObject({ eps: 0.001, trailingPE: 70000 });
+});
+
+test("a scoped filing steps at effective closes, not the midnight label of a later NYSE close", () => {
+  const { raw, quarters, quote, filed } = scopedFixture();
+  const onFilingDay = (hour: number) => new Date(`${filed}T${String(hour).padStart(2, "0")}:00:00Z`);
+  const data = { ...mapCloudFinancials({ ...raw, quarterlyStatements: quarters.map(row => ({ ...row, fieldAvailability: { eps: onFilingDay(17).toISOString() } })) }),
+    quote: { ...quote, stale: true }, priceHistory: [
+      { date: onFilingDay(0), close: 78 }, { date: onFilingDay(16), close: 65 }, { date: onFilingDay(18), close: 65 },
+    ] };
+  const series = (period: "daily" | "annual") => extractFundamentalSeries(data, { kind: "security", instrument: { symbol: "VYLR" }, fieldId: "valuation.trailingPE", period });
+  try {
+    setSystemTime(onFilingDay(20));
+    expect(series("daily").map(point => point.value)).toEqual([null, 20]);
+    setSystemTime(onFilingDay(21));
+    expect(series("daily").map(point => [point.date, point.value])).toEqual([
+      [onFilingDay(16), null], [onFilingDay(18), 20], [onFilingDay(21), 24],
+    ]);
+    expect(series("annual")).toMatchObject([{ value: 20, date: onFilingDay(18), availableAt: onFilingDay(18) }]);
+  } finally { setSystemTime(); }
+});
+
 test("a scoped period point waits for the first priced close even with a stale current quote", () => {
   const { raw, quote, end, after } = scopedFixture();
   setSystemTime(after);
