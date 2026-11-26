@@ -30,7 +30,7 @@ export function pinnedMomentFooterSegment(at: number, now = Date.now(), timeZone
  * it on one. Only the focused pane binds the key. `enabled: false` while Esc
  * means something else here, such as going back from an open item.
  */
-export function usePinnedMoment(
+function usePinnedMoment(
   registrationId: string,
   { enabled = true, follows = true }: {
     enabled?: boolean;
