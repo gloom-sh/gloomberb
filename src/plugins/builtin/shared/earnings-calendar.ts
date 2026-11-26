@@ -3,7 +3,7 @@ import type { CorporateActionsData, EarningsAction, EarningsDateStatus, Earnings
 import { logFailure } from "../../../utils/log-failure";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
 import { isNotMeaningful } from "../../../utils/growth";
-import { dateStatusFromEstimateFlag, earningsDateStatus, earningsEpsBasis, epsSurprise } from "./earnings-report";
+import { canCompareReportedEps, dateStatusFromEstimateFlag, displayEarningsEpsBasis, earningsDateStatus, earningsEpsBasis, epsSurprise } from "./earnings-report";
 import { coherentEarningsValue, EARNINGS_ESTIMATE_FIELDS } from "./earnings-estimate-basis";
 import { listingTimeZone } from "../../../market-data/market/trading-sessions";
 
@@ -211,7 +211,7 @@ const TIME_TEXT = { bmo: "Pre Market", amc: "After Hours" } as const;
  */
 function withSurprise(row: EarningsAction, before: EarningsAction | null): EarningsAction {
   const { epsActual: actual, epsEstimate: estimate } = row;
-  if (actual == null || estimate == null) return row;
+  if (actual == null || estimate == null || !canCompareReportedEps(row)) return row;
   const surprise = epsSurprise(actual, estimate);
   const unchanged = actual === before?.epsActual && estimate === before.epsEstimate;
   if (unchanged && !isNotMeaningful(surprise)) return row;
@@ -231,7 +231,11 @@ function definedFields<T extends object>(row: T): T {
 /** Corporate-actions earnings rows, as events, EE and the `earnings` resolution read them. */
 const ACTION_ROWS: ReportRowAdapter<EarningsAction> = {
   slot: (row) => ({ date: row.date, dateStatus: earningsDateStatus(row.dateStatus), epsActual: row.epsActual }),
-  reported: (row, epsActual) => withSurprise({ ...row, dateStatus: "reported", ...(row.epsActual == null && epsActual != null ? { epsActual } : {}) }, row),
+  reported: (row, epsActual, report) => withSurprise({ ...row, dateStatus: "reported",
+    ...(row.epsActual == null && epsActual != null ? {
+      epsActual, epsBasis: report && row.epsEstimate === report.epsEstimate ? report.epsBasis : null,
+    } : {}),
+  }, row),
   fromCalendar(report, row) {
     // The calendar's consensus goes with its date; without one, the record's stays.
     const estimate = report.epsEstimate != null;
@@ -245,7 +249,7 @@ const ACTION_ROWS: ReportRowAdapter<EarningsAction> = {
       epsAnalysts: estimate ? report.epsAnalysts ?? undefined : row?.epsAnalysts,
       epsActual: report.epsActual ?? row?.epsActual,
       fiscalPeriod: row?.fiscalPeriod ?? report.fiscalPeriod ?? undefined,
-      epsBasis: estimate ? report.epsBasis : row?.epsBasis,
+      epsBasis: estimate ? report.epsBasis : report.epsActual == null ? row?.epsBasis : null,
       dateStatus: report.dateStatus ?? undefined,
     }), row);
   },
@@ -313,10 +317,17 @@ function eventOfRow(event: EarningsEvent, row: EarningsAction, report: CalendarR
   const dateStatus = earningsDateStatus(row.dateStatus);
   const earningsDate = ownDate ? event.earningsDate : new Date(`${row.date}T00:00:00.000Z`);
   const rowTiming = TIMING_OF_TEXT[row.time ?? ""];
+  const recordBasis = displayEarningsEpsBasis(row);
+  const recordSurprise = canCompareReportedEps(row) ? row.surprisePercent ?? null : null;
   if (report) {
     const filed = row.epsActual != null && row.epsBasis === "company-adjusted";
     const base = !report.ownConsensus ? withoutConsensus(event) : filed ? withoutConsensus(event, true) : event;
     const recordFigures = row.epsActual != null && (event.epsActual == null || filed);
+    const epsActual = recordFigures ? row.epsActual! : event.epsActual ?? null;
+    const epsEstimate = recordFigures ? row.epsEstimate ?? null : base.epsEstimate ?? row.epsEstimate ?? null;
+    const sameRecordPair = row.epsActual === epsActual && (row.epsEstimate ?? null) === epsEstimate;
+    const calendarPair = !recordFigures && epsEstimate != null && epsEstimate === report.epsEstimate;
+    const calendarEps = { epsActual, epsBasis: calendarPair ? report.epsBasis : null };
     return {
       ...base,
       ...(filed ? { streetEps: row.streetEps, gaapEps: row.gaapEps } : {}),
@@ -325,11 +336,12 @@ function eventOfRow(event: EarningsEvent, row: EarningsAction, report: CalendarR
       // The company's time is for its own date, never another the record places the report on.
       releaseAt: ownDate ? event.releaseAt ?? null : null,
       isDateEstimate: statusFlag(dateStatus) ?? (dateStatus === "reported" ? base.isDateEstimate ?? null : null),
-      epsEstimate: recordFigures ? row.epsEstimate ?? null : base.epsEstimate ?? row.epsEstimate ?? null,
+      epsEstimate,
       epsAnalysts: recordFigures ? row.epsAnalysts ?? null : base.epsAnalysts ?? row.epsAnalysts ?? null,
-      epsActual: recordFigures ? row.epsActual! : event.epsActual ?? row.epsActual ?? null,
-      epsBasis: recordFigures ? row.epsBasis ?? null : base.epsBasis ?? row.epsBasis ?? null,
-      surprise: recordFigures ? row.surprisePercent ?? null : base.surprise ?? row.surprisePercent ?? null,
+      epsActual,
+      epsBasis: epsActual == null ? displayEarningsEpsBasis(base) ?? recordBasis
+        : (sameRecordPair ? recordBasis : null) ?? displayEarningsEpsBasis(calendarEps),
+      surprise: (canCompareReportedEps(calendarEps) ? base.surprise : null) ?? (sameRecordPair ? recordSurprise : null),
       timing: (ownDate && event.timing) || rowTiming || event.timing,
       dateStatus,
     };
@@ -344,10 +356,10 @@ function eventOfRow(event: EarningsEvent, row: EarningsAction, report: CalendarR
     epsAnalysts: row.epsAnalysts ?? null,
     epsActual: row.epsActual ?? null,
     ...(row.streetEps ? { streetEps: row.streetEps, gaapEps: row.gaapEps } : {}),
-    epsBasis: row.epsBasis ?? null,
+    epsBasis: recordBasis,
     revenueEstimate: null,
     revenueActual: null,
-    surprise: row.surprisePercent ?? null,
+    surprise: recordSurprise,
     timing: rowTiming ?? "",
     dateStatus,
   };

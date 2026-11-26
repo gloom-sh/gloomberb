@@ -6,6 +6,7 @@ import { formatFreshnessLine } from "../pane-functions/freshness";
 import { marketDataCliCommands } from "./market";
 
 const events = marketDataCliCommands.find((command) => command.name === "events")!;
+const calendar = marketDataCliCommands.find((command) => command.name === "earnings")!;
 
 // The next report below is on 2 Nov 2026: read it on a fixed day before that, so it stays upcoming.
 beforeAll(() => { setSystemTime(new Date("2026-10-15T12:00:00Z")); });
@@ -28,10 +29,11 @@ const PLTR = [
   { date: "2026-11-02", dateType: "announcement", currency: "USD", fiscalPeriod: "2026-09", epsEstimate: 0.41222, epsAnalysts: 24,
     epsBasis: null, dateStatus: "confirmed" },
   { date: "2026-08-03", dateType: "announcement", currency: "USD", fiscalPeriod: "2026-06", epsEstimate: 0.28, epsActual: 0.31,
-    difference: 0.03, epsBasis: "adjusted", dateStatus: "reported" },
+    difference: 0.03, surprisePercent: 10.71, epsBasis: "adjusted", dateStatus: "reported" },
   { date: "2026-02-02", dateType: "announcement", currency: "USD", fiscalPeriod: "2025-12", epsEstimate: 0.17, epsActual: 0.24,
-    difference: 0.07, epsBasis: "gaap", dateStatus: "reported" },
-  { date: "2025-05-05", dateType: "announcement", currency: "USD", epsEstimate: 0.08, epsActual: 0.04, difference: -0.04, epsBasis: null },
+    difference: 0.07, surprisePercent: 41.18, epsBasis: "gaap", dateStatus: "reported" },
+  { date: "2025-05-05", dateType: "announcement", currency: "USD", epsEstimate: 0.08, epsActual: 0.04,
+    difference: -0.04, surprisePercent: -50, epsBasis: null },
 ];
 
 test("events preserve earnings inputs in NDJSON while formatting known bases, periods and rounded estimates", async () => {
@@ -40,7 +42,7 @@ test("events preserve earnings inputs in NDJSON while formatting known bases, pe
     "est $0.41, confirmed, 24 analysts (Sep 2026)",
     "eps $0.31, EPS basis unconfirmed (Jun 2026)",
     "eps $0.24, GAAP, +0.07 vs est (Dec 2025)",
-    "eps $0.04, -0.04 vs est",
+    "eps $0.04",
   ]);
   expect(rows[0]).toMatchObject({ type: "earnings", date: "2026-11-02", epsEstimate: 0.41222, epsAnalysts: 24, dateStatus: "confirmed", fiscalPeriod: "2026-09" });
   // An upcoming estimate no basis was served for carries none.
@@ -55,6 +57,27 @@ test("events preserve earnings inputs in NDJSON while formatting known bases, pe
   const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options);
   expect(csv.split("\n")[0]).toStartWith("Date,Type,Detail,");
   expect(csv.split("\n")[0]).not.toContain("eps");
+});
+
+test.each([PLTR[1]!, PLTR[2]!, PLTR[3]!])("calendar and events agree on the EPS comparison for $date", async (report) => {
+  const run = createTestCliContext({ dataProvider: {
+    getCorporateActions: async () => ({ symbol: "PLTR", currency: "USD", dividends: [], splits: [], earnings: [report] }),
+    getEarningsCalendar: async () => [{ symbol: "PLTR:NASDAQ", name: "Palantir Technologies Inc.", earningsDate: new Date(`${report.date}T20:00:00Z`),
+      isDateEstimate: false, epsEstimate: report.epsEstimate, epsActual: null, surprise: null, revenueEstimate: null, revenueActual: null, timing: "AMC" }],
+  } });
+  await calendar.execute(["PLTR:NASDAQ"], run.context);
+  await events.execute(["PLTR:NASDAQ"], run.context);
+  const calendarRow = run.printed[0]!.result.data[0];
+  const eventsRow = run.printed[1]!.result.data.earnings[0];
+  const comparable = report.epsBasis === "gaap";
+  const observations = { epsActual: report.epsActual, epsEstimate: report.epsEstimate, epsBasis: comparable ? "gaap" : null };
+  expect(calendarRow).toMatchObject({ ...observations, surprise: comparable ? report.surprisePercent : null });
+  expect(eventsRow).toMatchObject(observations);
+  if (comparable) expect(eventsRow).toMatchObject({ difference: report.difference, surprisePercent: report.surprisePercent });
+  else {
+    expect(eventsRow).not.toHaveProperty("difference");
+    expect(eventsRow).not.toHaveProperty("surprisePercent");
+  }
 });
 
 test("events is dated by when it was read: a row's date is when its event happens, so the newest past one is no as-of", async () => {

@@ -89,7 +89,7 @@ describe("corporate actions headless model", () => {
     expect(result.rows.filter((row) => row.status === "Dividend")).toHaveLength(8);
     expect(result.rows.find((row) => row.status === "Split")).toMatchObject({ date: "2020-08-31", detail: "4-for-1" });
     expect(result.notes).toBeUndefined();
-    expect(result.textRows?.map((row) => [row.date, row.eps, row.estimate, row.surprise])).toEqual([["2024-08-01", "1.40 USD", "1.35 USD", "+3.70%"]]);
+    expect(result.textRows?.map((row) => [row.date, row.eps, row.estimate, row.surprise])).toEqual([["2024-08-01", "1.40 USD", "1.35 USD", "—"]]);
     const [nextUp, years] = result.textSections ?? [];
     expect(nextUp?.entries?.map((entry) => entry.formatted)).toEqual(["10 May 2024  $0.25"]);
     expect(years?.rows?.map((row) => `${row.year} ${row.paid} ${row.detail}`.trim())).toEqual([

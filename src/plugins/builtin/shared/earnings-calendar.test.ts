@@ -24,7 +24,8 @@ test("an already reported company's EPS keeps its own comparison when the ticker
     streetEps: { actual: 9.16, estimate: 6.55, actualBasis: "including-stock-compensation", analysts: 8 } };
   expect(resolveEarningsActions([filed], calendar, date)).toEqual([filed]);
   const resolved = resolveCalendarEvent(calendar, [filed], date);
-  expect(resolved).toMatchObject({ epsActual: 9.45, epsBasis: "company-adjusted", streetEps: filed.streetEps, epsEstimate: null, epsAnalysts: null, epsHigh: null, surprise: null });
+  expect(resolved).toMatchObject({ epsActual: 9.45, epsBasis: "company-adjusted", gaapEps: 8.82, streetEps: filed.streetEps,
+    epsEstimate: null, epsAnalysts: null, epsHigh: null, surprise: null });
   expect(resolved.estimateBasis).toEqual({ revenueEstimate: CONSENSUS });
 });
 
@@ -104,13 +105,13 @@ test("a date gone by is reported, with the actual and the estimate it was measur
 test("a surprise against a loss estimate is N/M: no percentage, the record's either, and the difference kept", () => {
   // CRWV's June quarter: a loss of 1.14 against 1.47 expected.
   const record: EarningsAction[] = [{ date: "2026-08-11", epsEstimate: -1.47, surprisePercent: -22.45, dateStatus: "confirmed" }];
-  const out = event("CRWV", "2026-08-11T20:05:00Z", { timing: "AMC", epsEstimate: -1.47, epsActual: -1.14 });
+  const out = event("CRWV", "2026-08-11T20:05:00Z", { timing: "AMC", epsEstimate: -1.47, epsActual: -1.14, epsBasis: "gaap" });
   const [row] = resolveEarningsActions(record, out, "2026-08-12");
   expect(row).toMatchObject({ date: "2026-08-11", dateStatus: "reported", epsActual: -1.14, epsEstimate: -1.47, difference: 0.33 });
   expect(row!.surprisePercent).toBeUndefined();
   // Against a profit expected, the percentage stands.
   const [profit] = resolveEarningsActions([{ date: "2026-08-11", epsEstimate: 0.5, dateStatus: "confirmed" }],
-    event("X", "2026-08-11T20:05:00Z", { timing: "AMC", epsEstimate: 0.5, epsActual: 0.55 }), "2026-08-12");
+    event("X", "2026-08-11T20:05:00Z", { timing: "AMC", epsEstimate: 0.5, epsActual: 0.55, epsBasis: "gaap" }), "2026-08-12");
   expect(profit).toMatchObject({ epsActual: 0.55, difference: 0.05, surprisePercent: 10 });
 });
 
@@ -119,10 +120,21 @@ test("a reported calendar event keeps the revenue, range and basis it carries fo
     epsEstimate: 1, epsActual: 1.1, epsLow: 0.9, epsHigh: 1.2, revenueEstimate: 500, revenueActual: 520, surprise: 10,
     estimateBasis: { epsEstimate: CONSENSUS, epsLow: CONSENSUS, epsHigh: CONSENSUS, revenueEstimate: CONSENSUS },
   });
-  const kept = { dateStatus: "reported", epsEstimate: 1, epsActual: 1.1, epsLow: 0.9, epsHigh: 1.2,
+  const kept = { dateStatus: "reported", epsEstimate: 1, epsActual: 1.1, epsLow: 0.9, epsHigh: 1.2, epsBasis: null, surprise: null,
     revenueEstimate: 500, revenueActual: 520, estimateBasis: out.estimateBasis, timing: "BMO" };
   expect(resolveCalendarEvent(out, null, TODAY)).toMatchObject(kept);
   expect(resolveCalendarEvent(out, [{ date: "2026-10-15", epsEstimate: 1, epsActual: 1.1, dateStatus: "reported" }], TODAY)).toMatchObject(kept);
+});
+
+test("a calendar actual does not inherit a pending estimate's basis or a different pair's surprise", () => {
+  const date = "2026-10-15";
+  const calendar = event("AAA", `${date}T12:30:00Z`, { epsEstimate: 1, epsActual: 1.1, surprise: 10 });
+  const [filled] = resolveEarningsActions([{ date, epsEstimate: 1, epsBasis: "gaap" }], calendar, TODAY);
+  expect(filled).toMatchObject({ epsActual: 1.1, epsEstimate: 1, epsBasis: null });
+  expect(filled!.surprisePercent).toBeUndefined();
+  const report: EarningsAction = { date, epsActual: 1.1, epsEstimate: 1.05, epsBasis: "gaap", surprisePercent: 4.76 };
+  expect(resolveCalendarEvent(calendar, [report], TODAY)).toMatchObject({ epsActual: 1.1, epsEstimate: 1, epsBasis: null, surprise: null });
+  expect(resolveCalendarEvent({ ...calendar, epsBasis: "gaap" }, null, TODAY)).toMatchObject({ epsBasis: "gaap", surprise: 10 });
 });
 
 test("a report out today is reported in every source once Gloom Cloud has it out, its actual once known", () => {

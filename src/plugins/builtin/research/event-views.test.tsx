@@ -30,7 +30,7 @@ beforeAll(() => { setSystemTime(new Date("2026-11-24T15:00:00Z")); });
 afterAll(() => { setSystemTime(); });
 
 const reported = (date: string, fiscalPeriod: string, epsActual: number, epsEstimate: number) => (
-  { date, dateType: "announcement" as const, fiscalPeriod, epsActual, epsEstimate, currency: "USD" });
+  { date, dateType: "announcement" as const, fiscalPeriod, epsActual, epsEstimate, epsBasis: "gaap" as const, currency: "USD" });
 const paid = (exDate: string, amount: number) => ({ exDate, amount });
 
 const ACTIONS: CorporateActionsData = {
@@ -336,7 +336,7 @@ describe("EE's views", () => {
   test("a quarter the feed has only by its period end is listed, and opens on its own figures, never a same-day pending announcement's", async () => {
     await mount({ actions: async () => ({ symbol: "TEST", currency: "USD", dividends: [], splits: [], earnings: [
       { date: "2026-09-30", dateType: "announcement", epsEstimate: 2.2 },
-      { date: "2026-09-30", dateType: "fiscal-period-end", epsActual: 2, epsEstimate: 1.8, currency: "USD" },
+      { date: "2026-09-30", dateType: "fiscal-period-end", epsActual: 2, epsEstimate: 1.8, epsBasis: "gaap", currency: "USD" },
     ] }) });
     expect(line("30 Sep 2026")).toMatch(/Sep 2026\s+2\.00\s+1\.80\s+\+11\.11%/);
     // Under the next quarter analysts estimate.

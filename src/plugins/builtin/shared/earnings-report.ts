@@ -30,7 +30,7 @@ export function dateStatusFromEstimateFlag(isDateEstimate: boolean | null | unde
 export type EpsBasisName = "GAAP" | "adjusted" | "company-adjusted" | "unknown";
 
 /** What the basis names mean, in every report's metadata. */
-export const EPS_BASIS_NOTE = "GAAP: diluted statement EPS. Company-adjusted (coAdj): diluted EPS as the company defines it. A separately identified street actual includes stock compensation. A street actual that differs from statement EPS does not establish an adjusted basis or prove that the estimate is comparable. When that is all an adjusted label tells us, the basis is unconfirmed and no surprise is shown.";
+export const EPS_BASIS_NOTE = "GAAP: diluted statement EPS. Company-adjusted (coAdj): diluted EPS as the company defines it. A separately identified street actual includes stock compensation. A street actual that differs from statement EPS does not establish an adjusted basis or prove that the estimate is comparable. No surprise is shown when the comparison basis is unknown or unconfirmed.";
 export const EPS_BASIS_UNCONFIRMED = "EPS basis unconfirmed";
 
 interface EpsComparisonRow {
@@ -51,7 +51,8 @@ export function displayEarningsEpsBasis(row: EpsComparisonRow): EarningsEpsBasis
 }
 
 export function canCompareReportedEps(row: EpsComparisonRow): boolean {
-  return row.epsBasis !== "company-adjusted" && !unconfirmedAdjustedEps(row);
+  const basis = displayEarningsEpsBasis(row);
+  return row.epsActual != null && (basis === "gaap" || basis === "adjusted");
 }
 
 /** The basis as rows, exports and tools name it. */
@@ -121,9 +122,8 @@ export function epsBasisShort(basis: EarningsEpsBasis | null): string {
 
 /**
  * A reported row's detail names a known basis as ERN's Basis column does. An
- * unknown one says nothing a reader can use in a sentence ("unknown, +0.07 vs
- * est"), so the detail leaves it out; the row's `epsBasis`, its drilldown and
- * ERN's column still say it.
+ * unknown one is left out of the detail, along with any beat; the row's
+ * `epsBasis`, its drilldown and ERN's column still say it.
  */
 const BASIS_TEXT: Record<EpsBasisName, string> = { GAAP: "GAAP", adjusted: "adj", "company-adjusted": "company-adjusted diluted", unknown: "" };
 
@@ -148,8 +148,8 @@ export function earningsDetailParts(earning: EarningsRecord & Pick<EpsComparison
     return [status === "reported" ? (actualPending(earning) ? ACTUAL_PENDING : null) : status, earning.epsAnalysts != null ? `${earning.epsAnalysts} analysts` : null,
       earningsEpsBasis(earning.epsBasis) === "adjusted" ? BASIS_TEXT.adjusted : null].filter((part): part is string => !!part);
   }
-  if (unconfirmedAdjustedEps(earning)) return [EPS_BASIS_UNCONFIRMED];
-  return [BASIS_TEXT[epsBasisName(earningsEpsBasis(earning.epsBasis))], isProvisionalActual(earning) ? "provisional" : null,
+  const basis = unconfirmedAdjustedEps(earning) ? EPS_BASIS_UNCONFIRMED : BASIS_TEXT[epsBasisName(earningsEpsBasis(earning.epsBasis))];
+  return [basis, isProvisionalActual(earning) ? "provisional" : null,
     lacksConsensus(earning) ? NO_CONSENSUS
       : !canCompareReportedEps(earning) || earning.difference == null ? null : `${earning.difference > 0 ? "+" : ""}${formatNumber(earning.difference, 2)} vs est`]
     .filter((part): part is string => !!part);

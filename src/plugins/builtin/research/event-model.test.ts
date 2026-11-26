@@ -112,7 +112,7 @@ test("fiscal period ends stay labeled and unknown EPS currency stays unknown", (
   const [row] = buildEventRows({ symbol: "COST", currency: "USD", dividends: [], splits: [],
     earnings: [{ date: "2026-05-31", dateType: "fiscal-period-end", epsActual: 4.93, difference: 0.01 }],
   }, null, null, "USD");
-  expect(row).toMatchObject({ dateType: "fiscal-period-end", detail: "Period end; +0.01 vs est" });
+  expect(row).toMatchObject({ dateType: "fiscal-period-end", detail: "Period end" });
   expect(row?.epsCurrency).toBeUndefined();
 });
 
@@ -177,13 +177,13 @@ test("EE ignores dividends, adjustments and pending announcements when assessing
   } })).toEqual({ text: "Unavailable: earnings", failed: true });
 });
 
-test("period aliases retain exact filing provenance and raw surprise inputs", () => {
+test("period aliases retain exact filing provenance and raw EPS observations", () => {
   const evidence = { accessionNumber: "0000909832-26-000051", filed: "2026-06-03", startDate: "2026-02-16" };
   const [row] = buildEventRows({ symbol: "COST", providerId: "gloom", dividends: [], splits: [], earnings: [
     { date: "2026-05-31", dateType: "fiscal-period-end", epsActual: 4.93, epsEstimate: 4.9231, difference: 0.0069, surprisePercent: 0.14 },
   ] }, null, { quarterlyStatements: [{ date: "2026-05-10", providerDate: "2026-05-31", dateSource: "sec", dateEvidence: evidence, totalRevenue: 70_527_000_000, currency: "USD" }] }, "USD");
   expect(row).toMatchObject({ date: "2026-05-10", providerPeriodDate: "2026-05-31", fiscalPeriodEnd: "2026-05-10", period: "May 2026", dateEvidence: evidence,
-    qRevenue: 70_527_000_000, epsEstimate: 4.9231, epsActual: 4.93, epsDifference: 0.0069, surprisePercent: 0.14, epsBasis: "unknown" });
+    qRevenue: 70_527_000_000, epsEstimate: 4.9231, epsActual: 4.93, epsDifference: undefined, surprisePercent: undefined, epsBasis: "unknown" });
 });
 
 test("a resolved quarter shows ERN's figure, basis and fiscal quarter, and a pending report its date status and analysts", () => {
@@ -277,30 +277,37 @@ test("a press release's figure reads provisional until the calendar's replaces i
     { date: "2026-10-16", dateType: "announcement", currency: "USD", fiscalPeriod: "2026-09", epsEstimate: 7.07, epsActual: 9.18,
       difference: 2.11, epsBasis: "adjusted", dateStatus: "reported", ...(epsActualSource ? { epsActualSource } : {}) },
   ] }, null, null, "USD").find((row) => row.date === "2026-10-16");
-  expect(trv("press-release")).toMatchObject({ qEps: 9.18, epsBasis: "adjusted", epsProvisional: true, detail: "adj, provisional, +2.11 vs est" });
+  expect(trv("press-release")).toMatchObject({ qEps: 9.18, epsBasis: "adjusted", epsProvisional: true, surprisePercent: 29.84, detail: "adj, provisional, +2.11 vs est" });
   const settled = trv(undefined);
   expect(settled).toMatchObject({ qEps: 9.18, epsEstimate: 7.07, epsBasis: "unknown", detail: "EPS basis unconfirmed" });
   expect(settled?.epsDifference).toBeUndefined();
   expect(settled?.epsProvisional).toBeUndefined();
 });
 
+test("an unconfirmed adjusted actual also says when there is no consensus", () => {
+  const [row] = buildEventRows({ symbol: "TRV", dividends: [], splits: [], earnings: [
+    { date: "2026-10-16", epsActual: 9.18, epsBasis: "adjusted", dateStatus: "reported" },
+  ] }, null, null, "USD");
+  expect(row).toMatchObject({ epsActual: 9.18, epsBasis: "unknown", detail: "EPS basis unconfirmed, no consensus" });
+});
+
 test("a beat against a negative estimate: its surprise N/M, in N/M's tone, and the difference says it beat", () => {
   const [row] = buildEventRows({ symbol: "CRWV", dividends: [], splits: [], earnings: [
-    { date: "2026-08-11", dateType: "announcement", epsEstimate: -1.47, epsActual: -1.14, difference: 0.33, surprisePercent: -22.45 },
+    { date: "2026-08-11", dateType: "announcement", epsEstimate: -1.47, epsActual: -1.14, difference: 0.33, surprisePercent: -22.45, epsBasis: "gaap" },
   ] }, null, null, "USD");
   // A loss narrower than expected is no percentage of the loss expected: the source's -22.45% is not shown either.
-  expect(row).toMatchObject({ value: "N/M", tone: NOT_MEANINGFUL_TONE, detail: "+0.33 vs est", surpriseNotMeaningful: true });
+  expect(row).toMatchObject({ value: "N/M", tone: NOT_MEANINGFUL_TONE, detail: "GAAP, +0.33 vs est", surpriseNotMeaningful: true });
   expect(row!.surprisePercent).toBeUndefined();
   const [miss] = buildEventRows({ symbol: "CRWV", dividends: [], splits: [], earnings: [
-    { date: "2026-05-07", dateType: "announcement", epsEstimate: -1.17, epsActual: -1.38, difference: -0.21 },
+    { date: "2026-05-07", dateType: "announcement", epsEstimate: -1.17, epsActual: -1.38, difference: -0.21, epsBasis: "gaap" },
   ] }, null, null, "USD");
-  expect(miss).toMatchObject({ value: "N/M", tone: NOT_MEANINGFUL_TONE, detail: "-0.21 vs est" });
+  expect(miss).toMatchObject({ value: "N/M", tone: NOT_MEANINGFUL_TONE, detail: "GAAP, -0.21 vs est" });
   const [zero] = buildEventRows({ symbol: "X", dividends: [], splits: [], earnings: [
-    { date: "2026-05-07", dateType: "announcement", epsEstimate: 0, epsActual: 0.02 },
+    { date: "2026-05-07", dateType: "announcement", epsEstimate: 0, epsActual: 0.02, epsBasis: "gaap" },
   ] }, null, null, "USD");
   expect(zero).toMatchObject({ value: "N/M", tone: NOT_MEANINGFUL_TONE });
   const [positive] = buildEventRows({ symbol: "X", dividends: [], splits: [], earnings: [
-    { date: "2026-05-07", dateType: "announcement", epsEstimate: 0.5, epsActual: 0.55 },
+    { date: "2026-05-07", dateType: "announcement", epsEstimate: 0.5, epsActual: 0.55, epsBasis: "gaap" },
   ] }, null, null, "USD");
   expect(positive).toMatchObject({ surprisePercent: 10, value: "+10.00%", tone: "positive" });
 });
