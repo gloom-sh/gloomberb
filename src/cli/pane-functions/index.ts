@@ -690,6 +690,7 @@ async function capturePaneScreenshot(args: string[], ctx: CliCommandContext, onS
         fitRows: parsed.heightGiven !== true,
         options: parsed.options,
         onlyUsable,
+        strict: parsed.strict === true,
         onStalledReport,
         onDrawing: progress.drawing,
       }).finally(progress.stop).catch(async (error: unknown) => {
@@ -710,9 +711,9 @@ async function capturePaneScreenshot(args: string[], ctx: CliCommandContext, onS
       }
       // Text prints a warning on stderr, out of the way of piped output; JSON carries it in the envelope.
       const read = parsed.listing ? listingReadNotes(parsed.listing) : [];
-      // A column cut at the table's edge is named, and does not make the picture unusable (or fail --strict).
+      // A column cut at the table's edge is named. The picture stays usable, except to --strict, whose Reason then says it.
       const cut = shotCutColumnsWarning(result.cutColumns);
-      const warnings = [...read, ...parsed.listingNotes ?? [], ...shotSizeWarnings(parsed.clamped, parsed), ...cut ? [cut] : []];
+      const warnings = [...read, ...parsed.listingNotes ?? [], ...shotSizeWarnings(parsed.clamped, parsed), ...cut && cut !== result.unusableReason ? [cut] : []];
       ctx.printResult({ data: result, ...(warnings.length > 0 ? { warnings } : {}) }, {
         text: (data) => {
           const issues = shotStatusIssues(data);

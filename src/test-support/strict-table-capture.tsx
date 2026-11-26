@@ -39,7 +39,7 @@ export function assessDrawnTables(container: HTMLElement, registry: RemoteUiRegi
   return assessPaneScreenshot(DATA_PANE, { financials: [] } as unknown as DesktopPaneShotPayload, {
     visibleText: container.textContent ?? "", rows, truncated: false, truncationReasons: [], loadingStateDetected: false,
     errorStateDetected: false, errorStateMarkers: [], emptyStateDetected: false, emptyStateMarkers: [], visibleKeyValues: [], semanticUi,
-  } as DesktopPaneShotRenderResult, "", "/tmp/strict-table-test.png");
+  } as DesktopPaneShotRenderResult, "", "/tmp/strict-table-test.png", { strict: true });
 }
 
 /**

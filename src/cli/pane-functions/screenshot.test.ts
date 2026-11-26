@@ -766,11 +766,11 @@ describe("a capture of a pane that marks no rows", () => {
     capability: { id: "equity-diagnostic-pane", botSafe: false, outputKind: "rendered-view", reportReadiness: "live-dom", screenshotReadiness: "live-dom", options: [] },
   } as unknown as ResolvedPaneFunction;
   const chat = { ...diag, token: "CHAT", pane: { id: "chat", name: "Chat" }, instance: { instanceId: "chat", paneId: "chat" } } as unknown as ResolvedPaneFunction;
-  const assess = (resolved: ResolvedPaneFunction, render: Partial<DesktopPaneShotRenderResult>) => assessPaneScreenshot(
+  const assess = (resolved: ResolvedPaneFunction, render: Partial<DesktopPaneShotRenderResult>, options?: { strict?: boolean }) => assessPaneScreenshot(
     resolved, { financials: [] } as unknown as DesktopPaneShotPayload, {
       visibleText: "", rows: [], truncated: false, truncationReasons: [], loadingStateDetected: false, errorStateDetected: false,
       errorStateMarkers: [], emptyStateDetected: false, emptyStateMarkers: [], visibleKeyValues: [], semanticUi: [], ...render,
-    }, "", "/tmp/shot-test.png",
+    }, "", "/tmp/shot-test.png", options,
   );
 
   // DIAG's prose and CORR's matrix were "not verifiable" for want of table rows, however much they showed.
@@ -883,16 +883,25 @@ describe("a capture of a pane that marks no rows", () => {
     expect(paneStateMarkers(`HP AAPL Failed to fetch ${insNote}`, [insNote]).error).toEqual(["Failed to fetch"]);
   });
 
-  // AUCT's after view at 720px lost +5D, +20D and the CUSIP past the table's edge unsaid. Nineteen other panes cut one
-  // there too, so it is a named warning for now, not a failed --strict; FA's centred headers read "The       FY2024      ,".
-  test("a column cut at its table's edge is named in a warning and leaves the picture usable; padded headers read clean", () => {
+  // AUCT's after view at 720px lost +5D, +20D and the CUSIP past the table's edge unsaid, and nineteen other panes cut
+  // a column there. Tables now leave whole columns out at that width, so a cut one fails --strict again; any other
+  // capture names it in a warning and stays usable. FA's centred headers read "The       FY2024      ,".
+  test("a column cut at its table's edge fails a strict capture by name, and is a warning that leaves any other usable", () => {
     const row = { tableIndex: 0, rowIndex: 0, selected: false, cells: [{ columnId: "date", columnLabel: "DATE", text: "Nov 10" }] };
-    const cut = assess(diag, { rows: [row, row, row], cutColumns: ["      FY2025      ", "      FY2024      ", "FY2024", " "] });
+    const render = { rows: [row, row, row], cutColumns: ["      FY2025      ", "      FY2024      ", "FY2024", " "] };
+    const sentence = "The FY2025 and FY2024 columns are cut at this width: a wider --width shows them.";
+    const cut = assess(diag, render);
     expect(cut).toMatchObject({ usable: true, unusableReason: null, cutColumns: ["FY2025", "FY2024"] });
-    expect(shotCutColumnsWarning(cut.cutColumns)).toBe("The FY2025 and FY2024 columns are cut at this width: a wider --width shows them.");
+    expect(shotCutColumnsWarning(cut.cutColumns)).toBe(sentence);
     expect(shotCutColumnsWarning(["+20D BP"])).toBe("The +20D BP column is cut at this width: a wider --width shows it.");
-    const whole = assess(diag, { rows: [row, row, row] });
-    expect([whole.cutColumns, shotCutColumnsWarning(whole.cutColumns)]).toEqual([undefined, null]);
+    expect(assess(diag, render, { strict: true })).toMatchObject({ usable: false, unusableReason: sentence, cutColumns: ["FY2025", "FY2024"] });
+    // What the pane itself failed at is still the reason: the cut columns stay named beside it.
+    expect(assess(diag, { ...render, errorStateDetected: true, errorStateMarkers: ["Failed to fetch"] }, { strict: true }))
+      .toMatchObject({ usable: false, unusableReason: 'The pane rendered an error state. It reads "Failed to fetch".', cutColumns: ["FY2025", "FY2024"] });
+    for (const strict of [false, true]) {
+      const whole = assess(diag, { rows: [row, row, row] }, { strict });
+      expect([whole.usable, whole.cutColumns, shotCutColumnsWarning(whole.cutColumns)]).toEqual([true, undefined, null]);
+    }
   });
 
   test("an error or empty state's Reason keeps its sentence and quotes what the pane said", () => {

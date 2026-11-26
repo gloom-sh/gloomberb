@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildTableGridTemplateColumns,
   dropColumnsToFit,
+  fitColumnsToWidth,
   fitTableCellText,
   fitTableColumns,
   fitTableHeaderText,
@@ -85,6 +86,51 @@ describe("table layout", () => {
     expect(ids(fits(4), [["a", "b"], "c"])).toBe("cde");
     // Columns not in the order stay, so the table can still overflow.
     expect(ids(fits(1), ["a"])).toBe("bcde");
+  });
+
+  test("a table that cuts at its edge keeps whole columns: the listed ones leave first, then the last, never the kept", () => {
+    const columns = ["id", "name", "last", "chg", "vol", "asof"].map((id) => ({ id, label: id.toUpperCase(), width: 8, align: "right" }));
+    const shown = (width: number, options?: Parameters<typeof fitColumnsToWidth>[2]) => {
+      const fitted = fitColumnsToWidth(columns, width, options);
+      return { ids: fitted.map((column) => column.id).join(" "), hidden: hiddenTableColumns(fitted).join(" ") };
+    };
+    const room = (count: number) => getTableWidth(columns.slice(0, count));
+
+    // Everything fits, by the table's own measure of an overflow (a cell over is none): the same array, nothing marked.
+    expect(fitColumnsToWidth(columns, room(6) - 1)).toBe(columns);
+    // No order: the trailing columns leave, and the table names them in its own order.
+    expect(shown(room(4))).toEqual({ ids: "id name last chg", hidden: "VOL ASOF" });
+    // An order goes first, least needed first; a pair leaves together though one of it would have made room.
+    expect(shown(room(5), { dropOrder: ["name", "vol"] })).toEqual({ ids: "id last chg vol asof", hidden: "NAME" });
+    expect(shown(room(5), { dropOrder: [["name", "vol"]] })).toEqual({ ids: "id last chg asof", hidden: "NAME VOL" });
+    // Past the order, the unlisted columns leave from the last back, so nothing is ever left to cut.
+    expect(shown(room(2), { dropOrder: ["name", "vol"] })).toEqual({ ids: "id last", hidden: "NAME CHG VOL ASOF" });
+    // The columns that name the row and the sorted one stay whatever the order says.
+    expect(shown(room(3), { dropOrder: ["name", "vol"], keep: ["id", "asof", "name"] })).toEqual({ ids: "id name asof", hidden: "LAST CHG VOL" });
+    // Narrower than the kept columns alone: they stay, and the table scrolls as it did.
+    expect(shown(4, { keep: ["id", "asof"] }).ids).toBe("id asof");
+    // A width not measured yet fits nothing.
+    expect(fitColumnsToWidth(columns, 0)).toBe(columns);
+  });
+
+  test("whatever the widths and the order, the columns a fit keeps do not overflow unless only kept ones are left", () => {
+    let seed = 7;
+    const next = (bound: number) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % bound; };
+    for (let round = 0; round < 300; round += 1) {
+      const columns = Array.from({ length: 2 + next(12) }, (_, index) => ({
+        id: `c${index}`, label: "X".repeat(1 + next(12)), width: 3 + next(24), align: next(2) ? "right" : "left",
+      }));
+      const ids = columns.map((column) => column.id);
+      const keep = [ids[0]!, ...(next(2) ? [ids[next(ids.length)]!] : [])];
+      const dropOrder = ids.filter(() => next(3) === 0).sort(() => next(3) - 1);
+      const width = 10 + next(160);
+      const fitted = fitColumnsToWidth(columns, width, { keep, dropOrder });
+      const overflows = hasMeaningfulTableHorizontalOverflow(getTableWidth(fitted), width, 1);
+      if (overflows) expect(fitted.map((column) => column.id).filter((id) => !keep.includes(id))).toEqual([]);
+      // Whole columns in the table's order, and every kept one among them.
+      expect(fitted.map((column) => column.id)).toEqual(ids.filter((id) => fitted.some((column) => column.id === id)));
+      expect(keep.every((id) => fitted.some((column) => column.id === id))).toBe(true);
+    }
   });
 
   test("a terminal table gives up the blank past its text before it cuts a name or pushes a column past the edge", () => {

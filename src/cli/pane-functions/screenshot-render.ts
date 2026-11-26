@@ -261,6 +261,7 @@ export async function renderDesktopShot({
   options,
   captureImage = true,
   onlyUsable = false,
+  strict = false,
   onStalledReport,
   onDrawing,
 }: {
@@ -284,6 +285,8 @@ export async function renderDesktopShot({
   options: Record<string, string | true>;
   captureImage?: boolean;
   onlyUsable?: boolean;
+  /** `shot --strict`: a column cut at its table's edge makes the picture unusable rather than warned about. */
+  strict?: boolean;
   /**
    * Called when the report behind the status line was still loading at the
    * wait's end: the load was aborted, but a loader that ignores the signal
@@ -391,7 +394,7 @@ export async function renderDesktopShot({
   }
   const renderedInstance = payload.config.layout.instances.find(({ instanceId }) => instanceId === payload.paneId);
   if (renderedInstance) resolved = { ...resolved, instance: renderedInstance };
-  const assessed = withReportCoverage(assessPaneScreenshot(resolved, payload, render, rawArg, outputPath), covered);
+  const assessed = withReportCoverage(assessPaneScreenshot(resolved, payload, render, rawArg, outputPath, { strict }), covered);
   const save = image && (!onlyUsable || assessed.usable) ? image : undefined;
   if (save) await writeOutputFile(outputPath, save);
   const unreadRows = payload.unreadRows?.length ? { unreadRows: payload.unreadRows, ...(payload.unreadReasons ? { unreadReasons: payload.unreadReasons } : {}) } : {};

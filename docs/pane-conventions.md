@@ -528,6 +528,36 @@ this, except:
   symbol in FUT and WEI); `key` separates two tables in one pane that name
   their rows with the same column but are otherwise unrelated.
 
+**Columns in a narrow pane.** A table never draws a column cut at its edge.
+On the desktop and the web a table too narrow for its columns draws whole
+columns only: the least needed leave, a line above the header names them
+(`2 hidden · FY2023, FY2022`), and More on that line, Shift+Right or "Show All
+Columns" in the pane menu draws them all in a table that scrolls sideways
+(Shift+Left at its start, or "Fit Columns", fits them again). The terminal
+gives up the blank in its columns first, draws the whole ones and scrolls to
+the rest (`more ⇧→`). Exports, `fn` reports and automation keep every column
+at any width. A pane does nothing for this, except say what matters:
+
+- With no order given the trailing columns leave first, so put what the row
+  is read for first: FA gives up its oldest periods, ATS its trade counts,
+  HVT its sample count.
+- Where a later column outranks an earlier one, pass `columnDropOrder`, least
+  needed first. Give up a name that repeats its ticker, a second way of
+  saying a figure and wording the row's detail holds, before an identifier,
+  the figures the pane is for, or the date a figure is as of: RV gives up the
+  name and the day's move before a multiple, MDAY the prior and the forecast
+  before the move, ALRT the session before the quote's time. An entry of
+  several ids leaves together: OMON's calls and puts give up the same field,
+  VCA's skew goes with its date.
+- The columns that name the row (`anchored`, the first by default) and the
+  sorted column never leave, whatever the order says.
+- `dropColumnsToFit` in the pane is for a column that leaves in the terminal
+  too, by the pane's own width (PF's valuation columns, AUCT's); the same
+  line names it. The table's fit then covers what that order did not.
+
+`shot --strict` fails a capture that cut a column, and names it; a table drawn
+outside the kit owes the same fit.
+
 **Unavailable table columns.** Check the source before treating an empty column
 as missing coverage: fix a dropped field rather than hiding it. A value every
 row can be waiting on, such as reported EPS and its basis before earnings, uses

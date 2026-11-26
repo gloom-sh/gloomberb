@@ -213,11 +213,6 @@ export function fitColumnsToWidth<C extends TableWidthColumn & { id: string }>(
   return markHiddenTableColumns(columns, shown);
 }
 
-/** The ids of the columns a fit left out (`fitColumnsToWidth`, `dropColumnsToFit`), in the table's order. */
-export function hiddenTableColumnIds(columns: readonly TableWidthColumn[]): string[] {
-  return hiddenColumnEntries(columns).map(({ id }) => id);
-}
-
 /**
  * Where each column's content starts, in cells from the first column, counting
  * the gap after every column and any lead gap before it. Takes columns already
