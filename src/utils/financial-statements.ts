@@ -176,6 +176,7 @@ export interface FillDate {
   label: "read" | "published" | "catalogue" | "comparative";
   /** YYYY-MM-DD; null for a comparative whose later period's first announcement is not known. */
   date: string | null;
+  catalogueSource?: "issuer";
 }
 
 /** The same day a year on. */
@@ -222,7 +223,7 @@ export function fillDate(row: FilledRow, rows: readonly FilledRow[] = []): FillD
   const later = next && next < yearOn && !(fill.source === "results" && fill.derived) ? next : yearOn;
   const currentDoc = docs.find(({ date }) => date >= periodEnd && date <= later)
     ?? docs.find(({ date }) => date >= periodEnd);
-  if (idx && currentDoc?.catalogue) return { label: "catalogue", date: currentDoc.date };
+  if (currentDoc?.catalogue) return { label: "catalogue", date: currentDoc.date, ...(!idx ? { catalogueSource: "issuer" } : {}) };
   const own = dates.find((date) => date >= periodEnd && date <= later);
   if (own || row.aggregation || dates.length === 0 || !dates.every((date) => date > later)) {
     return { label: "published", date: own ?? dates.find((date) => date >= periodEnd) ?? dates[0] ?? null };
@@ -244,7 +245,7 @@ export function fillDate(row: FilledRow, rows: readonly FilledRow[] = []): FillD
 /** How a filled column's date reads: "announced 2026-08-20", "comparative in the 2026-08-20 announcement". */
 export function fillDateText(date: FillDate): string {
   if (date.label === "read") return `read ${date.date}`;
-  if (date.label === "catalogue") return `IDX catalogue date ${date.date}`;
+  if (date.label === "catalogue") return `${date.catalogueSource === "issuer" ? "Issuer" : "IDX"} catalogue date ${date.date}`;
   if (date.label === "published") return `announced ${date.date}`;
   return date.date ? `comparative in the ${date.date} announcement` : "comparative in a later announcement";
 }
@@ -254,7 +255,9 @@ function filledPeriods(statements: readonly FilledRow[], shown?: ReadonlySet<str
   return statements.flatMap(({ date, filledFrom, aggregation }) => {
     const source = filledFrom?.source === "results" && filledFrom.documents.some((document) => document.source === "idx")
       ? "Indonesia Stock Exchange filings"
-      : filledFrom && FILL_SOURCES[filledFrom.source];
+      : filledFrom?.source === "results" && filledFrom.documents.some((document) => document.source === "ir" && document.dateBasis === "catalogue")
+        ? "issuer financial statements"
+        : filledFrom && FILL_SOURCES[filledFrom.source];
     const fields = [...new Set((filledFrom?.fields ?? [])
       .filter((field) => FILL_FIELDS[field] && (!shown || shown.has(field)))
       .map((field) => FILL_FIELDS[field]))];
@@ -306,7 +309,7 @@ export function filledPeriodsNote(
   // Each announcement dates its own periods: "TTM revenue; 2025-12-31 revenue (published 2026-03-25)", and
   // a comparative column the later period's: "2025-06-30 revenue (comparative in the 2026-08-20 announcement)".
   if (filled.every(({ stamp }) => stamp.label !== "read")) {
-    const stampText = ({ label, date }: FillDate) => (label === "published" ? `published ${date}` : fillDateText({ label, date }));
+    const stampText = (stamp: FillDate) => (stamp.label === "published" ? `published ${stamp.date}` : fillDateText(stamp));
     const stamps = [...new Set(filled.map(({ stamp }) => stampText(stamp)))];
     const lines = (text: string) => filled.filter(({ stamp }) => stampText(stamp) === text).map(({ period, fields }) => `${period} ${fields.join(", ")}`).join("; ");
     note = `From ${sources.join(" and ")}: ${stamps.map((text) => `${lines(text)} (${text})`).join("; ")}.`;
