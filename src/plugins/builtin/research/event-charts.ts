@@ -2,7 +2,7 @@ import type { DividendAction } from "../../../types/financials";
 import { INCOMPLETE_DISTRIBUTIONS } from "../../../market-data/fund-actions";
 import { publishedDividend } from "../../../market-data/price-adjustments";
 import { MISSING_VALUE } from "../../../utils/format";
-import { epsBasisShort, NO_CONSENSUS, quarterLabel, type EpsBasisName } from "../shared/earnings-report";
+import { EPS_BASIS_UNCONFIRMED, epsBasisShort, NO_CONSENSUS, quarterLabel, type EpsBasisName } from "../shared/earnings-report";
 import { nextReportOf, quarterName, type EventRow } from "./event-model";
 
 /** How many reported quarters the Earnings chart and table show; EE and ERN have the older ones. */
@@ -69,6 +69,7 @@ function quarterDetail(quarter: EarningsQuarter, row: EventRow | undefined, basi
     return [...parts, ...(own ? [own] : [])].join(", ") || "Pending";
   }
   const parts = [
+    row?.epsComparisonUnconfirmed ? EPS_BASIS_UNCONFIRMED : null,
     quarter.basis && quarter.basis !== basis && (basis || quarter.basis !== "unknown") ? basisText(quarter.basis) : null,
     row?.epsProvisional ? "provisional" : null,
     quarter.withoutConsensus ? NO_CONSENSUS : null,

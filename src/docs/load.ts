@@ -92,6 +92,7 @@ export interface DocsFeedResult {
   feed: DocsFeed;
   /** The site could not be read; this is the saved or shipped copy. */
   offline: boolean;
+  bundled: boolean;
 }
 
 /** A saved copy older than the one the app shipped with loses to it. */
@@ -117,9 +118,11 @@ export async function loadDocsFeed({ force = false }: { force?: boolean } = {}):
       if (!feed) throw new Error("gloom.sh sent docs this version cannot read");
       return feed;
     }, { force });
-    return { feed: newer(result.data, shipped), offline: result.source === "stale-fallback" };
+    const feed = newer(result.data, shipped);
+    return { feed, offline: result.source === "stale-fallback", bundled: feed === shipped };
   } catch {
-    return { feed: newer(savedDocsFeed(), shipped), offline: true };
+    const feed = newer(savedDocsFeed(), shipped);
+    return { feed, offline: true, bundled: feed === shipped };
   }
 }
 

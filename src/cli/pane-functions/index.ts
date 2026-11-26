@@ -536,6 +536,7 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       const result = { data, exportFreshness: report.data.freshness, ...(warnings.length > 0 ? { warnings } : {}), ...(failure ? { failure } : {}) };
       const render = {
         text: () => glossary ? `${report.text}\n\n${renderReportGlossary(resolved.token, glossary)}` : report.text,
+        csvTrailingColumns: resolved.headless?.csvTrailingColumns,
         // A symbol of the list left out still has its row, with why.
         ...(tabular ? { tables: selectReportTables(withRefusedRows(report.tables, parsed.refusedListings), resolved.tableSection) } : {}),
       };
@@ -545,7 +546,7 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
         if (failure) failWithError({ ...failure, details: `Nothing was written to ${outputPath}.` });
         const written = renderForFile(() => serializeCliResult(result, ctx.cliOptions, render));
         const { csv, footer } = ctx.cliOptions.format === "csv" ? splitCsvFooter(written) : { csv: written, footer: [] };
-        await writeOutputFile(outputPath, `${ctx.cliOptions.format === "csv" ? portableCsv(written, warnings) : csv}\n`);
+        await writeOutputFile(outputPath, `${ctx.cliOptions.format === "csv" ? portableCsv(written, warnings, [], render.csvTrailingColumns) : csv}\n`);
         if (!ctx.cliOptions.quiet) for (const line of footer) console.error(line);
         // What was written and where; warnings go to stderr as they would beside printed rows, and JSON keeps its envelope.
         const saved = { output: outputPath, format: ctx.cliOptions.format, rows: report.data.rowCount, replaced: replacing };

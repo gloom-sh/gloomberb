@@ -458,6 +458,8 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       selectedTextOverridesCellColor
       getExportMetadata={() => sortedRows.flatMap((row) => [
         [row.symbol, "Quote as of", parseDisplayDate(row.quoteAsOf)?.toISOString() ?? "unavailable", "Stale", String(row.quoteStale ?? "unknown")],
+        ...(row.extendedSession && row.extendedUpdatedAt != null
+          ? [[row.symbol, `${extendedSessionStateLabel(row.extendedSession)} as of`, new Date(row.extendedUpdatedAt).toISOString()]] : []),
         [row.symbol, "Fundamentals retrieved", row.fundamentalsProvenance?.retrievedAt ?? "unavailable",
           "Stale", String(row.fundamentalsProvenance?.stale ?? "unknown")],
         ...(row.fundamentalsProvenance?.stale ? [[row.symbol, RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE]] : []),
