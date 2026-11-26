@@ -203,6 +203,34 @@ function bookColumns(width: number): ColumnGridColumn[] {
   ];
 }
 
+const undatedInWords = (part: string) => part === QUOTE_BOOK_UNDATED ? t("not dated") : part;
+
+/**
+ * The lines of the book's Time row in a book `width` cells wide. `parts` is
+ * the clock, then its session and feed (quoteBookTimeParts); `shortParts` the
+ * same with the clock a table's (`26 Nov 00:59 UTC`).
+ *
+ * - All of it beside the label where it fits, a blank after `Time`.
+ * - Else the clock beside the label, and the session and feed on one line
+ *   under it. That line has no label, so it runs the book's whole width.
+ * - A clock that would touch its label (`TimeThu 26 Nov 00:59 UTC`, in a book
+ *   24 cells wide) gives up its weekday before it wraps.
+ */
+export function quoteBookTimeLines(parts: readonly string[], shortParts: readonly string[], width: number): { clockLines: string[]; contextLines: string[] } {
+  const [clock, ...context] = parts;
+  if (!clock) return { clockLines: [], contextLines: [] };
+  // The label, and a blank after it.
+  const room = width - BOOK_LABEL_WIDTH - 1;
+  const whole = parts.join(" · ");
+  if (displayWidth(whole) <= room) return { clockLines: [whole], contextLines: [] };
+  const shortClock = shortParts[0] ?? clock;
+  const clockLines = displayWidth(clock) <= room ? [clock] : displayWidth(shortClock) <= room ? [shortClock] : wrapTextLines(clock, Math.max(1, room));
+  const contextText = context.join(" · ");
+  const contextLines = !contextText ? [] : displayWidth(contextText) <= width ? [contextText]
+    : context.flatMap((part) => wrapTextLines(part, Math.max(1, width)));
+  return { clockLines, contextLines };
+}
+
 export function QuoteBook({ quote, assetCategory, width, desktopWidth }: {
   quote: Quote;
   assetCategory?: string;
@@ -229,13 +257,11 @@ export function QuoteBook({ quote, assetCategory, width, desktopWidth }: {
   }
 
   // The book's own time, or that its source sent none: never the trade's time in the header beside it.
-  const [clock, ...context] = quoteBookTimeParts(quote).map((part) => part === QUOTE_BOOK_UNDATED ? t("not dated") : part);
-  const room = width - BOOK_LABEL_WIDTH;
-  const bookTime = [clock, ...context].join(" · ");
-  const contextText = context.join(" · ");
-  const clockLines = !clock ? [] : displayWidth(bookTime) <= room ? [bookTime]
-    : [...wrapTextLines(clock, room), ...(displayWidth(contextText) <= room ? contextText ? [contextText] : []
-      : context.flatMap((part) => wrapTextLines(part, room)))];
+  const { clockLines, contextLines } = quoteBookTimeLines(
+    quoteBookTimeParts(quote).map(undatedInWords),
+    quoteBookTimeParts(quote, undefined, { weekday: false }).map(undatedInWords),
+    width,
+  );
   const row = (label: string, value: string, color: string): ColumnGridCell[] => [{ text: label, color: colors.textDim }, { text: value, color }];
   return (
     <Box flexDirection="column" width={nativePaneChrome ? undefined : width} flexShrink={0} style={nativePaneChrome ? { width: desktopWidth } : undefined}>
@@ -251,6 +277,12 @@ export function QuoteBook({ quote, assetCategory, width, desktopWidth }: {
           ...clockLines.map((line, index) => row(index === 0 ? t("Time") : "", line, colors.textDim)),
         ]}
       />
+      {/* Its session and feed, under the clock: no label beside them, so they have the book's whole width. */}
+      {contextLines.map((line, index) => (
+        <Box key={index} flexDirection="row" height={1} width={nativePaneChrome ? undefined : width} justifyContent="flex-end" data-gloom-role="quote-book-context">
+          <Text fg={colors.textDim}>{line}</Text>
+        </Box>
+      ))}
     </Box>
   );
 }

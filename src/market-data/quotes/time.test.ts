@@ -5,7 +5,7 @@ import { mergeQuoteContribution, normalizeQuoteContribution } from "./contributi
 import { resolveCanonicalQuote } from "./resolution";
 import {
   formatQuoteAge, formatQuoteAgeWithSource, formatQuoteBookCell, formatQuoteBookTime, formatQuoteNavAsOf, QUOTE_BOOK_CELL_MAX_WIDTH,
-  QUOTE_BOOK_UNDATED,
+  QUOTE_BOOK_UNDATED, quoteBookTimeParts,
 } from "./time";
 
 describe("quote-time", () => {
@@ -107,6 +107,8 @@ test("a book is dated by its own quote time, carried and resolved with that book
     listingExchangeName: "ARCA", providerId: "gloomberb-cloud", dataSource: "delayed",
   })!;
   expect(formatQuoteBookTime(cloud, now)).toBe("Sat 21 Nov 00:55 UTC · after-hours · delayed");
+  // A book too narrow for the weekday dates it as a table does.
+  expect(quoteBookTimeParts(cloud, now, { weekday: false })).toEqual(["21 Nov 00:55 UTC", "after-hours", "delayed"]);
   expect(formatQuoteBookTime(cloud, Date.parse("2026-11-21T09:00:00Z"))).toBe("Sat 21 Nov 00:55 UTC · after-hours · delayed");
   const regular = Date.parse("2026-11-20T18:56:00Z");
   expect(formatQuoteBookTime({ ...cloud, bidAskTime: regular }, trade)).toBe("18:56 UTC · delayed");
