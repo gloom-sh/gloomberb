@@ -156,10 +156,11 @@ export function AlertHistoryPane({ focused, width, height }: PaneProps) {
   const selectedItem = items[selectedIndex];
   // A crosshair pinned in the tab picks the newest alert that went off by
   // then and mutes the later ones; the selection follows the pin when it
-  // moves, not when an alert comes in.
+  // moves, not when an alert comes in. It reads the id as stored, so a first
+  // row shown with none picked is no pick, and a picked alert that went out
+  // of the list sends the selection to the pin's alert rather than the top.
   const { isAfterPin } = usePinnedList<HistoryRow>("alert-history:pin", {
-    rows: items, getId: historyRowId, moment: historyRowMoment,
-    selectedId: selectedItem?.id ?? null, select: setSelectedId,
+    rows: items, getId: historyRowId, moment: historyRowMoment, selectedId, select: setSelectedId,
   });
   const selectedTarget = useMemo(() => selectedItem ? alertTarget(selectedItem.subject) : null, [selectedItem]);
   const openTarget = useOpenAlertTarget();

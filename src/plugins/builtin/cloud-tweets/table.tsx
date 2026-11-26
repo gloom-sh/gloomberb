@@ -414,13 +414,15 @@ export function TweetSearchTable({
 
   // A crosshair pinned in the tab picks the newest post out by then, whatever
   // the sort, and mutes the later ones, ticker badges too; the selection
-  // follows the pin when it moves, not when a refresh merges posts in.
+  // follows the pin when it moves, not when a refresh merges posts in. An
+  // open post stays open on itself, links too, while the pin moves; back on
+  // the list, the selection goes to the post at the pin.
   const { pinnedRow, isAfterPin } = usePinnedList<CloudTweetPayload>(`${footerId}:pin`, {
     enabled: !detailOpen,
     rows,
     getId: tweetId,
     moment: tweetMoment,
-    selectedId: selectedTweet?.id ?? null,
+    selectedId: selectedTweetId,
     select: setSelectedTweetId,
   });
 

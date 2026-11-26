@@ -105,6 +105,29 @@ function itemMoment(item: FeedDataTableItem): number | null {
 const rowId = (row: DetailRow) => row.item.id;
 const rowMoment = (row: DetailRow) => itemMoment(row.item);
 
+/** The item the selection is on, by id, and whether it went out of the list. */
+interface KeptSelection {
+  index: number;
+  id: string | null;
+  lost: boolean;
+}
+
+/**
+ * Where the selection is once the items or the owner's index change. The
+ * owner moving the index moves it. Items streaming in above it, or going out,
+ * leave it on the same item, though its index moves. When its item goes out,
+ * it takes the row now in its place, and says the item was `lost`, so a pin
+ * can pick the row at the pin instead.
+ */
+function keepSelection(kept: KeptSelection, items: readonly FeedDataTableItem[], index: number): KeptSelection {
+  const id = items[index]?.id ?? null;
+  if (index !== kept.index || kept.id === null) {
+    return index === kept.index && id === kept.id ? kept : { index, id, lost: false };
+  }
+  if (id === kept.id || items.some((item) => item.id === kept.id)) return kept;
+  return { index, id: items[Math.min(index, items.length - 1)]?.id ?? null, lost: true };
+}
+
 function compareText(a: string, b: string): number {
   return a.localeCompare(b, "en-US", { sensitivity: "base" });
 }
@@ -193,8 +216,24 @@ export function FeedDataTableStackView({
   const sortedRows = useMemo(() => {
     return sortIndexedStackRows(items, sortPreference, compareRows);
   }, [items, sortPreference]);
+  // The owner keeps an index; the table keeps the item at it. A streaming
+  // feed moves the owner's index along with the item (below), and the row
+  // drawn selected is the item's from the first frame.
+  const [keptState, setKept] = useState<KeptSelection>(() => ({ index: selectedIdx, id: items[selectedIdx]?.id ?? null, lost: false }));
+  let kept = keptState;
+  const nextKept = keepSelection(kept, items, selectedIdx);
+  if (nextKept !== kept) {
+    kept = nextKept;
+    setKept(nextKept);
+  }
+  const keptIdx = kept.id === null ? -1
+    : items[selectedIdx]?.id === kept.id ? selectedIdx : items.findIndex((item) => item.id === kept.id);
+  const shownIdx = keptIdx >= 0 ? keptIdx : selectedIdx;
+  useEffect(() => {
+    if (keptIdx >= 0 && keptIdx !== selectedIdx) onSelect(keptIdx);
+  }, [keptIdx, onSelect, selectedIdx]);
   const selectedRowIndex = sortedRows.findIndex(
-    (row) => row.itemIndex === selectedIdx,
+    (row) => row.itemIndex === shownIdx,
   );
   const activeRowIndex = activeStackIndex(sortedRows.length, selectedRowIndex);
   const openItem = useMemo(
@@ -244,17 +283,20 @@ export function FeedDataTableStackView({
   }, [activeOpenItemId, controlled, onOpenItemIdChange]);
 
   useEffect(() => {
-    if (items.length > 0 && selectedIdx >= items.length) {
+    if (keptIdx < 0 && items.length > 0 && selectedIdx >= items.length) {
       onSelect(Math.max(0, items.length - 1));
     }
-  }, [items.length, onSelect, selectedIdx]);
+  }, [items.length, keptIdx, onSelect, selectedIdx]);
 
   // Items out at an instant follow the tab's pinned crosshair, as the news
   // feeds do: the newest out by then is selected when the pin moves, the
-  // later ones read muted.
+  // later ones read muted. A selected item gone from the feed reads as no
+  // selection there, so the pin's row takes its place.
   const selectRow = useCallback((id: string) => {
     const row = sortedRows.find((entry) => entry.item.id === id);
-    if (row) onSelect(row.itemIndex);
+    if (!row) return;
+    setKept((current) => (current.lost ? { ...current, lost: false } : current));
+    onSelect(row.itemIndex);
   }, [onSelect, sortedRows]);
   const { isAfterPin } = usePinnedList<DetailRow>("feed-table:pin", {
     follows: timeColumn ? timeColumn.instant === true : true,
@@ -262,7 +304,7 @@ export function FeedDataTableStackView({
     rows: sortedRows,
     getId: rowId,
     moment: rowMoment,
-    selectedId: items[selectedIdx]?.id ?? null,
+    selectedId: kept.lost ? null : kept.id,
     select: selectRow,
   });
 

@@ -38,7 +38,13 @@ export const quoteKey = (row: TapeQuote) => JSON.stringify([tapeTimeKey(row.time
 export function newestFirst<T extends { timestamp: string }>(rows: readonly T[]): T[] {
   return [...rows].sort((a, b) => tapeTimeKey(b.timestamp).localeCompare(tapeTimeKey(a.timestamp)));
 }
-/** A SIP stamp to the millisecond, the clock a pinned moment is on; `tapeAfterMoment` keeps the nanoseconds. */
+/** Two SIP stamps in time order, nanoseconds kept: negative when `a` is earlier. */
+export function tapeTimeOrder(a: string, b: string): number {
+  const left = tapeTimeKey(a);
+  const right = tapeTimeKey(b);
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+/** A SIP stamp to the millisecond, the clock a pinned moment is on; `tapeAfterMoment` and `tapeTimeOrder` keep the nanoseconds. */
 export const tapeMoment = (timestamp: string) => Date.parse(`${tapeTimeKey(timestamp).slice(0, 23)}Z`);
 let momentKey: { at: number; key: string } | null = null;
 /**

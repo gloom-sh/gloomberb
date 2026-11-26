@@ -12,7 +12,7 @@ import { canonicalExchange } from "../../../utils/exchanges";
 import { listingIdentity } from "../shared/ticker-request";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
-import { newestFirst, quoteKey, quoteSpread, stickyTapePriceDigits, tapeClockNewYork, tapeConditionWords, tapePrice, tapeQuantity, tapeStampNewYork, tapeStatistics, tapeTicks, tapeTime, tapeAfterMoment, tapeMoment, tapeVenue, tradeKey, type TapeDigits } from "./model";
+import { newestFirst, quoteKey, quoteSpread, stickyTapePriceDigits, tapeClockNewYork, tapeConditionWords, tapePrice, tapeQuantity, tapeStampNewYork, tapeStatistics, tapeTicks, tapeTime, tapeAfterMoment, tapeMoment, tapeTimeOrder, tapeVenue, tradeKey, type TapeDigits } from "./model";
 import { usePinnedList } from "../../../components/use-pinned-moment";
 import { useTape } from "./use-tape";
 import { lastSessionNote } from "./window";
@@ -48,6 +48,7 @@ const tapeRowId = (row: TapeRow) => row.id;
 const rowTime = (row: TapeRow) => (row.trade ?? row.quote)!.timestamp;
 const tapeRowMoment = (row: TapeRow) => tapeMoment(rowTime(row));
 const tapeRowAfter = (row: TapeRow, at: number) => tapeAfterMoment(rowTime(row), at);
+const tapeRowOrder = (a: TapeRow, b: TapeRow) => tapeTimeOrder(rowTime(a), rowTime(b));
 
 export function TimeSalesPane(props: PaneProps) {
   const { symbol, ticker } = usePaneTicker();
@@ -77,7 +78,8 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
     : newestFirst(data.trades).map((trade) => ({ id: tradeKey(trade), trade })), [data, tab]);
   // A crosshair pinned in the tab picks the print at that moment out of the
   // tape and mutes the later ones, on the same nanosecond comparison; a
-  // moment before the tape's window selects its first print and says so. The
+  // moment before the tape's window selects its first print, to the
+  // nanosecond, and says so. The
   // selection follows the pin when it moves or the tab changes, not on each
   // new print, so a streaming tape never pulls away a row the user picked
   // (another listing remounts).
@@ -87,6 +89,7 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
     getId: tapeRowId,
     moment: tapeRowMoment,
     isAfter: tapeRowAfter,
+    order: tapeRowOrder,
     selectedId: selected,
     select: setSelected,
     followKey: tab,

@@ -1,7 +1,11 @@
+import { RGBA } from "@opentui/core";
 import { expect, test } from "bun:test";
 import { act } from "react";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
+import { useTabCursorLink, type TabCursorLink } from "../../../state/app/tab-cursor";
+import { getThemeColors } from "../../../theme/colors";
+import { DEFAULT_THEME } from "../../../theme/themes";
 import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { tapeFixture } from "./test-fixture";
@@ -67,3 +71,92 @@ test("a narrow NBBO pane gives up both venues, then the lots, before the spread 
   expect(narrowerHeader).toContain("SPREAD BP");
   expect(narrower).toContain("4 hidden · LOTS ×2, VENUE ×2");
 });
+
+/**
+ * The tape and the NBBO at the given stamps, newest first as the feed sends
+ * them, beside a chart that pins the tab's crosshair. A trade's price and a
+ * quote's bid name its row: 100 and 200 for the first stamp, one more for each
+ * after it.
+ */
+async function renderPinned(tab: "trades" | "quotes", stamps: string[], pinAt: string) {
+  const data = tapeFixture();
+  data.observedFrom = "2026-09-22T15:59:58Z";
+  data.trades = stamps.map((timestamp, index) => ({ id: `90071992547409${90 + index}`, timestamp, price: 100 + index, size: 10,
+    exchange: "D", conditions: ["@"], tape: "C" }));
+  data.quotes = stamps.map((timestamp, index) => ({ timestamp, bid: 200 + index, ask: 300 + index, bidSize: 1, askSize: 1,
+    bidExchange: "Q", askExchange: "P", conditions: ["R"], tape: "C" }));
+  const state = createInitialState(createTestPaneConfig("/tmp/gloom-time-sales-test", { instanceId: "qr", paneId: "time-sales", settings: { tab } }));
+  state.focusedPaneId = "qr";
+  state.paneState.qr = { cursorSymbol: "AAPL" };
+  state.tickers.set("AAPL", createTestTicker("AAPL", "Apple Inc.", { exchange: "NASDAQ" }));
+  const client = createSnapshotTapeClient([["AAPL", "NASDAQ", data]], async () => { throw new Error("Captured tape must not refetch"); });
+  let link: TabCursorLink | undefined;
+  function Chart() {
+    link = useTabCursorLink("chart");
+    return null;
+  }
+  const settle = async () => {
+    for (let i = 0; i < 8; i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); await tui.setup().renderOnce(); });
+  };
+  await act(async () => { await tui.render(<TapeClientContext.Provider value={client}>
+    <TestPaneFrame state={state} paneId="qr" pluginId="time-sales" runtime={createTestPluginRuntime()} width={100} height={20}>
+      {(body) => <><Chart /><TimeSalesPane paneId="qr" paneType="time-sales" focused {...body} /></>}
+    </TestPaneFrame></TapeClientContext.Provider>, { width: 100, height: 20 }); });
+  await settle();
+  await act(async () => link!.pin!(Date.parse(pinAt)));
+  await settle();
+  const price = (row: number) => tab === "quotes" ? `${200 + row}.00` : `${100 + row}.00`;
+  const muted = RGBA.fromHex(getThemeColors(DEFAULT_THEME).textMuted).toInts();
+  return {
+    /** Whether the row at `index` of `stamps` draws its price muted; read on a row that is not selected. */
+    mutedRow: (index: number) => {
+      const lines = tui.setup().captureSpans().lines;
+      const header = lines.findIndex((line) => line.spans.some((entry) => entry.text.includes("TIME ET")));
+      // A muted row draws its time and price in one colour, so they share a span.
+      const span = lines.slice(header + 1).flatMap((line) => line.spans).find((entry) => entry.text.includes(` ${price(index)}`));
+      if (!span) throw new Error(`no row priced ${price(index)}`);
+      return span.fg.toInts().every((value, channel) => value === muted[channel]);
+    },
+    /** The stamp the selected row opens on, to the nanosecond. */
+    async selectedStamp() {
+      await tui.emitKeypress({ name: "return", sequence: "\r" }, { frames: 2, afterCommit: true });
+      await settle();
+      const stamp = /As of UTC\s+(\S+ \S+)/.exec(tui.frame())?.[1] ?? null;
+      await tui.emitKeypress({ name: "escape", sequence: "\u001b" }, { frames: 2, afterCommit: true });
+      await settle();
+      return stamp;
+    },
+    up: () => tui.emitKeypress({ name: "k", sequence: "k" }, { frames: 2, afterCommit: true }),
+    unpin: () => act(async () => link?.pin?.(null)),
+  };
+}
+
+// A pin on the millisecond before two prints a nanosecond apart is before
+// both: the earlier is the one nearest it, though the millisecond cannot tell
+// them apart. Both trades and NBBO compare the nanoseconds.
+for (const tab of ["trades", "quotes"] as const) {
+  test(`a pin before two ${tab} a nanosecond apart selects the earlier and mutes both`, async () => {
+    const pane = await renderPinned(tab, ["2026-09-22T15:59:59.000000002Z", "2026-09-22T15:59:59.000000001Z"], "2026-09-22T15:59:59.000Z");
+    try {
+      expect(await pane.selectedStamp()).toBe("2026-09-22 15:59:59.000000001");
+      expect(pane.mutedRow(0)).toBe(true);
+      await pane.up();
+      expect(await pane.selectedStamp()).toBe("2026-09-22 15:59:59.000000002");
+      expect(pane.mutedRow(1)).toBe(true);
+    } finally {
+      await pane.unpin();
+    }
+  });
+
+  test(`a pin on a ${tab.slice(0, -1)} selects it and mutes only the later ones`, async () => {
+    const pane = await renderPinned(tab, [
+      "2026-09-22T15:59:59.001000001Z", "2026-09-22T15:59:59.001Z", "2026-09-22T15:59:59.000000002Z", "2026-09-22T15:59:59.000000001Z",
+    ], "2026-09-22T15:59:59.001Z");
+    try {
+      expect(await pane.selectedStamp()).toBe("2026-09-22 15:59:59.001");
+      expect([0, 2, 3].map(pane.mutedRow)).toEqual([true, false, false]);
+    } finally {
+      await pane.unpin();
+    }
+  });
+}
