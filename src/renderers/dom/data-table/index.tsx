@@ -404,13 +404,16 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     const cell = cells[index];
     if (!body || !cell || !horizontalScrollEnabled) return;
     scrolledToColumnRef.current = scrollToColumn.version;
+    // Read off the page as it is laid out, before any scroll: the table's inset is where its first column starts,
+    // and what stays in place ends where the second one does.
     const bounds = body.getBoundingClientRect();
     const rect = cell.getBoundingClientRect();
-    const frozen = freezeFirstColumn && index > 0 && cells[0] ? cells[0].getBoundingClientRect().width + columnGap * WEB_CELL_WIDTH : 0;
+    const inset = (cells[0]?.getBoundingClientRect().left ?? bounds.left) - bounds.left;
+    const stays = freezeFirstColumn && index > 0 && cells[1] ? cells[1].getBoundingClientRect().left - bounds.left : inset;
     const overRight = rect.right - (bounds.left + body.clientWidth);
     // No further than puts its left edge beside what stays (the frozen column, or the table's own edge).
-    if (overRight > 0) body.scrollLeft += Math.min(overRight + horizontalPadding * WEB_CELL_WIDTH, rect.left - bounds.left - frozen);
-  }, [columnGap, columns, freezeFirstColumn, horizontalPadding, horizontalScrollEnabled, scrollToColumn]);
+    if (overRight > 0) body.scrollLeft += Math.min(overRight + inset, rect.left - bounds.left - stays);
+  }, [columns, freezeFirstColumn, horizontalScrollEnabled, scrollToColumn]);
   const hiddenColumns = items.length ? hiddenTableColumnText(columns) : null;
   const disclosureHeight = hiddenColumns ? headerPx : 0;
   // A frozen first column already covers what scrolls under it, so the left
