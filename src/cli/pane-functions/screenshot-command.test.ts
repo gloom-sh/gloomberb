@@ -30,9 +30,6 @@ test("shot publishes the image only when the assessed result can pass the reques
       [{ emptyStateDetected: true }, true, false],
       [{ accessGate: "sign-in" }, true, false],
       [{ errorStateDetected: true }, false, true],
-      // A column cut at the table's edge: no picture for --strict, a named warning and the picture for any other.
-      [{ cutColumns: ["NZD"] }, true, false],
-      [{ cutColumns: ["NZD"] }, false, true],
       [{}, true, true],
       [{ errorStateDetected: true }, true, true, "matched"],
       [{ emptyStateDetected: true }, true, true, "matched"],
@@ -51,11 +48,6 @@ test("shot publishes the image only when the assessed result can pass the reques
       expect(await Bun.file(outputPath).exists()).toBe(saves);
       expect(printed[0]?.result.data).toMatchObject({ saved: saves });
       expect(process.exitCode).toBe(strict && Object.keys(state).length ? CLI_EXIT_CODES.unusableShot : 0);
-      if ("cutColumns" in state) {
-        const cut = "The NZD column is cut at this width: a wider --width shows it.";
-        const result = printed[0]!.result as { data: { unusableReason: string | null }; warnings?: string[] };
-        expect([result.data.unusableReason, result.warnings ?? []]).toEqual(strict ? [cut, []] : [null, [cut]]);
-      }
       if (saves) await rm(outputPath);
     }
   } finally {

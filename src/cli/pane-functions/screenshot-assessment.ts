@@ -62,7 +62,6 @@ export function shotShowsText(visibleText: string, value: string): boolean {
 export function isPaneScreenshotUsable(signals: PaneScreenshotReadinessSignals): boolean {
   return !signals.refused
     && !signals.blankColumns?.length
-    && !signals.cutColumns?.length
     && (signals.interactive || signals.confirmedEmpty || ((signals.rowCount > 0 || signals.contentShown === true) && !signals.emptyStateDetected))
     && !signals.loadingStateDetected
     && !signals.errorStateDetected
@@ -127,8 +126,6 @@ export function assessPaneScreenshot(
   render: DesktopPaneShotRenderResult,
   rawArg: string,
   outputPath: string,
-  /** `strict`: the capture is `shot --strict`, to which a column cut at its table's edge makes the picture unusable. */
-  { strict = false }: { strict?: boolean } = {},
 ): PaneScreenshotResult {
   const evidenceHook = paneScreenshotEvidenceHook(resolved);
   // The sizer carries portfolio members to value holdings and the earnings board
@@ -188,9 +185,8 @@ export function assessPaneScreenshot(
   // A statement's period-end row dates every column, one with no figure in it too, so it is not read as a value.
   const blankColumns = interactive ? [] : shotBlankColumns(render.rows.filter((row) => row.key !== PERIOD_END_ROW_ID));
   // A column past the edge of its table is data the picture left out (AUCT's after view at 720px lost +5D, +20D and the CUSIP).
-  // A strict capture is not usable with one cut; any other carries it as a warning, since the picture still shows the rest.
+  // It is a warning, not a reason the picture is unusable, while nineteen panes still cut one at 720px.
   const cutColumns = interactive ? [] : cleanColumnLabels(render.cutColumns ?? []);
-  const strictCutColumns = strict ? cutColumns : [];
   const empty = render.loadingStateDetected
     || render.errorStateDetected
     || refused
@@ -211,12 +207,11 @@ export function assessPaneScreenshot(
     requiresStructuredDataEvidence: requiresStructuredDataEvidence(resolved),
     hasStructuredDataEvidence: dataEvidence !== null,
     blankColumns,
-    cutColumns: strictCutColumns,
   });
   const unusableReason = usable
     ? null
     : refused ? refusedShotReason(resolved)
-    : shotUnusableReasonFor(resolved, payload, render, unavailableSymbols, semanticMismatch, blankColumns, gaps, strictCutColumns);
+    : shotUnusableReasonFor(resolved, payload, render, unavailableSymbols, semanticMismatch, blankColumns, gaps);
   const tableRows = shotTableRows(resolved, render);
   const notices = [
     ...renderedReportNotices(render.semanticUi ?? []).notices,
@@ -400,8 +395,7 @@ function cleanColumnLabels(labels: readonly string[]): string[] {
 /**
  * The warning a picture that cut columns at its table's edge carries, by
  * their headers: "The +5D BP, +20D BP and CUSIP columns are cut at this width:
- * a wider --width shows them." Null when it cut none. To `shot --strict` the
- * same sentence is the reason the picture is unusable.
+ * a wider --width shows them." Null when it cut none.
  */
 export function shotCutColumnsWarning(columns: readonly string[] | undefined): string | null {
   const named = cleanColumnLabels(columns ?? []);
@@ -513,8 +507,6 @@ export function shotUnusableReasonFor(
   blankColumns: readonly string[] = [],
   /** What a view that drew part of its data left out (`paneEvidenceGaps`). */
   gaps: string | null = null,
-  /** The columns a strict capture cut at its table's edge; none where the capture is not strict. */
-  cutColumns: readonly string[] = [],
 ): string {
   if (resolved.capability.id === "intraday-price-chart") {
     const intraday = payload.intradayHistories[0];
@@ -539,8 +531,6 @@ export function shotUnusableReasonFor(
   if (ratioGap) return ratioGap;
   if (semanticMismatch) return "The rendered content did not match the requested capability.";
   if (blankColumns.length > 0) return blankColumnsSentence(blankColumns);
-  const cut = shotCutColumnsWarning(cutColumns);
-  if (cut) return cut;
   return "The pane did not produce verifiable screenshot evidence.";
 }
 

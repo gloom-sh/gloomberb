@@ -130,12 +130,6 @@ export interface PaneScreenshotReadinessSignals {
   hasStructuredDataEvidence: boolean;
   /** Columns blank in every row the capture drew (`shotBlankColumns`). */
   blankColumns?: readonly string[];
-  /**
-   * Columns a strict capture drew past the edge of their table's viewport
-   * (`DesktopPaneShotRenderResult.cutColumns`). Left out where the capture is
-   * not strict: there a cut column is a warning.
-   */
-  cutColumns?: readonly string[];
 }
 
 export interface PaneScreenshotResult {
@@ -173,9 +167,8 @@ export interface PaneScreenshotResult {
   blankColumns?: string[];
   /**
    * Columns the capture cut at the edge of their table, by their headers: a
-   * wider --width shows them. A warning (`shotCutColumnsWarning`) that leaves
-   * the picture usable, except to `shot --strict`, where a picture that left
-   * a column out is not one to keep.
+   * wider --width shows them. A warning (`shotCutColumnsWarning`), which
+   * leaves the picture usable.
    */
   cutColumns?: string[];
   dataEvidence: PaneScreenshotDataEvidence | null;

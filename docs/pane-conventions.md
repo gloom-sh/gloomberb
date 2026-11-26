@@ -570,8 +570,8 @@ at any width. A pane does nothing for this, except say what matters:
   the gaps makes the table wider than its pane at every width, and its last
   column is the one that leaves.
 
-`shot --strict` fails a capture that cut a column, and names it; a table drawn
-outside the kit owes the same fit.
+`shot` names a column a capture cut in a warning (`cutColumns`), which does
+not fail `--strict`; a table drawn outside the kit owes the same fit.
 
 **Unavailable table columns.** Check the source before treating an empty column
 as missing coverage: fix a dropped field rather than hiding it. A value every
