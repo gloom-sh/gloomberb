@@ -36,6 +36,7 @@ export function createValuationCurrencyContext(financials: TickerFinancials, fx?
 
   return {
     priceInStatementUnits(row: FinancialStatement, price: number, date = row.date.slice(0, 10)): number | null {
+      if (row.statementScope || financials.statementScope) return null;
       const rate = rateFor(row, date);
       return rate == null ? null : price * rate;
     },

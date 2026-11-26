@@ -1061,7 +1061,14 @@ export interface ReportedEarningsCohort {
 /** @deprecated No longer populated. */
 export interface EarningsResultProvenance { version: 1; reported: ReportedEarningsCohort }
 
+export interface StatementScope {
+  registrant: string;
+  basis: "predecessor" | "carve-out";
+  label: string;
+}
+
 export interface FinancialStatement {
+  statementScope?: StatementScope;
   /** The basis of this row's share counts and per-share earnings; absent when unproven. */
   shareBasis?: ShareBasis;
   /** @deprecated No longer populated. */
@@ -1371,6 +1378,7 @@ export interface EpsEstimateHistory {
 }
 
 export interface TickerFinancials {
+  statementScope?: StatementScope;
   /** Reported earnings-release events retained with daily valuation snapshots. */
   earningsReleases?: EarningsAction[];
   statementHistory?: StatementHistoryAttempt;

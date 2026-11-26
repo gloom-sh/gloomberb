@@ -49,6 +49,7 @@ export function trailingEpsSteps(
   financials: TickerFinancials,
   known: (row: FinancialStatement) => FinancialStatement = knownWhenFiled,
 ): EpsStep[] {
+  if (financials.statementScope) return [];
   const adjusted = { ...financials, quarterlyStatements: financials.quarterlyStatements.map(known),
     annualStatements: financials.annualStatements.map(known) };
   const toStep = (basis: EpsStep["basis"]) => (point: TimeSeriesPoint): EpsStep => ({
@@ -106,6 +107,7 @@ const rowKey = (row: FinancialStatement) => [
 /** The trailing EPS step for the last period on record, null when that period gives none. */
 function latestStep(financials: TrailingEpsInputs): LatestStep {
   const rows = [...financials.quarterlyStatements, ...financials.annualStatements];
+  if (rows.some(row => row.statementScope)) return null;
   const latest = rows.map((row) => row.date).filter((date) => Number.isFinite(Date.parse(date))).sort().at(-1);
   if (!latest) return null;
   const recent = (row: FinancialStatement) => Date.parse(latest) - Date.parse(row.date) <= LATEST_WINDOW_MS;
