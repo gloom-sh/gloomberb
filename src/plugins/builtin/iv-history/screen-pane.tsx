@@ -39,6 +39,13 @@ const COLUMNS: DataTableColumn[] = [
   { id: "hvDate", label: "HV as of", width: 9, align: "right" },
   { id: "ivHv", label: "IV/HV", width: 6, align: "right" },
 ];
+/**
+ * What a narrow desktop pane gives up first. The verdict rests on IV30 against
+ * its own year (IVR, IVP) and against realized (HV, IV/HV), each with its
+ * date, so those stay; the spot, the one-year tenor and the skew go first. A
+ * figure's date leaves with it.
+ */
+const COLUMN_DROP_ORDER = ["spot", "iv1yPercentile", "iv1y", "riskReversalPercentile", ["riskReversal", "skewDate"], "termSlope", ["hv", "hvDate", "ivHv"]] as const;
 
 export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
   const colors = useThemeColors();
@@ -161,7 +168,7 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
         onChange: setSymbolsText }] : []),
     ]} />
     {movedOnly ? <MovedTickerState change={movedOnly} paneId={paneId} /> : <PaneStatusBody subject="volatility rich/cheap" loading={resource.loading && !resource.data} error={universe.error && !universe.instruments.length ? universe.error : !resource.data ? resource.error : null}>
-      <DataTableView<RichCheapRow> focused={focused && !symbolsActive} columns={columns} items={rows} rootWidth={width}
+      <DataTableView<RichCheapRow> focused={focused && !symbolsActive} columns={columns} columnDropOrder={COLUMN_DROP_ORDER} items={rows} rootWidth={width}
         rootHeight={Math.max(2, height - 1 - definitions.length)}
         getItemKey={(row) => row.symbol} sortColumnId={sort.columnId} sortDirection={sort.direction} emptyStateTitle="No symbols to screen."
         onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id as SortId, { firstDirection: "desc" }))}

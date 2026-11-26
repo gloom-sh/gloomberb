@@ -77,6 +77,11 @@ function ExposureDetail({ row, data, width }: { row: ExposureRow | null; data: E
   </ScrollBox>;
 }
 
+/** The exposure tables keep the holding, its figures and the period they are for; the evidence's wording and the weight go first. */
+const EXPOSURE_COLUMN_DROP_ORDER = ["classification", "weight", "basis"] as const;
+/** The drivers keep their value and period; the scope's wording and the units go first. */
+const DRIVER_COLUMN_DROP_ORDER = ["scope", "units"] as const;
+
 export function ExposurePane({ width, height, focused }: PaneProps) {
   const colors = useThemeColors();
   const desktop = !!useUiCapabilities().nativePaneChrome;
@@ -211,6 +216,8 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
     { id: "period", label: "Period", width: 12, align: "left" },
     { id: "weight", label: tab === "portfolio" ? concentration ? "Gross wt. %" : "Covered wt. %" : "NAV wt. %", width: 13, align: "right" },
   ];
+  // What a narrow desktop pane gives up first: the words about a figure before the figure, its basis or its period.
+  const columnDropOrder = tab === "drivers" ? DRIVER_COLUMN_DROP_ORDER : EXPOSURE_COLUMN_DROP_ORDER;
   const renderCell = (row: ExposureRow, col: DataTableColumn, _index: number, state: { selected: boolean }): DataTableCell => {
     if (row.id.startsWith("locked:")) {
       if (!desktop && col.id === "symbol" && row.id === "locked:0") return { text: "Pro: full holdings", content: <UpgradeLabel text="Pro: full holdings and deeper paths" onPress={upgrade} role="exposure-upgrade" />, onMouseDown: upgrade };
@@ -269,7 +276,7 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
       rootContent={!data && !resource.loading && !resource.error && !inputError
         ? <EmptyState title="Choose holdings and a scenario." actions={<ActionRow label="Configure exposure" onPress={() => setEditing(true)} />} />
         // A scenario change reloads under the query bar, which stays.
-        : <DataTableView<ExposureRow> columns={columns} items={data ? items : []} getItemKey={r => r.id} rootWidth={width} rootHeight={bodyHeight} focused={focused && !detailOpen}
+        : <DataTableView<ExposureRow> columns={columns} columnDropOrder={columnDropOrder} items={data ? items : []} getItemKey={r => r.id} rootWidth={width} rootHeight={bodyHeight} focused={focused && !detailOpen}
           status={data && !inputError ? undefined : { loading: !inputError && resource.loading, error: inputError ?? resource.error, subject: "exposure analysis",
             actions: savedSnapshot.error ? <Button label="Reset saved snapshot" onPress={() => { setSnapshotSetting(null); setEditing(false); setDetail(null); }} />
               : savedScenario.error ? <><Button label="Edit scenario" onPress={() => setEditing(true)} /><Button label="Reset custom scenario" onPress={() => { setCustomSetting(""); setInputs({ ...inputs, scenario: DEFAULT_SCENARIO }); setScenarioId(DEFAULT_SCENARIO.id!); setEditing(false); setDetail(null); }} /></> : undefined }}

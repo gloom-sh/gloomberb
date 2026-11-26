@@ -345,6 +345,8 @@ export async function renderDesktopShot({
     const tab = payload.paneState[payload.paneId]?.activeTabId;
     if (!captureImage && resolved.template?.id === "new-ticker-detail-pane" && (!tab || tab === "overview")) payload.readTickerReport = true;
     if (statusLine && captureImage && shotHasStatusLine(resolved)) payload.statusLine = true;
+    // A report reads the table's columns, not a picture of them: every one is drawn.
+    if (!captureImage) payload.everyColumn = true;
     const fitRoles = [
       ...(fitRows && paneFitsRows(resolved) ? ["data-table-body-scroll"] : []),
       ...(fitReader && resolved.pane.shotFitsReader ? ["detail-scroll-body"] : []),

@@ -9,6 +9,7 @@ import { AppProvider, useAppDispatch } from "../../../state/app/context";
 import { createCliPaneShotConnectionHealth } from "./cli-pane-shot-health";
 import { changedThePage, createShotStabilityCheck, SHOT_MUTATION_OPTIONS } from "./cli-pane-shot-mutations";
 import { ChartSnapshotContext } from "../../../time-series/hooks";
+import { TableColumnFitContext } from "../../../components/ui/data-table/column-fit";
 import { decodeRpcValue } from "../shared/rpc-codec";
 import { createSnapshotDataProvider } from "../../../market-data/snapshot-provider";
 import { TickerSnapshotLoadTracker } from "../../../market-data/hooks";
@@ -613,7 +614,9 @@ async function render() {
               <HydratePayload payload={payload}>
                 <ChartSnapshotContext.Provider value={payload.chartModel ?? null}>
                   <TickerSnapshotLoadTracker.Provider value={payload.readTickerReport ? beginShotWork : null}>
-                    <ShotPane payload={payload} registry={services.pluginRegistry} />
+                    <TableColumnFitContext.Provider value={payload.everyColumn !== true}>
+                      <ShotPane payload={payload} registry={services.pluginRegistry} />
+                    </TableColumnFitContext.Provider>
                   </TickerSnapshotLoadTracker.Provider>
                 </ChartSnapshotContext.Provider>
               </HydratePayload>

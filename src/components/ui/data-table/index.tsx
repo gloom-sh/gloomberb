@@ -18,10 +18,13 @@ import { figureColumnCells } from "./render-cell";
 import { useDataTableColumnOrder } from "./use-column-order";
 import { dataTableDisplayColumns } from "./display-columns";
 import { sameVisibleRange } from "./visible-range";
+import { useDataTableColumnFit } from "./column-fit";
+import { markHiddenTableColumns } from "../table-layout";
 
 export type {
   DataTableCell,
   DataTableColumn,
+  DataTableColumnFit,
   DataTableColumnReorder,
   DataTableProps,
   DataTableRowSource,
@@ -63,8 +66,23 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
     if (range.end > range.start) setVisibleRange((previous) => previous && sameVisibleRange(previous, range) ? previous : range);
     ownProps.onVisibleRangeChange?.(range);
   }, [ownProps.onVisibleRangeChange]);
-  const displayColumns = useMemo(() => dataTableDisplayColumns(props, visibleRange),
+  const shownColumns = useMemo(() => dataTableDisplayColumns(props, visibleRange),
     [props.columns, props.items, props.renderCell, props.renderSectionHeader, props.isSelected, visibleRange]);
+  // Where the renderer cuts a column at its edge, the columns that fit its width: whole columns leave, least needed first.
+  const columnFit = useDataTableColumnFit(shownColumns, {
+    anchoredColumns: props.columns.slice(0, props.anchoredColumns ?? 1).filter((column) => shownColumns.includes(column)).length,
+    sortColumnId: props.sortColumnId,
+    dropOrder: props.columnDropOrder,
+    columnGap: props.columnGap,
+    horizontalPadding: props.horizontalPadding,
+  });
+  const columnFitRef = ownProps.columnFitRef;
+  if (columnFitRef) columnFitRef.current = columnFit.fit;
+  useEffect(() => () => { if (columnFitRef) columnFitRef.current = null; }, [columnFitRef]);
+  const displayColumns = useMemo(
+    () => columnFit.shownIds ? shownColumns.filter((column) => columnFit.shownIds!.has(column.id)) : shownColumns,
+    [columnFit.shownIds, shownColumns],
+  );
   const reportProps = {
     ...props,
     columns: displayColumns,
@@ -152,12 +170,17 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
   // Only the drawn headers use translated labels. Exports and automation keep the raw columns.
   const translationRevision = useTranslationRevision(displayColumns.some((column) => column.labelTranslation));
   const columns = useMemo(
-    () => displayColumns.map((column) => {
-      const translation = column.labelTranslation;
-      const label = headerCase(translation ? tPlugin(translation.pluginId, translation.key, column.label) : column.label);
-      return label === column.label ? column : { ...column, label };
-    }),
-    [displayColumns, translationRevision],
+    () => {
+      const drawn = (column: C) => {
+        const translation = column.labelTranslation;
+        const label = headerCase(translation ? tPlugin(translation.pluginId, translation.key, column.label) : column.label);
+        return label === column.label ? column : { ...column, label };
+      };
+      const shown = displayColumns.map(drawn);
+      // The columns the fit left out are named above the header as their headers would read.
+      return displayColumns === shownColumns ? shown : markHiddenTableColumns(shownColumns.map(drawn), shown);
+    },
+    [displayColumns, shownColumns, translationRevision],
   );
   const HostDataTable = useUiHost().DataTable as
     | ComponentType<DataTableProps<T, C>>
@@ -174,6 +197,9 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
     } : undefined,
     onVisibleRangeChange: props.columns.some((column) => column.omitWhenEmpty === "visible")
       ? onVisibleRangeChange : props.onVisibleRangeChange,
+    onViewportWidthChange: columnFit.onViewportWidthChange,
+    onShowAllColumns: columnFit.fit.hidden > 0 ? columnFit.fit.showAll : undefined,
+    scrollToColumn: columnFit.scrollToColumn,
   };
   if (HostDataTable) {
     return <HostDataTable {...displayProps} />;

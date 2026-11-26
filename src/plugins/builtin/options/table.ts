@@ -152,10 +152,20 @@ export function fitOptionFieldIds(fieldIds: readonly OptionFieldId[], width: num
   return fields;
 }
 
+const sideColumnId = (side: OptionSide, field: OptionFieldId) => `${side}${field[0]!.toUpperCase()}${field.slice(1)}` as OptionColumn["id"];
+
+/**
+ * The same order for the desktop's chain, whose table fits whole columns to
+ * its width (`DataTableProps.columnDropOrder`): a field leaves on both sides
+ * together, so the puts that stay mirror the calls.
+ */
+export const OPTION_COLUMN_DROP_ORDER: readonly (readonly string[])[] = OPTION_FIELD_DROP_ORDER
+  .map((field) => [sideColumnId("call", field), sideColumnId("put", field)]);
+
 function sideColumn(side: OptionSide, field: OptionFieldId): Omit<OptionColumn, "headerColor"> {
   const definition = OPTION_FIELDS_BY_ID.get(field)!;
   return {
-    id: `${side}${field[0]!.toUpperCase()}${field.slice(1)}` as OptionColumn["id"],
+    id: sideColumnId(side, field),
     field,
     side,
     label: `${side === "call" ? "C" : "P"} ${definition.header}`,

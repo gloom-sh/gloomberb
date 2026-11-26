@@ -84,6 +84,12 @@ export interface DesktopPaneShotPayload {
   /** A DES overview report tracks its deferred snapshot explicitly, rather than settling like a screenshot. */
   readTickerReport?: boolean;
   /**
+   * A report reads every column of a table, the ones past its right edge
+   * too: no table leaves a column out for width, as a picture's does
+   * (`DataTableProps.columnDropOrder`).
+   */
+  everyColumn?: boolean;
+  /**
    * The tallest the capture may grow, in cells, to show every row its tables
    * scroll past or all the text its reader scrolls past; absent keeps the
    * requested height (`--height`, most panes).

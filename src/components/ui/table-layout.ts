@@ -170,6 +170,54 @@ export function dropColumnsToFit<C extends TableWidthColumn & { id: string }>(
   return markHiddenTableColumns(columns, shown);
 }
 
+/** A table's own narrow-pane order: the columns that leave first, least needed first (`dropColumnsToFit`). */
+export type TableColumnDropOrder = readonly (string | readonly string[])[];
+
+/**
+ * The columns a table `width` cells wide draws, where it cuts a column at its
+ * edge rather than fit what the column holds (the desktop and the web): whole
+ * columns leave until the rest fit, so none is drawn cut or past the edge.
+ * `dropOrder` goes first, least needed first, an entry of several ids
+ * together; then the columns it does not list, from the last one back, so a
+ * table that names no order gives up its trailing columns. The `keep` ids (the
+ * columns that name the row, the one the table is sorted by) never leave. The
+ * columns that left are marked hidden, so the table names them
+ * (`hiddenTableColumnText`). The same array when everything fits, by the
+ * table's own measure of an overflow (`hasMeaningfulTableHorizontalOverflow`).
+ */
+export function fitColumnsToWidth<C extends TableWidthColumn & { id: string }>(
+  columns: readonly C[],
+  width: number,
+  { dropOrder = [], keep = [], columnGap = TABLE_COLUMN_GAP, horizontalPadding = 1 }: {
+    dropOrder?: TableColumnDropOrder;
+    keep?: readonly string[];
+    columnGap?: number;
+    horizontalPadding?: number;
+  } = {},
+): C[] {
+  const fits = (shown: readonly C[]) => !hasMeaningfulTableHorizontalOverflow(getTableWidth(shown, columnGap, horizontalPadding), width, columnGap);
+  if (width <= 0 || fits(columns)) return columns as C[];
+  const kept = new Set(keep);
+  const listed = new Set(dropOrder.flatMap((step) => typeof step === "string" ? [step] : step));
+  const steps: (readonly string[])[] = [
+    ...dropOrder.map((step) => typeof step === "string" ? [step] : step),
+    ...columns.filter((column) => !listed.has(column.id)).map((column) => [column.id]).reverse(),
+  ];
+  let shown = [...columns];
+  for (const step of steps) {
+    const ids = step.filter((id) => !kept.has(id));
+    if (!ids.length || !shown.some((column) => ids.includes(column.id))) continue;
+    shown = shown.filter((column) => !ids.includes(column.id));
+    if (fits(shown)) break;
+  }
+  return markHiddenTableColumns(columns, shown);
+}
+
+/** The ids of the columns a fit left out (`fitColumnsToWidth`, `dropColumnsToFit`), in the table's order. */
+export function hiddenTableColumnIds(columns: readonly TableWidthColumn[]): string[] {
+  return hiddenColumnEntries(columns).map(({ id }) => id);
+}
+
 /**
  * Where each column's content starts, in cells from the first column, counting
  * the gap after every column and any lead gap before it. Takes columns already

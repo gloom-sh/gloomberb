@@ -160,6 +160,9 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   scrollToIndexFrom,
   scrollToIndexAlign = "nearest",
   scrollToIndexVersion = 0,
+  onViewportWidthChange,
+  onShowAllColumns,
+  scrollToColumn,
 }: DataTableProps<T, C>) {
   const paneInstanceId = usePaneInstance()?.instanceId ?? null;
   const focusPane = useFocusOwningPane();
@@ -269,12 +272,18 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     || !fillAvailableWidth
     ? Math.max(1, tableWidth * WEB_CELL_WIDTH)
     : "100%";
+  const reportViewportWidthRef = useRef(onViewportWidthChange);
+  reportViewportWidthRef.current = onViewportWidthChange;
   const measureViewportWidth = useCallback(() => {
     const element = bodyElementRef.current;
     const nextValue = element ? toCellX(element.clientWidth) : 0;
     setViewportWidth((current) => current === nextValue ? current : nextValue);
+    // The table fits its columns to this width: a column that would be cut at the edge leaves whole.
+    if (nextValue > 0) reportViewportWidthRef.current?.(nextValue);
   }, []);
   const scheduleViewportWidthMeasure = useRafCallback(measureViewportWidth);
+  // Measured before the first paint, so the table is never drawn with columns it is about to give up.
+  useLayoutEffect(measureViewportWidth, [measureViewportWidth]);
 
   useEffect(() => {
     measureViewportWidth();
@@ -384,6 +393,24 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   }, [bodyHorizontal.bar, headerHorizontal.bar, horizontalScrollEnabled]);
 
   const overflowEdges = useHorizontalScrollEdges(bodyElementRef, [horizontalScrollEnabled]);
+  // Every column drawn at the reader's asking: the first one the fit had left out is scrolled into view, whole,
+  // past a frozen first column.
+  const scrolledToColumnRef = useRef(scrollToColumn?.version);
+  useLayoutEffect(() => {
+    if (!scrollToColumn || scrolledToColumnRef.current === scrollToColumn.version) return;
+    const body = bodyElementRef.current;
+    const index = columns.findIndex((column) => column.id === scrollToColumn.id);
+    const cells = body ? [...body.querySelectorAll<HTMLElement>('[data-gloom-role="data-table-header-cell"]')] : [];
+    const cell = cells[index];
+    if (!body || !cell || !horizontalScrollEnabled) return;
+    scrolledToColumnRef.current = scrollToColumn.version;
+    const bounds = body.getBoundingClientRect();
+    const rect = cell.getBoundingClientRect();
+    const frozen = freezeFirstColumn && index > 0 && cells[0] ? cells[0].getBoundingClientRect().width + columnGap * WEB_CELL_WIDTH : 0;
+    const overRight = rect.right - (bounds.left + body.clientWidth);
+    // No further than puts its left edge beside what stays (the frozen column, or the table's own edge).
+    if (overRight > 0) body.scrollLeft += Math.min(overRight + horizontalPadding * WEB_CELL_WIDTH, rect.left - bounds.left - frozen);
+  }, [columnGap, columns, freezeFirstColumn, horizontalPadding, horizontalScrollEnabled, scrollToColumn]);
   const hiddenColumns = items.length ? hiddenTableColumnText(columns) : null;
   const disclosureHeight = hiddenColumns ? headerPx : 0;
   // A frozen first column already covers what scrolls under it, so the left
@@ -439,10 +466,18 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
 
   return (
     <div ref={rootElementRef} data-gloom-role="data-table" style={rootStyle}>
-      {hiddenColumns ? <div style={{ flex: `0 0 ${disclosureHeight}px`, lineHeight: `${disclosureHeight}px`,
-        paddingInline: "var(--gloom-space-sm)", color: CSS_TEXT_DIM,
-        backgroundColor: CSS_PANEL, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={hiddenColumns}>
-        {hiddenColumns}
+      {hiddenColumns ? <div data-gloom-role="data-table-hidden-columns" style={{ flex: `0 0 ${disclosureHeight}px`, display: "flex",
+        lineHeight: `${disclosureHeight}px`, color: CSS_TEXT_DIM, backgroundColor: CSS_PANEL }}>
+        <span style={{ flex: "1 1 0px", minWidth: 0, paddingInline: "var(--gloom-space-sm)", whiteSpace: "nowrap", overflow: "hidden",
+          textOverflow: "ellipsis" }} title={hiddenColumns}>{hiddenColumns}</span>
+        {onShowAllColumns ? (
+          // The columns this table left out for width come back at a press: all drawn, scrolling sideways.
+          <button type="button" aria-label="Show all columns" onClick={() => { focusPane(); onShowAllColumns(); }}
+            style={{ flex: "0 0 auto", cursor: "pointer", border: 0, height: disclosureHeight, paddingBlock: 0, paddingInline: "var(--gloom-space-sm)",
+              background: CSS_PANEL, color: CSS_TEXT_DIM, font: "inherit" }}>
+            More
+          </button>
+        ) : null}
       </div> : null}
       <div
         ref={bodyElementRef}

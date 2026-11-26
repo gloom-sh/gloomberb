@@ -39,6 +39,13 @@ const SIGNAL_TONES: Record<string, StateTone> = { Surge: "positive", Freeze: "ne
 const QUIET_COLUMNS: Record<string, readonly string[]> = { net: [""], z: [""], change: [""], velocity: [""], drift: [""], growth: [""], added: [""], removed: [""], coverage: ["complete"], spread: [""] };
 const LABEL_COLUMNS = new Set(["chart"]);
 /**
+ * What a narrow desktop pane gives up first in a table of postings or other
+ * evidence: the confidence, then where a role is, before its seniority and its
+ * function. What was seen and the day it was observed stay; a table with none
+ * of these gives up its last columns.
+ */
+const POSTING_COLUMN_DROP_ORDER = ["confidence", "location", "seniority", "function"] as const;
+/**
  * An evidence row read as a detail: the row's facts and, for a posting, the
  * place, date, pay, hours and description its page gave (the title is the
  * stack header's). A link reads as what it is, never as a bare address.
@@ -221,7 +228,7 @@ function AttentionView({ kind, symbol, width, height, focused, initialTab }: Siz
     {strip}
     <PageStackView focused={focused} detailOpen={detailOpen} onBack={() => { setOpenCompany(null); setOpenEvidence(null); setOpenApp(null); }} detailTitle={openCompany ?? app?.name ?? (evidence ? (posting ? postingTitle(posting.title, posting.externalId) : null) ?? String(evidence.values.title ?? evidence.values.name ?? evidence.id) : undefined)}
         detailContent={openCompany ? <PaneFooterScope active><AttentionView key={openCompany} kind={kind} symbol={openCompany} width={width} height={bodyHeight - 1} focused={focused} /></PaneFooterScope> : app ? <PaneFooterScope active><AppRankView focus={app} accessKey={accessKey} width={width} height={bodyHeight - 1} focused={focused} /></PaneFooterScope> : evidence ? <Evidence row={evidence} posting={posting} source={source} width={width} height={bodyHeight - 1} focused={focused} /> : null}
-        rootContent={<DataTableView columns={columns} items={model && section ? rows : []} rootWidth={width} rootHeight={bodyHeight} focused={focused && !detailOpen} scrollRef={scrollRef} onBodyScrollActivity={scrollMore}
+        rootContent={<DataTableView columns={columns} columnDropOrder={POSTING_COLUMN_DROP_ORDER} items={model && section ? rows : []} rootWidth={width} rootHeight={bodyHeight} focused={focused && !detailOpen} scrollRef={scrollRef} onBodyScrollActivity={scrollMore}
           // A filter change reloads under the query bar, which stays.
           status={!data ? { loading: resource.loading, error: resource.error, subject: kind === "hiring" ? "hiring momentum" : "app attention" }
             : !model || !section ? { empty: true, emptyTitle: "Observations are not available yet." } : undefined}
