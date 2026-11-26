@@ -107,6 +107,7 @@ test("filings reads a venue suffix and, for a company abroad that files nothing 
     "AIR:NZX": { venue: "NZX", name: "Air New Zealand Limited" },
     "GUBRF.IS": { venue: "BIST", name: "Gübre Fabrikalari Türk Anonim Sirketi" },
     "GUBRF:BIST": { venue: "BIST", name: "Gübre Fabrikalari Türk Anonim Sirketi" },
+    "RELIANCE:NSE": { venue: "NSE", name: "Reliance Industries Limited" },
     "9992:HKEX": { venue: "HKEX", name: "Pop Mart International Group Limited" },
     "RHM.DE": { venue: "XETRA", name: "Rheinmetall AG" },
     "RHM:XETRA": { venue: "XETRA", name: "Rheinmetall AG" },
@@ -199,6 +200,18 @@ test("filings reads a venue suffix and, for a company abroad that files nothing 
     expect(popMart.text).toContain(`HKEXnews: ${hkexnews}/search/titlesearch.xhtml?lang=en&stockId=1000068054`);
     expect(popMart.text).toContain("Source: HKEXnews announcements");
     expect(asked.at(-1)).toBe("9992:HKEX");
+    const nsePdf = "https://nsearchives.nseindia.in/corporate/kavinavora_19112026183441_SE_19112026.pdf";
+    answer = async () => ({
+      exchange: "NSE", symbol: "RELIANCE", name: "Reliance Industries Limited",
+      page: "https://www.nseindia.in/companies-listing/corporate-filings-announcements",
+      announcements: [{ date: "2026-11-19T13:05:25.000Z", headline: "Updates", types: ["Updates"],
+        documentKey: "106866520", url: nsePdf, priceSensitive: null, fileSize: null }],
+      total: 1, retrievedAt: "2026-11-25T15:19:00.000Z",
+    });
+    const reliance = await run("RELIANCE:NSE", "text");
+    expect(asked.at(-1)).toBe("RELIANCE:NSE");
+    expect(reliance.text).toContain("latest NSE announcements");
+    expect(reliance.text).toContain(nsePdf);
   } finally {
     apiClient.getCloudExchangeAnnouncements = original;
   }
