@@ -1,4 +1,7 @@
 import { splitShareTerms } from "../../market-data/split-terms";
+import {
+  adjustedForText, adjustmentsAfter, demergerSuccessor, priceAdjustment, priceAdjustments, publishedDividend, publishedEps, withPriceAdjustmentKinds,
+} from "../../market-data/price-adjustments";
 import { logFailure } from "../../utils/log-failure";
 import { isTransientFailure } from "../../api-client/errors";
 import { normalizeTickerSymbol } from "../../tickers/search/ranking";
@@ -152,7 +155,7 @@ import {
 import { historyCoverageNotice, WindowBeforeFirstBarError } from "../../sources/history-coverage";
 import { fetchHistoryResult } from "../../sources/history-result";
 import { settleWithin } from "../../utils/async-deadline";
-import { demergerRuns, demergerSuccessor, hasPriceBreak, historyDemergerNote, SPLIT_FLAG, withDemergerFlags, withSplitFlags } from "../history-demergers";
+import { demergerRuns, hasPriceBreak, historyAdjustmentNote, historyDemergerNote, SPLIT_FLAG, withDemergerFlags, withPriceAdjustmentFlags, withSplitFlags } from "../history-demergers";
 import type { FxInterventionsPayload } from "../../api-client/fx-interventions";
 import {
   fxInterventionLatestNote, fxInterventionPair, fxInterventionWindowNote, loadFxInterventions, type FxInterventionPair,
@@ -225,6 +228,7 @@ import {
   commonWordCandidate,
   metalCodeNewsRoute,
   type MetalNewsRoute,
+  isTypedNewsWord,
   metalNewsHeading,
   metalNewsRoute,
   newsFallbackText,
@@ -1158,9 +1162,9 @@ function cleanDecimal(value: number | undefined): string {
   return value == null || !Number.isFinite(value) ? "" : String(Number(value.toFixed(6)));
 }
 
-/** "commercial vehicles into TMCV:NSE (Tata Motors Limited), 1 share per share, listed 2025-11-12". */
+/** "commercial vehicles business into TMCV:NSE (Tata Motors Limited), 1 share per share, listed 2025-11-12". */
 function demergerDetail(event: DemergerAction): string {
-  return [`${event.business ? `${event.business} ` : ""}into ${demergerSuccessor(event)}`,
+  return [`${event.business ? `${event.business} business ` : ""}into ${demergerSuccessor(event)}`,
     event.ratio ? `${cleanDecimal(event.ratio)} share per share` : null,
     event.successor.listedOn ? `listed ${event.successor.listedOn}` : "not yet listed"].filter(Boolean).join(", ");
 }
@@ -1177,6 +1181,11 @@ function corporateActionRows(data: CorporateActionsData) {
       : !unit ? formatNumber(value, 2)
         : /^[A-Z]{3}$/.test(unit) ? formatCurrency(value, unit, 2) : `${formatNumber(value, 2)} ${unit}`
   );
+  // CTVA's 6665:1000 of 2026-10-01 is the VYLR spin-off's price adjustment: the history's EPS and dividends before it
+  // say they are adjusted for it, as any factor in no share terms says it adjusts them. A figure the company published
+  // (a release's EPS, a dividend its own forms state) is as published, whatever its date.
+  const adjustments = priceAdjustments(data.splits, data.demergers);
+  const amount = (value: number) => (currency ? formatDistributionAmount(value, currency) : cleanDecimal(value));
   return [
     ...data.earnings.map((event) => {
       const unit = event.currency?.trim() || ("epsComparisonUnconfirmed" in event ? undefined : earningsCurrency);
@@ -1184,12 +1193,15 @@ function corporateActionRows(data: CorporateActionsData) {
       const basis = earningsEpsBasis(event.epsBasis);
       // History rows are keyed by fiscal quarter end, upcoming ones by announcement date.
       const note = [event.dateType === "fiscal-period-end" ? "period end" : null, quarter === MISSING_VALUE ? null : quarter].filter(Boolean).join(", ");
+      const adjustedFor = (event.epsActual == null && event.epsEstimate == null) || publishedEps(event) ? ""
+        : adjustedForText(adjustmentsAfter(adjustments, event.date));
       return {
         type: "earnings",
         date: event.date,
         // The basis, beat, date status and analysts are the words EE uses for the same row.
         detail: [event.epsActual == null ? `est ${eps(event.epsEstimate, unit)}` : `eps ${eps(event.epsActual, unit)}`,
-          ...earningsDetailParts(event)].join(", ") + (note ? ` (${note})` : ""),
+          ...earningsDetailParts(event)].join(", ") + (note ? ` (${note})` : "")
+          + (adjustedFor ? `, EPS ${adjustedFor}` : ""),
         epsActual: event.epsActual,
         ...(event.streetEps ? { streetEps: event.streetEps, gaapEps: event.gaapEps } : {}),
         epsEstimate: event.epsEstimate,
@@ -1200,11 +1212,11 @@ function corporateActionRows(data: CorporateActionsData) {
         fiscalPeriod: event.fiscalPeriod,
       };
     }),
-    ...data.dividends.map((event) => ({
-      type: "dividend",
-      date: event.exDate,
-      detail: currency ? formatDistributionAmount(event.amount, currency) : cleanDecimal(event.amount),
-    })),
+    // As the history states it, labelled where a later price adjustment changed it; a published row stands as published.
+    ...data.dividends.map((event) => {
+      const adjustedFor = publishedDividend(event) ? "" : adjustedForText(adjustmentsAfter(adjustments, event.exDate));
+      return { type: "dividend", date: event.exDate, detail: [amount(event.amount), adjustedFor].filter(Boolean).join(", ") };
+    }),
     // Declared and unpaid, at its ex-date beside the paid rows, never one of them.
     ...declaredDividends(data).map((event) => {
       const cash = declaredDividendCash(event, currency);
@@ -1216,14 +1228,23 @@ function corporateActionRows(data: CorporateActionsData) {
         ...(event.cashEstimate ? { cashEstimate: event.cashEstimate } : {}),
       };
     }),
-    // In share terms where the factor states them (11-for-10, 1 new share for every 10 held), else as its source writes it.
-    ...data.splits.map((event) => ({
-      type: "split",
-      date: event.date,
-      detail: splitShareTerms(event) ?? event.description ?? `${event.toFactor ?? ""}:${event.fromFactor ?? ""}`,
-    })),
+    // In share terms where the factor states them (11-for-10, 1 new share for every 10 held), a split whatever its date.
+    // One in no share terms on a demerger's ex-date is that spin-off's price adjustment, one row for both; any other in
+    // no share terms is a factor, no more.
+    ...data.splits.map((event) => {
+      const adjustment = priceAdjustment(event, data.demergers ?? []);
+      if (adjustment?.demerger) {
+        return { type: "spin-off", date: event.date, detail: `${demergerDetail(adjustment.demerger)}; price adjustment ${adjustment.terms}` };
+      }
+      if (adjustment) return { type: "adjustment", date: event.date, detail: `factor ${adjustment.terms}, in no share terms` };
+      return {
+        type: "split",
+        date: event.date,
+        detail: splitShareTerms(event) ?? event.description ?? `${event.toFactor ?? ""}:${event.fromFactor ?? ""}`,
+      };
+    }),
     // A business demerged out of the listing: its price fell by that business's value on the day, no market move.
-    ...(data.demergers ?? []).map((event) => ({
+    ...(data.demergers ?? []).filter((event) => !adjustments.some((adjustment) => adjustment.demerger === event)).map((event) => ({
       type: "demerger",
       date: event.exDate,
       detail: demergerDetail(event),
@@ -2280,11 +2301,19 @@ async function loadListingHistory(
   // commercial vehicles on 2025-10-14): its corporate actions say, and that bar is flagged rather than read as a crash.
   // One read of the listing's corporate actions serves both, asked only for a share or a fund.
   const actions = shareActionsReader(market, listing, instrumentType);
-  const demerged = await listingDemergerFlags(forming?.rows ?? served, actions);
   // NFLX's bars across its 10-for-1 split are in post-split shares, as META's FB-era bars say they were FB's, and the
   // bar it took effect in is flagged. A long list skips the read, as it skips the other lookups.
   const splits = lookups ? await actions.splits() : [];
-  const flaggedSplits = withSplitFlags(demerged.rows, splits);
+  const demergers = lookups ? await actions.demergers() : [];
+  const bars = forming?.rows ?? served;
+  // CTVA's daily bars before 2026-10-01 are adjusted for the VYLR spin-off (6665:1000): said, and its bar flagged.
+  const adjusted = bars.some((row) => row.date.length > 10) ? { rows: bars, adjustments: [], traded: [] }
+    : withPriceAdjustmentFlags(bars, splits, demergers);
+  // A spin-off the bars are adjusted for, or whose closes do not tell, is no fall in them, and no demerger break. One
+  // whose bars fell by its factor is its demerger, however small the fall (1101:1000, from 100 to 90.83).
+  const explained = new Set(adjusted.adjustments.flatMap(({ adjustment }) => (adjustment.demerger ? [adjustment.demerger.exDate] : [])));
+  const demerged = await listingDemergerFlags(adjusted.rows, actions, explained, adjusted.traded);
+  const flaggedSplits = withSplitFlags(demerged.rows, splits, demergers);
   const data = flaggedSplits.rows;
   const interval = data[0]?.interval ?? null;
   const basisBreak = priceBasisBreaks(data, splits, { interval, venue })[0];
@@ -2358,6 +2387,7 @@ async function loadListingHistory(
     historyDemergerNote(data, demerged.breaks, historyPrice(historyPriceDecimals(data, listing.saved?.metadata.assetCategory, priceDivisor))) ?? [],
     splitNote ?? [],
     ...basisBreak ? [`${listing.symbol}: ${basisBreak.kind === "close" ? "close jumps" : "high/low range is"} ${priceBasisFactor(basisBreak.ratio)}× ${basisBreakDate} ${basisBreak.day} near the ${basisBreak.split!.date.slice(0, 10)} split. A consistent split-adjusted price basis cannot be verified; no split rescaling was applied and drawdown is withheld.`] : [],
+    historyAdjustmentNote(listing.symbol, adjusted.adjustments) ?? [],
     historyBarStatusNote(forming ? served : data, { tradingDay: venueTradingDay(venue, Date.now()) }) ?? [],
     await interventionWindowNote(interventions, interventionPair, data) ?? [],
   ].flat();
@@ -2393,13 +2423,22 @@ function shareActionsReader(market: MarketContext, listing: CliListing, instrume
   };
 }
 
-/** A share's bars with the bar each demerger falls in flagged (withDemergerFlags), read only when a close falls a fifth or more below the one before. */
+/**
+ * A share's bars with the bar each demerger falls in flagged (withDemergerFlags): one whose bars fell by its own
+ * price-adjustment factor (`traded`), and any other read only when a close falls a fifth or more below the one before.
+ */
 async function listingDemergerFlags(
   rows: HistoryRow[],
   actions: ReturnType<typeof shareActionsReader>,
+  explained: ReadonlySet<string> = new Set(),
+  traded: readonly DemergerAction[] = [],
 ): Promise<{ rows: HistoryRow[]; breaks: Array<{ date: string; action: DemergerAction }> }> {
-  if (!actions.share || !hasPriceBreak(rows)) return { rows, breaks: [] };
-  return withDemergerFlags(rows, await actions.demergers());
+  if (!actions.share) return { rows, breaks: [] };
+  const witnessed = new Set(traded.map((action) => action.exDate));
+  const broken = hasPriceBreak(rows)
+    ? (await actions.demergers()).filter((action) => !explained.has(action.exDate) && !witnessed.has(action.exDate)) : [];
+  if (traded.length === 0 && broken.length === 0) return { rows, breaks: [] };
+  return withDemergerFlags(rows, [...traded, ...broken]);
 }
 
 /**
@@ -3553,7 +3592,8 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     const identity = listing ? listingIdentity(listing, quote) : null;
     const resolved = quote !== null || identity?.name != null;
     // A window of days with no story in it says so: the searches below read the newest stories, not those days'.
-    const unfiled = !!listing && !listing.exchange && !feed && !window && articles.length === 0;
+    // A venue search found for a name ("spin-off": ^SPUSSOUN:NYSE) is no venue the user typed.
+    const unfiled = !!listing && (!listing.exchange || listing.venueFromSearch === true) && !exchangeOption && !feed && !window && articles.length === 0;
     // A future's news is its commodity's: news is filed under company tickers, so KC=F (or a bare code
     // no security keeps, CT) searches the stories of coffee, which the service matches to KC=F's links too.
     const future = unfiled && isFuturesInstrument(listing!.symbol, quote?.instrumentType)
@@ -3563,9 +3603,11 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     // to its future: the stories that mention the word are the news.
     const word = commodity ?? (unfiled ? newsFallbackText(args[0]!) : null);
     const futuresCode = !!word && !!bareFuturesCode(word) && isFuturesInstrument(listing!.symbol, quote?.instrumentType);
-    // A word typed as a word ("corn", not CORN) that a ticker answers to but no story is filed under: the stories
-    // that mention the word, said to be that (Teucrium Corn Fund had none on 5 Nov 2026; corn's market had plenty).
-    const typedWord = !!word && /^[A-Za-z]{3,}$/.test(word) && /[a-z]/.test(word);
+    // A word typed as a word ("corn", not CORN; "spin-off", hyphened) that a ticker answers to but no story is filed
+    // under: the stories that mention the word, said to be that (Teucrium Corn Fund had none on 5 Nov 2026; corn's
+    // market had plenty; the S&P spin-off index has none, spin-offs have plenty). A hyphened code that is the listing
+    // itself (btc-usd for BTC-USD) is that symbol, typed in lower case.
+    const typedWord = !!word && isTypedNewsWord(word, listing?.symbol);
     const reason = commodity ? `the commodity ${future!.symbol} trades`
       : !resolved ? "no ticker by that name" : futuresCode ? "a futures code, not a ticker"
         : typedWord ? `no stories filed under ${listing!.symbol}${identity?.name ? ` (${identity.name})` : ""}` : null;
@@ -4237,7 +4279,7 @@ async function runEvents(rawArgs: string[], ctx: Parameters<CliCommandDef["execu
     const identity = listingIdentity(listing, quote);
     const choice = await listingChoiceNotes(listing, market, quote, venues);
     ctx.printResult({
-      data: { ...data, earnings: data.earnings.map(earningsActionForReport) },
+      data: withPriceAdjustmentKinds({ ...data, earnings: data.earnings.map(earningsActionForReport) }),
       metadata: listingMetadata(identity),
       // Dated by when it was read, as EE and fn EVT date the same events: a row's
       // date is when the event happens, and the newest past one is no as-of.

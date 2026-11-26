@@ -80,8 +80,54 @@ function precedingQuarterInputs(
 }
 
 /**
+ * The three quarters a fiscal fourth quarter's `field` is the year less: the
+ * last three before the year's end, each 60 to 120 days after the one before
+ * and the year's end as far after the third. Empty when the line lacks one of
+ * them, so a missing Q1 never pulls in the December before it.
+ */
+function adjacentPrecedingInputs(
+  quarterlyStatements: readonly FinancialStatement[],
+  annualStatement: FinancialStatement,
+  field: NumericStatementField,
+): PrecedingQuarterInput[] {
+  const inputs = precedingQuarterInputs(quarterlyStatements, annualStatement, field);
+  if (inputs.length !== 3) return [];
+  const times = [...inputs.map((input) => input.time), statementTime(annualStatement)];
+  const adjacent = times.every((time, index) => index === 0 || (time - times[index - 1]! >= 60 * DAY_MS && time - times[index - 1]! <= 120 * DAY_MS));
+  return adjacent ? inputs : [];
+}
+
+/** How far a fourth quarter's own revenue may sit from its year less three quarters and still be that difference. */
+const FOURTH_QUARTER_MATCH = 0.005;
+
+/**
+ * Whether a year and the three adjacent quarters before its end are not one
+ * measure: their revenue sums above the year's (above zero), and the fourth
+ * quarter states no revenue that is the difference. VYLR's carve-out year of
+ * 10.07B came beside nine months of 13.49B on its former parent's scope: no
+ * fourth quarter is their difference, in revenue or in any other flow. A year
+ * of 90 after quarters of 100 whose fourth quarter reports -10 (a reversal)
+ * is one measure, and its missing flows are still the year less the quarters.
+ */
+function quartersOfAnotherMeasure(
+  quarterlyStatements: readonly FinancialStatement[],
+  annualStatement: FinancialStatement,
+  fourthQuarter: FinancialStatement,
+): boolean {
+  const year = statementNumber(annualStatement, "totalRevenue");
+  if (year === null || !(year > 0)) return false;
+  const quarters = adjacentPrecedingInputs(quarterlyStatements, annualStatement, "totalRevenue");
+  if (quarters.length !== 3) return false;
+  const difference = year - quarters.reduce((sum, quarter) => sum + quarter.value, 0);
+  if (difference >= 0) return false;
+  const reported = statementNumber(fourthQuarter, "totalRevenue");
+  return reported === null || Math.abs(reported - difference) > FOURTH_QUARTER_MATCH * year;
+}
+
+/**
  * Completes additive fiscal Q4 flows from the annual total and three reported
- * quarters. EPS and weighted-average shares require reported quarter values;
+ * quarters, never from quarters of another measure than the year
+ * (quartersOfAnotherMeasure). EPS and weighted-average shares require reported quarter values;
  * neither is an additive flow. Snapshots come from the annual balance sheet. Derived
  * values become available only after the annual total and every quarterly
  * input used in the derivation are public.
@@ -97,8 +143,9 @@ export function deriveQuarterlyStatements(
     let target: InternalStatement = byDate.get(annualStatement.date) ?? { date: annualStatement.date, currency: annualStatement.currency };
     if (target.currency !== annualStatement.currency) continue;
     let changed = false;
+    const comparable = !quartersOfAnotherMeasure(mergedQuarterly, annualStatement, target);
 
-    for (const field of QUARTERLY_FLOW_FIELDS) {
+    for (const field of comparable ? QUARTERLY_FLOW_FIELDS : []) {
       // A line unavailable for the fourth quarter stays a gap: the full year
       // minus the other quarters would recreate the value a source withheld.
       if (hasStatementGap(target, field) || mergedQuarterly.some((statement) => (
@@ -107,10 +154,8 @@ export function deriveQuarterlyStatements(
       if (statementNumber(target, field) !== null) continue;
       const annualValue = statementNumber(annualStatement, field);
       if (annualValue === null) continue;
-      const previousInputs = precedingQuarterInputs(mergedQuarterly, annualStatement, field);
+      const previousInputs = adjacentPrecedingInputs(mergedQuarterly, annualStatement, field);
       if (previousInputs.length !== 3) continue;
-      const inputTimes = [...previousInputs.map((input) => input.time), statementTime(annualStatement)];
-      if (inputTimes.some((time, index) => index > 0 && (time - inputTimes[index - 1]! < 60 * DAY_MS || time - inputTimes[index - 1]! > 120 * DAY_MS))) continue;
       const derived = annualValue - previousInputs.reduce((sum, input) => sum + input.value, 0);
       if (!Number.isFinite(derived)) continue;
       const availableAt = completeAvailability([

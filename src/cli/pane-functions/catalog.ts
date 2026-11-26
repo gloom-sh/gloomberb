@@ -1172,10 +1172,14 @@ export function renderPaneCatalogReport(
   if (args.query && entries.length === 1) {
     // A value of one of its options (EQS's `compounders` preset) is run with that option; a function found only
     // through a word of its description or keywords is the closest there is, and says so.
+    // The closest one leads with the command that runs it ("spin-off": gloom fn EVT <ticker>), not a dead end.
     const run = optionValueCommand(entries[0]!, args.query);
+    const entry = entries[0]!;
+    const argument = argumentHint(entry);
+    const command = entry.capability.reportReadiness === "unsupported" ? "" : ` Try gloom fn ${entry.token}${argument ? ` ${argument}` : ""}.`;
     const closest = run ? `${cliStyles.muted(`"${args.query.trim()}": ${run}`)}\n\n`
-      : isClosestCatalogMatch(entries[0]!, args.query)
-        ? `${cliStyles.muted(`Closest match for "${args.query.trim()}": no function is named for it.`)}\n\n` : "";
+      : isClosestCatalogMatch(entry, args.query)
+        ? `${cliStyles.muted(`Closest match for "${args.query.trim()}": no function is named for it.${command}`)}\n\n` : "";
     return withTerms(`${closest}${renderCatalogEntry(entries[0]!)}`);
   }
 

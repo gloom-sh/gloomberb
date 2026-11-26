@@ -259,15 +259,16 @@ function EventsDividendsBody({ focused, width, height, footerPaneId = "corporate
   const amount = useCallback((value: number) => (currency ? formatDistributionAmount(value, currency, digits) : value.toFixed(digits)), [currency, digits]);
   const figures = useMemo(() => {
     const exDate = buildNextUp(allRows, { today, fund: true, statedExDate: data.statedExDate }).map(toStat);
-    const full = years.find((year) => !year.partial && year.total != null);
-    const current = years.find((year) => year.partial && year.total != null);
-    const paying = years.filter((year) => year.total != null);
+    // The latest whole year and the one not over yet; one whose amounts are on different bases has no total to show.
+    const full = years.find((year) => !year.partial && year.payments > 0);
+    const current = years.find((year) => year.partial && year.payments > 0);
+    const paying = years.filter((year) => year.payments > 0);
     const first = paying.at(-1);
     return [
       ...exDate,
-      ...(current ? [{ id: "so-far", label: `${current.year} so far`, value: amount(current.total!),
+      ...(current?.total != null ? [{ id: "so-far", label: `${current.year} so far`, value: amount(current.total),
         detail: `${current.payments} ${current.payments === 1 ? "payment" : "payments"}` }] : []),
-      ...(full ? [{ id: "last-year", label: `${full.year} paid`, value: amount(full.total!),
+      ...(full?.total != null ? [{ id: "last-year", label: `${full.year} paid`, value: amount(full.total),
         ...(full.change != null ? { detail: `${formatPercentRaw(full.change * 100)} y/y` } : {}) }] : []),
       ...(first ? [{ id: "since", label: "Paying since", value: String(first.year),
         detail: `${paying.length} of ${dividendYearSpan(years)} years` }] : []),

@@ -123,7 +123,8 @@ export interface FundDetailData {
    * says so rather than "No prior quarter". `retryAfterSeconds` when the
    * service said how long to wait.
    */
-  comparisonFailed?: { retryAfterSeconds: number | null };
+  /** `signIn`: the read was refused for the signed-out limit, which signing in lifts. */
+  comparisonFailed?: { retryAfterSeconds: number | null; signIn?: true };
 }
 
 /** Parts of a fund's detail still loading. */
@@ -186,6 +187,13 @@ export interface ThirteenFPeriodReport {
   complete: boolean;
   tableValueTotal: number | null;
   tableEntryTotal: number | null;
+  /**
+   * The report reconciles, but Gloom Cloud's limit for a reader not signed in
+   * (`limit`, its first lines in the filing's order) cut its filings short, as
+   * its answers say: its totals stand, its lines do not all. `complete` is false.
+   * `entries` is the line count the cover states, null when it states none.
+   */
+  capped?: { loaded: number; entries: number | null; limit: number };
 }
 
 export type HoldingAction = "held" | "new" | "add" | "trim" | "exit" | "unknown";

@@ -33,6 +33,7 @@ import { registerAskGloomPaneHandler, type AskGloomPaneAttachment } from "../../
 import { holdPaneUnsentWork } from "../../../state/pane-unsent-work";
 
 const tui = createOpenTuiTestHarness();
+const ESCAPE_TEST_TIME = new Date("2026-03-02T10:00:00Z");
 
 function createShellPluginRegistry(options?: {
   portfolioListComponent?: (props: PaneProps) => ReactNode;
@@ -1676,6 +1677,7 @@ describe("Shell", () => {
   });
 
   test("closes the focused pane after double Escape", async () => {
+    setSystemTime(ESCAPE_TEST_TIME);
     const config = createDefaultConfig("/tmp/gloomberb-shell-test");
     const { actions } = await renderShell(
       createShellStateWithLayout(config, singleDockedPaneLayout(config), "portfolio-list:main"),
@@ -1695,6 +1697,7 @@ describe("Shell", () => {
   });
 
   test("double Escape closes the focused floating pane and focuses the next floating one", async () => {
+    setSystemTime(ESCAPE_TEST_TIME);
     const config = createDefaultConfig("/tmp/gloomberb-shell-test");
     const layout = floatingOverDockLayout(config, [
       { instanceId: "ticker-detail:main", x: 4, y: 2 },
@@ -1718,6 +1721,7 @@ describe("Shell", () => {
   // list has the keys again, as a dialog does. Esc Esc, the old way, still
   // closes that one window and not the list as well.
   test("one Esc closes the focused floating pane and focus goes back where it was", async () => {
+    setSystemTime(ESCAPE_TEST_TIME);
     const config = createDefaultConfig("/tmp/gloomberb-shell-test");
     const layout = floatingOverDockLayout(config, [{ instanceId: "ticker-detail:main", x: 4, y: 2 }]);
     const { actions } = await renderShell(
@@ -1739,6 +1743,7 @@ describe("Shell", () => {
   // Ask Gloom's draft goes with its pane: the Esc that leaves the composer,
   // and any after it, never close the window over it. Ctrl+W still does.
   test("no Esc closes a floating pane that holds unsent work", async () => {
+    setSystemTime(ESCAPE_TEST_TIME);
     const config = createDefaultConfig("/tmp/gloomberb-shell-test");
     const layout = floatingOverDockLayout(config, [{ instanceId: "ticker-detail:main", x: 4, y: 2 }]);
     const release = holdPaneUnsentWork("ticker-detail:main");
@@ -1753,7 +1758,7 @@ describe("Shell", () => {
       expect(actions.some((action) => action.type === "UPDATE_LAYOUT")).toBe(false);
 
       release();
-      await new Promise((resolve) => setTimeout(resolve, 700));
+      setSystemTime(new Date(Date.now() + 700));
       await emitKeypress({ name: "escape", sequence: "\u001b" });
       expect(actions.find((action) => action.type === "UPDATE_LAYOUT")?.layout.floating).toEqual([]);
     } finally {

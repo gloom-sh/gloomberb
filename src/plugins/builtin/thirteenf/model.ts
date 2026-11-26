@@ -723,15 +723,24 @@ export function comparedWith(data: FundDetailData | null | undefined): {
   if (data && hasComparable13FQuarter(data)) return { value: data.previousForm!.periodOfReport };
   if (data?.comparisonFailed) {
     const seconds = data.comparisonFailed.retryAfterSeconds;
+    const again = seconds != null ? `try again in ${seconds} s` : "try again";
     return {
       value: "Previous quarter did not load",
-      detail: seconds != null ? `try again in ${seconds} s` : "try again",
+      detail: data.comparisonFailed.signIn ? `too many 13F reads without signing in: ${again}, or sign in` : again,
       tone: "warning",
     };
   }
   // The quarter the changes will compare with, dim until both are in.
   if (data?.loading && hasComparable13FQuarter({ ...data, loading: undefined })) {
     return { value: data.previousForm!.periodOfReport, tone: "muted" };
+  }
+  // On file, but a quarter loaded in part: no change can be told from a line left unread. Signing in reads the rest
+  // only where the signed-out limit is what cut it.
+  const partial = [data?.latestReport, data?.previousReport].filter((report) => report?.complete === false);
+  if (data && !data.loading && partial.length > 0 && data.latestReport && data.previousReport
+    && adjacentQuarterPeriods(data.latestForm?.periodOfReport, data.previousForm?.periodOfReport)) {
+    const signIn = partial.every((report) => report!.capped);
+    return { value: data.previousForm!.periodOfReport, detail: signIn ? "read in part, sign in for changes" : "read in part", tone: "warning" };
   }
   return { value: "No prior quarter", tone: "muted" };
 }
@@ -742,7 +751,7 @@ export function comparedWithText(data: FundDetailData | null | undefined): strin
   return [compared.value, compared.detail].filter(Boolean).join(", ").replace(/^./, (first) => first.toLowerCase());
 }
 
-function adjacentQuarterPeriods(current: string | undefined, previous: string | undefined): boolean {
+export function adjacentQuarterPeriods(current: string | undefined, previous: string | undefined): boolean {
   if (!current || !previous) return false;
   const date = new Date(`${current}T00:00:00Z`);
   if (!Number.isFinite(date.getTime())) return false;
@@ -768,8 +777,9 @@ export function buildFundHoldingRows(data: FundDetailData | null, splits?: Split
   const moved = cusipSplits(current, previous, splits);
   for (const { previousId } of moved.values()) previous.delete(previousId);
   const allKeys = new Set([...current.keys(), ...previous.keys()]);
+  // A report read in part (signed out) still states its whole value: each line's weight is of that.
   const totalValue = data.latestReport
-    ? data.latestReport.complete ? data.latestReport.tableValueTotal : null
+    ? data.latestReport.complete || data.latestReport.capped ? data.latestReport.tableValueTotal : null
     : data.latestForm.tableValueTotal;
 
   return [...allKeys].map((id) => {
@@ -1036,7 +1046,7 @@ export function sortTimelineRows(
 export function buildBrowserColumns(withEstimate = true): FundBrowserColumn[] {
   const cikWidth = 12;
   const periodWidth = 10;
-  const filedWidth = 9;
+  const filedWidth = 10;
   const valueWidth = 11;
   const rowsWidth = 6;
   const retWidth = withEstimate ? 9 : 0;

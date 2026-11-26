@@ -11,10 +11,10 @@ const events = marketDataCliCommands.find((command) => command.name === "events"
 beforeAll(() => { setSystemTime(new Date("2026-10-15T12:00:00Z")); });
 afterAll(() => { setSystemTime(); });
 
-async function eventRows(earnings: unknown[]) {
+async function eventRows(earnings: unknown[], actions: { dividends?: unknown[]; splits?: unknown[]; demergers?: unknown[] } = {}) {
   const run = createTestCliContext({
     dataProvider: {
-      getCorporateActions: async () => ({ symbol: "PLTR", currency: "USD", dividends: [], splits: [], earnings }),
+      getCorporateActions: async () => ({ symbol: "PLTR", currency: "USD", dividends: [], splits: [], earnings, ...actions }),
       getQuote: async () => ({ symbol: "PLTR", price: 200, currency: "USD", name: "Palantir Technologies Inc." }),
     },
   });
@@ -61,4 +61,53 @@ test("events is dated by when it was read: a row's date is when its event happen
   const { result } = await eventRows(PLTR);
   expect(result.freshness).toMatchObject({ asOf: null, status: "not-a-feed", basis: "corporate actions" });
   expect(formatFreshnessLine(result.freshness!)).toMatch(/^Source: Gloom Cloud · retrieved \w{3} \d+ \w{3} \d{4} \d{2}:\d{2} UTC · not a live feed \(corporate actions\)$/);
+});
+
+// `events CTVA` listed its 6665:1000 of 2026-10-01 as a split, and the VYLR demerger on record beside it would make two rows.
+test("a factor on a demerger's ex-date is that spin-off, one row; another in no share terms is a factor; what precedes them is labelled", async () => {
+  const vylor = { exDate: "2026-10-01", recordDate: "2026-09-24", business: "seed", ratio: 1,
+    successor: { symbol: "VYLR", exchange: "NYSE", name: "Vylor Inc.", listedOn: "2026-10-01" } };
+  const factor = { date: "2026-10-01", ratio: 6.665, fromFactor: 1000, toFactor: 6665, description: "6665:1000" };
+  const earnings = [
+    { date: "2026-11-11", currency: "USD", epsActual: -0.04, epsEstimate: 0.09 },
+    { date: "2026-07-30", currency: "USD", epsActual: 0.345086, epsEstimate: 0.336084 },
+  ];
+  const dividends = [{ exDate: "2026-09-01", amount: 0.027007 }];
+  const confirmed = await eventRows(earnings, { dividends, splits: [factor], demergers: [vylor] });
+  expect(confirmed.rows.map((row) => `${row.date} ${row.type} ${row.detail}`)).toEqual([
+    "2026-11-11 earnings eps -$0.04",
+    "2026-10-01 spin-off seed business into VYLR:NYSE (Vylor Inc.), 1 share per share, listed 2026-10-01; price adjustment 6665:1000",
+    "2026-09-01 dividend $0.027007, adjusted for the VYLR spin-off of 2026-10-01 (6665:1000)",
+    "2026-07-30 earnings eps $0.35, EPS adjusted for the VYLR spin-off of 2026-10-01 (6665:1000)",
+  ]);
+  // JSON keeps the history's amount: nothing is multiplied back to a paid figure.
+  expect(confirmed.result.data.dividends[0]).toEqual({ exDate: "2026-09-01", amount: 0.027007 });
+  expect(confirmed.result.data.splits[0]).toMatchObject({ kind: "spin-off adjustment", spinOff: "VYLR" });
+  const unclassified = await eventRows(earnings, { dividends, splits: [factor] });
+  expect(unclassified.rows.map((row) => `${row.date} ${row.type} ${row.detail}`).slice(1, 3)).toEqual([
+    "2026-10-01 adjustment factor 6665:1000, in no share terms",
+    "2026-09-01 dividend $0.027007, adjusted by the 6665:1000 factor of 2026-10-01",
+  ]);
+  expect(unclassified.result.data.splits[0]).toMatchObject({ kind: "adjustment factor" });
+});
+
+test("a split the same day as a spin-off stays a split, and figures the company published keep no adjusted label", async () => {
+  const vylor = { exDate: "2026-10-01", recordDate: "2026-09-24", business: "seed", ratio: 1,
+    successor: { symbol: "VYLR", exchange: "NYSE", name: "Vylor Inc.", listedOn: "2026-10-01" } };
+  const splits = [{ date: "2026-10-01", ratio: 6.665, fromFactor: 1000, toFactor: 6665 }, { date: "2026-10-01", ratio: 2, fromFactor: 1, toFactor: 2 }];
+  // The release's own EPS and a dividend its forms state are as published, whatever their date.
+  const earnings = [{ date: "2026-08-05", currency: "USD", epsActual: 2.3, epsEstimate: 2.25, epsActualSource: "press-release" }];
+  const form = { url: "https://example.com/dividend-form.pdf", publishedOn: "2026-08-20" };
+  const dividends = [{ exDate: "2026-09-01", amount: 0.18, parts: [{ amount: 0.18, special: false, type: "interim", form }] }];
+  const { rows, result } = await eventRows(earnings, { dividends, splits, demergers: [vylor] });
+  expect(rows.map((row) => `${row.date} ${row.type} ${row.detail}`)).toEqual([
+    "2026-10-01 spin-off seed business into VYLR:NYSE (Vylor Inc.), 1 share per share, listed 2026-10-01; price adjustment 6665:1000",
+    "2026-10-01 split 2-for-1",
+    "2026-09-01 dividend $0.18",
+    "2026-08-05 earnings eps $2.30, provisional",
+  ]);
+  // JSON keeps every observation as served; only the factor says what it is.
+  expect(result.data.dividends).toEqual(dividends);
+  expect(result.data.earnings[0]).toMatchObject({ epsActual: 2.3, epsEstimate: 2.25, epsActualSource: "press-release" });
+  expect(result.data.splits.map((split: Record<string, unknown>) => split.kind ?? "split")).toEqual(["spin-off adjustment", "split"]);
 });
