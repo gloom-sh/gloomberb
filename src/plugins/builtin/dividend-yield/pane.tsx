@@ -40,8 +40,10 @@ import { useTickerQuoteStream } from "../../../state/hooks/live-ticker-financial
 import { buildTrailingCashChartPoints, convertedFromText, dividendAmountDigits, formatConvertedAmount, formatDividendRowAmount, formatDividendYield, forwardEstimateText, growthPaymentsDetail, PAYOUT_BASIS, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText, trailingSpecialText, type DividendAmountDigits, type DividendRow } from "./view";
 import {
   DEFAULT_SORT_PREFERENCE,
+  SCHEDULE_LINK_LABEL,
   buildDividendColumns,
   sortRows,
+  sourceLinksWidth,
   type DividendColumn,
   type DividendColumnId,
   type DividendSortPreference,
@@ -188,14 +190,32 @@ function renderCell(
     case "status":
       return { text: row.pending ? "Declared" : "Paid", color: colors.textDim };
     case "source":
-      return { text: row.source ?? "", color: colors.textDim,
-        ...(row.sourceUrl ? { content: (
-          <Box flexDirection="row" gap={1}>
-            <ExternalLinkText url={row.sourceUrl} label={row.source} width={column.width} />
-            {row.sourceScheduleUrl ? <ExternalLinkText url={row.sourceScheduleUrl} label="Schedule" width={8} /> : null}
-          </Box>
-        ) } : {}) };
+      return sourceCell(row, column.width);
   }
+}
+
+/**
+ * A sourced row's links: its publisher opens the notice, and the schedule
+ * follows it only in a column with the room for both whole. In less (the
+ * column the pane fits to its width, or the cells of it the pane's edge
+ * leaves), the publisher's link stands alone, cut where its room ends, and
+ * the schedule opens from the selected row's menu.
+ */
+function sourceCell(row: DividendRow, width: number): DataTableCell {
+  const text = row.source ?? "";
+  if (!row.sourceUrl) return { text, color: colors.textDim };
+  const schedule = sourceLinksWidth(row) <= width ? row.sourceScheduleUrl : undefined;
+  return {
+    text,
+    color: colors.textDim,
+    contentWidth: sourceLinksWidth(row, !!schedule),
+    content: (
+      <Box flexDirection="row" gap={1}>
+        <ExternalLinkText url={row.sourceUrl} label={text} width={schedule ? displayWidth(text) : width} />
+        {schedule ? <ExternalLinkText url={schedule} label={SCHEDULE_LINK_LABEL} width={displayWidth(SCHEDULE_LINK_LABEL)} /> : null}
+      </Box>
+    ),
+  };
 }
 
 type DividendPaneProps = { focused: boolean; width: number; height: number; loadData?: typeof fetchDividendData };
@@ -309,7 +329,7 @@ function DividendTickerPane({ focused, width, height, loadData = fetchDividendDa
   const sortedRows = useMemo(() => sortRows(rows, sortPreference), [rows, sortPreference]);
   const convertedFrom = historyData?.convertedFrom;
   const convertedSubUnit = historyData?.convertedSubUnit;
-  const columns = useMemo(() => buildDividendColumns(rows, !!convertedFrom, convertedSubUnit), [rows, convertedFrom, convertedSubUnit]);
+  const columns = useMemo(() => buildDividendColumns(rows, !!convertedFrom, convertedSubUnit, width), [rows, convertedFrom, convertedSubUnit, width]);
   const chartPoints = useMemo(
     () => data?.historyAvailable === false ? [] : buildTrailingCashChartPoints(payments),
     [data?.historyAvailable, payments],

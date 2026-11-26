@@ -101,6 +101,10 @@ export interface DataTableCell {
    * The cells `content` takes to show whole in the terminal, where a table
    * fits its columns to what they hold before it cuts one or pushes one out of
    * view. Without it a drawn cell's column keeps the width the pane set.
+   *
+   * A cell that gives it is also made again for a column the pane's edge
+   * cuts, with the cells that show as the column's width, so it can give up
+   * a piece whole (a second link, a badge) where the edge would cut it.
    */
   contentWidth?: number;
   /**

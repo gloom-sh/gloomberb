@@ -1,9 +1,11 @@
 import { afterEach, expect, setSystemTime, test } from "bun:test";
-import { act, useState } from "react";
+import { act, useMemo, useState } from "react";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { TestPaneFrame, TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
+import type { ContextMenuItem } from "../../../types/context-menu";
+import { UiHostProvider, useNativeRenderer, useRendererHost, useUiHost } from "../../../ui";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { DividendYieldPane } from "./pane";
 import { fetchDividendData } from "./client";
@@ -54,27 +56,73 @@ test.each([44, 60])("an ex-dated unfixed sterling declaration keeps its row, est
   expect(text).toContain("17 Dec 2026");
 });
 
-test("an unpaid distribution with a published notice keeps its status and source links beside the paid history", async () => {
-  const source = { publisher: "KSEI", url: "https://example.com/cash.pdf", scheduleUrl: "https://example.com/schedule.pdf" };
+const NOTICE = { publisher: "KSEI", url: "https://example.com/cash.pdf", scheduleUrl: "https://example.com/schedule.pdf" };
+
+/** A paid distribution and a declared one whose publisher issued the cash notice and the schedule apart. */
+async function declaredWithNotice() {
   setSystemTime(new Date("2026-11-26T06:00:00Z"));
   setHttpFetchTransport(async () => Response.json({ status: "success", data: {
     summary: null,
     actions: { symbol: "MEDC", exchange: "JAKARTA", currency: "IDR", coverage: { dividends: "available" }, splits: [], earnings: [],
       dividends: [{ exDate: "2026-06-23", amount: 24 }],
-      declaredDividends: [{ exDate: "2026-11-11", amount: 22.0252, payDate: "2026-12-02", source }] },
+      declaredDividends: [{ exDate: "2026-11-11", amount: 22.0252, payDate: "2026-12-02", source: NOTICE }] },
   } }));
-  let data: Awaited<ReturnType<typeof fetchDividendData>>;
   try {
-    data = await fetchDividendData("MEDC", null, "JAKARTA");
+    return await fetchDividendData("MEDC", null, "JAKARTA");
   } finally {
     setSystemTime();
   }
+}
+
+test("an unpaid distribution with a published notice keeps its status and source links beside the paid history", async () => {
+  const data = await declaredWithNotice();
   expect(data.payments.map((payment) => payment.amount)).toEqual([24]);
   expect(data.metrics.nextPayDate).toEqual(new Date("2026-12-02"));
   const text = await renderLoaded(data, 80, 24);
   expect(text).toMatch(/11 Nov 2026\s+IDR\s+22\.0252\s+Declared\s+KSEI\s+Schedule/);
   expect(text).toMatch(/23 Jun 2026\s+IDR\s+24\.0000\s+Paid/);
   expect(text).toContain("02 Dec 2026");
+});
+
+// At 50 columns the two links ran together as "KSEISchedu", cut at the scrollbar.
+test("a pane without the room for both source links keeps the notice link whole and opens the schedule from the row's menu", async () => {
+  const data = await declaredWithNotice();
+  const loadData = async () => data;
+  const opened: string[] = [];
+  let menu: ContextMenuItem[] = [];
+  const state = createInitialState(createTestPaneConfig("/tmp/dividend-notice-links", {
+    instanceId: "dividend-links", paneId: "dividend-yield", binding: { kind: "fixed", symbol: "MEDC" },
+  }));
+  state.tickers.set("MEDC", createTestTicker("MEDC"));
+  function Pane({ width }: { width: number }) {
+    const host = useRendererHost();
+    const renderer = useMemo(() => ({ ...host, openExternal: async (url: string) => { opened.push(url); return true; } }), [host]);
+    return (
+      <UiHostProvider ui={useUiHost()} nativeRenderer={useNativeRenderer()} renderer={renderer}>
+        <TestPaneFrame state={state} paneId="dividend-links" pluginId="dividend-yield" runtime={createTestPluginRuntime()} width={width} height={24}>
+          {(body, footer) => { menu = footer.menu; return <DividendYieldPane focused {...body} loadData={loadData} />; }}
+        </TestPaneFrame>
+      </UiHostProvider>
+    );
+  }
+  const render = async (width: number) => {
+    await act(async () => { await tui.render(<Pane width={width} />, { width, height: 24 }); });
+    return (await frame()).split("\n").find((line) => line.includes("11 Nov 2026"))!;
+  };
+
+  expect(await render(54)).toMatch(/IDR\s22\.0252\s+Declared\s+KSEI Schedule\s/);
+  await tui.clickFrameText("Schedule");
+  expect(opened).toEqual([NOTICE.scheduleUrl]);
+
+  const narrow = await render(50);
+  expect(narrow).toMatch(/11 Nov 2026\s+IDR\s22\.0252\s+Declared\s+KSEI\s/);
+  expect(narrow).not.toContain("Sched");
+  opened.length = 0;
+  await tui.clickFrameText("KSEI");
+  await tui.emitKeypress({ name: "return" });
+  const schedule = menu.find((item) => "label" in item && item.label === "Open dividend schedule");
+  await act(async () => { if (schedule && "onSelect" in schedule) await schedule.onSelect?.(); });
+  expect(opened).toEqual([NOTICE.url, NOTICE.url, NOTICE.scheduleUrl]);
 });
 
 test("summary failures retain cash and recover dated payment information through refresh", async () => {

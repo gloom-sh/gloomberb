@@ -272,18 +272,22 @@ function OpenTuiDataTableRowInner<
         const clip = columnClips?.[columnIndex] ?? null;
         const cellColumn = cellColumns[columnIndex] ?? column;
         const made = renderCell(item, cellColumn, index, rowState);
-        // A drawn cell lays itself out in the column as drawn; its width is the one made for its column unfitted.
-        const cell = made.content !== undefined && cellColumn !== column ? renderCell(item, column, index, rowState) : made;
         widths[columnIndex] = made.content === undefined ? displayWidth(made.text) : made.contentWidth ?? null;
         const columnStart = columnStarts[columnIndex] ?? 0;
         const leadGap = tableColumnLeadGap(displayColumns, columnIndex, columnGap);
         const inset = clip ? clip.inset : !frozen && frozenColumnOffset !== undefined
           ? Math.min(column.width, Math.max(0, frozenColumnOffset + (displayColumns[0]?.width ?? 0) + columnGap - columnStart)) : 0;
         const shownWidth = clip ? clip.width : column.width - inset;
+        // A drawn cell lays itself out in the column as drawn; its width is the one made for its column unfitted.
+        // One that says its width (`contentWidth`) is made for the cells of a cut column that show, as cut text
+        // is fitted to them, so it gives up a piece whole where the edge would cut it.
+        const drawnColumn = made.contentWidth !== undefined && shownWidth > 0 && shownWidth < column.width
+          ? { ...column, width: shownWidth } : column;
+        const cell = made.content !== undefined && cellColumn !== drawnColumn ? renderCell(item, drawnColumn, index, rowState) : made;
         // Cut text is fitted to what shows; a number the edge cuts stays blank in its own place,
-        // and its cell keeps its background and its press.
+        // and its cell keeps its background and its press. A drawn cell left no cells draws nothing, as text does.
         const fitted = fitColumnCellText(cell.text, clip ? column.width : shownWidth, column.align, clip, cell.note, cell.keepEnd);
-        const contentCut = clip !== null && column.align === "right" && fitted.text.trim() === "";
+        const contentCut = shownWidth <= 0 || (clip !== null && column.align === "right" && fitted.text.trim() === "");
         return (
           <Box
             key={column.id}
