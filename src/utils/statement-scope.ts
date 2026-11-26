@@ -66,7 +66,7 @@ export function dateScopedEarnings(data: Pick<TickerFinancials, "statementScope"
     const values = rows.map(row => row.eps!);
     const total = sumFiledDecimals(values);
     if (!Number.isFinite(total)) return [];
-    const roundoff = values.length * Number.EPSILON * Math.max(Math.abs(total), Math.abs(eps));
+    const roundoff = values.length * values.reduce((bound, value) => bound + Number.EPSILON * Math.abs(value), 0);
     if (values.reduce((sum, value) => sum + value, 0) === eps && Math.abs(total - eps) <= roundoff) admittedTotals.add(total);
     return [{ rows, total }];
   });

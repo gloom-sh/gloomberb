@@ -34,12 +34,13 @@ export function dailyValuationHistory(
   let next = 0;
   let active: DailyValuationBasis | undefined;
   const points: TimeSeriesPoint[] = [];
-  const closes = Array.from(byDate, ([time, bars]) => {
+  const closes = [...byDate].flatMap(([time, bars]) => {
     // Daily bars name their session at midnight. A timed report belongs to
     // that close only if it was already public, including on early closes.
     const day = new Date(time).toISOString().slice(0, 10);
-    const closeTime = closesKnownBy !== undefined && time % 86_400_000 !== 0 ? time : regularSessionCloseOn(exchange, day) ?? time;
-    return { time, bars, closeTime, pointTime: closesKnownBy === undefined ? time : closeTime };
+    const closeTime = closesKnownBy === undefined ? regularSessionCloseOn(exchange, day) ?? time
+      : time % 86_400_000 === 0 ? regularSessionCloseOn(exchange, day) : time;
+    return closeTime === null ? [] : [{ time, bars, closeTime, pointTime: closesKnownBy === undefined ? time : closeTime }];
   });
   for (const { time, bars, closeTime, pointTime } of closes.sort((left, right) => left.pointTime - right.pointTime || left.time - right.time)) {
     if (closesKnownBy !== undefined && closeTime > closesKnownBy) continue;

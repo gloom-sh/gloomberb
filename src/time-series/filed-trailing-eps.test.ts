@@ -59,10 +59,24 @@ test("decimal quarter EPS corroborates the admitted annual amount only at the la
     expect(unmatched?.eps).toBeUndefined();
     expect(unmatched?.trailingPE).toBeUndefined();
   }
-  const offsetting = mapCloudFinancials({ ...raw, annualStatements: [],
-    quarterlyStatements: quarterlyStatements.map((row, index) => ({ ...row, eps: [0.10, 0.20, -0.30, 0.001][index] })),
-    fundamentals: { ...raw.fundamentals, eps: 0.001, trailingPE: 70000 } });
-  expect(at(offsetting, after)).toMatchObject({ eps: 0.001, trailingPE: 70000 });
+  const offsetting = [0.10, 0.20, -0.30, 0.001];
+  const offsetSum = offsetting.reduce((sum, value) => sum + value, 0);
+  const offsetQuarters = quarterlyStatements.map((row, index) => ({ ...row, eps: offsetting[index] }));
+  expect(at(mapCloudFinancials({ ...raw, annualStatements: [], quarterlyStatements: offsetQuarters,
+    fundamentals: { ...raw.fundamentals, eps: 0.001, trailingPE: 70000 } }), after)).toMatchObject({ eps: 0.001, trailingPE: 70000 });
+  for (const [annualFiled, quarterFiled] of [["2028-02-15", filed], [filed, "2028-02-15"]] as const) {
+    const support = (eps: number) => mapCloudFinancials({ ...raw,
+      annualStatements: annualStatements.map(row => ({ ...row, eps: 0.001, fieldAvailability: { eps: annualFiled } })),
+      quarterlyStatements: offsetQuarters.map(row => ({ ...row, fieldAvailability: { eps: quarterFiled } })),
+      fundamentals: { ...raw.fundamentals, eps, trailingPE: 70 / eps } });
+    for (const eps of [0.001, offsetSum]) {
+      const data = support(eps);
+      expect(data.fundamentals?.scopedEarnings).toMatchObject({ eps, epsAvailableAt: filed });
+      expect(at(data, before)?.trailingPE).toBeUndefined();
+      expect(at(data, after)).toMatchObject({ eps, trailingPE: 70 / eps });
+    }
+    expect(support(0.00100000000000005).fundamentals?.scopedEarnings).toBeNull();
+  }
 });
 
 test("a scoped filing steps at effective closes, not the midnight label of a later NYSE close", () => {
@@ -73,14 +87,30 @@ test("a scoped filing steps at effective closes, not the midnight label of a lat
       { date: onFilingDay(0), close: 78 }, { date: onFilingDay(16), close: 65 }, { date: onFilingDay(18), close: 65 },
     ] };
   const series = (period: "daily" | "annual") => extractFundamentalSeries(data, { kind: "security", instrument: { symbol: "VYLR" }, fieldId: "valuation.trailingPE", period });
+  const band = () => projectPeBand({ ...data, quote: { ...data.quote, listingExchangeName: undefined } }, [{ date: new Date("2028-02-14"), close: 999 }],
+    { symbol: "VYLR", exchange: "NYSE", lookbackYears: 1, daily: data.priceHistory });
   try {
+    setSystemTime(onFilingDay(17));
+    expect(band().rows).toMatchObject([{ knownAt: onFilingDay(17), price: null, pe: null }]);
+    expect(band().points).toEqual([]);
     setSystemTime(onFilingDay(20));
     expect(series("daily").map(point => point.value)).toEqual([null, 20]);
+    const beforeClose = band();
+    expect(beforeClose.rows).toMatchObject([{ knownAt: onFilingDay(17), priceAt: onFilingDay(18), price: 65, pe: 20 }]);
+    expect(beforeClose.points).toMatchObject([{ date: onFilingDay(18), close: 65, pe: 20 }]);
     setSystemTime(onFilingDay(21));
     expect(series("daily").map(point => [point.date, point.value])).toEqual([
       [onFilingDay(16), null], [onFilingDay(18), 20], [onFilingDay(21), 24],
     ]);
     expect(series("annual")).toMatchObject([{ value: 20, date: onFilingDay(18), availableAt: onFilingDay(18) }]);
+    const atClose = band();
+    expect(atClose.current?.pe).toBeNull();
+    expect(atClose.rows).toMatchObject([{ priceAt: onFilingDay(18), price: 65, pe: 20 }]);
+    expect(atClose.weeks).toMatchObject([{ date: onFilingDay(21), close: 78, pe: 24 }]);
+    expect(atClose.points).toMatchObject([{ date: onFilingDay(18), close: 65, pe: 20 }, { date: onFilingDay(21), close: 78, pe: 24 }]);
+    const unknownSession = { ...data, quote: { ...data.quote, listingExchangeName: undefined }, priceHistory: [{ date: new Date("2028-02-18"), close: 78 }] };
+    setSystemTime(new Date("2028-02-18T01:00:00Z"));
+    expect(projectPeBand(unknownSession, [], { symbol: "VYLR", lookbackYears: 1 }).points).toEqual([]);
   } finally { setSystemTime(); }
 });
 
@@ -96,6 +126,7 @@ test("a scoped period point waits for the first priced close even with a stale c
     expect(series("annual").filter(point => point.periodLabel !== "Current")).toMatchObject([
       { value: 20, date: new Date(after), availableAt: new Date(after), observedAt: new Date(end) },
     ]);
+    expect(projectPeBand(data, [], { symbol: "VYLR", lookbackYears: 1 }).rows).toMatchObject([{ priceAt: new Date(after), price: 65, pe: 20 }]);
   } finally { setSystemTime(); }
 });
 

@@ -25,7 +25,7 @@ export const peBandHeadless: HeadlessPaneDefinition<"bundle"> = {
     const inputs = await loadPeBandInputs({ instrument, signal: ctx.signal }, ctx.marketData, new MarketDataCoordinator(ctx.marketData), ctx.apiClient);
     ctx.signal.throwIfAborted();
     const lookbackYears = Number(args.options.lookbackYears ?? 10);
-    const model = projectPeBand(inputs.financials, inputs.history, { symbol: instrument.symbol, lookbackYears, reports: inputs.reports,
+    const model = projectPeBand(inputs.financials, inputs.history, { symbol: instrument.symbol, exchange: instrument.exchange, lookbackYears, reports: inputs.reports,
       fx: inputs.fx, fxError: inputs.fxError, daily: inputs.daily });
     const current = model.current;
     const conversion = model.conversion;

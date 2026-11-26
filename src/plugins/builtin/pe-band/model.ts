@@ -2,6 +2,8 @@ import { regularSessionValuationPrice, regularSessionValuationTime } from "../..
 import { priceScopedEarnings } from "../../../utils/statement-scope";
 import { crossFxCloseOnOrBefore, dailyFxLeg, type FxCloses } from "../../../market-data/fx-closes";
 import { knownWhenFiled } from "../../../time-series/fundamentals";
+import { calendarBarStart } from "../../../time-series/chart-data";
+import { dailyValuationHistory } from "../../../time-series/daily-valuation";
 import { STALE_TRAILING_EPS_MS, trailingEpsSteps as sharedTrailingEpsSteps, type EpsStep } from "../../../time-series/filed-trailing-eps";
 import { createValuationCurrencyContext } from "../../../time-series/valuation-currency";
 import type { FinancialStatement, PricePoint, TickerFinancials } from "../../../types/financials";
@@ -27,11 +29,12 @@ interface PeBandWeek {
 
 export interface PeBandRow extends EpsStep {
   /**
-   * The close of the day the figure became known (the last session on or
-   * before it), in price units; before the daily closes on record, the close
-   * of the weekly bar dated on or before it.
+   * In price units: the first eligible close at or after a scoped figure's
+   * publication, otherwise the last session on or before it (a weekly close
+   * before daily coverage).
    */
   price: number | null;
+  priceAt?: Date | null;
   pe: number | null;
   /** Change from the figure a year earlier in the same currency, when both are positive. */
   yoy: number | null;
@@ -186,6 +189,13 @@ function closesOf(history: readonly PricePoint[]): Array<{ date: Date; close: nu
     .sort((a, b) => a.date.getTime() - b.date.getTime());
 }
 
+function scopedBandHistory(history: readonly PricePoint[], step: EpsStep, exchange: string | undefined, now: number) {
+  const daily = dailyValuationHistory(history, [{ observedAt: new Date(step.periodEnd), availableAt: step.knownAt.toISOString(), atPrice: price => price }], exchange, now)
+    .flatMap(point => point.value === null ? [] : [{ date: point.date, close: point.value }]);
+  const weeks = new Map(daily.map(point => [calendarBarStart(point.date.getTime(), "1wk", exchange), point]));
+  return { daily, weeks: [...weeks.values()] };
+}
+
 /**
  * Weekly bars dated by the session their close is from. A bar is dated by
  * its week's first day, so DWSN's week of 9 Nov 2026 read 9 Nov with the
@@ -228,7 +238,7 @@ export function projectPeBand(
   financials: TickerFinancials | null,
   history: readonly PricePoint[],
   options: {
-    symbol: string; lookbackYears: number; now?: number; reports?: readonly ReportDate[];
+    symbol: string; exchange?: string; lookbackYears: number; now?: number; reports?: readonly ReportDate[];
     /** Daily FX closes by currency, quoted in USD per unit. */
     fx?: ReadonlyMap<string, FxCloses>;
     /** Why a needed FX history is missing, said when it leaves today's EPS unconverted. */
@@ -270,13 +280,15 @@ export function projectPeBand(
   }
 
   const now = options.now ?? Date.now();
-  const canPrice = !financials.statementScope || financials.fundamentals?.scopedEarnings?.priced === true;
+  const canPrice = !financials.statementScope || (financials.fundamentals?.scopedEarnings?.priced === true && !financials.fundamentals.notMeaningful?.trailingPE);
   const stepForPrice = (time: number) => financials.statementScope
     ? (latest.knownAt.getTime() <= time && time <= now ? latest : null) : stepAt(allSteps, time);
   const firstKnown = allSteps.find((step) => step.eps != null)!.knownAt.getTime();
   const start = Math.max(firstKnown, options.lookbackYears > 0 ? now - options.lookbackYears * YEAR_MS : firstKnown);
-  const sorted = closesOf(history);
-  const daily = closesOf(options.daily ?? []);
+  const scoped = financials.statementScope ? scopedBandHistory(options.daily?.length ? options.daily : financials.priceHistory,
+    latest, financials.quote?.listingExchangeName || financials.quote?.exchangeName || options.exchange, now) : null;
+  const sorted = scoped ? [] : closesOf(history);
+  const daily = scoped?.daily ?? closesOf(options.daily ?? []);
   const dailyStart = daily[0]?.date.getTime() ?? Number.POSITIVE_INFINITY;
   /** A close as the chart reads it: with the EPS in force on its day, and the P/E they make. */
   const reading = (point: { date: Date; close: number }): PeBandWeek => {
@@ -285,20 +297,21 @@ export function projectPeBand(
     const positive = eps != null && eps > 0 ? eps : null;
     return { date: point.date, close: point.close, eps: positive, pe: canPrice && positive ? point.close / positive : null };
   };
-  const weeks = closingSessions(sorted, daily).filter((point) => point.date.getTime() >= start).map(reading);
+  const weeks = (scoped?.weeks ?? closingSessions(sorted, daily)).filter((point) => point.date.getTime() >= start).map(reading);
 
-  /** The close of the day `time` falls on, or the last session before it, where the daily closes reach. */
-  const dayClose = (time: number) => time >= dailyStart ? daily.findLast((point) => point.date.getTime() <= time) ?? null : null;
+  /** Scoped EPS waits for a close; an ordinary row reads the close on or before its date. */
+  const dayClose = (time: number) => scoped ? daily.find(point => point.date.getTime() >= time) ?? null
+    : time >= dailyStart ? daily.findLast((point) => point.date.getTime() <= time) ?? null : null;
   const steps = allSteps.filter((step) => step.knownAt.getTime() >= start && (!financials.statementScope || step.knownAt.getTime() <= now));
   const rows = steps.filter((step) => step.eps != null).map((step): PeBandRow => {
     const time = step.knownAt.getTime();
     const bar = dayClose(time) ?? sorted.findLast((point) => point.date.getTime() <= time);
-    const price = bar && (!financials.statementScope || bar.date.getTime() >= time) ? bar.close : null;
+    const price = bar?.close ?? null;
     const converted = pricedSteps.get(step);
     const eps = converted?.eps ?? null;
     const prior = allSteps.find((other) => other.eps != null && other.currency === step.currency
       && Math.abs(Date.parse(step.periodEnd) - Date.parse(other.periodEnd) - 365 * DAY_MS) <= 20 * DAY_MS);
-    return { ...step, price, pe: canPrice && price != null && eps != null && eps > 0 ? price / eps : null, fx: converted?.fx ?? null,
+    return { ...step, price, ...(scoped ? { priceAt: bar?.date ?? null } : {}), pe: canPrice && price != null && eps != null && eps > 0 ? price / eps : null, fx: converted?.fx ?? null,
       yoy: step.eps != null && prior?.eps != null && step.eps > 0 && prior.eps > 0 ? step.eps / prior.eps - 1 : null };
   }).reverse();
 
