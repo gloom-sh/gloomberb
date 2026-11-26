@@ -71,6 +71,37 @@ async function checkStaleSave(base: Workspace, first: Workspace, last: Workspace
 
 const leaf = (instanceId: string): DockLayoutNode => ({ kind: "pane", instanceId });
 
+for (const renameFirst of [true, false]) {
+  describe(`stale legacy tab save (rename ${renameFirst ? "first" : "last"})`, () => {
+    const home = { id: "home", name: "Home", layout: docked(leaf("help")) };
+    const legacy = { name: "Legacy", layout: docked(leaf("news")) };
+    const base = workspace([home, legacy], 0);
+    const research = { ...legacy, name: "Research" };
+    const renamed = workspace([home, research], 0);
+
+    test.each(["switch", "reorder"])("a %s follows the renamed tab", async (edit) => {
+      const other = edit === "switch" ? workspace([home, legacy], 1) : workspace([legacy, home], 1);
+      const expected = workspace(edit === "switch" ? [home, research] : [research, home], 1);
+      await checkStaleSave(base, renameFirst ? renamed : other, renameFirst ? other : renamed, expected);
+    });
+
+    test("a moved and renamed tab keeps a concurrent split around its original pane", async () => {
+      const split = docked(buildSplitAroundNode(leaf("news"), "world-indices", "above"));
+      const opened = workspace([home, { ...legacy, layout: split }], 0);
+      const moved = workspace([research, home], 0);
+      const expected = workspace([{ ...research, layout: split }, home], 0);
+      await checkStaleSave(base, renameFirst ? moved : opened, renameFirst ? opened : moved, expected);
+    });
+
+    test("competing replacements leave one complete tab in the vacated slot", async () => {
+      const first = workspace([home, { name: "Research", layout: docked(leaf("world-indices")) }], 1);
+      const second = workspace([home, { name: "Markets", layout: docked(leaf("econ-calendar")) }], 1);
+      const last = renameFirst ? second : first;
+      await checkStaleSave(base, renameFirst ? first : second, last, last);
+    });
+  });
+}
+
 for (const addFirst of [true, false]) {
   describe(`stale workspace save (pane addition ${addFirst ? "first" : "last"})`, () => {
     const verify = (base: Workspace, add: Workspace, other: Workspace, expected: Workspace) =>
@@ -85,11 +116,15 @@ for (const addFirst of [true, false]) {
       await verify(workspace([legacy, work], 0), workspace([legacy, opened], 0), edited(work), edited(opened));
     });
 
-    test("a replacement legacy tab does not inherit its predecessor's pane", async () => {
-      const legacy = { name: "Legacy", layout: docked(null) };
+    test.each([
+      { kind: "new name and panes", original: null, name: "Other", replacement: leaf("news") },
+      { kind: "renamed empty slot", original: null, name: "Other", replacement: null },
+      { kind: "reused name with disjoint panes", original: leaf("news"), name: "Legacy", replacement: leaf("econ-calendar") },
+    ])("a replacement legacy tab does not inherit its predecessor's pane ($kind)", async ({ original, name, replacement }) => {
+      const legacy = { name: "Legacy", layout: docked(original) };
       const work = { id: "w", name: "Work", layout: docked(null) };
-      const opened = { ...legacy, layout: docked(leaf("help")) };
-      const replaced = workspace([{ name: "Other", layout: docked(leaf("news")) }, work], 0);
+      const opened = { ...legacy, layout: docked(original ? buildSplitAroundNode(original, "help", "above") : leaf("help")) };
+      const replaced = workspace([{ name, layout: docked(replacement) }, work], 0);
       await verify(workspace([legacy, work], 0), workspace([opened, work], 0), replaced, replaced);
     });
 
