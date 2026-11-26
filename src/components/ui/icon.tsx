@@ -97,11 +97,14 @@ export const ICON_GLYPHS: Record<IconName, string> = {
   edit: "✎",
   // A message written to you (a DM): text presentation, one cell.
   mail: "✉",
-  // Answer a message, and add a reaction to it: the return arrow (the key
-  // that replies) and a face. One cell each: the hooked arrow and the
-  // outlined face are emoji-capable and take two.
-  reply: "↵",
-  react: "☻",
+  // Answer a message, and add a reaction to it: the keys that do it, Enter's
+  // return symbol and the plus. Menlo, SF Mono, Cascadia and DejaVu Sans Mono
+  // each draw the return symbol themselves, at the size of the glyphs beside
+  // it; ↵ is missing from SF Mono and Cascadia and comes small from a
+  // fallback font, and a face shrinks to a dot at text size. One cell each:
+  // the hooked arrow and the outlined face are emoji-capable and take two.
+  reply: "⏎",
+  react: "+",
 };
 
 export interface IconProps {

@@ -1563,7 +1563,9 @@ describe("ChatContent", () => {
 
     await mountChat(controller, { width: 70, height: 18 });
     const rows = () => tui.frame().split("\n").map((row) => row.trimEnd());
-    const { bot: botIcon, team, pro, reply, react } = ICON_GLYPHS;
+    const { bot: botIcon, team, pro } = ICON_GLYPHS;
+    // The action glyphs are the keys that press them, and + is a regex quantifier.
+    const [reply, react] = [ICON_GLYPHS.reply, ICON_GLYPHS.react].map((glyph) => glyph.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
 
     // The quote of a bot's message: the icon stands where the colon would, and the preview ends in an ellipsis inside the row.
     const quote = rows().find((row) => row.trimStart().startsWith("reply deskbot"))!;
