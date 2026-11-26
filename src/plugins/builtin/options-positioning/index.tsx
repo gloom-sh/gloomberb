@@ -78,5 +78,26 @@ export const optionsPositioningModule: PluginModule = {
       keywords: ["gex", "gamma", "dealer gamma", "gamma exposure", "gamma flip", "zero gamma", "gamma level", "call wall", "put wall", "0dte"],
       shortcut: "GEX",
     }, "gex"),
+    (() => {
+      const cbbcTemplate = createTickerSurfacePaneTemplate({
+        id: "options-positioning-cbbc",
+        paneId: "options-positioning",
+        viewKey: "CBBC",
+        publicShare: true,
+        label: "Hong Kong CBBC Map",
+        description: "HKEX Callable Bull/Bear Contract (CBBC) knock-out call-level street map, bull/bear ratios, equivalent HSI futures delta and heavy kill zones.",
+        keywords: ["cbbc", "bull bear", "knockout", "kill zone", "hsi", "hstech", "hkex", "street inventory"],
+        shortcut: "CBBC",
+        shortcutAliases: ["BULLBEAR"],
+        settings: () => ({ tab: "cbbc" }),
+      });
+      const withHsi = (context: PaneTemplateContext): PaneTemplateContext =>
+        context.activeTicker ? context : { ...context, activeTicker: "HSI" };
+      return {
+        ...cbbcTemplate,
+        canCreate: (context, createOptions) => cbbcTemplate.canCreate?.(withHsi(context), createOptions) ?? true,
+        createInstance: (context, createOptions) => cbbcTemplate.createInstance?.(withHsi(context), createOptions) ?? null,
+      };
+    })(),
   ],
 };

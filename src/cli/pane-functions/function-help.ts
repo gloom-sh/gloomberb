@@ -1140,6 +1140,22 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
     docs: "HDS",
   },
+  DILU: {
+    summary: "Global equity dilution, active SEC S-3/S-3ASR/F-3 shelves with Rule 415 3-year expiry, Form S-3 I.B.6 baby-shelf 1/3 cap, 424B5/424B7 ATM and equity offerings, Form 144 proposed insider sales with 10b5-1 dates, IPO lock-ups, and HKEX CCASS pre-placement physical deposits.",
+    usage: ["DILU MSTR", "DILU NVDA", "DILU 0700.HK", "DILU"],
+    keys: [TABS, OPEN, OPEN_SOURCE],
+    data: same("SEC EDGAR S-3/F-3/424B5/Form 144 filings as filed; HKEX CCASS daily deposits"),
+    bloomberg: [],
+    docs: "HDS",
+  },
+  CBBC: {
+    summary: "Hong Kong HKEX Callable Bull/Bear Contract (CBBC) knock-out call-level street map, bull/bear ratios, equivalent HSI futures delta, heavy kill zones, and top individual contracts for HSI, HSTECH and HKEX equities.",
+    usage: ["CBBC HSI", "CBBC HSTECH", "CBBC 0700.HK"],
+    keys: [TABS, OPEN],
+    data: same("Daily HKEX CBBC trading summaries and mandatory call events"),
+    bloomberg: [],
+    docs: "OPX",
+  },
   "13F": {
     summary: "Institutional 13F filings by fund, ticker or CIK with estimated long-book performance, holdings and filing history. Option values are underlying notional.",
     usage: ["13F", "13F Berkshire"],
