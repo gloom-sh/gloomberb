@@ -8,6 +8,8 @@ import {
   fitTableHeaderText,
   getTableWidth,
   hasMeaningfulTableHorizontalOverflow,
+  hiddenTableColumnDisclosure,
+  hiddenTableColumnText,
   hiddenTableColumns,
   tableColumnFitFloor,
   tableColumnStarts,
@@ -107,15 +109,53 @@ describe("table layout", () => {
     // Past the order, the unlisted columns leave from the last back, so nothing is ever left to cut.
     expect(shown(room(2), { dropOrder: ["name", "vol"] })).toEqual({ ids: "id last", hidden: "NAME CHG VOL ASOF" });
     // The columns that name the row and the sorted one stay whatever the order says.
-    expect(shown(room(3), { dropOrder: ["name", "vol"], keep: ["id", "asof", "name"] })).toEqual({ ids: "id name asof", hidden: "LAST CHG VOL" });
+    expect(shown(room(3), { dropOrder: ["name", "vol"], identifier: ["id", "asof"], sorted: "name" })).toEqual({ ids: "id name asof", hidden: "LAST CHG VOL" });
     // The date the figures are as of leaves after the other columns, unless the pane's order names it.
     const dated = columns.map((column) => column.id === "asof" ? { ...column, label: "As of" } : column);
     expect(fitColumnsToWidth(dated, room(4)).map((column) => column.id).join(" ")).toBe("id name last asof");
     expect(fitColumnsToWidth(dated, room(4), { dropOrder: ["asof"] }).map((column) => column.id).join(" ")).toBe("id name last chg");
-    // Narrower than the kept columns alone: they stay, and the table scrolls as it did.
-    expect(shown(4, { keep: ["id", "asof"] }).ids).toBe("id asof");
+    // Narrower than what must stay: nothing is left out, and the table scrolls with every column as it did.
+    expect(fitColumnsToWidth(columns, room(2) - 4, { identifier: ["id"], sorted: "asof" })).toBe(columns);
+    expect(fitColumnsToWidth(columns, 4)).toBe(columns);
     // A width not measured yet fits nothing.
     expect(fitColumnsToWidth(columns, 0)).toBe(columns);
+  });
+
+  test("a fit keeps what a row means by column id: its sets whole, its identifier wherever it stands, and a figure beside it", () => {
+    // A mirrored board: two fields a side around the column that names the row, as an option chain's strike is.
+    const columns = ["cLast", "cBid", "strike", "pBid", "pLast", "asof"].map((id) => ({ id, label: id === "asof" ? "As of" : id.toUpperCase(), width: 8, align: "right" }));
+    const order = [["cLast", "pLast"], ["cBid", "pBid"]] as const;
+    const room = (count: number) => getTableWidth(columns.slice(0, count));
+    const ids = (width: number, options: Parameters<typeof fitColumnsToWidth>[2]) => {
+      const fitted = fitColumnsToWidth(columns, width, options);
+      return fitted === columns ? "scrolls" : fitted.map((column) => column.id).join(" ");
+    };
+    // A set leaves whole, and the identifier stays though it is not first: the first column is no row's name here.
+    expect(ids(room(5), { dropOrder: order, identifier: ["strike"] })).toBe("cBid strike pBid asof");
+    // Sorted by one of a set, the whole set stays and the next one gives way instead.
+    expect(ids(room(5), { dropOrder: order, identifier: ["strike"], sorted: "pLast" })).toBe("cLast strike pLast asof");
+    // The same sets and identifier whatever order the reader put the columns in.
+    const moved = [columns[4]!, columns[2]!, columns[0]!, columns[5]!, columns[3]!, columns[1]!];
+    expect(fitColumnsToWidth(moved, room(5), { dropOrder: order, identifier: ["strike"] }).map((column) => column.id).join(" ")).toBe("strike asof pBid cBid");
+    // The last figures never leave for the date to stay: the date goes, then nothing more can.
+    expect(ids(room(3), { dropOrder: order, identifier: ["strike"] })).toBe("cBid strike pBid");
+    expect(ids(room(2), { dropOrder: order, identifier: ["strike"] })).toBe("scrolls");
+    // Sorted by one set and too narrow for it beside the identifier: every column, scrolling, not half a set.
+    expect(ids(room(3), { dropOrder: [["cLast", "pLast", "asof"], ["cBid", "pBid"]], identifier: ["strike"], sorted: "cLast" })).toBe("scrolls");
+  });
+
+  test("the line names apart what More draws again and what only a wider pane shows", () => {
+    const columns = ["id", "last", "cost", "month", "avg"].map((id) => ({ id, label: id.toUpperCase(), width: 8, align: "right" }));
+    // The pane left two out for its own width; the table's fit then leaves one more.
+    const pane = dropColumnsToFit(columns, getTableWidth(columns.slice(0, 3)), ["cost", "month"]);
+    expect(hiddenTableColumnDisclosure(pane)).toEqual({ restorable: null, pane: "2 hidden · COST, MONTH" });
+    const fitted = fitColumnsToWidth(pane, getTableWidth(columns.slice(0, 2)));
+    expect(fitted.map((column) => column.id).join(" ")).toBe("id last");
+    expect(hiddenTableColumnDisclosure(fitted)).toEqual({ restorable: "1 hidden · AVG", pane: "2 need a wider pane · COST, MONTH" });
+    // The table's fit alone reads as it always did, and the terminal's one line still counts them all.
+    expect(hiddenTableColumnDisclosure(fitColumnsToWidth(columns, getTableWidth(columns.slice(0, 3))))).toEqual({ restorable: "2 hidden · MONTH, AVG", pane: null });
+    expect(hiddenTableColumnText(fitted)).toBe("3 hidden · COST, MONTH, AVG");
+    expect(hiddenTableColumnDisclosure(columns)).toBeNull();
   });
 
   test("a column set to grow narrows to its floor before any column leaves, and a figure is never narrowed", () => {
@@ -137,7 +177,7 @@ describe("table layout", () => {
     expect(drawn(getTableWidth(columns) - 18)).toEqual({ widths: "ticker 8, name 23, last 10, cap 10", hidden: "ASOF" });
   });
 
-  test("whatever the widths and the order, the columns a fit keeps do not overflow unless only kept ones are left", () => {
+  test("whatever the widths and the order, a fit either draws columns that do not overflow or leaves the table as it was", () => {
     let seed = 7;
     const next = (bound: number) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % bound; };
     for (let round = 0; round < 300; round += 1) {
@@ -146,15 +186,23 @@ describe("table layout", () => {
         ...(next(4) === 0 ? { flexGrow: 1 } : {}),
       }));
       const ids = columns.map((column) => column.id);
-      const keep = [ids[0]!, ...(next(2) ? [ids[next(ids.length)]!] : [])];
-      const dropOrder = ids.filter(() => next(3) === 0).sort(() => next(3) - 1);
+      const identifier = [ids[next(ids.length)]!];
+      const sorted = next(2) ? ids[next(ids.length)]! : null;
+      const listed = ids.filter(() => next(3) === 0).sort(() => next(3) - 1);
+      // Some of the order's entries are sets of two.
+      const dropOrder: (string | string[])[] = [];
+      while (listed.length) dropOrder.push(listed.length > 1 && next(3) === 0 ? listed.splice(0, 2) : listed.shift()!);
       const width = 10 + next(160);
-      const fitted = fitColumnsToWidth(columns, width, { keep, dropOrder });
-      const overflows = hasMeaningfulTableHorizontalOverflow(getTableWidth(fitted), width, 1);
-      if (overflows) expect(fitted.map((column) => column.id).filter((id) => !keep.includes(id))).toEqual([]);
-      // Whole columns in the table's order, and every kept one among them.
-      expect(fitted.map((column) => column.id)).toEqual(ids.filter((id) => fitted.some((column) => column.id === id)));
-      expect(keep.every((id) => fitted.some((column) => column.id === id))).toBe(true);
+      const fitted = fitColumnsToWidth(columns, width, { identifier, sorted, dropOrder });
+      const has = (id: string) => fitted.some((column) => column.id === id);
+      // Nothing drawn past the edge, unless the table is left whole to scroll.
+      if (hasMeaningfulTableHorizontalOverflow(getTableWidth(fitted), width, 1)) expect(fitted).toBe(columns);
+      // Whole columns in the table's order, the identifier and the sorted one among them, and no set drawn in part.
+      expect(fitted.map((column) => column.id)).toEqual(ids.filter(has));
+      expect([...identifier, ...sorted ? [sorted] : []].every(has)).toBe(true);
+      for (const step of dropOrder) if (typeof step !== "string") expect(new Set(step.map(has)).size).toBe(1);
+      // A row keeps a column beside its identifier.
+      if (ids.length > 1) expect(fitted.length).toBeGreaterThan(1);
       // Only a column set to grow is narrowed, and never under its floor.
       for (const column of fitted) {
         const set = columns.find((candidate) => candidate.id === column.id)!;

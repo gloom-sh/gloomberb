@@ -21,7 +21,7 @@ type SortId = Exclude<keyof RichCheapRow, "stale" | "riskReversalFullYear">;
 const HV_WINDOW = 20;
 /** Pane borders and the footer's own padding. */
 const FOOTER_MARGIN = 6;
-const COLUMNS: DataTableColumn[] = [
+export const VCA_COLUMNS: DataTableColumn[] = [
   { id: "symbol", label: "Symbol", width: 8, align: "left" },
   { id: "iv30", label: "IV30", width: 7, align: "right" },
   { id: "date", label: "As of", width: 12, align: "right" },
@@ -43,9 +43,10 @@ const COLUMNS: DataTableColumn[] = [
  * What a narrow desktop pane gives up first. The verdict rests on IV30 against
  * its own year (IVR, IVP) and against realized (HV, IV/HV), each with its
  * date, so those stay; the spot, the one-year tenor and the skew go first. A
- * figure's date leaves with it.
+ * figure and its date are one set: they leave together, and both stay while
+ * the table is sorted by either.
  */
-const COLUMN_DROP_ORDER = ["spot", "iv1yPercentile", "iv1y", "riskReversalPercentile", ["riskReversal", "skewDate"], "termSlope", ["hv", "hvDate", "ivHv"]] as const;
+export const VCA_COLUMN_DROP_ORDER = ["spot", "iv1yPercentile", "iv1y", "riskReversalPercentile", ["riskReversal", "skewDate"], "termSlope", ["hv", "hvDate", "ivHv"]] as const;
 
 export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
   const colors = useThemeColors();
@@ -99,7 +100,7 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
   const hasSkew = useMemo(() => rows.some((row) => row.riskReversal != null), [rows]);
   // A close solved from quote midpoints names itself, which a date alone has no room for.
   const dateWidth = useMemo(() => rows.some((row) => !row.stale && readingSource(row.method, row.basis) === "close mid") ? 16 : 12, [rows]);
-  const columns = useMemo(() => COLUMNS.filter((column) => {
+  const columns = useMemo(() => VCA_COLUMNS.filter((column) => {
     switch (column.id) {
       case "date": return !dates.reading;
       case "iv1y": return rows.some((row) => row.iv1y != null);
@@ -168,7 +169,7 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
         onChange: setSymbolsText }] : []),
     ]} />
     {movedOnly ? <MovedTickerState change={movedOnly} paneId={paneId} /> : <PaneStatusBody subject="volatility rich/cheap" loading={resource.loading && !resource.data} error={universe.error && !universe.instruments.length ? universe.error : !resource.data ? resource.error : null}>
-      <DataTableView<RichCheapRow> focused={focused && !symbolsActive} columns={columns} columnDropOrder={COLUMN_DROP_ORDER} items={rows} rootWidth={width}
+      <DataTableView<RichCheapRow> focused={focused && !symbolsActive} columns={columns} columnDropOrder={VCA_COLUMN_DROP_ORDER} items={rows} rootWidth={width}
         rootHeight={Math.max(2, height - 1 - definitions.length)}
         getItemKey={(row) => row.symbol} sortColumnId={sort.columnId} sortDirection={sort.direction} emptyStateTitle="No symbols to screen."
         onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id as SortId, { firstDirection: "desc" }))}

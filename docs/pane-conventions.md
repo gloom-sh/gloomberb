@@ -554,14 +554,27 @@ at any width. A pane does nothing for this, except say what matters:
   saying a figure and wording the row's detail holds, before an identifier,
   the figures the pane is for, or the date a figure is as of: RV gives up the
   name and the day's move before a multiple, MDAY the prior and the forecast
-  before the move, ALRT the session before the quote's time. An entry of
-  several ids leaves together: OMON's calls and puts give up the same field,
-  VCA's skew goes with its date.
-- The columns that name the row (`anchored`, the first by default) and the
-  sorted column never leave, whatever the order says.
+  before the move, ALRT the session before the quote's time.
+- An entry of several ids is a set that means little apart: it leaves whole,
+  and stays whole while one of it is kept. OMON's call and put of a field
+  are one set wherever Settings put the field, and VCA's HV, its date and
+  IV/HV all stay while the table is sorted by one of them.
+- The columns that name the row and the sorted column never leave, whatever
+  the order says and wherever the reader moved the columns. The leading
+  columns name the row by default (`anchored`); where another does (OMON's
+  strike, between the calls and the puts), mark it `identifiesRow`.
+- A row is never left with its name alone or beside nothing but a date: its
+  last figure stays. Where what must stay does not fit, the table leaves
+  nothing out and scrolls sideways with every column, as it always did.
+- The fit measures the headers as they are drawn: translated and in the
+  table's one case. A longer translation makes a column leave sooner, never
+  a cut one. Exports keep the raw labels.
 - `dropColumnsToFit` in the pane is for a column that leaves in the terminal
-  too, by the pane's own width (PF's valuation columns, AUCT's); the same
-  line names it. The table's fit then covers what that order did not.
+  too, by the pane's own width (PF's valuation columns, AUCT's). The table's
+  fit then covers what that order did not, and the line tells the two apart:
+  `1 hidden · AVG COST` beside More, which draws it, and `3 need a wider
+  pane · AS OF UTC, 1M, COST (USD)` for the pane's own, which More cannot
+  (the menu entry then reads "Show More Columns").
 - A table set not to scroll sideways (`showHorizontalScrollbar={false}`: a
   list read down, such as TRIAL or the news wire) narrows its columns to the
   pane instead and leaves none out.

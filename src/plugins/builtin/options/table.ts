@@ -156,10 +156,13 @@ const sideColumnId = (side: OptionSide, field: OptionFieldId) => `${side}${field
 
 /**
  * The same order for the desktop's chain, whose table fits whole columns to
- * its width (`DataTableProps.columnDropOrder`): a field leaves on both sides
- * together, so the puts that stay mirror the calls.
+ * its width (`DataTableProps.columnDropOrder`): a field is a set of its call
+ * and its put, which leave together or stay together, so the puts that stay
+ * mirror the calls wherever Settings put the field. The bid is listed last
+ * so it is such a set too; the table never gives up a row's last figure, so
+ * it stays, as does the strike that names the row (`createOptionColumns`).
  */
-export const OPTION_COLUMN_DROP_ORDER: readonly (readonly string[])[] = OPTION_FIELD_DROP_ORDER
+export const OPTION_COLUMN_DROP_ORDER: readonly (readonly string[])[] = [...OPTION_FIELD_DROP_ORDER, "bid" as const]
   .map((field) => [sideColumnId("call", field), sideColumnId("put", field)]);
 
 function sideColumn(side: OptionSide, field: OptionFieldId): Omit<OptionColumn, "headerColor"> {
@@ -178,7 +181,8 @@ export function createOptionColumns(fieldIds: readonly OptionFieldId[]): Array<O
   const fields = resolveOptionFieldIds(fieldIds);
   return [
     ...fields.filter((field) => !OPTION_FIELDS_BY_ID.get(field)!.putOnly).map((field) => sideColumn("call", field)),
-    { id: "strike", field: "strike", side: null, label: "STRIKE", width: STRIKE_COLUMN_WIDTH, align: "right" },
+    // The strike is what each row is, between its calls and its puts: no fit leaves it out.
+    { id: "strike", field: "strike", side: null, label: "STRIKE", width: STRIKE_COLUMN_WIDTH, align: "right", identifiesRow: true },
     ...[...fields].reverse().map((field) => sideColumn("put", field)),
   ];
 }

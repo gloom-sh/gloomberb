@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import { usePaneMenuItems } from "../../layout/pane/footer/registration";
-import { fitColumnsToWidth, type TableColumnDropOrder } from "../table-layout";
+import { fitColumnsToWidth, hiddenTableColumns, type TableColumnDropOrder } from "../table-layout";
 import type { DataTableColumn, DataTableColumnFit } from "./types";
 
 /**
@@ -10,7 +10,7 @@ import type { DataTableColumn, DataTableColumnFit } from "./types";
 export const TableColumnFitContext = createContext(true);
 
 interface ColumnFitOptions {
-  /** The leading columns that name the row: they never leave. */
+  /** The leading columns that name the row where no column says it does (`DataTableColumn.identifiesRow`): they never leave. */
   anchoredColumns: number;
   /** The column the table is sorted by stays: rows in an order no column shows read as unsorted. */
   sortColumnId: string | null;
@@ -21,8 +21,38 @@ interface ColumnFitOptions {
    */
   scrollsSideways: boolean;
   dropOrder: TableColumnDropOrder | undefined;
+  /**
+   * The columns that date a row's figures, which leave last. Read from the
+   * labels the pane wrote ("As of"), since the columns fitted carry the
+   * header as drawn, which a translation no longer heads so.
+   */
+  asOfColumnIds?: readonly string[];
   columnGap: number | undefined;
   horizontalPadding: number | undefined;
+}
+
+/**
+ * A table's columns fitted to a body `cells` wide (`fitColumnsToWidth`), by
+ * what the table says of them. The row's identifier is the columns that say
+ * so (`DataTableColumn.identifiesRow`: a chain's strike, wherever the reader
+ * put the other fields), else the leading `anchoredColumns`; it and the
+ * sorted column stay, each with the set the pane's order lists it in. The
+ * same array where everything fits, or where what must stay does not.
+ */
+export function fitDataTableColumns<C extends DataTableColumn>(
+  columns: readonly C[],
+  cells: number,
+  options: Pick<ColumnFitOptions, "anchoredColumns" | "sortColumnId"> & Partial<Pick<ColumnFitOptions, "dropOrder" | "asOfColumnIds" | "columnGap" | "horizontalPadding">>,
+): C[] {
+  const marked = columns.filter((column) => column.identifiesRow);
+  return fitColumnsToWidth(columns, cells, {
+    dropOrder: options.dropOrder,
+    identifier: (marked.length ? marked : columns.slice(0, options.anchoredColumns)).map((column) => column.id),
+    sorted: options.sortColumnId,
+    asOf: options.asOfColumnIds,
+    columnGap: options.columnGap,
+    horizontalPadding: options.horizontalPadding,
+  });
 }
 
 /**
@@ -53,9 +83,9 @@ export function useDataTableColumnFit<C extends DataTableColumn>(columns: readon
   const orderKey = options.dropOrder ? JSON.stringify(options.dropOrder) : "";
   const fitted = useMemo(() => {
     if (!enabled || !options.scrollsSideways || viewportCells == null) return null;
-    const keep = [...columns.slice(0, options.anchoredColumns).map((column) => column.id), ...options.sortColumnId ? [options.sortColumnId] : []];
-    const drawn = fitColumnsToWidth(columns, viewportCells, {
-      dropOrder: orderRef.current, keep, columnGap: options.columnGap, horizontalPadding: options.horizontalPadding,
+    const drawn = fitDataTableColumns(columns, viewportCells, {
+      anchoredColumns: options.anchoredColumns, sortColumnId: options.sortColumnId, dropOrder: orderRef.current,
+      asOfColumnIds: options.asOfColumnIds, columnGap: options.columnGap, horizontalPadding: options.horizontalPadding,
     });
     if (drawn === columns) return null;
     const set = new Map(columns.map((column) => [column.id, column.width]));
@@ -63,7 +93,7 @@ export function useDataTableColumnFit<C extends DataTableColumn>(columns: readon
       ids: new Set(drawn.map((column) => column.id)),
       widths: new Map(drawn.filter((column) => column.width !== set.get(column.id)).map((column) => [column.id, column.width])),
     };
-  }, [columns, enabled, options.anchoredColumns, options.columnGap, options.horizontalPadding, options.scrollsSideways, options.sortColumnId, orderKey, viewportCells]);
+  }, [columns, enabled, options.anchoredColumns, options.asOfColumnIds, options.columnGap, options.horizontalPadding, options.scrollsSideways, options.sortColumnId, orderKey, viewportCells]);
   const hidden = fitted ? columns.length - fitted.ids.size : 0;
   // Wide enough for every column as set again: the next narrow width starts from the fit.
   useEffect(() => {
@@ -81,10 +111,12 @@ export function useDataTableColumnFit<C extends DataTableColumn>(columns: readon
   }, []);
   const fit = useCallback(() => setAll(false), []);
   const isFitted = fitted != null;
+  // Columns the pane itself left out for this width are not the table's to draw: the entry then promises more, not all.
+  const paneHidden = hiddenTableColumns(columns).length > 0;
   usePaneMenuItems(`data-table-fit:${useId()}`, () => !isFitted ? null
     : [all ? { id: "fit-columns", label: "Fit Columns", onSelect: fit }
-      : { id: "show-all-columns", label: hidden > 0 ? "Show All Columns" : "Full Column Widths", onSelect: showAll }],
-  [all, fit, hidden > 0, isFitted, showAll]);
+      : { id: "show-all-columns", label: hidden === 0 ? "Full Column Widths" : paneHidden ? "Show More Columns" : "Show All Columns", onSelect: showAll }],
+  [all, fit, hidden > 0, isFitted, paneHidden, showAll]);
 
   return {
     fitted: all ? null : fitted,
