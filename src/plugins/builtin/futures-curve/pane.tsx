@@ -12,6 +12,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, type InputRenderable } from "../../../ui";
 import { MISSING_VALUE, formatPercentRaw } from "../../../utils/format";
 import { dayCell, formatDay } from "../../../components/ui/day-cell";
+import { formatDaysInText } from "../../../utils/day-format";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { futuresSessionRefreshInterval } from "../shared/futures-session";
@@ -202,7 +203,7 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle, standInNote
       { id: "spot", label: spotPremium.label, value: spotPremium.close == null ? MISSING_VALUE : spotPremium.close.toFixed(2),
         detail: spotPremium.date ? `${formatDay(spotPremium.date, "no-year")} close` : undefined },
       { id: "premium", label: "Front premium", value: curveChangeText(spotPremium.premium, root),
-        ...spotPremium.premium == null ? { tone: "warning" as const, detail: spotPremium.reason ?? undefined }
+        ...spotPremium.premium == null ? { tone: "warning" as const, detail: spotPremium.reason ? formatDaysInText(spotPremium.reason) : undefined }
           : { detail: spotPremium.frontSymbol ? `${curveContractCode(spotPremium.frontSymbol)} settle` : undefined } },
     ] : [],
     ...data.spec ? [{ id: "contract", label: "Contract", value: data.spec.size, detail: `tick ${futuresTickText(data.spec)}` }] : [],
@@ -267,8 +268,9 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle, standInNote
   // A long in these can be assigned delivery: the hedge a trader rolls before first notice.
   const delivering = data?.contracts.filter((row) => row.inDelivery).map((row) => curveContractCode(row.symbol)) ?? [];
   // A blank Change on Contracts says why, as a blank basis does: no trade since the settlement it is measured from.
-  const untraded = data && !requestedDate && columns.some((entry) => entry.id === "change")
+  const untradedNote = data && !requestedDate && columns.some((entry) => entry.id === "change")
     ? noTradeChangeNote(tableRows, data, { count: true }) : null;
+  const untraded = untradedNote ? formatDaysInText(untradedNote) : null;
   usePaneNoticeFooter({ registrationId: "futures-curve:notices", focused,
     notices: emptyPast ? [] : [...standInNote ? [standInNote] : [], ...sessionNote ? [sessionNote] : [], ...data?.gaps ?? [], ...data?.notes ?? [], ...thinSpread ? [thinSpread] : [], ...skippedSpread ? [skippedSpread] : [], ...basisNotes, ...untraded ? [untraded] : [],
       ...delivering.length ? [`${delivering.join(", ")} ${delivering.length === 1 ? "is" : "are"} past first notice.`] : []] });

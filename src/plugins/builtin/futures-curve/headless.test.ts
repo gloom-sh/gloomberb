@@ -284,7 +284,7 @@ describe("CTM change", () => {
     const result = await futuresCurveHeadless.load(createTestHeadlessArgs({ rawArgument: "ES", argument: "ES", symbols: [], options: {} }), ctx) as HeadlessBundleResult;
     expect(result.sections[0]!.rows!.map((row) => [row.change, row.noTradeSince])).toEqual([
       [-22, null], [null, "2026-10-22"], [6, null], [null, "2026-10-22"], [null, null]]);
-    expect(result.notes).toEqual(["Change blank for ESM27, ESZ27 (no trade since 22 Oct 2026)."]);
+    expect(result.notes).toEqual(["Change blank for ESM27, ESZ27 (no trade since 2026-10-22)."]);
     const text = renderHeadlessPaneText(futuresCurveHeadless, result, createTestHeadlessArgs(), "CTM").replace(/\x1b\[[0-9;]*m/g, "");
     expect(text).toMatch(new RegExp(String.raw`ESM27 .* 7858\.75 +7857\.25 +${MISSING_VALUE} `));
     // A Cboe price is the settlement itself: its move from the settlement before stays.
@@ -293,7 +293,7 @@ describe("CTM change", () => {
       createTestHeadlessContext({ marketData: createTestDataProvider({}), apiClient: { getCloudFuturesCurve: async () => vix } as never })) as HeadlessBundleResult;
     expect(cboe.sections[0]!.rows![0]).toMatchObject({ change: 1.1408, noTradeSince: null });
     // No change is blanked; the front premium is, with no VIX close to read it against.
-    expect(cboe.notes).toEqual(["Front premium blank: no ^VIX close on 22 Oct 2026."]);
+    expect(cboe.notes).toEqual(["Front premium blank: no ^VIX close on 2026-10-22."]);
   });
 
   test("VX reads its front settlement against spot VIX's close on the settlement session, never a later close", async () => {
@@ -318,10 +318,13 @@ describe("CTM change", () => {
     expect(result.notes).toBeUndefined();
     const text = renderHeadlessPaneText(futuresCurveHeadless, result, createTestHeadlessArgs(), "CTM").replace(/\x1b\[[0-9;]*m/g, "");
     expect(text).toContain("Spot VIX       19.42, 30 Oct 2026 close\nFront premium  +0.9403, VX/X6 settle less spot");
+    // JSON and CSV keep the close's day in ISO as they always wrote it.
+    expect(result.sections.find((section) => section.title === "Front vs spot")?.entries?.[0]?.formatted).toBe("19.42, 2026-10-30 close");
     // Without that session's close the premium is blank and says why, never read against another day's close.
     const missing = await load([]);
     expect(missing.sections.find((section) => section.title === "Front vs spot")?.entries?.map((entry) => entry.value)).toEqual([null, null]);
-    expect(missing.notes).toEqual(["Front premium blank: no ^VIX close on 30 Oct 2026."]);
+    expect(missing.notes).toEqual(["Front premium blank: no ^VIX close on 2026-10-30."]);
+    expect(renderHeadlessPaneText(futuresCurveHeadless, missing, createTestHeadlessArgs(), "CTM")).toContain("Front premium blank: no ^VIX close on 30 Oct 2026.");
   });
 });
 

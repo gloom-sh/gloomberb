@@ -3,10 +3,12 @@ import { futuresSpecLines } from "../../../market-data/futures-contract";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneEntry, HeadlessPaneFreshness } from "../../../types/plugin";
 import { MISSING_VALUE, formatPercentRaw } from "../../../utils/format";
 import { formatDay } from "../../../components/ui/day-cell";
+import { formatDaysInText } from "../../../utils/day-format";
 import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 import { loadFuturesCurve, loadCurveSpot, loadCurveSpotBars, loadCurveSpotCloses, loadFuturesCurveAsOf } from "./client";
 import { curveReportFreshness, basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveCache, curveSpotBars, curveBasisPercent, curveInterestDate, curveBasisRows, curveStampText, curveChangeText, curveContractCode, curveIncompleteDetail, curvePrice, curveReadsThirtySeconds, curveRoundedPrice, curveSpotSource, curveSpotPremium, curveSpreadLabel, curveTimestamp, curveNoTradeSince, curveSessionNote, curveSettleShown, curveStandIn, curveUnitLabel, curveRootNamed, noTradeChangeNote, normalizeCurveRoot, shortDatedBasisNote, skippedSpreadNotice, spotIndexSymbol, thinSpreadNotice, unpairedContractCount, unsupportedCurveRootMessage, type ContractBasis, type CurveSpotPremium } from "./model";
 import { COMMODITIES_VIEW_STATE } from "../commodities-energy/view-state";
+import { dayFirstEntries } from "../shared/day-entries";
 import { knownGapMessage } from "../../../cli/known-gaps";
 
 /** The root a report shows when none is given. */
@@ -253,14 +255,16 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
           rows: data.contracts.map((row) => contractRow(row, data, root, !!date, bases?.get(row.symbol))) },
         { title: "Front spread", columns: spreadColumns(spreadRow, spreadFormats, false), textColumns: spreadColumns(spreadRow, spreadFormats, true),
           rows: [spreadRow] },
-        ...spotPremium ? [{ title: "Front vs spot", entries: spotPremiumEntries(spotPremium, root) }] : [],
+        // The close's day reads first in the text; JSON and CSV keep it in ISO.
+        ...spotPremium ? [{ title: "Front vs spot", ...dayFirstEntries(spotPremiumEntries(spotPremium, root)) }] : [],
         ...terms.length ? [{ title: "Contract terms", entries: terms }] : [],
         // A week- or month-back price is dated by its own session in an export's as_of, not the curve's.
         ...data.ghosts.map((ghost) => ({ title: `${ghost.label} same-contract history`, columns: fieldColumns(GHOST_FIELDS, ghost.points[0] ?? {}, thirtySecondsFormat(root, "price")),
           ...unit ? { unit } : {}, rowAsOfKey: "asOf", rows: ghost.points.map((point) => ({ ...point })) })),
       ],
       errors: data.gaps,
-      ...(notes.length ? { notes } : {}),
+      // The notes read their days first in the text; JSON and CSV keep them in ISO.
+      ...(notes.length ? { notes, textNotes: notes.map((note) => formatDaysInText(note)) } : {}),
       ...(incompleteDetail ? { incompleteDetail } : {}),
       metadata: { ...data, quoteUnit: unit, ...(spot && bases ? { spot, basisBlankedUnpaired: unpairedContractCount(bases.values()) } : {}),
         ...(spotPremium ? { spotPremium } : {}), ...(args.argument ? {} : { defaultArgument: DEFAULT_ROOT }),
