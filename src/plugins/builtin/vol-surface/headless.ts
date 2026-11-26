@@ -116,15 +116,21 @@ function smileSections(snapshot: SurfaceSnapshot, requested: number | null): {
 
 function termSection(snapshot: SurfaceSnapshot, readings: readonly SurfaceEventReading[]): HeadlessBundleSection {
   // The first expiry past a scheduled release names it: the step in its IV is the release's.
-  const marks = new Map(readings.flatMap((reading) => reading.after == null ? [] : [[reading.after, surfaceReadingLabel(reading)] as const]));
+  const marks = new Map(readings.flatMap((reading) => reading.after == null ? [] : [[reading.after, surfaceReadingLabel(reading, true)] as const]));
   return { title: "Term structure", columns: [
     { key: "expiry", header: "Expiry", textFormat: expiryText }, { key: "days", header: "Days", format: days },
     { key: "atm", header: "ATM IV", format: iv }, { key: "put25", header: "25D put IV", format: iv }, { key: "call25", header: "25D call IV", format: iv },
     { key: "straddle", header: "Straddle", format: price }, { key: "sigma", header: "1-sigma", format: price },
     { key: "sigmaPercent", header: "1-sigma %", format: (value) => typeof value === "number" ? `${value.toFixed(2)}%` : MISSING_VALUE },
-    ...(marks.size ? [{ key: "event", header: "Event" }] : []),
+    ...(marks.size ? [{ key: "event", header: "Event", textFormat: eventText(readings) }] : []),
   ], rows: surfaceTermRows(snapshot).map((row) => ({ ...row, expiry: expiryStamp(row.expiration),
     ...(marks.size ? { event: marks.get(row.expiration) ?? "" } : {}) })) };
+}
+
+/** A release's name as the text writes it, day first ("FOMC 09 Dec"); JSON and CSV keep "FOMC 12-09". */
+function eventText(readings: readonly SurfaceEventReading[]): (value: unknown) => string {
+  const shown = new Map(readings.map((reading) => [surfaceReadingLabel(reading, true), surfaceReadingLabel(reading)]));
+  return (value) => typeof value === "string" ? shown.get(value) ?? value : MISSING_VALUE;
 }
 
 /**
@@ -136,11 +142,11 @@ function termSection(snapshot: SurfaceSnapshot, readings: readonly SurfaceEventR
  */
 function scheduledReleasesSection(readings: readonly SurfaceEventReading[]): HeadlessBundleSection {
   return { title: "Scheduled releases", columns: [
-    { key: "event", header: "Event" }, { key: "between", header: "Between expiries", textFormat: (value) => typeof value === "string" ? formatDaysInText(value) : MISSING_VALUE },
+    { key: "event", header: "Event", textFormat: eventText(readings) }, { key: "between", header: "Between expiries", textFormat: (value) => typeof value === "string" ? formatDaysInText(value) : MISSING_VALUE },
     { key: "forwardVol", header: "Forward vol", format: iv },
     { key: "impliedMove", header: "Implied |move|", format: (value) => approximatePercent(typeof value === "number" ? value : null) },
     { key: "mdayMove", header: "MDAY avg |move|" }, { key: "mdayDays", header: "MDAY days" },
-  ], rows: readings.map((reading) => ({ event: surfaceReadingLabel(reading),
+  ], rows: readings.map((reading) => ({ event: surfaceReadingLabel(reading, true),
     between: reading.after == null ? "none listed after it" : `${reading.before == null ? "now" : expiryStamp(reading.before)} to ${expiryStamp(reading.after)}`,
     forwardVol: reading.forwardVol, impliedMove: reading.impliedMove, mdayMove: surfaceEventHistory(reading.events),
     mdayDays: reading.events.map((event) => event.history?.count ?? 0).join("/") })) };

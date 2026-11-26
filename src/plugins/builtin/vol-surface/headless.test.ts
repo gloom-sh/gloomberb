@@ -109,9 +109,11 @@ test("the term tab reads the next FOMC off the expiries either side of it, with 
   } as Partial<HeadlessPaneApiClient>);
   expect(titles).toEqual(["Term structure", "Scheduled releases"]);
   const first = new Date(listed[0]! * 1000).toISOString().slice(0, 10);
-  // The first expiry past the decision names it.
-  expect(table("Term structure").rows[0]).toMatchObject({ expiry: first, event: "FOMC 23 Sep" });
-  expect(table("Scheduled releases").rows[0]).toMatchObject({ event: "FOMC 23 Sep", between: `now to ${first}` });
+  // The first expiry past the decision names it. The rows keep the names exports always had; the text writes the day first.
+  expect(table("Term structure").rows[0]).toMatchObject({ expiry: first, event: "FOMC 09-23" });
+  expect(table("Scheduled releases").rows[0]).toMatchObject({ event: "FOMC 09-23", between: `now to ${first}` });
+  expect(text).toContain("FOMC 23 Sep");
+  expect(text).not.toContain("FOMC 09-23");
   // 50% for three days against 14.6% the week after it: the decision prices a move of about 3.5%, read as approximate.
   expect(cell("Scheduled releases", "impliedMove", 0)).toMatch(/^≈3\.\d\d%$/);
   expect(cell("Scheduled releases", "forwardVol", 0)).toBe("50.00%");
