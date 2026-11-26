@@ -367,6 +367,7 @@ async function loadFinancialReport(symbol: string, options: HeadlessPaneOptionVa
       // period's comparative column, that period's first announcement.
       ...(filled?.label === "published" && filled.date ? { announced: filled.date } : {}),
       ...(filled?.label === "catalogue" && filled.date ? { catalogued: filled.date } : {}),
+      ...(filled?.label === "first observed" && filled.date ? { firstObserved: filled.date } : {}),
       ...(filled?.label === "comparative" ? { comparativeIn: filled.date } : {}),
       ...(unavailableFields ? { unavailableFields } : {}),
       ...(epsBasis ? { epsBasis } : {}),
