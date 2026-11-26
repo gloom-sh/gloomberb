@@ -89,6 +89,15 @@ test("a day a table draws first exports in ISO, by its value or, given none, rea
     "2026-08-21,2026-10-09 13:21,\"Trading suspended, ended 2026-11-16\",21 Aug",
     "TBD,,Announced: 2026-11-02 → 2026-11-16,2026-11-16",
   ]);
+  // A zone the time names stays. A name that ends in a day, or a figure shaped like one, is not a day: it exports as drawn.
+  expect(csvRows([left("at", "First computed"), left("name", "Bond"), left("figure", "Code")], [
+    { at: "09 Oct 2026 13:21 UTC", name: "Treasury 4.25% 15 Mar 2027", figure: "31 Feb 2026" },
+    { at: "09 Oct 2026 25:10", name: "Dec 2026", figure: "12 Mar 2026 1.5" },
+  ])).toEqual([
+    "First computed,Bond,Code",
+    "2026-10-09 13:21 UTC,Treasury 4.25% 15 Mar 2027,31 Feb 2026",
+    "09 Oct 2026 25:10,Dec 2026,12 Mar 2026 1.5",
+  ]);
   // The words are drawn day first either way.
   expect(daysInTextCell("ended 2026-11-16").text).toBe("ended 16 Nov 2026");
   expect(daysInTextCell("Week of 2026-11-16", "no-year")).toEqual({ text: "Week of 16 Nov", value: "Week of 2026-11-16" });

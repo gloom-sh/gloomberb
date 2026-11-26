@@ -42,11 +42,18 @@ export function formatDaysInText(text: string, form: DayCellForm = "full"): stri
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const DAY_TEXT = /^(\d{2}) ([A-Z][a-z]{2}) (\d{4})$/;
 
-/** The ISO day `formatDay` wrote (`21 Aug 2026` is `2026-08-21`), so an export of a drawn day keeps the day; null for other text. */
+/**
+ * The ISO day `formatDay` wrote (`21 Aug 2026` is `2026-08-21`), so an export
+ * of a drawn day keeps the day; null for other text, a day no calendar has
+ * (`31 Feb 2026`) included.
+ */
 export function dayFromText(text: string): string | null {
   const match = DAY_TEXT.exec(text.trim());
   const month = match ? MONTHS.indexOf(match[2]!) : -1;
-  return match && month >= 0 ? `${match[3]}-${String(month + 1).padStart(2, "0")}-${match[1]}` : null;
+  if (!match || month < 0) return null;
+  const day = Number(match[1]);
+  if (new Date(Date.UTC(Number(match[3]), month, day)).getUTCDate() !== day) return null;
+  return `${match[3]}-${String(month + 1).padStart(2, "0")}-${match[1]}`;
 }
 
 const DAYS_IN_TEXT = /\b(\d{2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{4})\b/g;
@@ -60,19 +67,21 @@ export function isoDaysInText(text: string): string {
   return text.replace(DAYS_IN_TEXT, (day) => dayFromText(day) ?? day);
 }
 
-const DAY_TIME_TEXT = /^(\d{2} [A-Z][a-z]{2} \d{4}) (\d{2}:\d{2})$/;
+const DAY_TIME_TEXT = /^(\d{2} [A-Z][a-z]{2} \d{4}) ([01]\d|2[0-3]):([0-5]\d)( UTC)?$/;
 
 /**
  * A day or instant a table drew day first, as an export writes it: `21 Aug
- * 2026` is `2026-08-21`, `09 Oct 2026 13:21` is `2026-10-09 13:21`. Null for
- * any other text, a day without its year (`21 Aug`) included.
+ * 2026` is `2026-08-21`, `09 Oct 2026 13:21` is `2026-10-09 13:21`, and a
+ * zone it names stays (`09 Oct 2026 13:21 UTC` is `2026-10-09 13:21 UTC`).
+ * Null for any other text: a day without its year (`21 Aug`), or words or a
+ * figure around a day.
  */
 export function isoFromDayText(text: string): string | null {
   const trimmed = text.trim();
   const timed = DAY_TIME_TEXT.exec(trimmed);
   if (!timed) return dayFromText(trimmed);
   const day = dayFromText(timed[1]!);
-  return day ? `${day} ${timed[2]}` : null;
+  return day ? `${day} ${timed[2]}:${timed[3]}${timed[4] ?? ""}` : null;
 }
 
 const dayTimeFormatters = new Map<string, Intl.DateTimeFormat>();
