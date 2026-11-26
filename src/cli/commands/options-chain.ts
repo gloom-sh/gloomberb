@@ -8,7 +8,7 @@ import { calculateOptionGreeks, ivSolvedNote, solveChainVolatilities } from "../
 import { optionQuoteSide } from "../../plugins/builtin/options/market-reference";
 import { withQuotesUnderIntrinsicMarked } from "../../plugins/builtin/shared/volatility";
 import {
-  formatModelSpotPrice, modelSpotLabel, optionModelSpot, type OptionModelSpot,
+  formatModelSpotPrice, formatSpotTime, modelSpotLabel, optionModelSpot, type OptionModelSpot,
 } from "../../plugins/builtin/options/model-spot";
 import {
   chainOpenInterestAsOf, loadListedOpenInterest, openInterestAsOfLabel, type OpenInterestAsOf, statedOpenInterestAsOf, volumeSessionLabel,
@@ -213,6 +213,7 @@ export interface OptionsChainBasis {
   volumeSession?: string | null;
   /** A strike's IV is filled from its neighbours (`chainHasFilledIv`), which the closing line says. */
   ivFilled?: boolean;
+  staleSnapshot?: boolean;
 }
 
 /** Whether any contract's IV was read off the neighbouring strikes (see `ChainVolatilities.filled`). */
@@ -271,6 +272,7 @@ export function optionsBasisFootnote(basis: OptionsChainBasis, chain?: OptionsCh
     parts.push("adjusted: each delivers what its Deliverable says, so no IV or delta is read at the fund's price");
   } else if (basis.spot) {
     parts.push(`Greeks at spot ${formatModelSpotPrice(basis.spot.price)} (${modelSpotLabel(basis.spot)}), `
+      + (basis.staleSnapshot ? `valuation ${formatSpotTime(basis.spot.valuationTime)}, ` : "")
       // An unknown yield is valued as none, and says so rather than read as a stated 0%.
       + `dividend yield ${basis.dividendYield == null ? "unknown (valued at 0%)" : `${Number((basis.dividendYield * 100).toFixed(2))}%`}, `
       + `rate ${Number((OPTION_MODEL_RATE * 100).toFixed(2))}%`);

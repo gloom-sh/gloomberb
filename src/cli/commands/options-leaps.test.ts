@@ -3,6 +3,7 @@ import type { OptionContract, OptionsChain } from "../../types/financials";
 import { apiClient } from "../../api-client";
 import { createTestCliContext } from "../../test-support/cli-context";
 import { daysToExpiryFrom, valueOption } from "../../plugins/builtin/shared/volatility";
+import { daysToExpiry } from "../../utils/option-expiry";
 import { marketDataCliCommands } from "./market";
 import { DEFAULT_LEAPS_CRITERIA, parseLeapsCriteria, sortLeapsRows, type LeapsRow } from "./options-leaps";
 
@@ -68,6 +69,57 @@ afterEach(() => {
 });
 
 describe("options --leaps", () => {
+  test("screens and prices a prior-close chain on that close rather than the premarket spot", async () => {
+    const premarket = Date.parse("2026-10-12T12:00:00Z");
+    setSystemTime(new Date(premarket));
+    const chain = { ...chainFor(LEAPS, [contract("call", 90, LEAPS)]), openInterestAsOf: "2026-10-08" };
+    const { dataProvider } = leapsProvider({ AAA: () => chain });
+    const market = { dataProvider: { ...dataProvider, getQuote: async (symbol: string) => ({
+      symbol, price: 150, regularClose: SPOT, regularCloseSessionDate: "2026-10-09", marketState: "PRE",
+      lastUpdated: premarket, listingExchangeName: "NYSE", currency: "USD", stale: false,
+    }) } };
+    const cli = createTestCliContext(market);
+    await options.execute(["AAA", "--leaps", "--delta", "0.65-0.85", "--columns", "iv,breakeven"], cli.context);
+    const rows = cli.printed[0]!.result.data as LeapsRow[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      strike: 90, spot: SPOT, spotBasis: "close", spotAsOf: "2026-10-09T20:00:00.000Z",
+      valuationTime: "2026-10-09T19:59:00.000Z", days: daysToExpiry(LEAPS, premarket),
+    });
+    const plain = createTestCliContext(market);
+    await options.execute(["AAA", "--expiration", "2028-01-21"], plain.context);
+    const { result } = plain.printed[0]!;
+    expect(rows[0]!.delta).toBeCloseTo(result.data.calls[0].delta, 4);
+    expect(rows[0]!.ivPercent).toBeCloseTo(result.data.calls[0].iv * 100, 2);
+    expect(result.metadata?.model).toMatchObject({ spot: rows[0]!.spot, valuationTime: rows[0]!.valuationTime });
+    expect(rows[0]!.extrinsic).toBeCloseTo((chain.calls[0]!.bid + chain.calls[0]!.ask) / 2 - 10, 3);
+  });
+
+  test("after the close, LEAPS uses the same calendar days as plain options at both window bounds", async () => {
+    const now = Date.parse("2026-11-25T22:00:00Z");
+    setSystemTime(new Date(now));
+    const expiry = Date.UTC(2027, 11, 17) / 1000;
+    const next = Date.UTC(2027, 11, 18) / 1000;
+    const { dataProvider, requests } = leapsProvider({
+      AAA: (requested = expiry) => chainFor(requested, [contract("call", 90, requested)], [expiry, next]),
+    });
+    const plain = createTestCliContext({ dataProvider });
+    await options.execute(["AAA", "--expiration", "2027-12-17"], plain.context);
+    expect(plain.printed[0]!.result.metadata?.expiry).toMatchObject({ date: "2027-12-17", daysToExpiry: 387, expired: false });
+    requests.length = 0;
+
+    const screen = createTestCliContext({ dataProvider });
+    await options.execute(["AAA", "--leaps", "--min-days", "387", "--max-days", "387"], screen.context);
+    expect(requests.map(([, requested]) => requested)).toEqual([undefined, expiry]);
+    const rows = screen.printed[0]!.result.data as LeapsRow[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ expiration: "2027-12-17", days: 387 });
+    expect(parseLeapsCriteria({ "--min-days": "387", "--expiry-to": "2027-12-17" }, now)).toMatchObject({ minDays: 387 });
+    expect(parseLeapsCriteria({ "--max-days": "386", "--expiry-from": "2027-12-17" }, now)).toMatchObject({
+      error: expect.stringContaining("2027-12-17 is 387 days out, past --max-days 386"),
+    });
+  });
+
   test("ranks contracts more than a year out by carry, keeping only liquid ones in the delta band", async () => {
     // Strikes 80 to 110 sit in a 0.50-0.90 band. Each symbol spoils two of them for the LEAPS expiry only.
     const calls = (expiration: number, spoiled: Record<number, Partial<OptionContract>>) => STRIKES.map((strike) => (

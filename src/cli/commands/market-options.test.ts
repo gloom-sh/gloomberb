@@ -40,17 +40,28 @@ test("options reports when a failed refresh falls back to a stored chain", async
   expect(chainLoads).toEqual([{ force: true }]);
 });
 
-test("options flags a chain last observed before today's US open", async () => {
-  // 09:45 New York: the delayed chain may still be yesterday's closing snapshot.
-  setSystemTime(new Date("2026-09-23T13:45:00Z"));
+test("options separates the snapshot clock from calendar DTE and honours the delayed open", async () => {
   try {
-    const warnings = [];
-    for (const asOf of ["2026-09-22T19:59:59Z", "2026-09-23T13:31:00Z"]) {
-      const chain = { underlyingSymbol: "AAPL", expirationDates: [1], calls: [], puts: [], asOf };
-      warnings.push(await warningsFor(chain, Date.now(), undefined));
+    const expiration = Date.parse("2026-12-18") / 1000;
+    for (const [now, asOf, status] of [
+      ["2026-11-25T14:40:00Z", "2026-11-24T21:00:00Z", "delayed"],
+      ["2026-11-25T17:44:00Z", "2026-11-25T17:29:00Z", "delayed"],
+      ["2026-11-25T17:44:00Z", "2026-11-18T17:29:00Z", "stale"],
+      ["2026-11-25T17:44:00Z", undefined, "unreported"],
+    ] as const) {
+      setSystemTime(new Date(now));
+      const chain = { underlyingSymbol: "AFK", expirationDates: [expiration], calls: [{ expiration, contractSymbol: "AFK261218C00025000",
+        strike: 25, bid: 1, ask: 2, lastPrice: 1.5, currency: "USD" }], puts: [], asOf, dataSource: "delayed", delayMinutes: 15 };
+      const cli = createTestCliContext({ dataProvider: { getOptionsChain: async () => chain } });
+      await options.execute(["AFK", "--expiration", "2026-12-18"], cli.context);
+      expect(cli.printed[0]!.result.metadata).toMatchObject({
+        expiry: { date: "2026-12-18", daysToExpiry: 23, expired: false }, snapshot: { asOf: asOf ?? null, status },
+      });
+      expect((cli.printed[0]!.result.metadata?.snapshot as { delayMinutes?: number }).delayMinutes).toBe(status === "delayed" ? 15 : undefined);
     }
-    expect(warnings[0]).toEqual(["No option trades this session yet (last trade 2026-09-22T19:59:59Z)"]);
-    expect(warnings[1]).toBeUndefined();
+    setSystemTime(new Date("2026-12-18T21:01:00Z"));
+    const expired = createTestCliContext({ dataProvider: { getOptionsChain: async () => ({ expirationDates: [], calls: [], puts: [] }) } });
+    await expect(options.execute(["AFK", "--expiration", "2026-12-18"], expired.context)).rejects.toThrow(/expired/);
   } finally {
     setSystemTime();
   }

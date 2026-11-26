@@ -235,6 +235,8 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
     ...allTabs.map((tab) => ({ value: tab.id, label: t(tab.name), aliases: FORMER_VIEW_NAMES[tab.id], viewId: tab.id })),
     ...groups.filter((group) => !group.id.startsWith("tab:") && !allTabs.some((tab) => tab.id === group.id))
       .map((group) => ({ value: group.id, label: t(group.name), viewId: tickerResearchGroupView(group, undefined) })),
+    ...(!allTabs.some((tab) => tab.id === "event-dividends") && allTabs.some((tab) => tab.id === "dividend-yield")
+      ? [{ value: "Dividends", label: t("Dividends"), viewId: "dividend-yield" }] : []),
   ], [groups]);
   const savedTabId = matchOptionChoice(tabChoices, activeTabId)?.viewId ?? allTabs[0]?.id ?? "overview";
   const proOnlyTabIds = useMemo(

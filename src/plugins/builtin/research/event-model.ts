@@ -7,6 +7,7 @@ import type {
   CorporateActionsData,
   DividendAction,
   EarningsDateStatus,
+  FilingEpsDetails,
   FinancialStatement,
   TickerFinancials,
 } from "../../../types/financials";
@@ -48,7 +49,7 @@ export const CORPORATE_ACTION_COVERAGE = "Split-feed factors may include spinoff
 
 export type EventStatus = "Earnings" | "Q Est" | "FY Est" | "TTM" | "Dividend" | "Split" | "Factor";
 
-export interface EventRow {
+export interface EventRow extends FilingEpsDetails {
   id: string;
   date: string;
   dateType?: "announcement" | "fiscal-period-end";
@@ -439,6 +440,7 @@ export function buildEventRows(
       epsCurrency: earning.currency ?? (earning.epsActual == null ? feedCurrency : reportedCurrency),
       revenueCurrency: statement ? statement.currency ?? financials?.financialCurrency : undefined,
       qEps: earning.epsActual ?? earning.epsEstimate,
+      ...(earning.streetEps ? { streetEps: earning.streetEps, gaapEps: earning.gaapEps } : {}),
       qRevenue: statement?.totalRevenue,
       earningsState: earning.epsActual == null ? "pending" : "reported",
       epsActual: earning.epsActual,

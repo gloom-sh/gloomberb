@@ -151,7 +151,8 @@ export function SignInWall({ placement, action, needsVerification = false, pro =
   return (
     <WallTeaser experiment="wall_teaser_signin" placement={placement} title={title} message={hint}
       width={width} height={height} symbol={symbol} exchange={exchange}>
-      <Box flexDirection="column" paddingX={1} paddingY={1} data-gloom-ui="sign-in-wall" style={nativePaneChrome ? NATIVE_STATE_INSET : undefined}>
+      <Box flexDirection="column" paddingX={1} paddingY={1} data-gloom-ui="sign-in-wall"
+        data-gloom-sign-in={needsVerification ? "verify-email" : pro ? "pro" : "free"} style={nativePaneChrome ? NATIVE_STATE_INSET : undefined}>
         <EmptyState
           title={title}
           hint={hint}

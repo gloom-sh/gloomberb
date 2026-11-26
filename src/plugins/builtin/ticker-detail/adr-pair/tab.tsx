@@ -9,6 +9,8 @@ import { spotFromUsdValue } from "../../../../market-data/depositary-pair";
 import { heldCurrencyUnit } from "../../../../utils/currency-units";
 import type { TickerResearchTabProps } from "../../../../types/plugin";
 import { Box } from "../../../../ui";
+import { useRemoteUiNode } from "../../../../remote/semantic-tree";
+import { MISSING_VALUE } from "../../../../utils/format";
 import { useOpenDescription } from "../../shared/open-description";
 import { adrPairComparison, adrPairFigures, adrPairInputRows, adrPairLegs, adrPairQuotes, ahPairFigures, ahPairInputRows, type AdrPairInputRow } from "./model";
 import { useAhPair } from "./ah";
@@ -72,6 +74,15 @@ export function AdrPairResearchTab({ width, height, focused }: TickerResearchTab
     ? `Prices unavailable for ${legs ? !receiptQuote ? legs.receiptKey : legs.homeKey : ah!.side === "h" ? ah!.pair.a : ah!.pair.h}.`
     : null;
   const notes = [comparison?.timingNote, ahComparison?.timingNote].filter((note): note is string => !!note);
+  const figures = comparison ? adrPairFigures(comparison).filter((figure) => figure.value !== MISSING_VALUE) : [];
+  useRemoteUiNode(comparison ? {
+    role: "report-notice", label: "ADR comparison",
+    getMetadata: () => ({
+      text: [...figures.map(({ label, value, detail }) => `${label}: ${value}${detail ? ` (${detail})` : ""}`), ...notes].join(" · "),
+      key: "adrComparison",
+      value: { ratio: comparison.ratio, impliedFx: comparison.impliedFx, premiumPercent: comparison.premiumPercent },
+    }),
+  } : null);
   // Each note wraps to the pane's width, less its inset.
   const noteRows = notes.reduce((total, note) => total + Math.ceil(note.length / Math.max(1, width - 2)), 0);
   const tableHeight = Math.max(3, height - statGridRows(stats, width) - noteRows);

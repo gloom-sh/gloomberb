@@ -71,12 +71,14 @@ export function useTickerRequest<T>(
   symbol: string | null,
   exchange: string,
   savedAs?: readonly unknown[],
+  enabled = true,
 ) {
   const scope = useCloudDisplayScope();
   const request = useCallback((force: boolean) => loader(symbol!, exchange, force), [exchange, loader, symbol]);
-  const { data, loading, error, reload } = useAsyncResource(symbol ? request : null, {
+  const { data, loading, error, reload } = useAsyncResource(symbol && enabled ? request : null, {
     clearOnError: discardDeniedResearch,
-    savedCopy: savedAs && symbol && scope ? { key: [...savedAs, scope, symbol, exchange] } : null,
+    savedCopy: enabled && savedAs && symbol && scope ? { key: [...savedAs, scope, symbol, exchange] } : null,
   });
+  if (!enabled) return { data: null, loading: false, error: null, reload };
   return { data, loading, error: symbol ? error : "No ticker selected", reload };
 }

@@ -1423,6 +1423,30 @@ test("the bar a split took effect in is flagged and the note says the bars befor
   expect(await run("2025-11-12", [{ date: "2025-11-17", fromFactor: 1000, toFactor: 1253, ratio: 1.253 }])).toMatchObject({ flagged: [] });
 });
 
+test("mixed-basis daily history retains the served bars and split date but withholds drawdown", async () => {
+  pinClosedSession();
+  const input = [["2023-08-22", 1.426], ["2023-08-23", 14.21], ["2023-08-30", 14.17], ["2023-09-01", 13.978], ["2023-09-05", 13.94]] as const;
+  const run = async (from: string) => {
+    const cli = createTestCliContext({ config: createDefaultConfig("/synthetic/history-split-fixture"), dataProvider: createTestDataProvider({
+      getQuote: async () => createTestQuote({ symbol: "AF", listingExchangeName: "EPA", instrumentType: "EQUITY", currency: "EUR" }),
+      getDetailedPriceHistoryWithMetadata: async () => ({ resolution: "1d", points: input.filter(([day]) => day >= from)
+        .map(([day, close]) => ({ date: new Date(day), open: close, high: close, low: close, close, volume: 1 })) }),
+      getCorporateActions: async () => ({ symbol: "AF", dividends: [], earnings: [],
+        splits: [{ date: "2023-08-31", fromFactor: 10, toFactor: 1, ratio: 0.1 }] }),
+    }) }, { format: "json" });
+    await history.execute(["AF:EPA", "--from", from, "--to", "2023-09-05"], cli.context);
+    return cli.printed[0]!.result;
+  };
+  const mixed = await run("2023-08-22");
+  expect(mixed.data).toMatchObject([{ close: 1.426 }, { close: 14.21 }, { close: 14.17 }, { close: 13.978, flag: "split" }, { close: 13.94 }]);
+  expect(mixed.warnings?.join(" ")).toContain("close jumps 9.96× on 2023-08-23 near the 2023-08-31 split");
+  expect(mixed.warnings?.join(" ")).not.toContain("bars before it are split-adjusted");
+  expect(mixed.metadata?.maxDrawdown).toBeNull();
+  const postEvent = await run("2023-09-01");
+  expect(postEvent.metadata?.maxDrawdown).not.toBeNull();
+  expect(postEvent.warnings?.join(" ") ?? "").not.toContain("cannot be verified");
+});
+
 test("a split inside the last weekly or monthly bar's period is flagged on that bar and named in the note", async () => {
   pinClosedSession();
   // NFLX's 10-for-1 on Wed 19 Nov falls in the week of 17 Nov and in November, each the history's last bar.

@@ -136,17 +136,20 @@ export async function loadEventSources(
   symbol: string,
   today = listingDay(parsePublicTickerKey(symbol).exchange),
 ): Promise<EventSources> {
-  const [actions, estimates, financials, calendar] = await Promise.allSettled([
+  const listingRead = Promise.allSettled([
     provider.getCorporateActions?.(symbol, "") ?? null,
-    // A listing no analyst covers answers with no estimates, not a failure.
-    provider.getAnalystResearch ? loadAnalystResearch(provider, symbol, "") : null,
     provider.getTickerFinancials(symbol, ""),
+  ]).then(([actions, financials]) => {
+    const recordedActions = actions.status === "fulfilled" ? actions.value : null;
+    const financialsData = financials.status === "fulfilled" ? financials.value : null;
+    return { actions, financials, recordedActions, financialsData, fund: isFundListing(financialsData, recordedActions) };
+  });
+  const [calendar, estimates] = await Promise.allSettled([
     loadEarningsCalendar(provider, [symbol]),
+    listingRead.then(({ fund }) => !fund && provider.getAnalystResearch ? loadAnalystResearch(provider, symbol, "") : null),
   ]);
+  const { actions, financials, recordedActions, financialsData, fund } = await listingRead;
   const event = calendar.status === "fulfilled" ? calendarEventOf(calendar.value.events, symbol) : null;
-  const financialsData = financials.status === "fulfilled" ? financials.value : null;
-  const recordedActions = actions.status === "fulfilled" ? actions.value : null;
-  const fund = isFundListing(financialsData, recordedActions);
   const actionsData = recordedActions ? (fund ? fundCorporateActions(recordedActions) : withResolvedEarnings(recordedActions, event, today)) : null;
   const estimatesData = !fund && estimates.status === "fulfilled" ? estimates.value : null;
   return {

@@ -4,6 +4,12 @@ import type { ReportTime } from "../../utils/utc-time";
 import { latestRegularSessionClose } from "../market/freshness";
 import { getCompletedRegularSessionDisplay, getRegularSessionDisplay } from "../market/status";
 import { quoteTradingDay } from "./day-range";
+import { viewMarketCapitalization } from "../../utils/market-capitalization";
+
+export function regularSessionMarketCapitalization(financials: Pick<TickerFinancials, "quote" | "fundamentals">) {
+  const priced = atRegularSessionPrice(financials);
+  return viewMarketCapitalization(priced.quote, priced.fundamentals, regularSessionValuationPrice(priced.quote));
+}
 
 function positive(value: number | null | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;

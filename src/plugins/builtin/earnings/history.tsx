@@ -100,7 +100,7 @@ export function EarningsHistoryView({ symbol, width, height, focused, registrati
   const link = useChartTableSelection({
     rows, getId: (row) => row.key, getDate: barDate, selectedId: selected?.key ?? null, onSelect: setSelectedId, focused,
   });
-  const figures = useMemo(() => historyFigures(rows, today), [rows, today]);
+  const figures = useMemo(() => historyFigures(rows, today, selected), [rows, today, selected]);
   // The upcoming report has no bar until it is priced; the legend then reads the latest report's.
   const latestBar = bars.at(-1);
   const cursorDate = link.cursorDate ?? (latestBar ? barDate(latestBar) : null);
