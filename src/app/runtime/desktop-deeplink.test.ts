@@ -282,11 +282,38 @@ describe("desktop deeplinks", () => {
     (options.pluginRegistry as unknown as { paneTemplates: Map<string, unknown> }).paneTemplates = new Map(
       getPluginCatalog().flatMap(({ plugin }) => (plugin.paneTemplates ?? []).map((template) => [template.id, template] as const)),
     );
-    const published = ["?fn=ERN&arg=NVDA", "?fn=PERP&arg=BTC", "?fn=PERP&arg=ETH", "?fn=PERP&arg=SOL", "?fn=PERP&arg=NVDA"];
+    const published = [
+      "?fn=ERN&arg=NVDA",
+      "?fn=PERP&arg=BTC",
+      "?fn=PERP&arg=ETH",
+      "?fn=PERP&arg=SOL",
+      "?fn=PERP&arg=NVDA",
+      "?fn=CCASS&arg=0700.HK",
+      "?fn=CCASSM",
+      "?fn=DILU&arg=MSTR",
+      "?fn=DILU",
+      "?fn=CBBC&arg=HSI",
+      "?fn=CBBC&arg=0700.HK",
+      "?fn=KPIS&arg=2330:TWSE",
+    ];
     for (const search of published) openFromWeb(search, options);
     handleDesktopDeepLink("gloomberb://fn/PERP?arg=BTC", options);
     expect(notices).toEqual([]);
-    expect(ran).toEqual(["ERN NVDA", "PERP BTC", "PERP ETH", "PERP SOL", "PERP NVDA", "PERP BTC"]);
+    expect(ran).toEqual([
+      "ERN NVDA",
+      "PERP BTC",
+      "PERP ETH",
+      "PERP SOL",
+      "PERP NVDA",
+      "CCASS 0700.HK",
+      "CCASSM",
+      "DILU MSTR",
+      "DILU",
+      "CBBC HSI",
+      "CBBC 0700.HK",
+      "KPIS 2330:TWSE",
+      "PERP BTC",
+    ]);
 
     ran.length = 0;
     for (const search of ["?fn=ASKG&arg=HELLO", "?fn=THESIS&arg=NVDA", "?fn=CHAT&arg=MACRO"]) openFromWeb(search, options);

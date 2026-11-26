@@ -512,6 +512,40 @@ test("SGX results search the full source window without mixing in other filings"
   }
 });
 
+test("Taiwan presentations remain available when the mixed filings catalogue fails", async () => {
+  firstSymbol = "6223:TPEX";
+  firstListing = { exchange: "TPEX", currency: "TWD", assetCategory: "STK" };
+  const url = "https://doc.twse.com.tw/nas/STR/622320260601E001.pdf";
+  const exchange = spyOn(apiClient, "getCloudExchangeAnnouncements").mockImplementation(async ({ kind }) => {
+    if (kind !== "presentations") throw new Error("Reports catalogue unavailable");
+    return {
+      exchange: "TPEX", symbol: "6223", name: "MPI", page: "https://mopsov.twse.com.tw/mops/web/t100sb02_1",
+      announcements: [{
+        date: "2026-06-01", dateBasis: "catalogue", headline: "Conference presentation (English)",
+        types: ["Investor conference presentation"], publisher: "MOPS",
+        priceSensitive: null, fileSize: null, documentKey: url, url,
+      }],
+      total: 1,
+      retrievedAt: "2026-11-26T00:00:00Z",
+    };
+  });
+  try {
+    await mount(createTestDataProvider({ getSecFilings: async () => [] }));
+    await tui.waitForFrameToContain("Filings unavailable");
+    await tui.clickFrameText("All forms");
+    await tui.waitForFrameToContain("Presentations");
+    await tui.clickFrameText("Presentations");
+    const shown = await tui.waitForFrameToContain("Conference presentation (English)");
+    expect(shown).not.toContain("Reports catalogue unavailable");
+    expect(exchange).toHaveBeenCalledWith({ symbol: "6223:TPEX", exchange: "TPEX", limit: 200, kind: "presentations" });
+    await press("return", "\r");
+    expect(await tui.waitForFrameToContain("← Back")).toContain("01 Jun 2026");
+    expect(footer.hints?.map(hint => hint.id)).toContain("open");
+  } finally {
+    exchange.mockRestore();
+  }
+});
+
 test("a Hong Kong spot coin fund shows its issuer's figures in its counter's currency, with units per coin", async () => {
   paneSettings = { forms: ETF_FORMS_SETTING };
   // A bare code on HKEX: the server is asked for 3046:XHKG, its Hong Kong listing, not a US 3046.

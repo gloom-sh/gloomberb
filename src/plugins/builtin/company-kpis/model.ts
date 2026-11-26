@@ -293,6 +293,12 @@ export function companyCellText(row: CompanyRow, column: string, observations: K
     : column === "confidence" ? `${Math.round(row.confidence * 100)}%` : column === "revision" ? `${row.revision} ${row.current ? "current" : "superseded"}` : row.evidence[0]!.quote;
 }
 /**
+ * What a narrow desktop pane gives up first in the evidence ledger: how sure
+ * and which revision, then the figure and its change, which the Table tab
+ * holds. The sentence and the day it was published stay.
+ */
+export const EVIDENCE_COLUMN_DROP_ORDER = ["revision", "confidence", "change", "value", "published"] as const;
+/**
  * The table's columns. `named` is the desktop's: the metric cell names the
  * series in plain words (seriesDetail), so no basis or scope column repeats it.
  * `period` is the one kind of period the rows are, which names the change.
@@ -310,7 +316,9 @@ export function companyColumns(guidance: boolean, evidence: boolean, history: bo
     { id: "basis", label: "Basis", width: 18, align: "left" },
     { id: "scope", label: "Scope", width: 24, align: "left" },
     ...(evidence ? [{ id: "published", label: "Published", width: 11, align: "left" as const }, { id: "confidence", label: "Confidence", width: 11, align: "right" as const },
-      { id: "revision", label: "Revision", width: 12, align: "left" as const }, { id: "quote", label: "Evidence", width: 54, align: "left" as const }] : []),
+      { id: "revision", label: "Revision", width: 12, align: "left" as const },
+      // The sentence gives up length before a narrow desktop pane gives up the column.
+      { id: "quote", label: "Evidence", width: 54, flexGrow: 1, align: "left" as const }] : []),
   ];
   const order = evidence ? ["metric", "period", "quote", "published", "confidence", "revision", "value", "basis", "scope", "issued", "change"]
     : history ? ["metric", "period", "actual", "outcome", "value", "issued", "change", "basis", "scope"] : null;

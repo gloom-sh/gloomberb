@@ -27,7 +27,7 @@ export function readRenderedTableRows(
   isVisible: (element: Element) => boolean,
 ): { rows: DesktopPaneShotRenderedRow[]; clipped: boolean } {
   const normalize = (value: unknown) => String(value || "").replace(/\s+/g, " ").trim();
-  const textOf = (element: Element) => normalize((element as HTMLElement).innerText || element.textContent);
+  const textOf = (element: Element) => normalize((element as HTMLElement).innerText);
   const headers = Array.from(table.querySelectorAll('[data-gloom-role="data-table-header-cell"]')).map(textOf);
   const rows: DesktopPaneShotRenderedRow[] = [];
   let clipped = false;

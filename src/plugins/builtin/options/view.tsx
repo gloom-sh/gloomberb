@@ -57,6 +57,7 @@ import {
   buildStrikeList,
   createOptionColumns,
   fitOptionFieldIds,
+  OPTION_COLUMN_DROP_ORDER,
   findNearestStrikeIndex,
   formatIv,
   optionColumnColor,
@@ -289,7 +290,8 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   const [storedOptionFieldIds] = usePaneSettingValue<OptionFieldId[]>("optionColumnIds", DEFAULT_OPTION_FIELD_IDS);
   const optionFieldIds = useMemo(() => resolveOptionFieldIds(storedOptionFieldIds), [storedOptionFieldIds]);
   // The terminal chain keeps both sides on screen, giving up fields to fit (the
-  // table's width less its scrollbar); the desktop's table scrolls as it did.
+  // table's width less its scrollbar); the desktop's table gives up the same
+  // fields in the same order as whole columns and names them (OPTION_COLUMN_DROP_ORDER).
   const chainWidth = Math.max(1, width - 3);
   const shownFieldIds = useMemo(() => nativePaneChrome ? optionFieldIds : fitOptionFieldIds(optionFieldIds, chainWidth),
     [chainWidth, nativePaneChrome, optionFieldIds]);
@@ -1144,6 +1146,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
         headerScrollId="options-table-header-scroll"
         bodyScrollId="options-table-body-scroll"
         columns={optionColumns}
+        columnDropOrder={OPTION_COLUMN_DROP_ORDER}
         // A field the terminal gave up for width is still in the export.
         exportCsv={shownFieldIds.length < optionFieldIds.length
           ? () => createDataTableCsv({ columns: createOptionColumns(optionFieldIds), items: rows, renderCell })

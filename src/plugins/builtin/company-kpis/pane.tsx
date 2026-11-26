@@ -22,7 +22,7 @@ import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedCompanyData, loadCompanyData, KPI_UNAVAILABLE, validateCompanyData, type CompanyDataset, type CompanyMode } from "./client";
 import { useCompanyEvidence } from "./screenshot-evidence";
-import { allGuidance, allObservations, basisLabel, changeText, changeTone, companyCellDay, companyCellText, companyColumns, companyEmptyState, dimensionLabel, directionLabel, directionTone, fitCompanyColumns, guideGroupKey, guidanceSeries, guidanceIssueNote, fiscalLabel,
+import { allGuidance, allObservations, basisLabel, changeText, changeTone, companyCellDay, companyCellText, companyColumns, companyEmptyState, EVIDENCE_COLUMN_DROP_ORDER, dimensionLabel, directionLabel, directionTone, fitCompanyColumns, guideGroupKey, guidanceSeries, guidanceIssueNote, fiscalLabel,
   isGuidance, exactObservation, kpiPeriodView, kpiPeriodViews, observationValue, observationChange, observationChart, periodOrder, outcomeLabel, QUIET_COLUMNS, rangeText, scopeWords, seriesDetail, seriesLabel, seriesLabels, seriesName,
   seriesOrder, unitLabel, valueText, companyPreviewNote, type CompanyRow } from "./model";
 import { PriceSparkline } from "../../../components/price-sparkline/view";
@@ -271,7 +271,7 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
       : tab === "monthly" && twUsTicker ? <TaiwanUsReadthroughView usTicker={twUsTicker} width={width} height={bodyHeight} focused={focused} />
       : <PaneStatusBody loading={!data && resource.loading} error={!data && resource.error !== KPI_UNAVAILABLE ? resource.error : null}
       empty={!data && resource.error === KPI_UNAVAILABLE} emptyTitle={KPI_UNAVAILABLE} subject="company disclosures">
-      {data ? <DataTableStackView<Item> focused={focused} rootWidth={width} rootHeight={bodyHeight} columns={columns} items={items} getItemKey={getId}
+      {data ? <DataTableStackView<Item> focused={focused} rootWidth={width} rootHeight={bodyHeight} columns={columns} columnDropOrder={tab === "evidence" ? EVIDENCE_COLUMN_DROP_ORDER : undefined} items={items} getItemKey={getId}
         selection={{ kind: "id", selectedId: selected?.id ?? null, getId, onChange: setSelected }}
         onActivate={(item) => item.row ? setOpen(item.row.id) : isNote(item) ? undefined : openUpgrade()} renderCell={renderCell}
         isNavigable={(item) => !isNote(item)} renderSectionHeader={(item) => "note" in item && item.note ? { text: item.note } : null} freezeFirstColumn selectedTextOverridesCellColor showHorizontalScrollbar
