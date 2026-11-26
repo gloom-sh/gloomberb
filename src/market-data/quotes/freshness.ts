@@ -82,17 +82,18 @@ export function isExtendedHoursExchange(quote: Quote): boolean {
 
 function isQuoteMissingActiveSessionPrice(quote: Quote, now: number): boolean {
   if (!isExtendedHoursExchange(quote)) return false;
-  const activeSession = activeUsExtendedHoursSession(now);
+  const exchange = quote.listingExchangeName || quote.exchangeName;
+  const activeSession = activeUsExtendedHoursSession(now, exchange);
   if (!activeSession) return false;
   // No after-hours trade yet: today's regular close is the current price.
   if (activeSession === "POST" && quote.postMarketPrice == null && isUsRegularCloseQuoteInPostSession(
-    quote.lastUpdated, quote.listingExchangeName || quote.exchangeName, quote.marketState, now,
+    quote.lastUpdated, exchange, quote.marketState, now,
   )) return false;
   if (quote.marketState !== activeSession) return true;
   if (activeSession === "POST") return quote.postMarketPrice == null;
   // No pre-market trade yet: the previous session's close is the current price.
   return quote.preMarketPrice == null && !isUsPriorSessionPremarketQuote(
-    quote.lastUpdated, quote.listingExchangeName || quote.exchangeName, quote.marketState, now,
+    quote.lastUpdated, exchange, quote.marketState, now,
   );
 }
 

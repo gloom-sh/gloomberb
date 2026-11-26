@@ -228,13 +228,6 @@ const DELAYED_FEED_LAG_MS = 15 * 60_000;
 const SLOWER_DELAYED_FEED_LAG_MS = 20 * 60_000;
 const SLOWER_DELAYED_FEEDS = new Set(["ASX", "KRX", "KOSDAQ", "TWSE", "TPEX", "SGX", "NZX"]);
 const exchangeLocalTimeFormatters = new Map<string, Intl.DateTimeFormat>();
-const usSessionFormatter = new Intl.DateTimeFormat("en-US", {
-  timeZone: "America/New_York",
-  weekday: "short",
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23",
-});
 
 type UsSessionState = Exclude<MarketState, never>;
 
@@ -245,7 +238,7 @@ type UsSessionState = Exclude<MarketState, never>;
 const MINUTE_CACHE_LIMIT = 4096;
 const localDateCache = new Map<string, string | null>();
 const localMinuteCache = new Map<string, number | null>();
-const usSessionCache = new Map<number, UsSessionState>();
+const usSessionCache = new Map<string, UsSessionState>();
 
 function perMinute<K, V>(cache: Map<K, V>, key: K, compute: () => V): V {
   const cached = cache.get(key);
@@ -362,6 +355,16 @@ function isLocalTradingDay(exchange: string, date: string, weekendDays?: readonl
   if (publishedSpecialSession(exchange, date)) return true;
   const weekday = localWeekday(date);
   return weekday != null && isTradingWeekday(exchange, weekday, weekendDays) && !isPublishedClosure(exchange, date);
+}
+
+/** A published equity closure, not a weekend, shortened session or futures trade-date holiday. */
+export function isPublishedEquityHoliday(exchange: string | undefined, now: number, weekendDays?: readonly number[]): boolean {
+  const venue = canonicalExchange(exchange);
+  if (isPublishedFuturesVenue(venue)) return false;
+  const date = exchangeLocalDate(venue, now);
+  const weekday = date ? localWeekday(date) : null;
+  return date != null && weekday != null && isTradingWeekday(venue, weekday, weekendDays)
+    && isPublishedClosure(venue, date) && !publishedSpecialSession(venue, date);
 }
 
 /** Days of the venue's trading week in (earlier, later], less published closures for venues with a calendar. */
@@ -700,37 +703,37 @@ export function middayBreakOn(exchange: string | undefined, now: number): { star
   return { start: at(start), end: at(end) };
 }
 
-function usSessionState(timestampMs: number): UsSessionState {
+function usSessionState(timestampMs: number, exchange: string | undefined): UsSessionState {
+  const venue = canonicalExchange(exchange);
   const minute = Math.floor(timestampMs / 60_000);
-  return perMinute(usSessionCache, minute, () => formatUsSessionState(minute * 60_000));
+  return perMinute(usSessionCache, `${venue}:${minute}`, () => formatUsSessionState(minute * 60_000, venue));
 }
 
-function formatUsSessionState(timestampMs: number): UsSessionState {
-  const parts = usSessionFormatter.formatToParts(new Date(timestampMs));
+function formatUsSessionState(timestampMs: number, venue: string): UsSessionState {
+  const date = exchangeLocalDate("NYSE", timestampMs);
+  const weekday = date ? localWeekday(date) : null;
+  if (!date || weekday == null || !isTradingWeekday("NYSE", weekday)) return "CLOSED";
+  const published = getPublishedUsEquitySession(venue, date);
+  if (published?.kind === "closed") return "CLOSED";
 
-  const weekday = parts.find((part) => part.type === "weekday")?.value ?? "";
-  if (weekday === "Sat" || weekday === "Sun") return "CLOSED";
-
-  const hour = Number(parts.find((part) => part.type === "hour")?.value ?? "0");
-  const minute = Number(parts.find((part) => part.type === "minute")?.value ?? "0");
-  const totalMinutes = hour * 60 + minute;
-
+  const totalMinutes = exchangeLocalMinuteOfDay("NYSE", timestampMs);
+  if (totalMinutes == null) return "CLOSED";
   if (totalMinutes < US_PRE_MARKET_OPEN_MINUTES) return "PREPRE";
-  if (totalMinutes < 9 * 60 + 30) return "PRE";
-  if (totalMinutes < 16 * 60) return "REGULAR";
+  if (published ? timestampMs < published.open : totalMinutes < 9 * 60 + 30) return "PRE";
+  if (published ? timestampMs < published.close : totalMinutes < 16 * 60) return "REGULAR";
   if (totalMinutes < 20 * 60) return "POST";
   return "POSTPOST";
 }
 
 /** Provider session labels may outlive the active session they described. */
-export function activeUsMarketSession(now: number): "PRE" | "REGULAR" | "POST" | null {
+export function activeUsMarketSession(now: number, exchange: string | undefined): "PRE" | "REGULAR" | "POST" | null {
   if (!Number.isFinite(new Date(now).getTime())) return null;
-  const session = usSessionState(now);
+  const session = usSessionState(now, exchange);
   return session === "PRE" || session === "REGULAR" || session === "POST" ? session : null;
 }
 
-export function activeUsExtendedHoursSession(now: number): "PRE" | "POST" | null {
-  const session = activeUsMarketSession(now);
+export function activeUsExtendedHoursSession(now: number, exchange: string | undefined): "PRE" | "POST" | null {
+  const session = activeUsMarketSession(now, exchange);
   return session === "PRE" || session === "POST" ? session : null;
 }
 
@@ -751,12 +754,12 @@ export function isUsPriorSessionPremarketQuote(
   const canonical = canonicalExchange(exchange);
   if (marketState !== "PRE" || !isUsListingExchange(canonical)) return false;
   if (!Number.isFinite(timestampMs) || !Number.isFinite(now) || timestampMs > now + quoteFutureToleranceMs()) return false;
-  if (!Number.isFinite(new Date(now).getTime()) || usSessionState(now) !== "PRE") return false;
+  if (!Number.isFinite(new Date(now).getTime()) || usSessionState(now, canonical) !== "PRE") return false;
   const timestampDate = exchangeLocalDate(canonical, timestampMs);
   const currentDate = exchangeLocalDate(canonical, now);
   if (!timestampDate || !currentDate || timestampDate >= currentDate) return false;
   if (!isLocalTradingDay(canonical, timestampDate)) return false;
-  const printSession = usSessionState(timestampMs);
+  const printSession = usSessionState(timestampMs, canonical);
   if (printSession !== "REGULAR" && printSession !== "POST" && printSession !== "POSTPOST") return false;
   return localTradingDaysBetween(canonical, timestampDate, currentDate) === 1;
 }
@@ -780,13 +783,13 @@ export function isUsRegularCloseQuoteInPostSession(
   const canonical = canonicalExchange(exchange);
   if ((marketState !== "POST" && marketState !== "CLOSED") || !isUsListingExchange(canonical)) return false;
   if (!Number.isFinite(timestampMs) || !Number.isFinite(now) || timestampMs > now + quoteFutureToleranceMs()) return false;
-  if (!Number.isFinite(new Date(now).getTime()) || usSessionState(now) !== "POST") return false;
+  if (!Number.isFinite(new Date(now).getTime()) || usSessionState(now, canonical) !== "POST") return false;
   const currentDate = exchangeLocalDate(canonical, now);
   if (!currentDate || exchangeLocalDate(canonical, timestampMs) !== currentDate) return false;
   if (!isLocalTradingDay(canonical, currentDate)) return false;
   const published = getPublishedUsEquitySession(canonical, currentDate);
   if (published) return published.kind === "session" && timestampMs >= published.open && timestampMs <= published.close;
-  return usSessionState(timestampMs) === "REGULAR";
+  return usSessionState(timestampMs, canonical) === "REGULAR";
 }
 
 /**
@@ -811,9 +814,9 @@ export function isUsExtendedHoursSessionPrint(
   const today = exchangeLocalDate(canonical, now);
   const close = latestRegularSessionClose(canonical, now);
   if (!today || !close || !isLocalTradingDay(canonical, today)) return false;
-  const session = usSessionState(now);
+  const session = usSessionState(now, canonical);
   const closedToday = close.date === today;
-  if (marketState === "POST" ? !closedToday || (session !== "REGULAR" && session !== "POST") : closedToday || session !== "PRE") {
+  if (marketState === "POST" ? !closedToday || session !== "POST" : closedToday || session !== "PRE") {
     return false;
   }
   // The open of the session that closed last: today's after the close, the previous one before the open.
@@ -850,11 +853,12 @@ function isTimestampStaleForExchangeSessionUnsafe(
   const timestampDate = exchangeLocalDate(canonical, timestampMs);
   const currentDate = exchangeLocalDate(canonical, now);
   if (!timestampDate || !currentDate || timestampDate === currentDate) return false;
-  if (marketState === "REGULAR" && !isBeforeKnownRegularOpen(canonical, now)) return true;
+  if (marketState === "REGULAR" && !isPublishedEquityHoliday(canonical, now, weekendDays)
+    && !isBeforeKnownRegularOpen(canonical, now)) return true;
 
   if (isUsPriorSessionPremarketQuote(timestampMs, canonical, marketState, now)) return false;
   if (isUsListingExchange(canonical)) {
-    const session = usSessionState(now);
+    const session = usSessionState(now, canonical);
     if (session === "PRE" || session === "REGULAR" || session === "POST" || session === "POSTPOST") {
       return true;
     }
