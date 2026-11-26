@@ -14,7 +14,7 @@ import {
 import { isPendingAuction } from "./model";
 import { AppPersistence } from "../../../data/app-persistence";
 import { createCommandPluginPersistence } from "../../../cli/saved-copy-persistence";
-import { auction, RECORDED_NOW, recordedFiscalData, recordedTreasuryDirect } from "./test-fixture";
+import { auction, EMPTY_HISTORY_NOW, emptyHistoryPage, emptyHistoryRecentAuctions, RECORDED_NOW, recordedFiscalData, recordedTreasuryDirect } from "./test-fixture";
 import { ApiRequestError } from "../../../api-client/errors";
 import { outage } from "../../../test-support/outage";
 import type { TreasuryAuction } from "./types";
@@ -142,20 +142,6 @@ describe("loadTreasuryAuctions", () => {
     expect((await loadTreasuryAuctions(true, async () => { throw outage(); })).auctions[0]!.id).toBe("cached");
   });
 
-  test("never caches an empty payload, so the next load can still recover", async () => {
-    const { persistence, writes } = fakePersistence();
-    attachTreasuryAuctionsPersistence(persistence);
-
-    // Nothing to fall back on: an empty window is a failure, not "no auctions".
-    await expect(loadTreasuryAuctions(true, async () => [])).rejects.toThrow(/no auctions/);
-    expect(writes).toHaveLength(0);
-
-    const recovered = await loadTreasuryAuctions(false, async () => [auctionFixture("network")]);
-    expect(recovered.auctions[0]!.id).toBe("network");
-    expect(recovered.stale).toBe(false);
-    expect(writes).toHaveLength(1);
-  });
-
   test("shares one in-flight fetch across concurrent callers", async () => {
     const { persistence } = fakePersistence();
     attachTreasuryAuctionsPersistence(persistence);
@@ -267,13 +253,13 @@ describe("loadTreasuryAuctions with TreasuryDirect", () => {
 
     await loadTreasuryAuctions(false, fiscal, 120, direct);
     await loadTreasuryAuctions(false, fiscal, 120, direct);
-    expect(asked).toEqual(["fiscal from 2026-07-09", "direct 60"]);
+    expect(asked.splice(0).sort()).toEqual(["direct 60", "fiscal from 2026-07-09"]);
     // A shorter window reads its own board of Fiscal Data's and no more of TreasuryDirect's than it shows.
     const short = await loadTreasuryAuctions(false, fiscal, 30, direct);
-    expect(asked.slice(2)).toEqual(["fiscal from 2026-10-07", "direct 30"]);
+    expect(asked.splice(0).sort()).toEqual(["direct 30", "fiscal from 2026-10-07"]);
     expect(short.auctions.every((entry) => entry.auctionDate >= "2026-10-07")).toBe(true);
     await loadTreasuryAuctions(true, fiscal, 120, direct);
-    expect(asked.slice(4)).toEqual(["fiscal from 2026-07-09", "direct 60"]);
+    expect(asked.sort()).toEqual(["direct 60", "fiscal from 2026-07-09"]);
   });
 
   test("a board from Fiscal Data alone is served when TreasuryDirect is down, and says so", async () => {
@@ -422,5 +408,80 @@ describe("loadTreasuryAuctions with TreasuryDirect", () => {
     const status = Object.fromEntries(health.getSnapshot().sources.map((source) => [source.id, source.status]));
     expect(status[TREASURY_FISCAL_DATA_CONNECTION_ID]).toBe("connected");
     expect(status[TREASURY_DIRECT_CONNECTION_ID]).not.toBe("connected");
+  });
+});
+
+describe("zero-page history", () => {
+  const emptyHistory = () => fetchAuctionPages(async () => emptyHistoryPage);
+  const recent = async () => emptyHistoryRecentAuctions();
+  const unavailable = async () => { throw new ApiRequestError("Recent auctions unavailable", 503); };
+  beforeEach(() => setSystemTime(new Date(EMPTY_HISTORY_NOW)));
+  afterEach(() => setSystemTime());
+
+  test("a covered zero-page read stays fresh in memory and on a cold command, but an empty copy cannot stand in for a failed recent read", async () => {
+    const store = new AppPersistence(":memory:");
+    const namespace = "plugin:treasury-auctions";
+    const openCommand = () => {
+      resetTreasuryAuctionsPersistence();
+      attachTreasuryAuctionsPersistence(createCommandPluginPersistence(store.resources, namespace));
+    };
+    const unexpected = async () => { throw new Error("Unexpected refresh"); };
+    try {
+      openCommand();
+      const first = await loadTreasuryAuctions(false, emptyHistory, 30, recent);
+      expect(first).toEqual({ auctions: emptyHistoryRecentAuctions(), fetchedAt: Date.now(), stale: false });
+      expect(await loadTreasuryAuctions(false, unexpected, 30, unexpected)).toEqual(first);
+      openCommand();
+      expect(await loadTreasuryAuctions(false, unexpected, 30, unexpected)).toEqual(first);
+
+      setSystemTime(new Date(first.fetchedAt + 61 * 60_000));
+      const fallback = await loadTreasuryAuctions(false, emptyHistory, 30, unavailable);
+      expect(fallback).toMatchObject({ auctions: first.auctions, stale: true, refreshError: "Recent auctions unavailable", savedAt: first.fetchedAt });
+
+      store.resources.delete({ namespace, kind: "treasury-auctions", entityKey: "direct:30", sourceKey: TREASURY_DIRECT_CONNECTION_ID });
+      openCommand();
+      await expect(loadTreasuryAuctions(false, emptyHistory, 30, unavailable)).rejects.toThrow("Recent auctions unavailable");
+    } finally {
+      store.close();
+    }
+  });
+
+  test("recent rows cannot certify a malformed history walk or a read with no published results in range", async () => {
+    await loadTreasuryAuctions(false, emptyHistory, 30, recent);
+    const missingCount = () => fetchAuctionPages(async () => ({ data: [], meta: { "total-pages": 0 } }));
+    const incomplete = () => fetchAuctionPages(async (page) => page === 1
+      ? { data: [{ security_type: "Note", security_term: "2-Year", auction_date: "2026-11-24" }], meta: { "total-pages": 2 } }
+      : emptyHistoryPage);
+    const pendingAndOld = async () => [
+      ...emptyHistoryRecentAuctions().filter(isPendingAuction),
+      auction({ secType: "Note", securityTerm: "2-Year", auctionDate: "2026-10-26", highYield: 4 }),
+    ];
+    for (const [history, error] of [[missingCount, "page 1"], [incomplete, "page 2"]] as const) {
+      const board = await loadTreasuryAuctions(true, history, 30, recent);
+      expect(board.auctions).toEqual(emptyHistoryRecentAuctions());
+      expect(board.stale).toBe(true);
+      expect(board.refreshError).toContain(error);
+    }
+    expect(await loadTreasuryAuctions(true, emptyHistory, 30, pendingAndOld)).toMatchObject({
+      auctions: emptyHistoryRecentAuctions().filter(isPendingAuction), stale: true, refreshError: "Treasury Fiscal Data returned no auctions",
+    });
+  });
+
+  test("only the full recent lookback qualifies; wider and ALL reads keep saved history and report the gap", async () => {
+    const older = auction({ id: "older", secType: "Note", securityTerm: "10-Year", auctionDate: "2026-09-06", highYield: 4.6 });
+    const archive = auction({ id: "archive", secType: "Bond", securityTerm: "20-Year", auctionDate: "1979-10-31", highYield: 9.5 });
+    const persistence = new MemoryPluginPersistence();
+    attachTreasuryAuctionsPersistence(persistence);
+    expect((await loadTreasuryAuctions(true, emptyHistory, 60, recent)).stale).toBe(false);
+    expect((await loadTreasuryAuctions(true, emptyHistory, 61, recent)).stale).toBe(true);
+
+    for (const window of [90, "all"] as const) {
+      await loadTreasuryAuctions(false, async (query) => query.before ? [archive] : [older], window, recent);
+      const board = await loadTreasuryAuctions(true, emptyHistory, window, recent);
+      expect(board).toMatchObject({ stale: true, refreshError: "Treasury Fiscal Data returned no auctions" });
+      expect(board.auctions).toEqual([older, ...emptyHistoryRecentAuctions(), ...(window === "all" ? [archive] : [])]);
+      const key = window === "all" ? `since:${auctionArchiveBoundary()}` : `recent:${window}`;
+      expect(persistence.getResource("treasury-auctions", key, { sourceKey: TREASURY_FISCAL_DATA_CONNECTION_ID })?.value).toEqual([older]);
+    }
   });
 });
