@@ -16,6 +16,9 @@ import { projectRichCheap, readingSource, type RichCheapDates, type RichCheapRow
 import { vcaUniverse } from "./universe";
 import { MovedTickerState } from "../../../components/layout/pane/ticker-fate-gate";
 import type { MovedTickerChange } from "../../../tickers/ticker-changes";
+import { resolveOptionScreenListings } from "../../../market-data/options-listings";
+import { usListingsOnlyNote } from "../../../utils/sec";
+import { useAssetData } from "../../runtime";
 
 type SortId = Exclude<keyof RichCheapRow, "stale" | "riskReversalFullYear">;
 const HV_WINDOW = 20;
@@ -82,9 +85,10 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
   const [symbolsActive, setSymbolsActive] = useState(false);
   const { collectionId } = usePaneCollection();
   const tickers = useTickers();
+  const assetData = useAssetData();
   const { createPaneFromTemplate } = usePluginAppActions();
   const universe = useMemo(() => vcaUniverse(scope, symbolsText, collectionId, [...tickers.values()]), [scope, symbolsText, collectionId, tickers]);
-  const key = universe.instruments.map((instrument) => instrument.symbol).join(",");
+  const key = universe.instruments.map(({ symbol, exchange }) => exchange ? `${symbol}:${exchange}` : symbol).join(",");
   const controller = useRef<AbortController | null>(null);
   const [hv, setHv] = useState<Map<string, ScreenHv | null>>(new Map());
   // Symbols whose company moved: their rows have no HV and the footer says where each company went.
@@ -93,10 +97,22 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
     controller.current?.abort();
     const current = new AbortController();
     controller.current = current;
-    const payload = await loadIvScreen(universe.instruments.map((instrument) => instrument.symbol), { signal: current.signal });
+    const listings = scope === "custom" ? await resolveOptionScreenListings(universe.instruments, assetData) : universe.instruments;
+    current.signal.throwIfAborted();
+    const refused: string[] = [];
+    const covered = new Map(listings.flatMap((instrument) => {
+      const { symbol, exchange } = instrument;
+      const note = usListingsOnlyNote("Implied volatility", symbol, exchange);
+      if (note) refused.push(note);
+      return note ? [] : [[symbol, instrument] as const];
+    }));
+    const instruments = [...covered.values()];
+    const payload = instruments.length ? await loadIvScreen(instruments.map(({ symbol }) => symbol), { signal: current.signal })
+      : { version: 1 as const, asOf: "", rows: [] };
+    current.signal.throwIfAborted();
     setHv(new Map());
     setMoved([]);
-    void loadScreenVolatilities(universe.instruments, Promise.resolve(payload.rows), HV_WINDOW, { signal: current.signal,
+    if (instruments.length) void loadScreenVolatilities(instruments, Promise.resolve(payload.rows), HV_WINDOW, { signal: current.signal,
       onValue: (symbol, value) => { if (!current.signal.aborted) setHv((previous) => new Map(previous).set(symbol, value)); },
       onFates: (fates) => {
         const changes = [...fates].flatMap(([symbol, fate]) => fate.moved ? [{ symbol, change: fate.moved }] : []);
@@ -108,8 +124,8 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
           return next;
         });
       } });
-    return payload;
-  }, [key]);
+    return { ...payload, refused, allRefused: !instruments.length };
+  }, [key, scope, assetData]);
   const access = useCloudDisplayScope();
   const resource = useAsyncResource(access && universe.instruments.length ? loader : null, {
     savedCopy: access ? { key: ["iv-screen", access, key] } : null,
@@ -128,7 +144,9 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
   const coverageNotices = useMemo(() => screenPaneNotices(rows), [rows]);
   // One symbol to screen whose company moved has nothing to show but where it went, as a ticker's panes say.
   const movedOnly = universe.instruments.length === 1 && moved[0]?.symbol === universe.instruments[0]!.symbol ? moved[0]!.change : null;
-  const notices = [universe.error, resource.error, ...(movedOnly ? [] : [...moved.map((entry) => entry.change.note), ...coverageNotices])]
+  const refusal = resource.data?.allRefused ? resource.data.refused.join(" ") : undefined;
+  const notices = [universe.error, resource.error, ...(!refusal ? resource.data?.refused ?? [] : []),
+    ...(movedOnly ? [] : [...moved.map((entry) => entry.change.note), ...coverageNotices])]
     .filter((value): value is string => !!value);
   usePaneNoticeFooter({ registrationId: "iv-screen-notices", notices, focused });
   const openHistory = (row: RichCheapRow) => createPaneFromTemplate("iv-history-pane", { symbol: row.symbol });
@@ -180,7 +198,8 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
         width: SYMBOLS_FIELD_WIDTH, debounceMs: SYMBOLS_DEBOUNCE_MS, focused, active: symbolsActive, onActiveChange: setSymbolsActive,
         onChange: setSymbolsText }] : []),
     ]} />
-    {movedOnly ? <MovedTickerState change={movedOnly} paneId={paneId} /> : <PaneStatusBody subject="volatility rich/cheap" loading={resource.loading && !resource.data} error={universe.error && !universe.instruments.length ? universe.error : !resource.data ? resource.error : null}>
+    {movedOnly ? <MovedTickerState change={movedOnly} paneId={paneId} /> : <PaneStatusBody subject="volatility rich/cheap" loading={resource.loading && !resource.data}
+      empty={!!refusal} emptyTitle={refusal} error={universe.error && !universe.instruments.length ? universe.error : !resource.data ? resource.error : null}>
       <DataTableView<RichCheapRow> focused={focused && !symbolsActive} columns={columns} columnDropOrder={VCA_COLUMN_DROP_ORDER} items={rows} rootWidth={width}
         rootHeight={Math.max(2, height - 1 - definitions.length)}
         getItemKey={(row) => row.symbol} sortColumnId={sort.columnId} sortDirection={sort.direction} emptyStateTitle="No symbols to screen."

@@ -7,8 +7,7 @@ import { createRealizedVolatilityDependencies, loadCurrentAtmIv, loadRealizedVol
 import { atmIvObservedLabel, projectRealizedVolatility, type CurrentAtmIvSnapshot, type RealizedVolatilityModel } from "./model";
 import { ESTIMATOR_OPTIONS, selectedWindows } from "./settings";
 import { DAILY_CLOSES } from "../shared/report-freshness";
-import { listingAbroadVenue } from "../../../utils/sec";
-import { fxVolatilityPair } from "../../../market-data/options-alternatives";
+import { currentIvCoverageNote, fxVolatilityPair } from "../../../market-data/options-alternatives";
 import {
   fxProxyChainLabel, fxProxyChainText, fxProxyIvLessRv, fxProxyLabel, fxProxyNote, loadFxVolProxy, type FxProxyReading, type FxVolProxy,
 } from "./fx-proxy";
@@ -83,12 +82,12 @@ export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPane
       }
       const instrument = await resolveHeadlessInstrument(ctx, args.symbols[0]!);
       // Options are US listings'; SAN:EPA has none, and bare SAN's chain is another company's.
-      const abroad = listingAbroadVenue(args.symbols[0]!) != null;
+      const ivCoverage = currentIvCoverageNote(args.symbols[0]!, instrument.exchange);
       // An FX pair or currency future has no chain of its own: a currency fund's options stand in, labelled so.
       const fx = fxVolatilityPair(instrument.symbol, instrument.exchange) != null;
       const currentIv = async (): Promise<CurrentAtmIvSnapshot | null> => {
         if (!args.options.showIv || fx) return null;
-        if (abroad) return { reference: null, error: null, warnings: [], noOptionChain: true };
+        if (ivCoverage) return { reference: null, error: null, warnings: [], noOptionChain: true };
         try {
           const quote = await ctx.marketData.getQuote(instrument.symbol, instrument.exchange);
           if (quote.stale || !(quote.price > 0) || !Number.isFinite(quote.price)) throw new Error("Underlying quote is missing or stale");
@@ -152,7 +151,7 @@ export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPane
           ...proxyReading?.note ? [proxyReading.note] : []],
         metadata: { unit: "decimal annualized volatility", annualization: model.barsPerYear, model, currentIv: iv,
           ...proxy ? { fxVolProxy: { ...proxy, ...proxyReading } } : {},
-          ...(abroad && args.options.showIv ? { notices: [`Options data covers US listings only, so ${args.symbols[0]} has no current IV.`] } : {}),
+          ...(ivCoverage && args.options.showIv ? { notices: [ivCoverage] } : {}),
           source: history.source, stale: history.stale, fetchedAt: history.fetchedAt,
           methodology: "docs/research-data.md#shared-volatility-calculations" },
       };

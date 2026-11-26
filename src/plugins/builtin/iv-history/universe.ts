@@ -1,7 +1,7 @@
 import { fxVolatilityNote } from "../../../market-data/options-alternatives";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { TickerRecord } from "../../../types/ticker";
-import { canonicalExchange } from "../../../utils/exchanges";
+import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { VCA_LIMIT, VCA_PRESETS, type VcaPreset } from "./model";
 
 const US_VENUES = new Set(["NASDAQ", "NYSE", "AMEX", "ARCA", "BATS", "CBOE", "NYSEARCA", "NYSEAMERICAN"]);
@@ -21,8 +21,7 @@ export function vcaUniverse(scope: string, symbolsText: string, collectionId: st
   let label: string, instruments: InstrumentRef[], skipped = 0;
   if (scope === "custom") {
     label = "Custom symbols";
-    instruments = symbolsText.split(/[\s,]+/).map((value) => value.split(":")).filter(([symbol]) => !!symbol)
-      .map(([symbol, exchange]) => ({ symbol: symbol!.toUpperCase(), exchange: (exchange ?? "").toUpperCase() }));
+    instruments = symbolsText.split(/[\s,]+/).filter(Boolean).map((value) => parsePublicTickerKey(value));
   } else if (scope === "collection") {
     label = "Linked collection";
     const members = tickers.filter((ticker) => collectionId && [...ticker.metadata.watchlists, ...ticker.metadata.portfolios].includes(collectionId));
@@ -33,7 +32,8 @@ export function vcaUniverse(scope: string, symbolsText: string, collectionId: st
     label = PRESET_LABELS[preset];
     instruments = VCA_PRESETS[preset].map((symbol) => ({ symbol, exchange: "" }));
   }
-  const valid = [...new Map(instruments.filter((instrument) => SYMBOL.test(instrument.symbol)).map((instrument) => [instrument.symbol, instrument])).values()];
+  const valid = [...new Map(instruments.filter((instrument) => SYMBOL.test(instrument.symbol)).map((instrument) =>
+    [publicTickerKey(instrument.symbol, instrument.exchange), instrument])).values()];
   // An FX pair or currency future typed in a list is left out with what stands in for it, not as a symbol that does not parse.
   const fx = scope === "custom" ? instruments.flatMap((instrument) => fxVolatilityNote(instrument.symbol, instrument.exchange) ?? []) : [];
   const error = !valid.length ? fx[0] ?? (scope === "collection" ? "Link a watchlist or portfolio with US-listed symbols in pane settings." : "Add symbols in pane settings.")

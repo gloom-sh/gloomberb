@@ -14,6 +14,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
+import { usListingsOnlyNote } from "../../../utils/sec";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { loadRealizedVolatilityHistory } from "../realized-vol/client";
 import { IvHistoryChart } from "./charts";
@@ -38,7 +39,7 @@ const STAT_COLUMNS: DataTableColumn[] = [
 
 export function IvHistoryPane({ width, height, focused }: PaneProps) {
   const colors = useThemeColors();
-  const { symbol, ticker, error: identityError } = usePaneTicker();
+  const { symbol, ticker, financials, error: identityError } = usePaneTicker();
   const { createPaneFromTemplate } = usePluginAppActions();
   const [lookbackValue, setLookback] = usePaneSettingValue("lookback", "1Y");
   const [hvValue, setHvWindow] = usePaneSettingValue("hvWindow", "20");
@@ -59,12 +60,14 @@ export function IvHistoryPane({ width, height, focused }: PaneProps) {
     return { payload, prices };
   }, [instrumentKey]);
   // An FX pair has no implied volatility history: the pane says what stands in, and asks for nothing.
-  const fxNote = symbol ? fxVolatilityNote(symbol, ticker?.metadata.exchange) : null;
+  const quote = financials?.quote;
+  const exchange = instrument?.exchange || quote?.listingExchangeName || quote?.exchangeName;
+  const coverageNote = symbol ? fxVolatilityNote(symbol, exchange) ?? usListingsOnlyNote("Implied volatility history", symbol, exchange) : null;
   const scope = useCloudDisplayScope();
-  const resource = useAsyncResource(scope && instrument && !fxNote ? loader : null, {
+  const resource = useAsyncResource(scope && instrument && !coverageNote ? loader : null, {
     savedCopy: scope && !instrument?.instrument ? { key: ["iv-history", scope, instrumentKey] } : null,
   });
-  useEffect(() => () => controller.current?.abort(), [loader]);
+  useEffect(() => () => controller.current?.abort(), [loader, coverageNote]);
   useAutoRefresh(resource.updatedAt, resource.load);
   const model = useMemo(() => resource.data
     ? projectIvHistory(resource.data.payload, resource.data.prices.history, { lookback, hvWindow }) : null,
@@ -131,7 +134,7 @@ export function IvHistoryPane({ width, height, focused }: PaneProps) {
       { id: "lookback", label: "Lookback", value: lookback, options: LOOKBACKS, onChange: setLookback },
       { id: "realized", label: "Realized", value: String(hvWindow), options: HV_OPTIONS, onChange: setHvWindow },
     ]} />
-    {!symbol ? <EmptyState title="Select a ticker." /> : fxNote ? <PaneStatusBody empty emptyTitle={fxNote} /> : <PaneStatusBody subject="implied volatility history" loading={resource.loading && !model}
+    {!symbol ? <EmptyState title="Select a ticker." /> : coverageNote ? <PaneStatusBody empty emptyTitle={coverageNote} /> : <PaneStatusBody subject="implied volatility history" loading={resource.loading && !model}
       error={!model ? resource.error ?? identityError ?? null : null} empty={!!model && !model.iv30.length && !model.quoteIv30.length}
       emptyTitle={model?.status === "queued" || model?.status === "backfilling" ? `Backfilling ${symbol} implied volatility history...` : undefined}>
       {model ? <>

@@ -292,6 +292,24 @@ test("a spot FX pair's chain is not served: the pane names the listed proxy, off
   });
 });
 
+test.each(["PIRC", "PIRC:BIT"])("OMON refuses %s in the pane and CLI report before asking for a chain", async (symbol) => {
+  let requests = 0;
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({
+    getOptionsChain: async () => { requests += 1; throw new Error("Unexpected option chain request"); },
+  })));
+  const registry = createRemoteUiRegistry();
+  await act(async () => {
+    await tui.render(<RemoteUiRegistryProvider registry={registry}>
+      <OptionsHarness ticker={createTestTicker(symbol, "Pirelli", { exchange: "BIT", currency: "EUR", assetCategory: "STK" })} width={160} height={20} />
+    </RemoteUiRegistryProvider>, { width: 160, height: 20 });
+  });
+  await renderSettled();
+  const message = "Options on BIT listings (PIRC:BIT) are not served.";
+  expect(tui.frame()).toContain(message);
+  expect(renderedReportFailure(registry.snapshot())?.message).toBe(message);
+  expect(requests).toBe(0);
+});
+
 test("reads a put's cost as a percent of spot from its quote midpoint, on the put side alone", async () => {
   const chain = makeChain([700, 780], 780);
   chain.puts = chain.puts.map((put) => put.strike === 700 ? { ...put, bid: 5.48, ask: 5.51 }

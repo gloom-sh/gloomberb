@@ -129,8 +129,8 @@ const US_TIME_ZONES = new Set(["America/New_York", "America/Chicago"]);
  * venues with no home market (futures, currency and crypto venues), which
  * such data reads by symbol.
  */
-export function listingAbroadVenue(key: string): string | null {
-  const venue = nonUsSecListingVenue(key);
+export function listingAbroadVenue(key: string, exchange?: string | null): string | null {
+  const venue = nonUsSecListingVenue(key, exchange ?? undefined);
   const zone = venue ? resolveExchangeTimeZone(venue) : null;
   return venue && zone && zone !== "UTC" && !US_TIME_ZONES.has(zone) ? venue : null;
 }
@@ -164,11 +164,15 @@ export function fundFactsAbroadKey(symbol: string, exchange?: string | null): st
  * listings only, rather than read its bare symbol, which can be another
  * company's US ticker (SAN:EPA is Sanofi, SAN in New York Banco Santander).
  */
+export function usListingsOnlyNote(what: string, key: string, exchange?: string | null): string | null {
+  const venue = listingAbroadVenue(key, exchange);
+  return venue ? `${what} covers US listings only, and ${parsePublicTickerKey(key.trim()).symbol}:${venue} is listed on ${exchangeLabel(venue)}.` : null;
+}
+
 export function usListingSymbol(key: string, what: string): string {
-  const parsed = parsePublicTickerKey(key.trim());
-  const venue = listingAbroadVenue(key);
-  if (venue) throw new Error(`${what} covers US listings only, and ${parsed.symbol}:${venue} is listed on ${exchangeLabel(venue)}.`);
-  return parsed.symbol.toUpperCase();
+  const note = usListingsOnlyNote(what, key);
+  if (note) throw new Error(note);
+  return parsePublicTickerKey(key.trim()).symbol.toUpperCase();
 }
 
 /**

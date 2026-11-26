@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
 import type { IvHistoryPayload, IvPoint, IvScreenRow, ScreenHv } from "./client";
 import { statSource } from "./format";
+import { projectRealizedVolatility } from "../realized-vol/model";
 import { hvOn, midrankPercentile, offMarketSessions, projectIvHistory, projectRichCheap, readingSource, richCheapDates, riskReversalSessionsNote, screenCoverage, screenPaneNotices, screenRiskReversalNote, screenStaleNote, sessionsBehind, staleReadingsNote, verdictFor } from "./model";
 
 const DAY = 86_400_000;
@@ -34,6 +35,22 @@ describe("IV history against realized", () => {
     latest: { date: "2026-09-23", method: "quote-mid", capturedAt: "2026-09-23T19:50:00Z", spot: 100, iv7: null, iv30: 0.22,
       iv60: null, iv90: 0.24, iv180: null, iv365: null },
   }), prices(dates), { lookback: "1Y", hvWindow: 20 });
+
+  test("HV uses the last completed bar, as HVT does, even when IV goes through today", () => {
+    const closes = prices(sessions(40));
+    const withFormingBars = [...closes,
+      { date: new Date("2026-09-23T20:00:00Z"), close: 115, unsettled: true },
+      { date: new Date("2026-09-24T20:00:00Z"), close: 80, partial: true },
+    ];
+    const iv = payload([point("2026-09-22", 0.20), point("2026-09-24", 0.30)]);
+    const history = projectIvHistory(iv, withFormingBars);
+    const cone = projectRealizedVolatility(withFormingBars, { symbol: "SPY", exchange: "ARCA", windows: [20] });
+    const hv = history.stats.find((row) => row.id === "hv");
+    expect(hv?.date).toBe("2026-09-22");
+    expect(hv?.date).toBe(cone.asOf?.toISOString().slice(0, 10));
+    expect(hv?.value).toBe(projectIvHistory(iv, closes).stats.find((row) => row.id === "hv")?.value);
+    expect(history.spread.at(-1)?.value).toBeNull();
+  });
 
   test("clips to the lookback and keeps gaps", () => {
     expect(model.asOf).toBe("2026-09-23");

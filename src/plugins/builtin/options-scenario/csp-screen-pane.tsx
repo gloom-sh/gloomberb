@@ -9,6 +9,7 @@ import {
 } from "../../../components";
 import { dropColumnsToFit } from "../../../components/ui/table-layout";
 import { useAsyncResource } from "../../../react/async-resource";
+import { resolveOptionScreenListings } from "../../../market-data/options-listings";
 import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneSettingValue, usePluginAppActions } from "../../../public/react";
@@ -167,7 +168,8 @@ export function CspScreenPane({ width, height, focused }: PaneProps) {
     controller.current?.abort();
     const current = new AbortController();
     controller.current = current;
-    const instruments = symbols.map((symbol) => parsePublicTickerKey(symbol));
+    const instruments = await resolveOptionScreenListings(symbols.map((symbol) => parsePublicTickerKey(symbol)), assetData);
+    current.signal.throwIfAborted();
     const dependencies = { scenario: createScenarioDependencies(), earnings: assetData };
     if (criteria.trade) return { kind: "trade" as const, screen: await loadStrategyScreen(instruments, criteria.trade, dependencies, current.signal) };
     return { kind: "csp" as const, screen: await loadCspScreen(instruments, criteria.value!, dependencies, current.signal) };

@@ -14,9 +14,10 @@ import {
   readOptionExpiration,
 } from "../../../utils/option-expiry";
 import { canonicalTickerKey, displayTickerKey } from "../../../utils/exchanges";
+import { listingAbroadVenue } from "../../../utils/sec";
 import {
   COIN_OPTIONS_HINT, coinOptionsAlternativesText, isCoinWithoutOptions, isOptionsUnavailableError, listedOptionsAlternative,
-  optionsUnavailableDetails, optionsUnavailableHint, optionsUnavailableTitle,
+  optionsListingCoverageTitle, optionsUnavailableDetails, optionsUnavailableHint, optionsUnavailableTitle,
 } from "../../../market-data/options-alternatives";
 import { useChartQueries, useOptionsQuery, useResolvedEntryValue, useTickerFinancials } from "../../../market-data/hooks";
 import { savedCopyEntryAt } from "../../../market-data/coordinator";
@@ -252,8 +253,12 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   const isOpt = target?.isOptionTicker ?? false;
   const parsed = target?.parsedOption ?? null;
   const effectiveTicker = target?.effectiveTicker ?? "";
-  const ivRank = useIvRank(showIvRank ? effectiveTicker : null);
-  const effectiveExchange = target?.effectiveExchange ?? "";
+  const venue = target?.effectiveExchange ?? "";
+  const optionVenue = venue || (!isOpt ? financials?.quote?.listingExchangeName || financials?.quote?.exchangeName : undefined);
+  const abroad = !target?.instrument ? listingAbroadVenue(effectiveTicker, optionVenue) : null;
+  const effectiveExchange = abroad ?? venue;
+  const coverageTitle = abroad ? optionsListingCoverageTitle(effectiveTicker, abroad) : null;
+  const ivRank = useIvRank(showIvRank && !abroad ? effectiveTicker : null);
   const selectionTargetKey = `${ticker?.metadata.ticker ?? ""}|${target?.cacheKey ?? ""}`;
   const underlyingQuoteTarget = isOpt
     ? effectiveTicker ? { symbol: effectiveTicker, exchange: effectiveExchange, route: "provider" as const } : null
@@ -269,7 +274,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   const spot = underlyingStale ? undefined : underlying?.quote?.price;
   const dividendYield = underlying?.fundamentals?.dividendYield;
   const instrument = target?.instrument ?? null;
-  const baseRequest = target
+  const baseRequest = target && !abroad
     ? {
       instrument: {
         symbol: effectiveTicker,
@@ -420,13 +425,13 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
       ? "Failed to load options" : null);
   // Nothing lists a chain here for the instrument (a spot FX pair, a future, a coin other than BTC and ETH): the body
   // says what is not served and what to read instead. No plan changes it, so it is no error and offers no upgrade.
-  const unserved = !chain && !!error && isOptionsUnavailableError(error);
+  const unserved = !!abroad || (!chain && !!error && isOptionsUnavailableError(error));
   // `fn OMON EUR/USD` fails with the same answer, and the commands that read the alternative.
   useRemoteUiNode(unserved && effectiveTicker ? {
     role: "report-failure",
     label: "Options not served",
     getMetadata: () => ({
-      message: optionsUnavailableTitle(effectiveTicker, effectiveExchange),
+      message: coverageTitle ?? optionsUnavailableTitle(effectiveTicker, effectiveExchange),
       details: isCoinWithoutOptions(effectiveTicker) ? coinOptionsAlternativesText("fn OMON")
         : optionsUnavailableDetails(effectiveTicker, (symbol) => `gloom fn OMON ${symbol}`, effectiveExchange),
     }),
@@ -1050,13 +1055,13 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
       />
     );
   }
-  if (error && !chain && isOptionsUnavailableError(error)) {
+  if (unserved) {
     // A future, commodity or FX pair with no chain of its own: the listed fund whose options stand in, and OSA on it.
     // A listing whose venue lists options (0700 on HKEX): that Gloom does not serve them, and what it does serve.
     const alternative = listedOptionsAlternative(effectiveTicker);
     return (
       <EmptyState
-        title={optionsUnavailableTitle(effectiveTicker, effectiveExchange)}
+        title={coverageTitle ?? optionsUnavailableTitle(effectiveTicker, effectiveExchange)}
         hint={optionsUnavailableHint(effectiveTicker, effectiveExchange)}
         actions={alternative ? <>
           <Button label={`${alternative.symbol} options`} onPress={() => createPaneFromTemplate("options-pane", { symbol: alternative.symbol })} />

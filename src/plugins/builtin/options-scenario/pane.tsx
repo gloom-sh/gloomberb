@@ -1,5 +1,6 @@
 import { dayCell, formatDay } from "../../../components/ui/day-cell";
 import { MISSING_VALUE } from "../../../utils/format";
+import { optionsListingCoverageTitle } from "../../../market-data/options-alternatives";
 import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { splitDelayedStatus, Button, ChoiceDialog, confirmDialog, DataTableView, EmptyState, PageStackView, PaneStatusBody, QueryBar, StatGrid, statGridRows,
@@ -89,6 +90,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const [localError, setLocalError] = useState<string | null>(null);
   const controller = useRef<AbortController | null>(null);
   const brokerInstrument = target?.instrument ?? null;
+  const coverageNote = !brokerInstrument ? optionsListingCoverageTitle(underlying, exchange) : null;
   const explicitSpot = Number(settings.spot);
   const loadMarket = useCallback(async (force: boolean) => {
     controller.current?.abort();
@@ -470,7 +472,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
       {fxItems.length > 0 && <StatGrid items={fxItems} width={width} />}
     </>}
     {!position?.legs.length && !scenario ? <PaneStatusBody loading={!!resource.loading && !market} error={seeded.error} subject="scenario inputs">
-      <Box paddingX={1}><EmptyState title={EMPTY_POSITION_TITLE} actions={<Button label="Add leg" onPress={addTyped} />} /></Box>
+      <Box paddingX={1}><EmptyState title={coverageNote ?? EMPTY_POSITION_TITLE} actions={<Button label="Add leg" onPress={addTyped} />} /></Box>
     </PaneStatusBody> : !scenario && tab !== "legs" ? <Box paddingX={1}><EmptyState title="Scenario unavailable." hint={error ?? undefined}
       actions={<Button label="Edit inputs" onPress={() => setDetail("inputs")} />} /></Box> : activeContent}
   </>;
@@ -483,7 +485,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
       options: (market?.expirationDates ?? []).map((date) => ({ value: String(date), label: dateLabel(date * 1000) })),
       onChange: (value: string) => setExpiration(Number(value)) }]} />
     <PaneStatusBody loading={!!resource.loading && !chainRows.length} error={!chainRows.length ? resource.error : null}
-      empty={!resource.loading && !chainRows.length} subject="option chain">
+      empty={!resource.loading && !chainRows.length} emptyTitle={coverageNote ?? undefined} subject="option chain">
       <DataTableView focused={focused} rootWidth={width} rootHeight={Math.max(3, height - 2)} items={chainRows.toSorted((a, b) => { const value = (row: typeof a) => chainSort.columnId === "iv" ? row.impliedVolatility : chainSort.columnId === "oi" ? row.openInterest ?? 0 : row[chainSort.columnId as "side" | "strike" | "bid" | "ask"]; const x = value(a), y = value(b); return (typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y))) * (chainSort.direction === "asc" ? 1 : -1); })}
         sortColumnId={chainSort.columnId} sortDirection={chainSort.direction} onHeaderClick={(id) => setChainSort((current) => nextHeaderSort(current, id))}
         emptyStateTitle="No quoted contracts."
