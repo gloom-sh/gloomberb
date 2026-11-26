@@ -24,6 +24,7 @@ import { emptyDealsTitle } from "../../src/plugins/builtin/mna/model";
 import { EMPTY_POSITION_TITLE } from "../../src/plugins/builtin/options-scenario/model";
 import { NO_BREAKDOWN_STATE } from "../../src/plugins/builtin/revenue-breakdown/model";
 import { noAnalystActionsText, noAnalystCoverageText } from "../../src/plugins/builtin/research/client";
+import { eventSourceNotice } from "../../src/plugins/builtin/research/event-model";
 import { noRiskFactorsTitle } from "../../src/plugins/builtin/risk-factors/data";
 import { hiloEmptyState } from "../../src/plugins/builtin/scanner/hilo-model";
 import { liveScanEmptyState } from "../../src/plugins/builtin/scanner/live-pane";
@@ -276,13 +277,19 @@ const [FROM, TO] = ["2026-11-14", "2026-12-14"];
 const unmappedApps = { symbol: "AAPL", apps: [], page: { total: 0 }, summary: { appCount: 0 }, locked: {}, coverage: { sources: [{ captures: 3 }] } } as unknown as AppAttentionPayload;
 const courts = { coverage: { totalEvents: 19_113, sources: [{ agency: "US courts", jurisdiction: "US", enabled: false }] } } as unknown as CatalystResponse;
 const catalog = { coverage: { totalEvents: 19_113, sources: [] } } as unknown as CatalystResponse;
+const emptyCalendar = { kind: "catalysts", ready: true, complete: true, tab: "calendar", openId: null, rowIds: [],
+  payload: { filters: { symbol: "DWSN", type: "results" }, total: 0, events: [], coverage: catalog.coverage } };
 const ripple = { holdings: ["AAPL"], from: FROM, to: TO, preview: false };
+const noEstimates = eventSourceNotice({ variant: "earnings-estimates", symbol: "DWSN", actions: null, actionsError: null,
+  estimates: { symbol: "DWSN", recommendations: [], ratings: [], earningsEstimates: [], revenueEstimates: [] }, estimatesError: null })!.text;
 
 // Every state is the pane's own builder output, never a copy of its wording.
 const REVIEWED: Array<[token: string, text: string, status: Assessment["status"]]> = [
   ["APPS", appsUnmappedReason(unmappedApps, false) ?? "", "no-coverage"],
   ["CALLS", drawn(noCallsText("PLPC")), "no-coverage"],
   ["CATL", catalystEmptyTitle(catalog, catalystQuery({}, "DWSN"), false), "expected-empty"],
+  ["CATL", catalystEmptyTitle(catalog, catalystQuery({}, "DWSN"), false, "company events"), "expected-empty"],
+  ["EE", noEstimates, "no-coverage"],
   ["EM", NO_ESTIMATE_PERIODS_TITLE, "no-coverage"],
   ["COVN", CREDIT_EMPTY_TITLE.instruments, "no-coverage"],
   ["COVN", CREDIT_EMPTY_TITLE.issuer, "no-coverage"],
@@ -329,19 +336,48 @@ test("reviewed empty states classify from the copy the panes draw, and none is l
 test("reviewed source empty states remain findings, while mixed faults and unknown empties fail", () => {
   const empty = { usable: false, empty: true, rowCount: 0 };
   for (const [token, text, status] of REVIEWED) {
+    const shot = { ...empty, ...(["CATL", "EE"].includes(token) ? { symbols: ["DWSN"] } : {}),
+      ...(token === "CATL" ? { dataEvidence: emptyCalendar } : {}) };
     const render = { emptyStateDetected: true, stateText: { empty: [text] } };
-    expect(assessCapture(capture(empty, render, 2), token), `${token}: ${text}`).toMatchObject({ status, stateText: render.stateText });
+    expect(assessCapture(capture(shot, render, 2), token), `${token}: ${text}`).toMatchObject({ status, stateText: render.stateText });
     for (const changes of [{ blankColumns: ["Prior"] }, { semanticMismatch: true }]) {
-      expect(assessCapture(capture({ ...empty, ...changes }, render, 2), token).status).toBe("failure");
+      expect(assessCapture(capture({ ...shot, ...changes }, render, 2), token).status).toBe("failure");
     }
     for (const fault of [{ loadingStateDetected: true }, { errorStateDetected: true }, { accessGate: "pro" },
       { visibleText: "UNKNOWN_STATUS" }, { errorStateMarkers: ["Request failed"] }]) {
-      expect(assessCapture(capture(empty, { ...render, ...fault }, 2), token).status).toBe("failure");
+      expect(assessCapture(capture(shot, { ...render, ...fault }, 2), token).status).toBe("failure");
     }
-    expect(assessCapture(capture(empty, render, 1), token).status).toBe("failure");
+    expect(assessCapture(capture(shot, render, 1), token).status).toBe("failure");
   }
   for (const text of ["No covered estimate periods. Backend unavailable.", "Not yet available", "No results"]) {
     expect(assessCapture(capture(empty, { stateText: { empty: [text] } }, 2), "EM").status).toBe("failure");
+  }
+});
+
+test("company and analyst coverage require the requested view and symbol, without contradictory rows or evidence", () => {
+  const empty = { usable: false, empty: true, rowCount: 0, symbols: ["DWSN"] };
+  const states = (text: string) => ({ emptyStateDetected: true, stateText: { empty: [text] }, emptyStateText: [text], rows: [], tableRowTotals: [0] });
+  const company = states(catalystEmptyTitle(catalog, catalystQuery({}, "DWSN"), false, "company events"));
+  const analyst = states(noEstimates);
+  expect(assessCapture(capture({ ...empty, rowCount: 2 }, analyst, 2), "EE").status).toBe("no-coverage");
+  const companyShot = { ...empty, complete: false, gaps: "no data for DWSN", unavailableSymbols: ["DWSN"], dataEvidence: emptyCalendar };
+  expect(assessCapture(capture(companyShot, company, 2), "CATL").status).toBe("expected-empty");
+  for (const changes of [{ rowCount: 2 }, { dataEvidence: null }, { dataEvidence: { ...emptyCalendar, complete: false } },
+    { dataEvidence: { ...emptyCalendar, payload: { ...emptyCalendar.payload, total: 1 } } }, { gaps: "no data for AAPL" },
+    { unavailableSymbols: ["DWSN", "AAPL"] }]) {
+    expect(assessCapture(capture({ ...companyShot, ...changes }, company, 2), "CATL").status).toBe("failure");
+  }
+  for (const [token, render, otherView] of [["CATL", company, { tab: "changes" }], ["EE", analyst, { view: "reported" }]] as const) {
+    const shot = token === "CATL" ? { ...empty, dataEvidence: emptyCalendar } : empty;
+    for (const changes of [{ options: otherView }, { symbols: ["AAPL"] }, { complete: false },
+      { dataEvidence: { errors: ["Source timed out"] } }, { unavailableSymbols: ["DWSN"] }]) {
+      expect(assessCapture(capture({ ...shot, ...changes }, render, 2), token).status).toBe("failure");
+    }
+    for (const changes of [{ rows: [{ key: "loaded-row" }] }, { reportRows: [{ key: "loaded-row" }], tableRowTotals: [1] },
+      { emptyStateMarkers: ["No results"] }, { emptyStateText: ["No analyst coverage"] }, { emptyStateDetected: false }]) {
+      expect(assessCapture(capture(shot, { ...render, ...changes }, 2), token).status).toBe("failure");
+    }
+    expect(assessCapture(capture(shot, states("No analyst coverage"), 2), token).status).toBe("failure");
   }
 });
 
