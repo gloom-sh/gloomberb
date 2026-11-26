@@ -226,6 +226,7 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
             ? exchange.stale ? "MOPS presentation archive incomplete." : "No investor conference presentations in the past year."
             : exchange.stale ? "SGX results archive incomplete." : "No SGX results or presentations in the past year." } : {}),
           metadata: { symbol, returned: combined.length, exchangePage: exchange.page,
+            ...(exchange.dateSource ? { exchangeDateSource: exchange.dateSource } : {}),
             ...(localKind ? { form: localKind, total: exchange.total, retrievedAt: exchange.retrievedAt, stale: exchange.stale ?? false } : {}),
             ...hiddenFilingsMetadata(hidden) } };
       }
