@@ -128,7 +128,7 @@ export function CcassMarketPane({ width, height, focused }: Pick<PaneProps, "wid
   }), [activeRes.data, activeRes.error, activeRes.loading, activeTab, brokerRes.data]);
 
   const changeColumns: DataTableColumn[] = useMemo(() => {
-    const fixed = 10 + 9 + 9 + 8 + 10;
+    const fixed = 11 + 9 + 9 + 8 + 10;
     const stockW = Math.max(14, Math.floor((width - 8 - fixed) * 0.42));
     const partW = Math.max(16, width - 8 - fixed - stockW);
     return [
@@ -172,7 +172,7 @@ export function CcassMarketPane({ width, height, focused }: Pick<PaneProps, "wid
   }, [width]);
 
   const brokerColumns: DataTableColumn[] = useMemo(() => {
-    const fixed = 9 + 8 + 10 + 10 + 8 + 10;
+    const fixed = 9 + 8 + 10 + 10 + 8 + 11;
     const stockW = Math.max(18, width - 8 - fixed);
     return [
       { id: "symbol", label: "CODE", width: 9, align: "left" },
