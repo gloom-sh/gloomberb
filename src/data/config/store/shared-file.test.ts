@@ -44,7 +44,7 @@ function docked(dockRoot: DockLayoutNode | null): LayoutConfig {
   return { ...createBlankLayout(), dockRoot, instances: getDockedInstanceIds(dockRoot).map((paneId) => ({ paneId, instanceId: paneId })) };
 }
 
-type Workspace = ReturnType<typeof workspace>;
+type Workspace = ReturnType<typeof workspace> & Partial<Pick<AppConfig, "theme">>;
 
 async function checkStaleSave(base: Workspace, first: Workspace, last: Workspace, expected: Workspace) {
   const dataDir = await mkdtemp(join(tmpdir(), "gloomberb-shared-tabs-"));
@@ -56,8 +56,9 @@ async function checkStaleSave(base: Workspace, first: Workspace, last: Workspace
   await saveConfig(pending);
   const raw = JSON.parse(await readFile(join(dataDir, "config.json"), "utf8")) as AppConfig;
   for (const config of [raw, await initDataDir(dataDir)]) {
-    expect(config.activeLayoutIndex).toBe(expected.activeLayoutIndex);
     expect(config.layouts.map(({ id, name }) => [id, name])).toEqual(expected.layouts.map(({ id, name }) => [id, name]));
+    expect(config.activeLayoutIndex).toBe(expected.activeLayoutIndex);
+    if (expected.theme !== undefined) expect(config.theme).toBe(expected.theme);
     const layouts = [config.layout, ...config.layouts.map((tab) => tab.layout)];
     [expected.layout, ...expected.layouts.map((tab) => tab.layout)].forEach((wanted, index) => {
       const actual = layouts[index]!;
@@ -70,6 +71,20 @@ async function checkStaleSave(base: Workspace, first: Workspace, last: Workspace
 }
 
 const leaf = (instanceId: string): DockLayoutNode => ({ kind: "pane", instanceId });
+
+for (const structureFirst of [true, false]) {
+  test.each(["settings", "pane content"])(`insert and reorder tabs beside a %s edit (structural save ${structureFirst ? "first" : "last"})`, async (edit) => {
+    const home = { id: "home", name: "Home", layout: docked(leaf("help")) };
+    const legacy = { name: "Legacy", layout: docked(leaf("news")) };
+    const added = { id: "new", name: "New", layout: docked(leaf("world-indices")) };
+    const base = { ...workspace([home, legacy], 0), theme: "white" };
+    const structural = workspace([legacy, added, home], 1);
+    const changedHome = edit === "pane content" ? { ...home, layout: docked(buildSplitAroundNode(leaf("help"), "econ-calendar", "above")) } : home;
+    const other = { ...workspace([changedHome, legacy], 0), theme: edit === "settings" ? "nord" : base.theme };
+    const expected = { ...workspace([legacy, added, changedHome], 1), theme: other.theme };
+    await checkStaleSave(base, structureFirst ? structural : other, structureFirst ? other : structural, expected);
+  });
+}
 
 for (const renameFirst of [true, false]) {
   describe(`stale legacy tab save (rename ${renameFirst ? "first" : "last"})`, () => {

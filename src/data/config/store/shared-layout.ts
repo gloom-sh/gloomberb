@@ -125,7 +125,10 @@ export function diffSharedConfig(before: ProfileJson, after: ProfileJson) {
     if (!sameProfileJson(prior, tree)) trees.set(key, { before: prior, after: tree });
     return prior;
   });
-  const edits = diffProfile(base, next);
+  const changes = diffProfile(base, next);
+  const tabOrder = changes.find(({ kind, path: [root, child] }) =>
+    kind === "order" && !child && root && "key" in root && root.key === "layouts");
+  const edits = tabOrder ? [tabOrder, ...changes.filter((change) => change !== tabOrder)] : changes;
   const workspaceEdit = trees.size > 0 || edits.some(({ path: [root] }) =>
     !root || ("key" in root && ["layout", "layouts", "activeLayoutIndex"].includes(root.key)));
   const mirror = workspaceEdit && mirrorsSelectedTab(before) && mirrorsSelectedTab(after);
