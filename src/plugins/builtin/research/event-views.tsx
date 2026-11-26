@@ -136,7 +136,11 @@ function EventsEarningsBody({ focused, width, height, footerPaneId = "corporate-
 
   const bars = useMemo(() => quarters.toReversed(), [quarters]);
   // Each quarter is its estimate beside what was reported, in the beat or miss colour: EM's Surprises draws the same.
-  const series = useMemo<ResolvedSeries[]>(() => beatMissSeries(bars, { actual: (quarter) => quarter.eps, estimate: (quarter) => quarter.estimate }, epsUnit ?? ""),
+  const series = useMemo<ResolvedSeries[]>(() => beatMissSeries(bars, {
+    actual: (quarter) => quarter.eps,
+    estimate: (quarter) => quarter.estimate,
+    comparable: (quarter) => quarter.surprisePercent != null || quarter.surpriseNotMeaningful === true,
+  }, epsUnit ?? ""),
     [bars, epsUnit]);
   const axis = useMemo(() => slotAxis(bars, (quarter) => quarter.axisLabel, (quarter) => quarter.period), [bars]);
 

@@ -57,6 +57,41 @@ describe("SEC headless model", () => {
     expect(exchangeReads).toBe(1);
   });
 
+  test("Korean IR materials retain the exchange publisher and the catalogue date", async () => {
+    const url = "https://kind.krx.co.kr/external/dst/irReference/19612/KRAFTON-3Q26%20Earnings_Release_KOR.pdf";
+    const headless = createSecHeadless({
+      loadFilings: async () => [],
+      loadExchange: async () => ({
+        exchange: "KRX", symbol: "259960", name: "Krafton", page: "https://dart.fss.or.kr/",
+        total: null, retrievedAt: "2026-11-25T12:00:00Z", announcements: [{
+          date: "2026-11-16", dateBasis: "catalogue", headline: "KRAFTON-3Q26 Earnings Release",
+          types: ["Investor relations material"], publisher: "KRX KIND", priceSensitive: null,
+          fileSize: null, documentKey: url, url,
+        }],
+      }),
+    });
+    const result = await headless.load({ ...args(15), symbols: ["259960:KRX"] }, createTestHeadlessContext());
+    expect(result.columns?.[0]).toMatchObject({ header: "Date" });
+    expect(result.rows[0]).toMatchObject({ filedAt: "2026-11-16", dateBasis: "catalogue", url, source: "KRX KIND" });
+  });
+
+  test.each(["ICT:XPHS", "ICT.PS"])("%s opens the Philippine issuer's original dated filing", async (symbol) => {
+    const url = "https://cdnweb.ictsi.com/s3fs-public/2026-11/SEC%20Form%2017-Q%20%28Quarterly%20Report%29%20Q3%202026.pdf";
+    const headless = createSecHeadless({
+      loadFilings: async () => [],
+      loadExchange: async (listing) => {
+        expect(listing).toMatchObject({ symbol, exchange: "XPHS" });
+        return { exchange: "XPHS", symbol: "ICT", name: "ICTSI", page: "https://investors.ictsi.com/company-disclosures/sec-filings",
+          total: 1, retrievedAt: "2026-11-26T12:00:00Z", announcements: [{
+            date: "2026-11-11T00:00:00.000Z", dateBasis: "catalogue", headline: "SEC Form 17-Q (Quarterly Report) Q3 2026",
+            types: ["SEC Form 17-Q"], publisher: "Issuer IR", priceSensitive: null, fileSize: null, documentKey: url, url,
+          }] };
+      },
+    });
+    const result = await headless.load({ ...args(15), symbols: [symbol] }, createTestHeadlessContext());
+    expect(result.rows[0]).toMatchObject({ url, source: "Issuer IR", filedAt: "2026-11-11T00:00:00.000Z" });
+  });
+
   test("an extended JPX filing read retains an earnings Q&A beyond the first 50 rows", async () => {
     const url = "https://www2.jpx.co.jp/disc/72030/140120260804507923.pdf";
     const announcement = {
@@ -77,6 +112,30 @@ describe("SEC headless model", () => {
     });
     const result = await headless.load({ ...args(200), symbols: ["7203:JPX"] }, createTestHeadlessContext());
     expect(result.rows[50]).toMatchObject({ filedAt: announcement.date, filing: announcement.headline, url });
+  });
+
+  test("Taiwan presentations are read directly without competing with SEC filings", async () => {
+    const url = "https://doc.twse.com.tw/nas/STR/622320260601E001.pdf";
+    const headless = createSecHeadless({
+      loadFilings: async () => { throw new Error("Unexpected SEC read"); },
+      loadExchange: async ({ kind, limit }) => {
+        expect(kind).toBe("presentations");
+        expect(limit).toBe(200);
+        return {
+          exchange: "TPEX", symbol: "6223", name: "MPI",
+          page: "https://mopsov.twse.com.tw/mops/web/t100sb02_1", total: 1,
+          retrievedAt: "2026-11-26T12:00:00Z", announcements: [{
+            date: "2026-06-01", dateBasis: "catalogue", headline: "Conference (English)",
+            types: ["Investor conference presentation"], publisher: "MOPS", priceSensitive: null,
+            fileSize: null, documentKey: url, url,
+          }],
+        };
+      },
+    });
+    const input = { ...args(200), symbols: ["6223:TPEX"], options: { limit: 200, form: "presentations" } };
+    const result = await headless.load(input, createTestHeadlessContext());
+    expect(result.rows).toEqual([expect.objectContaining({ filedAt: "2026-06-01", dateBasis: "catalogue", url, source: "MOPS" })]);
+    expect(result.metadata).toMatchObject({ form: "presentations", total: 1 });
   });
 
   test("projects filing rows and honors the page limit", async () => {

@@ -102,6 +102,12 @@ const ALERT_COLUMNS: AlertColumn[] = [
   { id: "created", label: "Since (UTC)", width: 16, align: "left" },
 ];
 
+/**
+ * What a narrow desktop pane gives up first: when the rule was made and
+ * whether it has alerted, then the sessions it watches, all in its detail. The
+ * measure, its level and the time of the quote it was read from stay.
+ */
+const ALERT_COLUMN_DROP_ORDER = ["created", "triggered", "session", "away"] as const;
 const DETAIL_ROW = { labelWidth: 10, emphasis: false } as const;
 
 /** "AAPL above 400.00", "GBPUSD=X moves 0.50% from the previous close": the rule, which titles its detail. */
@@ -534,6 +540,7 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
       // Where the rules run, said once while only this app checks them; nothing while Cloud sync carries them.
       rootBefore={onDevice ? <QueryBar width={width} meta={RULES_ON_DEVICE} /> : undefined}
       columns={columns}
+      columnDropOrder={ALERT_COLUMN_DROP_ORDER}
       items={displayRows}
       sortColumnId={null}
       sortDirection="asc"

@@ -1,12 +1,12 @@
 import type { SpeedometerSegment } from "../../../components";
-import { colors } from "../../../theme/colors";
+import { colors, type ThemeColors } from "../../../theme/colors";
 import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 import type {
   FearGreedRating,
   FearGreedValueFormat,
 } from "./data";
 
-export const FEAR_GREED_GAUGE_SEGMENTS: SpeedometerSegment[] = [
+export const fearGreedGaugeSegments = (colors: ThemeColors): SpeedometerSegment[] => [
   { from: 0, to: 24.999, label: "EXTREME FEAR", color: colors.negative },
   { from: 25, to: 44.999, label: "FEAR", color: colors.warning },
   { from: 45, to: 55, label: "NEUTRAL", color: colors.neutral },
@@ -18,17 +18,17 @@ export function ratingLabel(rating: FearGreedRating): string {
   return rating.toUpperCase();
 }
 
-export function ratingColor(rating: FearGreedRating): string {
+export function ratingColor(rating: FearGreedRating, palette = colors): string {
   switch (rating) {
     case "extreme fear":
-      return colors.negative;
+      return palette.negative;
     case "fear":
-      return colors.warning;
+      return palette.warning;
     case "neutral":
-      return colors.neutral;
+      return palette.neutral;
     case "greed":
     case "extreme greed":
-      return colors.positive;
+      return palette.positive;
   }
 }
 

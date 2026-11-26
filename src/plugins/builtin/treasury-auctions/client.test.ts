@@ -5,12 +5,14 @@ import {
   auctionArchiveBoundary,
   auctionWindowQuery,
   buildAuctionsUrl,
+  EMPTY_AUCTION_HISTORY,
   fetchAuctionPages,
   normalizeAuction,
   parseTreasuryAuctionsPayload,
   totalPages,
 } from "./client";
 import { isPendingAuction, stopOutVsAvgBp } from "./model";
+import { emptyHistoryPage } from "./test-fixture";
 
 // Shape captured from the live auctions_query endpoint on 2026-08-18.
 const LIVE_NOTE_ROW = {
@@ -201,7 +203,7 @@ describe("fetchAuctionPages", () => {
     });
 
     expect(requested).toEqual([1, 2, 3]);
-    expect(auctions.map((auction) => auction.securityTerm))
+    expect(Array.isArray(auctions) && auctions.map((auction) => auction.securityTerm))
       .toEqual(["10-Year", "4-Week", "30-Year", "2-Year"]);
   });
 
@@ -211,16 +213,7 @@ describe("fetchAuctionPages", () => {
         ? page([row("10-Year", "2026-08-12")], 2)
         : page([row("10-Year", "2026-08-12"), row("4-Week", "2026-08-11")], 2)
     ));
-    expect(auctions.map((auction) => auction.securityTerm)).toEqual(["10-Year", "4-Week"]);
-  });
-
-  test("stops after one page when the metadata says there is one", async () => {
-    let calls = 0;
-    await fetchAuctionPages(async () => {
-      calls += 1;
-      return page([row("10-Year", "2026-08-12")], 1);
-    });
-    expect(calls).toBe(1);
+    expect(Array.isArray(auctions) && auctions.map((auction) => auction.securityTerm)).toEqual(["10-Year", "4-Week"]);
   });
 
   test("walks every page a ten-year window needs and stops at the bound", async () => {
@@ -251,11 +244,33 @@ describe("fetchAuctionPages", () => {
 
   test("rejects incomplete later pages instead of returning the usable prefix", async () => {
     await expect(fetchAuctionPages(async () => page([], 2))).rejects.toThrow("page 1");
-    for (const invalid of [null, { message: "Unexpected envelope" }, { data: [] }, { data: [null] }]) {
+    for (const invalid of [null, { message: "Unexpected envelope" }, { data: [] }, { ...page([], 2), data: [null] }, emptyHistoryPage]) {
       await expect(fetchAuctionPages(async (number) => number === 1
         ? page([row("10-Year", "2026-08-12")], 2)
         : invalid)).rejects.toThrow("page 2");
     }
+  });
+
+  test("only the canonical first-page empty envelope certifies zero pages", async () => {
+    const requested: number[] = [];
+    expect(await fetchAuctionPages(async (number) => {
+      requested.push(number);
+      return emptyHistoryPage;
+    })).toBe(EMPTY_AUCTION_HISTORY);
+    expect(requested).toEqual([1]);
+
+    for (const malformed of [
+      { meta: emptyHistoryPage.meta },
+      { ...emptyHistoryPage, data: [row("10-Year", "2026-08-12")] },
+      { data: [], meta: { count: 0, "total-pages": 0 } },
+      { data: [], meta: { "total-count": 0, "total-pages": 0 } },
+      { ...emptyHistoryPage, meta: { ...emptyHistoryPage.meta, count: 1 } },
+      { ...emptyHistoryPage, meta: { ...emptyHistoryPage.meta, "total-count": 1 } },
+      { ...emptyHistoryPage, meta: { ...emptyHistoryPage.meta, "total-pages": "0" } },
+    ]) {
+      await expect(fetchAuctionPages(async () => malformed)).rejects.toThrow("invalid page count");
+    }
+    await expect(fetchAuctionPages(async () => page([], 1))).rejects.toThrow("page 1 is missing");
   });
 
   test("does not infer complete pagination from missing or malformed declarations", () => {

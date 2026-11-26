@@ -2,6 +2,10 @@
 interface ExchangeAnnouncement {
   /** Release time, ISO 8601 UTC. */
   date: string;
+  /** The date named in the publisher's catalogue when a publication timestamp is unavailable. */
+  dateBasis?: "catalogue";
+  /** The official publisher when a result combines multiple sources. */
+  publisher?: string;
   headline: string;
   /** The exchange's announcement types ("Quarterly Activities Report", "Interim Results"). */
   types: string[];
@@ -34,11 +38,15 @@ export interface ExchangeAnnouncementsPayload {
   stale?: boolean;
 }
 
-/**
- * `/cloud/announcements?symbol=NST&exchange=ASX&limit=15`. `kind: "results"` asks an HKEX company's results
- * announcements and business updates alone, which a day's buyback return never pushes out of the list.
- */
-export function cloudExchangeAnnouncementsPath(params: { symbol: string; exchange: string; limit?: number; kind?: "results" }): string {
+export interface ExchangeAnnouncementsRequest {
+  symbol: string;
+  exchange: string;
+  limit?: number;
+  kind?: "results" | "presentations";
+}
+
+/** A listing's announcements, HKEX results or Taiwan investor conference presentations. */
+export function cloudExchangeAnnouncementsPath(params: ExchangeAnnouncementsRequest): string {
   const search = new URLSearchParams({ symbol: params.symbol, exchange: params.exchange });
   if (params.limit != null) search.set("limit", String(params.limit));
   if (params.kind) search.set("kind", params.kind);

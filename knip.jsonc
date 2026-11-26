@@ -7,6 +7,7 @@
     "bin/gloom",
     "electrobun.config.ts",
     "scripts/install-electrobun-tui-shim.ts",
+    "scripts/smoke-des-render.ts",
     "scripts/benchmark-warm-start.ts",
     "scripts/warm-start/desktop-backend.ts",
     "scripts/warm-start/desktop-electroview.ts",
@@ -16,6 +17,7 @@
     "scripts/heap-probe.ts",
     // Built by path in scripts/pane-chrome/page.ts.
     "scripts/pane-chrome/fixture.tsx",
+    "scripts/pane-chrome/data-sweep-shot-worker.ts",
     // Built by path in scripts/pane-chrome/sync-poll.ts.
     "scripts/pane-chrome/sync-poll-fixture.ts",
     // Run by path in .github/workflows/windows-desktop-check.yml, through a

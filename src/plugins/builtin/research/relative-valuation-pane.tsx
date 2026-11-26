@@ -141,6 +141,13 @@ function buildRelativeColumns(
   ];
 }
 
+/**
+ * What a narrow desktop pane gives up first: the extended session's move, the
+ * name each ticker already stands for, then the day's move. The multiples the
+ * pane compares leave after those, from the last column back.
+ */
+const RELATIVE_COLUMN_DROP_ORDER: readonly RelativeColumnId[] = [...Object.values(EXTENDED_COLUMN_IDS), "name", "changePercent"];
+
 interface RelativeSortPreference {
   columnId: RelativeColumnId;
   direction: SortDirection;
@@ -437,6 +444,7 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       rootWidth={width}
       rootHeight={height}
       columns={columns}
+      columnDropOrder={RELATIVE_COLUMN_DROP_ORDER}
       items={sortedRows}
       sortColumnId={sortPreference.columnId}
       sortDirection={sortPreference.direction}
@@ -450,6 +458,8 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       selectedTextOverridesCellColor
       getExportMetadata={() => sortedRows.flatMap((row) => [
         [row.symbol, "Quote as of", parseDisplayDate(row.quoteAsOf)?.toISOString() ?? "unavailable", "Stale", String(row.quoteStale ?? "unknown")],
+        ...(row.extendedSession && row.extendedUpdatedAt != null
+          ? [[row.symbol, `${extendedSessionStateLabel(row.extendedSession)} as of`, new Date(row.extendedUpdatedAt).toISOString()]] : []),
         [row.symbol, "Fundamentals retrieved", row.fundamentalsProvenance?.retrievedAt ?? "unavailable",
           "Stale", String(row.fundamentalsProvenance?.stale ?? "unknown")],
         ...(row.fundamentalsProvenance?.stale ? [[row.symbol, RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE]] : []),

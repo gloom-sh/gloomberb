@@ -21,9 +21,10 @@ export function readVisibleKeyValues(root: HTMLElement): Array<{ label: string; 
     }
     // One CSS pixel permits fractional borders, not a clipped line of text.
     if (rect.left < left - 1 || rect.right > right + 1 || rect.top < top - 1 || rect.bottom > bottom + 1) return [];
-    const text = (row.innerText || row.textContent || "").replace(/\s+/g, " ").trim();
+    const text = row.innerText.replace(/\s+/g, " ").trim();
     if (!text || /\u2026|\.\.\./.test(text)) return [];
-    const label = row.firstElementChild?.textContent?.trim() ?? "";
+    const first = row.firstElementChild as HTMLElement | null;
+    const label = (first?.innerText ?? first?.textContent)?.trim() ?? "";
     return label ? [{ label, text }] : [];
   });
 }

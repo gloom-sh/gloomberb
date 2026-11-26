@@ -82,6 +82,12 @@ const NARROW_BOOK_DROP_ORDER = ["forward_pe", "pe", "dividend_yield", "market_ca
  * latest price) and the cost a period's P&L does not read.
  */
 const NARROW_PERIOD_DROP_ORDER = [...NARROW_BOOK_DROP_ORDER, "day_pnl", "change_pct", "avg_cost", "price"];
+/**
+ * What the desktop's table gives up after those, where a book is still wider
+ * than its pane (`DataTableProps.columnDropOrder`), so its value and P&L stay
+ * beside the ticker: the average cost, then the day's change and P&L.
+ */
+const NARROW_BOOK_COLUMN_DROP_ORDER = ["avg_cost", "change_pct", "day_pnl"] as const;
 /** Columns of a held position: a list that shows one is a book, whose value outranks its valuation. */
 const POSITION_COLUMN_IDS: ReadonlySet<string> = new Set(["shares", "avg_cost", "cost_basis", "mkt_value", "weight", "day_pnl", "pnl", "pnl_pct"]);
 
@@ -374,6 +380,8 @@ export function PortfolioTickerTable({
     const eligible = sizedColumns.filter((column) => !hiddenCompanyRef.current.ids.has(column.id));
     return hiddenColumnIds ? markHiddenTableColumns(eligible, eligible.filter((column) => !hidden.has(column.id))) : sizedColumns;
   }, [hiddenColumnIds, sizedColumns]);
+  // A watchlist's day change is what it is for; only a book gives it up before its P&L.
+  const book = displayColumns.some((column) => POSITION_COLUMN_IDS.has(column.id));
   // The Export CSV dates each row as its AS OF does: a book at the latest print by the print its LAST is.
   const exportAsOf = useCallback(
     (ticker: TickerRecord) => getRowAsOfIso(ticker, tableFinancialsMap.get(ticker.metadata.ticker), columnContext),
@@ -437,6 +445,7 @@ export function PortfolioTickerTable({
       exportName={exportName}
       exportAsOf={exportAsOf}
       columnReorder={columnReorder}
+      columnDropOrder={book ? NARROW_BOOK_COLUMN_DROP_ORDER : undefined}
       groups={groups}
       onToggleGroup={onToggleGroup}
       rowMenuItems={rowMenuItems}

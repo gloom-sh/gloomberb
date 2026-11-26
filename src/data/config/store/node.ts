@@ -17,7 +17,7 @@ import {
   normalizeConfigForSave,
   normalizeLoadedConfig,
 } from "./normalize";
-import { applyProfileEdits, sameProfileJson, type ProfileJson } from "../../profile-merge";
+import { sameProfileJson, type ProfileJson } from "../../profile-merge";
 import {
   changesHeld,
   changesSince,
@@ -188,7 +188,7 @@ function foldConfigChanges(configPath: string, config: AppConfig, upTo: number, 
   if (held >= upTo) return config;
   const saved = JSON.parse(JSON.stringify(normalizeConfigForSave(config))) as Record<string, ProfileJson>;
   let merged = saved;
-  for (const change of changesSince(configPath, held).slice(0, upTo - held)) merged = applyProfileEdits(merged, change.edits);
+  for (const change of changesSince(configPath, held).slice(0, upTo - held)) merged = change.apply(merged);
   if (merged === saved) return markChangesHeld(configPath, { ...config }, upTo);
   const loaded = normalizeLoadedConfig(merged, config.dataDir, migrationHost).config as unknown as Record<string, unknown>;
   const next: Record<string, unknown> = { ...config };
