@@ -15,7 +15,7 @@ import type { FundFactsPayload } from "../../../api-client/fund-facts";
 import { errorMessage } from "../../../utils/errors";
 import { filingStoryNote, loadFilingStories, type FilingStory } from "../insider/filing-stories";
 import { logFailure } from "../../../utils/log-failure";
-import { EXCHANGE_FILING_HISTORY_LIMIT, exchangeFilingForm, HKEX_FILING_HISTORY_LIMIT, latestFilingRows, localFilingListing, localFilingRows, PRESENTATIONS_FORM } from "./exchange-filings";
+import { exchangeFilingForm, exchangeFilingHistoryLimit, HKEX_FILING_HISTORY_LIMIT, latestFilingRows, localFilingListing, localFilingRows, PRESENTATIONS_FORM } from "./exchange-filings";
 import type { ExchangeAnnouncementsPayload, ExchangeAnnouncementsRequest } from "../../../api-client/exchange-announcements";
 import { loadSecFilings } from "./client";
 import { ETF_FILING_FORMS, filterFilingsByForms, fundSeriesFilings, loadShownSecFilings, SEC_FILING_FETCH_LIMIT } from "./forms";
@@ -189,11 +189,9 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       // A form filter searches every filing listed for the issuer and keeps the supplements it names; without
       // one, a bank's pricing supplements and a trust's other funds stay out unless --all, as in `filings`.
       const listing = !form || localKind ? localListing : null;
-      const localLimit = localKind && listing?.exchange === "HKEX"
-        ? Math.min(HKEX_FILING_HISTORY_LIMIT, limit)
-        : localKind || listing?.exchange === "JPX"
-        ? Math.min(EXCHANGE_FILING_HISTORY_LIMIT, limit)
-        : listing?.exchange === "HKEX" && args.options.all !== true ? HKEX_FILING_HISTORY_LIMIT : Math.min(50, limit);
+      const localLimit = listing?.exchange === "HKEX" && !localKind && args.options.all !== true
+        ? HKEX_FILING_HISTORY_LIMIT
+        : Math.min(exchangeFilingHistoryLimit(listing?.exchange, localKind), limit);
       const [us, local] = await Promise.allSettled([
         localKind ? Promise.resolve({ filings: [], hidden: null })
           : loadShownSecFilings(load, limit, { form: form || null, all: args.options.all === true }),
@@ -226,8 +224,9 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
           freshness: { source: publishers, status: "not-a-feed", basis: hasCatalogueDate ? "filings and catalogue dates" : "filed data", observedKey: "filedAt" },
           ...(localKind && !combined.length ? { empty: presentations
             ? exchange.stale ? "MOPS presentation archive incomplete." : "No investor conference presentations in the past year."
-            : exchange.stale ? "Exchange results archive incomplete." : "No results in the exchange archive." } : {}),
+            : exchange.stale ? "Exchange results archive incomplete." : "No results or presentations in the exchange archive." } : {}),
           metadata: { symbol, returned: combined.length, exchangePage: exchange.page,
+            ...(exchange.dateSource ? { exchangeDateSource: exchange.dateSource } : {}),
             ...(localKind ? { form: localKind, total: exchange.total, retrievedAt: exchange.retrievedAt, stale: exchange.stale ?? false } : {}),
             ...hiddenFilingsMetadata(hidden) } };
       }

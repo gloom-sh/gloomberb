@@ -28,6 +28,8 @@ export interface ExchangeAnnouncementsPayload {
   name: string | null;
   /** The company's announcements page on the exchange's site: HKEXnews' search with the company filled in. */
   page: string;
+  /** Issuer calendar or release index used to date a reporting package. */
+  dateSource?: string;
   announcements: ExchangeAnnouncement[];
   /** How many announcements the exchange holds for the company; null when it does not say. */
   total: number | null;

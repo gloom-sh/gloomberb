@@ -218,6 +218,23 @@ test("IDX, KLSE, BKK and IST are the venues they name, typed either way, unless 
   expect(parseListingArg("IDX:ARCA").key).toBe("IDX:ARCA");
 });
 
+test("XPHS names the Philippine listing when a US stock shares its ticker", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  const dataProvider = createTestDataProvider({
+    search: async () => [
+      { providerId: "test", symbol: "SM", name: "SM Energy", exchange: "NYSE", currency: "USD", type: "Common Stock" },
+      { providerId: "test", symbol: "SM", name: "SM Investments", exchange: "XPHS", currency: "PHP", type: "Common Stock" },
+    ],
+  });
+  const deps = { store, dataProvider };
+  expect(await resolveCliListing("SM:XPHS", undefined, deps)).toMatchObject({
+    key: "SM:XPHS", request: { symbol: "SM:XPHS", exchange: "XPHS" },
+  });
+  expect((await resolveCliListing("SM:NYSE", undefined, deps)).key).toBe("SM:NYSE");
+});
+
 test("BRK B and BRKB are Berkshire's class B, the saved row first, never the ETN named for it, naming the code's lines abroad", async () => {
   const persistence = new AppPersistence(":memory:");
   persistences.push(persistence);

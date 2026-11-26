@@ -89,6 +89,7 @@ function excludeNonCompanyFinancials(financials: TickerFinancials): TickerFinanc
     nextEarnings: undefined,
     annualStatements: [],
     quarterlyStatements: [],
+    taiwanExchangeStatements: undefined,
   };
 }
 
@@ -284,6 +285,9 @@ export function lastKnownProviderQuote(quote: Quote | null | undefined, exchange
 }
 
 export function providerFinancialsMatchTarget(value: TickerFinancials, symbol: string, exchange?: string): boolean {
+  const listing = parsePublicTickerKey(symbol);
+  const venue = canonicalExchange(listing.exchange || exchange || value.quote?.listingExchangeName);
+  if (listing.symbol === "VYLR" && (!venue || venue === "NYSE") && !value.statementScope && hasStatementRows(value)) return false;
   if (value.quote && !providerQuoteMatchesTarget(value.quote, symbol, exchange)) return false;
   if (Object.values(value.quoteContributions ?? {}).some((quote) => !providerQuoteMatchesTarget(quote, symbol, exchange))) return false;
   const metadata = value.quoteMetadata;
@@ -400,13 +404,14 @@ export function hasShallowStatementHistory(data: TickerFinancials | null | undef
 }
 
 export function mergeMissingStatementArrays(primary: TickerFinancials, fallback: TickerFinancials): TickerFinancials {
+  const scoped = scopedResearch(primary, fallback);
   return excludeNonCompanyFinancials({
     ...primary,
     profile: mergeDefinedObject(primary.profile, profileForSameListing(fallback, primary)),
     statementHistory: fallback.statementHistory?.status === "available" ? fallback.statementHistory : primary.statementHistory ?? fallback.statementHistory,
+    taiwanExchangeStatements: primary.taiwanExchangeStatements ?? fallback.taiwanExchangeStatements,
     financialCurrency: primary.financialCurrency ?? (hasStatementRows(primary) ? undefined : fallback.financialCurrency),
-    annualStatements: mergeFinancialStatementRows(primary.annualStatements, fallback.annualStatements),
-    quarterlyStatements: mergeFinancialStatementRows(primary.quarterlyStatements, fallback.quarterlyStatements),
+    ...scoped,
   });
 }
 
@@ -532,6 +537,18 @@ function mergeFundamentals(primary: Fundamentals | undefined, fallback: Fundamen
   return redactUnavailableFundamentals(merged);
 }
 
+function scopedResearch(primary: TickerFinancials, fallback: TickerFinancials) {
+  const owned = !primary.statementScope ? (fallback.statementScope ? fallback : undefined) : !fallback.statementScope ? primary
+    : primary.statementScope.basis !== fallback.statementScope.basis ? (fallback.statementScope.basis === "standalone" ? fallback : primary)
+    : (fallback.statementReview?.reviewedThrough ?? "") > (primary.statementReview?.reviewedThrough ?? "") ? fallback : primary;
+  return owned ? { statementScope: owned.statementScope, statementReview: owned.statementReview, financialCurrency: owned.financialCurrency,
+    annualStatements: owned.annualStatements, quarterlyStatements: owned.quarterlyStatements,
+    trailingStatement: owned.trailingStatement, fundamentals: owned.fundamentals } : {
+    annualStatements: mergeFinancialStatementRows(primary.annualStatements, fallback.annualStatements),
+    quarterlyStatements: mergeFinancialStatementRows(primary.quarterlyStatements, fallback.quarterlyStatements),
+  };
+}
+
 export function mergeFinancials(primary: TickerFinancials | null, fallback: TickerFinancials | null): TickerFinancials | null {
   if (!primary || !fallback) {
     const single = primary ?? fallback;
@@ -574,8 +591,7 @@ export function mergeFinancials(primary: TickerFinancials | null, fallback: Tick
     profile: mergeDefinedObject(primaryResearch?.profile, fallbackResearch?.profile),
     fundamentals: mergeFundamentals(primaryResearch?.fundamentals, fallbackResearch?.fundamentals),
     priceHistory: normalizePriceHistory(dominant.priceHistory.length > 0 ? dominant.priceHistory : secondary.priceHistory),
-    annualStatements: mergeFinancialStatementRows(primary.annualStatements, fallback.annualStatements),
-    quarterlyStatements: mergeFinancialStatementRows(primary.quarterlyStatements, fallback.quarterlyStatements),
+    ...scopedResearch(primary, fallback),
   });
 }
 
@@ -583,6 +599,7 @@ export function mergeFinancials(primary: TickerFinancials | null, fallback: Tick
  * must supersede the older cache that caused this provider fetch. */
 export function mergeRefreshedFinancials(cached: TickerFinancials, fresh: TickerFinancials | null): TickerFinancials {
   const merged = mergeFinancials(cached, fresh)!;
+  if (merged.statementScope) return fresh?.statementScope ? { ...merged, ...scopedResearch(fresh, cached) } : merged;
   const statistics = redactUnavailableFundamentals(fresh?.fundamentals);
   if (!statistics) return merged;
   const update: Fundamentals = {

@@ -534,6 +534,7 @@ export interface Fundamentals extends DepositaryReceiptFacts {
    */
   trailingEpsSource?: "filed-quarters" | "served";
   trailingEpsPeriodEnd?: string;
+  scopedEarnings?: { eps: number; currency: string; periodEnd: string; epsAvailableAt: string; priced: boolean } | null;
   /**
    * Why a multiple is withdrawn though its figures are numbers (utils/share-multiples): a warrant's price over its
    * company's EPS, a receipt's with no ratio on record, an EPS that is not net income over the shares. The multiple
@@ -1079,7 +1080,15 @@ export interface ReportedEarningsCohort {
 /** @deprecated No longer populated. */
 export interface EarningsResultProvenance { version: 1; reported: ReportedEarningsCohort }
 
+export interface StatementScope {
+  registrant: string;
+  entity?: string;
+  basis: "predecessor" | "carve-out" | "standalone";
+  label: string;
+}
+
 export interface FinancialStatement {
+  statementScope?: StatementScope;
   /** The basis of this row's share counts and per-share earnings; absent when unproven. */
   shareBasis?: ShareBasis;
   /** @deprecated No longer populated. */
@@ -1388,7 +1397,18 @@ export interface EpsEstimateHistory {
   snapshots: ConsensusEpsSnapshot[];
 }
 
+export interface TaiwanExchangeStatement {
+  kind: "income" | "balance";
+  periodEnd: string;
+  months: number;
+  currency: "TWD";
+  figures: { label: string; sourceLabel: string; value: number; perShare?: true }[];
+  source: { venue: "TWSE" | "TPEX"; url: string; snapshotDate: string; observedAt: string };
+}
+
 export interface TickerFinancials {
+  statementScope?: StatementScope;
+  statementReview?: { status: "reviewed" | "pending" | "index-unavailable"; reviewedThrough: string };
   /** Reported earnings-release events retained with daily valuation snapshots. */
   earningsReleases?: EarningsAction[];
   statementHistory?: StatementHistoryAttempt;
@@ -1405,6 +1425,8 @@ export interface TickerFinancials {
   nextEarnings?: NextEarnings;
   annualStatements: FinancialStatement[];
   quarterlyStatements: FinancialStatement[];
+  /** Exchange summaries have their own reporting basis and do not enter the normalized statements. */
+  taiwanExchangeStatements?: TaiwanExchangeStatement[];
   /** Twelve months to the latest half or quarter where the quarters do not give them (a half-yearly reporter). */
   trailingStatement?: FinancialStatement & { trailing: StatementTrailing };
   priceHistory: PricePoint[];

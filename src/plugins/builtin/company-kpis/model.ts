@@ -326,8 +326,8 @@ export function companyColumns(guidance: boolean, evidence: boolean, history: bo
   return order ? shown.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id)) : shown;
 }
 
-/** Cells a column gives up on a narrow pane, before any column is dropped: a date needs 10, a range about 19. */
-const NARROW_WIDTHS: Record<string, number> = { period: 13, value: 19, change: 11, issued: 10, actual: 12, outcome: 9, basis: 12, scope: 18 };
+/** Narrow column widths before any column is dropped. The issued date keeps all 11 characters. */
+const NARROW_WIDTHS: Record<string, number> = { period: 13, value: 19, change: 11, actual: 12, outcome: 9, basis: 12, scope: 18 };
 /** The metric keeps at least this much: a name such as "Revenue growth", and its series detail only when there is room. */
 const METRIC_FLOOR = 14;
 
@@ -341,7 +341,15 @@ const METRIC_FLOOR = 14;
 export function fitCompanyColumns(columns: readonly DataTableColumn[], width: number, history = false): DataTableColumn[] {
   const room = width - 1;
   if (getTableWidth(columns) <= room) return [...columns];
-  const narrow = (list: readonly DataTableColumn[]) => list.map((column) => column.id in NARROW_WIDTHS ? { ...column, width: Math.min(column.width, NARROW_WIDTHS[column.id]!) } : column);
+  const narrow = (list: readonly DataTableColumn[]) => list.map((column) => {
+    const width = NARROW_WIDTHS[column.id];
+    if (width === undefined) return column;
+    return {
+      ...column,
+      width: Math.min(column.width, width),
+      label: history && column.id === "period" ? "Period" : column.label,
+    };
+  });
   const attempt = (list: readonly DataTableColumn[]): DataTableColumn[] | null => {
     const tight = narrow(list);
     const metric = tight.find((column) => column.id === "metric");
