@@ -117,8 +117,14 @@ function contractField(line: FuturesContractLine): StatField {
 
 interface OverviewTabProps {
   coin?: CryptoMarketAsset | null;
-  /** The contracts on the security, given the width of the overview's content. */
+  /** A perpetual contract's own funding and premium, right under its price, given the width of the overview's content. */
   perpetuals?: ReactNode | ((contentWidth: number) => ReactNode);
+  /**
+   * The perpetual markets on a stock or a coin, one row per venue, given the width of the overview's content.
+   * Another market on the security, not its own price: it follows the security's range, chart, returns and
+   * figures, so those open the tab.
+   */
+  perpetualMarkets?: ReactNode | ((contentWidth: number) => ReactNode);
   /** The company's latest news, given the width of the overview's content; it draws nothing while there is none. */
   news?: ReactNode | ((contentWidth: number) => ReactNode);
   width?: number;
@@ -180,7 +186,7 @@ export function OverviewTab(props: OverviewTabProps) {
 const FUND_FACTS_LINK: OverviewFunctionLink = { name: "Fund Facts", templateId: "sec-etf-pane" };
 
 function ResolvedOverviewTab({
-  width, height, focused = false, ticker, financials, beta, onOpenChart, onOpenFunction, onOpenListing, perpetuals, news, coin, dividend, ah = null, boardLot = null, tax = null,
+  width, height, focused = false, ticker, financials, beta, onOpenChart, onOpenFunction, onOpenListing, perpetuals, perpetualMarkets, news, coin, dividend, ah = null, boardLot = null, tax = null,
   chartScale: chartScaleChoice = "auto", onChartScaleChange,
 }: OverviewTabProps & { ticker: TickerRecord }) {
   const trade = useResearchTrading();
@@ -783,6 +789,8 @@ function ResolvedOverviewTab({
             <FundamentalsGrid fields={taxFields} width={contentWidth} />
           </Box>
         )}
+
+        {perpetualMarkets && <PaneLinkMenu>{typeof perpetualMarkets === "function" ? perpetualMarkets(contentWidth) : perpetualMarkets}</PaneLinkMenu>}
 
         {positionRows.length > 0 && (
           <Box flexDirection="column">
