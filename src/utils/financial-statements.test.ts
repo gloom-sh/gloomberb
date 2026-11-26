@@ -354,6 +354,19 @@ describe("periods read from a results announcement", () => {
     expect(exchangeResultsNotes(results, [{ periodEnd: "2026-06-30", published: "2026-09-24" }])).toHaveLength(1);
   });
 
+  test("IDX quarter dates come from the current report and preserve catalogue provenance", () => {
+    const earlier = { ...report, source: "idx" as const, publishedAt: "2026-07-23T02:00:00Z" };
+    const current = { ...earlier, publishedAt: "2026-10-30T02:00:00Z", dateBasis: "catalogue" as const };
+    const quarter: FinancialStatement = {
+      date: "2026-09-30", currency: "IDR", netIncome: 5e9,
+      filledFrom: { source: "results", fields: ["netIncome"], documents: [earlier, current],
+        lines: { netIncome: { document: 1, page: null, subtractDocument: 0 } }, derived: "9 months minus 6 months" },
+    };
+    expect(fillDate(quarter)).toEqual({ label: "catalogue", date: "2026-10-30" });
+    expect(filledPeriodPublications([quarter])).toEqual([]);
+    expect(filledPeriodsNote([quarter])).toContain("IDX catalogue date 2026-10-30");
+  });
+
   test("a later period's comparative column is dated by that period's first announcement, never by a report published after it", () => {
     // Pop Mart's H1 2025: the 2026 interim report's comparative column (published 2026-09-24).
     const prior: FinancialStatement = { ...half, date: "2025-06-30", filledFrom: { ...half.filledFrom!, documents: [report] } };
