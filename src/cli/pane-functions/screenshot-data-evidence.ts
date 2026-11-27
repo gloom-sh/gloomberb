@@ -19,7 +19,7 @@ import { subtractTimeRange } from "../../time-series/date-window";
 import { parseChartSpec } from "../../plugins/builtin/chart-composer/chart-spec";
 import { publicTickerKey } from "../../utils/exchanges";
 import { paneScreenshotEvidenceHook, renderedPaneEvidence } from "./screenshot-evidence";
-import { financialRatioShotEvidence, shotFirstRatioStatement, shotRatioTab } from "./financial-ratio-shot";
+import { financialRatioShotEvidence, shotFirstRatioColumn, shotRatioTab } from "./financial-ratio-shot";
 import type { PaneScreenshotDataEvidence } from "./screenshot-types";
 import { normalizeChartSeries, chartSeriesEvidence } from "./screenshot-chart-evidence";
 
@@ -325,7 +325,8 @@ export function shotFinancialText(resolved: ResolvedPaneFunction, payload: Deskt
     period: resolved.options.period as FundamentalPeriod,
     statement: String(resolved.options.statement),
   });
-  const statement = ratioTab ? shotFirstRatioStatement(resolved, payload) : table?.statements[0];
+  const ratioColumn = ratioTab ? shotFirstRatioColumn(resolved, payload) : undefined;
+  const statement = ratioTab ? ratioColumn?.statement : table?.statements[0];
   const firstLabel = ratioTab ? ratioTab.ratios[0]?.label : table?.rows[0]?.unitLabel;
   if (!table || !statement) return { firstLabel };
   const annual = financials.annualStatements ?? [];
@@ -334,7 +335,7 @@ export function shotFinancialText(resolved: ResolvedPaneFunction, payload: Deskt
   return {
     firstLabel,
     header: financialColumnName(statement, kind, fiscalYearEndMonth(annual)),
-    periodEnd: end ? { columnId: `statement:${statement.date}:0`, text: formatDay(end) } : undefined,
+    periodEnd: end ? { columnId: ratioColumn?.columnId ?? `statement:${statement.date}:0`, text: formatDay(end) } : undefined,
   };
 }
 

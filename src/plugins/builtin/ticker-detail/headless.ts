@@ -252,13 +252,19 @@ type FinancialReportBasis = Pick<Financials, "statementScope" | "statementReview
 type WideFinancialReport = HeadlessRowsResult & { metadata: Record<string, unknown> & FinancialReportBasis };
 
 function financialReportBasis(financials: Financials, rowCount: number, valuation = false): FinancialReportBasis {
-  const note = rowCount ? financialStatementBasisNote(financials) : null;
-  if (!note) return {};
+  if (!rowCount) return {};
+  const { statementReview } = financials;
+  const note = financialStatementBasisNote(financials);
+  if (!note) return statementReview?.status === "pending" ? { statementReview } : {};
   return {
     statementScope: financials.statementScope,
-    ...(financials.statementReview ? { statementReview: financials.statementReview } : {}),
+    ...(statementReview ? { statementReview } : {}),
     statementBasis: valuation ? `${note} This basis applies to historical valuation statement inputs, including denominators.` : note,
   };
+}
+
+function financialReportNote({ statementBasis, statementReview }: FinancialReportBasis): string | undefined {
+  return statementBasis ?? (statementReview?.status === "pending" ? "New filing under review." : undefined);
 }
 
 /**
@@ -317,6 +323,13 @@ async function loadLongFinancialReport(symbols: string[], options: HeadlessPaneO
   const bases = new Map(tables.flatMap(({ symbol, data: { metadata: { statementBasis, statementScope, statementReview } } }) => (
     statementBasis ? [[symbol, { statementBasis, statementScope, ...(statementReview ? { statementReview } : {}) }] as const] : []
   )));
+  const unscopedReviews = new Map(tables.flatMap(({ symbol, data: { metadata: { statementBasis, statementReview } } }) => (
+    !statementBasis && statementReview?.status === "pending" ? [[symbol, statementReview] as const] : []
+  )));
+  const rowNotes = new Map(tables.flatMap(({ symbol, data }) => {
+    const note = financialReportNote(data.metadata);
+    return note ? [[symbol, note] as const] : [];
+  }));
   const notices = [...new Set(tables.flatMap(({ data }) => (data.metadata?.notices ?? []) as string[]))];
   const nativeColumn: HeadlessPaneColumn = { key: "nativeValue", header: "Native", align: "right", unitKey: "nativeUnit",
     format: (_value, row) => String(row.nativeFormatted ?? "") };
@@ -325,9 +338,9 @@ async function loadLongFinancialReport(symbols: string[], options: HeadlessPaneO
     columns: fx ? [...LONG_FINANCIAL_COLUMNS, nativeColumn] : LONG_FINANCIAL_COLUMNS,
     textColumns: [...LONG_FINANCIAL_COLUMNS, { key: "unit", header: "Unit" }, ...(fx ? [nativeColumn] : [])],
     rowUnitKey: "unit", rowSymbolKey: "ticker", rowAsOfKey: "periodEnd",
-    ...(bases.size ? {
-      rowNote: (row) => first.statement === "valuation" && row.metric === "Price" ? undefined : bases.get(String(row.ticker))?.statementBasis,
-      textNotices: [...notices, ...Array.from(bases, ([symbol, { statementBasis }]) => symbols.length > 1 ? `${symbol}: ${statementBasis}` : statementBasis)],
+    ...(rowNotes.size ? {
+      rowNote: (row) => first.statement === "valuation" && row.metric === "Price" ? undefined : rowNotes.get(String(row.ticker)),
+      textNotices: [...notices, ...Array.from(rowNotes, ([symbol, note]) => symbols.length > 1 ? `${symbol}: ${note}` : note)],
     } : {}),
     interval: options.period === "quarterly" ? "quarterly" : "annual",
     unavailableSymbols: [...loaded.unavailableSymbols, ...empty.flatMap(({ data }) => data.unavailableSymbols ?? [])],
@@ -339,6 +352,7 @@ async function loadLongFinancialReport(symbols: string[], options: HeadlessPaneO
       ...(fx ? { currency: target, conversions: fx.conversions } : {}),
       notices,
       ...(bases.size ? { statementBasisByTicker: Object.fromEntries(bases) } : {}),
+      ...(unscopedReviews.size ? { statementReviewByTicker: Object.fromEntries(unscopedReviews) } : {}),
       limitations: [...new Set(tables.flatMap(({ data }) => (data.metadata?.limitations ?? []) as string[]))],
     },
   };
@@ -445,12 +459,13 @@ async function loadFinancialReport(symbol: string, options: HeadlessPaneOptionVa
     ]);
     const missing = rows.length ? null : await missingPeriodsError(ctx, symbol, financials, requestedPeriod, hasRequestedStatements, options.statement);
     const basis = financialReportBasis(financials, rows.length);
+    const basisNote = financialReportNote(basis);
     const notices = rows.length ? [FINANCIAL_VINTAGE_NOTICE, financialGrowthNotice(requestedPeriod, table?.statements ?? []),
       ...(shareBasisNotice ? [shareBasisNotice] : [])] : [];
     return {
       rows, columns, unavailableSymbols: rows.length ? [] : [symbol],
       ...(missing ? { errors: [missing] } : {}),
-      ...(basis.statementBasis ? { rowNote: () => basis.statementBasis, textNotices: [...notices, basis.statementBasis] } : {}),
+      ...(basisNote ? { rowNote: () => basisNote, textNotices: [...notices, basisNote] } : {}),
       // Each exported row names its unit, the statements' period and the newest period end it runs to.
       rowUnitKey: "unit", rowAsOfKey: "periodEnd", interval: requestedPeriod,
       // The report closes with how old its latest period is, how far back its periods go, and how to read further.
@@ -655,13 +670,14 @@ async function loadRatioReport(
   const periodDates = dates.map(({ date }) => date);
   const missing = rows.length ? null : await missingPeriodsError(ctx, symbol, financials, period, hasRequestedStatements, tab.key);
   const basis = financialReportBasis(financials, rows.length, tab.key === "valuation");
+  const basisNote = financialReportNote(basis);
   const notices = rows.length ? [FINANCIAL_VINTAGE_NOTICE] : [];
   return {
     rows, columns, unavailableSymbols: rows.length ? [] : [symbol],
     ...(missing ? { errors: [missing] } : {}),
-    ...(basis.statementBasis ? {
-      rowNote: (row) => tab.key === "valuation" && row.kind === "input" && row.label === "Price" ? undefined : basis.statementBasis,
-      textNotices: [...notices, basis.statementBasis],
+    ...(basisNote ? {
+      rowNote: (row) => tab.key === "valuation" && row.kind === "input" && row.label === "Price" ? undefined : basisNote,
+      textNotices: [...notices, basisNote],
     } : {}),
     ...(tab.key === "valuation" && hasRequestedStatements && !history?.length ? { complete: false } : {}),
     // Each exported row names its unit, the statements' period and the newest period end it runs to.

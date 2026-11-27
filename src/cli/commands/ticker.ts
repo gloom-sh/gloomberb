@@ -1689,6 +1689,9 @@ function buildTickerStructuredData({
   const priced = atLivePriceEarnings(financials);
   const computedRunway = cashRunway(financials, offerings);
   const runway = burnsCash(computedRunway) ? computedRunway : null;
+  const latestAnnual = latestFinancialPeriod(financials.annualStatements, row => row.date) ?? null;
+  const latestQuarter = latestFinancialPeriod(financials.quarterlyStatements, row => row.date) ?? null;
+  const statementBasis = latestAnnual || latestQuarter ? financialStatementBasisNote(financials) : null;
   const yieldIndex = isYieldIndexSymbol(quote?.symbol ?? symbol);
   const session = getQuoteSessionFields(quote);
   const printedAt = session.extendedSession && quote ? extendedPrintTime(quote) : null;
@@ -1749,8 +1752,8 @@ function buildTickerStructuredData({
     ...bondFund ? { bondFund } : {},
     profile: financials.profile,
     financialCurrency: financials.financialCurrency ?? null,
-    latestAnnual: latestFinancialPeriod(financials.annualStatements, row => row.date) ?? null,
-    latestQuarter: latestFinancialPeriod(financials.quarterlyStatements, row => row.date) ?? null,
+    latestAnnual,
+    latestQuarter,
     annualStatementCount: financials.annualStatements.length,
     quarterlyStatementCount: financials.quarterlyStatements.length,
     // Months of cash at the latest quarter's balance sheet, at its operating burn and the trailing year's,
@@ -1761,6 +1764,12 @@ function buildTickerStructuredData({
     ...ipo ? { ipo: { ...ipo.deal, lockupNews: ipo.news } } : {},
     // The form and filed date of the latest periods' filings, and a newer quarter's results released before its statements.
     statementFilings,
+    ...(statementBasis ? { statementContext: {
+      appliesTo: [...(latestAnnual ? ["latestAnnual"] : []), ...(latestQuarter ? ["latestQuarter"] : [])],
+      statementBasis,
+      statementScope: financials.statementScope,
+      ...(financials.statementReview ? { statementReview: financials.statementReview } : {}),
+    } } : {}),
     notes,
     recentNews: recentNews.map((item) => ({
       title: item.title,
@@ -1979,13 +1988,9 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     if (dependencies.printResult) {
       const newsNote = recentNews[0]?.searchedFor ? newsFallbackNotice(requestSymbol, recentNews[0].searchedFor) : null;
       const warnings = [...choiceNotes, quoteNote, newsNote].filter((note): note is string => !!note);
-      const basis = shownFinancials.annualStatements.length || shownFinancials.quarterlyStatements.length
-        ? financialStatementBasisNote(shownFinancials) : null;
       dependencies.printResult({
         freshness,
         warnings: warnings.length > 0 ? warnings : undefined,
-        ...(basis ? { metadata: { statementBasis: basis, statementScope: shownFinancials.statementScope,
-          ...(shownFinancials.statementReview ? { statementReview: shownFinancials.statementReview } : {}) } } : {}),
         data: buildTickerStructuredData({
           symbol: normalized,
           listing,
@@ -2005,7 +2010,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
           offerings: await offerings,
           ipo: await ipoLoad,
         }),
-      }, basis ? { exportNotes: [basis] } : undefined);
+      });
       return;
     }
 

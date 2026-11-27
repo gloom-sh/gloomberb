@@ -26,11 +26,12 @@ test.each(["income", "valuation"])("FA %s keeps statement basis and pending revi
   const dates = ["2025-12-31", "2026-03-31", "2026-06-30", "2026-09-30"];
   const scoped = "VYLR:NYSE";
   const ordinary = "MSFT:NASDAQ";
+  const pending = "AAPL:NASDAQ";
   const ctx = createTestHeadlessContext({ marketData: createTestDataProvider({
     getTickerFinancials: async (symbol) => {
       const basis = symbol === "VYLR" ? { statementScope: scope } : {};
       return createTestFinancials({
-        ...basis, ...(symbol === "VYLR" ? { statementReview: review } : {}),
+        ...basis, ...(symbol === "VYLR" || symbol === "AAPL" ? { statementReview: review } : {}),
         quote: createTestQuote({ symbol, currency: "USD" }),
         quarterlyStatements: dates.map((date) => ({ date, currency: "USD", totalRevenue: 2_458_000_000,
           netIncome: 500_000_000, eps: 2, ...basis })),
@@ -51,16 +52,34 @@ test.each(["income", "valuation"])("FA %s keeps statement basis and pending revi
   const wide = await exportReport([scoped]);
   const standard = await exportReport([ordinary]);
   const singleLong = await exportReport([scoped], "long");
-  const mixed = await exportReport([ordinary, scoped]);
+  const pendingWide = await exportReport([pending]);
+  const pendingLong = await exportReport([pending], "long");
+  const mixed = await exportReport([ordinary, scoped, pending]);
   const expected = { statementScope: scope, statementReview: review, statementBasis: expect.stringContaining(basis) };
   expect(wide.json.metadata).toMatchObject(expected);
-  expect(JSON.stringify(standard.json)).not.toContain("statementBasis");
+  expect(standard.json.metadata).not.toHaveProperty("statementBasis");
+  expect(standard.json.metadata).not.toHaveProperty("statementReview");
   expect(singleLong.json.metadata).toMatchObject({ statementBasisByTicker: { [scoped]: expected } });
   expect((mixed.json.metadata as { statementBasisByTicker: unknown }).statementBasisByTicker).toEqual({ [scoped]: expected });
   expect(wide.csv[0]).toBe(standard.csv[0]);
   expect(standard.csv.every((line) => !line.includes("Statement basis:"))).toBe(true);
   expect(singleLong.csv.some((line) => line.includes(basis))).toBe(true);
   expect(mixed.csv.slice(1).every((line) => line.includes(basis) === (line.startsWith(`${scoped},`) && !line.includes(",Price,")))).toBe(true);
+  const pendingNote = "New filing under review.";
+  expect(pendingWide.json.metadata).toMatchObject({ statementReview: review });
+  expect(pendingWide.json.metadata).not.toHaveProperty("statementBasis");
+  expect(pendingWide.json.metadata).not.toHaveProperty("statementScope");
+  expect(pendingLong.json.metadata).toMatchObject({ statementReviewByTicker: { [pending]: review } });
+  expect(pendingLong.json.metadata).not.toHaveProperty("statementBasisByTicker");
+  expect(mixed.json.metadata).toHaveProperty("statementReviewByTicker", { [pending]: review });
+  expect(pendingWide.result.rows).toEqual(standard.result.rows);
+  expect(pendingWide.csv[0]).toBe(standard.csv[0]);
+  expect(pendingWide.csv.slice(1).every((line) => line.includes(pendingNote) === !line.startsWith("Price,"))).toBe(true);
+  expect(pendingLong.csv.slice(1).every((line) => line.includes(pendingNote) === !line.includes(",Price,"))).toBe(true);
+  expect(mixed.csv.slice(1).every((line) => line.includes(pendingNote) === (!line.startsWith(`${ordinary},`) && !line.includes(",Price,")))).toBe(true);
+  expect(mixed.result.textNotices?.filter((note) => note.includes(pendingNote))).toEqual([
+    expect.stringContaining(`${scoped}: ${basis}`), `${pending}: ${pendingNote}`,
+  ]);
   if (statement === "valuation") {
     const pe = wide.csv.find((line) => line.startsWith("P/E (x),"));
     expect(pe?.split(",").slice(1, dates.length + 1)).toEqual(dates.map(() => ""));

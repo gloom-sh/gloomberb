@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
-import { serializeCliResult, type CliResult } from "../../../../cli/result";
+import { printCliResult, serializeCliResult, takeCliFileExport, type CliResult } from "../../../../cli/result";
 import { DEFAULT_CLI_OPTIONS } from "../../../../cli/options";
 import { createDefaultConfig } from "../../../../types/config";
 import type { TickerRecord } from "../../../../types/ticker";
 import type { PricePoint, Quote } from "../../../../types/financials";
 import type { FuturesContractTermsPayload } from "../../../../api-client/futures-curve";
-import { createTestDataProvider } from "../../../../test-support/data-provider";
+import { createTestDataProvider, createTestFinancials, createTestQuote } from "../../../../test-support/data-provider";
 import { buildTickerReport, ticker as runTickerCommand } from "../../../../cli/commands/ticker";
 import { buildPositionRows } from "../../ticker-detail/overview/model";
 import { calculatePortfolioSummaryTotals, getSortValue } from "../metrics";
@@ -133,6 +133,38 @@ test("actual ticker command preserves stored positions and structured research w
   expect(json.data.ticker.positions[0].avgCost).toBeUndefined();
   expect(json.data.ticker.positions[0].unrealizedPnl).toBe(150);
   expect(closes).toBe(2);
+});
+
+test("ticker's structured statement basis applies to filed figures, not the current quote or served metrics", async () => {
+  const statementScope = { registrant: "0002128626", basis: "predecessor" as const, label: "Consolidated accounting predecessor" };
+  const statementReview = { status: "pending" as const, reviewedThrough: "2026-11-12" };
+  const latestQuarter = { date: "2026-09-30", currency: "USD", totalRevenue: 2_458_000_000, netIncome: -570_000_000, eps: -0.85, statementScope };
+  const financials = createTestFinancials({ quote: createTestQuote({ symbol: "AAPL", price: 80, currency: "USD" }),
+    fundamentals: { sharesShort: 9_000 }, quarterlyStatements: [latestQuarter], statementScope, statementReview });
+  const config = createDefaultConfig("/unused-scoped-ticker-report");
+  let jsonText = "";
+  let csv = "";
+  await runTickerCommand("AAPL", {
+    initMarketData: async () => ({ config, dataDir: "/unused-scoped-ticker-report", persistence: { close() {} },
+      store: { loadTicker: async () => null, loadAllTickers: async () => [] },
+      dataProvider: { ...createTestDataProvider({ getTickerFinancials: async () => financials }), getNews: async () => [] },
+    }) as any,
+    listingIpo: async () => null,
+    fail: (message: string): never => { throw new Error(message); },
+    printResult: (value, options) => {
+      jsonText = serializeCliResult(value, { ...DEFAULT_CLI_OPTIONS, format: "json" }, options);
+      printCliResult(value, { ...DEFAULT_CLI_OPTIONS, format: "csv", quiet: true, output: "/unused" }, options);
+      csv = takeCliFileExport() ?? "";
+    },
+  });
+  const json = JSON.parse(jsonText);
+  expect(json.metadata?.statementBasis).toBeUndefined();
+  expect(json.data).toMatchObject({ quote: { price: 80 }, fundamentals: { sharesShort: 9_000 }, latestQuarter, statementContext: {
+    appliesTo: ["latestQuarter"], statementBasis: expect.stringContaining("New filing under review."), statementScope, statementReview,
+  } });
+  expect(csv.split("\n")[0]?.split(",")).toContain("statementContext");
+  expect(csv).toContain('""appliesTo"":[""latestQuarter""]');
+  expect(csv).not.toContain("note: Statement basis:");
 });
 
 test("no-quote ticker command does not assign display currency to untyped broker values", async () => {

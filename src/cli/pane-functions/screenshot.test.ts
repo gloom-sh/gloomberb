@@ -608,6 +608,48 @@ describe("financial analysis ratio screenshots", () => {
     expect(shot.render.chartEvidenceMismatches).toContain("Valuation ratio cells are missing");
     expect(shot.usable).toBe(false);
   });
+
+  test("Liquidity checks the dates and values of columns that keep their IDs after a newer quarter is omitted", () => {
+    const financials = payload([["MSFT", {
+      annualStatements: [{ date: "2025-12-31", totalRevenue: 700 }],
+      quarterlyStatements: [
+        { date: "2026-03-31", totalRevenue: 100, currentAssets: 150, currentLiabilities: 100 },
+        { date: "2026-06-30", totalRevenue: 200, currentAssets: 200, currentLiabilities: 100 },
+        { date: "2026-09-30", totalRevenue: 300 },
+      ],
+    }]]);
+    const assess = (columnId: string, date: string, ratio: number, olderDate = "31 Mar 2026") => assessPaneScreenshot(request("liquidity", "quarterly"), financials, {
+      visibleText: "FA MSFT Ratios Liquidity Quarterly Q2 FY26 Q1 FY26 Period end 30 Jun 2026 Source: 30 Jun 2026 Current Ratio",
+      rows: [
+        { tableIndex: 0, rowIndex: 0, key: "period-end", selected: false, cells: [
+          { columnId, columnLabel: "Q2 FY26", text: date },
+          { columnId: "statement:2026-03-31:2", columnLabel: "Q1 FY26", text: olderDate },
+        ] },
+        { tableIndex: 0, rowIndex: 1, key: "current-ratio", selected: false, cells: [
+          { columnId, columnLabel: "Q2 FY26", text: formatRatioValue("multiple", ratio) },
+          { columnId: "statement:2026-03-31:2", columnLabel: "Q1 FY26", text: formatRatioValue("multiple", 1.5) },
+        ] },
+      ],
+      truncated: false, truncationReasons: [], loadingStateDetected: false, errorStateDetected: false, errorStateMarkers: [],
+      emptyStateDetected: false, emptyStateMarkers: [], visibleKeyValues: [], semanticUi: [
+        { id: "query", role: "query-bar", actions: [], metadata: { selections: [
+          { id: "statement", value: "ratios", label: "Ratios" }, { id: "ratio", value: "liquidity", label: "Liquidity" },
+          { id: "view", value: "quarterly", label: "Quarterly" },
+        ] } },
+      ],
+    }, "MSFT", "/tmp/fa-shot-test.png");
+    const columnId = "statement:2026-06-30:1";
+    expect(assess(columnId, "30 Jun 2026", 2).usable).toBe(true);
+    const wrongDate = assess(columnId, "31 Mar 2026", 2, "30 Jun 2026");
+    expect(wrongDate.usable).toBe(false);
+    expect(wrongDate.render.missingExpectedText).toContain("30 Jun 2026");
+    const wrongColumn = assess("statement:2026-06-30:0", "30 Jun 2026", 2);
+    expect(wrongColumn.usable).toBe(false);
+    expect(wrongColumn.render.chartEvidenceMismatches).toContain("Liquidity column Q2 FY26 is not a captured period");
+    const wrongRatio = assess(columnId, "30 Jun 2026", 1.5);
+    expect(wrongRatio.usable).toBe(false);
+    expect(wrongRatio.render.chartEvidenceMismatches[0]).toStartWith("Liquidity Current Ratio Q2 FY26 reads");
+  });
 });
 
 describe("volatility surface screenshot evidence", () => {
