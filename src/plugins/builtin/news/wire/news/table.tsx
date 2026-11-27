@@ -1,5 +1,5 @@
 import { MISSING_VALUE } from "../../../../../utils/format";
-import { useCallback, useEffect, useMemo, useRef, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, type ReactNode, type RefObject } from "react";
 import type { ScrollBoxRenderable } from "../../../../../ui";
 import {
   DataTableStackView,
@@ -20,7 +20,7 @@ import { nextHeaderSort } from "../../../../../utils/sort-values";
 import { localTimeZoneShortName } from "../../../../../utils/datetime-format";
 import { formatNewsCategoryForColumn } from "../categories";
 import { useOpenTickerChoice } from "../../../shared/ticker-choice";
-import { usePinnedMoment } from "../../../../../components/use-pinned-moment";
+import { usePinnedList } from "../../../../../components/use-pinned-moment";
 import { MIN_HEADLINE_WIDTH, NEWS_SOURCE_WIDTH, NEWS_TIME_WIDTH, newsHeadlineCell, newsSourceCell, newsTimeCell } from "./row";
 
 export type NewsColumnId =
@@ -74,6 +74,9 @@ interface NewsArticleStackBaseProps {
   scrollRef?: RefObject<ScrollBoxRenderable | null>;
   onBodyScrollActivity?: () => void;
 }
+
+const articleId = (article: MarketNewsItem) => article.id;
+const articleMoment = (article: MarketNewsItem) => article.publishedAt.getTime();
 
 function compareText(a: string, b: string): number {
   return a.localeCompare(b, "en-US", { sensitivity: "base" });
@@ -295,35 +298,28 @@ export function NewsArticleStackView({
   }, [loadNewsStory]);
 
   // A crosshair pinned in the tab picks the newest story out by then, and
-  // mutes the ones published after it. The selection follows the pin when it
-  // moves, not when a story streams in, so a row the user picked stays put.
-  const pinnedAt = usePinnedMoment("news-table:pin", { enabled: !detailOpen });
-  const pinnedArticleId = useMemo(() => {
-    if (pinnedAt === null) return null;
-    let newest: MarketNewsItem | null = null;
-    for (const article of sortedArticles) {
-      const at = article.publishedAt.getTime();
-      if (at <= pinnedAt && (!newest || at > newest.publishedAt.getTime())) newest = article;
-    }
-    return newest?.id ?? null;
-  }, [pinnedAt, sortedArticles]);
-  const followedPinRef = useRef<number | null>(null);
-  useEffect(() => {
-    if (pinnedAt === null) followedPinRef.current = null;
-    if (pinnedAt === null || pinnedArticleId === null || followedPinRef.current === pinnedAt) return;
-    followedPinRef.current = pinnedAt;
-    setSelectedArticleId(pinnedArticleId);
-  }, [pinnedAt, pinnedArticleId, setSelectedArticleId]);
+  // mutes the ones published after it, badges and all. The selection follows
+  // the pin when it moves, not when a story streams in, so a row the user
+  // picked stays put.
+  const { pinnedRow, isAfterPin } = usePinnedList<MarketNewsItem>("news-table:pin", {
+    enabled: !detailOpen,
+    rows: sortedArticles,
+    getId: articleId,
+    moment: articleMoment,
+    selectedId: selectedArticleId,
+    select: setSelectedArticleId,
+  });
+  const fallbackArticleId = pinnedRow?.id ?? sortedArticles[0]?.id ?? null;
 
   useEffect(() => {
-    if (sortedArticles.length === 0) {
+    if (fallbackArticleId === null) {
       if (selectedArticleId !== null) setSelectedArticleId(null);
       return;
     }
     if (selectedArticleId === null || selectedIdx < 0) {
-      setSelectedArticleId(sortedArticles[0]!.id);
+      setSelectedArticleId(fallbackArticleId);
     }
-  }, [selectedArticleId, selectedIdx, setSelectedArticleId, sortedArticles]);
+  }, [fallbackArticleId, selectedArticleId, selectedIdx, setSelectedArticleId]);
 
   // [t]icker opens a company the cursor row mentions, as clicking its badge does.
   // An open story registers its own.
@@ -342,21 +338,17 @@ export function NewsArticleStackView({
     index: number,
     rowState: { selected: boolean },
   ): DataTableCell => {
-    // A story out after the pinned moment reads muted and plain throughout,
-    // as rows that no longer apply do elsewhere (an exited holder).
-    const later = pinnedAt !== null && item.publishedAt.getTime() > pinnedAt;
-    const tone = (color: string) => later ? colors.textMuted : color;
     switch (column.id) {
       case "rank":
-        return { text: String(index + 1), color: tone(colors.textDim) };
+        return { text: String(index + 1), color: colors.textDim };
       case "time":
-        return { ...newsTimeCell(item, { later }), value: item.publishedAt };
+        return { ...newsTimeCell(item), value: item.publishedAt };
       case "source":
         return newsSourceCell(item);
       case "title":
         // Unclipped: the table fits it to the width the column really gets,
         // which on desktop is wider than the width it was laid out at.
-        return newsHeadlineCell(item, { later, read: readArticleIds?.has(item.id), title: titleForArticle?.(item) });
+        return newsHeadlineCell(item, { read: readArticleIds?.has(item.id), title: titleForArticle?.(item) });
       case "tickers": {
         const tickers = fitTickerSymbols(collectNewsDisplayTickers(item.tickers), column.width);
         return {
@@ -376,29 +368,27 @@ export function NewsArticleStackView({
         return {
           text: category && category === impliedCategory ? "" : category || MISSING_VALUE,
           ...(category && category === impliedCategory ? { value: category } : {}),
-          color: tone(colors.textDim),
+          color: colors.textDim,
         };
       }
       case "sentiment": {
         const sentiment = item.sentiment;
         return {
           text: sentiment ? sentiment.slice(0, 3) : MISSING_VALUE,
-          color: tone(
-            sentiment === "positive"
-              ? colors.positive
-              : sentiment === "negative"
-                ? colors.negative
-                : colors.textDim
-          ),
+          color: sentiment === "positive"
+            ? colors.positive
+            : sentiment === "negative"
+              ? colors.negative
+              : colors.textDim,
         };
       }
       case "importance":
         return {
           text: String(item.importance),
-          color: tone(item.importance >= 80 ? colors.positive : colors.textDim),
+          color: item.importance >= 80 ? colors.positive : colors.textDim,
         };
     }
-  }, [impliedCategory, pinnedAt, readArticleIds, titleForArticle]);
+  }, [impliedCategory, readArticleIds, titleForArticle]);
 
   return (
     <DataTableStackView<MarketNewsItem, NewsTableColumn>
@@ -427,6 +417,7 @@ export function NewsArticleStackView({
       }))}
       getItemKey={(item) => item.id}
       renderCell={renderCell}
+      isRowMuted={isAfterPin}
       selectedTextOverridesCellColor
       emptyContent={emptyContent}
       emptyStateTitle={emptyStateTitle}

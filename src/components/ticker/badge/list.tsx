@@ -5,6 +5,7 @@ import { useInlineTickers, type InlineTickerCatalogEntry } from "../../../state/
 import { displayWidth } from "../../../utils/format";
 import { TickerBadge } from "./index";
 import { getTickerBadgeText, type TickerBadgeStatus } from "./format";
+import { useDataTableRowMuted } from "../../ui/data-table/muted-row";
 
 /**
  * Rows scroll under the cursor, so a badge only starts resolving once its row
@@ -59,6 +60,7 @@ export function TickerBadgeList({
   onOpen,
 }: TickerBadgeListProps) {
   const [hoveredSymbol, setHoveredSymbol] = useState<string | null>(null);
+  const muted = useDataTableRowMuted();
   /**
    * A blank symbol names nothing, and a badge is a filled chip: drawing one for
    * it puts an empty block where a reader expects a ticker, which looks like a
@@ -134,7 +136,7 @@ export function TickerBadgeList({
         if (entry?.status === "missing" || listings?.[symbol] === null) {
           return (
             <Box key={symbol} paddingRight={1} flexShrink={0}>
-              <Text fg={fallbackColor} attributes={TextAttributes.BOLD}>{symbol}</Text>
+              <Text fg={muted ? colors.textMuted : fallbackColor} attributes={muted ? TextAttributes.NONE : TextAttributes.BOLD}>{symbol}</Text>
             </Box>
           );
         }

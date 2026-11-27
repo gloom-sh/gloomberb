@@ -336,3 +336,31 @@ test("a partial home register retains its rows, as-filed values and missing sour
     warnings: ["Major shareholder disclosures unavailable."],
   });
 });
+
+test("an SGX MIC ticker shows filed interests and an unfinished notice archive", async () => {
+  const ctx = createTestHeadlessContext();
+  const url = "https://links.sgx.com/1.0.0/corporate-announcements/OWNSGX0001/page";
+  ctx.apiClient.getOwnershipDisclosures = async (listing) => {
+    expect(listing).toBe("D05:SGX");
+    return {
+      listing, name: "DBS", publisher: "SGXNet", total: 1,
+      registers: [{
+        kind: "insider", status: "read", total: 1, sourceCount: 4,
+        retrievedAt: "2026-11-27T00:00:00Z", pending: 2, unreadable: 1,
+      }],
+      rows: [{
+        owner: "Reporting Person", role: "Director or CEO", date: "2026-11-20", dateBasis: "event",
+        kind: "Ordinary shares / units", securities: 1250, direct: "250", deemed: "1,000",
+        change: 250, percent: 0.00004, pledged: null, url,
+      }],
+    };
+  };
+  const result = await createHoldersHeadless().load({
+    ...args({view: "disclosures"}), symbols: ["D05:XSES"],
+  }, ctx);
+  expect(result).toMatchObject({
+    complete: false,
+    warnings: ["2 SGX notices pending.", "1 SGX notice could not be fully read."],
+    rows: [{dateBasis: "event", direct: "250", deemed: "1,000", percent: 0.00004, url}],
+  });
+});

@@ -55,6 +55,9 @@ export interface ChartTableChart {
   cursorDate?: Date | null;
   onCursorDateChange?: (date: Date | null) => void;
   onActivate?: () => void;
+  /** From `useChartTableSelection`: the pane's `p` pins the tab's crosshair on the chart, and the table follows the pin. */
+  pinKeys?: boolean;
+  onPinnedMomentChange?: CompositeChartProps["onPinnedMomentChange"];
   viewport?: { start: Date; end: Date };
   /** Ticks for an x axis that is not a calendar: one per bar, a tenor, a contract month. */
   xAxis?: CompositeChartProps["xAxis"];
@@ -257,6 +260,8 @@ export function ChartTableHeader(props: ChartTableHeaderProps) {
             cursorDate={chart.cursorDate}
             onCursorDateChange={chart.onCursorDateChange}
             onActivate={chart.onActivate}
+            pinKeys={chart.pinKeys}
+            onPinnedMomentChange={chart.onPinnedMomentChange}
             viewport={viewport}
             xAxis={chart.xAxis}
             legendAccessory={chart.legendAccessory}

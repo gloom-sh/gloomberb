@@ -8,6 +8,7 @@ import {
   DataTableView,
   DisclosureMarker,
   Notice,
+  PaneLinkMenu,
   PaneStatusBody,
   QueryBar,
   usePaneFooter,
@@ -35,6 +36,7 @@ import {
   financialColumnPeriod,
   financialGrowthNotice,
   financialPeriodEnd,
+  financialPeriodFiling,
   financialPeriodHeaderLabel,
   formatFinancialCell,
   formatFinancialCellValue,
@@ -93,7 +95,7 @@ type FinancialView = FinancialPeriod | "exchange";
 
 type FinancialTableColumn = DataTableColumn & (
   | { id: "metric"; kind: "metric" }
-  | { id: string; kind: "statement"; statement: FinancialTableStatement; /** The table's last column. */ last: boolean }
+  | { id: string; kind: "statement"; statement: FinancialTableStatement; filingUrl?: string; /** The table's last column. */ last: boolean }
 );
 
 const NO_COLLAPSED_GROUPS: ReadonlySet<string> = new Set();
@@ -375,6 +377,7 @@ export function ResolvedFinancialsTab({
   } : null);
   const yearEndMonth = useMemo(() => fiscalYearEndMonth(annualStatements), [annualStatements]);
   const annualDates = useMemo(() => new Set(annualStatements.map(({ date }) => date)), [annualStatements]);
+  const periodFilings = financials?.periodFilings;
   const { rows, unit } = useMemo(
     () => shareFinancialUnit(buildFinancialRows(subTab.rows, displayStatements, collapsedGroups)),
     [collapsedGroups, displayStatements, subTab.rows],
@@ -419,13 +422,14 @@ export function ResolvedFinancialsTab({
       id: `statement:${statement.date}:${index}`,
       kind: "statement",
       statement,
+      filingUrl: financialPeriodFiling(periodFilings, statement, financialColumnPeriod(statement, resolvedPeriod, annualDates))?.url,
       last: index === displayStatements.length - 1,
       label: financialPeriodHeaderLabel(periodHeaders[index]!, periodWidth),
       width: periodWidth,
       align: "right",
       headerColor: statement.date === "TTM" ? colors.textBright : colors.textDim,
     })),
-  ], [displayStatements, metricHeader, nativePaneChrome, periodHeaders, periodWidth, width]);
+  ], [annualDates, displayStatements, metricHeader, nativePaneChrome, periodFilings, periodHeaders, periodWidth, resolvedPeriod, width]);
   const periodEnd = latestFinancialPeriodEnd(displayStatements);
   const renderCell = useCallback((
     row: StatementTableRow,
@@ -433,7 +437,7 @@ export function ResolvedFinancialsTab({
   ): DataTableCell => {
     if (row.kind === "period-end") {
       if (column.kind === "metric") return PERIOD_END_NAME_CELL;
-      return periodEndCell(financialPeriodEnd(column.statement), column.width, nativePaneChrome || column.last);
+      return periodEndCell(financialPeriodEnd(column.statement), column.width, nativePaneChrome || column.last, column.filingUrl);
     }
     if (column.kind === "metric") {
       if (row.kind === "group") {
@@ -655,7 +659,7 @@ export function ResolvedFinancialsTab({
           resetScrollKey={`${resolvedPeriod}:${section.key}:${displayStatements.length}`}
           rootBefore={queryBar(comparisonCurrency ?? "")}
         />
-      ) : (
+      ) : (<PaneLinkMenu>
         <DataTableView<StatementTableRow, FinancialTableColumn>
           focused={focused}
           headerScrollRef={headerScrollRef}
@@ -696,12 +700,14 @@ export function ResolvedFinancialsTab({
             ...(unit ? [["Unit", unit]] : []),
             ["Growth", growthBasis],
             ...(periodEnd ? [["As of", periodEnd]] : []),
+            ...columns.flatMap((column) => column.kind === "statement" && column.filingUrl
+              ? [[`Issuer filing for ${financialPeriodEnd(column.statement)}`, column.filingUrl]] : []),
           ]}
           showHorizontalScrollbar
           resetScrollKey={`${resolvedPeriod}:${subTab.key}:${displayStatements.length}`}
           rootBefore={queryBar(growthBasis ?? "")}
         />
-      )}
+      </PaneLinkMenu>)}
     </Box>
   );
 }

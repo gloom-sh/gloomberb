@@ -208,7 +208,6 @@ export function projectDividendYieldHeadless(
       // The issuer's own form's dividend type, where a form types the row ("Final", "Other Special Dividend").
       ...(payment?.formType ? { formType: payment.formType } : {}),
       ...(row.declared ? { declared: row.declared.amount, declaredCurrency: row.declared.currency } : {}),
-      ...(payment?.source ? { source: payment.source.publisher, sourceUrl: payment.source.url } : {}),
     };
   });
   // A listing paid in another currency than its company declares (South32's rand) has its amounts converted from that one.

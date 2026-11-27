@@ -694,17 +694,20 @@ export interface AnalystResearchData {
   revenueEstimates: AnalystEstimateRecord[];
 }
 
+export interface DividendNoticeSource {
+  publisher: string;
+  url: string;
+  /** Original timetable when the final cash amount was published separately. */
+  scheduleUrl?: string;
+}
+
 export interface DividendAction {
   exDate: string;
   amount: number;
   payDate?: string;
   recordDate?: string;
-  /**
-   * Who published the row when it is not the listing's own history: a fund's
-   * sponsor, for a distribution the history lacks (iShares, SPDR, J.P. Morgan,
-   * VanEck), and the page it is published on. Absent elsewhere and from older servers.
-   */
-  source?: { publisher: string; url: string };
+  /** Original notice or sponsor page, when it supplies facts for this row. */
+  source?: DividendNoticeSource;
   /**
    * The dividends the row holds by the issuer's own dividend announcement
    * forms (an HKEX listing's): each in the row's currency, summing to its
@@ -727,6 +730,7 @@ export interface DeclaredDividendAction {
   declarationDate?: string;
   recordDate?: string;
   payDate?: string;
+  source?: DividendNoticeSource;
   /** A one-off beside the regular payments (AIOK's $3.50), as the server marks it. */
   special?: true;
 }
@@ -925,17 +929,24 @@ export type ResultsFillField =
 
 export type StatementFilingKind = "annual_results" | "interim_results" | "quarterly_results" | "annual_report" | "interim_report";
 
-/** A results announcement or report on HKEXnews or SGXNet, with when it was published and read. */
+/** An issuer's results announcement or report, with when it was published and read. */
 export interface StatementFilingDocument {
-  source: "hkex" | "sgx" | "lse" | "cninfo" | "idx" | "ir" | "mops";
+  source: "hkex" | "sgx" | "lse" | "cninfo" | "idx" | "ir" | "mops" | "jpx" | "dart" | "nse";
   kind: StatementFilingKind;
   title: string;
+  accountingScope?: "consolidated" | "individual";
   url: string;
   publishedAt: string;
   firstObserved?: true;
   fetchedAt: string;
   dateBasis?: "catalogue";
   dataUrl?: string;
+}
+
+/** The original report for a fiscal period, independent of the source of each normalized figure. */
+export interface StatementPeriodFiling extends StatementFilingDocument {
+  periodEnd: string;
+  periodMonths: number;
 }
 
 /** A row's lines read from the company's results announcement or report, for a period the statements source lags on. */
@@ -950,6 +961,7 @@ export interface ResultsStatementFill {
     document: number;
     page: number | null;
     subtract?: { document: number; page: number | null };
+    xbrl?: { concept: string; context: string };
     subtractDocument?: number;
     location?: { sheet: string; cell: string };
   }>>;
@@ -1426,6 +1438,7 @@ export interface TickerFinancials {
   nextEarnings?: NextEarnings;
   annualStatements: FinancialStatement[];
   quarterlyStatements: FinancialStatement[];
+  periodFilings?: StatementPeriodFiling[];
   /** Exchange summaries have their own reporting basis and do not enter the normalized statements. */
   taiwanExchangeStatements?: TaiwanExchangeStatement[];
   /** Twelve months to the latest half or quarter where the quarters do not give them (a half-yearly reporter). */

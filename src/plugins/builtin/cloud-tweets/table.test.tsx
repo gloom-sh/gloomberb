@@ -1,9 +1,12 @@
 import { expect, test } from "bun:test";
 import { act } from "react";
 import type { CloudTweetPayload, CloudTweetSearchResponse } from "../../../api-client";
-import { PaneFooterProvider } from "../../../components/layout/pane/footer";
+import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
-import { createInitialState } from "../../../state/app/context";
+import { PluginRenderProvider } from "../../../plugins/runtime";
+import { AppContext, PaneInstanceProvider, createInitialState } from "../../../state/app/context";
+import { useTabCursorLink, type TabCursorLink } from "../../../state/app/tab-cursor";
+import { createReducerAppStore } from "../../../test-support/app-store";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { Box } from "../../../ui";
@@ -116,4 +119,85 @@ test("a server that ignores the offset ends the feed instead of repeating a page
   expect(offsets).toEqual([0, 50]);
   await scrollToEnd(10);
   expect(offsets).toEqual([0, 50]);
+});
+
+// An open post is the one the user opened: a pin a chart moves meanwhile
+// leaves it, its links and its source where they are, and Esc goes back to the
+// list without lifting the pin. Back on the list, the selection goes to the
+// post at the pin.
+test("an open post stays itself while a chart moves the pin, and back on the list the selection follows the pin", async () => {
+  // Each post has its own author and link, so the detail and its footer name the post.
+  const posts = Array.from({ length: 5 }, (_, index) => ({
+    ...tweet(index),
+    text: `DESK NOTE ${index} https://desk.example/note-${index}`,
+    author: { id: `u${index}`, userName: `desk${index}`, name: `Desk ${index}` },
+  }) as CloudTweetPayload);
+  const config = createTestPaneConfig("/tmp/gloom-tweet-table-test/unused-data", {
+    instanceId: "tweets:pin", paneId: "twitter-feed", binding: { kind: "none" },
+  });
+  const state = createInitialState(config);
+  state.focusedPaneId = "tweets:pin";
+  let link: TabCursorLink | undefined;
+  function Chart() {
+    link = useTabCursorLink("chart");
+    return null;
+  }
+  // The selection and the open post are pane state, so the store runs the app's reducer.
+  await act(async () => {
+    await tui.render(
+      <AppContext value={createReducerAppStore(state)}>
+        <PaneInstanceProvider paneId="tweets:pin">
+          <PluginRenderProvider pluginId="gloomberb-cloud" runtime={runtime}>
+            <PaneFooterProvider>{(footer) => (
+              <Box width={100} height={20} flexDirection="column">
+                <Box width={100} height={19} flexShrink={0}>
+                  <Chart />
+                  <TweetSearchTable focused width={100} height={19} requestKey="test:pin" footerId="test:pin"
+                    load={async () => response(posts, false)} />
+                </Box>
+                <PaneFooterBar footer={footer} focused width={100} />
+              </Box>
+            )}</PaneFooterProvider>
+          </PluginRenderProvider>
+        </PaneInstanceProvider>
+      </AppContext>,
+      { width: 100, height: 20 },
+    );
+  });
+  await frames();
+  const pinAt = async (post: number) => {
+    await act(async () => link!.pin!(Date.parse(posts[post]!.createdAt)));
+    await frames();
+  };
+  const press = async (name: string, sequence: string) => {
+    await tui.emitKeypress({ name, sequence }, { frames: 2, afterCommit: true });
+    await frames();
+  };
+  /** The post the open detail shows, by its note number, and its link and source, all on screen. */
+  const openPost = () => {
+    const frame = tui.frame();
+    const note = /DESK NOTE (\d)/.exec(frame)?.[1];
+    if (note === undefined || frame.includes("Views") === false) return null;
+    return { note, link: frame.includes(`desk.example/note-${note}`), source: frame.includes(`@desk${note}`) };
+  };
+  try {
+    await pinAt(2);
+    await press("return", "\r");
+    expect(openPost()).toEqual({ note: "2", link: true, source: true });
+
+    await pinAt(3);
+    expect(openPost()).toEqual({ note: "2", link: true, source: true });
+    expect(tui.frame()).not.toContain("DESK NOTE 3");
+
+    // Esc goes back, and the pin stays.
+    await press("escape", "\u001b");
+    expect(link!.pinned!()).toBe(true);
+    expect(tui.frame()).toContain("DESK NOTE 4");
+
+    // The selection went to the post at the pin while the other was open.
+    await press("return", "\r");
+    expect(openPost()).toEqual({ note: "3", link: true, source: true });
+  } finally {
+    await act(async () => link?.pin?.(null));
+  }
 });

@@ -8,6 +8,7 @@ import { getTickerBadgeHoverText, getTickerBadgeText, tickerBadgeColors, type Ti
 import { displayWidth, padTo } from "../../../utils/format";
 import { tf } from "../../../i18n";
 import { usePaneLinkMenuEntry } from "../../ui/external-link";
+import { useDataTableRowMuted } from "../../ui/data-table/muted-row";
 
 export interface TickerBadgeProps {
   symbol: string;
@@ -65,7 +66,11 @@ export function TickerBadge({
   });
   const quoteForDisplay = liveQuote ? quote : null;
   const shownMove = liveQuote && move != null && Number.isFinite(move) ? move : null;
-  const tone = status === "ready" && shownMove != null
+  // A badge in a muted table row reads as the row does: muted, plain, no tone of its move.
+  const muted = useDataTableRowMuted();
+  const weight = muted ? TextAttributes.NONE : TextAttributes.BOLD;
+  const tone = muted ? colors.textMuted
+    : status === "ready" && shownMove != null
     ? priceColor(shownMove)
     : status === "ready" && quoteForDisplay
     ? priceColor(quoteForDisplay.changePercent)
@@ -113,18 +118,18 @@ export function TickerBadge({
       >
         {nativePaneChrome ? (
           <>
-            <Text fg={color} attributes={TextAttributes.BOLD} style={price ? NATIVE_RESTING_TEXT_UNDER_PRICE : undefined}>
+            <Text fg={color} attributes={weight} style={price ? NATIVE_RESTING_TEXT_UNDER_PRICE : undefined}>
               {text}
             </Text>
             {price ? (
               <Box flexDirection="row" justifyContent="center" alignItems="center" style={NATIVE_PRICE_OVER_RESTING_TEXT}>
-                <Text fg={color} attributes={TextAttributes.BOLD}>{price}</Text>
+                <Text fg={color} attributes={weight}>{price}</Text>
               </Box>
             ) : null}
           </>
         ) : (
           // Cells are exact: the price, centred in the resting text's cells, takes as many.
-          <Text fg={color} attributes={TextAttributes.BOLD}>
+          <Text fg={color} attributes={weight}>
             {price ? padTo(price, displayWidth(text), "center") : text}
           </Text>
         )}

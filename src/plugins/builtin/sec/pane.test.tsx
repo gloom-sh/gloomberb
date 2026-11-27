@@ -483,16 +483,17 @@ test("a company listed abroad is looked up by the SEC, and one that files nothin
 });
 
 test.each([
-  { venue: "SGX", symbol: "O39", name: "OCBC", currency: "SGD", url: "https://links.sgx.com/1.0.0/corporate-announcements/A9CW58STOPTDX0HG/50dad2d3f2e1374d94921a9cad3497846885577d0c43cf2e1fe14c8c7f4764a6", page: "https://www.sgx.com/securities/company-announcements" },
-  { venue: "JPX", symbol: "7203", name: "Toyota Motor Corporation", currency: "JPY", url: "https://www2.jpx.co.jp/disc/72030/140120260205548944.pdf", page: "https://www.jpx.co.jp/english/listing/co-search/index.html" },
-])("$venue results search the full source window without mixing in other filings", async ({ venue, symbol, name, currency, url, page }) => {
+  { venue: "SGX", symbol: "O39", name: "OCBC", currency: "SGD", kind: "results", label: "Results & presentations", headline: "Third Quarter Results", url: "https://links.sgx.com/1.0.0/corporate-announcements/A9CW58STOPTDX0HG/50dad2d3f2e1374d94921a9cad3497846885577d0c43cf2e1fe14c8c7f4764a6", page: "https://www.sgx.com/securities/company-announcements" },
+  { venue: "SGX", symbol: "O39", name: "OCBC", currency: "SGD", kind: "ownership", label: "Ownership disclosures", headline: "Substantial shareholder disclosure", url: "https://links.sgx.com/1.0.0/corporate-announcements/EXAMPLE0001/0a0a", page: "https://www.sgx.com/securities/company-announcements" },
+  { venue: "JPX", symbol: "7203", name: "Toyota Motor Corporation", currency: "JPY", kind: "results", label: "Results & presentations", headline: "Third Quarter Results", url: "https://www2.jpx.co.jp/disc/72030/140120260205548944.pdf", page: "https://www.jpx.co.jp/english/listing/co-search/index.html" },
+])("$venue $kind search the full source window without mixing in other filings", async ({ venue, symbol, name, currency, kind: form, label, headline, url, page }) => {
   firstSymbol = `${symbol}:${venue}`;
   firstListing = { exchange: venue, currency, assetCategory: "STK" };
   const exchange = spyOn(apiClient, "getCloudExchangeAnnouncements").mockImplementation(async ({ kind }) => ({
     exchange: venue, symbol, name, page,
     announcements: [{
       date: "2026-11-05T22:59:27.000Z",
-      headline: kind === "results" ? "Third Quarter Results" : "Use of Treasury Shares",
+      headline: kind === form ? headline : "Use of Treasury Shares",
       types: ["Announcement"], priceSensitive: null, fileSize: null, documentKey: url, url,
     }],
     total: 1,
@@ -502,12 +503,12 @@ test.each([
     await mount(createTestDataProvider({ getSecFilings: async () => [{ ...filing, primaryDocDescription: "US issuer filing" }] }));
     await tui.waitForFrameToContain("Use of Treasury Shares");
     await tui.clickFrameText("All forms");
-    await tui.waitForFrameToContain("Results & presentations");
-    await tui.clickFrameText("Results & presentations");
-    const shown = await tui.waitForFrameToContain("Third Quarter Results");
+    await tui.waitForFrameToContain(label);
+    await tui.clickFrameText(label);
+    const shown = await tui.waitForFrameToContain(headline);
     expect(shown).not.toContain("Use of Treasury Shares");
     expect(shown).not.toContain("US issuer filing");
-    expect(exchange).toHaveBeenCalledWith({ symbol: firstSymbol, exchange: venue, limit: 200, kind: "results" });
+    expect(exchange).toHaveBeenCalledWith({ symbol: firstSymbol, exchange: venue, limit: 200, kind: form });
   } finally {
     exchange.mockRestore();
   }
@@ -542,6 +543,44 @@ test("Taiwan presentations remain available when the mixed filings catalogue fai
     await press("return", "\r");
     expect(await tui.waitForFrameToContain("← Back")).toContain("01 Jun 2026");
     expect(footer.hints?.map(hint => hint.id)).toContain("open");
+  } finally {
+    exchange.mockRestore();
+  }
+});
+
+test("scrolling to older HOSE filings keeps the recent disclosures through an archive failure", async () => {
+  firstSymbol = "FPT.VN:HOSE";
+  firstListing = { exchange: "HOSE", currency: "VND", assetCategory: "STK" };
+  const older = {
+    date: "2026-01-26T17:42:16Z", headline: "FPT FY2025 business results",
+    types: ["Issuer disclosure"], priceSensitive: null, fileSize: null,
+    documentKey: "2433776", url: "https://www.hsx.vn/vi/tin-tuc/fpt-ket-qua-kinh-doanh-nam-2025/2433776",
+  };
+  const recent = Array.from({ length: 50 }, (_, index) => ({
+    ...older, date: "2026-11-20T01:00:00Z", headline: `Recent HOSE notice ${index + 1}`,
+    url: `https://www.hsx.vn/vi/tin-tuc/notice/${index + 1}`, documentKey: String(index + 1),
+  }));
+  let olderReads = 0;
+  const exchange = spyOn(apiClient, "getCloudExchangeAnnouncements").mockImplementation(async ({ limit }) => {
+    if (limit === 200 && olderReads++ === 0) throw new Error("Older filings temporarily unavailable");
+    return {
+      exchange: "HOSE", symbol: "FPT", name: "FPT", page: "https://www.hsx.vn/",
+      total: 51, retrievedAt: "2026-11-26T15:00:00Z", announcements: limit === 200 ? [...recent, older] : recent,
+    };
+  });
+  try {
+    await mount(createTestDataProvider({ getSecFilings: async () => [] }));
+    await tui.waitForFrameToContain("Recent HOSE notice 1");
+    expect(olderReads).toBe(0);
+    for (let index = 0; index < 49; index++) await press("down", "j");
+    await tui.waitForFrameToContain("Older filings temporarily unavailable");
+    const beforeRetry = await tui.waitForFrameToContain("Recent HOSE notice 50");
+    expect(beforeRetry).toContain("Older filings temporarily unavailable");
+    await press("r", "r");
+    await tui.waitForFrameToExclude("Older filings temporarily unavailable");
+    await press("down", "j");
+    await tui.waitForFrameToContain("FPT FY2025 business results");
+    expect(olderReads).toBe(2);
   } finally {
     exchange.mockRestore();
   }

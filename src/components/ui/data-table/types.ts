@@ -109,6 +109,10 @@ export interface DataTableCell {
    * The cells `content` takes to show whole in the terminal, where a table
    * fits its columns to what they hold before it cuts one or pushes one out of
    * view. Without it a drawn cell's column keeps the width the pane set.
+   *
+   * A cell that gives it is also made again for a column the pane's edge
+   * cuts, with the cells that show as the column's width, so it can give up
+   * a piece whole (a second link, a badge) where the edge would cut it.
    */
   contentWidth?: number;
   /**
@@ -353,6 +357,14 @@ export interface DataTableProps<
     index: number,
     rowState: DataTableRowState,
   ) => string | undefined;
+  /**
+   * A row that is shown but does not apply right now (a story or a print out
+   * after the tab's pinned moment): the whole row reads in `textMuted` and
+   * plain weight, its value colours and the content its cells draw (ticker
+   * badges) included, and it stays selectable. One rule for every table, so a
+   * pane does not mute its cells one by one.
+   */
+  isRowMuted?: (item: T, index: number) => boolean;
   emptyContent?: ReactNode;
   bodyAfter?: ReactNode;
   emptyStateTitle: string;

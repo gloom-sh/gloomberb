@@ -60,8 +60,8 @@ function choiceLabel(answer: HeardFromAnswer): string {
  * fine). Esc, or Skip, skips; from the note, Esc (Back) goes back to the
  * list. The card holds the keyboard while it is up, as setup does.
  *
- * Instagram, TikTok, YouTube and X are kept the moment they are picked
- * (`onPicked`), then ask "Which account or post?" under the list: Enter
+ * Social and AI assistant answers with a follow-up are kept when picked
+ * (`onPicked`), then ask the optional follow-up under the list: Enter
  * sends the note (empty is fine), Esc or Skip closes the card. Either way the
  * answer is already kept.
  */
@@ -75,7 +75,6 @@ function HeardFromCard({ onShown, onPicked, onDone }: {
   const keybindings = useKeybindings();
   const [cursor, setCursor] = useState(0);
   const [noteOpen, setNoteOpen] = useState(false);
-  // The answer kept ahead of its "Which account or post?" note.
   const [kept, setKept] = useState<HeardFromAnswer | null>(null);
   const keptRef = useRef<HeardFromAnswer | null>(null);
   const [note, setNote] = useState("");
@@ -131,6 +130,9 @@ function HeardFromCard({ onShown, onPicked, onDone }: {
   }, [done, noteOpen]);
 
   const fieldOpen = noteOpen || kept !== null;
+  const noteLabel = kept === "ai_assistant"
+    ? t("Which AI, and what did you ask?")
+    : kept ? t("Which account or post?") : t("Where?");
 
   const shownRef = useRef(onShown);
   useEffect(() => shownRef.current(), []);
@@ -182,7 +184,7 @@ function HeardFromCard({ onShown, onPicked, onDone }: {
           <TextField
             inputRef={noteRef}
             value={note}
-            placeholder={kept ? t("Which account or post?") : t("Where?")}
+            placeholder={noteLabel}
             maxLength={HEARD_FROM_NOTE_MAX_LENGTH}
             focused
             width={desktop ? undefined : CARD_WIDTH - 6}

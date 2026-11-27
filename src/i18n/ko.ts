@@ -1622,6 +1622,7 @@ export const ko: Record<string, string> = {
   "Article or newsletter": "기사 또는 뉴스레터",
   "Where?": "어디서?",
   "Which account or post?": "어떤 계정이나 게시물인가요?",
+  "Which AI, and what did you ask?": "어떤 AI에 무엇을 물어보셨나요?",
   "Skip": "건너뛰기",
   "Equities": "주식",
   "Futures & commodities": "선물 및 원자재",

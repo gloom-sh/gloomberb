@@ -6,6 +6,7 @@ import {
   leftoverDrafts,
   nightlyBaseVersion,
   nightlyVersion,
+  passedShas,
   planNightly,
   prunableNightlies,
   readLatestStableTag,
@@ -322,5 +323,45 @@ describe("leftoverDrafts", () => {
 
   test("refuses a tag that is not a nightly build's", () => {
     expect(() => leftoverDrafts([], "v0.17.4")).toThrow("is not a nightly tag");
+  });
+});
+
+describe("passedShas", () => {
+  test("filters Verify to push runs by default and rejects schedule runs", async () => {
+    const calls: string[][] = [];
+    const run = async (args: string[]) => {
+      calls.push(args);
+      return JSON.stringify([
+        { head_sha: "aaaa", conclusion: "success", event: "push" },
+        { head_sha: "bbbb", conclusion: "success", event: "schedule" },
+        { head_sha: "cccc", conclusion: "failure", event: "push" },
+      ]);
+    };
+    const shas = await passedShas("gloom-sh/gloomberb", "verify.yml", ["push"], run);
+    expect(shas).toEqual(["aaaa"]);
+    expect(calls[0]?.[1]).toContain("event=push");
+  });
+
+  test("accepts push, schedule, and workflow_dispatch runs for Verify Windows while rejecting PR or non-success runs", async () => {
+    const calls: string[][] = [];
+    const run = async (args: string[]) => {
+      calls.push(args);
+      return JSON.stringify([
+        { head_sha: "aaaa", conclusion: "success", event: "schedule" },
+        { head_sha: "bbbb", conclusion: "success", event: "push" },
+        { head_sha: "aaaa", conclusion: "success", event: "workflow_dispatch" },
+        { head_sha: "cccc", conclusion: "success", event: "workflow_dispatch" },
+        { head_sha: "dddd", conclusion: "success", event: "pull_request" },
+        { head_sha: "eeee", conclusion: "cancelled", event: "schedule" },
+      ]);
+    };
+    const shas = await passedShas(
+      "gloom-sh/gloomberb",
+      "verify-windows.yml",
+      ["push", "schedule", "workflow_dispatch"],
+      run,
+    );
+    expect(shas).toEqual(["aaaa", "bbbb", "cccc"]);
+    expect(calls[0]?.[1]).not.toContain("event=");
   });
 });

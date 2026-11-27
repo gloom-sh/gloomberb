@@ -144,7 +144,7 @@ export function createHoldersHeadless(
       },
       {
         key: "view",
-        description: "Rendered pane view: the holder table, the ownership treemap, 13D/13G beneficial owners, or ownership disclosures for Hong Kong, Korea and Taiwan.",
+        description: "Rendered pane view: the holder table, the ownership treemap, 13D/13G beneficial owners, or ownership disclosures for Hong Kong, Korea, Singapore and Taiwan.",
         type: "enum",
         values: [{ value: "table" }, { value: "chart" }, { value: "13dg", aliases: ["beneficial"] }, { value: "disclosures" }],
         defaultValue: "table",
@@ -180,7 +180,7 @@ export function createHoldersHeadless(
       const symbol = args.symbols[0]!;
       if (args.options.view === "disclosures") {
         const listing = disclosureListing(symbol) ?? disclosureListing(symbol, (await resolveHeadlessIssuerListing(ctx, symbol))?.exchange);
-        if (!listing) throw new Error("Ownership disclosures cover HKEX, TWSE, TPEx, KRX and KOSDAQ listings.");
+        if (!listing) throw new Error("Ownership disclosures cover HKEX, SGX, TWSE, TPEx, KRX and KOSDAQ listings.");
         return disclosureReport(await ctx.apiClient.getOwnershipDisclosures(listing, Number(args.options.limit ?? 25), ctx.signal));
       }
       const requestedForm = parseHolderForm(args.options.form) ?? "13f";

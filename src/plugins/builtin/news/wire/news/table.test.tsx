@@ -1,4 +1,4 @@
-import { TextAttributes } from "@opentui/core";
+import { RGBA, TextAttributes } from "@opentui/core";
 import { describe, expect, test } from "bun:test";
 import { act, useReducer, useRef, useState, type RefObject } from "react";
 import { Box, type ScrollBoxRenderable } from "../../../../../ui";
@@ -19,6 +19,8 @@ import { useTabCursorLink } from "../../../../../state/app/tab-cursor";
 import { TestPaneProvider } from "../../../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../../../test-support/plugin-runtime";
 import { useNewsListSearch } from "./list-search";
+import { getThemeColors } from "../../../../../theme/colors";
+import { DEFAULT_THEME } from "../../../../../theme/themes";
 
 const tui = createOpenTuiTestHarness();
 
@@ -287,7 +289,7 @@ describe("NewsArticleStackView", () => {
 });
 
 describe("NewsArticleStackView under a pinned crosshair", () => {
-  test("selects the newest story out by the pinned moment and mutes the later ones, and a story streaming in leaves the selection alone", async () => {
+  test("selects the newest story out by the pinned moment and mutes the later ones, badges included, and a story streaming in leaves the selection alone", async () => {
     const selections: Array<string | null> = [];
     let pin: ((time: number | null) => void) | undefined;
     function Pinner() {
@@ -295,9 +297,9 @@ describe("NewsArticleStackView under a pinned crosshair", () => {
       return null;
     }
     const articles = [
-      makeArticle({ id: "before", title: "Before story", publishedAt: new Date("2026-04-18T12:00:00Z") }),
-      makeArticle({ id: "at", title: "At story", publishedAt: new Date("2026-04-18T14:30:00Z") }),
-      makeArticle({ id: "after", title: "After story", publishedAt: new Date("2026-04-18T16:00:00Z") }),
+      makeArticle({ id: "before", title: "Before story", tickers: ["MSFT"], publishedAt: new Date("2026-04-18T12:00:00Z") }),
+      makeArticle({ id: "at", title: "At story", tickers: ["AAPL"], publishedAt: new Date("2026-04-18T14:30:00Z") }),
+      makeArticle({ id: "after", title: "After story", tickers: ["NVDA"], publishedAt: new Date("2026-04-18T16:00:00Z") }),
     ];
     let setArticles: (next: MarketNewsItem[]) => void = () => {};
     function Feed() {
@@ -306,7 +308,7 @@ describe("NewsArticleStackView under a pinned crosshair", () => {
       return <NewsArticleStackView articles={list} focused width={90} rootHeight={10} selectedArticleId="after"
         setSelectedArticleId={(id) => selections.push(id)} sortPreference={sortPreference} setSortPreference={() => {}}
         onOpenArticle={() => {}} detailOpen={false} onBack={() => {}} detailContent={<Box />}
-        columns={["time", "source", "title"]} emptyStateTitle="No stories" />;
+        columns={["time", "source", "title", "tickers"]} emptyStateTitle="No stories" />;
     }
     await tui.render(
       <AppContext value={createStaticAppStore(createInitialState(createDefaultConfig("/tmp/gloomberb-news-pinned")))}>
@@ -322,10 +324,17 @@ describe("NewsArticleStackView under a pinned crosshair", () => {
       await act(async () => pin!(Date.parse("2026-04-18T15:00:00Z")));
       await act(async () => { await tui.setup().renderOnce(); });
       expect(selections.at(-1)).toBe("at");
-      const bold = tui.setup().captureSpans().lines.flatMap((line) => line.spans)
-        .filter((span) => (span.attributes & TextAttributes.BOLD) !== 0).map((span) => span.text).join(" ");
+      const spans = tui.setup().captureSpans().lines.flatMap((line) => line.spans);
+      const bold = spans.filter((span) => (span.attributes & TextAttributes.BOLD) !== 0).map((span) => span.text).join(" ");
       expect(bold).toContain("At story");
+      expect(bold).toContain("AAPL");
       expect(bold).not.toContain("After story");
+      // A later story's ticker badge reads as its row does, muted and plain, not in its own colours.
+      expect(bold).not.toContain("NVDA");
+      const muted = RGBA.fromHex(getThemeColors(DEFAULT_THEME).textMuted).toInts();
+      const badge = spans.find((span) => span.text.includes("NVDA"));
+      expect(badge?.fg.toInts()).toEqual(muted);
+      expect(spans.find((span) => span.text.includes("AAPL"))?.fg.toInts()).not.toEqual(muted);
       // The selection follows the pin when it moves, not a story arriving under it.
       const picks = selections.length;
       await act(async () => setArticles([...articles, makeArticle({ id: "streamed", title: "Streamed story", publishedAt: new Date("2026-04-18T14:45:00Z") })]));

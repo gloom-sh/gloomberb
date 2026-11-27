@@ -1,4 +1,4 @@
-import { expect, spyOn, test } from "bun:test";
+import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import { act } from "react";
 import { createOpenTuiTestHarness, settleFrame } from "../../../renderers/opentui/test-utils";
 import { AppContext, createInitialState } from "../../../state/app/context";
@@ -11,6 +11,7 @@ import { OverviewTab } from "./overview-tab";
 
 const config = createDefaultConfig("/tmp/gloom-overview-book-time-unused");
 const tui = createOpenTuiTestHarness();
+afterEach(() => mock.restore());
 // Thu 26 Nov 2026, 03:30 UTC: New York shut, the book left after hours at 00:59 UTC.
 const now = Date.parse("2026-11-26T03:30:00Z");
 const quote = createTestQuote({

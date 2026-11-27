@@ -649,8 +649,11 @@ Charts with an x axis of their own (curves, smiles, scatter plots), the overview
 **Pinning.** `p` on a focused chart, or `pin` in its footer, pins the crosshair where it is, and every chart in the tab holds that moment (the footer then offers `unpin`).
 
 - While pinned, the arrow keys on any chart move the pin a bar at a time. Esc or `p` lifts it. Where `p` does something else (the correlation window in a relationship chart), use the pane menu (`.`).
+- In a pane with a chart above its table, such as `SIV` or `PEB`, `p` pins at the selected row's date and Esc lifts the pin. While pinned, Left and Right move the pin a bar and the selected row follows it, in a pane where they step through time (`PEB`); under a tab strip (`SIV`) they still switch tabs. Up and Down still move through the table.
 - The pin belongs to the tab and goes when the last chart you can move it on closes, or the tab does.
-- News feeds in the tab (`N`, `CN`, industry news) select the newest story published by the pinned moment and show later ones muted. Time and sales (`TAS`, `QR`) selects the print or quote at or just before it.
+- Lists in the tab follow it. They select the newest row out by the pinned moment, or the earliest row when the pin is before all of them, and show later rows muted, ticker badges included. The selection moves only when the pin does, so a row you pick stays picked while new rows stream in above it and after you unpin; if that row leaves the list, the selection goes to the pin's row. An item you open stays open on itself while a chart moves the pin, and Esc goes back to the list without unpinning; the list then selects the row at the new pin. The lists that follow: news (`N`, `CN`, `NI`, `TOP`, `FIRST`), time and sales (`TAS`, `QR`, the print or quote at or just before the moment, to the nanosecond), `TWIT`, `HALT`, `FLOW` prints and `ALRT` History.
+- A following list's footer says when the pin is, such as `pinned 18 Apr 10:30 ET`, focused or not. The time is on your computer's clock with its zone named, whatever zone the list's own column uses (`TAS` stays in New York time). The focused list also offers `[Esc]unpin`.
+- Lists dated by day (`SEC` filings, `BUZZ`, `NI LTR`), the economic calendar (`ECO`) and boards of current values (`SCAN`, `HILO`) do not follow the pin: a day cannot say whether it came before a moment in it.
 
 #### Pan and zoom
 
@@ -1353,6 +1356,7 @@ The FUT board's codes work wherever a symbol is typed (`quote`, `history`, `tick
 - An event that takes the whole day (a plenum, an election) reads `All day` in the time column, as does the ECO pane.
 - `--tz <zone>` lists the days on another clock: `Date`, `Day` and `--from` are that zone's, the time there sits in a column named by its city, and the UTC time follows with its own date where that is another day. `econ --country JP --from 12.11.2026 --tz Asia/Tokyo` lists the Bank of Japan's PPI of 12 Nov at `08:50` under `Tokyo` as `2026-11-12` `Thu`, with `11-11 23:50 UTC` beside it; without `--tz` that release is on 11 Nov. With `--tz` and no `--from`, the listing starts today on that clock. An all-day event keeps its own day. `--json` has `day` (the weekday on that clock), `viewerDate`, `viewerTime`, `metadata.from` and `metadata.timeZone`, and keeps `date` as the UTC timestamp; an unknown zone fails with `Unknown time zone`.
 - With `config set timezone`, the ECO pane shows the same column for your zone beside its `UTC` one when it is wide enough.
+- A narrow ECO pane keeps the event names readable: it leaves out **Prior** first and, narrower still, **Forecast**, and says which above the table (`1 hidden · PRIOR`). **Actual** always stays, `Enter` on a row shows all three, and Export CSV writes all three at any width. Once Prior is out and the names are still short of room, a figure longer than 7 cells (`1.522B AUD`) is cut with `…` before Forecast goes, so one long figure does not take the forecast from every row; `Enter` shows it whole.
 
 **Countries**
 
@@ -1692,7 +1696,7 @@ A command exits 0 when it worked and 1 when it failed (bad input, no data found,
 - An option only the report reads (`--limit`, `--offset`, `--explain`, `--section`, or a report filter like `--availability` on `CALLS`) fails with exit 1 and names the `fn` command that reads it. So do `--limit` or `--tail` on a function with no such option (`shot HP AAPL --tail 5`) and a slip of an option's name (`--veiw`).
 - `gloom shot G palantir` stops with `Not a ticker: PALANTIR` and suggests `gloom search palantir`, before rendering or saving a pane. Resolve a company name to its ticker first.
 
-In short DVD panes, Page Up/Down scroll the summary, arrows or j/k navigate history, and the mouse wheel scrolls the region under the pointer.
+In short DVD panes, Page Up/Down scroll the summary, arrows or j/k navigate history, and the mouse wheel scrolls the region under the pointer. A payment or declaration that cites its publisher's notice links it under **Source**, and Enter on the row opens it too. Where the publisher issued the schedule apart, a second link follows; in a pane too narrow for both, the notice keeps its link and the schedule opens from the pane menu (**Open dividend schedule**). A declaration that cites a notice also brings a **Status** column, read from the dates each row has on record: **Declared** while a declaration still owes it or its pay date is today or ahead, **Paid** once a pay date on record has passed, and **Ex-dated** where the ex-date has passed and the history carries no pay date for it.
 
 | Command | Use |
 |---------|-----|
@@ -2013,7 +2017,9 @@ Every `gloom fn` text report ends with one line naming its source and saying how
 
 The plain commands that print market data end the same way: `quote`, `compare`, `ticker`, `history`, `financials`, `fundamentals`, `valuation`, `options`, `news`, `filings`, `holders`, `insider`, `13f`, `analyst`, `events`, `earnings`, `movers`, `indices`, `sectors`, `econ`, `fx`, `fred`, `yield-curve`, `correlation`, and `portfolio show` / `watchlist show`.
 
-**In `--json`** the facts are `data.freshness` for `fn` and `metadata.freshness` for the plain commands: `source`, `asOf`, `status`, `delayMinutes`, `retrievedAt`, and `asOfClose`, `tradingDayMarket`, `market`, `minDelayMinutes`, `oldest`, `lagDays`, `observation`, `sources`, `oldestAgeMinutes`, `note` when they apply.
+**In `--json`** the facts are `data.freshness` for `fn` and `metadata.freshness` for the plain commands: `source`, `asOf`, `status`, `delayMinutes`, `retrievedAt`, and `asOfClose`, `asOfLastPrint`, `asOfTradeDate`, `tradingDayMarket`, `market`, `minDelayMinutes`, `oldest`, `lagDays`, `observation`, `sources`, `oldestAgeMinutes`, `note` when they apply.
+
+For a futures quote, `asOf` is the observation time, not a daily close just because the market reports itself closed. `asOfTradeDate` names the exchange trade date when it differs from the UTC observation date and the exchange calendar covers it. It does not confirm a settlement or tell whether the market is open.
 
 A top-level `source` object has `name`, `publisher`, `observationDate`, `publicationTime`, `retrievalTime`. For data read from FRED, `fredUpdatedAt` dates FRED's update when known, not the publisher's release; the CSV notes call it `FRED updated`.
 

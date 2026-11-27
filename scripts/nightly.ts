@@ -100,7 +100,7 @@ export interface NightlyPlanInput {
   previousSha: string | null;
   /** Commits Verify concluded success on for a push to main. */
   verifyPassed: string[];
-  /** Commits Verify Windows concluded success on for a push to main. */
+  /** Commits Verify Windows concluded success on for main (push, schedule, or manual dispatch). */
   verifyWindowsPassed: string[];
   /** The .github/workflows tree SHA at each commit `verifiedCommits` lists; read only when the run publishes. */
   workflowTrees: Record<string, string>;
@@ -341,20 +341,42 @@ async function latestNightly(repo: string): Promise<{ tag: string; sha: string }
   return { tag, sha };
 }
 
+interface WorkflowRunListing {
+  head_sha: string;
+  conclusion: string | null;
+  event: string;
+}
+
 /**
- * The commits `workflow` concluded success on for a push to main. One listing
- * covers the whole window: a commit has at most one push run of a workflow (a
- * re-run is the same run), so a hundred runs reach back further than
- * NIGHTLY_WINDOW commits. A run a newer push cancelled is not listed.
+ * The commits `workflow` concluded success on for `main` across `allowedEvents`.
+ * Verify keeps `["push"]` (its scheduled run executes only the nightly tsc check),
+ * whereas Verify Windows accepts `push`, `schedule`, and `workflow_dispatch` so
+ * its daily pre-nightly run verifies main even when recent merges did not touch
+ * Windows-specific paths.
  */
-async function passedShas(repo: string, workflow: string): Promise<string[]> {
-  const listing = await gh([
+export async function passedShas(
+  repo: string,
+  workflow: string,
+  allowedEvents: readonly string[] = ["push"],
+  run: Gh = gh,
+): Promise<string[]> {
+  const eventQuery = allowedEvents.length === 1 ? `&event=${encodeURIComponent(allowedEvents[0]!)}` : "";
+  const listing = await run([
     "api",
-    `repos/${repo}/actions/workflows/${workflow}/runs?branch=main&event=push&status=success&per_page=100`,
+    `repos/${repo}/actions/workflows/${workflow}/runs?branch=main${eventQuery}&status=success&per_page=100`,
     "--jq",
-    '[.workflow_runs[] | select(.conclusion == "success") | .head_sha]',
+    "[.workflow_runs[] | {head_sha, conclusion, event}]",
   ]);
-  return JSON.parse(listing) as string[];
+  const allowed = new Set(allowedEvents);
+  const seen = new Set<string>();
+  const shas: string[] = [];
+  for (const entry of JSON.parse(listing) as WorkflowRunListing[]) {
+    if (entry.conclusion !== "success" || !allowed.has(entry.event)) continue;
+    if (seen.has(entry.head_sha)) continue;
+    seen.add(entry.head_sha);
+    shas.push(entry.head_sha);
+  }
+  return shas;
 }
 
 async function readHistory(repo: string, head: string): Promise<string[]> {
@@ -405,8 +427,8 @@ async function runPlan(): Promise<void> {
   const previous = await latestNightly(repo);
   const [history, verifyPassed, verifyWindowsPassed] = await Promise.all([
     readHistory(repo, head),
-    passedShas(repo, "verify.yml"),
-    passedShas(repo, "verify-windows.yml"),
+    passedShas(repo, "verify.yml", ["push"]),
+    passedShas(repo, "verify-windows.yml", ["push", "schedule", "workflow_dispatch"]),
   ]);
   const publish = process.env.NIGHTLY_PUBLISH === "true";
   const onMain = process.env.GITHUB_REF === "refs/heads/main";

@@ -44,6 +44,8 @@ import {
   dayLabel,
   econEventName,
   econFigureCell,
+  keptFigureColumns,
+  longestEventName,
   filteredEmptyTitle,
   formatStaleness,
   getCalendarCache,
@@ -76,8 +78,9 @@ import {
 } from "./calendar-model";
 import { MISSING_VALUE } from "../../../utils/format";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
+import { createDataTableCsv } from "../../../components/data-table/export";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
-import { tableColumnWidth } from "../../../components/ui/table-layout";
+import { markHiddenTableColumns, tableColumnWidth } from "../../../components/ui/table-layout";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 
 const IMPACT_LABELS: Record<ImpactFilter, string> = {
@@ -283,7 +286,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   const flagged = useUiCapabilities().nativePaneChrome === true;
   // A reader who set a time zone (`config set timezone`) gets their clock in a column beside UTC.
   const readerZone = readerTimeZone(useAppConfig().timezone);
-  const columns = useMemo<EconCalendarColumn[]>(() => {
+  const { columns, exportColumns } = useMemo<{ columns: EconCalendarColumn[]; exportColumns: EconCalendarColumn[] }>(() => {
     // Named by its zone, as the reader's column is by its city: "TIME (UTC)" took 13
     // cells over "07:00" while EVENT read "GDP Growth Ra…" (review, 12 Nov 2026).
     const timeLabelText = CALENDAR_TIME_ZONE_LABEL;
@@ -302,16 +305,28 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     const readerLabel = readerZone ? timeZoneCity(readerZone).toUpperCase() : null;
     const readerWidth = !readerZone || !readerLabel ? 0 : tableColumnWidth({ label: readerLabel,
       width: filtered.some((ev) => !hasNoReleaseTime(ev) && zonedClock(ev.date.getTime(), readerZone).label.length > 5) ? 9 : 5 });
+    const figureColumns: EconCalendarColumn[] = [
+      { id: "actual", label: actualLabel, title: "Actual", width: actualWidth, align: "right" },
+      { id: "forecast", label: forecastLabel, title: "Forecast", width: forecastWidth, align: "right" },
+      { id: "prior", label: "PRIOR", width: priorWidth, align: "right" },
+    ];
     // Padding, one gap per column boundary, and the vertical scrollbar lane;
     // one column short of that clipped the PRIOR values at the right edge.
-    const roomBeside = (count: number, timesWidth: number) => (impactWidth: number, countryWidth: number) => (
-      width - 3 - count + (showCountry ? 0 : 1) + (showImpact ? 0 : 1)
-        - (timesWidth + (showImpact ? impactWidth : 0) + (showCountry ? countryWidth : 0) + actualWidth + forecastWidth + priorWidth)
+    // `times` is the time columns (UTC, and the reader's clock); impact, country and event are the other three.
+    const roomBeside = (figures: readonly EconCalendarColumn[], times: number, timesWidth: number) => (impactWidth: number, countryWidth: number) => (
+      width - 3 - (times + 3 + figures.length) + (showCountry ? 0 : 1) + (showImpact ? 0 : 1)
+        - (timesWidth + (showImpact ? impactWidth : 0) + (showCountry ? countryWidth : 0) + figures.reduce((sum, column) => sum + column.width, 0))
     );
     const codeWidth = 2 + (flagged ? COUNTRY_FLAG_CELLS : 0);
+    const underShortHeaders = (room: (impactWidth: number, countryWidth: number) => number) => room(4, Math.max(3, codeWidth));
     // The reader's column only where the event names keep room to read beside it, under the short headers.
-    const withReader = readerWidth > 0 && roomBeside(8, timeWidth + readerWidth)(4, Math.max(3, codeWidth)) >= minEventWidth;
-    const eventRoom = withReader ? roomBeside(8, timeWidth + readerWidth) : roomBeside(7, timeWidth);
+    const withReader = readerWidth > 0 && underShortHeaders(roomBeside(figureColumns, 2, timeWidth + readerWidth)) >= minEventWidth;
+    const times = withReader ? 2 : 1;
+    const timesWidth = withReader ? timeWidth + readerWidth : timeWidth;
+    // The names come first, as in every narrow table: where three figure columns leave "GDP Growt…", PRIOR goes, and
+    // in a narrower pane still the forecast; the table says which it left out. The event's detail has all three.
+    const figures = keptFigureColumns(figureColumns, (kept) => underShortHeaders(roomBeside(kept, times, timesWidth)), longestEventName(filtered), minEventWidth);
+    const eventRoom = roomBeside(figures, times, timesWidth);
     // IMPACT and COUNTRY in words while event names keep room to read; the
     // short labels otherwise, with the word on hover where there is one.
     const spelledImpactWidth = tableColumnWidth({ width: 1, label: SPELLED_IMPACT });
@@ -325,16 +340,15 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       : { label: "CTY", width: Math.max(3, codeWidth), title: "Country" };
     const eventWidth = Math.max(minEventWidth, eventRoom(tableColumnWidth(impactColumn), tableColumnWidth(countryColumn)));
 
-    return [
+    const leading: EconCalendarColumn[] = [
       { id: "time", label: timeLabelText, width: timeWidth, align: "left" },
       ...withReader ? [{ id: "readerTime" as const, label: readerLabel!, width: readerWidth, align: "left" as const, title: readerZone! }] : [],
       ...showImpact ? [{ id: "impact" as const, ...impactColumn, align: "left" as const }] : [],
       ...showCountry ? [{ id: "country" as const, ...countryColumn, align: "left" as const }] : [],
       { id: "event", label: "EVENT", width: eventWidth, align: "left" },
-      { id: "actual", label: actualLabel, title: "Actual", width: actualWidth, align: "right" },
-      { id: "forecast", label: forecastLabel, title: "Forecast", width: forecastWidth, align: "right" },
-      { id: "prior", label: "PRIOR", width: priorWidth, align: "right" },
     ];
+    const every = [...leading, ...figureColumns];
+    return { columns: markHiddenTableColumns(every, [...leading, ...figures]), exportColumns: every };
   }, [countryFilter, filtered, flagged, impactFilter, readerZone, width]);
   const separatorBg = blendHex(colors.bg, colors.border, 0.3);
   const staleness = fetchedAt ? formatStaleness(fetchedAt, now) : "";
@@ -587,6 +601,10 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       onActivate={openDisplayRow}
       renderSectionHeader={renderSectionHeader}
       renderCell={renderCell}
+      // Export CSV keeps every figure at any width: only the table drawn leaves columns out.
+      exportCsv={columns.length < exportColumns.length
+        ? () => createDataTableCsv({ columns: exportColumns, items: rows, renderCell, renderSectionHeader })
+        : undefined}
       selectedTextOverridesCellColor
       status={{ loading: loading && !rows.length, error: !loading && !events.length ? error : null, subject: "economic events" }}
       emptyContent={filterEmptyTitle ? (

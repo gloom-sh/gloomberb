@@ -191,6 +191,8 @@ export interface VisitOptions {
   depth?: number;
   /** What counts as an alternative: tabs and choices by default, `[role=tab]` for tabs alone. */
   selector?: string;
+  /** True when the page is already freshly settled at the initial view, so listing alternatives needs no extra reset. */
+  alreadyAtRoot?: boolean;
 }
 
 /**
@@ -199,9 +201,9 @@ export interface VisitOptions {
  * or skipped (disabled, not laid out, deeper than `depth`). The pane as it
  * first shows is the caller's to measure.
  */
-export async function visitAlternatives({ cdp, scope, reset, settle, record, depth = 2, selector = "[role=tab], [role=radio]" }: VisitOptions): Promise<TabVisit[]> {
+export async function visitAlternatives({ cdp, scope, reset, settle, record, depth = 2, selector = "[role=tab], [role=radio]", alreadyAtRoot = false }: VisitOptions): Promise<TabVisit[]> {
   const visits: TabVisit[] = [];
-  await reset();
+  if (!alreadyAtRoot) await reset();
   const first = await listAlternatives(cdp, scope, selector);
   const queue: Array<{ path: Alternative[]; parent: Alternative[] }> = [];
   const enqueue = (path: Alternative[], alternatives: Alternative[], parent: Alternative[]) => {
@@ -219,7 +221,8 @@ export async function visitAlternatives({ cdp, scope, reset, settle, record, dep
   for (let index = 0; index < queue.length; index += 1) {
     const { path } = queue[index]!;
     const named = path.map(({ id, name }) => ({ id, name }));
-    await reset();
+    // listAlternatives only reads the DOM, so the first queued visit is already at the initial view.
+    if (index > 0) await reset();
     let failure: string | null = null;
     for (const [step, alternative] of path.entries()) {
       const result = await selectAlternative(cdp, scope, selector, alternative, settle);

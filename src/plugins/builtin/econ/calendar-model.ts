@@ -1,5 +1,6 @@
 import { createPluginCache } from "../../../data/plugin-cache";
 import type { DataTableCell, DataTableColumn } from "../../../components";
+import { tableColumnWidth } from "../../../components/ui/table-layout";
 import { colors } from "../../../theme/colors";
 import { displayWidth, MISSING_VALUE } from "../../../utils/format";
 import { fetchEconCalendar } from "./calendar-source";
@@ -842,6 +843,84 @@ export function valueColumnWidth(events: readonly EconEvent[], key: "actual" | "
   let width = base;
   for (const event of events) width = Math.max(width, Math.min(MAX_VALUE_WIDTH, displayWidth(figureWithCurrency(event[key], event.currency) ?? "")));
   return width;
+}
+
+/** The cells a release's name needs to say which one it is (`GDP Growth Rate QoQ`, `Inflation Rate YoY`). */
+const READABLE_NAME_CELLS = 20;
+
+/**
+ * The figure columns a narrow calendar leaves out, least needed first, each
+ * with the cells the event names keep before it goes. PRIOR is context, so it
+ * leaves once the names would get under READABLE_NAME_CELLS: in the 9 the
+ * three columns left them in a pane 53 cells wide, two rows of one hour both
+ * read `GDP Growt…`. The forecast is what a print is read against, so the
+ * names give up more before it goes. The actual always stays, and an event's
+ * detail has all three.
+ */
+const ECON_FIGURE_DROP_ORDER: readonly { id: string; namesUnder: number }[] = [
+  { id: "prior", namesUnder: READABLE_NAME_CELLS },
+  { id: "forecast", namesUnder: 14 },
+];
+
+/** The cells a plain figure takes (`105.28B`, `-24 Bcf`, `36.00%`): a column keeps these, and its header, whatever the names need. */
+const PLAIN_FIGURE_WIDTH = 7;
+
+/** The cells the longest event name listed takes: a calendar of short names (`Retail Sales`) asks for no more. */
+export function longestEventName(events: readonly Pick<EconEvent, "country" | "event" | "actual" | "forecast" | "prior">[]): number {
+  let longest = 0;
+  for (const event of events) longest = Math.max(longest, displayWidth(econEventName(event)));
+  return longest;
+}
+
+/**
+ * `columns` with the cells a long figure took (`1.522B AUD`, `3.75-4.00%`: a
+ * column is as wide as the widest figure listed) given to the names, widest
+ * column first, until the names have `names` cells or every column is down to
+ * a plain figure's. One long figure weeks out is cut there, and whole in its
+ * detail, where it would otherwise take the forecast from every row of a phone.
+ */
+function withoutLongFigureCells<C extends { id: string; width: number; label?: string }>(
+  columns: readonly C[],
+  roomFor: (kept: readonly C[]) => number,
+  names: number,
+): C[] {
+  let fitted = [...columns];
+  for (;;) {
+    if (roomFor(fitted) >= names) return fitted;
+    let widest = -1;
+    for (const [index, column] of fitted.entries()) {
+      const narrowest = Math.max(PLAIN_FIGURE_WIDTH, tableColumnWidth({ width: 1, label: column.label }));
+      if (column.width > narrowest && (widest < 0 || column.width > fitted[widest]!.width)) widest = index;
+    }
+    if (widest < 0) return fitted;
+    fitted = fitted.map((column, index) => (index === widest ? { ...column, width: column.width - 1 } : column));
+  }
+}
+
+/**
+ * The figure columns a calendar keeps at its width, as every narrow table
+ * decides: the name that says what a row is stays readable, and the least
+ * needed columns leave first (ECON_FIGURE_DROP_ORDER). Once one has left, the
+ * columns kept give the names what a long figure took before another goes
+ * (withoutLongFigureCells). `roomFor` is the cells the event column gets
+ * beside the columns given; `longestName` what the names listed take at most
+ * (longestEventName), and `floor` the fewest cells the column is ever drawn at.
+ */
+export function keptFigureColumns<C extends { id: string; width: number; label?: string }>(
+  figures: readonly C[],
+  roomFor: (kept: readonly C[]) => number,
+  longestName: number,
+  floor: number,
+): C[] {
+  const names = (cells: number) => Math.max(floor, Math.min(cells, longestName));
+  const fit = (kept: readonly C[]) => (kept.length < figures.length ? withoutLongFigureCells(kept, roomFor, names(READABLE_NAME_CELLS)) : [...kept]);
+  let kept = [...figures];
+  for (const { id, namesUnder } of ECON_FIGURE_DROP_ORDER) {
+    const fitted = fit(kept);
+    if (roomFor(fitted) >= names(namesUnder)) return fitted;
+    kept = kept.filter((column) => column.id !== id);
+  }
+  return fit(kept);
 }
 
 export function actualColor(actual: string | null, forecast: string | null): string {

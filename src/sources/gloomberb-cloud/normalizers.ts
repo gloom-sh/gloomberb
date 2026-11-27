@@ -398,6 +398,7 @@ export function mapCloudFinancials(
     ...(financials.statementReview ? { statementReview: financials.statementReview } : {}),
     annualStatements: (financials.annualStatements ?? []).map((row) => mapCloudStatement(row, derive)),
     quarterlyStatements: (financials.quarterlyStatements ?? []).map((row) => mapCloudStatement(row, derive)),
+    ...(financials.statementFilings !== undefined ? { periodFilings: financials.statementFilings } : {}),
     ...(financials.taiwanExchangeStatements?.length ? { taiwanExchangeStatements: financials.taiwanExchangeStatements } : {}),
     ...(financials.trailingStatement
       ? { trailingStatement: { ...mapCloudStatement(financials.trailingStatement, derive), trailing: financials.trailingStatement.trailing } }

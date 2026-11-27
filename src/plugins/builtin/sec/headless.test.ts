@@ -115,6 +115,8 @@ describe("SEC headless model", () => {
   test.each([
     { exchange: "JPX", symbol: "7203:JPX", url: "https://www2.jpx.co.jp/disc/72030/140120260804507923.pdf" },
     { exchange: "BURSAMY", symbol: "5200:XKLS", url: "https://www.insage.com.my/ir/cmn/Announcement.aspx?NewsID=202610215100007&Symbol=5200" },
+    { exchange: "HOSE", symbol: "FPT.VN:HOSE", url: "https://www.hsx.vn/vi/tin-tuc/fpt-ket-qua-kinh-doanh-nam-2025/2433776" },
+    { exchange: "HNX", symbol: "PVS:HNX", url: "https://api.gloom.sh/cloud/announcements/hnx/642808" },
   ])("an extended $exchange filing read retains disclosures beyond the first 50 rows", async ({ exchange, symbol, url }) => {
     const announcement = {
       date: "2026-08-04", headline: "Q&A summary of the earnings briefing",
@@ -164,6 +166,8 @@ describe("SEC headless model", () => {
       url: "https://links.sgx.com/1.0.0/corporate-announcements/A9CW58STOPTDX0HG/50dad2d3f2e1374d94921a9cad3497846885577d0c43cf2e1fe14c8c7f4764a6" },
     { exchange: "HKEX", symbol: "0700", name: "Tencent", publisher: "HKEXnews", maximum: 100,
       url: "https://www1.hkexnews.hk/listedco/listconews/sehk/2026/1118/2026111800448.pdf" },
+    { exchange: "HOSE", symbol: "FPT.VN", name: "FPT", publisher: "HOSE", maximum: 200,
+      url: "https://www.hsx.vn/vi/tin-tuc/fpt-ket-qua-kinh-doanh-nam-2025/2433776" },
   ])("$exchange results preserve original filing links and the source limit", async ({ exchange, symbol, name, publisher, maximum, url }) => {
     const headless = createSecHeadless({
       loadFilings: async () => { throw new Error("Unexpected SEC read"); },

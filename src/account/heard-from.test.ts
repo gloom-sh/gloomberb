@@ -115,7 +115,7 @@ describe("when the app asks where an account heard about Gloom", () => {
 });
 
 describe("the service calls", () => {
-  test("ask before the email is confirmed; Other sends its text, Instagram, TikTok, YouTube and X a note, cut to 120 characters", async () => {
+  test("ask before email confirmation; Other sends other, and eligible follow-ups send note, cut to 120 characters", async () => {
     const sent: Array<[string, RequestInit | undefined]> = [];
     const api = new CloudHeardFromApi(async (path, options) => {
       sent.push([path, options]);
@@ -127,6 +127,8 @@ describe("the service calls", () => {
     await api.answerHeardFrom("other", `  ${"\u{1F4FA}".repeat(130)}  `);
     await api.answerHeardFrom("other", "   ");
     await api.answerHeardFrom("instagram", "  @la_bourse\n en 5 min ");
+    await api.answerHeardFrom("ai_assistant");
+    await api.answerHeardFrom("ai_assistant", "図".repeat(121));
     await api.answerHeardFrom("x", "");
     await api.skipHeardFrom();
     expect(sent.map(([path, options]) => [path, options?.method ?? "GET", options?.body ?? null])).toEqual([
@@ -136,6 +138,8 @@ describe("the service calls", () => {
       ["/account/heard-from", "POST", JSON.stringify({ answer: "other", other: "\u{1F4FA}".repeat(120) })],
       ["/account/heard-from", "POST", JSON.stringify({ answer: "other" })],
       ["/account/heard-from", "POST", JSON.stringify({ answer: "instagram", note: "@la_bourse en 5 min" })],
+      ["/account/heard-from", "POST", JSON.stringify({ answer: "ai_assistant" })],
+      ["/account/heard-from", "POST", JSON.stringify({ answer: "ai_assistant", note: "図".repeat(120) })],
       ["/account/heard-from", "POST", JSON.stringify({ answer: "x" })],
       ["/account/heard-from", "POST", JSON.stringify({ skip: true })],
     ]);

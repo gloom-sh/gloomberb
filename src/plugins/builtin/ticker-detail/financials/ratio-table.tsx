@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode, type RefObje
 import {
   DataTableView,
   DisclosureMarker,
+  ExternalLinkText,
   type DataTableCell,
   type DataTableColumn,
 } from "../../../../components";
@@ -54,10 +55,12 @@ export const PERIOD_END_NAME_CELL: DataTableCell = { text: "Period end", color: 
  * edge on the desktop and the web and in the last column (`flush`), and a
  * cell short of it elsewhere, so the day is drawn the same way.
  */
-export function periodEndCell(end: string | undefined, width: number, flush: boolean): DataTableCell {
+export function periodEndCell(end: string | undefined, width: number, flush: boolean, filingUrl?: string): DataTableCell {
   if (!end) return { text: "" };
   const shown = formatDay(end);
   const day = financialPeriodHeaderLabel(shown, width);
+  const padded = flush ? day : `${day} `;
+  const start = day.indexOf(shown);
   return {
     // A day, not a figure: written day first, exported as its ISO date.
     text: shown,
@@ -65,7 +68,11 @@ export function periodEndCell(end: string | undefined, width: number, flush: boo
     color: colors.textMuted,
     content: (
       <Box flexDirection="row" width={width} justifyContent="flex-end">
-        <Text fg={colors.textMuted}>{flush ? day : `${day} `}</Text>
+        {filingUrl ? <>
+          <Text>{padded.slice(0, start)}</Text>
+          <ExternalLinkText url={filingUrl} label={shown} />
+          <Text>{padded.slice(start + shown.length)}</Text>
+        </> : <Text fg={colors.textMuted}>{padded}</Text>}
       </Box>
     ),
   };

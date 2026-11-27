@@ -5,6 +5,7 @@ import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
 import { AppContext, PaneInstanceProvider, createInitialState } from "../../state/app/context";
 import { createStaticAppStore } from "../../test-support/app-store";
 import { createDefaultConfig } from "../../types/config";
+import { Box, Text } from "../../ui";
 import { DataTableView } from "./view";
 
 // 47 cells wide with its one-cell inset and gaps: NAME at 1-10, LAST at 12-23, CHG at 25-44. While CHG is past
@@ -292,4 +293,42 @@ test("a table's columns over its rows at its width are as drawn fresh, never wid
   await act(async () => { tui.setup().resize(30, 6); });
   await settle();
   expect(tui.frame()).toBe(alphabetAt30);
+});
+
+// A source cell of two links ran together as "KSEISchedu" in the cells a cut left it, and left one cell of a link in a column left none.
+test("a drawn cell that says its width is made for the cells a cut column shows, and draws nothing in a column left none", async () => {
+  const columns = [
+    { id: "name", label: "NAME", width: 10 },
+    { id: "last", label: "LAST", width: 10, align: "right" as const },
+    { id: "source", label: "SOURCE", width: 16 },
+  ];
+  // Two pieces a cell apart: the second only where both fit whole, the first cut where its room ends.
+  const pieces = (width: number) => {
+    const both = width >= 14;
+    const first = both || width >= 5 ? "Bursa" : `${"Bursa".slice(0, width - 1)}…`;
+    return { text: "Bursa", contentWidth: both ? 14 : 5, content: <Box flexDirection="row" gap={1}><Text>{first}</Text>{both ? <Text>Schedule</Text> : null}</Box> };
+  };
+  const state = createInitialState(createDefaultConfig("/tmp/gloom-table-cut-columns"));
+  const fresh = async (width: number) => {
+    await act(async () => {
+      await tui.render(<AppContext value={createStaticAppStore(state)}>
+        <PaneInstanceProvider paneId="drawn-cut">
+          <DataTableView
+            focused showHorizontalScrollbar columns={columns} items={[{ name: "Brent" }]}
+            selection={{ kind: "index", selectedIndex: 0, onChange: () => {} }}
+            sortColumnId={null} sortDirection="asc" onHeaderClick={() => {}} getItemKey={(item) => item.name}
+            // Each value fills its column, so the table has no blank to give the source column.
+            renderCell={(item, column) => column.id === "source" ? pieces(column.width)
+              : { text: column.id === "last" ? "1,098.5300" : item.name.padEnd(column.width, ".") }}
+            emptyStateTitle="No rows" headerScrollId="drawn-header" bodyScrollId="drawn-body"
+          />
+        </PaneInstanceProvider>
+      </AppContext>, { width, height: 6 });
+    });
+    await settle();
+    return lines()[1]!;
+  };
+  expect(await fresh(40)).toMatch(/1,098\.5300\s+Bursa Schedule\s*$/);
+  expect(await fresh(36)).toMatch(/1,098\.5300\s+Bursa\s*$/);
+  expect(await fresh(28)).toMatch(/1,098\.5300\s*$/);
 });

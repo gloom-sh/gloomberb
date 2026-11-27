@@ -136,14 +136,14 @@ test("a TTM over complete quarters runs to the latest four that pass, past a new
   expect(computeTTM(quarters.slice(2), [], complete)).toBeNull();
 });
 
-test("TTM skips a mix of MOPS and vendor quarters with different reported definitions", () => {
+test.each(["mops", "nse"] as const)("TTM skips a mix of %s and vendor quarters with different definitions", (source) => {
   const quarters: FinancialStatement[] = dates.map((date) => ({ date, currency: "TWD", netIncome: 100 }));
   expect(computeTTM(quarters)?.netIncome).toBe(400);
   quarters[3]!.filledFrom = {
     source: "results",
     fields: ["netIncome"],
     documents: [{
-      source: "mops",
+      source,
       kind: "annual_report",
       title: "Consolidated financial report",
       url: "https://mopsov.twse.com.tw",

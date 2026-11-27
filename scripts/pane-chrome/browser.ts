@@ -134,6 +134,8 @@ function gpuChromeExecutable(): string {
   return "google-chrome";
 }
 
+let nextProfileId = 0;
+
 /**
  * Starts the headless shell with one page of a fixed size. No network beyond
  * this machine: every host but 127.0.0.1 fails to resolve. `gpu` starts
@@ -151,7 +153,7 @@ export async function launchBrowser(
   } = {},
 ): Promise<Browser> {
   const executable = gpu ? gpuChromeExecutable() : await chromeExecutable();
-  const profile = profileDir ?? cacheDir("profiles", `${name}-${process.pid}-${Date.now()}`);
+  const profile = profileDir ?? cacheDir("profiles", `${name}-${process.pid}-${Date.now()}-${++nextProfileId}`);
   const removeProfile = () => profileDir ? Promise.resolve() : rm(profile, { recursive: true, force: true });
   await mkdir(profile, { recursive: true });
   const proc = Bun.spawn([

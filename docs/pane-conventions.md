@@ -588,6 +588,15 @@ at any width. A pane does nothing for this, except say what matters:
   (`width - getTableWidth(columns)`), never by a constant: one that forgets
   the gaps makes the table wider than its pane at every width, and its last
   column is the one that leaves.
+- A cell the pane draws itself (`content`) says how wide it draws whole
+  (`contentWidth`), so the terminal fits its column to it, and lays itself
+  out in the width its column is given. Where the terminal's edge still cuts
+  that column, the cell is made again with the cells that show as the
+  column's width, so it gives up a piece whole rather than have the edge cut
+  it, and in a column left no cells it draws nothing. DVD's source cell
+  links the notice and the schedule where both fit whole and the notice
+  alone in less: the pane sizes that column to its width by the table's own
+  measure, and the schedule stays on the selected row's menu.
 
 `shot` names a column a capture cut in a warning (`cutColumns`), which does
 not fail `--strict`; a table drawn outside the kit owes the same fit.
@@ -782,6 +791,21 @@ write it to lead with what names the item. Rules:
 - A row that is shown but does not apply right now (an exited holder, a story
   or print after the tab's pinned moment) reads in `textMuted` and plain
   weight across the row, its value colours included, and stays selectable.
+  The table draws it: `isRowMuted` on `DataTableView` mutes every cell, and
+  content a cell draws itself (ticker badges) reads `useDataTableRowMuted`,
+  so a pane never mutes cell by cell.
+- A list of rows out at an instant follows the tab's pinned crosshair through
+  `usePinnedList` (a chart over a table gets it from
+  `useChartTableSelection`): it selects the row out by the pinned moment when
+  the pin moves, mutes the later rows, and names the pin in its footer on one
+  labelled clock. Give it the selected id as the list stores it, null when
+  nothing is picked, not the row it falls back to showing, and select by id,
+  so a row streaming in above never takes the selection. Pass `order` when
+  rows are finer than milliseconds (the tape's nanoseconds), and
+  `enabled: false` while an item is open over the list, which also holds the
+  selection still until it closes. A list dated by day leaves it out
+  (`FeedDataTableTimeColumn` without `instant`): a day cannot say whether it
+  came before a moment in it.
 - A board row whose figures are not the market now says so in a word beside
   its date, in `MarketBoardStack`'s as-of column, never by colour alone:
   `stale` (warning colour) for an observation too old to be current, `so far`

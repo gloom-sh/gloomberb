@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { act } from "react";
-import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, takeSavedTextFile } from "../../../renderers/opentui/test-utils";
 import { PaneFooterBar, PaneFooterProvider, footerTimeText } from "../../../components/layout/pane/footer";
 import { connectionHealth, GLOOM_CLOUD_HTTP_CONNECTION_ID, registerGloomCloudConnectionSources } from "../../../core/connection-health";
 import { Box } from "../../../ui";
 import { createInitialState } from "../../../state/app/context";
+import { exportPaneTable } from "../../../state/pane-table-export-registry";
 import { createDefaultConfig } from "../../../types/config";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import type { PluginRuntimeAccess } from "../../runtime";
@@ -52,6 +53,18 @@ function seedCalendar(): void {
       forecast: "0.9%",
       prior: "0.8%",
     },
+  ], { sourceKey: "gloomberb-cloud", schemaVersion: 1 });
+  attachEconCalendarPersistence(persistence);
+}
+
+/** Two releases of one hour whose names differ only past their 16th letter, and one that is out with all three figures. */
+function seedLongNames(): void {
+  const persistence = new MemoryPluginPersistence();
+  const at = (hours: number) => new Date(Date.now() + hours * 3_600_000).toISOString();
+  persistence.seedResource("calendar", "global", [
+    { id: "qoq", date: at(1), time: "13:00", country: "CA", event: "GDP Growth Rate QoQ Final", impact: "high", actual: null, forecast: "0.4%", prior: "3.3%" },
+    { id: "yoy", date: at(1), time: "13:00", country: "CA", event: "GDP Growth Rate YoY Final", impact: "high", actual: null, forecast: null, prior: "0.8%" },
+    { id: "out", date: at(-2), time: "10:00", country: "CN", event: "Balance of Trade", impact: "high", actual: "111.2B", forecast: "100B", prior: "105.28B" },
   ], { sourceKey: "gloomberb-cloud", schemaVersion: 1 });
   attachEconCalendarPersistence(persistence);
 }
@@ -141,9 +154,97 @@ describe("EconCalendarPane", () => {
     expect(frame).toContain("0.2%");
     expect(frame).toContain("0.8%");
 
-    const compact = await renderPane(43, "all", true, { country: "FR" });
+    const compact = await renderPane(47, "all", true, { country: "FR" });
     expect(compact).toMatch(/ACT\s+EST\s+PRIOR/);
-    expect(compact).toMatch(/1\.1%\s+0\.9%\s+0\.8%/);
+    expect(compact).toMatch(/Retail Sales\s+1\.1%\s+0\.9%\s+0\.8%/);
+  });
+
+  // A pane 53 cells wide (the browser's first screen) gave the name 9 cells beside three figure columns: two rows of
+  // one hour both read "GDP Growt…". The names come first, as in every narrow table.
+  test("keeps event names readable in a narrow pane, leaving out PRIOR and, narrower still, the forecast, and says so", async () => {
+    seedLongNames();
+
+    const firstScreen = await renderPane(53, "high");
+    expect(firstScreen).toMatch(/EVENT\s+ACT\s+EST\s*\n/);
+    expect(firstScreen).toContain("1 hidden · PRIOR");
+    // Each row says which release it is, and its figures are whole.
+    expect(firstScreen).toMatch(/GDP Growth Rate QoQ Final\s+—\s+0\.4%/);
+    expect(firstScreen).toMatch(/GDP Growth Rate YoY Final\s+—\s+—/);
+    expect(firstScreen).toMatch(/Balance of Trade\s+111\.2B\s+100B\s/);
+
+    // A phone keeps the forecast a print is read against: the names give up more before it goes.
+    const phone = await renderPane(48, "high");
+    expect(phone).toMatch(/EVENT\s+ACT\s+EST\s*\n/);
+    expect(phone).toContain("1 hidden · PRIOR");
+    expect(phone).toMatch(/GDP Growth Rate QoQ\S*\s+—\s+0\.4%/);
+
+    const narrower = await renderPane(40, "high");
+    expect(narrower).toMatch(/EVENT\s+ACT\s*\n/);
+    expect(narrower).toContain("2 hidden · EST, PRIOR");
+    expect(narrower).toMatch(/Balance of Trade\s+111\.2B\s/);
+
+    // With room for the names beside all three, nothing is left out.
+    const wide = await renderPane(110, "high");
+    expect(wide).toMatch(/ACTUAL\s+FORECAST\s+PRIOR/);
+    expect(wide).not.toMatch(/\d hidden · /);
+    expect(wide).toMatch(/GDP Growth Rate QoQ Final\s+—\s+0\.4%\s+3\.3%/);
+  });
+
+  // A figure column is as wide as the widest figure listed, so one trade balance weeks out (`1.522B AUD`) took the
+  // forecast from every row of a phone. The long figure gives its cells back first.
+  test("a long figure is cut before a phone loses the forecast of every row", async () => {
+    const persistence = new MemoryPluginPersistence();
+    const at = (hours: number) => new Date(Date.now() + hours * 3_600_000).toISOString();
+    persistence.seedResource("calendar", "global", [
+      { id: "qoq", date: at(1), time: "13:00", country: "CA", event: "GDP Growth Rate QoQ Final", impact: "high", actual: null, forecast: "0.4%", prior: "3.3%" },
+      { id: "out", date: at(-2), time: "10:00", country: "CN", event: "Balance of Trade", impact: "high", actual: "111.2B", forecast: "100B", prior: "105.28B" },
+      { id: "aud", date: at(30), time: "18:00", country: "AU", event: "Balance of Trade", impact: "high", actual: null, forecast: "1.522B", prior: "2.826B", currency: "AUD" },
+      { id: "fed", date: at(54), time: "18:00", country: "US", event: "Fed Interest Rate Decision", impact: "high", actual: null, forecast: "3.50-3.75%", prior: "3.75-4.00%" },
+    ], { sourceKey: "gloomberb-cloud", schemaVersion: 1 });
+    attachEconCalendarPersistence(persistence);
+
+    // 45 cells here are a phone's 48 less the three its flags take.
+    const phone = await renderPane(45, "high");
+    expect(phone).toMatch(/EVENT\s+ACT\s+EST\s*\n/);
+    expect(phone).toContain("1 hidden · PRIOR");
+    // Every other row keeps its forecast whole, and the long ones say they are cut.
+    expect(phone).toMatch(/GDP Growth Rat…\s+—\s+0\.4%/);
+    expect(phone).toMatch(/Balance of Tra…\s+111\.2B\s+100B\s/);
+    expect(phone).toMatch(/Balance of Tra…\s+—\s+1\.522B…/);
+    expect(phone).toMatch(/Fed Interest R…\s+—\s+3\.50-3…/);
+
+    // A pane whose names have their 20 cells beside the long figures cuts nothing.
+    const firstScreen = await renderPane(56, "high");
+    expect(firstScreen).toContain("1 hidden · PRIOR");
+    expect(firstScreen).toMatch(/Balance of Trade\s+—\s+1\.522B AUD/);
+    expect(firstScreen).toMatch(/Fed Interest Rate De\S*\s+—\s+3\.50-3\.75%/);
+
+    // With room for the names beside them, long figures are whole.
+    const wide = await renderPane(110, "high");
+    expect(wide).toMatch(/1\.522B AUD\s+2\.826B AUD/);
+    expect(wide).toMatch(/3\.50-3\.75%\s+3\.75-4\.00%/);
+    expect(wide).not.toMatch(/\d hidden · /);
+  });
+
+  // Only the table drawn leaves figures out: the file has all three at any width, as it had before the names came first.
+  test("Export CSV keeps every figure, whatever a narrow pane leaves out", async () => {
+    seedLongNames();
+    const exported = async (width: number) => {
+      await renderPane(width, "high");
+      await exportPaneTable("econ-calendar", "eco.csv");
+      return takeSavedTextFile()!.text;
+    };
+    const rows = [
+      "10:00,CN,Balance of Trade,111200000000,100B,105.28B",
+      "13:00,CA,GDP Growth Rate QoQ Final,,0.4%,3.3%",
+      "13:00,CA,GDP Growth Rate YoY Final,,,0.8%",
+    ].join("\n");
+
+    // A pane with room for all three writes the file it always wrote.
+    expect(await exported(110)).toBe(`\uFEFFUTC,COUNTRY,EVENT,ACTUAL,FORECAST,PRIOR\n${rows}`);
+    // One that draws ACT and EST, or ACT alone, still writes all three, under the short headers of its width.
+    expect(await exported(48)).toBe(`\uFEFFUTC,CTY,EVENT,ACT,EST,PRIOR\n${rows}`);
+    expect(await exported(40)).toBe(`\uFEFFUTC,CTY,EVENT,ACT,EST,PRIOR\n${rows}`);
   });
 
   test("shows the saved calendar's original time after a timed-out refresh and clears it on recovery", async () => {
@@ -155,7 +256,7 @@ describe("EconCalendarPane", () => {
     const cloud = spyOn(apiClient, "getCloudEconomicCalendar").mockRejectedValue(new DOMException("Request timed out", "TimeoutError"));
     const dispose = registerGloomCloudConnectionSources(connectionHealth);
     try {
-      const offline = await renderPane(43, "high", true, { country: "US" });
+      const offline = await renderPane(47, "high", true, { country: "US" });
       expect(offline).toContain(`saved copy from ${footerTimeText(Date.now() - 60_000)}`);
       expect(offline).toMatch(/93K\s+165K/);
       cloud.mockResolvedValue([{ ...entry, forecast: "94K" }]);

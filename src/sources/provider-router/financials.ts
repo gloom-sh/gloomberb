@@ -89,6 +89,7 @@ function excludeNonCompanyFinancials(financials: TickerFinancials): TickerFinanc
     nextEarnings: undefined,
     annualStatements: [],
     quarterlyStatements: [],
+    periodFilings: undefined,
     taiwanExchangeStatements: undefined,
   };
 }
@@ -226,11 +227,9 @@ export function providerQuoteMatchesTarget(quote: Quote | null | undefined, symb
   if ([quote.listingExchangeName, quote.exchangeName, quote.instrumentType]
     .some((value) => value != null && typeof value !== "string")) return false;
   if (symbol) {
-    const metadata = quoteMetadataFromQuote(quote);
     // Older quote providers omit listing metadata. They must still return the
-    // requested symbol; when they do name a listing it must agree as well.
-    const hasListing = !!(metadata.listingExchangeName || parsePublicTickerKey(quote.symbol).exchange);
-    if (!quoteMetadataMatchesTarget(metadata, hasListing ? symbol : parsePublicTickerKey(symbol).symbol, hasListing ? exchange : undefined)) return false;
+    // requested symbol; an explicit OTC tier also needs matching evidence.
+    if (!quoteMetadataMatchesTarget(quoteMetadataFromQuote(quote), symbol, exchange, { allowUnnamedListing: true })) return false;
   }
   return true;
 }
@@ -294,8 +293,7 @@ export function providerFinancialsMatchTarget(value: TickerFinancials, symbol: s
   if (!metadata) return true;
   if (typeof metadata.symbol !== "string" || !metadata.symbol.trim()
     || [metadata.listingExchangeName, metadata.instrumentType].some((field) => field != null && typeof field !== "string")) return false;
-  const hasListing = !!(metadata.listingExchangeName || parsePublicTickerKey(metadata.symbol).exchange);
-  return quoteMetadataMatchesTarget(metadata, hasListing ? symbol : parsePublicTickerKey(symbol).symbol, hasListing ? exchange : undefined);
+  return quoteMetadataMatchesTarget(metadata, symbol, exchange, { allowUnnamedListing: true });
 }
 
 export function dropUnusableProviderQuote(
@@ -350,21 +348,23 @@ export function hasRecentFinancialProfileAttempt(resources: ResourceStore | unde
     && attempt.value.sourceKeys.every((key, index) => key === sourceKeys[index]);
 }
 
-/** Company classification may only cross sources for the same explicit listing. */
-export function profileForSameListing(source: TickerFinancials, target: TickerFinancials, request?: { symbol: string; exchange?: string }): TickerFinancials["profile"] {
-  if (!hasMeaningfulProfile(source)) return undefined;
+function sameFinancialListing(source: TickerFinancials, target: TickerFinancials, request?: { symbol: string; exchange?: string }): boolean {
   const identity = (value: TickerFinancials) => [
     value.quote ? quoteMetadataFromQuote(value.quote) : undefined, value.quoteMetadata,
   ].find(metadata => metadata && typeof metadata.symbol === "string" && (metadata.listingExchangeName || parsePublicTickerKey(metadata.symbol).exchange));
   const actual = identity(source), requested = identity(target);
-  if (!actual || !requested) return undefined;
+  if (!actual || !requested) return false;
   const symbol = request?.symbol ?? requested.symbol;
   const listing = parsePublicTickerKey(symbol).exchange || request?.exchange || requested.listingExchangeName || parsePublicTickerKey(requested.symbol).exchange;
   const actualListing = actual.listingExchangeName || parsePublicTickerKey(actual.symbol).exchange;
-  if (typeof listing !== "string" || typeof actualListing !== "string" || !listing.trim() || !actualListing.trim()
-    || !providerFinancialsMatchTarget(source, symbol, listing) || !providerFinancialsMatchTarget(target, symbol, listing)
-    || !quoteMetadataMatchesTarget(requested, symbol, listing) || !quoteMetadataMatchesTarget(actual, symbol, listing)) return undefined;
-  return source.profile;
+  return typeof listing === "string" && typeof actualListing === "string" && !!listing.trim() && !!actualListing.trim()
+    && providerFinancialsMatchTarget(source, symbol, listing) && providerFinancialsMatchTarget(target, symbol, listing)
+    && quoteMetadataMatchesTarget(requested, symbol, listing) && quoteMetadataMatchesTarget(actual, symbol, listing);
+}
+
+/** Company classification may only cross sources for the same explicit listing. */
+export function profileForSameListing(source: TickerFinancials, target: TickerFinancials, request?: { symbol: string; exchange?: string }): TickerFinancials["profile"] {
+  return hasMeaningfulProfile(source) && sameFinancialListing(source, target, request) ? source.profile : undefined;
 }
 
 export function hasStatementRows(data: TickerFinancials | null | undefined): boolean {
@@ -409,6 +409,7 @@ export function mergeMissingStatementArrays(primary: TickerFinancials, fallback:
     ...primary,
     profile: mergeDefinedObject(primary.profile, profileForSameListing(fallback, primary)),
     statementHistory: fallback.statementHistory?.status === "available" ? fallback.statementHistory : primary.statementHistory ?? fallback.statementHistory,
+    periodFilings: primary.periodFilings ?? (fallback.periodFilings && sameFinancialListing(fallback, primary) ? fallback.periodFilings : undefined),
     taiwanExchangeStatements: primary.taiwanExchangeStatements ?? fallback.taiwanExchangeStatements,
     financialCurrency: primary.financialCurrency ?? (hasStatementRows(primary) ? undefined : fallback.financialCurrency),
     ...scoped,

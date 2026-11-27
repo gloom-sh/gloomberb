@@ -1,10 +1,19 @@
-import type { CorporateActionsData, DeclaredDividendAction } from "../types/financials";
+import type { CorporateActionsData, DeclaredDividendAction, DividendNoticeSource } from "../types/financials";
 import { formatDistributionAmount } from "./format";
+import { normalizedHttpUrl } from "./url";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** A paid row this close to a declared one is that distribution, dated a day apart. */
 const SAME_DISTRIBUTION_DAYS = 3;
 const DAY_MS = 86_400_000;
+
+export function dividendNoticeSource(raw: DividendNoticeSource | undefined): DividendNoticeSource | undefined {
+  const publisher = typeof raw?.publisher === "string" ? raw.publisher.trim() : "";
+  const url = normalizedHttpUrl(raw?.url);
+  if (!publisher || !url) return undefined;
+  const scheduleUrl = normalizedHttpUrl(raw?.scheduleUrl);
+  return { publisher, url, ...(scheduleUrl ? { scheduleUrl } : {}) };
+}
 
 export function declaredDividendCash(row: DeclaredDividendAction, currency?: string | null): { amount: string; estimate?: string } {
   const cash = currency ? formatDistributionAmount(row.amount, currency) : String(row.amount);
@@ -44,8 +53,9 @@ export function declaredDividends(
     if ((payDate ?? exDate) < today) return [];
     const at = Date.parse(`${exDate}T00:00:00Z`);
     if (paid.some((time) => Math.abs(time - at) <= SAME_DISTRIBUTION_DAYS * DAY_MS)) return [];
+    const source = dividendNoticeSource(row.source);
     return [{ exDate, amount: row.amount, ...declarationDate ? { declarationDate } : {},
       ...recordDate ? { recordDate } : {}, ...payDate ? { payDate } : {}, ...row.special === true ? { special: true as const } : {},
-      ...row.cashEstimate ? { cashEstimate: row.cashEstimate } : {} }];
+      ...row.cashEstimate ? { cashEstimate: row.cashEstimate } : {}, ...source ? { source } : {} }];
   }).sort((left, right) => left.exDate.localeCompare(right.exDate));
 }

@@ -48,8 +48,7 @@ export function subscribeHeardFromDue(listener: () => void): () => void {
 }
 
 /**
- * What the person picked: an answer (Other, or an Instagram, TikTok, YouTube or
- * X answer, with its note), or null for Skip.
+ * What the person picked: an answer (with its note, if any), or null for Skip.
  */
 export type HeardFromChoice = { answer: HeardFromAnswer; note?: string } | null;
 
@@ -60,8 +59,8 @@ export interface HeardFromQuestionDeps {
   skip(): Promise<void>;
   /**
    * Shows the question and resolves with the choice. `shown` is called once it
-   * is on screen; `picked` the moment an answer that asks "Which account or
-   * post?" is picked, so the answer is kept before the note is written.
+   * is on screen; `picked` the moment an answer with a follow-up is picked,
+   * so the answer is kept before the note is written.
    */
   ask(shown: () => void, picked: (answer: HeardFromAnswer) => void): Promise<HeardFromChoice>;
 }

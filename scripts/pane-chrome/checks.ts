@@ -24,7 +24,7 @@ import { checkFirstPaint, checkThemePreview } from "./paint";
  * from the grip and the title (#1478). Held keys are real too: the key goes
  * down and then repeats with `autoRepeat`, as a keyboard sends it.
  *
- *   bun run check:pane-chrome [--only <text>] [--repeat <n>] [--root <checkout>]
+ *   bun run check:pane-chrome [--only <text>] [--repeat <n>] [--concurrency <n>] [--root <checkout>]
  *
  * `--root` builds the fixture from another checkout's sources, to show a check
  * fails on a known-broken commit. A failure saves a screenshot under the cache
@@ -1887,46 +1887,66 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const only = takeOption(args, "--only");
   const repeat = positiveInteger(takeOption(args, "--repeat"), 1, "--repeat");
+  const concurrency = Math.min(
+    4,
+    positiveInteger(takeOption(args, "--concurrency") ?? process.env.PANE_CHROME_CONCURRENCY, 1, "--concurrency"),
+  );
   const root = resolve(takeOption(args, "--root") ?? join(import.meta.dir, "../.."));
   const includeShare = !only || "global Share".includes(only);
   const selected = steps.filter((step) => !only || step.name.includes(only));
   if (selected.length === 0 && !includeShare) throw new Error(`No step matches "${only}"`);
 
   const page = await serveFixturePage(root, cacheDir("build", `checks-${process.pid}`));
-  const browser = await launchBrowser("checks", VIEWPORT.width, VIEWPORT.height);
-  const { cdp } = browser;
   const failures: Array<{ name: string; message: string }> = [];
   const passes = new Map<string, number>();
+  const workerCount = Math.min(concurrency, selected.length);
+  const initScript = PAGE_HELPERS + pageClock(process.env.PANE_CHROME_NOW);
+  const browsers = await Promise.all(
+    Array.from({ length: workerCount }, (_, index) => launchBrowser(`checks-${index + 1}`, VIEWPORT.width, VIEWPORT.height)),
+  );
   try {
-    await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: PAGE_HELPERS + pageClock(process.env.PANE_CHROME_NOW) });
+    await Promise.all(
+      browsers.map((browser) => browser.cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: initScript })),
+    );
+    if (workerCount > 1) {
+      console.log(`Running ${selected.length} pane-chrome steps across ${workerCount} Chrome workers.`);
+    }
     for (let round = 1; round <= repeat; round += 1) {
-      for (const step of selected) {
-        const started = performance.now();
-        const isolated = step.isolatedClock ? await launchBrowser("checks-clock", VIEWPORT.width, VIEWPORT.height) : null;
-        const stepCdp = isolated?.cdp ?? cdp;
-        try {
-          if (isolated) await stepCdp.send("Page.addScriptToEvaluateOnNewDocument", { source: PAGE_HELPERS + pageClock(process.env.PANE_CHROME_NOW) });
-          await openScenario(stepCdp, page, step.scenario);
-          await step.run(stepCdp);
-          passes.set(step.name, (passes.get(step.name) ?? 0) + 1);
-          console.log(`ok   ${step.name} (${Math.round(performance.now() - started)} ms)`);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          failures.push({ name: step.name, message });
-          console.log(`FAIL ${step.name}\n     ${message}`);
-          if (process.env.GITHUB_ACTIONS) console.log(`::error title=Pane chrome: ${step.name}::${message.replaceAll("\n", " ")}`);
-          await saveScreenshot(stepCdp, step.name).catch(() => {});
-        } finally {
-          await isolated?.close();
+      let cursor = 0;
+      const runWorker = async (workerCdp: Cdp): Promise<void> => {
+        while (true) {
+          const index = cursor;
+          cursor += 1;
+          if (index >= selected.length) return;
+          const step = selected[index]!;
+          const started = performance.now();
+          const isolated = step.isolatedClock ? await launchBrowser("checks-clock", VIEWPORT.width, VIEWPORT.height) : null;
+          const stepCdp = isolated?.cdp ?? workerCdp;
+          try {
+            if (isolated) await stepCdp.send("Page.addScriptToEvaluateOnNewDocument", { source: initScript });
+            await openScenario(stepCdp, page, step.scenario);
+            await step.run(stepCdp);
+            passes.set(step.name, (passes.get(step.name) ?? 0) + 1);
+            console.log(`ok   ${step.name} (${Math.round(performance.now() - started)} ms)`);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            failures.push({ name: step.name, message });
+            console.log(`FAIL ${step.name}\n     ${message}`);
+            if (process.env.GITHUB_ACTIONS) console.log(`::error title=Pane chrome: ${step.name}::${message.replaceAll("\n", " ")}`);
+            await saveScreenshot(stepCdp, step.name).catch(() => {});
+          } finally {
+            await isolated?.close();
+          }
         }
-      }
+      };
+      await Promise.all(browsers.map((browser) => runWorker(browser.cdp)));
       if (repeat > 1) console.log(`round ${round}/${repeat}: ${failures.length} failures so far`);
     }
     if (page.strayRequests.length > 0) {
       failures.push({ name: "fixture page", message: `requested files it does not have: ${page.strayRequests.join(", ")}` });
     }
   } finally {
-    await browser.close();
+    await Promise.all(browsers.map((browser) => browser.close()));
     await page.close();
   }
 

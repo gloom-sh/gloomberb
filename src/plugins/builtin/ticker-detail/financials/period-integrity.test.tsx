@@ -3,6 +3,7 @@ import { act, useReducer } from "react";
 import { buildHeadlessFunctionReport, renderHeadlessPaneText } from "../../../../cli/pane-functions/headless";
 import { PaneFooterBar, PaneFooterProvider } from "../../../../components/layout/pane/footer";
 import { createOpenTuiTestHarness, takeSavedTextFile } from "../../../../renderers/opentui/test-utils";
+import { mapCloudFinancials } from "../../../../sources/gloomberb-cloud/normalizers";
 import { AppContext, PaneInstanceProvider, appReducer, createInitialState } from "../../../../state/app/context";
 import { createStaticAppStore } from "../../../../test-support/app-store";
 import { exportPaneTable } from "../../../../state/pane-table-export-registry";
@@ -326,6 +327,33 @@ test("the exchange view exports source-linked year-to-date results apart from th
   expect(csv).toContain("Revenue,3687740000");
   await clickPeriod();
   expect(frame()).not.toContain("3,687,740,000");
+});
+
+test("the issuer filing stays with its fiscal period through normalization, FA and export", async () => {
+  const url = "https://mopsov.twse.com.tw/server-java/t164sb01?step=3&SYEAR=2026&file_name=tifrs-fr1-m1-ci-cr-2330-2026Q3.html";
+  const filing = {
+    source: "mops", kind: "quarterly_results", title: "2026 Q3 financial report", url,
+    periodEnd: "2026-09-30", periodMonths: 9,
+    publishedAt: "2026-11-12T00:00:00Z", fetchedAt: "2026-11-12T00:10:00Z",
+  } as const;
+  const financials = mapCloudFinancials({
+    annualStatements: [], priceHistory: [],
+    quarterlyStatements: [
+      { date: "2026-06-30", currency: "TWD", totalRevenue: 1_000_000_000 },
+      { date: filing.periodEnd, currency: "TWD", netIncome: 400_000_000,
+        filledFrom: { source: "results", documents: [filing], fields: ["netIncome"],
+          lines: { netIncome: { document: 0, page: null } } } },
+    ],
+    statementFilings: [
+      { ...filing, periodMonths: 12, url: "https://mopsov.twse.com.tw/annual" },
+      filing,
+    ],
+  });
+  await mount(financials, "quarterly");
+  const { result, csv } = await outputs(financials, "quarterly");
+  expect(columns(result)[0]).toMatchObject({ date: filing.periodEnd, issuerFiling: filing });
+  expect(csv).toContain(`Issuer filing for ${filing.periodEnd},${url}`);
+  expect(csv).toContain("Period end,2026-09-30");
 });
 
 for (const reportedCurrency of [undefined, "USD"]) {
