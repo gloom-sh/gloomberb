@@ -280,19 +280,24 @@ test("in the app, held commits go ahead on their own when the end of a flush goe
   }
 });
 
-test("in the app, a write queued for a flush is replaced by a later write of its key, and keeps its place among the others", async () => {
+test("in the app, a replacement queued during a WAL flush runs after earlier writes when the queue resumes", async () => {
   const fixture = holdFixture("hold-order");
-  const { access, put, committed, state, connection } = fixture;
+  const { access, put, committed, commits, state, connection } = fixture;
   const ran: string[] = [];
-  const write = (k: string, v: string) => () => { ran.push(`${k}=${v}`); put(`${k}=${v}`)(); };
+  const write = (key: string, value: string) => () => {
+    ran.push(`${key}=${value}`);
+    put(`${key}=${value}`)();
+  };
   try {
-    access.write("first", write("a", "1"), { key: "a" });
-    access.write("second", write("b", "1"), { key: "b" });
-    access.write("again", write("a", "2"), { key: "a" });
+    expect(access.write("first", write("a", "1"), { key: "a" })).toBe(false);
+    expect(access.write("second", write("b", "1"), { key: "b" })).toBe(false);
+    expect(access.write("again", write("a", "2"), { key: "a" })).toBe(false);
+    expect(ran).toEqual([]);
     state.flushing = false;
     access.resume();
-    await Bun.sleep(30);
-    expect(ran).toEqual(["b=1", "a=2"]);
+    const deadline = performance.now() + 3_000;
+    while (commits.length < 2 && performance.now() < deadline) await Bun.sleep(10);
+    expect(ran, "writes after resuming the WAL queue").toEqual(["b=1", "a=2"]);
     expect(committed()).toEqual(["a=2", "b=1"]);
     expect(connection.inTransaction).toBe(false);
   } finally {
