@@ -19,11 +19,11 @@ How to edit this file (update it in the release commit):
 
 ## 0.20: A faster desktop app, broker CSV imports, and safer workspaces
 
-- **A faster, lighter desktop app.** It starts about a third faster on Mac and uses less memory. (0.20.0)
+- **A faster app that keeps your workspace.** Desktop starts about a third faster on Mac and uses less memory; panes opened in two terminal sessions both stay saved. (0.20.0, 0.20.22)
 - **Import positions from your broker's CSV.** For brokers Gloom does not sync, in the app or the CLI. (0.20.2)
 - **Your tickers at a glance.** A strip shows what moved since your last visit, watchlists take named groups, and the header follows any market. (0.20.3, 0.20.16)
 - **Ask Gloom shows its sources and asks before it acts.** Every figure links to the data behind it, and it asks before it presses a button. (0.20.2, 0.20.4)
-- **Keep both workspace edits.** Panes opened in two terminal sessions stay in the saved workspace, whichever session quits first. (0.20.22)
+- **Financials on the right reporting basis.** Financial Analysis labels the basis of filed figures, and listing valuations no longer use a predecessor company's earnings. (0.20.23)
 
 ## 0.19: Option strategy screens, a deeper EQS, and panes that stack as tabs
 
