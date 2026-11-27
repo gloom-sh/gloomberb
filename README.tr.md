@@ -45,7 +45,7 @@ Windows, PowerShell içinde:
 irm https://gloom.sh/install.ps1 | iex
 ```
 
-Veya herhangi birinde [Bun](https://bun.sh) ile:
+Her üç işletim sisteminde de [Bun](https://bun.sh) ile:
 
 ```bash
 bun install -g @gloom-sh/terminal
@@ -59,9 +59,9 @@ Grafikler Ghostty, Kitty ve WezTerm gibi Kitty uyumlu terminallerde görsel olar
 
 ## Başlangıç
 
-Komut çubuğu için `Ctrl+P` tuşlarına veya bir hisse senedi kodu aramak için `` ` `` tuşuna basın. `HELP` tüm komutları ve kısayolları listeler; [işlev kataloğu](https://gloom.sh/docs/functions) ise hepsini gösterir.
+Komut çubuğunu açmak için `Ctrl+P`, hisse senedi kodu aramak için `` ` `` tuşuna basın. `HELP` tüm komutları ve kısayolları listeler; bunları [işlev kataloğunda](https://gloom.sh/docs/functions) da bulabilirsiniz.
 
-Kabuğunuzdan `gloom quote AAPL` komutu bir AAPL fiyatını gösterir; betikler için `--json` ekleyin. [Kullanıcı kılavuzu](docs/usage.md) grafikleri, kısayolları, CLI'ı ve aracı kurumlarınızı SnapTrade ile bağlamayı kapsar.
+Terminalde `gloom quote AAPL` komutu AAPL fiyatını gösterir; betiklerde kullanmak için `--json` ekleyin. [Kullanıcı kılavuzu](docs/usage.md) grafikleri, kısayolları, komut satırı arayüzünü ve aracı kurum hesaplarınızı SnapTrade ile bağlamayı anlatır.
 
 ## Veri ve gizlilik
 
