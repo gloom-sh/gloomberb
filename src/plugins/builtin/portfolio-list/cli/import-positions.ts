@@ -2,12 +2,10 @@ import { readFile, stat } from "fs/promises";
 import { homedir } from "os";
 import { saveConfig } from "../../../../data/config/store";
 import { withCollectionMarketData } from "../../../../cli/suffixed-listing-rows";
-import { resolveTickersForCli } from "../../../../cli/ticker-resolution";
-import { StagedTickerRepository } from "../../../../cli/staged-tickers";
 import { listingFields, savedListingName } from "../../../../cli/listing-arg";
 import { cliStyles, renderStats, renderTable } from "../../../../utils/cli-output";
 import { findNamedCollection } from "../../../../portfolio/collection-name";
-import { tickerChangeLine } from "../../../../tickers/ticker-changes";
+import { lookUpPositionSymbols } from "../positions-import/lookup";
 import { createManualPortfolio, isManualPortfolio } from "../../../../portfolio/mutations";
 import {
   decodePositionsFile,
@@ -33,7 +31,6 @@ import {
   buildPositionsImportPlan,
   replaceRefusal,
   summarizePositionsImport,
-  type ImportSymbolResolution,
   type PositionsImportMode,
   type PositionsImportPlan,
 } from "../../../../portfolio/positions-import/plan";
@@ -49,7 +46,7 @@ export const POSITIONS_IMPORT_HELP = {
   title: "Importing a broker's positions",
   lines: [
     `portfolio import <file> reads the positions export (CSV) a brokerage's positions or holdings page downloads: ${POSITIONS_EXPORT_BROKERS.join(", ")}, or any table with a Symbol (or Ticker) and a Quantity (or Shares) column, and a cost in total (Cost Basis) or per share (Avg Cost, Price Paid), a purchase date (Date Acquired) and a Currency where it has them. US brokers' exports are in USD. A file takes at most ${MAX_IMPORT_POSITIONS.toLocaleString("en-US")} positions; a trade or activity history is refused.`,
-    "Each symbol becomes a position of shares at its cost per share; rows of one symbol (several accounts or lots) are added up, dated by the earliest. Totals, footers and account headings are left out. Cash and money market sweeps, pending activity, options, bonds and CDs, rows without a ticker and symbols that do not resolve are listed as skipped, each with the reason.",
+    "Each symbol becomes a position of shares at its cost per share; rows of one symbol (several accounts or lots) are added up, dated by the earliest. Totals, footers and account headings are left out. Ended listings, unresolved symbols, cash and money market sweeps, pending activity, options, bonds and CDs, and rows without a ticker are listed as skipped, each with the reason.",
     "The portfolio is named after the broker (or the file) unless --name says otherwise, and is created when it does not exist. One that holds tickers needs --merge (the file's positions replace those of the same listings, a holding's lots becoming one position; the rest stay) or --replace (holdings the file does not list are removed, with their targets). A replace is refused while any of the file's stock or fund rows could not be imported, and never removes a holding the file names on a skipped row. A position the file gives no cost for keeps the holding's own cost, else it has none.",
     "--dry-run looks every symbol up and prints the same table without saving. In the app, Import Positions… in the PF pane menu shows the same preview before it saves.",
   ],
@@ -140,18 +137,9 @@ export async function importPositionsFileCommand(
       const portfolio = existing ?? created!.portfolio;
 
       // Looked up as `portfolio add` looks a list up; listings found are kept in memory until the import is saved.
-      const staged = new StagedTickerRepository(store);
       const symbols = file.positions.map((position) => position.symbol);
-      const lookups = symbols.length > 0
-        ? await resolveTickersForCli(symbols, staged, dataProvider, undefined, { onRetry: retryNotice(ctx), onProgress: progressNotice(ctx) })
-        : [];
-      // A broker's symbols are its own market's listings: a row says only that a symbol changed or stopped trading.
-      const resolutions = new Map<string, ImportSymbolResolution>(lookups.map((lookup) => [
-        lookup.input,
-        lookup.error
-          ? { error: lookup.error.message }
-          : { ticker: lookup.ticker, notes: [tickerChangeLine(lookup.change), lookup.ended].filter((note): note is string => !!note) },
-      ]));
+      const { resolutions } = await lookUpPositionSymbols(symbols, { store, dataProvider },
+        { onRetry: retryNotice(ctx), onProgress: progressNotice(ctx) });
       // A portfolio that holds nothing has nothing to replace: the file goes into it either way.
       const mode = options.mode === "replace" && holdings.length > 0 ? "replace" : "merge";
       const plan = buildPositionsImportPlan({ file, resolutions, portfolio, holdings, mode, baseCurrency: config.baseCurrency });
@@ -171,7 +159,7 @@ export async function importPositionsFileCommand(
       }
 
       if (!dryRun) {
-        const latest = new Map<string, TickerRecord>([...lookups.flatMap((lookup) => lookup.ticker ? [lookup.ticker] : []), ...holdings]
+        const latest = new Map<string, TickerRecord>([...plan.rows.map((row) => row.ticker), ...holdings]
           .map((ticker) => [ticker.metadata.ticker, ticker] as const));
         const applied = applyPositionsImportPlan(plan, {
           portfolioId: portfolio.id,

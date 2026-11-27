@@ -37,6 +37,7 @@ import type { OverviewFunctionLink, PositionTableRow, StatField } from "./types"
 import type { OverviewDividendState } from "./dividend";
 import { lapseValue, UNEVEN_REGULAR_PAYMENTS } from "../../../../utils/forward-dividend";
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl, portfolioPnlPercent, signedPositionDirection } from "../../../../portfolio/position-metrics";
+import { withPurchaseDateCostFx, type PurchaseDateCostFx } from "../../../../portfolio/cost-fx";
 import { listingDividendYield, liveForwardPE, liveTrailingPE } from "../../../../market-data/quotes/live-valuation";
 import { atRegularSessionPrice, regularSessionMarketCapitalization } from "../../../../market-data/quotes/regular-session-valuation";
 import { listingEnterpriseValue, type ListingEnterpriseValue } from "../../../../market-data/quotes/listing-enterprise-value";
@@ -537,6 +538,7 @@ export function buildPositionRows({
   quoteCurrency,
   baseCurrency,
   toBase,
+  purchaseDateFx,
   accountNames = NO_ACCOUNT_NAMES,
 }: {
   ticker: TickerRecord;
@@ -544,9 +546,11 @@ export function buildPositionRows({
   quoteCurrency: string;
   baseCurrency: string;
   toBase: CurrencyConverter;
+  purchaseDateFx?: PurchaseDateCostFx;
   accountNames?: PositionAccountNames;
 }): PositionTableRow[] {
-  return ticker.metadata.positions.filter((position) => position.shares !== 0).map((position) => {
+  const valuedTicker = purchaseDateFx ? withPurchaseDateCostFx([ticker], purchaseDateFx, baseCurrency)[0]! : ticker;
+  return valuedTicker.metadata.positions.filter((position) => position.shares !== 0).map((position) => {
     const positionCurrency = getPortfolioPositionMetrics(
       { ...ticker, metadata: { ...ticker.metadata, positions: [position] } }, undefined, quoteCurrency, undefined, quote,
     ).positionCurrency;

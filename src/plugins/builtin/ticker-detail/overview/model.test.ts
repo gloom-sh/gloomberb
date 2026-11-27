@@ -13,6 +13,7 @@ import { cryptoFixture } from "../../crypto-board/test-fixture";
 import { regularSessionMarketCapitalization } from "../../../../market-data/quotes/regular-session-valuation";
 import { marketCapBasisNote } from "../../../../utils/market-capitalization";
 import { selectFinancialStatements } from "../financials/model";
+import type { PurchaseDateCostFx } from "../../../../portfolio/cost-fx";
 
 const fiscalIncome = (date: string, revenue: number, netIncome: number) => ({ date, currency: "USD", totalRevenue: revenue * 1e6,
   operatingIncome: (netIncome + 1_000) * 1e6, netIncome: netIncome * 1e6, netIncomeCommonStockholders: (netIncome - 10) * 1e6,
@@ -202,6 +203,7 @@ function row(position: Partial<TickerPosition>, options: {
   quotePrice?: number | null;
   quoteCurrency?: string;
   toBase?: (value: number, currency: string) => number;
+  purchaseDateFx?: PurchaseDateCostFx;
 } = {}) {
   const ticker: TickerRecord = createTestTicker("TEST", "Controlled position", {
     portfolios: ["test"],
@@ -212,6 +214,7 @@ function row(position: Partial<TickerPosition>, options: {
   return buildPositionRows({ ticker, quote: quotePrice == null ? undefined : { price: quotePrice } as Quote,
     quoteCurrency: options.quoteCurrency ?? "USD", baseCurrency: "USD",
     toBase: options.toBase ?? ((value) => value),
+    purchaseDateFx: options.purchaseDateFx,
   })[0]!;
 }
 
@@ -246,6 +249,16 @@ describe("position account names", () => {
 });
 
 describe("research position valuation", () => {
+  test("a stored or dated FX basis changes cost and return, not the spot mark or value", () => {
+    const position = { shares: 300, avgCost: 28100 / 300, currency: "HKD", dateAcquired: "2025-02-05" };
+    const rate = 3608.49 / 28100;
+    const options = { quotePrice: 87.35, quoteCurrency: "HKD", toBase: (value: number) => value * (3588.50 / 28100) };
+    const spot = row(position, options);
+    expect(spot).toMatchObject({ cost: "$3,588.50", mark: "HK$87.35" });
+    const dated = row(position, { ...options, purchaseDateFx: new Map([["HKD|2025-02-05", { date: "2025-02-05", rate }]]) });
+    expect(dated).toMatchObject({ cost: "$3,608.49", mark: spot.mark, value: spot.value, pnlValue: expect.closeTo(-261.99, 2), ret: "-7.26%" });
+    expect(row({ ...position, costFxCurrency: "USD", costFxRate: rate }, options)).toEqual(dated);
+  });
   test("equivalent short conventions retain gross exposure but reverse price P&L", () => {
     const positive = row({ side: "short" });
     const negative = row({ shares: -10 });

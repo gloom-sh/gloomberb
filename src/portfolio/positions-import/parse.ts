@@ -441,7 +441,9 @@ function readRow(record: CsvRecord, header: Header, options: RowOptions): RowRea
   const label = clip((symbol ? rawSymbol : description) || lead);
   const skip = (kind: keyof typeof SKIP_REASONS): RowReading => ({
     kind: "skipped",
-    skipped: { line, label, reason: SKIP_REASONS[kind], kind, symbol: symbol && symbol.length <= MAX_SYMBOL_CELL ? symbol : null },
+    skipped: { line, label, reason: SKIP_REASONS[kind], kind,
+      symbol: kind === "option" ? (rawSymbol && rawSymbol.length <= MAX_SYMBOL_CELL ? rawSymbol : null)
+        : symbol && symbol.length <= MAX_SYMBOL_CELL ? symbol : null },
   });
   if (PENDING_ROW.test(rawSymbol) || (!rawSymbol && description && PENDING_ROW.test(description))) return skip("pending");
   const upper = rawSymbol.trim().toUpperCase();

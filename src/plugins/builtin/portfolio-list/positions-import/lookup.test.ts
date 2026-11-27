@@ -41,3 +41,21 @@ test("a preview's lookup saves nothing, and two spellings of one new listing sha
   expect(resolved("ZZZZQ")).toBe('No ticker match found for "ZZZZQ".');
   expect([...lookup.unsaved]).toEqual(["BRK.B"]);
 });
+
+test("a saved listing can be skipped on exact search lifecycle evidence when its quote is unavailable", async () => {
+  const saved = createTestTicker("OLD", "Old Corp", { exchange: "NYSE" });
+  const dataProvider = createTestDataProvider({
+    search: async () => [{ providerId: "test", symbol: "OLD", name: "Old Corp", type: "STK", exchange: "NYSE", currency: "USD",
+      delisting: { status: "delisted", lastTradeDate: "2022-10-27", historyStart: "2016-01-04" } }],
+    getQuote: async () => { throw new Error("Not a ticker: OLD."); },
+  });
+  const store: AppTickerRepositoryPort = {
+    loadTicker: async () => saved, loadAllTickers: async () => [saved],
+    saveTicker: async () => { throw new Error("Preview must not write"); },
+    createTicker: async () => { throw new Error("Preview must not write"); },
+    deleteTicker: async () => { throw new Error("Preview must not write"); },
+  };
+  const preview = await lookUpPositionSymbols(["OLD"], { tickers: new Map([["OLD", saved]]), store, dataProvider });
+  expect(preview.resolutions.get("OLD")).toEqual({ error: "Listing no longer trades (last traded 2022-10-27)." });
+  expect(preview.unsaved.size).toBe(0);
+});
