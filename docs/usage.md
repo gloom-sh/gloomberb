@@ -1356,6 +1356,7 @@ The FUT board's codes work wherever a symbol is typed (`quote`, `history`, `tick
 - An event that takes the whole day (a plenum, an election) reads `All day` in the time column, as does the ECO pane.
 - `--tz <zone>` lists the days on another clock: `Date`, `Day` and `--from` are that zone's, the time there sits in a column named by its city, and the UTC time follows with its own date where that is another day. `econ --country JP --from 12.11.2026 --tz Asia/Tokyo` lists the Bank of Japan's PPI of 12 Nov at `08:50` under `Tokyo` as `2026-11-12` `Thu`, with `11-11 23:50 UTC` beside it; without `--tz` that release is on 11 Nov. With `--tz` and no `--from`, the listing starts today on that clock. An all-day event keeps its own day. `--json` has `day` (the weekday on that clock), `viewerDate`, `viewerTime`, `metadata.from` and `metadata.timeZone`, and keeps `date` as the UTC timestamp; an unknown zone fails with `Unknown time zone`.
 - With `config set timezone`, the ECO pane shows the same column for your zone beside its `UTC` one when it is wide enough.
+- A narrow ECO pane keeps the event names readable: it leaves out **Prior** first and, narrower still, **Forecast**, and says which above the table (`1 hidden · PRIOR`). **Actual** always stays, `Enter` on a row shows all three, and Export CSV writes all three at any width.
 
 **Countries**
 

@@ -844,6 +844,50 @@ export function valueColumnWidth(events: readonly EconEvent[], key: "actual" | "
   return width;
 }
 
+/**
+ * The figure columns a narrow calendar leaves out, least needed first, each
+ * with the cells the event names keep before it goes. PRIOR is context, so it
+ * leaves once the names would get under 20: there a release still says which
+ * one it is (`GDP Growth Rate QoQ`, `Inflation Rate YoY`), and in the 9 the
+ * three columns left it in a pane 53 cells wide, two rows of one hour both
+ * read `GDP Growt…`. The forecast is what a print is read against, so the
+ * names give up more before it goes. The actual always stays, and an event's
+ * detail has all three.
+ */
+const ECON_FIGURE_DROP_ORDER: readonly { id: string; namesUnder: number }[] = [
+  { id: "prior", namesUnder: 20 },
+  { id: "forecast", namesUnder: 14 },
+];
+
+/** The cells the longest event name listed takes: a calendar of short names (`Retail Sales`) asks for no more. */
+export function longestEventName(events: readonly Pick<EconEvent, "country" | "event" | "actual" | "forecast" | "prior">[]): number {
+  let longest = 0;
+  for (const event of events) longest = Math.max(longest, displayWidth(econEventName(event)));
+  return longest;
+}
+
+/**
+ * The figure columns a calendar keeps at its width, as every narrow table
+ * decides: the name that says what a row is stays readable, and the least
+ * needed columns leave first (ECON_FIGURE_DROP_ORDER). `roomFor` is the cells
+ * the event column gets beside the columns given; `longestName` what the
+ * names listed take at most (longestEventName), and `floor` the fewest cells
+ * the column is ever drawn at.
+ */
+export function keptFigureColumns<C extends { id: string }>(
+  figures: readonly C[],
+  roomFor: (kept: readonly C[]) => number,
+  longestName: number,
+  floor: number,
+): C[] {
+  let kept = [...figures];
+  for (const { id, namesUnder } of ECON_FIGURE_DROP_ORDER) {
+    if (roomFor(kept) >= Math.max(floor, Math.min(namesUnder, longestName))) break;
+    kept = kept.filter((column) => column.id !== id);
+  }
+  return kept;
+}
+
 export function actualColor(actual: string | null, forecast: string | null): string {
   const a = parseEconFigure(actual)?.value ?? null;
   const f = parseEconFigure(forecast)?.value ?? null;
