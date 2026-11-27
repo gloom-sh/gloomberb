@@ -2,7 +2,7 @@ import type { DataTableColumn } from "../../../components";
 import { getTableWidth, hasMeaningfulTableHorizontalOverflow } from "../../../components/ui/table-layout";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import { displayWidth, formatDistributionAmount } from "../../../utils/format";
-import { dividendAmountDigits, formatDividendRowAmount, type DividendRow } from "./view";
+import { dividendAmountDigits, dividendRowStatus, formatDividendRowAmount, type DividendRow } from "./view";
 
 export type DividendColumnId = "exDate" | "amount" | "declared" | "currency" | "status" | "source";
 export type DividendColumn = DataTableColumn & { id: DividendColumnId };
@@ -81,7 +81,7 @@ function getSortValue(columnId: DividendColumnId, row: DividendRow): string | nu
     case "amount": return row.amount;
     case "declared": return row.declared?.amount ?? null;
     case "currency": return row.currency;
-    case "status": return row.pending ? "Declared" : "Paid";
+    case "status": return dividendRowStatus(row);
     case "source": return row.source ?? null;
   }
 }

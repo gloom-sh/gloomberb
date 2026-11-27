@@ -37,7 +37,7 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { fetchDividendData, repriceDividendMetrics, statedForwardRate, type DividendData } from "./client";
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import { useTickerQuoteStream } from "../../../state/hooks/live-ticker-financials";
-import { buildTrailingCashChartPoints, convertedFromText, dividendAmountDigits, formatConvertedAmount, formatDividendRowAmount, formatDividendYield, forwardEstimateText, growthPaymentsDetail, PAYOUT_BASIS, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText, trailingSpecialText, type DividendAmountDigits, type DividendRow } from "./view";
+import { buildTrailingCashChartPoints, convertedFromText, dividendAmountDigits, dividendRowStatus, formatConvertedAmount, formatDividendRowAmount, formatDividendYield, forwardEstimateText, growthPaymentsDetail, PAYOUT_BASIS, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText, trailingSpecialText, type DividendAmountDigits, type DividendRow } from "./view";
 import {
   DEFAULT_SORT_PREFERENCE,
   SCHEDULE_LINK_LABEL,
@@ -188,7 +188,7 @@ function renderCell(
     case "currency":
       return { text: row.currency, color: colors.textDim };
     case "status":
-      return { text: row.pending ? "Declared" : "Paid", color: colors.textDim };
+      return { text: dividendRowStatus(row), color: colors.textDim };
     case "source":
       return sourceCell(row, column.width);
   }
@@ -317,14 +317,24 @@ function DividendTickerPane({ focused, width, height, loadData = fetchDividendDa
   const metrics = data?.metrics ? repriceDividendMetrics(data.metrics, currentPrice) : undefined;
   const nextPayDate = metrics?.nextPayDate?.toISOString().slice(0, 10);
   const rows = useMemo(() => {
-    const paid = toDividendRows(payments);
-    const pending = (data?.declared ?? []).flatMap((dividend): DividendRow[] => dividend.source && currency ? [{
-      key: `declared:${dividend.exDate}`, exDate: dividend.exDate, amount: dividend.amount, currency, pending: true,
-      payDate: dividend.payDate, cashEstimate: dividend.cashEstimate, special: dividend.special,
-      source: dividend.source.publisher, sourceUrl: dividend.source.url, sourceScheduleUrl: dividend.source.scheduleUrl,
-    }] : []);
-    const pendingDates = new Set(pending.map((row) => row.exDate));
-    return [...pending, ...paid.filter((row) => !pendingDates.has(row.exDate))];
+    // The pay date a history record carries dates its status here; a report states it as the row's `paymentDate`.
+    const listed = toDividendRows(payments).map((row, index): DividendRow => {
+      const paidOn = payments[index]?.paymentDate;
+      return paidOn ? { ...row, payDate: paidOn.toISOString().slice(0, 10) } : row;
+    });
+    const listedDates = new Set(listed.map((row) => row.exDate));
+    const notices = new Map<string, Partial<DividendRow>>();
+    const ahead: DividendRow[] = [];
+    for (const dividend of data?.declared ?? []) {
+      if (!dividend.source || !currency) continue;
+      const notice = { pending: true as const, ...(dividend.payDate ? { payDate: dividend.payDate } : {}), ...(dividend.special ? { special: true as const } : {}),
+        source: dividend.source.publisher, sourceUrl: dividend.source.url, sourceScheduleUrl: dividend.source.scheduleUrl };
+      // A declaration the history already holds (ex-dated, its cash not fixed yet) is that row: the row keeps the
+      // cash the listing and the issuer state and takes the notice. One still ahead of the history is a row of its own.
+      if (listedDates.has(dividend.exDate)) notices.set(dividend.exDate, notice);
+      else ahead.push({ key: `declared:${dividend.exDate}`, exDate: dividend.exDate, amount: dividend.amount, currency, cashEstimate: dividend.cashEstimate, ...notice });
+    }
+    return [...ahead, ...listed.map((row): DividendRow => ({ ...row, ...notices.get(row.exDate) }))];
   }, [currency, data?.declared, payments]);
   const sortedRows = useMemo(() => sortRows(rows, sortPreference), [rows, sortPreference]);
   const convertedFrom = historyData?.convertedFrom;
@@ -402,7 +412,7 @@ function DividendTickerPane({ focused, width, height, loadData = fetchDividendDa
       focused={focused}
       selection={{ kind: "id", selectedId, getId: rowKey, onChange: (id) => setSelectedKey(id) }}
       onActivate={(row) => { if (row.sourceUrl) openNotice(row.sourceUrl); }}
-      rowNote={(row) => row.payDate && row.payDate !== nextPayDate
+      rowNote={(row) => row.pending && row.payDate && row.payDate !== nextPayDate
         ? { text: `Payable ${formatDay(row.payDate)}`, tone: "muted" } : null}
       onRootKeyDown={handleKeyDown}
       resetScrollKey={symbol}

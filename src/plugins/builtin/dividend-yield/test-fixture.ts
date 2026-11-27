@@ -50,7 +50,7 @@ export function chartResponse({ meta, time, close = 100, dividends }: {
   return Response.json({ chart: { result: [{ meta, timestamp: [time], indicators: { quote: [{ close: [close] }] }, events: { dividends } }] } });
 }
 
-export function hsbcIssuerDividendRead(currency = "GBp", fixedCash?: number) {
+export function hsbcIssuerDividendRead(currency = "GBp", fixedCash?: number, source?: { publisher: string; url: string; scheduleUrl?: string }) {
   const divisor = currency === "GBp" ? 100 : 1;
   const cashEstimate = { declaredCurrency: "USD", declaredAmount: 0.1, fixingDate: "2026-12-07",
     basis: "Reported cash estimate; the issuer's GBP conversion is not fixed." };
@@ -67,7 +67,7 @@ export function hsbcIssuerDividendRead(currency = "GBp", fixedCash?: number) {
         { exDate: "2025-08-14", amount: 0.073562 * divisor }, { exDate: "2025-05-08", amount: 0.074512 * divisor },
         { exDate: "2025-03-06", amount: 0.278597 * divisor },
       ], declaredDividends: [{ exDate: "2026-11-05", payDate: "2026-12-17", amount: (fixedCash ?? 0.075835) * divisor,
-        ...(fixedCash == null ? { cashEstimate } : {}) }],
+        ...(fixedCash == null ? { cashEstimate } : {}), ...(source ? { source } : {}) }],
       declaredCash: { currency: "USD", rows: [{ exDate: "2026-11-05", amount: 0.1 }, { exDate: "2026-08-13", amount: 0.1 },
         { exDate: "2026-05-14", amount: 0.1 }, { exDate: "2026-03-12", amount: 0.45 }, { exDate: "2025-11-06", amount: 0.1 },
         { exDate: "2025-08-14", amount: 0.1 }, { exDate: "2025-05-08", amount: 0.1 }, { exDate: "2025-03-06", amount: 0.36 }],
