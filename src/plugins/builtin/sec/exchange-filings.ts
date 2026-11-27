@@ -6,6 +6,7 @@ import { nonUsSecListingVenue } from "../../../utils/sec";
 export const HKEX_FILING_HISTORY_LIMIT = 100;
 export const PRESENTATIONS_FORM = "presentations";
 export const RECENT_EXCHANGE_FILING_LIMIT = 50;
+const SGX_OWNERSHIP_FORM = "sgx-ownership";
 
 interface ExchangeFilingForm {
   value: string;
@@ -13,13 +14,27 @@ interface ExchangeFilingForm {
   kind: NonNullable<ExchangeAnnouncementsRequest["kind"]>;
 }
 
-const presentations: ExchangeFilingForm = { value: PRESENTATIONS_FORM, label: "Presentations", kind: PRESENTATIONS_FORM };
-const hkexResults: ExchangeFilingForm = { value: "hkex-results", label: "Results", kind: "results" };
+const presentations: readonly ExchangeFilingForm[] = [
+  { value: PRESENTATIONS_FORM, label: "Presentations", kind: PRESENTATIONS_FORM },
+];
+const noForms: readonly ExchangeFilingForm[] = [];
+const exchangeForms = new Map<string, readonly ExchangeFilingForm[]>([
+  ["HKEX", [{ value: "hkex-results", label: "Results", kind: "results" }]],
+  ["JPX", [{ value: "jpx-results", label: "Results & presentations", kind: "results" }]],
+  ["SGX", [
+    { value: "sgx-results", label: "Results & presentations", kind: "results" },
+    { value: SGX_OWNERSHIP_FORM, label: "Ownership disclosures", kind: "ownership" },
+  ]],
+  ["TWSE", presentations],
+  ["TPEX", presentations],
+]);
 
-export function exchangeFilingForm(venue: string | undefined): ExchangeFilingForm | undefined {
-  if (venue === "TWSE" || venue === "TPEX") return presentations;
-  if (venue === "HKEX") return hkexResults;
-  if (venue === "JPX" || venue === "SGX") return { value: `${venue.toLowerCase()}-results`, label: "Results & presentations", kind: "results" };
+export function exchangeFilingForms(venue: string | undefined): readonly ExchangeFilingForm[] {
+  return exchangeForms.get(venue ?? "") ?? noForms;
+}
+
+export function emptyOwnershipArchive(stale: boolean | undefined) {
+  return stale ? "Ownership archive unavailable or incomplete." : "No ownership disclosures in the past year.";
 }
 
 // The extended archives are bounded. The pane reveals their rows as the user scrolls.

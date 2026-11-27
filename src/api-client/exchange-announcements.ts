@@ -44,10 +44,10 @@ export interface ExchangeAnnouncementsRequest {
   symbol: string;
   exchange: string;
   limit?: number;
-  kind?: "results" | "presentations";
+  kind?: "results" | "presentations" | "ownership";
 }
 
-/** A listing's announcements, HKEX and SGX results, or Taiwan investor conference presentations. */
+/** A listing's announcements or an exchange-specific filing archive. */
 export function cloudExchangeAnnouncementsPath(params: ExchangeAnnouncementsRequest): string {
   const search = new URLSearchParams({ symbol: params.symbol, exchange: params.exchange });
   if (params.limit != null) search.set("limit", String(params.limit));
