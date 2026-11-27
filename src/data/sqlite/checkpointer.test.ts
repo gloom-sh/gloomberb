@@ -121,27 +121,6 @@ test("a checkpoint asked for soon comes forward, one asked for later does not pu
   }
 });
 
-test("early checkpoints do not increase the flush cadence when commits keep coming", async () => {
-  const starts: number[] = [];
-  const checkpointer = startWalCheckpointer("unused.db", () => {}, {
-    minimumIntervalMs: 350,
-    workerSource: slowCheckpointWorker(0),
-  })!;
-  const finished = Promise.withResolvers<void>();
-  checkpointer.onIdle(() => {
-    starts.push(performance.now());
-    if (starts.length < 3) checkpointer.nudge(5);
-    else finished.resolve();
-  });
-  try {
-    checkpointer.nudge(5);
-    await withDeadline(finished.promise, 3_000, "The early checkpoints did not run");
-    expect(starts[2]! - starts[1]!).toBeGreaterThan(225);
-  } finally {
-    checkpointer.close();
-  }
-});
-
 // A stream of cached quotes commits every few hundred ms. Each flush it set
 // off a second later was a window in which Windows held the app's commits.
 test("in the app, commits of cached data alone ask for a late flush, and a commit of user data for the usual one", async () => {

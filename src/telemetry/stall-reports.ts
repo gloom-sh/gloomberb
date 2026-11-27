@@ -293,23 +293,24 @@ function reportArch(arch: string): StallReport["arch"] {
  */
 export function formatStallReportDetails(report: StallReport): string {
   const activity = report.processActivity;
+  const deferSummaries = activity !== undefined || report.lockWait !== undefined || report.attempts !== undefined;
   const fields = [
     `process=${report.process}`,
-    ...(!activity ? [`count=${report.count}`] : []),
+    ...(!deferSummaries ? [`count=${report.count}`] : []),
     `longest=${report.longestMs}ms`,
     `phase=${report.phase}`,
     `up=${report.uptime}`,
     `gap=${report.gap}`,
-    ...(!activity && report.heldPercent !== undefined ? [`held=${report.heldPercent}`] : []),
+    ...(!deferSummaries && report.heldPercent !== undefined ? [`held=${report.heldPercent}`] : []),
     ...(report.active === undefined ? [] : [`fg=${flag(report.active)}`]),
     ...(report.visible === undefined ? [] : [`vis=${flag(report.visible)}`]),
     ...(report.cpuPercent === undefined ? [] : [`cpu=${report.cpuPercent}`]),
-    ...(activity ? formatProcessActivitySummary(activity) : []),
-    ...(activity ? [`count=${report.count}`] : []),
-    ...(activity && report.heldPercent !== undefined ? [`held=${report.heldPercent}`] : []),
-    ...(report.otherCpuPercent === undefined ? [] : [`oth=${report.otherCpuPercent}`]),
     ...(report.lockWait === undefined ? [] : [`lock=${flag(report.lockWait)}`]),
     ...(report.attempts === undefined ? [] : [`try=${report.attempts}`]),
+    ...(activity ? formatProcessActivitySummary(activity) : []),
+    ...(deferSummaries ? [`count=${report.count}`] : []),
+    ...(deferSummaries && report.heldPercent !== undefined ? [`held=${report.heldPercent}`] : []),
+    ...(report.otherCpuPercent === undefined ? [] : [`oth=${report.otherCpuPercent}`]),
     `day=${report.day}`,
     `platform=${report.platform}-${report.arch}`,
   ];

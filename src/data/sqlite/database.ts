@@ -10,7 +10,6 @@ import {
   SQLITE_BACKSTOP_AUTOCHECKPOINT_PAGES,
   SQLITE_DEFAULT_AUTOCHECKPOINT_PAGES,
   startWalCheckpointer,
-  WINDOWS_CHECKPOINT_DELAY_MS,
   type WalCheckpointer,
   type WalCheckpointerOptions,
 } from "./checkpointer";
@@ -158,31 +157,25 @@ export class SqliteDatabase {
     // The app's commits leave copying the WAL into the database, and flushing
     // it, to a thread of its own, and only copy it themselves past a WAL ten
     // times the usual.
-    const holdCommitsDuringFlush = options.holdCommitsDuringFlush ?? process.platform === "win32";
     let checkpointerRunning = false;
     if (options.interactive && wal && dbPath !== ":memory:") {
       this.checkpointer = startWalCheckpointer(dbPath, () => {
         checkpointerRunning = false;
         this.connection.exec(`PRAGMA wal_autocheckpoint=${SQLITE_DEFAULT_AUTOCHECKPOINT_PAGES}`);
-      }, {
-        ...(holdCommitsDuringFlush ? { minimumIntervalMs: CHECKPOINT_DELAY_MS } : {}),
-        ...options.checkpointer,
-      });
+      }, options.checkpointer);
       if (this.checkpointer) {
         checkpointerRunning = true;
         this.connection.exec(`PRAGMA wal_autocheckpoint=${SQLITE_BACKSTOP_AUTOCHECKPOINT_PAGES}`);
       }
     }
     const checkpointer = this.checkpointer;
-    const holdCommits = checkpointer !== null && holdCommitsDuringFlush;
+    const holdCommits = checkpointer !== null && (options.holdCommitsDuringFlush ?? process.platform === "win32");
     this.access = createSqliteAccess(this.connection, {
       interactive: options.interactive,
       relaxedCommits: wal,
       commandWriteWaitMs: options.commandWriteWaitMs ?? (onDisk && wal && process.platform === "win32" ? CHECKPOINTER_STUCK_AFTER_MS : undefined),
       ...(checkpointer ? {
-        onCommit: (kind) => checkpointer.nudge(kind === "user"
-          ? (holdCommits ? WINDOWS_CHECKPOINT_DELAY_MS : CHECKPOINT_DELAY_MS)
-          : LAZY_CHECKPOINT_DELAY_MS),
+        onCommit: (kind) => checkpointer.nudge(kind === "user" ? CHECKPOINT_DELAY_MS : LAZY_CHECKPOINT_DELAY_MS),
         flushedElsewhere: () => checkpointerRunning,
         ...(holdCommits ? { holdCommits: () => checkpointer.busy() } : {}),
       } : {}),
