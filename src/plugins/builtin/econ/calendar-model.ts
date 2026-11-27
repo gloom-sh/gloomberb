@@ -1,6 +1,6 @@
 import { createPluginCache } from "../../../data/plugin-cache";
 import type { DataTableCell, DataTableColumn } from "../../../components";
-import { tableColumnWidth } from "../../../components/ui/table-layout";
+import { narrowColumnsForName } from "../../../components/ui/table-layout";
 import { colors } from "../../../theme/colors";
 import { displayWidth, MISSING_VALUE } from "../../../utils/format";
 import { fetchEconCalendar } from "./calendar-source";
@@ -862,7 +862,11 @@ const ECON_FIGURE_DROP_ORDER: readonly { id: string; namesUnder: number }[] = [
   { id: "forecast", namesUnder: 14 },
 ];
 
-/** The cells a plain figure takes (`105.28B`, `-24 Bcf`, `36.00%`): a column keeps these, and its header, whatever the names need. */
+/**
+ * The cells a plain figure takes (`105.28B`, `-24 Bcf`, `36.00%`): a column
+ * keeps these, and its header, whatever the names need. A column whose
+ * figures are all shorter (`0.4%`) is already as narrow as its widest.
+ */
 const PLAIN_FIGURE_WIDTH = 7;
 
 /** The cells the longest event name listed takes: a calendar of short names (`Retail Sales`) asks for no more. */
@@ -873,38 +877,15 @@ export function longestEventName(events: readonly Pick<EconEvent, "country" | "e
 }
 
 /**
- * `columns` with the cells a long figure took (`1.522B AUD`, `3.75-4.00%`: a
- * column is as wide as the widest figure listed) given to the names, widest
- * column first, until the names have `names` cells or every column is down to
- * a plain figure's. One long figure weeks out is cut there, and whole in its
- * detail, where it would otherwise take the forecast from every row of a phone.
- */
-function withoutLongFigureCells<C extends { id: string; width: number; label?: string }>(
-  columns: readonly C[],
-  roomFor: (kept: readonly C[]) => number,
-  names: number,
-): C[] {
-  let fitted = [...columns];
-  for (;;) {
-    if (roomFor(fitted) >= names) return fitted;
-    let widest = -1;
-    for (const [index, column] of fitted.entries()) {
-      const narrowest = Math.max(PLAIN_FIGURE_WIDTH, tableColumnWidth({ width: 1, label: column.label }));
-      if (column.width > narrowest && (widest < 0 || column.width > fitted[widest]!.width)) widest = index;
-    }
-    if (widest < 0) return fitted;
-    fitted = fitted.map((column, index) => (index === widest ? { ...column, width: column.width - 1 } : column));
-  }
-}
-
-/**
  * The figure columns a calendar keeps at its width, as every narrow table
  * decides: the name that says what a row is stays readable, and the least
  * needed columns leave first (ECON_FIGURE_DROP_ORDER). Once one has left, the
  * columns kept give the names what a long figure took before another goes
- * (withoutLongFigureCells). `roomFor` is the cells the event column gets
+ * (narrowColumnsForName). `roomFor` is the cells the event column gets
  * beside the columns given; `longestName` what the names listed take at most
  * (longestEventName), and `floor` the fewest cells the column is ever drawn at.
+ * The widths are the ones the choice is made at; `figuresBesideNames` then
+ * gives the names the rest of what a long figure took.
  */
 export function keptFigureColumns<C extends { id: string; width: number; label?: string }>(
   figures: readonly C[],
@@ -913,7 +894,7 @@ export function keptFigureColumns<C extends { id: string; width: number; label?:
   floor: number,
 ): C[] {
   const names = (cells: number) => Math.max(floor, Math.min(cells, longestName));
-  const fit = (kept: readonly C[]) => (kept.length < figures.length ? withoutLongFigureCells(kept, roomFor, names(READABLE_NAME_CELLS)) : [...kept]);
+  const fit = (kept: readonly C[]) => (kept.length < figures.length ? narrowColumnsForName(kept, roomFor, names(READABLE_NAME_CELLS), PLAIN_FIGURE_WIDTH) : [...kept]);
   let kept = [...figures];
   for (const { id, namesUnder } of ECON_FIGURE_DROP_ORDER) {
     const fitted = fit(kept);
@@ -921,6 +902,24 @@ export function keptFigureColumns<C extends { id: string; width: number; label?:
     kept = kept.filter((column) => column.id !== id);
   }
   return fit(kept);
+}
+
+/**
+ * The figure columns kept (keptFigureColumns) as wide as the names leave
+ * them: at any width, a column keeps more than a plain figure's cells (or its
+ * header's) only while the longest name listed is whole beside it. A column
+ * is as wide as the widest figure listed, so one long figure weeks out held
+ * every row's name to `French Inflation Rate …` beside a column of `2.9%`;
+ * now that figure is cut, and whole in its detail. `roomFor` is the cells the
+ * event column gets beside the columns given, under the headers drawn.
+ */
+export function figuresBesideNames<C extends { id: string; width: number; label?: string }>(
+  figures: readonly C[],
+  roomFor: (kept: readonly C[]) => number,
+  longestName: number,
+  floor: number,
+): C[] {
+  return narrowColumnsForName(figures, roomFor, Math.max(floor, longestName), PLAIN_FIGURE_WIDTH);
 }
 
 export function actualColor(actual: string | null, forecast: string | null): string {

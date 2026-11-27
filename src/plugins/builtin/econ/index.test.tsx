@@ -213,11 +213,11 @@ describe("EconCalendarPane", () => {
     expect(phone).toMatch(/Balance of Tra…\s+—\s+1\.522B…/);
     expect(phone).toMatch(/Fed Interest R…\s+—\s+3\.50-3…/);
 
-    // A pane whose names have their 20 cells beside the long figures cuts nothing.
+    // Wider, the names have the cells the long figures took before any is cut: the figures are, and the names whole.
     const firstScreen = await renderPane(56, "high");
     expect(firstScreen).toContain("1 hidden · PRIOR");
-    expect(firstScreen).toMatch(/Balance of Trade\s+—\s+1\.522B AUD/);
-    expect(firstScreen).toMatch(/Fed Interest Rate De\S*\s+—\s+3\.50-3\.75%/);
+    expect(firstScreen).toMatch(/Balance of Trade\s+—\s+1\.522B…/);
+    expect(firstScreen).toMatch(/Fed Interest Rate Decision\s+—\s+3\.50-3…/);
 
     // With room for the names beside them, long figures are whole.
     const wide = await renderPane(110, "high");
