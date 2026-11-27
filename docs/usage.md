@@ -1695,7 +1695,7 @@ A command exits 0 when it worked and 1 when it failed (bad input, no data found,
 - An option only the report reads (`--limit`, `--offset`, `--explain`, `--section`, or a report filter like `--availability` on `CALLS`) fails with exit 1 and names the `fn` command that reads it. So do `--limit` or `--tail` on a function with no such option (`shot HP AAPL --tail 5`) and a slip of an option's name (`--veiw`).
 - `gloom shot G palantir` stops with `Not a ticker: PALANTIR` and suggests `gloom search palantir`, before rendering or saving a pane. Resolve a company name to its ticker first.
 
-In short DVD panes, Page Up/Down scroll the summary, arrows or j/k navigate history, and the mouse wheel scrolls the region under the pointer.
+In short DVD panes, Page Up/Down scroll the summary, arrows or j/k navigate history, and the mouse wheel scrolls the region under the pointer. A payment or declaration that cites its publisher's notice links it under **Source**, and Enter on the row opens it too. Where the publisher issued the schedule apart, a second link follows; in a pane too narrow for both, the notice keeps its link and the schedule opens from the pane menu (**Open dividend schedule**). A declaration that cites a notice also brings a **Status** column, read from the dates each row has on record: **Declared** while a declaration still owes it or its pay date is today or ahead, **Paid** once a pay date on record has passed, and **Ex-dated** where the ex-date has passed and the history carries no pay date for it.
 
 | Command | Use |
 |---------|-----|

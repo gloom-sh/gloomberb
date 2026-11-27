@@ -176,12 +176,31 @@ export interface DividendRow {
   currency: string;
   /** The amount as the company declared it, in another currency (DividendPayment.declared). */
   declared?: { amount: number; currency: string };
-  /** Who published it when not the listing's history: the fund's sponsor (DividendPayment.source). */
+  /** The original publisher when the record cites a notice or sponsor page. */
   source?: string;
+  sourceUrl?: string;
+  sourceScheduleUrl?: string;
+  /** A sourced declaration still owes this distribution (DividendData.declared). */
+  pending?: true;
+  /** The pay date on record, YYYY-MM-DD: a declaration's, or the one a history record carries. */
+  payDate?: string;
   /** A regular payment and an extra one on the same ex-date (DividendPayment.combined). */
   combined?: true;
   /** A special, as the issuer's own form types it (DividendPayment.special). */
   special?: true;
+}
+
+/**
+ * Where a distribution stands, by the dates on record and never by its place
+ * in the history: declared while a declaration still owes it, while its pay
+ * date is today or ahead, or before it goes ex; paid once a pay date on record
+ * has passed; and ex-dated where the ex-date has passed and no pay date says
+ * whether the cash went out.
+ */
+export function dividendRowStatus(row: Pick<DividendRow, "exDate" | "pending" | "payDate">, today = new Date().toISOString().slice(0, 10)): "Declared" | "Paid" | "Ex-dated" {
+  if (row.pending) return "Declared";
+  if (row.payDate) return row.payDate < today ? "Paid" : "Declared";
+  return row.exDate > today ? "Declared" : "Ex-dated";
 }
 
 export function toDividendRows(payments: DividendPayment[]): DividendRow[] {
@@ -192,7 +211,8 @@ export function toDividendRows(payments: DividendPayment[]): DividendRow[] {
     ...(payment.cashEstimate ? { cashEstimate: payment.cashEstimate } : {}),
     currency: payment.currency,
     ...(payment.declared ? { declared: payment.declared } : {}),
-    ...(payment.source ? { source: payment.source.publisher } : {}),
+    ...(payment.source ? { source: payment.source.publisher, sourceUrl: payment.source.url,
+      ...(payment.source.scheduleUrl ? { sourceScheduleUrl: payment.source.scheduleUrl } : {}) } : {}),
     ...(payment.combined ? { combined: true as const } : {}),
     ...(payment.special ? { special: true as const } : {}),
   }));
