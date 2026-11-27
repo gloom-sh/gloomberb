@@ -93,3 +93,20 @@ test("Tab is left alone when no dialog is open or a handler already took it", as
   });
   expect(moveDialogFocus({ key: "Tab", shiftKey: false, ctrlKey: false, metaKey: false, altKey: false, defaultPrevented: true })).toBe(false);
 });
+
+test("the capture-phase Escape handler leaves IME cancellation to the field", async () => {
+  await render(<WebDialogHostProvider><Capture /></WebDialogHostProvider>);
+  await act(async () => { void dialog!.alert({ content: <input /> }); });
+  const field = window.document.querySelector(".gloom-dialog input")!;
+  const escape = async (options: { isComposing?: boolean; keyCode?: number } = {}) => {
+    const event = new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true, ...options });
+    await act(async () => { field.dispatchEvent(event); });
+    return event.defaultPrevented;
+  };
+
+  expect(await escape({ isComposing: true })).toBe(false);
+  expect(await escape({ keyCode: 229 })).toBe(false);
+  expect(isDialogOpen()).toBe(true);
+  expect(await escape()).toBe(true);
+  expect(isDialogOpen()).toBe(false);
+});

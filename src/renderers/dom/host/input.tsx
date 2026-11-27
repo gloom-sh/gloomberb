@@ -4,9 +4,9 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
-  type ChangeEvent,
   type ClipboardEvent,
   type CSSProperties,
   type FormEvent,
@@ -17,6 +17,7 @@ import {
 import { editableTextContextMenuItems } from "../../../ui/context-menu";
 import { useRendererHost, useUiCapabilities, type InputRenderable, type TextareaRenderable } from "../../../ui/host";
 import { toKeyEventLike } from "../input-host";
+import { isImeComposing } from "../key-event";
 import { cellHeight, cellWidth, cleanDomProps, commonStyle } from "./style";
 import { joinPastedLines } from "../../../utils/pasted-lines";
 
@@ -62,14 +63,6 @@ function textInputStyle(props: Record<string, unknown>, multiline: boolean): CSS
   } as CSSProperties;
 }
 
-/**
- * The Enter that confirms an IME conversion (Japanese, Chinese, Korean) must
- * not submit. WebKit already clears `isComposing` on that key, hence 229.
- */
-function isImeComposing(event: { nativeEvent: { isComposing: boolean }; keyCode: number }): boolean {
-  return event.nativeEvent.isComposing || event.keyCode === 229;
-}
-
 function getStringProp(props: Record<string, unknown>, key: string): string | undefined {
   const value = props[key];
   return typeof value === "string" ? value : undefined;
@@ -111,12 +104,11 @@ function useEditableValue(props: Record<string, unknown>) {
   const valueRef = useRef(value);
   valueRef.current = value;
 
-  const setValue = (nextValue: string) => {
+  const controlled = controlledValue != null;
+  const setValue = useCallback((nextValue: string) => {
     valueRef.current = nextValue;
-    if (controlledValue == null) {
-      setInternalValue(nextValue);
-    }
-  };
+    if (!controlled) setInternalValue(nextValue);
+  }, [controlled]);
 
   return { value, valueRef, setValue };
 }
@@ -125,42 +117,6 @@ function useLatestRef<T>(value: T): RefObject<T> {
   const ref = useRef(value);
   ref.current = value;
   return ref;
-}
-
-function useSyncedEditableElement<T extends HTMLInputElement | HTMLTextAreaElement>({
-  elementRef,
-  valueRef,
-  handleValueChange,
-  active,
-}: {
-  elementRef: RefObject<T | null>;
-  valueRef: RefObject<string>;
-  handleValueChange: (nextValue: string) => void;
-  active: boolean;
-}): () => string {
-  const syncElementValue = useCallback(() => {
-    const nextValue = elementRef.current?.value;
-    if (typeof nextValue !== "string") return valueRef.current;
-    if (nextValue !== valueRef.current) {
-      handleValueChange(nextValue);
-    }
-    return nextValue;
-  }, [elementRef, handleValueChange, valueRef]);
-
-  useEffect(() => {
-    if (!active) return;
-    let animationFrame: number | null = null;
-    const syncDomValue = () => {
-      syncElementValue();
-      animationFrame = globalThis.requestAnimationFrame?.(syncDomValue) ?? null;
-    };
-    animationFrame = globalThis.requestAnimationFrame?.(syncDomValue) ?? null;
-    return () => {
-      if (animationFrame !== null) globalThis.cancelAnimationFrame?.(animationFrame);
-    };
-  }, [active, syncElementValue]);
-
-  return syncElementValue;
 }
 
 type WebVisualCursor = TextareaRenderable["visualCursor"];
@@ -273,6 +229,12 @@ function useWebEditable<T extends HTMLInputElement | HTMLTextAreaElement>(
   const { value, valueRef, setValue } = useEditableValue(props);
   const [cursorOffset, setCursorOffset] = useState(value.length);
   const [domFocused, setDomFocused] = useState(false);
+  // While an input method composes (pinyin, kana, hangul), the field holds
+  // text the person has not chosen yet. Handing it to the owner re-renders the
+  // field mid-composition, which commits each fragment as typed text, so the
+  // field shows its own text until the composition ends.
+  const composingRef = useRef(false);
+  const [composingValue, setComposingValue] = useState<string | null>(null);
   const applyCursorOffset = (offset: number) => {
     setCursorOffset(offset);
     queueMicrotask(() => applyDomCursorOffset(elementRef.current, offset));
@@ -294,15 +256,76 @@ function useWebEditable<T extends HTMLInputElement | HTMLTextAreaElement>(
     callTextHandler(propsRef.current.onChange, nextValue);
     callTextHandler(propsRef.current.onCursorChange, nextValue);
   }, [propsRef, setValue]);
-  const syncElementValue = useSyncedEditableElement({
-    elementRef,
-    valueRef,
-    handleValueChange,
-    active: props.focused === true || domFocused,
-  });
+  const syncElementValue = useCallback(() => {
+    if (composingRef.current) return valueRef.current;
+    const nextValue = elementRef.current?.value ?? valueRef.current;
+    if (nextValue !== valueRef.current) handleValueChange(nextValue);
+    return nextValue;
+  }, [handleValueChange, valueRef]);
+
+  const finishComposition = useCallback(() => {
+    if (!composingRef.current) return false;
+    composingRef.current = false;
+    setComposingValue(null);
+    return true;
+  }, []);
+
+  const discardComposition = useCallback(() => {
+    if (finishComposition() && elementRef.current) elementRef.current.value = valueRef.current;
+  }, [finishComposition, valueRef]);
+
+  useLayoutEffect(() => {
+    discardComposition();
+  }, [discardComposition, value]);
+
+  useLayoutEffect(() => {
+    const element = elementRef.current;
+    if (!element) return;
+    const start = () => {
+      composingRef.current = true;
+      setComposingValue(element.value);
+    };
+    const end = () => {
+      if (finishComposition()) syncElementValue();
+    };
+    element.addEventListener("compositionstart", start);
+    element.addEventListener("compositionend", end);
+    return () => {
+      element.removeEventListener("compositionstart", start);
+      element.removeEventListener("compositionend", end);
+    };
+  }, [finishComposition, syncElementValue]);
+
+  const active = props.focused === true || domFocused;
+  useEffect(() => {
+    if (!active) return;
+    let animationFrame: number | null = null;
+    const syncDomValue = () => {
+      const element = elementRef.current;
+      if (element && element.ownerDocument.activeElement !== element) discardComposition();
+      syncElementValue();
+      animationFrame = globalThis.requestAnimationFrame?.(syncDomValue) ?? null;
+    };
+    animationFrame = globalThis.requestAnimationFrame?.(syncDomValue) ?? null;
+    return () => {
+      if (animationFrame !== null) globalThis.cancelAnimationFrame?.(animationFrame);
+    };
+  }, [active, discardComposition, syncElementValue]);
+
+  const handleDomInput = (event: FormEvent<T>) => {
+    if (composingRef.current) {
+      const native = event.nativeEvent as InputEvent;
+      if (native.type !== "input" || native.isComposing !== false || native.inputType === "insertCompositionText") {
+        setComposingValue(event.currentTarget.value);
+        return;
+      }
+      finishComposition();
+    }
+    syncElementValue();
+  };
 
   const handleKeyDown = (event: KeyboardEvent<T>) => {
-    if (isImeComposing(event)) return;
+    if (isImeComposing(event.nativeEvent) || composingRef.current) return;
     const keyEvent = toKeyEventLike(event.nativeEvent);
     if (typeof propsRef.current.onKeyDown === "function") propsRef.current.onKeyDown(keyEvent);
     if (keyEvent.defaultPrevented) return;
@@ -321,7 +344,7 @@ function useWebEditable<T extends HTMLInputElement | HTMLTextAreaElement>(
 
   const handle: InputRenderable = {
     editBuffer: {
-      getText: () => elementRef.current?.value ?? valueRef.current,
+      getText: () => composingRef.current ? valueRef.current : elementRef.current?.value ?? valueRef.current,
       setText: (nextText: string) => setValue(nextText),
     },
     cursorOffset,
@@ -337,14 +360,14 @@ function useWebEditable<T extends HTMLInputElement | HTMLTextAreaElement>(
   const elementProps = {
     ...cleanDomProps(props),
     ref: elementRef,
-    value,
+    value: composingValue ?? value,
     autoCorrect: "off",
     autoCapitalize: "off",
     autoComplete: getStringProp(props, "autoComplete") ?? "off",
     spellCheck: false,
     placeholder: getStringProp(props, "placeholder"),
-    onInput: (event: FormEvent<T>) => handleValueChange(event.currentTarget.value),
-    onChange: (event: ChangeEvent<T>) => handleValueChange(event.currentTarget.value),
+    onInput: handleDomInput,
+    onChange: handleDomInput,
     onMouseDown: () => focusOnPress(elementRef.current),
     onFocus: () => {
       setDomFocused(true);
@@ -352,6 +375,7 @@ function useWebEditable<T extends HTMLInputElement | HTMLTextAreaElement>(
     },
     onBlur: () => {
       setDomFocused(false);
+      discardComposition();
       callTextHandler(propsRef.current.onBlur, syncElementValue());
     },
     onKeyDown: handleKeyDown,
@@ -360,7 +384,7 @@ function useWebEditable<T extends HTMLInputElement | HTMLTextAreaElement>(
       onPaste: (event: ClipboardEvent<T>) => {
         const element = elementRef.current;
         const text = event.clipboardData?.getData("text/plain");
-        if (!element || !text || !/[\t\r\n]/.test(text)) return;
+        if (!element || composingRef.current || !text || !/[\t\r\n]/.test(text)) return;
         event.preventDefault();
         element.setRangeText(joinPastedLines(text, "list"), element.selectionStart ?? element.value.length, element.selectionEnd ?? element.value.length, "end");
         handleValueChange(element.value);
@@ -374,6 +398,7 @@ function useWebEditable<T extends HTMLInputElement | HTMLTextAreaElement>(
       void renderer.showContextMenu(editableTextContextMenuItems());
     },
     onSelect: () => {
+      if (composingRef.current) return;
       setCursorOffset(elementRef.current?.selectionStart ?? valueRef.current.length);
       callTextHandler(propsRef.current.onCursorChange, valueRef.current);
     },
