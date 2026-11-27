@@ -768,8 +768,11 @@ export function printCliResult<T, Row extends Record<string, unknown> = Record<s
     ? renderForFile(() => serializeCliResult(cells, options, renderOptions))
     : serializeCliResult(cells, options, renderOptions));
   const { csv, footer } = options.format === "csv" ? splitCsvFooter(serialized) : { csv: serialized, footer: [] };
+  const tables = renderOptions.tables?.tables;
+  const rowNotes = options.format === "csv" && tables?.some((table) => table.rowNotes)
+    ? tables.flatMap((table) => table.columns.length > 0 ? table.rows.map((_, index) => table.rowNotes?.[index]) : []) : undefined;
   const output = options.format === "csv" ? portableCsv(serialized, result.warnings,
-    [...renderOptions.exportNotes ?? [], ...renderOptions.footnote ? [renderOptions.footnote] : []], renderOptions.csvTrailingColumns) : csv;
+    [...renderOptions.exportNotes ?? [], ...renderOptions.footnote ? [renderOptions.footnote] : []], renderOptions.csvTrailingColumns, rowNotes) : csv;
   if (toFile) fileExport.push(output);
   // Bun's console writer can truncate a large pipe write after stdout has been
   // initialized. The stream queues the remaining bytes until the reader drains.

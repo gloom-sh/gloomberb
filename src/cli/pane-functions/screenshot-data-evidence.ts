@@ -11,15 +11,15 @@ import {
   financialColumnPeriod,
   financialPeriodEnd,
 } from "../../plugins/builtin/ticker-detail/financials/model";
-import { ratioTableForFinancials } from "../../plugins/builtin/ticker-detail/financials/ratios";
 import { fiscalYearEndMonth } from "../../utils/fiscal-period";
+import { formatDay } from "../../utils/day-format";
 import type { FundamentalPeriod, GraphKind, GraphMetricKey } from "../../time-series/reporting";
 import type { TimeRange } from "../../time-series/range";
 import { subtractTimeRange } from "../../time-series/date-window";
 import { parseChartSpec } from "../../plugins/builtin/chart-composer/chart-spec";
 import { publicTickerKey } from "../../utils/exchanges";
 import { paneScreenshotEvidenceHook, renderedPaneEvidence } from "./screenshot-evidence";
-import { financialRatioShotEvidence, shotRatioTab } from "./financial-ratio-shot";
+import { financialRatioShotEvidence, shotFirstRatioStatement, shotRatioTab } from "./financial-ratio-shot";
 import type { PaneScreenshotDataEvidence } from "./screenshot-types";
 import { normalizeChartSeries, chartSeriesEvidence } from "./screenshot-chart-evidence";
 
@@ -317,10 +317,32 @@ export function shotSemanticRowCount(
   return payload.financials.filter(([, financials]) => !!financials.quote).length;
 }
 
+export function shotFinancialText(resolved: ResolvedPaneFunction, payload: DesktopPaneShotPayload) {
+  const financials = payload.financials[0]?.[1];
+  if (resolved.capability.id !== "financial-statements" || !financials) return null;
+  const ratioTab = shotRatioTab(resolved);
+  const table = buildFinancialTableModel(financials, {
+    period: resolved.options.period as FundamentalPeriod,
+    statement: String(resolved.options.statement),
+  });
+  const statement = ratioTab ? shotFirstRatioStatement(resolved, payload) : table?.statements[0];
+  const firstLabel = ratioTab ? ratioTab.ratios[0]?.label : table?.rows[0]?.unitLabel;
+  if (!table || !statement) return { firstLabel };
+  const annual = financials.annualStatements ?? [];
+  const kind = financialColumnPeriod(statement, table.period, new Set(annual.map(({ date }) => date)));
+  const end = financialPeriodEnd(statement);
+  return {
+    firstLabel,
+    header: financialColumnName(statement, kind, fiscalYearEndMonth(annual)),
+    periodEnd: end ? { columnId: `statement:${statement.date}:0`, text: formatDay(end) } : undefined,
+  };
+}
+
 export function shotExpectedText(
   resolved: ResolvedPaneFunction,
   symbols: string[],
   payload: DesktopPaneShotPayload,
+  financial = shotFinancialText(resolved, payload),
 ): string[] {
   const expected = [...symbols, ...(paneScreenshotEvidenceHook(resolved)?.expectedText?.({ resolved, payload }) ?? [])];
   const graphKind = shotGraphKind(resolved);
@@ -357,28 +379,9 @@ export function shotExpectedText(
     const ratioTab = shotRatioTab(resolved);
     expected.push(ratioTab?.name ?? statementLabels[String(resolved.options.statement)] ?? "");
     expected.push(resolved.options.period === "annual" ? "Annual" : "Quarterly");
-    const financials = payload.financials[0]?.[1];
-    if (financials) {
-      const table = buildFinancialTableModel(financials, {
-        period: resolved.options.period as FundamentalPeriod,
-        statement: String(resolved.options.statement),
-      });
-      // The pane's first column: a newest period with only some figures is left out (selectFinancialStatements), and
-      // so is a ratio tab's column with nothing in it (buildRatioTableModel).
-      const latestStatement = ratioTab && table
-        ? ratioTableForFinancials(financials, ratioTab, table.period).periods[0]?.statement
-        : table?.statements[0];
-      const firstMetric = table?.rows[0];
-      if (table && latestStatement) {
-        const annual = financials.annualStatements ?? [];
-        const kind = financialColumnPeriod(latestStatement, table.period, new Set(annual.map(({ date }) => date)));
-        // The column's header, and the day it ends in the table's first row.
-        expected.push(financialColumnName(latestStatement, kind, fiscalYearEndMonth(annual)));
-        expected.push(financialPeriodEnd(latestStatement) ?? "");
-      }
-      const firstLabel = ratioTab ? ratioTab.ratios[0]?.label : firstMetric?.unitLabel;
-      if (firstLabel) expected.push(firstLabel);
-    }
+    if (financial?.header) expected.push(financial.header);
+    if (financial?.periodEnd) expected.push(financial.periodEnd.text);
+    if (financial?.firstLabel) expected.push(financial.firstLabel);
   }
   return expected.filter(Boolean);
 }

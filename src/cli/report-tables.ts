@@ -46,6 +46,8 @@ export interface CliReportTable {
   identity?: ExportIdentity;
   /** What each row is of where it differs from the table's: a table of metrics whose rows have different units. */
   rowIdentities?: readonly (ExportIdentity | undefined)[];
+  /** Extra CSV export notes, in row order. */
+  rowNotes?: readonly (string | undefined)[];
   /**
    * How many of the last `columns` the export gained after its fixed columns
    * were set (a chart leg's contract, FUT's group): they follow the fixed

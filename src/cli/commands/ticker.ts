@@ -9,7 +9,7 @@ import {
   withFinancialEnterpriseValue,
 } from "../../utils/fundamentals";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
-import { halfYearGrowthPeriod } from "../../utils/financial-statements";
+import { financialStatementBasisNote, halfYearGrowthPeriod } from "../../utils/financial-statements";
 import { servedRatesNotMeaningful, type ServedRate } from "../../utils/served-rates";
 import { NOT_MEANINGFUL_TEXT } from "../../utils/growth";
 import { burnsCash, cashRunway, formatRunwayMonths, offeringsAfter, runwayMethod, runwayOfferingNote, type CashRunway, type OfferingFiling, type RunwayEstimate } from "../../utils/cash-runway";
@@ -1600,6 +1600,8 @@ export async function buildTickerReport({
     const offering = burnsCash(runway) ? runwayOfferingNote(offerings, runway.periodEnd, runway.currency) : null;
     if (offering) lines.push(cliStyles.muted(offering));
   }
+  const basis = latestAnnual || latestQuarter ? financialStatementBasisNote(financials) : null;
+  if (basis) lines.push(cliStyles.muted(basis));
   // The statements stop a quarter short of the results the company has released.
   if (statementFilings?.resultsRelease && (latestAnnual || latestQuarter)) lines.push(cliStyles.muted(resultsReleaseText(statementFilings.resultsRelease)));
 
@@ -1977,9 +1979,13 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     if (dependencies.printResult) {
       const newsNote = recentNews[0]?.searchedFor ? newsFallbackNotice(requestSymbol, recentNews[0].searchedFor) : null;
       const warnings = [...choiceNotes, quoteNote, newsNote].filter((note): note is string => !!note);
+      const basis = shownFinancials.annualStatements.length || shownFinancials.quarterlyStatements.length
+        ? financialStatementBasisNote(shownFinancials) : null;
       dependencies.printResult({
         freshness,
         warnings: warnings.length > 0 ? warnings : undefined,
+        ...(basis ? { metadata: { statementBasis: basis, statementScope: shownFinancials.statementScope,
+          ...(shownFinancials.statementReview ? { statementReview: shownFinancials.statementReview } : {}) } } : {}),
         data: buildTickerStructuredData({
           symbol: normalized,
           listing,
@@ -1999,7 +2005,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
           offerings: await offerings,
           ipo: await ipoLoad,
         }),
-      });
+      }, basis ? { exportNotes: [basis] } : undefined);
       return;
     }
 

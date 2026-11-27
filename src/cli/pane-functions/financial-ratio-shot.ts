@@ -87,6 +87,10 @@ const hasRatio = ({ model }: RatioShot, index: number) => model.ratios.some((def
   typeof model.cells.get(def.id)?.[index]?.value === "number"
 ));
 
+export function shotFirstRatioStatement(resolved: ResolvedPaneFunction, payload: DesktopPaneShotPayload) {
+  return ratioShot(resolved, payload)?.model.periods[0]?.statement;
+}
+
 /** Why the captured data cannot make a usable ratio shot, or null when it can. */
 export function financialRatioShotGap(resolved: ResolvedPaneFunction, payload: DesktopPaneShotPayload): string | null {
   const shot = ratioShot(resolved, payload);

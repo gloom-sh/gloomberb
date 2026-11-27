@@ -21,7 +21,8 @@ function csvRows(text: string, separator: string): string[][] {
   return rows;
 }
 
-export function portableCsv(text: string, warnings: readonly string[] = [], extraNotes: readonly string[] = [], trailingColumns: readonly string[] = []): string {
+export function portableCsv(text: string, warnings: readonly string[] = [], extraNotes: readonly string[] = [], trailingColumns: readonly string[] = [],
+  rowNotes: readonly (string | undefined)[] = []): string {
   const decimal = csvDecimal();
   const separator = decimal === "comma" ? ";" : ",";
   const { csv, footer } = splitCsvFooter(text);
@@ -63,11 +64,17 @@ export function portableCsv(text: string, warnings: readonly string[] = [], extr
   const trailing = columns.filter((column) => trailingColumns.includes(column));
   const leading = columns.filter((column) => !trailingColumns.includes(column));
   const header = [...leading, ...tagged ? [sectionKey] : [], notesKey, ...trailing];
+  let rowIndex = 0;
   const rows = tables.flatMap((table) => {
     const leadingIndices = leading.map((column) => table.columns.indexOf(column));
     const trailingIndices = trailing.map((column) => table.columns.indexOf(column));
-    return table.rows.map((row) => [...leadingIndices.map((index) => row[index] ?? ""), ...tagged ? [table.section] : [], notes,
-      ...trailingIndices.map((index) => row[index] ?? "")]);
+    return table.rows.map((row) => {
+      const rawNote = rowNotes[rowIndex++];
+      const note = rawNote && cliText(rawNote.replace(/\s+/g, " ").trim());
+      const rowNote = note ? [notes, `note: ${note}`].filter(Boolean).join(" | ") : notes;
+      return [...leadingIndices.map((index) => row[index] ?? ""), ...tagged ? [table.section] : [], rowNote,
+        ...trailingIndices.map((index) => row[index] ?? "")];
+    });
   });
   if (!rows.length && notes) rows.push(header.map((column) => column === notesKey ? notes : ""));
   const records = [header, ...rows];

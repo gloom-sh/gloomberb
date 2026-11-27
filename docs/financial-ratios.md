@@ -6,6 +6,8 @@
 
 Each ratio opens (Enter, a click, or `e` for all) onto the inputs behind it. The second input starts with the operator that joins it, so the rows read as the formula: `Net Income`, then `÷ Avg Equity`. Inputs show the values as reported for the period, or the trailing year where marked `TTM`; the ratio applies any annualization.
 
+When a statement series has a verified reporting basis, such as consolidated accounts of an accounting predecessor, `gloom fn FA` names it for the figures that use it and flags a newer filing still under review. In CSV this appears in `export_notes` on the affected rows only. In JSON, look in `data.metadata` for `statementBasis`, or `statementBasisByTicker` in long reports. Historical valuation denominators may be reported even when the listing's price cannot be paired with them to calculate a multiple.
+
 ## Periods
 
 The ratio tabs use the Income statement's columns: the latest fiscal years, with a TTM column when the last four quarters run past the latest year, or the latest quarters. Headers are the same fiscal labels (`FY2026`, `Q4 FY26`, `TTM Q3 FY26`).

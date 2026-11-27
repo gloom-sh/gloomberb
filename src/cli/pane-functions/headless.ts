@@ -957,12 +957,14 @@ export function headlessReportTables(
       const rowsResult = result as HeadlessRowsResult;
       const columns = displayedColumns(columnsFor(rowsResult.rows, rowsResult.columns, definition.columns));
       const rowIdentities = rowIdentitiesOf(rowsResult.rows, rowsResult);
+      const rowNotes = rowsResult.rowNote && rowsResult.rows.map(rowsResult.rowNote);
       const own = exportRowsTable(title, columns, rowsResult.rows, { status: true, ...(rowsResult.rowUnitKey ? { rowUnitKey: rowsResult.rowUnitKey } : {}) });
       const ownIdentity = {
         ...(rowsResult.unit?.trim() ? { currencyOrUnit: rowsResult.unit.trim() } : {}),
         ...(rowsResult.interval?.trim() ? { interval: rowsResult.interval.trim() } : {}),
       };
-      tables = [{ ...own, ...(rowIdentities ? { rowIdentities } : {}), ...(Object.keys(ownIdentity).length > 0 ? { identity: ownIdentity } : {}) }, ...(rowsResult.exportTables ?? []).map((extra) => {
+      tables = [{ ...own, ...(rowIdentities ? { rowIdentities } : {}), ...(rowNotes ? { rowNotes } : {}),
+        ...(Object.keys(ownIdentity).length > 0 ? { identity: ownIdentity } : {}) }, ...(rowsResult.exportTables ?? []).map((extra) => {
         const identity = {
           ...(extra.unit?.trim() ? { currencyOrUnit: extra.unit.trim() } : {}),
           ...(extra.interval?.trim() ? { interval: extra.interval.trim() } : {}),

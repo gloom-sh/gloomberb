@@ -7,15 +7,71 @@ import { HistoryRetentionError } from "../../../sources/history-retention";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 import type { ManualChartResolution } from "../../../time-series/resolution";
 import type { Quote, QuoteContribution } from "../../../types/financials";
-import { headlessReportTables, renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
+import { headlessReportTables, renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
 import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import { renderReportCsv } from "../../../cli/report-tables";
+import { printCliResult } from "../../../cli/result";
+import { DEFAULT_CLI_OPTIONS } from "../../../cli/options";
+import { captureConsole } from "../../../test-support/console";
 import { setCliColorEnabledOverride, setCliWidthOverride } from "../../../utils/cli-output";
 import { financialStatementsHeadless, historicalPricesHeadless, quoteComparisonHeadless, returnsHeadless } from "./headless";
 
 function args(symbols: string[], options: HeadlessPaneLoadArgs["options"] = {}): HeadlessPaneLoadArgs {
   return { symbols, options, argument: symbols, rawArgument: symbols.join(",") };
 }
+
+test.each(["income", "valuation"])("FA %s keeps statement basis and pending review on the records that use them", async (statement) => {
+  const scope = { registrant: "0002128626", basis: "predecessor" as const, label: "Corteva consolidated (accounting predecessor)" };
+  const review = { status: "pending" as const, reviewedThrough: "2026-11-12" };
+  const dates = ["2025-12-31", "2026-03-31", "2026-06-30", "2026-09-30"];
+  const scoped = "VYLR:NYSE";
+  const ordinary = "MSFT:NASDAQ";
+  const ctx = createTestHeadlessContext({ marketData: createTestDataProvider({
+    getTickerFinancials: async (symbol) => {
+      const basis = symbol === "VYLR" ? { statementScope: scope } : {};
+      return createTestFinancials({
+        ...basis, ...(symbol === "VYLR" ? { statementReview: review } : {}),
+        quote: createTestQuote({ symbol, currency: "USD" }),
+        quarterlyStatements: dates.map((date) => ({ date, currency: "USD", totalRevenue: 2_458_000_000,
+          netIncome: 500_000_000, eps: 2, ...basis })),
+      });
+    },
+    getPriceHistoryForResolution: async () => ["2026-09-29", "2026-09-30"].map((date) => ({ date: new Date(date), open: 80, high: 80, low: 80, close: 80, volume: 100 })),
+  }) });
+  const basis = `Statement basis: ${scope.label}. New filing under review.`;
+  const exportReport = async (symbols: string[], layout?: string) => {
+    const input = args(symbols, { statement, period: "quarterly", ...(layout ? { layout } : {}) });
+    const result = await financialStatementsHeadless.load(input, ctx);
+    const freshness = deriveHeadlessFreshness(financialStatementsHeadless, result);
+    const tables = headlessReportTables(financialStatementsHeadless, result, input, "FA", freshness, { complete: true, unavailableSymbols: [] });
+    const csv = await captureConsole(() => printCliResult({ data: result.rows, freshness },
+      { ...DEFAULT_CLI_OPTIONS, format: "csv", quiet: true }, { tables }));
+    return { json: serializeHeadlessPaneResult(financialStatementsHeadless, result), result, csv: csv.stdout.trimEnd().split("\n") };
+  };
+  const wide = await exportReport([scoped]);
+  const standard = await exportReport([ordinary]);
+  const singleLong = await exportReport([scoped], "long");
+  const mixed = await exportReport([ordinary, scoped]);
+  const expected = { statementScope: scope, statementReview: review, statementBasis: expect.stringContaining(basis) };
+  expect(wide.json.metadata).toMatchObject(expected);
+  expect(JSON.stringify(standard.json)).not.toContain("statementBasis");
+  expect(singleLong.json.metadata).toMatchObject({ statementBasisByTicker: { [scoped]: expected } });
+  expect((mixed.json.metadata as { statementBasisByTicker: unknown }).statementBasisByTicker).toEqual({ [scoped]: expected });
+  expect(wide.csv[0]).toBe(standard.csv[0]);
+  expect(standard.csv.every((line) => !line.includes("Statement basis:"))).toBe(true);
+  expect(singleLong.csv.some((line) => line.includes(basis))).toBe(true);
+  expect(mixed.csv.slice(1).every((line) => line.includes(basis) === (line.startsWith(`${scoped},`) && !line.includes(",Price,")))).toBe(true);
+  if (statement === "valuation") {
+    const pe = wide.csv.find((line) => line.startsWith("P/E (x),"));
+    expect(pe?.split(",").slice(1, dates.length + 1)).toEqual(dates.map(() => ""));
+    expect(pe).toContain("including denominators");
+    expect(wide.csv.find((line) => line.startsWith("Price,"))).not.toContain("Statement basis:");
+    expect(standard.result.rows.find(({ id }) => id === "pe")?.["2026-09-30"]).toBe(10);
+  } else {
+    expect(wide.csv.find((line) => line.startsWith("Revenue,"))).toContain(basis);
+    expect(wide.result.rows).toEqual(standard.result.rows);
+  }
+});
 
 test("FA points to newer earnings releases without putting preliminary figures in the filed table", async () => {
   let filedDate = "2026-07-26";

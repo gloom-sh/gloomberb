@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
+import { formatDay } from "../../utils/day-format";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
 import {
   assessPaneScreenshot, filledKeyValueCount, isPaneScreenshotUsable, liveDomRowCount, missingActiveTabSelections, shotCutColumnsWarning, shotLoadedNothing,
@@ -542,18 +543,24 @@ describe("financial analysis ratio screenshots", () => {
   });
 
   /** The pane's collapsed table drawn from `history`, as the page renders it. */
-  const assess = (statement: string, financials: TickerFinancials, drawnHistory: PricePoint[] | null) => {
+  const assess = (statement: string, financials: TickerFinancials, drawnHistory: PricePoint[] | null, empty = false) => {
     const tab = RATIO_TABS.find(({ key }) => key === statement)!;
     const table = ratioTableForFinancials(financials, tab, "annual", drawnHistory);
     const columns = table.periods.map(({ statement: { date } }, index) => ({ id: `statement:${date}:${index}`, label: date.slice(0, 4) }));
-    const rows = table.rows.flatMap((row, rowIndex) => row.kind === "ratio" ? [{
+    const periodRow = {
+      tableIndex: 0, rowIndex: 0, key: "period-end", selected: false,
+      cells: [{ columnId: "metric", columnLabel: "Ratio", text: "Period end" }, ...columns.map((column, index) => ({
+        columnId: column.id, columnLabel: column.label, text: formatDay(table.periods[index]!.statement.date),
+      }))],
+    };
+    const rows = empty ? [periodRow] : [periodRow, ...table.rows.flatMap((row, rowIndex) => row.kind === "ratio" ? [{
       tableIndex: 0, rowIndex, key: row.id, selected: rowIndex === 0,
       cells: [{ columnId: "metric", columnLabel: "Ratio", text: row.label }, ...columns.map((column, index) => ({
         columnId: column.id, columnLabel: column.label, text: formatRatioValue(row.def.format, table.cells.get(row.id)![index]!.value),
       }))],
-    }] : []);
+    }] : [])];
     const render: DesktopPaneShotRenderResult = {
-      visibleText: ["FA MSFT Statement Income Cash Flow Balance Sheet Ratios Ratio", tab.name, "USD Annual Quarterly RATIO FY2026 Period end 2026-06-30",
+      visibleText: ["FA MSFT Statement Income Cash Flow Balance Sheet Ratios Ratio", tab.name, "USD Annual Quarterly RATIO FY2026",
         ...rows.flatMap(({ cells }) => cells.map(({ text }) => text))].join(" "),
       rows, truncated: false, truncationReasons: [], loadingStateDetected: false, errorStateDetected: false, errorStateMarkers: [],
       emptyStateDetected: false, emptyStateMarkers: [], visibleKeyValues: [],
@@ -593,6 +600,13 @@ describe("financial analysis ratio screenshots", () => {
     const undrawn = assess("valuation", captured, null);
     expect(undrawn.usable).toBe(false);
     expect(undrawn.render.chartEvidenceMismatches[0]).toMatch(/^Valuation P\/E 2026 reads "no price"/);
+  });
+
+  test("a valuation shot that rendered only its period row still fails", () => {
+    const shot = assess("valuation", captured, daily, true);
+    expect(shot.render.missingExpectedText).toContain("P/E");
+    expect(shot.render.chartEvidenceMismatches).toContain("Valuation ratio cells are missing");
+    expect(shot.usable).toBe(false);
   });
 });
 
@@ -1408,7 +1422,7 @@ describe("pane screenshot structured data evidence", () => {
     const expectedText = shotExpectedText(resolved("financial-statements", { statement: "cashflow", period: "annual" }),
       ["NVDA"], payload([["NVDA", financials]]));
     expect(expectedText).toContain("FY2026");
-    expect(expectedText).toContain("2026-01-31");
+    expect(expectedText).toContain("31 Jan 2026");
     expect(statementEvidence).toMatchObject({
       kind: "financial-statement",
       symbol: "NVDA",
@@ -1424,6 +1438,31 @@ describe("pane screenshot structured data evidence", () => {
       },
     });
   });
+});
+
+test("FA checks the rendered day in the intended period column, not the footer or another column", () => {
+  const request = { ...resolved("financial-statements", { statement: "income", period: "quarterly" }),
+    pane: { id: "financial-analysis" }, instance: { settings: {} }, token: "FA" } as unknown as ResolvedPaneFunction;
+  const financials = payload([["MSFT", { annualStatements: [{ date: "2025-12-31", totalRevenue: 700 }], quarterlyStatements: [{ date: "2026-06-30", totalRevenue: 200 },
+    { date: "2026-09-30", totalRevenue: 300 }] }]]);
+  const assess = (text: string) => assessPaneScreenshot(request, financials, {
+    visibleText: `FA MSFT Income Quarterly Revenue Q3 FY26 Period end ${text} 30 Sep 2026 Source: 30 Sep 2026`,
+    rows: [{ tableIndex: 0, rowIndex: 0, key: "period-end", selected: false, cells: [
+      { columnId: "statement:2026-09-30:0", columnLabel: "Q3 FY26", text },
+      { columnId: "statement:2026-06-30:1", columnLabel: "Q2 FY26", text: "30 Sep 2026" },
+    ] }],
+    truncated: false, truncationReasons: [], loadingStateDetected: false, errorStateDetected: false, errorStateMarkers: [],
+    emptyStateDetected: false, emptyStateMarkers: [], visibleKeyValues: [], semanticUi: [
+      { id: "query", role: "query-bar", actions: [], metadata: { selections: [{ id: "statement", value: "income", label: "Income" },
+        { id: "view", value: "quarterly", label: "Quarterly" }] } },
+    ],
+  }, "MSFT", "/tmp/fa-shot-test.png");
+  const correct = assess("30 Sep 2026");
+  expect(correct.render.missingExpectedText).toEqual([]);
+  expect(correct.usable).toBe(true);
+  const wrong = assess("30 Jun 2026");
+  expect(wrong.render.missingExpectedText).toEqual(["30 Sep 2026"]);
+  expect(wrong.usable).toBe(false);
 });
 
 function resolved(
