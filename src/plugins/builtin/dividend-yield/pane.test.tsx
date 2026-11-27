@@ -16,6 +16,7 @@ const tui = createOpenTuiTestHarness();
 const realNow = Date.now;
 afterEach(() => {
   setHttpFetchTransport(null);
+  setSystemTime();
   Date.now = realNow;
 });
 
@@ -169,10 +170,7 @@ test("summary failures retain cash and recover dated payment information through
 });
 
 test.each([48, 80, 120])("native dividend refresh keeps the selected price's time and status reachable at %d columns", async (width) => {
-  const session = new Date();
-  session.setUTCHours(18, 0, 0, 0);
-  while (session.getUTCDay() === 0 || session.getUTCDay() === 6) session.setUTCDate(session.getUTCDate() - 1);
-  Date.now = () => session.getTime();
+  setSystemTime(new Date("2026-11-24T17:00:00Z"));
   const sourceTime = Math.floor(Date.now() / 1000);
   const oldTime = sourceTime - 10 * 86_400;
   let priceTime: number | undefined = oldTime;
