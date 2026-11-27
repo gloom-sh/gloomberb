@@ -60,6 +60,7 @@ test.each([
   { evidence: "successor", input: "ELET6", key: "ELET6:B3", symbol: "AXIA3", exchange: "B3", name: "AXIA Energia", currency: "BRL", reason: /AXIA3.*Reconcile/ },
   { evidence: "broker share class", input: "DUAL/N", key: "DUAL:NYSE", symbol: "DUAL", exchange: "NYSE", name: "Dual Common", currency: "USD", reason: /DUAL-N/ },
   { evidence: "bare futures root", input: "ZF", key: "ZF=F", symbol: "ZF=F", exchange: "CBOT", name: "Treasury Note Future", currency: "USD", reason: /exact listing|ticker match/ },
+  { evidence: "bare index root", input: "MOVE", key: "^MOVE", symbol: "^MOVE", exchange: "NIM", name: "ICE BofA MOVE Index", currency: "USD", reason: /No ticker match found for "MOVE"/ },
   ...["0011.HK", "00011.HK"].flatMap((symbol) => [
     { evidence: `catalog withdrawal keyed ${symbol}`, input: "0011:HKEX", symbol, reason: /Exchange withdrawal/ },
     { evidence: `delisted quote keyed ${symbol}`, input: "0011:HKEX", symbol, reason: /last traded 2026-01-26/ },
@@ -113,10 +114,26 @@ test.each([
     const ordinary = await resolveCliTicker(input, store, dataProvider);
     expect(ordinary.ticker.metadata.ticker).toBe("AXIA3");
     expect(ordinary.readAs).toContain("converted");
-  } else if (evidence === "broker share class" || evidence === "bare futures root") {
+  } else if (evidence === "broker share class" || evidence === "bare futures root" || evidence === "bare index root") {
     const ordinary = await resolveCliTicker(input.replace("/", "."), store, dataProvider);
     expect(ordinary.ticker.metadata.ticker).toBe(key);
   }
+});
+
+test("snapshot imports the exact stock whose ticker is also an index root", async () => {
+  const { store, file, run } = await setup({
+    getQuote: async (symbol) => {
+      if (symbol !== "MOVE") throw new Error(`Not a ticker: ${symbol}.`);
+      return createTestQuote({ symbol, name: "Move Common", listingExchangeName: "NYSE", instrumentType: "EQUITY" });
+    },
+  });
+  await store.saveTicker(createTestTicker("^MOVE", "ICE BofA MOVE Index", { exchange: "NIM" }));
+  await writeFile(file, "Symbol,Shares,Avg Cost\nMOVE,9,30\n");
+
+  const { result } = await run([file, "--name", "Main", "--merge"]);
+  expect(result.data).toMatchObject({ positions: [{ listing: "MOVE:NYSE", name: "Move Common", shares: 9 }], skipped: [] });
+  expect((await store.loadTicker("MOVE"))?.metadata.positions?.[0]?.shares).toBe(9);
+  expect((await store.loadTicker("^MOVE"))?.metadata.positions).toEqual([]);
 });
 
 test.each([

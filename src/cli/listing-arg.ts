@@ -1790,8 +1790,8 @@ export async function resolveCliListing(
   // $VIX is Schwab's code for ^VIX, unless a security trades as VIX: $AAPL is a cashtag.
   const index = named || parsed.exchange ? null : await readDollarIndexCode(raw, deps, ownQuote);
   if (index) parsed = index;
-  // NDX, which no security trades as, is the Nasdaq-100 for every command, as `quote` reads it; MOVE stays Corvex.
-  const rooted = named || index || terminal || parsed.exchange ? null : await readBareIndexRoot(parsed, typed, deps, ownQuote);
+  // Ordinary lookup reads NDX as the Nasdaq-100 when no security trades as NDX.
+  const rooted = options.currentSnapshot || named || index || terminal || parsed.exchange ? null : await readBareIndexRoot(parsed, typed, deps, ownQuote);
   if (rooted) parsed = rooted;
   // USD-NGN and USDNGN are the pair USDNGN=X unless a security is listed under those letters.
   const pair = parsed.exchange ? null : await readAmbiguousCurrencyPair(parsed.symbol, deps);
