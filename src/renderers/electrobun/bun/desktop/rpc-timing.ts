@@ -1,4 +1,4 @@
-import { measurePerf } from "../../../../utils/perf-marks";
+import { measurePerf, withoutLastStep } from "../../../../utils/perf-marks";
 
 interface RpcPacket {
   type?: unknown;
@@ -31,6 +31,12 @@ function sectionPart(name: unknown): string {
 function requestName(packet: RpcPacket): string {
   const params = packet.params as { method?: unknown } | null | undefined;
   return sectionPart(packet.method === "backend.request" ? params?.method : packet.method);
+}
+
+function measureTurn<T>(name: string, run: () => T): T {
+  return name === "rpc.request.runtime.clock" || name === "rpc.respond.runtime.clock"
+    ? withoutLastStep(() => measurePerf(name, run))
+    : measurePerf(name, run);
 }
 
 /**
@@ -74,12 +80,12 @@ export function measureRpcTraffic(rpc: { setTransport(transport: RpcTransport): 
     const { send, registerHandler } = transport;
     setTransport.call(rpc, {
       ...transport,
-      ...(send ? { send: (packet: RpcPacket) => measurePerf(outgoing(packet), () => send.call(transport, packet)) } : {}),
+      ...(send ? { send: (packet: RpcPacket) => measureTurn(outgoing(packet), () => send.call(transport, packet)) } : {}),
       ...(registerHandler
         ? {
           registerHandler: (handler: (packet: RpcPacket) => unknown) => registerHandler.call(
             transport,
-            (packet: RpcPacket) => measurePerf(incoming(packet), () => handler(packet)),
+            (packet: RpcPacket) => measureTurn(incoming(packet), () => handler(packet)),
           ),
         }
         : {}),
