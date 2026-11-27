@@ -61,6 +61,24 @@
  ],
  "cases": [
   {
+   "name": "An old annual match cannot price a newer TTM on another share basis",
+   "symbol": "000660",
+   "exchange": "KRX",
+   "quote": { "price": 1110000, "currency": "KRW", "name": "SK hynix Inc." },
+   "financialCurrency": "KRW",
+   "fundamentals": { "eps": 60378, "trailingPE": 18.4 },
+   "annualStatements": [
+    { "date": "2025-12-31", "currency": "KRW", "eps": 60378 }
+   ],
+   "quarterlyStatements": [
+    { "date": "2025-12-31", "currency": "KRW", "eps": 21522 },
+    { "date": "2026-03-31", "currency": "KRW", "eps": 56670 },
+    { "date": "2026-06-30", "currency": "KRW", "eps": 131478 },
+    { "date": "2026-09-30", "currency": "KRW", "eps": 54454 }
+   ],
+   "expect": { "trailingPE": null, "because": "matches the year ended 2025-12-31" }
+  },
+  {
    "name": "TDK withheld its quarter to 2025-12-31: no four quarters, so the source's EPS stands",
    "symbol": "6762",
    "exchange": "JPX",

@@ -88,7 +88,7 @@ function PathEvidence({ data, path, width, focused, onRecenter }: { data: GraphP
           return <Box key={evidence.id} flexDirection="column" paddingBottom={1}>
             <Box flexDirection="row" gap={1}><Badge tone={isUnconfirmed(row) ? "neutral" : "accent"} label={evidenceLabel(row)} />
               {row.leadStatus === "verified" ? <Badge tone="positive" label="Verified" /> : null}</Box>
-            <KeyValueRow label="Disclosure" value={`${evidence.reporter.name} · ${relationshipLabel(row)}`} color={ROLE_COLORS[evidence.role]} labelWidth={20} />
+            <KeyValueRow label="Disclosure" value={`${supplyDisplayName(evidence.reporter.name)} · ${relationshipLabel(row)}`} color={ROLE_COLORS[evidence.role]} labelWidth={20} />
             <KeyValueRow label="Evidence class" value={`${TIER_LABELS[evidence.tier]} · ${SOURCE_LABELS[evidence.sourceKind]}`} detail={`${Math.round(evidence.confidence * 100)}% confidence`} labelWidth={20} />
             <KeyValueRow label="Period" value={periodText(row)} detail={trustTier(row) === 1 ? `filed ${row.filedDate ?? MISSING_VALUE}` : `published ${evidenceDate(row)}`} labelWidth={20} />
             {row.entityScope === "group" && !row.counterparty.aggregate ? <KeyValueRow label="Metric scope" value="Corporate group" labelWidth={20} /> : null}
@@ -164,7 +164,7 @@ export function SupplyGraphPane({ symbol, tab, width, height, focused }: { symbo
   usePaneStatusFooter({ registrationId: "supply-graph", loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale, hints,
     info: [data?.options.asOf ? { id: "known-by", parts: [{ text: `known by ${data.options.asOf}`, tone: "muted" as const }] } : null,
       filedThrough ? { id: "filed", parts: [{ text: `filed through ${filedThrough}`, tone: "muted" as const }] } : null,
-      data?.asOf ? { id: "graph-through", parts: [{ text: `whole graph through ${data.asOf}`, tone: "muted" as const }] } : null].filter(entry => entry !== null) });
+      data?.asOf ? { id: "graph-through", parts: [{ text: `focus coverage to ${data.asOf}`, tone: "muted" as const }] } : null].filter(entry => entry !== null) });
   usePaneNoticeFooter({ registrationId: "supply-graph:notices", focused, notices: [...(resource.data?.refreshError ? [resource.data.refreshError] : []),
     ...(data && !data.search.complete ? [`Search limited: ${data.search.reasons.join(", ").replaceAll("_", " ")}. Narrow filters or reduce depth to inspect more routes.`] : []),
     ...(data?.access === "preview" ? [`Pro preview: depth ${data.options.depth}. Upgrade for four hops and the full graph.`] : []),

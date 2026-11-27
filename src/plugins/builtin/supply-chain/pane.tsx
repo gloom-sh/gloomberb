@@ -30,7 +30,7 @@ import { directoryColumns, directoryRows } from "./directories";
 import { useSupplyEvidence } from "./evidence";
 import { SupplyFlow } from "./flow";
 import { SupplyGraphPane } from "./graph-pane";
-import { entityTicker } from "./graph-model";
+import { entityTicker, supplyDisplayName } from "./graph-model";
 import {
   cellText, counterpartyKind, disclosureText, isTaggedFact, counterpartyKindLabel, counterpartyLabel, counterpartyLabelEnd, counterpartyName, disclosedValue, earlierRows, fitShareBasis, focusCompanyLabel, focusCompanyName, receivablesConcentration, lockedDisclosures, nativeValue, percentage, relationshipLabel, ROLE_COLORS, openingSupplyView, rowRoleLabel,
   periodDate, shareParts, sortRows, supplyEmptyText, supplyPreviewNote, supplyRoleCounts, type SupplySort,
@@ -432,7 +432,7 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
   // A short flow keeps one row of figures, dropping the last roles, so the cards keep their room.
   const flowFigures = bodyHeight < 26 ? figures.slice(0, flowFigureColumns) : figures;
   const selectedShare = selected ? shareParts(selected, focusId) : null;
-  const flowMeta = selected ? `${entityTicker(selected.reportingEntity) ?? selected.reportingEntity.name} ${evidenceLabel(selected)} · ${selectedShare ? `${selectedShare.value} ${selectedShare.basis}`
+  const flowMeta = selected ? `${entityTicker(selected.reportingEntity) ?? supplyDisplayName(selected.reportingEntity.name)} ${evidenceLabel(selected)} · ${selectedShare ? `${selectedShare.value} ${selectedShare.basis}`
     : nativeValue(selected) !== null || selected.usd !== null ? disclosedValue(selected) : `${relationshipLabel(selected)}, no figure disclosed`}` : undefined;
   return <Box width={width} height={height} flexDirection="column">
     {strip}

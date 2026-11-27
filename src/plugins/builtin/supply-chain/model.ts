@@ -394,7 +394,7 @@ export function cellText(row: SupplyRow, column: string): string {
   return column === "name" ? counterpartyName(row) : column === "ticker" ? entityTicker(row.counterparty) ?? MISSING_VALUE
     : column === "role" ? rowRoleLabel(row) : column === "direction" ? row.direction === "in" ? "In" : row.direction === "out" ? "Out" : "Both"
     : column === "pct" ? percentage(row) : column === "usd" ? disclosedValue(row) : column === "fy" ? periodText(row)
-    : column === "publisher" ? row.evidence?.find((item) => item.status === "active")?.publisher ?? row.reportingEntity.name
+    : column === "publisher" ? supplyDisplayName(row.evidence?.find((item) => item.status === "active")?.publisher ?? row.reportingEntity.name)
     : column === "corroboration" ? corroborationLabel(row)
     : column === "evidence" ? evidenceLabel(row) : column === "source" ? sourceLabel(row) : column === "filed" ? evidenceDate(row) : `${Math.round(row.confidence * 100)}%`;
 }

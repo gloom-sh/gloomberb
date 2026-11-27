@@ -81,7 +81,7 @@ function graphReport(data: GraphPayload, target: string): HeadlessBundleResult {
       to: nodes.get(path.nodeIds[index + 1]!), primaryEvidenceId: links.get(id)!.primaryEvidenceId, disclosures: links.get(id)!.evidence })),
   });
   const sections: HeadlessBundleResult["sections"] = target
-    ? [{ title: `Routes to ${data.target?.name ?? target}`, columns: pathColumns, rows: data.paths.map(route) }]
+    ? [{ title: `Routes to ${supplyDisplayName(data.target?.name ?? target)}`, columns: pathColumns, rows: data.paths.map(route) }]
     : (["upstream", "downstream", "related"] as const).map(direction => ({
       title: direction === "upstream" ? "Upstream suppliers" : direction === "downstream" ? "Downstream customers" : "Related companies",
       columns: [{ key: "company", header: "Company" }, { key: "ticker", header: "Ticker" }, ...pathColumns],
@@ -115,7 +115,7 @@ function graphReport(data: GraphPayload, target: string): HeadlessBundleResult {
   if (data.truncated && !errors.length) errors.push("Graph results are truncated");
   const dates = graphDisclosureDates(data.links);
   const notes = [data.options.asOf ? `Disclosures known by ${data.options.asOf}.` : null,
-    data.asOf ? `Whole-graph data through ${data.asOf}; not the filing date of the displayed disclosures.` : null].filter((note): note is string => note !== null);
+    data.asOf ? `Focus-company coverage period through ${data.asOf}; filing dates for the displayed disclosures are listed separately.` : null].filter((note): note is string => note !== null);
   return { sections, complete: data.access === "full" && !!data.entity && (!target || !!data.target) && data.search.complete && !data.truncated && data.requestedDepth <= data.maxDepth,
     notes, errors, freshness: { observedKey: "filed", asOf: dates.latest, oldest: dates.oldest, basis: "published relationship evidence" },
     metadata: { symbol: data.symbol, target: data.target, asOf: dates.latest, oldestAsOf: dates.oldest, graphAsOf: data.asOf, snapshotAt: data.snapshotAt,

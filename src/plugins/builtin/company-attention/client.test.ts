@@ -45,6 +45,7 @@ test("an unread listing's preview has no fake week or observation, unlike a meas
   expect(unread.sections.flatMap(section => section.rows ?? [])).toEqual([]);
   expect(unread.metadata?.asOf).toBeNull();
   expect(unread.errors).toBeUndefined();
+  expect(unread.sections.find(section => section.title === "Hiring moves")).not.toHaveProperty("locked");
   expect(unread.sections.find(section => section.title === "Expansion")).toMatchObject({ empty: "No measured postings for this week." });
   const measured = { ...placeholder, newRoles: 0, closedRoles: 0, openRoles: 0, measured: true, reads: 2, excluded: [] };
   const zero = await load({ ...empty, latest: { ...captured.latest!, openCount: 0 } }, { ...moves, weeks: [placeholder, { ...measured, week: "2026-10-12" }] });

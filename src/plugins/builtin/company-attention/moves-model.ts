@@ -166,6 +166,7 @@ const postingRow = (closed: boolean) => (posting: HiringMovePosting): MovesRow =
 });
 
 const observedWeek = (week: HiringCompanyMoves["week"]) => week && (week.measured || week.reads > 0 || week.newRoles !== null || week.closedRoles !== null || week.openRoles !== null) ? week : null;
+const lockedMoveWeeks = (data: HiringCompanyMoves) => data.preview ? Math.max(0, data.locked.history - (data.week ? 1 : 0)) : 0;
 
 export function companyMovesModel(data: HiringCompanyMoves): MovesModel {
   const latest = data.latest;
@@ -191,7 +192,7 @@ export function companyMovesModel(data: HiringCompanyMoves): MovesModel {
     { label: "Open", value: count(data.week.openRoles) },
     { label: "Move", value: "Pro", detail: "pace, peers, why", detailVariants: [""] },
   ] : [];
-  const historyLocked = data.preview ? Math.max(0, data.locked.history - weeks.length) : 0;
+  const historyLocked = lockedMoveWeeks(data);
   const noMove = data.preview && data.locked.move ? "This company's move is in Pro." : "No measured move for this company yet.";
   return {
     asOf: latest?.computedAt ?? data.history[0]?.computedAt ?? null,
@@ -246,7 +247,7 @@ export function movesPreviewNote(data: HiringMovesBoard | HiringCompanyMoves, fi
   }
   const { added, closed, move = 0 } = data.locked;
   const current = observedWeek(data.week);
-  const history = Math.max(0, data.locked.history - (data.week ? 1 : 0));
+  const history = lockedMoveWeeks(data);
   if (history + added + closed + move <= 0) return null;
   const adds = [move > 0 ? "its move analysis" : "", history > 0 ? `${countOf(history, "earlier week")} of posting moves` : "", added + closed > 0 ? `${countOf(added + closed, "more posting")}` : ""].filter(Boolean);
   return current ? freePreviewNote({ shows: "this week's posting moves", adds: list(adds) }) : `Gloom Pro adds ${list(adds)}`;

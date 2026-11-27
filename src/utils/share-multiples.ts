@@ -285,7 +285,7 @@ function statementsOwnEps(financials: EpsInputs, currency: string, eps: number):
  * the payload does not say which. Gloom Cloud's screener, which knows its
  * rates, says "no rate on record" only when it has none.
  * Undefined for an EPS the filed quarters give (in the price's currency), a
- * receipt's on its home line, and one whose currency cannot be told.
+ * receipt's on its home line. An unknown EPS currency is not presumed to be the listing's.
  */
 function noRateForEps(financials: EpsInputs): string | undefined {
   const fundamentals = financials.fundamentals;

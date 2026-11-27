@@ -10,6 +10,7 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { counterpartyKind, disclosedValue, disclosureText, dollars, isTaggedFact, nativeValue, periodText, relationshipLabel, ROLE_COLORS, shareParts, sourceLabel, sourceValueLabel, sourceValueText } from "./model";
 import { canShowQuote, corroborationLabel, evidenceDate, evidenceLabel, isUnconfirmed, tierLabel } from "./trust";
 import { DisclosureQuote } from "./disclosure-quote";
+import { supplyDisplayName } from "./graph-model";
 
 function SourceGloss({ text, width }: { text: string; width: number }) {
   const colors = useThemeColors();
@@ -85,7 +86,7 @@ export function RowEvidence({ row, focusId, width, height, focused }: { row: Sup
       <Box flexDirection="column" paddingX={desktop ? 0 : 1} paddingTop={1}>
         <Box flexDirection="row" gap={1}><Badge tone={isUnconfirmed(row) ? "neutral" : "accent"} label={evidenceLabel(row)} />
           {row.leadStatus === "verified" ? <Badge tone="positive" label="Verified" /> : null}</Box>
-        <KeyValueRow label="Reporting company" value={row.reportingEntity.name} labelWidth={20} />
+        <KeyValueRow label="Reporting company" value={supplyDisplayName(row.reportingEntity.name)} labelWidth={20} />
         <KeyValueRow label="Relationship" value={`${relationshipLabel(row)} · ${row.direction === "in" ? "inbound" : row.direction === "out" ? "outbound" : "mutual"}`} color={ROLE_COLORS[row.role]} labelWidth={20} />
         {kind !== "company" ? <KeyValueRow label="Counterparty type" value={kind === "group" ? row.entityScope === "group" ? "Named corporate group" : "Aggregate concentration group" : "Undisclosed by the filer"} labelWidth={20} /> : null}
         {row.entityScope === "group" && !row.counterparty.aggregate ? <KeyValueRow label="Metric scope" value="Corporate group" labelWidth={20} /> : null}
