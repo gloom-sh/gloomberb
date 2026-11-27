@@ -1,7 +1,9 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { usePaneArrowsClaimed } from "../layout/pane/footer/registration";
 import { useShortcut } from "../../react/input";
+import type { PinnedMoment } from "../../state/app/tab-cursor";
 import { isPlainKey } from "../../utils/keyboard";
+import { usePinFollow } from "../use-pinned-moment";
 
 export interface ChartTableSelectionOptions<T> {
   rows: readonly T[];
@@ -22,6 +24,10 @@ export interface ChartTableSelection {
   onCursorDateChange: (date: Date | null) => void;
   /** Clicking the chart selects the row under the pointer. */
   onActivate: () => void;
+  /** While the pane is focused, `p` pins the tab's crosshair at the chart's cursor; see `CompositeChartProps.pinKeys`. */
+  pinKeys: boolean;
+  /** The chart says where the tab's pin is, and the selection follows it. */
+  onPinnedMomentChange: (moment: PinnedMoment | null) => void;
 }
 
 interface DatedRow {
@@ -63,6 +69,12 @@ function undatedNeighbours(
  * nearest row; Left and Right step to the previous and next row in time, the
  * direction the chart reads, whatever order the table is sorted in. From a
  * row with no point they step to the nearest row that has one.
+ *
+ * The tab's pinned crosshair is the chart's too: `p` pins it at the chart's
+ * cursor and lifts it, and while it is pinned Left and Right move the pin a
+ * bar and Esc lifts it, as on a focused chart. The selection follows the pin
+ * to the newest row at or before it when it moves, so a row picked by hand
+ * under the pin stays picked. A chart with no time axis shares no pin.
  */
 export function useChartTableSelection<T>({
   rows,
@@ -137,9 +149,16 @@ export function useChartTableSelection<T>({
     if (next) onSelect(next.id);
   }, { enabled: enabled && focused && !arrowsClaimed && dated.length > 0 });
 
+  const [pin, setPin] = useState<PinnedMoment | null>(null);
+  const moment = useCallback((row: T) => {
+    const time = getDate(row)?.getTime();
+    return time != null && Number.isFinite(time) ? time : null;
+  }, [getDate]);
+  usePinFollow({ pin: enabled ? pin : null, rows, getId, moment, selectedId, select: onSelect, name: "chart-table" });
+
   const shownHover = hover && hover.under === selectedId ? hover.date : null;
   const cursorDate = !enabled
     ? null
     : shownHover ?? (selected ? new Date(selected.time) : null);
-  return { cursorDate, onCursorDateChange, onActivate };
+  return { cursorDate, onCursorDateChange, onActivate, pinKeys: enabled && focused, onPinnedMomentChange: setPin };
 }

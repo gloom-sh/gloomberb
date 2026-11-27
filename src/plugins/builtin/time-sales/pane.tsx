@@ -1,5 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Box } from "../../../ui";
 import { usePaneSettingValue, useShortcut } from "../../../public/react";
 import { createDataTableCsv } from "../../../components/data-table/export";
@@ -12,8 +12,8 @@ import { canonicalExchange } from "../../../utils/exchanges";
 import { listingIdentity } from "../shared/ticker-request";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
-import { newestFirst, quoteKey, quoteSpread, stickyTapePriceDigits, tapeClockNewYork, tapeConditionWords, tapePrice, tapeQuantity, tapeStampNewYork, tapeStatistics, tapeTicks, tapeTime, tapeAfter, tapeMomentKey, tapeRowAtOrBefore, tapeVenue, tradeKey, type TapeDigits } from "./model";
-import { usePinnedMoment } from "../../../components/use-pinned-moment";
+import { newestFirst, quoteKey, quoteSpread, stickyTapePriceDigits, tapeClockNewYork, tapeConditionWords, tapePrice, tapeQuantity, tapeStampNewYork, tapeStatistics, tapeTicks, tapeTime, tapeAfterMoment, tapeMoment, tapeTimeOrder, tapeVenue, tradeKey, type TapeDigits } from "./model";
+import { usePinnedList } from "../../../components/use-pinned-moment";
 import { useTape } from "./use-tape";
 import { lastSessionNote } from "./window";
 
@@ -44,6 +44,11 @@ const QUOTES: DataTableColumn[] = [
 const QUOTE_DROP_ORDER = [["bidExchange", "askExchange"], ["bidSize", "askSize"]];
 const rank = (value: number | null) => value == null ? `pctl ${MISSING_VALUE}` : `${value.toFixed(0)} pctl`;
 type TapeRow = { id: string; trade?: TapeTrade; quote?: TapeQuote };
+const tapeRowId = (row: TapeRow) => row.id;
+const rowTime = (row: TapeRow) => (row.trade ?? row.quote)!.timestamp;
+const tapeRowMoment = (row: TapeRow) => tapeMoment(rowTime(row));
+const tapeRowAfter = (row: TapeRow, at: number) => tapeAfterMoment(rowTime(row), at);
+const tapeRowOrder = (a: TapeRow, b: TapeRow) => tapeTimeOrder(rowTime(a), rowTime(b));
 
 export function TimeSalesPane(props: PaneProps) {
   const { symbol, ticker } = usePaneTicker();
@@ -73,24 +78,22 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
     : newestFirst(data.trades).map((trade) => ({ id: tradeKey(trade), trade })), [data, tab]);
   // A crosshair pinned in the tab picks the print at that moment out of the
   // tape and mutes the later ones, on the same nanosecond comparison; a
-  // moment before the tape's window says so. The selection follows the pin
-  // when it moves or the tab changes, not on each new print, so a streaming
-  // tape never pulls away a row the user picked (another listing remounts).
-  const pinnedAt = usePinnedMoment("time-sales:pin", { enabled: !detail });
-  const pinKey = useMemo(() => pinnedAt === null ? null : tapeMomentKey(pinnedAt), [pinnedAt]);
-  const rowTime = (row: TapeRow) => (row.trade ?? row.quote)!.timestamp;
-  const pinnedRow = useMemo(() => pinKey === null ? null : tapeRowAtOrBefore(rows, rowTime, pinKey), [pinKey, rows]);
-  const pinnedRowId = pinnedRow?.id ?? null;
-  const followedPinRef = useRef<string | null>(null);
-  useEffect(() => {
-    const follow = pinKey === null ? null : `${tab}:${pinKey}`;
-    if (follow === null) followedPinRef.current = null;
-    if (follow === null || pinnedRowId === null || followedPinRef.current === follow) return;
-    followedPinRef.current = follow;
-    setSelected(pinnedRowId);
-  }, [pinKey, pinnedRowId, tab]);
-  const pinnedBeforeTape = pinKey !== null && rows.length > 0 && pinnedRow === null;
-  const laterThanPin = (row: TapeRow) => pinKey !== null && tapeAfter(rowTime(row), pinKey);
+  // moment before the tape's window selects its first print, to the
+  // nanosecond, and says so. The
+  // selection follows the pin when it moves or the tab changes, not on each
+  // new print, so a streaming tape never pulls away a row the user picked
+  // (another listing remounts).
+  const { beforeRows: pinnedBeforeTape, isAfterPin } = usePinnedList<TapeRow>("time-sales:pin", {
+    enabled: !detail,
+    rows,
+    getId: tapeRowId,
+    moment: tapeRowMoment,
+    isAfter: tapeRowAfter,
+    order: tapeRowOrder,
+    selectedId: selected,
+    select: setSelected,
+    followKey: tab,
+  });
   const spreads = useMemo(() => {
     const quotes = data?.quotes ?? [];
     const bps = quotes.map((quote) => quoteSpread(quote)).filter((spread) => spread.state === "normal" && spread.bps != null).map((spread) => spread.bps!).sort((a, b) => a - b);
@@ -141,14 +144,14 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
         : column.id === "size" ? tapeQuantity(trade.size) : column.id === "venue" ? tapeVenue(trade.exchange)
         : column.id === "conditions" ? tapeConditionWords(trade.conditions) : trade.tape,
         // Price by tick, as on a tape; a block print lights the rest of its row.
-        color: laterThanPin(row) ? colors.textMuted : column.id === "price" ? tick === "up" ? colors.positive : tick === "down" ? colors.negative : colors.text
+        color: column.id === "price" ? tick === "up" ? colors.positive : tick === "down" ? colors.negative : colors.text
           : trade.size >= 10_000 ? colors.warning : colors.textMuted };
     }
     const quote = row.quote!, spread = quoteSpread(quote);
     return { text: column.id === "time" ? tapeClockNewYork(quote.timestamp) : column.id === "bid" ? tapePrice(quote.bid, quoteDigits) : column.id === "ask" ? tapePrice(quote.ask, quoteDigits)
       : column.id === "bidSize" ? tapeQuantity(quote.bidSize) : column.id === "askSize" ? tapeQuantity(quote.askSize)
       : column.id === "bidExchange" ? tapeVenue(quote.bidExchange) : column.id === "askExchange" ? tapeVenue(quote.askExchange)
-      : spread.bps == null ? MISSING_VALUE : spread.bps.toFixed(2), color: laterThanPin(row) ? colors.textMuted : spread.state === "normal" ? colors.text : colors.warning };
+      : spread.bps == null ? MISSING_VALUE : spread.bps.toFixed(2), color: spread.state === "normal" ? colors.text : colors.warning };
   };
   if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="time-sales-signin" action="view time and sales" needsVerification={session.needsVerification} />;
   return <Box width={width} height={height} flexDirection="column">
@@ -172,7 +175,7 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
           ]),
           ...(data.session.high != null && data.session.low != null ? [{ id: "session", label: "Session", value: `${tapePrice(data.session.low, sessionDigits)} to ${tapePrice(data.session.high, sessionDigits)}` }] : []),
         ]} />}
-        renderCell={renderCell} exportCsv={() => createDataTableCsv({ columns: tab === "quotes" ? QUOTES : TRADES, items: rows, renderCell })}
+        renderCell={renderCell} isRowMuted={isAfterPin} exportCsv={() => createDataTableCsv({ columns: tab === "quotes" ? QUOTES : TRADES, items: rows, renderCell })}
         emptyStateTitle="No observations in this window." /> : null}
     </PaneStatusBody>
   </Box>;

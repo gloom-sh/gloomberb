@@ -353,6 +353,14 @@ export interface DataTableProps<
     index: number,
     rowState: DataTableRowState,
   ) => string | undefined;
+  /**
+   * A row that is shown but does not apply right now (a story or a print out
+   * after the tab's pinned moment): the whole row reads in `textMuted` and
+   * plain weight, its value colours and the content its cells draw (ticker
+   * badges) included, and it stays selectable. One rule for every table, so a
+   * pane does not mute its cells one by one.
+   */
+  isRowMuted?: (item: T, index: number) => boolean;
   emptyContent?: ReactNode;
   bodyAfter?: ReactNode;
   emptyStateTitle: string;

@@ -105,6 +105,7 @@ export function useCompositeChartKeyboard({
   restingCursor,
   updateCursor,
   pin,
+  pinKeys = false,
   onActivate,
   timePick,
   pricePick,
@@ -145,6 +146,8 @@ export function useCompositeChartKeyboard({
   updateCursor: (date: Date | null) => void;
   /** The tab's crosshair pin, when there is a cursor to pin or a pin to lift. */
   pin: { pinned: boolean; toggle: () => void } | null;
+  /** The pin's keys work while the pane is focused, though the chart is not (`CompositeChartProps.pinKeys`). */
+  pinKeys?: boolean;
   onActivate: CompositeChartProps["onActivate"];
   timePick: CompositeChartProps["timePick"];
   pricePick: CompositeChartProps["pricePick"];
@@ -233,6 +236,8 @@ export function useCompositeChartKeyboard({
   const arrowsClaimed = usePaneArrowsClaimed();
   const keyboardActive = focused && interactive;
   const toolsActive = keyboardActive && navigable;
+  // A chart over a table takes only the pin's keys, the table keeping the rest.
+  const pinKeysActive = !keyboardActive && pinKeys && interactive && !!pin;
   // Under a tab strip, a chart you pan and draw on is one focus level down: the
   // strip keeps Left, Right, h and l until Down, Enter, a click or a tool moves
   // into the chart, and Esc or Up hands them back. A pane with no strip (G)
@@ -463,11 +468,28 @@ export function useCompositeChartKeyboard({
   // (Backspace back, Esc close) whichever mounted first; a dialog opened over
   // it is a newer scope and still comes first.
   useShortcut((event) => {
-    if (!keyboardActive) return;
+    if (!keyboardActive && !pinKeysActive) return;
     const consume = () => {
       event.preventDefault();
       event.stopPropagation();
     };
+    if (!keyboardActive) {
+      // While pinned, Esc lifts the pin and Left and Right move it a bar, as
+      // on a focused chart; the table's selection follows it there.
+      if (!pin?.pinned || !scene) return;
+      if (isPlainKey(event, "escape")) {
+        consume();
+        pin.toggle();
+        return;
+      }
+      if (isPlainKey(event, "left", "right") && !arrowsClaimed) {
+        consume();
+        const nextDate = resolveAdjacentCompositeCursorDate(scene, keyboardCursorDateRef.current, event.name === "left" ? -1 : 1);
+        keyboardCursorDateRef.current = nextDate;
+        updateCursor(nextDate);
+      }
+      return;
+    }
     if (timePick && scene && isPlainKey(event, "return", "enter", "escape")) {
       consume();
       // A pick, like a placement below, is unfinished input: ending it is no half of a close.
@@ -676,7 +698,7 @@ export function useCompositeChartKeyboard({
       case "zoom-out":
         zoomViewport(1 / COMPOSITE_ZOOM_STEP_FACTOR);
     }
-  }, { enabled: keyboardActive, scope: keyboardId });
+  }, { enabled: keyboardActive || pinKeysActive, scope: keyboardId });
 
   // The keys a mode adds show where they act: Enter with a tool in hand, Space
   // on a legend entry. Everything else the chart answers is in the pane menu.
@@ -737,7 +759,18 @@ export function useCompositeChartKeyboard({
     panelMaximized,
   } = layout;
   usePaneFooter(keyboardId, () => {
-    if (!keyboardActive || !scene) return null;
+    if (!scene) return null;
+    const pinHint: PaneHint | null = pinState === null ? null : {
+      id: "chart-pin",
+      key: "p",
+      // "[p]in", and "[p] unpin" for the word that does not start with its key.
+      label: pinState ? " unpin" : "in",
+      title: pinState ? "Unpin Crosshair" : "Pin Crosshair",
+      // A pane whose own `p` means something else keeps it.
+      yieldsKey: true,
+      onPress: () => chartActionsRef.current.togglePin(),
+    };
+    if (!keyboardActive) return pinKeysActive && pinHint ? { order: 10, hints: [pinHint] } : null;
     const hints: PaneHint[] = [];
     if (timePickLabel) {
       hints.push({ id: "chart-pick", key: "Enter", label: timePickLabel, onPress: () => pickingPrice ? chartActionsRef.current.pickPrice() : chartActionsRef.current.pick() });
@@ -755,18 +788,7 @@ export function useCompositeChartKeyboard({
         onPress: () => chartActionsRef.current.levelAction(),
       });
     }
-    if (pinState !== null) {
-      hints.push({
-        id: "chart-pin",
-        key: "p",
-        // "[p]in", and "[p] unpin" for the word that does not start with its key.
-        label: pinState ? " unpin" : "in",
-        title: pinState ? "Unpin Crosshair" : "Pin Crosshair",
-        // A pane whose own `p` means something else keeps it.
-        yieldsKey: true,
-        onPress: () => chartActionsRef.current.togglePin(),
-      });
-    }
+    if (pinHint) hints.push(pinHint);
     if (legendKeysActive && legendEntryToggleable) {
       hints.push({
         id: "chart-series",
@@ -843,6 +865,7 @@ export function useCompositeChartKeyboard({
     canDeleteDrawing,
     drawingKeysActive,
     keyboardActive,
+    pinKeysActive,
     legendEntryToggleable,
     legendEntryVisible,
     legendKeysActive,

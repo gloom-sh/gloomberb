@@ -23,15 +23,8 @@ export interface NewsRowCell {
   attributes?: number;
 }
 
-/** A story out after a moment the list is pinned to reads muted and plain throughout. */
-interface NewsRowTone {
-  later?: boolean;
-}
-
-const tone = (color: string, { later = false }: NewsRowTone) => later ? colors.textMuted : color;
-
-export function newsTimeCell(article: MarketNewsItem, options: NewsRowTone = {}): NewsRowCell {
-  return { text: formatFeedTime(article.publishedAt), color: tone(colors.textDim, options) };
+export function newsTimeCell(article: MarketNewsItem): NewsRowCell {
+  return { text: formatFeedTime(article.publishedAt), color: colors.textDim };
 }
 
 export function newsSourceCell(article: MarketNewsItem): NewsRowCell {
@@ -40,12 +33,12 @@ export function newsSourceCell(article: MarketNewsItem): NewsRowCell {
 
 export function newsHeadlineCell(
   article: MarketNewsItem,
-  { read = false, title, ...options }: NewsRowTone & { read?: boolean; title?: string } = {},
+  { read = false, title }: { read?: boolean; title?: string } = {},
 ): NewsRowCell {
   return {
     // A row standing for a run of routine notices says how many after its headline.
     text: title ?? listedHeadline(article),
-    color: tone(colors.text, options),
-    attributes: options.later || read ? TextAttributes.NONE : TextAttributes.BOLD,
+    color: colors.text,
+    attributes: read ? TextAttributes.NONE : TextAttributes.BOLD,
   };
 }
