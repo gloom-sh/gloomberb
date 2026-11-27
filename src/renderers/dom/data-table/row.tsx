@@ -9,6 +9,8 @@ import type {
   DataTableSectionHeader,
 } from "../../../components/ui/data-table";
 import { tableColumnLeadGap } from "../../../components/ui/table-layout";
+import { tableCellSpill } from "../../../components/ui/data-table/spill";
+import { displayWidth } from "../../../utils/format";
 import { WebIcon } from "../desktop/icons";
 import { useFrozenColumnInsets } from "./frozen-column";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../theme/font-scale";
@@ -367,6 +369,15 @@ function WebDataTableRowInner<
   const rowBg = selected
     ? CSS_SELECTED
     : rowBackgroundColor ?? CSS_BG;
+  const cells: DataTableCell[] = columns.map((column) => renderCell(item, column, index, rowState));
+  // A cut name reads on into the blank of the figure after it in its row (tableCellSpill), between two columns that
+  // both show whole: the frozen column, and one sliding under it, keep their cells. Its cell spans the figure's
+  // column too, its text stopping a blank before the figure, which draws over it on no fill of its own.
+  const spills = columns.map((column, columnIndex) => (
+    (freezeFirstColumn && columnIndex === 0) || insets[columnIndex] || insets[columnIndex + 1]
+      ? false : tableCellSpill(column, cells[columnIndex]!, columns[columnIndex + 1], cells[columnIndex + 1], columnGap) > 0
+  ));
+  const spilled = spills.includes(true);
 
   return (
     <div
@@ -401,7 +412,9 @@ function WebDataTableRowInner<
       }}
     >
       {columns.map((column, columnIndex) => {
-        const cell: DataTableCell = renderCell(item, column, index, rowState);
+        const cell = cells[columnIndex]!;
+        const spillsOn = spills[columnIndex] === true;
+        const spilledInto = columnIndex > 0 && spills[columnIndex - 1] === true;
         return (
           <div
             key={column.id}
@@ -414,16 +427,19 @@ function WebDataTableRowInner<
             data-gloom-cell-may-be-blank={cell.mayBeBlank ? "true" : undefined}
             style={{
               minWidth: 0,
+              // A row with a spill places each cell in its own column, the spilling one across the next too.
+              ...spilled ? { gridRow: 1, gridColumn: spillsOn ? `${columnIndex + 1} / span 2` : `${columnIndex + 1}` } : {},
               position: freezeFirstColumn && columnIndex === 0 ? "sticky" : undefined,
               left: freezeFirstColumn && columnIndex === 0 ? inlinePaddingPx(horizontalPadding) : undefined,
               zIndex: freezeFirstColumn && columnIndex === 0 ? 1 : undefined,
               marginLeft: leadGapCss(columns, columnIndex, columnGap),
               paddingLeft: columnIndex > 0 ? insets[columnIndex] : undefined,
+              paddingRight: spillsOn ? spillStopCss(cells[columnIndex + 1]!) : undefined,
               boxSizing: "border-box",
               height: WEB_CELL_HEIGHT,
               overflow: "hidden",
               cursor: cell.onMouseDown ? "pointer" : undefined,
-              backgroundColor: cell.backgroundColor ?? rowBg,
+              backgroundColor: spilledInto ? "transparent" : cell.backgroundColor ?? rowBg,
               boxShadow: freezeFirstColumn && columnIndex === 0 ? `-${inlinePaddingPx(horizontalPadding)}px 0 0 ${cell.backgroundColor ?? rowBg}, ${columnGap * WEB_CELL_WIDTH}px 0 0 ${cell.backgroundColor ?? rowBg}` : undefined,
             }}
             onMouseDown={(event) => {
@@ -472,6 +488,8 @@ function WebDataTableRowInner<
               <CellText
                 cell={cell}
                 column={column}
+                // The figure's text alone takes the pointer, so its title is not shown over the name before it.
+                spilledInto={spilledInto}
                 color={selected
                   ? selectedRowCellColor(cell.color, selectedTextOverridesCellColor, cell.keepColorWhenSelected, colors) ?? CSS_SELECTED_TEXT
                   : cell.color ?? CSS_TEXT}
@@ -484,8 +502,22 @@ function WebDataTableRowInner<
   );
 }
 
-function CellText({ cell, column, color }: { cell: DataTableCell; column: DataTableColumn; color: string }) {
+/**
+ * Where a spilling name's text stops in the cell it spans: a blank before the
+ * figure the next column draws at its right end.
+ */
+function spillStopCss(next: DataTableCell): CSSProperties["paddingRight"] {
+  return `calc(${displayWidth(next.text.trim()) + 1} * var(--cell-w))`;
+}
+
+function CellText({ cell, column, color, spilledInto = false }: {
+  cell: DataTableCell;
+  column: DataTableColumn;
+  color: string;
+  spilledInto?: boolean;
+}) {
   const style = clippedCellTextStyle(column, color, cell.attributes ?? TextAttributes.NONE);
+  if (spilledInto) return <CellLabel cell={cell} column={column} style={{ ...style, width: "fit-content", marginLeft: "auto" }} />;
   if (cell.note) {
     const text = (
       <div
