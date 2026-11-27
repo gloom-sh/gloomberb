@@ -15,6 +15,8 @@ import {
   ipoTableWidth,
   ipoTickerKey,
   marketColumnWidth,
+  longestIpoCompany,
+  ipoColumnsBesideNames,
   formatIpoDate,
   ipoDateColumnWidths,
   marketsBehind,
@@ -25,6 +27,7 @@ import {
 } from "./model";
 import { ipoDetailSentences } from "./listing-ipo";
 import { ipoDeal } from "./test-fixture";
+import { COUNTRY_FLAG_CELLS } from "../../../components/ui/country-flag";
 
 const ids = (deals: readonly IpoDeal[]) => deals.map((deal) => deal.id);
 
@@ -282,6 +285,29 @@ describe("IPO calendar columns", () => {
       const columns = buildIpoColumns(width);
       expect(ipoTableWidth(columns)).toBeLessThanOrEqual(width);
       expect(columns.map((column) => column.id)).toEqual(expect.arrayContaining(["company", "return"]));
+    }
+  });
+
+  // One deal on NYSE American among fifty in Nasdaq, Tokyo and HKEX made MKT 13 cells on every row (16 with the
+  // flags) while the company names beside it were cut.
+  test("MKT gives the company names what one long venue took, and keeps it while they are whole", () => {
+    const longest = longestIpoCompany([ipoDeal({ id: "a", company: "Japan Home Shield Co., Ltd." }), ipoDeal({ id: "b", company: "Acme Inc." })]);
+    expect(longest).toBe(27);
+    const fitted = (width: number, flagCells = 0) => {
+      const columns = ipoColumnsBesideNames(buildIpoColumns(width, 13 + flagCells, "upcoming"), width, longest, flagCells);
+      const company = columns.find((column) => column.id === "company")!;
+      return { market: columns.find((column) => column.id === "market")?.width, company: company.width + width - ipoTableWidth(columns) };
+    };
+    // Narrow, MKT is down to a plain venue's cells and the names have the rest (17 before).
+    expect(fitted(80)).toEqual({ market: 8, company: 22 });
+    expect(fitted(85, COUNTRY_FLAG_CELLS)).toEqual({ market: 11, company: 24 });
+    // Only as many as the longest name needs, and the venue is whole once the names are.
+    expect(fitted(95)).toEqual({ market: 9, company: 27 });
+    expect(fitted(100)).toEqual({ market: 13, company: 28 });
+    // What leaves at a width is decided as before, at the venue's full width.
+    for (const width of [80, 85, 95]) {
+      expect(ipoColumnsBesideNames(buildIpoColumns(width, 13, "upcoming"), width, longest).map((column) => column.id))
+        .toEqual(buildIpoColumns(width, 13, "upcoming").map((column) => column.id));
     }
   });
 });
