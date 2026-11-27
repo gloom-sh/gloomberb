@@ -126,7 +126,7 @@ export function SupplyGraphPane({ symbol, tab, width, height, focused }: { symbo
   const [visibleLinks, setVisibleLinks] = useState<string[]>([]);
   const [inputsOpen, setInputsOpen] = useState(false);
   const [snapshotSetting] = usePaneSettingValue<GraphPayload | null>("graphSnapshot", null);
-  const snapshot = useMemo(() => { try { return snapshotSetting ? validateGraph(snapshotSetting) : null; } catch (error) { return logFailure("supply-chain.graph-pane", "Validate supply chain graph snapshot failed", null)(error); } }, [snapshotSetting]);
+  const snapshot = useMemo(() => { try { return snapshotSetting ? validateGraph(snapshotSetting, options.asOf) : null; } catch (error) { return logFailure("supply-chain.graph-pane", "Validate supply chain graph snapshot failed", null)(error); } }, [snapshotSetting, options.asOf]);
   const loader = useCallback((force: boolean) => snapshot ? Promise.resolve({ payload: snapshot, stale: false, refreshError: null }) : loadGraph(focus, target, options, accessKey, force), [focus, target, options, accessKey, snapshot]);
   const resource = usePaneResource(tab === "path" && !target ? null : loader, { focused: focused && !inputsOpen && !targetActive, initialData: () => cachedGraph(focus, target, options, accessKey), clearOnError: isAccessDenied });
   const data = resource.data?.payload ?? null;
@@ -159,7 +159,7 @@ export function SupplyGraphPane({ symbol, tab, width, height, focused }: { symbo
     ...(!openPath && (focus !== symbol || target) ? [{ id: "home", key: "z", label: "reset focus", title: "Reset Focus", onPress: () => { setFocus(symbol); applyTarget(""); setCollapsed([]); setSelected(null); } }] : []),
     ...(data?.access === "preview" ? [{ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", onPress: openUpgrade }] : []),
   ];
-  const shownLinks = new Set(tab === "graph" ? visibleLinks : (openPath ? [openPath] : paths).flatMap(path => path.linkIds));
+  const shownLinks = new Set(openPath ? openPath.linkIds : tab === "graph" ? visibleLinks : paths.flatMap(path => path.linkIds));
   const filedThrough = data ? graphDisclosureDates(data.links.filter(link => shownLinks.has(link.id))).latest : null;
   usePaneStatusFooter({ registrationId: "supply-graph", loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale, hints,
     info: [data?.options.asOf ? { id: "known-by", parts: [{ text: `known by ${data.options.asOf}`, tone: "muted" as const }] } : null,

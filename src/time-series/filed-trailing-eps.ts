@@ -155,6 +155,8 @@ function filedTrailingEps(financials: TrailingEpsInputs, now = Date.now()): File
   // The trailing block's amounts are in another currency: an EPS beside them in this one would be read as theirs.
   const block = financials.fundamentals?.financialCurrency?.trim();
   if (block && resolveCurrencyUnit(block).currency !== price.currency) return null;
+  const servedCurrency = financials.fundamentals?.epsCurrency;
+  if (servedCurrency && resolveCurrencyUnit(servedCurrency).currency !== price.currency) return null;
   const split = financials.fundamentals?.splitShareBasis?.exDate;
   if (split && split > step.filed) return null;
   const served = financials.fundamentals?.eps;

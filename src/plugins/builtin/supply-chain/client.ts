@@ -1,9 +1,9 @@
 import { apiClient } from "../../../api-client";
-import type { SupplyChainPayload, SupplyEntity, SupplyEvidenceItem, SupplyOptions, SupplyRead, SupplyRow } from "../../../api-client/supply-chain";
+import type { SupplyChainPayload, SupplyEntity, SupplyEvidenceItem, SupplyRead, SupplyRow } from "../../../api-client/supply-chain";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { hasUniqueIds, isCalendarDay, isCurrencyCode, isFraction, isHttpUrl, isIsoInstant, isNonNegative, isNonNegativeInt, isNullableCalendarDay, isNullableFinite, isNullableString, isPositiveNumber, isRecord } from "../../../utils/guards";
 import { batchReplyItems, cachedCloudResource, createCloudBatchAhead, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
-import { activeRelationship, canShowQuote, evidenceDate, isUnconfirmed, publicEvidence, supplyOptions, TIER_OPTIONS, trustTier } from "./trust";
+import { activeRelationship, canShowQuote, isUnconfirmed, publicEvidence, supplyOptions, TIER_OPTIONS, trustTier } from "./trust";
 
 export const SUPPLY_UNAVAILABLE = "Supply chain disclosures are not available yet.";
 const SUPPLY_ROLES = ["customer", "supplier", "partner", "competitor", "investee"] as const;
@@ -83,7 +83,18 @@ const validRoleGroup = (group: Record<"says" | "names", SupplyRow[]>, counts: Su
     return Array.isArray(rows) && rows.every(validSupplyRow) && hasUniqueIds(rows)
       && SUPPLY_ROLES.every((role) => Number.isInteger(counts?.[key]?.[role]) && counts![key][role] >= rows.filter((entry) => entry.role === role).length);
   });
-export function validateSupplyChain(data: SupplyChainPayload): SupplyChainPayload {
+const afterCutoff = (value: string | null | undefined, cutoff: string) => !!value && value > cutoff;
+const afterCutoffInstant = (value: string | null | undefined, cutoff: string) => !!value && new Date(value).toISOString().slice(0, 10) > cutoff;
+
+export function laterSupplyEvidence(row: SupplyRow, cutoff: string): boolean {
+  // Fetch and first/last seen times record ingestion, not when the evidence became public.
+  return afterCutoff(row.asOf, cutoff) || afterCutoff(row.filedDate, cutoff)
+    || (isCalendarDay(row.period) && afterCutoff(row.period, cutoff))
+    || afterCutoffInstant(row.lastConfirmedAt, cutoff)
+    || !!row.evidence?.some(item => afterCutoffInstant(item.publishedAt, cutoff));
+}
+
+export function validateSupplyChain(data: SupplyChainPayload, cutoff?: string): SupplyChainPayload {
   const valid = !!data && text(data.symbol) && (data.entity === null || validSupplyEntity(data.entity))
     && (data.directories === undefined || Array.isArray(data.directories) && data.directories.every(report =>
       !!report && text(report.buyer) && text(report.buyerListing) && typeof report.buyerView === "boolean"
@@ -100,39 +111,25 @@ export function validateSupplyChain(data: SupplyChainPayload): SupplyChainPayloa
     && typeof data.truncated === "boolean" && [3, null].includes(data.previewRowsPerRole)
     && text(data.disclaimer) && (data.tierCounts === undefined || TIER_OPTIONS.every(({ value }) => isNonNegativeInt(data.tierCounts?.[value])));
   if (!valid) throw new Error("The server returned unreadable supply chain disclosures");
+  if (cutoff && (afterCutoff(data.asOf, cutoff)
+    || [...data.says, ...data.names, ...data.earlier?.says ?? [], ...data.earlier?.names ?? []].some(row => laterSupplyEvidence(row, cutoff))
+    || data.directories?.some(report => afterCutoff(report.effectiveDay, cutoff) || afterCutoffInstant(report.observedAt, cutoff)))) {
+    throw new Error(`Supply chain returned disclosures published after ${cutoff}; none are shown.`);
+  }
   const normalizeEntity = (value: SupplyEntity): SupplyEntity => ({ ...value, aggregate: value.aggregate ?? false });
   return { ...data, entity: data.entity ? normalizeEntity(data.entity) : null, says: data.says.map(normalizeSupplyRow), names: data.names.map(normalizeSupplyRow),
     ...(data.earlier ? { earlier: { says: data.earlier.says.map(normalizeSupplyRow), names: data.earlier.names.map(normalizeSupplyRow) } } : {}) };
 }
-/** A server that answered a cutoff (`asOf`) with disclosures published after it, which it does not read. */
-class AsOfUnsupportedError extends Error {
-  constructor(readonly asOf: string) {
-    super(`Gloom Cloud does not read --as-of ${asOf} yet: it answered with disclosures published after that day, so none are shown.`);
-    this.name = "AsOfUnsupportedError";
-  }
-}
-
-/**
- * The disclosures known by `asOf` (YYYY-MM-DD): a server that reads the
- * cutoff sends none published after it, and one that answers with any never
- * has them shown as that day's (AsOfUnsupportedError).
- */
-function knownBy(data: SupplyChainPayload, asOf: string | undefined): SupplyChainPayload {
-  if (!asOf) return data;
-  const rows = [...data.says, ...data.names, ...data.earlier?.says ?? [], ...data.earlier?.names ?? []];
-  if (rows.some((row) => evidenceDate(row) > asOf) || data.directories?.some(report => report.observedAt.slice(0, 10) > asOf)) throw new AsOfUnsupportedError(asOf);
-  return data;
-}
 export async function fetchSupplyChain(symbol: string, client: Pick<typeof apiClient, "getCloudSupplyChain"> = apiClient, options: SupplyRead = {}) {
   let data: SupplyChainPayload;
-  try { data = validateSupplyChain(await client.getCloudSupplyChain(symbol, options)); }
+  try { data = await client.getCloudSupplyChain(symbol, options); }
   catch (error) { throw unavailableOnServer(error, SUPPLY_UNAVAILABLE, [404, 503]); }
-  return knownBy(data, options.asOf);
+  return validateSupplyChain(data, options.asOf);
 }
 // Account and plan belong in the key: signing out must never reveal a paid cached response.
 const cacheKey = (symbol: string, access: string, options: SupplyRead) => `${symbol.toUpperCase()}:${access}:${JSON.stringify(supplyOptions(options.tiers))}:${!!options.includeLeads}${options.asOf ? `:${options.asOf}` : ""}`;
-export const cachedSupplyChain = (symbol: string, access: string, options: SupplyRead = {}) => cachedCloudResource(supplyChainCache, cacheKey(symbol, access, options), validateSupplyChain);
-export const loadSupplyChain = (symbol: string, access: string, force = false, options: SupplyRead = {}) => loadCloudResource(supplyChainCache, cacheKey(symbol, access, options), () => fetchSupplyChain(symbol, apiClient, options), { force, validate: validateSupplyChain });
+export const cachedSupplyChain = (symbol: string, access: string, options: SupplyRead = {}) => cachedCloudResource(supplyChainCache, cacheKey(symbol, access, options), data => validateSupplyChain(data, options.asOf));
+export const loadSupplyChain = (symbol: string, access: string, force = false, options: SupplyRead = {}) => loadCloudResource(supplyChainCache, cacheKey(symbol, access, options), () => fetchSupplyChain(symbol, apiClient, options), { force, validate: data => validateSupplyChain(data, options.asOf) });
 /** Symbols per disclosures batch request: a ripple's sixty holdings are two, read sixteen at a time on the server. */
 const SUPPLY_BATCH_MAX = 30;
 const supplyChainsAheadByOptions = new Map<string, ReturnType<typeof createCloudBatchAhead<SupplyChainPayload>>>();
@@ -140,7 +137,8 @@ const supplyChainsAheadByOptions = new Map<string, ReturnType<typeof createCloud
  * Reads many symbols' disclosures ahead in a request per 30 (EARN ripple's
  * holdings), into the cache loadSupplyChain reads. Answers the symbols stored.
  */
-export function loadSupplyChainsAhead(symbols: readonly string[], access: string, force = false, options: SupplyOptions = {}): Promise<Set<string>> {
+export function loadSupplyChainsAhead(symbols: readonly string[], access: string, force = false, options: SupplyRead = {}): Promise<Set<string>> {
+  if (options.asOf) return Promise.resolve(new Set());
   const optionsKey = JSON.stringify([supplyOptions(options.tiers), !!options.includeLeads]);
   let ahead = supplyChainsAheadByOptions.get(optionsKey);
   if (!ahead) {

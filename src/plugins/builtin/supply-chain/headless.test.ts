@@ -44,12 +44,12 @@ describe("supply chain graph headless integration", () => {
     const item = payload.links[0]!.evidence[0]!;
     item.from = { ...item.from, name: "European Semiconductor\n Manufacturing\tCompany" };
     payload.options.asOf = "2026-03-01";
-    payload.asOf = "2026-10-31";
+    payload.asOf = "2026-02-28";
     const report = await supplyChainHeadless.load(args({ tab: "graph", "as-of": payload.options.asOf }), context(payload, []));
     const rows = report.sections.find(section => section.title === "Disclosure evidence")!.rows!;
-    expect(rows[0]).toMatchObject({ from: "European Semiconductor Manufacturing Company", evidence: { from: { name: item.from.name } } });
+    expect(rows[0]).toMatchObject({ from: item.from.name, evidence: { from: { name: item.from.name } } });
     expect(deriveHeadlessFreshness(supplyChainHeadless, report, Date.parse("2026-11-28")).asOf).toBe("2026-02-25");
-    expect(report.metadata?.graphAsOf).toBe("2026-10-31");
+    expect(report.metadata?.graphAsOf).toBe("2026-02-28");
     item.filedDate = "2026-03-02";
     await expect(supplyChainHeadless.load(args({ tab: "graph", "as-of": payload.options.asOf }), context(payload, [])))
       .rejects.toThrow("returned disclosures published after 2026-03-01");
@@ -93,7 +93,7 @@ describe("supply chain graph headless integration", () => {
     }
     expect(requests).toHaveLength(1);
     // The free preview reads the latest graph whatever the cutoff: said, never served as that day's.
-    await expect(supplyChainHeadless.load(args({ tab: "graph", "as-of": "2025-12-31" }), context(graphPayload(), requests)))
+    await expect(supplyChainHeadless.load(args({ tab: "graph", "as-of": "2025-12-31" }), context({ ...graphPayload(), access: "preview" }, requests)))
       .rejects.toThrow("--as-of 2025-12-31 on the Graph tab needs Gloom Pro; the free preview reads the latest disclosures.");
   });
 
@@ -215,6 +215,21 @@ test("reports say how long a period is when the source states it, and keep older
   expect(graph.sections[1]!.rows![0]!.exposure).toMatchObject({ period: "2025-12-31", periodMonths: 12 });
   const malformed = graphPayload(); malformed.downstream[0]!.bestPath.exposure!.periodMonths = 2.5;
   expect(() => validateGraph(malformed)).toThrow("unreadable");
+});
+
+test("plain SPLC tables join multiline company names without changing the row or evidence", async () => {
+  const raw = "European Semiconductor\n Manufacturing\tCompany";
+  const counterparty = { ...entity("esmc", raw), ticker: null };
+  const quote = `We buy from ${raw}.`;
+  const row = supplyRow("supplier", { counterparty, quote });
+  const context = createTestHeadlessContext();
+  context.apiClient = { ...context.apiClient, getCloudSupplyChain: async () => supplyPayload({ says: [row] }) };
+  const input = createTestHeadlessArgs({ symbols: ["FOCUS"] });
+  const result = await supplyChainHeadless.load(input, context);
+  expect(result.sections[0]!.rows![0]).toMatchObject({ counterparty: raw, quote });
+  const text = renderHeadlessPaneText(supplyChainHeadless, result, input, "SPLC", deriveHeadlessFreshness(supplyChainHeadless, result));
+  expect(text.split("\n").filter(line => line.includes("European Semiconductor Manufacturing Company"))).toHaveLength(1);
+  expect(text).not.toContain(raw);
 });
 
 test("graph boundaries preserve global filing scale and provenance and reject uninterpretable native amounts", async () => {

@@ -82,6 +82,13 @@ export const supplyScreenshotEvidence: PaneScreenshotEvidenceHook<SupplyEvidence
     const settings = payload.config.layout.instances.find(entry => entry.instanceId === payload.paneId)?.settings;
     const snapshot = settings?.[graphTab(evidence.tab) ? "graphSnapshot" : "supplySnapshot"];
     const mismatches: string[] = [];
+    const cutoff = typeof resolved.options.asOf === "string" ? resolved.options.asOf : undefined;
+    if (cutoff) {
+      try {
+        if (graphTab(evidence.tab)) validateGraph(evidence.payload as GraphPayload, cutoff);
+        else validateSupplyChain(evidence.payload as SupplyChainPayload, cutoff);
+      } catch { mismatches.push("Supply chain disclosures do not match the requested filing cutoff"); }
+    }
     if (JSON.stringify(evidence.payload) !== JSON.stringify(snapshot)) mismatches.push("Supply chain disclosures differ from the captured filing data");
     if (resolved.options.evidence === true && (!evidence.evidenceOpen || !evidence.evidenceId)) mismatches.push("Supply chain evidence detail was not opened");
     const expected = resolved.options.tab ?? "table";

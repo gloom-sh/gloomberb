@@ -1,6 +1,6 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { formatFilingDate } from "../../../utils/datetime-format";
-import type { SupplyRow } from "../../../api-client/supply-chain";
+import type { SupplyEntity, SupplyRow } from "../../../api-client/supply-chain";
 import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
 import type { GraphEvidence, GraphPath, GraphPayload } from "../../../api-client/supply-chain-graph";
 import type { HeadlessBundleResult, HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/plugin";
@@ -30,7 +30,7 @@ function tableColumns(rows: HeadlessPaneRow[], sources: ReadonlyMap<HeadlessPane
   return [
     // The text names a company with its subsidiaries (X及其子公司) as the group, as the pane's label beside the name does
     // (the Role says whether it is a related party); a cohort or an undisclosed name already says what it is.
-    { key: "counterparty", header: "Counterparty", format: cell(counterpartyName),
+    { key: "counterparty", header: "Counterparty", format: cell(row => counterpartyName(row, false)),
       textFormat: cell((row) => counterpartyKind(row) === "company" && row.entityScope === "group" ? `${counterpartyName(row)} (group)` : counterpartyName(row)) },
     // As the pane: one kind of evidence for every row is no column.
     { key: "evidenceTier", header: "Evidence", omitWhenSame: true },
@@ -49,58 +49,60 @@ function tableColumns(rows: HeadlessPaneRow[], sources: ReadonlyMap<HeadlessPane
   ];
 }
 
+const nameCell = (value: unknown) => typeof value === "string" ? supplyDisplayName(value) : MISSING_VALUE;
+const rawEntityLabel = (entity: SupplyEntity) => entityTicker(entity) ?? entity.name;
 const pathColumns = [
-  { key: "route", header: "Route" }, { key: "hops", header: "Hops" },
+  { key: "route", header: "Route", textFormat: nameCell }, { key: "hops", header: "Hops" },
   { key: "score", header: "Rank score", description: "Product of normalized edge weights; not a probability." },
-  { key: "confidence", header: "Confidence" }, { key: "exposureLabel", header: "Exposure" },
+  { key: "confidence", header: "Confidence" }, { key: "exposureLabel", header: "Exposure", textFormat: nameCell },
 ];
 /**
  * What a graph disclosure says in words: the text itself, or for a tagged
  * XBRL fact the sentence a filing-text disclosure of the same link quotes,
  * else the fact read out ("Customer, Gold, revenue").
  */
-function graphStatement(item: GraphEvidence, siblings: readonly GraphEvidence[]): string {
+function graphStatement(item: GraphEvidence, siblings: readonly GraphEvidence[], displayNames: boolean): string {
   const row = graphEvidenceRow(item);
   if (!isTaggedFact(row)) return item.quote;
   const sentence = siblings.find((other) => other.id !== item.id && other.sourceKind === "filing_text" && other.reporter.id === item.reporter.id && other.quote.trim());
-  return sentence?.quote ?? disclosureText(row);
+  return sentence?.quote ?? disclosureText(row, displayNames);
 }
 
 /** A graph disclosure's share as the Table words it, naming the company it is a share of; null when none is disclosed. */
 function graphShare(item: GraphEvidence): string | null {
-  const share = shareParts(graphEvidenceRow(item), undefined, { includeReporter: true });
+  const share = shareParts(graphEvidenceRow(item), undefined, { includeReporter: true, displayNames: false });
   return share ? `${share.value} ${share.basis}` : null;
 }
 
 function graphReport(data: GraphPayload, target: string): HeadlessBundleResult {
   const links = new Map(data.links.map(link => [link.id, link]));
   const nodes = new Map(data.nodes.map(node => [node.id, node]));
-  const route = (path: GraphPath) => ({ ...path, route: pathLabel(path, data), exposureLabel: exposureLabel(path, data),
+  const route = (path: GraphPath) => ({ ...path, route: pathLabel(path, data, rawEntityLabel), exposureLabel: exposureLabel(path, data, rawEntityLabel),
     exposure: path.exposure ? { ...path.exposure, denominatorEntity: nodes.get(path.exposure.denominatorEntityId) } : null,
     evidence: path.linkIds.map((id, index) => ({ hop: index + 1, linkId: id, from: nodes.get(path.nodeIds[index]!),
       to: nodes.get(path.nodeIds[index + 1]!), primaryEvidenceId: links.get(id)!.primaryEvidenceId, disclosures: links.get(id)!.evidence })),
   });
   const sections: HeadlessBundleResult["sections"] = target
-    ? [{ title: `Routes to ${supplyDisplayName(data.target?.name ?? target)}`, columns: pathColumns, rows: data.paths.map(route) }]
+    ? [{ title: `Routes to ${data.target?.name ?? target}`, textTitle: `Routes to ${supplyDisplayName(data.target?.name ?? target)}`, columns: pathColumns, rows: data.paths.map(route) }]
     : (["upstream", "downstream", "related"] as const).map(direction => ({
       title: direction === "upstream" ? "Upstream suppliers" : direction === "downstream" ? "Downstream customers" : "Related companies",
-      columns: [{ key: "company", header: "Company" }, { key: "ticker", header: "Ticker" }, ...pathColumns],
-      rows: data[direction].map(reach => ({ ...route(data.options.ranking === "shortest" ? reach.shortestPath : reach.bestPath), entityId: reach.entityId, company: supplyDisplayName(nodes.get(reach.entityId)?.name ?? ""),
+      columns: [{ key: "company", header: "Company", textFormat: nameCell }, { key: "ticker", header: "Ticker" }, ...pathColumns],
+      rows: data[direction].map(reach => ({ ...route(data.options.ranking === "shortest" ? reach.shortestPath : reach.bestPath), entityId: reach.entityId, company: nodes.get(reach.entityId)?.name,
         ticker: nodes.get(reach.entityId) ? entityTicker(nodes.get(reach.entityId)!) : null, direction: reach.direction, bestPath: route(reach.bestPath), shortestPath: route(reach.shortestPath) })),
     }));
   sections.push({ title: "Disclosure evidence", columns: [
-    { key: "reporter", header: "Reporting company" }, { key: "from", header: "Supplier / from" }, { key: "to", header: "Customer / to" },
+    { key: "reporter", header: "Reporting company", textFormat: nameCell }, { key: "from", header: "Supplier / from", textFormat: nameCell }, { key: "to", header: "Customer / to", textFormat: nameCell },
     // The share in the Table's words, its reporter named ("27% of NEM total revenue (gold sales)"); exports keep pct and denominator apart.
     { key: "role", header: "Role", textFormat: (value, row) => row.relatedParty ? `related-party ${String(value)}` : String(value) },
-    { key: "pct", header: "Share", textFormat: (_value, row) => String(row.share ?? MISSING_VALUE) },
+    { key: "pct", header: "Share", textFormat: (_value, row) => nameCell(row.share) },
     { key: "period", header: "Period", textFormat: (value, row) => periodText({ period: String(value), periodMonths: row.periodMonths as number | null }) },
     { key: "filed", header: "Filed" }, { key: "confidence", header: "Confidence" },
     // A tagged XBRL fact prints the link's filing sentence when one names the same pair, otherwise the fact in words; exports keep the stored text.
-    { key: "quote", header: "Quote", textFormat: (value, row) => row.statement == null ? String(value ?? "") : String(row.statement) }, { key: "filingUrl", header: "Filing" },
+    { key: "quote", header: "Quote", textFormat: (_value, row) => graphStatement(row.evidence as GraphEvidence, links.get(String(row.linkId))!.evidence, true) }, { key: "filingUrl", header: "Filing" },
   ], rows: data.links.flatMap(link => link.evidence.map(item => ({ id: item.id, linkId: link.id, primary: item.id === link.primaryEvidenceId,
-    statement: graphStatement(item, link.evidence), share: graphShare(item),
-    reporter: supplyDisplayName(item.reporter.name), from: supplyDisplayName(item.from.name), to: supplyDisplayName(item.to.name), role: item.role, relatedParty: isRelatedParty(item), pct: item.pctOfRevenue ?? null,
-    denominator: item.pctBasis && !(item.sourceKind === "xbrl" && item.pctScope) ? `${supplyDisplayName(item.reporter.name)} ${item.pctBasis}${item.pctScope ? ` (${item.pctScope})` : ""}` : null,
+    statement: graphStatement(item, link.evidence, false), share: graphShare(item),
+    reporter: item.reporter.name, from: item.from.name, to: item.to.name, role: item.role, relatedParty: isRelatedParty(item), pct: item.pctOfRevenue ?? null,
+    denominator: item.pctBasis && !(item.sourceKind === "xbrl" && item.pctScope) ? `${item.reporter.name} ${item.pctBasis}${item.pctScope ? ` (${item.pctScope})` : ""}` : null,
     pctBasis: item.pctBasis, pctScope: item.pctScope, period: item.period, periodMonths: item.periodMonths ?? null, filed: item.filedDate, asOf: item.asOf,
     confidence: item.confidence, quote: item.quote, quoteLanguage: item.quoteLanguage, quoteGloss: item.quoteGloss ?? null,
     quoteGlossKind: item.quoteGloss ? "machine_translation" : null, nativeAmount: item.nativeAmount ?? null,
@@ -173,15 +175,15 @@ export const supplyChainHeadless: HeadlessPaneDefinition<"bundle"> = {
     // The pane's figures, per tab: Table shows one direction, Flow both.
     const figures = (key: "counterparties" | "locked") => Object.fromEntries(([["says", ["says"]], ["names", ["names"]], ["flow", ["says", "names"]]] as const)
       .map(([scope, views]) => [scope, Object.fromEntries(supplyRoleCounts(data, views, options).filter((entry) => entry[key] > 0).map((entry) => [entry.role, entry[key]]))]));
-    const shareOf = (row: SupplyRow) => { const share = shareParts(row, data.entity?.id); return share ? `% ${share.basis}` : null; };
-    const record = (row: SupplyRow) => sourced(row, { counterparty: supplyDisplayName(row.counterparty.name), ticker: entityTicker(row.counterparty), aggregate: row.counterparty.aggregate, role: row.role, direction: row.direction,
+    const shareOf = (row: SupplyRow) => { const share = shareParts(row, data.entity?.id, { displayNames: false }); return share ? `% ${share.basis}` : null; };
+    const record = (row: SupplyRow) => sourced(row, { counterparty: row.counterparty.name, ticker: entityTicker(row.counterparty), aggregate: row.counterparty.aggregate, role: row.role, direction: row.direction,
       pct: row.pctOfRevenue, shareUnit: shareOf(row), pctBasis: row.pctBasis, pctScope: row.pctScope, usd: row.usd, usdBasis: row.usdBasis, period: row.period, periodMonths: row.periodMonths ?? null, fiscalYear: row.fiscalYear,
       nativeAmount: row.nativeAmount ?? null, nativeCurrency: row.nativeCurrency ?? null, nativeScale: row.nativeScale ?? null,
       jurisdiction: row.jurisdiction ?? null, entityScope: row.entityScope ?? null, relatedParty: isRelatedParty(row),
       evidenceTier: evidenceLabel(row), tier: trustTier(row), claimType: row.claimType, corroboration: row.corroboration ?? 1,
       leadStatus: row.leadStatus ?? "none", whyUnconfirmed: row.whyUnconfirmed ?? null,
       firstSeenAt: row.firstSeenAt, lastSeenAt: row.lastSeenAt, lastConfirmedAt: row.lastConfirmedAt,
-      source: row.sourceKind, filed: row.filedDate, confidence: row.confidence, reportingCompany: supplyDisplayName(row.reportingEntity.name),
+      source: row.sourceKind, filed: row.filedDate, confidence: row.confidence, reportingCompany: row.reportingEntity.name,
       quote: row.quote, quoteLanguage: row.quoteLanguage, quoteGloss: row.quoteGloss ?? null, quoteGlossKind: row.quoteGloss ? "machine_translation" : null,
       quoteMatchMode: row.quoteMatchMode, sourceUrl: row.filingUrl, filingUrl: row.filingUrl, sectionRef: row.sectionRef ?? null, sourceAttribution: row.sourceAttribution ?? null,
       evidence: row.evidence ?? [] });

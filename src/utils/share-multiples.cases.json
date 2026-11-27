@@ -337,6 +337,31 @@
    }
   },
   {
+   "name": "A USD quote and USD statements cannot price explicitly EUR EPS without conversion",
+   "symbol": "XEPS",
+   "exchange": "NYSE",
+   "quote": { "price": 40, "currency": "USD", "name": "Cross Currency Co" },
+   "fundamentals": { "eps": 2, "epsCurrency": "EUR", "trailingPE": 20, "financialCurrency": "USD" },
+   "annualStatements": [{ "date": "2025-12-31", "currency": "USD", "eps": 2.1 }],
+   "expect": { "trailingPE": null, "because": "in EUR beside a price in USD, with no conversion on record" }
+  },
+  {
+   "name": "A USD quote cannot price explicitly EUR EPS with unknown reporting currency and an unrelated conversion",
+   "symbol": "XEPS",
+   "exchange": "NYSE",
+   "quote": { "price": 40, "currency": "USD", "name": "Cross Currency Co" },
+   "fundamentals": { "eps": 2, "epsCurrency": "EUR", "trailingPE": 20, "trailingPEConversion": { "from": "GBP", "rate": 1.2 } },
+   "expect": { "trailingPE": null, "because": "in EUR beside a price in USD, with no conversion on record" }
+  },
+  {
+   "name": "Explicit EUR EPS uses a recorded conversion from EUR even when the block amounts are USD",
+   "symbol": "XEPS",
+   "exchange": "NYSE",
+   "quote": { "price": 40, "currency": "USD", "name": "Cross Currency Co" },
+   "fundamentals": { "eps": 2, "epsCurrency": "EUR", "trailingPE": 16, "financialCurrency": "USD", "trailingPEConversion": { "from": "EUR", "rate": 1.25 } },
+   "expect": { "trailingPE": 16 }
+  },
+  {
    "name": "A Canadian receipt's ratio and CAD cap do not verify an unlabelled EPS",
    "symbol": "LV",
    "exchange": "NEO",

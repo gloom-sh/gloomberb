@@ -249,13 +249,48 @@ test("graph selection collapses a branch and recenters an unlisted company throu
   expect(requests.every(url => url.includes("/graph?") && url.includes("tiers=primary"))).toBe(true);
 });
 
+test("saved table and graph disclosures cannot bypass the requested filing cutoff", async () => {
+  const table = supplyPayload({ says: [supplyRow("Future supplier")] });
+  const graph = graphPayload();
+  graph.options.asOf = "2026-02-01";
+  graph.links[0]!.evidence[0]!.filedDate = "2026-02-25";
+  for (const [tab, settings, payload, hidden] of [
+    ["table", { supplySnapshot: table }, table, "Future supplier"],
+    ["graph", { graphSnapshot: graph }, graph, "Private supplier"],
+  ] as const) {
+    let reads = 0;
+    setCloudApiFetchTransport(async () => { reads++; return Response.json(payload); });
+    await mount(160, 25, tab, "says", () => {}, { asOf: "2026-02-01", ...settings });
+    const frame = await tui.waitForFrameToContain("published after 2026-02-01");
+    expect(frame).not.toContain(hidden);
+    expect(frame).not.toContain("known by");
+    expect(reads).toBeGreaterThan(0);
+    await tui.destroy();
+  }
+});
+
+test("the Graph footer dates the open route instead of a newer filing elsewhere in the graph", async () => {
+  const graph = graphPayload();
+  graph.links[0]!.evidence[0]!.filedDate = "2026-02-25";
+  graph.links[1]!.evidence[0]!.filedDate = "2026-10-01";
+  setCloudApiFetchTransport(async () => Response.json(graph));
+  await mount(180, 27, "graph", "says", () => {}, { evidence: true, route: 1 });
+  const open = await tui.waitForFrameToContain("filed through 2026-02-25");
+  expect(open).not.toContain("filed through 2026-10-01");
+  await tui.emitKeypress({ name: "escape" });
+  const closed = await tui.waitForFrameToContain("filed through 2026-10-01");
+  expect(closed).not.toContain("filed through 2026-02-25");
+});
+
 test("a graph read without the filing cutoff asked for warns in the footer; one that reads it does not", async () => {
   const requests: string[] = [];
-  // The free preview answers the latest snapshot: its options carry no cutoff, and the fixture raises no other notice.
-  setCloudApiFetchTransport(async (input) => { requests.push(String(input)); return Response.json(graphPayload()); });
+  // The free preview answers the latest snapshot: its options carry no cutoff.
+  setCloudApiFetchTransport(async (input) => { requests.push(String(input)); return Response.json({ ...graphPayload(), access: "preview" }); });
   await mount(120, 24, "graph", "says", () => {}, { asOf: "2025-01-01" });
-  await tui.waitForFrameToContain("Private supplier");
+  expect(await tui.waitForFrameToContain("Private supplier")).not.toContain("known by");
   expect(await tui.waitForFrameToContain("⚠")).toContain("[!]");
+  await tui.emitKeypress({ name: "!" });
+  await tui.waitForFrameToContain("showing the latest disclosures");
   expect(requests.some((url) => url.includes("asOf=2025-01-01"))).toBe(true);
   await tui.destroy();
   graphCache.reset();

@@ -99,8 +99,8 @@ export interface ShareParts {
 /** A word in lower case unless it is an initialism: "Gold" reads "gold", "LNG" stays. */
 const lowerFirst = (text: string) => text.replace(/^[A-Z](?=[a-z])/, (first) => first.toLowerCase());
 /** A company as a sentence names it: "Apple" for "Apple Inc.", "Newmont" for "NEWMONT Corp /DE/". */
-const companyWord = (entity: SupplyRow["reportingEntity"]) =>
-  shortCompanyName(companyNameCase(supplyDisplayName(entity.name).replace(/\s*\/[A-Z]{2}\/\s*$/, ""))) || (entityTicker(entity) ?? supplyDisplayName(entity.name));
+const companyWord = (entity: SupplyRow["reportingEntity"], name: string) =>
+  shortCompanyName(companyNameCase(name.replace(/\s*\/[A-Z]{2}\/\s*$/, ""))) || (entityTicker(entity) ?? name);
 
 /**
  * A disclosed share and what it is a share of, in words. The denominator is
@@ -109,15 +109,16 @@ const companyWord = (entity: SupplyRow["reportingEntity"]) =>
  * share of the company's own receivables says who is owed: "of receivables
  * (owed to Apple)".
  */
-export function shareParts(row: SupplyRow, focusId?: string | null, { includeReporter = false }: { includeReporter?: boolean } = {}): ShareParts | null {
+export function shareParts(row: SupplyRow, focusId?: string | null, { includeReporter = false, displayNames = true }: { includeReporter?: boolean; displayNames?: boolean } = {}): ShareParts | null {
   if (row.pctOfRevenue === null || row.pctBasis === null || trustTier(row) !== 1 || isUnconfirmed(row) || !activeRelationship(row)) return null;
   const reverse = includeReporter || (!!focusId && row.reportingEntity.id !== focusId);
-  const reporter = reverse ? `${entityTicker(row.reportingEntity) ?? supplyDisplayName(row.reportingEntity.name)} ` : "";
+  const reporterName = displayNames ? supplyDisplayName(row.reportingEntity.name) : row.reportingEntity.name;
+  const reporter = reverse ? `${entityTicker(row.reportingEntity) ?? reporterName} ` : "";
   const scope = row.pctScope ? scopeWords(row.pctScope) : "";
   const basis = row.pctBasis === "cost" ? "cost of sales" : row.pctBasis;
   const value = `${Number(row.pctOfRevenue.toFixed(1))}%`;
   // A reverse share already names whose receivables they are.
-  const owed = row.pctBasis === "receivables" && !reverse ? ` (owed to ${companyWord(row.reportingEntity)})` : "";
+  const owed = row.pctBasis === "receivables" && !reverse ? ` (owed to ${companyWord(row.reportingEntity, reporterName)})` : "";
   // A scope that names its own denominator ("Vendor non-trade receivables") is a description, read in lower case.
   if (scope && scope.toLowerCase().includes(basis)) {
     const scoped = lowerFirst(scope);
@@ -172,21 +173,21 @@ export const isTaggedFact = (row: Pick<SupplyRow, "sourceKind" | "quote">) => ro
  * in the Table's words: "Customer concentration: 27% of NEM total revenue
  * (gold sales)", never the dimension names.
  */
-export function disclosureText(row: SupplyRow): string {
+export function disclosureText(row: SupplyRow, displayNames = true): string {
   if (!isTaggedFact(row)) return row.quote;
   const type = /(?:^|;)\s*ConcentrationRiskByType=([^;]*)/.exec(row.quote)?.[1]?.replace(/^.*:/, "").replace(/ConcentrationRisk(Member)?$/, "") ?? "";
   const kind = type.replace(/([a-z])([A-Z])/g, "$1 $2").trim();
   const label = kind ? `${kind[0]!.toUpperCase()}${kind.slice(1).toLowerCase()} concentration` : null;
   // Read beside other sources, the share names the company it is a share of.
-  const share = shareParts(row, undefined, { includeReporter: true });
+  const share = shareParts(row, undefined, { includeReporter: true, displayNames });
   if (share) return label ? `${label}: ${share.value} ${share.basis}` : `${share.value} ${share.basis}`;
   const basis = row.pctBasis === "cost" ? "cost of sales" : row.pctBasis;
   return [label, row.pctScope ? scopeWords(row.pctScope) : null, basis]
     .filter((part): part is string => !!part).join(", ") || "Tagged in the filing";
 }
 
-export function counterpartyName(row: Pick<SupplyRow, "counterparty">): string {
-  const name = supplyDisplayName(row.counterparty.name);
+export function counterpartyName(row: Pick<SupplyRow, "counterparty">, displayNames = true): string {
+  const name = displayNames ? supplyDisplayName(row.counterparty.name) : row.counterparty.name;
   if (row.counterparty.aggregate) return `Group: ${name.replace(/^Undisclosed customer \((.+)\)$/i, "$1")}`;
   if (!row.counterparty.anonymous) return name;
   const member = name.match(/^Undisclosed [^(]+\((.+)\)$/i)?.[1]

@@ -235,7 +235,6 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
   const { accessKey } = session;
   const openUpgrade = useCloudUpgradeAction("splc");
   const [snapshotSetting] = usePaneSettingValue<SupplyChainPayload | null>("supplySnapshot", null);
-  const snapshot = useMemo(() => { try { return snapshotSetting ? validateSupplyChain(snapshotSetting) : null; } catch (error) { return logFailure("supply-chain.pane", "Validate supply chain snapshot failed", null)(error); } }, [snapshotSetting]);
   const [openingTab] = usePaneSettingValue("tab", "table");
   const [savedTab, setTab] = usePluginPaneState<string>("supply:tab", openingTab);
   const graphTab = savedTab === "graph" || savedTab === "path";
@@ -245,6 +244,7 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
   const options = useMemo(() => supplyOptions(savedTiers), [savedTiers]);
   // `--as-of`: the disclosures known by that day, read by the server and never shown past it.
   const [asOfSetting] = usePaneSettingValue<string>("asOf", "");
+  const snapshot = useMemo(() => { try { return snapshotSetting ? validateSupplyChain(snapshotSetting, asOfSetting) : null; } catch (error) { return logFailure("supply-chain.pane", "Validate supply chain snapshot failed", null)(error); } }, [snapshotSetting, asOfSetting]);
   const read = useMemo(() => ({ ...options, ...asOfSetting ? { asOf: asOfSetting } : {} }), [options, asOfSetting]);
   const loader = useCallback((force: boolean) => snapshot ? Promise.resolve({ payload: snapshot, stale: false, refreshError: null }) : loadSupplyChain(symbol!, accessKey, force, read), [symbol, accessKey, snapshot, read]);
   const resource = usePaneResource(symbol && !graphTab ? loader : null, {

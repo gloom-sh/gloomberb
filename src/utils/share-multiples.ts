@@ -292,12 +292,14 @@ function noRateForEps(financials: EpsInputs): string | undefined {
   const eps = fundamentals?.eps;
   const listing = majorCurrency(financials.quote?.currency);
   const reporting = incomeCurrency(financials);
-  if (!fundamentals || !finite(eps) || !listing || !reporting || listing === reporting
-    || fundamentals.trailingEpsBasis || fundamentals.trailingEpsSource === "filed-quarters") return undefined;
+  if (!fundamentals || !finite(eps) || !listing) return undefined;
   const stated = majorCurrency(fundamentals.epsCurrency);
   if (stated === listing) return undefined;
   const conversion = fundamentals.trailingPEConversion;
-  if (conversion && majorCurrency(conversion.from) === reporting && finite(conversion.rate) && conversion.rate > 0) return undefined;
+  const from = stated ?? reporting;
+  if (from && from !== listing && conversion && majorCurrency(conversion.from) === from && finite(conversion.rate) && conversion.rate > 0) return undefined;
+  if (stated && stated !== reporting) return `EPS (TTM) in ${stated} beside a price in ${listing}, with no conversion on record`;
+  if (!reporting || listing === reporting || (!stated && (fundamentals.trailingEpsBasis || fundamentals.trailingEpsSource === "filed-quarters"))) return undefined;
   const income = fundamentals.netIncome;
   const statements = finite(income) ? statementsTrailing(financials, reporting, "netIncome") : undefined;
   const inReporting = stated === reporting || (!!fundamentals.financialCurrency && !fundamentals.epsCurrency)
