@@ -371,7 +371,9 @@ export async function resolveCliTicker(
   }
   const { ticker, created } = await upsertTickerFromSearchResult(store, resolved.result);
   // A listing saved before (by an earlier look at a list) is read again too: its quote says whether it still trades.
-  const named = created || !bareQuote ? await nameFromListingQuote(ticker, store, dataProvider, bareQuote) : { ticker, quote: bareQuote };
+  const named = options.currentSnapshot || created || !bareQuote
+    ? await nameFromListingQuote(ticker, store, dataProvider, bareQuote, options.currentSnapshot ? resolved.result.name : undefined)
+    : { ticker, quote: bareQuote };
   const saved = savedListingName(named.ticker);
   const others = resolved.otherListings?.map((key) => parsePublicTickerKey(key).exchange ?? key) ?? [];
   // Several companies' listings name the company it went to and theirs; one company's name its other venues.
@@ -523,6 +525,7 @@ async function nameFromListingQuote(
   store: AppTickerRepositoryPort,
   dataProvider: DataProvider,
   known: Quote | null,
+  expectedIssuer?: string,
 ): Promise<{ ticker: TickerRecord; quote: Quote | null; failed?: true; missing?: true }> {
   const { metadata } = ticker;
   try {
@@ -533,6 +536,7 @@ async function nameFromListingQuote(
     const quoteExchange = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
     const ownExchange = canonicalExchange(metadata.exchange);
     if (quoteExchange !== ownExchange || (!quoteExchange && !quote.delisting)) return { ticker, quote: null };
+    if (expectedIssuer && name && name !== expectedIssuer && !sameCompanyName(expectedIssuer, name)) return { ticker, quote: null };
     if (!name || name === metadata.name) return { ticker, quote };
     const named: TickerRecord = { ...ticker, metadata: { ...metadata, name } };
     await store.saveTicker(named);

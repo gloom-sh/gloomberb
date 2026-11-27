@@ -144,6 +144,27 @@ test.each([0, 86_400_000])("a withdrawal beats a matching quote %i ms old withou
   expect((await store.loadTicker(reused.symbol))?.metadata.positions?.[0]?.shares).toBe(5);
 });
 
+test.each([false, true])("a reused listing keeps the current issuer when the old quote has delisting=%s", async (delisted) => {
+  const listing = { providerId: "test", symbol: "REUS", name: "Beacon Energy Holdings Ltd", exchange: "NYSE", currency: "USD", type: "STK" };
+  const delisting = { status: "delisted" as const, lastTradeDate: "2022-10-27", historyStart: "2016-01-04" };
+  const { store, file, run } = await setup({
+    search: async (query) => query.split(":")[0] === listing.symbol ? [listing] : [],
+    getQuote: async () => createTestQuote({ symbol: listing.symbol, name: "Beacon Energy Ltd", listingExchangeName: listing.exchange,
+      exchangeName: listing.exchange, ...(delisted ? { delisting } : {}) }),
+  });
+  await writeFile(file, "Symbol,Shares,Avg Cost\nREUS:NYSE,5,300\n");
+
+  const expected = { positions: [{ listing: "REUS:NYSE", name: listing.name, shares: 5, avgCost: 300 }], skipped: [] };
+  const preview = await run([file, "--name", "Main", "--merge"], { dryRun: true });
+  expect(preview.result.data).toMatchObject(expected);
+  expect(await store.loadTicker(listing.symbol)).toBeNull();
+
+  const merged = await run([file, "--name", "Main", "--merge"]);
+  expect(merged.result.data).toMatchObject(expected);
+  expect((await store.loadTicker(listing.symbol))?.metadata).toMatchObject({ name: listing.name, exchange: listing.exchange,
+    positions: [{ portfolio: "main", shares: 5, avgCost: 300, currency: "USD", broker: "manual" }] });
+});
+
 test("portfolio import <file> previews with --dry-run, creates the portfolio, needs --merge or --replace for one that holds tickers, and refuses a replace the file cannot fill", async () => {
   const { store, dataDir, file, run } = await setup();
   setCliColorEnabledOverride(false);
