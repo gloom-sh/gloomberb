@@ -4,7 +4,7 @@ import { convertMarketCapitalization } from "../../../../utils/market-capitaliza
 import { priceColor } from "../../../../theme/colors";
 import { notMeaningfulColor } from "../../../../components/ui/not-meaningful";
 import type { CryptoMarketAsset } from "../../../../api-client/crypto-markets";
-import { NOT_MEANINGFUL_TEXT } from "../../../../utils/growth";
+import { NOT_MEANINGFUL_TEXT, revenueMargin } from "../../../../utils/growth";
 import type { ServedRate } from "../../../../utils/served-rates";
 import type { CedearRatio, CompanyProfile, DepositaryPair, NextEarnings, Quote, TickerFinancials } from "../../../../types/financials";
 import { adrRatioText } from "../../../../utils/depositary-receipt";
@@ -48,6 +48,9 @@ import type { FundBondFacts } from "../../../../api-client/fund-facts";
 import { bondFigures } from "../../../../market-data/bond-funds";
 import { quoteStatsBasisText } from "../../../../market-data/quotes/export-identity";
 import { burnsCash, formatRunwayMonths, type CashRunway, type RunwayEstimate } from "../../../../utils/cash-runway";
+import { listingOwnsRow, listingOwnsSeries } from "../../../../utils/statement-scope";
+import { hasStatementGap } from "../../../../utils/statement-gaps";
+import { financialStatementCurrency, selectFinancialStatements } from "../financials/model";
 
 type CurrencyConverter = (value: number, fromCurrency: string) => number;
 
@@ -176,11 +179,41 @@ function runwayStat(runway: CashRunway | null | undefined): StatField | null {
   };
 }
 
+type OverviewStatements = Pick<TickerFinancials, "annualStatements" | "quarterlyStatements" | "financialCurrency" | "statementScope" | "trailingStatement">;
+
+function overviewTrailingIncome(statements: OverviewStatements, fundamentals: TickerFinancials["fundamentals"], currency: string | undefined) {
+  const { statements: [trailing] } = selectFinancialStatements("annual", "income", statements.annualStatements,
+    statements.quarterlyStatements, 1, statements.trailingStatement);
+  const end = trailing?.aggregation?.periodEnd;
+  if (!end || !trailing) return {};
+  if (!listingOwnsSeries(statements) || trailing.aggregation?.kind === "annual-plus-interim" && !listingOwnsRow(statements.statementScope, trailing)) {
+    return { difference: ["Different scope from Financials", "Different scope"] };
+  }
+  const summaryEnd = fundamentals?.trailingPeriodEnd;
+  if (summaryEnd && summaryEnd !== end) {
+    return { difference: ["Different period from Financials", "Different period"] };
+  }
+  if (!summaryEnd && statements.quarterlyStatements.some((quarter) => quarter.date > end)) {
+    return { difference: ["Overview period unverified", "Period unverified"] };
+  }
+  const reportingCurrency = financialStatementCurrency(statements, [trailing])?.trim();
+  if (!currency || !reportingCurrency || currency !== reportingCurrency || fundamentals?.ttmConversion) {
+    return { difference: ["Different currency basis from Financials", "Currency basis differs"] };
+  }
+  const { totalRevenue, netIncome, operatingIncome } = trailing;
+  if (!finite(totalRevenue) || !finite(netIncome) || hasStatementGap(trailing, "totalRevenue") || hasStatementGap(trailing, "netIncome")) {
+    return { difference: ["Financials TTM income incomplete", "Incomplete TTM"] };
+  }
+  return { income: { end, revenue: totalRevenue, netIncome, profitMargin: revenueMargin(netIncome, totalRevenue),
+    operatingMargin: hasStatementGap(trailing, "operatingIncome") ? undefined : revenueMargin(operatingIncome, totalRevenue) } };
+}
+
 export function buildOverviewStats({
   quote,
   fundamentals,
   coin,
   financialCurrency,
+  statementFinancials,
   quoteCurrency,
   baseCurrency,
   marketCapExchangeRates = new Map(),
@@ -203,6 +236,7 @@ export function buildOverviewStats({
   coin?: CryptoMarketAsset | null;
   /** The currency the statements report in, for fundamentals that declare none on a listing that trades in it. */
   financialCurrency?: TickerFinancials["financialCurrency"];
+  statementFinancials?: OverviewStatements | null;
   quoteCurrency: string;
   baseCurrency: string;
   toBase: CurrencyConverter;
@@ -247,7 +281,8 @@ export function buildOverviewStats({
     unsourcedSaid = true;
     return { value: text, detail: [REPORTING_CURRENCY_NOT_SOURCED, "currency not sourced"] };
   };
-  const money = (value: number) => reported(value, fundamentalsCurrency({ fundamentals, financialCurrency, quote }));
+  const incomeCurrency = fundamentalsCurrency({ fundamentals, financialCurrency, quote });
+  const money = (value: number) => reported(value, incomeCurrency);
 
   // An index's 0 is volume nobody counts, not a quiet session: no Volume row.
   const quoteVolume = reportedQuoteVolume(quote);
@@ -382,15 +417,19 @@ export function buildOverviewStats({
       link: DIVIDENDS,
     });
   }
-  if (fundamentals?.revenue != null) {
+  const { income, difference } = statementFinancials ? overviewTrailingIncome(statementFinancials, fundamentals, incomeCurrency) : {};
+  const revenueValue = income?.revenue ?? fundamentals?.revenue;
+  const netIncome = income?.netIncome ?? fundamentals?.netIncome;
+  if (revenueValue != null) {
     // Which twelve months the revenue, net income and margin are, as Financials' TTM column names them.
-    const end = fundamentals.trailingPeriodEnd;
-    const revenue = money(fundamentals.revenue);
+    const end = income?.end ?? fundamentals?.trailingPeriodEnd;
+    const revenue = money(revenueValue);
     const through = end && ISO_DATE.test(end) && !revenue.detail ? [formatDay(end), formatDay(end, "no-year")] : null;
     stats.push({ label: "Revenue", ...revenue, ...(through ? { detail: [`TTM to ${through[0]}`, ...through.map((day) => `to ${day}`)] } : {}) });
   }
-  if (fundamentals?.netIncome != null) {
-    stats.push({ label: "Net Income", ...money(fundamentals.netIncome) });
+  if (netIncome != null) {
+    const net = money(netIncome);
+    stats.push({ label: "Net Income", ...net, ...(!net.detail && difference ? { detail: difference } : {}) });
   }
   if (fundamentals?.freeCashFlow != null) {
     const currency = (fundamentals.freeCashFlowCurrency === undefined ? fundamentals.financialCurrency : fundamentals.freeCashFlowCurrency)?.trim();
@@ -401,12 +440,13 @@ export function buildOverviewStats({
   if (runwayField) stats.push(runwayField);
   // A margin over revenue at or below zero, and growth off it, read N/M in N/M's own colour, never a sign's.
   const notMeaningfulStat = (label: string): StatField => ({ label, value: NOT_MEANINGFUL_TEXT, valueColor: notMeaningfulColor() });
-  if (fundamentals?.operatingMargin != null) {
-    stats.push(notMeaningful.operatingMargin ? notMeaningfulStat("Op Margin") : { label: "Op Margin", value: formatLevelPercent(fundamentals.operatingMargin) });
-  }
-  if (fundamentals?.profitMargin != null) {
-    stats.push(notMeaningful.profitMargin ? notMeaningfulStat("Profit Marg") : { label: "Profit Marg", value: formatLevelPercent(fundamentals.profitMargin) });
-  }
+  const margin = (label: string, value: number | typeof NOT_MEANINGFUL | undefined, key: "operatingMargin" | "profitMargin") => {
+    if (value == null) return;
+    stats.push(value === NOT_MEANINGFUL || (!income && notMeaningful[key]) ? notMeaningfulStat(label)
+      : { label, value: formatLevelPercent(value) });
+  };
+  margin("Op Margin", income ? income.operatingMargin : fundamentals?.operatingMargin, "operatingMargin");
+  margin("Profit Marg", income ? income.profitMargin : fundamentals?.profitMargin, "profitMargin");
   if (fundamentals?.revenueGrowth != null) {
     stats.push(notMeaningful.revenueGrowth ? notMeaningfulStat("Rev Growth") : {
       label: "Rev Growth",

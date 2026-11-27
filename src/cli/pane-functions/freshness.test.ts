@@ -628,18 +628,40 @@ describe("report freshness", () => {
     const friday = "2026-10-23T21:00:00Z";
     // Sunday 05:35 UTC, the Futures pane's capture: stale rows still reading REGULAR were "markets open".
     expect(status("2026-10-25T05:35:00Z", "REGULAR", friday, true))
-      .toBe("Fri 23 Oct 2026 close · stale (32 hours old) · markets closed · reopens 22:00 UTC, 17:00 CT");
+      .toBe("Last print Fri 23 Oct 2026 21:00 UTC · stale (32 hours old) · markets closed · reopens 22:00 UTC, 17:00 CT");
     expect(status("2026-10-25T05:35:00Z", "CLOSED", friday, true))
-      .toBe("Fri 23 Oct 2026 close · stale (32 hours old) · markets closed · reopens 22:00 UTC, 17:00 CT");
+      .toBe("Last print Fri 23 Oct 2026 21:00 UTC · stale (32 hours old) · markets closed · reopens 22:00 UTC, 17:00 CT");
     // Saturday: the weekday of the open, as every other market names its Monday.
     expect(status("2026-10-24T12:00:00Z", "REGULAR", friday, true))
-      .toBe("Fri 23 Oct 2026 close · stale (15 hours old) · markets closed · reopens Sun 22:00 UTC, 17:00 CT");
+      .toBe("Last print Fri 23 Oct 2026 21:00 UTC · stale (15 hours old) · markets closed · reopens Sun 22:00 UTC, 17:00 CT");
     // Just after the Sunday open corn (19:00 CT) and coffee (Monday 04:15 ET) are still shut, whatever their quotes say, so
     // the board's markets disagree and the line names none; on Monday morning every one of them is open.
     expect(status("2026-10-25T22:05:00Z", "REGULAR", "2026-10-25T22:00:00Z", false))
       .toBe("22:00 UTC · 15 min delayed");
     expect(status("2026-10-26T09:00:00Z", "REGULAR", "2026-10-26T08:59:00Z", false))
       .toBe("08:59 UTC · 15 min delayed · markets open");
+  });
+
+  test("a futures print on Thanksgiving dates the next trade date, not a close or a new market state", () => {
+    const read = (lastUpdated: string, now: string, futuresPriceKind: "last-trade" | "settlement" = "last-trade") => {
+      const clock = Date.parse(now);
+      const quote = createTestQuote({ symbol: "NG=F", instrumentType: "FUTURE", listingExchangeName: "NYM", exchangeName: "NYM",
+        lastUpdated: Date.parse(lastUpdated), marketState: "CLOSED", futuresPriceKind });
+      return [quotesFreshness([quote], undefined, clock)!, deriveHeadlessFreshness(rows(), { rows: [quoteObservation(quote, clock)] }, clock)];
+    };
+    for (const freshness of read("2026-11-26T04:56:00Z", "2026-11-27T00:22:00Z")) {
+      expect(freshness).toMatchObject({ asOf: "2026-11-26T04:56:00.000Z", asOfLastPrint: true, asOfTradeDate: "2026-11-27", market: { state: "closed" } });
+      expect(freshness.asOfClose).toBeUndefined();
+      expect(formatFreshnessLine(freshness)).toContain("last print Thu 26 Nov 2026 04:56 UTC · Fri 27 Nov 2026 trade date");
+    }
+    for (const freshness of read("2026-11-24T20:56:00Z", "2026-11-24T22:10:00Z")) {
+      expect(freshness).toMatchObject({ asOfLastPrint: true, market: { state: "closed" } });
+      expect(freshness.asOfClose).toBeUndefined();
+      expect(freshness.asOfTradeDate).toBeUndefined();
+    }
+    for (const freshness of read("2026-11-24T19:30:00Z", "2026-11-24T22:10:00Z", "settlement")) {
+      expect(freshness.asOfLastPrint).toBeUndefined();
+    }
   });
 
   test("filed data is never stale for its age, only for a release it missed", () => {

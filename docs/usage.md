@@ -2016,7 +2016,9 @@ Every `gloom fn` text report ends with one line naming its source and saying how
 
 The plain commands that print market data end the same way: `quote`, `compare`, `ticker`, `history`, `financials`, `fundamentals`, `valuation`, `options`, `news`, `filings`, `holders`, `insider`, `13f`, `analyst`, `events`, `earnings`, `movers`, `indices`, `sectors`, `econ`, `fx`, `fred`, `yield-curve`, `correlation`, and `portfolio show` / `watchlist show`.
 
-**In `--json`** the facts are `data.freshness` for `fn` and `metadata.freshness` for the plain commands: `source`, `asOf`, `status`, `delayMinutes`, `retrievedAt`, and `asOfClose`, `tradingDayMarket`, `market`, `minDelayMinutes`, `oldest`, `lagDays`, `observation`, `sources`, `oldestAgeMinutes`, `note` when they apply.
+**In `--json`** the facts are `data.freshness` for `fn` and `metadata.freshness` for the plain commands: `source`, `asOf`, `status`, `delayMinutes`, `retrievedAt`, and `asOfClose`, `asOfLastPrint`, `asOfTradeDate`, `tradingDayMarket`, `market`, `minDelayMinutes`, `oldest`, `lagDays`, `observation`, `sources`, `oldestAgeMinutes`, `note` when they apply.
+
+For a futures quote, `asOf` is the observation time, not a daily close just because the market reports itself closed. `asOfTradeDate` names the exchange trade date when it differs from the UTC observation date and the exchange calendar covers it. It does not confirm a settlement or tell whether the market is open.
 
 A top-level `source` object has `name`, `publisher`, `observationDate`, `publicationTime`, `retrievalTime`. For data read from FRED, `fredUpdatedAt` dates FRED's update when known, not the publisher's release; the CSV notes call it `FRED updated`.
 

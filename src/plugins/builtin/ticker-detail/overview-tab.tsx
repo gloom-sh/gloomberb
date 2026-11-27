@@ -526,6 +526,7 @@ function ResolvedOverviewTab({
     fundamentals: shownFundamentals,
     coin,
     financialCurrency: financials?.financialCurrency,
+    statementFinancials: financials,
     quoteCurrency,
     baseCurrency,
     toBase,
