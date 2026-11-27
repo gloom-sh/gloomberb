@@ -94,6 +94,7 @@ export function applySignedOutChatControllerSession({
 
 interface RefreshChatControllerSessionOptions {
   isCurrent: () => boolean;
+  requireConfirmedIdentity: boolean;
   /** Use a session check the app made within this many milliseconds instead of asking again. */
   reuseCheckWithinMs?: number;
   applySignedOut: () => void;
@@ -115,6 +116,7 @@ interface RefreshChatControllerSessionOptions {
 
 export async function refreshChatControllerSession({
   isCurrent,
+  requireConfirmedIdentity,
   reuseCheckWithinMs,
   applySignedOut,
   channelStates,
@@ -136,6 +138,11 @@ export async function refreshChatControllerSession({
   const recent = reuseCheckWithinMs === undefined ? undefined : apiClient.recentSession(reuseCheckWithinMs);
   const apiSession = recent ? recent.user : await apiClient.getSession(isCurrent);
   if (!isCurrent()) return;
+  if (requireConfirmedIdentity && (apiClient.isChangingSession()
+    || (apiSession && apiClient.getConfirmedDisplayUser()?.id !== apiSession.id))) {
+    scheduleSessionRetry();
+    return;
+  }
   if (!apiSession) {
     const persistedToken = apiClient.getSessionToken();
     // A 200 with no user used to mean the desktop backend had not received the

@@ -442,6 +442,7 @@ export class ChatController {
   private async runSessionRefresh(isCurrent: () => boolean, reuseCheckWithinMs?: number): Promise<void> {
     return refreshChatControllerSession({
       isCurrent,
+      requireConfirmedIdentity: this.options.bindComposerToApiSession ?? false,
       reuseCheckWithinMs,
       applySignedOut: () => this.applySignedOutSession(),
       channelStates: this.storage.channelStates,

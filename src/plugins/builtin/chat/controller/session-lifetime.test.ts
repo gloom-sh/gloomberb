@@ -136,6 +136,27 @@ test.each(["sign-out", "clear", "reset"])("a fresh controller starts signed out 
   }
 });
 
+test("a pending credential change does not replace the saved session binding", async () => {
+  const resume = createResumeState();
+  controller = new ChatController({ bindComposerToApiSession: true });
+  controller.attachPersistence(persistence, resume);
+  controller.adoptSession("current-session", currentUser);
+  controller.setDraft("saved draft");
+  controller.setReplyToId("saved-reply");
+  apiClient.setSessionToken("pending-session");
+  apiClient.getSession = async () => apiClient.getCurrentUser();
+  await controller.refreshSession();
+
+  for (const store of [persistence, resume]) {
+    expect(store.getState("session", { schemaVersion: 1 })).toMatchObject({ sessionToken: "current-session", user: currentUser });
+  }
+  controller.dispose();
+  controller = new ChatController({ bindComposerToApiSession: true });
+  controller.attachPersistence(persistence, resume);
+  expect(apiClient.getSessionToken()).toBe("pending-session");
+  expect(controller.getSnapshot()).toMatchObject({ composerScope: null, draft: "", replyToId: null });
+});
+
 test.each(["null", "success", "reject"])("disposed get-session continuation cannot mutate account or restart runtime: %s", async (outcome) => {
   attach();
   const deferred = Promise.withResolvers<AuthUser | null>();
