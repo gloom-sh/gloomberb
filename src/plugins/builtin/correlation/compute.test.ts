@@ -21,8 +21,8 @@ describe("cross-market return alignment", () => {
 
     // Both assets have identical moves between shared closes. Weekend-only
     // prices must not change the intervals used for either side.
-    expect(correlateDailyCloses(dailyCloses(equity), dailyCloses(crypto))).toEqual({ correlation: 1, sampleSize: 5 });
-    expect(correlateDailyCloses(dailyCloses(crypto), dailyCloses(equity))).toEqual({ correlation: 1, sampleSize: 5 });
+    expect(correlateDailyCloses(dailyCloses(equity), dailyCloses(crypto))).toEqual({ correlation: 1, sampleSize: 5, lastSharedDate: "2026-01-12" });
+    expect(correlateDailyCloses(dailyCloses(crypto), dailyCloses(equity))).toEqual({ correlation: 1, sampleSize: 5, lastSharedDate: "2026-01-12" });
   });
 
   test("uses the final valid observation for a date without inventing intraday daily returns", () => {

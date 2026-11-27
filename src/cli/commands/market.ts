@@ -1554,8 +1554,10 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     const sourceNameOf = market.dataProvider.sourceNameOf;
     // Each quoted row cites its own source, blank when it has no name to give, so a row never takes another's.
     const rowSources = new Map(data.flatMap((row) => row.quote ? [[quoteRowSymbol(row), quoteSourceName(row.quote, sourceNameOf)] as const] : []));
+    const allUnavailable = data.every((row) => !row.quote);
     ctx.printResult({
       data: rows,
+      ...(allUnavailable ? { failure: { code: "quotes_unavailable", message: "No quotes were available." } } : {}),
       warnings: warnings.length > 0 ? warnings : undefined,
       // A Cboe yield index stops at its 15:00 ET close, before the Treasury's curve is taken: the line says so, so its
       // close does not read as a contradiction of DGS10 or GC for the same day.
@@ -1589,7 +1591,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
         : columns),
     });
     // The table and the warnings name each symbol it found nothing for; with none found, the exit status says so too.
-    if (data.every((row) => !row.quote)) process.exitCode = CLI_EXIT_CODES.error;
+    if (allUnavailable) process.exitCode = CLI_EXIT_CODES.error;
   });
 }
 

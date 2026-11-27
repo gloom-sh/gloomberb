@@ -10,7 +10,9 @@ import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pa
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { perpsCache, perpsMarketCache } from "./client";
 import { PerpEquityRow } from "./equity-row";
-import { equityBoard, perpBoard, venueRow } from "./test-fixture";
+import { PerpMarketsSection } from "./markets-section";
+import { equityBoard, perpBoard, perpRow, venueRow } from "./test-fixture";
+import { createTestQuote } from "../../../test-support/data-provider";
 
 const tui = createOpenTuiTestHarness({ width: 60, height: 8 });
 afterEach(() => { setCloudApiFetchTransport(null); perpsCache.reset(); perpsMarketCache.reset(); });
@@ -94,3 +96,48 @@ test("a perpetual market's own quote shows its contract: funding and open intere
   expect(frame).not.toContain("vs last");
   expect(requests).toEqual(["/cloud/perps/market?marketId=binance%3ABZUSDT"]);
 });
+
+for (const width of [42, 105]) {
+  const screen = createOpenTuiTestHarness({ width, height: 12 });
+  test(`perpetual marks keep their units, and a displayed stock premium keeps its reference at ${width} columns`, async () => {
+    const hk = { symbol: "9988", exchange: "HKEX" };
+    const us = { symbol: "AAPL", exchange: "NASDAQ" };
+    const stock = (listing: typeof hk, underlying: typeof hk, markPrice: number, underlyingPremium: number) => perpRow({
+      marketId: `hyperliquid:xyz:${underlying.symbol}`, dex: "xyz", symbol: `xyz:${underlying.symbol}`, baseAsset: underlying.symbol,
+      assetClass: "stocks", quoteCurrency: "USDC", markPrice, underlyingPremium, underlyingSymbol: underlying.symbol,
+      underlying: { ...underlying, price: 86.26, currency: "USD", asOf: perpRow().observedAt, marketState: "CLOSED", sourceUrl: "" },
+      equityMatch: { listing, underlying, basis: listing.symbol === underlying.symbol ? "listing" : "issuer" },
+    });
+    const baba = stock(hk, { symbol: "BABA", exchange: "NYSE" }, 89.16, 0.0336);
+    const apple = stock(us, us, 250, 0.0123);
+    const crypto = venueRow("binance", { baseAsset: "BTC", markPrice: 70123.45, premium: 0.0025 });
+    setCloudApiFetchTransport(async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path.endsWith("/9988")) return Response.json(equityBoard(hk, { rows: [baba] }));
+      if (path.endsWith("/AAPL")) return Response.json(equityBoard(us, { rows: [apple] }));
+      return Response.json(perpBoard({ rows: [crypto] }));
+    });
+    const state = createInitialState(createTestPaneConfig(join(homedir(), ".cache/gloom-smoke/perps-row-wording/test"), { paneId: "perps", instanceId: "test" }));
+    const runtime = createTestPluginRuntime();
+    const withPane = (content: React.ReactNode) => <TestPaneProvider state={state} dispatch={() => {}} paneId="test" pluginId="market-overview" runtime={runtime}>{content}</TestPaneProvider>;
+    const quote = createTestQuote({ symbol: "9988", currency: "HKD", price: 87.35, marketState: "REGULAR", dataSource: "live" });
+    await screen.render(withPane(<PerpMarketsSection {...hk} instrumentType="STK" quote={quote} width={width} />));
+    const hkFrame = await screen.waitForFrameToContain("89.16 USDC");
+    if (width > 42) expect(hkFrame).toContain("+3.36% vs BABA USD");
+    else expect(hkFrame).not.toContain("+3.36%");
+    expect(hkFrame).not.toContain("vs last");
+
+    await screen.render(withPane(<PerpMarketsSection {...us} instrumentType="STK" width={width} />));
+    const usFrame = await screen.waitForFrameToContain("250.00 USDC");
+    if (width > 42) expect(usFrame).toContain("+1.23% vs AAPL USD");
+
+    await screen.render(withPane(<PerpMarketsSection symbol="BTC-USD" exchange="CCC" instrumentType="CRYPTOCURRENCY" width={width} />));
+    const cryptoFrame = await screen.waitForFrameToContain("70,123.45 USDT");
+    if (width > 42) expect(cryptoFrame).toContain("+0.25%");
+
+    await screen.render(withPane(<PerpEquityRow {...hk} instrumentType="STK" width={width} />));
+    const compact = await screen.waitForFrameToContain("89.16 USDC");
+    if (width > 42) expect(compact).toContain("+3.36% vs BABA USD");
+    else expect(compact).not.toContain("+3.36%");
+  });
+}

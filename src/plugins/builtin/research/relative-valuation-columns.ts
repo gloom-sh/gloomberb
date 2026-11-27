@@ -13,7 +13,7 @@ import { currentTrailingValuation, latestTrailingStatement, listingStatementConv
 import { refusedLock } from "../shared/cloud-denied";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { loadShortInterest } from "../short-interest/client";
-import { buildShortWatchRow } from "../short-interest/watch-model";
+import { settlementPercentFloat } from "../short-interest/model";
 import { analystTargetCurrency, formatAnalystPrice, recommendationTotal } from "./analyst-model";
 import { peerDatesText } from "./relative-valuation-basis";
 
@@ -148,6 +148,11 @@ export function extraColumns(ids: readonly ExtraColumnId[]): { text: HeadlessPan
       ...spec.columns,
       { key: spec.sourceKey, header: `${spec.label} source`, format: text },
       { key: spec.asOfKey, header: `${spec.label} as of`, format: text, shrink: false },
+      ...spec === COLUMN_SPECS.shortInterest ? [
+        { key: "shortInterestSettlementSource", header: "Short settlement source", format: text },
+        { key: "shortInterestSettlementDate", header: "Short settlement date", format: text, shrink: false },
+        { key: "shortInterestFloatAsOf", header: "Short float count as of", format: text, shrink: false },
+      ] : [],
     ]),
   };
 }
@@ -197,12 +202,20 @@ async function loadShortInterestFields(symbols: readonly string[], financials: R
     if (!bare) return;
     try {
       const result = await loadShortInterest(bare, ctx.apiClient);
-      const row = buildShortWatchRow({ symbol, records: result.records, floatShares: financials.get(symbol)?.fundamentals?.floatShares ?? null, history: null });
-      if (!row.settlementDate) return;
+      const fundamentals = financials.get(symbol)?.fundamentals;
+      const latest = result.records.reduce<(typeof result.records)[number] | null>((current, record) =>
+        current && current.settlementDate > record.settlementDate ? current : record, null);
+      if (!latest) return;
+      const date = latest.settlementDate.toISOString().slice(0, 10);
+      const ratio = settlementPercentFloat(latest, fundamentals?.floatShares);
+      const source = SHORT_INTEREST_SOURCES[result.source];
       Object.assign(out.fields.get(symbol)!, {
-        shortInterestPercentFloat: row.percentFloat,
-        shortInterestSource: SHORT_INTEREST_SOURCES[result.source] ?? "FINRA",
-        shortInterestAsOf: row.settlementDate,
+        shortInterestPercentFloat: ratio,
+        shortInterestSource: ratio == null ? null : source,
+        shortInterestAsOf: ratio == null ? null : date,
+        shortInterestSettlementSource: source,
+        shortInterestSettlementDate: date,
+        shortInterestFloatAsOf: ratio == null || latest.shortPercentFloat != null ? null : fundamentals?.floatSharesAsOf ?? null,
       });
     } catch (error) {
       out.errors.push(failureMessage(label, error, symbol));

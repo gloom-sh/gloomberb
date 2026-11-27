@@ -5,7 +5,7 @@ import { createTestDataProvider } from "../../../test-support/data-provider";
 import { extractFundamentalSeries, valuationNotMeaningful } from "../../../time-series/fundamentals";
 import type { EnterpriseValueCheck, FinancialStatement, TickerFinancials } from "../../../types/financials";
 import type { HeadlessPaneContext } from "../../../types/headless";
-import { extraColumnsBasis, normalizeExtraColumns, parseExtraColumns } from "./relative-valuation-columns";
+import { extraColumnsBasis, loadExtraColumns, normalizeExtraColumns, parseExtraColumns } from "./relative-valuation-columns";
 import { relativeValuationHeadless } from "./relative-valuation-headless";
 import { convertTargets } from "./relative-valuation-currency";
 
@@ -37,6 +37,24 @@ describe("RV --columns", () => {
       "Gross Margin: trailing twelve months to 2026-06-30 (DUOL 2025-12-31)",
       "Short % Float: settlement 2026-09-30",
     ]);
+  });
+
+  test("a settlement without float does not give a missing ratio a source or date", async () => {
+    const date = "2026-09-30";
+    const ctx = { signal: new AbortController().signal, apiClient: {
+      getCloudShortInterest: async (symbol: string) => ({ status: "ok", data: { source: "finra", points: [{
+        settlementDate: date, sharesShort: 10, sharesOutstanding: 200, ...(symbol === "SERVED" ? { shortPercentFloat: 4 } : {}),
+      }] } }),
+    } } as unknown as HeadlessPaneContext;
+    const snapshot = listing("KNOWN", "USD", 1, [], { floatShares: 100, floatSharesAsOf: "2026-08-10" });
+    const { fields, errors } = await loadExtraColumns(["shortInterest"], ["MISSING", "KNOWN", "SERVED"], new Map([
+      ["KNOWN", snapshot], ["SERVED", snapshot],
+    ]), ctx);
+    expect(errors).toEqual([]);
+    const settlement = { shortInterestSettlementSource: "FINRA", shortInterestSettlementDate: date };
+    expect(fields.get("MISSING")).toEqual({ ...settlement, shortInterestPercentFloat: null, shortInterestSource: null, shortInterestAsOf: null, shortInterestFloatAsOf: null });
+    expect(fields.get("KNOWN")).toEqual({ ...settlement, shortInterestPercentFloat: 10, shortInterestSource: "FINRA", shortInterestAsOf: date, shortInterestFloatAsOf: "2026-08-10" });
+    expect(fields.get("SERVED")).toEqual({ ...settlement, shortInterestPercentFloat: 4, shortInterestSource: "FINRA", shortInterestAsOf: date, shortInterestFloatAsOf: null });
   });
 });
 

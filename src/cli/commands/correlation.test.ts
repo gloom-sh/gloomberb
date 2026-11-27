@@ -2,6 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { AppPersistence } from "../../data/app-persistence";
 import { TickerRepository } from "../../data/ticker-repository";
 import { createDefaultConfig } from "../../types/config";
+import type { PricePoint } from "../../types/financials";
 import { createTestCliContext, type PrintedCliResult } from "../../test-support/cli-context";
 import { createTestDataProvider, createTestFinancials, createTestQuote } from "../../test-support/data-provider";
 import { captureConsole } from "../../test-support/console";
@@ -30,7 +31,7 @@ const bars = (drift: number) => Array.from({ length: 30 }, (_, day) => {
   return { date: new Date(Date.UTC(2026, 9, 1 + day)), open: close, high: close, low: close, close, volume: 1_000 };
 });
 
-async function run(args: string[], history?: (symbol: string) => ReturnType<typeof bars>) {
+async function run(args: string[], history?: (symbol: string) => readonly PricePoint[]) {
   const quoteOf = (symbol: string) => {
     const quote = QUOTES[symbol.toUpperCase()];
     if (!quote) throw new Error(`Not a ticker: ${symbol}.`);
@@ -46,7 +47,7 @@ async function run(args: string[], history?: (symbol: string) => ReturnType<type
     },
     getQuote: async (symbol) => quoteOf(symbol),
     getTickerFinancials: async (symbol) => createTestFinancials({ quote: quoteOf(symbol), priceHistory: bars(1) }),
-    getPriceHistory: async (symbol) => history?.(symbol.toUpperCase()) ?? bars(symbol.toUpperCase() === "RIOT" ? 0.5 : 1),
+    getPriceHistory: async (symbol) => history ? [...history(symbol.toUpperCase())] : bars(symbol.toUpperCase() === "RIOT" ? 0.5 : 1),
   });
   const persistence = new AppPersistence(":memory:");
   const cli = createTestCliContext({ config, dataProvider, persistence, store: new TickerRepository(persistence.tickers) });
@@ -57,6 +58,20 @@ async function run(args: string[], history?: (symbol: string) => ReturnType<type
     persistence.close();
   }
 }
+
+test("correlation dates the last completed shared return, not either series' newest bar", async () => {
+  const all = bars(1);
+  for (const [right, left, samples, asOf] of [
+    [all, all, 29, "2026-10-30"],
+    [all.slice(0, -1), all, 28, "2026-10-29"],
+    [[...all.slice(0, -2), { ...all.at(-2)!, partial: true }], all, 27, "2026-10-28"],
+    [[...all.slice(0, -1), { ...all.at(-1)!, unsettled: true }], all, 28, "2026-10-29"],
+  ] as const) {
+    const { result, options } = await run(["RIOT", "BTC-USD"], (symbol) => symbol === "RIOT" ? left : right);
+    const parsed = JSON.parse(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "json" }, options));
+    expect(parsed).toMatchObject({ data: [{ samples, correlation: expect.closeTo(1, 10) }], metadata: { freshness: { asOf } }, source: { observationDate: asOf } });
+  }
+});
 
 test("correlation with the bare BTC says it read the Grayscale fund and names the coin's pair, as quote does", async () => {
   const fund = await run(["RIOT", "BTC"]);

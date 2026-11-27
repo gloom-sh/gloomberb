@@ -10,7 +10,7 @@ import { perpEquityIdentity } from "./equity-identity";
 import { perpetualListing } from "../../../tickers/perpetual-listing";
 import { loadPerpSelection, loadPerpsEquity } from "./client";
 import { rowReadAt } from "../../../market-data/perpetual-open-interest";
-import { compact, percent, perpDescription, price, readingTime } from "./model";
+import { compact, percent, perpDescription, perpMarkText, readingTime, stockPerpPremiumText } from "./model";
 import { useLivePerpRows } from "./live-rows";
 import { openPerpLabel, useOpenPerpMarket } from "./open-market";
 import { mergeVenueMarkets } from "./venue-markets";
@@ -65,12 +65,10 @@ function PerpRow({ row, stale, width, own = false }: { row: PerpBoardRow; stale:
   usePaneLinkMenuEntry(`function:perps-pane:${row.marketId}`, openPerpLabel(row), open);
   // Dated by its oldest figure: a streamed mark can sit beside the open interest the last poll read.
   const read = readingTime(rowReadAt(row));
-  const staleText = row.stale || stale ? " · stale" : "";
-  const figures = own
-    ? row.underlyingPremium != null ? [`${percent(row.underlyingPremium, 2)} vs ${row.underlyingSymbol ?? "underlying"} last${staleText}`] : staleText ? ["stale"] : []
-    : [`${price(row.markPrice)} ${row.quoteCurrency}`, `${percent(row.underlyingPremium, 2)} vs last${staleText}`];
+  const premium = stockPerpPremiumText(row, row.underlyingPremium);
+  const figures = [...own ? [] : [perpMarkText(row.markPrice, row.quoteCurrency)], ...premium ? [premium] : [], ...row.stale || stale ? ["stale"] : []];
   const named = [`${row.baseAsset} · ${perpDescription(row)}`, ...figures].join("  ");
-  const first = width === undefined || displayWidth(named) <= width ? named : [`${row.baseAsset} perpetual`, ...figures].join("  ");
+  const first = width === undefined || displayWidth(named) <= width ? named : fitParts([`${row.baseAsset} perpetual`, ...figures], "  ", width);
   // Funding reads per 8h here as it does in PERP, whatever interval the venue pays on.
   const second = fitParts([`Funding ${percent(row.fundingRate8h, 4)} per 8 h`, `OI ${compact(row.openInterestUsd)} USD`, `oracle ${percent(row.premium, 2)}`,
     ...(read ? [`as of ${read}`] : [])], " · ", width);

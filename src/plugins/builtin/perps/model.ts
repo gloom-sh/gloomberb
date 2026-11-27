@@ -238,7 +238,15 @@ export function openInterestFields(row: Pick<PerpBoardRow, "venue" | "baseAsset"
 }
 
 // One text per figure, shared by the pane cells and the text report so the two always agree.
-const markText = (row: Pick<PerpBoardRow, "markPrice" | "quoteCurrency">) => row.markPrice == null ? MISSING_VALUE : `${price(row.markPrice)} ${row.quoteCurrency}`;
+export function perpMarkText(value: number | null, currency: string): string {
+  return value == null || !currency ? price(value) : `${price(value)} ${currency}`;
+}
+
+export function stockPerpPremiumText(row: Pick<PerpBoardRow, "underlying">, premium: number | null): string | null {
+  const reference = row.underlying;
+  return premium != null && reference?.symbol && reference.currency
+    ? `${percent(premium, 2)} vs ${reference.symbol} ${reference.currency}` : null;
+}
 const fundingPerInterval = (row: Pick<PerpBoardRow, "fundingRate" | "fundingIntervalHours" | "fundingKind">) => row.fundingRate == null ? MISSING_VALUE : `${percent(row.fundingRate, 5)} /${fundingInterval(row)}`;
 /**
  * The contract a bare name opens: the one with the largest open interest across venues, among the venues read
@@ -341,7 +349,7 @@ export function perpCellText(row: PerpBoardRow, id: PerpColumnId): string {
   if (id === "market") return marketLabel(row);
   if (id === "venue") return venueLabel(row);
   if (id === "symbol") return row.symbol;
-  if (id === "markPrice") return markText(row);
+  if (id === "markPrice") return perpMarkText(row.markPrice, row.quoteCurrency);
   if (id === "fundingRate") return fundingPerInterval(row);
   if (id === "openInterestUsd") return compact(row.openInterestUsd);
   // A row is dated by its oldest figure: a streamed mark can sit beside the open interest the last poll read.
