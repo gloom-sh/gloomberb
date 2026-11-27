@@ -89,6 +89,7 @@ function excludeNonCompanyFinancials(financials: TickerFinancials): TickerFinanc
     nextEarnings: undefined,
     annualStatements: [],
     quarterlyStatements: [],
+    periodFilings: undefined,
     taiwanExchangeStatements: undefined,
   };
 }
@@ -350,21 +351,23 @@ export function hasRecentFinancialProfileAttempt(resources: ResourceStore | unde
     && attempt.value.sourceKeys.every((key, index) => key === sourceKeys[index]);
 }
 
-/** Company classification may only cross sources for the same explicit listing. */
-export function profileForSameListing(source: TickerFinancials, target: TickerFinancials, request?: { symbol: string; exchange?: string }): TickerFinancials["profile"] {
-  if (!hasMeaningfulProfile(source)) return undefined;
+function sameFinancialListing(source: TickerFinancials, target: TickerFinancials, request?: { symbol: string; exchange?: string }): boolean {
   const identity = (value: TickerFinancials) => [
     value.quote ? quoteMetadataFromQuote(value.quote) : undefined, value.quoteMetadata,
   ].find(metadata => metadata && typeof metadata.symbol === "string" && (metadata.listingExchangeName || parsePublicTickerKey(metadata.symbol).exchange));
   const actual = identity(source), requested = identity(target);
-  if (!actual || !requested) return undefined;
+  if (!actual || !requested) return false;
   const symbol = request?.symbol ?? requested.symbol;
   const listing = parsePublicTickerKey(symbol).exchange || request?.exchange || requested.listingExchangeName || parsePublicTickerKey(requested.symbol).exchange;
   const actualListing = actual.listingExchangeName || parsePublicTickerKey(actual.symbol).exchange;
-  if (typeof listing !== "string" || typeof actualListing !== "string" || !listing.trim() || !actualListing.trim()
-    || !providerFinancialsMatchTarget(source, symbol, listing) || !providerFinancialsMatchTarget(target, symbol, listing)
-    || !quoteMetadataMatchesTarget(requested, symbol, listing) || !quoteMetadataMatchesTarget(actual, symbol, listing)) return undefined;
-  return source.profile;
+  return typeof listing === "string" && typeof actualListing === "string" && !!listing.trim() && !!actualListing.trim()
+    && providerFinancialsMatchTarget(source, symbol, listing) && providerFinancialsMatchTarget(target, symbol, listing)
+    && quoteMetadataMatchesTarget(requested, symbol, listing) && quoteMetadataMatchesTarget(actual, symbol, listing);
+}
+
+/** Company classification may only cross sources for the same explicit listing. */
+export function profileForSameListing(source: TickerFinancials, target: TickerFinancials, request?: { symbol: string; exchange?: string }): TickerFinancials["profile"] {
+  return hasMeaningfulProfile(source) && sameFinancialListing(source, target, request) ? source.profile : undefined;
 }
 
 export function hasStatementRows(data: TickerFinancials | null | undefined): boolean {
@@ -409,6 +412,7 @@ export function mergeMissingStatementArrays(primary: TickerFinancials, fallback:
     ...primary,
     profile: mergeDefinedObject(primary.profile, profileForSameListing(fallback, primary)),
     statementHistory: fallback.statementHistory?.status === "available" ? fallback.statementHistory : primary.statementHistory ?? fallback.statementHistory,
+    periodFilings: primary.periodFilings ?? (fallback.periodFilings && sameFinancialListing(fallback, primary) ? fallback.periodFilings : undefined),
     taiwanExchangeStatements: primary.taiwanExchangeStatements ?? fallback.taiwanExchangeStatements,
     financialCurrency: primary.financialCurrency ?? (hasStatementRows(primary) ? undefined : fallback.financialCurrency),
     ...scoped,

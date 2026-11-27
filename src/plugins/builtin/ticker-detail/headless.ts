@@ -20,7 +20,7 @@ import {
 } from "../../../utils/price-history-integrity";
 import { indexBarVolume } from "../../../market-data/market/index-level";
 import {
-  buildFinancialTableModel, financialColumnLabel, financialGrowthNotice, financialStatementCurrency, financialStatementDateNotice, financialStatementLimitations,
+  buildFinancialTableModel, financialColumnLabel, financialColumnPeriod, financialGrowthNotice, financialPeriodFiling, financialStatementCurrency, financialStatementDateNotice, financialStatementLimitations,
   financialReportHeader, financialStatementPeriods, financialSubTabFields, formatFinancialAmount, isPerShareFinancialRow, notInYetNote, receiptShareCountLabel, trailingNotInYetNote,
 } from "./financials/model";
 import { FINANCIAL_SUB_TABS } from "./financials/schema";
@@ -353,9 +353,11 @@ async function loadFinancialReport(symbol: string, options: HeadlessPaneOptionVa
     const yearEndMonth = fiscalYearEndMonth(financials.annualStatements);
     // The list a column comes from: a comparative column is dated by the row a year on in it.
     const listRows = requestedPeriod === "quarterly" ? financials.quarterlyStatements : financials.annualStatements;
+    const annualDates = new Set(financials.annualStatements.map(({ date }) => date));
     const dates = table?.statements.map((statement) => {
       const { date, currency, dateSource, providerDate, dateEvidence, availableAt, fieldAvailability, fieldSources, unavailableFields, epsBasis, unavailableEarnings, aggregation, shareBasis, filledFrom } = statement;
       const filled = date === "TTM" || filledFrom?.source !== "results" ? null : fillDate(statement, listRows);
+      const issuerFiling = financialPeriodFiling(financials.periodFilings, statement, financialColumnPeriod(statement, requestedPeriod, annualDates));
       return {
       date, currency: currency ?? statementCurrency ?? null,
       shareBasis: shareBasis ?? null,
@@ -363,6 +365,7 @@ async function loadFinancialReport(symbol: string, options: HeadlessPaneOptionVa
       fieldAvailability: fieldAvailability ? { ...fieldAvailability } : null,
       ...(fieldSources ? { fieldSources } : {}),
       ...(filledFrom ? { filledFrom } : {}),
+      ...(issuerFiling ? { issuerFiling } : {}),
       // The day the company's results announcement published the period's filled lines, or, for a later
       // period's comparative column, that period's first announcement.
       ...(filled?.label === "published" && filled.date ? { announced: filled.date } : {}),
