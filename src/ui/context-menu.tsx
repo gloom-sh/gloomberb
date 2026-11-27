@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { openFormModal } from "../components/form-modal/request";
 import { t, tf } from "../i18n";
 import { getSharedRegistry, type PluginRegistry } from "../plugins/registry";
 import { TICKER_RESEARCH_PANE_ID } from "../types/config";
@@ -11,6 +12,7 @@ import {
 } from "../types/context-menu";
 import type { TickerFinancials } from "../types/financials";
 import type { TickerRecord } from "../types/ticker";
+import { canonicalTickerKey } from "../utils/exchanges";
 import { useRendererHost, useUiCapabilities } from "./host";
 import { menuAcceleratorFor, useKeybindings } from "../app/keybindings";
 
@@ -218,6 +220,37 @@ function appContextMenuItems(
   ];
 }
 
+/** Add Alert (SA), the alerts plugin's command. */
+const ADD_ALERT_COMMAND_ID = "set-alert";
+
+/** Whether Add Alert can be offered: its command is there, not hidden, and its plugin is on (a disabled plugin keeps it registered). */
+function addAlertAvailable(registry: PluginRegistry): boolean {
+  const command = registry.commands?.get(ADD_ALERT_COMMAND_ID);
+  if (!command || command.hidden?.()) return false;
+  const owner = registry.getCommandPluginId?.(ADD_ALERT_COMMAND_ID);
+  return !owner || !registry.getConfig().disabledPlugins.includes(owner);
+}
+
+/**
+ * A saved row's listing as Add Alert reads a typed symbol: its key with the
+ * row's venue, as the row is quoted. BHP on ASX is BHP:ASX and SAN in Paris is
+ * SAN:EPA, never the bare symbol, which Add Alert reads as the US line (BHP's
+ * and Santander's NYSE ADRs) even when the row abroad is saved under it; a
+ * key saved under its venue's code (BHP:XASX) by the venue's own (BHP:ASX).
+ */
+function alertListingOfTicker(ticker: TickerRecord): string {
+  return canonicalTickerKey(ticker.metadata.ticker, ticker.metadata.exchange);
+}
+
+/**
+ * Add Alert's form, as SA opens it, filled in with the row's listing. Nothing
+ * is added until the form is sent. Forms open in the main window only.
+ */
+function openAddAlertForm(ticker: TickerRecord, registry: Pick<PluginRegistry, "notify">): void {
+  const opened = openFormModal({ kind: "plugin-command", commandId: ADD_ALERT_COMMAND_ID, values: { symbol: alertListingOfTicker(ticker) } });
+  if (!opened) registry.notify({ body: t("Open this from the main window."), type: "info" });
+}
+
 export function tickerContextMenuItems({
   ticker,
   financials,
@@ -261,6 +294,13 @@ export function tickerContextMenuItems({
     },
   ];
 
+  if (registry && addAlertAvailable(registry)) {
+    items.push({
+      id: "ticker:add-alert",
+      label: "Add Alert...",
+      onSelect: () => openAddAlertForm(ticker, registry),
+    });
+  }
   if (ticker.metadata.watchlists.length > 0) {
     items.push({
       id: "ticker:remove-watchlist",

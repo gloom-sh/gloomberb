@@ -311,6 +311,7 @@ export const zhTW: Record<string, string> = {
   "Open {symbol} in New Floating Ticker Research": "在新浮動視窗中開啟 {symbol} 研究",
   "Add to Watchlist...": "新增到自選清單...",
   "Add to Portfolio...": "新增到投資組合...",
+  "Add Alert...": "新增提醒...",
   "Remove from Watchlist...": "從自選清單移除...",
   "Remove from Portfolio...": "從投資組合移除...",
   "Context menu action failed.": "右鍵選單操作失敗。",

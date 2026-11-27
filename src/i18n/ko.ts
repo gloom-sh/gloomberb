@@ -309,6 +309,7 @@ export const ko: Record<string, string> = {
   "Open {symbol} in New Floating Ticker Research": "새 플로팅 종목 리서치에서 {symbol} 열기",
   "Add to Watchlist...": "관심 목록에 추가...",
   "Add to Portfolio...": "포트폴리오에 추가...",
+  "Add Alert...": "알림 추가...",
   "Remove from Watchlist...": "관심 목록에서 제거...",
   "Remove from Portfolio...": "포트폴리오에서 제거...",
   "Context menu action failed.": "컨텍스트 메뉴 작업에 실패했습니다.",

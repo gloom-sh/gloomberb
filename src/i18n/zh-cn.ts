@@ -311,6 +311,7 @@ export const zhCN: Record<string, string> = {
   "Open {symbol} in New Floating Ticker Research": "在新浮动窗口中打开 {symbol} 研究",
   "Add to Watchlist...": "添加到自选列表...",
   "Add to Portfolio...": "添加到投资组合...",
+  "Add Alert...": "添加提醒...",
   "Remove from Watchlist...": "从自选列表移除...",
   "Remove from Portfolio...": "从投资组合移除...",
   "Context menu action failed.": "右键菜单操作失败。",
