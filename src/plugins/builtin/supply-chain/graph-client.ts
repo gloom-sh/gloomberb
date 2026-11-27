@@ -5,7 +5,7 @@ import { isFraction } from "../../../utils/guards";
 import { batchReplyItems, createCloudBatchAhead, createCloudEndpoint } from "../shared/cloud-resource";
 import { normalizeSupplyRow, validPeriodMonths, validSupplyEntity, validSupplyRow } from "./client";
 import { graphEvidenceRow } from "./graph-evidence";
-import { activeRelationship, isUnconfirmed } from "./trust";
+import { activeRelationship, evidenceDate, isUnconfirmed } from "./trust";
 
 const id = (x: unknown): x is string => typeof x === "string" && x.length > 0;
 export function validateGraph(data: GraphPayload): GraphPayload {
@@ -58,13 +58,21 @@ export function validateGraph(data: GraphPayload): GraphPayload {
     }) })) };
   } catch { throw new Error("The server returned an unreadable supply chain graph"); }
 }
+function validateDatedGraph(data: GraphPayload) {
+  const graph = validateGraph(data);
+  const cutoff = graph.options.asOf;
+  if (cutoff && graph.links.some(link => link.evidence.some(item => evidenceDate(graphEvidenceRow(item)) > cutoff))) {
+    throw new Error(`Supply chain graph returned disclosures published after ${cutoff}; none are shown.`);
+  }
+  return graph;
+}
 const key = (symbol: string, target: string, options: Partial<GraphOptions>, access = "") => `${access}:${symbol.toUpperCase()}:${target.toUpperCase()}:${supplyGraphQuery(options)}`;
 const graphEndpoint = createCloudEndpoint<{ symbol: string; target: string; options: Partial<GraphOptions>; access?: string }, GraphPayload, Pick<typeof apiClient, "getCloudSupplyGraph" | "getCloudSupplyPaths">>({
   kind: "supply-graph", schemaVersion: 2, policy: { staleMs: 300_000, expireMs: 86_400_000 },
   key: ({ symbol, target, options, access }) => key(symbol, target, options, access),
   defaultClient: apiClient,
   fetch: ({ symbol, target, options }, client) => target ? client.getCloudSupplyPaths(symbol, target, options) : client.getCloudSupplyGraph(symbol, options),
-  validate: validateGraph, unavailableMessage: "Supply chain graph is not available yet.", unavailableStatuses: [404, 503],
+  validate: validateDatedGraph, unavailableMessage: "Supply chain graph is not available yet.", unavailableStatuses: [404, 503],
 });
 export const graphCache = graphEndpoint.cache;
 export const fetchSupplyGraph = (symbol: string, options: Partial<GraphOptions> = {}, target = "", client: Pick<typeof apiClient, "getCloudSupplyGraph" | "getCloudSupplyPaths"> = apiClient) =>

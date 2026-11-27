@@ -31,6 +31,28 @@ const noMoves = async (symbol?: string): Promise<HiringCompanyMoves> => ({ gener
   evidence: { added: [], closed: [] }, evidenceTotals: { added: 0, closed: 0 }, locked: { history: 0, added: 0, closed: 0 } });
 afterEach(() => { attentionCache.reset(); setCloudApiFetchTransport(null); });
 
+test("an unread listing's preview has no fake week or observation, unlike a measured zero", async () => {
+  const symbol = "SAME:JPX";
+  const captured = fixture();
+  const empty: HiringPayload = { ...captured, symbol, preview: true, status: "uncovered", latest: null, series: [], functions: [], peers: [], evidence: [] };
+  const week = { week: "2026-10-19", newRoles: null, closedRoles: null, openRoles: null, measured: false, reads: 0, excluded: ["no_read"] as const };
+  const load = (payload: HiringPayload, moves: HiringCompanyMoves) => attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: [symbol] }), createTestHeadlessContext({ apiClient: {
+    getCloudHiring: async () => payload, getCloudHiringMoves: async () => moves, getCloudHiringCompanySignals: async () => ({ ...await noSignals(symbol), week: week.week }), getCloudHiringCompanyBuilding: noBuilding,
+  } as never }));
+  const placeholder = { ...week, excluded: [...week.excluded] };
+  const moves = { ...await noMoves(symbol), week: placeholder, preview: true, locked: { history: 1, added: 0, closed: 0 } };
+  const unread = await load(empty, moves);
+  expect(unread.sections.flatMap(section => section.rows ?? [])).toEqual([]);
+  expect(unread.metadata?.asOf).toBeNull();
+  expect(unread.errors).toBeUndefined();
+  expect(unread.sections.find(section => section.title === "Expansion")).toMatchObject({ empty: "No measured postings for this week." });
+  const measured = { ...placeholder, newRoles: 0, closedRoles: 0, openRoles: 0, measured: true, reads: 2, excluded: [] };
+  const zero = await load({ ...empty, latest: { ...captured.latest!, openCount: 0 } }, { ...moves, weeks: [placeholder, { ...measured, week: "2026-10-12" }] });
+  expect(zero.sections.find(section => section.title === "Latest capture")?.rows).toMatchObject([{ open: 0 }]);
+  expect(zero.sections.find(section => section.title === "Hiring moves")?.rows).toMatchObject([{ week: "2026-10-12", newRoles: 0, openRoles: 0 }]);
+  await expect(load({ ...empty, symbol: "SAME:HKEX" }, moves)).rejects.toThrow("different company");
+});
+
 test("a sparse real capture preserves unknown changes and does not fabricate a trend", () => {
   const model = hiringModel(fixture());
   expect(model.chart.points).toHaveLength(1);
@@ -124,16 +146,16 @@ test("the report prints shares as the pane does, and a remote share with the rol
     const row = section.rows![index]!;
     return (column.textFormat ?? column.format)!(row[key], row);
   };
-  // 0.30454545... of the roles, and NET's 16.2% of 401 roles with a stated work mode.
   expect(text("Role family", "share")).toBe("30.5");
-  expect(text("Peers", "remote", 2)).toBe("16% of 401 known");
-  expect(text("Peers", "remote", 0)).toBe("100% of 185 known");
+  const peers = report.sections.find(section => section.title === "Mapped peers: posting counts")!;
+  expect(peers.rows!.map(row => row.symbol)).toEqual(payload.peers.map(row => row.symbol));
+  expect(peers.columns!.map(column => column.key)).toEqual(["symbol", "name", "open", "date"]);
   expect(hiringModel(payload).figures.find((figure) => figure.label === "Remote")).toMatchObject({ value: "100%", detail: "of 5 known" });
 });
 
 test("a hiring report heads each view by what its rows are, and the board has only its table, as the pane's tabs do", async () => {
   const company = await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["ADYEN:AMS"] }), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => fixture(), getCloudHiringMoves: noMoves, getCloudHiringCompanySignals: noSignals, getCloudHiringCompanyBuilding: noBuilding } as never }));
-  expect(company.sections.map((section) => section.title)).toEqual(["Open roles", "Hiring trend", "Role family", "Peers", "Posting evidence", "Hiring moves", "Move drivers", "Postings first seen", "Expansion", "Anomalies",
+  expect(company.sections.map((section) => section.title)).toEqual(["Open roles", "Hiring trend", "Role family", "Mapped peers: posting counts", "Posting evidence", "Hiring moves", "Move drivers", "Postings first seen", "Expansion", "Anomalies",
     "Building: role families", "Building: themes", "Building: shifts"]);
   const board = { generatedAt: "2026-10-15T00:00:00.000Z", proRequired: true, preview: false, total: 0, locked: 0, companies: [] };
   const market = await attentionHeadless("hiring").load(createTestHeadlessArgs(), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => board, getCloudHiringMoves: async () => realMovesBoard,
@@ -190,7 +212,7 @@ test("a free HIRE and APPS preview say what free shows, what Pro adds and where 
   hiring.coverage.firstObservedAt = "2026-09-19T00:00:00.000Z";
   hiring.latest = { ...hiring.latest!, completeness: "partial" };
   const hire = await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["ADYEN:AMS"] }), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => hiring, getCloudHiringMoves: noMoves, getCloudHiringCompanySignals: noSignals, getCloudHiringCompanyBuilding: noBuilding } as never }));
-  expect(hire.errors).toEqual([`Free shows ${hiring.evidence.length} of ${hiring.evidence.length + 57} open roles. Gloom Pro adds the other 57 roles, 5 weeks of history and 17 more peers, with history from 19 Sep 2026.`]);
+  expect(hire.errors).toEqual([`Free shows ${hiring.evidence.length} of ${hiring.evidence.length + 57} retained postings. Gloom Pro adds the other 57 postings, 5 weeks of capture history and 17 more mapped peers, with history from 19 Sep 2026.`]);
   expect(hire.notes).toEqual(["The latest capture has incomplete or unknown coverage."]);
   expect(hire.sections.find((section) => section.title === "Hiring trend")).toMatchObject({ empty: "Weekly history is part of Gloom Pro." });
 
@@ -247,5 +269,5 @@ test("a flagged move is listed with what to check and never reads as alerted; a 
   const model = companyMovesModel(free);
   expect(model.figures.map((figure) => [figure.label, figure.value])).toEqual([["New roles", "311"], ["Closed", "191"], ["Open", "979"], ["Move", "Pro"]]);
   expect(model.sections.drivers!.empty).toBe("This company's move is in Pro.");
-  expect(movesPreviewNote(free)).toBe("Free shows the latest week and three postings each way. Gloom Pro adds its move, 5 weeks of history and 34 more postings.");
+  expect(movesPreviewNote(free)).toBe("Free shows this week's posting moves. Gloom Pro adds its move analysis, 4 earlier weeks of posting moves and 34 more postings.");
 });

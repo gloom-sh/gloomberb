@@ -39,6 +39,21 @@ const context = (payload: GraphPayload, requests: string[]) => createTestHeadles
 });
 
 describe("supply chain graph headless integration", () => {
+  test("a cutoff dates displayed evidence, preserves original names and rejects a future filing", async () => {
+    const payload = graphPayload();
+    const item = payload.links[0]!.evidence[0]!;
+    item.from = { ...item.from, name: "European Semiconductor\n Manufacturing\tCompany" };
+    payload.options.asOf = "2026-03-01";
+    payload.asOf = "2026-10-31";
+    const report = await supplyChainHeadless.load(args({ tab: "graph", "as-of": payload.options.asOf }), context(payload, []));
+    const rows = report.sections.find(section => section.title === "Disclosure evidence")!.rows!;
+    expect(rows[0]).toMatchObject({ from: "European Semiconductor Manufacturing Company", evidence: { from: { name: item.from.name } } });
+    expect(deriveHeadlessFreshness(supplyChainHeadless, report, Date.parse("2026-11-28")).asOf).toBe("2026-02-25");
+    expect(report.metadata?.graphAsOf).toBe("2026-10-31");
+    item.filedDate = "2026-03-02";
+    await expect(supplyChainHeadless.load(args({ tab: "graph", "as-of": payload.options.asOf }), context(payload, [])))
+      .rejects.toThrow("returned disclosures published after 2026-03-01");
+  });
   test("scoped XBRL evidence exports its context without claiming a denominator", async () => {
     const payload = graphPayload();
     Object.assign(payload.links[0]!.evidence[0]!, { sourceKind: "xbrl", tier: "structured", pctScope: "Non Us" });
@@ -60,15 +75,15 @@ describe("supply chain graph headless integration", () => {
   test("CLI filters preserve validated values through settings and the graph request", async () => {
     const capability = getPaneFunctionCapability(undefined, { id: "supply-chain", name: "Supply Chain", headless: supplyChainHeadless } as PaneDef);
     const options = normalizeCapabilityOptions(capability, { tab: "graph", depth: "3", direction: "upstream", roles: "supplier", sources: "xbrl,filing_text",
-      tiers: "structured,primary", "min-pct": "2.5", "min-confidence": "0.85", limit: "12", "as-of": "2025-12-31", ranking: "shortest" }, { strict: true });
+      tiers: "structured,primary", "min-pct": "2.5", "min-confidence": "0.85", limit: "12", "as-of": "2026-02-25", ranking: "shortest" }, { strict: true });
     expect(graphOptions(capabilityPaneSettings(capability, options))).toEqual(graphOptions(options));
     const requests: string[] = [];
     // A server that reads the cutoff answers it in its options.
-    await supplyChainHeadless.load(args(options), context({ ...graphPayload(), options: { ...graphPayload().options, asOf: "2025-12-31" } }, requests));
+    await supplyChainHeadless.load(args(options), context({ ...graphPayload(), options: { ...graphPayload().options, asOf: "2026-02-25" } }, requests));
     const url = new URL(requests[0]!, "https://example.test");
     expect(url.pathname).toBe("/cloud/supply-chain/A/graph");
     expect(Object.fromEntries(url.searchParams)).toEqual({ depth: "3", direction: "upstream", roles: "supplier", sources: "xbrl,filing_text",
-      tiers: "structured,primary", minPct: "2.5", minConfidence: "0.85", limit: "12", ranking: "shortest", asOf: "2025-12-31" });
+      tiers: "structured,primary", minPct: "2.5", minConfidence: "0.85", limit: "12", ranking: "shortest", asOf: "2026-02-25" });
     expect(() => normalizeCapabilityOptions(capability, { depth: "5" }, { strict: true })).toThrow();
     expect(() => normalizeCapabilityOptions(capability, { limit: "1.5" }, { strict: true })).toThrow();
     const invalidFilters: Record<string, string>[] = [{ "min-pct": "101" }, { "min-confidence": "NaN" }, { tiers: "unknown" }, { "as-of": "2025-02-29" }];
@@ -246,7 +261,7 @@ test("--view prints that view alone and says when it is empty; an earlier period
     ["FOCUS says | Earlier periods", [["earlier", "earlier", 14, "2023-12-31"]]],
   ]);
   const names = await load({ view: "names" });
-  expect(names.sections.map((section) => [section.title, section.rows?.length, "empty" in section ? section.empty : null])).toEqual([["Names FOCUS", 0, "No other company's disclosures name FOCUS."]]);
+  expect(names.sections.map((section) => [section.title, section.rows?.length, "empty" in section ? section.empty : null])).toEqual([["Names FOCUS", 0, "No linked disclosures naming FOCUS are shown."]]);
   // Rows the preview leaves out of the other view are not this view's.
   expect([names.complete, names.errors]).toEqual([true, []]);
   const says = await load({ view: "says" });

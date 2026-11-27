@@ -100,7 +100,7 @@ test("coin board values fill the usual rows in the quote's format without duplic
   expect(quoted[1]!.value).toBe("2.00T USD");
 });
 
-test("summary money with no sourced currency is bare, says so once, and never borrows the listing's", () => {
+test("summary money with no sourced currency never borrows the listing's or implies a period", () => {
   const fundamentals: Fundamentals = {
     eps: 4.22, revenue: 1.22e12, netIncome: 85.7e9, freeCashFlow: -96.6e9,
     sharesOutstanding: 19.19e9, profitMargin: 0.0704, trailingPE: 25.3,
@@ -113,7 +113,8 @@ test("summary money with no sourced currency is bare, says so once, and never bo
   expect(fundamentals).toEqual(original);
   // FCF has its own provenance, independent of the other amounts.
   expect(overviewFields(fundamentals).filter((field) => field.detail).map(({ label, detail }) => [label, detail]))
-    .toEqual([["EPS", ["reporting currency not sourced", "currency not sourced"]], ["FCF", ["currency unknown"]]]);
+    .toEqual([["EPS", ["reporting currency not sourced", "currency not sourced"]], ["Revenue", ["currency and period unsourced", "basis unsourced"]],
+      ["Net Income", ["currency and period unsourced", "basis unsourced"]], ["FCF", ["currency unknown"]]]);
   expect(overview({ ...fundamentals, financialCurrency: "CNY" })).toMatchObject({
     EPS: "CN¥4.22", Revenue: "1.22T CNY", "Net Income": "85.7B CNY", FCF: "-96.6B CNY",
   });

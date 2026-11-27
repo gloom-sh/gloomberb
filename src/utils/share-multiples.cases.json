@@ -194,7 +194,7 @@
    }
   },
   {
-   "name": "PAN reports in dollars and is quoted in rand: its EPS is not judged against dollar net income",
+   "name": "PAN reports in dollars and is quoted in rand: unattributed EPS does not price the listing",
    "symbol": "PAN",
    "exchange": "JSE",
    "quote": {
@@ -225,7 +225,8 @@
     }
    ],
    "expect": {
-    "trailingPE": 7.916107382550336
+    "trailingPE": null,
+    "because": "EPS currency not verified"
    }
   },
   {

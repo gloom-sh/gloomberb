@@ -19,7 +19,13 @@ export const entityTicker = (entity: Pick<SupplyEntity, "ticker" | "exchange">):
   const exchange = suffixed?.exchange ?? entity.exchange;
   return exchange && !isUsListingExchange(exchange) ? canonicalTickerKey(hongKongListingCode(symbol, canonicalExchange(exchange)), exchange) : symbol;
 };
-export const entityLabel = (entity: SupplyEntity) => entityTicker(entity) ?? entity.name;
+export const supplyDisplayName = (name: string) => name.replace(/\s+/gu, " ").trim();
+export const entityLabel = (entity: SupplyEntity) => entityTicker(entity) ?? supplyDisplayName(entity.name);
+
+export function graphDisclosureDates(links: readonly GraphPayload["links"][number][]) {
+  const dates = links.flatMap(link => link.evidence.flatMap(item => item.filedDate ? [item.filedDate.slice(0, 10)] : [])).sort();
+  return { latest: dates.at(-1) ?? null, oldest: dates[0] ?? null };
+}
 /**
  * A trade link whose every disclosure is a related-party (connected) trade,
  * as the server labels a table row: the graph names it one rather than a

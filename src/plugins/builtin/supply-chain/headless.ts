@@ -8,7 +8,7 @@ import { directoryColumns, directoryRows } from "./directories";
 import { fetchSupplyChain } from "./client";
 import { evidenceDate, evidenceLabel, isUnconfirmed, matchesSupplyOptions, supplyOptions, trustTier } from "./trust";
 import { fetchSupplyGraph, graphOptions } from "./graph-client";
-import { entityTicker, exposureLabel, pathLabel } from "./graph-model";
+import { entityTicker, exposureLabel, graphDisclosureDates, pathLabel, supplyDisplayName } from "./graph-model";
 import { graphEvidenceRow } from "./graph-evidence";
 import { counterpartyKind, counterpartyName, disclosedValue, disclosureText, earlierRows, isRelatedParty, isTaggedFact, lockedDisclosures, nativeValue, periodText, relationshipLabel, shareParts, supplyEmptyText, supplyPreviewNote,
   supplyRoleCounts } from "./model";
@@ -85,7 +85,7 @@ function graphReport(data: GraphPayload, target: string): HeadlessBundleResult {
     : (["upstream", "downstream", "related"] as const).map(direction => ({
       title: direction === "upstream" ? "Upstream suppliers" : direction === "downstream" ? "Downstream customers" : "Related companies",
       columns: [{ key: "company", header: "Company" }, { key: "ticker", header: "Ticker" }, ...pathColumns],
-      rows: data[direction].map(reach => ({ ...route(data.options.ranking === "shortest" ? reach.shortestPath : reach.bestPath), entityId: reach.entityId, company: nodes.get(reach.entityId)?.name,
+      rows: data[direction].map(reach => ({ ...route(data.options.ranking === "shortest" ? reach.shortestPath : reach.bestPath), entityId: reach.entityId, company: supplyDisplayName(nodes.get(reach.entityId)?.name ?? ""),
         ticker: nodes.get(reach.entityId) ? entityTicker(nodes.get(reach.entityId)!) : null, direction: reach.direction, bestPath: route(reach.bestPath), shortestPath: route(reach.shortestPath) })),
     }));
   sections.push({ title: "Disclosure evidence", columns: [
@@ -99,8 +99,8 @@ function graphReport(data: GraphPayload, target: string): HeadlessBundleResult {
     { key: "quote", header: "Quote", textFormat: (value, row) => row.statement == null ? String(value ?? "") : String(row.statement) }, { key: "filingUrl", header: "Filing" },
   ], rows: data.links.flatMap(link => link.evidence.map(item => ({ id: item.id, linkId: link.id, primary: item.id === link.primaryEvidenceId,
     statement: graphStatement(item, link.evidence), share: graphShare(item),
-    reporter: item.reporter.name, from: item.from.name, to: item.to.name, role: item.role, relatedParty: isRelatedParty(item), pct: item.pctOfRevenue ?? null,
-    denominator: item.pctBasis && !(item.sourceKind === "xbrl" && item.pctScope) ? `${item.reporter.name} ${item.pctBasis}${item.pctScope ? ` (${item.pctScope})` : ""}` : null,
+    reporter: supplyDisplayName(item.reporter.name), from: supplyDisplayName(item.from.name), to: supplyDisplayName(item.to.name), role: item.role, relatedParty: isRelatedParty(item), pct: item.pctOfRevenue ?? null,
+    denominator: item.pctBasis && !(item.sourceKind === "xbrl" && item.pctScope) ? `${supplyDisplayName(item.reporter.name)} ${item.pctBasis}${item.pctScope ? ` (${item.pctScope})` : ""}` : null,
     pctBasis: item.pctBasis, pctScope: item.pctScope, period: item.period, periodMonths: item.periodMonths ?? null, filed: item.filedDate, asOf: item.asOf,
     confidence: item.confidence, quote: item.quote, quoteLanguage: item.quoteLanguage, quoteGloss: item.quoteGloss ?? null,
     quoteGlossKind: item.quoteGloss ? "machine_translation" : null, nativeAmount: item.nativeAmount ?? null,
@@ -113,8 +113,12 @@ function graphReport(data: GraphPayload, target: string): HeadlessBundleResult {
   if (!data.entity) errors.push("The focus company could not be resolved");
   if (target && !data.target) errors.push("The target company could not be resolved");
   if (data.truncated && !errors.length) errors.push("Graph results are truncated");
+  const dates = graphDisclosureDates(data.links);
+  const notes = [data.options.asOf ? `Disclosures known by ${data.options.asOf}.` : null,
+    data.asOf ? `Whole-graph data through ${data.asOf}; not the filing date of the displayed disclosures.` : null].filter((note): note is string => note !== null);
   return { sections, complete: data.access === "full" && !!data.entity && (!target || !!data.target) && data.search.complete && !data.truncated && data.requestedDepth <= data.maxDepth,
-    errors, metadata: { symbol: data.symbol, target: data.target, asOf: data.asOf, snapshotAt: data.snapshotAt,
+    notes, errors, freshness: { observedKey: "filed", asOf: dates.latest, oldest: dates.oldest, basis: "published relationship evidence" },
+    metadata: { symbol: data.symbol, target: data.target, asOf: dates.latest, oldestAsOf: dates.oldest, graphAsOf: data.asOf, snapshotAt: data.snapshotAt,
       access: data.access, requestedDepth: data.requestedDepth, maxDepth: data.maxDepth, options: data.options,
       search: data.search, truncated: data.truncated, methodology: data.methodology, graph: data } };
 }
@@ -170,14 +174,14 @@ export const supplyChainHeadless: HeadlessPaneDefinition<"bundle"> = {
     const figures = (key: "counterparties" | "locked") => Object.fromEntries(([["says", ["says"]], ["names", ["names"]], ["flow", ["says", "names"]]] as const)
       .map(([scope, views]) => [scope, Object.fromEntries(supplyRoleCounts(data, views, options).filter((entry) => entry[key] > 0).map((entry) => [entry.role, entry[key]]))]));
     const shareOf = (row: SupplyRow) => { const share = shareParts(row, data.entity?.id); return share ? `% ${share.basis}` : null; };
-    const record = (row: SupplyRow) => sourced(row, { counterparty: row.counterparty.name, ticker: entityTicker(row.counterparty), aggregate: row.counterparty.aggregate, role: row.role, direction: row.direction,
+    const record = (row: SupplyRow) => sourced(row, { counterparty: supplyDisplayName(row.counterparty.name), ticker: entityTicker(row.counterparty), aggregate: row.counterparty.aggregate, role: row.role, direction: row.direction,
       pct: row.pctOfRevenue, shareUnit: shareOf(row), pctBasis: row.pctBasis, pctScope: row.pctScope, usd: row.usd, usdBasis: row.usdBasis, period: row.period, periodMonths: row.periodMonths ?? null, fiscalYear: row.fiscalYear,
       nativeAmount: row.nativeAmount ?? null, nativeCurrency: row.nativeCurrency ?? null, nativeScale: row.nativeScale ?? null,
       jurisdiction: row.jurisdiction ?? null, entityScope: row.entityScope ?? null, relatedParty: isRelatedParty(row),
       evidenceTier: evidenceLabel(row), tier: trustTier(row), claimType: row.claimType, corroboration: row.corroboration ?? 1,
       leadStatus: row.leadStatus ?? "none", whyUnconfirmed: row.whyUnconfirmed ?? null,
       firstSeenAt: row.firstSeenAt, lastSeenAt: row.lastSeenAt, lastConfirmedAt: row.lastConfirmedAt,
-      source: row.sourceKind, filed: row.filedDate, confidence: row.confidence, reportingCompany: row.reportingEntity.name,
+      source: row.sourceKind, filed: row.filedDate, confidence: row.confidence, reportingCompany: supplyDisplayName(row.reportingEntity.name),
       quote: row.quote, quoteLanguage: row.quoteLanguage, quoteGloss: row.quoteGloss ?? null, quoteGlossKind: row.quoteGloss ? "machine_translation" : null,
       quoteMatchMode: row.quoteMatchMode, sourceUrl: row.filingUrl, filingUrl: row.filingUrl, sectionRef: row.sectionRef ?? null, sourceAttribution: row.sourceAttribution ?? null,
       evidence: row.evidence ?? [] });
@@ -197,8 +201,8 @@ export const supplyChainHeadless: HeadlessPaneDefinition<"bundle"> = {
       // "In the free preview" only when this view holds rows the preview leaves out.
       const scope = lockedDisclosures(data, [view]) > 0 ? " in the free preview" : "";
       return [{ title: viewTitle(view), rows: [], empty: view === "names"
-        ? `No other company's disclosures name ${data.symbol}${scope}.`
-        : `${data.symbol}'s own disclosures name no relationship${scope}.` }];
+        ? `No linked disclosures naming ${data.symbol} are shown${scope}.`
+        : `No linked disclosures by ${data.symbol} are shown${scope}.` }];
     });
     const directories = args.options.tab === "flow" ? [] : (data.directories ?? []).filter(report =>
       !requested || (report.buyerView ? "says" : "names") === requested);
@@ -215,8 +219,7 @@ export const supplyChainHeadless: HeadlessPaneDefinition<"bundle"> = {
     // A company with no relationship at all says what SPLC reads and where else to look, not that it is "not covered".
     const none = !sections.every((section) => !section.rows?.length) ? null
       : args.options.tab === "directories" ? "No issuer supplier directory for this selection."
-      : asOf && data.status === "available" ? `No relationship of ${data.symbol}'s was disclosed by ${asOf}.`
-        : asOf ? `No relationship of ${data.symbol}'s was disclosed by ${asOf}; ${supplyEmptyText(data, (symbol) => `fn SPLC ${symbol}`)}`
+      : asOf ? `No linked relationship evidence for ${data.symbol} is shown by ${asOf}.`
           : supplyEmptyText(data, (symbol) => `fn SPLC ${symbol}`);
     // Dated by the newest disclosure shown, as each row's Published says, never by the latest period one covers: a
     // filing published on 29 Oct about June is known from 29 Oct.

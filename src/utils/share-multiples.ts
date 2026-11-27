@@ -303,12 +303,33 @@ function noRateForEps(financials: EpsInputs): string | undefined {
   const inReporting = stated === reporting || (!!fundamentals.financialCurrency && !fundamentals.epsCurrency)
     || (finite(income) && finite(statements) && Math.abs(income - statements) <= 0.01 * Math.max(Math.abs(income), Math.abs(statements)))
     || statementsOwnEps(financials, reporting, eps);
-  if (!inReporting) return undefined;
+  if (!inReporting) return stated
+    ? `EPS (TTM) in ${stated} beside a price in ${listing}, with no conversion on record`
+    : `EPS currency not verified against the ${listing} quote; statements are in ${reporting}`;
   // Gloom Cloud labels a block's currency only with the rates at hand: such a block was left unconverted because
   // its source's P/E is not the price over that EPS, not for want of a rate.
   return fundamentals.financialCurrency
     ? `EPS (TTM) in ${reporting} beside a price in ${listing}, and the source's P/E does not match that EPS`
     : `EPS (TTM) in ${reporting} beside a price in ${listing}, with no conversion on record`;
+}
+
+function staleAnnualEps(financials: EpsInputs): string | undefined {
+  const fundamentals = financials.fundamentals;
+  const eps = fundamentals?.eps;
+  const listing = majorCurrency(financials.quote?.currency);
+  if (!fundamentals || fundamentals.trailingEpsSource === "filed-quarters" || fundamentals.trailingEpsBasis
+    || !finite(eps) || eps === 0 || !listing || incomeCurrency(financials) !== listing
+    || (fundamentals.epsCurrency && majorCurrency(fundamentals.epsCurrency) !== listing)
+    || isReceipt(financials)) return undefined;
+  const annual = (financials.annualStatements ?? []).filter(row => row.currency === listing && finite(row.eps))
+    .sort((left, right) => left.date.localeCompare(right.date)).at(-1);
+  if (annual?.eps !== eps) return undefined;
+  const filed = statementsTrailing(financials, listing, "eps");
+  const through = fundamentals.trailingPeriodEnd ?? (finite(filed) && filed !== eps
+    ? quarterRows(financials.quarterlyStatements ?? []).filter(row => row.currency === listing && finite(row.eps)).map(row => row.date).sort().at(-1)?.slice(0, 10)
+    : undefined);
+  if (!through || !(days(annual.date, through) >= 80)) return undefined;
+  return `Served EPS matches the year ended ${annual.date.slice(0, 10)}, but its basis for the twelve months to ${through} is unverified`;
 }
 
 /**
@@ -363,7 +384,7 @@ export function withShareMultiples<T extends EpsInputs>(financials: T): T {
   const fundamentals = financials.fundamentals;
   if (!fundamentals) return financials;
   const share = notTheShare(financials);
-  const reason = share ?? (fundamentals.scopedEarnings === undefined ? noRateForEps(financials) ?? epsAgainstIncome(financials) : undefined);
+  const reason = share ?? (fundamentals.scopedEarnings === undefined ? noRateForEps(financials) ?? staleAnnualEps(financials) ?? epsAgainstIncome(financials) : undefined);
   // A multiple an earlier pass withdrew is one the block had.
   const had = fundamentals.notMeaningful ?? {};
   const has: Record<keyof Withdrawn, boolean> = {

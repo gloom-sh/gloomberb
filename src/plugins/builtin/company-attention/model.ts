@@ -79,7 +79,7 @@ export function attentionPaneTabs(kind: AttentionKind, symbol: string | null | u
 export function attentionSectionTitle(kind: AttentionKind, tab: AttentionTab, symbol: string | null | undefined, mix?: string): string {
   if (kind === "hiring") {
     return { table: symbol ? "Open roles" : "Companies hiring", chart: "Hiring trend", mix: HIRING_MIX_TITLES[mix ?? "functions"] ?? "Role family",
-      peers: "Peers", evidence: "Posting evidence" }[tab];
+      peers: "Mapped peers: posting counts", evidence: "Posting evidence" }[tab];
   }
   return { table: "App ranks", chart: "Attention trend", mix: mix === "spreads" ? "Rank spreads" : "Countries",
     peers: symbol ? "Peers" : "Companies", evidence: "Chart evidence" }[tab];
@@ -151,8 +151,8 @@ export function hiringPreviewNote(data: HiringBoard | HiringPayload): string | n
   if (evidence + history + peers <= 0) return null;
   const roles = data.evidence.length;
   return freePreviewNote({
-    shows: evidence > 0 ? `${roles} of ${grouped(roles + evidence)} open roles` : countOf(roles, "open role"),
-    adds: joinList([evidence > 0 ? `the other ${grouped(evidence)} roles` : "", history > 0 ? `${grouped(history)} ${history === 1 ? "week" : "weeks"} of history` : "", peers > 0 ? `${grouped(peers)} more peers` : ""].filter(Boolean)),
+    shows: evidence > 0 ? `${roles} of ${grouped(roles + evidence)} retained postings` : "the latest hiring capture",
+    adds: joinList([evidence > 0 ? `the other ${grouped(evidence)} postings` : "", history > 0 ? `${grouped(history)} ${history === 1 ? "week" : "weeks"} of capture history` : "", peers > 0 ? `${grouped(peers)} more mapped peers` : ""].filter(Boolean)),
     historyFrom: history > 0 ? data.coverage.firstObservedAt : null,
   });
 }
@@ -184,12 +184,12 @@ export function hiringModel(data: HiringBoard | HiringPayload, mix = "functions"
   const rows = mixKey === "signals" ? (detail?.signals ?? []).map((row, i): AttentionRow => ({ id: `${row.type}:${i}`, url: row.evidenceUrls[0], values: { label: row.label, count: row.value, share: row.confidence * 100, date: row.asOf.slice(0, 10) }, details: facts([["As of", day(row.asOf)], ["Location", row.location]]) }))
     : (detail?.[mixKey] ?? []).map((row): AttentionRow => ({ id: row.id, values: { label: mixKey === "functions" ? roleFamily(row.label) : mixKey === "seniority" ? humanLabel(row.label) : row.label, count: row.count, share: row.share * 100 } }));
   const model: AttentionModel = {
-    asOf: latest?.observedAt ?? data.generatedAt,
+    asOf: latest?.observedAt ?? history.at(-1)?.observedAt ?? ("companies" in data ? data.companies.flatMap(row => row.latest ? [row.latest.observedAt] : []).sort().at(-1) : null) ?? null,
     preview: data.preview,
     locked: typeof data.locked === "number" ? data.locked : Object.values(data.locked).reduce((a, b) => a + b, 0),
     // How counts compare is methodology (docs/hiring-app-attention.md); the footer keeps only what is wrong with this capture.
     // A board that covers part of the company (one country, one unit) says which, beside counts that are only that part's.
-    notices: detail ? [...(detail.coverage.boardScope ? [detail.coverage.boardScope] : []), ...(latest?.completeness !== "complete" ? ["The latest capture has incomplete or unknown coverage."] : []), ...(detail.status === "stale" ? ["The latest hiring capture is stale."] : [])] : [],
+    notices: detail ? [...(detail.coverage.boardScope ? [detail.coverage.boardScope] : []), ...(latest && latest.completeness !== "complete" ? ["The latest capture has incomplete or unknown coverage."] : []), ...(detail.status === "stale" ? ["The latest hiring capture is stale."] : [])] : [],
     partial: !!detail && (latest?.completeness !== "complete" || detail.status === "stale"),
     // A figure the first capture cannot give yet (a weekly change, a z-score) is left out, not shown as a dash.
     figures: latest ? [
@@ -204,7 +204,7 @@ export function hiringModel(data: HiringBoard | HiringPayload, mix = "functions"
       table: { columns: COMPANY_COLUMNS, rows: companies.map(companyRow), empty: "Hiring observations are not available yet." },
       chart: { columns: HISTORY_COLUMNS, rows: [...history].reverse().map((row): AttentionRow => ({ id: row.week, date: row.week, values: { date: row.week, open: row.openCount, added: row.added, removed: row.removed, net: row.netChange, change: row.changePct, remote: row.remoteShare == null ? null : row.remoteShare * 100, remoteKnown: row.remoteKnown, coverage: row.completeness }, details: facts([["Captured", day(row.observedAt)], ["Coverage", CAPTURES[row.completeness] ?? null], ["Open roles", count(row.openCount)], ["Standing roles", row.evergreenCount ? count(row.evergreenCount) : null]]) })), empty: hiringHistoryLocked(data) ? "Weekly history is part of Gloom Pro." : "History is accumulating from the first capture.", ...(hiringHistoryLocked(data) ? { locked: true } : {}) },
       mix: { columns: [column("label", mixKey === "signals" ? "Signal" : "Group", 28, false, true), column("count", mixKey === "signals" ? "Value" : "Roles", 12, true), column("share", mixKey === "signals" ? "Confidence %" : "Share %", mixKey === "signals" ? 14 : 30, true), ...(mixKey === "signals" ? [column("date", "Observed", 12)] : [])], rows, empty: "No classified observations for this group yet." },
-      peers: { columns: COMPANY_COLUMNS, rows: (detail?.peers ?? []).map(companyRow), empty: "No comparable mapped peers yet." },
+      peers: { columns: COMPANY_COLUMNS.filter(entry => ["symbol", "name", "open", "date"].includes(entry.id)), rows: latest ? (detail?.peers ?? []).filter(row => row.latest).map(companyRow) : [], empty: "No mapped peer posting counts available." },
       evidence: { columns: [column("title", "Role", 32, false, true), column("location", "Location", 24), column("function", "Function", 18), column("seniority", "Seniority", 13), column("date", "Observed", 12), column("confidence", "Confidence %", 13, true)], rows: (detail?.evidence ?? []).map((row): AttentionRow => ({ id: `${row.snapshotId}:${row.id}`, url: row.url ?? row.sourceUrl, values: { title: postingTitle(row.title, row.id), location: row.location, function: roleFamily(row.jobFunction), seniority: row.seniority ? humanLabel(row.seniority) : null, date: row.observedAt.slice(0, 10), confidence: row.confidence * 100 }, details: facts([["Place", postingPlace(row)], ["Role family", roleFamily(row.jobFunction)], ["Seniority", row.seniority ? humanLabel(row.seniority) : null], ["Seen", day(row.observedAt)]]),
         posting: { ticker: row.sourceTicker, externalId: row.id } })), empty: "No primary posting evidence is available yet." },
     },

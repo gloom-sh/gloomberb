@@ -14,7 +14,7 @@ import { useOpenDescription } from "../shared/open-description";
 import { UpgradeLabel } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedGraph, graphOptions, loadGraph, validateGraph } from "./graph-client";
-import { entityKey, entityLabel, entityTicker, exposureLabel, pathLabel, relatedPartyLink } from "./graph-model";
+import { entityKey, entityLabel, entityTicker, exposureLabel, graphDisclosureDates, pathLabel, relatedPartyLink, supplyDisplayName } from "./graph-model";
 import { SupplyGraph } from "./graph";
 import { graphEvidenceRow } from "./graph-evidence";
 import { disclosedValue, dollars, nativeValue, periodText, relationshipLabel, ROLE_COLORS, roleLabel, shareParts } from "./model";
@@ -159,8 +159,12 @@ export function SupplyGraphPane({ symbol, tab, width, height, focused }: { symbo
     ...(!openPath && (focus !== symbol || target) ? [{ id: "home", key: "z", label: "reset focus", title: "Reset Focus", onPress: () => { setFocus(symbol); applyTarget(""); setCollapsed([]); setSelected(null); } }] : []),
     ...(data?.access === "preview" ? [{ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", onPress: openUpgrade }] : []),
   ];
+  const shownLinks = new Set(tab === "graph" ? visibleLinks : (openPath ? [openPath] : paths).flatMap(path => path.linkIds));
+  const filedThrough = data ? graphDisclosureDates(data.links.filter(link => shownLinks.has(link.id))).latest : null;
   usePaneStatusFooter({ registrationId: "supply-graph", loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale, hints,
-    info: data?.asOf ? [{ id: "as-of", parts: [{ text: `as of ${data.asOf}`, tone: "muted" }] }] : [] });
+    info: [data?.options.asOf ? { id: "known-by", parts: [{ text: `known by ${data.options.asOf}`, tone: "muted" as const }] } : null,
+      filedThrough ? { id: "filed", parts: [{ text: `filed through ${filedThrough}`, tone: "muted" as const }] } : null,
+      data?.asOf ? { id: "graph-through", parts: [{ text: `whole graph through ${data.asOf}`, tone: "muted" as const }] } : null].filter(entry => entry !== null) });
   usePaneNoticeFooter({ registrationId: "supply-graph:notices", focused, notices: [...(resource.data?.refreshError ? [resource.data.refreshError] : []),
     ...(data && !data.search.complete ? [`Search limited: ${data.search.reasons.join(", ").replaceAll("_", " ")}. Narrow filters or reduce depth to inspect more routes.`] : []),
     ...(data?.access === "preview" ? [`Pro preview: depth ${data.options.depth}. Upgrade for four hops and the full graph.`] : []),
@@ -195,7 +199,7 @@ export function SupplyGraphPane({ symbol, tab, width, height, focused }: { symbo
                   {route.flatMap((node, index) => [
                     index ? <Text key={`arrow:${index}`} fg={state.selected ? colors.selectedText : colors.textMuted}>→</Text> : null,
                     node.ticker ? <Badge key={node.id} label={entityTicker(node)!} tone="accent" color={state.selected ? colors.selectedText : undefined} />
-                      : <Text key={node.id} fg={state.selected ? colors.selectedText : node.aggregate || node.anonymous ? colors.textDim : ink}>{node.name}</Text>,
+                      : <Text key={node.id} fg={state.selected ? colors.selectedText : node.aggregate || node.anonymous ? colors.textDim : ink}>{supplyDisplayName(node.name)}</Text>,
                   ])}
                 </Box> : undefined };
               }

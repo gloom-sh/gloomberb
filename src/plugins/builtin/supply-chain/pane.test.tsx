@@ -259,8 +259,8 @@ test("a graph read without the filing cutoff asked for warns in the footer; one 
   expect(requests.some((url) => url.includes("asOf=2025-01-01"))).toBe(true);
   await tui.destroy();
   graphCache.reset();
-  setCloudApiFetchTransport(async () => { const data = graphPayload(); return Response.json({ ...data, options: { ...data.options, asOf: "2025-01-01" } }); });
-  await mount(120, 24, "graph", "says", () => {}, { asOf: "2025-01-01" });
+  setCloudApiFetchTransport(async () => { const data = graphPayload(); return Response.json({ ...data, options: { ...data.options, asOf: "2026-06-01" } }); });
+  await mount(120, 24, "graph", "says", () => {}, { asOf: "2026-06-01" });
   await tui.waitForFrameToContain("Private supplier");
   await tui.renderFrames(3);
   expect(tui.frame()).not.toContain("⚠");

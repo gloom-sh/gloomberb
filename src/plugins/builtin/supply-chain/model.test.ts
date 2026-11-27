@@ -259,7 +259,7 @@ test("an empty supply chain says SPLC does not read a company's filings only whe
     expect(empty(unknown)).not.toContain("SPLC reads");
     expect(empty(unknown)).toContain("try the customer's side, such as SPLC AAPL.");
   }
-  expect(empty("us")).toBe("Relationships for X are not yet available: no filing, announcement or call read so far names one.");
+  expect(empty("us")).toContain("no linked filing, announcement or call evidence is shown.");
 });
 
 test("a Hong Kong, mainland or Singapore company with no relationship is in the markets whose annual reports SPLC reads", () => {
@@ -268,7 +268,7 @@ test("a Hong Kong, mainland or Singapore company with no relationship is in the 
   // By its country, or by its listing when the company is incorporated elsewhere (Bermuda, the Cayman Islands).
   for (const [country, exchange] of [["HK", "HKEX"], ["CN", "SSE"], ["SG", "SGX"], ["BM", "HKEX"], ["KY", "SZSE"], [null, "SGX"]] as const) {
     const text = empty(country, exchange);
-    expect(text).toStartWith("Relationships for 1299:HKEX are not yet available: no annual report, announcement or call read so far names one.");
+    expect(text).toContain("no linked annual report, announcement or call evidence is shown.");
     expect(text).toContain("try the customer's side, such as SPLC AAPL.");
   }
   expect(empty("JP", "JPX")).toStartWith("Relationships for 1299:HKEX are not yet available: SPLC reads");

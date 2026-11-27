@@ -4,7 +4,7 @@ import { companyNameCase, shortCompanyName } from "../../../tickers/company-name
 import { MISSING_VALUE, clipToDisplayWidth, displayWidth } from "../../../utils/format";
 import { revenueAmount } from "../revenue-breakdown/model";
 import { countOf, freePreviewNote } from "../shared/free-preview";
-import { entityTicker } from "./graph-model";
+import { entityTicker, supplyDisplayName } from "./graph-model";
 import { activeRelationship, corroborationLabel, evidenceDate, evidenceLabel, isUnconfirmed, matchesSupplyOptions, trustTier } from "./trust";
 
 /** Each role's slot of the shared series palette; the buildout pane's flow draws its suppliers, customers and competitors in the same. */
@@ -34,7 +34,7 @@ const MEASURE_PREFIX = /^(?:revenues?|net sales|sales|a\/r|ar|accounts receivabl
 /** The counterparty's name without the kind spelled into it; the kind travels as its own label. */
 export function counterpartyLabel(row: Pick<SupplyRow, "counterparty" | "pctBasis">): string {
   const kind = counterpartyKind(row);
-  if (kind === "company") return row.counterparty.name;
+  if (kind === "company") return supplyDisplayName(row.counterparty.name);
   const name = counterpartyName(row).replace(/^Group: /, "").replace(/\s*\(undisclosed\)$/i, "")
     .replace(row.pctBasis ? MEASURE_PREFIX : /^$/, "");
   // Cohort labels arrive in title case from XBRL member names; generic words read lower case, names keep theirs.
@@ -100,7 +100,7 @@ export interface ShareParts {
 const lowerFirst = (text: string) => text.replace(/^[A-Z](?=[a-z])/, (first) => first.toLowerCase());
 /** A company as a sentence names it: "Apple" for "Apple Inc.", "Newmont" for "NEWMONT Corp /DE/". */
 const companyWord = (entity: SupplyRow["reportingEntity"]) =>
-  shortCompanyName(companyNameCase(entity.name.replace(/\s*\/[A-Z]{2}\/\s*$/, ""))) || (entityTicker(entity) ?? entity.name);
+  shortCompanyName(companyNameCase(supplyDisplayName(entity.name).replace(/\s*\/[A-Z]{2}\/\s*$/, ""))) || (entityTicker(entity) ?? supplyDisplayName(entity.name));
 
 /**
  * A disclosed share and what it is a share of, in words. The denominator is
@@ -112,7 +112,7 @@ const companyWord = (entity: SupplyRow["reportingEntity"]) =>
 export function shareParts(row: SupplyRow, focusId?: string | null, { includeReporter = false }: { includeReporter?: boolean } = {}): ShareParts | null {
   if (row.pctOfRevenue === null || row.pctBasis === null || trustTier(row) !== 1 || isUnconfirmed(row) || !activeRelationship(row)) return null;
   const reverse = includeReporter || (!!focusId && row.reportingEntity.id !== focusId);
-  const reporter = reverse ? `${entityTicker(row.reportingEntity) ?? row.reportingEntity.name} ` : "";
+  const reporter = reverse ? `${entityTicker(row.reportingEntity) ?? supplyDisplayName(row.reportingEntity.name)} ` : "";
   const scope = row.pctScope ? scopeWords(row.pctScope) : "";
   const basis = row.pctBasis === "cost" ? "cost of sales" : row.pctBasis;
   const value = `${Number(row.pctOfRevenue.toFixed(1))}%`;
@@ -186,9 +186,9 @@ export function disclosureText(row: SupplyRow): string {
 }
 
 export function counterpartyName(row: Pick<SupplyRow, "counterparty">): string {
-  if (row.counterparty.aggregate) return `Group: ${row.counterparty.name.replace(/^Undisclosed customer \((.+)\)$/i, "$1")}`;
-  if (!row.counterparty.anonymous) return row.counterparty.name;
-  const name = row.counterparty.name;
+  const name = supplyDisplayName(row.counterparty.name);
+  if (row.counterparty.aggregate) return `Group: ${name.replace(/^Undisclosed customer \((.+)\)$/i, "$1")}`;
+  if (!row.counterparty.anonymous) return name;
   const member = name.match(/^Undisclosed [^(]+\((.+)\)$/i)?.[1]
     ?? (name.toLowerCase().startsWith("undisclosed") ? null : name);
   if (/^undisclosed/i.test(member ?? "")) return member!;
@@ -215,8 +215,8 @@ export function focusCompanyLabel(symbol: string, name?: string | null): string 
  * the exchange's short name there ("0700:HKEX", "MEITUAN-W").
  */
 export function focusCompanyName(entityName: string | null | undefined, symbol: string, listingName?: string | null): string | null {
-  const filed = entityName?.trim() || null;
-  const listing = listingName?.trim() || null;
+  const filed = supplyDisplayName(entityName ?? "") || null;
+  const listing = supplyDisplayName(listingName ?? "") || null;
   if (listing && (numberedListing(symbol) || !filed || numberedListing(filed))) return listing;
   return filed;
 }
@@ -292,21 +292,22 @@ const REPORT_EXCHANGES = new Set(["HKEX", "SSE", "SZSE", "SGX"]);
  * `command` is how the reader opens another company's supply chain ("fn SPLC
  * AAPL" in the CLI). Null when there are relationships.
  */
-export function supplyEmptyText(data: Pick<SupplyChainPayload, "symbol" | "entity" | "says" | "names" | "earlier">, command = (symbol: string) => `SPLC ${symbol}`): string | null {
+export function supplyEmptyText(data: Pick<SupplyChainPayload, "symbol" | "entity" | "says" | "names" | "earlier"> & Partial<Pick<SupplyChainPayload, "status">>, command = (symbol: string) => `SPLC ${symbol}`): string | null {
   if (data.says.length || data.names.length || data.earlier?.says.length || data.earlier?.names.length) return null;
   const code = data.entity?.country?.trim().toUpperCase() ?? "";
   const country = /^[A-Z]{2}$/.test(code) ? code : null;
   const exchange = data.entity?.exchange?.trim().toUpperCase() ?? "";
   const customerSide = `A customer's filings name its suppliers: try the customer's side, such as ${command("AAPL")}.`;
+  if (!data.entity || data.status === "unavailable") return `No linked relationship evidence available for ${data.symbol}. ${customerSide}`;
   // Not yet available, never an error: what is read so far names none.
   const none = `Relationships for ${data.symbol} are not yet available:`;
-  if (country && FILING_COUNTRIES.has(country)) return `${none} no filing, announcement or call read so far names one.`;
+  if (country && FILING_COUNTRIES.has(country)) return `${none} no linked filing, announcement or call evidence is shown.`;
   if ((country && REPORT_COUNTRIES.has(country)) || REPORT_EXCHANGES.has(exchange)) {
-    return `${none} no annual report, announcement or call read so far names one. ${customerSide}`;
+    return `${none} no linked annual report, announcement or call evidence is shown. ${customerSide}`;
   }
-  if (!country) return `${none} no filing, announcement or call read so far names one. ${customerSide}`;
+  if (!country) return `${none} no linked filing, announcement or call evidence is shown. ${customerSide}`;
   return `${none} SPLC reads company filings from the US and Korea and annual reports from Hong Kong, mainland China `
-    + `and Singapore, plus announcements and calls, and none read so far names one. ${customerSide}`;
+    + `and Singapore, plus announcements and calls; none is linked here. ${customerSide}`;
 }
 
 /** The lock line of a free preview, in the same words in the pane and `fn SPLC`. */
