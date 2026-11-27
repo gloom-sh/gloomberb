@@ -1,6 +1,6 @@
 import type { DistressFilingKind } from "../../../../api-client/distress";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneOptionDef, HeadlessRowsResult } from "../../../../types/plugin";
-import { REPORT_ROWS } from "../../shared/headless-options";
+import { clampLimit, enumOption, limitOption } from "../../shared/headless-options";
 import { fetchDesignations, fetchDistressFilings, fetchGoingConcern, fetchInsolvencyNotices } from "./client";
 import {
   ALL,
@@ -32,74 +32,32 @@ import {
 const tabState = (key: string) => ({ pluginId: "ticker-research", key: `distress:${key}` });
 
 const OPTIONS: HeadlessPaneOptionDef[] = [
-  {
-    key: "view",
-    description: "Which records: 8-K filings, going-concern disclosures, exchange listing designations or insolvency notices.",
-    type: "enum",
-    defaultValue: "filings",
-    values: [
-      { value: "filings", aliases: ["8k", "8-k"] },
-      { value: "going-concern", aliases: ["gc", "going"] },
-      { value: "listings", aliases: ["designations"] },
-      { value: "insolvency", aliases: ["notices"] },
-    ],
-    pluginState: tabState("view"),
-  },
-  {
-    key: "items",
-    description: "8-K items: bankruptcy and obligation triggers (1.03, 2.04) or listing notices (3.01).",
-    type: "enum",
-    defaultValue: "distress",
-    values: [{ value: "distress", aliases: ["bankruptcy"] }, { value: "listing", aliases: ["3.01"] }],
-    pluginState: tabState("filings:kind"),
-  },
-  {
-    key: "verdict",
-    description: "Going-concern disclosure reading.",
-    type: "enum",
-    defaultValue: "doubt_raised",
-    values: ["doubt_raised", "doubt_alleviated", "policy_only", "unclear", ALL].map((value) => ({ value })),
-    pluginState: tabState("going-concern:verdict"),
-  },
-  {
-    key: "status",
-    description: "Listing designation.",
-    type: "enum",
-    defaultValue: ALL,
-    values: [ALL, ...Object.keys(DESIGNATION_KIND_LABELS)].map((value) => ({ value })),
-    pluginState: tabState("listings:kind"),
-  },
-  {
-    key: "exchange",
-    description: "Exchange of a listing designation.",
-    type: "enum",
-    defaultValue: ALL,
-    values: [{ value: ALL }, { value: "TWSE" }, { value: "TPEX", aliases: ["tpex"] }],
-    pluginState: tabState("listings:exchange"),
-  },
-  {
-    key: "country",
-    description: "Country of an insolvency notice.",
-    type: "enum",
-    defaultValue: ALL,
-    values: [{ value: ALL }, { value: "FR", aliases: ["france"] }, { value: "GB", aliases: ["uk"] }],
-    pluginState: tabState("insolvency:country"),
-  },
-  {
-    key: "procedure",
-    description: "Insolvency procedure.",
-    type: "enum",
-    defaultValue: ALL,
-    values: [ALL, ...Object.keys(INSOLVENCY_KIND_LABELS)].map((value) => ({ value })),
-    pluginState: tabState("insolvency:kind"),
-  },
-  {
-    key: "name",
-    description: "Insolvency notices for companies whose name starts with this (two characters or more).",
-    type: "string",
-    pluginState: tabState("insolvency:query"),
-  },
-  { key: "limit", shot: REPORT_ROWS, aliases: ["count", "rows"], description: "Maximum rows.", type: "integer", defaultValue: 50, minimum: 1, maximum: 200 },
+  enumOption("view", [
+    { value: "filings", aliases: ["8k", "8-k"] },
+    { value: "going-concern", aliases: ["gc", "going"] },
+    { value: "listings", aliases: ["designations"] },
+    { value: "insolvency", aliases: ["notices"] },
+  ], { description: "Which records: 8-K filings, going-concern disclosures, exchange listing designations or insolvency notices.", defaultValue: "filings", pluginState: tabState("view") }),
+  enumOption("items", [{ value: "distress", aliases: ["bankruptcy"] }, { value: "listing", aliases: ["3.01"] }], {
+    description: "8-K items: bankruptcy and obligation triggers (1.03, 2.04) or listing notices (3.01).", defaultValue: "distress", pluginState: tabState("filings:kind"),
+  }),
+  enumOption("verdict", ["doubt_raised", "doubt_alleviated", "policy_only", "unclear", ALL], {
+    description: "Going-concern disclosure reading.", defaultValue: "doubt_raised", pluginState: tabState("going-concern:verdict"),
+  }),
+  enumOption("status", [ALL, ...Object.keys(DESIGNATION_KIND_LABELS)], {
+    description: "Listing designation.", defaultValue: ALL, pluginState: tabState("listings:kind"),
+  }),
+  enumOption("exchange", [ALL, "TWSE", { value: "TPEX", aliases: ["tpex"] }], {
+    description: "Exchange of a listing designation.", defaultValue: ALL, pluginState: tabState("listings:exchange"),
+  }),
+  enumOption("country", [ALL, { value: "FR", aliases: ["france"] }, { value: "GB", aliases: ["uk"] }], {
+    description: "Country of an insolvency notice.", defaultValue: ALL, pluginState: tabState("insolvency:country"),
+  }),
+  enumOption("procedure", [ALL, ...Object.keys(INSOLVENCY_KIND_LABELS)], {
+    description: "Insolvency procedure.", defaultValue: ALL, pluginState: tabState("insolvency:kind"),
+  }),
+  { key: "name", description: "Insolvency notices for companies whose name starts with this (two characters or more).", type: "string", pluginState: tabState("insolvency:query") },
+  limitOption({ aliases: ["count", "rows"], description: "Maximum rows.", defaultValue: 50, maximum: 200 }),
 ];
 
 const COLUMNS: Record<DistressViewId, HeadlessPaneColumn[]> = {
@@ -159,7 +117,7 @@ export const distressHeadless: HeadlessPaneDefinition<"rows"> = {
   describe: (args) => `Distress | ${distressView(args.options.view)}`,
   async load(args, ctx): Promise<HeadlessRowsResult> {
     const view = distressView(args.options.view);
-    const limit = Math.max(1, Math.min(200, Number(args.options.limit ?? 50)));
+    const limit = clampLimit(args.options.limit, 50, 200);
     const signal = ctx.signal;
     switch (view) {
       case "filings": {

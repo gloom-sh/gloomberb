@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { listingIdentity } from "../shared/ticker-request";
 import { Box, ScrollBox, useUiCapabilities } from "../../../ui";
-import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
+import { usePaneSettingValue, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
 import { ChartTableHeader, DataTableStackView, EmptyState, formatPercentAxis, KeyValueRow, PaneStatusBody, useChartTableSelection, usePaneNoticeFooter, usePaneStatusLinkFooter, type DataTableCell, type StatItem } from "../../../components";
 import { ageFooterSegment } from "../../../components/layout/pane/footer";
 import { colors } from "../../../theme/colors";
@@ -10,7 +10,7 @@ import { isAccessDenied } from "../../../api-client/errors";
 import { staticSeries } from "../../../components/chart/static/series";
 import type { PaneProps } from "../../../types/plugin";
 import { MISSING_VALUE, formatPercentileRank } from "../../../utils/format";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { usePaneResource } from "../shared/pane-resource";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedShortVolume, loadShortVolume } from "./client";
@@ -49,7 +49,8 @@ export function ShortVolumePane({ width, height, focused }: Pick<PaneProps, "wid
   const symbol = sourceSymbol.trim() || listingIdentity(ticker?.metadata.ticker)?.symbol || null;
   const session = useResearchCloudSession();
   const loader = useCallback((force: boolean) => loadShortVolume(symbol!, scope, force), [symbol, scope, session.requestKey]);
-  const resource = useAsyncResource(symbol ? loader : null, {
+  const resource = usePaneResource(symbol ? loader : null, {
+    focused,
     initialData: () => symbol ? cachedShortVolume(symbol, scope) : null, clearOnError: isAccessDenied,
   });
   const data = resource.data?.payload;
@@ -81,8 +82,6 @@ export function ShortVolumePane({ width, height, focused }: Pick<PaneProps, "wid
     { id: "range", label: stats?.completeWindow ? "1Y range" : "Sample range", value: `${volumePercent(stats?.min ?? null)} to ${volumePercent(stats?.max ?? null)}`,
       detail: stats ? `${formatDay(stats.historyStart)} to ${formatDay(stats.historyEnd)}` : undefined },
   ];
-  useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => resource.reload(), { focused });
   usePaneNoticeFooter({ registrationId: "short-volume:notices", focused,
     notices: [...(data?.warnings ?? []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
   usePaneStatusLinkFooter({ registrationId: "short-volume", focused, loading: resource.loading, error: resource.error,

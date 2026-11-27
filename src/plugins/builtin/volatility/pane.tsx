@@ -6,8 +6,7 @@ import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve
 import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { STALE_SEGMENT } from "../../../components/layout/pane/status-footer";
 import { dropColumnsToFit, hiddenTableColumnRows } from "../../../components/ui/table-layout";
-import { useAsyncResource } from "../../../react/async-resource";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { usePaneResource } from "../shared/pane-resource";
 import { usePaneSettingValue, usePluginPaneState } from "../../../public/react";
 import { shownPriceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -19,7 +18,6 @@ import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
-import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useIndexCloseSettled, useLiveSessionRefresh, useThrottledValue } from "../shared/volatility/live-session";
 import { DAY_SO_FAR_TEXT } from "../../../time-series/session-bar";
@@ -84,9 +82,8 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
       if (!abort.signal.aborted) setPartial(snapshot);
     } });
   }, []);
-  const resource = useAsyncResource(request, { initialData: getCachedVolatilityData });
+  const resource = usePaneResource(request, { focused, initialData: getCachedVolatilityData, refreshKey: { skipWhileLoading: true } });
   useEffect(() => () => controller.current?.abort(), []);
-  useAutoRefresh(resource.updatedAt, resource.load);
   const loaded = partial ?? resource.data;
   // Index levels stream through the shared quote layer for the tab on screen;
   // the history tab ends on the same VIX and VIX 3M levels as the curve.
@@ -150,11 +147,6 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
   // From the tab the press finds, so the footer's hint never holds an old one.
   const cycleTab = useCallback(() => setTab((current) =>
     TABS[(TABS.findIndex((entry) => entry.value === current) + 1) % TABS.length]!.value), [setTab]);
-  // One binding for every tab and for the loading and failed bodies, where no
-  // table is mounted; the footer binds the `v` hint.
-  usePaneRefreshKey(() => {
-    if (!resource.loading) resource.reload();
-  }, { focused });
   const asOf = tab === "history" ? data?.term.termDate : tab === "board" ? selected?.date : data?.curve.date;
   // A day's level is its close once Cboe settles it (16:15 New York); before
   // that a streamed level is intraday with its time, and a daily bar of the

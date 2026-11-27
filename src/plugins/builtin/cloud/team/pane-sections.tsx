@@ -503,34 +503,31 @@ export function SettingsSection({
         </>
       )}
       <Box height={1} />
-      <SectionTitle>{team.role === "owner" ? "Delete team" : "Leave team"}</SectionTitle>
-      {team.role === "owner" ? (
-        <Box flexDirection="column" gap={1}>
-          <Muted width={width}>
-            Removes the team for everyone: its channels, shared layouts, notes, watchlists, and views. Members keep personal copies of linked tabs.
-          </Muted>
-          <ConfirmAction
-            id="delete"
-            label="Delete team"
-            question={`Delete ${team.name} for everyone?`}
-            confirmLabel="Delete team"
-            busy={busy === "delete"}
-            onConfirm={onDelete}
-          />
-        </Box>
-      ) : (
-        <Box flexDirection="column" gap={1}>
-          <Muted width={width}>Your linked tabs become personal copies. Team notes and collections leave your terminal.</Muted>
-          <ConfirmAction
-            id="leave"
-            label="Leave team"
-            question={`Leave ${team.name}?`}
-            confirmLabel="Leave"
-            busy={busy === "leave"}
-            onConfirm={onLeave}
-          />
-        </Box>
-      )}
+      {(() => {
+        const isOwner = team.role === "owner";
+        const id = isOwner ? "delete" : "leave";
+        const title = isOwner ? "Delete team" : "Leave team";
+        return (
+          <>
+            <SectionTitle>{title}</SectionTitle>
+            <Box flexDirection="column" gap={1}>
+              <Muted width={width}>
+                {isOwner
+                  ? "Removes the team for everyone: its channels, shared layouts, notes, watchlists, and views. Members keep personal copies of linked tabs."
+                  : "Your linked tabs become personal copies. Team notes and collections leave your terminal."}
+              </Muted>
+              <ConfirmAction
+                id={id}
+                label={title}
+                question={isOwner ? `Delete ${team.name} for everyone?` : `Leave ${team.name}?`}
+                confirmLabel={isOwner ? "Delete team" : "Leave"}
+                busy={busy === id}
+                onConfirm={isOwner ? onDelete : onLeave}
+              />
+            </Box>
+          </>
+        );
+      })()}
     </Box>
   );
 }

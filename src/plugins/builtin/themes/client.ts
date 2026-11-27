@@ -1,17 +1,15 @@
 import { apiClient } from "../../../api-client";
 import { THEME_PERIODS, type ThemeAggregate, type ThemeMembersPayload, type ThemeSummary, type ThemesPayload } from "../../../api-client/themes";
-import { createPluginCache } from "../../../data/plugin-cache";
-import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
+import { isNullableFinite, isNullableString, isStringArray } from "../../../utils/guards";
+import { createCloudEndpoint } from "../shared/cloud-resource";
 
 const policy = { staleMs: 60_000, expireMs: 2 * 60 * 60_000 };
-export const themesCache = createPluginCache<ThemesPayload>({ kind: "themes", source: "gloom-cloud", schemaVersion: 1, policy });
-export const membersCache = createPluginCache<ThemeMembersPayload>({ kind: "theme-members", source: "gloom-cloud", schemaVersion: 1, policy });
+const unavailableMessage = "Thematic baskets are not available on this server yet.";
 type Client = Pick<typeof apiClient, "getCloudThemes" | "getCloudThemeMembers">;
-const numberOrNull = (value: unknown) => value === null || typeof value === "number" && Number.isFinite(value);
-const aggregate = (value: ThemeAggregate) => value && numberOrNull(value.value) && Number.isInteger(value.covered)
+const aggregate = (value: ThemeAggregate) => value && isNullableFinite(value.value) && Number.isInteger(value.covered)
   && Number.isInteger(value.total) && value.covered >= 0 && value.covered <= value.total;
 const summary = (row: ThemeSummary) => row && typeof row.id === "string" && typeof row.name === "string"
-  && typeof row.description === "string" && Array.isArray(row.keywords) && row.keywords.every((word) => typeof word === "string")
+  && typeof row.description === "string" && isStringArray(row.keywords)
   && Number.isInteger(row.memberCount) && row.memberCount > 0 && aggregate(row.breadth)
   && THEME_PERIODS.every((period) => aggregate(row.returns?.[period]));
 const metadata = (payload: ThemesPayload | ThemeMembersPayload) => payload && Number.isFinite(Date.parse(payload.asOf))
@@ -22,18 +20,23 @@ function validateThemes(payload: ThemesPayload): ThemesPayload {
 }
 function validateMembers(payload: ThemeMembersPayload): ThemeMembersPayload {
   if (!metadata(payload) || !summary(payload.theme) || !Array.isArray(payload.members)
-    || !payload.members.every((row) => row && typeof row.symbol === "string" && (row.name === null || typeof row.name === "string")
-      && ["price", ...THEME_PERIODS].every((field) => numberOrNull(row[field as "price"])))) throw new Error("The server returned unreadable theme members");
+    || !payload.members.every((row) => row && typeof row.symbol === "string" && isNullableString(row.name)
+      && ["price", ...THEME_PERIODS].every((field) => isNullableFinite(row[field as "price"])))) throw new Error("The server returned unreadable theme members");
   return payload;
 }
-async function fetchPayload<T>(request: () => Promise<T>, validate: (value: T) => T): Promise<T> {
-  try { return validate(await request()); } catch (error) {
-    throw unavailableOnServer(error, "Thematic baskets are not available on this server yet.");
-  }
-}
-export const fetchThemes = (client: Client = apiClient) => fetchPayload(() => client.getCloudThemes(), validateThemes);
-export const fetchThemeMembers = (id: string, client: Client = apiClient) => fetchPayload(() => client.getCloudThemeMembers(id), validateMembers);
-export const cachedThemes = () => cachedCloudResource(themesCache, "list", validateThemes);
-export const loadThemes = (force = false) => loadCloudResource(themesCache, "list", () => fetchThemes(), { force, validate: validateThemes });
-export const cachedMembers = (id: string) => cachedCloudResource(membersCache, id, validateMembers);
-export const loadMembers = (id: string, force = false) => loadCloudResource(membersCache, id, () => fetchThemeMembers(id), { force, validate: validateMembers });
+const themesEndpoint = createCloudEndpoint<void, ThemesPayload, Pick<Client, "getCloudThemes">>({
+  kind: "themes", schemaVersion: 1, policy, key: "list", defaultClient: apiClient,
+  fetch: (_args, client) => client.getCloudThemes(), validate: validateThemes, unavailableMessage,
+});
+const membersEndpoint = createCloudEndpoint<string, ThemeMembersPayload, Pick<Client, "getCloudThemeMembers">>({
+  kind: "theme-members", schemaVersion: 1, policy, key: (id) => id, defaultClient: apiClient,
+  fetch: (id, client) => client.getCloudThemeMembers(id), validate: validateMembers, unavailableMessage,
+});
+export const themesCache = themesEndpoint.cache;
+export const membersCache = membersEndpoint.cache;
+export const fetchThemes = (client: Client = apiClient) => themesEndpoint.fetch(undefined, { client });
+export const fetchThemeMembers = (id: string, client: Client = apiClient) => membersEndpoint.fetch(id, { client });
+export const cachedThemes = () => themesEndpoint.cached();
+export const loadThemes = (force = false) => themesEndpoint.load(undefined, { force });
+export const cachedMembers = (id: string) => membersEndpoint.cached(id);
+export const loadMembers = (id: string, force = false) => membersEndpoint.load(id, { force });

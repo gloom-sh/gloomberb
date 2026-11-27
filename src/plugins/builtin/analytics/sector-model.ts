@@ -88,31 +88,6 @@ function getSectorSortValue(row: SectorTableRow, columnId: SectorColumnId): stri
   }
 }
 
-export function buildTrackedCurrencies(
-  tickers: TickerRecord[],
-  financialsMap: Map<string, TickerFinancials>,
-  baseCurrency: string,
-): string[] {
-  const currencies = new Set<string>([baseCurrency]);
-
-  for (const ticker of tickers) {
-    if (ticker.metadata.currency) {
-      currencies.add(ticker.metadata.currency);
-    }
-    for (const position of ticker.metadata.positions) {
-      if (position.currency) {
-        currencies.add(position.currency);
-      }
-    }
-    const financials = financialsMap.get(ticker.metadata.ticker);
-    if (financials?.quote?.currency) {
-      currencies.add(financials.quote.currency);
-    }
-  }
-
-  return [...currencies];
-}
-
 export function buildSectorRowsFromPortfolioColumns(
   tickers: TickerRecord[],
   financialsMap: Map<string, TickerFinancials>,

@@ -11,7 +11,7 @@ import { aprFootnote, ASSET_FILTERS, BOARD_COLUMNS, BOARD_SORTS, collectedVenueC
   type PerpColumnId } from "./model";
 import { dayFirstEntries } from "../shared/day-entries";
 import { freePreviewNote } from "../shared/free-preview";
-import { REPORT_ROWS } from "../shared/headless-options";
+import { argumentText, enumOption, limitOption } from "../shared/headless-options";
 import { basisSpotSymbol } from "../futures-curve/model";
 
 // Text columns only: the text report shows these, JSON keeps every field of every row. Rates, premiums and
@@ -148,7 +148,7 @@ const aprNote = (rows: readonly PerpBoardRow[], { apr = true, longShare = true, 
   return notes.length ? { notes, textNotes } : {};
 };
 
-const requestedOf = (args: HeadlessPaneLoadArgs) => String(Array.isArray(args.argument) ? args.argument.join(" ") : args.argument ?? "").trim();
+const requestedOf = (args: HeadlessPaneLoadArgs) => argumentText(args.argument).trim();
 // No tab named: a market opens its history, nothing opens the board, as the pane does.
 const tabOf = (args: HeadlessPaneLoadArgs) => PERP_TABS.find((tab) => tab === args.options.tab) ?? openingTab(requestedOf(args));
 // A free account's market opens its latest values under the title, so the title names the function, not the Pro history: a table the free view
@@ -196,14 +196,14 @@ export const perpsHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "free-text", optional: true, placeholder: "market",
     description: "A base asset, underlying, canonical market identity or Market column label, such as BTC, hyperliquid:xyz:TSLA or xyz:TSLA. Opens its history on Pro and its evidence signed out or free (see --tab); with --tab board it searches the board, with --tab compare, liquidations or depth it is the base asset. Without one, the board." },
   options: [
-    { key: "tab", type: "enum", settingKey: "tab", values: PERP_TABS.map((value) => ({ value })), description: "Board, rankings, compare, liquidations, depth, history or evidence. Without a market, the board. With one, History on Pro; signed out or free, the pane and shot open Evidence, and the report the market's latest values, as History is Pro." },
-    { key: "asset-class", type: "enum", settingKey: "assetClass", values: ASSET_FILTERS.map((value) => ({ value })), defaultValue: "all", description: "Board and rankings asset class." },
-    { key: "venue", type: "enum", settingKey: "venue", values: ["all", ...VENUES].map((value) => ({ value })), defaultValue: "all", invalidValueHint: uncoveredVenueNote,
-      description: "Board venue; with a market, opens that venue's contract when the board lists it." },
-    { key: "sort", type: "enum", settingKey: "sort", values: BOARD_SORTS.map((value) => ({ value })), defaultValue: "oi", description: "Board order: open interest, funding, open-interest change, premium or long share of accounts." },
-    { key: "days", type: "enum", settingKey: "days", values: ["1", "7", "30", "90", "365"].map((value) => ({ value })), defaultValue: "7", description: "History lookback in days." },
-    { key: "metric", type: "enum", settingKey: "metric", values: HISTORY_METRICS.map((value) => ({ value })), defaultValue: "funding", description: "Displayed history chart; JSON retains every series." },
-    { key: "limit", type: "integer", shot: REPORT_ROWS, minimum: 1, maximum: 5000, description: "Rows to list in each table, in its order: every row unless given.", example: "--limit 10" },
+    enumOption("tab", PERP_TABS, { settingKey: "tab", description: "Board, rankings, compare, liquidations, depth, history or evidence. Without a market, the board. With one, History on Pro; signed out or free, the pane and shot open Evidence, and the report the market's latest values, as History is Pro." }),
+    enumOption("asset-class", ASSET_FILTERS, { settingKey: "assetClass", defaultValue: "all", description: "Board and rankings asset class." }),
+    enumOption("venue", ["all", ...VENUES], { settingKey: "venue", defaultValue: "all", invalidValueHint: uncoveredVenueNote,
+      description: "Board venue; with a market, opens that venue's contract when the board lists it." }),
+    enumOption("sort", BOARD_SORTS, { settingKey: "sort", defaultValue: "oi", description: "Board order: open interest, funding, open-interest change, premium or long share of accounts." }),
+    enumOption("days", ["1", "7", "30", "90", "365"], { settingKey: "days", defaultValue: "7", description: "History lookback in days." }),
+    enumOption("metric", HISTORY_METRICS, { settingKey: "metric", defaultValue: "funding", description: "Displayed history chart; JSON retains every series." }),
+    limitOption({ maximum: 5000, description: "Rows to list in each table, in its order: every row unless given.", example: "--limit 10" }),
   ],
   discovery: { aliases: ["PERP"], dataRequirements: ["Perpetual market observations"], limitations: ["Free accounts see a fixed preview of the board, rankings and comparisons, and latest values for one market.", "Pro unlocks every market, full rankings and history.", "Rankings list up to ten markets each.", "Rates, premiums and changes are fractions in JSON.", "Open-interest history begins at first collection.", "Funding APR is a simple annualization, not a forecast.",
     "Long/short account shares: venue definitions differ; history begins at first collection.",

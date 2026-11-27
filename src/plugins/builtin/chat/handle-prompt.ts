@@ -2,6 +2,7 @@ import type { AccountProfile, AccountProfileUpdate } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import { t, tf } from "../../../i18n";
 import type { PluginPersistence } from "../../../types/plugin";
+import { SnapshotStore } from "../shared/snapshot-store";
 
 /**
  * The handle signup gives an account on the website and through Google or
@@ -62,8 +63,6 @@ interface ChatHandlePromptSnapshot {
   saved: ReadonlySet<string>;
 }
 
-type Listener = (snapshot: ChatHandlePromptSnapshot) => void;
-
 const EMPTY: ChatHandlePromptSnapshot = { dismissed: new Set(), saved: new Set() };
 
 /**
@@ -71,20 +70,11 @@ const EMPTY: ChatHandlePromptSnapshot = { dismissed: new Set(), saved: new Set()
  * "Not now" is kept per account on this device, so the prompt does not come
  * back on the next open and another account signing in here is still asked.
  */
-class ChatHandlePromptStore {
-  private snapshot: ChatHandlePromptSnapshot = EMPTY;
-  private readonly listeners = new Set<Listener>();
+class ChatHandlePromptStore extends SnapshotStore<ChatHandlePromptSnapshot> {
   private persistence: PluginPersistence | null = null;
 
-  getSnapshot(): ChatHandlePromptSnapshot {
-    return this.snapshot;
-  }
-
-  subscribe(listener: Listener): () => void {
-    this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
+  constructor() {
+    super(EMPTY);
   }
 
   attach(persistence: PluginPersistence): void {
@@ -117,11 +107,6 @@ class ChatHandlePromptStore {
   reset(): void {
     this.persistence = null;
     this.update(EMPTY);
-  }
-
-  private update(patch: Partial<ChatHandlePromptSnapshot>): void {
-    this.snapshot = { ...this.snapshot, ...patch };
-    for (const listener of this.listeners) listener(this.snapshot);
   }
 }
 

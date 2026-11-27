@@ -6,7 +6,7 @@ import { windowTextRows } from "../../../../cli/row-window";
 import { exitLeavingReadsBehind } from "../../../../cli/result";
 import { resolveTickerForCli } from "../../../../cli/ticker-resolution";
 import { resolveListTicker } from "../../../../cli/symbol-rows";
-import { takeFlag, takeOption } from "../../../../cli/commands/command-utils";
+import { takeFlag, takeFlagOption, takeOption } from "../../../../cli/commands/command-utils";
 import { EXCHANGE_OPTION, listingKeys, loadSavedListing, parseListingArg, requireSavedListing, savedListingCandidates, savedListingName, type ListingArg } from "../../../../cli/listing-arg";
 import { cliStyles, renderStats, renderTable } from "../../../../utils/cli-output";
 import { CLI_COMMAND_GROUPS, suggestCliCommand } from "../../../../cli/help";
@@ -1163,25 +1163,25 @@ export const portfolioCliCommand: CliCommandDef = {
       await importThirteenFCommand(parseImportOptions(rest, ctx), ctx);
       return;
     }
+    const flagText = (name: string) => {
+      const { given, value } = takeFlagOption(args, name);
+      return given ? value ?? "" : undefined;
+    };
     const exchange = takeOption(args, "--exchange");
     const explain = takeFlag(args, "--explain");
     const close = takeFlag(args, "--close");
     const dripFlag = takeFlag(args, "--drip");
-    const hasYears = args.some((arg) => arg === "--years" || arg.startsWith("--years="));
-    const hasWithholding = args.some((arg) => arg === "--withholding" || arg.startsWith("--withholding="));
-    const yearsText = hasYears ? takeOption(args, "--years") ?? "" : undefined;
-    const withholdingText = hasWithholding ? takeOption(args, "--withholding") ?? "" : undefined;
+    const yearsText = flagText("--years");
+    const withholdingText = flagText("--withholding");
     const real = takeFlag(args, "--real");
-    const hasFrom = args.some((arg) => arg === "--from" || arg.startsWith("--from="));
-    const hasTo = args.some((arg) => arg === "--to" || arg.startsWith("--to="));
-    const fromText = hasFrom ? takeOption(args, "--from") ?? "" : undefined;
-    const toText = hasTo ? takeOption(args, "--to") ?? "" : undefined;
+    const fromText = flagText("--from");
+    const toText = flagText("--to");
     // A bare name shows the portfolio, as `show` does.
     const shows = action === "show" || (action != null && !KNOWN_ACTIONS.has(action));
     const periodUsage = "Usage: gloom portfolio show <name> --from <date> [--to <date>] [--real]";
     if (real && !shows) ctx.fail(`--real is an option of portfolio show --from, not portfolio ${action ?? "list"}.`, periodUsage);
-    if (real && !hasFrom) ctx.fail("--real deflates the return between two dates by consumer prices; add --from <date>.", periodUsage);
-    if ((hasFrom || hasTo) && !shows) ctx.fail(`${hasFrom ? "--from" : "--to"} is an option of portfolio show, not portfolio ${action ?? "list"}.`, periodUsage);
+    if (real && fromText === undefined) ctx.fail("--real deflates the return between two dates by consumer prices; add --from <date>.", periodUsage);
+    if ((fromText !== undefined || toText !== undefined) && !shows) ctx.fail(`${fromText !== undefined ? "--from" : "--to"} is an option of portfolio show, not portfolio ${action ?? "list"}.`, periodUsage);
     let period: PriceWindow | undefined;
     try {
       period = readPriceWindow(fromText, toText) ?? undefined;
@@ -1197,10 +1197,10 @@ export const portfolioCliCommand: CliCommandDef = {
     }
     if (close && !shows) ctx.fail(`--close is an option of portfolio show, not portfolio ${action ?? "list"}.`, "Usage: gloom portfolio show <name> --close");
     const dripUsage = "Usage: gloom portfolio show <name> --drip [--years 1-5] [--withholding <pct>]";
-    if ((dripFlag || hasYears || hasWithholding) && !shows) {
-      ctx.fail(`${dripFlag ? "--drip" : hasYears ? "--years" : "--withholding"} is an option of portfolio show, not portfolio ${action ?? "list"}.`, dripUsage);
+    if ((dripFlag || yearsText !== undefined || withholdingText !== undefined) && !shows) {
+      ctx.fail(`${dripFlag ? "--drip" : yearsText !== undefined ? "--years" : "--withholding"} is an option of portfolio show, not portfolio ${action ?? "list"}.`, dripUsage);
     }
-    if ((hasYears || hasWithholding) && !dripFlag) ctx.fail(`${hasYears ? "--years" : "--withholding"} sets the --drip projection; add --drip.`, dripUsage);
+    if ((yearsText !== undefined || withholdingText !== undefined) && !dripFlag) ctx.fail(`${yearsText !== undefined ? "--years" : "--withholding"} sets the --drip projection; add --drip.`, dripUsage);
     let drip: { years: number; withholding: number } | undefined;
     try {
       drip = dripFlag ? { years: parseDripYears(yearsText), withholding: parseWithholding(withholdingText) } : undefined;
@@ -1209,22 +1209,18 @@ export const portfolioCliCommand: CliCommandDef = {
     }
     const basis = close ? "regular-close" as const : "latest-print" as const;
     // A position's purchase date and the rate its cost was bought at, read before anything is looked up.
-    const hasDate = args.some((arg) => arg === "--date" || arg.startsWith("--date="));
-    const dateText = hasDate ? takeOption(args, "--date") ?? "" : undefined;
-    const hasCostFx = args.some((arg) => arg === "--cost-fx" || arg.startsWith("--cost-fx="));
-    const costFxText = hasCostFx ? takeOption(args, "--cost-fx") ?? "" : undefined;
-    if ((hasDate || hasCostFx) && action !== "position") {
-      ctx.fail(`${hasDate ? "--date" : "--cost-fx"} is an option of portfolio position set, not portfolio ${action ?? "list"}.`, POSITION_USAGE);
+    const dateText = flagText("--date");
+    const costFxText = flagText("--cost-fx");
+    if ((dateText !== undefined || costFxText !== undefined) && action !== "position") {
+      ctx.fail(`${dateText !== undefined ? "--date" : "--cost-fx"} is an option of portfolio position set, not portfolio ${action ?? "list"}.`, POSITION_USAGE);
     }
-    const hasCurrency = args.some((arg) => arg === "--currency" || arg.startsWith("--currency="));
-    const currencyText = hasCurrency ? takeOption(args, "--currency") ?? "" : undefined;
-    if (hasCurrency && action !== "create") {
+    const currencyText = flagText("--currency");
+    if (currencyText !== undefined && action !== "create") {
       ctx.fail(`--currency is an option of portfolio create, not portfolio ${action ?? "list"}.`, CREATE_USAGE);
     }
     const purchaseDate = dateText != null ? parsePurchaseDate(dateText, ctx) : undefined;
     const costFx = costFxText != null ? parseCostFx(costFxText, ctx) : undefined;
-    const hasFile = args.some((arg) => arg === "--file" || arg.startsWith("--file="));
-    const file = hasFile ? takeOption(args, "--file") ?? "" : undefined;
+    const file = flagText("--file");
     if (file != null && action !== "add" && action !== "remove") ctx.fail(`--file is an option of portfolio add and remove, not portfolio ${action ?? "list"}.`, ADD_USAGE);
     // The import's options are declared for the command; on another action one would become part of a name or symbol.
     const importOnly = args.find((arg) => IMPORT_FLAGS.has(arg.split("=")[0]!));

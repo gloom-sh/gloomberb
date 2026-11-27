@@ -43,13 +43,13 @@ import {
   type BoxRenderable,
   type ScrollBoxRenderable,
 } from "../../ui";
-import { useDialog, useDialogKeyboard, type AlertContext, type PromptContext } from "../../ui/dialog";
+import { useDialog, useDialogKeyboard, type AlertContext } from "../../ui/dialog";
 import { useDialogIsTopmost } from "../../ui/dialog-context";
 import { errorMessage } from "../../utils/errors";
 import { wrapTextLines } from "../../utils/text-wrap";
 import type { PaneSettingField } from "../../types/plugin";
 import { Button } from "../ui/button";
-import { ChoiceDialog } from "../ui/choice-dialog";
+import { choiceDialog } from "../ui/choice-dialog";
 import { DialogActions } from "../ui/dialog-actions";
 import { DialogFrame } from "../ui/frame";
 import { Spinner } from "../ui/loading";
@@ -323,15 +323,11 @@ export function FormModalContent({
       if (listingPicker) {
         updateRoute((latest) => ({ ...latest, pending: false, error: null }));
         const fieldId = listingPicker.fieldId;
-        const choice = await dialog.prompt<string>({
-          closeOnClickOutside: true,
-          content: (context: PromptContext<string>) => (
-            <ChoiceDialog
-              {...context}
-              title={listingPicker.title}
-              choices={listingPicker.options.map((option) => ({ id: option.id, label: option.label }))}
-            />
-          ),
+        const choice = await choiceDialog(dialog, {
+          title: listingPicker.title,
+          choices: listingPicker.options.map((option) => ({ id: option.id, label: option.label })),
+          logSource: "form-modal.content",
+          logMessage: "Open listing picker failed",
         });
         // Resubmitted only once the picker is gone, so a second ambiguous
         // ticker opens its picker over the form, not over this one.

@@ -4,7 +4,6 @@ import { usePaneInstance } from "../../../state/app/context";
 import { useCatalystEvidence } from "./evidence";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
-import { usePlanAccess } from "../../../api-client/plan-access";
 import { CATALYST_TYPES, type CatalystDetail, type CatalystEvent, type CatalystResponse } from "../../../api-client/catalysts";
 import { buildSectionedRows, DataTableView, EmptyState, EMPTY_TABLE_CELL, PageStackView, PaneStatusBody, QueryBar, renderSectionedRowHeader, usePagedRows, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useTableLoadMore,
   type DataTableCell, type PageLoader, type PageRequest, type PaneHint, type SectionedRow } from "../../../components";
@@ -17,8 +16,8 @@ import { Box, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../..
 import { withCountryFlag } from "../../../components/ui/country-flag";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
-import { useOpenDescription } from "../shared/open-description";
-import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
+import { useTickerJumpHints } from "../shared/open-description";
+import { lockedTableCell, lockedTableOverlay } from "../shared/locked-rows";
 import { listingCell, toneColor } from "../shared/research-cells";
 import { logFailure } from "../../../utils/log-failure";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
@@ -53,10 +52,9 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
   const desktop = !!useUiCapabilities().nativePaneChrome;
   const instance = usePaneInstance();
   const session = useResearchCloudSession();
-  const access = usePlanAccess();
-  const accessKey = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
+  const { accessKey } = session;
   const { createPaneFromTemplate, openPluginCommandWorkflow } = usePluginAppActions();
-  const openDescription = useOpenDescription();
+  const jumpHints = useTickerJumpHints();
   const openUpgrade = useCloudUpgradeAction("catl");
   const [initialTab] = usePaneSettingValue("tab", "calendar");
   const [savedTab, setTab] = usePluginPaneState("catalyst:tab", initialTab);
@@ -146,9 +144,8 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
   const { strip, rows: tabRows } = usePaneTabs(!openId ? { tabs: viewTabs, activeValue: tab === "changes" || !kinds ? tab : kind ?? "", onSelect: selectView, focused, dense: true } : null);
   const selectedSymbol = selected ? catalystSymbol(selected) : symbol;
   const hints: PaneHint[] = [
-    ...(!openId && selectedSymbol ? [{ id: "description", key: "d", label: "es", onPress: () => openDescription(selectedSymbol) },
-      { id: "financials", key: "f", label: "a", onPress: () => createPaneFromTemplate("financial-analysis-pane", { symbol: selectedSymbol }) },
-      { id: "chart", key: "g", label: "raph", onPress: () => createPaneFromTemplate("chart-composer-pane", { arg: selectedSymbol }) },
+    ...(!openId && selectedSymbol ? [
+      ...jumpHints(selectedSymbol),
       { id: "related", key: "t", label: litigation ? "o calendar" : "o litigation", onPress: () => createPaneFromTemplate(litigation ? "catalysts-pane" : "litigation-pane", { symbol: selectedSymbol }) }] : []),
     ...(!openId ? [{ id: "alert", key: "a", label: "lert", onPress: () => openPluginCommandWorkflow("set-event-alert") }] : []),
     ...(data?.access && data.access.lockedRows > 0 ? [{ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", title: "Upgrade to Pro", onPress: openUpgrade }] : []),
@@ -183,8 +180,16 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
       .map((column) => litigation && !resource.hasMore && LITIGATION_SHARED.has(column.id) ? { ...column, omitWhenSame: true } : column);
   const renderCell = (row: Row, column: (typeof columns)[number], _index: number, state: { selected: boolean }): DataTableCell => {
     if (row.kind === "locked") {
-      if (!desktop && column.id === "title" && row.key === "locked:0") return { text: upgradeText, content: <UpgradeLabel text={upgradeText} onPress={openUpgrade} role="catalysts-upgrade" />, onMouseDown: openUpgrade };
-      return desktop ? { text: "", content: <Blurred><Text fg={colors.textDim}>{column.id === "title" ? "Additional catalyst" : "Hidden"}</Text></Blurred> } : { text: "░░░░", color: colors.textDim };
+      return lockedTableCell({
+        desktop,
+        isLabelCell: column.id === "title" && row.key === "locked:0",
+        upgradeText,
+        blurText: column.id === "title" ? "Additional catalyst" : "Hidden",
+        onUpgrade: openUpgrade,
+        onMouseDown: openUpgrade,
+        role: "catalysts-upgrade",
+        dimColor: colors.textDim,
+      });
     }
     if (!isEventRow(row)) return EMPTY_TABLE_CELL;
     const event = row.item;
@@ -228,7 +233,7 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
           renderCell={renderCell}
           scrollRef={scrollRef} onBodyScrollActivity={loadMore} resetScrollKey={`${kindView ?? ""}:${JSON.stringify(query)}`} showHorizontalScrollbar selectedTextOverridesCellColor
           emptyStateTitle={catalystEmptyTitle(data, query, tab === "changes", kindView ? catalystKindNoun(kindView) : undefined)}
-          bodyAfter={lockedRows && desktop ? <LockedOverlay rows={lockedRows} text={upgradeText} onPress={openUpgrade} role="catalysts-upgrade" /> : undefined} />}
+          bodyAfter={lockedTableOverlay(lockedRows, desktop, upgradeText, openUpgrade, "catalysts-upgrade")} />}
       />
   </Box>;
 }

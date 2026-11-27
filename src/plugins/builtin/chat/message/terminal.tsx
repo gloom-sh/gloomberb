@@ -2,10 +2,7 @@ import { Box, Text, TextAttributes, useRendererHost } from "../../../../ui";
 import { colors } from "../../../../theme/colors";
 import { t } from "../../../../i18n";
 import { formatInlinePreview, getMessageBodyTokenLines } from "../layout";
-import { chatImageLabel, chatImageReviewNote, chatReplyQuoteText } from "../attachments/model";
-import { heldMessage, isQuotedAuthorManagedBot } from "../ghost-user";
-import { ChatBotIcon } from "./person-icons";
-import { CHAT_PERSON_ICON_WIDTH } from "../people";
+import { chatImageLabel, chatImageReviewNote } from "../attachments/model";
 import { ChatMessageActions, ChatMessageHeader, type ChatMessageActionIconProps } from "./header";
 import { IconButton } from "../../../../components/ui";
 import { useSelectionFill } from "../../../../components/ui/selection-fill";
@@ -13,9 +10,7 @@ import { canReactToMessage } from "../reactions";
 import { TerminalChatReactions } from "./reactions";
 import { TerminalChatMessageRow } from "./inline-tokens";
 import { TerminalChatPaneChipRow } from "./pane-chip";
-import { chatMessagePaneLinks } from "../pane-links/model";
-import { useSlowPendingSend } from "./pending-send";
-import { getChatMessageRenderState } from "./render-state";
+import { ChatMessageReplyQuote, useChatMessageModel } from "./shared";
 import type { ChatMessageBaseProps } from "./types";
 
 interface TerminalChatMessageProps extends ChatMessageBaseProps {
@@ -55,22 +50,12 @@ export function TerminalChatMessage({
   openPaneLink,
 }: TerminalChatMessageProps) {
   const rendererHost = useRendererHost();
-  const slowSend = useSlowPendingSend(msg);
   const selectionFill = useSelectionFill();
   const canReact = reactionsEnabled && canReactToMessage(msg);
-  const state = getChatMessageRenderState({
-    msg,
-    index,
-    messages,
-    selectedIdx,
-    hoveredIdx,
-    highlighted,
-    canSend,
-    canEdit: msg.id === latestEditableMessageId,
-    canReact: canReact && !!openReactionPicker,
-    slowSend,
-    host: "terminal",
-  });
+  const { state, paneLinks, content, quotedAuthorIsBot } = useChatMessageModel(
+    { msg, index, messages, selectedIdx, hoveredIdx, highlighted, canSend, latestEditableMessageId, userByUsername },
+    { host: "terminal", canReact: canReact && !!openReactionPicker },
+  );
   const reactAction = openReactionPicker ? (icon: ChatMessageActionIconProps) => (
     <IconButton icon="react" {...icon} hasPopup="dialog" onPress={() => openReactionPicker(index)} />
   ) : undefined;
@@ -78,16 +63,12 @@ export function TerminalChatMessage({
   // A grouped message floats its actions at the right edge of its first row.
   const floatingRow = { width: contentWidth };
   const attachments = msg.attachments ?? [];
-  // A share link is its chip's row; a message that was only one has no text row.
-  const { links: paneLinks, content } = chatMessagePaneLinks(msg);
   // An image-only message has no text row; its image rows start where the text would.
   const bodyLines = content.length > 0 || (attachments.length === 0 && paneLinks.length === 0)
     ? getMessageBodyTokenLines(content, messageBodyWidth, catalog)
     : [];
   const reviewNote = chatImageReviewNote(msg);
   const imageColor = state.isSelected ? state.selectedTextColor : colors.textDim;
-  const quotedAuthorIsBot = !!msg.replyTo
-    && isQuotedAuthorManagedBot(msg.replyTo, userByUsername, () => heldMessage(messages, msg.replyToId));
   const setHovered = () => setHoveredIdx((current) => (current === index ? current : index));
   const clearHovered = () => setHoveredIdx((current) => (current === index ? null : current));
   const messageRowProps = {
@@ -100,35 +81,16 @@ export function TerminalChatMessage({
 
   return (
     <Box key={msg.id} width={contentWidth} flexDirection="column" position={state.isAnnouncement ? "relative" : undefined}>
-      {msg.replyTo && (
-        <Box
-          {...messageRowProps}
-          flexDirection="row"
-          height={1}
-          paddingLeft={2}
-          onMouseDown={() => {
-            if (msg.replyToId) jumpToMessage(msg.replyToId);
-          }}
-        >
-          <Text fg={state.replyMetaColor}>{`${t("reply")} `}</Text>
-          {quotedAuthorIsBot ? (
-            // The bot's icon stands where the colon would.
-            <>
-              <Text fg={state.replyAuthorColor}>{msg.replyTo.user.username}</Text>
-              <ChatBotIcon selectedColor={state.isSelected ? state.selectedTextColor : undefined} />
-              <Text fg={state.replyAuthorColor}> </Text>
-            </>
-          ) : (
-            <Text fg={state.replyAuthorColor}>{msg.replyTo.user.username}: </Text>
-          )}
-          <Text fg={state.replyMetaColor}>
-            {formatInlinePreview(
-              chatReplyQuoteText(msg.replyTo),
-              Math.max(messageBodyWidth - `reply ${msg.replyTo.user.username}`.length - (quotedAuthorIsBot ? CHAT_PERSON_ICON_WIDTH + 1 : 2), 0),
-            )}
-          </Text>
-        </Box>
-      )}
+      <ChatMessageReplyQuote
+        msg={msg}
+        state={state}
+        quotedAuthorIsBot={quotedAuthorIsBot}
+        rowProps={messageRowProps}
+        jumpToMessage={jumpToMessage}
+        host="terminal"
+        messageBodyWidth={messageBodyWidth}
+        formatTerminalQuote={formatInlinePreview}
+      />
       {!state.grouped && (
         <ChatMessageHeader
           msg={msg}

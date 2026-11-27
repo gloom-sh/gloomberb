@@ -1,4 +1,5 @@
 import { errorMessage } from "../../../utils/errors";
+import { isPositiveNumber as positive } from "../../../utils/guards";
 import { logFailure } from "../../../utils/log-failure";
 import { matchesNumberStep } from "../../../components/ui/number-step";
 import type { BrokerAdapter, BrokerConnectionStatus } from "../../../types/broker";
@@ -115,7 +116,6 @@ function canonical(value: unknown): string {
 function sameOrder(order: BrokerOrder, result: BrokerOrder): boolean {
   return result.brokerOrderId ? order.brokerOrderId === result.brokerOrderId : result.orderId !== 0 && order.orderId === result.orderId;
 }
-function positive(value: number | undefined): value is number { return value !== undefined && Number.isFinite(value) && value > 0; }
 
 function tradingCapabilities(context: BrokerTradingContext, request?: BrokerOrderRequest): BrokerTradingCapabilities {
   return context.adapter.getTradingCapabilities?.(context.instance, request?.contract, request?.orderType) ?? {

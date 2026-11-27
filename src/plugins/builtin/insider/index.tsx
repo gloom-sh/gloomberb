@@ -18,7 +18,6 @@ import { buildChartKey } from "../../../market-data/selectors";
 import { Box, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import {
   ChartTableHeader,
-  ChoiceDialog,
   DataTableStackView,
   EmptyState,
   PaneLinkMenu,
@@ -78,8 +77,8 @@ import { insiderActivitySeries, insiderAxisValue, insiderChartValue, insiderPlan
 import { useThemeColors } from "../../../theme/theme-context";
 import { InsiderDetail, insiderDetailTitle } from "./detail";
 import { useFilingStories, type FilingStory } from "./filing-stories";
-import { useOptionalDialog, type PromptContext } from "../../../ui/dialog";
-import { logFailure } from "../../../utils/log-failure";
+import { choiceDialog } from "../../../components/ui";
+import { useOptionalDialog } from "../../../ui/dialog";
 import { InsiderActivityView, type InsiderViewControl } from "./insiders";
 import { InsiderSignalsView, type InsiderOpenedCompany } from "./signals";
 import { InsiderTickersView } from "./tickers";
@@ -377,10 +376,7 @@ function InsiderTradesView({ ticker, viewBar, state, width, height, focused, sta
     [parsed, typeFilter],
   );
   const rows = useMemo(() => buildInsiderTableRows(shown), [shown]);
-  const sortedRows = useMemo(() => {
-    const order = new Map(rows.map((row, index) => [row.id, index]));
-    return sortStackItems(rows, sort, compareInsiderRows, (a, b) => order.get(a.id)! - order.get(b.id)!);
-  }, [rows, sort]);
+  const sortedRows = useMemo(() => sortStackItems(rows, sort, compareInsiderRows), [rows, sort]);
   // Form 4 amounts are dollars: a reader whose base currency is another one gets them named, as PF names a holding's.
   const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
   const amountCurrency = baseCurrency.trim().toUpperCase() === FORM4_CURRENCY ? undefined : FORM4_CURRENCY;
@@ -507,19 +503,15 @@ function InsiderTradesView({ ticker, viewBar, state, width, height, focused, sta
       return;
     }
     if (!dialog || openStories.length === 0) return;
-    void dialog.prompt<string>({
-      closeOnClickOutside: true,
-      content: (ctx: PromptContext<string>) => (
-        <ChoiceDialog
-          {...ctx}
-          title="Stories"
-          choices={openStories.map((story, index) => ({ id: String(index), label: story.headline, detail: story.publisher }))}
-        />
-      ),
+    void choiceDialog(dialog, {
+      title: "Stories",
+      choices: openStories.map((story, index) => ({ id: String(index), label: story.headline, detail: story.publisher })),
+      logSource: "insider.detail",
+      logMessage: "Choose a story reporting the filing failed",
     }).then((choice) => {
       const story = choice ? openStories[Number(choice)] : undefined;
       if (story) openStory(story);
-    }).catch(logFailure("insider.detail", "Choose a story reporting the filing failed"));
+    });
   }, [dialog, openStories, openStory]);
 
   // Reading on: the next or previous row opens in place, and the cursor
@@ -914,8 +906,8 @@ export const insiderModule: PluginModule = {
     },
   ],
 
+  caches: [insiderSignalsCache],
   setup(ctx) {
-    insiderSignalsCache.attach(ctx.persistence);
     ctx.registerTickerResearchTab({
       id: "insider",
       name: "Insider",
@@ -924,9 +916,5 @@ export const insiderModule: PluginModule = {
       instruments: ["equity"],
       isVisible: ({ ticker }) => mayBeUsEquityTicker(ticker),
     });
-  },
-
-  dispose() {
-    insiderSignalsCache.reset();
   },
 };

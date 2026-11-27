@@ -8,6 +8,7 @@ import { cashDistribution, dividendReferencePrice, trailingDividendYield, type C
 import { priceEarningsEps } from "../../utils/fundamentals";
 import { selectMarketCapitalization, type MarketCapitalization } from "../../utils/market-capitalization";
 import { NOT_MEANINGFUL, priceEarningsOnEarnings, type PriceEarnings } from "../../utils/price-earnings";
+import { isPositiveNumber as positive } from "../../utils/guards";
 
 /**
  * Price-derived statistics repriced at the quote's regular session price
@@ -28,10 +29,6 @@ const PRICE_BASIS = 0.005;
 interface LiveMarketCapitalization extends MarketCapitalization {
   /** Shares outstanding times the current price rather than a stored figure. */
   live: boolean;
-}
-
-function positive(value: number | null | undefined): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
 /** The price valuations follow: the regular session's, live while it trades

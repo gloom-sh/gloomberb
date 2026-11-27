@@ -25,6 +25,12 @@ export function takeFlag(args: string[], name: string): boolean {
   return true;
 }
 
+/** Reports whether an option flag (`--name` or `--name=...`) was passed and removes its value when present. */
+export function takeFlagOption(args: string[], name: string): { given: boolean; value: string | undefined } {
+  const given = args.some((arg) => arg === name || arg.startsWith(`${name}=`));
+  return { given, value: given ? takeOption(args, name) : undefined };
+}
+
 export function parseJsonPayload(value: string | undefined, ctx: CliCommandContext): unknown {
   if (!value) return {};
   try {

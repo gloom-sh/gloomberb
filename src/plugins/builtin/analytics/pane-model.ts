@@ -323,37 +323,16 @@ export function buildAnalyticsSummaryRows({
     });
   }
 
-  if (account?.settledCash != null) {
-    rows.push({
-      id: "settled-cash",
-      label: "Settled",
-      value: money(convertAccountValue(account.settledCash)),
-      color: colors.text,
-    });
-  }
-  if (account?.availableFunds != null) {
-    rows.push({
-      id: "available-funds",
-      label: "Avail",
-      value: money(convertAccountValue(account.availableFunds)),
-      color: colors.text,
-    });
-  }
-  if (account?.excessLiquidity != null) {
-    rows.push({
-      id: "excess-liquidity",
-      label: "Excess",
-      value: money(convertAccountValue(account.excessLiquidity)),
-      color: colors.text,
-    });
-  }
-  if (account?.buyingPower != null) {
-    rows.push({
-      id: "buying-power",
-      label: "BP",
-      value: money(convertAccountValue(account.buyingPower)),
-      color: colors.text,
-    });
+  const accountBalanceFields: readonly [string, string, number | null | undefined][] = [
+    ["settled-cash", "Settled", account?.settledCash],
+    ["available-funds", "Avail", account?.availableFunds],
+    ["excess-liquidity", "Excess", account?.excessLiquidity],
+    ["buying-power", "BP", account?.buyingPower],
+  ];
+  for (const [id, label, value] of accountBalanceFields) {
+    if (value != null) {
+      rows.push({ id, label, value: money(convertAccountValue(value)), color: colors.text });
+    }
   }
   if (accountState) {
     if (accountFreshness) {

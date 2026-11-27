@@ -4,13 +4,8 @@ import {
   Button,
   DataTableView,
   EmptyState,
-  getPaneSidebarWidth,
-  getPaneSidebarWidthRange,
-  PaneSidebar,
   PaneStatusBody,
   QueryBar,
-  readStoredPaneSidebarWidth,
-  shouldShowPaneSidebar,
   usePaneFooter,
   useQueryBarSearch,
   type DataTableCell,
@@ -22,7 +17,7 @@ import { useAppSelector, useAsyncResource, usePaneSettingValue, usePluginPaneSta
 import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, TextAttributes, useUiCapabilities } from "../../../ui";
+import { Box, TextAttributes } from "../../../ui";
 import { withCountryFlag } from "../../../components/ui/country-flag";
 import { loadWorldVenues } from "./client";
 import { WORLD_VENUE_MAP_PANE_ID } from "./ids";
@@ -30,6 +25,7 @@ import { LayeredMapView } from "./layered-pane";
 import { activeLayerTokens, isPlainMap, LAYERS_SETTING_KEY, resolveActiveLayers, VENUES_SETTING_KEY } from "./layers";
 import { useMapKeyboard, WorldVenueMap } from "./map";
 import { filterWorldVenues, formatVenueLocalTime } from "./model";
+import { useMapSplitLayout } from "./split-layout";
 import { useGeoCatalog } from "./use-geo";
 import { SelectedVenueHeader, venueHeaderLines } from "./venue-header";
 import { cloudGeoRequest } from "./client";
@@ -154,30 +150,17 @@ function VenueMapView({ focused, width, height, start }: PaneProps & { start: Ma
     ],
   }), [data, error, focusSearch, loading, searchable, start.note]);
 
-  const { nativePaneChrome } = useUiCapabilities();
-  const [storedSidebarWidth, setStoredSidebarWidth] = usePluginPaneState<number | null>("sidebarWidth", null);
   const [savedViewport, setSavedViewport] = usePluginPaneState<unknown>("map:viewport", null);
   const [initialFocus] = useState(() => initialMapFocus(start.place, savedViewport, start.home));
-  const [draggedSidebarWidth, setDraggedSidebarWidth] = useState<number | null>(null);
-  const horizontal = shouldShowPaneSidebar(data?.venues.length ?? 0, width, height);
   // Venue names need more room than a conversation list, so the width the pane
-  // starts at is its own; a drag replaces it and is kept with the pane. The
-  // terminal's divider cell sits inside the sidebar, so it is added on top to
-  // keep the list 34 cells wide, which is what the LOCAL column needs.
-  const defaultSidebarWidth = Math.max(34, Math.min(46, Math.round(width * 0.34))) + (nativePaneChrome ? 0 : 1);
-  const sidebarWidth = horizontal
-    ? getPaneSidebarWidth(
-      width,
-      !!nativePaneChrome,
-      draggedSidebarWidth ?? readStoredPaneSidebarWidth(storedSidebarWidth) ?? defaultSidebarWidth,
-    )
-    : width;
-  const sidebarRange = getPaneSidebarWidthRange(width);
-  // The terminal draws the divider as a cell inside the sidebar; the desktop as a hairline.
-  const listWidth = horizontal && !nativePaneChrome ? Math.max(1, sidebarWidth - 1) : sidebarWidth;
-  const mapWidth = horizontal ? Math.max(1, width - sidebarWidth) : width;
-  const mapSectionHeight = horizontal ? height : Math.max(8, Math.floor(height * 0.52));
-  const tableHeight = horizontal ? height : Math.max(4, height - mapSectionHeight);
+  // starts at is its own; a drag replaces it and is kept with the pane.
+  const { nativePaneChrome, listWidth, mapWidth, mapSectionHeight, tableHeight, renderSplit } = useMapSplitLayout({
+    width,
+    height,
+    rowCount: data?.venues.length ?? 0,
+    defaultSidebarWidth: Math.max(34, Math.min(46, Math.round(width * 0.34))),
+    stackedMapHeight: Math.max(8, Math.floor(height * 0.52)),
+  });
   const headerLines = selectedVenue && data ? venueHeaderLines(selectedVenue, data.checkedAt, now, mapWidth) : [];
   const mapHeight = Math.max(2, mapSectionHeight - Math.max(2, 1 + headerLines.length));
   const columns = useMemo(() => venueColumns(listWidth), [listWidth]);
@@ -266,30 +249,5 @@ function VenueMapView({ focused, width, height, start }: PaneProps & { start: Ma
     </Box>
   );
 
-  return horizontal ? (
-    <Box flexDirection="row" width={width} height={height}>
-      <PaneSidebar
-        width={sidebarWidth}
-        height={height}
-        focused={focused}
-        resize={{
-          min: sidebarRange.min,
-          max: sidebarRange.max,
-          onResize: setDraggedSidebarWidth,
-          onResizeEnd: (next) => {
-            setStoredSidebarWidth(next);
-            setDraggedSidebarWidth(null);
-          },
-        }}
-      >
-        {table}
-      </PaneSidebar>
-      {map}
-    </Box>
-  ) : (
-    <Box flexDirection="column" width={width} height={height}>
-      {map}
-      {table}
-    </Box>
-  );
+  return renderSplit(focused, table, map);
 }

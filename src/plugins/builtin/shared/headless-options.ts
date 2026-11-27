@@ -1,4 +1,53 @@
 import type { HeadlessPaneOptionDef, HeadlessPaneOptionValue } from "../../../types/headless";
+import { isoDateOption } from "../../../utils/calendar-date";
+
+function enumValues(values: readonly (string | HeadlessPaneOptionValue)[]): HeadlessPaneOptionValue[] {
+  return values.map((entry) => (typeof entry === "string" ? { value: entry } : entry));
+}
+
+export function enumOption(
+  key: string,
+  values: readonly (string | HeadlessPaneOptionValue)[],
+  options: Omit<HeadlessPaneOptionDef, "key" | "type" | "values">,
+): HeadlessPaneOptionDef {
+  return { key, type: "enum", values: enumValues(values), ...options };
+}
+
+export function intOption(
+  key: string,
+  options: Omit<HeadlessPaneOptionDef, "key" | "type">,
+): HeadlessPaneOptionDef {
+  return { key, type: "integer", ...options };
+}
+
+export function limitOption(
+  options: Omit<HeadlessPaneOptionDef, "key" | "type" | "minimum"> & { minimum?: number },
+): HeadlessPaneOptionDef {
+  return { key: "limit", type: "integer", minimum: 1, shot: REPORT_ROWS, ...options };
+}
+
+export function offsetOption(
+  options: Omit<HeadlessPaneOptionDef, "key" | "type" | "minimum"> & { minimum?: number },
+): HeadlessPaneOptionDef {
+  return { key: "offset", type: "integer", minimum: 0, shot: REPORT_PAGE, ...options };
+}
+
+export function dateOption(
+  key: string,
+  options: Omit<HeadlessPaneOptionDef, "key" | "type"> & { flagName?: string },
+): HeadlessPaneOptionDef {
+  const { flagName, ...rest } = options;
+  return { key, type: "string", placeholder: "date", normalize: (value) => isoDateOption(value, flagName ?? key), ...rest };
+}
+
+export function argumentText(argument: string | string[] | null | undefined): string {
+  return Array.isArray(argument) ? argument.join(" ") : argument ?? "";
+}
+
+export function clampLimit(value: unknown, fallback: number, maximum: number, minimum = 1): number {
+  const count = Number(value ?? fallback);
+  return Number.isFinite(count) ? Math.min(maximum, Math.max(minimum, Math.floor(count))) : fallback;
+}
 
 export const HISTORY_RANGE_VALUES: HeadlessPaneOptionValue[] = [
   { value: "1D", aliases: ["day", "daily"] },

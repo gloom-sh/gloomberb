@@ -103,6 +103,40 @@ export function createCommandBarCollectionWorkflowActions(options: {
     getState,
   });
 
+  const commitCollectionDeletion = async (
+    deletedId: string,
+    deletedName: string,
+    nextConfig: AppState["config"],
+    tickers: Iterable<AppState["tickers"] extends Map<string, infer T> ? T : never>,
+  ) => {
+    for (const ticker of tickers) {
+      await tickerRepository.saveTicker(ticker);
+      dispatch({ type: "UPDATE_TICKER", ticker });
+    }
+    dispatch({ type: "SET_CONFIG", config: nextConfig });
+    if (activeCollectionId === deletedId) {
+      const fallback = nextConfig.portfolios[0]?.id || nextConfig.watchlists[0]?.id || "";
+      if (fallback) setActiveCollection(fallback);
+    }
+    persistConfig(nextConfig);
+    notify(`Deleted "${deletedName}".`, { type: "success" });
+  };
+
+  const resolveManualPortfolioAndTicker = async (values: Record<string, CommandBarFieldValue>) => {
+    const currentState = getState();
+    const portfolioId = coerceFieldString(values.portfolioId).trim();
+    const portfolio = currentState.config.portfolios.find((entry) => entry.id === portfolioId);
+    if (!portfolio || !isManualPortfolio(portfolio)) throw new Error("Choose a manual portfolio.");
+    const resolvedTicker = await resolveTickerInputOrThrow(
+      coerceFieldString(values.ticker),
+      activeTickerSymbol,
+      portfolio.id,
+      buildWorkflowDeps(),
+    );
+    const ticker = resolveCollectionTicker(resolvedTicker.ticker, getState().tickers, "portfolio", portfolio.id);
+    return { currentState, portfolio, ticker };
+  };
+
   /** Lands on the synced profile's portfolio once a broker is connected. */
   const showConnectedBroker = (instanceId: string) => {
     const freshConfig = pluginRegistry.getConfig();
@@ -196,65 +230,20 @@ export function createCommandBarCollectionWorkflowActions(options: {
         currentState.tickers.values(),
         watchlistId,
       );
-      for (const ticker of tickers) {
-        await tickerRepository.saveTicker(ticker);
-        dispatch({ type: "UPDATE_TICKER", ticker });
-      }
-
-      dispatch({ type: "SET_CONFIG", config: nextConfig });
-      if (activeCollectionId === watchlistId) {
-        const fallback = nextConfig.portfolios[0]?.id || nextConfig.watchlists[0]?.id || "";
-        if (fallback) setActiveCollection(fallback);
-      }
-      persistConfig(nextConfig);
-      notify(`Deleted "${watchlist.name}".`, { type: "success" });
+      await commitCollectionDeletion(watchlistId, watchlist.name, nextConfig, tickers);
     },
 
     async deletePortfolio(portfolioId) {
       const currentState = getState();
       const portfolio = currentState.config.portfolios.find((entry) => entry.id === portfolioId);
-      if (!portfolio) {
-        throw new Error("Portfolio not found.");
-      }
-      if (!isManualPortfolio(portfolio)) {
-        throw new Error("Broker-managed portfolios cannot be deleted here.");
-      }
-
-      const result = deleteManualPortfolio(
-        currentState.config,
-        [...currentState.tickers.values()],
-        portfolioId,
-      );
-      for (const ticker of result.tickers) {
-        await tickerRepository.saveTicker(ticker);
-        dispatch({ type: "UPDATE_TICKER", ticker });
-      }
-
-      const nextConfig = result.config;
-      dispatch({ type: "SET_CONFIG", config: nextConfig });
-      if (activeCollectionId === portfolioId) {
-        const fallback = nextConfig.portfolios[0]?.id || nextConfig.watchlists[0]?.id || "";
-        if (fallback) setActiveCollection(fallback);
-      }
-      persistConfig(nextConfig);
-      notify(`Deleted "${portfolio.name}".`, { type: "success" });
+      if (!portfolio) throw new Error("Portfolio not found.");
+      if (!isManualPortfolio(portfolio)) throw new Error("Broker-managed portfolios cannot be deleted here.");
+      const result = deleteManualPortfolio(currentState.config, [...currentState.tickers.values()], portfolioId);
+      await commitCollectionDeletion(portfolioId, portfolio.name, result.config, result.tickers);
     },
 
     async setPortfolioPositionFromWorkflow(values) {
-      const currentState = getState();
-      const portfolioId = coerceFieldString(values.portfolioId).trim();
-      const portfolio = currentState.config.portfolios.find((entry) => entry.id === portfolioId);
-      if (!portfolio || !isManualPortfolio(portfolio)) {
-        throw new Error("Choose a manual portfolio.");
-      }
-
-      const resolvedTicker = await resolveTickerInputOrThrow(
-        coerceFieldString(values.ticker),
-        activeTickerSymbol,
-        portfolio.id,
-        buildWorkflowDeps(),
-      );
-      const ticker = resolveCollectionTicker(resolvedTicker.ticker, getState().tickers, "portfolio", portfolio.id);
+      const { currentState, portfolio, ticker } = await resolveManualPortfolioAndTicker(values);
 
       // 18,50, 1.234,5 and 123.456 read as typed; 1,234 could be either reading and fails naming both.
       // Negative for a short; zero is no position. A future counts contracts, and the messages say so.
@@ -333,20 +322,7 @@ export function createCommandBarCollectionWorkflowActions(options: {
     },
 
     async addTickerMembershipFromWorkflow(values) {
-      const currentState = getState();
-      const portfolioId = coerceFieldString(values.portfolioId).trim();
-      const portfolio = currentState.config.portfolios.find((entry) => entry.id === portfolioId);
-      if (!portfolio || !isManualPortfolio(portfolio)) {
-        throw new Error("Choose a manual portfolio.");
-      }
-
-      const resolvedTicker = await resolveTickerInputOrThrow(
-        coerceFieldString(values.ticker),
-        activeTickerSymbol,
-        portfolio.id,
-        buildWorkflowDeps(),
-      );
-      const ticker = resolveCollectionTicker(resolvedTicker.ticker, getState().tickers, "portfolio", portfolio.id);
+      const { portfolio, ticker } = await resolveManualPortfolioAndTicker(values);
 
       const result = addTickerToPortfolio(ticker, portfolio.id);
       if (result.changed) {

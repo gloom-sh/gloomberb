@@ -1,6 +1,6 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import type { CreditBoardPoint, CreditIndexQuote } from "../../../api-client/credit-boards";
-import { CompositeChart, DELAYED_SEGMENT, type ChartTableChart, type PaneFooterSegment } from "../../../components";
+import { ChartTableHeader, CompositeChart, DELAYED_SEGMENT, MarketBoardStack, PaneStatusBody, type ChartTableChart, type DataTableColumn, type MarketBoardRow, type PaneFooterSegment } from "../../../components";
 import { staticSeries } from "../../../components/chart/static/series";
 import { colors } from "../../../theme/colors";
 import { formatLevel } from "./model";
@@ -16,7 +16,7 @@ const historySeries = (t: Pick<CreditHistoryTarget, "id" | "label" | "points">) 
   { id: t.id, label: `${t.label} 5Y`, color: colors.positive, calendarSpaced: true },
 )];
 
-export function creditHistoryChart(target: CreditHistoryTarget): ChartTableChart {
+function creditHistoryChart(target: CreditHistoryTarget): ChartTableChart {
   return {
     series: target.points.length >= 3 ? historySeries(target) : [],
     formatValue: (value: number) => formatLevel(target.quote, value),
@@ -40,4 +40,73 @@ export function creditFooterInfo(sourceLine: PaneFooterSegment | null, hasPayloa
     ...(stale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
     ...extra,
   ];
+}
+
+export function CreditBoardView<TRow extends MarketBoardRow>({
+  rows,
+  width,
+  height,
+  focused,
+  loading,
+  error,
+  loadingLabel,
+  subject,
+  selectedId,
+  namedId,
+  onSelectedIdChange,
+  openId,
+  onOpenIdChange,
+  labelHeader,
+  labelWidth,
+  valueLabel,
+  valueWidth,
+  changeLabel,
+  extraColumns,
+  historyTarget,
+  renderDetail,
+}: {
+  rows: readonly TRow[];
+  width: number;
+  height: number;
+  focused: boolean;
+  loading: boolean;
+  error: string | null;
+  loadingLabel: string;
+  subject: string;
+  selectedId: string | null;
+  namedId?: string | null;
+  onSelectedIdChange: (id: string | null) => void;
+  openId: string | null;
+  onOpenIdChange: (id: string | null) => void;
+  labelHeader: string;
+  labelWidth: number;
+  valueLabel: string;
+  valueWidth: number;
+  changeLabel?: string;
+  extraColumns: readonly {
+    column: DataTableColumn;
+    sortValue: (row: TRow) => number | string | null;
+    renderCell: (row: TRow) => { text: string; color?: string };
+  }[];
+  historyTarget: (row: TRow) => CreditHistoryTarget;
+  renderDetail: (row: TRow, detailHeight: number) => ReactNode;
+}) {
+  if (rows.length === 0) {
+    return (
+      <PaneStatusBody loading={loading} error={error} empty={!loading && !error}
+        loadingLabel={loadingLabel} subject={subject} align="center" width={width} height={height} />
+    );
+  }
+  const selected = rows.find((row) => row.id === selectedId)
+    ?? (namedId ? rows.find((row) => row.id === namedId) : undefined)
+    ?? rows[0];
+  return (
+    <MarketBoardStack rows={[...rows]} width={width} height={height} focused={focused}
+      rootBefore={({ columns }) => <ChartTableHeader width={width} height={height} tableRows={rows.length}
+        tableColumns={columns} chart={selected ? creditHistoryChart(historyTarget(selected)) : null} />}
+      selectedId={selected?.id ?? null} onSelectedIdChange={onSelectedIdChange} openId={openId} onOpenIdChange={onOpenIdChange}
+      labelHeader={labelHeader} labelWidth={labelWidth} valueLabel={valueLabel} valueWidth={valueWidth}
+      changeLabel={changeLabel} signedChange extraColumns={[...extraColumns]}
+      renderDetail={(row) => renderDetail(row, Math.max(5, height - 2))} />
+  );
 }

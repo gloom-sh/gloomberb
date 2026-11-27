@@ -27,8 +27,8 @@ import {
   type IpoTab,
 } from "./model";
 import { ipoDetailSentences, ipoPriceNow, loadIpoLockupNews, type IpoLockupStory, type IpoPriceNow } from "./listing-ipo";
-import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
-import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
+import { dateOption, enumOption, limitOption, REPORT_FILTER } from "../shared/headless-options";
+import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 import { logFailure } from "../../../utils/log-failure";
 
 const COLUMNS: HeadlessPaneColumn[] = [
@@ -212,49 +212,20 @@ export const ipoCalendarHeadless: HeadlessPaneDefinition<"rows"> = {
     limitations: ["Return from the offer price uses the first trade until the first session's close is available."],
   },
   options: [
-    {
-      key: "region",
-      description: "Region of the listing venue.",
-      type: "enum",
-      defaultValue: "all",
-      values: ["all", "us", "apac", "europe"].map((value) => ({ value })),
-      // The pane's tab, so a screenshot shows the region the report lists.
-      pluginState: { pluginId: "ipo-calendar", key: "region" },
-    },
-    {
-      key: "list",
+    // The pane's tab, so a screenshot shows the region the report lists.
+    enumOption("region", ["all", "us", "apac", "europe"], { description: "Region of the listing venue.", defaultValue: "all", pluginState: { pluginId: "ipo-calendar", key: "region" } }),
+    // The pane's list, so a screenshot shows the deals the report lists.
+    enumOption("list", ["upcoming", { value: "listed", aliases: ["recent"] }], {
       description: "Upcoming deals or recent listings, each with the columns its pane view shows; every deal when omitted.",
-      type: "enum",
-      values: [{ value: "upcoming" }, { value: "listed", aliases: ["recent"] }],
-      // The pane's list, so a screenshot shows the deals the report lists.
       pluginState: { pluginId: "ipo-calendar", key: "list" },
-    },
-    {
-      key: "status",
-      shot: REPORT_FILTER,
+    }),
+    // `trading` was the plugin's word for a deal that has listed.
+    enumOption("status", ["all", ...STATUS_OPTIONS].map((value) => (value === "listed" ? { value, aliases: ["trading"] } : value)), {
+      shot: REPORT_FILTER, defaultValue: "all",
       description: "IPO stage to include; upcoming takes in the deals listed as offering or overdue, and delayed the ones still not listed 3 weekdays past their date.",
-      type: "enum",
-      defaultValue: "all",
-      // `trading` was the plugin's word for a deal that has listed.
-      values: ["all", ...STATUS_OPTIONS].map((value) => (value === "listed" ? { value, aliases: ["trading"] } : { value })),
-    },
-    {
-      key: "limit",
-      shot: REPORT_ROWS,
-      description: "Maximum IPO rows to return.",
-      type: "integer",
-      defaultValue: 50,
-      minimum: 1,
-      maximum: MAX_ROWS,
-    },
-    {
-      key: "from",
-      type: "string",
-      placeholder: "date",
-      description: `First listing date, as ${DATE_OPTION_EXAMPLES}; the calendar keeps a year of listings.`,
-      example: "--from 2025-11-01",
-      normalize: (value) => isoDateOption(value, "from"),
-    },
+    }),
+    limitOption({ description: "Maximum IPO rows to return.", defaultValue: 50, maximum: MAX_ROWS }),
+    dateOption("from", { description: `First listing date, as ${DATE_OPTION_EXAMPLES}; the calendar keeps a year of listings.`, example: "--from 2025-11-01" }),
   ],
   columns: COLUMNS,
   describe: (args) => {

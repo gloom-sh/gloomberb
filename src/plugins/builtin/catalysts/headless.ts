@@ -1,10 +1,10 @@
 import { CATALYST_TYPES, type CatalystEvent } from "../../../api-client/catalysts";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
-import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
+import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 import { fetchCatalystDetail, fetchCatalysts } from "./client";
 import { catalystKindCell, catalystKindDate, catalystKindFields, catalystKindFold, catalystKindNoun, catalystKindOf, catalystKindTypes, catalystSelf, catalystWith, CATALYST_KINDS, createCatalystKindLoader, isCatalystKind } from "./kinds";
 import { catalystCell, catalystChangeText, catalystDate, catalystDateBasis, catalystEmptyTitle, catalystLockedText, catalystParties, catalystQuery, catalystTickers } from "./model";
-import { REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
+import { clampLimit, dateOption, enumOption, intOption, REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
 import { formatDaysInText } from "../../../utils/day-format";
 
 /** A change's days read day first in the text, as the pane draws them; JSON and CSV keep them in ISO. */
@@ -16,18 +16,18 @@ function definition(litigation: boolean): HeadlessPaneDefinition<"bundle"> {
     freshness: { source: litigation ? "Court and agency dockets" : "Regulator, court and trade records", status: "not-a-feed", basis: "published records" },
     argument: { kind: "ticker", optional: !litigation, description: litigation ? "Company ticker, including exchange-qualified international listings." : "Optional ticker; omit for market-wide events." },
     options: [
-      { key: "tab", type: "enum", values: [{ value: "calendar", label: litigation ? "Dockets" : "Calendar" }, { value: "changes" }], defaultValue: "calendar", description: "Dated events or observed revisions." },
-      ...(!litigation ? [{ key: "kind", type: "enum" as const, values: CATALYST_KINDS.map(({ value, label }) => ({ value, label })), description: "One kind of event with its own columns: company dates, drug decision days, approvals, trials, rules or legal actions." }] : []),
-      { key: "type", type: "enum", values: CATALYST_TYPES.map((value) => ({ value })), description: "Event type." },
+      enumOption("tab", [{ value: "calendar", label: litigation ? "Dockets" : "Calendar" }, "changes"], { defaultValue: "calendar", description: "Dated events or observed revisions." }),
+      ...(!litigation ? [enumOption("kind", CATALYST_KINDS.map(({ value, label }) => ({ value, label })), { description: "One kind of event with its own columns: company dates, drug decision days, approvals, trials, rules or legal actions." })] : []),
+      enumOption("type", CATALYST_TYPES, { description: "Event type." }),
       ...["agency", "country", "sector", "status"].map((key) => ({ key, type: "string" as const, description: `Filter by ${key}.` })),
       { key: "search", type: "string", description: "Filter by text." },
-      { key: "from", type: "string", placeholder: "date", description: `Start of the calendar window, as ${DATE_OPTION_EXAMPLES}.`, normalize: (value) => isoDateOption(value, "from") },
-      { key: "to", type: "string", placeholder: "date", description: `End of the calendar window, as ${DATE_OPTION_EXAMPLES}.`, normalize: (value) => isoDateOption(value, "to") },
-      { key: "dateField", type: "enum", values: ["any", "announced", "effective", "deadline", "observed"].map((value) => ({ value })), defaultValue: "any", description: "Date field for the calendar window." },
+      dateOption("from", { description: `Start of the calendar window, as ${DATE_OPTION_EXAMPLES}.` }),
+      dateOption("to", { description: `End of the calendar window, as ${DATE_OPTION_EXAMPLES}.` }),
+      enumOption("dateField", ["any", "announced", "effective", "deadline", "observed"], { defaultValue: "any", description: "Date field for the calendar window." }),
       { key: "upcoming", type: "boolean", defaultValue: false, description: "Only future effective dates and deadlines." },
-      { key: "offset", shot: REPORT_PAGE, type: "integer", defaultValue: 0, description: "Zero-based event offset." },
-      { key: "limit", shot: REPORT_ROWS, type: "integer", defaultValue: 100, description: "Rows to return, up to 200." },
-      { key: "detailTab", type: "enum", values: [{ value: "evidence" }, { value: "history" }], defaultValue: "evidence", description: "Detail section for screenshots." },
+      intOption("offset", { shot: REPORT_PAGE, defaultValue: 0, description: "Zero-based event offset." }),
+      intOption("limit", { shot: REPORT_ROWS, defaultValue: 100, description: "Rows to return, up to 200." }),
+      enumOption("detailTab", ["evidence", "history"], { defaultValue: "evidence", description: "Detail section for screenshots." }),
       { key: "event", type: "string", settingKey: "open", description: "Event ID for evidence and revision history." },
     ],
     discovery: { aliases: [litigation ? "LITI" : "CATL"],
@@ -36,8 +36,10 @@ function definition(litigation: boolean): HeadlessPaneDefinition<"bundle"> {
       dataRequirements: ["Gloom Cloud catalyst records"], limitations: ["Pro; free preview includes three events.", "Only published dates and confidently resolved corporate parties are linked.", "Coverage varies by jurisdiction and source; absence is not proof of no event."] },
     describe: litigation ? "Company litigation, enforcement and antitrust dockets with evidence" : "Regulatory, clinical, legal and trade-policy catalyst calendar with provenance",
     async load(args, ctx) {
+      const limit = clampLimit(Number(args.options.limit) || 100, 100, 200);
+      const offset = Math.max(0, Number(args.options.offset) || 0);
       if (typeof args.options.event === "string" && args.options.event) {
-        const data = await fetchCatalystDetail(args.options.event, ctx.apiClient, undefined, { offset: Math.max(0, Number(args.options.offset) || 0), limit: Math.min(200, Math.max(1, Number(args.options.limit) || 100)) });
+        const data = await fetchCatalystDetail(args.options.event, ctx.apiClient, undefined, { offset, limit });
         const lockedHistory = data.access?.pro === false && data.historyTruncated === true;
         return { ...(lockedHistory ? { complete: false, errors: ["Older revisions need Gloom Pro"] } : {}), sections: [{ title: "Event evidence", entries: Object.entries(data.event).map(([label, value]) => ({ label, value: typeof value === "object" ? JSON.stringify(value) : String(value ?? "") })) },
           { title: "Revision history", columns: [{ key: "revision", header: "Revision" }, { key: "observedAt", header: "Observed (UTC)" }, { key: "status", header: "Status" }, { key: "changeSummary", header: "Changes", textFormat: changeText }], rows: data.history.map((event) => ({ ...event, changeSummary: event.changes.map(catalystChangeText).join("; ") || "First observed" })) }],
@@ -45,8 +47,6 @@ function definition(litigation: boolean): HeadlessPaneDefinition<"bundle"> {
       }
       const symbol = Array.isArray(args.argument) ? args.argument[0] : args.argument;
       const query = catalystQuery(args.options, symbol ?? undefined, litigation);
-      const limit = Math.max(1, Math.min(200, Number(args.options.limit) || 100));
-      const offset = Math.max(0, Number(args.options.offset) || 0);
       if (!litigation && args.options.tab !== "changes" && isCatalystKind(args.options.kind)) {
         // One kind, read across its types in calendar order, under the pane's columns for it.
         const kind = query.type ? catalystKindOf(query.type) : args.options.kind;

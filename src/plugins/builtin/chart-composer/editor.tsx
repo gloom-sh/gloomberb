@@ -21,60 +21,22 @@ export interface SeriesEditorDialogProps extends PromptContext<ChartSpec | null>
 export function SeriesEditorDialog({ dialogId, resolve, initialSpec }: SeriesEditorDialogProps) {
   const isDesktop = useUiCapabilities().nativePaneChrome === true;
   const nativeRenderer = useNativeRenderer();
-  const controller = useSeriesEditorController({
+  const c = useSeriesEditorController({
     dialogId,
     resolve,
     initialSpec,
     isDesktop,
   });
-  const {
-    actions,
-    activateQuickAdd,
-    addCatalogSuggestion,
-    beginExpressionEdit,
-    beginQuickAdd,
-    commitExpression,
-    deactivateQuickAdd,
-    defaultInstrument,
-    editingExpression,
-    error,
-    expression,
-    expressionRef,
-    fields,
-    focusKeyboardTarget,
-    items,
-    keyboardFocus,
-    moveKeyboardFocus,
-    moveQuickAddSelection,
-    quickAddActive,
-    quickAddItems,
-    quickAddLoading,
-    quickAddError,
-    retryQuickAdd,
-    quickAddQuery,
-    quickAddRef,
-    quickAddSelection,
-    quickAddSuggestions,
-    selected,
-    selectedIndex,
-    setEditingExpression,
-    setExpression,
-    setQuickAddQuery,
-    setQuickAddSelection,
-    setSelectedIndex,
-    submitQuickAdd,
-    updateKeyboardFocus,
-  } = controller;
   const availableTuiWidth = nativeRenderer.terminalWidth > 0
     ? nativeRenderer.terminalWidth - 8
     : 76;
   const tuiContentWidth = Math.max(1, Math.min(76, availableTuiWidth));
   const contentWidth = isDesktop ? "660px" : tuiContentWidth;
   const fieldLabel = (field: SeriesEditorFocus, label: string) => (
-    keyboardFocus === field ? `› ${label}` : label
+    c.keyboardFocus === field ? `› ${label}` : label
   );
   // The keys with no button of their own; the buttons show theirs.
-  const seriesKeys = selected ? ["E source", "P panel", "L log scale"] : [];
+  const seriesKeys = c.selected ? ["E source", "P panel", "L log scale"] : [];
   // A narrow terminal drops the navigation keys first: nothing else shows the action keys.
   const navigationKeys = ["Tab field", "←→ change", "↑↓ series"];
   while (navigationKeys.length > 0 && [...navigationKeys, ...seriesKeys].join(" · ").length > tuiContentWidth) {
@@ -87,7 +49,7 @@ export function SeriesEditorDialog({ dialogId, resolve, initialSpec }: SeriesEdi
       onClose={() => resolve(null)}
       footer={[...navigationKeys, ...seriesKeys].join(" · ")}
       // The desktop's fields take the pointer and arrows like any form.
-      desktopFooter={selected
+      desktopFooter={c.selected
         ? { keys: [{ key: "E", label: "source" }, { key: "P", label: "panel" }, { key: "L", label: "log scale" }] }
         : null}
     >
@@ -100,75 +62,75 @@ export function SeriesEditorDialog({ dialogId, resolve, initialSpec }: SeriesEdi
       >
         <TextField
           label={isDesktop ? "Add a series" : fieldLabel("add", "Add a series")}
-          value={quickAddQuery}
-          placeholder={`Search ${defaultInstrument.symbol} metrics or type “MSFT revenue”`}
+          value={c.quickAddQuery}
+          placeholder={`Search ${c.defaultInstrument.symbol} metrics or type “MSFT revenue”`}
           hint={isDesktop ? "Search by ticker or company and metric. Exact FRED IDs also work." : undefined}
-          focused={quickAddActive}
+          focused={c.quickAddActive}
           width={isDesktop ? undefined : tuiContentWidth}
-          inputRef={quickAddRef}
-          onMouseDown={() => beginQuickAdd()}
+          inputRef={c.quickAddRef}
+          onMouseDown={() => c.beginQuickAdd()}
           onKeyDown={(event) => {
             // The terminal's dialog keys see arrows first; a desktop field keeps
             // them unless the suggestion highlight takes them here.
-            if (event.defaultPrevented || !isDesktop || !quickAddActive || quickAddItems.length === 0) return;
+            if (event.defaultPrevented || !isDesktop || !c.quickAddActive || c.quickAddItems.length === 0) return;
             const direction = event.name === "up" ? -1 : event.name === "down" ? 1 : 0;
             if (!direction || event.shift) return;
             event.preventDefault();
             event.stopPropagation();
-            moveQuickAddSelection(direction);
+            c.moveQuickAddSelection(direction);
           }}
           onChange={(value) => {
-            setQuickAddQuery(value);
-            if (value.trim()) activateQuickAdd();
+            c.setQuickAddQuery(value);
+            if (value.trim()) c.activateQuickAdd();
           }}
-          onSubmit={submitQuickAdd}
-          onBlur={deactivateQuickAdd}
+          onSubmit={c.submitQuickAdd}
+          onBlur={c.deactivateQuickAdd}
         />
 
-        {(quickAddActive || quickAddError) && quickAddQuery.trim() && (
-          quickAddItems.length > 0 ? (
+        {(c.quickAddActive || c.quickAddError) && c.quickAddQuery.trim() && (
+          c.quickAddItems.length > 0 ? (
             <Box width={contentWidth} overflow="hidden">
               <ListView
-                items={quickAddItems}
-                selectedIndex={quickAddSelection}
-                height={Math.min(isDesktop ? 5 : 6, quickAddItems.length)}
+                items={c.quickAddItems}
+                selectedIndex={c.quickAddSelection}
+                height={Math.min(isDesktop ? 5 : 6, c.quickAddItems.length)}
                 surface="framed"
-                scrollable={quickAddItems.length > (isDesktop ? 5 : 6)}
+                scrollable={c.quickAddItems.length > (isDesktop ? 5 : 6)}
                 rowGap={isDesktop ? 0 : undefined}
                 selectOnHover
-                onSelect={setQuickAddSelection}
-                onActivate={(_, index) => { beginQuickAdd(); addCatalogSuggestion(quickAddSuggestions[index]); }}
+                onSelect={c.setQuickAddSelection}
+                onActivate={(_, index) => { c.beginQuickAdd(); c.addCatalogSuggestion(c.quickAddSuggestions[index]); }}
               />
             </Box>
-          ) : !quickAddError ? (
+          ) : !c.quickAddError ? (
             <Text fg={colors.textMuted}>
-              {quickAddLoading ? "Searching instruments…" : "No matching security or metric."}
+              {c.quickAddLoading ? "Searching instruments…" : "No matching security or metric."}
             </Text>
           ) : null
         )}
-        {quickAddQuery.trim() && quickAddError && (
-          <EmptyState title={quickAddError} status="error" retry={{ onRetry: () => { beginQuickAdd(); return retryQuickAdd(); } }} />
+        {c.quickAddQuery.trim() && c.quickAddError && (
+          <EmptyState title={c.quickAddError} status="error" retry={{ onRetry: () => { c.beginQuickAdd(); return c.retryQuickAdd(); } }} />
         )}
 
-        {items.length > 0 ? (
+        {c.items.length > 0 ? (
           <Box
             width={contentWidth}
             overflow="hidden"
           >
             <ListView
-              items={items}
-              selectedIndex={selectedIndex}
+              items={c.items}
+              selectedIndex={c.selectedIndex}
               height={isDesktop
-                ? Math.min(5, items.length)
-                : Math.min(7, Math.max(1, items.length))}
+                ? Math.min(5, c.items.length)
+                : Math.min(7, Math.max(1, c.items.length))}
               surface={isDesktop ? "plain" : "framed"}
-              selectedBgColor={!isDesktop && keyboardFocus === "series"
+              selectedBgColor={!isDesktop && c.keyboardFocus === "series"
                 ? colors.borderFocused
                 : undefined}
-              scrollable={items.length > (isDesktop ? 5 : 7)}
+              scrollable={c.items.length > (isDesktop ? 5 : 7)}
               rowGap={isDesktop ? 0 : undefined}
-              onSelect={(index) => { if (!isDesktop) focusKeyboardTarget("series"); setSelectedIndex(index); }}
-              onActivate={(_, index) => setSelectedIndex(index)}
+              onSelect={(index) => { if (!isDesktop) c.focusKeyboardTarget("series"); c.setSelectedIndex(index); }}
+              onActivate={(_, index) => c.setSelectedIndex(index)}
             />
           </Box>
         ) : (
@@ -177,21 +139,21 @@ export function SeriesEditorDialog({ dialogId, resolve, initialSpec }: SeriesEdi
           </Box>
         )}
 
-        {selected && (
+        {c.selected && (
           <Box flexDirection="column" width="100%" overflow="hidden" gap={1}>
             <TextField
               label={isDesktop
                 ? "Exact source (advanced)"
                 : fieldLabel("source", "Exact source (advanced)")}
-              value={expression}
+              value={c.expression}
               placeholder="AAPL:revenue or FRED:CPIAUCSL"
               hint={isDesktop
                 ? "Changes this series in place; use an exact symbol, field, or FRED ID."
                 : undefined}
-              focused={editingExpression}
+              focused={c.editingExpression}
               width={isDesktop ? undefined : tuiContentWidth}
-              inputRef={expressionRef}
-              onMouseDown={beginExpressionEdit}
+              inputRef={c.expressionRef}
+              onMouseDown={c.beginExpressionEdit}
               onKeyDown={(event) => {
                 if (event.defaultPrevented) return;
                 if (event.name === "escape") {
@@ -201,51 +163,51 @@ export function SeriesEditorDialog({ dialogId, resolve, initialSpec }: SeriesEdi
                 } else if (event.name === "enter" || event.name === "return") {
                   event.stopPropagation();
                   event.preventDefault();
-                  if (commitExpression()) moveKeyboardFocus(1);
+                  if (c.commitExpression()) c.moveKeyboardFocus(1);
                 }
                 // Tab is left to the dialog: the terminal's ring commits and moves,
                 // and the desktop walks its controls, committing as the field blurs.
               }}
               onChange={(value) => {
-                setExpression(value);
+                c.setExpression(value);
                 // Tab reaches the field on the desktop without a click, so typing
                 // is what marks it as being edited and committed on blur.
-                if (isDesktop && !editingExpression) {
-                  updateKeyboardFocus("source");
-                  setEditingExpression(true);
+                if (isDesktop && !c.editingExpression) {
+                  c.updateKeyboardFocus("source");
+                  c.setEditingExpression(true);
                 }
               }}
-              onSubmit={() => { commitExpression(); }}
+              onSubmit={() => { c.commitExpression(); }}
               onBlur={() => {
-                if (!editingExpression) return;
-                const committed = commitExpression();
+                if (!c.editingExpression) return;
+                const committed = c.commitExpression();
                 if (!committed && !isDesktop) {
-                  updateKeyboardFocus("source");
-                  setEditingExpression(true);
-                  queueMicrotask(() => expressionRef.current?.focus?.());
+                  c.updateKeyboardFocus("source");
+                  c.setEditingExpression(true);
+                  queueMicrotask(() => c.expressionRef.current?.focus?.());
                 }
               }}
             />
 
             {isDesktop ? (
-              <DesktopSeriesEditorFields fields={fields} />
+              <DesktopSeriesEditorFields fields={c.fields} />
             ) : (
               <OpenTuiSeriesEditorFields
-                fields={fields}
-                keyboardFocus={keyboardFocus}
+                fields={c.fields}
+                keyboardFocus={c.keyboardFocus}
                 dialogId={dialogId}
-                onFocus={focusKeyboardTarget}
+                onFocus={c.focusKeyboardTarget}
               />
             )}
           </Box>
         )}
 
-        {error && <Text fg={colors.negative} wrapText>{error}</Text>}
+        {c.error && <Text fg={colors.negative} wrapText>{c.error}</Text>}
 
         {isDesktop ? (
-          <DesktopSeriesEditorActions actions={actions} />
+          <DesktopSeriesEditorActions actions={c.actions} />
         ) : (
-          <OpenTuiSeriesEditorActions actions={actions} />
+          <OpenTuiSeriesEditorActions actions={c.actions} />
         )}
       </Box>
     </DialogFrame>

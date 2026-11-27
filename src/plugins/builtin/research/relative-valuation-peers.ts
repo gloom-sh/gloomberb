@@ -3,6 +3,7 @@ import type { HeadlessPaneContext } from "../../../types/headless";
 import type { TickerFinancials } from "../../../types/financials";
 import { canonicalTickerKey, isUsListingExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { errorMessage } from "../../../utils/errors";
+import { joinEnglishList as listText } from "../../../utils/format";
 import { isRecord } from "../../../utils/guards";
 import { formatTickerListInput } from "../../../tickers/list";
 import { selectMarketCapitalization } from "../../../utils/market-capitalization";
@@ -197,9 +198,6 @@ export function rankPeerCandidates(
 }
 
 /** `A`, `A and B`, `A, B and C`. */
-function listText(items: readonly string[]): string {
-  return items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
-}
 
 /**
  * The covered equities the screener returned for a subject's group: its

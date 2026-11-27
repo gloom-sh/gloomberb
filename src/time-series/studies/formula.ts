@@ -1,9 +1,9 @@
-import { alignTimeSeries, matchedFreshBarStart } from "../alignment";
 import type { ChartStudySpec, ResolvedSeries, TimeSeriesPoint } from "../types";
+import { utcDay } from "../../utils/day-format";
 import { isFiniteNumber } from "../../utils/guards";
 import { continuousFuturesRoot, futuresContractCode, futuresContractMonth, futuresGenericListing } from "../../utils/futures-generic";
 import { GALLONS_PER_BARREL, isBarrelsPerTonne, perBarrelUnit, perTonneUnit } from "../price-units";
-import { derivedPoint, outputSeries } from "./shared";
+import { alignedDerivedSamples, derivedPoint, outputSeries, sharedFrequency, sharedHistoryResolution } from "./shared";
 import {
   combinedUnit,
   derivedValueDecimals,
@@ -176,38 +176,44 @@ function formulaLabel(inputs: readonly (ResolvedSeries | undefined)[], terms: Fo
  * an input the sum does not read is left out of the dates).
  */
 function alignedSamples(inputs: readonly (ResolvedSeries | undefined)[], summed: readonly number[]): Array<{ point: TimeSeriesPoint; values: number[]; points: TimeSeriesPoint[] }> {
-  const read = summed.map((index) => inputs[index]!);
-  return alignTimeSeries(read, { mode: "intersection", carryForward: true }).flatMap((row) => {
-    const aligned = read.map((input) => row.values[input.id]);
-    if (aligned.some((entry) => !isFiniteNumber(entry?.value))) return [];
-    const availability = Math.max(...aligned.map((entry) => entry!.point.availableAt?.getTime() ?? entry!.point.date.getTime()));
-    const barStart = matchedFreshBarStart(aligned);
+  return alignedDerivedSamples(summed.map((index) => inputs[index]!), true).map((sample) => {
     const values: number[] = [];
     const points: TimeSeriesPoint[] = [];
     summed.forEach((index, position) => {
-      values[index] = aligned[position]!.value as number;
-      points[index] = aligned[position]!.point;
+      values[index] = sample.values[position]!;
+      points[index] = sample.points[position]!;
     });
-    return [{
-      values,
-      points,
-      point: {
-        date: new Date(barStart ?? row.date.getTime()),
-        observedAt: new Date(row.date),
-        availableAt: Number.isFinite(availability) ? new Date(availability) : undefined,
-        ...(barStart !== undefined ? { barStart: new Date(barStart) } : {}),
-        value: null,
-        provenance: { quality: "derived" as const },
-      },
-    }];
+    return { point: sample.point, values, points };
   });
 }
 
-/**
- * A weighted sum of the legs over a divisor, in the unit the legs share once
- * converted, then times or over the series it is scaled by, in the unit
- * that arithmetic leaves: a crack in USD / barrel over EURUSD=X is EUR / barrel.
- */
+function walkFormulaFactors(
+  terms: FormulaTerms,
+  inputs: readonly (ResolvedSeries | undefined)[],
+  checkFx: boolean,
+): { unit: SeriesUnit; scales: number[] } | { error: string } {
+  let unit: SeriesUnit = formulaLegUnit(terms.legs[0]!, inputs[terms.legs[0]!.index]!);
+  const scales: number[] = [];
+  for (const factor of terms.factors) {
+    const series = inputs[factor.index]!;
+    // A percent over basis points, or basis points over a percent, is a plain number (formulaFactorScale).
+    const scale = factor.power < 0 ? percentBasisPointRatioScale(unit, series) : null;
+    if (scale !== null) {
+      unit = PLAIN_RATIO_UNIT;
+      scales.push(scale);
+      continue;
+    }
+    const next = combinedUnit(unit, series, factor.power);
+    if (checkFx) {
+      const issue = fxConversionIssue(unit, series, factor.power, next);
+      if (issue) return { error: issue };
+    }
+    unit = next;
+    scales.push(1);
+  }
+  return { unit, scales };
+}
+
 /**
  * A formula's unit: its legs' once converted, then times or over each series
  * it is scaled by. Legs that count different units, or an FX rate the wrong
@@ -217,21 +223,8 @@ function alignedSamples(inputs: readonly (ResolvedSeries | undefined)[], summed:
 export function formulaUnit(terms: FormulaTerms, inputs: readonly (ResolvedSeries | undefined)[]): SeriesUnit | { error: string } {
   const mismatch = formulaUnitMismatch(terms, inputs);
   if (mismatch) return { error: mismatch };
-  const first = inputs[terms.legs[0]!.index]!;
-  let unit: SeriesUnit = formulaLegUnit(terms.legs[0]!, first);
-  for (const factor of terms.factors) {
-    const series = inputs[factor.index]!;
-    // A percent over basis points, or basis points over a percent, is a plain number (formulaFactorScale).
-    if (factor.power < 0 && percentBasisPointRatioScale(unit, series) !== null) {
-      unit = PLAIN_RATIO_UNIT;
-      continue;
-    }
-    const next = combinedUnit(unit, series, factor.power);
-    const issue = fxConversionIssue(unit, series, factor.power, next);
-    if (issue) return { error: issue };
-    unit = next;
-  }
-  return unit;
+  const walked = walkFormulaFactors(terms, inputs, true);
+  return "error" in walked ? walked : walked.unit;
 }
 
 /**
@@ -240,13 +233,8 @@ export function formulaUnit(terms: FormulaTerms, inputs: readonly (ResolvedSerie
  * is in bp, so the two cancel to a plain number; 1 otherwise.
  */
 function formulaFactorScales(terms: FormulaTerms, inputs: readonly (ResolvedSeries | undefined)[]): number[] {
-  let unit: SeriesUnit = formulaLegUnit(terms.legs[0]!, inputs[terms.legs[0]!.index]!);
-  return terms.factors.map((factor) => {
-    const series = inputs[factor.index]!;
-    const scale = factor.power < 0 ? percentBasisPointRatioScale(unit, series) : null;
-    unit = scale !== null ? PLAIN_RATIO_UNIT : combinedUnit(unit, series, factor.power);
-    return scale ?? 1;
-  });
+  const walked = walkFormulaFactors(terms, inputs, false);
+  return "error" in walked ? [] : walked.scales;
 }
 
 /** A leg that follows the front month (`CL=F`, `CL1`), whose contract changes as it rolls; a listed contract or a stock does not. */
@@ -393,10 +381,6 @@ export function formulaRollNote(series: Pick<ResolvedSeries, "points" | "formula
   return `legs in ${series.formulaLeader}'s delivery month, rolling with it: ${earlier > 0 ? `${earlier} earlier, then ` : ""}${listed.join("; ")} (marked roll)`;
 }
 
-function utcDay(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
 /**
  * A formula's one series: its legs weighed, summed and scaled on every date
  * of any leg. A formula of futures carries each point's leg contracts and
@@ -442,8 +426,6 @@ export function resolveFormula(
     previous = contracts;
     return { ...derived, legs: priced.legs, ...(roll ? { roll: true } : {}), ...(priced.partial ? { partial: true } : {}) };
   });
-  const frequencies = new Set(summed.map((input) => input.nativeFrequency));
-  const resolutions = new Set(summed.map((input) => input.historyResolution));
   const scaled = terms.factors.length > 0;
   // A price per quantity reads with its unit beside it, as a future's does.
   const statedUnit = scaled
@@ -465,8 +447,8 @@ export function resolveFormula(
       style: "step",
       interpolation: "step-after",
       axis: "left",
-      nativeFrequency: frequencies.size === 1 ? first.nativeFrequency : "auto",
-      historyResolution: resolutions.size === 1 ? first.historyResolution : null,
+      nativeFrequency: sharedFrequency(summed),
+      historyResolution: sharedHistoryResolution(summed),
     }),
     // A catalog formula is named; a report writes the terms it was charted from beside the name.
     ...(terms.name ? { expression: formulaLabel(inputs, terms) } : {}),

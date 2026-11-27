@@ -7,7 +7,7 @@ import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-d
 import { MISSING_VALUE, formatCompact, formatCurrency, formatLevelPercent, formatNumber, formatPercent, formatPercentRaw } from "../../../utils/format";
 import { loadHeadlessFinancials, loadHeadlessSymbols } from "../shared/headless-market-data";
 import { quoteFreshnessFields } from "../shared/report-freshness";
-import { extendedPrintTimeColumn } from "../shared/extended-print";
+import { extendedPriceColumn, extendedPrintTimeColumn } from "../shared/extended-print";
 import { formatUtcWeekdayTime } from "../../../utils/utc-time";
 import {
   RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE, RELATIVE_VALUATION_STALE_QUOTE_NOTICE, relativeValuationValues, type RelativeValuationGapKey,
@@ -36,19 +36,12 @@ function gapText(row: Record<string, unknown>, key: RelativeValuationGapKey): st
  * The pre-market, after-hours or overnight print and its move from the regular close in Last, for the peers that have
  * one; "mid" when it is a bid and ask midpoint.
  */
-function extendedColumn(session: ExtendedSession): HeadlessPaneColumn {
-  return {
-    key: "extendedPrice",
-    // When the print was, in UTC as the header says: a Friday evening's after-hours print read on a Sunday says so.
-    header: `${EXTENDED_SESSION_LABELS[session]} UTC`,
-    literalHeader: true,
-    align: "right",
-    format: (value, row) => row.extendedSession === session && typeof value === "number"
-      ? [`${price(value, row)}${row.extendedMark ? " mid" : ""} ${percent(row.extendedChangePercent)}`,
-        typeof row.extendedUpdatedAt === "number" ? formatUtcWeekdayTime(row.extendedUpdatedAt) : ""].filter(Boolean).join(" ")
-      : MISSING_VALUE,
-  };
-}
+const extendedColumn = (session: ExtendedSession): HeadlessPaneColumn => extendedPriceColumn(
+  session,
+  (value, row) => [`${price(value, row)}${row.extendedMark ? " mid" : ""} ${percent(row.extendedChangePercent)}`,
+    typeof row.extendedUpdatedAt === "number" ? formatUtcWeekdayTime(row.extendedUpdatedAt) : ""].filter(Boolean).join(" "),
+  { header: `${EXTENDED_SESSION_LABELS[session]} UTC`, literalHeader: true },
+);
 
 /**
  * An export's extended print: the price alone, in the row's currency, then its move from the close in a

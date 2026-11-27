@@ -1,6 +1,7 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { formatDay } from "../../../utils/day-format";
 import { isoDayEntries } from "../shared/day-entries";
+import { enumOption, intOption } from "../shared/headless-options";
 import type {
   HeadlessBundleResult,
   HeadlessBundleSection,
@@ -377,23 +378,14 @@ export function createCdsHeadless(
       optional: true,
     },
     options: [
-      {
-        key: "sort",
-        type: "enum",
-        settingKey: "sort",
-        values: ISSUER_LIST_SORTS.map((value) => ({ value })),
-        defaultValue: "trades",
+      enumOption("sort", ISSUER_LIST_SORTS, {
+        settingKey: "sort", defaultValue: "trades", example: "--sort 1m", exampleWithoutArgument: true,
         description: "Issuer list order, largest first: trades, 5Y spread, or its 1W or 1M move. Names quoted in points rank after the bp names, names without one last.",
-        example: "--sort 1m",
-        exampleWithoutArgument: true,
-      },
-      {
-        key: "days",
-        type: "integer",
-        ...DAILY_DAYS,
-        shot: { reportOnly: "sets how many days of an issuer's daily 5Y levels the report lists" },
+      }),
+      intOption("days", {
+        ...DAILY_DAYS, shot: { reportOnly: "sets how many days of an issuer's daily 5Y levels the report lists" },
         description: "Days of a named issuer's daily 5Y levels, the report's Daily section (fn CDS F --csv --section daily).",
-      },
+      }),
     ],
     discovery: { aliases: ["CDS", "CDSW"] },
     describe: (args) => typeof args.argument === "string" ? `CDS | ${args.argument}` : "Single-Name CDS",

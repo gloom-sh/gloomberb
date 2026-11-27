@@ -1,15 +1,14 @@
 import { useMemo, useRef, useState } from "react";
 import type { ChartVectorShape } from "../../../../ui/host";
 import { Box, ChartSurface, Span, Text, TextAttributes, useUiCapabilities } from "../../../../ui";
-import { BADGE_TINT, ClippedText, NATIVE_BADGE_STYLE } from "../../../../components/ui/display";
+import { ClippedText } from "../../../../components/ui/display";
 import { cardSurfaceStyle } from "../../../../components/ui/card";
-import { useShortcut } from "../../../../react/input";
 import { blendHex } from "../../../../theme/colors";
 import { currentThemeColorSet, SERIES_COLORS } from "../../../../theme/series-colors";
 import { useThemeColors } from "../../../../theme/theme-context";
 import { displayWidth } from "../../../../utils/format";
-import { isPlainKey } from "../../../../utils/keyboard";
 import { ribbonY } from "../../supply-chain/flow-layout";
+import { FlowFocusCard, FlowPillChip, hitTestFlowRibbons, rasterizeBrailleRibbons, useFlowListShortcut } from "../../shared/flow-diagram";
 import type { BuildoutCompanyProfile, BuildoutRelation, RelationRole } from "./model";
 
 /** Power and hosting gold, then the supply chain's own supplier, customer and competitor colours, as the drawing theme reads them. */
@@ -170,18 +169,15 @@ export function CompanyFlow({ profile, width, height, focused, onOpen }: {
   const active = hovered ?? (focused ? selected : null);
   const focusTint = blendHex(colors.bg, colors.textBright, 0.55);
 
-  useShortcut((event) => {
-    if (!focused || event.defaultPrevented || selectable.length === 0) return;
-    if (isPlainKey(event, "j", "down") || isPlainKey(event, "k", "up")) {
-      const step = isPlainKey(event, "j", "down") ? 1 : -1;
-      setSelectedId(linkId(selectable[(selectedIndex + step + selectable.length) % selectable.length]!));
-    } else if (isPlainKey(event, "return", "enter")) onOpen(selectable[selectedIndex]!);
-    else return;
-    event.preventDefault();
-    event.stopPropagation();
+  useFlowListShortcut({
+    focused,
+    items: selectable,
+    selectedIndex,
+    onSelect: (relation) => setSelectedId(linkId(relation)),
+    onActivate: onOpen,
   });
 
-  const linkColors = (link: FlowLink) => link.x0 < center.x ? [RELATION_COLORS[link.role], focusTint] : [focusTint, RELATION_COLORS[link.role]];
+  const linkColors = (link: FlowLink): [string, string] => link.x0 < center.x ? [RELATION_COLORS[link.role], focusTint] : [focusTint, RELATION_COLORS[link.role]];
   const vectors = useMemo<ChartVectorShape[]>(() => links.map((link) => ({
     id: link.id,
     points: Array.from({ length: LINK_STEPS + 1 }, (_, step) => {
@@ -197,46 +193,21 @@ export function CompanyFlow({ profile, width, height, focused, onOpen }: {
   // The terminal draws the same curves in braille, each coloured from its card to the company.
   const braille = useMemo(() => {
     if (desktop) return null;
-    const grid = Array.from({ length: height }, () => Array.from({ length: width }, () => ({ mask: 0, color: colors.textDim })));
-    const bits = [[1, 8], [2, 16], [4, 32], [64, 128]];
-    for (const link of links) {
-      const [from, to] = linkColors(link);
-      for (let dx = Math.ceil(link.x0 * 2); dx < Math.floor(link.x1 * 2); dx++) {
-        const x = (dx + 0.5) / 2;
-        const t = (x - link.x0) / Math.max(1e-6, link.x1 - link.x0);
-        const dy = Math.round(ribbonY(link, x) * 4 - 0.5);
-        const cell = grid[Math.floor(dy / 4)]?.[Math.floor(dx / 2)];
-        if (!cell || dy < 0) continue;
-        cell.mask |= bits[dy % 4]![dx % 2]!;
-        const color = blendHex(from!, to!, t);
-        cell.color = active === link.id ? color : blendHex(colors.bg, color, 0.75);
-      }
-    }
-    return grid.map((line) => {
-      const spans: { text: string; color: string }[] = [];
-      for (const cell of line) {
-        const char = cell.mask ? String.fromCharCode(0x2800 + cell.mask) : " ";
-        if (spans.at(-1)?.color === cell.color) spans.at(-1)!.text += char;
-        else spans.push({ text: char, color: cell.color });
-      }
-      return spans;
-    });
+    return rasterizeBrailleRibbons(
+      links.map((link) => {
+        const [from, to] = linkColors(link);
+        return { ...link, thickness: null, from, to, lit: active === link.id };
+      }),
+      width,
+      height,
+      colors,
+    );
   }, [active, colors.bg, colors.textDim, desktop, height, links, width, focusTint, center.x]);
 
   /** The line under the pointer comes forward. */
   const hoverAt = (event: { preciseX?: number; preciseY?: number; x: number; y: number }) => {
-    const origin = surfaceRef.current;
-    if (!origin) return;
-    const x = (event.preciseX ?? event.x) - (origin.absoluteX ?? origin.x);
-    const y = (event.preciseY ?? event.y) - (origin.absoluteY ?? origin.y);
-    let best: { id: string; distance: number } | null = null;
-    for (const link of links) {
-      if (x < link.x0 || x > link.x1) continue;
-      const distance = Math.abs(ribbonY(link, x) - y);
-      if (distance < 0.7 && (!best || distance < best.distance)) best = { id: link.id, distance };
-    }
-    const next = best?.id ?? null;
-    if (next !== hovered) setHovered(next);
+    const next = hitTestFlowRibbons(event, surfaceRef, links, 0.7);
+    if (next !== undefined && next !== hovered) setHovered(next);
   };
 
   return (
@@ -253,7 +224,7 @@ export function CompanyFlow({ profile, width, height, focused, onOpen }: {
           <Text fg={RELATION_COLORS[header.role]} attributes={TextAttributes.BOLD}>{GROUP_LABELS[header.role]}</Text>
         </Box>
       ))}
-      <FocusCard profile={profile} label={focusLabel} rect={center} desktop={desktop} />
+      <FlowFocusCard label={focusLabel} name={profile.name} {...center} desktop={desktop} />
       {cards.map((card) => (
         <RelationCard key={linkId(card.relation)} card={card} desktop={desktop} active={active === linkId(card.relation)}
           onPress={() => { setSelectedId(linkId(card.relation)); onOpen(card.relation); }}
@@ -272,22 +243,20 @@ export function CompanyFlow({ profile, width, height, focused, onOpen }: {
         </Box>
       ) : null}
       {geometry.chipRow !== null ? geometry.chips.map((chip) => (
-        <CompetitorChip key={chip.label} chip={chip} row={geometry.chipRow!} desktop={desktop}
-          active={!!chip.relation && active === linkId(chip.relation)} onPress={() => { if (chip.relation) onOpen(chip.relation); }} />
+        <FlowPillChip
+          key={chip.label}
+          x={chip.x}
+          y={geometry.chipRow!}
+          width={chip.width}
+          label={chip.label}
+          accent={RELATION_COLORS.competitor}
+          more={!chip.relation}
+          desktop={desktop}
+          active={!!chip.relation && active === linkId(chip.relation)}
+          ariaLabel={chip.relation ? `Open ${chip.relation.name}` : chip.label}
+          onPress={() => { if (chip.relation) onOpen(chip.relation); }}
+        />
       )) : null}
-    </Box>
-  );
-}
-
-function FocusCard({ profile, label, rect, desktop }: { profile: BuildoutCompanyProfile; label: string; rect: Rect; desktop: boolean }) {
-  const colors = useThemeColors();
-  const showName = profile.name && profile.name.toUpperCase() !== label.toUpperCase() && rect.height >= (desktop ? 3 : 4);
-  return (
-    <Box position="absolute" left={rect.x} top={rect.y} width={rect.width} height={rect.height} flexDirection="column" alignItems="center" justifyContent="center"
-      border={!desktop} borderStyle="rounded" borderColor={colors.textMuted}
-      style={desktop ? cardSurfaceStyle({ padding: "0" }) : undefined}>
-      <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{label}</Text>
-      {showName ? <ClippedText fg={colors.textDim} text={profile.name} width={rect.width - 4} /> : null}
     </Box>
   );
 }
@@ -319,24 +288,6 @@ function RelationCard({ card, desktop, active, onPress, onHover }: {
           <ClippedText fg={active && !desktop ? colors.selectedText : colors.textDim} text={relation.figure} width={inner - (desktop ? 0 : 1)} />
         </Box>
       ) : null}
-    </Box>
-  );
-}
-
-function CompetitorChip({ chip, row, desktop, active, onPress }: { chip: FlowChip; row: number; desktop: boolean; active: boolean; onPress: () => void }) {
-  const colors = useThemeColors();
-  const accent = RELATION_COLORS.competitor;
-  const more = !chip.relation;
-  const background = desktop
-    ? active ? accent : more ? undefined : blendHex(colors.bg, accent, BADGE_TINT)
-    : active ? blendHex(colors.bg, accent, 0.45) : more ? undefined : blendHex(colors.bg, accent, 0.14);
-  const text = <ClippedText fg={more ? colors.textDim : active ? desktop ? colors.bg : colors.textBright : accent} text={chip.label} width={chip.width - 2} />;
-  return (
-    <Box position="absolute" left={chip.x} top={row} width={chip.width} height={1} justifyContent={desktop ? "center" : undefined}
-      onMouseDown={onPress} role="button" aria-label={chip.relation ? `Open ${chip.relation.name}` : chip.label}>
-      {desktop
-        ? <Box paddingX={1} minWidth={0} backgroundColor={background} justifyContent="center" style={{ ...NATIVE_BADGE_STYLE, cursor: more ? undefined : "pointer" }}>{text}</Box>
-        : <Box paddingX={1} height={1} backgroundColor={background}>{text}</Box>}
     </Box>
   );
 }

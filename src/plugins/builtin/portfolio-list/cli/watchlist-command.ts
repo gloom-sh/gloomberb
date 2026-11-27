@@ -4,7 +4,7 @@ import { withCollectionConfigData, withCollectionMarketData } from "../../../../
 import { countCollectionTickers, findWatchlist } from "../../../../cli/helpers";
 import { windowTextRows } from "../../../../cli/row-window";
 import { slugifyName } from "../../../../utils/slugify";
-import { takeOption } from "../../../../cli/commands/command-utils";
+import { takeFlagOption, takeOption } from "../../../../cli/commands/command-utils";
 import { EXCHANGE_OPTION, loadSavedListingOf, requireSavedListing, savedListingCandidates, savedListingName } from "../../../../cli/listing-arg";
 import {
   cliStyles,
@@ -401,10 +401,10 @@ export const watchlistCliCommand: CliCommandDef = {
   execute: async (rawArgs, ctx) => {
     const args = [...rawArgs];
     const exchange = takeOption(args, "--exchange");
-    const hasFile = args.some((arg) => arg === "--file" || arg.startsWith("--file="));
-    const file = hasFile ? takeOption(args, "--file") ?? "" : undefined;
-    const hasGroup = args.some((arg) => arg === "--group" || arg.startsWith("--group="));
-    const group = hasGroup ? takeOption(args, "--group") ?? "" : undefined;
+    const fileFlag = takeFlagOption(args, "--file");
+    const file = fileFlag.given ? fileFlag.value ?? "" : undefined;
+    const groupFlag = takeFlagOption(args, "--group");
+    const group = groupFlag.given ? groupFlag.value ?? "" : undefined;
     const action = args[0];
     if (group != null && action !== "add" && action !== "move" && action !== "ungroup") {
       ctx.fail(`--group is an option of watchlist add, move and ungroup, not watchlist ${action ?? "list"}.`, MOVE_USAGE);

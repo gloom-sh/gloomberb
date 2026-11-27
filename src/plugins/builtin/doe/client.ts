@@ -1,78 +1,65 @@
 import { apiClient } from "../../../api-client";
-import { sourceDidNotAnswer } from "../../../api-client/errors";
 import type { DoeBoardPayload, DoeSeriesRow } from "../../../api-client/doe";
-import { createPluginCache } from "../../../data/plugin-cache";
-import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
+import { hasUniqueIds, isCalendarDay, isFiniteNumber, isNullableCalendarDay, isNullableFinite, isNullableIsoInstant, isNullableString, isStringArray } from "../../../utils/guards";
+import { createCloudEndpoint } from "../shared/cloud-resource";
 
 /** What the pane says while the server has no EIA weeks to serve: before the backend ships, or before its first read. */
 export const DOE_NOT_AVAILABLE = "Oil and gas inventories are not available yet.";
 
-export const doeBoardCache = createPluginCache<DoeBoardPayload>({
-  kind: "doe-board", source: "gloom-cloud", schemaVersion: 1,
-  // Weekly data: a quarter hour is soon enough to catch a release.
-  policy: { staleMs: 15 * 60_000, expireMs: 14 * 24 * 60 * 60_000 },
-});
-
 const UNITS = new Set(["kb", "kbd", "pct", "bcf"]);
 const TABS = new Set(["crude", "products", "gas"]);
-const date = (value: unknown) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
-  && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
-const dateOrNull = (value: unknown) => value === null || date(value);
-const instantOrNull = (value: unknown) => value === null || typeof value === "string" && Number.isFinite(Date.parse(value));
-const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
-const finiteOrNull = (value: unknown) => value === null || finite(value);
 /** A field older servers leave out: absent, null or a number. */
-const optionalFinite = (value: unknown) => value === undefined || finiteOrNull(value);
+const optionalFinite = (value: unknown) => value === undefined || isNullableFinite(value);
 const pairs = (value: unknown) => Array.isArray(value)
-  && value.every((pair) => Array.isArray(pair) && Number.isInteger(pair[0]) && finite(pair[1]));
+  && value.every((pair) => Array.isArray(pair) && Number.isInteger(pair[0]) && isFiniteNumber(pair[1]));
 
 function validRow(row: DoeSeriesRow): boolean {
   const five = row.fiveYear, ago = row.yearAgo, seasonal = row.seasonal;
   return typeof row.id === "string" && typeof row.label === "string" && UNITS.has(row.unit) && TABS.has(row.tab)
-    && dateOrNull(row.weekEnding) && finiteOrNull(row.value) && finiteOrNull(row.weekChange) && (row.value == null) === (row.weekEnding == null)
-    && (row.read === null || typeof row.read === "string")
+    && isNullableCalendarDay(row.weekEnding) && isNullableFinite(row.value) && isNullableFinite(row.weekChange) && (row.value == null) === (row.weekEnding == null)
+    && isNullableString(row.read)
     && (row.basis === undefined || row.basis === "published" || row.basis === "computed")
-    && (ago === null || date(ago.weekEnding) && finite(ago.value) && finite(ago.change) && finiteOrNull(ago.changePercent))
-    && (five === null || Array.isArray(five.years) && five.years.length > 0 && [five.min, five.max, five.average, five.vsAverage].every(finite)
-      && five.min <= five.max && finiteOrNull(five.averageChange) && finiteOrNull(five.vsAveragePercent) && finiteOrNull(five.position))
+    && (ago === null || isCalendarDay(ago.weekEnding) && isFiniteNumber(ago.value) && isFiniteNumber(ago.change) && isNullableFinite(ago.changePercent))
+    && (five === null || Array.isArray(five.years) && five.years.length > 0 && [five.min, five.max, five.average, five.vsAverage].every(isFiniteNumber)
+      && five.min <= five.max && isNullableFinite(five.averageChange) && isNullableFinite(five.vsAveragePercent) && isNullableFinite(five.position))
     && (seasonal === null || Number.isInteger(seasonal.year) && (seasonal.weeks === 52 || seasonal.weeks === 53)
       && pairs(seasonal.current) && pairs(seasonal.previous) && Array.isArray(seasonal.band)
-      && seasonal.band.every((week) => Array.isArray(week) && Number.isInteger(week[0]) && week.slice(1).every(finiteOrNull)));
+      && seasonal.band.every((week) => Array.isArray(week) && Number.isInteger(week[0]) && week.slice(1).every(isNullableFinite)));
 }
 
 /** A board that breaks the contract is refused whole rather than drawn with holes in it. */
 function validateDoeBoard(payload: DoeBoardPayload): DoeBoardPayload {
   if (!payload || payload.source !== "EIA" || !Number.isFinite(Date.parse(payload.generatedAt))
-    || !["available", "partial", "unavailable"].includes(payload.status)
-    || !Array.isArray(payload.gaps) || !payload.gaps.every((gap) => typeof gap === "string")
+    || !["available", "partial", "unavailable"].includes(payload.status) || !isStringArray(payload.gaps)
     || !Array.isArray(payload.reports) || !payload.reports.every((report) => (report.id === "petroleum" || report.id === "gas")
-      && dateOrNull(report.weekEnding) && dateOrNull(report.nextWeekEnding)
-      && instantOrNull(report.releasedAt) && instantOrNull(report.nextReleaseAt)
+      && isNullableCalendarDay(report.weekEnding) && isNullableCalendarDay(report.nextWeekEnding)
+      && isNullableIsoInstant(report.releasedAt) && isNullableIsoInstant(report.nextReleaseAt)
       && optionalFinite(report.nextConsensus) && optionalFinite(report.nextPrior))
-    || !Array.isArray(payload.series) || new Set(payload.series.map((row) => row.id)).size !== payload.series.length
-    || !payload.series.every(validRow)) {
+    || !Array.isArray(payload.series) || !hasUniqueIds(payload.series) || !payload.series.every(validRow)) {
     throw new Error("The server returned an invalid EIA weekly board");
   }
   return payload;
 }
 
-/**
- * The board, or the not-available message when the server does not serve the
- * route yet (404), cannot read its tables yet (503) or has no weeks stored.
- */
+const doeBoardEndpoint = createCloudEndpoint<void, DoeBoardPayload, Pick<typeof apiClient, "getCloudDoeBoard">>({
+  kind: "doe-board", schemaVersion: 1,
+  // Weekly data: a quarter hour is soon enough to catch a release.
+  policy: { staleMs: 15 * 60_000, expireMs: 14 * 24 * 60 * 60_000 },
+  key: "board", defaultClient: apiClient,
+  fetch: (_args, client) => client.getCloudDoeBoard(),
+  validate: validateDoeBoard,
+  unavailableMessage: DOE_NOT_AVAILABLE, unavailableStatuses: [404, 503],
+  isEmptyAnswer: (board) => board.status === "unavailable",
+});
+
+export const doeBoardCache = doeBoardEndpoint.cache;
+
+/** The board, or the not-available message when the server does not serve the route yet (404), cannot read its tables yet (503) or has no weeks stored. */
 export async function fetchDoeBoard(client: Pick<typeof apiClient, "getCloudDoeBoard"> = apiClient): Promise<DoeBoardPayload> {
-  let payload: DoeBoardPayload;
-  try {
-    payload = await client.getCloudDoeBoard();
-  } catch (error) {
-    throw unavailableOnServer(error, DOE_NOT_AVAILABLE, [404, 503]);
-  }
-  const board = validateDoeBoard(payload);
-  // The server's source did not answer this time: a saved copy answers, as it does a 5xx.
-  if (board.status === "unavailable") throw sourceDidNotAnswer(DOE_NOT_AVAILABLE);
+  const board = await doeBoardEndpoint.fetch(undefined, { client });
   if (!board.series.some((row) => row.value != null)) throw new Error(DOE_NOT_AVAILABLE);
   return board;
 }
 
-export const getCachedDoeBoard = () => cachedCloudResource(doeBoardCache, "board", validateDoeBoard);
-export const loadDoeBoard = (force = false) => loadCloudResource(doeBoardCache, "board", () => fetchDoeBoard(), { force, validate: validateDoeBoard });
+export const getCachedDoeBoard = () => doeBoardEndpoint.cached();
+export const loadDoeBoard = (force = false) => doeBoardEndpoint.load(undefined, { force });

@@ -41,15 +41,27 @@ export function extendedPrintTimeColumn(session: ExtendedSession): HeadlessPaneC
 export function extendedPriceColumn(
   session: ExtendedSession,
   formatPrice: (price: number, row: HeadlessPaneRow) => string,
-  options?: { empty?: (row: HeadlessPaneRow) => string; description?: string },
+  options?: {
+    empty?: (row: HeadlessPaneRow) => string;
+    description?: string;
+    withTimeInText?: boolean;
+    header?: string;
+    literalHeader?: boolean;
+  },
 ): HeadlessPaneColumn {
+  const emptyText = (row: HeadlessPaneRow) => (options?.empty ? options.empty(row) : MISSING_VALUE);
+  const render = (value: unknown, row: HeadlessPaneRow, withTime: boolean) => (
+    row.extendedSession === session && typeof value === "number"
+      ? (withTime ? withExtendedPrintTime(formatPrice(value, row), row) : formatPrice(value, row))
+      : emptyText(row)
+  );
   return {
     key: "extendedPrice",
-    header: EXTENDED_SESSION_LABELS[session],
+    header: options?.header ?? EXTENDED_SESSION_LABELS[session],
+    ...(options?.literalHeader ? { literalHeader: true } : {}),
     align: "right",
-    format: (value, row) => row.extendedSession === session && typeof value === "number"
-      ? formatPrice(value, row)
-      : options?.empty ? options.empty(row) : MISSING_VALUE,
+    format: (value, row) => render(value, row, false),
+    ...(options?.withTimeInText ? { textFormat: (value, row) => render(value, row, true) } : {}),
     ...(options?.description ? { description: options.description } : {}),
   };
 }

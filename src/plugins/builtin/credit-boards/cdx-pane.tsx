@@ -1,18 +1,16 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { useMemo } from "react";
-import { ChartTableHeader, MarketBoardStack, PaneStatusBody, type StatItem } from "../../../components";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import type { StatItem } from "../../../components";
+import { usePaneResource } from "../shared/pane-resource";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { signedMoveColor, StatChartDetail } from "../../../components/market-board";
-import { useAsyncResource } from "../../../react/async-resource";
-import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { usePluginPaneState } from "../../runtime";
 import { FIXED_INCOME_PANE_ID } from "../fixed-income/model";
 import { useCommandValue } from "../shared/command-tab";
 import { reportFooterSegment } from "../shared/source-footer";
-import { CreditHistoryChart, creditFooterInfo, creditHistoryChart, type CreditHistoryTarget } from "./board-shared";
+import { CreditBoardView, CreditHistoryChart, creditFooterInfo, type CreditHistoryTarget } from "./board-shared";
 import { getCachedCdxBoard, loadCdxBoard } from "./client";
 import { cdxHeadless } from "./headless";
 import {
@@ -66,8 +64,8 @@ function IndexDetail({ row, width, height, focused }: { row: CdxRow; width: numb
 
 export function CdxPane({ focused, width, height }: PaneProps) {
   const theme = useThemeColors();
-  const resource = useAsyncResource(loadCdxBoard, { initialData: getCachedCdxBoard });
-  const { loading, load: refresh, reload } = resource;
+  const resource = usePaneResource(loadCdxBoard, { focused, initialData: getCachedCdxBoard, refreshKey: { skipWhileLoading: true } });
+  const { loading } = resource;
   const payload = resource.data?.payload ?? null;
   const rows = useMemo(() => payload ? cdxRows(payload.indexes, payload.asOf) : EMPTY_ROWS, [payload]);
   // `CDX HY` opens on that index, named as `fn CDX HY` names it; a later `CDX IG` replaces it.
@@ -78,8 +76,6 @@ export function CdxPane({ focused, width, height }: PaneProps) {
     null,
   );
   const [openId, setOpenId] = usePluginPaneState<string | null>("cdx:open", null);
-  useAutoRefresh(resource.updatedAt, refresh);
-  usePaneRefreshKey(reload, { focused, enabled: !loading });
 
   // Its source and the newest day the rows carry, not when the response was put together, as `fn CDX` ends.
   // The clock says the prints are delayed, so the line does not again.
@@ -139,23 +135,14 @@ export function CdxPane({ focused, width, height }: PaneProps) {
     },
   ], [theme, spreads]);
 
-  if (rows.length === 0) {
-    return (
-      <PaneStatusBody loading={loading} error={resource.error} empty={!loading && !resource.error}
-        loadingLabel="Loading index CDS..." subject="Index CDS" align="center" width={width} height={height} />
-    );
-  }
-
   // The selected index's history sits above the board; the legend names it. What a command named (`HY`, `itraxx
   // main`) is read like `fn` reads it, and one the board does not have leaves the board on its first.
   const named = selectedId ? findIndex(payload?.indexes ?? [], selectedId) : null;
-  const selected = rows.find((row) => row.id === selectedId) ?? rows.find((row) => row.id === named?.id) ?? rows[0];
   return (
-    <MarketBoardStack rows={rows} width={width} height={height} focused={focused}
-      rootBefore={({ columns }) => <ChartTableHeader width={width} height={height} tableRows={rows.length}
-        tableColumns={columns} chart={selected ? creditHistoryChart(historyTarget(selected)) : null} />}
-      selectedId={selected?.id ?? null} onSelectedIdChange={setSelectedId} openId={openId} onOpenIdChange={setOpenId}
-      labelHeader="INDEX" labelWidth={16} valueLabel="5Y" valueWidth={9} signedChange extraColumns={extraColumns}
-      renderDetail={(row) => <IndexDetail row={row} width={width} height={Math.max(5, height - 2)} focused={focused} />} />
+    <CreditBoardView rows={rows} width={width} height={height} focused={focused} loading={loading} error={resource.error}
+      loadingLabel="Loading index CDS..." subject="Index CDS"
+      selectedId={selectedId} namedId={named?.id} onSelectedIdChange={setSelectedId} openId={openId} onOpenIdChange={setOpenId}
+      labelHeader="INDEX" labelWidth={16} valueLabel="5Y" valueWidth={9} extraColumns={extraColumns} historyTarget={historyTarget}
+      renderDetail={(row, detailHeight) => <IndexDetail row={row} width={width} height={detailHeight} focused={focused} />} />
   );
 }

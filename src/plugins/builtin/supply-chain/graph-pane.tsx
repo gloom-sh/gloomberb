@@ -1,12 +1,11 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
-import { usePlanAccess } from "../../../api-client/plan-access";
 import { DEFAULT_GRAPH_OPTIONS, type GraphOptions, type GraphPath, type GraphPayload } from "../../../api-client/supply-chain-graph";
 import type { SupplyEntity } from "../../../api-client/supply-chain";
 import { ActionRow, Badge, Button, ButtonActionScope, DataTableView, DetailScrollBody, EmptyState, KeyValueRow, Notice, NumberField, PageStackView, PaneStatusBody, QueryBar, StatGrid, TextField, usePaneNoticeFooter, usePaneStatusFooter, type DataTableColumn, type PaneHint, type QueryBarFilter, type StatItem } from "../../../components";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { usePaneResource } from "../shared/pane-resource";
 import { RatioBar } from "../../../components/ui/ratio-bar";
-import { useAsyncResource, useAutoRefresh, useInputCapture, usePaneInstance, usePaneSettingValue, usePluginAppActions, usePluginPaneState, useShortcut } from "../../../public/react";
+import { useInputCapture, usePaneInstance, usePaneSettingValue, usePluginAppActions, usePluginPaneState, useShortcut } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, ScrollBox, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { SignInWall } from "../cloud/auth-actions";
@@ -113,8 +112,8 @@ function PathEvidence({ data, path, width, focused, onRecenter }: { data: GraphP
 }
 export function SupplyGraphPane({ symbol, tab, width, height, focused }: { symbol: string; tab: "graph" | "path"; width: number; height: number; focused: boolean }) {
   const colors = useThemeColors(), desktop = !!useUiCapabilities().nativePaneChrome;
-  const instance = usePaneInstance(), session = useResearchCloudSession(), access = usePlanAccess();
-  const accessKey = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
+  const instance = usePaneInstance(), session = useResearchCloudSession();
+  const { accessKey } = session;
   const initialOptions = useMemo(() => { try { return graphOptions(instance?.settings ?? {}); } catch { return DEFAULT_GRAPH_OPTIONS; } }, []);
   const [options, setOptions] = usePluginPaneState<GraphOptions>("supply:graph-options", initialOptions);
   const [focus, setFocus] = usePluginPaneState(`supply:graph-focus:${symbol}`, symbol);
@@ -129,7 +128,7 @@ export function SupplyGraphPane({ symbol, tab, width, height, focused }: { symbo
   const [snapshotSetting] = usePaneSettingValue<GraphPayload | null>("graphSnapshot", null);
   const snapshot = useMemo(() => { try { return snapshotSetting ? validateGraph(snapshotSetting) : null; } catch (error) { return logFailure("supply-chain.graph-pane", "Validate supply chain graph snapshot failed", null)(error); } }, [snapshotSetting]);
   const loader = useCallback((force: boolean) => snapshot ? Promise.resolve({ payload: snapshot, stale: false, refreshError: null }) : loadGraph(focus, target, options, accessKey, force), [focus, target, options, accessKey, snapshot]);
-  const resource = useAsyncResource(tab === "path" && !target ? null : loader, { initialData: () => cachedGraph(focus, target, options, accessKey), clearOnError: isAccessDenied });
+  const resource = usePaneResource(tab === "path" && !target ? null : loader, { focused: focused && !inputsOpen && !targetActive, initialData: () => cachedGraph(focus, target, options, accessKey), clearOnError: isAccessDenied });
   const data = resource.data?.payload ?? null;
   const [sort, setSort] = usePluginPaneState("supply:path-sort", { column: "score", direction: "desc" as "asc" | "desc" });
   const paths = useMemo(() => data ? data.paths.length ? data.paths : [...data.upstream, ...data.downstream, ...data.related].map(row => options.ranking === "shortest" ? row.shortestPath : row.bestPath) : [], [data, options.ranking]);
@@ -160,8 +159,6 @@ export function SupplyGraphPane({ symbol, tab, width, height, focused }: { symbo
     ...(!openPath && (focus !== symbol || target) ? [{ id: "home", key: "z", label: "reset focus", title: "Reset Focus", onPress: () => { setFocus(symbol); applyTarget(""); setCollapsed([]); setSelected(null); } }] : []),
     ...(data?.access === "preview" ? [{ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", onPress: openUpgrade }] : []),
   ];
-  useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => resource.reload(), { focused: focused && !inputsOpen && !targetActive });
   usePaneStatusFooter({ registrationId: "supply-graph", loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale, hints,
     info: data?.asOf ? [{ id: "as-of", parts: [{ text: `as of ${data.asOf}`, tone: "muted" }] }] : [] });
   usePaneNoticeFooter({ registrationId: "supply-graph:notices", focused, notices: [...(resource.data?.refreshError ? [resource.data.refreshError] : []),

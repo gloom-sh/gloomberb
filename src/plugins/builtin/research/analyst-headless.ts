@@ -8,25 +8,20 @@ import type {
 } from "../../../types/plugin";
 import type { AnalystResearchData, Quote } from "../../../types/financials";
 import { logFailure } from "../../../utils/log-failure";
-import { MISSING_VALUE, formatPercent } from "../../../utils/format";
 import { hasAnalystCoverage, loadAnalystResearch, noAnalystCoverageText, noAnalystActionsText } from "./client";
 import {
   analystReferenceMetadata,
   analystTargetCurrency,
   analystUpside,
-  formatAnalystReference,
-  formatAnalystPrice,
-  formatRecommendationMix,
-  recommendationMix,
-  formatRatingLabel,
+  buildAnalystOverview,
+  formatRatingReason,
   formatRatingTarget,
   ratingReason,
-  recommendationTotal,
   sortRatingRows,
   type RatingColumnId,
 } from "./analyst-model";
 import { REPORTED_DATA } from "../shared/report-freshness";
-import { REPORT_ROWS, REPORT_SORT } from "../shared/headless-options";
+import { enumOption, limitOption, REPORT_SORT } from "../shared/headless-options";
 
 const RATING_COLUMNS: HeadlessPaneColumn[] = [
   { key: "date", header: "Date" },
@@ -57,10 +52,7 @@ const REASON_COLUMNS: HeadlessPaneColumn[] = [
     header: "Reason",
     underRow: true,
     format: (_value, row) => ratingReason(row as unknown as RatingRow)?.text ?? "",
-    textFormat: (_value, row) => {
-      const reason = ratingReason(row as unknown as RatingRow);
-      return reason ? `${reason.text} · ${reason.url}` : "";
-    },
+    textFormat: (_value, row) => formatRatingReason(ratingReason(row as unknown as RatingRow)) ?? "",
   },
   { key: "reasonUrl", header: "Reason URL", underRow: true, textFormat: () => "" },
 ];
@@ -75,45 +67,15 @@ const SORT_COLUMNS: Record<string, RatingColumnId> = {
 
 /** The summary: the upside from Last (the quote's regular session price), and the price and time it is measured from, as `analyst` gives them. */
 function overviewEntries(data: AnalystResearchData, quote: Quote | null): HeadlessPaneEntry[] {
-  const target = data.priceTarget;
-  const currency = analystTargetCurrency(data);
-  const { upside, reference } = analystUpside(data, quote);
+  const s = buildAnalystOverview(data, quote);
   return [
-    {
-      label: "Average target",
-      value: target?.average ?? null,
-      formatted: formatAnalystPrice(target?.average, currency),
-    },
-    {
-      label: "Target upside",
-      value: upside ?? null,
-      formatted: upside == null ? MISSING_VALUE : formatPercent(upside),
-    },
-    {
-      label: "Upside reference price",
-      value: reference.price ?? null,
-      formatted: formatAnalystReference(reference, currency),
-    },
-    {
-      label: "Target range",
-      value: target ? { low: target.low, median: target.median, high: target.high } : null,
-      formatted: target
-        ? [target.low, target.median, target.high]
-          .map((value) => formatAnalystPrice(value, currency))
-          .join(" / ")
-        : MISSING_VALUE,
-    },
-    {
-      label: "Recommendation rating",
-      value: data.recommendationRating ?? null,
-      formatted: formatRatingLabel(data.recommendationRating),
-    },
-    { label: "Analysts", value: recommendationTotal(data) },
-    {
-      label: "Recommendation mix",
-      value: recommendationMix(data),
-      formatted: formatRecommendationMix(data),
-    },
+    { label: "Average target", value: s.target?.average ?? null, formatted: s.averageFormatted },
+    { label: "Target upside", value: s.upside ?? null, formatted: s.upsideFormatted },
+    { label: "Upside reference price", value: s.reference.price ?? null, formatted: s.referenceFormatted },
+    { label: "Target range", value: s.target ? { low: s.target.low, median: s.target.median, high: s.target.high } : null, formatted: s.rangeFormatted },
+    { label: "Recommendation rating", value: data.recommendationRating ?? null, formatted: s.ratingFormatted },
+    { label: "Analysts", value: s.analysts },
+    { label: "Recommendation mix", value: s.mix, formatted: s.mixFormatted },
   ];
 }
 
@@ -151,32 +113,9 @@ export function createAnalystResearchHeadless(
       description: "Ticker whose analyst research should be loaded.",
     },
     options: [
-      {
-        key: "sort",
-        shot: REPORT_SORT,
-        description: "Column used to sort analyst actions.",
-        type: "enum",
-        values: Object.keys(SORT_COLUMNS).map((value) => ({ value })),
-        defaultValue: "date",
-      },
-      {
-        key: "order",
-        shot: REPORT_SORT,
-        description: "Sort direction.",
-        type: "enum",
-        values: [{ value: "desc" }, { value: "asc" }],
-        defaultValue: "desc",
-      },
-      {
-        key: "limit",
-        shot: REPORT_ROWS,
-        aliases: ["count", "rows"],
-        description: "Maximum analyst action rows.",
-        type: "integer",
-        defaultValue: 25,
-        minimum: 1,
-        maximum: 100,
-      },
+      enumOption("sort", Object.keys(SORT_COLUMNS), { shot: REPORT_SORT, description: "Column used to sort analyst actions.", defaultValue: "date" }),
+      enumOption("order", ["desc", "asc"], { shot: REPORT_SORT, description: "Sort direction.", defaultValue: "desc" }),
+      limitOption({ aliases: ["count", "rows"], description: "Maximum analyst action rows.", defaultValue: 25, maximum: 100 }),
     ],
     describe: (args) => `Analyst Research | ${args.symbols[0]}`,
     async load(args, ctx) {

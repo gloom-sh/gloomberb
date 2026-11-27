@@ -7,7 +7,7 @@ import {
   afterLoadWindow, afterWindowStart, AUCTION_VIEWS, auctionPercentiles, loadAuctionCurves, projectAuctionAfter, widerAfterWindow,
   type AfterMove, type AuctionAfter, type AuctionCurveRead, type AuctionView,
 } from "./after";
-import { isoDateOption } from "../../../utils/calendar-date";
+import { dateOption, enumOption } from "../shared/headless-options";
 import { LIKE_LIMIT, likeTarget, rankAuctionAnalogs, summarizeAnalogMoves, type AuctionAnalog } from "./like";
 import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 import { AUCTION_HISTORY_ALL, AUCTION_HISTORY_START, fetchTreasuryAuctions, type AuctionHistoryWindow } from "./client";
@@ -238,64 +238,36 @@ export function createTreasuryAuctionsHeadless(
       optional: true,
     },
     options: [
-      {
-        key: "historyDays",
-        aliases: ["history"],
-        settingKey: "historyDays",
+      enumOption("historyDays", AUCTION_HISTORY_WINDOWS.map(String), {
+        aliases: ["history"], settingKey: "historyDays", example: "--history-days 3650", defaultValue: "120",
         description: `Auction history window in days, up to 3650 (10 years), or all: every auction since ${AUCTION_HISTORY_START}.`,
-        example: "--history-days 3650",
-        type: "enum",
-        values: AUCTION_HISTORY_WINDOWS.map((days) => ({ value: String(days) })),
-        defaultValue: "120",
-      },
-      {
-        key: "market",
+      }),
+      enumOption("market", AUCTION_MARKETS.map((entry) => entry.value), {
         // No default: a search naming HK, EFB or RMB picks hk unless --market says otherwise.
         description: "us (without it, unless the search names Hong Kong's paper): US Treasury auctions; hk: Hong Kong government paper tenders (EF Bills and Notes, HKSAR Government Bonds) from HKMA's Open API. A search naming HK, EFB, HKGB or RMB picks hk.",
-        type: "enum",
-        values: AUCTION_MARKETS.map((entry) => ({ value: entry.value })),
-        example: "--market hk",
-        pluginState: { pluginId: FIXED_INCOME_VIEW_STATE.treasuryAuctions, key: "market" },
-      },
-      {
-        key: "filter",
+        example: "--market hk", pluginState: { pluginId: FIXED_INCOME_VIEW_STATE.treasuryAuctions, key: "market" },
+      }),
+      enumOption("filter", ["all", "bill", "note", "bond"], {
         description: "Security type group (Hong Kong: bill is EF Bills, note EF Notes, bond Government Bonds).",
-        type: "enum",
-        values: [{ value: "all" }, { value: "bill" }, { value: "note" }, { value: "bond" }],
-        defaultValue: "all",
-        pluginState: { pluginId: FIXED_INCOME_VIEW_STATE.treasuryAuctions, key: "activeTab" },
-      },
-      {
-        key: "view",
+        defaultValue: "all", pluginState: { pluginId: FIXED_INCOME_VIEW_STATE.treasuryAuctions, key: "activeTab" },
+      }),
+      enumOption("view", AUCTION_VIEWS, {
         description: "results: each auction's figures; after: its B/C, indirect and dealer percentiles against the tenor's last 24 auctions, and the matching Treasury yield's change 1, 5 and 20 sessions later (bp).",
-        type: "enum",
-        values: AUCTION_VIEWS.map((value) => ({ value })),
-        defaultValue: "results",
-        example: "--view after",
-        pluginState: { pluginId: FIXED_INCOME_VIEW_STATE.treasuryAuctions, key: "view" },
-      },
-      {
-        key: "sort",
+        defaultValue: "results", example: "--view after", pluginState: { pluginId: FIXED_INCOME_VIEW_STATE.treasuryAuctions, key: "view" },
+      }),
+      enumOption("sort", AUCTION_SORT_NAMES.map((entry) => ({ value: entry.value, ...(entry.aliases ? { aliases: entry.aliases } : {}) })), {
         description: "Row order, by a column: largest first for a figure, newest first for date, A to Z for type, term and CUSIP; "
           + "a leading - the other way (-indirect-pctl: lowest first). An after-view column (vs-median-pctl, btc-pctl, 1d...) shows the after view.",
-        type: "enum",
-        values: AUCTION_SORT_NAMES.map((entry) => ({ value: entry.value, ...(entry.aliases ? { aliases: entry.aliases } : {}) })),
-        example: "--sort btc-pctl",
-        examples: ["--sort=-indirect-pctl"],
-        normalize: normalizeAuctionSortOption,
+        example: "--sort btc-pctl", examples: ["--sort=-indirect-pctl"], normalize: normalizeAuctionSortOption,
         pluginState: { pluginId: FIXED_INCOME_VIEW_STATE.treasuryAuctions, key: "sortColumn" },
-      },
-      {
-        key: "like",
-        type: "string",
-        placeholder: "date",
+      }),
+      dateOption("like", {
         description: `An auction's day (YYYY-MM-DD): the ${LIKE_LIMIT} earlier auctions of its tenor, from every one since ${AUCTION_HISTORY_START}, `
           + "whose stop-out vs median, B/C and indirect percentiles are closest to it, with the Treasury yield's moves after each, "
           + "their median and the share that rose. The search picks the auction when the day held several.",
         example: "--like 2026-11-09",
-        normalize: (value) => isoDateOption(value, "like"),
         shot: { reportOnly: "ranks the auctions most like one in the text report, which the pane does not list" },
-      },
+      }),
     ],
     columns: columnsFor("results", []),
     // A search naming Hong Kong (`shot AUCT HK 10Y`) opens the pane on its market, as `fn` reads it.

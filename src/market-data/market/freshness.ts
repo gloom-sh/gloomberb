@@ -412,6 +412,39 @@ export function sessionCalendarTimeZone(exchange: string | undefined): string | 
     ?? (getPublishedUsEquityCalendarYears(canonical) ? "America/New_York" : null);
 }
 
+function findRegularSessionBoundary(
+  exchange: string | undefined,
+  time: number,
+  options: { boundary: "open" | "close"; direction: -1 | 1; weekendDays?: readonly number[] },
+): { date: string; timestamp: number; timeZone: string } | null {
+  const canonical = canonicalExchange(exchange);
+  const timeZone = sessionCalendarTimeZone(canonical);
+  if (!timeZone || ALWAYS_OPEN_EXCHANGES.has(canonical) || !Number.isFinite(time)) return null;
+  const openMinutes = options.boundary === "open" ? REGULAR_OPEN_MINUTES[canonical] : undefined;
+  const { year, month, day } = zonedDateTimeParts(time, timeZone);
+  const today = Date.UTC(year, month - 1, day) / MS_PER_DAY;
+  for (let offset = 0; offset <= SESSION_LOOKBACK_DAYS; offset++) {
+    const date = new Date((today + offset * options.direction) * MS_PER_DAY).toISOString().slice(0, 10);
+    const published = getPublishedUsEquitySession(canonical, date);
+    let timestamp: number | null = null;
+    if (published) {
+      if (published.kind === "session") timestamp = options.boundary === "open" ? published.open : published.close;
+    } else if (options.boundary === "open" && openMinutes === undefined) {
+      return null;
+    } else if (isLocalTradingDay(canonical, date, options.weekendDays)) {
+      const minutes = options.boundary === "open"
+        ? (publishedSpecialSession(canonical, date)?.open ?? openMinutes!)
+        : (regularCloseMinutes(canonical, date) ?? 24 * 60);
+      timestamp = zonedWallClockToUtcMs(timeZone, Number(date.slice(0, 4)), Number(date.slice(5, 7)),
+        Number(date.slice(8, 10)), Math.floor(minutes / 60), minutes % 60, 0);
+    }
+    if (timestamp != null && (options.direction < 0 ? timestamp <= time : timestamp > time)) {
+      return { date, timestamp, timeZone };
+    }
+  }
+  return null;
+}
+
 /**
  * The latest regular session that closed at or before `time`: the published
  * calendar for US venues, otherwise the days of the venue's trading week less
@@ -423,25 +456,8 @@ export function latestRegularSessionClose(
   time: number,
   weekendDays?: readonly number[],
 ): { date: string; close: number; timeZone: string } | null {
-  const canonical = canonicalExchange(exchange);
-  const timeZone = sessionCalendarTimeZone(canonical);
-  if (!timeZone || ALWAYS_OPEN_EXCHANGES.has(canonical) || !Number.isFinite(time)) return null;
-  const { year, month, day } = zonedDateTimeParts(time, timeZone);
-  const today = Date.UTC(year, month - 1, day) / MS_PER_DAY;
-  for (let offset = 0; offset <= SESSION_LOOKBACK_DAYS; offset++) {
-    const date = new Date((today - offset) * MS_PER_DAY).toISOString().slice(0, 10);
-    const published = getPublishedUsEquitySession(canonical, date);
-    let close: number | null = null;
-    if (published) {
-      if (published.kind === "session") close = published.close;
-    } else if (isLocalTradingDay(canonical, date, weekendDays)) {
-      const minutes = regularCloseMinutes(canonical, date) ?? 24 * 60;
-      close = zonedWallClockToUtcMs(timeZone, Number(date.slice(0, 4)), Number(date.slice(5, 7)),
-        Number(date.slice(8, 10)), Math.floor(minutes / 60), minutes % 60, 0);
-    }
-    if (close != null && close <= time) return { date, close, timeZone };
-  }
-  return null;
+  const found = findRegularSessionBoundary(exchange, time, { boundary: "close", direction: -1, weekendDays });
+  return found ? { date: found.date, close: found.timestamp, timeZone: found.timeZone } : null;
 }
 
 /**
@@ -496,28 +512,7 @@ export function latestRegularSessionOpen(
   time: number,
   weekendDays?: readonly number[],
 ): number | null {
-  const canonical = canonicalExchange(exchange);
-  const timeZone = sessionCalendarTimeZone(canonical);
-  if (!timeZone || ALWAYS_OPEN_EXCHANGES.has(canonical) || !Number.isFinite(time)) return null;
-  const minutes = REGULAR_OPEN_MINUTES[canonical];
-  const { year, month, day } = zonedDateTimeParts(time, timeZone);
-  const today = Date.UTC(year, month - 1, day) / MS_PER_DAY;
-  for (let offset = 0; offset <= SESSION_LOOKBACK_DAYS; offset++) {
-    const date = new Date((today - offset) * MS_PER_DAY).toISOString().slice(0, 10);
-    const published = getPublishedUsEquitySession(canonical, date);
-    let open: number | null = null;
-    if (published) {
-      if (published.kind === "session") open = published.open;
-    } else if (minutes === undefined) {
-      return null;
-    } else if (isLocalTradingDay(canonical, date, weekendDays)) {
-      const opens = publishedSpecialSession(canonical, date)?.open ?? minutes;
-      open = zonedWallClockToUtcMs(timeZone, Number(date.slice(0, 4)), Number(date.slice(5, 7)),
-        Number(date.slice(8, 10)), Math.floor(opens / 60), opens % 60, 0);
-    }
-    if (open != null && open <= time) return open;
-  }
-  return null;
+  return findRegularSessionBoundary(exchange, time, { boundary: "open", direction: -1, weekendDays })?.timestamp ?? null;
 }
 
 /**
@@ -531,28 +526,8 @@ export function nextRegularSessionOpen(
   exchange: string | undefined,
   time: number,
 ): { date: string; open: number; timeZone: string } | null {
-  const canonical = canonicalExchange(exchange);
-  const timeZone = sessionCalendarTimeZone(canonical);
-  if (!timeZone || ALWAYS_OPEN_EXCHANGES.has(canonical) || !Number.isFinite(time)) return null;
-  const minutes = REGULAR_OPEN_MINUTES[canonical];
-  const { year, month, day } = zonedDateTimeParts(time, timeZone);
-  const today = Date.UTC(year, month - 1, day) / MS_PER_DAY;
-  for (let offset = 0; offset <= SESSION_LOOKBACK_DAYS; offset++) {
-    const date = new Date((today + offset) * MS_PER_DAY).toISOString().slice(0, 10);
-    const published = getPublishedUsEquitySession(canonical, date);
-    let open: number | null = null;
-    if (published) {
-      if (published.kind === "session") open = published.open;
-    } else if (minutes === undefined) {
-      return null;
-    } else if (isLocalTradingDay(canonical, date)) {
-      const opens = publishedSpecialSession(canonical, date)?.open ?? minutes;
-      open = zonedWallClockToUtcMs(timeZone, Number(date.slice(0, 4)), Number(date.slice(5, 7)),
-        Number(date.slice(8, 10)), Math.floor(opens / 60), opens % 60, 0);
-    }
-    if (open != null && open > time) return { date, open, timeZone };
-  }
-  return null;
+  const found = findRegularSessionBoundary(exchange, time, { boundary: "open", direction: 1 });
+  return found ? { date: found.date, open: found.timestamp, timeZone: found.timeZone } : null;
 }
 
 /**
@@ -737,6 +712,13 @@ export function activeUsExtendedHoursSession(now: number, exchange: string | und
   return session === "PRE" || session === "POST" ? session : null;
 }
 
+function usSessionExchange(exchange: string | undefined, timestampMs: number, now: number): string | null {
+  const canonical = canonicalExchange(exchange);
+  if (!isUsListingExchange(canonical)) return null;
+  if (!Number.isFinite(timestampMs) || !Number.isFinite(now) || timestampMs > now + quoteFutureToleranceMs()) return null;
+  return Number.isFinite(new Date(now).getTime()) ? canonical : null;
+}
+
 /**
  * Before any pre-market trade, a US quote's last print is the previous
  * session's close, and that close is the current price (a source may also stamp a
@@ -751,10 +733,8 @@ export function isUsPriorSessionPremarketQuote(
   marketState: MarketState | undefined,
   now = Date.now(),
 ): boolean {
-  const canonical = canonicalExchange(exchange);
-  if (marketState !== "PRE" || !isUsListingExchange(canonical)) return false;
-  if (!Number.isFinite(timestampMs) || !Number.isFinite(now) || timestampMs > now + quoteFutureToleranceMs()) return false;
-  if (!Number.isFinite(new Date(now).getTime()) || usSessionState(now, canonical) !== "PRE") return false;
+  const canonical = marketState === "PRE" ? usSessionExchange(exchange, timestampMs, now) : null;
+  if (!canonical || usSessionState(now, canonical) !== "PRE") return false;
   const timestampDate = exchangeLocalDate(canonical, timestampMs);
   const currentDate = exchangeLocalDate(canonical, now);
   if (!timestampDate || !currentDate || timestampDate >= currentDate) return false;
@@ -780,10 +760,8 @@ export function isUsRegularCloseQuoteInPostSession(
   marketState: MarketState | undefined,
   now = Date.now(),
 ): boolean {
-  const canonical = canonicalExchange(exchange);
-  if ((marketState !== "POST" && marketState !== "CLOSED") || !isUsListingExchange(canonical)) return false;
-  if (!Number.isFinite(timestampMs) || !Number.isFinite(now) || timestampMs > now + quoteFutureToleranceMs()) return false;
-  if (!Number.isFinite(new Date(now).getTime()) || usSessionState(now, canonical) !== "POST") return false;
+  const canonical = marketState === "POST" || marketState === "CLOSED" ? usSessionExchange(exchange, timestampMs, now) : null;
+  if (!canonical || usSessionState(now, canonical) !== "POST") return false;
   const currentDate = exchangeLocalDate(canonical, now);
   if (!currentDate || exchangeLocalDate(canonical, timestampMs) !== currentDate) return false;
   if (!isLocalTradingDay(canonical, currentDate)) return false;
@@ -807,10 +785,8 @@ export function isUsExtendedHoursSessionPrint(
   marketState: MarketState | undefined,
   now = Date.now(),
 ): boolean {
-  const canonical = canonicalExchange(exchange);
-  if ((marketState !== "PRE" && marketState !== "POST") || !isUsListingExchange(canonical)) return false;
-  if (!Number.isFinite(timestampMs) || !Number.isFinite(now) || timestampMs > now + quoteFutureToleranceMs()) return false;
-  if (!Number.isFinite(new Date(now).getTime())) return false;
+  const canonical = marketState === "PRE" || marketState === "POST" ? usSessionExchange(exchange, timestampMs, now) : null;
+  if (!canonical) return false;
   const today = exchangeLocalDate(canonical, now);
   const close = latestRegularSessionClose(canonical, now);
   if (!today || !close || !isLocalTradingDay(canonical, today)) return false;

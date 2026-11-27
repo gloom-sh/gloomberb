@@ -60,3 +60,110 @@ export function isoDateOrNull(value: unknown): string | null {
   const text = textOrNull(value);
   return text && /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : null;
 }
+
+/** A finite number strictly greater than zero. */
+export function isPositiveNumber(value: unknown): value is number {
+  return isFiniteNumber(value) && value > 0;
+}
+
+/** A finite number greater than or equal to zero. */
+export function isNonNegative(value: unknown): value is number {
+  return isFiniteNumber(value) && value >= 0;
+}
+
+/** A non-negative integer. */
+export function isNonNegativeInt(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+/** A finite number in [0, 1]. */
+export function isFraction(value: unknown): value is number {
+  return isFiniteNumber(value) && value >= 0 && value <= 1;
+}
+
+/** A string containing at least one non-whitespace character. */
+export function isNonEmptyText(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+/** Either null or a string (including empty string). */
+export function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
+/** Either null or a non-empty string. */
+export function isNullableText(value: unknown): value is string | null {
+  return value === null || isNonEmptyText(value);
+}
+
+/** Either null or a finite number. */
+export function isNullableFinite(value: unknown): value is number | null {
+  return value === null || isFiniteNumber(value);
+}
+
+const CALENDAR_DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const CALENDAR_MONTH_RE = /^(\d{4})-(\d{2})$/;
+
+/** A strict YYYY-MM-DD calendar date (rejects rolled-over dates like 2026-02-30). */
+export function isCalendarDay(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const match = CALENDAR_DAY_RE.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day;
+}
+
+export function isNullableCalendarDay(value: unknown): value is string | null {
+  return value === null || isCalendarDay(value);
+}
+
+/** A YYYY-MM calendar month (01–12). */
+export function isCalendarMonth(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const match = CALENDAR_MONTH_RE.exec(value);
+  if (!match) return false;
+  const month = Number(match[2]);
+  return month >= 1 && month <= 12;
+}
+
+/** A non-empty string that parses as a timestamp. */
+export function isIsoInstant(value: unknown): value is string {
+  return isNonEmptyText(value) && Number.isFinite(Date.parse(value));
+}
+
+export function isNullableIsoInstant(value: unknown): value is string | null {
+  return value === null || isIsoInstant(value);
+}
+
+function isUrlWithProtocols(value: unknown, protocols: readonly string[]): value is string {
+  if (!isNonEmptyText(value)) return false;
+  try {
+    return protocols.includes(new URL(value).protocol);
+  } catch {
+    // Intentional ignore: malformed URLs fail the URL guard.
+    return false;
+  }
+}
+
+/** An `http:` or `https:` URL string. */
+export function isHttpUrl(value: unknown): value is string {
+  return isUrlWithProtocols(value, ["http:", "https:"]);
+}
+
+/** An `https:` URL string. */
+export function isHttpsUrl(value: unknown): value is string {
+  return isUrlWithProtocols(value, ["https:"]);
+}
+
+/** A 3-letter uppercase ISO currency code. */
+export function isCurrencyCode(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Z]{3}$/.test(value);
+}
+
+/** True when every row has a distinct `id` value. */
+export function hasUniqueIds(rows: ReadonlyArray<{ id: string }>): boolean {
+  return new Set(rows.map((row) => row.id)).size === rows.length;
+}

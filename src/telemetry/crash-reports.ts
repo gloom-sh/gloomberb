@@ -1,4 +1,5 @@
 import { logFailure } from "../utils/log-failure";
+import { escapeRegExp } from "../utils/format";
 import {
   apiClient,
   type CrashReportError,
@@ -129,10 +130,6 @@ export function stripHomeDir(text: string, homeDir: string | null | undefined): 
     result = result.replace(new RegExp(escapeRegExp(form), "gi"), "~");
   }
   return result;
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function clip(value: string, maxLength: number): string {

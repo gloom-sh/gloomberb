@@ -807,27 +807,8 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
       ? sharedUnit.length <= 3 ? `Value ${sharedUnit}` : sharedUnit
       : "Value";
   // Dates that differ always show; one every row shares shows where the row has room for it beside the figures.
-  const asOfColumn = useMemo<DataTableColumn | null>(() => {
-    const column: DataTableColumn = { id: "asOf", label: "As of", width: 11, align: "left" };
-    if (!sharedDate) return column;
-    const figures = [
-      { width: 19, align: "left" as const },
-      { width: sharedUnit || attributionParts ? Math.max(9, valueHeader.length) : rows.some((row) => row.amount != null) ? 18 : 16, align: "right" as const },
-      ...(attributionParts ? ATTRIBUTION_PARTS.map(() => ({ width: 11, align: "right" as const })) : []),
-      ...(factorFits ? [{ width: 9, align: "right" as const }] : []),
-      ...(showPercentile ? [{ width: 8, align: "right" as const }] : []),
-    ];
-    // A cell for the scrollbar a long table draws.
-    return getTableWidth([...figures, column]) + 1 <= width ? column : null;
-  }, [attributionParts, factorFits, rows, sharedDate, sharedUnit, showPercentile, valueHeader, width]);
-  const columns = useMemo<DataTableColumn[]>(
-    () => [
-      {
-        id: "label",
-        label: LABEL_HEADERS[view],
-        width: Math.min(30, Math.max(19, width - 45)),
-        align: "left",
-      },
+  const columns = useMemo<DataTableColumn[]>(() => {
+    const figureColumns: DataTableColumn[] = [
       {
         id: "value",
         label: valueHeader,
@@ -839,29 +820,23 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
         ? ATTRIBUTION_PARTS.map((part) => ({ id: part.id, label: part.label, width: 11, align: "right" as const }))
         : []),
       // A factor's beta reads with how much of the basket it explains; a weak fit says so.
-      ...(factorFits
-        ? [{ id: "rSquared", label: "R²", width: 9, align: "right" as const }]
-        : []),
-      ...(showPercentile
-        ? [{ id: "percentile", label: "Pctl 1Y", width: 8, align: "right" as const }]
-        : []),
+      ...(factorFits ? [{ id: "rSquared", label: "R²", width: 9, align: "right" as const }] : []),
+      ...(showPercentile ? [{ id: "percentile", label: "Pctl 1Y", width: 8, align: "right" as const }] : []),
+    ];
+    const asOfColumn: DataTableColumn = { id: "asOf", label: "As of", width: 11, align: "left" };
+    // A cell for the scrollbar a long table draws.
+    const includeAsOf = !sharedDate || getTableWidth([{ width: 19, align: "left" }, ...figureColumns, asOfColumn]) + 1 <= width;
+    return [
+      { id: "label", label: LABEL_HEADERS[view], width: Math.min(30, Math.max(19, width - 45)), align: "left" },
+      ...figureColumns,
       // Every row's date where there is room, the one they share too: each number says when it is from.
-      ...(asOfColumn ? [asOfColumn] : []),
+      ...(includeAsOf ? [asOfColumn] : []),
       // Attribution's evidence is the three effects, now columns of their own.
       ...(width >= 95 && !footerEvidence && !attributionParts
-        ? [
-            {
-              id: "detail",
-              label: "Evidence",
-              width: 22,
-              flexGrow: 1,
-              align: "left" as const,
-            },
-          ]
+        ? [{ id: "detail", label: "Evidence", width: 22, flexGrow: 1, align: "left" as const }]
         : []),
-    ],
-    [width, view, valueHeader, sharedUnit, attributionParts, factorFits, footerEvidence, showPercentile, asOfColumn, rows],
-  );
+    ];
+  }, [width, view, valueHeader, sharedUnit, attributionParts, factorFits, footerEvidence, showPercentile, sharedDate, rows]);
   const selectView = (value: string) => {
     setView(value);
     setOpen(null);
@@ -921,26 +896,29 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
         />
       </Box>
     );
+  const portfolioQueryBar = (
+    <QueryBar
+      width={width}
+      filters={[{
+        id: "portfolio",
+        label: "Portfolio",
+        value: portfolio.id,
+        options: portfolios.length
+          ? portfolios.map((row) => ({ value: row.id, label: row.name }))
+          : [{ value: portfolio.id, label: portfolio.name }],
+        onChange: (id: string) => {
+          setPortfolio(id);
+          setOpen(null);
+        },
+      }]}
+    />
+  );
   if (matrixShown)
     return (
       <Box width={width} height={height} flexDirection="column">
         {tabStrip}
         <Box width={width} height={rootHeight} flexDirection="column" overflow="hidden">
-          <QueryBar
-            width={width}
-            filters={[{
-              id: "portfolio",
-              label: "Portfolio",
-              value: portfolio.id,
-              options: portfolios.length
-                ? portfolios.map((row) => ({ value: row.id, label: row.name }))
-                : [{ value: portfolio.id, label: portfolio.name }],
-              onChange: (id: string) => {
-                setPortfolio(id);
-                setOpen(null);
-              },
-            }]}
-          />
+          {portfolioQueryBar}
           <CorrelationMatrixGrid
             symbols={matrixSymbols}
             width={width}
@@ -967,23 +945,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
             tableRows={rows.length}
             tableChromeRows={chartTableChromeRows(columns, width)}
             // In the root only: a detail changes nothing the portfolio filter picks.
-            query={
-              <QueryBar
-                width={width}
-                filters={[{
-                  id: "portfolio",
-                  label: "Portfolio",
-                  value: portfolio.id,
-                  options: portfolios.length
-                    ? portfolios.map((row) => ({ value: row.id, label: row.name }))
-                    : [{ value: portfolio.id, label: portfolio.name }],
-                  onChange: (id: string) => {
-                    setPortfolio(id);
-                    setOpen(null);
-                  },
-                }]}
-              />
-            }
+            query={portfolioQueryBar}
             figures={[...holdingsSummary, ...fxFigures]}
             chart={chart}
           />

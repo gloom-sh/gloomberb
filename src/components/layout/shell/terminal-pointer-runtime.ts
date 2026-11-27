@@ -104,6 +104,11 @@ function sortedFloatingPanes(visibleFloatingPanes: VisibleFloatingPane[]): Visib
   return [...visibleFloatingPanes].sort((a, b) => (b.pane.floating?.zIndex ?? 50) - (a.pane.floating?.zIndex ?? 50));
 }
 
+function consumeEvent(event: ShellMouseEvent): void {
+  event.stopPropagation();
+  event.preventDefault();
+}
+
 export function useShellTerminalPointerRuntime({
   appHeaderHeight,
   closePaneMenu,
@@ -143,76 +148,122 @@ export function useShellTerminalPointerRuntime({
     const preciseX = event.preciseX ?? event.x;
     const preciseShellY = (event.preciseY ?? event.y) - appHeaderHeight;
     if (shellY < 0) return;
+
+    const beginFloatResize = (paneId: string, rect: FloatingRect) => {
+      const origRect = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+      startDrag({ type: "float-resize", paneId, startX: preciseX, startY: preciseShellY, origRect });
+      updateDragFloatingRect({ paneId, rect: origRect });
+    };
+
+    const tryDividerDrag = (): boolean => {
+      for (const divider of dockDividerLayouts) {
+        if (!pointInRect(divider.rect, event.x, shellY)) continue;
+        startDrag({
+          type: "divider",
+          path: divider.path,
+          axis: divider.axis,
+          startX: preciseX,
+          startY: preciseShellY,
+          startRatio: divider.ratio,
+          bounds: divider.bounds,
+        });
+        updateDividerPreview({ pathKey: divider.path.join("."), rect: divider.rect, ratio: divider.ratio });
+        consumeEvent(event);
+        return true;
+      }
+      return false;
+    };
+
+    const handleHeaderDown = (
+      paneId: string,
+      rect: LayoutBounds,
+      relativeX: number,
+      floating: boolean,
+      stack: readonly string[] | undefined,
+    ) => {
+      const isFocused = focusedPaneId === paneId;
+      const headerAreas = resolveHeaderHitAreas(rect.width, {
+        floating,
+        focused: isFocused,
+        fullscreen: transientFocusActive,
+      });
+      if (event.button === 2) {
+        openPaneMenu(paneId, rect, event);
+        return;
+      }
+      if ((floating || transientFocusActive) && headerAreas.closeStart != null && relativeX >= headerAreas.closeStart && relativeX < rect.width) {
+        if (transientFocusActive) restoreFullscreen();
+        else handleFloatingClose(paneId);
+        consumeEvent(event);
+        return;
+      }
+      if (headerAreas.actionStart != null && relativeX >= headerAreas.actionStart
+        && (headerAreas.closeStart == null || relativeX < headerAreas.closeStart)) {
+        openPaneMenu(paneId, rect, event);
+        consumeEvent(event);
+        return;
+      }
+      if (headerAreas.helpStart != null && headerAreas.actionStart != null
+        && relativeX >= headerAreas.helpStart && relativeX < headerAreas.actionStart) {
+        openPaneDocs(paneId);
+        consumeEvent(event);
+        return;
+      }
+      if (transientFocusActive) {
+        consumeEvent(event);
+        return;
+      }
+      const framed = floating || isFocused;
+      const tabId = stack
+        ? stackTabAt(stack, paneId, relativeX - paneHeaderTitleStart(framed), {
+          width: rect.width,
+          framed,
+          corner: floating,
+        }, paneMap, getPaneTitle, getPaneQuickSettings)
+        : null;
+      const origRect = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+      startDrag({
+        type: "pane-drag",
+        paneId: tabId ?? paneId,
+        mode: floating ? (tabId ? "tab" : "floating") : "docked",
+        startX: preciseX,
+        startY: preciseShellY,
+        origRect,
+      });
+      if (floating && !tabId) updateDragFloatingRect({ paneId, rect: origRect });
+      consumeEvent(event);
+    };
+
     if (windowMode) {
       if (event.type !== "down") {
         handleActiveDrag(event);
-        event.stopPropagation();
-        event.preventDefault();
+        consumeEvent(event);
         return;
       }
-
-      if (menuState) {
-        closePaneMenu();
-      }
+      if (menuState) closePaneMenu();
 
       for (const { pane, rect: visibleRect } of sortedFloatingPanes(visibleFloatingPanes)) {
         const paneId = pane.instance.instanceId;
         const rect = getVisibleFloatingRect(visibleRect, paneId, live.get().floating, width, contentHeight);
-        if (!pointInRect({ x: rect.x, y: rect.y, width: rect.width, height: rect.height }, event.x, shellY)) continue;
-
-        const relativeX = event.x - rect.x;
-        const relativeY = shellY - rect.y;
+        if (!pointInRect(rect, event.x, shellY)) continue;
         selectWindowModePane(paneId);
-
-        if (relativeX >= rect.width - 2 && relativeY >= rect.height - 1) {
-          startDrag({
-            type: "float-resize",
-            paneId,
-            startX: preciseX,
-            startY: preciseShellY,
-            origRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-          });
-          updateDragFloatingRect({ paneId, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } });
+        if (event.x - rect.x >= rect.width - 2 && shellY - rect.y >= rect.height - 1) {
+          beginFloatResize(paneId, rect);
         }
-
-        event.stopPropagation();
-        event.preventDefault();
+        consumeEvent(event);
         return;
       }
 
-      if (!transientFocusActive) {
-        for (const divider of dockDividerLayouts) {
-          if (!pointInRect(divider.rect, event.x, shellY)) continue;
-          startDrag({
-            type: "divider",
-            path: divider.path,
-            axis: divider.axis,
-            startX: preciseX,
-            startY: preciseShellY,
-            startRatio: divider.ratio,
-            bounds: divider.bounds,
-          });
-          updateDividerPreview({
-            pathKey: divider.path.join("."),
-            rect: divider.rect,
-            ratio: divider.ratio,
-          });
-          event.stopPropagation();
-          event.preventDefault();
-          return;
-        }
-      }
+      if (!transientFocusActive && tryDividerDrag()) return;
 
       for (const leaf of dockLeafLayouts) {
         if (!pointInRect(leaf.rect, event.x, shellY)) continue;
         selectWindowModePane(leaf.instanceId);
-        event.stopPropagation();
-        event.preventDefault();
+        consumeEvent(event);
         return;
       }
 
-      event.stopPropagation();
-      event.preventDefault();
+      consumeEvent(event);
       return;
     }
 
@@ -225,185 +276,31 @@ export function useShellTerminalPointerRuntime({
       for (const { pane, rect: visibleRect } of sortedFloatingPanes(visibleFloatingPanes)) {
         const paneId = pane.instance.instanceId;
         const rect = getVisibleFloatingRect(visibleRect, paneId, live.get().floating, width, contentHeight);
-        if (!pointInRect({ x: rect.x, y: rect.y, width: rect.width, height: rect.height }, event.x, shellY)) continue;
+        if (!pointInRect(rect, event.x, shellY)) continue;
         const relativeX = event.x - rect.x;
         const relativeY = shellY - rect.y;
-        const isFocused = focusedPaneId === paneId;
-        const headerAreas = resolveHeaderHitAreas(rect.width, {
-          floating: true,
-          focused: isFocused,
-          fullscreen: transientFocusActive,
-        });
         focusPane(paneId);
-        if (event.button === 2 && relativeY === 0) {
-          openPaneMenu(paneId, rect, event);
-          return;
-        }
-        if (relativeY === 0 && headerAreas.closeStart != null && relativeX >= headerAreas.closeStart && relativeX < rect.width) {
-          if (transientFocusActive) restoreFullscreen();
-          else handleFloatingClose(paneId);
-          event.stopPropagation();
-          event.preventDefault();
-          return;
-        }
-        if (relativeY === 0
-          && headerAreas.actionStart != null
-          && headerAreas.closeStart != null
-          && relativeX >= headerAreas.actionStart
-          && relativeX < headerAreas.closeStart) {
-          openPaneMenu(paneId, rect, event);
-          event.stopPropagation();
-          event.preventDefault();
-          return;
-        }
-        if (relativeY === 0
-          && headerAreas.helpStart != null
-          && headerAreas.actionStart != null
-          && relativeX >= headerAreas.helpStart
-          && relativeX < headerAreas.actionStart) {
-          openPaneDocs(paneId);
-          event.stopPropagation();
-          event.preventDefault();
+        if (relativeY === 0) {
+          const stack = floatingStacks(visibleFloatingPanes.map((entry) => entry.pane.floating!), floatingOrder).get(paneId);
+          handleHeaderDown(paneId, rect, relativeX, true, stack);
           return;
         }
         if (!transientFocusActive && relativeX >= rect.width - 2 && relativeY >= rect.height - 1) {
-          startDrag({
-            type: "float-resize",
-            paneId,
-            startX: preciseX,
-            startY: preciseShellY,
-            origRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-          });
-          updateDragFloatingRect({ paneId, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } });
-          event.stopPropagation();
-          event.preventDefault();
-          return;
-        }
-        if (relativeY === 0 && transientFocusActive) {
-          event.stopPropagation();
-          event.preventDefault();
-          return;
-        }
-        if (relativeY === 0) {
-          // A press on a tab of a floating stack pulls that tab out; the rest
-          // of the bar moves the stack. A floating title bar is always framed.
-          const stack = floatingStacks(visibleFloatingPanes.map((entry) => entry.pane.floating!), floatingOrder).get(paneId);
-          const tabId = stack
-            ? stackTabAt(stack, paneId, relativeX - paneHeaderTitleStart(true), {
-              width: rect.width,
-              framed: true,
-              corner: true,
-            }, paneMap, getPaneTitle, getPaneQuickSettings)
-            : null;
-          startDrag({
-            type: "pane-drag",
-            paneId: tabId ?? paneId,
-            mode: tabId ? "tab" : "floating",
-            startX: preciseX,
-            startY: preciseShellY,
-            origRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-          });
-          if (!tabId) updateDragFloatingRect({ paneId, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } });
-          event.stopPropagation();
-          event.preventDefault();
+          beginFloatResize(paneId, rect);
+          consumeEvent(event);
           return;
         }
         return;
       }
 
-      for (const divider of dockDividerLayouts) {
-        if (!pointInRect(divider.rect, event.x, shellY)) continue;
-        startDrag({
-          type: "divider",
-          path: divider.path,
-          axis: divider.axis,
-          startX: preciseX,
-          startY: preciseShellY,
-          startRatio: divider.ratio,
-          bounds: divider.bounds,
-        });
-        updateDividerPreview({
-          pathKey: divider.path.join("."),
-          rect: divider.rect,
-          ratio: divider.ratio,
-        });
-        event.stopPropagation();
-        event.preventDefault();
-        return;
-      }
+      if (tryDividerDrag()) return;
 
       for (const leaf of dockLeafLayouts) {
         if (!pointInRect(leaf.rect, event.x, shellY)) continue;
-        const pane = paneMap.get(leaf.instanceId);
-        if (!pane) continue;
-        const relativeX = event.x - leaf.rect.x;
-        const relativeY = shellY - leaf.rect.y;
-        const isFocused = focusedPaneId === leaf.instanceId;
-        const headerAreas = resolveHeaderHitAreas(leaf.rect.width, {
-          floating: false,
-          focused: isFocused,
-          fullscreen: transientFocusActive,
-        });
+        if (!paneMap.get(leaf.instanceId)) continue;
         focusPane(leaf.instanceId);
-        if (event.button === 2 && relativeY === 0) {
-          openPaneMenu(leaf.instanceId, leaf.rect, event);
-          return;
-        }
-        if (relativeY === 0
-          && transientFocusActive
-          && headerAreas.closeStart != null
-          && relativeX >= headerAreas.closeStart) {
-          restoreFullscreen();
-          event.stopPropagation();
-          event.preventDefault();
-          return;
-        }
-        if (relativeY === 0
-          && headerAreas.actionStart != null
-          && relativeX >= headerAreas.actionStart
-          && (headerAreas.closeStart == null || relativeX < headerAreas.closeStart)) {
-          openPaneMenu(leaf.instanceId, leaf.rect, event);
-          event.stopPropagation();
-          event.preventDefault();
-          return;
-        }
-        if (relativeY === 0
-          && headerAreas.helpStart != null
-          && headerAreas.actionStart != null
-          && relativeX >= headerAreas.helpStart
-          && relativeX < headerAreas.actionStart) {
-          openPaneDocs(leaf.instanceId);
-          event.stopPropagation();
-          event.preventDefault();
-          return;
-        }
-        if (relativeY === 0 && transientFocusActive) {
-          event.stopPropagation();
-          event.preventDefault();
-          return;
-        }
-        if (relativeY === 0) {
-          // A press on one of a stack's tabs moves that pane; the release
-          // shows it if the pointer did not move.
-          const framed = isFocused || transientFocusActive;
-          const tabId = leaf.stack
-            ? stackTabAt(leaf.stack, leaf.instanceId, relativeX - paneHeaderTitleStart(framed), {
-              width: leaf.rect.width,
-              framed,
-              corner: transientFocusActive,
-            }, paneMap, getPaneTitle, getPaneQuickSettings)
-            : null;
-          startDrag({
-            type: "pane-drag",
-            paneId: tabId ?? leaf.instanceId,
-            mode: "docked",
-            startX: preciseX,
-            startY: preciseShellY,
-            origRect: { x: leaf.rect.x, y: leaf.rect.y, width: leaf.rect.width, height: leaf.rect.height },
-          });
-          event.stopPropagation();
-          event.preventDefault();
-          return;
+        if (shellY - leaf.rect.y === 0) {
+          handleHeaderDown(leaf.instanceId, leaf.rect, event.x - leaf.rect.x, false, leaf.stack);
         }
         return;
       }

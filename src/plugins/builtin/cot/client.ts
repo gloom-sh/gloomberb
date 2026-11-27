@@ -9,32 +9,30 @@ import { COT_CLASSES, cotFrontPriceUnit, cotPriceMapping } from "./model";
 import { futuresPriceUnit, loadFuturesContractTerms, loadFuturesPriceUnit } from "../../../market-data/futures-contract";
 import { futuresBoardContract } from "../../../market-data/futures-board";
 import { settleWithin } from "../../../utils/async-deadline";
+import { isCalendarDay, isNullableFinite, isStringArray } from "../../../utils/guards";
 
 export const cotBoardCache = createPluginCache<CotBoardPayload>({ kind: "cot-board", source: "gloom-cloud", schemaVersion: 1,
   policy: { staleMs: 15 * 60_000, expireMs: 8 * 24 * 60 * 60_000 } });
-const date = (value: unknown): value is string => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
-  && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
-const number = (value: unknown) => value === null || typeof value === "number" && Number.isFinite(value);
 const count = (value: unknown) => value === null || typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 const code = (value: unknown) => typeof value === "string" && /^[0-9A-Z]{5}[0-9A-Z+]$/.test(value);
 function base(data: CotPayloadBase, family: CotFamily, positions: CotPositions) {
   if (!data || !["CFTC", "ICE Futures Europe", "CFTC / ICE Futures Europe"].includes(data.source) || data.scope !== positions || data.reportFamily !== family
-    || !Array.isArray(data.gaps) || !data.gaps.every((gap) => typeof gap === "string")
+    || !isStringArray(data.gaps)
     || !Array.isArray(data.classes) || data.classes.some((row) => !COT_CLASSES[family].some((option) => option.value === row.id))
-    || data.asOf !== null && !date(data.asOf) || !Number.isFinite(Date.parse(data.generatedAt))
+    || data.asOf !== null && !isCalendarDay(data.asOf) || !Number.isFinite(Date.parse(data.generatedAt))
     || data.publishedAt != null && !Number.isFinite(Date.parse(data.publishedAt))
     || !["available", "partial", "unavailable"].includes(data.status)) throw new Error("The server returned an invalid COT report");
 }
 function summary(row: CotClassSummary, family: CotFamily) {
   if (!row || !COT_CLASSES[family].some((option) => option.value === row.id)
-    || ![row.long, row.short, row.spreading].every(count) || ![row.net, row.weeklyChange, row.netPercentOfOpenInterest].every(number)
+    || ![row.long, row.short, row.spreading].every(count) || ![row.net, row.weeklyChange, row.netPercentOfOpenInterest].every(isNullableFinite)
     || row.net !== (row.long == null || row.short == null ? null : row.long - row.short)
-    || row.previousReportDate !== null && !date(row.previousReportDate)) throw new Error("The server returned invalid COT positions");
+    || row.previousReportDate !== null && !isCalendarDay(row.previousReportDate)) throw new Error("The server returned invalid COT positions");
   for (const rank of [row.percentile1Y, row.percentile3Y, ...(row.percentileAll === undefined ? [] : [row.percentileAll])]) {
     if (!rank || !Number.isSafeInteger(rank.sampleCount) || rank.sampleCount < 0 || typeof rank.completeWindow !== "boolean"
-      || ![rank.min, rank.max, rank.mean, rank.rank].every(number) || !date(rank.windowStart) || !date(rank.windowEnd)
-      || rank.value !== null && (!number(rank.value) || rank.value < 0 || rank.value > 100)
-      || rank.historyStart !== null && !date(rank.historyStart) || rank.historyEnd !== null && !date(rank.historyEnd)) {
+      || ![rank.min, rank.max, rank.mean, rank.rank].every(isNullableFinite) || !isCalendarDay(rank.windowStart) || !isCalendarDay(rank.windowEnd)
+      || rank.value !== null && (!isNullableFinite(rank.value) || rank.value < 0 || rank.value > 100)
+      || rank.historyStart !== null && !isCalendarDay(rank.historyStart) || rank.historyEnd !== null && !isCalendarDay(rank.historyEnd)) {
       throw new Error("The server returned invalid COT percentiles");
     }
   }
@@ -44,7 +42,7 @@ function validateCotBoard(data: CotBoardPayload, family: CotFamily, traderClass:
   if (!Array.isArray(data.rows) || data.traderClass !== traderClass) throw new Error("The server returned an invalid COT board");
   const seen = new Set<string>();
   for (const row of data.rows) {
-    if (!code(row.contractCode) || seen.has(row.contractCode) || !date(row.reportDate) || !count(row.openInterest)
+    if (!code(row.contractCode) || seen.has(row.contractCode) || !isCalendarDay(row.reportDate) || !count(row.openInterest)
       || row.position?.id !== traderClass) throw new Error("The server returned an invalid COT market");
     seen.add(row.contractCode); summary(row.position, family);
   }
@@ -58,7 +56,7 @@ export function validateCotContract(data: CotContractPayload, family: CotFamily,
   data.positions.forEach((row) => summary(row, family));
   let previous = "";
   for (const row of data.history) {
-    if (!date(row.reportDate) || row.reportDate <= previous || !count(row.openInterest) || !Array.isArray(row.positions)
+    if (!isCalendarDay(row.reportDate) || row.reportDate <= previous || !count(row.openInterest) || !Array.isArray(row.positions)
       || row.positions.some((position) => !COT_CLASSES[family].some((option) => option.value === position.id)
         || ![position.long, position.short, position.spreading].every(count)
         || position.net !== (position.long == null || position.short == null ? null : position.long - position.short))) {

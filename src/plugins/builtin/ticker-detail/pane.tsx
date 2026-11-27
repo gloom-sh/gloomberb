@@ -1,4 +1,3 @@
-import { logFailure } from "../../../utils/log-failure";
 import { matchOptionChoice, optionChoiceNames } from "../../../utils/option-choice";
 import { Box } from "../../../ui";
 import { getCurrentPluginTarget } from "../../current-target";
@@ -21,9 +20,10 @@ import {
 } from "../../../state/app/context";
 import { useQuoteUpdates } from "../../../state/hooks/quote-streaming";
 import { getSharedRegistry } from "../../registry";
-import { ChoiceDialog, EmptyState, NestedPaneTabs, PaneFooterScope, PaneStatusBody, usePaneFooter, usePaneMenuItems, usePaneTabs } from "../../../components";
+import { EmptyState, NestedPaneTabs, PaneFooterScope, PaneStatusBody, usePaneFooter, usePaneMenuItems, usePaneTabs } from "../../../components";
+import { choiceDialog } from "../../../components/ui";
 import { useTickerPaneOpening } from "../../../state/opening-ticker-panes";
-import { useOptionalDialog, type PromptContext } from "../../../ui/dialog";
+import { useOptionalDialog } from "../../../ui/dialog";
 import { useThrottledCommitValue } from "../../../react/use-throttled-commit-value";
 import { resolveOptionsTarget } from "../../../utils/options";
 import {
@@ -396,14 +396,14 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
     ));
     if (!choices.length) return null;
     return [{ id: "company-research", label: t("Company Research…"), onSelect: () => {
-      void dialog.prompt<string>({
-        closeOnClickOutside: true,
-        content: (context: PromptContext<string>) => <ChoiceDialog {...context}
-          title={tf("Research {symbol}", { symbol: companySymbol })}
-          choices={choices.map((item) => ({ ...item, label: t(item.label) }))} />,
+      void choiceDialog(dialog, {
+        title: tf("Research {symbol}", { symbol: companySymbol }),
+        choices: choices.map((item) => ({ ...item, label: t(item.label) })),
+        logSource: "ticker-detail.pane",
+        logMessage: "Open company research choices failed",
       }).then((templateId) => {
         if (templateId && choices.some((item) => item.id === templateId)) createPaneFromTemplate(templateId, { symbol: companySymbol });
-      }).catch(logFailure("ticker-detail.pane", "Open company research choices failed"));
+      });
     } }];
   }, [companySymbol, createPaneFromTemplate, dialog, disabledPlugins, registry, tickerResearchTabsSnapshot]);
   usePaneMenuItems("ticker-research:go-to-tab", () => {
@@ -412,19 +412,15 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
       id: "go-to-tab",
       label: t("Go to Tab…"),
       onSelect: () => {
-        void dialog.prompt<string>({
-          closeOnClickOutside: true,
-          content: (context: PromptContext<string>) => (
-            <ChoiceDialog
-              {...context}
-              title={t("Go to Tab")}
-              selectedChoiceId={resolvedTabId}
-              choices={groups.flatMap((group) => group.views.map((view) => ({ id: view.id, label: t(view.name), group: t(group.name) })))}
-            />
-          ),
+        void choiceDialog(dialog, {
+          title: t("Go to Tab"),
+          selectedChoiceId: resolvedTabId,
+          choices: groups.flatMap((group) => group.views.map((view) => ({ id: view.id, label: t(view.name), group: t(group.name) }))),
+          logSource: "ticker-detail.pane",
+          logMessage: "Open research tab choices failed",
         }).then((tabId) => {
           if (tabId) selectResearchTab(tabId);
-        }).catch(logFailure("ticker-detail.pane", "Open research tab choices failed"));
+        });
       },
     }];
   }, [allTabs.length, dialog, groups, resolvedTabId, selectResearchTab, showTabs]);

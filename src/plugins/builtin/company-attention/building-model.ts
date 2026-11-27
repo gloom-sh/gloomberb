@@ -1,10 +1,10 @@
-import { formatDay, formatDayTime } from "../../../utils/day-format";
+import { formatDayTime } from "../../../utils/day-format";
 import type { DataTableColumn, StatItem } from "../../../components";
 import type { HiringBuildingBoard, HiringBuildingFilter, HiringBuildingHold, HiringBuildingShift, HiringBuildingSkip, HiringCompanyBuilding, HiringMixRow, HiringMovePosting } from "../../../api-client/hiring";
 import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 import { countOf, freePreviewNote, previewCantFilter } from "../shared/free-preview";
 import { humanLabel } from "../shared/research-cells";
-import type { AttentionRow } from "./model";
+import { attentionColumn as column, hiringCount as count, hiringDayLabel as dayLabel, hiringPace, hiringSigned, type AttentionRow } from "./model";
 
 /**
  * HIRE's Building tab (docs/hiring-app-attention.md): what each company is
@@ -38,11 +38,6 @@ const buildingHoldText = (hold: HiringBuildingHold) => HOLD_LABELS[hold] ?? huma
 const skipText = (skips: readonly HiringBuildingSkip[]) => skips.map((skip) => SKIP_LABELS[skip] ?? humanLabel(skip)).join(", ");
 const kindText = (shift: Pick<HiringBuildingShift, "dimension">) => shift.dimension === "theme" ? "Theme" : "Role family";
 
-/** "12 Oct": a week's Monday. */
-function dayLabel(value: string | null | undefined, year = false): string {
-  return /^\d{4}-\d{2}-\d{2}/.test(value ?? "") ? formatDay(value, year ? "full" : "no-year") : MISSING_VALUE;
-}
-const count = (value: number | null | undefined) => value == null ? MISSING_VALUE : formatNumber(value, 0);
 /** A share: whole percents from 10%, a tenth under it. */
 const share = (value: number | null | undefined) => value == null ? MISSING_VALUE : value <= 0 ? "0%" : `${formatNumber(value * 100, value < 0.1 ? 1 : 0)}%`;
 /** A change of share in points, as it rounds: "+23 pts", "+5.2 pts", "0 pts". */
@@ -53,8 +48,8 @@ const points = (value: number) => {
 };
 /** The sign a change shows, so one that rounds to nothing is not coloured. */
 export const buildingSign = (columnId: string, value: number) => columnId === "change" ? pointsRounded(value) : value;
-const signed = (value: number, decimals = 1) => `${value > 0 ? "+" : ""}${formatNumber(value, decimals)}`;
-const pace = (value: number | null) => value == null ? "from none" : `${formatNumber(value, value >= 10 ? 0 : 1)}x`;
+const signed = (value: number, decimals = 1) => hiringSigned(value, decimals);
+const pace = (value: number | null) => value == null ? "from none" : hiringPace(value);
 
 const SHARE_COLUMNS = new Set(["share", "now", "before"]);
 export const BUILDING_SIGNED_COLUMNS = new Set(["change", "z"]);
@@ -109,7 +104,6 @@ export interface BuildingModel {
   held: string | null;
 }
 
-const column = (id: string, label: string, width: number, numeric = false, flex = false): DataTableColumn => ({ id, label, width, align: numeric ? "right" : "left", ...(flex ? { flexGrow: 1 } : {}) });
 // What moved and by how much first, so a narrow pane keeps them; the kind and the evidence after.
 const BOARD_COLUMNS = [column("symbol", "Ticker", 12), column("name", "Company", 20, false, true), column("label", "What", 22),
   column("now", "Now", 7, true), column("before", "Before", 8, true), column("change", "Change", 10, true), column("roles", "Roles", 7, true), column("kind", "Kind", 12), column("weeks", "Weeks", 8), column("z", "Z-score", 9, true), column("title", "Top title", 26)];

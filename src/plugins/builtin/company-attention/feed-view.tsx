@@ -7,12 +7,12 @@ import { DetailReader, type DetailFact } from "../../../components/reader/detail
 import { dayCell } from "../../../components/ui/day-cell";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
-import { Text, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { logFailure } from "../../../utils/log-failure";
 import type { CloudResource } from "../shared/cloud-resource";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
-import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
-import { useOpenDescription } from "../shared/open-description";
+import { lockedTableCell, lockedTableOverlay } from "../shared/locked-rows";
+import { useTickerJumpHints } from "../shared/open-description";
 import { listingCell, missingCell, withoutQuietColumns } from "../shared/research-cells";
 import { sortAttentionRows, type AttentionRow } from "./model";
 
@@ -70,7 +70,6 @@ export function HiringFeedView<TPayload, TFilter extends string, TView extends s
   const desktop = !!useUiCapabilities().nativePaneChrome;
   const host = useRendererHost();
   const { createPaneFromTemplate } = usePluginAppActions();
-  const openDescription = useOpenDescription();
   const rawUpgrade = useCloudUpgradeAction("hire");
   const upgrade = useCallback(() => { void rawUpgrade().catch(logFailure(sc.logScope, "Open Pro upgrade failed")); }, [sc.logScope, rawUpgrade]);
   const openUrl = useCallback((url: string) => { void host.openExternal(url).catch(logFailure(sc.logScope, "Open external link failed")); }, [host, sc.logScope]);
@@ -128,6 +127,7 @@ export function HiringFeedView<TPayload, TFilter extends string, TView extends s
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => { resource.reload(); paged.reload(); }, { focused: focused && !detailOpen });
 
+  const jumpHints = useTickerJumpHints();
   const subject = selected?.symbol ?? symbol;
   const source = sourceUrl(opened, selected);
   const evidence = !symbol && selected && !opened ? evidenceTitle(selected) : null;
@@ -135,9 +135,7 @@ export function HiringFeedView<TPayload, TFilter extends string, TView extends s
     ...(source ? [{ id: "source", key: "o", label: "pen source", onPress: () => openUrl(source) }] : []),
     ...(evidence && selected ? [{ id: "evidence", key: "e", label: "vidence", title: evidence, onPress: () => setOpenRow(selected.id) }] : []),
     ...(subject && !opened ? [
-      { id: "description", key: "d", label: "es", onPress: () => openDescription(subject) },
-      { id: "financials", key: "f", label: "a", onPress: () => createPaneFromTemplate("financial-analysis-pane", { symbol: subject }) },
-      { id: "chart", key: "g", label: "raph", onPress: () => createPaneFromTemplate("chart-composer-pane", { arg: subject }) },
+      ...jumpHints(subject),
       { id: "related", key: "a", label: "pps", title: "App attention", onPress: () => createPaneFromTemplate("apps-pane", { symbol: subject }) },
       ...(extraCompanyHints ? extraCompanyHints(subject, desktop) : []),
     ] : []),
@@ -177,8 +175,14 @@ export function HiringFeedView<TPayload, TFilter extends string, TView extends s
       }}
       renderCell={(row, column, _index, state) => {
         if (locked(row)) {
-          if (!desktop && column.id === columns[0]?.id && row.id === "locked:0") return { text: upgradeText, content: <UpgradeLabel text={upgradeText} onPress={upgrade} role="attention-upgrade" /> };
-          return desktop ? { text: "", content: <Blurred><Text fg={colors.textDim}>Hidden</Text></Blurred> } : { text: "░░░░", color: colors.textDim };
+          return lockedTableCell({
+            desktop,
+            isLabelCell: column.id === columns[0]?.id && row.id === "locked:0",
+            upgradeText,
+            onUpgrade: upgrade,
+            role: "attention-upgrade",
+            dimColor: colors.textDim,
+          });
         }
         const value = row.values[column.id];
         if (value == null || value === "") return renderEmptyCell?.(row, column) ?? missingCell(colors);
@@ -189,6 +193,6 @@ export function HiringFeedView<TPayload, TFilter extends string, TView extends s
         if ((column.id === "date" || column.id === "week") && typeof value === "string") return { ...dayCell(value), color: colors.textDim };
         return { text: String(value), value, color: BRIGHT_COLUMNS.has(column.id) ? colors.textBright : DIM_COLUMNS.has(column.id) ? colors.textDim : colors.text };
       }} selectedTextOverridesCellColor showHorizontalScrollbar resetScrollKey={`${scope}:${sectionId}:${filter}`}
-      emptyStateTitle={section?.empty ?? ""} bodyAfter={lockedRows && desktop ? <LockedOverlay rows={lockedRows} text={upgradeText} onPress={upgrade} role="attention-upgrade" /> : undefined} />}
+      emptyStateTitle={section?.empty ?? ""} bodyAfter={lockedTableOverlay(lockedRows, desktop, upgradeText, upgrade, "attention-upgrade")} />}
   />;
 }

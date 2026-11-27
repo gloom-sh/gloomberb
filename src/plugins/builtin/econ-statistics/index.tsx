@@ -46,10 +46,5 @@ export const econStatisticsModule: PluginModule = {
       settings: { stat: resolveStatArg(options?.arg)?.id ?? DEFAULT_STAT_ID },
     }),
   }],
-  setup(ctx) {
-    statsCache.attach(ctx.persistence);
-  },
-  dispose() {
-    statsCache.reset();
-  },
+  caches: [statsCache],
 };

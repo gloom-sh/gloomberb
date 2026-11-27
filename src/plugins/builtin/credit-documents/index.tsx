@@ -6,8 +6,7 @@ import { creditCache } from "./client";
 import { creditHeadless, covenantsHeadless } from "./headless";
 
 export const creditDocumentsModule: PluginModule = {
-  setup(ctx) { creditCache.attach(ctx.persistence); },
-  dispose() { creditCache.reset(); },
+  caches: [creditCache],
   paneTemplates: [
     fixedIncomeShortcut({
       ...createTickerSurfacePaneTemplate({

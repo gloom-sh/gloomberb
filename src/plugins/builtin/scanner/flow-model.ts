@@ -1,3 +1,4 @@
+import { utcDay } from "../../../utils/day-format";
 import { MISSING_VALUE } from "../../../utils/format";
 import { formatExpDate } from "../../../utils/options";
 import type { ScannerFlowEvent, ScannerFlowHistoryQuery, ScannerStatus } from "../../../api-client";
@@ -287,10 +288,6 @@ export function flowSessionSearch(filters: FlowFilters, scope: FlowScope): strin
   }));
   if (scope.symbol) params.set("symbol", scope.symbol.toUpperCase());
   return params.toString();
-}
-
-function utcDay(at: number): string {
-  return new Date(at).toISOString().slice(0, 10);
 }
 
 /** True when any row is from an earlier day in UTC, so the time column needs its date. */

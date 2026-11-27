@@ -1,9 +1,8 @@
-import { logFailure } from "../../../utils/log-failure";
 import { useCallback } from "react";
-import { ChoiceDialog } from "../../../components/ui/choice-dialog";
+import { choiceDialog } from "../../../components/ui/choice-dialog";
 import { t } from "../../../i18n";
 import { useInlineTickerOpener } from "../../../state/hooks/inline-tickers";
-import { useOptionalDialog, type PromptContext } from "../../../ui/dialog";
+import { useOptionalDialog } from "../../../ui/dialog";
 
 /**
  * The keyboard way to open a ticker badge: one symbol opens straight away,
@@ -19,17 +18,13 @@ export function useOpenTickerChoice(): (symbols: readonly string[]) => void {
       openTicker(unique[0]!);
       return;
     }
-    void dialog.prompt<string>({
-      closeOnClickOutside: true,
-      content: (ctx: PromptContext<string>) => (
-        <ChoiceDialog
-          {...ctx}
-          title={t("Open ticker")}
-          choices={unique.map((symbol) => ({ id: symbol, label: symbol }))}
-        />
-      ),
+    void choiceDialog(dialog, {
+      title: t("Open ticker"),
+      choices: unique.map((symbol) => ({ id: symbol, label: symbol })),
+      logSource: "shared.ticker-choice",
+      logMessage: "Open ticker choice failed",
     }).then((symbol) => {
       if (symbol) openTicker(symbol);
-    }).catch(logFailure("shared.ticker-choice", "Open ticker choice failed"));
+    });
   }, [dialog, openTicker]);
 }

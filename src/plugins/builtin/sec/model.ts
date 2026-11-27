@@ -1,4 +1,5 @@
 import { formatDay } from "../../../utils/day-format";
+import { escapeRegExp } from "../../../utils/format";
 import type { SecFilingItem } from "../../../types/data-provider";
 import { secFilingItemCodes } from "../../../utils/sec";
 import { currentReportItemNames, form4TradeText, isCurrentReportForm as isCurrentReport } from "../../../utils/sec-filings";
@@ -15,10 +16,6 @@ function normalizeComparableText(value: string): string {
     .toUpperCase()
     .replace(/\bFORM\b/g, "")
     .replace(/[^A-Z0-9]+/g, "");
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function stripRedundantFormPrefix(form: string, description: string): string {

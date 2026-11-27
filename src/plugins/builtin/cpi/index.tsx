@@ -25,6 +25,5 @@ export const cpiModule: PluginModule = {
     headless: cpiHeadless,
     createInstance: (_context, options) => cpiInstance(options),
   }],
-  setup(ctx) { cpiBoardCache.attach(ctx.persistence); },
-  dispose() { cpiBoardCache.reset(); },
+  caches: [cpiBoardCache],
 };

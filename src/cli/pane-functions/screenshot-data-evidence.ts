@@ -195,67 +195,96 @@ export function shotDataEvidenceFor(
   return null;
 }
 
-export function shotUnavailableSymbols(
+function resolveShotCapabilityEvidence(
   resolved: ResolvedPaneFunction,
   payload: DesktopPaneShotPayload,
-  semanticUi: RemoteUiNodeSnapshot[] = [],
-): string[] {
+  semanticUi: RemoteUiNodeSnapshot[],
+): { unavailable: string[]; rowCount: number } {
   const evidenceHook = paneScreenshotEvidenceHook(resolved);
-  if (evidenceHook) return evidenceHook.unavailable(renderedPaneEvidence(evidenceHook, semanticUi), { resolved, payload });
+  if (evidenceHook) {
+    const rendered = renderedPaneEvidence(evidenceHook, semanticUi);
+    return {
+      unavailable: evidenceHook.unavailable(rendered, { resolved, payload }),
+      rowCount: rendered?.plottedValueCount ?? 0,
+    };
+  }
+  const chartMetadata = () => semanticUi.find((node) => (
+    node.role === "chart-data" && node.metadata?.kind === "chart-composer"
+  ))?.metadata;
   if (resolved.capability.id === "chart-composer") {
-    const metadata = semanticUi.find((node) => (
-      node.role === "chart-data" && node.metadata?.kind === "chart-composer"
-    ))?.metadata;
-    const baseSeries = Array.isArray(metadata?.baseSeries) ? metadata.baseSeries : [];
-    return baseSeries.flatMap((entry) => {
+    const baseSeries = Array.isArray(chartMetadata()?.baseSeries) ? chartMetadata()!.baseSeries as unknown[] : [];
+    const unavailable = baseSeries.flatMap((entry) => {
       if (!isRecord(entry) || (typeof entry.pointCount === "number" && entry.pointCount > 0)) return [];
       if (entry.sourceKind === "security" && typeof entry.symbol === "string") return [entry.symbol];
-      if (entry.sourceKind === "economic" && typeof entry.economicSeriesId === "string") {
-        return [`FRED:${entry.economicSeriesId}`];
-      }
+      if (entry.sourceKind === "economic" && typeof entry.economicSeriesId === "string") return [`FRED:${entry.economicSeriesId}`];
       if (entry.sourceKind === "capability" && typeof entry.capabilityId === "string" && typeof entry.providerSeriesId === "string") {
         return [`CAP:${entry.capabilityId}:${entry.providerSeriesId}`];
       }
       return [];
     });
+    const rowCount = baseSeries.reduce<number>((count, entry) => (
+      count + (isRecord(entry) && typeof entry.pointCount === "number" ? Math.max(0, entry.pointCount) : 0)
+    ), 0);
+    return { unavailable, rowCount };
   }
   if (resolved.capability.id === "intraday-price-chart") {
     const symbol = payload.intradayHistories[0]?.symbol ?? payload.financials[0]?.[0];
-    const metadata = semanticUi.find((node) => (
-      node.role === "chart-data" && node.metadata?.kind === "chart-composer"
-    ))?.metadata;
-    const renderedPoints = typeof metadata?.projectedPointCount === "number"
-      ? metadata.projectedPointCount
+    const renderedPoints = typeof chartMetadata()?.projectedPointCount === "number"
+      ? Math.max(0, chartMetadata()!.projectedPointCount as number)
       : 0;
-    return symbol && renderedPoints <= 0 ? [symbol] : [];
+    return { unavailable: symbol && renderedPoints <= 0 ? [symbol] : [], rowCount: renderedPoints };
   }
   const graphKind = shotGraphKind(resolved);
   if (graphKind) {
     const metric = resolved.options.metric as GraphMetricKey;
     const period = resolved.options.period as FundamentalPeriod;
     const periodCount = resolved.options.periods == null ? null : Number(resolved.options.periods);
-    return payload.financials.flatMap(([symbol, financials]) => (
-      limitGraphRowsBySymbol(
-        graphRowsForFinancials(financials, graphKind, metric, period, symbol),
-        periodCount,
-      ).length === 0 ? [symbol] : []
-    ));
+    const counts = payload.financials.map(([symbol, financials]) => ({
+      symbol,
+      count: limitGraphRowsBySymbol(graphRowsForFinancials(financials, graphKind, metric, period, symbol), periodCount).length,
+    }));
+    return {
+      unavailable: counts.flatMap(({ symbol, count }) => (count === 0 ? [symbol] : [])),
+      rowCount: counts.reduce((sum, { count }) => sum + count, 0),
+    };
   }
   if (["price-chart", "historical-prices"].includes(resolved.capability.id)) {
-    return payload.financials.flatMap(([symbol, financials]) => financials.priceHistory.length > 0 ? [] : [symbol]);
+    return {
+      unavailable: payload.financials.flatMap(([symbol, financials]) => (financials.priceHistory.length > 0 ? [] : [symbol])),
+      rowCount: payload.financials[0]?.[1].priceHistory.length ?? 0,
+    };
   }
   if (["price-comparison", "return-correlation", "security-relationship"].includes(resolved.capability.id)) {
-    return payload.financials.flatMap(([symbol, financials]) => financials.priceHistory.length > 1 ? [] : [symbol]);
+    return {
+      unavailable: payload.financials.flatMap(([symbol, financials]) => (financials.priceHistory.length > 1 ? [] : [symbol])),
+      rowCount: payload.financials.filter(([, financials]) => financials.priceHistory.length > 1).length,
+    };
   }
   if (resolved.capability.id === "financial-statements") {
-    return payload.financials.flatMap(([symbol, financials]) => {
-      const count = resolved.options.period === "quarterly"
-        ? financials.quarterlyStatements.length
-        : financials.annualStatements.length;
-      return count > 0 ? [] : [symbol];
-    });
+    const statementCount = (financials: DesktopPaneShotPayload["financials"][number][1] | undefined) => (
+      resolved.options.period === "quarterly"
+        ? financials?.quarterlyStatements.length ?? 0
+        : financials?.annualStatements.length ?? 0
+    );
+    return {
+      unavailable: payload.financials.flatMap(([symbol, financials]) => (statementCount(financials) > 0 ? [] : [symbol])),
+      rowCount: statementCount(payload.financials[0]?.[1]),
+    };
   }
-  return payload.financials.flatMap(([symbol, financials]) => financials.quote ? [] : [symbol]);
+  return {
+    unavailable: payload.financials.flatMap(([symbol, financials]) => (financials.quote ? [] : [symbol])),
+    rowCount: resolved.pane?.id === "quick-notes"
+      ? semanticUi.filter((node) => node.role === "report-note").length
+      : payload.financials.filter(([, financials]) => !!financials.quote).length,
+  };
+}
+
+export function shotUnavailableSymbols(
+  resolved: ResolvedPaneFunction,
+  payload: DesktopPaneShotPayload,
+  semanticUi: RemoteUiNodeSnapshot[] = [],
+): string[] {
+  return resolveShotCapabilityEvidence(resolved, payload, semanticUi).unavailable;
 }
 
 export function shotGraphKind(resolved: ResolvedPaneFunction): GraphKind | null {
@@ -269,52 +298,7 @@ export function shotSemanticRowCount(
   payload: DesktopPaneShotPayload,
   semanticUi: RemoteUiNodeSnapshot[] = [],
 ): number {
-  const evidenceHook = paneScreenshotEvidenceHook(resolved);
-  if (evidenceHook) return renderedPaneEvidence(evidenceHook, semanticUi)?.plottedValueCount ?? 0;
-  if (resolved.pane?.id === "quick-notes") return semanticUi.filter((node) => node.role === "report-note").length;
-  if (resolved.capability.id === "chart-composer") {
-    const metadata = semanticUi.find((node) => (
-      node.role === "chart-data" && node.metadata?.kind === "chart-composer"
-    ))?.metadata;
-    const baseSeries = Array.isArray(metadata?.baseSeries) ? metadata.baseSeries : [];
-    return baseSeries.reduce((count, entry) => (
-      count + (isRecord(entry) && typeof entry.pointCount === "number" ? Math.max(0, entry.pointCount) : 0)
-    ), 0);
-  }
-  if (resolved.capability.id === "intraday-price-chart") {
-    const metadata = semanticUi.find((node) => (
-      node.role === "chart-data" && node.metadata?.kind === "chart-composer"
-    ))?.metadata;
-    return typeof metadata?.projectedPointCount === "number"
-      ? Math.max(0, metadata.projectedPointCount)
-      : 0;
-  }
-  const graphKind = shotGraphKind(resolved);
-  if (graphKind) {
-    const metric = resolved.options.metric as GraphMetricKey;
-    const period = resolved.options.period as FundamentalPeriod;
-    const periodCount = resolved.options.periods == null ? null : Number(resolved.options.periods);
-    return payload.financials.reduce((count, [symbol, financials]) => (
-      count + limitGraphRowsBySymbol(
-        graphRowsForFinancials(financials, graphKind, metric, period, symbol),
-        periodCount,
-      ).length
-    ), 0);
-  }
-  if (["price-chart", "historical-prices"].includes(resolved.capability.id)) {
-    return payload.financials[0]?.[1].priceHistory.length ?? 0;
-  }
-  if (["price-comparison", "return-correlation", "security-relationship"].includes(resolved.capability.id)) {
-    return payload.financials.filter(([, financials]) => financials.priceHistory.length > 1).length;
-  }
-  if (resolved.capability.id === "financial-statements") {
-    const financials = payload.financials[0]?.[1];
-    const period = resolved.options.period;
-    return period === "quarterly"
-      ? financials?.quarterlyStatements.length ?? 0
-      : financials?.annualStatements.length ?? 0;
-  }
-  return payload.financials.filter(([, financials]) => !!financials.quote).length;
+  return resolveShotCapabilityEvidence(resolved, payload, semanticUi).rowCount;
 }
 
 export function shotFinancialText(resolved: ResolvedPaneFunction, payload: DesktopPaneShotPayload) {

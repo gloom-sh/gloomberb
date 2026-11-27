@@ -478,19 +478,16 @@ export function StatusBar() {
     tidyWindowsKey,
   };
 
-  if (nativePaneChrome) {
-    return <NativeStatusBar {...viewProps} />;
-  }
-
-  return <TerminalStatusBar {...viewProps} />;
+  return <StatusBarView {...viewProps} nativePaneChrome={!!nativePaneChrome} />;
 }
 
-function NativeStatusBar({
+function StatusBarView({
   activeLayoutIdx,
   openLayoutContextMenu,
   showTidyWindows,
+  nativePaneChrome,
   ...props
-}: StatusBarViewProps) {
+}: StatusBarViewProps & { nativePaneChrome: boolean }) {
   const colors = useThemeColors();
   return (
     <Box
@@ -503,48 +500,25 @@ function NativeStatusBar({
         void openLayoutContextMenu(activeLayoutIdx, event);
       }}
       // The hairline above it and the type are styles.css's, as the pane footer's are.
-      style={{ paddingInline: "var(--gloom-inset)" }}
+      style={nativePaneChrome ? { paddingInline: "var(--gloom-inset)" } : undefined}
     >
-      <StatusBarLayoutControl nativePaneChrome {...props} />
-      <NativeNewLayout />
-      {showTidyWindows && <NativeTidyWindows {...props} />}
+      <StatusBarLayoutControl nativePaneChrome={nativePaneChrome} {...props} />
+      {nativePaneChrome ? <NativeNewLayout /> : <TerminalNewLayout {...props} />}
+      {showTidyWindows && (nativePaneChrome ? <NativeTidyWindows {...props} /> : <TerminalTidyWindows {...props} />)}
       <Box flexGrow={1} minWidth={0} />
-      <StatusBarConnectionNote nativePaneChrome {...props} />
-      {/* Widgets keep their width; the layout tabs give way instead. */}
-      <Box flexShrink={0} flexDirection="row" alignItems="center" data-gloom-role="status-widgets">
-        <PluginSlot name="status:widget" />
-      </Box>
-      <StatusBarFeedback nativePaneChrome {...props} />
-    </Box>
-  );
-}
-
-function TerminalStatusBar({
-  activeLayoutIdx,
-  openLayoutContextMenu,
-  showTidyWindows,
-  ...props
-}: StatusBarViewProps) {
-  const colors = useThemeColors();
-  return (
-    <Box
-      flexDirection="row"
-      height={1}
-      alignItems="center"
-      backgroundColor={colors.panel}
-      data-gloom-role="status-bar"
-      onContextMenu={(event: any) => {
-        void openLayoutContextMenu(activeLayoutIdx, event);
-      }}
-    >
-      <StatusBarLayoutControl nativePaneChrome={false} {...props} />
-      <TerminalNewLayout {...props} />
-      {showTidyWindows && <TerminalTidyWindows {...props} />}
-      <Box flexGrow={1} minWidth={0} />
-      <StatusBarConnectionNote nativePaneChrome={false} {...props} />
-      <StarPromptStatusLine />
-      <PluginSlot name="status:widget" />
-      <StatusBarFeedback nativePaneChrome={false} {...props} />
+      <StatusBarConnectionNote nativePaneChrome={nativePaneChrome} {...props} />
+      {nativePaneChrome ? (
+        /* Widgets keep their width; the layout tabs give way instead. */
+        <Box flexShrink={0} flexDirection="row" alignItems="center" data-gloom-role="status-widgets">
+          <PluginSlot name="status:widget" />
+        </Box>
+      ) : (
+        <>
+          <StarPromptStatusLine />
+          <PluginSlot name="status:widget" />
+        </>
+      )}
+      <StatusBarFeedback nativePaneChrome={nativePaneChrome} {...props} />
     </Box>
   );
 }

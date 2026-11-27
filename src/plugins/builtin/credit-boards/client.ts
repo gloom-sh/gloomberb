@@ -1,33 +1,20 @@
 import { apiClient } from "../../../api-client";
-import type {
-  CdxBoardPayload,
-  CreditBoardPoint,
-  SovrBoardPayload,
-} from "../../../api-client/credit-boards";
-import { createPluginCache } from "../../../data/plugin-cache";
+import type { CdxBoardPayload, CreditBoardPoint, SovrBoardPayload } from "../../../api-client/credit-boards";
 import { createTtlCache } from "../../../data/ttl-cache";
 import type { PricePoint } from "../../../types/financials";
+import { isIsoInstant, isNullableFinite } from "../../../utils/guards";
 import { logFailure } from "../../../utils/log-failure";
-import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
+import { createCloudEndpoint } from "../shared/cloud-resource";
 import { currencyMoveFromHistory, currencyPair } from "./model";
 
 /** New prints land every ten minutes; the server holds its board for five. */
 const policy = { staleMs: 5 * 60_000, expireMs: 7 * 24 * 60 * 60_000 };
-export const cdxBoardCache = createPluginCache<CdxBoardPayload>({
-  kind: "cdx-board", source: "gloom-cloud", schemaVersion: 1, policy,
-});
-export const sovrBoardCache = createPluginCache<SovrBoardPayload>({
-  kind: "sovr-board", source: "gloom-cloud", schemaVersion: 1, policy,
-});
-
 /** A year of daily levels: the chart and the 1Y rank. */
 const BOARD_DAYS = 365;
 
-const finiteOrNull = (value: unknown) => value === null || typeof value === "number" && Number.isFinite(value);
 const isDate = (value: unknown): value is string => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
   && Number.isFinite(Date.parse(value));
-const optionalFinite = (value: unknown) => value === undefined || finiteOrNull(value);
-const isInstant = (value: unknown) => typeof value === "string" && Number.isFinite(Date.parse(value));
+const optionalFinite = (value: unknown) => value === undefined || isNullableFinite(value);
 const validPoints = (points: unknown) => Array.isArray(points) && points.every((point: CreditBoardPoint) =>
   point && isDate(point.date) && isDate(point.maturity) && Number.isFinite(point.level) && Number.isInteger(point.prints)
   && optionalFinite(point.spreadBp));
@@ -36,12 +23,12 @@ function validateCdxBoard(payload: CdxBoardPayload): CdxBoardPayload {
   if (!payload || !Array.isArray(payload.indexes) || payload.indexes.some((index) =>
     !index || typeof index.id !== "string" || typeof index.name !== "string"
     || (index.quote !== "spread" && index.quote !== "price")
-    || !finiteOrNull(index.level) || !finiteOrNull(index.change1D) || !finiteOrNull(index.change1W)
-    || (index.change1M !== undefined && !finiteOrNull(index.change1M))
-    || !finiteOrNull(index.prints) || (index.date !== null && !isDate(index.date)) || !validPoints(index.points)
+    || !isNullableFinite(index.level) || !isNullableFinite(index.change1D) || !isNullableFinite(index.change1W)
+    || (index.change1M !== undefined && !isNullableFinite(index.change1M))
+    || !isNullableFinite(index.prints) || (index.date !== null && !isDate(index.date)) || !validPoints(index.points)
     || !optionalFinite(index.spreadBp) || (index.recovery !== undefined && !Number.isFinite(index.recovery))
     || (index.partial !== undefined && typeof index.partial !== "boolean")
-    || (index.lastPrintAt != null && !isInstant(index.lastPrintAt))
+    || (index.lastPrintAt != null && !isIsoInstant(index.lastPrintAt))
     || (index.changeDate != null && !isDate(index.changeDate)))) {
     throw new Error("The server returned an invalid index CDS board");
   }
@@ -51,7 +38,7 @@ function validateCdxBoard(payload: CdxBoardPayload): CdxBoardPayload {
 function validateSovrBoard(payload: SovrBoardPayload): SovrBoardPayload {
   if (!payload || !Array.isArray(payload.sovereigns) || payload.sovereigns.some((row) =>
     !row || typeof row.id !== "string" || typeof row.name !== "string" || typeof row.currency !== "string"
-    || !Number.isFinite(row.level) || !isDate(row.date) || !finiteOrNull(row.change1M) || !finiteOrNull(row.change1W)
+    || !Number.isFinite(row.level) || !isDate(row.date) || !isNullableFinite(row.change1M) || !isNullableFinite(row.change1W)
     || !validPoints(row.points))) {
     throw new Error("The server returned an invalid sovereign CDS board");
   }
@@ -68,15 +55,21 @@ export function boardPublisher(source: string | null | undefined): string | unde
   return source?.trim().replace(/\bPPD\b/, "Public Price Dissemination") || undefined;
 }
 
-export async function fetchCdxBoard(client: BoardClient = apiClient, days = BOARD_DAYS): Promise<CdxBoardPayload> {
-  try { return validateCdxBoard(await client.getCloudCdxBoard({ days })); }
-  catch (error) { throw unavailableOnServer(error, "Index CDS levels are not available yet."); }
-}
+const cdxBoardEndpoint = createCloudEndpoint<number, CdxBoardPayload, Pick<BoardClient, "getCloudCdxBoard">>({
+  kind: "cdx-board", schemaVersion: 1, policy, key: "5y", defaultClient: apiClient,
+  fetch: (days, client) => client.getCloudCdxBoard({ days }), validate: validateCdxBoard,
+  unavailableMessage: "Index CDS levels are not available yet.",
+});
+const sovrBoardEndpoint = createCloudEndpoint<void, SovrBoardPayload, Pick<BoardClient, "getCloudSovrBoard">>({
+  kind: "sovr-board", schemaVersion: 1, policy, key: "5y", defaultClient: apiClient,
+  fetch: (_args, client) => client.getCloudSovrBoard({ days: BOARD_DAYS }), validate: validateSovrBoard,
+  unavailableMessage: "Sovereign CDS levels are not available yet.",
+});
 
-export async function fetchSovrBoard(client: BoardClient = apiClient): Promise<SovrBoardPayload> {
-  try { return validateSovrBoard(await client.getCloudSovrBoard({ days: BOARD_DAYS })); }
-  catch (error) { throw unavailableOnServer(error, "Sovereign CDS levels are not available yet."); }
-}
+export const cdxBoardCache = cdxBoardEndpoint.cache;
+export const sovrBoardCache = sovrBoardEndpoint.cache;
+export const fetchCdxBoard = (client: BoardClient = apiClient, days = BOARD_DAYS) => cdxBoardEndpoint.fetch(days, { client });
+export const fetchSovrBoard = (client: BoardClient = apiClient) => sovrBoardEndpoint.fetch(undefined, { client });
 
 /** Daily levels: the full history a chart reaches back for stays good for an hour. */
 export const fullCdxHistory = createTtlCache<CdxBoardPayload>({ ttlMs: 60 * 60_000 });
@@ -86,12 +79,10 @@ export function loadFullCdxHistory(client: BoardClient = apiClient): Promise<Cdx
   return fullCdxHistory.load("all", () => fetchCdxBoard(client, CDX_MAX_DAYS));
 }
 
-export const getCachedCdxBoard = () => cachedCloudResource(cdxBoardCache, "5y", validateCdxBoard);
-export const loadCdxBoard = (force = false) =>
-  loadCloudResource(cdxBoardCache, "5y", () => fetchCdxBoard(), { force, validate: validateCdxBoard });
-export const getCachedSovrBoard = () => cachedCloudResource(sovrBoardCache, "5y", validateSovrBoard);
-export const loadSovrBoard = (force = false) =>
-  loadCloudResource(sovrBoardCache, "5y", () => fetchSovrBoard(), { force, validate: validateSovrBoard });
+export const getCachedCdxBoard = () => cdxBoardEndpoint.cached(BOARD_DAYS);
+export const loadCdxBoard = (force = false) => cdxBoardEndpoint.load(BOARD_DAYS, { force });
+export const getCachedSovrBoard = () => sovrBoardEndpoint.cached();
+export const loadSovrBoard = (force = false) => sovrBoardEndpoint.load(undefined, { force });
 
 export type PriceHistoryLoader = (symbol: string) => Promise<PricePoint[]>;
 

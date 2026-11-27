@@ -344,11 +344,11 @@ interface DesktopStateMessage {
   snapshot: DesktopSharedStateSnapshot;
 }
 
-export interface DesktopDockPreviewMessage {
+interface DesktopDockPreviewMessage {
   preview: DesktopDockPreviewState;
 }
 
-export interface DesktopThemePreviewMessage {
+interface DesktopThemePreviewMessage {
   preview: DesktopThemePreviewState;
 }
 

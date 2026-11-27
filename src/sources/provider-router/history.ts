@@ -399,6 +399,51 @@ export class ProviderRouterHistoryRoutes {
     return (await this.getPriceHistoryWithMetadata(ticker, exchange, range, context, options)).points;
   }
 
+  private executeRangeHistory(
+    ticker: string,
+    exchange: string,
+    range: TimeRange,
+    context: MarketDataRequestContext | undefined,
+    extra: {
+      resolution?: ManualChartResolution;
+      askBrokers?: HistoryRequestDescriptor["askBrokers"];
+      method: "getPriceHistory" | "getPriceHistoryForResolution";
+      missingProviderError: string;
+      fetchBroker: HistoryRequestDescriptor["fetchBroker"];
+      fetchProvider: HistoryRequestDescriptor["fetchProvider"];
+    },
+  ): Promise<PriceHistoryResult> {
+    if (context?.historyRecovery) throw new Error("History recovery requires an exact detailed request");
+    const resolution = extra.resolution;
+    const resolutionPart: Array<[string, string]> = resolution ? [["resolution", resolution]] : [];
+    const identity = makeHistoryRequestIdentity(this.deps, {
+      kind: "price-history",
+      ticker,
+      exchange,
+      context,
+      variantParts: [["exchange", canonicalExchange(exchange)], ["range", range], ...resolutionPart],
+      fallbackVariantParts: [["range", range], ...resolutionPart],
+    });
+    const intraday = resolution ? isIntradayResolution(resolution) : isIntradayRange(range);
+    const intervalMs = resolution ? priceHistoryIntervalMs(resolution) : undefined;
+    return this.executeHistoryRequest({
+      ...identity,
+      cacheVariantKeys: expandedHistoryCacheVariantKeys(this.deps, { ticker, exchange, context, range, ...(resolution ? { resolution } : {}) }),
+      requestedRange: range,
+      requestedStart: subtractTimeRange(new Date(), range).getTime(),
+      method: extra.method,
+      ...(resolution ? { interval: resolution } : {}),
+      context,
+      askBrokers: extra.askBrokers,
+      cachePolicyKey: intraday ? "priceHistoryIntraday" : "priceHistoryDaily",
+      missingProviderError: extra.missingProviderError,
+      isCachedValueStale: (value, fetchedAt) => intraday && resultIsStale(value, ticker, exchange, fetchedAt, intervalMs),
+      isFetchedValueStale: (value) => intraday && resultIsStale(value, ticker, exchange, Date.now(), intervalMs),
+      fetchBroker: extra.fetchBroker,
+      fetchProvider: extra.fetchProvider,
+    });
+  }
+
   async getPriceHistoryWithMetadata(
     ticker: string,
     exchange: string,
@@ -406,36 +451,12 @@ export class ProviderRouterHistoryRoutes {
     context?: MarketDataRequestContext,
     { askBrokers }: Pick<HistoryRequestDescriptor, "askBrokers"> = {},
   ): Promise<PriceHistoryResult> {
-    if (context?.historyRecovery) throw new Error("History recovery requires an exact detailed request");
-    const identity = makeHistoryRequestIdentity(this.deps, {
-      kind: "price-history",
-      ticker,
-      exchange,
-      context,
-      variantParts: [["exchange", canonicalExchange(exchange)], ["range", range]],
-      fallbackVariantParts: [["range", range]],
-    });
-    const intraday = isIntradayRange(range);
-    return this.executeHistoryRequest({
-      ...identity,
-      cacheVariantKeys: expandedHistoryCacheVariantKeys(this.deps, { ticker, exchange, context, range }),
-      requestedRange: range,
-      requestedStart: subtractTimeRange(new Date(), range).getTime(),
-      method: "getPriceHistory",
-      context,
+    return this.executeRangeHistory(ticker, exchange, range, context, {
       askBrokers,
-      cachePolicyKey: intraday ? "priceHistoryIntraday" : "priceHistoryDaily",
+      method: "getPriceHistory",
       missingProviderError: `No history provider available for ${ticker}`,
-      isCachedValueStale: (value, fetchedAt) => intraday && resultIsStale(value, ticker, exchange, fetchedAt),
-      isFetchedValueStale: (value) => intraday && resultIsStale(value, ticker, exchange, Date.now()),
       fetchBroker: async (candidate) => candidate.broker.getPriceHistory
-        ? candidate.broker.getPriceHistory(
-          ticker,
-          candidate.instance,
-          exchange,
-          range,
-          context?.instrument ?? null,
-        )
+        ? candidate.broker.getPriceHistory(ticker, candidate.instance, exchange, range, context?.instrument ?? null)
         : null,
       fetchProvider: (provider) => fetchHistoryResult(provider, ticker, exchange, { kind: "range", range }, context),
     });
@@ -452,47 +473,13 @@ export class ProviderRouterHistoryRoutes {
     resolution: ManualChartResolution,
     context?: MarketDataRequestContext,
   ): Promise<PriceHistoryResult> {
-    if (context?.historyRecovery) throw new Error("History recovery requires an exact detailed request");
-    const identity = makeHistoryRequestIdentity(this.deps, {
-      kind: "price-history",
-      ticker,
-      exchange,
-      context,
-      variantParts: [
-        ["exchange", canonicalExchange(exchange)],
-        ["range", bufferRange],
-        ["resolution", resolution],
-      ],
-      fallbackVariantParts: [["range", bufferRange], ["resolution", resolution]],
-    });
-    const intraday = isIntradayResolution(resolution);
-    const intervalMs = priceHistoryIntervalMs(resolution);
-    return this.executeHistoryRequest({
-      ...identity,
-      cacheVariantKeys: expandedHistoryCacheVariantKeys(this.deps, {
-        ticker,
-        exchange,
-        context,
-        range: bufferRange,
-        resolution,
-      }),
-      requestedRange: bufferRange,
-      requestedStart: subtractTimeRange(new Date(), bufferRange).getTime(),
+    return this.executeRangeHistory(ticker, exchange, bufferRange, context, {
+      resolution,
       method: "getPriceHistoryForResolution",
-      interval: resolution,
-      context,
-      cachePolicyKey: intraday ? "priceHistoryIntraday" : "priceHistoryDaily",
       missingProviderError: `No resolution-aware history provider available for ${ticker}`,
-      isCachedValueStale: (value, fetchedAt) => intraday && resultIsStale(value, ticker, exchange, fetchedAt, intervalMs),
-      isFetchedValueStale: (value) => intraday && resultIsStale(value, ticker, exchange, Date.now(), intervalMs),
       fetchBroker: async (candidate) => candidate.broker.getPriceHistoryForResolution
         ? candidate.broker.getPriceHistoryForResolution(
-          ticker,
-          candidate.instance,
-          exchange,
-          bufferRange,
-          resolution,
-          context?.instrument ?? null,
+          ticker, candidate.instance, exchange, bufferRange, resolution, context?.instrument ?? null,
           ...brokerHistoryOptions(candidate, context),
         )
         : null,
@@ -505,43 +492,32 @@ export class ProviderRouterHistoryRoutes {
     exchange?: string,
     context?: MarketDataRequestContext,
   ): Promise<ChartResolutionSupport[]> {
+    const resolveSupport = async (
+      readSupport?: () => ChartResolutionSupport[] | Promise<ChartResolutionSupport[]>,
+      readCapabilities?: () => ManualChartResolution[] | Promise<ManualChartResolution[]>,
+    ): Promise<ChartResolutionSupport[] | null> => {
+      if (readSupport) return normalizeChartResolutionSupport(await readSupport());
+      if (readCapabilities) return normalizeChartResolutionSupport((await readCapabilities()).map((resolution) => ({ resolution, maxRange: "ALL" })));
+      return null;
+    };
     const candidates = this.deps.getBrokerCandidatesForContext(context, false);
     const brokerSupport = await withBrokerTimeout(this.firstBrokerResult(candidates, async (candidate) => {
-      const result = candidate.broker.getChartResolutionSupport
-        ? normalizeChartResolutionSupport(await candidate.broker.getChartResolutionSupport(
-          ticker,
-          candidate.instance,
-          exchange,
-          context?.instrument ?? null,
-        ))
-        : candidate.broker.getChartResolutionCapabilities
-          ? normalizeChartResolutionSupport(
-            (await candidate.broker.getChartResolutionCapabilities(
-              ticker,
-              candidate.instance,
-              exchange,
-              context?.instrument ?? null,
-            )).map((resolution) => ({ resolution, maxRange: "ALL" })),
-          )
-          : null;
+      const result = await resolveSupport(
+        candidate.broker.getChartResolutionSupport
+          ? () => candidate.broker.getChartResolutionSupport!(ticker, candidate.instance, exchange, context?.instrument ?? null) : undefined,
+        candidate.broker.getChartResolutionCapabilities
+          ? () => candidate.broker.getChartResolutionCapabilities!(ticker, candidate.instance, exchange, context?.instrument ?? null) : undefined,
+      );
       return result && result.length > 0 ? result : null;
     }));
     if (brokerSupport) return brokerSupport.value;
 
     const providerSupport = await this.firstProviderResult(async (provider) => {
-      if (provider.canProvide && !await provider.canProvide(ticker, exchange, context)) {
-        return null;
-      }
-      if (provider.getChartResolutionSupport) {
-        return normalizeChartResolutionSupport(await provider.getChartResolutionSupport(ticker, exchange, context));
-      }
-      if (provider.getChartResolutionCapabilities) {
-        return normalizeChartResolutionSupport(
-          (await provider.getChartResolutionCapabilities(ticker, exchange, context))
-            .map((resolution) => ({ resolution, maxRange: "ALL" })),
-        );
-      }
-      return null;
+      if (provider.canProvide && !await provider.canProvide(ticker, exchange, context)) return null;
+      return resolveSupport(
+        provider.getChartResolutionSupport ? () => provider.getChartResolutionSupport!(ticker, exchange, context) : undefined,
+        provider.getChartResolutionCapabilities ? () => provider.getChartResolutionCapabilities!(ticker, exchange, context) : undefined,
+      );
     });
     return providerSupport?.value ?? [];
   }
@@ -852,36 +828,54 @@ export class ProviderRouterHistoryRoutes {
     }
   }
 
+  private async runHistoryFetch(
+    request: HistoryRequestDescriptor,
+    sourceKey: string,
+    hasMethod: boolean,
+    read: () => Promise<PriceHistoryResult | null | "malformed">,
+    policy: ReturnType<ProviderRouterCoreDeps["resolveProviderPolicy"]>,
+    onUnavailable?: (sourceKey: string, value: PriceHistoryResult) => void,
+    attempts?: HistoryAttempts,
+  ): Promise<PriceHistoryResult | null> {
+    if (!hasMethod) { recordHistoryOutcome(attempts, sourceKey, "missing-method"); return null; }
+    attempts?.pending.add(sourceKey);
+    try {
+      const fetched = await read();
+      if (fetched === null) { recordHistoryOutcome(attempts, sourceKey, "empty"); return null; }
+      if (fetched === "malformed") { recordHistoryOutcome(attempts, sourceKey, "malformed"); return null; }
+      const value = normalizeRequestResult({ ...fetched, sourceKey }, request);
+      if (hasUsablePriceHistory(value.points) && request.isFetchedValueStale(value)) { recordHistoryOutcome(attempts, sourceKey, "stale"); return null; }
+      recordHistoryOutcome(attempts, sourceKey, hasUsablePriceHistory(value.points) ? "success" : value.points.length ? "reported-gaps" : "empty");
+      onUnavailable?.(sourceKey, value);
+      this.deps.cacheResource(request.identity.kind, request.identity.entityKey, request.identity.variantKey, sourceKey, value, policy);
+      return value;
+    } catch (error) { recordHistoryError(attempts, request, sourceKey, error); throw error; }
+  }
+
   private fetchBrokerHistory(
     request: HistoryRequestDescriptor,
     candidates: BrokerCandidate[],
     onUnavailable?: (sourceKey: string, value: PriceHistoryResult) => void,
     attempts?: HistoryAttempts,
   ): Promise<SourceResult<PriceHistoryResult> | null> {
-    return this.firstBrokerResult(candidates, async (candidate) => {
-      const sourceKey = this.deps.brokerSourceKey(candidate);
-      if (typeof candidate.broker[request.method] !== "function") { recordHistoryOutcome(attempts, sourceKey, "missing-method"); return null; }
-      attempts?.pending.add(sourceKey);
-      try {
+    return this.firstBrokerResult(candidates, (candidate) => this.runHistoryFetch(
+      request,
+      this.deps.brokerSourceKey(candidate),
+      typeof candidate.broker[request.method] === "function",
+      async () => {
         const fetched = await request.fetchBroker(candidate);
-        if (fetched === null) { recordHistoryOutcome(attempts, sourceKey, "empty"); return null; }
-        if (!Array.isArray(fetched)) { recordHistoryOutcome(attempts, sourceKey, "malformed"); return null; }
-        const value = normalizeRequestResult({ points: fetched, resolution: historyResolutionForInterval(request.interval), sourceKey,
-          ...(brokerHistoryOptions(candidate, request.context).length && isIntradayInterval(request.interval) ? { extendedHours: true } : {}) }, request);
-        if (hasUsablePriceHistory(value.points) && request.isFetchedValueStale(value)) { recordHistoryOutcome(attempts, sourceKey, "stale"); return null; }
-        recordHistoryOutcome(attempts, sourceKey, hasUsablePriceHistory(value.points) ? "success" : value.points.length ? "reported-gaps" : "empty");
-        onUnavailable?.(this.deps.brokerSourceKey(candidate), value);
-        this.deps.cacheResource(
-          request.identity.kind,
-          request.identity.entityKey,
-          request.identity.variantKey,
-          this.deps.brokerSourceKey(candidate),
-          value,
-          this.deps.resolveBrokerPolicy(request.cachePolicyKey, candidate.broker),
-        );
-        return value;
-      } catch (error) { recordHistoryError(attempts, request, sourceKey, error); throw error; }
-    }, historyCoverage(request));
+        if (fetched === null) return null;
+        if (!Array.isArray(fetched)) return "malformed";
+        return {
+          points: fetched,
+          resolution: historyResolutionForInterval(request.interval),
+          ...(brokerHistoryOptions(candidate, request.context).length && isIntradayInterval(request.interval) ? { extendedHours: true } : {}),
+        };
+      },
+      this.deps.resolveBrokerPolicy(request.cachePolicyKey, candidate.broker),
+      onUnavailable,
+      attempts,
+    ), historyCoverage(request));
   }
 
   private fetchProviderHistory(
@@ -889,30 +883,20 @@ export class ProviderRouterHistoryRoutes {
     onUnavailable?: (sourceKey: string, value: PriceHistoryResult) => void,
     attempts?: HistoryAttempts,
   ): Promise<SourceResult<PriceHistoryResult> | null> {
-    return this.firstProviderResult(async (provider) => {
-      const sourceKey = this.deps.providerSourceKey(provider);
-      if (typeof provider[request.method] !== "function" && typeof provider[`${request.method}WithMetadata`] !== "function") { recordHistoryOutcome(attempts, sourceKey, "missing-method"); return null; }
-      attempts?.pending.add(sourceKey);
-      try {
+    return this.firstProviderResult((provider) => this.runHistoryFetch(
+      request,
+      this.deps.providerSourceKey(provider),
+      typeof provider[request.method] === "function" || typeof provider[`${request.method}WithMetadata`] === "function",
+      async () => {
         const fetched = await request.fetchProvider(provider);
         noteProviderAnswer(attempts?.misses);
-        if (fetched === null) { recordHistoryOutcome(attempts, sourceKey, "empty"); return null; }
-        if (!Array.isArray(fetched.points)) { recordHistoryOutcome(attempts, sourceKey, "malformed"); return null; }
-        const value = normalizeRequestResult({ ...fetched, sourceKey }, request);
-        if (hasUsablePriceHistory(value.points) && request.isFetchedValueStale(value)) { recordHistoryOutcome(attempts, sourceKey, "stale"); return null; }
-        recordHistoryOutcome(attempts, sourceKey, hasUsablePriceHistory(value.points) ? "success" : value.points.length ? "reported-gaps" : "empty");
-        onUnavailable?.(this.deps.providerSourceKey(provider), value);
-        this.deps.cacheResource(
-          request.identity.kind,
-          request.identity.entityKey,
-          request.identity.variantKey,
-          this.deps.providerSourceKey(provider),
-          value,
-          this.deps.resolveProviderPolicy(request.cachePolicyKey, provider),
-        );
-        return value;
-      } catch (error) { recordHistoryError(attempts, request, sourceKey, error); throw error; }
-    }, historyCoverage(request), request.context?.historyRecovery
+        if (fetched === null) return null;
+        return Array.isArray(fetched.points) ? fetched : "malformed";
+      },
+      this.deps.resolveProviderPolicy(request.cachePolicyKey, provider),
+      onUnavailable,
+      attempts,
+    ), historyCoverage(request), request.context?.historyRecovery
       ? this.deps.providersInPriorityOrder().filter((provider) => this.deps.providerSourceKey(provider) === request.context!.historyRecovery!.sourceKey)
       : undefined);
   }

@@ -4,8 +4,8 @@ import { useCallback, useMemo } from "react";
 import { ChartTableHeader, DataTableStackView, EmptyState, PaneStatusBody, useChartTableSelection, usePaneNoticeFooter, usePaneStatusLinkFooter, type ChartTableChart, type DataTableCell, type StatItem } from "../../../components";
 import { ageFooterSegment } from "../../../components/layout/pane/footer";
 import { DetailReader } from "../../../components/reader/detail-reader";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
-import { useAsyncResource, useAutoRefresh, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
+import { usePaneResource } from "../shared/pane-resource";
+import { usePluginPaneState, useUpdatedAgo } from "../../../public/react";
 import { colors } from "../../../theme/colors";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import type { PaneProps } from "../../../types/plugin";
@@ -26,7 +26,8 @@ export function ShortSidePublicationPane({ kind, width, height, focused }: Pick<
   const foreign = !!ticker && isKnownNonUsEquityTicker(ticker);
   const subject = kind === "ftd" ? "fails to deliver" : "weekly off-exchange volume";
   const loader = useCallback((force: boolean) => loadPublication(symbol!, kind, force), [symbol, kind]);
-  const resource = useAsyncResource(symbol && !foreign ? loader : null, {
+  const resource = usePaneResource(symbol && !foreign ? loader : null, {
+    focused,
     initialData: () => symbol && !foreign ? cachedPublication(symbol, kind) : null,
   });
   const data = resource.data?.payload;
@@ -55,8 +56,6 @@ export function ShortSidePublicationPane({ kind, width, height, focused }: Pick<
     series, formatValue: publicationChartValue, formatAxisValue: publicationAxisValue, remoteKind: `short-side-${kind}-history`, ...link,
   } : null, [kind, link, series]);
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
-  useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => resource.reload(), { focused });
   usePaneNoticeFooter({ registrationId: `${kind}:notices`, focused,
     notices: [...(data?.warnings ?? []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
   usePaneStatusLinkFooter({ registrationId: kind, focused, loading: resource.loading, error: resource.error,

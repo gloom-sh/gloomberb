@@ -860,58 +860,63 @@ export class MarketDataCoordinator {
     finally { if (this.optionsLoads.get(loadingKey) === loading) this.optionsLoads.delete(loadingKey); }
   }
 
-  async loadSecFilings(request: SecFilingsRequest, options: { forceRefresh?: boolean } = {}): Promise<QueryEntry<SecFilingItem[]>> {
-    this.rememberReload(buildSecFilingsKey(request), this.secFilingsStore, () => this.loadSecFilings(request));
-    return this.loadCachedQuery("getSecFilings", [request.instrument.symbol, request.count ?? 50, request.instrument.exchange, toMarketDataContext(request.instrument)], buildSecFilingsKey(request), this.secFilingsStore, options.forceRefresh, (value) => value.length === 0) ?? loadSecFilingsEntry({
-      forceRefresh: options.forceRefresh,
-      dataProvider: this.dataProvider,
-      request,
-      store: this.secFilingsStore,
-      runSingleFlight: (key, task) => this.runSingleFlight(key, task),
-    });
+  private loadAuxiliary<K extends CachedAssetMethod>(
+    key: string,
+    store: QueryStore<CachedAssetValue<K>>,
+    method: K,
+    args: CachedAssetArgs<K>,
+    reload: () => Promise<unknown>,
+    fallback: () => Promise<QueryEntry<CachedAssetValue<K>>>,
+    forceRefresh?: boolean,
+    isEmpty?: (value: CachedAssetValue<K>) => boolean,
+  ): Promise<QueryEntry<CachedAssetValue<K>>> {
+    this.rememberReload(key, store, reload);
+    return this.loadCachedQuery(method, args, key, store, forceRefresh, isEmpty) ?? fallback();
   }
 
-  async loadSecFilingContent(filing: SecFilingItem, options: { forceRefresh?: boolean } = {}): Promise<QueryEntry<string | null>> {
-    this.rememberReload(buildSecContentKey(filing.accessionNumber), this.secContentStore, () => this.loadSecFilingContent(filing));
-    return this.loadCachedQuery("getSecFilingContent", [filing], buildSecContentKey(filing.accessionNumber), this.secContentStore, options.forceRefresh) ?? loadSecFilingContentEntry({
-      forceRefresh: options.forceRefresh,
-      dataProvider: this.dataProvider,
-      filing,
-      store: this.secContentStore,
-      runSingleFlight: (key, task) => this.runSingleFlight(key, task),
-    });
+  loadSecFilings(request: SecFilingsRequest, options: { forceRefresh?: boolean } = {}): Promise<QueryEntry<SecFilingItem[]>> {
+    return this.loadAuxiliary(
+      buildSecFilingsKey(request), this.secFilingsStore, "getSecFilings",
+      [request.instrument.symbol, request.count ?? 50, request.instrument.exchange, toMarketDataContext(request.instrument)],
+      () => this.loadSecFilings(request),
+      () => loadSecFilingsEntry({ forceRefresh: options.forceRefresh, dataProvider: this.dataProvider, request, store: this.secFilingsStore, runSingleFlight: (key, task) => this.runSingleFlight(key, task) }),
+      options.forceRefresh, (value) => value.length === 0,
+    );
   }
 
-  async loadSecFilingDocuments(filing: SecFilingItem, options: { forceRefresh?: boolean } = {}): Promise<QueryEntry<SecFilingDocument[]>> {
-    this.rememberReload(buildSecDocumentsKey(filing.accessionNumber), this.secDocumentsStore, () => this.loadSecFilingDocuments(filing));
-    return this.loadCachedQuery("getSecFilingDocuments", [filing], buildSecDocumentsKey(filing.accessionNumber), this.secDocumentsStore, options.forceRefresh, (value) => value.length === 0) ?? loadSecFilingDocumentsEntry({
-      forceRefresh: options.forceRefresh,
-      dataProvider: this.dataProvider,
-      filing,
-      store: this.secDocumentsStore,
-      runSingleFlight: (key, task) => this.runSingleFlight(key, task),
-    });
+  loadSecFilingContent(filing: SecFilingItem, options: { forceRefresh?: boolean } = {}): Promise<QueryEntry<string | null>> {
+    return this.loadAuxiliary(
+      buildSecContentKey(filing.accessionNumber), this.secContentStore, "getSecFilingContent", [filing],
+      () => this.loadSecFilingContent(filing),
+      () => loadSecFilingContentEntry({ forceRefresh: options.forceRefresh, dataProvider: this.dataProvider, filing, store: this.secContentStore, runSingleFlight: (key, task) => this.runSingleFlight(key, task) }),
+      options.forceRefresh,
+    );
   }
 
-  async loadArticleSummary(url: string): Promise<QueryEntry<string | null>> {
-    this.rememberReload(buildArticleSummaryKey(url), this.articleSummaryStore, () => this.loadArticleSummary(url));
-    return this.loadCachedQuery("getArticleSummary", [url], buildArticleSummaryKey(url), this.articleSummaryStore) ?? loadArticleSummaryEntry({
-      dataProvider: this.dataProvider,
-      url,
-      store: this.articleSummaryStore,
-      runSingleFlight: (key, task) => this.runSingleFlight(key, task),
-    });
+  loadSecFilingDocuments(filing: SecFilingItem, options: { forceRefresh?: boolean } = {}): Promise<QueryEntry<SecFilingDocument[]>> {
+    return this.loadAuxiliary(
+      buildSecDocumentsKey(filing.accessionNumber), this.secDocumentsStore, "getSecFilingDocuments", [filing],
+      () => this.loadSecFilingDocuments(filing),
+      () => loadSecFilingDocumentsEntry({ forceRefresh: options.forceRefresh, dataProvider: this.dataProvider, filing, store: this.secDocumentsStore, runSingleFlight: (key, task) => this.runSingleFlight(key, task) }),
+      options.forceRefresh, (value) => value.length === 0,
+    );
   }
 
-  async loadFxRate(currency: string, options: { forceRefresh?: boolean } = {}): Promise<QueryEntry<number>> {
-    this.rememberReload(buildFxKey(currency), this.fxStore, () => this.loadFxRate(currency));
-    return this.loadCachedQuery("getExchangeRate", [currency], buildFxKey(currency), this.fxStore, options.forceRefresh) ?? loadFxRateEntry({
-      dataProvider: this.dataProvider,
-      currency,
-      forceRefresh: options.forceRefresh,
-      store: this.fxStore,
-      runSingleFlight: (key, task) => this.runSingleFlight(key, task),
-    });
+  loadArticleSummary(url: string): Promise<QueryEntry<string | null>> {
+    return this.loadAuxiliary(
+      buildArticleSummaryKey(url), this.articleSummaryStore, "getArticleSummary", [url],
+      () => this.loadArticleSummary(url),
+      () => loadArticleSummaryEntry({ dataProvider: this.dataProvider, url, store: this.articleSummaryStore, runSingleFlight: (key, task) => this.runSingleFlight(key, task) }),
+    );
+  }
+
+  loadFxRate(currency: string, options: { forceRefresh?: boolean } = {}): Promise<QueryEntry<number>> {
+    return this.loadAuxiliary(
+      buildFxKey(currency), this.fxStore, "getExchangeRate", [currency],
+      () => this.loadFxRate(currency),
+      () => loadFxRateEntry({ dataProvider: this.dataProvider, currency, forceRefresh: options.forceRefresh, store: this.fxStore, runSingleFlight: (key, task) => this.runSingleFlight(key, task) }),
+      options.forceRefresh,
+    );
   }
 
   /** Settles with the background refresh of the stored copy under `key`, when one is running; whatever it answers. */

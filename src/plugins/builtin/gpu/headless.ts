@@ -9,6 +9,8 @@ import {
 } from "./model";
 import { quoteFreshnessFields } from "../shared/report-freshness";
 import { countOf, freePreviewNote } from "../shared/free-preview";
+import { numCell } from "../shared/headless-columns";
+import { argumentText, enumOption } from "../shared/headless-options";
 import { getRegularSessionDisplay } from "../../../market-data/market/status";
 import { logFailure } from "../../../utils/log-failure";
 
@@ -17,7 +19,7 @@ const observationRow = (row: GpuObservation) => ({ gpu: gpuLabel(row), source: g
   sourceUrl: row.sourceUrl ?? null, evidenceUrl: row.evidenceUrl ?? null });
 const percent = (value: unknown) => gpuChange(typeof value === "number" ? value : null);
 /** Prices to the cent and times to the minute, as the pane draws them; exports keep the full value. */
-const price = (value: unknown) => typeof value === "number" ? gpuPrice(value) : MISSING_VALUE;
+const price = numCell(gpuPrice);
 const DAY_MS = 86_400_000;
 /** A reference index's daily figure is stamped at 00:00 UTC: that is a day, not a time to the minute. */
 const minute = (value: unknown) => {
@@ -47,7 +49,7 @@ const settleColumns = [
 export const gpuHeadless: HeadlessPaneDefinition<"bundle"> = {
   // Observed rental prices; the Equities tab's quotes keep their market line.
   shape: "bundle", freshness: { dataset: true }, argument: { kind: "free-text", optional: true, placeholder: "GPU", description: "GPU model, such as H100, h-100 or B200." },
-  options: [{ key: "tab", type: "enum", values: [...GPU_TABS], defaultValue: "board", description: "Board, sourced history, dated changes or related equities." }],
+  options: [enumOption("tab", GPU_TABS, { defaultValue: "board", description: "Board, sourced history, dated changes or related equities." })],
   discovery: { aliases: ["GPU"], dataRequirements: ["GPU rental price observations"],
     limitations: ["List prices, provider-declared spot and asks are distinct bases.",
       "Hyperscaler and Neocloud rows are list indexes: the median of the providers' list prices linked over time, so a provider joining or leaving causes no jump; sample.rawMedian is the raw median of today's providers and can differ slightly.",
@@ -56,7 +58,7 @@ export const gpuHeadless: HeadlessPaneDefinition<"bundle"> = {
       "Free preview: three board rows, or the latest rows of the GPU asked for; Pro unlocks every provider, the moves and the history."] },
   describe: "GPU rental prices in USD per GPU-hour",
   async load(args, ctx) {
-    const argument = (Array.isArray(args.argument) ? args.argument.join(" ") : args.argument) ?? "";
+    const argument = argumentText(args.argument);
     const tab = gpuTab(args.options.tab);
     const board = await fetchGpuBoard(ctx.apiClient);
     const families = gpuFamilies(board.rows);

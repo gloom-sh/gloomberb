@@ -42,6 +42,7 @@ import { describeChatImageError } from "../attachments/model";
 import {
   addDraftAttachments,
   discardDraftAttachments,
+  publicDraftAttachment,
   retryDraftAttachment,
   type ChatAttachmentUploader,
 } from "./attachments";
@@ -69,7 +70,6 @@ import {
 import { ChatControllerRealtime } from "./realtime";
 import { ChatControllerChannels } from "./channels";
 import { ChatControllerUnreadPeople } from "./unread-people";
-import { ChatControllerView } from "./view";
 import { ChatControllerMessageLoading } from "./message-loading";
 import { ChatMentionCandidates } from "./mention-candidates";
 import { ChatControllerStorage } from "./storage";
@@ -151,22 +151,7 @@ export class ChatController {
     ensureOpenChannelConnections: () => this.ensureOpenChannelConnections(),
     emit: (channelId) => this.emit(channelId),
   });
-  private readonly view = new ChatControllerView({
-    ensureChannelState: (channelId) => this.ensureChannelState(channelId),
-    getChannels: () => this.channelCatalog.getChannels(),
-    getChannelStateSnapshots: () => this.channelCatalog.getChannelStateSnapshots(),
-    getConversationActivity: () => this.conversationActivity(),
-    isChannelsLoading: () => this.channelCatalog.isLoading(),
-    isSessionChecked: () => this.session.sessionChecked,
-    hasSession: () => !!this.session.sessionToken || !!this.session.user,
-    getOnlineCount: () => this.channelCatalog.getOnlineCount(),
-    getUser: () => this.session.user,
-    getComposerScope: () => this.getComposerScope(),
-    getListenerSnapshot: (channelId) => this.getSnapshot(channelId),
-    getVisibleMessages: (channelId) => this.getVisibleMessages(channelId),
-    getUnreadMentionCount: (channelId) => this.getUnreadMentionCount(channelId),
-    getUnreadPeople: () => this.unreadPeople.snapshot(),
-  });
+  private readonly listeners = new Set<{ channelId: string; listener: (snapshot: ChatControllerSnapshot) => void }>();
   private readonly unreadPeople = new ChatControllerUnreadPeople({
     getChannels: () => this.channelCatalog.getChannels(),
     getChannelStates: () => this.storage.channelStates.entries(),
@@ -224,6 +209,18 @@ export class ChatController {
       && apiClient.getCredentialGeneration() === credential;
   }
 
+  private notifyListeners(channelId?: string): void {
+    for (const entry of this.listeners) {
+      if (channelId && entry.channelId !== channelId && entry.channelId !== DEFAULT_CHAT_CHANNEL_ID) continue;
+      const snapshot = this.getSnapshot(entry.channelId);
+      try {
+        entry.listener(snapshot);
+      } catch {
+        // ignore subscriber errors
+      }
+    }
+  }
+
   private setSessionUser(user: ChatSessionUser | null): void {
     this.setComposerAccount(user?.id ?? null);
     this.session.user = user;
@@ -251,7 +248,7 @@ export class ChatController {
   }
 
   private notifyComposerScopeChanged(): void {
-    if (this.updateAnnouncedComposerScope()) this.view.emit();
+    if (this.updateAnnouncedComposerScope()) this.notifyListeners();
   }
 
   attachPersistence(persistence: PluginPersistence, resume?: PluginResumeState): void {
@@ -329,15 +326,45 @@ export class ChatController {
     channelIdOrListener: string | ((snapshot: ChatControllerSnapshot) => void),
     maybeListener?: (snapshot: ChatControllerSnapshot) => void,
   ): () => void {
-    if (typeof channelIdOrListener === "function") {
-      return this.view.subscribe(channelIdOrListener);
-    }
-    return this.view.subscribe(channelIdOrListener, maybeListener as (snapshot: ChatControllerSnapshot) => void);
+    const channelId = typeof channelIdOrListener === "string"
+      ? normalizeChannelId(channelIdOrListener)
+      : DEFAULT_CHAT_CHANNEL_ID;
+    const listener = typeof channelIdOrListener === "function" ? channelIdOrListener : maybeListener;
+    if (!listener) return () => {};
+    const entry = { channelId, listener };
+    this.listeners.add(entry);
+    listener(this.getSnapshot(channelId));
+    return () => {
+      this.listeners.delete(entry);
+    };
   }
 
   getSnapshot(channelId = DEFAULT_CHAT_CHANNEL_ID): ChatControllerSnapshot {
-    const snapshot = this.view.getSnapshot(channelId);
-    return { ...snapshot, mentionCandidates: this.mentionCandidates.get(snapshot.channelId) };
+    const normalizedChannelId = normalizeChannelId(channelId);
+    const channel = this.ensureChannelState(normalizedChannelId);
+    const composerScope = this.getComposerScope();
+    return {
+      channelId: normalizedChannelId,
+      channels: this.channelCatalog.getChannels(),
+      channelStates: this.channelCatalog.getChannelStateSnapshots(),
+      conversationActivity: this.conversationActivity(),
+      channelsLoading: this.channelCatalog.isLoading(),
+      loading: !this.session.sessionChecked || channel.messagesLoading,
+      messagesError: channel.messagesError,
+      loadingOlderMessages: channel.olderMessagesLoading,
+      hasOlderMessages: channel.messages.length > 0 && !channel.reachedOldestMessage,
+      hasSavedSession: !!this.session.sessionToken || !!this.session.user,
+      onlineCount: this.channelCatalog.getOnlineCount(),
+      user: this.session.user,
+      messages: this.getVisibleMessages(normalizedChannelId),
+      composerScope,
+      draft: composerScope ? channel.draft : "",
+      draftAttachments: composerScope ? channel.draftAttachments.map(publicDraftAttachment) : [],
+      replyToId: composerScope ? channel.replyToId : null,
+      unreadMentionCount: this.getUnreadMentionCount(normalizedChannelId),
+      unreadPeople: this.unreadPeople.snapshot(),
+      mentionCandidates: this.mentionCandidates.get(normalizedChannelId),
+    };
   }
 
   /**
@@ -659,13 +686,13 @@ export class ChatController {
     this.stopWatchingComposerAccount?.();
     this.stopWatchingComposerAccount = undefined;
     chatLog.info("dispose controller", {
-      listeners: this.view.listenerCount,
+      listeners: this.listeners.size,
       connections: countOpenConnections(this.storage.channelStates.values()),
     });
     disposeChatControllerRuntime({
       channelStates: this.storage.channelStates,
       clearNotifications: () => this.alerts.clear(),
-      clearView: () => this.view.clear(),
+      clearView: () => this.listeners.clear(),
       closeAllConnections: () => this.closeAllConnections(),
       flushDraftSync: (channelId) => this.storage.flushDraftSync(channelId),
       resetNotifier: () => {
@@ -939,7 +966,7 @@ export class ChatController {
     const moved = activity !== this.announcedActivity;
     this.announcedActivity = activity;
     const composerChanged = this.updateAnnouncedComposerScope();
-    this.view.emit(moved || composerChanged ? undefined : channelId);
+    this.notifyListeners(moved || composerChanged ? undefined : channelId);
     this.unreadPeople.sync();
   }
 

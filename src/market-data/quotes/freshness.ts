@@ -201,6 +201,20 @@ export function noPrintsTodayText(quote: Quote | null | undefined, now = Date.no
   return `no prints today since ${time} (${quoteAgeText(since, now)})`;
 }
 
+function parseUtcSessionDay(day: string | null | undefined): Date | null {
+  const parsed = day ? new Date(`${day}T00:00:00Z`) : null;
+  return parsed && Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
+function formatUtcShortDay(date: Date): string {
+  return `${PRINT_WEEKDAYS[date.getUTCDay()]} ${date.getUTCDate()} ${PRINT_MONTHS[date.getUTCMonth()]}`;
+}
+
+function formatSessionLabel(session: string | null | undefined, suffix: string): string | null {
+  const day = parseUtcSessionDay(session);
+  return day ? `${formatUtcDayTime({ time: day.getTime(), dateOnly: true })} ${suffix}` : null;
+}
+
 /**
  * What a quote nothing traded on says beside its price (Quote.nominalPrice):
  * "no trades since Thu 29 Oct, nominal price", or "no recent trades, nominal
@@ -210,10 +224,8 @@ export function noPrintsTodayText(quote: Quote | null | undefined, now = Date.no
 export function nominalPriceText(quote: Pick<Quote, "nominalPrice"> | null | undefined): string | null {
   const nominal = quote?.nominalPrice;
   if (!nominal) return null;
-  const traded = nominal.lastTraded ? new Date(`${nominal.lastTraded}T00:00:00Z`) : null;
-  return traded && Number.isFinite(traded.getTime())
-    ? `no trades since ${PRINT_WEEKDAYS[traded.getUTCDay()]} ${traded.getUTCDate()} ${PRINT_MONTHS[traded.getUTCMonth()]}, nominal price`
-    : "no recent trades, nominal price";
+  const traded = parseUtcSessionDay(nominal.lastTraded);
+  return traded ? `no trades since ${formatUtcShortDay(traded)}, nominal price` : "no recent trades, nominal price";
 }
 
 /**
@@ -221,9 +233,7 @@ export function nominalPriceText(quote: Pick<Quote, "nominalPrice"> | null | und
  * is (Quote.nominalPrice), not the last print, which can be days older. Null for any other quote.
  */
 export function nominalSessionLabel(quote: Pick<Quote, "nominalPrice"> | null | undefined): string | null {
-  const session = quote?.nominalPrice?.session;
-  const day = session ? new Date(`${session}T00:00:00Z`) : null;
-  return day && Number.isFinite(day.getTime()) ? `${formatUtcDayTime({ time: day.getTime(), dateOnly: true })} close` : null;
+  return formatSessionLabel(quote?.nominalPrice?.session, "close");
 }
 
 /**
@@ -231,18 +241,13 @@ export function nominalSessionLabel(quote: Pick<Quote, "nominalPrice"> | null | 
  * quote, daily close of Wed 11 Nov". Null for any other quote.
  */
 export function dailyCloseText(quote: Pick<Quote, "dailyClose"> | null | undefined): string | null {
-  const session = quote?.dailyClose?.session;
-  const day = session ? new Date(`${session}T00:00:00Z`) : null;
-  return day && Number.isFinite(day.getTime())
-    ? `no live quote, daily close of ${PRINT_WEEKDAYS[day.getUTCDay()]} ${day.getUTCDate()} ${PRINT_MONTHS[day.getUTCMonth()]}`
-    : null;
+  const day = parseUtcSessionDay(quote?.dailyClose?.session);
+  return day ? `no live quote, daily close of ${formatUtcShortDay(day)}` : null;
 }
 
 /** When a daily close is from, as an Updated cell names it: "11 Nov daily close" (Quote.dailyClose). Null for any other quote. */
 export function dailyCloseSessionLabel(quote: Pick<Quote, "dailyClose"> | null | undefined): string | null {
-  const session = quote?.dailyClose?.session;
-  const day = session ? new Date(`${session}T00:00:00Z`) : null;
-  return day && Number.isFinite(day.getTime()) ? `${formatUtcDayTime({ time: day.getTime(), dateOnly: true })} daily close` : null;
+  return formatSessionLabel(quote?.dailyClose?.session, "daily close");
 }
 
 /** A US listing's after-hours session ends four hours past its regular close (17:00 New York after an early close). */

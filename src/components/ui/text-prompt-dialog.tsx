@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Box, Text, Textarea, useUiCapabilities, type InputRenderable, type TextareaRenderable } from "../../ui";
 import { t } from "../../i18n";
-import { useDialogKeyboard, type PromptContext } from "../../ui/dialog";
+import { type DialogApi, type DialogSize, useDialogKeyboard, type PromptContext } from "../../ui/dialog";
 import { useThemeColors } from "../../theme/theme-context";
+import { logFailure } from "../../utils/log-failure";
 import { placeholderText } from "../../theme/colors";
 import { Button } from "./button";
 import { DialogActions } from "./dialog-actions";
@@ -133,4 +134,23 @@ export function TextPromptDialog({
       </Box>
     </DialogFrame>
   );
+}
+
+export type TextPromptDialogOptions = Omit<TextPromptDialogProps, keyof PromptContext<string>> & {
+  size?: DialogSize;
+  closeOnClickOutside?: boolean;
+  logSource?: string;
+  logMessage?: string;
+};
+
+/** Opens a TextPromptDialog and resolves the entered text, or undefined when dismissed. */
+export function textPromptDialog(
+  dialog: DialogApi,
+  { size, closeOnClickOutside, logSource = "ui.text-prompt-dialog", logMessage = "Open text prompt dialog failed", ...props }: TextPromptDialogOptions,
+): Promise<string | undefined> {
+  return dialog.prompt<string>({
+    ...(size !== undefined ? { size } : {}),
+    ...(closeOnClickOutside !== undefined ? { closeOnClickOutside } : {}),
+    content: (context: PromptContext<string>) => <TextPromptDialog {...context} {...props} />,
+  }).catch(logFailure(logSource, logMessage));
 }

@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { Box } from "../../../ui";
-import { useAsyncResource, useAutoRefresh, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
+import { usePluginPaneState, useUpdatedAgo } from "../../../public/react";
 import { CompositeChart, MarketBoardStack, PaneStatusBody, usePaneNoticeFooter, usePaneStatusLinkFooter, type StatItem } from "../../../components";
 import { ageFooterSegment } from "../../../components/layout/pane/footer";
 import { colors } from "../../../theme/colors";
@@ -10,7 +10,7 @@ import { staticSeries } from "../../../components/chart/static/series";
 import { StatChartDetail } from "../../../components/market-board";
 import type { PaneProps } from "../../../types/plugin";
 import { MISSING_VALUE, formatPercentileRank } from "../../../utils/format";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { usePaneResource } from "../shared/pane-resource";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { getCachedCentralBankRates, loadCentralBankRates } from "./client";
 import { centralBankRatesHeadless } from "./headless";
@@ -58,15 +58,13 @@ function PolicyDetail({ row, width, height, focused }: { row: CentralBankRow; wi
 export function CentralBankRatesPane({ width, height, focused }: PaneProps) {
   const session = useResearchCloudSession();
   const loader = useCallback((force: boolean) => loadCentralBankRates(force), [session.requestKey]);
-  const resource = useAsyncResource(loader, { initialData: getCachedCentralBankRates, clearOnError: isAccessDenied });
+  const resource = usePaneResource(loader, { focused, initialData: getCachedCentralBankRates, clearOnError: isAccessDenied });
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selected", null);
   const [openId, setOpenId] = usePluginPaneState<string | null>("open", null);
   const data = resource.data?.payload;
   const rows = useMemo(() => data?.rows.filter((row) => !hasNoPolicyRate(row)).map(policyBoardRow) ?? [], [data]);
   const selected = rows.find((row) => row.id === openId) ?? rows.find((row) => row.id === selectedId);
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
-  useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => resource.reload(), { focused });
   usePaneNoticeFooter({ registrationId: "central-bank-rates:notices", focused,
     // A bank with no rate or an old one says so on its row (`rowNote`); the footer is the board's.
     notices: resource.data?.refreshError ? [resource.data.refreshError] : [] });

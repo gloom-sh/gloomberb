@@ -1,20 +1,6 @@
-import type { GloomPlugin, PaneTemplateCreateOptions } from "../../../types/plugin";
+import type { GloomPlugin } from "../../../types/plugin";
+import { createQueryPaneTemplate } from "../shared/ticker-surface";
 import { OPENFDA_PANE_ID, OPENFDA_PLUGIN_ID } from "./types";
-
-const createOpenFdaPaneInstance = (options?: PaneTemplateCreateOptions) => {
-  // A search of product and firm names: FDA records name the firm as it filed,
-  // not a symbol. A ticker that matches nothing is searched as its company's
-  // name, which the pane looks up (`FDA AZN` is AstraZeneca's reports).
-  const query = (options?.arg ?? options?.values?.query ?? "").trim();
-  const encoded = encodeURIComponent(query).replace(/%/g, "~");
-  return {
-    instanceId: query ? `fda:${encoded}` : "fda:latest",
-    title: query ? `FDA ${query}` : "FDA Reports",
-    placement: "floating" as const,
-    binding: { kind: "none" as const },
-    settings: { query },
-  };
-};
 
 export const openFdaPlugin: GloomPlugin = {
   id: OPENFDA_PLUGIN_ID,
@@ -43,30 +29,17 @@ export const openFdaPlugin: GloomPlugin = {
   ],
 
   paneTemplates: [
-    {
+    createQueryPaneTemplate({
       id: "adverse-events-pane",
       paneId: OPENFDA_PANE_ID,
       label: "FDA Reports",
-      description:
-        "Drug and device adverse event reports and drug recalls, by drug, device, or firm name.",
-      keywords: [
-        "fda",
-        "openfda",
-        "adverse",
-        "recall",
-        "drug",
-        "device",
-        "faers",
-        "side effect",
-        "safety",
-      ],
-      shortcut: {
-        prefix: "FDA",
-        argPlaceholder: "drug, device or firm",
-        argKind: "text", argOnlySelects: true,
-        argOptional: true,
-      },
-      createInstance: (_context, options) => createOpenFdaPaneInstance(options),
-    },
+      description: "Drug and device adverse event reports and drug recalls, by drug, device, or firm name.",
+      keywords: ["fda", "openfda", "adverse", "recall", "drug", "device", "faers", "side effect", "safety"],
+      shortcut: "FDA",
+      argPlaceholder: "drug, device or firm",
+      instancePrefix: "fda",
+      defaultTitle: "FDA Reports",
+      titlePrefix: "FDA",
+    }),
   ],
 };

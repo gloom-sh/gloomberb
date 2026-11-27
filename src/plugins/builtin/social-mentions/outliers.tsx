@@ -9,16 +9,16 @@ import {
   type DataTableCell,
   type QueryBarFilter,
 } from "../../../components";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { usePaneResource } from "../shared/pane-resource";
 import { ageFooterSegment } from "../../../components/layout/pane/footer";
 import { retrievedAtOf, stampRetrievedAt, withSavedCopyMarkOf } from "../../../data/saved-copies";
 import { useUtcDay } from "../../../react/auto-refresh";
 import { reportFooterSegment } from "../shared/source-footer";
 import { socialMentionsHeadless } from "./headless";
-import { useAsyncResource, useAutoRefresh, useMarketData, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
+import { useMarketData, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box } from "../../../ui";
-import { compareSortValues, nextHeaderSort } from "../../../utils/sort-values";
+import { nextHeaderSort, sortRowsBy } from "../../../utils/sort-values";
 import { SignInWall } from "../cloud/auth-actions";
 import type { CloudResource } from "../shared/cloud-resource";
 import { listingCell, missingCell, signedColor } from "../shared/research-cells";
@@ -106,7 +106,10 @@ export function SocialOutliersView({ width, height, focused, renderTicker }: {
     async (force: boolean) => outliersAnswer(query, await loadSocialOutliers(query, { force, names: marketData })),
     [marketData, query, session.displayScope],
   );
-  const resource = useAsyncResource(loader, {
+  const detailOpen = !!openSymbol;
+  const resource = usePaneResource(loader, {
+    focused,
+    refreshKey: { enabled: !detailOpen },
     initialData: () => {
       const cached = cachedSocialOutliers(query);
       return cached ? outliersAnswer(query, cached) : null;
@@ -122,22 +125,12 @@ export function SocialOutliersView({ width, height, focused, renderTicker }: {
     if (!answered && resource.error) setFailedQuery(query);
   }, [answered, query, resource.error]);
   const shown = answered ?? (resource.loading && failedQuery !== query ? resource.data?.resource ?? null : null);
-  useAutoRefresh(resource.updatedAt, resource.load);
-  const detailOpen = !!openSymbol;
-  // An opened ticker refreshes itself.
-  usePaneRefreshKey(() => resource.reload(), { focused, enabled: !detailOpen });
 
   const data = shown?.payload ?? null;
   // Rows of the other window, kept on screen while this one loads, keep their own columns.
   const dataWindow: SocialOutlierWindow = data?.window ?? query.window;
   const rows = data?.rows ?? [];
-  const sortedRows = useMemo(() => {
-    const order = new Map(rows.map((row, index) => [row.symbol, index]));
-    return [...rows].sort((a, b) => (
-      compareSortValues(socialOutlierSortValue(a, sort.columnId), socialOutlierSortValue(b, sort.columnId), sort.direction)
-      || order.get(a.symbol)! - order.get(b.symbol)!
-    ));
-  }, [rows, sort]);
+  const sortedRows = useMemo(() => sortRowsBy(rows, sort.direction, (row) => socialOutlierSortValue(row, sort.columnId)), [rows, sort]);
   const columns = useMemo(() => buildSocialOutlierColumns(width, rows, dataWindow), [dataWindow, rows, width]);
   // The ticker stays open while the ranking refreshes, ranked or not: it reads its own history.
   const openRow = openSymbol ? rows.find((row) => row.symbol === openSymbol) ?? null : null;

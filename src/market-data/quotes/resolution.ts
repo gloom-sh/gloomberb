@@ -73,30 +73,15 @@ function isBrokerProvider(providerId?: string): boolean {
   return providerId === "ibkr";
 }
 
+const PROVIDER_KIND_RANK: Record<string, number> = { "gloomberb-cloud": 0, gloom: 1, ibkr: 2 };
+const DAILY_REFERENCE_RANK: Record<string, number> = { gloom: 0, "gloomberb-cloud": 1, ibkr: 2 };
+
 function providerKindRank(providerId?: string): number {
-  switch (providerId) {
-    case "gloomberb-cloud":
-      return 0;
-    case "gloom":
-      return 1;
-    case "ibkr":
-      return 2;
-    default:
-      return 3;
-  }
+  return PROVIDER_KIND_RANK[providerId ?? ""] ?? 3;
 }
 
 function dailyReferenceRank(providerId?: string): number {
-  switch (providerId) {
-    case "gloom":
-      return 0;
-    case "gloomberb-cloud":
-      return 1;
-    case "ibkr":
-      return 2;
-    default:
-      return 3;
-  }
+  return DAILY_REFERENCE_RANK[providerId ?? ""] ?? 3;
 }
 
 /**
@@ -111,18 +96,7 @@ function priceRank(quote: QuoteContribution, now: number): number {
   return isQuoteContributionStaleForCurrentSession(quote, now) ? 2 : 1;
 }
 
-function priceProviderTieRank(providerId?: string): number {
-  switch (providerId) {
-    case "gloomberb-cloud":
-      return 0;
-    case "gloom":
-      return 1;
-    case "ibkr":
-      return 2;
-    default:
-      return 3;
-  }
-}
+const priceProviderTieRank = providerKindRank;
 
 function quoteUpdateTime(quote: QuoteContribution): number {
   return quote.lastUpdated ?? quote.receivedAt ?? 0;
@@ -352,29 +326,25 @@ function matchesPostMarketState(state?: QuoteContribution["marketState"]): boole
   return state === "POST" || state === "POSTPOST";
 }
 
+function compareByProviderAndTime(left: QuoteContribution, right: QuoteContribution): number {
+  return (providerKindRank(left.providerId) - providerKindRank(right.providerId))
+    || ((right.lastUpdated ?? 0) - (left.lastUpdated ?? 0));
+}
+
 function buildListingCandidates(contributions: QuoteContribution[]): QuoteContribution[] {
-  return [...contributions]
+  return contributions
     .filter((quote) => quote.listingExchangeName || quote.listingExchangeFullName)
-    .sort((left, right) => {
-      const providerDelta = providerKindRank(left.providerId) - providerKindRank(right.providerId);
-      if (providerDelta !== 0) return providerDelta;
-      return (right.lastUpdated ?? 0) - (left.lastUpdated ?? 0);
-    });
+    .sort(compareByProviderAndTime);
 }
 
 function buildRoutingCandidates(contributions: QuoteContribution[]): QuoteContribution[] {
-  return [...contributions]
+  return contributions
     .filter((quote) => isBrokerProvider(quote.providerId) && (quote.routingExchangeName || quote.routingExchangeFullName))
     .sort((left, right) => (right.lastUpdated ?? 0) - (left.lastUpdated ?? 0));
 }
 
 function buildDescriptiveCandidates(contributions: QuoteContribution[]): QuoteContribution[] {
-  return [...contributions]
-    .sort((left, right) => {
-      const providerDelta = providerKindRank(left.providerId) - providerKindRank(right.providerId);
-      if (providerDelta !== 0) return providerDelta;
-      return (right.lastUpdated ?? 0) - (left.lastUpdated ?? 0);
-    });
+  return [...contributions].sort(compareByProviderAndTime);
 }
 
 export function resolveCanonicalQuote(

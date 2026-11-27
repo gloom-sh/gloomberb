@@ -15,6 +15,5 @@ export const moneyMarketsModule: PluginModule = {
     description: "Funding rates, Treasury bills and Federal Reserve liquidity, and Hong Kong's Exchange Fund Bill yields, with historical context.",
     keywords: ["btmm", "money", "rates", "bills", "t-bill", "t-bills", "tbill", "tbills", "treasury bill", "treasury bills", "money market", "sofr", "liquidity", "hibor", "hong kong", "hkd", "exchange fund bills", "efb", "hkma"], shortcut: { prefix: "BTMM" },
     headless: moneyMarketsHeadless }],
-  setup(ctx) { moneyMarketsCache.attach(ctx.persistence); hongKongMoneyMarketsCache.attach(ctx.persistence); },
-  dispose() { moneyMarketsCache.reset(); hongKongMoneyMarketsCache.reset(); },
+  caches: [moneyMarketsCache, hongKongMoneyMarketsCache],
 };

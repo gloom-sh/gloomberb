@@ -13,7 +13,7 @@ import {
   type SelectControl,
 } from "../../../components";
 import { useCompanyDataFooter, usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { usePaneResource } from "../shared/pane-resource";
 import { isAccessDenied } from "../../../api-client/errors";
 import type {
   MnaDeal,
@@ -23,7 +23,7 @@ import type {
   MnaTargetFilter,
 } from "../../../api-client/mna";
 import { usePlanAccess } from "../../../api-client/plan-access";
-import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useShortcut } from "../../../public/react";
+import { usePaneSettingValue, usePluginPaneState, useShortcut } from "../../../public/react";
 import { usePaneInstance } from "../../../state/app/context";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { blendHex, type ThemeColors } from "../../../theme/colors";
@@ -333,7 +333,12 @@ function MnaDealsView({ focused, width, height, symbol }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [paramsKey, pro, session.requestKey],
   );
-  const resource = useAsyncResource(loader, { initialData: () => cachedMnaDeals(params, pro), clearOnError: isAccessDenied });
+  const resource = usePaneResource(loader, {
+    focused,
+    initialData: () => cachedMnaDeals(params, pro),
+    clearOnError: isAccessDenied,
+    refreshKey: { enabled: !openId },
+  });
   const first = resource.data?.payload ?? null;
   const [paged, setPaged] = useState<{ owner: MnaDealsPayload; payload: MnaDealsPayload } | null>(null);
   const data = paged && paged.owner === first ? paged.payload : first;
@@ -358,9 +363,6 @@ function MnaDealsView({ focused, width, height, symbol }: {
       });
   }, [data, first, loadingMore, openId, params]);
   const onScroll = useTableLoadMore(scrollRef, !!data?.hasMore && !loadingMore && !openId, loadMore);
-
-  useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => resource.reload(), { focused, enabled: !openId });
 
   const allDeals = data?.deals ?? NO_DEALS;
   const deals = useMemo(() => (split ? allDeals.filter((deal) => mnaTermsView(deal) === termsView) : allDeals), [allDeals, split, termsView]);

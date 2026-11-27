@@ -42,9 +42,9 @@ import {
   quoteSessionStateLabel,
   type ExtendedSession,
 } from "../../market-data/market/status";
-import { MISSING_VALUE, formatCompact, formatCurrency, formatDistributionAmount, formatNumber, formatPercent } from "../../utils/format";
+import { MISSING_VALUE, formatCompact, formatCurrency, formatDistributionAmount, formatNumber } from "../../utils/format";
 import { withCliServices, withMarketData } from "../context";
-import { isoDate, parsePositiveInt, requireOneArg, takeFlag, takeOption, typedCompanyName } from "./command-utils";
+import { isoDate, parsePositiveInt, requireOneArg, takeFlag, takeFlagOption, takeOption, typedCompanyName } from "./command-utils";
 import type { BuiltinCliCommandDef } from "../command-options";
 import { CLI_COMMAND_GROUPS, TABLE_SECTION_OPTION } from "../help";
 import { CLI_EXIT_CODES } from "../exit-codes";
@@ -54,6 +54,7 @@ import {
   formatFractionPercentCell,
   formatPriceRange,
   quoteChangeText,
+  roundedPercent,
 } from "../helpers";
 import { cliArrow, cliStyles, colorBySign, renderSection, renderStats } from "../../utils/cli-output";
 import { filledPeriodsNote, financialStatementBasisNote, stalePeriodNote, statementHistoryNotes } from "../../utils/financial-statements";
@@ -62,14 +63,10 @@ import { priceBasisBreaks, priceBasisFactor } from "../../market-data/market/spl
 import { formatPerShareNumber } from "../../utils/reported-money";
 import { isCurrencyPairListing } from "../../utils/fx-market-hours";
 import {
-  analystTargetCurrency,
-  formatAnalystPrice,
-  formatRatingLabel,
-  formatRecommendationMix,
-  recommendationTotal,
   analystReferenceMetadata,
   analystUpside,
-  formatAnalystReference,
+  buildAnalystOverview,
+  formatRatingReason,
   ratingReason,
 } from "../../plugins/builtin/research/analyst-model";
 import { hasAnalystCoverage, loadAnalystResearch, noAnalystCoverageText } from "../../plugins/builtin/research/client";
@@ -772,11 +769,6 @@ function extendedMidNotes(data: readonly QuoteCliRecord[]): string[] {
   });
 }
 
-/** A percent to two decimals, as the table prints it; none for a move that is no number (a zero close). */
-function roundedPercent(value: number | undefined): number | null {
-  return value == null || !Number.isFinite(value) ? null : Number(value.toFixed(2));
-}
-
 /** The quote's currency code, US cents as US¢; an export keeps the code (USX). */
 function currencyCell(value: unknown): string {
   return currencyCodeLabel(typeof value === "string" ? value : "");
@@ -1124,21 +1116,15 @@ function filingsWithItemLabels(filings: SecFilingItem[]) {
 
 /** The summary over the ratings: the upside from Last, and the price and time it is measured from, as `fn ANR` gives them. */
 function analystSummary(data: AnalystResearchData, quote: Quote | null): string {
-  const target = data.priceTarget;
-  const currency = analystTargetCurrency(data);
-  const { upside, reference } = analystUpside(data, quote);
-  const analysts = recommendationTotal(data);
-  const mix = formatRecommendationMix(data);
+  const s = buildAnalystOverview(data, quote);
   const entries: Array<[string, string]> = [
-    ["Average Target", formatAnalystPrice(target?.average, currency)],
-    ["Upside", upside == null ? MISSING_VALUE : formatPercent(upside)],
-    ["Upside vs", upside == null ? MISSING_VALUE : formatAnalystReference(reference, currency)],
-    ["Low / Median / High", target && [target.low, target.median, target.high].some((value) => value != null)
-      ? [target.low, target.median, target.high].map((value) => formatAnalystPrice(value, currency)).join(" / ")
-      : MISSING_VALUE],
-    ["Rating", formatRatingLabel(data.recommendationRating)],
-    ["Analysts", analysts == null ? MISSING_VALUE : String(analysts)],
-    ["Mix", mix],
+    ["Average Target", s.averageFormatted],
+    ["Upside", s.upsideFormatted],
+    ["Upside vs", s.upside == null ? MISSING_VALUE : s.referenceFormatted],
+    ["Low / Median / High", s.hasRange ? s.rangeFormatted : MISSING_VALUE],
+    ["Rating", s.ratingFormatted],
+    ["Analysts", s.analysts == null ? MISSING_VALUE : String(s.analysts)],
+    ["Mix", s.mixFormatted],
   ];
   const populated = entries.filter(([, value]) => value !== MISSING_VALUE);
   return populated.length > 0 ? renderStats(populated) : "";
@@ -1158,8 +1144,7 @@ function analystRows(data: AnalystResearchData) {
 
 /** The reason coverage of an action gave, under its row with the article. */
 function analystRowNote(row: { reason?: AnalystResearchData["ratings"][number]["reason"] }): string | null {
-  const reason = row.reason;
-  return reason ? `${reason.text} · ${reason.url}` : null;
+  return formatRatingReason(row.reason);
 }
 
 /** Provider values carry binary floating-point noise such as 0.26940000000000003. */
@@ -1307,7 +1292,8 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
   const usage = `Usage: gloom ${commandName} <symbol...> [--file <path>]`;
   const exchange = takeOption(args, "--exchange") ?? "";
   // A list from a file or standard input (`-`), read as `watchlist add` reads one.
-  const file = args.some((arg) => arg === "--file" || arg.startsWith("--file=")) ? takeOption(args, "--file") ?? "" : undefined;
+  const fileOpt = takeFlagOption(args, "--file");
+  const file = fileOpt.given ? fileOpt.value ?? "" : undefined;
   const listed = file != null || args.includes("-");
   const entries = normalizeSymbols(args);
   if (entries.length === 0 && !listed) ctx.fail(usage);
@@ -2634,7 +2620,8 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const ask: HistoryAsk = { range, window: window ?? (backAdjust && range === "5Y" && !interval ? yearsBackWindow(5) : null), interval };
   // A list from a file or standard input (`-`), or several symbols typed (AAPL MSFT, AAPL,MSFT), is one long table.
   // One argument with spaces stays one, as before: it may be a company's name.
-  const file = args.some((arg) => arg === "--file" || arg.startsWith("--file=")) ? takeOption(args, "--file") ?? "" : undefined;
+  const fileOpt = takeFlagOption(args, "--file");
+  const file = fileOpt.given ? fileOpt.value ?? "" : undefined;
   // `history swiss franc` is the franc's pair, not SWISS (a Copenhagen listing) and FRANC.
   const currency = file != null || requestedExchange ? null : currencyNameStop(args, "history");
   if (currency) ctx.fail(currency.message, currency.details);
@@ -3073,43 +3060,8 @@ async function runHistoryList(
       bars: entry.history.data.length,
       asOf: entry.history.freshness?.asOf ?? null,
     } : { symbol: entry.symbol, error: entry.error });
-    if (wide) {
-      // A column that served nothing keeps its place, empty, its reason said in the notes.
-      const failed = listed.flatMap((entry) => "error" in entry ? [entry.symbol]
-        : entry.history.data.length === 0 ? [entry.history.listing.key] : []);
-      const table = wideHistoryTable(served, failed, listed.map((entry) => "history" in entry ? entry.history.listing.key : entry.symbol));
-      notes.push(...table.notes);
-      ctx.printResult({
-        data: table.rows,
-        metadata: {
-          range: ask.window ? null : ask.range,
-          requestedRange: ask.window ? null : ask.range,
-          ...(ask.window ? { requestedWindow: ask.window } : {}),
-          symbols: symbolsMetadata,
-        },
-        ...(notes.length > 0 ? { warnings: notes } : {}),
-        ...(served.length === 0 ? { failure: { code: "cli_error", message: `No history for ${symbols.join(", ")}.` } } : {}),
-        freshness,
-        ...(freshness ? {} : { exportFreshness: rowsFreshness([], { status: "not-a-feed", basis: "price bars" }) }),
-      }, {
-        dateKey: "date",
-        columns: table.columns,
-        // The unit is in each close column's header; a row of several symbols has no one symbol or unit to name.
-        exportIdentity: { symbolOrSeries: null, currencyOrUnit: null, interval: table.interval },
-      });
-      if (served.length === 0) process.exitCode = CLI_EXIT_CODES.error;
-      return;
-    }
-    const decimals = (row: Record<string, unknown>) => bySymbol.get(String(row.symbol))?.decimals ?? 2;
-    const intraday = served.some((history) => history.intraday);
-    const textVolumes = new Map(served.map((history) => [history.listing.key, historyTextVolumes(history.data, history.intraday)] as const));
-    const textColumns = historyTextColumns(intraday, (value, row) => historyPrice(decimals(row))(value)).map((column) => column.key !== "volume" ? column
-      : { ...column, format: historyVolumeCell((row) => {
-        const history = bySymbol.get(String(row.symbol));
-        return history && row.date && historyReportsVolume(history.data) ? MISSING_VOLUME_TEXT : "";
-      }, (row) => textVolumes.get(String(row.symbol))?.get(String(row.date))) });
-    ctx.printResult({
-      data: rows,
+    const resultEnvelope = <T,>(data: T) => ({
+      data,
       metadata: {
         range: ask.window ? null : ask.range,
         requestedRange: ask.window ? null : ask.range,
@@ -3122,27 +3074,50 @@ async function runHistoryList(
       freshness,
       // With no bars to date, an export still ends its rows with what each is of, under the same header.
       ...(freshness ? {} : { exportFreshness: rowsFreshness([], { status: "not-a-feed", basis: "price bars" }) }),
-    }, {
-      seriesKey: "symbol",
-      dateKey: "date",
-      textColumns: [{ key: "symbol", header: "Symbol", shrink: false }, ...textColumns,
-        { key: "currency", header: "Cur", shrink: false, format: currencyCell }, HISTORY_FLAG_TEXT_COLUMN],
-      columns: [...historyExportColumns(rows), ...fromList ? LIST_INPUT_EXPORT_COLUMNS : []],
-      exportStatus: historyExportStatus,
-      // Every row names its symbol, the currency its prices are in, its bar size and the as-of of its own symbol's bars.
-      exportIdentity: (row) => {
-        const history = bySymbol.get(String(row.symbol));
-        return {
-          symbolOrSeries: String(row.symbol),
-          currencyOrUnit: history ? historyExportUnit(history.unit) : null,
-          interval: history?.interval ?? null,
-          // A symbol with no bars has no as-of of its own.
-          asOf: history ? history.freshness?.asOf ?? undefined : null,
-        };
-      },
-      // A bar's as_of is its symbol's bars', the same on each of that symbol's rows, never the bar's own day.
-      exportAsOfOf: "symbol",
     });
+    if (wide) {
+      // A column that served nothing keeps its place, empty, its reason said in the notes.
+      const failed = listed.flatMap((entry) => "error" in entry ? [entry.symbol]
+        : entry.history.data.length === 0 ? [entry.history.listing.key] : []);
+      const table = wideHistoryTable(served, failed, listed.map((entry) => "history" in entry ? entry.history.listing.key : entry.symbol));
+      notes.push(...table.notes);
+      ctx.printResult(resultEnvelope(table.rows), {
+        dateKey: "date",
+        columns: table.columns,
+        // The unit is in each close column's header; a row of several symbols has no one symbol or unit to name.
+        exportIdentity: { symbolOrSeries: null, currencyOrUnit: null, interval: table.interval },
+      });
+    } else {
+      const decimals = (row: Record<string, unknown>) => bySymbol.get(String(row.symbol))?.decimals ?? 2;
+      const intraday = served.some((history) => history.intraday);
+      const textVolumes = new Map(served.map((history) => [history.listing.key, historyTextVolumes(history.data, history.intraday)] as const));
+      const textColumns = historyTextColumns(intraday, (value, row) => historyPrice(decimals(row))(value)).map((column) => column.key !== "volume" ? column
+        : { ...column, format: historyVolumeCell((row) => {
+          const history = bySymbol.get(String(row.symbol));
+          return history && row.date && historyReportsVolume(history.data) ? MISSING_VOLUME_TEXT : "";
+        }, (row) => textVolumes.get(String(row.symbol))?.get(String(row.date))) });
+      ctx.printResult(resultEnvelope(rows), {
+        seriesKey: "symbol",
+        dateKey: "date",
+        textColumns: [{ key: "symbol", header: "Symbol", shrink: false }, ...textColumns,
+          { key: "currency", header: "Cur", shrink: false, format: currencyCell }, HISTORY_FLAG_TEXT_COLUMN],
+        columns: [...historyExportColumns(rows), ...fromList ? LIST_INPUT_EXPORT_COLUMNS : []],
+        exportStatus: historyExportStatus,
+        // Every row names its symbol, the currency its prices are in, its bar size and the as-of of its own symbol's bars.
+        exportIdentity: (row) => {
+          const history = bySymbol.get(String(row.symbol));
+          return {
+            symbolOrSeries: String(row.symbol),
+            currencyOrUnit: history ? historyExportUnit(history.unit) : null,
+            interval: history?.interval ?? null,
+            // A symbol with no bars has no as-of of its own.
+            asOf: history ? history.freshness?.asOf ?? undefined : null,
+          };
+        },
+        // A bar's as_of is its symbol's bars', the same on each of that symbol's rows, never the bar's own day.
+        exportAsOfOf: "symbol",
+      });
+    }
     // The table and the warnings name each symbol with no bars; with none served, the exit status says so too.
     if (served.length === 0) process.exitCode = CLI_EXIT_CODES.error;
   });
@@ -3197,15 +3172,13 @@ export function comparedSymbols(args: readonly string[]): string[] | null {
 async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1], view: FinancialsView) {
   const args = [...rawArgs];
   const exchangeOption = takeOption(args, "--exchange");
-  const sectionFlag = args.some((arg) => arg === "--section" || arg.startsWith("--section="));
-  const section = takeOption(args, "--section");
+  const { given: sectionFlag, value: section } = takeFlagOption(args, "--section");
   const commandName = view === "statements" ? "financials" : view;
   // `fundamentals --tax-rate 40.8 [--state-rate 9.3 --state CA]`: a muni fund's tax-equivalent yield and muni/Treasury ratio.
   let rates: TaxRates | null = null;
   if (view === "fundamentals") {
     const taken = (flag: string) => {
-      const given = args.some((arg) => arg === flag || arg.startsWith(`${flag}=`));
-      const value = takeOption(args, flag);
+      const { given, value } = takeFlagOption(args, flag);
       if (given && !value?.trim()) ctx.fail(`${flag} needs a value, such as --tax-rate 40.8 --state-rate 9.3 --state CA.`);
       return value;
     };
@@ -4685,9 +4658,7 @@ async function runFxOnDate(
       // The source repeated the day's open as its close and nothing rebuilt it: no close of that day is known.
       ? `No daily close on ${date}: the source repeated that day's open as its close. This is the close of ${closeDate}, the trading day before it.`
       : `No daily close on ${date}, a weekend or market holiday: this is the close of ${closeDate}, the trading day before it.`] : [],
-    ...toUsdByDefault && amount != null
-      ? [`No target currency given, so ${fxSideCode(request, "currency")} is converted to USD; for another, write fx ${args[0]!.trim()} ${fxSideCode(request, "currency")}/<to> --date ${date}.`]
-      : [],
+    ...fxDefaultUsdWarning(toUsdByDefault && amount != null, fxSideCode(request, "currency"), args[0]!.trim(), ` --date ${date}`),
   ];
   ctx.printResult({
     data: [row],
@@ -4697,21 +4668,35 @@ async function runFxOnDate(
   }, {
     text: () => amount == null && !request.units ? rateLine : `${describeFxConversion(request, amount ?? 1, rate)}\n${rateLine}`,
     exportIdentity: { symbolOrSeries: row.pair, currencyOrUnit: `${row.baseCurrency} per ${row.currency}`, interval: "1day" },
-    columns: [
-      { key: "currency", header: "Currency" },
-      { key: "baseCurrency", header: "Base" },
-      { key: "rate", header: "Rate", align: "right" },
-      { key: "date", header: "Date" },
-      { key: "asOf", header: "Close" },
-      { key: "stale", header: "Stale" },
-      { key: "pair", header: "Pair" },
-      { key: "inverse", header: "Inverse", align: "right" },
-      ...(amount == null ? [] : [
-        { key: "amount", header: "Amount", align: "right" as const },
-        { key: "converted", header: "Converted", align: "right" as const },
-      ]),
-    ],
+    columns: fxSpotColumns({ historical: true, hasAmount: amount != null }),
   });
+}
+
+function fxDefaultUsdWarning(enabled: boolean | undefined, code: string, rawAmount: string, extra = "", forward = false): string[] {
+  if (!enabled) return [];
+  return [forward
+    ? `No second currency given, so ${code} is priced against USD; for another, write fx ${rawAmount} ${code}/<to>${extra}.`
+    : `No target currency given, so ${code} is converted to USD; for another, write fx ${rawAmount} ${code}/<to>${extra}.`];
+}
+
+function fxSpotColumns({ historical = false, hasMove = false, hasAmount = false }): CliResultColumn<Record<string, unknown>>[] {
+  return [
+    { key: "currency", header: "Currency" },
+    { key: "baseCurrency", header: "Base" },
+    { key: "rate", header: "Rate", align: "right" },
+    ...(historical ? [{ key: "date", header: "Date" }, { key: "asOf", header: "Close" }] : [{ key: "asOf", header: "As Of" }]),
+    { key: "stale", header: "Stale" },
+    { key: "pair", header: "Pair" },
+    { key: "inverse", header: "Inverse", align: "right" },
+    ...(hasMove ? [
+      { key: "changePercent", header: "Chg %", align: "right" as const },
+      { key: "previousClose", header: "Previous close", align: "right" as const },
+    ] : []),
+    ...(hasAmount ? [
+      { key: "amount", header: "Amount", align: "right" as const },
+      { key: "converted", header: "Converted", align: "right" as const },
+    ] : []),
+  ];
 }
 
 /**
@@ -4769,8 +4754,7 @@ function describeFxMove(currency: string, baseCurrency: string, rate: number, mo
 async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const dateOption = takeOption(args, "--date");
-  const forwardAsked = args.some((arg) => arg === "--forward" || arg.startsWith("--forward="));
-  const forwardOption = takeOption(args, "--forward");
+  const { given: forwardAsked, value: forwardOption } = takeFlagOption(args, "--forward");
   // `fx USD/BRL --forward` and `fx --forward USD/BRL` name no tenor: say what --forward takes, never print spot alone
   // or the bare usage line.
   if (forwardAsked && (!forwardOption?.trim() || (args.length === 0 && !/^\s*\d/.test(forwardOption)))) {
@@ -4914,9 +4898,7 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
       // A currency typed as its name (yen) says which code it was read as, as the spot answer does.
       const forwardWarnings = [
         ...request.readAs ?? [], ...rateNotes, ...staleRates,
-        ...toUsdByDefault && amount != null
-          ? [`No second currency given, so ${currency} is priced against USD; for another, write fx ${args[0]!.trim()} ${currency}/<to> --forward ${tenor.label}.`]
-          : [],
+        ...fxDefaultUsdWarning(toUsdByDefault && amount != null, currency, args[0]!.trim(), ` --forward ${tenor.label}`, true),
         ...carryConversion && "missing" in carryConversion ? [carryConversion.missing] : [],
       ];
       return ctx.printResult({ data: [forwardRow], freshness, ...(forwardWarnings.length > 0 ? { warnings: forwardWarnings } : {}) }, {
@@ -4960,9 +4942,7 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
     const warnings = [
       // A currency typed as its name (yen) says which code it was read as.
       ...request.readAs ?? [],
-      ...toUsdByDefault && amount != null
-        ? [`No target currency given, so ${fxSideCode(request, "currency")} is converted to USD; for another, write fx ${args[0]!.trim()} ${fxSideCode(request, "currency")}/<to>.`]
-        : [],
+      ...fxDefaultUsdWarning(toUsdByDefault && amount != null, fxSideCode(request, "currency"), args[0]!.trim()),
       ...rateNotes,
     ];
     const record = await interventions;
@@ -4993,23 +4973,7 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
       ].join("\n"),
       // The rate is the base currency's price of one unit of the other, at the latest quote of each leg: USD per ZAR.
       exportIdentity: { symbolOrSeries: row.pair, currencyOrUnit: `${row.baseCurrency} per ${row.currency}`, interval: quoted?.derivedFrom ? `derived from ${quoted.derivedFrom}` : "spot" },
-      columns: [
-        { key: "currency", header: "Currency" },
-        { key: "baseCurrency", header: "Base" },
-        { key: "rate", header: "Rate", align: "right" },
-        { key: "asOf", header: "As Of" },
-        { key: "stale", header: "Stale" },
-        { key: "pair", header: "Pair" },
-        { key: "inverse", header: "Inverse", align: "right" },
-        ...(move ? [
-          { key: "changePercent", header: "Chg %", align: "right" as const },
-          { key: "previousClose", header: "Previous close", align: "right" as const },
-        ] : []),
-        ...(amount == null ? [] : [
-          { key: "amount", header: "Amount", align: "right" as const },
-          { key: "converted", header: "Converted", align: "right" as const },
-        ]),
-      ],
+      columns: fxSpotColumns({ hasMove: !!move, hasAmount: amount != null }),
     });
   });
 }

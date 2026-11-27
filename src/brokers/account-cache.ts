@@ -19,8 +19,35 @@ interface PersistedBrokerAccountSnapshot {
   brokerType?: string;
 }
 
-function brokerAccountNamespace(instance: BrokerInstanceConfig): string {
-  return `plugin:${instance.brokerType}`;
+function snapshotFilter(instance: BrokerInstanceConfig) {
+  return {
+    namespace: `plugin:${instance.brokerType}`,
+    kind: BROKER_ACCOUNT_SNAPSHOT_KIND,
+    entityKey: instance.id,
+  };
+}
+
+function listInstanceSnapshots(
+  resources: Pick<AppResourceStorePort, "list">,
+  instance: BrokerInstanceConfig,
+  options: { allowExpired?: boolean; touch?: boolean } = {},
+) {
+  return resources.list<PersistedBrokerAccountSnapshot>(snapshotFilter(instance), {
+    schemaVersion: BROKER_ACCOUNT_SNAPSHOT_SCHEMA_VERSION,
+    ...options,
+  });
+}
+
+function deleteInstanceSnapshots(
+  resources: AppResourceStorePort,
+  instance: BrokerInstanceConfig,
+  keepSourceKey?: string,
+): void {
+  const filter = snapshotFilter(instance);
+  for (const record of listInstanceSnapshots(resources, instance, { allowExpired: true })) {
+    if (record.sourceKey === keepSourceKey) continue;
+    resources.delete({ ...filter, sourceKey: record.sourceKey });
+  }
 }
 
 /** A saved account snapshot, which a renderer without the cache database has to keep elsewhere. */
@@ -57,14 +84,7 @@ export function listPersistedBrokerAccountRecords(
   resources: Pick<AppResourceStorePort, "list">,
   brokerInstances: readonly BrokerInstanceConfig[],
 ): CachedResourceRecord[] {
-  return brokerInstances.flatMap((instance) => resources.list<PersistedBrokerAccountSnapshot>({
-    namespace: brokerAccountNamespace(instance),
-    kind: BROKER_ACCOUNT_SNAPSHOT_KIND,
-    entityKey: instance.id,
-  }, {
-    schemaVersion: BROKER_ACCOUNT_SNAPSHOT_SCHEMA_VERSION,
-    touch: false,
-  }));
+  return brokerInstances.flatMap((instance) => listInstanceSnapshots(resources, instance, { touch: false }));
 }
 
 export function getBrokerAccountCacheSourceKey(
@@ -87,47 +107,18 @@ function getBrokerAccountCachePolicy(
   return broker?.getAccountCachePolicy?.(instance) ?? DEFAULT_BROKER_ACCOUNT_CACHE_POLICY;
 }
 
-function pruneMismatchedSnapshots(
-  resources: AppResourceStorePort,
-  instance: BrokerInstanceConfig,
-  sourceKey: string,
-): void {
-  const records = resources.list<PersistedBrokerAccountSnapshot>({
-    namespace: brokerAccountNamespace(instance),
-    kind: BROKER_ACCOUNT_SNAPSHOT_KIND,
-    entityKey: instance.id,
-  }, {
-    schemaVersion: BROKER_ACCOUNT_SNAPSHOT_SCHEMA_VERSION,
-    allowExpired: true,
-  });
-
-  for (const record of records) {
-    if (record.sourceKey === sourceKey) continue;
-    resources.delete({
-      namespace: brokerAccountNamespace(instance),
-      kind: BROKER_ACCOUNT_SNAPSHOT_KIND,
-      entityKey: instance.id,
-      sourceKey: record.sourceKey,
-    });
-  }
-}
-
 export function loadPersistedBrokerAccounts(
   resources: AppResourceStorePort,
   instance: BrokerInstanceConfig,
   broker?: BrokerAdapter | null,
 ): BrokerAccount[] | null {
   const sourceKey = getBrokerAccountCacheSourceKey(instance, broker);
-  pruneMismatchedSnapshots(resources, instance, sourceKey);
+  deleteInstanceSnapshots(resources, instance, sourceKey);
 
-  return resources.get<PersistedBrokerAccountSnapshot>({
-    namespace: brokerAccountNamespace(instance),
-    kind: BROKER_ACCOUNT_SNAPSHOT_KIND,
-    entityKey: instance.id,
-    sourceKey,
-  }, {
-    schemaVersion: BROKER_ACCOUNT_SNAPSHOT_SCHEMA_VERSION,
-  })?.value.accounts ?? null;
+  return resources.get<PersistedBrokerAccountSnapshot>(
+    { ...snapshotFilter(instance), sourceKey },
+    { schemaVersion: BROKER_ACCOUNT_SNAPSHOT_SCHEMA_VERSION },
+  )?.value.accounts ?? null;
 }
 
 /**
@@ -139,14 +130,7 @@ export function peekPersistedBrokerAccounts(
   resources: Pick<AppResourceStorePort, "list">,
   instance: BrokerInstanceConfig,
 ): BrokerAccount[] | null {
-  const records = resources.list<PersistedBrokerAccountSnapshot>({
-    namespace: brokerAccountNamespace(instance),
-    kind: BROKER_ACCOUNT_SNAPSHOT_KIND,
-    entityKey: instance.id,
-  }, {
-    schemaVersion: BROKER_ACCOUNT_SNAPSHOT_SCHEMA_VERSION,
-    allowExpired: true,
-  });
+  const records = listInstanceSnapshots(resources, instance, { allowExpired: true });
   const newest = records.reduce<(typeof records)[number] | null>(
     (latest, record) => (!latest || record.fetchedAt > latest.fetchedAt ? record : latest),
     null,
@@ -161,20 +145,16 @@ export function persistBrokerAccounts(
   accounts: BrokerAccount[],
 ): void {
   const sourceKey = getBrokerAccountCacheSourceKey(instance, broker);
-  pruneMismatchedSnapshots(resources, instance, sourceKey);
+  deleteInstanceSnapshots(resources, instance, sourceKey);
 
-  resources.set<PersistedBrokerAccountSnapshot>({
-    namespace: brokerAccountNamespace(instance),
-    kind: BROKER_ACCOUNT_SNAPSHOT_KIND,
-    entityKey: instance.id,
-    sourceKey,
-  }, {
-    brokerType: instance.brokerType,
-    accounts,
-  }, {
-    schemaVersion: BROKER_ACCOUNT_SNAPSHOT_SCHEMA_VERSION,
-    cachePolicy: getBrokerAccountCachePolicy(instance, broker),
-  });
+  resources.set<PersistedBrokerAccountSnapshot>(
+    { ...snapshotFilter(instance), sourceKey },
+    { brokerType: instance.brokerType, accounts },
+    {
+      schemaVersion: BROKER_ACCOUNT_SNAPSHOT_SCHEMA_VERSION,
+      cachePolicy: getBrokerAccountCachePolicy(instance, broker),
+    },
+  );
 }
 
 export function loadPersistedBrokerAccountMap(
@@ -199,21 +179,5 @@ export function clearPersistedBrokerAccounts(
   resources: AppResourceStorePort,
   instance: BrokerInstanceConfig,
 ): void {
-  const records = resources.list<PersistedBrokerAccountSnapshot>({
-    namespace: brokerAccountNamespace(instance),
-    kind: BROKER_ACCOUNT_SNAPSHOT_KIND,
-    entityKey: instance.id,
-  }, {
-    schemaVersion: BROKER_ACCOUNT_SNAPSHOT_SCHEMA_VERSION,
-    allowExpired: true,
-  });
-
-  for (const record of records) {
-    resources.delete({
-      namespace: brokerAccountNamespace(instance),
-      kind: BROKER_ACCOUNT_SNAPSHOT_KIND,
-      entityKey: instance.id,
-      sourceKey: record.sourceKey,
-    });
-  }
+  deleteInstanceSnapshots(resources, instance);
 }

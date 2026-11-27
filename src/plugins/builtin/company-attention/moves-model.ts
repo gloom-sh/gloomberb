@@ -2,10 +2,10 @@ import { formatDayTime } from "../../../utils/day-format";
 import { formatShortDate } from "../../../utils/datetime-format";
 import type { DataTableColumn, StatItem } from "../../../components";
 import type { HiringCompanyMoves, HiringMove, HiringMoveExclusion, HiringMoveFlag, HiringMovePosting, HiringMovesBoard, HiringMovesFilter } from "../../../api-client/hiring";
-import { MISSING_VALUE, formatNumber } from "../../../utils/format";
+import { MISSING_VALUE } from "../../../utils/format";
 import { countOf, freePreviewNote, previewCantFilter } from "../shared/free-preview";
 import { humanLabel } from "../shared/research-cells";
-import type { AttentionRow } from "./model";
+import { hiringAverage as average, hiringCount as count, hiringPace as pace, hiringSigned as signed, type AttentionRow } from "./model";
 
 /**
  * HIRE's Moves tab: each covered company's new roles in the latest complete
@@ -55,12 +55,6 @@ function weekLabel(week: string | null | undefined): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(week ?? "");
   return match ? formatShortDate(match[0], { year: false, utc: true, fallback: MISSING_VALUE }) : MISSING_VALUE;
 }
-/** 3.4x, 0.4x, 74x: a pace against an average. */
-const pace = (value: number | null | undefined) => value == null ? MISSING_VALUE : `${formatNumber(value, Math.abs(value) >= 10 ? 0 : 1)}x`;
-const count = (value: number | null | undefined) => value == null ? MISSING_VALUE : formatNumber(value, 0);
-/** An average of a few weeks keeps a decimal while it is small: 6.7 a week, not 7. */
-const average = (value: number) => formatNumber(value, value < 10 ? 1 : 0);
-const signed = (value: number, decimals = 0) => `${value > 0 ? "+" : ""}${formatNumber(value, decimals)}`;
 
 const PACE_COLUMNS = new Set(["pace", "peers", "relative"]);
 export const MOVES_SIGNED_COLUMNS = new Set(["z", "change"]);

@@ -1,6 +1,7 @@
 import { apiClient } from "../../../api-client";
 import type { PowerBoard, PowerDetail, PowerFilter, PowerHistory, PowerProject } from "../../../api-client/power";
 import { createPluginCache } from "../../../data/plugin-cache";
+import { hasUniqueIds, isFraction, isHttpsUrl, isIsoInstant, isNonNegative, isNonNegativeInt, isNullableString, isRecord, isStringArray } from "../../../utils/guards";
 import { loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 import { powerTickerScopes, type PowerTab, type PowerTickerScope } from "./model";
 import { powerQuery } from "./query";
@@ -9,62 +10,54 @@ const cacheOptions = { source: "gloom-cloud", schemaVersion: 1, policy: { staleM
 export const powerBoardCache = createPluginCache<PowerBoard>({ ...cacheOptions, kind: "power-board" });
 export const powerHistoryCache = createPluginCache<PowerHistory>({ ...cacheOptions, kind: "power-history" });
 export const powerDetailCache = createPluginCache<PowerDetail>({ ...cacheOptions, kind: "power-detail" });
-const record = (v: unknown): v is Record<string, any> => !!v && typeof v === "object" && !Array.isArray(v);
+const record = isRecord as (v: unknown) => v is Record<string, any>;
 const text = (v: unknown): v is string => typeof v === "string";
-const nullableText = (v: unknown) => v === null || text(v);
-const nonnegative = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0;
-const integer = (v: unknown) => nonnegative(v) && Number.isInteger(v);
-const instant = (v: unknown) => text(v) && Number.isFinite(Date.parse(v));
-const url = (v: unknown) => { try { return text(v) && new URL(v).protocol === "https:"; } catch {
-  // Intentional ignore: malformed URLs fail this HTTPS field validator.
-  return false;
-} };
 const access = (v: unknown) => v === "full" || v === "preview";
 const entities = (v: unknown) => Array.isArray(v) && v.every((e) => record(e) && text(e.name) && text(e.entityId)
-  && ["utility", "developer"].includes(e.role) && nonnegative(e.confidence) && e.confidence <= 1
+  && ["utility", "developer"].includes(e.role) && isFraction(e.confidence)
   && Array.isArray(e.tickers) && e.tickers.every((t: unknown) => record(t) && text(t.ticker) && (t.exchange === undefined || text(t.exchange))));
 function project(v: unknown): v is PowerProject {
   return record(v) && [v.id, v.name, v.sourceId, v.sourceProjectId, v.country, v.region, v.sourceLocator, v.snapshotId].every(text)
     && ["queue", "load", "capacity", "utility"].includes(v.kind) && ["active", "completed", "withdrawn", "approved", "operating", "unknown"].includes(v.status)
     && ["solar", "wind", "storage", "gas", "nuclear", "hydro", "coal", "hybrid", "other", "load", "unknown"].includes(v.fuel)
-    && [v.state, v.county, v.zone, v.developer, v.utility, v.technology, v.statusRaw, v.requestedDate, v.proposedDate, v.completedDate, v.withdrawnDate, v.period, v.asOf].every(nullableText)
-    && (v.capacityMw === null || nonnegative(v.capacityMw)) && instant(v.observedAt) && url(v.sourceUrl) && nonnegative(v.confidence) && v.confidence <= 1
-    && integer(v.revision) && record(v.evidence) && record(v.metrics) && typeof v.historical === "boolean" && entities(v.entities);
+    && [v.state, v.county, v.zone, v.developer, v.utility, v.technology, v.statusRaw, v.requestedDate, v.proposedDate, v.completedDate, v.withdrawnDate, v.period, v.asOf].every(isNullableString)
+    && (v.capacityMw === null || isNonNegative(v.capacityMw)) && isIsoInstant(v.observedAt) && isHttpsUrl(v.sourceUrl) && isFraction(v.confidence)
+    && isNonNegativeInt(v.revision) && record(v.evidence) && record(v.metrics) && typeof v.historical === "boolean" && entities(v.entities);
 }
 const aggregate = (v: unknown) => record(v) && [v.sourceId, v.country, v.region, v.fuel, v.status, v.kind].every(text)
-  && integer(v.projects) && nonnegative(v.capacityMw) && integer(v.unknownCapacity);
+  && isNonNegativeInt(v.projects) && isNonNegative(v.capacityMw) && isNonNegativeInt(v.unknownCapacity);
 export function validatePowerBoard(data: PowerBoard): PowerBoard {
-  if (!record(data) || !instant(data.generatedAt) || !access(data.access) || !Array.isArray(data.projects) || !data.projects.every(project)
-    || new Set(data.projects.map((r) => r.id)).size !== data.projects.length || !integer(data.total) || data.total < data.projects.length
-    || typeof data.hasMore !== "boolean" || !(data.nextOffset === null || integer(data.nextOffset))
+  if (!record(data) || !isIsoInstant(data.generatedAt) || !access(data.access) || !Array.isArray(data.projects) || !data.projects.every(project)
+    || !hasUniqueIds(data.projects) || !isNonNegativeInt(data.total) || data.total < data.projects.length
+    || typeof data.hasMore !== "boolean" || !(data.nextOffset === null || isNonNegativeInt(data.nextOffset))
     || !Array.isArray(data.aggregates) || !data.aggregates.every(aggregate)
     || !Array.isArray(data.rates) || !data.rates.every((v) => record(v) && [v.sourceId, v.region, v.country, v.cohort].every(text)
-      && [v.projects, v.completed, v.withdrawn, v.active, v.unknown].every(integer)
-      && [v.completionRate, v.withdrawalRate].every((n) => n === null || nonnegative(n) && n <= 1))
-    || !Array.isArray(data.exposure) || !data.exposure.every((v) => record(v) && [v.sourceId, v.utility, v.country, v.region].every(text) && Array.isArray(v.sourceUrls) && v.sourceUrls.every(url) && nullableText(v.asOf) && instant(v.observedAt)
-      && [v.requestedMw, v.approvedMw, v.operatingMw].every(nonnegative) && integer(v.requests) && integer(v.unknownCapacity) && entities(v.entities))
+      && [v.projects, v.completed, v.withdrawn, v.active, v.unknown].every(isNonNegativeInt)
+      && [v.completionRate, v.withdrawalRate].every((n) => n === null || isFraction(n)))
+    || !Array.isArray(data.exposure) || !data.exposure.every((v) => record(v) && [v.sourceId, v.utility, v.country, v.region].every(text) && Array.isArray(v.sourceUrls) && v.sourceUrls.every(isHttpsUrl) && isNullableString(v.asOf) && isIsoInstant(v.observedAt)
+      && [v.requestedMw, v.approvedMw, v.operatingMw].every(isNonNegative) && isNonNegativeInt(v.requests) && isNonNegativeInt(v.unknownCapacity) && entities(v.entities))
     || !Array.isArray(data.coverage) || !data.coverage.every((v) => record(v) && [v.id, v.country, v.region].every(text)
-      && ["current", "stale", "pending", "failed", "disabled"].includes(v.status) && nullableText(v.reason) && url(v.sourceUrl)
-      && nullableText(v.asOf) && (v.observedAt === null || instant(v.observedAt)) && integer(v.records))
-    || !record(data.filters) || ![data.filters.countries, data.filters.regions, data.filters.fuels, data.filters.statuses].every((v) => Array.isArray(v) && v.every(text))
-    || !record(data.locked) || ![data.locked.projects, data.locked.aggregates, data.locked.rates, data.locked.exposure].every(integer))
+      && ["current", "stale", "pending", "failed", "disabled"].includes(v.status) && isNullableString(v.reason) && isHttpsUrl(v.sourceUrl)
+      && isNullableString(v.asOf) && (v.observedAt === null || isIsoInstant(v.observedAt)) && isNonNegativeInt(v.records))
+    || !record(data.filters) || ![data.filters.countries, data.filters.regions, data.filters.fuels, data.filters.statuses].every(isStringArray)
+    || !record(data.locked) || ![data.locked.projects, data.locked.aggregates, data.locked.rates, data.locked.exposure].every(isNonNegativeInt))
     throw new Error("The server returned unreadable power data.");
   if (data.hasMore && (data.nextOffset === null || data.projects.length === 0)) throw new Error("The server returned an invalid power page.");
   return data;
 }
 export function validatePowerHistory(data: PowerHistory): PowerHistory {
-  if (!record(data) || !instant(data.generatedAt) || !access(data.access) || !integer(data.locked) || !Array.isArray(data.points)
-    || typeof data.hasMore !== "boolean" || !(data.nextOffset === null || integer(data.nextOffset))
+  if (!record(data) || !isIsoInstant(data.generatedAt) || !access(data.access) || !isNonNegativeInt(data.locked) || !Array.isArray(data.points)
+    || typeof data.hasMore !== "boolean" || !(data.nextOffset === null || isNonNegativeInt(data.nextOffset))
     || data.hasMore && (data.nextOffset === null || !data.points.length)
-    || !data.points.every((p) => aggregate(p) && ["published", "observed"].includes(p.basis) && Array.isArray(p.sourceUrls) && p.sourceUrls.every(url) && text(p.sourceId) && instant(p.observedAt) && nullableText(p.asOf) && nullableText(p.period) && typeof p.historical === "boolean"))
+    || !data.points.every((p) => aggregate(p) && ["published", "observed"].includes(p.basis) && Array.isArray(p.sourceUrls) && p.sourceUrls.every(isHttpsUrl) && text(p.sourceId) && isIsoInstant(p.observedAt) && isNullableString(p.asOf) && isNullableString(p.period) && typeof p.historical === "boolean"))
     throw new Error("The server returned unreadable power history.");
   return data;
 }
 function validateDetail(data: PowerDetail): PowerDetail {
-  if (!record(data) || !instant(data.generatedAt) || !access(data.access) || !integer(data.locked)
+  if (!record(data) || !isIsoInstant(data.generatedAt) || !access(data.access) || !isNonNegativeInt(data.locked)
     || !(data.project === null || project(data.project)) || !Array.isArray(data.revisions) || !data.revisions.every(project)
-    || !integer(data.totalRevisions) || data.totalRevisions < data.revisions.length || typeof data.hasMore !== "boolean"
-    || !(data.nextOffset === null || integer(data.nextOffset)) || data.hasMore && (data.nextOffset === null || !data.revisions.length))
+    || !isNonNegativeInt(data.totalRevisions) || data.totalRevisions < data.revisions.length || typeof data.hasMore !== "boolean"
+    || !(data.nextOffset === null || isNonNegativeInt(data.nextOffset)) || data.hasMore && (data.nextOffset === null || !data.revisions.length))
     throw new Error("The server returned unreadable project evidence.");
   return data;
 }

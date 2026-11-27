@@ -136,3 +136,5 @@ export function useCommandBarEnvironment() {
     visibleListStateRef,
   };
 }
+
+export type CommandBarEnvironment = ReturnType<typeof useCommandBarEnvironment>;

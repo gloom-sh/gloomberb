@@ -15,6 +15,5 @@ export const followsWithoutFinraOverride = (pane: PaneInstanceConfig) => (
 /** The daily-volume cache. `SIV` opens the short interest pane, so this module has no pane of its own. */
 export const shortVolumeModule: PluginModule = {
   series: SHORT_VOLUME_SERIES,
-  setup(ctx) { shortVolumeCache.attach(ctx.persistence); },
-  dispose() { shortVolumeCache.reset(); },
+  caches: [shortVolumeCache],
 };

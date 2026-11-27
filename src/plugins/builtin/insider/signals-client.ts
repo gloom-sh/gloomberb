@@ -9,6 +9,7 @@ import type {
 } from "../../../api-client/insider-signals";
 import { createPluginCache } from "../../../data/plugin-cache";
 import type { HeadlessPaneApiClient } from "../../../types/plugin";
+import { isFiniteNumber, isStringArray } from "../../../utils/guards";
 import { cachedCloudResource, cloudDisplayCacheKey, loadCloudResource, unavailableOnServer, type CloudResource } from "../shared/cloud-resource";
 import { CLOUD_SESSION_REQUIRED } from "../shared/research-cloud-session";
 
@@ -67,14 +68,12 @@ export const insiderSignalsCache = createPluginCache<InsiderSignalsPayload>({
 });
 
 const text = (value: unknown): value is string => typeof value === "string";
-const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 
 /** A payload the pane can draw; anything else is an error, never a ranking with holes. */
 function validateInsiderSignals(payload: InsiderSignalsPayload): InsiderSignalsPayload {
-  const valid = !!payload && finite(payload.window) && Array.isArray(payload.rows)
-    && payload.rows.every((row) => !!row && text(row.ticker) && text(row.company) && finite(row.score)
-      && Array.isArray(row.reasons) && row.reasons.every(text)
-      && finite(row.insiders) && finite(row.value) && text(row.lastBuy) && Array.isArray(row.buyers));
+  const valid = !!payload && isFiniteNumber(payload.window) && Array.isArray(payload.rows)
+    && payload.rows.every((row) => !!row && text(row.ticker) && text(row.company) && isFiniteNumber(row.score)
+      && isStringArray(row.reasons) && isFiniteNumber(row.insiders) && isFiniteNumber(row.value) && text(row.lastBuy) && Array.isArray(row.buyers));
   if (!valid) throw new Error("Insider activity could not be read.");
   return payload;
 }

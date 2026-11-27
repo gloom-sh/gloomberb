@@ -2,7 +2,6 @@ import { publicTickerKey } from "../../../utils/exchanges";
 import { getSharedRegistry } from "../../registry/shared";
 import { useCallback, useMemo, useState } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
-import { usePlanAccess } from "../../../api-client/plan-access";
 import type { SupplyChainPayload, SupplyOptions, SupplyRole, SupplyRow, SupplyTierFilter } from "../../../api-client/supply-chain";
 import {
   Badge, buildSectionedRows, ChartTableHeader, DataTableView, EmptyState, formatPercentAxis, isSectionedItemRow, PageStackView, renderSectionedRowHeader, PaneStatusBody, QueryBar, StatGrid,
@@ -13,8 +12,8 @@ import { ClippedText } from "../../../components/ui/display";
 import { RatioBar } from "../../../components/ui/ratio-bar";
 import { getTableWidth, hiddenTableColumnRows, markHiddenTableColumns } from "../../../components/ui/table-layout";
 import { chromeBarRows } from "../../../components/layout/pane/sizing";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
-import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
+import { usePaneResource } from "../shared/pane-resource";
+import { usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
@@ -233,8 +232,7 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
   const { createPaneFromTemplate } = usePluginAppActions();
   const openDescription = useOpenDescription();
   const session = useResearchCloudSession();
-  const access = usePlanAccess();
-  const accessKey = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
+  const { accessKey } = session;
   const openUpgrade = useCloudUpgradeAction("splc");
   const [snapshotSetting] = usePaneSettingValue<SupplyChainPayload | null>("supplySnapshot", null);
   const snapshot = useMemo(() => { try { return snapshotSetting ? validateSupplyChain(snapshotSetting) : null; } catch (error) { return logFailure("supply-chain.pane", "Validate supply chain snapshot failed", null)(error); } }, [snapshotSetting]);
@@ -249,7 +247,8 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
   const [asOfSetting] = usePaneSettingValue<string>("asOf", "");
   const read = useMemo(() => ({ ...options, ...asOfSetting ? { asOf: asOfSetting } : {} }), [options, asOfSetting]);
   const loader = useCallback((force: boolean) => snapshot ? Promise.resolve({ payload: snapshot, stale: false, refreshError: null }) : loadSupplyChain(symbol!, accessKey, force, read), [symbol, accessKey, snapshot, read]);
-  const resource = useAsyncResource(symbol && !graphTab ? loader : null, {
+  const resource = usePaneResource(symbol && !graphTab ? loader : null, {
+    focused: focused && !graphTab,
     initialData: () => symbol ? cachedSupplyChain(symbol, accessKey, read) : null, clearOnError: isAccessDenied,
   });
   const data = resource.data?.payload ?? null;
@@ -286,8 +285,6 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
     { label: "Pro", items: Array.from({ length: Math.min(3, locked) }, (_, i) => ({ kind: "locked", id: `locked:${i}` })) },
   ], itemId), [rows, earlier, locked]);
   const { strip, rows: tabRows } = usePaneTabs(symbol ? { tabs: [...(directories?.length && !data?.totalRows ? [] : [{ value: "table", label: "Table" }]), ...(directories?.length ? [{ value: "directories", label: "Supplier lists" }] : []), { value: "flow", label: "Flow", disabled: tooSmall }, { value: "graph", label: "Graph" }, { value: "path", label: "Path" }], activeValue: tab, onSelect: setTab, focused, dense: true } : null);
-  useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => resource.reload(), { focused: focused && !graphTab });
   const navigate = (row: SupplyRow, template = "supply-chain-pane") => {
     if (row.counterparty.ticker) createPaneFromTemplate(template, { symbol: publicTickerKey(row.counterparty.ticker, row.counterparty.exchange ?? undefined) });
     else setOpen(row.id);

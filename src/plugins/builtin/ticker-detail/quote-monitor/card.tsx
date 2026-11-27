@@ -282,6 +282,15 @@ export function QuoteMonitorCard({
   // not have the keys; the desktop rings the card.
   const symbolFg = selected && !nativePaneChrome && selectionFill.lit ? colors.selectedText : colors.textBright;
   const symbolBg = selected && !nativePaneChrome ? selectionFill.bg : undefined;
+  const renderPriceBlock = (headline: string, alignEnd: boolean) => (
+    <>
+      <FigureText fg={changeColor} dim={flashing} style={figureHalo}>{headline}</FigureText>
+      <Box flexDirection="row" gap={1} justifyContent={alignEnd ? "flex-end" : undefined}>
+        <FigureText part="sub" fg={changeColor} dim={flashing} style={figureHalo}>{changePercentText}</FigureText>
+        <FigureText part="sub" fg={changeColor} dim={flashing} style={figureHalo}>{changeValueText}</FigureText>
+      </Box>
+    </>
+  );
 
   return (
     <Box
@@ -380,11 +389,7 @@ export function QuoteMonitorCard({
               paddingBottom: 1,
             }}
           >
-            <FigureText fg={changeColor} dim={flashing} style={figureHalo}>{priceText}</FigureText>
-            <Box flexDirection="row" gap={1} justifyContent="flex-end">
-              <FigureText part="sub" fg={changeColor} dim={flashing} style={figureHalo}>{changePercentText}</FigureText>
-              <FigureText part="sub" fg={changeColor} dim={flashing} style={figureHalo}>{changeValueText}</FigureText>
-            </Box>
+            {renderPriceBlock(priceText, true)}
           </Box>
 
           {desktopAsOf && (
@@ -472,13 +477,7 @@ export function QuoteMonitorCard({
                 {extendedParts && <ExtendedSessionLine parts={extendedParts} color={extendedColor} dim={extendedDim} />}
               </Box>
               <Box flexDirection="column">
-                <FigureText fg={changeColor} dim={flashing} style={figureHalo}>
-                  {compactQuoteFailure ? `${priceText} · ${quoteStatus.ended ?? (quoteStatus.stale ? "STALE" : "ERROR")}` : priceText}
-                </FigureText>
-                <Box flexDirection="row" gap={1}>
-                  <FigureText part="sub" fg={changeColor} dim={flashing} style={figureHalo}>{changePercentText}</FigureText>
-                  <FigureText part="sub" fg={changeColor} dim={flashing} style={figureHalo}>{changeValueText}</FigureText>
-                </Box>
+                {renderPriceBlock(compactQuoteFailure ? `${priceText} · ${quoteStatus.ended ?? (quoteStatus.stale ? "STALE" : "ERROR")}` : priceText, false)}
               </Box>
             </Box>
           ) : (
@@ -510,11 +509,7 @@ export function QuoteMonitorCard({
                 )}
               </Box>
               <Box flexDirection="column" alignItems="flex-end">
-                <FigureText fg={changeColor} dim={flashing} style={figureHalo}>{priceText}</FigureText>
-                <Box flexDirection="row" gap={1} justifyContent="flex-end">
-                  <FigureText part="sub" fg={changeColor} dim={flashing} style={figureHalo}>{changePercentText}</FigureText>
-                  <FigureText part="sub" fg={changeColor} dim={flashing} style={figureHalo}>{changeValueText}</FigureText>
-                </Box>
+                {renderPriceBlock(priceText, true)}
               </Box>
             </Box>
           )}

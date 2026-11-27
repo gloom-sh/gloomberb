@@ -1,18 +1,11 @@
 import { KeyValueRow } from "../../../components";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  DataTableStackView,
-  EmptyState,
-  PaneStatusBody, QueryBar,
   usePaneFooter,
-  usePaneMenuItems,
-  usePaneTabs,
-  useQueryBarSearch,
   type DataTableCell,
-  type DataTableKeyEvent,
   type QueryBarSelectFilter,
 } from "../../../components";
-import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { ageFooterSegment, savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { STALE_SEGMENT } from "../../../components/layout/pane/status-footer";
 import { usePaneInstance } from "../../../state/app/context";
@@ -20,18 +13,15 @@ import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, TextAttributes } from "../../../ui";
 import { MISSING_VALUE, formatCompact } from "../../../utils/format";
-import { isPlainKey } from "../../../utils/keyboard";
 import { formatRelativeAge, formatShortDate } from "../../../utils/datetime-format";
-import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
-import { useSearchUpRootKeyDown } from "../../../components/input-search-bar";
 import { cycleSortPreference, nextHeaderSort } from "../../../utils/sort-values";
-import { usePluginPaneState } from "../../runtime";
 import { useAsyncResource } from "../../../react/async-resource";
-import { useAutoRefresh, useUtcDay } from "../../../react/auto-refresh";
+import { useUtcDay } from "../../../react/auto-refresh";
 import { reportFooterSegment } from "../shared/source-footer";
 import { treasuryAuctionsHeadless } from "./headless";
 import { useCommandValue } from "../shared/command-tab";
 import { FIXED_INCOME_PANE_ID } from "../fixed-income/model";
+import { AuctionMarketView, useAuctionMarketShell } from "./market-shell";
 import {
   afterLoadWindow, afterWindowStart, AUCTION_VIEWS, loadAuctionCurves, projectAuctionAfter, widerAfterWindow, type AuctionAfter, type AuctionView,
 } from "./after";
@@ -39,13 +29,12 @@ import { loadTreasuryAuctions } from "./cache";
 import type { AuctionHistoryWindow } from "./client";
 import {
   AUCTION_AFTER_SORT_COLUMN_IDS,
-  AUCTION_FILTERS,
   AUCTION_SEARCH_FIELDS,
   AUCTION_SORT_COLUMN_IDS,
   AUCTION_SORT_NAMES,
+  AUCTION_FILTERS,
   DEFAULT_AUCTION_SORT,
   auctionDatesShowYear,
-  auctionHistoryPhrase,
   auctionHistoryWindow,
   auctionSize,
   buildAuctionColumns,
@@ -58,8 +47,6 @@ import {
   isAfterColumn,
   isBill,
   isPendingAuction,
-  nextAuctionHistoryWindow,
-  nextFilter,
   parseAuctionSort,
   rateLabel,
   rateValue,
@@ -347,12 +334,6 @@ function UsAuctionsView({
   const error = resource.error ?? (resource.loading || savedAt != null ? null : resource.data?.refreshError ?? null);
   // Once auctions have loaded, a refresh runs without a loading state.
   const loading = resource.loading && !resource.data;
-  const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedId", null);
-  const [detailOpen, setDetailOpen] = usePluginPaneState<boolean>("detailOpen", false);
-  const { active: searchFocused, focus: focusSearch, blur: blurSearch, searchProps } = useQueryBarSearch();
-
-  // The cache decides whether a tick becomes a request; only [r] forces it.
-  useAutoRefresh(stale ? null : fetchedAt, resource.load);
 
   const listed = useMemo(
     () => visibleAuctions(auctions, { filter, query: searchQuery, sort: DEFAULT_AUCTION_SORT,
@@ -376,30 +357,7 @@ function UsAuctionsView({
     () => visibleAuctions(listed, { filter: "all", query: "", sort: sortPreference, ...(after ? { after } : {}) }),
     [after, listed, sortPreference],
   );
-  const selected = rows.find((auction) => auction.id === selectedId) ?? null;
 
-  useEffect(() => {
-    // Before the first answer there is nothing to match a restored selection
-    // against, so leave it alone rather than clear it.
-    if (auctions.length === 0 && loading) return;
-    if (rows.length === 0) {
-      if (selectedId !== null) setSelectedId(null);
-      setDetailOpen(false);
-      return;
-    }
-    if (!selectedId || !rows.some((auction) => auction.id === selectedId)) {
-      setSelectedId(rows[0]!.id);
-    }
-  }, [auctions.length, loading, rows, selectedId]);
-
-  const selectFilter = useCallback((next: AuctionFilter) => {
-    setFilter(next);
-    setDetailOpen(false);
-  }, [setFilter]);
-  const cycleFilter = useCallback(() => {
-    setFilter(nextFilter(filter));
-    setDetailOpen(false);
-  }, [filter, setFilter]);
   const cycleSort = useCallback((step: 1 | -1) => {
     setSortPreference((current) => {
       const next = cycleSortPreference<AuctionColumnId>(view === "after" ? AUCTION_AFTER_SORT_COLUMN_IDS : AUCTION_SORT_COLUMN_IDS, current, step);
@@ -415,23 +373,29 @@ function UsAuctionsView({
   const toggleView = useCallback(() => selectView(view === "after" ? "results" : "after"), [selectView, view]);
   const toggleMarket = useCallback(() => marketFilter.onChange("hk"), [marketFilter]);
 
-  usePaneRefreshKey(() => resource.reload(), { focused, enabled: !searchFocused });
-
-  const handlePaneKey = useCallback((event: DataTableKeyEvent): boolean => {
-    if (isPlainKey(event, "f")) {
-      stopSearchFocusNavigation(event);
-      cycleFilter();
-      return true;
-    }
-    if (isPlainKey(event, "]") || isPlainKey(event, "[")) {
-      stopSearchFocusNavigation(event);
-      cycleSort(event.name === "]" ? 1 : -1);
-      return true;
-    }
-    return false;
-  }, [cycleFilter, cycleSort]);
-
-  const handleRootKeyDown = useSearchUpRootKeyDown(focusSearch, handlePaneKey);
+  const shell = useAuctionMarketShell({
+    focused,
+    width,
+    height,
+    selectedStateKey: "selectedId",
+    detailStateKey: "detailOpen",
+    stale,
+    fetchedAt,
+    loading,
+    totalCount: auctions.length,
+    rows,
+    getId: auctionKey,
+    filter,
+    setFilter,
+    searchQuery,
+    setSearchQuery,
+    searchPlaceholder: "type, 10Y, CUSIP, or date",
+    marketFilter,
+    viewControl: { value: view, options: VIEW_OPTIONS, onChange: (value) => selectView(value as AuctionView) },
+    reload: () => resource.reload(),
+    autoLoad: resource.load,
+    cycleSort,
+  });
 
   const showYear = useMemo(() => auctionDatesShowYear(rows.map((auction) => auction.auctionDate)), [rows]);
   // A table that scrolls down keeps a cell for its scrollbar.
@@ -456,26 +420,26 @@ function UsAuctionsView({
     }
     return {
       info,
-      hints: detailOpen || auctions.length === 0
+      hints: shell.detailOpen || auctions.length === 0
         ? []
         : [
-          { id: "search", key: "/", label: "search", onPress: focusSearch },
-          { id: "filter", key: "f", label: "ilter", onPress: cycleFilter },
+          { id: "search", key: "/", label: "search", onPress: shell.focusSearch },
+          { id: "filter", key: "f", label: "ilter", onPress: shell.cycleFilter },
           ...auctionViewHints({ view, toggleView, market: "us", toggleMarket, cycleSort }),
         ],
     };
   }, [
     auctions.length,
-    cycleFilter,
+    shell.cycleFilter,
     cycleSort,
     toggleMarket,
     toggleView,
     view,
-    detailOpen,
+    shell.detailOpen,
     error,
     yieldsError,
     fetchedAt,
-    focusSearch,
+    shell.focusSearch,
     loading,
     rows,
     savedAt,
@@ -483,98 +447,32 @@ function UsAuctionsView({
     utcDay,
   ]);
 
-  // The footer's [] steps to the next sort column; the pane menu names the way back. "Sort by…" there picks a column directly.
-  usePaneMenuItems("treasury-auctions:sort-keys", () => detailOpen || auctions.length === 0 ? null : [
-    { id: "sort-previous", label: "Previous Sort Column", accelerator: "[", onSelect: () => cycleSort(-1) },
-  ], [auctions.length, cycleSort, detailOpen]);
-
-  const filterTabs = useMemo(
-    () => AUCTION_FILTERS.map((entry) => ({ label: entry.label, value: entry.value })),
-    [],
-  );
-  const { strip: tabStrip, rows: tabRows } = usePaneTabs({
-    tabs: filterTabs,
-    activeValue: filter,
-    onSelect: (value) => selectFilter(value as AuctionFilter),
-    focused: focused && !detailOpen && !searchFocused,
-    compact: true,
-    variant: "bare",
-  });
-  const tabs = tabStrip && <Box height={1} flexShrink={0} overflow="hidden">{tabStrip}</Box>;
-  const queryBar = (
-    <QueryBar
-      width={width}
-      search={{
-        value: searchQuery,
-        onChange: setSearchQuery,
-        placeholder: "type, 10Y, CUSIP, or date",
-        focused: focused && !detailOpen,
-        ...searchProps,
-      }}
-      filters={[marketFilter]}
-      view={{ value: view, options: VIEW_OPTIONS, onChange: selectView }}
-    />
-  );
-
-  if (loading && auctions.length === 0) {
-    return (
-      <Box flexDirection="column" width={width} height={height}>
-        {tabs}
-        {queryBar}
-        <PaneStatusBody loading align="center" loadingLabel="Loading Treasury auctions..." />
-      </Box>
-    );
-  }
-
-  if (error && auctions.length === 0) {
-    return (
-      <Box flexDirection="column" width={width} height={height}>
-        {tabs}
-        {queryBar}
-        <Box padding={1}>
-          <EmptyState status={error ? "error" : "empty"} title="Treasury auctions unavailable." message={error} />
-        </Box>
-      </Box>
-    );
-  }
-
   return (
-    <Box flexDirection="column" width={width} height={height}>
-      {tabs}
-      <DataTableStackView<TreasuryAuction, AuctionColumn>
-        focused={focused && !searchFocused}
-        detailOpen={detailOpen && !!selected}
-        onBack={() => setDetailOpen(false)}
-        detailContent={selected ? <TreasuryAuctionDetail auction={selected} width={width} after={after?.get(selected.id)} /> : null}
-        detailTitle={selected ? `${selected.secType} ${selected.securityTerm}` : undefined}
-        rootBefore={queryBar}
-        onRootKeyDown={handleRootKeyDown}
-        onDetailKeyDown={handlePaneKey}
-        selection={{
-          kind: "id",
-          selectedId,
-          getId: (auction) => auction.id,
-          onChange: (id) => setSelectedId(id),
-        }}
-        onActivate={() => {
-          blurSearch();
-          setDetailOpen(true);
-        }}
-        rootWidth={width}
-        rootHeight={Math.max(1, height - tabRows)}
-        columns={columns}
-        items={rows}
-        sortColumnId={sortPreference.columnId}
-        sortDirection={sortPreference.direction}
-        onHeaderClick={(columnId) => setSortPreference((current) => (
-          nextHeaderSort(current, columnId as AuctionColumnId, { firstDirection: firstAuctionSortDirection })
-        ))}
-        getItemKey={auctionKey}
-        renderCell={renderAuctionRow}
-        emptyStateTitle={searchQuery.trim() ? "No matching auctions." : "No recent auctions."}
-        emptyStateHint={`${searchQuery.trim() ? "Searched" : "Showing"} ${auctionHistoryPhrase(historyDays)}`
-          + `${nextAuctionHistoryWindow(historyDays) ? "; older auctions are in the History window setting" : ""}. Search by ${AUCTION_SEARCH_FIELDS}.`}
-      />
-    </Box>
+    <AuctionMarketView
+      width={width}
+      height={height}
+      focused={focused}
+      loading={loading}
+      error={error}
+      totalCount={auctions.length}
+      loadingLabel="Loading Treasury auctions..."
+      unavailableTitle="Treasury auctions unavailable."
+      shell={shell}
+      columns={columns}
+      rows={rows}
+      getId={auctionKey}
+      sortColumnId={sortPreference.columnId}
+      sortDirection={sortPreference.direction}
+      onHeaderClick={(columnId) => setSortPreference((current) => (
+        nextHeaderSort(current, columnId as AuctionColumnId, { firstDirection: firstAuctionSortDirection })
+      ))}
+      renderCell={renderAuctionRow}
+      detailTitle={shell.selected ? `${shell.selected.secType} ${shell.selected.securityTerm}` : undefined}
+      detailContent={shell.selected ? <TreasuryAuctionDetail auction={shell.selected} width={width} after={after?.get(shell.selected.id)} /> : null}
+      searchQuery={searchQuery}
+      historyDays={historyDays}
+      itemPlural="auctions"
+      searchFields={AUCTION_SEARCH_FIELDS}
+    />
   );
 }

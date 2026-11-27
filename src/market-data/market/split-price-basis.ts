@@ -1,4 +1,5 @@
 import type { SplitAction } from "../../types/financials";
+import { isPositiveNumber as positive } from "../../utils/guards";
 import { barCloseDay } from "./period-return";
 
 const DAY_MS = 86_400_000;
@@ -17,10 +18,6 @@ interface PriceBasisBar {
   close?: number | null;
   high?: number | null;
   low?: number | null;
-}
-
-function positive(price?: number | null): price is number {
-  return price != null && Number.isFinite(price) && price > 0;
 }
 
 /** Flag inconsistencies in the served prices, without treating an observed discontinuity as a split. */

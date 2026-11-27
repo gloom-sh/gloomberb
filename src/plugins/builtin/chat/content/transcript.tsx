@@ -159,36 +159,39 @@ export function ChatTranscript({
     openReactionPicker,
   };
   const itemKeys = useMemo(() => messages.map((message) => message.id), [messages]);
+  const sharedMessageProps = (msg: ChatMessage, index: number) => ({
+    msg,
+    index,
+    messages,
+    selectedIdx,
+    hoveredIdx: hoveredIdx === index ? index : null,
+    highlighted: msg.id === highlightedMessageId,
+    actionKeysShown: index === actionKeysIdx,
+    canSend,
+    catalog,
+    userByUsername,
+    openTicker,
+    openPaneLink,
+    onUserHover: showProfilePopover,
+    onUserHoverEnd: scheduleProfilePopoverClose,
+    onUserActivate: toggleProfilePopover,
+    onUserContextMenu,
+    beginReplyTo,
+    beginEditMessage,
+    jumpToMessage,
+    latestEditableMessageId,
+    retryMessage,
+    ...reactionProps,
+  });
   const renderDesktopMessage = (index: number) => {
     const msg = messages[index]!;
     return <DesktopChatMessage
       key={msg.id}
-      msg={msg}
-      index={index}
-      messages={messages}
-      selectedIdx={selectedIdx}
-      hoveredIdx={hoveredIdx === index ? index : null}
-      highlighted={msg.id === highlightedMessageId}
-      actionKeysShown={index === actionKeysIdx}
-      canSend={canSend}
+      {...sharedMessageProps(msg, index)}
       contentWidth={desktopChatMessageWidth(msg, contentWidth)}
-      catalog={catalog}
-      userByUsername={userByUsername}
-      openTicker={openTicker}
-      openPaneLink={openPaneLink}
-      onUserHover={showProfilePopover}
-      onUserHoverEnd={scheduleProfilePopoverClose}
-      onUserActivate={toggleProfilePopover}
-      onUserContextMenu={onUserContextMenu}
-      beginReplyTo={beginReplyTo}
-      beginEditMessage={beginEditMessage}
-      jumpToMessage={jumpToMessage}
-      latestEditableMessageId={latestEditableMessageId}
-      retryMessage={retryMessage}
       onImageLoadError={onImageLoadError}
       previewScope={msg.clientStatus ? previewScope : undefined}
       registerMessageElement={registerMessageElement}
-      {...reactionProps}
       reactionPickerMessageId={reactionPickerMessageId}
       closeReactionPicker={closeReactionPicker}
     />;
@@ -248,34 +251,13 @@ export function ChatTranscript({
             </Box>
           )}
           {messages.map((msg, index) => (
-              <TerminalChatMessage
-                key={msg.id}
-                msg={msg}
-                index={index}
-                messages={messages}
-                selectedIdx={selectedIdx}
-                hoveredIdx={hoveredIdx === index ? index : null}
-                highlighted={msg.id === highlightedMessageId}
-                actionKeysShown={index === actionKeysIdx}
-                canSend={canSend}
-                contentWidth={contentWidth}
-                messageBodyWidth={messageBodyWidth}
-                catalog={catalog}
-                userByUsername={userByUsername}
-                openTicker={openTicker}
-                openPaneLink={openPaneLink}
-                onUserHover={showProfilePopover}
-                onUserHoverEnd={scheduleProfilePopoverClose}
-                onUserActivate={toggleProfilePopover}
-                onUserContextMenu={onUserContextMenu}
-                beginReplyTo={beginReplyTo}
-                beginEditMessage={beginEditMessage}
-                jumpToMessage={jumpToMessage}
-                latestEditableMessageId={latestEditableMessageId}
-                retryMessage={retryMessage}
-                setHoveredIdx={setHoveredIdx}
-                {...reactionProps}
-              />
+            <TerminalChatMessage
+              key={msg.id}
+              {...sharedMessageProps(msg, index)}
+              contentWidth={contentWidth}
+              messageBodyWidth={messageBodyWidth}
+              setHoveredIdx={setHoveredIdx}
+            />
           ))}
         </ScrollBox>}
         {/* Over the list, not in it: a row in the list would push the messages down as it came and went. */}

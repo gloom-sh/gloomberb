@@ -30,10 +30,7 @@ import {
   CONGRESS_MEMBER_FILING_LIMIT,
   CONGRESS_MEMBER_TRADE_LIMIT,
   CONGRESS_TRADES_PANE_ID,
-  canLoadMoreCongress,
   congressScanNotice,
-  nextCongressPage,
-  previousCongressYearPage,
   buildMemberTradeColumns,
   foldFilingLines,
   formatAmountRange,
@@ -154,7 +151,7 @@ export function MemberTradesDetail({
   const openTicker = useInlineTickerOpener();
   // A member sits in one chamber, so their history comes from that feed alone.
   const chamber = initialTrades[0]?.chamber ?? "all";
-  const { payload: detailPayload, status, error, loadPage, loadingMore, reload: refresh } = useCongressFeed({
+  const { payload: detailPayload, status, error, loadingMore, canLoadMore, loadMore, previousYearRequest, loadPreviousYear, reload: refresh } = useCongressFeed({
     chamber,
     member: member.memberName,
     limit: CONGRESS_MEMBER_TRADE_LIMIT,
@@ -172,23 +169,9 @@ export function MemberTradesDetail({
   });
   const tradeScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
-  const loadMore = useCallback(() => {
-    if (!detailPayload || loadingMore || status !== "loaded") return;
-    loadPage(nextCongressPage(detailPayload));
-  }, [detailPayload, loadPage, loadingMore, status]);
-
-  // Reading an earlier year means reading its documents, so it stays a deliberate step.
-  const previousYearRequest = detailPayload && !canLoadMoreCongress(detailPayload)
-    ? previousCongressYearPage(detailPayload)
-    : null;
-  const loadPreviousYear = useCallback(() => {
-    if (loadingMore || status !== "loaded" || !previousYearRequest) return;
-    loadPage(previousYearRequest);
-  }, [loadPage, loadingMore, previousYearRequest, status]);
-
   const onTradeScroll = useTableLoadMore(
     tradeScrollRef,
-    !!detailPayload && status === "loaded" && !loadingMore && canLoadMoreCongress(detailPayload),
+    status === "loaded" && !loadingMore && canLoadMore,
     loadMore,
   );
 
@@ -245,7 +228,7 @@ export function MemberTradesDetail({
       ...(error ? [{ id: "member-error", parts: [{ text: error, tone: "warning" as const }] }] : []),
     ],
     hints: [
-      ...(detailPayload && canLoadMoreCongress(detailPayload)
+      ...(canLoadMore
         ? [{ id: "member-next", key: "n", label: "ext filings", onPress: loadMore, disabled: loadingMore }]
         : []),
       { id: "member-ticker", key: "t", label: "icker", onPress: openSelectedTicker, disabled: !selectedTrade?.ticker },

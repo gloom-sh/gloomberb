@@ -40,12 +40,5 @@ export const doeModule: PluginModule = {
     shortcut: shortcut("NGS", "gas"), headless: doeHeadless("gas"),
     createInstance: (_context, options) => doeInstance("gas", options),
   }],
-  setup(ctx) {
-    doeBoardCache.attach(ctx.persistence);
-    doePriceCache.attach(ctx.persistence);
-  },
-  dispose() {
-    doeBoardCache.reset();
-    doePriceCache.reset();
-  },
+  caches: [doeBoardCache, doePriceCache],
 };

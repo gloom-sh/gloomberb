@@ -935,6 +935,27 @@ function rowIdentitiesOf(
   }));
 }
 
+function buildExportIdentity(fields: {
+  symbol?: string;
+  unit?: string;
+  interval?: string;
+  source?: string;
+  asOf?: string | null;
+  period?: string;
+  released?: string;
+}): ExportIdentity | undefined {
+  const identity: ExportIdentity = {
+    ...(fields.symbol?.trim() ? { symbolOrSeries: fields.symbol.trim() } : {}),
+    ...(fields.unit?.trim() ? { currencyOrUnit: fields.unit.trim() } : {}),
+    ...(fields.interval?.trim() ? { interval: fields.interval.trim() } : {}),
+    ...(fields.source?.trim() ? { source: fields.source.trim() } : {}),
+    ...(fields.asOf === null ? { asOf: null } : fields.asOf?.trim() ? { asOf: fields.asOf.trim() } : {}),
+    ...(fields.period?.trim() ? { period: fields.period.trim() } : {}),
+    ...(fields.released?.trim() ? { released: fields.released.trim() } : {}),
+  };
+  return Object.keys(identity).length > 0 ? identity : undefined;
+}
+
 /**
  * The tables of a headless report for `--csv` and `--ndjson`, with the text
  * view's columns: a rows or snapshot report is one table, a bundle one per
@@ -959,61 +980,52 @@ export function headlessReportTables(
       const rowIdentities = rowIdentitiesOf(rowsResult.rows, rowsResult);
       const rowNotes = rowsResult.rowNote && rowsResult.rows.map(rowsResult.rowNote);
       const own = exportRowsTable(title, columns, rowsResult.rows, { status: true, ...(rowsResult.rowUnitKey ? { rowUnitKey: rowsResult.rowUnitKey } : {}) });
-      const ownIdentity = {
-        ...(rowsResult.unit?.trim() ? { currencyOrUnit: rowsResult.unit.trim() } : {}),
-        ...(rowsResult.interval?.trim() ? { interval: rowsResult.interval.trim() } : {}),
-      };
-      tables = [{ ...own, ...(rowIdentities ? { rowIdentities } : {}), ...(rowNotes ? { rowNotes } : {}),
-        ...(Object.keys(ownIdentity).length > 0 ? { identity: ownIdentity } : {}) }, ...(rowsResult.exportTables ?? []).map((extra) => {
-        const identity = {
-          ...(extra.unit?.trim() ? { currencyOrUnit: extra.unit.trim() } : {}),
-          ...(extra.interval?.trim() ? { interval: extra.interval.trim() } : {}),
-        };
-        const table = exportRowsTable(extra.title, displayedColumns(extra.columns), extra.rows, { status: true });
-        return Object.keys(identity).length > 0 ? { ...table, identity } : table;
-      })];
+      const ownIdentity = buildExportIdentity(rowsResult);
+      tables = [
+        { ...own, ...(rowIdentities ? { rowIdentities } : {}), ...(rowNotes ? { rowNotes } : {}), ...(ownIdentity ? { identity: ownIdentity } : {}) },
+        ...(rowsResult.exportTables ?? []).map((extra) => {
+          const identity = buildExportIdentity(extra);
+          const table = exportRowsTable(extra.title, displayedColumns(extra.columns), extra.rows, { status: true });
+          return identity ? { ...table, identity } : table;
+        }),
+      ];
       break;
     }
     case "bundle":
       tables = (result as HeadlessBundleResult).sections.map((section) => {
         // A section of one name or one date says so for every line it exports.
-        const named = {
-          ...(section.symbol?.trim() ? { symbolOrSeries: section.symbol.trim() } : {}),
-          ...(section.unit?.trim() ? { currencyOrUnit: section.unit.trim() } : {}),
-          ...(section.interval?.trim() ? { interval: section.interval.trim() } : {}),
-          ...("source" in section && section.source?.trim() ? { source: section.source.trim() } : {}),
-          ...(section.asOf === null ? { asOf: null } : section.asOf?.trim() ? { asOf: section.asOf.trim() } : {}),
-          ...(section.period?.trim() ? { period: section.period.trim() } : {}),
-          ...(section.released?.trim() ? { released: section.released.trim() } : {}),
-        };
+        const identity = buildExportIdentity({
+          symbol: section.symbol,
+          unit: section.unit,
+          interval: section.interval,
+          source: "source" in section ? section.source : undefined,
+          asOf: section.asOf,
+          period: section.period,
+          released: section.released,
+        });
         if (!("rows" in section && section.rows)) {
           const entries = exportEntriesTable(section.title, section.entries);
           // A figure that declares its unit names it in the unit column of its own line too.
           // A line of its own period or release (a previous reading) names them rather than the section's.
           const own = (entry: HeadlessPaneEntry): ExportIdentity | undefined => {
-            const identity = {
-              // An export unit names a number's unit: a figure missing with its reason has none.
-              ...(entry.unit?.trim() ? { currencyOrUnit: entry.unit.trim() }
-                : entry.exportUnit?.trim() && typeof entry.value === "number" && Number.isFinite(entry.value) ? { currencyOrUnit: entry.exportUnit.trim() } : {}),
+            const unit = entry.unit?.trim()
+              || (entry.exportUnit?.trim() && typeof entry.value === "number" && Number.isFinite(entry.value) ? entry.exportUnit.trim() : undefined);
+            const entryIdentity = {
+              ...(unit ? { currencyOrUnit: unit } : {}),
               ...(entry.period !== undefined ? { period: entry.period } : {}),
               ...(entry.released !== undefined ? { released: entry.released } : {}),
               ...(entry.asOf !== undefined ? { asOf: entry.asOf } : {}),
             };
-            return Object.keys(identity).length > 0 ? identity : undefined;
+            return Object.keys(entryIdentity).length > 0 ? entryIdentity : undefined;
           };
           const rowIdentities = section.entries.some((entry) => own(entry)) ? section.entries.map(own) : undefined;
-          return { ...entries, ...(Object.keys(named).length > 0 ? { identity: named } : {}), ...(rowIdentities ? { rowIdentities } : {}) };
+          return { ...entries, ...(identity ? { identity } : {}), ...(rowIdentities ? { rowIdentities } : {}) };
         }
         const table = exportRowsTable(section.title, displayedColumns(columnsFor(section.rows, section.columns, definition.columns)), section.rows,
           { status: true, appendedColumns: section.appendedColumns });
-        const identity = {
-          ...named,
-          ...(section.unit?.trim() ? { currencyOrUnit: section.unit.trim() } : {}),
-          ...(section.interval?.trim() ? { interval: section.interval.trim() } : {}),
-        };
         const rowIdentities = rowIdentitiesOf(section.rows, section);
         return { ...table, ...(section.appendedColumns ? { appendedColumns: section.appendedColumns } : {}),
-          ...(Object.keys(identity).length > 0 ? { identity } : {}), ...(rowIdentities ? { rowIdentities } : {}) };
+          ...(identity ? { identity } : {}), ...(rowIdentities ? { rowIdentities } : {}) };
       });
       break;
     case "series": {

@@ -28,9 +28,9 @@ export function usePlanAccess(): PlanAccess {
 
 export function cloudDisplayScope(): string | null {
   const user = apiClient.getCurrentUser();
+  if (!user?.id && apiClient.isDisplayScopePending()) return null;
   const access = resolvePlanAccess(user);
-  const account = user?.id ?? null;
-  return apiClient.isDisplayScopePending() ? null : JSON.stringify([account, access.emailVerified, access.hasProAccess]);
+  return JSON.stringify([user?.id ?? null, access.emailVerified, access.hasProAccess]);
 }
 
 /** Non-secret identity for display data whose answer depends on cloud access. */

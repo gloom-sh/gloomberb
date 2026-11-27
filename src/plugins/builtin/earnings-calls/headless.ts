@@ -48,7 +48,7 @@ import {
   translatedFrom,
   type TranscriptSection,
 } from "./model";
-import { REPORT_FILTER, REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
+import { enumOption, limitOption, offsetOption, REPORT_FILTER } from "../shared/headless-options";
 import { companyDataNotes } from "../../../types/company-from";
 import { savedCopyMark, unansweredRefreshError } from "../../../data/saved-copies";
 
@@ -373,86 +373,25 @@ export function createEarningsCallsHeadless(
       optional: true,
     },
     options: [
-      {
-        key: "view",
+      enumOption("view", [{ value: "upcoming", aliases: ["calendar"] }, { value: "transcripts", aliases: ["transcribed", "shelf"] }], {
         description: "Without a ticker: the calendar of every company's calls today and this week, or the latest transcripts.",
-        type: "enum",
-        values: [
-          { value: "upcoming", aliases: ["calendar"] },
-          { value: "transcripts", aliases: ["transcribed", "shelf"] },
-        ],
-        defaultValue: "upcoming",
-        example: "--view transcripts",
-        exampleWithoutArgument: true,
-      },
-      {
-        key: "availability",
-        shot: REPORT_FILTER,
-        description: "Transcript availability to include when listing calls.",
-        type: "enum",
-        values: [
-          { value: "all" },
-          { value: "transcribed" },
-          { value: "pending" },
-        ],
-        defaultValue: "all",
-      },
-      {
-        key: "quarter",
-        description: "Read one transcript: latest, FQ2-2026, or FY2026. Needs a ticker.",
-        type: "string",
-        defaultValue: "",
-      },
-      {
-        key: "section",
+        defaultValue: "upcoming", example: "--view transcripts", exampleWithoutArgument: true,
+      }),
+      enumOption("availability", ["all", "transcribed", "pending"], {
+        shot: REPORT_FILTER, description: "Transcript availability to include when listing calls.", defaultValue: "all",
+      }),
+      { key: "quarter", description: "Read one transcript: latest, FQ2-2026, or FY2026. Needs a ticker.", type: "string", defaultValue: "" },
+      enumOption("section", [
+        "overview", "summary", "transcript", { value: "qa", aliases: ["q&a"] }, "guidance", "risks", "notable",
+        { value: "analyst-focus", aliases: ["analyst"] }, { value: "participants", aliases: ["speakers"] }, "original",
+      ], {
         shot: { reportOnly: "picks a transcript section for the text report" },
-        description: "Transcript section to return; implies --quarter latest.",
-        type: "enum",
-        values: [
-          { value: "overview" },
-          { value: "summary" },
-          { value: "transcript" },
-          { value: "qa", aliases: ["q&a"] },
-          { value: "guidance" },
-          { value: "risks" },
-          { value: "notable" },
-          { value: "analyst-focus", aliases: ["analyst"] },
-          { value: "participants", aliases: ["speakers"] },
-          { value: "original" },
-        ],
-        defaultValue: "",
-      },
-      {
-        key: "speaker",
-        shot: { reportOnly: "picks a speaker's turns for the text report" },
-        description: "Speaker name, role, or role acronym such as CFO, when reading a transcript.",
-        type: "string",
-        defaultValue: "",
-      },
-      {
-        key: "search",
-        shot: { reportOnly: "finds text in the transcript for the text report" },
-        description: "Text to find in transcript turns, when reading a transcript.",
-        type: "string",
-        defaultValue: "",
-      },
-      {
-        key: "offset",
-        shot: REPORT_PAGE,
-        description: "Transcript segment offset for paging.",
-        type: "integer",
-        defaultValue: 0,
-        minimum: 0,
-        maximum: 100_000,
-      },
-      {
-        key: "limit",
-        shot: REPORT_ROWS,
-        description: "Maximum calls, or transcript segments, to return (every call on the calendar, 50 of a company's calls, 20 segments by default).",
-        type: "integer",
-        minimum: 1,
-        maximum: 200,
-      },
+        description: "Transcript section to return; implies --quarter latest.", defaultValue: "",
+      }),
+      { key: "speaker", shot: { reportOnly: "picks a speaker's turns for the text report" }, description: "Speaker name, role, or role acronym such as CFO, when reading a transcript.", type: "string", defaultValue: "" },
+      { key: "search", shot: { reportOnly: "finds text in the transcript for the text report" }, description: "Text to find in transcript turns, when reading a transcript.", type: "string", defaultValue: "" },
+      offsetOption({ description: "Transcript segment offset for paging.", defaultValue: 0, maximum: 100_000 }),
+      limitOption({ description: "Maximum calls, or transcript segments, to return (every call on the calendar, 50 of a company's calls, 20 segments by default).", maximum: 200 }),
     ],
     columns: CALL_COLUMNS,
     // No aliases: the template's keywords stay the catalog's search terms.

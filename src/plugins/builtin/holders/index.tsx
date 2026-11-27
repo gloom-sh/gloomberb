@@ -7,8 +7,8 @@ import { CCASS_MARKET_PANE_ID, CCASS_MARKET_TEMPLATE_ID } from "./ccass-market-p
 import { holdersHeadless } from "./headless";
 
 export const holdersModule: PluginModule = {
+  caches: [beneficialOwnersCache],
   setup(ctx) {
-    beneficialOwnersCache.attach(ctx.persistence);
     ctx.registerTickerResearchTab({
       id: "holders",
       name: "Holders",
@@ -16,9 +16,6 @@ export const holdersModule: PluginModule = {
       get component(): typeof import("./pane").HoldersView { const { HoldersView } = require("./pane"); return HoldersView; },
       instruments: ["equity"],
     });
-  },
-  dispose() {
-    beneficialOwnersCache.reset();
   },
 
   panes: [

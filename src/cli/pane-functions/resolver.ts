@@ -304,62 +304,53 @@ export async function applyListingArgument(
   }
   // What a list leaves out, and why, for an export's rows.
   const refused: Array<{ symbol: string; reason: string }> = [];
+  const excludeListings = (
+    items: ReadonlyArray<{ listing: CliListing; message: string; details?: string }>,
+    noteLines?: () => string[],
+  ) => {
+    if (items.length === 0) return;
+    const dropped = new Set(items.map((item) => item.listing));
+    listings = listings.filter((listing) => !dropped.has(listing));
+    if (listings.length === 0) {
+      const details = items.flatMap((item) => (item.details ? [item.details] : [])).join("\n");
+      throw new ListingArgError(items.map((item) => item.message).join("\n"), details || undefined);
+    }
+    notes.push(...(noteLines
+      ? noteLines()
+      : items.map((item) => [item.message, item.details?.replaceAll("\n", " ")].filter(Boolean).join(" "))));
+    refused.push(...items.map(({ listing, message }) => ({ symbol: listing.key, reason: message })));
+  };
   // A function with company data answers an index or an ETF with what it is and where its data is, before
   // any request: its source would only say "Unknown ticker" or come back empty. A list leaves it out.
   const covered = found.pane.instruments;
   if (covered?.length) {
     const outside = (await Promise.all(listings.map(async (listing) => {
       const instrument = await listingInstrument(listing, context);
-      return instrument && uncoveredInstrumentKind(covered, instrument.kind) ? { listing, instrument } : null;
+      return instrument && uncoveredInstrumentKind(covered, instrument.kind)
+        ? { listing, instrument, message: uncoveredInstrumentMessage(token, covered, instrument), details: `Try: ${uncoveredInstrumentCommand(instrument)}` }
+        : null;
     }))).filter((entry) => entry != null);
-    if (outside.length > 0) {
-      const answers = outside.map(({ instrument }) => ({
-        message: uncoveredInstrumentMessage(token, covered, instrument),
-        details: `Try: ${uncoveredInstrumentCommand(instrument)}`,
-      }));
-      listings = listings.filter((listing) => !outside.some((entry) => entry.listing === listing));
-      if (listings.length === 0) {
-        throw new ListingArgError(answers.map((answer) => answer.message).join("\n"), answers.map((answer) => answer.details).join("\n"));
-      }
-      // Several are said in one line (a portfolio's futures and funds), each one's own command left out.
-      notes.push(...outside.length > 1
-        ? [uncoveredInstrumentsMessage(token, covered, outside.map(({ instrument }) => instrument))]
-        : answers.map((answer) => `${answer.message} ${answer.details}`));
-      refused.push(...outside.map(({ listing }, index) => ({ symbol: listing.key, reason: answers[index]!.message })));
-    }
+    // Several are said in one line (a portfolio's futures and funds), each one's own command left out.
+    excludeListings(outside, outside.length > 1 ? () => [uncoveredInstrumentsMessage(token, covered, outside.map(({ instrument }) => instrument))] : undefined);
   }
   // A listing the function has nothing for (OPX's SOL-USD) says what exists instead; a list leaves it out.
   const refusals = headless?.refuseSymbol ? listings.flatMap((listing) => {
     const refusal = headless.refuseSymbol!(listing.key);
-    return refusal ? [{ listing, refusal }] : [];
+    return refusal ? [{ listing, message: refusal.message, details: refusal.details }] : [];
   }) : [];
-  if (refusals.length > 0) {
-    listings = listings.filter((listing) => !refusals.some((entry) => entry.listing === listing));
-    if (listings.length === 0) {
-      const details = refusals.flatMap(({ refusal }) => refusal.details ? [refusal.details] : []).join("\n");
-      throw new ListingArgError(refusals.map(({ refusal }) => refusal.message).join("\n"), details || undefined);
-    }
-    notes.push(...refusals.map(({ refusal }) => [refusal.message, refusal.details].filter(Boolean).join(" ")));
-    refused.push(...refusals.map(({ listing, refusal }) => ({ symbol: listing.key, reason: refusal.message })));
-  }
+  excludeListings(refusals);
   const usOnly = headless?.usListingsOnly;
   const abroad = usOnly ? listings.filter((listing) => {
     const venue = listingAbroadVenue(listing.key);
     return venue && !headless?.additionalListingVenues?.includes(venue);
   }) : [];
   if (usOnly && abroad.length > 0) {
-    const answers = await Promise.all(abroad.map(async (listing) => {
+    excludeListings(await Promise.all(abroad.map(async (listing) => {
       const answer = await usListingsOnlyMessage(usOnly, listing, context, (key) => `gloom ${command} ${token} ${key}`,
         { otc: headless?.usListingsOtc === true });
       const hint = headless?.usListingsOnlyHint?.(listing.key);
-      return hint ? { ...answer, details: `${answer.details}\n${hint}` } : answer;
-    }));
-    listings = listings.filter((listing) => !abroad.includes(listing));
-    if (listings.length === 0) {
-      throw new ListingArgError(answers.map((answer) => answer.message).join("\n"), answers.map((answer) => answer.details).join("\n"));
-    }
-    notes.push(...answers.map((answer) => `${answer.message} ${answer.details.replaceAll("\n", " ")}`));
-    refused.push(...abroad.map((listing, index) => ({ symbol: listing.key, reason: answers[index]!.message })));
+      return { listing, message: answer.message, details: hint ? `${answer.details}\n${hint}` : answer.details };
+    })));
   }
   notes.unshift(...watchlist?.notes ?? []);
   // One listing's notes come with its choice note; a list's are said here, with a coin's code read as a listing

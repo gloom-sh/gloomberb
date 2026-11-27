@@ -30,11 +30,8 @@ import {
   usePaneStateValue,
   usePaneAppConfig,
 } from "../../../state/app/context";
-import { useChartQueries, useFxRatesMap } from "../../../market-data/hooks";
-import { useLiveTickerFinancialsMap, useSampledValue } from "../../../state/hooks/live-ticker-financials";
-import { buildPortfolioFinancialsMap } from "../../../market-data/portfolio-financials";
 import { usePortfolioAccountState } from "../portfolio-list/summary/live-accounts";
-import { calculatePortfolioSummaryTotals, resolvePortfolioTotalsCurrency, type ColumnContext } from "../portfolio-list/metrics";
+import { calculatePortfolioSummaryTotals, resolvePortfolioTotalsCurrency } from "../portfolio-list/metrics";
 import { accountDailyReturns, buildAccountRiskRows } from "./account-returns";
 import {
   buildPerformanceChartPoints,
@@ -49,19 +46,15 @@ import {
 import {
   buildAnalyticsRiskRows,
   buildAnalyticsSummaryRows,
-  buildBenchmarkReturnSeries,
   buildHistoryAxisLabel,
-  buildPortfolioChartTargets,
-  buildPortfolioReturnSeries,
   buildPortfolioBetaResult,
   formatHistoryValueAxis,
-  PORTFOLIO_BENCHMARK,
   resolvePerformancePalette,
 } from "./pane-model";
+import { usePortfolioReturnInputs } from "./use-portfolio-return-inputs";
 import {
   buildSectorColumns,
   buildSectorRowsFromPortfolioColumns,
-  buildTrackedCurrencies,
   DEFAULT_SECTOR_SORT,
   sortSectorRows,
   type SectorSortPreference,
@@ -133,50 +126,6 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
       .filter((ticker) => ticker.metadata.portfolios.includes(activePortfolioId))
       .filter((ticker) => hasPortfolioPosition(ticker, activePortfolioId));
   }, [activePortfolioId, tickersBySymbol]);
-  const instrumentOptions = useMemo(() => ({
-    portfolioId: activePortfolioId || undefined,
-  }), [activePortfolioId]);
-
-  const chartTargets = useMemo(
-    () => buildPortfolioChartTargets(portfolioTickers, instrumentOptions),
-    [portfolioTickers, instrumentOptions],
-  );
-  const chartRequests = useMemo(
-    () => chartTargets.flatMap((target) => target.request ? [target.request] : []),
-    [chartTargets],
-  );
-  const chartEntries = useChartQueries(chartRequests);
-
-  const spyRequest = useMemo(
-    () => ({
-      instrument: { symbol: PORTFOLIO_BENCHMARK.symbol, exchange: PORTFOLIO_BENCHMARK.exchange },
-      bufferRange: "1Y" as const,
-      granularity: "range" as const,
-    }),
-    [],
-  );
-  const spyChartRequests = useMemo(() => [spyRequest], [spyRequest]);
-  const spyChartEntries = useChartQueries(spyChartRequests);
-
-  // Totals and weights are aggregates, so the positions stream as background
-  // targets (about once a second each) and merge with the portfolio pane's rows.
-  const marketFinancials = useLiveTickerFinancialsMap(portfolioTickers, {
-    surface: "portfolio",
-    visible: false,
-    weight: 20,
-    instrumentOptions,
-  });
-  const financials = useMemo(
-    () => buildPortfolioFinancialsMap(portfolioTickers, cachedFinancials, marketFinancials, instrumentOptions),
-    [portfolioTickers, cachedFinancials, marketFinancials, instrumentOptions],
-  );
-  // Sharpe and beta weight daily returns by position value; they are daily
-  // statistics and do not need to be recomputed on every tick.
-  const statsFinancials = useSampledValue(
-    financials,
-    ANALYTICS_STATS_SAMPLE_MS,
-    `${activePortfolioId}\u001f${[...financials.keys()].join(",")}`,
-  );
   const brokerPerformance = useBrokerPortfolioPerformance(activePortfolio, config);
   const performanceChartPoints = useMemo(
     () => buildPerformanceChartPoints(brokerPerformance.performance),
@@ -194,17 +143,23 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
     () => resolvePortfolioTotalsCurrency(activePortfolio, baseCurrency),
     [activePortfolio, baseCurrency],
   );
-  const trackedCurrencies = useMemo(
-    () => [...buildTrackedCurrencies(portfolioTickers, financials, totalsCurrency), accountState?.account.currency],
-    [accountState?.account.currency, financials, portfolioTickers, totalsCurrency],
-  );
-  const exchangeRates = useFxRatesMap(trackedCurrencies);
-  const columnContext = useMemo<ColumnContext>(() => ({
-    activeTab: activePortfolioId || undefined,
-    baseCurrency: totalsCurrency,
+  const extraCurrencies = useMemo(() => [accountState?.account.currency], [accountState?.account.currency]);
+  const {
+    financials,
     exchangeRates,
-    now: Date.now(),
-  }), [activePortfolioId, exchangeRates, totalsCurrency]);
+    columnContext,
+    returnSeriesResult,
+    spyReturnSeries,
+  } = usePortfolioReturnInputs({
+    portfolioTickers,
+    portfolioId: activePortfolioId || undefined,
+    cachedFinancials,
+    baseCurrency: totalsCurrency,
+    sampleMs: ANALYTICS_STATS_SAMPLE_MS,
+    weight: 20,
+    account: accountState?.account,
+    extraCurrencies,
+  });
 
   const portfolioStats = useMemo(
     () => calculatePortfolioSummaryTotals(
@@ -218,26 +173,10 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
     [activePortfolioId, exchangeRates, financials, portfolioTickers, totalsCurrency],
   );
 
-  const returnSeriesResult = useMemo(
-    () => buildPortfolioReturnSeries({
-      chartTargets,
-      chartEntries,
-      financials: statsFinancials,
-      columnContext,
-      account: accountState?.account,
-    }),
-    [accountState, chartEntries, chartTargets, columnContext, statsFinancials],
-  );
   const portfolioReturnSeries = returnSeriesResult.returns;
-
   const portfolioReturns = useMemo(
     () => portfolioReturnSeries?.map((point) => point.value) ?? null,
     [portfolioReturnSeries],
-  );
-
-  const spyReturnSeries = useMemo(
-    () => buildBenchmarkReturnSeries(spyRequest, spyChartEntries),
-    [spyChartEntries, spyRequest],
   );
 
   const sharpe = useMemo(
@@ -479,14 +418,7 @@ export const portfolioAnalyticsModule: PluginModule = {
     },
   ],
 
-  setup(ctx) {
-    portfolioRiskCache.attach(ctx.persistence);
-    riskEpisodeCache.attach(ctx.persistence);
-  },
-  dispose() {
-    portfolioRiskCache.reset();
-    riskEpisodeCache.reset();
-  },
+  caches: [portfolioRiskCache, riskEpisodeCache],
   paneTemplates: ["PORT", "MARS"].map(prefix => ({
       id: prefix === "PORT" ? "analytics-pane" : "analytics-mars-pane",
       paneId: "analytics",

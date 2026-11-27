@@ -538,12 +538,7 @@ function WorldTab({ onOpen, focused, width, height }: {
 }
 
 export const yieldCurveModule: PluginModule = {
-  setup(ctx) {
-    for (const cache of [swapCurveCache, curveViewCache, worldCurvesCache]) cache.attach(ctx.persistence);
-  },
-  dispose() {
-    for (const cache of [swapCurveCache, curveViewCache, worldCurvesCache]) cache.reset();
-  },
+  caches: [swapCurveCache, curveViewCache, worldCurvesCache],
   series: [...TREASURY_SERIES, ...GOVERNMENT_BOND_SERIES],
   panes: [{
     id: "yield-curve",

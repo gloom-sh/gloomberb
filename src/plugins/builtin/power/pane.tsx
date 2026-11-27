@@ -2,21 +2,20 @@ import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { PowerBoard, PowerFilter, PowerHistory } from "../../../api-client/power";
 import { isAccessDenied } from "../../../api-client/errors";
-import { usePlanAccess } from "../../../api-client/plan-access";
 import { Button, ChartTableHeader, DataTableStackView, EmptyState, QueryBar, useChartTableSelection, usePagedRows, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useQueryBarSearch, useTableLoadMore, type DataTableCell, type PaneHint, type QueryBarFilter } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { Box, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { withCountryFlag } from "../../../components/ui/country-flag";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { getSharedRegistry } from "../../registry/shared";
 import { usePaneInstance } from "../../../state/app/context";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
-import { useOpenDescription } from "../shared/open-description";
-import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
+import { useTickerJumpHints } from "../shared/open-description";
+import { lockedTableCell, lockedTableOverlay } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { fetchPowerTickerScopes, loadPowerBoard, loadPowerHistory, validatePowerBoard, validatePowerHistory } from "./client";
 import { usePowerEvidence } from "./evidence";
@@ -40,10 +39,9 @@ const GENERATION_SORT: typeof DEFAULT_SORT = { column: "generationMwh", directio
 const UTILITY_SORT: typeof DEFAULT_SORT = { column: "salesMwh", direction: "desc" };
 export function PowerPane(props: PaneProps) {
   const session = useResearchCloudSession();
-  const access = usePlanAccess();
   const [openingTab] = usePaneSettingValue("tab", "queue");
   const [savedTab] = usePluginPaneState("power:tab", openingTab);
-  const scope = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
+  const scope = session.accessKey;
   // Prices are open data from another source: their own view, free and without the queue board.
   if (powerTab(savedTab) === "prices") return <PowerPricesView {...props} />;
   return <PowerView key={scope} {...props} scope={scope} canSave={session.displayScope !== null} needsVerification={session.needsVerification} />;
@@ -53,7 +51,7 @@ function PowerView({ width, height, focused, scope, canSave, needsVerification }
   const host = useRendererHost();
   const desktop = !!useUiCapabilities().nativePaneChrome;
   const { createPaneFromTemplate } = usePluginAppActions();
-  const openDescription = useOpenDescription();
+  const tickerJumpHints = useTickerJumpHints();
   const upgrade = useCloudUpgradeAction("power");
   const [openingTab] = usePaneSettingValue("tab", "queue");
   const [savedTab, setTab] = usePluginPaneState("power:tab", openingTab);
@@ -147,12 +145,8 @@ function PowerView({ width, height, focused, scope, canSave, needsVerification }
   const navigate = (template: string) => createPaneFromTemplate(template, tickerKey ? { symbol: tickerKey } : undefined);
   const hints: PaneHint[] = [
     ...(sourceUrl ? [{ id: "source", key: "o", label: "pen source", onPress: () => void host.openExternal(sourceUrl) }] : []),
-    ...(tickerKey ? [
-      { id: "description", key: "d", label: "es", onPress: () => openDescription(tickerKey) },
-      { id: "financials", key: "f", label: "a", onPress: () => navigate("financial-analysis-pane") },
-      { id: "chart", key: "g", label: "raph", onPress: () => createPaneFromTemplate("chart-composer-pane", { arg: tickerKey }) },
-      { id: "supply", key: "s", label: "plc", onPress: () => navigate("supply-chain-pane") },
-    ] : []),
+    ...tickerJumpHints(tickerKey),
+    ...(tickerKey ? [{ id: "supply", key: "s", label: "plc", onPress: () => navigate("supply-chain-pane") }] : []),
     { id: "gpu", key: "c", label: "ompute", title: "GPU Rental Prices", onPress: () => navigate("gpu-pane") },
     ...(getSharedRegistry()?.paneTemplates.has("buildout-pane") ? [{ id: "buildout", key: "t", label: "bo", onPress: () => navigate("buildout-pane") }] : []),
     ...(locked ? [{ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", title: "Upgrade to Pro", onPress: upgrade }] : []),
@@ -194,8 +188,16 @@ function PowerView({ width, height, focused, scope, canSave, needsVerification }
   const bodyHeight = Math.max(3, height - tabRows);
   const cell = (row: PowerRow, column: typeof columns[number], _index: number, state: { selected: boolean }): DataTableCell => {
     if (row.section) return { text: "" };
-    if (row.locked) return desktop ? { text: "", content: <Blurred><Text fg={colors.textDim}>{column.id === columns[0]!.id ? "Additional records" : "Hidden"}</Text></Blurred> }
-      : column.id === columns[0]!.id && row.id === "locked:0" ? { text: "Unlock with Pro", content: <UpgradeLabel text="Unlock with Pro" onPress={upgrade} role="power-upgrade" />, onMouseDown: upgrade } : { text: "░░░░", color: colors.textDim };
+    if (row.locked) return lockedTableCell({
+      desktop,
+      isLabelCell: column.id === columns[0]!.id && row.id === "locked:0",
+      upgradeText: "Unlock with Pro",
+      blurText: column.id === columns[0]!.id ? "Additional records" : "Hidden",
+      onUpgrade: upgrade,
+      onMouseDown: upgrade,
+      role: "power-upgrade",
+      dimColor: colors.textDim,
+    });
     // How a cohort ended and how far a utility's large loads got, as parts of one bar.
     if (column.id === "outcome" && row.rate) return { text: "", content: <PartsBar width={column.width} desktop={desktop} parts={[
       { id: "completed", value: row.rate.completed, color: colors.positive }, { id: "active", value: row.rate.active, color: blendHex(colors.bg, colors.borderFocused, 0.55) },
@@ -243,7 +245,7 @@ function PowerView({ width, height, focused, scope, canSave, needsVerification }
           actions={tickerMessage.found.length ? tickerMessage.found.map((scope) => <Button key={`${scope.tab}:${scope.context}`} label={`Open ${scope.view}`}
             onPress={() => { if (scope.tab === "capacity") setContext(scope.context); setTab(scope.tab); }} />) : undefined} />
       </Box> : undefined}
-      bodyAfter={locked && desktop ? <LockedOverlay rows={Math.min(3, locked)} text="Unlock full power data with Pro" onPress={upgrade} role="power-upgrade" /> : undefined}
+      bodyAfter={lockedTableOverlay(Math.min(3, locked), desktop, "Unlock full power data with Pro", upgrade, "power-upgrade")}
     />
   </Box>;
 }

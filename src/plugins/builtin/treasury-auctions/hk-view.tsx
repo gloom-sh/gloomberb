@@ -1,37 +1,26 @@
 import { MISSING_VALUE } from "../../../utils/format";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import type { HkTender } from "../../../api-client/hk-tenders";
 import {
-  DataTableStackView,
-  EmptyState,
   KeyValueRow,
-  PaneStatusBody,
-  QueryBar,
   useExternalLinkFooter,
-  usePaneMenuItems,
-  usePaneTabs,
-  useQueryBarSearch,
   type DataTableCell,
-  type DataTableKeyEvent,
   type QueryBarSelectFilter,
 } from "../../../components";
-import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { ageFooterSegment, savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { STALE_SEGMENT } from "../../../components/layout/pane/status-footer";
 import { useAsyncResource } from "../../../react/async-resource";
-import { useAutoRefresh, useUtcDay } from "../../../react/auto-refresh";
+import { useUtcDay } from "../../../react/auto-refresh";
 import { reportFooterSegment } from "../shared/source-footer";
 import { treasuryAuctionsHeadless } from "./headless";
 import { hkTendersReport } from "./hk-headless";
 import { colors } from "../../../theme/colors";
 import { Box, ScrollBox, Text, TextAttributes } from "../../../ui";
 import { formatRelativeAge, formatShortDate } from "../../../utils/datetime-format";
-import { isPlainKey } from "../../../utils/keyboard";
-import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
-import { useSearchUpRootKeyDown } from "../../../components/input-search-bar";
 import { cycleSortPreference, nextHeaderSort } from "../../../utils/sort-values";
-import { usePluginPaneState } from "../../runtime";
 import type { AuctionHistoryWindow } from "./client";
+import { AuctionMarketView, useAuctionMarketShell } from "./market-shell";
 import {
   buildHkColumns,
   DEFAULT_HK_SORT,
@@ -59,11 +48,7 @@ import {
   type HkSortPreference,
 } from "./hk";
 import {
-  AUCTION_FILTERS,
   auctionDatesShowYear,
-  auctionHistoryPhrase,
-  nextAuctionHistoryWindow,
-  nextFilter,
   type AuctionFilter,
 } from "./model";
 import { TREASURY_AUCTIONS_PANE_ID } from "./types";
@@ -180,52 +165,39 @@ export function HkTendersView({
   const savedAt = resource.data?.savedAt ?? null;
   const error = resource.error ?? (resource.loading || savedAt != null ? null : resource.data?.refreshError ?? null);
   const loading = resource.loading && !resource.data;
-  const [selectedId, setSelectedId] = usePluginPaneState<string | null>("hkSelectedId", null);
-  const [detailOpen, setDetailOpen] = usePluginPaneState<boolean>("hkDetailOpen", false);
-  const { active: searchFocused, focus: focusSearch, blur: blurSearch, searchProps } = useQueryBarSearch();
-
-  useAutoRefresh(stale ? null : fetchedAt, resource.load);
-  usePaneRefreshKey(() => resource.reload(), { focused, enabled: !searchFocused });
 
   const rows = useMemo(
     () => visibleHkTenders(tenders, { filter, query: searchQuery, sort, from: hkWindowStart(historyDays) }),
     [filter, historyDays, searchQuery, sort, tenders],
   );
-  const selected = rows.find((tender) => hkTenderId(tender) === selectedId) ?? null;
 
-  useEffect(() => {
-    if (tenders.length === 0 && loading) return;
-    if (rows.length === 0) {
-      if (selectedId !== null) setSelectedId(null);
-      setDetailOpen(false);
-      return;
-    }
-    if (!selectedId || !rows.some((tender) => hkTenderId(tender) === selectedId)) setSelectedId(hkTenderId(rows[0]!));
-  }, [loading, rows, selectedId, tenders.length]);
-
-  const cycleFilter = useCallback(() => {
-    setFilter(nextFilter(filter));
-    setDetailOpen(false);
-  }, [filter, setFilter]);
   const cycleSort = useCallback((step: 1 | -1) => {
     const next = cycleSortPreference(HK_SORT_COLUMN_IDS, sort, step);
     setSortValue(writeHkSort({ columnId: next.columnId ?? DEFAULT_HK_SORT.columnId, direction: next.direction }));
   }, [setSortValue, sort]);
 
-  const handlePaneKey = useCallback((event: DataTableKeyEvent): boolean => {
-    if (isPlainKey(event, "f")) {
-      stopSearchFocusNavigation(event);
-      cycleFilter();
-      return true;
-    }
-    if (isPlainKey(event, "]") || isPlainKey(event, "[")) {
-      stopSearchFocusNavigation(event);
-      cycleSort(event.name === "]" ? 1 : -1);
-      return true;
-    }
-    return false;
-  }, [cycleFilter, cycleSort]);
-  const handleRootKeyDown = useSearchUpRootKeyDown(focusSearch, handlePaneKey);
+  const shell = useAuctionMarketShell({
+    focused,
+    width,
+    height,
+    selectedStateKey: "hkSelectedId",
+    detailStateKey: "hkDetailOpen",
+    stale,
+    fetchedAt,
+    loading,
+    totalCount: tenders.length,
+    rows,
+    getId: hkTenderId,
+    filter,
+    setFilter,
+    searchQuery,
+    setSearchQuery,
+    searchPlaceholder: ["paper, 10Y, issue, or date", "search"],
+    marketFilter,
+    reload: () => resource.reload(),
+    autoLoad: resource.load,
+    cycleSort,
+  });
 
   const showYear = useMemo(() => auctionDatesShowYear(rows.map((tender) => tender.date)), [rows]);
   const columns = useMemo(() => buildHkColumns({ showYear, rows, width: width - 1 }), [rows, showYear, width]);
@@ -249,98 +221,40 @@ export function HkTendersView({
     return segments;
   }, [board, error, fetchedAt, filter, historyDays, loading, savedAt, searchQuery, stale, tenders.length, utcDay]);
   const toggleMarket = useCallback(() => marketFilter.onChange("us"), [marketFilter]);
-  const hints = useMemo(() => detailOpen || tenders.length === 0 ? [] : [
-    { id: "search", key: "/", label: "search", onPress: focusSearch },
-    { id: "filter", key: "f", label: "ilter", onPress: cycleFilter },
+  const hints = useMemo(() => shell.detailOpen || tenders.length === 0 ? [] : [
+    { id: "search", key: "/", label: "search", onPress: shell.focusSearch },
+    { id: "filter", key: "f", label: "ilter", onPress: shell.cycleFilter },
     ...auctionViewHints({ market: "hk", toggleMarket, cycleSort }),
-  ], [cycleFilter, cycleSort, detailOpen, focusSearch, tenders.length, toggleMarket]);
+  ], [shell.cycleFilter, cycleSort, shell.detailOpen, shell.focusSearch, tenders.length, toggleMarket]);
   // `o` opens HKMA's page for the dataset the selected tender came from.
   useExternalLinkFooter({
-    registrationId: TREASURY_AUCTIONS_PANE_ID, focused: focused && !searchFocused, url: selected ? hkDatasetPage(selected) : undefined, info, hints,
+    registrationId: TREASURY_AUCTIONS_PANE_ID, focused: focused && !shell.searchFocused, url: shell.selected ? hkDatasetPage(shell.selected) : undefined, info, hints,
   });
-
-  usePaneMenuItems("treasury-auctions:sort-keys", () => detailOpen || tenders.length === 0 ? null : [
-    { id: "sort-previous", label: "Previous Sort Column", accelerator: "[", onSelect: () => cycleSort(-1) },
-  ], [tenders.length, cycleSort, detailOpen]);
-
-  const filterTabs = useMemo(() => AUCTION_FILTERS.map((entry) => ({ label: entry.label, value: entry.value })), []);
-  const { strip: tabStrip, rows: tabRows } = usePaneTabs({
-    tabs: filterTabs,
-    activeValue: filter,
-    onSelect: (value) => {
-      setFilter(value as AuctionFilter);
-      setDetailOpen(false);
-    },
-    focused: focused && !detailOpen && !searchFocused,
-    compact: true,
-    variant: "bare",
-  });
-  const tabs = tabStrip && <Box height={1} flexShrink={0} overflow="hidden">{tabStrip}</Box>;
-  const queryBar = (
-    <QueryBar
-      width={width}
-      search={{
-        value: searchQuery,
-        onChange: setSearchQuery,
-        placeholder: ["paper, 10Y, issue, or date", "search"],
-        focused: focused && !detailOpen,
-        ...searchProps,
-      }}
-      filters={[marketFilter]}
-    />
-  );
-
-  if (loading && tenders.length === 0) {
-    return (
-      <Box flexDirection="column" width={width} height={height}>
-        {tabs}
-        {queryBar}
-        <PaneStatusBody loading align="center" loadingLabel="Loading Hong Kong tenders..." />
-      </Box>
-    );
-  }
-  if (error && tenders.length === 0) {
-    return (
-      <Box flexDirection="column" width={width} height={height}>
-        {tabs}
-        {queryBar}
-        <Box padding={1}>
-          <EmptyState status="error" title="Hong Kong tenders unavailable." message={error} />
-        </Box>
-      </Box>
-    );
-  }
 
   return (
-    <Box flexDirection="column" width={width} height={height}>
-      {tabs}
-      <DataTableStackView<HkTender, HkColumn>
-        focused={focused && !searchFocused}
-        detailOpen={detailOpen && !!selected}
-        onBack={() => setDetailOpen(false)}
-        detailContent={selected ? <HkTenderDetail tender={selected} width={width} /> : null}
-        detailTitle={selected ? `${hkTenderName(selected)} ${hkTenderTerm(selected)}` : undefined}
-        rootBefore={queryBar}
-        onRootKeyDown={handleRootKeyDown}
-        onDetailKeyDown={handlePaneKey}
-        selection={{ kind: "id", selectedId, getId: hkTenderId, onChange: (id) => setSelectedId(id) }}
-        onActivate={() => {
-          blurSearch();
-          setDetailOpen(true);
-        }}
-        rootWidth={width}
-        rootHeight={Math.max(1, height - tabRows)}
-        columns={columns}
-        items={rows}
-        sortColumnId={sort.columnId}
-        sortDirection={sort.direction}
-        onHeaderClick={(columnId) => setSortValue(writeHkSort(nextHeaderSort(sort, columnId as HkColumn["id"], { firstDirection: firstHkSortDirection })))}
-        getItemKey={hkTenderId}
-        renderCell={renderRow}
-        emptyStateTitle={searchQuery.trim() ? "No matching tenders." : "No recent tenders."}
-        emptyStateHint={`${searchQuery.trim() ? "Searched" : "Showing"} ${auctionHistoryPhrase(historyDays)}`
-          + `${nextAuctionHistoryWindow(historyDays) ? "; older tenders are in the History window setting" : ""}. Search by ${HK_SEARCH_FIELDS}.`}
-      />
-    </Box>
+    <AuctionMarketView
+      width={width}
+      height={height}
+      focused={focused}
+      loading={loading}
+      error={error}
+      totalCount={tenders.length}
+      loadingLabel="Loading Hong Kong tenders..."
+      unavailableTitle="Hong Kong tenders unavailable."
+      shell={shell}
+      columns={columns}
+      rows={rows}
+      getId={hkTenderId}
+      sortColumnId={sort.columnId}
+      sortDirection={sort.direction}
+      onHeaderClick={(columnId) => setSortValue(writeHkSort(nextHeaderSort(sort, columnId as HkColumn["id"], { firstDirection: firstHkSortDirection })))}
+      renderCell={renderRow}
+      detailTitle={shell.selected ? `${hkTenderName(shell.selected)} ${hkTenderTerm(shell.selected)}` : undefined}
+      detailContent={shell.selected ? <HkTenderDetail tender={shell.selected} width={width} /> : null}
+      searchQuery={searchQuery}
+      historyDays={historyDays}
+      itemPlural="tenders"
+      searchFields={HK_SEARCH_FIELDS}
+    />
   );
 }

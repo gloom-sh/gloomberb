@@ -3,13 +3,11 @@ import type { TickerRepository } from "../../data/ticker-repository";
 import type { AppConfig } from "../../types/config";
 import type { BrokerAdapter } from "../../types/broker";
 import type { DataProvider } from "../../types/data-provider";
-import type { PersistedResourceValue } from "../../types/persistence";
 import type {
   GloomPlugin,
   GloomPluginContext,
   PaneDef,
   PaneTemplateDef,
-  PluginPersistence,
 } from "../../types/plugin";
 import { createPluginTeamState } from "../../plugins/team-state";
 import { bindPluginContextNamespaces } from "../../plugins/registry/plugin-state";
@@ -80,7 +78,7 @@ function buildDiscoveryContext({
   tickerRepository: TickerRepository;
   connectionHealth: ConnectionHealthRegistry;
 }): GloomPluginContext {
-  const fakePersistence = createDiscoveryPluginPersistence();
+  const fakePersistence = createCommandPluginPersistence(null, "discovery");
   const discoveryContext: GloomPluginContext = {
     registerPane: (pane: PaneDef) => panes.set(pane.id, pane),
     registerPaneTemplate: (template: PaneTemplateDef) => {
@@ -219,38 +217,4 @@ export async function createPaneCatalog(context: MarketContext, plugins: GloomPl
     throw error;
   }
   return { panes, paneTemplates, destroy };
-}
-
-function createDiscoveryPluginPersistence(): PluginPersistence {
-  const resources = new Map<string, PersistedResourceValue<unknown>>();
-  return {
-    getState: () => null,
-    setState: () => {},
-    deleteState: () => {},
-    getResource: <T = unknown>(kind: string, key: string) => (
-      resources.get(`${kind}:${key}`) as PersistedResourceValue<T> | undefined
-    ) ?? null,
-    setResource: <T = unknown>(
-      kind: string,
-      key: string,
-      value: T,
-      options: Parameters<PluginPersistence["setResource"]>[3],
-    ) => {
-      const fetchedAt = Date.now();
-      const entry: PersistedResourceValue<T> = {
-        value,
-        fetchedAt,
-        staleAt: fetchedAt + options.cachePolicy.staleMs,
-        expiresAt: fetchedAt + options.cachePolicy.expireMs,
-        sourceKey: options.sourceKey ?? "",
-        schemaVersion: options.schemaVersion ?? 1,
-        provenance: options.provenance ?? null,
-      };
-      resources.set(`${kind}:${key}`, entry);
-      return entry;
-    },
-    deleteResource: (kind: string, key: string) => {
-      resources.delete(`${kind}:${key}`);
-    },
-  };
 }

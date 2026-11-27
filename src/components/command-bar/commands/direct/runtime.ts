@@ -1,36 +1,21 @@
-import {
-  useCallback,
-  type Dispatch,
-  type MutableRefObject,
-} from "react";
+import { useCallback, type MutableRefObject } from "react";
 import type { PluginRegistry } from "../../../../plugins/registry";
 import type { PinTickerOptions } from "../../../../types/plugin";
-import {
-  useAppGetState,
-  type AppAction,
-  type AppState,
-} from "../../../../state/app/context";
+import { useAppGetState } from "../../../../state/app/context";
 import { normalizeTickerInput } from "../../../../tickers/search";
 import { useRendererHost } from "../../../../ui";
-import type { ThemePickerHandle } from "../../theme-picker";
 import type { Command } from "../registry";
 import { SECURITY_DESCRIPTION_SEARCH, type CollectionCommandId } from "../../helpers";
-import {
-  runDirectCommandAction,
-} from "./index";
+import { runDirectCommandAction } from "./index";
 import type { OpenInlineConfirm } from "../../routing/confirm";
-import {
-  resolveTickerInput,
-  type SharedWorkflowDeps,
-} from "../../workflow/ops";
+import type { CommandBarEnvironment } from "../../surface/environment";
+import { resolveTickerInput, type SharedWorkflowDeps } from "../../workflow/ops";
 import type { CommandBarRoute } from "../../workflow/types";
 
 interface UseCommandBarDirectCommandRuntimeOptions {
-  activeCollectionId: string | null;
-  activeTickerSymbol: string | null;
+  env: CommandBarEnvironment;
   buildSharedWorkflowDeps: () => SharedWorkflowDeps;
   closeAll: (options?: { revertThemePreview?: boolean }) => void;
-  dispatch: Dispatch<AppAction>;
   executeCollectionCommand: (
     commandId: CollectionCommandId,
     rawInput?: string,
@@ -43,27 +28,19 @@ interface UseCommandBarDirectCommandRuntimeOptions {
   onRunSetupAgain?: () => Promise<void>;
   openBuiltInWorkflow: (actionId: string) => void;
   openInlineConfirm: OpenInlineConfirm;
-  openModeRoute: (
-    screen: "ticker-search" | "layout",
-    initialQuery?: string,
-    payload?: Record<string, unknown>,
-  ) => void;
+  openModeRoute: (screen: "ticker-search" | "layout", initialQuery?: string, payload?: Record<string, unknown>) => void;
   openPaneSettings: (paneId: string | null) => void;
-  persistConfig: (nextConfig: AppState["config"]) => void;
   pluginRegistry: PluginRegistry;
   pushRoute: (route: CommandBarRoute) => void;
   quitApp: () => void;
   rootThemeBaseIdRef: MutableRefObject<string | null>;
   setRootQuery: (query: string) => void;
-  themePickerRef: MutableRefObject<ThemePickerHandle | null>;
 }
 
 export function useCommandBarDirectCommandRuntime({
-  activeCollectionId,
-  activeTickerSymbol,
+  env,
   buildSharedWorkflowDeps,
   closeAll,
-  dispatch,
   executeCollectionCommand,
   focusTicker,
   notify,
@@ -73,14 +50,13 @@ export function useCommandBarDirectCommandRuntime({
   openInlineConfirm,
   openModeRoute,
   openPaneSettings,
-  persistConfig,
   pluginRegistry,
   pushRoute,
   quitApp,
   rootThemeBaseIdRef,
   setRootQuery,
-  themePickerRef,
 }: UseCommandBarDirectCommandRuntimeOptions) {
+  const { activeCollectionId, activeTickerSymbol, dispatch, persistConfig, themePickerRef } = env;
   // A confirm it opens (Reset All Data) runs after the bar closed.
   const getState = useAppGetState();
   const rendererHost = useRendererHost();

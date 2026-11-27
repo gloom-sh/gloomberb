@@ -2,10 +2,10 @@ import { useId, useRef } from "react";
 import { t } from "../../i18n";
 import { useShortcut } from "../../react/input";
 import type { ContextMenuItem } from "../../types/context-menu";
-import { useOptionalDialog, type AlertContext, type PromptContext } from "../../ui/dialog";
+import { useOptionalDialog, type AlertContext } from "../../ui/dialog";
 import { usePaneMenuItems } from "../layout/pane/footer";
 import { useChartViewReset } from "../chart/core/view-reset";
-import { ChoiceDialog } from "./choice-dialog";
+import { choiceDialog } from "./choice-dialog";
 import { MultiSelectDialogContent } from "./multi-select/dialog";
 import type { QueryBarFilter, QueryBarSearch, QueryBarView } from "./query-bar";
 
@@ -61,23 +61,19 @@ export function useQueryBarKeys({
     reselect?: () => void,
   ) => {
     if (!dialog) return;
-    const value = await dialog.prompt<string>({
-      closeOnClickOutside: true,
-      content: (ctx: PromptContext<string>) => (
-        <ChoiceDialog
-          {...ctx}
-          title={title}
-          selectedChoiceId={current}
-          choices={options.map((option) => ({
-            id: option.value,
-            label: option.label,
-            group: option.group,
-            description: option.description,
-            disabled: option.disabled,
-            color: option.color,
-          }))}
-        />
-      ),
+    const value = await choiceDialog(dialog, {
+      title,
+      selectedChoiceId: current,
+      choices: options.map((option) => ({
+        id: option.value,
+        label: option.label,
+        group: option.group,
+        description: option.description,
+        disabled: option.disabled,
+        color: option.color,
+      })),
+      logSource: "ui.query-bar-keys",
+      logMessage: "Choose filter option failed",
     });
     if (value && value !== current) apply(value);
     else if (value && reselect) reselect();

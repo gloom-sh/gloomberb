@@ -8,10 +8,9 @@ import {
   type DataTableCell,
   type DataTableColumn,
 } from "../../../components";
-import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/data-table/table-pane";
-import { useAsyncResource } from "../../../react/async-resource";
+import { loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { useCloudDisplayScope } from "../../../api-client/plan-access";
-import { useAutoRefresh } from "../../../react/auto-refresh";
+import { usePaneResource } from "../shared/pane-resource";
 import { usePaneSettingValue, usePluginAppActions, usePluginPaneState, useTickers } from "../../../public/react";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
@@ -82,12 +81,11 @@ export function ShortWatchPane({ width, height, focused }: Pick<PaneProps, "widt
   }, [key]);
   useEffect(() => () => controller.current?.abort(), [loader]);
   const access = useCloudDisplayScope();
-  const resource = useAsyncResource(access && key ? loader : null, {
+  const resource = usePaneResource(access && key ? loader : null, {
+    focused,
     keepPreviousData: access,
     savedCopy: access ? { key: ["short-watch", access, key] } : null,
   });
-  useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(resource.reload, { focused });
 
   const [sort, setSort] = usePluginPaneState<{ columnId: ShortWatchSortId; direction: SortDirection }>("short-watch:sort", DEFAULT_SORT);
   const rows = useMemo(() => sortShortWatchRows(resource.data ?? [], sort.columnId, sort.direction), [resource.data, sort]);

@@ -1,19 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiClient, TeamRevisionConflictError } from "../../../api-client";
 import { DataTableView } from "../../../components/data-table/view";
-import { ChoiceDialog } from "../../../components/ui/choice-dialog";
-import { useDialog, type PromptContext } from "../../../ui/dialog";
+import { choiceDialog, textPromptDialog } from "../../../components/ui";
+import { useDialog } from "../../../ui/dialog";
 import { getSharedRegistry } from "../../registry";
 import { teamPrefix } from "../../../team/model";
 import { teamStore } from "../../../team/store";
 import { teamViewsStore } from "../cloud/team/views";
 import { setPaneSettings } from "../../../pane-settings";
 import { customViewInstanceSettings } from "./index";
-import { PaneStatusBody, TextPromptDialog, usePaneFooter } from "../../../components";
+import { PaneStatusBody, usePaneFooter } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { isPlainKey } from "../../../utils/keyboard";
-import { logFailure } from "../../../utils/log-failure";
 import { usePaneInstance, usePaneAppConfig } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
@@ -222,21 +221,18 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
         const current = teamViewsStore.get(spec.source.viewId) ?? (await apiClient.getTeamView(spec.source.viewId));
         if (!current) throw new Error("This team view no longer exists.");
         const currentParsed = parseViewSpecOr(current.spec);
-        const specText = await dialog.prompt<string>({
+        const specText = await textPromptDialog(dialog, {
           size: "large",
-          content: (context: PromptContext<string>) => (
-            <TextPromptDialog
-              {...context}
-              title={`Publish a revision of ${current.name}`}
-              body={[`Edit the spec, or ask Gloom to. Enter publishes r${current.revision + 1}.`]}
-              initialValue={JSON.stringify("spec" in currentParsed ? currentParsed.spec : current.spec, null, 2)}
-              multiline
-              rows={10}
-              confirmLabel="Publish"
-              footer="Shift+Enter newline · Esc cancel"
-            />
-          ),
-        }).catch(logFailure("custom-view.pane", "The view revision prompt failed"));
+          title: `Publish a revision of ${current.name}`,
+          body: [`Edit the spec, or ask Gloom to. Enter publishes r${current.revision + 1}.`],
+          initialValue: JSON.stringify("spec" in currentParsed ? currentParsed.spec : current.spec, null, 2),
+          multiline: true,
+          rows: 10,
+          confirmLabel: "Publish",
+          footer: "Shift+Enter newline · Esc cancel",
+          logSource: "custom-view.pane",
+          logMessage: "The view revision prompt failed",
+        });
         const edited = specText ? parseViewSpecOr(specText) : null;
         if (!edited) return;
         if ("error" in edited) throw new Error(edited.error);
@@ -250,20 +246,17 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
           reload();
         } catch (error) {
           if (!(error instanceof TeamRevisionConflictError)) throw error;
-          const choice = await dialog.prompt<string>({
+          const choice = await choiceDialog(dialog, {
             closeOnClickOutside: false,
-            content: (context: PromptContext<string>) => (
-              <ChoiceDialog
-                {...context}
-                title={`A teammate published r${error.currentRevision} first`}
-                choices={[
-                  { id: "overwrite", label: "Overwrite with mine", description: `Publishes yours as r${error.currentRevision + 1}.` },
-                  { id: "reload", label: "Take theirs", description: "This pane follows their revision." },
-                ]}
-                selectedChoiceId="reload"
-              />
-            ),
-          }).catch(logFailure("custom-view.pane", "The view conflict prompt failed"));
+            title: `A teammate published r${error.currentRevision} first`,
+            choices: [
+              { id: "overwrite", label: "Overwrite with mine", description: `Publishes yours as r${error.currentRevision + 1}.` },
+              { id: "reload", label: "Take theirs", description: "This pane follows their revision." },
+            ],
+            selectedChoiceId: "reload",
+            logSource: "custom-view.pane",
+            logMessage: "The view conflict prompt failed",
+          });
           if (choice === "overwrite") {
             const published = await apiClient.publishTeamViewRevision(current.id, {
               spec: edited.spec as unknown as Record<string, unknown>,
@@ -280,30 +273,23 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
       const defaultTeam = teamStore.getDefaultTeamId();
       const teamId = teams.length === 1
         ? teams[0]!.id
-        : await dialog.prompt<string>({
-          closeOnClickOutside: true,
-          content: (context: PromptContext<string>) => (
-            <ChoiceDialog
-              {...context}
-              title="Publish this view to"
-              choices={teams.map((team) => ({ id: team.id, label: `${teamPrefix(team)} ${team.name}` }))}
-              selectedChoiceId={defaultTeam ?? undefined}
-            />
-          ),
-        }).catch(logFailure("custom-view.pane", "The view team prompt failed"));
+        : await choiceDialog(dialog, {
+          title: "Publish this view to",
+          choices: teams.map((team) => ({ id: team.id, label: `${teamPrefix(team)} ${team.name}` })),
+          selectedChoiceId: defaultTeam ?? undefined,
+          logSource: "custom-view.pane",
+          logMessage: "The view team prompt failed",
+        });
       if (!teamId) return;
-      const name = await dialog.prompt<string>({
-        content: (context: PromptContext<string>) => (
-          <TextPromptDialog
-            {...context}
-            title="View name"
-            initialValue={instance.title ?? spec.presentation.title ?? ""}
-            placeholder="Top movers"
-            confirmLabel="Publish"
-            width={40}
-          />
-        ),
-      }).catch(logFailure("custom-view.pane", "The view name prompt failed"));
+      const name = await textPromptDialog(dialog, {
+        title: "View name",
+        initialValue: instance.title ?? spec.presentation.title ?? "",
+        placeholder: "Top movers",
+        confirmLabel: "Publish",
+        width: 40,
+        logSource: "custom-view.pane",
+        logMessage: "The view name prompt failed",
+      });
       if (!name) return;
       const created = await apiClient.createTeamView(teamId, {
         name,

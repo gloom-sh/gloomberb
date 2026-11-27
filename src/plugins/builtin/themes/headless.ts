@@ -1,6 +1,7 @@
 import { THEME_PERIODS, type ThemeMembersPayload, type ThemeSummary, type ThemesPayload } from "../../../api-client/themes";
 import type { ExtendedSession } from "../../../market-data/market/status";
 import { extendedPriceColumn } from "../shared/extended-print";
+import { argumentText } from "../shared/headless-options";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneFreshness } from "../../../types/plugin";
 import { formatRelativeAge } from "../../../utils/datetime-format";
 import { fetchThemeMembers, fetchThemes } from "./client";
@@ -86,7 +87,7 @@ export const themesHeadless: HeadlessPaneDefinition<"rows"> = {
   describe: (args, result) => themeReportTitle(args.rawArgument, (result?.metadata as { theme?: ThemeSummary } | undefined)?.theme),
   async load(args, context) {
     const board = await fetchThemes(context.apiClient);
-    const argument = Array.isArray(args.argument) ? args.argument.join(" ") : args.argument;
+    const argument = argumentText(args.argument);
     if (argument) {
       const theme = matchTheme(board.themes, argument);
       if (!theme) throw new Error(`No theme matches ${argument}. Themes: ${board.themes.map((row) => row.name).join(", ")}.`);

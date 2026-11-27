@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useId, useRef, useSt
 import { Box, Text } from "../../ui";
 import { TextAttributes } from "../../ui";
 import { tf } from "../../i18n";
+import { hoverBg } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { safeExternalUrl, systemOpenCommand } from "../../utils/external-url";
 import { linkContextMenuItems, useContextMenu, useRendererHost, useUiCapabilities } from "../../ui";
@@ -82,6 +83,22 @@ export function usePaneLinkMenuEntry(key: string | null, label: string, open: ()
     if (!register || !key) return;
     return register({ key, label, open: () => openRef.current() });
   }, [key, label, register]);
+}
+
+/** Pointer target props and pane-menu registration for a clickable link row/cell; empty when `link` is absent. */
+export function usePaneLinkTarget(
+  key: string | null,
+  link: { label: string; onOpen: () => void } | undefined,
+) {
+  const colors = useThemeColors();
+  usePaneLinkMenuEntry(link ? key : null, link?.label ?? "", () => link?.onOpen());
+  return link ? {
+    cursor: "pointer" as const,
+    hoverBackgroundColor: hoverBg(colors),
+    onMouseDown: (event?: { button?: number }) => { if ((event?.button ?? 0) === 0) link.onOpen(); },
+    "data-gloom-interactive": "true",
+    "data-gloom-label": link.label,
+  } : {};
 }
 
 /** A bare URL reads shorter without its scheme. */

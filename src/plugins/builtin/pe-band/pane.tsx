@@ -3,12 +3,10 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { ChartTableHeader, DataTableView, EmptyState, PaneStatusBody, QueryBar, scalarPoint, spanAxisFormatter, staticSeries,
   useChartTableSelection, usePaneFooter, usePaneNoticeFooter, usePaneTicker, type DataTableCell, type DataTableColumn,
   type StatItem } from "../../../components";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { usePaneResource } from "../shared/pane-resource";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { usePaneSettingValue, usePluginPaneState } from "../../../public/react";
-import { useAsyncResource } from "../../../react/async-resource";
 import { useCloudDisplayScope } from "../../../api-client/plan-access";
-import { useAutoRefresh } from "../../../react/auto-refresh";
 import { blendHex } from "../../../theme/color-utils";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
@@ -97,12 +95,11 @@ export function PeBandPane({ width, height, focused }: PaneProps) {
     return inputs;
   }, [instrumentKey, marketData]);
   const scope = useCloudDisplayScope();
-  const inputs = useAsyncResource(scope && instrument && marketData ? loader : null, {
+  const inputs = usePaneResource(scope && instrument && marketData ? loader : null, {
+    focused,
     savedCopy: scope && marketData && !instrument?.instrument ? { key: ["pe-band", scope, marketData.id, instrumentKey] } : null,
   });
   useEffect(() => () => controller.current?.abort(), [loader]);
-  useAutoRefresh(inputs.updatedAt, inputs.load);
-  usePaneRefreshKey(() => { inputs.reload(); }, { focused });
 
   const lookbackYears = Number(lookback);
   const model = useMemo(() => inputs.data

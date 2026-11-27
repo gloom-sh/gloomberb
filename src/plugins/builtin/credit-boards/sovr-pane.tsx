@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import { ChartTableHeader, formatBpAxis, MarketBoardStack, PaneStatusBody, type StatItem } from "../../../components";
+import { formatBpAxis, type StatItem } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { signedMoveColor, StatChartDetail } from "../../../components/market-board";
@@ -12,7 +12,7 @@ import { useAssetData, usePluginPaneState } from "../../runtime";
 import { FIXED_INCOME_PANE_ID } from "../fixed-income/model";
 import { useCommandValue } from "../shared/command-tab";
 import { reportFooterSegment } from "../shared/source-footer";
-import { CreditHistoryChart, creditFooterInfo, creditHistoryChart, type CreditHistoryTarget } from "./board-shared";
+import { CreditBoardView, CreditHistoryChart, creditFooterInfo, type CreditHistoryTarget } from "./board-shared";
 import { getCachedSovrBoard, loadCurrencyMoves, loadSovrBoard } from "./client";
 import { sovrHeadless } from "./headless";
 import { readsInBatches } from "../../../market-data/batched-reads";
@@ -111,23 +111,13 @@ export function SovrPane({ focused, width, height }: PaneProps) {
     }),
   }], [movesPending, theme]);
 
-  if (rows.length === 0) {
-    return (
-      <PaneStatusBody loading={loading} error={resource.error} empty={!loading && !resource.error}
-        loadingLabel="Loading sovereign CDS..." subject="Sovereign CDS" align="center" width={width} height={height} />
-    );
-  }
-
   // A country the command named that the board does not have leaves the board on its first.
   const named = selectedId ? findSovereign(payload?.sovereigns ?? [], selectedId) : null;
-  const selected = rows.find((row) => row.id === selectedId) ?? rows.find((row) => row.id === named?.id) ?? rows[0];
   return (
-    <MarketBoardStack rows={rows} width={width} height={height} focused={focused}
-      rootBefore={({ columns }) => <ChartTableHeader width={width} height={height} tableRows={rows.length}
-        tableColumns={columns} chart={selected ? creditHistoryChart(historyTarget(selected)) : null} />}
-      selectedId={selected?.id ?? null} onSelectedIdChange={setSelectedId} openId={openId} onOpenIdChange={setOpenId}
-      labelHeader="SOVEREIGN" labelWidth={18} valueLabel="5Y" valueWidth={9} changeLabel="1M" signedChange
-      extraColumns={extraColumns}
-      renderDetail={(row) => <SovereignDetail row={row} width={width} height={Math.max(5, height - 2)} focused={focused} />} />
+    <CreditBoardView rows={rows} width={width} height={height} focused={focused} loading={loading} error={resource.error}
+      loadingLabel="Loading sovereign CDS..." subject="Sovereign CDS"
+      selectedId={selectedId} namedId={named?.id} onSelectedIdChange={setSelectedId} openId={openId} onOpenIdChange={setOpenId}
+      labelHeader="SOVEREIGN" labelWidth={18} valueLabel="5Y" valueWidth={9} changeLabel="1M" extraColumns={extraColumns} historyTarget={historyTarget}
+      renderDetail={(row, detailHeight) => <SovereignDetail row={row} width={width} height={detailHeight} focused={focused} />} />
   );
 }

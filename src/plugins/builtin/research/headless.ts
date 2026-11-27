@@ -20,7 +20,7 @@ import { listingDay } from "../shared/earnings-calendar";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { REPORTED_DATA } from "../shared/report-freshness";
 import { EPS_BASIS_NOTE } from "../shared/earnings-report";
-import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
+import { enumOption, limitOption, REPORT_FILTER } from "../shared/headless-options";
 
 export interface EarningsEstimateSources {
   actions: CorporateActionsData | null;
@@ -180,39 +180,13 @@ export function createEarningsEstimatesHeadless(
       description: "Company symbol.",
     },
     options: [
-      {
-        key: "kind",
-        shot: REPORT_FILTER,
-        description: "Estimate or reported rows to include.",
-        type: "enum",
-        values: [
-          { value: "all" },
-          { value: "estimates" },
-          { value: "reported" },
-        ],
-        defaultValue: "all",
-      },
-      {
-        // Not `--kind`, which filters the rows every format lists: this is which of the pane's two views it shows.
-        key: "view",
-        settingKey: "view",
+      enumOption("kind", ["all", "estimates", "reported"], { shot: REPORT_FILTER, description: "Estimate or reported rows to include.", defaultValue: "all" }),
+      // Not `--kind`, which filters the rows every format lists: this is which of the pane's two views it shows.
+      enumOption("view", ["estimates", "reported"], {
+        settingKey: "view", example: "--view reported",
         description: "The pane's view: estimates, the quarters and years ahead, or reported, the reported quarters charted over their table. The text report prints that view's table under Next up; --kind still picks the rows CSV and JSON list.",
-        type: "enum",
-        values: [
-          { value: "estimates" },
-          { value: "reported" },
-        ],
-        example: "--view reported",
-      },
-      {
-        key: "limit",
-        shot: REPORT_ROWS,
-        description: "Maximum rows to return.",
-        type: "integer",
-        defaultValue: 50,
-        minimum: 1,
-        maximum: 200,
-      },
+      }),
+      limitOption({ description: "Maximum rows to return.", defaultValue: 50, maximum: 200 }),
     ],
     columns: ESTIMATE_COLUMNS,
     describe: (args) => `Earnings Estimates | ${String(args.argument)}`,
