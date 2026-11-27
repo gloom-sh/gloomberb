@@ -80,7 +80,7 @@ on:
       - "scripts/windows-installer.iss"
 
 concurrency:
-  group: windows-desktop-check-${{ github.ref }}-${{ inputs.app_ref }}-${{ inputs.installer_run }}
+  group: windows-desktop-check-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}-${{ inputs.app_ref }}-${{ inputs.installer_run }}
   cancel-in-progress: true
 
 permissions:
