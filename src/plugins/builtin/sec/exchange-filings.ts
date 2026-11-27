@@ -25,6 +25,8 @@ const exchangeForms = new Map<string, readonly ExchangeFilingForm[]>([
     { value: "sgx-results", label: "Results & presentations", kind: "results" },
     { value: SGX_OWNERSHIP_FORM, label: "Ownership disclosures", kind: "ownership" },
   ]],
+  ["HOSE", [{ value: "hose-results", label: "Results & presentations", kind: "results" }]],
+  ["HNX", [{ value: "hnx-results", label: "Results & presentations", kind: "results" }]],
   ["TWSE", presentations],
   ["TPEX", presentations],
 ]);
