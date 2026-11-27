@@ -4,6 +4,11 @@ import type { EventAlertRule } from "./events";
 import { isLiveOptionExpiry, parseOptionExpiration } from "../../../utils/option-expiry";
 import { proRuleFormNote } from "./pro-rules";
 import { occContractExample } from "./option-contract";
+import { isCurrencyPairListing } from "../../../utils/fx-market-hours";
+import { futuresListingVenue } from "../../../utils/futures-generic";
+import { isFuturesInstrument } from "../../../market-data/futures-contract";
+import { listedOptionsAlternative, optionsUnavailableDetails } from "../../../market-data/options-alternatives";
+import { classifyInstrumentType } from "../../../tickers/instrument-kind";
 
 /** What a macro event is called in a rule, a list and a notification. */
 export const MACRO_EVENT_NAMES: Record<MacroAlertEvent, string> = { cpi: "CPI release", fomc: "FOMC decision" };
@@ -13,6 +18,22 @@ export const RESEARCH_LABELS: Record<ResearchAlertKind, string> = {
 };
 /** What an IV level rule follows, as the form, a list and a notification name it. */
 export const IV_LEVEL_NAMES: Record<IvLevelMetric, string> = { atm: "30d ATM IV", rr: "30d 25D RR" };
+export const IV_LEVEL_DELIVERY = "App open only";
+export const FXY_IV_NOTE = "FXY options are listed ETF options, not spot FX. Thin quotes may leave no usable 30-day IV reading.";
+
+export function ivLevelUnavailable(symbol: string, exchange?: string, instrumentType?: string) {
+  const kind = classifyInstrumentType(instrumentType);
+  const spot = isCurrencyPairListing(symbol, exchange) || kind === "currency";
+  const future = !spot && (isFuturesInstrument(symbol, instrumentType)
+    || (kind == null && !symbol.startsWith("DX-Y.") && !!futuresListingVenue(symbol, exchange)));
+  if (!spot && !future) return null;
+  const alternative = listedOptionsAlternative(symbol);
+  const message = spot ? `OTC FX implied volatility is not served for ${symbol}.` : `Futures options implied volatility is not served for ${symbol}.`;
+  const details = alternative
+    ? `${alternative.symbol === "FXY" ? FXY_IV_NOTE : `${alternative.symbol} is a listed fund; its options do not measure IV on ${symbol}.`} Inspect with gloom fn OVDV ${alternative.symbol} or gloom options ${alternative.symbol}.`
+    : spot ? optionsUnavailableDetails(symbol, (fund) => `gloom fn OVDV ${fund}`) : "IV level rules use supported listed options, not futures options.";
+  return { message, details };
+}
 /** An IV level in its unit: an ATM IV in percent, a risk reversal in signed vol points. */
 export function formatIvLevel(metric: IvLevelMetric, value: number): string {
   const rounded = Number(value.toFixed(2));
@@ -65,6 +86,7 @@ export const researchWizardFields: Field[] = RESEARCH_FORM_KINDS.flatMap(kind =>
   // A Pro kind says so under its first field, before anything is saved: a free account saves it, and nothing checks it.
   const proNote = proRuleFormNote(kind);
   if (proNote && fields[0]) fields[0] = { ...fields[0], body: [proNote] };
+  if (kind === "iv_level" && fields[0]) fields[0] = { ...fields[0], body: [`${IV_LEVEL_DELIVERY}. A rule needs usable option quotes to get a reading.`] };
   return fields.map(field => ({...field, key:`${kind}:${field.key}`, dependsOn: kind === "earnings_date" && field.key === "leadDays"
     // The lead time is for an alert before the date, not one waiting for results.
     ? [{key:"event",value:kind}, {key:"earnings_date:when",value:"before"}]
@@ -88,6 +110,9 @@ export function createResearchAlert(kind: string, values: Record<string,string>,
     }
     else if (value.trim()) input[field] = field === "threshold" || field === "leadDays" ? parseAmount(value) : value;
   }
+  const unavailable = kind === "iv_level" && typeof input.symbol === "string"
+    ? ivLevelUnavailable(input.symbol.trim().toUpperCase(), typeof input.exchange === "string" ? input.exchange : undefined) : null;
+  if (unavailable) throw new Error(`${unavailable.message} ${unavailable.details}`);
   const value = normalizeResearchRule(kind,input);
   // A contract past its last session trades no more: it is refused as a ticker nothing quotes is, never followed.
   const expired = kind === "iv_spike" && value ? expiredContract(readResearchRule(kind, value)!.contract!, now) : null;

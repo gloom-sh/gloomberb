@@ -8,6 +8,7 @@ import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 import { formatStrikeLabel } from "../../../utils/options";
 import { formatOptionPrice, optionQuoteSide, optionSpread } from "./market-reference";
 import { formatCarryPercent, formatCostOfSpot } from "./carry";
+import { OPTION_IV_UNIT, optionIvFields } from "../shared/volatility/option-export";
 import type {
   OptionColumn,
   OptionFieldId,
@@ -360,9 +361,6 @@ function formatOptionContractCell(
       return formatCompact(contract.volume, { fixedDecimals: true });
     case "openInterest":
       return formatCompact(contract.openInterest, { fixedDecimals: true });
-    case "iv":
-      // A stale quote (from before the session, or under intrinsic) is shown, but no IV or greek is read from it.
-      return contract.quoteStale ? "stale" : formatIv(row.impliedVolatility, row.impliedVolatilityFilled);
     case "delta":
       return formatGreek(greeks?.delta);
     case "gamma":
@@ -379,6 +377,8 @@ function formatOptionContractCell(
       return column.side === "put" ? formatCostOfSpot(row.putCostOfSpot) : MISSING_VALUE;
     case "strike":
       return formatStrikeLabel(contract.strike);
+    default:
+      return MISSING_VALUE;
   }
 }
 
@@ -410,8 +410,10 @@ export function renderOptionCell(
   const contract = optionContractForColumn(row, column);
   const backgroundColor = optionMoneynessBackground(row, contract, column, rowState);
   const surface = backgroundColor ?? rowSurface;
+  const iv = column.field === "iv" ? optionIvFields(contract, row.impliedVolatility, row.impliedVolatilityFilled) : null;
   return {
-    text: formatOptionContractCell(row, contract, column),
+    text: iv ? iv.ivSource === "stale quote" ? "stale" : formatIv(iv.iv ?? undefined, iv.ivSource === "filled") : formatOptionContractCell(row, contract, column),
+    ...(iv ? { value: iv.iv === null ? null : iv.iv * 100, reportValueUnit: OPTION_IV_UNIT } : {}),
     ...(!contract ? { mayBeBlank: true } : {}),
     color: contract && !contract.quoteStale ? optionRoleColor(optionColumnRole(column), surface) : optionMutedColor(surface),
     keepColorWhenSelected: otherHalf,

@@ -165,6 +165,16 @@ describe("AlertsPane", () => {
     expect(row).not.toContain("BTC-USD:");
   });
 
+  test("shows distinct session labels for saved FX rules with and without a sessionless reading", async () => {
+    const regular = { ...makeAlert("fx-regular", "USDJPY=X", "above", 161), regularHoursOnly: true as const };
+    const unrestricted = { ...makeAlert("fx-week", "USDJPY=X", "above", 162), lastCheckedPrice: 159.2, lastCheckedAt: Date.now() };
+    await tui.render(<AlertsHarness width={165} height={12} alerts={[regular, unrestricted]} />, { width: 165, height: 12 });
+    await renderSettled();
+    const frame = tui.frame();
+    expect(frame).toMatch(/161(?:\.0+)?\s+[^\n]*FX regular/);
+    expect(frame).toMatch(/162(?:\.0+)?\s+[^\n]*FX week/);
+  });
+
   test("a quote one alert could not get is said on its row and in full in its detail, never in the footer", async () => {
     const checkedAt = Date.now() - 60_000;
     const quoted = (alert: AlertRule, price: number): AlertRule => ({ ...alert, lastCheckedPrice: price, lastCheckedAt: checkedAt });

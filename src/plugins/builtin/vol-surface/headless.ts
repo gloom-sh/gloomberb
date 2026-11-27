@@ -26,7 +26,7 @@ import { loadIvHistory, loadSurfaceDates } from "../iv-history/client";
 import { logFailure } from "../../../utils/log-failure";
 import {
   expiryFeedFields, expiryStamp, expiryStampText, formatIv, formatPrice, formatVolPoints, HIDDEN_SLOPE_TEXT, HIDDEN_YIELD_TEXT, selectSurfaceExpiry, surfaceForwardRow, surfaceSkewRow,
-  surfaceExpiryGaps, surfaceSettlementTime, surfaceSmileRows, surfaceSpotBasisLabel, surfaceTermRows, surfaceThirtyDayAtm, TERM_SLOPE_MIN_DAYS,
+  surfaceExpiryGaps, surfaceSettlementTime, surfaceSmileRows, surfaceSpotBasisLabel, surfaceTermAtmLabel, surfaceTermRows, surfaceThirtyDayAtm, TERM_SLOPE_MIN_DAYS,
   type SurfaceForwardRow, type SurfaceSkewRow,
 } from "./tables";
 
@@ -114,16 +114,16 @@ function smileSections(snapshot: SurfaceSnapshot, requested: number | null): {
   ] };
 }
 
-function termSection(snapshot: SurfaceSnapshot, readings: readonly SurfaceEventReading[]): HeadlessBundleSection {
+function termSection(snapshot: SurfaceSnapshot, axis: SurfaceAxis, readings: readonly SurfaceEventReading[]): HeadlessBundleSection {
   // The first expiry past a scheduled release names it: the step in its IV is the release's.
   const marks = new Map(readings.flatMap((reading) => reading.after == null ? [] : [[reading.after, surfaceReadingLabel(reading, true)] as const]));
   return { title: "Term structure", columns: [
     { key: "expiry", header: "Expiry", textFormat: expiryText }, { key: "days", header: "Days", format: days },
-    { key: "atm", header: "ATM IV", format: iv }, { key: "put25", header: "25D put IV", format: iv }, { key: "call25", header: "25D call IV", format: iv },
+    { key: "atm", header: surfaceTermAtmLabel(axis), format: iv }, { key: "put25", header: "25D put IV", format: iv }, { key: "call25", header: "25D call IV", format: iv },
     { key: "straddle", header: "Straddle", format: price }, { key: "sigma", header: "1-sigma", format: price },
     { key: "sigmaPercent", header: "1-sigma %", format: (value) => typeof value === "number" ? `${value.toFixed(2)}%` : MISSING_VALUE },
     ...(marks.size ? [{ key: "event", header: "Event", textFormat: eventText(readings) }] : []),
-  ], rows: surfaceTermRows(snapshot).map((row) => ({ ...row, expiry: expiryStamp(row.expiration),
+  ], rows: surfaceTermRows(snapshot, axis).map((row) => ({ ...row, expiry: expiryStamp(row.expiration),
     ...(marks.size ? { event: marks.get(row.expiration) ?? "" } : {}) })) };
 }
 
@@ -316,7 +316,7 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
     const smile = tab === "smile" ? smileSections(snapshot, requested) : null;
     // The report prints the view it was asked for, as the pane opens on it.
     const view: HeadlessBundleSection[] = tab === "smile" ? smile!.sections
-      : tab === "term" ? [termSection(snapshot, readings), ...readings.length ? [scheduledReleasesSection(readings)] : []]
+      : tab === "term" ? [termSection(snapshot, axis, readings), ...readings.length ? [scheduledReleasesSection(readings)] : []]
       : tab === "skew" ? [skewSection(snapshot)] : tab === "forwards" ? [forwardsSection(snapshot)]
       : surfaceSections(snapshot, axis, args.options.tenors as "listed" | "fixed");
     const dvolRead = dvolLoad ? await dvolLoad : null;

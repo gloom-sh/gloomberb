@@ -732,7 +732,7 @@ A zero or negative price is kept for a futures instrument. For any other instrum
 | `TBO` | TheBuildout infrastructure intelligence: a board of AI buildout themes sized by market cap and colored by their companies' median 1Y return, each theme's companies, sites and intel |
 | `TBOC <ticker>` | One company in TheBuildout: its power and hosting deals, suppliers and customers as a flow, its sites, hiring by site and the signals that name it. Linked to `TBO`, it follows the company under the cursor |
 | `CG` | Congress trading disclosures |
-| `WEI` | Global equity indices |
+| `WEI` | Global equity indices. DXY shows its cash index session separately from the age of the latest observation. |
 | `MAP` | World map with trading venues, country names and layers (`MAP venues` for venues alone) |
 | `TAS <ticker>` | Time and sales: trade prints, observed-window VWAP and large prints |
 | `QR <ticker>` | Quote recap: NBBO history with sizes, venues and spread (the same pane on its NBBO tab) |
@@ -861,6 +861,7 @@ That returns valuation, cash flows and yield shocks. Use `--price 103.333937` in
 - `quote` on a deferred contract or a later generic (NGF27.NYM, NG2) prints the front contract and its price, and the quote, chart and `history` follow the same month.
 - Watchlist and portfolio tables add a muted front reference beside the ticker (or Name when shown), such as `front NGX26 3.116`. It follows the front quote, leaves Last at the row's own contract price, and hides when the whole note cannot fit.
 - Generic tickers take OI for the open interest switch (CL1OI). UNIT says what a price counts, as `quote` does ("USD / barrel", "US cents / bushel").
+- CME currency futures are quoted in dollars per unit of the foreign currency, as in the [CME FX product guide](https://www.cmegroup.com/markets/fx/fx-product-guide). For example, `6J=F` is USD per JPY, while spot `USDJPY=X` is JPY per USD. `quote` exports the futures unit without changing the price.
 - Search matches the root's name and code, "No. 11" and "#11" alike (`FUT "sugar no. 11"`). A sector or group word lists its rows: `FUT softs` (coffee, sugar, cocoa, cotton, orange juice), `grains`, `agriculture`, `metals`, `energy`, `livestock`, `currencies`, `rates`. `FUT TTF` (`gloom fn FUT TTF`, `shot FUT TTF`) opens the board searched for that contract.
 - CHG% always shows, and the week's and month's returns come before UNIT (a cent price still reads 280.15¢). CONTRACT keeps at least 24 cells, so 1W joins from a 71-cell board, 1M from 80, UNIT from 106 and CHG from 117.
 - When a market is closed, **Price** shows the session's settlement (`S`) when known, or the last trade (`T`). A settled row's change is measured from the prior session's settlement when available.
@@ -1756,8 +1757,8 @@ The chain is the standard contracts. Contracts a corporate action adjusted (list
 
 The line under the table names the spot and time they are valued at, the session the volume counts and the open interest's date: `Greeks at spot 89.79 (close Mon 12 Oct), dividend yield 2.34%, rate 4% · Volume for Mon 12 Oct · OI as of Fri 9 Oct` (`OI date not published` when it cannot be established; [method](research-data.md#greeks-spot-and-time)).
 
-- `--csv` writes IV and delta as decimals under `IV (annualized decimal)` and `Delta (decimal)`. Every row carries `Spot`, `Spot basis` (`close`, `last`, `pre-market`, `after hours`), `Spot as of`, `Vol session`, `OI as of` and the fixed columns, with `interval` reading `snapshot`.
-- `--json` and `--ndjson` carry `iv` (a fraction) and `delta` on each contract. `metadata.model` has `spot`, `spotBasis`, `spotAsOf`, `valuationTime`, dividend yield and rate, with `metadata.openInterest.asOf`, `metadata.currency`, `metadata.interval` and `metadata.units`.
+- `--csv` writes `IV (annualized decimal)` (`0.125` for `12.5%`) and `Delta (decimal)`. Every row carries `IV source`, `Expiry`, `Chain as of`, `Spot`, `Spot basis` (`close`, `last`, `pre-market`, `after hours`), `Spot as of`, `Vol session`, `OI as of` and the fixed columns, with `interval` reading `snapshot`. The OMON pane and `gloom fn OMON` export IV in annualized percentage points (`12.5`), with a source for each side at each strike.
+- `--json` and `--ndjson` carry the same numeric `iv` and `delta`. JSON keeps expiry and chain as-of on each contract; `metadata.model` has `spot`, `spotBasis`, `spotAsOf`, `valuationTime`, dividend yield and rate, with `metadata.openInterest.asOf`, `metadata.currency`, `metadata.interval` and `metadata.units`.
   - `metadata.fields` says `iv` is the one solved from the quote midpoint (which delta and GEX use) and `impliedVolatility` the provider's own figure.
 
 #### Long-dated contracts (`--leaps`)

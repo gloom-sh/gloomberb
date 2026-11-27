@@ -18,11 +18,12 @@ export type OptionFieldId =
   | "extrinsicPerYear"
   | "costOfSpot";
 
-type OptionColumnId = "strike" | `${OptionSide}${Capitalize<OptionFieldId>}`;
+type OptionExportField = "expiry" | "chainAsOf" | "callIvSource" | "putIvSource";
+type OptionColumnId = "strike" | `${OptionSide}${Capitalize<OptionFieldId>}` | OptionExportField;
 
 export type OptionColumn = DataTableColumn & {
   id: OptionColumnId;
-  field: OptionFieldId | "strike";
+  field: OptionFieldId | "strike" | OptionExportField;
   side: OptionSide | null;
 };
 

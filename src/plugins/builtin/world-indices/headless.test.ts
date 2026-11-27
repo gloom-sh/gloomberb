@@ -64,6 +64,40 @@ test("WEI marks a stale open snapshot without relabeling a weekend close", async
   expect(lines.find((line) => line.startsWith("SPX"))).toMatch(/\bCLOSED\b/);
 });
 
+test("DXY uses its own cash session and the observed tick, not the equity pre-market or a presumed close", async () => {
+  const entry = WORLD_INDICES.find((index) => index.shortName === "DXY")!;
+  for (const [now, observed, price, marketState, stale, label, delayed] of [
+    ["2026-11-27T11:44:00Z", "2026-11-26T04:58:00Z", 103.81, "REGULAR", true, "OPEN · STALE"],
+    ["2026-11-21T16:00:00Z", "2026-11-20T21:59:00Z", 103.84, "CLOSED", false, "CLOSED"],
+    ["2026-11-21T16:00:00Z", "2026-11-21T12:00:00Z", 103.84, "CLOSED", true, "CLOSED · STALE"],
+    ["2026-11-22T23:02:00Z", "2026-11-22T23:01:00Z", 103.85, "REGULAR", false, "OPEN", true],
+    ["2026-01-02T00:40:00Z", "2026-01-01T00:14:59Z", 98.4, null, true, "UNKNOWN · STALE"],
+    ["2026-01-02T01:00:00Z", "2026-01-02T00:50:00Z", 98.4, null, true, "UNKNOWN · STALE"],
+    ["2026-11-27T22:25:00Z", "2026-11-27T20:58:00Z", 103.81, "CLOSED", true, "CLOSED · STALE"],
+    ["2026-11-25T00:30:00Z", "2026-11-25T00:14:59Z", 103.81, "CLOSED", false, "CLOSED"],
+  ] as const) {
+    setSystemTime(new Date(now));
+    const quote = createTestQuote({ symbol: entry.symbol, exchangeName: "NYB", instrumentType: "INDEX",
+      marketState: "PRE", preMarketPrice: price + 1,
+      ...(delayed ? { dataSource: "delayed", providerId: "gloomberb-cloud" } : {}),
+      lastUpdated: Date.parse(observed), price });
+    const marketData = createTestDataProvider({ getQuotesBatch: async (targets) => targets.map((target) => ({
+      target, quote: target.symbol === entry.symbol ? quote : null,
+    })) });
+    const args = createTestHeadlessArgs();
+    const result = await worldIndicesHeadless.load(args, createTestHeadlessContext({ marketData }));
+    const rows = (result.sections as Array<{ rows: Record<string, unknown>[] }>).flatMap((part) => part.rows);
+    expect(rows.find((row) => row.symbol === entry.symbol)).toMatchObject({ marketState, stale, lastUpdated: Date.parse(observed), price, extendedPrice: null });
+    const line = renderHeadlessPaneText(worldIndicesHeadless, result, args, "WEI").split("\n").find((row) => row.startsWith("DXY"));
+    expect(line).toContain(label);
+    const board = new Map([[entry.symbol, { quote, loading: false, error: null, stale: false }]]);
+    const cell = (id: WorldIndexColumn["id"]) => renderWorldIndexCell({ type: "row", entry }, { id, label: "", width: 12, align: "right" }, board, { sessionText: true });
+    expect(cell("status").value).toBe(label);
+    expect(cell("price").value).toBe(price);
+    expect(cell("time").value).toEqual(new Date(observed));
+  }
+});
+
 test("WEI and its board headline the regular session's close and move, as `ticker` does", async () => {
   const quotes = sessionQuotes("^GSPC", { instrumentType: "INDEX" });
   for (const state of ["weekend", "afterHours", "preMarket", "regular"] as const) {

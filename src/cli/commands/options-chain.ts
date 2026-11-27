@@ -14,6 +14,7 @@ import {
   chainOpenInterestAsOf, loadListedOpenInterest, openInterestAsOfLabel, type OpenInterestAsOf, statedOpenInterestAsOf, volumeSessionLabel,
 } from "../../plugins/builtin/options/open-interest-as-of";
 import { DEFAULT_OPTION_CALC_DRAFT } from "../../plugins/builtin/options-calculator/model";
+import { isMarkedChain, optionChainAsOf, optionIvFields } from "../../plugins/builtin/shared/volatility/option-export";
 import { expiryIsoDate, OPTION_EXPIRATION_PLACEHOLDER, parseOptionExpiration, settlementStampTime } from "../../utils/option-expiry";
 import { loadModelDividendYield } from "../../market-data/model-dividend-yield";
 import { formatUtcTime } from "../../utils/utc-time";
@@ -102,10 +103,7 @@ export const MARKED_OPTION_FIELDS = {
   mark: "price in USD; iv; delta and gamma per 1.00 move in the underlying; vega per volatility point and theta per calendar day, in USD.",
 } as const;
 
-/** Whether a venue marks the chain's contracts itself (Deribit): its IV and greeks are then used as they are. */
-export function isMarkedChain(chain: OptionsChain): boolean {
-  return [...chain.calls, ...chain.puts].some((contract) => contract.mark != null);
-}
+export { isMarkedChain };
 
 /** The coin a chain's premiums are quoted in (BTC), when a venue quotes them in one. */
 export function chainCoinCurrency(chain: OptionsChain): string | null {
@@ -131,6 +129,7 @@ export const OPTION_VOLATILITY_FIELDS = {
  */
 function optionModelFigures(chain: OptionsChain, inputs: OptionModelInputs): Map<OptionContract, OptionModelFigures> {
   const figures = new Map<OptionContract, OptionModelFigures>();
+  const marked = isMarkedChain(chain);
   const expirations = new Set([...chain.calls, ...chain.puts].map((contract) => contract.expiration));
   for (const expiration of expirations) {
     const slice: OptionsChain = {
@@ -141,11 +140,11 @@ function optionModelFigures(chain: OptionsChain, inputs: OptionModelInputs): Map
     const volatilities = solveChainVolatilities(slice, inputs.spot, inputs.dividendYield, inputs.now);
     for (const [side, contracts] of [["call", slice.calls], ["put", slice.puts]] as const) {
       for (const contract of contracts) {
-        const volatility = volatilities.byStrike.get(contract.strike);
+        const filled = volatilities.filled.has(contract.strike);
+        const { iv, ivSource } = optionIvFields(contract, marked ? undefined : volatilities.byStrike.get(contract.strike), filled);
         const delta = calculateOptionGreeks(contract, side, inputs.spot, inputs.dividendYield, volatilities)?.delta;
-        const iv = volatility != null && Number.isFinite(volatility) && volatility > 0 ? volatility : null;
         figures.set(contract, {
-          iv, ivFilled: iv != null && volatilities.filled.has(contract.strike),
+          iv, ivFilled: ivSource === "filled",
           delta: delta != null && Number.isFinite(delta) ? delta : null,
         });
       }
@@ -302,13 +301,22 @@ export function optionsBasisFields(basis: OptionsChainBasis) {
   };
 }
 
-export function optionRows(chain: OptionsChain) {
+export function optionsChainExport(chain: OptionsChain) {
+  const asOf = optionChainAsOf(chain.asOf);
+  const record = (contract: OptionContract) => {
+    const modeled = contract as OptionContract & Partial<OptionModelFigures>;
+    return { ...contract, ...optionIvFields(contract, modeled.iv, modeled.ivFilled), expiry: expiryIsoDate(contract.expiration), asOf };
+  };
+  return { ...chain, calls: chain.calls.map(record), puts: chain.puts.map(record) };
+}
+
+export function optionRows(chain: ReturnType<typeof optionsChainExport>) {
   const contracts = [
     ...chain.calls.map((contract) => ({ side: "call", contract })),
     ...chain.puts.map((contract) => ({ side: "put", contract })),
   ];
   return contracts.map(({ side, contract }) => {
-    const modeled = contract as OptionContract & Partial<OptionModelFigures>;
+    const modeled = contract as typeof contract & Partial<OptionModelFigures>;
     return {
       side,
       contract: contract.contractSymbol,
@@ -322,11 +330,12 @@ export function optionRows(chain: OptionsChain) {
       // A stale quote (from before the session, or under intrinsic) is shown but values nothing.
       iv: contract.quoteStale ? null : modeled.iv ?? null,
       // Solved from the strike's quote, or filled from its neighbours when it has none to solve from; a venue's own mark is neither.
-      ivSource: contract.quoteStale ? "stale quote" : modeled.iv == null ? null : contract.mark ? "mark" : modeled.ivFilled ? "filled" : "solved",
+      ivSource: modeled.ivSource ?? null,
       delta: contract.quoteStale ? null : modeled.delta ?? null,
       quoteStale: contract.quoteStale === true,
       ...(contract.adjusted ? { root: contract.adjusted.root, deliverable: contract.adjusted.deliverable } : {}),
-      expiration: expiryIsoDate(contract.expiration),
+      expiration: contract.expiry,
+      chainAsOf: contract.asOf,
       // A venue's marks and coin prices (Deribit), beside the dollar ones.
       ...(contract.mark ? {
         mark: contract.mark.price, gamma: contract.mark.gamma, vega: contract.mark.vega, theta: contract.mark.theta,

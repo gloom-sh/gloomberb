@@ -5,6 +5,8 @@ import { TextAttributes } from "../../../ui";
 import { formatNumber } from "../../../utils/format";
 import { renderQuoteBoardCell, type BoardQuoteMap, type BoardQuoteState } from "../shared/use-quote-board";
 import { isFeedGap, NOT_IN_FEED } from "./client";
+import { DOLLAR_INDEX_SYMBOL, dollarIndexQuoteStatus } from "./dollar-index";
+import { marketStateColor, marketStateDot, marketStateLabel } from "../../../market-data/market/status";
 import type {
   WorldIndexColumnId,
   WorldIndexTableRow,
@@ -111,8 +113,18 @@ export function renderWorldIndexCell(
         : { text: entry.name };
     default:
       if (unavailable) return { text: "" };
-      return renderQuoteBoardCell(column.id, quotes.get(entry.symbol), {
+      const state = quotes.get(entry.symbol);
+      const dollarIndex = column.id === "status" ? dollarIndexQuoteStatus(entry.symbol, state?.quote) : null;
+      if (dollarIndex) {
+        const session = dollarIndex.marketState == null ? "UNKNOWN" : marketStateLabel(dollarIndex.marketState);
+        const stale = dollarIndex.stale || state?.stale;
+        if (stale) return { text: options?.sessionText ? `${session} !` : "!", value: `${session} · STALE`, color: colors.warning };
+        const marketState = dollarIndex.marketState ?? undefined;
+        return { text: options?.sessionText ? session : marketStateDot(marketState), value: session, color: marketState ? marketStateColor(marketState) : colors.textDim };
+      }
+      return renderQuoteBoardCell(column.id, state, {
         sessionText: options?.sessionText,
+        useObservation: entry.symbol === DOLLAR_INDEX_SYMBOL,
         formatPrice: formatIndexPrice,
         formatChange: formatIndexChange,
       });

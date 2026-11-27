@@ -578,7 +578,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
       setSurfaceCoordinate(denseGrid.moneyness[selection.moneynessIndex] ?? (deltaSurface ? 0 : 1));
     }} fallback={table} loading={active.loading} meshAvailable={bitmapAvailable} /> : activeTab === "smile" && snapshot ? <SmileChart snapshot={snapshot} expiry={selectedExpiry}
       overlay={overlaySmiles} axis={axis} width={width} height={tableHeight} focused={focused} />
-      : activeTab === "term" && snapshot ? <TermChart snapshot={snapshot} width={width} height={tableHeight} focused={focused} events={eventReadings}
+      : activeTab === "term" && snapshot ? <TermChart snapshot={snapshot} axis={axis} width={width} height={tableHeight} focused={focused} events={eventReadings}
         historyFailed={!!surfaceEvents.data?.historyError} />
       : ["skew", "forwards"].includes(activeTab) && snapshot ? <ExpiryTable snapshot={snapshot} selected={selectedExpiry}
         onSelect={(entry) => setExpiration(entry.expiration)} forwards={activeTab === "forwards"} width={width} height={tableHeight}

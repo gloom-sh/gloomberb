@@ -9,14 +9,16 @@ import {
   formatOptionIvCell,
   formatOptionLastCell,
   loadOptionModelInputs,
-  optionRows,
+  optionRows as exportRows,
   optionsBasisFootnote,
+  optionsChainExport,
   valueChainAtModelSpot,
 } from "./options-chain";
 import { missingExpiryMessage } from "../../utils/option-expiry";
 import type { CliListing } from "../listing-arg";
 
 const at = (date: string) => Date.parse(`${date}T00:00:00Z`) / 1000;
+const optionRows = (chain: OptionsChain) => exportRows(optionsChainExport(chain));
 
 test("a missing expiry names the listed dates nearest the one asked for, in date order", () => {
   const listed = ["2026-10-16", "2027-01-15", "2027-12-17", "2028-03-17", "2028-06-16", "2028-12-15", "2029-01-19"].map(at);

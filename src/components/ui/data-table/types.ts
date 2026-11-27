@@ -87,6 +87,8 @@ export interface DataTableCell {
    * header: MCAP (USD).
    */
   valueUnit?: string;
+  /** A rendered-view report must export this cell's numeric value (or null) in this unit, rather than interpreting its text. */
+  reportValueUnit?: string;
   /**
    * This row owes no value here, with nothing missing: it comes after an event
    * the row is still waiting on (an economic release not yet out), or the row

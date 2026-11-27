@@ -7,7 +7,7 @@ import {
   FUTURES_BOARD_ROWS, FUTURES_SECTOR_ORDER, futuresBoardCode, futuresBoardContract, futuresGroupFilter, futuresNameKey,
   type FuturesContract, type FuturesSector,
 } from "../../../market-data/futures-board";
-import { CONTRACT_MONTH_NAME, futuresPriceUnit } from "../../../market-data/futures-contract";
+import { CONTRACT_MONTH_NAME, futuresPriceUnitLabel } from "../../../market-data/futures-contract";
 import { contractMonthLabel } from "../../../utils/contract-month";
 import { quoteDotMarketState } from "../../../market-data/market/status";
 import { futuresQuoteFromSettle } from "../../../market-data/market/change-basis";
@@ -145,7 +145,7 @@ export function futuresContractHeadline(
  * where the server has none ("EUR / MWh"), else null.
  */
 export function futuresUnitLabel(contract: FuturesContract, terms?: Pick<FuturesContractTermsPayload, "spec"> | null): string | null {
-  return futuresPriceUnit(contract, terms);
+  return futuresPriceUnitLabel(contract, terms);
 }
 
 /**

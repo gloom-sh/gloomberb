@@ -1,5 +1,7 @@
-import { expect, test } from "bun:test";
-import { optionRows, optionsBasisFootnote } from "../cli/commands/options-chain";
+import { afterEach, expect, setSystemTime, test } from "bun:test";
+import { serializeCliResult } from "../cli/result";
+import { createTestDataProvider } from "../test-support/data-provider";
+import { optionRows, optionsBasisFootnote, optionsChainExport, chainWithModelFigures } from "../cli/commands/options-chain";
 import { calculateOptionGreeks, solveChainVolatilities } from "../plugins/builtin/options/analytics";
 import { daysToExpiryFrom } from "../plugins/builtin/shared/volatility/pricing";
 import { dvolSection } from "../plugins/builtin/vol-surface/headless";
@@ -19,18 +21,19 @@ import { coinOptionsAlias, isCoinWithoutOptions, listedCoinOptions } from "./opt
 // 30 Oct 2026 08:00 UTC, when Deribit's BTC options of that date settle.
 const SETTLES = Date.UTC(2026, 9, 30, 8) / 1000;
 const NOW = Date.UTC(2026, 9, 22, 22, 42);
+afterEach(() => setSystemTime());
 
 function marked(strike: number, side: "call" | "put", iv: number, delta: number): OptionContract {
   return {
     contractSymbol: `BTC-30OCT26-${strike}-${side === "call" ? "C" : "P"}`, strike, currency: "USD", lastPrice: 3_841.22, change: 0,
-    percentChange: 0, volume: 0, openInterest: 482, bid: 3_759, ask: 3_963, impliedVolatility: iv, inTheMoney: false,
+    percentChange: 0, volume: 0, openInterest: 482, bid: 3_759, ask: 3_963, impliedVolatility: iv, inTheMoney: side === "call" ? strike < 81_380 : strike > 81_380,
     expiration: SETTLES, lastTradeDate: 0,
     mark: { price: 3_841.22, iv, delta, gamma: 0.000067, vega: 32.53, theta: -80.31, forward: 81_380 },
     coin: { currency: "BTC", bid: 0.046, ask: 0.0485, mark: 0.0472, last: 0.0472 },
   };
 }
 const chain: OptionsChain = {
-  underlyingSymbol: "BTC-USD", expirationDates: [SETTLES], calls: [marked(78_000, "call", 0.365, 0.8)],
+  underlyingSymbol: "BTC-USD", expirationDates: [SETTLES], calls: [marked(78_000, "call", 0.425, 0.8)],
   puts: [marked(78_000, "put", 0.365, -0.2)], feed: "deribit", rate: 0, venue: "Deribit", asOf: new Date(NOW).toISOString(),
 };
 
@@ -53,15 +56,26 @@ test("a Deribit expiry runs to its 08:00 UTC settlement, a US one to its date's 
   expect(expiryLabel(Date.UTC(2026, 9, 30) / 1000)).toBe("30 Oct 2026");
 });
 
-test("a marked contract keeps the venue's IV and greeks, with its coin premiums beside the dollar ones", () => {
+test("options JSON and CSV keep each contract's own IV in decimals, while the strike curve reads the OTM mark", async () => {
+  setSystemTime(NOW);
   const volatilities = solveChainVolatilities(chain, undefined, undefined, NOW);
   expect(volatilities.byStrike.get(78_000)).toBe(0.365);
   expect(calculateOptionGreeks(chain.puts[0], "put", undefined, undefined, volatilities)).toEqual({
     price: 3_841.22, delta: -0.2, gamma: 0.000067, thetaPerDay: -80.31, vegaPerPoint: 32.53, rhoPerPoint: 0,
   });
-  const [call] = optionRows(chain);
-  expect(call).toMatchObject({ coinCurrency: "BTC", coinBid: 0.046, coinMark: 0.0472, mark: 3_841.22, forward: 81_380,
+  const [call] = optionRows(optionsChainExport(chainWithModelFigures(chain, { now: NOW })));
+  expect(call).toMatchObject({ iv: 0.425, ivSource: "mark", coinCurrency: "BTC", coinBid: 0.046, coinMark: 0.0472, mark: 3_841.22, forward: 81_380,
     expiresAt: "2026-10-30T08:00:00.000Z" });
+  const cli = createTestCliContext({ dataProvider: createTestDataProvider({ getOptionsChain: async () => chain }) });
+  await marketDataCliCommands.find((command) => command.name === "options")!.execute(["BTC-USD"], cli.context);
+  const { result, options } = cli.printed[0]!;
+  const serialize = (format: "json" | "csv") => serializeCliResult(result, { ...cli.context.cliOptions, format }, options);
+  const json = JSON.parse(serialize("json"));
+  expect(json.metadata.units.iv).toBe("annualized decimal");
+  expect([json.data.calls[0], json.data.puts[0]]).toEqual([0.425, 0.365].map((iv) => expect.objectContaining({ iv, ivSource: "mark", expiry: "2026-10-30", asOf: chain.asOf })));
+  const [header, ...rows] = serialize("csv").trim().split(/\r?\n/).map((line) => line.split(","));
+  expect(header).toContain("IV (annualized decimal)");
+  expect(rows.map((row) => row[header!.indexOf("IV (annualized decimal)")])).toEqual(["0.425", "0.365"]);
   expect(optionsBasisFootnote({ spot: null, openInterest: null } as never, chain)).toStartWith(
     "Deribit marks: IV and greeks at each expiry's forward, rate 0%; $ is the BTC price at the forward · expiries settle 08:00 UTC · OI as of");
 });

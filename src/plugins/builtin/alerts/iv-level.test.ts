@@ -102,12 +102,13 @@ const READING: IvLevelReading = { atm: 0.3746, rr: -0.0396, quoteAt: "2026-10-22
 test("IV levels go off once, above or below, keep their readings on the device, and write synced config only when one goes off", async () => {
   const above = rule("IBIT", "atm", "above", "35");
   const below = rule("QQQ", "rr", "below", "-3");
-  const unread = rule("SPY", "rr", "below", "-6");
+  const unread = rule("FXY", "atm", "above", "12");
   const run = harness([above, below, unread], async (symbol) => {
-    if (symbol === "SPY") throw new Error("No option chain for SPY");
+    if (symbol === "FXY") return ivLevelReading(surface([85, 120], [0.091, 0.100]));
     return READING;
   });
   try {
+    expect(ivLevelCheckText(unread, run.checks()[unread.id])).toBe("Not checked yet");
     await run.checkOnce();
     expect(run.state.notified).toEqual(["IBIT 30d ATM IV 37.46% is above 35%", "QQQ 30d 25D RR -3.96 pts is below -3 pts"]);
     expect(run.state.writes).toBe(1);
@@ -118,7 +119,7 @@ test("IV levels go off once, above or below, keep their readings on the device, 
     // The readings are this device's, not the synced rule's.
     expect(JSON.stringify(run.rulesNow())).not.toContain("37.46");
     expect(ivLevelCheckText(fired!, run.checks()[fired!.id])).toBe("37.46% · quotes 10-22 17:45 UTC, 15 min delayed");
-    expect(ivLevelCheckText(waiting!, run.checks()[waiting!.id])).toBe("No option chain for SPY");
+    expect(ivLevelCheckText(waiting!, run.checks()[waiting!.id])).toBe("No usable reading: No clean option quotes near 30 days");
     expect(run.state.logged.map((entry) => [entry.rule, entry.value, entry.unit])).toEqual([
       ["IBIT · 30d ATM IV above 35%", 37.46, "%"],
       ["QQQ · 30d 25D RR below -3 pts", -3.96, "vol pts"],
@@ -127,7 +128,7 @@ test("IV levels go off once, above or below, keep their readings on the device, 
     // Alerted until re-armed: the next check reads only the rule still watching, and writes no synced config.
     run.state.loads.length = 0;
     await run.checkOnce();
-    expect(run.state.loads).toEqual(["SPY"]);
+    expect(run.state.loads).toEqual(["FXY"]);
     expect(run.state.notified).toHaveLength(2);
     expect(run.state.writes).toBe(1);
     expect(run.checks()[fired!.id]?.value).toBe(37.46);

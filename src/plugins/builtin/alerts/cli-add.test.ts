@@ -50,6 +50,9 @@ function cloud(appleQuote: Partial<Quote> = {}) {
   });
   const quotes: Record<string, Quote> = {
     "USDMXN=X": pair,
+    "USDJPY=X": { ...pair, symbol: "USDJPY=X", name: "USD/JPY", currency: "JPY", price: 159.2 },
+    "6J=F": createTestQuote({ symbol: "6J=F", price: 0.00628, exchangeName: "CME", instrumentType: "FUTURE" }),
+    FXY: createTestQuote({ symbol: "FXY", price: 58.3, exchangeName: "ARCA", listingExchangeName: "ARCA", instrumentType: "ETF" }),
     "USDNGN=X": { ...pair, symbol: "USDNGN=X", name: "USD/NGN", currency: "NGN", price: 1322 },
     AAPL: createTestQuote({ symbol: "AAPL", name: "Apple Inc.", price: 250, listingExchangeName: "NASDAQ", exchangeName: "NASDAQ",
       marketState: "REGULAR", ...appleQuote }),
@@ -292,6 +295,20 @@ test("an IV level from the shell is the rule the dialog saves, on the listing qu
   expect(events[0]).toMatchObject({ kind: "iv_level", target: "rule", status: "active" });
   expect(JSON.parse(events[0]!.value)).toEqual({ version: 1, symbol: "AAPL", exchange: "US", metric: "atm", direction: "above", threshold: 35 });
   expect(printed!.options!.text!(printed!.result.data)).toContain("IV level AAPL · 30d ATM IV above 35% (the app checks it every 15 minutes while it is running");
+});
+
+test("IV rules distinguish OTC FX and currency futures from the listed yen fund in both entry paths", async () => {
+  for (const [symbol, message] of [["USDJPY=X", "OTC FX implied volatility"], ["6J=F", "Futures options implied volatility"]] as const) {
+    const { error, details, events } = await addAlert([symbol, "iv", "above", "12"]);
+    expect(error).toContain(message);
+    expect(details).toContain("FXY options are listed ETF options, not spot FX");
+    expect(details).toContain("gloom fn OVDV FXY");
+    expect(events).toHaveLength(0);
+    expect(() => createResearchAlert("iv_level", { "iv_level:symbol": symbol, "iv_level:threshold": "12" })).toThrow(message);
+  }
+  const fxy = await addAlert(["FXY", "iv", "above", "12"]);
+  expect(fxy.events).toHaveLength(1);
+  expect(fxy.printed!.options!.text!(fxy.printed!.result.data)).toContain("Thin quotes may leave no usable 30-day IV reading");
 });
 
 test("an IV level on bitcoin reads Deribit's fit and goes off, while its news points to a keyword alert", async () => {
@@ -585,6 +602,22 @@ test("a second add of one alert names it and adds nothing, re-arming an active o
     ["rearmed", true, "AAPL:NASDAQ above 260.00"],
     ["deleted", true, "AAPL:NASDAQ above 260.00"],
   ]);
+});
+
+test("alerts list distinguishes a regular-only FX rule from a rule with a sessionless reading", async () => {
+  setSystemTime(new Date("2026-11-05T15:00:00Z"));
+  const desk = await profile();
+  expect((await desk.run(["add", "USDJPY=X", "above", "161", "--session", "regular"])).error).toBeNull();
+  expect((await desk.run(["add", "USDJPY=X", "above", "162"])).error).toBeNull();
+  const { alerts } = await desk.stored();
+  expect(alerts.find((rule) => rule.targetPrice === 161)).toMatchObject({ regularHoursOnly: true });
+  expect(alerts.find((rule) => rule.targetPrice === 161)?.lastCheckedPrice).toBeUndefined();
+  expect(alerts.find((rule) => rule.targetPrice === 162)).toMatchObject({ lastCheckedPrice: 159.2 });
+  expect(alerts.find((rule) => rule.targetPrice === 162)).not.toHaveProperty("regularHoursOnly");
+  const { output } = await desk.run(["list"]);
+  expect(output).toContain("FX regular prints only");
+  expect(output).toContain("FX trading week (includes untagged prints)");
+  expect(output).not.toContain("Regular and extended");
 });
 
 test("alerts list --csv keeps its columns in their order and adds when each alert was made, its listing, currency and last reading", async () => {

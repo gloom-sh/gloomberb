@@ -6,6 +6,8 @@ import type { Quote, TickerFinancials } from "../../types/financials";
 import { createTestCliContext, type PrintedCliResult } from "../../test-support/cli-context";
 import { marketDataCliCommands } from "./market";
 import { buildTickerReport } from "./ticker";
+import { serializeCliResult } from "../result";
+import { DEFAULT_CLI_OPTIONS } from "../options";
 
 const stripAnsi = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, "");
 const config = createDefaultConfig("/tmp/gloom-quote-energy-units-test");
@@ -27,6 +29,24 @@ const quote = (symbol: string, currency: string, price: number, change: number):
 });
 const ttf = quote("TTF=F", "EUR", 90.3, 2.874);
 const ng = quote("NG=F", "USD", 2.761, -0.035);
+
+test("yen futures export dollars per yen, without rescaling the quote or relabeling spot FX", async () => {
+  const future = quote("6J=F", "USD", 0.00628, 0);
+  const spot = { ...quote("USDJPY=X", "JPY", 159.4, 0), instrumentType: "CURRENCY" };
+  const terms = { ...ngTerms, symbol: future.symbol, root: "6J", name: "Japanese Yen", settlement: null,
+    spec: { ...ngTerms.spec!, unit: "USD / JPY", tick: 0.0000005, tickValue: 6.25 } };
+  spyOn(apiClient, "getCloudFuturesContract").mockResolvedValue(terms);
+  const cli = createTestCliContext({ config, dataProvider: { getQuotesBatch: async () => [future, spot].map((item) => ({
+    target: { symbol: item.symbol, exchange: "" }, quote: item,
+  })) } });
+  await quoteCommand.execute([future.symbol, spot.symbol], cli.context);
+  const { result, options } = cli.printed[0]!;
+  expect(result.data).toMatchObject([{ priceUnit: "USD per JPY", quote: { price: 0.00628 }, futuresContract: { spec: { unit: "USD per JPY", tick: 0.0000005 } } },
+    { quote: { price: 159.4 } }]);
+  const [header, ...rows] = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
+  const unit = header!.split(",").indexOf("currency_or_unit");
+  expect(rows.slice(0, 2).map((row) => row.split(",")[unit])).toEqual(["USD per JPY", "JPY per USD"]);
+});
 
 afterEach(() => {
   (apiClient.getCloudFuturesContract as unknown as { mockRestore?: () => void }).mockRestore?.();
