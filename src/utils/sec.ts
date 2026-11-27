@@ -112,7 +112,9 @@ export function isKnownNonUsEquityTicker(ticker: TickerRecord | null | undefined
  * destination or no venue at all, which look the symbol up as a US ticker.
  */
 export function nonUsSecListingVenue(ticker: string, exchange?: string): string | null {
-  const venue = parsePublicTickerKey(ticker).exchange ?? canonicalExchange(exchange);
+  const listing = parsePublicTickerKey(ticker);
+  const venue = listing.exchange ?? (canonicalExchange(exchange)
+    || (/^[A-Z0-9][A-Z0-9-]{0,11}\.PS$/i.test(listing.symbol) ? "XPHS" : ""));
   if (!venue || ROUTING_EXCHANGES.has(venue) || isUsEquityExchange(venue)) return null;
   return venue;
 }

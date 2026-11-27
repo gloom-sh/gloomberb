@@ -1,5 +1,6 @@
 import { listingSuffixExchange } from "../sources/listing-symbols";
 import { canonicalExchange, parsePublicTickerKey, typedExchangeVenue } from "./exchanges";
+import { nonUsSecListingVenue } from "./sec";
 
 /** Where a listing's company announcements are published: the venue's page for the company, or its disclosure search. */
 export interface ExchangeAnnouncementsPage {
@@ -38,6 +39,7 @@ const PAGES: Readonly<Record<string, (code: string) => ExchangeAnnouncementsPage
   HNX: (code) => ({ name: "Hanoi Stock Exchange issuer disclosures", url: `https://www.hnx.vn/cophieu-etfs/chi-tiet-chung-khoan-ny-${encodeURIComponent(code.toLowerCase())}.html?_des_tab=3` }),
   HOSE: () => ({ name: "Ho Chi Minh Stock Exchange issuer disclosures", url: "https://www.hsx.vn/vi/tin-tuc/tin-to-chuc-niem-yet" }),
   JAKARTA: () => ({ name: "Indonesia Stock Exchange disclosures", url: "https://www.idx.id/en/listed-companies/disclosure" }),
+  XPHS: () => ({ name: "Philippine Stock Exchange company announcements", url: "https://edge.pse.com.ph/announcements/form.do" }),
   JPX: () => ({ name: "TDnet timely disclosures", url: "https://www.release.tdnet.info/inbs/I_main_00.html" }),
   HKEX: () => ({ name: "HKEXnews", url: "https://www1.hkexnews.hk/search/titlesearch.xhtml?lang=en" }),
   SWX: () => ({ name: "SIX Swiss Exchange", url: "https://www.six-group.com/en/market-data/news-tools/equity-issuer-news.html" }),
@@ -60,7 +62,7 @@ export function issuerFilingSuffixVenue(symbol: string): string | undefined {
   if (/^\d{4}\.KL$/i.test(symbol)) return "BURSAMY";
   if (/^[A-Z]{4}\.JK$/i.test(symbol)) return "JAKARTA";
   if (/^[A-Z0-9][A-Z0-9&-]*\.BK$/i.test(symbol)) return "SET";
-  return undefined;
+  return nonUsSecListingVenue(symbol) ?? undefined;
 }
 
 /** The overseas venue's disclosure page, when the listing has one. */
@@ -74,6 +76,7 @@ const PUBLISHERS: Readonly<Record<string, string>> = {
   TWSE: "MOPS", TPEX: "MOPS",
   BURSAMY: "Bursa Malaysia",
   JAKARTA: "Indonesia Stock Exchange",
+  XPHS: "Philippine Stock Exchange",
   ASX: "ASX", CXA: "ASX", HKEX: "HKEXnews", SWX: "SIX Swiss Exchange", NSE: "NSE", SET: "SET",
   JPX: "TDnet", HNX: "HNX", HOSE: "HOSE", KRX: "DART", KOSDAQ: "DART", SGX: "SGX", SSE: "CNINFO", SZSE: "CNINFO",
 };
