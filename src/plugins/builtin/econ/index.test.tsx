@@ -190,6 +190,42 @@ describe("EconCalendarPane", () => {
     expect(wide).toMatch(/GDP Growth Rate QoQ Final\s+—\s+0\.4%\s+3\.3%/);
   });
 
+  // A figure column is as wide as the widest figure listed, so one trade balance weeks out (`1.522B AUD`) took the
+  // forecast from every row of a phone. The long figure gives its cells back first.
+  test("a long figure is cut before a phone loses the forecast of every row", async () => {
+    const persistence = new MemoryPluginPersistence();
+    const at = (hours: number) => new Date(Date.now() + hours * 3_600_000).toISOString();
+    persistence.seedResource("calendar", "global", [
+      { id: "qoq", date: at(1), time: "13:00", country: "CA", event: "GDP Growth Rate QoQ Final", impact: "high", actual: null, forecast: "0.4%", prior: "3.3%" },
+      { id: "out", date: at(-2), time: "10:00", country: "CN", event: "Balance of Trade", impact: "high", actual: "111.2B", forecast: "100B", prior: "105.28B" },
+      { id: "aud", date: at(30), time: "18:00", country: "AU", event: "Balance of Trade", impact: "high", actual: null, forecast: "1.522B", prior: "2.826B", currency: "AUD" },
+      { id: "fed", date: at(54), time: "18:00", country: "US", event: "Fed Interest Rate Decision", impact: "high", actual: null, forecast: "3.50-3.75%", prior: "3.75-4.00%" },
+    ], { sourceKey: "gloomberb-cloud", schemaVersion: 1 });
+    attachEconCalendarPersistence(persistence);
+
+    // 45 cells here are a phone's 48 less the three its flags take.
+    const phone = await renderPane(45, "high");
+    expect(phone).toMatch(/EVENT\s+ACT\s+EST\s*\n/);
+    expect(phone).toContain("1 hidden · PRIOR");
+    // Every other row keeps its forecast whole, and the long ones say they are cut.
+    expect(phone).toMatch(/GDP Growth Rat…\s+—\s+0\.4%/);
+    expect(phone).toMatch(/Balance of Tra…\s+111\.2B\s+100B\s/);
+    expect(phone).toMatch(/Balance of Tra…\s+—\s+1\.522B…/);
+    expect(phone).toMatch(/Fed Interest R…\s+—\s+3\.50-3…/);
+
+    // A pane whose names have their 20 cells beside the long figures cuts nothing.
+    const firstScreen = await renderPane(56, "high");
+    expect(firstScreen).toContain("1 hidden · PRIOR");
+    expect(firstScreen).toMatch(/Balance of Trade\s+—\s+1\.522B AUD/);
+    expect(firstScreen).toMatch(/Fed Interest Rate De\S*\s+—\s+3\.50-3\.75%/);
+
+    // With room for the names beside them, long figures are whole.
+    const wide = await renderPane(110, "high");
+    expect(wide).toMatch(/1\.522B AUD\s+2\.826B AUD/);
+    expect(wide).toMatch(/3\.50-3\.75%\s+3\.75-4\.00%/);
+    expect(wide).not.toMatch(/\d hidden · /);
+  });
+
   // Only the table drawn leaves figures out: the file has all three at any width, as it had before the names came first.
   test("Export CSV keeps every figure, whatever a narrow pane leaves out", async () => {
     seedLongNames();
