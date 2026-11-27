@@ -24,6 +24,7 @@ import { createAlert } from "./alert-engine";
 import { ALERTS_PLUGIN_ID } from "./constants";
 import { FIRED_LOG_KEY, readFiredAlerts } from "./fired-log";
 import { createResearchAlert } from "./research-builder";
+import { alertSessionLabel } from "./session";
 import { IV_LEVEL_ALERTS_KEY } from "./events";
 import { checkIvLevelAlertsNow, startIvLevelAlerts } from "./iv-level";
 import { seriesNamedBy } from "../../../series/registry";
@@ -50,6 +51,9 @@ function cloud(appleQuote: Partial<Quote> = {}) {
   });
   const quotes: Record<string, Quote> = {
     "USDMXN=X": pair,
+    "USDJPY=X": { ...pair, symbol: "USDJPY=X", name: "USD/JPY", currency: "JPY", price: 159.2 },
+    "6J=F": createTestQuote({ symbol: "6J=F", price: 0.00628, exchangeName: "CME", instrumentType: "FUTURE" }),
+    FXY: createTestQuote({ symbol: "FXY", price: 58.3, exchangeName: "ARCA", listingExchangeName: "ARCA", instrumentType: "ETF" }),
     "USDNGN=X": { ...pair, symbol: "USDNGN=X", name: "USD/NGN", currency: "NGN", price: 1322 },
     AAPL: createTestQuote({ symbol: "AAPL", name: "Apple Inc.", price: 250, listingExchangeName: "NASDAQ", exchangeName: "NASDAQ",
       marketState: "REGULAR", ...appleQuote }),
@@ -115,6 +119,7 @@ test("a price alert is kept for the listing quote prints, so one pair is one tar
   for (const { stored, error } of spellings) {
     expect(error).toBeNull();
     expect(stored.map((alert) => [alert.symbol, alert.exchange, alert.targetPrice])).toEqual([["USDMXN=X", undefined, 18.8]]);
+    expect(alertSessionLabel(stored[0]!)).toBe("FX trading week");
   }
 });
 
@@ -292,6 +297,20 @@ test("an IV level from the shell is the rule the dialog saves, on the listing qu
   expect(events[0]).toMatchObject({ kind: "iv_level", target: "rule", status: "active" });
   expect(JSON.parse(events[0]!.value)).toEqual({ version: 1, symbol: "AAPL", exchange: "US", metric: "atm", direction: "above", threshold: 35 });
   expect(printed!.options!.text!(printed!.result.data)).toContain("IV level AAPL · 30d ATM IV above 35% (the app checks it every 15 minutes while it is running");
+});
+
+test("IV rules distinguish OTC FX and currency futures from the listed yen fund in both entry paths", async () => {
+  for (const [symbol, message] of [["USDJPY=X", "OTC FX implied volatility"], ["6J=F", "Futures options implied volatility"]] as const) {
+    const { error, details, events } = await addAlert([symbol, "iv", "above", "12"]);
+    expect(error).toContain(message);
+    expect(details).toContain("FXY options are listed ETF options, not spot FX");
+    expect(details).toContain("gloom fn OVDV FXY");
+    expect(events).toHaveLength(0);
+    expect(() => createResearchAlert("iv_level", { "iv_level:symbol": symbol, "iv_level:threshold": "12" })).toThrow(message);
+  }
+  const fxy = await addAlert(["FXY", "iv", "above", "12"]);
+  expect(fxy.events).toHaveLength(1);
+  expect(fxy.printed!.options!.text!(fxy.printed!.result.data)).toContain("Thin quotes may leave no usable 30-day IV reading");
 });
 
 test("an IV level on bitcoin reads Deribit's fit and goes off, while its news points to a keyword alert", async () => {

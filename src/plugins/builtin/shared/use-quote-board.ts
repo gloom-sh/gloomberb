@@ -738,6 +738,7 @@ export interface QuoteBoardCellFormat {
   sessionText?: boolean;
   /** The moment the status cell reads the venue's session at, in ms; the current time when omitted. */
   now?: number;
+  useObservation?: boolean;
   /** Called with the quote at its headline: a finite price. */
   formatPrice: (quote: Quote) => string;
   /** Called with the quote at its headline: a finite change; the text carries its sign. */
@@ -781,7 +782,7 @@ export function renderQuoteBoardCell(
   state: BoardQuoteState | undefined,
   format: QuoteBoardCellFormat,
 ): DataTableCell {
-  const quote = state?.quote ? boardHeadlineQuote(state.quote) : state?.quote;
+  const quote = state?.quote && !format.useObservation ? boardHeadlineQuote(state.quote) : state?.quote;
   // One row must not mix a loading marker with a no-data marker.
   if (isBoardRowLoading(state)) return { text: kind === "status" ? "" : "…", color: colors.textDim };
 

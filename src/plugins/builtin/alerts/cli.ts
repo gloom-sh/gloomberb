@@ -66,7 +66,7 @@ import { IV_LEVEL_CHECKS_KEY, ivLevelCheckText, readIvLevelChecks, rearmIvLevelA
 import { hasAlertCurrency, isDollarMark, isPenceLevel, parseAlertPrice, readAlertLevel } from "./price";
 import { alertCurrencyMismatch, assertAlertCurrency, commodityFutureNote, farTargetMessage, levelInQuoteUnit } from "./quotes";
 import { isPenceQuotedLine, isSharePriceQuote } from "../../../market-data/market/format";
-import { MACRO_EVENT_NAMES, createResearchAlert, formatPremium, ivLevelUnitError, parseAmount, parseIvLevel } from "./research-builder";
+import { FXY_IV_NOTE, IV_LEVEL_DELIVERY, MACRO_EVENT_NAMES, createResearchAlert, formatPremium, ivLevelUnavailable, ivLevelUnitError, parseAmount, parseIvLevel } from "./research-builder";
 import { IV_LEVEL_RANGES, MAX_LEAD_DAYS, type IvLevelMetric, type MacroAlertEvent } from "./research-rules";
 import {
   createScheduledAlert,
@@ -608,7 +608,7 @@ function eventRow(
     // An IV level is read by this app, so its last reading is this device's; Gloom Cloud reads the rest.
     const state = cloud?.states.get(rule.id);
     const reading = rule.kind === "iv_level" ? {
-      lastReading: ivLevelCheckText(rule, check),
+      lastReading: ivLevelCheckText(rule, check), delivery: IV_LEVEL_DELIVERY,
       lastReadingAt: check?.value != null ? isoUtc(check.quoteAt ? Date.parse(check.quoteAt) : check.checkedAt) || null : null,
       lastReadingFeed: check?.value != null ? check.source ?? "feed not recorded" : null,
     } : state ? {
@@ -712,7 +712,7 @@ function textRow(row: AlertListRow): Record<string, unknown> {
     createdAt: isoUtc(typeof row.createdAt === "number" ? row.createdAt : null),
     listing: row.listing ?? "",
     currency: row.currency ?? "",
-    lastReading: row.lastReading ?? "",
+    lastReading: row.delivery ? `${row.delivery} · ${row.lastReading}` : row.lastReading ?? "",
     lastReadingAt: row.lastReadingAt ?? "",
     session: row.session ?? "",
     comparatorReading: row.comparatorReading ?? "",
@@ -1017,6 +1017,8 @@ export const alertsCliCommand: CliCommandDef = {
         const coinOptions = research?.kind === "iv_level" && listedCoinOptions(quoted.listing.key) != null;
         if (usOnly && !coinOptions) {
           const venue = quoted.listing.exchange || canonicalExchange(quoted.quote.listingExchangeName || quoted.quote.exchangeName);
+          const unavailable = research?.kind === "iv_level" ? ivLevelUnavailable(quoted.listing.key, venue, quoted.quote.instrumentType) : null;
+          if (unavailable) ctx.fail(unavailable.message, unavailable.details);
           if (!isUsListingExchange(venue)) {
             const { message, details } = await usListingsOnlyMessage(usOnly, quoted.listing, market,
               (key) => `gloom alerts add ${key} ${args.slice(2).join(" ")}`);
@@ -1444,7 +1446,8 @@ export const alertsCliCommand: CliCommandDef = {
         ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert: rule,
           ...needsPro ? { status: NEEDS_PRO } : needsSignIn ? { status: NEEDS_SIGN_IN } : {} },
           ...(read.length > 0 ? { warnings: read } : {}) }, {
-          text: (data) => `Added alert ${data.alert.id}: ${alertKindLabel(rule.kind)} ${eventAlertTarget(rule)} (${delivery}).${signIn}${dryRunNote(data.dryRun)}`,
+          text: (data) => `Added alert ${data.alert.id}: ${alertKindLabel(rule.kind)} ${eventAlertTarget(rule)} (${delivery}).${signIn}${dryRunNote(data.dryRun)}`
+            + (rule.kind === "iv_level" && priceListing?.symbol === "FXY" ? `\n${FXY_IV_NOTE}` : ""),
         });
         return;
       }

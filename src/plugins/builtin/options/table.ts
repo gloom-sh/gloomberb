@@ -8,6 +8,7 @@ import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 import { formatStrikeLabel } from "../../../utils/options";
 import { formatOptionPrice, optionQuoteSide, optionSpread } from "./market-reference";
 import { formatCarryPercent, formatCostOfSpot } from "./carry";
+import { OPTION_IV_UNIT, optionIvFields } from "./export";
 import type {
   OptionColumn,
   OptionFieldId,
@@ -379,6 +380,8 @@ function formatOptionContractCell(
       return column.side === "put" ? formatCostOfSpot(row.putCostOfSpot) : MISSING_VALUE;
     case "strike":
       return formatStrikeLabel(contract.strike);
+    default:
+      return MISSING_VALUE;
   }
 }
 
@@ -412,6 +415,7 @@ export function renderOptionCell(
   const surface = backgroundColor ?? rowSurface;
   return {
     text: formatOptionContractCell(row, contract, column),
+    ...(column.field === "iv" ? { value: optionIvFields(contract, row.impliedVolatility, row.impliedVolatilityFilled).iv, reportValueUnit: OPTION_IV_UNIT } : {}),
     ...(!contract ? { mayBeBlank: true } : {}),
     color: contract && !contract.quoteStale ? optionRoleColor(optionColumnRole(column), surface) : optionMutedColor(surface),
     keepColorWhenSelected: otherHalf,

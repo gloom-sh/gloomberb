@@ -259,6 +259,7 @@ function reportedRows<T, C extends DataTableColumn>(props: DataTableProps<T, C>)
           text: normalize(cell.text),
           ...(cell.value instanceof Date && Number.isFinite(cell.value.getTime()) ? { instant: cell.value.toISOString() } : {}),
           ...(typeof cell.value === "number" && Number.isFinite(cell.value) ? { value: cell.value } : {}),
+          ...(cell.reportValueUnit ? { unit: cell.reportValueUnit, ...cell.value == null ? { value: null } : {} } : {}),
           // Read by the JSON and CSV, never drawn or printed as text.
           ...(columnIndex >= props.columns.length ? { reportOnly: true } : {}),
         };

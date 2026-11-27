@@ -21,7 +21,6 @@ import type {
   CorporateActionsData,
   DemergerAction,
   HolderData,
-  OptionsChain,
   PricePoint,
   Quote,
   SplitAction,
@@ -120,11 +119,13 @@ import {
   optionRows,
   optionsBasisFields,
   optionsBasisFootnote,
+  optionsChainExport,
   parseOptionExpiration,
   takeExpirationOption,
   valueChainAtModelSpot,
   type OptionsChainBasis,
 } from "./options-chain";
+import { OPTION_IV_UNIT, optionExpiryClock } from "../../plugins/builtin/options/export";
 import { optionQuoteSession } from "../../plugins/builtin/shared/volatility/quote-session";
 import {
   expirationHint, expiredExpiryText, expiryIsoDate, isLiveOptionExpiry, liveDefaultExpiry, liveOptionExpiries, missingExpiryMessage,
@@ -218,7 +219,8 @@ import { fail, failWithError, isCliFailure, NO_DATA_CODE } from "../errors";
 import { createConcurrencyLimiter, mapWithConcurrency } from "../../utils/concurrency";
 import { CLOSE_COPIED_FLAG, MISSING_VOLUME_TEXT } from "../../utils/price-history-integrity";
 import { CRYPTO_BOARD_HINT, quoteNotes } from "./crypto-hints";
-import { bareFuturesCode, futuresBoardContract } from "../../market-data/futures-board";
+import { bareFuturesCode, futuresBoardContract, futuresContractByCode } from "../../market-data/futures-board";
+import { futuresListingVenue } from "../../utils/futures-generic";
 import { commodityNamedIn, commoditySearchName } from "../../market-data/commodity-names";
 import { newsEmptyMessage } from "./news-hints";
 import { centralBankInNews, centralBankShortNamed } from "../../utils/central-banks";
@@ -443,6 +445,7 @@ type QuoteCliRecord = Omit<QuoteBatchResult, "error"> & {
   listing?: { name: string | null };
   /** A futures row's contract, terms and latest confirmed settlement, as `ticker` reads them. */
   futuresContract?: FuturesContractTermsPayload;
+  priceUnit?: string;
   /** The quote of the root's front contract, for a futures row that prices another one (NGF27, NG2). */
   futuresFront?: Quote;
   /**
@@ -1030,6 +1033,7 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
       // The currency the service gives, an index's too (^MERV's ARS, ^N225's JPY), whether the row is current or
       // stale: its level stays in points, and the export's currency_or_unit says so.
       currency: quote?.currency ?? "",
+      priceUnit: result.priceUnit,
       providerId: quote?.providerId ?? "",
       source: quote?.dataSource ?? quote?.providerId ?? "",
       feed: quoteFeedState(quote, now),
@@ -1458,6 +1462,13 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     // JSON's market cap is the one valuation and RV show, on the share count they show (viewMarketCapitalization).
     const viewCaps = ctx.cliOptions.format === "json" ? await quoteViewMarketCaps(answers.map(({ result }) => result), market) : null;
     // Each row names its listing by key (SAN:EPA) and company, so the table needs no line above it.
+    const priceUnits = answers.map(({ result }, index) => {
+      if (!isFuturesInstrument(result.target.symbol, result.quote?.instrumentType)) return null;
+      const terms = contracts[index];
+      const contract = futuresContractByCode(terms?.root ?? futuresListingVenue(result.target.symbol, result.target.exchange)?.root)
+        ?? futuresBoardContract(result.target.symbol);
+      return contract?.sector === "currencies" ? futuresPriceUnit(contract, terms) : null;
+    });
     const data = answers.map(({ result, listing, failure }, index) => ({
       target: result.target,
       listing: listingMetadata(listingIdentity(listing, result.quote)),
@@ -1468,6 +1479,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       quote: withPreviousCloseDate(withViewMarketCap(result.quote, viewCaps?.[index])),
       ...sourceMoves[index] ? { sourceMove: sourceMoves[index] } : {},
       ...contracts[index] ? { futuresContract: contracts[index] } : {},
+      ...priceUnits[index] ? { priceUnit: priceUnits[index]! } : {},
       ...fronts[index] ? { futuresFront: fronts[index] } : {},
       ...gasInUsd[index] ? { usdPerMmbtu: gasInUsd[index] } : {},
       ...perpetualContracts[index] ? { perpetualContract: perpetualContracts[index] } : {},
@@ -1572,7 +1584,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
         symbolOrSeries: row.symbol,
         // A pair's rate is its quote currency per base: JPY per USD, as `history` and `fx` export it.
         currencyOrUnit: isIndexLevel(row.instrumentType) ? row.yieldIndex ? YIELD_INDEX_EXPORT_UNIT : INDEX_POINTS_EXPORT_UNIT
-          : (row.currency && pairExportUnit(row.symbol, row.currency)) || row.currency || (row.yieldIndex ? YIELD_INDEX_EXPORT_UNIT : null),
+          : row.priceUnit || (row.currency && pairExportUnit(row.symbol, row.currency)) || row.currency || (row.yieldIndex ? YIELD_INDEX_EXPORT_UNIT : null),
         // Each row as of its own price (^TNX's 19:59 beside ^VIX's 21:15), as Updated says; a row with none is blank.
         asOf: row.updatedAt || null,
         source: rowSources.get(row.symbol),
@@ -4450,7 +4462,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const expiry = expirationDate ?? (contractExpiries.size === 1 ? contractExpiries.values().next().value : undefined);
     const expiryFacts = expiry == null ? null : optionExpiryFacts(expiry, now, expiryVenue);
     ctx.printResult({
-      data: chain,
+      data: optionsChainExport(chain),
       metadata: {
         ...listingMetadata(identity),
         expirations: chain.expirationDates,
@@ -4458,8 +4470,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         snapshot,
         currency,
         interval: OPTIONS_EXPORT_INTERVAL,
-        // `iv` is annualised volatility and `delta` the option's change per 1.00 move in the underlying, both decimals.
-        units: { iv: "annualized decimal", delta: "decimal per 1.00 move in the underlying" },
+        units: { iv: OPTION_IV_UNIT, delta: "decimal per 1.00 move in the underlying" },
         // What each contract's `iv` and `impliedVolatility` are, so neither is read as the other.
         fields: marked ? MARKED_OPTION_FIELDS : OPTION_VOLATILITY_FIELDS,
         // What `iv` and `delta` on each contract are valued from; the provider's own impliedVolatility is left as sent.
@@ -4479,9 +4490,9 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     }, {
       // Options a venue other than the US exchanges lists (Deribit's) are headed by that venue, not the coin's board.
       heading: chain.venue ? `${cliStyles.bold(identity.name || identity.symbol)}${cliStyles.muted(`  ·  ${chain.venue}`)}` : listingHeading(identity),
-      rows: (data: OptionsChain) => optionRows(data).map((row) => ({ ...row, ...basisFields })),
+      rows: (data) => optionRows(data).map((row) => ({ ...row, ...basisFields })),
       // Choosing an expiry needs the list; once one is chosen the table is that expiry.
-      summary: (data: OptionsChain) => [expiryFacts ? `Expiry ${expiryFacts.date} (${expiryFacts.expired ? "expired" : `${expiryFacts.daysToExpiry}d`})` : "",
+      summary: (data) => [expiryFacts && expiry != null ? `Expiry ${expiryFacts.date} (${optionExpiryClock(expiry, now, expiryVenue, modelSpot?.valuationTime)})` : "",
         expirationDate == null ? formatExpiryList(data.expirationDates) : ""].filter(Boolean).join("\n"),
       empty: adjusted ? `No adjusted option contracts for ${listingTitle(identity)} on this expiry.` : `No option contracts for ${listingTitle(identity)}.`,
       ...(contractCount > 0 ? { footnote: optionsBasisFootnote(basis, chain) } : {}),
@@ -4495,7 +4506,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         { key: "last", header: "Last" },
         { key: "bid", header: "Bid" },
         { key: "ask", header: "Ask" },
-        { key: "iv", header: "IV (annualized decimal)" },
+        { key: "iv", header: `IV (${OPTION_IV_UNIT})` },
         { key: "ivSource", header: "IV source" },
         { key: "delta", header: "Delta (decimal)" },
         { key: "volume", header: "Vol" },
@@ -4507,6 +4518,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         { key: "spotAsOf", header: "Spot as of" },
         { key: "volumeSession", header: "Vol session" },
         { key: "openInterestAsOf", header: "OI as of" },
+        { key: "chainAsOf", header: "Chain as of" },
         // A venue's marks and its coin prices (Deribit's BTC and ETH options).
         ...(marked ? [
           { key: "mark", header: "Mark (USD)" }, { key: "gamma", header: "Gamma (per 1.00)" },

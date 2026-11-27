@@ -623,13 +623,15 @@ export function exportEntriesTable(title: string, entries: readonly CliReportEnt
 export function exportTextTable(
   title: string,
   headers: readonly string[],
-  rows: ReadonlyArray<ReadonlyArray<{ text: string; instant?: string; value?: number } | undefined>>,
+  rows: ReadonlyArray<ReadonlyArray<{ text: string; instant?: string; value?: number | null; unit?: string } | undefined>>,
 ): CliReportTable {
   return assembleTable(title, headers.map((header, index) => resolveColumn(
     header,
     rows.map((row) => {
       const cell = row[index];
       if (!cell) return BLANK;
+      if (cell.unit) return cell.value == null ? { kind: "blank", unit: cell.unit }
+        : { kind: "number", value: exportNumber(cell.value), unit: cell.unit };
       // The number behind a figure drawn short (a volume of 1.18M) exports as the source gave it.
       if (cell.instant) return exportCell(cell.instant, null);
       // A day the pane draws first (`25 Nov 2026`) exports as its ISO day, as the pane's own Export CSV writes it.

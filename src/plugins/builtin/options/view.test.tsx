@@ -393,7 +393,7 @@ test.each(["2026-11-18T17:29:00.000Z", undefined])("AFK separates expiry and str
     </RemoteUiRegistryProvider>, { width: 124, height: 16 });
   });
   await renderSettled();
-  expect(tui.frame()).toMatch(/Expiry\s+18 Dec '26\s+\(23d\)/);
+  expect(tui.frame()).toMatch(asOf ? /Expiry\s+18 Dec '26\s+\(23d · Greeks ~30d\)/ : /Expiry\s+18 Dec '26\s+\(23d\)/);
   expect(tui.frame()).not.toContain("NaN");
   const report = renderedReportNotices(registry.snapshot());
   expect(report.notices[0]).toBe("Expiry 2026-12-18 (23d)");
@@ -451,6 +451,7 @@ test("a strike whose IV was filled from its neighbours prints ~, says so in the 
   chain.calls = chain.calls.map((contract) => contract.strike === 120 ? { ...contract, bid: 0, ask: 0.05, lastPrice: 0.02 } : contract);
   // The 120 put is quoted above its 19.00 intrinsic, so the strike has a market to fill.
   chain.puts = chain.puts.map((contract) => contract.strike === 120 ? { ...contract, bid: 19.9, ask: 20.1, lastPrice: 20 } : contract);
+  chain.calls = chain.calls.filter((contract) => contract.strike !== 100);
   setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getOptionsChain: async () => chain })));
   const registry = createRemoteUiRegistry();
   await act(async () => {
@@ -466,6 +467,20 @@ test("a strike whose IV was filled from its neighbours prints ~, says so in the 
   expect(row(100)).not.toContain("~");
   expect(frame).toContain("IV filled");
   expect(renderedReportNotices(registry.snapshot()).notices).toContain(IV_FILLED_NOTE);
+  const reported = registry.snapshot().find((node) => node.role === "table" && node.metadata?.rowCount === 3);
+  const rows = reported?.metadata?.rows as Array<{ key: string; cells: Array<{ columnLabel: string }> }>;
+  const reportCell = (strike: string, label: string) => rows.find((entry) => entry.key === strike)?.cells.find((cell) => cell.columnLabel === label);
+  expect(reportCell("120", "C IV")).toMatchObject({ text: expect.stringMatching(/^~/), value: expect.any(Number), unit: "annualized %" });
+  expect(reportCell("120", "Call IV source")).toMatchObject({ text: "filled", reportOnly: true });
+  expect(reportCell("100", "C IV")).toMatchObject({ value: null, unit: "annualized %" });
+  expect(reportCell("120", "Expiry")).toMatchObject({ text: "2026-06-25", reportOnly: true });
+  expect(reportCell("120", "Chain as of")).toMatchObject({ text: chain.asOf, reportOnly: true });
+  await exportPaneTable(TEST_PANE_ID, "options.csv");
+  const [header, ...csvRows] = takeSavedTextFile()!.text.trim().split(/\r?\n/).map((line) => line.split(","));
+  const csvCell = (strike: string, label: string) => csvRows.find((entry) => entry[header!.indexOf("STRIKE")] === strike)?.[header!.indexOf(label)];
+  expect(csvCell("120", "C IV (annualized %)")).toMatch(/^\d+\.\d+$/);
+  expect(csvCell("120", "Call IV source")).toBe("filled");
+  expect(csvCell("100", "C IV (annualized %)")).toBe("");
 });
 
 test("shows the spot, volatility statistics and the mirrored default fields", async () => {

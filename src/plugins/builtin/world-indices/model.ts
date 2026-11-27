@@ -2,6 +2,7 @@ import type { MarketState } from "../../../types/financials";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import { boardHeadlineQuote, type BoardQuoteMap } from "../shared/use-quote-board";
 import { REGION_ORDER, type IndexEntry } from "./indices";
+import { DOLLAR_INDEX_SYMBOL, dollarIndexQuoteStatus } from "./dollar-index";
 
 export type WorldIndexTableRow =
   | { type: "header"; region: IndexEntry["region"] }
@@ -42,11 +43,13 @@ function getSortValue(
 ): string | number | null {
   const sent = quotes.get(entry.symbol)?.quote;
   // Sorted by the figures the rows show.
-  const quote = sent ? boardHeadlineQuote(sent) : sent;
+  const quote = sent && entry.symbol !== DOLLAR_INDEX_SYMBOL ? boardHeadlineQuote(sent) : sent;
 
   switch (columnId) {
-    case "status":
-      return quote?.marketState ? (MARKET_STATE_SORT_ORDER[quote.marketState] ?? 3) : 3;
+    case "status": {
+      const state = dollarIndexQuoteStatus(entry.symbol, sent)?.marketState ?? quote?.marketState;
+      return state ? MARKET_STATE_SORT_ORDER[state] ?? 3 : 3;
+    }
     case "symbol":
       return entry.shortName;
     case "name":

@@ -16,6 +16,7 @@ import {
   type IndexEntry,
 } from "./indices";
 import { quoteFreshnessFields } from "../shared/report-freshness";
+import { DOLLAR_INDEX_SYMBOL, dollarIndexQuoteStatus } from "./dollar-index";
 
 /** A row for an index the feed does not carry has no figures to print; its last column says why. */
 const isGap = (row: Record<string, unknown>) => row.unavailable === true;
@@ -47,8 +48,11 @@ const COLUMNS = [
     key: "marketState",
     header: "Session",
     shrink: false,
-    format: (value: unknown, row: Record<string, unknown>) => isGap(row) ? "" : row.stale === true ? "STALE"
-      : typeof value === "string" && value ? marketStateLabel(value as MarketState) ?? value : MISSING_VALUE,
+    format: (value: unknown, row: Record<string, unknown>) => {
+      if (isGap(row)) return "";
+      const session = typeof value === "string" && value ? marketStateLabel(value as MarketState) : MISSING_VALUE;
+      return row.stale !== true ? session : row.symbol === DOLLAR_INDEX_SYMBOL && value ? `${session} · STALE` : "STALE";
+    },
   },
   {
     key: "lastUpdated",
@@ -92,8 +96,11 @@ function projectWorldIndicesHeadless(
       const rows = regionEntries.map((entry) => {
         const quote = loaded.quotes.get(entry.symbol);
         const freshness = quoteFreshnessFields(quote);
+        const dollarIndex = dollarIndexQuoteStatus(entry.symbol, quote);
         // Last and Change are the regular session, as `ticker` reads them.
-        const { price, change, changePercent, ...extended } = getQuoteSessionFields(quote);
+        const { price, change, changePercent, ...extended } = getQuoteSessionFields(
+          dollarIndex && quote ? { ...quote, marketState: undefined } : quote,
+        );
         return {
           ...freshness,
           ...entry,
@@ -104,6 +111,7 @@ function projectWorldIndicesHeadless(
           changePercent,
           ...extended,
           marketState: freshness.stale ? null : freshness.marketState ?? quote?.marketState ?? null,
+          ...dollarIndex,
           lastUpdated: quote?.lastUpdated ?? null,
           ...(isGapEntry(entry) ? { unavailable: true } : {}),
         };

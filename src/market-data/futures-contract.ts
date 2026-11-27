@@ -461,7 +461,9 @@ export function validateFuturesContractTerms(data: FuturesContractTermsPayload):
   // A nearest, front, roll or most active contract the server worded some other way is left out; the terms still stand.
   const checks = [["nearest", isNearestContract], ["front", isNearestContract], ["roll", isRoll], ["mostActive", isMostActive]] as const;
   const invalid = checks.filter(([key, valid]) => data[key] != null && !valid(data[key]));
-  return invalid.length ? { ...data, ...Object.fromEntries(invalid.map(([key]) => [key, null])) } : data;
+  const unit = futuresPriceUnit(futuresContractByCode(data.root), data);
+  const normalized = data.spec && unit != null && unit !== data.spec.unit ? { ...data, spec: { ...data.spec, unit } } : data;
+  return invalid.length ? { ...normalized, ...Object.fromEntries(invalid.map(([key]) => [key, null])) } : normalized;
 }
 
 /**
@@ -519,7 +521,9 @@ export function futuresPriceUnit(
   contract: Pick<FuturesContract, "unit" | "sector"> | null | undefined,
   terms?: Pick<FuturesContractTermsPayload, "spec"> | null,
 ): string | null {
-  return terms?.spec?.unit ?? contract?.unit
+  const specUnit = terms?.spec?.unit;
+  if (specUnit != null && contract?.sector === "currencies") return specUnit.replace(/^USD\s*\/\s*([A-Z]{3})$/, "USD per $1");
+  return specUnit ?? contract?.unit
     ?? (contract?.sector === "equity-index" || contract?.sector === "equity-sectors" ? "index points" : null);
 }
 

@@ -1,6 +1,7 @@
 import type { WizardStep } from "../../../types/plugin";
 import type { Quote } from "../../../types/financials";
 import { isRegularSessionPrint } from "../../../market-data/quotes/tick-range";
+import { isCurrencyPairListing } from "../../../utils/fx-market-hours";
 import type { AlertRule } from "./types";
 
 const SESSIONS = [
@@ -17,7 +18,8 @@ export function alertSessionField(kind: "price" | "move"): WizardStep {
  * rule reads the regular session's price or settled close, never an extended
  * print, so it is regular hours only however it was saved.
  */
-export function alertSessionLabel(rule: Pick<AlertRule, "regularHoursOnly" | "metric">, short = false): string {
+export function alertSessionLabel(rule: Pick<AlertRule, "symbol" | "exchange" | "regularHoursOnly" | "metric">, short = false): string {
+  if (isCurrencyPairListing(rule.symbol, rule.exchange) && !rule.metric) return short ? "FX week" : "FX trading week";
   const regular = !!rule.regularHoursOnly || !!rule.metric;
   if (short) return regular ? "Regular only" : "Reg. + ext.";
   return SESSIONS[regular ? 1 : 0]!.label;

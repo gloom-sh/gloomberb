@@ -179,7 +179,7 @@ function ivLevelMessage(config: ResearchAlertConfig, value: number): string {
 export function ivLevelCheckText(rule: Pick<EventAlertRule, "value">, check: IvLevelCheck | undefined): string {
   if (!check) return "Not checked yet";
   const metric = readResearchRule("iv_level", rule.value)?.metric as IvLevelMetric | undefined;
-  if (check.value == null || !metric) return check.error ?? "No reading";
+  if (check.value == null || !metric) return check.error ? `No usable reading: ${check.error}` : "No usable reading";
   const quoted = check.quoteAt ? new Date(check.quoteAt) : null;
   const when = quoted && Number.isFinite(quoted.getTime())
     ? `quotes ${quoted.toISOString().slice(5, 16).replace("T", " ")} UTC` : null;

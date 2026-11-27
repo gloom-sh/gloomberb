@@ -1,11 +1,12 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { formatDay } from "../../../utils/day-format";
 import { findListedExpiry, settlementStampTime } from "../../../utils/option-expiry";
-import { buildSurfaceGrid, evaluateSurfaceSmile, type SurfaceExpiry, type SurfaceGridRow, type SurfaceSnapshot } from "./model";
+import { buildSurfaceGrid, evaluateSurfaceSmile, type SurfaceExpiry, type SurfaceGridOptions, type SurfaceGridRow, type SurfaceSnapshot } from "./model";
 import { formatModelSpotPrice, modelSpotStamp } from "../options/model-spot";
 
 export const formatIv = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? MISSING_VALUE : `${(value * 100).toFixed(2)}%`;
 export const formatPrice = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? MISSING_VALUE : value.toFixed(2);
+export type SurfaceAxis = NonNullable<SurfaceGridOptions["axis"]>;
 /**
  * `2027-01-15` for an expiry dated by its day; `2026-10-30 08:00 UTC` for one
  * stamped with the time it settles (Deribit's, at 08:00 UTC): what an export writes.
@@ -238,13 +239,21 @@ export const expiryFeedFields = (expiry: SurfaceExpiry) => ({
   asOf: expiry.asOf, dataSource: expiry.dataSource, delayMinutes: expiry.delayMinutes, stale: expiry.stale,
 });
 
-/** The Term view's points: ATM at spot and the 25-delta wings, with the expiry's straddle and one-sigma move. */
-export function surfaceTermRows(snapshot: SurfaceSnapshot) {
-  return snapshot.expiries.filter((expiry) => expiry.atmIV != null).sort((a, b) => a.years - b.years).map((expiry) => ({
-    expiration: expiry.expiration, days: expiryDays(expiry), atm: expiry.atmIV, put25: expiry.skew.put25, call25: expiry.skew.call25,
-    straddle: expiry.expectedMove.straddle, sigma: expiry.expectedMove.sigma, sigmaPercent: expiry.expectedMove.sigmaPercent,
-    ...expiryFeedFields(expiry),
-  }));
+export function surfaceTermAtmLabel(axis: SurfaceAxis): string {
+  return axis === "forward" ? "ATM forward" : "ATM spot";
+}
+
+/** Term's ATM follows the selected moneyness basis; expected moves keep their spot basis. */
+export function surfaceTermRows(snapshot: SurfaceSnapshot, axis: SurfaceAxis) {
+  return [...snapshot.expiries].sort((left, right) => left.years - right.years).flatMap((expiry) => {
+    const atm = axis === "forward" ? expiry.skew.atm : expiry.atmIV;
+    if (atm == null) return [];
+    return [{
+      expiration: expiry.expiration, days: expiryDays(expiry), atm, put25: expiry.skew.put25, call25: expiry.skew.call25,
+      straddle: expiry.expectedMove.straddle, sigma: expiry.expectedMove.sigma, sigmaPercent: expiry.expectedMove.sigmaPercent,
+      ...expiryFeedFields(expiry),
+    }];
+  });
 }
 
 /** The Smile view's clean quotes against the fitted smile, in strike order. */

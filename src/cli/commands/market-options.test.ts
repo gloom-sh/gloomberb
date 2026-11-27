@@ -174,12 +174,12 @@ test("an options export says on every row what it is, the spot and time behind I
     expect(listedOpenInterest).toHaveBeenCalledWith("open-interest?symbol=GOOGL&expiry=2028-03-17", expect.anything());
     const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, render).split("\n");
     const [header, ...rows] = csv.filter((line) => line && !line.startsWith("#"));
-    expect(header).toBe(["Side,Contract,Expiry,Strike,Last,Bid,Ask,IV (annualized decimal),IV source,Delta (decimal),Vol,OI,Quote stale",
-      "Spot,Spot basis,Spot as of,Vol session,OI as of", ...EXPORT_IDENTITY_COLUMNS, "retrieved_at"].join(","));
+    expect(header).toBe(["Side,Contract,Expiry,Strike,Last,Bid,Ask,IV (annualized %),IV source,Delta (decimal),Vol,OI,Quote stale",
+      "Spot,Spot basis,Spot as of,Vol session,OI as of,Chain as of", ...EXPORT_IDENTITY_COLUMNS, "retrieved_at"].join(","));
     expect(rows).toHaveLength(4);
     for (const row of rows) {
       // Read Tuesday premarket, the chain's volume is Monday's session and its open interest Friday's.
-      expect(row.split(",").slice(-11)).toEqual(["352.72", "close", "2026-10-12T20:00:00.000Z", "2026-10-12", "2026-10-09",
+      expect(row.split(",").slice(-12)).toEqual(["352.72", "close", "2026-10-12T20:00:00.000Z", "2026-10-12", "2026-10-09", "2026-10-12T19:59:59.000Z",
         "GOOGL", "USD", "snapshot", "Gloom Cloud", "2026-10-12T19:59:59.000Z", "2026-10-13T12:41:00.000Z"]);
     }
     // JSON carries the same.
@@ -187,6 +187,8 @@ test("an options export says on every row what it is, the spot and time behind I
     expect(json.metadata).toMatchObject({ symbol: "GOOGL", currency: "USD", interval: "snapshot",
       model: { spot: 352.72, spotBasis: "close", spotAsOf: "2026-10-12T20:00:00.000Z" }, volume: { session: "2026-10-12" }, openInterest: { asOf: "2026-10-09" } });
     expect(json.source).toMatchObject({ name: "Gloom Cloud", observationDate: "2026-10-12T19:59:59.000Z" });
+    expect(json.metadata.units.iv).toBe("annualized %");
+    expect(json.data.calls[0]).toMatchObject({ iv: Number(rows[0]!.split(",")[7]), ivSource: "solved", expiry: "2028-03-17", asOf: chain.asOf });
     expect(render!.footnote).toBe("Greeks at spot 352.72 (close Mon 12 Oct), dividend yield 0%, rate 4% · IV solved from quote mids · Volume for Mon 12 Oct · OI as of Fri 9 Oct");
   } finally {
     setSystemTime();

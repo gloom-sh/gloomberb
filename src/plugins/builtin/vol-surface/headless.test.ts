@@ -126,9 +126,14 @@ test("the term tab reads the next FOMC off the expiries either side of it, with 
 describe("OVDV --date", () => {
   const sessionDate = "2026-09-22";
   /** The report on a stored close: the live board fitted once is what a close capture stores. */
-  async function stored(options: Record<string, string | number>, { surface, dates }: { surface: boolean; dates: string[] }) {
+  async function stored(options: Record<string, string | number>, { surface, dates, aboveSpot }: { surface: boolean; dates: string[]; aboveSpot?: boolean }) {
     const live = (await load({})).result.metadata as unknown as SurfaceSnapshot;
-    const payload = storedSurfacePayload({ symbol: "AAPL", sessionDate, capturedAt: new Date(now).toISOString(), spot: 100, expiries: live.expiries });
+    const expiries = aboveSpot ? live.expiries.map((expiry) => ({ ...expiry, atmIV: null,
+      points: expiry.points.filter((point) => point.strike > 100).map((point, index) => index === 0
+        ? { ...point, strike: (100 + expiry.forward!) / 2 } : point),
+      expectedMove: { ...expiry.expectedMove, sigma: null, sigmaPercent: null },
+    })) : live.expiries;
+    const payload = storedSurfacePayload({ symbol: "AAPL", sessionDate, capturedAt: new Date(now).toISOString(), spot: 100, expiries });
     const paths: string[] = [];
     const apiClient = { impliedVolatility: async (path: string) => {
       paths.push(path);
@@ -159,6 +164,27 @@ describe("OVDV --date", () => {
       .rejects.toThrow("No stored AAPL close surface for 2026-09-19. Stored dates: 2026-09-22, 2026-09-18.");
     await expect(stored({ date: sessionDate }, { surface: false, dates: [sessionDate] }))
       .rejects.toThrow(`The AAPL ${sessionDate} close capture is not shown yet: without real-time data a capture shows 15 minutes after it is taken.`);
+  });
+
+  test("a close capture with quotes around the forward but above spot has Term IV only on the forward basis", async () => {
+    const fixture = { surface: true, dates: [sessionDate], aboveSpot: true };
+    const selected = { date: sessionDate, tab: "term" };
+    const spot = await stored(selected, fixture);
+    const forward = await stored({ ...selected, axis: "forward" }, fixture);
+    const grid = await stored({ date: sessionDate, axis: "forward" }, fixture);
+    const table = (report: typeof spot, title: string) => report.result.sections.find((part) => part.title === title && "rows" in part) as
+      Extract<HeadlessBundleResult["sections"][number], { rows: unknown[] }>;
+    expect(table(spot, "Term structure").rows).toHaveLength(0);
+    const terms = table(forward, "Term structure").rows;
+    expect(terms.length).toBeGreaterThan(1);
+    expect(forward.text).toContain("ATM forward");
+    const surface = table(grid, "Surface");
+    const atmKey = surface.columns!.find((column) => column.header === "100%")!.key;
+    for (const term of terms) {
+      const surfaceRow = surface.rows.find((row) => row.tenor === term.expiry);
+      expect(term).toMatchObject({ sigma: null, sigmaPercent: null });
+      expect(Number(term.atm)).toBeCloseTo(Number(surfaceRow?.[atmKey]), 10);
+    }
   });
 
   test("a coin has no stored closes yet: it says so and names the live surface, asking nothing", async () => {

@@ -199,7 +199,8 @@ interface DesktopPaneShotRenderedCell {
   /** The ISO instant behind a cell whose text shortens a time ("Wed 11:27"), from the table cell's export value. */
   instant?: string;
   /** The full-precision number behind a cell whose text rounds it (a trade of -9.4596), from the same export value. */
-  value?: number;
+  value?: number | null;
+  unit?: string;
   /** A column only the JSON and CSV carry (DataTable `reportColumns`): the text report leaves it out. Only in `reportRows`. */
   reportOnly?: true;
 }

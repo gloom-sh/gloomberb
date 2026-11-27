@@ -76,6 +76,7 @@ import {
 import { useOptionsAccessFooter } from "./footer";
 import { optionExpiryFacts, optionSnapshotFreshness } from "../shared/volatility/option-snapshot";
 import { AnalyticsAsOfDialog, analyticsAsOfRows } from "./analytics-as-of";
+import { OPTION_IV_UNIT, optionChainAsOf, optionGreekClock, optionIvFields } from "./export";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { signedPositionDirection } from "../../../portfolio/position-metrics";
 import { optionMarketReference } from "./market-reference";
@@ -500,11 +501,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   useRemoteUiNode(expiry && chain && !expirationUnavailable ? {
     role: "report-notice",
     label: "Expiry",
-    getMetadata: () => ({
-      text: `Expiry ${expiry.date} (${expiryDays})`,
-      key: "expiry",
-      value: expiry,
-    }),
+    getMetadata: () => ({ text: `Expiry ${expiry.date} (${expiryDays})`, key: "expiry", value: expiry }),
   } : null);
   // `fn OMON --expiration` on a date the chain cannot show fails as `options --expiration` does.
   useRemoteUiNode(expirationUnavailable && selectedExpiration != null && effectiveTicker ? {
@@ -640,6 +637,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     () => liveChain ? solveChainVolatilities(liveChain, greeksSpot, dividendYield, modelSpot?.valuationTime) : null,
     [dividendYield, greeksSpot, modelSpot?.valuationTime, liveChain],
   );
+  const greekDays = selectedExpiration == null ? null : optionGreekClock(selectedExpiration, now, expiryVenue, modelSpot?.valuationTime);
   const rows = useMemo<OptionTableRow[]>(() => strikes.map((strike) => {
     const call = callsByStrike.get(strike);
     const put = putsByStrike.get(strike);
@@ -678,7 +676,8 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     label: "Greeks spot",
     getMetadata: () => ({
       text: `Greeks at spot ${formatModelSpotPrice(modelSpot.price)} (${modelSpotLabel(modelSpot)})`
-        + (snapshot?.status === "stale" ? ` · valuation ${formatSpotTime(modelSpot.valuationTime)}` : ""),
+        + (greekDays ? ` · ${greekDays} to expiry at valuation (${formatSpotTime(modelSpot.valuationTime)})`
+          : snapshot?.status === "stale" ? ` · valuation ${formatSpotTime(modelSpot.valuationTime)}` : ""),
       key: "greeksSpot",
       value: { spot: modelSpot.price, basis: modelSpot.basis === "close" ? "close" : modelSpot.session ?? "last",
         asOf: new Date(modelSpot.observedAt).toISOString(), valuationTime: new Date(modelSpot.valuationTime).toISOString() },
@@ -797,6 +796,16 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     ...column,
     headerColor: optionColumnColor(column, colors.panel),
   })), [shownFieldIds]);
+  const rowAsOf = optionChainAsOf(liveChain?.asOf);
+  const reportColumns = useMemo<OptionColumn[]>(() => [
+    { id: "expiry", label: "Expiry", field: "expiry", side: null, width: 10, align: "left" },
+    { id: "chainAsOf", label: "Chain as of", field: "chainAsOf", side: null, width: 24, align: "left" },
+    ...optionFieldIds.includes("iv") ? [
+      { id: "callIvSource", label: "Call IV source", field: "callIvSource", side: null, width: 14, align: "left" },
+      { id: "putIvSource", label: "Put IV source", field: "putIvSource", side: null, width: 14, align: "left" },
+    ] as const : [],
+    ...createOptionColumns(optionFieldIds).filter((column) => column.field === "iv" && !shownFieldIds.includes("iv")),
+  ], [optionFieldIds, shownFieldIds]);
 
   const selectedRow = rows[selectedStrikeIdx] ?? null;
   const selectedContractAvailable = !selectedContract || (selectedContract.side === "call"
@@ -944,6 +953,12 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     index: number,
     rowState: { selected: boolean },
   ) => {
+    if (column.field === "expiry") return { text: expiry?.date ?? MISSING_VALUE };
+    if (column.field === "chainAsOf") return { text: rowAsOf ?? MISSING_VALUE };
+    if (column.field === "callIvSource" || column.field === "putIvSource") {
+      const contract = column.field === "callIvSource" ? row.call : row.put;
+      return { text: optionIvFields(contract, row.impliedVolatility, row.impliedVolatilityFilled).ivSource ?? MISSING_VALUE };
+    }
     const cell = renderOptionCell(row, column, index, rowState, selectedSide);
     if (!column.side) return cell;
     // Clicking a call or put cell is the mouse way to choose which contract
@@ -956,7 +971,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
         setCalcSide(side);
       },
     };
-  }, [selectContract, selectedSide]);
+  }, [expiry?.date, rowAsOf, selectContract, selectedSide]);
 
   useOptionsAccessFooter({
     broker: !!optionQuoteBroker,
@@ -1092,10 +1107,11 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   // reflow as the chain's as-of arrives or the expiry steps.
   // Dated as the expiry strip dates it ("13 Nov '26"), never the ISO day a report carries.
   const expiryLabel = selectedExpiration == null ? "" : formatExpDate(selectedExpiration);
-  const expiryItem: StatItem = { id: "expiry", label: "Expiry", value: expiryLabel, detail: `(${expiryDays})` };
+  const expiryDetail = greekDays ? `(${expiryDays} · Greeks ${greekDays})` : `(${expiryDays})`;
+  const expiryItem: StatItem = { id: "expiry", label: "Expiry", value: expiryLabel, detail: expiryDetail };
   const cellColumns = Math.max(figureColumns, Math.ceil((figures.length + 1) / statRowBudget));
   const expiryCells = Math.max(...figures.map((item) => item.label.length), expiryItem.label.length) + 1
-    + expiryLabel.length + 2 + "(9999d)".length;
+    + expiryLabel.length + 2 + Math.max("(9999d)".length, expiryDetail.length);
   const expiryInline = Math.floor((statWidth - 2 * (cellColumns - 1)) / cellColumns) >= expiryCells;
   const statColumns = expiryInline ? cellColumns : figureColumns;
   const statItems = [expiryInline ? expiryItem : { ...expiryItem, wide: true }, ...figures];
@@ -1148,9 +1164,12 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
         columns={optionColumns}
         columnDropOrder={OPTION_COLUMN_DROP_ORDER}
         // A field the terminal gave up for width is still in the export.
-        exportCsv={shownFieldIds.length < optionFieldIds.length
-          ? () => createDataTableCsv({ columns: createOptionColumns(optionFieldIds), items: rows, renderCell })
-          : undefined}
+        exportCsv={() => createDataTableCsv({
+          columns: [...createOptionColumns(optionFieldIds).map((column) => column.field === "iv"
+            ? { ...column, label: `${column.label} (${OPTION_IV_UNIT})`, align: "left" as const } : column),
+          ...reportColumns.filter((column) => column.field !== "iv")],
+          items: rows, renderCell,
+        })}
         // Calls and puts mirror each other around the strike; Settings orders their fields.
         columnReorder={false}
         items={rows}
@@ -1168,6 +1187,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
         emptyStateTitle={unavailableExpiry ?? (error && !strikeChain ? "Selected expiration unavailable." : strikesLoading ? "Loading strikes..."
           : strikeWindowResult.total > 0 ? "No strikes in this window." : "No strikes available.")}
         reportEveryRow
+        reportColumns={reportColumns}
         rootWidth={Math.max(1, width - 2 + inset * 2)}
         rootHeight={tableHeight}
         horizontalPadding={inset}

@@ -9,14 +9,16 @@ import {
   formatOptionIvCell,
   formatOptionLastCell,
   loadOptionModelInputs,
-  optionRows,
+  optionRows as exportRows,
   optionsBasisFootnote,
+  optionsChainExport,
   valueChainAtModelSpot,
 } from "./options-chain";
 import { missingExpiryMessage } from "../../utils/option-expiry";
 import type { CliListing } from "../listing-arg";
 
 const at = (date: string) => Date.parse(`${date}T00:00:00Z`) / 1000;
+const optionRows = (chain: OptionsChain) => exportRows(optionsChainExport(chain));
 
 test("a missing expiry names the listed dates nearest the one asked for, in date order", () => {
   const listed = ["2026-10-16", "2027-01-15", "2027-12-17", "2028-03-17", "2028-06-16", "2028-12-15", "2029-01-19"].map(at);
@@ -46,7 +48,7 @@ test("delta and IV cells print a dash for what could not be valued, never a zero
   expect(formatOptionDeltaCell(-0.5234)).toBe("-0.52");
   expect(formatOptionDeltaCell(-0.0003)).toBe("0.00");
   for (const missing of [null, undefined, Number.NaN, "x"]) expect(formatOptionDeltaCell(missing)).toBe("—");
-  expect(formatOptionIvCell(0.3171)).toBe("31.7%");
+  expect(formatOptionIvCell(31.71)).toBe("31.7%");
   for (const missing of [null, 0, Number.NaN]) expect(formatOptionIvCell(missing)).toBe("—");
   // A contract that never traded comes with a last price of 0: a dash, in the text and the export alike.
   expect(formatOptionLastCell(1.85)).toBe("1.85");
@@ -77,8 +79,8 @@ test("rows carry the pane's solved IV and signed delta, and nulls where none can
   const rows = optionRows(chainWithModelFigures(chain, { spot: 100, dividendYield: 0, now }));
   const call = rows.find((row) => row.contract === "XYZC100")!;
   const put = rows.find((row) => row.contract === "XYZP100")!;
-  expect(call.iv!).toBeGreaterThan(0.23);
-  expect(call.iv!).toBeLessThan(0.27);
+  expect(call.iv!).toBeGreaterThan(23);
+  expect(call.iv!).toBeLessThan(27);
   expect(call.delta!).toBeGreaterThan(0.5);
   expect(call.delta!).toBeLessThan(0.7);
   expect(put.delta!).toBeGreaterThan(-0.5);
@@ -107,8 +109,8 @@ test("a strike with no two-sided quote to solve from has its IV marked filled, a
   expect(at90.map((row) => row.ivSource)).toEqual(["filled", "filled"]);
   expect(at90[0]!.iv).toBe(rows.find((row) => row.strike === 100)!.iv);
   expect(rows.filter((row) => row.strike !== 90).map((row) => row.ivSource)).toEqual(["solved", "solved", "solved", "solved"]);
-  expect(formatOptionIvCell(0.0951, { ivSource: "filled" })).toBe("~9.5%");
-  expect(formatOptionIvCell(0.0951, { ivSource: "solved" })).toBe("9.5%");
+  expect(formatOptionIvCell(9.51, { ivSource: "filled" })).toBe("~9.5%");
+  expect(formatOptionIvCell(9.51, { ivSource: "solved" })).toBe("9.5%");
   expect(chainHasFilledIv(valued)).toBe(true);
   expect(chainHasFilledIv(chainWithModelFigures({ ...chain, puts: chain.puts.map((put) => contract("P", put.strike, expiration, 0.25)) },
     { spot: 100, dividendYield: 0, now }))).toBe(false);
@@ -135,10 +137,10 @@ test("a chain from the close keeps the close's delta when the stock moves before
   const { chain: valued, spot } = valueChainAtModelSpot(chain, { spot: 103, quote, dividendYield: 0 }, Date.parse("2026-10-13T12:41:00Z"), "NYSE");
   expect([spot?.price, spot?.basis, spot?.valuationTime]).toEqual([100, "close", closeAt]);
   const put = optionRows(valued).find((row) => row.contract === "XYZP95")!;
-  const reproduced = valueOption({ side: "put", spot: 100, strike: 95, daysToExpiry: days, rate: 0.04, volatility: put.iv!, dividendYield: 0 }).delta;
+  const reproduced = valueOption({ side: "put", spot: 100, strike: 95, daysToExpiry: days, rate: 0.04, volatility: put.iv! / 100, dividendYield: 0 }).delta;
   expect(put.delta!).toBeCloseTo(reproduced, 6);
   // The pre-market print would have moved it.
-  expect(Math.abs(put.delta! - valueOption({ side: "put", spot: 103, strike: 95, daysToExpiry: days, rate: 0.04, volatility: put.iv!, dividendYield: 0 }).delta))
+  expect(Math.abs(put.delta! - valueOption({ side: "put", spot: 103, strike: 95, daysToExpiry: days, rate: 0.04, volatility: put.iv! / 100, dividendYield: 0 }).delta))
     .toBeGreaterThan(0.05);
   expect(optionsBasisFootnote({ spot, dividendYield: 0.0234, openInterest: { date: "2026-10-09", listedDate: "2026-10-09", compared: 4, matched: 4 } }))
     .toBe("Greeks at spot 100.00 (close Mon 12 Oct), dividend yield 2.34%, rate 4% · IV solved from quote mids · OI as of Fri 9 Oct");
