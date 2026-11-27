@@ -1463,6 +1463,12 @@ export class CloudDataApi {
     return this.request<HkTendersPayload>(`/cloud/econ/hk-tenders?${query}`, { signal: signalWithTimeout(signal, 20_000) });
   }
 
+  /** U.S. TreasuryDirect securities search results for `startDate`..`endDate` (YYYY-MM-DD, inclusive). */
+  async getCloudUsTreasuryDirect(startDate: string, endDate: string, signal?: AbortSignal): Promise<unknown> {
+    const query = new URLSearchParams({ startDate, endDate });
+    return this.request<unknown>(`/cloud/econ/us-treasury-direct?${query}`, { signal: signalWithTimeout(signal, 20_000) });
+  }
+
   /** A live scan's matches against Gloom Cloud's newest market-wide snapshot for this account's tier. */
   getLiveScan(definition: LiveScanWireDefinition, signal?: AbortSignal) {
     return this.request<LiveScanPayload>(LIVE_SCAN_PATH, {

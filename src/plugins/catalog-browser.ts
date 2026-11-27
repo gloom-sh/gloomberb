@@ -70,6 +70,8 @@ import { docsModule } from "./builtin/docs";
 import { helpModule } from "./builtin/help";
 import { positionSizerModule } from "./builtin/kelly-sizer";
 import { layoutManagerModule } from "./builtin/layout-manager";
+import { pluginMarketplaceModule } from "./builtin/plugin-marketplace";
+import { customViewPlugin } from "./builtin/custom-view";
 import { tickerNewsModule } from "./builtin/news";
 import { browserNewsWireModule } from "./builtin/news/wire";
 import { secModule } from "./builtin/sec";
@@ -121,7 +123,7 @@ import { FIXED_INCOME_HOSTS } from "./builtin/fixed-income/model";
 
 const browserApplicationPlugin = composeBuiltinPlugin({
   ...applicationPluginMeta,
-  modules: [layoutManagerModule, helpModule, changelogModule, connectionsModule, docsModule, roadmapModule],
+  modules: [layoutManagerModule, pluginMarketplaceModule, helpModule, changelogModule, connectionsModule, docsModule, roadmapModule],
 });
 
 const runtimeOnly = (module: PluginModule): PluginModule => {
@@ -303,6 +305,7 @@ export const browserBuiltinPlugins: readonly GloomPlugin[] = [
   browserEarningsPlugin,
   alertsPlugin,
   researchSearchPlugin,
+  customViewPlugin,
 ];
 
 /**

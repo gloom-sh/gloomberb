@@ -153,13 +153,18 @@ if (!appBundle.includes(`import(${JSON.stringify(WORLD_MAP_DATA_SPECIFIER)})`)) 
  * the browser with nothing but "Failed to fetch", while the same function
  * works on the desktop, so it is caught here instead.
  */
-const connectSrcHosts = new Set((SECURITY_HEADERS["content-security-policy"]
+const connectSrcTokens = SECURITY_HEADERS["content-security-policy"]
   .split(";")
   .map((directive) => directive.trim().split(/\s+/))
-  .find(([name]) => name === "connect-src") ?? [])
+  .find(([name]) => name === "connect-src") ?? [];
+const connectSrcHosts = new Set(connectSrcTokens
   .filter((source) => source.startsWith("https://"))
   .map((source) => new URL(source).hostname));
+const connectSrcWsHosts = new Set(connectSrcTokens
+  .filter((source) => source.startsWith("wss://"))
+  .map((source) => new URL(source).hostname));
 const unreachableHosts = new Map<string, string>();
+const unreachableWsHosts = new Map<string, string>();
 for (const path of outputFiles.filter((file) => file.endsWith(".js"))) {
   const content = await readFile(path, "utf8");
   for (const [, raw] of content.matchAll(/https:\/\/([a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,})/gi)) {
@@ -167,11 +172,21 @@ for (const path of outputFiles.filter((file) => file.endsWith(".js"))) {
     if (connectSrcHosts.has(host) || isProxiedHost(host) || WEB_LINK_ONLY_HOSTS.has(host) || unreachableHosts.has(host)) continue;
     unreachableHosts.set(host, relative(root, path));
   }
+  for (const [, raw] of content.matchAll(/wss:\/\/([a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,})/gi)) {
+    const host = raw!.toLowerCase();
+    if (connectSrcWsHosts.has(host) || unreachableWsHosts.has(host)) continue;
+    unreachableWsHosts.set(host, relative(root, path));
+  }
 }
 for (const [host, name] of unreachableHosts) {
   failures.push(
     `${name}: names https://${host}, which the page cannot fetch. If the web build fetches it, declare it in the plugin's hosts `
       + "and run bun run web:proxy-hosts (or list it in WEB_DIRECT_HOSTS when it sends CORS); if it is only a link, add it to scripts/web-link-hosts.ts.",
+  );
+}
+for (const [host, name] of unreachableWsHosts) {
+  failures.push(
+    `${name}: names wss://${host}, which connect-src blocks. Add it to WEB_DIRECT_WS_HOSTS in src/utils/plugin-proxy-hosts.ts if the web build connects to it.`,
   );
 }
 

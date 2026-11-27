@@ -1,13 +1,13 @@
 import { recordResearchActivity } from "../../api-client/research-activity";
-import { newsProvider, type NewsCapability } from "../../capabilities";
+import { assetDataProvider, newsProvider } from "../../capabilities";
 import type { AppServicesFactoryOptions } from "../../core/app-service-ports";
 import { createAppRuntime } from "../../core/app-runtime";
-import { createGloomberbCloudCapabilities, createGloomberbCloudProvider } from "../../sources/gloomberb-cloud";
+import { connectionHealth, registerGloomCloudConnectionSources } from "../../core/connection-health";
+import { createGloomberbCloudProvider } from "../../sources/gloomberb-cloud";
 import { AssetDataRouter } from "../../sources/provider-router";
 import { JsonPersistence } from "../../data/json-persistence";
 import { isBrokerAccountSnapshotKey } from "../../brokers/account-cache";
 import { JsonTickerRepository } from "../../data/json-ticker-repository";
-import { registerGloomCloudConnectionSources } from "../../core/connection-health";
 import type { BrowserResources } from "./resource-db";
 
 /**
@@ -22,24 +22,33 @@ export function createBrowserAppServices({ config, plugins, externalPlugins }: A
     keepResource: isBrokerAccountSnapshotKey,
     durable: resources && { saved: resources.records.splice(0), sink: resources.sink },
   });
-  const dataProvider = new AssetDataRouter(null, [cloudProvider]);
-  const cloudNews = createGloomberbCloudCapabilities(cloudProvider).find(
-    (capability): capability is NewsCapability => capability.kind === "news",
-  );
+  const dataProvider = new AssetDataRouter(null, [cloudProvider], persistence.resources, connectionHealth);
   return createAppRuntime({
     config, plugins, externalPlugins, dataProvider,
     persistence,
     tickerRepository: new JsonTickerRepository(localStorage),
+    registryOptions: { connectionHealth },
     configure({ pluginRegistry, newsService }) {
       dataProvider.attachRegistry(pluginRegistry);
-      newsService.register(newsProvider({
-        id: dataProvider.id,
-        name: dataProvider.name,
-        priority: 0,
-        provider: { fetchNews: (query) => cloudNews?.provider.fetchNews(query) ?? Promise.resolve([]) },
-      }));
+      pluginRegistry.capabilities.register("core", assetDataProvider(dataProvider));
+      pluginRegistry.capabilities.register("core", {
+        ...newsProvider({
+          id: "core",
+          name: "News",
+          provider: {
+            fetchNews: async (query) => (await newsService.load(query)).articles,
+            fetchNewsPage: async (query) => {
+              const { articles, error, nextCursor, access } = await newsService.load(query);
+              return { articles, error, nextCursor, access };
+            },
+            getCachedNews: (query) => newsService.getQueryState(query).articles,
+          },
+        }),
+        // The router must not rediscover its own aggregate facade as a source.
+        sourceId: dataProvider.id,
+      });
       // The page sends its own Gloom Cloud requests and holds its own stream: their health is this registry's to keep.
-      const disposeCloudSources = registerGloomCloudConnectionSources(pluginRegistry.connectionHealth);
+      const disposeCloudSources = registerGloomCloudConnectionSources(connectionHealth);
       const stopRecording = pluginRegistry.events.on("host:portfolio-ticker-saved", () => recordResearchActivity("ticker_saved"));
       return () => {
         stopRecording();

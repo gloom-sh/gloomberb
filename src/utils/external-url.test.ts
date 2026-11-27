@@ -24,6 +24,8 @@ describe("safeExternalUrl", () => {
   });
 
   test("rejects input that is not a URL at all", () => {
+    expect(safeExternalUrl(undefined)).toBeNull();
+    expect(safeExternalUrl(null)).toBeNull();
     expect(safeExternalUrl("")).toBeNull();
     expect(safeExternalUrl("   ")).toBeNull();
     expect(safeExternalUrl("not-a-url")).toBeNull();

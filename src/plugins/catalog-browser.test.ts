@@ -45,6 +45,8 @@ describe("browser plugin catalog", () => {
       ["ERN", "earnings-calendar"],
       ["EVTS", "earnings-calendar"],
       ["HDS AAPL", "holders"],
+      ["PL", "plugin-marketplace"],
+      ["VIEW", "custom-view"],
     ] as const;
     for (const [query, paneId] of functions) {
       const templates = getAvailablePaneShortcutTemplatesForQuery({

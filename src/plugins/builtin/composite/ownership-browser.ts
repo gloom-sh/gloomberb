@@ -1,6 +1,7 @@
 import { composeBuiltinPlugin } from "../plugin-module";
 import { ownershipPluginMeta } from "../builtin-plugin-meta";
 import { buybacksModule } from "../buybacks";
+import { congressResearchModule } from "../congress-trades";
 import { dilutionModule } from "../dilution";
 import { holdersModule } from "../holders";
 import { insiderModule } from "../insider";
@@ -8,10 +9,10 @@ import { shortInterestModule } from "../short-interest";
 import { shortVolumeModule } from "../short-volume";
 import { thirteenFModule } from "../thirteenf";
 
-/** The web app's Ownership & Insiders: the terminal's without the Congress tab. */
+/** The web app's Ownership & Insiders plugin. */
 export const browserOwnershipPlugin = composeBuiltinPlugin({
   ...ownershipPluginMeta,
-  description: "Holders, 13F funds, insider trades, Hong Kong buybacks, and short interest and volume.",
+  description: "Holders, 13F funds, insider trades, Hong Kong buybacks, short interest and volume, and congressional trades.",
   // The public 13F fallback goes through the same host proxy as other plugins.
   hosts: ["forms13f.com"],
   modules: [
@@ -24,5 +25,7 @@ export const browserOwnershipPlugin = composeBuiltinPlugin({
     // Daily volume shares open this pane.
     shortInterestModule,
     shortVolumeModule,
+    // The Congress research tab; the CG pane is Gloom Cloud's.
+    congressResearchModule,
   ],
 });

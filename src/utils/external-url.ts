@@ -9,8 +9,8 @@
  * Returns the normalised URL so callers spawn the parsed form rather than the
  * raw input.
  */
-export function safeExternalUrl(value: string): string | null {
-  if (!value.trim()) return null;
+export function safeExternalUrl(value: string | null | undefined): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
   let parsed: URL;
   try {
     parsed = new URL(value);

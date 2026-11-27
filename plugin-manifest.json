@@ -156,12 +156,7 @@
           {
             "code": "PL",
             "name": "Plugins",
-            "description": "Browse and install Gloom plugins, and enable or disable the ones you have.",
-            "targets": [
-              "cli",
-              "tui",
-              "desktop"
-            ]
+            "description": "Browse and install Gloom plugins, and enable or disable the ones you have."
           },
           {
             "code": "CHG",
@@ -463,7 +458,8 @@
       "targets": [
         "cli",
         "tui",
-        "desktop"
+        "desktop",
+        "web"
       ],
       "contributes": {
         "panes": [

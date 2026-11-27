@@ -422,7 +422,7 @@ export function financialPeriodFiling(
   if (statement.date === "TTM") return undefined;
   const end = financialPeriodEnd(statement);
   return filings?.find((filing) => filing.periodEnd === end
-    && (filing.periodMonths === 12) === (period === "annual") && !!safeExternalUrl(filing.url));
+    && (filing.periodMonths === 12) === (period === "annual") && typeof filing.url === "string" && !!safeExternalUrl(filing.url));
 }
 
 export function latestFinancialPeriodEnd(statements: readonly FinancialTableStatement[]): string | undefined {

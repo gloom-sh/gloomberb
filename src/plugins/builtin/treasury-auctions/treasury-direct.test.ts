@@ -1,13 +1,18 @@
-import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
+import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
+import { getCurrentPluginTarget, setCurrentPluginTarget } from "../../current-target";
 import { isPendingAuction } from "./model";
 import { RECORDED_NOW, recordedFiscalData, recordedTreasuryDirect, recordedTreasuryDirectBody } from "./test-fixture";
 import {
   buildDirectSearchUrl, directSearchRange, fetchDirectAuctions, normalizeDirectAuction, parseDirectAuctions,
 } from "./treasury-direct";
 
+const originalTarget = getCurrentPluginTarget();
+
 afterEach(() => {
+  setCurrentPluginTarget(originalTarget);
   setHttpFetchTransport(null);
   setSystemTime();
 });
@@ -91,5 +96,29 @@ describe("TreasuryDirect search", () => {
     const refused = await fetchDirectAuctions(120).catch((error: unknown) => error);
     expect(refused).toBeInstanceOf(ApiRequestError);
     expect(refused).toMatchObject({ status: 404, message: "TreasuryDirect request failed (404)" });
+  });
+
+  test("web target reads TreasuryDirect through Gloom Cloud and falls back only on 404", async () => {
+    setSystemTime(new Date(RECORDED_NOW));
+    setCurrentPluginTarget("web");
+    const directCalls: string[] = [];
+    setHttpFetchTransport(async (url) => {
+      directCalls.push(String(url));
+      return Response.json(recordedTreasuryDirectBody);
+    });
+    const cloudSpy = spyOn(apiClient, "getCloudUsTreasuryDirect").mockResolvedValue(recordedTreasuryDirectBody);
+    try {
+      const fromCloud = await fetchDirectAuctions(120);
+      expect(fromCloud.map((auction) => auction.id)).toEqual(recordedTreasuryDirect().map((auction) => auction.id));
+      expect(cloudSpy).toHaveBeenCalledWith("2026-09-07", "2026-12-06");
+      expect(directCalls).toEqual([]);
+
+      cloudSpy.mockRejectedValueOnce(new ApiRequestError("Not found", 404));
+      const fallback = await fetchDirectAuctions(120);
+      expect(fallback.map((auction) => auction.id)).toEqual(recordedTreasuryDirect().map((auction) => auction.id));
+      expect(directCalls).toEqual([buildDirectSearchUrl(120, now)]);
+    } finally {
+      cloudSpy.mockRestore();
+    }
   });
 });

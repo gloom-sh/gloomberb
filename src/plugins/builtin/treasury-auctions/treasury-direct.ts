@@ -1,6 +1,8 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import { createThrottledFetch } from "../../../utils/throttled-fetch";
+import { getCurrentPluginTarget } from "../../current-target";
 import { inClearingOrder } from "./client";
 import type { TreasuryAuction } from "./types";
 
@@ -125,8 +127,21 @@ export function parseDirectAuctions(body: unknown): TreasuryAuction[] {
   return [...auctions.values()];
 }
 
-/** The auctions of the last `days` days (at most `DIRECT_LOOKBACK_DAYS`) and the ones announced. */
+/**
+ * The auctions of the last `days` days (at most `DIRECT_LOOKBACK_DAYS`) and the
+ * ones announced. The hosted web app reads them through Gloom Cloud (needs the
+ * matching server change) because the edge worker cannot complete TreasuryDirect's
+ * TLS handshake; desktop and terminal fetch TreasuryDirect directly.
+ */
 export async function fetchDirectAuctions(days: number): Promise<TreasuryAuction[]> {
+  if (getCurrentPluginTarget() === "web") {
+    const { startDate, endDate } = directSearchRange(days);
+    try {
+      return parseDirectAuctions(await apiClient.getCloudUsTreasuryDirect(startDate, endDate));
+    } catch (error) {
+      if (!(error instanceof ApiRequestError && error.status === 404)) throw error;
+    }
+  }
   const response = await DIRECT_FETCH.fetch(buildDirectSearchUrl(days));
   // The status stays: an overloaded server is a failure a saved board may answer for, a refusal is not.
   if (!response.ok) throw new ApiRequestError(`TreasuryDirect request failed (${response.status})`, response.status);

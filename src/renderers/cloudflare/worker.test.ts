@@ -309,6 +309,8 @@ describe("content security policy", () => {
 
     expect(connectSrc).toContain(REGISTRY_ORIGIN);
     expect(connectSrc?.split(/\s+/)).toContain(DOCS_SITE);
+    expect(connectSrc?.split(/\s+/)).toContain("https://data.pascal.trade");
+    expect(connectSrc?.split(/\s+/)).toContain("wss://ws-subscriptions-clob.polymarket.com");
   });
 
   test("lets Google One Tap load, and only Google's sign-in paths", () => {
