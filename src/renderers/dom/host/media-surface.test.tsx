@@ -112,6 +112,8 @@ test("ready followed by buffering and silence still expires the original play at
     const deadlines = () => timer.mock.calls.filter(([, delay]) => delay === 15_000).map(([expire]) => expire);
     const attempt = deadlines().at(-1)!;
     await send("onReady");
+    await send("initialDelivery", { playerState: -1 });
+    await send("infoDelivery", { playerState: 5 });
     await send("onStateChange", 3);
     await send("infoDelivery", { playerState: 3 });
     await send("infoDelivery", { playerState: 2 });
@@ -120,6 +122,36 @@ test("ready followed by buffering and silence still expires the original play at
     await act(async () => attempt());
     expect(states).toEqual(["loading", "error"]);
     expect(pane.querySelector("a")?.textContent).toBe("Open in browser");
+  } finally {
+    timer.mockRestore();
+  }
+});
+
+test("pausing after the player ends does not hide a confirmed replay", async () => {
+  const { media, states, postMessage, send } = await embed();
+  await send("onReady");
+  await send("onStateChange", 1);
+  await send("onStateChange", 0);
+  await act(async () => media.pause());
+  expect(JSON.parse(postMessage.mock.calls.at(-1)![0]).func).toBe("pauseVideo");
+  expect(states).toEqual(["loading", "playing", "idle"]);
+  await send("onStateChange", 1);
+  expect(states).toEqual(["loading", "playing", "idle", "playing"]);
+});
+
+test("buffering followed by a confirmed end cancels the play deadline", async () => {
+  const timer = spyOn(globalThis, "setTimeout");
+  try {
+    const { pane, states, onError, send } = await embed();
+    const attempt = timer.mock.calls.filter(([, delay]) => delay === 15_000).at(-1)![0];
+    await send("onReady");
+    await send("onStateChange", 3);
+    await send("onStateChange", 0);
+    expect(states).toEqual(["loading", "idle"]);
+    await act(async () => attempt());
+    expect(states).toEqual(["loading", "idle"]);
+    expect(pane.querySelector("iframe")).not.toBeNull();
+    expect(onError).not.toHaveBeenCalled();
   } finally {
     timer.mockRestore();
   }

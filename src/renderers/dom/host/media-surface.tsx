@@ -12,13 +12,13 @@ const YOUTUBE_UNAVAILABLE = "The embedded player could not play this stream.";
 
 type YoutubeControls = { play(): void; pause(): void; mute(): void };
 
-function youtubePlaybackState(value: unknown): PlaybackState | undefined {
+function youtubePlaybackState(value: unknown): PlaybackState | "ended" | undefined {
   switch (value) {
+    case 0: return "ended";
     case 1: return "playing";
     case 2: return "paused";
     case 3: return "loading";
     case -1:
-    case 0:
     case 5: return "idle";
     default: return undefined;
   }
@@ -207,7 +207,7 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
         setPlayback("playVideo");
       },
       pause() {
-        pauseRequested = true;
+        pauseRequested = last === "loading" || last === "playing";
         stopAttempt();
         setPlayback("pauseVideo");
       },
@@ -248,7 +248,11 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
         const state = kind === "onStateChange" ? youtubePlaybackState(info)
           : (kind === "initialDelivery" || kind === "infoDelivery") && snapshot && "playerState" in snapshot
             ? youtubePlaybackState(snapshot.playerState) : undefined;
-        if (state === "playing") {
+        if (state === "ended") {
+          pauseRequested = false;
+          stopAttempt();
+          update("idle");
+        } else if (state === "playing") {
           if (pauseRequested) return;
           stopAttempt();
           update(state);
