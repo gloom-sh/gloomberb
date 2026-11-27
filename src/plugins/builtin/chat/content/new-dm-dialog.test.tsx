@@ -33,6 +33,8 @@ async function renderDialog() {
         onCancel={() => {}}
         onOpenChannel={(channelId) => { opened.push(channelId); }}
         onSubmit={async (usernames) => { submitted.push(usernames); }}
+        isDialogCurrent={() => true}
+        captureSessionScope={() => () => true}
       />,
     );
   });

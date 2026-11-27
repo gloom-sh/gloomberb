@@ -12,14 +12,14 @@ import { ApiRequestError } from "../../../api-client/errors";
 import { createAppNotifier } from "../../../notifications/app-notifier";
 import { MemoryPluginPersistence as MemoryPersistence } from "../../../test-support/plugin-persistence";
 import { installTestWebSocket } from "../../../test-support/cloud-api";
-import type { AppNotificationRequest } from "../../../types/plugin";
+import type { AppNotificationRequest, PluginResumeState } from "../../../types/plugin";
 import { ChatController } from "./controller";
-import { DRAFT_SYNC_DEBOUNCE_MS, DRAFT_SYNC_MAX_WAIT_MS, SESSION_RETRY_MS } from "./controller/state";
+import { composerStateKey, DRAFT_SYNC_DEBOUNCE_MS, DRAFT_SYNC_MAX_WAIT_MS, SESSION_RETRY_MS } from "./controller/state";
 
 const testControllers = new Set<ChatController>();
 
-function createController(): ChatController {
-  const controller = new ChatController();
+function createController(options?: ConstructorParameters<typeof ChatController>[0]): ChatController {
+  const controller = new ChatController(options);
   testControllers.add(controller);
   return controller;
 }
@@ -111,10 +111,10 @@ function mentionNotification(overrides: Partial<ChatNotification> = {}): ChatNot
 }
 
 class TrackingPersistence extends MemoryPersistence {
-  stateWrites = 0;
+  composerWrites = 0;
 
   override setState(key: string, value: unknown, options?: { schemaVersion?: number }): void {
-    this.stateWrites += 1;
+    if (key.startsWith("composer:")) this.composerWrites += 1;
     super.setState(key, value, options);
   }
 }
@@ -180,6 +180,52 @@ afterEach(() => {
 });
 
 describe("ChatController", () => {
+  test.each(["direct", "group"] as const)("settles %s conversation requests in the session that started them", async (kind) => {
+    const controller = createController({ bindComposerToApiSession: true });
+    controller.attachPersistence(new MemoryPersistence());
+    const first = { id: "first", username: "first", emailVerified: true };
+    const next = { id: "next", username: "next", emailVerified: true };
+    controller.adoptSession("fixture-first", first);
+    const channel: ChatChannel = { id: `${kind}:sample`, name: "Sample", kind, created_at: "2026-03-28T00:00:00.000Z" };
+    const open = kind === "direct"
+      ? () => controller.openDirectChannel({ username: "sample" })
+      : () => controller.openGroupChannel({ usernames: ["sample"] });
+    const success = Promise.withResolvers<ChatChannel>();
+    const failure = Promise.withResolvers<ChatChannel>();
+    const refusal = new Error("Could not open this conversation");
+    const request = kind === "direct" ? spyOn(apiClient, "openDirectChannel") : spyOn(apiClient, "openGroupChannel");
+    request.mockImplementationOnce(() => success.promise)
+      .mockImplementationOnce(() => failure.promise)
+      .mockImplementationOnce(async () => channel)
+      .mockImplementationOnce(async () => { throw refusal; });
+    const connections = spyOn(controller, "ensureConnection");
+    const snapshots: string[][] = [];
+    const unsubscribe = controller.subscribe((snapshot) => snapshots.push(snapshot.channels.map((entry) => entry.id)));
+
+    const pendingSuccess = open();
+    const pendingFailure = open();
+    expect(request).toHaveBeenCalledTimes(2);
+    if (kind === "direct") {
+      controller.adoptSession("fixture-next", next);
+    } else {
+      apiClient.setSessionToken("fixture-renewed");
+      apiClient.restoreCachedUser(first);
+    }
+    const published = snapshots.length;
+    success.resolve(channel);
+    failure.reject(refusal);
+    await expect(Promise.all([pendingSuccess, pendingFailure])).resolves.toEqual([null, null]);
+    expect(controller.getSnapshot().channels).not.toContainEqual(channel);
+    expect(connections).not.toHaveBeenCalled();
+    expect(snapshots).toHaveLength(published);
+
+    await expect(open()).resolves.toEqual(channel);
+    expect(connections).toHaveBeenCalled();
+    expect(snapshots.at(-1)).toContain(channel.id);
+    await expect(open()).rejects.toBe(refusal);
+    unsubscribe();
+  });
+
   test("hydrates cached session, draft, and transcript from plugin persistence", () => {
     const persistence = new MemoryPersistence();
     const controller = createController();
@@ -190,9 +236,12 @@ describe("ChatController", () => {
     });
 
     persistSession(persistence);
-    persistence.setState("channel:everyone", {
+    persistence.setState(composerStateKey("u1", "everyone"), {
       draft: "cached draft",
+      draftClientMessageId: "cached-message-id",
       replyToId: "m1",
+    }, { schemaVersion: 1 });
+    persistence.setState("channel:everyone", {
       lastCursor: "m1",
       lastViewedMessageId: "m1",
     }, { schemaVersion: 1 });
@@ -212,6 +261,96 @@ describe("ChatController", () => {
     expect(snapshot.draft).toBe("cached draft");
     expect(snapshot.replyToId).toBe("m1");
     expect(snapshot.messages.map((entry) => entry.id)).toEqual(["m1"]);
+  });
+
+  test("restores only the confirmed account's composer from resume, even if a channel was opened before hydration", () => {
+    const persistence = new MemoryPersistence();
+    const resume: PluginResumeState = Object.assign(new MemoryPersistence(), {
+      getPaneState: () => null,
+      setPaneState: () => {},
+      deletePaneState: () => {},
+    });
+    const controller = createController({ bindComposerToApiSession: true });
+    persistSession(persistence);
+    const owned = { draft: "saved wording", draftClientMessageId: "saved-id", replyToId: "saved-reply" };
+    resume.setState(composerStateKey("u1", "everyone"), owned, { schemaVersion: 1 });
+    resume.setState(composerStateKey("u2", "everyone"), { draft: "other wording", replyToId: "other-reply" }, { schemaVersion: 1 });
+    for (const storage of [persistence, resume]) {
+      storage.setState("channel:options", { draft: "legacy wording", draftClientMessageId: "legacy-id", replyToId: "legacy-reply" });
+    }
+
+    controller.setDraft("without an account");
+    expect(controller.getSnapshot()).toMatchObject({ composerScope: null, draft: "", replyToId: null });
+    controller.attachPersistence(persistence, resume);
+    expect(controller.getSnapshot()).toMatchObject({ draft: owned.draft, replyToId: owned.replyToId, draftAttachments: [] });
+    expect(controller.getSnapshot("options")).toMatchObject({ draft: "", replyToId: null });
+    const drafts: string[] = [];
+    const unsubscribe = controller.subscribe((snapshot) => drafts.push(snapshot.draft));
+    apiClient.setSessionToken("renewed-session");
+    expect(drafts).toEqual([owned.draft, ""]);
+    apiClient.restoreCachedUser({ id: "u1", username: "ada", emailVerified: false });
+    expect(drafts.at(-1)).toBe(owned.draft);
+    controller.setReplyToId("updated-reply");
+    for (const storage of [persistence, resume]) {
+      expect(storage.getState<typeof owned>(composerStateKey("u1", "everyone"))).toEqual({ ...owned, replyToId: "updated-reply" });
+    }
+    unsubscribe();
+  });
+
+  test("publishes a new account with only its own composer, without carrying over uploads or queued draft writes", async () => {
+    jest.useFakeTimers();
+    const persistence = new TrackingPersistence();
+    const controller = createController({ bindComposerToApiSession: true });
+    persistSession(persistence, { emailVerified: true });
+    const first = { id: "u1", username: "ada", emailVerified: true };
+    const second = { id: "u2", username: "lin", emailVerified: true };
+    const firstKey = composerStateKey(first.id, "everyone");
+    const secondKey = composerStateKey(second.id, "everyone");
+    const saved = { draft: "saved first draft", draftClientMessageId: "first-draft-id", replyToId: "first-reply" };
+    const other = { draft: "saved second draft", draftClientMessageId: "second-draft-id", replyToId: "second-reply" };
+    persistence.setState(firstKey, saved);
+    persistence.setState(secondKey, other);
+    controller.attachPersistence(persistence);
+
+    const upload = Promise.withResolvers<ChatAttachment>();
+    controller.uploadAttachment = () => upload.promise;
+    expect(controller.attachToChannel("everyone", [{ name: "sample.png", type: "image/png", data: new Uint8Array(16) }])).toBe(1);
+    controller.setDraft("edited first draft");
+    controller.setChannelDraft("options", "separate channel draft");
+    const scope = controller.getComposerScope();
+    apiClient.setSessionToken("renewed-first-session");
+    apiClient.restoreCachedUser({ ...first, username: "ada-updated" });
+    await controller.refreshSession();
+    expect(controller.getSnapshot()).toMatchObject({ draft: "edited first draft", replyToId: saved.replyToId });
+    expect(controller.getComposerScope()).toBe(scope);
+    expect(controller.getSnapshot().draftAttachments).toHaveLength(1);
+
+    const observed: ReturnType<typeof controller.getSnapshot>[] = [];
+    const unsubscribe = controller.subscribe((snapshot) => observed.push(snapshot));
+    apiClient.setSessionToken("replacement-session");
+    expect(controller.getSnapshot()).toMatchObject({ composerScope: null, draft: "", replyToId: null, draftAttachments: [] });
+    apiClient.restoreCachedUser(second);
+    await controller.refreshSession();
+    upload.resolve({ id: "fixture-image", mime: "image/png", width: 1, height: 1, size: 16, url: "https://example.invalid/image" });
+    await flushMicrotasks();
+    const writes = persistence.composerWrites;
+    jest.advanceTimersByTime(DRAFT_SYNC_MAX_WAIT_MS);
+    expect(persistence.composerWrites).toBe(writes);
+    const newAccountSnapshots = observed.filter((snapshot) => snapshot.user?.id === second.id);
+    expect(newAccountSnapshots.length).toBeGreaterThan(0);
+    for (const snapshot of newAccountSnapshots) {
+      expect(snapshot).toMatchObject({ draft: other.draft, replyToId: other.replyToId, draftAttachments: [] });
+    }
+    expect(controller.getSnapshot("options")).toMatchObject({ draft: "", replyToId: null });
+    expect(persistence.getState<typeof saved>(firstKey)).toEqual({ ...saved, draft: "edited first draft" });
+    expect(persistence.getState<typeof other>(secondKey)).toEqual(other);
+    expect(persistence.getState(composerStateKey(first.id, "options"))).toMatchObject({ draft: "separate channel draft" });
+    expect(persistence.getState(composerStateKey(second.id, "options"))).toBeNull();
+    unsubscribe();
+
+    controller.adoptSession("first-session-again", first);
+    expect(controller.getComposerScope()).not.toBe(scope);
+    expect(controller.getSnapshot()).toMatchObject({ draft: "edited first draft", replyToId: saved.replyToId, draftAttachments: [] });
   });
 
   test("uses a browser cookie session without exposing its token", async () => {
@@ -383,25 +522,27 @@ describe("ChatController", () => {
     const controller = createController();
     const draftSnapshots: string[] = [];
 
+    persistSession(persistence);
     controller.attachPersistence(persistence);
+    const key = composerStateKey("u1", "everyone");
     const unsubscribe = controller.subscribe((snapshot) => {
       draftSnapshots.push(snapshot.draft);
     });
     draftSnapshots.length = 0;
-    persistence.stateWrites = 0;
+    persistence.composerWrites = 0;
 
     controller.setDraft("h");
     controller.setDraft("he");
 
     expect(controller.getSnapshot().draft).toBe("he");
     expect(draftSnapshots).toEqual([]);
-    expect(persistence.stateWrites).toBe(0);
-    expect(persistence.getState("channel:everyone", { schemaVersion: 1 })).toBeNull();
+    expect(persistence.composerWrites).toBe(0);
+    expect(persistence.getState(key, { schemaVersion: 1 })).toBeNull();
 
     unsubscribe();
     controller.dispose();
 
-    expect(persistence.getState<{ draft: string }>("channel:everyone", { schemaVersion: 1 })).toMatchObject({
+    expect(persistence.getState(key, { schemaVersion: 1 })).toMatchObject({
       draft: "he",
     });
   });
@@ -412,9 +553,10 @@ describe("ChatController", () => {
     jest.useFakeTimers();
     const persistence = new TrackingPersistence();
     const controller = createController();
+    persistSession(persistence);
     controller.attachPersistence(persistence);
-    persistence.stateWrites = 0;
-    const saved = () => persistence.getState<{ draft: string }>("channel:everyone", { schemaVersion: 1 })?.draft;
+    persistence.composerWrites = 0;
+    const saved = () => persistence.getState<{ draft: string }>(composerStateKey("u1", "everyone"), { schemaVersion: 1 })?.draft;
 
     let typed = "";
     for (let elapsed = 0; elapsed < DRAFT_SYNC_MAX_WAIT_MS - DRAFT_SYNC_DEBOUNCE_MS; elapsed += DRAFT_SYNC_DEBOUNCE_MS / 2) {
@@ -422,7 +564,7 @@ describe("ChatController", () => {
       controller.setDraft(typed);
       jest.advanceTimersByTime(DRAFT_SYNC_DEBOUNCE_MS / 2);
     }
-    expect(persistence.stateWrites).toBe(0);
+    expect(persistence.composerWrites).toBe(0);
     expect(saved()).toBeUndefined();
 
     for (let elapsed = 0; elapsed < 2 * DRAFT_SYNC_DEBOUNCE_MS; elapsed += DRAFT_SYNC_DEBOUNCE_MS / 2) {
@@ -436,9 +578,9 @@ describe("ChatController", () => {
     // The pause saves the rest, and nothing is written once it is all saved.
     jest.advanceTimersByTime(DRAFT_SYNC_DEBOUNCE_MS);
     expect(saved()).toBe(typed);
-    const writes = persistence.stateWrites;
+    const writes = persistence.composerWrites;
     jest.advanceTimersByTime(DRAFT_SYNC_MAX_WAIT_MS * 2);
-    expect(persistence.stateWrites).toBe(writes);
+    expect(persistence.composerWrites).toBe(writes);
     controller.dispose();
   });
 
@@ -463,13 +605,11 @@ describe("ChatController", () => {
     const controller = createController();
     let closed = false;
 
-    apiClient.setSessionToken("token-123");
-    (controller as any).session.sessionToken = "token-123";
-    (controller as any).session.user = { id: "u1", username: "ada", emailVerified: false };
+    controller.adoptSession("token-123", { id: "u1", username: "ada", emailVerified: false });
     (controller as any).realtime.syncVerificationPolling();
     expect((controller as any).realtime.verificationPollTimer).not.toBeNull();
 
-    (controller as any).session.user = { id: "u1", username: "ada", emailVerified: true };
+    controller.adoptSession("token-123", { id: "u1", username: "ada", emailVerified: true });
     apiClient.connectChannel = () => ({
       send: async () => {
         throw new Error("not implemented");
@@ -619,10 +759,7 @@ describe("ChatController", () => {
     expect(apiClient.getSessionToken()).toBeNull();
     expect(apiClient.getCurrentUser()).toBeNull();
     expect(controller.getSnapshot().user).toBeNull();
-    expect(persistence.getState<{ sessionToken: string | null; user: unknown }>("session", { schemaVersion: 1 })).toEqual({
-      sessionToken: null,
-      user: null,
-    });
+    expect(persistence.getState("session", { schemaVersion: 1 })).toBeNull();
     controller.dispose();
   });
 
@@ -903,17 +1040,14 @@ describe("ChatController", () => {
       user: { id: "u2", username: "bob", displayName: "Bob" },
     });
 
-    persistence.setState("channel:everyone", {
+    persistSession(persistence);
+    persistence.setState(composerStateKey("u1", "everyone"), {
       draft: "general draft",
       replyToId: null,
-      lastCursor: "m1",
-      lastViewedMessageId: "m1",
     }, { schemaVersion: 1 });
-    persistence.setState("channel:options", {
+    persistence.setState(composerStateKey("u1", "options"), {
       draft: "options draft",
       replyToId: null,
-      lastCursor: "m2",
-      lastViewedMessageId: "m2",
     }, { schemaVersion: 1 });
     persistence.setResource(TRANSCRIPT_KIND, "everyone", { messages: [everyoneMessage] }, {
       sourceKey: TRANSCRIPT_SOURCE,
@@ -1280,10 +1414,11 @@ describe("ChatController", () => {
 
     persistSession(persistence, { emailVerified: true });
     persistence.setState("channel:everyone", {
-      draft: "hello",
-      replyToId: "m1",
       lastCursor: "m1",
       lastViewedMessageId: "m1",
+    }, { schemaVersion: 1 });
+    persistence.setState(composerStateKey("u1", "everyone"), {
+      draft: "hello", draftClientMessageId: "prepared-message-id", replyToId: "m1",
     }, { schemaVersion: 1 });
     persistence.setResource(TRANSCRIPT_KIND, TRANSCRIPT_KEY, {
       messages: [replyTarget],
@@ -1571,6 +1706,79 @@ describe("ChatController", () => {
     expect(sends[1]).toEqual(sends[0]!);
     expect(sends[0]!.clientMessageId).toBeTruthy();
     expect(controller.getSnapshot().messages).toEqual([stored]);
+  });
+
+  test("keeps outgoing messages with the account that started them", async () => {
+    const persistence = new MemoryPersistence();
+    const controller = createController({ bindComposerToApiSession: true });
+    persistSession(persistence, { emailVerified: true });
+    const first = { id: "u1", username: "ada", emailVerified: true };
+    const second = { id: "u2", username: "lin", emailVerified: true };
+    const publicMessage = chatMessage({ id: "public-message", content: "public message", createdAt: recentChatTimestamp() });
+    const sentMessage = chatMessage({ id: "sent-message", content: "outgoing message", createdAt: new Date().toISOString() });
+    const image = { id: "image", mime: "image/png", width: 2, height: 2, size: 16, url: "https://example.invalid/preview" };
+    const send = Promise.withResolvers<ChatMessage>();
+    const interrupted = Promise.withResolvers<ChatMessage>();
+    const notices: AppNotificationRequest[] = [];
+    let sends = 0;
+    apiClient.connectChannel = (_channelId, onMessage) => ({
+      send: async () => {
+        sends += 1;
+        if (sends <= 2) throw new Error("Fixture send paused");
+        const delivered = await (sends === 3 ? interrupted.promise : send.promise);
+        onMessage(delivered);
+        return delivered;
+      },
+      close: () => {},
+    });
+    apiClient.getMessages = async () => [publicMessage];
+    controller.uploadAttachment = async () => image;
+    controller.setNotifier((notification) => { notices.push(notification); });
+    controller.attachPersistence(persistence);
+    await controller.refreshMessages();
+    controller.attachToChannel("everyone", [{ name: "image.png", type: "image/png", data: new Uint8Array(16) }]);
+    await flushMicrotasks();
+    expect(controller.send("image message")).toBe(true);
+    await flushMicrotasks();
+    const failed = controller.getSnapshot().messages.find((message) => message.clientStatus === "failed")!;
+    expect(failed.attachments?.[0]?.url).toBe(image.url);
+
+    apiClient.setSessionToken("renewed-session");
+    expect(controller.getSnapshot().messages).toEqual([publicMessage]);
+    expect(controller.retryChannelMessage("everyone", failed.id)).toBe(false);
+    apiClient.restoreCachedUser(first);
+    await controller.refreshSession();
+    expect(controller.retryChannelMessage("everyone", failed.id)).toBe(true);
+    await flushMicrotasks();
+    expect(controller.getSnapshot().messages.find((message) => message.id === failed.id)).toMatchObject({
+      clientStatus: "failed", attachments: [image],
+    });
+    expect(controller.send("another outgoing message")).toBe(true);
+    expect(controller.send("outgoing message")).toBe(true);
+    expect(controller.getSnapshot().messages.filter((message) => message.clientStatus === "sending")).toHaveLength(2);
+
+    const deferredUpload = Promise.withResolvers<ChatAttachment>();
+    controller.uploadAttachment = () => deferredUpload.promise;
+    const share = controller.postImage("everyone", { name: "share.png", type: "image/png", data: new Uint8Array(16) }, "share")
+      .catch((error: unknown) => error);
+    const snapshots: ReturnType<typeof controller.getSnapshot>[] = [];
+    const unsubscribe = controller.subscribe((snapshot) => snapshots.push(snapshot));
+    apiClient.setSessionToken("next-session");
+    apiClient.restoreCachedUser(second);
+    await controller.refreshSession();
+    expect(controller.retryChannelMessage("everyone", failed.id)).toBe(false);
+    deferredUpload.resolve(image);
+    interrupted.reject(new Error("Fixture send interrupted"));
+    send.resolve(sentMessage);
+    expect(await share).toEqual(new Error("The chat session changed."));
+    await flushMicrotasks();
+    expect(sends).toBe(4);
+    expect(notices).toEqual(Array.from({ length: 2 }, () => ({ body: "Fixture send paused", type: "error" })));
+    const nextSnapshots = snapshots.filter((snapshot) => snapshot.user?.id === second.id);
+    expect(nextSnapshots.length).toBeGreaterThan(0);
+    for (const snapshot of nextSnapshots) expect(snapshot.messages).toEqual([publicMessage]);
+    expect(controller.getSnapshot().messages).toEqual([publicMessage]);
+    unsubscribe();
   });
 
   test("posts a shared pane as its own message, leaving the channel's draft and images alone", async () => {

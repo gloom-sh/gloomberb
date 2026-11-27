@@ -5,6 +5,8 @@ export type ChatContentController = Pick<
   | "attachView"
   | "attachChannelView"
   | "getSnapshot"
+  | "getComposerScope"
+  | "captureSessionScope"
   | "refreshChannels"
   | "refreshChatState"
   | "refreshPresence"

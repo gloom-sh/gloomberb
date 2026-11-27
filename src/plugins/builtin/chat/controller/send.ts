@@ -12,10 +12,16 @@ import { createClientMessageId } from "./utils";
 
 type ChatChannelConnection = NonNullable<ChannelRuntimeState["wsConnection"]>;
 
+interface OutgoingScope {
+  isOwned: () => boolean;
+  isCurrent: () => boolean;
+}
+
 interface DeliverPendingMessageOptions {
   channel: ChannelRuntimeState;
   connection: ChatChannelConnection;
   pendingMessage: ChatMessage;
+  scope: OutgoingScope;
   emit: () => void;
   mergeMessages: (messages: ChatMessage[]) => void;
   notify: (notification: AppNotificationRequest) => void;
@@ -30,10 +36,13 @@ function deliverPendingMessage({
   channel,
   connection,
   pendingMessage,
+  scope,
   emit,
   mergeMessages,
   notify,
 }: DeliverPendingMessageOptions): void {
+  if (!scope.isCurrent()) return;
+  const canSettle = () => scope.isOwned() && channel.pendingMessages.includes(pendingMessage);
   const attachmentIds = (pendingMessage.attachments ?? []).map((attachment) => attachment.id);
   void connection.send(
     pendingMessage.content,
@@ -41,19 +50,21 @@ function deliverPendingMessage({
     pendingMessage.clientMessageId,
     attachmentIds.length > 0 ? attachmentIds : undefined,
   ).then((message) => {
+    if (!canSettle()) return;
     channel.pendingMessages = channel.pendingMessages.filter(
       (entry) => entry.id !== pendingMessage.id,
     );
-    mergeMessages([message]);
+    if (scope.isCurrent()) mergeMessages([message]);
   }).catch((error) => {
+    if (!canSettle()) return;
     const errorMessage = describeChatSendError(error);
     channel.pendingMessages = channel.pendingMessages.map((entry) => (
       entry.id === pendingMessage.id
         ? { ...entry, clientStatus: "failed", clientError: errorMessage }
         : entry
     ));
-    emit();
-    notify({ body: errorMessage, type: "error" });
+    if (scope.isCurrent()) emit();
+    if (scope.isCurrent()) notify({ body: errorMessage, type: "error" });
   });
 }
 
@@ -79,6 +90,7 @@ interface SendChannelMessageOptions {
   content: string;
   replyToId?: string;
   user: ChatSessionUser | null;
+  scope: OutgoingScope;
   ensureConnection: () => void;
   getVisibleMessages: () => ChatMessage[];
   nextPendingMessageId: () => string;
@@ -99,6 +111,7 @@ export function sendChatMessageToChannel({
   content,
   replyToId,
   user,
+  scope,
   ensureConnection,
   getVisibleMessages,
   nextPendingMessageId,
@@ -119,7 +132,7 @@ export function sendChatMessageToChannel({
   const attachmentIds = images.attachments.map((image) => image.uploaded.id);
   if (hasPendingSend(channel, messageContent, replyToId, attachmentIds)) return true;
   const connection = openConnection(channel, ensureConnection, notify);
-  if (!connection) return false;
+  if (!connection || !scope.isCurrent()) return false;
 
   const clientMessageId = channel.draftClientMessageId ?? createClientMessageId();
   const pendingMessage = createPendingMessage({
@@ -143,7 +156,7 @@ export function sendChatMessageToChannel({
   persistChannelState();
   emit();
 
-  deliverPendingMessage({ channel, connection, pendingMessage, emit, mergeMessages, notify });
+  deliverPendingMessage({ channel, connection, pendingMessage, scope, emit, mergeMessages, notify });
   return true;
 }
 
@@ -160,6 +173,7 @@ export async function postImageMessageToChannel({
   attachment,
   previewUrl,
   user,
+  scope,
   getVisibleMessages,
   nextPendingMessageId,
   emit,
@@ -173,6 +187,7 @@ export async function postImageMessageToChannel({
   /** The local copy to show until the server's answer arrives. */
   previewUrl: string | null;
   user: ChatSessionUser;
+  scope: OutgoingScope;
   getVisibleMessages: () => ChatMessage[];
   nextPendingMessageId: () => string;
   emit: () => void;
@@ -190,20 +205,27 @@ export async function postImageMessageToChannel({
   });
   channel.pendingMessages = [...channel.pendingMessages, pendingMessage];
   emit();
+  const canSettle = () => scope.isOwned() && channel.pendingMessages.includes(pendingMessage);
   try {
+    if (!scope.isCurrent()) throw new Error("The chat session changed.");
     const message = await send(pendingMessage.content, pendingMessage.clientMessageId!, [attachment.id]);
-    channel.pendingMessages = channel.pendingMessages.filter((entry) => entry.id !== pendingMessage.id);
-    mergeMessages([message]);
+    if (canSettle()) {
+      channel.pendingMessages = channel.pendingMessages.filter((entry) => entry.id !== pendingMessage.id);
+      if (scope.isCurrent()) mergeMessages([message]);
+    }
+    if (!scope.isCurrent()) throw new Error("The chat session changed.");
     return message;
   } catch (error) {
-    const errorMessage = describeChatSendError(error);
-    channel.pendingMessages = channel.pendingMessages.map((entry) => (
-      entry.id === pendingMessage.id
-        ? { ...entry, clientStatus: "failed", clientError: errorMessage }
-        : entry
-    ));
-    emit();
-    throw new Error(errorMessage);
+    const errorMessage = scope.isOwned() ? describeChatSendError(error) : "The chat session changed.";
+    if (canSettle()) {
+      channel.pendingMessages = channel.pendingMessages.map((entry) => (
+        entry.id === pendingMessage.id
+          ? { ...entry, clientStatus: "failed", clientError: errorMessage }
+          : entry
+      ));
+      if (scope.isCurrent()) emit();
+    }
+    throw new Error(scope.isCurrent() ? errorMessage : "The chat session changed.");
   }
 }
 
@@ -215,6 +237,7 @@ export async function postImageMessageToChannel({
 export function retryChatMessageInChannel({
   channel,
   messageId,
+  scope,
   ensureConnection,
   emit,
   mergeMessages,
@@ -222,6 +245,7 @@ export function retryChatMessageInChannel({
 }: {
   channel: ChannelRuntimeState;
   messageId: string;
+  scope: OutgoingScope;
   ensureConnection: () => void;
   emit: () => void;
   mergeMessages: (messages: ChatMessage[]) => void;
@@ -232,7 +256,7 @@ export function retryChatMessageInChannel({
   ));
   if (!failed) return false;
   const connection = openConnection(channel, ensureConnection, notify);
-  if (!connection) return false;
+  if (!connection || !scope.isCurrent()) return false;
 
   const pendingMessage: ChatMessage = {
     ...failed,
@@ -245,6 +269,6 @@ export function retryChatMessageInChannel({
     message.id === messageId ? pendingMessage : message
   ));
   emit();
-  deliverPendingMessage({ channel, connection, pendingMessage, emit, mergeMessages, notify });
+  deliverPendingMessage({ channel, connection, pendingMessage, scope, emit, mergeMessages, notify });
   return true;
 }

@@ -42,6 +42,8 @@ export {
 };
 export type { AppAction, AppState, CollectionSortPreference, PaneRuntimeState };
 
+const defaultInputCaptureOwner = {};
+
 /** One more open of the empty command bar; past the introduction the count stays put. */
 function countEmptyCommandBarOpen(state: AppState): AppState {
   const commandBarOpens = recordCommandBarOpen(state.config.commandBarOpens);
@@ -251,8 +253,15 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         : { ...state, config };
     }
 
-    case "SET_INPUT_CAPTURED":
-      return { ...state, inputCaptured: action.captured };
+    case "SET_INPUT_CAPTURED": {
+      const owner = action.owner ?? defaultInputCaptureOwner;
+      const owners = state.inputCaptureOwners ?? (state.inputCaptured ? [defaultInputCaptureOwner] : []);
+      const inputCaptureOwners = new Set(owners);
+      if (inputCaptureOwners.has(owner) === action.captured) return state;
+      if (action.captured) inputCaptureOwners.add(owner);
+      else inputCaptureOwners.delete(owner);
+      return { ...state, inputCaptureOwners, inputCaptured: inputCaptureOwners.size > 0 };
+    }
 
     case "SET_EXCHANGE_RATE": {
       const exchangeRates = new Map(state.exchangeRates);

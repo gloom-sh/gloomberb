@@ -1,11 +1,12 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { act, useCallback, useMemo, useRef, useState } from "react";
 import { AppContext, appReducer, createInitialState, PaneInstanceProvider } from "../../../state/app/context";
-import { createStaticAppStore } from "../../../test-support/app-store";
+import { createReducerAppStore, createStaticAppStore } from "../../../test-support/app-store";
 import { createConfigBackedTestPluginRuntime, createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createDefaultConfig, findPaneInstance, type PaneInstanceConfig } from "../../../types/config";
 import { TextAttributes } from "../../../ui";
 import { apiClient, type ChatChannel } from "../../../api-client";
+import { ApiRequestError } from "../../../api-client/errors";
 import { PluginRenderProvider } from "../../runtime";
 import { gloomberbCloudPlugin } from "../cloud";
 import { TeamStatusWidget } from "../cloud/team/status-widget";
@@ -407,6 +408,94 @@ describe("ChatContent channel sidebar", () => {
       expect(tui.frame()).not.toContain("New DM");
     } finally {
       apiClient.openDirectChannel = originalOpenDirectChannel;
+    }
+  });
+
+  test("reopens New DM with its own state and keyboard capture", async () => {
+    const user = { id: "u1", username: "ada", emailVerified: true };
+    const controller = createController({ user, bindComposerToApiSession: true });
+    installServerChannels(controller);
+    const store = createReducerAppStore(createInitialState(createDefaultConfig("/tmp/gloomberb-chat")));
+    const selectedChannels: string[] = [];
+    const pending = Promise.withResolvers<ChatChannel>();
+    const request = spyOn(apiClient, "openDirectChannel")
+      .mockImplementationOnce(async () => { throw new ApiRequestError("User not found", 404); })
+      .mockImplementationOnce(() => pending.promise);
+
+    async function openDialog() {
+      const lines = tui.frame().split("\n");
+      const row = lines.findIndex((line) => line.includes("DMs"));
+      const col = lines[row]?.lastIndexOf("+") ?? -1;
+      expect(col).toBeGreaterThanOrEqual(0);
+      await act(async () => { await tui.setup().mockMouse.click(col, row); });
+      await flushFrame();
+      expect(tui.frame()).toContain("New DM");
+      expect(tui.frame()).toContain("@username, @second");
+      expect(store.getState().inputCaptured).toBe(true);
+    }
+
+    async function submitRecipient(username: string) {
+      await act(async () => {
+        await tui.setup().mockInput.typeText(`@${username}`);
+        tui.setup().mockInput.pressEnter();
+      });
+      await flushFrame();
+    }
+
+    try {
+      await act(async () => {
+        await tui.render(
+          <AppContext value={store}>
+            <PluginRenderProvider pluginId="gloomberb-cloud" runtime={createTestPluginRuntime()}>
+              <ChatContent controller={controller} width={90} height={14} focused channelId="everyone"
+                onChannelChange={(channelId) => { selectedChannels.push(channelId); }} />
+            </PluginRenderProvider>
+          </AppContext>,
+          { width: 90, height: 14 },
+        );
+      });
+      await flushFrame();
+      await openDialog();
+      await submitRecipient("spruce");
+      expect(tui.frame()).toContain("@spruce was not found.");
+
+      await act(async () => {
+        store.dispatch({ type: "SET_INPUT_CAPTURED", captured: true });
+        apiClient.setSessionToken("fixture-renewed");
+      });
+      await flushFrame();
+      expect(tui.frame()).not.toContain("New DM");
+      expect(store.getState().inputCaptured).toBe(true);
+      await act(async () => {
+        store.dispatch({ type: "SET_INPUT_CAPTURED", captured: false });
+        apiClient.restoreCachedUser(user);
+      });
+      await flushFrame();
+      expect(tui.frame()).not.toContain("New DM");
+      expect(store.getState().inputCaptured).toBe(false);
+
+      await openDialog();
+      expect(tui.frame()).not.toContain("spruce");
+      await submitRecipient("cedar");
+      expect(request.mock.calls).toEqual([[{ username: "spruce" }], [{ username: "cedar" }]]);
+      await emitKeypress({ name: "escape", sequence: "\u001b" });
+      await flushFrame();
+      expect(store.getState().inputCaptured).toBe(false);
+      await openDialog();
+      await act(async () => {
+        pending.resolve({ id: "dm:cedar", name: "@cedar", kind: "direct", created_at: "2026-07-03T09:30:00.000Z" });
+      });
+      await flushFrame();
+      expect(selectedChannels).toEqual([]);
+      expect(controller.getChannels().some((channel) => channel.id === "dm:cedar")).toBe(false);
+      expect(tui.frame()).toContain("New DM");
+      expect(tui.frame()).toContain("@username, @second");
+      expect(store.getState().inputCaptured).toBe(true);
+      await emitKeypress({ name: "escape", sequence: "\u001b" });
+      await flushFrame();
+      expect(store.getState().inputCaptured).toBe(false);
+    } finally {
+      request.mockRestore();
     }
   });
 

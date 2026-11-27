@@ -33,10 +33,12 @@ export function useChatComposerRuntime({
   inputFocused,
   inputRef,
   inputValueRef,
+  isComposerCurrent,
   messages,
   onComposerStateChange,
   onChannelChange,
   editingMessage,
+  editingMessageRef,
   latestEditableMessageId,
   replyTo,
   setEditingMessage,
@@ -65,13 +67,15 @@ export function useChatComposerRuntime({
   inputFocused: boolean;
   inputRef: MutableRef<TextareaRenderable | null>;
   inputValueRef: MutableRef<string>;
+  isComposerCurrent: () => boolean;
   messages: ChatMessage[];
   onComposerStateChange?: (draft: string, cursorOffset: number) => void;
   onChannelChange?: (channelId: string) => void;
   editingMessage: ChatMessage | null;
+  editingMessageRef: MutableRef<ChatMessage | null>;
   latestEditableMessageId: string | null;
   replyTo: ChatMessage | null;
-  setEditingMessage: Dispatch<SetStateAction<ChatMessage | null>>;
+  setEditingMessage: (message: ChatMessage | null) => void;
   expandDirectSection: () => void;
   setFollowMessages: Dispatch<SetStateAction<boolean>>;
   setReplyTo: Dispatch<SetStateAction<ChatMessage | null>>;
@@ -95,9 +99,7 @@ export function useChatComposerRuntime({
   const draftAttachmentCountRef = useRef(draftAttachmentCount);
   draftAttachmentCountRef.current = draftAttachmentCount;
   replyToRef.current = replyTo;
-  const editingMessageRef = useRef(editingMessage);
-  editingMessageRef.current = editingMessage;
-  const editSubmittingRef = useRef(false);
+  const editSubmittingRef = useRef<ChatMessage | null>(null);
 
   const focusComposer = useCallback(() => {
     setSelectedIdx(-1);
@@ -106,23 +108,25 @@ export function useChatComposerRuntime({
   }, [focusInput, setFollowMessages, setSelectedIdx]);
 
   const clearReplyTarget = useCallback(() => {
+    if (!isComposerCurrent()) return;
     setReplyTo(null);
     if (useDefaultControllerChannel) {
       controller.setReplyToId(null);
     } else {
       controller.setChannelReplyToId(channelId, null);
     }
-  }, [channelId, controller, setReplyTo, useDefaultControllerChannel]);
+  }, [channelId, controller, isComposerCurrent, setReplyTo, useDefaultControllerChannel]);
 
   // The field's text is saved with the links of its chips, the way it will be sent.
   const persistDraft = useCallback((text: string, links: readonly ComposerShareLink[] = draftLinksRef.current) => {
+    if (editingMessageRef.current) return;
     const draft = joinComposerDraft(text, links);
     if (useDefaultControllerChannel) {
       controller.setDraft(draft);
     } else {
       controller.setChannelDraft(channelId, draft);
     }
-  }, [channelId, controller, draftLinksRef, useDefaultControllerChannel]);
+  }, [channelId, controller, draftLinksRef, editingMessageRef, useDefaultControllerChannel]);
 
   const replaceLocalComposer = useCallback((draft: string, cursorOffset = draft.length) => {
     inputValueRef.current = draft;
@@ -143,26 +147,30 @@ export function useChatComposerRuntime({
   }, [applyingExternalDraftRef, inputRef, inputValueRef, onComposerStateChange, updateComposerRows]);
 
   const replaceComposerDraft = useCallback((draft: string, cursorOffset = draft.length) => {
+    if (!isComposerCurrent()) return;
     replaceLocalComposer(draft, cursorOffset);
     persistDraft(draft);
-  }, [persistDraft, replaceLocalComposer]);
+  }, [isComposerCurrent, persistDraft, replaceLocalComposer]);
 
   /** New chips above the field, saved with the text as it is. */
   const replaceDraftLinks = useCallback((links: ComposerShareLink[]) => {
+    if (!isComposerCurrent()) return;
     setDraftLinks(links);
     persistDraft(inputValueRef.current, links);
-  }, [inputValueRef, persistDraft, setDraftLinks]);
+  }, [inputValueRef, isComposerCurrent, persistDraft, setDraftLinks]);
+
+  const restoreNewMessageDraft = useCallback(() => {
+    setEditingMessage(null);
+    const view = splitComposerDraft(controller.getSnapshot(channelId).draft);
+    setDraftLinks(view.links);
+    replaceLocalComposer(view.text);
+  }, [channelId, controller, replaceLocalComposer, setDraftLinks, setEditingMessage]);
 
   const beginReplyTo = useCallback((index: number, options?: { deferFocus?: boolean }) => {
-    if (!canSend || index < 0 || index >= messages.length) return;
+    if (!canSend || !isComposerCurrent() || index < 0 || index >= messages.length) return;
     const nextReplyTo = messages[index] ?? null;
     if (!nextReplyTo) return;
-    if (editingMessageRef.current) {
-      setDraftLinks([]);
-      replaceLocalComposer("");
-      persistDraft("", []);
-    }
-    setEditingMessage(null);
+    if (editingMessageRef.current) restoreNewMessageDraft();
     setSelectedIdx(index);
     setFollowMessages(index === messages.length - 1);
     setReplyTo(nextReplyTo);
@@ -180,31 +188,31 @@ export function useChatComposerRuntime({
     canSend,
     channelId,
     controller,
+    editingMessageRef,
     focusInput,
+    isComposerCurrent,
     messages,
-    persistDraft,
-    replaceLocalComposer,
-    setEditingMessage,
+    restoreNewMessageDraft,
     setFollowMessages,
-    setDraftLinks,
     setReplyTo,
     setSelectedIdx,
     useDefaultControllerChannel,
   ]);
 
   const beginEditMessage = useCallback((index: number, options?: { deferFocus?: boolean }) => {
-    if (!canSend || index < 0 || index >= messages.length) return false;
+    if (!canSend || !isComposerCurrent() || index < 0 || index >= messages.length) return false;
     const message = messages[index] ?? null;
     if (!message || message.id !== latestEditableMessageId) return false;
+    const edit = { ...message };
+    setEditingMessage(edit);
     clearReplyTarget();
-    setEditingMessage(message);
+    if (editingMessageRef.current !== edit || !isComposerCurrent()) return false;
     setSelectedIdx(index);
     setFollowMessages(index === messages.length - 1);
     // Links at the end of the message are chips again while it is edited.
     const view = splitComposerDraft(message.content);
     setDraftLinks(view.links);
     replaceLocalComposer(view.text);
-    persistDraft(view.text, view.links);
     if (options?.deferFocus) {
       queueMicrotask(() => focusInput());
     } else {
@@ -214,10 +222,11 @@ export function useChatComposerRuntime({
   }, [
     canSend,
     clearReplyTarget,
+    editingMessageRef,
     focusInput,
+    isComposerCurrent,
     latestEditableMessageId,
     messages,
-    persistDraft,
     replaceLocalComposer,
     setDraftLinks,
     setEditingMessage,
@@ -232,13 +241,10 @@ export function useChatComposerRuntime({
   }, [beginEditMessage, latestEditableMessageId, messages]);
 
   const cancelEditMessage = useCallback(() => {
-    if (!editingMessageRef.current) return;
-    setEditingMessage(null);
-    setDraftLinks([]);
-    replaceLocalComposer("");
-    persistDraft("", []);
+    if (!isComposerCurrent() || !editingMessageRef.current) return;
+    restoreNewMessageDraft();
     focusInput();
-  }, [focusInput, persistDraft, replaceLocalComposer, setDraftLinks, setEditingMessage]);
+  }, [editingMessageRef, focusInput, isComposerCurrent, restoreNewMessageDraft]);
 
   const returnToComposer = useCallback(() => {
     setSelectedIdx(-1);
@@ -254,6 +260,7 @@ export function useChatComposerRuntime({
   }, [replaceLocalComposer, setDraftLinks]);
 
   const sendMessage = useCallback(() => {
+    if (!canSend || !isComposerCurrent()) return;
     const content = composerMessage(inputValueRef.current, draftLinksRef.current);
     const editing = editingMessageRef.current;
     // Images let a message, or an edit of one that has them, go without text.
@@ -262,51 +269,49 @@ export function useChatComposerRuntime({
       : draftAttachmentCountRef.current > 0;
     if (!content && !imagesAllowEmpty) return;
     if (editing) {
-      if (editSubmittingRef.current) return;
+      if (editSubmittingRef.current === editing) return;
       const sendChannelId = useDefaultControllerChannel ? channelId : channelIdRef.current;
       if (editing.channelId !== sendChannelId) return;
-      editSubmittingRef.current = true;
+      const isCurrent = controller.captureSessionScope();
+      if (!isCurrent()) return;
+      editSubmittingRef.current = editing;
       void controller.editChannelMessage(sendChannelId, editing.id, content).then((accepted) => {
-        if (!accepted) return;
-        setEditingMessage(null);
-        clearLocalComposer();
-        persistDraft("", []);
+        if (!accepted || !isCurrent() || editingMessageRef.current !== editing) return;
+        restoreNewMessageDraft();
         setSelectedIdx(-1);
         setFollowMessages(true);
       }).finally(() => {
-        editSubmittingRef.current = false;
+        if (editSubmittingRef.current === editing) editSubmittingRef.current = null;
       });
       return;
     }
     const composerCommand = content ? parseChatComposerCommand(content) : null;
-    if (composerCommand?.kind === "direct") {
-      void controller.openDirectChannel({ username: composerCommand.username }).then((channel) => {
+    if (composerCommand?.kind === "direct" || composerCommand?.kind === "group") {
+      const isCurrent = controller.captureSessionScope();
+      if (!isCurrent()) return;
+      const usernames = composerCommand.kind === "direct" ? [composerCommand.username] : composerCommand.usernames;
+      const request = composerCommand.kind === "direct"
+        ? controller.openDirectChannel({ username: composerCommand.username })
+        : controller.openGroupChannel({ usernames, name: composerCommand.name });
+      void request.then((channel) => {
+        if (!channel || !isCurrent()) return;
         expandDirectSection();
         channelIdRef.current = channel.id;
         onChannelChange?.(channel.id);
+        if (!isCurrent()) return;
         clearLocalComposer();
-        if (composerCommand.draft) {
+        if (composerCommand.kind === "direct" && composerCommand.draft) {
           controller.setChannelDraft(channel.id, composerCommand.draft);
         }
-      }).catch((error: unknown) => onConversationStartError?.(error, [composerCommand.username]));
+      }).catch((error: unknown) => {
+        if (isCurrent()) onConversationStartError?.(error, usernames);
+      });
       return;
     }
     if (composerCommand?.kind === "discord" && onDiscordCommand) {
       setDraftLinks([]);
       replaceComposerDraft("");
       onDiscordCommand(composerCommand);
-      return;
-    }
-    if (composerCommand?.kind === "group") {
-      void controller.openGroupChannel({
-        usernames: composerCommand.usernames,
-        name: composerCommand.name,
-      }).then((channel) => {
-        expandDirectSection();
-        channelIdRef.current = channel.id;
-        onChannelChange?.(channel.id);
-        clearLocalComposer();
-      }).catch((error: unknown) => onConversationStartError?.(error, composerCommand.usernames));
       return;
     }
     const sendChannelId = useDefaultControllerChannel ? channelId : channelIdRef.current;
@@ -321,27 +326,29 @@ export function useChatComposerRuntime({
     setSelectedIdx(-1);
     setFollowMessages(true);
   }, [
+    canSend,
     channelId,
     channelIdRef,
     clearLocalComposer,
     controller,
     draftLinksRef,
+    editingMessageRef,
     inputValueRef,
+    isComposerCurrent,
     onChannelChange,
     onConversationStartError,
     onDiscordCommand,
     expandDirectSection,
-    persistDraft,
     replaceComposerDraft,
+    restoreNewMessageDraft,
     setDraftLinks,
-    setEditingMessage,
     setFollowMessages,
     setSelectedIdx,
     useDefaultControllerChannel,
   ]);
 
   const commitLocalDraft = useCallback((draft: string) => {
-    if (applyingExternalDraftRef.current) return;
+    if (applyingExternalDraftRef.current || !isComposerCurrent()) return;
     const previousDraft = inputValueRef.current;
     // A share link pasted at the end of the draft leaves the field for a chip
     // above it, the one the sent message shows; the cursor stays where it was.
@@ -369,8 +376,10 @@ export function useChatComposerRuntime({
   }, [
     applyingExternalDraftRef,
     draftLinksRef,
+    editingMessageRef,
     inputRef,
     inputValueRef,
+    isComposerCurrent,
     onComposerStateChange,
     onPastedImagePaths,
     persistDraft,
@@ -422,16 +431,6 @@ export function useChatComposerRuntime({
     boundTextareaRef.current = null;
     if (bound) bound.onContentChange = undefined;
   }, []);
-
-  useEffect(() => {
-    if (canSend || !replyTo) return;
-    clearReplyTarget();
-  }, [canSend, clearReplyTarget, replyTo]);
-
-  useEffect(() => {
-    if (canSend || !editingMessage) return;
-    cancelEditMessage();
-  }, [canSend, cancelEditMessage, editingMessage]);
 
   // The desktop and the web take the whole text and cut it in CSS where its row ends.
   const replyPreview = !replyTo ? ""

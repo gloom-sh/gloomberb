@@ -12,6 +12,7 @@ import { UserProfilePopover } from "../message/profile-popover";
 import { TerminalChatMessage } from "../message/terminal";
 import { NewMessagesJump } from "./new-messages";
 import { useWholeMessageCopy } from "./whole-message-copy";
+import type { ChatPreviewScope } from "../attachments/desktop";
 
 interface MutableRef<T> {
   current: T;
@@ -37,6 +38,7 @@ interface ChatTranscriptProps {
   onRetryMessages: () => void;
   retryMessage: (index: number) => void;
   onImageLoadError: (attachment: ChatAttachment) => void;
+  previewScope: ChatPreviewScope;
   messageAreaHeight: number;
   messageBodyWidth: number;
   messages: ChatMessage[];
@@ -109,6 +111,7 @@ export function ChatTranscript({
   onRetryMessages,
   retryMessage,
   onImageLoadError,
+  previewScope,
   messageAreaHeight,
   messageBodyWidth,
   messages,
@@ -183,6 +186,7 @@ export function ChatTranscript({
       latestEditableMessageId={latestEditableMessageId}
       retryMessage={retryMessage}
       onImageLoadError={onImageLoadError}
+      previewScope={msg.clientStatus ? previewScope : undefined}
       registerMessageElement={registerMessageElement}
       {...reactionProps}
       reactionPickerMessageId={reactionPickerMessageId}

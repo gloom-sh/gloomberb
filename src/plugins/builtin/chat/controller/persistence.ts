@@ -10,9 +10,11 @@ import {
   TRANSCRIPT_SCHEMA_VERSION,
   TRANSCRIPT_SOURCE,
   channelStateKey,
+  composerStateKey,
   hydrateChannelRuntimeState,
   type ChannelRuntimeState,
   type PersistedChannelState,
+  type PersistedComposerState,
   type PersistedSessionState,
   type PersistedTranscript,
 } from "./state";
@@ -108,8 +110,9 @@ export function persistChatSession({
   });
 }
 
-export function deleteChatSession(persistence: PluginPersistence | null): void {
+export function deleteChatSession(persistence: PluginPersistence | null, resume: PluginResumeState | null): void {
   persistence?.deleteState(SESSION_STATE_KEY);
+  resume?.deleteState(SESSION_STATE_KEY);
 }
 
 export function writeChatChannelState({
@@ -124,9 +127,6 @@ export function writeChatChannelState({
   resume: PluginResumeState | null;
 }): void {
   const value = {
-    draft: channel.draft,
-    draftClientMessageId: channel.draftClientMessageId,
-    replyToId: channel.replyToId,
     lastCursor: channel.lastCursor,
     lastViewedMessageId: channel.lastViewedMessageId,
   } satisfies PersistedChannelState;
@@ -136,6 +136,34 @@ export function writeChatChannelState({
   persistence?.setState(channelStateKey(channelId), value, {
     schemaVersion: CHANNEL_SCHEMA_VERSION,
   });
+}
+
+export function readChatComposerState(
+  persistence: PluginPersistence | null,
+  resume: PluginResumeState | null,
+  accountId: string,
+  channelId: string,
+): PersistedComposerState | null {
+  const key = composerStateKey(accountId, channelId);
+  return resume?.getState<PersistedComposerState>(key, { schemaVersion: 1 })
+    ?? persistence?.getState<PersistedComposerState>(key, { schemaVersion: 1 }) ?? null;
+}
+
+export function writeChatComposerState(
+  persistence: PluginPersistence | null,
+  resume: PluginResumeState | null,
+  accountId: string,
+  channelId: string,
+  channel: ChannelRuntimeState,
+): void {
+  const key = composerStateKey(accountId, channelId);
+  const value: PersistedComposerState = {
+    draft: channel.draft,
+    draftClientMessageId: channel.draftClientMessageId,
+    replyToId: channel.replyToId,
+  };
+  resume?.setState(key, value, { schemaVersion: 1 });
+  persistence?.setState(key, value, { schemaVersion: 1 });
 }
 
 export function deleteChatTranscript(persistence: PluginPersistence | null, channelId: string): void {

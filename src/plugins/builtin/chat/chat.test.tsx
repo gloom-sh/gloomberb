@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { act, useState } from "react";
 import { AppContext, createInitialState } from "../../../state/app/context";
 import { createStaticAppStore } from "../../../test-support/app-store";
@@ -391,6 +391,7 @@ describe("ChatContent", () => {
       messages: [makeMessage(1), ownMessage],
     });
 
+    const edit = spyOn(controller, "editChannelMessage").mockResolvedValue(true);
     await mountChat(controller, { width: 72, height: 12 });
 
     const lines = tui.frame().split("\n");
@@ -419,6 +420,44 @@ describe("ChatContent", () => {
     });
 
     expect(tui.frame()).toContain("> typo fix");
+    await emitKeypress({ name: "return", sequence: "\r" });
+    await flushFrame();
+    expect(edit).toHaveBeenCalledWith("everyone", ownMessage.id, "typo fix");
+    expect(tui.frame()).toContain("Type a message...");
+  });
+
+  test("restores the new-message draft after renewing a session during an edit", async () => {
+    const user = { id: "u0", username: "ada", emailVerified: true };
+    const controller = createController({ user, messages: [makeOwnMessage()], bindComposerToApiSession: true });
+    const edit = spyOn(controller, "editChannelMessage").mockResolvedValue(true);
+    const send = spyOn(controller, "send").mockReturnValue(true);
+    await mountChat(controller, { width: 72, height: 12 });
+    await tui.clickFrameText("Type a message...");
+    await emitKeypress({ name: "up", sequence: "\u001b[A" });
+    await flushFrame();
+    expect(tui.frame()).toContain("editing");
+
+    await act(async () => {
+      controller.setDraft("separate draft");
+      controller.setReplyToId(null);
+      await tui.setup().mockInput.typeText(" fix");
+    });
+    await flushFrame();
+    expect(tui.frame()).toContain("> typo fix");
+    expect(controller.getSnapshot().draft).toBe("separate draft");
+
+    await act(async () => {
+      apiClient.setSessionToken("fixture-renewed");
+      apiClient.restoreCachedUser(user);
+    });
+    await flushFrame();
+    expect(tui.frame()).not.toContain("editing");
+    expect(tui.frame()).toContain("> separate draft");
+    await tui.clickFrameText("separate draft");
+    await emitKeypress({ name: "return", sequence: "\r" });
+    await flushFrame();
+    expect(edit).not.toHaveBeenCalled();
+    expect(send.mock.calls).toEqual([["separate draft", undefined]]);
   });
 
   test("down arrow from the newest selected message returns focus to the composer", async () => {
@@ -534,6 +573,22 @@ describe("ChatContent", () => {
     expect(frame).toContain("replying to @user1");
     expect(frame).toContain("Cancel");
     expect(frame).toContain("Reply to @user1...");
+  });
+
+  test("updates the open composer when the active account changes", async () => {
+    const controller = createController({ messages: [makeMessage(1)] });
+    await renderFocusedComposerWithDraft(controller, "First account draft");
+    await act(async () => controller.setReplyToId("m1"));
+    await flushFrame();
+    expect(tui.frame()).toContain("First account draft");
+    expect(tui.frame()).toContain("replying to @user1");
+
+    await act(async () => controller.adoptSession("second-fixture-session", { id: "u2", username: "lin", emailVerified: true }));
+    await flushFrame();
+    expect(tui.frame()).not.toContain("First account draft");
+    expect(tui.frame()).not.toContain("replying to @user1");
+    await emitKeypress({ name: "return", sequence: "\r" });
+    expect(controller.getSnapshot().messages).toHaveLength(1);
   });
 
   test("uses selected text colors for selected message rows", async () => {

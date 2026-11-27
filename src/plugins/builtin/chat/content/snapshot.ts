@@ -1,4 +1,4 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { TextareaRenderable } from "../../../../ui";
 import type { ChatMessage } from "../../../../api-client";
 import type { ChatContentController } from "./types";
@@ -15,11 +15,14 @@ interface ChatSnapshotStateArgs {
   applyingExternalDraftRef: MutableRef<boolean>;
   channelId: string;
   controller: ChatContentController;
+  editingMessageRef: MutableRef<ChatMessage | null>;
   focused: boolean;
   initialSnapshot: ChatSnapshot;
   inputRef: MutableRef<TextareaRenderable | null>;
   inputValueRef: MutableRef<string>;
   onComposerStateChange?: (draft: string, cursorOffset: number) => void;
+  onComposerScopeChange: () => void;
+  setEditingMessage: (message: ChatMessage | null) => void;
   /** The share links at the end of the saved draft, drawn as chips above the field. */
   draftLinksRef: MutableRef<ComposerShareLink[]>;
   /** Sets the chips; also updates `draftLinksRef`. */
@@ -81,11 +84,14 @@ export function useChatSnapshotState({
   applyingExternalDraftRef,
   channelId,
   controller,
+  editingMessageRef,
   focused,
   initialSnapshot,
   inputRef,
   inputValueRef,
   onComposerStateChange,
+  onComposerScopeChange,
+  setEditingMessage,
   draftLinksRef,
   onDraftLinksChange,
   prependAnchorRef,
@@ -110,6 +116,8 @@ export function useChatSnapshotState({
   const [hasOlderMessages, setHasOlderMessages] = useState(initialSnapshot.hasOlderMessages);
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(() => resolveReplyTo(initialSnapshot));
   const [draftAttachments, setDraftAttachments] = useState(initialSnapshot.draftAttachments);
+  const [composerScope, setComposerScope] = useState(initialSnapshot.composerScope);
+  const composerScopeRef = useRef(initialSnapshot.composerScope);
 
   useEffect(() => {
     return useDefaultControllerChannel
@@ -129,6 +137,15 @@ export function useChatSnapshotState({
     prependAnchorRef.current = null;
 
     const applySnapshot = (snapshot: ChatSnapshot) => {
+      const scopeChanged = composerScopeRef.current !== snapshot.composerScope;
+      if (scopeChanged) {
+        composerScopeRef.current = snapshot.composerScope;
+        onComposerScopeChange();
+      }
+      if (editingMessageRef.current && (scopeChanged || !snapshot.user?.emailVerified
+        || editingMessageRef.current.channelId !== snapshot.channelId)) {
+        setEditingMessage(null);
+      }
       setMessages(snapshot.messages);
       setMentionState((current) => current.channelId === snapshot.channelId && current.candidates === snapshot.mentionCandidates
         ? current
@@ -137,23 +154,26 @@ export function useChatSnapshotState({
       setChannelStates(snapshot.channelStates);
       setConversationActivity(snapshot.conversationActivity);
       setChannelsLoading(snapshot.channelsLoading);
-      setUser(snapshot.user);
       setLoading(snapshot.loading);
       setMessagesError(snapshot.messagesError);
       setLoadingOlderMessages(snapshot.loadingOlderMessages);
       setHasOlderMessages(snapshot.hasOlderMessages);
       setDraftAttachments(snapshot.draftAttachments);
-      syncDraftFromSnapshot({
-        applyingExternalDraftRef,
-        draftLinksRef,
-        inputRef,
-        inputValueRef,
-        onComposerStateChange,
-        onDraftLinksChange,
-        snapshot,
-        updateComposerRows,
-      });
-      setReplyTo(resolveReplyTo(snapshot));
+      if (!editingMessageRef.current) {
+        syncDraftFromSnapshot({
+          applyingExternalDraftRef,
+          draftLinksRef,
+          inputRef,
+          inputValueRef,
+          onComposerStateChange,
+          onDraftLinksChange,
+          snapshot,
+          updateComposerRows,
+        });
+        setReplyTo(resolveReplyTo(snapshot));
+      }
+      setComposerScope(snapshot.composerScope);
+      setUser(snapshot.user);
     };
 
     applySnapshot(controller.getSnapshot(channelId));
@@ -168,10 +188,13 @@ export function useChatSnapshotState({
     applyingExternalDraftRef,
     channelId,
     controller,
+    editingMessageRef,
     draftLinksRef,
     inputRef,
     inputValueRef,
     onComposerStateChange,
+    onComposerScopeChange,
+    setEditingMessage,
     onDraftLinksChange,
     prependAnchorRef,
     setFollowMessages,
@@ -185,6 +208,7 @@ export function useChatSnapshotState({
     channelsLoading,
     channelStates,
     conversationActivity,
+    composerScope,
     draftAttachments,
     hasOlderMessages,
     loading,

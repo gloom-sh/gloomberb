@@ -10,7 +10,7 @@ import { chatAuthorName, isDiscordGhost } from "../ghost-user";
 import { chatMessageOpenTargets, type ChatOpenTarget } from "./open-targets";
 import { chatMessagePaneLinks, type ChatMessagePaneLink } from "../pane-links/model";
 import { useChatFunctions } from "../pane-links/commands";
-import { openChatImageViewer } from "../attachments/desktop";
+import { openChatImageViewer, ScopedChatPreview, type ChatPreviewScope } from "../attachments/desktop";
 import { canReactToMessage } from "../reactions";
 
 /**
@@ -25,6 +25,7 @@ export function useChatFooter({
   canSend,
   selectedIdx,
   selectedMessage,
+  previewScope,
   latestEditableMessageId,
   beginEditMessage,
   beginReplyTo,
@@ -63,6 +64,7 @@ export function useChatFooter({
   canSend: boolean;
   selectedIdx: number;
   selectedMessage: ChatMessage | null;
+  previewScope: ChatPreviewScope;
   latestEditableMessageId: string | null;
   beginEditMessage: (index: number, options?: { deferFocus?: boolean }) => boolean;
   beginReplyTo: (index: number, options?: { deferFocus?: boolean }) => void;
@@ -103,6 +105,7 @@ export function useChatFooter({
   const rendererHost = useRendererHost();
   const { links: paneLinks, content } = chatMessagePaneLinks(selectedMessage);
   const attachments = selectedMessage?.attachments;
+  const localScope = selectedMessage?.clientStatus ? previewScope : undefined;
   const { nativePaneChrome } = useUiCapabilities();
   const functions = useChatFunctions();
   // The desktop and the web draw functions written in a message as chips, so Open offers them too.
@@ -112,6 +115,7 @@ export function useChatFooter({
   );
 
   const openTarget = useCallback((target: ChatOpenTarget) => {
+    if (localScope && !localScope.isCurrent()) return;
     if (target.kind === "pane") {
       openPaneLink(target.link);
       return;
@@ -127,14 +131,16 @@ export function useChatFooter({
         index: target.index,
         caption: selectedMessage.content,
         author: chatAuthorName(selectedMessage.user),
+        scope: localScope,
       });
       return;
     }
     void rendererHost.openExternal(target.url);
-  }, [dialog, nativePaneChrome, openPaneLink, openTicker, rendererHost, selectedMessage]);
+  }, [dialog, localScope, nativePaneChrome, openPaneLink, openTicker, rendererHost, selectedMessage]);
 
   // One target opens at once; several ask which, in the order the message reads.
   const openSelectedTargets = useCallback(async () => {
+    if (localScope && !localScope.isCurrent()) return;
     const [first] = openTargets;
     if (!first) return;
     if (openTargets.length === 1 || !dialog) {
@@ -148,13 +154,14 @@ export function useChatFooter({
     }));
     const choice = await dialog.prompt<string>({
       closeOnClickOutside: true,
-      content: (context: PromptContext<string>) => (
-        <ChoiceDialog {...context} title="Open" choices={choices} selectedChoiceId="0" />
-      ),
+      content: (context: PromptContext<string>) => {
+        const chooser = <ChoiceDialog {...context} title="Open" choices={choices} selectedChoiceId="0" />;
+        return localScope ? <ScopedChatPreview scope={localScope} dismiss={context.dismiss}>{chooser}</ScopedChatPreview> : chooser;
+      },
     }).catch(() => undefined);
     const target = choice === undefined ? null : openTargets[Number(choice)];
     if (target) openTarget(target);
-  }, [dialog, openTarget, openTargets]);
+  }, [dialog, localScope, openTarget, openTargets]);
 
   // A Discord ghost has no card to show.
   const author = selectedMessage && !isDiscordGhost(selectedMessage.user) ? selectedMessage.user : null;
@@ -287,7 +294,9 @@ export function useChatFooter({
     // The message as its author wrote it, markdown and all; a selection copies what the row draws.
     const messageText = composing ? "" : selectedMessage?.content ?? "";
     if (messageText) {
-      menu.push({ id: "copy-message", label: "Copy Message Text", onSelect: () => { void rendererHost.copyText(messageText); } });
+      menu.push({ id: "copy-message", label: "Copy Message Text", onSelect: () => {
+        if (!localScope || localScope.isCurrent()) void rendererHost.copyText(messageText);
+      } });
     }
     if (needsProfileSetup) {
       menu.push({ id: "profile-setup", label: "Set Up Profile", onSelect: () => latest.current.openProfileSetup() });
@@ -307,6 +316,7 @@ export function useChatFooter({
     canFocusSidebar,
     canSend,
     composing,
+    localScope,
     newChannelTeamId,
     needsProfileSetup,
     notificationChannelId,

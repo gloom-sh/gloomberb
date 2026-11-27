@@ -16,6 +16,7 @@ import { PluginRenderProvider, type PluginRuntimeAccess } from "../../runtime";
 import { setSharedMarketDataForTests, setSharedRegistryForTests } from "../../registry";
 import { ChatContent } from "./content";
 import { ChatController, chatController } from "./controller";
+import { composerStateKey } from "./controller/state";
 import { chatSidebarStore } from "./sidebar-store";
 import { chatHandlePromptStore } from "./handle-prompt";
 import { clearChatPaneRequest } from "./pane-requests";
@@ -152,6 +153,7 @@ export function messageDay(index: number): string {
 }
 
 export function createController(options: {
+  bindComposerToApiSession?: boolean;
   messages?: ChatMessage[];
   sessionToken?: string | null;
   user?: { id: string; username: string; emailVerified: boolean } | null;
@@ -159,7 +161,7 @@ export function createController(options: {
 } = {}) {
   const messages = options.messages ?? [];
   const persistence = new MemoryPluginPersistence();
-  const controller = new ChatController();
+  const controller = new ChatController({ bindComposerToApiSession: options.bindComposerToApiSession });
   testControllers.add(controller);
   const user = Object.prototype.hasOwnProperty.call(options, "user")
     ? options.user ?? null
@@ -171,10 +173,13 @@ export function createController(options: {
     user,
   }, { schemaVersion: 1 });
   persistence.setState("channel:everyone", {
-    draft: "",
-    replyToId: options.replyToId ?? null,
     lastCursor: messages[messages.length - 1]?.id ?? null,
   }, { schemaVersion: 1 });
+  if (user && options.replyToId) {
+    persistence.setState(composerStateKey(user.id, "everyone"), {
+      draft: "", draftClientMessageId: null, replyToId: options.replyToId,
+    }, { schemaVersion: 1 });
+  }
   if (messages.length > 0) {
     persistence.setResource(TRANSCRIPT_KIND, TRANSCRIPT_KEY, { messages }, {
       sourceKey: TRANSCRIPT_SOURCE,
@@ -182,6 +187,8 @@ export function createController(options: {
       cachePolicy: { staleMs: 1_000, expireMs: 2_000 },
     });
   }
+  apiClient.setSessionToken(sessionToken);
+  apiClient.restoreCachedUser(user);
   controller.attachPersistence(persistence);
   controller.refreshSession = async () => {};
   controller.refreshChannels = async () => {};

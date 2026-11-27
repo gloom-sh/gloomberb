@@ -21,6 +21,7 @@ interface ChatControllerViewOptions {
   hasSession: () => boolean;
   getOnlineCount: () => number;
   getUser: () => ChatControllerSnapshot["user"];
+  getComposerScope: () => ChatControllerSnapshot["composerScope"];
   getListenerSnapshot: (channelId: string) => ChatControllerSnapshot;
   getVisibleMessages: (channelId: string) => ChatMessage[];
   getUnreadMentionCount: (channelId: string) => number;
@@ -63,6 +64,7 @@ export class ChatControllerView {
   getSnapshot(channelId = DEFAULT_CHAT_CHANNEL_ID): ChatControllerSnapshot {
     const normalizedChannelId = normalizeChannelId(channelId);
     const channel = this.options.ensureChannelState(normalizedChannelId);
+    const composerScope = this.options.getComposerScope();
     return {
       channelId: normalizedChannelId,
       channels: this.options.getChannels(),
@@ -77,9 +79,10 @@ export class ChatControllerView {
       onlineCount: this.options.getOnlineCount(),
       user: this.options.getUser(),
       messages: this.options.getVisibleMessages(normalizedChannelId),
-      draft: channel.draft,
-      draftAttachments: channel.draftAttachments.map(publicDraftAttachment),
-      replyToId: channel.replyToId,
+      composerScope,
+      draft: composerScope ? channel.draft : "",
+      draftAttachments: composerScope ? channel.draftAttachments.map(publicDraftAttachment) : [],
+      replyToId: composerScope ? channel.replyToId : null,
       unreadMentionCount: this.options.getUnreadMentionCount(normalizedChannelId),
       unreadPeople: this.options.getUnreadPeople(),
     };

@@ -1,5 +1,5 @@
 import { Box, Text, useContextMenu, useRendererHost, useUiCapabilities } from "../../../../ui";
-import { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, useSyncExternalStore } from "react";
 import { PageStackView } from "../../../../components/ui";
 import { ChoiceDialog } from "../../../../components/ui/choice-dialog";
 import { useOptionalDialog, type PromptContext } from "../../../../ui/dialog";
@@ -93,6 +93,11 @@ interface ChatContentProps {
   onTargetMessageHandled?: () => void;
 }
 
+interface NewDmDialogSession {
+  id: number;
+  scope: object;
+}
+
 /** No account and no saved login to finish: the chat shows nothing. */
 function isSignedOut(snapshot: { user: unknown; hasSavedSession: boolean }): boolean {
   return !snapshot.user && !snapshot.hasSavedSession;
@@ -145,9 +150,28 @@ function ChatConversation({
   const rendererHost = useRendererHost();
   const [inputFocused, setInputFocused] = useState(false);
   const [selectedIdx, setSelectedIdx] = useState(-1);
-  const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
+  const editingMessageRef = useRef<ChatMessage | null>(null);
+  const [editingMessage, setEditingMessageState] = useState<ChatMessage | null>(null);
+  const setEditingMessage = useCallback((message: ChatMessage | null) => {
+    editingMessageRef.current = message;
+    setEditingMessageState(message);
+  }, []);
   const [followMessages, setFollowMessages] = useState(true);
-  const [newDmOpen, setNewDmOpen] = useState(false);
+  const [newDmDialogSession, setNewDmDialogSession] = useState<NewDmDialogSession | null>(null);
+  const newDmDialogRef = useRef<NewDmDialogSession | null>(null);
+  const nextNewDmDialogIdRef = useRef(0);
+  const releaseNewDmDialog = useCallback((dialog: NewDmDialogSession | null) => {
+    if (!dialog || newDmDialogRef.current !== dialog) return false;
+    newDmDialogRef.current = null;
+    dispatch({ type: "SET_INPUT_CAPTURED", captured: false, owner: dialog });
+    return true;
+  }, [dispatch]);
+  const closeNewDmDialog = useCallback((dialog = newDmDialogRef.current) => {
+    if (releaseNewDmDialog(dialog)) setNewDmDialogSession((current) => current === dialog ? null : current);
+  }, [releaseNewDmDialog]);
+  useLayoutEffect(() => () => {
+    releaseNewDmDialog(newDmDialogRef.current);
+  }, [releaseNewDmDialog]);
   // The first-chat handle field above the composer has the keyboard.
   const [handleFieldFocused, setHandleFieldFocusedState] = useState(false);
   // Read by the field's blur, which can come before the render that moved focus on.
@@ -214,6 +238,10 @@ function ChatConversation({
     () => controller.attachmentsSupported(),
   );
   const [dropActive, setDropActive] = useState(false);
+  const resetComposerSession = useCallback(() => {
+    closeNewDmDialog();
+    setDropActive(false);
+  }, [closeNewDmDialog]);
   const attachPickerRef = useRef<(() => void) | null>(null);
   const replaceComposerDraftRef = useRef<((draft: string, cursorOffset?: number) => void) | null>(null);
   const {
@@ -221,6 +249,7 @@ function ChatConversation({
     channelsLoading,
     channelStates,
     conversationActivity,
+    composerScope,
     draftAttachments,
     hasOlderMessages,
     loading,
@@ -237,10 +266,13 @@ function ChatConversation({
     controller,
     // A channel hidden behind the list is not being read.
     focused: focused && !channelListOpen,
+    editingMessageRef,
     initialSnapshot,
     inputRef,
     inputValueRef,
     onComposerStateChange: syncComposerState,
+    onComposerScopeChange: resetComposerSession,
+    setEditingMessage,
     draftLinksRef,
     onDraftLinksChange: setDraftLinks,
     prependAnchorRef,
@@ -273,7 +305,21 @@ function ChatConversation({
     if (!stackedNav) setChannelListOpen(false);
   }, [stackedNav]);
   composerTextWidthRef.current = composerTextWidth;
-  const canSend = !!user?.emailVerified;
+  const canSend = !!user?.emailVerified && composerScope !== null;
+  const isComposerCurrent = useCallback(() => composerScope !== null && controller.getComposerScope() === composerScope, [composerScope, controller]);
+  const activeNewDmDialog = focused && canSend && newDmDialogSession?.scope === composerScope ? newDmDialogSession : null;
+  const newDmOpen = activeNewDmDialog !== null;
+  useLayoutEffect(() => {
+    if (!activeNewDmDialog) closeNewDmDialog(newDmDialogSession);
+  }, [activeNewDmDialog, closeNewDmDialog, newDmDialogSession]);
+  const isActiveNewDmDialogCurrent = useCallback(() => (
+    activeNewDmDialog !== null && newDmDialogRef.current === activeNewDmDialog
+    && controller.getComposerScope() === activeNewDmDialog.scope
+  ), [activeNewDmDialog, controller]);
+  const previewScope = useMemo(() => ({
+    isCurrent: isComposerCurrent,
+    subscribe: (onChange: () => void) => controller.subscribe(channelId, onChange),
+  }), [channelId, controller, isComposerCurrent]);
   // Images go only to a server that said it takes them, and never into an edit.
   const imagesAvailable = canSend && attachmentsSupported;
   const canAttach = imagesAvailable && !editingMessage;
@@ -497,7 +543,6 @@ function ChatConversation({
   useEffect(() => {
     if (previousEditingChannelIdRef.current === channelId) return;
     previousEditingChannelIdRef.current = channelId;
-    setEditingMessage(null);
     setReactionPickerMessageId(null);
     // A card pinned in one channel does not follow into the next.
     closeProfilePopover();
@@ -561,26 +606,27 @@ function ChatConversation({
   });
 
   const focusInput = useCallback(() => {
-    setNewDmOpen(false);
+    closeNewDmDialog();
     setSidebarFocused(false);
     setHandleFieldFocused(false);
     setInputFocused(true);
     dispatch({ type: "SET_INPUT_CAPTURED", captured: true });
     inputRef.current?.focus?.();
-  }, [dispatch, setHandleFieldFocused, setSidebarFocused]);
-
-  const closeNewDmDialog = useCallback(() => {
-    setNewDmOpen(false);
-    dispatch({ type: "SET_INPUT_CAPTURED", captured: false });
-  }, [dispatch]);
+  }, [closeNewDmDialog, dispatch, setHandleFieldFocused, setSidebarFocused]);
 
   const openNewDmDialog = useCallback(() => {
-    blurInput();
+    if (!canSend || !composerScope || !isComposerCurrent() || newDmDialogRef.current) return;
+    if (inputFocused || handleFieldFocusedRef.current) {
+      setHandleFieldFocused(false);
+      blurInput();
+    }
     closeProfilePopover();
     setSidebarFocused(false);
-    setNewDmOpen(true);
-    dispatch({ type: "SET_INPUT_CAPTURED", captured: true });
-  }, [blurInput, closeProfilePopover, dispatch, setSidebarFocused]);
+    const dialog = { id: ++nextNewDmDialogIdRef.current, scope: composerScope };
+    newDmDialogRef.current = dialog;
+    dispatch({ type: "SET_INPUT_CAPTURED", captured: true, owner: dialog });
+    if (newDmDialogRef.current === dialog) setNewDmDialogSession(dialog);
+  }, [blurInput, canSend, closeProfilePopover, composerScope, dispatch, inputFocused, isComposerCurrent, setHandleFieldFocused, setSidebarFocused]);
 
   const openChannelList = useCallback(() => {
     blurInput();
@@ -616,19 +662,14 @@ function ChatConversation({
     return true;
   }, [channelListOpen, focusChannelSidebar, openChannelList, stackedNav]);
 
-  useEffect(() => {
-    if (!focused && newDmOpen) {
-      closeNewDmDialog();
-    }
-  }, [closeNewDmDialog, focused, newDmOpen]);
-
   const attachFiles = useCallback((files: TransferFile[]) => {
+    if (!isComposerCurrent()) return;
     if (!canAttach) {
       if (imagesAvailable) notify({ body: "Images can't be added to an edit.", type: "info" });
       return;
     }
     if (controller.attachToChannel(channelIdRef.current, files.map(uploadFromTransferFile)) > 0) focusInput();
-  }, [canAttach, controller, focusInput, imagesAvailable, notify]);
+  }, [canAttach, controller, focusInput, imagesAvailable, isComposerCurrent, notify]);
 
   // A chip: the shared pane, the story or calendar a Wire post names, or a function written in a message.
   const openPaneLink = useCallback((link: ChatMessagePaneLink) => {
@@ -647,15 +688,16 @@ function ChatConversation({
   // The terminal: a pasted or dropped path to an image file attaches the file
   // and leaves the composer. A path that is no file stays as typed.
   const handlePastedImagePaths = useCallback((paths: string[], pasted: string) => {
+    if (!isComposerCurrent()) return;
     const targetChannelId = channelIdRef.current;
     void readChatImageFiles(paths).then((uploads) => {
-      if (uploads.length === 0 || channelIdRef.current !== targetChannelId) return;
+      if (!isComposerCurrent() || uploads.length === 0 || channelIdRef.current !== targetChannelId) return;
       const draft = inputValueRef.current;
       const at = draft.indexOf(pasted);
       if (at >= 0) replaceComposerDraftRef.current?.(`${draft.slice(0, at)}${draft.slice(at + pasted.length)}`, at);
       controller.attachToChannel(targetChannelId, uploads);
     }).catch(() => {});
-  }, [controller]);
+  }, [controller, isComposerCurrent]);
 
   const reportConversationStartError = useCallback((error: unknown, usernames: string[]) => {
     notify({ body: describeConversationStartError(error, usernames, userByUsername), type: "error" });
@@ -711,10 +753,12 @@ function ChatConversation({
     inputFocused,
     inputRef,
     inputValueRef,
+    isComposerCurrent,
     messages,
     onComposerStateChange: syncComposerState,
     onChannelChange,
     editingMessage,
+    editingMessageRef,
     latestEditableMessageId,
     replyTo,
     setEditingMessage,
@@ -810,11 +854,17 @@ function ChatConversation({
     else showConversation(channelId);
   }, [canSend, channelId, commandBarOpen, focused, openNewDmDialog, pendingPaneRequest, showConversation]);
 
-  const openConversationFromDialog = useCallback(async (usernames: string[]) => {
+  const captureConversationScope = useCallback(() => {
+    const isSessionCurrent = controller.captureSessionScope();
+    return () => isComposerCurrent() && isSessionCurrent();
+  }, [controller, isComposerCurrent]);
+
+  const openConversationFromDialog = useCallback(async (usernames: string[], isCurrent: () => boolean) => {
+    if (!isCurrent()) return;
     const channel = usernames.length === 1
-      ? await controller.openDirectChannel({ username: usernames[0] })
-      : await controller.openGroupChannel({ usernames });
-    showConversation(channel.id);
+      ? await controller.openDirectChannel({ username: usernames[0] }, isCurrent)
+      : await controller.openGroupChannel({ usernames }, isCurrent);
+    if (channel && isCurrent()) showConversation(channel.id);
   }, [controller, showConversation]);
 
   const directMessageContext = useMemo(
@@ -824,6 +874,8 @@ function ChatConversation({
 
   /** "Message @name": opens the DM you share, or starts one and opens it. */
   const messageUser = useCallback(async (target: ChatUserSummary) => {
+    const isCurrent = captureConversationScope();
+    if (!isCurrent()) return;
     const action = directMessageAction(target, directMessageContext);
     if (!action || action.kind === "refused") return;
     const existing = action.kind === "open" ? findDirectChannelWith(channels, target) : null;
@@ -833,11 +885,12 @@ function ChatConversation({
     }
     try {
       const channel = await controller.openDirectChannel({ username: action.username });
-      showConversation(channel.id);
+      if (channel && isCurrent()) showConversation(channel.id);
     } catch (error) {
+      if (!isCurrent()) return;
       notify({ body: describeConversationStartError(error, [action.username], userByUsername), type: "error" });
     }
-  }, [channels, controller, directMessageContext, notify, showConversation, userByUsername]);
+  }, [captureConversationScope, channels, controller, directMessageContext, notify, showConversation, userByUsername]);
 
   const pinUserProfile = useCallback((target: ChatUserSummary, anchor?: ChatUserAnchor) => {
     showProfilePopover(target, { ownProfile: target.id === user?.id, pin: true, anchor });
@@ -1061,6 +1114,7 @@ function ChatConversation({
   // reaction picker, a field nor the channel list has taken them.
   const actionKeysOwned = focused && !composing && !sidebarFocused && !commandBarOpen && !dialogOpen && reactionPickerMessageId === null;
   useChatFooter({
+    previewScope,
     composing,
     canSend,
     selectedIdx,
@@ -1133,15 +1187,23 @@ function ChatConversation({
     />
   );
 
-  const newDmDialog = newDmOpen ? (
+  const newDmDialog = activeNewDmDialog ? (
     <NewDmDialog
+      key={activeNewDmDialog.id}
       width={stackedNav ? width : chatWidth}
       height={height}
       userByUsername={userByUsername}
       currentUserId={user?.id}
       channels={channels}
-      onCancel={closeNewDmDialog}
-      onOpenChannel={showConversation}
+      isDialogCurrent={isActiveNewDmDialogCurrent}
+      captureSessionScope={() => {
+        const isSessionCurrent = captureConversationScope();
+        return () => isActiveNewDmDialogCurrent() && isSessionCurrent();
+      }}
+      onCancel={() => closeNewDmDialog(activeNewDmDialog)}
+      onOpenChannel={(nextChannelId) => {
+        if (isActiveNewDmDialogCurrent()) showConversation(nextChannelId);
+      }}
       onSubmit={openConversationFromDialog}
     />
   ) : null;
@@ -1188,6 +1250,7 @@ function ChatConversation({
         onRetryMessages={retryMessages}
         retryMessage={retryMessage}
         onImageLoadError={refreshImageLinks}
+        previewScope={previewScope}
         messageAreaHeight={messageAreaHeight}
         messageBodyWidth={messageBodyWidth}
         messages={messages}
@@ -1280,7 +1343,7 @@ function ChatConversation({
         onRemoveAttachment={removeDraftAttachment}
         onRetryAttachment={retryDraftAttachment}
         draftLinks={draftLinks}
-        onOpenDraftLink={openPaneLink}
+        onOpenDraftLink={(link) => { if (isComposerCurrent()) openPaneLink(link); }}
         onRemoveDraftLink={removeDraftLink}
         attachPickerRef={attachPickerRef}
       />
