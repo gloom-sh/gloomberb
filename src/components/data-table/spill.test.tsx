@@ -35,7 +35,9 @@ async function frameOf(rows: Row[]): Promise<string[]> {
             getItemKey={(row) => row.name + row.last}
             renderCell={(row, column): DataTableCell => column.id === "name"
               ? { text: row.name }
-              : { text: column.id === "last" ? row.last : row.chg, ...row.pressable && column.id === "last" ? { onMouseDown: () => {} } : {} }}
+              // A figure padded to its column, as some panes write them.
+              : { text: (column.id === "last" ? row.last : row.chg).padStart(column.width),
+                ...row.pressable && column.id === "last" ? { onMouseDown: () => {} } : {} }}
             emptyStateTitle="No rows"
           />
         </PaneInstanceProvider>

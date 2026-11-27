@@ -311,7 +311,9 @@ function OpenTuiDataTableRowInner<
         const cell = made.content !== undefined && cellColumn !== drawnColumn ? renderCell(item, drawnColumn, index, rowState) : made;
         // Cut text is fitted to what shows; a number the edge cuts stays blank in its own place,
         // and its cell keeps its background and its press. A drawn cell left no cells draws nothing, as text does.
-        const fitted = fitColumnCellText(cell.text, clip ? column.width : shownWidth, column.align, clip, cell.note, cell.keepEnd);
+        // A figure padded to its column's width gives the name before it its blank, so it is fitted without it.
+        const fitted = fitColumnCellText(given > 0 ? cell.text.trimStart() : cell.text, clip ? column.width : shownWidth, column.align, clip, cell.note,
+          cell.keepEnd);
         const contentCut = shownWidth <= 0 || (clip !== null && column.align === "right" && fitted.text.trim() === "");
         return (
           <Box
