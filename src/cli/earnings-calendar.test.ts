@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { ApiRequestError, markAskedTwice } from "../api-client/errors";
 import { createTestCliContext } from "../test-support/cli-context";
 import { createTestDataProvider, createTestFinancials, createTestQuote } from "../test-support/data-provider";
 import type { EarningsEvent } from "../types/data-provider";
@@ -82,9 +83,11 @@ test("a listing abroad with no calendar says so, lending the date of the same co
 });
 
 test("a calendar the source failed to answer says what failed, never a bare reason code", async () => {
-  const run = harness(async () => { throw new Error("UPSTREAM_ERROR"); });
-  await expect(earnings.execute(["SAN:MCE"], run.context))
-    .rejects.toThrow("Earnings dates for SAN:MCE did not load: the calendar source failed. Try again in a few minutes.");
+  for (const failure of [new Error("UPSTREAM_ERROR"), markAskedTwice(new ApiRequestError("upstream temporarily unavailable", 503))]) {
+    const run = harness(async () => { throw failure; });
+    await expect(earnings.execute(["SAN:MCE"], run.context))
+      .rejects.toThrow("Earnings dates for SAN:MCE did not load: the calendar source failed. Try again in a few minutes.");
+  }
 });
 
 // `earnings NTR MOS ICL ADM BG LAND FPI` printed five rows and said nothing of BG and FPI; `earnings KO IBM` said

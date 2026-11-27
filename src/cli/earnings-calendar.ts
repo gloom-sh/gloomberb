@@ -6,6 +6,7 @@ import { listingChoiceNote, loadListingQuote, usLineOfListing, type CliListing, 
 import { sameCompany } from "../tickers/company-name";
 import { lastReportOnRecord, listingDay, noNextReportText } from "../plugins/builtin/shared/earnings-calendar";
 import { commandWord } from "../utils/shell-word";
+import { wasAskedTwice } from "../api-client/errors";
 
 const DAY_MS = 86_400_000;
 
@@ -85,7 +86,7 @@ const REASON_CODE = /^[A-Z][A-Z_]+$/;
  */
 export function earningsCalendarFailure(error: unknown, keys: readonly string[]): string | null {
   const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
-  if (!REASON_CODE.test(message.trim())) return null;
+  if (!wasAskedTwice(error) && !REASON_CODE.test(message.trim())) return null;
   const what = `Earnings dates for ${keys.join(", ")}`;
   if (message === "TIMEOUT") return `${what} did not load: the calendar source timed out. Try again in a few minutes.`;
   return `${what} did not load: the calendar source failed. Try again in a few minutes.`;

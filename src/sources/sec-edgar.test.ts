@@ -438,7 +438,7 @@ describe("parseCompanyFactsFinancialStatements", () => {
     });
   });
 
-  test("merges statement values from all configured tags for a field", () => {
+  test("uses consolidated revenue over an ASC 606 slice and falls back where it stands alone", () => {
     const fact = (tag: string, unit: string, rows: unknown[]) => ({
       [tag]: {
         units: {
@@ -460,6 +460,7 @@ describe("parseCompanyFactsFinancialStatements", () => {
       facts: {
         "us-gaap": {
           ...fact("RevenueFromContractWithCustomerExcludingAssessedTax", "USD", [
+            quarterly("2025-03-31", 25, "CY2025Q1"),
             quarterly("2026-03-31", 200, "CY2026Q1"),
           ]),
           ...fact("Revenues", "USD", [

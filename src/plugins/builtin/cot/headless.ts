@@ -124,7 +124,7 @@ export const cotHeadless: HeadlessPaneDefinition<"bundle"> = {
       normalize: (value) => isoDateOption(value, "since") },
     // Weekly reports come newest first, so --tail asks for the same newest n as --limit.
     { key: "limit", type: "integer", aliases: ["tail", "weeks", "rows"], minimum: 1, maximum: 2000, shot: REPORT_ROWS,
-      description: "Newest weekly reports a market lists; every one by default." }],
+      description: "Newest weekly reports for one market, or first rows of the extremes board; every row by default." }],
   discovery: { aliases: ["COT", "CFTC"], dataRequirements: ["Gloom Cloud CFTC and ICE Futures Europe history"], limitations: ["Positions aggregate all maturities; combined adds options, delta-adjusted.", "Legacy, disaggregated and TFF classes differ.", "Observation date is not publication date.", "Some markets have short or suppressed histories."] },
   describe: "Commitments of Traders positioning",
   async load(args, ctx) {
@@ -165,14 +165,19 @@ export const cotHeadless: HeadlessPaneDefinition<"bundle"> = {
     if (args.options.traderClass && traderClass !== args.options.traderClass) throw new Error("Trader class does not belong to this report family");
     const scope = cotScope(args.options.scope);
     const data = await loadCotBoard(family, traderClass, ctx.refresh, positions, ctx.apiClient);
-    const rows = data.rows.filter((row) => scope === "all" || COT_MAJOR_CODES.has(row.contractCode));
+    const scopedRows = data.rows.filter((row) => scope === "all" || COT_MAJOR_CODES.has(row.contractCode));
+    const limit = args.options.limit == null ? null : Number(args.options.limit);
+    const rows = limit == null ? scopedRows : scopedRows.slice(0, limit);
     const publishedAt = cotPublishedAt(data);
-    return { sections: [{ title: positions === "combined" ? `Positioning extremes  ·  ${cotPositionsText(positions)}` : "Positioning extremes",
+    const title = ["Positioning extremes", data.asOf ? `report date ${data.asOf}` : null,
+      positions === "combined" ? cotPositionsText(positions) : null].filter(Boolean).join("  ·  ");
+    return { sections: [{ title,
       unit: COT_UNIT, interval: COT_INTERVAL, rowSymbolKey: "root", rowAsOfKey: "reportDate",
       columns: [{ key: "marketName", header: "Market" }, { key: "contractCode", header: "Code" },
         ...POSITION_COLUMNS.map((column) => column.key === "net" ? { ...column, textHeader: cotBoardNetHeader(family, traderClass) } : column),
         { key: "openInterest", header: "Open interest", align: "right", format: count }, { key: "reportDate", header: "As of", omitWhenSame: true }],
       rows: rows.map((row) => ({ contractCode: row.contractCode, root: cotRoot(row.contractCode) ?? row.contractCode, marketName: cotMarketName(row.marketName), reportDate: row.reportDate, openInterest: row.openInterest, ...cotPositionRow(row.position) })) }],
-    errors: data.gaps, metadata: { ...data, scope, publishedAt, complete: data.status === "available" }, ...cotReleased(publishedAt, data.source) };
+    ...(rows.length < scopedRows.length ? { notes: [`Showing the first ${rows.length} of ${scopedRows.length} markets.`] } : {}),
+    errors: data.gaps, metadata: { ...data, rows, scope, publishedAt, complete: data.status === "available" }, ...cotReleased(publishedAt, data.source) };
   },
 };

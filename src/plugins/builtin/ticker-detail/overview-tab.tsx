@@ -43,6 +43,7 @@ import type { TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
 import { canonicalExchange, displayTickerKey, publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
+import { continuousFuturesRoot } from "../../../utils/futures-generic";
 import { convertCurrency, displayWidth, formatPercentRaw } from "../../../utils/format";
 import {
   appTtmRate, baseCurrencyFiguresNote, enterpriseValueGapIsLarge, enterpriseValueReconciliationNote, trailingEpsFiscalYear, ttmAtAppRate,
@@ -762,7 +763,8 @@ function ResolvedOverviewTab({
 
         {hasPerformance && (
           <Box flexDirection="column">
-            <SectionHeading title={t("Price Return")} />
+            <SectionHeading title={continuousFuturesRoot(ticker.metadata.ticker)
+              ? t("Price Return (continuous futures; includes rolls)") : t("Price Return")} />
             <PriceReturnStrip fields={performanceFields} width={contentWidth} />
           </Box>
         )}

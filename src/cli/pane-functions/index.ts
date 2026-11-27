@@ -92,7 +92,9 @@ async function withPaneRuntime<T>(
     const registry = await createPaneCatalog(context, plugins);
     try {
       return await withPersistedCloudSession(context, async () => {
-        let parsed = await applyListingArgument(registry, context, parsePaneFunctionArgsFor(registry, args, ctx.cliOptions), settings.command);
+        const asked = parsePaneFunctionArgsFor(registry, args, ctx.cliOptions);
+        let parsed = await applyListingArgument(registry, context, settings.command === "fn"
+          ? commoditiesTabReport(registry, asked) : asked, settings.command);
         const resolution = { ...settings, seriesSources: () => ctx.plugins, pluginStop: pluginStopFor(ctx, context) };
         let resolved = await resolvePaneFunction(registry, context, parsed, resolution);
         // A ticker whose company moved (SQ) is read as its new symbol (XYZ) before the function asks for anything.
@@ -113,6 +115,16 @@ async function withPaneRuntime<T>(
       registry.destroy();
     }
   });
+}
+
+function commoditiesTabReport(registry: PaneFunctionCatalog, asked: ParsedPaneFunctionArgs): ParsedPaneFunctionArgs {
+  if (findPaneFunction(registry, asked.target)?.template?.id !== "futures-pane") return asked;
+  const tab = typeof asked.options.tab === "string" ? asked.options.tab.trim().toLowerCase() : null;
+  const target = tab === "crops" ? "PSD" : tab === "positioning" ? "COT" : null;
+  if (!target || !findPaneFunction(registry, target)) return asked;
+  const options = { ...asked.options };
+  delete options.tab;
+  return { ...asked, target, options };
 }
 
 /**
@@ -557,7 +569,7 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       }
       ctx.printResult(result, render);
       if (failure) process.exitCode = CLI_EXIT_CODES.error;
-    }, { strictHeadlessOptions: true, strictRenderedOptions: true, tableSection: true, rowWindow: true });
+    }, { command: "fn", strictHeadlessOptions: true, strictRenderedOptions: true, tableSection: true, rowWindow: true });
   });
 }
 

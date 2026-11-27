@@ -32,6 +32,7 @@ import type { BrokerNameOf } from "../../market-data/quotes/export-identity";
 import { paneFitsRows, shotMaxHeightCells, buildDesktopShotPayload } from "./screenshot-payload";
 import { resolveDesktopShotApiProxy, createDesktopShotBridge } from "./screenshot-bridge";
 import type { PaneScreenshotResult } from "./screenshot-types";
+import { readsInBatches } from "../../market-data/batched-reads";
 import { assessPaneScreenshot, shotLoadedNothing } from "./screenshot-assessment";
 
 /**
@@ -343,6 +344,8 @@ export async function renderDesktopShot({
     );
     onDrawing?.();
     const tab = payload.paneState[payload.paneId]?.activeTabId;
+    if (!captureImage && resolved.template?.id === "futures-pane" && (!resolved.options.tab || resolved.options.tab === "markets")
+      && await readsInBatches(context.dataProvider, "getPriceHistory")) payload.socketReadLimit = 96;
     if (!captureImage && resolved.template?.id === "new-ticker-detail-pane" && (!tab || tab === "overview")) payload.readTickerReport = true;
     if (statusLine && captureImage && shotHasStatusLine(resolved)) payload.statusLine = true;
     // A report reads the table's columns, not a picture of them: every one is drawn.
