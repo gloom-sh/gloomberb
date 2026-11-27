@@ -12,14 +12,14 @@ import { ApiRequestError } from "../../../api-client/errors";
 import { createAppNotifier } from "../../../notifications/app-notifier";
 import { MemoryPluginPersistence as MemoryPersistence } from "../../../test-support/plugin-persistence";
 import { installTestWebSocket } from "../../../test-support/cloud-api";
-import type { AppNotificationRequest } from "../../../types/plugin";
+import type { AppNotificationRequest, PluginResumeState } from "../../../types/plugin";
 import { ChatController } from "./controller";
-import { DRAFT_SYNC_DEBOUNCE_MS, DRAFT_SYNC_MAX_WAIT_MS, SESSION_RETRY_MS } from "./controller/state";
+import { composerStateKey, DRAFT_SYNC_DEBOUNCE_MS, DRAFT_SYNC_MAX_WAIT_MS, SESSION_RETRY_MS } from "./controller/state";
 
 const testControllers = new Set<ChatController>();
 
-function createController(): ChatController {
-  const controller = new ChatController();
+function createController(options?: ConstructorParameters<typeof ChatController>[0]): ChatController {
+  const controller = new ChatController(options);
   testControllers.add(controller);
   return controller;
 }
@@ -111,10 +111,10 @@ function mentionNotification(overrides: Partial<ChatNotification> = {}): ChatNot
 }
 
 class TrackingPersistence extends MemoryPersistence {
-  stateWrites = 0;
+  composerWrites = 0;
 
   override setState(key: string, value: unknown, options?: { schemaVersion?: number }): void {
-    this.stateWrites += 1;
+    if (key.startsWith("composer:")) this.composerWrites += 1;
     super.setState(key, value, options);
   }
 }
@@ -190,9 +190,12 @@ describe("ChatController", () => {
     });
 
     persistSession(persistence);
-    persistence.setState("channel:everyone", {
+    persistence.setState(composerStateKey("u1", "everyone"), {
       draft: "cached draft",
+      draftClientMessageId: "cached-message-id",
       replyToId: "m1",
+    }, { schemaVersion: 1 });
+    persistence.setState("channel:everyone", {
       lastCursor: "m1",
       lastViewedMessageId: "m1",
     }, { schemaVersion: 1 });
@@ -212,6 +215,96 @@ describe("ChatController", () => {
     expect(snapshot.draft).toBe("cached draft");
     expect(snapshot.replyToId).toBe("m1");
     expect(snapshot.messages.map((entry) => entry.id)).toEqual(["m1"]);
+  });
+
+  test("restores only the confirmed account's composer from resume, even if a channel was opened before hydration", () => {
+    const persistence = new MemoryPersistence();
+    const resume: PluginResumeState = Object.assign(new MemoryPersistence(), {
+      getPaneState: () => null,
+      setPaneState: () => {},
+      deletePaneState: () => {},
+    });
+    const controller = createController({ bindComposerToApiSession: true });
+    persistSession(persistence);
+    const owned = { draft: "saved wording", draftClientMessageId: "saved-id", replyToId: "saved-reply" };
+    resume.setState(composerStateKey("u1", "everyone"), owned, { schemaVersion: 1 });
+    resume.setState(composerStateKey("u2", "everyone"), { draft: "other wording", replyToId: "other-reply" }, { schemaVersion: 1 });
+    for (const storage of [persistence, resume]) {
+      storage.setState("channel:options", { draft: "legacy wording", draftClientMessageId: "legacy-id", replyToId: "legacy-reply" });
+    }
+
+    controller.setDraft("without an account");
+    expect(controller.getSnapshot()).toMatchObject({ composerScope: null, draft: "", replyToId: null });
+    controller.attachPersistence(persistence, resume);
+    expect(controller.getSnapshot()).toMatchObject({ draft: owned.draft, replyToId: owned.replyToId, draftAttachments: [] });
+    expect(controller.getSnapshot("options")).toMatchObject({ draft: "", replyToId: null });
+    const drafts: string[] = [];
+    const unsubscribe = controller.subscribe((snapshot) => drafts.push(snapshot.draft));
+    apiClient.setSessionToken("renewed-session");
+    expect(drafts).toEqual([owned.draft, ""]);
+    apiClient.restoreCachedUser({ id: "u1", username: "ada", emailVerified: false });
+    expect(drafts.at(-1)).toBe(owned.draft);
+    controller.setReplyToId("updated-reply");
+    for (const storage of [persistence, resume]) {
+      expect(storage.getState<typeof owned>(composerStateKey("u1", "everyone"))).toEqual({ ...owned, replyToId: "updated-reply" });
+    }
+    unsubscribe();
+  });
+
+  test("publishes a new account with only its own composer, without carrying over uploads or queued draft writes", async () => {
+    jest.useFakeTimers();
+    const persistence = new TrackingPersistence();
+    const controller = createController({ bindComposerToApiSession: true });
+    persistSession(persistence, { emailVerified: true });
+    const first = { id: "u1", username: "ada", emailVerified: true };
+    const second = { id: "u2", username: "lin", emailVerified: true };
+    const firstKey = composerStateKey(first.id, "everyone");
+    const secondKey = composerStateKey(second.id, "everyone");
+    const saved = { draft: "saved first draft", draftClientMessageId: "first-draft-id", replyToId: "first-reply" };
+    const other = { draft: "saved second draft", draftClientMessageId: "second-draft-id", replyToId: "second-reply" };
+    persistence.setState(firstKey, saved);
+    persistence.setState(secondKey, other);
+    controller.attachPersistence(persistence);
+
+    const upload = Promise.withResolvers<ChatAttachment>();
+    controller.uploadAttachment = () => upload.promise;
+    expect(controller.attachToChannel("everyone", [{ name: "sample.png", type: "image/png", data: new Uint8Array(16) }])).toBe(1);
+    controller.setDraft("edited first draft");
+    controller.setChannelDraft("options", "separate channel draft");
+    const scope = controller.getComposerScope();
+    apiClient.setSessionToken("renewed-first-session");
+    apiClient.restoreCachedUser({ ...first, username: "ada-updated" });
+    await controller.refreshSession();
+    expect(controller.getSnapshot()).toMatchObject({ draft: "edited first draft", replyToId: saved.replyToId });
+    expect(controller.getComposerScope()).toBe(scope);
+    expect(controller.getSnapshot().draftAttachments).toHaveLength(1);
+
+    const observed: ReturnType<typeof controller.getSnapshot>[] = [];
+    const unsubscribe = controller.subscribe((snapshot) => observed.push(snapshot));
+    apiClient.setSessionToken("replacement-session");
+    expect(controller.getSnapshot()).toMatchObject({ composerScope: null, draft: "", replyToId: null, draftAttachments: [] });
+    apiClient.restoreCachedUser(second);
+    await controller.refreshSession();
+    upload.resolve({ id: "fixture-image", mime: "image/png", width: 1, height: 1, size: 16, url: "https://example.invalid/image" });
+    await flushMicrotasks();
+    const writes = persistence.composerWrites;
+    jest.advanceTimersByTime(DRAFT_SYNC_MAX_WAIT_MS);
+    expect(persistence.composerWrites).toBe(writes);
+    const newAccountSnapshots = observed.filter((snapshot) => snapshot.user?.id === second.id);
+    expect(newAccountSnapshots.length).toBeGreaterThan(0);
+    for (const snapshot of newAccountSnapshots) {
+      expect(snapshot).toMatchObject({ draft: other.draft, replyToId: other.replyToId, draftAttachments: [] });
+    }
+    expect(controller.getSnapshot("options")).toMatchObject({ draft: "", replyToId: null });
+    expect(persistence.getState<typeof saved>(firstKey)).toEqual({ ...saved, draft: "edited first draft" });
+    expect(persistence.getState<typeof other>(secondKey)).toEqual(other);
+    expect(persistence.getState(composerStateKey(first.id, "options"))).toMatchObject({ draft: "separate channel draft" });
+    expect(persistence.getState(composerStateKey(second.id, "options"))).toBeNull();
+    unsubscribe();
+
+    controller.adoptSession("first-session-again", first);
+    expect(controller.getComposerScope()).not.toBe(scope);
+    expect(controller.getSnapshot()).toMatchObject({ draft: "edited first draft", replyToId: saved.replyToId, draftAttachments: [] });
   });
 
   test("uses a browser cookie session without exposing its token", async () => {
@@ -383,25 +476,27 @@ describe("ChatController", () => {
     const controller = createController();
     const draftSnapshots: string[] = [];
 
+    persistSession(persistence);
     controller.attachPersistence(persistence);
+    const key = composerStateKey("u1", "everyone");
     const unsubscribe = controller.subscribe((snapshot) => {
       draftSnapshots.push(snapshot.draft);
     });
     draftSnapshots.length = 0;
-    persistence.stateWrites = 0;
+    persistence.composerWrites = 0;
 
     controller.setDraft("h");
     controller.setDraft("he");
 
     expect(controller.getSnapshot().draft).toBe("he");
     expect(draftSnapshots).toEqual([]);
-    expect(persistence.stateWrites).toBe(0);
-    expect(persistence.getState("channel:everyone", { schemaVersion: 1 })).toBeNull();
+    expect(persistence.composerWrites).toBe(0);
+    expect(persistence.getState(key, { schemaVersion: 1 })).toBeNull();
 
     unsubscribe();
     controller.dispose();
 
-    expect(persistence.getState<{ draft: string }>("channel:everyone", { schemaVersion: 1 })).toMatchObject({
+    expect(persistence.getState(key, { schemaVersion: 1 })).toMatchObject({
       draft: "he",
     });
   });
@@ -412,9 +507,10 @@ describe("ChatController", () => {
     jest.useFakeTimers();
     const persistence = new TrackingPersistence();
     const controller = createController();
+    persistSession(persistence);
     controller.attachPersistence(persistence);
-    persistence.stateWrites = 0;
-    const saved = () => persistence.getState<{ draft: string }>("channel:everyone", { schemaVersion: 1 })?.draft;
+    persistence.composerWrites = 0;
+    const saved = () => persistence.getState<{ draft: string }>(composerStateKey("u1", "everyone"), { schemaVersion: 1 })?.draft;
 
     let typed = "";
     for (let elapsed = 0; elapsed < DRAFT_SYNC_MAX_WAIT_MS - DRAFT_SYNC_DEBOUNCE_MS; elapsed += DRAFT_SYNC_DEBOUNCE_MS / 2) {
@@ -422,7 +518,7 @@ describe("ChatController", () => {
       controller.setDraft(typed);
       jest.advanceTimersByTime(DRAFT_SYNC_DEBOUNCE_MS / 2);
     }
-    expect(persistence.stateWrites).toBe(0);
+    expect(persistence.composerWrites).toBe(0);
     expect(saved()).toBeUndefined();
 
     for (let elapsed = 0; elapsed < 2 * DRAFT_SYNC_DEBOUNCE_MS; elapsed += DRAFT_SYNC_DEBOUNCE_MS / 2) {
@@ -436,9 +532,9 @@ describe("ChatController", () => {
     // The pause saves the rest, and nothing is written once it is all saved.
     jest.advanceTimersByTime(DRAFT_SYNC_DEBOUNCE_MS);
     expect(saved()).toBe(typed);
-    const writes = persistence.stateWrites;
+    const writes = persistence.composerWrites;
     jest.advanceTimersByTime(DRAFT_SYNC_MAX_WAIT_MS * 2);
-    expect(persistence.stateWrites).toBe(writes);
+    expect(persistence.composerWrites).toBe(writes);
     controller.dispose();
   });
 
@@ -903,17 +999,14 @@ describe("ChatController", () => {
       user: { id: "u2", username: "bob", displayName: "Bob" },
     });
 
-    persistence.setState("channel:everyone", {
+    persistSession(persistence);
+    persistence.setState(composerStateKey("u1", "everyone"), {
       draft: "general draft",
       replyToId: null,
-      lastCursor: "m1",
-      lastViewedMessageId: "m1",
     }, { schemaVersion: 1 });
-    persistence.setState("channel:options", {
+    persistence.setState(composerStateKey("u1", "options"), {
       draft: "options draft",
       replyToId: null,
-      lastCursor: "m2",
-      lastViewedMessageId: "m2",
     }, { schemaVersion: 1 });
     persistence.setResource(TRANSCRIPT_KIND, "everyone", { messages: [everyoneMessage] }, {
       sourceKey: TRANSCRIPT_SOURCE,
@@ -1280,10 +1373,11 @@ describe("ChatController", () => {
 
     persistSession(persistence, { emailVerified: true });
     persistence.setState("channel:everyone", {
-      draft: "hello",
-      replyToId: "m1",
       lastCursor: "m1",
       lastViewedMessageId: "m1",
+    }, { schemaVersion: 1 });
+    persistence.setState(composerStateKey("u1", "everyone"), {
+      draft: "hello", draftClientMessageId: "prepared-message-id", replyToId: "m1",
     }, { schemaVersion: 1 });
     persistence.setResource(TRANSCRIPT_KIND, TRANSCRIPT_KEY, {
       messages: [replyTarget],

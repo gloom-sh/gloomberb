@@ -536,6 +536,22 @@ describe("ChatContent", () => {
     expect(frame).toContain("Reply to @user1...");
   });
 
+  test("updates the open composer when the active account changes", async () => {
+    const controller = createController({ messages: [makeMessage(1)] });
+    await renderFocusedComposerWithDraft(controller, "First account draft");
+    await act(async () => controller.setReplyToId("m1"));
+    await flushFrame();
+    expect(tui.frame()).toContain("First account draft");
+    expect(tui.frame()).toContain("replying to @user1");
+
+    await act(async () => controller.adoptSession("second-fixture-session", { id: "u2", username: "lin", emailVerified: true }));
+    await flushFrame();
+    expect(tui.frame()).not.toContain("First account draft");
+    expect(tui.frame()).not.toContain("replying to @user1");
+    await emitKeypress({ name: "return", sequence: "\r" });
+    expect(controller.getSnapshot().messages).toHaveLength(1);
+  });
+
   test("uses selected text colors for selected message rows", async () => {
     const controller = createController({
       messages: [makeMessage(1), makeMessage(2)],

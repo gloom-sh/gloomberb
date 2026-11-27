@@ -3,6 +3,7 @@ import { apiClient, type AuthUser, type ChatStateResponse } from "../../../../ap
 import { ApiRequestError } from "../../../../api-client/errors";
 import { MemoryPluginPersistence } from "../../../../test-support/plugin-persistence";
 import { ChatController } from "./index";
+import { composerStateKey } from "./state";
 
 const original = {
   getSession: apiClient.getSession,
@@ -70,10 +71,13 @@ test("a browser cannot restore an old chat identity without the matching cookie 
   apiClient.setCookieSessionMode(true);
   apiClient.waitForCookieIdentity();
   persistence.setState("session", { sessionToken: null, user: currentUser }, { schemaVersion: 1 });
+  persistence.setState(composerStateKey(currentUser.id, "everyone"), {
+    draft: "saved draft", draftClientMessageId: "saved-id", replyToId: "saved-reply",
+  }, { schemaVersion: 1 });
   controller.attachPersistence(persistence);
   expect(apiClient.getCurrentUser()).toBeNull();
   expect(apiClient.isDisplayScopePending()).toBe(true);
-  expect(controller.getSnapshot().user).toBeNull();
+  expect(controller.getSnapshot()).toMatchObject({ user: null, composerScope: null, draft: "", replyToId: null });
 });
 
 test("a command's chat never signs out the session the command runs with", () => {

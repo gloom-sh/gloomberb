@@ -1,4 +1,4 @@
-import { createElement, useEffect, useRef, useState, type ReactNode } from "react";
+import { createElement, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Box, Text } from "../../../../ui";
 import { Button, IconButton } from "../../../../components/ui";
 import { useDialogKeyboard, useOptionalDialog, type AlertContext, type DialogApi } from "../../../../ui/dialog";
@@ -156,19 +156,24 @@ export function DesktopChatAttachButton({
   pickerRef: { current: (() => void) | null };
 }) {
   const inputRef = useRef<FileInputLike | null>(null);
+  const pickerCallback = useRef<typeof onFiles | null>(null);
+  const openPicker = useCallback(() => {
+    pickerCallback.current = onFiles;
+    inputRef.current?.click();
+  }, [onFiles]);
   useEffect(() => {
-    pickerRef.current = () => inputRef.current?.click();
+    pickerRef.current = openPicker;
     return () => {
       pickerRef.current = null;
     };
-  }, [pickerRef]);
+  }, [openPicker, pickerRef]);
   return (
     <>
       <IconButton
         icon="image"
         label="Attach Image"
         size={14}
-        onPress={() => inputRef.current?.click()}
+        onPress={openPicker}
       />
       {createElement("input", {
         ref: (node: FileInputLike | null) => {
@@ -186,7 +191,9 @@ export function DesktopChatAttachButton({
           const files = Array.from(input.files ?? []);
           // Cleared so picking the same file again still fires a change.
           input.value = "";
-          if (files.length > 0) onFiles(files);
+          const receive = pickerCallback.current;
+          pickerCallback.current = null;
+          if (files.length > 0) receive?.(files);
         },
       })}
     </>

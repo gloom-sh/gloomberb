@@ -17,7 +17,7 @@ import {
   type PersistedAuthUser,
 } from "../../../../api-client";
 import { withOwnReaction } from "../reactions";
-import { normalizeSessionUser } from "./persistence";
+import { normalizeSessionUser, type ChatSessionUser } from "./persistence";
 import { debugLog } from "../../../../utils/debug-log";
 import {
   getUnreadMentionMessages,
@@ -161,6 +161,7 @@ export class ChatController {
     hasSession: () => !!this.session.sessionToken || !!this.session.user,
     getOnlineCount: () => this.channelCatalog.getOnlineCount(),
     getUser: () => this.session.user,
+    getComposerScope: () => this.getComposerScope(),
     getListenerSnapshot: (channelId) => this.getSnapshot(channelId),
     getVisibleMessages: (channelId) => this.getVisibleMessages(channelId),
     getUnreadMentionCount: (channelId) => this.getUnreadMentionCount(channelId),
@@ -201,10 +202,41 @@ export class ChatController {
     invalidateMentionCandidates: () => this.mentionCandidates.invalidate(),
   });
 
+  private stopWatchingComposerAccount: (() => void) | undefined;
+  private announcedComposerScope: object | null = null;
+
+  constructor(private readonly options: { bindComposerToApiSession?: boolean } = {}) {}
+
+  getComposerScope(): object | null {
+    const account = this.storage.getComposerAccount();
+    if (this.options.bindComposerToApiSession && account?.id !== apiClient.getConfirmedDisplayUser()?.id) return null;
+    return account;
+  }
+
+  private setSessionUser(user: ChatSessionUser | null): void {
+    this.storage.setComposerAccount(user?.id ?? null);
+    this.session.user = user;
+  }
+
+  private notifyComposerScopeChanged(): void {
+    const scope = this.getComposerScope();
+    if (scope === this.announcedComposerScope) return;
+    this.announcedComposerScope = scope;
+    this.view.emit();
+  }
+
   /** `keepInstalledSession`: a command's, which its own session outlasts (`hydrateChatControllerSession`). */
   attachPersistence(persistence: PluginPersistence, resume?: PluginResumeState, { keepInstalledSession = false } = {}): void {
     this.storage.attachPersistence(persistence, resume);
     this.hydrate(keepInstalledSession);
+    if (this.options.bindComposerToApiSession && !this.stopWatchingComposerAccount) {
+      this.stopWatchingComposerAccount = apiClient.subscribeCurrentUser(() => {
+        const current = apiClient.getConfirmedDisplayUser();
+        if (current && current.id !== this.session.user?.id) this.storage.setComposerAccount(null);
+        this.notifyComposerScopeChanged();
+      });
+    }
+    this.notifyComposerScopeChanged();
   }
 
   /**
@@ -400,6 +432,7 @@ export class ChatController {
       persistSession: (sessionToken, user) => this.storage.persistSession(sessionToken, user),
       refreshChatState: (isCurrent) => this.channelCatalog.refreshChatState(isCurrent),
       scheduleSessionRetry: () => this.realtime.scheduleSessionRetry(),
+      setSessionUser: (user) => this.setSessionUser(user),
       session: this.session,
       stopRealtimeSubscriptions: () => {
         this.realtime.stopRealtimeSubscriptions();
@@ -449,6 +482,7 @@ export class ChatController {
   }
 
   setChannelDraft(channelId: string, draft: string): void {
+    if (!this.getComposerScope()) return;
     const normalizedChannelId = normalizeChannelId(channelId);
     const channel = this.ensureChannelState(normalizedChannelId);
     if (updateChatChannelDraft(channel, draft)) {
@@ -461,10 +495,11 @@ export class ChatController {
   }
 
   setChannelReplyToId(channelId: string, replyToId: string | null): void {
+    if (!this.getComposerScope()) return;
     const normalizedChannelId = normalizeChannelId(channelId);
     const channel = this.ensureChannelState(normalizedChannelId);
     channel.replyToId = replyToId;
-    this.storage.persistChannelState(normalizedChannelId);
+    this.storage.persistComposer(normalizedChannelId);
     this.emit(normalizedChannelId);
   }
 
@@ -511,12 +546,12 @@ export class ChatController {
    */
   adoptSession(sessionToken: string, user: PersistedAuthUser): void {
     this.invalidateSessionRefresh();
+    this.setSessionUser(normalizeSessionUser(user));
+    this.session.sessionToken = sessionToken;
+    this.session.sessionChecked = true;
     apiClient.setSessionToken(sessionToken);
     apiClient.setWebSocketToken(null);
     apiClient.restoreCachedUser(user);
-    this.session.sessionToken = sessionToken;
-    this.session.user = normalizeSessionUser(user);
-    this.session.sessionChecked = true;
     this.storage.persistSession(this.session.sessionToken, this.session.user);
     this.emit();
   }
@@ -527,7 +562,7 @@ export class ChatController {
       channelStates: this.storage.channelStates.values(),
       clearSessionIdentity: () => {
         this.session.sessionToken = null;
-        this.session.user = null;
+        this.setSessionUser(null);
         this.session.sessionChecked = false;
       },
       closeAllConnections: () => this.closeAllConnections(),
@@ -559,13 +594,16 @@ export class ChatController {
       clearDraftSyncTimer: (channel) => this.storage.clearDraftSyncTimer(channel),
       clearSessionIdentity: () => {
         this.session.sessionToken = null;
-        this.session.user = null;
+        this.setSessionUser(null);
       },
       closeAllConnections: () => this.closeAllConnections(),
       deleteSession: () => this.storage.deleteSession(),
       deleteTranscript: (channelId) => this.storage.deleteTranscript(channelId),
       emit: () => this.emit(),
-      persistChannelState: (channelId) => this.storage.persistChannelState(channelId),
+      persistChannelState: (channelId) => {
+        this.storage.persistChannelState(channelId);
+        this.storage.persistComposer(channelId);
+      },
       persistSession: () => this.storage.persistSession(this.session.sessionToken, this.session.user),
       shouldClearSession: clearSession,
       stopRealtime: () => this.stopRealtime(),
@@ -574,6 +612,8 @@ export class ChatController {
 
   dispose(): void {
     this.invalidateSessionRefresh();
+    this.stopWatchingComposerAccount?.();
+    this.stopWatchingComposerAccount = undefined;
     chatLog.info("dispose controller", {
       listeners: this.view.listenerCount,
       connections: countOpenConnections(this.storage.channelStates.values()),
@@ -597,6 +637,7 @@ export class ChatController {
   }
 
   sendToChannel(channelId: string, content: string, replyToId?: string): boolean {
+    if (!this.getComposerScope()) return false;
     const normalizedChannelId = normalizeChannelId(channelId);
     const channel = this.ensureChannelState(normalizedChannelId);
     return sendChatMessageToChannel({
@@ -608,7 +649,7 @@ export class ChatController {
       ensureConnection: () => this.ensureConnection(normalizedChannelId),
       getVisibleMessages: () => this.getVisibleMessages(normalizedChannelId),
       nextPendingMessageId: () => `local:${Date.now()}:${this.pendingMessageSeq += 1}`,
-      persistChannelState: () => this.storage.persistChannelState(normalizedChannelId),
+      persistChannelState: () => this.storage.persistComposer(normalizedChannelId),
       emit: () => this.emit(normalizedChannelId),
       mergeMessages: (messages) => this.mergeMessages(normalizedChannelId, messages),
       notify: this.notifyFn,
@@ -629,6 +670,7 @@ export class ChatController {
 
   /** Adds images to the channel's next message and starts uploading them; returns how many were taken. */
   attachToChannel(channelId: string, uploads: ChatAttachmentUpload[]): number {
+    if (!this.getComposerScope()) return 0;
     const normalizedChannelId = normalizeChannelId(channelId);
     const channel = this.ensureChannelState(normalizedChannelId);
     if (!this.session.user?.emailVerified || uploads.length === 0) return 0;
@@ -641,6 +683,7 @@ export class ChatController {
   }
 
   removeChannelAttachment(channelId: string, localId: string): void {
+    if (!this.getComposerScope()) return;
     const normalizedChannelId = normalizeChannelId(channelId);
     const channel = this.ensureChannelState(normalizedChannelId);
     const removed = channel.draftAttachments.filter((entry) => entry.localId === localId);
@@ -651,6 +694,7 @@ export class ChatController {
   }
 
   retryChannelAttachment(channelId: string, localId: string): boolean {
+    if (!this.getComposerScope()) return false;
     const normalizedChannelId = normalizeChannelId(channelId);
     const channel = this.ensureChannelState(normalizedChannelId);
     return retryDraftAttachment(() => channel.draftAttachments, localId, this.draftAttachmentDeps(normalizedChannelId));
@@ -835,7 +879,10 @@ export class ChatController {
     const activity = this.conversationActivity();
     const moved = activity !== this.announcedActivity;
     this.announcedActivity = activity;
-    this.view.emit(moved ? undefined : channelId);
+    const scope = this.getComposerScope();
+    const composerChanged = scope !== this.announcedComposerScope;
+    this.announcedComposerScope = scope;
+    this.view.emit(moved || composerChanged ? undefined : channelId);
     this.unreadPeople.sync();
   }
 
@@ -877,6 +924,7 @@ export class ChatController {
   }
 
   private applySignedOutSession(): void {
+    this.storage.setComposerAccount(null);
     applySignedOutChatControllerSession({
       channelStates: this.storage.channelStates.values(),
       closeAllConnections: () => this.closeAllConnections(),
@@ -989,5 +1037,5 @@ export class ChatController {
   }
 }
 
-export const chatController = new ChatController();
+export const chatController = new ChatController({ bindComposerToApiSession: true });
 registerAccountSession(chatController);

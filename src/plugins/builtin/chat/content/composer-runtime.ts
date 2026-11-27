@@ -33,6 +33,7 @@ export function useChatComposerRuntime({
   inputFocused,
   inputRef,
   inputValueRef,
+  isComposerCurrent,
   messages,
   onComposerStateChange,
   onChannelChange,
@@ -65,6 +66,7 @@ export function useChatComposerRuntime({
   inputFocused: boolean;
   inputRef: MutableRef<TextareaRenderable | null>;
   inputValueRef: MutableRef<string>;
+  isComposerCurrent: () => boolean;
   messages: ChatMessage[];
   onComposerStateChange?: (draft: string, cursorOffset: number) => void;
   onChannelChange?: (channelId: string) => void;
@@ -106,13 +108,14 @@ export function useChatComposerRuntime({
   }, [focusInput, setFollowMessages, setSelectedIdx]);
 
   const clearReplyTarget = useCallback(() => {
+    if (!isComposerCurrent()) return;
     setReplyTo(null);
     if (useDefaultControllerChannel) {
       controller.setReplyToId(null);
     } else {
       controller.setChannelReplyToId(channelId, null);
     }
-  }, [channelId, controller, setReplyTo, useDefaultControllerChannel]);
+  }, [channelId, controller, isComposerCurrent, setReplyTo, useDefaultControllerChannel]);
 
   // The field's text is saved with the links of its chips, the way it will be sent.
   const persistDraft = useCallback((text: string, links: readonly ComposerShareLink[] = draftLinksRef.current) => {
@@ -143,18 +146,20 @@ export function useChatComposerRuntime({
   }, [applyingExternalDraftRef, inputRef, inputValueRef, onComposerStateChange, updateComposerRows]);
 
   const replaceComposerDraft = useCallback((draft: string, cursorOffset = draft.length) => {
+    if (!isComposerCurrent()) return;
     replaceLocalComposer(draft, cursorOffset);
     persistDraft(draft);
-  }, [persistDraft, replaceLocalComposer]);
+  }, [isComposerCurrent, persistDraft, replaceLocalComposer]);
 
   /** New chips above the field, saved with the text as it is. */
   const replaceDraftLinks = useCallback((links: ComposerShareLink[]) => {
+    if (!isComposerCurrent()) return;
     setDraftLinks(links);
     persistDraft(inputValueRef.current, links);
-  }, [inputValueRef, persistDraft, setDraftLinks]);
+  }, [inputValueRef, isComposerCurrent, persistDraft, setDraftLinks]);
 
   const beginReplyTo = useCallback((index: number, options?: { deferFocus?: boolean }) => {
-    if (!canSend || index < 0 || index >= messages.length) return;
+    if (!canSend || !isComposerCurrent() || index < 0 || index >= messages.length) return;
     const nextReplyTo = messages[index] ?? null;
     if (!nextReplyTo) return;
     if (editingMessageRef.current) {
@@ -181,6 +186,7 @@ export function useChatComposerRuntime({
     channelId,
     controller,
     focusInput,
+    isComposerCurrent,
     messages,
     persistDraft,
     replaceLocalComposer,
@@ -193,7 +199,7 @@ export function useChatComposerRuntime({
   ]);
 
   const beginEditMessage = useCallback((index: number, options?: { deferFocus?: boolean }) => {
-    if (!canSend || index < 0 || index >= messages.length) return false;
+    if (!canSend || !isComposerCurrent() || index < 0 || index >= messages.length) return false;
     const message = messages[index] ?? null;
     if (!message || message.id !== latestEditableMessageId) return false;
     clearReplyTarget();
@@ -215,6 +221,7 @@ export function useChatComposerRuntime({
     canSend,
     clearReplyTarget,
     focusInput,
+    isComposerCurrent,
     latestEditableMessageId,
     messages,
     persistDraft,
@@ -232,13 +239,13 @@ export function useChatComposerRuntime({
   }, [beginEditMessage, latestEditableMessageId, messages]);
 
   const cancelEditMessage = useCallback(() => {
-    if (!editingMessageRef.current) return;
+    if (!isComposerCurrent() || !editingMessageRef.current) return;
     setEditingMessage(null);
     setDraftLinks([]);
     replaceLocalComposer("");
     persistDraft("", []);
     focusInput();
-  }, [focusInput, persistDraft, replaceLocalComposer, setDraftLinks, setEditingMessage]);
+  }, [focusInput, isComposerCurrent, persistDraft, replaceLocalComposer, setDraftLinks, setEditingMessage]);
 
   const returnToComposer = useCallback(() => {
     setSelectedIdx(-1);
@@ -254,6 +261,7 @@ export function useChatComposerRuntime({
   }, [replaceLocalComposer, setDraftLinks]);
 
   const sendMessage = useCallback(() => {
+    if (!isComposerCurrent()) return;
     const content = composerMessage(inputValueRef.current, draftLinksRef.current);
     const editing = editingMessageRef.current;
     // Images let a message, or an edit of one that has them, go without text.
@@ -267,7 +275,7 @@ export function useChatComposerRuntime({
       if (editing.channelId !== sendChannelId) return;
       editSubmittingRef.current = true;
       void controller.editChannelMessage(sendChannelId, editing.id, content).then((accepted) => {
-        if (!accepted) return;
+        if (!accepted || !isComposerCurrent()) return;
         setEditingMessage(null);
         clearLocalComposer();
         persistDraft("", []);
@@ -281,6 +289,7 @@ export function useChatComposerRuntime({
     const composerCommand = content ? parseChatComposerCommand(content) : null;
     if (composerCommand?.kind === "direct") {
       void controller.openDirectChannel({ username: composerCommand.username }).then((channel) => {
+        if (!isComposerCurrent()) return;
         expandDirectSection();
         channelIdRef.current = channel.id;
         onChannelChange?.(channel.id);
@@ -302,6 +311,7 @@ export function useChatComposerRuntime({
         usernames: composerCommand.usernames,
         name: composerCommand.name,
       }).then((channel) => {
+        if (!isComposerCurrent()) return;
         expandDirectSection();
         channelIdRef.current = channel.id;
         onChannelChange?.(channel.id);
@@ -327,6 +337,7 @@ export function useChatComposerRuntime({
     controller,
     draftLinksRef,
     inputValueRef,
+    isComposerCurrent,
     onChannelChange,
     onConversationStartError,
     onDiscordCommand,
@@ -341,7 +352,7 @@ export function useChatComposerRuntime({
   ]);
 
   const commitLocalDraft = useCallback((draft: string) => {
-    if (applyingExternalDraftRef.current) return;
+    if (applyingExternalDraftRef.current || !isComposerCurrent()) return;
     const previousDraft = inputValueRef.current;
     // A share link pasted at the end of the draft leaves the field for a chip
     // above it, the one the sent message shows; the cursor stays where it was.
@@ -371,6 +382,7 @@ export function useChatComposerRuntime({
     draftLinksRef,
     inputRef,
     inputValueRef,
+    isComposerCurrent,
     onComposerStateChange,
     onPastedImagePaths,
     persistDraft,
@@ -424,14 +436,9 @@ export function useChatComposerRuntime({
   }, []);
 
   useEffect(() => {
-    if (canSend || !replyTo) return;
-    clearReplyTarget();
-  }, [canSend, clearReplyTarget, replyTo]);
-
-  useEffect(() => {
     if (canSend || !editingMessage) return;
-    cancelEditMessage();
-  }, [canSend, cancelEditMessage, editingMessage]);
+    setEditingMessage(null);
+  }, [canSend, editingMessage, setEditingMessage]);
 
   // The desktop and the web take the whole text and cut it in CSS where its row ends.
   const replyPreview = !replyTo ? ""

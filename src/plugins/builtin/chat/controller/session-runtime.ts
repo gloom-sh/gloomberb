@@ -59,7 +59,8 @@ export function hydrateChatControllerSession({
   const currentToken = apiClient.getSessionToken();
   const currentUser = currentToken === session.sessionToken ? apiClient.getCurrentUser() : null;
   const restoredUser = currentUser ?? (session.sessionToken ? storedSession?.user ?? null : null);
-  if (!keepInstalledSession || !currentToken || currentToken === session.sessionToken) {
+  const canRestore = !keepInstalledSession || !currentToken || currentToken === session.sessionToken;
+  if (canRestore) {
     // Installing the credential already in place would discard its session
     // check: the web app, which signs in with a cookie and stores no token,
     // asked the server for its session a second time on every open.
@@ -70,6 +71,7 @@ export function hydrateChatControllerSession({
     if (session.sessionToken && restoredUser !== apiClient.getCurrentUser()) apiClient.restoreCachedUser(restoredUser);
   }
   session.user = normalizeSessionUser(restoredUser);
+  storage.setComposerAccount(canRestore ? session.user?.id ?? null : null);
   session.sessionChecked = true;
   storage.ensureChannelState(DEFAULT_CHAT_CHANNEL_ID);
   syncVerificationPolling();
@@ -114,6 +116,7 @@ interface RefreshChatControllerSessionOptions {
   persistSession: (sessionToken: string | null, user: ChatSessionUser | null) => void;
   refreshChatState: (isCurrent?: () => boolean) => Promise<void>;
   scheduleSessionRetry: () => void;
+  setSessionUser: (user: ChatSessionUser | null) => void;
   session: ChatControllerSessionState;
   stopRealtimeSubscriptions: () => void;
   stopSafetyRefresh: () => void;
@@ -133,6 +136,7 @@ export async function refreshChatControllerSession({
   persistSession,
   refreshChatState,
   scheduleSessionRetry,
+  setSessionUser,
   session,
   stopRealtimeSubscriptions,
   stopSafetyRefresh,
@@ -154,11 +158,12 @@ export async function refreshChatControllerSession({
       session.sessionToken = persistedToken;
       // A failed sign-in can install another token before its user arrives.
       // Only the credential stored with a cached user can restore that user.
-      session.user = (cachedToken === persistedToken ? session.user : null) ?? normalizeSessionUser(apiClient.getCurrentUser());
+      const user = (cachedToken === persistedToken ? session.user : null) ?? normalizeSessionUser(apiClient.getConfirmedDisplayUser());
+      setSessionUser(user);
       // getSession() clears the API client's cached user when the endpoint
       // answers null. Keep both session views aligned while the protected
       // request validates the preserved native credential.
-      apiClient.restoreCachedUser(session.user);
+      apiClient.restoreCachedUser(user);
       session.sessionChecked = true;
       persistSession(session.sessionToken, session.user);
       emit();
@@ -195,7 +200,7 @@ export async function refreshChatControllerSession({
             ...profile,
             updatedAt: profile.updatedAt ?? undefined,
           };
-          session.user = normalizeSessionUser(persistedProfile);
+          setSessionUser(normalizeSessionUser(persistedProfile));
           apiClient.restoreCachedUser(persistedProfile);
           persistSession(session.sessionToken, session.user);
           emit();
@@ -234,7 +239,7 @@ export async function refreshChatControllerSession({
   const previousIdentity = getSessionIdentity(session.user);
   const nextUser = sessionUserFromApiSession(apiSession);
   session.sessionToken = apiClient.getSessionToken();
-  session.user = nextUser;
+  setSessionUser(nextUser);
   const nextIdentity = getSessionIdentity(nextUser);
   if (previousIdentity && previousIdentity !== nextIdentity) {
     markChannelsViewedForIdentityChange(channelStates, persistChannelState);

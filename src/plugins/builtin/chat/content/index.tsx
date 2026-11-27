@@ -214,6 +214,10 @@ function ChatConversation({
     () => controller.attachmentsSupported(),
   );
   const [dropActive, setDropActive] = useState(false);
+  const resetComposerSession = useCallback(() => {
+    setEditingMessage(null);
+    setDropActive(false);
+  }, []);
   const attachPickerRef = useRef<(() => void) | null>(null);
   const replaceComposerDraftRef = useRef<((draft: string, cursorOffset?: number) => void) | null>(null);
   const {
@@ -221,6 +225,7 @@ function ChatConversation({
     channelsLoading,
     channelStates,
     conversationActivity,
+    composerScope,
     draftAttachments,
     hasOlderMessages,
     loading,
@@ -241,6 +246,7 @@ function ChatConversation({
     inputRef,
     inputValueRef,
     onComposerStateChange: syncComposerState,
+    onComposerScopeChange: resetComposerSession,
     draftLinksRef,
     onDraftLinksChange: setDraftLinks,
     prependAnchorRef,
@@ -273,7 +279,8 @@ function ChatConversation({
     if (!stackedNav) setChannelListOpen(false);
   }, [stackedNav]);
   composerTextWidthRef.current = composerTextWidth;
-  const canSend = !!user?.emailVerified;
+  const canSend = !!user?.emailVerified && composerScope !== null;
+  const isComposerCurrent = useCallback(() => composerScope !== null && controller.getComposerScope() === composerScope, [composerScope, controller]);
   // Images go only to a server that said it takes them, and never into an edit.
   const imagesAvailable = canSend && attachmentsSupported;
   const canAttach = imagesAvailable && !editingMessage;
@@ -623,12 +630,13 @@ function ChatConversation({
   }, [closeNewDmDialog, focused, newDmOpen]);
 
   const attachFiles = useCallback((files: TransferFile[]) => {
+    if (!isComposerCurrent()) return;
     if (!canAttach) {
       if (imagesAvailable) notify({ body: "Images can't be added to an edit.", type: "info" });
       return;
     }
     if (controller.attachToChannel(channelIdRef.current, files.map(uploadFromTransferFile)) > 0) focusInput();
-  }, [canAttach, controller, focusInput, imagesAvailable, notify]);
+  }, [canAttach, controller, focusInput, imagesAvailable, isComposerCurrent, notify]);
 
   // A chip: the shared pane, the story or calendar a Wire post names, or a function written in a message.
   const openPaneLink = useCallback((link: ChatMessagePaneLink) => {
@@ -647,15 +655,16 @@ function ChatConversation({
   // The terminal: a pasted or dropped path to an image file attaches the file
   // and leaves the composer. A path that is no file stays as typed.
   const handlePastedImagePaths = useCallback((paths: string[], pasted: string) => {
+    if (!isComposerCurrent()) return;
     const targetChannelId = channelIdRef.current;
     void readChatImageFiles(paths).then((uploads) => {
-      if (uploads.length === 0 || channelIdRef.current !== targetChannelId) return;
+      if (!isComposerCurrent() || uploads.length === 0 || channelIdRef.current !== targetChannelId) return;
       const draft = inputValueRef.current;
       const at = draft.indexOf(pasted);
       if (at >= 0) replaceComposerDraftRef.current?.(`${draft.slice(0, at)}${draft.slice(at + pasted.length)}`, at);
       controller.attachToChannel(targetChannelId, uploads);
     }).catch(() => {});
-  }, [controller]);
+  }, [controller, isComposerCurrent]);
 
   const reportConversationStartError = useCallback((error: unknown, usernames: string[]) => {
     notify({ body: describeConversationStartError(error, usernames, userByUsername), type: "error" });
@@ -711,6 +720,7 @@ function ChatConversation({
     inputFocused,
     inputRef,
     inputValueRef,
+    isComposerCurrent,
     messages,
     onComposerStateChange: syncComposerState,
     onChannelChange,
@@ -1280,7 +1290,7 @@ function ChatConversation({
         onRemoveAttachment={removeDraftAttachment}
         onRetryAttachment={retryDraftAttachment}
         draftLinks={draftLinks}
-        onOpenDraftLink={openPaneLink}
+        onOpenDraftLink={(link) => { if (isComposerCurrent()) openPaneLink(link); }}
         onRemoveDraftLink={removeDraftLink}
         attachPickerRef={attachPickerRef}
       />
