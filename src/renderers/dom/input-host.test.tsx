@@ -10,8 +10,8 @@ const { window: testWindow, render: renderDom } = createDomTestHarness({ withUi:
 
 afterEach(() => setSystemTime());
 
-function Probe({ onKey }: { onKey: (event: KeyEventLike) => void }) {
-  useShortcut(onKey, { phase: "before" });
+function Probe({ onKey, allowEditable }: { onKey: (event: KeyEventLike) => void; allowEditable?: boolean }) {
+  useShortcut(onKey, { phase: "before", allowEditable });
   return null;
 }
 
@@ -30,7 +30,7 @@ async function mountProbe(onKey?: (event: KeyEventLike) => void): Promise<KeyEve
 
 async function pressKey(
   key: string,
-  options: { target?: unknown; shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean; repeat?: boolean } = {},
+  options: { target?: unknown; shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean; repeat?: boolean; isComposing?: boolean; keyCode?: number } = {},
 ): Promise<{ defaultPrevented: boolean }> {
   const event = new testWindow.KeyboardEvent("keydown", {
     key,
@@ -40,6 +40,8 @@ async function pressKey(
     metaKey: options.metaKey ?? false,
     ctrlKey: options.ctrlKey ?? false,
     repeat: options.repeat ?? false,
+    isComposing: options.isComposing,
+    keyCode: options.keyCode,
   });
   const target = (options.target ?? testWindow.document.body) as { dispatchEvent: (event: unknown) => void };
   await act(async () => {
@@ -48,6 +50,27 @@ async function pressKey(
   });
   return { defaultPrevented: event.defaultPrevented };
 }
+
+test("IME keys never reach before-shortcuts that opt in to editable targets", async () => {
+  const seen: string[] = [];
+  const root = await renderDom(
+    <WebInputHostProvider>
+      <input />
+      <Probe allowEditable onKey={(event) => { seen.push(event.name); event.preventDefault(); }} />
+    </WebInputHostProvider>,
+  );
+  const target = root.querySelector("input")!;
+  target.focus();
+  for (const key of ["Enter", "Escape", "ArrowDown", "ArrowUp", "Tab"]) {
+    expect(await pressKey(key, { target, isComposing: true })).toEqual({ defaultPrevented: false });
+    expect(await pressKey(key, { target, isComposing: false, keyCode: 229 })).toEqual({ defaultPrevented: false });
+  }
+  expect(seen).toEqual([]);
+  for (const key of ["Enter", "Escape"]) {
+    expect(await pressKey(key, { target })).toEqual({ defaultPrevented: true });
+  }
+  expect(seen).toEqual(["return", "escape"]);
+});
 
 test("delivers plain Tab and Shift-Tab outside editable controls", async () => {
   const seen = await mountProbe();

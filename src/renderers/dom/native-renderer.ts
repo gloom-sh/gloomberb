@@ -1,6 +1,6 @@
 import type { NativeRendererHost } from "../../ui";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../theme/font-scale";
-import { hasWebCtrlModifier, normalizeWebKeyName, shouldConsumeWebAppKeyDown, webKeySequence } from "./key-event";
+import { hasWebCtrlModifier, isImeComposing, normalizeWebKeyName, shouldConsumeWebAppKeyDown, webKeySequence } from "./key-event";
 
 type Listener = (...args: unknown[]) => void;
 type KeypressListener = (event: {
@@ -46,6 +46,7 @@ class WebKeyInput {
   }
 
   emitKeyPress(event: KeyboardEvent): void {
+    if (isImeComposing(event)) return;
     const payload = {
       name: normalizeWebKeyName(event.key),
       sequence: webKeySequence(event),
