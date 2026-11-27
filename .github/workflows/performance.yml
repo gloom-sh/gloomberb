@@ -3,6 +3,7 @@ name: Performance
 # Separate from Verify so a noisy runner never blocks the checks a merge needs.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, closed]
     branches:
       - main
     paths-ignore:
@@ -26,6 +27,7 @@ jobs:
   # queues on pull requests that do not touch their areas.
   scope:
     name: Performance scope
+    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:

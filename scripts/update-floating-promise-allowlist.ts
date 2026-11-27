@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import ts from "typescript";
+import { buildRepoImportGraph, readGitChangedFiles, selectFloatingPromiseFiles } from "./test-scope";
 import { EXCLUDED, runtimeFiles } from "./update-silent-catch-allowlist";
 
 const ROOT = resolve(import.meta.dir, "..");
@@ -193,8 +194,9 @@ export function floatingPromiseProgram(root: string, rootNames: readonly string[
     options: { ...options, lib: ["lib.esnext.d.ts", "lib.dom.d.ts", "lib.dom.iterable.d.ts"], noEmit: true } });
 }
 
-function collectFloatingPromises(root: string): FloatingPromise[] {
-  const files = runtimeFiles(join(root, "src")).sort();
+function collectFloatingPromises(root: string, targetFiles?: readonly string[]): FloatingPromise[] {
+  const files = targetFiles ? [...targetFiles].sort() : runtimeFiles(join(root, "src")).sort();
+  if (files.length === 0) return [];
   return scanFloatingPromises(floatingPromiseProgram(root, files), files, root);
 }
 
@@ -208,16 +210,27 @@ export function formatFloatingPromiseAllowlist(allowlist: Record<string, string[
   return `{\n${lines.join(",\n")}\n}\n`;
 }
 
-/** What fails the check: sites the allowlist does not cover, entries no site uses, and an allowlist out of order. */
-export function compareFloatingPromises(sites: readonly FloatingPromise[], text: string): string[] {
+/**
+ * What fails the check: sites the allowlist does not cover, entries no site uses,
+ * and an allowlist out of order. When `scopedFiles` is given (a diff-scoped PR
+ * check), added and stale checks cover only those scanned files while still
+ * checking that the allowlist file stays sorted.
+ */
+export function compareFloatingPromises(
+  sites: readonly FloatingPromise[],
+  text: string,
+  scopedFiles?: ReadonlySet<string>,
+): string[] {
   const allowlist: Record<string, string[]> = JSON.parse(text);
   const remaining = new Map<string, number>();
   for (const [file, entries] of Object.entries(allowlist)) {
+    if (scopedFiles && !scopedFiles.has(file)) continue;
     for (const value of entries) remaining.set(`${file} ${value}`, (remaining.get(`${file} ${value}`) ?? 0) + 1);
   }
   const added: string[] = [];
   for (const site of sites) {
     if (site.scope !== "in") continue;
+    if (scopedFiles && !scopedFiles.has(site.file)) continue;
     const key = `${site.file} ${entry(site)}`;
     const count = remaining.get(key) ?? 0;
     if (count > 0) remaining.set(key, count - 1);
@@ -244,19 +257,39 @@ if (import.meta.main) {
   const args = process.argv.slice(2);
   const rootIndex = args.indexOf("--root");
   const root = rootIndex >= 0 ? resolve(args[rootIndex + 1]!) : ROOT;
+  const changedFromIndex = args.indexOf("--changed-from");
+  const changedFrom = changedFromIndex >= 0 ? args[changedFromIndex + 1] : undefined;
   const started = performance.now();
-  const sites = collectFloatingPromises(root);
-  const seconds = ((performance.now() - started) / 1000).toFixed(1);
   const target = join(root, ALLOWLIST);
   const inventoryIndex = args.indexOf("--inventory");
   if (args.includes("--check")) {
-    const failures = compareFloatingPromises(sites, existsSync(target) ? readFileSync(target, "utf8") : "{}");
+    let scopedFiles: Set<string> | undefined;
+    let targetAbsolute: string[] | undefined;
+    if (changedFrom) {
+      const allRuntime = runtimeFiles(join(root, "src")).map((path) => relative(root, path).split(sep).join("/"));
+      const graph = buildRepoImportGraph(root);
+      const changed = readGitChangedFiles(root, changedFrom);
+      const scope = selectFloatingPromiseFiles(changed, graph, allRuntime);
+      console.log(scope.reason);
+      if (scope.mode === "skip") {
+        scopedFiles = new Set();
+        targetAbsolute = [];
+      } else if (scope.mode === "scoped") {
+        scopedFiles = new Set(scope.files);
+        targetAbsolute = scope.files.map((file) => join(root, file));
+      }
+    }
+    const sites = collectFloatingPromises(root, targetAbsolute);
+    const seconds = ((performance.now() - started) / 1000).toFixed(1);
+    const failures = compareFloatingPromises(sites, existsSync(target) ? readFileSync(target, "utf8") : "{}", scopedFiles);
     if (failures.length) {
       console.error(failures.join("\n\n"));
       process.exit(1);
     }
-    console.log(`No new floating promises (${sites.filter((site) => site.scope === "in").length} allowed, ${seconds} s).`);
+    console.log(`No new floating promises (${sites.filter((site) => site.scope === "in").length} allowed${scopedFiles ? `, scoped to ${scopedFiles.size} file(s)` : ""}, ${seconds} s).`);
   } else if (inventoryIndex >= 0) {
+    const sites = collectFloatingPromises(root);
+    const seconds = ((performance.now() - started) / 1000).toFixed(1);
     const counts: Record<string, Record<Kind | "total", number>> = {};
     for (const site of sites) {
       const count = counts[folder(site.file)] ??= { total: 0, statement: 0, void: 0, callback: 0 };
@@ -266,6 +299,8 @@ if (import.meta.main) {
     await Bun.write(resolve(args[inventoryIndex + 1]!), `${JSON.stringify({ seconds: Number(seconds), counts, sites }, null, 2)}\n`);
     console.log(`Wrote ${sites.length} sites (${seconds} s).`);
   } else {
+    const sites = collectFloatingPromises(root);
+    const seconds = ((performance.now() - started) / 1000).toFixed(1);
     const allowlist: Record<string, string[]> = {};
     for (const site of sites) if (site.scope === "in") (allowlist[site.file] ??= []).push(entry(site));
     await Bun.write(target, formatFloatingPromiseAllowlist(allowlist));
