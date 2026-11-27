@@ -19,7 +19,9 @@ const hkexResults: ExchangeFilingForm = { value: "hkex-results", label: "Results
 export function exchangeFilingForm(venue: string | undefined): ExchangeFilingForm | undefined {
   if (venue === "TWSE" || venue === "TPEX") return presentations;
   if (venue === "HKEX") return hkexResults;
-  if (venue === "JPX" || venue === "SGX") return { value: `${venue.toLowerCase()}-results`, label: "Results & presentations", kind: "results" };
+  if (venue === "JPX" || venue === "SGX" || venue === "HOSE" || venue === "HNX") {
+    return { value: `${venue.toLowerCase()}-results`, label: "Results & presentations", kind: "results" };
+  }
 }
 
 // The extended archives are bounded. The pane reveals their rows as the user scrolls.
