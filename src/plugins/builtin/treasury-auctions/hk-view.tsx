@@ -13,7 +13,6 @@ import {
   useQueryBarSearch,
   type DataTableCell,
   type DataTableKeyEvent,
-  type DataTableRootKeyContext,
   type QueryBarSelectFilter,
 } from "../../../components";
 import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/data-table/table-pane";
@@ -29,7 +28,7 @@ import { Box, ScrollBox, Text, TextAttributes } from "../../../ui";
 import { formatRelativeAge, formatShortDate } from "../../../utils/datetime-format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
-import { useSearchFocusUp } from "../../../components/input-search-bar";
+import { useSearchUpRootKeyDown } from "../../../components/input-search-bar";
 import { cycleSortPreference, nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
 import type { AuctionHistoryWindow } from "./client";
@@ -226,15 +225,7 @@ export function HkTendersView({
     }
     return false;
   }, [cycleFilter, cycleSort]);
-  const isSearchUp = useSearchFocusUp();
-  const handleRootKeyDown = useCallback((event: DataTableKeyEvent, context: DataTableRootKeyContext) => {
-    if (context.selectedIndex <= 0 && isSearchUp(event)) {
-      stopSearchFocusNavigation(event);
-      focusSearch();
-      return true;
-    }
-    return handlePaneKey(event);
-  }, [isSearchUp, focusSearch, handlePaneKey]);
+  const handleRootKeyDown = useSearchUpRootKeyDown(focusSearch, handlePaneKey);
 
   const showYear = useMemo(() => auctionDatesShowYear(rows.map((tender) => tender.date)), [rows]);
   const columns = useMemo(() => buildHkColumns({ showYear, rows, width: width - 1 }), [rows, showYear, width]);

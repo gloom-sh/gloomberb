@@ -11,8 +11,6 @@ import {
   useQueryBarSearch,
   useTableLoadMore,
   type DataTableCell,
-  type DataTableKeyEvent,
-  type DataTableRootKeyContext,
   type PaneFooterSegment,
   type PaneHint,
   type QueryBarFilter,
@@ -31,8 +29,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { ThemeColors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
-import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
-import { useSearchFocusUp } from "../../../components/input-search-bar";
+import { useSearchUpRootKeyDown } from "../../../components/input-search-bar";
 import { useOpenDescription } from "../shared/open-description";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { missingCell, NO_VALUE } from "../shared/research-cells";
@@ -359,15 +356,7 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
     ],
   } : null), [focused, openAdjacent, openIndex, trials.length]);
 
-  const isSearchUp = useSearchFocusUp();
-  const handleRootKeyDown = useCallback((event: DataTableKeyEvent, context: DataTableRootKeyContext) => {
-    if (context.selectedIndex <= 0 && isSearchUp(event)) {
-      stopSearchFocusNavigation(event);
-      focusSearch();
-      return true;
-    }
-    return false;
-  }, [isSearchUp, focusSearch]);
+  const handleRootKeyDown = useSearchUpRootKeyDown(focusSearch);
 
   const layout = useMemo(() => trialLayout(width), [width]);
   const renderCell = useCallback((trial: ClinicalTrial, column: TrialColumn, _index: number, rowState: { selected: boolean }): DataTableCell => {

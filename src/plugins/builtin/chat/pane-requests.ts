@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { createListenerSet } from "../../../utils/listeners";
 
 /**
  * Something a Chat pane should do once it has the keyboard, asked for from
@@ -18,21 +19,17 @@ interface PendingChatPaneRequest {
 const REQUEST_TTL_MS = 10_000;
 
 let pending: PendingChatPaneRequest | null = null;
-const listeners = new Set<() => void>();
-
-function emit(): void {
-  for (const listener of listeners) listener();
-}
+const listeners = createListenerSet();
 
 export function requestChatPaneAction(request: ChatPaneRequest, now = Date.now()): void {
   pending = { request, at: now };
-  emit();
+  listeners.notify();
 }
 
 export function clearChatPaneRequest(): void {
   if (!pending) return;
   pending = null;
-  emit();
+  listeners.notify();
 }
 
 /**
@@ -51,14 +48,7 @@ export function takeChatPaneRequest(channelId: string, now = Date.now()): ChatPa
   return request;
 }
 
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
 /** The request waiting for a pane, so a pane can take it once it has the keyboard. */
 export function usePendingChatPaneRequest(): ChatPaneRequest | null {
-  return useSyncExternalStore(subscribe, () => pending?.request ?? null);
+  return useSyncExternalStore(listeners.subscribe, () => pending?.request ?? null);
 }

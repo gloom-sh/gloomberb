@@ -75,14 +75,6 @@ function loadScannerSnapshot<T extends ScannerPayload>(
   });
 }
 
-export function loadHiloSnapshot(
-  client: Pick<HeadlessPaneApiClient, "subscribeScanner">,
-  signal: AbortSignal,
-  timeoutMs = SCANNER_SNAPSHOT_TIMEOUT_MS,
-): Promise<ScannerHiloPayload> {
-  return loadScannerSnapshot<ScannerHiloPayload>(client, "hilo", signal, timeoutMs);
-}
-
 /**
  * A report's read of a scanner: HEADLESS_SCANNER_WAIT_MS at most, after which a starting scanner is answered as one.
  * While the market is shut (`closed`) its first answer, as no session is coming to wait for.

@@ -1,6 +1,6 @@
-import { MISSING_VALUE } from "../../../utils/format";
 import { THEME_PERIODS, type ThemeMembersPayload, type ThemeSummary, type ThemesPayload } from "../../../api-client/themes";
-import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-data/market/status";
+import type { ExtendedSession } from "../../../market-data/market/status";
+import { extendedPriceColumn } from "../shared/extended-print";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneFreshness } from "../../../types/plugin";
 import { formatRelativeAge } from "../../../utils/datetime-format";
 import { fetchThemeMembers, fetchThemes } from "./client";
@@ -16,16 +16,10 @@ const periodColumns = (payload: ThemesPayload | ThemeMembersPayload): HeadlessPa
 };
 
 /** The pre-market or after-hours print and its move from the regular close in Price, for the members that have one. */
-function extendedColumn(session: ExtendedSession): HeadlessPaneColumn {
-  return {
-    key: "extendedPrice",
-    header: EXTENDED_SESSION_LABELS[session],
-    align: "right",
-    format: (value, row) => row.extendedSession === session && typeof value === "number"
-      ? `${memberPrice(value)} ${percent(typeof row.extendedChangePercent === "number" ? row.extendedChangePercent : null)}`
-      : MISSING_VALUE,
-  };
-}
+const extendedColumn = (session: ExtendedSession): HeadlessPaneColumn => extendedPriceColumn(
+  session,
+  (value, row) => `${memberPrice(value)} ${percent(typeof row.extendedChangePercent === "number" ? row.extendedChangePercent : null)}`,
+);
 
 /**
  * When a board's figures are from. Outside the regular session they are the

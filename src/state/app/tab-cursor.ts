@@ -1,6 +1,7 @@
 import { useCallback, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
 import type { AppState } from "../../core/state/app/state";
 import { findPaneInstance, type SavedLayout } from "../../types/config";
+import { createListenerSet } from "../../utils/listeners";
 import { AppContext, useOptionalAppSelector, useOptionalPaneInstanceId, type AppContextStoreValue } from "./context";
 
 /**
@@ -37,7 +38,7 @@ const cursors = new Map<string, TabCursor>();
 const PINNED = "\u0000pinned";
 /** How many charts in each tab are mounted to show its pin; see `useTabCursorLink`. */
 const pinViewers = new Map<string, number>();
-const listeners = new Set<() => void>();
+const listeners = createListenerSet();
 let pinSerial = 0;
 
 /** A time a Date can hold. A pin is never NaN, infinite or past the Date range, whatever asks for it. */
@@ -57,13 +58,10 @@ function setTabCursorTime(tabKey: string, sourceId: string | null, time: number 
     if (sourceId === null || (current?.sourceId === sourceId && current.time === time)) return;
     cursors.set(tabKey, sourceId === PINNED ? { time, sourceId, serial: ++pinSerial } : { time, sourceId });
   }
-  for (const listener of listeners) listener();
+  listeners.notify();
 }
 
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
+const subscribe = listeners.subscribe;
 
 /** A chart's handle on the cursor its layout tab shares. */
 export interface TabCursorLink {
@@ -119,7 +117,7 @@ function retargetTabCursors(before: readonly SavedLayout[], after: readonly Save
     if (target !== null) moved.set(target, cursor);
   });
   for (const [key, cursor] of moved) cursors.set(key, cursor);
-  if (changed) for (const listener of listeners) listener();
+  if (changed) listeners.notify();
 }
 
 const watchedStores = new WeakSet<AppContextStoreValue>();

@@ -144,29 +144,33 @@ function appendQuery(path: string, search: URLSearchParams): string {
   return `${path}${query ? `?${query}` : ""}`;
 }
 
+export type QueryParamValue = string | number | boolean | null | undefined;
+
+/** Appends defined, non-null entries to `path` as `?a=1&b=2`; omits `?` when empty. */
+export function queryPath(
+  path: string,
+  params: Record<string, QueryParamValue> | object,
+  options?: { skipEmpty?: boolean },
+): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null) continue;
+    if (options?.skipEmpty && value === "") continue;
+    search.set(key, String(value));
+  }
+  return appendQuery(path, search);
+}
+
 /**
  * `deep`: the search waits for a venue's own site (the CLI's), which a search
  * box's keystroke gives about a second.
  */
 export function cloudMarketSearchPath(query: string, limit: number, deep = false): string {
-  return appendQuery(
-    "/market/search",
-    new URLSearchParams({
-      q: query,
-      limit: String(limit),
-      ...(deep ? { deep: "1" } : {}),
-    }),
-  );
+  return queryPath("/market/search", { q: query, limit, deep: deep ? "1" : undefined });
 }
 
-export function cloudMarketSymbolPath(
-  path: string,
-  symbol: string,
-  exchange?: string,
-): string {
-  const search = new URLSearchParams({ symbol });
-  if (exchange) search.set("exchange", exchange);
-  return appendQuery(path, search);
+export function cloudMarketSymbolPath(path: string, symbol: string, exchange?: string): string {
+  return queryPath(path, { symbol, exchange: exchange || undefined });
 }
 
 export function cloudOptionsChainPath(
@@ -176,29 +180,26 @@ export function cloudOptionsChainPath(
   /** The contracts adjusted for a corporate action, in place of the standard ones. */
   adjusted = false,
 ): string {
-  const search = new URLSearchParams({ symbol });
-  if (exchange) search.set("exchange", exchange);
-  if (expirationDate != null)
-    search.set("expirationDate", String(expirationDate));
-  if (adjusted) search.set("adjusted", "1");
-  return appendQuery("/market/options", search);
+  return queryPath("/market/options", {
+    symbol,
+    exchange: exchange || undefined,
+    expirationDate,
+    adjusted: adjusted ? "1" : undefined,
+  });
 }
 
-export function cloudHistoryPath(
-  symbol: string,
-  exchange: string,
-  params: CloudHistoryParams = {},
-): string {
-  const search = new URLSearchParams({ symbol, exchange });
-  if (params.interval) search.set("interval", params.interval);
-  if (params.outputsize != null)
-    search.set("outputsize", String(params.outputsize));
-  if (params.startDate) search.set("startDate", params.startDate);
-  if (params.endDate) search.set("endDate", params.endDate);
-  if (params.rangeKey) search.set("rangeKey", params.rangeKey);
-  if (params.historyRecovery) search.set("historyRecovery", JSON.stringify(params.historyRecovery));
-  if (params.session) search.set("session", params.session);
-  return appendQuery("/market/history", search);
+export function cloudHistoryPath(symbol: string, exchange: string, params: CloudHistoryParams = {}): string {
+  return queryPath("/market/history", {
+    symbol,
+    exchange,
+    interval: params.interval || undefined,
+    outputsize: params.outputsize,
+    startDate: params.startDate || undefined,
+    endDate: params.endDate || undefined,
+    rangeKey: params.rangeKey || undefined,
+    historyRecovery: params.historyRecovery ? JSON.stringify(params.historyRecovery) : undefined,
+    session: params.session || undefined,
+  });
 }
 
 export function cloudShillerPath(): string {
@@ -206,47 +207,33 @@ export function cloudShillerPath(): string {
 }
 
 export function cloudExchangeRatePath(fromCurrency: string): string {
-  return appendQuery(
-    "/market/exchange-rate",
-    new URLSearchParams({ fromCurrency }),
-  );
+  return queryPath("/market/exchange-rate", { fromCurrency });
 }
 
-export function cloudFredSeriesPath(
-  seriesId: string,
-  params: CloudFredSeriesParams = {},
-): string {
-  const search = new URLSearchParams();
-  if (params.startDate) search.set("startDate", params.startDate);
-  if (params.endDate) search.set("endDate", params.endDate);
-  if (params.limit != null) search.set("limit", String(params.limit));
-  if (params.sortOrder) search.set("sortOrder", params.sortOrder);
-  return appendQuery(
-    `/cloud/econ/series/${encodeURIComponent(seriesId)}`,
-    search,
-  );
+export function cloudFredSeriesPath(seriesId: string, params: CloudFredSeriesParams = {}): string {
+  return queryPath(`/cloud/econ/series/${encodeURIComponent(seriesId)}`, {
+    startDate: params.startDate || undefined,
+    endDate: params.endDate || undefined,
+    limit: params.limit,
+    sortOrder: params.sortOrder || undefined,
+  });
 }
 
 export function cloudCdsPath(params: CloudCdsParams = {}): string {
-  const search = new URLSearchParams();
-  const issuer = params.issuer?.trim();
-  if (issuer) search.set("issuer", issuer);
-  if (params.days != null) search.set("days", String(params.days));
-  if (params.limit != null) search.set("limit", String(params.limit));
-  return appendQuery("/cloud/credit/cds", search);
+  return queryPath("/cloud/credit/cds", {
+    issuer: params.issuer?.trim() || undefined,
+    days: params.days,
+    limit: params.limit,
+  });
 }
 
 export function cloudCdsHistoryPath(params: CloudCdsHistoryParams): string {
-  const search = new URLSearchParams({ issuer: params.issuer.trim() });
-  if (params.days != null) search.set("days", String(params.days));
-  return appendQuery("/cloud/credit/cds/history", search);
+  return queryPath("/cloud/credit/cds/history", { issuer: params.issuer.trim(), days: params.days });
 }
 
 /** `/cloud/credit/cdx` or `/cloud/credit/sovr`. */
 export function cloudCreditBoardPath(board: "cdx" | "sovr", params: { days?: number } = {}): string {
-  const search = new URLSearchParams();
-  if (params.days != null) search.set("days", String(params.days));
-  return appendQuery(`/cloud/credit/${board}`, search);
+  return queryPath(`/cloud/credit/${board}`, { days: params.days });
 }
 
 export type CloudSecFilingsParams = {
@@ -273,25 +260,21 @@ export type CloudSecFilingParams = {
   filingUrl?: string;
 };
 
-export function cloudCongressHousePath(
-  params: CloudCongressHouseParams = {},
-): string {
-  const search = new URLSearchParams();
-  if (params.year != null) search.set("year", String(params.year));
-  if (params.limit != null) search.set("limit", String(params.limit));
-  if (params.offset != null) search.set("offset", String(params.offset));
-  if (params.filingLimit != null)
-    search.set("filingLimit", String(params.filingLimit));
-  if (params.filingOffset != null)
-    search.set("filingOffset", String(params.filingOffset));
-  if (params.member) search.set("member", params.member);
-  if (params.ticker) search.set("ticker", params.ticker);
-  if (params.side) search.set("side", params.side);
-  if (params.owner) search.set("owner", params.owner);
-  if (params.assetType) search.set("assetType", params.assetType);
-  if (params.minAmount != null) search.set("minAmount", String(params.minAmount));
-  if (params.refresh != null) search.set("refresh", String(params.refresh));
-  return appendQuery(`/cloud/congress/${params.chamber ?? "house"}`, search);
+export function cloudCongressHousePath(params: CloudCongressHouseParams = {}): string {
+  return queryPath(`/cloud/congress/${params.chamber ?? "house"}`, {
+    year: params.year,
+    limit: params.limit,
+    offset: params.offset,
+    filingLimit: params.filingLimit,
+    filingOffset: params.filingOffset,
+    member: params.member || undefined,
+    ticker: params.ticker || undefined,
+    side: params.side || undefined,
+    owner: params.owner || undefined,
+    assetType: params.assetType || undefined,
+    minAmount: params.minAmount,
+    refresh: params.refresh,
+  });
 }
 
 /** Issuer endpoints accept US ticker symbols, not the pane's listing key. */
@@ -301,9 +284,7 @@ export function normalizeIssuerResearchTicker(ticker: string): string {
 }
 
 export function cloudJobsPath(ticker: string, name?: string | null): string {
-  const search = new URLSearchParams();
-  if (name) search.set("name", name);
-  return appendQuery(`/cloud/jobs/${encodeURIComponent(normalizeIssuerResearchTicker(ticker))}`, search);
+  return queryPath(`/cloud/jobs/${encodeURIComponent(normalizeIssuerResearchTicker(ticker))}`, { name: name || undefined });
 }
 
 export interface CloudJobsPostingsParams {
@@ -315,28 +296,25 @@ export interface CloudJobsPostingsParams {
 }
 
 export function cloudJobsPostingsPath(ticker: string, params: CloudJobsPostingsParams = {}): string {
-  const search = new URLSearchParams();
-  if (params.function) search.set("function", params.function);
-  if (params.q) search.set("q", params.q);
-  if (params.limit != null) search.set("limit", String(params.limit));
-  if (params.offset != null) search.set("offset", String(params.offset));
-  if (params.includeClosed) search.set("includeClosed", "true");
-  return appendQuery(`/cloud/jobs/${encodeURIComponent(normalizeIssuerResearchTicker(ticker))}/postings`, search);
+  return queryPath(`/cloud/jobs/${encodeURIComponent(normalizeIssuerResearchTicker(ticker))}/postings`, {
+    function: params.function || undefined,
+    q: params.q || undefined,
+    limit: params.limit,
+    offset: params.offset,
+    includeClosed: params.includeClosed ? "true" : undefined,
+  });
 }
 
 /** One posting of a company, by the database id the jobs list carries or the careers system's own id HIRE's evidence carries. */
 export function cloudJobsPostingPath(ticker: string, posting: { id: number } | { externalId: string }): string {
-  const search = new URLSearchParams();
-  if ("id" in posting) search.set("id", String(posting.id));
-  else search.set("externalId", posting.externalId);
-  return appendQuery(`/cloud/jobs/${encodeURIComponent(normalizeIssuerResearchTicker(ticker))}/posting`, search);
+  return queryPath(
+    `/cloud/jobs/${encodeURIComponent(normalizeIssuerResearchTicker(ticker))}/posting`,
+    "id" in posting ? { id: posting.id } : { externalId: posting.externalId },
+  );
 }
 
 export function cloudJobsMoversPath(limit?: number, offset?: number): string {
-  const search = new URLSearchParams();
-  if (limit != null) search.set("limit", String(limit));
-  if (offset) search.set("offset", String(offset));
-  return appendQuery("/cloud/jobs", search);
+  return queryPath("/cloud/jobs", { limit, offset: offset || undefined });
 }
 
 /** A listing outside the US, as an issuer lookup names it: its bare symbol, venue and company. */
@@ -358,32 +336,21 @@ export function listingAbroad(ticker: string, exchange?: string, name?: string |
   return { symbol: parsePublicTickerKey(ticker).symbol, exchange: venue, ...(company ? { name: company } : {}) };
 }
 
-/** Sets a listing abroad's venue and company on an issuer lookup. */
-function setListingAbroad(search: URLSearchParams, listing: ListingAbroad | null): void {
-  if (!listing) return;
-  search.set("exchange", listing.exchange);
-  if (listing.name) search.set("name", listing.name);
+/** Query entries for a listing abroad (empty for a US listing). */
+function listingAbroadParams(listing: ListingAbroad | null): Record<string, QueryParamValue> {
+  return listing ? { exchange: listing.exchange, name: listing.name } : {};
 }
 
 /** A US listing or a bare symbol looks up its US ticker as before; a listing abroad names its venue and company. */
-export function cloudEarningsCallsPath(
-  params: CloudEarningsCallsParams = {},
-): string {
-  const search = new URLSearchParams();
-  if (params.ticker) {
-    const abroad = listingAbroad(params.ticker, params.exchange, params.name);
-    search.set("ticker", abroad?.symbol ?? normalizeIssuerResearchTicker(params.ticker));
-    setListingAbroad(search, abroad);
-  }
-  if (params.limit != null) search.set("limit", String(params.limit));
-  if (params.offset != null) search.set("offset", String(params.offset));
-  if (params.includePending) search.set("includePending", "true");
-  if (params.upcoming) {
-    search.set("upcoming", "true");
-    search.set("from", params.upcoming.from);
-    search.set("to", params.upcoming.to);
-  }
-  return appendQuery("/cloud/transcripts", search);
+export function cloudEarningsCallsPath(params: CloudEarningsCallsParams = {}): string {
+  const abroad = params.ticker ? listingAbroad(params.ticker, params.exchange, params.name) : null;
+  return queryPath("/cloud/transcripts", {
+    ...(params.ticker ? { ticker: abroad?.symbol ?? normalizeIssuerResearchTicker(params.ticker), ...listingAbroadParams(abroad) } : {}),
+    limit: params.limit,
+    offset: params.offset,
+    includePending: params.includePending ? "true" : undefined,
+    ...(params.upcoming ? { upcoming: "true", from: params.upcoming.from, to: params.upcoming.to } : {}),
+  });
 }
 
 export function cloudEarningsTranscriptPath(id: string): string {
@@ -399,11 +366,12 @@ export function cloudEarningsCallAudioPath(id: string): string {
  * and sends nothing else; a listing abroad sends its bare symbol with its
  * venue and company (listingAbroad).
  */
-function issuerPath(base: string, ticker: string, listing: IssuerListingParams = {}, suffix = ""): string {
+function issuerPath(base: string, ticker: string, listing: IssuerListingParams = {}, suffix = "", extra?: Record<string, QueryParamValue>): string {
   const abroad = listingAbroad(ticker, listing.exchange, listing.name);
-  const search = new URLSearchParams();
-  setListingAbroad(search, abroad);
-  return appendQuery(`${base}/${encodeURIComponent(abroad?.symbol ?? normalizeIssuerResearchTicker(ticker))}${suffix}`, search);
+  return queryPath(
+    `${base}/${encodeURIComponent(abroad?.symbol ?? normalizeIssuerResearchTicker(ticker))}${suffix}`,
+    { ...listingAbroadParams(abroad), ...extra },
+  );
 }
 
 /**
@@ -415,11 +383,7 @@ export function cloudProxyStatementsPath(ticker: string, listing?: IssuerListing
 }
 
 export function cloudFilingEventsPath(ticker: string, limit?: number, listing: IssuerListingParams = {}): string {
-  const abroad = listingAbroad(ticker, listing.exchange, listing.name);
-  const search = new URLSearchParams();
-  setListingAbroad(search, abroad);
-  if (limit != null) search.set("limit", String(limit));
-  return appendQuery(`/cloud/events/${encodeURIComponent(abroad?.symbol ?? normalizeIssuerResearchTicker(ticker))}`, search);
+  return issuerPath("/cloud/events", ticker, listing, "", { limit });
 }
 
 export function cloudRiskReportsPath(ticker: string, listing?: IssuerListingParams): string {
@@ -441,19 +405,17 @@ export function cloudProxyStatementPath(ticker: string, year: number, listing?: 
  */
 export function cloudDebtMaturitiesPath(symbol: string, listing: IssuerListingParams = {}): string {
   const abroad = listingAbroad(symbol, listing.exchange, listing.name);
-  const search = new URLSearchParams({ symbol: abroad?.symbol ?? symbol });
-  setListingAbroad(search, abroad);
-  search.set("version", "2");
-  return appendQuery("/cloud/debt-maturities", search);
+  return queryPath("/cloud/debt-maturities", { symbol: abroad?.symbol ?? symbol, ...listingAbroadParams(abroad), version: "2" });
 }
 
 export function cloudRevenueBreakdownPath(symbol: string, view?: RevenueBreakdownView, listing: IssuerListingParams = {}): string {
   const abroad = listingAbroad(symbol, listing.exchange, listing.name);
-  const search = new URLSearchParams({ symbol: abroad?.symbol ?? symbol });
-  setListingAbroad(search, abroad);
-  if (view) search.set("view", view);
-  if (reportedRevenueVenue(abroad?.exchange)) search.set("periods", "reported");
-  return appendQuery("/cloud/revenue-breakdown", search);
+  return queryPath("/cloud/revenue-breakdown", {
+    symbol: abroad?.symbol ?? symbol,
+    ...listingAbroadParams(abroad),
+    view: view || undefined,
+    periods: reportedRevenueVenue(abroad?.exchange) ? "reported" : undefined,
+  });
 }
 
 /**
@@ -463,88 +425,75 @@ export function cloudRevenueBreakdownPath(symbol: string, view?: RevenueBreakdow
  */
 export function cloudSecFilingsPath(params: CloudSecFilingsParams): string {
   const abroad = listingAbroad(params.ticker, params.exchange, params.name);
-  const search = new URLSearchParams({
+  return queryPath("/cloud/sec/filings", {
     ticker: abroad?.symbol ?? normalizeIssuerResearchTicker(params.ticker),
+    limit: params.limit,
+    offset: params.offset,
+    form: params.forms?.length ? params.forms.join(",") : undefined,
+    proceedsSince: params.proceedsSince || undefined,
+    newestByForm: params.newestByForm ? "1" : undefined,
+    ...listingAbroadParams(abroad),
   });
-  if (params.limit != null) search.set("limit", String(params.limit));
-  if (params.offset != null) search.set("offset", String(params.offset));
-  if (params.forms?.length) search.set("form", params.forms.join(","));
-  if (params.proceedsSince) search.set("proceedsSince", params.proceedsSince);
-  if (params.newestByForm) search.set("newestByForm", "1");
-  setListingAbroad(search, abroad);
-  return appendQuery("/cloud/sec/filings", search);
 }
 
 /** A US-listed company's bank figures: SEC deposits and its lead bank's FDIC call report. */
 export function cloudBankFiguresPath(symbol: string): string {
-  return appendQuery("/cloud/bank-figures", new URLSearchParams({ symbol }));
+  return queryPath("/cloud/bank-figures", { symbol });
 }
 
 /** Schedule 13D and 13G reports about the issuer behind `ticker`. */
 export function cloudSecBeneficialOwnersPath(params: CloudBeneficialOwnersParams): string {
   const abroad = listingAbroad(params.ticker, params.exchange, params.name);
-  const search = new URLSearchParams({ ticker: abroad?.symbol ?? normalizeIssuerResearchTicker(params.ticker) });
-  setListingAbroad(search, abroad);
-  if (params.form) search.set("form", params.form);
-  if (params.history) search.set("history", "1");
-  if (params.limit != null) search.set("limit", String(params.limit));
-  if (params.offset != null) search.set("offset", String(params.offset));
-  return appendQuery("/cloud/sec/beneficial-owners", search);
+  return queryPath("/cloud/sec/beneficial-owners", {
+    ticker: abroad?.symbol ?? normalizeIssuerResearchTicker(params.ticker),
+    ...listingAbroadParams(abroad),
+    form: params.form || undefined,
+    history: params.history ? "1" : undefined,
+    limit: params.limit,
+    offset: params.offset,
+  });
 }
 
 /** Companies ranked by recent open-market insider buying or selling. Defaults are left out of the query. */
 export function cloudSecInsiderSignalsPath(params: CloudInsiderSignalsParams = {}): string {
-  const search = new URLSearchParams();
-  if (params.side === "sell") search.set("side", "sell");
-  if (params.window != null) search.set("window", String(params.window));
-  if (params.limit != null) search.set("limit", String(params.limit));
-  if (params.role && params.role !== "all") search.set("role", params.role);
-  if (params.minValue) search.set("minValue", String(params.minValue));
-  if (params.cluster) search.set("cluster", "true");
-  if (params.position) search.set("position", params.position);
-  if (params.cap) search.set("cap", params.cap);
-  if (params.ticker) search.set("ticker", params.ticker);
-  return appendQuery("/cloud/sec/insider-signals", search);
+  return queryPath("/cloud/sec/insider-signals", {
+    side: params.side === "sell" ? "sell" : undefined,
+    window: params.window,
+    limit: params.limit,
+    role: params.role && params.role !== "all" ? params.role : undefined,
+    minValue: params.minValue || undefined,
+    cluster: params.cluster ? "true" : undefined,
+    position: params.position || undefined,
+    cap: params.cap || undefined,
+    ticker: params.ticker || undefined,
+  });
 }
 
-export function cloudSecFilingDocumentsPath(
-  params: CloudSecFilingParams,
-): string {
-  const search = new URLSearchParams();
-  if (params.cik) search.set("cik", params.cik);
-  if (params.accession) search.set("accession", params.accession);
-  if (params.form) search.set("form", params.form);
-  if (params.primaryDocument)
-    search.set("primaryDocument", params.primaryDocument);
-  if (params.filingUrl) search.set("filingUrl", params.filingUrl);
-  return appendQuery("/cloud/sec/filing/documents", search);
+function secFilingPath(endpoint: string, params: CloudSecFilingParams, includePrimaryUrl: boolean): string {
+  return queryPath(endpoint, {
+    cik: params.cik || undefined,
+    accession: params.accession || undefined,
+    form: params.form || undefined,
+    primaryDocument: params.primaryDocument || undefined,
+    primaryDocumentUrl: includePrimaryUrl ? params.primaryDocumentUrl || undefined : undefined,
+    filingUrl: params.filingUrl || undefined,
+  });
 }
 
-export function cloudSecFilingContentPath(
-  params: CloudSecFilingParams,
-): string {
-  const search = new URLSearchParams();
-  if (params.cik) search.set("cik", params.cik);
-  if (params.accession) search.set("accession", params.accession);
-  if (params.form) search.set("form", params.form);
-  if (params.primaryDocument)
-    search.set("primaryDocument", params.primaryDocument);
-  if (params.primaryDocumentUrl)
-    search.set("primaryDocumentUrl", params.primaryDocumentUrl);
-  if (params.filingUrl) search.set("filingUrl", params.filingUrl);
-  return appendQuery("/cloud/sec/filing/content", search);
+export function cloudSecFilingDocumentsPath(params: CloudSecFilingParams): string {
+  return secFilingPath("/cloud/sec/filing/documents", params, false);
+}
+
+export function cloudSecFilingContentPath(params: CloudSecFilingParams): string {
+  return secFilingPath("/cloud/sec/filing/content", params, true);
 }
 
 export function cloudSec13FPath(
   path: string,
   params: Record<string, string | number | undefined> = {},
 ): string {
-  const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined) search.set(key, String(value));
-  }
   const normalized = path.startsWith("/") ? path.slice(1) : path;
-  return appendQuery(`/cloud/sec/13f/${normalized}`, search);
+  return queryPath(`/cloud/sec/13f/${normalized}`, params);
 }
 
 export type CloudSearchParams = {
@@ -566,36 +515,29 @@ export type CloudSearchParams = {
 
 function csvParam(values: readonly string[] | undefined): string | null {
   if (!values) return null;
-  const cleaned = values
-    .map((value) => value.trim())
-    .filter((value) => value.length > 0);
+  const cleaned = values.map((value) => value.trim()).filter((value) => value.length > 0);
   return cleaned.length > 0 ? cleaned.join(",") : null;
 }
 
 export function cloudSearchPath(params: CloudSearchParams): string {
-  const search = new URLSearchParams({ q: params.query.trim() });
-  const tickers = csvParam(params.tickers?.map(normalizeSymbol));
-  if (tickers) search.set("tickers", tickers);
-  const docTypes = csvParam(params.docTypes);
-  if (docTypes) search.set("docTypes", docTypes);
-  const sources = csvParam(params.sources);
-  if (sources) search.set("sources", sources);
-  if (params.from) search.set("from", params.from);
-  if (params.to) search.set("to", params.to);
-  if (params.sort) search.set("sort", params.sort);
-  if (params.limit != null) search.set("limit", String(params.limit));
-  // Offset 0 is the default page, so sending it only lengthens the cache key.
-  if (params.offset) search.set("offset", String(params.offset));
-  // Counting is the server default, so only opting out is worth a parameter.
-  if (params.count === false) search.set("count", "false");
-  if (params.distinct) search.set("distinct", "true");
-  return appendQuery("/cloud/search", search);
+  return queryPath("/cloud/search", {
+    q: params.query.trim(),
+    tickers: csvParam(params.tickers?.map(normalizeSymbol)),
+    docTypes: csvParam(params.docTypes),
+    sources: csvParam(params.sources),
+    from: params.from || undefined,
+    to: params.to || undefined,
+    sort: params.sort || undefined,
+    limit: params.limit,
+    // Offset 0 is the default page, so sending it only lengthens the cache key.
+    offset: params.offset || undefined,
+    // Counting is the server default, so only opting out is worth a parameter.
+    count: params.count === false ? "false" : undefined,
+    distinct: params.distinct ? "true" : undefined,
+  });
 }
 
-export function cloudSearchDocumentPath(
-  docType: CloudSearchDocType,
-  sourceId: string,
-): string {
+export function cloudSearchDocumentPath(docType: CloudSearchDocType, sourceId: string): string {
   return `/cloud/search/documents/${encodeURIComponent(docType)}/${encodeURIComponent(sourceId)}`;
 }
 
@@ -607,36 +549,28 @@ export function cloudSavedSearchPath(id: string): string {
   return `/cloud/search/saved/${encodeURIComponent(id)}`;
 }
 
+const joinCsv = (values: readonly string[] | undefined) => (values?.length ? values.join(",") : undefined);
+
 export function cloudNewsPath(params: CloudNewsParams = {}): string {
-  const search = new URLSearchParams();
-  if (params.feed) search.set("feed", params.feed);
-  if (params.ticker) {
-    const tickerFilter = params.exchange
-      ? publicTickerKey(params.ticker, params.exchange)
-      : normalizeSymbol(params.ticker);
-    search.set("tickers", tickerFilter);
-  }
-  if (params.tickerTier) search.set("tickerTier", params.tickerTier);
-  if (params.tickerRelations?.length)
-    search.set("tickerRelations", params.tickerRelations.join(","));
-  if (params.limit != null) search.set("limit", String(params.limit));
-  if (params.topics?.length) search.set("topics", params.topics.join(","));
-  if (params.categories?.length)
-    search.set("categories", params.categories.join(","));
-  if (params.sectors?.length) search.set("sectors", params.sectors.join(","));
-  if (params.sources?.length) search.set("sources", params.sources.join(","));
-  if (params.excludeSources?.length)
-    search.set("excludeSources", params.excludeSources.join(","));
-  if (params.sentiment) search.set("sentiment", params.sentiment);
-  if (params.minImportance != null)
-    search.set("minImportance", String(params.minImportance));
-  if (params.minUrgency != null)
-    search.set("minUrgency", String(params.minUrgency));
-  if (params.breaking != null) search.set("breaking", String(params.breaking));
-  if (params.since) search.set("since", params.since.toISOString());
-  if (params.until) search.set("until", params.until.toISOString());
-  if (params.cursor) search.set("cursor", params.cursor);
-  return appendQuery("/news", search);
+  return queryPath("/news", {
+    feed: params.feed || undefined,
+    tickers: params.ticker ? (params.exchange ? publicTickerKey(params.ticker, params.exchange) : normalizeSymbol(params.ticker)) : undefined,
+    tickerTier: params.tickerTier || undefined,
+    tickerRelations: joinCsv(params.tickerRelations),
+    limit: params.limit,
+    topics: joinCsv(params.topics),
+    categories: joinCsv(params.categories),
+    sectors: joinCsv(params.sectors),
+    sources: joinCsv(params.sources),
+    excludeSources: joinCsv(params.excludeSources),
+    sentiment: params.sentiment || undefined,
+    minImportance: params.minImportance,
+    minUrgency: params.minUrgency,
+    breaking: params.breaking,
+    since: params.since?.toISOString(),
+    until: params.until?.toISOString(),
+    cursor: params.cursor || undefined,
+  });
 }
 
 /** Stories whose headline, summary or publisher matches the text, best match first; the service takes at most 100. */
@@ -648,29 +582,31 @@ export function cloudNewsPath(params: CloudNewsParams = {}): string {
 export function cloudNewsSearchPath(
   query: string, limit?: number, topics?: readonly string[], options: { closest?: boolean; tickers?: readonly string[] } = {},
 ): string {
-  const search = new URLSearchParams({ query });
-  if (limit != null) search.set("limit", String(limit));
-  if (topics?.length) search.set("topics", topics.join(","));
-  if (options.tickers?.length) search.set("tickers", options.tickers.join(","));
-  if (options.closest) search.set("closest", "1");
-  return appendQuery("/news/search", search);
+  return queryPath("/news/search", {
+    query,
+    limit,
+    topics: joinCsv(topics),
+    tickers: joinCsv(options.tickers),
+    closest: options.closest ? "1" : undefined,
+  });
 }
 
 export function cloudTickerTweetsPath(params: CloudTickerTweetsParams): string {
-  const search = new URLSearchParams({ ticker: params.ticker });
-  if (params.limit != null) search.set("limit", String(params.limit));
-  if (params.offset) search.set("offset", String(params.offset));
-  if (params.hours != null) search.set("hours", String(params.hours));
-  if (params.includeReplies != null)
-    search.set("includeReplies", String(params.includeReplies));
-  return appendQuery("/news/tweets", search);
+  return queryPath("/news/tweets", {
+    ticker: params.ticker,
+    limit: params.limit,
+    offset: params.offset || undefined,
+    hours: params.hours,
+    includeReplies: params.includeReplies,
+  });
 }
 
 export function cloudTweetSearchPath(params: CloudTweetSearchParams): string {
-  const search = new URLSearchParams({ query: params.query });
-  if (params.queryType) search.set("queryType", params.queryType);
-  if (params.limit != null) search.set("limit", String(params.limit));
-  if (params.offset) search.set("offset", String(params.offset));
-  if (params.hours != null) search.set("hours", String(params.hours));
-  return appendQuery("/news/tweets/search", search);
+  return queryPath("/news/tweets/search", {
+    query: params.query,
+    queryType: params.queryType || undefined,
+    limit: params.limit,
+    offset: params.offset || undefined,
+    hours: params.hours,
+  });
 }

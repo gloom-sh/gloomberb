@@ -24,29 +24,6 @@ export function optionDelta(input: VolatilityInputs, strike: number, side: Optio
   return Number.isFinite(delta) ? delta : null;
 }
 
-/** Signed spot delta: a 25-delta put is -0.25. Unreachable targets return null. */
-export function strikeForDelta(input: VolatilityInputs, target: number, side: OptionSide): number | null {
-  if (!validInputs(input) || !Number.isFinite(target)) return null;
-  const carry = Math.exp(-(input.dividendYield ?? 0) * input.years);
-  if (side === "call" ? target <= 0 || target >= carry : target >= 0 || target <= -carry) return null;
-  const center = Math.log(input.spot) + (input.rate - (input.dividendYield ?? 0)) * input.years;
-  const radius = Math.max(2, 12 * input.volatility * Math.sqrt(input.years) + input.volatility ** 2 * input.years);
-  let low = center - radius;
-  let high = center + radius;
-  const lowDelta = optionDelta(input, Math.exp(low), side);
-  const highDelta = optionDelta(input, Math.exp(high), side);
-  if (lowDelta == null || highDelta == null || target > lowDelta || target < highDelta) return null;
-  for (let i = 0; i < 100; i += 1) {
-    const mid = (low + high) / 2;
-    const delta = optionDelta(input, Math.exp(mid), side);
-    if (delta == null) return null;
-    if (delta > target) low = mid;
-    else high = mid;
-  }
-  const strike = Math.exp((low + high) / 2);
-  return positive(strike) ? strike : null;
-}
-
 export function forwardFromCarry(spot: number, years: number, rate: number, dividendYield = 0): number | null {
   if (!positive(spot) || !Number.isFinite(years) || years < 0 || !Number.isFinite(rate) || !Number.isFinite(dividendYield)) return null;
   const forward = spot * Math.exp((rate - dividendYield) * years);
@@ -55,12 +32,6 @@ export function forwardFromCarry(spot: number, years: number, rate: number, divi
 
 export function logForwardMoneyness(strike: number, forward: number): number | null {
   return positive(strike) && positive(forward) ? Math.log(strike) - Math.log(forward) : null;
-}
-
-export function strikeFromLogMoneyness(logMoneyness: number, forward: number): number | null {
-  if (!positive(forward) || !Number.isFinite(logMoneyness)) return null;
-  const strike = Math.exp(Math.log(forward) + logMoneyness);
-  return positive(strike) ? strike : null;
 }
 
 export interface ParityQuote { strike: number; bid: number; ask: number; contractSymbol?: string }

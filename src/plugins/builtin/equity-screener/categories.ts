@@ -1,4 +1,5 @@
 import type { ScreenDefinition, ScreenPayload, ScreenRow } from "../../../api-client/equity-screener";
+import { editDistance } from "../../../utils/typo-distance";
 
 /**
  * The sector and industry names a screen's `sector` and `industry` criteria
@@ -75,19 +76,6 @@ interface UnmatchedCategoryValue {
 
 /** Names compared without case, spaces or punctuation: `Oil and Gas E&P` beside `oil & gas e&p`. */
 const fold = (name: string) => name.toLowerCase().replace(/\band\b/g, "&").replace(/[^a-z0-9&]+/g, "");
-
-function editDistance(left: string, right: string): number {
-  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
-  for (let row = 1; row <= left.length; row += 1) {
-    const current = [row];
-    for (let column = 1; column <= right.length; column += 1) {
-      const cost = left[row - 1] === right[column - 1] ? 0 : 1;
-      current[column] = Math.min(previous[column]! + 1, current[column - 1]! + 1, previous[column - 1]! + cost);
-    }
-    previous = current;
-  }
-  return previous[right.length]!;
-}
 
 /** How far a typed name is from a candidate, 0 the same and 1 nothing alike: against the whole name or one of its parts. */
 function nameDistance(typed: string, candidate: string): number {

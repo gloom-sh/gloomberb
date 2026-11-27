@@ -15,7 +15,6 @@ import {
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
-  type DataTableRootKeyContext,
   type PaneHint,
   type QueryBarView,
   type SectionedRow,
@@ -28,8 +27,7 @@ import { useAsyncResource } from "../../../react/async-resource";
 import { useAgeClock, useAutoRefresh } from "../../../react/auto-refresh";
 import { colors } from "../../../theme/colors";
 import { TextAttributes } from "../../../ui";
-import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
-import { useSearchFocusUp } from "../../../components/input-search-bar";
+import { useSearchUpRootKeyDown } from "../../../components/input-search-bar";
 import { usePluginPaneState } from "../../runtime";
 import { newYorkToday } from "../earnings/board-model";
 import { ProWall, SignInWall } from "../cloud/auth-actions";
@@ -249,15 +247,8 @@ export function UpcomingCallsView({ focused, width, height, view, renderCompany 
     notices: data?.truncated ? [upcomingCutNotice(data.calls)] : [],
   });
 
-  const isSearchUp = useSearchFocusUp();
-  const handleRootKey = useCallback((event: DataTableKeyEvent, context: DataTableRootKeyContext) => {
-    if (context.selectedIndex <= 0 && isSearchUp(event)) {
-      stopSearchFocusNavigation(event);
-      focusSearch();
-      return true;
-    }
-    return handleRefreshKey(event, reload, { stopPropagation: true });
-  }, [isSearchUp, focusSearch, reload]);
+  const handleCalendarRefreshKey = useCallback((event: DataTableKeyEvent) => handleRefreshKey(event, reload, { stopPropagation: true }), [reload]);
+  const handleRootKey = useSearchUpRootKeyDown(focusSearch, handleCalendarRefreshKey);
 
   if (signInRequired || verificationRequired) {
     return (

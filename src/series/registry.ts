@@ -41,16 +41,6 @@ export function seriesNamedBy(definitions: Iterable<SeriesDefinition>, word: str
   return found;
 }
 
-/**
- * The capability series id a loaded series charts under: its name, one of its
- * lines after a tilde, and for a series with an input, the symbol after a
- * slash (`days-to-cover/AAPL`, `bands~upper/AAPL`).
- */
-export function capabilitySeriesId(definition: Pick<SeriesDefinition, "id">, ticker?: string, lineId?: string): string {
-  const name = `${splitSeriesId(definition.id)?.name ?? definition.id}${lineId ? `${LINE_SEPARATOR}${lineId}` : ""}`;
-  return ticker ? `${name}/${encodeURIComponent(ticker.trim().toUpperCase())}` : name;
-}
-
 /** The registered id, the line and the typed symbol a capability series id names. */
 function parseCapabilitySeriesId(namespace: string, seriesId: string): { id: string; ticker?: string; line?: string } {
   const slash = seriesId.indexOf("/");

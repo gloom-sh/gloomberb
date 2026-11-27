@@ -5,7 +5,8 @@ import type {
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
 import { MISSING_VALUE, formatNumber, formatPercentRaw } from "../../../utils/format";
-import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, marketStateLabel, type ExtendedSession } from "../../../market-data/market/status";
+import { getQuoteSessionFields, marketStateLabel, type ExtendedSession } from "../../../market-data/market/status";
+import { extendedPriceColumn } from "../shared/extended-print";
 import type { MarketState } from "../../../types/financials";
 import { loadWorldIndexQuotes, NOT_IN_FEED, type WorldIndexQuoteResult } from "./client";
 import {
@@ -67,16 +68,11 @@ const COLUMNS = [
 ];
 
 /** A pre-market or after-hours print and its move from the regular close, for a row that has one. */
-function extendedColumn(session: ExtendedSession) {
-  return {
-    key: "extendedPrice",
-    header: EXTENDED_SESSION_LABELS[session],
-    align: "right" as const,
-    format: (value: unknown, row: Record<string, unknown>) => row.extendedSession === session && typeof value === "number"
-      ? `${formatNumber(value, 2)} ${formatPercentRaw(typeof row.extendedChangePercent === "number" ? row.extendedChangePercent : undefined)}`
-      : isGap(row) ? "" : MISSING_VALUE,
-  };
-}
+const extendedColumn = (session: ExtendedSession) => extendedPriceColumn(
+  session,
+  (value, row) => `${formatNumber(value, 2)} ${formatPercentRaw(typeof row.extendedChangePercent === "number" ? row.extendedChangePercent : undefined)}`,
+  { empty: (row) => isGap(row) ? "" : MISSING_VALUE },
+);
 
 /** The table's columns, with an extended column after Change % only where a row has such a print. */
 function sectionColumns(rows: readonly Record<string, unknown>[]) {

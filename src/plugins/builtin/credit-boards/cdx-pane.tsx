@@ -1,28 +1,18 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { useMemo } from "react";
-import {
-  DELAYED_SEGMENT,
-  ChartTableHeader,
-  CompositeChart,
-  MarketBoardStack,
-  PaneStatusBody,
-  type ChartTableChart,
-  type PaneFooterSegment,
-  type StatItem,
-} from "../../../components";
-import { staticSeries } from "../../../components/chart/static/series";
+import { ChartTableHeader, MarketBoardStack, PaneStatusBody, type StatItem } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { signedMoveColor, StatChartDetail } from "../../../components/market-board";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useAutoRefresh } from "../../../react/auto-refresh";
-import { colors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { usePluginPaneState } from "../../runtime";
 import { FIXED_INCOME_PANE_ID } from "../fixed-income/model";
 import { useCommandValue } from "../shared/command-tab";
 import { reportFooterSegment } from "../shared/source-footer";
+import { CreditHistoryChart, creditFooterInfo, creditHistoryChart, type CreditHistoryTarget } from "./board-shared";
 import { getCachedCdxBoard, loadCdxBoard } from "./client";
 import { cdxHeadless } from "./headless";
 import {
@@ -38,33 +28,11 @@ import {
   type CdxRow,
 } from "./model";
 
-const PANELS = [{ id: "main" }];
 const EMPTY_ROWS: CdxRow[] = [];
-
-/** The index's 5Y line, named as the board names it. */
-function historySeries(row: CdxRow) {
-  return [staticSeries(row.index.points.map((point) => ({
-    date: new Date(`${point.date}T00:00:00Z`), observedAt: new Date(`${point.date}T00:00:00Z`), value: point.level,
-  })), { id: row.id, label: `${row.label} 5Y`, color: colors.positive, calendarSpaced: true })];
-}
-
-function historyChart(row: CdxRow): ChartTableChart {
-  const quote = row.index.quote;
-  return {
-    series: row.index.points.length >= 3 ? historySeries(row) : [],
-    formatValue: (value: number) => formatLevel(quote, value),
-    formatAxisValue: axisFormatter(quote),
-    remoteKind: "cdx-history",
-    // An index without a history keeps the band, so the board does not jump under the cursor.
-    empty: `No history for ${row.label}`,
-  };
-}
-
-function HistoryChart({ row, width, height, focused }: { row: CdxRow; width: number; height: number; focused: boolean }) {
-  const series = useMemo(() => historySeries(row), [row]);
-  return <CompositeChart series={series} panels={PANELS} width={width} height={height} focused={focused} showLegend={false}
-    navigable={false} showTimeAxis formatAxisValue={axisFormatter(row.index.quote)} remoteKind="cdx-history" />;
-}
+const historyTarget = (row: CdxRow): CreditHistoryTarget => ({
+  id: row.id, label: row.label, points: row.index.points, quote: row.index.quote,
+  formatAxisValue: axisFormatter(row.index.quote), remoteKind: "cdx-history",
+});
 
 function IndexDetail({ row, width, height, focused }: { row: CdxRow; width: number; height: number; focused: boolean }) {
   const { index, year, day, rank } = row;
@@ -88,10 +56,11 @@ function IndexDetail({ row, width, height, focused }: { row: CdxRow; width: numb
       // The value is the count already: the detail says only that the day is still trading, and its last print.
       ...(day.partial ? { detail: partialDayText(null, day.lastPrintAt) } : {}) },
   ];
+  const target = useMemo(() => historyTarget(row), [row]);
   return (
     <StatChartDetail items={items} width={width} height={height} empty={index.points.length < 3}
       emptySubject="index history" emptyTitle="No history available."
-      renderChart={(chartHeight) => <HistoryChart row={row} width={width} height={chartHeight} focused={focused} />} />
+      renderChart={(chartHeight) => <CreditHistoryChart target={target} width={width} height={chartHeight} focused={focused} />} />
   );
 }
 
@@ -120,16 +89,11 @@ export function CdxPane({ focused, width, height }: PaneProps) {
   // PCTL 1Y ranks spreads; the rows quoted in price (HY, EM) rank their spread equivalent, which a picture keeps.
   const spreadEqRanked = useMemo(() => rows.filter((row) => row.rank.basis === "spread-eq")
     .map((row) => row.index.name.replace(/^CDX\s+/i, "")).join(", "), [rows]);
-  const info = useMemo<PaneFooterSegment[]>(() => [
-    ...(sourceLine ? [sourceLine] : []),
-    ...(payload ? [DELAYED_SEGMENT] : []),
-    ...(resource.data?.stale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
-    ...(spreadEqRanked ? [{
-      id: "rank-basis", capture: true,
-      parts: [{ text: `${spreadEqRanked} pctl on spread eq`, tone: "muted" as const }],
-      variants: [[{ text: "pctl on spread eq", tone: "muted" as const }]],
-    }] : []),
-  ], [payload, sourceLine, resource.data?.stale, spreadEqRanked]);
+  const info = useMemo(() => creditFooterInfo(sourceLine, !!payload, resource.data?.stale, spreadEqRanked ? [{
+    id: "rank-basis", capture: true,
+    parts: [{ text: `${spreadEqRanked} pctl on spread eq`, tone: "muted" as const }],
+    variants: [[{ text: "pctl on spread eq", tone: "muted" as const }]],
+  }] : []), [payload, sourceLine, resource.data?.stale, spreadEqRanked]);
   usePaneStatusFooter({
     registrationId: "cdx",
     loading,
@@ -189,7 +153,7 @@ export function CdxPane({ focused, width, height }: PaneProps) {
   return (
     <MarketBoardStack rows={rows} width={width} height={height} focused={focused}
       rootBefore={({ columns }) => <ChartTableHeader width={width} height={height} tableRows={rows.length}
-        tableColumns={columns} chart={selected ? historyChart(selected) : null} />}
+        tableColumns={columns} chart={selected ? creditHistoryChart(historyTarget(selected)) : null} />}
       selectedId={selected?.id ?? null} onSelectedIdChange={setSelectedId} openId={openId} onOpenIdChange={setOpenId}
       labelHeader="INDEX" labelWidth={16} valueLabel="5Y" valueWidth={9} signedChange extraColumns={extraColumns}
       renderDetail={(row) => <IndexDetail row={row} width={width} height={Math.max(5, height - 2)} focused={focused} />} />

@@ -1,4 +1,5 @@
 import { formatWeekdayDay } from "../../../utils/datetime-format";
+import { errorMessage } from "../../../utils/errors";
 // Alerts a number of days before a dated event: a company's next earnings, or
 // a release in the economic calendar, CPI and FOMC among them. An earnings
 // rule can instead go off once the report's actual EPS is out; a release also
@@ -361,8 +362,6 @@ export interface ScheduledEventSources {
 
 export type ScheduledDateLookup = { date: string | null } | { error: string };
 
-const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
-
 /**
  * The next date of every target, keyed by `scheduledTargetKey`: one earnings
  * request for all the symbols, one CPI, one FOMC and one calendar read. A
@@ -384,19 +383,19 @@ export async function lookupScheduledDates(
   await Promise.all([
     releases.length === 0 ? null : readCalendar().then(
       (events) => { for (const target of releases) result.set(scheduledTargetKey(target), { date: nextReleaseDate(events, target, now) }); },
-      (error) => { for (const target of releases) result.set(scheduledTargetKey(target), { error: errorText(error) }); },
+      (error) => { for (const target of releases) result.set(scheduledTargetKey(target), { error: errorMessage(error) }); },
     ),
     symbols.length === 0 ? null : sources.earnings(symbols).then(
       (events) => { for (const symbol of symbols) result.set(`earnings:${symbol}`, { date: nextEarningsDate(events, symbol, today) }); },
-      (error) => { for (const symbol of symbols) result.set(`earnings:${symbol}`, { error: errorText(error) }); },
+      (error) => { for (const symbol of symbols) result.set(`earnings:${symbol}`, { error: errorMessage(error) }); },
     ),
     !macros.has("cpi") ? null : sources.cpi().then(
       (board) => { result.set("macro:cpi", { date: nextCpiReleaseDate(board, today) }); },
-      (error) => { result.set("macro:cpi", { error: errorText(error) }); },
+      (error) => { result.set("macro:cpi", { error: errorMessage(error) }); },
     ),
     !macros.has("fomc") ? null : sources.fomc().then(
       (meetings) => { result.set("macro:fomc", { date: nextFomcDate(meetings, today) }); },
-      (error) => { result.set("macro:fomc", { error: errorText(error) }); },
+      (error) => { result.set("macro:fomc", { error: errorMessage(error) }); },
     ),
   ]);
   return result;

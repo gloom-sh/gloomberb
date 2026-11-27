@@ -3,7 +3,7 @@ import { buildStaticChartSeries } from "../../../components/chart/static/chart-s
 import { buildCompositeChartScene } from "../../../components/chart/composite/scene";
 import type { BrokerPortfolioPerformance } from "../../../types/trading";
 import { buildPerformanceChartPoints, performanceHistoryNote, resolvePerformanceMetric } from "./broker-performance";
-import { buildHistoryAxisLabel, formatHistoryAxisValue } from "./pane-model";
+import { buildHistoryAxisLabel } from "./pane-model";
 
 test("missing NAV never substitutes a percentage and deposit growth remains a value series", () => {
   const performance: BrokerPortfolioPerformance = { accountId: "test", source: "flex", period: "2026", currency: "USD", fetchedAt: 1, points: [
@@ -26,7 +26,6 @@ test("a lone or duplicated NAV cannot change a usable return series into a curre
   expect(resolvePerformanceMetric(performance)).toBe("cumulativeReturn");
   expect(buildPerformanceChartPoints(performance).map((point) => point.close)).toEqual([0, .1, .1]);
   expect(buildHistoryAxisLabel({ performance })).toBe("Return");
-  expect(formatHistoryAxisValue(.1, performance)).toBe("10.0%");
 });
 
 

@@ -58,12 +58,6 @@ export function indexLevelMarketState(quote: Pick<Quote, "marketState" | "instru
   return state;
 }
 
-/** The currency a quote's price is in: none for an index level, nor for a quote that names none. */
-export function quotePriceCurrency(quote: { currency?: string | null; instrumentType?: string | null } | null | undefined): string | null {
-  if (!quote || isIndexLevel(quote.instrumentType)) return null;
-  return quote.currency?.trim() || null;
-}
-
 /**
  * What a price chart reads in: the quote's price basis, points for an index
  * level, otherwise its currency.

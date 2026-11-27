@@ -3,6 +3,7 @@ import { findCommandBarResult, findMatchingUiNode } from "../../../../remote/mat
 import { namesSecret } from "../../../../remote/secrets";
 import { remoteMenuItemId, resolveRemoteListIndex, resolveRemoteRowIndex } from "../../../../remote/semantic-helpers";
 import type { RemoteSideEffectLevel, RemoteUiNodeSnapshot } from "../../../../remote/types";
+import { isRecord } from "../../../../utils/guards";
 import { logFailure } from "../../../../utils/log-failure";
 import { keyArgumentLines, shortValue, type CallSummary } from "./summary";
 
@@ -241,10 +242,6 @@ export class FieldEdits {
 }
 
 type ReadResource = UiCallContext["read"];
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
-}
 
 async function readUiTree(read: ReadResource): Promise<RemoteUiNodeSnapshot[]> {
   const nodes = await read("ui://tree");

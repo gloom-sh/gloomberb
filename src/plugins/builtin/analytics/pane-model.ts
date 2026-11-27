@@ -6,7 +6,7 @@ import { colors, priceColor } from "../../../theme/colors";
 import type { TickerFinancials, PricePoint } from "../../../types/financials";
 import type { BrokerAccount, BrokerPortfolioPerformance } from "../../../types/trading";
 import type { Portfolio, TickerRecord } from "../../../types/ticker";
-import { MISSING_VALUE, formatCompact, formatNumber, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, formatNumber, formatPercentRaw } from "../../../utils/format";
 import { formatRelativeAge } from "../../../utils/datetime-format";
 import type { PriceHistoryIntegrity } from "../../../utils/price-history-integrity";
 import { instrumentFromTicker, type ChartRequest, type TickerInstrumentOptions } from "../../../market-data/request-types";
@@ -472,13 +472,4 @@ export function formatHistoryValueAxis(value: number, domain: Pick<CompositeAxis
   const [divisor, suffix] = magnitude >= 1e9 ? [1e9, "B"] : magnitude >= 1e6 ? [1e6, "M"] : magnitude >= 1e3 ? [1e3, "k"] : [1, ""];
   const digits = spanDigits({ min: domain.min / divisor, max: domain.max / divisor });
   return `${(value / divisor).toFixed(digits)}${suffix}`;
-}
-
-export function formatHistoryAxisValue(
-  value: number,
-  performance: BrokerPortfolioPerformance | null,
-): string {
-  return resolvePerformanceMetric(performance) === "value"
-    ? formatCompact(value)
-    : `${(value * 100).toFixed(1)}%`;
 }

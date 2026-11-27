@@ -10,7 +10,8 @@ import {
   type ScreenRow,
 } from "../../../api-client/equity-screener";
 import { KPI_COVERAGE_NOTE } from "../company-kpis/model";
-import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-data/market/status";
+import type { ExtendedSession } from "../../../market-data/market/status";
+import { extendedPriceColumn } from "../shared/extended-print";
 import { buildQuoteKey } from "../../../market-data/selectors";
 import type { Quote } from "../../../types/financials";
 import { MISSING_VALUE, formatCurrency, formatPercentRaw } from "../../../utils/format";
@@ -111,16 +112,10 @@ const price = (value: unknown, row: Record<string, unknown>) =>
 const percent = (value: unknown) => typeof value === "number" ? formatPercentRaw(value) : MISSING_VALUE;
 
 /** The pre-market, after-hours or overnight print and its move from the close in Last, for the rows that have one. */
-function extendedColumn(session: ExtendedSession): HeadlessPaneColumn {
-  return {
-    key: "extendedPrice",
-    header: EXTENDED_SESSION_LABELS[session],
-    align: "right",
-    format: (value, row) => row.extendedSession === session && typeof value === "number"
-      ? `${price(value, row)}${row.extendedMark ? " mid" : ""} ${percent(row.extendedChangePercent)}`
-      : MISSING_VALUE,
-  };
-}
+const extendedColumn = (session: ExtendedSession): HeadlessPaneColumn => extendedPriceColumn(
+  session,
+  (value, row) => `${price(value, row)}${row.extendedMark ? " mid" : ""} ${percent(row.extendedChangePercent)}`,
+);
 
 /** Rows a report lists without `--limit`: one page, as the pane loads before it pages. */
 const SCREEN_PAGE_ROWS = 100;

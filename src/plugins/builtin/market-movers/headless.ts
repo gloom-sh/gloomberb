@@ -11,7 +11,8 @@ import type {
 } from "../../../api-client/market-movers";
 import { loadMarketMoverTab, loadSessionMovers, marketMoverQuoteError, type MarketMoverTabResult } from "./client";
 import { createRows, fiftyTwoWeekPositionPercent, formatMoverPrice, MOVER_RANKING_LABELS, moverExtendedSessions, moverReferencePrice, type MarketMoverRow, type ScreenerTabId, type TabId } from "./model";
-import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-data/market/status";
+import type { ExtendedSession } from "../../../market-data/market/status";
+import { extendedPriceColumn } from "../shared/extended-print";
 import type { HeadlessPaneColumn } from "../../../types/headless";
 import { isSessionTab, resolveSide } from "./session";
 import { hasPartialFloat, minFloatShares, normalizeMinFloat, PARTIAL_FLOAT_NOTE } from "./min-float";
@@ -39,16 +40,10 @@ const compact = (value: unknown) => value == null ? "—" : formatCompact(Number
 const CATALYST_LABEL: Record<string, string> = { halt: "Halt", filing: "8-K", news: "News" };
 
 /** The pre-market or after-hours print and its move from the regular close, for the rows that have one. */
-function extendedColumn(session: ExtendedSession): HeadlessPaneColumn {
-  return {
-    key: "extendedPrice",
-    header: EXTENDED_SESSION_LABELS[session],
-    align: "right",
-    format: (value, row) => row.extendedSession === session && typeof value === "number"
-      ? `${rowPrice(value, row)} ${percent(row.extendedChangePercent)}`
-      : "—",
-  };
-}
+const extendedColumn = (session: ExtendedSession): HeadlessPaneColumn => extendedPriceColumn(
+  session,
+  (value, row) => `${rowPrice(value, row)} ${percent(row.extendedChangePercent)}`,
+);
 
 const SESSION_VOLUME: Record<CloudSessionMoversCategory, string> = {
   premarket: "Pre-market volume",

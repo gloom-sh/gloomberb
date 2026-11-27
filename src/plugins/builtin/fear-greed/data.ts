@@ -1,4 +1,5 @@
 import type { ProjectedChartPoint } from "../../../components";
+import { finiteOrNull as finiteNumber, isRecord as isObject } from "../../../utils/guards";
 import { httpFetch, type HttpFetchTransport } from "../../../utils/http-transport";
 import { asDataServiceFailure } from "../../../utils/network-failure";
 
@@ -154,15 +155,6 @@ const FEAR_GREED_INDICATORS: FearGreedIndicatorDefinition[] = [
     valueFormat: "percent",
   },
 ];
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function finiteNumber(value: unknown): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value)) return null;
-  return value;
-}
 
 function normalizeRating(value: unknown): FearGreedRating | null {
   if (typeof value !== "string") return null;

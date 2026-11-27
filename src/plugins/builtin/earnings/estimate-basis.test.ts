@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import type { EarningsEvent, EarningsEstimateBasis } from "../../../types/data-provider";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { attachEarningsCalendarPersistence, loadEarningsCalendar, resetEarningsCalendarPersistence } from "./data/cache";
-import { coherentEarningsValue, earningsEpsChange30d, earningsForecastPeriod } from "../shared/earnings-estimate-basis";
+import { coherentEarningsValue } from "../shared/earnings-estimate-basis";
 import { recordedEarnings } from "./estimate-fixtures.test-data";
 
 afterEach(resetEarningsCalendarPersistence);
@@ -21,7 +21,6 @@ for (const [symbol, epsCurrency, revenueCurrency, eps] of fixtures) {
     expect(event.epsEstimate).toBe(eps);
     expect(event.estimateBasis?.epsEstimate).toMatchObject({ currency: epsCurrency, period: "0q", periodEndDate: "2026-09-30", source: "earningsTrend" });
     expect(event.estimateBasis?.revenueEstimate?.currency).toBe(revenueCurrency);
-    expect(earningsForecastPeriod(event)).toEqual({ period: "0q", periodEndDate: "2026-09-30" });
     expect(event.earningsDate.toISOString().slice(0, 10)).not.toBe("2026-09-30");
     attachEarningsCalendarPersistence(new MemoryPluginPersistence());
     let providerCalls = 0;
@@ -39,27 +38,11 @@ function synthetic(): EarningsEvent {
     estimateBasis: { epsEstimate: basis(), epsLow: basis(), epsHigh: basis(), epsTrend30dAgo: basis() } } as EarningsEvent;
 }
 
-test("EPS comparisons require matching units and fiscal periods even when values are available", () => {
-  const event = synthetic();
-  expect(earningsEpsChange30d(event)).toBe(1);
-  event.epsEstimate = 0;
-  expect(earningsEpsChange30d(event)).toBe(-0.5);
-  for (const currency of [null, "", "XXX", "JPY"]) {
-    event.estimateBasis!.epsTrend30dAgo!.currency = currency;
-    expect(earningsEpsChange30d(event)).toBeNull();
-  }
-  event.estimateBasis!.epsTrend30dAgo!.currency = "GBP";
-  event.estimateBasis!.epsTrend30dAgo!.periodEndDate = "2026-06-30";
-  expect(earningsEpsChange30d(event)).toBeNull();
-  expect(earningsForecastPeriod(event)).toEqual({ period: "0q", periodEndDate: "2026-09-30" });
-});
-
 test("independently sourced ranges cannot inherit an average's basis or a shared fiscal date", () => {
   const event = synthetic();
   event.estimateBasis!.epsEstimate = { source: "calendarEvents", sourceValue: 5, currency: null, sourceCurrency: null, period: null, periodEndDate: null };
   expect(coherentEarningsValue(event, "epsEstimate")).toBe(1.5);
   expect(coherentEarningsValue(event, "epsLow")).toBeNull();
-  expect(earningsForecastPeriod(event)).toBeNull();
   event.epsEstimate = null;
   expect(coherentEarningsValue(event, "epsLow")).toBe(1.2);
   event.estimateBasis!.epsHigh!.currency = "USD";

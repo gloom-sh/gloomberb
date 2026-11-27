@@ -6,7 +6,6 @@ import {
   projectAuctionAfter,
   resetAuctionCurvesForTests,
   widerAfterWindow,
-  yieldChangeAfter,
 } from "./after";
 import { DEFAULT_AUCTION_SORT, visibleAuctions } from "./model";
 import { auction } from "./test-fixture";
@@ -82,11 +81,13 @@ describe("yield after an auction", () => {
   ];
 
   test("counts sessions from the auction day's close, in bp, and leaves a session not yet closed blank", () => {
-    expect(yieldChangeAfter(closes, "2026-10-29", 1)).toBe(-7);
-    expect(yieldChangeAfter(closes, "2026-10-29", 5)).toBe(-17);
-    expect(yieldChangeAfter(closes, "2026-10-29", 20)).toBeNull();
+    const curves = new Map([["us:7Y", closes]]);
+    const traded = auction({ secType: "Note", securityTerm: "7-Year", auctionDate: "2026-10-29", id: "traded", highYield: 4.894 });
     // An auction on a day the curve has no close for (a holiday) has no base.
-    expect(yieldChangeAfter(closes, "2026-10-31", 1)).toBeNull();
+    const holiday = auction({ secType: "Note", securityTerm: "7-Year", auctionDate: "2026-10-31", id: "holiday", highYield: 4.894 });
+    const after = projectAuctionAfter([traded, holiday], [traded, holiday], curves);
+    expect(after.get("traded")).toMatchObject({ after1d: -7, after5d: -17, after20d: null });
+    expect(after.get("holiday")).toMatchObject({ after1d: null, after5d: null, after20d: null });
   });
 
   test("matches each security to its own curve point: the benchmark, the nearest bill point, the real curve for TIPS, none for an FRN", () => {

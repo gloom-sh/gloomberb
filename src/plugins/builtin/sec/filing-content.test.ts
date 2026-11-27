@@ -4,7 +4,6 @@ import type { SecFilingDocument, SecFilingItem } from "../../../types/data-provi
 import {
   buildFilingContentPreviews,
   buildInlineFilingContentTargets,
-  nextUncachedFilingContentTarget,
   nextUncachedFilingContentTargets,
 } from "./filing-content";
 
@@ -25,11 +24,12 @@ describe("SEC filing content cache", () => {
     const background = filing("background");
     const targets = [selected, selected, background];
 
-    expect(nextUncachedFilingContentTarget(targets, new Map())?.accessionNumber).toBe("selected");
-    expect(nextUncachedFilingContentTarget(
+    expect(nextUncachedFilingContentTargets(targets, new Map(), 1)[0]?.accessionNumber).toBe("selected");
+    expect(nextUncachedFilingContentTargets(
       targets,
       new Map([["selected", null]]),
-    )?.accessionNumber).toBe("background");
+      1,
+    )[0]?.accessionNumber).toBe("background");
     // The ones read beside the head, in the same order, once each.
     expect(nextUncachedFilingContentTargets([...targets, filing("third"), filing("fourth")], new Map([["background", "text"]]), 2)
       .map((target) => target.accessionNumber)).toEqual(["selected", "third"]);

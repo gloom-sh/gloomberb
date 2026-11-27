@@ -38,6 +38,7 @@ import { useThemeColors } from "../../../../theme/theme-context";
 import type { Portfolio, TickerRecord } from "../../../../types/ticker";
 import { Box, ScrollBox, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../../../ui";
 import { useDialogKeyboard, type PromptContext } from "../../../../ui/dialog";
+import { errorMessage } from "../../../../utils/errors";
 import { canonicalExchange } from "../../../../utils/exchanges";
 import { isPlainKey } from "../../../../utils/keyboard";
 import { wrapTextLines } from "../../../../utils/text-wrap";
@@ -86,10 +87,6 @@ export interface PositionsImportDialogProps extends PromptContext<boolean> {
 
 type PositionColumn = DataTableColumn & { id: "ticker" | "name" | "shares" | "cost" | "currency" | "bought" | "status" };
 type SkippedColumn = DataTableColumn & { id: "line" | "row" | "reason" };
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error && error.message ? error.message : t("Could not complete that action.");
-}
 
 function positionsCount(count: number): string {
   return count === 1 ? t("1 position") : tf("{count} positions", { count });
@@ -165,7 +162,7 @@ export function PositionsImportDialog({ resolve, dialogId, preview, lookUp, conf
     let live = true;
     lookUp().then(
       (result) => { if (live) setLookup(result); },
-      (error: unknown) => { if (live) setLookupError(errorMessage(error)); },
+      (error: unknown) => { if (live) setLookupError(errorMessage(error, t("Could not complete that action."))); },
     );
     return () => { live = false; };
   }, [lookUp]);
@@ -192,7 +189,7 @@ export function PositionsImportDialog({ resolve, dialogId, preview, lookUp, conf
       try {
         sure = await confirm(replaceConfirmation(plan, portfolio.name, heldCount));
       } catch (error) {
-        setSaveError(errorMessage(error));
+        setSaveError(errorMessage(error, t("Could not complete that action.")));
       } finally {
         setConfirming(false);
       }
@@ -203,7 +200,7 @@ export function PositionsImportDialog({ resolve, dialogId, preview, lookUp, conf
       await commit(plan, lookup, target);
       resolve(true);
     } catch (error) {
-      setSaveError(errorMessage(error));
+      setSaveError(errorMessage(error, t("Could not complete that action.")));
       setBusy(false);
     }
   }, [commit, confirm, heldCount, lookup, plan, portfolio.name, ready, resolve, target]);

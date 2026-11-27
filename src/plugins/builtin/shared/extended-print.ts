@@ -36,3 +36,20 @@ export function extendedPrintTimeColumn(session: ExtendedSession): HeadlessPaneC
       : MISSING_VALUE,
   };
 }
+
+/** Pre-market, after-hours or overnight price column for headless quote tables. */
+export function extendedPriceColumn(
+  session: ExtendedSession,
+  formatPrice: (price: number, row: HeadlessPaneRow) => string,
+  options?: { empty?: (row: HeadlessPaneRow) => string; description?: string },
+): HeadlessPaneColumn {
+  return {
+    key: "extendedPrice",
+    header: EXTENDED_SESSION_LABELS[session],
+    align: "right",
+    format: (value, row) => row.extendedSession === session && typeof value === "number"
+      ? formatPrice(value, row)
+      : options?.empty ? options.empty(row) : MISSING_VALUE,
+    ...(options?.description ? { description: options.description } : {}),
+  };
+}

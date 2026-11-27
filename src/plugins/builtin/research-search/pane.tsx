@@ -12,8 +12,6 @@ import {
   usePaneTabs,
   useTableLoadMore,
   type DataTableCell,
-  type DataTableKeyEvent,
-  type DataTableRootKeyContext,
   type PageRequest,
   type PaneFooterSegment,
   type PaneHint,
@@ -23,8 +21,7 @@ import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import { Box, useShortcutLabel, type InputRenderable, type ScrollBoxRenderable } from "../../../ui";
 import { useDialog } from "../../../ui/dialog";
-import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
-import { useSearchFocusUp } from "../../../components/input-search-bar";
+import { useSearchUpRootKeyDown } from "../../../components/input-search-bar";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { usePluginPaneState } from "../../runtime";
 import { shareItemExcerpt } from "../../../shares/item";
@@ -370,20 +367,9 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
   }, [setOpenHitId, setSelectedHitId]);
   useDocumentFocusRequest(paneId, focusRequestedHit);
 
-  const isSearchUp = useSearchFocusUp();
-  const handleRootKeyDown = useCallback((
-    event: DataTableKeyEvent,
-    context: DataTableRootKeyContext,
-  ) => {
-    if (context.selectedIndex <= 0 && isSearchUp(event)) {
-      stopSearchFocusNavigation(event);
-      focusField("query");
-      return true;
-    }
-    // Ctrl+S and [t]icker are footer hints: the footer binds them across the
-    // pane, Ctrl+S also while a field has focus.
-    return false;
-  }, [isSearchUp, focusField]);
+  const focusQuery = useCallback(() => focusField("query"), [focusField]);
+  // Ctrl+S and [t]icker are footer hints: the footer binds them across the pane, Ctrl+S also while a field has focus.
+  const handleRootKeyDown = useSearchUpRootKeyDown(focusQuery);
 
   // Tab and Shift+Tab move between the query and the tickers field. The app's
   // pane cycle never sees Tab from a field, so the ring only has to claim it

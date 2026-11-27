@@ -18,6 +18,7 @@ import type { DialogApi } from "../../../../ui/dialog";
 import { THESIS_METRIC_KEYS, THESIS_SERIES_KEYS, emptyDocument, itemId } from "./model";
 import { promptChoice, promptNumber, promptSelect, promptText, promptTextarea } from "./prompts";
 import { thesisStore } from "./store";
+import { errorMessage } from "../../../../utils/errors";
 
 export interface FlowContext {
   dialog: DialogApi;
@@ -26,13 +27,8 @@ export interface FlowContext {
   openUpgrade: () => void;
 }
 
-function errorText(error: unknown, fallback: string): string {
-  if (error instanceof ApiRequestError && error.message) return error.message;
-  return error instanceof Error && error.message ? error.message : fallback;
-}
-
 function failed(ctx: FlowContext, error: unknown, fallback: string): undefined {
-  ctx.notify({ body: errorText(error, fallback), type: "error" });
+  ctx.notify({ body: errorMessage(error, fallback), type: "error" });
   return undefined;
 }
 
@@ -166,7 +162,7 @@ export async function startThesis(ctx: FlowContext, input: StartThesisInput): Pr
       });
     })
     .catch((error) => {
-      ctx.notify({ body: `${thesis.title}: ${errorText(error, "the draft failed")}. Your summary is kept; add pillars by hand.`, type: "error" });
+      ctx.notify({ body: `${thesis.title}: ${errorMessage(error, "the draft failed")}. Your summary is kept; add pillars by hand.`, type: "error" });
     });
   return thesis;
 }

@@ -188,11 +188,6 @@ const cmtLabel = (cmt: { curve: CloudCurveId; tenor: string }) => cmt.curve === 
 /** A curve tenor's closes, oldest first, as `date` and `value` (percent). */
 export type CurveCloses = ReadonlyArray<{ date: string; value: number }>;
 
-/** The change from the auction day's close to the close `sessions` later, in bp; null when either is missing. */
-export function yieldChangeAfter(closes: CurveCloses, date: string, sessions: number): number | null {
-  return yieldMoveAfter(closes, date, sessions)?.change ?? null;
-}
-
 /** The change from the auction day's close to the close `sessions` later, in bp, and that later close's day. */
 function yieldMoveAfter(closes: CurveCloses, date: string, sessions: number): { change: number; end: string } | null {
   let low = 0, high = closes.length;

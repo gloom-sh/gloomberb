@@ -1,15 +1,12 @@
 import { expect, test } from "bun:test";
 import { formatMarketPriceWithCurrency } from "./format";
-import { INDEX_POINTS_UNIT, indexBarVolume, indexLevelMarketState, priceSeriesUnit, quotePriceCurrency, reportedQuoteVolume } from "./index-level";
+import { INDEX_POINTS_UNIT, indexBarVolume, indexLevelMarketState, priceSeriesUnit, reportedQuoteVolume } from "./index-level";
 
 test("an index level is points with no currency, by its type however a source spells it, and a stock keeps its currency", () => {
   for (const instrumentType of ["INDEX", "index", "IND"]) {
-    expect(quotePriceCurrency({ currency: "USD", instrumentType })).toBeNull();
     expect(priceSeriesUnit("USD", instrumentType)).toBe(INDEX_POINTS_UNIT);
     expect(formatMarketPriceWithCurrency(19.99, "USD", { assetCategory: instrumentType })).toBe("19.99");
   }
-  expect(quotePriceCurrency({ currency: "USD", instrumentType: "EQUITY" })).toBe("USD");
-  expect(quotePriceCurrency({ currency: " ", instrumentType: "EQUITY" })).toBeNull();
   expect(priceSeriesUnit("EUR", "EQUITY")).toBe("EUR");
   expect(priceSeriesUnit("USD", undefined)).toBe("USD");
   expect(formatMarketPriceWithCurrency(343.46, "USD", { assetCategory: "EQUITY" })).toBe("$343.46");

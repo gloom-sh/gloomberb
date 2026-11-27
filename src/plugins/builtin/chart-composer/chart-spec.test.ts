@@ -3,7 +3,6 @@ import {
   canToggleChartSeries,
   parseChartSpec,
   projectVisibleChartSeries,
-  serializeChartSpec,
   toggleChartSeries,
 } from "./chart-spec";
 import { applySeriesStyle, applySeriesTimestampMode } from "./chart-spec-edit";
@@ -67,7 +66,7 @@ describe("chart composer spec persistence", () => {
       buildComparisonChartPreset(["AAPL", "MSFT"]),
       ["spread"],
     );
-    expect(parseChartSpec(serializeChartSpec(valid))).toEqual(parseChartSpec(valid));
+    expect(parseChartSpec(JSON.stringify(valid))).toEqual(parseChartSpec(valid));
     expect(parseChartSpec("not json")).toBeNull();
 
     const price = buildPriceChartPreset("AAPL");
@@ -98,7 +97,7 @@ describe("chart composer spec persistence", () => {
       ],
     };
 
-    const parsed = parseChartSpec(serializeChartSpec(authored));
+    const parsed = parseChartSpec(JSON.stringify(authored));
     expect(parsed?.series.map((series) => ({
       style: series.style,
       timestampMode: series.source.kind === "security" ? series.source.timestampMode : undefined,
@@ -116,7 +115,7 @@ describe("chart composer spec persistence", () => {
 
     const capability = buildCustomChartPreset("CAP:prediction-markets.series:polymarket/event-1/market-1");
     expect(parseChartSpec({ ...capability, version: 1 })).toBeNull();
-    expect(parseChartSpec(serializeChartSpec(capability))).toEqual(parseChartSpec(capability));
+    expect(parseChartSpec(JSON.stringify(capability))).toEqual(parseChartSpec(capability));
   });
 
   test("rejects chart specs authored by a newer unsupported version", () => {

@@ -12,7 +12,6 @@ import {
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
-  type DataTableRootKeyContext,
   type PaneFooterSegment,
   type QueryBarView,
   type StatItem,
@@ -33,7 +32,7 @@ import {
 import { scrollByLines } from "../../../state/pane-scroll-registry";
 import { isPlainKey } from "../../../utils/keyboard";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
-import { useSearchFocusUp } from "../../../components/input-search-bar";
+import { useSearchUpRootKeyDown } from "../../../components/input-search-bar";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
 import { ProWall, SignInWall } from "../cloud/auth-actions";
@@ -757,21 +756,14 @@ function CallsListView({
   const columns = useMemo(() => callListColumns(width, !ticker), [width, ticker]);
   const renderRow = useCallback((call: CloudEarningsCallPayload, column: CallColumn) => callListCell(call, column, now), [now]);
 
-  const isSearchUp = useSearchFocusUp();
-  const handleRootKey = useCallback(
-    (event: DataTableKeyEvent, context: DataTableRootKeyContext) => {
-      if (context.selectedIndex <= 0 && isSearchUp(event)) {
-        stopSearchFocusNavigation(event);
-        focusSearch();
-        return true;
-      }
-      return handleRefreshKey(event, () => {
-        fetchCalls(true);
-        if (lookupTicker) setLookupRefresh((current) => ({ ticker: lookupTicker, request: (current?.request ?? 0) + 1 }));
-      }, { stopPropagation: true });
-    },
-    [isSearchUp, fetchCalls, focusSearch, lookupTicker],
+  const handleCallsRefreshKey = useCallback(
+    (event: DataTableKeyEvent) => handleRefreshKey(event, () => {
+      fetchCalls(true);
+      if (lookupTicker) setLookupRefresh((current) => ({ ticker: lookupTicker, request: (current?.request ?? 0) + 1 }));
+    }, { stopPropagation: true }),
+    [fetchCalls, lookupTicker],
   );
+  const handleRootKey = useSearchUpRootKeyDown(focusSearch, handleCallsRefreshKey);
 
   // `q` is the app's quit key, handled ahead of pane handlers. The reader
   // claims it first while it is open, the same way other panes take keys

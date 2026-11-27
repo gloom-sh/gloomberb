@@ -1,3 +1,4 @@
+import { asRecord, textOrNull } from "../../../utils/guards";
 import { httpFetch } from "../../../utils/http-transport";
 import { createThrottledFetch } from "../../../utils/throttled-fetch";
 import {
@@ -42,17 +43,10 @@ function authorizationHeaders(): Record<string, string> {
   return key ? { Authorization: `Basic ${btoa(`${key}:`)}` } : {};
 }
 
-const asString = (value: unknown): string | undefined => {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed || undefined;
-};
+const asString = (value: unknown): string | undefined => textOrNull(value) ?? undefined;
 
 const asStringArray = (value: unknown): string[] =>
   Array.isArray(value) ? value.map(asString).filter((entry): entry is string => !!entry) : [];
-
-const asRecord = (value: unknown): Record<string, unknown> =>
-  value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 
 const usable = (value: string | undefined): string | undefined =>
   value && !/^(n\/?a|unknown|ni|une)$/i.test(value) ? value : undefined;

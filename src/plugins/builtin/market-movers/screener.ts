@@ -295,15 +295,6 @@ export async function fetchScreenerResult(
   return loadCached(`screener:${category}:count=${count}${session ? `:session=${session}` : ""}`, load, options);
 }
 
-export async function fetchScreener(
-  category: ScreenerCategory,
-  count = 25,
-  api: MarketScreenerApi = screenerApi,
-  options?: ScreenerFetchOptions,
-): Promise<ScreenerQuote[]> {
-  return (await fetchScreenerResult(category, count, api, options)).data;
-}
-
 function cloudScreenerCategory(category: ScreenerCategory): CloudMarketScreenerCategory {
   if (category === "day_gainers") return "gainers";
   if (category === "day_losers") return "losers";

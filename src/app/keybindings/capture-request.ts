@@ -1,3 +1,5 @@
+import { createListenerSet } from "../../utils/listeners";
+
 /**
  * A request handed to Help > Shortcuts. `command` binds a key to command bar
  * text: the bar cannot capture a key itself, since the moment it opens it owns
@@ -9,11 +11,11 @@ export type KeybindingCaptureRequest =
   | { kind: "review" };
 
 let pending: KeybindingCaptureRequest | null = null;
-const listeners = new Set<() => void>();
+const listeners = createListenerSet();
 
 export function requestKeybindingCapture(request: KeybindingCaptureRequest): void {
   pending = request;
-  for (const listener of listeners) listener();
+  listeners.notify();
 }
 
 /** Whether a request is waiting, for a pane deciding which tab to open on. */
@@ -28,9 +30,4 @@ export function takeKeybindingCaptureRequest(): KeybindingCaptureRequest | null 
   return request;
 }
 
-export function subscribeKeybindingCapture(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
+export const subscribeKeybindingCapture = listeners.subscribe;

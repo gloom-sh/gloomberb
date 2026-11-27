@@ -66,8 +66,3 @@ export function spreadBasisPoints(points: readonly YieldPoint[], short = "2Y", l
   const spread = curveSpread(points, short, long);
   return spread == null ? null : Math.round(spread * 100);
 }
-
-export function isInverted(points: readonly YieldPoint[]): boolean | null {
-  const spread = spreadBasisPoints(points);
-  return spread == null ? null : spread < 0;
-}

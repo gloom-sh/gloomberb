@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { SeriesRegistry, capabilitySeriesId, seriesExpression, seriesNamedBy } from "./registry";
+import { SeriesRegistry, seriesExpression, seriesNamedBy } from "./registry";
 import { normalizeSeriesPoints, resolveLoadedSeries, seriesLoadWindow } from "./resolve";
 import { chartSeriesResolveOutputSchema } from "../capabilities/chart-series";
 import { hostLabelWords, isValidSeriesUnit, validateSeriesDefinition } from "./validate";
@@ -99,7 +99,6 @@ describe("series registry", () => {
     registry.register("lab", loaded({ id: "lab:index" }));
     const fee = registry.get("lab:fee")!.definition;
     expect(seriesExpression(fee)).toBe("CAP:lab:fee/{ticker}");
-    expect(capabilitySeriesId(fee, "^gspc")).toBe("fee/%5EGSPC");
     expect(registry.findLoaded("lab", "fee/%5EGSPC")).toMatchObject({ ticker: "^GSPC" });
     expect(registry.findLoaded("lab", "fee")).toBeNull();
     expect(registry.findLoaded("lab", "index/AAPL")).toBeNull();
@@ -124,7 +123,6 @@ describe("series registry", () => {
         { id: "up", name: "Upper", style: "step", expression: "CAP:lab:bands~up/{ticker}" },
       ],
     });
-    expect(capabilitySeriesId(registry.get("lab:bands")!.definition, "aapl", "up")).toBe("bands~up/AAPL");
     expect(registry.findLoaded("lab", "bands~up/AAPL")).toMatchObject({ ticker: "AAPL", line: { id: "up" } });
     expect(registry.findLoaded("lab", "bands/AAPL")?.line?.id).toBe("mid");
     expect(registry.findLoaded("lab", "bands~gone/AAPL")).toBeNull();

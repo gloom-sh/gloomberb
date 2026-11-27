@@ -41,6 +41,8 @@ import { Checkbox } from "./ui/checkbox";
 import { FRAMED_TEXTAREA_DESKTOP_STYLE } from "./ui/fields";
 import { DialogFrame } from "./ui/frame";
 import { TERMINAL_MESSAGE_KEYS } from "./textarea-keys";
+import { errorMessage } from "../utils/errors";
+import { createListenerSet } from "../utils/listeners";
 import { logFailure } from "../utils/log-failure";
 
 /** What the person typed, kept when the dialog closes without sending. */
@@ -50,10 +52,6 @@ const CONTENT_WIDTH = 64;
 /** Border plus padding the terminal dialog host draws around the content. */
 const TERMINAL_DIALOG_CHROME = 6;
 const MESSAGE_ROWS = 6;
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error && error.message ? error.message : t("Couldn't send. Try again.");
-}
 
 type KeyLike = KeyChordEventLike & { preventDefault?: () => void };
 
@@ -140,7 +138,7 @@ function FeedbackDialog({
     } catch (errorValue) {
       sendingRef.current = false;
       if (closedRef.current) return;
-      setError(errorMessage(errorValue));
+      setError(errorMessage(errorValue, t("Couldn't send. Try again.")));
       setSending(false);
     }
   }, [buildReport, capturing, onSentAfterClose, resolve, screenshot]);
@@ -157,7 +155,7 @@ function FeedbackDialog({
     try {
       setScreenshot(await captureAppImageScreenshot());
     } catch (errorValue) {
-      setError(errorValue instanceof Error && errorValue.message ? errorValue.message : t("Couldn't take a screenshot."));
+      setError(errorMessage(errorValue, t("Couldn't take a screenshot.")));
     } finally {
       setCapturing(false);
       focusMessage();
@@ -252,15 +250,10 @@ function FeedbackDialog({
 }
 
 const feedbackDialogListeners = new Set<() => void>();
-const feedbackSentListeners = new Set<() => void>();
+const feedbackSentListeners = createListenerSet();
 
 /** Called after a report is accepted, so lists of the person's reports can refresh. */
-export function subscribeFeedbackSent(listener: () => void): () => void {
-  feedbackSentListeners.add(listener);
-  return () => {
-    feedbackSentListeners.delete(listener);
-  };
-}
+export const subscribeFeedbackSent = feedbackSentListeners.subscribe;
 
 /** Returns false when no dialog host is mounted. */
 export function requestFeedbackDialog(): boolean {
@@ -281,7 +274,7 @@ export function FeedbackDialogHost() {
 
   useEffect(() => {
     const announce = (response: FeedbackSubmitResponse) => {
-      for (const listener of feedbackSentListeners) listener();
+      feedbackSentListeners.notify();
       toast.success(response.replyTo
         ? tf("Thanks. We'll reply to {email}.", { email: response.replyTo })
         : t("Thanks. Your feedback was sent."));
