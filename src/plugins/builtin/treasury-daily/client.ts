@@ -1,4 +1,6 @@
-import { signalWithTimeout } from "../../../utils/async-deadline";
+import { ApiRequestError, sourceDidNotAnswer } from "../../../api-client/errors";
+import { OperationTimeoutError, signalWithTimeout } from "../../../utils/async-deadline";
+import { readCalendarDate } from "../../../utils/calendar-date";
 import { httpFetch } from "../../../utils/http-transport";
 import { numericOrNull, scalarTextOrNull } from "../../../utils/guards";
 import { cashLineLabel, type CashAccount, type DebtDay, type OperatingCash, type TgaClose } from "./model";
@@ -26,7 +28,7 @@ export interface TreasuryDaily {
 
 function recordDate(value: unknown): string | null {
   const date = scalarTextOrNull(value);
-  return date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+  return date && readCalendarDate(date) === date ? date : null;
 }
 
 function isBusinessDay(iso: string): boolean {
@@ -109,13 +111,40 @@ function parseDebtToPenny(payload: unknown): DebtDay[] {
 async function readJson(url: string, label: string, signal: AbortSignal | undefined, timeoutMs: number): Promise<unknown> {
   const deadline = signalWithTimeout(signal, timeoutMs);
   try {
+    deadline.throwIfAborted();
     const response = await httpFetch(url, { headers: { Accept: "application/json" }, signal: deadline });
-    if (!response.ok) throw new Error(`${label} request failed (${response.status})`);
-    return await response.json() as unknown;
+    if (!response.ok) throw new ApiRequestError(`${label} request failed (${response.status})`, response.status);
+    const payload = await response.json() as unknown;
+    deadline.throwIfAborted();
+    return payload;
   } catch (error) {
-    if (deadline.aborted && !signal?.aborted) throw new Error(`${label} request timed out after ${Math.round(timeoutMs / 1000)} s`);
+    signal?.throwIfAborted();
+    if (deadline.aborted) throw new OperationTimeoutError(`${label} request timed out after ${Math.round(timeoutMs / 1000)} s`);
     throw error;
   }
+}
+
+const readCash = (signal?: AbortSignal, timeoutMs = FETCH_TIMEOUT_MS) => readJson(CASH_URL, "Treasury cash", signal, timeoutMs);
+const readDebt = (signal?: AbortSignal, timeoutMs = FETCH_TIMEOUT_MS) => readJson(DEBT_URL, "Treasury debt", signal, timeoutMs);
+const readTga = (signal?: AbortSignal, timeoutMs = FETCH_TIMEOUT_MS) => readJson(TGA_HISTORY_URL, "Treasury account history", signal, timeoutMs).then(parseTgaHistory);
+
+export async function fetchTreasuryCash(signal: AbortSignal, timeoutMs?: number): Promise<OperatingCash> {
+  const cash = parseOperatingCash(await readCash(signal, timeoutMs));
+  if (!cash.rows.some(({ today, month }) => today !== null || month !== null)) throw sourceDidNotAnswer("No published cash figures received");
+  return cash;
+}
+
+export async function fetchTreasuryDebt(signal: AbortSignal, timeoutMs?: number): Promise<DebtDay[]> {
+  const debt = parseDebtToPenny(await readDebt(signal, timeoutMs));
+  const published = debt.filter(({ heldByPublic, intragovernmental, total }) => heldByPublic !== null || intragovernmental !== null || total !== null);
+  if (!published.length) throw sourceDidNotAnswer("No published debt figures received");
+  return published;
+}
+
+export async function fetchTreasuryHistory(signal: AbortSignal, timeoutMs?: number): Promise<TgaClose[]> {
+  const history = await readTga(signal, timeoutMs);
+  if (!history.length) throw sourceDidNotAnswer("No closing balance history received");
+  return history;
 }
 
 /**
@@ -128,13 +157,18 @@ export async function fetchTreasuryDaily(
   { history = true, timeoutMs = FETCH_TIMEOUT_MS }: { history?: boolean; timeoutMs?: number } = {},
 ): Promise<TreasuryDaily> {
   const [cash, debt, tga] = await Promise.all([
-    readJson(CASH_URL, "Treasury cash", signal, timeoutMs),
-    readJson(DEBT_URL, "Treasury debt", signal, timeoutMs),
-    history ? readJson(TGA_HISTORY_URL, "Treasury account history", signal, timeoutMs).then(parseTgaHistory).then(
+    readCash(signal, timeoutMs),
+    readDebt(signal, timeoutMs),
+    history ? readTga(signal, timeoutMs).then(
       (closes) => ({ closes }),
       (error: unknown) => ({ closes: [] as TgaClose[], error: error instanceof Error ? error.message : String(error) }),
     ) : { closes: [] as TgaClose[] },
-  ]);
+  ]).catch((error: unknown) => {
+    if (error === signal?.reason && signal?.aborted) throw error;
+    if (error instanceof ApiRequestError || error instanceof OperationTimeoutError) throw new Error(error.message);
+    throw error;
+  });
+  signal?.throwIfAborted();
   return {
     cash: parseOperatingCash(cash),
     debt: parseDebtToPenny(debt),
