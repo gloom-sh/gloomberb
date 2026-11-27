@@ -293,7 +293,9 @@ test("signed out, an upgrade opens the sign-up dialog, not a browser page a term
 
 test("once signed in from the sign-up dialog, a new account gets the upgrade sheet and a Pro login nothing", async () => {
   const pricing = spyOn(apiClient, "getCloudPricing").mockRejectedValue(new Error("Fixture has no pricing"));
+  const plan = spyOn(apiClient, "getCloudAccountPlan").mockRejectedValue(new Error("Fixture has no account plan"));
   const portal = spyOn(apiClient, "createBillingPortal").mockResolvedValue({ url: "https://portal.example/session" } as never);
+  const checkout = spyOn(apiClient, "createCloudCheckout").mockResolvedValue({ url: "https://checkout.example/session" } as never);
   const requests: AuthDialogRequest[] = [];
   const release = interceptAuthDialogForTests((request) => requests.push(request));
   try {
@@ -314,6 +316,8 @@ test("once signed in from the sign-up dialog, a new account gets the upgrade she
     };
     await signIn({ id: "user-new", email: "new@example.com", emailVerified: true, plan: "free" });
     await tui.waitForFrameToContain("One better trade pays for Pro");
+    // The sheet is up and its button not pressed: no checkout exists yet.
+    expect(checkout).not.toHaveBeenCalled();
     await tui.destroy();
 
     await signIn({ id: "user-pro", email: "pro@example.com", emailVerified: true, plan: "pro" });
@@ -321,11 +325,13 @@ test("once signed in from the sign-up dialog, a new account gets the upgrade she
     expect(tui.frame()).not.toContain("One better trade pays for Pro");
     expect(opened).toEqual([]);
     expect(portal).not.toHaveBeenCalled();
-    expect(checkouts).toBe(0);
+    expect(checkout).not.toHaveBeenCalled();
   } finally {
     release();
     pricing.mockRestore();
+    plan.mockRestore();
     portal.mockRestore();
+    checkout.mockRestore();
   }
 });
 
