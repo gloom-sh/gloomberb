@@ -457,6 +457,8 @@ export interface SymbolListSource {
    * words, each a symbol.
    */
   readEntries?: (entries: string[]) => Promise<string[]>;
+  /** Like `readEntries`, keeping the resolver's reading of each entry for occurrence-preserving output. */
+  readEntryGroups?: (entries: string[]) => Promise<string[][]>;
   /** Given, gets each line of the file and standard input as typed (`TypedForm`), for a command whose rows name them. */
   typedForms?: TypedForm[];
 }
@@ -488,15 +490,18 @@ export async function readSymbolList(source: SymbolListSource): Promise<{ symbol
   const typedArgs = source.args.filter((arg) => arg !== "-");
   const figures: string[] = [];
   const entries = typedEntries(typedArgs, figures);
-  const readEntries = (read: string[]) => source.readEntries ? source.readEntries(read) : Promise.resolve(splitSymbolWords(read));
-  const typed = source.readEntries ? await source.readEntries(entries) : splitSymbolWords(entries);
+  const readGroups = source.readEntryGroups;
+  const readEntries = async (read: string[]) => readGroups ? (await readGroups(read)).flat()
+    : source.readEntries ? source.readEntries(read) : splitSymbolWords(read);
+  const typed = await readEntries(entries);
   const collected = [...typed];
   // A separator left on the end of what was typed: `UPST;`, or a list that ends in a comma.
   const strays = new Set<string>(stripStrayEdges(typedArgs.join(" ")).notes);
   const ignored: string[] = [];
   const headers: string[] = [];
   const typedForms = source.typedForms ?? [];
-  const addCells = async ({ symbols, ignored: beside, entries: whole, header }: SymbolText) => {
+  const lineEntry = (line: string) => stripStrayEdges(foldTypedText(line)).text.replace(/\s+/g, " ");
+  const addCells = async ({ symbols, ignored: beside, entries: whole, header, lines }: SymbolText) => {
     if (header) headers.push(`Skipped the first row as a header: ${listCells(header)}.`);
     const cells = symbols.map((cell) => {
       const cleaned = stripStrayEdges(cell);
@@ -504,16 +509,29 @@ export async function readSymbolList(source: SymbolListSource): Promise<{ symbol
       return cleaned.text;
     }).filter(Boolean);
     // A list's lines and names are read as typed entries are: `Altria Group` stays one company.
-    collected.push(...whole ? await readEntries(cells) : cells);
+    const groups = whole && lines && readGroups ? await readGroups(cells) : null;
+    collected.push(...groups ? groups.flat() : whole ? await readEntries(cells) : cells);
     ignored.push(...beside);
+    return groups && new Map(cells.map((cell, index) => [lineEntry(cell), groups[index]]));
   };
   const addText = async (text: string) => {
     const folded = foldTypedText(text);
     const parsed = parseSymbolText(folded);
     const before = collected.length;
-    await addCells(parsed);
+    const readings = await addCells(parsed);
     if (!parsed.tokens) {
-      typedForms.push(...typedLines(text, !!parsed.lines));
+      for (const form of typedLines(text, !!parsed.lines)) {
+        const entries = readings?.get(lineEntry(form.typed));
+        if (!entries || entries.length < 2) {
+          typedForms.push(form);
+          continue;
+        }
+        const words = splitSymbolWords([form.typed]);
+        entries.forEach((entry, index) => typedForms.push({
+          typed: words.length === entries.length ? words[index]! : entry,
+          key: symbolInputKey(entry), ownRow: true,
+        }));
+      }
       return;
     }
     const raw = text === folded ? parsed : parseSymbolText(text);

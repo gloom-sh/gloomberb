@@ -340,7 +340,7 @@ import { useKnownCoins } from "../board-coins";
 import { suggestUsTicker, type ListingSuggestion } from "../listing-suggestion";
 import { quotedPhrase, securityInputKey, splitSymbolArgs, symbolInputKey, uniqueSecuritySymbols } from "../symbol-args";
 import { isCompanyNameInput } from "../../tickers/company-name-listing";
-import { readNameEntries, readPhraseArgument } from "../name-entries";
+import { readNameEntries, readNameEntryGroups, readPhraseArgument } from "../name-entries";
 import { readSymbolList, SymbolListError, type TypedForm } from "../symbol-list";
 import { notASymbolError, type NotASymbolError } from "../symbol-cells";
 import { cliPerpetualContract, perpetualContractStats, type PerpetualContractPayload } from "../perpetual-contract";
@@ -568,7 +568,7 @@ async function readListedSymbols(
   try {
     const typedForms: TypedForm[] = [];
     const list = await readSymbolList({
-      args, file, stdinPiped: false, readEntries: (entries) => readNameEntries(entries, market.dataProvider), typedForms,
+      args, file, stdinPiped: false, readEntryGroups: (entries) => readNameEntryGroups(entries, market.dataProvider), typedForms,
     });
     // Only numbers, or nothing: the message says what was left out (`Ignored 1.899, a number, not a symbol.`).
     if (list.symbols.length === 0) {

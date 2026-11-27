@@ -969,6 +969,53 @@ test("file and stdin exports attribute every pasted token to its own row and to 
   }
 });
 
+test("split lines keep the first occurrence of a repeated ticker without splitting company names", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "gloom-quote-split-"));
+  const file = join(dir, "lines.txt");
+  const name = "Berkshire Hathaway Inc.";
+  const company = { providerId: "test", symbol: "BRK.B", name, exchange: "NYSE", currency: "USD", type: "STK" };
+  const getQuote = async (symbol: string) => createTestQuote({ symbol, name: symbol === company.symbol ? name : `${symbol} Company`,
+    listingExchangeName: symbol === company.symbol ? "NYSE" : "NASDAQ" });
+  const dataProvider = createTestDataProvider({
+    search: async (query) => /berkshire/i.test(query) ? [company] : [],
+    getQuote,
+    getQuotesBatch: async (targets) => Promise.all(targets.map(async (target) => ({ target, quote: await getQuote(target.symbol) }))),
+  });
+  try {
+    for (const includeName of [false, true]) {
+      const pasted = `AAPL MSFT\n${includeName ? `${name}\n` : ""}AAPL\n`;
+      const expected = [["AAPL", "AAPL", ""], ["MSFT", "MSFT", ""], ...(includeName ? [["BRK.B", name, ""]] : []), ["AAPL", "AAPL", "AAPL"]];
+      await writeFile(file, pasted);
+      spyOn(Bun.stdin, "text").mockResolvedValue(pasted);
+      for (const command of [marketDataCliCommands.find((entry) => entry.name === "compare")!, quoteCommand]) {
+        for (const args of [["-"], ["--file", file]]) {
+          for (const format of ["json", "csv"] as const) {
+            const cli = createTestCliContext({ dataProvider }, { format });
+            await command.execute(args, cli.context);
+            const { result, options } = cli.printed[0]!;
+            const output = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format }, options);
+            if (format === "json") {
+              expect(JSON.parse(output).data.map((row: { listing: { symbol: string }; input: string; duplicateOf?: string }) =>
+                [row.listing.symbol, row.input, row.duplicateOf ?? ""])).toEqual(expected);
+            } else {
+              const [header, ...rows] = output.split("\n\n")[0]!.split("\n");
+              const columns = header!.split(",");
+              const indices = ["Symbol", "input", "duplicate_of"].map((heading) => columns.indexOf(heading));
+              const csvExpected = expected.map(([symbol, ...fields]) => [symbol === "BRK.B" ? "BRK.B:NYSE" : symbol, ...fields]);
+              expect(rows.map((row) => {
+                const cells = row.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/);
+                return indices.map((index) => cells[index]);
+              })).toEqual(csvExpected);
+            }
+          }
+        }
+      }
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("one symbol that names no listing, or nothing at all, never sinks the batch: the others are quoted and it gets one line", async () => {
   const asked: string[][] = [];
   const dataProvider = createTestDataProvider({
