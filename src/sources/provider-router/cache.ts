@@ -1,6 +1,7 @@
 import { apiClient } from "../../api-client";
 import { listingSuffixExchange } from "../listing-symbols";
 import type { CachedResourceRecord, ResourceStore } from "../../data/resource-store";
+import { quoteListingExchangesMatch } from "../../market-data/quotes/metadata";
 import type { TimeRange } from "../../time-series/range";
 import type { BrokerContractRef } from "../../types/instrument";
 import type { Quote, TickerFinancials } from "../../types/financials";
@@ -225,7 +226,7 @@ export function listCachedResources<T>(
       || metadata?.listingExchangeName || parsePublicTickerKey(quote?.symbol ?? metadata?.symbol ?? "").exchange);
     // Refetch a record that declares another public listing; never relabel it
     // or let it outrank a fresh exact-listing response.
-    if (requestedExchange && declaredExchange && requestedExchange !== declaredExchange) return false;
+    if (requestedExchange && declaredExchange && !quoteListingExchangesMatch(requestedExchange, declaredExchange)) return false;
     // A bare lookup that names no listing cannot say which venue it priced:
     // the unqualified BA quote is Boeing's, never BAE Systems' London line.
     return !(requestedExchange && !declaredExchange && !parsePublicTickerKey(entityKey).exchange

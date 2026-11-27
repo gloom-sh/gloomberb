@@ -43,6 +43,22 @@ export function mergeQuoteMetadata(known: QuoteMetadata | null | undefined, load
   return Object.keys(fields).length ? { ...merged, fieldSources: fields } : merged;
 }
 
+const OTC_QUOTE_VENUES: ReadonlyMap<string, string> = new Map([
+  ["OTC", "OTC"], ["OTC MARKETS", "OTC"],
+  ["OQX", "OTCQX"], ["OTCQX", "OTCQX"], ["OTC MARKETS OTCQX", "OTCQX"],
+  ["OQB", "OTCQB"], ["OTCQB", "OTCQB"], ["OTC MARKETS OTCQB", "OTCQB"],
+  ["OID", "OTCID"], ["OTCID", "OTCID"], ["OTC MARKETS OTCID", "OTCID"],
+  ["PNK", "PINK"], ["PINK", "PINK"], ["OTCPK", "PINK"], ["OTC MARKETS OTCPK", "PINK"],
+]);
+
+/** Search can name OTC without a tier; two explicit tiers must still agree. */
+export function quoteListingExchangesMatch(left: string, right: string): boolean {
+  if (left === right) return true;
+  const leftOtc = OTC_QUOTE_VENUES.get(left);
+  const rightOtc = OTC_QUOTE_VENUES.get(right);
+  return !!leftOtc && !!rightOtc && (leftOtc === rightOtc || leftOtc === "OTC" || rightOtc === "OTC");
+}
+
 /** Qualified listings must agree; provider suffix spellings use the existing exact-listing normalizer. */
 export function quoteMetadataMatchesTarget(metadata: QuoteMetadata, symbol: string, exchange?: string): boolean {
   // A crypto exchange's line of a pair (BTC/GBP on COINBASE PRO) is priced as the crypto venue's listing, BTC-GBP on
@@ -59,8 +75,9 @@ export function quoteMetadataMatchesTarget(metadata: QuoteMetadata, symbol: stri
   const requestedExchange = canonicalExchange(target.exchange || exchange);
   const symbolExchange = canonicalExchange(actual.exchange);
   const actualExchange = canonicalExchange(metadata.listingExchangeName) || symbolExchange;
-  if (symbolExchange && actualExchange && symbolExchange !== actualExchange) return false;
-  if (requestedExchange && actualExchange !== requestedExchange) return false;
+  if (symbolExchange && actualExchange && !quoteListingExchangesMatch(symbolExchange, actualExchange)) return false;
+  if (requestedExchange && (!quoteListingExchangesMatch(requestedExchange, actualExchange)
+    || (symbolExchange && !quoteListingExchangesMatch(requestedExchange, symbolExchange)))) return false;
   if (target.symbol === actual.symbol) return true;
   // Gloom Cloud answers a currency pair in one spelling however it was asked
   // for: EUR/USD and EURUSD:CCY come back as EURUSD=X on its currency venue.
