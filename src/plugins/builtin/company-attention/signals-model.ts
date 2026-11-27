@@ -46,7 +46,7 @@ const SKIP_LABELS: Record<HiringSignalSkip, string> = {
 };
 const kindText = (kind: HiringSignalKind) => KIND_LABELS[kind] ?? humanLabel(kind);
 const flagText = (signal: Pick<HiringWeekSignal, "flags">) => signal.flags.map((flag) => FLAG_LABELS[flag] ?? humanLabel(flag)).join(", ") || null;
-export const holdText = (hold: HiringSignalHold) => HOLD_LABELS[hold] ?? humanLabel(hold);
+const holdText = (hold: HiringSignalHold) => HOLD_LABELS[hold] ?? humanLabel(hold);
 const skipText = (skips: readonly HiringSignalSkip[]) => skips.map((skip) => SKIP_LABELS[skip] ?? humanLabel(skip)).join(", ");
 const isFirst = (signal: Pick<HiringWeekSignal, "kind">) => signal.kind === "new_country" || signal.kind === "new_city" || signal.kind === "new_role_type";
 

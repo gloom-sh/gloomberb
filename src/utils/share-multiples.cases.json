@@ -337,6 +337,51 @@
    }
   },
   {
+   "name": "A Canadian receipt's ratio and CAD cap do not verify an unlabelled EPS",
+   "symbol": "LV",
+   "exchange": "NEO",
+   "quote": {
+    "price": 8.99,
+    "currency": "CAD",
+    "name": "LVMH Moët Hennessy - Louis Vuitton, Société Européenne"
+   },
+   "fundamentals": {
+    "eps": 35.38,
+    "trailingPE": 0.2540983606557377,
+    "marketCapCurrency": "CAD",
+    "adrRatio": 0.05
+   },
+   "annualStatements": [{ "date": "2025-12-31", "currency": "EUR" }],
+   "served": { "isDepositaryReceipt": true },
+   "expect": {
+    "trailingPE": null,
+    "because": "EPS currency not verified against the CAD quote"
+   }
+  },
+  {
+   "name": "A Canadian receipt with a recorded home EPS, ratio and conversion keeps its P/E",
+   "symbol": "LV",
+   "exchange": "NEO",
+   "quote": {
+    "price": 8.99,
+    "currency": "CAD",
+    "name": "LVMH Moët Hennessy - Louis Vuitton, Société Européenne"
+   },
+   "fundamentals": {
+    "eps": 2.6535,
+    "epsCurrency": "CAD",
+    "trailingPE": 3.3879781420765025,
+    "marketCapCurrency": "CAD",
+    "financialCurrency": "EUR",
+    "adrRatio": 0.05,
+    "trailingEpsBasis": "home",
+    "trailingEpsHome": { "listing": "MC.PA", "units": 0.05, "eps": 35.38, "currency": "EUR", "rate": 1.5 }
+   },
+   "annualStatements": [{ "date": "2025-12-31", "currency": "EUR", "eps": 35.38 }],
+   "served": { "isDepositaryReceipt": true },
+   "expect": { "trailingPE": 3.3879781420765025 }
+  },
+  {
    "name": "XAU on the TSX is Goldmoney's own main line, wherever the company is from",
    "symbol": "XAU",
    "exchange": "TSX",
@@ -733,6 +778,7 @@
     "sharesOutstanding": 100000,
     "marketCapCurrency": "CHF"
    },
+   "annualStatements": [{ "date": "2025-12-31", "currency": "CHF", "eps": 577618, "netIncome": 57761800192 }],
    "expect": {
     "trailingPE": 0.005349556281140823
    }
