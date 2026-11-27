@@ -2,7 +2,7 @@ import { appendFileSync } from "fs";
 import { mkdir } from "fs/promises";
 import { join } from "path";
 import { testAppEnv } from "../test-app-env";
-import { evaluate, sleep, type Cdp } from "./browser";
+import { evaluate, frames, sleep, waitFor, type Cdp } from "./browser";
 
 /**
  * The real web build in headless Chrome, signed out, for the sweeps that open
@@ -340,14 +340,65 @@ export async function loadLayout(cdp: Cdp, url: string, replay: Replay, layout: 
   await cdp.send("Page.removeScriptToEvaluateOnNewDocument", { identifier });
 }
 
-/** Until nothing in `scope` has changed for `quietMs`, at most `maxMs`. */
-export async function settle(cdp: Cdp, scope: string, quietMs = 800, maxMs = 9_000): Promise<void> {
-  await evaluate(cdp, `(() => { window.__changed = performance.now(); window.__settle?.disconnect(); const root = document.querySelector(${JSON.stringify(scope)}) ?? document.body; window.__settle = new MutationObserver(() => { window.__changed = performance.now(); }); window.__settle.observe(root, { subtree: true, childList: true, attributes: true, characterData: true }); })()`);
-  const until = Date.now() + maxMs;
-  while (Date.now() < until) {
-    await sleep(200);
-    if (await evaluate<number>(cdp, "performance.now() - window.__changed") >= quietMs) return;
-  }
+/** The shard a function belongs to: by its token, so adding a function moves no other. */
+export function shardOf(token: string, count: number): number {
+  return Number.parseInt(new Bun.CryptoHasher("sha1").update(token).digest("hex").slice(0, 8), 16) % count;
+}
+
+/**
+ * Until nothing in `scope` has changed for `quietMs`, at most `maxMs`.
+ * Waits `minFrames` animation frames first so React layout effects flush, then
+ * watches DOM mutations directly inside the page with a debounced timer to avoid
+ * polling overshoot and repeated CDP roundtrips. While a loading spinner is
+ * still visible inside `scope`, extends the quiet window to `loadingQuietMs` so
+ * short retry backoffs (e.g. offline 503 retries) finish rendering before the
+ * view is measured.
+ */
+export async function settle(
+  cdp: Cdp,
+  scope: string,
+  quietMs = 800,
+  maxMs = 9_000,
+  { minFrames = 2, loadingQuietMs = Math.max(quietMs, 1_200) }: { minFrames?: number; loadingQuietMs?: number } = {},
+): Promise<void> {
+  await evaluate(
+    cdp,
+    `new Promise((resolve) => {
+      let done = false;
+      let quietTimer = null;
+      let maxTimer = null;
+      let root = null;
+      const LOADING_SELECTOR = "[data-gloom-status=loading], [data-gloom-ui=spinner]";
+      const finish = () => {
+        if (done) return;
+        done = true;
+        if (quietTimer !== null) clearTimeout(quietTimer);
+        if (maxTimer !== null) clearTimeout(maxTimer);
+        window.__settle?.disconnect();
+        window.__settle = null;
+        resolve(true);
+      };
+      const arm = () => {
+        if (quietTimer !== null) clearTimeout(quietTimer);
+        const target = document.querySelector(${JSON.stringify(scope)}) ?? root ?? document.body;
+        const loading = !!target?.querySelector(LOADING_SELECTOR);
+        quietTimer = setTimeout(finish, loading ? ${loadingQuietMs} : ${quietMs});
+      };
+      const start = () => {
+        window.__settle?.disconnect();
+        root = document.querySelector(${JSON.stringify(scope)}) ?? document.body ?? document.documentElement;
+        window.__settle = new MutationObserver(() => { arm(); });
+        window.__settle.observe(root, { subtree: true, childList: true, attributes: true, characterData: true });
+        maxTimer = setTimeout(finish, ${maxMs});
+        arm();
+      };
+      let left = ${Math.max(0, Math.floor(minFrames))};
+      const tick = () => (--left <= 0 ? start() : requestAnimationFrame(tick));
+      if (left <= 0) start();
+      else requestAnimationFrame(tick);
+    })`,
+    maxMs + 5_000,
+  );
 }
 
 export async function key(cdp: Cdp, keyName: string, code: string, keyCode: number, modifiers = 0, text?: string): Promise<void> {
@@ -356,11 +407,43 @@ export async function key(cdp: Cdp, keyName: string, code: string, keyCode: numb
 }
 
 /** Types `query` into the command bar (Ctrl+P) and runs it. */
-export async function runCommand(cdp: Cdp, query: string, { submit = true } = {}): Promise<void> {
+export async function runCommand(
+  cdp: Cdp,
+  query: string,
+  { submit = true, offline = false }: { submit?: boolean; offline?: boolean } = {},
+): Promise<void> {
   await key(cdp, "p", "KeyP", 80, 2);
-  await sleep(300);
+  await waitFor<boolean>(
+    cdp,
+    `(() => {
+      const panel = document.querySelector("[data-gloom-role=command-bar-panel]");
+      const active = document.activeElement;
+      return !!panel && !!active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA");
+    })()`,
+    offline ? 1_500 : 3_000,
+  );
   for (const char of query) await key(cdp, char, "", 0, 0, char);
-  await sleep(900);
+  if (query.length > 0) {
+    await waitFor<boolean>(
+      cdp,
+      `(() => {
+        const active = document.activeElement;
+        return !!active && "value" in active && active.value === ${JSON.stringify(query)};
+      })()`,
+      500,
+    );
+  }
+  if (offline) {
+    if (submit) {
+      await settle(cdp, "[data-gloom-role=command-bar-panel]", 80, 1_000);
+    } else {
+      // Allow command-bar search provider and theme preview debounces to settle before measuring open results.
+      await sleep(350);
+      await settle(cdp, "[data-gloom-role=command-bar-panel]", 150, 1_500);
+    }
+  } else {
+    await sleep(900);
+  }
   if (submit) await key(cdp, "Enter", "Enter", 13);
 }
 
@@ -374,13 +457,41 @@ function argument(entry: CatalogEntry): string {
 const EMPTY_LAYOUT = { dockRoot: null, instances: [], floating: [], detached: [] };
 
 /** The pane a function opens through the command bar, as the app saves it. */
-export async function discover(cdp: Cdp, url: string, replay: Replay, entry: CatalogEntry): Promise<Record<string, unknown> | null> {
+export async function discover(
+  cdp: Cdp,
+  url: string,
+  replay: Replay,
+  entry: CatalogEntry,
+  { offline = false }: { offline?: boolean } = {},
+): Promise<Record<string, unknown> | null> {
   await loadLayout(cdp, url, replay, EMPTY_LAYOUT);
-  await sleep(800);
-  await runCommand(cdp, `${entry.token} ${argument(entry)}`.trim());
-  await sleep(1200);
+  await waitFor<boolean>(
+    cdp,
+    `!!document.querySelector("[data-gloom-role=header-command-prompt]")`,
+    offline ? 3_000 : 6_000,
+  );
+  await frames(cdp, 2);
+  await runCommand(cdp, `${entry.token} ${argument(entry)}`.trim(), { offline });
+  await waitFor<boolean>(
+    cdp,
+    `!!document.querySelector(${JSON.stringify(`[data-gloom-pane-id^="${entry.paneId}:"]`)}) || !!document.querySelector("[data-gloom-pane-id]")`,
+    offline ? 1_200 : 2_000,
+  );
+  if (offline) await frames(cdp, 2);
+  else await sleep(300);
   await evaluate(cdp, `window.dispatchEvent(new Event("pagehide"))`);
-  await sleep(300);
+  await waitFor<boolean>(
+    cdp,
+    `(() => {
+      try {
+        const config = JSON.parse(localStorage.getItem("gloomberb.web.config.v1") ?? "{}");
+        return (config.layouts?.[config.activeLayoutIndex ?? 0]?.layout?.instances?.length ?? 0) > 0;
+      } catch {
+        return false;
+      }
+    })()`,
+    offline ? 300 : 600,
+  );
   const config = JSON.parse(await evaluate<string>(cdp, `localStorage.getItem("gloomberb.web.config.v1")`) ?? "{}");
   const instances = (config.layouts?.[config.activeLayoutIndex ?? 0]?.layout?.instances ?? []) as Array<Record<string, unknown>>;
   const instance = instances.find((item) => item.paneId === entry.paneId) ?? instances[0];
