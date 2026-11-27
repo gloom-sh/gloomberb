@@ -180,6 +180,52 @@ afterEach(() => {
 });
 
 describe("ChatController", () => {
+  test.each(["direct", "group"] as const)("settles %s conversation requests in the session that started them", async (kind) => {
+    const controller = createController({ bindComposerToApiSession: true });
+    controller.attachPersistence(new MemoryPersistence());
+    const first = { id: "first", username: "first", emailVerified: true };
+    const next = { id: "next", username: "next", emailVerified: true };
+    controller.adoptSession("fixture-first", first);
+    const channel: ChatChannel = { id: `${kind}:sample`, name: "Sample", kind, created_at: "2026-03-28T00:00:00.000Z" };
+    const open = kind === "direct"
+      ? () => controller.openDirectChannel({ username: "sample" })
+      : () => controller.openGroupChannel({ usernames: ["sample"] });
+    const success = Promise.withResolvers<ChatChannel>();
+    const failure = Promise.withResolvers<ChatChannel>();
+    const refusal = new Error("Could not open this conversation");
+    const request = kind === "direct" ? spyOn(apiClient, "openDirectChannel") : spyOn(apiClient, "openGroupChannel");
+    request.mockImplementationOnce(() => success.promise)
+      .mockImplementationOnce(() => failure.promise)
+      .mockImplementationOnce(async () => channel)
+      .mockImplementationOnce(async () => { throw refusal; });
+    const connections = spyOn(controller, "ensureConnection");
+    const snapshots: string[][] = [];
+    const unsubscribe = controller.subscribe((snapshot) => snapshots.push(snapshot.channels.map((entry) => entry.id)));
+
+    const pendingSuccess = open();
+    const pendingFailure = open();
+    expect(request).toHaveBeenCalledTimes(2);
+    if (kind === "direct") {
+      controller.adoptSession("fixture-next", next);
+    } else {
+      apiClient.setSessionToken("fixture-renewed");
+      apiClient.restoreCachedUser(first);
+    }
+    const published = snapshots.length;
+    success.resolve(channel);
+    failure.reject(refusal);
+    await expect(Promise.all([pendingSuccess, pendingFailure])).resolves.toEqual([null, null]);
+    expect(controller.getSnapshot().channels).not.toContainEqual(channel);
+    expect(connections).not.toHaveBeenCalled();
+    expect(snapshots).toHaveLength(published);
+
+    await expect(open()).resolves.toEqual(channel);
+    expect(connections).toHaveBeenCalled();
+    expect(snapshots.at(-1)).toContain(channel.id);
+    await expect(open()).rejects.toBe(refusal);
+    unsubscribe();
+  });
+
   test("hydrates cached session, draft, and transcript from plugin persistence", () => {
     const persistence = new MemoryPersistence();
     const controller = createController();

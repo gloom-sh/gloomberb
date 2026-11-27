@@ -76,6 +76,8 @@ export async function openDmTargetFromCommand(ctx: GloomPluginContext, usernames
     openDefaultChatPane(ctx);
     return;
   }
+  const isCurrent = chatController.captureSessionScope();
+  if (!isCurrent()) return;
   // The command bar shows a thrown message as it is, so it says why.
   const snapshot = chatController.getSnapshot();
   const userByUsername = buildChatUserByUsername(snapshot.channels, snapshot.messages);
@@ -85,15 +87,16 @@ export async function openDmTargetFromCommand(ctx: GloomPluginContext, usernames
     channels: snapshot.channels,
   });
   if (refusal) throw new Error(refusal);
-  let channel: ChatChannel;
+  let channel: ChatChannel | null;
   try {
     channel = usernames.length === 1
       ? await chatController.openDirectChannel({ username: usernames[0] })
       : await chatController.openGroupChannel({ usernames });
   } catch (error) {
+    if (!isCurrent()) return;
     throw new Error(describeConversationStartError(error, usernames, userByUsername));
   }
-  openChatConversation(ctx, channel.id);
+  if (channel && isCurrent()) openChatConversation(ctx, channel.id);
 }
 
 /**

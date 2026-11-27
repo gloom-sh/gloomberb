@@ -204,6 +204,7 @@ export class ChatController {
 
   private stopWatchingComposerAccount: (() => void) | undefined;
   private announcedComposerScope: object | null = null;
+  private composerSessionGeneration = 0;
 
   constructor(private readonly options: { bindComposerToApiSession?: boolean } = {}) {}
 
@@ -211,6 +212,16 @@ export class ChatController {
     const account = this.storage.getComposerAccount();
     if (this.options.bindComposerToApiSession && account?.id !== apiClient.getConfirmedDisplayUser()?.id) return null;
     return account;
+  }
+
+  captureSessionScope(): () => boolean {
+    const account = this.getComposerScope();
+    const generation = this.composerSessionGeneration;
+    const credential = apiClient.getCredentialGeneration();
+    const verified = this.session.user?.emailVerified;
+    return () => account !== null && verified === true && this.session.user?.emailVerified === true
+      && this.getComposerScope() === account && this.composerSessionGeneration === generation
+      && apiClient.getCredentialGeneration() === credential;
   }
 
   private setSessionUser(user: ChatSessionUser | null): void {
@@ -231,11 +242,16 @@ export class ChatController {
     };
   }
 
-  private notifyComposerScopeChanged(): void {
+  private updateAnnouncedComposerScope(): boolean {
     const scope = this.getComposerScope();
-    if (scope === this.announcedComposerScope) return;
+    if (scope === this.announcedComposerScope) return false;
     this.announcedComposerScope = scope;
-    this.view.emit();
+    this.composerSessionGeneration += 1;
+    return true;
+  }
+
+  private notifyComposerScopeChanged(): void {
+    if (this.updateAnnouncedComposerScope()) this.view.emit();
   }
 
   attachPersistence(persistence: PluginPersistence, resume?: PluginResumeState): void {
@@ -386,12 +402,12 @@ export class ChatController {
     return this.channelCatalog.refreshChatState();
   }
 
-  async openDirectChannel(target: { userId?: string; username?: string }): Promise<ChatChannel> {
-    return this.channelCatalog.openDirectChannel(target);
+  async openDirectChannel(target: { userId?: string; username?: string }): Promise<ChatChannel | null> {
+    return this.channelCatalog.openConversation(() => apiClient.openDirectChannel(target), this.captureSessionScope());
   }
 
-  async openGroupChannel(body: { userIds?: string[]; usernames?: string[]; name?: string }): Promise<ChatChannel> {
-    return this.channelCatalog.openGroupChannel(body);
+  async openGroupChannel(body: { userIds?: string[]; usernames?: string[]; name?: string }): Promise<ChatChannel | null> {
+    return this.channelCatalog.openConversation(() => apiClient.openGroupChannel(body), this.captureSessionScope());
   }
 
   async resolveRequiredChannelId(channelId: string): Promise<string> {
@@ -798,11 +814,11 @@ export class ChatController {
   }
 
   async editChannelMessage(channelId: string, messageId: string, content: string): Promise<boolean> {
+    const isCurrent = this.captureSessionScope();
+    if (!isCurrent()) return false;
     const normalizedChannelId = normalizeChannelId(channelId);
     const channel = this.ensureChannelState(normalizedChannelId);
     const messageContent = content.trim();
-    if (!this.session.user?.emailVerified) return false;
-
     const latestOwnMessage = [...getVisibleMessages(channel)]
       .reverse()
       .find((message) => (
@@ -827,9 +843,11 @@ export class ChatController {
 
     try {
       const message = await apiClient.editMessage(normalizedChannelId, messageId, messageContent);
+      if (!isCurrent()) return false;
       this.mergeMessages(normalizedChannelId, [message]);
       return true;
     } catch (error) {
+      if (!isCurrent()) return false;
       const errorMessage = error instanceof Error && error.message
         ? error.message
         : "Failed to edit message.";
@@ -915,9 +933,7 @@ export class ChatController {
     const activity = this.conversationActivity();
     const moved = activity !== this.announcedActivity;
     this.announcedActivity = activity;
-    const scope = this.getComposerScope();
-    const composerChanged = scope !== this.announcedComposerScope;
-    this.announcedComposerScope = scope;
+    const composerChanged = this.updateAnnouncedComposerScope();
     this.view.emit(moved || composerChanged ? undefined : channelId);
     this.unreadPeople.sync();
   }

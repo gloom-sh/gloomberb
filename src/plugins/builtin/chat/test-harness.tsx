@@ -153,6 +153,7 @@ export function messageDay(index: number): string {
 }
 
 export function createController(options: {
+  bindComposerToApiSession?: boolean;
   messages?: ChatMessage[];
   sessionToken?: string | null;
   user?: { id: string; username: string; emailVerified: boolean } | null;
@@ -160,7 +161,7 @@ export function createController(options: {
 } = {}) {
   const messages = options.messages ?? [];
   const persistence = new MemoryPluginPersistence();
-  const controller = new ChatController();
+  const controller = new ChatController({ bindComposerToApiSession: options.bindComposerToApiSession });
   testControllers.add(controller);
   const user = Object.prototype.hasOwnProperty.call(options, "user")
     ? options.user ?? null

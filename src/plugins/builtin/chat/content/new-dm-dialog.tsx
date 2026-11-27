@@ -116,6 +116,7 @@ export function NewDmDialog({
   onCancel,
   onOpenChannel,
   onSubmit,
+  captureSessionScope,
 }: {
   width: number;
   height: number;
@@ -126,6 +127,7 @@ export function NewDmDialog({
   onCancel: () => void;
   onOpenChannel: (channelId: string) => void;
   onSubmit: (usernames: string[]) => Promise<void>;
+  captureSessionScope: () => () => boolean;
 }) {
   const { nativePaneChrome } = useUiCapabilities();
   const inputRef = useRef<InputRenderable | null>(null);
@@ -197,6 +199,8 @@ export function NewDmDialog({
 
   const submit = async () => {
     if (submittingRef.current) return;
+    const isCurrent = captureSessionScope();
+    if (!isCurrent()) return;
     let submittedValue = valueRef.current;
     // Nothing typed yet: Enter starts with the highlighted user, as Tab would
     // have picked them.
@@ -228,10 +232,10 @@ export function NewDmDialog({
     try {
       await onSubmit(submittedUsernames);
     } catch (submitError) {
-      setError(describeConversationStartError(submitError, submittedUsernames, userByUsername));
-      setSubmitting(false);
+      if (isCurrent()) setError(describeConversationStartError(submitError, submittedUsernames, userByUsername));
     } finally {
       submittingRef.current = false;
+      setSubmitting(false);
     }
   };
 

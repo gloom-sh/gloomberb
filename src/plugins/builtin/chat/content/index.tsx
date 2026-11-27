@@ -145,7 +145,12 @@ function ChatConversation({
   const rendererHost = useRendererHost();
   const [inputFocused, setInputFocused] = useState(false);
   const [selectedIdx, setSelectedIdx] = useState(-1);
-  const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
+  const editingMessageRef = useRef<ChatMessage | null>(null);
+  const [editingMessage, setEditingMessageState] = useState<ChatMessage | null>(null);
+  const setEditingMessage = useCallback((message: ChatMessage | null) => {
+    editingMessageRef.current = message;
+    setEditingMessageState(message);
+  }, []);
   const [followMessages, setFollowMessages] = useState(true);
   const [newDmOpen, setNewDmOpen] = useState(false);
   // The first-chat handle field above the composer has the keyboard.
@@ -215,7 +220,6 @@ function ChatConversation({
   );
   const [dropActive, setDropActive] = useState(false);
   const resetComposerSession = useCallback(() => {
-    setEditingMessage(null);
     setDropActive(false);
   }, []);
   const attachPickerRef = useRef<(() => void) | null>(null);
@@ -242,11 +246,13 @@ function ChatConversation({
     controller,
     // A channel hidden behind the list is not being read.
     focused: focused && !channelListOpen,
+    editingMessageRef,
     initialSnapshot,
     inputRef,
     inputValueRef,
     onComposerStateChange: syncComposerState,
     onComposerScopeChange: resetComposerSession,
+    setEditingMessage,
     draftLinksRef,
     onDraftLinksChange: setDraftLinks,
     prependAnchorRef,
@@ -508,7 +514,6 @@ function ChatConversation({
   useEffect(() => {
     if (previousEditingChannelIdRef.current === channelId) return;
     previousEditingChannelIdRef.current = channelId;
-    setEditingMessage(null);
     setReactionPickerMessageId(null);
     // A card pinned in one channel does not follow into the next.
     closeProfilePopover();
@@ -729,6 +734,7 @@ function ChatConversation({
     onComposerStateChange: syncComposerState,
     onChannelChange,
     editingMessage,
+    editingMessageRef,
     latestEditableMessageId,
     replyTo,
     setEditingMessage,
@@ -824,12 +830,19 @@ function ChatConversation({
     else showConversation(channelId);
   }, [canSend, channelId, commandBarOpen, focused, openNewDmDialog, pendingPaneRequest, showConversation]);
 
+  const captureConversationScope = useCallback(() => {
+    const isSessionCurrent = controller.captureSessionScope();
+    return () => isComposerCurrent() && isSessionCurrent();
+  }, [controller, isComposerCurrent]);
+
   const openConversationFromDialog = useCallback(async (usernames: string[]) => {
+    const isCurrent = captureConversationScope();
+    if (!isCurrent()) return;
     const channel = usernames.length === 1
       ? await controller.openDirectChannel({ username: usernames[0] })
       : await controller.openGroupChannel({ usernames });
-    showConversation(channel.id);
-  }, [controller, showConversation]);
+    if (channel && isCurrent()) showConversation(channel.id);
+  }, [captureConversationScope, controller, showConversation]);
 
   const directMessageContext = useMemo(
     () => ({ currentUserId: user?.id, channels, canSend }),
@@ -838,6 +851,8 @@ function ChatConversation({
 
   /** "Message @name": opens the DM you share, or starts one and opens it. */
   const messageUser = useCallback(async (target: ChatUserSummary) => {
+    const isCurrent = captureConversationScope();
+    if (!isCurrent()) return;
     const action = directMessageAction(target, directMessageContext);
     if (!action || action.kind === "refused") return;
     const existing = action.kind === "open" ? findDirectChannelWith(channels, target) : null;
@@ -847,11 +862,12 @@ function ChatConversation({
     }
     try {
       const channel = await controller.openDirectChannel({ username: action.username });
-      showConversation(channel.id);
+      if (channel && isCurrent()) showConversation(channel.id);
     } catch (error) {
+      if (!isCurrent()) return;
       notify({ body: describeConversationStartError(error, [action.username], userByUsername), type: "error" });
     }
-  }, [channels, controller, directMessageContext, notify, showConversation, userByUsername]);
+  }, [captureConversationScope, channels, controller, directMessageContext, notify, showConversation, userByUsername]);
 
   const pinUserProfile = useCallback((target: ChatUserSummary, anchor?: ChatUserAnchor) => {
     showProfilePopover(target, { ownProfile: target.id === user?.id, pin: true, anchor });
@@ -1155,6 +1171,7 @@ function ChatConversation({
       userByUsername={userByUsername}
       currentUserId={user?.id}
       channels={channels}
+      captureSessionScope={captureConversationScope}
       onCancel={closeNewDmDialog}
       onOpenChannel={showConversation}
       onSubmit={openConversationFromDialog}

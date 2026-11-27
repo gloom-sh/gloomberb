@@ -15,12 +15,14 @@ interface ChatSnapshotStateArgs {
   applyingExternalDraftRef: MutableRef<boolean>;
   channelId: string;
   controller: ChatContentController;
+  editingMessageRef: MutableRef<ChatMessage | null>;
   focused: boolean;
   initialSnapshot: ChatSnapshot;
   inputRef: MutableRef<TextareaRenderable | null>;
   inputValueRef: MutableRef<string>;
   onComposerStateChange?: (draft: string, cursorOffset: number) => void;
   onComposerScopeChange: () => void;
+  setEditingMessage: (message: ChatMessage | null) => void;
   /** The share links at the end of the saved draft, drawn as chips above the field. */
   draftLinksRef: MutableRef<ComposerShareLink[]>;
   /** Sets the chips; also updates `draftLinksRef`. */
@@ -82,12 +84,14 @@ export function useChatSnapshotState({
   applyingExternalDraftRef,
   channelId,
   controller,
+  editingMessageRef,
   focused,
   initialSnapshot,
   inputRef,
   inputValueRef,
   onComposerStateChange,
   onComposerScopeChange,
+  setEditingMessage,
   draftLinksRef,
   onDraftLinksChange,
   prependAnchorRef,
@@ -133,9 +137,14 @@ export function useChatSnapshotState({
     prependAnchorRef.current = null;
 
     const applySnapshot = (snapshot: ChatSnapshot) => {
-      if (composerScopeRef.current !== snapshot.composerScope) {
+      const scopeChanged = composerScopeRef.current !== snapshot.composerScope;
+      if (scopeChanged) {
         composerScopeRef.current = snapshot.composerScope;
         onComposerScopeChange();
+      }
+      if (editingMessageRef.current && (scopeChanged || !snapshot.user?.emailVerified
+        || editingMessageRef.current.channelId !== snapshot.channelId)) {
+        setEditingMessage(null);
       }
       setMessages(snapshot.messages);
       setMentionState((current) => current.channelId === snapshot.channelId && current.candidates === snapshot.mentionCandidates
@@ -150,17 +159,19 @@ export function useChatSnapshotState({
       setLoadingOlderMessages(snapshot.loadingOlderMessages);
       setHasOlderMessages(snapshot.hasOlderMessages);
       setDraftAttachments(snapshot.draftAttachments);
-      syncDraftFromSnapshot({
-        applyingExternalDraftRef,
-        draftLinksRef,
-        inputRef,
-        inputValueRef,
-        onComposerStateChange,
-        onDraftLinksChange,
-        snapshot,
-        updateComposerRows,
-      });
-      setReplyTo(resolveReplyTo(snapshot));
+      if (!editingMessageRef.current) {
+        syncDraftFromSnapshot({
+          applyingExternalDraftRef,
+          draftLinksRef,
+          inputRef,
+          inputValueRef,
+          onComposerStateChange,
+          onDraftLinksChange,
+          snapshot,
+          updateComposerRows,
+        });
+        setReplyTo(resolveReplyTo(snapshot));
+      }
       setComposerScope(snapshot.composerScope);
       setUser(snapshot.user);
     };
@@ -177,11 +188,13 @@ export function useChatSnapshotState({
     applyingExternalDraftRef,
     channelId,
     controller,
+    editingMessageRef,
     draftLinksRef,
     inputRef,
     inputValueRef,
     onComposerStateChange,
     onComposerScopeChange,
+    setEditingMessage,
     onDraftLinksChange,
     prependAnchorRef,
     setFollowMessages,

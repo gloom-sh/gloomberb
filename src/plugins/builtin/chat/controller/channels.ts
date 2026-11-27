@@ -130,12 +130,21 @@ export class ChatControllerChannels {
     this.options.emit();
   }
 
-  async openDirectChannel(target: { userId?: string; username?: string }): Promise<ChatChannel> {
-    return this.registerOpenedChannel(await apiClient.openDirectChannel(target));
-  }
-
-  async openGroupChannel(body: { userIds?: string[]; usernames?: string[]; name?: string }): Promise<ChatChannel> {
-    return this.registerOpenedChannel(await apiClient.openGroupChannel(body));
+  async openConversation(request: () => Promise<ChatChannel>, isCurrent: () => boolean): Promise<ChatChannel | null> {
+    if (!isCurrent()) return null;
+    let channel: ChatChannel;
+    try {
+      channel = await request();
+    } catch (error) {
+      if (!isCurrent()) return null;
+      throw error;
+    }
+    if (!isCurrent()) return null;
+    this.channels = normalizeChannels([...this.channels, channel]);
+    this.options.ensureChannelState(channel.id);
+    this.options.ensureOpenChannelConnections();
+    if (isCurrent()) this.options.emit();
+    return isCurrent() ? channel : null;
   }
 
   async resolveRequiredChannelId(channelId: string): Promise<string> {
@@ -163,15 +172,6 @@ export class ChatControllerChannels {
       return DEFAULT_CHAT_CHANNEL_ID;
     }
     return this.channels[0]?.id ?? DEFAULT_CHAT_CHANNEL_ID;
-  }
-
-  private registerOpenedChannel(channel: ChatChannel): ChatChannel {
-    this.channels = normalizeChannels([...this.channels, channel]);
-    this.options.ensureChannelState(channel.id);
-    this.options.ensureOpenChannelConnections();
-    this.options.emit(channel.id);
-    this.options.emit();
-    return channel;
   }
 
   private isKnownChannelId(channelId: string): boolean {
