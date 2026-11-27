@@ -114,6 +114,8 @@ export interface SqliteAccessOptions {
    * command has nothing better to do.
    */
   interactive?: boolean;
+  /** Deadline for a command's durable write only; reads and cache work keep their own retries. */
+  commandWriteWaitMs?: number;
   /**
    * The connection runs `synchronous=NORMAL`, as it does once WAL took, and
    * a write of user data switches to `FULL` for its commit. Without it the
@@ -211,6 +213,17 @@ export function createSqliteAccess(db: Database, options: SqliteAccessOptions = 
   };
 
   if (!options.interactive) {
+    const commandWriteWaitMs = options.commandWriteWaitMs;
+    const writeWithLockWait = (operationName: string, write: () => void): void => {
+      if (commandWriteWaitMs === undefined) return withSqliteBusyRetry(operationName, write);
+      const previous = db.query<{ timeout: number }, []>("PRAGMA busy_timeout").get()!.timeout;
+      db.exec("PRAGMA busy_timeout=0");
+      try {
+        withSqliteLockWait(operationName, write, commandWriteWaitMs);
+      } finally {
+        db.exec(`PRAGMA busy_timeout=${previous}`);
+      }
+    };
     return {
       readCache: (operationName, read) => trySqliteBusyOperation(operationName, read),
       writeCache: (operationName, write) => trySqliteBusyOperation(operationName, () => {
@@ -220,7 +233,7 @@ export function createSqliteAccess(db: Database, options: SqliteAccessOptions = 
       run: (operationName, statement) => withSqliteBusyRetry(operationName, statement),
       write: (operationName, write, writeOptions) => {
         try {
-          durable(() => withSqliteBusyRetry(operationName, write));
+          durable(() => writeWithLockWait(operationName, write));
         } finally {
           settle({ settled: writeOptions?.settled });
         }

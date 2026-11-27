@@ -5,10 +5,12 @@ import { restrictFileSync } from "../../utils/private-files";
 import { createSqliteAccess, type SqliteAccess } from "./access";
 import {
   CHECKPOINT_DELAY_MS,
+  CHECKPOINTER_STUCK_AFTER_MS,
   LAZY_CHECKPOINT_DELAY_MS,
   SQLITE_BACKSTOP_AUTOCHECKPOINT_PAGES,
   SQLITE_DEFAULT_AUTOCHECKPOINT_PAGES,
   startWalCheckpointer,
+  WINDOWS_CHECKPOINT_DELAY_MS,
   type WalCheckpointer,
   type WalCheckpointerOptions,
 } from "./checkpointer";
@@ -101,6 +103,8 @@ export interface SqliteDatabaseOptions {
   holdCommitsDuringFlush?: boolean;
   /** Tests only: the WAL checkpointer's thread, how long it may go silent, and what it reports. */
   checkpointer?: WalCheckpointerOptions;
+  /** Overrides the command's user-write lock deadline. */
+  commandWriteWaitMs?: number;
 }
 
 export class SqliteDatabase {
@@ -154,24 +158,31 @@ export class SqliteDatabase {
     // The app's commits leave copying the WAL into the database, and flushing
     // it, to a thread of its own, and only copy it themselves past a WAL ten
     // times the usual.
+    const holdCommitsDuringFlush = options.holdCommitsDuringFlush ?? process.platform === "win32";
     let checkpointerRunning = false;
     if (options.interactive && wal && dbPath !== ":memory:") {
       this.checkpointer = startWalCheckpointer(dbPath, () => {
         checkpointerRunning = false;
         this.connection.exec(`PRAGMA wal_autocheckpoint=${SQLITE_DEFAULT_AUTOCHECKPOINT_PAGES}`);
-      }, options.checkpointer);
+      }, {
+        ...(holdCommitsDuringFlush ? { minimumIntervalMs: CHECKPOINT_DELAY_MS } : {}),
+        ...options.checkpointer,
+      });
       if (this.checkpointer) {
         checkpointerRunning = true;
         this.connection.exec(`PRAGMA wal_autocheckpoint=${SQLITE_BACKSTOP_AUTOCHECKPOINT_PAGES}`);
       }
     }
     const checkpointer = this.checkpointer;
-    const holdCommits = checkpointer !== null && (options.holdCommitsDuringFlush ?? process.platform === "win32");
+    const holdCommits = checkpointer !== null && holdCommitsDuringFlush;
     this.access = createSqliteAccess(this.connection, {
       interactive: options.interactive,
       relaxedCommits: wal,
+      commandWriteWaitMs: options.commandWriteWaitMs ?? (onDisk && wal && process.platform === "win32" ? CHECKPOINTER_STUCK_AFTER_MS : undefined),
       ...(checkpointer ? {
-        onCommit: (kind) => checkpointer.nudge(kind === "user" ? CHECKPOINT_DELAY_MS : LAZY_CHECKPOINT_DELAY_MS),
+        onCommit: (kind) => checkpointer.nudge(kind === "user"
+          ? (holdCommits ? WINDOWS_CHECKPOINT_DELAY_MS : CHECKPOINT_DELAY_MS)
+          : LAZY_CHECKPOINT_DELAY_MS),
         flushedElsewhere: () => checkpointerRunning,
         ...(holdCommits ? { holdCommits: () => checkpointer.busy() } : {}),
       } : {}),

@@ -83,9 +83,18 @@ test("a checkpointer stuck in a checkpoint gives the app's user writes their flu
 
 // A thread that takes `ms` over each checkpoint, as a slow disk does.
 const slowCheckpointWorker = (ms: number) => `
+  let closed;
   self.onmessage = (event) => {
-    if (event.data.type === "open") postMessage({ type: "ready" });
+    if (event.data.type === "open") {
+      closed = new Int32Array(event.data.closed);
+      postMessage({ type: "ready" });
+    }
     if (event.data.type === "checkpoint") setTimeout(() => postMessage({ type: "checkpointed", ms: ${ms}, result: {} }), ${ms});
+    if (event.data.type === "close") {
+      Atomics.store(closed, 0, 1);
+      Atomics.notify(closed, 0);
+      self.close();
+    }
   };
 `;
 
@@ -106,6 +115,27 @@ test("a checkpoint asked for soon comes forward, one asked for later does not pu
     expect(checkpointer.busy()).toBe(true);
     await withDeadline(idle, 3_000, "The checkpoint never ended");
     expect(checkpointer.busy()).toBe(false);
+  } finally {
+    checkpointer.close();
+  }
+});
+
+test("early checkpoints do not increase the flush cadence when commits keep coming", async () => {
+  const starts: number[] = [];
+  const checkpointer = startWalCheckpointer("unused.db", () => {}, {
+    minimumIntervalMs: 350,
+    workerSource: slowCheckpointWorker(0),
+  })!;
+  const finished = Promise.withResolvers<void>();
+  checkpointer.onIdle(() => {
+    starts.push(performance.now());
+    if (starts.length < 3) checkpointer.nudge(5);
+    else finished.resolve();
+  });
+  try {
+    checkpointer.nudge(5);
+    await withDeadline(finished.promise, 3_000, "The early checkpoints did not run");
+    expect(starts[2]! - starts[1]!).toBeGreaterThan(225);
   } finally {
     checkpointer.close();
   }

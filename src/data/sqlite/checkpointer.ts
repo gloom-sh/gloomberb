@@ -12,6 +12,8 @@ export const SQLITE_DEFAULT_AUTOCHECKPOINT_PAGES = 1_000;
 export const SQLITE_BACKSTOP_AUTOCHECKPOINT_PAGES = 10_000;
 /** How soon after a commit of user data the WAL is copied into the database and flushed, at most once per this. */
 export const CHECKPOINT_DELAY_MS = 1_000;
+/** On Windows, leave time after the flush for ordinary writes to reuse the WAL before the next snapshot. */
+export const WINDOWS_CHECKPOINT_DELAY_MS = 500;
 /**
  * How soon after commits of cached data alone. A cache can be fetched again,
  * so nothing waits on its flush, and each flush is a window in which the
@@ -28,7 +30,7 @@ const CLOSE_WAIT_MS = 1_000;
  * checkpoint measured on Windows took under a second, and the slowest
  * flush in stall reports 8 s.
  */
-const STUCK_AFTER_MS = 30_000;
+export const CHECKPOINTER_STUCK_AFTER_MS = 30_000;
 
 const checkpointLog = debugLog.createLogger("sqlite");
 
@@ -101,6 +103,8 @@ export interface WalCheckpointResult {
 }
 
 export interface WalCheckpointerOptions {
+  /** Minimum time between checkpoint starts, even when a user write asks for an early flush. */
+  minimumIntervalMs?: number;
   /** Overrides how long the thread may owe an answer before it counts as stuck. */
   stuckAfterMs?: number;
   /** Overrides the thread's code, so a test can run one that never answers. */
@@ -159,7 +163,7 @@ export function startWalCheckpointer(
   if (typeof Worker === "undefined" || typeof Blob === "undefined" || typeof URL.createObjectURL !== "function") return null;
   let worker: Worker;
   const source = URL.createObjectURL(new Blob([options.workerSource ?? WORKER_SOURCE], { type: "application/javascript" }));
-  const stuckAfterMs = options.stuckAfterMs ?? STUCK_AFTER_MS;
+  const stuckAfterMs = options.stuckAfterMs ?? CHECKPOINTER_STUCK_AFTER_MS;
   try {
     worker = new Worker(source);
   } catch (error) {
@@ -178,6 +182,7 @@ export function startWalCheckpointer(
   let timer: ReturnType<typeof setTimeout> | null = null;
   /** When the waiting timer fires (performance.now()). */
   let timerDueAt = 0;
+  let lastStartedAt = Number.NEGATIVE_INFINITY;
   const idleListeners = new Set<() => void>();
   /** Messages the thread has yet to answer, and the clock on its next answer. */
   let owed = 0;
@@ -256,7 +261,8 @@ export function startWalCheckpointer(
 
   const schedule = (delayMs: number) => {
     if (running || failed || stopped) return;
-    const dueAt = performance.now() + delayMs;
+    const now = performance.now();
+    const dueAt = Math.max(now + delayMs, lastStartedAt + (options.minimumIntervalMs ?? 0));
     if (timer) {
       if (dueAt >= timerDueAt) return;
       clearTimeout(timer);
@@ -266,8 +272,9 @@ export function startWalCheckpointer(
       timer = null;
       if (failed || stopped) return;
       pending = false;
+      lastStartedAt = performance.now();
       running = ask({ type: "checkpoint" });
-    }, delayMs);
+    }, dueAt - now);
     (timer as { unref?: () => void }).unref?.();
   };
 
