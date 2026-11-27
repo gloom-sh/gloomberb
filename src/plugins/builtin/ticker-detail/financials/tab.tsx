@@ -22,7 +22,7 @@ import { isNotMeaningful } from "../../../../utils/growth";
 import { useRemoteUiNode } from "../../../../remote/semantic-tree";
 import { fiscalYearEndMonth } from "../../../../utils/fiscal-period";
 import { displayWidth } from "../../../../utils/format";
-import { filledPeriodPublications, filledPeriodsNote, stalePeriodNote } from "../../../../utils/financial-statements";
+import { filledPeriodPublications, filledPeriodsNote, financialStatementBasisNote, stalePeriodNote } from "../../../../utils/financial-statements";
 import {
   FINANCIAL_COL_W,
   financialLabelWidth,
@@ -40,7 +40,6 @@ import {
   financialPeriodHeaderLabel,
   formatFinancialCell,
   formatFinancialCellValue,
-  financialStatementBasisNote,
   financialStatementCurrency,
   financialStatementLimitations,
   financialStatementPeriods,

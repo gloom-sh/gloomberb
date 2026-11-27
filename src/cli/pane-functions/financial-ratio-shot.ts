@@ -55,6 +55,7 @@ interface RatioShot {
   tab: RatioTabDef;
   period: FinancialPeriod;
   model: RatioTableModel;
+  columnIds: string[];
   currencies: ReturnType<typeof createValuationCurrencyContext>;
 }
 
@@ -80,12 +81,21 @@ function ratioShot(resolved: ResolvedPaneFunction, payload: DesktopPaneShotPaylo
     ? financials.priceHistory : null;
   const fx = new Map(payload.valuationFx?.map((series) => [series.currency, { ...series, closes: new Map(series.closes) }]));
   const currencies = createValuationCurrencyContext(financials, fx);
-  return { symbol, tab, period, currencies, model: ratioTableForFinancials(financials, tab, period, history, undefined, currencies) };
+  const model = ratioTableForFinancials(financials, tab, period, history, undefined, currencies);
+  const columnIds = model.periods.map(({ statement }) => `statement:${statement.date}:${model.sourceStatements.indexOf(statement)}`);
+  return { symbol, tab, period, currencies, model, columnIds };
 }
 
 const hasRatio = ({ model }: RatioShot, index: number) => model.ratios.some((def) => (
   typeof model.cells.get(def.id)?.[index]?.value === "number"
 ));
+
+export function shotFirstRatioColumn(resolved: ResolvedPaneFunction, payload: DesktopPaneShotPayload) {
+  const shot = ratioShot(resolved, payload);
+  const period = shot?.model.periods[0];
+  if (!shot || !period) return undefined;
+  return { statement: period.statement, columnId: shot.columnIds[0]! };
+}
 
 /** Why the captured data cannot make a usable ratio shot, or null when it can. */
 export function financialRatioShotGap(resolved: ResolvedPaneFunction, payload: DesktopPaneShotPayload): string | null {
@@ -129,8 +139,6 @@ export function financialRatioShotEvidence(
   };
 }
 
-const STATEMENT_COLUMN = /^statement:(.+):(\d+)$/;
-
 /**
  * Rendered ratio cells that differ from the table the captured data computes.
  * A page that drew "no price" or "--" where the capture has a close, or drew
@@ -143,7 +151,7 @@ export function financialRatioRenderMismatches(
 ): string[] {
   const shot = ratioShot(resolved, payload);
   if (!shot) return [];
-  const { model, tab } = shot;
+  const { model, tab, columnIds } = shot;
   const rows = new Map(model.rows.map((row) => [row.id, row]));
   const mismatches: string[] = [];
   let compared = 0;
@@ -151,12 +159,10 @@ export function financialRatioRenderMismatches(
     const row = rendered.key ? rows.get(rendered.key) : undefined;
     if (!row) continue;
     for (const cell of rendered.cells) {
-      const column = STATEMENT_COLUMN.exec(cell.columnId ?? "");
-      if (!column) continue;
-      const index = Number(column[2]);
-      const period = model.periods[index];
+      if (!cell.columnId?.startsWith("statement:")) continue;
+      const index = columnIds.indexOf(cell.columnId);
       const header = cell.columnLabel.trim();
-      if (period?.statement.date !== column[1]) {
+      if (index < 0) {
         mismatches.push(`${tab.name} column ${header} is not a captured period`);
         continue;
       }

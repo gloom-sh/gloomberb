@@ -56,7 +56,7 @@ import {
   quoteChangeText,
 } from "../helpers";
 import { cliArrow, cliStyles, colorBySign, renderSection, renderStats } from "../../utils/cli-output";
-import { filledPeriodsNote, stalePeriodNote, statementHistoryNotes } from "../../utils/financial-statements";
+import { filledPeriodsNote, financialStatementBasisNote, stalePeriodNote, statementHistoryNotes } from "../../utils/financial-statements";
 import { hasEarlierGfRevenue } from "../../time-series/fundamentals/history-link";
 import { priceBasisBreaks, priceBasisFactor } from "../../market-data/market/split-price-basis";
 import { formatPerShareNumber } from "../../utils/reported-money";
@@ -3334,7 +3334,8 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
     const dates = rows.map((row) => row.date);
     const older = await hasEarlierGfRevenue(() => market.dataProvider.getTickerFinancials(listing.request.symbol, listing.request.exchange,
       { statementHistory: "extended" }), "annual", dates);
-    const historyNotes = [...stale ? [stale] : [], ...filled ? [filled] : [], ...statementHistoryNotes("annual", dates, listing.key, older)];
+    const basis = rows.length ? financialStatementBasisNote(financials) : null;
+    const historyNotes = [...basis ? [basis] : [], ...stale ? [stale] : [], ...filled ? [filled] : [], ...statementHistoryNotes("annual", dates, listing.key, older)];
     // No year to list says why, and where its quarters are, rather than "No results.".
     const empty = rows.length === 0 ? noFiscalYearsNote(listing.key, financials) : null;
     const notes = empty ? [...historyNotes, empty] : historyNotes;

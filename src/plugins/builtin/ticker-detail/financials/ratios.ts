@@ -972,7 +972,7 @@ export function ratioTableForFinancials(
   history?: readonly PricePoint[] | null,
   proceeds?: { periodEnd: string; filings: readonly OfferingFiling[] },
   currencies: ValuationCurrencyContext = createValuationCurrencyContext(financials),
-): RatioTableModel {
+): RatioTableModel & { sourceStatements: FinancialTableStatement[] } {
   const annual = byDate(financials.annualStatements);
   const quarterly = byDate(financials.quarterlyStatements);
   const { statements, notInYet, trailingNotInYet } = selectFinancialStatements(period, "income", annual, quarterly, undefined, financials.trailingStatement);
@@ -984,6 +984,7 @@ export function ratioTableForFinancials(
   const openings = ratioOpenings(period, annual, quarterly, statements.find((statement) => statement.date === "TTM"));
   return {
     ...buildRatioTableModel(tab, ratioPeriods(statements, openings, period, price, { annual, quarterly }), "all", financials.profile, proceeds),
+    sourceStatements: statements,
     notInYet,
     trailingNotInYet,
   };

@@ -621,6 +621,8 @@ export interface HeadlessRowsResult extends HeadlessPaneResultBase {
   rowUnitKey?: string;
   rowSymbolKey?: string;
   rowAsOfKey?: string;
+  /** A caveat for one record, appended to that record's CSV export_notes only. */
+  rowNote?: (row: HeadlessPaneRow) => string | undefined;
   /** The interval every row is at (`daily`), which each exported row names in `interval`. */
   interval?: string;
   /** The currency or unit every row's figures are in (`GBP`, `index points`), which each exported row names in `currency_or_unit`. */

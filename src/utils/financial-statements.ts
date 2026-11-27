@@ -12,6 +12,14 @@ export const FINANCIAL_VINTAGE_NOTICE = "Latest available statements may include
  */
 export const PERIOD_END_ROW_ID = "period-end";
 
+export function financialStatementBasisNote(
+  financials: Pick<TickerFinancials, "statementScope" | "statementReview"> | null | undefined,
+): string | null {
+  const scope = financials?.statementScope;
+  if (!scope) return null;
+  return `Statement basis: ${scope.label}.${financials.statementReview?.status === "pending" ? " New filing under review." : ""}`;
+}
+
 /** The oldest dated period of a report's columns (a TTM column has no date), or null when none has one. */
 export function oldestPeriod(dates: readonly string[]): string | null {
   return dates.filter((date) => /^\d{4}-\d{2}-\d{2}/.test(date)).map((date) => date.slice(0, 10)).sort()[0] ?? null;

@@ -1,6 +1,6 @@
 import { formatDay } from "../../../utils/day-format";
 import {
-  FINANCIAL_VINTAGE_NOTICE, fillDate, filledPeriodPublications, filledPeriodsNote, reportsHalfYearly, stalePeriodNote,
+  FINANCIAL_VINTAGE_NOTICE, fillDate, filledPeriodPublications, filledPeriodsNote, financialStatementBasisNote, reportsHalfYearly, stalePeriodNote,
   statementHistoryNotes,
 } from "../../../utils/financial-statements";
 import { hasEarlierGfRevenue } from "../../../time-series/fundamentals/history-link";
@@ -247,6 +247,26 @@ const LONG_FINANCIAL_COLUMNS: HeadlessPaneColumn[] = [
     format: (value, row) => typeof value === "number" && Number.isFinite(value) ? String(row.formatted) : String(row.gap ?? MISSING_VALUE) },
 ];
 
+type Financials = Awaited<ReturnType<typeof loadHeadlessFinancials>>;
+type FinancialReportBasis = Pick<Financials, "statementScope" | "statementReview"> & { statementBasis?: string };
+type WideFinancialReport = HeadlessRowsResult & { metadata: Record<string, unknown> & FinancialReportBasis };
+
+function financialReportBasis(financials: Financials, rowCount: number, valuation = false): FinancialReportBasis {
+  if (!rowCount) return {};
+  const { statementReview } = financials;
+  const note = financialStatementBasisNote(financials);
+  if (!note) return statementReview?.status === "pending" ? { statementReview } : {};
+  return {
+    statementScope: financials.statementScope,
+    ...(statementReview ? { statementReview } : {}),
+    statementBasis: valuation ? `${note} This basis applies to historical valuation statement inputs, including denominators.` : note,
+  };
+}
+
+function financialReportNote({ statementBasis, statementReview }: FinancialReportBasis): string | undefined {
+  return statementBasis ?? (statementReview?.status === "pending" ? "New filing under review." : undefined);
+}
+
 /**
  * FA for several tickers, or one with `--layout long`: a row per ticker, fiscal period and metric (Ticker, Period,
  * Period End, Metric, Value, Unit), each ticker's table as `fn FA <ticker>` reads it. Money is in the one unit most
@@ -300,6 +320,17 @@ async function loadLongFinancialReport(symbols: string[], options: HeadlessPaneO
   const ownNotes = tables.flatMap(({ symbol, data }) => (data.notes ?? []).filter((note) => !shared(note)).map((note) => `${symbol}: ${note}`));
   const empty = tables.filter(({ rows: wide }) => wide.length === 0);
   const first = tables[0]?.data.metadata ?? {};
+  const bases = new Map(tables.flatMap(({ symbol, data: { metadata: { statementBasis, statementScope, statementReview } } }) => (
+    statementBasis ? [[symbol, { statementBasis, statementScope, ...(statementReview ? { statementReview } : {}) }] as const] : []
+  )));
+  const unscopedReviews = new Map(tables.flatMap(({ symbol, data: { metadata: { statementBasis, statementReview } } }) => (
+    !statementBasis && statementReview?.status === "pending" ? [[symbol, statementReview] as const] : []
+  )));
+  const rowNotes = new Map(tables.flatMap(({ symbol, data }) => {
+    const note = financialReportNote(data.metadata);
+    return note ? [[symbol, note] as const] : [];
+  }));
+  const notices = [...new Set(tables.flatMap(({ data }) => (data.metadata?.notices ?? []) as string[]))];
   const nativeColumn: HeadlessPaneColumn = { key: "nativeValue", header: "Native", align: "right", unitKey: "nativeUnit",
     format: (_value, row) => String(row.nativeFormatted ?? "") };
   return {
@@ -307,6 +338,10 @@ async function loadLongFinancialReport(symbols: string[], options: HeadlessPaneO
     columns: fx ? [...LONG_FINANCIAL_COLUMNS, nativeColumn] : LONG_FINANCIAL_COLUMNS,
     textColumns: [...LONG_FINANCIAL_COLUMNS, { key: "unit", header: "Unit" }, ...(fx ? [nativeColumn] : [])],
     rowUnitKey: "unit", rowSymbolKey: "ticker", rowAsOfKey: "periodEnd",
+    ...(rowNotes.size ? {
+      rowNote: (row) => first.statement === "valuation" && row.metric === "Price" ? undefined : rowNotes.get(String(row.ticker)),
+      textNotices: [...notices, ...Array.from(rowNotes, ([symbol, note]) => symbols.length > 1 ? `${symbol}: ${note}` : note)],
+    } : {}),
     interval: options.period === "quarterly" ? "quarterly" : "annual",
     unavailableSymbols: [...loaded.unavailableSymbols, ...empty.flatMap(({ data }) => data.unavailableSymbols ?? [])],
     errors: [...loaded.errors, ...tables.flatMap(({ symbol, data }) => (data.errors ?? []).map((error) => error.startsWith(symbol) ? error : `${symbol}: ${error}`))],
@@ -315,14 +350,16 @@ async function loadLongFinancialReport(symbols: string[], options: HeadlessPaneO
       symbols, layout: "long", statement: first.statement ?? options.statement, statementLabel: first.statementLabel ?? null,
       period: options.period === "quarterly" ? "quarterly" : "annual",
       ...(fx ? { currency: target, conversions: fx.conversions } : {}),
-      notices: [...new Set(tables.flatMap(({ data }) => (data.metadata?.notices ?? []) as string[]))],
+      notices,
+      ...(bases.size ? { statementBasisByTicker: Object.fromEntries(bases) } : {}),
+      ...(unscopedReviews.size ? { statementReviewByTicker: Object.fromEntries(unscopedReviews) } : {}),
       limitations: [...new Set(tables.flatMap(({ data }) => (data.metadata?.limitations ?? []) as string[]))],
     },
   };
 }
 
 /** One ticker's statement or ratio table, its periods as columns. */
-async function loadFinancialReport(symbol: string, options: HeadlessPaneOptionValues, ctx: HeadlessPaneContext): Promise<HeadlessRowsResult> {
+async function loadFinancialReport(symbol: string, options: HeadlessPaneOptionValues, ctx: HeadlessPaneContext): Promise<WideFinancialReport> {
   {
     const financials = await loadHeadlessFinancials(ctx, symbol);
     const requestedPeriod = options.period === "quarterly" ? "quarterly" : "annual";
@@ -421,9 +458,14 @@ async function loadFinancialReport(symbol: string, options: HeadlessPaneOptionVa
       requestedPeriod === "quarterly" ? newerQuarterRelease(ctx, symbol, financials, periodDates[0]) : null,
     ]);
     const missing = rows.length ? null : await missingPeriodsError(ctx, symbol, financials, requestedPeriod, hasRequestedStatements, options.statement);
+    const basis = financialReportBasis(financials, rows.length);
+    const basisNote = financialReportNote(basis);
+    const notices = rows.length ? [FINANCIAL_VINTAGE_NOTICE, financialGrowthNotice(requestedPeriod, table?.statements ?? []),
+      ...(shareBasisNotice ? [shareBasisNotice] : [])] : [];
     return {
       rows, columns, unavailableSymbols: rows.length ? [] : [symbol],
       ...(missing ? { errors: [missing] } : {}),
+      ...(basisNote ? { rowNote: () => basisNote, textNotices: [...notices, basisNote] } : {}),
       // Each exported row names its unit, the statements' period and the newest period end it runs to.
       rowUnitKey: "unit", rowAsOfKey: "periodEnd", interval: requestedPeriod,
       // The report closes with how old its latest period is, how far back its periods go, and how to read further.
@@ -436,8 +478,8 @@ async function loadFinancialReport(symbol: string, options: HeadlessPaneOptionVa
         period: requestedPeriod, growthBasis: requestedPeriod === "quarterly" ? "QoQ" : "YoY", columns: dates,
         shareBasis: shareBases.size === 1 ? [...shareBases][0] ?? null : null,
         ...(receiptPeriods.length > 0 ? { adrRatio: financials.fundamentals?.adrRatio ?? financials.quote?.adrRatio ?? null } : {}),
-        notices: rows.length ? [FINANCIAL_VINTAGE_NOTICE, financialGrowthNotice(requestedPeriod, table?.statements ?? []),
-          ...(shareBasisNotice ? [shareBasisNotice] : [])] : [],
+        ...basis,
+        notices,
         limitations: financialStatementLimitations(financials),
         dateProvenance: financialStatementDateNotice(table?.statements ?? []),
       },
@@ -558,7 +600,7 @@ async function loadRatioReport(
   tab: RatioTabDef,
   period: "annual" | "quarterly",
   hasRequestedStatements: boolean,
-) {
+): Promise<WideFinancialReport> {
   const statements = hasRequestedStatements && tab.key === "valuation" ? ratioStatements(financials, period) : [];
   const oldest = oldestRatioPeriodEnd(statements);
   const [history, fx] = oldest ? await Promise.all([
@@ -627,9 +669,16 @@ async function loadRatioReport(
     : !runway && runwayPeriodEnd ? await reportOfferingNote(ctx, symbol, runwayPeriodEnd) : null;
   const periodDates = dates.map(({ date }) => date);
   const missing = rows.length ? null : await missingPeriodsError(ctx, symbol, financials, period, hasRequestedStatements, tab.key);
+  const basis = financialReportBasis(financials, rows.length, tab.key === "valuation");
+  const basisNote = financialReportNote(basis);
+  const notices = rows.length ? [FINANCIAL_VINTAGE_NOTICE] : [];
   return {
     rows, columns, unavailableSymbols: rows.length ? [] : [symbol],
     ...(missing ? { errors: [missing] } : {}),
+    ...(basisNote ? {
+      rowNote: (row) => tab.key === "valuation" && row.kind === "input" && row.label === "Price" ? undefined : basisNote,
+      textNotices: [...notices, basisNote],
+    } : {}),
     ...(tab.key === "valuation" && hasRequestedStatements && !history?.length ? { complete: false } : {}),
     // Each exported row names its unit, the statements' period and the newest period end it runs to.
     rowUnitKey: "unit", rowAsOfKey: "periodEnd", interval: period,
@@ -651,7 +700,8 @@ async function loadRatioReport(
       symbol, name: financials.quote?.name ?? symbol, currency: statementCurrency ?? null,
       quoteCurrency: financials.quote?.currency ?? null,
       statement: tab.key, statementLabel: tab.name, period, columns: dates,
-      notices: rows.length ? [FINANCIAL_VINTAGE_NOTICE] : [],
+      ...basis,
+      notices,
       limitations: financialStatementLimitations(financials),
     },
   };

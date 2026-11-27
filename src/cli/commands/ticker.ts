@@ -9,7 +9,7 @@ import {
   withFinancialEnterpriseValue,
 } from "../../utils/fundamentals";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
-import { halfYearGrowthPeriod } from "../../utils/financial-statements";
+import { financialStatementBasisNote, halfYearGrowthPeriod } from "../../utils/financial-statements";
 import { servedRatesNotMeaningful, type ServedRate } from "../../utils/served-rates";
 import { NOT_MEANINGFUL_TEXT } from "../../utils/growth";
 import { burnsCash, cashRunway, formatRunwayMonths, offeringsAfter, runwayMethod, runwayOfferingNote, type CashRunway, type OfferingFiling, type RunwayEstimate } from "../../utils/cash-runway";
@@ -1600,6 +1600,8 @@ export async function buildTickerReport({
     const offering = burnsCash(runway) ? runwayOfferingNote(offerings, runway.periodEnd, runway.currency) : null;
     if (offering) lines.push(cliStyles.muted(offering));
   }
+  const basis = latestAnnual || latestQuarter ? financialStatementBasisNote(financials) : null;
+  if (basis) lines.push(cliStyles.muted(basis));
   // The statements stop a quarter short of the results the company has released.
   if (statementFilings?.resultsRelease && (latestAnnual || latestQuarter)) lines.push(cliStyles.muted(resultsReleaseText(statementFilings.resultsRelease)));
 
@@ -1687,6 +1689,9 @@ function buildTickerStructuredData({
   const priced = atLivePriceEarnings(financials);
   const computedRunway = cashRunway(financials, offerings);
   const runway = burnsCash(computedRunway) ? computedRunway : null;
+  const latestAnnual = latestFinancialPeriod(financials.annualStatements, row => row.date) ?? null;
+  const latestQuarter = latestFinancialPeriod(financials.quarterlyStatements, row => row.date) ?? null;
+  const statementBasis = latestAnnual || latestQuarter ? financialStatementBasisNote(financials) : null;
   const yieldIndex = isYieldIndexSymbol(quote?.symbol ?? symbol);
   const session = getQuoteSessionFields(quote);
   const printedAt = session.extendedSession && quote ? extendedPrintTime(quote) : null;
@@ -1747,8 +1752,8 @@ function buildTickerStructuredData({
     ...bondFund ? { bondFund } : {},
     profile: financials.profile,
     financialCurrency: financials.financialCurrency ?? null,
-    latestAnnual: latestFinancialPeriod(financials.annualStatements, row => row.date) ?? null,
-    latestQuarter: latestFinancialPeriod(financials.quarterlyStatements, row => row.date) ?? null,
+    latestAnnual,
+    latestQuarter,
     annualStatementCount: financials.annualStatements.length,
     quarterlyStatementCount: financials.quarterlyStatements.length,
     // Months of cash at the latest quarter's balance sheet, at its operating burn and the trailing year's,
@@ -1759,6 +1764,12 @@ function buildTickerStructuredData({
     ...ipo ? { ipo: { ...ipo.deal, lockupNews: ipo.news } } : {},
     // The form and filed date of the latest periods' filings, and a newer quarter's results released before its statements.
     statementFilings,
+    ...(statementBasis ? { statementContext: {
+      appliesTo: [...(latestAnnual ? ["latestAnnual"] : []), ...(latestQuarter ? ["latestQuarter"] : [])],
+      statementBasis,
+      statementScope: financials.statementScope,
+      ...(financials.statementReview ? { statementReview: financials.statementReview } : {}),
+    } } : {}),
     notes,
     recentNews: recentNews.map((item) => ({
       title: item.title,

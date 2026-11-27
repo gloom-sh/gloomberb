@@ -1,6 +1,7 @@
 import { withBalanceSheetRate } from "../../../market-data/quotes/balance-sheet-rate";
 import { formatPriceEarnings, NOT_MEANINGFUL, PRICE_EARNINGS_NOTICE } from "../../../utils/price-earnings";
 import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
+import { financialStatementBasisNote } from "../../../utils/financial-statements";
 import type { HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneDefinition } from "../../../types/headless";
 import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-data/market/status";
 import { MISSING_VALUE, formatCompact, formatCurrency, formatLevelPercent, formatNumber, formatPercent, formatPercentRaw } from "../../../utils/format";
@@ -233,6 +234,14 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
     const targets = askedCurrency && fx && targetCurrencies.length > 0
       ? convertTargets(extraRows, capCurrency, new Map([...fx.legs, ...targetFx?.legs ?? []])) : null;
     const rows = targets?.rows ?? extraRows;
+    const bases = new Map(rows.flatMap((row) => {
+      const data = financials.get(row.symbol);
+      const note = financialStatementBasisNote(data);
+      const metrics = [...row.operatingMarginPeriodEnd ? ["fiscal-year operating margin"] : [], ...row.fcfYieldThrough ? ["filed FCF yield input"] : []];
+      if (!note || !metrics.length) return [];
+      return [[row.symbol, { statementScope: data?.statementScope, ...(data?.statementReview ? { statementReview: data.statementReview } : {}),
+        statementBasis: `${note} Applies to: ${metrics.join(", ")}.` }] as const];
+    }));
     const conversions = [...converted?.conversions ?? [], ...targets?.conversions ?? []]
       .filter((conversion, index, all): conversion is CapConversion => all.findIndex((other) => other.from === conversion.from) === index);
 
@@ -270,6 +279,16 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
     const textColumns = [...QUOTE_COLUMNS, ...extendedSessions.map(extendedColumn),
       ...VALUATION_COLUMNS.map((column) => column.key === "revenueGrowth" ? { ...column, header: growthHeader } : column)];
     const added = extraIds.length > 0 ? extraColumns(extraIds) : null;
+    const notices = [
+      ...rows.some((row) => row.notMeaningful.trailingPE || row.notMeaningful.forwardPE
+        || Object.values(row.reportedMultiples).some((value) => value != null && value <= 0)) ? [PRICE_EARNINGS_NOTICE] : [],
+      ...rows.flatMap((row) => row.evSalesUnavailable ? [`${row.symbol}: ${row.evSalesUnavailable}`] : []),
+      ...rows.flatMap((row) => row.evSalesNote ? [`${row.symbol}: ${row.evSalesNote}`] : []),
+      ...rows.flatMap((row) => row.marketCapNote ? [`${row.symbol}: ${row.marketCapNote}`] : []),
+      ...rows.flatMap((row) => row.marketCapWithheld ? [`${row.symbol}: ${row.marketCapWithheld}`] : []),
+      ...rows.flatMap((row) => (["revenueGrowth", "operatingMargin"] as const).flatMap((key) => row.notMeaningful[key]
+        ? [`${row.symbol}: ${key === "revenueGrowth" ? "revenue growth" : "operating margin"} N/M, ${row.notMeaningful[key]}.`] : [])),
+    ];
     return {
       rows, unavailableSymbols, errors, complete: unavailableSymbols.length === 0 && errors.length === 0,
       ...(selection ? { symbols } : {}),
@@ -279,12 +298,17 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
       rowSymbolKey: "symbol",
       rowUnitKey: "currency",
       rowAsOfKey: "quoteAsOf",
+      ...(bases.size ? {
+        rowNote: (row) => bases.get(String(row.symbol))?.statementBasis,
+        textNotices: [...notices, ...Array.from(bases, ([symbol, { statementBasis }]) => `${symbol}: ${statementBasis}`)],
+      } : {}),
       ...(notes.length > 0 ? { notes } : {}),
       ...(warnings.length > 0 ? { warnings } : {}),
       ...(footnote ? { freshness: { note: footnote } } : {}),
       metadata: {
         staleSymbols,
         staleFundamentalsSymbols,
+        ...(bases.size ? { statementBasisByTicker: Object.fromEntries(bases) } : {}),
         ...(selection ? { peerSelection: selection } : {}),
         ...(converted ? { marketCapConversion: { currency: capCurrency, rates: converted.conversions,
           basis: "marketCap is converted into one currency (the asked one, else the peers' own when they share one, else the base currency) at each currency's US dollar rate, the rate the app's converted totals use; marketCapNative and marketCapNativeCurrency keep the cap as served." } } : {}),
@@ -292,16 +316,7 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
         quoteBasis: "quoteAsOf dates Last; extendedUpdatedAt dates the separate extended print. Stale quote fields are excluded from comparison; reportedQuote retains the source observation.",
         priceBasis: "price, change and changePercent are the regular session: after the close, its close and that close's move. A pre-market, after-hours or overnight print is in extendedPrice, extendedChange and extendedChangePercent, measured from that close (extendedMark when it is a bid and ask midpoint). marketCap, the P/E multiples, evSales (through the equity part of the enterprise value) and fcfYield are measured at that regular session price.",
         fundamentalsBasis: "Provider multiples and operating metrics retain independent fundamentalsProvenance. Retrieval time does not establish the valuation date.",
-        notices: [
-          ...rows.some((row) => row.notMeaningful.trailingPE || row.notMeaningful.forwardPE
-            || Object.values(row.reportedMultiples).some((value) => value != null && value <= 0)) ? [PRICE_EARNINGS_NOTICE] : [],
-          ...rows.flatMap((row) => row.evSalesUnavailable ? [`${row.symbol}: ${row.evSalesUnavailable}`] : []),
-          ...rows.flatMap((row) => row.evSalesNote ? [`${row.symbol}: ${row.evSalesNote}`] : []),
-          ...rows.flatMap((row) => row.marketCapNote ? [`${row.symbol}: ${row.marketCapNote}`] : []),
-          ...rows.flatMap((row) => row.marketCapWithheld ? [`${row.symbol}: ${row.marketCapWithheld}`] : []),
-          ...rows.flatMap((row) => (["revenueGrowth", "operatingMargin"] as const).flatMap((key) => row.notMeaningful[key]
-            ? [`${row.symbol}: ${key === "revenueGrowth" ? "revenue growth" : "operating margin"} N/M, ${row.notMeaningful[key]}.`] : [])),
-        ],
+        notices,
         multipleBasis: "Comparable P/E fields require a positive finite multiple over positive EPS, and evSales an enterprise value above zero; revenueGrowth needs revenue above zero a year earlier and operatingMargin revenue above zero. notMeaningful says why one is null, and reportedMultiples preserves the finite provider P/E values.",
         marketCapBasis: "Market caps retain their own currency and source. Fundamentals retrieval time is not a valuation date; quote timestamps do not date fallback caps.",
       },

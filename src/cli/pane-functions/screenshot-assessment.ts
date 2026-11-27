@@ -21,6 +21,7 @@ import {
   shotGraphKind,
   shotSemanticRowCount,
   shotExpectedText,
+  shotFinancialText,
 } from "./screenshot-data-evidence";
 import { shotExpectedChart, chartEvidenceMismatchesFor, intradayChartEvidenceMismatchesFor } from "./screenshot-chart-evidence";
 
@@ -144,12 +145,16 @@ export function assessPaneScreenshot(
   // A view that drew part of its data (OVDV with 4 of 7 expiries ready) says what it left out.
   const gaps = usesLiveDomEvidence ? null : paneEvidenceGaps(resolved, payload, render.semanticUi);
   const complete = unavailableSymbols.length === 0 && figureGaps.length === 0 && !gaps;
-  const expectedText = shotExpectedText(resolved, symbols, payload);
+  const financial = shotFinancialText(resolved, payload);
+  const expectedText = shotExpectedText(resolved, symbols, payload, financial);
   // A text field's value is on screen too (OVME's Underlying SPY), though not in the page's text. It is read
   // for this check alone: what a reader typed in a field never reaches the result, its JSON or its print.
   const { fieldValues, ...shownRender } = render;
   const normalizedVisibleText = [render.visibleText, ...fieldValues ?? []].join(" ").toLowerCase();
-  const missingExpectedText = expectedText.filter((value) => !shotShowsText(normalizedVisibleText, value));
+  const periodEnd = financial?.periodEnd;
+  const periodCell = periodEnd && render.rows.find(({ key }) => key === PERIOD_END_ROW_ID)?.cells.find((cell) => cell.columnId === periodEnd.columnId);
+  const missingExpectedText = expectedText.filter((value) => value === periodEnd?.text
+    ? periodCell?.text.trim() !== value : !shotShowsText(normalizedVisibleText, value));
   const expectedSelections = shotExpectedSelections(resolved);
   const missingExpectedSelections = missingActiveTabSelections(
     render.semanticUi,

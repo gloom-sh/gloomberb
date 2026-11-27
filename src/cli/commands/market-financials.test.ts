@@ -113,6 +113,18 @@ test("valuation --csv is one clean table; financials --csv writes raw amounts un
   );
 });
 
+test("financials labels its scoped annual rows without labeling the current valuation", async () => {
+  const statementScope = { registrant: "0002128626", basis: "predecessor" as const, label: "Consolidated accounting predecessor" };
+  const financials = { ...FINANCIALS, statementScope, statementReview: { status: "pending" as const, reviewedThrough: "2026-11-12" },
+    annualStatements: FINANCIALS.annualStatements.map((row) => ({ ...row, statementScope })) };
+  const note = "Statement basis: Consolidated accounting predecessor. New filing under review.";
+  expect(await run("financials", [], "csv", financials)).toContain(`# note: ${note}`);
+  const exported = JSON.parse((await run("financials", [], "json", financials)).join("\n"));
+  expect(exported.metadata.notes).toContain(note);
+  expect(exported.data.annualStatements).toEqual(financials.annualStatements);
+  expect((await run("valuation", [], "csv", financials)).join("\n")).not.toContain("Statement basis:");
+});
+
 test("financials with no fiscal year to list says why and where the quarters are, never a bare \"No results.\"", async () => {
   // O8A:FWB2 had one quarter on record (to 2026-05-31) and no full year reported.
   const quarterOnly: TickerFinancials = { ...FINANCIALS, quote: { ...FINANCIALS.quote!, symbol: "O8A:FWB2" }, annualStatements: [],
