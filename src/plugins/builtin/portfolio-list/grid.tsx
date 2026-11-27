@@ -1,8 +1,9 @@
-import { useCallback, useId, useMemo, useRef } from "react";
+import { useCallback, useId, useMemo, useRef, type ReactNode } from "react";
 import {
   buildMetricTreemapNavigationTiles,
   findMetricTreemapNeighbor,
   MetricTreemapSurface,
+  PaneStatusBody,
   useTickerRowPaneMenu,
   type MetricTreemapDirection,
   type MetricTreemapItem,
@@ -198,6 +199,7 @@ export function PortfolioGrid({
   focused,
   width,
   height,
+  emptyActions,
 }: {
   sortedTickers: TickerRecord[];
   financialsMap: Map<string, TickerFinancials>;
@@ -210,6 +212,8 @@ export function PortfolioGrid({
   focused?: boolean;
   width: number;
   height: number;
+  /** Buttons under the empty grid's title, as the empty table shows them. */
+  emptyActions?: ReactNode;
 }) {
   const { cellWidthPx = 8, cellHeightPx = 18, nativePaneChrome } = useUiCapabilities();
   const chartWidth = Math.max(1, width - 2);
@@ -320,6 +324,12 @@ export function PortfolioGrid({
     }
   }, { enabled: focused, scope: `portfolio-grid:${scopeId}` });
 
+  const emptyTitle = isPortfolioTab ? "No portfolio positions" : "No watchlist tickers";
+  // An empty map with something to offer is a pane's empty state, its actions under the title.
+  if (sortedTickers.length === 0 && emptyActions) {
+    return <PaneStatusBody empty emptyTitle={emptyTitle} actions={emptyActions} width={width} height={height} />;
+  }
+
   return (
     <MetricTreemapSurface
       items={items}
@@ -328,7 +338,7 @@ export function PortfolioGrid({
       selectedId={cursorSymbol}
       onSelect={(item) => setCursorSymbol(item.data.metadata.ticker)}
       onActivate={(item) => onRowActivate(item.data)}
-      emptyStateTitle={isPortfolioTab ? "No portfolio positions" : "No watchlist tickers"}
+      emptyStateTitle={emptyTitle}
     />
   );
 }

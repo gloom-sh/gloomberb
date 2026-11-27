@@ -2278,6 +2278,7 @@ gloom fundamentals MUB --tax-rate 40.8                      # a muni fund's tax-
 A brokerage Gloom does not sync (Fidelity, Schwab, Vanguard, E*TRADE, Merrill, a 401(k) site) can still fill a portfolio: download the positions or holdings page as a CSV and import it. Each symbol becomes a position with its shares, its cost per share and, when the file has one, its purchase date.
 
 - **In `PF`:** open the pane menu (`.`, or `...` in the title bar) and choose **Import Positions…**. The desktop and the web open the file dialog; the terminal asks for the file's path. A preview lists the positions the file adds, with their shares, average cost, purchase date and what changes (new, the shares held before, a new cost, lots made one), and the rows left out with the reason; past 100 of either it counts the rest. Nothing is saved until **Import**. On a manual portfolio's tab, the preview also asks whether the file makes a new portfolio, merges into that one or replaces what it holds (`←` and `→`). A replace asks once more before it saves: `y` or the **Replace** button goes ahead, Enter goes back.
+- **In an empty portfolio:** a manual portfolio with no holdings shows **Import CSV** under its empty table or grid (Enter presses it), the same import, and **Import from Broker**, which opens **Add Broker Account** in Brokers ([Broker position sync](#broker-position-sync)), in the terminal and the desktop app. Watchlists, broker and team portfolios, and setup do not offer them.
 - **In a shell:** `portfolio import <file>`, beside the 13F import below.
 
 ```bash

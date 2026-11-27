@@ -1494,6 +1494,8 @@ export const zhTW: Record<string, string> = {
   "Create an account or log in to sync layouts and portfolios, and to use Chat across devices. You can also continue locally.": "建立帳戶或登入以同步版面和投資組合，並在不同裝置上使用聊天。你也可以繼續在本機使用。",
   "Help is always available from the desktop header or the ? key.": "說明隨時可從桌面標題列或按 ? 開啟。",
   "Import positions from {broker}": "從 {broker} 匯入持倉",
+  "Import CSV": "匯入 CSV",
+  "Import from Broker": "從券商匯入",
   "Imported {count} positions from {broker}": "已從 {broker} 匯入 {count} 筆持倉",
   "Importing...": "匯入中...",
   "Just an email and password": "只需電子郵件和密碼",

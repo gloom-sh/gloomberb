@@ -1494,6 +1494,8 @@ export const ja: Record<string, string> = {
   "Create an account or log in to sync layouts and portfolios, and to use Chat across devices. You can also continue locally.": "アカウントを作成またはログインすると、レイアウトとポートフォリオを同期し、複数のデバイスでチャットを使えます。ローカルで続けることもできます。",
   "Help is always available from the desktop header or the ? key.": "ヘルプはデスクトップのヘッダーまたは ? キーからいつでも開けます。",
   "Import positions from {broker}": "{broker} からポジションを取り込む",
+  "Import CSV": "CSV を取り込む",
+  "Import from Broker": "証券会社から取り込む",
   "Imported {count} positions from {broker}": "{broker} から {count} 件のポジションを取り込みました",
   "Importing...": "取り込み中...",
   "Just an email and password": "メールアドレスとパスワードだけ",

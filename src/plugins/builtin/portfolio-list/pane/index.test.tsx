@@ -565,6 +565,85 @@ describe("PortfolioListPane cash and margin UI", () => {
     expect(frame.match(/\+ ticker/g)).toHaveLength(1);
   });
 
+  /** A Brokers pane, which the terminal and the desktop have and the web app does not; `workflows` records what it is asked to start. */
+  async function installBrokerAddRegistry(workflows: string[] = []) {
+    const registry = installQuickAddRegistry(createQuickAddProvider(true));
+    await registry.register({ id: "test-brokers", name: "Brokers", version: "1.0.0", panes: [{ id: "brokers", name: "Brokers", component: () => null, defaultPosition: "right" }] });
+    registry.bindHost({ openBuiltInWorkflow: (actionId) => { workflows.push(actionId); } });
+  }
+
+  async function renderEmptyBook(config: AppConfig, collectionId: string) {
+    let menu: string[] = [];
+    await tui.render(<PaneFooterProvider>{(footer) => {
+      menu = footer.menu.flatMap((item) => "label" in item && item.label ? [item.label] : []);
+      return <Box flexDirection="column">
+        <PortfolioHarness config={config} collectionId={collectionId} ticker={makeTicker({ portfolios: [], watchlists: [], positions: [] })} paneHeight={12} />
+        <PaneFooterBar footer={footer} focused width={100} />
+        <PaneFooterKeys paneId={TEST_PANE_ID} footer={footer} focused />
+      </Box>;
+    }}</PaneFooterProvider>, { width: 100, height: 14 });
+    await flushFrame();
+    return { frame: tui.frame(), menu: () => menu };
+  }
+
+  const IMPORT_ACTIONS = ["Import CSV", "Import from Broker"];
+  test.each<{ name: string; collectionId: string; grid?: boolean; brokers?: "on" | "none" | "off"; setup?: boolean; offers: string[] }>([
+    { name: "a manual portfolio offers the file import and a broker", collectionId: "main", offers: IMPORT_ACTIONS },
+    { name: "its grid offers the same", collectionId: "main", grid: true, offers: IMPORT_ACTIONS },
+    { name: "with no Brokers pane, as in the web app, only the file import", collectionId: "main", brokers: "none", offers: ["Import CSV"] },
+    { name: "with the Broker plugin off, only the file import", collectionId: "main", brokers: "off", offers: ["Import CSV"] },
+    { name: "a watchlist offers neither", collectionId: "watchlist", offers: [] },
+    { name: "a broker's portfolio offers neither", collectionId: "broker:ibkr-live:DU12345", offers: [] },
+    { name: "a team's portfolio offers neither", collectionId: "team:t1:p1", offers: [] },
+    { name: "during setup, neither", collectionId: "main", setup: true, offers: [] },
+  ])("an empty book: $name", async ({ collectionId, grid = false, brokers = "on", setup = false, offers }) => {
+    if (brokers === "none") installQuickAddRegistry(createQuickAddProvider(true));
+    else await installBrokerAddRegistry();
+    const base = collectionId.startsWith("broker:") ? createPortfolioConfig(collectionId) : createManualCollectionConfig(collectionId);
+    const config: AppConfig = {
+      ...base,
+      onboardingComplete: !setup,
+      disabledPlugins: brokers === "off" ? ["test-brokers"] : [],
+      portfolios: [...base.portfolios, { id: "team:t1:p1", name: "Desk", currency: "USD", teamId: "t1" }],
+    };
+    if (grid) config.layout.instances[0]!.settings = { viewMode: "grid" };
+    const { frame, menu } = await renderEmptyBook(config, collectionId);
+    expect(frame).toContain(grid ? "No portfolio positions" : "No tickers.");
+    for (const action of IMPORT_ACTIONS) {
+      if (offers.includes(action)) expect(frame).toContain(action);
+      else expect(frame).not.toContain(action);
+    }
+    // The pane menu lists the file import once: as the empty state's button, or as its own entry.
+    const fileImports = menu().filter((label) => label === "Import CSV" || label === "Import Positions…");
+    expect(fileImports).toEqual(offers.length > 0 ? ["Import CSV"] : ["Import Positions…"]);
+  });
+
+  test("an empty book's Enter starts the file import, and Import from Broker starts Add Broker Account", async () => {
+    const workflows: string[] = [];
+    await installBrokerAddRegistry(workflows);
+    const { frame } = await renderEmptyBook({ ...createManualCollectionConfig("main"), onboardingComplete: true }, "main");
+    // The first button answers Enter, and says so.
+    expect(frame).toMatch(/Import CSV +Enter/);
+
+    tui.setup().mockInput.pressEnter();
+    const dialog = await tui.waitForFrameToContain("~/Downloads/Positions.csv");
+    expect(dialog).toContain("Import Positions");
+    expect(workflows).toEqual([]);
+    await act(async () => {
+      tui.setup().mockInput.pressEscape();
+      await tui.setup().renderOnce();
+    });
+    const closed = await tui.waitForFrameToExclude("~/Downloads/Positions.csv");
+
+    const rows = closed.split("\n");
+    const row = rows.findIndex((line) => line.includes("Import from Broker"));
+    await act(async () => {
+      await tui.setup().mockMouse.click(rows[row]!.indexOf("Import from Broker") + 2, row);
+      await tui.setup().renderOnce();
+    });
+    expect(workflows).toEqual(["add-broker-account"]);
+  });
+
   test("quick-add validates and adds an exact watchlist ticker", async () => {
     const config = createManualCollectionConfig("watchlist");
     const notifications: Array<{ type?: string; body: string }> = [];
