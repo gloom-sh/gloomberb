@@ -30,6 +30,21 @@ test("EE and EVT keep calendar EPS and count without borrowing quarter growth in
 });
 
 describe("corporate actions headless model", () => {
+  test("EVT and EE Reported print the quarter's release revenue before its statement is available", async () => {
+    const symbol = "DELL", fiscalPeriod = "2026-10";
+    const marketData = createTestDataProvider({
+      getCorporateActions: async () => ({ symbol, dividends: [], splits: [], earnings: [{ date: "2026-11-24", dateStatus: "reported", dateType: "announcement",
+        fiscalPeriod, epsActual: 9.45, currency: "USD", epsBasis: "company-adjusted", epsActualSource: "filing",
+        reportedRevenue: { fiscalPeriod, periodKind: "quarter", source: "press-release", currency: "USD", amount: 54_937_000_000 } }] }),
+      getTickerFinancials: async () => ({ annualStatements: [{ date: "2026-01-30" }], quarterlyStatements: [], priceHistory: [] }),
+      getAnalystResearch: async () => null as never,
+    });
+    for (const route of [createEventsHeadless(), createEarningsEstimatesHeadless()]) {
+      const result = await route.load({ ...args, rawArgument: symbol, argument: symbol, symbols: [symbol], options: { view: "reported" } }, { marketData } as HeadlessPaneContext);
+      expect(result.textRows).toContainEqual(expect.objectContaining({ date: "2026-11-24", eps: "9.45 USD", revenue: "54.94B USD" }));
+      expect(result.rows).toContainEqual(expect.objectContaining({ period: "Q3 FY2027", epsBasis: "company-adjusted", qRevenue: 54_937_000_000 }));
+    }
+  });
   test("named ETF actions disqualify calendar EPS even without financials and keep splits and uncertain payout gaps", async () => {
     const symbol = "NIFTYBEES.NS";
     const fundArgs = { ...args, rawArgument: symbol, argument: symbol, symbols: [symbol] };

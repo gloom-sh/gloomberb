@@ -7,6 +7,33 @@ import { NOT_MEANINGFUL_TONE } from "../../../utils/growth";
 import { fiscalPeriodText } from "../earnings/fiscal-quarter";
 import { dividendYearDetail, dividendYears, splitMarks } from "./event-charts";
 import { latestTrailingStatement } from "../../../time-series/fundamentals";
+import { resolveEarningsActions } from "../shared/earnings-calendar";
+
+test("only the reported event's own quarterly release can fill a missing statement amount", () => {
+  const fiscalPeriod = "2026-10";
+  const revenue = { amount: 54_937_000_000, currency: "USD", fiscalPeriod, periodKind: "quarter", source: "press-release" } as const;
+  const event = { date: "2026-11-24", dateType: "announcement", dateStatus: "reported", fiscalPeriod, epsActual: 9.45, reportedRevenue: revenue } as const;
+  const quarters = ["2025-10-31", "2026-01-30", "2026-04-30", "2026-07-31"].map((date) => ({ date, totalRevenue: 100, currency: "USD" }));
+  const rows = (change = {}, quarterlyStatements = quarters) => buildEventRows({ symbol: "DELL", currency: "USD", dividends: [], splits: [], earnings: [{ ...event, ...change }] }, null, { quarterlyStatements }, "USD");
+  const reported = (change = {}, statements = quarters) => rows(change, statements).find((row) => row.status === "Earnings")!;
+  expect(reported()).toMatchObject({ qRevenue: revenue.amount, revenueCurrency: "USD", qEps: 9.45 });
+  expect(reported({ reportedRevenue: { ...revenue, currency: "CNY" } }, [])).toMatchObject({ qRevenue: revenue.amount, revenueCurrency: "CNY" });
+  for (const totalRevenue of [0, 100]) expect(reported({}, [...quarters, { date: "2026-10-30", totalRevenue, currency: "EUR" }]))
+    .toMatchObject({ qRevenue: totalRevenue, revenueCurrency: "EUR" });
+  for (const change of [{ fiscalPeriod: "2026-07" }, { fiscalPeriod: undefined }, { dateStatus: "projected" }, { epsActual: undefined, epsEstimate: 6.55 }])
+    expect(reported(change, []).qRevenue).toBeUndefined();
+  for (const changed of [{ fiscalPeriod: "2026-09" }, ...["half", "year", "ytd"].map((periodKind) => ({ periodKind })), { currency: undefined },
+    { currency: "USD/EUR" }, { source: "estimate" }, { amount: Infinity }, { amount: null }])
+    expect(reported({ reportedRevenue: { ...revenue, ...changed } }).qRevenue).toBeUndefined();
+  const ttm = (change = {}) => rows(change).find((row) => row.status === "TTM");
+  expect(ttm()).toMatchObject({ annualRevenue: 400 });
+  expect(ttm()).toEqual(ttm({ reportedRevenue: undefined }));
+  const [moved] = resolveEarningsActions([{ ...event, dateStatus: "projected", epsActual: undefined }], {
+    symbol: "DELL", earningsDate: new Date("2026-11-30T00:00:00Z"), epsActual: 1,
+  } as Parameters<typeof resolveEarningsActions>[1], "2026-11-23");
+  expect(moved).toMatchObject({ date: "2026-11-30", epsActual: 1 });
+  expect(moved).not.toHaveProperty("reportedRevenue");
+});
 
 test("listing earnings keep their own report and never acquire a predecessor's sales or trailing year", () => {
   const predecessor = { basis: "predecessor" as const, entity: "corteva-consolidated", registrant: "0002128626", label: "Corteva consolidated (accounting predecessor)" };
