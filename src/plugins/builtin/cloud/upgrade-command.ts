@@ -23,9 +23,7 @@ export function registerCloudUpgradeCommand(ctx: GloomPluginContext): void {
         ctx.showPane("account-management");
       };
       if (!apiClient.isSignedIn()) {
-        // A mounted prompt shows what Pro is before it asks for an account, as its own buttons do.
-        if (openCloudUpgradeUrl("command")) return;
-        // Without one, upgrading needs an account first; continue to checkout once signed in.
+        // Upgrading needs an account first; continue to checkout once signed in.
         if (!requestAuthDialog({ mode: "signup", onSignedIn: openUpgrade, checkout: true })) {
           ctx.openCommandBar("Sign Up");
         }

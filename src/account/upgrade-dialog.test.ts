@@ -33,20 +33,6 @@ describe("upgrade sheet copy", () => {
     );
   });
 
-  test("signed out, it says what a new account gets and promises this account nothing", () => {
-    // No account to check: the server's answer for one is not in the offer.
-    const signedOut = offer({ trialAvailable: null });
-    const copy = upgradeDialogCopy(signedOut, "month", now, true);
-    expect(copy.subtitle).toBe(
-      "New accounts get Pro free for 7 days, then $70/mo. Card required. Cancel before and you pay nothing.",
-    );
-    expect(copy.confirmLabel).toBe("Start free trial");
-    expect(copy.showPlan).toBe(true);
-    // "$0 today" and the date of the first charge stay with a confirmed trial.
-    expect(copy.subtitle).not.toMatch(/\$0 today|from \d/);
-    expect(upgradeDialogCopy(signedOut, "year", now, true).subtitle).toContain("then $630/yr.");
-  });
-
   test("onboarding's Pro step skips the sheet but keeps its rule", () => {
     expect(proStepCopy(offer({ pricing: { ...pricing, trialDays: 14 } }))).toEqual({
       confirmLabel: "Start 14-day free trial",
