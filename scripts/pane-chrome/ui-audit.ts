@@ -2,7 +2,7 @@ import { appendFile, mkdir, readdir, rm } from "fs/promises";
 import { existsSync } from "fs";
 import { join, resolve } from "path";
 import { takeOption } from "../tui-benchmark-harness";
-import { cacheDir, click, evaluate, launchBrowser, sleep, waitFor, type Browser, type Cdp } from "./browser";
+import { cacheDir, click, evaluate, frames, launchBrowser, sleep, waitFor, type Browser, type Cdp } from "./browser";
 import { checkoutPlugin, pluginLock } from "./plugin-lock";
 import { pathName, visitAlternatives } from "./tab-visits";
 import { isTransientPane } from "../../src/layout/pane-manager/transient";
@@ -10,7 +10,7 @@ import { UI_AUDIT_MEASURE, type AuditMeasure } from "./ui-audit-measure";
 import { writeAuditReport } from "./ui-audit-report";
 import {
   createReplay, discover, fallbackInstance, key, loadLayout, readCatalog, routeDirectReads,
-  runCommand, serveWebApp, settle, shot, type CatalogEntry, type SeedOptions,
+  runCommand, serveWebApp, settle, shardOf, shot, type CatalogEntry, type SeedOptions,
 } from "./web-app";
 
 /**
@@ -124,11 +124,6 @@ function parseShard(value: string | undefined): { index: number; count: number }
   const [index, count] = value.split("/").map(Number) as [number, number];
   if (!(count >= 1) || !(index >= 0 && index < count)) throw new Error(`--shard takes i/n with 0 <= i < n, not ${value}`);
   return { index, count };
-}
-
-/** The shard a function belongs to: by its token, so adding a function moves no other. */
-export function shardOf(token: string, count: number): number {
-  return Number.parseInt(new Bun.CryptoHasher("sha1").update(token).digest("hex").slice(0, 8), 16) % count;
 }
 
 const slug = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 32) || "tab";
@@ -249,13 +244,13 @@ async function openPaneMenu(cdp: Cdp): Promise<void> {
 const SHELL_VIEWS: Array<{ id: string; layout: object; focused?: string; seed?: SeedOptions; surface?: string; open(cdp: Cdp): Promise<void> }> = [
   { id: "shell", layout: EMPTY_LAYOUT, async open() {} },
   { id: "command-bar", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, surface: COMMAND_BAR, async open(cdp) { await key(cdp, "p", "KeyP", 80, 2); } },
-  { id: "command-bar-search", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, surface: COMMAND_BAR, async open(cdp) { await runCommand(cdp, "apple", { submit: false }); } },
+  { id: "command-bar-search", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, surface: COMMAND_BAR, async open(cdp) { await runCommand(cdp, "apple", { submit: false, offline }); } },
   // "TH" and a space is the theme list; Enter would pick the highlighted theme and close it.
-  { id: "theme-picker", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, surface: '[aria-label="Theme picker"]', async open(cdp) { await runCommand(cdp, "TH ", { submit: false }); } },
-  { id: "feedback-dialog", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, surface: ".gloom-dialog", async open(cdp) { await runCommand(cdp, "FB"); } },
-  { id: "pane-settings-dialog", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, surface: ".gloom-dialog [data-gloom-role=pane-setting-row]", async open(cdp) { await runCommand(cdp, "PS"); } },
+  { id: "theme-picker", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, surface: '[aria-label="Theme picker"]', async open(cdp) { await runCommand(cdp, "TH ", { submit: false, offline }); } },
+  { id: "feedback-dialog", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, surface: ".gloom-dialog", async open(cdp) { await runCommand(cdp, "FB", { offline }); } },
+  { id: "pane-settings-dialog", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, surface: ".gloom-dialog [data-gloom-role=pane-setting-row]", async open(cdp) { await runCommand(cdp, "PS", { offline }); } },
   // A form dialog the command bar opens: the default config's manual portfolio is enough for it.
-  { id: "position-form", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, surface: ".gloom-dialog [data-gloom-role=desktop-text-field]", async open(cdp) { await runCommand(cdp, "Set Portfolio Position"); } },
+  { id: "position-form", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, surface: ".gloom-dialog [data-gloom-role=desktop-text-field]", async open(cdp) { await runCommand(cdp, "Set Portfolio Position", { offline }); } },
   // The pane's actions button (its "more" icon) opens the pane menu.
   { id: "pane-menu", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, surface: ".gloom-menu, [role=menu]", open: openPaneMenu },
   // Listings that share a symbol across venues, and quotes from markets on different clocks.
@@ -265,6 +260,11 @@ const SHELL_VIEWS: Array<{ id: string; layout: object; focused?: string; seed?: 
   { id: "session-cards-menu", layout: dock(SESSION_CARDS_PANE), focused: SESSION_CARDS_PANE.instanceId, seed: FOREIGN_LISTING_SEED, surface: ".gloom-menu, [role=menu]", open: openPaneMenu },
   { id: "index-history", layout: dock(INDEX_HISTORY_PANE), focused: INDEX_HISTORY_PANE.instanceId, async open() {} },
 ];
+
+/** Offline replays answer locally in <1ms, so DOM quiescence needs a much shorter quiet window than live network fetches. */
+const settlePane = (cdp: Cdp, scope: string) => offline ? settle(cdp, scope, 200, 3_500) : settle(cdp, scope, 800, 9_000);
+const settleAction = (cdp: Cdp, scope: string) => offline ? settle(cdp, scope, 180, 3_000) : settle(cdp, scope, 700, 6_000);
+const settleShellOpen = (cdp: Cdp) => offline ? settle(cdp, "body", 180, 3_000) : settle(cdp, "body", 600, 4_000);
 
 let writeChain: Promise<void> = Promise.resolve();
 function writeLine(file: string, value: unknown): Promise<void> {
@@ -295,14 +295,17 @@ async function positionTickerEvents(cdp: Cdp, scope: string): Promise<void> {
     table.scrollTop = Math.max(0, rowsThroughSelection - visibleRows) * row.height;
     return table.scrollTop !== previous;
   })()`);
-  if (scrolled) await settle(cdp, scope, 700, 6_000);
+  if (scrolled) await settleAction(cdp, scope);
 }
 
 async function main(): Promise<void> {
   const catalog: AuditEntry[] = readCatalog(root, cacheDir("ui-audit-home"));
   const builtIn = new Set(catalog.map((entry) => entry.paneId));
+  const localTokens = new Set([...catalog.map((entry) => entry.token), ...SHELL_VIEWS.map((view) => view.id)]);
+  // Scoped runs covering only built-in or shell tokens do not need to check out and bundle external registry plugins.
+  const needsRegistry = withRegistry && (!only || only.some((token) => !localTokens.has(token)));
   if (args.includes("--build") || !await Bun.file(join(web, "index.html")).exists()) {
-    await buildWeb(withRegistry ? await registryPluginDirs(builtIn) : []);
+    await buildWeb(needsRegistry ? await registryPluginDirs(builtIn) : []);
   }
   const entries = [...catalog, ...(await pluginEntries()).filter((entry) => !builtIn.has(entry.paneId))]
     .filter((entry) => !only || only.includes(entry.token))
@@ -328,7 +331,7 @@ async function main(): Promise<void> {
     await instance.cdp.send("Emulation.setTimezoneOverride", { timezoneId: "America/New_York" });
     return instance;
   };
-  const workerCount = Math.min(concurrency, Math.max(1, entries.length));
+  const workerCount = Math.min(concurrency, Math.max(1, entries.length + shells.length));
   const browsers: Browser[] = await Promise.all(
     Array.from({ length: workerCount }, (_, index) => startBrowser(index)),
   );
@@ -410,9 +413,9 @@ async function main(): Promise<void> {
               let opened = false;
               for (let attempt = 0; attempt < 3 && !opened; attempt += 1) {
                 await loadLayout(browser.cdp, app.url, replay, shell.layout, shell.focused, { theme, ...shell.seed });
-                await settle(browser.cdp, "body", 700, 6_000);
+                await settleAction(browser.cdp, "body");
                 await shell.open(browser.cdp);
-                await settle(browser.cdp, "body", 600, 4_000);
+                await settleShellOpen(browser.cdp);
                 opened = !shell.surface || !!await waitFor<boolean>(browser.cdp, `!!document.querySelector(${JSON.stringify(shell.surface)})`, 2_000);
                 if (!opened) console.warn(`${shell.id}: not open at ${width}px in ${theme} (try ${attempt + 1} of 3)`);
               }
@@ -467,7 +470,7 @@ async function main(): Promise<void> {
     // A window no layout keeps (the Layouts browser, LAY) is opened through its command each time, as a user opens it:
     // a layout that docks it loads without it. Its instance is named afresh by each opening, so it is found by its pane.
     const transient = isTransientPane(entry.paneId);
-    const instance = transient ? fallbackInstance(entry) : await discover(cdp, app.url, replay, entry) ?? fallbackInstance(entry);
+    const instance = transient ? fallbackInstance(entry) : await discover(cdp, app.url, replay, entry, { offline }) ?? fallbackInstance(entry);
     let id = instance.instanceId as string;
     const scope = transient ? `[data-gloom-pane-id^="${entry.paneId}:"]` : `[data-gloom-pane-id="${id}"]`;
     const base = { kind: "pane" as const, token: entry.token, paneId: entry.paneId, ...(entry.plugin ? { plugin: entry.plugin } : {}), instance };
@@ -477,14 +480,15 @@ async function main(): Promise<void> {
       debug(`open ${theme}`);
       if (transient) {
         await loadLayout(cdp, app.url, replay, EMPTY_LAYOUT, undefined, { theme });
-        await sleep(800);
-        await runCommand(cdp, entry.token);
-        await settle(cdp, scope);
+        await waitFor<boolean>(cdp, `!!document.querySelector("[data-gloom-role=header-command-prompt]")`, offline ? 3_000 : 6_000);
+        await frames(cdp, 2);
+        await runCommand(cdp, entry.token, { offline });
+        await settlePane(cdp, scope);
         id = await evaluate<string>(cdp, `document.querySelector(${JSON.stringify(scope)})?.getAttribute("data-gloom-pane-id") ?? ""`) || id;
       } else {
         await loadLayout(cdp, app.url, replay, dock(instance), id, { theme });
       }
-      await settle(cdp, scope);
+      await settlePane(cdp, scope);
       debug("settled");
     };
     for (const width of widths) {
@@ -498,8 +502,9 @@ async function main(): Promise<void> {
         // The detail Enter opens from the root.
         const before = await paneText();
         await key(cdp, "Enter", "Enter", 13);
-        await settle(cdp, scope, 700, 6_000);
-        if (await paneText() !== before) {
+        await settleAction(cdp, scope);
+        const detailOpened = await paneText() !== before;
+        if (detailOpened) {
           const detail: AuditView = { ...base, id: `${entry.token}--detail`, view: "detail" };
           await record(cdp, detail, id, width, theme, measure);
           views.set(detail.id, detail);
@@ -510,8 +515,9 @@ async function main(): Promise<void> {
           scope,
           selector: "[role=tab]",
           depth: 1,
+          alreadyAtRoot: !detailOpened,
           reset: () => open(theme),
-          settle: () => settle(cdp, scope, 700, 6_000),
+          settle: () => settleAction(cdp, scope),
           record: async (path) => {
             const name = pathName(path);
             if (shots && name === "Events" && (entry.token === "T" || entry.token === "ADR")) {

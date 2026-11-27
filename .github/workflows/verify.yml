@@ -7,6 +7,7 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
   schedule:
     # 04:15 UTC nightly safety net running full tsc alongside PR bun check.
     - cron: "15 4 * * *"
@@ -69,6 +70,19 @@ jobs:
         with:
           desktop: "true"
 
+      - id: scope
+        name: Check whether core binary packaging changed
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo "core_binaries=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --depth=1 origin "$BASE_REF"
+          bun run scripts/verify-scope.ts --base FETCH_HEAD
+
       - name: Test
         run: bun run test:ci
 
@@ -84,13 +98,16 @@ jobs:
 
       # build.ts also runs the x64 binaries on an emulated CPU without AVX2.
       - name: Install QEMU's user-mode emulator
+        if: steps.scope.outputs.core_binaries == 'true'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends qemu-user
 
       # The musl one is smoke tested in an Alpine container.
       - name: Build core binaries
+        if: steps.scope.outputs.core_binaries == 'true'
         run: bun run scripts/build.ts --target linux-x64 --target linux-x64-musl
 
       - name: Test global upgrade from 0.5.0
+        if: steps.scope.outputs.core_binaries == 'true'
         run: bun run test:global-upgrade
 
   # Fails when a plugin the registry lists, at the commit the registry
@@ -101,6 +118,11 @@ jobs:
   # binary whose React had no named exports, and every plugin failed to load).
   # Not a deploy gate: it reads other repositories, and the registry or a
   # plugin's own breakage only warns.
+  #
+  # On pull requests that only touch built-in plugins, docs, tests, or browser
+  # view internals outside the public host exports, the scope step exits cleanly
+  # without spending a binary build. Pushes to main and manual dispatches always
+  # run the full suite.
   #
   # Runs code from other repositories. Leaves no token on disk and restores no
   # Actions cache (code in it could still write one through the runner's token:
@@ -115,18 +137,41 @@ jobs:
           persist-credentials: false
 
       - uses: ./.github/actions/setup-bun
+        with:
+          install: "false"
+
+      - id: scope
+        name: Check whether host plugin exports or packaging changed
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo "registry_plugins=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --depth=1 origin "$BASE_REF"
+          bun run scripts/verify-scope.ts --base FETCH_HEAD
+
+      - name: Install dependencies
+        if: steps.scope.outputs.registry_plugins == 'true'
+        run: bun install --frozen-lockfile
 
       - name: Compile registry plugins against this host
+        if: steps.scope.outputs.registry_plugins == 'true'
         run: bun run plugins:registry:check
 
       # build.ts also runs the x64 binary on an emulated CPU without AVX2.
       - name: Install QEMU's user-mode emulator
+        if: steps.scope.outputs.registry_plugins == 'true'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends qemu-user
 
       - name: Build the terminal binary
+        if: steps.scope.outputs.registry_plugins == 'true'
         run: bun run scripts/build.ts --target linux-x64
 
       - name: Load registry plugins in the packaged terminal
+        if: steps.scope.outputs.registry_plugins == 'true'
         run: bun run plugins:registry:packaged --terminal dist/gloomberb-linux-x64.gz --desktop-tui
 
   deploy-web:

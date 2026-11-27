@@ -336,8 +336,8 @@ export function ListView({
   const syncScrollBar = useCallback(() => {
     const sb = scrollRef.current;
     if (!scrollable || !sb?.verticalScrollBar) return;
-    sb.verticalScrollBar.visible = items.length * rowStride - terminalRowGap > (sb.viewport?.height ?? 0);
-  }, [items.length, rowStride, scrollable, terminalRowGap]);
+    sb.verticalScrollBar.visible = scrollbar && items.length * rowStride - terminalRowGap > (sb.viewport?.height ?? 0);
+  }, [items.length, rowStride, scrollable, scrollbar, terminalRowGap]);
   useEffect(syncScrollBar, [syncScrollBar, height, flexGrow]);
   // A list that mounts before its first layout has no viewport height to
   // compare yet, which would leave a scroll bar on rows that all fit.

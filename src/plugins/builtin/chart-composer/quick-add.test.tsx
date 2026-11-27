@@ -158,6 +158,8 @@ describe("chart series inline quick add", () => {
       await tui.setup().renderOnce();
     });
     const frame = await waitForFrameToContain("MSFT · Revenue");
+    // Flush an extra layout frame so ScrollBox viewport observers have settled before testing column 39.
+    await act(async () => { await tui.setup().renderOnce(); });
     const rows = frame.split("\n");
     expect(rows[1]).toContain("MSFT · Price (OHLCV)");
     expect(rows[2]).toContain("MSFT · Revenue");
