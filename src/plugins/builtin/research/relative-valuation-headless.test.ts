@@ -1,6 +1,7 @@
 import { expect, setSystemTime, test } from "bun:test";
 import type { HeadlessPaneContext } from "../../../types/headless";
-import { createTestDataProvider } from "../../../test-support/data-provider";
+import { createTestDataProvider, createTestFinancials } from "../../../test-support/data-provider";
+import { createTestHeadlessContext } from "../../../test-support/headless";
 import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import { convertMarketCapitalization } from "../../../utils/market-capitalization";
 import { relativeValuationValues } from "./relative-valuation-model";
@@ -10,6 +11,24 @@ import { exportRowsTable, renderReportCsv } from "../../../cli/report-tables";
 import { headlessReportTables } from "../../../cli/pane-functions/headless";
 import { renderFundamentalsReport } from "../../../cli/commands/ticker";
 import { withSearchHints } from "../../../cli/not-a-ticker";
+
+test("peer comparisons label scoped filed fallbacks only on the rows that use them", async () => {
+  const statementScope = { registrant: "0002128626", basis: "predecessor" as const, label: "Accounting predecessor" };
+  const statementReview = { status: "pending" as const, reviewedThrough: "2026-11-12" };
+  const symbols = ["FILED", "SERVED", "ORDINARY"];
+  const ctx = createTestHeadlessContext({ marketData: createTestDataProvider({
+    getTickerFinancials: async (symbol) => createTestFinancials({
+      ...(symbol === "ORDINARY" ? {} : { statementScope, statementReview }),
+      annualStatements: [{ date: "2025-12-31", operatingIncome: 20, totalRevenue: 100 }],
+      ...(symbol === "SERVED" ? { fundamentals: { operatingMargin: 0.25 } } : {}),
+    }),
+  }) });
+  const report = await relativeValuationHeadless.load({ symbols, argument: symbols, rawArgument: symbols.join(","), options: {} }, ctx);
+  const basis = "Statement basis: Accounting predecessor. New filing under review. Applies to: fiscal-year operating margin.";
+  expect(report.rows.map((row) => row.operatingMargin)).toEqual([0.2, 0.25, 0.2]);
+  expect(report.metadata?.statementBasisByTicker).toEqual({ FILED: { statementScope, statementReview, statementBasis: basis } });
+  expect(report.rows.map((row) => report.rowNote?.(row))).toEqual([basis, undefined, undefined]);
+});
 
 test("fresh quotes do not hide stale fundamentals in a peer research report", async () => {
   const symbols = ["BAC", "JPM"];
