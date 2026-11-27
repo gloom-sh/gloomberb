@@ -854,7 +854,7 @@ export function valueColumnWidth(events: readonly EconEvent[], key: "actual" | "
  * names give up more before it goes. The actual always stays, and an event's
  * detail has all three.
  */
-export const ECON_FIGURE_DROP_ORDER: readonly { id: string; namesUnder: number }[] = [
+const ECON_FIGURE_DROP_ORDER: readonly { id: string; namesUnder: number }[] = [
   { id: "prior", namesUnder: 20 },
   { id: "forecast", namesUnder: 14 },
 ];
