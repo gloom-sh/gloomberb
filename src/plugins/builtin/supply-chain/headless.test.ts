@@ -21,6 +21,7 @@ import { graphEvidenceRow } from "./graph-evidence";
 import { supplyScreenshotEvidence } from "./evidence";
 import { supplyChainHeadless } from "./headless";
 import { entity, supplyPayload, supplyRow } from "./test-fixture";
+import { graphPayload as supplierGraphFixture } from "./test-fixture-graph";
 import { supplyOptions } from "./trust";
 
 const directory = (day: string, names: { buyer: string; operator: string; parent: string }): SupplyDirectory => ({
@@ -207,6 +208,78 @@ describe("supply chain screenshot evidence", () => {
         if (flag) expect(assess(latest)).toContain("Supply chain disclosures do not match the requested filing cutoff");
       }
       expect(requests).toEqual([cutoff, cutoff, cutoff, null]);
+    } finally { setCloudApiFetchTransport(null); }
+  });
+
+  test.each(["graph", "path"] as const)("dated %s shots require a graph pinned to the requested filing cutoff", async (tab) => {
+    const cutoff = "2026-03-01";
+    const graph = supplierGraphFixture();
+    graph.nodes = graph.nodes.slice(0, 2);
+    graph.links = graph.links.slice(0, 1);
+    graph.links[0]!.evidence[0]!.filedDate = "2026-02-25";
+    graph.upstream = graph.upstream.slice(0, 1);
+    graph.options.depth = graph.requestedDepth = 1;
+    if (tab === "path") {
+      graph.target = graph.nodes[1]!;
+      graph.paths = [graph.upstream[0]!.bestPath];
+      graph.upstream = [];
+    }
+    const latest = { ...structuredClone(graph), access: "preview" as const, maxDepth: 1 };
+    latest.links[0]!.evidence[0]!.filedDate = "2026-04-01";
+    const historical = { ...graph, options: { ...graph.options, asOf: cutoff } };
+    const falselyPinned = { ...latest, options: historical.options };
+    const pane = { id: "supply-chain", name: "Supply Chain", headless: supplyChainHeadless } as PaneDef;
+    const capability = getPaneFunctionCapability(undefined, pane);
+    const market = { config: createDefaultConfig(process.cwd()), dataProvider: createTestDataProvider(), store: { loadTicker: async () => null } } as unknown as MarketContext;
+    const request = (dated: boolean) => {
+      const raw: Record<string, string> = { tab, depth: "1", ...(tab === "path" ? { to: "2" } : {}), ...(dated ? { "as-of": "1 March 2026" } : {}) };
+      const options = normalizeCapabilityOptions(capability, raw, { strict: true });
+      const settings = capabilityPaneSettings(capability, options);
+      const resolved: ResolvedPaneFunction = { token: "SPLC", label: pane.name, description: "", pane, capability,
+        options, optionSettings: settings, createOptions: { symbol: "FOCUS" },
+        instance: { instanceId: `splc:${tab}`, paneId: pane.id, binding: { kind: "fixed", symbol: "FOCUS" }, settings } };
+      const capture = () => buildDesktopShotPayload(resolved, market, "FOCUS", raw, 1200, 600, null, 1, null);
+      const assess = (shot: Awaited<ReturnType<typeof capture>>, payload: GraphPayload) => {
+        const rowIds = (tab === "path" ? payload.paths : payload.links).map(({ id }) => id);
+        return paneEvidenceMismatches(resolved, shot, { semanticUi: [{ id: "supply-evidence", role: "chart-data", actions: [], metadata: {
+          kind: "supply-chain", version: 1, complete: true, payload, tab, rowIds, plottedValueCount: rowIds.length,
+        } }] });
+      };
+      return { capture, assess };
+    };
+
+    let response: GraphPayload = historical;
+    const requested: Array<string | null> = [];
+    setCloudApiFetchTransport(async (input) => {
+      const url = new URL(String(input));
+      expect(url.pathname).toBe(tab === "path" ? "/cloud/supply-chain/paths" : "/cloud/supply-chain/FOCUS/graph");
+      requested.push(url.searchParams.get("asOf"));
+      return Response.json(response);
+    });
+    try {
+      const dated = request(true);
+      const shot = await dated.capture();
+      const settings = shot.config.layout.instances[0]!.settings!;
+      expect(settings).toMatchObject({ asOf: cutoff, graphSnapshot: validateGraph(historical) });
+      expect(dated.assess(shot, historical)).toEqual([]);
+
+      response = latest;
+      settings.graphSnapshot = validateGraph(latest);
+      const latestPrepare = await dated.capture().then(() => null, (error: Error) => error.message);
+      expect({ prepareError: latestPrepare, mismatches: dated.assess(shot, latest) }).toEqual({
+        prepareError: expect.stringContaining(`requested filing cutoff ${cutoff}`),
+        mismatches: ["Supply chain disclosures do not match the requested filing cutoff"],
+      });
+
+      response = falselyPinned;
+      await expect(dated.capture()).rejects.toThrow(`published after ${cutoff}`);
+      settings.graphSnapshot = falselyPinned;
+      expect(dated.assess(shot, falselyPinned)).toContain("rendered supply chain data evidence is missing or invalid");
+
+      response = latest;
+      const undated = request(false);
+      expect(undated.assess(await undated.capture(), latest)).toEqual([]);
+      expect(requested).toEqual([cutoff, cutoff, cutoff, null]);
     } finally { setCloudApiFetchTransport(null); }
   });
 

@@ -24,6 +24,11 @@ interface SupplyEvidence {
   tiers?: SupplyTierFilter[];
 }
 const graphTab = (tab: unknown) => tab === "graph" || tab === "path";
+function requireGraphScreenshotCutoff(payload: GraphPayload, cutoff: string): void {
+  if (payload.options.asOf !== cutoff) {
+    throw new Error(`Supply chain graph did not return the requested filing cutoff ${cutoff}; no historical screenshot was captured.`);
+  }
+}
 export function useSupplyEvidence(payload: SupplyChainPayload | null, tab: string, view: string, rowIds: string[], evidenceId: string | null = null, tiers: SupplyTierFilter[] = supplyOptions().tiers) {
   useRemoteUiNode(graphTab(tab) ? null : { role: "chart-data", label: "Rendered supply chain disclosures", getMetadata: () => ({
     kind: "supply-chain", version: 1, complete: !!payload, ready: !!payload,
@@ -42,6 +47,7 @@ export const supplyScreenshotEvidence: PaneScreenshotEvidenceHook<SupplyEvidence
       const target = String(resolved.options.to ?? "").trim();
       if (resolved.options.tab === "path" && !target) throw new Error("Path requires a target company: --to TICKER");
       const payload = await fetchSupplyGraph(symbol, graphOptions({ ...resolved.options, ...cutoffSettings }), target);
+      if (asOf) requireGraphScreenshotCutoff(payload, asOf);
       return { settings: { ...cutoffSettings, graphSnapshot: payload }, financials: [[payload.symbol, { annualStatements: [], quarterlyStatements: [], priceHistory: [] }]] };
     }
     const payload = await fetchSupplyChain(symbol, undefined, { ...supplyOptions(resolved.options.tiers), asOf });
@@ -87,8 +93,11 @@ export const supplyScreenshotEvidence: PaneScreenshotEvidenceHook<SupplyEvidence
     const cutoff = supplyCutoff(resolved.options, resolved.instance.settings?.asOf);
     if (cutoff) {
       try {
-        if (graphTab(evidence.tab)) validateGraph(evidence.payload as GraphPayload, cutoff);
-        else validateSupplyChain(evidence.payload as SupplyChainPayload, cutoff);
+        if (graphTab(evidence.tab)) {
+          const graph = evidence.payload as GraphPayload;
+          requireGraphScreenshotCutoff(graph, cutoff);
+          validateGraph(graph, cutoff);
+        } else validateSupplyChain(evidence.payload as SupplyChainPayload, cutoff);
       } catch { mismatches.push("Supply chain disclosures do not match the requested filing cutoff"); }
     }
     if (JSON.stringify(evidence.payload) !== JSON.stringify(snapshot)) mismatches.push("Supply chain disclosures differ from the captured filing data");
