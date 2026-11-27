@@ -1029,6 +1029,29 @@ export const chatSteps: ChatStep[] = [
     },
   },
   {
+    // The list keeps rows past its edges in the page, and the name is drawn on
+    // the page, not in the list: the name of an icon scrolled under the list's
+    // edge was drawn there too, over the composer.
+    name: "chat list: the name of a focused message icon hides while its row is scrolled out of the list, and comes back with the row",
+    scenario: "chat",
+    async run(cdp) {
+      await ready(cdp);
+      await shiftTabFromComposer(cdp);
+      const rest = await focusedIcon(cdp) ?? fail("Shift-Tab from the composer did not reach a message's actions");
+      if (!rest.label) fail("the focused icon has no name while its row is in view", rest);
+      // Just past the edge: the icons a few pixels under the list, their row still in the page.
+      const at = await listCentre(cdp);
+      await wheel(cdp, at, -(rest.listBottom - rest.top + 2));
+      const past = await focusedIcon(cdp) ?? fail("scrolling its row out of the list took the focus off the icon");
+      if (past.id !== rest.id || past.top < past.listBottom) fail("the wheel turn did not take the focused icon's row under the list's edge", { rest, past });
+      if (past.label) fail("the name of an icon scrolled out of the list is still drawn, under the list", past);
+      await wheel(cdp, at, 400);
+      const back = await focusedIcon(cdp) ?? fail("scrolling its row back into the list took the focus off the icon");
+      if (back.bottom > back.listBottom + 1) fail("the wheel turn did not bring the row back into the list", back);
+      if (!back.label || Math.abs(back.label.top - rest.label.top) > 1) fail("the name did not come back beside its icon with the row", { rest, back });
+    },
+  },
+  {
     name: "chat list: the row under a pointer that stays still is let go when the list scrolls, and one row is marked again on the next move",
     scenario: "chat",
     async run(cdp) {

@@ -173,10 +173,11 @@ export interface IconButtonProps {
    * the tooltip surface, since a tooltip shows only under the pointer. For
    * icons with no other visible name (a row's actions that show only when
    * used). The label goes beside the nearest `ICON_GROUP_ATTRIBUTE` element
-   * holding the button, so it never covers the icons next to it. A pointer
-   * press, which focuses the button too, shows nothing. When its pane gives
-   * up the app's focus (Tab to the next pane), the button lets go of the
-   * page's focus as well.
+   * holding the button, so it never covers the icons next to it, follows the
+   * group as its row moves, and hides while a list has the group scrolled
+   * out of view. A pointer press, which focuses the button too, shows
+   * nothing. When its pane gives up the app's focus (Tab to the next pane),
+   * the button lets go of the page's focus as well.
    */
   focusLabel?: boolean;
 }

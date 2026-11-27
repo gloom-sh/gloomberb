@@ -2,7 +2,7 @@
 import { releasePointerFocus } from "../host/focus-scope";
 import { formatShortcutForHost } from "../../../app/keybindings/labels";
 import { ariaKeyShortcut } from "./dialog-actions";
-import { placementEdges } from "./popover";
+import { PANE_SELECTOR, placementEdges } from "./popover";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { ICON_GROUP_ATTRIBUTE, type IconButtonProps, type IconName, type IconProps } from "../../../components/ui/icon";
@@ -253,17 +253,40 @@ function pressEventFrom(
 /** Between a focus label and the icons it names: clear of the focus ring, as a popover is of its trigger. */
 const FOCUS_LABEL_GAP = 6;
 
+/** How far past a list's edge a group may reach and still count as shown: a rounded pixel, never a row. */
+const SCROLL_CLIP_SLACK = 1;
+
+/**
+ * Whether a box between the button and its pane cuts into `group` (a list the
+ * row was scrolled out of, or any other box that clips what is in it). A list
+ * keeps rows past its edges in the page, so the group still has a place
+ * there: behind whatever is beside the list, such as a chat's composer.
+ */
+function clippedInsidePane(button: HTMLElement, group: DOMRect): boolean {
+  const pane = button.closest(PANE_SELECTOR);
+  for (let box = button.parentElement; box && box !== pane; box = box.parentElement) {
+    const { display, overflowX, overflowY } = window.getComputedStyle(box);
+    // A box that draws nothing of its own (display: contents) clips nothing.
+    if (display === "contents" || (overflowX === "visible" && overflowY === "visible")) continue;
+    const shown = box.getBoundingClientRect();
+    if (overflowY !== "visible" && (group.top < shown.top - SCROLL_CLIP_SLACK || group.bottom > shown.bottom + SCROLL_CLIP_SLACK)) return true;
+    if (overflowX !== "visible" && (group.left < shown.left - SCROLL_CLIP_SLACK || group.right > shown.right + SCROLL_CLIP_SLACK)) return true;
+  }
+  return false;
+}
+
 /**
  * Where a focus label goes, in viewport pixels: after the button's group if
  * it fits in the pane, else before it, else under it (over it when that
  * leaves the pane); always clear of the group's icons. Null while the group
- * is scrolled out of the pane, when there is nothing to name.
+ * is scrolled out of the pane, or any way out of a list inside it, when there
+ * is nothing to name: the label is on the page, where no list would clip it.
  */
 function focusLabelPlace(button: HTMLElement, label: { width: number; height: number }): { left: number; top: number } | null {
   const group = (button.closest(`[${ICON_GROUP_ATTRIBUTE}]`) ?? button).getBoundingClientRect();
   const edges = placementEdges(button, "pane");
   const middle = group.top + group.height / 2;
-  if (middle < edges.top || middle > edges.bottom) return null;
+  if (middle < edges.top || middle > edges.bottom || clippedInsidePane(button, group)) return null;
   const beside = Math.max(edges.top, Math.min(group.top + (group.height - label.height) / 2, edges.bottom - label.height));
   const after = group.right + FOCUS_LABEL_GAP;
   if (after + label.width <= edges.right) return { left: after, top: beside };
@@ -277,24 +300,37 @@ function focusLabelPlace(button: HTMLElement, label: { width: number; height: nu
 /**
  * The name of a focused icon button, for the keyboard: what its tooltip says
  * under the pointer. Portalled to the page so no row or list clips it, kept
- * on its group as the list scrolls, and never in the way of a press.
+ * on its group wherever the group goes, hidden while a list hides the group,
+ * and never in the way of a press.
  */
 function IconFocusLabel({ button, text }: { button: RefObject<HTMLButtonElement | null>; text: string }) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const [place, setPlace] = useState<{ left: number; top: number } | null>(null);
   useLayoutEffect(() => {
-    const update = () => {
-      const target = button.current;
-      const label = ref.current;
-      if (target && label) setPlace(focusLabelPlace(target, { width: label.offsetWidth, height: label.offsetHeight }));
+    const target = button.current;
+    const label = ref.current;
+    if (!target || !label) return;
+    let frame = 0;
+    let drawn: string | null = null;
+    // Placed each frame, for as long as the keyboard is on the icon: a row
+    // moves on a scroll, and also when a message arrives, a row above it
+    // changes height or the list is given less room, which no event reports.
+    // Written to the element itself, so the label is drawn where its group
+    // is in that same frame, and is gone in the frame a list hides the group.
+    const follow = () => {
+      const place = focusLabelPlace(target, { width: label.offsetWidth, height: label.offsetHeight });
+      const next = place ? `${place.left}px ${place.top}px` : "";
+      if (next !== drawn) {
+        drawn = next;
+        label.style.visibility = place ? "visible" : "hidden";
+        if (place) {
+          label.style.left = `${place.left}px`;
+          label.style.top = `${place.top}px`;
+        }
+      }
+      frame = window.requestAnimationFrame(follow);
     };
-    update();
-    window.addEventListener("resize", update);
-    document.addEventListener("scroll", update, true);
-    return () => {
-      window.removeEventListener("resize", update);
-      document.removeEventListener("scroll", update, true);
-    };
+    follow();
+    return () => window.cancelAnimationFrame(frame);
   }, [button, text]);
   return createPortal(
     <div
@@ -306,9 +342,10 @@ function IconFocusLabel({ button, text }: { button: RefObject<HTMLButtonElement 
         ...TOOLTIP_SURFACE_STYLE,
         // One line high, as the icons are, so it stays on their row.
         padding: "0 var(--gloom-space-sm)",
-        left: place?.left ?? 0,
-        top: place?.top ?? 0,
-        visibility: place ? "visible" : "hidden",
+        // Hidden until it is placed; its place is then kept on the element (see the effect above).
+        left: 0,
+        top: 0,
+        visibility: "hidden",
       }}
     >
       {text}
