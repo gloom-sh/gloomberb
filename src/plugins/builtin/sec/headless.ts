@@ -162,7 +162,7 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       {
         key: "form",
         shot: { reportOnly: "picks the report's rows by form; the pane's Form filter picks a group of forms" },
-        description: "Only this SEC form and its amendments, such as 8-K, 10-K or 13D. Use presentations for Taiwan investor conference decks or results for Hong Kong and Singapore exchange filings.",
+        description: "Only this SEC form and its amendments, such as 8-K, 10-K or 13D. Use presentations for Taiwan investor conference decks or results for Hong Kong, Japan and Singapore exchange materials.",
         type: "string",
         placeholder: "form",
         example: "--form 8-K",
