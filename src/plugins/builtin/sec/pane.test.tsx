@@ -572,8 +572,9 @@ test("scrolling to older HOSE filings keeps the recent disclosures through an ar
     await tui.waitForFrameToContain("Recent HOSE notice 1");
     expect(olderReads).toBe(0);
     for (let index = 0; index < 49; index++) await press("down", "j");
-    const beforeRetry = await tui.waitForFrameToContain("Older filings temporarily unavailable");
-    expect(beforeRetry).toContain("Recent HOSE notice 50");
+    await tui.waitForFrameToContain("Older filings temporarily unavailable");
+    const beforeRetry = await tui.waitForFrameToContain("Recent HOSE notice 50");
+    expect(beforeRetry).toContain("Older filings temporarily unavailable");
     await press("r", "r");
     await tui.waitForFrameToExclude("Older filings temporarily unavailable");
     await press("down", "j");
