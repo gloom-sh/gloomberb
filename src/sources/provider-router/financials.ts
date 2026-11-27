@@ -227,11 +227,9 @@ export function providerQuoteMatchesTarget(quote: Quote | null | undefined, symb
   if ([quote.listingExchangeName, quote.exchangeName, quote.instrumentType]
     .some((value) => value != null && typeof value !== "string")) return false;
   if (symbol) {
-    const metadata = quoteMetadataFromQuote(quote);
     // Older quote providers omit listing metadata. They must still return the
-    // requested symbol; when they do name a listing it must agree as well.
-    const hasListing = !!(metadata.listingExchangeName || parsePublicTickerKey(quote.symbol).exchange);
-    if (!quoteMetadataMatchesTarget(metadata, hasListing ? symbol : parsePublicTickerKey(symbol).symbol, hasListing ? exchange : undefined)) return false;
+    // requested symbol; an explicit OTC tier also needs matching evidence.
+    if (!quoteMetadataMatchesTarget(quoteMetadataFromQuote(quote), symbol, exchange, { allowUnnamedListing: true })) return false;
   }
   return true;
 }
@@ -295,8 +293,7 @@ export function providerFinancialsMatchTarget(value: TickerFinancials, symbol: s
   if (!metadata) return true;
   if (typeof metadata.symbol !== "string" || !metadata.symbol.trim()
     || [metadata.listingExchangeName, metadata.instrumentType].some((field) => field != null && typeof field !== "string")) return false;
-  const hasListing = !!(metadata.listingExchangeName || parsePublicTickerKey(metadata.symbol).exchange);
-  return quoteMetadataMatchesTarget(metadata, hasListing ? symbol : parsePublicTickerKey(symbol).symbol, hasListing ? exchange : undefined);
+  return quoteMetadataMatchesTarget(metadata, symbol, exchange, { allowUnnamedListing: true });
 }
 
 export function dropUnusableProviderQuote(
