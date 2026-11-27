@@ -1,0 +1,134 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.gloom-sh/gloom",
+  "title": "Gloom",
+  "description": "Stocks, transcripts, SEC filings, options flow, credit, futures and macro data for agents",
+  "version": "1.2.0",
+  "websiteUrl": "https://gloom.sh/docs/mcp",
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/gloom-sh/gloomberb/main/assets/brand/gloom-logo-1024.png",
+      "mimeType": "image/png",
+      "sizes": [
+        "1024x1024"
+      ]
+    },
+    {
+      "src": "https://raw.githubusercontent.com/gloom-sh/gloomberb/main/assets/brand/gloom-logo.svg",
+      "mimeType": "image/svg+xml",
+      "sizes": [
+        "any"
+      ]
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://api.gloom.sh/mcp"
+    }
+  ],
+  "_meta": {
+    "io.modelcontextprotocol.registry/publisher-provided": {
+      "sh.gloom": {
+        "summary": "Gloom's consolidated market research server for agents: tools, workflow prompts, live resources and interactive widgets over remote Streamable HTTP. Supports ?groups=, ?mode=compact and ?naming=underscore.",
+        "access": {
+          "free": "A free Gloom account connects, searches tickers (market.search), reads the daily GPU settle (gpu.prices view settles), reads connected brokerage accounts (portfolio.accounts, portfolio.positions, portfolio.performance) and previews portfolio.exposure on one holding.",
+          "pro": "Gloom Pro unlocks every other tool call, with real-time quotes and the live news wire. 7-day free trial."
+        },
+        "toolGroups": [
+          {
+            "group": "Market data",
+            "covers": "Quotes, price history, movers and fundamental screener, options chains and flow, short interest, ETF holdings, attention",
+            "tools": [
+              "market.search",
+              "market.quotes",
+              "market.history",
+              "market.screener",
+              "market.options_chain",
+              "market.options_flow",
+              "market.short_interest",
+              "market.stock_funds",
+              "market.attention"
+            ]
+          },
+          {
+            "group": "Companies",
+            "covers": "Profiles, financial statements, analyst estimates, holders, dividends, splits, KPIs and guidance, hiring, app rankings",
+            "tools": [
+              "company.profile",
+              "company.statements",
+              "company.financials",
+              "company.holders",
+              "company.analyst_research",
+              "company.corporate_actions",
+              "equity.diagnostic",
+              "company.kpis_guidance",
+              "company.hiring",
+              "apps.attention"
+            ]
+          },
+          {
+            "group": "Filings, transcripts and ownership",
+            "covers": "SEC filings and full text, earnings call transcripts, full-text search, Form 4 insiders, 13F, Congress, segment revenue, risks, exec pay, M&A, IPO, ADRs, HK CCASS",
+            "tools": [
+              "sec.filings",
+              "sec.filing_content",
+              "sec.insider_transactions",
+              "sec.thirteenf",
+              "congress.trades",
+              "company.transcripts",
+              "research.search",
+              "company.filings_intel"
+            ]
+          },
+          {
+            "group": "Macro and news",
+            "covers": "Economic calendar, macro series, Treasury yield curve, central bank rates, rate path, CPI, energy inventories, news and social posts",
+            "tools": [
+              "macro.calendar",
+              "macro.series",
+              "macro.yield_curve",
+              "macro.rates",
+              "news.stories",
+              "social.posts"
+            ]
+          },
+          {
+            "group": "Credit, catalysts, derivatives and compute",
+            "covers": "Catalysts and litigation, credit covenants, corporate bond trades, CDS, debt maturities, government awards, futures and COT, perps, GPU prices, supply chain, power queues",
+            "tools": [
+              "market.catalysts",
+              "credit.query",
+              "company.awards",
+              "derivatives.futures",
+              "perps.query",
+              "gpu.prices",
+              "company.supply_chain",
+              "power.query"
+            ]
+          },
+          {
+            "group": "Your Gloom workspace",
+            "covers": "Notes, teams, watchlists and portfolios, read and write; connected brokerage accounts and portfolio scenario exposure",
+            "tools": [
+              "teams.list",
+              "notes.list",
+              "notes.get",
+              "notes.save",
+              "collections.list",
+              "collections.get",
+              "collections.add_symbol",
+              "collections.remove_symbol",
+              "portfolio.accounts",
+              "portfolio.positions",
+              "portfolio.performance",
+              "portfolio.exposure"
+            ]
+          }
+        ],
+        "serverCard": "https://api.gloom.sh/.well-known/mcp/server-card.json",
+        "documentation": "https://gloom.sh/docs/mcp"
+      }
+    }
+  }
+}
