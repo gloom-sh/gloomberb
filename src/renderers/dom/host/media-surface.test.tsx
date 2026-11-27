@@ -28,9 +28,9 @@ async function embed() {
     const postMessage = mock<(message: string, targetOrigin: string) => void>();
     const frameWindow = { postMessage } as unknown as typeof testWindow;
     Object.defineProperty(frame, "contentWindow", { value: frameWindow });
-    const send = (event: string, info?: unknown, from = frameWindow, eventOrigin = origin) => act(async () => {
+    const send = (event: string, info?: unknown, from = frameWindow, eventOrigin = origin, id = "gloom-media") => act(async () => {
       testWindow.dispatchEvent(new testWindow.MessageEvent("message", {
-        data: JSON.stringify({ event, info, id: "gloom-media", channel: "widget" }), origin: eventOrigin, source: from,
+        data: JSON.stringify({ event, info, id, channel: "widget" }), origin: eventOrigin, source: from,
       }));
     });
     return { frame, postMessage, send };
@@ -88,6 +88,33 @@ test("an embed configuration error shows the caller's browser action only for th
   expect(pane.querySelector("a")?.textContent).toBe("Open in browser");
   await send("onStateChange", 1);
   expect(states.at(-1)).toBe("error");
+});
+
+test("desktop playback accepts the HTTPS bridge only from the current frame with the player id", async () => {
+  const oldLocation = testWindow.location.href;
+  testWindow.happyDOM.setURL("views://mainview/index.html");
+  try {
+    const { frame, media, pane, states, send, postMessage } = await embed();
+    const bridge = "https://gloom.sh";
+    expect(frame.src).toBe(`${bridge}/embed/tv/abcdefghijk?autoplay=1&mute=1`);
+    expect(frame.getAttribute("sandbox")).toBe("allow-scripts allow-same-origin");
+    await send("onStateChange", 1);
+    await send("onStateChange", 1, testWindow, bridge);
+    await send("onStateChange", 1, undefined, bridge, "wrong-player");
+    expect(states).toEqual(["loading"]);
+    await send("onReady", undefined, undefined, bridge);
+    await send("onStateChange", 1, undefined, bridge);
+    await act(async () => media.toggle());
+    const [message, target] = postMessage.mock.calls.at(-1)!;
+    expect(target).toBe(bridge);
+    expect(JSON.parse(message)).toMatchObject({ func: "pauseVideo", id: "gloom-media", channel: "widget" });
+    await send("onStateChange", 2, undefined, bridge);
+    await send("onError", 153, undefined, bridge);
+    expect(states).toEqual(["loading", "playing", "paused", "error"]);
+    expect(pane.querySelector("a")?.textContent).toBe("Open in browser");
+  } finally {
+    testWindow.happyDOM.setURL(oldLocation);
+  }
 });
 
 test("blocked autoplay leaves the embedded controls available for a manual play", async () => {
