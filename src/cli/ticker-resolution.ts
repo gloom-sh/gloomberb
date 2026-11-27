@@ -36,6 +36,7 @@ import {
   quoteBareListing,
   resolveCliListing,
   savedListingName,
+  snapshotListingKey,
   UNLISTED_TYPES,
   type CliListing,
   type ListingChoice,
@@ -170,9 +171,17 @@ function recordedListingEnd(delisting: unknown, withdrawal?: unknown): string | 
   return recorded ? `Listing no longer trades (last traded ${recorded.lastTradeDate}).` : undefined;
 }
 
+type SnapshotListing = Pick<ListingIdentity, "symbol"> & { exchange?: string };
+
+function matchesSnapshotListing(left: SnapshotListing, right: SnapshotListing, allowBareRequest = false): boolean {
+  const requested = snapshotListingKey(left);
+  const candidate = snapshotListingKey(right);
+  return !!requested && !!candidate && securityInputKey(requested.symbol) === securityInputKey(candidate.symbol)
+    && (requested.exchange === candidate.exchange || (allowBareRequest && !requested.exchange));
+}
+
 function searchListingIdentity(row: InstrumentSearchResult): ListingIdentity {
-  const { symbol, exchange } = parsePublicTickerKey(getSearchResultSymbol(row));
-  return { symbol, exchange: canonicalExchange(listingExchange(row)) || exchange || "", name: row.name };
+  return { symbol: getSearchResultSymbol(row), exchange: listingExchange(row), name: row.name };
 }
 
 function matchesIssuer(name: string | null, other: string | null): boolean {
@@ -260,31 +269,32 @@ export async function resolveCliTicker(
   const deps: ListingDeps = { store, dataProvider };
   // A vendor's suffix is the venue it names (GARAN.IS is GARAN:BIST), so the listing is saved under one key. A word that
   // names a company is read below, once the lookup says no listing trades as it (`oneWordCompanyName`).
-  const listing = await resolveCliListing(symbol, exchange, deps, { ownExchangeWins: options.ownExchangeWins, listingSuffix: true, companyWord: false, listingAbroad: false });
+  const listing = await resolveCliListing(symbol, exchange, deps, {
+    ownExchangeWins: options.ownExchangeWins, currentSnapshot: options.currentSnapshot, listingSuffix: true, companyWord: false, listingAbroad: false,
+  });
   const read = listingReadNotes(listing);
   // Looked up beside the search, so saying FB is now META costs no wait.
   const changes = options.changes === false ? null : startTickerChangeLookup(dataProvider, listing.symbol, listing.exchange);
   const withChange = async (resolved: ResolvedListing, current: CurrentListing | null | undefined) => {
     const result = await describeResolution(listing, changes, resolved, current, options.changeGraceMs);
-    if (options.currentSnapshot && securityInputKey(listing.symbol) !== securityInputKey(savedListingName(result.ticker).symbol)) {
+    if (options.currentSnapshot && !matchesSnapshotListing(listing, savedListingName(result.ticker), true)) {
       throw new ListingArgError(`No exact listing match for "${symbol}".`, tickerChangeLine(result.change) ?? undefined);
     }
     return result;
   };
   const snapshotListing = async (identity: ListingIdentity, selected?: InstrumentSearchResult) => {
     const catalog = await dataProvider.search(listing.symbol).catch(logFailure("cli.ticker-resolution", "Listing lifecycle search failed", []));
-    const exact = (selected ? [selected, ...catalog] : catalog).filter((row) => {
-      const candidate = searchListingIdentity(row);
-      return candidate.exchange === identity.exchange && securityInputKey(candidate.symbol) === securityInputKey(identity.symbol);
-    }).map((row) => ({ row, end: recordedListingEnd(row.delisting, row.withdrawal) }));
-    const live = exact.filter(({ row, end }) => !end && !isLowQualityTickerName(row.name, identity.symbol));
+    const target = snapshotListingKey(identity) ?? identity;
+    const exact = (selected ? [selected, ...catalog] : catalog).filter((row) => matchesSnapshotListing(identity, searchListingIdentity(row)))
+      .map((row) => ({ row, end: recordedListingEnd(row.delisting, row.withdrawal) }));
+    const live = exact.filter(({ row, end }) => !end && !isLowQualityTickerName(row.name, target.symbol));
     const current = live[0]?.row;
     const issuer = current?.name ?? identity.name;
     const companyId = live.find(({ row }) => row.companyId && matchesIssuer(issuer, row.name))?.row.companyId;
     const sameIssuer = (row: InstrumentSearchResult) => companyId && row.companyId ? companyId === row.companyId
       : !issuer || matchesIssuer(issuer, row.name);
     if (live.some(({ row }) => !sameIssuer(row))) {
-      const key = identity.exchange ? `${identity.symbol}:${identity.exchange}` : identity.symbol;
+      const key = target.exchange ? `${target.symbol}:${target.exchange}` : target.symbol;
       throw new ListingArgError(`Multiple current issuers for "${key}".`, [...new Set(live.map(({ row }) => row.name))].join("; "));
     }
     const acceptsIssuer = (name: string | null): boolean => {
@@ -320,7 +330,7 @@ export async function resolveCliTicker(
   if (listing.saved) return resolveSaved(listing.saved, null, read);
   // A listing its own quote names is found as `quote` finds it, the quote cache first, so a busy search never
   // blocks a listing the quote knows. Search is asked after, for the venues a note names, and may fail.
-  const known = await listingOfOwnQuote(listing, dataProvider);
+  const known = await listingOfOwnQuote(listing, dataProvider, options.currentSnapshot);
   if (known) {
     const snapshot = options.currentSnapshot ? await snapshotListing(searchListingIdentity(known.result)) : undefined;
     const result = snapshot?.current && !snapshot.acceptsIssuer(known.result.name) ? snapshot.current : known.result;
@@ -460,7 +470,7 @@ function uncheckedIf(
  * for on any of them answers as that venue (AAPL:NYSE), where search says
  * AAPL trades on NASDAQ, unless search named that venue for a company's name.
  */
-async function listingOfOwnQuote(listing: CliListing, dataProvider: DataProvider): Promise<{ result: InstrumentSearchResult; quote: Quote } | null> {
+async function listingOfOwnQuote(listing: CliListing, dataProvider: DataProvider, currentSnapshot = false): Promise<{ result: InstrumentSearchResult; quote: Quote } | null> {
   if (listing.sharedCode || kindFromListingSyntax(listing.key, listing.exchange)) return null;
   if (listing.exchange && isUsSymbolVenue(listing.exchange) && !listing.venueFromSearch) return null;
   let quote: Quote;
@@ -471,10 +481,11 @@ async function listingOfOwnQuote(listing: CliListing, dataProvider: DataProvider
     if (!isNoProviderError(error)) logFailure("cli.ticker-resolution", "Quote listing before search failed")(error);
     return null;
   }
-  const exchange = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
-  const answered = normalizeTickerSymbol(quote.symbol ?? "");
-  if (!exchange || (answered !== listing.symbol && answered !== listing.key)) return null;
-  if (listing.exchange && exchange !== listing.exchange) return null;
+  const quoted = { symbol: quote.symbol ?? "", exchange: canonicalExchange(quote.listingExchangeName || quote.exchangeName) };
+  const exchange = currentSnapshot ? snapshotListingKey(quoted)?.exchange : quoted.exchange;
+  if (!exchange) return null;
+  if (currentSnapshot ? !matchesSnapshotListing(listing, quoted, true)
+    : (listing.exchange && exchange !== listing.exchange) || ![listing.symbol, listing.key].includes(normalizeTickerSymbol(quoted.symbol))) return null;
   if (!Number.isFinite(quote.price) || quote.price === 0 || !(quote.lastUpdated > 0)) return null;
   if (quote.delisting || noLongerTradingNote(listing.key, quote)) return null;
   if (UNLISTED_TYPES.has(quote.instrumentType?.trim().toUpperCase() ?? "")) return null;
@@ -570,12 +581,11 @@ async function nameFromListingQuote(
     // venue) is asked with none, and its own quote names none when the line stopped trading.
     const quoteExchange = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
     const ownExchange = canonicalExchange(metadata.exchange);
-    if (quoteExchange !== ownExchange || (!quoteExchange && !quote.delisting)) return { ticker, quote: null };
     if (acceptsSnapshotIssuer) {
-      const { symbol, exchange } = parsePublicTickerKey(quote.symbol ?? "");
-      if (securityInputKey(symbol) !== securityInputKey(savedListingName(ticker).symbol)
-        || (exchange && exchange !== ownExchange) || !acceptsSnapshotIssuer(name || null)) return { ticker, quote: null };
-    }
+      const quoted = { symbol: quote.symbol ?? "", exchange: quoteExchange };
+      if ((!snapshotListingKey(quoted)?.exchange && !quote.delisting) || !matchesSnapshotListing(savedListingName(ticker), quoted)
+        || !acceptsSnapshotIssuer(name || null)) return { ticker, quote: null };
+    } else if (quoteExchange !== ownExchange || (!quoteExchange && !quote.delisting)) return { ticker, quote: null };
     if (!name || name === metadata.name) return { ticker, quote };
     const named: TickerRecord = { ...ticker, metadata: { ...metadata, name } };
     await store.saveTicker(named);

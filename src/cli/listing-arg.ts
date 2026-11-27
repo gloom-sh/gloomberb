@@ -50,7 +50,7 @@ import { isNoProviderMessage, isNoSourceAnswer, isProviderBusy, isRateLimited, i
 import { dashedCoinPair, exchangeLineCoinListing, isSpotCommodityOrCurrencyPair, MAJOR_COIN_NAMES, TOP_COIN_NAMES } from "../utils/crypto-pair";
 import { boardCoinFor, primeBoardCoins } from "./board-coins";
 import { knownGapMessage, unquotedGapMessage } from "./known-gaps";
-import { renamedListingFor, renamedListingReadAs, renamedListingSymbol } from "../tickers/renamed-listings";
+import { renamedListingFor, renamedListingHint, renamedListingReadAs, renamedListingSymbol } from "../tickers/renamed-listings";
 import { currencyPairSpelling } from "../utils/currency-pair";
 import { bareFuturesCode, futuresContractByCode, futuresContractByWord, listedFuturesSymbol } from "../market-data/futures-board";
 import { commodityNameFuture } from "../market-data/commodity-names";
@@ -79,7 +79,7 @@ import { unreadBloombergCodeMessage } from "./terminal-code-hints";
 import { isKanjiOnlyName, japaneseNameChoice, japaneseNameReadAs, readExactJapaneseName, readJapaneseName, type JapaneseNameReading } from "../tickers/search/japanese-names";
 import { listingAbroadVenue } from "../utils/sec";
 import { savedAbroadForBareSymbol, savedUsListingOf } from "../tickers/search/bare-symbol";
-import { listingSuffixCandidate, listingSuffixVenue, tickerHasListingSuffix } from "../sources/listing-symbols";
+import { hongKongListingCode, listingSuffixCandidate, listingSuffixVenue, tickerHasListingSuffix } from "../sources/listing-symbols";
 import { isCurrencyPairListing } from "../utils/fx-market-hours";
 import { coinElsewhereNote, notTheCoinNote } from "./commands/crypto-hints";
 import { fredSeriesArgument, fredSeriesNotListing } from "../series/fred-argument";
@@ -172,8 +172,9 @@ export function meantQuestion(listing: Pick<ListingArg, "meant">): string {
 export function parseListingArg(
   rawArg: string,
   exchangeOption?: string | null,
-  { ownExchangeWins = false, terminalCode, listingSuffix = false }: {
+  { ownExchangeWins = false, terminalCode, listingSuffix = false, currentSnapshot = false }: {
     ownExchangeWins?: boolean;
+    currentSnapshot?: boolean;
     /**
      * The terminal code `readTerminalCodeArg` read the text as, or null for
      * words that read as a Bloomberg code but are a name. Read here when not given.
@@ -196,10 +197,10 @@ export function parseListingArg(
   const terminal = terminalCode === undefined ? readTerminalListingCode(raw) : terminalCode;
   const nearMiss = terminal ? null : readNearMissListing(raw) ?? (typedPerpetualListing(raw) ? null : readVenueFirstListing(raw));
   const reading = terminal ?? (nearMiss ? { typed: nearMiss.typed, key: nearMiss.symbol } : null);
-  const parsed = parseCleanListingArg(reading?.key ?? raw, exchangeOption, { ownExchangeWins });
+  const parsed = parseCleanListingArg(reading?.key ?? raw, exchangeOption, { ownExchangeWins, currentSnapshot });
   // A vendor's suffix is the symbol's own exchange too: in a list, 9988.HK stays on HKEX under --exchange JPX.
   const own = listingSuffix && ownExchangeWins && exchangeOption
-    ? readListingSuffix(parseCleanListingArg(reading?.key ?? raw, null, { ownExchangeWins })) : null;
+    ? readListingSuffix(parseCleanListingArg(reading?.key ?? raw, null, { ownExchangeWins, currentSnapshot })) : null;
   const listing = own ?? (listingSuffix ? readListingSuffix(parsed) ?? parsed : parsed);
   const notes = [...stripped.text ? stripped.notes : [], ...reading ? [terminalCodeReadAs(reading)] : []];
   return notes.length > 0 ? { ...listing, readAs: notes.join(" ") } : listing;
@@ -208,7 +209,7 @@ export function parseListingArg(
 function parseCleanListingArg(
   raw: string,
   exchangeOption: string | null | undefined,
-  { ownExchangeWins }: { ownExchangeWins: boolean },
+  { ownExchangeWins, currentSnapshot }: { ownExchangeWins: boolean; currentSnapshot: boolean },
 ): ListingArg {
   const optionCode = (exchangeOption ?? "").trim().toUpperCase();
   const option = canonicalExchange(optionCode);
@@ -217,6 +218,9 @@ function parseCleanListingArg(
   if (index && !index.bare) return { symbol: index.symbol, exchange: "", key: index.symbol, readAs: brokerIndexReadAs(index) };
   // VX=F, the continuous symbol VIX futures do not have, is the front generic VX1.
   const generic = option ? null : continuousAliasGeneric(raw);
+  if (generic && currentSnapshot) {
+    throw new ListingArgError(`No exact current listing for "${raw}".`, `The front generic ${generic} is a lookup alias. Import the contract shown by your broker.`);
+  }
   // It says so, as a name read as a bare symbol does: VX1 is not what was typed.
   if (generic) return { symbol: generic, exchange: "", key: generic, readAs: `Read ${raw.trim().toUpperCase()} as ${generic}, the front VIX future.`, readFromName: true };
   // A perpetual's market id (binance:BZUSDT, as PERP names it) is its listing on that venue (BZUSDT:BINANCE).
@@ -1678,12 +1682,25 @@ function readListingSuffix(listing: ListingArg): ListingArg | null {
   return venue ? { symbol: venue.symbol, exchange: venue.exchange, key: `${venue.symbol}:${venue.exchange}` } : null;
 }
 
+export function snapshotListingKey(listing: { symbol: string; exchange?: string }): { symbol: string; exchange: string } | null {
+  const parsed = parsePublicTickerKey(listing.symbol);
+  const reported = canonicalExchange(listing.exchange);
+  if (!parsed.symbol || (parsed.exchange && reported && parsed.exchange !== reported)) return null;
+  const venue = parsed.exchange || reported;
+  const suffix = listingSuffixVenue(parsed.symbol, venue);
+  const confirmed = suffix && (!venue || suffix.exchange === venue) ? suffix : null;
+  const exchange = confirmed?.exchange ?? venue;
+  return { symbol: hongKongListingCode(confirmed?.symbol ?? parsed.symbol, exchange), exchange };
+}
+
 export async function resolveCliListing(
   raw: string,
   exchangeOption: string | null | undefined,
   deps: ListingDeps,
   options: {
     ownExchangeWins?: boolean;
+    /** Resolve only the requested security for a current holdings import, not a name or successor. */
+    currentSnapshot?: boolean;
     /**
      * Read a venue suffix (RY.TO) as the listing its quote names (RY:TSX).
      * Only pane functions ask for it (`applyListingArgument`, which `fn` and
@@ -1722,16 +1739,16 @@ export async function resolveCliListing(
   if (unreadCode) throw new ListingArgError(unreadBloombergCodeMessage(unreadCode));
   // A name typed in Japanese (ドル円, トヨタ自動車) is the listing it names, which is named in Latin letters; one several
   // companies' names start with (トヨタ) asks which. A name in kanji alone is the service's to read first, below.
-  const japanese = exchangeOption?.trim() ? null : await readJapaneseName(typed);
+  const japanese = exchangeOption?.trim() || options.currentSnapshot ? null : await readJapaneseName(typed);
   if (japanese) return await japaneseNameListing(typed, japanese, deps, options);
   // A listing that moved to a new symbol (ELET3, "eletrobras") is the one it trades as now, saying so.
   const renamed = exchangeOption?.trim() ? null : renamedListingFor(typed);
-  if (renamed) {
+  if (renamed && !options.currentSnapshot) {
     const now = await resolveCliListing(renamedListingSymbol(renamed), null, deps, options);
     return { ...now, readAs: [renamedListingReadAs(typed, renamed), now.readAs].filter(Boolean).join(" "), readFromName: true };
   }
   // "crude oil" is the benchmark future search ranks first (CL=F, Brent beside it), never a fund named for it.
-  const commodity = exchangeOption?.trim() ? null : commodityNameFuture(typed);
+  const commodity = exchangeOption?.trim() || options.currentSnapshot ? null : commodityNameFuture(typed);
   if (commodity) {
     const future = await resolveCliListing(commodity.contract.symbol, null, deps, options);
     return { ...future, readAs: [commodityFutureReadAs(typed, commodity), future.readAs].filter(Boolean).join(" "), readFromName: true };
@@ -1746,7 +1763,7 @@ export async function resolveCliListing(
   // A company's name, an entry of a comma list (`WHR, Whirlpool Corporation`), is the listing search names for it.
   // A name before a legal form ("SAP SE", "SIEMENS AG") is looked up first: SE is also SIX Swiss's market code.
   const legalForm = !!read && endsInLegalForm(typed);
-  const asName = !read || legalForm ? await companyNameListingArg(raw, deps) : null;
+  const asName = !options.currentSnapshot && (!read || legalForm) ? await companyNameListingArg(raw, deps) : null;
   // Read both ways as two companies ("ZURN SE": Zurich Insurance on SIX, Zurn Elkay by name), the code's listing wins.
   const codeWins = legalForm && asName ? await codeOverCompanyName(read!, asName.found, deps) : null;
   const named = codeWins ? null : asName?.listing ?? null;
@@ -1756,6 +1773,15 @@ export async function resolveCliListing(
   // `BP.` is London's code for BP: its London line where London lists it, and `GE.` a US ticker with a stray dot.
   const dotted = terminal || named || exchangeOption?.trim() ? null : readLondonDottedSymbol(typed);
   let parsed = named ?? (dotted ? await londonDottedListing(dotted, deps) : parseListingArg(raw, exchangeOption, { ...options, terminalCode: terminal }));
+  if (options.currentSnapshot) {
+    if (parsed.exchange) {
+      const own = snapshotListingKey(parsed);
+      if (own && own.symbol !== parsed.symbol) parsed = { ...parsed, symbol: own.symbol, key: `${own.symbol}:${own.exchange}` };
+    }
+    const successor = renamed ?? renamedListingFor(parsed.key);
+    if (successor) throw new ListingArgError(`No exact current listing for "${typed}".`,
+      `${renamedListingHint(successor)} Reconcile the holding with your broker before importing the current symbol.`);
+  }
   if (codeWins) parsed = { ...parsed, readAs: codeWins };
   if (!parsed.symbol) throw new ListingArgError("Ticker symbol is required.");
   // A bare code's own quote is asked once, however many of the readings below ask whether anything trades as it.
@@ -1773,7 +1799,7 @@ export async function resolveCliListing(
   const hongKong = pair || named || index ? null : await readHongKongShortCode(parsed, deps);
   if (hongKong) parsed = hongKong;
   // A word no source quotes that names a company (`Naspers`) is its listing, for every command, as `quote` reads it.
-  const askCompany = !(options.companyWord === false || pair || named || index || rooted || hongKong || terminal || dotted);
+  const askCompany = !(options.currentSnapshot || options.companyWord === false || pair || named || index || rooted || hongKong || terminal || dotted);
   const company = askCompany ? await readBareCompanyName(parsed, typed, deps, ownQuote) : null;
   if (company) parsed = company;
   // A name in kanji alone the service names no company for (中電工; 中電 is CLP in Hong Kong) is a Tokyo company's
@@ -1821,7 +1847,7 @@ export async function resolveCliListing(
   };
   // A bare code no source quotes (O8A, listed in Frankfurt alone) is the listing `quote` reads it on, for every command.
   const readElse = pair || named || index || rooted || company || hongKong || terminal || dotted || suffixed || venueRow;
-  const bare = !(options.listingAbroad === false || readElse || listing.exchange || saved);
+  const bare = !(options.currentSnapshot || options.listingAbroad === false || readElse || listing.exchange || saved);
   const abroad = bare ? await readBareListingAbroad(resolved, deps, ownQuote) : null;
   // One whose own quote stopped trading (SOL's Emeren Group) is the company's line that still trades under it.
   const live = bare && !abroad && mayReadPastStopped(resolved, deps) ? await readPastStoppedListing(resolved, (await ownQuote(resolved.symbol)).quote, deps) : null;

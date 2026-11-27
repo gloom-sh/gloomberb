@@ -22,6 +22,7 @@ afterEach(() => {
 
 test("VX=F, written as CL=F is for a root VIX futures do not list it for, is the front generic VX1, and says so", () => {
   expect(parseListingArg("vx=f")).toEqual({ symbol: "VX1", exchange: "", key: "VX1", readAs: "Read VX=F as VX1, the front VIX future.", readFromName: true });
+  expect(() => parseListingArg("vx=f", null, { currentSnapshot: true })).toThrow(ListingArgError);
 });
 
 test("SYM:EXCH and --exchange name the same listing through the exchange aliases, and must agree", () => {
