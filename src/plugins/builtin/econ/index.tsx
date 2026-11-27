@@ -542,10 +542,9 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       onActivate={openDisplayRow}
       renderSectionHeader={renderSectionHeader}
       renderCell={renderCell}
-      // Export CSV keeps every figure at any width: only the table drawn leaves columns out.
-      exportCsv={columns.length < exportColumns.length
-        ? () => createDataTableCsv({ columns: exportColumns, items: rows, renderCell, renderSectionHeader })
-        : undefined}
+      // Export CSV keeps every figure and the reader's clock at any width: only the table drawn leaves columns out,
+      // and what it fits beside the names never decides what the file holds.
+      exportCsv={() => createDataTableCsv({ columns: exportColumns, items: rows, renderCell, renderSectionHeader })}
       selectedTextOverridesCellColor
       status={{ loading: loading && !rows.length, error: !loading && !events.length ? error : null, subject: "economic events" }}
       emptyContent={filterEmptyTitle ? (

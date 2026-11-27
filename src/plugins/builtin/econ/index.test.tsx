@@ -249,6 +249,23 @@ describe("EconCalendarPane", () => {
     expect(await exported(40)).toBe(`\uFEFFUTC,CTY,EVENT,ACT,EST,PRIOR\n${rows}`);
   });
 
+  // A release five minutes past its time says `awaiting` under ACT, which widened ACT from 5 cells to 8 and left the
+  // names 4 cells: the table drew no TOKYO column, and the file lost it too. The file's columns are the ones they were.
+  test("Export CSV keeps the reader's clock where a row awaiting its figure leaves the table no room for it", async () => {
+    const persistence = new MemoryPluginPersistence();
+    persistence.seedResource("calendar", "global", [
+      { id: "sales", date: "2026-08-21T11:55:00.000Z", time: "11:55", country: "US", event: "Retail Sales",
+        impact: "high", actual: null, forecast: "0.4%", prior: "0.6%" },
+    ], { sourceKey: "gloomberb-cloud", schemaVersion: 1 });
+    attachEconCalendarPersistence(persistence);
+    const frame = await renderPane(49, "high", true, undefined, "Asia/Tokyo");
+    expect(frame).toMatch(/11:55 US\s+Retail Sal… awaiting/);
+    expect(frame).not.toContain("TOKYO");
+    await exportPaneTable("econ-calendar", "eco.csv");
+    // The bytes main writes for this list.
+    expect(takeSavedTextFile()!.text).toBe("\uFEFFUTC,TOKYO,CTY,EVENT,ACT,EST (%),PRIOR (%)\n11:55,20:55,US,Retail Sales,,0.4,0.6");
+  });
+
   test("shows the saved calendar's original time after a timed-out refresh and clears it on recovery", async () => {
     const persistence = new MemoryPluginPersistence();
     const entry: CloudEconEventPayload = { id: "jobs", date: "2026-08-21T13:30:00Z", time: "13:30", country: "US",

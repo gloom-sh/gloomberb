@@ -52,7 +52,8 @@ export function econCalendarColumns({ width, events, countryFilter, impactFilter
   const showImpact = impactFilter === "all";
   const actualLabel = compact ? "ACT" : "ACTUAL";
   const forecastLabel = compact ? "EST" : "FORECAST";
-  const actualWidth = tableColumnWidth({ width: Math.max(valueColumnWidth(events, "actual", compact ? 3 : 9), actualNote), label: actualLabel });
+  // ACTUAL as wide as its widest figure and `note`, the word a row may say in its place.
+  const actualWidth = (note: number) => tableColumnWidth({ width: Math.max(valueColumnWidth(events, "actual", compact ? 3 : 9), note), label: actualLabel });
   const forecastWidth = tableColumnWidth({ width: valueColumnWidth(events, "forecast", compact ? 3 : 10), label: forecastLabel });
   const priorWidth = tableColumnWidth({ width: valueColumnWidth(events, "prior", compact ? 5 : 9), label: "PRIOR" });
   const minEventWidth = tableColumnWidth({ width: compact ? 5 : 12, label: "EVENT" });
@@ -60,8 +61,8 @@ export function econCalendarColumns({ width, events, countryFilter, impactFilter
   const readerLabel = readerZone ? timeZoneCity(readerZone).toUpperCase() : null;
   const readerWidth = !readerZone || !readerLabel ? 0 : tableColumnWidth({ label: readerLabel,
     width: events.some((ev) => !hasNoReleaseTime(ev) && zonedClock(ev.date.getTime(), readerZone).label.length > 5) ? 9 : 5 });
-  const figureColumns: EconCalendarColumn[] = [
-    { id: "actual", label: actualLabel, title: "Actual", width: actualWidth, align: "right" },
+  const figureColumnsFor = (note: number): EconCalendarColumn[] => [
+    { id: "actual", label: actualLabel, title: "Actual", width: actualWidth(note), align: "right" },
     { id: "forecast", label: forecastLabel, title: "Forecast", width: forecastWidth, align: "right" },
     { id: "prior", label: "PRIOR", width: priorWidth, align: "right" },
   ];
@@ -74,41 +75,55 @@ export function econCalendarColumns({ width, events, countryFilter, impactFilter
   );
   const codeWidth = 2 + (flagged ? COUNTRY_FLAG_CELLS : 0);
   const underShortHeaders = (room: (impactWidth: number, countryWidth: number) => number) => room(4, Math.max(3, codeWidth));
-  // The reader's column only where the event names keep room to read beside it, under the short headers.
-  const withReader = readerWidth > 0 && underShortHeaders(roomBeside(figureColumns, 2, timeWidth + readerWidth)) >= minEventWidth;
-  const times = withReader ? 2 : 1;
-  const timesWidth = withReader ? timeWidth + readerWidth : timeWidth;
-  const longestName = longestEventName(events, showCountry);
-  // The names come first, as in every narrow table: where three figure columns leave "GDP Growt…", PRIOR goes, and
-  // in a narrower pane still the forecast; the table says which it left out. The event's detail has all three.
-  const kept = keptFigureColumns(figureColumns, (columns) => underShortHeaders(roomBeside(columns, times, timesWidth)), longestName, minEventWidth,
-    actualNote);
-  // IMPACT and COUNTRY in words while event names keep room to read; the
-  // short labels otherwise, with the word on hover where there is one.
   const spelledImpactWidth = tableColumnWidth({ width: 1, label: SPELLED_IMPACT });
   const spelledCountryWidth = Math.max(codeWidth, tableColumnWidth({ width: 1, label: SPELLED_COUNTRY }));
-  const spelled = roomBeside(kept, times, timesWidth)(spelledImpactWidth, spelledCountryWidth) >= SPELLED_HEADER_MIN_EVENT_WIDTH;
-  const impactColumn = spelled
-    ? { label: SPELLED_IMPACT, width: spelledImpactWidth }
-    : { label: "IMP", width: 4, title: "Impact" };
-  const countryColumn = spelled
-    ? { label: SPELLED_COUNTRY, width: spelledCountryWidth }
-    : { label: "CTY", width: Math.max(3, codeWidth), title: "Country" };
-  const eventRoom = (columns: readonly EconCalendarColumn[]) =>
-    roomBeside(columns, times, timesWidth)(tableColumnWidth(impactColumn), tableColumnWidth(countryColumn));
-  // Then the names have what a long figure weeks out took, up to the longest of them: the figure is cut, not every name.
-  const figures = figuresBesideNames(kept, eventRoom, longestName, minEventWidth, actualNote);
-  const eventWidth = Math.max(minEventWidth, eventRoom(figures));
 
-  const leading: EconCalendarColumn[] = [
-    { id: "time", label: timeLabelText, width: timeWidth, align: "left" },
-    ...withReader ? [{ id: "readerTime" as const, label: readerLabel!, width: readerWidth, align: "left" as const, title: readerZone! }] : [],
-    ...showImpact ? [{ id: "impact" as const, ...impactColumn, align: "left" as const }] : [],
-    ...showCountry ? [{ id: "country" as const, ...countryColumn, align: "left" as const }] : [],
-    // The names take any room the pane has past these widths too: the desktop and the web otherwise spread it over
-    // every column, figures among them, while the names stay cut.
-    { id: "event", label: "EVENT", width: eventWidth, align: "left", flexGrow: 1 },
-  ];
-  const every = [...leading, ...figureColumns];
-  return { columns: markHiddenTableColumns(every, [...leading, ...figures]), exportColumns: every };
+  // The columns before the figures, and the figures kept, beside figure columns as wide as `figureColumns` and names
+  // of up to `longestName` cells, with `note` the word ACTUAL keeps whole.
+  const layout = (figureColumns: readonly EconCalendarColumn[], longestName: number, note: number) => {
+    // The reader's column only where the event names keep room to read beside it, under the short headers.
+    const withReader = readerWidth > 0 && underShortHeaders(roomBeside(figureColumns, 2, timeWidth + readerWidth)) >= minEventWidth;
+    const times = withReader ? 2 : 1;
+    const timesWidth = withReader ? timeWidth + readerWidth : timeWidth;
+    // The names come first, as in every narrow table: where three figure columns leave "GDP Growt…", PRIOR goes, and
+    // in a narrower pane still the forecast; the table says which it left out. The event's detail has all three.
+    const kept = keptFigureColumns(figureColumns, (columns) => underShortHeaders(roomBeside(columns, times, timesWidth)), longestName, minEventWidth,
+      note);
+    // IMPACT and COUNTRY in words while event names keep room to read; the
+    // short labels otherwise, with the word on hover where there is one.
+    const spelled = roomBeside(kept, times, timesWidth)(spelledImpactWidth, spelledCountryWidth) >= SPELLED_HEADER_MIN_EVENT_WIDTH;
+    const impactColumn = spelled
+      ? { label: SPELLED_IMPACT, width: spelledImpactWidth }
+      : { label: "IMP", width: 4, title: "Impact" };
+    const countryColumn = spelled
+      ? { label: SPELLED_COUNTRY, width: spelledCountryWidth }
+      : { label: "CTY", width: Math.max(3, codeWidth), title: "Country" };
+    const eventRoom = (columns: readonly EconCalendarColumn[]) =>
+      roomBeside(columns, times, timesWidth)(tableColumnWidth(impactColumn), tableColumnWidth(countryColumn));
+    const leading = (eventWidth: number): EconCalendarColumn[] => [
+      { id: "time", label: timeLabelText, width: timeWidth, align: "left" },
+      ...withReader ? [{ id: "readerTime" as const, label: readerLabel!, width: readerWidth, align: "left" as const, title: readerZone! }] : [],
+      ...showImpact ? [{ id: "impact" as const, ...impactColumn, align: "left" as const }] : [],
+      ...showCountry ? [{ id: "country" as const, ...countryColumn, align: "left" as const }] : [],
+      // The names take any room the pane has past these widths too: the desktop and the web otherwise spread it over
+      // every column, figures among them, while the names stay cut.
+      { id: "event", label: "EVENT", width: eventWidth, align: "left", flexGrow: 1 },
+    ];
+    return { kept, eventRoom, leading };
+  };
+
+  const figureColumns = figureColumnsFor(actualNote);
+  const longestName = longestEventName(events, showCountry);
+  const shown = layout(figureColumns, longestName, actualNote);
+  // Then the names have what a long figure weeks out took, up to the longest of them: the figure is cut, not every name.
+  const figures = figuresBesideNames(shown.kept, shown.eventRoom, longestName, minEventWidth, actualNote);
+  const leading = shown.leading(Math.max(minEventWidth, shown.eventRoom(figures)));
+  // Export CSV writes the columns it always did, decided at the figures' own widths and the names as the source
+  // writes them: a row awaiting its figure, which widens ACT in the table, never takes the reader's clock from the file.
+  const filedFigures = figureColumnsFor(0);
+  const filed = layout(filedFigures, longestEventName(events), 0);
+  return {
+    columns: markHiddenTableColumns([...leading, ...figureColumns], [...leading, ...figures]),
+    exportColumns: [...filed.leading(Math.max(minEventWidth, filed.eventRoom(filed.kept))), ...filedFigures],
+  };
 }
