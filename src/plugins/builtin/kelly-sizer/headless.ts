@@ -20,7 +20,7 @@ import { formatPct, formatSignedPct } from "./view";
 import { logFailure } from "../../../utils/log-failure";
 import { isoDayEntries } from "../shared/day-entries";
 import { loadFuturesContractTerms } from "../../../market-data/futures-contract";
-import { kellyCount, kellyCountMultiplier, type KellyCount } from "./units";
+import { formatKellySizingPrice, kellyCount, kellyCountMultiplier, kellySizingPrice, type KellyCount } from "./units";
 
 /** The fractions of full Kelly a report sizes, largest first. */
 const KELLY_FRACTIONS = [
@@ -125,9 +125,10 @@ export const kellyHeadless: HeadlessPaneDefinition<"bundle"> = {
     const bankrollValue = args.options.bankroll;
     const bankroll = typeof bankrollValue === "number" && bankrollValue > 0 ? bankrollValue : null;
     const baseCurrency = ctx.config.baseCurrency || "USD";
-    const price = quote && quote.price > 0 && Number.isFinite(quote.price) ? quote.price : null;
     // A future is counted in contracts, each its price times the contract's multiplier.
     const count = kellyCount(symbol, exchange, quote?.instrumentType);
+    const sizingPrice = kellySizingPrice(quote, count);
+    const price = sizingPrice?.value ?? null;
     const [multiplier, basePrice] = bankroll == null || price == null ? [null, null] : await Promise.all([
       kellyCountMultiplier(symbol, count, (key) => loadFuturesContractTerms(key, ctx.apiClient)),
       // The price in the bankroll's currency, at the rate the portfolio values holdings at; null without one.
@@ -170,7 +171,11 @@ export const kellyHeadless: HeadlessPaneDefinition<"bundle"> = {
       notes,
       sections: [
         // The window's days read first in the text; JSON and CSV keep them in ISO.
-        { title: "Inputs", ...isoDayEntries(inputEntries(inputs, solve.expectedReturn)) },
+        { title: "Inputs", ...isoDayEntries([...inputEntries(inputs, solve.expectedReturn),
+          ...(bankroll != null && sizingPrice ? [{ key: "sizingPrice", label: "Sizing price", value: sizingPrice.value,
+            formatted: formatKellySizingPrice(sizingPrice), unit: sizingPrice.currency ?? undefined,
+            asOf: typeof sizingPrice.asOf === "number" ? new Date(sizingPrice.asOf).toISOString() : sizingPrice.asOf }] : []),
+        ]) },
         {
           title: bankroll == null ? "Sizing" : `Sizing on ${formatNumber(bankroll, 0)} ${baseCurrency}`,
           columns: [
@@ -193,7 +198,7 @@ export const kellyHeadless: HeadlessPaneDefinition<"bundle"> = {
         expectedLogGrowth: solve.expectedLogGrowth,
         bankroll,
         currency: baseCurrency,
-        price: price == null ? null : { value: price, currency: quote?.currency ?? null, asOf: quote?.lastUpdated ?? null },
+        price: sizingPrice,
         ...(basePrice != null && quote?.currency !== baseCurrency ? { priceInBase: { value: basePrice, currency: baseCurrency } } : {}),
         ...(count === "contracts" && multiplier != null ? { contractMultiplier: multiplier } : {}),
         units: count,

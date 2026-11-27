@@ -269,8 +269,9 @@ test("actual Kelly uses scoped bankroll, current holding and price without resea
   await render(fixture(), "b", new Map([["ACME", financials("ACME", 999)]]), false, "kelly-sizer");
   const frame = tui.frame();
   expect(frame).toMatch(/Bankroll\s+4000\s+USD\s+Current\s+2000\s+USD/);
-  expect(frame).toContain("$200.00"); expect(frame).toMatch(/Current %\s+50\.0%/);
-  expect(frame).not.toContain("$999.00");
+  expect(frame).toMatch(/Price\s+200\.00 USD · Last quote\b/);
+  expect(frame).toMatch(/Current %\s+50\.0%/);
+  expect(frame).not.toMatch(/\$999\.00|999\.00 USD/);
 });
 
 test("Kelly price label retains the scoped quote currency instead of the other account's research currency", async () => {
@@ -280,6 +281,7 @@ test("Kelly price label retains the scoped quote currency instead of the other a
   const scoped = financials("ACME", 200); scoped.quote!.currency = "EUR";
   f.coordinator.primeCachedFinancials([{ instrument: instrumentFromTicker(ticker, "ACME", { portfolioId: "b" })!, financials: scoped }]);
   await render(f, "b", new Map(), false, "kelly-sizer");
-  expect(tui.frame()).toContain("€200.00");
-  expect(tui.frame()).not.toContain("$200.00");
+  const frame = tui.frame();
+  expect(frame).toMatch(/Price\s+200\.00 EUR · Last quote\b/);
+  expect(frame).not.toMatch(/\$200\.00|200\.00 USD/);
 });

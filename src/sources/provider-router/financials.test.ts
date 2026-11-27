@@ -319,6 +319,16 @@ test("keeps incompatible and unverified reporting currencies out of merged valua
   expect(mergeFinancials(primary, fallback)?.fundamentals?.financialCurrency).toBeUndefined();
 });
 
+test("does not attach another observation's currency to merged free cash flow", () => {
+  const valued = createTestFinancials({ fundamentals: { revenue: 450, financialCurrency: "CAD" } });
+  const older = createTestFinancials({ fundamentals: { freeCashFlow: -70 } });
+  expect(mergeFinancials(valued, older)?.fundamentals).toMatchObject({ freeCashFlow: -70, freeCashFlowCurrency: null });
+  older.fundamentals!.freeCashFlowCurrency = "USD";
+  expect(mergeFinancials(valued, older)?.fundamentals).toMatchObject({ freeCashFlow: -70, freeCashFlowCurrency: "USD" });
+  valued.fundamentals!.freeCashFlow = -50;
+  expect(mergeFinancials(valued, older)?.fundamentals).toMatchObject({ freeCashFlow: -50, freeCashFlowCurrency: "CAD" });
+});
+
 test("a TTM conversion stays with the currency it describes, from a cached snapshot or a fresh one", () => {
   const ttmConversion = { from: "EUR", rate: 1.12571, asOf: "2026-10-09", eps: "report_date" as const };
   const converted = createTestFinancials({ fundamentals: { financialCurrency: "USD", revenue: 54.63e9, ttmConversion } });

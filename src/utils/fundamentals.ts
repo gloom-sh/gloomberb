@@ -489,6 +489,7 @@ export function ttmAtAppRate<T extends Fundamentals>(fundamentals: T, rate: AppF
   const factor = rate.rate / conversion.rate;
   const shown: T = { ...fundamentals };
   for (const key of TTM_AMOUNTS) {
+    if (key === "freeCashFlow" && fundamentals.freeCashFlowCurrency !== undefined && fundamentals.freeCashFlowCurrency !== fundamentals.financialCurrency) continue;
     const value = fundamentals[key];
     if (finiteNumber(value)) (shown as Fundamentals)[key] = Math.round(value * factor);
   }
