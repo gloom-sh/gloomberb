@@ -115,6 +115,8 @@ describe("SEC headless model", () => {
   test.each([
     { exchange: "JPX", symbol: "7203:JPX", url: "https://www2.jpx.co.jp/disc/72030/140120260804507923.pdf" },
     { exchange: "BURSAMY", symbol: "5200:XKLS", url: "https://www.insage.com.my/ir/cmn/Announcement.aspx?NewsID=202610215100007&Symbol=5200" },
+    { exchange: "HOSE", symbol: "FPT.VN:HOSE", url: "https://www.hsx.vn/vi/tin-tuc/fpt-ket-qua-kinh-doanh-nam-2025/2433776" },
+    { exchange: "HNX", symbol: "PVS:HNX", url: "https://api.gloom.sh/cloud/announcements/hnx/642808" },
   ])("an extended $exchange filing read retains disclosures beyond the first 50 rows", async ({ exchange, symbol, url }) => {
     const announcement = {
       date: "2026-08-04", headline: "Q&A summary of the earnings briefing",

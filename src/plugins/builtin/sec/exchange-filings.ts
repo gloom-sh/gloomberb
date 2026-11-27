@@ -5,6 +5,7 @@ import { nonUsSecListingVenue } from "../../../utils/sec";
 
 export const HKEX_FILING_HISTORY_LIMIT = 100;
 export const PRESENTATIONS_FORM = "presentations";
+export const RECENT_EXCHANGE_FILING_LIMIT = 50;
 
 interface ExchangeFilingForm {
   value: string;
@@ -24,7 +25,8 @@ export function exchangeFilingForm(venue: string | undefined): ExchangeFilingFor
 // The extended archives are bounded. The pane reveals their rows as the user scrolls.
 export function exchangeFilingHistoryLimit(venue: string | undefined, kind?: ExchangeAnnouncementsRequest["kind"]): number {
   if (venue === "HKEX" && kind === "results") return HKEX_FILING_HISTORY_LIMIT;
-  return kind || venue === "JPX" || venue === "BURSAMY" ? 200 : 50;
+  return kind || venue === "JPX" || venue === "BURSAMY" || venue === "HNX" || venue === "HOSE"
+    ? 200 : RECENT_EXCHANGE_FILING_LIMIT;
 }
 
 export function localFilingListing(symbol: string, exchange?: string) {
