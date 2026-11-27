@@ -89,10 +89,14 @@ export const cachedGraph = (symbol: string, target: string, options: GraphOption
   graphEndpoint.cached({ symbol, target, options, access });
 export const loadGraph = (symbol: string, target: string, options: GraphOptions, access: string, force = false) =>
   graphEndpoint.load({ symbol, target, options, access }, { force });
-export function graphOptions(input: Record<string, unknown>): GraphOptions {
-  const asOfText = String(input.asOf || input["as-of"] || "").trim();
+export function supplyCutoff(input: Record<string, unknown>, paneCutoff?: unknown): string | undefined {
+  const asOfText = String(input.asOf || input["as-of"] || paneCutoff || "").trim();
   const asOf = asOfText ? readCalendarDate(asOfText) : null;
   if (asOfText && !asOf) throw new Error(dateOptionError(asOfText, "", { subject: "a filing cutoff" }));
+  return asOf ?? undefined;
+}
+export function graphOptions(input: Record<string, unknown>): GraphOptions {
+  const asOf = supplyCutoff(input);
   const csv = (key: string) => String(input[key] ?? "").split(",").filter(Boolean);
   const options = { ...DEFAULT_GRAPH_OPTIONS, depth: Number(input.depth ?? 2), direction: String(input.direction ?? "both") as GraphOptions["direction"],
     roles: csv("roles") as GraphOptions["roles"], sources: csv("sources") as GraphOptions["sources"], tiers: csv("tiers") as GraphOptions["tiers"],

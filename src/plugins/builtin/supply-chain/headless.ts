@@ -98,7 +98,7 @@ function graphReport(data: GraphPayload, target: string): HeadlessBundleResult {
     { key: "period", header: "Period", textFormat: (value, row) => periodText({ period: String(value), periodMonths: row.periodMonths as number | null }) },
     { key: "filed", header: "Filed" }, { key: "confidence", header: "Confidence" },
     // A tagged XBRL fact prints the link's filing sentence when one names the same pair, otherwise the fact in words; exports keep the stored text.
-    { key: "quote", header: "Quote", textFormat: (_value, row) => graphStatement(row.evidence as GraphEvidence, links.get(String(row.linkId))!.evidence, true) }, { key: "filingUrl", header: "Filing" },
+    { key: "quote", header: "Quote", textFormat: (_value, row) => supplyDisplayName(graphStatement(row.evidence as GraphEvidence, links.get(String(row.linkId))!.evidence, true)) }, { key: "filingUrl", header: "Filing" },
   ], rows: data.links.flatMap(link => link.evidence.map(item => ({ id: item.id, linkId: link.id, primary: item.id === link.primaryEvidenceId,
     statement: graphStatement(item, link.evidence, false), share: graphShare(item),
     reporter: item.reporter.name, from: item.from.name, to: item.to.name, role: item.role, relatedParty: isRelatedParty(item), pct: item.pctOfRevenue ?? null,
@@ -211,8 +211,9 @@ export const supplyChainHeadless: HeadlessPaneDefinition<"bundle"> = {
     let directoryLocked = 0;
     for (const report of directories) {
       const rows = directoryRows(report);
-      sections.push({ title: report.buyer + " supplier directory", rows,
-        columns: directoryColumns(rows).map(([key, header]) => ({ key, header })) });
+      sections.push({ title: report.buyer + " supplier directory", textTitle: supplyDisplayName(report.buyer) + " supplier directory", rows,
+        columns: directoryColumns(rows).map(([key, header]) => ({ key, header,
+          ...(["buyer", "operator", "parent"].includes(key) ? { textFormat: nameCell } : {}) })) });
       directoryLocked += report.total - rows.length;
     }
     // A requested view is complete when the preview leaves none of its own rows out.

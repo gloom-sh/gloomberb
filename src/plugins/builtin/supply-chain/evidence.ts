@@ -7,7 +7,7 @@ import { fetchSupplyChain, validateSupplyChain } from "./client";
 import { directoryRows } from "./directories";
 import { earlierRows, openingSupplyView } from "./model";
 import { isUnconfirmed, matchesSupplyOptions, supplyOptions } from "./trust";
-import { fetchSupplyGraph, graphOptions, validateGraph } from "./graph-client";
+import { fetchSupplyGraph, graphOptions, supplyCutoff, validateGraph } from "./graph-client";
 
 type SupplyTab = "table" | "directories" | "flow" | "graph" | "path";
 interface SupplyEvidence {
@@ -32,18 +32,20 @@ export function useSupplyEvidence(payload: SupplyChainPayload | null, tab: strin
 }
 export const supplyScreenshotEvidence: PaneScreenshotEvidenceHook<SupplyEvidence> = {
   paneId: "supply-chain", kind: "supply-chain", label: "supply chain",
-  async prepare({ resolved }) {
+  async prepare({ resolved, settings }) {
     const symbol = resolved.createOptions?.symbol ?? resolved.createOptions?.arg;
     if (!symbol) throw new Error("A supply chain screenshot requires a ticker");
+    const asOf = supplyCutoff(resolved.options, settings.asOf);
+    const cutoffSettings = asOf ? { asOf } : {};
     // A filing pane needs an identity, never fabricated prices or unrelated market requests.
     if (graphTab(resolved.options.tab)) {
       const target = String(resolved.options.to ?? "").trim();
       if (resolved.options.tab === "path" && !target) throw new Error("Path requires a target company: --to TICKER");
-      const payload = await fetchSupplyGraph(symbol, graphOptions(resolved.options), target);
-      return { settings: { graphSnapshot: payload }, financials: [[payload.symbol, { annualStatements: [], quarterlyStatements: [], priceHistory: [] }]] };
+      const payload = await fetchSupplyGraph(symbol, graphOptions({ ...resolved.options, ...cutoffSettings }), target);
+      return { settings: { ...cutoffSettings, graphSnapshot: payload }, financials: [[payload.symbol, { annualStatements: [], quarterlyStatements: [], priceHistory: [] }]] };
     }
-    const payload = await fetchSupplyChain(symbol, undefined, { ...supplyOptions(resolved.options.tiers), asOf: typeof resolved.options.asOf === "string" ? resolved.options.asOf : undefined });
-    return { settings: { supplySnapshot: payload }, financials: [[payload.symbol, { annualStatements: [], quarterlyStatements: [], priceHistory: [] }]] };
+    const payload = await fetchSupplyChain(symbol, undefined, { ...supplyOptions(resolved.options.tiers), asOf });
+    return { settings: { ...cutoffSettings, supplySnapshot: payload }, financials: [[payload.symbol, { annualStatements: [], quarterlyStatements: [], priceHistory: [] }]] };
   },
   read(value) {
     if (!isRecord(value) || value.kind !== "supply-chain" || value.version !== 1 || !isRecord(value.payload)
@@ -82,7 +84,7 @@ export const supplyScreenshotEvidence: PaneScreenshotEvidenceHook<SupplyEvidence
     const settings = payload.config.layout.instances.find(entry => entry.instanceId === payload.paneId)?.settings;
     const snapshot = settings?.[graphTab(evidence.tab) ? "graphSnapshot" : "supplySnapshot"];
     const mismatches: string[] = [];
-    const cutoff = typeof resolved.options.asOf === "string" ? resolved.options.asOf : undefined;
+    const cutoff = supplyCutoff(resolved.options, resolved.instance.settings?.asOf);
     if (cutoff) {
       try {
         if (graphTab(evidence.tab)) validateGraph(evidence.payload as GraphPayload, cutoff);
