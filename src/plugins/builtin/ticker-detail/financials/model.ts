@@ -981,7 +981,8 @@ function hasLeadLine(lead: FinancialRowDef, statement: FinancialStatement): bool
   const filedLine = key === "totalRevenue" ? "netIncome" : key === "freeCashFlow" ? "operatingCashFlow" : undefined;
   if (!filedLine || !fill.fields.includes(filedLine) || !Number.isFinite(statement[filedLine])) return false;
   const document = fill.lines[filedLine]?.document;
-  return document !== undefined && !!safeExternalUrl(fill.documents[document]?.url);
+  const url = document === undefined ? undefined : fill.documents[document]?.url;
+  return typeof url === "string" && !!safeExternalUrl(url);
 }
 
 /**
