@@ -249,6 +249,7 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
           : (kind === "initialDelivery" || kind === "infoDelivery") && snapshot && "playerState" in snapshot
             ? youtubePlaybackState(snapshot.playerState) : undefined;
         if (state === "ended") {
+          if (deadline !== undefined && kind !== "onStateChange") return;
           pauseRequested = false;
           stopAttempt();
           update("idle");

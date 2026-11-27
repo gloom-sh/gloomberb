@@ -139,19 +139,23 @@ test("pausing after the player ends does not hide a confirmed replay", async () 
   expect(states).toEqual(["loading", "playing", "idle", "playing"]);
 });
 
-test("buffering followed by a confirmed end cancels the play deadline", async () => {
+test.each(["infoDelivery", "onStateChange"] as const)("replay buffering clears the play deadline only on an end transition (%s)", async (kind) => {
   const timer = spyOn(globalThis, "setTimeout");
   try {
-    const { pane, states, onError, send } = await embed();
-    const attempt = timer.mock.calls.filter(([, delay]) => delay === 15_000).at(-1)![0];
+    const { media, pane, states, onError, send } = await embed();
     await send("onReady");
-    await send("onStateChange", 3);
+    await send("onStateChange", 1);
     await send("onStateChange", 0);
-    expect(states).toEqual(["loading", "idle"]);
+    await act(async () => media.play());
+    await send("onStateChange", 3);
+    const attempt = timer.mock.calls.filter(([, delay]) => delay === 15_000).at(-1)![0];
+    const confirmedEnd = kind === "onStateChange";
+    await send(kind, confirmedEnd ? 0 : { playerState: 0 });
     await act(async () => attempt());
-    expect(states).toEqual(["loading", "idle"]);
-    expect(pane.querySelector("iframe")).not.toBeNull();
-    expect(onError).not.toHaveBeenCalled();
+    expect(states).toEqual(["loading", "playing", "idle", "loading", confirmedEnd ? "idle" : "error"]);
+    expect(pane.querySelector("iframe") !== null).toBe(confirmedEnd);
+    expect(pane.querySelector("a")?.textContent).toBe(confirmedEnd ? undefined : "Open in browser");
+    expect(onError).toHaveBeenCalledTimes(confirmedEnd ? 0 : 1);
   } finally {
     timer.mockRestore();
   }
