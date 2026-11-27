@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Fundamentals, NextEarnings, Quote } from "../../../../types/financials";
+import type { Fundamentals, NextEarnings, Quote, TickerFinancials } from "../../../../types/financials";
 import type { TickerPosition, TickerRecord } from "../../../../types/ticker";
 import { buildOverviewBeta, buildOverviewStats, buildPositionRows, buildProfileFields } from "./model";
 import { buildRelationshipStatItems } from "../../correlation/relationship/view-model";
@@ -12,6 +12,51 @@ import { createTestQuote } from "../../../../test-support/data-provider";
 import { cryptoFixture } from "../../crypto-board/test-fixture";
 import { regularSessionMarketCapitalization } from "../../../../market-data/quotes/regular-session-valuation";
 import { marketCapBasisNote } from "../../../../utils/market-capitalization";
+import { selectFinancialStatements } from "../financials/model";
+
+const fiscalIncome = (date: string, revenue: number, netIncome: number) => ({ date, currency: "USD", totalRevenue: revenue * 1e6,
+  operatingIncome: (netIncome + 1_000) * 1e6, netIncome: netIncome * 1e6, netIncomeCommonStockholders: (netIncome - 10) * 1e6,
+  netIncomeIncludingNoncontrollingInterests: (netIncome + 150) * 1e6 });
+const incomeStatements = {
+  financialCurrency: "USD",
+  annualStatements: [fiscalIncome("2025-12-31", 122_687, 2_348)],
+  quarterlyStatements: [fiscalIncome("2025-12-31", 30_372, 1_197), fiscalIncome("2026-03-31", 36_000, 2_000),
+    fiscalIncome("2026-06-30", 40_857, 2_925), fiscalIncome("2026-09-30", 46_098, 6_828)],
+};
+const incomeSummary = { financialCurrency: "USD", revenue: 146.529e9, netIncome: 12.91e9, profitMargin: 0.08834, freeCashFlow: 15.08e9 };
+function overviewIncome(statements: typeof incomeStatements & Pick<TickerFinancials, "statementScope"> = incomeStatements,
+  summary: TickerFinancials["fundamentals"] = incomeSummary) {
+  return Object.fromEntries(buildOverviewStats({ quote: undefined, fundamentals: summary, financialCurrency: statements.financialCurrency,
+    statementFinancials: statements, quoteCurrency: "USD", baseCurrency: "USD", toBase: (value) => value }).map((field) => [field.label, field]));
+}
+
+test("Overview prefers the complete income TTM shown by Financials, without using income to common or including NCI", () => {
+  const [ttm] = selectFinancialStatements("annual", "income", incomeStatements.annualStatements, incomeStatements.quarterlyStatements).statements;
+  expect(ttm).toMatchObject({ totalRevenue: 153_327e6, netIncome: 12_950e6, netIncomeCommonStockholders: 12_910e6 });
+  for (const trailingPeriodEnd of [undefined, "2026-09-30"]) {
+    const stats = overviewIncome(incomeStatements, { ...incomeSummary, trailingPeriodEnd });
+    expect(stats.Revenue).toMatchObject({ value: "153.33B USD", detail: expect.arrayContaining(["TTM to 30 Sep 2026"]) });
+    expect(stats["Net Income"]?.value).toBe("12.95B USD");
+    expect(stats["Profit Marg"]?.value).toBe("8.45%");
+    expect(stats.FCF?.value).toBe("15.08B USD");
+  }
+});
+
+test("Overview retains its income figures across currency, scope, period, and missing-quarter mismatches", () => {
+  const currency = overviewIncome(incomeStatements, { ...incomeSummary, financialCurrency: "CAD" });
+  expect(currency.Revenue?.value).toBe("146.53B CAD");
+  expect(currency["Net Income"]?.detail).toContain("Currency basis differs");
+  expect(currency["Profit Marg"]?.value).toBe("8.83%");
+  const unmatched = overviewIncome(incomeStatements, { ...incomeSummary, trailingPeriodEnd: "2026-06-30" });
+  expect(unmatched.Revenue?.detail).toContain("TTM to 30 Jun 2026");
+  expect(unmatched["Net Income"]?.detail).toContain("Different period");
+  const predecessor = overviewIncome({ ...incomeStatements, statementScope: { registrant: "Previous issuer", basis: "predecessor", label: "Predecessor" } });
+  expect(predecessor.Revenue?.value).toBe("146.53B USD");
+  expect(predecessor["Net Income"]?.detail).toContain("Different scope");
+  const incomplete = overviewIncome({ ...incomeStatements, quarterlyStatements: incomeStatements.quarterlyStatements.slice(1) });
+  expect(incomplete.Revenue?.value).toBe("146.53B USD");
+  expect(incomplete["Profit Marg"]?.value).toBe("8.83%");
+});
 
 test("GGAL's overview uses valuation's receipt-equivalent cap only on a matching basis", () => {
   const quote = createTestQuote({ symbol: "GGAL", marketState: "REGULAR", price: 25.08, marketCap: 4.35e9,

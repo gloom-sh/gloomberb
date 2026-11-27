@@ -308,11 +308,13 @@ export async function buildDesktopShotPayload(
     collectShotStatSeries(resolved),
   ]);
   const includeOptionsChains = resolved.pane.id === OPTIONS_PANE_ID || resolved.template?.paneId === OPTIONS_PANE_ID;
+  const datesChangeBasis = resolved.pane.id === TICKER_RESEARCH_PANE_ID
+    && (!resolved.options.tab || resolved.options.tab === "overview");
   /** One row's data, or null for an argument the report reads as words rather than a ticker. */
   const captureShotSymbol = async (symbol: string): Promise<ShotSymbolCapture | null> => {
     let entry: Awaited<ReturnType<typeof fetchTickerFinancials>>;
     try {
-      entry = await fetchTickerFinancials(context, symbol);
+      entry = await fetchTickerFinancials(context, symbol, datesChangeBasis);
     } catch (error) {
       // A report that reads its own argument (CDS's issuer name) renders it with no ticker data, as `fn` does.
       if (resolved.headless?.argument.kind === "free-text" && isNotATickerMessage(error instanceof Error ? error.message : null)) return null;

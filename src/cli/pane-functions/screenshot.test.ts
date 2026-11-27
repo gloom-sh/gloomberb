@@ -19,7 +19,7 @@ import { collectShotSymbols } from "./data";
 import { paneStateMarkers, shotStatusDateClipped, type DesktopPaneShotPayload, type DesktopPaneShotRenderResult } from "../desktop-pane-shot";
 import type { ResolvedPaneFunction } from "./resolver";
 import { buildCustomChartPreset } from "../../plugins/builtin/chart-composer/presets";
-import { CHART_COMPOSER_PANE_ID, createDefaultConfig } from "../../types/config";
+import { CHART_COMPOSER_PANE_ID, TICKER_RESEARCH_PANE_ID, createDefaultConfig } from "../../types/config";
 import { JsonPersistence } from "../../data/json-persistence";
 import { alertsHeadless } from "../../plugins/builtin/alerts/headless";
 import { ALERTS_PLUGIN_ID } from "../../plugins/builtin/alerts/constants";
@@ -64,6 +64,8 @@ import { valueOption, solveImpliedVolatility } from "../../plugins/builtin/share
 import { loadSeasonalityHistory } from "../../plugins/builtin/seasonality/client";
 import { estimateKellyHistoryInputs, kellyHistoryRequest } from "../../plugins/builtin/kelly-sizer/history";
 import { createTestDataProvider, createTestFinancials, createTestQuote } from "../../test-support/data-provider";
+import { AssetDataRouter } from "../../sources/provider-router";
+import { changeBasisLabel, quoteChangeBasis } from "../../market-data/market/change-basis";
 import { accountManagementModule } from "../../plugins/builtin/account-management";
 import { brokerManagerModule } from "../../plugins/builtin/broker-manager";
 import { changelogModule } from "../../plugins/builtin/changelog";
@@ -255,6 +257,40 @@ test("volatility history screenshot readiness requires dated plotted values and 
   expect(shotSemanticRowCount(request, source, [])).toBe(0);
   expect(shotDataEvidenceFor(request, source, [])).toBeNull();
   expect(paneEvidenceMismatches(request, source, { semanticUi: [] })).toHaveLength(1);
+});
+
+test("Ticker Research captures only a verified comparison close, with the listing's own session as the control", async () => {
+  const now = Date.parse("2026-11-27T00:21:00Z");
+  setSystemTime(new Date(now));
+  try {
+    const capture = async (symbol: string, exchange: string, previousClose: number, dailyClose: number) => {
+      const quote = createTestQuote({ symbol: exchange === "LSE" ? `${symbol}.L` : symbol, listingExchangeName: exchange,
+        exchangeName: exchange, currency: exchange === "LSE" ? "GBP" : "ZAR", instrumentType: "EQUITY", price: 12.585,
+        previousClose, change: 12.585 - previousClose, changePercent: (12.585 / previousClose - 1) * 100,
+        changeSessionDate: "2026-11-26", marketState: "CLOSED", providerId: "gloomberb-cloud",
+        lastUpdated: Date.parse("2026-11-26T16:40:00Z") });
+      const router = new AssetDataRouter(createTestDataProvider({
+        id: "gloomberb-cloud",
+        getTickerFinancials: async () => createTestFinancials({ quote }),
+        getPriceHistory: async () => [{ date: new Date("2026-11-24"), close: dailyClose - 0.03 },
+          { date: new Date("2026-11-25"), close: dailyClose }, { date: new Date("2026-11-26"), close: 12.585 }],
+      }), []);
+      router.setBackgroundRevalidation(false);
+      const listing = `${symbol}:${exchange}`;
+      const request = { pane: { id: TICKER_RESEARCH_PANE_ID }, capability: { options: [] }, options: {},
+        instance: { instanceId: "des:test", paneId: TICKER_RESEARCH_PANE_ID, binding: { kind: "fixed", symbol: listing } },
+      } as unknown as ResolvedPaneFunction;
+      const shot = await buildDesktopShotPayload(request, {
+        config: createDefaultConfig("/tmp/comparison-close-test"), store: { loadTicker: async () => null }, dataProvider: router,
+      } as unknown as MarketContext, listing, {}, 800, 600, null, 1, null);
+      return changeBasisLabel(quoteChangeBasis(shot.financials[0]?.[1].quote)!, now);
+    };
+    expect(await capture("NG", "LSE", 12.52, 12.52)).toBe("vs Wed 25 Nov close");
+    expect(await capture("NG", "LSE", 12.52, 11.50)).toBe("vs prev close");
+    expect(await capture("HCI", "JSE", 12.52, 11.50)).toBe("vs Wed 25 Nov close");
+  } finally {
+    setSystemTime();
+  }
 });
 
 describe("realized volatility screenshot history", () => {
