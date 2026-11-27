@@ -5,6 +5,7 @@ on:
     branches:
       - main
   pull_request:
+    types: [opened, synchronize, reopened, closed]
     branches:
       - main
   workflow_dispatch:
@@ -28,7 +29,7 @@ env:
 
 jobs:
   typecheck:
-    if: github.event_name != 'schedule'
+    if: github.event_name != 'schedule' && github.event.action != 'closed'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -42,8 +43,19 @@ jobs:
 
       # Fails on a promise in src/ that nothing awaits or handles, and on a
       # stale entry in src/architecture/floating-promise-allowlist.json.
+      # Pull requests scan only the changed files and their transitive callers;
+      # pushes to main and manual dispatches run the full scan.
       - name: Check for new floating promises
-        run: bun run check:floating-promises
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            git fetch --depth=1 origin "$BASE_REF"
+            bun run scripts/update-floating-promise-allowlist.ts --check --changed-from FETCH_HEAD
+          else
+            bun run check:floating-promises
+          fi
 
       # Fails on unused files, exports and dependencies. See knip.jsonc for
       # what it deliberately skips.
@@ -61,7 +73,7 @@ jobs:
         run: bun run web:proxy-hosts:check
 
   build-and-test:
-    if: github.event_name != 'schedule'
+    if: github.event_name != 'schedule' && github.event.action != 'closed'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -84,7 +96,14 @@ jobs:
           bun run scripts/verify-scope.ts --base FETCH_HEAD
 
       - name: Test
-        run: bun run test:ci
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            bun run scripts/test-parallel.ts --changed-from FETCH_HEAD
+          else
+            bun run test:ci
+          fi
 
       - name: Build Electrobun view
         run: bun run desktop:view:build
@@ -129,7 +148,7 @@ jobs:
   # what matters is that no job that signs, publishes or deploys restores any,
   # and setup-bun's cache is off unless a job asks).
   registry-plugins:
-    if: github.event_name != 'schedule'
+    if: github.event_name != 'schedule' && github.event.action != 'closed'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0

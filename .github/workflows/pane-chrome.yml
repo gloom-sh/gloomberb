@@ -15,6 +15,7 @@ name: Pane chrome
 on:
   workflow_dispatch:
   pull_request:
+    types: [opened, synchronize, reopened, closed]
     branches:
       - main
     paths: &pane-chrome-paths
@@ -101,8 +102,39 @@ env:
   DO_NOT_TRACK: "1"
 
 jobs:
+  scope:
+    name: Pane chrome scope
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      chat_checks: ${{ steps.scope.outputs.chat_checks }}
+    steps:
+      - if: github.event_name == 'pull_request'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - if: github.event_name == 'pull_request'
+        uses: ./.github/actions/setup-bun
+        with:
+          install: "false"
+
+      - id: scope
+        name: Check whether chat or shell layout paths changed
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo "chat_checks=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --depth=1 origin "$BASE_REF"
+          bun run scripts/pane-chrome/pane-chrome-scope.ts --base FETCH_HEAD
+
   pointer-checks:
     name: Pointer checks
+    needs: scope
+    if: github.event.action != 'closed' && needs.scope.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -129,26 +161,54 @@ jobs:
       # its pane with its label on the title's centre line. The summary
       # names the step.
       - name: Move panes with real pointer input
+        env:
+          PANE_CHROME_CONCURRENCY: "3"
         run: bun run check:pane-chrome
 
-      - name: Bound opening mounts and keep draft and upload work off message rows
-        run: bun scripts/pane-chrome/chat-latency.ts --quick --check --label chat-latency
+      # Fails when a pane's Copy Screenshot image is missing what the screen
+      # shows in a chart region: an SVG gauge or chart, a canvas chart, or a
+      # CSS gradient or masked icon. The summary has the numbers.
+      - name: Compare pane copies with the screen
+        run: bun run check:pane-screenshot
 
-      - name: Complete mentions from cached channel members
+      - name: Check chat mounts, mentions, lifecycle, and window return
+        if: needs.scope.outputs.chat_checks == 'true'
+        shell: bash
         run: |
-          mkdir -p ~/.cache
-          flock ~/.cache/gloom-announce-render.lock nice -n19 bun run check:chat-mentions
+          set -euo pipefail
+          collect() {
+            local status=0
+            while [ $# -gt 0 ]; do
+              local label="$1" pid="$2" log="$3"
+              shift 3
+              if ! wait "$pid"; then
+                status=1
+                echo "::error title=Pane chrome: ${label}::failed"
+              fi
+              echo "=== ${label} ==="
+              cat "$log"
+              rm -f "$log"
+            done
+            return "$status"
+          }
+          log1="$(mktemp)"; log2="$(mktemp)"; log3="$(mktemp)"
+          bun scripts/pane-chrome/chat-latency.ts --quick --check --label chat-latency >"$log1" 2>&1 & p1=$!
+          bun scripts/pane-chrome/chat-latency.ts --lifecycle --multiple --quick --check --label chat-lifecycle >"$log2" 2>&1 & p2=$!
+          bun scripts/pane-chrome/chat-latency.ts --pane-return --quick --check --label chat-pane-return >"$log3" 2>&1 & p3=$!
+          collect \
+            "chat-latency" "$p1" "$log1" \
+            "chat-lifecycle" "$p2" "$log2" \
+            "chat-pane-return" "$p3" "$log3"
 
-      - name: Show chat after mount and asynchronous channel transitions
-        run: bun scripts/pane-chrome/chat-latency.ts --lifecycle --multiple --quick --check --label chat-lifecycle
-
-      - name: Keep chat and other scrollports visible after window cycling
-        run: |
-          flock ~/.cache/gloom-announce-render.lock nice -n19 bun scripts/pane-chrome/chat-latency.ts --pane-return --quick --check --label chat-pane-return
-          flock ~/.cache/gloom-announce-render.lock nice -n19 bun scripts/pane-chrome/chat-latency.ts --layout-return --quick --check --label chat-layout-return
+          log4="$(mktemp)"; log5="$(mktemp)"
+          bun run check:chat-mentions >"$log4" 2>&1 & p4=$!
+          bun scripts/pane-chrome/chat-latency.ts --layout-return --quick --check --label chat-layout-return >"$log5" 2>&1 & p5=$!
+          collect \
+            "chat-mentions" "$p4" "$log4" \
+            "chat-layout-return" "$p5" "$log5"
 
       - name: Keep chat input profiles
-        if: failure()
+        if: failure() && needs.scope.outputs.chat_checks == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: chat-latency
@@ -169,6 +229,8 @@ jobs:
 
   chat-webkit:
     name: Chat painting in WebKit
+    needs: scope
+    if: github.event.action != 'closed' && needs.scope.outputs.chat_checks == 'true'
     # Playwright 1.60's WebKit does not install on Ubuntu 26.04; lift when Playwright supports it
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -180,21 +242,40 @@ jobs:
         timeout-minutes: 8
         uses: ./.github/actions/install-webkit
 
-      - name: Paint chat through mount and channel transitions in three panes
+      - name: Paint chat in WebKit across mount, detached shell, channel opens, and window return
+        shell: bash
         run: |
-          mkdir -p ~/.cache
-          flock ~/.cache/gloom-announce-render.lock nice -n19 bun scripts/pane-chrome/chat-latency.ts --webkit --lifecycle --multiple --arrival-on-mount --quick --repeat 3 --check --label chat-webkit
+          set -euo pipefail
+          collect() {
+            local status=0
+            while [ $# -gt 0 ]; do
+              local label="$1" pid="$2" log="$3"
+              shift 3
+              if ! wait "$pid"; then
+                status=1
+                echo "::error title=Chat WebKit: ${label}::failed"
+              fi
+              echo "=== ${label} ==="
+              cat "$log"
+              rm -f "$log"
+            done
+            return "$status"
+          }
+          log1="$(mktemp)"; log2="$(mktemp)"
+          bun scripts/pane-chrome/chat-latency.ts --webkit --lifecycle --multiple --arrival-on-mount --quick --repeat 3 --check --label chat-webkit >"$log1" 2>&1 & p1=$!
+          bun scripts/pane-chrome/chat-latency.ts --webkit --lifecycle --detached --arrival-on-mount --quick --repeat 3 --check --label chat-webkit-detached >"$log2" 2>&1 & p2=$!
+          collect \
+            "chat-webkit" "$p1" "$log1" \
+            "chat-webkit-detached" "$p2" "$log2"
 
-      - name: Paint chat through the detached shell
-        run: flock ~/.cache/gloom-announce-render.lock nice -n19 bun scripts/pane-chrome/chat-latency.ts --webkit --lifecycle --detached --arrival-on-mount --quick --repeat 3 --check --label chat-webkit-detached
-
-      - name: Paint cold and warm channel opens
-        run: flock ~/.cache/gloom-announce-render.lock nice -n19 bun scripts/pane-chrome/chat-latency.ts --webkit --open-only --quick --check --label chat-webkit-open
-
-      - name: Keep chat and other scrollports visible after window cycling
-        run: |
-          flock ~/.cache/gloom-announce-render.lock nice -n19 bun scripts/pane-chrome/chat-latency.ts --webkit --pane-return --quick --check --label chat-webkit-return
-          flock ~/.cache/gloom-announce-render.lock nice -n19 bun scripts/pane-chrome/chat-latency.ts --webkit --layout-return --quick --check --label chat-webkit-layout-return
+          log3="$(mktemp)"; log4="$(mktemp)"; log5="$(mktemp)"
+          bun scripts/pane-chrome/chat-latency.ts --webkit --open-only --quick --check --label chat-webkit-open >"$log3" 2>&1 & p3=$!
+          bun scripts/pane-chrome/chat-latency.ts --webkit --pane-return --quick --check --label chat-webkit-return >"$log4" 2>&1 & p4=$!
+          bun scripts/pane-chrome/chat-latency.ts --webkit --layout-return --quick --check --label chat-webkit-layout-return >"$log5" 2>&1 & p5=$!
+          collect \
+            "chat-webkit-open" "$p3" "$log3" \
+            "chat-webkit-return" "$p4" "$log4" \
+            "chat-webkit-layout-return" "$p5" "$log5"
 
       - name: Keep chat paint evidence
         if: always()
@@ -212,36 +293,4 @@ jobs:
             ~/.cache/gloomberb-pane-chrome/chat-webkit-return/*.png
             ~/.cache/gloomberb-pane-chrome/chat-webkit-layout-return/samples.json
             ~/.cache/gloomberb-pane-chrome/chat-webkit-layout-return/*.png
-          if-no-files-found: ignore
-
-  copy-screenshot:
-    name: Copy screenshot
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-
-      - uses: ./.github/actions/setup-bun
-
-      - id: chrome
-        name: Read the pinned Chrome version
-        run: echo "version=$(sed -n 's/^const CHROME_VERSION = "\(.*\)";$/\1/p' scripts/pane-chrome/browser.ts)" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: ~/.cache/gloomberb-pane-chrome/chrome-headless-shell-${{ steps.chrome.outputs.version }}
-          key: chrome-headless-shell-${{ steps.chrome.outputs.version }}-${{ runner.os }}-${{ runner.arch }}
-
-      # Fails when a pane's Copy Screenshot image is missing what the screen
-      # shows in a chart region: an SVG gauge or chart, a canvas chart, or a
-      # CSS gradient or masked icon. The summary has the numbers.
-      - name: Compare pane copies with the screen
-        run: bun run check:pane-screenshot
-
-      - name: Keep the images of failed panes
-        if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: pane-screenshot-failures
-          path: ~/.cache/gloomberb-pane-chrome/failures
           if-no-files-found: ignore

@@ -1,6 +1,8 @@
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
 import { availableParallelism, tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { buildRepoImportGraph, readGitChangedFiles, selectTestsForChanges } from "./test-scope";
+import { takeOption } from "./tui-benchmark-harness";
 
 const SKIP_DIRS = new Set([".git", ".hutch", "artifacts", "build", "dist", "node_modules"]);
 const TEST_FILE = /(?:^|[/.])(?:test|spec)\.[cm]?[jt]sx?$|_(?:test|spec)\.[cm]?[jt]sx?$/;
@@ -42,9 +44,23 @@ export function assignTestBuckets(files: readonly SizedTestFile[], workerCount: 
 }
 
 async function main(): Promise<void> {
-  const files: string[] = [];
-  collectTests(".", files);
-  files.sort();
+  const args = process.argv.slice(2);
+  const changedFrom = takeOption(args, "--changed-from") ?? process.env.TEST_CHANGED_FROM;
+
+  let files: string[];
+  if (changedFrom) {
+    const root = resolve(".");
+    const changed = readGitChangedFiles(root, changedFrom);
+    const graph = buildRepoImportGraph(root);
+    const scope = selectTestsForChanges(changed, graph);
+    console.log(scope.reason);
+    if (scope.mode === "skip") return;
+    files = scope.tests;
+  } else {
+    files = [];
+    collectTests(".", files);
+    files.sort();
+  }
 
   if (files.length === 0) {
     console.error("No test files found.");
