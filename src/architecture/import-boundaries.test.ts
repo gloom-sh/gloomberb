@@ -20,6 +20,7 @@ function isRuntimeSource(path: string): boolean {
 async function collectSourceFiles(dir: string, result: string[] = []): Promise<string[]> {
   const entries = await readdir(dir, { withFileTypes: true });
   for (const entry of entries) {
+    if (entry.name.startsWith(".")) continue;
     const path = join(dir, entry.name);
     if (entry.isDirectory()) {
       await collectSourceFiles(path, result);

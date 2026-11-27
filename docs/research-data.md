@@ -933,6 +933,8 @@ The SEC pane lists the filings newest first with their form in its own column. T
 
 For supported Bursa Malaysia issuers, Filings shows up to 200 dated notices from the available issuer archive. Scroll to reach earlier notices, or use `gloom fn SEC 5200:XKLS --limit 200` to export them.
 
+For HOSE and HNX listings, choose **Results & presentations** in Filings to see earnings materials in the available exchange archive from the past year. For Techcombank, the list also links the English releases, decks and transcripts from its investor catalogue, dated by that catalogue. Use `gloom fn SEC TCB.VN:HOSE --form results` to export the links.
+
 The 8-K feed groups model-read headlines and points separately from unread filings. Those summaries are a model's reading of the linked filing, and names are checked against its text; an unread filing is not evidence that no material event occurred. The feed is bounded by the loaded source response. Its Open action always belongs to the selected company's filing.
 
 The existing `r` shortcut refreshes 8-K discovery and SEC filing lists. Same-company transient failures retain usable research with the failure in the existing footer. Changing or clearing the company removes the previous company's content and source action. SEC document-index failures remain distinct from successful empty indexes. Refresh retries failed or unreadable selected content and failed/empty document indexes, while successful as-filed content stays cached. Pending SEC requests are joined; refresh after completion makes a new discovery request. The 8-K feed has no independent structured headless report; SEC's existing report exports filing records, not a full document archive or reconciled amendment model.

@@ -28,6 +28,7 @@ name: UI tokens
 # required shard passed.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, closed]
     branches:
       - main
   push:
@@ -49,6 +50,7 @@ env:
 jobs:
   scope:
     name: UI tokens scope
+    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -88,7 +90,7 @@ jobs:
   shard:
     name: ${{ needs.scope.outputs.mode == 'scoped' && 'UI tokens, scoped' || format('UI tokens, shard {0} of 2', matrix.shard) }}
     needs: scope
-    if: needs.scope.outputs.relevant == 'true'
+    if: github.event.action != 'closed' && needs.scope.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     # Recording on main opens every view live, then again offline.
     timeout-minutes: ${{ github.ref == 'refs/heads/main' && 120 || 45 }}
@@ -195,7 +197,7 @@ jobs:
       - shard
     # always(), not the default: a required check that is skipped counts as
     # passed, so this runs, and fails, when a shard failed or was cancelled.
-    if: always()
+    if: always() && github.event.action != 'closed'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
