@@ -1,6 +1,6 @@
 import { createPluginCache } from "../../../data/plugin-cache";
 import type { DataTableCell, DataTableColumn } from "../../../components";
-import { tableColumnWidth } from "../../../components/ui/table-layout";
+import { narrowColumnsForName } from "../../../components/ui/table-layout";
 import { colors } from "../../../theme/colors";
 import { displayWidth, MISSING_VALUE } from "../../../utils/format";
 import { fetchEconCalendar } from "./calendar-source";
@@ -280,6 +280,33 @@ function euroAreaMember(event: Pick<EconEvent, "country" | "event">): string | n
 /** The country a row is for, as the calendar shows it: a national euro-area release's member, otherwise its own. */
 export function eventCountry(event: Pick<EconEvent, "country" | "event">): string {
   return euroAreaMember(event) ?? event.country;
+}
+
+/**
+ * The adjective that names a country, which a release's name may start with:
+ * the euro area's members, whose national releases both feeds write so, and
+ * the other countries the calendar lists.
+ */
+const COUNTRY_ADJECTIVES: Readonly<Record<string, string>> = {
+  ...EURO_AREA_MEMBERS,
+  Australian: "AU", Brazilian: "BR", British: "GB", Canadian: "CA", Chinese: "CN", Danish: "DK", Indian: "IN",
+  Indonesian: "ID", Japanese: "JP", Mexican: "MX", Norwegian: "NO", Polish: "PL", Russian: "RU", Swedish: "SE",
+  Swiss: "CH", Turkish: "TR",
+};
+
+/**
+ * A row's name as the list shows it. Beside the country column
+ * (`countryShown`) a name that starts with the adjective of the row's country
+ * leaves it out, the column saying it once: "French Inflation Rate YoY Prel"
+ * on an FR row reads "Inflation Rate YoY Prel". Without the column (a filter
+ * on one country) the name keeps it. The detail, the search and the exports
+ * read the whole name (econEventName).
+ */
+export function listedEventName(event: Pick<EconEvent, "country" | "event" | "actual" | "forecast" | "prior">, countryShown: boolean): string {
+  const name = econEventName(event);
+  if (!countryShown) return name;
+  const adjective = /^([A-Z][a-z]+) (?=\S)/.exec(name);
+  return adjective && COUNTRY_ADJECTIVES[adjective[1]!] === eventCountry(event) ? name.slice(adjective[0].length) : name;
 }
 
 /** What the feeds call the Fed's rate decision. */
@@ -610,6 +637,20 @@ const AWAITING_FIGURE_CELL = "awaiting";
 const NO_FIGURE_CELL = "no figure";
 
 /**
+ * The cells of the widest word a row of `events` says under ACTUAL in place of
+ * its figure (`awaiting`, `no figure`), at `now`; 0 where none does. The
+ * column keeps them whatever the names need: a word is not a long figure.
+ */
+export function actualNoteWidth(events: readonly EconEvent[], now: number, calendar: readonly EconEvent[] = []): number {
+  let widest = 0;
+  for (const event of events) {
+    const gap = figureGap(event, now, calendar);
+    if (gap) widest = Math.max(widest, displayWidth(gap === "none" ? NO_FIGURE_CELL : AWAITING_FIGURE_CELL));
+  }
+  return widest;
+}
+
+/**
  * A release's ACTUAL, FORECAST or PRIOR cell. An amount reads with its
  * currency beside it (-556.5B JPY), where the server says it. A dash is
  * marked as one that may be blank only where the row says no figure is owed
@@ -862,39 +903,26 @@ const ECON_FIGURE_DROP_ORDER: readonly { id: string; namesUnder: number }[] = [
   { id: "forecast", namesUnder: 14 },
 ];
 
-/** The cells a plain figure takes (`105.28B`, `-24 Bcf`, `36.00%`): a column keeps these, and its header, whatever the names need. */
+/**
+ * The cells a plain figure takes (`105.28B`, `-24 Bcf`, `36.00%`): a column
+ * keeps these, and its header, whatever the names need. A column whose
+ * figures are all shorter (`0.4%`) is already as narrow as its widest.
+ */
 const PLAIN_FIGURE_WIDTH = 7;
 
-/** The cells the longest event name listed takes: a calendar of short names (`Retail Sales`) asks for no more. */
-export function longestEventName(events: readonly Pick<EconEvent, "country" | "event" | "actual" | "forecast" | "prior">[]): number {
-  let longest = 0;
-  for (const event of events) longest = Math.max(longest, displayWidth(econEventName(event)));
-  return longest;
-}
+/** The fewest cells `column` gives up to: a plain figure's, and under ACTUAL the word a row says in place of one (`actualNote`). */
+const plainFigureCells = (column: { id: string }, actualNote: number) =>
+  (column.id === "actual" ? Math.max(PLAIN_FIGURE_WIDTH, actualNote) : PLAIN_FIGURE_WIDTH);
 
 /**
- * `columns` with the cells a long figure took (`1.522B AUD`, `3.75-4.00%`: a
- * column is as wide as the widest figure listed) given to the names, widest
- * column first, until the names have `names` cells or every column is down to
- * a plain figure's. One long figure weeks out is cut there, and whole in its
- * detail, where it would otherwise take the forecast from every row of a phone.
+ * The cells the longest event name listed takes, as the list shows it beside
+ * its country (`countryShown`, listedEventName): a calendar of short names
+ * (`Retail Sales`) asks for no more.
  */
-function withoutLongFigureCells<C extends { id: string; width: number; label?: string }>(
-  columns: readonly C[],
-  roomFor: (kept: readonly C[]) => number,
-  names: number,
-): C[] {
-  let fitted = [...columns];
-  for (;;) {
-    if (roomFor(fitted) >= names) return fitted;
-    let widest = -1;
-    for (const [index, column] of fitted.entries()) {
-      const narrowest = Math.max(PLAIN_FIGURE_WIDTH, tableColumnWidth({ width: 1, label: column.label }));
-      if (column.width > narrowest && (widest < 0 || column.width > fitted[widest]!.width)) widest = index;
-    }
-    if (widest < 0) return fitted;
-    fitted = fitted.map((column, index) => (index === widest ? { ...column, width: column.width - 1 } : column));
-  }
+export function longestEventName(events: readonly Pick<EconEvent, "country" | "event" | "actual" | "forecast" | "prior">[], countryShown = false): number {
+  let longest = 0;
+  for (const event of events) longest = Math.max(longest, displayWidth(listedEventName(event, countryShown)));
+  return longest;
 }
 
 /**
@@ -902,18 +930,25 @@ function withoutLongFigureCells<C extends { id: string; width: number; label?: s
  * decides: the name that says what a row is stays readable, and the least
  * needed columns leave first (ECON_FIGURE_DROP_ORDER). Once one has left, the
  * columns kept give the names what a long figure took before another goes
- * (withoutLongFigureCells). `roomFor` is the cells the event column gets
+ * (narrowColumnsForName). `roomFor` is the cells the event column gets
  * beside the columns given; `longestName` what the names listed take at most
- * (longestEventName), and `floor` the fewest cells the column is ever drawn at.
+ * (longestEventName), `floor` the fewest cells the column is ever drawn at,
+ * and `actualNote` the word a row says under ACTUAL in place of a figure
+ * (actualNoteWidth), which ACTUAL keeps whole. The widths are the ones the
+ * choice is made at; `figuresBesideNames` then gives the names the rest of
+ * what a long figure took.
  */
 export function keptFigureColumns<C extends { id: string; width: number; label?: string }>(
   figures: readonly C[],
   roomFor: (kept: readonly C[]) => number,
   longestName: number,
   floor: number,
+  actualNote = 0,
 ): C[] {
   const names = (cells: number) => Math.max(floor, Math.min(cells, longestName));
-  const fit = (kept: readonly C[]) => (kept.length < figures.length ? withoutLongFigureCells(kept, roomFor, names(READABLE_NAME_CELLS)) : [...kept]);
+  const fit = (kept: readonly C[]) => (kept.length < figures.length
+    ? narrowColumnsForName(kept, roomFor, names(READABLE_NAME_CELLS), (column) => plainFigureCells(column, actualNote))
+    : [...kept]);
   let kept = [...figures];
   for (const { id, namesUnder } of ECON_FIGURE_DROP_ORDER) {
     const fitted = fit(kept);
@@ -921,6 +956,27 @@ export function keptFigureColumns<C extends { id: string; width: number; label?:
     kept = kept.filter((column) => column.id !== id);
   }
   return fit(kept);
+}
+
+/**
+ * The figure columns kept (keptFigureColumns) as wide as the names leave
+ * them: at any width, a column keeps more than a plain figure's cells (or its
+ * header's) only while the longest name listed is whole beside it. A column
+ * is as wide as the widest figure listed, so one long figure weeks out held
+ * every row's name to `French Inflation Rate …` beside a column of `2.9%`;
+ * now that figure is cut, and whole in its detail. `roomFor` is the cells the
+ * event column gets beside the columns given, under the headers drawn, and
+ * `actualNote` the word a row says under ACTUAL in place of a figure
+ * (actualNoteWidth), which ACTUAL keeps whole.
+ */
+export function figuresBesideNames<C extends { id: string; width: number; label?: string }>(
+  figures: readonly C[],
+  roomFor: (kept: readonly C[]) => number,
+  longestName: number,
+  floor: number,
+  actualNote = 0,
+): C[] {
+  return narrowColumnsForName(figures, roomFor, Math.max(floor, longestName), (column) => plainFigureCells(column, actualNote));
 }
 
 export function actualColor(actual: string | null, forecast: string | null): string {

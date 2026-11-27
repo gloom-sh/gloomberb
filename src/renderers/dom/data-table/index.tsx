@@ -289,6 +289,8 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     if (nextValue > 0) reportViewportWidthRef.current?.(nextValue);
   }, []);
   const scheduleViewportWidthMeasure = useRafCallback(measureViewportWidth);
+  // Which columns the body's edges cut (below), read again whenever the body changes size.
+  const measureCutColumnsRef = useRef<(sync: boolean) => void>(() => {});
   // Measured before the first paint, so the table is never drawn with columns it is about to give up.
   useLayoutEffect(measureViewportWidth, [measureViewportWidth]);
 
@@ -300,6 +302,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     const measure = () => {
       scheduleViewportWidthMeasure();
       scheduleVisibleRangeMeasure();
+      measureCutColumnsRef.current(false);
     };
     // While the pointer resizes the pane, its columns stretch by CSS and the
     // pane renders the table at the new size a few times a second; measuring
@@ -421,6 +424,40 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     // No further than puts its left edge beside what stays (the frozen column, or the table's own edge).
     if (overRight > 0) body.scrollLeft += Math.min(overRight + inset, rect.left - bounds.left - stays);
   }, [columns, freezeFirstColumn, horizontalScrollEnabled, scrollToColumn]);
+  // The columns the body's edges cut, read off the page as the terminal reads them off its viewport: a name reads on
+  // into the next column's blank only where both show whole (tableCellSpill), so a name beside a column half out of
+  // view keeps its ellipsis in view. Null while every column shows whole. The body cuts columns where the table
+  // scrolls sideways, and where it does not but its columns are as wide as the body or wider: tracks kept at their
+  // set widths (`fillAvailableWidth={false}`) run past it, scrolling or not.
+  const columnsMayBeCut = horizontalScrollEnabled || tableWidth >= viewportWidth;
+  const [cutColumns, setCutColumns] = useState<readonly boolean[] | null>(null);
+  const cutColumnsRef = useRef(cutColumns);
+  const measuredScrollLeftRef = useRef<number | null>(null);
+  const measureCutColumns = useCallback((sync: boolean) => {
+    const body = bodyElementRef.current;
+    let next: boolean[] | null = null;
+    // A table narrower than its body reads nothing off the page: every column of it shows whole.
+    if (body && columnsMayBeCut) {
+      measuredScrollLeftRef.current = body.scrollLeft;
+      const left = body.getBoundingClientRect().left + body.clientLeft;
+      const right = left + body.clientWidth;
+      const cut = Array.from(body.querySelectorAll<HTMLElement>('[data-gloom-role="data-table-header-cell"]'), (cell) => {
+        const rect = cell.getBoundingClientRect();
+        // Half a pixel either way is the page rounding a column that shows whole.
+        return rect.left < left - 0.5 || rect.right > right + 0.5;
+      });
+      if (cut.includes(true)) next = cut;
+    }
+    const current = cutColumnsRef.current;
+    if (current === next || (current && next && current.length === next.length && current.every((value, index) => value === next[index]))) return;
+    cutColumnsRef.current = next;
+    // From a scroll, before the frame shows a name running on under the edge.
+    if (sync) flushSync(() => setCutColumns(next));
+    else setCutColumns(next);
+  }, [columnsMayBeCut]);
+  measureCutColumnsRef.current = measureCutColumns;
+  // Set only on a change: a state update from a layout effect costs the render a second commit.
+  useLayoutEffect(() => { measureCutColumns(false); }, [columns, gridTemplateColumns, measureCutColumns, pinned, viewportWidth]);
   const hiddenColumns = items.length ? hiddenTableColumnDisclosure(columns) : null;
   const disclosureHeight = hiddenColumns ? headerPx : 0;
   // A frozen first column already covers what scrolls under it, so the left
@@ -517,6 +554,8 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
             if (!pinned && left > 0) flushSync(() => setFrozenScrollLeft(left));
             else setFrozenScrollLeft(left);
           }
+          // A scroll down or up moves no column past an edge: only a sideways one is measured.
+          if (columnsMayBeCut && event.currentTarget.scrollLeft !== measuredScrollLeftRef.current) measureCutColumns(true);
           const controlledOffset = controlledScrollOffsetRef.current;
           controlledScrollOffsetRef.current = null;
           if (controlledOffset
@@ -595,6 +634,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
                     // Only a frozen first column scrolled past places itself by it: every
                     // other row stays memoized when the viewport changes width.
                     viewportWidth={pinned && frozenScrollLeft > 0 ? viewportWidth : 0}
+                    cutColumns={cutColumns}
                     columnGap={columnGap}
                     horizontalPadding={horizontalPadding}
                     focusPane={focusPane}

@@ -42,7 +42,7 @@ const NON_CHAT_PATTERNS: readonly RegExp[] = [
   /^src\/utils\/(?:dom-screenshot.*\.ts|one-shot\.ts|double-escape-close\.ts|screenshot-watermark\.ts)$/,
   /^src\/remote\/pane-screenshot\.ts$/,
   /^scripts\/tui-benchmark-harness\.ts$/,
-  /^scripts\/pane-chrome\/(?:axis-|des-|heat-|header-|query-bar-|reader-|layout-checks\.ts$|selection-checks\.ts$|tab-sweep-checks\.ts$|title-tab-checks\.ts$|paint\.ts$|checks\.ts$|screenshot\.ts$|share\.ts$|scope\.ts$|ui-tokens|ui-audit|web-app|frame-budget|drag-smoothness|rest-diff|badge-ink|call-player|chart-axis-zoom|chart-panel-layout|kit-page|layout-sweep|sync-poll|title-tab-webkit|ui-benchmark)/,
+  /^scripts\/pane-chrome\/(?:axis-|des-|heat-|header-|query-bar-|reader-|layout-checks\.ts$|selection-checks\.ts$|spill-checks\.ts$|tab-sweep-checks\.ts$|title-tab-checks\.ts$|paint\.ts$|checks\.ts$|screenshot\.ts$|share\.ts$|scope\.ts$|ui-tokens|ui-audit|web-app|frame-budget|drag-smoothness|rest-diff|badge-ink|call-player|chart-axis-zoom|chart-panel-layout|kit-page|layout-sweep|sync-poll|title-tab-webkit|ui-benchmark)/,
   /^\.github\/workflows\/(?!pane-chrome\.yml$)/,
 ];
 

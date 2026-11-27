@@ -38,6 +38,7 @@ import { resolveDataTableScrollTop } from "../visible-range";
 import { useFocusOwningPane, useVisibleRangeEmitter } from "../hooks";
 import { ObservedTableRow } from "../observed-row";
 import { useStableColumns } from "../stable-columns";
+import { tableCellSpill } from "../spill";
 import { COLUMN_DRAG_THRESHOLD_CELLS, columnDropBoundary, columnDropIndex } from "../column-order";
 import {
   columnsShownWhole,
@@ -245,6 +246,29 @@ function OpenTuiDataTableRowInner<
   const rowBackgroundColor = getRowBackgroundColor?.(item, index, rowState);
   const rowBg = selected ? selectionBg : rowBackgroundColor ?? colors.bg;
   const rowHoverBg = selected ? undefined : hoverBg(colors);
+  const madeCells = displayColumns.map((column, columnIndex) => renderCell(item, cellColumns[columnIndex] ?? column, index, rowState));
+  // The cells of a column hidden under the frozen first one, as the table scrolls sideways.
+  const insetOf = (columnIndex: number) => {
+    const column = displayColumns[columnIndex];
+    if (!column) return 0;
+    const clip = columnClips?.[columnIndex] ?? null;
+    if (clip) return clip.inset;
+    return columnIndex > 0 && frozenColumnOffset !== undefined
+      ? Math.min(column.width, Math.max(0, frozenColumnOffset + (displayColumns[0]?.width ?? 0) + columnGap - (columnStarts[columnIndex] ?? 0))) : 0;
+  };
+  // A cut name reads on into the blank of the figure after it in its row (tableCellSpill), between two columns
+  // that both show whole: the frozen column, and one the viewport or the frozen column cuts, keep their cells.
+  const spill = displayColumns.map((column, columnIndex) => (
+    (columnIndex === 0 && frozenColumnOffset !== undefined) || columnClips?.[columnIndex] || columnClips?.[columnIndex + 1]
+      || insetOf(columnIndex) > 0 || insetOf(columnIndex + 1) > 0
+      ? 0 : tableCellSpill(column, madeCells[columnIndex]!, displayColumns[columnIndex + 1], madeCells[columnIndex + 1], columnGap)
+  ));
+  // The cells the edge between two columns moves right: what the text takes past its column and its blank after
+  // it, beyond the gap that was there.
+  const edgeMoved = (columnIndex: number) => {
+    const cells = spill[columnIndex] ?? 0;
+    return cells > 0 ? Math.max(0, cells + 1 - columnGap) : 0;
+  };
 
   return (
     <Box
@@ -271,13 +295,14 @@ function OpenTuiDataTableRowInner<
         const frozen = columnIndex === 0 && frozenColumnOffset !== undefined;
         const clip = columnClips?.[columnIndex] ?? null;
         const cellColumn = cellColumns[columnIndex] ?? column;
-        const made = renderCell(item, cellColumn, index, rowState);
+        const made = madeCells[columnIndex]!;
         widths[columnIndex] = made.content === undefined ? displayWidth(made.text) : made.contentWidth ?? null;
-        const columnStart = columnStarts[columnIndex] ?? 0;
         const leadGap = tableColumnLeadGap(displayColumns, columnIndex, columnGap);
-        const inset = clip ? clip.inset : !frozen && frozenColumnOffset !== undefined
-          ? Math.min(column.width, Math.max(0, frozenColumnOffset + (displayColumns[0]?.width ?? 0) + columnGap - columnStart)) : 0;
-        const shownWidth = clip ? clip.width : column.width - inset;
+        const inset = insetOf(columnIndex);
+        // The edge before this column moved right by what the name before it took; the one after it, by what its own text took.
+        const given = columnIndex > 0 ? edgeMoved(columnIndex - 1) : 0;
+        const taken = spill[columnIndex] ?? 0;
+        const shownWidth = (clip ? clip.width : column.width - inset) + taken - given;
         // A drawn cell lays itself out in the column as drawn; its width is the one made for its column unfitted.
         // One that says its width (`contentWidth`) is made for the cells of a cut column that show, as cut text
         // is fitted to them, so it gives up a piece whole where the edge would cut it.
@@ -286,12 +311,14 @@ function OpenTuiDataTableRowInner<
         const cell = made.content !== undefined && cellColumn !== drawnColumn ? renderCell(item, drawnColumn, index, rowState) : made;
         // Cut text is fitted to what shows; a number the edge cuts stays blank in its own place,
         // and its cell keeps its background and its press. A drawn cell left no cells draws nothing, as text does.
-        const fitted = fitColumnCellText(cell.text, clip ? column.width : shownWidth, column.align, clip, cell.note, cell.keepEnd);
+        // A figure padded to its column's width gives the name before it its blank, so it is fitted without it.
+        const fitted = fitColumnCellText(given > 0 ? cell.text.trimStart() : cell.text, clip ? column.width : shownWidth, column.align, clip, cell.note,
+          cell.keepEnd);
         const contentCut = shownWidth <= 0 || (clip !== null && column.align === "right" && fitted.text.trim() === "");
         return (
           <Box
             key={column.id}
-            width={column.width + columnGap + (frozen ? horizontalPadding : 0)}
+            width={column.width + columnGap + (frozen ? horizontalPadding : 0) + edgeMoved(columnIndex) - given}
             marginLeft={frozen ? -horizontalPadding : leadGap}
             position="relative"
             left={frozen ? frozenColumnOffset : undefined}

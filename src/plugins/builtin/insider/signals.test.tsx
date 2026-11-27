@@ -514,7 +514,8 @@ test("an 80-column terminal keeps the role and stake, without the size against u
   await mount(sided, 80, 24);
   let frame = tui.frame();
   expect(frame).toMatch(/TICKER\s+COMPANY\s+SCORE ▼\s+ROLE\s+STAKE\s+BUYERS\s+BOUGHT\s+LAST BUY/);
-  expect(frame).toMatch(/NWBI\s+Northwind Biol…\s+78\s+CEO \+2\s+\+12%\s+3\s+\$1\.15M\s+2026-10-14/);
+  // The name goes on into the blank its score leaves under SCORE ▼.
+  expect(frame).toMatch(/NWBI\s+Northwind Biologics… 78\s+CEO \+2\s+\+12%\s+3\s+\$1\.15M\s+2026-10-14/);
   // The opened company keeps every column while the names fit.
   await tui.emitKeypress({ name: "down", sequence: "\u001b[B" }, { trackPropagation: true });
   await act(async () => { tui.setup().mockInput.pressEnter(); });

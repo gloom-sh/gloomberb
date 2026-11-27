@@ -11,6 +11,8 @@ import {
   countriesWithoutEvents,
   econEventName,
   eventCountry,
+  listedEventName,
+  longestEventName,
   matchesCountry,
   matchesImpact,
   noScheduledReleasesMessage,
@@ -276,6 +278,20 @@ describe("country filters", () => {
     expect(matchesCountry(ifo, "FR")).toBe(false);
     expect(matchesCountry(eu("ECB Interest Rate Decision"), "DE")).toBe(false);
     expect(countriesWithoutEvents("DE,FR,EU", [ifo])).toEqual(["FR"]);
+  });
+
+  // "French Inflation Rate Yo…" beside a CTY of FR said the country twice and cut the name for it.
+  test("beside its country a listed name leaves out that country's adjective, and only that one", () => {
+    const row = (country: string, event: string) => ({ country, event, actual: null, forecast: null, prior: null });
+    expect(listedEventName(row("FR", "French Inflation Rate YoY Prel"), true)).toBe("Inflation Rate YoY Prel");
+    // A national release listed under EU is its member's, and the column says that member.
+    expect(listedEventName(row("EU", "German Unemployed Persons NSA"), true)).toBe("Unemployed Persons NSA");
+    expect(listedEventName(row("JP", "Japanese Household Spending YoY"), true)).toBe("Household Spending YoY");
+    // Without the column (a filter on one country) the name is whole; another country's adjective stays.
+    expect(listedEventName(row("FR", "French Inflation Rate YoY Prel"), false)).toBe("French Inflation Rate YoY Prel");
+    expect(listedEventName(row("US", "German Ifo Business Climate"), true)).toBe("German Ifo Business Climate");
+    expect(listedEventName(row("EU", "European Commission Forecasts"), true)).toBe("European Commission Forecasts");
+    expect(longestEventName([row("FR", "French Inflation Rate YoY Prel")], true)).toBe("Inflation Rate YoY Prel".length);
   });
 });
 

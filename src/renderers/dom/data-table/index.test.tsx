@@ -268,6 +268,59 @@ test("a cell's kept end never shrinks: the ellipsis cuts what comes before it, a
   expect(end!.style.whiteSpace).toBe("pre");
 });
 
+// The terminal moves the edge between the two cells (src/components/data-table/spill.test.tsx); here the name's cell
+// spans the figure's column, its text stopping a blank before the figure, which draws over it on no fill of its own.
+test("a cut name reads on into the blank the figure after it leaves in its row, as in the terminal", async () => {
+  const state = createInitialState(createDefaultConfig("/tmp/gloom-table-test"));
+  const rows = [
+    { key: "dash", name: "Definitive agreement", last: "—" },
+    { key: "full", name: "Definitive agreement signed", last: "1,098.53" },
+    { key: "press", name: "Tender offer extended", last: "4.10" },
+  ];
+  function Harness() {
+    const headerScrollRef = useRef<ScrollBoxRenderable | null>(null);
+    const scrollRef = useRef<ScrollBoxRenderable | null>(null);
+    return (
+      <AppContext value={createStaticAppStore(state)}>
+        <WebDataTable
+          items={rows}
+          columns={[
+            { id: "name", label: "NAME", width: 10 },
+            { id: "last", label: "LAST", width: 8, align: "right" },
+            { id: "chg", label: "CHG", width: 6, align: "right" },
+          ]}
+          sortColumnId={null}
+          sortDirection="asc"
+          headerScrollRef={headerScrollRef}
+          scrollRef={scrollRef}
+          syncHeaderScroll={() => {}}
+          onBodyScrollActivity={() => {}}
+          getItemKey={(row) => row.key}
+          isSelected={() => false}
+          onSelect={() => {}}
+          renderCell={(row, column) => column.id === "name" ? { text: row.name }
+            : column.id === "chg" ? { text: "+1.20%" }
+            : { text: row.last, ...row.key === "press" ? { onMouseDown: () => {} } : {} }}
+          emptyStateTitle="No rows"
+          virtualize={false}
+        />
+      </AppContext>
+    );
+  }
+
+  const container = await render(<Harness />);
+  const cells = (key: string) => [...container.querySelectorAll(`[data-gloom-row-key="${key}"] [data-gloom-role="data-table-cell"]`)] as HTMLElement[];
+  const [name, last, chg] = cells("dash");
+  // Its text stops a blank before the dash (`padding-right` of two cells, which happy-dom does not read back).
+  expect(name!.style.gridColumn).toBe("1 / span 2");
+  expect([last!.style.gridColumn, last!.style.backgroundColor, last!.textContent]).toEqual(["2", "transparent", "—"]);
+  expect(chg!.style.gridColumn).toBe("3");
+  // A figure that fills its column, or one with a press of its own, keeps its cells.
+  for (const key of ["full", "press"]) {
+    expect(cells(key).map((cell) => cell.style.gridColumn)).toEqual(["", "", ""]);
+  }
+});
+
 test("the pane scroll keys scroll a table body, as they do in the terminal", async () => {
   const state = createInitialState(createDefaultConfig("/tmp/gloom-table-test"));
   function Harness() {

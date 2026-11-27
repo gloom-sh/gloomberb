@@ -1,6 +1,6 @@
 import type { IpoDeal, IpoRegion, IpoSourceHealth, IpoStatus } from "../../../api-client/ipo";
 import type { DataTableColumn } from "../../../components";
-import { dropColumnsToFit, getTableWidth } from "../../../components/ui/table-layout";
+import { dropColumnsToFit, getTableWidth, narrowColumnsForName } from "../../../components/ui/table-layout";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { MISSING_VALUE, displayWidth, formatCompact } from "../../../utils/format";
 import { compareSortValues, type SortPreference } from "../../../utils/sort-values";
@@ -475,6 +475,35 @@ export function ipoTableWidth(columns: readonly IpoColumn[]): number {
 export function marketColumnWidth(deals: readonly IpoDeal[]): number {
   const longest = deals.reduce((max, deal) => Math.max(max, displayWidth(deal.venue || deal.mic)), 0);
   return Math.min(14, Math.max(5, longest));
+}
+
+/** The cells a venue takes in MKT (`Shanghai`, `Nasdaq`, `HKEX`): one longer (`NYSE American`) gives them to the names. */
+const PLAIN_VENUE_WIDTH = 8;
+
+/**
+ * The cells the longest company name on the board takes: MKT gives the
+ * company column what one long venue took until these are whole.
+ */
+export function longestIpoCompany(deals: readonly Pick<IpoDeal, "company">[]): number {
+  return deals.reduce((longest, deal) => Math.max(longest, displayWidth(deal.company)), 0);
+}
+
+/**
+ * `columns` (buildIpoColumns, less any the list leaves quiet) with the cells
+ * MKT holds for one long venue (`NYSE American`, among deals in `Nasdaq` and
+ * `Tokyo`) given to COMPANY while its names are cut, down to a plain venue's
+ * (`flagCells` more for the flag the desktop and the web draw). That venue is
+ * then cut, and whole in the deal's detail. `width` is the pane's, as
+ * buildIpoColumns takes it; COMPANY takes what the others leave.
+ */
+export function ipoColumnsBesideNames<C extends IpoColumn>(columns: readonly C[], width: number, longestCompany: number, flagCells = 0): C[] {
+  const company = columns.find((column) => column.id === "company");
+  const market = columns.find((column) => column.id === "market");
+  if (!company || !market) return [...columns];
+  const drawn = (venue: C) => columns.map((column) => (column === market ? venue : column));
+  const [fitted] = narrowColumnsForName([market], ([venue]) => company.width + width - ipoTableWidth(drawn(venue!)), longestCompany,
+    PLAIN_VENUE_WIDTH + flagCells);
+  return fitted === market ? [...columns] : drawn(fitted!);
 }
 
 /** DATE and LOCKUP widths that fit every date the board shows (ipoDateColumnWidths); the narrowest by default. */

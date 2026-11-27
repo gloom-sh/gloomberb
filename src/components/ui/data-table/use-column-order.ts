@@ -33,6 +33,12 @@ const ID_SEPARATOR = "\u0000";
 export interface DataTableColumnOrder<C extends DataTableColumn> {
   /** The columns in the order the reader left them. */
   columns: C[];
+  /**
+   * Another list of the table's columns (what a pane exports, drawn or not) in the order the reader left the
+   * table's: the columns they share keep that order, and one the table does not draw stays after the one it
+   * follows in the list.
+   */
+  order: (columns: readonly C[]) => C[];
   /** Moves a column to an index of `columns`; absent where the order is fixed. */
   onColumnMove?: (columnId: string, toIndex: number) => void;
   anchoredColumns: number;
@@ -75,6 +81,10 @@ export function useDataTableColumnOrder<C extends DataTableColumn>(
     () => enabled ? orderColumns(columns, saved, anchored) : columns,
     [anchored, columns, enabled, saved],
   );
+  const anchoredOption = options?.anchored;
+  const order = useCallback((others: readonly C[]): C[] => (enabled
+    ? [...orderColumns(others, saved, Math.min(others.length, anchoredOption ?? rowAnchorColumnCount(others)))]
+    : [...others]), [anchoredOption, enabled, saved]);
   const updateSetting = useOptionalPaneSettingUpdater(paneId, COLUMN_ORDER_SETTING);
   const latest = useRef({ columns, ordered, control, key, anchored });
   latest.current = { columns, ordered, control, key, anchored };
@@ -127,6 +137,7 @@ export function useDataTableColumnOrder<C extends DataTableColumn>(
 
   return {
     columns: ordered as C[],
+    order,
     onColumnMove: enabled ? onColumnMove : undefined,
     anchoredColumns: anchored,
     customized,

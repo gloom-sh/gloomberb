@@ -53,6 +53,8 @@ import {
   marketsBehind,
   marketsBehindText,
   marketColumnWidth,
+  longestIpoCompany,
+  ipoColumnsBesideNames,
   MISSING,
   sortIpoDeals,
   type IpoBoardStatus,
@@ -141,11 +143,13 @@ export function IpoCalendarPane({ focused, width, height }: PaneProps) {
   const flagged = useUiCapabilities().nativePaneChrome === true;
   const marketWidth = useMemo(() => marketColumnWidth(deals) + (flagged ? COUNTRY_FLAG_CELLS : 0), [deals, flagged]);
   const dateWidths = useMemo(() => ipoDateColumnWidths(deals, now), [deals, now]);
+  const longestCompany = useMemo(() => longestIpoCompany(rows), [rows]);
   // STATUS says only what differs from the list's own (priced among the upcoming deals), and goes when nothing does;
-  // LOCKUP goes when no deal listed has an estimate (one outside the US).
-  const columns = useMemo(() => withoutQuietColumns(buildIpoColumns(width, marketWidth, list, dateWidths), rows,
+  // LOCKUP goes when no deal listed has an estimate (one outside the US). MKT then gives the company names listed
+  // what one long venue took, before a name is cut.
+  const columns = useMemo(() => ipoColumnsBesideNames(withoutQuietColumns(buildIpoColumns(width, marketWidth, list, dateWidths), rows,
     (deal, id) => (id === "status" ? ipoListStatus(deal, list, now) : id === "lockup" ? formatIpoLockupDate(deal.lockup?.endsOn, now) : null),
-    QUIET_COLUMNS) as IpoColumn[], [dateWidths, list, marketWidth, now, rows, width]);
+    QUIET_COLUMNS) as IpoColumn[], width, longestCompany, flagged ? COUNTRY_FLAG_CELLS : 0), [dateWidths, flagged, list, longestCompany, marketWidth, now, rows, width]);
 
   const openDeal = useCallback((deal: IpoDeal) => {
     const key = ipoTickerKey(deal);

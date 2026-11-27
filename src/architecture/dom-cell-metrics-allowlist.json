@@ -28,8 +28,8 @@
     "why": "Every pane gives its columns in cells (DataTableColumn.width) and rows are one line tall: the horizontal extent, the overflow decision, virtualization and paging follow from them."
   },
   "src/renderers/dom/data-table/row.tsx": {
-    "uses": 10,
-    "why": "Column widths and gaps are cells in the column model every pane uses; a row is one line tall."
+    "uses": 11,
+    "why": "Column widths and gaps are cells in the column model every pane uses; a row is one line tall. A name spilling into the next column stops a blank before that column's figure, which is its text's cells."
   },
   "src/renderers/dom/desktop/controls.tsx": {
     "uses": 6,

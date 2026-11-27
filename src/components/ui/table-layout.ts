@@ -210,6 +210,38 @@ export function dropColumnsToFit<C extends TableWidthColumn & { id: string }>(
 /** A table's own narrow-pane order: the columns that leave first, least needed first (`dropColumnsToFit`). */
 export type TableColumnDropOrder = readonly (string | readonly string[])[];
 
+/**
+ * `columns` with the cells only a long value needs given to the name column
+ * beside them. A column as wide as the widest value in the whole list holds,
+ * on every row, the cells one value weeks out takes (`1.522B AUD`, a rate
+ * range): while the name column gets fewer than `need` cells (the longest
+ * name listed, say), the widest of `columns` gives up a cell at a time, down
+ * to `plain` cells (what an ordinary value takes) and never under its header.
+ * That long value is then cut with an ellipsis, whole in the row's detail,
+ * and a name is cut only once every column is down to its floor. A column
+ * already as narrow is left as it is. `room` is the cells the name column
+ * gets beside the columns given. The list's widths, not the rows in view, so
+ * no column moves as the reader scrolls.
+ */
+export function narrowColumnsForName<C extends TableWidthColumn>(
+  columns: readonly C[],
+  room: (columns: readonly C[]) => number,
+  need: number,
+  plain: number | ((column: C) => number),
+): C[] {
+  const floor = (column: C) => Math.max(typeof plain === "number" ? plain : plain(column), tableColumnWidth({ width: 1, label: column.label }));
+  let fitted = [...columns];
+  while (room(fitted) < need) {
+    let widest = -1;
+    for (const [index, column] of fitted.entries()) {
+      if (column.width > floor(column) && (widest < 0 || column.width > fitted[widest]!.width)) widest = index;
+    }
+    if (widest < 0) break;
+    fitted = fitted.map((column, index) => (index === widest ? { ...column, width: column.width - 1 } : column));
+  }
+  return fitted;
+}
+
 /** The fewest cells a column set to grow is narrowed to by a fit: under it a name or a sentence reads as nothing. */
 const FIT_TEXT_FLOOR = 12;
 

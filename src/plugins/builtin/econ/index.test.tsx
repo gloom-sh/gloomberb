@@ -4,11 +4,12 @@ import { createOpenTuiTestHarness, takeSavedTextFile } from "../../../renderers/
 import { PaneFooterBar, PaneFooterProvider, footerTimeText } from "../../../components/layout/pane/footer";
 import { connectionHealth, GLOOM_CLOUD_HTTP_CONNECTION_ID, registerGloomCloudConnectionSources } from "../../../core/connection-health";
 import { Box } from "../../../ui";
-import { createInitialState } from "../../../state/app/context";
+import { AppContext, PaneInstanceProvider, createInitialState, type AppContextStoreValue } from "../../../state/app/context";
+import { createReducerAppStore } from "../../../test-support/app-store";
 import { exportPaneTable } from "../../../state/pane-table-export-registry";
 import { createDefaultConfig } from "../../../types/config";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
-import type { PluginRuntimeAccess } from "../../runtime";
+import { PluginRenderProvider, type PluginRuntimeAccess } from "../../runtime";
 import { attachEconCalendarPersistence, getCalendarCache, resetEconCalendarPersistence } from "./calendar-model";
 import { economicCalendarModule } from "./index";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
@@ -176,7 +177,8 @@ describe("EconCalendarPane", () => {
     const phone = await renderPane(48, "high");
     expect(phone).toMatch(/EVENT\s+ACT\s+EST\s*\n/);
     expect(phone).toContain("1 hidden · PRIOR");
-    expect(phone).toMatch(/GDP Growth Rate QoQ\S*\s+—\s+0\.4%/);
+    // A name reads on into the blank a dash leaves in its own row.
+    expect(phone).toMatch(/GDP Growth Rate QoQ Final\s+—\s+0\.4%/);
 
     const narrower = await renderPane(40, "high");
     expect(narrower).toMatch(/EVENT\s+ACT\s*\n/);
@@ -207,17 +209,18 @@ describe("EconCalendarPane", () => {
     const phone = await renderPane(45, "high");
     expect(phone).toMatch(/EVENT\s+ACT\s+EST\s*\n/);
     expect(phone).toContain("1 hidden · PRIOR");
-    // Every other row keeps its forecast whole, and the long ones say they are cut.
-    expect(phone).toMatch(/GDP Growth Rat…\s+—\s+0\.4%/);
-    expect(phone).toMatch(/Balance of Tra…\s+111\.2B\s+100B\s/);
-    expect(phone).toMatch(/Balance of Tra…\s+—\s+1\.522B…/);
-    expect(phone).toMatch(/Fed Interest R…\s+—\s+3\.50-3…/);
+    // Every other row keeps its forecast whole, and the long ones say they are cut. A name goes on into the blank
+    // its own row's figure leaves, to a blank before it: whole beside a dash, cut beside a long figure.
+    expect(phone).toMatch(/GDP Growth Rate QoQ… —\s+0\.4%/);
+    expect(phone).toMatch(/Balance of Tra… 111\.2B\s+100B\s/);
+    expect(phone).toMatch(/Balance of Trade\s+— 1\.522B…/);
+    expect(phone).toMatch(/Fed Interest Rate D… — 3\.50-3…/);
 
-    // A pane whose names have their 20 cells beside the long figures cuts nothing.
+    // Wider, the names have the cells the long figures took before any is cut: the figures are, and the names whole.
     const firstScreen = await renderPane(56, "high");
     expect(firstScreen).toContain("1 hidden · PRIOR");
-    expect(firstScreen).toMatch(/Balance of Trade\s+—\s+1\.522B AUD/);
-    expect(firstScreen).toMatch(/Fed Interest Rate De\S*\s+—\s+3\.50-3\.75%/);
+    expect(firstScreen).toMatch(/Balance of Trade\s+—\s+1\.522B…/);
+    expect(firstScreen).toMatch(/Fed Interest Rate Decision\s+—\s+3\.50-3…/);
 
     // With room for the names beside them, long figures are whole.
     const wide = await renderPane(110, "high");
@@ -245,6 +248,81 @@ describe("EconCalendarPane", () => {
     // One that draws ACT and EST, or ACT alone, still writes all three, under the short headers of its width.
     expect(await exported(48)).toBe(`\uFEFFUTC,CTY,EVENT,ACT,EST,PRIOR\n${rows}`);
     expect(await exported(40)).toBe(`\uFEFFUTC,CTY,EVENT,ACT,EST,PRIOR\n${rows}`);
+  });
+
+  // A release five minutes past its time says `awaiting` under ACT, which widened ACT from 5 cells to 8 and left the
+  // names 4 cells: the table drew no TOKYO column, and the file lost it too. The file's columns are the ones they were.
+  test("Export CSV keeps the reader's clock where a row awaiting its figure leaves the table no room for it", async () => {
+    const persistence = new MemoryPluginPersistence();
+    persistence.seedResource("calendar", "global", [
+      { id: "sales", date: "2026-08-21T11:55:00.000Z", time: "11:55", country: "US", event: "Retail Sales",
+        impact: "high", actual: null, forecast: "0.4%", prior: "0.6%" },
+    ], { sourceKey: "gloomberb-cloud", schemaVersion: 1 });
+    attachEconCalendarPersistence(persistence);
+    const frame = await renderPane(49, "high", true, undefined, "Asia/Tokyo");
+    expect(frame).toMatch(/11:55 US\s+Retail Sal… awaiting/);
+    expect(frame).not.toContain("TOKYO");
+    await exportPaneTable("econ-calendar", "eco.csv");
+    // The bytes main writes for this list.
+    expect(takeSavedTextFile()!.text).toBe("\uFEFFUTC,TOKYO,CTY,EVENT,ACT,EST (%),PRIOR (%)\n11:55,20:55,US,Retail Sales,,0.4,0.6");
+  });
+
+  // The file is the table's: a column the reader dragged stays where they put it, as long as every figure shows.
+  // Where one is left out, the file writes all three in the pane's own order, as it always has.
+  test("Export CSV keeps a column the reader moved where every figure shows, and the pane's order where one is left out", async () => {
+    seedLongNames();
+    const config = createTestPaneConfig("/tmp/gloomberb-econ-test", { instanceId: "econ-calendar", paneId: "econ-calendar" });
+    const state = createInitialState(config);
+    state.paneState["econ-calendar"] = { pluginState: { econ: { impactFilter: "high" } } };
+    // A store that keeps what the drag writes, as the app's does.
+    const store: AppContextStoreValue = createReducerAppStore(state);
+    const draw = async (width: number) => {
+      await tui.render(
+        <AppContext value={store}>
+          <PaneInstanceProvider paneId="econ-calendar">
+            <PluginRenderProvider pluginId="econ" runtime={{} as unknown as PluginRuntimeAccess}>
+              <PaneFooterProvider>
+                {() => <EconPane paneId="econ-calendar" paneType="econ-calendar" focused width={width} height={24} />}
+              </PaneFooterProvider>
+            </PluginRenderProvider>
+          </PaneInstanceProvider>
+        </AppContext>,
+        { width, height: 24 },
+      );
+      await act(async () => {
+        for (let index = 0; index < 6; index += 1) await tui.setup().renderOnce();
+      });
+      return tui.frame().split("\n");
+    };
+    const exported = async () => {
+      await exportPaneTable("econ-calendar", "eco.csv");
+      return takeSavedTextFile()!.text;
+    };
+
+    // PRIOR's header dropped on ACTUAL's left edge.
+    const lines = await draw(110);
+    const y = lines.findIndex((line) => line.includes("ACTUAL") && line.includes("PRIOR"));
+    const renderer = tui.setup();
+    await act(async () => {
+      await renderer.mockMouse.drag(lines[y]!.indexOf("PRIOR") + 1, y, lines[y]!.indexOf("ACTUAL") - 2, y);
+      await renderer.renderOnce();
+    });
+    expect((await draw(110)).find((line) => line.includes("PRIOR"))).toMatch(/EVENT\s+PRIOR\s+ACTUAL\s+FORECAST/);
+    // The bytes main writes, header and rows.
+    expect(await exported()).toBe([
+      "\uFEFFUTC,COUNTRY,EVENT,PRIOR,ACTUAL,FORECAST",
+      "10:00,CN,Balance of Trade,105.28B,111200000000,100B",
+      "13:00,CA,GDP Growth Rate QoQ Final,3.3%,,0.4%",
+      "13:00,CA,GDP Growth Rate YoY Final,0.8%,,",
+    ].join("\n"));
+    // A pane too narrow for PRIOR.
+    expect((await draw(48)).join("\n")).toMatch(/\d hidden · PRIOR/);
+    expect(await exported()).toBe([
+      "\uFEFFUTC,CTY,EVENT,ACT,EST,PRIOR",
+      "10:00,CN,Balance of Trade,111200000000,100B,105.28B",
+      "13:00,CA,GDP Growth Rate QoQ Final,,0.4%,3.3%",
+      "13:00,CA,GDP Growth Rate YoY Final,,,0.8%",
+    ].join("\n"));
   });
 
   test("shows the saved calendar's original time after a timed-out refresh and clears it on recovery", async () => {

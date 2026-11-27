@@ -11,6 +11,7 @@ import { headerSteps } from "./header-checks";
 import { queryBarSteps } from "./query-bar-checks";
 import { layoutSteps } from "./layout-checks";
 import { selectionSteps } from "./selection-checks";
+import { spillSteps } from "./spill-checks";
 import { tabSweepSteps } from "./tab-sweep-checks";
 import { titleTabSteps } from "./title-tab-checks";
 import { readerSteps } from "./reader-checks";
@@ -1868,6 +1869,7 @@ const steps: Step[] = [
   ...queryBarSteps,
   ...layoutSteps,
   ...selectionSteps,
+  ...spillSteps,
   ...axisSteps,
   ...tabSweepSteps,
   ...titleTabSteps,
