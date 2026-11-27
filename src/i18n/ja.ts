@@ -311,6 +311,7 @@ export const ja: Record<string, string> = {
   "Open {symbol} in New Floating Ticker Research": "{symbol} を新しいフローティング銘柄リサーチで開く",
   "Add to Watchlist...": "ウォッチリストに追加...",
   "Add to Portfolio...": "ポートフォリオに追加...",
+  "Add Alert...": "アラートを追加...",
   "Remove from Watchlist...": "ウォッチリストから削除...",
   "Remove from Portfolio...": "ポートフォリオから削除...",
   "Context menu action failed.": "コンテキスト メニューのアクションが失敗しました。",

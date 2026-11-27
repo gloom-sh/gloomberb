@@ -310,6 +310,7 @@ export const es: Record<string, string> = {
   "Open {symbol} in New Floating Ticker Research": "Abrir {symbol} en un análisis flotante nuevo",
   "Add to Watchlist...": "Agregar a seguimiento...",
   "Add to Portfolio...": "Agregar a cartera...",
+  "Add Alert...": "Agregar alerta...",
   "Remove from Watchlist...": "Quitar de seguimiento...",
   "Remove from Portfolio...": "Quitar de cartera...",
   "Context menu action failed.": "Falló la acción del menú contextual.",
