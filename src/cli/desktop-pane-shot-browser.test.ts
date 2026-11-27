@@ -3,13 +3,35 @@ import { existsSync } from "fs";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { chromeSandboxRefused, findChromeExecutable, launchShotBrowser, startsWithoutSandbox } from "./desktop-pane-shot-browser";
+import { chromeSandboxRefused, findChromeExecutable, launchShotBrowser, launchShotBrowserProcess, startsWithoutSandbox } from "./desktop-pane-shot-browser";
 import { readRenderedPaneState } from "./desktop-pane-shot";
 import { buildDomPaneReportFromRender } from "./pane-functions/dom";
 import type { ResolvedPaneFunction } from "./pane-functions/resolver";
 import type { PaneScreenshotResult } from "./pane-functions/screenshot-types";
 
 const chrome = await findChromeExecutable().catch(() => null);
+
+async function startPipeCaptureBrowser(chrome: string, folder: string, launch = launchShotBrowserProcess) {
+  const start = async (attempt: string) => {
+    const userDataDir = join(folder, attempt);
+    const emptyHome = join(userDataDir, "empty-home");
+    try {
+      await mkdir(emptyHome, { recursive: true });
+      const browser = await launch(chrome, { widthPx: 400, heightPx: 300, userDataDir, env: { ...process.env, HOME: emptyHome } });
+      return { browser, userDataDir };
+    } catch (error) {
+      await rm(userDataDir, { recursive: true, force: true });
+      throw error;
+    }
+  };
+
+  try {
+    return await start("first");
+  } catch (error) {
+    if (!(error instanceof Error) || error.message !== "Timed out waiting for Chrome DevTools method Browser.getVersion.") throw error;
+    return start("retry");
+  }
+}
 
 // No other CI step starts the browser a capture draws in. Over the pipe, the browser opens no DevTools port another
 // program on the machine could use, and the page's address, which carries the capture server's secret, is not on its
@@ -22,29 +44,60 @@ test.skipIf(chrome === null || process.platform === "win32")("the capture browse
       ? new Response("<title>capture</title><script>window.drawn = 42</script>", { headers: { "Content-Type": "text/html" } })
       : new Response("Not found", { status: 404 }),
   });
-  const userDataDir = await mkdtemp(join(tmpdir(), "gloom-shot-browser-"));
-  const home = process.env.HOME;
-  const emptyHome = join(userDataDir, "empty-home");
-  await mkdir(emptyHome);
-  process.env.HOME = emptyHome;
-  const browser = await launchShotBrowser(chrome!, { widthPx: 400, heightPx: 300, userDataDir }).finally(() => {
-    if (home === undefined) delete process.env.HOME;
-    else process.env.HOME = home;
-  });
+  let folder: string | undefined;
   try {
-    await browser.open(`http://127.0.0.1:${server.port}/folder/`);
-    const { result } = await browser.page.send("Runtime.evaluate", {
-      expression: "`${document.title}:${window.drawn}`",
-      returnByValue: true,
-    }) as { result: { value: string } };
-    expect(result.value).toBe("capture:42");
-    expect(existsSync(join(userDataDir, "DevToolsActivePort"))).toBe(false);
+    folder = await mkdtemp(join(tmpdir(), "gloom-shot-browser-"));
+    const { browser, userDataDir } = await startPipeCaptureBrowser(chrome!, folder);
+    try {
+      const capture = await browser.newPage();
+      await capture.open(`http://127.0.0.1:${server.port}/folder/`);
+      const { result } = await capture.page.send("Runtime.evaluate", {
+        expression: "`${document.title}:${window.drawn}`",
+        returnByValue: true,
+      }) as { result: { value: string } };
+      expect(result.value).toBe("capture:42");
+      expect(existsSync(join(userDataDir, "DevToolsActivePort"))).toBe(false);
+    } finally {
+      await browser.close();
+    }
   } finally {
-    await browser.close();
     server.stop(true);
-    await rm(userDataDir, { recursive: true, force: true });
+    if (folder) await rm(folder, { recursive: true, force: true });
   }
-}, 60_000);
+}, 120_000);
+
+const versionTimeout = () => new Error("Timed out waiting for Chrome DevTools method Browser.getVersion.");
+test.each([
+  ["recovers from the first handshake timeout", [versionTimeout()], true],
+  ["fails after a second handshake timeout", [versionTimeout(), versionTimeout()], false],
+  ["does not retry other startup errors", [new Error("Chrome DevTools connection closed.")], false],
+] as const)("pipe capture %s", async (_scenario, errors, recovers) => {
+  const folder = await mkdtemp(join(tmpdir(), "gloom-shot-startup-"));
+  const profiles: string[] = [];
+  const browser = {
+    newPage: async () => { throw new Error("Page creation is outside startup recovery."); },
+    close: async () => {},
+  };
+  try {
+    const started = startPipeCaptureBrowser("fake-chrome", folder, async (_chrome, { userDataDir }) => {
+      for (const profile of profiles) expect(existsSync(profile)).toBe(false);
+      expect(profiles).not.toContain(userDataDir);
+      profiles.push(userDataDir);
+      const failure = errors[profiles.length - 1];
+      if (failure) throw failure;
+      return browser;
+    });
+    if (recovers) {
+      expect(await started).toEqual({ browser, userDataDir: profiles[1] });
+    } else {
+      await expect(started).rejects.toBe(errors.at(-1));
+      for (const profile of profiles) expect(existsSync(profile)).toBe(false);
+    }
+    expect(profiles).toHaveLength(errors.length + Number(recovers));
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
+});
 
 test.skipIf(chrome === null)("rendered reports omit decorative figures from rows and prose without changing the preview", async () => {
   const folder = await mkdtemp(join(tmpdir(), "gloom-shot-preview-"));
