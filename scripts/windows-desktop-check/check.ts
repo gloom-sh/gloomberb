@@ -8,6 +8,8 @@ import { EXTRACTED_PLUGINS } from "../../src/plugins/extracted-plugins";
 import { DETACHED_WINDOW_MIN_SIZE, MAIN_WINDOW_MIN_SIZE } from "../../src/renderers/electrobun/bun/window/frame";
 import * as win from "./win32";
 import type { Bitmap, Point, Rect } from "./win32";
+import { PortSampleError, portResults } from "./ports";
+import { launchForPorts } from "./ports-win32";
 import type { CheckResult, CheckRun, CheckStatus } from "./results";
 
 /**
@@ -80,28 +82,6 @@ async function enableDevtools(dir: string): Promise<void> {
   build.chromiumFlags = flags;
   await writeFile(buildPath, JSON.stringify(build));
   console.log(`DevTools port open for the check (Chromium flags now ${JSON.stringify(build.chromiumFlags ?? {})})`);
-}
-
-/** The TCP ports a process and everything it started listen on. */
-function listeningSockets(rootPid: number): Array<{ address: string; port: number; process: string }> {
-  const script = String.raw`
-$all = Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name
-$ids = @(${rootPid})
-do {
-  $added = @($all | Where-Object { $ids -contains $_.ParentProcessId -and -not ($ids -contains $_.ProcessId) } | ForEach-Object { $_.ProcessId })
-  $ids += $added
-} while ($added.Count -gt 0)
-Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $ids -contains $_.OwningProcess } | ForEach-Object {
-  $owner = $_.OwningProcess
-  $name = ($all | Where-Object { $_.ProcessId -eq $owner } | Select-Object -First 1).Name
-  Write-Output ("{0}|{1}|{2}" -f $_.LocalAddress, $_.LocalPort, $name)
-}
-`;
-  const child = Bun.spawnSync(["pwsh", "-NoProfile", "-NonInteractive", "-Command", script], { timeout: 60_000 });
-  return child.stdout.toString().split(/\r?\n/).filter(Boolean).map((line) => {
-    const [address, port, name] = line.trim().split("|");
-    return { address: address!, port: Number(port), process: name ?? "" };
-  });
 }
 
 /** Lets the Task Scheduler keep its own log, which says what a restart task did. */
@@ -179,49 +159,46 @@ async function ports(app: string, out: string, label: string): Promise<void> {
   await rm(out, { recursive: true, force: true });
   await mkdir(join(out, "shots"), { recursive: true });
   const profile = join(out, "..", `profile-${basename(out)}`);
-  await seedProfile(profile, { main: { x: 60, y: 120, width: 1100, height: 720 }, detached: { x: 1200, y: 200, width: 600, height: 480 } });
-  const known = new Set(win.topLevelWindows().map((info) => info.hwnd));
   const bin = join(app, "bin");
   const started = new Date().toISOString();
-  const launcher = Bun.spawn([join(bin, "launcher.exe")], {
-    cwd: bin,
-    env: { ...process.env, GLOOMBERB_HOME: profile, ELECTROBUN_CONSOLE: "1", DO_NOT_TRACK: "1", GLOOMBERB_NO_TELEMETRY: "1" },
-    stdout: Bun.file(join(out, "app-stdout.log")),
-    stderr: Bun.file(join(out, "app-stderr.log")),
-  });
-  // Every server is up once the main window's page has loaded.
-  await sleep(25_000);
-  const sockets = listeningSockets(launcher.pid);
-  const newWindows = win.topLevelWindows().filter((info) => info.visible && !known.has(info.hwnd));
-  const prompts = newWindows.filter((info) => info.className !== "BasicWindowClass").map((info) => `"${info.title}" (${info.className})`);
+  const sampleStart = performance.now();
   const shots = new Shots(join(out, "shots"));
-  const shot = shots.desktop("as-shipped");
-  await shots.flush();
-  Bun.spawnSync(["taskkill", "/PID", String(launcher.pid), "/T", "/F"]);
-  await sleep(1_500);
-  await rm(profile, { recursive: true, force: true }).catch(() => {});
-  const loopback = (address: string) => address === "127.0.0.1" || address === "::1";
-  const open = sockets.filter((socket) => !loopback(socket.address));
-  const devtools = sockets.filter((socket) => socket.port >= 9222 && socket.port <= 9232);
-  const list = sockets.map((socket) => `${socket.address}:${socket.port} (${socket.process})`).join(", ") || "nothing";
-  const results: CheckResult[] = [
-    {
-      id: "listens-locally",
-      title: "As shipped, it listens only on this machine",
-      status: !sockets.length ? "fail" : open.length ? "fail" : "pass",
-      detail: !sockets.length ? "found no listening socket at all, so nothing was checked" : `${open.length ? `${open.length} on every interface or the network; ` : ""}listening on ${list}${prompts.length ? `; other windows: ${prompts.join(", ")}` : ""}`,
-      shots: shot ? [shot] : [],
-      ms: 25_000,
-    },
-    {
-      id: "no-devtools-port",
-      title: "As shipped, no DevTools port",
-      status: devtools.length ? "fail" : "pass",
-      detail: devtools.length ? `DevTools on ${devtools.map((socket) => `${socket.address}:${socket.port}`).join(", ")}` : "none in 9222-9232",
-      shots: [],
-      ms: 0,
-    },
-  ];
+  let shot: string | null = null;
+  let launch: ReturnType<typeof launchForPorts> | undefined;
+  const collectionFailure = "Could not collect the isolated launch's listeners";
+  let sample: Parameters<typeof portResults>[0] = collectionFailure;
+  try {
+    await seedProfile(profile, { main: { x: 60, y: 120, width: 1100, height: 720 }, detached: { x: 1200, y: 200, width: 600, height: 480 } });
+    launch = launchForPorts(bin, out, { ...process.env, GLOOMBERB_HOME: profile, ELECTROBUN_CONSOLE: "1", DO_NOT_TRACK: "1", GLOOMBERB_NO_TELEMETRY: "1" });
+    await sleep(25_000);
+    sample = launch.sample();
+  } catch (error) {
+    sample = error instanceof PortSampleError ? error.message : collectionFailure;
+  } finally {
+    if (launch) {
+      try {
+        shot = shots.desktop("as-shipped");
+        await shots.flush();
+      } catch {
+        shot = null;
+        console.warn("Could not save the as-shipped screenshot");
+      }
+    }
+    try {
+      await launch?.close();
+    } catch (error) {
+      const cleanup = error instanceof PortSampleError ? error.message : "Could not clean up the isolated launch";
+      sample = typeof sample === "string" ? `${sample}; ${cleanup}` : cleanup;
+    }
+    try {
+      await rm(profile, { recursive: true, force: true });
+    } catch {
+      const cleanup = "Could not remove the isolated launch profile";
+      sample = typeof sample === "string" ? `${sample}; ${cleanup}` : cleanup;
+    }
+  }
+  const results = portResults(sample, shot ? [shot] : [], Math.round(performance.now() - sampleStart));
+  const portsFailed = results.some(({ status }) => status === "fail");
   // The names Windows shows for the processes, in Task Manager and its prompts.
   const named = ["bun.exe", "launcher.exe"].map((exe) => {
     const child = Bun.spawnSync(["pwsh", "-NoProfile", "-NonInteractive", "-Command",
@@ -249,6 +226,7 @@ async function ports(app: string, out: string, label: string): Promise<void> {
   };
   await writeFile(join(out, "results.json"), JSON.stringify(result, null, 2));
   for (const entry of results) console.log(`${entry.status.toUpperCase().padEnd(5)} ${entry.id}: ${entry.detail}`);
+  if (portsFailed) process.exitCode = 1;
 }
 
 // --- Profile ---------------------------------------------------------------

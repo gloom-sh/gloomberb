@@ -258,15 +258,24 @@ jobs:
 
       # What the app listens on as installed, before the check opens DevTools.
       - name: Check what the app listens on
+        id: ports
         shell: pwsh
         run: |
           $Bun = if ($env:CHECK_BUN) { $env:CHECK_BUN } else { "bun" }
           & $Bun scripts/windows-desktop-check/check.ts ports --app "$env:RUNNER_TEMP\Gloom check" --out "windows-desktop-check\$env:LABEL-ports" --label $env:LABEL
+          exit $LASTEXITCODE
+
+      - name: Enable DevTools for the UI checks
+        id: devtools
+        if: ${{ !cancelled() && steps.ports.outcome != 'skipped' }}
+        shell: pwsh
+        run: |
+          $Bun = if ($env:CHECK_BUN) { $env:CHECK_BUN } else { "bun" }
           & $Bun scripts/windows-desktop-check/check.ts enable-devtools --app "$env:RUNNER_TEMP\Gloom check"
-          exit 0
+          exit $LASTEXITCODE
 
       - name: Drive the app at each scale
-        if: inputs.only != 'responsiveness'
+        if: ${{ !cancelled() && steps.devtools.outcome == 'success' && inputs.only != 'responsiveness' }}
         shell: pwsh
         run: |
           $Bun = if ($env:CHECK_BUN) { $env:CHECK_BUN } else { "bun" }
@@ -280,7 +289,7 @@ jobs:
           exit 0
 
       - name: Report
-        if: inputs.only != 'responsiveness'
+        if: ${{ !cancelled() && steps.ports.outcome != 'skipped' && inputs.only != 'responsiveness' }}
         shell: pwsh
         run: |
           if ("${{ matrix.build }}" -eq "head") {
@@ -291,7 +300,7 @@ jobs:
 
       # The release's numbers are the comparison; this commit's must stay under a second.
       - name: Time the app's thread while it is held
-        if: ${{ !cancelled() && (inputs.only == '' || inputs.only == 'responsiveness') }}
+        if: ${{ !cancelled() && steps.devtools.outcome == 'success' && (inputs.only == '' || inputs.only == 'responsiveness') }}
         shell: pwsh
         run: |
           $Bun = if ($env:CHECK_BUN) { $env:CHECK_BUN } else { "bun" }
