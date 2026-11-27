@@ -1493,6 +1493,8 @@ export const ko: Record<string, string> = {
   "Create an account or log in to sync layouts and portfolios, and to use Chat across devices. You can also continue locally.": "계정을 만들거나 로그인하면 레이아웃과 포트폴리오를 동기화하고 여러 기기에서 채팅을 사용할 수 있습니다. 로컬에서 계속할 수도 있습니다.",
   "Help is always available from the desktop header or the ? key.": "도움말은 데스크톱 헤더 또는 ? 키로 언제든 열 수 있습니다.",
   "Import positions from {broker}": "{broker}에서 포지션 가져오기",
+  "Import CSV": "CSV 가져오기",
+  "Import from Broker": "브로커에서 가져오기",
   "Imported {count} positions from {broker}": "{broker}에서 포지션 {count}개 가져옴",
   "Importing...": "가져오는 중...",
   "Just an email and password": "이메일과 비밀번호만 있으면 됩니다",

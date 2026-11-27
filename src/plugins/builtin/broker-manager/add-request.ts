@@ -34,9 +34,22 @@ export function openBrokerAddFlow(registry: BrokerAddLauncher): void {
 }
 
 /**
+ * Whether a pane that only suggests adding a broker (an empty PF) should offer
+ * Add Broker Account: the app has the Brokers pane it opens, which the web app
+ * ships without, and the Broker plugin is on. With it off, the action would
+ * only offer to turn the plugin back on.
+ */
+export function brokerAddOffered(
+  disabledPlugins: readonly string[],
+  registry: Pick<PluginRegistry, "panes" | "getDisabledPaneOwner"> | undefined = getSharedRegistry(),
+): boolean {
+  return !!registry?.panes.has(BROKERS_PANE_ID) && !registry.getDisabledPaneOwner(BROKERS_PANE_ID, disabledPlugins);
+}
+
+/**
  * Add Broker Account from another pane's empty state (Orders, Portfolio
- * Analytics): the command bar's own action, so a detached window says to
- * open it from the main window, as the command bar does there.
+ * Analytics, an empty PF): the command bar's own action, so a detached window
+ * says to open it from the main window, as the command bar does there.
  */
 export function startBrokerAdd(): void {
   getSharedRegistry()?.openBuiltInWorkflow("add-broker-account");

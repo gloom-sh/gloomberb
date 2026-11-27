@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, type ReactNode } from "react";
 import {
   TickerListTableView,
   type DataTableKeyEvent,
@@ -216,6 +216,7 @@ export function PortfolioTickerTable({
   resetScrollKey,
   onRowActivate,
   addTickerShortcut,
+  emptyActions,
   onOpenPerpetual,
   rootHeight,
   width,
@@ -251,6 +252,8 @@ export function PortfolioTickerTable({
   onRowActivate?: (ticker: TickerRecord) => void;
   /** The key of the add row, which the empty table names. The pane shows the row itself, once. */
   addTickerShortcut?: string;
+  /** Buttons under the empty table's title (`TickerListTableViewProps.emptyActions`). */
+  emptyActions?: ReactNode;
   /** Opens PERP on a row's stock perpetual: its PERP% and FUND 8H cells link to it. */
   onOpenPerpetual?: (marketId: string) => void;
   rootHeight?: number;
@@ -440,6 +443,7 @@ export function PortfolioTickerTable({
       onRowActivate={onRowActivate}
       rowMenuAccelerators={PORTFOLIO_ROW_MENU_KEYS}
       addTickerShortcut={addTickerShortcut}
+      emptyActions={emptyActions}
       summaryRows={summaryRows}
       rootHeight={rootHeight}
       exportName={exportName}

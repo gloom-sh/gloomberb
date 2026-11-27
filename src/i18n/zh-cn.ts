@@ -1495,6 +1495,8 @@ export const zhCN: Record<string, string> = {
   "Create an account or log in to sync layouts and portfolios, and to use Chat across devices. You can also continue locally.": "创建账户或登录以同步布局和投资组合，并在不同设备上使用聊天。你也可以继续在本地使用。",
   "Help is always available from the desktop header or the ? key.": "帮助始终可从桌面标题栏或按 ? 打开。",
   "Import positions from {broker}": "从 {broker} 导入持仓",
+  "Import CSV": "导入 CSV",
+  "Import from Broker": "从券商导入",
   "Imported {count} positions from {broker}": "从 {broker} 导入了 {count} 个持仓",
   "Importing...": "导入中...",
   "Just an email and password": "只需邮箱和密码",

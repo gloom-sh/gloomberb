@@ -184,6 +184,8 @@ export interface TickerListTableViewProps {
   rowMenuAccelerators?: Readonly<Record<string, string>>;
   emptyTitle?: string;
   emptyHint?: string;
+  /** Buttons under the empty table's title and hint, for what the reader can do about it (Import CSV). */
+  emptyActions?: ReactNode;
   /** Rows after the tickers that add them up; shown only beside at least one ticker. */
   summaryRows?: readonly TickerTableSummaryRow[];
   /**
@@ -348,6 +350,7 @@ export function TickerListTableView({
   rowMenuAccelerators,
   emptyTitle = t("No tickers."),
   emptyHint,
+  emptyActions,
   addTickerShortcut,
   summaryRows,
   groups,
@@ -585,6 +588,7 @@ export function TickerListTableView({
       getRowVersion={getRowVersion}
       emptyStateTitle={emptyTitle}
       emptyStateHint={resolvedEmptyHint}
+      emptyStateActions={emptyActions}
       virtualize={virtualize}
       overscan={overscan}
       rootBefore={rootBefore}

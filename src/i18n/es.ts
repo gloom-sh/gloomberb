@@ -1506,6 +1506,8 @@ export const es: Record<string, string> = {
   "Create an account or log in to sync layouts and portfolios, and to use Chat across devices. You can also continue locally.": "Crea una cuenta o inicia sesión para sincronizar diseños y carteras, y usar Chat en todos tus dispositivos. También puedes continuar localmente.",
   "Help is always available from the desktop header or the ? key.": "La Ayuda siempre está disponible desde el encabezado de escritorio o con la tecla ?.",
   "Import positions from {broker}": "Importar posiciones de {broker}",
+  "Import CSV": "Importar CSV",
+  "Import from Broker": "Importar desde el bróker",
   "Imported {count} positions from {broker}": "Se importaron {count} posiciones de {broker}",
   "Importing...": "Importando...",
   "Just an email and password": "Solo correo y contraseña",

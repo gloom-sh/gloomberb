@@ -6,6 +6,7 @@ import { describeFundamentalMarketCap } from "../../../../utils/market-capitaliz
 import { wrapTextLines } from "../../../../utils/text-wrap";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Button,
   confirmDialog,
   RowNote,
   usePaneFooter,
@@ -89,6 +90,7 @@ import {
 } from "./remove-ticker";
 import { QUICK_ADD_KEY, QuickAddTickerInput, type QuickAddCollectionKind } from "../quick-add";
 import { usePositionsImport } from "../positions-import";
+import { brokerAddOffered, startBrokerAdd } from "../../broker-manager/add-request";
 import { delistingLabel } from "../../../../market-data/quotes/delisting";
 import {
   buildTrackedCurrencies,
@@ -821,9 +823,22 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     activePortfolio: currentPortfolio,
     onImported: setCurrentCollectionId,
   });
-  usePaneMenuItems("portfolio-list-import", () => [
+  // An empty manual book of the user's own, once setup is done (setup has its own ways in, and its coach floats
+  // over a live PF), offers in its body the same file import and, where this app can add a broker, a broker's
+  // holdings. Watchlists, broker and team books and a book with holdings keep the plain empty state.
+  const setupDone = useAppSelector((state) => state.config.onboardingComplete === true && !state.config.onboardingProgress);
+  const offersImport = setupDone && removalCollection?.kind === "portfolio" && collectionTickers.length === 0;
+  const offersBroker = offersImport && brokerAddOffered(config.disabledPlugins);
+  const emptyActions = offersImport ? (
+    <>
+      <Button label="Import CSV" onPress={positionsImport.start} />
+      {offersBroker ? <Button label="Import from Broker" onPress={startBrokerAdd} /> : null}
+    </>
+  ) : undefined;
+  // The empty state's buttons are in the pane menu already, so the file import is not listed twice.
+  usePaneMenuItems("portfolio-list-import", () => offersImport ? null : [
     { id: "import-positions", label: t("Import Positions…"), onSelect: positionsImport.start },
-  ], [positionsImport.start]);
+  ], [offersImport, positionsImport.start]);
 
   // The cursor row's perpetual, for the keyboard: the pane menu opens what clicking its cell opens. A row that is a
   // perpetual market opens its own, as Enter does.
@@ -1021,6 +1036,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
           resetScrollKey={activeCollectionId}
           onRowActivate={handleRowActivate}
           addTickerShortcut={showQuickAdd ? QUICK_ADD_KEY : undefined}
+          emptyActions={emptyActions}
           onOpenPerpetual={showsPerpetuals ? openPerpMarket : undefined}
           rootHeight={contentHeight}
           width={width}
@@ -1045,6 +1061,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
           focused={focused && !quickAddFocused}
           width={width}
           height={contentHeight}
+          emptyActions={emptyActions}
         />
       )}
       <RowNote>{cursorNote}</RowNote>
