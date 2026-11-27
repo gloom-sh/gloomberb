@@ -172,7 +172,7 @@ function shotSocket(): Promise<ShotApiSocketSend | null> {
     const url = shotRouteUrl(SHOT_API_SOCKET_PATH, SHOT_PAGE_URL);
     url.protocol = "ws:";
     return new WebSocket(url);
-  }, { limit: window.__GLOOM_CLI_SHOT_PAYLOAD__?.socketReadLimit });
+  });
   return shotApiSocket;
 }
 

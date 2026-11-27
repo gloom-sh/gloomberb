@@ -83,7 +83,6 @@ export interface DesktopPaneShotPayload {
   statusLine?: boolean;
   /** A DES overview report tracks its deferred snapshot explicitly, rather than settling like a screenshot. */
   readTickerReport?: boolean;
-  socketReadLimit?: number;
   /**
    * A report reads every column of a table, the ones past its right edge
    * too: no table leaves a column out for width, as a picture's does
