@@ -4,7 +4,7 @@ import {
   type PaneRuntimeState,
 } from "../../core/state/app/state";
 import { createSavedLayoutId } from "../../layout/pane-layout-move";
-import { dockPane, floatAtRect, insertAtRootEdge, removePane } from "../../layout/pane-manager";
+import { dockPane, floatAtRect, insertAtRootEdge, removePane, withoutTransientPanes } from "../../layout/pane-manager";
 import {
   cloneLayout,
   createBlankLayout,
@@ -126,9 +126,10 @@ function viewFromTab(tab: SavedLayout, statusBarVisible: boolean): WindowView {
 /**
  * Settles a state after a change: every window shows tabs it owns, a window
  * left without tabs is gone, the main window keeps at least one, and the
- * config's active layout is the main window's.
+ * config's active layout is the main window's. `live` is the main window's
+ * live layout as it now holds it, the state's own by default.
  */
-function settle(state: WindowLayouts): WindowLayouts {
+function settle(state: WindowLayouts, live: LayoutConfig = state.config.layout): WindowLayouts {
   const ids = new Set(state.config.layouts.map(layoutId));
   const owners: Record<string, string> = {};
   for (const [id, windowId] of Object.entries(state.owners)) {
@@ -156,8 +157,19 @@ function settle(state: WindowLayouts): WindowLayouts {
   const main = views[MAIN_WINDOW_ID]!;
   const mainIndex = next.config.layouts.findIndex((entry) => entry.id === main.activeLayoutId);
   const active = next.config.layouts[mainIndex]!;
-  // The saved copy of the main window's active tab is kept current, so it is the live layout.
-  return { ...next, config: { ...next.config, activeLayoutIndex: mainIndex, layout: cloneLayout(active.layout) } };
+  return { ...next, config: { ...next.config, activeLayoutIndex: mainIndex, layout: mainLiveLayout(active.layout, live) } };
+}
+
+/**
+ * The main window's live layout: the saved copy of its active tab, which is
+ * kept current, plus the transient windows open over it (the Layouts window,
+ * withoutTransientPanes) that a tab never saves. `live` keeps them while it
+ * is that tab's layout; without this the window that sent it is sent the tab
+ * back and the Layouts window closes as soon as it opens.
+ */
+function mainLiveLayout(saved: LayoutConfig, live: LayoutConfig): LayoutConfig {
+  const kept = withoutTransientPanes(live);
+  return kept !== live && deepEqual(kept, saved) ? cloneLayout(live) : cloneLayout(saved);
 }
 
 /**
@@ -439,7 +451,7 @@ export function mergeWindowSnapshot(
     brokerSyncErrors,
     owners,
     views: { ...state.views, [windowId]: nextView },
-  });
+  }, windowId === MAIN_WINDOW_ID && sameTab ? sent.config.layout : state.config.layout);
 }
 
 /**

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { appReducer, createInitialState, resolveTickerForPane } from "../../core/state/app/state";
-import { insertAtRootEdge } from "../../layout/pane-manager";
+import { floatAtRect, insertAtRootEdge } from "../../layout/pane-manager";
 import { createDefaultConfig, findPaneInstance, type AppConfig, type LayoutConfig, type PaneInstanceConfig } from "../../types/config";
 import type { DesktopSharedStateSnapshot } from "../../types/desktop-window";
 import { MAIN_WINDOW_ID } from "./screen-setup";
@@ -102,6 +102,24 @@ describe("window layouts", () => {
     expect(state.config.theme).toBe("paper");
     expect(state.config.layouts[0]!.name).toBe("Desk");
     expect(state.config.watchlists.map((entry) => entry.id)).toEqual(["watchlist", "tech"]);
+  });
+
+  test("the Layouts window the main window opens stays in its live layout and out of its tab", () => {
+    let state = start();
+    const held = projectWindow(state, MAIN_WINDOW_ID)!;
+    const gallery = "layout-marketplace:open";
+    const sent = edit(held, (config) => ({
+      ...config,
+      layout: floatAtRect(
+        { ...config.layout, instances: [...config.layout.instances, { instanceId: gallery, paneId: "layout-marketplace" }] },
+        gallery,
+        { x: 10, y: 4, width: 118, height: 34 },
+      ),
+    }));
+    state = mergeWindowSnapshot(state, MAIN_WINDOW_ID, held, { ...sent, focusedPaneId: gallery });
+    // Sent back what it holds, the window keeps the Layouts window open.
+    expect(projectWindow(state, MAIN_WINDOW_ID)!.config.layout).toEqual(sent.config.layout);
+    expect(findPaneInstance(state.config.layouts[0]!.layout, gallery)).toBeUndefined();
   });
 
   test("a window's tab deletion removes only that tab", () => {
