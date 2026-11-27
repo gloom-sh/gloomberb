@@ -1624,6 +1624,7 @@ export const zhTW: Record<string, string> = {
   "Article or newsletter": "文章或電子報",
   "Where?": "在哪裡？",
   "Which account or post?": "哪個帳號或貼文？",
+  "Which AI, and what did you ask?": "你用了哪個 AI，問了什麼？",
   "Skip": "略過",
   "Equities": "股票",
   "Futures & commodities": "期貨與大宗商品",

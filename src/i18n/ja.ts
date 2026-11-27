@@ -1624,6 +1624,7 @@ export const ja: Record<string, string> = {
   "Article or newsletter": "記事・ニュースレター",
   "Where?": "どこで？",
   "Which account or post?": "どのアカウントや投稿ですか？",
+  "Which AI, and what did you ask?": "どのAIに、何を聞きましたか？",
   "Skip": "スキップ",
   "Equities": "株式",
   "Futures & commodities": "先物・コモディティ",
