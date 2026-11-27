@@ -265,14 +265,20 @@ const SPILL_ROWS: SpillRow[] = [
   { symbol: "LMN", name: "Lumen Instrument Works", last: "1,098.53" },
   { symbol: "HRB", name: "Harbor Light Utilities", last: "—" },
   { symbol: "QTZ", name: "Quartz Ridge Mining", last: "12.40" },
+  // More rows than the body holds, so it scrolls down too.
+  ...Array.from({ length: 60 }, (_, index) => ({ symbol: `S${index + 1}`, name: `Series ${index + 1}`, last: (20 + index * 1.5).toFixed(2) })),
 ];
 
 /**
  * A table drawn at its set widths, every column, scrolling sideways (as `shot
  * --every-column` draws one), unfrozen, with long names before a LAST that is
- * blank on some rows: the spill checks scroll the edge across LAST.
+ * blank on some rows: the spill checks scroll the edge across LAST. With
+ * `clip=1` it does not scroll and keeps its set widths
+ * (`showHorizontalScrollbar={false}`, `fillAvailableWidth={false}`), so a body
+ * narrower than the table cuts it at its right edge; those checks resize it.
  */
 function SpillTablePane({ focused }: PaneProps) {
+  const clipped = params.get("clip") === "1";
   return (
     <TableColumnFitContext.Provider value={false}>
       <DataTableView<SpillRow>
@@ -281,6 +287,8 @@ function SpillTablePane({ focused }: PaneProps) {
         columns={SPILL_COLUMNS}
         items={SPILL_ROWS}
         freezeFirstColumn={false}
+        showHorizontalScrollbar={!clipped}
+        fillAvailableWidth={!clipped}
         sortColumnId={null}
         sortDirection="asc"
         getItemKey={(row) => row.symbol}
