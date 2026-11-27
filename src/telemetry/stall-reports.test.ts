@@ -97,6 +97,27 @@ describe("stall reports", () => {
 });
 
 describe("app stalls", () => {
+  test("Windows process counters fit alongside launch age and zero CPU without changing the report key", async () => {
+    const reports: CrashReportsPayload[] = [];
+    installCrashReporter({
+      surface: "desktop",
+      isEnabled: () => true,
+      getInstallId: () => "0f1e2d3c-4b5a-4968-8776-655443322110",
+      send: async (payload) => { reports.push(payload); },
+    });
+    const { log } = fakeReporter({ platform: "win32", arch: "x64", send: undefined });
+    setStallAttentionProbe(() => ({ active: true, visible: true }));
+    recordStall("app", {
+      blockedMs: 3_000, uptimeMs: 95_000, phase: "steady", threadCpu: 0,
+      processActivity: { pageFaults: "reset", io: { readOps: 2, writeOps: 0, otherOps: 113, readBytes: 4096, writeBytes: 0, otherBytes: 512 } },
+    });
+    await flushCrashReports();
+    const error = reports[0]?.errors[0];
+    expect(error?.message).toBe("2-5s after unmeasured");
+    expect(error?.pane).toContain("up=30s-2m gap=none fg=1 vis=1 cpu=0 pf=reset io=2/0/e2/e3/0/e2");
+    expect(log[0]).toContain("pageFaults=reset readOps=2 writeOps=0 otherOps=113 readBytes=4096 writeBytes=0 otherBytes=512");
+  });
+
   // The desktop app's own process: a SQLite statement that held it names
   // itself, says whether it waited on another program's lock, and the
   // report says whether anyone was looking, whether the thread was busy or

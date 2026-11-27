@@ -1,5 +1,5 @@
 import { getCloudApiBaseUrl } from "../../../api-client/request";
-import { REQUEST_TIMED_OUT_MESSAGE, RpcTimeoutError } from "../../../utils/rpc-timeout-error";
+import { REQUEST_TIMED_OUT_MESSAGE, RPC_CLOCK_FRESHNESS_MS, rpcAwakeTimeBound, RpcTimeoutError, type RpcClockSample } from "../../../utils/rpc-timeout-error";
 import type { DesktopBackendRequestMethod } from "../shared/protocol";
 
 /** How long the view waits for the Bun process to answer one request. */
@@ -7,6 +7,38 @@ export const RPC_MAX_REQUEST_TIME_MS = 120_000;
 
 /** What Electrobun's request timer rejects with: no method, request id or caller. */
 const ELECTROBUN_REQUEST_TIMEOUT_MESSAGE = "RPC request timed out.";
+const EVIDENCE_WAIT_MS = 400;
+
+type ClockProbe = (fresh?: boolean) => Promise<RpcClockSample | null>;
+
+/** Share burst samples and leave at most one clock request outstanding if the host stops answering. */
+export function createRpcTimeoutClockProbe(read: () => Promise<RpcClockSample | null>): ClockProbe {
+  let recent: { at: number; result: Promise<RpcClockSample | null> } | undefined;
+  let pending: Promise<RpcClockSample | null> | undefined;
+  return (fresh = false) => {
+    const now = Date.now();
+    if (pending) return pending;
+    if (!fresh && recent && now >= recent.at && now - recent.at < RPC_CLOCK_FRESHNESS_MS) return recent.result;
+    const result = Promise.resolve().then(read).catch(() => null).finally(() => { pending = undefined; });
+    pending = result;
+    recent = { at: now, result };
+    return result;
+  };
+}
+
+async function awakeTimeBound(startedAt: number, timedOutAt: number, before: ReturnType<ClockProbe>, clock: ClockProbe): Promise<number | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      Promise.all([before, clock(true)]).then(([start, end]) => rpcAwakeTimeBound(startedAt, timedOutAt, start, end)),
+      new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), EVIDENCE_WAIT_MS); }),
+    ]);
+  } catch {
+    return null;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
 
 /**
  * Runs one `backend.request` and, when Electrobun's request timer gives up on
@@ -21,24 +53,29 @@ const ELECTROBUN_REQUEST_TIMEOUT_MESSAGE = "RPC request timed out.";
  * only called external. Never the payload, rest of the path, query or headers.
  * Elapsed time is rounded to 10 s because crash reports are deduplicated per
  * session on the reported message. The error keeps its `Error` type, and
- * carries the elapsed time so a timer that fired long after its limit (the
- * machine slept) can be told from a request that really stalled.
+ * carries awake-time evidence, when the host can supply it, so sleep can be
+ * told from a request that really stalled.
  */
 export async function nameRpcTimeout<T>(
   method: DesktopBackendRequestMethod,
   payload: unknown,
   request: () => Promise<T>,
+  clock?: ClockProbe,
 ): Promise<T> {
   const startedAt = performance.now();
+  const wallStartedAt = clock ? Date.now() : 0;
+  const before = clock?.();
   try {
     return await request();
   } catch (error) {
     if (!(error instanceof Error) || error.message !== ELECTROBUN_REQUEST_TIMEOUT_MESSAGE) throw error;
     const elapsedMs = performance.now() - startedAt;
+    const wallTimedOutAt = clock ? Date.now() : 0;
     const seconds = Math.round(elapsedMs / 10_000) * 10;
     throw new RpcTimeoutError(REQUEST_TIMED_OUT_MESSAGE, {
       elapsedMs,
       limitMs: RPC_MAX_REQUEST_TIME_MS,
+      awakeUpperBoundMs: before && clock ? await awakeTimeBound(wallStartedAt, wallTimedOutAt, before, clock) : null,
       report: `RPC request timed out: ${describeRequest(method, payload)} after ~${seconds}s`,
       cause: error,
     });

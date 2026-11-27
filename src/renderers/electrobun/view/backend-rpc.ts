@@ -16,7 +16,7 @@ import { decodeRpcResponse, decodeRpcValue, encodeRpcValue } from "../shared/rpc
 import { subscribeCapability, type CapabilitySubscriptionOptions } from "./capability-subscription";
 import { connectionHealth, DESKTOP_BRIDGE_CONNECTION_ID } from "../../../core/connection-health";
 import { createBridgeHealth, createHostRoute } from "./host-route";
-import { nameRpcTimeout, RPC_MAX_REQUEST_TIME_MS } from "./rpc-timeout";
+import { createRpcTimeoutClockProbe, nameRpcTimeout, RPC_MAX_REQUEST_TIME_MS } from "./rpc-timeout";
 import type { RemoteControlRequest, RemoteControlResponse } from "../../../remote/types";
 import type { StallEvent } from "../../../utils/main-thread-stall";
 import { publishPluginSeedProgress } from "../../../plugins/seed-progress";
@@ -143,6 +143,9 @@ const hostRoute = createHostRoute({
 });
 // What failed for want of an answer is asked again once the bridge answers.
 const bridgeHealth = createBridgeHealth(() => connectionHealth.reportRecovery(DESKTOP_BRIDGE_CONNECTION_ID));
+const timeoutClock = globalThis.navigator?.platform?.startsWith("Win")
+  ? createRpcTimeoutClockProbe(() => rpc.request["runtime.clock"]({}))
+  : undefined;
 
 export function backendRequest<T = unknown>(
   method: "capability.invoke",
@@ -159,7 +162,7 @@ export async function backendRequest(
   const encoded = encodeRpcValue(payload);
   const result = await bridgeHealth.track(async () => {
     await hostRoute.ready(method);
-    return nameRpcTimeout(method, payload, () => rpc.request["backend.request"]({ method, payload: encoded }));
+    return nameRpcTimeout(method, payload, () => rpc.request["backend.request"]({ method, payload: encoded }), timeoutClock);
   });
   return decodeRpcResponse(result);
 }

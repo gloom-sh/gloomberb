@@ -123,6 +123,10 @@ jobs:
         with:
           desktop: "true"
 
+      - name: Test Windows process counters, clocks and renderer timeout reporting
+        timeout-minutes: 3
+        run: bun test src/telemetry/stall-clocks.test.ts src/telemetry/stall-reports.test.ts src/utils/main-thread-stall.test.ts src/renderers/electrobun/view/rpc-timeout.test.ts
+
       - name: Build the desktop package
         shell: pwsh
         run: ./scripts/build-windows-desktop-package.ps1
