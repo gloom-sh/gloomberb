@@ -39,14 +39,16 @@ describe("econ calendar column widths", () => {
     expect(widths(53)).toEqual({ UTC: 5, CTY: 3, EVENT: 21, ACT: 7, EST: 7 });
     expect(widths(57, true)).toEqual({ UTC: 5, CTY: 5, EVENT: 25, ACT: 7, EST: 7 });
     expect(widths(60)).toEqual({ UTC: 5, CTY: 3, EVENT: 24, ACTUAL: 8, FORECAST: 10 });
-    // All three columns kept: they give up their cells too, only as many as the longest name needs.
-    expect(widths(80)).toEqual({ UTC: 5, COUNTRY: 9, EVENT: 31, ACTUAL: 8, FORECAST: 10, PRIOR: 8 });
+    // All three columns kept: they give up their cells too, only as many as the longest name needs (27 cells, the
+    // FR, DE and IT names without their country's adjective).
+    expect(widths(72)).toEqual({ UTC: 5, CTY: 3, EVENT: 27, ACTUAL: 8, FORECAST: 10, PRIOR: 8 });
+    // With room for every name, a long figure is whole.
+    expect(widths(80)).toEqual({ UTC: 5, COUNTRY: 9, EVENT: 27, ACTUAL: 10, FORECAST: 10, PRIOR: 10 });
     // A phone: 48 cells with the flags.
     expect(widths(48, true)).toEqual({ UTC: 5, CTY: 5, EVENT: 16, ACT: 7, EST: 7 });
-    // With room for every name, a long figure is whole.
     expect(widths(110)).toEqual({ UTC: 5, COUNTRY: 9, EVENT: 57, ACTUAL: 10, FORECAST: 10, PRIOR: 10 });
 
-    const longest = longestEventName(LISTING);
+    const longest = longestEventName(LISTING, true);
     for (const flagged of [false, true]) for (let width = 36; width <= 120; width += 1) {
       const columns = columnsAt(width, flagged);
       const event = columns.find((column) => column.id === "event")!;

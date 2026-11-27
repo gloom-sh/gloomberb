@@ -18,6 +18,11 @@ const SPELLED_COUNTRY = "COUNTRY";
 /** Event names this wide still read; past it the headers spell themselves out. */
 const SPELLED_HEADER_MIN_EVENT_WIDTH = 24;
 
+/** Whether the list has a country column: not where a filter names one country (the euro area's are several). */
+export function countryColumnShown(countryFilter: CountryFilter): boolean {
+  return !/^[A-Z]{2}$/.test(countryFilter) || countryFilter === "EU";
+}
+
 /**
  * The calendar's columns at `width` cells for the events listed (`events`):
  * `columns` the table draws, `exportColumns` all of them, as Export CSV
@@ -43,7 +48,7 @@ export function econCalendarColumns({ width, events, countryFilter, impactFilter
   const timeWidth = tableColumnWidth({ width: events.some(isAllDayEvent) ? "All day".length : 5, label: timeLabelText });
   const compact = width < 58;
   // One country, or one impact level, is the filter's: no column repeats it on each row.
-  const showCountry = !/^[A-Z]{2}$/.test(countryFilter) || countryFilter === "EU";
+  const showCountry = countryColumnShown(countryFilter);
   const showImpact = impactFilter === "all";
   const actualLabel = compact ? "ACT" : "ACTUAL";
   const forecastLabel = compact ? "EST" : "FORECAST";
@@ -73,7 +78,7 @@ export function econCalendarColumns({ width, events, countryFilter, impactFilter
   const withReader = readerWidth > 0 && underShortHeaders(roomBeside(figureColumns, 2, timeWidth + readerWidth)) >= minEventWidth;
   const times = withReader ? 2 : 1;
   const timesWidth = withReader ? timeWidth + readerWidth : timeWidth;
-  const longestName = longestEventName(events);
+  const longestName = longestEventName(events, showCountry);
   // The names come first, as in every narrow table: where three figure columns leave "GDP Growt…", PRIOR goes, and
   // in a narrower pane still the forecast; the table says which it left out. The event's detail has all three.
   const kept = keptFigureColumns(figureColumns, (columns) => underShortHeaders(roomBeside(columns, times, timesWidth)), longestName, minEventWidth,

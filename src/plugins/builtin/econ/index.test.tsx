@@ -176,7 +176,8 @@ describe("EconCalendarPane", () => {
     const phone = await renderPane(48, "high");
     expect(phone).toMatch(/EVENT\s+ACT\s+EST\s*\n/);
     expect(phone).toContain("1 hidden · PRIOR");
-    expect(phone).toMatch(/GDP Growth Rate QoQ\S*\s+—\s+0\.4%/);
+    // A name reads on into the blank a dash leaves in its own row.
+    expect(phone).toMatch(/GDP Growth Rate QoQ Final\s+—\s+0\.4%/);
 
     const narrower = await renderPane(40, "high");
     expect(narrower).toMatch(/EVENT\s+ACT\s*\n/);
@@ -207,11 +208,12 @@ describe("EconCalendarPane", () => {
     const phone = await renderPane(45, "high");
     expect(phone).toMatch(/EVENT\s+ACT\s+EST\s*\n/);
     expect(phone).toContain("1 hidden · PRIOR");
-    // Every other row keeps its forecast whole, and the long ones say they are cut.
-    expect(phone).toMatch(/GDP Growth Rat…\s+—\s+0\.4%/);
-    expect(phone).toMatch(/Balance of Tra…\s+111\.2B\s+100B\s/);
-    expect(phone).toMatch(/Balance of Tra…\s+—\s+1\.522B…/);
-    expect(phone).toMatch(/Fed Interest R…\s+—\s+3\.50-3…/);
+    // Every other row keeps its forecast whole, and the long ones say they are cut. A name goes on into the blank
+    // its own row's figure leaves, to a blank before it: whole beside a dash, cut beside a long figure.
+    expect(phone).toMatch(/GDP Growth Rate QoQ… —\s+0\.4%/);
+    expect(phone).toMatch(/Balance of Tra… 111\.2B\s+100B\s/);
+    expect(phone).toMatch(/Balance of Trade\s+— 1\.522B…/);
+    expect(phone).toMatch(/Fed Interest Rate D… — 3\.50-3…/);
 
     // Wider, the names have the cells the long figures took before any is cut: the figures are, and the names whole.
     const firstScreen = await renderPane(56, "high");

@@ -282,6 +282,33 @@ export function eventCountry(event: Pick<EconEvent, "country" | "event">): strin
   return euroAreaMember(event) ?? event.country;
 }
 
+/**
+ * The adjective that names a country, which a release's name may start with:
+ * the euro area's members, whose national releases both feeds write so, and
+ * the other countries the calendar lists.
+ */
+const COUNTRY_ADJECTIVES: Readonly<Record<string, string>> = {
+  ...EURO_AREA_MEMBERS,
+  Australian: "AU", Brazilian: "BR", British: "GB", Canadian: "CA", Chinese: "CN", Danish: "DK", Indian: "IN",
+  Indonesian: "ID", Japanese: "JP", Mexican: "MX", Norwegian: "NO", Polish: "PL", Russian: "RU", Swedish: "SE",
+  Swiss: "CH", Turkish: "TR",
+};
+
+/**
+ * A row's name as the list shows it. Beside the country column
+ * (`countryShown`) a name that starts with the adjective of the row's country
+ * leaves it out, the column saying it once: "French Inflation Rate YoY Prel"
+ * on an FR row reads "Inflation Rate YoY Prel". Without the column (a filter
+ * on one country) the name keeps it. The detail, the search and the exports
+ * read the whole name (econEventName).
+ */
+export function listedEventName(event: Pick<EconEvent, "country" | "event" | "actual" | "forecast" | "prior">, countryShown: boolean): string {
+  const name = econEventName(event);
+  if (!countryShown) return name;
+  const adjective = /^([A-Z][a-z]+) (?=\S)/.exec(name);
+  return adjective && COUNTRY_ADJECTIVES[adjective[1]!] === eventCountry(event) ? name.slice(adjective[0].length) : name;
+}
+
 /** What the feeds call the Fed's rate decision. */
 const FED_RATE_DECISION_NAMES = new Set(["federal funds rate", "fed interest rate decision"]);
 /** A figure that is a range (3.75-4.00%) rather than one level. */
@@ -887,10 +914,14 @@ const PLAIN_FIGURE_WIDTH = 7;
 const plainFigureCells = (column: { id: string }, actualNote: number) =>
   (column.id === "actual" ? Math.max(PLAIN_FIGURE_WIDTH, actualNote) : PLAIN_FIGURE_WIDTH);
 
-/** The cells the longest event name listed takes: a calendar of short names (`Retail Sales`) asks for no more. */
-export function longestEventName(events: readonly Pick<EconEvent, "country" | "event" | "actual" | "forecast" | "prior">[]): number {
+/**
+ * The cells the longest event name listed takes, as the list shows it beside
+ * its country (`countryShown`, listedEventName): a calendar of short names
+ * (`Retail Sales`) asks for no more.
+ */
+export function longestEventName(events: readonly Pick<EconEvent, "country" | "event" | "actual" | "forecast" | "prior">[], countryShown = false): number {
   let longest = 0;
-  for (const event of events) longest = Math.max(longest, displayWidth(econEventName(event)));
+  for (const event of events) longest = Math.max(longest, displayWidth(listedEventName(event, countryShown)));
   return longest;
 }
 

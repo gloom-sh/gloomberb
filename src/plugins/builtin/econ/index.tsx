@@ -29,7 +29,7 @@ import { hasNoReleaseTime, hasNoStatedTime, isAllDayEvent, type EconEvent } from
 import { FRED_CATALOG_SERIES } from "./fred-catalog";
 import { ECON_PRINT_NOTIFICATIONS_ENABLED_KEY, retainVisiblePrintRefresh, setupHighImpactPrintNotifications } from "./print-watch";
 import { EconDetailView } from "./detail-view";
-import { econCalendarColumns } from "./columns";
+import { countryColumnShown, econCalendarColumns } from "./columns";
 import {
   COUNTRY_CYCLE,
   COUNTRY_FILTER_HINT,
@@ -45,6 +45,7 @@ import {
   dayLabel,
   econEventName,
   econFigureCell,
+  listedEventName,
   filteredEmptyTitle,
   formatStaleness,
   getCalendarCache,
@@ -285,6 +286,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     () => econCalendarColumns({ width, events: filtered, countryFilter, impactFilter, flagged, readerZone, actualNote }),
     [actualNote, countryFilter, filtered, flagged, impactFilter, readerZone, width],
   );
+  const countryShown = countryColumnShown(countryFilter);
   const separatorBg = blendHex(colors.bg, colors.border, 0.3);
   const staleness = fetchedAt ? formatStaleness(fetchedAt, now) : "";
   // The calendar has events and the filters hid them all: say which, with the way back.
@@ -460,14 +462,18 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
         const country = eventCountry(ev);
         return withCountryFlag({ text: country, color: colors.textMuted }, country, flagged);
       }
-      case "event":
-        return { text: econEventName(ev), color: colors.text };
+      case "event": {
+        // Beside its country a name leaves out the country's adjective; the export writes it whole.
+        const name = econEventName(ev);
+        const listed = listedEventName(ev, countryShown);
+        return { text: listed, color: colors.text, ...listed === name ? {} : { value: name } };
+      }
       case "actual":
       case "forecast":
       case "prior":
         return econFigureCell(column.id, ev, now, events);
     }
-  }, [events, flagged, now, readerZone]);
+  }, [countryShown, events, flagged, now, readerZone]);
 
   const selectedEvent = filtered[selectedIdx];
   const filterControls = (
