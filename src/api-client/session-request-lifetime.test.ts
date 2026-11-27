@@ -21,7 +21,7 @@ beforeEach(() => {
   controller = new ChatController();
 });
 afterEach(() => {
-  controller.dispose(); apiClient.dispose(); apiClient.setSessionToken(null);
+  controller.dispose(); apiClient.dispose(); apiClient.setSessionToken(null); apiClient.setCookieSessionMode(false);
   setCloudApiFetchTransport(null);
 });
 

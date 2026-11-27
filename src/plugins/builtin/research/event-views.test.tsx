@@ -150,8 +150,7 @@ describe("EVT's Earnings view", () => {
     expect(lines()[0]).toMatch(/^\s*Earnings\s+Dividends\s*$/);
     const figures = tui.frame();
     expect(figures).toMatch(/Next report\s+28 Jan 2027\s+in 65 days · confirmed/);
-    // The consensus for the quarter that report covers, with its analysts and growth on the year before.
-    expect(figures).toMatch(/EPS est\s+2\.67 USD\s+30 analysts · \+7\.00% y\/y/);
+    expect(line("EPS est").trim()).toMatch(/EPS est\s+2\.67 USD\s+30 analysts$/);
     expect(figures).toMatch(/Revenue est\s+138B USD\s+28 analysts · \+8\.00% y\/y/);
     expect(figures).toMatch(/Last ex\s+10 Aug 2026\s+\$0\.26/);
     // The earliest catalyst ahead, not the first the calendar lists.

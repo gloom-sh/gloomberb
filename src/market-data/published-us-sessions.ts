@@ -1,4 +1,4 @@
-import { canonicalExchange } from "../utils/exchanges";
+import { canonicalExchange, isUsOtcVenue } from "../utils/exchanges";
 import { zonedWallClockToUtcMs } from "../utils/zoned-date-time";
 
 // Cboe's US equity exchanges (BZX/BATS) close on the same published US equity holidays and early closes.
@@ -43,7 +43,7 @@ export const PUBLISHED_US_EQUITY_SESSION_BASIS = {
 export function getPublishedUsEquityCalendarYears(exchange: string): readonly number[] | null {
   const venue = canonicalExchange(exchange);
   return venue === "NASDAQ" ? PUBLISHED_US_EQUITY_SESSION_BASIS.nasdaq.years
-    : NYSE_VENUES.has(venue) ? PUBLISHED_US_EQUITY_SESSION_BASIS.nyse.years : null;
+    : NYSE_VENUES.has(venue) || isUsOtcVenue(venue) ? PUBLISHED_US_EQUITY_SESSION_BASIS.nyse.years : null;
 }
 
 function calendarDate(value: string): Date | null {
@@ -81,6 +81,7 @@ function publishedSession(venue: string, date: string): PublishedUsEquitySession
   const kind = getPublishedUsEquityCalendarDay(venue, date);
   if (!kind) return null;
   if (kind === "closed") return Object.freeze({ kind });
+  if (isUsOtcVenue(venue)) return null;
   const at = (hour: number, minute = 0) => zonedWallClockToUtcMs("America/New_York",
     day.getUTCFullYear(), day.getUTCMonth() + 1, day.getUTCDate(), hour, minute, 0);
   return Object.freeze({ kind, open: at(9, 30), close: at(NYSE_EARLY_CLOSES.has(date) ? 13 : 16) });

@@ -6,6 +6,7 @@ import { colors } from "../../../theme/colors";
 import {
   EmptyState,
   FieldGrid,
+  KeyValueRow,
   QueryBar,
   StatGrid,
   fieldGridColumns,
@@ -22,7 +23,8 @@ import { useChartQueries, useFxRatesMap, useResolvedEntryValue } from "../../../
 import { buildChartKey } from "../../../market-data/selectors";
 import { useLiveTickerFinancials, useLiveTickerFinancialsMap } from "../../../state/hooks/live-ticker-financials";
 import { buildPortfolioFinancialsMap } from "../../../market-data/portfolio-financials";
-import { convertCurrency, formatCurrency } from "../../../utils/format";
+import { convertCurrency } from "../../../utils/format";
+import { formatUtcTime } from "../../../utils/utc-time";
 import {
   useAppDispatch,
   getFocusedCollectionId,
@@ -69,7 +71,7 @@ import {
   kellyTrailingHistoryRequest,
 } from "./history";
 import { historyReadUnanswered } from "../../../time-series/calendar-month-returns";
-import { kellyCount, kellyCountMultiplier } from "./units";
+import { formatKellySizingPrice, kellyCount, kellyCountMultiplier, kellySizingPrice } from "./units";
 import { KELLY_PANE_ID } from "./constants";
 import {
   buildKellyCurveXAxisLabels,
@@ -286,12 +288,13 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   });
   const bankroll = bankrollOverride ?? sourceBankroll;
   const currentValue = currentValueOverride ?? sourceCurrentValue;
-  const price = positionFinancials?.quote?.price ?? null;
   const priceCurrency = positionFinancials?.quote?.currency || ticker?.metadata.currency || config.baseCurrency;
   // A future is counted in contracts, each worth its price times the contract's multiplier from its terms.
   const count = ticker
     ? kellyCount(ticker.metadata.ticker, ticker.metadata.exchange ?? "", positionFinancials?.quote?.instrumentType ?? ticker.metadata.assetCategory)
     : "shares";
+  const sizingPrice = kellySizingPrice(positionFinancials?.quote, count, positionFinancials?.quote?.instrumentType ?? ticker?.metadata.assetCategory);
+  const price = sizingPrice?.value ?? null;
   const [contractMultiplier, setContractMultiplier] = useState<{ symbol: string; value: number | null } | null>(null);
   const tickerSymbol = ticker?.metadata.ticker ?? null;
   useEffect(() => {
@@ -560,15 +563,13 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
     }),
   ];
   const resultRows = statGridRows(resultItems, width, gridColumns);
-  // Query bar, the mode strip when it is not in the title bar, inputs, results.
-  const bodyRows = Math.max(0, height - 1 - tabRows - gridRows - resultRows);
+  const priceLine = sizingPrice ? formatKellySizingPrice(sizingPrice) : null;
+  const splitPriceLine = sizingPrice?.asOf != null && priceLine != null && width < priceLine.length + 8;
+  const priceRows = priceLine ? splitPriceLine ? 2 : 1 : 0;
+  const bodyRows = Math.max(0, height - 1 - tabRows - gridRows - resultRows - priceRows);
   const chartHeight = showSensitivity ? 0 : bodyRows;
   const showChart = !showSensitivity && chartHeight >= 6 && curvePoints.length > 0;
-  const quoteCurrency = positionFinancials?.quote?.currency || ticker?.metadata.currency || config.baseCurrency;
-  // The search shows the ticker and the Portfolio filter the account, so the
-  // context is the price first, then the account only when there is no filter.
   const meta = [
-    price != null ? formatCurrency(price, quoteCurrency) : null,
     portfolioTabs.length > 1 ? null : activePortfolio?.name ?? null,
     bankrollOverride != null || currentValueOverride != null ? "override" : null,
     tickerSearchStatus,
@@ -645,6 +646,15 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
       />
 
       {tabStrip && <Box height={1} paddingX={1}>{tabStrip}</Box>}
+
+      {sizingPrice && priceLine && (
+        <Box flexDirection="column" paddingX={1} flexShrink={0}>
+          <KeyValueRow label="Price" value={splitPriceLine ? formatKellySizingPrice({ ...sizingPrice, asOf: null }) : priceLine}
+            labelWidth={6} width={width - 2} emphasis={false} />
+          {splitPriceLine && sizingPrice.asOf != null && <KeyValueRow label="As of" value={formatUtcTime(sizingPrice.asOf)}
+            labelWidth={6} width={width - 2} emphasis={false} />}
+        </Box>
+      )}
 
       <FieldGrid
         fields={gridFields}

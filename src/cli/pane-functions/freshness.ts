@@ -89,6 +89,7 @@ export interface ReportFreshness {
   periodToDate?: { period: "week" | "month"; through?: string };
   /** The local date of the session close `asOf` is, when the newest observation is its venue's latest close. */
   asOfClose?: string;
+  asOfTradeDate?: string;
   /** A session list of a part of `asOfClose`'s session (declared `sessionList.part`), named in its place: `pre-market`. */
   asOfSessionPart?: "pre-market" | "after-hours";
   /**
@@ -314,6 +315,7 @@ function readSession(record: Record<string, unknown>, time: ReportTime | null, s
     ...(calendar ? { calendar } : {}),
     // A row at its venue's nominal price is that session's price, however old its last trade.
     ...(record.nominal === true ? { nominal: true as const } : {}),
+    ...(record.futuresPriceKind === "settlement" ? { settlement: true as const } : {}),
   });
 }
 
@@ -683,6 +685,8 @@ function resolveReadFreshness({ declared, signals, observations, now }: Freshnes
     ...(periodicity ? { periodicity } : {}),
     ...(periodToDate && !declaredAsOf ? { periodToDate: { period: periodToDate.period, ...(periodToDate.through ? { through: isoTime(periodToDate.through) } : {}) } } : {}),
     ...(asOfClose ? { asOfClose } : {}),
+    ...(!declaredAsOf && !listed && rowsSession.tradeDate && asOf?.time === rowsSession.tradeDate.time
+      ? { asOfTradeDate: rowsSession.tradeDate.date } : {}),
     ...(asOfClose && listed?.part ? { asOfSessionPart: listed.part } : {}),
     ...(asOfLastPrint ? { asOfLastPrint: true as const } : {}),
     ...(tradingDayMarket ? { tradingDayMarket } : {}),
@@ -1036,7 +1040,8 @@ function asOfText(freshness: ReportFreshness, short: boolean, local: boolean, un
   const oldestPeriod = freshness.oldestPeriodicity !== undefined ? freshness.oldestPeriodicity : period;
   const oldest = freshness.oldest && (oldestPeriod ? periodText(freshness.oldest, oldestPeriod) : dayText(freshness.oldest));
   // A list dated by its newest entry names it, so the time is not read as when the list was read.
-  const dated = freshness.asOfLabel ? `${freshness.asOfLabel} ${asOf}` : asOf;
+  const observed = freshness.asOfLabel ? `${freshness.asOfLabel} ${asOf}` : asOf;
+  const dated = freshness.asOfTradeDate ? `${observed} · ${dayText(freshness.asOfTradeDate)} trade date` : observed;
   return oldest && !short && freshness.oldestAgeMinutes == null ? `${dated} (oldest ${oldest})` : dated;
 }
 

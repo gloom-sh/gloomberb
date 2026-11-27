@@ -134,12 +134,10 @@ describe("a delayed quote's last trade age", () => {
     ["early close, 14:30, a 12:10 print, past the TTL", earlyClose, thinPost("2026-11-27T17:10:00Z"), false, false],
     ["early close, 16:30, a 12:10 print", "2026-11-27T21:30:00Z", thinPost("2026-11-27T17:10:00Z"), true, true],
     ["early close, 14:30, the day before's close", earlyClose, thinPost("2026-11-25T20:50:00Z"), true, false],
-    // Unchanged: a Saturday has no session to age a print in, and Labor Day's
-    // weekday session hours still read Friday's print as an old day's.
     ["Saturday, Friday's print", "2026-10-10T15:00:00Z", thinPost("2026-10-09T22:30:00Z"), true, true],
     ["Saturday, Friday's print, past the TTL", "2026-10-10T15:00:00Z", thinPost("2026-10-09T22:30:00Z"), false, true],
-    ["Labor Day evening, Friday's print", "2026-09-07T22:00:00Z", thinPost("2026-09-04T18:30:00Z"), true, false],
-    ["Labor Day morning, Friday's close", "2026-09-07T12:30:00Z", thinPre("2026-09-04T19:40:00Z"), true, false],
+    ["Labor Day evening, Friday's print", "2026-09-07T22:00:00Z", thinPost("2026-09-04T18:30:00Z"), true, true],
+    ["Labor Day morning, Friday's close", "2026-09-07T12:30:00Z", thinPre("2026-09-04T19:40:00Z"), true, true],
   ];
 
   test("in the US extended-hours sessions, back to the regular session they extend", () => {

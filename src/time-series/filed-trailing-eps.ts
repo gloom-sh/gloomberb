@@ -1,6 +1,7 @@
 import type { Fundamentals, FinancialStatement, TickerFinancials } from "../types/financials";
 import { resolveCurrencyUnit } from "../utils/currency-units";
-import { areNearbyFinancialPeriodEnds, statementFieldAvailability } from "../utils/financial-statements";
+import { dateScopedEarnings, listingOwnsSeries, priceScopedEarnings } from "../utils/statement-scope";
+import { areNearbyFinancialPeriodEnds, financialAvailabilityTime, statementFieldAvailability } from "../utils/financial-statements";
 import { extractFundamentalSeries, knownWhenFiled } from "./fundamentals";
 import type { SecuritySeriesSource, TimeSeriesPoint } from "./types";
 
@@ -49,6 +50,12 @@ export function trailingEpsSteps(
   financials: TickerFinancials,
   known: (row: FinancialStatement) => FinancialStatement = knownWhenFiled,
 ): EpsStep[] {
+  if (!listingOwnsSeries(financials)) return [];
+  if (financials.statementScope) {
+    const earnings = financials.fundamentals?.scopedEarnings;
+    return earnings?.epsAvailableAt ? [{ periodEnd: earnings.periodEnd, basis: "ttm", knownAt: new Date(financialAvailabilityTime(earnings.epsAvailableAt)), dated: true,
+      eps: earnings.eps, currency: earnings.currency }] : [];
+  }
   const adjusted = { ...financials, quarterlyStatements: financials.quarterlyStatements.map(known),
     annualStatements: financials.annualStatements.map(known) };
   const toStep = (basis: EpsStep["basis"]) => (point: TimeSeriesPoint): EpsStep => ({
@@ -79,7 +86,7 @@ interface FiledTrailingEps {
  */
 const SERVED_EPS_RATIO_LIMIT = 1.5;
 
-type TrailingEpsInputs = Pick<TickerFinancials, "quote" | "fundamentals" | "annualStatements" | "quarterlyStatements" | "financialCurrency">;
+type TrailingEpsInputs = Pick<TickerFinancials, "quote" | "fundamentals" | "annualStatements" | "quarterlyStatements" | "financialCurrency" | "statementScope">;
 
 const isReceipt = (financials: TrailingEpsInputs) => !!(
   financials.quote?.isDepositaryReceipt || financials.fundamentals?.isDepositaryReceipt
@@ -106,6 +113,7 @@ const rowKey = (row: FinancialStatement) => [
 /** The trailing EPS step for the last period on record, null when that period gives none. */
 function latestStep(financials: TrailingEpsInputs): LatestStep {
   const rows = [...financials.quarterlyStatements, ...financials.annualStatements];
+  if (!listingOwnsSeries(financials)) return null;
   const latest = rows.map((row) => row.date).filter((date) => Number.isFinite(Date.parse(date))).sort().at(-1);
   if (!latest) return null;
   const recent = (row: FinancialStatement) => Date.parse(latest) - Date.parse(row.date) <= LATEST_WINDOW_MS;
@@ -113,7 +121,7 @@ function latestStep(financials: TrailingEpsInputs): LatestStep {
   const annualStatements = financials.annualStatements.filter(recent);
   const key = [financials.financialCurrency ?? "", quarterlyStatements.map(rowKey).join(";"), annualStatements.map(rowKey).join(";")].join("#");
   if (latestSteps.has(key)) return latestSteps.get(key)!;
-  const found = trailingEpsSteps({ financialCurrency: financials.financialCurrency, priceHistory: [], quarterlyStatements, annualStatements })
+  const found = trailingEpsSteps({ financialCurrency: financials.financialCurrency, statementScope: financials.statementScope, priceHistory: [], quarterlyStatements, annualStatements })
     .find((candidate) => areNearbyFinancialPeriodEnds(candidate.periodEnd, latest));
   const filed = [...quarterlyStatements, ...annualStatements]
     .flatMap((row) => typeof row.eps === "number" ? [statementFieldAvailability(row, "eps")?.slice(0, 10)] : [])
@@ -175,6 +183,11 @@ const positive = (value: number | null | undefined): value is number => finite(v
 export function withFiledTrailingEps<T extends TrailingEpsInputs>(financials: T, now = Date.now()): T {
   const fundamentals = financials.fundamentals;
   if (!fundamentals) return financials;
+  if (financials.statementScope) {
+    const scopedEarnings = dateScopedEarnings(financials, fundamentals.scopedEarnings);
+    const quote = financials.quote;
+    return { ...financials, fundamentals: priceScopedEarnings({ ...fundamentals, scopedEarnings }, quote?.price, quote, quote?.lastUpdated, now) };
+  }
   const filed = filedTrailingEps(financials, now);
   if (!filed) {
     const served = finite(fundamentals.eps) || finite(fundamentals.trailingPE);

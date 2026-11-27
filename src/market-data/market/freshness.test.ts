@@ -1,8 +1,22 @@
 import { expect, test } from "bun:test";
-import { isRegularSessionTime, latestRegularSessionClose, latestRegularSessionOpen, nextRegularSessionOpen, regularSessionCloseUtcMinute } from "./freshness";
+import { activeUsMarketSession, isRegularSessionTime, latestRegularSessionClose, latestRegularSessionOpen, nextRegularSessionOpen, regularSessionCloseUtcMinute } from "./freshness";
 
 const at = (iso: string) => Date.parse(iso);
 const iso = (time: number | null | undefined) => (time == null ? null : new Date(time).toISOString());
+
+test.each(["2026-11-27", "2026-12-24"])("Nasdaq's published half day on %s is a trading day", (date) => {
+  expect(activeUsMarketSession(at(`${date}T12:00:00Z`), "NASDAQ")).toBe("PRE");
+  expect(activeUsMarketSession(at(`${date}T17:59:59Z`), "NASDAQ")).toBe("REGULAR");
+  expect(activeUsMarketSession(at(`${date}T18:00:00Z`), "NASDAQ")).toBe("POST");
+  expect(iso(latestRegularSessionClose("NASDAQ", at(`${date}T18:00:00Z`))?.close)).toBe(`${date}T18:00:00.000Z`);
+});
+
+test("US hours only apply published closures to covered venues and dates", () => {
+  const thanksgiving = at("2026-11-26T15:00:00Z");
+  expect(activeUsMarketSession(thanksgiving, "NASDAQ")).toBeNull();
+  expect(activeUsMarketSession(thanksgiving, "UNLISTED")).toBe("REGULAR");
+  expect(activeUsMarketSession(at("2029-11-22T15:00:00Z"), "NASDAQ")).toBe("REGULAR");
+});
 
 test("TASE's Friday session closes at 13:50, the other weekdays at 17:30, whatever the clock offset", () => {
   // Summer time (UTC+3): Thursday 8 October and Friday 9 October.

@@ -78,3 +78,17 @@ export function globexPrintSession(exchange: string | null | undefined, time: nu
   while (new Date(trade * MS_PER_DAY).getUTCDay() % 6 === 0) trade += 1;
   return { tradeDate: isoDay(trade), overnight: trade > local || minutes < DAY_SESSION_MINUTES };
 }
+
+export function publishedGlobexPrintTradeDate(venue: string, time: number): string | null {
+  const print = globexPrintSession(venue, time);
+  if (!print) return null;
+  const first = Date.parse(print.tradeDate) / MS_PER_DAY;
+  for (let offset = 0; offset < 7; offset += 1) {
+    const day = new Date((first + offset) * MS_PER_DAY);
+    if (day.getUTCDay() % 6 === 0) continue;
+    const date = isoDay(first + offset);
+    if (!hasPublishedFuturesCalendar(venue, date)) return null;
+    if (!isPublishedFuturesClosure(venue, date)) return date;
+  }
+  return null;
+}

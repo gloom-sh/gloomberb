@@ -139,6 +139,7 @@ export const EXCHANGE_NOTATION: ExchangeNotation = {
     XWAR: "WSE",
     PRA: "PSE",
     XPRA: "PSE",
+    XPHS: "XPHS",
     VIE: "VIE",
     VIENNA: "VIE",
     XWBO: "VIE",
@@ -363,6 +364,7 @@ export const EXCHANGE_NOTATION: ExchangeNotation = {
     ICEX: "Nasdaq Iceland",
     WSE: "Warsaw Stock Exchange",
     PSE: "Prague Stock Exchange",
+    XPHS: "Philippine Stock Exchange",
     VIE: "Vienna Stock Exchange",
     WBDM: "Vienna MTF",
     TWSE: "Taiwan Stock Exchange",
@@ -413,4 +415,4 @@ export const EXCHANGE_NOTATION: ExchangeNotation = {
   },
 }
 
-export const EXCHANGE_NOTATION_VERSION = "eb76ebd1ac8be330"
+export const EXCHANGE_NOTATION_VERSION = "c496447bd0bb1aa4"

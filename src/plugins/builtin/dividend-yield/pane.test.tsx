@@ -1,9 +1,11 @@
 import { afterEach, expect, setSystemTime, test } from "bun:test";
-import { act, useState } from "react";
+import { act, useMemo, useState } from "react";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { TestPaneFrame, TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
+import type { ContextMenuItem } from "../../../types/context-menu";
+import { UiHostProvider, useNativeRenderer, useRendererHost, useUiHost } from "../../../ui";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { DividendYieldPane } from "./pane";
 import { fetchDividendData } from "./client";
@@ -14,6 +16,7 @@ const tui = createOpenTuiTestHarness();
 const realNow = Date.now;
 afterEach(() => {
   setHttpFetchTransport(null);
+  setSystemTime();
   Date.now = realNow;
 });
 
@@ -39,19 +42,127 @@ async function frame() {
   return tui.frame();
 }
 
-test.each([44, 60])("an ex-dated unfixed sterling declaration keeps its row, estimate labels and fixing date at %d columns", async (width) => {
+/** HSBC's interim, gone ex on 5 Nov with its sterling cash not fixed until 7 Dec, read on 17 Nov; `source` is the notice it cites. */
+async function hsbcUnfixedDeclaration(source?: Parameters<typeof hsbcIssuerDividendRead>[2]) {
   setSystemTime(new Date("2026-11-17T06:00:00Z"));
-  setHttpFetchTransport(async () => Response.json({ status: "success", data: hsbcIssuerDividendRead() }));
-  let data: Awaited<ReturnType<typeof fetchDividendData>>;
+  setHttpFetchTransport(async () => Response.json({ status: "success", data: hsbcIssuerDividendRead("GBp", undefined, source) }));
   try {
-    data = await fetchDividendData("HSBA", 13.38, "LSE", "GBP");
+    return await fetchDividendData("HSBA", 13.38, "LSE", "GBP");
   } finally {
     setSystemTime();
   }
-  const text = await renderLoaded(data, width, 24);
+}
+
+test.each([44, 60])("an ex-dated unfixed sterling declaration keeps its row, estimate labels and fixing date at %d columns", async (width) => {
+  const text = await renderLoaded(await hsbcUnfixedDeclaration(), width, 24);
   expect(text).toMatch(/05 Nov 2026\s+estimated 7\.5835p\s+\$0\.10/);
   expect(text).toContain("07 Dec 2026");
   expect(text).toContain("17 Dec 2026");
+});
+
+// A declaration that cited its notice took its history row's place, and the issuer's $0.10 went with it.
+test("an ex-dated unfixed declaration that cites its notice keeps its estimated and declared cash on the row the notice joins", async () => {
+  const text = await renderLoaded(await hsbcUnfixedDeclaration({ publisher: "HSBC", url: "https://example.com/interim.pdf" }), 80, 24);
+  const rows = text.split("\n").filter((line) => /^\s*05 Nov 2026\s/.test(line));
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatch(/05 Nov 2026\s+estimated 7\.5835p\s+\$0\.10\s+Declared\s+HSBC\s/);
+});
+
+const NOTICE = { publisher: "KSEI", url: "https://example.com/cash.pdf", scheduleUrl: "https://example.com/schedule.pdf" };
+
+/** A paid distribution and a declared one whose publisher issued the cash notice and the schedule apart. */
+async function declaredWithNotice() {
+  setSystemTime(new Date("2026-11-26T06:00:00Z"));
+  setHttpFetchTransport(async () => Response.json({ status: "success", data: {
+    summary: null,
+    actions: { symbol: "MEDC", exchange: "JAKARTA", currency: "IDR", coverage: { dividends: "available" }, splits: [], earnings: [],
+      dividends: [{ exDate: "2026-06-23", amount: 24, payDate: "2026-07-14" }],
+      declaredDividends: [{ exDate: "2026-11-11", amount: 22.0252, payDate: "2026-12-02", source: NOTICE }] },
+  } }));
+  try {
+    return await fetchDividendData("MEDC", null, "JAKARTA");
+  } finally {
+    setSystemTime();
+  }
+}
+
+test("an unpaid distribution with a published notice keeps its status and source links beside the paid history", async () => {
+  const data = await declaredWithNotice();
+  expect(data.payments.map((payment) => payment.amount)).toEqual([24]);
+  expect(data.metrics.nextPayDate).toEqual(new Date("2026-12-02"));
+  const text = await renderLoaded(data, 80, 24);
+  expect(text).toMatch(/11 Nov 2026\s+IDR\s+22\.0252\s+Declared\s+KSEI\s+Schedule/);
+  expect(text).toMatch(/23 Jun 2026\s+IDR\s+24\.0000\s+Paid/);
+  expect(text).toContain("02 Dec 2026");
+});
+
+// At 50 columns the two links ran together as "KSEISchedu", cut at the scrollbar.
+test("a pane without the room for both source links keeps the notice link whole and opens the schedule from the row's menu", async () => {
+  const data = await declaredWithNotice();
+  const loadData = async () => data;
+  const opened: string[] = [];
+  let menu: ContextMenuItem[] = [];
+  const state = createInitialState(createTestPaneConfig("/tmp/dividend-notice-links", {
+    instanceId: "dividend-links", paneId: "dividend-yield", binding: { kind: "fixed", symbol: "MEDC" },
+  }));
+  state.tickers.set("MEDC", createTestTicker("MEDC"));
+  function Pane({ width }: { width: number }) {
+    const host = useRendererHost();
+    const renderer = useMemo(() => ({ ...host, openExternal: async (url: string) => { opened.push(url); return true; } }), [host]);
+    return (
+      <UiHostProvider ui={useUiHost()} nativeRenderer={useNativeRenderer()} renderer={renderer}>
+        <TestPaneFrame state={state} paneId="dividend-links" pluginId="dividend-yield" runtime={createTestPluginRuntime()} width={width} height={24}>
+          {(body, footer) => { menu = footer.menu; return <DividendYieldPane focused {...body} loadData={loadData} />; }}
+        </TestPaneFrame>
+      </UiHostProvider>
+    );
+  }
+  const render = async (width: number) => {
+    await act(async () => { await tui.render(<Pane width={width} />, { width, height: 24 }); });
+    return (await frame()).split("\n").find((line) => line.includes("11 Nov 2026"))!;
+  };
+
+  expect(await render(54)).toMatch(/IDR\s22\.0252\s+Declared\s+KSEI Schedule\s/);
+  await tui.clickFrameText("Schedule");
+  expect(opened).toEqual([NOTICE.scheduleUrl]);
+
+  const narrow = await render(50);
+  expect(narrow).toMatch(/11 Nov 2026\s+IDR\s22\.0252\s+Declared\s+KSEI\s/);
+  expect(narrow).not.toContain("Sched");
+  opened.length = 0;
+  await tui.clickFrameText("KSEI");
+  await tui.emitKeypress({ name: "return" });
+  const schedule = menu.find((item) => "label" in item && item.label === "Open dividend schedule");
+  await act(async () => { if (schedule && "onSelect" in schedule) await schedule.onSelect?.(); });
+  expect(opened).toEqual([NOTICE.url, NOTICE.url, NOTICE.scheduleUrl]);
+});
+
+// Beside a sourced declaration every history row read "Paid", one still waiting on its pay date included.
+test("a history row beside a sourced declaration says where it stands by its own dates, and sorts by it", async () => {
+  const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+  const unpaid = day(-6), paid = day(-96), undated = day(-186), declared = day(20);
+  setHttpFetchTransport(async () => Response.json({ status: "success", data: {
+    summary: null,
+    actions: { symbol: "MEDC", exchange: "JAKARTA", currency: "IDR", coverage: { dividends: "available" }, splits: [], earnings: [],
+      dividends: [{ exDate: unpaid, amount: 23, payDate: day(12) }, { exDate: paid, amount: 24, payDate: day(-75) }, { exDate: undated, amount: 25 }],
+      declaredDividends: [{ exDate: declared, amount: 22, payDate: day(40), source: NOTICE }] },
+  } }));
+  const data = await fetchDividendData("MEDC", null, "JAKARTA");
+  // The history, and the trailing year over it, stay on ex-dates: the row not paid yet counts.
+  expect(data.payments.map((payment) => payment.amount)).toEqual([23, 24, 25]);
+  expect(data.metrics.trailingRate).toBe(72);
+
+  /** The table's rows down the pane, each as its ex-date and the status it reads. */
+  const statuses = async () => (await frame()).split("\n").flatMap((line) => {
+    const exDate = [declared, unpaid, paid, undated].find((date) => line.trimStart().startsWith(formatDay(date)));
+    const status = /Declared|Paid|Ex-dated/.exec(line)?.[0];
+    return exDate && status ? [`${exDate} ${status}`] : [];
+  });
+  await renderLoaded(data, 80, 24);
+  expect(await statuses()).toEqual([`${declared} Declared`, `${unpaid} Declared`, `${paid} Paid`, `${undated} Ex-dated`]);
+  // A press on the header sorts from the far end: the unpaid row stays with the declared one, apart from the paid.
+  await tui.clickFrameText("STATUS");
+  expect(await statuses()).toEqual([`${paid} Paid`, `${undated} Ex-dated`, `${declared} Declared`, `${unpaid} Declared`]);
 });
 
 test("summary failures retain cash and recover dated payment information through refresh", async () => {
@@ -98,10 +209,7 @@ test("summary failures retain cash and recover dated payment information through
 });
 
 test.each([48, 80, 120])("native dividend refresh keeps the selected price's time and status reachable at %d columns", async (width) => {
-  const session = new Date();
-  session.setUTCHours(18, 0, 0, 0);
-  while (session.getUTCDay() === 0 || session.getUTCDay() === 6) session.setUTCDate(session.getUTCDate() - 1);
-  Date.now = () => session.getTime();
+  setSystemTime(new Date("2026-11-24T17:00:00Z"));
   const sourceTime = Math.floor(Date.now() / 1000);
   const oldTime = sourceTime - 10 * 86_400;
   let priceTime: number | undefined = oldTime;

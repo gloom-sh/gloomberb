@@ -22,6 +22,7 @@ import type { CompositeAxisDomain } from "../../../components/chart/composite/ty
 import { useAsyncResource, useAutoRefresh, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { useAppSelector, usePaneSettingValue, usePaneStateValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
+import { usePinnedList } from "../../../components/use-pinned-moment";
 import type { ResolvedSeries } from "../../../time-series/types";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import type { PaneProps } from "../../../types/plugin";
@@ -142,6 +143,7 @@ function signedColor(value: number): string {
 
 // Stable table adapters so memoized rows survive feed ticks.
 const eventKey = (event: ScannerFlowEvent) => event.id;
+const eventMoment = (event: ScannerFlowEvent) => event.at;
 const tideKey = (row: FlowTideRow) => String(row.at);
 const tideDate = (row: FlowTideRow) => new Date(row.at);
 const strikeKey = (row: FlowStrikeRow) => row.id;
@@ -374,6 +376,13 @@ function FlowPane({ focused, width, height }: PaneProps) {
     setSelectedId(event.id);
     setCursorSymbol(event.underlying);
   }, [setCursorSymbol]);
+  // A crosshair pinned in the tab picks the newest print by then and mutes
+  // the later ones. Following it moves only the row: the linked ticker
+  // changes when the user picks a print, never under a chart setting the pin.
+  const { isAfterPin } = usePinnedList<ScannerFlowEvent>("flow-prints:pin", {
+    follows: tab === "prints",
+    rows: events, getId: eventKey, moment: eventMoment, selectedId, select: setSelectedId,
+  });
 
   if (feed.denied) {
     return <ScannerDeniedState scanner="flow" reason={feed.deniedReason} placement="flow-wall" width={width} height={height} />;
@@ -439,6 +448,7 @@ function FlowPane({ focused, width, height }: PaneProps) {
           getItemKey={eventKey}
           onActivate={(event) => pinTicker(event.underlying, { floating: true, paneType: TICKER_RESEARCH_PANE_ID })}
           renderCell={renderCell}
+          isRowMuted={isAfterPin}
           selectedTextOverridesCellColor
           emptyContent={
             !feed.payload

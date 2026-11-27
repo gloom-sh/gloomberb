@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Fundamentals, NextEarnings, Quote } from "../../../../types/financials";
+import type { Fundamentals, NextEarnings, Quote, TickerFinancials } from "../../../../types/financials";
 import type { TickerPosition, TickerRecord } from "../../../../types/ticker";
 import { buildOverviewBeta, buildOverviewStats, buildPositionRows, buildProfileFields } from "./model";
 import { buildRelationshipStatItems } from "../../correlation/relationship/view-model";
@@ -12,6 +12,51 @@ import { createTestQuote } from "../../../../test-support/data-provider";
 import { cryptoFixture } from "../../crypto-board/test-fixture";
 import { regularSessionMarketCapitalization } from "../../../../market-data/quotes/regular-session-valuation";
 import { marketCapBasisNote } from "../../../../utils/market-capitalization";
+import { selectFinancialStatements } from "../financials/model";
+
+const fiscalIncome = (date: string, revenue: number, netIncome: number) => ({ date, currency: "USD", totalRevenue: revenue * 1e6,
+  operatingIncome: (netIncome + 1_000) * 1e6, netIncome: netIncome * 1e6, netIncomeCommonStockholders: (netIncome - 10) * 1e6,
+  netIncomeIncludingNoncontrollingInterests: (netIncome + 150) * 1e6 });
+const incomeStatements = {
+  financialCurrency: "USD",
+  annualStatements: [fiscalIncome("2025-12-31", 122_687, 2_348)],
+  quarterlyStatements: [fiscalIncome("2025-12-31", 30_372, 1_197), fiscalIncome("2026-03-31", 36_000, 2_000),
+    fiscalIncome("2026-06-30", 40_857, 2_925), fiscalIncome("2026-09-30", 46_098, 6_828)],
+};
+const incomeSummary = { financialCurrency: "USD", revenue: 146.529e9, netIncome: 12.91e9, profitMargin: 0.08834, freeCashFlow: 15.08e9 };
+function overviewIncome(statements: typeof incomeStatements & Pick<TickerFinancials, "statementScope"> = incomeStatements,
+  summary: TickerFinancials["fundamentals"] = incomeSummary) {
+  return Object.fromEntries(buildOverviewStats({ quote: undefined, fundamentals: summary, financialCurrency: statements.financialCurrency,
+    statementFinancials: statements, quoteCurrency: "USD", baseCurrency: "USD", toBase: (value) => value }).map((field) => [field.label, field]));
+}
+
+test("Overview prefers the complete income TTM shown by Financials, without using income to common or including NCI", () => {
+  const [ttm] = selectFinancialStatements("annual", "income", incomeStatements.annualStatements, incomeStatements.quarterlyStatements).statements;
+  expect(ttm).toMatchObject({ totalRevenue: 153_327e6, netIncome: 12_950e6, netIncomeCommonStockholders: 12_910e6 });
+  for (const trailingPeriodEnd of [undefined, "2026-09-30"]) {
+    const stats = overviewIncome(incomeStatements, { ...incomeSummary, trailingPeriodEnd });
+    expect(stats.Revenue).toMatchObject({ value: "153.33B USD", detail: expect.arrayContaining(["TTM to 30 Sep 2026"]) });
+    expect(stats["Net Income"]?.value).toBe("12.95B USD");
+    expect(stats["Profit Marg"]?.value).toBe("8.45%");
+    expect(stats.FCF?.value).toBe("15.08B USD");
+  }
+});
+
+test("Overview retains its income figures across currency, scope, period, and missing-quarter mismatches", () => {
+  const currency = overviewIncome(incomeStatements, { ...incomeSummary, financialCurrency: "CAD" });
+  expect(currency.Revenue?.value).toBe("146.53B CAD");
+  expect(currency["Net Income"]?.detail).toContain("Currency basis differs");
+  expect(currency["Profit Marg"]?.value).toBe("8.83%");
+  const unmatched = overviewIncome(incomeStatements, { ...incomeSummary, trailingPeriodEnd: "2026-06-30" });
+  expect(unmatched.Revenue?.detail).toContain("TTM to 30 Jun 2026");
+  expect(unmatched["Net Income"]?.detail).toContain("Different period");
+  const predecessor = overviewIncome({ ...incomeStatements, statementScope: { registrant: "Previous issuer", basis: "predecessor", label: "Predecessor" } });
+  expect(predecessor.Revenue?.value).toBe("146.53B USD");
+  expect(predecessor["Net Income"]?.detail).toContain("Different scope");
+  const incomplete = overviewIncome({ ...incomeStatements, quarterlyStatements: incomeStatements.quarterlyStatements.slice(1) });
+  expect(incomplete.Revenue?.value).toBe("146.53B USD");
+  expect(incomplete["Profit Marg"]?.value).toBe("8.83%");
+});
 
 test("GGAL's overview uses valuation's receipt-equivalent cap only on a matching basis", () => {
   const quote = createTestQuote({ symbol: "GGAL", marketState: "REGULAR", price: 25.08, marketCap: 4.35e9,
@@ -65,9 +110,9 @@ test("summary money with no sourced currency is bare, says so once, and never bo
     "Shares Out": "19.19B", "Profit Marg": "7.04%", "P/E (TTM)": "25.3",
   });
   expect(fundamentals).toEqual(original);
-  // The first amount says it, once for the rest.
+  // FCF has its own provenance, independent of the other amounts.
   expect(overviewFields(fundamentals).filter((field) => field.detail).map(({ label, detail }) => [label, detail]))
-    .toEqual([["EPS", ["reporting currency not sourced", "currency not sourced"]]]);
+    .toEqual([["EPS", ["reporting currency not sourced", "currency not sourced"]], ["FCF", ["currency unknown"]]]);
   expect(overview({ ...fundamentals, financialCurrency: "CNY" })).toMatchObject({
     EPS: "CN¥4.22", Revenue: "1.22T CNY", "Net Income": "85.7B CNY", FCF: "-96.6B CNY",
   });
@@ -79,7 +124,7 @@ test("summary money with no sourced currency is bare, says so once, and never bo
 test("summary money falls back to the statements' reporting currency, and a zero enterprise value is left out", () => {
   const figures = { eps: 31.43, revenue: 202.08e9, netIncome: 46.98e9, freeCashFlow: 36.96e9, enterpriseValue: 0 };
   // The quote's HKD never stands in: the statements' currency is the only fallback.
-  expect(overview(figures, "ZAR")).toEqual({ EPS: "ZAR\u00a031.43", Revenue: "202.08B ZAR", "Net Income": "46.98B ZAR", FCF: "36.96B ZAR" });
+  expect(overview(figures, "ZAR")).toEqual({ EPS: "ZAR\u00a031.43", Revenue: "202.08B ZAR", "Net Income": "46.98B ZAR", FCF: "36.96B" });
   expect(overview({ ...figures, financialCurrency: "USD" }, "ZAR")).toMatchObject({ Revenue: "202.08B USD" });
   expect(overview(figures, " ")).toMatchObject({ EPS: "31.43", Revenue: "202.08B" });
   expect(overview({ ...figures, enterpriseValue: 5e9, marketCapCurrency: "HKD" }, "ZAR")).toMatchObject({ EV: "5B HKD" });
@@ -91,6 +136,8 @@ test("summary money falls back to the statements' reporting currency, and a zero
   expect(listed("ARS", figures)).toMatchObject({ EPS: "31.43", Revenue: "202.08B" });
   expect(listed("ARS", { ...figures, financialCurrency: "ARS" })).toMatchObject({ EPS: "ARS\u00a031.43", Revenue: "202.08B ARS" });
   expect(listed("USD", figures)).toMatchObject({ EPS: "$31.43", Revenue: "202.08B USD" });
+  expect(listed("CAD", { ...figures, freeCashFlowCurrency: "USD", marketCapCurrency: "CAD" })).toMatchObject({ FCF: "36.96B USD" });
+  expect(listed("USD", { ...figures, marketCapCurrency: "USD" })).toMatchObject({ FCF: "36.96B" });
 });
 
 test("an EV at or below zero reads N/M with why, and an insurer's says its investments stay in", () => {

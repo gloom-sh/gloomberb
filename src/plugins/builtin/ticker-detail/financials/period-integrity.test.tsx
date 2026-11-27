@@ -3,6 +3,7 @@ import { act, useReducer } from "react";
 import { buildHeadlessFunctionReport, renderHeadlessPaneText } from "../../../../cli/pane-functions/headless";
 import { PaneFooterBar, PaneFooterProvider } from "../../../../components/layout/pane/footer";
 import { createOpenTuiTestHarness, takeSavedTextFile } from "../../../../renderers/opentui/test-utils";
+import { mapCloudFinancials } from "../../../../sources/gloomberb-cloud/normalizers";
 import { AppContext, PaneInstanceProvider, appReducer, createInitialState } from "../../../../state/app/context";
 import { createStaticAppStore } from "../../../../test-support/app-store";
 import { exportPaneTable } from "../../../../state/pane-table-export-registry";
@@ -62,7 +63,7 @@ function cli(financials: TickerFinancials, period: Period) {
   return buildHeadlessFunctionReport(resolved as never, context as never, SYMBOL);
 }
 
-async function mount(financials: TickerFinancials, period: Period = "annual") {
+async function mount(financials: TickerFinancials, period: Period = "annual", width = 120) {
   const initial = createInitialState(paneConfig("/tmp/gloomberb-financials-test"));
   initial.tickers = new Map([[SYMBOL, createTestTicker(SYMBOL)]]);
   initial.financials = new Map([[SYMBOL, financials]]);
@@ -74,9 +75,9 @@ async function mount(financials: TickerFinancials, period: Period = "annual") {
         <PaneInstanceProvider paneId={PANE_ID}>
           <PaneFooterProvider>
             {(footer) => (
-              <Box width={120} height={28} flexDirection="column">
-                <Box height={27}><ResolvedFinancialsTab width={120} focused financials={financials} /></Box>
-                <PaneFooterBar footer={footer} focused width={120} />
+              <Box width={width} height={28} flexDirection="column">
+                <Box height={27}><ResolvedFinancialsTab width={width} focused financials={financials} /></Box>
+                <PaneFooterBar footer={footer} focused width={width} />
               </Box>
             )}
           </PaneFooterProvider>
@@ -84,7 +85,7 @@ async function mount(financials: TickerFinancials, period: Period = "annual") {
       </AppContext>
     );
   }
-  await tui.render(<Harness />, { width: 120, height: 28 });
+  await tui.render(<Harness />, { width, height: 28 });
   await tui.renderFrames(3);
   await act(async () => {
     tui.setup().mockInput.pressKey("e");
@@ -116,6 +117,77 @@ function columns(result: HeadlessRowsResult): StatementColumn[] {
 function frame() {
   return tui.frame();
 }
+
+async function clickPeriod() {
+  const rows = frame().split("\n");
+  const y = rows.findIndex((line) => line.includes("[p]eriod"));
+  expect(y).toBeGreaterThanOrEqual(0);
+  const x = rows[y]!.indexOf("[p]eriod");
+  await act(async () => {
+    await tui.setup().mockMouse.click(x + 1, y);
+    await tui.setup().renderOnce();
+  });
+  await act(async () => tui.setup().renderOnce());
+}
+
+const PREDECESSOR = { registrant: "0002128626", entity: "corteva-consolidated", basis: "predecessor" as const, label: "Corteva consolidated (accounting predecessor)" };
+
+/** A spun-off listing's quarter, filed in its predecessor's accounts when scoped. */
+function predecessorQuarter(scoped: boolean, review?: "pending"): TickerFinancials {
+  const scope = scoped ? { statementScope: PREDECESSOR } : {};
+  return {
+    annualStatements: [],
+    quarterlyStatements: [{ ...scope, date: "2026-09-30", currency: "USD", totalRevenue: 2458e6 }],
+    priceHistory: [],
+    ...scope,
+    ...(review ? { statementReview: { status: review, reviewedThrough: "2026-11-01" } } : {}),
+  };
+}
+
+/** The frame's text without its spacing, so a note wraps wherever the width breaks it. */
+const unspaced = (text: string) => text.replace(/[\s│┌┐└┘─]/g, "");
+const frameText = () => unspaced(frame());
+
+async function pressSection(key: string) {
+  await act(async () => {
+    tui.setup().mockInput.pressKey(key);
+    await tui.setup().renderOnce();
+  });
+  await act(async () => tui.setup().renderOnce());
+}
+
+// The query bar's meta gives way first, so the basis is said under it, whole at any width.
+for (const width of [52, 160]) {
+  for (const review of [undefined, "pending"] as const) {
+    test(`a scoped series says its basis whole on statements and ratios at ${width} columns${review ? " with a filing under review" : ""}`, async () => {
+      const data = predecessorQuarter(true, review);
+      const note = `Statement basis: ${PREDECESSOR.label}.${review ? " New filing under review." : ""}`;
+      await mount(data, "quarterly", width);
+      expect(frameText()).toContain(unspaced(note));
+      const statements = await outputs(data, "quarterly");
+      expect(row(statements.result, "income:revenue").cells[0]?.value).toBe(2458e6);
+      expect(statements.csv).toContain(`\nAs of,2026-09-30\nStatement basis,${PREDECESSOR.label}\nCurrency,USD\nUnit,bn\nGrowth,QoQ`);
+
+      await pressSection("4");
+      expect(frame()).toContain("Profitability");
+      expect(frameText()).toContain(unspaced(note));
+      await exportPaneTable(PANE_ID, "financials.csv");
+      expect(takeSavedTextFile()!.text).toContain(`\nAs of,2026-09-30\nStatement basis,${PREDECESSOR.label}\nCurrency,USD`);
+    });
+  }
+}
+
+test("statements with no scope add no basis note and keep a filing under review in the query bar", async () => {
+  for (const width of [52, 160]) {
+    await mount(predecessorQuarter(false), "quarterly", width);
+    expect(frameText()).not.toContain("Statementbasis");
+    const { csv } = await outputs(predecessorQuarter(false), "quarterly");
+    expect(csv).not.toContain("Statement basis");
+  }
+  await mount(predecessorQuarter(false, "pending"), "quarterly", 160);
+  expect(frame().split("\n")[0]).toContain("New filing under review · QoQ");
+  expect(frameText()).not.toContain("Statementbasis");
+});
 
 test("actual financial table and CSV retain the derived TTM window and known field publication dates", async () => {
   const quarterEnds = ["2024-03-31", "2024-06-30", "2024-09-30", "2024-12-31"];
@@ -214,18 +286,6 @@ test("mouse period changes keep active CSV and quarterly values aligned, includi
     priceHistory: [],
   };
   await mount(financials);
-  async function clickPeriod() {
-    const rows = frame().split("\n");
-    const y = rows.findIndex((line) => line.includes("[p]eriod"));
-    expect(y).toBeGreaterThanOrEqual(0);
-    const x = rows[y]!.indexOf("[p]eriod");
-    await act(async () => {
-      await tui.setup().mockMouse.click(x + 1, y);
-      await tui.setup().renderOnce();
-    });
-    await act(async () => tui.setup().renderOnce());
-  }
-
   await clickPeriod();
   const quarterly = await outputs(financials, "quarterly");
   expect(quarterly.csv).toContain("Growth,QoQ");
@@ -241,6 +301,59 @@ test("mouse period changes keep active CSV and quarterly values aligned, includi
   expect(annual.csv).toContain("Currency,USD");
   expect(annual.csv).toContain("Growth,YoY");
   expect(frame()).toMatch(/FY2025\s*\n\s+Period end\s+31 Dec 2025/);
+});
+
+test("the exchange view exports source-linked year-to-date results apart from the standalone quarter", async () => {
+  const url = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap06_O_ci";
+  await mount({
+    financialCurrency: "TWD",
+    annualStatements: [],
+    quarterlyStatements: [{ date: "2026-09-30", currency: "TWD", totalRevenue: 1_562_173_000, eps: 6.12 }],
+    priceHistory: [],
+    taiwanExchangeStatements: [{
+      kind: "income", periodEnd: "2026-09-30", months: 9, currency: "TWD",
+      figures: [{ label: "Revenue", sourceLabel: "營業收入", value: 3_687_740_000 }],
+      source: { venue: "TPEX", url, snapshotDate: "2026-11-26", observedAt: "2026-11-26T21:39:20Z" },
+    }],
+  }, "quarterly");
+  expect(frame()).not.toContain("3,687,740,000");
+  await clickPeriod();
+  expect(frame()).toContain("9 months ended 30 Sep 2026");
+  expect(frame()).toContain("TPEx export 26 Nov 2026");
+  expect(frame()).toContain("3,687,740,000");
+  await exportPaneTable(PANE_ID, "taiwan.csv");
+  const csv = takeSavedTextFile()!.text;
+  expect(csv).toContain(`Source,${url}`);
+  expect(csv).toContain("Revenue,3687740000");
+  await clickPeriod();
+  expect(frame()).not.toContain("3,687,740,000");
+});
+
+test("the issuer filing stays with its fiscal period through normalization, FA and export", async () => {
+  const url = "https://mopsov.twse.com.tw/server-java/t164sb01?step=3&SYEAR=2026&file_name=tifrs-fr1-m1-ci-cr-2330-2026Q3.html";
+  const filing = {
+    source: "mops", kind: "quarterly_results", title: "2026 Q3 financial report", url,
+    periodEnd: "2026-09-30", periodMonths: 9,
+    publishedAt: "2026-11-12T00:00:00Z", fetchedAt: "2026-11-12T00:10:00Z",
+  } as const;
+  const financials = mapCloudFinancials({
+    annualStatements: [], priceHistory: [],
+    quarterlyStatements: [
+      { date: "2026-06-30", currency: "TWD", totalRevenue: 1_000_000_000 },
+      { date: filing.periodEnd, currency: "TWD", netIncome: 400_000_000,
+        filledFrom: { source: "results", documents: [filing], fields: ["netIncome"],
+          lines: { netIncome: { document: 0, page: null } } } },
+    ],
+    statementFilings: [
+      { ...filing, periodMonths: 12, url: "https://mopsov.twse.com.tw/annual" },
+      filing,
+    ],
+  });
+  await mount(financials, "quarterly");
+  const { result, csv } = await outputs(financials, "quarterly");
+  expect(columns(result)[0]).toMatchObject({ date: filing.periodEnd, issuerFiling: filing });
+  expect(csv).toContain(`Issuer filing for ${filing.periodEnd},${url}`);
+  expect(csv).toContain("Period end,2026-09-30");
 });
 
 for (const reportedCurrency of [undefined, "USD"]) {

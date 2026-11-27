@@ -1,5 +1,6 @@
-import type { FinancialStatement, TickerFinancials } from "../../../../types/financials";
+import type { FinancialStatement, StatementPeriodFiling, TickerFinancials } from "../../../../types/financials";
 import { ebitdaLacksDepreciation } from "../../../../utils/ebitda";
+import { safeExternalUrl } from "../../../../utils/external-url";
 import { longerPeriodLabel, statementPeriodLabel, ttmPeriodLabel } from "../../../../utils/fiscal-period";
 import { areNearbyFinancialPeriodEnds, fillDate, fillDateText, statementPeriodMonths } from "../../../../utils/financial-statements";
 import { formatPerShareNumber } from "../../../../utils/reported-money";
@@ -412,6 +413,18 @@ export function financialColumnPeriod(statement: FinancialTableStatement, period
   return period === "annual" && (statement.date === "TTM" || annualDates.has(statement.date)) ? "annual" : "quarterly";
 }
 
+/** An issuer's report for the displayed period, even when the figures come from a provider. */
+export function financialPeriodFiling(
+  filings: readonly StatementPeriodFiling[] | undefined,
+  statement: FinancialTableStatement,
+  period: FinancialPeriod,
+): StatementPeriodFiling | undefined {
+  if (statement.date === "TTM") return undefined;
+  const end = financialPeriodEnd(statement);
+  return filings?.find((filing) => filing.periodEnd === end
+    && (filing.periodMonths === 12) === (period === "annual") && !!safeExternalUrl(filing.url));
+}
+
 export function latestFinancialPeriodEnd(statements: readonly FinancialTableStatement[]): string | undefined {
   return statements
     .map(financialPeriodEnd)
@@ -451,6 +464,20 @@ export function financialStatementLimitations(financials: TickerFinancials | nul
     limitations.push("Parent net income is unavailable for some reported periods.");
   }
   return limitations;
+}
+
+/**
+ * What a scoped statement series is filed as, such as a spun-off listing's history in its predecessor's consolidated
+ * accounts, and a newer filing still under review for it. It is said in full above the table, where no pane width
+ * cuts it, so the figures are never read as the listing's own; the CSV says it as its "Statement basis". Null for
+ * statements with no scope, which are the listing's own.
+ */
+export function financialStatementBasisNote(
+  financials: Pick<TickerFinancials, "statementScope" | "statementReview"> | null | undefined,
+): string | null {
+  const scope = financials?.statementScope;
+  if (!scope) return null;
+  return `Statement basis: ${scope.label}.${financials.statementReview?.status === "pending" ? " New filing under review." : ""}`;
 }
 
 /** "Ordinary Shares (bn ADRs)": a share-count line whose counts are depositary receipts. */
@@ -943,14 +970,20 @@ export function financialStatementPeriods(
 }
 
 /**
- * Whether a column has its lead line, or Gloom Cloud left it blank on purpose: the company's announcements
- * count it otherwise than the statements source (HSBC's revenue, `filledFrom.omitted`), so the period is in.
+ * A period is ready when its lead line is present, intentionally omitted, or accompanied by a filed
+ * income or cash flow figure. Banks' filings can report net income under a separate revenue convention.
  */
 function hasLeadLine(lead: FinancialRowDef, statement: FinancialStatement): boolean {
   if (hasFinancialRowValue(lead, [statement])) return true;
   const key = isFinancialGroup(lead) ? lead.summaryKey : lead.key;
   const fill = statement.filledFrom;
-  return !!key && fill?.source === "results" && (fill.omitted ?? []).some((field) => field === key);
+  if (!key || fill?.source !== "results") return false;
+  if (fill.omitted?.some((field) => field === key)) return true;
+  const filedLine = key === "totalRevenue" ? "netIncome" : key === "freeCashFlow" ? "operatingCashFlow" : undefined;
+  if (!filedLine || !fill.fields.includes(filedLine) || !Number.isFinite(statement[filedLine])) return false;
+  const document = fill.lines[filedLine]?.document;
+  const url = document === undefined ? undefined : fill.documents[document]?.url;
+  return typeof url === "string" && !!safeExternalUrl(url);
 }
 
 /**

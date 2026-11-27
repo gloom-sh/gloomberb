@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Quote } from "../../types/financials";
-import { awaitingFirstDelayedPrint, couldQuoteHavePrintedSince, isQuoteStaleForCurrentSession, noPrintsTodayText } from "./freshness";
+import { awaitingFirstDelayedPrint, couldQuoteHavePrintedSince, isQuoteBeforeLatestSession, isQuoteStaleForCurrentSession, noPrintsTodayText } from "./freshness";
 import { quoteSessionLabel } from "../market/status";
 import { createDailyNavQuote } from "../../test-support/daily-nav";
 
@@ -19,6 +19,53 @@ function quote(overrides: Partial<Quote>): Quote {
     ...overrides,
   };
 }
+
+test.each(["OTC", "OQX", "OTC MARKETS OTCQX", "OTCQB", "PINK", "OTC MARKETS OTCID", "PINX", "OTHER OTC"])(
+  "%s respects the US full closure without clearing an explicit stale flag", (venue) => {
+    const at = Date.parse("2026-11-26T19:24:00Z");
+    const close = (time: string, stale = false) => quote({ listingExchangeName: venue, lastUpdated: Date.parse(time), stale });
+    expect(isQuoteStaleForCurrentSession(close("2026-11-25T21:00:00Z"), at)).toBe(false);
+    expect(isQuoteStaleForCurrentSession(close("2026-11-24T21:00:00Z"), at)).toBe(true);
+    expect(isQuoteStaleForCurrentSession(close("2026-11-25T21:00:00Z", true), at)).toBe(true);
+    expect(isQuoteStaleForCurrentSession(close("2026-11-24T21:00:00Z"), Date.parse("2026-11-25T20:30:00Z"))).toBe(true);
+    expect(isQuoteStaleForCurrentSession(close("2026-11-25T21:00:00Z"), Date.parse("2026-11-25T22:00:00Z"))).toBe(false);
+  },
+);
+
+describe("Nasdaq holiday quote freshness", () => {
+  const lastTradeTime = Date.parse("2026-11-26T00:59:59.082Z");
+  const nvda = quote({ symbol: "NVDA", currency: "USD", listingExchangeName: "NASDAQ", exchangeName: "NASDAQ",
+    stale: false, lastUpdated: lastTradeTime, lastTradeTime, lastTradePrice: 168 });
+
+  test.each([
+    "2026-11-26T11:28:00Z", "2026-11-26T15:00:00Z", "2026-11-26T19:00:00Z", "2026-11-27T02:00:00Z",
+  ])("uses Wednesday's last price through Thanksgiving at %s", (time) => {
+    const now = Date.parse(time);
+    for (const current of [nvda, { ...nvda, postMarketPrice: nvda.price },
+      { ...nvda, lastUpdated: Date.parse("2026-11-25T21:00:00Z"), lastTradeTime: Date.parse("2026-11-25T21:00:00Z") }]) {
+      expect(isQuoteStaleForCurrentSession(current, now)).toBe(false);
+      expect(isQuoteBeforeLatestSession(current, now)).toBe(false);
+    }
+    const olderTime = Date.parse("2026-11-25T00:59:59.082Z");
+    const older = { ...nvda, lastUpdated: olderTime, lastTradeTime: olderTime };
+    expect(isQuoteStaleForCurrentSession(older, now)).toBe(true);
+    expect(isQuoteBeforeLatestSession(older, now)).toBe(true);
+    expect(isQuoteStaleForCurrentSession({ ...nvda, stale: true }, now)).toBe(true);
+  });
+
+  test("keeps the Christmas Eve half-day close current on Christmas Day", () => {
+    const close = Date.parse("2026-12-24T18:00:00Z");
+    const now = Date.parse("2026-12-25T21:30:00Z");
+    expect(isQuoteStaleForCurrentSession({ ...nvda, lastUpdated: close, lastTradeTime: close }, now)).toBe(false);
+    expect(isQuoteStaleForCurrentSession({ ...nvda, lastUpdated: Date.parse("2026-12-23T21:00:00Z") }, now)).toBe(true);
+  });
+
+  test("the Friday pre-market needs a new price or a source that has observed that session", () => {
+    const now = Date.parse("2026-11-27T12:00:00Z");
+    expect(isQuoteStaleForCurrentSession(nvda, now)).toBe(true);
+    expect(isQuoteStaleForCurrentSession({ ...nvda, marketState: "PRE" }, now)).toBe(false);
+  });
+});
 
 describe("quote freshness", () => {
   test("keeps the previous daily NAV until the next session has twelve hours to publish", () => {
@@ -137,8 +184,7 @@ describe("quote freshness", () => {
     ["early close, 12:55 print at 13:20", "2026-11-27T18:20:00Z", { lastUpdated: Date.parse("2026-11-27T17:55:00Z") }, false],
     ["early close, 12:55 print at 16:20", "2026-11-27T21:20:00Z", { lastUpdated: Date.parse("2026-11-27T17:55:00Z") }, false],
     ["early close, print after the close at 16:20", "2026-11-27T21:20:00Z", { lastUpdated: Date.parse("2026-11-27T18:05:00Z") }, true],
-    // Unchanged: Labor Day 2026-09-07 has no close of its own, and a Saturday has no active session.
-    ["holiday, Friday's close", "2026-09-07T20:30:00Z", { lastUpdated: Date.parse("2026-09-04T19:51:00Z") }, true],
+    ["holiday, Friday's close", "2026-09-07T20:30:00Z", { lastUpdated: Date.parse("2026-09-04T19:51:00Z") }, false],
     ["Saturday, Friday's close", "2026-10-10T18:00:00Z", {}, false],
   ];
 

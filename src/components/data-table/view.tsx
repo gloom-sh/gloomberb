@@ -12,7 +12,7 @@ import {
 import type { ScrollBoxRenderable } from "../../ui";
 import { useBeforeShortcut, useShortcut } from "../../react/input";
 import { isPlainKey, isPlainKeyboardEvent } from "../../utils/keyboard";
-import { DataTable, PaneStatusBody, RowNote, type DataTableColumn, type DataTableProps, type NoticeProps, type PaneStatusBodyProps } from "../ui";
+import { DataTable, PaneStatusBody, RowNote, type DataTableColumn, type DataTableColumnFit, type DataTableProps, type NoticeProps, type PaneStatusBodyProps } from "../ui";
 import { useDataTableSortMenu } from "./sort-menu";
 import { useDataTableColumnMenuItems } from "./column-menu";
 import { drawnTableColumns, tableFreezesFirstColumn, tableRevealLeft, tableScrollStep } from "../ui/table-layout";
@@ -779,6 +779,8 @@ export function DataTableView<
   // switch Spaces). Plain arrows stay with tabs. Scoped so it runs before a tab
   // strip in the same pane, which would otherwise read Shift+Left as Left.
   const horizontalScrollScope = `data-table-columns:${useId()}`;
+  // What the table's fit left out for width, and the way back to it (`DataTableProps.columnDropOrder`).
+  const columnFitRef = useRef<DataTableColumnFit | null>(null);
   useShortcut((event) => {
     if (event.defaultPrevented || event.propagationStopped || event.targetEditable) return;
     const direction = horizontalScrollDirection(event);
@@ -787,6 +789,19 @@ export function DataTableView<
     const viewportWidth = body?.viewport?.width ?? 0;
     const currentLeft = body?.scrollLeft ?? 0;
     const maxLeft = Math.max(0, (body?.scrollWidth ?? 0) - viewportWidth);
+    // The step right from a table fitted to its width draws every column as set, scrolled to the first one the
+    // fit had left out; the step left from the start of all its columns fits them again.
+    const fit = columnFitRef.current;
+    if (direction > 0 && fit?.fitted) {
+      stopTableKey(event);
+      fit.showAll();
+      return;
+    }
+    if (direction < 0 && fit?.all && currentLeft <= 0) {
+      stopTableKey(event);
+      fit.fit();
+      return;
+    }
     if (!body || viewportWidth <= 0 || maxLeft <= 0) return;
     // At either edge the key is still the table's, so it never falls through
     // to switch a tab.
@@ -916,6 +931,7 @@ export function DataTableView<
         columnReorder={false}
         onColumnMove={onColumnMove}
         anchoredColumns={anchoredColumns}
+        columnFitRef={columnFitRef}
         headerScrollRef={effectiveHeaderScrollRef}
         scrollRef={effectiveScrollRef}
         syncHeaderScroll={effectiveSyncHeaderScroll}

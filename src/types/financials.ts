@@ -503,6 +503,7 @@ export interface Fundamentals extends DepositaryReceiptFacts {
   marketCapUnavailable?: "receipt-priced-as-ordinary";
   operatingCashFlow?: number;
   freeCashFlow?: number;
+  freeCashFlowCurrency?: string | null;
   dividendYield?: number;
   dividendYieldBasis?: "forward" | "trailing";
   dividendYieldSource?: "gloom";
@@ -534,6 +535,7 @@ export interface Fundamentals extends DepositaryReceiptFacts {
    */
   trailingEpsSource?: "filed-quarters" | "served";
   trailingEpsPeriodEnd?: string;
+  scopedEarnings?: { eps: number; currency: string; periodEnd: string; epsAvailableAt: string; priced: boolean } | null;
   /**
    * Why a multiple is withdrawn though its figures are numbers (utils/share-multiples): a warrant's price over its
    * company's EPS, a receipt's with no ratio on record, an EPS that is not net income over the shares. The multiple
@@ -692,17 +694,20 @@ export interface AnalystResearchData {
   revenueEstimates: AnalystEstimateRecord[];
 }
 
+export interface DividendNoticeSource {
+  publisher: string;
+  url: string;
+  /** Original timetable when the final cash amount was published separately. */
+  scheduleUrl?: string;
+}
+
 export interface DividendAction {
   exDate: string;
   amount: number;
   payDate?: string;
   recordDate?: string;
-  /**
-   * Who published the row when it is not the listing's own history: a fund's
-   * sponsor, for a distribution the history lacks (iShares, SPDR, J.P. Morgan,
-   * VanEck), and the page it is published on. Absent elsewhere and from older servers.
-   */
-  source?: { publisher: string; url: string };
+  /** Original notice or sponsor page, when it supplies facts for this row. */
+  source?: DividendNoticeSource;
   /**
    * The dividends the row holds by the issuer's own dividend announcement
    * forms (an HKEX listing's): each in the row's currency, summing to its
@@ -725,6 +730,7 @@ export interface DeclaredDividendAction {
   declarationDate?: string;
   recordDate?: string;
   payDate?: string;
+  source?: DividendNoticeSource;
   /** A one-off beside the regular payments (AIOK's $3.50), as the server marks it. */
   special?: true;
 }
@@ -923,16 +929,24 @@ export type ResultsFillField =
 
 export type StatementFilingKind = "annual_results" | "interim_results" | "quarterly_results" | "annual_report" | "interim_report";
 
-/** A results announcement or report on HKEXnews or SGXNet, with when it was published and read. */
+/** An issuer's results announcement or report, with when it was published and read. */
 export interface StatementFilingDocument {
-  source: "hkex" | "sgx" | "lse" | "cninfo" | "ir" | "mops" | "nse";
+  source: "hkex" | "sgx" | "lse" | "cninfo" | "idx" | "ir" | "mops" | "jpx" | "dart" | "nse";
   kind: StatementFilingKind;
   title: string;
+  accountingScope?: "consolidated" | "individual";
   url: string;
   publishedAt: string;
   firstObserved?: true;
   fetchedAt: string;
+  dateBasis?: "catalogue";
   dataUrl?: string;
+}
+
+/** The original report for a fiscal period, independent of the source of each normalized figure. */
+export interface StatementPeriodFiling extends StatementFilingDocument {
+  periodEnd: string;
+  periodMonths: number;
 }
 
 /** A row's lines read from the company's results announcement or report, for a period the statements source lags on. */
@@ -942,12 +956,14 @@ export interface ResultsStatementFill {
   fields: ResultsFillField[];
   /** The documents, the one each line was read from first: the row is dated by the earliest publication. */
   documents: StatementFilingDocument[];
-  /** Per line, its document (an index into `documents`) and page. */
+  /** Per line, its document index and location in the original document. */
   lines: Partial<Record<ResultsFillField, {
     document: number;
     page: number | null;
     subtract?: { document: number; page: number | null };
     xbrl?: { concept: string; context: string };
+    subtractDocument?: number;
+    location?: { sheet: string; cell: string };
   }>>;
   /** The months the row's flows cover where the list's usual is another: 6 for a half in the quarterly list. */
   periodMonths?: number;
@@ -1077,7 +1093,15 @@ export interface ReportedEarningsCohort {
 /** @deprecated No longer populated. */
 export interface EarningsResultProvenance { version: 1; reported: ReportedEarningsCohort }
 
+export interface StatementScope {
+  registrant: string;
+  entity?: string;
+  basis: "predecessor" | "carve-out" | "standalone";
+  label: string;
+}
+
 export interface FinancialStatement {
+  statementScope?: StatementScope;
   /** The basis of this row's share counts and per-share earnings; absent when unproven. */
   shareBasis?: ShareBasis;
   /** @deprecated No longer populated. */
@@ -1386,7 +1410,18 @@ export interface EpsEstimateHistory {
   snapshots: ConsensusEpsSnapshot[];
 }
 
+export interface TaiwanExchangeStatement {
+  kind: "income" | "balance";
+  periodEnd: string;
+  months: number;
+  currency: "TWD";
+  figures: { label: string; sourceLabel: string; value: number; perShare?: true }[];
+  source: { venue: "TWSE" | "TPEX"; url: string; snapshotDate: string; observedAt: string };
+}
+
 export interface TickerFinancials {
+  statementScope?: StatementScope;
+  statementReview?: { status: "reviewed" | "pending" | "index-unavailable"; reviewedThrough: string };
   /** Reported earnings-release events retained with daily valuation snapshots. */
   earningsReleases?: EarningsAction[];
   statementHistory?: StatementHistoryAttempt;
@@ -1403,6 +1438,9 @@ export interface TickerFinancials {
   nextEarnings?: NextEarnings;
   annualStatements: FinancialStatement[];
   quarterlyStatements: FinancialStatement[];
+  periodFilings?: StatementPeriodFiling[];
+  /** Exchange summaries have their own reporting basis and do not enter the normalized statements. */
+  taiwanExchangeStatements?: TaiwanExchangeStatement[];
   /** Twelve months to the latest half or quarter where the quarters do not give them (a half-yearly reporter). */
   trailingStatement?: FinancialStatement & { trailing: StatementTrailing };
   priceHistory: PricePoint[];

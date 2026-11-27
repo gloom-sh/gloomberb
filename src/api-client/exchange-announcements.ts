@@ -28,6 +28,8 @@ export interface ExchangeAnnouncementsPayload {
   name: string | null;
   /** The company's announcements page on the exchange's site: HKEXnews' search with the company filled in. */
   page: string;
+  /** Issuer calendar or release index used to date a reporting package. */
+  dateSource?: string;
   announcements: ExchangeAnnouncement[];
   /** How many announcements the exchange holds for the company; null when it does not say. */
   total: number | null;
@@ -38,11 +40,15 @@ export interface ExchangeAnnouncementsPayload {
   stale?: boolean;
 }
 
-/**
- * `/cloud/announcements?symbol=NST&exchange=ASX&limit=15`. `kind: "results"` asks an HKEX company's results
- * announcements and business updates alone, which a day's buyback return never pushes out of the list.
- */
-export function cloudExchangeAnnouncementsPath(params: { symbol: string; exchange: string; limit?: number; kind?: "results" }): string {
+export interface ExchangeAnnouncementsRequest {
+  symbol: string;
+  exchange: string;
+  limit?: number;
+  kind?: "results" | "presentations" | "ownership";
+}
+
+/** A listing's announcements or an exchange-specific filing archive. */
+export function cloudExchangeAnnouncementsPath(params: ExchangeAnnouncementsRequest): string {
   const search = new URLSearchParams({ symbol: params.symbol, exchange: params.exchange });
   if (params.limit != null) search.set("limit", String(params.limit));
   if (params.kind) search.set("kind", params.kind);

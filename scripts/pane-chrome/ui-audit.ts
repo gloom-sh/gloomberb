@@ -67,9 +67,14 @@ const web = resolve(takeOption(args, "--web") ?? cacheDir("ui-audit-web"));
 const replayDir = resolve(takeOption(args, "--replay") ?? cacheDir("ui-audit-replay"));
 const replay = createReplay(replayDir, { offline: args.includes("--offline") });
 const shard = parseShard(takeOption(args, "--shard"));
+const rawConcurrency = Number.parseInt(takeOption(args, "--concurrency") ?? "1", 10);
+const requestedConcurrency = Math.max(1, Math.min(4, Number.isFinite(rawConcurrency) && rawConcurrency > 0 ? rawConcurrency : 1));
 const report = !args.includes("--no-report");
 const shots = !args.includes("--no-shots");
 const variants = shots && !args.includes("--no-variants");
+const offline = args.includes("--offline");
+// Concurrent browsers only share the read-only offline replay and never race on variant pictures.
+const concurrency = offline && !variants ? requestedConcurrency : 1;
 const resume = args.includes("--resume");
 const withRegistry = args.includes("--registry");
 /** Families whose look under the pointer is pictured too. */
@@ -261,8 +266,11 @@ const SHELL_VIEWS: Array<{ id: string; layout: object; focused?: string; seed?: 
   { id: "index-history", layout: dock(INDEX_HISTORY_PANE), focused: INDEX_HISTORY_PANE.instanceId, async open() {} },
 ];
 
-async function writeLine(file: string, value: unknown): Promise<void> {
-  await appendFile(file, `${JSON.stringify(value)}\n`);
+let writeChain: Promise<void> = Promise.resolve();
+function writeLine(file: string, value: unknown): Promise<void> {
+  const line = `${JSON.stringify(value)}\n`;
+  writeChain = writeChain.then(() => appendFile(file, line));
+  return writeChain;
 }
 
 async function readLines<T>(file: string): Promise<T[]> {
@@ -314,19 +322,22 @@ async function main(): Promise<void> {
   else { await rm(resultsFile, { force: true }); await rm(viewsFile, { force: true }); }
 
   const app = serveWebApp(web, replay);
-  let browser: Browser = await launchBrowser("ui-audit", widths[0]!, height);
-  const start = async () => {
-    await routeDirectReads(browser.cdp, replay);
-    await browser.cdp.send("Emulation.setTimezoneOverride", { timezoneId: "America/New_York" });
+  const startBrowser = async (workerIndex: number): Promise<Browser> => {
+    const instance = await launchBrowser(`ui-audit-w${workerIndex}`, widths[0]!, height);
+    await routeDirectReads(instance.cdp, replay);
+    await instance.cdp.send("Emulation.setTimezoneOverride", { timezoneId: "America/New_York" });
+    return instance;
   };
-  await start();
+  const workerCount = Math.min(concurrency, Math.max(1, entries.length));
+  const browsers: Browser[] = await Promise.all(
+    Array.from({ length: workerCount }, (_, index) => startBrowser(index)),
+  );
 
   /** Pictures of each variant the first time it is seen: as drawn, and under the pointer for the interactive ones. */
   const variantsFile = join(out, "variants.jsonl");
   const pictured = new Set<string>();
   if (resume) for (const line of await readLines<{ key: string }>(variantsFile)) pictured.add(line.key);
-  const pictureVariants = async (view: AuditView, width: number, value: AuditMeasure) => {
-    const cdp = browser.cdp;
+  const pictureVariants = async (cdp: Cdp, view: AuditView, width: number, value: AuditMeasure) => {
     const dir = join(out, "variants");
     await mkdir(dir, { recursive: true });
     for (const element of value.elements) {
@@ -355,8 +366,7 @@ async function main(): Promise<void> {
     }
   };
 
-  const record = async (view: AuditView, scope: string | null, width: number, theme: string, measure: boolean) => {
-    const cdp = browser.cdp;
+  const record = async (cdp: Cdp, view: AuditView, scope: string | null, width: number, theme: string, measure: boolean) => {
     debug(`record ${view.id} ${width} ${theme}`);
     if (measure) {
       const value = await evaluate<AuditMeasure>(cdp, UI_AUDIT_MEASURE(scope), 60_000);
@@ -364,7 +374,7 @@ async function main(): Promise<void> {
       if (value.missing) return false;
       const result: AuditResult = { ...view, width, height, theme, measure: value };
       await writeLine(resultsFile, result);
-      if (variants) await pictureVariants(view, width, value);
+      if (variants) await pictureVariants(cdp, view, width, value);
     }
     if (shots) {
       const dir = join(out, "shots", theme, String(width));
@@ -374,77 +384,86 @@ async function main(): Promise<void> {
     return true;
   };
 
-  const viewport = async (width: number) => {
-    await browser.cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
+  const setViewport = async (cdp: Cdp, width: number) => {
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
   };
 
   try {
-    for (const shell of shells) {
-      if (done.has(shell.id)) continue;
-      const view: AuditView = { id: shell.id, kind: "shell", token: shell.id, view: "root" };
-      let unopened: string | null = null;
-      for (const width of widths) {
-        if (unopened) break;
-        await viewport(width);
-        for (const [index, theme] of themes.entries()) {
-          // Opened from a fresh page up to three times: on a busy machine a key typed before the
-          // command bar has focus goes to the pane, and the surface never opens.
-          let opened = false;
-          for (let attempt = 0; attempt < 3 && !opened; attempt += 1) {
-            await loadLayout(browser.cdp, app.url, replay, shell.layout, shell.focused, { theme, ...shell.seed });
-            await settle(browser.cdp, "body", 700, 6_000);
-            await shell.open(browser.cdp);
-            await settle(browser.cdp, "body", 600, 4_000);
-            opened = !shell.surface || !!await waitFor<boolean>(browser.cdp, `!!document.querySelector(${JSON.stringify(shell.surface)})`, 2_000);
-            if (!opened) console.warn(`${shell.id}: not open at ${width}px in ${theme} (try ${attempt + 1} of 3)`);
-          }
-          if (!opened) {
-            unopened = `${shell.surface} is not on the page at ${width}px in ${theme}`;
-            break;
-          }
-          await record(view, null, width, theme, index === 0);
-          await key(browser.cdp, "Escape", "Escape", 27);
-        }
-      }
-      if (unopened) {
-        // Measuring the page under a surface that did not open would pass for a measure of it.
-        console.error(`${shell.id}: did not open: ${unopened}`);
-        await writeLine(viewsFile, { id: `${shell.id}--failed`, kind: "shell", token: shell.id, view: "failed" });
-        process.exitCode = 1;
-        continue;
-      }
-      await writeLine(viewsFile, view);
-      console.log(`${shell.id}: measured`);
-    }
+    const pendingShells = shells.filter((shell) => !done.has(shell.id));
+    let shellCursor = 0;
+    const pendingEntries = entries.filter((entry) => !done.has(entry.token));
+    let entryCursor = 0;
 
-    for (const entry of entries) {
-      if (done.has(entry.token)) continue;
-      const started = Date.now();
-      try {
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        const views = await Promise.race([
-          auditPane(entry).finally(() => clearTimeout(timer)),
-          new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`timed out after ${ENTRY_TIMEOUT_MS / 1000}s`)), ENTRY_TIMEOUT_MS); }),
-        ]);
-        for (const view of views) await writeLine(viewsFile, view);
-        console.log(`${entry.token}: ${views.length} views in ${Math.round((Date.now() - started) / 1000)}s`);
-      } catch (error) {
-        console.warn(`${entry.token}: ${error instanceof Error ? error.message : error}`);
-        await writeLine(viewsFile, { id: `${entry.token}--failed`, kind: "pane", token: entry.token, paneId: entry.paneId, plugin: entry.plugin, view: "failed" });
-        // A page that hung or a browser that died: start a fresh one.
-        await browser.close().catch(() => {});
-        browser = await launchBrowser("ui-audit", widths[0]!, height);
-        await start();
-      }
-    }
+    await Promise.all(
+      browsers.map(async (initialBrowser, workerIndex) => {
+        let browser = initialBrowser;
+        while (shellCursor < pendingShells.length) {
+          const shell = pendingShells[shellCursor++]!;
+          const view: AuditView = { id: shell.id, kind: "shell", token: shell.id, view: "root" };
+          let unopened: string | null = null;
+          for (const width of widths) {
+            if (unopened) break;
+            await setViewport(browser.cdp, width);
+            for (const [index, theme] of themes.entries()) {
+              // Opened from a fresh page up to three times: on a busy machine a key typed before the
+              // command bar has focus goes to the pane, and the surface never opens.
+              let opened = false;
+              for (let attempt = 0; attempt < 3 && !opened; attempt += 1) {
+                await loadLayout(browser.cdp, app.url, replay, shell.layout, shell.focused, { theme, ...shell.seed });
+                await settle(browser.cdp, "body", 700, 6_000);
+                await shell.open(browser.cdp);
+                await settle(browser.cdp, "body", 600, 4_000);
+                opened = !shell.surface || !!await waitFor<boolean>(browser.cdp, `!!document.querySelector(${JSON.stringify(shell.surface)})`, 2_000);
+                if (!opened) console.warn(`${shell.id}: not open at ${width}px in ${theme} (try ${attempt + 1} of 3)`);
+              }
+              if (!opened) {
+                unopened = `${shell.surface} is not on the page at ${width}px in ${theme}`;
+                break;
+              }
+              await record(browser.cdp, view, null, width, theme, index === 0);
+              await key(browser.cdp, "Escape", "Escape", 27);
+            }
+          }
+          if (unopened) {
+            // Measuring the page under a surface that did not open would pass for a measure of it.
+            console.error(`${shell.id}: did not open: ${unopened}`);
+            await writeLine(viewsFile, { id: `${shell.id}--failed`, kind: "shell", token: shell.id, view: "failed" });
+            process.exitCode = 1;
+            continue;
+          }
+          await writeLine(viewsFile, view);
+          console.log(`${shell.id}: measured`);
+        }
+
+        while (entryCursor < pendingEntries.length) {
+          const entry = pendingEntries[entryCursor++]!;
+          const started = Date.now();
+          try {
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            const views = await Promise.race([
+              auditPane(browser.cdp, entry).finally(() => clearTimeout(timer)),
+              new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`timed out after ${ENTRY_TIMEOUT_MS / 1000}s`)), ENTRY_TIMEOUT_MS); }),
+            ]);
+            for (const view of views) await writeLine(viewsFile, view);
+            console.log(`${entry.token}: ${views.length} views in ${Math.round((Date.now() - started) / 1000)}s`);
+          } catch (error) {
+            console.warn(`${entry.token}: ${error instanceof Error ? error.message : error}`);
+            await writeLine(viewsFile, { id: `${entry.token}--failed`, kind: "pane", token: entry.token, paneId: entry.paneId, plugin: entry.plugin, view: "failed" });
+            // A page that hung or a browser that died: start a fresh one.
+            await browser.close().catch(() => {});
+            browser = await startBrowser(workerIndex);
+            browsers[workerIndex] = browser;
+          }
+        }
+      }),
+    );
   } finally {
-    await browser.close().catch(() => {});
+    await Promise.all(browsers.map((browser) => browser.close().catch(() => {})));
     app.stop();
   }
 
-  async function auditPane(entry: AuditEntry): Promise<AuditView[]> {
-    const cdp = browser.cdp;
-    await viewport(widths[widths.length - 1]!);
+  async function auditPane(cdp: Cdp, entry: AuditEntry): Promise<AuditView[]> {
+    await setViewport(cdp, widths[widths.length - 1]!);
     // A window no layout keeps (the Layouts browser, LAY) is opened through its command each time, as a user opens it:
     // a layout that docks it loads without it. Its instance is named afresh by each opening, so it is found by its pane.
     const transient = isTransientPane(entry.paneId);
@@ -469,12 +488,12 @@ async function main(): Promise<void> {
       debug("settled");
     };
     for (const width of widths) {
-      await viewport(width);
+      await setViewport(cdp, width);
       for (const [index, theme] of themes.entries()) {
         const measure = index === 0;
         await open(theme);
         const rootView: AuditView = { ...base, id: `${entry.token}--root`, view: "root" };
-        if (!await record(rootView, id, width, theme, measure)) continue;
+        if (!await record(cdp, rootView, id, width, theme, measure)) continue;
         views.set(rootView.id, rootView);
         // The detail Enter opens from the root.
         const before = await paneText();
@@ -482,7 +501,7 @@ async function main(): Promise<void> {
         await settle(cdp, scope, 700, 6_000);
         if (await paneText() !== before) {
           const detail: AuditView = { ...base, id: `${entry.token}--detail`, view: "detail" };
-          await record(detail, id, width, theme, measure);
+          await record(cdp, detail, id, width, theme, measure);
           views.set(detail.id, detail);
         }
         // Each tab from the pane as it first shows, measured only once the page says it is the selected one (tab-visits.ts).
@@ -499,7 +518,7 @@ async function main(): Promise<void> {
               await positionTickerEvents(cdp, scope);
             }
             const tab: AuditView = { ...base, id: `${entry.token}--tab-${slug(name)}`, view: "tab", tab: name };
-            if (!await record(tab, id, width, theme, measure)) return false;
+            if (!await record(cdp, tab, id, width, theme, measure)) return false;
             views.set(tab.id, tab);
             return true;
           },

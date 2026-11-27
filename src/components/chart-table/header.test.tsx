@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { act, useState } from "react";
 import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
 import { createInitialState } from "../../state/app/context";
-import { TestPaneProvider } from "../../test-support/pane";
+import { usePinnedTabTime } from "../../state/app/tab-cursor";
+import { TestPaneFrame, TestPaneProvider } from "../../test-support/pane";
 import { createTestPluginRuntime } from "../../test-support/plugin-runtime";
 import { createDefaultConfig } from "../../types/config";
 import { DataTableView } from "../data-table/view";
@@ -31,14 +32,16 @@ const FIGURES: StatItem[] = [
 const formatBp = (value: number) => `${value.toFixed(1)}bp`;
 
 const tui = createOpenTuiTestHarness();
-function Pane({ width, height, rows = ROWS, chart }: {
+function Pane({ width, height, rows = ROWS, chart, onSelected }: {
   width: number;
   height: number;
   rows?: Row[];
   chart?: Partial<ChartTableChart> | null;
+  onSelected?: (id: string | null) => void;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const effectiveId = selectedId ?? rows[0]?.id ?? null;
+  onSelected?.(effectiveId);
   const link = useChartTableSelection({
     rows, getId: (row) => row.id, getDate: (row) => new Date(row.date), selectedId: effectiveId, onSelect: setSelectedId, focused: true,
   });
@@ -48,6 +51,7 @@ function Pane({ width, height, rows = ROWS, chart }: {
   return (
     <DataTableView<Row, DataTableColumn>
       focused
+      sortColumnId={null} sortDirection="desc" emptyStateTitle="No spreads"
       rootWidth={width}
       rootHeight={height}
       rootBefore={<ChartTableHeader width={width} height={height} tableRows={rows.length} figures={FIGURES}
@@ -113,6 +117,13 @@ describe("ChartTableHeader", () => {
     expect(headerRow(lines)).toBe(1);
   });
 
+  test("a single observation does not open a chart band by default", async () => {
+    const date = new Date(ROWS[0]!.date);
+    const series = [staticSeries([{ date, observedAt: date, value: 150 }], { id: "spread", color: "#22c55e" })];
+    const lines = await render(<Pane width={80} height={24} chart={{ series }} />, 80, 24);
+    expect(headerRow(lines)).toBe(1);
+  });
+
   test("Left moves the selection back in time and the cursor with it", async () => {
     await render(<Pane width={80} height={24} />, 80, 24);
     const legend = () => tui.frame().split("\n").find((line) => line.includes("● 5Y spread")) ?? "";
@@ -123,5 +134,48 @@ describe("ChartTableHeader", () => {
     await act(async () => { await Promise.resolve(); await tui.setup().renderOnce(); });
     expect(legend()).not.toBe(before);
     expect(legend()).toContain(formatBp(ROWS[3]!.value));
+  });
+
+  // A chart over a table (SIV) pins the tab's crosshair from the pane, as a
+  // chart pane does, though the chart never takes the pane's focus.
+  test("p pins the crosshair at the selected row, Left moves the pin a bar and the selection with it, and Esc lifts it", async () => {
+    let selected: string | null = null;
+    let pinnedDay: string | null = null;
+    function PinnedDay() {
+      const at = usePinnedTabTime();
+      pinnedDay = at === null ? null : new Date(at).toISOString().slice(0, 10);
+      return null;
+    }
+    const state = createInitialState(createDefaultConfig("/tmp/gloom-chart-table-pin"));
+    await act(async () => {
+      await tui.render(
+        <TestPaneFrame state={state} dispatch={() => {}} paneId="chart-table" pluginId="chart-table" runtime={createTestPluginRuntime()}
+          width={80} height={25} footerKeys>
+          {(body) => <><PinnedDay /><Pane width={body.width} height={body.height} onSelected={(id) => { selected = id; }} /></>}
+        </TestPaneFrame>,
+        { width: 80, height: 25 },
+      );
+    });
+    const settle = async () => {
+      for (let index = 0; index < 3; index += 1) await act(async () => { await Promise.resolve(); await tui.setup().renderOnce(); });
+    };
+    const footer = () => tui.frame().split("\n").filter((line) => line.trim() !== "").at(-1) ?? "";
+    await settle();
+    expect(footer()).toContain("[p]in");
+
+    await tui.emitKeypress({ name: "p", sequence: "p" }, { frames: 2, afterCommit: true });
+    await settle();
+    expect(footer()).toContain("[p] unpin");
+    expect([pinnedDay, selected]).toEqual([ROWS[0]!.date, ROWS[0]!.id]);
+
+    await act(async () => { tui.setup().mockInput.pressArrow("left"); await tui.setup().renderOnce(); });
+    await settle();
+    expect([pinnedDay, selected]).toEqual([ROWS[1]!.date, ROWS[1]!.id]);
+
+    await tui.emitKeypress({ name: "escape", sequence: "\u001b" }, { frames: 2, afterCommit: true });
+    await settle();
+    expect(footer()).toContain("[p]in");
+    expect(footer()).not.toContain("unpin");
+    expect([pinnedDay, selected]).toEqual([null, ROWS[1]!.id]);
   });
 });

@@ -4,7 +4,8 @@ import { declaredDividendCash, declaredDividends } from "./declared-dividends";
 test("a declared row stays apart from the paid history and leaves once that history lists it, even from a cached payload", () => {
   const now = new Date("2026-10-13T17:00:00Z");
   const declared = [
-    { exDate: "2026-11-19", amount: 0.98, declarationDate: "2026-09-15", recordDate: "2026-11-19", payDate: "2026-12-10" },
+    { exDate: "2026-11-19", amount: 0.98, declarationDate: "2026-09-15", recordDate: "2026-11-19", payDate: "2026-12-10",
+      source: { publisher: "KSEI", url: "https://example.com/cash.pdf", scheduleUrl: "https://example.com/schedule.pdf" } },
     { exDate: "2026-08-20", amount: 0.91, payDate: "2026-09-10" },
     { exDate: "2027-01-14", amount: Number.NaN },
   ];

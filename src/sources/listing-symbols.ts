@@ -12,7 +12,7 @@ const EXCHANGE_SUFFIX_MAP: Record<string, string> = {
   IDX: ".JK",
   NSE: ".NS", BSE: ".BO",
   ASX: ".AX", NZE: ".NZ",
-  SET: ".BK", BKK: ".BK", KLSE: ".KL", MYX: ".KL", PSE: ".PS", HOSE: ".VN", HNX: "",
+  SET: ".BK", BKK: ".BK", KLSE: ".KL", MYX: ".KL", PSE: ".PS", XPHS: "", HOSE: ".VN", HNX: "",
   LSE: ".L", LSEETF: ".L",
   XETRA: ".DE", XETR: ".DE", IBIS: ".DE", IBIS2: ".DE", FWB: ".F", FWB2: ".F", GETTEX: ".DE", TGATE: ".DE", SWB: ".SG",
   EURONEXT: ".AS", AEB: ".AS", AMS: ".AS", SBF: ".PA", EPA: ".PA", "ENEXT.BE": ".BR", BRU: ".BR", BVL: ".LS", LIS: ".LS",

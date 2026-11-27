@@ -293,6 +293,12 @@ export function companyCellText(row: CompanyRow, column: string, observations: K
     : column === "confidence" ? `${Math.round(row.confidence * 100)}%` : column === "revision" ? `${row.revision} ${row.current ? "current" : "superseded"}` : row.evidence[0]!.quote;
 }
 /**
+ * What a narrow desktop pane gives up first in the evidence ledger: how sure
+ * and which revision, then the figure and its change, which the Table tab
+ * holds. The sentence and the day it was published stay.
+ */
+export const EVIDENCE_COLUMN_DROP_ORDER = ["revision", "confidence", "change", "value", "published"] as const;
+/**
  * The table's columns. `named` is the desktop's: the metric cell names the
  * series in plain words (seriesDetail), so no basis or scope column repeats it.
  * `period` is the one kind of period the rows are, which names the change.
@@ -310,7 +316,9 @@ export function companyColumns(guidance: boolean, evidence: boolean, history: bo
     { id: "basis", label: "Basis", width: 18, align: "left" },
     { id: "scope", label: "Scope", width: 24, align: "left" },
     ...(evidence ? [{ id: "published", label: "Published", width: 11, align: "left" as const }, { id: "confidence", label: "Confidence", width: 11, align: "right" as const },
-      { id: "revision", label: "Revision", width: 12, align: "left" as const }, { id: "quote", label: "Evidence", width: 54, align: "left" as const }] : []),
+      { id: "revision", label: "Revision", width: 12, align: "left" as const },
+      // The sentence gives up length before a narrow desktop pane gives up the column.
+      { id: "quote", label: "Evidence", width: 54, flexGrow: 1, align: "left" as const }] : []),
   ];
   const order = evidence ? ["metric", "period", "quote", "published", "confidence", "revision", "value", "basis", "scope", "issued", "change"]
     : history ? ["metric", "period", "actual", "outcome", "value", "issued", "change", "basis", "scope"] : null;
@@ -318,8 +326,8 @@ export function companyColumns(guidance: boolean, evidence: boolean, history: bo
   return order ? shown.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id)) : shown;
 }
 
-/** Cells a column gives up on a narrow pane, before any column is dropped: a date needs 10, a range about 19. */
-const NARROW_WIDTHS: Record<string, number> = { period: 13, value: 19, change: 11, issued: 10, actual: 12, outcome: 9, basis: 12, scope: 18 };
+/** Narrow column widths before any column is dropped. The issued date keeps all 11 characters. */
+const NARROW_WIDTHS: Record<string, number> = { period: 13, value: 19, change: 11, actual: 12, outcome: 9, basis: 12, scope: 18 };
 /** The metric keeps at least this much: a name such as "Revenue growth", and its series detail only when there is room. */
 const METRIC_FLOOR = 14;
 
@@ -333,7 +341,15 @@ const METRIC_FLOOR = 14;
 export function fitCompanyColumns(columns: readonly DataTableColumn[], width: number, history = false): DataTableColumn[] {
   const room = width - 1;
   if (getTableWidth(columns) <= room) return [...columns];
-  const narrow = (list: readonly DataTableColumn[]) => list.map((column) => column.id in NARROW_WIDTHS ? { ...column, width: Math.min(column.width, NARROW_WIDTHS[column.id]!) } : column);
+  const narrow = (list: readonly DataTableColumn[]) => list.map((column) => {
+    const width = NARROW_WIDTHS[column.id];
+    if (width === undefined) return column;
+    return {
+      ...column,
+      width: Math.min(column.width, width),
+      label: history && column.id === "period" ? "Period" : column.label,
+    };
+  });
   const attempt = (list: readonly DataTableColumn[]): DataTableColumn[] | null => {
     const tight = narrow(list);
     const metric = tight.find((column) => column.id === "metric");
