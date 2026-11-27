@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { appendFile, readdir, readFile, writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
+import { isAsShippedCheck } from "./ports";
 import type { CheckResult, CheckRun } from "./results";
 
 /**
@@ -10,7 +11,8 @@ import type { CheckResult, CheckRun } from "./results";
  *
  *   bun scripts/windows-desktop-check/report.ts <folder> [--known <known-failures.json>]
  *
- * With --known, a failure the file does not list fails the command: the file
+ * As-shipped listener and cleanup failures always fail the command. With --known, any
+ * other failure the file does not list also fails the command: the file
  * names the checks a build is known to fail, each with why, as `<check>`,
  * `<check>@<scale>` or `<check>@<machine>`.
  */
@@ -25,7 +27,7 @@ interface LoadedRun extends CheckRun { dir: string }
 async function findRuns(dir: string): Promise<LoadedRun[]> {
   const runs: LoadedRun[] = [];
   for (const entry of await readdir(dir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
+    if (!entry.isDirectory() || entry.name.startsWith("profile-")) continue;
     const path = join(dir, entry.name);
     if (existsSync(join(path, "results.json"))) {
       runs.push({ ...JSON.parse(await readFile(join(path, "results.json"), "utf8")) as CheckRun, dir: path });
@@ -49,7 +51,7 @@ if (!runs.length) {
 const known: Record<string, string> = knownPath ? (JSON.parse(await readFile(knownPath, "utf8")) as { checks: Record<string, string> }).checks : {};
 // A run's label ends with its machine (`head-arm64`): an entry `<check>@arm64` covers that machine only.
 const machineOf = (run: CheckRun) => run.label.split("-").at(-1) ?? "";
-const isKnown = (run: CheckRun, id: string) => id in known || `${id}@${run.scale}` in known || `${id}@${machineOf(run)}` in known;
+const isKnown = (run: CheckRun, id: string) => !isAsShippedCheck(id) && (id in known || `${id}@${run.scale}` in known || `${id}@${machineOf(run)}` in known);
 
 const ids: Array<{ id: string; title: string }> = [];
 for (const run of runs) {
@@ -78,7 +80,7 @@ for (const run of runs) {
   for (const result of failures) {
     const knownNote = knownPath && isKnown(run, result.id) ? " (known)" : "";
     lines.push(`- **${result.title}**${knownNote}: ${result.detail}${result.shots.length ? ` (${result.shots.join(", ")})` : ""}`);
-    if (knownPath && !isKnown(run, result.id)) unexpected.push(`${runName(run)}: ${result.title}: ${result.detail}`);
+    if (isAsShippedCheck(result.id) || (knownPath && !isKnown(run, result.id))) unexpected.push(`${runName(run)}: ${result.title}: ${result.detail}`);
   }
   lines.push("");
 }
@@ -90,8 +92,8 @@ if (knownPath) {
     if (results.length && results.every((result) => result.status === "pass")) nowPassing.push(id);
   }
   if (nowPassing.length) lines.push(`Listed as known failures but passing now (take them off the list): ${nowPassing.join(", ")}`, "");
-  if (unexpected.length) lines.push(`**${unexpected.length} failure(s) not on the known list.**`, "");
 }
+if (unexpected.length) lines.push(`**${unexpected.length} blocking failure(s).**`, "");
 
 const summary = lines.join("\n");
 await writeFile(join(root, "summary.md"), summary);
@@ -118,6 +120,6 @@ await writeFile(join(root, "index.html"), html.join("\n"));
 
 console.log(summary);
 if (unexpected.length) {
-  console.error(`\n${unexpected.length} failure(s) not on the known list:\n${unexpected.join("\n")}`);
+  console.error(`\n${unexpected.length} blocking failure(s):\n${unexpected.join("\n")}`);
   process.exit(1);
 }
