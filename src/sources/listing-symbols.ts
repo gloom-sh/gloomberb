@@ -205,6 +205,12 @@ export function hongKongListingCode(ticker: string, exchange: string): string {
   return isHongKongExchange(exchange) && /^\d+$/.test(ticker) ? ticker.padStart(4, "0") : ticker;
 }
 
+/** Accept both short and zero-padded Hong Kong codes without dropping a significant fifth digit. */
+export function hongKongWorkingCode(ticker: string, exchange = "HKEX"): string | null {
+  if (!isHongKongExchange(exchange) || !/^\d{1,5}$/.test(ticker) || !Number(ticker)) return null;
+  return String(Number(ticker)).padStart(4, "0");
+}
+
 function normalizeListingTicker(ticker: string, exchange: string): string {
   return hongKongListingCode(ticker, exchange).replace(/ /g, "-");
 }

@@ -117,7 +117,7 @@ export function usePositionsImport({
       initialTarget,
       baseCurrency: config.baseCurrency,
     };
-    const symbols = file.positions.map((position) => position.symbol);
+    const symbols = file.positions.map((position) => position.lookupSymbol);
     const lookUp = () => lookUpPositionSymbols(symbols, {
       tickers: stateRef.current.tickers,
       store: registry.tickerRepository,

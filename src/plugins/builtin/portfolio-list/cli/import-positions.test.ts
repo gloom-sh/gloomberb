@@ -56,23 +56,29 @@ async function setup(providerOverrides: Parameters<typeof createTestDataProvider
   return { store, dataDir, dataProvider, file, run };
 }
 
-test.each(["successor", "catalog withdrawal", "delisted quote"] as const)("snapshot rejects %s without replacing existing lots or config", async (evidence) => {
+test.each([
+  { evidence: "successor", input: "ELET6", key: "ELET6:B3", symbol: "AXIA3", exchange: "B3", name: "AXIA Energia", currency: "BRL", reason: /AXIA3.*Reconcile/ },
+  { evidence: "broker share class", input: "DUAL/N", key: "DUAL:NYSE", symbol: "DUAL", exchange: "NYSE", name: "Dual Common", currency: "USD", reason: /DUAL-N/ },
+  { evidence: "bare futures root", input: "ZF", key: "ZF=F", symbol: "ZF=F", exchange: "CBOT", name: "Treasury Note Future", currency: "USD", reason: /exact listing|ticker match/ },
+  ...["0011.HK", "00011.HK"].flatMap((symbol) => [
+    { evidence: `catalog withdrawal keyed ${symbol}`, input: "0011:HKEX", symbol, reason: /Exchange withdrawal/ },
+    { evidence: `delisted quote keyed ${symbol}`, input: "0011:HKEX", symbol, reason: /last traded 2026-01-26/ },
+  ].map((entry) => ({ ...entry, key: entry.input, exchange: "HKEX", name: "Harbour Bank", currency: "HKD" }))),
+])("snapshot rejects $evidence without replacing existing lots or config", async ({ evidence, input, key, reason, ...listing }) => {
   const renamed = evidence === "successor";
-  const input = renamed ? "ELET6" : "0011:HKEX";
-  const key = renamed ? "ELET6:B3" : input;
-  const listing = renamed ? { symbol: "AXIA3", exchange: "B3", name: "AXIA Energia", currency: "BRL" }
-    : { symbol: "0011.HK", exchange: "HKEX", name: "Harbour Bank", currency: "HKD" };
+  const withdrawn = evidence.startsWith("catalog withdrawal");
+  const delisted = evidence.startsWith("delisted quote");
+  const listingRoot = listing.exchange === "HKEX" ? "0011" : listing.symbol;
   const delisting = { status: "delisted" as const, lastTradeDate: "2026-01-26", historyStart: "2020-01-02" };
   const withdrawal = { on: "2026-01-27", reason: "Exchange withdrawal" };
-  const reason = renamed ? /AXIA3.*Reconcile/ : evidence === "catalog withdrawal" ? /Exchange withdrawal/ : /last traded 2026-01-26/;
   const { store, dataDir, dataProvider, file, run } = await setup({
-    search: async (query) => query.startsWith(renamed ? "AXIA3" : "0011") ? [{ providerId: "test", type: "STK", ...listing,
-      ...(evidence === "catalog withdrawal" ? { withdrawal } : {}) }] : [],
+    search: async (query) => query === listingRoot || query === `${listingRoot}:${listing.exchange}`
+      ? [{ providerId: "test", type: "STK", ...listing, ...(withdrawn ? { withdrawal } : {}) }] : [],
     getQuote: async (symbol) => {
       if (symbol === "AAPL") return createTestQuote({ symbol, name: "Apple Inc.", listingExchangeName: "NASDAQ" });
-      if (evidence === "catalog withdrawal") throw new Error(`Not a ticker: ${symbol}.`);
+      if (withdrawn || ![listingRoot, listing.symbol, `${listingRoot}:${listing.exchange}`].includes(symbol)) throw new Error(`Not a ticker: ${symbol}.`);
       return createTestQuote({ ...listing, listingExchangeName: listing.exchange, exchangeName: listing.exchange,
-        ...(evidence === "delisted quote" ? { delisting } : {}) });
+        ...(delisted ? { delisting } : {}) });
     },
   });
   await store.saveTicker(createTestTicker(key, renamed ? "Eletrobras Preferred" : listing.name, {
@@ -88,7 +94,7 @@ test.each(["successor", "catalog withdrawal", "delisted quote"] as const)("snaps
   const beforeConfig = await configFile.text();
   await writeFile(file, `Symbol,Shares,Avg Cost\nAAPL,10,150\n${input},9,300\n`);
 
-  const expected = { positions: [{ listing: "AAPL:NASDAQ" }], skipped: [{ label: input, reason: expect.stringMatching(reason) }] };
+  const expected = { positions: [{ listing: "AAPL:NASDAQ" }], skipped: [{ label: input.replace("/", "."), reason: expect.stringMatching(reason) }] };
   const preview = await run([file, "--name", "Main", "--merge"], { dryRun: true });
   expect(preview.result.data).toMatchObject(expected);
   expect(JSON.stringify(await store.loadAllTickers())).toBe(before);
@@ -107,23 +113,50 @@ test.each(["successor", "catalog withdrawal", "delisted quote"] as const)("snaps
     const ordinary = await resolveCliTicker(input, store, dataProvider);
     expect(ordinary.ticker.metadata.ticker).toBe("AXIA3");
     expect(ordinary.readAs).toContain("converted");
+  } else if (evidence === "broker share class" || evidence === "bare futures root") {
+    const ordinary = await resolveCliTicker(input.replace("/", "."), store, dataProvider);
+    expect(ordinary.ticker.metadata.ticker).toBe(key);
   }
 });
 
-test.each(["0011.HK", "0011.HK:XHKG", "11.HK"])("%s imports the same HK listing despite ended evidence on another venue", async (input) => {
-  const listing = { providerId: "test", symbol: "0011.HK", exchange: "HKEX", name: "Harbour Bank", currency: "HKD", type: "STK" };
+test.each([
+  ["0011.HK", "0011"], ["0011.HK:XHKG", "0011"], ["11.HK", "0011"], ["00011.HK", "0011"], ["00011:XHKG", "0011"], ["83011.HK", "83011"],
+])("%s imports its HK listing despite ended evidence for another listing", async (input, code) => {
+  const listing = { providerId: "test", symbol: `${code}.HK`, exchange: "HKEX", name: "Harbour Bank", currency: "HKD", type: "STK" };
+  const withdrawal = { on: "2026-01-27", reason: "Exchange withdrawal" };
   const { store, file, run } = await setup({
-    search: async () => [listing, { ...listing, exchange: "NYSE", withdrawal: { on: "2026-01-27", reason: "Exchange withdrawal" } }],
+    search: async () => [listing, { ...listing, exchange: "NYSE", withdrawal },
+      { ...listing, symbol: code === "0011" ? "83011.HK" : "00011.HK", withdrawal }],
     getQuote: async () => createTestQuote({ ...listing, exchangeName: "NYSE", listingExchangeName: "NYSE",
       delisting: { status: "delisted", lastTradeDate: "2026-01-26", historyStart: "2020-01-02" } }),
   });
-  const key = "0011:HKEX";
+  const key = `${code}:HKEX`;
   await store.saveTicker(createTestTicker(key, listing.name, { exchange: listing.exchange, currency: listing.currency }));
   await writeFile(file, `Symbol,Shares,Avg Cost\n${input},9,300\n`);
   const applied = await run([file, "--name", "Main", "--merge"]);
   expect(applied.result.data).toMatchObject({ positions: [{ listing: key, name: listing.name, shares: 9 }], skipped: [] });
   expect((await store.loadTicker(key))?.metadata.positions?.[0]?.shares).toBe(9);
-  expect(await store.loadTicker("0011")).toBeNull();
+  expect(await store.loadTicker(code)).toBeNull();
+});
+
+test("broker slash spellings import only the exact share class", async () => {
+  const { store, file, run } = await setup({
+    search: async () => [],
+    getQuote: async (symbol) => { throw new Error(`Not a ticker: ${symbol}.`); },
+  });
+  await store.saveTicker(createTestTicker("DUAL:NYSE", "Dual Common", { exchange: "NYSE" }));
+  await store.saveTicker(createTestTicker("DUAL.N", "Dual Class N", { exchange: "NYSE" }));
+  await store.saveTicker(createTestTicker("BRK.B", "Berkshire Hathaway Class B", { exchange: "NYSE" }));
+  await writeFile(file, "Symbol,Shares,Avg Cost\nDUAL/N,2,30\nBRK/B,3,40\nBRK.B,4,40\nDUAL.N,5,20\n");
+
+  const { result } = await run([file, "--name", "Main", "--merge"]);
+  expect(result.data).toMatchObject({ positions: [
+    { listing: "DUAL.N:NYSE", symbols: ["DUAL.N"], shares: 2 },
+    { listing: "BRK.B:NYSE", symbols: ["BRK.B"], shares: 7 },
+    { listing: "DUAL:NYSE", symbols: ["DUAL.N"], shares: 5 },
+  ], skipped: [] });
+  expect((await store.loadTicker("DUAL.N"))?.metadata.positions?.[0]?.shares).toBe(2);
+  expect((await store.loadTicker("DUAL:NYSE"))?.metadata.positions?.[0]?.shares).toBe(5);
 });
 
 test("a verified last trade blocks a current snapshot but a stale quote alone does not", async () => {

@@ -33,6 +33,8 @@ export const POSITIONS_EXPORT_BROKERS = ["Fidelity", "Schwab", "Vanguard", "E*TR
 export interface FilePosition {
   /** The symbol as the file writes it, cleaned of marks (BRK/B reads BRK.B). */
   symbol: string;
+  /** Unambiguous lookup spelling: a broker's DUAL/N is class N, not the Reuters code DUAL.N. */
+  lookupSymbol: string;
   description: string | null;
   /** Signed: a negative count is a short. */
   shares: number;
@@ -394,18 +396,19 @@ function readCurrency(text: string): string | null {
   return /^[A-Z]{3}$/.test(code) && isCurrencyCode(code) ? code : null;
 }
 
-/** The symbol cleaned of the marks exports add: Fidelity's `**` core money market, Schwab's `BRK/B`. */
+/** The symbol cleaned of the marks exports add, such as Fidelity's `**` core money market. */
 function cleanSymbol(text: string): string {
   // Too long for a ticker: kept as written, so it is skipped as not one.
   if (text.length > MAX_SYMBOL_CELL) return text.trim().toUpperCase();
   const symbol = text.trim().replace(/\*+$/, "").toUpperCase();
   if (!symbol || /^-+$/.test(symbol) || /^n\/?a$/i.test(symbol)) return "";
-  return symbol.replace(/\//g, ".");
+  return symbol;
 }
 
 interface ReadRow {
   line: number;
   symbol: string;
+  lookupSymbol: string;
   description: string | null;
   shares: number;
   avgCost: number | null;
@@ -437,7 +440,8 @@ function readRow(record: CsvRecord, header: Header, options: RowOptions): RowRea
   const type = cell("securityType");
   const lead = rawSymbol || filled[0]!.trim();
   if (TOTAL_ROW.test(lead) || (!rawSymbol && description && TOTAL_ROW.test(description))) return { kind: "ignored" };
-  const symbol = cleanSymbol(rawSymbol);
+  const cleaned = cleanSymbol(rawSymbol);
+  const symbol = cleaned.replace(/\//g, ".");
   const label = clip((symbol ? rawSymbol : description) || lead);
   const skip = (kind: keyof typeof SKIP_REASONS): RowReading => ({
     kind: "skipped",
@@ -476,6 +480,7 @@ function readRow(record: CsvRecord, header: Header, options: RowOptions): RowRea
     row: {
       line,
       symbol,
+      lookupSymbol: cleaned.replace(/^([A-Z0-9]+)\/([A-Z])(?=:|$)/, "$1-$2").replace(/\//g, "."),
       description,
       shares,
       avgCost,
@@ -508,6 +513,7 @@ function mergeRows(rows: readonly ReadRow[]): { position: FilePosition } | { ski
   return {
     position: {
       symbol: first.symbol,
+      lookupSymbol: first.lookupSymbol,
       description: rows.find((row) => row.description)?.description ?? null,
       shares,
       avgCost,
@@ -664,9 +670,9 @@ export function parsePositionsFile(text: string, now = new Date()): PositionsFil
       const reading = readRow(record, section.header, options);
       if (reading.kind === "skipped") skipped.push(reading.skipped);
       if (reading.kind !== "position") continue;
-      const rows = bySymbol.get(reading.row.symbol) ?? [];
+      const rows = bySymbol.get(reading.row.lookupSymbol) ?? [];
       rows.push(reading.row);
-      bySymbol.set(reading.row.symbol, rows);
+      bySymbol.set(reading.row.lookupSymbol, rows);
     }
   }
   if (bySymbol.size > MAX_IMPORT_POSITIONS) {

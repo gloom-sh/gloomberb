@@ -79,7 +79,7 @@ import { unreadBloombergCodeMessage } from "./terminal-code-hints";
 import { isKanjiOnlyName, japaneseNameChoice, japaneseNameReadAs, readExactJapaneseName, readJapaneseName, type JapaneseNameReading } from "../tickers/search/japanese-names";
 import { listingAbroadVenue } from "../utils/sec";
 import { savedAbroadForBareSymbol, savedUsListingOf } from "../tickers/search/bare-symbol";
-import { hongKongListingCode, listingSuffixCandidate, listingSuffixVenue, tickerHasListingSuffix } from "../sources/listing-symbols";
+import { hongKongWorkingCode, listingSuffixCandidate, listingSuffixVenue, tickerHasListingSuffix } from "../sources/listing-symbols";
 import { isCurrencyPairListing } from "../utils/fx-market-hours";
 import { coinElsewhereNote, notTheCoinNote } from "./commands/crypto-hints";
 import { fredSeriesArgument, fredSeriesNotListing } from "../series/fred-argument";
@@ -258,7 +258,7 @@ function parseCleanListingArg(
   const listed = listedFuturesSymbol(parsed.symbol);
   if (listed) return { symbol: listed, exchange: "", key: listed };
   // A futures board code no security uses is its future: TTF is TTF=F.
-  const symbol = bareFuturesCode(parsed.symbol)?.symbol ?? parsed.symbol;
+  const symbol = (currentSnapshot ? null : bareFuturesCode(parsed.symbol))?.symbol ?? parsed.symbol;
   return { symbol, exchange, key: symbol };
 }
 
@@ -1657,9 +1657,9 @@ const SHORT_HONG_KONG_CODE = /^\d{1,3}$/;
  * listing with it, cannot search or is too busy to say.
  */
 async function readHongKongShortCode(listing: ListingArg, deps: ListingDeps): Promise<ListingArg | null> {
-  if (listing.exchange || !SHORT_HONG_KONG_CODE.test(listing.symbol) || !Number(listing.symbol)) return null;
-  if (await deps.store.loadTicker(listing.symbol)) return null;
-  const symbol = String(Number(listing.symbol)).padStart(4, "0");
+  if (listing.exchange || !SHORT_HONG_KONG_CODE.test(listing.symbol)) return null;
+  const symbol = hongKongWorkingCode(listing.symbol);
+  if (!symbol || await deps.store.loadTicker(listing.symbol)) return null;
   const marked = await serviceMarkedListing(deps.dataProvider, listing.symbol, symbol);
   if (marked?.exchange !== "HKEX") return null;
   const key = `${symbol}:HKEX`;
@@ -1690,7 +1690,8 @@ export function snapshotListingKey(listing: { symbol: string; exchange?: string 
   const suffix = listingSuffixVenue(parsed.symbol, venue);
   const confirmed = suffix && (!venue || suffix.exchange === venue) ? suffix : null;
   const exchange = confirmed?.exchange ?? venue;
-  return { symbol: hongKongListingCode(confirmed?.symbol ?? parsed.symbol, exchange), exchange };
+  const symbol = confirmed?.symbol ?? parsed.symbol;
+  return { symbol: hongKongWorkingCode(symbol, exchange) ?? symbol, exchange };
 }
 
 export async function resolveCliListing(

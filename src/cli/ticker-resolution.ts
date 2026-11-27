@@ -705,7 +705,7 @@ function lookAgain(entry: CliTickerResolution): boolean {
  * spellings (`providerSearchQueries`); one with a venue, or read another way,
  * is searched as it always is.
  */
-function listLookupPlan(input: string, exchange: string | undefined): ListLookupPlan {
+function listLookupPlan(input: string, exchange: string | undefined, currentSnapshot?: boolean): ListLookupPlan {
   // What cannot be a symbol is refused without a request.
   if (notASymbolError(input)) return { searches: [], changes: null };
   // A terminal's code abroad (`VOD LN`) is its listing as written: it asks only for its quote.
@@ -715,7 +715,7 @@ function listLookupPlan(input: string, exchange: string | undefined): ListLookup
   if (isCompanyNameInput(input)) return { searches: companyNameQueries(input), changes: null };
   try {
     // GARAN.IS names its venue, as GARAN:BIST does: it is looked up as a named listing is.
-    const listing = parseListingArg(input, exchange, { ownExchangeWins: true, listingSuffix: true });
+    const listing = parseListingArg(input, exchange, { ownExchangeWins: true, listingSuffix: true, currentSnapshot });
     const searchable = !listing.exchange && /^[A-Z0-9][A-Z0-9.-]{0,11}$/.test(listing.symbol);
     // A named US venue (ZION:NASDAQ, as a company's name reads) is looked up by search (`listingOfOwnQuote`).
     const usVenue = !!listing.exchange && !listing.sharedCode && isUsSymbolVenue(listing.exchange);
@@ -762,7 +762,7 @@ export async function resolveTickersForCli(
     retryWaitsMs?: readonly number[];
   } = {},
 ): Promise<CliTickerResolution[]> {
-  const plans = new Map(symbols.map((input) => [input, listLookupPlan(input, exchange)] as const));
+  const plans = new Map(symbols.map((input) => [input, listLookupPlan(input, exchange, currentSnapshot)] as const));
   let settled = 0;
   const progress = onProgress ? () => onProgress(++settled, symbols.length) : undefined;
   // Told before any answer, so a slow first answer is said to be awaited.

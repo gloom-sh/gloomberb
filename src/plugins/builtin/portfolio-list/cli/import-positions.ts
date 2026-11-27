@@ -137,7 +137,7 @@ export async function importPositionsFileCommand(
       const portfolio = existing ?? created!.portfolio;
 
       // Looked up as `portfolio add` looks a list up; listings found are kept in memory until the import is saved.
-      const symbols = file.positions.map((position) => position.symbol);
+      const symbols = file.positions.map((position) => position.lookupSymbol);
       const { resolutions } = await lookUpPositionSymbols(symbols, { store, dataProvider },
         { onRetry: retryNotice(ctx), onProgress: progressNotice(ctx) });
       // A portfolio that holds nothing has nothing to replace: the file goes into it either way.
