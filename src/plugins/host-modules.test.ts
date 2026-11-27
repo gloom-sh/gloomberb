@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { rmSync, writeFileSync } from "fs";
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
 import { join } from "path";
 
 import { hostExportNames } from "./bundle";
@@ -14,14 +15,17 @@ describe("plugin host modules", () => {
   });
 
   test("discovers and bundles shared modules from a Bun compiled executable", () => {
-    const entry = join(import.meta.dir, `.compiled-host-module-entry-${process.pid}.ts`);
-    const outfile = join(import.meta.dir, `.compiled-host-module-entry-${process.pid}.exe`);
+    const workDir = mkdtempSync(join(tmpdir(), "gloom-compiled-host-entry-"));
+    const entry = join(workDir, `entry-${process.pid}.ts`);
+    const outfile = join(workDir, `entry-${process.pid}.exe`);
+    const bundleModule = join(import.meta.dir, "bundle");
+    const hostModulesModule = join(import.meta.dir, "host-modules");
     writeFileSync(entry, `
       import { mkdtempSync, rmSync, writeFileSync } from "fs";
       import { tmpdir } from "os";
       import { join } from "path";
-      import { bundleExternalPlugin, hostExportNames } from "./bundle";
-      import { importAllPluginHostModules } from "./host-modules";
+      import { bundleExternalPlugin, hostExportNames } from ${JSON.stringify(bundleModule)};
+      import { importAllPluginHostModules } from ${JSON.stringify(hostModulesModule)};
 
       const pluginDir = mkdtempSync(join(tmpdir(), "gloom-compiled-plugin-"));
       try {
@@ -76,8 +80,7 @@ describe("plugin host modules", () => {
       expect(result.shared).toEqual(["gloomberb/ui"]);
       expect(result.hasHostRegistry).toBe(true);
     } finally {
-      rmSync(entry, { force: true });
-      rmSync(outfile, { force: true });
+      rmSync(workDir, { recursive: true, force: true });
     }
   });
 });
