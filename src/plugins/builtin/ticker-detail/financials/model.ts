@@ -452,6 +452,20 @@ export function financialStatementLimitations(financials: TickerFinancials | nul
   return limitations;
 }
 
+/**
+ * What a scoped statement series is filed as, such as a spun-off listing's history in its predecessor's consolidated
+ * accounts, and a newer filing still under review for it. It is said in full above the table, where no pane width
+ * cuts it, so the figures are never read as the listing's own; the CSV says it as its "Statement basis". Null for
+ * statements with no scope, which are the listing's own.
+ */
+export function financialStatementBasisNote(
+  financials: Pick<TickerFinancials, "statementScope" | "statementReview"> | null | undefined,
+): string | null {
+  const scope = financials?.statementScope;
+  if (!scope) return null;
+  return `Statement basis: ${scope.label}.${financials.statementReview?.status === "pending" ? " New filing under review." : ""}`;
+}
+
 /** "Ordinary Shares (bn ADRs)": a share-count line whose counts are depositary receipts. */
 export function receiptShareCountLabel(row: Pick<FinancialTableModelRow, "key" | "label" | "unitLabel">): string {
   if (!row.key || !SHARE_COUNT_FIELDS.has(row.key)) return row.unitLabel;

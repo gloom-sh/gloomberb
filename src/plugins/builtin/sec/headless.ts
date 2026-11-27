@@ -15,7 +15,7 @@ import type { FundFactsPayload } from "../../../api-client/fund-facts";
 import { errorMessage } from "../../../utils/errors";
 import { filingStoryNote, loadFilingStories, type FilingStory } from "../insider/filing-stories";
 import { logFailure } from "../../../utils/log-failure";
-import { EXCHANGE_FILING_HISTORY_LIMIT, exchangeFilingForm, exchangeFilingHistoryLimit, latestFilingRows, localFilingListing, localFilingRows, PRESENTATIONS_FORM } from "./exchange-filings";
+import { exchangeFilingForm, exchangeFilingHistoryLimit, latestFilingRows, localFilingListing, localFilingRows, PRESENTATIONS_FORM } from "./exchange-filings";
 import type { ExchangeAnnouncementsPayload, ExchangeAnnouncementsRequest } from "../../../api-client/exchange-announcements";
 import { loadSecFilings } from "./client";
 import { ETF_FILING_FORMS, filterFilingsByForms, fundSeriesFilings, loadShownSecFilings, SEC_FILING_FETCH_LIMIT } from "./forms";
@@ -162,7 +162,7 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       {
         key: "form",
         shot: { reportOnly: "picks the report's rows by form; the pane's Form filter picks a group of forms" },
-        description: "Only this SEC form and its amendments, such as 8-K, 10-K or 13D. Use presentations for Taiwan investor conference decks.",
+        description: "Only this SEC form and its amendments, such as 8-K, 10-K or 13D. Use presentations for Taiwan investor conference decks or results for Japan and Singapore results and presentations.",
         type: "string",
         placeholder: "form",
         example: "--form 8-K",
@@ -182,22 +182,24 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       const limit = Number(args.options.limit);
       const form = typeof args.options.form === "string" ? args.options.form.trim() : "";
       const localListing = localFilingListing(symbol);
-      const presentations = form.toLowerCase() === PRESENTATIONS_FORM && exchangeFilingForm(localListing?.exchange)?.kind === PRESENTATIONS_FORM;
+      const availableKind = exchangeFilingForm(localListing?.exchange)?.kind;
+      const localKind = form.toLowerCase() === availableKind ? availableKind : undefined;
+      const presentations = localKind === PRESENTATIONS_FORM;
       const load = (count: number) => dependencies.loadFilings(symbol, count, args, ctx);
       // A form filter searches every filing listed for the issuer and keeps the supplements it names; without
       // one, a bank's pricing supplements and a trust's other funds stay out unless --all, as in `filings`.
-      const listing = !form || presentations ? localListing : null;
-      const localLimit = presentations ? Math.min(EXCHANGE_FILING_HISTORY_LIMIT, limit)
-        : listing?.exchange === "HKEX" && args.options.all !== true
-          ? 100 : Math.min(exchangeFilingHistoryLimit(listing?.exchange), limit);
+      const listing = !form || localKind ? localListing : null;
+      const localLimit = listing?.exchange === "HKEX" && !localKind && args.options.all !== true
+        ? 100
+        : Math.min(exchangeFilingHistoryLimit(listing?.exchange, localKind), limit);
       const [us, local] = await Promise.allSettled([
-        presentations ? Promise.resolve({ filings: [], hidden: null })
+        localKind ? Promise.resolve({ filings: [], hidden: null })
           : loadShownSecFilings(load, limit, { form: form || null, all: args.options.all === true }),
         listing && dependencies.loadExchange ? dependencies.loadExchange({
-          ...listing, limit: localLimit, ...(presentations ? { kind: PRESENTATIONS_FORM } : {}),
+          ...listing, limit: localLimit, ...(localKind ? { kind: localKind } : {}),
         }, ctx) : Promise.resolve(null),
       ]);
-      if (presentations && local.status === "rejected") throw local.reason;
+      if (localKind && local.status === "rejected") throw local.reason;
       const exchange = local.status === "fulfilled" ? local.value : null;
       const exchangeRows = exchange ? localFilingRows(exchange, args.options.all === true) : [];
       if (us.status === "rejected" && !exchangeRows.length) throw us.reason;
@@ -208,7 +210,7 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       if (us.status === "rejected") notes.push(`SEC filings unavailable: ${errorMessage(us.reason)}`);
       if (local.status === "rejected" && listing) notes.push(`${listing.publisher} filings unavailable: ${errorMessage(local.reason)}`);
       if (exchange?.coverage) notes.push(exchange.coverage);
-      if ((exchangeRows.length || presentations) && listing && exchange) {
+      if ((exchangeRows.length || localKind) && listing && exchange) {
         const combined = latestFilingRows(rows, exchangeRows, limit);
         const hasCatalogueDate = presentations || combined.some(row => row.dateBasis === "catalogue");
         const columns: HeadlessPaneColumn[] = [
@@ -220,11 +222,12 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
           : rows.length ? `SEC EDGAR, ${listing.publisher}` : listing.publisher;
         return { rows: combined, columns, textColumns: columns.slice(0, -1), notes: [...notes, ...companyDataNotes(filings[0]?.companyFrom)],
           freshness: { source: publishers, status: "not-a-feed", basis: hasCatalogueDate ? "filings and catalogue dates" : "filed data", observedKey: "filedAt" },
-          ...(presentations && !combined.length
-            ? { empty: exchange.stale ? "MOPS presentation archive incomplete." : "No investor conference presentations in the past year." }
-            : {}),
+          ...(localKind && !combined.length ? { empty: presentations
+            ? exchange.stale ? "MOPS presentation archive incomplete." : "No investor conference presentations in the past year."
+            : exchange.stale ? "Exchange results archive incomplete." : "No results or presentations in the exchange archive." } : {}),
           metadata: { symbol, returned: combined.length, exchangePage: exchange.page,
-            ...(presentations ? { form: PRESENTATIONS_FORM, total: exchange.total, retrievedAt: exchange.retrievedAt, stale: exchange.stale ?? false } : {}),
+            ...(exchange.dateSource ? { exchangeDateSource: exchange.dateSource } : {}),
+            ...(localKind ? { form: localKind, total: exchange.total, retrievedAt: exchange.retrievedAt, stale: exchange.stale ?? false } : {}),
             ...hiddenFilingsMetadata(hidden) } };
       }
       // A listing abroad whose company files nothing with the SEC says where its exchange publishes its announcements.

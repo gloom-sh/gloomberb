@@ -3,7 +3,7 @@ import type { PluginModule } from "../plugin-module";
 import type { SecFilingDocument, SecFilingItem } from "../../../types/data-provider";
 import { apiClient } from "../../../api-client";
 import { useAsyncResource } from "../../../public/react";
-import { EXCHANGE_FILING_HISTORY_LIMIT, exchangeFilingForm, exchangeFilingHistoryLimit, localFilingListing, localFilingRows, PRESENTATIONS_FORM, RECENT_EXCHANGE_FILING_LIMIT } from "./exchange-filings";
+import { exchangeFilingForm, exchangeFilingHistoryLimit, localFilingListing, localFilingRows, PRESENTATIONS_FORM, RECENT_EXCHANGE_FILING_LIMIT } from "./exchange-filings";
 import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery, useTickerFinancials } from "../../../market-data/hooks";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { useShortcut } from "../../../react/input";
@@ -381,8 +381,8 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   const readLocal = useCallback(() => apiClient.getCloudExchangeAnnouncements({
     symbol: localSymbol!,
     exchange: localVenue!,
-    limit: localKind ? EXCHANGE_FILING_HISTORY_LIMIT
-      : localVenue === "HOSE" ? RECENT_EXCHANGE_FILING_LIMIT : exchangeFilingHistoryLimit(localVenue),
+    limit: localVenue === "HOSE" && !localKind
+      ? RECENT_EXCHANGE_FILING_LIMIT : exchangeFilingHistoryLimit(localVenue, localKind),
     ...(localKind ? { kind: localKind } : {}),
   }), [localSymbol, localVenue, localKind]);
   const localFeed = useAsyncResource(localSymbol && localVenue ? readLocal : null);
@@ -762,7 +762,9 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
             : "No investor conference presentations in the past year."
         : localForm && (loading || localLoading) ? "Loading filings..."
         : localForm && feedError ? "Filings unavailable."
-        : localKind === "results" ? "No SGX results or presentations."
+        : localKind === "results" ? localFeed.data?.stale
+          ? "Results archive unavailable or incomplete."
+          : "No results or presentations in the exchange archive."
         : forms && formFilings.length === 0 ? fundEmptyTitle
         : supplementCount > 0 && !showSupplements ? "Only pricing supplements."
         : formGroup === ALL_FORMS ? "No SEC filings." : "No filings of these forms."}
