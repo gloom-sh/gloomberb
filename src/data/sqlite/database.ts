@@ -5,6 +5,7 @@ import { restrictFileSync } from "../../utils/private-files";
 import { createSqliteAccess, type SqliteAccess } from "./access";
 import {
   CHECKPOINT_DELAY_MS,
+  CHECKPOINTER_STUCK_AFTER_MS,
   LAZY_CHECKPOINT_DELAY_MS,
   SQLITE_BACKSTOP_AUTOCHECKPOINT_PAGES,
   SQLITE_DEFAULT_AUTOCHECKPOINT_PAGES,
@@ -101,6 +102,8 @@ export interface SqliteDatabaseOptions {
   holdCommitsDuringFlush?: boolean;
   /** Tests only: the WAL checkpointer's thread, how long it may go silent, and what it reports. */
   checkpointer?: WalCheckpointerOptions;
+  /** Overrides the command's user-write lock deadline. */
+  commandWriteWaitMs?: number;
 }
 
 export class SqliteDatabase {
@@ -170,6 +173,7 @@ export class SqliteDatabase {
     this.access = createSqliteAccess(this.connection, {
       interactive: options.interactive,
       relaxedCommits: wal,
+      commandWriteWaitMs: options.commandWriteWaitMs ?? (onDisk && wal && process.platform === "win32" ? CHECKPOINTER_STUCK_AFTER_MS : undefined),
       ...(checkpointer ? {
         onCommit: (kind) => checkpointer.nudge(kind === "user" ? CHECKPOINT_DELAY_MS : LAZY_CHECKPOINT_DELAY_MS),
         flushedElsewhere: () => checkpointerRunning,

@@ -1,9 +1,31 @@
-/**
- * A timeout this many times past its limit means the page was suspended, not
- * that the Bun process stalled. A page that is running fires the timer within
- * a second or two of its limit, and a hidden one within a minute.
- */
-const SLEEP_TIMEOUT_FACTOR = 2;
+export interface RpcClockSample {
+  wallMs: number;
+  elapsedMs: number;
+  awakeMs: number;
+}
+
+export const RPC_CLOCK_FRESHNESS_MS = 1_000;
+const CLOCK_SLOP_MS = 100;
+const MIN_SLEEP_MS = 5_000;
+
+/** A conservative upper bound on the request's awake time, only when the clocks also show sleep. */
+export function rpcAwakeTimeBound(
+  startedAt: number,
+  timedOutAt: number,
+  before: RpcClockSample | null,
+  after: RpcClockSample | null,
+): number | null {
+  if (!before || !after || ![startedAt, timedOutAt, before.wallMs, after.wallMs, before.elapsedMs, after.elapsedMs, before.awakeMs, after.awakeMs].every(Number.isFinite)) return null;
+  if (timedOutAt <= startedAt || Math.abs(before.wallMs - startedAt) > RPC_CLOCK_FRESHNESS_MS
+    || after.wallMs < timedOutAt || after.wallMs - timedOutAt > RPC_CLOCK_FRESHNESS_MS) return null;
+  if (before.awakeMs < 0 || before.elapsedMs < 0) return null;
+  const elapsed = after.elapsedMs - before.elapsedMs;
+  const awake = after.awakeMs - before.awakeMs;
+  if (elapsed <= 0 || awake < 0 || Math.abs(elapsed - (after.wallMs - before.wallMs)) > CLOCK_SLOP_MS) return null;
+  const outsideRequest = Math.max(0, startedAt - before.wallMs) + after.wallMs - timedOutAt;
+  if (elapsed - awake - outsideRequest - CLOCK_SLOP_MS < MIN_SLEEP_MS) return null;
+  return awake + Math.max(0, before.wallMs - startedAt) + CLOCK_SLOP_MS;
+}
 
 /** What a desktop pane says when the app's background process did not answer its request in time. */
 export const REQUEST_TIMED_OUT_MESSAGE = "Request timed out";
@@ -23,23 +45,26 @@ export class RpcTimeoutError extends Error {
   readonly elapsedMs: number;
   readonly limitMs: number;
   readonly report: string;
+  readonly awakeUpperBoundMs: number | null;
 
   constructor(
     message: string,
-    { elapsedMs, limitMs, report, cause }: { elapsedMs: number; limitMs: number; report: string; cause?: unknown },
+    { elapsedMs, limitMs, report, cause, awakeUpperBoundMs = null }: {
+      elapsedMs: number; limitMs: number; report: string; cause?: unknown; awakeUpperBoundMs?: number | null;
+    },
   ) {
     super(message, cause === undefined ? undefined : { cause });
     this.elapsedMs = elapsedMs;
     this.limitMs = limitMs;
     this.report = report;
+    this.awakeUpperBoundMs = awakeUpperBoundMs;
   }
 }
 
 /**
- * A timeout whose timer fired long after its limit. A laptop that sleeps
- * suspends the page, and on wake the timer runs once for a request the Bun
- * process already lost. Nothing the user did failed, so it is not a crash.
+ * Suppress only when sleep is measured and the request did not have its full
+ * awake budget. Timer lateness alone also happens during a real awake stall.
  */
 export function isSleepRpcTimeout(error: unknown): boolean {
-  return error instanceof RpcTimeoutError && error.elapsedMs > SLEEP_TIMEOUT_FACTOR * error.limitMs;
+  return error instanceof RpcTimeoutError && error.awakeUpperBoundMs !== null && error.awakeUpperBoundMs < error.limitMs;
 }

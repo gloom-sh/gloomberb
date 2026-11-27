@@ -1,4 +1,5 @@
 import { lastPerfSample, recordPerfSample, takeHeldPerfSample, takePersonWaitMs, withoutLastStep } from "./perf-marks";
+import { processActivityDelta, type ProcessActivityDelta, type ProcessActivityReading } from "./stall-process-activity";
 
 /** How often the monitor checks in. Short enough to date a stall precisely. */
 const SAMPLE_INTERVAL_MS = 250;
@@ -29,6 +30,7 @@ export interface StallClockReading {
   threadCpuMs: number | null;
   /** CPU time the whole process has used, every thread together. */
   processCpuMs: number | null;
+  processActivity?: ProcessActivityReading;
 }
 
 export interface StallEvent {
@@ -61,6 +63,8 @@ export interface StallEvent {
   threadCpu?: number;
   /** CPU the process's other threads used meanwhile, in cores (1: one core throughout). */
   otherCpu?: number;
+  /** Windows process-wide counts over the sampling interval, not attribution to the stalled thread. */
+  processActivity?: ProcessActivityDelta;
 }
 
 let stallSink: ((event: StallEvent) => void) | null = null;
@@ -102,7 +106,9 @@ function readStallClocks(read: (() => StallClockReading) | null): StallClockRead
 }
 
 function delta(after: number | null | undefined, before: number | null | undefined): number | null {
-  return after == null || before == null ? null : after - before;
+  if (after == null || before == null) return null;
+  const elapsed = after - before;
+  return elapsed >= 0 && Number.isFinite(elapsed) ? elapsed : null;
 }
 
 /**
@@ -208,6 +214,7 @@ export function startMainThreadStallMonitor(
     const sqlite = sample?.name === "sqlite.blocked" ? sqliteDetail(sample.metadata) : undefined;
     const threadCpuMs = delta(currentClocks?.threadCpuMs, before?.threadCpuMs);
     const processCpuMs = delta(currentClocks?.processCpuMs, before?.processCpuMs);
+    const activity = processActivityDelta(before === null ? null : before?.processActivity, currentClocks === null ? null : currentClocks?.processActivity);
     report(blockedMs, {
       ...(sample
         ? { lastMeasured: sample.name, lastMeasuredEndedMsAgo: Math.round(current - sample.endedAt) }
@@ -220,6 +227,7 @@ export function startMainThreadStallMonitor(
       ...(threadCpuMs == null || processCpuMs == null
         ? {}
         : { otherCpu: Math.max(0, (processCpuMs - threadCpuMs) / (elapsedMs - asleepMs)) }),
+      ...(activity ? { processActivity: activity } : {}),
     });
   }, intervalMs);
   if (handle && typeof (handle as { unref?: () => void }).unref === "function") {
