@@ -429,6 +429,34 @@ async function parkPointer(cdp: Cdp): Promise<void> {
   await frames(cdp, 3);
 }
 
+interface FocusedIcon { id: string; icon: string | null; top: number; bottom: number; listTop: number; listBottom: number; label: { top: number; bottom: number } | null }
+
+/** The message icon that has the page's focus, where its row's icons and the list are, and where its name is drawn; null when no message icon has it. */
+const focusedIcon = (cdp: Cdp) => evaluate<FocusedIcon | null>(cdp, `(() => {
+  const icon = document.activeElement;
+  const group = icon?.closest('[data-gloom-role=chat-message-reply-action]');
+  if (!group) return null;
+  const label = document.querySelector('[data-gloom-role=icon-button-focus-label]');
+  const named = label && getComputedStyle(label).visibility === 'visible' ? label.getBoundingClientRect() : null;
+  const g = group.getBoundingClientRect(), s = __chat.scroller().getBoundingClientRect();
+  return {
+    id: icon.closest('[data-gloom-role=chat-message]').getAttribute('data-gloom-chat-message-id'),
+    icon: icon.getAttribute('aria-label'),
+    top: g.top, bottom: g.bottom, listTop: s.top, listBottom: s.bottom,
+    label: named ? { top: named.top, bottom: named.bottom } : null,
+  };
+})()`);
+
+/** Shift-Tab from the composer: the one way the keyboard reaches a message's icons, the newest message's last. */
+async function shiftTabFromComposer(cdp: Cdp): Promise<void> {
+  await click(cdp, await evaluate<Point>(cdp, "__chat.composer()"));
+  await parkPointer(cdp);
+  for (const type of ["rawKeyDown", "keyUp"]) {
+    await cdp.send("Input.dispatchKeyEvent", { type, key: "Tab", code: "Tab", modifiers: 8, windowsVirtualKeyCode: 9 });
+  }
+  await frames(cdp, 3);
+}
+
 /** The icons a drawn name's header shows, in order, each drawn and inside the row. */
 async function iconsOf(cdp: Cdp, username: string): Promise<string> {
   const name = await nameOf(cdp, username) ?? fail(`no name ${username} drawn`);
@@ -951,12 +979,7 @@ export const chatSteps: ChatStep[] = [
     scenario: "chat",
     async run(cdp) {
       await ready(cdp);
-      await click(cdp, await evaluate<Point>(cdp, "__chat.composer()"));
-      await parkPointer(cdp);
-      for (const type of ["rawKeyDown", "keyUp"]) {
-        await cdp.send("Input.dispatchKeyEvent", { type, key: "Tab", code: "Tab", modifiers: 8, windowsVirtualKeyCode: 9 });
-      }
-      await frames(cdp, 3);
+      await shiftTabFromComposer(cdp);
       const seen = await evaluate<{ icon: string | null; label: string | null; covers: boolean; outside: boolean } | null>(cdp, `(() => {
         const icon = document.activeElement;
         const group = icon?.closest('[data-gloom-role=chat-message-reply-action]');
@@ -977,6 +1000,32 @@ export const chatSteps: ChatStep[] = [
       if (seen.outside) fail("the focused icon's name leaves the pane", seen);
       await click(cdp, await evaluate<Point>(cdp, "__chat.composer()"));
       if (await evaluate<boolean>(cdp, "!!document.querySelector('[data-gloom-role=icon-button-focus-label]')")) fail("the name stayed after the focus went back to the composer");
+    },
+  },
+  {
+    // The page's focus stayed on the icon while the row keys moved the list's
+    // cursor: the selected row named Enter, and Enter pressed the icon of the
+    // row the focus was left on.
+    name: "chat list: after Shift-Tab onto a message icon, a row key gives Enter to the selected row, and the reply goes to that message",
+    scenario: "chat",
+    async run(cdp) {
+      await ready(cdp);
+      await shiftTabFromComposer(cdp);
+      const icon = await focusedIcon(cdp) ?? fail("Shift-Tab from the composer did not reach a message's actions");
+      await pressKey(cdp, "ArrowUp", "ArrowUp");
+      await pressKey(cdp, "ArrowUp", "ArrowUp");
+      const [target, ...others] = await selected(cdp);
+      if (!target || others.length > 0 || target === icon.id) fail("Up twice did not select the row above the icon's", { selected: [target, ...others], icon });
+      const named = await evaluate<string[]>(cdp, `[...document.querySelectorAll('[data-gloom-role=chat-message-reply-action] button[aria-keyshortcuts="Enter"]')]
+        .map((button) => button.closest('[data-gloom-role=chat-message]').getAttribute('data-gloom-chat-message-id'))`);
+      if (named.length !== 1 || named[0] !== target) fail("the selected row is not the one row naming Enter", { named, selected: target });
+      const focusLeftOn = (await focusedIcon(cdp))?.id ?? null;
+      await pressKey(cdp, "Enter", "Enter");
+      await cdp.send("Input.insertText", { text: "Reply to the selected row" });
+      await pressKey(cdp, "Enter", "Enter");
+      const sentTo = await waitFor<string | null>(cdp, "__chatFake.messages.at(-1).content === 'Reply to the selected row' && (__chatFake.messages.at(-1).replyToId ?? 'no message')");
+      if (sentTo !== target) fail("Enter did not reply to the selected message", { sentTo, selected: target, focusLeftOn });
+      if (focusLeftOn) fail("a message icon kept the page's focus after the row keys moved the cursor", { focusLeftOn });
     },
   },
   {

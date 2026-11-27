@@ -5,6 +5,21 @@ interface MutableRef<T> {
   current: T;
 }
 
+/**
+ * Desktop: a control in the message list that has the page's focus gives it
+ * up. Shift-Tab from the composer puts the focus on a message's icon, where
+ * Enter presses that icon. Once a row key moves the list's cursor, Enter is
+ * the Reply of the row the cursor is on, as that row's icons say, and must not
+ * press a control left focused on another row. The terminal has no page, and
+ * nothing to let go of.
+ */
+export function releaseTranscriptFocus(): void {
+  const active = (globalThis as {
+    document?: { activeElement?: { closest?: (selector: string) => unknown; blur?: () => void } | null };
+  }).document?.activeElement;
+  if (active?.closest?.('[data-gloom-role="chat-transcript"]')) active.blur?.();
+}
+
 export function useChatMessageSelection({
   inputRef,
   messageCount,
@@ -38,6 +53,7 @@ export function useChatMessageSelection({
 
     setSelectedIdx(next);
     setFollowMessages(next === messageCount - 1);
+    releaseTranscriptFocus();
     return true;
   }, [messageCount, selectedIdx, setFollowMessages, setSelectedIdx]);
 
