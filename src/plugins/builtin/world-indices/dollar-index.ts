@@ -31,10 +31,11 @@ function dollarIndexSession(now: number) {
     const weekday = new Date(stamp).getUTCDay();
     if (weekday === 0 || weekday === 6 || fixedHoliday(stamp)) continue;
     const priorDay = stamp - DAY;
+    const holidayReopening = fixedHoliday(priorDay) || possibleObservedHoliday(priorDay);
     const start = weekday === 1 ? at(priorDay, 18, 0) : at(priorDay, 19, 45);
-    if (start <= now) {
+    if (start <= now || (priorDay === localDay && holidayReopening)) {
       const end = weekday === 5 ? at(stamp, 17, 0) : at(stamp, 19, 15);
-      const confirmed = !possibleObservedHoliday(stamp) && !fixedHoliday(priorDay) && !possibleObservedHoliday(priorDay);
+      const confirmed = !possibleObservedHoliday(stamp) && !holidayReopening;
       return { start, end, confirmed };
     }
   }

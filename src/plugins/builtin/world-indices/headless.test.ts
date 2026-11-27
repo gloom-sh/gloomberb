@@ -71,6 +71,7 @@ test("DXY uses its own cash session and the observed tick, not the equity pre-ma
     ["2026-11-21T16:00:00Z", "2026-11-20T21:59:00Z", 103.84, "CLOSED", false, "CLOSED"],
     ["2026-11-21T16:00:00Z", "2026-11-21T12:00:00Z", 103.84, "CLOSED", true, "CLOSED · STALE"],
     ["2026-11-22T23:02:00Z", "2026-11-22T23:01:00Z", 103.85, "REGULAR", false, "OPEN", true],
+    ["2026-01-02T00:40:00Z", "2026-01-01T00:14:59Z", 98.4, null, true, "UNKNOWN · STALE"],
     ["2026-01-02T01:00:00Z", "2026-01-02T00:50:00Z", 98.4, null, true, "UNKNOWN · STALE"],
     ["2026-11-27T22:25:00Z", "2026-11-27T20:58:00Z", 103.81, "CLOSED", true, "CLOSED · STALE"],
     ["2026-11-25T00:30:00Z", "2026-11-25T00:14:59Z", 103.81, "CLOSED", false, "CLOSED"],
