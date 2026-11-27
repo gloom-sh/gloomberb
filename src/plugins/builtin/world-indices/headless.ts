@@ -50,8 +50,9 @@ const COLUMNS = [
     shrink: false,
     format: (value: unknown, row: Record<string, unknown>) => {
       if (isGap(row)) return "";
-      const session = typeof value === "string" && value ? marketStateLabel(value as MarketState) : MISSING_VALUE;
-      return row.stale !== true ? session : row.symbol === DOLLAR_INDEX_SYMBOL && value ? `${session} · STALE` : "STALE";
+      const dollarIndex = row.symbol === DOLLAR_INDEX_SYMBOL && row.price != null;
+      const session = typeof value === "string" && value ? marketStateLabel(value as MarketState) : dollarIndex ? "UNKNOWN" : MISSING_VALUE;
+      return row.stale !== true ? session : dollarIndex ? `${session} · STALE` : "STALE";
     },
   },
   {

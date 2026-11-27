@@ -24,7 +24,6 @@ import { createAlert } from "./alert-engine";
 import { ALERTS_PLUGIN_ID } from "./constants";
 import { FIRED_LOG_KEY, readFiredAlerts } from "./fired-log";
 import { createResearchAlert } from "./research-builder";
-import { alertSessionLabel } from "./session";
 import { IV_LEVEL_ALERTS_KEY } from "./events";
 import { checkIvLevelAlertsNow, startIvLevelAlerts } from "./iv-level";
 import { seriesNamedBy } from "../../../series/registry";
@@ -119,7 +118,6 @@ test("a price alert is kept for the listing quote prints, so one pair is one tar
   for (const { stored, error } of spellings) {
     expect(error).toBeNull();
     expect(stored.map((alert) => [alert.symbol, alert.exchange, alert.targetPrice])).toEqual([["USDMXN=X", undefined, 18.8]]);
-    expect(alertSessionLabel(stored[0]!)).toBe("FX trading week");
   }
 });
 
@@ -604,6 +602,22 @@ test("a second add of one alert names it and adds nothing, re-arming an active o
     ["rearmed", true, "AAPL:NASDAQ above 260.00"],
     ["deleted", true, "AAPL:NASDAQ above 260.00"],
   ]);
+});
+
+test("alerts list distinguishes a regular-only FX rule from a rule with a sessionless reading", async () => {
+  setSystemTime(new Date("2026-11-05T15:00:00Z"));
+  const desk = await profile();
+  expect((await desk.run(["add", "USDJPY=X", "above", "161", "--session", "regular"])).error).toBeNull();
+  expect((await desk.run(["add", "USDJPY=X", "above", "162"])).error).toBeNull();
+  const { alerts } = await desk.stored();
+  expect(alerts.find((rule) => rule.targetPrice === 161)).toMatchObject({ regularHoursOnly: true });
+  expect(alerts.find((rule) => rule.targetPrice === 161)?.lastCheckedPrice).toBeUndefined();
+  expect(alerts.find((rule) => rule.targetPrice === 162)).toMatchObject({ lastCheckedPrice: 159.2 });
+  expect(alerts.find((rule) => rule.targetPrice === 162)).not.toHaveProperty("regularHoursOnly");
+  const { output } = await desk.run(["list"]);
+  expect(output).toContain("FX regular prints only");
+  expect(output).toContain("FX trading week (includes untagged prints)");
+  expect(output).not.toContain("Regular and extended");
 });
 
 test("alerts list --csv keeps its columns in their order and adds when each alert was made, its listing, currency and last reading", async () => {

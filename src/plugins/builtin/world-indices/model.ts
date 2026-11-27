@@ -47,7 +47,8 @@ function getSortValue(
 
   switch (columnId) {
     case "status": {
-      const state = dollarIndexQuoteStatus(entry.symbol, sent)?.marketState ?? quote?.marketState;
+      const dollarIndex = dollarIndexQuoteStatus(entry.symbol, sent);
+      const state = dollarIndex ? dollarIndex.marketState : quote?.marketState;
       return state ? MARKET_STATE_SORT_ORDER[state] ?? 3 : 3;
     }
     case "symbol":

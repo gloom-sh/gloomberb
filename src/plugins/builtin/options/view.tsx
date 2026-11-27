@@ -76,7 +76,7 @@ import {
 import { useOptionsAccessFooter } from "./footer";
 import { optionExpiryFacts, optionSnapshotFreshness } from "../shared/volatility/option-snapshot";
 import { AnalyticsAsOfDialog, analyticsAsOfRows } from "./analytics-as-of";
-import { OPTION_IV_UNIT, optionChainAsOf, optionGreekClock, optionIvFields } from "../shared/volatility/option-export";
+import { OPTION_IV_UNIT, isMarkedChain, optionChainAsOf, optionGreekClock, optionIvFields } from "../shared/volatility/option-export";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { signedPositionDirection } from "../../../portfolio/position-metrics";
 import { optionMarketReference } from "./market-reference";
@@ -638,6 +638,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     [dividendYield, greeksSpot, modelSpot?.valuationTime, liveChain],
   );
   const greekDays = selectedExpiration == null ? null : optionGreekClock(selectedExpiration, now, expiryVenue, modelSpot?.valuationTime);
+  const marked = liveChain != null && isMarkedChain(liveChain);
   const rows = useMemo<OptionTableRow[]>(() => strikes.map((strike) => {
     const call = callsByStrike.get(strike);
     const put = putsByStrike.get(strike);
@@ -645,7 +646,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
       strike,
       call,
       put,
-      impliedVolatility: volatilities?.byStrike.get(strike),
+      impliedVolatility: marked ? undefined : volatilities?.byStrike.get(strike),
       impliedVolatilityFilled: volatilities?.filled.has(strike) ?? false,
       callGreeks: volatilities ? calculateOptionGreeks(call, "call", greeksSpot, dividendYield, volatilities) : undefined,
       putGreeks: volatilities ? calculateOptionGreeks(put, "put", greeksSpot, dividendYield, volatilities) : undefined,
@@ -654,7 +655,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
       putCostOfSpot: put ? optionCostOfSpot(put, greeksSpot) : null,
       isPositionStrike: !!parsed && strike === parsed.strike,
     };
-  }), [callsByStrike, dividendYield, greeksSpot, parsed, putsByStrike, strikes, volatilities]);
+  }), [callsByStrike, dividendYield, greeksSpot, marked, parsed, putsByStrike, strikes, volatilities]);
   // The open interest's session: the chain's own, or for a chain that does not say, OPX's listing of the
   // same expiry, stated only when the counts are OPX's.
   const statedOpenInterest = useMemo(() => strikeChain ? statedOpenInterestAsOf(strikeChain) : undefined, [strikeChain]);

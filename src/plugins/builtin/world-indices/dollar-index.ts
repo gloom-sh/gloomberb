@@ -8,14 +8,19 @@ const DAY = 86_400_000;
 const MINUTE = 60_000;
 export const DOLLAR_INDEX_SYMBOL = "DX-Y.NYB";
 
-function observedFixedHoliday(year: number, month: number, day: number, observeSaturday: boolean): number {
-  const date = Date.UTC(year, month, day);
-  const weekday = new Date(date).getUTCDay();
-  return date + (weekday === 6 && observeSaturday ? -DAY : weekday === 0 ? DAY : 0);
+function fixedHoliday(stamp: number): boolean {
+  const date = new Date(stamp);
+  return (date.getUTCMonth() === 11 && date.getUTCDate() === 25)
+    || (date.getUTCMonth() === 0 && date.getUTCDate() === 1);
+}
+
+function possibleObservedHoliday(stamp: number): boolean {
+  const weekday = new Date(stamp).getUTCDay();
+  return (weekday === 5 && fixedHoliday(stamp + DAY)) || (weekday === 1 && fixedHoliday(stamp - DAY));
 }
 
 /** ICE FX Indexes Methodology §4.1: cash index publication, not ICE futures or US equity hours. */
-function dollarIndexSessionEnd(now: number): number {
+function dollarIndexSession(now: number) {
   const { year, month, day } = zonedDateTimeParts(now, ZONE);
   const localDay = Date.UTC(year, month - 1, day);
   const at = (dayStamp: number, hour: number, minute: number) => {
@@ -23,26 +28,29 @@ function dollarIndexSessionEnd(now: number): number {
     return zonedWallClockToUtcMs(ZONE, date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate(), hour, minute, 0);
   };
   for (let stamp = localDay + DAY; ; stamp -= DAY) {
-    const date = new Date(stamp);
-    const weekday = date.getUTCDay();
-    if (weekday === 0 || weekday === 6) continue;
-    const dateYear = date.getUTCFullYear();
-    if (stamp === observedFixedHoliday(dateYear, 11, 25, true)
-      || stamp === observedFixedHoliday(dateYear, 0, 1, false)) continue;
-    const start = weekday === 1 ? at(stamp - DAY, 18, 0) : at(stamp - DAY, 19, 45);
-    if (start <= now) return weekday === 5 ? at(stamp, 17, 0) : at(stamp, 19, 15);
+    const weekday = new Date(stamp).getUTCDay();
+    if (weekday === 0 || weekday === 6 || fixedHoliday(stamp)) continue;
+    const priorDay = stamp - DAY;
+    const start = weekday === 1 ? at(priorDay, 18, 0) : at(priorDay, 19, 45);
+    if (start <= now) {
+      const end = weekday === 5 ? at(stamp, 17, 0) : at(stamp, 19, 15);
+      const confirmed = !possibleObservedHoliday(stamp) && !fixedHoliday(priorDay) && !possibleObservedHoliday(priorDay);
+      return { start, end, confirmed };
+    }
   }
 }
 
 export function dollarIndexQuoteStatus(symbol: string, quote: Quote | null | undefined, now = Date.now()) {
   if (symbol !== DOLLAR_INDEX_SYMBOL || !quote || !Number.isFinite(now)) return null;
-  const sessionEnd = dollarIndexSessionEnd(now);
+  const session = dollarIndexSession(now);
   const expectedAt = now - ((quoteFeedDelayMinutes(quote) ?? 0) + 5) * MINUTE;
-  const expectedEnd = dollarIndexSessionEnd(expectedAt);
+  const expected = dollarIndexSession(expectedAt);
+  const observed = quote.lastUpdated;
   // A closed market can stand at its final print, not at an arbitrary intraday quote.
-  const oldest = Math.min(expectedAt, expectedEnd - MINUTE);
+  const withinExpected = expected.confirmed && observed >= Math.max(expected.start, Math.min(expectedAt, expected.end - MINUTE)) && observed <= expected.end;
+  const newSessionPrint = session.start > expected.start && observed >= session.start && observed <= now && observed <= session.end;
   return {
-    marketState: now < sessionEnd ? "REGULAR" as const : "CLOSED" as const,
-    stale: quote.stale === true || !hasValidQuoteObservationTime(quote, now) || quote.lastUpdated < oldest,
+    marketState: session.confirmed ? now < session.end ? "REGULAR" as const : "CLOSED" as const : null,
+    stale: !session.confirmed || quote.stale === true || !hasValidQuoteObservationTime(quote, now) || !(withinExpected || newSessionPrint),
   };
 }

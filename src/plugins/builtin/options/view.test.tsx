@@ -483,6 +483,34 @@ test("a strike whose IV was filled from its neighbours prints ~, says so in the 
   expect(csvCell("100", "C IV (annualized %)")).toBe("");
 });
 
+test("OMON shows and exports the ITM call and OTM put marks separately in percentage points", async () => {
+  const chain = makeChain([100], 101);
+  chain.asOf = new Date(Date.now() - 900_000).toISOString();
+  chain.calls[0]!.mark = { price: 10, forward: 101, iv: 0.425, delta: 0.55, gamma: 0.02, theta: -0.03, vega: 0.1 };
+  chain.puts[0]!.mark = { ...chain.calls[0]!.mark, iv: 0.365, delta: -0.45 };
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getOptionsChain: async () => chain })));
+  const registry = createRemoteUiRegistry();
+  await act(async () => {
+    await tui.render(<RemoteUiRegistryProvider registry={registry}>
+      <OptionsHarness ticker={makeTicker("AAPL")} quotePrice={101} width={190} height={16} />
+    </RemoteUiRegistryProvider>, { width: 190, height: 16 });
+  });
+  await renderSettled();
+  const row = tui.frame().split("\n").find((line) => /\s100\s/.test(line) && line.includes("42.5%"));
+  expect(row).toMatch(/42\.5%.*36\.5%/);
+  const table = registry.snapshot().find((node) => node.role === "table" && node.metadata?.rowCount === 1);
+  const [reported] = table?.metadata?.rows as Array<{ cells: Array<{ columnLabel: string }> }>;
+  const cell = (column: string) => reported!.cells.find((entry) => entry.columnLabel === column);
+  expect(cell("C IV")).toMatchObject({ value: 42.5, unit: "annualized %" });
+  expect(cell("P IV")).toMatchObject({ value: 36.5, unit: "annualized %" });
+  expect(cell("Call IV source")).toMatchObject({ text: "mark" });
+  expect(cell("Put IV source")).toMatchObject({ text: "mark" });
+  await exportPaneTable(TEST_PANE_ID, "options.csv");
+  const [header, csv] = takeSavedTextFile()!.text.trim().split(/\r?\n/).map((line) => line.split(","));
+  expect(["C IV (annualized %)", "P IV (annualized %)", "Call IV source", "Put IV source"].map((column) => csv![header!.indexOf(column)]))
+    .toEqual(["42.5", "36.5", "mark", "mark"]);
+});
+
 test("shows the spot, volatility statistics and the mirrored default fields", async () => {
   const provider = createTestDataProvider({
     getOptionsChain: async () => makeChain([100, 101], 101),

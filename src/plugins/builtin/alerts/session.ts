@@ -19,7 +19,10 @@ export function alertSessionField(kind: "price" | "move"): WizardStep {
  * print, so it is regular hours only however it was saved.
  */
 export function alertSessionLabel(rule: Pick<AlertRule, "symbol" | "exchange" | "regularHoursOnly" | "metric">, short = false): string {
-  if (isCurrencyPairListing(rule.symbol, rule.exchange) && !rule.metric) return short ? "FX week" : "FX trading week";
+  if (isCurrencyPairListing(rule.symbol, rule.exchange) && !rule.metric) {
+    if (rule.regularHoursOnly) return short ? "FX regular" : "FX regular prints only";
+    return short ? "FX week" : "FX trading week (includes untagged prints)";
+  }
   const regular = !!rule.regularHoursOnly || !!rule.metric;
   if (short) return regular ? "Regular only" : "Reg. + ext.";
   return SESSIONS[regular ? 1 : 0]!.label;

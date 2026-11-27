@@ -66,15 +66,19 @@ test("WEI marks a stale open snapshot without relabeling a weekend close", async
 
 test("DXY uses its own cash session and the observed tick, not the equity pre-market or a presumed close", async () => {
   const entry = WORLD_INDICES.find((index) => index.shortName === "DXY")!;
-  for (const [now, observed, price, marketState, stale, label] of [
+  for (const [now, observed, price, marketState, stale, label, delayed] of [
     ["2026-11-27T11:44:00Z", "2026-11-26T04:58:00Z", 103.81, "REGULAR", true, "OPEN · STALE"],
     ["2026-11-21T16:00:00Z", "2026-11-20T21:59:00Z", 103.84, "CLOSED", false, "CLOSED"],
+    ["2026-11-21T16:00:00Z", "2026-11-21T12:00:00Z", 103.84, "CLOSED", true, "CLOSED · STALE"],
+    ["2026-11-22T23:02:00Z", "2026-11-22T23:01:00Z", 103.85, "REGULAR", false, "OPEN", true],
+    ["2026-01-02T01:00:00Z", "2026-01-02T00:50:00Z", 98.4, null, true, "UNKNOWN · STALE"],
     ["2026-11-27T22:25:00Z", "2026-11-27T20:58:00Z", 103.81, "CLOSED", true, "CLOSED · STALE"],
     ["2026-11-25T00:30:00Z", "2026-11-25T00:14:59Z", 103.81, "CLOSED", false, "CLOSED"],
   ] as const) {
     setSystemTime(new Date(now));
     const quote = createTestQuote({ symbol: entry.symbol, exchangeName: "NYB", instrumentType: "INDEX",
       marketState: "PRE", preMarketPrice: price + 1,
+      ...(delayed ? { dataSource: "delayed", providerId: "gloomberb-cloud" } : {}),
       lastUpdated: Date.parse(observed), price });
     const marketData = createTestDataProvider({ getQuotesBatch: async (targets) => targets.map((target) => ({
       target, quote: target.symbol === entry.symbol ? quote : null,

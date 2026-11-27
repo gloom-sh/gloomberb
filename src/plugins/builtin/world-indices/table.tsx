@@ -116,10 +116,11 @@ export function renderWorldIndexCell(
       const state = quotes.get(entry.symbol);
       const dollarIndex = column.id === "status" ? dollarIndexQuoteStatus(entry.symbol, state?.quote) : null;
       if (dollarIndex) {
-        const session = marketStateLabel(dollarIndex.marketState);
+        const session = dollarIndex.marketState == null ? "UNKNOWN" : marketStateLabel(dollarIndex.marketState);
         const stale = dollarIndex.stale || state?.stale;
         if (stale) return { text: options?.sessionText ? `${session} !` : "!", value: `${session} · STALE`, color: colors.warning };
-        return { text: options?.sessionText ? session : marketStateDot(dollarIndex.marketState), value: session, color: marketStateColor(dollarIndex.marketState) };
+        const marketState = dollarIndex.marketState ?? undefined;
+        return { text: options?.sessionText ? session : marketStateDot(marketState), value: session, color: marketState ? marketStateColor(marketState) : colors.textDim };
       }
       return renderQuoteBoardCell(column.id, state, {
         sessionText: options?.sessionText,
