@@ -1,5 +1,6 @@
 import { dlopen, FFIType, ptr } from "bun:ffi";
 import type { StallClockReading } from "../utils/main-thread-stall";
+import { createWindowsProcessActivity } from "./windows-process-activity";
 
 /** macOS `clock_gettime_nsec_np` clocks: awake time (stops in sleep), and this thread's CPU time. */
 const DARWIN_CLOCK_UPTIME_RAW = 8;
@@ -84,10 +85,12 @@ function platformClocks(): PlatformClocks | null {
  */
 export function createStallClocks(): () => StallClockReading {
   const platform = platformClocks();
+  const activity = process.platform === "win32" ? createWindowsProcessActivity() : null;
   return () => ({
     awakeMs: null,
     threadCpuMs: null,
     ...platform?.(),
     processCpuMs: processCpuMs(),
+    ...(activity ? { processActivity: activity() } : {}),
   });
 }

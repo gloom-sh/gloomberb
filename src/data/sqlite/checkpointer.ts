@@ -28,7 +28,7 @@ const CLOSE_WAIT_MS = 1_000;
  * checkpoint measured on Windows took under a second, and the slowest
  * flush in stall reports 8 s.
  */
-const STUCK_AFTER_MS = 30_000;
+export const CHECKPOINTER_STUCK_AFTER_MS = 30_000;
 
 const checkpointLog = debugLog.createLogger("sqlite");
 
@@ -159,7 +159,7 @@ export function startWalCheckpointer(
   if (typeof Worker === "undefined" || typeof Blob === "undefined" || typeof URL.createObjectURL !== "function") return null;
   let worker: Worker;
   const source = URL.createObjectURL(new Blob([options.workerSource ?? WORKER_SOURCE], { type: "application/javascript" }));
-  const stuckAfterMs = options.stuckAfterMs ?? STUCK_AFTER_MS;
+  const stuckAfterMs = options.stuckAfterMs ?? CHECKPOINTER_STUCK_AFTER_MS;
   try {
     worker = new Worker(source);
   } catch (error) {

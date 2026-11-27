@@ -56,6 +56,7 @@ When the app freezes, it writes a line to `stall-log.txt` in the data folder, wh
 - whether the process was still starting and how long it had run
 - for the desktop app's main process, whether the app was in front with a window on screen
 - where the system can tell, how much of the freeze the process spent computing and how busy its other threads were
+- on Windows, for the terminal and desktop main process, changes in total page faults and process I/O counts between stall samples. These include soft faults and non-disk I/O, and do not identify a file, physical disk access, antivirus activity, or what caused the stall.
 
 A desktop window counts only while it is in front with focus, and time asleep never counts.
 
@@ -66,6 +67,7 @@ A freeze of a second or more is also reported, like a failed update:
 - the app version, platform and architecture, whether the process was still starting, and an uptime bucket (such as `2-10m`)
 - for the desktop app's main process, whether the app was in front and a window was on screen
 - where known, the share of the freeze spent computing and how busy the other threads were, in steps of ten percent
+- the Windows process counts where supported: `pf` for page faults and `io` for read, write and other operations, then read, write and other bytes. Counts below 100 are exact; `e3` means 1,000–9,999. `na`, `err` and `reset` mean unavailable, unreadable and a counter moved backwards, respectively. Zero means a successful reading with no change.
 - when the last step was a database statement, its fixed name (such as `touch cached resource`), how many tries it took and whether it waited for another program's lock
 
 How often:

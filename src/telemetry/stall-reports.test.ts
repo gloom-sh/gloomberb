@@ -97,6 +97,27 @@ describe("stall reports", () => {
 });
 
 describe("app stalls", () => {
+  test("Windows process counters fit alongside launch age and zero CPU without changing the report key", async () => {
+    const reports: CrashReportsPayload[] = [];
+    installCrashReporter({
+      surface: "desktop",
+      isEnabled: () => true,
+      getInstallId: () => "0f1e2d3c-4b5a-4968-8776-655443322110",
+      send: async (payload) => { reports.push(payload); },
+    });
+    const { log } = fakeReporter({ platform: "win32", arch: "x64", send: undefined });
+    setStallAttentionProbe(() => ({ active: true, visible: true }));
+    recordStall("app", {
+      blockedMs: 3_000, uptimeMs: 95_000, phase: "steady", threadCpu: 0,
+      processActivity: { pageFaults: "reset", io: { readOps: 2, writeOps: 0, otherOps: 113, readBytes: 4096, writeBytes: 0, otherBytes: 512 } },
+    });
+    await flushCrashReports();
+    const error = reports[0]?.errors[0];
+    expect(error?.message).toBe("2-5s after unmeasured");
+    expect(error?.pane).toContain("up=30s-2m gap=none fg=1 vis=1 cpu=0 pf=reset io=2/0/e2/e3/0/e2");
+    expect(log[0]).toContain("pageFaults=reset readOps=2 writeOps=0 otherOps=113 readBytes=4096 writeBytes=0 otherBytes=512");
+  });
+
   // The desktop app's own process: a SQLite statement that held it names
   // itself, says whether it waited on another program's lock, and the
   // report says whether anyone was looking, whether the thread was busy or
@@ -124,7 +145,7 @@ describe("app stalls", () => {
     recordStall("app", { blockedMs: 600 });
 
     expect(sent.map((report) => [report.section, formatStallReportDetails(report)])).toEqual([
-      ["sqlite.blocked.touch-cached-resource", "process=app count=1 longest=2100ms phase=steady up=10-60m gap=in held=90 fg=0 vis=1 lock=1 try=3 day=1"],
+      ["sqlite.blocked.touch-cached-resource", "process=app longest=2100ms phase=steady up=10-60m gap=in fg=0 vis=1 lock=1 try=3 count=1 held=90 day=1"],
       ["unmeasured", "process=app count=1 longest=1500ms phase=steady up=1-6h gap=none fg=0 vis=1 cpu=0 oth=130 day=2 platform=macos-arm64"],
     ]);
     expect(log[0]).toEndWith("last measured: sqlite.blocked, ran 1900 ms, ended 400 ms before (touch cached resource, 3 tries, waited on a lock)  [phase=steady up=10-60m gap=in held=90 fg=0 vis=1]");
@@ -132,32 +153,34 @@ describe("app stalls", () => {
     expect(log[3]).toEndWith("nothing measured before it  [phase=unknown up=unknown gap=none]");
   });
 
-  // Error tracking keeps 120 characters of the details line.
-  test("the details line fits error tracking with every field at its longest", () => {
-    const details = formatStallReportDetails({
-      process: "app",
-      bucket: "15s+",
-      section: "sqlite.blocked.save-plugin-state",
-      appVersion: "0.19.1",
-      platform: "windows",
-      arch: "arm64",
-      count: 999,
-      longestMs: 123_400,
-      day: 500,
-      phase: "startup",
-      uptime: "30s-2m",
-      gap: "10-60s",
-      heldPercent: 100,
-      active: null,
-      visible: null,
-      attempts: 99,
-      lockWait: true,
-      cpuPercent: 100,
-      otherCpuPercent: 990,
+  test("a bounded Windows report keeps SQLite lock and retry evidence ahead of activity counters", async () => {
+    const reports: CrashReportsPayload[] = [];
+    installCrashReporter({
+      surface: "desktop",
+      isEnabled: () => true,
+      getInstallId: () => "0f1e2d3c-4b5a-4968-8776-655443322110",
+      send: async (payload) => { reports.push(payload); },
     });
+    fakeReporter({ platform: "win32", arch: "x64", send: undefined });
+    setStallAttentionProbe(() => ({ active: true, visible: true }));
+    recordStall("app", {
+      blockedMs: 123_400,
+      lastMeasured: "sqlite.blocked",
+      lastMeasuredEndedMsAgo: 400,
+      lastMeasuredMs: 123_400,
+      sqlite: { operation: "save plugin state", attempts: 27, lockWait: true },
+      uptimeMs: 40 * 60_000,
+      phase: "steady",
+      threadCpu: 0,
+      otherCpu: 9.9,
+      processActivity: { pageFaults: "reset", io: { readOps: 99, writeOps: 99, otherOps: 99, readBytes: 4096, writeBytes: 4096, otherBytes: 4096 } },
+    });
+    await flushCrashReports();
 
-    expect(details.length).toBeLessThanOrEqual(120);
-    expect(details).toBe("process=app count=999 longest=123400ms phase=startup up=30s-2m gap=10-60s held=100 fg=? vis=? cpu=100 oth=990 lock=1");
+    const error = reports[0]?.errors[0];
+    expect(error?.message).toBe("15s+ after sqlite.blocked.save-plugin-state");
+    expect(error?.pane).toMatch(/^.{1,120}$/);
+    expect(error?.pane).toContain("fg=1 vis=1 cpu=0 lock=1 try=27 pf=reset");
   });
 });
 
