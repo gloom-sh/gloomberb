@@ -108,8 +108,8 @@ export function resetChatControllerRuntime({
   }
   if (shouldClearSession) {
     clearSessionIdentity();
-    clearApiSessionToken();
     deleteSession();
+    clearApiSessionToken();
   } else {
     persistSession();
   }

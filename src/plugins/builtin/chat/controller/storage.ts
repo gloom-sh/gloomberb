@@ -51,6 +51,7 @@ export class ChatControllerStorage {
     for (const [channelId, channel] of this.channelStates) {
       this.flushDraftSync(channelId);
       clearComposerState(channel);
+      channel.pendingMessages = [];
     }
     this.composerAccount = accountId ? { id: accountId } : null;
     for (const [channelId, channel] of this.channelStates) this.hydrateComposer(channelId, channel);
@@ -86,7 +87,7 @@ export class ChatControllerStorage {
   }
 
   deleteSession(): void {
-    deleteChatSession(this.persistence);
+    deleteChatSession(this.persistence, this.resume);
   }
 
   deleteTranscript(channelId: string): void {

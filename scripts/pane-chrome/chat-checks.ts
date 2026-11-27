@@ -722,6 +722,22 @@ export const chatSteps: ChatStep[] = [
     },
   },
   {
+    name: "chat window: an outgoing image preview follows its account",
+    scenario: "chat&count=8&latency=0",
+    async run(cdp) {
+      await ready(cdp);
+      await evaluate(cdp, "__chatFake.holdSends()");
+      if (!await evaluate(cdp, "__chatFake.sendFixtureImage()")) fail("the fixture image did not send");
+      const preview = "[data-gloom-role=chat-message-image]";
+      const viewer = "[data-gloom-role=chat-image-lightbox]";
+      if (!await waitFor(cdp, `!!document.querySelector('${preview}')`)) fail("the outgoing image did not appear");
+      await click(cdp, await pointFor(cdp, preview));
+      if (!await waitFor(cdp, `!!document.querySelector('${viewer}')`)) fail("the image viewer did not open");
+      await evaluate(cdp, "__chatFake.switchFixtureAccount(); __chatFake.finishSend(true)");
+      if (!await waitFor(cdp, `!document.querySelector('${viewer}') && !document.querySelector('${preview}')`)) fail("the outgoing preview did not close");
+    },
+  },
+  {
     name: "chat window: an image reserves its measured space before decoding",
     scenario: "chat&count=500&loaded=500",
     async run(cdp) {

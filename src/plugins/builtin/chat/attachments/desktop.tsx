@@ -1,4 +1,4 @@
-import { createElement, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { createElement, useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Box, Text } from "../../../../ui";
 import { Button, IconButton } from "../../../../components/ui";
 import { useDialogKeyboard, useOptionalDialog, type AlertContext, type DialogApi } from "../../../../ui/dialog";
@@ -464,6 +464,23 @@ function ReviewNote({ note }: { note: ChatImageReviewNote }) {
   );
 }
 
+export interface ChatPreviewScope {
+  isCurrent: () => boolean;
+  subscribe: (onChange: () => void) => () => void;
+}
+
+export function ScopedChatPreview({ scope, dismiss, children }: {
+  scope: ChatPreviewScope;
+  dismiss: () => void;
+  children: ReactNode;
+}) {
+  const visible = useSyncExternalStore(scope.subscribe, scope.isCurrent);
+  useEffect(() => {
+    if (!visible) dismiss();
+  }, [dismiss, visible]);
+  return visible ? children : null;
+}
+
 /**
  * A message's images, each in a box sized from its stored dimensions so the
  * transcript does not move as they load. A click opens the viewer.
@@ -475,6 +492,7 @@ export function DesktopChatMessageImages({
   review,
   dimmed,
   onLoadError,
+  previewScope,
 }: {
   attachments: ChatAttachment[];
   caption: string;
@@ -482,6 +500,7 @@ export function DesktopChatMessageImages({
   review: Parameters<typeof chatImageReviewNote>[0]["attachmentReview"];
   dimmed: boolean;
   onLoadError?: (attachment: ChatAttachment) => void;
+  previewScope?: ChatPreviewScope;
 }) {
   const dialog = useOptionalDialog();
   const rendererHost = useRendererHost();
@@ -489,8 +508,9 @@ export function DesktopChatMessageImages({
   if (attachments.length === 0 && !note) return null;
   const box = attachments.length === 1 ? SINGLE_IMAGE_BOX : GRID_IMAGE_BOX;
   const open = (index: number) => {
+    if (previewScope && !previewScope.isCurrent()) return;
     if (dialog) {
-      openChatImageViewer(dialog, { attachments, index, caption, author });
+      openChatImageViewer(dialog, { attachments, index, caption, author, scope: previewScope });
       return;
     }
     const attachment = attachments[index];
@@ -525,19 +545,22 @@ export function DesktopChatMessageImages({
 /** Opens a message's images full size, at `index`. */
 export function openChatImageViewer(
   dialog: DialogApi,
-  options: { attachments: ChatAttachment[]; index: number; caption: string; author: string },
+  options: { attachments: ChatAttachment[]; index: number; caption: string; author: string; scope?: ChatPreviewScope },
 ): void {
+  if (options.scope && !options.scope.isCurrent()) return;
   void dialog.alert({
     closeOnClickOutside: true,
-    content: (context: AlertContext) => (
-      <ChatImageLightbox
+    content: (context: AlertContext) => {
+      const lightbox = <ChatImageLightbox
         attachments={options.attachments}
         initialIndex={options.index}
         caption={options.caption}
         author={options.author}
         dismiss={context.dismiss}
-      />
-    ),
+        canOpen={options.scope?.isCurrent}
+      />;
+      return options.scope ? <ScopedChatPreview scope={options.scope} dismiss={context.dismiss}>{lightbox}</ScopedChatPreview> : lightbox;
+    },
   });
 }
 
@@ -551,12 +574,14 @@ function ChatImageLightbox({
   caption,
   author,
   dismiss,
+  canOpen,
 }: {
   attachments: ChatAttachment[];
   initialIndex: number;
   caption: string;
   author: string;
   dismiss: () => void;
+  canOpen?: () => boolean;
 }) {
   const colors = useThemeColors();
   const rendererHost = useRendererHost();
@@ -614,7 +639,9 @@ function ChatImageLightbox({
         <Text fg={colors.textMuted} style={{ flex: "1 1 auto", minWidth: 0 }}>
           {attachment.width > 0 ? `${attachment.width}x${attachment.height} · ${formatChatImageSize(attachment.size)}` : ""}
         </Text>
-        <Button label={t("Open in Browser")} compact onPress={() => { void rendererHost.openExternal(attachment.url); }} />
+        <Button label={t("Open in Browser")} compact onPress={() => {
+          if (!canOpen || canOpen()) void rendererHost.openExternal(attachment.url);
+        }} />
         <IconButton icon="close" label="Close" shortcut="Esc" onPress={dismiss} />
       </Box>
     </Box>

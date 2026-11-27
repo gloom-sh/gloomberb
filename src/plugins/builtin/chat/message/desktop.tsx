@@ -5,7 +5,7 @@ import { useThemeColors } from "../../../../theme/theme-context";
 import { t } from "../../../../i18n";
 import { useAppLanguage } from "../../../../i18n/react";
 import { normalizeInlinePreview } from "../layout";
-import { DesktopChatMessageImages } from "../attachments/desktop";
+import { DesktopChatMessageImages, type ChatPreviewScope } from "../attachments/desktop";
 import { chatReplyQuoteText } from "../attachments/model";
 import { chatAuthorName, heldMessage, isQuotedAuthorManagedBot } from "../ghost-user";
 import { ChatBotIcon } from "./person-icons";
@@ -53,6 +53,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
   latestEditableMessageId,
   retryMessage,
   onImageLoadError,
+  previewScope,
   registerMessageElement,
   reactionsEnabled = false,
   currentUserId = null,
@@ -62,6 +63,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
   closeReactionPicker,
   openPaneLink,
 }: ChatMessageBaseProps & {
+  previewScope?: ChatPreviewScope;
   registerMessageElement: (messageId: string, node: unknown | null) => void;
   /** The list's width in cells, so a narrow pane keeps its actions in the row before its icons. */
   contentWidth?: number;
@@ -257,6 +259,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
             review={msg.attachmentReview}
             dimmed={dimmed}
             onLoadError={onImageLoadError}
+            previewScope={previewScope}
           />
           {!showBody && !showChips && floatingActions}
         </Box>

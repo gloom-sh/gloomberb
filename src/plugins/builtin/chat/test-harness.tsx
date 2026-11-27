@@ -186,6 +186,8 @@ export function createController(options: {
       cachePolicy: { staleMs: 1_000, expireMs: 2_000 },
     });
   }
+  apiClient.setSessionToken(sessionToken);
+  apiClient.restoreCachedUser(user);
   controller.attachPersistence(persistence);
   controller.refreshSession = async () => {};
   controller.refreshChannels = async () => {};

@@ -36,42 +36,30 @@ interface HydrateChatControllerSessionOptions {
   session: ChatControllerSessionState;
   storage: ChatControllerStorage;
   syncVerificationPolling: () => void;
-  /**
-   * A command (`runtime: "command"`) runs with the session its command line
-   * resolved: GLOOMBERB_SESSION_TOKEN, or the profile's. The plugin state a
-   * command gives this chat may hold none, or another, and installing it
-   * would sign the command out midway: its quotes would come back delayed.
-   */
-  keepInstalledSession?: boolean;
 }
 
 export function hydrateChatControllerSession({
   session,
   storage,
   syncVerificationPolling,
-  keepInstalledSession = false,
 }: HydrateChatControllerSessionOptions): void {
   if (session.hydrated || !storage.hasPersistence()) return;
   session.hydrated = true;
 
   const storedSession = storage.readSessionState();
-  session.sessionToken = storedSession?.sessionToken ?? null;
   const currentToken = apiClient.getSessionToken();
-  const currentUser = currentToken === session.sessionToken ? apiClient.getCurrentUser() : null;
-  const restoredUser = currentUser ?? (session.sessionToken ? storedSession?.user ?? null : null);
-  const canRestore = !keepInstalledSession || !currentToken || currentToken === session.sessionToken;
-  if (canRestore) {
-    // Installing the credential already in place would discard its session
-    // check: the web app, which signs in with a cookie and stores no token,
-    // asked the server for its session a second time on every open.
-    if (currentToken !== session.sessionToken) apiClient.setSessionToken(session.sessionToken);
-    // WebSocket tokens are short-lived connection credentials. Reusing a persisted
-    // one can trap reconnects on an expired token even while the session cookie is valid.
+  const currentUser = apiClient.getCurrentUser();
+  const storedToken = storedSession?.sessionToken ?? null;
+  if (storedToken && !currentUser && !apiClient.isChangingSession()
+    && (currentToken === storedToken || !apiClient.hasSessionCredential())) {
+    if (currentToken !== storedToken) apiClient.setSessionToken(storedToken);
     apiClient.setWebSocketToken(null);
-    if (session.sessionToken && restoredUser !== apiClient.getCurrentUser()) apiClient.restoreCachedUser(restoredUser);
+    apiClient.restoreCachedUser(storedSession?.user ?? null);
   }
-  session.user = normalizeSessionUser(restoredUser);
-  storage.setComposerAccount(canRestore ? session.user?.id ?? null : null);
+  session.sessionToken = apiClient.getSessionToken();
+  const confirmed = apiClient.getConfirmedDisplayUser();
+  session.user = normalizeSessionUser(confirmed ?? (session.sessionToken ? null : currentUser));
+  storage.setComposerAccount(confirmed?.id ?? null);
   session.sessionChecked = true;
   storage.ensureChannelState(DEFAULT_CHAT_CHANNEL_ID);
   syncVerificationPolling();
@@ -81,7 +69,7 @@ interface ApplySignedOutChatControllerSessionOptions {
   channelStates: Iterable<ChannelRuntimeState>;
   closeAllConnections: () => void;
   emit: () => void;
-  persistSession: (sessionToken: string | null, user: ChatSessionUser | null) => void;
+  deleteSession: () => void;
   session: ChatControllerSessionState;
   stopRealtime: () => void;
 }
@@ -90,16 +78,17 @@ export function applySignedOutChatControllerSession({
   channelStates,
   closeAllConnections,
   emit,
-  persistSession,
+  deleteSession,
   session,
   stopRealtime,
 }: ApplySignedOutChatControllerSessionOptions): void {
   stopRealtime();
   closeAllConnections();
+  session.sessionToken = null;
   session.user = null;
   session.sessionChecked = true;
   clearSignedOutSessionChannels(channelStates);
-  persistSession(session.sessionToken, session.user);
+  deleteSession();
   emit();
 }
 

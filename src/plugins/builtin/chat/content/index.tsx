@@ -281,6 +281,10 @@ function ChatConversation({
   composerTextWidthRef.current = composerTextWidth;
   const canSend = !!user?.emailVerified && composerScope !== null;
   const isComposerCurrent = useCallback(() => composerScope !== null && controller.getComposerScope() === composerScope, [composerScope, controller]);
+  const previewScope = useMemo(() => ({
+    isCurrent: isComposerCurrent,
+    subscribe: (onChange: () => void) => controller.subscribe(channelId, onChange),
+  }), [channelId, controller, isComposerCurrent]);
   // Images go only to a server that said it takes them, and never into an edit.
   const imagesAvailable = canSend && attachmentsSupported;
   const canAttach = imagesAvailable && !editingMessage;
@@ -1071,6 +1075,7 @@ function ChatConversation({
   // reaction picker, a field nor the channel list has taken them.
   const actionKeysOwned = focused && !composing && !sidebarFocused && !commandBarOpen && !dialogOpen && reactionPickerMessageId === null;
   useChatFooter({
+    previewScope,
     composing,
     canSend,
     selectedIdx,
@@ -1198,6 +1203,7 @@ function ChatConversation({
         onRetryMessages={retryMessages}
         retryMessage={retryMessage}
         onImageLoadError={refreshImageLinks}
+        previewScope={previewScope}
         messageAreaHeight={messageAreaHeight}
         messageBodyWidth={messageBodyWidth}
         messages={messages}

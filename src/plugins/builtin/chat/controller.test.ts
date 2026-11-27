@@ -559,13 +559,11 @@ describe("ChatController", () => {
     const controller = createController();
     let closed = false;
 
-    apiClient.setSessionToken("token-123");
-    (controller as any).session.sessionToken = "token-123";
-    (controller as any).session.user = { id: "u1", username: "ada", emailVerified: false };
+    controller.adoptSession("token-123", { id: "u1", username: "ada", emailVerified: false });
     (controller as any).realtime.syncVerificationPolling();
     expect((controller as any).realtime.verificationPollTimer).not.toBeNull();
 
-    (controller as any).session.user = { id: "u1", username: "ada", emailVerified: true };
+    controller.adoptSession("token-123", { id: "u1", username: "ada", emailVerified: true });
     apiClient.connectChannel = () => ({
       send: async () => {
         throw new Error("not implemented");
@@ -715,10 +713,7 @@ describe("ChatController", () => {
     expect(apiClient.getSessionToken()).toBeNull();
     expect(apiClient.getCurrentUser()).toBeNull();
     expect(controller.getSnapshot().user).toBeNull();
-    expect(persistence.getState<{ sessionToken: string | null; user: unknown }>("session", { schemaVersion: 1 })).toEqual({
-      sessionToken: null,
-      user: null,
-    });
+    expect(persistence.getState("session", { schemaVersion: 1 })).toBeNull();
     controller.dispose();
   });
 
@@ -1665,6 +1660,79 @@ describe("ChatController", () => {
     expect(sends[1]).toEqual(sends[0]!);
     expect(sends[0]!.clientMessageId).toBeTruthy();
     expect(controller.getSnapshot().messages).toEqual([stored]);
+  });
+
+  test("keeps outgoing messages with the account that started them", async () => {
+    const persistence = new MemoryPersistence();
+    const controller = createController({ bindComposerToApiSession: true });
+    persistSession(persistence, { emailVerified: true });
+    const first = { id: "u1", username: "ada", emailVerified: true };
+    const second = { id: "u2", username: "lin", emailVerified: true };
+    const publicMessage = chatMessage({ id: "public-message", content: "public message", createdAt: recentChatTimestamp() });
+    const sentMessage = chatMessage({ id: "sent-message", content: "outgoing message", createdAt: new Date().toISOString() });
+    const image = { id: "image", mime: "image/png", width: 2, height: 2, size: 16, url: "https://example.invalid/preview" };
+    const send = Promise.withResolvers<ChatMessage>();
+    const interrupted = Promise.withResolvers<ChatMessage>();
+    const notices: AppNotificationRequest[] = [];
+    let sends = 0;
+    apiClient.connectChannel = (_channelId, onMessage) => ({
+      send: async () => {
+        sends += 1;
+        if (sends <= 2) throw new Error("Fixture send paused");
+        const delivered = await (sends === 3 ? interrupted.promise : send.promise);
+        onMessage(delivered);
+        return delivered;
+      },
+      close: () => {},
+    });
+    apiClient.getMessages = async () => [publicMessage];
+    controller.uploadAttachment = async () => image;
+    controller.setNotifier((notification) => { notices.push(notification); });
+    controller.attachPersistence(persistence);
+    await controller.refreshMessages();
+    controller.attachToChannel("everyone", [{ name: "image.png", type: "image/png", data: new Uint8Array(16) }]);
+    await flushMicrotasks();
+    expect(controller.send("image message")).toBe(true);
+    await flushMicrotasks();
+    const failed = controller.getSnapshot().messages.find((message) => message.clientStatus === "failed")!;
+    expect(failed.attachments?.[0]?.url).toBe(image.url);
+
+    apiClient.setSessionToken("renewed-session");
+    expect(controller.getSnapshot().messages).toEqual([publicMessage]);
+    expect(controller.retryChannelMessage("everyone", failed.id)).toBe(false);
+    apiClient.restoreCachedUser(first);
+    await controller.refreshSession();
+    expect(controller.retryChannelMessage("everyone", failed.id)).toBe(true);
+    await flushMicrotasks();
+    expect(controller.getSnapshot().messages.find((message) => message.id === failed.id)).toMatchObject({
+      clientStatus: "failed", attachments: [image],
+    });
+    expect(controller.send("another outgoing message")).toBe(true);
+    expect(controller.send("outgoing message")).toBe(true);
+    expect(controller.getSnapshot().messages.filter((message) => message.clientStatus === "sending")).toHaveLength(2);
+
+    const deferredUpload = Promise.withResolvers<ChatAttachment>();
+    controller.uploadAttachment = () => deferredUpload.promise;
+    const share = controller.postImage("everyone", { name: "share.png", type: "image/png", data: new Uint8Array(16) }, "share")
+      .catch((error: unknown) => error);
+    const snapshots: ReturnType<typeof controller.getSnapshot>[] = [];
+    const unsubscribe = controller.subscribe((snapshot) => snapshots.push(snapshot));
+    apiClient.setSessionToken("next-session");
+    apiClient.restoreCachedUser(second);
+    await controller.refreshSession();
+    expect(controller.retryChannelMessage("everyone", failed.id)).toBe(false);
+    deferredUpload.resolve(image);
+    interrupted.reject(new Error("Fixture send interrupted"));
+    send.resolve(sentMessage);
+    expect(await share).toEqual(new Error("The chat session changed."));
+    await flushMicrotasks();
+    expect(sends).toBe(4);
+    expect(notices).toEqual(Array.from({ length: 2 }, () => ({ body: "Fixture send paused", type: "error" })));
+    const nextSnapshots = snapshots.filter((snapshot) => snapshot.user?.id === second.id);
+    expect(nextSnapshots.length).toBeGreaterThan(0);
+    for (const snapshot of nextSnapshots) expect(snapshot.messages).toEqual([publicMessage]);
+    expect(controller.getSnapshot().messages).toEqual([publicMessage]);
+    unsubscribe();
   });
 
   test("posts a shared pane as its own message, leaving the channel's draft and images alone", async () => {

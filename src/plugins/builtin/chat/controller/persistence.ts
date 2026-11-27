@@ -110,8 +110,9 @@ export function persistChatSession({
   });
 }
 
-export function deleteChatSession(persistence: PluginPersistence | null): void {
+export function deleteChatSession(persistence: PluginPersistence | null, resume: PluginResumeState | null): void {
   persistence?.deleteState(SESSION_STATE_KEY);
+  resume?.deleteState(SESSION_STATE_KEY);
 }
 
 export function writeChatChannelState({

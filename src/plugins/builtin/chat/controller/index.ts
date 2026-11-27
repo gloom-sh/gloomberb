@@ -96,10 +96,10 @@ const IMAGE_LINK_REFRESH_INTERVAL_MS = 60_000;
  * When a conversation last had a message: the newest one held on this device,
  * sent or received, or what the server reports for it.
  */
-function lastConversationActivity(channel: ChatChannel, state: ChannelRuntimeState | undefined): number {
+function lastConversationActivity(channel: ChatChannel, state: ChannelRuntimeState | undefined, includeLocal: boolean): number {
   return conversationActivityAt(channel, {
     messageAt: state?.messages.at(-1)?.createdAt,
-    pendingAt: state?.pendingMessages.at(-1)?.createdAt,
+    pendingAt: includeLocal ? state?.pendingMessages.at(-1)?.createdAt : undefined,
   });
 }
 
@@ -214,8 +214,21 @@ export class ChatController {
   }
 
   private setSessionUser(user: ChatSessionUser | null): void {
-    this.storage.setComposerAccount(user?.id ?? null);
+    this.setComposerAccount(user?.id ?? null);
     this.session.user = user;
+  }
+
+  private setComposerAccount(accountId: string | null): void {
+    const previous = this.storage.getComposerAccount();
+    this.storage.setComposerAccount(accountId);
+    if (this.storage.getComposerAccount() !== previous) this.closeAllConnections();
+  }
+
+  private outgoingScope(scope: object) {
+    return {
+      isOwned: () => this.storage.getComposerAccount() === scope,
+      isCurrent: () => this.getComposerScope() === scope,
+    };
   }
 
   private notifyComposerScopeChanged(): void {
@@ -225,14 +238,21 @@ export class ChatController {
     this.view.emit();
   }
 
-  /** `keepInstalledSession`: a command's, which its own session outlasts (`hydrateChatControllerSession`). */
-  attachPersistence(persistence: PluginPersistence, resume?: PluginResumeState, { keepInstalledSession = false } = {}): void {
+  attachPersistence(persistence: PluginPersistence, resume?: PluginResumeState): void {
     this.storage.attachPersistence(persistence, resume);
-    this.hydrate(keepInstalledSession);
+    this.hydrate();
     if (this.options.bindComposerToApiSession && !this.stopWatchingComposerAccount) {
       this.stopWatchingComposerAccount = apiClient.subscribeCurrentUser(() => {
         const current = apiClient.getConfirmedDisplayUser();
-        if (current && current.id !== this.session.user?.id) this.storage.setComposerAccount(null);
+        if ((this.session.user || this.session.sessionToken) && !apiClient.isSignedIn() && !apiClient.isChangingSession()) {
+          this.invalidateSessionRefresh();
+          this.applySignedOutSession();
+          return;
+        }
+        if (current && current.id !== this.session.user?.id) {
+          this.setComposerAccount(null);
+          this.storage.deleteSession();
+        }
         this.notifyComposerScopeChanged();
       });
     }
@@ -279,12 +299,11 @@ export class ChatController {
     if (changed) this.emit();
   }
 
-  hydrate(keepInstalledSession = false): void {
+  hydrate(): void {
     hydrateChatControllerSession({
       session: this.session,
       storage: this.storage,
       syncVerificationPolling: () => this.realtime.syncVerificationPolling(),
-      keepInstalledSession,
     });
   }
 
@@ -337,6 +356,7 @@ export class ChatController {
   listConversations(): ChatConversationList | null {
     const user = this.session.user;
     if (!user?.emailVerified) return null;
+    const includeLocal = this.getComposerScope() !== null;
     return {
       userId: user.id,
       states: this.channelCatalog.getChannels().map((channel) => {
@@ -344,7 +364,7 @@ export class ChatController {
         return {
           channel,
           unreadCount: Math.max(0, state?.unreadCount ?? 0),
-          lastActivityAt: lastConversationActivity(channel, state),
+          lastActivityAt: lastConversationActivity(channel, state, includeLocal),
         };
       }),
     };
@@ -564,6 +584,8 @@ export class ChatController {
         this.session.sessionToken = null;
         this.setSessionUser(null);
         this.session.sessionChecked = false;
+        this.storage.deleteSession();
+        apiClient.setSessionToken(null);
       },
       closeAllConnections: () => this.closeAllConnections(),
       emit: () => this.emit(),
@@ -637,7 +659,8 @@ export class ChatController {
   }
 
   sendToChannel(channelId: string, content: string, replyToId?: string): boolean {
-    if (!this.getComposerScope()) return false;
+    const scope = this.getComposerScope();
+    if (!scope) return false;
     const normalizedChannelId = normalizeChannelId(channelId);
     const channel = this.ensureChannelState(normalizedChannelId);
     return sendChatMessageToChannel({
@@ -646,6 +669,7 @@ export class ChatController {
       content,
       replyToId,
       user: this.session.user,
+      scope: this.outgoingScope(scope),
       ensureConnection: () => this.ensureConnection(normalizedChannelId),
       getVisibleMessages: () => this.getVisibleMessages(normalizedChannelId),
       nextPendingMessageId: () => `local:${Date.now()}:${this.pendingMessageSeq += 1}`,
@@ -723,16 +747,19 @@ export class ChatController {
   ): Promise<ChatMessage> {
     const normalizedChannelId = normalizeChannelId(channelId);
     const user = this.session.user;
-    if (!user?.emailVerified) throw new Error("Verify your email to post in chat.");
+    const account = this.getComposerScope();
+    if (!account || !user?.emailVerified) throw new Error("Sign in with a verified email to post in chat.");
+    const scope = this.outgoingScope(account);
     let attachment;
     try {
       attachment = await this.uploadAttachment(normalizedChannelId, upload, {
         signal: options.signal ?? new AbortController().signal,
-        onProgress: options.onProgress ?? (() => {}),
+        onProgress: (fraction) => { if (scope.isCurrent()) options.onProgress?.(fraction); },
       });
     } catch (error) {
-      throw new Error(describeChatImageError(error));
+      throw new Error(scope.isCurrent() ? describeChatImageError(error) : "The chat session changed.");
     }
+    if (!scope.isCurrent()) throw new Error("The chat session changed.");
     const channel = this.ensureChannelState(normalizedChannelId);
     return postImageMessageToChannel({
       channelId: normalizedChannelId,
@@ -741,6 +768,7 @@ export class ChatController {
       attachment,
       previewUrl: upload.previewUrl ?? null,
       user,
+      scope,
       getVisibleMessages: () => this.getVisibleMessages(normalizedChannelId),
       nextPendingMessageId: () => `local:${Date.now()}:${this.pendingMessageSeq += 1}`,
       emit: () => this.emit(normalizedChannelId),
@@ -753,12 +781,14 @@ export class ChatController {
 
   /** Sends a failed message again with the same images and idempotency key. */
   retryChannelMessage(channelId: string, messageId: string): boolean {
+    const scope = this.getComposerScope();
+    if (!scope || !this.session.user?.emailVerified) return false;
     const normalizedChannelId = normalizeChannelId(channelId);
     const channel = this.ensureChannelState(normalizedChannelId);
-    if (!this.session.user?.emailVerified) return false;
     return retryChatMessageInChannel({
       channel,
       messageId,
+      scope: this.outgoingScope(scope),
       ensureConnection: () => this.ensureConnection(normalizedChannelId),
       emit: () => this.emit(normalizedChannelId),
       mergeMessages: (messages) => this.mergeMessages(normalizedChannelId, messages),
@@ -859,15 +889,20 @@ export class ChatController {
   ensureConnection(channelId = DEFAULT_CHAT_CHANNEL_ID): void {
     const normalizedChannelId = normalizeChannelId(channelId);
     const channel = this.ensureChannelState(normalizedChannelId);
+    const scope = this.getComposerScope();
     ensureChatChannelConnection({
       channelId: normalizedChannelId,
       channel,
-      canConnect: !!this.session.user?.emailVerified,
+      canConnect: scope !== null && !!this.session.user?.emailVerified,
       stopSafetyRefresh: () => this.realtime.stopSafetyRefresh(),
       startSafetyRefresh: () => this.realtime.startSafetyRefresh(),
       refreshMessages: () => this.refreshChannelMessages(normalizedChannelId),
       connectChannel: (nextChannelId, onMessage, onDisconnect) => (
-        apiClient.connectChannel(nextChannelId, onMessage, onDisconnect)
+        apiClient.connectChannel(nextChannelId, (message) => {
+          if (this.getComposerScope() === scope) onMessage(message);
+        }, () => {
+          if (this.storage.getComposerAccount() === scope) onDisconnect();
+        })
       ),
       mergeMessages: (messages) => this.mergeMessages(normalizedChannelId, messages),
     });
@@ -893,9 +928,10 @@ export class ChatController {
    */
   private conversationActivity(): ConversationActivity {
     const next: Record<string, number> = {};
+    const includeLocal = this.getComposerScope() !== null;
     for (const channel of this.channelCatalog.getChannels()) {
       if (!isPeopleConversation(channel)) continue;
-      const at = lastConversationActivity(channel, this.storage.channelStates.get(channel.id));
+      const at = lastConversationActivity(channel, this.storage.channelStates.get(channel.id), includeLocal);
       if (at !== NO_ACTIVITY) next[channel.id] = at;
     }
     const previous = this.activityOfConversations;
@@ -924,12 +960,12 @@ export class ChatController {
   }
 
   private applySignedOutSession(): void {
-    this.storage.setComposerAccount(null);
+    this.setComposerAccount(null);
     applySignedOutChatControllerSession({
       channelStates: this.storage.channelStates.values(),
       closeAllConnections: () => this.closeAllConnections(),
       emit: () => this.emit(),
-      persistSession: (sessionToken, user) => this.storage.persistSession(sessionToken, user),
+      deleteSession: () => this.storage.deleteSession(),
       session: this.session,
       stopRealtime: () => this.stopRealtime(),
     });
@@ -1033,7 +1069,7 @@ export class ChatController {
 
   private getVisibleMessages(channelId: string): ChatMessage[] {
     const channel = this.ensureChannelState(channelId);
-    return getVisibleMessages(channel);
+    return this.getComposerScope() ? getVisibleMessages(channel) : channel.messages;
   }
 }
 

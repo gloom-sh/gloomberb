@@ -57,6 +57,8 @@ export interface ChatFake {
   sent: string[];
   holdSends(): void;
   finishSend(fail?: boolean): void;
+  sendFixtureImage(): Promise<boolean>;
+  switchFixtureAccount(): void;
   /** Whether the view has its live connection to the channel. */
   connected(): boolean;
   /** Another member writes: the message arrives over the socket. */
@@ -265,6 +267,15 @@ const fake: ChatFake = {
     else heldSend?.resolve();
     heldSend = null;
   },
+  async sendFixtureImage() {
+    controller.uploadAttachment = async () => ({ id: "fixture-image", mime: "image/png", width: 320, height: 180, size: 16, url: IMAGE });
+    controller.attachToChannel("everyone", [{ name: "fixture.png", type: "image/png", data: new Uint8Array(16) }]);
+    await Promise.resolve();
+    return controller.send("Fixture image");
+  },
+  switchFixtureAccount() {
+    controller.adoptSession("second-fixture", { id: "fixture-reader", username: "reader", emailVerified: true });
+  },
   holdHistory() { held = Promise.withResolvers<void>(); },
   release() { held?.resolve(); held = null; },
   opened: [],
@@ -457,7 +468,8 @@ if (placeholderHandle) {
 function createController(): ChatController {
   const persistence = new MemoryPluginPersistence();
   const username = placeholderHandle ? PLACEHOLDER_HANDLE : "ada";
-  persistence.setState("session", { sessionToken: "fixture", user: { id: "u0", username, emailVerified: true } }, { schemaVersion: 1 });
+  apiClient.setSessionToken("fixture");
+  apiClient.restoreCachedUser({ id: "u0", username, emailVerified: true });
   const controller = new ChatController();
   controller.attachPersistence(persistence);
   controller.refreshSession = async () => {};
