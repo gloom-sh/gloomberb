@@ -1,7 +1,8 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 import { boardCoinFor, primeBoardCoins, resetBoardCoins } from "./board-coins";
 import { withSearchHints } from "./not-a-ticker";
 
+beforeEach(() => resetBoardCoins());
 afterEach(() => resetBoardCoins());
 
 const BOARD = [
