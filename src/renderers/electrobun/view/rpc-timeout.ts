@@ -19,7 +19,10 @@ export function createRpcTimeoutClockProbe(read: () => Promise<RpcClockSample | 
     const now = Date.now();
     if (pending) return pending;
     if (!fresh && recent && now >= recent.at && now - recent.at < RPC_CLOCK_FRESHNESS_MS) return recent.result;
-    const result = Promise.resolve().then(read).catch(() => null).finally(() => { pending = undefined; });
+    const result = Promise.resolve().then(read).catch(() => {
+      // Intentional ignore: a failed optional clock RPC provides no sleep evidence and must not fail the primary request.
+      return null;
+    }).finally(() => { pending = undefined; });
     pending = result;
     recent = { at: now, result };
     return result;
@@ -34,6 +37,7 @@ async function awakeTimeBound(startedAt: number, timedOutAt: number, before: Ret
       new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), EVIDENCE_WAIT_MS); }),
     ]);
   } catch {
+    // Intentional ignore: rejected clock evidence must not replace the visible timeout or suppress its crash report.
     return null;
   } finally {
     if (timer !== undefined) clearTimeout(timer);
