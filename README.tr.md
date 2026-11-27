@@ -61,7 +61,7 @@ Grafikler Ghostty, Kitty ve WezTerm gibi Kitty uyumlu terminallerde görsel olar
 
 Komut çubuğu için `Ctrl+P` tuşlarına veya bir hisse senedi kodu aramak için `` ` `` tuşuna basın. `HELP` tüm komutları ve kısayolları listeler; [işlev kataloğu](https://gloom.sh/docs/functions) ise hepsini gösterir.
 
-Kabuğunuzdan `gloom quote AAPL` komutu bir fiyat teklifi yazdırır; betikler için `--json` ekleyin. [Kullanıcı kılavuzu](docs/usage.md) grafikleri, kısayolları, CLI'ı ve aracı kurumlarınızı SnapTrade ile bağlamayı kapsar.
+Kabuğunuzdan `gloom quote AAPL` komutu bir AAPL fiyatını gösterir; betikler için `--json` ekleyin. [Kullanıcı kılavuzu](docs/usage.md) grafikleri, kısayolları, CLI'ı ve aracı kurumlarınızı SnapTrade ile bağlamayı kapsar.
 
 ## Veri ve gizlilik
 
