@@ -4,8 +4,8 @@ import type { DesktopBackendRequestMethod } from "../shared/protocol";
 import { encodeRpcValue } from "../shared/rpc-codec";
 import { createRpcLoopback } from "../../../test-support/rpc-loopback";
 import { flushCrashReports, installCrashReporter, reportCrash, resetCrashReporterForTests } from "../../../telemetry/crash-reports";
-import { isSleepRpcTimeout, REQUEST_TIMED_OUT_MESSAGE, type RpcTimeoutError } from "../../../utils/rpc-timeout-error";
-import { nameRpcTimeout } from "./rpc-timeout";
+import { isSleepRpcTimeout, REQUEST_TIMED_OUT_MESSAGE, type RpcClockSample, type RpcTimeoutError } from "../../../utils/rpc-timeout-error";
+import { createRpcTimeoutClockProbe, nameRpcTimeout } from "./rpc-timeout";
 
 afterEach(() => {
   jest.useRealTimers();
@@ -36,31 +36,37 @@ test("Electrobun's request timeout reports the request without its payload, and 
   expect(gloom!.report).toBe(`RPC request timed out: http.stream.open ${new URL(getCloudApiBaseUrl()).host}/cloud after ~120s`);
 });
 
-test("a timeout that fires minutes or hours late, after the machine slept, is not reported as a crash", async () => {
+test("only measured sleep that cuts into the awake budget suppresses an RPC timeout report", async () => {
   jest.useFakeTimers();
-  const request = (maxRequestTime: number) => {
-    const send = createRpcLoopback(() => new Promise(() => {}), { maxRequestTime });
-    return nameRpcTimeout("desktop.syncMainState", null, () => send({ method: "desktop.syncMainState", payload: null }))
+  const request = async (elapsed: number, end: Partial<RpcClockSample> | null) => {
+    const start = Date.now();
+    const send = createRpcLoopback(() => new Promise(() => {}), { maxRequestTime: elapsed });
+    const clock = async (fresh?: boolean) => fresh
+      ? end && { wallMs: start + elapsed, elapsedMs: 10_000 + elapsed, awakeMs: 2_000 + elapsed, ...end }
+      : { wallMs: start, elapsedMs: 10_000, awakeMs: 2_000 };
+    const result = nameRpcTimeout("desktop.syncMainState", null, () => send({ method: "desktop.syncMainState", payload: null }), clock)
       .catch((error: unknown) => error as RpcTimeoutError);
+    jest.advanceTimersByTime(elapsed);
+    return result;
   };
 
-  const stalled = request(120_000);
-  jest.advanceTimersByTime(120_000);
-  const stalledError = await stalled;
-  // On wake, the request timer runs four hours after the request began.
-  const slept = request(14_410_000);
-  jest.advanceTimersByTime(14_410_000);
-  const sleptError = await slept;
-  // A short nap: the same timer fires six and a half minutes in.
-  const nap = request(390_000);
-  jest.advanceTimersByTime(390_000);
-  const napError = await nap;
+  const sleepAt170 = await request(170_000, { awakeMs: 112_000 });
+  const sleepAt230 = await request(230_000, { awakeMs: 112_000 });
+  const awakeStall = await request(190_000, {});
+  const missing = await request(390_000, null);
+  const adjustedWallClock = await request(210_000, { elapsedMs: 100_000, awakeMs: 40_000 });
+  const resetAwake = await request(200_000, { awakeMs: 100 });
+  const fullAwakeBudget = await request(220_000, { awakeMs: 123_000 });
   jest.useRealTimers();
 
-  expect(sleptError.report).toBe("RPC request timed out: desktop.syncMainState after ~14410s");
-  expect(isSleepRpcTimeout(stalledError)).toBe(false);
-  expect(isSleepRpcTimeout(sleptError)).toBe(true);
-  expect(isSleepRpcTimeout(napError)).toBe(true);
+  for (const error of [sleepAt170, sleepAt230]) {
+    expect(error.message).toBe(REQUEST_TIMED_OUT_MESSAGE);
+    expect(isSleepRpcTimeout(error)).toBe(true);
+  }
+  for (const error of [awakeStall, missing, adjustedWallClock, resetAwake, fullAwakeBudget]) {
+    expect(error.message).toBe(REQUEST_TIMED_OUT_MESSAGE);
+    expect(isSleepRpcTimeout(error)).toBe(false);
+  }
 
   const sent: string[] = [];
   installCrashReporter({
@@ -69,8 +75,30 @@ test("a timeout that fires minutes or hours late, after the machine slept, is no
     getInstallId: () => "0f1e2d3c-4b5a-4968-8776-655443322110",
     send: async (payload) => { sent.push(...payload.errors.map((error) => error.message)); },
   });
-  reportCrash(sleptError, { kind: "unhandled-rejection" });
-  reportCrash(stalledError, { kind: "unhandled-rejection" });
+  for (const error of [sleepAt170, sleepAt230, awakeStall, missing]) reportCrash(error, { kind: "unhandled-rejection" });
   await flushCrashReports({ timeoutMs: 500 });
-  expect(sent).toEqual(["RPC request timed out: desktop.syncMainState after ~120s"]);
+  expect(sent).toEqual([
+    "RPC request timed out: desktop.syncMainState after ~190s",
+    "RPC request timed out: desktop.syncMainState after ~390s",
+  ]);
+});
+
+test("a clock probe that is still pending cannot mask the timeout or multiply requests", async () => {
+  jest.useFakeTimers();
+  let probes = 0;
+  const clock = createRpcTimeoutClockProbe(() => {
+    probes += 1;
+    return new Promise(() => {});
+  });
+  const send = createRpcLoopback(() => new Promise(() => {}), { maxRequestTime: 120_000 });
+  const result = nameRpcTimeout("desktop.syncMainState", null, () => send({ method: "desktop.syncMainState", payload: null }), clock)
+    .catch((error: unknown) => error as RpcTimeoutError);
+  jest.advanceTimersByTime(120_000);
+  await Promise.resolve();
+  await Promise.resolve();
+  jest.advanceTimersByTime(1_000);
+  const error = await result;
+  expect(probes).toBe(1);
+  expect(error.message).toBe(REQUEST_TIMED_OUT_MESSAGE);
+  expect(isSleepRpcTimeout(error)).toBe(false);
 });

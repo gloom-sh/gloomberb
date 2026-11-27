@@ -19,6 +19,7 @@ import type { PluginSeedProgress } from "../../../plugins/seed-progress";
 import type { RemoteControlRequest, RemoteControlResponse } from "../../../remote/types";
 import type { HttpProxyRequestEnvelope, HttpProxyResponseEnvelope } from "../../../utils/http-proxy-response";
 import type { StallEvent } from "../../../utils/main-thread-stall";
+import type { RpcClockSample } from "../../../utils/rpc-timeout-error";
 import type { BootFrame } from "../../dom/boot-frame-page";
 
 export const ELECTROBUN_CONTEXT_MENU_ACTION = "gloom.context-menu.select";
@@ -408,6 +409,7 @@ export interface ElectrobunDesktopRpcSchema {
         params: BackendRequestPayload;
         response: unknown;
       };
+      "runtime.clock": { params: Record<string, never>; response: RpcClockSample | null };
     };
     messages: {
       "host.restart": DesktopRestartMessage;

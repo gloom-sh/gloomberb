@@ -1,5 +1,5 @@
 import { RGBA, TextAttributes } from "@opentui/core";
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { act, useReducer, useRef, useState, type RefObject } from "react";
 import { Box, type ScrollBoxRenderable } from "../../../../../ui";
 import { QueryBar } from "../../../../../components";
@@ -19,7 +19,7 @@ import { useTabCursorLink } from "../../../../../state/app/tab-cursor";
 import { TestPaneProvider } from "../../../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../../../test-support/plugin-runtime";
 import { useNewsListSearch } from "./list-search";
-import { getThemeColors } from "../../../../../theme/colors";
+import { applyTheme, getCurrentThemeId, getThemeColors } from "../../../../../theme/colors";
 import { DEFAULT_THEME } from "../../../../../theme/themes";
 
 const tui = createOpenTuiTestHarness();
@@ -289,6 +289,13 @@ describe("NewsArticleStackView", () => {
 });
 
 describe("NewsArticleStackView under a pinned crosshair", () => {
+  let previousTheme: string;
+  beforeEach(() => {
+    previousTheme = getCurrentThemeId();
+    applyTheme(DEFAULT_THEME);
+  });
+  afterEach(() => applyTheme(previousTheme));
+
   test("selects the newest story out by the pinned moment and mutes the later ones, badges included, and a story streaming in leaves the selection alone", async () => {
     const selections: Array<string | null> = [];
     let pin: ((time: number | null) => void) | undefined;

@@ -40,6 +40,57 @@ test("commits stop flushing only where WAL took, and user data flushes on the ap
   }
 });
 
+test("a Windows command waits out a long writer lock, but a durable write still expires at its deadline", async () => {
+  const dbPath = createTempDbPath("command-lock-wait");
+  const realWindows = process.platform === "win32";
+  const command = new SqliteDatabase(dbPath, realWindows ? {} : { commandWriteWaitMs: 1_500 });
+  const shortCommand = new SqliteDatabase(dbPath, { commandWriteWaitMs: 100 });
+  const source = URL.createObjectURL(new Blob([`
+    import { Database } from "bun:sqlite";
+    self.onmessage = ({ data }) => {
+      const db = new Database(data.path);
+      db.exec("BEGIN IMMEDIATE");
+      postMessage("locked");
+      const lock = new Int32Array(data.signal);
+      Atomics.wait(lock, 0, 0, data.holdMs);
+      db.exec("ROLLBACK");
+      db.close();
+      postMessage("released");
+    };
+  `], { type: "application/javascript" }));
+  const worker = new Worker(source);
+  const signal = new Int32Array(new SharedArrayBuffer(4));
+  const locked = Promise.withResolvers<void>();
+  const released = Promise.withResolvers<void>();
+  worker.onmessage = ({ data }) => (data === "locked" ? locked : released).resolve();
+  worker.onerror = (error) => locked.reject(error);
+  try {
+    command.connection.exec("CREATE TABLE command_writes (id INTEGER PRIMARY KEY)");
+    const write = (db: SqliteDatabase, id: number) => db.access.write("command write", () => {
+      db.connection.query("INSERT INTO command_writes VALUES (?)").run(id);
+    });
+    worker.postMessage({ path: dbPath, signal: signal.buffer, holdMs: realWindows ? 9_000 : 500 });
+    await locked.promise;
+    const startedAt = performance.now();
+    expect(() => write(shortCommand, 1)).toThrow(/database is locked|database is busy/i);
+    expect(performance.now() - startedAt).toBeLessThan(1_000);
+    expect(write(command, 2)).toBe(true);
+    expect(command.connection.query("SELECT id FROM command_writes").all()).toEqual([{ id: 2 }]);
+    for (const db of [shortCommand, command]) {
+      expect(db.connection.query("PRAGMA busy_timeout").get()).toEqual({ timeout: 2_000 });
+      expect(synchronousLevel(db.connection)).toBe(1);
+    }
+  } finally {
+    Atomics.store(signal, 0, 1);
+    Atomics.notify(signal, 0);
+    await Promise.race([released.promise, Bun.sleep(1_000)]);
+    worker.terminate();
+    URL.revokeObjectURL(source);
+    shortCommand.close();
+    command.close();
+  }
+}, 45_000);
+
 // A batch of quotes or a list's rows used to commit one row at a time. A
 // user write does not wait in that batch: it commits on its own.
 test("in the app, the cache writes of one turn commit together, and a user write commits them first", async () => {
@@ -229,19 +280,24 @@ test("in the app, held commits go ahead on their own when the end of a flush goe
   }
 });
 
-test("in the app, a write queued for a flush is replaced by a later write of its key, and keeps its place among the others", async () => {
+test("in the app, a replacement queued during a WAL flush runs after earlier writes when the queue resumes", async () => {
   const fixture = holdFixture("hold-order");
-  const { access, put, committed, state, connection } = fixture;
+  const { access, put, committed, commits, state, connection } = fixture;
   const ran: string[] = [];
-  const write = (k: string, v: string) => () => { ran.push(`${k}=${v}`); put(`${k}=${v}`)(); };
+  const write = (key: string, value: string) => () => {
+    ran.push(`${key}=${value}`);
+    put(`${key}=${value}`)();
+  };
   try {
-    access.write("first", write("a", "1"), { key: "a" });
-    access.write("second", write("b", "1"), { key: "b" });
-    access.write("again", write("a", "2"), { key: "a" });
+    expect(access.write("first", write("a", "1"), { key: "a" })).toBe(false);
+    expect(access.write("second", write("b", "1"), { key: "b" })).toBe(false);
+    expect(access.write("again", write("a", "2"), { key: "a" })).toBe(false);
+    expect(ran).toEqual([]);
     state.flushing = false;
     access.resume();
-    await Bun.sleep(30);
-    expect(ran).toEqual(["b=1", "a=2"]);
+    const deadline = performance.now() + 3_000;
+    while (commits.length < 2 && performance.now() < deadline) await Bun.sleep(10);
+    expect(ran, "writes after resuming the WAL queue").toEqual(["b=1", "a=2"]);
     expect(committed()).toEqual(["a=2", "b=1"]);
     expect(connection.inTransaction).toBe(false);
   } finally {

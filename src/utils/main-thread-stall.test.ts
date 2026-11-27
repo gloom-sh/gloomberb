@@ -4,11 +4,12 @@ import {
   resetStartupCompleteForTests,
   setStallSink,
   startMainThreadStallMonitor,
+  type StallClockReading,
   type StallEvent,
 } from "./main-thread-stall";
 import { measurePerf, recordPerfSample } from "./perf-marks";
 
-function createHarness() {
+function createHarness(clocks?: () => StallClockReading) {
   let clock = 0;
   let tick: (() => void) | null = null;
   const reports: Array<{ blockedMs: number; context: Record<string, unknown> }> = [];
@@ -16,6 +17,7 @@ function createHarness() {
     intervalMs: 250,
     thresholdMs: 400,
     now: () => clock,
+    clocks,
     schedule: (callback) => { tick = callback; return 1; },
     cancel: () => { tick = null; },
     report: (blockedMs, context) => { reports.push({ blockedMs, context }); },
@@ -28,6 +30,36 @@ function createHarness() {
     get clock() { return clock; },
   };
 }
+
+test("stall activity uses adjacent samples and does not turn unreadable or reset counters into zero", () => {
+  let activity: StallClockReading["processActivity"] = { pageFaults: 1n, io: undefined };
+  const harness = createHarness(() => ({ awakeMs: null, threadCpuMs: null, processCpuMs: null, processActivity: activity }));
+  const io = [1n, 3n, 0n, 500n, 32_000n, 0n];
+  try {
+    activity = { pageFaults: 4n, io };
+    harness.advance(250);
+    harness.fire();
+    activity = { pageFaults: 4n, io: [2n, 5n, 0n, 1500n, 64_000n, 0n] };
+    harness.advance(2_700);
+    harness.fire();
+    activity = { pageFaults: 2n, io: null };
+    harness.advance(2_700);
+    harness.fire();
+    activity = { pageFaults: 3n, io: undefined };
+    harness.advance(250);
+    harness.fire();
+    activity = { pageFaults: null, io };
+    harness.advance(2_700);
+    harness.fire();
+    expect(harness.reports.map(({ context }) => context.processActivity)).toEqual([
+      { pageFaults: 0, io: { readOps: 1, writeOps: 2, otherOps: 0, readBytes: 1000, writeBytes: 32_000, otherBytes: 0 } },
+      { pageFaults: "reset", io: "failed" },
+      { pageFaults: "failed", io: "unavailable" },
+    ]);
+  } finally {
+    harness.stop();
+  }
+});
 
 test("a timer that comes back on time reports nothing", () => {
   const harness = createHarness();

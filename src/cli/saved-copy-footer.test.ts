@@ -7,6 +7,7 @@ import { MarketDataCoordinator } from "../market-data/coordinator";
 import { AssetDataRouter } from "../sources/provider-router";
 import { createTestCliContext } from "../test-support/cli-context";
 import { createTestDataProvider, createTestQuote } from "../test-support/data-provider";
+import { resetBoardCoins } from "./board-coins";
 import { marketDataCliCommands } from "./commands/market";
 import { overviewCliCommands } from "./commands/overview";
 import { apiClient } from "../api-client";
@@ -36,6 +37,7 @@ beforeEach(() => {
   persistence = new AppPersistence(":memory:");
 });
 afterEach(() => {
+  resetBoardCoins();
   clock.mockRestore();
   persistence.close();
 });

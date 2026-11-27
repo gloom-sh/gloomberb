@@ -4,7 +4,7 @@ import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils"
 import { AppProvider, useAppDispatch, type AppAction } from "../../../state/app/context";
 import { setLanguage, t } from "../../../i18n";
 import { applyTheme, colors } from "../../../theme/colors";
-import { getTheme } from "../../../theme/themes";
+import { DEFAULT_THEME, getTheme } from "../../../theme/themes";
 import { createDefaultConfig } from "../../../types/config";
 import { PaneContent } from "./content";
 import { apiClient } from "../../../api-client";
@@ -29,7 +29,7 @@ describe("PaneContent", () => {
 
   afterEach(() => {
     capturedDispatch = null;
-    applyTheme("amber");
+    applyTheme(DEFAULT_THEME);
     setLanguage("en");
   });
 

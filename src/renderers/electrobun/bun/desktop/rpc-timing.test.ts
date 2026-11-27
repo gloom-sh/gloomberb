@@ -33,12 +33,16 @@ test("each turn of a window's channel is named by the request it serves or the m
     named(() => installed.send!({ type: "message", id: "desktop.state", payload: {} })),
     named(() => installed.send!({ type: "response", id: 8, success: true, payload: {} })),
     named(() => installed.send!({ type: "response", id: 7, success: true, payload: {} })),
+    named(() => handler!({ type: "request", id: 9, method: "runtime.clock", params: {} })),
+    named(() => installed.send!({ type: "response", id: 9, success: true, payload: {} })),
   ]).toEqual([
     "rpc.request.ticker.load-all",
     "rpc.request.capability.invoke",
     "rpc.message.runtime.stall",
     "rpc.send.desktop.state",
     "rpc.respond.capability.invoke",
+    "rpc.respond.ticker.load-all",
+    "rpc.respond.ticker.load-all",
     "rpc.respond.ticker.load-all",
   ]);
 });
