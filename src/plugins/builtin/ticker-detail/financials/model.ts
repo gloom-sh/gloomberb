@@ -1,5 +1,6 @@
-import type { FinancialStatement, TickerFinancials } from "../../../../types/financials";
+import type { FinancialStatement, StatementPeriodFiling, TickerFinancials } from "../../../../types/financials";
 import { ebitdaLacksDepreciation } from "../../../../utils/ebitda";
+import { safeExternalUrl } from "../../../../utils/external-url";
 import { longerPeriodLabel, statementPeriodLabel, ttmPeriodLabel } from "../../../../utils/fiscal-period";
 import { areNearbyFinancialPeriodEnds, fillDate, fillDateText, statementPeriodMonths } from "../../../../utils/financial-statements";
 import { formatPerShareNumber } from "../../../../utils/reported-money";
@@ -409,6 +410,18 @@ function financialFiscalHeader(statement: FinancialTableStatement, kind: Financi
 /** An annual balance sheet can lead with a newer interim position. */
 export function financialColumnPeriod(statement: FinancialTableStatement, period: FinancialPeriod, annualDates: ReadonlySet<string>): FinancialPeriod {
   return period === "annual" && (statement.date === "TTM" || annualDates.has(statement.date)) ? "annual" : "quarterly";
+}
+
+/** An issuer's report for the displayed period, even when the figures come from a provider. */
+export function financialPeriodFiling(
+  filings: readonly StatementPeriodFiling[] | undefined,
+  statement: FinancialTableStatement,
+  period: FinancialPeriod,
+): StatementPeriodFiling | undefined {
+  if (statement.date === "TTM") return undefined;
+  const end = financialPeriodEnd(statement);
+  return filings?.find((filing) => filing.periodEnd === end
+    && (filing.periodMonths === 12) === (period === "annual") && !!safeExternalUrl(filing.url));
 }
 
 export function latestFinancialPeriodEnd(statements: readonly FinancialTableStatement[]): string | undefined {
@@ -956,14 +969,19 @@ export function financialStatementPeriods(
 }
 
 /**
- * Whether a column has its lead line, or Gloom Cloud left it blank on purpose: the company's announcements
- * count it otherwise than the statements source (HSBC's revenue, `filledFrom.omitted`), so the period is in.
+ * A period is ready when its lead line is present, intentionally omitted, or accompanied by a filed
+ * income or cash flow figure. Banks' filings can report net income under a separate revenue convention.
  */
 function hasLeadLine(lead: FinancialRowDef, statement: FinancialStatement): boolean {
   if (hasFinancialRowValue(lead, [statement])) return true;
   const key = isFinancialGroup(lead) ? lead.summaryKey : lead.key;
   const fill = statement.filledFrom;
-  return !!key && fill?.source === "results" && (fill.omitted ?? []).some((field) => field === key);
+  if (!key || fill?.source !== "results") return false;
+  if (fill.omitted?.some((field) => field === key)) return true;
+  const filedLine = key === "totalRevenue" ? "netIncome" : key === "freeCashFlow" ? "operatingCashFlow" : undefined;
+  if (!filedLine || !fill.fields.includes(filedLine) || !Number.isFinite(statement[filedLine])) return false;
+  const document = fill.lines[filedLine]?.document;
+  return document !== undefined && !!safeExternalUrl(fill.documents[document]?.url);
 }
 
 /**
