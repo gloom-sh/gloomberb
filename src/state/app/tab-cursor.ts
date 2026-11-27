@@ -238,6 +238,16 @@ export function usePinnedTabMoment(): PinnedMoment | null {
   return useSyncExternalStore(subscribe, pinned);
 }
 
+/**
+ * Reads the pin of the layout tab the caller is in when called, not when it
+ * rendered: for a cleanup that runs after the caller has gone, whatever the
+ * caller showed of the pin then. Null outside an app.
+ */
+export function usePinnedTabMomentReader(): () => PinnedMoment | null {
+  const tabKey = useOptionalAppSelector<string | null>(selectTabKey, null);
+  return useCallback(() => tabKey === null ? null : pinnedMomentOf(cursors.get(tabKey)), [tabKey]);
+}
+
 /** The moment the active layout tab has its crosshair pinned at, outside React: a shared link opens there. */
 export function pinnedTabTime(state: AppState): number | null {
   const cursor = cursors.get(selectTabKey(state));

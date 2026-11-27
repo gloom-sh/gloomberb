@@ -1,6 +1,6 @@
 import { useCallback, useContext, useEffect, useId, useMemo, useRef } from "react";
 import { AppContext, useOptionalPaneInstanceId, type AppState } from "../state/app/context";
-import { usePinnedTabMoment, useUnpinTab, type PinnedMoment } from "../state/app/tab-cursor";
+import { usePinnedTabMoment, usePinnedTabMomentReader, useUnpinTab, type PinnedMoment } from "../state/app/tab-cursor";
 import { findPaneInstance } from "../types/config";
 import { formatDetailDate, formatZonedMoment } from "../utils/datetime-format";
 import { usePaneFooter, type PaneFooterSegment } from "./layout/pane/footer";
@@ -134,7 +134,7 @@ const NOT_PINNED = { pinnedRow: null, beforeRows: false } as const;
  * list mounted again under the same pin (back from another layout tab) keeps
  * the row picked there by hand, as a list left mounted does. A pin moved or
  * lifted, or gone with its tab, takes its entries with it; a list closed with
- * its pane drops its own.
+ * its pane drops its own, whether or not it still followed the pin then.
  */
 const followedPins = new WeakMap<PinnedMoment, Map<string, string>>();
 
@@ -192,21 +192,22 @@ export function usePinFollow<T>({ pin, rows, getId, moment, isAfter, order, sele
 
   // A pane closed forgets what its list followed. Read once the unmount
   // settles, from the app's state then: a pane switched away from with its
-  // tab, or remounted in place, is still in a layout and keeps it.
+  // tab, or remounted in place, is still in a layout and keeps it. The entry
+  // is found under the tab's pin, not the one the list was given: a list that
+  // stopped following before it closed (a tab of its pane with no list, a
+  // folded chart) was given none, though its entry stays under the tab's.
   const app = useContext(AppContext);
-  const pinRef = useRef(pin);
-  useEffect(() => { pinRef.current = pin; }, [pin]);
+  const tabPin = usePinnedTabMomentReader();
   useEffect(() => () => {
-    const left = pinRef.current;
-    if (left === null) return;
     queueMicrotask(() => {
       if (paneId !== null && app) {
         const state = "getState" in app ? app.getState() : app.state;
         if (paneInLayouts(state, paneId)) return;
       }
-      followedPins.get(left)?.delete(memoryKey);
+      const left = tabPin();
+      if (left !== null) followedPins.get(left)?.delete(memoryKey);
     });
-  }, [app, memoryKey, paneId]);
+  }, [app, memoryKey, paneId, tabPin]);
 
   const isAfterPin = useCallback((row: T) => at !== null && after(row, at), [after, at]);
   return { pinnedRow, beforeRows, isAfterPin };

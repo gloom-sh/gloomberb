@@ -273,6 +273,62 @@ describe("a list following the tab's pinned crosshair", () => {
     }
   });
 
+  // A list can stop following while its pane stays open (FLOW's Tide tab, a
+  // folded chart) and then close: its entry goes with the pane all the same,
+  // so under one pin that never moves, opening and closing panes leaves the
+  // count where it was, whichever way each list closed.
+  test("under one pin, a pane that stopped following before it closed still drops its entry", async () => {
+    let link: TabCursorLink | undefined;
+    let pick!: (id: string) => void;
+    let setFollows!: (follows: boolean) => void;
+    let showPanes!: (ids: string[]) => void;
+    function Chart() {
+      link = useTabCursorLink("chart");
+      return null;
+    }
+    function List() {
+      const [selectedId, setSelectedId] = useState<string | null>(null);
+      const [follows, set] = useState(true);
+      pick = setSelectedId;
+      setFollows = set;
+      usePinnedList<Row>("test-list:pin", { follows, rows: ROWS, getId: rowId, moment: rowMoment, selectedId, select: setSelectedId });
+      return null;
+    }
+    function Panes() {
+      const [ids, setIds] = useState<string[]>(["list:resident"]);
+      showPanes = setIds;
+      return <>
+        <PaneInstanceProvider paneId="chart:seven"><Chart /></PaneInstanceProvider>
+        {ids.map((id) => <PaneInstanceProvider key={id} paneId={id}><List /></PaneInstanceProvider>)}
+      </>;
+    }
+    const store = createTabsStore([["chart:seven", "list:resident"], []]);
+    await tui.render(<AppContext value={store}><Panes /></AppContext>);
+    try {
+      await act(async () => link!.pin!(at("2026-04-18T15:00:00Z")));
+      const pin = link!.pinnedMoment!()!;
+      // The resident list followed it and stays open throughout.
+      const baseline = pinFollowersForTests(pin);
+      expect(baseline).toBe(1);
+      for (const [index, stopsFirst] of [true, false, true, true].entries()) {
+        const id = `list:closing-${index}`;
+        await act(async () => store.open(id));
+        await act(async () => showPanes(["list:resident", id]));
+        expect(pinFollowersForTests(pin)).toBe(baseline + 1);
+        await act(async () => pick("c"));
+        if (stopsFirst) await act(async () => setFollows(false));
+        expect(pinFollowersForTests(pin)).toBe(baseline + 1);
+        await act(async () => store.close(id));
+        await act(async () => showPanes(["list:resident"]));
+        await unmountSettled();
+        expect(link!.pinnedMoment!()).toBe(pin);
+        expect(pinFollowersForTests(pin)).toBe(baseline);
+      }
+    } finally {
+      await act(async () => link?.pin?.(null));
+    }
+  });
+
   // An unpinned list follows nothing, so it never looks through its rows for
   // the selection or the pin's row, however often it renders.
   test("an unpinned list reads no row while it renders", async () => {
