@@ -78,6 +78,7 @@ import {
 } from "./calendar-model";
 import { MISSING_VALUE } from "../../../utils/format";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
+import { createDataTableCsv } from "../../../components/data-table/export";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { markHiddenTableColumns, tableColumnWidth } from "../../../components/ui/table-layout";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
@@ -285,7 +286,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   const flagged = useUiCapabilities().nativePaneChrome === true;
   // A reader who set a time zone (`config set timezone`) gets their clock in a column beside UTC.
   const readerZone = readerTimeZone(useAppConfig().timezone);
-  const columns = useMemo<EconCalendarColumn[]>(() => {
+  const { columns, exportColumns } = useMemo<{ columns: EconCalendarColumn[]; exportColumns: EconCalendarColumn[] }>(() => {
     // Named by its zone, as the reader's column is by its city: "TIME (UTC)" took 13
     // cells over "07:00" while EVENT read "GDP Growth Ra…" (review, 12 Nov 2026).
     const timeLabelText = CALENDAR_TIME_ZONE_LABEL;
@@ -346,7 +347,8 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       ...showCountry ? [{ id: "country" as const, ...countryColumn, align: "left" as const }] : [],
       { id: "event", label: "EVENT", width: eventWidth, align: "left" },
     ];
-    return markHiddenTableColumns([...leading, ...figureColumns], [...leading, ...figures]);
+    const every = [...leading, ...figureColumns];
+    return { columns: markHiddenTableColumns(every, [...leading, ...figures]), exportColumns: every };
   }, [countryFilter, filtered, flagged, impactFilter, readerZone, width]);
   const separatorBg = blendHex(colors.bg, colors.border, 0.3);
   const staleness = fetchedAt ? formatStaleness(fetchedAt, now) : "";
@@ -599,6 +601,10 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       onActivate={openDisplayRow}
       renderSectionHeader={renderSectionHeader}
       renderCell={renderCell}
+      // Export CSV keeps every figure at any width: only the table drawn leaves columns out.
+      exportCsv={columns.length < exportColumns.length
+        ? () => createDataTableCsv({ columns: exportColumns, items: rows, renderCell, renderSectionHeader })
+        : undefined}
       selectedTextOverridesCellColor
       status={{ loading: loading && !rows.length, error: !loading && !events.length ? error : null, subject: "economic events" }}
       emptyContent={filterEmptyTitle ? (

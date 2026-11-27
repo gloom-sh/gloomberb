@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { act } from "react";
-import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, takeSavedTextFile } from "../../../renderers/opentui/test-utils";
 import { PaneFooterBar, PaneFooterProvider, footerTimeText } from "../../../components/layout/pane/footer";
 import { connectionHealth, GLOOM_CLOUD_HTTP_CONNECTION_ID, registerGloomCloudConnectionSources } from "../../../core/connection-health";
 import { Box } from "../../../ui";
 import { createInitialState } from "../../../state/app/context";
+import { exportPaneTable } from "../../../state/pane-table-export-registry";
 import { createDefaultConfig } from "../../../types/config";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import type { PluginRuntimeAccess } from "../../runtime";
@@ -52,6 +53,18 @@ function seedCalendar(): void {
       forecast: "0.9%",
       prior: "0.8%",
     },
+  ], { sourceKey: "gloomberb-cloud", schemaVersion: 1 });
+  attachEconCalendarPersistence(persistence);
+}
+
+/** Two releases of one hour whose names differ only past their 16th letter, and one that is out with all three figures. */
+function seedLongNames(): void {
+  const persistence = new MemoryPluginPersistence();
+  const at = (hours: number) => new Date(Date.now() + hours * 3_600_000).toISOString();
+  persistence.seedResource("calendar", "global", [
+    { id: "qoq", date: at(1), time: "13:00", country: "CA", event: "GDP Growth Rate QoQ Final", impact: "high", actual: null, forecast: "0.4%", prior: "3.3%" },
+    { id: "yoy", date: at(1), time: "13:00", country: "CA", event: "GDP Growth Rate YoY Final", impact: "high", actual: null, forecast: null, prior: "0.8%" },
+    { id: "out", date: at(-2), time: "10:00", country: "CN", event: "Balance of Trade", impact: "high", actual: "111.2B", forecast: "100B", prior: "105.28B" },
   ], { sourceKey: "gloomberb-cloud", schemaVersion: 1 });
   attachEconCalendarPersistence(persistence);
 }
@@ -149,14 +162,7 @@ describe("EconCalendarPane", () => {
   // A pane 53 cells wide (the browser's first screen) gave the name 9 cells beside three figure columns: two rows of
   // one hour both read "GDP Growt…". The names come first, as in every narrow table.
   test("keeps event names readable in a narrow pane, leaving out PRIOR and, narrower still, the forecast, and says so", async () => {
-    const persistence = new MemoryPluginPersistence();
-    const at = (hours: number) => new Date(Date.now() + hours * 3_600_000).toISOString();
-    persistence.seedResource("calendar", "global", [
-      { id: "qoq", date: at(1), time: "13:00", country: "CA", event: "GDP Growth Rate QoQ Final", impact: "high", actual: null, forecast: "0.4%", prior: "3.3%" },
-      { id: "yoy", date: at(1), time: "13:00", country: "CA", event: "GDP Growth Rate YoY Final", impact: "high", actual: null, forecast: null, prior: "0.8%" },
-      { id: "out", date: at(-2), time: "10:00", country: "CN", event: "Balance of Trade", impact: "high", actual: "111.2B", forecast: "100B", prior: "105.28B" },
-    ], { sourceKey: "gloomberb-cloud", schemaVersion: 1 });
-    attachEconCalendarPersistence(persistence);
+    seedLongNames();
 
     const firstScreen = await renderPane(53, "high");
     expect(firstScreen).toMatch(/EVENT\s+ACT\s+EST\s*\n/);
@@ -182,6 +188,27 @@ describe("EconCalendarPane", () => {
     expect(wide).toMatch(/ACTUAL\s+FORECAST\s+PRIOR/);
     expect(wide).not.toMatch(/\d hidden · /);
     expect(wide).toMatch(/GDP Growth Rate QoQ Final\s+—\s+0\.4%\s+3\.3%/);
+  });
+
+  // Only the table drawn leaves figures out: the file has all three at any width, as it had before the names came first.
+  test("Export CSV keeps every figure, whatever a narrow pane leaves out", async () => {
+    seedLongNames();
+    const exported = async (width: number) => {
+      await renderPane(width, "high");
+      await exportPaneTable("econ-calendar", "eco.csv");
+      return takeSavedTextFile()!.text;
+    };
+    const rows = [
+      "10:00,CN,Balance of Trade,111200000000,100B,105.28B",
+      "13:00,CA,GDP Growth Rate QoQ Final,,0.4%,3.3%",
+      "13:00,CA,GDP Growth Rate YoY Final,,,0.8%",
+    ].join("\n");
+
+    // A pane with room for all three writes the file it always wrote.
+    expect(await exported(110)).toBe(`\uFEFFUTC,COUNTRY,EVENT,ACTUAL,FORECAST,PRIOR\n${rows}`);
+    // One that draws ACT and EST, or ACT alone, still writes all three, under the short headers of its width.
+    expect(await exported(48)).toBe(`\uFEFFUTC,CTY,EVENT,ACT,EST,PRIOR\n${rows}`);
+    expect(await exported(40)).toBe(`\uFEFFUTC,CTY,EVENT,ACT,EST,PRIOR\n${rows}`);
   });
 
   test("shows the saved calendar's original time after a timed-out refresh and clears it on recovery", async () => {
