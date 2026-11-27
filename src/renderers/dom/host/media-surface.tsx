@@ -12,6 +12,19 @@ const YOUTUBE_UNAVAILABLE = "The embedded player could not play this stream.";
 
 type YoutubeControls = { play(): void; pause(): void; mute(): void };
 
+function desktopYoutubeFrame(embed: URL): URL | undefined {
+  if (typeof window === "undefined" || window.location.protocol !== "views:" || window.location.hostname !== "mainview") return;
+  const videoId = /^\/embed\/([\w-]{11})\/?$/.exec(embed.pathname)?.[1];
+  if (!videoId) return;
+  const frame = new URL(`/embed/tv/${videoId}`, "https://gloom.sh");
+  if (embed.hostname.endsWith("youtube-nocookie.com")) frame.searchParams.set("privacy", "1");
+  for (const key of ["autoplay", "mute", "playsinline", "controls", "rel", "modestbranding"]) {
+    const value = embed.searchParams.get(key);
+    if (value === "0" || value === "1") frame.searchParams.set(key, value);
+  }
+  return frame;
+}
+
 function youtubePlaybackState(value: unknown): PlaybackState | "ended" | undefined {
   switch (value) {
     case 0: return "ended";
@@ -65,13 +78,15 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
     embedUrl.protocol = "https:";
     if (embedUrl.searchParams.get("enablejsapi") !== "1") embedUrl.searchParams.set("enablejsapi", "1");
   }
-  const youtubeOrigin = embedUrl?.origin;
+  const desktopFrame = embedUrl && desktopYoutubeFrame(embedUrl);
+  const embedFrame = desktopFrame || embedUrl;
+  const playerOrigin = embedFrame?.origin;
   const baseStyle = commonStyle(props);
 
   useImperativeHandle(forwardedRef, () => videoRef.current as HTMLVideoElement, []);
   useImperativeHandle(mediaHandleRef, (): MediaSurfaceHandle => ({
     async play() {
-      if (youtubeOrigin) {
+      if (playerOrigin) {
         if (failed) {
           retryYoutubeSrc.current = mediaSrc;
           setFailedSrc(null);
@@ -81,14 +96,14 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
       if (videoRef.current) await videoRef.current.play();
     },
     pause() {
-      if (youtubeOrigin) {
+      if (playerOrigin) {
         youtubeControls.current?.pause();
         return;
       }
       videoRef.current?.pause();
     },
     async toggle() {
-      if (youtubeOrigin) {
+      if (playerOrigin) {
         if (failed) {
           retryYoutubeSrc.current = mediaSrc;
           setFailedSrc(null);
@@ -105,7 +120,7 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
       }
     },
     toggleMuted() {
-      if (youtubeOrigin) {
+      if (playerOrigin) {
         youtubeMutedRef.current = !youtubeMutedRef.current;
         youtubeControls.current?.mute();
         onMutedChange?.(youtubeMutedRef.current);
@@ -116,13 +131,13 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
       video.muted = !video.muted;
       return video.muted;
     },
-  }), [failed, mediaSrc, muted, onMutedChange, youtubeOrigin]);
+  }), [failed, mediaSrc, muted, onMutedChange, playerOrigin]);
 
   // Keys typed into a cross-origin frame never reach the app, so a click on
   // the player would take Tab, the command bar and every pane key with it.
   // Its controls work by pointer without focus; hand the keyboard back.
   useEffect(() => {
-    if (!youtubeOrigin) return;
+    if (!playerOrigin) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const releaseFrameFocus = () => {
       timer = null;
@@ -142,18 +157,18 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
       window.removeEventListener("blur", handleWindowBlur);
       if (timer !== null) clearTimeout(timer);
     };
-  }, [youtubeOrigin]);
+  }, [playerOrigin]);
 
   useEffect(() => {
     youtubeMutedRef.current = muted;
-    if (youtubeOrigin) onMutedChange?.(muted);
-  }, [mediaSrc, muted, onMutedChange, youtubeOrigin]);
+    if (playerOrigin) onMutedChange?.(muted);
+  }, [mediaSrc, muted, onMutedChange, playerOrigin]);
 
   useEffect(() => setFailedSrc(null), [mediaSrc]);
 
   useEffect(() => {
     const frame = iframeRef.current;
-    if (!youtubeOrigin || failed || !frame) return;
+    if (!playerOrigin || failed || !frame) return;
     let last: PlaybackState | undefined;
     let ended = false;
     let connected = false;
@@ -164,7 +179,7 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
     let pauseRequested = false;
     const active = () => !ended && iframeRef.current === frame;
     const post = (payload: object) => {
-      if (active()) frame.contentWindow?.postMessage(JSON.stringify({ ...payload, id: YOUTUBE_WIDGET_ID, channel: "widget" }), youtubeOrigin);
+      if (active()) frame.contentWindow?.postMessage(JSON.stringify({ ...payload, id: YOUTUBE_WIDGET_ID, channel: "widget" }), playerOrigin);
     };
     const command = (func: string, args: string[] = []) => post({ event: "command", func, args });
     const update = (state: PlaybackState) => {
@@ -228,7 +243,7 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
     };
     const message = (event: MessageEvent) => {
       const source = frame.contentWindow;
-      if (!active() || !source || event.source !== source || event.origin !== youtubeOrigin || typeof event.data !== "string") return;
+      if (!active() || !source || event.source !== source || event.origin !== playerOrigin || typeof event.data !== "string") return;
       let payload: { event?: unknown; id?: unknown; info?: unknown } | null;
       try {
         payload = JSON.parse(event.data);
@@ -291,10 +306,10 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
       youtubeControls.current = null;
       window.removeEventListener("message", message);
     };
-  }, [autoPlay, failed, mediaSrc, youtubeOrigin]);
+  }, [autoPlay, failed, mediaSrc, playerOrigin]);
 
   useEffect(() => {
-    if (youtubeOrigin) return;
+    if (playerOrigin) return;
     const video = videoRef.current;
     if (!video || !mediaSrc) {
       if (!mediaSrc) onPlaybackStateChange?.("idle");
@@ -374,7 +389,7 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
       video.removeAttribute("src");
       video.load();
     };
-  }, [autoPlay, mediaSrc, onError, onMutedChange, onPlaybackStateChange, youtubeOrigin]);
+  }, [autoPlay, mediaSrc, onError, onMutedChange, onPlaybackStateChange, playerOrigin]);
 
   return (
     <div
@@ -387,14 +402,17 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
         ...(props.style as CSSProperties | undefined),
       }}
     >
-      {!failed && embedUrl ? (
+      {!failed && embedFrame ? (
         <iframe
           key={mediaSrc}
           ref={iframeRef}
           title={title || "Live TV stream"}
-          src={embedUrl.href}
+          src={embedFrame.href}
+          sandbox={desktopFrame ? "allow-scripts allow-same-origin" : undefined}
           referrerPolicy="strict-origin-when-cross-origin"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allow={desktopFrame
+            ? "autoplay; encrypted-media; fullscreen; picture-in-picture"
+            : "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"}
           allowFullScreen
           style={{
             width: "100%",
