@@ -1108,8 +1108,8 @@ class GloomApiClient {
     const proto = GloomApiClient.prototype as unknown as Record<string, unknown>;
     const bind = (get: (client: GloomApiClient) => object, targetKey: string, sourceKey: string) => {
       if (targetKey in proto) return;
-      proto[targetKey] = function (this: GloomApiClient, ...args: unknown[]) {
-        return (get(this) as Record<string, (...a: unknown[]) => unknown>)[sourceKey]!(...args);
+      proto[targetKey] = function (this: GloomApiClient | undefined, ...args: unknown[]) {
+        return (get(this ?? apiClient) as Record<string, (...a: unknown[]) => unknown>)[sourceKey]!(...args);
       };
     };
     const forward = (get: (client: GloomApiClient) => object, ctor: { prototype: object }) => {
