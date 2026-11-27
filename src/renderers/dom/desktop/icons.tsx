@@ -2,8 +2,12 @@
 import { releasePointerFocus } from "../host/focus-scope";
 import { formatShortcutForHost } from "../../../app/keybindings/labels";
 import { ariaKeyShortcut } from "./dialog-actions";
-import type { ReactNode } from "react";
-import type { IconButtonProps, IconName, IconProps } from "../../../components/ui/icon";
+import { PANE_SELECTOR, placementEdges } from "./popover";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
+import { ICON_GROUP_ATTRIBUTE, type IconButtonProps, type IconName, type IconProps } from "../../../components/ui/icon";
+import { TOOLTIP_SURFACE_STYLE } from "../../../components/ui/frame";
+import { usePaneFocused } from "../../../state/app/activity";
 
 /** The desktop icon set, drawn on a 12-unit grid in the current colour. */
 const ICONS: Record<IconName, ReactNode> = {
@@ -189,6 +193,22 @@ const ICONS: Record<IconName, ReactNode> = {
       <path d="M2 3.4 6 6.5l4-3.1" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
     </>
   ),
+  // A reply: an arrow that turns back to the left, as a mail reply's does.
+  reply: (
+    <>
+      <path d="M4.6 2.6 1.8 5.4l2.8 2.8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2.2 5.4h4.4a3.4 3.4 0 0 1 3.4 3.4v.8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    </>
+  ),
+  // A reaction: a smiling face, outlined like the other glyphs.
+  react: (
+    <>
+      <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.2" />
+      <circle cx="4.5" cy="5" r=".75" fill="currentColor" />
+      <circle cx="7.5" cy="5" r=".75" fill="currentColor" />
+      <path d="M4.1 7.2a2.2 2.2 0 0 0 3.8 0" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+    </>
+  ),
   restore: (
     <>
       <rect x="2" y="4" width="6" height="6" rx="0.8" stroke="currentColor" strokeWidth="1.1" />
@@ -230,28 +250,146 @@ function pressEventFrom(
   };
 }
 
+/** Between a focus label and the icons it names: clear of the focus ring, as a popover is of its trigger. */
+const FOCUS_LABEL_GAP = 6;
+
+/** How far past a list's edge a group may reach and still count as shown: a rounded pixel, never a row. */
+const SCROLL_CLIP_SLACK = 1;
+
+/**
+ * Whether a box between the button and its pane cuts into `group` (a list the
+ * row was scrolled out of, or any other box that clips what is in it). A list
+ * keeps rows past its edges in the page, so the group still has a place
+ * there: behind whatever is beside the list, such as a chat's composer.
+ */
+function clippedInsidePane(button: HTMLElement, group: DOMRect): boolean {
+  const pane = button.closest(PANE_SELECTOR);
+  for (let box = button.parentElement; box && box !== pane; box = box.parentElement) {
+    const { display, overflowX, overflowY } = window.getComputedStyle(box);
+    // A box that draws nothing of its own (display: contents) clips nothing.
+    if (display === "contents" || (overflowX === "visible" && overflowY === "visible")) continue;
+    const shown = box.getBoundingClientRect();
+    if (overflowY !== "visible" && (group.top < shown.top - SCROLL_CLIP_SLACK || group.bottom > shown.bottom + SCROLL_CLIP_SLACK)) return true;
+    if (overflowX !== "visible" && (group.left < shown.left - SCROLL_CLIP_SLACK || group.right > shown.right + SCROLL_CLIP_SLACK)) return true;
+  }
+  return false;
+}
+
+/**
+ * Where a focus label goes, in viewport pixels: after the button's group if
+ * it fits in the pane, else before it, else under it (over it when that
+ * leaves the pane); always clear of the group's icons. Null while the group
+ * is scrolled out of the pane, or any way out of a list inside it, when there
+ * is nothing to name: the label is on the page, where no list would clip it.
+ */
+function focusLabelPlace(button: HTMLElement, label: { width: number; height: number }): { left: number; top: number } | null {
+  const group = (button.closest(`[${ICON_GROUP_ATTRIBUTE}]`) ?? button).getBoundingClientRect();
+  const edges = placementEdges(button, "pane");
+  const middle = group.top + group.height / 2;
+  if (middle < edges.top || middle > edges.bottom || clippedInsidePane(button, group)) return null;
+  const beside = Math.max(edges.top, Math.min(group.top + (group.height - label.height) / 2, edges.bottom - label.height));
+  const after = group.right + FOCUS_LABEL_GAP;
+  if (after + label.width <= edges.right) return { left: after, top: beside };
+  const before = group.left - FOCUS_LABEL_GAP - label.width;
+  if (before >= edges.left) return { left: before, top: beside };
+  const left = Math.max(edges.left, Math.min(group.right - label.width, edges.right - label.width));
+  const below = group.bottom + FOCUS_LABEL_GAP;
+  return { left, top: below + label.height <= edges.bottom ? below : group.top - FOCUS_LABEL_GAP - label.height };
+}
+
+/**
+ * The name of a focused icon button, for the keyboard: what its tooltip says
+ * under the pointer. Portalled to the page so no row or list clips it, kept
+ * on its group wherever the group goes, hidden while a list hides the group,
+ * and never in the way of a press.
+ */
+function IconFocusLabel({ button, text }: { button: RefObject<HTMLButtonElement | null>; text: string }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    const target = button.current;
+    const label = ref.current;
+    if (!target || !label) return;
+    let frame = 0;
+    let drawn: string | null = null;
+    // Placed each frame, for as long as the keyboard is on the icon: a row
+    // moves on a scroll, and also when a message arrives, a row above it
+    // changes height or the list is given less room, which no event reports.
+    // Written to the element itself, so the label is drawn where its group
+    // is in that same frame, and is gone in the frame a list hides the group.
+    const follow = () => {
+      const place = focusLabelPlace(target, { width: label.offsetWidth, height: label.offsetHeight });
+      const next = place ? `${place.left}px ${place.top}px` : "";
+      if (next !== drawn) {
+        drawn = next;
+        label.style.visibility = place ? "visible" : "hidden";
+        if (place) {
+          label.style.left = `${place.left}px`;
+          label.style.top = `${place.top}px`;
+        }
+      }
+      frame = window.requestAnimationFrame(follow);
+    };
+    follow();
+    return () => window.cancelAnimationFrame(frame);
+  }, [button, text]);
+  return createPortal(
+    <div
+      ref={ref}
+      aria-hidden="true"
+      data-gloom-role="icon-button-focus-label"
+      className="gloom-icon-focus-label"
+      style={{
+        ...TOOLTIP_SURFACE_STYLE,
+        // One line high, as the icons are, so it stays on their row.
+        padding: "0 var(--gloom-space-sm)",
+        // Hidden until it is placed; its place is then kept on the element (see the effect above).
+        left: 0,
+        top: 0,
+        visibility: "hidden",
+      }}
+    >
+      {text}
+    </div>,
+    document.body,
+  );
+}
+
 export function WebIconButton({
   icon,
   label,
   title,
   shortcut,
   hasPopup,
+  expanded,
   onPress,
   pressed,
   color,
   disabled = false,
   size = 12,
   stopPropagation = true,
+  onHoverChange,
+  focusLabel = false,
 }: IconButtonProps) {
+  const ref = useRef<HTMLButtonElement | null>(null);
+  const [keyboardFocused, setKeyboardFocused] = useState(false);
+  const name = title ?? (shortcut ? `${label} (${formatShortcutForHost(shortcut, "platform")})` : label);
+  const paneFocused = usePaneFocused();
+  // Tab and Shift-Tab move the app's focus to another pane: the icon lets go
+  // of the page's focus too, so neither its label nor Enter stays behind here.
+  useEffect(() => {
+    if (focusLabel && keyboardFocused && paneFocused === false) ref.current?.blur();
+  }, [focusLabel, keyboardFocused, paneFocused]);
   return (
     <button
+      ref={ref}
       type="button"
       className="gloom-icon-button"
       aria-label={label}
       aria-pressed={pressed}
       aria-keyshortcuts={ariaKeyShortcut(shortcut)}
       aria-haspopup={hasPopup}
-      title={title ?? (shortcut ? `${label} (${formatShortcutForHost(shortcut, "platform")})` : label)}
+      aria-expanded={expanded}
+      title={name}
       disabled={disabled || !onPress}
       data-gloom-interactive={onPress && !disabled ? "true" : undefined}
       data-gloom-role="icon-button"
@@ -259,6 +397,11 @@ export function WebIconButton({
       style={color ? { color } : undefined}
       onMouseDown={(event) => { if (stopPropagation) event.stopPropagation(); }}
       onMouseUp={(event) => { if (stopPropagation) event.stopPropagation(); }}
+      onMouseEnter={onHoverChange ? () => onHoverChange(true) : undefined}
+      onMouseLeave={onHoverChange ? () => onHoverChange(false) : undefined}
+      // Focus from a press draws no ring and names nothing; the keyboard's does both.
+      onFocus={focusLabel ? (event) => setKeyboardFocused(event.currentTarget.matches(":focus-visible")) : undefined}
+      onBlur={focusLabel ? () => setKeyboardFocused(false) : undefined}
       onClick={(event) => {
         if (stopPropagation) event.stopPropagation();
         if (disabled) return;
@@ -278,6 +421,7 @@ export function WebIconButton({
       }}
     >
       <WebIcon name={icon} size={size} />
+      {focusLabel && keyboardFocused ? <IconFocusLabel button={ref} text={name} /> : null}
     </button>
   );
 }

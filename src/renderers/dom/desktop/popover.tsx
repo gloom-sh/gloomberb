@@ -9,7 +9,7 @@ const VIEWPORT_MARGIN = 10;
 /** How far a popover kept inside its pane stays off the pane's edge. */
 const PANE_MARGIN = 4;
 const POPOVER_GAP = 6;
-const PANE_SELECTOR = '[data-gloom-role="pane-window"], [data-gloom-role="detached-pane-window"]';
+export const PANE_SELECTOR = '[data-gloom-role="pane-window"], [data-gloom-role="detached-pane-window"]';
 /** `.gloom-popover` in styles.css: above dialogs and toasts. */
 const POPOVER_Z_INDEX = 10_001;
 
@@ -43,7 +43,7 @@ function anchorEdges(anchor: BoxRenderable): Edges | null {
 }
 
 /** The area a popover must stay in: the window, and for `pane` the pane that holds its trigger too. */
-function placementEdges(wrapper: Element | null, boundary: HostPopoverProps["boundary"]): Edges {
+export function placementEdges(wrapper: Element | null, boundary: HostPopoverProps["boundary"]): Edges {
   const viewport = {
     left: VIEWPORT_MARGIN,
     top: VIEWPORT_MARGIN,

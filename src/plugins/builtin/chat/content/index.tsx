@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore
 import { PageStackView } from "../../../../components/ui";
 import { ChoiceDialog } from "../../../../components/ui/choice-dialog";
 import { useOptionalDialog, type PromptContext } from "../../../../ui/dialog";
+import { useAnyDialogOpen } from "../../../../ui/dialog-context";
 import { canReactToMessage, terminalReactionChoices } from "../reactions";
 import { type InputRenderable, type ScrollBoxRenderable, type TextareaRenderable } from "../../../../ui";
 import { useAppDispatch, useAppSelector } from "../../../../state/app/context";
@@ -135,6 +136,7 @@ function ChatConversation({
   const dispatch = useAppDispatch();
   const { showPane, createPaneFromTemplate, notify } = usePluginAppActions();
   const commandBarOpen = useAppSelector((state) => state.commandBarOpen);
+  const dialogOpen = useAnyDialogOpen();
   const channelId = normalizeChannelId(rawChannelId);
   const channelIdRef = useRef(channelId);
   channelIdRef.current = channelId;
@@ -1053,8 +1055,13 @@ function ChatConversation({
         ? sidebarCursorRow.teamId
         : null
     : null;
+  const composing = inputFocused || newDmOpen || handleFieldFocused;
+  // Enter, + and e act on the selected message only while the chat has the
+  // keys: its pane is focused, and neither the command bar, a dialog, the
+  // reaction picker, a field nor the channel list has taken them.
+  const actionKeysOwned = focused && !composing && !sidebarFocused && !commandBarOpen && !dialogOpen && reactionPickerMessageId === null;
   useChatFooter({
-    composing: inputFocused || newDmOpen || handleFieldFocused,
+    composing,
     canSend,
     selectedIdx,
     // While the sidebar has the keys, a message's reply and edit are not on offer.
@@ -1196,6 +1203,8 @@ function ChatConversation({
         scheduleProfilePopoverClose={scheduleProfilePopoverClose}
         scrollRef={scrollRef}
         selectedIdx={selectedIdx}
+        // The keys that press a message's actions act on the selected one, and only while the chat has them.
+        actionKeysIdx={actionKeysOwned ? selectedIdx : -1}
         setHoveredIdx={setHoveredIdx}
         showProfilePopover={hoverUserProfile}
         toggleProfilePopover={toggleUserProfile}

@@ -22,3 +22,11 @@ export const DialogContext = createContext<DialogContextValue | null>(null);
 export function useDialogIsTopmost(): boolean {
   return useContext(DialogContext)?.keyboardEnabled ?? true;
 }
+
+/**
+ * True while any dialog is open, so it has the keyboard. False outside a
+ * dialog host (a pane drawn on its own), where `useDialogState` throws.
+ */
+export function useAnyDialogOpen(): boolean {
+  return useContext(DialogContext)?.isOpen ?? false;
+}

@@ -429,6 +429,34 @@ async function parkPointer(cdp: Cdp): Promise<void> {
   await frames(cdp, 3);
 }
 
+interface FocusedIcon { id: string; icon: string | null; top: number; bottom: number; listTop: number; listBottom: number; label: { top: number; bottom: number } | null }
+
+/** The message icon that has the page's focus, where its row's icons and the list are, and where its name is drawn; null when no message icon has it. */
+const focusedIcon = (cdp: Cdp) => evaluate<FocusedIcon | null>(cdp, `(() => {
+  const icon = document.activeElement;
+  const group = icon?.closest('[data-gloom-role=chat-message-reply-action]');
+  if (!group) return null;
+  const label = document.querySelector('[data-gloom-role=icon-button-focus-label]');
+  const named = label && getComputedStyle(label).visibility === 'visible' ? label.getBoundingClientRect() : null;
+  const g = group.getBoundingClientRect(), s = __chat.scroller().getBoundingClientRect();
+  return {
+    id: icon.closest('[data-gloom-role=chat-message]').getAttribute('data-gloom-chat-message-id'),
+    icon: icon.getAttribute('aria-label'),
+    top: g.top, bottom: g.bottom, listTop: s.top, listBottom: s.bottom,
+    label: named ? { top: named.top, bottom: named.bottom } : null,
+  };
+})()`);
+
+/** Shift-Tab from the composer: the one way the keyboard reaches a message's icons, the newest message's last. */
+async function shiftTabFromComposer(cdp: Cdp): Promise<void> {
+  await click(cdp, await evaluate<Point>(cdp, "__chat.composer()"));
+  await parkPointer(cdp);
+  for (const type of ["rawKeyDown", "keyUp"]) {
+    await cdp.send("Input.dispatchKeyEvent", { type, key: "Tab", code: "Tab", modifiers: 8, windowsVirtualKeyCode: 9 });
+  }
+  await frames(cdp, 3);
+}
+
 /** The icons a drawn name's header shows, in order, each drawn and inside the row. */
 async function iconsOf(cdp: Cdp, username: string): Promise<string> {
   const name = await nameOf(cdp, username) ?? fail(`no name ${username} drawn`);
@@ -916,6 +944,111 @@ export const chatSteps: ChatStep[] = [
       await mouse(cdp, "mouseMoved", away.x, away.y, false);
       await frames(cdp, 3);
       expectMarked(await marked(cdp), [], "pointer in the next pane");
+    },
+  },
+  {
+    // The icons once floated at the row's very edge. WebKit takes a press on a
+    // scrolling list's last pixels for its overlay scrollbar, so the last icon
+    // did nothing there; this Chromium runs without scrollbars and cannot see it.
+    name: "chat list: a grouped message's floated actions end where its text does, clear of the list's scrollbar",
+    scenario: "chat",
+    async run(cdp) {
+      await ready(cdp);
+      const id = await evaluate<string | null>(cdp, `(() => {
+        const s = __chat.scroller().getBoundingClientRect();
+        const row = __chat.rows().find((r) => {
+          const actions = r.querySelector('[data-gloom-role=chat-message-reply-action]');
+          const b = r.getBoundingClientRect();
+          return actions && getComputedStyle(actions).position === 'absolute' && b.top >= s.top && b.bottom <= s.bottom;
+        });
+        return row?.getAttribute('data-gloom-chat-message-id') ?? null;
+      })()`) ?? fail("no grouped message in view");
+      await hoverRow(cdp, id);
+      expectMarked(await marked(cdp), [id], "pointer on a grouped row");
+      const edges = await evaluate<{ actions: number; text: number }>(cdp, `(() => {
+        const actions = document.querySelector('[data-gloom-chat-message-id="${id}"] [data-gloom-role=chat-message-reply-action]');
+        const row = actions.closest('[data-gloom-role=chat-message-row]');
+        return { actions: actions.getBoundingClientRect().right, text: row.getBoundingClientRect().right - parseFloat(getComputedStyle(row).paddingRight) };
+      })()`);
+      if (edges.actions > edges.text + 0.5) fail("the floated actions run into the row's right padding, under the scrollbar", edges);
+    },
+  },
+  {
+    // A tooltip shows only under the pointer, so the icon the keyboard is on names itself.
+    name: "chat list: Shift-Tab from the composer onto a message icon names it beside the row's icons, covering none, until the focus leaves",
+    scenario: "chat",
+    async run(cdp) {
+      await ready(cdp);
+      await shiftTabFromComposer(cdp);
+      const seen = await evaluate<{ icon: string | null; label: string | null; covers: boolean; outside: boolean } | null>(cdp, `(() => {
+        const icon = document.activeElement;
+        const group = icon?.closest('[data-gloom-role=chat-message-reply-action]');
+        if (!group) return null;
+        const label = document.querySelector('[data-gloom-role=icon-button-focus-label]');
+        const r = label?.getBoundingClientRect();
+        const pane = icon.closest('[data-gloom-role=pane-window]').getBoundingClientRect();
+        const over = (b) => r && r.left < b.right && b.left < r.right && r.top < b.bottom && b.top < r.bottom;
+        return {
+          icon: icon.getAttribute('title'),
+          label: label && getComputedStyle(label).visibility === 'visible' ? label.textContent : null,
+          covers: [group, ...group.querySelectorAll('button')].some((b) => over(b.getBoundingClientRect())),
+          outside: !r || r.left < pane.left || r.right > pane.right || r.top < pane.top || r.bottom > pane.bottom,
+        };
+      })()`) ?? fail("Shift-Tab from the composer did not reach a message's actions", await evaluate(cdp, "document.activeElement?.outerHTML.slice(0, 200)"));
+      if (!seen.label || seen.label !== seen.icon) fail("the focused icon is not named beside it as its tooltip names it", seen);
+      if (seen.covers) fail("the focused icon's name covers the row's icons", seen);
+      if (seen.outside) fail("the focused icon's name leaves the pane", seen);
+      await click(cdp, await evaluate<Point>(cdp, "__chat.composer()"));
+      if (await evaluate<boolean>(cdp, "!!document.querySelector('[data-gloom-role=icon-button-focus-label]')")) fail("the name stayed after the focus went back to the composer");
+    },
+  },
+  {
+    // The page's focus stayed on the icon while the row keys moved the list's
+    // cursor: the selected row named Enter, and Enter pressed the icon of the
+    // row the focus was left on.
+    name: "chat list: after Shift-Tab onto a message icon, a row key gives Enter to the selected row, and the reply goes to that message",
+    scenario: "chat",
+    async run(cdp) {
+      await ready(cdp);
+      await shiftTabFromComposer(cdp);
+      const icon = await focusedIcon(cdp) ?? fail("Shift-Tab from the composer did not reach a message's actions");
+      await pressKey(cdp, "ArrowUp", "ArrowUp");
+      await pressKey(cdp, "ArrowUp", "ArrowUp");
+      const [target, ...others] = await selected(cdp);
+      if (!target || others.length > 0 || target === icon.id) fail("Up twice did not select the row above the icon's", { selected: [target, ...others], icon });
+      const named = await evaluate<string[]>(cdp, `[...document.querySelectorAll('[data-gloom-role=chat-message-reply-action] button[aria-keyshortcuts="Enter"]')]
+        .map((button) => button.closest('[data-gloom-role=chat-message]').getAttribute('data-gloom-chat-message-id'))`);
+      if (named.length !== 1 || named[0] !== target) fail("the selected row is not the one row naming Enter", { named, selected: target });
+      const focusLeftOn = (await focusedIcon(cdp))?.id ?? null;
+      await pressKey(cdp, "Enter", "Enter");
+      await cdp.send("Input.insertText", { text: "Reply to the selected row" });
+      await pressKey(cdp, "Enter", "Enter");
+      const sentTo = await waitFor<string | null>(cdp, "__chatFake.messages.at(-1).content === 'Reply to the selected row' && (__chatFake.messages.at(-1).replyToId ?? 'no message')");
+      if (sentTo !== target) fail("Enter did not reply to the selected message", { sentTo, selected: target, focusLeftOn });
+      if (focusLeftOn) fail("a message icon kept the page's focus after the row keys moved the cursor", { focusLeftOn });
+    },
+  },
+  {
+    // The list keeps rows past its edges in the page, and the name is drawn on
+    // the page, not in the list: the name of an icon scrolled under the list's
+    // edge was drawn there too, over the composer.
+    name: "chat list: the name of a focused message icon hides while its row is scrolled out of the list, and comes back with the row",
+    scenario: "chat",
+    async run(cdp) {
+      await ready(cdp);
+      await shiftTabFromComposer(cdp);
+      const rest = await focusedIcon(cdp) ?? fail("Shift-Tab from the composer did not reach a message's actions");
+      if (!rest.label) fail("the focused icon has no name while its row is in view", rest);
+      // Just past the edge: the icons a few pixels under the list, their row still in the page.
+      const at = await listCentre(cdp);
+      await wheel(cdp, at, -(rest.listBottom - rest.top + 2));
+      const past = await focusedIcon(cdp) ?? fail("scrolling its row out of the list took the focus off the icon");
+      if (past.id !== rest.id || past.top < past.listBottom) fail("the wheel turn did not take the focused icon's row under the list's edge", { rest, past });
+      if (past.label) fail("the name of an icon scrolled out of the list is still drawn, under the list", past);
+      await wheel(cdp, at, 400);
+      const back = await focusedIcon(cdp) ?? fail("scrolling its row back into the list took the focus off the icon");
+      if (back.bottom > back.listBottom + 1) fail("the wheel turn did not bring the row back into the list", back);
+      if (!back.label || Math.abs(back.label.top - rest.label.top) > 1) fail("the name did not come back beside its icon with the row", { rest, back });
     },
   },
   {

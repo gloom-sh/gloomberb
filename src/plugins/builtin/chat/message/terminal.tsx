@@ -1,13 +1,13 @@
 import { Box, Text, TextAttributes, useRendererHost } from "../../../../ui";
 import { colors } from "../../../../theme/colors";
 import { t } from "../../../../i18n";
-import { formatInlinePreview, getMessageBodyTokenLines, MESSAGE_ACTION_WIDTH } from "../layout";
+import { formatInlinePreview, getMessageBodyTokenLines } from "../layout";
 import { chatImageLabel, chatImageReviewNote, chatReplyQuoteText } from "../attachments/model";
 import { heldMessage, isQuotedAuthorManagedBot } from "../ghost-user";
 import { ChatBotIcon } from "./person-icons";
 import { CHAT_PERSON_ICON_WIDTH } from "../people";
-import { ChatMessageActions, ChatMessageHeader } from "./header";
-import { Button } from "../../../../components/ui";
+import { ChatMessageActions, ChatMessageHeader, type ChatMessageActionIconProps } from "./header";
+import { IconButton } from "../../../../components/ui";
 import { useSelectionFill } from "../../../../components/ui/selection-fill";
 import { canReactToMessage } from "../reactions";
 import { TerminalChatReactions } from "./reactions";
@@ -31,6 +31,7 @@ export function TerminalChatMessage({
   selectedIdx,
   hoveredIdx,
   highlighted,
+  actionKeysShown = false,
   canSend,
   contentWidth,
   messageBodyWidth,
@@ -70,15 +71,12 @@ export function TerminalChatMessage({
     slowSend,
     host: "terminal",
   });
-  const reactAction = openReactionPicker ? (
-    <Button stopPropagation
-      label={t("React")}
-      width={MESSAGE_ACTION_WIDTH}
-      variant={state.isSelected ? "primary" : "secondary"}
-      onPress={() => openReactionPicker(index)}
-    />
-  ) : null;
-  const actionProps = { state, index, beginReplyTo, beginEditMessage, retryMessage, reactAction };
+  const reactAction = openReactionPicker ? (icon: ChatMessageActionIconProps) => (
+    <IconButton icon="react" {...icon} hasPopup="dialog" onPress={() => openReactionPicker(index)} />
+  ) : undefined;
+  const actionProps = { state, index, beginReplyTo, beginEditMessage, retryMessage, reactAction, actionKeysShown };
+  // A grouped message floats its actions at the right edge of its first row.
+  const floatingRow = { width: contentWidth };
   const attachments = msg.attachments ?? [];
   // A share link is its chip's row; a message that was only one has no text row.
   const { links: paneLinks, content } = chatMessagePaneLinks(msg);
@@ -166,7 +164,7 @@ export function TerminalChatMessage({
               onUserContextMenu={onUserContextMenu}
             />
           </Box>
-          {lineIndex === 0 && state.grouped && <ChatMessageActions floating {...actionProps} />}
+          {lineIndex === 0 && state.grouped && <ChatMessageActions floating row={floatingRow} {...actionProps} />}
         </Box>
       ))}
       {paneLinks.map((link, linkIndex) => (
@@ -183,7 +181,7 @@ export function TerminalChatMessage({
           selectedTextColor={state.selectedTextColor}
           onOpen={openPaneLink}
         >
-          {state.grouped && bodyLines.length === 0 && linkIndex === 0 && <ChatMessageActions floating {...actionProps} />}
+          {state.grouped && bodyLines.length === 0 && linkIndex === 0 && <ChatMessageActions floating row={floatingRow} {...actionProps} />}
         </TerminalChatPaneChipRow>
       ))}
       {attachments.map((attachment, imageIndex) => (
@@ -207,7 +205,7 @@ export function TerminalChatMessage({
               {formatInlinePreview(`[${chatImageLabel(attachment)}]`, messageBodyWidth)}
             </Text>
           </Box>
-          {state.grouped && bodyLines.length === 0 && paneLinks.length === 0 && imageIndex === 0 && <ChatMessageActions floating {...actionProps} />}
+          {state.grouped && bodyLines.length === 0 && paneLinks.length === 0 && imageIndex === 0 && <ChatMessageActions floating row={floatingRow} {...actionProps} />}
         </Box>
       ))}
       {reviewNote && (

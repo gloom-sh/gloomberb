@@ -2503,11 +2503,11 @@ Public channels are mirrored to the Gloom Discord, and messages written there ca
 
 ### Reactions
 
-React beside Reply on the message the pointer is on (in the terminal, the selected message, or `+`). It offers 👍 🔥 😂 👀 ❤️ 🚀 and any other emoji already on the message. A click adds or takes back yours, and pointing at one names who reacted. Reactions notify no one, and in public channels they also show on the Discord copy.
+React is the face beside Reply on the message the pointer is on (`+` in the terminal), and `+` reacts to the selected message. It offers 👍 🔥 😂 👀 ❤️ 🚀 and any other emoji already on the message. A click adds or takes back yours, and pointing at one names who reacted. Reactions notify no one, and in public channels they also show on the Discord copy.
 
 ### Scrolling and message buttons
 
-At the bottom, the message list follows each new message. Scroll back and it stays, with a `N new messages` button that scrolls to the newest. The Reply, React and Edit buttons show only on the message the pointer is on (in the terminal, the selected one).
+At the bottom, the message list follows each new message. Scroll back and it stays, with a `N new messages` button that scrolls to the newest. Reply, React and Edit are icons that show only on the message the pointer or the keyboard is on, or one you tap. Pointing at one names it, and on the selected message its key too: Enter, `+` or `e`. On the desktop, an icon that keyboard focus reaches (Shift-Tab from the composer, or Option-Shift-Tab where Tab moves only between fields, as in Safari) is named beside the icons as well. The terminal draws them as `⏎`, `+` and `✎`.
 
 ### Images
 
