@@ -15,7 +15,7 @@ import type { FundFactsPayload } from "../../../api-client/fund-facts";
 import { errorMessage } from "../../../utils/errors";
 import { filingStoryNote, loadFilingStories, type FilingStory } from "../insider/filing-stories";
 import { logFailure } from "../../../utils/log-failure";
-import { exchangeFilingForm, exchangeFilingHistoryLimit, HKEX_FILING_HISTORY_LIMIT, latestFilingRows, localFilingListing, localFilingRows, PRESENTATIONS_FORM } from "./exchange-filings";
+import { emptyOwnershipArchive, exchangeFilingForms, exchangeFilingHistoryLimit, HKEX_FILING_HISTORY_LIMIT, latestFilingRows, localFilingListing, localFilingRows, PRESENTATIONS_FORM } from "./exchange-filings";
 import type { ExchangeAnnouncementsPayload, ExchangeAnnouncementsRequest } from "../../../api-client/exchange-announcements";
 import { loadSecFilings } from "./client";
 import { ETF_FILING_FORMS, filterFilingsByForms, fundSeriesFilings, loadShownSecFilings, SEC_FILING_FETCH_LIMIT } from "./forms";
@@ -162,7 +162,7 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       {
         key: "form",
         shot: { reportOnly: "picks the report's rows by form; the pane's Form filter picks a group of forms" },
-        description: "Only this SEC form and its amendments, such as 8-K, 10-K or 13D. Use presentations for Taiwan investor conference decks or results for Hong Kong, Japan, Singapore and Vietnam earnings materials.",
+        description: "Only this SEC form and its amendments, such as 8-K, 10-K or 13D. Use presentations for Taiwan investor conference decks, results for Hong Kong, Japan, Singapore and Vietnam earnings materials, or ownership for Singapore ownership disclosures.",
         type: "string",
         placeholder: "form",
         example: "--form 8-K",
@@ -182,8 +182,7 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       const limit = Number(args.options.limit);
       const form = typeof args.options.form === "string" ? args.options.form.trim() : "";
       const localListing = localFilingListing(symbol);
-      const availableKind = exchangeFilingForm(localListing?.exchange)?.kind;
-      const localKind = form.toLowerCase() === availableKind ? availableKind : undefined;
+      const localKind = exchangeFilingForms(localListing?.exchange).find(option => option.kind === form.toLowerCase())?.kind;
       const presentations = localKind === PRESENTATIONS_FORM;
       const load = (count: number) => dependencies.loadFilings(symbol, count, args, ctx);
       // A form filter searches every filing listed for the issuer and keeps the supplements it names; without
@@ -224,6 +223,7 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
           freshness: { source: publishers, status: "not-a-feed", basis: hasCatalogueDate ? "filings and catalogue dates" : "filed data", observedKey: "filedAt" },
           ...(localKind && !combined.length ? { empty: presentations
             ? exchange.stale ? "MOPS presentation archive incomplete." : "No investor conference presentations in the past year."
+            : localKind === "ownership" ? emptyOwnershipArchive(exchange.stale)
             : exchange.stale ? "Exchange results archive incomplete." : "No results or presentations in the exchange archive." } : {}),
           metadata: { symbol, returned: combined.length, exchangePage: exchange.page,
             ...(exchange.dateSource ? { exchangeDateSource: exchange.dateSource } : {}),

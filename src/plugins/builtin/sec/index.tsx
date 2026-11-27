@@ -3,7 +3,7 @@ import type { PluginModule } from "../plugin-module";
 import type { SecFilingDocument, SecFilingItem } from "../../../types/data-provider";
 import { apiClient } from "../../../api-client";
 import { useAsyncResource } from "../../../public/react";
-import { exchangeFilingForm, exchangeFilingHistoryLimit, localFilingListing, localFilingRows, PRESENTATIONS_FORM, RECENT_EXCHANGE_FILING_LIMIT } from "./exchange-filings";
+import { emptyOwnershipArchive, exchangeFilingForms, exchangeFilingHistoryLimit, localFilingListing, localFilingRows, PRESENTATIONS_FORM, RECENT_EXCHANGE_FILING_LIMIT } from "./exchange-filings";
 import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery, useTickerFinancials } from "../../../market-data/hooks";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { useShortcut } from "../../../react/input";
@@ -353,9 +353,11 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   const local = ticker && !forms && eligibleTicker ? localFilingListing(ticker.metadata.ticker, ticker.metadata.exchange) : null;
   const localSymbol = local?.symbol;
   const localVenue = local?.exchange;
-  const localForm = exchangeFilingForm(localVenue);
+  const localForms = exchangeFilingForms(localVenue);
+  const hasLocalForms = localForms.length > 0;
   const [storedGroup, setFormGroup] = usePluginPaneState<string>(forms ? "fundFormGroup" : "formGroup", ALL_FORMS);
-  const localKind = localForm && localForm.value === storedGroup ? localForm.kind : undefined;
+  const localForm = localForms.find(form => form.value === storedGroup);
+  const localKind = localForm?.kind;
   const presentations = localKind === PRESENTATIONS_FORM;
   const formGroup = localKind || groups.some((group) => group.value === storedGroup) ? storedGroup : ALL_FORMS;
   // A ticker can map to more than one filer (CIK); each can be listed alone.
@@ -613,7 +615,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
       defaultValue: ALL_FORMS,
       options: [
         { value: ALL_FORMS, label: forms ? "All fund forms" : "All forms" },
-        ...(localForm ? [{ value: localForm.value, label: localForm.label }] : []),
+        ...localForms.map(({ value, label }) => ({ value, label })),
         ...groups.map((group) => ({ value: group.value, label: group.label })),
       ],
       onChange: (value: string) => { setFormGroup(value); setSelectedIdx(0, { immediate: true }); setOpenItemId(null); },
@@ -635,7 +637,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
       defaultValue: false,
       onChange: (value: boolean) => { setShowSupplements(value); setSelectedIdx(0, { immediate: true }); setOpenItemId(null); },
     }] : []),
-  ], [formGroup, forms, groups, issuerCik, issuers, localForm, localKind, setFormGroup, setIssuer, setOpenItemId, setSelectedIdx, setShowSupplements, showSupplements, supplementCount]);
+  ], [formGroup, forms, groups, issuerCik, issuers, localForms, localKind, setFormGroup, setIssuer, setOpenItemId, setSelectedIdx, setShowSupplements, showSupplements, supplementCount]);
   // The ticker and the filer once, beside the filters: every row is their filing.
   const issuerMeta = !localKind && issuers.length === 1 ? secIssuerLabel(issuers[0]!).replace(/CIK 0+/, "CIK ") : undefined;
   const queryBar = (
@@ -685,11 +687,11 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
     )
     : body;
   if (authWall) return withFacts(<SignInWall placement="sec-signin" action="view SEC filings" needsVerification={cloudSession.needsVerification} />);
-  if (!localForm && (loading || localLoading) && filings.length === 0 && !localRows.length) return withFacts(<Spinner label="Loading SEC filings..." />);
+  if (!hasLocalForms && (loading || localLoading) && filings.length === 0 && !localRows.length) return withFacts(<Spinner label="Loading SEC filings..." />);
   // The fund view keeps its facts and query bar over an empty or failed filings list, which says why in the table.
   const feedError = localError ?? error;
-  if (!forms && !localForm && feedError && formFilings.length === 0 && !localRows.length) return <EmptyState title="Filings unavailable." message={feedError} />;
-  if (!forms && !localForm && formFilings.length === 0 && !localRows.length) {
+  if (!forms && !hasLocalForms && feedError && formFilings.length === 0 && !localRows.length) return <EmptyState title="Filings unavailable." message={feedError} />;
+  if (!forms && !hasLocalForms && formFilings.length === 0 && !localRows.length) {
     // A company from abroad that files nothing with the SEC says so and links its exchange's announcements, as `filings` does.
     if (equityAbroad) {
       const listing = { symbol: parsePublicTickerKey(ticker.metadata.ticker).symbol, exchange: equityAbroad, name: ticker.metadata.name ?? null };
@@ -760,15 +762,16 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
         ? localLoading ? "Loading presentations..."
           : localError || localData?.stale ? "Presentation archive unavailable or incomplete."
             : "No investor conference presentations in the past year."
-        : localForm && (loading || localLoading) ? "Loading filings..."
-        : localForm && feedError ? "Filings unavailable."
+        : hasLocalForms && (loading || localLoading) ? "Loading filings..."
+        : hasLocalForms && feedError ? "Filings unavailable."
+        : localKind === "ownership" ? emptyOwnershipArchive(localData?.stale)
         : localKind === "results" ? localFeed.data?.stale
           ? "Results archive unavailable or incomplete."
           : "No results or presentations in the exchange archive."
         : forms && formFilings.length === 0 ? fundEmptyTitle
         : supplementCount > 0 && !showSupplements ? "Only pricing supplements."
         : formGroup === ALL_FORMS ? "No SEC filings." : "No filings of these forms."}
-      emptyStateHint={localForm && feedError ? feedError
+      emptyStateHint={hasLocalForms && feedError ? feedError
         : forms && formFilings.length === 0 ? fundEmptyHint
         : supplementCount > 0 && !showSupplements ? "Turn on Pricing supplements to list them." : undefined}
       scrollRef={scrollRef}
