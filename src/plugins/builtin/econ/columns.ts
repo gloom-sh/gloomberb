@@ -23,16 +23,19 @@ const SPELLED_HEADER_MIN_EVENT_WIDTH = 24;
  * `columns` the table draws, `exportColumns` all of them, as Export CSV
  * writes them. `flagged` leads each country's code with its flag (the
  * desktop and the web), and `readerZone` is the reader's own time zone.
+ * `actualNote` is the widest word a row says under ACTUAL in place of its
+ * figure (actualNoteWidth), which the column keeps whole.
  * Every width comes from the whole list, never the rows in view, so no
  * column moves as the reader scrolls.
  */
-export function econCalendarColumns({ width, events, countryFilter, impactFilter, flagged, readerZone }: {
+export function econCalendarColumns({ width, events, countryFilter, impactFilter, flagged, readerZone, actualNote = 0 }: {
   width: number;
   events: readonly EconEvent[];
   countryFilter: CountryFilter;
   impactFilter: ImpactFilter;
   flagged: boolean;
   readerZone: string | null;
+  actualNote?: number;
 }): { columns: EconCalendarColumn[]; exportColumns: EconCalendarColumn[] } {
   // Named by its zone, as the reader's column is by its city: "TIME (UTC)" took 13
   // cells over "07:00" while EVENT read "GDP Growth Ra…" (review, 12 Nov 2026).
@@ -44,7 +47,7 @@ export function econCalendarColumns({ width, events, countryFilter, impactFilter
   const showImpact = impactFilter === "all";
   const actualLabel = compact ? "ACT" : "ACTUAL";
   const forecastLabel = compact ? "EST" : "FORECAST";
-  const actualWidth = tableColumnWidth({ width: valueColumnWidth(events, "actual", compact ? 3 : 9), label: actualLabel });
+  const actualWidth = tableColumnWidth({ width: Math.max(valueColumnWidth(events, "actual", compact ? 3 : 9), actualNote), label: actualLabel });
   const forecastWidth = tableColumnWidth({ width: valueColumnWidth(events, "forecast", compact ? 3 : 10), label: forecastLabel });
   const priorWidth = tableColumnWidth({ width: valueColumnWidth(events, "prior", compact ? 5 : 9), label: "PRIOR" });
   const minEventWidth = tableColumnWidth({ width: compact ? 5 : 12, label: "EVENT" });
@@ -73,7 +76,8 @@ export function econCalendarColumns({ width, events, countryFilter, impactFilter
   const longestName = longestEventName(events);
   // The names come first, as in every narrow table: where three figure columns leave "GDP Growt…", PRIOR goes, and
   // in a narrower pane still the forecast; the table says which it left out. The event's detail has all three.
-  const kept = keptFigureColumns(figureColumns, (columns) => underShortHeaders(roomBeside(columns, times, timesWidth)), longestName, minEventWidth);
+  const kept = keptFigureColumns(figureColumns, (columns) => underShortHeaders(roomBeside(columns, times, timesWidth)), longestName, minEventWidth,
+    actualNote);
   // IMPACT and COUNTRY in words while event names keep room to read; the
   // short labels otherwise, with the word on hover where there is one.
   const spelledImpactWidth = tableColumnWidth({ width: 1, label: SPELLED_IMPACT });
@@ -88,7 +92,7 @@ export function econCalendarColumns({ width, events, countryFilter, impactFilter
   const eventRoom = (columns: readonly EconCalendarColumn[]) =>
     roomBeside(columns, times, timesWidth)(tableColumnWidth(impactColumn), tableColumnWidth(countryColumn));
   // Then the names have what a long figure weeks out took, up to the longest of them: the figure is cut, not every name.
-  const figures = figuresBesideNames(kept, eventRoom, longestName, minEventWidth);
+  const figures = figuresBesideNames(kept, eventRoom, longestName, minEventWidth, actualNote);
   const eventWidth = Math.max(minEventWidth, eventRoom(figures));
 
   const leading: EconCalendarColumn[] = [
@@ -96,7 +100,9 @@ export function econCalendarColumns({ width, events, countryFilter, impactFilter
     ...withReader ? [{ id: "readerTime" as const, label: readerLabel!, width: readerWidth, align: "left" as const, title: readerZone! }] : [],
     ...showImpact ? [{ id: "impact" as const, ...impactColumn, align: "left" as const }] : [],
     ...showCountry ? [{ id: "country" as const, ...countryColumn, align: "left" as const }] : [],
-    { id: "event", label: "EVENT", width: eventWidth, align: "left" },
+    // The names take any room the pane has past these widths too: the desktop and the web otherwise spread it over
+    // every column, figures among them, while the names stay cut.
+    { id: "event", label: "EVENT", width: eventWidth, align: "left", flexGrow: 1 },
   ];
   const every = [...leading, ...figureColumns];
   return { columns: markHiddenTableColumns(every, [...leading, ...figures]), exportColumns: every };

@@ -36,6 +36,7 @@ import {
   countriesWithoutEvents,
   DEFAULT_IMPACT_FILTER,
   FILTER_CYCLE,
+  actualNoteWidth,
   attachEconCalendarPersistence,
   awaitsConsensus,
   figureGap,
@@ -278,9 +279,11 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   const flagged = useUiCapabilities().nativePaneChrome === true;
   // A reader who set a time zone (`config set timezone`) gets their clock in a column beside UTC.
   const readerZone = readerTimeZone(useAppConfig().timezone);
+  // `awaiting` under Actual on a release past its time: the column keeps the word whole.
+  const actualNote = useMemo(() => actualNoteWidth(filtered, now, events), [events, filtered, now]);
   const { columns, exportColumns } = useMemo(
-    () => econCalendarColumns({ width, events: filtered, countryFilter, impactFilter, flagged, readerZone }),
-    [countryFilter, filtered, flagged, impactFilter, readerZone, width],
+    () => econCalendarColumns({ width, events: filtered, countryFilter, impactFilter, flagged, readerZone, actualNote }),
+    [actualNote, countryFilter, filtered, flagged, impactFilter, readerZone, width],
   );
   const separatorBg = blendHex(colors.bg, colors.border, 0.3);
   const staleness = fetchedAt ? formatStaleness(fetchedAt, now) : "";

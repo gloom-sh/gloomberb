@@ -68,6 +68,17 @@ describe("econ calendar column widths", () => {
     expect(hidden(70)).toBeNull();
   });
 
+  // `awaiting` under ACT on the release just past its time is a word, not a long figure: it is never what gives way.
+  test("ACT keeps a release's awaiting or no-figure word whole", () => {
+    const at = (width: number, actualNote: number, events: readonly EconEvent[] = LISTING) => Object.fromEntries(econCalendarColumns({
+      width, events, countryFilter: "all", impactFilter: "high", flagged: true, readerZone: null, actualNote,
+    }).columns.map((column) => [column.label, column.width]));
+    expect(at(57, "awaiting".length)).toEqual({ UTC: 5, CTY: 5, EVENT: 24, ACT: 8, EST: 7 });
+    const near = LISTING.filter((event) => !["us-trade", "au-trade", "fed"].includes(event.id));
+    // A column of short figures is as wide as the word, and what leaves is weighed at that width.
+    expect(at(57, "no figure".length, near)).toEqual({ UTC: 5, CTY: 5, EVENT: 25, ACT: 9, EST: 5 });
+  });
+
   // Where no figure listed needs a plain figure's cells, a column is as narrow as its widest figure or its header.
   test("a column of short figures is narrower than a plain figure", () => {
     const near = LISTING.filter((event) => !["us-trade", "au-trade", "fed"].includes(event.id));
