@@ -157,6 +157,7 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
     let last: PlaybackState | undefined;
     let ended = false;
     let connected = false;
+    let hasStateTransition = false;
     let deadline: ReturnType<typeof setTimeout> | undefined;
     let queuedPlayback: "playVideo" | "pauseVideo" | undefined;
     let queuedMute = false;
@@ -245,11 +246,15 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
         stopAttempt();
         update("idle");
       } else {
-        const state = kind === "onStateChange" ? youtubePlaybackState(info)
+        const isTransition = kind === "onStateChange";
+        if (hasStateTransition && !isTransition) return;
+        const state = isTransition ? youtubePlaybackState(info)
           : (kind === "initialDelivery" || kind === "infoDelivery") && snapshot && "playerState" in snapshot
             ? youtubePlaybackState(snapshot.playerState) : undefined;
+        if (state === undefined) return;
+        if (isTransition) hasStateTransition = true;
         if (state === "ended") {
-          if (deadline !== undefined && kind !== "onStateChange") return;
+          if (deadline !== undefined && !isTransition) return;
           pauseRequested = false;
           stopAttempt();
           update("idle");
@@ -258,12 +263,12 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
           stopAttempt();
           update(state);
         } else if (state === "loading") {
-          if (!pauseRequested && (kind === "onStateChange" || last === "playing")) startAttempt();
-        } else if (state === "paused" && (kind === "onStateChange" || pauseRequested)) {
+          if (!pauseRequested && (isTransition || last === "playing")) startAttempt();
+        } else if (state === "paused" && (isTransition || pauseRequested)) {
           pauseRequested = false;
           stopAttempt();
           update(state);
-        } else if (state !== undefined && connected && deadline === undefined) {
+        } else if (connected && deadline === undefined) {
           update(state);
         }
       }

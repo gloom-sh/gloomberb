@@ -127,6 +127,56 @@ test("ready followed by buffering and silence still expires the original play at
   }
 });
 
+test("a delayed playing snapshot cannot clear a confirmed buffering deadline", async () => {
+  const timer = spyOn(globalThis, "setTimeout");
+  try {
+    const { pane, states, send } = await embed();
+    await send("onReady");
+    await send("onStateChange", 1);
+    await send("onStateChange", 3);
+    const attempt = timer.mock.calls.filter(([, delay]) => delay === 15_000).at(-1)![0];
+    await send("infoDelivery", { playerState: 1 });
+    await act(async () => attempt());
+    expect(states).toEqual(["loading", "playing", "loading", "error"]);
+    expect(pane.querySelector("a")?.textContent).toBe("Open in browser");
+  } finally {
+    timer.mockRestore();
+  }
+});
+
+test("a delayed buffering snapshot cannot start another deadline after confirmed playback", async () => {
+  const timer = spyOn(globalThis, "setTimeout");
+  try {
+    const { states, send } = await embed();
+    await send("onReady");
+    await send("onStateChange", 3);
+    await send("onStateChange", 1);
+    const deadlines = () => timer.mock.calls.filter(([, delay]) => delay === 15_000).length;
+    const before = deadlines();
+    await send("infoDelivery", { playerState: 3 });
+    expect(deadlines()).toBe(before);
+    expect(states).toEqual(["loading", "playing"]);
+  } finally {
+    timer.mockRestore();
+  }
+});
+
+test.each(["initialDelivery", "infoDelivery"] as const)("%s can confirm initial playback before a valid state transition", async (kind) => {
+  const timer = spyOn(globalThis, "setTimeout");
+  try {
+    const { states, onError, send } = await embed();
+    const attempt = timer.mock.calls.filter(([, delay]) => delay === 15_000).at(-1)![0];
+    if (kind === "infoDelivery") await send("onReady");
+    await send("onStateChange", "1");
+    await send(kind, { playerState: 1 });
+    await act(async () => attempt());
+    expect(states).toEqual(["loading", "playing"]);
+    expect(onError).not.toHaveBeenCalled();
+  } finally {
+    timer.mockRestore();
+  }
+});
+
 test("pausing after the player ends does not hide a confirmed replay", async () => {
   const { media, states, postMessage, send } = await embed();
   await send("onReady");
