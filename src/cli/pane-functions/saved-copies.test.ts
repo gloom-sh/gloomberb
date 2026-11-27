@@ -1,8 +1,9 @@
 import { afterEach, expect, setSystemTime, spyOn, test } from "bun:test";
-import { apiClient } from "../../api-client";
+import { apiClient, setCloudApiFetchTransport } from "../../api-client";
 import type { DoeBoardPayload } from "../../api-client/doe";
 import { ApiRequestError } from "../../api-client/errors";
 import type { MoneyMarketRow, MoneyMarketsPayload } from "../../api-client/money-markets";
+import { getCloudApiBaseUrl } from "../../api-client/request";
 import { AppPersistence } from "../../data/app-persistence";
 import { CachedQuery, type CachedValue } from "../../data/cached-query";
 import { collectSavedCopies, retrievedAtOf } from "../../data/saved-copies";
@@ -34,11 +35,14 @@ const config = createDefaultConfig("/tmp/gloom-fn-saved-copies");
 const unreachable = () => new DataServiceUnreachableError(Object.assign(new Error("Unable to connect. Is the computer able to access the url?"), { code: "ConnectionRefused" }));
 const spies: Array<{ mockRestore(): void }> = [];
 const profiles: AppPersistence[] = [];
+const unexpectedRequests: string[] = [];
 afterEach(() => {
+  setCloudApiFetchTransport(null);
   setHttpFetchTransport(null);
   for (const spy of spies.splice(0)) spy.mockRestore();
   for (const profile of profiles.splice(0)) profile.close();
   process.exitCode = 0;
+  expect(unexpectedRequests.splice(0)).toEqual([]);
 });
 
 /** One profile's database across runs: each run closes what it opened, so it stays open until the test ends. */
@@ -224,6 +228,21 @@ test("fn AUCT answers a failed refresh from the board an earlier run read, sayin
 // Both said "saved copy from" over a refusal: VIX over a FRED series Gloom Cloud no longer serves or a
 // refused session, G over a board route the server stopped serving ("not available yet" before).
 test("fn VIX and fn G end with the saved-copy line after an outage, and say a refusal instead of covering it", async () => {
+  const rejectRequest = (request: string): never => {
+    unexpectedRequests.push(request);
+    throw new Error(`Unexpected network request: ${request}`);
+  };
+  const correlationUrl = `${getCloudApiBaseUrl()}/cloud/iv/implied-correlation`;
+  setCloudApiFetchTransport(async (url, init) => {
+    const method = init?.method ?? "GET";
+    if (method === "GET" && url === correlationUrl) return Response.json({ series: [] });
+    return rejectRequest(`${method} ${url}`);
+  });
+  spies.push(spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const request = input instanceof Request ? input : null;
+    return rejectRequest(`${init?.method ?? request?.method ?? "GET"} ${request?.url ?? input}`);
+  }));
+
   let failure: unknown = null;
   const history = (id: string) => [17, 18, 19].map((value, day) => ({ date: `2026-09-${16 + day}`, value: id === "VIXCLS" ? value : value + 3 }));
   const fred = spyOn(apiClient, "getCloudFredSeries").mockImplementation(async (id: string) => {
