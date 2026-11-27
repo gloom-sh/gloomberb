@@ -1,7 +1,7 @@
 {
  "format": 1,
  "site": "https://gloom.sh",
- "updatedAt": "2026-11-24",
+ "updatedAt": "2026-11-27",
  "categories": [
   {
    "id": "research",
@@ -231,7 +231,7 @@
    "code": "RV",
    "name": "Relative valuation",
    "description": "Multiples across peers",
-   "detail": "Compare market cap, P/E, EV/sales, growth, and margins. The pane auto-picks peers when opened on one ticker. The CLI compares the tickers given unless you add --peers; add --columns evEbitda for optional EV/EBITDA.",
+   "detail": "Valuation and operating metrics for a peer group in one table: market cap, P/E, EV/EBITDA, margins, growth, and more.",
    "category": "research",
    "arg": "NVDA, AMD, AVGO",
    "shot": "https://gloom.sh/screenshots/fn/RV.png",
@@ -745,7 +745,7 @@
    "code": "MEMB",
    "name": "Index and ETF members",
    "description": "ETF holdings, member returns and index changes",
-   "detail": "Holdings of SPY, QQQ, IVV, IWM and other index, sector, thematic and bond ETFs, with weights, member returns, daily contributions and index changes. Leveraged funds, USO and BITO list their swaps and futures, bond funds their bonds, and the gold, silver and crypto trusts the metal or coin they hold. SPX uses IVV holdings.",
+   "detail": "Holdings of SPY, QQQ, IVV, IWM and other index, sector, thematic and bond ETFs, with weights, member returns, daily contributions and index changes. Leveraged funds, single-stock funds such as NVDL, USO and BITO list their swaps and futures, bond funds their largest 2,000 bonds, and the gold, silver and crypto trusts the metal or coin they hold. SPX uses IVV holdings.",
    "category": "markets",
    "arg": "SPY",
    "shot": "https://gloom.sh/screenshots/fn/MEMB.png"
@@ -1391,6 +1391,15 @@
    "lesson": "/academy/compare-screen-follow-money/who-owns-it/holders-and-13f"
   },
   {
+   "code": "CCASSM",
+   "name": "Hong Kong custody scanner",
+   "description": "CCASS custody changes and broker holdings",
+   "detail": "CCASSM opens Big Changes, alongside Deposits, Concentration, Southbound and Broker. Enter on a row opens the stock’s CCASS view; a custody change alone does not prove a trade.",
+   "category": "ownership",
+   "arg": "B01955",
+   "lesson": "/academy/compare-screen-follow-money/who-owns-it/hong-kong-custody"
+  },
+  {
    "code": "13F",
    "name": "13F funds",
    "description": "Fund filings and holdings",
@@ -1408,6 +1417,15 @@
    "arg": "NVDA",
    "shot": "https://gloom.sh/screenshots/fn/INS.png",
    "lesson": "/academy/compare-screen-follow-money/who-owns-it/insider-trades"
+  },
+  {
+   "code": "DILU",
+   "name": "Equity dilution",
+   "description": "Shelves, offerings and Form 144 notices",
+   "detail": "DILU MSTR shows shelf and at-the-market offering capacity, offering records and proposed resales. Capacity is not issuance, and a Form 144 notice is not a completed sale.",
+   "category": "ownership",
+   "arg": "MSTR",
+   "lesson": "/academy/fundamentals-and-earnings/events-and-deals/equity-dilution"
   },
   {
    "code": "CG",
@@ -1885,7 +1903,8 @@
        "items": [
         "**Checksum:** compare `Get-FileHash` on the installer with the SHA-256 on the [release page](https://github.com/gloom-sh/gloomberb/releases/latest).",
         "**Plugins from GitHub**, such as Interactive Brokers, need [Git for Windows](https://git-scm.com/download/win).",
-        "**Versions:** Windows 11 x64 is tested. Windows on Arm runs the x64 build."
+        "**Versions:** Windows 11 x64 is tested. Windows on Arm runs the x64 build.",
+        "**CSV in Excel:** open an export with **Data > From Text/CSV**, File Origin **65001: Unicode (UTF-8)**, delimiter **Comma** (**Semicolon** with `--decimal comma`). A double-click misreads characters such as `·`."
        ]
       }
      ]
@@ -2400,7 +2419,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Related: [PF](/docs/functions#pf), [PORT](/docs/functions#port) for risk, [CLI](/docs/cli-portfolios)."
+     "text": "Related: [PF](/docs/functions#pf), [PORT](/docs/functions#port) for risk, [CLI](/docs/cli-portfolios), and IBKR statement guides on [Forex realized P/L](/answers/ibkr-forex-realized-pnl-explained), [cost basis vs average price](/answers/ibkr-cost-basis-price-vs-average-price) and [TWR vs MWR](/answers/ibkr-performance-twr-vs-mwr-deposits)."
     }
    ]
   },
@@ -3878,7 +3897,77 @@
     },
     {
      "type": "paragraph",
-     "text": "Learn the idea in the Academy: [Dealer gamma](/academy/options-and-volatility/positioning-and-flow/dealer-gamma)."
+     "text": "Learn the idea in the Academy: [Dealer gamma](/academy/options-and-volatility/positioning-and-flow/dealer-gamma). Screening puts or covered calls? See [cash-secured put and covered call screeners](/answers/cash-secured-put-and-covered-call-screener)."
+    }
+   ]
+  },
+  {
+   "slug": "equity-dilution",
+   "title": "Equity dilution (DILU)",
+   "lead": "Run `DILU MSTR` to open Strategy's **Overview**. A shelf registration lets a company offer securities over time.",
+   "category": "Understand the data",
+   "tags": [
+    "DILU",
+    "dilution",
+    "shelf",
+    "ATM",
+    "Form 144"
+   ],
+   "updatedAt": "2026-11-27",
+   "blocks": [
+    {
+     "type": "paragraph",
+     "text": "An at-the-market (ATM) program lets it sell shares at prevailing market prices. Capacity is what could be sold, not how much has been issued. **Offerings** lists individual offering entries."
+    },
+    {
+     "type": "paragraph",
+     "text": "**Form 144** is a notice of a proposed resale, not confirmation that the sale happened. A holder selling existing shares does not itself create new shares."
+    },
+    {
+     "type": "paragraph",
+     "text": "Open the **Scanner** tab for **Form 144 Feed**, **Active ATMs** or **All Active Shelves**. `DILU` alone uses the active ticker if there is one; otherwise it asks for a ticker rather than opening the scanner."
+    },
+    {
+     "type": "paragraph",
+     "text": "On the web: [Equity dilution](/dilution), [MSTR](/dilution/MSTR), [Form 144 feed](/dilution/form-144). In the Academy: [Capacity, issuance and resale](/academy/fundamentals-and-earnings/events-and-deals/equity-dilution)."
+    }
+   ]
+  },
+  {
+   "slug": "ccass",
+   "title": "Hong Kong custody scanner (CCASSM)",
+   "lead": "Scan Hong Kong CCASS custody changes and drill into a stock or participant.",
+   "category": "Understand the data",
+   "tags": [
+    "CCASSM",
+    "CCASS",
+    "Hong Kong",
+    "custody",
+    "Stock Connect"
+   ],
+   "updatedAt": "2026-11-27",
+   "blocks": [
+    {
+     "type": "paragraph",
+     "text": "Run `CCASSM` for **Big Changes**, then switch tabs to compare five views of Hong Kong's Central Clearing and Settlement System (CCASS):"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Big Changes:** large changes in a participant's holdings of a stock.",
+      "**Deposits:** changes marked as physical share deposits. Jump there with `CCASSM deposits`.",
+      "**Concentration:** how much of a stock sits with its top five or ten participants.",
+      "**Southbound:** Stock Connect Southbound holdings and changes by stock.",
+      "**Broker:** holdings by stock for one participant. Try `CCASSM B01955`."
+     ]
+    },
+    {
+     "type": "paragraph",
+     "text": "Select a stock row and press Enter to open its **CCASS** custody view. For Tencent, you can open it directly with `CCASS 0700.HK`. A custody change or deposit is not proof of a trade, a change in beneficial ownership or a placement."
+    },
+    {
+     "type": "paragraph",
+     "text": "On the web: [Hong Kong custody](/ccass), [Tencent custody](/ccass/0700), [participant B01955](/ccass/brokers/B01955). In the Academy: [Custody versus ownership](/academy/compare-screen-follow-money/who-owns-it/hong-kong-custody)."
     }
    ]
   },
@@ -4478,6 +4567,7 @@
      "type": "list",
      "items": [
       "`--output <file>` writes the export as UTF-8 and prints its path. On Windows, use it rather than `>`, which writes UTF-16 in PowerShell 5.1.",
+      "In Excel, load a `--csv` export with **Data > From Text/CSV**: File Origin **65001: Unicode (UTF-8)**, delimiter **Comma**, or **Semicolon** with `--decimal comma`. Exports carry no byte-order mark, so a double-click misreads characters such as `·`.",
       "`--limit n` caps rows and `--refresh` skips the cache.",
       "`--plain` writes for a screen reader. It is on when output is piped.",
       "Reports end with a dated status line. Times are in UTC, with your clock beside them once `timezone` is set.",
@@ -4648,7 +4738,7 @@
   {
    "slug": "mcp",
    "title": "MCP server",
-   "lead": "Gloom Cloud's [MCP](https://modelcontextprotocol.io) server at `https://api.gloom.sh/mcp` has the research tools Gloom's own assistant uses.",
+   "lead": "Gloom Cloud's [MCP](https://modelcontextprotocol.io) server at `https://api.gloom.sh/mcp` exposes Gloom's research tools, workflow prompts, live resources and interactive MCP Apps widgets.",
    "category": "Agents",
    "tags": [
     "mcp",
@@ -4659,7 +4749,7 @@
     "terminal",
     "remote control"
    ],
-   "updatedAt": "2026-11-24",
+   "updatedAt": "2026-11-25",
    "blocks": [
     {
      "type": "paragraph",
@@ -4696,6 +4786,19 @@
     },
     {
      "type": "heading",
+     "level": 3,
+     "text": "URL options for smaller context and strict tool APIs"
+    },
+    {
+     "type": "list",
+     "items": [
+      "`?groups=market,company,filings` lists only those groups (`market`, `company`, `filings`, `macro`, `credit`, `derivatives`, `alt`, `workspace`, `portfolio`, `brokers`, `terminal`, or `research`).",
+      "`?mode=compact` lists three discovery tools (`gloom.tools`, `gloom.describe`, `gloom.call`, ~3 KB total) that reach every tool on demand. Large multi-broker lists auto-switch to compact mode over 160 KB unless `?mode=full` is passed.",
+      "`?naming=underscore` lists tools with `_` instead of `.` (`market_quotes`, `company_transcripts`) for harnesses whose tool APIs reject dots. Both dotted and underscore names, as well as legacy tool names, work on `tools/call`."
+     ]
+    },
+    {
+     "type": "heading",
      "level": 2,
      "text": "Access"
     },
@@ -4711,10 +4814,10 @@
     {
      "type": "list",
      "items": [
-      "Creating keys needs Pro. Any valid key can `initialize` and `tools/list`, but tool calls need Pro, except `portfolio.*`.",
-      "Keys allow 120 requests a minute and 5,000 a day. Over the limit returns `429` with `Retry-After`.",
-      "If Pro lapses, keys stay but tool calls are refused.",
-      "Results are capped at 256 KB."
+      "Creating keys needs Pro. Any valid account can `initialize`, `tools/list`, call `market.search`, read the daily GPU settle (`gpu.prices` with `view: \"settles\"`), and read connected brokerage accounts (`portfolio.*`). Every other tool call needs Pro.",
+      "Keys and OAuth sessions allow 120 requests a minute and 5,000 a day. Over the limit returns `429` with `Retry-After`.",
+      "If Pro lapses, keys stay but Pro tool calls are refused.",
+      "Results are capped at 256 KB. Pass optional `fields` or `sections` on heavy tools to trim payloads."
      ]
     },
     {
@@ -4724,7 +4827,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Read-only unless marked write. `tools/list` gives each tool's arguments."
+     "text": "Read-only unless marked write. `tools/list` gives each tool's arguments and `outputSchema`. Legacy un-consolidated tool names remain callable as aliases."
     },
     {
      "type": "heading",
@@ -4733,7 +4836,11 @@
     },
     {
      "type": "paragraph",
-     "text": "`market.search`, `market.quotes`, `market.history`, `market.screener`, `market.options_chain`, `market.short_interest`, `market.options_flow`"
+     "text": "`market.search`, `market.quotes`, `market.history`, `market.screener`, `market.options_chain`, `market.options_flow`, `market.short_interest`, `market.stock_funds`, `market.attention`"
+    },
+    {
+     "type": "paragraph",
+     "text": "`market.screener` covers both intraday movers (`category`) and multi-factor fundamental screens (`mode: \"fundamentals\"` with `definition`)."
     },
     {
      "type": "heading",
@@ -4742,7 +4849,7 @@
     },
     {
      "type": "paragraph",
-     "text": "`company.profile`, `company.financials`, `company.holders`, `company.analyst_research`, `company.corporate_actions`, `company.statements`, `equity.diagnostic`"
+     "text": "`company.profile`, `company.statements`, `company.financials`, `company.holders`, `company.analyst_research`, `company.corporate_actions`, `equity.diagnostic`"
     },
     {
      "type": "heading",
@@ -4751,7 +4858,11 @@
     },
     {
      "type": "paragraph",
-     "text": "`sec.filings`, `sec.insider_transactions`, `sec.thirteenf_holders`, `sec.thirteenf_crowding`, `congress.house_trades`, `congress.senate_trades`"
+     "text": "`sec.filings`, `sec.filing_content`, `sec.insider_transactions`, `sec.thirteenf`, `congress.trades`, `company.transcripts`, `research.search`, `company.filings_intel`"
+    },
+    {
+     "type": "paragraph",
+     "text": "`sec.filing_content` lists filing exhibits and reads cleaned filing text with paging. `company.transcripts` lists earnings calls and reads full transcripts and Q&A. `research.search` runs full-text search across SEC filings, transcripts and news. `company.filings_intel` covers segment revenue breakdowns, 10-K risk factors, executive pay proxies, M&A deals, IPOs, depositary receipts and Hong Kong CCASS custody flows."
     },
     {
      "type": "heading",
@@ -4760,7 +4871,11 @@
     },
     {
      "type": "paragraph",
-     "text": "`macro.calendar`, `macro.yield_curve`, `macro.series`, `news.stories`, `social.ticker_posts`, `social.search_posts`"
+     "text": "`macro.calendar`, `macro.series`, `macro.yield_curve`, `macro.rates`, `news.stories`, `social.posts`"
+    },
+    {
+     "type": "paragraph",
+     "text": "`macro.rates` covers global central bank policy rates, market-implied rate paths, CPI breakdowns and EIA energy inventories."
     },
     {
      "type": "heading",
@@ -4769,7 +4884,11 @@
     },
     {
      "type": "paragraph",
-     "text": "`market.catalysts`, `company.litigation`, `catalysts.event`, `catalysts.changes`, `credit.documents`, `credit.instrument`, `credit.screen`"
+     "text": "`market.catalysts`, `credit.query`"
+    },
+    {
+     "type": "paragraph",
+     "text": "`market.catalysts` covers regulatory/clinical/legal calendars, company litigation dockets, event revision history and change feeds. `credit.query` covers credit covenants and headroom screens, TRACE corporate bonds and trade prints, CDS curves/trades/entities/indexes/sovereigns, and debt maturity walls."
     },
     {
      "type": "heading",
@@ -4778,7 +4897,7 @@
     },
     {
      "type": "paragraph",
-     "text": "`company.kpis`, `company.guidance`, `company.awards`, `company.award_evidence`, `company.hiring`, `market.hiring_movers`, `hiring.momentum`, `apps.attention`, `apps.rank_history`"
+     "text": "`company.kpis_guidance`, `company.awards`, `company.hiring`, `apps.attention`"
     },
     {
      "type": "heading",
@@ -4787,7 +4906,11 @@
     },
     {
      "type": "paragraph",
-     "text": "`market.attention`, `perps.board`, `perps.compare`, `perps.history`, `perps.rankings`, `gpu.board`, `gpu.history`, `gpu.changes`"
+     "text": "`derivatives.futures`, `perps.query`, `gpu.prices`"
+    },
+    {
+     "type": "paragraph",
+     "text": "`derivatives.futures` covers futures curves, archived curves, contract history, continuous generic series, CFTC Commitments of Traders and FINRA daily short volume. `gpu.prices` covers the live GPU board, price history, availability changes and Gloom's daily 20:00 UTC settle."
     },
     {
      "type": "heading",
@@ -4796,7 +4919,11 @@
     },
     {
      "type": "paragraph",
-     "text": "`company.supply_chain_graph`, `company.supply_chain_paths`, `company.supply_chain_evidence`, `power.board`, `power.history`, `power.summary`, `power.project`, `power.coverage`"
+     "text": "`company.supply_chain`, `power.query`"
+    },
+    {
+     "type": "paragraph",
+     "text": "`company.supply_chain` covers multi-hop supplier/customer graphs, path rankings and primary-source evidence tiers. `power.query` covers interconnection queues, large loads, regional summaries, history, project evidence and source coverage."
     },
     {
      "type": "heading",
@@ -4823,11 +4950,24 @@
     {
      "type": "heading",
      "level": 2,
+     "text": "Prompts, resources and MCP Apps"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Prompts (`prompts/list`):** `company_brief`, `earnings_prep`, `insider_and_13f`, `options_flow_scan`, `credit_and_debt_check`, `macro_week_ahead`, `portfolio_risk_review`, and `supply_chain_exposure`.",
+      "**Resources (`resources/list`):** `gloom://catalog/tools`, `gloom://portfolio/summary`, `gloom://terminal/snapshot`, plus templates `gloom://notes/{id}` and `gloom://collections/{teamId}/{collectionId}`.",
+      "**Interactive MCP Apps widgets:** `ui://gloom/quote-card`, `ui://gloom/yield-curve`, `ui://gloom/options-flow`, and `ui://gloom/portfolio-summary` attach to their corresponding tools in MCP Apps hosts."
+     ]
+    },
+    {
+     "type": "heading",
+     "level": 2,
      "text": "Terminal control"
     },
     {
      "type": "paragraph",
-     "text": "Terminal control drives your open, signed-in app through the [remote API](/docs/agents). `terminal.snapshot` reads the screen, `terminal.pane.screenshot` returns a pane as a PNG, and one `terminal.*` tool covers each remote operation."
+     "text": "Terminal control drives your open, signed-in app through the [remote API](/docs/agents). Five read tools (`terminal.devices`, `terminal.call_result`, `terminal.snapshot`, `terminal.pane_content`, `terminal.pane.screenshot`) and four grouped action tools (`terminal.navigate`, `terminal.pane`, `terminal.layout`, `terminal.app`) cover every remote operation (all 47 individual `terminal.*` names also remain callable as aliases)."
     },
     {
      "type": "paragraph",
@@ -4852,7 +4992,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Background: [IBKR in Claude or ChatGPT](/answers/ibkr-claude-chatgpt-connector)."
+     "text": "Background: [IBKR in Claude or ChatGPT](/answers/ibkr-claude-chatgpt-connector) and [data sources for an AI stock research agent](/answers/ai-stock-research-agent-data)."
     },
     {
      "type": "heading",
@@ -4861,7 +5001,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Each call returns text plus `structuredContent` with `status`, `rowCount`, `truncated`, `asOf` and `data`."
+     "text": "Each call returns text plus `structuredContent` with `status`, `rowCount`, `truncated`, `asOf` and `data`. Clients that send `_meta.progressToken` with `Accept: text/event-stream` receive periodic `notifications/progress` updates during long-running calls."
     }
    ]
   },
@@ -5266,7 +5406,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Paid plans start at $49 a month, for one band of datasets or all of them. Each call spends credits, and `X-Credits-Remaining` says what is left. See [Pricing](/datasets/pricing)."
+     "text": "Paid plans start at $49 a month, for one band of datasets or all of them. Credit costs depend on the endpoint, parameters and listings read. Use `GET /v1/datasets/cost` to [quote your request](/datasets/docs/credits); `X-Credits-Remaining` says what is left. See [Pricing](/datasets/pricing)."
     },
     {
      "type": "heading",
@@ -5279,7 +5419,7 @@
     },
     {
      "type": "paragraph",
-     "text": "A paid plan's `gds_` key does read the [News API](/docs/news-api), at no credit cost. The [API reference](/datasets/docs) has every route."
+     "text": "A paid plan's `gds_` key does read the [News API](/docs/news-api), at no credit cost. The [API reference](/datasets/docs) has every route. Comparing options for an agent? See [data sources for an AI stock research agent](/answers/ai-stock-research-agent-data)."
     }
    ]
   },
@@ -5785,6 +5925,13 @@
    "minutes": 5
   },
   {
+   "url": "/academy/fundamentals-and-earnings/events-and-deals/equity-dilution",
+   "title": "Equity dilution (DILU)",
+   "summary": "Keep three things separate: what the company could issue, what it actually issued, and what an existing holder plans to sell.",
+   "chapter": "Fundamentals and earnings",
+   "minutes": 1
+  },
+  {
    "url": "/academy/compare-screen-follow-money/compare-and-screen/comparison-chart",
    "title": "Comparing returns (CMP)",
    "summary": "CMP draws two or more tickers as percentage returns from the same start date, so you can see which did better over the same window.",
@@ -5874,6 +6021,13 @@
    "summary": "SI shows short interest over time with days to cover, SIV the daily short share of off-exchange volume (a noisier number), and SIW ranks your names by how crowded the short is.",
    "chapter": "Compare, screen and follow the money",
    "minutes": 5
+  },
+  {
+   "url": "/academy/compare-screen-follow-money/who-owns-it/hong-kong-custody",
+   "title": "Hong Kong custody (CCASSM)",
+   "summary": "A CCASS position tells you where shares are held, not who ultimately owns them or how they got there.",
+   "chapter": "Compare, screen and follow the money",
+   "minutes": 1
   },
   {
    "url": "/academy/compare-screen-follow-money/filings-and-attention/sec-filings",
