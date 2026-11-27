@@ -203,6 +203,66 @@ test.each([
   expect(await store.loadTicker("AAPL")).toBeNull();
 });
 
+test.each([
+  ["former issuer", "REUS:NYSE", "Beacon Energy Ltd", "prior", false],
+  ["ambiguous saved name", "REUS:XNYS", "Beacon Energy", "prior", false],
+  ["exact live issuer", "REUS:NYSE", "Beacon Energy Inc.", "prior", true],
+  ["same-issuer name variant", "REUS:NYSE", "Beacon Energy Incorporated", "current", true],
+] as const)("replace checks the %s against both catalog identities without a quote", async (_case, key, savedName, priorId, eligible) => {
+  const live = { providerId: "test", symbol: "REUS", name: "Beacon Energy Inc", exchange: "NYSE", currency: "USD", type: "STK", companyId: "current" };
+  const prior = { ...live, name: "Beacon Energy Ltd", companyId: priorId,
+    withdrawal: priorId === live.companyId ? undefined : { on: "2022-10-28", reason: "Exchange withdrawal" } };
+  const { store, dataDir, file, run } = await setup({
+    search: async (query) => query.split(":")[0] === prior.symbol ? [prior, live] : [],
+    getQuote: async (symbol) => {
+      if (symbol.split(":")[0] === prior.symbol) throw new Error(`Not a ticker: ${symbol}.`);
+      return createTestQuote({ symbol, name: "Apple Inc.", listingExchangeName: "NASDAQ", exchangeName: "NASDAQ" });
+    },
+  });
+  await store.saveTicker(createTestTicker(key, savedName, { exchange: prior.exchange, portfolios: ["main"], positions: [
+    { portfolio: "main", shares: 3, avgCost: 40, currency: "USD", broker: "manual", dateAcquired: "2021-03-11" },
+    { portfolio: "main", shares: 2, avgCost: 45, currency: "USD", broker: "manual", dateAcquired: "2021-07-12" },
+  ] }));
+  const configured = await loadConfig(dataDir);
+  await saveConfig({ ...configured, portfolios: configured.portfolios.map((portfolio) => ({ ...portfolio, targetWeights: { XOM: 40 } })) });
+  const original = await store.loadAllTickers();
+  const config = await Bun.file(join(dataDir, "config.json")).text();
+  const save = spyOn(store, "saveTickers");
+  await writeFile(file, "Symbol,Shares,Avg Cost\nAAPL,10,150\nREUS:NYSE,9,300\n");
+  if (eligible) {
+    const replaced = await run([file, "--name", "Main", "--replace"]);
+    expect(replaced.result.data).toMatchObject({ positions: expect.arrayContaining([expect.objectContaining({ listing: "REUS:NYSE", name: savedName, shares: 9 })]) });
+    expect((await store.loadTicker(key))?.metadata.positions?.[0]?.shares).toBe(9);
+  } else {
+    await expect(run([file, "--name", "Main", "--replace"])).rejects.toMatchObject({
+      message: expect.stringContaining('Not replacing "Main"'), details: expect.stringContaining("does not match the current issuer"),
+    });
+    expect(save).not.toHaveBeenCalled();
+    expect(await store.loadAllTickers()).toEqual(original);
+    expect(await Bun.file(join(dataDir, "config.json")).text()).toBe(config);
+  }
+});
+
+test.each([["DUAL.B", true], ["DUAL-A:XNYS", false]] as const)("a delisted %s quote blocks only its own share class", async (symbol, eligible) => {
+  const listing = { providerId: "test", symbol: "DUAL.A", name: "Dual Class Inc", exchange: "NYSE", currency: "USD", type: "STK" };
+  const delisting = { status: "delisted" as const, lastTradeDate: "2022-10-27", historyStart: "2016-01-04" };
+  const { store, file, run } = await setup({
+    search: async (query) => query.split(":")[0] === listing.symbol ? [listing] : [],
+    getQuote: async () => createTestQuote({ symbol, name: listing.name, listingExchangeName: listing.exchange, exchangeName: listing.exchange, delisting }),
+  });
+  await writeFile(file, "Symbol,Shares,Avg Cost\nDUAL.A:NYSE,5,300\n");
+  if (eligible) {
+    const merged = await run([file, "--name", "Main", "--merge"]);
+    expect(merged.result.data).toMatchObject({ positions: [{ listing: "DUAL.A:NYSE", name: listing.name, shares: 5 }], skipped: [] });
+    expect((await store.loadTicker(listing.symbol))?.metadata.positions?.[0]?.shares).toBe(5);
+  } else {
+    await expect(run([file, "--name", "Main", "--merge"])).rejects.toMatchObject({
+      details: expect.stringContaining("Listing no longer trades (last traded 2022-10-27)."),
+    });
+    expect(await store.loadTicker(listing.symbol)).toBeNull();
+  }
+});
+
 test("portfolio import <file> previews with --dry-run, creates the portfolio, needs --merge or --replace for one that holds tickers, and refuses a replace the file cannot fill", async () => {
   const { store, dataDir, file, run } = await setup();
   setCliColorEnabledOverride(false);
