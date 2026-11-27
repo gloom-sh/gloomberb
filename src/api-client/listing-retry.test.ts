@@ -59,6 +59,24 @@ test("an answer of no data, a refusal, a rate limit of any wait and an unreachab
   expect(gaveUp.paths).toHaveLength(1);
 });
 
+test("the earnings calendar gives a 503 one more attempt without retrying a missing date", async () => {
+  const unavailable = new ApiRequestError("upstream temporarily unavailable", 503);
+  const event = { symbol: "YAR:OSL", earningsDate: "2027-02-12" };
+  const calendar = { status: "success", data: [event] };
+  const recovered = service(unavailable, calendar);
+  expect(await recovered.api.getMarketEarningsCalendar(["YAR:OSL", "ZZZZQ"]).then((result) => result.data)).toEqual([event] as never);
+  expect(recovered.paths).toEqual(Array(2).fill("/market/earnings-calendar?symbols=YAR%3AOSL%2CZZZZQ"));
+
+  const down = service(unavailable, unavailable, calendar);
+  const failure = await down.api.getMarketEarningsCalendar(["YAR:OSL"]).catch((error: unknown) => error);
+  expect(wasAskedTwice(failure)).toBe(true);
+  expect(down.paths).toHaveLength(2);
+
+  const missing = service({ status: "success", data: [] }, calendar);
+  expect((await missing.api.getMarketEarningsCalendar(["ZZZZQ"])).data).toEqual([]);
+  expect(missing.paths).toHaveLength(1);
+});
+
 // `quote XU100.IS ^CASE30 ^MERV` took 6.8 s: resolving, quoting and checking whether ^MERV stopped trading each asked again.
 test("a listing the service has no quote for is asked once a minute, so an unknown symbol fails fast", async () => {
   const notFound = { status: "empty", reasonCode: "NOT_FOUND", data: null };

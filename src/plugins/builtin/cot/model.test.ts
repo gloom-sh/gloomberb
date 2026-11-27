@@ -319,7 +319,8 @@ test("--report tff and --positions combined read the TFF board and contracts wit
       getCloudCotBoard: async (...args: unknown[]) => {
         asked.push(["board", ...args]);
         const { contract, positions, history, sourceUrl, openInterest, ...base } = tff(reply);
-        return { ...base, traderClass: "leveraged-funds", rows: [{ ...contract!, reportDate: "2026-09-15", openInterest: 200, position: positions[0]!, status: "available" }] };
+        return { ...base, asOf: "2026-09-15", traderClass: "leveraged-funds", rows: ["13874A", "13874+"].map((contractCode) =>
+          ({ ...contract!, contractCode, reportDate: "2026-09-15", openInterest: 200, position: positions[0]!, status: "available" })) };
       },
     } } as never) as Promise<{ sections: Array<{ title: string; rows: Array<Record<string, unknown>> }> }>;
   };
@@ -327,11 +328,12 @@ test("--report tff and --positions combined read the TFF board and contracts wit
   const detail = await run("13874A", ["--report", "tff", "--positions", "combined"], "combined");
   expect(detail.sections[0]!.title).toBe("E-MINI S&P 500  ·  report date 2026-09-15  ·  1 contract = $50 X S&P 500 INDEX  ·  futures + options");
   expect(detail.sections[0]!.rows[0]!.class).toBe("Leveraged Funds");
-  const extremes = await run(undefined, ["--report", "tff", "--positions", "combined", "--scope", "all"], "combined");
-  expect(extremes.sections[0]!.title).toBe("Positioning extremes  ·  futures + options");
+  const extremes = await run(undefined, ["--report", "tff", "--positions", "combined", "--scope", "all", "--limit", "1"], "combined");
+  expect(extremes.sections[0]!.title).toBe("Positioning extremes  ·  report date 2026-09-15  ·  futures + options");
+  expect(extremes.sections[0]!.rows).toHaveLength(1);
   expect(extremes.sections[0]!.rows[0]!.contractCode).toBe("13874A");
   // Without --positions the board is futures only, as it always was.
-  expect((await run(undefined, ["--report", "tff", "--scope", "all"], "futures-only")).sections[0]!.title).toBe("Positioning extremes");
+  expect((await run(undefined, ["--report", "tff", "--scope", "all"], "futures-only")).sections[0]!.rows).toHaveLength(2);
   expect(asked).toEqual([
     ["contract", "13874A", "tff", "combined"],
     ["board", "tff", "leveraged-funds", "combined"],

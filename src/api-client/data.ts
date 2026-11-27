@@ -743,7 +743,7 @@ export class CloudDataApi {
   }
 
   getMarketEarningsCalendar(symbols: string[]): Promise<CloudMarketResponse<Array<Omit<EarningsEvent, "earningsDate" | "earningsCallDate"> & { earningsDate: string; earningsCallDate?: string | null }>>> {
-    return this.request(`/market/earnings-calendar?${new URLSearchParams({ symbols: symbols.join(",") })}`);
+    return this.readListing(() => this.request(`/market/earnings-calendar?${new URLSearchParams({ symbols: symbols.join(",") })}`));
   }
 
   getCloudArticleSummary(url: string): Promise<{ summary: string | null }> {
