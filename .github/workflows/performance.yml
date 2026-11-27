@@ -155,10 +155,6 @@ jobs:
         with:
           install: "false"
 
-      - name: Test WAL commit holds, CLI contention and persistence on Windows
-        timeout-minutes: 3
-        run: bun test src/data/sqlite/access.test.ts src/data/sqlite/checkpointer.test.ts
-
       - name: Check out the base branch next to the PR
         shell: bash
         run: |

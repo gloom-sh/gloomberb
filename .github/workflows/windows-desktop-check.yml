@@ -123,9 +123,12 @@ jobs:
         with:
           desktop: "true"
 
-      - name: Test Windows process counters, clocks and renderer timeout reporting
+      - name: Test Windows database contention, process counters and timeout reporting
         timeout-minutes: 3
-        run: bun test src/telemetry/stall-clocks.test.ts src/telemetry/stall-reports.test.ts src/utils/main-thread-stall.test.ts src/renderers/electrobun/view/rpc-timeout.test.ts
+        run: >-
+          bun test src/data/sqlite/access.test.ts src/data/sqlite/checkpointer.test.ts
+          src/telemetry/stall-clocks.test.ts src/telemetry/stall-reports.test.ts
+          src/utils/main-thread-stall.test.ts src/renderers/electrobun/view/rpc-timeout.test.ts
 
       - name: Build the desktop package
         shell: pwsh

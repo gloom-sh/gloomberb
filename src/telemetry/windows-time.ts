@@ -4,19 +4,18 @@ import type { RpcClockSample } from "../utils/rpc-timeout-error";
 function createReader(): () => RpcClockSample | null {
   try {
     const { symbols } = dlopen("kernel32.dll", {
-      QueryInterruptTime: { args: [FFIType.ptr], returns: FFIType.void },
+      GetTickCount64: { args: [], returns: FFIType.u64 },
       QueryUnbiasedInterruptTime: { args: [FFIType.ptr], returns: FFIType.i32 },
     });
-    const readings = new BigUint64Array(2);
-    const elapsed = ptr(readings);
-    const awake = ptr(readings, 8);
+    const readings = new BigUint64Array(1);
+    const awake = ptr(readings);
     return () => {
       const before = Date.now();
-      symbols.QueryInterruptTime(elapsed);
+      const elapsedMs = Number(symbols.GetTickCount64());
       if (!symbols.QueryUnbiasedInterruptTime(awake)) return null;
       const wallMs = Date.now();
       if (wallMs < before || wallMs - before > 32) return null;
-      return { wallMs, elapsedMs: Number(readings[0]!) / 10_000, awakeMs: Number(readings[1]!) / 10_000 };
+      return { wallMs, elapsedMs, awakeMs: Number(readings[0]!) / 10_000 };
     };
   } catch {
     return () => null;
@@ -25,7 +24,7 @@ function createReader(): () => RpcClockSample | null {
 
 let read: (() => RpcClockSample | null) | undefined;
 
-/** Interrupt time includes sleep; unbiased interrupt time does not. */
+/** Time since boot includes sleep; unbiased interrupt time does not. */
 export function readWindowsTimeoutClock(): RpcClockSample | null {
   if (process.platform !== "win32") return null;
   read ??= createReader();
