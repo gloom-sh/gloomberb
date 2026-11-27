@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type RefObject } from "react";
 import { COLUMN_DRAG_THRESHOLD_PX, columnDropBoundary, columnDropIndex } from "../../../components/ui/data-table/column-order";
 import { hideDragShield, showDragShield } from "../host/drag-shield";
+import { isImeComposing } from "../key-event";
 
 /** A header being dragged: the column's index, and where the drop line stands in the table's content (null where it would stay). */
 export interface WebColumnDrag {
@@ -131,7 +132,7 @@ export function useWebColumnDrag({
       if (to !== null) move?.(columnId, to);
     };
     const handleKey = (keyEvent: KeyboardEvent) => {
-      if (keyEvent.key !== "Escape" || !dragging) return;
+      if (keyEvent.key !== "Escape" || !dragging || isImeComposing(keyEvent)) return;
       keyEvent.preventDefault();
       keyEvent.stopPropagation();
       cleanup();

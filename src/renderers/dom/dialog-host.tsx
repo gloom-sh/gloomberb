@@ -10,6 +10,7 @@ import { closesOnClickOutside, useDialogStack } from "../../ui/dialog-stack";
 import { blendHex } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { isEditableTarget, isInsideDialogSurface } from "./host/focus-scope";
+import { isImeComposing } from "./key-event";
 
 interface DialogState {
   id: string;
@@ -73,7 +74,7 @@ export function WebDialogHostProvider({ children }: { children: ReactNode }) {
     if (!topmost) return;
     const dismissOnEscape = (event: KeyboardEvent) => {
       // Older WebViews report Escape as "Esc".
-      if (event.isComposing || (event.key !== "Escape" && event.key !== "Esc")) return;
+      if (isImeComposing(event) || (event.key !== "Escape" && event.key !== "Esc")) return;
       // A menu open inside the dialog (a select field) closes first; the next
       // Esc closes the dialog.
       if (document.querySelector(".gloom-popover")) return;

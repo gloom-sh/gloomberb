@@ -7,10 +7,16 @@ type KeyboardTargetLike = EventTarget & {
   getAttribute?: (name: string) => string | null;
 };
 
-type WebKeyDefaultEvent = Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "shiftKey" | "target"> & {
+type ImeKeyEvent = Partial<Pick<KeyboardEvent, "isComposing" | "keyCode">>;
+
+type WebKeyDefaultEvent = Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "shiftKey" | "target"> & ImeKeyEvent & {
   defaultPrevented?: boolean;
-  isComposing?: boolean;
 };
+
+/** WebKit can fire compositionend before the confirming keydown, so also check 229. */
+export function isImeComposing(event: ImeKeyEvent): boolean {
+  return event.isComposing === true || event.keyCode === 229;
+}
 
 // A keydown can arrive without a key, whatever the DOM types say: browser
 // autofill dispatches a plain Event when a saved entry is picked.
@@ -85,7 +91,7 @@ function isNativeControlActivationKey(event: WebKeyDefaultEvent): boolean {
 }
 
 export function shouldConsumeWebAppKeyDown(event: WebKeyDefaultEvent): boolean {
-  if (event.defaultPrevented || event.isComposing) return false;
+  if (event.defaultPrevented || isImeComposing(event)) return false;
   if (isEditableKeyboardTarget(event.target)) return false;
   if (isBrowserModifierShortcut(event)) return false;
   if (isNativeKeyboardControlTarget(event.target) && isNativeControlActivationKey(event)) return false;

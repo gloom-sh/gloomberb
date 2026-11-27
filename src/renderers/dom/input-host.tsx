@@ -16,6 +16,7 @@ import {
 import {
   hasWebCtrlModifier,
   isEditableKeyboardTarget,
+  isImeComposing,
   moveDialogFocus,
   normalizeWebKeyName,
   shouldConsumeWebAppKeyDown,
@@ -86,6 +87,7 @@ export function WebInputHostProvider({ children }: { children: ReactNode }) {
     // keydown (it opens the pane menu), the native menu must not follow.
     let menuKeyUsedAt = 0;
     const onKeyDown = (event: KeyboardEvent) => {
+      if (isImeComposing(event)) return;
       const shortcutEvent = toKeyEventLike(event);
       shortcutRegistry.dispatch(shortcutEvent);
       if (event.key === "ContextMenu" && event.defaultPrevented) menuKeyUsedAt = Date.now();

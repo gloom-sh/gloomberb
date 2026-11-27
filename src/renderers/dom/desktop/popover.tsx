@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import type { BoxRenderable, HostPopoverProps } from "../../../ui";
 import { useThemeColors } from "../../../theme/theme-context";
+import { isImeComposing } from "../key-event";
 
 const VIEWPORT_MARGIN = 10;
 /** How far a popover kept inside its pane stays off the pane's edge. */
@@ -189,6 +190,7 @@ export function WebPopover({
       onOpenChange(false);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (isImeComposing(event)) return;
       // Tab leaves a menu, as on every platform, and goes on to move focus.
       if (event.key === "Tab") {
         onOpenChange(false);
