@@ -60,6 +60,8 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
     exportIdentity,
     // Exports and reports read the columns in the order the reader sees them.
     columns: order.columns,
+    // A pane's own export gets the same order to put on the columns it writes (`DataTableView` passes its own).
+    exportCsv: ownProps.exportCsv && (() => ownProps.exportCsv!(order.order)),
     onColumnMove: ownProps.onColumnMove ?? order.onColumnMove,
     anchoredColumns: ownProps.onColumnMove ? ownProps.anchoredColumns : order.anchoredColumns,
   };

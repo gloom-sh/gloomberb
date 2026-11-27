@@ -26,7 +26,7 @@ export function countryColumnShown(countryFilter: CountryFilter): boolean {
 /**
  * The calendar's columns at `width` cells for the events listed (`events`):
  * `columns` the table draws, `exportColumns` all of them, as Export CSV
- * writes them. `flagged` leads each country's code with its flag (the
+ * writes them, in the reader's column order where `exportInReaderOrder`. `flagged` leads each country's code with its flag (the
  * desktop and the web), and `readerZone` is the reader's own time zone.
  * `actualNote` is the widest word a row says under ACTUAL in place of its
  * figure (actualNoteWidth), which the column keeps whole.
@@ -41,7 +41,7 @@ export function econCalendarColumns({ width, events, countryFilter, impactFilter
   flagged: boolean;
   readerZone: string | null;
   actualNote?: number;
-}): { columns: EconCalendarColumn[]; exportColumns: EconCalendarColumn[] } {
+}): { columns: EconCalendarColumn[]; exportColumns: EconCalendarColumn[]; exportInReaderOrder: boolean } {
   // Named by its zone, as the reader's column is by its city: "TIME (UTC)" took 13
   // cells over "07:00" while EVENT read "GDP Growth Ra…" (review, 12 Nov 2026).
   const timeLabelText = CALENDAR_TIME_ZONE_LABEL;
@@ -125,5 +125,8 @@ export function econCalendarColumns({ width, events, countryFilter, impactFilter
   return {
     columns: markHiddenTableColumns([...leading, ...figureColumns], [...leading, ...figures]),
     exportColumns: [...filed.leading(Math.max(minEventWidth, filed.eventRoom(filed.kept))), ...filedFigures],
+    // Where those columns keep every figure, the file follows the order the reader left the table's columns in,
+    // as the table's own export does; where they leave one out, it writes the pane's own order.
+    exportInReaderOrder: filed.kept.length === filedFigures.length,
   };
 }

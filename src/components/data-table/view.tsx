@@ -928,6 +928,8 @@ export function DataTableView<
       {bodyStatusShown(status) ? <PaneStatusBody {...status} /> : <DataTable<T, C>
         {...tableProps}
         columns={columns}
+        // The table drawn here gets the columns in order; a pane's own export gets that order to put on its columns.
+        exportCsv={tableProps.exportCsv && (() => tableProps.exportCsv!(columnOrder.order))}
         columnReorder={false}
         onColumnMove={onColumnMove}
         anchoredColumns={anchoredColumns}

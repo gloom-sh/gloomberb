@@ -409,8 +409,12 @@ export interface DataTableProps<
    * What Export CSV writes in place of the rows drawn, for a pane whose
    * export is the data behind its view rather than one table: the backtest
    * writes its daily curve, as `fn BT --csv --equity` prints it.
+   * `inReaderOrder` puts a list of the table's columns in the order the
+   * reader left the table's (a header drag), as the table's own export
+   * writes them: a pane that writes columns the table does not draw keeps
+   * the reader's order with it.
    */
-  exportCsv?: () => string;
+  exportCsv?: (inReaderOrder: (columns: readonly C[]) => C[]) => string;
   /**
    * The rows Export CSV writes in place of `items`, for a table that draws
    * fewer rows than it holds: a watchlist writes the rows of a collapsed group too.

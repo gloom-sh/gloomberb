@@ -4,11 +4,12 @@ import { createOpenTuiTestHarness, takeSavedTextFile } from "../../../renderers/
 import { PaneFooterBar, PaneFooterProvider, footerTimeText } from "../../../components/layout/pane/footer";
 import { connectionHealth, GLOOM_CLOUD_HTTP_CONNECTION_ID, registerGloomCloudConnectionSources } from "../../../core/connection-health";
 import { Box } from "../../../ui";
-import { createInitialState } from "../../../state/app/context";
+import { AppContext, PaneInstanceProvider, createInitialState, type AppContextStoreValue } from "../../../state/app/context";
+import { createReducerAppStore } from "../../../test-support/app-store";
 import { exportPaneTable } from "../../../state/pane-table-export-registry";
 import { createDefaultConfig } from "../../../types/config";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
-import type { PluginRuntimeAccess } from "../../runtime";
+import { PluginRenderProvider, type PluginRuntimeAccess } from "../../runtime";
 import { attachEconCalendarPersistence, getCalendarCache, resetEconCalendarPersistence } from "./calendar-model";
 import { economicCalendarModule } from "./index";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
@@ -264,6 +265,64 @@ describe("EconCalendarPane", () => {
     await exportPaneTable("econ-calendar", "eco.csv");
     // The bytes main writes for this list.
     expect(takeSavedTextFile()!.text).toBe("\uFEFFUTC,TOKYO,CTY,EVENT,ACT,EST (%),PRIOR (%)\n11:55,20:55,US,Retail Sales,,0.4,0.6");
+  });
+
+  // The file is the table's: a column the reader dragged stays where they put it, as long as every figure shows.
+  // Where one is left out, the file writes all three in the pane's own order, as it always has.
+  test("Export CSV keeps a column the reader moved where every figure shows, and the pane's order where one is left out", async () => {
+    seedLongNames();
+    const config = createTestPaneConfig("/tmp/gloomberb-econ-test", { instanceId: "econ-calendar", paneId: "econ-calendar" });
+    const state = createInitialState(config);
+    state.paneState["econ-calendar"] = { pluginState: { econ: { impactFilter: "high" } } };
+    // A store that keeps what the drag writes, as the app's does.
+    const store: AppContextStoreValue = createReducerAppStore(state);
+    const draw = async (width: number) => {
+      await tui.render(
+        <AppContext value={store}>
+          <PaneInstanceProvider paneId="econ-calendar">
+            <PluginRenderProvider pluginId="econ" runtime={{} as unknown as PluginRuntimeAccess}>
+              <PaneFooterProvider>
+                {() => <EconPane paneId="econ-calendar" paneType="econ-calendar" focused width={width} height={24} />}
+              </PaneFooterProvider>
+            </PluginRenderProvider>
+          </PaneInstanceProvider>
+        </AppContext>,
+        { width, height: 24 },
+      );
+      await act(async () => {
+        for (let index = 0; index < 6; index += 1) await tui.setup().renderOnce();
+      });
+      return tui.frame().split("\n");
+    };
+    const exported = async () => {
+      await exportPaneTable("econ-calendar", "eco.csv");
+      return takeSavedTextFile()!.text;
+    };
+
+    // PRIOR's header dropped on ACTUAL's left edge.
+    const lines = await draw(110);
+    const y = lines.findIndex((line) => line.includes("ACTUAL") && line.includes("PRIOR"));
+    const renderer = tui.setup();
+    await act(async () => {
+      await renderer.mockMouse.drag(lines[y]!.indexOf("PRIOR") + 1, y, lines[y]!.indexOf("ACTUAL") - 2, y);
+      await renderer.renderOnce();
+    });
+    expect((await draw(110)).find((line) => line.includes("PRIOR"))).toMatch(/EVENT\s+PRIOR\s+ACTUAL\s+FORECAST/);
+    // The bytes main writes, header and rows.
+    expect(await exported()).toBe([
+      "\uFEFFUTC,COUNTRY,EVENT,PRIOR,ACTUAL,FORECAST",
+      "10:00,CN,Balance of Trade,105.28B,111200000000,100B",
+      "13:00,CA,GDP Growth Rate QoQ Final,3.3%,,0.4%",
+      "13:00,CA,GDP Growth Rate YoY Final,0.8%,,",
+    ].join("\n"));
+    // A pane too narrow for PRIOR.
+    expect((await draw(48)).join("\n")).toMatch(/\d hidden · PRIOR/);
+    expect(await exported()).toBe([
+      "\uFEFFUTC,CTY,EVENT,ACT,EST,PRIOR",
+      "10:00,CN,Balance of Trade,111200000000,100B,105.28B",
+      "13:00,CA,GDP Growth Rate QoQ Final,,0.4%,3.3%",
+      "13:00,CA,GDP Growth Rate YoY Final,,,0.8%",
+    ].join("\n"));
   });
 
   test("shows the saved calendar's original time after a timed-out refresh and clears it on recovery", async () => {

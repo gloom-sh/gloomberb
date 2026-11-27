@@ -282,7 +282,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   const readerZone = readerTimeZone(useAppConfig().timezone);
   // `awaiting` under Actual on a release past its time: the column keeps the word whole.
   const actualNote = useMemo(() => actualNoteWidth(filtered, now, events), [events, filtered, now]);
-  const { columns, exportColumns } = useMemo(
+  const { columns, exportColumns, exportInReaderOrder } = useMemo(
     () => econCalendarColumns({ width, events: filtered, countryFilter, impactFilter, flagged, readerZone, actualNote }),
     [actualNote, countryFilter, filtered, flagged, impactFilter, readerZone, width],
   );
@@ -543,8 +543,10 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       renderSectionHeader={renderSectionHeader}
       renderCell={renderCell}
       // Export CSV keeps every figure and the reader's clock at any width: only the table drawn leaves columns out,
-      // and what it fits beside the names never decides what the file holds.
-      exportCsv={() => createDataTableCsv({ columns: exportColumns, items: rows, renderCell, renderSectionHeader })}
+      // and what it fits beside the names never decides what the file holds. A column the reader moved stays moved.
+      exportCsv={(inReaderOrder) => createDataTableCsv({
+        columns: exportInReaderOrder ? inReaderOrder(exportColumns) : exportColumns, items: rows, renderCell, renderSectionHeader,
+      })}
       selectedTextOverridesCellColor
       status={{ loading: loading && !rows.length, error: !loading && !events.length ? error : null, subject: "economic events" }}
       emptyContent={filterEmptyTitle ? (
