@@ -117,6 +117,18 @@ function frame() {
   return tui.frame();
 }
 
+async function clickPeriod() {
+  const rows = frame().split("\n");
+  const y = rows.findIndex((line) => line.includes("[p]eriod"));
+  expect(y).toBeGreaterThanOrEqual(0);
+  const x = rows[y]!.indexOf("[p]eriod");
+  await act(async () => {
+    await tui.setup().mockMouse.click(x + 1, y);
+    await tui.setup().renderOnce();
+  });
+  await act(async () => tui.setup().renderOnce());
+}
+
 const PREDECESSOR = { registrant: "0002128626", entity: "corteva-consolidated", basis: "predecessor" as const, label: "Corteva consolidated (accounting predecessor)" };
 
 /** A spun-off listing's quarter, filed in its predecessor's accounts when scoped. */
@@ -273,18 +285,6 @@ test("mouse period changes keep active CSV and quarterly values aligned, includi
     priceHistory: [],
   };
   await mount(financials);
-  async function clickPeriod() {
-    const rows = frame().split("\n");
-    const y = rows.findIndex((line) => line.includes("[p]eriod"));
-    expect(y).toBeGreaterThanOrEqual(0);
-    const x = rows[y]!.indexOf("[p]eriod");
-    await act(async () => {
-      await tui.setup().mockMouse.click(x + 1, y);
-      await tui.setup().renderOnce();
-    });
-    await act(async () => tui.setup().renderOnce());
-  }
-
   await clickPeriod();
   const quarterly = await outputs(financials, "quarterly");
   expect(quarterly.csv).toContain("Growth,QoQ");
@@ -300,6 +300,32 @@ test("mouse period changes keep active CSV and quarterly values aligned, includi
   expect(annual.csv).toContain("Currency,USD");
   expect(annual.csv).toContain("Growth,YoY");
   expect(frame()).toMatch(/FY2025\s*\n\s+Period end\s+31 Dec 2025/);
+});
+
+test("the exchange view exports source-linked year-to-date results apart from the standalone quarter", async () => {
+  const url = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap06_O_ci";
+  await mount({
+    financialCurrency: "TWD",
+    annualStatements: [],
+    quarterlyStatements: [{ date: "2026-09-30", currency: "TWD", totalRevenue: 1_562_173_000, eps: 6.12 }],
+    priceHistory: [],
+    taiwanExchangeStatements: [{
+      kind: "income", periodEnd: "2026-09-30", months: 9, currency: "TWD",
+      figures: [{ label: "Revenue", sourceLabel: "營業收入", value: 3_687_740_000 }],
+      source: { venue: "TPEX", url, snapshotDate: "2026-11-26", observedAt: "2026-11-26T21:39:20Z" },
+    }],
+  }, "quarterly");
+  expect(frame()).not.toContain("3,687,740,000");
+  await clickPeriod();
+  expect(frame()).toContain("9 months ended 30 Sep 2026");
+  expect(frame()).toContain("TPEx export 26 Nov 2026");
+  expect(frame()).toContain("3,687,740,000");
+  await exportPaneTable(PANE_ID, "taiwan.csv");
+  const csv = takeSavedTextFile()!.text;
+  expect(csv).toContain(`Source,${url}`);
+  expect(csv).toContain("Revenue,3687740000");
+  await clickPeriod();
+  expect(frame()).not.toContain("3,687,740,000");
 });
 
 for (const reportedCurrency of [undefined, "USD"]) {

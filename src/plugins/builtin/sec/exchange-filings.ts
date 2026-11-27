@@ -12,11 +12,9 @@ interface ExchangeFilingForm {
 }
 
 const presentations: ExchangeFilingForm = { value: PRESENTATIONS_FORM, label: "Presentations", kind: PRESENTATIONS_FORM };
-const sgxResults: ExchangeFilingForm = { value: "sgx-results", label: "Results & presentations", kind: "results" };
-
 export function exchangeFilingForm(venue: string | undefined): ExchangeFilingForm | undefined {
   if (venue === "TWSE" || venue === "TPEX") return presentations;
-  if (venue === "SGX") return sgxResults;
+  if (venue === "JPX" || venue === "SGX") return { value: `${venue.toLowerCase()}-results`, label: "Results & presentations", kind: "results" };
 }
 
 // The extended archives are bounded. The pane reveals their rows as the user scrolls.

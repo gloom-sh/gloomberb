@@ -727,7 +727,9 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
             : "No investor conference presentations in the past year."
         : localForm && (loading || localFeed.loading) ? "Loading filings..."
         : localForm && feedError ? "Filings unavailable."
-        : localKind === "results" ? "No SGX results or presentations."
+        : localKind === "results" ? localFeed.data?.stale
+          ? "Results archive unavailable or incomplete."
+          : "No results or presentations in the exchange archive."
         : forms && formFilings.length === 0 ? fundEmptyTitle
         : supplementCount > 0 && !showSupplements ? "Only pricing supplements."
         : formGroup === ALL_FORMS ? "No SEC filings." : "No filings of these forms."}

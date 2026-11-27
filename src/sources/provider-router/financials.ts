@@ -89,6 +89,7 @@ function excludeNonCompanyFinancials(financials: TickerFinancials): TickerFinanc
     nextEarnings: undefined,
     annualStatements: [],
     quarterlyStatements: [],
+    taiwanExchangeStatements: undefined,
   };
 }
 
@@ -408,6 +409,7 @@ export function mergeMissingStatementArrays(primary: TickerFinancials, fallback:
     ...primary,
     profile: mergeDefinedObject(primary.profile, profileForSameListing(fallback, primary)),
     statementHistory: fallback.statementHistory?.status === "available" ? fallback.statementHistory : primary.statementHistory ?? fallback.statementHistory,
+    taiwanExchangeStatements: primary.taiwanExchangeStatements ?? fallback.taiwanExchangeStatements,
     financialCurrency: primary.financialCurrency ?? (hasStatementRows(primary) ? undefined : fallback.financialCurrency),
     ...scoped,
   });
@@ -475,6 +477,10 @@ function mergeFundamentals(primary: Fundamentals | undefined, fallback: Fundamen
   }
   const merged = mergeDefinedObject(primary, fallback);
   if (merged) {
+    const cashFlow = primary?.freeCashFlow != null ? primary : fallback;
+    if (cashFlow?.freeCashFlow != null) {
+      merged.freeCashFlowCurrency = cashFlow.freeCashFlowCurrency === undefined ? cashFlow.financialCurrency ?? null : cashFlow.freeCashFlowCurrency;
+    } else delete merged.freeCashFlowCurrency;
     const unavailable = new Set(fallback?.unavailableFields ?? []);
     for (const field of RETRACTED_FUNDAMENTALS_FIELDS) {
       if (primary?.unavailableFields?.includes(field)) unavailable.add(field);

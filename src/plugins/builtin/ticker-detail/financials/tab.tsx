@@ -82,12 +82,14 @@ import {
   type RatioTableColumn,
 } from "./ratio-table";
 import { useExchangeResultsNotes } from "./exchange-results";
+import { ExchangeStatementTable } from "./exchange-table";
 import { latestBalanceSheetDate, useOfferingNote, useRunwayOfferings } from "./offerings";
 import { burnsCash, cashRunway, runwayOfferingNote } from "../../../../utils/cash-runway";
 import { useBoundTicker } from "../../shared/ticker-request";
 import { createValuationCurrencyContext } from "../../../../time-series/valuation-currency";
 
 const RATIOS_SEGMENT = "ratios";
+type FinancialView = FinancialPeriod | "exchange";
 
 type FinancialTableColumn = DataTableColumn & (
   | { id: "metric"; kind: "metric" }
@@ -170,7 +172,7 @@ export function ResolvedFinancialsTab({
   const hasAnnualStatements = annualStatements.length > 0;
   const hasQuarterlyStatements = quarterlyStatements.length > 0;
   const fallbackPeriod: FinancialPeriod = hasAnnualStatements ? "annual" : "quarterly";
-  const [storedPeriod, setStoredPeriod] = usePaneStateValue<FinancialPeriod>("financialPeriod", fallbackPeriod);
+  const [storedPeriod, setStoredPeriod] = usePaneStateValue<FinancialView>("financialPeriod", fallbackPeriod);
   const period = resolveFinancialPeriodOption(storedPeriod) ?? fallbackPeriod;
   const [storedSubTab, setStoredSubTab] = usePaneStateValue<string>("financialSubTab", FINANCIAL_SUB_TABS[0]!.key);
   const resolvedSubTabKey = resolveFinancialSectionKey(storedSubTab);
@@ -190,17 +192,21 @@ export function ResolvedFinancialsTab({
   const ratioTab = section.kind === "ratio" ? section.tab : null;
   // A ratio tab builds its own rows; the statement rows below idle on Income.
   const subTab = section.kind === "statement" ? section.tab : FINANCIAL_SUB_TABS[0]!;
+  const exchangeStatements = useMemo(() => ratioTab ? [] : (financials?.taiwanExchangeStatements ?? [])
+    .filter((statement) => statement.kind === subTab.key)
+    .sort((a, b) => b.periodEnd.localeCompare(a.periodEnd)), [financials?.taiwanExchangeStatements, ratioTab, subTab.key]);
+  const [exchangePeriod, setExchangePeriod] = usePaneStateValue<string>("financialExchangePeriod", "");
+  const exchangeStatement = exchangeStatements.find((statement) => statement.periodEnd === exchangePeriod)
+    ?? exchangeStatements[0];
+  const showExchange = !!exchangeStatement && (storedPeriod === "exchange" || (!hasAnnualStatements && !hasQuarterlyStatements));
   // A ratio read over one quarter is not on the annual view, so its state does not count there.
   const quarterlyView = resolveFinancialPeriod(period, hasAnnualStatements, hasQuarterlyStatements) === "quarterly";
   const currentGroupIds = useMemo(
     () => ratioTab ? visibleRatios(ratioTab, quarterlyView).map((ratio) => ratio.id) : collectGroupIds(subTab.rows),
     [quarterlyView, ratioTab, subTab],
   );
-  const hasCollapsedCurrentGroup = currentGroupIds.some((id) => collapsedGroups.has(id));
-  const hasExpandedCurrentGroup = currentGroupIds.some((id) => !collapsedGroups.has(id));
-  const setPeriod = useCallback((next: SetStateAction<FinancialPeriod>) => {
-    setStoredPeriod(next);
-  }, [setStoredPeriod]);
+  const hasCollapsedCurrentGroup = !showExchange && currentGroupIds.some((id) => collapsedGroups.has(id));
+  const hasExpandedCurrentGroup = !showExchange && currentGroupIds.some((id) => !collapsedGroups.has(id));
   const setSubTabIdx = useCallback((next: SetStateAction<number>) => {
     setStoredSubTab((currentKey) => {
       const currentSubTabKey = resolveFinancialSectionKey(currentKey);
@@ -221,15 +227,19 @@ export function ResolvedFinancialsTab({
   const selectAdjacentSubTab = useCallback((direction: -1 | 1) => {
     setSubTabIdx((current) => current + direction);
   }, [setSubTabIdx]);
+  const views = useMemo(() => [
+    { label: "Annual", value: "annual" as const, disabled: !hasAnnualStatements },
+    { label: "Quarterly", value: "quarterly" as const, disabled: !hasQuarterlyStatements },
+    ...(exchangeStatement ? [{ label: "Exchange", value: "exchange" as const, disabled: false }] : []),
+  ], [hasAnnualStatements, hasQuarterlyStatements, !!exchangeStatement]);
+  const resolvedPeriod = resolveFinancialPeriod(period, hasAnnualStatements, hasQuarterlyStatements);
+  const activeView = showExchange ? "exchange" : resolvedPeriod;
+  const canTogglePeriod = views.filter((view) => !view.disabled).length > 1;
   const togglePeriod = useCallback(() => {
-    if (!hasAnnualStatements && !hasQuarterlyStatements) return;
-    setPeriod((current) => {
-      const resolved = resolveFinancialPeriod(current, hasAnnualStatements, hasQuarterlyStatements);
-      if (resolved === "annual" && hasQuarterlyStatements) return "quarterly";
-      if (hasAnnualStatements) return "annual";
-      return "quarterly";
-    });
-  }, [hasAnnualStatements, hasQuarterlyStatements, setPeriod]);
+    const options = views.filter((view) => !view.disabled);
+    const next = options[(options.findIndex(({ value }) => value === activeView) + 1) % options.length];
+    if (next) setStoredPeriod(next.value);
+  }, [activeView, setStoredPeriod, views]);
   const toggleGroup = useCallback((groupId: string) => {
     setCollapsedGroups((current) => {
       const next = new Set(current);
@@ -269,7 +279,7 @@ export function ResolvedFinancialsTab({
         id: "period",
         key: "p",
         label: "eriod",
-        disabled: !hasAnnualStatements && !hasQuarterlyStatements,
+        disabled: !canTogglePeriod,
         onPress: togglePeriod,
       },
       {
@@ -288,13 +298,12 @@ export function ResolvedFinancialsTab({
       },
     ],
   }), [
+    canTogglePeriod,
     collapseCurrentGroups,
     expandCurrentGroups,
     financials,
-    hasAnnualStatements,
     hasCollapsedCurrentGroup,
     hasExpandedCurrentGroup,
-    hasQuarterlyStatements,
     setSubTabIdx,
     togglePeriod,
   ]);
@@ -339,14 +348,14 @@ export function ResolvedFinancialsTab({
   }, { phase: "before" });
 
   useEffect(() => {
+    if (storedPeriod === "exchange") return;
     if (period === "annual" && !hasAnnualStatements && hasQuarterlyStatements) {
-      setPeriod("quarterly");
+      setStoredPeriod("quarterly");
     } else if (period === "quarterly" && !hasQuarterlyStatements && hasAnnualStatements) {
-      setPeriod("annual");
+      setStoredPeriod("annual");
     }
-  }, [hasAnnualStatements, hasQuarterlyStatements, period, setPeriod]);
+  }, [hasAnnualStatements, hasQuarterlyStatements, period, setStoredPeriod, storedPeriod]);
 
-  const resolvedPeriod = resolveFinancialPeriod(period, hasAnnualStatements, hasQuarterlyStatements);
   const isAnnual = resolvedPeriod === "annual";
   const selected = useMemo(
     () => selectFinancialStatements(resolvedPeriod, subTab.key, annualStatements, quarterlyStatements, undefined, financials?.trailingStatement),
@@ -359,7 +368,7 @@ export function ResolvedFinancialsTab({
   // One currency for every column goes in the query bar with the growth basis;
   // a column in a different currency (or none) says so in its own header.
   const growthBasis = isAnnual ? "YoY" : "QoQ";
-  useRemoteUiNode(!ratioTab && displayStatements.length ? {
+  useRemoteUiNode(!showExchange && !ratioTab && displayStatements.length ? {
     role: "report-notice",
     label: "Growth",
     getMetadata: () => ({ text: financialGrowthNotice(resolvedPeriod, displayStatements), key: "growthBasis", value: growthBasis }),
@@ -549,7 +558,7 @@ export function ResolvedFinancialsTab({
   const blankRatioLine = ratioModel ? blankRatioPeriodsNote(ratioModel, resolvedPeriod, yearEndMonth) : null;
   usePaneNoticeFooter({
     registrationId: "financials-notices",
-    notices: [
+    notices: showExchange ? [] : [
       ...(notInYetLine ? [notInYetLine] : []),
       ...(blankRatioLine ? [blankRatioLine] : []),
       ...exchangeResults,
@@ -564,7 +573,7 @@ export function ResolvedFinancialsTab({
   });
 
   // A null snapshot is still in flight; only a loaded one can say "no coverage".
-  if (!financials || (!hasAnnualStatements && !hasQuarterlyStatements)) {
+  if (!financials || (!hasAnnualStatements && !hasQuarterlyStatements && !financials.taiwanExchangeStatements?.length)) {
     return (
       <PaneStatusBody
         loading={!financials}
@@ -597,19 +606,21 @@ export function ResolvedFinancialsTab({
           value: ratioTab.key,
           options: RATIO_TABS.map((tab) => ({ label: tab.name, value: tab.key })),
           onChange: selectSection }] : []),
+        ...(showExchange && exchangeStatement && exchangeStatements.length > 1 ? [{
+          id: "exchange-period", label: "Period ending", value: exchangeStatement.periodEnd,
+          options: exchangeStatements.map(({ periodEnd }) => ({ label: formatDay(periodEnd), value: periodEnd })),
+          onChange: setExchangePeriod,
+        }] : []),
       ]}
       view={{
-        value: isAnnual ? "annual" : "quarterly",
-        options: [
-          { label: "Annual", value: "annual", disabled: !hasAnnualStatements },
-          { label: "Quarterly", value: "quarterly", disabled: !hasQuarterlyStatements },
-        ],
-        onChange: (value: string) => setPeriod(value as FinancialPeriod),
+        value: activeView,
+        options: views,
+        onChange: (value: string) => setStoredPeriod(value as FinancialView),
       }}
-      meta={[pendingReview, meta].filter(Boolean).join(" · ") || undefined}
+      meta={[showExchange ? undefined : pendingReview, meta].filter(Boolean).join(" · ") || undefined}
     />
     {/* Lined up with the bar's text and the table's; on the desktop the notice takes the pane's inset itself. */}
-    {basisNote ? <Box flexShrink={0} paddingX={nativePaneChrome ? 0 : 1}><Notice tone="muted">{basisNote}</Notice></Box> : null}
+    {basisNote && !showExchange ? <Box flexShrink={0} paddingX={nativePaneChrome ? 0 : 1}><Notice tone="muted">{basisNote}</Notice></Box> : null}
   </>);
 
   return (
@@ -623,7 +634,9 @@ export function ResolvedFinancialsTab({
       overflow="hidden"
     >
       {isValuation && oldestPeriodEnd ? <PeriodEndHistoryLoader oldestPeriodEnd={oldestPeriodEnd} fxCurrencies={valuationFxCurrencies} onChange={setHistory} /> : null}
-      {ratioModel ? (
+      {showExchange && exchangeStatement ? (
+        <ExchangeStatementTable focused={focused} statement={exchangeStatement} width={width} queryBar={queryBar("")} />
+      ) : ratioModel ? (
         <RatioTable
           focused={focused}
           model={ratioModel}

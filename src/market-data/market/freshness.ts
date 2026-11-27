@@ -1,5 +1,5 @@
 import type { MarketState, Quote, QuoteIndexSession } from "../../types/financials";
-import { canonicalExchange, EXCHANGE_TIME_ZONES, isUsListingExchange } from "../../utils/exchanges";
+import { canonicalExchange, EXCHANGE_TIME_ZONES, isUsListingExchange, isUsOtcVenue } from "../../utils/exchanges";
 import { hasPublishedApacCalendar, isPublishedApacClosure, publishedApacEarlyClose } from "../published-apac-sessions";
 import { hasPublishedCnCalendar, isPublishedCnClosure } from "../published-cn-sessions";
 import { hasPublishedFuturesCalendar, isPublishedFuturesClosure, isPublishedFuturesVenue } from "../published-futures-sessions";
@@ -264,7 +264,7 @@ function getExchangeLocalTimeFormatter(timeZone: string): Intl.DateTimeFormat {
 }
 
 function exchangeLocalDate(exchange: string, timestampMs: number): string | null {
-  const timeZone = EXCHANGE_TIME_ZONES[canonicalExchange(exchange)];
+  const timeZone = isUsOtcVenue(exchange) ? "America/New_York" : EXCHANGE_TIME_ZONES[canonicalExchange(exchange)];
   if (!timeZone) return null;
   const minute = Math.floor(timestampMs / 60_000);
   return perMinute(localDateCache, `${timeZone}:${minute}`, () => zonedDateKey(minute * 60_000, timeZone));
