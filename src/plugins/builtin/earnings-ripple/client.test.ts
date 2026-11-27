@@ -233,7 +233,7 @@ test("an empty answer says what it searched and over which window, then where el
   const answer = await text(["AAPL", "NEM"], { AAPL: disclosed("AAPL", ["DELL"], ["CRUS"], true), NEM: disclosed("NEM", ["JPM"]) });
   expect(answer).toMatch(/None of the 3 disclosed customers and suppliers of AAPL, NEM in the free preview reports from (\d{4}-\d{2}-\d{2}) to \d{4}-\d{2}-\d{2} \(the next 30 days\)\.\n[\s\S]*Pro: Additional relationships need Gloom Pro/);
   expect(await text(["NVDA"], { NVDA: disclosed("NVDA", []) })).toContain("No US-listed customer or supplier with a share of revenue is disclosed for NVDA, so no report date was looked up from ");
-  // SPLC on a Hong Kong listing with nothing read yet: its annual report is read, and the customer's side can name it.
+  // SPLC can suggest the customer's side even when the listing has no linked evidence.
   const context = createTestHeadlessContext();
   const hk = supplyPayload({ symbol: "2382:HKEX", entity: { ...supplyPayload().entity!, id: "2382", name: "SUNNY OPTICAL", ticker: "2382", exchange: "HKEX", country: "HK" },
     status: "unavailable", says: [], names: [], totalRows: 0, counts: { says: { customer: 0, supplier: 0, partner: 0, competitor: 0, investee: 0 }, names: { customer: 0, supplier: 0, partner: 0, competitor: 0, investee: 0 } } });
@@ -241,7 +241,8 @@ test("an empty answer says what it searched and over which window, then where el
   const args = createTestHeadlessArgs({ symbols: ["2382:HKEX"] });
   const result = await supplyChainHeadless.load(args, context);
   const splc = renderHeadlessPaneText(supplyChainHeadless, result, args, "SPLC", deriveHeadlessFreshness(supplyChainHeadless, result));
-  expect(splc).toContain("Relationships for 2382:HKEX are not yet available: no annual report, announcement or call read so far names one.");
+  expect(splc).toContain("No linked relationship evidence available for 2382:HKEX.");
+  expect(splc).not.toContain("names one");
   expect(splc).toContain("try the customer's side, such as fn SPLC AAPL.");
   expect(splc).not.toContain("not covered");
 });

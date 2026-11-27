@@ -61,6 +61,24 @@
  ],
  "cases": [
   {
+   "name": "An old annual match cannot price a newer TTM on another share basis",
+   "symbol": "000660",
+   "exchange": "KRX",
+   "quote": { "price": 1110000, "currency": "KRW", "name": "SK hynix Inc." },
+   "financialCurrency": "KRW",
+   "fundamentals": { "eps": 60378, "trailingPE": 18.4 },
+   "annualStatements": [
+    { "date": "2025-12-31", "currency": "KRW", "eps": 60378 }
+   ],
+   "quarterlyStatements": [
+    { "date": "2025-12-31", "currency": "KRW", "eps": 21522 },
+    { "date": "2026-03-31", "currency": "KRW", "eps": 56670 },
+    { "date": "2026-06-30", "currency": "KRW", "eps": 131478 },
+    { "date": "2026-09-30", "currency": "KRW", "eps": 54454 }
+   ],
+   "expect": { "trailingPE": null, "because": "matches the year ended 2025-12-31" }
+  },
+  {
    "name": "TDK withheld its quarter to 2025-12-31: no four quarters, so the source's EPS stands",
    "symbol": "6762",
    "exchange": "JPX",
@@ -194,7 +212,7 @@
    }
   },
   {
-   "name": "PAN reports in dollars and is quoted in rand: its EPS is not judged against dollar net income",
+   "name": "PAN reports in dollars and is quoted in rand: unattributed EPS does not price the listing",
    "symbol": "PAN",
    "exchange": "JSE",
    "quote": {
@@ -225,7 +243,8 @@
     }
    ],
    "expect": {
-    "trailingPE": 7.916107382550336
+    "trailingPE": null,
+    "because": "EPS currency not verified"
    }
   },
   {
@@ -316,6 +335,76 @@
     "trailingPE": null,
     "because": "depositary receipt with no ratio on record"
    }
+  },
+  {
+   "name": "A USD quote and USD statements cannot price explicitly EUR EPS without conversion",
+   "symbol": "XEPS",
+   "exchange": "NYSE",
+   "quote": { "price": 40, "currency": "USD", "name": "Cross Currency Co" },
+   "fundamentals": { "eps": 2, "epsCurrency": "EUR", "trailingPE": 20, "financialCurrency": "USD" },
+   "annualStatements": [{ "date": "2025-12-31", "currency": "USD", "eps": 2.1 }],
+   "expect": { "trailingPE": null, "because": "in EUR beside a price in USD, with no conversion on record" }
+  },
+  {
+   "name": "A USD quote cannot price explicitly EUR EPS with unknown reporting currency and an unrelated conversion",
+   "symbol": "XEPS",
+   "exchange": "NYSE",
+   "quote": { "price": 40, "currency": "USD", "name": "Cross Currency Co" },
+   "fundamentals": { "eps": 2, "epsCurrency": "EUR", "trailingPE": 20, "trailingPEConversion": { "from": "GBP", "rate": 1.2 } },
+   "expect": { "trailingPE": null, "because": "in EUR beside a price in USD, with no conversion on record" }
+  },
+  {
+   "name": "Explicit EUR EPS uses a recorded conversion from EUR even when the block amounts are USD",
+   "symbol": "XEPS",
+   "exchange": "NYSE",
+   "quote": { "price": 40, "currency": "USD", "name": "Cross Currency Co" },
+   "fundamentals": { "eps": 2, "epsCurrency": "EUR", "trailingPE": 16, "financialCurrency": "USD", "trailingPEConversion": { "from": "EUR", "rate": 1.25 } },
+   "expect": { "trailingPE": 16 }
+  },
+  {
+   "name": "A Canadian receipt's ratio and CAD cap do not verify an unlabelled EPS",
+   "symbol": "LV",
+   "exchange": "NEO",
+   "quote": {
+    "price": 8.99,
+    "currency": "CAD",
+    "name": "LVMH Moët Hennessy - Louis Vuitton, Société Européenne"
+   },
+   "fundamentals": {
+    "eps": 35.38,
+    "trailingPE": 0.2540983606557377,
+    "marketCapCurrency": "CAD",
+    "adrRatio": 0.05
+   },
+   "annualStatements": [{ "date": "2025-12-31", "currency": "EUR" }],
+   "served": { "isDepositaryReceipt": true },
+   "expect": {
+    "trailingPE": null,
+    "because": "EPS currency not verified against the CAD quote"
+   }
+  },
+  {
+   "name": "A Canadian receipt with a recorded home EPS, ratio and conversion keeps its P/E",
+   "symbol": "LV",
+   "exchange": "NEO",
+   "quote": {
+    "price": 8.99,
+    "currency": "CAD",
+    "name": "LVMH Moët Hennessy - Louis Vuitton, Société Européenne"
+   },
+   "fundamentals": {
+    "eps": 2.6535,
+    "epsCurrency": "CAD",
+    "trailingPE": 3.3879781420765025,
+    "marketCapCurrency": "CAD",
+    "financialCurrency": "EUR",
+    "adrRatio": 0.05,
+    "trailingEpsBasis": "home",
+    "trailingEpsHome": { "listing": "MC.PA", "units": 0.05, "eps": 35.38, "currency": "EUR", "rate": 1.5 }
+   },
+   "annualStatements": [{ "date": "2025-12-31", "currency": "EUR", "eps": 35.38 }],
+   "served": { "isDepositaryReceipt": true },
+   "expect": { "trailingPE": 3.3879781420765025 }
   },
   {
    "name": "XAU on the TSX is Goldmoney's own main line, wherever the company is from",
@@ -714,6 +803,7 @@
     "sharesOutstanding": 100000,
     "marketCapCurrency": "CHF"
    },
+   "annualStatements": [{ "date": "2025-12-31", "currency": "CHF", "eps": 577618, "netIncome": 57761800192 }],
    "expect": {
     "trailingPE": 0.005349556281140823
    }

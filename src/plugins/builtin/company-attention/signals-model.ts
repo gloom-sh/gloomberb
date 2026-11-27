@@ -46,7 +46,7 @@ const SKIP_LABELS: Record<HiringSignalSkip, string> = {
 };
 const kindText = (kind: HiringSignalKind) => KIND_LABELS[kind] ?? humanLabel(kind);
 const flagText = (signal: Pick<HiringWeekSignal, "flags">) => signal.flags.map((flag) => FLAG_LABELS[flag] ?? humanLabel(flag)).join(", ") || null;
-export const holdText = (hold: HiringSignalHold) => HOLD_LABELS[hold] ?? humanLabel(hold);
+const holdText = (hold: HiringSignalHold) => HOLD_LABELS[hold] ?? humanLabel(hold);
 const skipText = (skips: readonly HiringSignalSkip[]) => skips.map((skip) => SKIP_LABELS[skip] ?? humanLabel(skip)).join(", ");
 const isFirst = (signal: Pick<HiringWeekSignal, "kind">) => signal.kind === "new_country" || signal.kind === "new_city" || signal.kind === "new_role_type";
 
@@ -176,17 +176,19 @@ export function companySignalsModel(data: HiringCompanySignals, group: HiringSig
   const held = data.held ? holdText(data.held) : null;
   // A free read counts what it holds back by tab; a server before that, both tabs together.
   const lockedRows = !data.preview ? 0 : data.locked[group] ?? data.locked.signals + data.locked.history;
-  const figures: StatItem[] = data.week ? [
+  const observed = !!data.week && (data.watchedSince !== null || current.length > 0 || !!held);
+  const figures: StatItem[] = observed && data.week ? [
     { label: "Signals", value: count(current.length), detail: `week of ${dayLabel(data.week)}`, detailVariants: [`wk ${dayLabel(data.week)}`, ""] },
     ...(data.preview && lockedRows ? [{ label: "In Pro", value: count(lockedRows), detail: "this week and earlier", detailVariants: [""] }] : []),
     ...(data.watchedSince ? [{ label: "First seen since", value: dayLabel(data.watchedSince), detail: "its first read", detailVariants: [""] }] : []),
     ...(held ? [{ label: "No signal", value: held, wide: true }] : data.skipped.length ? [{ label: "Not looked for", value: skipText(data.skipped), wide: true }] : []),
   ] : [];
   const empty = held ? `No signal this week: ${held.toLowerCase()}.` : lockedRows ? `This company's ${group === "expansion" ? "expansion" : "anomaly"} signals are in Pro.`
+    : !observed ? "No measured postings for this week."
     : group === "expansion" ? "No first in a new country or city this week." : "Nothing stood out from this company's own weeks this week.";
   return {
     asOf: current[0]?.computedAt ?? data.history[0]?.computedAt ?? null,
-    week: data.week,
+    week: observed ? data.week : null,
     preview: data.preview,
     figures,
     held,

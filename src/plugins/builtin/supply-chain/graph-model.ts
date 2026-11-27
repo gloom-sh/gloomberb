@@ -19,7 +19,13 @@ export const entityTicker = (entity: Pick<SupplyEntity, "ticker" | "exchange">):
   const exchange = suffixed?.exchange ?? entity.exchange;
   return exchange && !isUsListingExchange(exchange) ? canonicalTickerKey(hongKongListingCode(symbol, canonicalExchange(exchange)), exchange) : symbol;
 };
-export const entityLabel = (entity: SupplyEntity) => entityTicker(entity) ?? entity.name;
+export const supplyDisplayName = (name: string) => name.replace(/\s+/gu, " ").trim();
+export const entityLabel = (entity: SupplyEntity) => entityTicker(entity) ?? supplyDisplayName(entity.name);
+
+export function graphDisclosureDates(links: readonly GraphPayload["links"][number][]) {
+  const dates = links.flatMap(link => link.evidence.flatMap(item => item.filedDate ? [item.filedDate.slice(0, 10)] : [])).sort();
+  return { latest: dates.at(-1) ?? null, oldest: dates[0] ?? null };
+}
 /**
  * A trade link whose every disclosure is a related-party (connected) trade,
  * as the server labels a table row: the graph names it one rather than a
@@ -32,20 +38,20 @@ export const relatedPartyLink = (link: Pick<GraphPayload["links"][number], "rela
  * company ("WPM → NEM" for a streamer buying from a miner), a customer's
  * starts there, so a relationship reads the same way on both companies' pages.
  */
-export function pathLabel(path: GraphPath, data: GraphPayload) {
+export function pathLabel(path: GraphPath, data: GraphPayload, label = entityLabel) {
   const nodes = new Map(data.nodes.map(node => [node.id, node]));
-  const labels = path.nodeIds.map(id => nodes.get(id) ? entityLabel(nodes.get(id)!) : id);
+  const labels = path.nodeIds.map(id => nodes.get(id) ? label(nodes.get(id)!) : id);
   return (path.id.startsWith("upstream|") ? labels.reverse() : labels).join(" → ");
 }
 /**
  * "6% est. of A revenue" for a product of shares along a route; one hop's
  * share is the one its report files, "4.5% of A revenue", never an estimate.
  */
-export function exposureLabel(path: GraphPath, data: GraphPayload) {
+export function exposureLabel(path: GraphPath, data: GraphPayload, label = entityLabel) {
   const exposure = path.exposure;
   if (!exposure) return MISSING_VALUE;
   const denominator = data.nodes.find(node => node.id === exposure.denominatorEntityId);
-  return `${Number(exposure.pct.toPrecision(4))}%${exposure.estimated ? " est." : ""} of ${denominator ? entityLabel(denominator) : exposure.denominatorEntityId} ${exposure.basis}`;
+  return `${Number(exposure.pct.toPrecision(4))}%${exposure.estimated ? " est." : ""} of ${denominator ? label(denominator) : exposure.denominatorEntityId} ${exposure.basis}`;
 }
 export interface GraphNode { entity: SupplyEntity; column: number; hops: number; path: GraphPath | null; related: boolean; }
 /** A selected path has priority over other positions so every highlighted hop remains connected. */

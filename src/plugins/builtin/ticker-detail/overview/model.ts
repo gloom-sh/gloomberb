@@ -358,7 +358,9 @@ export function buildOverviewStats({
   }
   const trailingPE = liveTrailingPE(quote, fundamentals);
   if (trailingPE != null) {
-    stats.push({ label: trailingEpsYear ? `P/E ${trailingEpsYear}` : "P/E (TTM)", value: formatPriceEarnings(trailingPE) });
+    const reason = fundamentals?.notMeaningful?.trailingPE;
+    stats.push({ label: trailingEpsYear ? `P/E ${trailingEpsYear}` : "P/E (TTM)", value: formatPriceEarnings(trailingPE),
+      ...(reason ? { detail: [reason, "basis unavailable"] } : {}) });
   }
   // Next fiscal year's consensus, and the year it is for: N/M over a loss, a dash when there is none.
   const forwardPE = liveForwardPE(quote, fundamentals);
@@ -426,11 +428,13 @@ export function buildOverviewStats({
     const end = income?.end ?? fundamentals?.trailingPeriodEnd;
     const revenue = money(revenueValue);
     const through = end && ISO_DATE.test(end) && !revenue.detail ? [formatDay(end), formatDay(end, "no-year")] : null;
-    stats.push({ label: "Revenue", ...revenue, ...(through ? { detail: [`TTM to ${through[0]}`, ...through.map((day) => `to ${day}`)] } : {}) });
+    stats.push({ label: "Revenue", ...revenue, ...(through ? { detail: [`TTM to ${through[0]}`, ...through.map((day) => `to ${day}`)] }
+      : !incomeCurrency && !end ? { detail: ["currency and period unsourced", "basis unsourced"] } : {}) });
   }
   if (netIncome != null) {
     const net = money(netIncome);
-    stats.push({ label: "Net Income", ...net, ...(!net.detail && difference ? { detail: difference } : {}) });
+    stats.push({ label: "Net Income", ...net, ...(!incomeCurrency && !(income?.end ?? fundamentals?.trailingPeriodEnd)
+      ? { detail: ["currency and period unsourced", "basis unsourced"] } : !net.detail && difference ? { detail: difference } : {}) });
   }
   if (fundamentals?.freeCashFlow != null) {
     const currency = (fundamentals.freeCashFlowCurrency === undefined ? fundamentals.financialCurrency : fundamentals.freeCashFlowCurrency)?.trim();

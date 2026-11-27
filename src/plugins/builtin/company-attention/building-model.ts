@@ -178,7 +178,7 @@ export function companyBuildingModel(data: HiringCompanyBuilding): BuildingModel
     ...(held ? [{ label: "No mix", value: held, wide: true }] : data.skipped.length ? [{ label: "In part", value: skipText(data.skipped), wide: true }] : []),
   ] : [];
   const empty = held ? `No mix to compare this week: ${held.toLowerCase()}.` : "No mix computed for this company yet.";
-  const shiftsEmpty = held ? empty : lockedShifts ? "This company's shifts are in Pro." : "No role family or theme shifted against this company's own weeks.";
+  const shiftsEmpty = held || !data.week ? empty : lockedShifts ? "This company's shifts are in Pro." : "No role family or theme shifted against this company's own weeks.";
   return {
     asOf: data.shifts[0]?.computedAt ?? data.history[0]?.computedAt ?? null,
     week: data.week,
@@ -189,7 +189,7 @@ export function companyBuildingModel(data: HiringCompanyBuilding): BuildingModel
       families: { columns: mixColumns("Role family"), rows: data.functions.map(mixRow(shifted)), locked: data.preview ? data.locked.functions : 0,
         empty: held ? empty : data.skipped.includes("unclassified") ? "Too few roles carry a role family to compare." : empty },
       themes: { columns: mixColumns("Theme"), rows: data.themes.map(mixRow(shifted)), locked: data.preview ? data.locked.themes : 0,
-        empty: held ? empty : "No role names a theme in the weeks compared." },
+        empty: held || !data.week ? empty : "No role names a theme in the weeks compared." },
       shifts: { columns: SHIFT_COLUMNS, rows: [...data.shifts.map((shift) => shiftRow(shift, true)), ...data.history.map((shift) => shiftRow(shift, true))], locked: lockedShifts, empty: shiftsEmpty },
       // Behind one shift, every row would name it.
       postings: { columns: data.shifts.length > 1 ? POSTING_COLUMNS : POSTING_COLUMNS.filter((entry) => entry.id !== "shift"), rows: data.shifts.flatMap((shift) => shift.postings.map(postingRow(shift))), locked: 0,

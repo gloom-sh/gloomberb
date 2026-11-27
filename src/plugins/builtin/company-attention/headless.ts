@@ -9,7 +9,7 @@ import { BUILDING_FILTERS, BUILDING_VIEWS, buildingBoardModel, buildingNumber, b
 import { appsModel, appsPreviewNote, attentionNumber, attentionSectionTitle, attentionTabs, hiringModel, hiringPreviewNote, OBSERVED_LABELS, remoteText, type AttentionKind } from "./model";
 import { companyMovesModel, isMovesFilter, movesBoardModel, movesNumber, movesPreviewNote, MOVES_FILTERS, MOVES_VIEWS, type MovesSection } from "./moves-model";
 import type { HiringMovesFilter, HiringSignalGroup } from "../../../api-client/hiring";
-import { companySignalsModel, holdText, isSignalsFilter, signalsBoardModel, signalsNumber, signalsPreviewNote, SIGNAL_FILTERS, SIGNAL_GROUPS, SIGNALS_VIEWS, type SignalsSection } from "./signals-model";
+import { companySignalsModel, isSignalsFilter, signalsBoardModel, signalsNumber, signalsPreviewNote, SIGNAL_FILTERS, SIGNAL_GROUPS, SIGNALS_VIEWS, type SignalsSection } from "./signals-model";
 import { REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
 
 /**
@@ -144,30 +144,27 @@ export function attentionHeadless(kind: AttentionKind): HeadlessPaneDefinition<"
       const signalsLocks = !signalsData || signalsData instanceof Error ? [] : signalsData.map((data) => signalsPreviewNote(data, "group" in data && isSignalsFilter(data.group, signalsKind) ? signalsKind : undefined));
       const buildingData = buildingRead ? await buildingRead : null;
       const buildingLock = buildingData && !(buildingData instanceof Error) ? buildingPreviewNote(buildingData, dimension) : null;
-      const buildingHeld = buildingData && !(buildingData instanceof Error) && !("filter" in buildingData) ? companyBuildingModel(buildingData).held : null;
       // A company's move says why in one sentence; the board's rows each carry theirs.
       const why = movesModel?.latest?.why;
-      const company = args.symbols[0] ? signalsReads[0]?.data : undefined;
-      const held = company && !("group" in company) && company.held ? holdText(company.held) : null;
       const notes = [...model.notices, ...companyDataNotes("companyFrom" in data ? data.companyFrom : null), ...(nextOffset !== null ? [`Additional observations available with --offset ${nextOffset}.`] : []),
         ...(movesData instanceof Error ? [movesData.message] : []), ...(why ? [why] : []),
-        ...(signalsData instanceof Error ? [signalsData.message] : []), ...(held ? [`No expansion or anomaly signal this week: ${held.toLowerCase()}.`] : []),
-        ...(buildingData instanceof Error ? [buildingData.message] : []), ...(buildingHeld ? [`No mix to compare this week: ${buildingHeld.toLowerCase()}.`] : [])];
+        ...(signalsData instanceof Error ? [signalsData.message] : []), ...(buildingData instanceof Error ? [buildingData.message] : [])];
       const movesSections = !movesModel ? [] : (args.symbols[0] ? ([["weeks", "Hiring moves"], ["drivers", "Move drivers"], ["added", "Postings first seen"]] as const) : ([["board", "Hiring moves"]] as const))
         .map(([id, title]) => movesSection(title, movesModel.sections[id]!, id === "board"));
+      const capture = kind === "hiring" && "series" in data && data.latest && !model.sections.table.rows.length && !model.sections.chart.rows.length ? data.latest : null;
       return {
         complete: !model.preview && !model.partial && nextOffset === null,
-        ...(lock || movesLock || buildingLock || signalsLocks.some(Boolean) ? { errors: [lock, movesLock, ...signalsLocks, buildingLock].filter((line): line is string => !!line) } : {}),
+        ...(lock || movesLock || buildingLock || signalsLocks.some(Boolean) ? { errors: [...new Set([lock, movesLock, ...signalsLocks, buildingLock].filter((line): line is string => !!line))] } : {}),
         ...(notes.length ? { notes } : {}),
         // A ticker no observed app is mapped to says so once, not under each empty view.
         ...(model.unmapped ? { empty: model.unmapped } : {}),
         // The views the pane has tabs for, each headed by what its rows are.
-        sections: attentionTabs(kind, args.symbols[0]).map((tab) => {
+        sections: [...(capture ? [{ title: "Latest capture", columns: [{ key: "observedAt", header: "Observed" }, { key: "open", header: "Open roles" }], rows: [{ observedAt: capture.observedAt, open: capture.openCount }] }] : []), ...attentionTabs(kind, args.symbols[0]).map((tab) => {
           const section = model.sections[tab];
           return { title: attentionSectionTitle(kind, tab, args.symbols[0]),
             columns: section.columns.map(reportColumn), empty: section.empty, ...(section.locked ? { locked: true } : {}),
             rows: section.rows.map((row) => ({ ...row.values, ...(row.url ? { sourceUrl: row.url } : {}), ...(row.details ? { evidence: row.details } : {}) })) };
-        }).concat(movesSections, signalsSections(signalsReads, signalsKind), buildingData && !(buildingData instanceof Error) ? buildingSections(buildingData, dimension) : []),
+        }).concat(movesSections, signalsSections(signalsReads, signalsKind), buildingData && !(buildingData instanceof Error) ? buildingSections(buildingData, dimension) : [])],
         metadata: { nextOffset, asOf: model.asOf, preview: model.preview, lockedRows: model.locked, unit: model.chart.unit, provenance: data },
       };
     },

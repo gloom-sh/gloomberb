@@ -13,7 +13,7 @@ import { useStaticChartBitmapSize } from "../../../components/chart/composite/bi
 import { fillOpaque, fillRect, parseHex } from "../../../components/chart/native/raster/primitives";
 import { FlowFocusCard, FlowPillChip, hitTestFlowRibbons, rasterizeBrailleRibbons, useFlowListShortcut } from "../shared/flow-diagram";
 import { counterpartyKind, counterpartyKindLabel, counterpartyLabel, counterpartyLabelEnd, disclosedValue, dollars, isRelatedParty, nativeValue, periodText, relationshipLabel, roleLabel, ROLE_COLORS, scopeWords, shareParts, fitShareBasis, type FlowBand, type ShareParts } from "./model";
-import { entityTicker } from "./graph-model";
+import { entityTicker, supplyDisplayName } from "./graph-model";
 import { flowChipLabel, flowGeometry, RELATED_LABEL_CELLS, ribbonY, type FlowRibbon, type PositionedNode } from "./flow-layout";
 import { evidenceDate, evidenceLabel, trustTier } from "./trust";
 
@@ -57,7 +57,7 @@ function nodeFigure(node: PositionedNode, focusId: string | undefined, cells: nu
   if (share) return shareText(share, cells);
   if (nativeValue(row) !== null || row.usd !== null) return disclosedValue(row);
   // With no figure, the card says where the relationship is disclosed.
-  const reporter = focusId && row.reportingEntity.id !== focusId ? `${entityTicker(row.reportingEntity) ?? row.reportingEntity.name} ` : "";
+  const reporter = focusId && row.reportingEntity.id !== focusId ? `${entityTicker(row.reportingEntity) ?? supplyDisplayName(row.reportingEntity.name)} ` : "";
   return `${evidenceLabel(row)} · ${reporter}${row.form ?? "filing"}${row.fiscalYear ? ` · FY${row.fiscalYear}` : ""}`;
 }
 
@@ -326,7 +326,7 @@ function FlowTooltip({ node, focusId, width, desktop, anchor }: { node: Position
     share ? `${share.value} ${share.basis}` : nativeValue(row) !== null || row.usd !== null ? disclosedValue(row) : "No figure disclosed",
     `${relationshipLabel(row)} · ${periodText(row)}`,
     trustTier(row) === 1
-      ? `${evidenceLabel(row)} · ${entityTicker(row.reportingEntity) ?? row.reportingEntity.name} ${row.form ?? "filing"}${row.filedDate ? ` filed ${row.filedDate}` : ""}`
+      ? `${evidenceLabel(row)} · ${entityTicker(row.reportingEntity) ?? supplyDisplayName(row.reportingEntity.name)} ${row.form ?? "filing"}${row.filedDate ? ` filed ${row.filedDate}` : ""}`
       : `${evidenceLabel(row)} · ${evidenceDate(row)}`,
   ];
   const tooltipWidth = Math.min(width - 2, Math.max(28, ...lines.map((line) => displayWidth(line) + 4), displayWidth(counterpartyLabel(row)) + 4));

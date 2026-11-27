@@ -14,7 +14,7 @@ import { ClippedText } from "../../../components/ui/display";
 import { cardSurfaceStyle } from "../../../components/ui/card";
 import { useStaticChartBitmapSize } from "../../../components/chart/composite/bitmap";
 import { drawLine, fillOpaque, parseHex } from "../../../components/chart/native/raster/primitives";
-import { entityLabel, entityTicker, graphNodes, relatedPartyLink } from "./graph-model";
+import { entityLabel, entityTicker, graphNodes, relatedPartyLink, supplyDisplayName } from "./graph-model";
 import { counterpartyLabel, counterpartyLabelEnd, ROLE_COLORS } from "./model";
 import { blendHex } from "../../../theme/colors";
 
@@ -146,19 +146,20 @@ export function SupplyGraph({ data, width, height, focused, selectedId, selected
         const prefix = collapsed.includes(node.entity.id) ? "+ " : "";
         // An undisclosed customer or a cohort reads as the table and the flow name it ("Customer 1"), its letter or number kept.
         const label = company ? null : { counterparty: node.entity, pctBasis: null };
-        const name = prefix + (showTicker ? node.entity.name : label ? counterpartyLabel(label) : entityLabel(node.entity));
+        const companyName = supplyDisplayName(node.entity.name);
+        const name = prefix + (showTicker ? companyName : label ? counterpartyLabel(label) : entityLabel(node.entity));
         const nameWidth = inner - (showTicker ? tickerWidth : 0);
         // A related-party trade with the company before it on the path reads as one, never as a plain supplier or customer.
         const link = node.path ? data.links.find(entry => entry.id === node.path!.linkIds.at(-1)) : undefined;
         const relation = kind ?? (node.related ? `${node.hops > 1 ? "via " : ""}${role}` : link && relatedPartyLink(link) ? `related-party ${role}` : role);
         const confidence = `${Math.round((node.path?.confidence ?? 0) * 100)}%`;
-        const detail = node.hops ? `${node.hops}H · ${relation}${inner >= displayWidth(relation ?? "") + 12 ? ` · ${confidence}` : ""}` : showTicker ? "Focus company" : node.entity.name;
+        const detail = node.hops ? `${node.hops}H · ${relation}${inner >= displayWidth(relation ?? "") + 12 ? ` · ${confidence}` : ""}` : showTicker ? "Focus company" : companyName;
         return <Box key={node.entity.id} position="absolute" left={node.x} top={node.y} width={cellWidth - 3} height={2} zIndex={10} flexDirection="column" overflow="hidden"
           backgroundColor={desktop ? undefined : active ? selectionFill.bg : node.hops ? blendHex(colors.bg, accent, 0.12) : colors.panel}
           // The flow's card (flow.tsx): in the relationship's colour, the focus company plain.
           style={desktop ? { ...cardSurfaceStyle({ selected: active, accent: role ? accent : undefined, padding: "0 0 0 var(--gloom-space-sm)" }), cursor: "pointer" } : undefined}
           onMouseOver={() => onSelect(node.entity.id)} data-gloom-role="supply-graph-node">
-          <Button label={`${prefix}${entityLabel(node.entity)}`} title={node.entity.name} variant="plain" compact flush stopPropagation height={2} width={cellWidth - (desktop ? 5 : 3)} onPress={() => onRecenter(node.entity)}>
+          <Button label={`${prefix}${entityLabel(node.entity)}`} title={companyName} variant="plain" compact flush stopPropagation height={2} width={cellWidth - (desktop ? 5 : 3)} onPress={() => onRecenter(node.entity)}>
             <Box flexDirection="column" width="100%">
               <Box flexDirection="row" height={1} gap={desktop ? 1 : 0} overflow="hidden">
                 {!desktop ? <Text fg={accent}>▍</Text> : null}

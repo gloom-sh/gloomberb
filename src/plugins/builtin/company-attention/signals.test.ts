@@ -150,7 +150,8 @@ test("a HIRE report has Expansion and Anomalies: each signal with why, a company
 
   const held = await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["STT"] }),
     createTestHeadlessContext({ apiClient: { getCloudHiring: async () => hiring, getCloudHiringMoves: noMoves, getCloudHiringCompanySignals: async () => ({ ...stt(), signals: [], held: "short_watch" }) } as never }));
-  expect(held.notes).toContain("No expansion or anomaly signal this week: read for under three weeks before it.");
+  const anomaliesSection = held.sections.find(section => section.title === "Anomalies");
+  expect(anomaliesSection && "empty" in anomaliesSection && anomaliesSection.empty).toBe("No signal this week: read for under three weeks before it.");
 
   const missing = await attentionHeadless("hiring").load(createTestHeadlessArgs(), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => emptyBoard, getCloudHiringMoves: movesBoard,
     getCloudHiringSignals: async () => { throw new ApiRequestError("Not found", 404); } } as never }));
