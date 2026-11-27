@@ -8,6 +8,7 @@ import {
   useState,
   type ChangeEvent,
   type ClipboardEvent,
+  type CompositionEvent,
   type CSSProperties,
   type FormEvent,
   type KeyboardEvent,
@@ -132,11 +133,14 @@ function useSyncedEditableElement<T extends HTMLInputElement | HTMLTextAreaEleme
   valueRef,
   handleValueChange,
   active,
+  pausedRef,
 }: {
   elementRef: RefObject<T | null>;
   valueRef: RefObject<string>;
   handleValueChange: (nextValue: string) => void;
   active: boolean;
+  /** True while an input method composes: the field's text is not chosen yet. */
+  pausedRef: RefObject<boolean>;
 }): () => string {
   const syncElementValue = useCallback(() => {
     const nextValue = elementRef.current?.value;
@@ -151,14 +155,14 @@ function useSyncedEditableElement<T extends HTMLInputElement | HTMLTextAreaEleme
     if (!active) return;
     let animationFrame: number | null = null;
     const syncDomValue = () => {
-      syncElementValue();
+      if (!pausedRef.current) syncElementValue();
       animationFrame = globalThis.requestAnimationFrame?.(syncDomValue) ?? null;
     };
     animationFrame = globalThis.requestAnimationFrame?.(syncDomValue) ?? null;
     return () => {
       if (animationFrame !== null) globalThis.cancelAnimationFrame?.(animationFrame);
     };
-  }, [active, syncElementValue]);
+  }, [active, pausedRef, syncElementValue]);
 
   return syncElementValue;
 }
@@ -273,6 +277,12 @@ function useWebEditable<T extends HTMLInputElement | HTMLTextAreaElement>(
   const { value, valueRef, setValue } = useEditableValue(props);
   const [cursorOffset, setCursorOffset] = useState(value.length);
   const [domFocused, setDomFocused] = useState(false);
+  // While an input method composes (pinyin, kana, hangul), the field holds
+  // text the person has not chosen yet. Handing it to the owner re-renders the
+  // field mid-composition, which commits each fragment as typed text, so the
+  // field shows its own text until the composition ends.
+  const composingRef = useRef(false);
+  const [composingValue, setComposingValue] = useState<string | null>(null);
   const applyCursorOffset = (offset: number) => {
     setCursorOffset(offset);
     queueMicrotask(() => applyDomCursorOffset(elementRef.current, offset));
@@ -299,6 +309,7 @@ function useWebEditable<T extends HTMLInputElement | HTMLTextAreaElement>(
     valueRef,
     handleValueChange,
     active: props.focused === true || domFocused,
+    pausedRef: composingRef,
   });
 
   const handleKeyDown = (event: KeyboardEvent<T>) => {
@@ -337,14 +348,29 @@ function useWebEditable<T extends HTMLInputElement | HTMLTextAreaElement>(
   const elementProps = {
     ...cleanDomProps(props),
     ref: elementRef,
-    value,
+    value: composingValue ?? value,
     autoCorrect: "off",
     autoCapitalize: "off",
     autoComplete: getStringProp(props, "autoComplete") ?? "off",
     spellCheck: false,
     placeholder: getStringProp(props, "placeholder"),
-    onInput: (event: FormEvent<T>) => handleValueChange(event.currentTarget.value),
-    onChange: (event: ChangeEvent<T>) => handleValueChange(event.currentTarget.value),
+    onInput: (event: FormEvent<T>) => {
+      if (composingRef.current) setComposingValue(event.currentTarget.value);
+      else handleValueChange(event.currentTarget.value);
+    },
+    onChange: (event: ChangeEvent<T>) => {
+      if (composingRef.current) setComposingValue(event.currentTarget.value);
+      else handleValueChange(event.currentTarget.value);
+    },
+    onCompositionStart: () => {
+      composingRef.current = true;
+      setComposingValue(elementRef.current?.value ?? valueRef.current);
+    },
+    onCompositionEnd: (event: CompositionEvent<T>) => {
+      composingRef.current = false;
+      setComposingValue(null);
+      handleValueChange(event.currentTarget.value);
+    },
     onMouseDown: () => focusOnPress(elementRef.current),
     onFocus: () => {
       setDomFocused(true);
