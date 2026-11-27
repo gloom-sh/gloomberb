@@ -202,7 +202,7 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
     const setMute = () => command(youtubeMutedRef.current ? "mute" : "unMute");
     const controls: YoutubeControls = {
       play() {
-        if (last !== "playing") startAttempt();
+        if (pauseRequested || last !== "playing") startAttempt();
         pauseRequested = false;
         setPlayback("playVideo");
       },
@@ -248,7 +248,7 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
           stopAttempt();
           update(state);
         } else if (state === "loading") {
-          if (!pauseRequested) startAttempt();
+          if (!pauseRequested && (kind === "onStateChange" || last === "playing")) startAttempt();
         } else if (state === "paused" && (kind === "onStateChange" || pauseRequested)) {
           pauseRequested = false;
           stopAttempt();

@@ -93,7 +93,9 @@ test("an embed configuration error shows the caller's browser action only for th
 test("blocked autoplay leaves the embedded controls available for a manual play", async () => {
   const { pane, media, states, onError, send } = await embed();
   await send("onReady");
+  await send("onStateChange", 3);
   await send("onAutoplayBlocked");
+  await send("infoDelivery", { playerState: 3 });
   expect(states).toEqual(["loading", "idle"]);
   expect(onError).not.toHaveBeenCalled();
   expect(pane.querySelector("iframe")).not.toBeNull();
@@ -168,7 +170,9 @@ test("a source change and retry start fresh attempts and ignore the replaced pla
     await act(async () => changedAttempt());
     expect(onError).toHaveBeenCalledTimes(1);
     expect(pane.querySelector("iframe")).not.toBe(changed.frame);
-    await player().send("onStateChange", 1);
+    const retry = player();
+    await retry.send("initialDelivery", { playerState: -1 });
+    await retry.send("onStateChange", 1);
     await act(async () => retryAttempt());
     expect(states.at(-1)).toBe("playing");
     expect(onError).toHaveBeenCalledTimes(1);
