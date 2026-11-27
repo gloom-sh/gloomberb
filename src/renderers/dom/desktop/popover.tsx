@@ -43,7 +43,7 @@ function anchorEdges(anchor: BoxRenderable): Edges | null {
 }
 
 /** The area a popover must stay in: the window, and for `pane` the pane that holds its trigger too. */
-function placementEdges(wrapper: Element | null, boundary: HostPopoverProps["boundary"]): Edges {
+export function placementEdges(wrapper: Element | null, boundary: HostPopoverProps["boundary"]): Edges {
   const viewport = {
     left: VIEWPORT_MARGIN,
     top: VIEWPORT_MARGIN,

@@ -5,6 +5,7 @@ import { displayWidth } from "../../../../utils/format";
 import { formatShortcutForHost } from "../../../../app/keybindings/labels";
 import { chatAuthorName, isDiscordGhost } from "../ghost-user";
 import { Badge, Button, IconButton } from "../../../../components/ui";
+import { ICON_GROUP_ATTRIBUTE } from "../../../../components/ui/icon";
 import { TerminalHoverLabel, terminalHoverLabelSide } from "../../../../components/ui/terminal-hover-label";
 import { MESSAGE_ICON_ACTION_WIDTH, MESSAGE_RETRY_ACTION_WIDTH } from "../layout";
 import { CHAT_PERSON_ICON_WIDTH, chatPersonIcons, fitChatPersonIcons } from "../people";
@@ -18,6 +19,7 @@ export interface ChatMessageActionIconProps {
   shortcut?: string;
   color?: string;
   onHoverChange?: (hovered: boolean) => void;
+  focusLabel?: boolean;
 }
 
 type ChatMessageAction = "reply" | "react" | "edit";
@@ -39,8 +41,9 @@ type ChatMessageActionProps = Pick<ChatMessageBaseProps, "index" | "beginReplyTo
  * after the header, or floated over the first body line of a grouped message.
  * Only the row the keyboard is on names their keys, so a hint never offers a
  * key that would act on another message or type into the composer. The
- * desktop names each in its tooltip; the terminal, which has none, names the
- * one under the pointer beside the actions, over the row (`row`).
+ * desktop names each in its tooltip, and the one keyboard focus is on beside
+ * the group; the terminal, which has no tooltips, names the one under the
+ * pointer beside the actions, over the row (`row`).
  */
 export function ChatMessageActions({
   state,
@@ -100,7 +103,8 @@ export function ChatMessageActions({
     ...(actionKeysShown ? { shortcut: ACTION_KEYS[action] } : {}),
     // On the selected row the icons take its text colour, as its words do.
     ...(state.isSelected ? { color: state.selectedTextColor } : {}),
-    ...(nativePaneChrome ? {} : {
+    // The desktop names the one the keyboard is on beside the row's icons, as the terminal names the one under the pointer.
+    ...(nativePaneChrome ? { focusLabel: true } : {
       onHoverChange: (on: boolean) => setHovered((current) => (on ? action : current === action ? null : current)),
     }),
   });
@@ -129,6 +133,7 @@ export function ChatMessageActions({
       height={1}
       flexDirection="row"
       data-gloom-role="chat-message-reply-action"
+      {...{ [ICON_GROUP_ATTRIBUTE]: "true" }}
       data-picker-open={reactionPickerOpen ? "true" : undefined}
       // Floated over a grouped message's first line, the band under the icons hides the words they cover.
       style={nativePaneChrome && floating ? { backgroundColor: "inherit" } : undefined}

@@ -2,8 +2,12 @@
 import { releasePointerFocus } from "../host/focus-scope";
 import { formatShortcutForHost } from "../../../app/keybindings/labels";
 import { ariaKeyShortcut } from "./dialog-actions";
-import type { ReactNode } from "react";
-import type { IconButtonProps, IconName, IconProps } from "../../../components/ui/icon";
+import { placementEdges } from "./popover";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
+import { ICON_GROUP_ATTRIBUTE, type IconButtonProps, type IconName, type IconProps } from "../../../components/ui/icon";
+import { TOOLTIP_SURFACE_STYLE } from "../../../components/ui/frame";
+import { usePaneFocused } from "../../../state/app/activity";
 
 /** The desktop icon set, drawn on a 12-unit grid in the current colour. */
 const ICONS: Record<IconName, ReactNode> = {
@@ -246,6 +250,73 @@ function pressEventFrom(
   };
 }
 
+/** Between a focus label and the icons it names: clear of the focus ring, as a popover is of its trigger. */
+const FOCUS_LABEL_GAP = 6;
+
+/**
+ * Where a focus label goes, in viewport pixels: after the button's group if
+ * it fits in the pane, else before it, else under it (over it when that
+ * leaves the pane); always clear of the group's icons. Null while the group
+ * is scrolled out of the pane, when there is nothing to name.
+ */
+function focusLabelPlace(button: HTMLElement, label: { width: number; height: number }): { left: number; top: number } | null {
+  const group = (button.closest(`[${ICON_GROUP_ATTRIBUTE}]`) ?? button).getBoundingClientRect();
+  const edges = placementEdges(button, "pane");
+  const middle = group.top + group.height / 2;
+  if (middle < edges.top || middle > edges.bottom) return null;
+  const beside = Math.max(edges.top, Math.min(group.top + (group.height - label.height) / 2, edges.bottom - label.height));
+  const after = group.right + FOCUS_LABEL_GAP;
+  if (after + label.width <= edges.right) return { left: after, top: beside };
+  const before = group.left - FOCUS_LABEL_GAP - label.width;
+  if (before >= edges.left) return { left: before, top: beside };
+  const left = Math.max(edges.left, Math.min(group.right - label.width, edges.right - label.width));
+  const below = group.bottom + FOCUS_LABEL_GAP;
+  return { left, top: below + label.height <= edges.bottom ? below : group.top - FOCUS_LABEL_GAP - label.height };
+}
+
+/**
+ * The name of a focused icon button, for the keyboard: what its tooltip says
+ * under the pointer. Portalled to the page so no row or list clips it, kept
+ * on its group as the list scrolls, and never in the way of a press.
+ */
+function IconFocusLabel({ button, text }: { button: RefObject<HTMLButtonElement | null>; text: string }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [place, setPlace] = useState<{ left: number; top: number } | null>(null);
+  useLayoutEffect(() => {
+    const update = () => {
+      const target = button.current;
+      const label = ref.current;
+      if (target && label) setPlace(focusLabelPlace(target, { width: label.offsetWidth, height: label.offsetHeight }));
+    };
+    update();
+    window.addEventListener("resize", update);
+    document.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      document.removeEventListener("scroll", update, true);
+    };
+  }, [button, text]);
+  return createPortal(
+    <div
+      ref={ref}
+      aria-hidden="true"
+      data-gloom-role="icon-button-focus-label"
+      className="gloom-icon-focus-label"
+      style={{
+        ...TOOLTIP_SURFACE_STYLE,
+        // One line high, as the icons are, so it stays on their row.
+        padding: "0 var(--gloom-space-sm)",
+        left: place?.left ?? 0,
+        top: place?.top ?? 0,
+        visibility: place ? "visible" : "hidden",
+      }}
+    >
+      {text}
+    </div>,
+    document.body,
+  );
+}
+
 export function WebIconButton({
   icon,
   label,
@@ -260,9 +331,20 @@ export function WebIconButton({
   size = 12,
   stopPropagation = true,
   onHoverChange,
+  focusLabel = false,
 }: IconButtonProps) {
+  const ref = useRef<HTMLButtonElement | null>(null);
+  const [keyboardFocused, setKeyboardFocused] = useState(false);
+  const name = title ?? (shortcut ? `${label} (${formatShortcutForHost(shortcut, "platform")})` : label);
+  const paneFocused = usePaneFocused();
+  // Tab and Shift-Tab move the app's focus to another pane: the icon lets go
+  // of the page's focus too, so neither its label nor Enter stays behind here.
+  useEffect(() => {
+    if (focusLabel && keyboardFocused && paneFocused === false) ref.current?.blur();
+  }, [focusLabel, keyboardFocused, paneFocused]);
   return (
     <button
+      ref={ref}
       type="button"
       className="gloom-icon-button"
       aria-label={label}
@@ -270,7 +352,7 @@ export function WebIconButton({
       aria-keyshortcuts={ariaKeyShortcut(shortcut)}
       aria-haspopup={hasPopup}
       aria-expanded={expanded}
-      title={title ?? (shortcut ? `${label} (${formatShortcutForHost(shortcut, "platform")})` : label)}
+      title={name}
       disabled={disabled || !onPress}
       data-gloom-interactive={onPress && !disabled ? "true" : undefined}
       data-gloom-role="icon-button"
@@ -280,6 +362,9 @@ export function WebIconButton({
       onMouseUp={(event) => { if (stopPropagation) event.stopPropagation(); }}
       onMouseEnter={onHoverChange ? () => onHoverChange(true) : undefined}
       onMouseLeave={onHoverChange ? () => onHoverChange(false) : undefined}
+      // Focus from a press draws no ring and names nothing; the keyboard's does both.
+      onFocus={focusLabel ? (event) => setKeyboardFocused(event.currentTarget.matches(":focus-visible")) : undefined}
+      onBlur={focusLabel ? () => setKeyboardFocused(false) : undefined}
       onClick={(event) => {
         if (stopPropagation) event.stopPropagation();
         if (disabled) return;
@@ -299,6 +384,7 @@ export function WebIconButton({
       }}
     >
       <WebIcon name={icon} size={size} />
+      {focusLabel && keyboardFocused ? <IconFocusLabel button={ref} text={name} /> : null}
     </button>
   );
 }

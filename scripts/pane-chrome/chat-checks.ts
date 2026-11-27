@@ -946,6 +946,40 @@ export const chatSteps: ChatStep[] = [
     },
   },
   {
+    // A tooltip shows only under the pointer, so the icon the keyboard is on names itself.
+    name: "chat list: Shift-Tab from the composer onto a message icon names it beside the row's icons, covering none, until the focus leaves",
+    scenario: "chat",
+    async run(cdp) {
+      await ready(cdp);
+      await click(cdp, await evaluate<Point>(cdp, "__chat.composer()"));
+      await parkPointer(cdp);
+      for (const type of ["rawKeyDown", "keyUp"]) {
+        await cdp.send("Input.dispatchKeyEvent", { type, key: "Tab", code: "Tab", modifiers: 8, windowsVirtualKeyCode: 9 });
+      }
+      await frames(cdp, 3);
+      const seen = await evaluate<{ icon: string | null; label: string | null; covers: boolean; outside: boolean } | null>(cdp, `(() => {
+        const icon = document.activeElement;
+        const group = icon?.closest('[data-gloom-role=chat-message-reply-action]');
+        if (!group) return null;
+        const label = document.querySelector('[data-gloom-role=icon-button-focus-label]');
+        const r = label?.getBoundingClientRect();
+        const pane = icon.closest('[data-gloom-role=pane-window]').getBoundingClientRect();
+        const over = (b) => r && r.left < b.right && b.left < r.right && r.top < b.bottom && b.top < r.bottom;
+        return {
+          icon: icon.getAttribute('title'),
+          label: label && getComputedStyle(label).visibility === 'visible' ? label.textContent : null,
+          covers: [group, ...group.querySelectorAll('button')].some((b) => over(b.getBoundingClientRect())),
+          outside: !r || r.left < pane.left || r.right > pane.right || r.top < pane.top || r.bottom > pane.bottom,
+        };
+      })()`) ?? fail("Shift-Tab from the composer did not reach a message's actions", await evaluate(cdp, "document.activeElement?.outerHTML.slice(0, 200)"));
+      if (!seen.label || seen.label !== seen.icon) fail("the focused icon is not named beside it as its tooltip names it", seen);
+      if (seen.covers) fail("the focused icon's name covers the row's icons", seen);
+      if (seen.outside) fail("the focused icon's name leaves the pane", seen);
+      await click(cdp, await evaluate<Point>(cdp, "__chat.composer()"));
+      if (await evaluate<boolean>(cdp, "!!document.querySelector('[data-gloom-role=icon-button-focus-label]')")) fail("the name stayed after the focus went back to the composer");
+    },
+  },
+  {
     name: "chat list: the row under a pointer that stays still is let go when the list scrolls, and one row is marked again on the next move",
     scenario: "chat",
     async run(cdp) {

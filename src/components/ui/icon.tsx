@@ -168,7 +168,24 @@ export interface IconButtonProps {
    * of icons names the one under the pointer beside itself with this.
    */
   onHoverChange?: (hovered: boolean) => void;
+  /**
+   * Desktop: while keyboard focus is on it, show its tooltip text beside it in
+   * the tooltip surface, since a tooltip shows only under the pointer. For
+   * icons with no other visible name (a row's actions that show only when
+   * used). The label goes beside the nearest `ICON_GROUP_ATTRIBUTE` element
+   * holding the button, so it never covers the icons next to it. A pointer
+   * press, which focuses the button too, shows nothing. When its pane gives
+   * up the app's focus (Tab to the next pane), the button lets go of the
+   * page's focus as well.
+   */
+  focusLabel?: boolean;
 }
+
+/**
+ * Marks a row of icon buttons whose `focusLabel` goes beside the whole row,
+ * not over the icons next to the focused one.
+ */
+export const ICON_GROUP_ATTRIBUTE = "data-gloom-icon-group";
 
 /**
  * The one icon-only button: pane header actions, footer indicators, dialog
@@ -189,6 +206,7 @@ export function IconButton({
   size = 12,
   stopPropagation = true,
   onHoverChange,
+  focusLabel,
 }: IconButtonProps) {
   const colors = useThemeColors();
   const label = t(rawLabel);
@@ -218,6 +236,7 @@ export function IconButton({
         size={size}
         stopPropagation={stopPropagation}
         onHoverChange={onHoverChange}
+        focusLabel={focusLabel}
       />
     );
   }

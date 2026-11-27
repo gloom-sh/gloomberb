@@ -1646,6 +1646,15 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 .gloom-icon-button:disabled, [data-gloom-role="pane-footer-icon"] { cursor: default; }
 .gloom-icon-button:not(:disabled):hover { background: var(--gloom-hover-fill); color: var(--gloom-text-bright); }
 .gloom-icon-button[aria-pressed="true"] { color: var(--gloom-warning); }
+/* A keyboard-focused icon's name (`focusLabel`): above the panes, under any
+   popover, and never in the way of the pointer. */
+.gloom-icon-focus-label {
+  position: fixed;
+  z-index: 10000;
+  white-space: nowrap;
+  color: var(--gloom-text-bright);
+  pointer-events: none;
+}
 .gloom-qb-view button:disabled { color: var(--gloom-text-muted); opacity: 0.55; cursor: default; }
 [data-gloom-role="field-grid-value"] button,
 [data-gloom-role="field-grid-value"] button > span { justify-content: flex-end !important; text-align: right; padding-inline: 0 !important; }

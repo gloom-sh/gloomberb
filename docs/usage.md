@@ -2501,7 +2501,7 @@ React is the face beside Reply on the message the pointer is on (`+` in the term
 
 ### Scrolling and message buttons
 
-At the bottom, the message list follows each new message. Scroll back and it stays, with a `N new messages` button that scrolls to the newest. Reply, React and Edit are icons that show only on the message the pointer or the keyboard is on, or one you tap. Pointing at one names it, and on the selected message its key too: Enter, `+` or `e`. The terminal draws them as `⏎`, `+` and `✎`.
+At the bottom, the message list follows each new message. Scroll back and it stays, with a `N new messages` button that scrolls to the newest. Reply, React and Edit are icons that show only on the message the pointer or the keyboard is on, or one you tap. Pointing at one names it, and on the selected message its key too: Enter, `+` or `e`. On the desktop, an icon that keyboard focus reaches (Shift-Tab from the composer, or Option-Shift-Tab where Tab moves only between fields, as in Safari) is named beside the icons as well. The terminal draws them as `⏎`, `+` and `✎`.
 
 ### Images
 
