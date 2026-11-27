@@ -1640,8 +1640,6 @@ export const zhTW: Record<string, string> = {
   "Pay with another card": "換一張卡付款",
   "One better trade pays for Pro": "一筆更好的交易，就能抵上 Pro 的費用",
   "Pro is free for {days} days. $0 today, then {price} from {date}. Card required. Cancel before and you pay nothing.": "Pro 可免費使用 {days} 天。今天 $0，{date} 起 {price}。需要綁卡。在此之前取消則無需付費。",
-  "New accounts get Pro free for {days} days, then {price}. Card required. Cancel before and you pay nothing.": "新帳戶可免費使用 Pro {days} 天，之後 {price}。需要綁卡。在此之前取消則無需付費。",
-  "First an account, then Pro.": "先建立帳戶，再開通 Pro。",
   "Continue to checkout": "前往結帳",
   "{price}, billed today. Cancel anytime.": "{price}，今天扣款。隨時取消。",
   "{price}. Cancel anytime.": "{price}。隨時取消。",
