@@ -74,7 +74,7 @@ test("DXY uses its own cash session and the observed tick, not the equity pre-ma
   ] as const) {
     setSystemTime(new Date(now));
     const quote = createTestQuote({ symbol: entry.symbol, exchangeName: "NYB", instrumentType: "INDEX",
-      marketState: "PRE", preMarketPrice: price + 1, preMarketTime: Date.parse(now) - 1,
+      marketState: "PRE", preMarketPrice: price + 1,
       lastUpdated: Date.parse(observed), price });
     const marketData = createTestDataProvider({ getQuotesBatch: async (targets) => targets.map((target) => ({
       target, quote: target.symbol === entry.symbol ? quote : null,
