@@ -15,7 +15,7 @@ import type { FundFactsPayload } from "../../../api-client/fund-facts";
 import { errorMessage } from "../../../utils/errors";
 import { filingStoryNote, loadFilingStories, type FilingStory } from "../insider/filing-stories";
 import { logFailure } from "../../../utils/log-failure";
-import { exchangeFilingForm, exchangeFilingHistoryLimit, latestFilingRows, localFilingListing, localFilingRows, PRESENTATIONS_FORM } from "./exchange-filings";
+import { exchangeFilingForm, exchangeFilingHistoryLimit, HKEX_FILING_HISTORY_LIMIT, latestFilingRows, localFilingListing, localFilingRows, PRESENTATIONS_FORM } from "./exchange-filings";
 import type { ExchangeAnnouncementsPayload, ExchangeAnnouncementsRequest } from "../../../api-client/exchange-announcements";
 import { loadSecFilings } from "./client";
 import { ETF_FILING_FORMS, filterFilingsByForms, fundSeriesFilings, loadShownSecFilings, SEC_FILING_FETCH_LIMIT } from "./forms";
@@ -162,7 +162,7 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       {
         key: "form",
         shot: { reportOnly: "picks the report's rows by form; the pane's Form filter picks a group of forms" },
-        description: "Only this SEC form and its amendments, such as 8-K, 10-K or 13D. Use presentations for Taiwan investor conference decks or results for Japan and Singapore results and presentations.",
+        description: "Only this SEC form and its amendments, such as 8-K, 10-K or 13D. Use presentations for Taiwan investor conference decks or results for Hong Kong, Japan and Singapore exchange materials.",
         type: "string",
         placeholder: "form",
         example: "--form 8-K",
@@ -190,7 +190,7 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       // one, a bank's pricing supplements and a trust's other funds stay out unless --all, as in `filings`.
       const listing = !form || localKind ? localListing : null;
       const localLimit = listing?.exchange === "HKEX" && !localKind && args.options.all !== true
-        ? 100
+        ? HKEX_FILING_HISTORY_LIMIT
         : Math.min(exchangeFilingHistoryLimit(listing?.exchange, localKind), limit);
       const [us, local] = await Promise.allSettled([
         localKind ? Promise.resolve({ filings: [], hidden: null })
