@@ -229,7 +229,12 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
       const source = frame.contentWindow;
       if (!active() || !source || event.source !== source || event.origin !== youtubeOrigin || typeof event.data !== "string") return;
       let payload: { event?: unknown; id?: unknown; info?: unknown } | null;
-      try { payload = JSON.parse(event.data); } catch { return; }
+      try {
+        payload = JSON.parse(event.data);
+      } catch {
+        // Intentional ignore: malformed player messages are not playback events.
+        return;
+      }
       if (!payload || typeof payload !== "object" || payload.id !== YOUTUBE_WIDGET_ID) return;
       const { event: kind, info } = payload;
       const snapshot = info && typeof info === "object" ? info : undefined;
