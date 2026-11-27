@@ -144,25 +144,63 @@ test.each([0, 86_400_000])("a withdrawal beats a matching quote %i ms old withou
   expect((await store.loadTicker(reused.symbol))?.metadata.positions?.[0]?.shares).toBe(5);
 });
 
-test.each([false, true])("a reused listing keeps the current issuer when the old quote has delisting=%s", async (delisted) => {
+test.each([
+  ["qualified", "REUS:NYSE", null, false],
+  ["qualified with delisting", "REUS:NYSE", null, true],
+  ["bare", "REUS", null, false],
+  ["bare with delisting", "REUS", null, true],
+  ["saved", "REUS", "REUS", false],
+  ["saved with delisting", "REUS", "REUS", true],
+  ["locally matched", "REUS:NYSE", "REUS:XNYS", true],
+] as const)("a reused %s listing keeps the current issuer", async (_case, input, savedKey, delisted) => {
   const listing = { providerId: "test", symbol: "REUS", name: "Beacon Energy Holdings Ltd", exchange: "NYSE", currency: "USD", type: "STK" };
   const delisting = { status: "delisted" as const, lastTradeDate: "2022-10-27", historyStart: "2016-01-04" };
+  const prior = { ...listing, name: "Beacon Energy Ltd", withdrawal: { on: "2022-10-28", reason: "Exchange withdrawal" } };
+  const qualified = input === "REUS:NYSE";
   const { store, file, run } = await setup({
-    search: async (query) => query.split(":")[0] === listing.symbol ? [listing] : [],
-    getQuote: async () => createTestQuote({ symbol: listing.symbol, name: "Beacon Energy Ltd", listingExchangeName: listing.exchange,
+    search: async (query) => query.split(":")[0] === listing.symbol ? qualified ? [listing] : [prior, listing] : [],
+    getQuote: async () => createTestQuote({ symbol: listing.symbol, name: prior.name, listingExchangeName: listing.exchange,
       exchangeName: listing.exchange, ...(delisted ? { delisting } : {}) }),
   });
-  await writeFile(file, "Symbol,Shares,Avg Cost\nREUS:NYSE,5,300\n");
+  if (savedKey) await store.saveTicker(createTestTicker(savedKey, listing.name, { exchange: listing.exchange }));
+  const key = savedKey ?? listing.symbol;
+  const original = await store.loadTicker(key);
+  await writeFile(file, `Symbol,Shares,Avg Cost\n${input},5,300\n`);
 
   const expected = { positions: [{ listing: "REUS:NYSE", name: listing.name, shares: 5, avgCost: 300 }], skipped: [] };
   const preview = await run([file, "--name", "Main", "--merge"], { dryRun: true });
   expect(preview.result.data).toMatchObject(expected);
-  expect(await store.loadTicker(listing.symbol)).toBeNull();
+  expect(await store.loadTicker(key)).toEqual(original);
 
   const merged = await run([file, "--name", "Main", "--merge"]);
   expect(merged.result.data).toMatchObject(expected);
-  expect((await store.loadTicker(listing.symbol))?.metadata).toMatchObject({ name: listing.name, exchange: listing.exchange,
+  expect((await store.loadTicker(key))?.metadata).toMatchObject({ name: listing.name, exchange: listing.exchange,
     positions: [{ portfolio: "main", shares: 5, avgCost: 300, currency: "USD", broker: "manual" }] });
+});
+
+test.each([
+  ["ambiguous", undefined, 'Multiple current issuers for "REUS:NYSE".'],
+  ["saved prior issuer", { on: "2022-10-28", reason: "Exchange withdrawal" }, "does not match the current issuer"],
+] as const)("a replace refuses an %s identity without changing the holding", async (_case, withdrawal, reason) => {
+  const former = { providerId: "test", symbol: "REUS", name: "Beacon Energy Ltd", exchange: "NYSE", currency: "USD", type: "STK", withdrawal };
+  const live = { ...former, name: "Beacon Energy Holdings Ltd", withdrawal: undefined };
+  const { store, file, run } = await setup({
+    search: async (query) => query.split(":")[0] === former.symbol ? [former, live] : [],
+    getQuote: async (symbol) => symbol === former.symbol
+      ? createTestQuote({ symbol, name: former.name, listingExchangeName: former.exchange, exchangeName: former.exchange })
+      : createTestQuote({ symbol, name: "Apple Inc.", listingExchangeName: "NASDAQ", exchangeName: "NASDAQ" }),
+  });
+  await store.saveTicker(createTestTicker(former.symbol, former.name, { exchange: former.exchange, portfolios: ["main"],
+    positions: [{ portfolio: "main", shares: 3, avgCost: 40, currency: "USD", broker: "manual" }] }));
+  const original = await store.loadTicker(former.symbol);
+  const save = spyOn(store, "saveTickers");
+  await writeFile(file, "Symbol,Shares,Avg Cost\nAAPL,10,150\nREUS,5,300\n");
+  await expect(run([file, "--name", "Main", "--replace"])).rejects.toMatchObject({
+    message: expect.stringContaining('Not replacing "Main"'), details: expect.stringContaining(reason),
+  });
+  expect(save).not.toHaveBeenCalled();
+  expect(await store.loadTicker(former.symbol)).toEqual(original);
+  expect(await store.loadTicker("AAPL")).toBeNull();
 });
 
 test("portfolio import <file> previews with --dry-run, creates the portfolio, needs --merge or --replace for one that holds tickers, and refuses a replace the file cannot fill", async () => {
