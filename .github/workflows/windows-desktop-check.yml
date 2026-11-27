@@ -129,6 +129,7 @@ jobs:
           bun test src/data/sqlite/access.test.ts src/data/sqlite/checkpointer.test.ts
           src/telemetry/stall-clocks.test.ts src/telemetry/stall-reports.test.ts
           src/utils/main-thread-stall.test.ts src/renderers/electrobun/view/rpc-timeout.test.ts
+          src/renderers/electrobun/bun/desktop/rpc-timing.test.ts
 
       - name: Build the desktop package
         shell: pwsh

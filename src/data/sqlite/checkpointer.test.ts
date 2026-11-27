@@ -70,12 +70,13 @@ test("a checkpointer stuck in a checkpoint gives the app's user writes their flu
     return level;
   };
   try {
-    // The write asks for a checkpoint a second later, which never answers.
+    // The first write asks for a checkpoint, which never answers. While it is
+    // pending Windows queues writes, so wait for the watchdog, not a probe write.
     expect(userWriteLevel()).toBe(1);
-    const deadline = performance.now() + 3_000;
-    while (userWriteLevel() === 1 && performance.now() < deadline) await Bun.sleep(50);
-    expect(userWriteLevel()).toBe(2);
+    const deadline = performance.now() + 5_000;
+    while (pragma("wal_autocheckpoint") !== 1_000 && performance.now() < deadline) await Bun.sleep(50);
     expect(pragma("wal_autocheckpoint")).toBe(1_000);
+    expect(userWriteLevel()).toBe(2);
   } finally {
     database.close();
   }
