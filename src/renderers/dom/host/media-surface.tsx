@@ -243,6 +243,7 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
       if (kind === "onError" && typeof info === "number" && Number.isInteger(info) && info > 0) {
         fail();
       } else if (kind === "onAutoplayBlocked") {
+        pauseRequested = false;
         stopAttempt();
         update("idle");
       } else {

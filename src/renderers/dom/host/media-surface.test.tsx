@@ -105,6 +105,26 @@ test("blocked autoplay leaves the embedded controls available for a manual play"
   expect(states.at(-1)).toBe("playing");
 });
 
+test("iframe playback after blocked autoplay supersedes a pending startup pause", async () => {
+  const timer = spyOn(globalThis, "setTimeout");
+  try {
+    const { media, pane, states, onError, postMessage, send } = await embed();
+    const attempt = timer.mock.calls.filter(([, delay]) => delay === 15_000).at(-1)![0];
+    await send("onReady");
+    await act(async () => media.pause());
+    expect(JSON.parse(postMessage.mock.calls.at(-1)![0]).func).toBe("pauseVideo");
+    await send("onAutoplayBlocked");
+    expect(states).toEqual(["loading", "idle"]);
+    await send("onStateChange", 1);
+    await act(async () => attempt());
+    expect(states).toEqual(["loading", "idle", "playing"]);
+    expect(pane.querySelector("iframe")).not.toBeNull();
+    expect(onError).not.toHaveBeenCalled();
+  } finally {
+    timer.mockRestore();
+  }
+});
+
 test("ready followed by buffering and silence still expires the original play attempt", async () => {
   const timer = spyOn(globalThis, "setTimeout");
   try {
