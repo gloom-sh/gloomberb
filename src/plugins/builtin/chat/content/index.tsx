@@ -1,5 +1,5 @@
 import { Box, Text, useContextMenu, useRendererHost, useUiCapabilities } from "../../../../ui";
-import { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, useSyncExternalStore } from "react";
 import { PageStackView } from "../../../../components/ui";
 import { ChoiceDialog } from "../../../../components/ui/choice-dialog";
 import { useOptionalDialog, type PromptContext } from "../../../../ui/dialog";
@@ -93,6 +93,11 @@ interface ChatContentProps {
   onTargetMessageHandled?: () => void;
 }
 
+interface NewDmDialogSession {
+  id: number;
+  scope: object;
+}
+
 /** No account and no saved login to finish: the chat shows nothing. */
 function isSignedOut(snapshot: { user: unknown; hasSavedSession: boolean }): boolean {
   return !snapshot.user && !snapshot.hasSavedSession;
@@ -152,7 +157,21 @@ function ChatConversation({
     setEditingMessageState(message);
   }, []);
   const [followMessages, setFollowMessages] = useState(true);
-  const [newDmOpen, setNewDmOpen] = useState(false);
+  const [newDmDialogSession, setNewDmDialogSession] = useState<NewDmDialogSession | null>(null);
+  const newDmDialogRef = useRef<NewDmDialogSession | null>(null);
+  const nextNewDmDialogIdRef = useRef(0);
+  const releaseNewDmDialog = useCallback((dialog: NewDmDialogSession | null) => {
+    if (!dialog || newDmDialogRef.current !== dialog) return false;
+    newDmDialogRef.current = null;
+    dispatch({ type: "SET_INPUT_CAPTURED", captured: false, owner: dialog });
+    return true;
+  }, [dispatch]);
+  const closeNewDmDialog = useCallback((dialog = newDmDialogRef.current) => {
+    if (releaseNewDmDialog(dialog)) setNewDmDialogSession((current) => current === dialog ? null : current);
+  }, [releaseNewDmDialog]);
+  useLayoutEffect(() => () => {
+    releaseNewDmDialog(newDmDialogRef.current);
+  }, [releaseNewDmDialog]);
   // The first-chat handle field above the composer has the keyboard.
   const [handleFieldFocused, setHandleFieldFocusedState] = useState(false);
   // Read by the field's blur, which can come before the render that moved focus on.
@@ -220,8 +239,9 @@ function ChatConversation({
   );
   const [dropActive, setDropActive] = useState(false);
   const resetComposerSession = useCallback(() => {
+    closeNewDmDialog();
     setDropActive(false);
-  }, []);
+  }, [closeNewDmDialog]);
   const attachPickerRef = useRef<(() => void) | null>(null);
   const replaceComposerDraftRef = useRef<((draft: string, cursorOffset?: number) => void) | null>(null);
   const {
@@ -287,6 +307,15 @@ function ChatConversation({
   composerTextWidthRef.current = composerTextWidth;
   const canSend = !!user?.emailVerified && composerScope !== null;
   const isComposerCurrent = useCallback(() => composerScope !== null && controller.getComposerScope() === composerScope, [composerScope, controller]);
+  const activeNewDmDialog = focused && canSend && newDmDialogSession?.scope === composerScope ? newDmDialogSession : null;
+  const newDmOpen = activeNewDmDialog !== null;
+  useLayoutEffect(() => {
+    if (!activeNewDmDialog) closeNewDmDialog(newDmDialogSession);
+  }, [activeNewDmDialog, closeNewDmDialog, newDmDialogSession]);
+  const isActiveNewDmDialogCurrent = useCallback(() => (
+    activeNewDmDialog !== null && newDmDialogRef.current === activeNewDmDialog
+    && controller.getComposerScope() === activeNewDmDialog.scope
+  ), [activeNewDmDialog, controller]);
   const previewScope = useMemo(() => ({
     isCurrent: isComposerCurrent,
     subscribe: (onChange: () => void) => controller.subscribe(channelId, onChange),
@@ -577,26 +606,27 @@ function ChatConversation({
   });
 
   const focusInput = useCallback(() => {
-    setNewDmOpen(false);
+    closeNewDmDialog();
     setSidebarFocused(false);
     setHandleFieldFocused(false);
     setInputFocused(true);
     dispatch({ type: "SET_INPUT_CAPTURED", captured: true });
     inputRef.current?.focus?.();
-  }, [dispatch, setHandleFieldFocused, setSidebarFocused]);
-
-  const closeNewDmDialog = useCallback(() => {
-    setNewDmOpen(false);
-    dispatch({ type: "SET_INPUT_CAPTURED", captured: false });
-  }, [dispatch]);
+  }, [closeNewDmDialog, dispatch, setHandleFieldFocused, setSidebarFocused]);
 
   const openNewDmDialog = useCallback(() => {
-    blurInput();
+    if (!canSend || !composerScope || !isComposerCurrent() || newDmDialogRef.current) return;
+    if (inputFocused || handleFieldFocusedRef.current) {
+      setHandleFieldFocused(false);
+      blurInput();
+    }
     closeProfilePopover();
     setSidebarFocused(false);
-    setNewDmOpen(true);
-    dispatch({ type: "SET_INPUT_CAPTURED", captured: true });
-  }, [blurInput, closeProfilePopover, dispatch, setSidebarFocused]);
+    const dialog = { id: ++nextNewDmDialogIdRef.current, scope: composerScope };
+    newDmDialogRef.current = dialog;
+    dispatch({ type: "SET_INPUT_CAPTURED", captured: true, owner: dialog });
+    if (newDmDialogRef.current === dialog) setNewDmDialogSession(dialog);
+  }, [blurInput, canSend, closeProfilePopover, composerScope, dispatch, inputFocused, isComposerCurrent, setHandleFieldFocused, setSidebarFocused]);
 
   const openChannelList = useCallback(() => {
     blurInput();
@@ -631,12 +661,6 @@ function ChatConversation({
     openChannelList();
     return true;
   }, [channelListOpen, focusChannelSidebar, openChannelList, stackedNav]);
-
-  useEffect(() => {
-    if (!focused && newDmOpen) {
-      closeNewDmDialog();
-    }
-  }, [closeNewDmDialog, focused, newDmOpen]);
 
   const attachFiles = useCallback((files: TransferFile[]) => {
     if (!isComposerCurrent()) return;
@@ -835,14 +859,13 @@ function ChatConversation({
     return () => isComposerCurrent() && isSessionCurrent();
   }, [controller, isComposerCurrent]);
 
-  const openConversationFromDialog = useCallback(async (usernames: string[]) => {
-    const isCurrent = captureConversationScope();
+  const openConversationFromDialog = useCallback(async (usernames: string[], isCurrent: () => boolean) => {
     if (!isCurrent()) return;
     const channel = usernames.length === 1
-      ? await controller.openDirectChannel({ username: usernames[0] })
-      : await controller.openGroupChannel({ usernames });
+      ? await controller.openDirectChannel({ username: usernames[0] }, isCurrent)
+      : await controller.openGroupChannel({ usernames }, isCurrent);
     if (channel && isCurrent()) showConversation(channel.id);
-  }, [captureConversationScope, controller, showConversation]);
+  }, [controller, showConversation]);
 
   const directMessageContext = useMemo(
     () => ({ currentUserId: user?.id, channels, canSend }),
@@ -1164,16 +1187,23 @@ function ChatConversation({
     />
   );
 
-  const newDmDialog = newDmOpen ? (
+  const newDmDialog = activeNewDmDialog ? (
     <NewDmDialog
+      key={activeNewDmDialog.id}
       width={stackedNav ? width : chatWidth}
       height={height}
       userByUsername={userByUsername}
       currentUserId={user?.id}
       channels={channels}
-      captureSessionScope={captureConversationScope}
-      onCancel={closeNewDmDialog}
-      onOpenChannel={showConversation}
+      isDialogCurrent={isActiveNewDmDialogCurrent}
+      captureSessionScope={() => {
+        const isSessionCurrent = captureConversationScope();
+        return () => isActiveNewDmDialogCurrent() && isSessionCurrent();
+      }}
+      onCancel={() => closeNewDmDialog(activeNewDmDialog)}
+      onOpenChannel={(nextChannelId) => {
+        if (isActiveNewDmDialogCurrent()) showConversation(nextChannelId);
+      }}
       onSubmit={openConversationFromDialog}
     />
   ) : null;

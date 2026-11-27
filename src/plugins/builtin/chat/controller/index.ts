@@ -402,12 +402,17 @@ export class ChatController {
     return this.channelCatalog.refreshChatState();
   }
 
-  async openDirectChannel(target: { userId?: string; username?: string }): Promise<ChatChannel | null> {
-    return this.channelCatalog.openConversation(() => apiClient.openDirectChannel(target), this.captureSessionScope());
+  async openDirectChannel(target: { userId?: string; username?: string }, isOriginCurrent?: () => boolean): Promise<ChatChannel | null> {
+    return this.openConversation(() => apiClient.openDirectChannel(target), isOriginCurrent);
   }
 
-  async openGroupChannel(body: { userIds?: string[]; usernames?: string[]; name?: string }): Promise<ChatChannel | null> {
-    return this.channelCatalog.openConversation(() => apiClient.openGroupChannel(body), this.captureSessionScope());
+  async openGroupChannel(body: { userIds?: string[]; usernames?: string[]; name?: string }, isOriginCurrent?: () => boolean): Promise<ChatChannel | null> {
+    return this.openConversation(() => apiClient.openGroupChannel(body), isOriginCurrent);
+  }
+
+  private openConversation(request: () => Promise<ChatChannel>, isOriginCurrent?: () => boolean): Promise<ChatChannel | null> {
+    const isSessionCurrent = this.captureSessionScope();
+    return this.channelCatalog.openConversation(request, () => isSessionCurrent() && (isOriginCurrent?.() ?? true));
   }
 
   async resolveRequiredChannelId(channelId: string): Promise<string> {

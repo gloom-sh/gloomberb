@@ -116,6 +116,7 @@ export function NewDmDialog({
   onCancel,
   onOpenChannel,
   onSubmit,
+  isDialogCurrent,
   captureSessionScope,
 }: {
   width: number;
@@ -126,7 +127,8 @@ export function NewDmDialog({
   channels: readonly ChatChannel[];
   onCancel: () => void;
   onOpenChannel: (channelId: string) => void;
-  onSubmit: (usernames: string[]) => Promise<void>;
+  onSubmit: (usernames: string[], isCurrent: () => boolean) => Promise<void>;
+  isDialogCurrent: () => boolean;
   captureSessionScope: () => () => boolean;
 }) {
   const { nativePaneChrome } = useUiCapabilities();
@@ -172,8 +174,8 @@ export function NewDmDialog({
   const canSubmit = hasOnlyDmUsernameArgs(value) && selectedUsernames.length > 0 && !submitting && !knownRefusal;
 
   useEffect(() => {
-    inputRef.current?.focus?.();
-  }, []);
+    if (isDialogCurrent()) inputRef.current?.focus?.();
+  }, [isDialogCurrent]);
 
   // The cursor never rests on a user who cannot be picked.
   useEffect(() => {
@@ -192,9 +194,12 @@ export function NewDmDialog({
   };
 
   const toggleCandidate = (username: string) => {
+    if (!isDialogCurrent()) return;
     updateValue(setUsernameSelected(valueRef.current, username, !parseDmUsernames(valueRef.current).includes(username)));
     setError(null);
-    queueMicrotask(() => inputRef.current?.focus?.());
+    queueMicrotask(() => {
+      if (isDialogCurrent()) inputRef.current?.focus?.();
+    });
   };
 
   const submit = async () => {
@@ -230,17 +235,20 @@ export function NewDmDialog({
     setSubmitting(true);
     setError(null);
     try {
-      await onSubmit(submittedUsernames);
+      await onSubmit(submittedUsernames, isCurrent);
     } catch (submitError) {
       if (isCurrent()) setError(describeConversationStartError(submitError, submittedUsernames, userByUsername));
     } finally {
-      submittingRef.current = false;
-      setSubmitting(false);
+      if (isDialogCurrent()) {
+        submittingRef.current = false;
+        setSubmitting(false);
+      }
     }
   };
 
   const bindings = useKeybindings();
   useShortcut((event) => {
+    if (!isDialogCurrent()) return;
     if (event.name === "escape") {
       event.preventDefault?.();
       event.stopPropagation?.();
@@ -293,6 +301,7 @@ export function NewDmDialog({
       width={nativePaneChrome ? undefined : contentWidth}
       backgroundColor={colors.panel}
       onChange={(nextValue) => {
+        if (!isDialogCurrent()) return;
         updateValue(nextValue);
         setError(null);
       }}
