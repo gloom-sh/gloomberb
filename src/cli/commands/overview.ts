@@ -66,7 +66,7 @@ import { cpiCalendarYearGapReason } from "../../plugins/builtin/shared/cpi-year-
 import { fredSeriesIdForName } from "../../plugins/builtin/econ/fred-catalog";
 import { isoDate, rejectExtraArgs, requireArg, requireOneArg, takeFlag, takeOption } from "./command-utils";
 import { buildCorrelationSeries } from "../../plugins/builtin/correlation/matrix/model";
-import { alignDailyCloses, correlateDailyCloses } from "../../plugins/builtin/correlation/compute";
+import { correlateDailyCloses } from "../../plugins/builtin/correlation/compute";
 import { mixedSessionCloseNote } from "../../market-data/market/session-close-note";
 import { contradictoryBarsNote, CORRELATION_RETURN_BASIS, loadCorrelationHistory, thinCorrelationNote } from "../../plugins/builtin/correlation/history";
 import { EXCHANGE_OPTION, failUnchosenListing, listingChoiceNotes, listingIdentity, loadBareVenues, loadForListing, loadListingQuoteAnswer, requireCliListing, type CliListing } from "../listing-arg";
@@ -75,7 +75,7 @@ import { formatChangePercentCell, formatCompactCell } from "../helpers";
 import { WORLD_INDICES } from "../../plugins/builtin/world-indices/indices";
 import { getSectorCollection, SECTOR_COLLECTIONS } from "../../plugins/builtin/sectors/sector-data";
 import { DAILY_CLOSES } from "../../plugins/builtin/shared/report-freshness";
-import { canonicalTimeZone, localTimeSuffix, newestReportTime, oldestReportTime, timeZoneCity, zonedClock } from "../../utils/utc-time";
+import { canonicalTimeZone, localTimeSuffix, timeZoneCity, zonedClock } from "../../utils/utc-time";
 import { zonedDayStart } from "../../utils/zoned-date-time";
 import { quotesFreshness, rowsFreshness } from "../freshness";
 import type { Quote } from "../../types/financials";
@@ -1152,10 +1152,11 @@ async function runCorrelation(rawArgs: string[], ctx: Parameters<CliCommandDef["
           undefined, request),
         listingChoiceNotes(listing, services, quote, quote ? loadBareVenues(listing, services) : null),
       ]);
-      return { ...buildCorrelationSeries(listing.key, bars), bars: bars.length, notes, quote };
+      const closes = bars.filter((bar) => !bar.partial && !bar.unsettled);
+      return { ...buildCorrelationSeries(listing.key, closes), bars: closes.length, notes, quote };
     };
     const [leftSeries, rightSeries] = await Promise.all([loadSeries(leftListing!), loadSeries(rightListing!)]);
-    const { correlation, sampleSize } = correlateDailyCloses(leftSeries.prices, rightSeries.prices);
+    const { correlation, sampleSize, lastSharedDate } = correlateDailyCloses(leftSeries.prices, rightSeries.prices);
     // The series history reads: contradictory bars are gaps, and a thin pair says which side is short.
     const seriesNotes = [
       ...[leftSeries, rightSeries].filter((series, index) => index === 0 || left !== right)
@@ -1168,14 +1169,11 @@ async function runCorrelation(rawArgs: string[], ctx: Parameters<CliCommandDef["
     const sessionNote = mixedSessionCloseNote(
       { symbol: leftListing!.symbol, exchange: listingIdentity(leftListing!, leftSeries.quote).exchange, label: left },
       { symbol: rightListing!.symbol, exchange: listingIdentity(rightListing!, rightSeries.quote).exchange, label: right },
-      alignDailyCloses(leftSeries.prices, rightSeries.prices).at(-1)?.dateKey,
+      lastSharedDate ?? undefined,
     );
-    // The daily closes used, dated by the newest last bar as the CORR report is.
-    const lastBars = [leftSeries, rightSeries].map((series) => series.prices.at(-1)?.dateKey);
     const freshness = rowsFreshness([], {
       ...DAILY_CLOSES,
-      asOf: newestReportTime(lastBars),
-      oldest: oldestReportTime(lastBars),
+      asOf: lastSharedDate,
     });
     const warnings = [
       ...leftSeries.notes, ...rightSeries.notes,

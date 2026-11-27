@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
-import { mkdtemp, rm } from "fs/promises";
+import { mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { apiClient } from "../../api-client";
@@ -18,6 +18,8 @@ import { marketDataCliCommands } from "./market";
 import { ticker } from "./ticker";
 import { createDefaultConfig } from "../../types/config";
 import type { MarketContext } from "../types";
+import { DEFAULT_CLI_OPTIONS } from "../options";
+import { serializeCliResult } from "../result";
 
 const quoteCommand = marketDataCliCommands.find((command) => command.name === "quote")!;
 
@@ -913,20 +915,104 @@ test("quote and compare exit 1 when none of the symbols has a quote, 0 when some
       : { target, quote: null, error: new Error(`Not a ticker: ${target.symbol}.`) }),
   });
   const run = async (name: string, ...symbols: string[]) => {
-    const cli = createTestCliContext({ dataProvider });
+    const cli = createTestCliContext({ dataProvider }, { format: "json" });
     process.exitCode = 0;
     const { exitCode } = await captureConsole(() => marketDataCliCommands.find((command) => command.name === name)!.execute(symbols, cli.context));
-    return { exitCode: exitCode ?? 0, rows: (cli.printed[0]!.result.data as Array<{ target: { symbol: string }; error?: string | null }>) };
+    const { result, options } = cli.printed[0]!;
+    const json = JSON.parse(serializeCliResult(result, cli.context.cliOptions, options));
+    return { exitCode: exitCode ?? 0, json, rows: json.data as Array<{ target: { symbol: string }; error?: string | null }> };
   };
   for (const name of ["quote", "compare"]) {
     const none = await run(name, "GMEE", "ZZZZQ");
     expect(none.exitCode).toBe(1);
+    expect(none.json).toMatchObject({ ok: false, error: { code: "quotes_unavailable" } });
     expect(none.rows.map((row) => [row.target.symbol, row.error])).toEqual([["GMEE", "Not a ticker: GMEE."], ["ZZZZQ", "Not a ticker: ZZZZQ."]]);
     // One symbol that resolves is a result; the one that did not stays named in the table.
     const mixed = await run(name, "GMEE", "AAPL");
     expect(mixed.exitCode).toBe(0);
+    expect(mixed.json.ok).toBe(true);
     expect(mixed.rows.map((row) => row.target.symbol)).toEqual(["GMEE", "AAPL"]);
     expect((await run(name, "AAPL")).exitCode).toBe(0);
+  }
+});
+
+test("file and stdin exports attribute every pasted token to its own row and to the first spelling", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "gloom-quote-mixed-"));
+  const file = join(dir, "mixed.txt");
+  const pasted = "  brk.b , 9988.hk  \n  Brk-B   \n xyz , SQ \n twtr  \n";
+  await writeFile(file, pasted);
+  const dataProvider = createTestDataProvider({
+    getQuotesBatch: async (targets) => targets.map((target) => ({ target, quote: createTestQuote({
+      symbol: target.symbol, name: target.symbol === "BRK.B" ? "Berkshire Hathaway Inc." : `${target.symbol} Company`,
+      listingExchangeName: target.symbol.startsWith("9988") ? "HKEX" : "NYSE",
+    }) })),
+  });
+  try {
+    const compare = marketDataCliCommands.find((command) => command.name === "compare")!;
+    for (const command of [compare, quoteCommand]) {
+      for (const args of [["-"], ["--file", file]]) {
+        spyOn(Bun.stdin, "text").mockResolvedValue(pasted);
+        const cli = createTestCliContext({ dataProvider }, { format: "csv" });
+        await command.execute(args, cli.context);
+        const { result, options } = cli.printed[0]!;
+        expect(result.data.map((row: { input: string; duplicateOf?: string }) => [row.input, row.duplicateOf ?? null])).toEqual([
+          ["brk.b", null], ["9988.hk", null], ["Brk-B", "brk.b"], ["xyz", null], ["SQ", null], ["twtr", null],
+        ]);
+        expect(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options)).toContain("Berkshire Hathaway Inc.");
+      }
+    }
+    const text = createTestCliContext({ dataProvider }, { format: "text" });
+    await compare.execute(["--file", file], text.context);
+    expect(text.printed[0]!.result.data.filter((row: { target: { symbol: string } }) => row.target.symbol === "BRK.B")).toHaveLength(1);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("split lines keep the first occurrence of a repeated ticker without splitting company names", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "gloom-quote-split-"));
+  const file = join(dir, "lines.txt");
+  const name = "Berkshire Hathaway Inc.";
+  const company = { providerId: "test", symbol: "BRK.B", name, exchange: "NYSE", currency: "USD", type: "STK" };
+  const getQuote = async (symbol: string) => createTestQuote({ symbol, name: symbol === company.symbol ? name : `${symbol} Company`,
+    listingExchangeName: symbol === company.symbol ? "NYSE" : "NASDAQ" });
+  const dataProvider = createTestDataProvider({
+    search: async (query) => /berkshire/i.test(query) ? [company] : [],
+    getQuote,
+    getQuotesBatch: async (targets) => Promise.all(targets.map(async (target) => ({ target, quote: await getQuote(target.symbol) }))),
+  });
+  try {
+    for (const includeName of [false, true]) {
+      const pasted = `AAPL MSFT\n${includeName ? `${name}\n` : ""}AAPL\n`;
+      const expected = [["AAPL", "AAPL", ""], ["MSFT", "MSFT", ""], ...(includeName ? [["BRK.B", name, ""]] : []), ["AAPL", "AAPL", "AAPL"]];
+      await writeFile(file, pasted);
+      spyOn(Bun.stdin, "text").mockResolvedValue(pasted);
+      for (const command of [marketDataCliCommands.find((entry) => entry.name === "compare")!, quoteCommand]) {
+        for (const args of [["-"], ["--file", file]]) {
+          for (const format of ["json", "csv"] as const) {
+            const cli = createTestCliContext({ dataProvider }, { format });
+            await command.execute(args, cli.context);
+            const { result, options } = cli.printed[0]!;
+            const output = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format }, options);
+            if (format === "json") {
+              expect(JSON.parse(output).data.map((row: { listing: { symbol: string }; input: string; duplicateOf?: string }) =>
+                [row.listing.symbol, row.input, row.duplicateOf ?? ""])).toEqual(expected);
+            } else {
+              const [header, ...rows] = output.split("\n\n")[0]!.split("\n");
+              const columns = header!.split(",");
+              const indices = ["Symbol", "input", "duplicate_of"].map((heading) => columns.indexOf(heading));
+              const csvExpected = expected.map(([symbol, ...fields]) => [symbol === "BRK.B" ? "BRK.B:NYSE" : symbol, ...fields]);
+              expect(rows.map((row) => {
+                const cells = row.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/);
+                return indices.map((index) => cells[index]);
+              })).toEqual(csvExpected);
+            }
+          }
+        }
+      }
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 });
 

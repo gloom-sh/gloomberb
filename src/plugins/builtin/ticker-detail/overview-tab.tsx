@@ -72,6 +72,7 @@ import type { OverviewDividendState } from "./overview/dividend";
 import { optionContractFields, useOptionContractRow } from "./overview/option-contract";
 import { resolveOptionsTarget } from "../../../utils/options";
 import { buildOverviewStats, buildPositionRows, buildProfileFields, FINANCIALS } from "./overview/model";
+import { usePurchaseDateCostFx } from "../portfolio-list/pane/purchase-date-fx";
 import { hasStatementFinancials } from "./financials/model";
 import type { OverviewFunctionLink, StatField } from "./overview/types";
 import type { CryptoMarketAsset } from "../../../api-client/crypto-markets";
@@ -554,12 +555,15 @@ function ResolvedOverviewTab({
     isin: ticker.metadata.isin,
   });
   const hasPerformance = performanceFields.some((field) => field.value != null || field.unavailableReason);
+  const positionTickers = useMemo(() => [ticker], [ticker]);
+  const purchaseDateFx = usePurchaseDateCostFx(positionTickers, { enabled: ticker.metadata.positions.length > 0, into: baseCurrency });
   const positionRows = buildPositionRows({
     ticker,
     quote,
     quoteCurrency,
     baseCurrency,
     toBase,
+    purchaseDateFx,
     accountNames,
   });
 

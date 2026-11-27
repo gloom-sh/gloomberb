@@ -17,7 +17,7 @@ const NO_RATES: PurchaseDateCostFx = new Map();
  */
 export function usePurchaseDateCostFx(
   tickers: readonly TickerRecord[],
-  { enabled, portfolioId, into }: { enabled: boolean; portfolioId: string; into: string },
+  { enabled, portfolioId, into }: { enabled: boolean; portfolioId?: string; into: string },
 ): PurchaseDateCostFx {
   const key = useMemo(() => enabled ? [...purchaseDatesToRead(tickers, into, portfolioId).keys()].sort().join(",") : "", [enabled, into, portfolioId, tickers]);
   const tickersRef = useRef(tickers);

@@ -7,6 +7,10 @@ export interface CorrelationResult {
   sampleSize: number;
 }
 
+interface DatedCorrelationResult extends CorrelationResult {
+  lastSharedDate: string | null;
+}
+
 export interface DailyClose {
   dateKey: string;
   /** A closing price, or a map series' value for the day (a transit count). */
@@ -101,11 +105,12 @@ export function correlateDailyCloses(
   minObservations = 5,
   leftBasis: ChangeBasis = "return",
   rightBasis: ChangeBasis = "return",
-): CorrelationResult {
+): DatedCorrelationResult {
   const changes = pairedChanges(alignDailyCloses(left, right), leftBasis, rightBasis);
   return {
     correlation: pearsonCorrelation(changes.map((point) => point.left), changes.map((point) => point.right), minObservations),
     sampleSize: changes.length,
+    lastSharedDate: changes.at(-1)?.dateKey ?? null,
   };
 }
 

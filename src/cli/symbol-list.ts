@@ -248,6 +248,8 @@ interface SymbolText {
    * Group`), or symbols written on one line (`AAPL MSFT`).
    */
   entries?: true;
+  /** Every populated cell is a list entry, rather than a column in a table. */
+  tokens?: true;
   /** A first row read as a header in words no header list knows (`Hisse,Adet,Maliyet`), skipped and named. */
   header?: string[];
   /** Each symbol is a line of the text, whole: a list of one entry a line, as a sheet's column pastes. */
@@ -339,14 +341,14 @@ export function parseSymbolText(text: string): SymbolText {
   // A file of lines split by commas or spaces reads as the same list typed would (`lmt, NOC ,` then `^HSI, 0700.hk 9988.HK`):
   // a cell of words is read as a typed entry is, so its symbols split.
   const spaced = cleaned.some((cells) => cells.some((cell) => !isTerminalCodeCell(cell) && isSymbolWords(cell)));
-  if (grid) return { symbols: records.flat().filter(Boolean), ignored: [], ...spaced ? { entries: true as const } : {} };
+  if (grid) return { symbols: records.flat().filter(Boolean), ignored: [], tokens: true, ...spaced ? { entries: true as const } : {} };
   // A ragged list (lines of symbols beside a line holding a company's name) is a list, read as typed entries are.
-  if (isRaggedList(cleaned)) return { symbols: records.flat().filter(Boolean), ignored: [], entries: true };
+  if (isRaggedList(cleaned)) return { symbols: records.flat().filter(Boolean), ignored: [], entries: true, tokens: true };
   // Names split by semicolons or commas, with no figures: one pasted line, or one name a line with a separator left
   // on it, is a list. A name beside a sector or any other text is a table, read by its first column below.
   const names = cleaned.some((cells) => /\s/.test(cells[0] ?? ""));
   if (!figures && (records.length === 1 || (names && cleaned.every((cells) => cells.filter(Boolean).length <= 1)))) {
-    return { symbols: records.flat().filter(Boolean), ignored: [], entries: true };
+    return { symbols: records.flat().filter(Boolean), ignored: [], entries: true, tokens: true };
   }
   return {
     symbols: records.map((cells) => cells[0] ?? "").filter(Boolean),
@@ -455,6 +457,8 @@ export interface SymbolListSource {
    * words, each a symbol.
    */
   readEntries?: (entries: string[]) => Promise<string[]>;
+  /** Like `readEntries`, keeping the resolver's reading of each entry for occurrence-preserving output. */
+  readEntryGroups?: (entries: string[]) => Promise<string[][]>;
   /** Given, gets each line of the file and standard input as typed (`TypedForm`), for a command whose rows name them. */
   typedForms?: TypedForm[];
 }
@@ -486,15 +490,18 @@ export async function readSymbolList(source: SymbolListSource): Promise<{ symbol
   const typedArgs = source.args.filter((arg) => arg !== "-");
   const figures: string[] = [];
   const entries = typedEntries(typedArgs, figures);
-  const readEntries = (read: string[]) => source.readEntries ? source.readEntries(read) : Promise.resolve(splitSymbolWords(read));
-  const typed = source.readEntries ? await source.readEntries(entries) : splitSymbolWords(entries);
+  const readGroups = source.readEntryGroups;
+  const readEntries = async (read: string[]) => readGroups ? (await readGroups(read)).flat()
+    : source.readEntries ? source.readEntries(read) : splitSymbolWords(read);
+  const typed = await readEntries(entries);
   const collected = [...typed];
   // A separator left on the end of what was typed: `UPST;`, or a list that ends in a comma.
   const strays = new Set<string>(stripStrayEdges(typedArgs.join(" ")).notes);
   const ignored: string[] = [];
   const headers: string[] = [];
   const typedForms = source.typedForms ?? [];
-  const addCells = async ({ symbols, ignored: beside, entries: whole, header }: SymbolText) => {
+  const lineEntry = (line: string) => stripStrayEdges(foldTypedText(line)).text.replace(/\s+/g, " ");
+  const addCells = async ({ symbols, ignored: beside, entries: whole, header, lines }: SymbolText) => {
     if (header) headers.push(`Skipped the first row as a header: ${listCells(header)}.`);
     const cells = symbols.map((cell) => {
       const cleaned = stripStrayEdges(cell);
@@ -502,8 +509,44 @@ export async function readSymbolList(source: SymbolListSource): Promise<{ symbol
       return cleaned.text;
     }).filter(Boolean);
     // A list's lines and names are read as typed entries are: `Altria Group` stays one company.
-    collected.push(...whole ? await readEntries(cells) : cells);
+    const groups = whole && lines && readGroups ? await readGroups(cells) : null;
+    collected.push(...groups ? groups.flat() : whole ? await readEntries(cells) : cells);
     ignored.push(...beside);
+    return groups && new Map(cells.map((cell, index) => [lineEntry(cell), groups[index]]));
+  };
+  const addText = async (text: string) => {
+    const folded = foldTypedText(text);
+    const parsed = parseSymbolText(folded);
+    const before = collected.length;
+    const readings = await addCells(parsed);
+    if (!parsed.tokens) {
+      for (const form of typedLines(text, !!parsed.lines)) {
+        const entries = readings?.get(lineEntry(form.typed));
+        if (!entries || entries.length < 2) {
+          typedForms.push(form);
+          continue;
+        }
+        const words = splitSymbolWords([form.typed]);
+        entries.forEach((entry, index) => typedForms.push({
+          typed: words.length === entries.length ? words[index]! : entry,
+          key: symbolInputKey(entry), ownRow: true,
+        }));
+      }
+      return;
+    }
+    const raw = text === folded ? parsed : parseSymbolText(text);
+    const typed = raw.tokens && raw.symbols.length === parsed.symbols.length ? raw.symbols : parsed.symbols;
+    const keys = new Set(collected.slice(before).map(symbolInputKey));
+    for (const cell of typed) {
+      const input = stripStrayEdges(cell).text;
+      const key = symbolInputKey(foldTypedText(input).replace(/\s+/g, " "));
+      const words = input.split(/\s+/);
+      if (!keys.has(key) && words.length > 1 && words.every((word) => keys.has(symbolInputKey(foldTypedText(word))))) {
+        for (const word of words) typedForms.push({ typed: word, key: symbolInputKey(foldTypedText(word)), ownRow: true });
+      } else if (input) {
+        typedForms.push({ typed: input, key, ownRow: true });
+      }
+    }
   };
   if (source.file != null && source.file !== "-") {
     if (!source.file.trim() || source.file.startsWith("--")) throw new SymbolListError("--file needs a path, such as --file symbols.csv.");
@@ -514,15 +557,10 @@ export async function readSymbolList(source: SymbolListSource): Promise<{ symbol
       const code = (error as NodeJS.ErrnoException).code;
       throw new SymbolListError(code === "ENOENT" ? `No file at ${source.file}.` : `Could not read ${source.file}: ${error instanceof Error ? error.message : String(error)}`);
     }
-    const parsed = parseSymbolText(foldTypedText(text));
-    typedForms.push(...typedLines(text, !!parsed.lines));
-    await addCells(parsed);
+    await addText(text);
   }
   if (wantsStdin || (typed.length === 0 && source.file == null && (source.stdinPiped ?? stdinIsPiped()))) {
-    const text = await readStdin();
-    const parsed = parseSymbolText(foldTypedText(text));
-    typedForms.push(...typedLines(text, !!parsed.lines));
-    await addCells(parsed);
+    await addText(await readStdin());
   }
   // A number where a symbol goes (a line of prices, a typed 1.899) is left out with those typed beside a symbol.
   const numbers = [...figures, ...collected.filter(isNumberCell)];

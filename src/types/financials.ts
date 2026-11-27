@@ -38,8 +38,8 @@ export interface QuoteProvenance {
 
 /**
  * A US listing that no longer trades, as Gloom Cloud states it: TWTR, last
- * traded 2022-10-27 and removed from NYSE the next day. Its daily history is
- * still served, ending on that session. Dates are New York trading dates.
+ * traded 2022-10-27. Its daily history ends on that session; the last trade
+ * date is not the effective delisting date. Dates are New York trading dates.
  */
 export interface ListingDelisting {
   /** "delisted": the exchange's removal of the listing is on record; "inactive": only its last trade is known. */

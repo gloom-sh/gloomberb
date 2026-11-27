@@ -113,6 +113,7 @@ function combine(positions: readonly FilePosition[]): FilePosition | { kind: Ski
   const dates = positions.map((position) => position.dateAcquired).filter((date): date is string => !!date).sort();
   return {
     symbol: positions[0]!.symbol,
+    lookupSymbol: positions[0]!.lookupSymbol,
     description: positions.find((position) => position.description)?.description ?? null,
     shares,
     avgCost,
@@ -151,7 +152,7 @@ export function buildPositionsImportPlan({
   const skipped: SkippedFileRow[] = [...file.skipped];
   const groups = new Map<string, { ticker: TickerRecord; positions: FilePosition[]; notes: string[] }>();
   for (const position of file.positions) {
-    const resolution = resolutions.get(position.symbol);
+    const resolution = resolutions.get(position.lookupSymbol);
     if (!resolution || "error" in resolution) {
       skipped.push({ line: position.lines[0]!, label: position.symbol, reason: resolution?.error ?? "not looked up", kind: "lookup", symbol: position.symbol });
       continue;
@@ -186,7 +187,7 @@ export function buildPositionsImportPlan({
     }
     if (prefill && prefill.lotCount > 1) notes.push(`its ${prefill.lotCount} lots become one position`);
     rows.push({
-      symbols: group.positions.map((position) => position.symbol),
+      symbols: [...new Set(group.positions.map((position) => position.symbol))],
       ticker: holding ?? group.ticker,
       shares: combined.shares,
       avgCost: keptCost ? keptCost.avgCost! : combined.avgCost,

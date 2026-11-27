@@ -1,5 +1,5 @@
 import { futuresContractByCode } from "../market-data/futures-board";
-import { getListingSymbol, hongKongListingCode, tickerHasListingSuffix } from "../sources/listing-symbols";
+import { getListingSymbol, hongKongListingCode, hongKongWorkingCode, tickerHasListingSuffix } from "../sources/listing-symbols";
 import { isCurrencyCode } from "../utils/currency-pair";
 import { canonicalExchange, isKnownExchangeCode, isPredictionMarketExchange, isSharedExchangeCode, isUsListingExchange, typedExchangeVenue } from "../utils/exchanges";
 
@@ -504,11 +504,6 @@ const SLASH_CLASS = /^([A-Z]{2,5})\/([A-Z])$/;
  */
 const HONG_KONG_CODE = /^(\d{1,5})(\.HKG?|:HKEX)$/;
 
-/** A Hong Kong code as the app keys it: four digits at least (0700, 3042, 83042). */
-function hongKongWorkingCode(digits: string): string | null {
-  const code = Number(digits);
-  return code > 0 ? String(code).padStart(4, "0") : null;
-}
 /** `6758.JP`, `MC.FP`: a symbol with a Bloomberg market code where a listing suffix goes. */
 const MARKET_SUFFIX = /^([A-Z0-9]{1,10})\.([A-Z]{2})$/;
 /**

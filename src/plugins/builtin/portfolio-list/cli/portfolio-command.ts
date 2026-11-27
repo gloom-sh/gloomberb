@@ -1061,7 +1061,7 @@ const POSITION_HELP = {
 const INCOME_HELP = {
   title: "Income",
   lines: [
-    "Income is a year of trailing dividends on the shares held: what each share or fund paid per share over the past twelve months, as DVD reads it, times the shares, in the portfolio's currency. Yield is that over the holding's value; on the TOTAL row, over the whole portfolio, cash included.",
+    "Income is a year of trailing dividends on the shares held: what each share or fund paid per share over the past twelve months, as DVD reads it, times the shares, in the portfolio's currency. Yield is that over the holding's value; on the TOTAL row it is over invested holdings, or gross exposure if the book holds a short. Cash is excluded.",
     `--drip projects reinvested dividends for --years (1 to ${DRIP_MAX_YEARS}, default ${DRIP_DEFAULT_YEARS}), net of --withholding percent (default 0): today's dividends, prices and exchange rates held flat, reinvested once a year.`,
   ],
 };
