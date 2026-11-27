@@ -70,3 +70,15 @@ test("DOCS takes a mnemonic or an alias, with its argument or without, and searc
   expect(docsTopicForArgument(index, "options chain")).toEqual({ kind: "home", query: "options chain" });
   expect(docsTopicForArgument(index, "  ")).toEqual({ kind: "home" });
 });
+
+test.each([
+  { code: "DILU", paneId: "equity-dilution", title: "DILU MSTR", argument: "DILU MSTR" },
+  { code: "CCASSM", paneId: "ccass-market", title: "HK CCASS", argument: "CCASSM deposits" },
+])("$code opens its own offline docs from help, the pane and DOCS", async ({ code, paneId, title, argument }) => {
+  const { index, registry } = await builtIns();
+  const expected = { kind: "function", code } as const;
+  expect(docsTopicExists(shipped, expected)).toBe(true);
+  expect(docsTopicForFunction(index.get(code)!)).toEqual(expected);
+  expect(docsTopicForPane(index, registry as never, { paneId, title })).toEqual(expected);
+  expect(docsTopicForArgument(index, argument)).toEqual(expected);
+});
