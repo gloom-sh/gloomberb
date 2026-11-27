@@ -1,7 +1,7 @@
 import { apiClient } from "../../api-client";
 import { listingSuffixExchange } from "../listing-symbols";
 import type { CachedResourceRecord, ResourceStore } from "../../data/resource-store";
-import { quoteListingExchangesMatch } from "../../market-data/quotes/metadata";
+import { isOtcQuoteVenue } from "../../market-data/quotes/metadata";
 import type { TimeRange } from "../../time-series/range";
 import type { BrokerContractRef } from "../../types/instrument";
 import type { Quote, TickerFinancials } from "../../types/financials";
@@ -186,7 +186,7 @@ function cachedProviderFinancialsMatchTarget(value: TickerFinancials, symbol: st
   // symbol into the returned metadata or bypass quote/contribution checks.
   const metadata = value.quoteMetadata;
   const checked = metadata && metadata.symbol === undefined
-    ? { ...value, quoteMetadata: { ...metadata, symbol } }
+    ? { ...value, quoteMetadata: { ...metadata, symbol: parsePublicTickerKey(symbol).symbol } }
     : value;
   return providerFinancialsMatchTarget(checked, symbol, exchange);
 }
@@ -224,9 +224,9 @@ export function listCachedResources<T>(
     const metadata = kind === "financials" ? (record.value as TickerFinancials).quoteMetadata : undefined;
     const declaredExchange = canonicalExchange(quote?.listingExchangeName || quote?.exchangeName
       || metadata?.listingExchangeName || parsePublicTickerKey(quote?.symbol ?? metadata?.symbol ?? "").exchange);
-    // Refetch a record that declares another public listing; never relabel it
-    // or let it outrank a fresh exact-listing response.
-    if (requestedExchange && declaredExchange && !quoteListingExchangesMatch(requestedExchange, declaredExchange)) return false;
+    // OTC identity was checked above using the listing venue and symbol suffix
+    // together. Other cached listings still require the declared venue.
+    if (requestedExchange && declaredExchange && !isOtcQuoteVenue(requestedExchange) && requestedExchange !== declaredExchange) return false;
     // A bare lookup that names no listing cannot say which venue it priced:
     // the unqualified BA quote is Boeing's, never BAE Systems' London line.
     return !(requestedExchange && !declaredExchange && !parsePublicTickerKey(entityKey).exchange
