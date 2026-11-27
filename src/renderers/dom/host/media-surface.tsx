@@ -4,8 +4,24 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type CSSP
 import type { MediaSurfaceHandle, MediaSurfaceProps } from "../../../ui/host";
 import { cleanDomProps, commonStyle } from "./style";
 
-function postYoutubeCommand(frame: HTMLIFrameElement | null, func: string, args: unknown[] = []): void {
-  frame?.contentWindow?.postMessage(JSON.stringify({ event: "command", func, args }), "*");
+type PlaybackState = Parameters<NonNullable<MediaSurfaceProps["onPlaybackStateChange"]>>[0];
+const YOUTUBE_READY_TIMEOUT_MS = 15_000;
+const YOUTUBE_UNAVAILABLE = "The embedded player could not play this stream.";
+
+function postYoutubeCommand(frame: HTMLIFrameElement | null, origin: string, func: string, args: unknown[] = []): void {
+  frame?.contentWindow?.postMessage(JSON.stringify({ event: "command", id: 1, func, args }), origin);
+}
+
+function youtubePlaybackState(value: unknown): PlaybackState | undefined {
+  switch (value) {
+    case 1: return "playing";
+    case 2: return "paused";
+    case 3: return "loading";
+    case -1:
+    case 0:
+    case 5: return "idle";
+    default: return undefined;
+  }
 }
 
 export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(function WebMediaSurface(rawProps, forwardedRef) {
@@ -29,50 +45,48 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
     autoPlay?: boolean;
     muted?: boolean;
     mediaHandleRef?: MediaSurfaceProps["mediaHandleRef"];
-    onPlaybackStateChange?: (state: "idle" | "loading" | "playing" | "paused" | "error") => void;
+    onPlaybackStateChange?: (state: PlaybackState) => void;
     onMutedChange?: (muted: boolean) => void;
     onError?: (message: string) => void;
   };
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const youtubeMutedRef = useRef(muted);
-  const youtubePlayingRef = useRef(autoPlay);
-  const [failed, setFailed] = useState(false);
+  const youtubePlayingRef = useRef(false);
+  const callbacks = useRef({ onPlaybackStateChange, onError });
+  callbacks.current = { onPlaybackStateChange, onError };
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const mediaSrc = typeof src === "string" ? src.trim() : "";
-  const youtubeEmbed = /^https?:\/\/(?:www\.)?youtube(?:-nocookie)?\.com\/embed\//.test(mediaSrc);
+  const failed = failedSrc === mediaSrc;
+  const embedUrl = /^https?:\/\/(?:www\.)?youtube(?:-nocookie)?\.com\/embed\//.test(mediaSrc) ? new URL(mediaSrc) : null;
+  if (embedUrl) {
+    embedUrl.protocol = "https:";
+    if (embedUrl.searchParams.get("enablejsapi") !== "1") embedUrl.searchParams.set("enablejsapi", "1");
+  }
+  const youtubeOrigin = embedUrl?.origin;
   const baseStyle = commonStyle(props);
 
   useImperativeHandle(forwardedRef, () => videoRef.current as HTMLVideoElement, []);
   useImperativeHandle(mediaHandleRef, (): MediaSurfaceHandle => ({
     async play() {
-      if (youtubeEmbed) {
-        postYoutubeCommand(iframeRef.current, "playVideo");
-        youtubePlayingRef.current = true;
-        onPlaybackStateChange?.("playing");
+      if (youtubeOrigin) {
+        if (failed) setFailedSrc(null);
+        else postYoutubeCommand(iframeRef.current, youtubeOrigin, "playVideo");
         return;
       }
       if (videoRef.current) await videoRef.current.play();
     },
     pause() {
-      if (youtubeEmbed) {
-        postYoutubeCommand(iframeRef.current, "pauseVideo");
-        youtubePlayingRef.current = false;
-        onPlaybackStateChange?.("paused");
+      if (youtubeOrigin) {
+        postYoutubeCommand(iframeRef.current, youtubeOrigin, "pauseVideo");
         return;
       }
       videoRef.current?.pause();
     },
     async toggle() {
-      if (youtubeEmbed) {
-        if (youtubePlayingRef.current) {
-          postYoutubeCommand(iframeRef.current, "pauseVideo");
-          youtubePlayingRef.current = false;
-          onPlaybackStateChange?.("paused");
-        } else {
-          postYoutubeCommand(iframeRef.current, "playVideo");
-          youtubePlayingRef.current = true;
-          onPlaybackStateChange?.("playing");
-        }
+      if (youtubeOrigin) {
+        if (failed) setFailedSrc(null);
+        else postYoutubeCommand(iframeRef.current, youtubeOrigin, youtubePlayingRef.current ? "pauseVideo" : "playVideo");
         return;
       }
       const video = videoRef.current;
@@ -84,9 +98,9 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
       }
     },
     toggleMuted() {
-      if (youtubeEmbed) {
+      if (youtubeOrigin) {
         youtubeMutedRef.current = !youtubeMutedRef.current;
-        postYoutubeCommand(iframeRef.current, youtubeMutedRef.current ? "mute" : "unMute");
+        postYoutubeCommand(iframeRef.current, youtubeOrigin, youtubeMutedRef.current ? "mute" : "unMute");
         onMutedChange?.(youtubeMutedRef.current);
         return youtubeMutedRef.current;
       }
@@ -95,13 +109,13 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
       video.muted = !video.muted;
       return video.muted;
     },
-  }), [muted, onMutedChange, onPlaybackStateChange, youtubeEmbed]);
+  }), [failed, muted, onMutedChange, youtubeOrigin]);
 
   // Keys typed into a cross-origin frame never reach the app, so a click on
   // the player would take Tab, the command bar and every pane key with it.
   // Its controls work by pointer without focus; hand the keyboard back.
   useEffect(() => {
-    if (!youtubeEmbed) return;
+    if (!youtubeOrigin) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const releaseFrameFocus = () => {
       timer = null;
@@ -121,30 +135,81 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
       window.removeEventListener("blur", handleWindowBlur);
       if (timer !== null) clearTimeout(timer);
     };
-  }, [youtubeEmbed]);
+  }, [youtubeOrigin]);
 
   useEffect(() => {
     youtubeMutedRef.current = muted;
-    if (youtubeEmbed) {
-      setFailed(false);
-      onPlaybackStateChange?.(autoPlay ? "playing" : "paused");
-      onMutedChange?.(muted);
-      return;
-    }
+    if (youtubeOrigin) onMutedChange?.(muted);
+  }, [mediaSrc, muted, onMutedChange, youtubeOrigin]);
+
+  useEffect(() => setFailedSrc(null), [mediaSrc]);
+
+  useEffect(() => {
+    const frame = iframeRef.current;
+    if (!youtubeOrigin || failed || !frame) return;
+    let last: PlaybackState | undefined;
+    let ended = false;
+    const update = (state: PlaybackState) => {
+      if (state === last) return;
+      last = state;
+      youtubePlayingRef.current = state === "playing";
+      callbacks.current.onPlaybackStateChange?.(state);
+    };
+    const fail = () => {
+      ended = true;
+      clearTimeout(timeout);
+      setFailedSrc(mediaSrc);
+      update("error");
+      callbacks.current.onError?.(YOUTUBE_UNAVAILABLE);
+    };
+    const timeout = setTimeout(fail, YOUTUBE_READY_TIMEOUT_MS);
+    const message = (event: MessageEvent) => {
+      const source = frame.contentWindow;
+      if (ended || iframeRef.current !== frame || !source || event.source !== source || event.origin !== youtubeOrigin || typeof event.data !== "string") return;
+      let payload: { event?: unknown; info?: unknown } | null;
+      try { payload = JSON.parse(event.data); } catch { return; }
+      if (!payload || typeof payload !== "object") return;
+      const { event: kind, info } = payload;
+      if (kind === "onError" && typeof info === "number" && Number.isInteger(info) && info > 0) {
+        fail();
+      } else if (kind === "onReady") {
+        clearTimeout(timeout);
+        if (!autoPlay && last === "loading") update("idle");
+      } else if (kind === "onAutoplayBlocked") {
+        clearTimeout(timeout);
+        update("idle");
+      } else {
+        const state = kind === "onStateChange" ? youtubePlaybackState(info)
+          : (kind === "initialDelivery" || kind === "infoDelivery") && info && typeof info === "object" && "playerState" in info
+            ? youtubePlaybackState(info.playerState) : undefined;
+        if (state === undefined) return;
+        clearTimeout(timeout);
+        update(state);
+      }
+    };
+    window.addEventListener("message", message);
+    update("loading");
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener("message", message);
+    };
+  }, [autoPlay, failed, mediaSrc, youtubeOrigin]);
+
+  useEffect(() => {
+    if (youtubeOrigin) return;
     const video = videoRef.current;
     if (!video || !mediaSrc) {
-      onPlaybackStateChange?.("idle");
+      if (!mediaSrc) onPlaybackStateChange?.("idle");
       return;
     }
 
-    setFailed(false);
     onPlaybackStateChange?.("loading");
     let hls: Hls | null = null;
 
     let active = true;
     const fail = (message: string) => {
       if (!active) return;
-      setFailed(true);
+      setFailedSrc(mediaSrc);
       onPlaybackStateChange?.("error");
       onError?.(message);
     };
@@ -211,7 +276,7 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
       video.removeAttribute("src");
       video.load();
     };
-  }, [autoPlay, mediaSrc, onError, onMutedChange, onPlaybackStateChange, youtubeEmbed]);
+  }, [autoPlay, mediaSrc, onError, onMutedChange, onPlaybackStateChange, youtubeOrigin]);
 
   return (
     <div
@@ -224,18 +289,21 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
         ...(props.style as CSSProperties | undefined),
       }}
     >
-      {mediaSrc && !failed && youtubeEmbed ? (
+      {!failed && embedUrl ? (
         <iframe
           key={mediaSrc}
           ref={iframeRef}
           title={title || "Live TV stream"}
-          src={mediaSrc}
+          src={embedUrl.href}
           referrerPolicy="strict-origin-when-cross-origin"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           allowFullScreen
-          onLoad={() => {
-            iframeRef.current?.contentWindow?.postMessage(JSON.stringify({ event: "listening", id: 1 }), "*");
-            onPlaybackStateChange?.(autoPlay ? "playing" : "paused");
+          onLoad={(event) => {
+            const frame = event.currentTarget;
+            frame.contentWindow?.postMessage(JSON.stringify({ event: "listening", id: 1 }), embedUrl.origin);
+            for (const kind of ["onStateChange", "onError", "onAutoplayBlocked"]) {
+              postYoutubeCommand(frame, embedUrl.origin, "addEventListener", [kind]);
+            }
           }}
           style={{
             width: "100%",
