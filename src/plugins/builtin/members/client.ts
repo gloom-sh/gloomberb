@@ -3,14 +3,16 @@ import { ApiRequestError } from "../../../api-client/errors";
 import type { FundMembersPayload, FundChangesPayload, MemberFundsPayload, FundBreadthPayload, StockFundsPayload } from "../../../api-client/members";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { companyNameCase } from "../../../tickers/company-name";
+import { isNonNegativeInt, isNullableFinite } from "../../../utils/guards";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 import { coveredFund, notCoveredMessage } from "./model";
 const policy = { staleMs: 60_000, expireMs: 2 * 60 * 60_000 };
-export const fundListCache = createPluginCache<MemberFundsPayload>({ kind: "member-funds", source: "gloom-cloud", schemaVersion: 1, policy });
-export const fundMembersCache = createPluginCache<FundMembersPayload>({ kind: "fund-members", source: "gloom-cloud", schemaVersion: 1, policy });
-export const fundChangesCache = createPluginCache<FundChangesPayload>({ kind: "fund-changes", source: "gloom-cloud", schemaVersion: 1, policy });
-export const fundBreadthCache = createPluginCache<FundBreadthPayload>({ kind: "fund-breadth", source: "gloom-cloud", schemaVersion: 1, policy });
-export const stockFundsCache = createPluginCache<StockFundsPayload>({ kind: "stock-funds", source: "gloom-cloud", schemaVersion: 1, policy });
+const makeCache = <T>(kind: string) => createPluginCache<T>({ kind, source: "gloom-cloud", schemaVersion: 1, policy });
+export const fundListCache = makeCache<MemberFundsPayload>("member-funds");
+export const fundMembersCache = makeCache<FundMembersPayload>("fund-members");
+export const fundChangesCache = makeCache<FundChangesPayload>("fund-changes");
+export const fundBreadthCache = makeCache<FundBreadthPayload>("fund-breadth");
+export const stockFundsCache = makeCache<StockFundsPayload>("stock-funds");
 type Client = Pick<typeof apiClient, "getMemberFunds" | "getFundMembers" | "getFundChanges">;
 /** A symbol the covered list does not hold: a stock to look through the funds for, or a fund MEMB does not cover. */
 export class FundNotCoveredError extends Error {
@@ -20,11 +22,10 @@ export class FundNotCoveredError extends Error {
     this.name = "FundNotCoveredError";
   }
 }
-const number = (value: unknown) => value === null || typeof value === "number" && Number.isFinite(value);
 function validateMembers(data: FundMembersPayload) {
   if (!data?.fund?.ticker || !Number.isFinite(Date.parse(data.asOf)) || !Array.isArray(data.members)
-    || !data.members.every((row) => typeof row.id === "string" && typeof row.name === "string" && [row.weight, row.price, row.changePercent, row.return1WPercent, row.return1MPercent, row.returnYtdPercent, row.contribution].every(number))
-    || !data.aggregate || !number(data.aggregate.sum)) throw new Error("Unreadable fund holdings response");
+    || !data.members.every((row) => typeof row.id === "string" && typeof row.name === "string" && [row.weight, row.price, row.changePercent, row.return1WPercent, row.return1MPercent, row.returnYtdPercent, row.contribution].every(isNullableFinite))
+    || !data.aggregate || !isNullableFinite(data.aggregate.sum)) throw new Error("Unreadable fund holdings response");
   // A holdings file writes every name in capitals; the pane, the report and a watchlist made from it read them as other panes do.
   return { ...data, members: data.members.map((row) => ({ ...row, name: companyNameCase(row.name) })) };
 }
@@ -56,7 +57,7 @@ async function fetchFundPayload<T>(fund: string, fetcher: () => Promise<T>, vali
 }
 function validateStockFunds(data: StockFundsPayload) {
   if (!data || typeof data.symbol !== "string" || !Array.isArray(data.funds) || !data.funds.every((row) => typeof row.ticker === "string"
-    && typeof row.name === "string" && (row.basis === "daily" || row.basis === "nport") && number(row.weight) && typeof row.asOf === "string")) throw new Error("Unreadable fund holders response");
+    && typeof row.name === "string" && (row.basis === "daily" || row.basis === "nport") && isNullableFinite(row.weight) && typeof row.asOf === "string")) throw new Error("Unreadable fund holders response");
   return data;
 }
 export const fetchFunds = (client: Client = apiClient) => fetchPayload(() => client.getMemberFunds(), validateFunds);
@@ -86,9 +87,9 @@ export const loadChanges = (fund: string, force = false) => loadCloudResource(fu
 
 function validateBreadth(data: FundBreadthPayload) {
   const row = (value: FundBreadthPayload["history"][number]) => value && /^\d{4}-\d{2}-\d{2}$/.test(value.date)
-    && [value.memberCount, value.observed, value.advances, value.declines, value.unchanged, value.advanceDeclineEligible, value.newHighs, value.newLows, value.highLowEligible].every(n => Number.isInteger(n) && n >= 0)
-    && [value.ma20, value.ma50, value.ma200].every(m => m && Number.isInteger(m.eligible) && m.eligible >= 0 && Number.isInteger(m.above) && m.above >= 0 && m.above <= m.eligible && number(m.percent))
-    && number(value.adLine);
+    && [value.memberCount, value.observed, value.advances, value.declines, value.unchanged, value.advanceDeclineEligible, value.newHighs, value.newLows, value.highLowEligible].every(isNonNegativeInt)
+    && [value.ma20, value.ma50, value.ma200].every(m => m && isNonNegativeInt(m.eligible) && isNonNegativeInt(m.above) && m.above <= m.eligible && isNullableFinite(m.percent))
+    && isNullableFinite(value.adLine);
   if (!data?.fund?.ticker || !Array.isArray(data.history) || !data.history.every(row) || (data.latest !== null && !row(data.latest))) throw new Error("Unreadable fund breadth response");
   return data;
 }

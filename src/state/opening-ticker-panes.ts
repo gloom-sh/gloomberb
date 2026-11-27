@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { createListenerSet } from "../utils/listeners";
 
 /**
  * Panes placed before their ticker is found. Opening a ticker the app does
@@ -8,21 +9,17 @@ import { useSyncExternalStore } from "react";
  * rather than that no ticker is selected.
  */
 const opening = new Set<string>();
-const listeners = new Set<() => void>();
-
-function changed(): void {
-  for (const listener of listeners) listener();
-}
+const listeners = createListenerSet();
 
 /** Marks a pane as opening; the returned stop clears it, once. */
 export function markTickerPaneOpening(instanceId: string): () => void {
   opening.add(instanceId);
-  changed();
+  listeners.notify();
   let stopped = false;
   return () => {
     if (stopped) return;
     stopped = true;
-    if (opening.delete(instanceId)) changed();
+    if (opening.delete(instanceId)) listeners.notify();
   };
 }
 
@@ -30,16 +27,9 @@ export function isTickerPaneOpening(instanceId: string | null | undefined): bool
   return !!instanceId && opening.has(instanceId);
 }
 
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
 /** Whether the pane's ticker is still being looked up. */
 export function useTickerPaneOpening(instanceId: string | null | undefined): boolean {
-  return useSyncExternalStore(subscribe, () => isTickerPaneOpening(instanceId), () => false);
+  return useSyncExternalStore(listeners.subscribe, () => isTickerPaneOpening(instanceId), () => false);
 }
 
 export function resetOpeningTickerPanesForTests(): void {

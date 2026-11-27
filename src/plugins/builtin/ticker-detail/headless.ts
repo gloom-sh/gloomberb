@@ -358,45 +358,59 @@ async function loadLongFinancialReport(symbols: string[], options: HeadlessPaneO
   };
 }
 
+/** Shared period-column metadata and report result envelope for statement and ratio reports. */
+function financialPeriodBase(
+  statement: Parameters<typeof financialColumnLabel>[0],
+  statementCurrency: string | undefined,
+  period: "annual" | "quarterly",
+  yearEndMonth: number | null,
+  listRows: Parameters<typeof financialReportHeader>[4],
+  unit?: string,
+) {
+  return {
+    date: statement.date,
+    period: financialColumnLabel(statement, period, yearEndMonth),
+    periodEnd: ratioPeriodEnd(statement),
+    currency: statement.currency ?? statementCurrency ?? null,
+    dateSource: statement.date === "TTM" ? "derived" : statement.dateSource ?? "provider",
+    label: financialReportHeader(statement, [statement.currency ?? statementCurrency, unit].filter(Boolean).join(" ") || undefined, period, yearEndMonth, listRows),
+  };
+}
+
 /** One ticker's statement or ratio table, its periods as columns. */
 async function loadFinancialReport(symbol: string, options: HeadlessPaneOptionValues, ctx: HeadlessPaneContext): Promise<WideFinancialReport> {
-  {
-    const financials = await loadHeadlessFinancials(ctx, symbol);
-    const requestedPeriod = options.period === "quarterly" ? "quarterly" : "annual";
-    const hasRequestedStatements = (requestedPeriod === "quarterly"
-      ? financials.quarterlyStatements : financials.annualStatements).length > 0;
-    const ratioTab = findRatioTab(resolveFinancialSectionKey(String(options.statement ?? "income")));
-    if (ratioTab) return loadRatioReport(ctx, symbol, financials, ratioTab, requestedPeriod, hasRequestedStatements);
-    // The interactive tabs visibly select their fallback. A headless request
-    // has no such selection change, so it must keep the requested period.
-    const table = hasRequestedStatements ? buildFinancialTableModel(financials, {
-      period: requestedPeriod,
-      statement: String(options.statement ?? "income"),
-      expandAll: true,
-    }) : null;
-    const statementCurrency = financialStatementCurrency(financials, [
-      ...financials.annualStatements, ...financials.quarterlyStatements,
-    ]);
-    // Gloom Cloud states when a period's share counts and EPS are on the receipts.
-    const receiptPeriods = table?.statements.filter(({ shareBasis }) => shareBasis === "depositary_receipt").map(({ date }) => date) ?? [];
-    const allReceipts = receiptPeriods.length > 0 && receiptPeriods.length === table?.statements.length;
-    const shareBases = new Set(table?.statements.map(({ shareBasis }) => shareBasis ?? null));
-    const ratio = adrRatioText(financials.fundamentals?.adrRatio ?? financials.quote?.adrRatio,
-      (financials.fundamentals?.depositaryPair ?? financials.quote?.depositaryPair)?.ordinary[0]);
-    const shareBasisNotice = receiptPeriods.length === 0 || !table?.rows.some(isPerShareFinancialRow) ? null
-      : allReceipts
-        ? `Share counts are in ADRs and EPS is per ADR${ratio ? `; ${ratio}` : ""}.`
-        : `Share counts are in ADRs and EPS is per ADR for ${receiptPeriods.join(", ")}${ratio ? ` (${ratio})` : ""}; other periods as reported.`;
-    const yearEndMonth = fiscalYearEndMonth(financials.annualStatements);
-    // The list a column comes from: a comparative column is dated by the row a year on in it.
-    const listRows = requestedPeriod === "quarterly" ? financials.quarterlyStatements : financials.annualStatements;
-    const annualDates = new Set(financials.annualStatements.map(({ date }) => date));
-    const dates = table?.statements.map((statement) => {
-      const { date, currency, dateSource, providerDate, dateEvidence, availableAt, fieldAvailability, fieldSources, unavailableFields, epsBasis, unavailableEarnings, aggregation, shareBasis, filledFrom } = statement;
-      const filled = date === "TTM" || filledFrom?.source !== "results" ? null : fillDate(statement, listRows);
-      const issuerFiling = financialPeriodFiling(financials.periodFilings, statement, financialColumnPeriod(statement, requestedPeriod, annualDates));
-      return {
-      date, currency: currency ?? statementCurrency ?? null,
+  const financials = await loadHeadlessFinancials(ctx, symbol);
+  const requestedPeriod = options.period === "quarterly" ? "quarterly" : "annual";
+  const listRows = requestedPeriod === "quarterly" ? financials.quarterlyStatements : financials.annualStatements;
+  const hasRequestedStatements = listRows.length > 0;
+  const statementCurrency = financialStatementCurrency(financials, [...financials.annualStatements, ...financials.quarterlyStatements]);
+  const yearEndMonth = fiscalYearEndMonth(financials.annualStatements);
+  const ratioTab = findRatioTab(resolveFinancialSectionKey(String(options.statement ?? "income")));
+  if (ratioTab) return loadRatioReport(ctx, symbol, financials, ratioTab, requestedPeriod, hasRequestedStatements, statementCurrency, yearEndMonth, listRows);
+  // The interactive tabs visibly select their fallback. A headless request
+  // has no such selection change, so it must keep the requested period.
+  const table = hasRequestedStatements ? buildFinancialTableModel(financials, {
+    period: requestedPeriod,
+    statement: String(options.statement ?? "income"),
+    expandAll: true,
+  }) : null;
+  // Gloom Cloud states when a period's share counts and EPS are on the receipts.
+  const receiptPeriods = table?.statements.filter(({ shareBasis }) => shareBasis === "depositary_receipt").map(({ date }) => date) ?? [];
+  const allReceipts = receiptPeriods.length > 0 && receiptPeriods.length === table?.statements.length;
+  const shareBases = new Set(table?.statements.map(({ shareBasis }) => shareBasis ?? null));
+  const ratio = adrRatioText(financials.fundamentals?.adrRatio ?? financials.quote?.adrRatio,
+    (financials.fundamentals?.depositaryPair ?? financials.quote?.depositaryPair)?.ordinary[0]);
+  const shareBasisNotice = receiptPeriods.length === 0 || !table?.rows.some(isPerShareFinancialRow) ? null
+    : allReceipts
+      ? `Share counts are in ADRs and EPS is per ADR${ratio ? `; ${ratio}` : ""}.`
+      : `Share counts are in ADRs and EPS is per ADR for ${receiptPeriods.join(", ")}${ratio ? ` (${ratio})` : ""}; other periods as reported.`;
+  const annualDates = new Set(financials.annualStatements.map(({ date }) => date));
+  const dates = table?.statements.map((statement) => {
+    const { date, dateSource, providerDate, dateEvidence, availableAt, fieldAvailability, fieldSources, unavailableFields, epsBasis, unavailableEarnings, aggregation, shareBasis, filledFrom } = statement;
+    const filled = date === "TTM" || filledFrom?.source !== "results" ? null : fillDate(statement, listRows);
+    const issuerFiling = financialPeriodFiling(financials.periodFilings, statement, financialColumnPeriod(statement, requestedPeriod, annualDates));
+    return {
+      ...financialPeriodBase(statement, statementCurrency, requestedPeriod, yearEndMonth, listRows, table.unit),
       shareBasis: shareBasis ?? null,
       availableAt: availableAt ?? null,
       fieldAvailability: fieldAvailability ? { ...fieldAvailability } : null,
@@ -413,78 +427,71 @@ async function loadFinancialReport(symbol: string, options: HeadlessPaneOptionVa
       ...(epsBasis ? { epsBasis } : {}),
       ...(unavailableEarnings ? { unavailableEarnings } : {}),
       ...(aggregation ? { aggregation } : {}),
-      dateSource: date === "TTM" ? "derived" : dateSource ?? "provider",
       providerDate: date === "TTM" ? null : providerDate ?? null,
       dateEvidence: date === "TTM" || dateSource !== "sec" ? null : dateEvidence ?? null,
-      // The fiscal period as the pane names it, and the day it ends, which the long layout and exports date it by.
-      period: financialColumnLabel(statement, requestedPeriod, yearEndMonth),
-      periodEnd: ratioPeriodEnd(statement),
-      // Rows in the table's one money unit do not name it, so the header does.
-      label: financialReportHeader(statement, [currency ?? statementCurrency, table.unit].filter(Boolean).join(" ") || undefined, requestedPeriod, yearEndMonth, listRows),
-      };
-    }) ?? [];
-    const asOf = newestPeriodEnd(dates);
-    const rows = table?.rows.map((row) => {
-      const figure = statementFigure(row);
-      return {
-        id: row.id, kind: row.kind, metric: allReceipts ? receiptShareCountLabel(row) : row.unitLabel, label: row.label,
-        // What the figures are in, which exports name in `currency_or_unit`, and the newest period they run to.
-        figure, divisor: row.divisor, unit: figureUnit(figure, statementCurrency ?? null, row.divisor, allReceipts ? "ADRs" : "shares"), periodEnd: asOf,
-        cells: row.cells.map((cell, index) => ({
-          date: dates[index]?.date ?? "", value: cell.value ?? null,
-          growth: cell.growth ?? null, formatted: cell.valueText.trim(), growthFormatted: cell.growthText.trim(),
-        })),
-        ...Object.fromEntries(row.cells.map((cell, index) => [dates[index]!.date, cell.value ?? null])),
-      };
-    }) ?? [];
-    const columns: HeadlessPaneColumn[] = [
-      { key: "metric", header: "Metric" },
-      ...dates.map(({ date, label }, index) => financialPeriodColumn(date, label, index, true)),
-    ];
-    // The balance sheet's cash, when an offering since is not in it yet.
-    const offering = table?.subTab.key === "balance" ? await reportOfferingNote(ctx, symbol, latestBalanceSheetDate(financials)) : null;
-    // A newest period with only some figures (an EPS alone) is left out, as in the pane, and a line says so.
-    const notInYet = table ? notInYetNote(table.notInYet, table.subTab, requestedPeriod, yearEndMonth)
-      ?? trailingNotInYetNote(table.statements, table.trailingNotInYet, table.subTab, yearEndMonth) : null;
-    // A latest period over 15 months old says how old it is; an HKEX company's, the announcement its results came in.
-    const stale = table ? stalePeriodNote(financialStatementPeriods(table.statements, table.subTab)) : null;
-    // Years filled from the listing's exchange, with the lines this table shows; an announcement that dates one is not
-    // said again in the results line.
-    const shownFields = table ? financialSubTabFields(table.subTab) : undefined;
-    const filled = table ? filledPeriodsNote(table.statements, shownFields) : null;
-    const periodDates = dates.map(({ date }) => date);
-    const [announced, newerRelease] = await Promise.all([
-      table ? reportExchangeResults(ctx, symbol, financials, filledPeriodPublications(table.statements, shownFields)) : [],
-      requestedPeriod === "quarterly" ? newerQuarterRelease(ctx, symbol, financials, periodDates[0]) : null,
-    ]);
-    const missing = rows.length ? null : await missingPeriodsError(ctx, symbol, financials, requestedPeriod, hasRequestedStatements, options.statement);
-    const basis = financialReportBasis(financials, rows.length);
-    const basisNote = financialReportNote(basis);
-    const notices = rows.length ? [FINANCIAL_VINTAGE_NOTICE, financialGrowthNotice(requestedPeriod, table?.statements ?? []),
-      ...(shareBasisNotice ? [shareBasisNotice] : [])] : [];
-    return {
-      rows, columns, unavailableSymbols: rows.length ? [] : [symbol],
-      ...(missing ? { errors: [missing] } : {}),
-      ...(basisNote ? { rowNote: () => basisNote, textNotices: [...notices, basisNote] } : {}),
-      // Each exported row names its unit, the statements' period and the newest period end it runs to.
-      rowUnitKey: "unit", rowAsOfKey: "periodEnd", interval: requestedPeriod,
-      // The report closes with how old its latest period is, how far back its periods go, and how to read further.
-      notes: [...notInYet ? [notInYet] : [], ...newerRelease ? [newerRelease] : [], ...announced, ...stale ? [stale] : [], ...filled ? [filled] : [], ...offering ? [offering] : [],
-        ...statementHistoryNotes(requestedPeriod, periodDates, symbol, await reportOlderStatements(ctx, symbol, requestedPeriod, periodDates)),
-        ...table?.subTab.key === "cashflow" ? [CASH_FLOW_NOTE] : [], ...dateSourceNotes(dates)],
-      metadata: {
-        symbol, name: financials.quote?.name ?? symbol, currency: statementCurrency ?? null, unit: table?.unit ?? null, quoteCurrency: financials.quote?.currency ?? null,
-        statement: table?.subTab.key ?? options.statement, statementLabel: table?.subTab.name ?? null,
-        period: requestedPeriod, growthBasis: requestedPeriod === "quarterly" ? "QoQ" : "YoY", columns: dates,
-        shareBasis: shareBases.size === 1 ? [...shareBases][0] ?? null : null,
-        ...(receiptPeriods.length > 0 ? { adrRatio: financials.fundamentals?.adrRatio ?? financials.quote?.adrRatio ?? null } : {}),
-        ...basis,
-        notices,
-        limitations: financialStatementLimitations(financials),
-        dateProvenance: financialStatementDateNotice(table?.statements ?? []),
-      },
     };
-  }
+  }) ?? [];
+  const asOf = newestPeriodEnd(dates);
+  const rows = table?.rows.map((row) => {
+    const figure = statementFigure(row);
+    return {
+      id: row.id, kind: row.kind, metric: allReceipts ? receiptShareCountLabel(row) : row.unitLabel, label: row.label,
+      // What the figures are in, which exports name in `currency_or_unit`, and the newest period they run to.
+      figure, divisor: row.divisor, unit: figureUnit(figure, statementCurrency ?? null, row.divisor, allReceipts ? "ADRs" : "shares"), periodEnd: asOf,
+      cells: row.cells.map((cell, index) => ({
+        date: dates[index]?.date ?? "", value: cell.value ?? null,
+        growth: cell.growth ?? null, formatted: cell.valueText.trim(), growthFormatted: cell.growthText.trim(),
+      })),
+      ...Object.fromEntries(row.cells.map((cell, index) => [dates[index]!.date, cell.value ?? null])),
+    };
+  }) ?? [];
+  const columns: HeadlessPaneColumn[] = [
+    { key: "metric", header: "Metric" },
+    ...dates.map(({ date, label }, index) => financialPeriodColumn(date, label, index, true)),
+  ];
+  // The balance sheet's cash, when an offering since is not in it yet.
+  const offering = table?.subTab.key === "balance" ? await reportOfferingNote(ctx, symbol, latestBalanceSheetDate(financials)) : null;
+  // A newest period with only some figures (an EPS alone) is left out, as in the pane, and a line says so.
+  const notInYet = table ? notInYetNote(table.notInYet, table.subTab, requestedPeriod, yearEndMonth)
+    ?? trailingNotInYetNote(table.statements, table.trailingNotInYet, table.subTab, yearEndMonth) : null;
+  // A latest period over 15 months old says how old it is; an HKEX company's, the announcement its results came in.
+  const stale = table ? stalePeriodNote(financialStatementPeriods(table.statements, table.subTab)) : null;
+  // Years filled from the listing's exchange, with the lines this table shows; an announcement that dates one is not
+  // said again in the results line.
+  const shownFields = table ? financialSubTabFields(table.subTab) : undefined;
+  const filled = table ? filledPeriodsNote(table.statements, shownFields) : null;
+  const periodDates = dates.map(({ date }) => date);
+  const [announced, newerRelease] = await Promise.all([
+    table ? reportExchangeResults(ctx, symbol, financials, filledPeriodPublications(table.statements, shownFields)) : [],
+    requestedPeriod === "quarterly" ? newerQuarterRelease(ctx, symbol, financials, periodDates[0]) : null,
+  ]);
+  const missing = rows.length ? null : await missingPeriodsError(ctx, symbol, financials, requestedPeriod, hasRequestedStatements, options.statement);
+  const basis = financialReportBasis(financials, rows.length);
+  const basisNote = financialReportNote(basis);
+  const notices = rows.length ? [FINANCIAL_VINTAGE_NOTICE, financialGrowthNotice(requestedPeriod, table?.statements ?? []),
+    ...(shareBasisNotice ? [shareBasisNotice] : [])] : [];
+  return {
+    rows, columns, unavailableSymbols: rows.length ? [] : [symbol],
+    ...(missing ? { errors: [missing] } : {}),
+    ...(basisNote ? { rowNote: () => basisNote, textNotices: [...notices, basisNote] } : {}),
+    // Each exported row names its unit, the statements' period and the newest period end it runs to.
+    rowUnitKey: "unit", rowAsOfKey: "periodEnd", interval: requestedPeriod,
+    // The report closes with how old its latest period is, how far back its periods go, and how to read further.
+    notes: [...notInYet ? [notInYet] : [], ...newerRelease ? [newerRelease] : [], ...announced, ...stale ? [stale] : [], ...filled ? [filled] : [], ...offering ? [offering] : [],
+      ...statementHistoryNotes(requestedPeriod, periodDates, symbol, await reportOlderStatements(ctx, symbol, requestedPeriod, periodDates)),
+      ...table?.subTab.key === "cashflow" ? [CASH_FLOW_NOTE] : [], ...dateSourceNotes(dates)],
+    metadata: {
+      symbol, name: financials.quote?.name ?? symbol, currency: statementCurrency ?? null, unit: table?.unit ?? null, quoteCurrency: financials.quote?.currency ?? null,
+      statement: table?.subTab.key ?? options.statement, statementLabel: table?.subTab.name ?? null,
+      period: requestedPeriod, growthBasis: requestedPeriod === "quarterly" ? "QoQ" : "YoY", columns: dates,
+      shareBasis: shareBases.size === 1 ? [...shareBases][0] ?? null : null,
+      ...(receiptPeriods.length > 0 ? { adrRatio: financials.fundamentals?.adrRatio ?? financials.quote?.adrRatio ?? null } : {}),
+      ...basis,
+      notices,
+      limitations: financialStatementLimitations(financials),
+      dateProvenance: financialStatementDateNotice(table?.statements ?? []),
+    },
+  };
 }
 
 const reportAmount = (amount: RatioAmount) => (typeof amount === "number" ? amount : null);
@@ -600,6 +607,9 @@ async function loadRatioReport(
   tab: RatioTabDef,
   period: "annual" | "quarterly",
   hasRequestedStatements: boolean,
+  statementCurrency: string | undefined,
+  yearEndMonth: number | null,
+  listRows: Parameters<typeof financialReportHeader>[4],
 ): Promise<WideFinancialReport> {
   const statements = hasRequestedStatements && tab.key === "valuation" ? ratioStatements(financials, period) : [];
   const oldest = oldestRatioPeriodEnd(statements);
@@ -618,20 +628,7 @@ async function loadRatioReport(
     .catch(logFailure("ticker-detail.headless", "Reading the offering filings failed", [] as OfferingFiling[])) : [];
   const table = hasRequestedStatements ? ratioTableForFinancials(financials, tab, period, history,
     periodEnd ? { periodEnd, filings } : undefined, currencies) : null;
-  const statementCurrency = financialStatementCurrency(financials, [
-    ...financials.annualStatements, ...financials.quarterlyStatements,
-  ]);
-  const yearEndMonth = fiscalYearEndMonth(financials.annualStatements);
-  const dates = table?.periods.map(({ statement }) => ({
-    date: statement.date,
-    // The fiscal period as the pane names it, and the day it ends.
-    period: financialColumnLabel(statement, period, yearEndMonth),
-    periodEnd: ratioPeriodEnd(statement),
-    currency: statement.currency ?? statementCurrency ?? null,
-    dateSource: statement.date === "TTM" ? "derived" : statement.dateSource ?? "provider",
-    label: financialReportHeader(statement, statement.currency ?? statementCurrency, period, yearEndMonth,
-      period === "quarterly" ? financials.quarterlyStatements : financials.annualStatements),
-  })) ?? [];
+  const dates = table?.periods.map(({ statement }) => financialPeriodBase(statement, statementCurrency, period, yearEndMonth, listRows)) ?? [];
   const asOf = newestPeriodEnd(dates);
   const rows = table?.rows.map((row) => {
     const cells = table.cells.get(row.def.id)!.map((cell, index) => {
@@ -876,18 +873,15 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     // The largest fall from a close to a later one in the bars shown, said under the title; a yield's in bp, with its largest rise.
     // A week's or month's close is dated by its last session, not the 1st its bar is dated by.
     const closes = shown.map((row) => ({ date: isDailyOrLongerBar(size) ? barCloseSession(size, row.date, venue, now) : row.date, close: row.close }));
-    // A window's last week can close after the dates asked for: the fall is measured to its end.
-    const moves = (day: (value: string) => string) => closeMoves(closes, drawdownScaleOf(symbol), { basis: `${historyBarSizeWord(size)} closes`,
-      price: (value) => formatBarPrice(value, decimals), date: (value) => isDailyOrLongerBar(size) ? day(value.slice(0, 10)) : formatUtcTime(value) }, window?.to);
-    const { drawdown, runUp, lines: moveLines } = moves((day) => day);
     // A wick left out of the range is said, though the bar's close still counts.
     const wickNotice = priceHistoryWickNotice(points.filter((point) => pricePointWickFlags(point).length > 0).length);
     // As are bars the source served in the wrong unit, shown scaled back.
     const openNotice = priceHistoryOpenNotice(points.filter(pricePointOpenWithheld).length);
     const otherNotices = [notice, openNotice, wickNotice, priceHistoryRescaleNotice(points)].filter((line): line is string => line != null);
-    const reportNotices = [...moveLines, ...otherNotices];
-    // The text writes the drawdown's days first, as the pane does; JSON and CSV keep them in ISO.
-    const textReportNotices = [...moves((day) => formatDay(day)).lines, ...otherNotices];
+    // A window's last week can close after the dates asked for: the fall is measured to its end.
+    const { drawdown, runUp, notices: reportNotices, textNotices: textReportNotices } = buildCloseMoveNotices(
+      closes, symbol, `${historyBarSizeWord(size)} closes`, (value) => formatBarPrice(value, decimals), !isDailyOrLongerBar(size), window?.to, otherNotices,
+    );
     const flagged = rows.some((row) => row.flag);
     // Every exported bar names what it is priced in and its size, as `history --csv` does.
     const unit = await barPriceUnit(ctx, symbol, listing, exchange, quote);
@@ -967,10 +961,6 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
     // The largest fall from a close to a later one in the window, said under the title; a yield's in bp, with its largest rise.
     // A week's or month's close is dated by its last session, not the 1st its bar is dated by ("peak 35.70 on 31 Mar 2026").
     const closes = unmarked.map((row) => ({ date: intraday ? row.time : barCloseSession(series.resolution, row.time, venue, now), close: row.close }));
-    // A week still forming runs to today, and a window's last week can close after the dates asked for: the fall is measured to their end.
-    const moves = (day: (value: string) => string) => closeMoves(closes, drawdownScaleOf(symbol),
-      { basis: `${BAR_INTERVAL_LABELS[series.resolution]} closes`, price, date: (value) => intraday ? formatUtcTime(value) : day(value.slice(0, 10)) }, window?.to);
-    const { drawdown, runUp, lines: moveLines } = moves((day) => day);
     const figures: HeadlessPaneColumn[] = [
       { key: "close", header: "Price", align: "right", format: price },
       { key: "intervalChange", header: "Int $", align: "right", format: price },
@@ -1006,9 +996,9 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
       historyCoverageNotice(series.coverageStart, series.visibleFrom),
       priceHistoryIntegrityNotice(rows.filter((row) => row.inconsistent).length) ?? null,
     ].filter((notice): notice is string => !!notice);
-    const notices = [...moveLines, ...otherNotices];
-    // The text writes the drawdown's days first, as the pane does; JSON and CSV keep them in ISO.
-    const textNotices = [...moves((day) => formatDay(day)).lines, ...otherNotices];
+    const { drawdown, runUp, notices, textNotices } = buildCloseMoveNotices(
+      closes, symbol, `${BAR_INTERVAL_LABELS[series.resolution]} closes`, price, intraday, window?.to, otherNotices,
+    );
     return {
       rows,
       columns,
@@ -1050,6 +1040,31 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
     };
   },
 };
+
+/**
+ * Largest close-to-close fall (and rise for yield indexes) over a bar table,
+ * returning both ISO notices for exports/JSON and day-first notices for text.
+ */
+function buildCloseMoveNotices(
+  closes: ReadonlyArray<{ date: string; close: number | null }>,
+  symbol: string,
+  basis: string,
+  price: (value: number) => string,
+  intraday: boolean,
+  windowTo: string | undefined,
+  otherNotices: readonly string[],
+) {
+  const moves = (day: (value: string) => string) => closeMoves(closes, drawdownScaleOf(symbol), {
+    basis, price, date: (value) => intraday ? formatUtcTime(value) : day(value.slice(0, 10)),
+  }, windowTo);
+  const { drawdown, runUp, lines } = moves((day) => day);
+  return {
+    drawdown,
+    runUp,
+    notices: [...lines, ...otherNotices],
+    textNotices: [...moves((day) => formatDay(day)).lines, ...otherNotices],
+  };
+}
 
 /** A Cboe yield index (^TNX) moves by its level, in bp; anything else by its return. */
 const drawdownScaleOf = (symbol: string) => isYieldIndexSymbol(parsePublicTickerKey(symbol).symbol) ? "yield" as const : "return" as const;

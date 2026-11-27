@@ -4,7 +4,6 @@ import type { EconEvent } from "./types";
 import {
   attachEconCalendarPersistence,
   calendarDisplayRows,
-  hasPendingHighImpactPrint,
   landedHighImpactPrints,
   loadCalendar,
   lowerImpactHidden,
@@ -122,11 +121,11 @@ describe("high-impact prints", () => {
 
   test("a blank high-impact row is pending only after it is due", () => {
     const cpi = { ...makeEvent("cpi"), date: new Date(release) };
-    expect(hasPendingHighImpactPrint([cpi], release - 1)).toBe(false);
-    expect(hasPendingHighImpactPrint([cpi], release + 60_000)).toBe(true);
-    expect(hasPendingHighImpactPrint([cpi], release + 21 * 60_000)).toBe(false);
-    expect(hasPendingHighImpactPrint([{ ...cpi, impact: "low" }], release + 60_000)).toBe(false);
-    expect(hasPendingHighImpactPrint([{ ...cpi, actual: "0.3%" }], release + 60_000)).toBe(false);
+    expect(pendingHighImpactPrints([cpi], release - 1)).toHaveLength(0);
+    expect(pendingHighImpactPrints([cpi], release + 60_000)).toHaveLength(1);
+    expect(pendingHighImpactPrints([cpi], release + 21 * 60_000)).toHaveLength(0);
+    expect(pendingHighImpactPrints([{ ...cpi, impact: "low" }], release + 60_000)).toHaveLength(0);
+    expect(pendingHighImpactPrints([{ ...cpi, actual: "0.3%" }], release + 60_000)).toHaveLength(0);
   });
 
   // They never get an actual: waiting on one would poll every client for 20 minutes after each,

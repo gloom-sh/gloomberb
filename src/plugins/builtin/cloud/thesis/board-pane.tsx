@@ -50,7 +50,7 @@ import {
   type BoardGroup,
   type UntrackedRow,
 } from "./model";
-import { promptChoice, promptText } from "./prompts";
+import { promptText, promptThesisScope } from "./prompts";
 import { subscribeRequestedThesis, type ThesisPaneRequest } from "./pane-request";
 import { thesisStore } from "./store";
 
@@ -200,15 +200,8 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
     if (!typed) return;
     const symbols = parseSymbolList(typed);
     if (symbols.length === 0) return;
-    let scope: { scope: "user" } | { scope: "team"; teamId: string } = { scope: "user" };
-    if (teams.length > 0) {
-      const owner = await promptChoice(dialog, "Whose thesis?", [
-        { id: "user", label: "Mine" },
-        ...teams.map((team) => ({ id: team.id, label: team.name, description: "Shared with the team; teammates can challenge it." })),
-      ], teamStore.getDefaultTeamId() ?? "user");
-      if (!owner) return;
-      if (owner !== "user") scope = { scope: "team", teamId: owner };
-    }
+    const scope = await promptThesisScope(dialog, teams);
+    if (!scope) return;
     const instruments = symbols.map((symbol) => {
       const ticker = tickersBySymbol.get(symbol);
       return { symbol, ...(ticker?.metadata.exchange ? { exchange: ticker.metadata.exchange } : {}) };

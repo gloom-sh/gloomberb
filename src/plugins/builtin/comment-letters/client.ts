@@ -1,5 +1,6 @@
 import { DEFAULT_SEC_FROM, DEFAULT_SEC_USER_AGENT } from "../../../sources/sec-edgar/identity";
 import type { SecFilingItem } from "../../../types/data-provider";
+import { recordOrNull as asRecord } from "../../../utils/guards";
 import { decodeHtmlEntities } from "../../../utils/html-entities";
 import { httpFetch } from "../../../utils/http-transport";
 import { createThrottledFetch } from "../../../utils/throttled-fetch";
@@ -33,11 +34,6 @@ const lettersFetch = createThrottledFetch({
   },
   transport: (url: string, init?: RequestInit) => httpFetch(url, init),
 });
-
-const asRecord = (value: unknown): Record<string, unknown> | null =>
-  value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
 
 const firstString = (value: unknown): string =>
   String((Array.isArray(value) ? value[0] : value) ?? "").trim();

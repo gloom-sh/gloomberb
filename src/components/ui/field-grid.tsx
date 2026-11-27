@@ -60,21 +60,7 @@ export function fieldGridColumns(width: number): number {
 
 /** Rows a FieldGrid takes, so panes can size what sits below it. */
 export function fieldGridRows(fields: GridField[], columns: number): number {
-  let rows = 0;
-  let used = columns;
-  for (const field of fields) {
-    if (field.wide) {
-      rows += 1;
-      used = columns;
-      continue;
-    }
-    if (used >= columns) {
-      rows += 1;
-      used = 0;
-    }
-    used += 1;
-  }
-  return rows;
+  return layoutRows(fields, columns).length;
 }
 
 function layoutRows(fields: GridField[], columns: number): GridField[][] {

@@ -15,9 +15,9 @@ import {
   type DataTableColumn,
   type PaneFooterSegment,
 } from "../../../components";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { usePaneResource } from "../shared/pane-resource";
 import { savedCopyFooterSegment } from "../../../components/layout/pane/footer";
-import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState } from "../../../public/react";
+import { usePaneSettingValue, usePluginPaneState } from "../../../public/react";
 import { usePaneInstance } from "../../../state/app/context";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -145,14 +145,12 @@ export function DoePane({ width, height, focused }: PaneProps) {
     setTab(value);
   }, [setTab]);
   useRemoteUiNode(coverage && !covering ? { role: "report-notice", label: "Coverage", getMetadata: () => ({ text: coverage }) } : null);
-  const resource = useAsyncResource(covering ? null : loadDoeBoard, { initialData: getCachedDoeBoard });
+  const resource = usePaneResource(covering ? null : loadDoeBoard, { focused, initialData: getCachedDoeBoard });
   const data = resource.data?.payload ?? null;
   // The server not serving the board yet is a state of the data, not a failure.
   const notAvailable = !data && resource.error === DOE_NOT_AVAILABLE;
   // No board is shown while the note stands in for it: none of its tabs is the open one.
   const { strip, rows: tabRows } = usePaneTabs({ tabs: [...DOE_TABS], activeValue: covering ? null : tab, onSelect: selectTab, focused, dense: true });
-  useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => resource.reload(), { focused });
   // A refresh that failed shows the board an earlier read saved, and says when that copy is from.
   const savedAt = resource.data?.savedAt ?? null;
   usePaneNoticeFooter({ registrationId: "doe:notices", focused,

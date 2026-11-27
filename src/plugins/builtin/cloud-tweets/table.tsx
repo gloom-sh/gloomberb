@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Box, ScrollBox, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import {
-  ChoiceDialog,
   DataTableStackView,
   PaneStatusBody,
   StatGrid,
@@ -17,9 +16,9 @@ import {
 } from "../../../components";
 import { TickerBadgeText } from "../../../components/ticker/badge/text";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
-import { RemoteImage, PaneLinkMenu } from "../../../components/ui";
+import { choiceDialog, RemoteImage, PaneLinkMenu } from "../../../components/ui";
 import { useInlineTickerOpener, useInlineTickers } from "../../../state/hooks/inline-tickers";
-import { useDialog, type PromptContext } from "../../../ui/dialog";
+import { useDialog } from "../../../ui/dialog";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import type { CloudTweetPayload, CloudTweetSearchResponse } from "../../../api-client";
 import { formatTimeAgo } from "../../../utils/datetime-format";
@@ -383,12 +382,12 @@ export function TweetSearchTable({
   // Tickers, accounts and links are badges a click opens; `m` lists them.
   const openTweetLinks = useCallback(async () => {
     if (selectedLinks.length === 0) return;
-    const choice = await dialog.prompt<string>({
-      closeOnClickOutside: true,
-      content: (ctx: PromptContext<string>) => (
-        <ChoiceDialog {...ctx} title="Open from this tweet" choices={selectedLinks.map(tweetLinkChoice)} />
-      ),
-    }).catch(logFailure("cloud-tweets.table", "Open tweet links prompt failed"));
+    const choice = await choiceDialog(dialog, {
+      title: "Open from this tweet",
+      choices: selectedLinks.map(tweetLinkChoice),
+      logSource: "cloud-tweets.table",
+      logMessage: "Open tweet links prompt failed",
+    });
     const link = choice === undefined ? undefined : selectedLinks[Number(choice)];
     if (!link) return;
     if (link.kind === "ticker") openTicker(link.symbol);

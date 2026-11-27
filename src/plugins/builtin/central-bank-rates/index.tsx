@@ -14,6 +14,5 @@ export const centralBankRatesModule: PluginModule = {
     keywords: ["central", "bank", "policy", "rates", "g20", "cbr", "cbrt"], shortcut: { prefix: "CBR", aliases: ["CBRT"] },
     headless: centralBankRatesHeadless,
   }],
-  setup(ctx) { centralBankRatesCache.attach(ctx.persistence); },
-  dispose() { centralBankRatesCache.reset(); },
+  caches: [centralBankRatesCache],
 };

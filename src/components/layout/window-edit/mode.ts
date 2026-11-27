@@ -150,19 +150,6 @@ function dropPositionFromDockMovePosition(position: WindowEditDockMovePosition):
   return position === "above" ? "top" : position === "below" ? "bottom" : position;
 }
 
-function dockMovePositionLabel(position: WindowEditDockMovePosition): string {
-  switch (position) {
-    case "left":
-      return "left";
-    case "right":
-      return "right";
-    case "above":
-      return "above";
-    case "below":
-      return "below";
-  }
-}
-
 function dockResizeAxisLabel(axis: DockResizeTarget["axis"]): string {
   return axis === "horizontal" ? "left/right" : "up/down";
 }
@@ -239,7 +226,7 @@ function resolveDockMoveFocus(
   return { kind: "dock-move", targetId: target.instanceId, position };
 }
 
-function leafDropTarget(targetId: string, position: WindowEditDockMovePosition): DropTarget {
+export function leafDropTarget(targetId: string, position: WindowEditDockMovePosition): DropTarget {
   return {
     kind: "leaf",
     targetId,
@@ -499,7 +486,7 @@ export function applyWindowEditDirection(
         return {
           ...state,
           focus,
-          notice: `No pane ${dockMovePositionLabel(positionFromDirection(direction))}`,
+          notice: `No pane ${positionFromDirection(direction)}`,
         };
       }
       return {

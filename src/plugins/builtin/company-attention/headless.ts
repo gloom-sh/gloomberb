@@ -25,38 +25,38 @@ function reportColumn(column: DataTableColumn): HeadlessPaneColumn {
       ? remoteText(value, typeof row.remoteKnown === "number" ? row.remoteKnown : null) ?? MISSING_VALUE : MISSING_VALUE } : {}) };
 }
 
-/** A moves view as a report section: paces as `3.4x`, scores signed, and on the board each move's why. */
-function movesSection(title: string, section: MovesSection, why: boolean) {
+function hiringSignalSection<R extends { values: Record<string, unknown>; url?: string | null }>(
+  title: string,
+  section: { columns: DataTableColumn[]; rows: R[]; empty: string; locked?: number | boolean },
+  formatNum: (id: string, value: number) => string,
+  includeWhy: boolean,
+  whyOf: (row: R) => string | undefined,
+) {
   return {
     title, empty: section.empty, ...(section.locked ? { locked: true } : {}),
     columns: [...section.columns.map((column): HeadlessPaneColumn => column.align !== "right" ? { key: column.id, header: column.label, align: column.align }
-      : { key: column.id, header: column.label, align: column.align, format: (value: unknown) => typeof value === "number" ? movesNumber(column.id, value) : value == null ? MISSING_VALUE : String(value) }),
-    ...(why ? [{ key: "why", header: "Why", align: "left" as const }] : [])],
-    rows: section.rows.map((row) => ({ ...row.values, ...(row.move ? { why: row.move.why } : {}), ...(row.url ? { sourceUrl: row.url } : {}) })),
+      : { key: column.id, header: column.label, align: column.align, format: (value: unknown) => typeof value === "number" ? formatNum(column.id, value) : value == null ? MISSING_VALUE : String(value) }),
+    ...(includeWhy ? [{ key: "why", header: "Why", align: "left" as const }] : [])],
+    rows: section.rows.map((row) => {
+      const why = whyOf(row);
+      return { ...row.values, ...(why !== undefined ? { why } : {}), ...(row.url ? { sourceUrl: row.url } : {}) };
+    }),
   };
 }
 
+/** A moves view as a report section: paces as `3.4x`, scores signed, and on the board each move's why. */
+const movesSection = (title: string, section: MovesSection, why: boolean) =>
+  hiringSignalSection(title, section, movesNumber, why, (row) => row.move?.why);
+
 /** A signals view as a report section: paces as `3.4x`, and each signal's why. */
-function signalsSection(title: string, section: SignalsSection) {
-  return {
-    title, empty: section.empty, ...(section.locked ? { locked: true } : {}),
-    columns: [...section.columns.map((column): HeadlessPaneColumn => column.align !== "right" ? { key: column.id, header: column.label, align: column.align }
-      : { key: column.id, header: column.label, align: column.align, format: (value: unknown) => typeof value === "number" ? signalsNumber(column.id, value) : value == null ? MISSING_VALUE : String(value) }),
-    ...(section.rows.some((row) => row.signal && !row.jobPosting) ? [{ key: "why", header: "Why", align: "left" as const }] : [])],
-    rows: section.rows.map((row) => ({ ...row.values, ...(row.signal && !row.jobPosting ? { why: row.signal.why } : {}), ...(row.url ? { sourceUrl: row.url } : {}) })),
-  };
-}
+const signalsSection = (title: string, section: SignalsSection) =>
+  hiringSignalSection(title, section, signalsNumber, section.rows.some((row) => row.signal && !row.jobPosting), (row) => (row.signal && !row.jobPosting ? row.signal.why : undefined));
+
 /** A building view as a report section: shares as percents, changes in points, and each shift's why. */
-function buildingSection(title: string, section: BuildingSection) {
+const buildingSection = (title: string, section: BuildingSection) => {
   const why = section.rows.some((row) => row.shift && !row.jobPosting && !row.mix);
-  return {
-    title, empty: section.empty, ...(section.locked ? { locked: true } : {}),
-    columns: [...section.columns.map((column): HeadlessPaneColumn => column.align !== "right" ? { key: column.id, header: column.label, align: column.align }
-      : { key: column.id, header: column.label, align: column.align, format: (value: unknown) => typeof value === "number" ? buildingNumber(column.id, value) : value == null ? MISSING_VALUE : String(value) }),
-    ...(why ? [{ key: "why", header: "Why", align: "left" as const }] : [])],
-    rows: section.rows.map((row) => ({ ...row.values, ...(why && row.shift && !row.jobPosting ? { why: row.shift.why } : {}), ...(row.url ? { sourceUrl: row.url } : {}) })),
-  };
-}
+  return hiringSignalSection(title, section, buildingNumber, why, (row) => (why && row.shift && !row.jobPosting ? row.shift.why : undefined));
+};
 /** The Building board, or a company's mix by family and theme, its shifts and the postings behind them. */
 function buildingSections(data: BuildingPayload, filter: string): ReturnType<typeof buildingSection>[] {
   if ("filter" in data) return [buildingSection("Building", buildingBoardModel(data, isBuildingFilter(filter) ? filter : "all").sections.board!)];

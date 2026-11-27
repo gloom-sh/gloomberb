@@ -13,12 +13,7 @@ import {
   Button,
   DataTableStackView,
   EmptyState,
-  getPaneSidebarWidth,
-  getPaneSidebarWidthRange,
-  PaneSidebar,
   QueryBar,
-  readStoredPaneSidebarWidth,
-  shouldShowPaneSidebar,
   usePagedRows,
   usePaneFooter,
   usePaneMenuItems,
@@ -58,6 +53,7 @@ import { entityCellText, entityColumns, TICKER_COLUMN_ID, type EntityColumn } fr
 import type { GeoLayerState } from "./feed";
 import { geoLayerColor, type GeoMapLayer, type GeoMapOverlay, type GeoMapSelection } from "./geo-draw";
 import { WORLD_VENUE_MAP_PANE_ID } from "./ids";
+import { useMapSplitLayout } from "./split-layout";
 import {
   entityOpenZoom,
   entityTableBbox,
@@ -412,22 +408,16 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
     ...detailSeries.slice(1).map((series) => ({ id: `graph:${series.id}`, label: `Chart ${series.name}`, onSelect: () => openSeries(series) })),
   ], [activeLinks.map(tickerLinkKey).join(","), detailSeries.map((series) => series.id).join(","), openSeries, openTicker]);
 
-  const native = !!nativePaneChrome;
-  const [storedSidebarWidth, setStoredSidebarWidth] = usePluginPaneState<number | null>("sidebarWidth", null);
-  const [draggedSidebarWidth, setDraggedSidebarWidth] = useState<number | null>(null);
-  const horizontal = shouldShowPaneSidebar(Math.max(rows.length, 24), width, height);
-  // Wider than the venue list: a layer's table carries a few numeric columns beside the name.
-  const defaultSidebarWidth = Math.max(38, Math.min(66, Math.round(width * 0.4))) + (native ? 0 : 1);
-  const sidebarWidth = horizontal
-    ? getPaneSidebarWidth(width, native, draggedSidebarWidth ?? readStoredPaneSidebarWidth(storedSidebarWidth) ?? defaultSidebarWidth)
-    : width;
-  const sidebarRange = getPaneSidebarWidthRange(width);
-  const listWidth = horizontal && !native ? Math.max(1, sidebarWidth - 1) : sidebarWidth;
-  const mapWidth = horizontal ? Math.max(1, width - sidebarWidth) : width;
   // Stacked, the map takes the rows the world needs (plus the header and room to zoom), not half the pane.
   const naturalMapRows = nativePaneChrome ? Math.ceil((width * WORLD_MAP_HEIGHT_RATIO) / 2.12) + 4 : Math.ceil((width * WORLD_MAP_HEIGHT_RATIO) / 2.25) + 3;
-  const mapSectionHeight = horizontal ? height : Math.max(8, Math.min(Math.floor(height * 0.52), naturalMapRows));
-  const tableHeight = horizontal ? height : Math.max(4, height - mapSectionHeight);
+  // Wider than the venue list: a layer's table carries a few numeric columns beside the name.
+  const { listWidth, mapWidth, mapSectionHeight, tableHeight, renderSplit } = useMapSplitLayout({
+    width,
+    height,
+    rowCount: Math.max(rows.length, 24),
+    defaultSidebarWidth: Math.max(38, Math.min(66, Math.round(width * 0.4))),
+    stackedMapHeight: Math.max(8, Math.min(Math.floor(height * 0.52), naturalMapRows)),
+  });
   const headerLines = headerSubject === "venue" && selectedVenue && venueData
     ? venueHeaderLines(selectedVenue, venueData.checkedAt, now, mapWidth) : [];
   const mapHeight = Math.max(2, mapSectionHeight - Math.max(2, 1 + headerLines.length));
@@ -615,30 +605,5 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
 
   if (!layers.length) return <EmptyState title="No layers on." />;
 
-  return horizontal ? (
-    <Box flexDirection="row" width={width} height={height}>
-      <PaneSidebar
-        width={sidebarWidth}
-        height={height}
-        focused={focused}
-        resize={{
-          min: sidebarRange.min,
-          max: sidebarRange.max,
-          onResize: setDraggedSidebarWidth,
-          onResizeEnd: (next) => {
-            setStoredSidebarWidth(next);
-            setDraggedSidebarWidth(null);
-          },
-        }}
-      >
-        {table}
-      </PaneSidebar>
-      {map}
-    </Box>
-  ) : (
-    <Box flexDirection="column" width={width} height={height}>
-      {map}
-      {table}
-    </Box>
-  );
+  return renderSplit(focused, table, map);
 }

@@ -1,9 +1,10 @@
 import { logFailure } from "../../../utils/log-failure";
-import { ApiRequestError } from "../../../api-client/errors";
+import { ApiRequestError, sourceDidNotAnswer } from "../../../api-client/errors";
 import { cloudDisplayScope } from "../../../api-client/plan-access";
 import { createMissingRouteLatch } from "../../../api-client/coalesce";
-import { savedCopyForTransientFailure, type PluginCacheResult } from "../../../data/plugin-cache";
+import { createPluginCache, savedCopyForTransientFailure, type PluginCacheResult } from "../../../data/plugin-cache";
 import { markSavedCopy, stampRetrievedAt } from "../../../data/saved-copies";
+import type { CachePolicy } from "../../../types/persistence";
 
 interface CloudCache<T> {
   get(key: string, options?: { allowExpired?: boolean }): PluginCacheResult<T> | null;
@@ -150,4 +151,75 @@ export function createCloudBatchAhead<T>(
 export function batchReplyItems<T>(reply: { items?: T[] } | null | undefined): T[] {
   if (!Array.isArray(reply?.items)) throw new ApiRequestError("This service does not read these in batches", 404);
   return reply.items;
+}
+
+export interface CloudEndpointOptions<TArgs, TPayload, TClient> {
+  kind: string;
+  schemaVersion: number;
+  policy: CachePolicy;
+  source?: string;
+  encode?: (payload: TPayload) => TPayload;
+  /** Fixed cache key or key builder for `args`. When `scoped` is true, appends `cloudDisplayScope()`. */
+  key: string | ((args: TArgs) => string);
+  scoped?: boolean;
+  defaultClient: TClient;
+  fetch: (args: TArgs, client: TClient, signal?: AbortSignal) => Promise<TPayload>;
+  validate?: (payload: TPayload, args: TArgs) => TPayload;
+  /** Optional message returned on 404 (or `unavailableStatuses`) via `unavailableOnServer`. */
+  unavailableMessage?: string;
+  unavailableStatuses?: readonly number[];
+  /** When this predicate returns true for a validated payload, throws `sourceDidNotAnswer(emptyMessage)`. */
+  isEmptyAnswer?: (payload: TPayload) => boolean;
+  emptyMessage?: string;
+}
+
+export interface CloudEndpoint<TArgs, TPayload, TClient> {
+  cache: ReturnType<typeof createPluginCache<TPayload>>;
+  fetch: (args: TArgs, options?: { client?: TClient; signal?: AbortSignal }) => Promise<TPayload>;
+  cached: (args: TArgs) => CloudResource<TPayload> | null;
+  load: (args: TArgs, options?: { force?: boolean; client?: TClient; signal?: AbortSignal }) => Promise<CloudResource<TPayload>>;
+}
+
+/**
+ * Bundles a disk-backed `PluginCache`, validated cloud fetch, `cachedCloudResource`,
+ * and `loadCloudResource` into one cohesive endpoint object.
+ */
+export function createCloudEndpoint<TArgs, TPayload, TClient>(
+  options: CloudEndpointOptions<TArgs, TPayload, TClient>,
+): CloudEndpoint<TArgs, TPayload, TClient> {
+  const validateFor = (args: TArgs) => (payload: TPayload) => (options.validate ? options.validate(payload, args) : payload);
+  const cache = createPluginCache<TPayload>({
+    kind: options.kind,
+    source: options.source ?? "gloom-cloud",
+    schemaVersion: options.schemaVersion,
+    policy: options.policy,
+    ...(options.encode ? { encode: options.encode } : {}),
+  });
+  const resolveKey = (args: TArgs): string | null => {
+    const raw = typeof options.key === "function" ? options.key(args) : options.key;
+    return options.scoped ? cloudDisplayCacheKey(raw) : raw;
+  };
+  const fetchValidated = async (args: TArgs, { client = options.defaultClient, signal }: { client?: TClient; signal?: AbortSignal } = {}): Promise<TPayload> => {
+    let raw: TPayload;
+    try {
+      raw = await options.fetch(args, client, signal);
+    } catch (error) {
+      if (options.unavailableMessage) throw unavailableOnServer(error, options.unavailableMessage, options.unavailableStatuses);
+      throw error;
+    }
+    const payload = validateFor(args)(raw);
+    if (options.isEmptyAnswer?.(payload)) throw sourceDidNotAnswer(options.emptyMessage ?? options.unavailableMessage ?? "Data unavailable.");
+    return payload;
+  };
+  return {
+    cache,
+    fetch: fetchValidated,
+    cached: (args) => cachedCloudResource(cache, resolveKey(args), validateFor(args)),
+    load: (args, { force = false, client, signal } = {}) => loadCloudResource(
+      cache,
+      resolveKey(args),
+      () => fetchValidated(args, { client, signal }),
+      { force, validate: validateFor(args), signal },
+    ),
+  };
 }

@@ -14,7 +14,7 @@ import { teamStore } from "../../../../team/store";
 import { ThesisDetail } from "./detail";
 import * as flows from "./flows";
 import { thesesCovering } from "./model";
-import { promptChoice } from "./prompts";
+import { promptThesisScope } from "./prompts";
 import { thesisStore } from "./store";
 import { usePaneTickerIdentity } from "../../../../state/hooks/pane-ticker";
 import { logFailure } from "../../../../utils/log-failure";
@@ -56,15 +56,8 @@ export function ThesisTickerTab({ focused, width, height }: TickerResearchTabPro
     if (!ticker || busy) return;
     setBusy(true);
     try {
-      let scope: { scope: "user" } | { scope: "team"; teamId: string } = { scope: "user" };
-      if (teams.length > 0) {
-        const owner = await promptChoice(dialog, "Whose thesis?", [
-          { id: "user", label: "Mine" },
-          ...teams.map((team) => ({ id: team.id, label: team.name, description: "Shared with the team; teammates can challenge it." })),
-        ], teamStore.getDefaultTeamId() ?? "user");
-        if (!owner) return;
-        if (owner !== "user") scope = { scope: "team", teamId: owner };
-      }
+      const scope = await promptThesisScope(dialog, teams);
+      if (!scope) return;
       const held = ticker.metadata.positions.some((position) => position.shares !== 0);
       const note = await apiClient.listCloudNotes({ scope: "user" })
         .then((notes) => notes.find((entry) => entry.kind === "ticker" && entry.key === ticker.metadata.ticker.toUpperCase()))

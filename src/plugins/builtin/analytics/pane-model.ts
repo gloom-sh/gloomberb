@@ -6,7 +6,7 @@ import { colors, priceColor } from "../../../theme/colors";
 import type { TickerFinancials, PricePoint } from "../../../types/financials";
 import type { BrokerAccount, BrokerPortfolioPerformance } from "../../../types/trading";
 import type { Portfolio, TickerRecord } from "../../../types/ticker";
-import { MISSING_VALUE, formatCompact, formatNumber, formatPercentRaw } from "../../../utils/format";
+import { MISSING_VALUE, formatNumber, formatPercentRaw } from "../../../utils/format";
 import { formatRelativeAge } from "../../../utils/datetime-format";
 import type { PriceHistoryIntegrity } from "../../../utils/price-history-integrity";
 import { instrumentFromTicker, type ChartRequest, type TickerInstrumentOptions } from "../../../market-data/request-types";
@@ -323,37 +323,16 @@ export function buildAnalyticsSummaryRows({
     });
   }
 
-  if (account?.settledCash != null) {
-    rows.push({
-      id: "settled-cash",
-      label: "Settled",
-      value: money(convertAccountValue(account.settledCash)),
-      color: colors.text,
-    });
-  }
-  if (account?.availableFunds != null) {
-    rows.push({
-      id: "available-funds",
-      label: "Avail",
-      value: money(convertAccountValue(account.availableFunds)),
-      color: colors.text,
-    });
-  }
-  if (account?.excessLiquidity != null) {
-    rows.push({
-      id: "excess-liquidity",
-      label: "Excess",
-      value: money(convertAccountValue(account.excessLiquidity)),
-      color: colors.text,
-    });
-  }
-  if (account?.buyingPower != null) {
-    rows.push({
-      id: "buying-power",
-      label: "BP",
-      value: money(convertAccountValue(account.buyingPower)),
-      color: colors.text,
-    });
+  const accountBalanceFields: readonly [string, string, number | null | undefined][] = [
+    ["settled-cash", "Settled", account?.settledCash],
+    ["available-funds", "Avail", account?.availableFunds],
+    ["excess-liquidity", "Excess", account?.excessLiquidity],
+    ["buying-power", "BP", account?.buyingPower],
+  ];
+  for (const [id, label, value] of accountBalanceFields) {
+    if (value != null) {
+      rows.push({ id, label, value: money(convertAccountValue(value)), color: colors.text });
+    }
   }
   if (accountState) {
     if (accountFreshness) {
@@ -472,13 +451,4 @@ export function formatHistoryValueAxis(value: number, domain: Pick<CompositeAxis
   const [divisor, suffix] = magnitude >= 1e9 ? [1e9, "B"] : magnitude >= 1e6 ? [1e6, "M"] : magnitude >= 1e3 ? [1e3, "k"] : [1, ""];
   const digits = spanDigits({ min: domain.min / divisor, max: domain.max / divisor });
   return `${(value / divisor).toFixed(digits)}${suffix}`;
-}
-
-export function formatHistoryAxisValue(
-  value: number,
-  performance: BrokerPortfolioPerformance | null,
-): string {
-  return resolvePerformanceMetric(performance) === "value"
-    ? formatCompact(value)
-    : `${(value * 100).toFixed(1)}%`;
 }

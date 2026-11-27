@@ -2,16 +2,14 @@ import { dayCell, formatDay } from "../../../components/ui/day-cell";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGridRows, usePaneFooter, usePaneNoticeFooter,
   usePaneTicker, type DataTableCell, type DataTableColumn, type StatItem } from "../../../components";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { usePaneResource } from "../shared/pane-resource";
 import { tableColumnWidth } from "../../../components/ui/table-layout";
 import { MISSING_VALUE, displayWidth } from "../../../utils/format";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { usePaneSettingValue, usePluginPaneState } from "../../../public/react";
-import { useAsyncResource } from "../../../react/async-resource";
 import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { usePaneInstance } from "../../../state/app/context";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
-import { useAutoRefresh } from "../../../react/auto-refresh";
 import { shownPriceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
@@ -157,11 +155,9 @@ function MacroDayComparisonPane({ width, height, focused, list }: PaneProps & { 
     if (targets.every((target) => !target.history.length && target.error)) throw new Error(targets[0]!.error!);
     return { releases, targets };
   }, [list]);
-  const history = useAsyncResource(scope ? loader : null, { savedCopy: scope ? { key: ["macro-day-compare", scope, list] } : null,
+  const history = usePaneResource(scope ? loader : null, { focused, savedCopy: scope ? { key: ["macro-day-compare", scope, list] } : null,
     shouldSave: (answer) => answer.targets.every((target) => !target.stale && !target.error) });
   useEffect(() => () => controller.current?.abort(), [loader]);
-  useAutoRefresh(history.updatedAt, history.load);
-  usePaneRefreshKey(() => history.reload(), { focused });
 
   const models = useMemo(() => history.data ? projectMacroDayTargets(history.data.targets, history.data.releases, Number(lookback) || 5) : [], [history.data, lookback]);
   const scoped = useMemo(() => compareMacroDays(models).filter((event) => release === "all" || event.kind === release), [models, release]);
@@ -228,12 +224,11 @@ function SingleMacroDayPane({ width, height, focused }: PaneProps) {
     return { ...snapshot, releases, earnings };
   }, [instrumentKey]);
   const scope = useCloudDisplayScope();
-  const history = useAsyncResource(scope && instrument ? loader : null, {
+  const history = usePaneResource(scope && instrument ? loader : null, {
+    focused,
     savedCopy: scope && !instrument?.instrument ? { key: ["macro-day", scope, instrumentKey] } : null,
   });
   useEffect(() => () => controller.current?.abort(), [loader]);
-  useAutoRefresh(history.updatedAt, history.load);
-  usePaneRefreshKey(() => { history.reload(); }, { focused });
 
   const model = useMemo(() => history.data ? projectMacroDays(history.data.history, { symbol: symbol ?? "", lookbackYears: Number(lookback) || 5,
     releases: history.data.releases.releases, coveredThrough: history.data.releases.coveredThrough, earnings: history.data.earnings.reports }) : null,

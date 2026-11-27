@@ -6,10 +6,7 @@ import {
   createUserFeed,
   getEnabledNewsFeeds,
   loadNewsFeedSettings,
-  removeUserNewsFeed,
   saveNewsFeedSettings,
-  setDefaultNewsFeedEnabled,
-  updateUserNewsFeed,
 } from "./feed-config";
 
 class MemoryConfigState implements PluginConfigState {
@@ -77,7 +74,7 @@ describe("news feed config", () => {
     expect(loadNewsFeedSettings(config).needsMigration).toBe(false);
   });
 
-  test("adds, updates, and removes user feeds through typed helpers", async () => {
+  test("adds user feeds through typed helper and normalizes category", async () => {
     const config = new MemoryConfigState();
 
     const added = await addUserNewsFeed(config, {
@@ -86,17 +83,7 @@ describe("news feed config", () => {
       category: "Tech",
     });
     expect(added.category).toBe("tech");
-
-    const updated = await updateUserNewsFeed(config, added.id, {
-      name: "Example Markets",
-      authority: 75,
-    });
-    expect(updated?.name).toBe("Example Markets");
-    expect(updated?.authority).toBe(75);
-
-    const removed = await removeUserNewsFeed(config, added.id);
-    expect(removed).toBe(true);
-    expect(loadNewsFeedSettings(config).userFeeds).toHaveLength(0);
+    expect(loadNewsFeedSettings(config).userFeeds).toEqual([added]);
   });
 
   test("serves bundled default feeds alongside user feeds and honours disabled defaults", async () => {
@@ -112,10 +99,9 @@ describe("news feed config", () => {
     expect(getEnabledNewsFeeds(loadNewsFeedSettings(config)).map((feed) => feed.id))
       .toEqual([...bundledIds, added.id]);
 
-    expect(await setDefaultNewsFeedEnabled(config, "default-cnbc-top", false)).toBe(true);
+    await saveNewsFeedSettings(config, { userFeeds: [added], disabledDefaultFeedIds: ["default-cnbc-top"] });
     expect(getEnabledNewsFeeds(loadNewsFeedSettings(config)).map((feed) => feed.id))
       .not.toContain("default-cnbc-top");
-    expect(await setDefaultNewsFeedEnabled(config, "missing-default-feed", false)).toBe(false);
   });
 
   test("rejects invalid user feed input", () => {

@@ -17,7 +17,7 @@ import { formatUtcSeconds } from "../../../utils/utc-time";
 import { listedRowHeadline, newsSummaryLine, routineNoticeFields } from "../../../news/news-model";
 import { shortStoryId } from "../../../news/story-id";
 import { cloudNewsFreshness, cloudRealtimeAccess } from "../shared/report-freshness";
-import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
+import { enumOption, intOption, limitOption, REPORT_FILTER } from "../shared/headless-options";
 
 // Stories carry their time to the second, so a story published on a whole minute prints its seconds too.
 const NEWS_COLUMNS = [
@@ -126,38 +126,9 @@ function projectNewsHeadless(
 
 function newsOptions() {
   return [
-    {
-      key: "sentiment",
-      shot: REPORT_FILTER,
-      description: "Story sentiment to include.",
-      type: "enum" as const,
-      values: [
-        { value: "any" },
-        { value: "positive" },
-        { value: "neutral" },
-        { value: "negative" },
-      ],
-      defaultValue: "any",
-    },
-    {
-      key: "minImportance",
-      shot: REPORT_FILTER,
-      aliases: ["importance"],
-      description: "Minimum importance score.",
-      type: "integer" as const,
-      defaultValue: 0,
-      minimum: 0,
-      maximum: 100,
-    },
-    {
-      key: "limit",
-      shot: REPORT_ROWS,
-      description: "Maximum stories to return.",
-      type: "integer" as const,
-      defaultValue: 50,
-      minimum: 1,
-      maximum: 200,
-    },
+    enumOption("sentiment", ["any", "positive", "neutral", "negative"], { shot: REPORT_FILTER, description: "Story sentiment to include.", defaultValue: "any" }),
+    intOption("minImportance", { shot: REPORT_FILTER, aliases: ["importance"], description: "Minimum importance score.", defaultValue: 0, minimum: 0, maximum: 100 }),
+    limitOption({ description: "Maximum stories to return.", defaultValue: 50, maximum: 200 }),
   ];
 }
 

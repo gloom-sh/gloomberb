@@ -10,8 +10,7 @@ const openingSettings = (values: Record<string, string> = {}) =>
   Object.fromEntries(OPENING_SETTINGS.flatMap((key) => values[key] ? [[key, values[key]]] : []));
 
 export const supplyChainModule: PluginModule = {
-  setup(ctx) { supplyChainCache.attach(ctx.persistence); graphCache.attach(ctx.persistence); },
-  dispose() { supplyChainCache.reset(); graphCache.reset(); },
+  caches: [supplyChainCache, graphCache],
   panes: [{ id: "supply-chain", name: "Supply Chain", icon: "S", get component(): typeof import("./pane").SupplyChainPane { const { SupplyChainPane } = require("./pane"); return SupplyChainPane; },
     defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 130, height: 30 },
     shareItem: { ticker: true },

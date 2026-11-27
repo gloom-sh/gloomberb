@@ -1,19 +1,16 @@
 import { useCallback, useId, useMemo, useRef, type ReactNode } from "react";
 import {
   buildMetricTreemapNavigationTiles,
-  findMetricTreemapNeighbor,
   MetricTreemapSurface,
   PaneStatusBody,
   useTickerRowPaneMenu,
-  type MetricTreemapDirection,
   type MetricTreemapItem,
 } from "../../../components";
-import { useShortcut } from "../../../react/input";
+import { useMetricTreemapNavigation } from "../../../components/metric-treemap/navigation";
 import type { ColumnConfig } from "../../../types/config";
 import type { TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { useUiCapabilities } from "../../../ui";
-import { isPlainKey } from "../../../utils/keyboard";
 import { createRowValueCache, type RowValueCache } from "../../../components/ui/row-value-cache";
 import { objectVersion } from "../../../utils/object-version";
 import { columnContextVersion } from "./cell-version";
@@ -248,11 +245,6 @@ export function PortfolioGrid({
     const ticker = sortedTickers[index];
     if (ticker) setCursorSymbol(ticker.metadata.ticker);
   }, [setCursorSymbol, sortedTickers]);
-
-  const selectNeighbor = useCallback((direction: MetricTreemapDirection) => {
-    const target = findMetricTreemapNeighbor(navigationTiles, cursorSymbol, direction);
-    if (target) setCursorSymbol(target.item.data.metadata.ticker);
-  }, [cursorSymbol, navigationTiles, setCursorSymbol]);
   const scopeId = useId();
 
   // The tile under the cursor gets the ticker table's row menu in the pane menu.
@@ -267,62 +259,18 @@ export function PortfolioGrid({
   // Arrows move between tiles by position and j/k by size order; h/l are left
   // to the collection tabs. The scope puts the arrows ahead of the tabs, which
   // would otherwise take left and right as well.
-  useShortcut((event) => {
-    if (!focused) return;
-    if (isPlainKey(event, "home", "end", "pageup", "pagedown")) {
-      if (sortedTickers.length === 0) return;
-      event.preventDefault();
-      event.stopPropagation();
-      // Every tile is on screen, so a page is the whole map, as in a list that fits.
-      selectIndex(event.name === "home" || event.name === "pageup" ? 0 : sortedTickers.length - 1);
-      return;
-    }
-    if (isPlainKey(event, "j")) {
-      event.preventDefault();
-      event.stopPropagation();
-      selectIndex(Math.min((activeIdx >= 0 ? activeIdx : 0) + 1, sortedTickers.length - 1));
-      return;
-    }
-    if (isPlainKey(event, "k")) {
-      event.preventDefault();
-      event.stopPropagation();
-      selectIndex(Math.max((activeIdx >= 0 ? activeIdx : 0) - 1, 0));
-      return;
-    }
-    if (isPlainKey(event, "left")) {
-      event.preventDefault();
-      event.stopPropagation();
-      selectNeighbor("left");
-      return;
-    }
-    if (isPlainKey(event, "right")) {
-      event.preventDefault();
-      event.stopPropagation();
-      selectNeighbor("right");
-      return;
-    }
-    if (isPlainKey(event, "up")) {
-      event.preventDefault();
-      event.stopPropagation();
-      selectNeighbor("up");
-      return;
-    }
-    if (isPlainKey(event, "down")) {
-      event.preventDefault();
-      event.stopPropagation();
-      selectNeighbor("down");
-      return;
-    }
-    // Enter opens the tile, Shift+Enter in a new floating pane, as in the table.
-    if ((event.name === "enter" || event.name === "return") && !event.ctrl && !event.meta && !event.super && !event.alt) {
-      const ticker = sortedTickers[activeIdx];
-      if (!ticker) return;
-      event.preventDefault();
-      event.stopPropagation();
-      if (event.shift) onOpenInNewPane(ticker);
-      else onRowActivate(ticker);
-    }
-  }, { enabled: focused, scope: `portfolio-grid:${scopeId}` });
+  useMetricTreemapNavigation({
+    focused: !!focused,
+    scope: `portfolio-grid:${scopeId}`,
+    tiles: navigationTiles,
+    itemCount: sortedTickers.length,
+    activeIndex: activeIdx,
+    activeId: cursorSymbol,
+    selectIndex,
+    selectTile: (tile) => setCursorSymbol(tile.item.data.metadata.ticker),
+    homeEndPage: true,
+    onActivate: activeTicker ? (shift) => (shift ? onOpenInNewPane(activeTicker) : onRowActivate(activeTicker)) : undefined,
+  });
 
   const emptyTitle = isPortfolioTab ? "No portfolio positions" : "No watchlist tickers";
   // An empty map with something to offer is a pane's empty state, its actions under the title.

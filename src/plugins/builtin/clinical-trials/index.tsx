@@ -1,23 +1,7 @@
-import type { GloomPlugin, PaneTemplateCreateOptions } from "../../../types/plugin";
+import type { GloomPlugin } from "../../../types/plugin";
+import { createQueryPaneTemplate } from "../shared/ticker-surface";
 import { normalizeTrialFilters, TRIAL_REPORT_OPTIONS, ALL } from "./model";
 import { CLINICAL_TRIALS_PANE_ID, CLINICAL_TRIALS_PLUGIN_ID } from "./types";
-
-function createTrialsPaneInstance(options?: PaneTemplateCreateOptions) {
-  // The search as typed: the pane reads one written as a ticker (`TRIAL CRMD`) as its company's trials.
-  const query = (options?.arg ?? options?.values?.query ?? "").trim();
-  const encoded = encodeURIComponent(query).replace(/%/g, "~");
-  // Filters a caller names (a share, the Remote API) open with the pane; they
-  // are what it shows first, not which window it is, so the id stays the query's.
-  const filters = normalizeTrialFilters(options?.values ?? {});
-  const named = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== ALL));
-  return {
-    instanceId: query ? `trials:${encoded}` : "trials:latest",
-    title: query ? `Trials ${query}` : "Trials",
-    placement: "floating" as const,
-    binding: { kind: "none" as const },
-    settings: { query, ...named },
-  };
-}
 
 export const clinicalTrialsPlugin: GloomPlugin = {
   id: CLINICAL_TRIALS_PLUGIN_ID,
@@ -48,35 +32,23 @@ export const clinicalTrialsPlugin: GloomPlugin = {
   ],
 
   paneTemplates: [
-    {
+    createQueryPaneTemplate({
       id: "trials-pane",
       paneId: CLINICAL_TRIALS_PANE_ID,
       label: "Clinical Trials",
       description:
         "Search ClinicalTrials.gov studies by condition, drug, or sponsor. Filter by status, phase and sponsor class; listed sponsors show their ticker.",
-      keywords: [
-        "clinical",
-        "trial",
-        "trials",
-        "clinicaltrials",
-        "nct",
-        "fda",
-        "drug",
-        "pharma",
-        "sponsor",
-        "study",
-        "recruiting",
-        "phase",
-      ],
-      shortcut: {
-        prefix: "TRIAL",
-        argPlaceholder: "condition, drug, or sponsor",
-        argKind: "text", argOnlySelects: true,
-        argOptional: true,
-      },
-      createInstance(_context, options) {
-        return createTrialsPaneInstance(options);
-      },
-    },
+      keywords: ["clinical", "trial", "trials", "clinicaltrials", "nct", "fda", "drug", "pharma", "sponsor", "study", "recruiting", "phase"],
+      shortcut: "TRIAL",
+      argPlaceholder: "condition, drug, or sponsor",
+      instancePrefix: "trials",
+      defaultTitle: "Trials",
+      titlePrefix: "Trials",
+      // Filters a caller names (a share, the Remote API) open with the pane; they
+      // are what it shows first, not which window it is, so the id stays the query's.
+      extraSettings: (options) => Object.fromEntries(
+        Object.entries(normalizeTrialFilters(options?.values ?? {})).filter(([, value]) => value !== ALL),
+      ),
+    }),
   ],
 };

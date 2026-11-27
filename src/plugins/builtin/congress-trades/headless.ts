@@ -1,4 +1,3 @@
-import { MISSING_VALUE } from "../../../utils/format";
 import type {
   HeadlessPaneColumn,
   HeadlessPaneContext,
@@ -25,12 +24,17 @@ import {
   type CongressTradeRow,
 } from "./model";
 import type { CloudCongressHouseParams } from "../../../api-client/paths";
-import { REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
+import { enumOption, intOption, limitOption, offsetOption, REPORT_PAGE } from "../shared/headless-options";
+import { fixedCell } from "../shared/headless-columns";
+
+const lagCell = (value: unknown) => formatLag(typeof value === "number" ? value : null);
+const returnCell = (value: unknown) => formatCongressReturn(typeof value === "number" ? value : null);
+const dayFormat = (value: unknown) => formatDay(value);
 
 const TRADE_COLUMNS: HeadlessPaneColumn[] = [
-  { key: "filingDate", header: "Filed", format: (value) => formatDay(value) },
-  { key: "transactionDate", header: "Tx", format: (value) => formatDay(value) },
-  { key: "lagDays", header: "Lag", align: "right", format: (value) => formatLag(typeof value === "number" ? value : null) },
+  { key: "filingDate", header: "Filed", format: dayFormat },
+  { key: "transactionDate", header: "Tx", format: dayFormat },
+  { key: "lagDays", header: "Lag", align: "right", format: lagCell },
   { key: "memberName", header: "Member" },
   { key: "side", header: "Side" },
   { key: "ticker", header: "Ticker" },
@@ -56,9 +60,9 @@ const TRADE_COLUMNS: HeadlessPaneColumn[] = [
     ),
   },
   { key: "owner", header: "Owner" },
-  { key: "returnSinceTx", header: "Tx return", format: value => formatCongressReturn(typeof value === "number" ? value : null) },
-  { key: "returnSinceFiling", header: "Filed return", format: value => formatCongressReturn(typeof value === "number" ? value : null) },
-  { key: "excessSinceFiling", header: "Vs SPY", format: value => formatCongressReturn(typeof value === "number" ? value : null) },
+  { key: "returnSinceTx", header: "Tx return", format: returnCell },
+  { key: "returnSinceFiling", header: "Filed return", format: returnCell },
+  { key: "excessSinceFiling", header: "Vs SPY", format: returnCell },
 ];
 
 const MEMBER_COLUMNS: HeadlessPaneColumn[] = [
@@ -77,12 +81,12 @@ const MEMBER_COLUMNS: HeadlessPaneColumn[] = [
       typeof row.estimatedHigh === "number" ? row.estimatedHigh : null,
     ),
   },
-  { key: "lastFilingDate", header: "Last", format: (value) => formatDay(value) },
-  { key: "avgLagDays", header: "Avg", align: "right", format: (value) => formatLag(typeof value === "number" ? value : null) },
-  { key: "medianReturn", header: "Median return", format: value => formatCongressReturn(typeof value === "number" ? value : null) },
+  { key: "lastFilingDate", header: "Last", format: dayFormat },
+  { key: "avgLagDays", header: "Avg", align: "right", format: lagCell },
+  { key: "medianReturn", header: "Median return", format: returnCell },
   { key: "pricedTradeCount", header: "Priced trades" },
-  { key: "medianExcessSinceFiling", header: "Median vs SPY", format: value => formatCongressReturn(typeof value === "number" ? value : null) },
-  { key: "buyHitRate", header: "Buy hit", align: "right", format: value => typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(1)}%` : MISSING_VALUE },
+  { key: "medianExcessSinceFiling", header: "Median vs SPY", format: returnCell },
+  { key: "buyHitRate", header: "Buy hit", align: "right", format: fixedCell(1, { suffix: "%" }) },
   { key: "pricedBuyCount", header: "Priced buys" },
 ];
 
@@ -153,40 +157,21 @@ export function createCongressHeadless(
       description: "Optional ticker to filter Congress PTR trades.",
     },
     options: [
-      { key: "chamber", description: "House, Senate, or both merged by filing date.", type: "enum", defaultValue: "all", values: ["all", "house", "senate"].map((value) => ({ value })) },
-      { key: "offset", shot: REPORT_PAGE, description: "Trade offset within the filing window.", type: "integer", defaultValue: 0, minimum: 0 },
-      { key: "filingOffset", shot: REPORT_PAGE, description: "Offset into the year's filing index.", type: "integer", defaultValue: 0, minimum: 0 },
-      {
-        key: "tab",
-        description: "Congress pane tab.",
-        type: "enum",
-        values: [{ value: "trades" }, { value: "members" }, { value: "tickers" }],
-        defaultValue: "trades",
-        pluginState: { pluginId: "gloomberb-cloud", key: "activeTab" },
-      },
-      {
-        key: "year",
+      enumOption("chamber", ["all", "house", "senate"], { description: "House, Senate, or both merged by filing date.", defaultValue: "all" }),
+      offsetOption({ description: "Trade offset within the filing window.", defaultValue: 0 }),
+      intOption("filingOffset", { shot: REPORT_PAGE, description: "Offset into the year's filing index.", defaultValue: 0, minimum: 0 }),
+      enumOption("tab", ["trades", "members", "tickers"], {
+        description: "Congress pane tab.", defaultValue: "trades", pluginState: { pluginId: "gloomberb-cloud", key: "activeTab" },
+      }),
+      intOption("year", {
         shot: { reportOnly: "reads one disclosure year, and the pane opens on the latest" },
-        description: "Disclosure year.",
-        type: "integer",
-        defaultValue: new Date().getUTCFullYear(),
-        minimum: 2008,
-        maximum: 2100,
-      },
-      {
-        key: "limit",
-        shot: REPORT_ROWS,
-        aliases: ["count", "rows"],
-        description: "Maximum rows.",
-        type: "integer",
-        defaultValue: 50,
-        minimum: 1,
-        maximum: 200,
-      },
-      { key: "side", description: "Transaction side.", type: "enum", defaultValue: "all", values: ["all", "BUY", "SELL", "EXCHANGE", "OTHER"].map((value) => ({ value })) },
-      { key: "owner", description: "Disclosed owner.", type: "enum", defaultValue: "all", values: ["all", "self", "spouse", "joint", "dependent", "other"].map((value) => ({ value })) },
-      { key: "assetType", description: "Asset category.", type: "enum", defaultValue: "all", values: ["all", "stock", "option", "other"].map((value) => ({ value })) },
-      { key: "minAmount", description: "Minimum disclosed lower dollar bound.", type: "integer", defaultValue: 0, minimum: 0 },
+        description: "Disclosure year.", defaultValue: new Date().getUTCFullYear(), minimum: 2008, maximum: 2100,
+      }),
+      limitOption({ aliases: ["count", "rows"], description: "Maximum rows.", defaultValue: 50, maximum: 200 }),
+      enumOption("side", ["all", "BUY", "SELL", "EXCHANGE", "OTHER"], { description: "Transaction side.", defaultValue: "all" }),
+      enumOption("owner", ["all", "self", "spouse", "joint", "dependent", "other"], { description: "Disclosed owner.", defaultValue: "all" }),
+      enumOption("assetType", ["all", "stock", "option", "other"], { description: "Asset category.", defaultValue: "all" }),
+      intOption("minAmount", { description: "Minimum disclosed lower dollar bound.", defaultValue: 0, minimum: 0 }),
     ],
     describe: (args) => `Congress Trades | ${args.options.tab === "members" ? "Members" : args.options.tab === "tickers" ? "Tickers" : "Trades"}`,
     // A ticker's pane lists its trades only. The filters are the pane's filter bar, kept apart for a ticker's pane.

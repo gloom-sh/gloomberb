@@ -22,7 +22,6 @@ import { MISSING_VALUE, distributionAmountsDigits, formatDistributionAmount, for
 import { formatFilingDate } from "../../../utils/datetime-format";
 import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import { useAsyncResource } from "../../../react/async-resource";
-import { usePlanAccess } from "../../../api-client/plan-access";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { useOpenResearchTab } from "../ticker-detail/research-tab-navigation";
 import { SignInWall } from "../cloud/auth-actions";
@@ -66,10 +65,7 @@ function sharedCurrency(values: ReadonlyArray<{ value: number | undefined; curre
  * not see the calendar, or when none is ahead; a failed read is the footer's.
  */
 function useNextCatalyst(symbol: string | null, enabled: boolean, today: string) {
-  const access = usePlanAccess();
-  const session = useResearchCloudSession();
-  // As the Catalysts view keys its reads: what the calendar answers differs by session and plan.
-  const accessKey = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
+  const { accessKey } = useResearchCloudSession();
   const loader = useCallback((force: boolean) => (
     loadCatalysts(nextCatalystQuery(symbol!), accessKey, force).then((result) => nextCatalystOf(result.payload, today))
   ), [accessKey, symbol, today]);

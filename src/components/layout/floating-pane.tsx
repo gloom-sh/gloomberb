@@ -3,20 +3,14 @@ import type { ReactNode, RefObject } from "react";
 import { colors, floatingPaneBg } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { PaneBodyFrame, getPaneWindowAttributes } from "./pane/frame";
-import { PaneHeader, paneHeaderHoldsOneStrip, type PaneHeaderQuickSetting, type PaneHeaderStack } from "./pane/header";
+import { PaneHeader, paneHeaderHoldsOneStrip, type PaneHeaderChromeProps } from "./pane/header";
 import { PaneHeaderTabsProvider, usePaneHeaderTabsHost } from "./pane/header-tabs";
 import { hasPaneFooterContent, PaneFooterBar, type CombinedPaneFooter } from "./pane/footer";
 import { resolvePaneBodyFrame, shouldReservePaneFooter } from "./pane/sizing";
 
-interface FloatingPaneWrapperProps {
+interface FloatingPaneWrapperProps extends PaneHeaderChromeProps {
   paneId?: string;
   title: string;
-  /**
-   * Desktop and web: the ticker the title shows, drawn as a control that opens ticker search for
-   * the pane (`onTitleTickerPress`).
-   */
-  titleTicker?: string | null;
-  onTitleTickerPress?: () => void;
   x: number;
   y: number;
   width: number;
@@ -25,24 +19,9 @@ interface FloatingPaneWrapperProps {
   /** Fully covered by windows above it: skip drawing, keep the tree mounted. */
   hidden?: boolean;
   focused: boolean;
-  windowModeSelected?: boolean;
-  locked?: boolean;
-  showActions?: boolean;
-  quickSettings?: PaneHeaderQuickSetting[];
   onMouseDown?: (event: any) => void;
   onMouseDownCapture?: (event: any) => void;
-  onHeaderMouseMove?: (event: any) => void;
-  onHeaderMouseDown?: (event: any) => void;
-  onHeaderMouseDrag?: (event: any) => void;
-  onHeaderMouseDragEnd?: (event: any) => void;
-  onHeaderContextMenu?: (event: any) => void;
-  onActionMouseDown?: (event: any) => void;
-  onHelpMouseDown?: (event: any) => void;
-  /** Ask Gloom about the pane, from the button beside the `?`. */
-  onAskMouseDown?: (event: any) => void;
   onCloseMouseDown?: (event: any) => void;
-  onRestoreMouseDown?: (event: any) => void;
-  fullscreen?: boolean;
   onResizeMouseDown?: (event: any) => void;
   onResizeMouseDrag?: (event: any) => void;
   onResizeMouseDragEnd?: (event: any) => void;
@@ -50,8 +29,6 @@ interface FloatingPaneWrapperProps {
   footerSupplement?: ReactNode;
   /** The pane's frame, which a desktop resize sizes outside React; its header, body and footer stretch with it. */
   frameRef?: RefObject<BoxRenderable | null>;
-  /** Windows stacked as tabs here: their tabs replace the title. */
-  stack?: PaneHeaderStack | null;
   children: ReactNode;
 }
 
@@ -83,8 +60,6 @@ function TerminalFloatingPaneBorder({ width, height, focused }: { width: number;
 export function FloatingPaneWrapper({
   paneId,
   title,
-  titleTicker = null,
-  onTitleTickerPress,
   x,
   y,
   width,
@@ -93,22 +68,9 @@ export function FloatingPaneWrapper({
   hidden = false,
   focused,
   windowModeSelected = false,
-  locked = false,
-  showActions = false,
-  quickSettings,
   onMouseDown,
   onMouseDownCapture,
-  onHeaderMouseMove,
-  onHeaderMouseDown,
-  onHeaderMouseDrag,
-  onHeaderMouseDragEnd,
-  onHeaderContextMenu,
-  onActionMouseDown,
-  onHelpMouseDown,
-  onAskMouseDown,
   onCloseMouseDown,
-  onRestoreMouseDown,
-  fullscreen = false,
   onResizeMouseDown,
   onResizeMouseDrag,
   onResizeMouseDragEnd,
@@ -117,6 +79,7 @@ export function FloatingPaneWrapper({
   frameRef,
   stack = null,
   children,
+  ...headerProps
 }: FloatingPaneWrapperProps) {
   const { nativePaneChrome } = useUiCapabilities();
   // As a docked pane: a header too narrow for two strips keeps its stack's.
@@ -156,31 +119,17 @@ export function FloatingPaneWrapper({
       onMouseDownCapture={onMouseDownCapture}
     >
       <PaneHeader
+        {...headerProps}
         title={title}
-        titleTicker={titleTicker}
-        onTitleTickerPress={onTitleTickerPress}
         width={width}
         focused={focused}
         windowModeSelected={windowModeSelected}
         floating
-        locked={locked}
-        showActions={showActions}
-        quickSettings={quickSettings}
         tabs={headerTabs}
         stack={stack}
         bodyBackground={bg}
         topRule
-        onHeaderMouseMove={onHeaderMouseMove}
-        onHeaderMouseDown={onHeaderMouseDown}
-        onHeaderMouseDrag={onHeaderMouseDrag}
-        onHeaderMouseDragEnd={onHeaderMouseDragEnd}
-        onHeaderContextMenu={onHeaderContextMenu}
-        onActionMouseDown={onActionMouseDown}
-        onHelpMouseDown={onHelpMouseDown}
-        onAskMouseDown={onAskMouseDown}
         onCloseMouseDown={onCloseMouseDown}
-        onRestoreMouseDown={onRestoreMouseDown}
-        fullscreen={fullscreen}
       />
 
       <PaneBodyFrame layoutProps={bodyFrame.layoutProps} backgroundColor={bg}>

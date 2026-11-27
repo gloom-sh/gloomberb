@@ -5,8 +5,8 @@ import { BUYBACK_SERIES } from "./series";
 /** Ticker Research's Buybacks view: a Hong Kong listing's repurchases by session, its mandate and its blackout windows. */
 export const buybacksModule: PluginModule = {
   series: BUYBACK_SERIES,
+  caches: [buybacksCache],
   setup(ctx) {
-    buybacksCache.attach(ctx.persistence);
     ctx.registerTickerResearchTab({
       id: "buybacks",
       name: "Buybacks",
@@ -15,8 +15,5 @@ export const buybacksModule: PluginModule = {
       instruments: ["equity"],
       isVisible: ({ ticker }) => !!ticker && !!buybackSymbol(ticker.metadata.ticker, ticker.metadata.exchange),
     });
-  },
-  dispose() {
-    buybacksCache.reset();
   },
 };

@@ -2,11 +2,9 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { DataTableView, EmptyState, Notice, PaneStatusBody, QueryBar, StatGrid, statGridRows, usePaneFooter, usePaneNoticeFooter,
   usePaneTicker, type DataTableCell, type DataTableColumn, type StatItem } from "../../../components";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { usePaneResource } from "../shared/pane-resource";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { usePaneSettingValue } from "../../../public/react";
-import { useAsyncResource } from "../../../react/async-resource";
-import { useAutoRefresh } from "../../../react/auto-refresh";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
 import { MISSING_VALUE, formatCompactCurrency } from "../../../utils/format";
@@ -86,12 +84,11 @@ export function ReverseDcfPane({ width, height, focused }: PaneProps) {
     if (!snapshot.financials && snapshot.error) throw new Error(snapshot.error);
     return snapshot;
   }, [instrumentKey]);
-  const inputs = useAsyncResource(instrument ? loader : null, {
+  const inputs = usePaneResource(instrument ? loader : null, {
+    focused,
     savedCopy: scope && !instrument?.instrument ? { key: ["reverse-dcf", scope, instrumentKey] } : null,
   });
   useEffect(() => () => controller.current?.abort(), [loader]);
-  useAutoRefresh(inputs.updatedAt, inputs.load);
-  usePaneRefreshKey(() => { inputs.reload(); }, { focused });
 
   const discountRate = (Number(discount) || 9) / 100;
   const chosenMargin = Number(margin) > 0 ? Number(margin) / 100 : undefined;

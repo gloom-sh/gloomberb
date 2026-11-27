@@ -3,8 +3,6 @@ import { useCallback, useMemo, type ReactNode } from "react";
 import { listingIdentity, useIssuerListing } from "../shared/ticker-request";
 import { Box, ScrollBox, useUiCapabilities } from "../../../ui";
 import {
-  useAsyncResource,
-  useAutoRefresh,
   usePaneSettingValue,
   usePluginPaneState,
   useUpdatedAgo,
@@ -39,7 +37,7 @@ import { formatCompactAxis } from "../../../components/chart-table";
 import { staticSeries } from "../../../components/chart/static/series";
 import type { PaneProps } from "../../../types/plugin";
 import { MISSING_VALUE, formatPercentileRank } from "../../../utils/format";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { usePaneResource } from "../shared/pane-resource";
 import { SignInWall } from "../cloud/auth-actions";
 import {
   isCloudSessionRequired,
@@ -456,7 +454,8 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
     (force: boolean) => loadDebtMaturities(symbol!, listing, force),
     [symbol, listing, session.requestKey],
   );
-  const resource = useAsyncResource(symbol ? loader : null, {
+  const resource = usePaneResource(symbol ? loader : null, {
+    focused,
     initialData: () => (symbol ? cachedDebtMaturities(symbol, listing) : null),
     clearOnError: isAccessDenied,
   });
@@ -616,8 +615,6 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
     reportFooterSegment(debtMaturitiesHeadless, { sections: [], freshness: debtReportFreshness(data) }),
     ...(updatedAgo ? [ageFooterSegment(updatedAgo)] : []),
   ] : [], [data, updatedAgo, utcDay]);
-  useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => resource.reload(), { focused });
   usePaneNoticeFooter({
     registrationId: "debt-maturities:notices",
     focused,

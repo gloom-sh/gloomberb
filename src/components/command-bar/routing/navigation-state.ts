@@ -52,6 +52,8 @@ interface UseCommandBarNavigationStateResult {
   updateTopRoute: (updater: (route: CommandBarRoute) => CommandBarRoute) => void;
 }
 
+export type CommandBarNavigationState = UseCommandBarNavigationStateResult;
+
 export function useCommandBarNavigationState({
   availableCommands,
   dispatch,

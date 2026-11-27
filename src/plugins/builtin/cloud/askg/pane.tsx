@@ -23,7 +23,6 @@ import {
 } from "../../../../ui";
 import {
   Button,
-  ChoiceDialog,
   Divider,
   EmptyState,
   getPaneSidebarWidth,
@@ -35,6 +34,7 @@ import {
   usePaneFooter,
   type PaneHint,
 } from "../../../../components";
+import { choiceDialog } from "../../../../components/ui";
 import { MarkdownText } from "../../../../components/markdown-text";
 import { READER_MEASURE_CHARACTERS, ReaderMeasure } from "../../../../components/reader/reader-text";
 import { useShortcut } from "../../../../react/input";
@@ -96,7 +96,7 @@ import {
   askgConversationListStore,
 } from "./conversation-store";
 import { confirmDialog } from "../../../../components/ui/confirm-dialog";
-import { useDialog, type PromptContext } from "../../../../ui/dialog";
+import { useDialog } from "../../../../ui/dialog";
 import { subscribeASKGPaneAttachments, subscribeASKGQuestions } from "./pending-question";
 import type { AskGloomPaneAttachment } from "../../../../ask-gloom/pane-request";
 import { moveComposerCursorToOffset } from "../../chat/content/composer-cursor";
@@ -1242,20 +1242,16 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   }, [catalog, state.turns]);
   const chooseAnswerTicker = useCallback(async () => {
     if (answerTickers.length === 0) return;
-    const symbol = await dialog.prompt<string>({
-      closeOnClickOutside: true,
-      content: (context: unknown) => (
-        <ChoiceDialog
-          {...(context as PromptContext<string>)}
-          title="Tickers in the answer"
-          choices={answerTickers.map((entry) => ({
-            id: entry,
-            label: entry,
-            description: catalog[entry]?.ticker?.metadata.name,
-          }))}
-        />
-      ),
-    }).catch(logFailure("cloud.askg.pane", "The answer tickers prompt failed"));
+    const symbol = await choiceDialog(dialog, {
+      title: "Tickers in the answer",
+      choices: answerTickers.map((entry) => ({
+        id: entry,
+        label: entry,
+        description: catalog[entry]?.ticker?.metadata.name,
+      })),
+      logSource: "cloud.askg.pane",
+      logMessage: "The answer tickers prompt failed",
+    });
     if (symbol) openTicker(symbol);
   }, [answerTickers, catalog, dialog, openTicker]);
 
@@ -1263,17 +1259,22 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
 
   // The answer `g` and `b` rate: the one the keyboard is on (its rating, its
   // tool rows or their fold), else the newest answer, which is the one being read.
-  const feedbackTarget = useMemo<ASKGTurn | null>(() => {
-    if (selectedId) {
-      const turn = state.turns.find((entry) => (
+  const selectedTurnIndex = useMemo(() => (
+    selectedId
+      ? state.turns.findIndex((entry) => (
         selectedId === answerStopId(entry.id)
         || selectedId === toolGroupId(entry.id)
         || entry.tools.some((row) => row.toolCallId === selectedId)
-      ));
-      if (turn) return canRateTurn(state, turn) ? turn : null;
+      ))
+      : -1
+  ), [selectedId, state.turns]);
+  const feedbackTarget = useMemo<ASKGTurn | null>(() => {
+    if (selectedTurnIndex >= 0) {
+      const turn = state.turns[selectedTurnIndex]!;
+      return canRateTurn(state, turn) ? turn : null;
     }
     return state.turns.findLast((turn) => canRateTurn(state, turn)) ?? null;
-  }, [selectedId, state]);
+  }, [selectedTurnIndex, state]);
   // Open until the thumb changes, the answer is sent, or Esc.
   const feedbackFollowUp = useMemo<ASKGTurn | null>(() => {
     const turn = state.turns.find((entry) => entry.id === feedbackFollowUpTurnId);
@@ -1290,17 +1291,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   // The answer `o` and Copy Answer with Source Links act on, as `g` and `b`
   // rate: the one the keyboard is on, else the newest, the one being read.
   // Its sources count once it is finished and shows them.
-  const sourcesTurnIndex = useMemo(() => {
-    if (selectedId) {
-      const index = state.turns.findIndex((entry) => (
-        selectedId === answerStopId(entry.id)
-        || selectedId === toolGroupId(entry.id)
-        || entry.tools.some((row) => row.toolCallId === selectedId)
-      ));
-      if (index >= 0) return index;
-    }
-    return state.turns.length - 1;
-  }, [selectedId, state.turns]);
+  const sourcesTurnIndex = selectedTurnIndex >= 0 ? selectedTurnIndex : state.turns.length - 1;
   const openableSources = useMemo(() => {
     const turn = state.turns[sourcesTurnIndex];
     if (!turn || turn.status !== "complete") return [];
@@ -1312,20 +1303,16 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       return;
     }
     if (openableSources.length === 0) return;
-    const picked = await dialog.prompt<string>({
-      closeOnClickOutside: true,
-      content: (context: unknown) => (
-        <ChoiceDialog
-          {...(context as PromptContext<string>)}
-          title="Sources of the answer"
-          choices={openableSources.map((source, index) => ({
-            id: String(index),
-            label: answerSourceLabel(source, displayContext),
-            description: source.target.kind === "pane" ? source.target.label : undefined,
-          }))}
-        />
-      ),
-    }).catch(logFailure("cloud.askg.pane", "The answer sources prompt failed"));
+    const picked = await choiceDialog(dialog, {
+      title: "Sources of the answer",
+      choices: openableSources.map((source, index) => ({
+        id: String(index),
+        label: answerSourceLabel(source, displayContext),
+        description: source.target.kind === "pane" ? source.target.label : undefined,
+      })),
+      logSource: "cloud.askg.pane",
+      logMessage: "The answer sources prompt failed",
+    });
     const source = picked === undefined ? undefined : openableSources[Number(picked)];
     if (source) openSource(source);
   }, [dialog, displayContext, openSource, openableSources]);
@@ -1495,222 +1482,104 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   useShortcut((event) => {
     // Behind the sign-in wall the keys are the wall's (Enter logs in).
     if (!focused || !planAccess.emailVerified) return;
-    const consume = () => {
+    const run = (action: () => void) => {
       event.preventDefault();
       event.stopPropagation();
+      action();
     };
     if (confirmation) {
-      if (isPlainKey(event, "y")) {
-        consume();
-        controller.resolveConfirmation(confirmation.toolCallId, true);
-        return;
-      }
-      if (isPlainKey(event, "n", "escape")) {
-        consume();
-        controller.resolveConfirmation(confirmation.toolCallId, false);
-        return;
-      }
+      if (isPlainKey(event, "y")) return run(() => controller.resolveConfirmation(confirmation.toolCallId, true));
+      if (isPlainKey(event, "n", "escape")) return run(() => controller.resolveConfirmation(confirmation.toolCallId, false));
     }
     // A pane's contents wait on a yes or a no, unless the field was clicked
     // into instead: then what is typed is the question.
     if (paneConsentPending && !inputFocused) {
-      if (isPlainKey(event, ATTACH_PANE_KEY)) {
-        consume();
-        answerPaneConsent(true);
-        return;
-      }
-      if (isPlainKey(event, LEAVE_OUT_PANE_KEY, "escape")) {
-        consume();
-        answerPaneConsent(false);
-        return;
-      }
+      if (isPlainKey(event, ATTACH_PANE_KEY)) return run(() => answerPaneConsent(true));
+      if (isPlainKey(event, LEAVE_OUT_PANE_KEY, "escape")) return run(() => answerPaneConsent(false));
     }
     // The sidebar owns the keyboard while it has focus, so the same arrows
     // that walk the tool timeline walk the conversation list instead.
     if (showSidebar) {
-      if (isPlainKey(event, "escape", "right")) {
-        consume();
-        leaveSidebar();
-        focusInput();
-      } else if (isPlainKey(event, "enter", "return")) {
-        consume();
-        const target = sidebarTargetId;
-        leaveSidebar();
-        if (target) openConversation(target);
-        else focusInput();
-      } else if (isPlainKey(event, "j", "down")) {
-        consume();
-        moveSidebarCursor(1);
-      } else if (isPlainKey(event, "k", "up")) {
-        consume();
-        moveSidebarCursor(-1);
-      } else if (isPlainKey(event, "n")) {
-        consume();
-        leaveSidebar();
-        newConversation();
-      } else if (isPlainKey(event, "d", "delete")) {
-        consume();
-        deleteSidebarConversation();
+      if (isPlainKey(event, "escape", "right")) return run(() => { leaveSidebar(); focusInput(); });
+      if (isPlainKey(event, "enter", "return")) {
+        return run(() => {
+          const target = sidebarTargetId;
+          leaveSidebar();
+          if (target) openConversation(target);
+          else focusInput();
+        });
       }
+      if (isPlainKey(event, "j", "down")) return run(() => moveSidebarCursor(1));
+      if (isPlainKey(event, "k", "up")) return run(() => moveSidebarCursor(-1));
+      if (isPlainKey(event, "n")) return run(() => { leaveSidebar(); newConversation(); });
+      if (isPlainKey(event, "d", "delete")) return run(deleteSidebarConversation);
       // `<` and `>` fall through to the sidebar kit, which resizes it.
       return;
     }
     if (inputFocused) {
       const empty = !readDraft().trim();
       if (isPlainKey(event, "escape")) {
-        consume();
         // Leaving an empty composer counts toward a double-Esc close; a draft does not.
-        if (empty) countEscapeTowardClose(event);
-        blurInput();
-        return;
+        return run(() => { if (empty) countEscapeTowardClose(event); blurInput(); });
       }
-      if (empty && isPlainKey(event, "up")) {
-        consume();
-        enterTimeline();
-        return;
-      }
-      if (empty && isPlainKey(event, "left") && listRoom) {
-        consume();
-        focusSidebar();
-      }
+      if (empty && isPlainKey(event, "up")) return run(enterTimeline);
+      if (empty && isPlainKey(event, "left") && listRoom) return run(focusSidebar);
       return;
     }
     if (resultActive) {
-      if (isPlainKey(event, "escape")) {
-        consume();
-        setResultFocused(false);
-        return;
-      }
+      if (isPlainKey(event, "escape")) return run(() => setResultFocused(false));
       // The result table walks and opens its own rows.
       if (isPlainKey(event, "j", "k", "up", "down", "enter", "return", "home", "end", "pageup", "pagedown")) return;
     }
     if (feedbackFollowUp) {
-      if (isPlainKey(event, "escape")) {
-        consume();
-        setFeedbackFollowUpTurnId(null);
-        return;
-      }
+      if (isPlainKey(event, "escape")) return run(() => setFeedbackFollowUpTurnId(null));
       const reason = FEEDBACK_REASONS.find((entry) => isPlainKey(event, entry.key));
-      if (reason) {
-        consume();
-        chooseFeedbackReason(feedbackFollowUp, reason.reason);
-        return;
-      }
-      if (isPlainKey(event, SHARE_ANSWER_KEY)) {
-        consume();
-        shareAnswer(feedbackFollowUp);
-        return;
-      }
+      if (reason) return run(() => chooseFeedbackReason(feedbackFollowUp, reason.reason));
+      if (isPlainKey(event, SHARE_ANSWER_KEY)) return run(() => shareAnswer(feedbackFollowUp));
     }
     // Each suggested question asks on its key, unless a thumbs down's reasons have them.
     const followUp = followUps.find((_question, index) => isPlainKey(event, followUpKey(index)));
-    if (followUp && !feedbackFollowUp && !running) {
-      consume();
-      askAndCompose(followUp);
-      return;
-    }
+    if (followUp && !feedbackFollowUp && !running) return run(() => askAndCompose(followUp));
     if (isPlainKey(event, GOOD_ANSWER_KEY, BAD_ANSWER_KEY) && feedbackTarget) {
-      consume();
-      rateAnswer(feedbackTarget, event.name === GOOD_ANSWER_KEY ? "up" : "down");
-      return;
+      return run(() => rateAnswer(feedbackTarget, event.name === GOOD_ANSWER_KEY ? "up" : "down"));
     }
     if (state.turns.length === 0 && examples.length > 0) {
       if (isPlainKey(event, "j", "down")) {
-        consume();
-        setExampleIndex((index) => (index === null || index >= examples.length - 1 ? null : index + 1));
-        if (exampleIndex === examples.length - 1) focusInput();
-        return;
+        return run(() => {
+          setExampleIndex((index) => (index === null || index >= examples.length - 1 ? null : index + 1));
+          if (exampleIndex === examples.length - 1) focusInput();
+        });
       }
       if (isPlainKey(event, "k", "up")) {
-        consume();
-        setExampleIndex((index) => (index === null ? examples.length - 1 : Math.max(0, index - 1)));
-        return;
+        return run(() => setExampleIndex((index) => (index === null ? examples.length - 1 : Math.max(0, index - 1))));
       }
       if (isPlainKey(event, "enter", "return") && exampleIndex !== null) {
-        consume();
-        const question = examples[exampleIndex];
-        setExampleIndex(null);
-        if (question) askAndCompose(question);
-        return;
+        return run(() => {
+          const question = examples[exampleIndex];
+          setExampleIndex(null);
+          if (question) askAndCompose(question);
+        });
       }
     }
     if (isPlainKey(event, "escape") && (selectedId || exampleIndex !== null)) {
-      consume();
-      setSelectedId(null);
-      setExampleIndex(null);
-      return;
+      return run(() => { setSelectedId(null); setExampleIndex(null); });
     }
-    if (isPlainKey(event, "left") && listRoom) {
-      consume();
-      focusSidebar();
-      return;
-    }
-    if (isPlainKey(event, "enter", "return")) {
-      consume();
-      focusInput();
-      return;
-    }
+    if (isPlainKey(event, "left") && listRoom) return run(focusSidebar);
+    if (isPlainKey(event, "enter", "return")) return run(focusInput);
     // With tool rows the arrows walk them; without, they scroll the answer.
-    if (isPlainKey(event, "j", "down") && timelineIds.length > 0) {
-      consume();
-      moveSelection(1);
-      return;
-    }
-    if (isPlainKey(event, "k", "up") && timelineIds.length > 0) {
-      consume();
-      moveSelection(-1);
-      return;
-    }
-    if (isPlainKey(event, "x") && selectedGroupTurn && !resultActive) {
-      consume();
-      toggleGroup(toolGroupId(selectedGroupTurn.id));
-      return;
-    }
-    if (isPlainKey(event, "x") && expandTarget) {
-      consume();
-      toggleResult(expandTarget);
-      return;
-    }
-    if (isPlainKey(event, "o") && paneRow && canOpenPane) {
-      consume();
-      openPaneForTool(paneRow);
-      return;
-    }
+    if (isPlainKey(event, "j", "down") && timelineIds.length > 0) return run(() => moveSelection(1));
+    if (isPlainKey(event, "k", "up") && timelineIds.length > 0) return run(() => moveSelection(-1));
+    if (isPlainKey(event, "x") && selectedGroupTurn && !resultActive) return run(() => toggleGroup(toolGroupId(selectedGroupTurn.id)));
+    if (isPlainKey(event, "x") && expandTarget) return run(() => toggleResult(expandTarget));
+    if (isPlainKey(event, "o") && paneRow && canOpenPane) return run(() => openPaneForTool(paneRow));
     // Off a call, `o` opens what the answer cites.
-    if (isPlainKey(event, "o") && !paneRow && openableSources.length > 0) {
-      consume();
-      void chooseAnswerSource();
-      return;
-    }
-    if (isPlainKey(event, UNDO_KEY) && selectedRow && canUndo(selectedRow)) {
-      consume();
-      void controller.undo(selectedRow.toolCallId);
-      return;
-    }
-    if (isPlainKey(event, "t") && answerTickers.length > 0) {
-      consume();
-      void chooseAnswerTicker();
-      return;
-    }
-    if (isPlainKey(event, "n") && state.turns.length > 0 && !confirmation) {
-      consume();
-      newConversation();
-      return;
-    }
-    if (event.name === UPGRADE_KEY && !event.ctrl && !event.meta && !event.alt && needsUpgrade) {
-      consume();
-      upgrade();
-      return;
-    }
-    if (isPlainKey(event, "r") && retryableTurn) {
-      consume();
-      retryAndCompose(retryableTurn.id);
-      return;
-    }
-    if (isPlainKey(event, "c") && running) {
-      consume();
-      controller.cancel();
-    }
+    if (isPlainKey(event, "o") && !paneRow && openableSources.length > 0) return run(() => { void chooseAnswerSource(); });
+    if (isPlainKey(event, UNDO_KEY) && selectedRow && canUndo(selectedRow)) return run(() => { void controller.undo(selectedRow.toolCallId); });
+    if (isPlainKey(event, "t") && answerTickers.length > 0) return run(() => { void chooseAnswerTicker(); });
+    if (isPlainKey(event, "n") && state.turns.length > 0 && !confirmation) return run(newConversation);
+    if (event.name === UPGRADE_KEY && !event.ctrl && !event.meta && !event.alt && needsUpgrade) return run(upgrade);
+    if (isPlainKey(event, "r") && retryableTurn) return run(() => retryAndCompose(retryableTurn.id));
+    if (isPlainKey(event, "c") && running) run(() => controller.cancel());
   }, { allowEditable: true });
 
   // Hints follow the keyboard: the composer keeps only the conversation's own

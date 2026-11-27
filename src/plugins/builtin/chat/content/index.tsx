@@ -1,8 +1,8 @@
 import { Box, Text, useContextMenu, useRendererHost, useUiCapabilities } from "../../../../ui";
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, useSyncExternalStore } from "react";
 import { PageStackView } from "../../../../components/ui";
-import { ChoiceDialog } from "../../../../components/ui/choice-dialog";
-import { useOptionalDialog, type PromptContext } from "../../../../ui/dialog";
+import { choiceDialog } from "../../../../components/ui/choice-dialog";
+import { useOptionalDialog } from "../../../../ui/dialog";
 import { useAnyDialogOpen } from "../../../../ui/dialog-context";
 import { canReactToMessage, terminalReactionChoices } from "../reactions";
 import { type InputRenderable, type ScrollBoxRenderable, type TextareaRenderable } from "../../../../ui";
@@ -517,18 +517,14 @@ function ChatConversation({
       return;
     }
     if (!dialog) return;
-    void dialog.prompt<string>({
-      closeOnClickOutside: true,
-      content: (context: PromptContext<string>) => (
-        <ChoiceDialog
-          {...context}
-          title="React"
-          choices={terminalReactionChoices(message, currentUserIdRef.current)}
-        />
-      ),
+    void choiceDialog(dialog, {
+      title: "React",
+      choices: terminalReactionChoices(message, currentUserIdRef.current),
+      logSource: "chat.content",
+      logMessage: "Choose reaction failed",
     }).then((emoji) => {
       if (emoji) toggleReaction(message.id, emoji);
-    }).catch(() => {});
+    });
   }, [closeProfilePopover, dialog, nativePaneChrome, toggleReaction]);
   useEffect(() => {
     if (reactionPickerMessageId && !messages.some((message) => message.id === reactionPickerMessageId)) {

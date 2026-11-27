@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ScannerFlowEvent, ScannerFlowPayload, ScannerHiloPayload } from "../../../api-client";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
-import { createFlowHeadless, createHiloHeadless, FLOW_SIDE_RULE, loadHiloSnapshot } from "./headless";
+import { createFlowHeadless, createHiloHeadless, FLOW_SIDE_RULE } from "./headless";
 import { captureScannerEvent } from "../shared/scanner-capture";
 
 const payload: ScannerHiloPayload = {
@@ -28,37 +28,37 @@ const OPEN = () => Date.parse("2026-11-09T15:00:00Z");
 describe("highs and lows headless model", () => {
   test("waits for scanner data beyond the connecting snapshot", async () => {
     let unsubscribed = 0;
-    const result = await loadHiloSnapshot({
+    const result = await captureScannerEvent({
       subscribeScanner(_scanner, listener) {
         listener({ type: "data", payload: { ...payload, status: "starting" } });
         listener({ type: "data", payload });
         return () => { unsubscribed += 1; };
       },
-    }, new AbortController().signal);
+    }, "hilo", new AbortController().signal);
 
-    expect(result.status).toBe("live");
+    expect(result).toMatchObject({ type: "data", payload: { status: "live" } });
     expect(unsubscribed).toBe(1);
   });
 
   test("a stale row on the way to live does not end the wait", async () => {
-    const result = await loadHiloSnapshot({
+    const result = await captureScannerEvent({
       subscribeScanner(_scanner, listener) {
         listener({ type: "data", payload: { ...payload, status: "degraded", asOf: 1 } });
         listener({ type: "data", payload: { ...payload, status: "starting" } });
         listener({ type: "data", payload });
         return () => {};
       },
-    }, new AbortController().signal);
-    expect(result).toMatchObject({ status: "live", asOf: 123 });
+    }, "hilo", new AbortController().signal);
+    expect(result).toMatchObject({ type: "data", payload: { status: "live", asOf: 123 } });
 
     // A feed that never recovers still answers, flagged, at the deadline.
-    const stuck = await loadHiloSnapshot({
+    const stuck = await captureScannerEvent({
       subscribeScanner(_scanner, listener) {
         listener({ type: "data", payload: { ...payload, status: "degraded" } });
         return () => {};
       },
-    }, new AbortController().signal, 5);
-    expect(stuck.status).toBe("degraded");
+    }, "hilo", new AbortController().signal, 5);
+    expect(stuck).toMatchObject({ type: "data", payload: { status: "degraded" } });
     // One still starting fails a screenshot, which would picture an empty pane; a report asks for it and says so.
     const warming = {
       subscribeScanner(_scanner: unknown, listener: (event: { type: "data"; payload: ScannerHiloPayload }) => void) {

@@ -57,6 +57,11 @@ export function quoteChangeText(
 
 // Text-table cell formats. They leave missing values blank; CSV and JSON keep the raw numbers.
 
+/** A percent rounded to two decimals, as CLI tables print it; null for non-finite values. */
+export function roundedPercent(value: number | null | undefined): number | null {
+  return isFiniteNumber(value) ? Number(value.toFixed(2)) : null;
+}
+
 /** A change already in percent: 1.23 becomes +1.23%, colored by sign. */
 export function formatChangePercentCell(value: unknown): string {
   return isFiniteNumber(value) ? colorBySign(formatPercentRaw(value), value) : "";

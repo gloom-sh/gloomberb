@@ -76,13 +76,6 @@ export function nextUncachedFilingContentTargets(
   return next;
 }
 
-export function nextUncachedFilingContentTarget(
-  targets: readonly SecFilingItem[],
-  cache: ReadonlyMap<string, string | null>,
-): SecFilingItem | null {
-  return nextUncachedFilingContentTargets(targets, cache, 1)[0] ?? null;
-}
-
 export function useSecFilingContentCache({
   scopeKey,
   targets,

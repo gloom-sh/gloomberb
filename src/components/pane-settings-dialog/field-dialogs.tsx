@@ -119,76 +119,41 @@ function useTextFieldDialogController({
 }
 
 export function TextFieldDialog(props: TextFieldDialogProps) {
-  return useUiCapabilities().nativePaneChrome === true
-    ? <DesktopTextFieldDialog {...props} />
-    : <TuiTextFieldDialog {...props} />;
-}
-
-function DesktopTextFieldDialog(props: TextFieldDialogProps) {
+  const isDesktop = useUiCapabilities().nativePaneChrome === true;
   const { dismiss, field } = props;
   const { value, setValue, error, inputRef, submit } = useTextFieldDialogController(props);
-
-  return (
-    <DesktopDialogSurface
-      title={field.label}
-      subtitle={field.description}
-      dismiss={dismiss}
-    >
-      <Box flexDirection="column" gap={1}>
-        <TextField
-          inputRef={inputRef}
-          value={value}
-          placeholder={field.placeholder}
-          focused
-          width={56}
-          onChange={setValue}
-          onSubmit={() => { void submit(); }}
-        />
-        {error && (
-          <Text fg={colors.negative} wrapText style={desktopText()}>{error}</Text>
-        )}
+  const body = (
+    <Box flexDirection="column" gap={1}>
+      <TextField
+        inputRef={inputRef}
+        value={value}
+        placeholder={field.placeholder}
+        focused
+        width={isDesktop ? 56 : undefined}
+        onChange={setValue}
+        onSubmit={() => { void submit(); }}
+      />
+      {error && (isDesktop
+        ? <Text fg={colors.negative} wrapText style={desktopText()}>{error}</Text>
+        : <Box height={1}><Text fg={colors.negative}>{error}</Text></Box>)}
+      {!isDesktop && field.description && (
+        <Box height={1}><Text fg={colors.textDim}>{field.description}</Text></Box>
+      )}
+      {isDesktop ? (
         <Box flexDirection="row" justifyContent="flex-end" style={{ marginTop: 12 }}>
           <Button label={t("Save")} variant="primary" onPress={() => { void submit(); }} />
         </Box>
-      </Box>
-    </DesktopDialogSurface>
-  );
-}
-
-function TuiTextFieldDialog(props: TextFieldDialogProps) {
-  const { dismiss, field } = props;
-  const { value, setValue, error, inputRef, submit } = useTextFieldDialogController(props);
-
-  return (
-    <DialogFrame
-      title={field.label}
-    >
-      <Box flexDirection="column" gap={1}>
-        <TextField
-          inputRef={inputRef}
-          value={value}
-          placeholder={field.placeholder}
-          focused
-          onChange={setValue}
-          onSubmit={() => { void submit(); }}
-        />
-        {error && (
-          <Box height={1}>
-            <Text fg={colors.negative}>{error}</Text>
-          </Box>
-        )}
-        {field.description && (
-          <Box height={1}>
-            <Text fg={colors.textDim}>{field.description}</Text>
-          </Box>
-        )}
+      ) : (
         <Box flexDirection="row" gap={1}>
           <Button label={t("Apply")} variant="primary" onPress={() => { void submit(); }} />
           <Button label={t("Cancel")} variant="ghost" onPress={dismiss} />
         </Box>
-      </Box>
-    </DialogFrame>
+      )}
+    </Box>
   );
+  return isDesktop
+    ? <DesktopDialogSurface title={field.label} subtitle={field.description} dismiss={dismiss}>{body}</DesktopDialogSurface>
+    : <DialogFrame title={field.label}>{body}</DialogFrame>;
 }
 
 export function MultiSelectFieldDialog({

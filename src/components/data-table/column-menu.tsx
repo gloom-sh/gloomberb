@@ -1,9 +1,9 @@
 import { useMemo, useRef } from "react";
 import { t, tf } from "../../i18n";
 import type { ContextMenuItem } from "../../types/context-menu";
-import { useOptionalDialog, type PromptContext } from "../../ui/dialog";
+import { useOptionalDialog } from "../../ui/dialog";
 import { logFailure } from "../../utils/log-failure";
-import { ChoiceDialog } from "../ui/choice-dialog";
+import { choiceDialog } from "../ui/choice-dialog";
 import type { DataTableColumn } from "../ui";
 
 const NO_ITEMS: readonly ContextMenuItem[] = [];
@@ -43,37 +43,29 @@ export function useDataTableColumnMenuItems({
     const move = async () => {
       if (!dialog) return;
       const current = latest.current;
-      const columnId = await dialog.prompt<string>({
-        closeOnClickOutside: true,
-        content: (ctx: PromptContext<string>) => (
-          <ChoiceDialog
-            {...ctx}
-            title={t("Move Column")}
-            choices={current.columns.slice(current.anchoredColumns).map((column) => ({ id: column.id, label: columnName(column) }))}
-          />
-        ),
+      const columnId = await choiceDialog(dialog, {
+        title: t("Move Column"),
+        choices: current.columns.slice(current.anchoredColumns).map((column) => ({ id: column.id, label: columnName(column) })),
+        logSource: "data-table",
+        logMessage: "Move Column failed",
       });
       const from = current.columns.findIndex((column) => column.id === columnId);
       if (!columnId || from < 0) return;
       // After the column it should follow: the one it follows now is chosen to begin with.
       const others = current.columns.filter((column) => column.id !== columnId);
       const start = Math.max(0, current.anchoredColumns - 1);
-      const target = await dialog.prompt<string>({
-        closeOnClickOutside: true,
-        content: (ctx: PromptContext<string>) => (
-          <ChoiceDialog
-            {...ctx}
-            title={tf("Move {column}", { column: columnName(current.columns[from]!) })}
-            selectedChoiceId={String(from)}
-            choices={[
-              ...current.anchoredColumns === 0 ? [{ id: "0", label: t("First") }] : [],
-              ...others.slice(start).map((column, index) => ({
-                id: String(start + index + 1),
-                label: tf("After {column}", { column: columnName(column) }),
-              })),
-            ]}
-          />
-        ),
+      const target = await choiceDialog(dialog, {
+        title: tf("Move {column}", { column: columnName(current.columns[from]!) }),
+        selectedChoiceId: String(from),
+        choices: [
+          ...current.anchoredColumns === 0 ? [{ id: "0", label: t("First") }] : [],
+          ...others.slice(start).map((column, index) => ({
+            id: String(start + index + 1),
+            label: tf("After {column}", { column: columnName(column) }),
+          })),
+        ],
+        logSource: "data-table",
+        logMessage: "Move Column failed",
       });
       if (target) latest.current.onColumnMove?.(columnId, Number(target));
     };

@@ -1,7 +1,6 @@
 import { formatDay, isoDay } from "../../../utils/day-format";
 import { useCallback, useMemo } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
-import { usePlanAccess } from "../../../api-client/plan-access";
 import type { CreditDocumentsPayload, CreditHeadroom, CreditInstrument, CreditScreenPayload, CreditScreenRow } from "../../../api-client/credit-documents";
 import { ChartTableHeader, DataTableView, EmptyState, Notice, PageStackView, QueryBar, useChartTableSelection, usePaneFooter, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type PaneHint } from "../../../components";
 import { formatCompactAxis } from "../../../components/chart-table";
@@ -30,8 +29,8 @@ const hintCells = (hint: PaneHint) => hint.key.length + hint.label.length + 3;
 
 export function CreditDocumentsPane(props: PaneProps) {
   const { symbol } = usePaneTickerIdentity();
-  const session = useResearchCloudSession(), access = usePlanAccess();
-  const accessKey = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
+  const session = useResearchCloudSession();
+  const { accessKey } = session;
   return <CreditView key={`${symbol}:${accessKey}`} {...props} symbol={symbol} accessKey={accessKey} needsVerification={session.needsVerification} />;
 }
 function CreditView({ symbol, width, height, focused, accessKey, needsVerification }: PaneProps & { symbol: string | null; accessKey: string; needsVerification: boolean }) {

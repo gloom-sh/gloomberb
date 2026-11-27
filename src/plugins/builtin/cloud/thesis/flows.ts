@@ -18,6 +18,7 @@ import type { DialogApi } from "../../../../ui/dialog";
 import { THESIS_METRIC_KEYS, THESIS_SERIES_KEYS, emptyDocument, itemId } from "./model";
 import { promptChoice, promptNumber, promptSelect, promptText, promptTextarea } from "./prompts";
 import { thesisStore } from "./store";
+import { errorMessage } from "../../../../utils/errors";
 
 export interface FlowContext {
   dialog: DialogApi;
@@ -26,13 +27,8 @@ export interface FlowContext {
   openUpgrade: () => void;
 }
 
-function errorText(error: unknown, fallback: string): string {
-  if (error instanceof ApiRequestError && error.message) return error.message;
-  return error instanceof Error && error.message ? error.message : fallback;
-}
-
 function failed(ctx: FlowContext, error: unknown, fallback: string): undefined {
-  ctx.notify({ body: errorText(error, fallback), type: "error" });
+  ctx.notify({ body: errorMessage(error, fallback), type: "error" });
   return undefined;
 }
 
@@ -166,7 +162,7 @@ export async function startThesis(ctx: FlowContext, input: StartThesisInput): Pr
       });
     })
     .catch((error) => {
-      ctx.notify({ body: `${thesis.title}: ${errorText(error, "the draft failed")}. Your summary is kept; add pillars by hand.`, type: "error" });
+      ctx.notify({ body: `${thesis.title}: ${errorMessage(error, "the draft failed")}. Your summary is kept; add pillars by hand.`, type: "error" });
     });
   return thesis;
 }
@@ -273,20 +269,40 @@ export async function addPillar(ctx: FlowContext, thesis: CloudThesis): Promise<
   return saveDocument(ctx, thesis, { ...thesis.document, pillars: [...thesis.document.pillars, pillar] });
 }
 
-export async function editPillar(ctx: FlowContext, thesis: CloudThesis, pillar: ThesisPillar): Promise<CloudThesis | undefined> {
-  const text = await promptText(ctx.dialog, { label: "Pillar", defaultValue: pillar.text });
-  if (!text || text === pillar.text) return undefined;
+function updateDocumentItem<K extends "pillars" | "killConditions" | "catalysts">(
+  ctx: FlowContext,
+  thesis: CloudThesis,
+  key: K,
+  id: string,
+  patch: Partial<CloudThesis["document"][K][number]>,
+) {
   return saveDocument(ctx, thesis, {
     ...thesis.document,
-    pillars: thesis.document.pillars.map((entry) => (entry.id === pillar.id ? { ...entry, text } : entry)),
+    [key]: thesis.document[key].map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)),
   });
 }
 
+async function promptCatalystDate(
+  ctx: FlowContext,
+  options: { defaultValue?: string; placeholder?: string },
+): Promise<string | undefined> {
+  const date = await promptText(ctx.dialog, { label: "By when? (YYYY-MM-DD, or leave empty)", required: false, ...options });
+  if (date === undefined) return undefined;
+  if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    ctx.notify({ body: "Dates are YYYY-MM-DD.", type: "error" });
+    return undefined;
+  }
+  return date;
+}
+
+export async function editPillar(ctx: FlowContext, thesis: CloudThesis, pillar: ThesisPillar): Promise<CloudThesis | undefined> {
+  const text = await promptText(ctx.dialog, { label: "Pillar", defaultValue: pillar.text });
+  if (!text || text === pillar.text) return undefined;
+  return updateDocumentItem(ctx, thesis, "pillars", pillar.id, { text });
+}
+
 export function setPillarStatus(ctx: FlowContext, thesis: CloudThesis, pillar: ThesisPillar, status: ThesisPillar["status"]) {
-  return saveDocument(ctx, thesis, {
-    ...thesis.document,
-    pillars: thesis.document.pillars.map((entry) => (entry.id === pillar.id ? { ...entry, status } : entry)),
-  });
+  return updateDocumentItem(ctx, thesis, "pillars", pillar.id, { status });
 }
 
 export async function addKillCondition(ctx: FlowContext, thesis: CloudThesis): Promise<CloudThesis | undefined> {
@@ -303,10 +319,7 @@ export async function addKillCondition(ctx: FlowContext, thesis: CloudThesis): P
 export async function editKillCondition(ctx: FlowContext, thesis: CloudThesis, condition: ThesisKillCondition): Promise<CloudThesis | undefined> {
   const text = await promptText(ctx.dialog, { label: "Kill condition", defaultValue: condition.text });
   if (!text || text === condition.text) return undefined;
-  return saveDocument(ctx, thesis, {
-    ...thesis.document,
-    killConditions: thesis.document.killConditions.map((entry) => (entry.id === condition.id ? { ...entry, text } : entry)),
-  });
+  return updateDocumentItem(ctx, thesis, "killConditions", condition.id, { text });
 }
 
 /** Firing is one keystroke. Un-firing goes through the goalpost rule on the server. */
@@ -320,21 +333,14 @@ export async function toggleKillCondition(ctx: FlowContext, thesis: CloudThesis,
     });
     if (!sure) return undefined;
   }
-  return saveDocument(ctx, thesis, {
-    ...thesis.document,
-    killConditions: thesis.document.killConditions.map((entry) => (entry.id === condition.id ? { ...entry, triggered: !entry.triggered } : entry)),
-  });
+  return updateDocumentItem(ctx, thesis, "killConditions", condition.id, { triggered: !condition.triggered });
 }
 
 export async function addCatalyst(ctx: FlowContext, thesis: CloudThesis): Promise<CloudThesis | undefined> {
   const text = await promptText(ctx.dialog, { label: "New catalyst: what should happen?", placeholder: "Q3 earnings show DC revenue above $30B" });
   if (!text) return undefined;
-  const date = await promptText(ctx.dialog, { label: "By when? (YYYY-MM-DD, or leave empty)", required: false, placeholder: "2026-11-20" });
+  const date = await promptCatalystDate(ctx, { placeholder: "2026-11-20" });
   if (date === undefined) return undefined;
-  if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    ctx.notify({ body: "Dates are YYYY-MM-DD.", type: "error" });
-    return undefined;
-  }
   const catalyst: ThesisCatalyst = { id: itemId(), text, ...(date ? { date } : {}), status: "pending" };
   return saveDocument(ctx, thesis, { ...thesis.document, catalysts: [...thesis.document.catalysts, catalyst] });
 }
@@ -342,23 +348,13 @@ export async function addCatalyst(ctx: FlowContext, thesis: CloudThesis): Promis
 export async function editCatalyst(ctx: FlowContext, thesis: CloudThesis, catalyst: ThesisCatalyst): Promise<CloudThesis | undefined> {
   const text = await promptText(ctx.dialog, { label: "Catalyst", defaultValue: catalyst.text });
   if (!text) return undefined;
-  const date = await promptText(ctx.dialog, { label: "By when? (YYYY-MM-DD, or leave empty)", defaultValue: catalyst.date, required: false });
+  const date = await promptCatalystDate(ctx, { defaultValue: catalyst.date });
   if (date === undefined) return undefined;
-  if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    ctx.notify({ body: "Dates are YYYY-MM-DD.", type: "error" });
-    return undefined;
-  }
-  return saveDocument(ctx, thesis, {
-    ...thesis.document,
-    catalysts: thesis.document.catalysts.map((entry) => (entry.id === catalyst.id ? { ...entry, text, date: date || undefined } : entry)),
-  });
+  return updateDocumentItem(ctx, thesis, "catalysts", catalyst.id, { text, date: date || undefined });
 }
 
 export function setCatalystStatus(ctx: FlowContext, thesis: CloudThesis, catalyst: ThesisCatalyst, status: ThesisCatalyst["status"]) {
-  return saveDocument(ctx, thesis, {
-    ...thesis.document,
-    catalysts: thesis.document.catalysts.map((entry) => (entry.id === catalyst.id ? { ...entry, status } : entry)),
-  });
+  return updateDocumentItem(ctx, thesis, "catalysts", catalyst.id, { status });
 }
 
 export type DocumentItem =

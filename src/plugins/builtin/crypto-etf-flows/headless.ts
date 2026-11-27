@@ -2,7 +2,7 @@ import { formatDay } from "../../../utils/day-format";
 import type { CryptoEtfFlowsPayload } from "../../../api-client/crypto-etf-flows";
 import type { HeadlessPaneColumn, HeadlessPaneFreshness } from "../../../types/headless";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
-import { REPORT_ROWS } from "../shared/headless-options";
+import { enumOption, limitOption } from "../shared/headless-options";
 import { readPriceWindow, type PriceWindow } from "../../../utils/price-window";
 import { fetchCryptoEtfFlows } from "./client";
 import {
@@ -97,41 +97,17 @@ export const cryptoEtfFlowsHeadless: HeadlessPaneDefinition<"rows"> = {
   shape: "rows",
   argument: { kind: "none" },
   options: [
+    enumOption("asset", [{ value: "btc", aliases: ["bitcoin", "xbt"] }, { value: "eth", aliases: ["ether", "ethereum"] }], {
+      description: "The spot bitcoin or ether ETFs.", defaultValue: "btc", example: "--asset eth", settingKey: "asset",
+    }),
+    limitOption({ aliases: ["count", "rows", "days"], description: "Most recent trading days listed.", defaultValue: 20, maximum: 2000 }),
     {
-      key: "asset",
-      description: "The spot bitcoin or ether ETFs.",
-      type: "enum",
-      values: [
-        { value: "btc", aliases: ["bitcoin", "xbt"] },
-        { value: "eth", aliases: ["ether", "ethereum"] },
-      ],
-      defaultValue: "btc",
-      example: "--asset eth",
-      settingKey: "asset",
-    },
-    {
-      key: "limit",
-      shot: REPORT_ROWS,
-      aliases: ["count", "rows", "days"],
-      description: "Most recent trading days listed.",
-      type: "integer",
-      defaultValue: 20,
-      minimum: 1,
-      maximum: 2000,
-    },
-    {
-      key: "from",
-      type: "string",
-      placeholder: "year|date",
+      key: "from", type: "string", placeholder: "year|date", example: "--from 2026-10-19 --to 2026-10-23",
       description: "First US trading day listed, as a year (2024) or a date (2026-10-19); lists every day of the window in place of --limit.",
-      example: "--from 2026-10-19 --to 2026-10-23",
-      shot: { reportOnly: "lists the report's days for those dates" },
-      replaces: ["limit"],
+      shot: { reportOnly: "lists the report's days for those dates" }, replaces: ["limit"],
     },
     {
-      key: "to",
-      type: "string",
-      placeholder: "year|date",
+      key: "to", type: "string", placeholder: "year|date",
       description: "Last US trading day listed, with --from (default the newest).",
       shot: { reportOnly: "lists the report's days for those dates" },
     },

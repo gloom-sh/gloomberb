@@ -6,30 +6,15 @@ import type {
   RevenueBreakdownView,
 } from "../../../api-client/revenue-breakdown";
 import type { IssuerListingParams } from "../../../api-client/paths";
-import { createPluginCache } from "../../../data/plugin-cache";
-import { markSavedCopy } from "../../../data/saved-copies";
+import { isNonNegativeInt, isNullableFinite } from "../../../utils/guards";
 import { secListingKey } from "../../../utils/sec";
-import { logFailure } from "../../../utils/log-failure";
-
-/**
- * Revenue by product, segment or region changes only when a filing lands,
- * so a result stays fresh for an hour; the plan is part of the key because a
- * preview and the full split are different answers.
- */
-export const revenueBreakdownCache = createPluginCache<RevenueBreakdownPayload>({
-  kind: "revenue-breakdown",
-  source: "gloom-cloud",
-  schemaVersion: 1,
-  policy: { staleMs: 60 * 60_000, expireMs: 30 * 86_400_000 },
-});
+import { createCloudEndpoint, type CloudResource } from "../shared/cloud-resource";
 
 export const REVENUE_VIEWS: RevenueBreakdownView[] = ["product", "segment", "region"];
 
 /** Thrown when the company files no breakdown; the pane shows it as empty, not failed. */
 export const NO_BREAKDOWN = "No revenue breakdown in this company's filings.";
 
-const finiteOrNull = (value: unknown) =>
-  value === null || (typeof value === "number" && Number.isFinite(value));
 const day = (value: unknown) =>
   typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
 const hkexFilingUrl = /^https:\/\/(?:www1?\.)?hkexnews\.hk\/listedco\/listconews\/sehk\/\d{4}\/\d{4}\/\d{13}\.pdf(?:#page=[1-9]\d*)?$/i;
@@ -61,79 +46,44 @@ function validateRevenueBreakdown(data: RevenueBreakdownPayload): RevenueBreakdo
     && Array.isArray(data.views)
     && data.views.every((view) => REVENUE_VIEWS.includes(view))
     && (data.access === "full" || data.access === "preview")
-    && Number.isInteger(data.lockedRows) && data.lockedRows >= 0
+    && isNonNegativeInt(data.lockedRows)
     && Array.isArray(data.periods) && width > 0
     && data.periods.every((period) => validPeriod(period) && ("kind" in period) === ("kind" in data.periods[0]!))
-    && Array.isArray(data.total) && data.total.length === width && data.total.every(finiteOrNull)
+    && Array.isArray(data.total) && data.total.length === width && data.total.every(isNullableFinite)
     && Array.isArray(data.rows)
     && data.rows.every((row) =>
       typeof row?.key === "string"
       && typeof row.label === "string"
-      && Array.isArray(row.values) && row.values.length === width && row.values.every(finiteOrNull)
-      && finiteOrNull(row.ttm) && finiteOrNull(row.yoy) && finiteOrNull(row.share));
+      && Array.isArray(row.values) && row.values.length === width && row.values.every(isNullableFinite)
+      && isNullableFinite(row.ttm) && isNullableFinite(row.yoy) && isNullableFinite(row.share));
   if (!valid) throw new Error("The server returned an unreadable revenue breakdown");
   return data;
 }
 
-export async function fetchRevenueBreakdown(
-  symbol: string,
-  view: RevenueBreakdownView,
-  client: Pick<typeof apiClient, "getCloudRevenueBreakdown"> = apiClient,
-  listing?: IssuerListingParams,
-): Promise<RevenueBreakdownPayload> {
-  try {
-    return validateRevenueBreakdown(await client.getCloudRevenueBreakdown(symbol, view, listing));
-  } catch (error) {
-    if (error instanceof ApiRequestError && error.status === 404) throw new Error(NO_BREAKDOWN);
-    throw error;
-  }
-}
+export type RevenueResource = CloudResource<RevenueBreakdownPayload>;
 
-export interface RevenueResource {
-  payload: RevenueBreakdownPayload;
-  stale: boolean;
-  refreshError: string | null;
-}
-
+interface RevenueArgs { symbol: string; view: RevenueBreakdownView; pro?: boolean; listing?: IssuerListingParams }
+// Revenue by product, segment or region changes only when a filing lands, so a result stays fresh for an hour;
+// the plan is part of the key because a preview and the full split are different answers.
 // SAN in Paris is not SAN in New York: a listing abroad is cached under its venue.
-const cacheKey = (symbol: string, view: RevenueBreakdownView, pro: boolean, listing?: IssuerListingParams) =>
-  `${secListingKey(symbol, listing?.exchange)}:${view}:${pro ? "full" : "preview"}`;
+const revenueEndpoint = createCloudEndpoint<RevenueArgs, RevenueBreakdownPayload, Pick<typeof apiClient, "getCloudRevenueBreakdown">>({
+  kind: "revenue-breakdown", schemaVersion: 1, policy: { staleMs: 60 * 60_000, expireMs: 30 * 86_400_000 },
+  key: ({ symbol, view, pro, listing }) => `${secListingKey(symbol, listing?.exchange)}:${view}:${pro ? "full" : "preview"}`,
+  defaultClient: apiClient,
+  fetch: async ({ symbol, view, listing }, client) => {
+    try { return await client.getCloudRevenueBreakdown(symbol, view, listing); }
+    catch (error) {
+      if (error instanceof ApiRequestError && error.status === 404) throw new Error(NO_BREAKDOWN);
+      throw error;
+    }
+  },
+  validate: validateRevenueBreakdown,
+});
 
-// Seeds the first paint while the mount load runs; cache age is not staleness,
-// and a failed refresh reports its own.
-export function cachedRevenueBreakdown(
-  symbol: string,
-  view: RevenueBreakdownView,
-  pro: boolean,
-  listing?: IssuerListingParams,
-): RevenueResource | null {
-  const cached = revenueBreakdownCache.get(cacheKey(symbol, view, pro, listing), { allowExpired: true });
-  if (!cached) return null;
-  try {
-    return markSavedCopy({ payload: validateRevenueBreakdown(cached.data), stale: false, refreshError: null }, cached.fetchedAt);
-  } catch (error) {
-    return logFailure("revenue-breakdown.client", "Validate cached revenue breakdown failed", null)(error);
-  }
-}
-
-export async function loadRevenueBreakdown(
-  symbol: string,
-  view: RevenueBreakdownView,
-  pro: boolean,
-  force = false,
-  listing?: IssuerListingParams,
-): Promise<RevenueResource> {
-  const result = await revenueBreakdownCache.load(
-    cacheKey(symbol, view, pro, listing),
-    () => fetchRevenueBreakdown(symbol, view, apiClient, listing),
-    { force },
-  );
-  // A company that stopped reporting a breakdown must not keep showing an old one.
-  if (result.error instanceof Error && result.error.message === NO_BREAKDOWN) throw result.error;
-  const resource = {
-    payload: validateRevenueBreakdown(result.data),
-    stale: result.stale,
-    refreshError: result.refreshError ?? null,
-  };
-  return result.stale ? markSavedCopy(resource, result.fetchedAt) : resource;
-}
+export const revenueBreakdownCache = revenueEndpoint.cache;
+export const fetchRevenueBreakdown = (symbol: string, view: RevenueBreakdownView, client: Pick<typeof apiClient, "getCloudRevenueBreakdown"> = apiClient, listing?: IssuerListingParams) =>
+  revenueEndpoint.fetch({ symbol, view, listing }, { client });
+export const cachedRevenueBreakdown = (symbol: string, view: RevenueBreakdownView, pro: boolean, listing?: IssuerListingParams): RevenueResource | null =>
+  revenueEndpoint.cached({ symbol, view, pro, listing });
+export const loadRevenueBreakdown = (symbol: string, view: RevenueBreakdownView, pro: boolean, force = false, listing?: IssuerListingParams): Promise<RevenueResource> =>
+  revenueEndpoint.load({ symbol, view, pro, listing }, { force });

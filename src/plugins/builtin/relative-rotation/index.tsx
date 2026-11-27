@@ -82,10 +82,5 @@ export const relativeRotationModule: PluginModule = {
       placement: "floating" as const,
     }),
   }],
-  setup(ctx) {
-    rotationCache.attach(ctx.persistence);
-  },
-  dispose() {
-    rotationCache.reset();
-  },
+  caches: [rotationCache],
 };

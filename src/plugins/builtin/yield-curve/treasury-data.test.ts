@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { curveAsOf, spreadBasisPoints, isInverted, type YieldPoint } from "./treasury-data";
+import { curveAsOf, spreadBasisPoints, type YieldPoint } from "./treasury-data";
 
 function point(maturity: string, years: number, value: number | null, asOf?: string | null): YieldPoint {
   return { maturity, maturityYears: years, yield: value, asOf };
@@ -29,7 +29,6 @@ test("curve spreads require same-date yields and preserve basis-point units", ()
   const same = [point("2Y", 2, 4.39, "2026-09-08"), point("10Y", 10, 4.80, "2026-09-08")];
   expect(curveAsOf(same)).toBe("2026-09-08");
   expect(spreadBasisPoints(same)).toBe(41);
-  expect(isInverted(same)).toBe(false);
   expect(spreadBasisPoints([same[0]!, { ...same[1]!, asOf: "2026-09-09" }])).toBeNull();
-  expect(isInverted([same[0]!, { ...same[1]!, yield: null }])).toBeNull();
+  expect(spreadBasisPoints([same[0]!, { ...same[1]!, yield: null }])).toBeNull();
 });

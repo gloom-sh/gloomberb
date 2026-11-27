@@ -2,12 +2,11 @@ import { useCallback, useImperativeHandle, useRef, type Ref } from "react";
 import { useRemoteUiNode } from "../../remote/semantic-tree";
 import { useThemeColors } from "../../theme/theme-context";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../ui";
-import { type PromptContext, useDialog } from "../../ui/dialog";
-import { ChoiceDialog } from "./choice-dialog";
+import { useDialog } from "../../ui/dialog";
+import { choiceDialog } from "./choice-dialog";
 import { SelectField, openSelectField, type SelectFieldHandle } from "./select-field";
 import { Button } from "./button";
 import { WEB_CELL_WIDTH } from "../../theme/font-scale";
-import { logFailure } from "../../utils/log-failure";
 
 /** A form field's label on the desktop: bold, as TextField draws it. */
 const FORM_LABEL_STYLE = { fontWeight: "var(--gloom-weight-bold)" } as const;
@@ -123,70 +122,48 @@ export function SelectButton<T extends string = string>({
       openSelectField(selectFieldRef.current);
       return;
     }
-    void dialog.prompt<string>({
-      closeOnClickOutside: true,
-      content: (context: PromptContext<string>) => (
-        <ChoiceDialog
-          {...context}
-          title={title ?? label}
-          selectedChoiceId={value}
-          choices={options.map((option) => ({
-            id: option.value,
-            label: option.label,
-            group: option.group,
-            description: option.description,
-            disabled: option.disabled,
-            color: option.color,
-          }))}
-        />
-      ),
-    }).then((next) => selectValueRef.current(next)).catch(logFailure("ui.select-button", "Choose select option failed"));
+    void choiceDialog(dialog, {
+      title: title ?? label,
+      selectedChoiceId: value,
+      choices: options.map((option) => ({
+        id: option.value,
+        label: option.label,
+        group: option.group,
+        description: option.description,
+        disabled: option.disabled,
+        color: option.color,
+      })),
+      logSource: "ui.select-button",
+      logMessage: "Choose select option failed",
+    }).then((next) => selectValueRef.current(next));
   }, [dialog, disabled, isDesktopWeb, label, onFocus, options, title, value]);
 
   useImperativeHandle(controlRef, () => ({ open: openDialog }), [openDialog]);
 
   // The pane gives the width in cells, as it does the terminal's.
   const fieldWidthPx = width === undefined ? undefined : width * WEB_CELL_WIDTH;
-  if (isDesktopWeb && variant === "form") {
+  if (isDesktopWeb) {
+    const isForm = variant === "form";
     return (
-      <Box flexDirection="column" gap={1} id={idPrefix ? `${idPrefix}:select` : undefined}>
-        {showLabel && (
+      <Box
+        flexDirection={isForm ? "column" : "row"}
+        alignItems={isForm ? undefined : "center"}
+        gap={1}
+        id={idPrefix ? `${idPrefix}:select` : undefined}
+      >
+        {showLabel && (isForm ? (
           <Box height={1}>
             <Text fg={emphasized ? colors.textBright : colors.textDim} style={FORM_LABEL_STYLE}>{label}</Text>
           </Box>
-        )}
+        ) : <Text fg={colors.textMuted}>{label}</Text>)}
         <SelectField
           label={label}
-          variant="field"
+          variant={isForm ? "field" : variant}
           width={fieldWidthPx}
           selectRef={(element) => { selectFieldRef.current = element; }}
           onFocus={onFocus}
           value={value}
           options={options.map((option) => ({ value: option.value, label: option.label, group: option.group, disabled: option.disabled }))}
-          disabled={disabled}
-          onChange={selectValue}
-        />
-      </Box>
-    );
-  }
-
-  if (isDesktopWeb) {
-    return (
-      <Box flexDirection="row" alignItems="center" gap={1} id={idPrefix ? `${idPrefix}:select` : undefined}>
-        {showLabel && <Text fg={colors.textMuted}>{label}</Text>}
-        <SelectField
-          label={label}
-          variant={variant === "form" ? "field" : variant}
-          width={fieldWidthPx}
-          selectRef={(element) => { selectFieldRef.current = element; }}
-          onFocus={onFocus}
-          value={value}
-          options={options.map((option) => ({
-            value: option.value,
-            label: option.label,
-            group: option.group,
-            disabled: option.disabled,
-          }))}
           disabled={disabled}
           onChange={selectValue}
         />

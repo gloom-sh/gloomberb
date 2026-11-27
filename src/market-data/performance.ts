@@ -177,15 +177,6 @@ function horizonBaseDay(day: string, horizon: PriceReturnHorizon): string {
     : calendarMonthsBefore(new Date(`${day}T00:00:00Z`), horizon.amount * (horizon.unit === "year" ? 12 : 1)).toISOString().slice(0, 10);
 }
 
-/** `venue` is the listing's exchange, whose clock dates its bars and quote (barSessionDay). */
-export function computePriceReturnForHorizon(
-  points: readonly PricePoint[],
-  horizon: PriceReturnHorizon,
-  venue?: string,
-): number | null {
-  return buildPriceReturnFields(points, venue, [horizon])[0]?.value ?? null;
-}
-
 const DAY_MS = 86_400_000;
 
 /**

@@ -22,6 +22,7 @@ import { openConfirmModal } from "../../../components/form-modal";
 import { useAppGetState } from "../../../state/app/context";
 import type { BrokerProfileAction } from "../../../types/broker";
 import { useDialog } from "../../../ui/dialog";
+import { errorMessage } from "../../../utils/errors";
 import { t, tf } from "../../../i18n";
 import { usePluginAppActions, usePluginBrokerActions } from "../../runtime";
 import { enableBrokerProfile } from "../shared/broker-reconnect";
@@ -65,10 +66,6 @@ export interface BrokerRowActivity {
   /** The action running on the profile: "Syncing…". */
   busy?: string | null;
   note?: BrokerRowNote | null;
-}
-
-function errorText(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
 }
 
 export function useBrokerManagerActions({
@@ -187,7 +184,7 @@ export function useBrokerManagerActions({
       setEditDraft(null);
       saved = true;
     } catch (error) {
-      setEditError(errorText(error, t("Failed to save broker profile.")));
+      setEditError(errorMessage(error, t("Failed to save broker profile.")));
     } finally {
       if (!saved) setBusy(null);
     }
@@ -201,7 +198,7 @@ export function useBrokerManagerActions({
         await syncBrokerInstance(id);
         refreshStatuses();
       } catch (error) {
-        setRowNote(id, { tone: "error", status: t("Sync failed"), text: errorText(error, tf("Failed to sync {label}.", { label })) });
+        setRowNote(id, { tone: "error", status: t("Sync failed"), text: errorMessage(error, tf("Failed to sync {label}.", { label })) });
       }
     }
     setBusy(null);
@@ -232,7 +229,7 @@ export function useBrokerManagerActions({
           setRowNote(id, {
             tone: "error",
             status: t("Sign-in failed"),
-            text: errorText(error, tf("{broker} was not connected.", { broker: broker.name })),
+            text: errorMessage(error, tf("{broker} was not connected.", { broker: broker.name })),
           });
           return;
         }
@@ -249,7 +246,7 @@ export function useBrokerManagerActions({
         try {
           await syncBrokerInstance(id);
         } catch (error) {
-          setRowNote(id, { tone: "error", status: t("Sync failed"), text: errorText(error, tf("Failed to sync {label}.", { label })) });
+          setRowNote(id, { tone: "error", status: t("Sync failed"), text: errorMessage(error, tf("Failed to sync {label}.", { label })) });
         }
         refreshStatuses();
       } finally {
@@ -263,7 +260,7 @@ export function useBrokerManagerActions({
       await connectBrokerInstance(id);
       refreshStatuses();
     } catch (error) {
-      setRowNote(id, { tone: "error", status: t("Connect failed"), text: errorText(error, tf("Failed to test {label}.", { label })) });
+      setRowNote(id, { tone: "error", status: t("Connect failed"), text: errorMessage(error, tf("Failed to test {label}.", { label })) });
     } finally {
       setBusy(null);
     }
@@ -300,7 +297,7 @@ export function useBrokerManagerActions({
       await syncBrokerInstance(id);
       refreshStatuses();
     } catch (error) {
-      setRowNote(id, { tone: "error", status: t("Sync failed"), text: errorText(error, tf("Failed to sync {label}.", { label })) });
+      setRowNote(id, { tone: "error", status: t("Sync failed"), text: errorMessage(error, tf("Failed to sync {label}.", { label })) });
     } finally {
       setBusy(null);
     }
@@ -332,7 +329,7 @@ export function useBrokerManagerActions({
     // A removal that failed is said on the profile's row while it has one.
     // Once the row is gone, only a toast can say it.
     const listed = () => getState().config.brokerInstances.some((entry) => entry.id === id);
-    const failureText = (error: unknown) => errorText(error, tf("Failed to remove {label}.", { label }));
+    const failureText = (error: unknown) => errorMessage(error, tf("Failed to remove {label}.", { label }));
     const toastIfGone = (error: unknown) => {
       if (!listed()) notify({ body: failureText(error), type: "error" });
     };

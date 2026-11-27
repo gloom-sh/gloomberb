@@ -98,6 +98,21 @@ interface RowCellWidths {
   widths: (number | null)[];
 }
 
+function frozenColumnInset(
+  column: DataTableColumn,
+  columnIndex: number,
+  clip: DataTableColumnClip | null,
+  columnStart: number,
+  firstColumnWidth: number,
+  columnGap: number,
+  frozenColumnOffset: number | undefined,
+): number {
+  if (clip) return clip.inset;
+  return columnIndex > 0 && frozenColumnOffset !== undefined
+    ? Math.min(column.width, Math.max(0, frozenColumnOffset + firstColumnWidth + columnGap - columnStart))
+    : 0;
+}
+
 function OpenTuiDataTableRowInner<
   T,
   C extends DataTableColumn,
@@ -250,11 +265,9 @@ function OpenTuiDataTableRowInner<
   // The cells of a column hidden under the frozen first one, as the table scrolls sideways.
   const insetOf = (columnIndex: number) => {
     const column = displayColumns[columnIndex];
-    if (!column) return 0;
-    const clip = columnClips?.[columnIndex] ?? null;
-    if (clip) return clip.inset;
-    return columnIndex > 0 && frozenColumnOffset !== undefined
-      ? Math.min(column.width, Math.max(0, frozenColumnOffset + (displayColumns[0]?.width ?? 0) + columnGap - (columnStarts[columnIndex] ?? 0))) : 0;
+    return column
+      ? frozenColumnInset(column, columnIndex, columnClips?.[columnIndex] ?? null, columnStarts[columnIndex] ?? 0, displayColumns[0]?.width ?? 0, columnGap, frozenColumnOffset)
+      : 0;
   };
   // A cut name reads on into the blank of the figure after it in its row (tableCellSpill), between two columns
   // that both show whole: the frozen column, and one the viewport or the frozen column cuts, keep their cells.
@@ -270,6 +283,22 @@ function OpenTuiDataTableRowInner<
     return cells > 0 ? Math.max(0, cells + 1 - columnGap) : 0;
   };
 
+  const handlePress = (event: any, stopBubble: boolean, cellMouseDown?: (event: any) => void) => {
+    focusPane();
+    onTableMouseDown?.(event);
+    if (cellMouseDown) {
+      cellMouseDown(event);
+      return;
+    }
+    if (onRowMouseDown?.(item, index, event) === true) {
+      if (stopBubble) event.stopPropagation?.();
+      return;
+    }
+    event.preventDefault();
+    if (stopBubble) event.stopPropagation?.();
+    handleRowMouseDown(itemKey, { item, index }, event);
+  };
+
   return (
     <Box
       flexDirection="row"
@@ -279,13 +308,7 @@ function OpenTuiDataTableRowInner<
       backgroundColor={rowBg}
       hoverBackgroundColor={rowHoverBg}
       data-gloom-context-menu-surface={rowContextMenuSurface ? "true" : undefined}
-      onMouseDown={(event: any) => {
-        focusPane();
-        onTableMouseDown?.(event);
-        if (onRowMouseDown?.(item, index, event) === true) return;
-        event.preventDefault();
-        handleRowMouseDown(itemKey, { item, index }, event);
-      }}
+      onMouseDown={(event: any) => handlePress(event, false)}
       onContextMenu={(event: any) => {
         focusPane();
         onRowContextMenu?.(item, index, event);
@@ -324,21 +347,7 @@ function OpenTuiDataTableRowInner<
             left={frozen ? frozenColumnOffset : undefined}
             zIndex={frozen ? 1 : undefined}
             backgroundColor={cell.backgroundColor ?? rowBg}
-            onMouseDown={(event: any) => {
-              focusPane();
-              onTableMouseDown?.(event);
-              if (cell.onMouseDown) {
-                cell.onMouseDown(event);
-                return;
-              }
-              if (onRowMouseDown?.(item, index, event) === true) {
-                event.stopPropagation?.();
-                return;
-              }
-              event.preventDefault();
-              event.stopPropagation?.();
-              handleRowMouseDown(itemKey, { item, index }, event);
-            }}
+            onMouseDown={(event: any) => handlePress(event, true, cell.onMouseDown)}
           >
             {cell.content !== undefined && !contentCut ? (frozenColumnOffset === undefined && !clip ? cell.content : (
               <>
@@ -941,8 +950,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
             const dragged = columnDrag?.from === columnIndex;
             const columnStart = columnStarts[columnIndex] ?? 0;
             const clip = columnClips?.[columnIndex] ?? null;
-            const inset = clip ? clip.inset : freezeFirstColumn && !frozen
-              ? Math.min(column.width, Math.max(0, frozenColumnOffset + (displayColumns[0]?.width ?? 0) + columnGap - columnStart)) : 0;
+            const inset = frozenColumnInset(column, columnIndex, clip, columnStart, displayColumns[0]?.width ?? 0, columnGap, freezeFirstColumn ? frozenColumnOffset : undefined);
             const shownWidth = clip ? clip.width : column.width - inset;
             const isSorted = sortColumnId === column.id;
             const marker = sortDirection === "asc" ? "▲" : "▼";

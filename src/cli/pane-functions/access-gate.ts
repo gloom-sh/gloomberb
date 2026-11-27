@@ -1,3 +1,5 @@
+import { joinEnglishList as listText } from "../../utils/format";
+
 /**
  * What keeps a pane from showing everything it has: a Pro lock on part of it,
  * or a wall that needs an account. Reports and screenshots name it, so a
@@ -20,11 +22,6 @@ function errorMessages(errors: unknown): string[] {
 
 /** Where a free account gets Gloom Pro, as every report's Pro line ends. */
 const PRO_UPGRADE_POINTER = "gloom.sh/cloud";
-
-/** `a`, `a and b`, `a, b and c`. */
-function listText(items: readonly string[]): string {
-  return items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
-}
 
 /**
  * What a report's free view holds back, said once: the Pro lines its pane

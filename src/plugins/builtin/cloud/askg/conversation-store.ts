@@ -2,9 +2,9 @@ import type {
   ASKGConversationSummary,
   ASKGTransport,
 } from "../../../../api-client/askg";
-import { readStoredPaneSidebarWidth } from "../../../../components/layout/pane/sidebar-metrics";
 import type { PluginPersistence } from "../../../../types/plugin";
 import { logFailure } from "../../../../utils/log-failure";
+import { SidebarWidthSnapshotStore } from "../../shared/snapshot-store";
 
 const WIDTH_STATE_KEY = "askg-sidebar-width";
 
@@ -26,8 +26,6 @@ const EMPTY: ASKGConversationListSnapshot = {
   width: null,
 };
 
-type Listener = () => void;
-
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : "Conversations unavailable.";
 }
@@ -41,30 +39,18 @@ function describeError(error: unknown): string {
  * is loaded on open and handed straight to the controller, which owns the one
  * conversation being read.
  */
-export class ASKGConversationListStore {
-  private snapshot = EMPTY;
-  private readonly listeners = new Set<Listener>();
-  private persistence: PluginPersistence | null = null;
+export class ASKGConversationListStore extends SidebarWidthSnapshotStore<ASKGConversationListSnapshot> {
   private transport: ASKGTransport | null = null;
   private inFlight: Promise<void> | null = null;
   private openConversationId: string | null = null;
 
-  getSnapshot(): ASKGConversationListSnapshot {
-    return this.snapshot;
-  }
-
-  subscribe(listener: Listener): () => void {
-    this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
+  constructor() {
+    super(EMPTY, WIDTH_STATE_KEY);
   }
 
   attach(persistence: PluginPersistence): void {
     this.persistence = persistence;
-    this.update({
-      width: readStoredPaneSidebarWidth(persistence.getState(WIDTH_STATE_KEY)),
-    });
+    this.update({ width: this.readPersistedWidth(persistence) });
   }
 
   /** The pane installs its transport, so the store never reaches for a global. */
@@ -179,18 +165,6 @@ export class ASKGConversationListStore {
     });
   }
 
-  /** Live drag feedback: updates every frame without touching persistence. */
-  setWidth(width: number): void {
-    if (this.snapshot.width === width) return;
-    this.update({ width });
-  }
-
-  /** Called once a drag settles, so a resize survives a restart. */
-  commitWidth(width: number): void {
-    this.setWidth(width);
-    this.persistence?.setState(WIDTH_STATE_KEY, width);
-  }
-
   /**
    * The conversation an Ask Gloom pane last showed. Closing the pane (Esc Esc
    * is two keys) must not lose the answer on screen, so the next pane this
@@ -234,11 +208,6 @@ export class ASKGConversationListStore {
         (conversation) => conversation.id !== id,
       ),
     });
-  }
-
-  private update(patch: Partial<ASKGConversationListSnapshot>): void {
-    this.snapshot = { ...this.snapshot, ...patch };
-    for (const listener of this.listeners) listener();
   }
 }
 

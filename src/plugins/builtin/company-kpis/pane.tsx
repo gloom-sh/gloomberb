@@ -1,14 +1,13 @@
 import { formatDay } from "../../../utils/day-format";
 import { useCallback, useMemo, useRef } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
-import { usePlanAccess } from "../../../api-client/plan-access";
 import type { KpiObservation } from "../../../api-client/company-kpis";
 import { listingAbroad } from "../../../api-client/paths";
 import { ChartTableHeader, DataTableStackView, DetailScrollBody, EmptyState, KeyValueRow, Notice, PaneStatusBody, QueryBar, SectionHeading,
   useChartTableSelection, usePaneMenuItems, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type PaneHint } from "../../../components";
 import { useCompanyDataFooter } from "../../../components/layout/pane/status-footer";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
-import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
+import { usePaneResource } from "../shared/pane-resource";
+import { usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { useThemeColors } from "../../../theme/theme-context";
 import { quoteBlockStyle } from "../../../components/ui/quote";
@@ -93,14 +92,13 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
   const { createPaneFromTemplate } = usePluginAppActions();
   const openDescription = useOpenDescription();
   const session = useResearchCloudSession();
-  const access = usePlanAccess();
-  const accessKey = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
+  const { accessKey } = session;
   const openUpgrade = useCloudUpgradeAction(mode === "kpis" ? "kpis" : "guide");
   const [snapshotSetting] = usePaneSettingValue<CompanyDataset | null>("companySnapshot", null);
   const snapshot = useMemo(() => { try { return snapshotSetting ? validateCompanyData(snapshotSetting) : null; } catch (error) { return logFailure("company-kpis.pane", "Validate company disclosures snapshot failed", null)(error); } }, [snapshotSetting]);
   const loader = useCallback((force: boolean) => snapshot ? Promise.resolve({ payload: snapshot, stale: false, refreshError: null })
     : loadCompanyData(mode, symbol!, accessKey, force, { exchange, name }), [mode, symbol, exchange, name, accessKey, snapshot]);
-  const resource = useAsyncResource(symbol ? loader : null, { initialData: () => symbol ? cachedCompanyData(mode, symbol, accessKey, { exchange, name }) : null, clearOnError: isAccessDenied });
+  const resource = usePaneResource(symbol ? loader : null, { focused, initialData: () => symbol ? cachedCompanyData(mode, symbol, accessKey, { exchange, name }) : null, clearOnError: isAccessDenied });
   const data = resource.data?.payload;
   const kpis = data && "series" in data ? data : null;
   const guidance = data && "guidance" in data ? data : null;
@@ -196,8 +194,6 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
     ...(twCode ? [{ value: "monthly", label: "Monthly Sales" }] : twUsTicker ? [{ value: "monthly", label: "TW Supply Chain" }] : []),
     { value: "evidence", label: "Evidence" }], activeValue: tab,
     onSelect: (value) => { setTab(value); setOpen(null); }, focused, dense: true } : null);
-  useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => resource.reload(), { focused });
   useCompanyEvidence(data ?? null, mode, tab, rows.map((row) => row.id));
   const hints: PaneHint[] = [
     ...(activeRow ? [{ id: "evidence", key: "e", label: "vidence", onPress: () => setOpen(activeRow.id) },

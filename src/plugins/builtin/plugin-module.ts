@@ -3,9 +3,16 @@ import type {
   GloomPlugin,
   GloomPluginContext,
   PaneDef,
+  PluginPersistence,
 } from "../../types/plugin";
 import { pluginContextInNamespace } from "../registry/plugin-state";
 import { withPluginStateNamespace } from "../runtime/context";
+
+/** Any disk-backed plugin cache that attaches in `setup` and clears in `dispose`. */
+interface AttachableCache {
+  attach(persistence: PluginPersistence): void;
+  reset(): void;
+}
 
 type PluginMetadataKey =
   | "id"
@@ -22,7 +29,10 @@ type PluginMetadataKey =
 type PluginMetadata = Pick<GloomPlugin, PluginMetadataKey>;
 
 // Brokers and declared hosts belong to external plugins; no built-in module contributes them.
-export type PluginModule = Omit<GloomPlugin, PluginMetadataKey | "broker" | "hosts">;
+export type PluginModule = Omit<GloomPlugin, PluginMetadataKey | "broker" | "hosts"> & {
+  /** Plugin caches attached to `ctx.persistence` on setup and reset on dispose. */
+  caches?: readonly AttachableCache[];
+};
 
 /** A module with a say in how it is composed. A bare module takes the defaults. */
 interface PluginModuleEntry {
@@ -41,6 +51,7 @@ interface PluginModuleEntry {
 type PluginModuleInput = PluginModule | PluginModuleEntry;
 
 const HANDLED_MODULE_KEYS = [
+  "caches",
   "cliCommands",
   "setup",
   "dispose",
@@ -93,10 +104,11 @@ function moduleInNamespace(module: PluginModule, stateId: string): PluginModule 
       panes: module.panes.map((pane) => paneInNamespace(pane, stateId)),
     } : {}),
     ...(slots ? { slots } : {}),
-    ...(module.setup ? {
+    ...(module.setup || module.caches?.length ? {
       setup: (ctx: GloomPluginContext) => {
         const scoped = pluginContextInNamespace(ctx, stateId);
-        return module.setup!({
+        for (const cache of module.caches ?? []) cache.attach(scoped.persistence);
+        return module.setup?.({
           ...scoped,
           registerPane: (pane) => ctx.registerPane(paneInNamespace(pane, stateId)),
           registerTickerResearchTab: (tab) => ctx.registerTickerResearchTab({
@@ -104,6 +116,12 @@ function moduleInNamespace(module: PluginModule, stateId: string): PluginModule 
             component: withPluginStateNamespace(stateId, tab.component),
           }),
         });
+      },
+      // Already attached inside the scoped setup above; keep caches cleared on dispose via module.dispose.
+      caches: undefined,
+      dispose: () => {
+        module.dispose?.();
+        for (const cache of module.caches ?? []) cache.reset();
       },
     } : {}),
   };
@@ -175,6 +193,7 @@ export function composeBuiltinPlugin(options: CompositePluginOptions): GloomPlug
       for (const module of modules) {
         startedModules.push(module);
         try {
+          for (const cache of module.caches ?? []) cache.attach(ctx.persistence);
           // Only an async setup is waited for. Awaiting a synchronous one hands
           // the tick to the panes first: Gloom Cloud restores the saved session
           // in its second module, and the panes' first requests went out without it.
@@ -192,6 +211,7 @@ export function composeBuiltinPlugin(options: CompositePluginOptions): GloomPlug
       for (const module of startedModules.reverse()) {
         try {
           module.dispose?.();
+          for (const cache of module.caches ?? []) cache.reset();
         } catch (error) {
           firstError ??= error;
         }

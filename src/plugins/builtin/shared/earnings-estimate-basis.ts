@@ -47,25 +47,3 @@ export function coherentEarningsValue(event: EarningsEvent, field: EarningsEstim
   if (MONETARY_COMPARISONS.has(field) && (basis?.currency ?? null) !== (averageBasis?.currency ?? null)) return null;
   return value;
 }
-
-export function earningsEpsChange30d(event: EarningsEvent): number | null {
-  const current = finiteValue(event, "epsEstimate");
-  const prior = finiteValue(event, "epsTrend30dAgo");
-  const currentBasis = event.estimateBasis?.epsEstimate;
-  const priorBasis = event.estimateBasis?.epsTrend30dAgo;
-  if (current == null || prior == null || !sameEarningsForecast(currentBasis, priorBasis)
-    || !currentBasis?.period || !currentBasis.periodEndDate
-    || !currentBasis.currency || !/^[A-Z]{3}$/.test(currentBasis.currency) || currentBasis.currency === "XXX"
-    || currentBasis.currency !== priorBasis?.currency) return null;
-  return current - prior;
-}
-
-/** A single fiscal-end column must not assign one field's period to other available estimates. */
-export function earningsForecastPeriod(event: EarningsEvent): { period: string; periodEndDate: string } | null {
-  const bases = EARNINGS_ESTIMATE_FIELDS
-    .filter(field => coherentEarningsValue(event, field) != null)
-    .map(field => event.estimateBasis?.[field]);
-  const first = bases[0];
-  if (!first?.period || !first.periodEndDate || bases.some(basis => !sameEarningsForecast(first, basis))) return null;
-  return { period: first.period, periodEndDate: first.periodEndDate };
-}

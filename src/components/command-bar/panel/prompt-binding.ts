@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { createListenerSet } from "../../../utils/listeners";
 import type { DialogKeyHint } from "../../ui/frame";
 
 /**
@@ -23,7 +24,7 @@ export interface CommandBarPromptBinding {
 }
 
 let binding: CommandBarPromptBinding | null = null;
-const listeners = new Set<() => void>();
+const listeners = createListenerSet();
 
 function sameBinding(a: CommandBarPromptBinding | null, b: CommandBarPromptBinding | null): boolean {
   if (a === b) return true;
@@ -39,14 +40,7 @@ function sameBinding(a: CommandBarPromptBinding | null, b: CommandBarPromptBindi
 export function publishCommandBarPrompt(next: CommandBarPromptBinding | null): void {
   if (sameBinding(binding, next)) return;
   binding = next;
-  for (const listener of listeners) listener();
-}
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
+  listeners.notify();
 }
 
 function getSnapshot(): CommandBarPromptBinding | null {
@@ -54,5 +48,5 @@ function getSnapshot(): CommandBarPromptBinding | null {
 }
 
 export function useCommandBarPromptBinding(): CommandBarPromptBinding | null {
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  return useSyncExternalStore(listeners.subscribe, getSnapshot, getSnapshot);
 }

@@ -1,20 +1,6 @@
 import type { ChatAttachmentUpload } from "../../../../api-client";
+import { expandHomePath, loadNodeFileModules } from "../../../../utils/node-file-read";
 import { MAX_CHAT_IMAGE_BYTES, sniffChatImageType } from "./model";
-
-type NodeFs = typeof import("fs/promises");
-
-/** Loaded at run time, so the web and desktop view bundles never pull in Node modules. */
-async function nodeModules(): Promise<{ fs: NodeFs; homedir: () => string; basename: (path: string) => string }> {
-  const fsModulePath = "fs/promises";
-  const osModulePath = "os";
-  const pathModulePath = "path";
-  const [fs, os, path] = await Promise.all([
-    import(fsModulePath) as Promise<NodeFs>,
-    import(osModulePath) as Promise<typeof import("os")>,
-    import(pathModulePath) as Promise<typeof import("path")>,
-  ]);
-  return { fs, homedir: os.homedir, basename: path.basename };
-}
 
 /**
  * Reads image files the terminal composer was handed as paths. A path that
@@ -22,10 +8,10 @@ async function nodeModules(): Promise<{ fs: NodeFs; homedir: () => string; basen
  * large or not an image is still returned, for the upload checks to report.
  */
 export async function readChatImageFiles(paths: string[]): Promise<ChatAttachmentUpload[]> {
-  const { fs, homedir, basename } = await nodeModules();
+  const { fs, homedir, basename } = await loadNodeFileModules();
   const uploads: ChatAttachmentUpload[] = [];
   for (const rawPath of paths) {
-    const path = rawPath.startsWith("~/") ? `${homedir()}${rawPath.slice(1)}` : rawPath;
+    const path = expandHomePath(rawPath, homedir);
     try {
       const stat = await fs.stat(path);
       if (!stat.isFile()) continue;

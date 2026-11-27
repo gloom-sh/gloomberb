@@ -1,14 +1,14 @@
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { usePaneFooter, type PaneHint } from "../components/layout/pane/footer";
-import { ChoiceDialog } from "../components/ui/choice-dialog";
+import { choiceDialog } from "../components/ui/choice-dialog";
 import { confirmDialog } from "../components/ui/confirm-dialog";
-import { TextPromptDialog } from "../components/ui/text-prompt-dialog";
+import { textPromptDialog } from "../components/ui/text-prompt-dialog";
 import { buildLayoutNameWorkflowRoute } from "../components/command-bar/workflow/builtin";
 import { openFormModal } from "../components/form-modal";
 import { useShortcut } from "../react/input";
 import { isPlainKey } from "../utils/keyboard";
 import { useAppDispatch, useAppSelector } from "../state/app/context";
-import { useDialog, useDialogState, type PromptContext } from "../ui/dialog";
+import { useDialog, useDialogState } from "../ui/dialog";
 import { useRendererHost, useUiCapabilities } from "../ui";
 import { apiClient, type TeamSummary } from "../api-client";
 import { requestAuthDialog } from "../account/auth-dialog";
@@ -38,7 +38,6 @@ import {
   publishableMarketplaceLayout,
 } from "../shares/portable-layout";
 import { useLayoutMarketplace, useTeamLayouts } from "./use-marketplace";
-import { logFailure } from "../utils/log-failure";
 
 export interface LayoutGalleryController {
   query: string;
@@ -187,20 +186,17 @@ export function LayoutMarketplaceGallery({
     confirmLabel: string;
     initialValue?: string;
   }) => {
-    const name = await dialog.prompt<string>({
+    const name = await textPromptDialog(dialog, {
       closeOnClickOutside: true,
-      content: (context) => (
-        <TextPromptDialog
-          {...context}
-          title={options.title}
-          label={options.label}
-          placeholder="e.g. Trading, Research, Overview"
-          confirmLabel={options.confirmLabel}
-          initialValue={options.initialValue}
-          width={40}
-        />
-      ),
-    }).catch(logFailure("layout-marketplace.gallery", "Open layout name prompt failed"));
+      title: options.title,
+      label: options.label,
+      placeholder: "e.g. Trading, Research, Overview",
+      confirmLabel: options.confirmLabel,
+      initialValue: options.initialValue,
+      width: 40,
+      logSource: "layout-marketplace.gallery",
+      logMessage: "Open layout name prompt failed",
+    });
     return typeof name === "string" ? name.trim() : "";
   }, [dialog]);
 
@@ -261,17 +257,13 @@ export function LayoutMarketplaceGallery({
     }
     if (teams.length === 1) return teams[0]!;
     const defaultId = teamStore.getDefaultTeamId();
-    const id = await dialog.prompt<string>({
-      closeOnClickOutside: true,
-      content: (context: unknown) => (
-        <ChoiceDialog
-          {...(context as PromptContext<string>)}
-          title="Publish to which team?"
-          choices={teams.map((team) => ({ id: team.id, label: `${team.shortName}· ${team.name}` }))}
-          selectedChoiceId={defaultId ?? undefined}
-        />
-      ),
-    }).catch(logFailure("layout-marketplace.gallery", "Open team choice failed"));
+    const id = await choiceDialog(dialog, {
+      title: "Publish to which team?",
+      choices: teams.map((team) => ({ id: team.id, label: `${team.shortName}· ${team.name}` })),
+      selectedChoiceId: defaultId ?? undefined,
+      logSource: "layout-marketplace.gallery",
+      logMessage: "Open team choice failed",
+    });
     return teams.find((team) => team.id === id) ?? null;
   }, [dialog, pluginRegistry, teams]);
 
@@ -320,21 +312,18 @@ export function LayoutMarketplaceGallery({
   }, [dispatch, pluginRegistry, savedFor, teamLayouts]);
 
   const resolveConflict = useCallback(async (entry: GalleryEntry, remoteRevision: number): Promise<"copy" | "overwrite" | "discard" | null> => {
-    const choice = await dialog.prompt<string>({
+    const choice = await choiceDialog(dialog, {
       closeOnClickOutside: false,
-      content: (context: unknown) => (
-        <ChoiceDialog
-          {...(context as PromptContext<string>)}
-          title={`${entry.team?.name ?? "The team"} published r${remoteRevision} since you pulled`}
-          choices={[
-            { id: "copy", label: "Save mine as a personal copy, then pull", description: "Keeps both. Your version becomes an unlinked tab." },
-            { id: "overwrite", label: "Overwrite with mine", description: `Publishes your content as r${remoteRevision + 1}.` },
-            { id: "discard", label: "Discard mine and pull", description: "Your local changes are lost." },
-          ]}
-          selectedChoiceId="copy"
-        />
-      ),
-    }).catch(logFailure("layout-marketplace.gallery", "Open layout conflict choice failed"));
+      title: `${entry.team?.name ?? "The team"} published r${remoteRevision} since you pulled`,
+      choices: [
+        { id: "copy", label: "Save mine as a personal copy, then pull", description: "Keeps both. Your version becomes an unlinked tab." },
+        { id: "overwrite", label: "Overwrite with mine", description: `Publishes your content as r${remoteRevision + 1}.` },
+        { id: "discard", label: "Discard mine and pull", description: "Your local changes are lost." },
+      ],
+      selectedChoiceId: "copy",
+      logSource: "layout-marketplace.gallery",
+      logMessage: "Open layout conflict choice failed",
+    });
     return choice === "copy" || choice === "overwrite" || choice === "discard" ? choice : null;
   }, [dialog]);
 

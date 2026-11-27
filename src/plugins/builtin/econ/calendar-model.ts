@@ -812,10 +812,6 @@ export function pendingHighImpactPrints(events: readonly EconEvent[], now: numbe
   });
 }
 
-export function hasPendingHighImpactPrint(events: readonly EconEvent[], now: number): boolean {
-  return pendingHighImpactPrints(events, now).length > 0;
-}
-
 /** High-impact rows that were blank in `previous` and have an actual in `next`. */
 export function landedHighImpactPrints(
   previous: ReadonlyMap<string, string | null>,

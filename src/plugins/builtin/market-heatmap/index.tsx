@@ -4,12 +4,12 @@ import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { useAsyncResource } from "../../../react/async-resource";
 import { Box, useUiCapabilities } from "../../../ui";
 import {
-  findMetricTreemapNeighbor,
   formatHeatTileMove,
   HeatTreemapSurface,
   settleTreemapLayoutItems,
   useHeatTreemapScene,
 } from "../../../components/metric-treemap";
+import { useMetricTreemapNavigation } from "../../../components/metric-treemap/navigation";
 import {
   loadingText,
   PaneStatusBody,
@@ -20,12 +20,10 @@ import {
   usePaneHeaderTabs,
   usePaneNoticeFooter,
   usePaneStatusFooter,
-  type MetricTreemapDirection,
   type MetricTreemapItem,
   type PaneFooterSegment,
 } from "../../../components";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
-import { useShortcut } from "../../../react/input";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import type { GloomPlugin, PaneProps, PaneSettingField } from "../../../types/plugin";
 import type { TickerRecord } from "../../../types/ticker";
@@ -591,85 +589,31 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
     if (tile) setSelectedSymbol(tile.item.id);
   }, [visibleTiles]);
 
-  const selectNeighbor = useCallback((direction: MetricTreemapDirection) => {
-    const target = findMetricTreemapNeighbor(visibleTiles, activeSymbol, direction);
-    if (target) setSelectedSymbol(target.item.id);
-  }, [activeSymbol, visibleTiles]);
-
-  useShortcut((event) => {
-    if (!focused) return;
-    if (handleRefreshKey(event, refresh, { stopPropagation: true })) return;
-    if (isPlainKey(event, "1")) {
-      event.preventDefault();
-      event.stopPropagation();
-      selectUniverseAt(0);
-      return;
-    }
-    if (isPlainKey(event, "2")) {
-      event.preventDefault();
-      event.stopPropagation();
-      selectUniverseAt(1);
-      return;
-    }
-    if (isPlainKey(event, "3")) {
-      event.preventDefault();
-      event.stopPropagation();
-      selectUniverseAt(2);
-      return;
-    }
-    if (isPlainKey(event, "[")) {
-      event.preventDefault();
-      event.stopPropagation();
-      selectAdjacentUniverse(-1);
-      return;
-    }
-    if (isPlainKey(event, "]")) {
-      event.preventDefault();
-      event.stopPropagation();
-      selectAdjacentUniverse(1);
-      return;
-    }
-    if (isPlainKey(event, "j")) {
-      event.preventDefault();
-      event.stopPropagation();
-      selectIndex(Math.min((activeIdx >= 0 ? activeIdx : 0) + 1, visibleTiles.length - 1));
-      return;
-    }
-    if (isPlainKey(event, "k")) {
-      event.preventDefault();
-      event.stopPropagation();
-      selectIndex(Math.max((activeIdx >= 0 ? activeIdx : 0) - 1, 0));
-      return;
-    }
-    if (isPlainKey(event, "left", "h")) {
-      event.preventDefault();
-      event.stopPropagation();
-      selectNeighbor("left");
-      return;
-    }
-    if (isPlainKey(event, "right", "l")) {
-      event.preventDefault();
-      event.stopPropagation();
-      selectNeighbor("right");
-      return;
-    }
-    if (isPlainKey(event, "up")) {
-      event.preventDefault();
-      event.stopPropagation();
-      selectNeighbor("up");
-      return;
-    }
-    if (isPlainKey(event, "down")) {
-      event.preventDefault();
-      event.stopPropagation();
-      selectNeighbor("down");
-      return;
-    }
-    if (isPlainKey(event, "enter", "return") && selectedAsset) {
-      event.preventDefault();
-      event.stopPropagation();
-      openSymbol(selectedAsset.symbol);
-    }
+  useMetricTreemapNavigation({
+    focused,
+    tiles: visibleTiles,
+    itemCount: visibleTiles.length,
+    activeIndex: activeIdx,
+    activeId: activeSymbol,
+    selectIndex,
+    selectTile: (tile) => setSelectedSymbol(tile.item.id),
+    vimHorizontal: true,
+    onActivate: selectedAsset ? () => openSymbol(selectedAsset.symbol) : undefined,
+    onExtraKey: (event) => {
+      if (handleRefreshKey(event, refresh, { stopPropagation: true })) return true;
+      const run = (action: () => void) => {
+        event.preventDefault();
+        event.stopPropagation();
+        action();
+        return true;
+      };
+      if (isPlainKey(event, "1")) return run(() => selectUniverseAt(0));
+      if (isPlainKey(event, "2")) return run(() => selectUniverseAt(1));
+      if (isPlainKey(event, "3")) return run(() => selectUniverseAt(2));
+      if (isPlainKey(event, "[")) return run(() => selectAdjacentUniverse(-1));
+      if (isPlainKey(event, "]")) return run(() => selectAdjacentUniverse(1));
+      return false;
+    },
   });
 
   // Ages the last check that succeeded, not the snapshot, which the server can

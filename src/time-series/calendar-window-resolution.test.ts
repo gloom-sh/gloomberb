@@ -2,7 +2,7 @@ import { expect, setSystemTime, test } from "bun:test";
 import { createSnapshotDataProvider } from "../market-data/snapshot-provider";
 import { buildComparisonChartPreset } from "../plugins/builtin/chart-composer/presets";
 import { loadChartPaneModel } from "../plugins/builtin/chart-composer/headless";
-import { parseChartSpec, serializeChartSpec } from "../plugins/builtin/chart-composer/chart-spec";
+import { parseChartSpec } from "../plugins/builtin/chart-composer/chart-spec";
 import { createTestDataProvider } from "../test-support/data-provider";
 import type { HeadlessPaneContext } from "../types/headless";
 import { resolveChartSpecData } from "./resolve";
@@ -33,7 +33,7 @@ test("an open-ended comparison follows its last data date through serialization,
     for (const to of [undefined, "2026-11-16", "2026-11-17"]) {
       const spec = applyChartComposerCapabilityOptions(buildComparisonChartPreset(["QQQ:XNAS", "SPY:XNYS"]), "price-comparison",
         { from: "2026-07-01", ...(to ? { to } : {}) });
-      const reopened = parseChartSpec(serializeChartSpec(spec))!;
+      const reopened = parseChartSpec(JSON.stringify(spec))!;
       const model = await loadChartPaneModel(reopened, context(provider));
       expect(model.errors).toEqual([]);
       expect(model.chart.viewport?.end.toISOString().slice(0, 10)).toBe(to ?? "2026-11-16");
@@ -63,7 +63,7 @@ for (const start of ["2026-08-15", "2025-09-16", "2025-09-15"]) {
     });
     const spec = buildComparisonChartPreset(["AAA:XNAS", "BBB:XTSE"]);
     spec.viewport = { range: "1Y", resolution: "1d", dateWindow: { start, end: "2026-09-15" } };
-    const reopened = parseChartSpec(serializeChartSpec(spec))!;
+    const reopened = parseChartSpec(JSON.stringify(spec))!;
     expect(reopened.viewport.resolution).toBe("1d");
     const model = await loadChartPaneModel(reopened, context(provider));
     expect(model.chart.resolution).toBe("1d");

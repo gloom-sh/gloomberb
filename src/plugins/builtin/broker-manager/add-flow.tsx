@@ -37,6 +37,7 @@ import type { BrokerAdapter } from "../../../types/broker";
 import type { BrokerInstanceConfig } from "../../../types/config";
 import { Box, ScrollBox, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { useDialog } from "../../../ui/dialog";
+import { errorMessage } from "../../../utils/errors";
 import { isPlainKey } from "../../../utils/keyboard";
 import { usePluginAppActions, usePluginBrokerActions } from "../../runtime";
 import { BrokerProfileForm, profileFieldWidth, type BrokerEditKey } from "./detail";
@@ -74,10 +75,6 @@ export interface BrokerAddFlowState {
   step: BrokerAddStep;
   /** The row the cursor is on in the broker or method list. */
   cursor: number;
-}
-
-function errorText(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
 }
 
 let flowSequence = 0;
@@ -172,7 +169,7 @@ export function useBrokerAddFlow({
     } catch (error) {
       // The profile stays: its row says why it did not sync.
       land();
-      setRowNote(instanceId, { tone: "error", status: t("Sync failed"), text: errorText(error, tf("Failed to sync {label}.", { label })) });
+      setRowNote(instanceId, { tone: "error", status: t("Sync failed"), text: errorMessage(error, tf("Failed to sync {label}.", { label })) });
     } finally {
       setBusy(null);
     }
@@ -208,7 +205,7 @@ export function useBrokerAddFlow({
         instanceId = instance.id;
       } catch (error) {
         setBusy(null);
-        setMessage({ tone: "error", text: errorText(error, t("Failed to save broker profile.")) });
+        setMessage({ tone: "error", text: errorMessage(error, t("Failed to save broker profile.")) });
         return;
       }
       await syncNewProfile(current.id, instanceId, label);
@@ -264,7 +261,7 @@ export function useBrokerAddFlow({
           },
         });
       } catch (error) {
-        setMessage({ tone: "error", text: errorText(error, tf("{broker} was not connected.", { broker: broker.name })) });
+        setMessage({ tone: "error", text: errorMessage(error, tf("{broker} was not connected.", { broker: broker.name })) });
         if (onStep()) setStep(flowId, { kind: "broker" });
         return;
       }

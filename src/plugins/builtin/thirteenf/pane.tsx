@@ -4,7 +4,7 @@ import {
   DataTableStackView,
   DataTableView,
   EmptyState, PaneStatusBody, QueryBar, StatGrid, usePagedRows, usePaneFooter, usePaneNoticeFooter, usePaneTabs, useQueryBarSearch, useTableLoadMore, type DataTableKeyEvent,
-  type DataTableRootKeyContext, type PageRequest, type PaneFooterSegment, type PaneHint, type StatItem
+  type PageRequest, type PaneFooterSegment, type PaneHint, type StatItem
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue } from "../../../state/app/context";
@@ -20,8 +20,7 @@ import { isDetailBackNavigationKey } from "../../../utils/back-navigation";
 import { countEscapeTowardClose } from "../../../utils/double-escape-close";
 import { isPlainKey } from "../../../utils/keyboard";
 import { logFailure } from "../../../utils/log-failure";
-import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
-import { useSearchFocusUp } from "../../../components/input-search-bar";
+import { useSearchUpRootKeyDown } from "../../../components/input-search-bar";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { useAssetData, usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useMineTickers } from "../shared/mine-tickers";
@@ -251,30 +250,9 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
     ? "Loading 13F funds..."
     : error ?? warning ?? "No 13F funds found.";
 
-  const isSearchUp = useSearchFocusUp();
-  const handleRootKeyDown = useCallback((
-    event: DataTableKeyEvent,
-    context: DataTableRootKeyContext,
-  ) => {
-    if (context.selectedIndex <= 0 && isSearchUp(event)) {
-      stopSearchFocusNavigation(event);
-      focusSearch();
-      return true;
-    }
-    return handleRefreshKey(event, refresh, { stopPropagation: true });
-  }, [isSearchUp, focusSearch, refresh]);
-
-  const handleTickerRootKeyDown = useCallback((
-    event: DataTableKeyEvent,
-    context: DataTableRootKeyContext,
-  ) => {
-    if (context.selectedIndex <= 0 && isSearchUp(event)) {
-      stopSearchFocusNavigation(event);
-      focusSearch();
-      return true;
-    }
-    return false;
-  }, [isSearchUp, focusSearch]);
+  const handleRefreshRootKey = useCallback((event: DataTableKeyEvent) => handleRefreshKey(event, refresh, { stopPropagation: true }), [refresh]);
+  const handleRootKeyDown = useSearchUpRootKeyDown(focusSearch, handleRefreshRootKey);
+  const handleTickerRootKeyDown = useSearchUpRootKeyDown(focusSearch);
 
   if (showTickerHoldings) {
     return (

@@ -1,3 +1,5 @@
+import { queryPath } from "./paths";
+
 export type DilutionRiskTier = "low" | "moderate" | "elevated" | "high";
 type ShelfStatus = "active" | "expired" | "superseded";
 export type OfferingType =
@@ -156,28 +158,18 @@ export function cloudDilutionCompanyPath(symbol: string): string {
   return `/cloud/dilution/companies/${encodeURIComponent(symbol.trim().toUpperCase())}`;
 }
 
-export function cloudDilutionForm144Path(options: {
-  symbol?: string;
-  plan10b51Only?: boolean;
-  limit?: number;
-} = {}): string {
-  const qs = new URLSearchParams();
-  if (options.symbol) qs.set("symbol", options.symbol.trim().toUpperCase());
-  if (options.plan10b51Only) qs.set("plan10b51Only", "true");
-  if (options.limit) qs.set("limit", String(options.limit));
-  const suffix = qs.toString();
-  return suffix ? `/cloud/dilution/form144?${suffix}` : "/cloud/dilution/form144";
+export function cloudDilutionForm144Path(options: { symbol?: string; plan10b51Only?: boolean; limit?: number } = {}): string {
+  return queryPath("/cloud/dilution/form144", {
+    symbol: options.symbol ? options.symbol.trim().toUpperCase() : undefined,
+    plan10b51Only: options.plan10b51Only ? "true" : undefined,
+    limit: options.limit || undefined,
+  });
 }
 
-export function cloudDilutionShelvesPath(options: {
-  atmOnly?: boolean;
-  babyShelfOnly?: boolean;
-  limit?: number;
-} = {}): string {
-  const qs = new URLSearchParams();
-  if (options.atmOnly) qs.set("atmOnly", "true");
-  if (options.babyShelfOnly) qs.set("babyShelfOnly", "true");
-  if (options.limit) qs.set("limit", String(options.limit));
-  const suffix = qs.toString();
-  return suffix ? `/cloud/dilution/shelves?${suffix}` : "/cloud/dilution/shelves";
+export function cloudDilutionShelvesPath(options: { atmOnly?: boolean; babyShelfOnly?: boolean; limit?: number } = {}): string {
+  return queryPath("/cloud/dilution/shelves", {
+    atmOnly: options.atmOnly ? "true" : undefined,
+    babyShelfOnly: options.babyShelfOnly ? "true" : undefined,
+    limit: options.limit || undefined,
+  });
 }

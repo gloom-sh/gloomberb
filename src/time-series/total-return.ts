@@ -3,6 +3,7 @@ import { cashInMajorUnits } from "../utils/dividend-cash";
 import { resolveCurrencyUnit } from "../utils/currency-units";
 import { logFailure } from "../utils/log-failure";
 import { dividendReferencePrice } from "../utils/trailing-dividend";
+import { scalePricePoint } from "./currency-conversion";
 import { observationDate } from "./price-comparison";
 import { CHART_RESOLUTION_STEP_MS, chartBarSizeStepMs } from "./resolution";
 import type { ResolvedSeries, TimeSeriesPoint } from "./types";
@@ -46,10 +47,6 @@ function barEnd(day: string, barDays: number): string {
   return end.toISOString().slice(0, 10);
 }
 
-function scaled(value: number | null | undefined, factor: number): number | null | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value * factor : value;
-}
-
 /**
  * A price series as its total return: every cash distribution is reinvested at
  * the close of its ex-date bar, so the series moves by (close + cash) over the
@@ -91,16 +88,7 @@ export function reinvestDistributions(
       }
       next += 1;
     }
-    if (factor === 1) return point;
-    return {
-      ...point,
-      value: scaled(point.value, factor) ?? null,
-      ...point.rawValue !== undefined ? { rawValue: scaled(point.rawValue, factor) ?? null } : {},
-      ...point.open !== undefined ? { open: scaled(point.open, factor) } : {},
-      ...point.high !== undefined ? { high: scaled(point.high, factor) } : {},
-      ...point.low !== undefined ? { low: scaled(point.low, factor) } : {},
-      ...point.close !== undefined ? { close: scaled(point.close, factor) } : {},
-    };
+    return factor === 1 ? point : scalePricePoint(point, factor);
   });
   return { points: adjusted, applied };
 }

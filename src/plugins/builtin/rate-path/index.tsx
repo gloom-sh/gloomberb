@@ -12,6 +12,5 @@ export const ratePathModule: PluginModule = {
     keywords: ["rates", "fed", "fomc", "futures", "probability", "wirp", "ffip"],
     shortcut: { prefix: "WIRP", aliases: ["FFIP"] }, headless: ratePathHeadless,
   }],
-  setup(ctx) { ratePathCache.attach(ctx.persistence); },
-  dispose() { ratePathCache.reset(); },
+  caches: [ratePathCache],
 };

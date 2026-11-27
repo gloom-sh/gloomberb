@@ -1,4 +1,5 @@
 import { cliStyles, cliTerminalWidth, renderDefinitions, renderSection, wrapText } from "../utils/cli-output";
+import { escapeRegExp } from "../utils/format";
 
 /**
  * Plain-words meanings of the rates, auction, credit and bond yield, energy, perpetual-futures, portfolio, portfolio risk (beta, R², VaR, HHI),
@@ -1151,10 +1152,6 @@ export function lookupGlossary(query: string): GlossaryLookup {
   const whole = holding(wholeWord);
   if (exact.length > 0) return { exact, partial: whole };
   return { exact, partial: [...whole, ...holding((name, word) => name.startsWith(word)).filter((entry) => !whole.includes(entry))] };
-}
-
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /** The label as a whole token of the text: `bp` in `Chg bp` but not in `+9bp` or `bps`. */

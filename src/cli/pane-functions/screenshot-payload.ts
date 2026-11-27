@@ -73,41 +73,18 @@ const MARKET_VALUATION_PANE_ID = "market-valuation";
 
 const ECON_STATISTICS_PANE_ID = "econ-statistics";
 
-/** Same reason as the valuation legs: the renderer cannot fill its own cache. */
-async function collectShotStatSeries(
-  resolved: ResolvedPaneFunction,
-): Promise<Array<[string, DatedObservation[]]>> {
-  if (resolved.pane.id !== ECON_STATISTICS_PANE_ID) return [];
-  const loaded = await Promise.all(STATS.map(async (def) => {
-    try {
-      const result = await defaultStatLoader(def);
-      const observations = Array.isArray(result) ? result : result.observations;
-      return [def.seriesId, observations] as [string, DatedObservation[]];
-    } catch (error) {
-      logFailure("cli.screenshot", "Read screenshot statistics series failed")(error);
-      return null;
-    }
-  }));
-  return loaded.filter((entry): entry is [string, DatedObservation[]] => !!entry);
-}
-
 /**
  * The pane reads its legs from a client cache the shot renderer cannot fill itself,
  * so fetch them here on the Bun side and hand them over with the payload.
  */
-async function collectShotValuationSeries(
-  resolved: ResolvedPaneFunction,
+async function collectShotSeries<T>(
+  enabled: boolean,
+  defs: readonly T[],
+  load: (def: T) => Promise<[string, DatedObservation[]]>,
+  logMessage: string,
 ): Promise<Array<[string, DatedObservation[]]>> {
-  if (resolved.pane.id !== MARKET_VALUATION_PANE_ID) return [];
-  const loaded = await Promise.all(valuationRequiredSeries().map(async (def) => {
-    try {
-      const series = await defaultValuationSeriesLoader(def);
-      return [def.key, series.observations] as [string, DatedObservation[]];
-    } catch (error) {
-      logFailure("cli.screenshot", "Read screenshot valuation series failed")(error);
-      return null;
-    }
-  }));
+  if (!enabled) return [];
+  const loaded = await Promise.all(defs.map((def) => load(def).catch(logFailure("cli.screenshot", logMessage, null))));
   return loaded.filter((entry): entry is [string, DatedObservation[]] => !!entry);
 }
 
@@ -304,8 +281,21 @@ export async function buildDesktopShotPayload(
   const optionsChains: Array<[string, OptionsChain]> = [];
   const tapeSnapshots: TapeCapture[] = [];
   const [valuationSeries, statSeries] = await Promise.all([
-    collectShotValuationSeries(resolved),
-    collectShotStatSeries(resolved),
+    collectShotSeries(
+      resolved.pane.id === MARKET_VALUATION_PANE_ID,
+      valuationRequiredSeries(),
+      async (def) => [def.key, (await defaultValuationSeriesLoader(def)).observations],
+      "Read screenshot valuation series failed",
+    ),
+    collectShotSeries(
+      resolved.pane.id === ECON_STATISTICS_PANE_ID,
+      STATS,
+      async (def) => {
+        const result = await defaultStatLoader(def);
+        return [def.seriesId, Array.isArray(result) ? result : result.observations];
+      },
+      "Read screenshot statistics series failed",
+    ),
   ]);
   const includeOptionsChains = resolved.pane.id === OPTIONS_PANE_ID || resolved.template?.paneId === OPTIONS_PANE_ID;
   const datesChangeBasis = resolved.pane.id === TICKER_RESEARCH_PANE_ID

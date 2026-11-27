@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } fro
 
 import {
   Button,
-  ChoiceDialog,
   confirmDialog,
   DetailScrollBody,
   DataTableStackView,
@@ -21,6 +20,7 @@ import {
   type DataTableKeyEvent,
   type PaneHint,
 } from "../../../components";
+import { choiceDialog } from "../../../components/ui";
 import { ageFooterSegment } from "../../../components/layout/pane/footer";
 import { loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { useRowNotes } from "../../../components/ui/row-notes";
@@ -28,7 +28,7 @@ import { colors } from "../../../theme/colors";
 import { t, tf } from "../../../i18n";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
-import { useDialog, type PromptContext } from "../../../ui/dialog";
+import { useDialog } from "../../../ui/dialog";
 import { isPlainKeyboardEvent } from "../../../utils/keyboard";
 import { formatRelativeAge } from "../../../utils/datetime-format";
 import { displayWidth } from "../../../utils/format";
@@ -811,22 +811,18 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
    */
   const choosePack = useCallback(async () => {
     if (!host) return;
-    const id = await dialog.prompt<string>({
-      closeOnClickOutside: true,
-      content: (context: PromptContext<string>) => (
-        <ChoiceDialog
-          {...context}
-          title="Apply a starter pack"
-          selectedChoiceId={currentPack?.id}
-          choices={STARTER_PACKS.map((pack) => ({
-            id: pack.id,
-            label: pack.name,
-            description: pack.tagline,
-            detail: packChangeSummary(packChange(disabledPlugins, pack)),
-          }))}
-        />
-      ),
-    }).catch(logFailure("plugin-marketplace.pane", "Choose starter pack failed", null));
+    const id = await choiceDialog(dialog, {
+      title: "Apply a starter pack",
+      selectedChoiceId: currentPack?.id,
+      choices: STARTER_PACKS.map((pack) => ({
+        id: pack.id,
+        label: pack.name,
+        description: pack.tagline,
+        detail: packChangeSummary(packChange(disabledPlugins, pack)),
+      })),
+      logSource: "plugin-marketplace.pane",
+      logMessage: "Choose starter pack failed",
+    });
     const pack = STARTER_PACKS.find((candidate) => candidate.id === id);
     if (pack) await applyPack(pack);
   }, [applyPack, currentPack, dialog, disabledPlugins, host]);

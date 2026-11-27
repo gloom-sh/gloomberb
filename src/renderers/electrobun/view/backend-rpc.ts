@@ -5,9 +5,7 @@ import {
   type DesktopBackendRequestMethod,
   type DesktopBackendRequestPayload,
   type DesktopBackendRequestResponse,
-  type DesktopDockPreviewMessage,
   type DesktopRestartMessage,
-  type DesktopThemePreviewMessage,
   type ElectrobunBackendInit,
   type RemoteControlRequestMessage,
   type ElectrobunDesktopRpcSchema,
@@ -46,6 +44,15 @@ function emit<K extends BackendMessageName>(name: K, message: BackendMessages[K]
   return listeners?.size ?? 0;
 }
 
+function decodeFieldEmitter<
+  K extends BackendMessageName,
+  F extends keyof BackendMessages[K],
+>(name: K, field: F) {
+  return (message: BackendMessages[K]) => {
+    emit(name, { [field]: decodeRpcValue(message[field]) } as BackendMessages[K]);
+  };
+}
+
 const rpc = Electroview.defineRPC<ElectrobunDesktopRpcSchema>({
   maxRequestTime: RPC_MAX_REQUEST_TIME_MS,
   handlers: {
@@ -68,9 +75,7 @@ const rpc = Electroview.defineRPC<ElectrobunDesktopRpcSchema>({
       "context-menu.select": (message) => {
         emit("context-menu.select", message, message.requestId);
       },
-      "application-menu.select": (message) => {
-        emit("application-menu.select", { command: decodeRpcValue(message.command) });
-      },
+      "application-menu.select": decodeFieldEmitter("application-menu.select", "command"),
       "desktop.deepLink": (message) => {
         if (typeof message.url !== "string" || !message.url) return;
         const deepLink = { url: message.url };
@@ -78,15 +83,9 @@ const rpc = Electroview.defineRPC<ElectrobunDesktopRpcSchema>({
         pendingDesktopDeepLinks.push(deepLink);
         if (pendingDesktopDeepLinks.length > 20) pendingDesktopDeepLinks.shift();
       },
-      "desktop.state": (message) => {
-        emit("desktop.state", { snapshot: decodeRpcValue(message.snapshot) });
-      },
-      "desktop.dockPreview": (message) => {
-        emit("desktop.dockPreview", { preview: decodeRpcValue<DesktopDockPreviewMessage["preview"]>(message.preview) });
-      },
-      "desktop.themePreview": (message) => {
-        emit("desktop.themePreview", { preview: decodeRpcValue<DesktopThemePreviewMessage["preview"]>(message.preview) });
-      },
+      "desktop.state": decodeFieldEmitter("desktop.state", "snapshot"),
+      "desktop.dockPreview": decodeFieldEmitter("desktop.dockPreview", "preview"),
+      "desktop.themePreview": decodeFieldEmitter("desktop.themePreview", "preview"),
       "desktop.windows": (message) => {
         if (!Array.isArray(message?.windows)) return;
         emit("desktop.windows", { windows: message.windows });
@@ -105,9 +104,7 @@ const rpc = Electroview.defineRPC<ElectrobunDesktopRpcSchema>({
       "desktop.saveFailed": () => {
         emit("desktop.saveFailed", {});
       },
-      "update.progress": (message) => {
-        emit("update.progress", { progress: decodeRpcValue(message.progress) });
-      },
+      "update.progress": decodeFieldEmitter("update.progress", "progress"),
       "plugins.updated": (message) => {
         if (!Array.isArray(message?.directories)) return;
         const directories = message.directories.filter((directory): directory is string => typeof directory === "string");

@@ -1,11 +1,10 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useMemo, useRef } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
-import { usePlanAccess } from "../../../api-client/plan-access";
 import type { ExposureEvidence, ExposurePayload } from "../../../api-client/exposure";
 import { ActionRow, Button, ChartTableHeader, DataTableView, EmptyState, KeyValueRow, PageStackView, QueryBar, SectionHeading, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type PaneHint, type StatItem } from "../../../components";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
-import { useAppSelector, useAsyncResource, useAutoRefresh, useMarketData, usePaneInstance, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
+import { usePaneResource } from "../shared/pane-resource";
+import { useAppSelector, useAsyncResource, useMarketData, usePaneInstance, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, useRendererHost, useUiCapabilities } from "../../../ui";
@@ -14,8 +13,8 @@ import { daysInTextCell, formatDay } from "../../../components/ui/day-cell";
 import { logFailure } from "../../../utils/log-failure";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
-import { useOpenDescription } from "../shared/open-description";
-import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
+import { useTickerJumpHints } from "../shared/open-description";
+import { lockedTableCell, lockedTableOverlay } from "../shared/locked-rows";
 import { humanLabel, listingCell, missingCell } from "../shared/research-cells";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { ExposurePathDiagram, ExposureRanges } from "./charts";
@@ -91,11 +90,10 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
   const config = useAppSelector(s => s.config);
   const tickers = useAppSelector(s => s.tickers);
   const session = useResearchCloudSession();
-  const access = usePlanAccess();
-  const accessKey = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
+  const { accessKey } = session;
   const upgrade = useCloudUpgradeAction("expo");
   const { createPaneFromTemplate } = usePluginAppActions();
-  const openDescription = useOpenDescription();
+  const jumpHints = useTickerJumpHints();
   const [openingScenario] = usePaneSettingValue("scenario", "taiwan-disruption");
   const [customSetting, setCustomSetting] = usePaneSettingValue("customScenario", "");
   const [openingDepth] = usePaneSettingValue("depth", 2);
@@ -159,10 +157,8 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
     return fetchExposure({ holdings, scenario, depth: inputs.depth, ...(cash === undefined ? {} : { cashWeight: cash }) });
   // Explicit request state, including the account, owns recalculation. Quote changes do not.
   }, [sourceKey, snapshot]);
-  const resource = useAsyncResource(!inputError && (inputs.input || inputs.source !== "typed" || snapshot) ? loader : null, { clearOnError: isAccessDenied });
+  const resource = usePaneResource(!inputError && (inputs.input || inputs.source !== "typed" || snapshot) ? loader : null, { focused: focused && !editing && !inputError, clearOnError: isAccessDenied });
   const data = resource.data;
-  useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => resource.reload(), { focused: focused && !editing && !inputError });
   const rawRows = useMemo(() => !data ? [] : tab === "drivers" ? driverRows(data) : tab === "paths" ? pathRows(data) : tab === "portfolio" ? portfolioRows(data, view) : tableRows(data), [data, tab, view]);
   const rows = useMemo(() => [...rawRows].sort((a, b) => {
     const get = (r: ExposureRow) => sort.column === "value" ? r.driver?.value ?? r.driver?.range?.high ?? -Infinity : sort.column === "units" ? r.driver ? driverUnits(r.driver) : "" : sort.column === "scope" ? r.driver ? driverScope(r.driver) : "" : sort.column === "classification" ? r.classification : sort.column === "label" ? r.label : sort.column === "period" ? r.period ?? "" : sort.column === "exposure" ? r.exposure?.high ?? -Infinity : sort.column === "impact" ? r.impact?.low ?? -Infinity : sort.column === "weight" ? r.weight ?? -Infinity : sort.column === "basis" ? r.basis ?? "" : r.symbol;
@@ -185,9 +181,7 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
     ...(symbol ? [
       ...(activeRow?.driver ? [{ id: "dataset", key: "a", label: "ll disclosures", title: "Open company disclosures", onPress: () => createPaneFromTemplate(activeRow.driver!.kind === "kpi" ? "company-kpis-pane" : activeRow.driver!.kind === "guidance" ? "company-guidance-pane" : "credit-documents-pane", { symbol }) }] : []),
       { id: "supply", key: "c", label: "hain", title: "Supply chain", onPress: () => createPaneFromTemplate("supply-chain-pane", { symbol }) },
-      { id: "des", key: "d", label: "es", onPress: () => openDescription(symbol) },
-      { id: "fa", key: "f", label: "a", onPress: () => createPaneFromTemplate("financial-analysis-pane", { symbol }) },
-      { id: "chart", key: "g", label: "raph", onPress: () => createPaneFromTemplate("chart-composer-pane", { arg: symbol }) },
+      ...jumpHints(symbol, { ids: { des: "des", fa: "fa", graph: "chart" } }),
     ] : []),
     ...(data?.access === "preview" ? [{ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", title: "Upgrade to Pro", onPress: upgrade }] : []),
   ];
@@ -220,8 +214,17 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
   const columnDropOrder = tab === "drivers" ? DRIVER_COLUMN_DROP_ORDER : EXPOSURE_COLUMN_DROP_ORDER;
   const renderCell = (row: ExposureRow, col: DataTableColumn, _index: number, state: { selected: boolean }): DataTableCell => {
     if (row.id.startsWith("locked:")) {
-      if (!desktop && col.id === "symbol" && row.id === "locked:0") return { text: "Pro: full holdings", content: <UpgradeLabel text="Pro: full holdings and deeper paths" onPress={upgrade} role="exposure-upgrade" />, onMouseDown: upgrade };
-      return desktop ? { text: "", content: <Blurred><Text fg={colors.textDim}>{col.id === "symbol" ? "Holding" : "Hidden"}</Text></Blurred> } : { text: "░░░░", color: colors.textDim };
+      return lockedTableCell({
+        desktop,
+        isLabelCell: col.id === "symbol" && row.id === "locked:0",
+        labelText: "Pro: full holdings",
+        upgradeText: "Pro: full holdings and deeper paths",
+        blurText: col.id === "symbol" ? "Holding" : "Hidden",
+        onUpgrade: upgrade,
+        onMouseDown: upgrade,
+        role: "exposure-upgrade",
+        dimColor: colors.textDim,
+      });
     }
     const unknown = row.classification === "unknown";
     switch (col.id) {
@@ -288,6 +291,6 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
               : rows.some(r => r.exposure) ? { render: size => <ExposureRanges rows={rows} showTargets={tab === "portfolio" || data.scenario.shocks.length > 1} selectedId={selected?.id ?? null} onSelect={setSelected} onOpen={setDetail} {...size} />, minRows: 1, maxRows: Math.max(1, Math.min(7, rows.filter(r => r.exposure && r.shockId === selected?.shockId && r.basis === selected?.basis && r.period === selected?.period).length)), strip: null } : null} />}
           renderCell={renderCell}
           emptyStateTitle={tab === "drivers" ? "No supported company drivers are available for these holdings." : tab === "paths" ? "No supported exposure paths for this scenario." : "No quantified exposure in this view."}
-          bodyAfter={lockedRows && desktop ? <LockedOverlay rows={lockedRows} text="Pro: full holdings and deeper exposure paths" onPress={upgrade} role="exposure-upgrade" /> : undefined} />} />
+          bodyAfter={lockedTableOverlay(lockedRows, desktop, "Pro: full holdings and deeper exposure paths", upgrade, "exposure-upgrade")} />} />
   </Box>;
 }

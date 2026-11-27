@@ -14,8 +14,8 @@ import {
   type ChartTableChart,
   type DataTableColumn,
 } from "../../../components";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
-import { useAsyncResource, useAutoRefresh, usePluginPaneState } from "../../../public/react";
+import { usePaneResource } from "../shared/pane-resource";
+import { usePluginPaneState } from "../../../public/react";
 import { usePaneInstance } from "../../../state/app/context";
 import { priceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -171,12 +171,10 @@ function CpiBoard({ payload, initialRow, width, height, focused }: {
 
 export function CpiPane({ width, height, focused }: PaneProps) {
   const initialRow = usePaneInstance()?.params?.row ?? null;
-  const resource = useAsyncResource(loadCpiBoard, { initialData: getCachedCpiBoard });
+  const resource = usePaneResource(loadCpiBoard, { focused, initialData: getCachedCpiBoard });
   const data = resource.data?.payload ?? null;
   // The server not serving the board yet is a state of the data, not a failure.
   const notAvailable = !data && resource.error === CPI_NOT_AVAILABLE;
-  useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => resource.reload(), { focused });
   usePaneNoticeFooter({ registrationId: "cpi:notices", focused,
     notices: [...(data?.gaps ?? []), ...(data ? [cpiHeadlineYearGapLine(data)].filter((line): line is string => !!line) : []),
       ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });

@@ -159,49 +159,6 @@ function DesktopSettingsRow({
   );
 }
 
-function DesktopSettingsList({
-  fields,
-  selectedIndex,
-  settings,
-  noteFor,
-  onHover,
-  onEdit,
-  onSelectRef,
-  onApply,
-}: {
-  fields: PaneSettingField[];
-  selectedIndex: number;
-  settings: Record<string, unknown>;
-  noteFor?: (field: PaneSettingField) => PaneSettingRowNote | null;
-  onHover: (field: PaneSettingField, index: number) => void;
-  onEdit: (field: PaneSettingField, index: number) => void;
-  onSelectRef: (fieldKey: string, element: SelectFieldHandle | null) => void;
-  onApply: (field: PaneSettingField, value: unknown, index: number) => void;
-}) {
-  return (
-    <Box
-      flexDirection="column"
-      style={{
-        marginTop: 2,
-      }}
-    >
-      {fields.map((field, index) => (
-        <DesktopSettingsRow
-          key={field.key}
-          field={field}
-          selected={index === selectedIndex}
-          currentValue={paneSettingValue(field, settings)}
-          note={noteFor?.(field) ?? null}
-          onHover={() => onHover(field, index)}
-          onEdit={() => onEdit(field, index)}
-          onSelectRef={onSelectRef}
-          onApply={(targetField, value) => onApply(targetField, value, index)}
-        />
-      ))}
-    </Box>
-  );
-}
-
 export function DesktopUnavailablePaneSettingsDialog({ dismiss }: { dismiss: () => void }) {
   return (
     <DesktopDialogSurface title="Pane Settings" dismiss={dismiss}>
@@ -236,25 +193,27 @@ export function DesktopPaneSettingsDialogBody({
   onApply: (field: PaneSettingField, value: unknown, index: number) => void;
 }) {
   return (
-    <DesktopDialogSurface
-      title={title}
-      dismiss={dismiss}
-    >
+    <DesktopDialogSurface title={title} dismiss={dismiss}>
       {fields.length === 0 ? (
         <Text fg={colors.textDim} wrapText style={desktopText()}>
           No settings available.
         </Text>
       ) : (
-        <DesktopSettingsList
-          fields={fields}
-          selectedIndex={selectedIndex}
-          settings={settings}
-          noteFor={noteFor}
-          onHover={onHover}
-          onEdit={onEdit}
-          onSelectRef={onSelectRef}
-          onApply={onApply}
-        />
+        <Box flexDirection="column" style={{ marginTop: 2 }}>
+          {fields.map((field, index) => (
+            <DesktopSettingsRow
+              key={field.key}
+              field={field}
+              selected={index === selectedIndex}
+              currentValue={paneSettingValue(field, settings)}
+              note={noteFor?.(field) ?? null}
+              onHover={() => onHover(field, index)}
+              onEdit={() => onEdit(field, index)}
+              onSelectRef={onSelectRef}
+              onApply={(targetField, value) => onApply(targetField, value, index)}
+            />
+          ))}
+        </Box>
       )}
     </DesktopDialogSurface>
   );

@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Text, useRendererHost, useUiCapabilities } from "../../../ui";
 import {
-  useAsyncResource,
-  useAutoRefresh,
   usePaneSettingValue,
   usePluginPaneState,
 } from "../../../public/react";
@@ -25,7 +23,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { usePaneResource } from "../shared/pane-resource";
 import { logFailure } from "../../../utils/log-failure";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
@@ -100,12 +98,11 @@ function RevenueBreakdownView({ width, height, focused }: { width: number; heigh
     (force: boolean) => loadRevenueBreakdown(symbol!, view, pro, force, listing),
     [symbol, listing, view, pro, session.requestKey],
   );
-  const resource = useAsyncResource(symbol ? loader : null, {
+  const resource = usePaneResource(symbol ? loader : null, {
+    focused,
     initialData: () => (symbol ? cachedRevenueBreakdown(symbol, view, pro, listing) : null),
     clearOnError: (error) => error instanceof Error && error.message === NO_BREAKDOWN,
   });
-  useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => resource.reload(), { focused });
 
   const payload = useMemo(
     () => (resource.data ? reportedSpan(resource.data.payload) : null),

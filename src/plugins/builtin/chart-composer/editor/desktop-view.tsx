@@ -64,85 +64,73 @@ export function DesktopSeriesEditorFields({ fields }: { fields: SeriesEditorFiel
       width="100%"
       style={{ columnGap: 12, rowGap: 10 }}
     >
-      {orderedFields.map((field) => (
-        <DesktopEditorField
-          key={field.id}
-          label={field.label}
-          width={field.id === "visibility" && isSecurity ? "100%" : undefined}
-        >
-          {field.kind === "visibility" ? (
-            <Box height="28px" justifyContent="center">
-              <Checkbox
-                label="Show series"
-                checked={field.value === "shown"}
-                variant="desktop"
-                onChange={(checked) => field.onChange(checked ? "shown" : "hidden")}
-              />
-            </Box>
-          ) : field.kind === "color" ? (
-            <ChartColorChoice
-              label={field.label}
-              value={field.value === SERIES_EDITOR_AUTO_COLOR ? undefined : field.value}
-              onChange={(color) => field.onChange(color ?? SERIES_EDITOR_AUTO_COLOR)}
-            />
-          ) : field.kind === "panel" ? (
-            <Box flexDirection="row" width="100%" style={{ gap: 6 }}>
-              <Box flexGrow={1} minWidth={0}>
-                <SelectField
-                  label={field.label}
-                  value={field.value}
-                  options={field.options}
-                  width="100%"
-                  onChange={field.onChange}
+      {orderedFields.map((field) => {
+        const select = field.kind === "panel" || (field.kind !== "visibility" && field.kind !== "color") ? (
+          <SelectField
+            label={field.label}
+            value={field.value}
+            options={field.options}
+            width="100%"
+            onChange={field.onChange}
+          />
+        ) : null;
+        return (
+          <DesktopEditorField
+            key={field.id}
+            label={field.label}
+            width={field.id === "visibility" && isSecurity ? "100%" : undefined}
+          >
+            {field.kind === "visibility" ? (
+              <Box height="28px" justifyContent="center">
+                <Checkbox
+                  label="Show series"
+                  checked={field.value === "shown"}
+                  variant="desktop"
+                  onChange={(checked) => field.onChange(checked ? "shown" : "hidden")}
                 />
               </Box>
-              <Button label="New Panel" shortcut="N" onPress={field.onAddPanel} />
-            </Box>
-          ) : (
-            <SelectField
-              label={field.label}
-              value={field.value}
-              options={field.options}
-              width="100%"
-              onChange={field.onChange}
-            />
-          )}
-        </DesktopEditorField>
+            ) : field.kind === "color" ? (
+              <ChartColorChoice
+                label={field.label}
+                value={field.value === SERIES_EDITOR_AUTO_COLOR ? undefined : field.value}
+                onChange={(color) => field.onChange(color ?? SERIES_EDITOR_AUTO_COLOR)}
+              />
+            ) : field.kind === "panel" ? (
+              <Box flexDirection="row" width="100%" style={{ gap: 6 }}>
+                <Box flexGrow={1} minWidth={0}>{select}</Box>
+                <Button label="New Panel" shortcut="N" onPress={field.onAddPanel} />
+              </Box>
+            ) : select}
+          </DesktopEditorField>
+        );
+      })}
+    </Box>
+  );
+}
+
+function renderActionGroup(actions: SeriesEditorActionModel[]) {
+  return (
+    <Box flexDirection="row" style={{ gap: 6 }}>
+      {actions.map((action) => (
+        <Button
+          key={action.id}
+          label={action.label}
+          shortcut={action.shortcut}
+          variant={action.variant}
+          disabled={action.disabled}
+          onPress={action.onPress}
+        />
       ))}
     </Box>
   );
 }
 
 export function DesktopSeriesEditorActions({ actions }: { actions: SeriesEditorActionModel[] }) {
-  const seriesActions = actions.filter((action) => action.group === "series");
-  const confirmActions = actions.filter((action) => action.group === "confirm");
   return (
     <Box flexDirection="row" gap={1} width="100%" style={{ gap: 6, paddingTop: 2 }}>
-      <Box flexDirection="row" style={{ gap: 6 }}>
-        {seriesActions.map((action) => (
-          <Button
-            key={action.id}
-            label={action.label}
-            shortcut={action.shortcut}
-            variant={action.variant}
-            disabled={action.disabled}
-            onPress={action.onPress}
-          />
-        ))}
-      </Box>
+      {renderActionGroup(actions.filter((action) => action.group === "series"))}
       <Box flexGrow={1} />
-      <Box flexDirection="row" style={{ gap: 6 }}>
-        {confirmActions.map((action) => (
-          <Button
-            key={action.id}
-            label={action.label}
-            shortcut={action.shortcut}
-            variant={action.variant}
-            disabled={action.disabled}
-            onPress={action.onPress}
-          />
-        ))}
-      </Box>
+      {renderActionGroup(actions.filter((action) => action.group === "confirm"))}
     </Box>
   );
 }

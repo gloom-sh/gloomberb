@@ -4,6 +4,7 @@ import { isAlwaysOpenExchange, isRegularSessionTime, latestRegularSessionClose, 
 import { DAILY_BAR_CLOSE_VENUES } from "../market-data/market/dated-previous-close";
 import { quoteTradingDay } from "../market-data/quotes/day-range";
 import { canonicalExchange } from "../utils/exchanges";
+import { isPositiveNumber as positive } from "../utils/guards";
 import { hasLikelyQuoteUnitMismatch } from "../utils/currency-units";
 import { pricePointIntegrity, pricePointOpenWithheld } from "../utils/price-history-integrity";
 import { zonedDateKey } from "../utils/zoned-date-time";
@@ -60,10 +61,6 @@ const SESSION_SETTLE_MS = 30 * 60_000;
 function barTime(point: Pick<PricePoint, "date">): number {
   const date = point.date as Date | string | number;
   return (date instanceof Date ? date : new Date(date)).getTime();
-}
-
-function positive(value: number | undefined | null): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
 /** Listings whose daily bar is one regular session of shares: not a coin, pair, future, index or bond. */

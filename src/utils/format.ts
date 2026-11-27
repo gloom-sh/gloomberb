@@ -530,3 +530,14 @@ export function convertCurrency(
     || fromRate <= 0 || baseRate <= 0) return Number.NaN;
   return (value * fromRate) / baseRate;
 }
+
+/** Escapes special RegExp metacharacters so text matches literally. */
+export function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Joins items into an English list: "a", "a and b", "a, b and c". */
+export function joinEnglishList(items: readonly string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}

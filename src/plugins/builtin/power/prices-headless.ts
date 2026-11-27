@@ -1,8 +1,9 @@
-import { MISSING_VALUE } from "../../../utils/format";
 import { apiClient } from "../../../api-client";
 import type { CarbonBoard, EuropePowerBoard, GasStorageBoard, GasStorageRow, PowerPriceRow } from "../../../api-client/europe-energy";
 import type { HeadlessBundleResult, HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { formatDay } from "../../../components/ui/day-cell";
+import { fixedCell, numCell, numCol, textCell } from "../shared/headless-columns";
+import { argumentText } from "../shared/headless-options";
 import { fetchGasHistory, fetchGasStorage } from "./gas-client";
 import { formatGasFlow, formatGasFull, formatGasPoints, formatGasTwh, gasRangePosition, parseGasQuery, type GasStorageArea } from "./gas-model";
 import { fetchCarbonPrice, fetchPowerPriceHistory, fetchPowerPrices } from "./prices-client";
@@ -13,31 +14,32 @@ import {
 type PricesClient = Pick<typeof apiClient, "getCloudEuropePower" | "getCloudEuropePowerHistory" | "getCloudEuropeCarbon"
   | "getCloudEuropeGas" | "getCloudEuropeGasHistory">;
 
-const price = (value: unknown) => typeof value === "number" ? formatPowerPrice(value) : MISSING_VALUE;
-const text = (value: unknown) => typeof value === "string" && value ? value : MISSING_VALUE;
+const price = numCell(formatPowerPrice);
+const text = textCell();
+const day = (value: unknown) => formatDay(value);
 
 /** A board's columns, in its words: prices to the cent in the board's unit, each row dated by its own day. */
 const boardColumns = (unit: string, label = "Market"): HeadlessPaneColumn[] => [
   { key: "market", header: label },
-  { key: "date", header: "As of", format: (value) => formatDay(value), shrink: false },
-  { key: "price", header: unit, align: "right", format: price },
-  { key: "change", header: "1D", align: "right", format: (value) => typeof value === "number" ? formatPowerChange(value) : MISSING_VALUE },
-  { key: "average7", header: "7D avg", align: "right", format: price },
-  { key: "average30", header: "30D avg", align: "right", format: price },
-  { key: "yearAgo", header: "1Y ago", align: "right", format: price },
-  { key: "low52w", header: "52W low", align: "right", format: price },
-  { key: "high52w", header: "52W high", align: "right", format: price },
-  { key: "range", header: "In 1Y range", align: "right", format: (value) => typeof value === "number" ? `${value}%` : MISSING_VALUE },
+  { key: "date", header: "As of", format: day, shrink: false },
+  numCol("price", unit, price),
+  numCol("change", "1D", numCell(formatPowerChange)),
+  numCol("average7", "7D avg", price),
+  numCol("average30", "30D avg", price),
+  numCol("yearAgo", "1Y ago", price),
+  numCol("low52w", "52W low", price),
+  numCol("high52w", "52W high", price),
+  numCol("range", "In 1Y range", numCell((value) => `${value}%`)),
 ];
 const COLUMNS = boardColumns(POWER_PRICE_UNIT);
 const AUCTION_COLUMNS: HeadlessPaneColumn[] = [
-  { key: "date", header: "Date", format: (value) => formatDay(value), shrink: false },
+  { key: "date", header: "Date", format: day, shrink: false },
   { key: "zone", header: "Zone", format: text },
   { key: "status", header: "Status" },
-  { key: "price", header: CARBON_PRICE_UNIT, align: "right", format: price },
-  { key: "volume", header: "Volume tCO2", align: "right", format: (value) => typeof value === "number" ? value.toLocaleString("en-US") : MISSING_VALUE },
-  { key: "coverRatio", header: "Cover", align: "right", format: (value) => typeof value === "number" ? `${value.toFixed(2)}x` : MISSING_VALUE },
-  { key: "bidders", header: "Bidders", align: "right", format: (value) => typeof value === "number" ? String(value) : MISSING_VALUE },
+  numCol("price", CARBON_PRICE_UNIT, price),
+  numCol("volume", "Volume tCO2", numCell((value) => value.toLocaleString("en-US"))),
+  numCol("coverRatio", "Cover", fixedCell(2, { suffix: "x" })),
+  numCol("bidders", "Bidders", numCell(String)),
 ];
 
 function reportRow(row: Omit<PowerPriceRow, "code"> & { code: string }) {
@@ -84,22 +86,21 @@ function freshness(board: EuropePowerBoard | null, carbon: CarbonBoard | null, m
 
 const failure = (error: unknown) => error instanceof Error ? error.message : String(error);
 
-const number = (format: (value: number | null) => string) => (value: unknown) => typeof value === "number" ? format(value) : MISSING_VALUE;
 const GAS_COLUMNS: HeadlessPaneColumn[] = [
   { key: "area", header: "Area" },
-  { key: "gasDay", header: "Gas day", format: (value) => formatDay(value), shrink: false },
+  { key: "gasDay", header: "Gas day", format: day, shrink: false },
   { key: "status", header: "Status", format: text },
-  { key: "full", header: "% full", align: "right", format: number(formatGasFull) },
-  { key: "change", header: "1D pp", align: "right", format: number(formatGasPoints) },
-  { key: "gasInStorage", header: "TWh", align: "right", format: number(formatGasTwh) },
-  { key: "injection", header: "Inj GWh/d", align: "right", format: number(formatGasFlow) },
-  { key: "withdrawal", header: "Wdr GWh/d", align: "right", format: number(formatGasFlow) },
-  { key: "vsYearAgo", header: "Vs 1Y pp", align: "right", format: number(formatGasPoints) },
-  { key: "fiveYearLow", header: "5Y low", align: "right", format: number(formatGasFull) },
-  { key: "fiveYearAverage", header: "5Y avg", align: "right", format: number(formatGasFull) },
-  { key: "fiveYearHigh", header: "5Y high", align: "right", format: number(formatGasFull) },
-  { key: "fiveYearYears", header: "5Y years", align: "right", format: (value) => typeof value === "number" ? String(value) : MISSING_VALUE },
-  { key: "range", header: "In 5Y range", align: "right", format: text },
+  numCol("full", "% full", numCell(formatGasFull)),
+  numCol("change", "1D pp", numCell(formatGasPoints)),
+  numCol("gasInStorage", "TWh", numCell(formatGasTwh)),
+  numCol("injection", "Inj GWh/d", numCell(formatGasFlow)),
+  numCol("withdrawal", "Wdr GWh/d", numCell(formatGasFlow)),
+  numCol("vsYearAgo", "Vs 1Y pp", numCell(formatGasPoints)),
+  numCol("fiveYearLow", "5Y low", numCell(formatGasFull)),
+  numCol("fiveYearAverage", "5Y avg", numCell(formatGasFull)),
+  numCol("fiveYearHigh", "5Y high", numCell(formatGasFull)),
+  numCol("fiveYearYears", "5Y years", numCell(String)),
+  numCol("range", "In 5Y range", text),
 ];
 
 function gasReportRow(row: GasStorageRow) {
@@ -135,10 +136,10 @@ async function loadGasStorageReport(area: GasStorageArea, named: boolean, client
       { title: `${area.name} gas storage`, columns: GAS_COLUMNS, rows: [gasReportRow(row)] },
       { title: `${area.name}, last 30 gas days`,
         columns: [{ key: "date", header: "Gas day", shrink: false }, { key: "status", header: "Status" },
-          { key: "full", header: "% full", align: "right", format: number(formatGasFull) },
-          { key: "gasInStorage", header: "TWh", align: "right", format: number(formatGasTwh) },
-          { key: "injection", header: "Inj GWh/d", align: "right", format: number(formatGasFlow) },
-          { key: "withdrawal", header: "Wdr GWh/d", align: "right", format: number(formatGasFlow) }],
+          numCol("full", "% full", numCell(formatGasFull)),
+          numCol("gasInStorage", "TWh", numCell(formatGasTwh)),
+          numCol("injection", "Inj GWh/d", numCell(formatGasFlow)),
+          numCol("withdrawal", "Wdr GWh/d", numCell(formatGasFlow))],
         rows: history.points.slice(-30).reverse().map((point) => ({ ...point })) },
     ],
     notes: [...board.gaps], freshness: gasFreshness(board, area), metadata: { ...metadata, row },
@@ -202,7 +203,6 @@ export const powerPricesHeadless: HeadlessPaneDefinition<"bundle"> = {
       "Five-year ranges read the same calendar day in the five years before the gas day's own, fewer where history is short"] },
   describe: "European day-ahead power prices by country (EUR/MWh), the EU carbon allowance auction price (EUR/tCO2) and European gas storage (% full, TWh, GWh/day)",
   async load(args, ctx) {
-    const argument = Array.isArray(args.argument) ? args.argument.join(" ") : args.argument ?? undefined;
-    return loadPowerPricesReport(argument, ctx.apiClient);
+    return loadPowerPricesReport(argumentText(args.argument) || undefined, ctx.apiClient);
   },
 };

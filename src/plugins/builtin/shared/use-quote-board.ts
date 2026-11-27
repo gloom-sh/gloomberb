@@ -1,3 +1,4 @@
+import { errorMessage } from "../../../utils/errors";
 import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DataTableCell, DataTableVisibleRange, PaneFooterSegment } from "../../../components";
@@ -87,10 +88,6 @@ const QUOTE_REFRESH_MIN_BATCH = 8;
 const QUOTE_REFRESH_TIMEOUT_MS = 5_000;
 
 const EMPTY_STATE: BoardQuoteState = { quote: null, loading: false, error: null, stale: false };
-
-function errorMessage(value: unknown): string {
-  return value instanceof Error ? value.message : String(value);
-}
 
 function boardInstrument(symbol: string): InstrumentRef {
   return { symbol, exchange: "" };

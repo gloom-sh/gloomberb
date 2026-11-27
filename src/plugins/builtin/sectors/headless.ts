@@ -5,7 +5,8 @@ import type {
 } from "../../../types/plugin";
 import type { HeadlessPaneColumn } from "../../../types/headless";
 import { MISSING_VALUE, formatCurrency, formatPercentRaw } from "../../../utils/format";
-import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-data/market/status";
+import type { ExtendedSession } from "../../../market-data/market/status";
+import { extendedPriceColumn } from "../shared/extended-print";
 import { loadSectorRows, type SectorRowOutcome } from "./client";
 import { getSectorCollection, type SectorCollectionId, type SectorDef } from "./sector-data";
 import { DEFAULT_SORT_PREFERENCE, sectorExtendedSessions, sectorRowIssues, sortRows, type SectorRow } from "./sector-model";
@@ -26,16 +27,10 @@ const RETURN_COLUMNS: HeadlessPaneColumn[] = [
 const COLUMNS = [...LEAD_COLUMNS, ...RETURN_COLUMNS];
 
 /** The pre-market or after-hours print and its move from the regular close, for the funds that have one. */
-function extendedColumn(session: ExtendedSession): HeadlessPaneColumn {
-  return {
-    key: "extendedPrice",
-    header: EXTENDED_SESSION_LABELS[session],
-    align: "right",
-    format: (value, row) => row.extendedSession === session && typeof value === "number"
-      ? `${price(value, row)} ${percent(row.extendedChangePercent)}`
-      : MISSING_VALUE,
-  };
-}
+const extendedColumn = (session: ExtendedSession): HeadlessPaneColumn => extendedPriceColumn(
+  session,
+  (value, row) => `${price(value, row)} ${percent(row.extendedChangePercent)}`,
+);
 
 export function projectSectorRows(
   definitions: readonly SectorDef[],

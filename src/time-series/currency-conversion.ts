@@ -31,6 +31,19 @@ function scaled(value: number | null | undefined, factor: number): number | null
   return typeof value === "number" && Number.isFinite(value) ? value * factor : value;
 }
 
+/** Scales a price bar's value and OHLC fields by `factor`, leaving volume and metadata intact. */
+export function scalePricePoint(point: TimeSeriesPoint, factor: number): TimeSeriesPoint {
+  return {
+    ...point,
+    value: scaled(point.value, factor) ?? null,
+    ...(point.rawValue !== undefined ? { rawValue: scaled(point.rawValue, factor) ?? null } : {}),
+    ...(point.open !== undefined ? { open: scaled(point.open, factor) } : {}),
+    ...(point.high !== undefined ? { high: scaled(point.high, factor) } : {}),
+    ...(point.low !== undefined ? { low: scaled(point.low, factor) } : {}),
+    ...(point.close !== undefined ? { close: scaled(point.close, factor) } : {}),
+  };
+}
+
 /**
  * Prices in `from` units as prices in the target currency: each point's
  * prices times USD per `from` over USD per target at the last completed close
@@ -61,13 +74,7 @@ function convertPricePoints(
     }
     const factor = from / to / divisor;
     converted.push({
-      ...point,
-      value: scaled(point.value, factor) ?? null,
-      ...point.rawValue !== undefined ? { rawValue: scaled(point.rawValue, factor) ?? null } : {},
-      ...point.open !== undefined ? { open: scaled(point.open, factor) } : {},
-      ...point.high !== undefined ? { high: scaled(point.high, factor) } : {},
-      ...point.low !== undefined ? { low: scaled(point.low, factor) } : {},
-      ...point.close !== undefined ? { close: scaled(point.close, factor) } : {},
+      ...scalePricePoint(point, factor),
       conversionFactor: (point.conversionFactor ?? 1) * factor,
     });
   }

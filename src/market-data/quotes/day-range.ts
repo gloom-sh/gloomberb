@@ -2,6 +2,7 @@ import type { Quote } from "../../types/financials";
 import { resolvePriceBasis } from "../market/price-basis";
 import { hasLikelyQuoteUnitMismatch, resolveCurrencyUnit } from "../../utils/currency-units";
 import { canonicalExchange, resolveExchangeTimeZone } from "../../utils/exchanges";
+import { isPositiveNumber as positive } from "../../utils/guards";
 import { zonedDateKey } from "../../utils/zoned-date-time";
 
 // Intl.DateTimeFormat.format costs about 15us and every quote merge asks for
@@ -63,10 +64,6 @@ function sameUnits(left: Quote, right: Quote): boolean {
   return basis !== null && !!a.currency && a.currency === b.currency && a.divisor === b.divisor
     && basis === resolvePriceBasis(right.priceBasis, right.instrumentType)
     && !hasLikelyQuoteUnitMismatch(left, right);
-}
-
-function positive(value: number | undefined): value is number {
-  return value != null && Number.isFinite(value) && value > 0;
 }
 
 /** Daily bars can lag trades; retain observed extrema only within one regular session. */

@@ -1,8 +1,9 @@
 import { useKeybindings } from "../../app/keybindings";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, useUiHost, type InputRenderable } from "../../ui";
-import { type PromptContext, useDialogKeyboard } from "../../ui/dialog";
+import { type DialogApi, type PromptContext, useDialogKeyboard } from "../../ui/dialog";
 import { useThemeColors } from "../../theme/theme-context";
+import { logFailure } from "../../utils/log-failure";
 import { t } from "../../i18n";
 import { DialogFrame, fitDialogWidth } from "./frame";
 import { ListView, listCursorMove, type ListViewItem } from "./list-view";
@@ -194,4 +195,23 @@ export function ChoiceDialog({
       </Box>
     </DialogFrame>
   );
+}
+
+export type ChoiceDialogOptions = Omit<ChoiceDialogProps, keyof PromptContext<string>> & {
+  closeOnClickOutside?: boolean;
+  /** Subsystem tag for failure logging when opening the dialog fails. */
+  logSource?: string;
+  logMessage?: string;
+};
+
+/** Opens a ChoiceDialog and resolves the chosen id, or undefined when dismissed or cancelled. */
+export async function choiceDialog(
+  dialog: DialogApi,
+  { closeOnClickOutside = true, logSource = "ui.choice-dialog", logMessage = "Open choice dialog failed", ...props }: ChoiceDialogOptions,
+): Promise<string | undefined> {
+  const value = await dialog.prompt<string>({
+    closeOnClickOutside,
+    content: (context: PromptContext<string>) => <ChoiceDialog {...context} {...props} />,
+  }).catch(logFailure(logSource, logMessage));
+  return value || undefined;
 }

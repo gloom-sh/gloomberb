@@ -2,7 +2,7 @@ import type { DataTableColumn, PaneFooterSegment } from "../../../components";
 import type { AnalystRatingRecord, AnalystResearchData, Quote } from "../../../types/financials";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { formatRelativeTime } from "../../../utils/datetime-format";
-import { MISSING_VALUE, displayWidth, formatCurrency, formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, displayWidth, formatCurrency, formatNumber, formatPercent } from "../../../utils/format";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import { loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { delayedFooterSegment } from "../../../components/layout/pane/footer/model";
@@ -184,8 +184,40 @@ export function formatRecommendationMix(data: AnalystResearchData | null): strin
     .map(([count, label]) => `${count ?? MISSING_VALUE} ${label}`).join(" · ");
 }
 
-export function formatRatingLabel(value: number | undefined): string {
+function formatRatingLabel(value: number | undefined): string {
   return value == null || !Number.isFinite(value) ? MISSING_VALUE : `${formatNumber(value, 1)}/10`;
+}
+
+export function formatRatingReason(reason: AnalystRatingRecord["reason"] | null | undefined): string | null {
+  return reason ? `${reason.text} · ${reason.url}` : null;
+}
+
+/** Shared summary figures for `analyst` CLI and `fn ANR` headless reports. */
+export function buildAnalystOverview(data: AnalystResearchData, quote: Quote | null) {
+  const target = data.priceTarget;
+  const currency = analystTargetCurrency(data);
+  const { upside, reference } = analystUpside(data, quote);
+  const analysts = recommendationTotal(data);
+  const mix = recommendationMix(data);
+  const hasRange = target != null && [target.low, target.median, target.high].some((value) => value != null);
+  const rangeFormatted = target
+    ? [target.low, target.median, target.high].map((value) => formatAnalystPrice(value, currency)).join(" / ")
+    : MISSING_VALUE;
+  return {
+    target,
+    currency,
+    upside,
+    reference,
+    analysts,
+    mix,
+    averageFormatted: formatAnalystPrice(target?.average, currency),
+    upsideFormatted: upside == null ? MISSING_VALUE : formatPercent(upside),
+    referenceFormatted: formatAnalystReference(reference, currency),
+    hasRange,
+    rangeFormatted,
+    ratingFormatted: formatRatingLabel(data.recommendationRating),
+    mixFormatted: formatRecommendationMix(data),
+  };
 }
 
 export function analystTargetCurrency(data: AnalystResearchData | null): string | undefined {

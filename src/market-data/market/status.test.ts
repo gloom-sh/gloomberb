@@ -12,7 +12,6 @@ import {
   getRegularSessionDisplay,
   getSessionMoveDisplay,
   getTradedSessionMoveDisplay,
-  marketStateCountdown,
   quoteDotMarketState,
   quoteHeadlineTime,
   quoteMarketStateLabel,
@@ -23,17 +22,6 @@ import {
 import { parseListingDelisting } from "../quotes/delisting";
 import { changeBasisLabel, quoteChangeBasis } from "./change-basis";
 import { colors } from "../../theme/colors";
-
-describe("marketStateCountdown", () => {
-  test("adds precision as the US session boundary approaches", () => {
-    expect(marketStateCountdown("PRE", Date.parse("2026-08-18T12:21:42Z"))).toBe("1h 9m");
-    expect(marketStateCountdown("PRE", Date.parse("2026-08-18T13:25:09Z"))).toBe("4m 51s");
-    expect(marketStateCountdown("REGULAR", Date.parse("2026-08-18T18:59:59Z"))).toBeNull();
-    expect(marketStateCountdown("REGULAR", Date.parse("2026-08-18T19:00:00Z"))).toBe("1h");
-    expect(marketStateCountdown("REGULAR", Date.parse("2026-08-18T19:50:42Z"))).toBe("9m 18s");
-  });
-});
-
 
 test("active after-hours price keeps daily change against previous close, including a regular-only primary quote", () => {
   const quote = { symbol: "NVDA", currency: "USD", price: 218.36, change: -5.31, changePercent: -2.374,

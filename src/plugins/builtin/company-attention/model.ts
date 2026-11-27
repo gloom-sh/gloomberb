@@ -6,6 +6,7 @@ import { humanLabel } from "../shared/research-cells";
 import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 import { countOf, freePreviewNote } from "../shared/free-preview";
 import { countryName, postingPlace, postingTitle } from "../shared/job-posting";
+import { formatDay } from "../../../utils/day-format";
 import { formatShortDate } from "../../../utils/datetime-format";
 
 export type AttentionKind = "hiring" | "apps";
@@ -111,7 +112,17 @@ const facts = (entries: Array<[string, string | number | null | undefined]>): At
 const CAPTURES: Record<string, string> = { complete: "Complete", partial: "Partial", unknown: "Coverage not known" };
 /** Columns that date a row by when it was observed: one date on every row is the footer's, not a column. */
 export const OBSERVED_LABELS: ReadonlySet<string> = new Set(["Observed", "As of"]);
-const column = (id: string, label: string, width: number, numeric = false, flex = false): DataTableColumn => ({ id, label, width, align: numeric ? "right" : "left", ...(flex ? { flexGrow: 1 } : {}) });
+export const attentionColumn = (id: string, label: string, width: number, numeric = false, flex = false): DataTableColumn => ({
+  id, label, width, align: numeric ? "right" : "left", ...(flex ? { flexGrow: 1 } : {}),
+});
+export const hiringCount = (value: number | null | undefined) => value == null ? MISSING_VALUE : formatNumber(value, 0);
+export const hiringPace = (value: number | null | undefined) => value == null ? MISSING_VALUE : `${formatNumber(value, Math.abs(value) >= 10 ? 0 : 1)}x`;
+export const hiringAverage = (value: number) => formatNumber(value, value < 10 ? 1 : 0);
+export const hiringSigned = (value: number, decimals = 0) => `${value > 0 ? "+" : ""}${formatNumber(value, decimals)}`;
+export function hiringDayLabel(value: string | null | undefined, year = false): string {
+  return /^\d{4}-\d{2}-\d{2}/.test(value ?? "") ? formatDay(value, year ? "full" : "no-year") : MISSING_VALUE;
+}
+const column = attentionColumn;
 const roleFamily = (value: string | null) => value === "data_ai" || value === "data ai" ? "Data / AI" : value ? humanLabel(value) : null;
 const COMPANY_COLUMNS = [column("symbol", "Ticker", 12), column("name", "Company", 24, false, true), column("open", "Open roles", 12, true), column("net", "Net vs prior", 13, true), column("remote", "Remote %", 17, true), column("z", "Z-score", 10, true), column("signal", "Signal", 12), column("date", "As of", 12)];
 const HISTORY_COLUMNS = [column("date", "Week", 12), column("open", "Open roles", 12, true), column("added", "Added", 9, true), column("removed", "Removed", 9, true), column("net", "Net", 9, true), column("change", "Change %", 11, true), column("remote", "Remote %", 17, true), column("coverage", "Capture", 13, false, true)];

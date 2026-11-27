@@ -2,30 +2,27 @@ import { apiClient } from "../../../api-client";
 import type { SwapCurvePayload, SwapTenor } from "../../../api-client/swap-curve";
 import { createPluginCache, savedCopyForTransientFailure, type PluginCacheResult } from "../../../data/plugin-cache";
 import { stampRetrievedAt, withSavedCopyMarkOf } from "../../../data/saved-copies";
-import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
+import { createCloudEndpoint } from "../shared/cloud-resource";
 import { validateSwapCurve } from "./swaps-model";
 import { loadCurveData, type CurveData, type CurveId } from "./curves";
 import { loadWorldBoard, type WorldBoard } from "./world";
 
-export const swapCurveCache = createPluginCache<SwapCurvePayload>({
-  kind: "sofr-swap-curve", source: "gloom-cloud", schemaVersion: 1,
-  policy: { staleMs: 60 * 60_000, expireMs: 7 * 24 * 60 * 60_000 },
+const swapCurveEndpoint = createCloudEndpoint<SwapTenor, SwapCurvePayload, Pick<typeof apiClient, "getCloudSwapCurve">>({
+  kind: "sofr-swap-curve", schemaVersion: 1, policy: { staleMs: 60 * 60_000, expireMs: 7 * 24 * 60 * 60_000 },
+  key: (tenor) => tenor, defaultClient: apiClient,
+  fetch: (tenor, client) => client.getCloudSwapCurve(tenor, 365),
+  validate: (payload, tenor) => {
+    const valid = validateSwapCurve(payload);
+    if (valid.history.tenor !== tenor) throw new Error("The server returned history for a different swap tenor");
+    return valid;
+  },
+  unavailableMessage: "SOFR swap rates are not available yet.",
 });
-
-export async function fetchSwapCurve(tenor: SwapTenor,
-  client: Pick<typeof apiClient, "getCloudSwapCurve"> = apiClient): Promise<SwapCurvePayload> {
-  try {
-    const payload = validateSwapCurve(await client.getCloudSwapCurve(tenor, 365));
-    if (payload.history.tenor !== tenor) throw new Error("The server returned history for a different swap tenor");
-    return payload;
-  } catch (error) {
-    throw unavailableOnServer(error, "SOFR swap rates are not available yet.");
-  }
-}
-
-export const getCachedSwapCurve = (tenor: SwapTenor) => cachedCloudResource(swapCurveCache, tenor, validateSwapCurve);
-export const loadSwapCurve = (tenor: SwapTenor, force = false) =>
-  loadCloudResource(swapCurveCache, tenor, () => fetchSwapCurve(tenor), { force, validate: validateSwapCurve });
+export const swapCurveCache = swapCurveEndpoint.cache;
+export const fetchSwapCurve = (tenor: SwapTenor, client: Pick<typeof apiClient, "getCloudSwapCurve"> = apiClient) =>
+  swapCurveEndpoint.fetch(tenor, { client });
+export const getCachedSwapCurve = (tenor: SwapTenor) => swapCurveEndpoint.cached(tenor);
+export const loadSwapCurve = (tenor: SwapTenor, force = false) => swapCurveEndpoint.load(tenor, { force });
 
 const DAY_MS = 24 * 60 * 60_000;
 

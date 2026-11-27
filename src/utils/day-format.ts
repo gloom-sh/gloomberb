@@ -3,6 +3,11 @@ import { MISSING_VALUE } from "./format";
 
 const ISO_DAY = /^(\d{4}-\d{2}-\d{2})(?:$|[T ])/;
 
+/** A UTC calendar day (`YYYY-MM-DD`) for a Date or epoch ms. */
+export function utcDay(value: Date | number): string {
+  return (value instanceof Date ? value : new Date(value)).toISOString().slice(0, 10);
+}
+
 /**
  * The calendar day a value names, as an ISO day (`2026-08-21`): the day an
  * ISO date or timestamp string starts with, as written, or a Date or epoch

@@ -24,10 +24,5 @@ export const debtMaturitiesModule: PluginModule = {
       reportFreshness: SEC_FILINGS_VIEW,
     }, "issuer-debt", "maturities"),
   ],
-  setup(ctx) {
-    debtMaturitiesCache.attach(ctx.persistence);
-  },
-  dispose() {
-    debtMaturitiesCache.reset();
-  },
+  caches: [debtMaturitiesCache],
 };

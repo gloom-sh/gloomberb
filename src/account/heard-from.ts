@@ -11,20 +11,17 @@
  * service too old to know the question, just means it is not asked.
  */
 import type { HeardFromAnswer, HeardFromState } from "../api-client/heard-from";
+import { createListenerSet } from "../utils/listeners";
 import { logFailure } from "../utils/log-failure";
 
 let dueAccount: string | null = null;
-const listeners = new Set<() => void>();
-
-function changed() {
-  for (const listener of listeners) listener();
-}
+const listeners = createListenerSet();
 
 /** An account just signed up or in here: ask it once nothing else is on screen. */
 export function markHeardFromDue(accountId: string): void {
   if (!accountId || dueAccount === accountId) return;
   dueAccount = accountId;
-  changed();
+  listeners.notify();
 }
 
 /** The account the question is due for, if any. */
@@ -36,16 +33,11 @@ export function heardFromDueAccount(): string | null {
 export function takeHeardFromDue(accountId: string): boolean {
   if (dueAccount !== accountId) return false;
   dueAccount = null;
-  changed();
+  listeners.notify();
   return true;
 }
 
-export function subscribeHeardFromDue(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
+export const subscribeHeardFromDue = listeners.subscribe;
 
 /**
  * What the person picked: an answer (with its note, if any), or null for Skip.

@@ -4,57 +4,57 @@ import type { HiringBoard, HiringBuildingBoard, HiringBuildingFilter, HiringBuil
 import type { CloudJobsPostingDetail } from "../../../api-client/types";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { createTtlCache } from "../../../data/ttl-cache";
+import { isFiniteNumber, isFraction, isHttpUrl, isIsoInstant, isNonNegative } from "../../../utils/guards";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 import type { AppFocus, AttentionKind } from "./model";
 
+const policy = { staleMs: 30 * 60_000, expireMs: 7 * 86_400_000 };
+const makeCache = <T>(kind: string) => createPluginCache<T>({ kind, source: "gloom-cloud", schemaVersion: 1, policy });
 export type AttentionPayload = HiringBoard | HiringPayload | AppAttentionPayload;
-export const attentionCache = createPluginCache<AttentionPayload>({ kind: "company-attention", source: "gloom-cloud", schemaVersion: 1, policy: { staleMs: 30 * 60_000, expireMs: 7 * 86_400_000 } });
+export const attentionCache = makeCache<AttentionPayload>("company-attention");
 export type MovesPayload = HiringMovesBoard | HiringCompanyMoves;
-export const movesCache = createPluginCache<MovesPayload>({ kind: "hiring-moves", source: "gloom-cloud", schemaVersion: 1, policy: { staleMs: 30 * 60_000, expireMs: 7 * 86_400_000 } });
+export const movesCache = makeCache<MovesPayload>("hiring-moves");
 export type SignalsPayload = HiringSignalsBoard | HiringCompanySignals;
-export const signalsCache = createPluginCache<SignalsPayload>({ kind: "hiring-signals", source: "gloom-cloud", schemaVersion: 1, policy: { staleMs: 30 * 60_000, expireMs: 7 * 86_400_000 } });
+export const signalsCache = makeCache<SignalsPayload>("hiring-signals");
 export type BuildingPayload = HiringBuildingBoard | HiringCompanyBuilding;
-export const buildingCache = createPluginCache<BuildingPayload>({ kind: "hiring-building", source: "gloom-cloud", schemaVersion: 1, policy: { staleMs: 30 * 60_000, expireMs: 7 * 86_400_000 } });
-export const appRankCache = createPluginCache<AppRankPayload>({ kind: "app-rank-history", source: "gloom-cloud", schemaVersion: 1, policy: { staleMs: 30 * 60_000, expireMs: 7 * 86_400_000 } });
-const finite = (value: unknown) => typeof value === "number" && Number.isFinite(value);
-const positive = (value: unknown) => finite(value) && (value as number) >= 0;
-const fraction = (value: unknown) => positive(value) && (value as number) <= 1;
-const date = (value: unknown) => typeof value === "string" && Number.isFinite(Date.parse(value));
-const url = (value: unknown) => { try { return typeof value === "string" && ["https:", "http:"].includes(new URL(value).protocol); } catch {
-  // Intentional ignore: malformed URLs fail this web link field validator.
-  return false;
-} };
+export const buildingCache = makeCache<BuildingPayload>("hiring-building");
+export const appRankCache = makeCache<AppRankPayload>("app-rank-history");
 function numericTree(value: unknown): boolean {
   if (typeof value === "number") return Number.isFinite(value);
   if (Array.isArray(value)) return value.every(numericTree);
   if (value && typeof value === "object") return Object.values(value).every(numericTree);
   return true;
 }
+const sameCompany = (data: object, symbol: string) =>
+  "symbol" in data && (
+    (data as { symbol?: string; requestedSymbol?: string }).symbol?.toUpperCase() === symbol.toUpperCase()
+    || (data as { requestedSymbol?: string }).requestedSymbol?.toUpperCase() === symbol.toUpperCase()
+  );
 function hiringCompany(row: HiringSummary): boolean {
-  return !!row && typeof row.symbol === "string" && typeof row.name === "string" && fraction(row.mappingConfidence)
-    && ["ok", "collecting", "stale", "uncovered"].includes(row.status) && positive(row.historyWeeks)
-    && (row.latest === null || (!!row.latest && date(row.latest.week) && date(row.latest.observedAt) && positive(row.latest.openCount)
-      && (row.latest.remoteShare === null || fraction(row.latest.remoteShare)) && fraction(row.latest.confidence)));
+  return !!row && typeof row.symbol === "string" && typeof row.name === "string" && isFraction(row.mappingConfidence)
+    && ["ok", "collecting", "stale", "uncovered"].includes(row.status) && isNonNegative(row.historyWeeks)
+    && (row.latest === null || (!!row.latest && isIsoInstant(row.latest.week) && isIsoInstant(row.latest.observedAt) && isNonNegative(row.latest.openCount)
+      && (row.latest.remoteShare === null || isFraction(row.latest.remoteShare)) && isFraction(row.latest.confidence)));
 }
 export function validateAttention(kind: AttentionKind, payload: AttentionPayload): AttentionPayload {
-  let valid = !!payload && date(payload.generatedAt) && numericTree(payload);
+  let valid = !!payload && isIsoInstant(payload.generatedAt) && numericTree(payload);
   if (valid && kind === "hiring") {
     const data = payload as HiringBoard | HiringPayload;
     valid = typeof data.preview === "boolean" && ("companies" in data
-      ? Array.isArray(data.companies) && data.companies.every(hiringCompany) && positive(data.locked)
-      : hiringCompany(data) && Array.isArray(data.series) && data.series.every((row) => date(row.week) && positive(row.openCount))
-        && [data.functions, data.seniority, data.countries, data.locations].every((rows) => Array.isArray(rows) && rows.every((row) => typeof row.label === "string" && positive(row.count) && fraction(row.share)))
+      ? Array.isArray(data.companies) && data.companies.every(hiringCompany) && isNonNegative(data.locked)
+      : hiringCompany(data) && Array.isArray(data.series) && data.series.every((row) => isIsoInstant(row.week) && isNonNegative(row.openCount))
+        && [data.functions, data.seniority, data.countries, data.locations].every((rows) => Array.isArray(rows) && rows.every((row) => typeof row.label === "string" && isNonNegative(row.count) && isFraction(row.share)))
         && Array.isArray(data.peers) && data.peers.every(hiringCompany) && Array.isArray(data.signals)
-        && Array.isArray(data.evidence) && data.evidence.every((row) => typeof row.title === "string" && date(row.observedAt) && fraction(row.confidence) && (row.url === null || url(row.url)))
+        && Array.isArray(data.evidence) && data.evidence.every((row) => typeof row.title === "string" && isIsoInstant(row.observedAt) && isFraction(row.confidence) && (row.url === null || isHttpUrl(row.url)))
         && !!data.coverage && typeof data.coverage.comparability === "string" && !!data.locked);
   } else if (valid) {
     const data = payload as AppAttentionPayload;
     valid = ["pro", "preview"].includes(data.access) && ["ready", "collecting", "unavailable"].includes(data.status)
-      && !!data.summary && positive(data.summary.appCount) && !!data.coverage && Array.isArray(data.coverage.limitations)
-      && Array.isArray(data.apps) && data.apps.every((row) => typeof row.appId === "string" && typeof row.name === "string" && typeof row.country === "string" && date(row.observedAt) && url(row.appUrl) && fraction(row.confidence) && (row.rank === null || positive(row.rank)) && (row.rating === null || (positive(row.rating) && row.rating <= 5)))
-      && Array.isArray(data.history) && data.history.every((row) => date(row.date))
+      && !!data.summary && isNonNegative(data.summary.appCount) && !!data.coverage && Array.isArray(data.coverage.limitations)
+      && Array.isArray(data.apps) && data.apps.every((row) => typeof row.appId === "string" && typeof row.name === "string" && typeof row.country === "string" && isIsoInstant(row.observedAt) && isHttpUrl(row.appUrl) && isFraction(row.confidence) && (row.rank === null || isNonNegative(row.rank)) && (row.rating === null || (isNonNegative(row.rating) && row.rating <= 5)))
+      && Array.isArray(data.history) && data.history.every((row) => isIsoInstant(row.date))
       && [data.companies, data.peers, data.countries, data.spreads, data.evidence].every(Array.isArray)
-      && data.evidence.every((row) => url(row.sourceUrl) && date(row.observedAt) && fraction(row.confidence)) && !!data.locked;
+      && data.evidence.every((row) => isHttpUrl(row.sourceUrl) && isIsoInstant(row.observedAt) && isFraction(row.confidence)) && !!data.locked;
   }
   if (!valid) throw new Error(`The server returned unreadable ${kind === "hiring" ? "hiring observations" : "app attention"}.`);
   return payload;
@@ -62,7 +62,7 @@ export function validateAttention(kind: AttentionKind, payload: AttentionPayload
 export async function fetchAttention(kind: AttentionKind, symbol?: string, filters: AppAttentionFilter = {}, client: Pick<typeof apiClient, "getCloudHiring" | "getCloudAppAttention"> = apiClient, signal?: AbortSignal) {
   try {
     const data = validateAttention(kind, kind === "hiring" ? await client.getCloudHiring(symbol, filters, signal) : await client.getCloudAppAttention({ ...filters, symbol }, signal));
-    if (symbol && (!("symbol" in data) || data.symbol?.toUpperCase() !== symbol.toUpperCase() && data.requestedSymbol?.toUpperCase() !== symbol.toUpperCase())) throw new Error("The server returned observations for a different company.");
+    if (symbol && !sameCompany(data, symbol)) throw new Error("The server returned observations for a different company.");
     return data;
   } catch (error) { throw unavailableOnServer(error, `${kind === "hiring" ? "Hiring observations" : "App attention"} are not available yet.`, [404, 503]); }
 }
@@ -72,15 +72,15 @@ export const cachedAttention = (kind: AttentionKind, symbol: string | undefined,
 export const loadAttention = (kind: AttentionKind, symbol: string | undefined, access: string, filters: AppAttentionFilter, force = false) => loadCloudResource(attentionCache, cacheKey(kind, symbol, access, filters), () => fetchAttention(kind, symbol, filters), { force, validate: (data) => validateAttention(kind, data) });
 
 const SIGNALS = new Set(["accelerating", "slowing", "with_peers", null]);
-const hiringMove = (row: HiringMove) => !!row && typeof row.symbol === "string" && typeof row.name === "string" && date(row.week) && positive(row.newRoles)
-  && !!row.baseline && positive(row.baseline.mean) && Array.isArray(row.baseline.values) && finite(row.zScore) && !!row.peers && typeof row.peers.label === "string"
-  && SIGNALS.has(row.signal) && Array.isArray(row.drivers) && row.drivers.every((driver) => typeof driver.label === "string" && positive(driver.newRoles))
+const hiringMove = (row: HiringMove) => !!row && typeof row.symbol === "string" && typeof row.name === "string" && isIsoInstant(row.week) && isNonNegative(row.newRoles)
+  && !!row.baseline && isNonNegative(row.baseline.mean) && Array.isArray(row.baseline.values) && isFiniteNumber(row.zScore) && !!row.peers && typeof row.peers.label === "string"
+  && SIGNALS.has(row.signal) && Array.isArray(row.drivers) && row.drivers.every((driver) => typeof driver.label === "string" && isNonNegative(driver.newRoles))
   && Array.isArray(row.topTitles) && typeof row.why === "string" && Array.isArray(row.sourceTickers);
-const moveWeek = (row: HiringMoveWeek) => !!row && date(row.week) && typeof row.measured === "boolean" && Array.isArray(row.excluded);
-const movePosting = (row: HiringMovePosting) => !!row && typeof row.title === "string" && date(row.firstSeenAt) && (row.url === null || url(row.url));
+const moveWeek = (row: HiringMoveWeek) => !!row && isIsoInstant(row.week) && typeof row.measured === "boolean" && Array.isArray(row.excluded);
+const movePosting = (row: HiringMovePosting) => !!row && typeof row.title === "string" && isIsoInstant(row.firstSeenAt) && (row.url === null || isHttpUrl(row.url));
 export function validateMoves(payload: MovesPayload): MovesPayload {
-  const valid = !!payload && date(payload.generatedAt) && typeof payload.preview === "boolean" && numericTree(payload) && ("moves" in payload
-    ? (payload.week === null || date(payload.week)) && Array.isArray(payload.moves) && payload.moves.every(hiringMove) && positive(payload.total) && positive(payload.locked) && !!payload.coverage?.signals
+  const valid = !!payload && isIsoInstant(payload.generatedAt) && typeof payload.preview === "boolean" && numericTree(payload) && ("moves" in payload
+    ? (payload.week === null || isIsoInstant(payload.week)) && Array.isArray(payload.moves) && payload.moves.every(hiringMove) && isNonNegative(payload.total) && isNonNegative(payload.locked) && !!payload.coverage?.signals
     : typeof payload.symbol === "string" && (payload.latest === null || hiringMove(payload.latest)) && (payload.week === null || moveWeek(payload.week))
       && Array.isArray(payload.weeks) && payload.weeks.every(moveWeek) && Array.isArray(payload.history) && !!payload.evidence
       && [payload.evidence.added, payload.evidence.closed].every((rows) => Array.isArray(rows) && rows.every(movePosting)) && !!payload.locked);
@@ -91,7 +91,7 @@ export interface MovesQuery { filter?: HiringMovesFilter; offset?: number; limit
 export async function fetchMoves(symbol: string | undefined, query: MovesQuery = {}, client: Pick<typeof apiClient, "getCloudHiringMoves"> = apiClient, signal?: AbortSignal) {
   try {
     const data = validateMoves(await client.getCloudHiringMoves(symbol, { limit: query.limit, offset: query.offset, signal: query.filter }, signal));
-    if (symbol && (!("symbol" in data) || data.symbol.toUpperCase() !== symbol.toUpperCase() && data.requestedSymbol?.toUpperCase() !== symbol.toUpperCase())) throw new Error("The server returned moves for a different company.");
+    if (symbol && !sameCompany(data, symbol)) throw new Error("The server returned moves for a different company.");
     return data;
   } catch (error) { throw unavailableOnServer(error, "Hiring moves are not available yet.", [404, 503]); }
 }
@@ -100,17 +100,17 @@ export const cachedMoves = (symbol: string | undefined, access: string, filter: 
 export const loadMoves = (symbol: string | undefined, access: string, filter: HiringMovesFilter, force = false) => loadCloudResource(movesCache, movesKey(symbol, access, filter), () => fetchMoves(symbol, { filter }), { force, validate: validateMoves });
 
 const KINDS = new Set(["new_country", "new_city", "location_spike", "function_spike", "new_role_type"]);
-const weekSignal = (row: HiringWeekSignal) => !!row && typeof row.symbol === "string" && typeof row.name === "string" && date(row.week) && KINDS.has(row.kind)
-  && ["expansion", "anomalies"].includes(row.group) && typeof row.key === "string" && typeof row.label === "string" && positive(row.newRoles)
-  && !!row.history && date(row.history.watchedSince) && positive(row.history.priorPostings) && (row.history.priorShare === null || fraction(row.history.priorShare))
-  && (row.baseline === null || (!!row.baseline && positive(row.baseline.mean) && Array.isArray(row.baseline.values))) && Array.isArray(row.flags)
+const weekSignal = (row: HiringWeekSignal) => !!row && typeof row.symbol === "string" && typeof row.name === "string" && isIsoInstant(row.week) && KINDS.has(row.kind)
+  && ["expansion", "anomalies"].includes(row.group) && typeof row.key === "string" && typeof row.label === "string" && isNonNegative(row.newRoles)
+  && !!row.history && isIsoInstant(row.history.watchedSince) && isNonNegative(row.history.priorPostings) && (row.history.priorShare === null || isFraction(row.history.priorShare))
+  && (row.baseline === null || (!!row.baseline && isNonNegative(row.baseline.mean) && Array.isArray(row.baseline.values))) && Array.isArray(row.flags)
   && Array.isArray(row.topTitles) && Array.isArray(row.places) && Array.isArray(row.postings) && row.postings.every(movePosting)
   && typeof row.why === "string" && Array.isArray(row.sourceTickers);
 export function validateSignals(payload: SignalsPayload): SignalsPayload {
-  const valid = !!payload && date(payload.generatedAt) && typeof payload.preview === "boolean" && numericTree(payload) && ("group" in payload
-    ? ["expansion", "anomalies"].includes(payload.group) && (payload.week === null || date(payload.week)) && Array.isArray(payload.signals) && payload.signals.every(weekSignal)
-      && positive(payload.total) && positive(payload.locked) && !!payload.coverage?.counts
-    : typeof payload.symbol === "string" && (payload.week === null || date(payload.week)) && (payload.watchedSince === null || date(payload.watchedSince))
+  const valid = !!payload && isIsoInstant(payload.generatedAt) && typeof payload.preview === "boolean" && numericTree(payload) && ("group" in payload
+    ? ["expansion", "anomalies"].includes(payload.group) && (payload.week === null || isIsoInstant(payload.week)) && Array.isArray(payload.signals) && payload.signals.every(weekSignal)
+      && isNonNegative(payload.total) && isNonNegative(payload.locked) && !!payload.coverage?.counts
+    : typeof payload.symbol === "string" && (payload.week === null || isIsoInstant(payload.week)) && (payload.watchedSince === null || isIsoInstant(payload.watchedSince))
       && Array.isArray(payload.signals) && payload.signals.every(weekSignal) && Array.isArray(payload.history) && payload.history.every(weekSignal)
       && Array.isArray(payload.skipped) && !!payload.locked);
   if (!valid) throw new Error("The server returned unreadable hiring signals.");
@@ -121,7 +121,7 @@ export interface SignalsQuery { filter?: HiringSignalsFilter; offset?: number; l
 export async function fetchSignals(group: HiringSignalGroup, symbol: string | undefined, query: SignalsQuery = {}, client: Pick<typeof apiClient, "getCloudHiringSignals" | "getCloudHiringCompanySignals"> = apiClient, signal?: AbortSignal) {
   try {
     const data = validateSignals(symbol ? await client.getCloudHiringCompanySignals(symbol, signal) : await client.getCloudHiringSignals(group, { limit: query.limit, offset: query.offset, kind: query.filter }, signal));
-    if (symbol && (!("symbol" in data) || data.symbol.toUpperCase() !== symbol.toUpperCase() && data.requestedSymbol?.toUpperCase() !== symbol.toUpperCase())) throw new Error("The server returned signals for a different company.");
+    if (symbol && !sameCompany(data, symbol)) throw new Error("The server returned signals for a different company.");
     if (!symbol && (!("group" in data) || data.group !== group)) throw new Error("The server returned another tab's signals.");
     return data;
   } catch (error) { throw unavailableOnServer(error, "Hiring signals are not available yet.", [404, 503]); }
@@ -132,15 +132,15 @@ export const loadSignals = (group: HiringSignalGroup, symbol: string | undefined
 
 const DIMENSIONS = new Set(["function", "theme"]);
 const mixRow = (row: HiringMixRow) => !!row && DIMENSIONS.has(row.dimension) && typeof row.key === "string" && typeof row.label === "string"
-  && positive(row.recentRoles) && fraction(row.recentShare) && positive(row.beforeRoles) && fraction(row.beforeShare) && finite(row.change) && typeof row.read === "boolean";
-const shiftPart = (part: HiringBuildingShift["recent"]) => !!part && positive(part.weeks) && positive(part.roles) && positive(part.total) && fraction(part.share) && Array.isArray(part.values);
-const buildingShift = (row: HiringBuildingShift) => !!row && typeof row.symbol === "string" && typeof row.name === "string" && date(row.week) && DIMENSIONS.has(row.dimension)
-  && typeof row.key === "string" && typeof row.label === "string" && shiftPart(row.recent) && shiftPart(row.before) && finite(row.change) && finite(row.zScore)
+  && isNonNegative(row.recentRoles) && isFraction(row.recentShare) && isNonNegative(row.beforeRoles) && isFraction(row.beforeShare) && isFiniteNumber(row.change) && typeof row.read === "boolean";
+const shiftPart = (part: HiringBuildingShift["recent"]) => !!part && isNonNegative(part.weeks) && isNonNegative(part.roles) && isNonNegative(part.total) && isFraction(part.share) && Array.isArray(part.values);
+const buildingShift = (row: HiringBuildingShift) => !!row && typeof row.symbol === "string" && typeof row.name === "string" && isIsoInstant(row.week) && DIMENSIONS.has(row.dimension)
+  && typeof row.key === "string" && typeof row.label === "string" && shiftPart(row.recent) && shiftPart(row.before) && isFiniteNumber(row.change) && isFiniteNumber(row.zScore)
   && Array.isArray(row.topTitles) && Array.isArray(row.postings) && row.postings.every(movePosting) && typeof row.why === "string" && Array.isArray(row.sourceTickers);
 export function validateBuilding(payload: BuildingPayload): BuildingPayload {
-  const valid = !!payload && date(payload.generatedAt) && typeof payload.preview === "boolean" && numericTree(payload) && ("shifts" in payload && "filter" in payload
-    ? (payload.week === null || date(payload.week)) && Array.isArray(payload.shifts) && payload.shifts.every(buildingShift) && positive(payload.total) && positive(payload.locked) && !!payload.coverage?.counts
-    : "functions" in payload && typeof payload.symbol === "string" && (payload.week === null || date(payload.week)) && Array.isArray(payload.functions) && payload.functions.every(mixRow)
+  const valid = !!payload && isIsoInstant(payload.generatedAt) && typeof payload.preview === "boolean" && numericTree(payload) && ("shifts" in payload && "filter" in payload
+    ? (payload.week === null || isIsoInstant(payload.week)) && Array.isArray(payload.shifts) && payload.shifts.every(buildingShift) && isNonNegative(payload.total) && isNonNegative(payload.locked) && !!payload.coverage?.counts
+    : "functions" in payload && typeof payload.symbol === "string" && (payload.week === null || isIsoInstant(payload.week)) && Array.isArray(payload.functions) && payload.functions.every(mixRow)
       && Array.isArray(payload.themes) && payload.themes.every(mixRow) && Array.isArray(payload.shifts) && payload.shifts.every(buildingShift)
       && Array.isArray(payload.history) && payload.history.every(buildingShift) && Array.isArray(payload.skipped) && !!payload.locked);
   if (!valid) throw new Error("The server returned an unreadable hiring mix.");
@@ -151,7 +151,7 @@ export interface BuildingQuery { filter?: HiringBuildingFilter; offset?: number;
 export async function fetchBuilding(symbol: string | undefined, query: BuildingQuery = {}, client: Pick<typeof apiClient, "getCloudHiringBuilding" | "getCloudHiringCompanyBuilding"> = apiClient, signal?: AbortSignal) {
   try {
     const data = validateBuilding(symbol ? await client.getCloudHiringCompanyBuilding(symbol, signal) : await client.getCloudHiringBuilding({ limit: query.limit, offset: query.offset, dimension: query.filter }, signal));
-    if (symbol && (!("symbol" in data) || data.symbol.toUpperCase() !== symbol.toUpperCase() && data.requestedSymbol?.toUpperCase() !== symbol.toUpperCase())) throw new Error("The server returned a hiring mix for a different company.");
+    if (symbol && !sameCompany(data, symbol)) throw new Error("The server returned a hiring mix for a different company.");
     if (!symbol && !("filter" in data)) throw new Error("The server returned a company's mix for the board.");
     return data;
   } catch (error) { throw unavailableOnServer(error, "What companies are building is not available yet.", [404, 503]); }
@@ -163,7 +163,7 @@ export const loadBuilding = (symbol: string | undefined, access: string, filter:
 export async function fetchAppRank(focus: AppFocus, days: number, offset = 0, signal?: AbortSignal, client: Pick<typeof apiClient, "getCloudAppRankHistory"> = apiClient, limit = 500) {
   const data = await client.getCloudAppRankHistory(focus.store, focus.appId, { country: focus.country, chart: focus.chart, days, offset, limit }, signal);
   if (!data || data.appId !== focus.appId || data.store !== focus.store || !["pro", "preview"].includes(data.access)
-    || !Array.isArray(data.rankHistory) || !data.rankHistory.every((row) => row.appId === focus.appId && row.store === focus.store && row.country === focus.country && row.chart === focus.chart && date(row.date) && date(row.observedAt) && url(row.sourceUrl) && (row.rank === null || positive(row.rank))) || !data.page || !numericTree(data)) throw new Error("The server returned unreadable app rank history.");
+    || !Array.isArray(data.rankHistory) || !data.rankHistory.every((row) => row.appId === focus.appId && row.store === focus.store && row.country === focus.country && row.chart === focus.chart && isIsoInstant(row.date) && isIsoInstant(row.observedAt) && isHttpUrl(row.sourceUrl) && (row.rank === null || isNonNegative(row.rank))) || !data.page || !numericTree(data)) throw new Error("The server returned unreadable app rank history.");
   return data;
 }
 export const loadAppRank = (focus: AppFocus, access: string, days: number, force = false) => loadCloudResource(appRankCache, `${access}:${focus.store}:${focus.appId}:${focus.country}:${focus.chart}:${days}`, () => fetchAppRank(focus, days), { force });

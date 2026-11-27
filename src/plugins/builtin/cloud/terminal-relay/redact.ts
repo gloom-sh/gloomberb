@@ -9,6 +9,7 @@
  */
 
 import { namesSecret } from "../../../../remote/secrets";
+import { isRecord } from "../../../../utils/guards";
 
 /** Fields of a form field or input that hold what was typed. */
 const TYPED_VALUE_KEYS = ["value", "summary", "defaultValue", "initialValue"];
@@ -19,10 +20,6 @@ const TYPED_VALUE_KEYS = ["value", "summary", "defaultValue", "initialValue"];
  */
 const FIELD_ROLES = new Set(["form-field", "text-field", "input", "textarea"]);
 export const REDACTED = "[redacted]";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
 
 function isPasswordField(record: Record<string, unknown>): boolean {
   return record.fieldType === "password" || record.inputType === "password" || record.type === "password";

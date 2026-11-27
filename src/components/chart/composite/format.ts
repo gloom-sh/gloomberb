@@ -2,6 +2,7 @@ import { formatMarketPrice, formatMarketPriceWithCurrency, stablePriceFractionDi
 import { INDEX_POINTS_UNIT } from "../../../market-data/market/index-level";
 import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
 import type { CompositeAxisDomain, CompositePanelScene } from "./types";
+import { utcDay as utcDate } from "../../../utils/day-format";
 import { formatNumber, formatPercentRaw, formatSignificant } from "../../../utils/format";
 import { timeZoneLabel, zonedWallClockMs } from "../../../utils/zoned-date-time";
 
@@ -734,10 +735,6 @@ function axisTickRatio(domain: CompositeAxisDomain, value: number): number {
   }
   const span = domain.max - domain.min;
   return span > 0 ? (domain.max - value) / span : 0.5;
-}
-
-function utcDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
 }
 
 function utcTime(date: Date): string {

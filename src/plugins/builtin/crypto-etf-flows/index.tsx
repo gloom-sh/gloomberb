@@ -34,10 +34,5 @@ export const cryptoEtfFlowsModule: PluginModule = {
       headless: cryptoEtfFlowsHeadless,
     },
   ],
-  setup(ctx) {
-    cryptoEtfFlowsCache.attach(ctx.persistence);
-  },
-  dispose() {
-    cryptoEtfFlowsCache.reset();
-  },
+  caches: [cryptoEtfFlowsCache],
 };

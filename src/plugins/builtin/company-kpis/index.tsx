@@ -7,8 +7,7 @@ import { CompanyGuidancePane, CompanyKpisPane } from "./pane";
 const kpisHeadless = companyHeadless("kpis");
 const guidanceHeadless = companyHeadless("guidance");
 export const companyKpisModule: PluginModule = {
-  setup(ctx) { companyKpisCache.attach(ctx.persistence); },
-  dispose() { companyKpisCache.reset(); },
+  caches: [companyKpisCache],
   panes: [
     { id: "company-kpis", name: "Company KPIs", icon: "K", component: CompanyKpisPane, defaultPosition: "right", defaultMode: "floating",
       defaultFloatingSize: { width: 130, height: 30 }, shareItem: { ticker: true }, tickerFollower: true, instruments: ["equity"], tableExport: true, headless: kpisHeadless },

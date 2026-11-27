@@ -1,15 +1,9 @@
-import {
-  useCallback,
-  type Dispatch,
-  type MutableRefObject,
-} from "react";
+import { useCallback, type MutableRefObject } from "react";
 import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import type { PluginRegistry } from "../../plugins/registry";
-import type { AppAction, AppState } from "../../state/app/context";
 import type { DataProvider } from "../../types/data-provider";
-import type { TickerFinancials } from "../../types/financials";
-import type { TickerRecord } from "../../types/ticker";
-import type { ThemePickerHandle } from "./theme-picker";
+import type { CommandBarEnvironment } from "./surface/environment";
+import type { CommandBarNavigationState } from "./routing/navigation-state";
 import { useCommandBarTickerSearchActions } from "./routes/ticker-search/actions";
 import { useCommandBarPluginCommandActions } from "./commands/plugin/actions";
 import { useCommandBarPaneTemplateActions } from "./pane-templates/workflow";
@@ -19,85 +13,50 @@ import { useCommandBarPaneActions } from "./pane-actions";
 import { useCommandBarWorkflowCoordinator } from "./workflow/coordinator";
 import { useCommandBarRouteActions } from "./routing/actions";
 import { useCommandBarLaunchRequest } from "./routing/launch-request";
-import type { CommandBarRoute } from "./workflow/types";
 
 interface UseCommandBarActionRuntimeOptions {
-  activeCollectionId: string | null;
-  activeFinancials: TickerFinancials | null;
-  activeTickerData: TickerRecord | null;
-  activeTickerSymbol: string | null;
+  env: CommandBarEnvironment;
+  nav: CommandBarNavigationState;
   closeAll: (options?: { revertThemePreview?: boolean }) => void;
-  config: AppState["config"];
   dataProvider: DataProvider;
-  dispatch: Dispatch<AppAction>;
-  focusedPaneId: string | null;
   onCheckForUpdates?: () => void | Promise<void>;
   /** Settings' Run Setup Again; absent where setup cannot run. */
   onRunSetupAgain?: () => Promise<void>;
-  persistConfig: (nextConfig: AppState["config"]) => void;
   pluginRegistry: PluginRegistry;
-  pushRoute: (route: CommandBarRoute) => void;
   quitApp: () => void;
   rootThemeBaseIdRef: MutableRefObject<string | null>;
-  setRootQuery: (query: string) => void;
-  skipTickerSearchDebounceRef: MutableRefObject<boolean>;
-  state: AppState;
-  stateRef: MutableRefObject<AppState>;
-  themePickerRef: MutableRefObject<ThemePickerHandle | null>;
   tickerRepository: AppTickerRepositoryPort;
-  tickers: AppState["tickers"];
 }
 
 export function useCommandBarActionRuntime({
-  activeCollectionId,
-  activeFinancials,
-  activeTickerData,
-  activeTickerSymbol,
+  env,
+  nav,
   closeAll,
-  config,
   dataProvider,
-  dispatch,
-  focusedPaneId,
   onCheckForUpdates,
   onRunSetupAgain,
-  persistConfig,
   pluginRegistry,
-  pushRoute,
   quitApp,
   rootThemeBaseIdRef,
-  setRootQuery,
-  skipTickerSearchDebounceRef,
-  state,
-  stateRef,
-  themePickerRef,
   tickerRepository,
-  tickers,
 }: UseCommandBarActionRuntimeOptions) {
-  const {
-    changePaneTicker,
-    duplicatePane,
-    focusTicker,
-    persistLayoutChange,
-  } = useCommandBarPaneActions({
+  const { dispatch, skipTickerSearchDebounceRef, state, stateRef } = env;
+  const { pushRoute, setRootQuery } = nav;
+
+  const { changePaneTicker, duplicatePane, focusTicker, persistLayoutChange } = useCommandBarPaneActions({
     dispatch,
     pluginRegistry,
     stateRef,
   });
 
-  const {
-    buildTickerSearchResultItems,
-    localTickerSearchResultItems,
-    mapTickerSearchCandidateToResultItem,
-    readTickerSearchCache,
-    writeTickerSearchCache,
-  } = useCommandBarTickerSearchActions({
+  const tickerSearchActions = useCommandBarTickerSearchActions({
     changePaneTicker,
     closeAll,
     dispatch,
     focusTicker,
     pluginRegistry,
     tickerRepository,
-    tickers,
+    tickers: state.tickers,
   });
 
   const openModeRoute = useCallback((
@@ -141,46 +100,24 @@ export function useCommandBarActionRuntime({
 
   const openInlineConfirm = useCommandBarInlineConfirm({ closeAll });
 
-  const {
-    buildLayoutItems,
-    buildPaneSettingItems,
-    buildWindowModeItems,
-    executeCollectionCommand,
-    openPaneSettings,
-    tickerActionItems,
-  } = useCommandBarRouteActions({
-    activeCollectionId,
-    activeFinancials,
-    activeTickerData,
-    activeTickerSymbol,
+  const routeActions = useCommandBarRouteActions({
+    env,
     buildSharedWorkflowDeps,
     closeAll,
-    dispatch,
     duplicatePane,
     notify,
     openAddToPortfolioWorkflow,
     openBuiltInWorkflow,
     openInlineConfirm,
     openModeRoute,
-    persistConfig,
     persistLayoutChange,
     pluginRegistry,
     pushRoute,
-    state,
-    stateRef,
   });
 
-  const {
-    createPluginCommandItem,
-    getAvailablePluginCommands,
-    openPluginCommandWorkflow,
-    pluginCommandItems,
-    pluginCommandResultItems,
-  } = useCommandBarPluginCommandActions({
-    activeCollectionId,
-    activeTickerSymbol,
+  const pluginCommandActions = useCommandBarPluginCommandActions({
+    env,
     closeAll,
-    config,
     notify,
     openForm,
     openInlineConfirm,
@@ -193,39 +130,22 @@ export function useCommandBarActionRuntime({
     openModeRoute,
   });
 
-  const {
-    adaptTickerSearchRouteResult,
-    createPaneTemplateItem,
-    getAvailablePaneShortcutTemplates,
-    getAvailablePaneTemplates,
-    nonShortcutPaneTemplateItems,
-    openPaneTemplateWorkflow,
-    paneShortcutItems,
-  } = useCommandBarPaneTemplateActions({
-    activeCollectionId,
-    activeTickerSymbol,
+  const paneTemplateActions = useCommandBarPaneTemplateActions({
+    env,
     buildWorkflowDeps: buildSharedWorkflowDeps,
     closeAll,
-    config,
-    dispatch,
-    executeCollectionCommand,
-    focusedPaneId,
+    executeCollectionCommand: routeActions.executeCollectionCommand,
     notify,
     openForm,
     openModeRoute,
     pluginRegistry,
   });
 
-  const {
-    runDirectCommand,
-    runSecurityDescriptionShortcut,
-  } = useCommandBarDirectCommandRuntime({
-    activeCollectionId,
-    activeTickerSymbol,
+  const directCommandRuntime = useCommandBarDirectCommandRuntime({
+    env,
     buildSharedWorkflowDeps,
     closeAll,
-    dispatch,
-    executeCollectionCommand,
+    executeCollectionCommand: routeActions.executeCollectionCommand,
     focusTicker,
     notify,
     onCheckForUpdates,
@@ -233,44 +153,25 @@ export function useCommandBarActionRuntime({
     openBuiltInWorkflow,
     openInlineConfirm,
     openModeRoute,
-    openPaneSettings,
-    persistConfig,
+    openPaneSettings: routeActions.openPaneSettings,
     pluginRegistry,
     pushRoute,
     quitApp,
     rootThemeBaseIdRef,
     setRootQuery,
-    themePickerRef,
   });
 
   return {
-    adaptTickerSearchRouteResult,
-    buildLayoutItems,
-    buildPaneSettingItems,
-    buildTickerSearchResultItems,
-    buildWindowModeItems,
+    ...tickerSearchActions,
+    ...routeActions,
+    ...pluginCommandActions,
+    ...paneTemplateActions,
+    ...directCommandRuntime,
     collectionWorkflowActions,
-    createPaneTemplateItem,
-    createPluginCommandItem,
-    executeCollectionCommand,
-    getAvailablePaneShortcutTemplates,
-    getAvailablePaneTemplates,
-    getAvailablePluginCommands,
-    localTickerSearchResultItems,
-    mapTickerSearchCandidateToResultItem,
-    nonShortcutPaneTemplateItems,
     openInlineConfirm,
     openModeRoute,
-    openPaneTemplateWorkflow,
-    openPluginCommandWorkflow,
-    paneShortcutItems,
     persistLayoutChange,
-    pluginCommandItems,
-    pluginCommandResultItems,
-    readTickerSearchCache,
-    runDirectCommand,
-    runSecurityDescriptionShortcut,
-    tickerActionItems,
-    writeTickerSearchCache,
   };
 }
+
+export type CommandBarActionRuntime = ReturnType<typeof useCommandBarActionRuntime>;

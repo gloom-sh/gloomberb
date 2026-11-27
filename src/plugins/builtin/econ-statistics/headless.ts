@@ -19,6 +19,8 @@ import {
 } from "./client";
 import { cpiNextYearGap } from "../shared/cpi-year-gap";
 import { historyStartNotice } from "../shared/history-span";
+import { enumOption } from "../shared/headless-options";
+import { numCol } from "../shared/headless-columns";
 import { formatMoveRank } from "../shared/move-rank";
 import type { StatPoint } from "../shared/stat-transform";
 import { formatSigma } from "../shared/trend";
@@ -152,37 +154,17 @@ export function projectStatsHeadlessBundle(
     // The text table keeps the columns a terminal has room for; exports add what each figure is of.
     const columns = (text: boolean) => [
       { key: "indicator", header: "Indicator" },
-      {
-        key: "latest",
-        header: "Latest",
-        align: "right" as const,
-        format: (_value: unknown, row: Record<string, unknown>) => String(row.formattedLatest),
-      },
-      {
-        key: "previous",
-        header: "Previous",
-        align: "right" as const,
-        format: (_value: unknown, row: Record<string, unknown>) => String(row.formattedPrevious),
-      },
+      numCol("latest", "Latest", (_value, row) => String(row.formattedLatest)),
+      numCol("previous", "Previous", (_value, row) => String(row.formattedPrevious)),
       // Which period Previous is: exports carry it beside the figure, the text table has its Period column for the latest.
       ...text ? [] : [{ key: "previousPeriod", header: "Previous period" }],
       ...(!text && views.some((view) => view.stat.seriesId === "GDPNOW") ? [{ key: "previousReleased", header: "previous_released", literalHeader: true }] : []),
-      {
-        key: "percentile",
-        header: "%ile",
-        align: "right" as const,
-        format: (value: unknown) => formatNumber(Number(value), 0),
-      },
+      numCol("percentile", "%ile", (value) => formatNumber(Number(value), 0)),
       // `period` and `released` are the names every dated export gives these (`econ`, `fred`).
       { key: "asOf", header: "period", literalHeader: true, textHeader: "Period",
         format: (_value: unknown, row: Record<string, unknown>) => text ? formatDaysInText(String(row.reading)) : String(row.reading) },
-      {
-        key: "releasedOn",
-        header: "released",
-        literalHeader: true,
-        textHeader: "Released",
-        format: (_value: unknown, row: Record<string, unknown>) => typeof row.released === "string" ? row.released.replace(/^released /, "") : "",
-      },
+      { key: "releasedOn", header: "released", literalHeader: true, textHeader: "Released",
+        format: (_value: unknown, row: Record<string, unknown>) => typeof row.released === "string" ? row.released.replace(/^released /, "") : "" },
       ...text ? [] : [
         { key: "firstReleased", header: "first_released", literalHeader: true },
         { key: "revisedOn", header: "revised_on", literalHeader: true },
@@ -317,13 +299,7 @@ export const econStatisticsHeadless: HeadlessPaneDefinition<"bundle"> = {
     description: "Optional statistic id, name (PCE, GDP), label, FRED series id, or prefix.",
     optional: true,
   },
-  options: [{
-    key: "range",
-    description: "History window used by the selected statistic view.",
-    type: "enum",
-    values: [{ value: "5Y" }, { value: "20Y" }, { value: "ALL", aliases: ["all"] }],
-    defaultValue: "20Y",
-  }],
+  options: [enumOption("range", ["5Y", "20Y", { value: "ALL", aliases: ["all"] }], { description: "History window used by the selected statistic view.", defaultValue: "20Y" })],
   describe: (args) => `Economic Statistics | ${String(args.options.range)}`,
   async load(args, ctx) {
     const read = typeof args.argument === "string" ? readStatArg(args.argument) : null;

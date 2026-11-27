@@ -8,6 +8,7 @@ import { extractFundamentalSeries } from "./fundamentals";
 import type { ValuationCurrencyContext } from "./valuation-currency";
 import type { ChartSeriesPriceHistoryIntegrity, ResolvedSeries, SecuritySeriesSource, SeriesPeriod, TimeSeriesPoint } from "./types";
 import { chartBarSizeParts, chartBarSizeStepMs, type ChartBarSize, type ManualChartResolution } from "./resolution";
+import { utcDay } from "../utils/day-format";
 import { isFiniteNumber } from "../utils/guards";
 import type { HistorySession } from "../types/price-history";
 import { regularSessionCloseOn } from "../market-data/market/freshness";
@@ -26,10 +27,6 @@ export function marketSeriesFrequency(source: SecuritySeriesSource, historyResol
 function pricePointDate(value: unknown): Date | null {
   const date = value instanceof Date ? new Date(value) : new Date(value as string | number);
   return Number.isFinite(date.getTime()) ? date : null;
-}
-
-function utcDay(date: Date): string {
-  return date.toISOString().slice(0, 10);
 }
 
 function periodKey(date: Date, period: SeriesPeriod): string {

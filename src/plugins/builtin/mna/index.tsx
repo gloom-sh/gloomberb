@@ -7,10 +7,8 @@ import { MNA_PANE_ID } from "./model";
 import { MnaPane, MnaTickerTab } from "./pane";
 
 export const mnaModule: PluginModule = {
+  caches: [mnaDealsCache, mnaDealCache, ...DISTRESS_CACHES],
   setup(ctx) {
-    mnaDealsCache.attach(ctx.persistence);
-    mnaDealCache.attach(ctx.persistence);
-    for (const cache of DISTRESS_CACHES) cache.attach(ctx.persistence);
     ctx.registerTickerResearchTab({
       id: "mna",
       name: "M&A",
@@ -18,12 +16,6 @@ export const mnaModule: PluginModule = {
       component: MnaTickerTab,
       instruments: ["equity"],
     });
-  },
-
-  dispose() {
-    mnaDealsCache.reset();
-    mnaDealCache.reset();
-    for (const cache of DISTRESS_CACHES) cache.reset();
   },
 
   panes: [

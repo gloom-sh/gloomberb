@@ -5,7 +5,6 @@ import { MemoryPluginPersistence } from "../../../test-support/plugin-persistenc
 import {
   attachMarketMoversPersistence,
   fetchPreferredMarketMovers,
-  fetchScreener,
   fetchScreenerResult,
   isCloudScreenerEligible,
   parseScreenerResponse,
@@ -233,12 +232,12 @@ describe("fetchScreener", () => {
       },
     };
 
-    await fetchScreener("day_gainers", 2, api, { cache: true });
+    await fetchScreenerResult("day_gainers", 2, api, { cache: true });
 
     resetMarketMoversPersistence();
     attachMarketMoversPersistence(persistence);
 
-    const results = await fetchScreener("day_gainers", 2, api, { cache: true });
+    const results = (await fetchScreenerResult("day_gainers", 2, api, { cache: true })).data;
 
     expect(calls).toBe(1);
     expect(results.map((result) => result.symbol)).toEqual(["AAPL", "MSFT"]);

@@ -15,6 +15,7 @@ import type {
 } from "../../../../api-client/distress";
 import { createPluginCache } from "../../../../data/plugin-cache";
 import type { HeadlessPaneApiClient } from "../../../../types/plugin";
+import { isCalendarDay, isHttpUrl, isIsoInstant, isNonEmptyText, isNonNegativeInt, isNullableCalendarDay, isNullableIsoInstant, isNullableString, isRecord, isStringArray } from "../../../../utils/guards";
 import { unavailableOnServer } from "../../shared/cloud-resource";
 
 /**
@@ -31,78 +32,56 @@ class UnreadableRecords extends Error {
 
 type Json = Record<string, unknown>;
 
-const isObject = (value: unknown): value is Json => !!value && typeof value === "object" && !Array.isArray(value);
 const isText = (value: unknown): value is string => typeof value === "string";
-const isFilled = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
-const isTextOrNull = (value: unknown) => value === null || typeof value === "string";
 const isBooleanOrNull = (value: unknown) => value === null || typeof value === "boolean";
-const isDay = (value: unknown): value is string => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
-  && Number.isFinite(Date.parse(`${value}T00:00:00Z`));
-const isDayOrNull = (value: unknown) => value === null || isDay(value);
-const isInstant = (value: unknown): value is string => typeof value === "string" && Number.isFinite(Date.parse(value));
-const isInstantOrNull = (value: unknown) => value === null || isInstant(value);
-/** Only web links are opened; anything else in a link field makes the record unreadable. */
-const isWebUrl = (value: unknown): value is string => {
-  if (typeof value !== "string") return false;
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" || url.protocol === "http:";
-  } catch {
-    // Intentional ignore: malformed URLs fail this web link field validator.
-    return false;
-  }
-};
-const isWebUrlOrNull = (value: unknown) => value === null || isWebUrl(value);
-const isCount = (value: unknown) => Number.isInteger(value) && (value as number) >= 0;
+const isWebUrlOrNull = (value: unknown) => value === null || isHttpUrl(value);
 const VERDICTS = new Set(["doubt_raised", "doubt_alleviated", "policy_only", "unclear"]);
 const DATE_BASES = new Set(["designation", "effective", "first_observed"]);
 
 function validEvent(value: unknown): value is CloudFilingEventPayload {
-  if (!isObject(value) || !isObject(value.company)) return false;
+  if (!isRecord(value) || !isRecord(value.company)) return false;
   const company = value.company;
-  return isFilled(value.id) && isFilled(value.ticker)
-    && isFilled(company.name) && isText(company.ticker) && isTextOrNull(company.cik ?? null)
-    && isInstant(value.filedAt)
-    && (value.filingDate === undefined || isDayOrNull(value.filingDate))
+  return isNonEmptyText(value.id) && isNonEmptyText(value.ticker)
+    && isNonEmptyText(company.name) && isText(company.ticker) && isNullableString(company.cik ?? null)
+    && isIsoInstant(value.filedAt)
+    && (value.filingDate === undefined || isNullableCalendarDay(value.filingDate))
     && (value.form === undefined || isText(value.form))
-    && isWebUrl(value.docUrl)
-    && Array.isArray(value.items) && value.items.every(isText)
-    && Array.isArray(value.labels) && value.labels.every(isText)
-    && Array.isArray(value.kinds) && value.kinds.every(isText)
+    && isHttpUrl(value.docUrl)
+    && isStringArray(value.items) && isStringArray(value.labels) && isStringArray(value.kinds)
     && typeof value.material === "boolean"
-    && isTextOrNull(value.headline) && isTextOrNull(value.summary)
+    && isNullableString(value.headline) && isNullableString(value.summary)
     && Array.isArray(value.people)
     && typeof value.read === "boolean";
 }
 
 export function parseDistressFilings(value: unknown): DistressFilingsPayload {
-  if (!isObject(value) || !Array.isArray(value.events) || !value.events.every(validEvent)) {
+  if (!isRecord(value) || !Array.isArray(value.events) || !value.events.every(validEvent)) {
     throw new UnreadableRecords("8-K filings");
   }
   return { events: value.events.map((event) => ({ ...event, people: [] })) };
 }
 
 function validDisclosure(value: unknown): value is GoingConcernDisclosure {
-  if (!isObject(value) || !isObject(value.company)) return false;
+  if (!isRecord(value) || !isRecord(value.company)) return false;
   const company = value.company;
-  return isFilled(value.id) && isFilled(value.cik) && isTextOrNull(value.ticker)
-    && isText(value.accession) && isFilled(value.form)
-    && isDayOrNull(value.period_end) && isDay(value.filed_at) && isDayOrNull(value.fact_date)
+  return isNonEmptyText(value.id) && isNonEmptyText(value.cik) && isNullableString(value.ticker)
+    && isText(value.accession) && isNonEmptyText(value.form)
+    && isNullableCalendarDay(value.period_end) && isCalendarDay(value.filed_at) && isNullableCalendarDay(value.fact_date)
     && isText(value.tag) && VERDICTS.has(value.verdict as string)
     && isBooleanOrNull(value.within_one_year) && isBooleanOrNull(value.source_within_one_year)
     && isText(value.summary) && isText(value.quote) && isText(value.text)
     && typeof value.text_truncated === "boolean" && isText(value.dataset_month)
-    && isFilled(company.name) && isText(company.ticker) && isTextOrNull(company.cik ?? null)
+    && isNonEmptyText(company.name) && isText(company.ticker) && isNullableString(company.cik ?? null)
     && (company.shortName === undefined || isText(company.shortName))
-    && isWebUrl(value.filing_url);
+    && isHttpUrl(value.filing_url);
 }
 
 function validPage(value: Json): boolean {
-  return typeof value.hasMore === "boolean" && isCount(value.offset) && isCount(value.limit);
+  return typeof value.hasMore === "boolean" && isNonNegativeInt(value.offset) && isNonNegativeInt(value.limit);
 }
 
 export function parseGoingConcern(value: unknown): GoingConcernPayload {
-  if (!isObject(value) || !validPage(value) || !Array.isArray(value.disclosures) || !value.disclosures.every(validDisclosure)) {
+  if (!isRecord(value) || !validPage(value) || !Array.isArray(value.disclosures) || !value.disclosures.every(validDisclosure)) {
     throw new UnreadableRecords("going-concern disclosures");
   }
   return {
@@ -131,14 +110,14 @@ export function parseGoingConcern(value: unknown): GoingConcernPayload {
  * links. A parsed attribution parses to itself, so cached copies check again.
  */
 function parseAttribution(value: unknown): DistressAttribution | null {
-  if (!isObject(value) || !isFilled(value.source) || !isFilled(value.organization) || !isFilled(value.licence)
-    || !isWebUrl(value.licenceUrl) || !isFilled(value.notice)) return null;
+  if (!isRecord(value) || !isNonEmptyText(value.source) || !isNonEmptyText(value.organization) || !isNonEmptyText(value.licence)
+    || !isHttpUrl(value.licenceUrl) || !isNonEmptyText(value.notice)) return null;
   const datasetUrls: unknown[] = [
     ...(Array.isArray(value.datasetUrls) ? value.datasetUrls : []),
     ...(Array.isArray(value.datasets) ? value.datasets : []),
     ...(value.datasetUrl == null ? [] : [value.datasetUrl]),
   ];
-  if (!datasetUrls.every(isWebUrl)) return null;
+  if (!datasetUrls.every(isHttpUrl)) return null;
   if (value.dataset != null && !isText(value.dataset)) return null;
   if (value.version != null && !isText(value.version)) return null;
   if (value.year != null && !Number.isInteger(value.year)) return null;
@@ -163,14 +142,14 @@ function parseAttributions(value: unknown, subject: string): DistressAttribution
 }
 
 function validDesignation(value: unknown): value is DistressDesignation {
-  return isObject(value)
-    && isFilled(value.id) && isFilled(value.source) && isText(value.region) && isFilled(value.exchange)
-    && isTextOrNull(value.symbol) && isFilled(value.local_code)
-    && isFilled(value.entity_name) && isTextOrNull(value.entity_name_en) && isTextOrNull(value.market_segment)
-    && isFilled(value.kind)
-    && isDayOrNull(value.designated_at) && isDayOrNull(value.effective_at)
-    && isInstant(value.first_seen_at) && isInstant(value.last_seen_at) && isInstantOrNull(value.ended_at)
-    && isText(value.remarks) && isWebUrl(value.source_url) && isWebUrlOrNull(value.notice_url)
+  return isRecord(value)
+    && isNonEmptyText(value.id) && isNonEmptyText(value.source) && isText(value.region) && isNonEmptyText(value.exchange)
+    && isNullableString(value.symbol) && isNonEmptyText(value.local_code)
+    && isNonEmptyText(value.entity_name) && isNullableString(value.entity_name_en) && isNullableString(value.market_segment)
+    && isNonEmptyText(value.kind)
+    && isNullableCalendarDay(value.designated_at) && isNullableCalendarDay(value.effective_at)
+    && isIsoInstant(value.first_seen_at) && isIsoInstant(value.last_seen_at) && isNullableIsoInstant(value.ended_at)
+    && isText(value.remarks) && isHttpUrl(value.source_url) && isWebUrlOrNull(value.notice_url)
     && DATE_BASES.has(value.date_basis as string)
     // The date the row sorts by must be there.
     && (value.date_basis !== "designation" || value.designated_at !== null)
@@ -179,7 +158,7 @@ function validDesignation(value: unknown): value is DistressDesignation {
 
 export function parseDesignations(value: unknown): DistressDesignationsPayload {
   const subject = "listing designations";
-  if (!isObject(value) || !validPage(value) || !Array.isArray(value.designations) || !value.designations.every(validDesignation)) {
+  if (!isRecord(value) || !validPage(value) || !Array.isArray(value.designations) || !value.designations.every(validDesignation)) {
     throw new UnreadableRecords(subject);
   }
   return {
@@ -199,18 +178,18 @@ export function parseDesignations(value: unknown): DistressDesignationsPayload {
 }
 
 function validNotice(value: unknown): value is InsolvencyNotice {
-  return isObject(value)
-    && isFilled(value.source) && isFilled(value.country) && isFilled(value.registry_id)
-    && isFilled(value.entity_name) && isTextOrNull(value.symbol)
-    && isFilled(value.kind) && isText(value.raw_code)
-    && isDayOrNull(value.notice_date) && isDay(value.published_date) && isText(value.court)
-    && isFilled(value.notice_id) && isWebUrl(value.notice_url)
-    && isFilled(value.notice_type) && isTextOrNull(value.original_notice_id) && isFilled(value.status);
+  return isRecord(value)
+    && isNonEmptyText(value.source) && isNonEmptyText(value.country) && isNonEmptyText(value.registry_id)
+    && isNonEmptyText(value.entity_name) && isNullableString(value.symbol)
+    && isNonEmptyText(value.kind) && isText(value.raw_code)
+    && isNullableCalendarDay(value.notice_date) && isCalendarDay(value.published_date) && isText(value.court)
+    && isNonEmptyText(value.notice_id) && isHttpUrl(value.notice_url)
+    && isNonEmptyText(value.notice_type) && isNullableString(value.original_notice_id) && isNonEmptyText(value.status);
 }
 
 export function parseInsolvencyNotices(value: unknown): InsolvencyNoticesPayload {
   const subject = "insolvency notices";
-  if (!isObject(value) || !validPage(value) || !Array.isArray(value.notices) || !value.notices.every(validNotice)) {
+  if (!isRecord(value) || !validPage(value) || !Array.isArray(value.notices) || !value.notices.every(validNotice)) {
     throw new UnreadableRecords(subject);
   }
   return {

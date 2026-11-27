@@ -1,4 +1,4 @@
-import { scalarPointValue } from "../alignment";
+import { alignTimeSeries, matchedFreshBarStart, scalarPointValue } from "../alignment";
 import type { ManualChartResolution } from "../resolution";
 import type { StudyBar } from "../trader-studies";
 import type {
@@ -118,6 +118,46 @@ export function outputSeries(
     observationKind: input.observationKind,
     points: options.points,
   };
+}
+
+export interface AlignedDerivedSample {
+  point: TimeSeriesPoint;
+  values: number[];
+  points: TimeSeriesPoint[];
+}
+
+export function alignedDerivedSamples(
+  series: readonly ResolvedSeries[],
+  carryForward: boolean,
+): AlignedDerivedSample[] {
+  return alignTimeSeries(series, { mode: "intersection", carryForward }).flatMap((row) => {
+    const aligned = series.map((input) => row.values[input.id]);
+    if (aligned.some((entry) => !isFiniteNumber(entry?.value))) return [];
+    const availability = Math.max(...aligned.map((entry) => entry!.point.availableAt?.getTime() ?? entry!.point.date.getTime()));
+    const barStart = matchedFreshBarStart(aligned);
+    return [{
+      values: aligned.map((entry) => entry!.value as number),
+      points: aligned.map((entry) => entry!.point),
+      point: {
+        date: new Date(barStart ?? row.date.getTime()),
+        observedAt: new Date(row.date),
+        availableAt: Number.isFinite(availability) ? new Date(availability) : undefined,
+        ...(barStart !== undefined ? { barStart: new Date(barStart) } : {}),
+        value: null,
+        provenance: { quality: "derived" as const },
+      },
+    }];
+  });
+}
+
+export function sharedFrequency(series: readonly ResolvedSeries[]): SeriesPeriod {
+  const first = series[0]?.nativeFrequency ?? "auto";
+  return series.every((input) => input.nativeFrequency === first) ? first : "auto";
+}
+
+export function sharedHistoryResolution(series: readonly ResolvedSeries[]): ManualChartResolution | null | undefined {
+  const first = series[0]?.historyResolution;
+  return series.every((input) => input.historyResolution === first) ? first : null;
 }
 
 export function studyPeriod(spec: ChartStudySpec, fallback: number): number {

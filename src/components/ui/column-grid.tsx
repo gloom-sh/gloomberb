@@ -1,11 +1,10 @@
 import { memo, type CSSProperties, type ReactNode } from "react";
 import { Box, Text, useUiCapabilities } from "../../ui";
 import { markPure } from "../../ui/same-props";
-import { hoverBg } from "../../theme/colors";
-import { useThemeColors } from "../../theme/theme-context";
 import { displayWidth, padTo, truncateToDisplayWidth } from "../../utils/format";
-import { ExternalLinkText, usePaneLinkMenuEntry } from "./external-link";
+import { ExternalLinkText, usePaneLinkTarget } from "./external-link";
 import { useAppLanguage } from "../../i18n/react";
+import { useThemeColors } from "../../theme/theme-context";
 
 /** One column of a ColumnGrid. */
 export interface ColumnGridColumn {
@@ -94,15 +93,7 @@ function gridTemplate(columns: readonly ColumnGridColumn[]): { template: string;
 
 /** A link cell's pointer handling and its pane-menu entry; nothing for a plain cell. */
 function useLinkTarget(link: ColumnGridLink | undefined) {
-  const colors = useThemeColors();
-  usePaneLinkMenuEntry(link ? `column-grid:${link.label}` : null, link?.label ?? "", () => link?.onOpen());
-  return link ? {
-    cursor: "pointer" as const,
-    hoverBackgroundColor: hoverBg(colors),
-    onMouseDown: (event?: { button?: number }) => { if ((event?.button ?? 0) === 0) link.onOpen(); },
-    "data-gloom-interactive": "true",
-    "data-gloom-label": link.label,
-  } : {};
+  return usePaneLinkTarget(link ? `column-grid:${link.label}` : null, link);
 }
 
 /** A cell's marks, given only when it has some, so a plain cell draws as it always did. */

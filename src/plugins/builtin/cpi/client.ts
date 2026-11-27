@@ -1,67 +1,56 @@
 import { apiClient } from "../../../api-client";
-import { sourceDidNotAnswer } from "../../../api-client/errors";
 import type { CpiBoardPayload, CpiRow } from "../../../api-client/cpi";
-import { createPluginCache } from "../../../data/plugin-cache";
-import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
+import { hasUniqueIds, isCalendarMonth, isNonNegativeInt, isNullableFinite, isNullableIsoInstant, isNullableString, isStringArray } from "../../../utils/guards";
+import { createCloudEndpoint } from "../shared/cloud-resource";
 
 /** What the pane says while the server has no months to serve: before the backend ships, or before its first read. */
 export const CPI_NOT_AVAILABLE = "US consumer prices are not available yet.";
 
-export const cpiBoardCache = createPluginCache<CpiBoardPayload>({
-  kind: "cpi-board", source: "gloom-cloud", schemaVersion: 1,
-  // Monthly data: a quarter hour is soon enough to catch a release.
-  policy: { staleMs: 15 * 60_000, expireMs: 45 * 24 * 60 * 60_000 },
-});
-
-const month = (value: unknown) => typeof value === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
-const monthOrNull = (value: unknown) => value === null || month(value);
-const instantOrNull = (value: unknown) => value === null || typeof value === "string" && Number.isFinite(Date.parse(value));
-const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
-const finiteOrNull = (value: unknown) => value === null || finite(value);
+const monthOrNull = (value: unknown) => value === null || isCalendarMonth(value);
 
 function validRow(row: CpiRow): boolean {
-  return typeof row.id === "string" && typeof row.label === "string" && Number.isInteger(row.depth) && row.depth >= 0
-    && (row.code === null || typeof row.code === "string") && (row.parent === null || typeof row.parent === "string")
+  return typeof row.id === "string" && typeof row.label === "string" && isNonNegativeInt(row.depth)
+    && isNullableString(row.code) && isNullableString(row.parent)
     && typeof row.pinned === "boolean" && typeof row.derived === "boolean"
-    && [row.weight, row.change, row.annualized3m, row.annualized6m, row.yoy, row.contribution, row.contributionYoy].every(finiteOrNull)
-    && (row.read === null || typeof row.read === "string")
-    && Array.isArray(row.history) && row.history.every((point) => Array.isArray(point) && month(point[0])
-      && finiteOrNull(point[1]) && finiteOrNull(point[2]));
+    && [row.weight, row.change, row.annualized3m, row.annualized6m, row.yoy, row.contribution, row.contributionYoy].every(isNullableFinite)
+    && isNullableString(row.read)
+    && Array.isArray(row.history) && row.history.every((point) => Array.isArray(point) && isCalendarMonth(point[0])
+      && isNullableFinite(point[1]) && isNullableFinite(point[2]));
 }
 
 /** A board that breaks the contract is refused whole rather than drawn with holes in it. */
 function validateCpiBoard(payload: CpiBoardPayload): CpiBoardPayload {
   const release = payload?.release;
   if (!payload || payload.source !== "BLS" || !Number.isFinite(Date.parse(payload.generatedAt))
-    || !instantOrNull(payload.retrievedAt ?? null)
-    || !["available", "partial", "unavailable"].includes(payload.status)
-    || !Array.isArray(payload.gaps) || !payload.gaps.every((gap) => typeof gap === "string")
+    || !isNullableIsoInstant(payload.retrievedAt ?? null)
+    || !["available", "partial", "unavailable"].includes(payload.status) || !isStringArray(payload.gaps)
     || !release || !monthOrNull(release.period) || !monthOrNull(release.weightsPeriod) || !monthOrNull(release.nextPeriod)
-    || !instantOrNull(release.releasedAt) || !instantOrNull(release.nextReleaseAt)
-    || !Array.isArray(payload.rows) || new Set(payload.rows.map((row) => row.id)).size !== payload.rows.length
-    || !payload.rows.every(validRow)) {
+    || !isNullableIsoInstant(release.releasedAt) || !isNullableIsoInstant(release.nextReleaseAt)
+    || !Array.isArray(payload.rows) || !hasUniqueIds(payload.rows) || !payload.rows.every(validRow)) {
     throw new Error("The server returned an invalid consumer price board");
   }
   return payload;
 }
 
-/**
- * The board, or the not-available message when the server does not serve the
- * route yet (404), cannot read its tables yet (503) or has no months stored.
- */
+const cpiBoardEndpoint = createCloudEndpoint<void, CpiBoardPayload, Pick<typeof apiClient, "getCloudCpiBoard">>({
+  kind: "cpi-board", schemaVersion: 1,
+  // Monthly data: a quarter hour is soon enough to catch a release.
+  policy: { staleMs: 15 * 60_000, expireMs: 45 * 24 * 60 * 60_000 },
+  key: "board", defaultClient: apiClient,
+  fetch: (_args, client) => client.getCloudCpiBoard(),
+  validate: validateCpiBoard,
+  unavailableMessage: CPI_NOT_AVAILABLE, unavailableStatuses: [404, 503],
+  isEmptyAnswer: (board) => board.status === "unavailable",
+});
+
+export const cpiBoardCache = cpiBoardEndpoint.cache;
+
+/** The board, or the not-available message when the server does not serve the route yet (404), cannot read its tables yet (503) or has no months stored. */
 export async function fetchCpiBoard(client: Pick<typeof apiClient, "getCloudCpiBoard"> = apiClient): Promise<CpiBoardPayload> {
-  let payload: CpiBoardPayload;
-  try {
-    payload = await client.getCloudCpiBoard();
-  } catch (error) {
-    throw unavailableOnServer(error, CPI_NOT_AVAILABLE, [404, 503]);
-  }
-  const board = validateCpiBoard(payload);
-  // The server's source did not answer this time: a saved copy answers, as it does a 5xx.
-  if (board.status === "unavailable") throw sourceDidNotAnswer(CPI_NOT_AVAILABLE);
+  const board = await cpiBoardEndpoint.fetch(undefined, { client });
   if (!board.release.period || !board.rows.length) throw new Error(CPI_NOT_AVAILABLE);
   return board;
 }
 
-export const getCachedCpiBoard = () => cachedCloudResource(cpiBoardCache, "board", validateCpiBoard);
-export const loadCpiBoard = (force = false) => loadCloudResource(cpiBoardCache, "board", () => fetchCpiBoard(), { force, validate: validateCpiBoard });
+export const getCachedCpiBoard = () => cpiBoardEndpoint.cached();
+export const loadCpiBoard = (force = false) => cpiBoardEndpoint.load(undefined, { force });

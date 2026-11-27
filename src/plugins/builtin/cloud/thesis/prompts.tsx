@@ -1,6 +1,7 @@
-import { ChoiceDialog, TextPromptDialog, type ChoiceDialogChoice, type TextPromptDialogProps } from "../../../../components";
+import type { ChoiceDialogChoice, TextPromptDialogProps } from "../../../../components";
+import { choiceDialog, textPromptDialog } from "../../../../components/ui";
+import { teamStore } from "../../../../team/store";
 import type { DialogApi, PromptContext } from "../../../../ui/dialog";
-import { logFailure } from "../../../../utils/log-failure";
 
 /**
  * The questions a thesis flow asks, on the same dialog pattern as the rest
@@ -9,16 +10,13 @@ import { logFailure } from "../../../../utils/log-failure";
  * prompt resolves `undefined` when the person backs out.
  */
 
-async function ask(dialog: DialogApi, props: Omit<TextPromptDialogProps, keyof PromptContext<string>>): Promise<string | undefined> {
-  return dialog.prompt<string>({
-    content: (context) => (
-      <TextPromptDialog
-        {...context}
-        {...props}
-        footer={props.multiline ? "Enter save · Shift+Enter newline · Esc cancel" : "Enter save · Esc cancel"}
-      />
-    ),
-  }).catch(logFailure("cloud.thesis.prompts", "A thesis text prompt failed"));
+function ask(dialog: DialogApi, props: Omit<TextPromptDialogProps, keyof PromptContext<string>>): Promise<string | undefined> {
+  return textPromptDialog(dialog, {
+    ...props,
+    footer: props.multiline ? "Enter save · Shift+Enter newline · Esc cancel" : "Enter save · Esc cancel",
+    logSource: "cloud.thesis.prompts",
+    logMessage: "A thesis text prompt failed",
+  });
 }
 
 export function promptText(
@@ -47,19 +45,33 @@ export function promptTextarea(
   });
 }
 
-export async function promptChoice(
+export function promptChoice(
   dialog: DialogApi,
   title: string,
   choices: ChoiceDialogChoice[],
   selectedChoiceId?: string,
 ): Promise<string | undefined> {
-  const value = await dialog.prompt<string>({
-    closeOnClickOutside: true,
-    content: (context: PromptContext<string>) => (
-      <ChoiceDialog {...context} title={title} choices={choices} selectedChoiceId={selectedChoiceId} />
-    ),
-  }).catch(logFailure("cloud.thesis.prompts", "A thesis choice prompt failed"));
-  return value || undefined;
+  return choiceDialog(dialog, {
+    title,
+    choices,
+    selectedChoiceId,
+    logSource: "cloud.thesis.prompts",
+    logMessage: "A thesis choice prompt failed",
+  });
+}
+
+/** Asks whether a new thesis is personal or shared with a team; returns undefined if cancelled. */
+export async function promptThesisScope(
+  dialog: DialogApi,
+  teams: ReadonlyArray<{ id: string; name: string }>,
+): Promise<{ scope: "user" } | { scope: "team"; teamId: string } | undefined> {
+  if (teams.length === 0) return { scope: "user" };
+  const owner = await promptChoice(dialog, "Whose thesis?", [
+    { id: "user", label: "Mine" },
+    ...teams.map((team) => ({ id: team.id, label: team.name, description: "Shared with the team; teammates can challenge it." })),
+  ], teamStore.getDefaultTeamId() ?? "user");
+  if (!owner) return undefined;
+  return owner === "user" ? { scope: "user" } : { scope: "team", teamId: owner };
 }
 
 /** A pick from labelled options; the same choice dialog as everywhere else. */

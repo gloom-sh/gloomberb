@@ -1,8 +1,8 @@
 import { useId, useRef } from "react";
 import { t } from "../../i18n";
-import { useOptionalDialog, type PromptContext } from "../../ui/dialog";
+import { useOptionalDialog } from "../../ui/dialog";
 import { usePaneMenuItems } from "../layout/pane/footer";
-import { ChoiceDialog } from "../ui/choice-dialog";
+import { choiceDialog } from "../ui/choice-dialog";
 import type { DataTableColumn } from "../ui";
 import type { ContextMenuItem } from "../../types/context-menu";
 
@@ -49,22 +49,18 @@ export function useDataTableSortMenu({
     const chooseColumn = async () => {
       const current = latest.current;
       const arrow = current.sortDirection === "asc" ? "▲" : "▼";
-      const columnId = await dialog.prompt<string>({
-        closeOnClickOutside: true,
-        content: (ctx: PromptContext<string>) => (
-          <ChoiceDialog
-            {...ctx}
-            title={t("Sort by")}
-            selectedChoiceId={current.sortColumnId ?? undefined}
-            choices={current.columns
-              .filter((column) => column.label.trim().length > 0)
-              .map((column) => ({
-                id: column.id,
-                label: column.label,
-                detail: column.id === current.sortColumnId ? arrow : undefined,
-              }))}
-          />
-        ),
+      const columnId = await choiceDialog(dialog, {
+        title: t("Sort by"),
+        selectedChoiceId: current.sortColumnId ?? undefined,
+        choices: current.columns
+          .filter((column) => column.label.trim().length > 0)
+          .map((column) => ({
+            id: column.id,
+            label: column.label,
+            detail: column.id === current.sortColumnId ? arrow : undefined,
+          })),
+        logSource: "data-table",
+        logMessage: "Sort by failed",
       });
       if (!columnId) return;
       // The current column flips, as its header does; another one sorts the way its header click would.

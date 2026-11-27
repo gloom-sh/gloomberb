@@ -165,6 +165,17 @@ export function moverExtendedMove(row: MoverQuote, session: ExtendedSession): nu
   return row.extended?.session === session && isFiniteNumber(row.extended.changePercent) ? row.extended.changePercent : null;
 }
 
+/** Flatten a mover quote's extended print fields for CLI and headless tabular rows. */
+export function flattenMoverQuote<T extends MoverQuote>({ extended, closedSession: _closedSession, ...row }: T) {
+  return {
+    ...row,
+    extendedSession: extended?.session ?? null,
+    extendedPrice: extended?.price ?? null,
+    extendedChange: extended?.change ?? null,
+    extendedChangePercent: extended?.changePercent ?? null,
+  };
+}
+
 /** The extended sessions some row has a print for, in the order their columns go. */
 export function moverExtendedSessions(rows: readonly MoverQuote[]): ExtendedSession[] {
   return (["PRE", "POST"] as const).filter((session) => rows.some((row) => row.extended?.session === session));

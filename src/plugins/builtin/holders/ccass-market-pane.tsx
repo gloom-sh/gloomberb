@@ -185,6 +185,107 @@ export function CcassMarketPane({ width, height, focused }: Pick<PaneProps, "wid
     ];
   }, [width]);
 
+  type MarketRow = HkCcassBigChangeRow | HkCcassConcentrationRow | HkCcassSouthboundRow | HkCcassParticipantHoldingRow;
+  const tableConfig: {
+    focused: boolean;
+    items: readonly MarketRow[];
+    columns: DataTableColumn[];
+    getId: (row: MarketRow) => string;
+    resetScrollKey: string;
+    onReload: () => void;
+    emptyStateTitle: string;
+    renderCell: (row: MarketRow, col: DataTableColumn) => DataTableCell;
+  } = activeTab === "changes" || activeTab === "deposits"
+    ? {
+      focused,
+      items: changesRes.data?.rows ?? [],
+      columns: changeColumns,
+      getId: (row) => {
+        const r = row as HkCcassBigChangeRow;
+        return `${r.date}:${r.code}:${r.partId}`;
+      },
+      resetScrollKey: activeTab,
+      onReload: changesRes.reload,
+      emptyStateTitle: activeTab === "deposits" ? "No pre-placement deposits recorded." : "No CCASS big changes recorded.",
+      renderCell: (row, col) => {
+        const r = row as HkCcassBigChangeRow;
+        switch (col.id) {
+          case "date": return { ...dayCell(r.date), color: colors.textDim };
+          case "participant": return { text: r.participantName, color: colors.textMuted };
+          case "type": return {
+            text: r.isDeposit ? "DEPOSIT" : r.isWithdrawal ? "WITHDRAW" : "TRANSFER",
+            color: r.isDeposit ? colors.warning : r.isWithdrawal ? colors.borderFocused : colors.textDim,
+          };
+          case "deltaPct": return { text: fmtSignedPct(r.deltaPct), color: signColor(r.deltaPct) };
+          case "deltaShares": return { text: fmtSignedCompact(r.deltaShares), color: signColor(r.deltaShares) };
+          default: return { text: MISSING_VALUE };
+        }
+      },
+    }
+    : activeTab === "concentration"
+      ? {
+        focused,
+        items: concRes.data?.rows ?? [],
+        columns: concColumns,
+        getId: (row) => row.code,
+        resetScrollKey: "concentration",
+        onReload: concRes.reload,
+        emptyStateTitle: "No concentration rankings available.",
+        renderCell: (row, col) => {
+          const r = row as HkCcassConcentrationRow;
+          switch (col.id) {
+            case "top10Pct": return { text: fmtPct(r.top10Pct), color: colors.textBright };
+            case "top5Pct": return { text: fmtPct(r.top5Pct), color: colors.text };
+            case "top10Non": return { text: fmtPct(r.top10PlusNonCcassPct), color: colors.textMuted };
+            case "ccassPct": return { text: fmtPct(r.ccassPct), color: colors.textDim };
+            case "sbPct": return { text: fmtPct(r.southboundPct), color: colors.textMuted };
+            case "parts": return { text: String(r.participants), color: colors.textDim };
+            default: return { text: MISSING_VALUE };
+          }
+        },
+      }
+      : activeTab === "southbound"
+        ? {
+          focused,
+          items: sbRes.data?.rows ?? [],
+          columns: sbColumns,
+          getId: (row) => row.code,
+          resetScrollKey: "southbound",
+          onReload: sbRes.reload,
+          emptyStateTitle: "No Southbound holdings available.",
+          renderCell: (row, col) => {
+            const r = row as HkCcassSouthboundRow;
+            switch (col.id) {
+              case "sbPct": return { text: fmtPct(r.southboundPct), color: colors.textBright };
+              case "deltaPct": return { text: fmtSignedPct(r.deltaPct), color: signColor(r.deltaPct) };
+              case "deltaShares": return { text: fmtSignedCompact(r.deltaShares), color: signColor(r.deltaShares) };
+              case "shares": return { text: formatCompact(r.southboundShares), color: colors.text };
+              case "ccassPct": return { text: fmtPct(r.ccassPct), color: colors.textDim };
+              default: return { text: MISSING_VALUE };
+            }
+          },
+        }
+        : {
+          focused: focused && !brokerInputActive,
+          items: brokerRes.data?.holdings ?? [],
+          columns: brokerColumns,
+          getId: (row) => row.code,
+          resetScrollKey: `broker:${brokerId}`,
+          onReload: brokerRes.reload,
+          emptyStateTitle: `No CCASS positions found for ${brokerId}.`,
+          renderCell: (row, col) => {
+            const r = row as HkCcassParticipantHoldingRow;
+            switch (col.id) {
+              case "pct": return { text: fmtPct(r.pct), color: colors.textBright };
+              case "shares": return { text: formatCompact(r.shares), color: colors.text };
+              case "deltaShares": return { text: fmtSignedCompact(r.deltaShares), color: signColor(r.deltaShares) };
+              case "deltaPct": return { text: fmtSignedPct(r.deltaPct), color: signColor(r.deltaPct) };
+              case "changed": return { ...dayCell(r.lastChanged), color: colors.textDim };
+              default: return { text: MISSING_VALUE };
+            }
+          },
+        };
+
   return (
     <Box flexDirection="column" width={width} height={height}>
       {nativePaneChrome ? tabStrip : tabStrip && <Box height={1} paddingX={1}>{tabStrip}</Box>}
@@ -220,143 +321,31 @@ export function CcassMarketPane({ width, height, focused }: Pick<PaneProps, "wid
         subject="Hong Kong CCASS market data"
         empty={false}
       >
-        {activeTab === "changes" || activeTab === "deposits" ? (
-          <DataTableView<HkCcassBigChangeRow, DataTableColumn>
-            focused={focused}
-            rootWidth={width}
-            items={changesRes.data?.rows ?? []}
-            columns={changeColumns}
-            sortColumnId={null}
-            sortDirection="desc"
-            selection={{
-              kind: "id",
-              selectedId,
-              getId: (row) => `${row.date}:${row.code}:${row.partId}`,
-              onChange: setSelectedId,
-            }}
-            getItemKey={(row) => `${row.date}:${row.code}:${row.partId}`}
-            resetScrollKey={activeTab}
-            onActivate={(row) => openStockCcass(row.symbol)}
-            onRootKeyDown={(event) => handleRefreshKey(event, changesRes.reload, { stopPropagation: true })}
-            selectedTextOverridesCellColor
-            emptyStateTitle={activeTab === "deposits" ? "No pre-placement deposits recorded." : "No CCASS big changes recorded."}
-            renderCell={(row, col): DataTableCell => {
-              switch (col.id) {
-                case "date": return { ...dayCell(row.date), color: colors.textDim };
-                case "symbol": return { text: row.symbol, color: colors.textBright, attributes: TextAttributes.BOLD };
-                case "stock": return { text: row.stockName || row.stockNameZh || row.symbol, color: colors.text };
-                case "participant": return { text: row.participantName, color: colors.textMuted };
-                case "type": return {
-                  text: row.isDeposit ? "DEPOSIT" : row.isWithdrawal ? "WITHDRAW" : "TRANSFER",
-                  color: row.isDeposit ? colors.warning : row.isWithdrawal ? colors.borderFocused : colors.textDim,
-                };
-                case "deltaPct": return { text: fmtSignedPct(row.deltaPct), color: signColor(row.deltaPct) };
-                case "deltaShares": return { text: fmtSignedCompact(row.deltaShares), color: signColor(row.deltaShares) };
-                default: return { text: MISSING_VALUE };
-              }
-            }}
-          />
-        ) : activeTab === "concentration" ? (
-          <DataTableView<HkCcassConcentrationRow, DataTableColumn>
-            focused={focused}
-            rootWidth={width}
-            items={concRes.data?.rows ?? []}
-            columns={concColumns}
-            sortColumnId={null}
-            sortDirection="desc"
-            selection={{
-              kind: "id",
-              selectedId,
-              getId: (row) => row.code,
-              onChange: setSelectedId,
-            }}
-            getItemKey={(row) => row.code}
-            resetScrollKey="concentration"
-            onActivate={(row) => openStockCcass(row.symbol)}
-            onRootKeyDown={(event) => handleRefreshKey(event, concRes.reload, { stopPropagation: true })}
-            selectedTextOverridesCellColor
-            emptyStateTitle="No concentration rankings available."
-            renderCell={(row, col): DataTableCell => {
-              switch (col.id) {
-                case "symbol": return { text: row.symbol, color: colors.textBright, attributes: TextAttributes.BOLD };
-                case "stock": return { text: row.stockName || row.stockNameZh || row.symbol, color: colors.text };
-                case "top10Pct": return { text: fmtPct(row.top10Pct), color: colors.textBright };
-                case "top5Pct": return { text: fmtPct(row.top5Pct), color: colors.text };
-                case "top10Non": return { text: fmtPct(row.top10PlusNonCcassPct), color: colors.textMuted };
-                case "ccassPct": return { text: fmtPct(row.ccassPct), color: colors.textDim };
-                case "sbPct": return { text: fmtPct(row.southboundPct), color: colors.textMuted };
-                case "parts": return { text: String(row.participants), color: colors.textDim };
-                default: return { text: MISSING_VALUE };
-              }
-            }}
-          />
-        ) : activeTab === "southbound" ? (
-          <DataTableView<HkCcassSouthboundRow, DataTableColumn>
-            focused={focused}
-            rootWidth={width}
-            items={sbRes.data?.rows ?? []}
-            columns={sbColumns}
-            sortColumnId={null}
-            sortDirection="desc"
-            selection={{
-              kind: "id",
-              selectedId,
-              getId: (row) => row.code,
-              onChange: setSelectedId,
-            }}
-            getItemKey={(row) => row.code}
-            resetScrollKey="southbound"
-            onActivate={(row) => openStockCcass(row.symbol)}
-            onRootKeyDown={(event) => handleRefreshKey(event, sbRes.reload, { stopPropagation: true })}
-            selectedTextOverridesCellColor
-            emptyStateTitle="No Southbound holdings available."
-            renderCell={(row, col): DataTableCell => {
-              switch (col.id) {
-                case "symbol": return { text: row.symbol, color: colors.textBright, attributes: TextAttributes.BOLD };
-                case "stock": return { text: row.stockName || row.stockNameZh || row.symbol, color: colors.text };
-                case "sbPct": return { text: fmtPct(row.southboundPct), color: colors.textBright };
-                case "deltaPct": return { text: fmtSignedPct(row.deltaPct), color: signColor(row.deltaPct) };
-                case "deltaShares": return { text: fmtSignedCompact(row.deltaShares), color: signColor(row.deltaShares) };
-                case "shares": return { text: formatCompact(row.southboundShares), color: colors.text };
-                case "ccassPct": return { text: fmtPct(row.ccassPct), color: colors.textDim };
-                default: return { text: MISSING_VALUE };
-              }
-            }}
-          />
-        ) : (
-          <DataTableView<HkCcassParticipantHoldingRow, DataTableColumn>
-            focused={focused && !brokerInputActive}
-            rootWidth={width}
-            items={brokerRes.data?.holdings ?? []}
-            columns={brokerColumns}
-            sortColumnId={null}
-            sortDirection="desc"
-            selection={{
-              kind: "id",
-              selectedId,
-              getId: (row) => row.code,
-              onChange: setSelectedId,
-            }}
-            getItemKey={(row) => row.code}
-            resetScrollKey={`broker:${brokerId}`}
-            onActivate={(row) => openStockCcass(row.symbol)}
-            onRootKeyDown={(event) => handleRefreshKey(event, brokerRes.reload, { stopPropagation: true })}
-            selectedTextOverridesCellColor
-            emptyStateTitle={`No CCASS positions found for ${brokerId}.`}
-            renderCell={(row, col): DataTableCell => {
-              switch (col.id) {
-                case "symbol": return { text: row.symbol, color: colors.textBright, attributes: TextAttributes.BOLD };
-                case "stock": return { text: row.stockName || row.stockNameZh || row.symbol, color: colors.text };
-                case "pct": return { text: fmtPct(row.pct), color: colors.textBright };
-                case "shares": return { text: formatCompact(row.shares), color: colors.text };
-                case "deltaShares": return { text: fmtSignedCompact(row.deltaShares), color: signColor(row.deltaShares) };
-                case "deltaPct": return { text: fmtSignedPct(row.deltaPct), color: signColor(row.deltaPct) };
-                case "changed": return { ...dayCell(row.lastChanged), color: colors.textDim };
-                default: return { text: MISSING_VALUE };
-              }
-            }}
-          />
-        )}
+        <DataTableView<MarketRow, DataTableColumn>
+          focused={tableConfig.focused}
+          rootWidth={width}
+          items={[...tableConfig.items]}
+          columns={tableConfig.columns}
+          sortColumnId={null}
+          sortDirection="desc"
+          selection={{
+            kind: "id",
+            selectedId,
+            getId: tableConfig.getId,
+            onChange: setSelectedId,
+          }}
+          getItemKey={tableConfig.getId}
+          resetScrollKey={tableConfig.resetScrollKey}
+          onActivate={(row) => openStockCcass(row.symbol)}
+          onRootKeyDown={(event) => handleRefreshKey(event, tableConfig.onReload, { stopPropagation: true })}
+          selectedTextOverridesCellColor
+          emptyStateTitle={tableConfig.emptyStateTitle}
+          renderCell={(row, col): DataTableCell => {
+            if (col.id === "symbol") return { text: row.symbol, color: colors.textBright, attributes: TextAttributes.BOLD };
+            if (col.id === "stock") return { text: row.stockName || row.stockNameZh || row.symbol, color: colors.text };
+            return tableConfig.renderCell(row, col);
+          }}
+        />
       </PaneStatusBody>
     </Box>
   );

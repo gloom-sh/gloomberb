@@ -74,10 +74,5 @@ export const marketValuationModule: PluginModule = {
       };
     },
   }],
-  setup(ctx) {
-    valuationCache.attach(ctx.persistence);
-  },
-  dispose() {
-    valuationCache.reset();
-  },
+  caches: [valuationCache],
 };

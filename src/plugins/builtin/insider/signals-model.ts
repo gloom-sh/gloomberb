@@ -11,6 +11,7 @@ import type {
 } from "../../../api-client/insider-signals";
 import { formatShortDate } from "../../../utils/datetime-format";
 import { MISSING_VALUE, displayWidth, formatCompact } from "../../../utils/format";
+import { COLUMN_GAP, TABLE_PADDING, fitColumnWidth, sumColumnWidths } from "../shared/column-fit";
 import type { SortComparableValue } from "../../../utils/sort-values";
 import { formatInsiderName } from "./display";
 import { MARKET_CAP_BAND_OPTIONS } from "../shared/market-cap-bands";
@@ -551,18 +552,18 @@ export function buildInsiderActivityColumns(width: number, lines: readonly Insid
   const dollars = (pick: (line: InsiderActivityLine) => number | null) =>
     lines.flatMap((line) => { const value = pick(line); return value == null ? [] : [formatSignalValue(value)]; });
   const widths = {
-    role: fitWidth(lines.map((line) => line.role), "Role", 16),
-    nth: fitWidth(lines.map((line) => line.nth.text), "Nth", 6),
-    usual: fitWidth(lines.map((line) => line.usual.text), "Vs Usual", 6),
-    stake: fitWidth(lines.map((line) => line.stake.text), "Stake", 10),
-    bought: fitWidth(dollars((line) => line.bought), "Bought", 8),
-    plan: lines.some((line) => line.plan != null) ? fitWidth(dollars((line) => line.plan), "Plan Buys", 11) : 0,
-    sold: fitWidth(dollars((line) => line.sold), "Sold", 8),
-    last: fitWidth(lines.map((line) => line.last), "Last", 10),
+    role: fitColumnWidth(lines.map((line) => line.role), "Role", 16),
+    nth: fitColumnWidth(lines.map((line) => line.nth.text), "Nth", 6),
+    usual: fitColumnWidth(lines.map((line) => line.usual.text), "Vs Usual", 6),
+    stake: fitColumnWidth(lines.map((line) => line.stake.text), "Stake", 10),
+    bought: fitColumnWidth(dollars((line) => line.bought), "Bought", 8),
+    plan: lines.some((line) => line.plan != null) ? fitColumnWidth(dollars((line) => line.plan), "Plan Buys", 11) : 0,
+    sold: fitColumnWidth(dollars((line) => line.sold), "Sold", 8),
+    last: fitColumnWidth(lines.map((line) => line.last), "Last", 10),
   };
   const show = { usual: true, nth: true, last: true, role: true };
   const available = Math.max(0, Math.floor(width) - TABLE_PADDING);
-  const room = () => available - [
+  const room = () => available - sumColumnWidths([
     show.role ? widths.role : 0,
     show.nth ? widths.nth : 0,
     show.usual ? widths.usual : 0,
@@ -571,7 +572,7 @@ export function buildInsiderActivityColumns(width: number, lines: readonly Insid
     widths.plan,
     widths.sold,
     show.last ? widths.last : 0,
-  ].reduce((sum, columnWidth) => sum + (columnWidth > 0 ? columnWidth + COLUMN_GAP : 0), 0);
+  ]);
   for (const drop of ACTIVITY_DROPS) {
     if (room() >= COMPANY_MIN) break;
     show[drop] = false;
@@ -614,18 +615,8 @@ export function insiderActivityDefaultSort(side: InsiderSignalSide): { columnId:
   return { columnId: side === "sell" ? "sold" : "bought", direction: "desc" };
 }
 
-/** Cells left and right of the columns, and between two of them. */
-const TABLE_PADDING = 2;
-const COLUMN_GAP = 1;
-/** The kit widens a column to fit its header plus the sort arrow. */
-const HEADER_EXTRA = 2;
 /** Below this the company names read as stubs: the column goes instead. */
 const COMPANY_MIN = 12;
-
-function fitWidth(texts: readonly string[], label: string, max: number): number {
-  const widest = texts.reduce((width, value) => Math.max(width, displayWidth(value)), 0);
-  return Math.max(displayWidth(label) + HEADER_EXTRA, Math.min(max, widest));
-}
 
 /** The columns a narrow pane gives up, first to last: the lead insider's size against usual and nth trade, then as before. */
 const NARROW_DROPS = ["usual", "nth", "company", "insiders", "lastBuy"] as const;
@@ -648,19 +639,19 @@ export function buildInsiderSignalColumns(
   const words = insiderSideWords(side);
   const facts = rows.map(insiderSignalRowFacts);
   const widths = {
-    ticker: fitWidth(rows.map((row) => row.ticker), "Ticker", 8),
-    score: fitWidth(rows.map((row) => String(row.score)), "Score", 5),
-    role: fitWidth(facts.map((fact) => fact.role), "Role", 16),
-    nth: fitWidth(facts.map((fact) => fact.nth.text), "Nth", 6),
-    usual: fitWidth(facts.map((fact) => fact.usual.text), "Vs Usual", 6),
-    stake: fitWidth(facts.map((fact) => fact.stake.text), "Stake", 10),
-    insiders: fitWidth(rows.map((row) => String(row.insiders)), words.insiders, 4),
-    value: fitWidth(rows.map((row) => formatSignalValue(row.value)), words.traded, 8),
-    lastBuy: fitWidth(rows.map((row) => formatSignalDay(row.lastBuy)), words.last, 10),
+    ticker: fitColumnWidth(rows.map((row) => row.ticker), "Ticker", 8),
+    score: fitColumnWidth(rows.map((row) => String(row.score)), "Score", 5),
+    role: fitColumnWidth(facts.map((fact) => fact.role), "Role", 16),
+    nth: fitColumnWidth(facts.map((fact) => fact.nth.text), "Nth", 6),
+    usual: fitColumnWidth(facts.map((fact) => fact.usual.text), "Vs Usual", 6),
+    stake: fitColumnWidth(facts.map((fact) => fact.stake.text), "Stake", 10),
+    insiders: fitColumnWidth(rows.map((row) => String(row.insiders)), words.insiders, 4),
+    value: fitColumnWidth(rows.map((row) => formatSignalValue(row.value)), words.traded, 8),
+    lastBuy: fitColumnWidth(rows.map((row) => formatSignalDay(row.lastBuy)), words.last, 10),
   };
   const show = { usual: true, nth: true, company: true, insiders: true, lastBuy: true };
   const available = Math.max(0, Math.floor(width) - TABLE_PADDING);
-  const fixed = () => [
+  const fixed = () => sumColumnWidths([
     widths.ticker,
     widths.score,
     widths.role,
@@ -670,7 +661,7 @@ export function buildInsiderSignalColumns(
     show.insiders ? widths.insiders : 0,
     widths.value,
     show.lastBuy ? widths.lastBuy : 0,
-  ].reduce((sum, columnWidth) => sum + (columnWidth > 0 ? columnWidth + COLUMN_GAP : 0), 0) - COLUMN_GAP;
+  ]) - COLUMN_GAP;
   const room = () => available - fixed() - (show.company ? COLUMN_GAP : 0);
   for (const drop of NARROW_DROPS) {
     if (room() >= (show.company ? COMPANY_MIN : 0)) break;

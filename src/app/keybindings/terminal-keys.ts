@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { createListenerSet } from "../../utils/listeners";
 import type { KeyChord } from "./chord";
 
 /**
@@ -10,23 +11,16 @@ import type { KeyChord } from "./chord";
  * then the digit.
  */
 let reportsControlKeys: boolean | null = null;
-const listeners = new Set<() => void>();
+const listeners = createListenerSet();
 
 export function setTerminalReportsControlKeys(value: boolean | null): void {
   if (value === reportsControlKeys) return;
   reportsControlKeys = value;
-  for (const listener of listeners) listener();
-}
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
+  listeners.notify();
 }
 
 export function useTerminalReportsControlKeys(): boolean | null {
-  return useSyncExternalStore(subscribe, () => reportsControlKeys, () => null);
+  return useSyncExternalStore(listeners.subscribe, () => reportsControlKeys, () => null);
 }
 
 /** Whether a terminal without the kitty protocol can send the chord: not Control with a digit. */

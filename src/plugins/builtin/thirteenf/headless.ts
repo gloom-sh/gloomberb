@@ -9,7 +9,8 @@ import type {
 import { servedFromSavedCopy } from "../../../data/saved-copies";
 import { type HoldingsSession, inHoldingsSession, normalizeCik, searchThirteenFFunds, TOP_FUNDS_MAX_LIMIT } from "./api";
 import { ApiRequestError } from "../../../api-client/errors";
-import { REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
+import { enumOption, limitOption, offsetOption } from "../shared/headless-options";
+import { numCol } from "../shared/headless-columns";
 import { buildFundOverlap, buildManagerEtfOverlap, overlapPeriod } from "./overlap";
 import type { FundMembersPayload, MemberFundsPayload } from "../../../api-client/members";
 import { fetchFunds, fetchMembers } from "../members/client";
@@ -111,19 +112,9 @@ const BROWSER_COLUMNS: HeadlessPaneColumn[] = [
   { key: "name", header: "Fund" },
   { key: "cik", header: "CIK" },
   { key: "periodOfReport", header: "Period" },
-  {
-    key: "estQuarterReturn",
-    header: "Est 13F",
-    align: "right",
-    format: (value) => formatRawPercentMaybe(value == null ? null : Number(value)),
-  },
-  {
-    key: "tableValueTotal",
-    header: "Value (USD)",
-    align: "right",
-    format: (value) => formatMoneyCompact(value == null ? null : Number(value)),
-  },
-  { key: "tableEntryTotal", header: "Rows", align: "right" },
+  numCol("estQuarterReturn", "Est 13F", (value) => formatRawPercentMaybe(value == null ? null : Number(value))),
+  numCol("tableValueTotal", "Value (USD)", (value) => formatMoneyCompact(value == null ? null : Number(value))),
+  numCol("tableEntryTotal", "Rows"),
   // The day as Period gives it, with its year: a fund that stopped filing did so years ago.
   { key: "filedAsOfDate", header: "Filed", format: (value) => (typeof value === "string" && value) || MISSING_VALUE, textFormat: filedText },
 ];
@@ -137,45 +128,19 @@ const TYPE_COLUMN: HeadlessPaneColumn = { key: "type", header: "Type", textForma
 
 /** A ticker's holder's position after its fund, CIK and type. */
 const TICKER_HOLDER_FIGURES: HeadlessPaneColumn[] = [
-  { key: "value", header: "Value (USD)", align: "right", format: money }, { key: "shares", header: "Shares", align: "right", format: shares },
-  { key: "weight", header: "13F weight", align: "right", format: weight }, { key: "action", header: "Action" },
+  numCol("value", "Value (USD)", money), numCol("shares", "Shares", shares),
+  numCol("weight", "13F weight", weight), { key: "action", header: "Action" },
 ];
 
 const HOLDING_COLUMNS: HeadlessPaneColumn[] = [
   { key: "ticker", header: "Ticker" },
   TYPE_COLUMN,
   { key: "issuer", header: "Issuer" },
-  {
-    key: "value",
-    header: "Value (USD)",
-    align: "right",
-    format: (value) => formatMoneyCompact(value == null ? null : Number(value)),
-  },
-  {
-    key: "estimatedPnl",
-    header: "Est P&L (USD)",
-    align: "right",
-    format: (value) => formatMoneyCompact(value == null ? null : Number(value)),
-  },
-  {
-    key: "weight",
-    header: "13F %",
-    description: "Share of the filing's reported value, including underlying notional for options; not portfolio allocation.",
-    align: "right",
-    format: weight,
-  },
-  {
-    key: "shares",
-    header: "Shares",
-    align: "right",
-    format: (value) => formatShares(value == null ? null : Number(value)),
-  },
-  {
-    key: "sharesChange",
-    header: "QoQ",
-    align: "right",
-    format: (value) => formatChangeShares(value == null ? null : Number(value)),
-  },
+  numCol("value", "Value (USD)", (value) => formatMoneyCompact(value == null ? null : Number(value))),
+  numCol("estimatedPnl", "Est P&L (USD)", (value) => formatMoneyCompact(value == null ? null : Number(value))),
+  numCol("weight", "13F %", weight, { description: "Share of the filing's reported value, including underlying notional for options; not portfolio allocation." }),
+  numCol("shares", "Shares", (value) => formatShares(value == null ? null : Number(value))),
+  numCol("sharesChange", "QoQ", (value) => formatChangeShares(value == null ? null : Number(value))),
   { key: "actionLabel", header: "Action" },
 ];
 
@@ -183,19 +148,9 @@ const FILING_COLUMNS: HeadlessPaneColumn[] = [
   { key: "periodOfReport", header: "Period" },
   // The whole day, as the period beside it: the list spans years.
   { key: "filedAsOfDate", header: "Filed", format: (value) => (typeof value === "string" && value) || MISSING_VALUE, textFormat: filedText },
-  {
-    key: "tableValueTotal",
-    header: "Value (USD)",
-    align: "right",
-    format: (value) => formatMoneyCompact(value == null ? null : Number(value)),
-  },
-  { key: "tableEntryTotal", header: "Rows", align: "right" },
-  {
-    key: "valueChangePercent",
-    header: "Value%",
-    align: "right",
-    format: (value) => formatPercentMaybe(value == null ? null : Number(value)),
-  },
+  numCol("tableValueTotal", "Value (USD)", (value) => formatMoneyCompact(value == null ? null : Number(value))),
+  numCol("tableEntryTotal", "Rows"),
+  numCol("valueChangePercent", "Value%", (value) => formatPercentMaybe(value == null ? null : Number(value))),
   { key: "submissionType", header: "Form" },
   { key: "amendmentType", header: "Amendment" },
 ];
@@ -606,37 +561,14 @@ export function createThirteenFHeadless(
     },
     options: [
       // No defaults on view-specific options, so a flag the view does not use can be named as ignored.
-      { key: "rank", description: "Crowding order (crowding view; new when left out).", type: "enum", values: [{ value: "new" }, { value: "exits" }, { value: "increases" }, { value: "decreases" }] },
+      enumOption("rank", ["new", "exits", "increases", "decreases"], { description: "Crowding order (crowding view; new when left out)." }),
       { key: "compare", description: "Second fund name or CIK, or an ETF ticker MEMB covers such as SPY; implies the overlap view.", type: "string" },
-      { key: "offset", description: "Fund offset for ticker-holdings (0 when left out).", type: "integer", minimum: 0, maximum: 100000, shot: REPORT_PAGE },
-      {
-        key: "view",
-        description: "Fund browser mode or detail tab.",
-        type: "enum",
-        values: [
-          { value: "auto" },
-          { value: "crowding" },
-          { value: "overlap" },
-          { value: "ticker-holdings" },
-          { value: "performance" },
-          { value: "funds" },
-          { value: "by-ticker", aliases: ["ticker", "byTicker"] },
-          { value: "latest" },
-          { value: "holdings" },
-          { value: "filings" },
-        ],
-        defaultValue: "auto",
-      },
-      {
-        key: "limit",
-        aliases: ["count", "rows"],
-        description: "Maximum rows.",
-        type: "integer",
-        defaultValue: 50,
-        minimum: 1,
-        maximum: THIRTEENF_MAX_LIMIT,
-        shot: REPORT_ROWS,
-      },
+      offsetOption({ description: "Fund offset for ticker-holdings (0 when left out).", maximum: 100000 }),
+      enumOption("view", ["auto", "crowding", "overlap", "ticker-holdings", "performance", "funds",
+        { value: "by-ticker", aliases: ["ticker", "byTicker"] }, "latest", "holdings", "filings"], {
+        description: "Fund browser mode or detail tab.", defaultValue: "auto",
+      }),
+      limitOption({ aliases: ["count", "rows"], description: "Maximum rows.", defaultValue: 50, maximum: THIRTEENF_MAX_LIMIT }),
     ],
     describe: (args, result) => thirteenFTitle(args, result?.metadata),
     shotState: async (args, load) => thirteenFShotState(args, (await load()).metadata ?? {}),

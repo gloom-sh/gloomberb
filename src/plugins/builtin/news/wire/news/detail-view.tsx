@@ -4,17 +4,16 @@ import type { MarketNewsItem, NewsStoryItem } from "../../../../../types/news-so
 import { colors } from "../../../../../theme/colors";
 import { ArticleReader } from "../../../../../components/reader/article-reader";
 import type { ArticleBlock } from "../../../../../components/reader/article-text";
-import { ActionRow, ChoiceDialog, ExternalLinkText } from "../../../../../components/ui";
+import { ActionRow, choiceDialog, ExternalLinkText } from "../../../../../components/ui";
 import { usePaneFooter } from "../../../../../components/layout/pane/footer";
 import { t } from "../../../../../i18n";
-import { useOptionalDialog, type PromptContext } from "../../../../../ui/dialog";
+import { useOptionalDialog } from "../../../../../ui/dialog";
 import { useOpenTickerChoice } from "../../../shared/ticker-choice";
 import { collectNewsDisplayTickers } from "../../../../../news/ticker-symbols";
 import { useInlineTickers } from "../../../../../state/hooks/inline-tickers";
 import { truncateToDisplayWidth } from "../../../../../utils/format";
 import { wrapTextLines } from "../../../../../utils/text-wrap";
 import { formatDetailDate, formatDetailTime, formatShortDate } from "../../../../../utils/datetime-format";
-import { logFailure } from "../../../../../utils/log-failure";
 import { mergeNewsArticle, newsArticleRevision } from "../../../../../news/news-model";
 import { usePluginAppActions, usePluginPaneState } from "../../../../runtime";
 import { formatNewsCategory } from "../categories";
@@ -341,24 +340,20 @@ export function NewsDetailView({ item, focused, width, showTitle = true }: {
   const hasOtherCoverage = coverage.some((entry) => entry.url !== item.url);
   const chooseSource = useCallback(() => {
     if (!dialog || coverage.length === 0) return;
-    void dialog.prompt<string>({
-      closeOnClickOutside: true,
-      content: (ctx: PromptContext<string>) => (
-        <ChoiceDialog
-          {...ctx}
-          title={t("Coverage")}
-          choices={coverage.map((entry, index) => ({
-            id: String(index),
-            label: entry.sourceName || entry.sourceKey,
-            detail: formatDetailDate(storyItemDate(entry.publishedAt)),
-            description: entry.title,
-          }))}
-        />
-      ),
+    void choiceDialog(dialog, {
+      title: t("Coverage"),
+      choices: coverage.map((entry, index) => ({
+        id: String(index),
+        label: entry.sourceName || entry.sourceKey,
+        detail: formatDetailDate(storyItemDate(entry.publishedAt)),
+        description: entry.title,
+      })),
+      logSource: "news.detail-view",
+      logMessage: "Choose news coverage failed",
     }).then((choice) => {
       const url = choice ? coverage[Number(choice)]?.url : undefined;
       if (url) void rendererHost.openExternal(url);
-    }).catch(logFailure("news.detail-view", "Choose news coverage failed"));
+    });
   }, [coverage, dialog, rendererHost]);
   // A filing's insider opens their lines in INS: the rows the story's numbers come from.
   const { createPaneFromTemplate } = usePluginAppActions();
@@ -373,23 +368,19 @@ export function NewsDetailView({ item, focused, width, showTitle = true }: {
       return;
     }
     if (!dialog || openableGroups.length === 0) return;
-    void dialog.prompt<string>({
-      closeOnClickOutside: true,
-      content: (ctx: PromptContext<string>) => (
-        <ChoiceDialog
-          {...ctx}
-          title={t("Filings")}
-          choices={openableGroups.map((group, index) => ({
-            id: String(index),
-            label: insiderGroupHeading(group),
-            description: insiderGroupTotal(group),
-          }))}
-        />
-      ),
+    void choiceDialog(dialog, {
+      title: t("Filings"),
+      choices: openableGroups.map((group, index) => ({
+        id: String(index),
+        label: insiderGroupHeading(group),
+        description: insiderGroupTotal(group),
+      })),
+      logSource: "news.detail-view",
+      logMessage: "Choose story filing failed",
     }).then((choice) => {
       const group = choice ? openableGroups[Number(choice)] : undefined;
       if (group) openFilingRows(group);
-    }).catch(logFailure("news.detail-view", "Choose story filing failed"));
+    });
   }, [dialog, openFilingRows, openableGroups]);
   usePaneFooter("news-detail:story", () => ({
     order: -1,

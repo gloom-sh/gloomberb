@@ -12,6 +12,7 @@ import {
 } from "../../../../team/model";
 import { openTeamPane, type TeamPaneSection } from "../../../../team/pane-request";
 import { teamStore } from "../../../../team/store";
+import { errorMessage } from "../../../../utils/errors";
 
 const TEAM_SUBCOMMAND = /^(invite|new|settings|members|channels|leave|focus|chat)\b\s*(.*)$/i;
 
@@ -30,10 +31,6 @@ function openTeamChannel(ctx: GloomPluginContext, teamId: string) {
   ctx.createPaneFromTemplate("new-chat-pane", { arg: teamChannelId(teamId) });
 }
 
-function errorText(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
-}
-
 /** `TEAM invite @user` sends straight away; `TEAM invite link` copies a fresh link. */
 async function inviteFromCommand(ctx: GloomPluginContext, teamId: string, target: string | null) {
   const team = teamStore.getTeam(teamId);
@@ -43,7 +40,7 @@ async function inviteFromCommand(ctx: GloomPluginContext, teamId: string, target
       const link = await apiClient.createTeamInviteLink(team.id);
       ctx.notify({ body: `Invite link for ${team.name}: ${link.url}`, type: "success" });
     } catch (error) {
-      ctx.notify({ body: errorText(error, "Could not create an invite link."), type: "error" });
+      ctx.notify({ body: errorMessage(error, "Could not create an invite link."), type: "error" });
     }
     return;
   }
@@ -52,7 +49,7 @@ async function inviteFromCommand(ctx: GloomPluginContext, teamId: string, target
       const invitation = await apiClient.inviteTeamMemberByUsername(team.id, target.replace(/^@/, ""));
       ctx.notify({ body: `Invited ${userHandle(invitation.invitee)} to ${team.name}.`, type: "success" });
     } catch (error) {
-      ctx.notify({ body: errorText(error, "Could not send the invitation."), type: "error" });
+      ctx.notify({ body: errorMessage(error, "Could not send the invitation."), type: "error" });
     }
     return;
   }

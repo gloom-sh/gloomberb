@@ -1,5 +1,6 @@
 import type { DataTableColumn } from "../../../components";
-import { MISSING_VALUE, displayWidth, formatCompact, formatCurrency, formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatCurrency, formatNumber } from "../../../utils/format";
+import { COLUMN_GAP, TABLE_PADDING, fitColumnWidth, sumColumnWidths } from "../shared/column-fit";
 import { formatFilingDate, formatShortDate } from "../../../utils/datetime-format";
 import { isAmendedInsiderFiling } from "./amendments";
 import { insiderSecurityTag, insiderTypeLabel, insiderTypeTone, isOpenMarketTrade, type InsiderTypeTone } from "./display";
@@ -144,17 +145,6 @@ export function insiderTypeText(row: InsiderTableRow, exported = false): string 
   return [row.type, ...insiderTypeMarkers(row), ...(exported && row.plan ? ["10b5-1"] : [])].filter(Boolean).join(" ");
 }
 
-/** Cells left and right of the columns, and between two of them. */
-const TABLE_PADDING = 2;
-const COLUMN_GAP = 1;
-/** The kit widens a column to fit its header plus the sort arrow. */
-const HEADER_EXTRA = 2;
-
-function fitWidth(texts: readonly string[], label: string, max: number): number {
-  const widest = texts.reduce((width, text) => Math.max(width, displayWidth(text)), 0);
-  return Math.max(displayWidth(label) + HEADER_EXTRA, Math.min(max, widest));
-}
-
 /**
  * The columns that fit `width` terminal cells (the desktop passes its width
  * in the same cells). Every column takes the width its widest value needs.
@@ -169,20 +159,20 @@ export function buildInsiderColumns(width: number, rows: readonly InsiderTableRo
   const anySecurity = rows.some((row) => row.security);
   const names = rows.map((row) => row.name);
   const widths = {
-    date: fitWidth(rows.map((row) => formatInsiderDate(row.date)), "Date", 11),
-    insider: fitWidth(names, "Insider", 28),
-    role: fitWidth(rows.map((row) => row.role), "Role", 12),
-    type: fitWidth(rows.map((row) => insiderTypeText(row)), "Type", 12),
-    security: fitWidth(rows.map((row) => row.security ?? ""), "Security", 12),
-    shares: fitWidth(rows.map((row) => formatInsiderShares(row.shares)), "Shares", 9),
-    price: fitWidth(rows.map((row) => formatInsiderPrice(row.price, currency)), "Price", 10),
-    value: fitWidth(rows.map((row) => formatInsiderValue(row.value, currency)), "Value", 9),
-    ccy: currency ? fitWidth(rows.map((row) => insiderCurrencyText(row, currency)), "CCY", 4) : 0,
+    date: fitColumnWidth(rows.map((row) => formatInsiderDate(row.date)), "Date", 11),
+    insider: fitColumnWidth(names, "Insider", 28),
+    role: fitColumnWidth(rows.map((row) => row.role), "Role", 12),
+    type: fitColumnWidth(rows.map((row) => insiderTypeText(row)), "Type", 12),
+    security: fitColumnWidth(rows.map((row) => row.security ?? ""), "Security", 12),
+    shares: fitColumnWidth(rows.map((row) => formatInsiderShares(row.shares)), "Shares", 9),
+    price: fitColumnWidth(rows.map((row) => formatInsiderPrice(row.price, currency)), "Price", 10),
+    value: fitColumnWidth(rows.map((row) => formatInsiderValue(row.value, currency)), "Value", 9),
+    ccy: currency ? fitColumnWidth(rows.map((row) => insiderCurrencyText(row, currency)), "CCY", 4) : 0,
   };
   const show = { role: true, price: true, security: anySecurity, shares: true };
   let insider = widths.insider;
   const available = Math.max(0, Math.floor(width) - TABLE_PADDING);
-  const total = () => [
+  const total = () => sumColumnWidths([
     widths.date,
     insider,
     show.role ? widths.role : 0,
@@ -192,7 +182,7 @@ export function buildInsiderColumns(width: number, rows: readonly InsiderTableRo
     show.price ? widths.price : 0,
     widths.value,
     widths.ccy,
-  ].reduce((sum, columnWidth) => sum + (columnWidth > 0 ? columnWidth + COLUMN_GAP : 0), 0);
+  ]);
   const shrinkInsider = (floor: number) => {
     insider = Math.max(Math.min(insider, floor), insider - Math.max(0, total() - available));
   };
@@ -207,7 +197,7 @@ export function buildInsiderColumns(width: number, rows: readonly InsiderTableRo
   // its century and the name its last cells, before any column is cut.
   const compact = total() > available;
   if (compact) {
-    widths.date = fitWidth(rows.map((row) => formatInsiderDate(row.date, true)), "Date", 10);
+    widths.date = fitColumnWidth(rows.map((row) => formatInsiderDate(row.date, true)), "Date", 10);
     shrinkInsider(3);
   }
   // A dropped column can leave room for more of the names.

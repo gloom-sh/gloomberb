@@ -13,8 +13,7 @@ import {
   type StatItem,
 } from "../../../components";
 import { FILL_REST } from "../../../components/ui/fill";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
-import { useAsyncResource } from "../../../public/react";
+import { usePaneResource } from "../shared/pane-resource";
 import { isAccessDenied } from "../../../api-client/errors";
 import type { ScreenDefinition } from "../../../api-client/equity-screener";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -53,7 +52,12 @@ export function ScreenTickerCheck({
   }, [definition, fetcher, snapshotId, ticker]);
   useEffect(() => () => controller.current?.abort(), [loader]);
   useEffect(() => { search.focus(); }, [search.focus]);
-  const resource = useAsyncResource(ticker ? loader : null, { clearOnError: isAccessDenied });
+  const resource = usePaneResource(ticker ? loader : null, {
+    focused,
+    autoRefresh: false,
+    clearOnError: isAccessDenied,
+    refreshKey: { enabled: !!ticker && !search.active },
+  });
   const { data, loading, error } = resource;
   const submit = (value: string) => {
     const next = value.trim();
@@ -62,7 +66,6 @@ export function ScreenTickerCheck({
     if (next === ticker) resource.reload();
     else setTicker(next);
   };
-  usePaneRefreshKey(() => { resource.reload(); }, { focused, enabled: !!ticker && !search.active });
   usePaneFooter("equity-screener:check", () => ({
     info: [
       ...(loading ? [{ id: "loading", parts: [{ text: "checking ticker", tone: "muted" as const }] }] : []),

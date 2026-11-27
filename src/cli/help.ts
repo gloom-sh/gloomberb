@@ -1,4 +1,5 @@
 import type { CliCommandDef } from "../types/plugin";
+import { editDistance } from "../utils/typo-distance";
 import { CLI_EXIT_CODES } from "./exit-codes";
 import {
   cliStyles,
@@ -204,19 +205,6 @@ export function describeCliCommand(command: CliCommandDef) {
     options: command.help?.options ?? [],
     examples: command.help?.examples ?? [],
   };
-}
-
-function editDistance(left: string, right: string): number {
-  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
-  for (let row = 1; row <= left.length; row += 1) {
-    const current = [row];
-    for (let column = 1; column <= right.length; column += 1) {
-      const cost = left[row - 1] === right[column - 1] ? 0 : 1;
-      current[column] = Math.min(previous[column]! + 1, current[column - 1]! + 1, previous[column - 1]! + cost);
-    }
-    previous = current;
-  }
-  return previous[right.length]!;
 }
 
 function closestName(needle: string, candidates: Iterable<string>): string | null {

@@ -4,7 +4,8 @@ import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchPortfolioRiskMarket, riskInstrumentOf, RISK_HISTORY_LIMIT } from "./risk-client";
 import { parsePortfolioRiskEvidence } from "./risk-evidence";
 import { cloudEpisodeReader, fetchRiskEpisodeHistory, onceEpisodeReader, riskEpisodeTargets } from "./risk-episodes";
-import { describeCollections } from "../../../portfolio/collection-name";
+import { requireHeadlessPortfolio } from "../shared/headless-collections";
+import { enumOption, intOption } from "../shared/headless-options";
 import { shellWord } from "../../../utils/shell-word";
 import { formatShocks, parseAssetShifts, parseFxShifts, riskCashLines } from "./risk-book";
 import {
@@ -41,11 +42,6 @@ const RISK_COLUMNS = [
   { key: "asOf", header: "As of" },
   { key: "detail", header: "Evidence" },
 ];
-
-/** The error for a portfolio argument nothing matches: the names and ids there are, so the next call can use one. */
-function unknownPortfolio(raw: string, portfolios: readonly { id: string; name: string }[]): string {
-  return `Unknown local portfolio: ${raw}.${portfolios.length ? ` Portfolios: ${describeCollections(portfolios)}.` : ""}`;
-}
 
 /** The portfolio's name in a full result (its model) or a compact one. */
 function reportPortfolioName(metadata: Record<string, unknown> | undefined): string | undefined {
@@ -230,77 +226,35 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
     ],
   },
   options: [
-    {
-      key: "view",
-      type: "enum",
+    // No default: left out, the report prints every view.
+    enumOption("view", [...RISK_VIEWS, "sectors"], {
       settingKey: "riskView",
-      // No default: left out, the report prints every view.
-      values: [...RISK_VIEWS, "sectors"].map((value) => ({ value })),
       description: "One portfolio risk view; sectors compares direct company sector weights, cash and unclassified holdings against SPY (S&P 500) in percentage points. Every standard risk view when left out.",
-    },
-    {
-      key: "since",
-      type: "enum",
+    }),
+    enumOption("since", ["filed"], {
       settingKey: "riskSince",
-      values: [{ value: "filed" }],
       description: "Risk rows since the 13F filing date of a portfolio made with portfolio import --13f, instead of the trailing 60 sessions.",
-    },
-    {
-      key: "weights",
-      type: "enum",
+    }),
+    enumOption("weights", ["13f", "current"], {
       settingKey: "riskWeights",
-      values: [{ value: "13f" }, { value: "current" }],
       description: "With --since filed: 13f (when left out) buys the 13F's own weights at the filing-date close and holds them; current holds today's weights fixed over the same sessions.",
-    },
+    }),
     {
-      key: "evidence",
-      type: "string",
-      settingKey: "riskEvidence",
+      key: "evidence", type: "string", settingKey: "riskEvidence",
       // "Version 1 local account-evidence JSON" alone had Gloom send evidence=filed, the value of since.
       description: "A whole local account-evidence JSON document (schema version 1) that the user supplied, read only by the performance, attribution and greeks views. Leave it out otherwise; the 13F window is the since option.",
     },
+    intOption("equity-shift", { settingKey: "equityShift", minimum: -99, maximum: 100, description: "Independent index shock in percent (-10 when left out)." }),
+    intOption("rate-shift", { settingKey: "rateShift", minimum: -500, maximum: 500, description: "Independent 10Y yield shock in basis points (100 when left out)." }),
+    intOption("vol-shift", { settingKey: "volShift", minimum: -50, maximum: 100, description: "Independent VIX shock in index points (10 when left out)." }),
     {
-      key: "equity-shift",
-      type: "integer",
-      settingKey: "equityShift",
-      minimum: -99,
-      maximum: 100,
-      description: "Independent index shock in percent (-10 when left out).",
-    },
-    {
-      key: "rate-shift",
-      type: "integer",
-      settingKey: "rateShift",
-      minimum: -500,
-      maximum: 500,
-      description: "Independent 10Y yield shock in basis points (100 when left out).",
-    },
-    {
-      key: "vol-shift",
-      type: "integer",
-      settingKey: "volShift",
-      minimum: -50,
-      maximum: 100,
-      description: "Independent VIX shock in index points (10 when left out).",
-    },
-    {
-      key: "fx-shift",
-      type: "string",
-      settingKey: "fxShift",
-      valueWords: 2,
-      placeholder: "CCY pct",
-      example: "--fx-shift TRY -20",
+      key: "fx-shift", type: "string", settingKey: "fxShift", valueWords: 2, placeholder: "CCY pct", example: "--fx-shift TRY -20",
       // "TRY -20" read as the lira's move against USD, not USD's against the lira.
       description: "A currency's move against USD in percent: TRY -20 is the lira 20% weaker. Reprices every holding and the cash in that currency, and in a lira account every other line against it. Several separated by commas: TRY -20, EUR 5.",
       normalize: (value) => formatShocks(parseFxShifts(value)),
     },
     {
-      key: "asset-shift",
-      type: "string",
-      settingKey: "assetShift",
-      valueWords: 2,
-      placeholder: "SYMBOL pct",
-      example: "--asset-shift BTC-USD -30",
+      key: "asset-shift", type: "string", settingKey: "assetShift", valueWords: 2, placeholder: "SYMBOL pct", example: "--asset-shift BTC-USD -30",
       description: "A holding's own price move in percent, in its listing currency: GLD 10, BTC-USD -30. Applied with --fx-shift as one scenario. Several separated by commas.",
       normalize: (value) => formatShocks(parseAssetShifts(value)),
     },
@@ -314,8 +268,7 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
     const requested = args.rawArgument.trim() || ctx.config.portfolios[0]?.id;
     if (!requested || !ctx.resolvePortfolio)
       throw new Error("A local portfolio is required");
-    const local = await ctx.resolvePortfolio(requested);
-    if (!local) throw new Error(unknownPortfolio(requested, ctx.config.portfolios));
+    const local = await requireHeadlessPortfolio(requested, ctx);
     const id = local.portfolio.id;
     const tickers = portfolioRiskTickers(local.tickers, id);
     // The cash beside the holdings: the broker account's by currency, else the portfolio's own.

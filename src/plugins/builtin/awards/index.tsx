@@ -5,8 +5,7 @@ import { AWARD_SERIES } from "./series";
 
 export const awardsModule: PluginModule = {
   series: AWARD_SERIES,
-  setup(ctx) { awardsCache.attach(ctx.persistence); awardDetailCache.attach(ctx.persistence); },
-  dispose() { awardsCache.reset(); awardDetailCache.reset(); },
+  caches: [awardsCache, awardDetailCache],
   panes: [{ id: "awards", name: "Government Awards", icon: "A", get component(): typeof import("./pane").AwardsPane { const { AwardsPane } = require("./pane"); return AwardsPane; }, defaultPosition: "right", defaultMode: "floating",
     defaultFloatingSize: { width: 132, height: 34 }, shareItem: { ticker: true }, tickerFollower: true, instruments: ["equity"], tableExport: true, headless: awardsHeadless,
     quickSettings: [{ type: "toggle", key: "awardAlerts", icon: "bell", label:"New awards above 1% of annual revenue" }],

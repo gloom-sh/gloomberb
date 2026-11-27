@@ -1,13 +1,12 @@
 import { forwardRef, useCallback, useMemo } from "react";
 import { t, tf } from "../../i18n";
-import { hoverBg } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { Box, Text, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../ui";
 import { wrapTextLines } from "../../utils/text-wrap";
 import { MarkdownText, markdownLinks, type MarkdownTextProps } from "../markdown-text";
 import { DetailScrollBody } from "../ui/detail-scroll-body";
 import { KeyValueRow } from "../ui/display";
-import { ExternalLink, usePaneLinkMenuEntry } from "../ui/external-link";
+import { ExternalLink, usePaneLinkMenuEntry, usePaneLinkTarget } from "../ui/external-link";
 import { parseArticle } from "./article-text";
 import { shareItemExcerpt } from "../../shares/item";
 import { usePaneShareItem } from "../../shares/pane-item";
@@ -172,15 +171,7 @@ function LinkMenuEntry({ label, href, onOpen }: { label: string; href: string; o
 
 function FactValue({ fact }: { fact: DetailFact }) {
   const colors = useThemeColors();
-  const { link } = fact;
-  usePaneLinkMenuEntry(link ? `detail-fact:${fact.label}:${fact.value}` : null, link?.label ?? "", () => link?.onOpen());
-  const target = link ? {
-    cursor: "pointer" as const,
-    hoverBackgroundColor: hoverBg(colors),
-    onMouseDown: (event?: { button?: number }) => { if ((event?.button ?? 0) === 0) link.onOpen(); },
-    "data-gloom-interactive": "true",
-    "data-gloom-label": link.label,
-  } : {};
+  const target = usePaneLinkTarget(`detail-fact:${fact.label}:${fact.value}`, fact.link);
   return (
     <Box minWidth={0} {...target}>
       <Text fg={fact.color ?? colors.text} wrapText style={FACT_TEXT_STYLE}>{fact.value}</Text>

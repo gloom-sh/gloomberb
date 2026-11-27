@@ -83,10 +83,5 @@ export const estimateRevisionsModule: PluginModule = {
       headless: estimateRevisionsHeadless,
     },
   ],
-  setup(ctx) {
-    estimateRevisionsCache.attach(ctx.persistence);
-  },
-  dispose() {
-    estimateRevisionsCache.reset();
-  },
+  caches: [estimateRevisionsCache],
 };

@@ -1,19 +1,6 @@
-import type { GloomPlugin, PaneTemplateCreateOptions } from "../../../types/plugin";
+import type { GloomPlugin } from "../../../types/plugin";
+import { createQueryPaneTemplate } from "../shared/ticker-surface";
 import { COMMENT_LETTERS_PANE_ID, COMMENT_LETTERS_PLUGIN_ID } from "./types";
-
-const createCommentLettersPaneInstance = (options?: PaneTemplateCreateOptions) => {
-  // A ticker on its own lists that company's letters, so a ticker the pane
-  // is opened for is the search.
-  const query = (options?.arg ?? options?.symbol ?? options?.values?.query ?? "").trim();
-  const encoded = encodeURIComponent(query).replace(/%/g, "~");
-  return {
-    instanceId: query ? `comment-letters:${encoded}` : "comment-letters:latest",
-    title: query ? `Comment Letters ${query}` : "Comment Letters",
-    placement: "floating" as const,
-    binding: { kind: "none" as const },
-    settings: { query },
-  };
-};
 
 export const commentLettersPlugin: GloomPlugin = {
   id: COMMENT_LETTERS_PLUGIN_ID,
@@ -45,30 +32,19 @@ export const commentLettersPlugin: GloomPlugin = {
   ],
 
   paneTemplates: [
-    {
+    createQueryPaneTemplate({
       id: "comment-letters-pane",
       paneId: COMMENT_LETTERS_PANE_ID,
       label: "SEC Comment Letters",
       description:
         "SEC staff comment letters and company responses (CORRESP, UPLOAD): search their text, or a ticker for one company's letters.",
-      keywords: [
-        "comment",
-        "letters",
-        "corresp",
-        "upload",
-        "sec",
-        "edgar",
-        "correspondence",
-        "staff",
-        "response",
-      ],
-      shortcut: {
-        prefix: "CLTR",
-        argPlaceholder: "words or ticker",
-        argKind: "text", argOnlySelects: true,
-        argOptional: true,
-      },
-      createInstance: (_context, options) => createCommentLettersPaneInstance(options),
-    },
+      keywords: ["comment", "letters", "corresp", "upload", "sec", "edgar", "correspondence", "staff", "response"],
+      shortcut: "CLTR",
+      argPlaceholder: "words or ticker",
+      instancePrefix: "comment-letters",
+      defaultTitle: "Comment Letters",
+      titlePrefix: "Comment Letters",
+      includeSymbol: true,
+    }),
   ],
 };

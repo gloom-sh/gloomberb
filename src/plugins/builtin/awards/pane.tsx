@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useRef } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
-import { usePlanAccess } from "../../../api-client/plan-access";
 import type { AwardAggregate, AwardCompanyLeader, AwardFilter, AwardRow, AwardType, AwardsPayload } from "../../../api-client/awards";
 import { Badge, ChartTableHeader, DataTableView, Notice, PageStackView, PaneStatusBody, QueryBar, useChartTableSelection, usePagedRows,
   usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useQueryBarSearch, useTableLoadMore, type DataTableColumn, type PaneHint, type QueryBarFilter } from "../../../components";
@@ -11,7 +10,7 @@ import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActi
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { Box, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { withCountryFlag } from "../../../components/ui/country-flag";
 import { dayCell } from "../../../components/ui/day-cell";
 import { publicTickerKey } from "../../../utils/exchanges";
@@ -19,8 +18,8 @@ import { truncateToDisplayWidth } from "../../../utils/format";
 import { wrapTextLines } from "../../../utils/text-wrap";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
-import { useOpenDescription } from "../shared/open-description";
-import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
+import { useTickerJumpHints } from "../shared/open-description";
+import { lockedTableCell, lockedTableOverlay } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { AwardDetail } from "./detail";
 import { useAwardAlerts } from "./alerts";
@@ -106,11 +105,11 @@ export function AwardsPane(props: PaneProps) {
 function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: string | null }) {
   const colors = useThemeColors(), host = useRendererHost();
   const desktop = !!useUiCapabilities().nativePaneChrome;
-  const session = useResearchCloudSession(), access = usePlanAccess();
-  const accessKey = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
+  const session = useResearchCloudSession();
+  const { accessKey } = session;
   const openUpgrade = useCloudUpgradeAction("awards");
   const { createPaneFromTemplate } = usePluginAppActions();
-  const openDescription = useOpenDescription();
+  const tickerJumpHints = useTickerJumpHints();
   const [initialTab] = usePaneSettingValue("tab", symbol ? "company" : "feed");
   const [savedTab, setTab] = usePluginPaneState<string>("awards:tab", initialTab);
   const tab = awardTab(savedTab);
@@ -199,10 +198,8 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
   const hints: PaneHint[] = [
     ...(current ? [{ id: "source", key: "o", label: "pen source", onPress: () => void host.openExternal(current.sourceUrl) }] : []),
     ...(current && !openId ? [{ id: "evidence", key: "e", label: "vidence", onPress: () => setOpen(current.id) }] : []),
+    ...tickerJumpHints(selectedEntity?.ticker, { exchange: selectedEntity?.exchange ?? undefined, ids: { graph: "graph" } }),
     ...(selectedEntity ? [
-      { id: "description", key: "d", label: "es", onPress: () => openDescription(selectedEntity.ticker, selectedEntity.exchange ?? undefined) },
-      { id: "financials", key: "f", label: "a", onPress: () => navigate("financial-analysis-pane") },
-      { id: "graph", key: "g", label: "raph", onPress: () => navigate("chart-composer-pane") },
       { id: "supply", key: "s", label: "plc", onPress: () => navigate("supply-chain-pane") },
       { id: "calendar", key: "c", label: "alendar", onPress: () => navigate("earnings-calendar-pane") },
     ] : []),
@@ -277,9 +274,17 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
           renderCell={(item, column, _index, state) => {
             if (item.kind === "section" || item.kind === "note") return { text: "" };
             if (item.kind === "locked") {
-              if (!desktop && ["recipient", "label"].includes(column.id) && item.id === "locked:0") return { text: "Upgrade for full awards", content: <UpgradeLabel text="Upgrade for full awards" onPress={openUpgrade} />, onMouseDown: openUpgrade };
-              return desktop ? { text: "", content: <Blurred><Text fg={colors.textDim}>{["recipient", "label"].includes(column.id) ? "Additional award" : "Hidden"}</Text></Blurred> }
-                : { text: "░".repeat(Math.min(7, column.width - 1)), color: colors.textDim };
+              const isLabel = ["recipient", "label"].includes(column.id);
+              return lockedTableCell({
+                desktop,
+                isLabelCell: isLabel && item.id === "locked:0",
+                upgradeText: "Upgrade for full awards",
+                blurText: isLabel ? "Additional award" : "Hidden",
+                shadeText: "░".repeat(Math.min(7, column.width - 1)),
+                onUpgrade: openUpgrade,
+                onMouseDown: openUpgrade,
+                dimColor: colors.textDim,
+              });
             }
             const row = item.row;
             if (column.id === "currency") return { text: row.currency, color: colors.textDim };
@@ -315,6 +320,6 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
           }}
           emptyStateTitle={tab === "company" && !ticker ? "Enter a company ticker." : tab === "events" ? "No revenue-comparable awards in this scope." : "No awards match these filters."}
           rootAfter={attribution ? <Box paddingX={1} height={attributionRows} flexShrink={0}><Notice tone="muted">{attribution}</Notice></Box> : undefined}
-          bodyAfter={data?.locked && desktop ? <LockedOverlay rows={3} text="Upgrade for complete awards and history" onPress={openUpgrade} /> : undefined} />} />
+          bodyAfter={lockedTableOverlay(data?.locked ? 3 : 0, desktop, "Upgrade for complete awards and history", openUpgrade)} />} />
   </Box>;
 }

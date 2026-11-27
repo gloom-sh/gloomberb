@@ -16,8 +16,6 @@ import {
   useQueryBarSearch,
   useTableLoadMore,
   type DataTableCell,
-  type DataTableKeyEvent,
-  type DataTableRootKeyContext,
   type PageRequest,
   type PaneFooterSegment,
   type PaneHint,
@@ -35,8 +33,7 @@ import type { ThemeColors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, type ScrollBoxRenderable } from "../../../ui";
-import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
-import { useSearchFocusUp } from "../../../components/input-search-bar";
+import { useSearchUpRootKeyDown } from "../../../components/input-search-bar";
 import { toneColor, withoutQuietColumns } from "../shared/research-cells";
 import { looksLikeTicker, useTickerCompanySearch } from "../shared/ticker-company";
 import { OpenFdaClient, parseOpenFdaDate } from "./client";
@@ -374,15 +371,7 @@ export function OpenFdaPane({ width, height, focused }: PaneProps) {
     title: "FDA reports",
   });
 
-  const isSearchUp = useSearchFocusUp();
-  const handleRootKeyDown = useCallback((event: DataTableKeyEvent, context: DataTableRootKeyContext) => {
-    if (context.selectedIndex <= 0 && isSearchUp(event)) {
-      stopSearchFocusNavigation(event);
-      focusSearch();
-      return true;
-    }
-    return false;
-  }, [isSearchUp, focusSearch]);
+  const handleRootKeyDown = useSearchUpRootKeyDown(focusSearch);
 
   const renderCell = useCallback((record: OpenFdaRecord, column: RecordColumn) => cellFor(record, column.id, colors, searched), [colors, searched]);
 

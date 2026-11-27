@@ -1,16 +1,15 @@
 import { useCallback, useMemo } from "react";
 import { Box, ScrollBox, useUiCapabilities } from "../../../ui";
-import { useAsyncResource, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
+import { usePluginPaneState, useUpdatedAgo } from "../../../public/react";
 import { ChartTableHeader, DataTableStackView, EmptyState, KeyValueRow, PaneStatusBody, useChartTableSelection, usePaneNoticeFooter, usePaneStatusLinkFooter, type DataTableCell, type StatItem } from "../../../components";
 import { ageFooterSegment } from "../../../components/layout/pane/footer";
 import { colors } from "../../../theme/colors";
 import type { BuybackDay, BuybacksPayload } from "../../../api-client/buybacks";
 import { isAccessDenied } from "../../../api-client/errors";
-import { usePlanAccess } from "../../../api-client/plan-access";
 import { staticSeries } from "../../../components/chart/static/series";
 import type { PaneProps } from "../../../types/plugin";
 import { MISSING_VALUE } from "../../../utils/format";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { usePaneResource } from "../shared/pane-resource";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { buybackSymbol, cachedBuybacks, loadBuybacks } from "./client";
@@ -41,10 +40,9 @@ export function BuybacksView({ width, height, focused }: Pick<PaneProps, "width"
   const { ticker } = usePaneTickerIdentity();
   const symbol = buybackSymbol(ticker?.metadata.ticker, ticker?.metadata.exchange);
   const session = useResearchCloudSession();
-  const access = usePlanAccess();
-  const accessKey = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
+  const { accessKey } = session;
   const loader = useCallback((force: boolean) => loadBuybacks(symbol!, accessKey, force), [symbol, accessKey]);
-  const resource = useAsyncResource(symbol ? loader : null, { initialData: () => symbol ? cachedBuybacks(symbol, accessKey) : null, clearOnError: isAccessDenied });
+  const resource = usePaneResource(symbol ? loader : null, { focused, autoRefresh: false, initialData: () => symbol ? cachedBuybacks(symbol, accessKey) : null, clearOnError: isAccessDenied });
   const data = resource.data?.payload;
   const [sort, setSort] = usePluginPaneState<BuybackSort>("buybacks:sort", { column: "date", direction: "desc" });
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("buybacks:selected", null);
@@ -67,7 +65,6 @@ export function BuybacksView({ width, height, focused }: Pick<PaneProps, "width"
     onSelect: setSelectedId, focused: focused && !openRow,
   });
   const figures: StatItem[] = data ? figuresFor(data) : [];
-  usePaneRefreshKey(() => resource.reload(), { focused });
   const since = data?.heldFrom ? shortDay(data.heldFrom) : null;
   usePaneNoticeFooter({ registrationId: "buybacks:notices", focused, notices: [
     // Without Pro the server sends the newest sessions only.

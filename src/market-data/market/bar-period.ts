@@ -1,3 +1,4 @@
+import { utcDay as utcDate } from "../../utils/day-format";
 import { zonedDateKey } from "../../utils/zoned-date-time";
 import {
   isAlwaysOpenExchange,
@@ -23,10 +24,6 @@ export interface BarPeriodToDate {
 }
 
 const DAY_MS = 24 * 60 * 60_000;
-
-function utcDate(time: number): string {
-  return new Date(time).toISOString().slice(0, 10);
-}
 
 /**
  * The first day after the calendar period a bar dated `date` falls in: the

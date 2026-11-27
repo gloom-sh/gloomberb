@@ -21,7 +21,7 @@ import { logFailure } from "../../../utils/log-failure";
 import { dayFirstTextEntries } from "../shared/day-entries";
 import { projectDividendRanking, roundedRatio } from "./ranking";
 import { MAX_RANKED_SYMBOLS, readDividendRanking, type DividendRankingReads } from "./ranking-reads";
-import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
+import { enumOption, limitOption, REPORT_FILTER } from "../shared/headless-options";
 import type { FundBondFacts } from "../../../api-client/fund-facts";
 import { resolveTickerInstrumentKind } from "../../../tickers/instrument-kind";
 import { bondClassText, bondFigures, fetchFundBondFacts, NOT_SEC_YIELD, type BondFigure } from "../../../market-data/bond-funds";
@@ -399,29 +399,8 @@ export function createDividendYieldHeadless(
       examples: TAX_RATE_EXAMPLES,
     },
     options: [
-      {
-        key: "type",
-        shot: REPORT_FILTER,
-        description: "Dividend payment type to include.",
-        type: "enum",
-        values: [
-          { value: "all" },
-          { value: "cash" },
-          { value: "special" },
-          { value: "stock" },
-          { value: "unknown" },
-        ],
-        defaultValue: DEFAULT_TYPE,
-      },
-      {
-        key: "limit",
-        shot: REPORT_ROWS,
-        description: "Maximum historical payments to return.",
-        type: "integer",
-        defaultValue: DEFAULT_LIMIT,
-        minimum: 1,
-        maximum: 200,
-      },
+      enumOption("type", ["all", "cash", "special", "stock", "unknown"], { shot: REPORT_FILTER, description: "Dividend payment type to include.", defaultValue: DEFAULT_TYPE }),
+      limitOption({ description: "Maximum historical payments to return.", defaultValue: DEFAULT_LIMIT, maximum: 200 }),
       ...TAX_RATE_OPTIONS,
     ],
     describe: (args) => `Dividend Yield | ${args.symbols.join(", ")}`,

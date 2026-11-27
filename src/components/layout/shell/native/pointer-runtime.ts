@@ -79,26 +79,25 @@ export function useShellNativePointerRuntime({
     });
   }, [commandBarOpen, focusNativePane, selectWindowModePane, windowMode]);
 
-  const startNativeFloatingDrag = useCallback((paneId: string, rect: FloatingRect, event: ShellMouseEvent) => {
-    if (!nativePaneChrome) return;
-    if (commandBarOpen) return;
-    if (windowMode) return;
-    if (transientFocusActive) return;
-    if (event.button === 2) return;
-
+  const startNativePaneDrag = useCallback((
+    mode: "floating" | "docked" | "tab",
+    paneId: string,
+    rect: LayoutBounds,
+    event: ShellMouseEvent,
+    options?: { focus?: boolean },
+  ) => {
+    if (!nativePaneChrome || commandBarOpen || windowMode || transientFocusActive || event.button === 2) return;
     const pointer = getShellPointer(event);
-    focusNativePane(paneId);
-    startDrag({
-      type: "pane-drag",
-      paneId,
-      mode: "floating",
-      startX: pointer.x,
-      startY: pointer.y,
-      origRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-    });
-    updateDragFloatingRect({ paneId, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } });
+    if (options?.focus) focusNativePane(paneId);
+    const origRect = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    startDrag({ type: "pane-drag", paneId, mode, startX: pointer.x, startY: pointer.y, origRect });
+    if (mode === "floating") updateDragFloatingRect({ paneId, rect: origRect });
     event.preventDefault();
   }, [commandBarOpen, focusNativePane, getShellPointer, nativePaneChrome, startDrag, transientFocusActive, updateDragFloatingRect, windowMode]);
+
+  const startNativeFloatingDrag = useCallback((paneId: string, rect: FloatingRect, event: ShellMouseEvent) => {
+    startNativePaneDrag("floating", paneId, rect, event, { focus: true });
+  }, [startNativePaneDrag]);
 
   /**
    * A press that may become a move of a docked pane. A press on a stack's
@@ -106,24 +105,8 @@ export function useShellNativePointerRuntime({
    * shows the tab if the pointer did not move, or the move takes it out.
    */
   const startNativeDockedDrag = useCallback((paneId: string, rect: LayoutBounds, event: ShellMouseEvent, options?: { focus?: boolean }) => {
-    if (!nativePaneChrome) return;
-    if (commandBarOpen) return;
-    if (windowMode) return;
-    if (transientFocusActive) return;
-    if (event.button === 2) return;
-
-    const pointer = getShellPointer(event);
-    if (options?.focus !== false) focusNativePane(paneId);
-    startDrag({
-      type: "pane-drag",
-      paneId,
-      mode: "docked",
-      startX: pointer.x,
-      startY: pointer.y,
-      origRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-    });
-    event.preventDefault();
-  }, [commandBarOpen, focusNativePane, getShellPointer, nativePaneChrome, startDrag, transientFocusActive, windowMode]);
+    startNativePaneDrag("docked", paneId, rect, event, { focus: options?.focus !== false });
+  }, [startNativePaneDrag]);
 
   /**
    * A press on a tab of a floating stack: a move pulls that tab out as an
@@ -131,23 +114,8 @@ export function useShellNativePointerRuntime({
    * shows the tab.
    */
   const startNativeTabDrag = useCallback((paneId: string, rect: FloatingRect, event: ShellMouseEvent) => {
-    if (!nativePaneChrome) return;
-    if (commandBarOpen) return;
-    if (windowMode) return;
-    if (transientFocusActive) return;
-    if (event.button === 2) return;
-
-    const pointer = getShellPointer(event);
-    startDrag({
-      type: "pane-drag",
-      paneId,
-      mode: "tab",
-      startX: pointer.x,
-      startY: pointer.y,
-      origRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-    });
-    event.preventDefault();
-  }, [commandBarOpen, getShellPointer, nativePaneChrome, startDrag, transientFocusActive, windowMode]);
+    startNativePaneDrag("tab", paneId, rect, event);
+  }, [startNativePaneDrag]);
 
   const startNativeFloatResize = useCallback((paneId: string, rect: FloatingRect, event: ShellMouseEvent, edges?: ResizeEdges) => {
     if (!nativePaneChrome) return;

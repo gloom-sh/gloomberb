@@ -8,6 +8,7 @@ import type {
   HeadlessSeriesResult,
   HeadlessSnapshotResult,
 } from "../../types/plugin";
+import { joinEnglishList as listText } from "../../utils/format";
 import { formatUtcTime, localTimeSuffix, parseReportTime, type ReportTime } from "../../utils/utc-time";
 import { timeZoneLabel, zonedDateKey, zonedDateTimeParts } from "../../utils/zoned-date-time";
 import { isRecord } from "../../utils/guards";
@@ -568,50 +569,35 @@ function resolveReadFreshness({ declared, signals, observations, now }: Freshnes
   let minDelayMinutes: number | undefined;
   let staleAt: ReportTime | null = null;
   let partial: { staleCount: number; observationCount: number; feed?: "live" | "delayed" } | null = null;
-  if (declared.status === "not-a-feed") {
-    // Age alone does not make filed or published data stale. Honor explicit flags,
-    // with row-level flags outranking the metadata summary, or a missed schedule.
-    const staleRows = signals.staleTimes.length;
-    if (late || (signals.flagged > 0 ? staleRows === signals.flagged : signals.stale)) {
-      status = "stale";
-      staleAt = asOf;
-    } else if (staleRows > 0) {
-      status = "stale";
-      partial = { staleCount: staleRows, observationCount: signals.flagged };
-      staleAt = oldest(signals.staleTimes.filter((time): time is ReportTime => time != null));
-    } else {
-      status = "not-a-feed";
-    }
+  const notAFeed = declared.status === "not-a-feed";
+  const feed = declared.status === "not-a-feed" || declared.status === "unreported" ? null : worstFeedStatus([
+    ...(declared.status ? [declared.status] : []),
+    ...(signals.live ? ["live" as const] : []),
+    ...(signals.delayed ? ["delayed" as const] : []),
+  ]);
+  const staleRows = signals.staleTimes.length;
+  // Rows that say whether they are stale outrank a summary flag beside them.
+  const allStale = feed === "stale" || late
+    || (signals.flagged > 0 ? staleRows === signals.flagged : signals.stale);
+  if (allStale) {
+    status = "stale";
+    staleAt = asOf;
+  } else if (staleRows > 0) {
+    status = "stale";
+    partial = {
+      staleCount: staleRows,
+      observationCount: signals.flagged,
+      ...(!notAFeed && (feed === "live" || feed === "delayed") ? { feed } : {}),
+    };
+    staleAt = oldest(signals.staleTimes.filter((time): time is ReportTime => time != null));
   } else {
-    const feed = declared.status === "unreported" ? null : worstFeedStatus([
-      ...(declared.status ? [declared.status] : []),
-      ...(signals.live ? ["live" as const] : []),
-      ...(signals.delayed ? ["delayed" as const] : []),
-    ]);
-    const staleRows = signals.staleTimes.length;
-    // Rows that say whether they are stale outrank a summary flag beside them.
-    const allStale = feed === "stale" || late
-      || (signals.flagged > 0 ? staleRows === signals.flagged : signals.stale);
-    if (allStale) {
-      status = "stale";
-      staleAt = asOf;
-    } else if (staleRows > 0) {
-      status = "stale";
-      partial = {
-        staleCount: staleRows,
-        observationCount: signals.flagged,
-        ...(feed === "live" || feed === "delayed" ? { feed } : {}),
-      };
-      staleAt = oldest(signals.staleTimes.filter((time): time is ReportTime => time != null));
-    } else {
-      status = feed ?? "unreported";
-    }
-    // A partly stale board still says how far its fresh rows are held back.
-    if (status === "delayed" || partial?.feed === "delayed") {
-      delayMinutes = declared.delayMinutes ?? signals.delayMinutes;
-      if (declared.delayMinutes == null && signals.minDelayMinutes != null && delayMinutes != null && signals.minDelayMinutes < delayMinutes) {
-        minDelayMinutes = signals.minDelayMinutes;
-      }
+    status = notAFeed ? "not-a-feed" : feed ?? "unreported";
+  }
+  // A partly stale board still says how far its fresh rows are held back.
+  if (!notAFeed && (status === "delayed" || partial?.feed === "delayed")) {
+    delayMinutes = declared.delayMinutes ?? signals.delayMinutes;
+    if (declared.delayMinutes == null && signals.minDelayMinutes != null && delayMinutes != null && signals.minDelayMinutes < delayMinutes) {
+      minDelayMinutes = signals.minDelayMinutes;
     }
   }
   const rowsSession = reportMarketSession(signals.sessions, now);
@@ -975,9 +961,6 @@ function savedCopyText(savedAt: string, retrievedAt: string, local: boolean): st
 }
 
 /** `US and XETRA`, `US, XETRA and EPA`. */
-function listText(items: readonly string[]): string {
-  return items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
-}
 
 /**
  * Each market's session date, markets on the same day and state said once:

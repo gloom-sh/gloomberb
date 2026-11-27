@@ -235,35 +235,20 @@ function stackSpansWidth(spans: ReturnType<typeof terminalStackTabSpans>): numbe
   return last ? last.start + displayWidth(last.text) : 0;
 }
 
-interface PaneHeaderProps {
-  title: string;
+/** Header props forwarded unchanged by PaneWrapper and FloatingPaneWrapper. */
+export interface PaneHeaderChromeProps {
   /**
    * Desktop and web: the ticker of a single-ticker pane, drawn where its title names it as a
    * control that opens ticker search for the pane (`onTitleTickerPress`).
    */
   titleTicker?: string | null;
   onTitleTickerPress?: () => void;
-  width: number;
-  focused: boolean;
   windowModeSelected?: boolean;
-  floating?: boolean;
   locked?: boolean;
   showActions?: boolean;
   quickSettings?: PaneHeaderQuickSetting[];
-  /** Desktop only: the pane's primary tab strip, drawn as title-bar tabs. */
-  tabs?: PaneHeaderTabsRegistration | null;
   /** Panes stacked in this spot: their tabs replace the title. */
   stack?: PaneHeaderStack | null;
-  /** The body colour the active title-bar tab opens into. */
-  bodyBackground?: string;
-  /**
-   * Desktop: a 1px line is drawn over the header's first row (a dock divider
-   * above it, or a floating pane's border). The header mirrors it with padding
-   * so its contents centre between the visible lines.
-   */
-  topRule?: boolean;
-  /** Desktop only: the header is a popped-out window's title bar. */
-  titleBar?: PaneHeaderTitleBar | null;
   onHeaderMouseMove?: (event: any) => void;
   onHeaderMouseDown?: (event: any) => void;
   onHeaderMouseDrag?: (event: any) => void;
@@ -277,10 +262,29 @@ interface PaneHeaderProps {
    * The terminal reaches it from the pane menu and the key instead.
    */
   onAskMouseDown?: (event: any) => void;
-  onCloseMouseDown?: (event: any) => void;
   /** Pane fullscreen. The corner mark leaves fullscreen instead of closing. */
   fullscreen?: boolean;
   onRestoreMouseDown?: (event: any) => void;
+}
+
+interface PaneHeaderProps extends PaneHeaderChromeProps {
+  title: string;
+  width: number;
+  focused: boolean;
+  floating?: boolean;
+  /** Desktop only: the pane's primary tab strip, drawn as title-bar tabs. */
+  tabs?: PaneHeaderTabsRegistration | null;
+  /** The body colour the active title-bar tab opens into. */
+  bodyBackground?: string;
+  /**
+   * Desktop: a 1px line is drawn over the header's first row (a dock divider
+   * above it, or a floating pane's border). The header mirrors it with padding
+   * so its contents centre between the visible lines.
+   */
+  topRule?: boolean;
+  /** Desktop only: the header is a popped-out window's title bar. */
+  titleBar?: PaneHeaderTitleBar | null;
+  onCloseMouseDown?: (event: any) => void;
 }
 
 /**
@@ -788,75 +792,18 @@ export function PaneHeader({
     };
   };
 
-  if (visuallyFocused || floating || fullscreen) {
-    // Build: ┌─:: Title ─────────── ... x─┐
-    // Fullscreen draws "-" in that corner. Reserve 2 for the frame.
-    const borderColor = visuallyFocused ? colors.borderFocused : colors.border;
-    const innerWidth = Math.max(0, width - 4);
-    const titleWidth = terminalHeaderTitleWidth(width, { framed: true, corner: closeText.length > 0, trailing: terminalQuickSettingsWidth });
-    const clippedTitle = truncateToDisplayWidth(title, titleWidth);
-    const spans = stack ? terminalStackTabSpans(stack.tabs.map((tab) => tab.title), stackActiveIndex(stack), titleWidth) : null;
-    const titleShown = spans ? Math.min(titleWidth, stackSpansWidth(spans)) : displayWidth(clippedTitle);
-    const fillLen = Math.max(0, innerWidth - PANE_HEADER_GRIP.length - titleShown - terminalQuickSettingsWidth - actionText.length - closeText.length);
-    const fill = "─".repeat(fillLen);
-    // After the frame's corner, the grip and the title.
-    const terminalSettings = terminalQuickSettings(2 + PANE_HEADER_GRIP.length + titleShown, true);
-
-    return (
-      <Box
-        ref={terminalHeaderRef}
-        height={PANE_HEADER_HEIGHT}
-        width={width}
-        backgroundColor={backgroundColor}
-        flexDirection="row"
-        onMouseDown={handleTerminalHeaderMouseDown}
-        onMouseMove={onHeaderMouseMove}
-        onMouseDrag={onHeaderMouseDrag}
-        onMouseDragEnd={onHeaderMouseDragEnd}
-      >
-        <Text fg={borderColor} selectable={false}>{"┌─"}</Text>
-        {stack && spans ? (
-          <>
-            <Text fg={textColor} selectable={false}>{PANE_HEADER_GRIP}</Text>
-            <TerminalStackTabs stack={stack} spans={spans} width={titleWidth} activeFg={textColor} pad={false} />
-          </>
-        ) : (
-          <Text fg={textColor} selectable={false}>{`${PANE_HEADER_GRIP}${clippedTitle}`}</Text>
-        )}
-        {terminalSettings.buttons}
-        {fill && <Text fg={borderColor} selectable={false}>{fill}</Text>}
-        {locked && (
-          <TerminalPaneButton text={lockText} fg={colors.textMuted} role="pane-lock" />
-        )}
-        {helpText && (
-          <TerminalPaneButton text={helpText} fg={textColor} role="pane-help" onMouseDown={showActions ? onHelpMouseDown : undefined} />
-        )}
-        <TerminalPaneButton
-          text={actionText}
-          fg={textColor}
-          role="pane-action"
-          onMouseDown={onActionMouseDown}
-        />
-        {(fullscreen || floating) && (
-          <TerminalPaneButton
-            text={closeText}
-            fg={textColor}
-            role={fullscreen ? "pane-restore" : "pane-close"}
-            onMouseDown={onCornerMouseDown}
-          />
-        )}
-        <Text fg={borderColor} selectable={false}>{"─┐"}</Text>
-        {terminalSettings.label}
-      </Box>
-    );
-  }
-
-  const titleWidth = terminalHeaderTitleWidth(width, { framed: false, corner: closeText.length > 0, trailing: terminalQuickSettingsWidth });
+  const framed = visuallyFocused || floating || fullscreen;
+  const borderColor = visuallyFocused ? colors.borderFocused : colors.border;
+  const titleWidth = terminalHeaderTitleWidth(width, { framed, corner: closeText.length > 0, trailing: terminalQuickSettingsWidth });
   const clippedTitle = truncateToDisplayWidth(title, titleWidth);
   const spans = stack ? terminalStackTabSpans(stack.tabs.map((tab) => tab.title), stackActiveIndex(stack), titleWidth) : null;
-  const padding = " ".repeat(Math.max(0, titleWidth - displayWidth(clippedTitle)));
-  // After the grip and the title padded to its width.
-  const terminalSettings = terminalQuickSettings(PANE_HEADER_GRIP.length + titleWidth, false);
+  const titleShown = spans ? Math.min(titleWidth, stackSpansWidth(spans)) : displayWidth(clippedTitle);
+  const fill = framed
+    ? "─".repeat(Math.max(0, Math.max(0, width - 4) - PANE_HEADER_GRIP.length - titleShown - terminalQuickSettingsWidth - actionText.length - closeText.length))
+    : "";
+  const padding = framed ? "" : " ".repeat(Math.max(0, titleWidth - displayWidth(clippedTitle)));
+  // After the frame's corner (when framed), the grip and the title (padded when unframed).
+  const terminalSettings = terminalQuickSettings((framed ? 2 + titleShown : titleWidth) + PANE_HEADER_GRIP.length, framed);
 
   return (
     <Box
@@ -870,29 +817,22 @@ export function PaneHeader({
       onMouseDrag={onHeaderMouseDrag}
       onMouseDragEnd={onHeaderMouseDragEnd}
     >
+      {framed && <Text fg={borderColor} selectable={false}>{"┌─"}</Text>}
       {stack && spans ? (
         <>
           <Text fg={textColor} selectable={false}>{PANE_HEADER_GRIP}</Text>
-          <TerminalStackTabs stack={stack} spans={spans} width={titleWidth} activeFg={textColor} pad />
+          <TerminalStackTabs stack={stack} spans={spans} width={titleWidth} activeFg={textColor} pad={!framed} />
         </>
       ) : (
-        <Text fg={textColor} selectable={false}>
-          {`${PANE_HEADER_GRIP}${clippedTitle}${padding}`}
-        </Text>
+        <Text fg={textColor} selectable={false}>{`${PANE_HEADER_GRIP}${clippedTitle}${padding}`}</Text>
       )}
       {terminalSettings.buttons}
-      {locked && (
-        <TerminalPaneButton text={lockText} fg={colors.textMuted} role="pane-lock" />
-      )}
+      {fill && <Text fg={borderColor} selectable={false}>{fill}</Text>}
+      {locked && <TerminalPaneButton text={lockText} fg={colors.textMuted} role="pane-lock" />}
       {helpText && (
         <TerminalPaneButton text={helpText} fg={textColor} role="pane-help" onMouseDown={showActions ? onHelpMouseDown : undefined} />
       )}
-      <TerminalPaneButton
-        text={actionText}
-        fg={textColor}
-        role="pane-action"
-        onMouseDown={onActionMouseDown}
-      />
+      <TerminalPaneButton text={actionText} fg={textColor} role="pane-action" onMouseDown={onActionMouseDown} />
       {(fullscreen || floating) && (
         <TerminalPaneButton
           text={closeText}
@@ -901,6 +841,7 @@ export function PaneHeader({
           onMouseDown={onCornerMouseDown}
         />
       )}
+      {framed && <Text fg={borderColor} selectable={false}>{"─┐"}</Text>}
       {terminalSettings.label}
     </Box>
   );

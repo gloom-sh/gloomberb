@@ -7,10 +7,7 @@ import {
   createUserFeed,
   getEnabledNewsFeeds,
   loadNewsFeedSettings,
-  removeUserNewsFeed,
   saveNewsFeedSettings,
-  setDefaultNewsFeedEnabled,
-  updateUserNewsFeed,
 } from "./feed-config";
 
 const UNREADABLE = '[{"name":"private-title","url":"https://example.test/?token=private-token"}';
@@ -66,10 +63,6 @@ for (const key of ["feeds", "disabledDefaultFeedIds"]) {
     const writes = [
       () => saveNewsFeedSettings(config, { userFeeds: [], disabledDefaultFeedIds: [] }),
       () => addUserNewsFeed(config, { name: "Added", url: "https://example.test/added" }),
-      () => updateUserNewsFeed(config, FEED.id, { enabled: false }),
-      () => removeUserNewsFeed(config, FEED.id),
-      () => setDefaultNewsFeedEnabled(config, DEFAULT_FEEDS[0]!.id, false),
-      () => setDefaultNewsFeedEnabled(config, DEFAULT_FEEDS[0]!.id, true),
     ];
     for (const write of writes) {
       await expect(write()).rejects.toThrow(ERROR);
@@ -79,7 +72,7 @@ for (const key of ["feeds", "disabledDefaultFeedIds"]) {
 
     // Repairing the stored value is enough; failure is not latched in memory.
     stored.set(key, key === "feeds" ? JSON.stringify([FEED]) : "[]");
-    await updateUserNewsFeed(config, FEED.id, { enabled: false });
+    await saveNewsFeedSettings(config, { userFeeds: [{ ...FEED, enabled: false }], disabledDefaultFeedIds: [] });
     expect(loadNewsFeedSettings(config).userFeeds[0]!.enabled).toBe(false);
     expect(loadNewsFeedSettings(config).error).toBeUndefined();
   });

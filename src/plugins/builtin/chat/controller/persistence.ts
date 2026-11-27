@@ -29,15 +29,33 @@ export interface ChatSessionUser {
   effectivePlan?: "free" | "pro";
 }
 
+function readDualState<T>(
+  persistence: PluginPersistence | null,
+  resume: PluginResumeState | null,
+  key: string,
+  schemaVersion: number,
+): T | null {
+  return resume?.getState<T>(key, { schemaVersion })
+    ?? persistence?.getState<T>(key, { schemaVersion })
+    ?? null;
+}
+
+function writeDualState<T>(
+  persistence: PluginPersistence | null,
+  resume: PluginResumeState | null,
+  key: string,
+  value: T,
+  schemaVersion: number,
+): void {
+  resume?.setState(key, value, { schemaVersion });
+  persistence?.setState(key, value, { schemaVersion });
+}
+
 export function readChatSessionState(
   persistence: PluginPersistence | null,
   resume: PluginResumeState | null,
 ): PersistedSessionState | null {
-  return resume?.getState<PersistedSessionState>(SESSION_STATE_KEY, {
-    schemaVersion: SESSION_SCHEMA_VERSION,
-  }) ?? persistence?.getState<PersistedSessionState>(SESSION_STATE_KEY, {
-    schemaVersion: SESSION_SCHEMA_VERSION,
-  }) ?? null;
+  return readDualState<PersistedSessionState>(persistence, resume, SESSION_STATE_KEY, SESSION_SCHEMA_VERSION);
 }
 
 export function normalizeSessionUser(user: PersistedAuthUser | null | undefined): ChatSessionUser | null {
@@ -69,11 +87,12 @@ export function hydratePersistedChannelState({
   if (channel.hydrated || !persistence) return;
   channel.hydrated = true;
 
-  const persistedChannel = resume?.getState<PersistedChannelState>(channelStateKey(channelId), {
-    schemaVersion: CHANNEL_SCHEMA_VERSION,
-  }) ?? persistence.getState<PersistedChannelState>(channelStateKey(channelId), {
-    schemaVersion: CHANNEL_SCHEMA_VERSION,
-  });
+  const persistedChannel = readDualState<PersistedChannelState>(
+    persistence,
+    resume,
+    channelStateKey(channelId),
+    CHANNEL_SCHEMA_VERSION,
+  );
   const transcript = persistence.getResource<PersistedTranscript>(TRANSCRIPT_KIND, channelId, {
     sourceKey: TRANSCRIPT_SOURCE,
     schemaVersion: TRANSCRIPT_SCHEMA_VERSION,
@@ -98,16 +117,13 @@ export function persistChatSession({
   sessionToken: string | null;
   user: ChatSessionUser | null;
 }): void {
-  const value = {
-    sessionToken,
-    user,
-  } satisfies PersistedSessionState;
-  resume?.setState(SESSION_STATE_KEY, value, {
-    schemaVersion: SESSION_SCHEMA_VERSION,
-  });
-  persistence?.setState(SESSION_STATE_KEY, value, {
-    schemaVersion: SESSION_SCHEMA_VERSION,
-  });
+  writeDualState<PersistedSessionState>(
+    persistence,
+    resume,
+    SESSION_STATE_KEY,
+    { sessionToken, user },
+    SESSION_SCHEMA_VERSION,
+  );
 }
 
 export function deleteChatSession(persistence: PluginPersistence | null, resume: PluginResumeState | null): void {
@@ -126,16 +142,13 @@ export function writeChatChannelState({
   persistence: PluginPersistence | null;
   resume: PluginResumeState | null;
 }): void {
-  const value = {
-    lastCursor: channel.lastCursor,
-    lastViewedMessageId: channel.lastViewedMessageId,
-  } satisfies PersistedChannelState;
-  resume?.setState(channelStateKey(channelId), value, {
-    schemaVersion: CHANNEL_SCHEMA_VERSION,
-  });
-  persistence?.setState(channelStateKey(channelId), value, {
-    schemaVersion: CHANNEL_SCHEMA_VERSION,
-  });
+  writeDualState<PersistedChannelState>(
+    persistence,
+    resume,
+    channelStateKey(channelId),
+    { lastCursor: channel.lastCursor, lastViewedMessageId: channel.lastViewedMessageId },
+    CHANNEL_SCHEMA_VERSION,
+  );
 }
 
 export function readChatComposerState(
@@ -144,9 +157,7 @@ export function readChatComposerState(
   accountId: string,
   channelId: string,
 ): PersistedComposerState | null {
-  const key = composerStateKey(accountId, channelId);
-  return resume?.getState<PersistedComposerState>(key, { schemaVersion: 1 })
-    ?? persistence?.getState<PersistedComposerState>(key, { schemaVersion: 1 }) ?? null;
+  return readDualState<PersistedComposerState>(persistence, resume, composerStateKey(accountId, channelId), 1);
 }
 
 export function writeChatComposerState(
@@ -156,14 +167,13 @@ export function writeChatComposerState(
   channelId: string,
   channel: ChannelRuntimeState,
 ): void {
-  const key = composerStateKey(accountId, channelId);
-  const value: PersistedComposerState = {
-    draft: channel.draft,
-    draftClientMessageId: channel.draftClientMessageId,
-    replyToId: channel.replyToId,
-  };
-  resume?.setState(key, value, { schemaVersion: 1 });
-  persistence?.setState(key, value, { schemaVersion: 1 });
+  writeDualState<PersistedComposerState>(
+    persistence,
+    resume,
+    composerStateKey(accountId, channelId),
+    { draft: channel.draft, draftClientMessageId: channel.draftClientMessageId, replyToId: channel.replyToId },
+    1,
+  );
 }
 
 export function deleteChatTranscript(persistence: PluginPersistence | null, channelId: string): void {

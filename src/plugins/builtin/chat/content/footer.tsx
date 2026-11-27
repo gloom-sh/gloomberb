@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useLatest } from "../../../../react/use-latest";
 import type { ChatMessage, ChatUserSummary } from "../../../../api-client";
 import { usePaneFooter, type PaneHint } from "../../../../components";
 import { ChoiceDialog } from "../../../../components/ui/choice-dialog";
@@ -201,7 +202,7 @@ export function useChatFooter({
 
   // Actions run whatever the latest render holds, so a footer entry that did
   // not need redrawing never acts on a stale message list.
-  const latest = useRef({
+  const latest = useLatest({
     beginEditMessage,
     beginReplyTo,
     retryMessage,
@@ -220,25 +221,6 @@ export function useChatFooter({
     authorMessageAction,
     openReactionPicker,
   });
-  latest.current = {
-    beginEditMessage,
-    beginReplyTo,
-    retryMessage,
-    openAttachPicker,
-    cycleChannel,
-    focusChannelSidebar,
-    focusComposer,
-    jumpToMessage,
-    openNewDm,
-    openProfileSetup,
-    openSelectedTargets,
-    openTeamChannel,
-    selectedIdx,
-    setChannelNotificationsEnabled,
-    toggleAuthorProfile,
-    authorMessageAction,
-    openReactionPicker,
-  };
   const authorMessageLabel = composing ? null : authorMessageAction?.label ?? null;
 
   usePaneFooter("chat", () => {

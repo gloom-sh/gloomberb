@@ -827,8 +827,8 @@ export const secModule: PluginModule = {
     },
   ],
 
+  caches: [fundFactsCache],
   setup(ctx) {
-    fundFactsCache.attach(ctx.persistence);
     ctx.registerCommandBarSearchProvider(createSecFilingSearchProvider(ctx));
     ctx.registerTickerResearchTab({
       id: "sec",
@@ -841,7 +841,6 @@ export const secModule: PluginModule = {
     });
   },
   dispose() {
-    fundFactsCache.reset();
     resetSecFilingFocusRequests();
   },
 };

@@ -3,12 +3,12 @@ import { formatDay } from "../../../components/ui/day-cell";
 import type { AwardFilter, AwardRow, AwardType } from "../../../api-client/awards";
 import { notATickerSymbol } from "../../../sources/provider-errors";
 import type { HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/headless";
-import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
+import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { fetchAward, fetchAwards } from "./client";
 import { AWARD_TABS, amountWithheld, awardsAmountNotices, awardsAttributions, awardScope, awardsCoverageNotes, awardsEmptyReason, awardsPreviewNote, awardTypeLabel,
   awardAmountLabel, awardsQueryShared, futureAwardDatesNote, money, statementText, WITHHELD_AMOUNT, type AwardsQueryShared } from "./model";
-import { REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
+import { dateOption, enumOption, limitOption, REPORT_PAGE } from "../shared/headless-options";
 
 /**
  * "Not a ticker: ZZZZQ." when no listing has the symbol, so a preview that
@@ -104,15 +104,14 @@ export const awardsHeadless: HeadlessPaneDefinition<"bundle"> = {
     limitations: ["Pro dataset; free accounts receive a limited preview.", "Published procurement records; source coverage varies by jurisdiction.",
       "Currencies and prime awards, subawards and notices are separate.", "Award obligations are not revenue or remaining backlog.", "Unresolved recipients retain their legal names."] },
   options: [
-    { key: "tab", type: "enum", settingKey: "tab", defaultValue: "feed", values: [...AWARD_TABS, { value: "all" }], description: "Feed, company history, agencies, sectors, events, or all sections." },
-    { key: "view", type: "enum", settingKey: "leaderView", defaultValue: "companies", values: [{ value: "companies" }, { value: "sectors" }], description: "Sectors tab: company leaders or sector totals." },
+    enumOption("tab", [...AWARD_TABS, "all"], { settingKey: "tab", defaultValue: "feed", description: "Feed, company history, agencies, sectors, events, or all sections." }),
+    enumOption("view", ["companies", "sectors"], { settingKey: "leaderView", defaultValue: "companies", description: "Sectors tab: company leaders or sector totals." }),
     ...FILTER_KEYS.map((key) => key === "from" || key === "to"
-      ? { key, type: "string" as const, settingKey: key, placeholder: "date", description: `${key === "from" ? "Start" : "End"} of the date range, as ${DATE_OPTION_EXAMPLES}.`,
-        normalize: (value: string) => isoDateOption(value, key) }
+      ? dateOption(key, { settingKey: key, description: `${key === "from" ? "Start" : "End"} of the date range, as ${DATE_OPTION_EXAMPLES}.` })
       : { key, type: "string" as const, settingKey: key, description: `Filter by ${key}.` }),
-    { key: "type", type: "enum", settingKey: "awardType", defaultValue: "prime", values: [{ value: "prime" }, { value: "subaward" }, { value: "notice" }, { value: "modification" }], description: "Keep record types separate." },
+    enumOption("type", ["prime", "subaward", "notice", "modification"], { settingKey: "awardType", defaultValue: "prime", description: "Keep record types separate." }),
     { key: "cursor", shot: REPORT_PAGE, type: "string", description: "Continue after the previous response's nextCursor." },
-    { key: "limit", shot: REPORT_ROWS, type: "integer", minimum: 1, maximum: 200, defaultValue: 100, description: "Maximum feed rows in this response." },
+    limitOption({ maximum: 200, defaultValue: 100, description: "Maximum feed rows in this response." }),
     { key: "award", type: "string", settingKey: "award", description: "Open one award's evidence, revisions, subawards and modifications by stable id." },
     { key: "revisionsCursor", shot: REPORT_PAGE, type: "string", description: "Continue a detail response's revisions using nextRevisionsCursor." },
   ],

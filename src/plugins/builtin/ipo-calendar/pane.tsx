@@ -6,8 +6,6 @@ import {
   usePaneTabs,
   useQueryBarSearch,
   type DataTableCell,
-  type DataTableKeyEvent,
-  type DataTableRootKeyContext,
   type PaneFooterSegment,
   type PaneHint,
 } from "../../../components";
@@ -22,8 +20,7 @@ import { usePaneInstance } from "../../../state/app/context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, TextAttributes, useUiCapabilities } from "../../../ui";
 import { COUNTRY_FLAG_CELLS, withCountryFlag } from "../../../components/ui/country-flag";
-import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
-import { useSearchFocusUp } from "../../../components/input-search-bar";
+import { useSearchUpRootKeyDown } from "../../../components/input-search-bar";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginTickerActions } from "../../runtime";
 import { useCommandValue } from "../shared/command-tab";
@@ -190,15 +187,7 @@ export function IpoCalendarPane({ focused, width, height }: PaneProps) {
     hints,
   });
 
-  const isSearchUp = useSearchFocusUp();
-  const handleRootKeyDown = useCallback((event: DataTableKeyEvent, context: DataTableRootKeyContext) => {
-    if (context.selectedIndex <= 0 && isSearchUp(event)) {
-      stopSearchFocusNavigation(event);
-      focusSearch();
-      return true;
-    }
-    return false;
-  }, [isSearchUp, focusSearch]);
+  const handleRootKeyDown = useSearchUpRootKeyDown(focusSearch);
 
   const renderCell = useCallback((deal: IpoDeal, column: IpoColumn): DataTableCell => {
     switch (column.id) {

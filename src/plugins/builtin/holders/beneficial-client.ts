@@ -10,7 +10,7 @@ import { ApiRequestError, isAccessDenied } from "../../../api-client/errors";
 import { listingAbroad, type IssuerListingParams } from "../../../api-client/paths";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { secListingKey } from "../../../utils/sec";
-import { finiteOrNull, recordOrNull } from "../../../utils/guards";
+import { finiteOrNull, isoDateOrNull, recordOrNull, textOrNull } from "../../../utils/guards";
 import { readCompanyFrom } from "../../../types/company-from";
 import { cachedCloudResource, loadCloudResource, type CloudResource } from "../shared/cloud-resource";
 import { CLOUD_SESSION_REQUIRED } from "../shared/research-cloud-session";
@@ -37,19 +37,14 @@ export interface BeneficialOwnersRequest {
 
 type BeneficialOwnersClient = Pick<typeof apiClient, "getCloudSecBeneficialOwners">;
 
-const text = (value: unknown): string | null => typeof value === "string" && value.trim() ? value.trim() : null;
-const isoDate = (value: unknown): string | null => {
-  const raw = text(value);
-  return raw && /^\d{4}-\d{2}-\d{2}/.test(raw) ? raw.slice(0, 10) : null;
-};
 const cikOrNull = (value: unknown): string | null => {
-  const raw = typeof value === "number" ? String(value) : text(value);
+  const raw = typeof value === "number" ? String(value) : textOrNull(value);
   return raw && /\d/.test(raw) ? raw : null;
 };
 
 function normalizeReportingPerson(value: unknown): BeneficialOwnerReportingPerson | null {
   const raw = recordOrNull(value);
-  const name = text(raw?.name);
+  const name = textOrNull(raw?.name);
   if (!raw || !name) return null;
   return { name, cik: cikOrNull(raw.cik), percentOfClass: finiteOrNull(raw.percentOfClass), shares: finiteOrNull(raw.shares) };
 }
@@ -65,10 +60,10 @@ const STATUSES: readonly BeneficialOwnerStatus[] = ["holder", "below-threshold",
 function normalizeBeneficialOwnerFiling(value: unknown): BeneficialOwnerFiling | null {
   const raw = recordOrNull(value);
   if (!raw) return null;
-  const filerName = text(raw.filerName);
-  const accessionNumber = text(raw.accessionNumber);
-  const filingDate = isoDate(raw.filingDate);
-  const form = text(raw.form) ?? "";
+  const filerName = textOrNull(raw.filerName);
+  const accessionNumber = textOrNull(raw.accessionNumber);
+  const filingDate = isoDateOrNull(raw.filingDate);
+  const form = textOrNull(raw.form) ?? "";
   const kind = raw.kind === "13D" || raw.kind === "13G" ? raw.kind
     : /13D/i.test(form) ? "13D" : /13G/i.test(form) ? "13G" : null;
   if (!filerName || !accessionNumber || !filingDate || !kind) return null;
@@ -83,14 +78,14 @@ function normalizeBeneficialOwnerFiling(value: unknown): BeneficialOwnerFiling |
     amendmentNo: finiteOrNull(raw.amendmentNo),
     percentOfClass: finiteOrNull(raw.percentOfClass),
     shares: finiteOrNull(raw.shares),
-    classTitle: text(raw.classTitle),
-    cusip: text(raw.cusip),
-    eventDate: isoDate(raw.eventDate),
+    classTitle: textOrNull(raw.classTitle),
+    cusip: textOrNull(raw.cusip),
+    eventDate: isoDateOrNull(raw.eventDate),
     filingDate,
     accessionNumber,
-    filingUrl: text(raw.filingUrl) ?? "",
+    filingUrl: textOrNull(raw.filingUrl) ?? "",
     previousPercent: "previousPercent" in raw ? finiteOrNull(raw.previousPercent) : undefined,
-    previousFilingDate: "previousFilingDate" in raw ? isoDate(raw.previousFilingDate) : undefined,
+    previousFilingDate: "previousFilingDate" in raw ? isoDateOrNull(raw.previousFilingDate) : undefined,
     status: STATUSES.includes(raw.status as BeneficialOwnerStatus) ? raw.status as BeneficialOwnerStatus : undefined,
     provisional: raw.provisional === true ? true : undefined,
     source,
@@ -116,17 +111,17 @@ function normalizeBeneficialOwnersPayload(value: unknown, ticker: string): Benef
   return {
     ...rest,
     ...(companyFrom ? { companyFrom } : {}),
-    ticker: text(raw.ticker) ?? ticker,
+    ticker: textOrNull(raw.ticker) ?? ticker,
     cik: cikOrNull(raw.cik) ?? "",
-    companyName: text(raw.companyName) ?? "",
-    asOf: text(raw.asOf),
+    companyName: textOrNull(raw.companyName) ?? "",
+    asOf: textOrNull(raw.asOf),
     owners: normalizeFilings(raw.owners),
     ...(Array.isArray(raw.filings) ? { filings: normalizeFilings(raw.filings) } : {}),
     hasMore: raw.hasMore === true && nextOffset != null,
     nextOffset,
     coverage: coverage ? {
       ...coverage,
-      from: isoDate(coverage.from),
+      from: isoDateOrNull(coverage.from),
       filings: finiteOrNull(coverage.filings) ?? 0,
       parsed: finiteOrNull(coverage.parsed) ?? 0,
       unparsed: finiteOrNull(coverage.unparsed) ?? 0,

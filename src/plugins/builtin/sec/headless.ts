@@ -23,7 +23,8 @@ import { hiddenFilingsMetadata, hiddenFilingsNote } from "../../../utils/sec-fil
 import { buildSecFilingRows, secFilingIssuers, SEC_ACCEPTANCE_NOTE } from "./model";
 import { SEC_FILINGS } from "../shared/report-freshness";
 import { fetchFundFacts, fundFactEntries, fundFactPublishers, fundFactsEmpty, fundFactsErrorText, fundFactsStaleNote, fundNoteEntries, listNames } from "./fund-facts";
-import { REPORT_ROWS } from "../shared/headless-options";
+import { limitOption } from "../shared/headless-options";
+import { dayCell, textCell, underRowCol } from "../shared/headless-columns";
 import { isoDayEntries } from "../shared/day-entries";
 import { fundAbroadProfile, venueAbroad, type FundAbroadProfile } from "./fund-abroad";
 import { listingAnnouncementsPage } from "../../../utils/exchange-announcements";
@@ -34,11 +35,7 @@ import {
 } from "../../../market-data/tax-equivalent";
 
 const SEC_COLUMNS: HeadlessPaneColumn[] = [
-  {
-    key: "filedAt",
-    header: "Filed",
-    format: (value) => typeof value === "string" ? value.slice(0, 10) : MISSING_VALUE,
-  },
+  { key: "filedAt", header: "Filed", format: dayCell() },
   { key: "acceptanceReported", header: "SEC-reported acceptance" },
   { key: "form", header: "Form" },
   // As the pane: one issuer's filings name it once, in the title; a filer's several issuers name each row's.
@@ -56,9 +53,7 @@ const hasItems = (rows: readonly HeadlessPaneRow[]) => rows.some((row) => typeof
 const PRESS_RELEASE_COLUMN: HeadlessPaneColumn = { key: "pressReleaseUrl", header: "Press release" };
 
 /** The stories that report a Form 4, under its row, as INS prints them under its lines; JSON has them as `stories`. */
-const STORIES_NOTE_COLUMN: HeadlessPaneColumn = {
-  key: "storiesNote", header: "Stories", underRow: true, format: (value) => typeof value === "string" ? value : "",
-};
+const STORIES_NOTE_COLUMN = underRowCol("storiesNote", "Stories", textCell(""));
 
 function secTextColumns(rows: readonly HeadlessPaneRow[]): HeadlessPaneColumn[] {
   const columns = hasItems(rows) ? SEC_COLUMNS : SEC_COLUMNS.filter((column) => column.key !== "items");
@@ -149,30 +144,15 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       description: "Equity ticker, with its exchange for a local listing.",
     },
     options: [
+      limitOption({ aliases: ["count", "rows"], description: "Maximum recent filings.", defaultValue: 50, maximum: 200 }),
       {
-        key: "limit",
-        shot: REPORT_ROWS,
-        aliases: ["count", "rows"],
-        description: "Maximum recent filings.",
-        type: "integer",
-        defaultValue: 50,
-        minimum: 1,
-        maximum: 200,
-      },
-      {
-        key: "form",
-        shot: { reportOnly: "picks the report's rows by form; the pane's Form filter picks a group of forms" },
+        key: "form", shot: { reportOnly: "picks the report's rows by form; the pane's Form filter picks a group of forms" },
         description: "Only this SEC form and its amendments, such as 8-K, 10-K or 13D. Use presentations for Taiwan investor conference decks, results for Hong Kong, Japan, Singapore and Vietnam earnings materials, or ownership for Singapore ownership disclosures.",
-        type: "string",
-        placeholder: "form",
-        example: "--form 8-K",
+        type: "string", placeholder: "form", example: "--form 8-K",
       },
       {
-        key: "all",
+        key: "all", type: "boolean", defaultValue: false, pluginState: { pluginId: "ticker-research", key: "pricingSupplements" },
         description: "Also list what is left out by default: the pricing supplements and term sheets (424B2, FWP, and a 424B3 filed among them) a bank files for each structured note, and a fund trust's filings for its other funds.",
-        type: "boolean",
-        defaultValue: false,
-        pluginState: { pluginId: "ticker-research", key: "pricingSupplements" },
       },
     ],
     columns: SEC_COLUMNS,
@@ -337,16 +317,7 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
     freshness: { source: "Fund sponsors and SEC EDGAR", status: "not-a-feed", basis: "published fund data" },
     argument: { kind: "ticker", placeholder: "ticker", description: "US-listed fund ticker. A fund listed abroad gets its issuer's page.",
       examples: TAX_RATE_EXAMPLES.slice(0, 2) },
-    options: [{
-      key: "limit",
-      shot: REPORT_ROWS,
-      aliases: ["count", "rows"],
-      description: "Maximum recent fund filings.",
-      type: "integer",
-      defaultValue: 50,
-      minimum: 1,
-      maximum: 200,
-    }, ...TAX_RATE_OPTIONS],
+    options: [limitOption({ aliases: ["count", "rows"], description: "Maximum recent fund filings.", defaultValue: 50, maximum: 200 }), ...TAX_RATE_OPTIONS],
     discovery: { limitations: ["Fund facts cover the sponsors Gloom collects; other funds point to their SEC filings."] },
     describe: (args) => `ETF | ${args.symbols[0]}`,
     async load(args, ctx) {

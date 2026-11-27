@@ -6,13 +6,12 @@ import { chartTableChromeRows, ChartTableHeader, CurveSurface, curveGhostColors,
 import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve";
 import { isAccessDenied } from "../../../api-client/errors";
 import type { RateContract, RateMeeting } from "../../../api-client/rates";
-import { useAsyncResource, usePluginPaneState } from "../../../public/react";
+import { usePluginPaneState } from "../../../public/react";
 import { blendHex, colors, shownPriceColor } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
-import { useAutoRefresh } from "../../../react/auto-refresh";
+import { usePaneResource } from "../shared/pane-resource";
 import { futuresSessionRefreshInterval } from "../shared/futures-session";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { getCachedRatePath, loadRatePath } from "./client";
@@ -88,7 +87,12 @@ function contractCell(row: RateContract, column: DataTableColumn): DataTableCell
 export function RatePathPane({ width, height, focused }: PaneProps) {
   const session = useResearchCloudSession();
   const loader = useCallback((force: boolean) => loadRatePath(force), [session.requestKey]);
-  const resource = useAsyncResource(loader, { initialData: getCachedRatePath, clearOnError: isAccessDenied });
+  const resource = usePaneResource(loader, {
+    focused,
+    initialData: getCachedRatePath,
+    clearOnError: isAccessDenied,
+    autoRefresh: { intervalMs: futuresSessionRefreshInterval() },
+  });
   const [tab, setTab] = usePluginPaneState("tab", "path");
   const [selected, setSelected] = usePluginPaneState<string | null>("meeting", null);
   const [sort, setSort] = useState<{ columnId: string; direction: SortDirection }>({ columnId: "date", direction: "asc" });
@@ -166,10 +170,6 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
       tableRows={rows}
       chart={chart} />;
   };
-  // Delayed contract quotes move all session; the curve follows them once a
-  // minute while Globex trades and on the research cadence otherwise.
-  useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: futuresSessionRefreshInterval() });
-  usePaneRefreshKey(() => resource.reload(), { focused });
   usePaneNoticeFooter({ registrationId: "rate-path:notices", focused, notices: [
     ...(data?.gaps ?? []), ...(selectedMeeting?.reason ? [selectedMeeting.reason] : []),
   ] });

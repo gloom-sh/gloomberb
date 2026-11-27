@@ -433,6 +433,42 @@ export function domReportNote(view: DomReportView): string {
     : `Rendered view: values come from the visible pane. ${view === "clipped" ? "The rendered view is clipped." : "The rendered view may be clipped."}`;
 }
 
+function emptyDomReport(
+  resolved: ResolvedPaneFunction,
+  { symbols, unavailableSymbols, reason, textLines, freshness, locked }: {
+    symbols: string[];
+    unavailableSymbols: string[];
+    reason: string;
+    textLines: string[];
+    freshness?: ReportFreshness;
+    locked?: "pro" | "sign-in";
+  },
+): PaneFunctionReport {
+  return {
+    data: {
+      kind: "rendered-view",
+      target: resolved.token,
+      capabilityId: resolved.capability.id,
+      symbols,
+      options: resolved.options,
+      rowCount: 0,
+      empty: true,
+      complete: false,
+      unavailableSymbols,
+      rows: [],
+      visibleText: "",
+      truncated: false,
+      truncationReasons: [],
+      limitation: DOM_LIMITATION,
+      reason,
+      ...(freshness ? { freshness } : {}),
+      ...(locked ? { locked } : {}),
+    },
+    text: [resolved.label, "", ...textLines].join("\n").trimEnd(),
+    tables: { tables: [], footer: reportFooterLines({ ...(freshness ? { freshness } : {}), incomplete: reason }) },
+  };
+}
+
 function failedDomReport(
   resolved: ResolvedPaneFunction,
   rawArg: string,
@@ -445,28 +481,7 @@ function failedDomReport(
   const reason = `The rendered view could not be read: ${message || "unknown renderer error"}`;
   const symbols = collectShotSymbols(resolved, rawArg);
   const freshness = deriveRenderedFreshness(declaredReportFreshness(resolved), { footerText: "", cellTimes: [] });
-  return {
-    data: {
-      kind: "rendered-view",
-      target: resolved.token,
-      capabilityId: resolved.capability.id,
-      symbols,
-      options: resolved.options,
-      rowCount: 0,
-      empty: true,
-      complete: false,
-      unavailableSymbols: symbols,
-      rows: [],
-      visibleText: "",
-      truncated: false,
-      truncationReasons: [],
-      limitation: DOM_LIMITATION,
-      reason,
-      freshness,
-    },
-    text: [resolved.label, "", reason].join("\n"),
-    tables: { tables: [], footer: reportFooterLines({ freshness, incomplete: reason }) },
-  };
+  return emptyDomReport(resolved, { symbols, unavailableSymbols: symbols, reason, textLines: [reason], freshness });
 }
 
 /** A report the rendered pane says it cannot give; the command fails with the pane's words and advice line. */
@@ -517,28 +532,13 @@ async function signedOutDomReport(
     ...catalog ? { functionsFor: (question: string, limit: number) => functionsForQuestion(catalog, question, limit) } : {},
   });
   const reason = lockNoteReason(note);
-  return {
-    data: {
-      kind: "rendered-view",
-      target: resolved.token,
-      capabilityId: resolved.capability.id,
-      symbols,
-      options: resolved.options,
-      rowCount: 0,
-      empty: true,
-      complete: false,
-      unavailableSymbols: [],
-      rows: [],
-      visibleText: "",
-      truncated: false,
-      truncationReasons: [],
-      limitation: DOM_LIMITATION,
-      reason,
-      locked: "sign-in",
-    },
-    text: [resolved.label, "", ...lockNoteLines(note)].join("\n").trimEnd(),
-    tables: domReportTables([], resolved.label, null, reason, []),
-  };
+  return emptyDomReport(resolved, {
+    symbols,
+    unavailableSymbols: [],
+    reason,
+    textLines: lockNoteLines(note),
+    locked: "sign-in",
+  });
 }
 
 export async function buildDomFunctionReport(

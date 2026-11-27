@@ -5,7 +5,7 @@ import { type CloudCongressHousePayload } from "../../../api-client";
 import { useAsyncResource } from "../../../react/async-resource";
 import { writeSavedCopy } from "../../../data/pane-saved-copies";
 import { loadCongressHouse } from "./client";
-import { mergeCongressPages, type nextCongressPage } from "./model";
+import { canLoadMoreCongress, mergeCongressPages, nextCongressPage, previousCongressYearPage } from "./model";
 import { logFailure } from "../../../utils/log-failure";
 
 export function useCongressFeed(request: CloudCongressHouseParams, memberId: string | null = null) {
@@ -70,5 +70,29 @@ export function useCongressFeed(request: CloudCongressHouseParams, memberId: str
         setPageState((state) => state?.first === first && state.error === null ? null : state);
       }).catch(logFailure("congress-trades.feed", "Could not load Congress trades page"));
   }, [path, scope, memberId, payload, resource.data, resource.refreshing, resource.updatedAt]);
-  return { ...resource, reload, autoReload, payload, loadPage, loadingMore: !!paging && !paging.error, error: resource.error ?? paging?.error ?? null };
+  const loadingMore = !!paging && !paging.error;
+  const canLoadMore = !!payload && canLoadMoreCongress(payload);
+  const loadMore = useCallback(() => {
+    if (!payload || loadingMore || resource.status !== "loaded") return;
+    loadPage(nextCongressPage(payload));
+  }, [loadPage, loadingMore, payload, resource.status]);
+  // Each earlier year is a fresh set of documents to read, so it waits to be asked for.
+  const previousYearRequest = payload && !canLoadMore ? previousCongressYearPage(payload) : null;
+  const loadPreviousYear = useCallback(() => {
+    if (loadingMore || resource.status !== "loaded" || !previousYearRequest) return;
+    loadPage(previousYearRequest);
+  }, [loadPage, loadingMore, previousYearRequest, resource.status]);
+
+  return {
+    ...resource,
+    reload,
+    autoReload,
+    payload,
+    canLoadMore,
+    loadMore,
+    previousYearRequest,
+    loadPreviousYear,
+    loadingMore,
+    error: resource.error ?? paging?.error ?? null,
+  };
 }

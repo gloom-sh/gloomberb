@@ -3,8 +3,6 @@ import { useCallback, useEffect, useMemo } from "react";
 import { Box, ScrollBox, Text } from "../../../ui";
 import {
   useAssetData,
-  useAsyncResource,
-  useAutoRefresh,
   usePaneSettingValue,
   usePluginPaneState,
 } from "../../../public/react";
@@ -47,7 +45,7 @@ import { MISSING_VALUE, formatCompact, formatPercentileRank, formatPercentRaw } 
 import { formatDetailDate } from "../../../utils/datetime-format";
 import { canonicalExchange } from "../../../utils/exchanges";
 import { isNotMeaningful, NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { usePaneResource } from "../shared/pane-resource";
 import { beatMissSeries, slotAxis } from "../shared/beat-miss-chart";
 import { SignInWall } from "../cloud/auth-actions";
 import {
@@ -278,7 +276,8 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
     (force: boolean) => loadEstimates(symbol!, exchange, force, marketData ?? undefined),
     [symbol, exchange, marketData, session.requestKey],
   );
-  const resource = useAsyncResource(symbol ? loader : null, {
+  const resource = usePaneResource(symbol ? loader : null, {
+    focused,
     initialData: () => (symbol ? cachedEstimates(symbol, exchange) : null),
     clearOnError: clearDeniedEstimates,
   });
@@ -434,8 +433,6 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
     pinnedTarget.id,
     pinnedTarget.notice,
   ]);
-  useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => resource.reload(), { focused });
   usePaneNoticeFooter({
     registrationId: "estimates:notices",
     focused,
