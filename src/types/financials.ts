@@ -503,6 +503,7 @@ export interface Fundamentals extends DepositaryReceiptFacts {
   marketCapUnavailable?: "receipt-priced-as-ordinary";
   operatingCashFlow?: number;
   freeCashFlow?: number;
+  freeCashFlowCurrency?: string | null;
   dividendYield?: number;
   dividendYieldBasis?: "forward" | "trailing";
   dividendYieldSource?: "gloom";

@@ -65,9 +65,9 @@ test("summary money with no sourced currency is bare, says so once, and never bo
     "Shares Out": "19.19B", "Profit Marg": "7.04%", "P/E (TTM)": "25.3",
   });
   expect(fundamentals).toEqual(original);
-  // The first amount says it, once for the rest.
+  // FCF has its own provenance, independent of the other amounts.
   expect(overviewFields(fundamentals).filter((field) => field.detail).map(({ label, detail }) => [label, detail]))
-    .toEqual([["EPS", ["reporting currency not sourced", "currency not sourced"]]]);
+    .toEqual([["EPS", ["reporting currency not sourced", "currency not sourced"]], ["FCF", ["currency unknown"]]]);
   expect(overview({ ...fundamentals, financialCurrency: "CNY" })).toMatchObject({
     EPS: "CN¥4.22", Revenue: "1.22T CNY", "Net Income": "85.7B CNY", FCF: "-96.6B CNY",
   });
@@ -79,7 +79,7 @@ test("summary money with no sourced currency is bare, says so once, and never bo
 test("summary money falls back to the statements' reporting currency, and a zero enterprise value is left out", () => {
   const figures = { eps: 31.43, revenue: 202.08e9, netIncome: 46.98e9, freeCashFlow: 36.96e9, enterpriseValue: 0 };
   // The quote's HKD never stands in: the statements' currency is the only fallback.
-  expect(overview(figures, "ZAR")).toEqual({ EPS: "ZAR\u00a031.43", Revenue: "202.08B ZAR", "Net Income": "46.98B ZAR", FCF: "36.96B ZAR" });
+  expect(overview(figures, "ZAR")).toEqual({ EPS: "ZAR\u00a031.43", Revenue: "202.08B ZAR", "Net Income": "46.98B ZAR", FCF: "36.96B" });
   expect(overview({ ...figures, financialCurrency: "USD" }, "ZAR")).toMatchObject({ Revenue: "202.08B USD" });
   expect(overview(figures, " ")).toMatchObject({ EPS: "31.43", Revenue: "202.08B" });
   expect(overview({ ...figures, enterpriseValue: 5e9, marketCapCurrency: "HKD" }, "ZAR")).toMatchObject({ EV: "5B HKD" });
@@ -91,6 +91,8 @@ test("summary money falls back to the statements' reporting currency, and a zero
   expect(listed("ARS", figures)).toMatchObject({ EPS: "31.43", Revenue: "202.08B" });
   expect(listed("ARS", { ...figures, financialCurrency: "ARS" })).toMatchObject({ EPS: "ARS\u00a031.43", Revenue: "202.08B ARS" });
   expect(listed("USD", figures)).toMatchObject({ EPS: "$31.43", Revenue: "202.08B USD" });
+  expect(listed("CAD", { ...figures, freeCashFlowCurrency: "USD", marketCapCurrency: "CAD" })).toMatchObject({ FCF: "36.96B USD" });
+  expect(listed("USD", { ...figures, marketCapCurrency: "USD" })).toMatchObject({ FCF: "36.96B" });
 });
 
 test("an EV at or below zero reads N/M with why, and an insurer's says its investments stay in", () => {

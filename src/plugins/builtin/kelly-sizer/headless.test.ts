@@ -37,6 +37,24 @@ async function load(returns: readonly number[], options: {
   );
 }
 
+test("stock and ETF sizing use the regular close and date, not the after-hours trade", async () => {
+  const returns = [0.2, -0.15, 0.2, -0.15, 0.2, -0.15, 0.2, -0.15, 0.2];
+  const close = Date.parse("2026-11-25T21:00:00Z");
+  const quote = { marketState: "CLOSED" as const, listingExchangeName: "ARCA", price: 27.96, currency: "USD",
+    regularClose: 27.71, regularCloseSessionDate: "2026-11-25", changeSessionDate: "2026-11-25",
+    lastUpdated: Date.parse("2026-11-26T00:40:00Z") };
+  for (const instrumentType of ["ETF", "EQUITY"]) {
+    const result = await load(returns, { symbol: "RSH", bankroll: 5408,
+      marketData: { getQuote: async () => createTestQuote({ ...quote, instrumentType }) } });
+    expect(result.metadata?.price).toEqual({ value: 27.71, currency: "USD", asOf: close, session: "Regular close" });
+    expect(result.sections![0]!.textEntries!.find(({ key }) => key === "sizingPrice")?.formatted).toMatch(/27\.71 USD.*Regular close.*21:00 UTC/);
+    for (const row of result.sections![1]!.rows!.slice(0, 2)) {
+      expect(row.shares).toBe(Math.floor(Number(row.position) / 27.71));
+      expect(row.shares).not.toBe(Math.floor(Number(row.position) / 27.96));
+    }
+  }
+});
+
 test("a Kelly fraction over the whole bankroll is said to be leverage, and one inside it says nothing of it", async () => {
   // Gains of 20% five months in nine against 15% losses: full Kelly sizes past the bankroll, half inside it.
   const levered = ((await load([0.2, -0.15, 0.2, -0.15, 0.2, -0.15, 0.2, -0.15, 0.2])).notes ?? []).find((note) => note.startsWith("Over 100%"));
@@ -48,7 +66,7 @@ test("a Kelly fraction over the whole bankroll is said to be leverage, and one i
 test("in another base currency a coin's units are counted at the portfolio's rate, headed Units", async () => {
   const returns = [0.3, -0.25, 0.3, -0.25, 0.3, -0.25, 0.3, -0.25, 0.3];
   const marketData = {
-    getQuote: async () => createTestQuote({ symbol: "BTC-USD", price: 2000, currency: "USD" }),
+    getQuote: async () => createTestQuote({ symbol: "BTC-USD", price: 2000, currency: "USD", marketState: "POST", regularClose: 1900 }),
     // USD per unit: one SGD is 0.80 USD, so 2,000 USD is 2,500 SGD.
     getExchangeRate: async (currency: string) => (currency === "SGD" ? 0.8 : 1),
   };
@@ -71,7 +89,7 @@ test("in another base currency a coin's units are counted at the portfolio's rat
 test("a future is counted in whole contracts, each its price times the contract's multiplier; without terms in money only", async () => {
   const returns = [0.3, -0.25, 0.3, -0.25, 0.3, -0.25, 0.3, -0.25, 0.3];
   // ES at 6,000 points, $50 a point: one contract is 300,000 USD.
-  const marketData = { getQuote: async () => createTestQuote({ symbol: "ESZ26", price: 6000, currency: "USD", instrumentType: "FUTURE" }) };
+  const marketData = { getQuote: async () => createTestQuote({ symbol: "ESZ26", price: 6000, currency: "USD", instrumentType: "FUTURE", marketState: "POST", regularClose: 4000 }) };
   const terms = (symbol: string) => ({ symbol, root: "ES", name: "E-mini S&P 500", contract: "ESZ26", contractSymbol: "ESZ26",
     deliveryMonth: "2026-12", spec: { unit: "USD / index point", size: "$50 x index", pointValue: 50, tick: 0.25, tickValue: 12.5,
       settlement: "cash" }, lastTrade: null, firstNotice: null, inDelivery: false, settlement: null });

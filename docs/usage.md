@@ -2856,6 +2856,8 @@ Select a coloured table row to locate its trail, and open it for dated strength 
 
 `gloom fn KELLY LIT` prints History's inputs (window, win rate, average gain and loss, payoff ratio, edge a month) and full, half and quarter Kelly as a share of bankroll. `--bankroll 250000` (or `250k`, `1.5m`) sizes each in your base currency, counted in shares of a stock, units of a coin or contracts of a future (price times the contract's multiplier), and `--years 1` shortens the window. `gloom shot KELLY LIT --bankroll 250000` opens the pane on History with that bankroll.
 
+Stock and ETF share counts use the regular-session valuation price, not a pre-market or after-hours trade. The sizing price names the session and its observation time. Coins and futures still use their own quotes.
+
 ## Portfolio risk depth: PORT and MARS
 
 `PORT` opens portfolio market risk. `MARS` is its alias. Add a local portfolio's ID or name, in any case, to select it (`PORT main`, `PORT Family`), or the start of one name (`PORT fam` while no other name starts so). Every command and function that takes a portfolio or watchlist reads it that way, and in the command bar a name no portfolio has (`PORT Nope`, `PF Nope`, `EXPO PORT:Nope`) shows a row listing the ones there are instead of opening the first.

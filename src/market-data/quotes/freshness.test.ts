@@ -20,6 +20,18 @@ function quote(overrides: Partial<Quote>): Quote {
   };
 }
 
+test.each(["OTC", "OQX", "OTC MARKETS OTCQX", "OTCQB", "PINK", "OTC MARKETS OTCID", "PINX", "OTHER OTC"])(
+  "%s respects the US full closure without clearing an explicit stale flag", (venue) => {
+    const at = Date.parse("2026-11-26T19:24:00Z");
+    const close = (time: string, stale = false) => quote({ listingExchangeName: venue, lastUpdated: Date.parse(time), stale });
+    expect(isQuoteStaleForCurrentSession(close("2026-11-25T21:00:00Z"), at)).toBe(false);
+    expect(isQuoteStaleForCurrentSession(close("2026-11-24T21:00:00Z"), at)).toBe(true);
+    expect(isQuoteStaleForCurrentSession(close("2026-11-25T21:00:00Z", true), at)).toBe(true);
+    expect(isQuoteStaleForCurrentSession(close("2026-11-24T21:00:00Z"), Date.parse("2026-11-25T20:30:00Z"))).toBe(true);
+    expect(isQuoteStaleForCurrentSession(close("2026-11-25T21:00:00Z"), Date.parse("2026-11-25T22:00:00Z"))).toBe(false);
+  },
+);
+
 describe("Nasdaq holiday quote freshness", () => {
   const lastTradeTime = Date.parse("2026-11-26T00:59:59.082Z");
   const nvda = quote({ symbol: "NVDA", currency: "USD", listingExchangeName: "NASDAQ", exchangeName: "NASDAQ",

@@ -477,6 +477,10 @@ function mergeFundamentals(primary: Fundamentals | undefined, fallback: Fundamen
   }
   const merged = mergeDefinedObject(primary, fallback);
   if (merged) {
+    const cashFlow = primary?.freeCashFlow != null ? primary : fallback;
+    if (cashFlow?.freeCashFlow != null) {
+      merged.freeCashFlowCurrency = cashFlow.freeCashFlowCurrency === undefined ? cashFlow.financialCurrency ?? null : cashFlow.freeCashFlowCurrency;
+    } else delete merged.freeCashFlowCurrency;
     const unavailable = new Set(fallback?.unavailableFields ?? []);
     for (const field of RETRACTED_FUNDAMENTALS_FIELDS) {
       if (primary?.unavailableFields?.includes(field)) unavailable.add(field);
