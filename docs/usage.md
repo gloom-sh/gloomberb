@@ -1757,7 +1757,7 @@ The chain is the standard contracts. Contracts a corporate action adjusted (list
 
 The line under the table names the spot and time they are valued at, the session the volume counts and the open interest's date: `Greeks at spot 89.79 (close Mon 12 Oct), dividend yield 2.34%, rate 4% · Volume for Mon 12 Oct · OI as of Fri 9 Oct` (`OI date not published` when it cannot be established; [method](research-data.md#greeks-spot-and-time)).
 
-- `--csv` writes IV in annualized percentage points (`12.5` for `12.5%`) and delta under `Delta (decimal)`. Every row carries `IV source`, `Expiry`, `Chain as of`, `Spot`, `Spot basis` (`close`, `last`, `pre-market`, `after hours`), `Spot as of`, `Vol session`, `OI as of` and the fixed columns, with `interval` reading `snapshot`. OMON exports the same IV units, with a source for each side at each strike.
+- `--csv` writes `IV (annualized decimal)` (`0.125` for `12.5%`) and `Delta (decimal)`. Every row carries `IV source`, `Expiry`, `Chain as of`, `Spot`, `Spot basis` (`close`, `last`, `pre-market`, `after hours`), `Spot as of`, `Vol session`, `OI as of` and the fixed columns, with `interval` reading `snapshot`. The OMON pane and `gloom fn OMON` export IV in annualized percentage points (`12.5`), with a source for each side at each strike.
 - `--json` and `--ndjson` carry the same numeric `iv` and `delta`. JSON keeps expiry and chain as-of on each contract; `metadata.model` has `spot`, `spotBasis`, `spotAsOf`, `valuationTime`, dividend yield and rate, with `metadata.openInterest.asOf`, `metadata.currency`, `metadata.interval` and `metadata.units`.
   - `metadata.fields` says `iv` is the one solved from the quote midpoint (which delta and GEX use) and `impliedVolatility` the provider's own figure.
 

@@ -1,13 +1,13 @@
-import type { OptionContract } from "../../../types/financials";
-import { formatDaysToExpiry } from "../../../utils/option-expiry";
-import { daysToExpiryFrom } from "../shared/volatility";
+import type { OptionContract } from "../../../../types/financials";
+import { formatDaysToExpiry } from "../../../../utils/option-expiry";
+import { daysToExpiryFrom } from "./pricing";
 
 export const OPTION_IV_UNIT = "annualized %";
 
 export function optionIvFields(contract: OptionContract | undefined, iv: number | null | undefined, filled?: boolean) {
   const usable = !!contract && !contract.quoteStale && iv != null && Number.isFinite(iv) && iv > 0;
   return {
-    iv: usable ? iv * 100 : null,
+    iv: usable ? iv : null,
     ivSource: contract?.quoteStale ? "stale quote" : !usable ? null : contract.mark ? "mark" : filled ? "filled" : "solved",
   };
 }

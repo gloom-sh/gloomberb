@@ -94,7 +94,7 @@ import type { FuturesContractTermsPayload } from "../../api-client/futures-curve
 import { currencyCodeLabel, currencyUnitLabel, resolveCurrencyUnit } from "../../utils/currency-units";
 import { fxRateDigits, quotedFxPair } from "../../utils/currency-pair";
 import {
-  futuresContractLines, futuresPricePer, futuresPriceUnit, futuresRollLines, futuresTickOption, isFuturesInstrument, loadFuturesContractTerms, loadFuturesPriceUnit, loadUsdPerMmbtu,
+  futuresContractLines, futuresPricePer, futuresPriceUnit, futuresPriceUnitLabel, futuresRollLines, futuresTickOption, isFuturesInstrument, loadFuturesContractTerms, loadFuturesPriceUnit, loadUsdPerMmbtu,
   usdPerMmbtuText, type UsdPerMmbtu,
 } from "../../market-data/futures-contract";
 import {
@@ -125,7 +125,7 @@ import {
   valueChainAtModelSpot,
   type OptionsChainBasis,
 } from "./options-chain";
-import { OPTION_IV_UNIT, optionExpiryClock } from "../../plugins/builtin/options/export";
+import { optionExpiryClock } from "../../plugins/builtin/shared/volatility/option-export";
 import { optionQuoteSession } from "../../plugins/builtin/shared/volatility/quote-session";
 import {
   expirationHint, expiredExpiryText, expiryIsoDate, isLiveOptionExpiry, liveDefaultExpiry, liveOptionExpiries, missingExpiryMessage,
@@ -1467,7 +1467,11 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       const terms = contracts[index];
       const contract = futuresContractByCode(terms?.root ?? futuresListingVenue(result.target.symbol, result.target.exchange)?.root)
         ?? futuresBoardContract(result.target.symbol);
-      return contract?.sector === "currencies" ? futuresPriceUnit(contract, terms) : null;
+      return contract?.sector === "currencies" ? futuresPriceUnitLabel(contract, terms) : null;
+    });
+    const displayContracts = contracts.map((terms, index) => {
+      const unit = priceUnits[index];
+      return terms?.spec && unit ? { ...terms, spec: { ...terms.spec, unit } } : terms;
     });
     const data = answers.map(({ result, listing, failure }, index) => ({
       target: result.target,
@@ -1478,7 +1482,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       changeBasis: changeBasisJson(quoteChangeBasis(result.quote, { terms: contracts[index] }), now),
       quote: withPreviousCloseDate(withViewMarketCap(result.quote, viewCaps?.[index])),
       ...sourceMoves[index] ? { sourceMove: sourceMoves[index] } : {},
-      ...contracts[index] ? { futuresContract: contracts[index] } : {},
+      ...displayContracts[index] ? { futuresContract: displayContracts[index] } : {},
       ...priceUnits[index] ? { priceUnit: priceUnits[index]! } : {},
       ...fronts[index] ? { futuresFront: fronts[index] } : {},
       ...gasInUsd[index] ? { usdPerMmbtu: gasInUsd[index] } : {},
@@ -4470,7 +4474,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         snapshot,
         currency,
         interval: OPTIONS_EXPORT_INTERVAL,
-        units: { iv: OPTION_IV_UNIT, delta: "decimal per 1.00 move in the underlying" },
+        units: { iv: "annualized decimal", delta: "decimal per 1.00 move in the underlying" },
         // What each contract's `iv` and `impliedVolatility` are, so neither is read as the other.
         fields: marked ? MARKED_OPTION_FIELDS : OPTION_VOLATILITY_FIELDS,
         // What `iv` and `delta` on each contract are valued from; the provider's own impliedVolatility is left as sent.
@@ -4506,7 +4510,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         { key: "last", header: "Last" },
         { key: "bid", header: "Bid" },
         { key: "ask", header: "Ask" },
-        { key: "iv", header: `IV (${OPTION_IV_UNIT})` },
+        { key: "iv", header: "IV (annualized decimal)" },
         { key: "ivSource", header: "IV source" },
         { key: "delta", header: "Delta (decimal)" },
         { key: "volume", header: "Vol" },

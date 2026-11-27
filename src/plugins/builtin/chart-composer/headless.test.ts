@@ -229,7 +229,8 @@ test("fn G exports a pair's rate and a currency future as quote per base, at the
   // series would write its 0.00421875 as 0.
   const weeks = ["2026-10-05", "2026-10-12", "2026-10-19"];
   const closes: Record<string, number[]> = {
-    "USDJPY=X": [113.044998, 154.054002, 154.19901], "6S=F": [1.0869, 1.077500033, 1.0841], PNNY: [50_000.5, 12_340.25, 0.00421875],
+    "USDJPY=X": [113.044998, 154.054002, 154.19901], "6S=F": [1.0869, 1.077500033, 1.0841],
+    "6J=F": [0.00628, 0.0062795, 0.0062805], PNNY: [50_000.5, 12_340.25, 0.00421875],
   };
   const bars = (symbol: string) => weeks.map((day, index) => {
     const close = closes[symbol]![index]!;
@@ -237,7 +238,7 @@ test("fn G exports a pair's rate and a currency future as quote per base, at the
   });
   const quote = (symbol: string) => ({ symbol, price: closes[symbol]!.at(-1)!, change: 0, changePercent: 0,
     currency: symbol === "USDJPY=X" ? "JPY" : "USD",
-    instrumentType: symbol === "6S=F" ? "FUTURE" as const : symbol === "PNNY" ? "EQUITY" as const : "CURRENCY" as const,
+    instrumentType: symbol.endsWith("=F") ? "FUTURE" as const : symbol === "PNNY" ? "EQUITY" as const : "CURRENCY" as const,
     lastUpdated: Date.parse("2026-10-23T20:00:00Z") });
   const marketData = createTestDataProvider({
     getTickerFinancials: async (symbol) => ({ quote: quote(symbol), annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
@@ -270,6 +271,8 @@ test("fn G exports a pair's rate and a currency future as quote per base, at the
     const franc = await csv("6S=F");
     expect(franc[1]).toContain(",1.0869,6S=F,USD per CHF,");
     expect(franc[2]).toContain(",1.0775,6S=F,USD per CHF,");
+    const yen = await csv("6J=F");
+    expect(yen[2]).toContain(",0.0062795,6J=F,USD per JPY,");
     const penny = await csv("PNNY");
     expect(penny.slice(1, 4).map((line) => line.split(",")[4])).toEqual(["50000.5", "12340.25", "0.004219"]);
   } finally {

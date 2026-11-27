@@ -76,7 +76,7 @@ import {
 import { useOptionsAccessFooter } from "./footer";
 import { optionExpiryFacts, optionSnapshotFreshness } from "../shared/volatility/option-snapshot";
 import { AnalyticsAsOfDialog, analyticsAsOfRows } from "./analytics-as-of";
-import { OPTION_IV_UNIT, optionChainAsOf, optionGreekClock, optionIvFields } from "./export";
+import { OPTION_IV_UNIT, optionChainAsOf, optionGreekClock, optionIvFields } from "../shared/volatility/option-export";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { signedPositionDirection } from "../../../portfolio/position-metrics";
 import { optionMarketReference } from "./market-reference";

@@ -515,6 +515,8 @@ describe("history rows", () => {
     expect(historyUnit("ZN=F:CBT", usdFuture)).toEqual({ kind: "contract", currency: "USD", unit: "% of par" });
     expect(historyUnit("ES=F", usdFuture).unit).toBe("index points");
     expect(historyUnit("ZNZ26.CBT", usdFuture, "% of par").unit).toBe("% of par");
+    expect(historyUnit("6J=F", usdFuture).unit).toBe("USD / JPY");
+    expect(historyUnit("6S=F", usdFuture).unit).toBe("USD / CHF");
     expect(historyUnit("UNKNOWN=F", usdFuture).unit).toBeNull();
     expect(historyUnit("LUMI.TA", null)).toEqual({ kind: "unknown", currency: null, unit: null });
   });

@@ -60,7 +60,7 @@ test("a marked contract keeps the venue's IV and greeks, with its coin premiums 
     price: 3_841.22, delta: -0.2, gamma: 0.000067, thetaPerDay: -80.31, vegaPerPoint: 32.53, rhoPerPoint: 0,
   });
   const [call] = optionRows(optionsChainExport(chainWithModelFigures(chain, { now: NOW })));
-  expect(call).toMatchObject({ iv: 36.5, ivSource: "mark", coinCurrency: "BTC", coinBid: 0.046, coinMark: 0.0472, mark: 3_841.22, forward: 81_380,
+  expect(call).toMatchObject({ iv: 0.365, ivSource: "mark", coinCurrency: "BTC", coinBid: 0.046, coinMark: 0.0472, mark: 3_841.22, forward: 81_380,
     expiresAt: "2026-10-30T08:00:00.000Z" });
   expect(optionsBasisFootnote({ spot: null, openInterest: null } as never, chain)).toStartWith(
     "Deribit marks: IV and greeks at each expiry's forward, rate 0%; $ is the BTC price at the forward · expiries settle 08:00 UTC · OI as of");

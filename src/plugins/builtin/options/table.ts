@@ -8,7 +8,7 @@ import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 import { formatStrikeLabel } from "../../../utils/options";
 import { formatOptionPrice, optionQuoteSide, optionSpread } from "./market-reference";
 import { formatCarryPercent, formatCostOfSpot } from "./carry";
-import { OPTION_IV_UNIT, optionIvFields } from "./export";
+import { OPTION_IV_UNIT, optionIvFields } from "../shared/volatility/option-export";
 import type {
   OptionColumn,
   OptionFieldId,
@@ -413,9 +413,10 @@ export function renderOptionCell(
   const contract = optionContractForColumn(row, column);
   const backgroundColor = optionMoneynessBackground(row, contract, column, rowState);
   const surface = backgroundColor ?? rowSurface;
+  const iv = column.field === "iv" ? optionIvFields(contract, row.impliedVolatility, row.impliedVolatilityFilled).iv : null;
   return {
     text: formatOptionContractCell(row, contract, column),
-    ...(column.field === "iv" ? { value: optionIvFields(contract, row.impliedVolatility, row.impliedVolatilityFilled).iv, reportValueUnit: OPTION_IV_UNIT } : {}),
+    ...(column.field === "iv" ? { value: iv === null ? null : iv * 100, reportValueUnit: OPTION_IV_UNIT } : {}),
     ...(!contract ? { mayBeBlank: true } : {}),
     color: contract && !contract.quoteStale ? optionRoleColor(optionColumnRole(column), surface) : optionMutedColor(surface),
     keepColorWhenSelected: otherHalf,

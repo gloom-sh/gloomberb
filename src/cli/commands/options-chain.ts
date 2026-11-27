@@ -14,7 +14,7 @@ import {
   chainOpenInterestAsOf, loadListedOpenInterest, openInterestAsOfLabel, type OpenInterestAsOf, statedOpenInterestAsOf, volumeSessionLabel,
 } from "../../plugins/builtin/options/open-interest-as-of";
 import { DEFAULT_OPTION_CALC_DRAFT } from "../../plugins/builtin/options-calculator/model";
-import { optionChainAsOf, optionIvFields } from "../../plugins/builtin/options/export";
+import { optionChainAsOf, optionIvFields } from "../../plugins/builtin/shared/volatility/option-export";
 import { expiryIsoDate, OPTION_EXPIRATION_PLACEHOLDER, parseOptionExpiration, settlementStampTime } from "../../utils/option-expiry";
 import { loadModelDividendYield } from "../../market-data/model-dividend-yield";
 import { formatUtcTime } from "../../utils/utc-time";
@@ -96,11 +96,11 @@ export const OPTION_MODEL_RATE = DEFAULT_OPTION_CALC_DRAFT.rate;
 
 /** The venue's own marks a chain carries (Deribit's), stated in its JSON metadata in place of OPTION_VOLATILITY_FIELDS. */
 export const MARKED_OPTION_FIELDS = {
-  iv: "The venue's mark implied volatility (annualized %), one per contract. Delta and the other greeks under mark are the venue's too: "
+  iv: "The venue's mark implied volatility (decimal), one per contract. Delta and the other greeks under mark are the venue's too: "
     + "Black-76 at the expiry's forward with no discounting, to its settlement.",
   ivSource: "mark: iv is the venue's own, never solved or filled here.",
   bid: "Prices in USD are the coin prices (coin) at the expiry's forward (mark.forward), the venue's own model price.",
-  mark: "price in USD; iv as sent by the venue (decimal); delta and gamma per 1.00 move in the underlying; vega per volatility point and theta per calendar day, in USD.",
+  mark: "price in USD; iv; delta and gamma per 1.00 move in the underlying; vega per volatility point and theta per calendar day, in USD.",
 } as const;
 
 /** Whether a venue marks the chain's contracts itself (Deribit): its IV and greeks are then used as they are. */
@@ -115,7 +115,7 @@ export function chainCoinCurrency(chain: OptionsChain): string | null {
 
 /** What each contract's two volatilities are, stated in the chain's JSON metadata so neither is read as the other. */
 export const OPTION_VOLATILITY_FIELDS = {
-  iv: "Annualized volatility (%) solved from the quote midpoint, one per strike from its out-of-the-money side, at the "
+  iv: "Annualized volatility (decimal) solved from the quote midpoint, one per strike from its out-of-the-money side, at the "
     + "spot, valuation time and rate in metadata.model. Delta here and dealer gamma (GEX) are valued with it.",
   ivSource: "solved: iv comes from the strike's out-of-the-money quote midpoint. filled: that side has no two-sided quote, so iv is read off the "
     + "nearest solved strikes (flat beyond the last one); it is no market's volatility, and delta is valued with it all the same.",
@@ -383,7 +383,7 @@ export function formatOptionQuoteCell(row: Record<string, unknown>, side: "bid" 
 export function formatOptionIvCell(value: unknown, row?: Record<string, unknown>): string {
   if (row?.quoteStale === true) return "stale";
   if (!isFiniteNumber(value) || !(value > 0)) return "—";
-  const text = `${value.toFixed(1)}%`;
+  const text = `${(value * 100).toFixed(1)}%`;
   return row?.ivSource === "filled" ? `~${text}` : text;
 }
 
