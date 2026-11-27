@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { attributeListeners, decodeListeners, portResults } from "./ports";
+import { attributeListeners, cleanupPortLaunch, decodeListeners, portResults } from "./ports";
 import type { CheckRun } from "./results";
 
 const launcher = { pid: 40, created: 200n };
@@ -62,29 +62,92 @@ test("decodes aligned IPv4 and IPv6 rows and rejects a truncated table", () => {
   expect(() => decodeListeners(ipv6.subarray(0, -1), 6)).toThrow("Truncated IPv6 listener table");
 });
 
-test("the report fails an indeterminate ports sample alongside a passing UI check, even with known failures", async () => {
+test("profile removal waits for shutdown and retries transient errors", async () => {
+  const stopped = Promise.withResolvers<void>();
+  const events: string[] = [];
+  let removals = 0;
+  const cleanup = cleanupPortLaunch(() => stopped.promise, async () => {
+    events.push("remove");
+    if (++removals < 3) throw { code: "EBUSY" };
+  }, async (delay) => { events.push(`wait ${delay}`); });
+  expect(events).toEqual([]);
+  stopped.resolve();
+  expect((await cleanup).status).toBe("pass");
+  expect(events).toEqual(["remove", "wait 250", "remove", "wait 500", "remove"]);
+});
+
+test("profile removal is not attempted if launch shutdown is unconfirmed", async () => {
+  let removed = false;
+  const result = await cleanupPortLaunch(async () => { throw new Error("shutdown failed"); }, async () => { removed = true; });
+  expect(removed).toBe(false);
+  expect(result).toMatchObject({ status: "fail", detail: "Launch shutdown unconfirmed; profile removal was not attempted" });
+});
+
+test.each(["sample", "cleanup"] as const)("the report fails a %s error without masking the other verdicts", async (failure) => {
   const dir = await mkdtemp(join(tmpdir(), "desktop-ports-"));
   try {
     const ports = join(dir, "ports");
     const ui = join(dir, "ui");
-    await Promise.all([mkdir(ports), mkdir(ui)]);
+    const profile = join(dir, "profile-head-x64-100-1");
+    await Promise.all([mkdir(ports), mkdir(ui), mkdir(profile)]);
     const run: CheckRun = { label: "head-x64", version: "1.0.0", started: "2026-01-01T00:00:00Z", scale: 100, screen: "1920x1080", results: [], fatal: null };
-    const detail = "Launch membership changed during the listener sample";
+    const sampleError = "Launch membership changed during the listener sample";
+    const fixtureError = "Raw filesystem error detail";
+    const delays: number[] = [];
+    let removals = 0;
+    const cleanup = await cleanupPortLaunch(undefined, async () => {
+      removals += 1;
+      if (failure === "cleanup") throw Object.assign(new Error(fixtureError), { code: "EPERM" });
+    }, async (delay) => { delays.push(delay); });
+    if (failure === "cleanup") {
+      expect(removals).toBe(6);
+      expect(delays).toEqual([250, 500, 1_000, 2_000, 4_000]);
+    }
+    const sample = failure === "sample" ? sampleError : attributeListeners(membership, members, [local], membership);
+    const results = [...portResults(sample, [], 0), cleanup];
     const known = join(dir, "known.json");
     await Promise.all([
-      Bun.write(join(ports, "results.json"), JSON.stringify({ ...run, label: `${run.label} as shipped`, results: portResults(detail, [], 0) })),
+      Bun.write(join(ports, "results.json"), JSON.stringify({ ...run, label: `${run.label} as shipped`, results })),
       Bun.write(join(ui, "results.json"), JSON.stringify({ ...run, results: [{ id: "ui", title: "UI check", status: "pass", detail: "OK", shots: [], ms: 0 }] })),
-      Bun.write(known, JSON.stringify({ checks: { "listens-locally": "example", "no-devtools-port": "example" } })),
+      Bun.write(join(profile, "results.json"), "not a check result"),
+      Bun.write(known, JSON.stringify({ checks: Object.fromEntries(results.map(({ id }) => [id, "example"])) })),
     ]);
     for (const flags of [[], ["--known", known]]) {
       const report = Bun.spawnSync([process.execPath, join(import.meta.dir, "report.ts"), dir, ...flags], {
         env: { ...process.env, GITHUB_STEP_SUMMARY: "" }, timeout: 5_000,
       });
       expect(report.exitCode).toBe(1);
-      expect(report.stdout.toString()).toContain(detail);
-      expect(report.stdout.toString()).not.toContain("(known)");
+      const summary = report.stdout.toString();
+      expect(summary).toContain(failure === "sample" ? sampleError : "Could not remove the isolated profile (access denied)");
+      expect(summary).not.toContain("(known)");
+      const html = await Bun.file(join(dir, "index.html")).text();
+      if (failure === "cleanup") {
+        expect(summary).toContain("| As shipped, it listens only on this machine | – | ✅ |");
+        expect(summary).toContain("| As shipped, no DevTools port | – | ✅ |");
+        expect(html).toContain("listening on 127.0.0.1:8000");
+        expect(`${summary}${html}${report.stderr.toString()}`).not.toContain(fixtureError);
+      } else {
+        expect(summary).toContain("| As shipped, isolated launch cleanup | – | ✅ |");
+      }
     }
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("the Windows artifact selects run evidence, not profile trees", async () => {
+  const workflow = Bun.YAML.parse(await Bun.file(join(import.meta.dir, "../../.github/workflows/windows-desktop-check.yml")).text()) as {
+    jobs: { check: { steps: Array<{ uses?: string; with?: { path?: string } }> } };
+  };
+  const paths = workflow.jobs.check.steps.find((step) => step.uses?.startsWith("actions/upload-artifact@"))?.with?.path;
+  const globs = (paths ?? "").trim().split(/\r?\n/).map((path) => new Bun.Glob(path.trim().replaceAll("${{ env.LABEL }}", "head-x64")));
+  const included = (path: string) => globs.some((glob) => glob.match(`windows-desktop-check/${path}`));
+  expect(included("head-x64-ports/results.json")).toBe(true);
+  expect(included("head-x64-100/shots/001-window.png")).toBe(true);
+  expect(included("head-x64-responsiveness/stall-log-1.txt")).toBe(true);
+  expect(included("index.html")).toBe(true);
+  expect(included("profile-head-x64-ports/results.json")).toBe(false);
+  expect(included("profile-head-x64-100-1/shots/001-window.png")).toBe(false);
+  expect(included("profile-head-x64-responsiveness-1/results.json")).toBe(false);
+  expect(included("head-x64-100/profile-other/results.json")).toBe(false);
 });

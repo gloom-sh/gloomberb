@@ -313,5 +313,15 @@ jobs:
         if: always()
         with:
           name: windows-desktop-check-${{ matrix.build }}-${{ matrix.machine }}
-          path: windows-desktop-check
+          path: |
+            windows-desktop-check/index.html
+            windows-desktop-check/summary.md
+            windows-desktop-check/${{ env.LABEL }}-desktop.log
+            windows-desktop-check/${{ env.LABEL }}-*/results.json
+            windows-desktop-check/${{ env.LABEL }}-*/shots/*.png
+            windows-desktop-check/${{ env.LABEL }}-*/app-stdout*.log
+            windows-desktop-check/${{ env.LABEL }}-*/app-stderr*.log
+            windows-desktop-check/${{ env.LABEL }}-*/page-errors.txt
+            windows-desktop-check/${{ env.LABEL }}-*/restart-report.ps1
+            windows-desktop-check/${{ env.LABEL }}-*/stall-log-*.txt
           if-no-files-found: warn

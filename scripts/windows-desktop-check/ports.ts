@@ -4,6 +4,9 @@ interface Member { pid: number; created: bigint }
 interface Listener extends Member { address: string; port: number }
 interface Membership { assigned: number; pids: number[] }
 
+const CLEANUP_ID = "as-shipped-cleanup";
+const PROFILE_RETRY_DELAYS = [250, 500, 1_000, 2_000, 4_000];
+
 export class PortSampleError extends Error {}
 
 /** Decode the aligned MIB_TCPTABLE_OWNER_MODULE / MIB_TCP6TABLE_OWNER_MODULE rows. */
@@ -47,8 +50,8 @@ export function attributeListeners(before: Membership, members: Member[], listen
   });
 }
 
-export function isPortCheck(id: string): boolean {
-  return id === "listens-locally" || id === "no-devtools-port";
+export function isAsShippedCheck(id: string): boolean {
+  return id === "listens-locally" || id === "no-devtools-port" || id === CLEANUP_ID;
 }
 
 export function portResults(sample: ReturnType<typeof attributeListeners> | string, shots: string[], ms: number): CheckResult[] {
@@ -73,4 +76,43 @@ export function portResults(sample: ReturnType<typeof attributeListeners> | stri
       shots: [], ms: 0,
     },
   ];
+}
+
+function profileRemovalCategory(error: unknown): string {
+  const code = typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
+  switch (code) {
+    case "EACCES": case "EPERM": return "access denied";
+    case "EBUSY": return "profile busy";
+    case "ENOTEMPTY": case "ENOENT": return "profile changed during removal";
+    case "EMFILE": case "ENFILE": return "file handle limit";
+    default: return "filesystem error";
+  }
+}
+
+/** Wait for the isolated job to stop before touching its profile. */
+export async function cleanupPortLaunch(
+  stop: (() => Promise<void>) | undefined,
+  removeProfile: (() => Promise<void>) | undefined,
+  pause: (ms: number) => Promise<void> = Bun.sleep,
+): Promise<CheckResult> {
+  const started = performance.now();
+  const result = (status: "pass" | "fail", detail: string): CheckResult => ({
+    id: CLEANUP_ID, title: "As shipped, isolated launch cleanup", status, detail, shots: [], ms: Math.round(performance.now() - started),
+  });
+  try {
+    await stop?.();
+  } catch {
+    return result("fail", "Launch shutdown unconfirmed; profile removal was not attempted");
+  }
+  if (!removeProfile) return result("pass", "No profile was created");
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await removeProfile();
+      return result("pass", "Removed the isolated profile");
+    } catch (error) {
+      const delay = PROFILE_RETRY_DELAYS[attempt];
+      if (delay === undefined) return result("fail", `Could not remove the isolated profile (${profileRemovalCategory(error)})`);
+      await pause(delay);
+    }
+  }
 }

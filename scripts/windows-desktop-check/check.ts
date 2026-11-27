@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { Jimp } from "jimp";
 import { testAppEnv } from "../test-app-env";
@@ -8,7 +9,7 @@ import { EXTRACTED_PLUGINS } from "../../src/plugins/extracted-plugins";
 import { DETACHED_WINDOW_MIN_SIZE, MAIN_WINDOW_MIN_SIZE } from "../../src/renderers/electrobun/bun/window/frame";
 import * as win from "./win32";
 import type { Bitmap, Point, Rect } from "./win32";
-import { PortSampleError, portResults } from "./ports";
+import { cleanupPortLaunch, PortSampleError, portResults } from "./ports";
 import { launchForPorts } from "./ports-win32";
 import type { CheckResult, CheckRun, CheckStatus } from "./results";
 
@@ -158,16 +159,20 @@ Get-CimInstance Win32_Process -Filter "Name='bun.exe' OR Name='launcher.exe' OR 
 async function ports(app: string, out: string, label: string): Promise<void> {
   await rm(out, { recursive: true, force: true });
   await mkdir(join(out, "shots"), { recursive: true });
-  const profile = join(out, "..", `profile-${basename(out)}`);
   const bin = join(app, "bin");
   const started = new Date().toISOString();
   const sampleStart = performance.now();
   const shots = new Shots(join(out, "shots"));
   let shot: string | null = null;
+  let profileRoot: string | undefined;
   let launch: ReturnType<typeof launchForPorts> | undefined;
+  let cleanup: CheckResult;
+  let sampleMs: number;
   const collectionFailure = "Could not collect the isolated launch's listeners";
   let sample: Parameters<typeof portResults>[0] = collectionFailure;
   try {
+    profileRoot = await mkdtemp(join(process.env.RUNNER_TEMP || tmpdir(), "gloom-desktop-ports-"));
+    const profile = join(profileRoot, "profile");
     await seedProfile(profile, { main: { x: 60, y: 120, width: 1100, height: 720 }, detached: { x: 1200, y: 200, width: 600, height: 480 } });
     launch = launchForPorts(bin, out, { ...process.env, GLOOMBERB_HOME: profile, ELECTROBUN_CONSOLE: "1", DO_NOT_TRACK: "1", GLOOMBERB_NO_TELEMETRY: "1" });
     await sleep(25_000);
@@ -175,6 +180,7 @@ async function ports(app: string, out: string, label: string): Promise<void> {
   } catch (error) {
     sample = error instanceof PortSampleError ? error.message : collectionFailure;
   } finally {
+    sampleMs = Math.round(performance.now() - sampleStart);
     if (launch) {
       try {
         shot = shots.desktop("as-shipped");
@@ -184,21 +190,11 @@ async function ports(app: string, out: string, label: string): Promise<void> {
         console.warn("Could not save the as-shipped screenshot");
       }
     }
-    try {
-      await launch?.close();
-    } catch (error) {
-      const cleanup = error instanceof PortSampleError ? error.message : "Could not clean up the isolated launch";
-      sample = typeof sample === "string" ? `${sample}; ${cleanup}` : cleanup;
-    }
-    try {
-      await rm(profile, { recursive: true, force: true });
-    } catch {
-      const cleanup = "Could not remove the isolated launch profile";
-      sample = typeof sample === "string" ? `${sample}; ${cleanup}` : cleanup;
-    }
+    const dir = profileRoot;
+    cleanup = await cleanupPortLaunch(launch?.close, dir ? () => rm(dir, { recursive: true, force: true }) : undefined);
   }
-  const results = portResults(sample, shot ? [shot] : [], Math.round(performance.now() - sampleStart));
-  const portsFailed = results.some(({ status }) => status === "fail");
+  const results = [...portResults(sample, shot ? [shot] : [], sampleMs), cleanup];
+  const asShippedFailed = results.some(({ status }) => status === "fail");
   // The names Windows shows for the processes, in Task Manager and its prompts.
   const named = ["bun.exe", "launcher.exe"].map((exe) => {
     const child = Bun.spawnSync(["pwsh", "-NoProfile", "-NonInteractive", "-Command",
@@ -226,7 +222,7 @@ async function ports(app: string, out: string, label: string): Promise<void> {
   };
   await writeFile(join(out, "results.json"), JSON.stringify(result, null, 2));
   for (const entry of results) console.log(`${entry.status.toUpperCase().padEnd(5)} ${entry.id}: ${entry.detail}`);
-  if (portsFailed) process.exitCode = 1;
+  if (asShippedFailed) process.exitCode = 1;
 }
 
 // --- Profile ---------------------------------------------------------------
