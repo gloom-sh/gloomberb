@@ -17,6 +17,7 @@ import {
   type ResolvedTickerSearch,
 } from "../tickers/search";
 import { getSearchResultSymbol } from "../tickers/search/result";
+import { sameCompanyName } from "../tickers/company-name";
 import { canonicalExchange, isUsListingExchange, parsePublicTickerKey } from "../utils/exchanges";
 import {
   chosenListingNote,
@@ -39,6 +40,7 @@ import {
   type CliListing,
   type ListingChoice,
   type ListingDeps,
+  type ListingIdentity,
 } from "./listing-arg";
 import { listingChangeLine, loadListingFate, noLongerTradingNote, tradingListing } from "../tickers/listing-fate";
 import { delistingLabel, parseListingDelisting, parseListingWithdrawal, withdrawalLabel } from "../market-data/quotes/delisting";
@@ -260,25 +262,32 @@ export async function resolveCliTicker(
     }
     return result;
   };
-  // A listing already saved says, as one search found does, when its quote stopped long ago.
-  const withEnded = async (named: { ticker: TickerRecord; quote: Quote | null }, notes: string[]): Promise<ResolvedListing> => {
-    const saved = savedListingName(named.ticker);
-    const ended = named.quote ? noLongerTradingNote(saved.label, named.quote) : null;
-    let listingEnd = recordedListingEnd(named.quote?.delisting);
-    if (options.currentSnapshot && !listingEnd && (!named.quote || ended)) {
-      const rows = await dataProvider.search(listing.symbol).catch(logFailure("cli.ticker-resolution", "Saved listing lifecycle search failed", []));
-      const matching = rows.filter((row) => listingExchange(row) === saved.exchange
-        && securityInputKey(getSearchResultSymbol(row)) === securityInputKey(saved.symbol));
-      const ends = matching.map((row) => recordedListingEnd(row.delisting, row.withdrawal));
-      if (ends.length > 0 && ends.every((end) => end === ends[0])) listingEnd = ends[0];
+  const snapshotEnd = async (identity: ListingIdentity, quote: Quote | null): Promise<string | undefined> => {
+    const quoteName = quote?.name?.trim();
+    const quoteIssuer = quoteName && quoteName !== identity.symbol && quoteName !== listing.key ? quoteName : null;
+    const issuer = identity.name ?? quoteIssuer;
+    if (!issuer || !quoteIssuer || sameCompanyName(issuer, quoteIssuer)) {
+      const end = recordedListingEnd(quote?.delisting);
+      if (end) return end;
     }
+    const rows = await dataProvider.search(listing.symbol).catch(logFailure("cli.ticker-resolution", "Listing lifecycle search failed", []));
+    const ends = rows.filter((row) => canonicalExchange(listingExchange(row)) === identity.exchange
+      && securityInputKey(getSearchResultSymbol(row)) === securityInputKey(identity.symbol)
+      && (!issuer || sameCompanyName(issuer, row.name)))
+      .map((row) => recordedListingEnd(row.delisting, row.withdrawal));
+    return ends.every((end) => end === ends[0]) ? ends[0] : undefined;
+  };
+  // A listing already saved says, as one search found does, when its quote stopped long ago.
+  const withEnded = async (named: { ticker: TickerRecord; quote: Quote | null }, notes: string[], identity: ReturnType<typeof savedListingName>): Promise<ResolvedListing> => {
+    const ended = named.quote ? noLongerTradingNote(savedListingName(named.ticker).label, named.quote) : null;
+    const listingEnd = options.currentSnapshot ? await snapshotEnd(identity, named.quote) : recordedListingEnd(named.quote?.delisting);
     return { ticker: named.ticker, notes: [...notes, ...ended ? [ended] : []], ended, ...(listingEnd ? { listingEnd } : {}) };
   };
   // A saved listing names what lists there; the issuer that left, if it is that one, is its old line.
   if (listing.saved) {
     const saved = options.refreshName === false ? { ticker: listing.saved, quote: null } : await nameFromListingQuote(listing.saved, store, dataProvider, null);
     // A saved line that stopped trading is the old line, not something listed under the symbol now.
-    const ended = await withEnded(saved, read);
+    const ended = await withEnded(saved, read, savedListingName(listing.saved));
     return withChange({ ...ended, ...uncheckedIf(listing, saved, ended.ended) }, saved.quote ? tradingListing(saved.quote) : { name: saved.ticker.metadata.name });
   }
   // A listing its own quote names is found as `quote` finds it, the quote cache first, so a busy search never
@@ -293,7 +302,9 @@ export async function resolveCliTicker(
     const venueNote = others.length > 0 && saved.exchange
       ? listingChoiceNote(listing.symbol, saved, venues) ?? chosenListingNote(listing.symbol, saved.exchange, others)
       : null;
-    return withChange({ ticker: named.ticker, notes: [...read, ...venueNote ? [venueNote] : []], ended: null, otherVenues: others }, tradingListing(known.quote));
+    const listingEnd = options.currentSnapshot ? await snapshotEnd(saved, known.quote) : undefined;
+    return withChange({ ticker: named.ticker, notes: [...read, ...venueNote ? [venueNote] : []], ended: null, otherVenues: others,
+      ...(listingEnd ? { listingEnd } : {}) }, tradingListing(known.quote));
   }
 
   const localTickers = new Map(
@@ -345,7 +356,7 @@ export async function resolveCliTicker(
   }
   if (resolved.kind === "local") {
     const local = options.refreshName === false ? { ticker: resolved.ticker, quote: null } : await nameFromListingQuote(resolved.ticker, store, dataProvider, bareQuote);
-    const ended = await withEnded(local, [...read, ...bareNote ? [bareNote] : []]);
+    const ended = await withEnded(local, [...read, ...bareNote ? [bareNote] : []], savedListingName(resolved.ticker));
     return withChange({ ...ended, otherVenues: bareNote ? bareVenues : null, ...uncheckedIf(listing, local, ended.ended) }, local.quote ? tradingListing(local.quote) : { name: local.ticker.metadata.name });
   }
 

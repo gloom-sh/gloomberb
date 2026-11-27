@@ -96,6 +96,54 @@ test("a verified last trade blocks a current snapshot but a stale quote alone do
   expect(await store.loadTicker("XYZ")).toBeNull();
 });
 
+test.each([0, 86_400_000])("a withdrawal beats a matching quote %i ms old without excluding a reused symbol", async (age) => {
+  const row = (symbol: string, name: string, exchange = "NYSE") => ({ providerId: "test", symbol, name, exchange, currency: "USD", type: "STK" });
+  const withdrawal = { on: new Date(Date.now() - 86_400_000).toISOString().slice(0, 10), reason: "Exchange withdrawal" };
+  const withdrawn = row("WDWN", "Willow Industrial Ltd");
+  const reused = row("REUS", "Beacon Energy Holdings Ltd");
+  const { store, dataDir, file, run } = await setup({
+    search: async (query) => query.split(":")[0] === withdrawn.symbol ? [{ ...withdrawn, withdrawal }]
+      : query.split(":")[0] === reused.symbol ? [
+        { ...row(reused.symbol, "Beacon Energy Ltd"), withdrawal },
+        { ...row(reused.symbol, reused.name, "NASDAQ"), withdrawal },
+        reused,
+      ] : [],
+    getQuote: async (key) => {
+      const listing = key.split(":")[0] === withdrawn.symbol ? withdrawn : reused;
+      return createTestQuote({ symbol: listing.symbol, name: listing.name, listingExchangeName: listing.exchange,
+        exchangeName: listing.exchange, lastUpdated: Date.now() - age });
+    },
+  });
+  await writeFile(file, "Symbol,Shares,Avg Cost\nWDWN,10,150\nREUS,5,300\n");
+  const expected = { positions: [{ listing: "REUS:NYSE", name: reused.name }], skipped: [
+    { label: "WDWN", reason: expect.stringContaining("Exchange withdrawal") },
+  ] };
+  const preview = await run([file, "--name", "Main", "--merge"], { dryRun: true });
+  expect(preview.result.data).toMatchObject(expected);
+  expect(await store.loadTicker(withdrawn.symbol)).toBeNull();
+
+  const held = createTestTicker(withdrawn.symbol, "Willow Industrial", { exchange: "NYSE", portfolios: ["main"],
+    positions: [{ portfolio: "main", shares: 3, avgCost: 40, currency: "USD", broker: "manual" }] });
+  await store.saveTicker(held);
+  const original = await store.loadTicker(withdrawn.symbol);
+  const save = spyOn(store, "saveTicker");
+  const saveBatch = spyOn(store, "saveTickers");
+  const create = spyOn(store, "createTicker");
+  const remove = spyOn(store, "deleteTicker");
+  const config = await Bun.file(join(dataDir, "config.json")).text();
+  await expect(run([file, "--name", "Main", "--replace"])).rejects.toThrow("1 of the file's positions could not be imported (WDWN)");
+  expect(save).not.toHaveBeenCalled();
+  expect(saveBatch).not.toHaveBeenCalled();
+  expect(create).not.toHaveBeenCalled();
+  expect(remove).not.toHaveBeenCalled();
+  expect(await Bun.file(join(dataDir, "config.json")).text()).toBe(config);
+
+  const merged = await run([file, "--name", "Main", "--merge"]);
+  expect(merged.result.data).toMatchObject(expected);
+  expect(await store.loadTicker(withdrawn.symbol)).toEqual(original);
+  expect((await store.loadTicker(reused.symbol))?.metadata.positions?.[0]?.shares).toBe(5);
+});
+
 test("portfolio import <file> previews with --dry-run, creates the portfolio, needs --merge or --replace for one that holds tickers, and refuses a replace the file cannot fill", async () => {
   const { store, dataDir, file, run } = await setup();
   setCliColorEnabledOverride(false);
