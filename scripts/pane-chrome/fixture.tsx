@@ -59,6 +59,7 @@ import { createRoot } from "react-dom/client";
 import { CompositeChart } from "../../src/components/chart/composite";
 import { StaticChartSurface } from "../../src/components/chart/static/chart-surface";
 import { DataTableView } from "../../src/components/data-table/view";
+import { TableColumnFitContext } from "../../src/components/ui/data-table/column-fit";
 import { ChartTableHeader } from "../../src/components/chart-table/header";
 import { QueryBar } from "../../src/components/ui/query-bar";
 import { ColumnGrid } from "../../src/components/ui/column-grid";
@@ -248,6 +249,49 @@ function TablePane({ paneId, focused }: PaneProps) {
         return { text: column.id === "c0" ? `T${row}` : value.toFixed(2) };
       }}
     />
+  );
+}
+
+const SPILL_COLUMNS = [
+  { id: "symbol", label: "SYMBOL", width: 8, align: "left" as const },
+  ...["OPEN", "HIGH", "LOW", "PREV", "BID", "ASK"].map((label) => ({ id: label.toLowerCase(), label, width: 10, align: "right" as const })),
+  { id: "name", label: "NAME", width: 18, align: "left" as const },
+  { id: "last", label: "LAST", width: 10, align: "right" as const },
+  { id: "volume", label: "VOLUME", width: 12, align: "right" as const },
+];
+interface SpillRow { symbol: string; name: string; last: string }
+const SPILL_ROWS: SpillRow[] = [
+  { symbol: "NWB", name: "Northwind Biologics Inc", last: "—" },
+  { symbol: "LMN", name: "Lumen Instrument Works", last: "1,098.53" },
+  { symbol: "HRB", name: "Harbor Light Utilities", last: "—" },
+  { symbol: "QTZ", name: "Quartz Ridge Mining", last: "12.40" },
+];
+
+/**
+ * A table drawn at its set widths, every column, scrolling sideways (as `shot
+ * --every-column` draws one), unfrozen, with long names before a LAST that is
+ * blank on some rows: the spill checks scroll the edge across LAST.
+ */
+function SpillTablePane({ focused }: PaneProps) {
+  return (
+    <TableColumnFitContext.Provider value={false}>
+      <DataTableView<SpillRow>
+        focused={focused}
+        selection={{ kind: "none" }}
+        columns={SPILL_COLUMNS}
+        items={SPILL_ROWS}
+        freezeFirstColumn={false}
+        sortColumnId={null}
+        sortDirection="asc"
+        getItemKey={(row) => row.symbol}
+        emptyStateTitle="No rows"
+        renderCell={(row, column, index) => {
+          if (column.id === "symbol" || column.id === "name" || column.id === "last") return { text: row[column.id] };
+          const at = SPILL_COLUMNS.findIndex((each) => each.id === column.id);
+          return { text: (((index + 3) * 7919 + at * 104729) % 99991 / 100).toFixed(2) };
+        }}
+      />
+    </TableColumnFitContext.Provider>
   );
 }
 
@@ -1196,6 +1240,7 @@ const PANES = {
   research: { name: "AAPL", component: ResearchPane },
   broken: { name: "Broken", component: BrokenPane },
   table: { name: "Table", component: TablePane },
+  spill: { name: "Spill", component: SpillTablePane },
   "fear-greed": { name: "Fear & Greed", component: FearGreedPane },
   charts: { name: "Charts", component: ChartsPane },
   news: { name: "Top News", component: NewsPane },

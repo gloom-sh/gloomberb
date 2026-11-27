@@ -221,6 +221,7 @@ function WebDataTableRowInner<
   freezeFirstColumn,
   scrollLeft = 0,
   viewportWidth = 0,
+  cutColumns = null,
   columnGap,
   horizontalPadding,
   focusPane,
@@ -248,6 +249,8 @@ function WebDataTableRowInner<
   freezeFirstColumn?: boolean;
   scrollLeft?: number;
   viewportWidth?: number;
+  /** The columns the body's edges cut, by index; null while every column shows whole. */
+  cutColumns?: readonly boolean[] | null;
   columnGap: number;
   horizontalPadding: number;
   focusPane: () => void;
@@ -371,10 +374,11 @@ function WebDataTableRowInner<
     : rowBackgroundColor ?? CSS_BG;
   const cells: DataTableCell[] = columns.map((column) => renderCell(item, column, index, rowState));
   // A cut name reads on into the blank of the figure after it in its row (tableCellSpill), between two columns that
-  // both show whole: the frozen column, and one sliding under it, keep their cells. Its cell spans the figure's
-  // column too, its text stopping a blank before the figure, which draws over it on no fill of its own.
+  // both show whole: the frozen column, one sliding under it and one the body's edge cuts keep their cells. Its cell
+  // spans the figure's column too, its text stopping a blank before the figure, which draws over it on no fill of its own.
   const spills = columns.map((column, columnIndex) => (
     (freezeFirstColumn && columnIndex === 0) || insets[columnIndex] || insets[columnIndex + 1]
+      || cutColumns?.[columnIndex] || cutColumns?.[columnIndex + 1]
       ? false : tableCellSpill(column, cells[columnIndex]!, columns[columnIndex + 1], cells[columnIndex + 1], columnGap) > 0
   ));
   const spilled = spills.includes(true);
