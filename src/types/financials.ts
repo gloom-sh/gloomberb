@@ -961,6 +961,7 @@ export interface ResultsStatementFill {
     document: number;
     page: number | null;
     subtract?: { document: number; page: number | null };
+    xbrl?: { concept: string; context: string };
     subtractDocument?: number;
     location?: { sheet: string; cell: string };
   }>>;
