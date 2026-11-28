@@ -400,6 +400,25 @@ function mergeLayoutChange(current: LayoutConfig, before: LayoutConfig, after: L
   return layout;
 }
 
+function isTransientFocus(snapshot: DesktopSharedStateSnapshot, paneId: string | null): boolean {
+  const instance = paneId && findPaneInstance(snapshot.config.layout, paneId);
+  return !!instance && isTransientPane(instance.paneId);
+}
+
+/** Closing the focused pane may select Layouts because a concurrent new focus is not visible yet. */
+function focusUnseenByRenderer(
+  view: WindowView,
+  before: DesktopSharedStateSnapshot,
+  after: DesktopSharedStateSnapshot,
+): string | null {
+  const focused = view.focusedPaneId;
+  return focused && before.focusedPaneId
+    && !findPaneInstance(before.config.layout, focused)
+    && !findPaneInstance(after.config.layout, before.focusedPaneId)
+    && isTransientFocus(after, after.focusedPaneId)
+    ? focused : null;
+}
+
 /**
  * Applies what `windowId` sent on top of the shared state, counting only what
  * changed since `base`, the state the window drew from. Settings and lists
@@ -409,19 +428,21 @@ function mergeLayoutChange(current: LayoutConfig, before: LayoutConfig, after: L
  * that another window owns, which only a pulled or imported config does,
  * takes the content and stays where it is.
  *
- * With no base, everything the window sends counts as its change.
+ * With no base, compare to the current view. A config save only writes saved
+ * tab content; the window's live transient panes come from state syncs.
  */
 export function mergeWindowSnapshot(
   state: WindowLayouts,
   windowId: string,
   base: DesktopSharedStateSnapshot | null,
   sent: DesktopSharedStateSnapshot,
-  options?: { settingsOnly?: boolean },
+  options?: { configOnly?: boolean },
 ): WindowLayouts {
   const view = state.views[windowId];
   if (!view) return state;
   const before = normalize(base ?? projectWindow(state, windowId)!);
-  const after = normalize(sent);
+  const after = normalize(options?.configOnly && isTransientFocus(before, sent.focusedPaneId)
+    ? { ...sent, focusedPaneId: null } : sent);
 
   const config: AppConfig = { ...state.config };
   const configRecord = config as unknown as Record<string, unknown>;
@@ -433,8 +454,6 @@ export function mergeWindowSnapshot(
     else if (key === "pluginConfig") configRecord[key] = mergedPluginConfig(state.config.pluginConfig, before.config.pluginConfig, after.config.pluginConfig);
     else configRecord[key] = afterRecord[key];
   }
-
-  if (options?.settingsOnly) return { ...state, config };
 
   const owners = { ...state.owners };
   const owns = (id: string) => ownerOf({ owners, views: state.views }, id) === windowId;
@@ -458,6 +477,8 @@ export function mergeWindowSnapshot(
   const baseActiveId = activeTabId(before);
   const beforeLive = transientLayout(before.config.layout);
   const afterLive = transientLayout(after.config.layout);
+  const concurrentFocus = !options?.configOnly && baseActiveId === sentActiveId && sentActiveId === view.activeLayoutId
+    ? focusUnseenByRenderer(view, before, after) : null;
   const baseTabs = new Map(before.config.layouts.filter((entry) => entry.id).map((entry) => [entry.id!, entry] as const));
 
   let layouts = state.config.layouts.filter((entry) => {
@@ -481,7 +502,9 @@ export function mergeWindowSnapshot(
           ...mergeChange(current, previous, tab),
           layout: mergeLayoutChange(current.layout, previous.layout, tab.layout),
         } : tab;
-        layouts = layouts.map((entry, at) => (at === index ? updated : entry));
+        const focused = id === sentActiveId && concurrentFocus && findPaneInstance(updated.layout, concurrentFocus)
+          ? { ...updated, focusedPaneId: concurrentFocus } : updated;
+        layouts = layouts.map((entry, at) => (at === index ? focused : entry));
       }
       continue;
     }
@@ -508,7 +531,7 @@ export function mergeWindowSnapshot(
   const sameView = activeLayoutId === view.activeLayoutId;
   const saved = layouts.find((tab) => tab.id === activeLayoutId);
   let liveLayout = sameView ? view.liveLayout : undefined;
-  if (sameTab && saved) {
+  if (sameTab && saved && !options?.configOnly) {
     if (activeLayoutId === baseActiveId && (beforeLive || afterLive)) {
       liveLayout = transientLayout(mergeLayoutChange(liveLayout ?? saved.layout, before.config.layout, after.config.layout));
     } else if (!sameView) {
@@ -521,6 +544,11 @@ export function mergeWindowSnapshot(
     paneState = mergeChange(view.paneState, before.paneState, after.paneState);
   }
   if (sameTab && saved && (beforeLive || afterLive || view.liveLayout)) {
+    if (options?.configOnly) {
+      ({ paneState, focusedPaneId } = sameView ? view : viewFromTab(saved, view.statusBarVisible));
+    } else if (concurrentFocus && saved.focusedPaneId === concurrentFocus) {
+      focusedPaneId = concurrentFocus;
+    }
     const layout = liveLayout ?? saved.layout;
     const closed = new Set([beforeLive, afterLive, view.liveLayout].flatMap((candidate) => (candidate?.instances ?? [])
       .filter((instance) => isTransientPane(instance.paneId) && !findPaneInstance(layout, instance.instanceId))

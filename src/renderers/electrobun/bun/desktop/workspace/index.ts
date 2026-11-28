@@ -142,6 +142,17 @@ function rememberDetachedFrame(layout: LayoutConfig, paneId: string): LayoutConf
  */
 const SENT_HISTORY = 8;
 
+interface DeliveredState {
+  snapshot: DesktopSharedStateSnapshot;
+  hasTransientPane: boolean;
+}
+
+/** Keep a separate budget for live transient bases so later ordinary updates cannot crowd them out. */
+function retainDeliveryHistory(history: Map<number, DeliveredState>, hasTransientPane: boolean): void {
+  const matching = [...history].filter(([, delivery]) => delivery.hasTransientPane === hasTransientPane);
+  if (matching.length > SENT_HISTORY) history.delete(matching[0]![0]);
+}
+
 export interface DesktopWorkspace {
   /** The shared state: every tab, with the main window's active layout, pane state and focus. What is saved. */
   getSnapshot(): DesktopSharedStateSnapshot;
@@ -168,11 +179,11 @@ export interface DesktopWorkspace {
   otherWindowTabs(): OtherWindowTab[];
   /** A state a full window was sent, under the number it carried; its next sync may be built on it. */
   noteDelivered(windowId: string, seq: number, snapshot: DesktopSharedStateSnapshot): void;
-  hasDelivered(windowId: string, seq: number): boolean;
+  hasSyncBase(windowId: string, seq: number): boolean;
   /** A window started over (a load or reload): nothing sent to it before counts. */
   forgetWindow(windowId: string): void;
   syncMainState(snapshot: DesktopSharedStateSnapshot, baseSeq?: number | null): DesktopSharedStateSnapshot;
-  /** A full window's whole state, merged against what it saw. An unknown number permits only settings edits. */
+  /** A full window's whole state, merged against what it saw. A numbered base must still be known. */
   syncWindowState(windowId: string, snapshot: DesktopSharedStateSnapshot, baseSeq?: number | null): DesktopSharedStateSnapshot;
   replaceConfig(config: AppConfig, options?: { layoutChanged?: boolean }): DesktopSharedStateSnapshot;
   /** A whole-config save from a full window: only what it changed since it last synced counts. */
@@ -228,7 +239,7 @@ export function createDesktopWorkspace(
   /** The last revision each window sent, which the states it is sent carry. */
   const revisions = new Map<string, number>([[MAIN_WINDOW_ID, 0]]);
   let layoutChanged: boolean | undefined;
-  const sent = new Map<string, Map<number, DesktopSharedStateSnapshot>>();
+  const sent = new Map<string, Map<number, DeliveredState>>();
   /** What each window last sent, which may advance its base without a broadcast echo. */
   const received = new Map<string, { snapshot: DesktopSharedStateSnapshot; baseSeq?: number | null }>();
   /**
@@ -279,6 +290,13 @@ export function createDesktopWorkspace(
     return getSnapshot();
   };
 
+  const syncBaseFor = (windowId: string, baseSeq?: number | null): DesktopSharedStateSnapshot | null => {
+    const previous = received.get(windowId);
+    if (typeof baseSeq !== "number" || (previous?.baseSeq === baseSeq
+      && typeof previous.snapshot.mainStateRevision === "number")) return previous?.snapshot ?? null;
+    return sent.get(windowId)?.get(baseSeq)?.snapshot ?? null;
+  };
+
   const syncWindowState = (
     windowId: string,
     snapshot: DesktopSharedStateSnapshot,
@@ -289,20 +307,16 @@ export function createDesktopWorkspace(
       return getSnapshot();
     }
     if (!state.views[windowId]) return getSnapshot();
-    const previous = received.get(windowId);
-    const history = sent.get(windowId);
-    const delivered = typeof baseSeq === "number" ? history?.get(baseSeq) : undefined;
-    const unknownBase = typeof baseSeq === "number" && !delivered;
-    const continuesOwnSync = previous?.baseSeq === baseSeq
-      && typeof previous?.snapshot.mainStateRevision === "number";
-    const base = delivered && !continuesOwnSync ? delivered : previous?.snapshot ?? delivered ?? null;
+    const base = syncBaseFor(windowId, baseSeq);
+    if (typeof baseSeq === "number" && !base) throw new Error("Desktop state sync base is no longer available");
     const detachedBefore = state.config.layout;
-    state = mergeWindowSnapshot(state, windowId, base, snapshot, { settingsOnly: unknownBase });
+    state = mergeWindowSnapshot(state, windowId, base, snapshot);
     if (windowId === MAIN_WINDOW_ID) state = keepMainDetachedFrames(state, detachedBefore);
     revisions.set(windowId, snapshot.mainStateRevision ?? currentRevision);
-    received.set(windowId, { snapshot, baseSeq: delivered ? baseSeq : undefined });
+    received.set(windowId, { snapshot, baseSeq });
     // The states it was sent before the one it built on will not be built on again.
-    if (history && delivered && typeof baseSeq === "number") {
+    const history = sent.get(windowId);
+    if (history && typeof baseSeq === "number") {
       for (const seq of history.keys()) if (seq < baseSeq) history.delete(seq);
     }
     layoutChanged = snapshot.layoutChanged;
@@ -334,10 +348,11 @@ export function createDesktopWorkspace(
         history = new Map();
         sent.set(windowId, history);
       }
-      history.set(seq, snapshot);
-      while (history.size > SENT_HISTORY) history.delete(history.keys().next().value!);
+      const hasTransientPane = snapshot.config.layout.instances.some((instance) => isTransientPane(instance.paneId));
+      history.set(seq, { snapshot, hasTransientPane });
+      retainDeliveryHistory(history, hasTransientPane);
     },
-    hasDelivered: (windowId, seq) => sent.get(windowId)?.has(seq) ?? false,
+    hasSyncBase: (windowId, seq) => syncBaseFor(windowId, seq) !== null,
     forgetWindow(windowId) {
       sent.delete(windowId);
       received.delete(windowId);
@@ -362,7 +377,7 @@ export function createDesktopWorkspace(
         focusedPaneId: base?.focusedPaneId ?? view.focusedPaneId,
         statusBarVisible: base?.statusBarVisible ?? view.statusBarVisible,
         brokerSyncErrors: base?.brokerSyncErrors ?? state.brokerSyncErrors,
-      });
+      }, { configOnly: true });
       if (windowId === MAIN_WINDOW_ID) state = keepMainDetachedFrames(state, detachedBefore);
       layoutChanged = true;
       return getSnapshot();
@@ -385,7 +400,7 @@ export function createDesktopWorkspace(
         ...current,
         config: { ...nextConfig, layout },
         paneState: sameTab ? current.paneState : nextConfig.layouts[nextConfig.activeLayoutIndex]?.paneState ?? {},
-      });
+      }, { configOnly: true });
       state = keepMainDetachedFrames(state, detachedBefore);
       layoutChanged = true;
       return getSnapshot();

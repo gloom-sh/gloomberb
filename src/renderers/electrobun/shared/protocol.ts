@@ -204,8 +204,8 @@ interface DesktopBackendRequestMap {
   "capability.cancel": { request: { invocationId: string }; response: null };
   "capability.subscribe": { request: DesktopCapabilitySubscribeRequest; response: null };
   "capability.unsubscribe": { request: { subscriptionId: string }; response: null };
-  /** A full window's whole state. `baseSeq` names the last state it took from here; null, its own last sync. */
-  "desktop.syncMainState": { request: { snapshot: DesktopSharedStateSnapshot; baseSeq?: number | null }; response: null };
+  /** A full window's whole state. `baseSeq` names the last state it took from here; null, its own last sync. False rejects an unknown base. */
+  "desktop.syncMainState": { request: { snapshot: DesktopSharedStateSnapshot; baseSeq?: number | null }; response: null | false };
   "desktop.setThemePreview": { request: { preview: DesktopThemePreviewState }; response: null };
   "desktop.replaceDetachedPaneState": {
     request: { paneId: string; paneState: PaneRuntimeState };

@@ -1,5 +1,6 @@
-import type { DesktopWorkspaceRequest } from "../../../shared/protocol";
-import { MAIN_WINDOW_RPC_KEY } from "../../window/focus";
+import { saveConfig } from "../../../../../data/config/store";
+import type { DesktopCoreRequest, DesktopWorkspaceRequest } from "../../../shared/protocol";
+import { MAIN_WINDOW_RPC_KEY, paneIdFromDetachedRpcKey } from "../../window/focus";
 import type { DesktopBackend, DesktopRpc } from "../backend";
 
 type DockEdge = "left" | "right" | "top" | "bottom";
@@ -17,6 +18,26 @@ function normalizeDockEdge(edge: unknown): DockEdge | undefined {
     : undefined;
 }
 
+export async function handleDesktopConfigSave(
+  backend: DesktopBackend,
+  rpc: DesktopRpc,
+  request: Extract<DesktopCoreRequest, { method: "config.save" }>,
+): Promise<null> {
+  const { config } = request.payload;
+  const workspace = backend.workspace;
+  if (workspace) {
+    const senderKey = backend.rpcs.getRpcWindowKey(rpc);
+    const detachedPane = paneIdFromDetachedRpcKey(senderKey);
+    await backend.commitDesktopSnapshot(detachedPane
+      ? workspace.replaceConfigFromDetachedPane(detachedPane, config)
+      : workspace.replaceConfigFromWindow(senderKey ?? MAIN_WINDOW_RPC_KEY, config));
+  } else {
+    backend.setConfig(config);
+    await saveConfig(backend.requireConfig());
+  }
+  return null;
+}
+
 export async function handleDesktopWorkspaceRequest(
   backend: DesktopBackend,
   rpc: DesktopRpc,
@@ -30,15 +51,14 @@ export async function handleDesktopWorkspaceRequest(
       const windowId = backend.fullWindowKey(rpc);
       if (!windowId) return null;
       const { baseSeq, snapshot: incoming } = request.payload;
-      const unknownBase = typeof baseSeq === "number" && !workspace.hasDelivered(windowId, baseSeq);
+      if (typeof baseSeq === "number" && !workspace.hasSyncBase(windowId, baseSeq)) return false;
       const snapshot = workspace.syncWindowState(windowId, incoming, baseSeq);
       backend.setConfig(snapshot.config);
       backend.reconcileWindows();
       // The window holds what it sent. It gets the state back only when this
       // process changed it: another window's edit, a popped-out window's
       // frame, a stale revision.
-      if (unknownBase) stateBroadcaster.forgetWindowState(rpc);
-      else stateBroadcaster.noteWindowState(rpc, incoming);
+      stateBroadcaster.noteWindowState(rpc, incoming);
       stateBroadcaster.sendDesktopState(snapshot);
       return null;
     }

@@ -44,12 +44,16 @@ describe("desktop workspace", () => {
     };
     const workspace = createDesktopWorkspace({ ...config, layout }, null, [{ id: SECOND, layoutIds: ["tab:monitor"] }]);
     workspace.syncMainState(openLayouts(workspace.getWindowSnapshot(MAIN)!));
+    workspace.syncMainState(reduceSnapshot(workspace.getSnapshot(), { type: "FOCUS_PANE", paneId: existing }));
     const held = workspace.getWindowSnapshot(MAIN)!;
+    expect(held.focusedPaneId).toBe(existing);
     workspace.noteDelivered(MAIN, 1, held);
 
     expect(workspace.movePaneToWindow(moved, MAIN)).not.toBeNull();
     expect(getDockedPaneIds(workspace.getSnapshot().config.layout)).toEqual([existing, moved]);
+    expect(workspace.getSnapshot().focusedPaneId).toBe(moved);
     const closed = reduceSnapshot(held, { type: "UPDATE_LAYOUT", layout: removePane(held.config.layout, existing) });
+    expect(closed.focusedPaneId).toBe(LAY);
     const result = workspace.syncMainState(closed, 1);
 
     const normalized = normalizeConfigForSave(result.config);
@@ -61,6 +65,11 @@ describe("desktop workspace", () => {
       expect(findPaneInstance(kept, existing)).toBeUndefined();
     }
     expect(JSON.stringify(normalized)).not.toContain(LAY);
+    expect(result.focusedPaneId).toBe(moved);
+    for (const config of [result.config, normalized, reloaded]) {
+      expect(config.layouts[config.activeLayoutIndex]!.focusedPaneId).toBe(moved);
+    }
+    expect(createDesktopWorkspace(reloaded, null).getSnapshot().focusedPaneId).toBe(moved);
   });
 
   test("a secondary renderer keeps Layouts live, closes and reopens it, and saves neither window's Layouts pane", () => {

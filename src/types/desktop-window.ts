@@ -94,8 +94,8 @@ export interface DesktopWindowBridge {
   primary?: boolean;
   /** The full windows, where the shell has more than one. */
   windows?: DesktopWindowsBridge;
-  /** `baseSeq` is the `stateSeq` of the last state this window took, or null when it built on its own last sync. */
-  syncMainState?(snapshot: DesktopSharedStateSnapshot, baseSeq?: number | null): Promise<void>;
+  /** `baseSeq` names the last state taken, or null for the last sync. False means the base is no longer known. */
+  syncMainState?(snapshot: DesktopSharedStateSnapshot, baseSeq?: number | null): Promise<void | false>;
   syncThemePreview?(preview: DesktopThemePreviewState): Promise<void>;
   replaceDetachedPaneState?(paneId: string, paneState: PaneRuntimeState): Promise<void>;
   popOutPane?(paneId: string): Promise<void>;
