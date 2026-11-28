@@ -131,7 +131,7 @@ export function withSessionBar(
   quote: Quote | null | undefined,
   options: SessionBarOptions,
 ): PricePoint[] {
-  const last = points.at(-1);
+  let last = points.at(-1);
   if (!last || (points.length < 2 && !options.barSize)) return points;
   const times = points.map(barTime);
   const lastTime = times.at(-1)!;
@@ -147,8 +147,8 @@ export function withSessionBar(
   const settled = quote && !usCash ? settledSessionBar(points, last, lastTime, size, quote, venue, options.now) : null;
   if (settled) return settled;
   if (usCash) {
-    const verified = reconcileUsDailyClose(points, quote, { ...options, venue });
-    if (verified !== points) return verified;
+    points = reconcileUsDailyClose(points, quote, { ...options, venue });
+    last = points.at(-1)!;
   }
 
   // A quote that does not say its session is read by the venue's calendar.

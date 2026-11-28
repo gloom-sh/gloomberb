@@ -29,6 +29,21 @@ test("history and completed-close consumers keep only the verified cash close fr
   }
 });
 
+test("a fresh Monday quote reconciles Friday's close and appends Monday's forming bar", () => {
+  const prior = { date: new Date("2026-11-25"), close: 355.58 };
+  const points = [prior, { date: day, open: 358.21, high: 359.50, low: 355.64, close: 359.25, volume: 22_825_593 }];
+  const monday = Date.parse("2026-11-30T16:00:00Z");
+  const quote: Quote = { ...apple, lastUpdated: monday - 60_000, marketState: "REGULAR",
+    open: 359.10, high: 362.00, low: 358.90, price: 361.50, volume: 9_000_000 };
+  const mondayOptions = { ...options, now: monday };
+  const completed = [prior, { date: day, close: 358.54 }];
+  expect(withSessionBar(points, quote, mondayOptions)).toEqual([
+    ...completed, { date: new Date("2026-11-30"), open: 359.10, high: 362.00, low: 358.90, close: 361.50, volume: 9_000_000, partial: true },
+  ]);
+  expect(finalDailyBars(points, mondayOptions, quote)).toEqual(completed);
+  expect(withSessionBar(points, { ...apple, marketState: "REGULAR" }, mondayOptions)).toEqual(completed);
+});
+
 test("a close from another date or a stale regular label cannot finalize a US partial row", () => {
   const points: PricePoint[] = [{ date: day, close: 359.25, partial: true }];
   for (const quote of [
