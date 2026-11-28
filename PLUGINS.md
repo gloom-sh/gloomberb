@@ -1317,7 +1317,7 @@ ctx.registerPane({
 });
 ```
 
-Use `true` instead of an array to keep a whole scope local. Set `title: true` when the title can identify a private channel or account. Plugin-global resume/config/resource state is never copied. State that should travel with a layout or pane share belongs in `usePluginPaneState()` or `usePaneSettingValue()`, not `usePluginState()`. Share applies this projection to public links automatically; `PaneTemplateDef.publicShare` remains only for old v1 links or deliberate transformed snapshots.
+Use `true` instead of an array to keep a whole scope local. Set `title: true` when the title can identify a private channel or account. A state field that is private by its value rather than its name takes `prepareState(state)`, which returns the state to publish before `private.state` and the sensitive-name filter apply: the earnings board keeps a sector fund in its Names choice but drops one of the person's lists. Plugin-global resume/config/resource state is never copied. State that should travel with a layout or pane share belongs in `usePluginPaneState()` or `usePaneSettingValue()`, not `usePluginState()`. Share applies this projection to public links automatically; `PaneTemplateDef.publicShare` remains only for old v1 links or deliberate transformed snapshots.
 
 ### Personal data in a pane
 
