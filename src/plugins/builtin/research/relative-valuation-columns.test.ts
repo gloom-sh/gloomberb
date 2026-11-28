@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, setSystemTime } from "bun:test";
 import type { CloudFinancialsPayload } from "../../../api-client/types/ticker-data";
 import { mapCloudFinancials } from "../../../sources/gloomberb-cloud/normalizers";
 import { createTestDataProvider } from "../../../test-support/data-provider";
@@ -76,6 +76,42 @@ function listing(symbol: string, currency: string, price: number, statements: Fi
     ...industry ? { profile: { industry } } : {},
   } as unknown as CloudFinancialsPayload);
 }
+
+// NVDA on 2026-11-28: its 8-K gave the quarter to 2026-10-31 an EPS, and its 10-Qs file the quarters to 2026-07-26.
+test("a quarter an earnings release dated with EPS alone leaves RV's gross margin and EV/EBITDA on the filed twelve months before it", async () => {
+  setSystemTime(new Date("2026-11-28T00:24:00Z"));
+  try {
+    const dates = ["2025-10-26", "2026-01-25", "2026-04-26", "2026-07-26"];
+    const revenue = [57.006, 68.127, 81.615, 96.221];
+    const gross = [41.849, 51.059, 61.157, 72.142];
+    const operating = [36.010, 44.299, 53.536, 63.734];
+    const depreciation = [.601, .997, .997, 1.127];
+    const published = ["2025-11-19", "2026-02-25", "2026-05-20", "2026-08-26"];
+    const filed = (currency = "USD") => dates.map((date, index): FinancialStatement => ({ date, currency, availableAt: published[index],
+      totalRevenue: revenue[index]! * 1e9, grossProfit: gross[index]! * 1e9, operatingIncome: operating[index]! * 1e9,
+      depreciationAndAmortization: depreciation[index]! * 1e9 }));
+    const release = (currency = "USD"): FinancialStatement => ({ date: "2026-10-31", currency, eps: 2.5, fieldAvailability: { eps: "2026-11-17" } });
+    const read = async (statements: FinancialStatement[], stale = false) => {
+      const financials = listing("NVDA", "USD", 150.49, statements, { enterpriseValue: 3.55e12, revenue: 303e9 });
+      financials.quote = { ...financials.quote!, lastUpdated: Date.parse("2026-11-27T21:59:58Z"), stale };
+      const context = { signal: new AbortController().signal, marketData: createTestDataProvider({ getTickerFinancials: async () => financials }) } as HeadlessPaneContext;
+      return (await loadExtraColumns(["grossMargin", "evEbitda"], ["NVDA"], new Map(), context)).fields.get("NVDA")!;
+    };
+    const ordinary = await read(filed());
+    const replay = await read([...filed(), release()]);
+    expect(replay).toMatchObject({ grossMarginAsOf: "2026-07-26", evEbitdaAsOf: "2026-07-26" });
+    expect(replay.grossMarginPercent as number).toBeCloseTo(74.67, 1);
+    expect(replay.grossMarginPercent).toBe(ordinary.grossMarginPercent);
+    expect(replay.evEbitda as number).toBeCloseTo(3_550 / 201.3, 2);
+    expect(replay.evEbitda).toBe(ordinary.evEbitda);
+    // A stale quote prices no EV multiple; the margin, which needs no price, stays.
+    expect(await read([...filed(), release()], true)).toMatchObject({ grossMarginAsOf: "2026-07-26", evEbitdaGap: "quote stale" });
+    // Statements in another currency than the EV, with no rate to convert them at: the margin, not the multiple.
+    expect(await read([...filed("EUR"), release("EUR")])).toMatchObject({ grossMarginAsOf: "2026-07-26", evEbitdaGap: "statements in EUR" });
+    // Three filed quarters complete no twelve months: the cells name the period they lack.
+    expect(await read([...filed().slice(1), release()])).toMatchObject({ grossMarginGap: "no complete TTM to 2026-10-31", evEbitdaGap: "no complete TTM to 2026-10-31" });
+  } finally { setSystemTime(); }
+});
 
 const withdrawn: EnterpriseValueCheck = {
   status: "withdrawn", source: 37.25e12, computed: 535.04e9, currency: "USD", marketCap: 547.25e9, totalDebt: 2e9, cash: 14.21e9, balanceSheetDate: "2026-09-30",
