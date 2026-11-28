@@ -338,10 +338,19 @@ const EXTENDED_COLUMN_WIDTH = 9;
 /** The longest name in either collection ("Consumer Staples"), which a narrow pane keeps whole as long as it can. */
 const FULL_NAME_WIDTH = 16;
 
+/** The fewest cells the name column was ever drawn at; a pane too narrow for more keeps 1M beside it. */
+const NAME_MIN_WIDTH = 10;
+
 /**
  * The board's columns at `width`. A pre-market or after-hours column follows
  * 1D for each session in `extendedSessions`. A narrow pane gives up the move
- * bar first, then that column, before it cuts a sector's name.
+ * bar first, then that column, then 1Y, before it cuts a sector's name: in a
+ * pane 53 cells wide the six columns left the name ten cells, and two rows
+ * both read "Consumer …". 1M never leaves for the name.
+ *
+ * - The terminal draws the columns that fit and scrolls to 1Y (`more ⇧→`).
+ * - The desktop and the web leave 1Y out by the table's own fit
+ *   (`fitFloor`), which names it above the header and draws it again at More.
  */
 export function buildSectorColumns(width: number, extendedSessions: readonly ExtendedSession[] = []): SectorColumn[] {
   const lead: SectorColumn[] = [
@@ -373,8 +382,10 @@ export function buildSectorColumns(width: number, extendedSessions: readonly Ext
   const withBar = [...lead, ...shownExtended, ...returns, bar];
   const showBar = width - extendedWidth >= 67 && nameRoom(withBar) >= FULL_NAME_WIDTH;
   const columns = showBar ? withBar : [...lead, ...shownExtended, ...returns];
+  // What the name gets once 1Y is gone, up to the longest name: under it 1Y leaves, and 1M stays.
+  const nameFloor = Math.max(NAME_MIN_WIDTH, Math.min(FULL_NAME_WIDTH, nameRoom([...lead, ...shownExtended, returns[0]!])));
   return [
-    { id: "name", label: "SECTOR", width: Math.max(10, Math.min(22, nameRoom(columns))), align: "left", flexGrow: 1 },
+    { id: "name", label: "SECTOR", width: Math.max(nameFloor, Math.min(22, nameRoom(columns))), align: "left", flexGrow: 1, fitFloor: nameFloor },
     ...columns,
   ];
 }

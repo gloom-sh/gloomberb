@@ -548,7 +548,9 @@ at any width. A pane does nothing for this, except say what matters:
   half its set width, never under 12 cells or its header) before any column
   leaves, and "Full Column Widths" in the pane menu, or Shift+Right, draws it
   as set again. A figure, a date or a ticker is never narrowed: cut short it
-  reads as another one.
+  reads as another one. A pane that knows what its names need (BI's fixed
+  list of sectors) sets `fitFloor` on that column: the least needed columns
+  then leave before a name is cut.
 - Where a later column outranks an earlier one, pass `columnDropOrder`, least
   needed first. Give up a name that repeats its ticker, a second way of
   saying a figure and wording the row's detail holds, before an identifier,

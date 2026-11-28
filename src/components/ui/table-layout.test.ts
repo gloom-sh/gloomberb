@@ -191,6 +191,11 @@ describe("table layout", () => {
     };
     expect(tableColumnFitFloor(columns[1]!)).toBe(15);
     expect(tableColumnFitFloor(columns[2]!)).toBe(10);
+    // A pane that knows what its names need says so: never over the set width, never under the header.
+    expect(tableColumnFitFloor({ ...columns[1]!, fitFloor: 22 })).toBe(22);
+    expect(tableColumnFitFloor({ ...columns[1]!, fitFloor: 40 })).toBe(30);
+    expect(tableColumnFitFloor({ ...columns[1]!, fitFloor: 2 })).toBe(6);
+    expect(tableColumnFitFloor({ ...columns[2]!, fitFloor: 4 })).toBe(10);
     // Ten cells short: the name gives them up, and every column is still there.
     expect(drawn(getTableWidth(columns) - 10)).toEqual({ widths: "ticker 8, name 20, last 10, cap 10, asof 10", hidden: "" });
     // Past the name's floor a whole column leaves, and the name takes back the room that frees.
