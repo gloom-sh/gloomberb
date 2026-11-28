@@ -50,6 +50,7 @@ import {
   type RecordColumn,
 } from "./model";
 import {
+  OPENFDA_DATASETS as DATASETS,
   OPENFDA_PANE_ID,
   type DeviceReport,
   type DrugRecall,
@@ -60,12 +61,6 @@ import {
 
 const SEARCH_DEBOUNCE_MS = 350;
 const LABEL_WIDTH = 14;
-
-const DATASETS: ReadonlyArray<{ value: OpenFdaDataset; label: string }> = [
-  { value: "drug", label: "Drug reports" },
-  { value: "device", label: "Device reports" },
-  { value: "recall", label: "Drug recalls" },
-];
 
 const EMPTY_FILTERS: FilterState = {};
 /** Pages read on their own to fill a list that row-by-row filtering left short. */
@@ -124,10 +119,12 @@ function cellFor(record: OpenFdaRecord, column: ColumnId, colors: ThemeColors, s
   if (column === "date") return { text: formatDate(record.date), value: record.date, color: colors.textMuted };
   switch (record.dataset) {
     case "drug":
-      if (column === "product") return { text: isSearchedDrug(record, searched) ? "" : record.product, value: record.product, color: colors.textBright };
+      // Left blank under the drug the search names, which the title and search box say; a report has neither, so it reads the record's.
+      if (column === "product") return { text: isSearchedDrug(record, searched) ? "" : record.product,
+        value: record.product, reportText: record.product, color: colors.textBright };
       if (column === "labeler") {
         const text = labelerText(record);
-        if (text && isSearchedDrug(record, searched) && text === searched?.labeler) return { text: "", value: text };
+        if (text && isSearchedDrug(record, searched) && text === searched?.labeler) return { text: "", value: text, reportText: text };
         return text ? { text, color: record.manufacturer ? colors.text : colors.textMuted } : missing;
       }
       if (column === "role") return toned(record.role ? capitalize(record.role) : null);
@@ -247,7 +244,8 @@ export function OpenFdaPane({ width, height, focused }: PaneProps) {
   const [storedQuery] = usePaneSettingValue("query", "");
   const initialQuery = String(storedQuery ?? "").trim();
   const [query, setQuery] = usePluginPaneState("query", initialQuery);
-  const [storedDataset, setDataset] = usePluginPaneState<OpenFdaDataset>("dataset", "drug");
+  const [initialDataset] = usePaneSettingValue("dataset", "drug");
+  const [storedDataset, setDataset] = usePluginPaneState<OpenFdaDataset>("dataset", isDataset(initialDataset) ? initialDataset : "drug");
   const dataset = isDataset(storedDataset) ? storedDataset : "drug";
   const [selectedId, setSelectedId] = useDebouncedPluginPaneState<string | null>("selectedId", null);
   // The open record is what the pane shows, so a reload or a shared layout opens it again.

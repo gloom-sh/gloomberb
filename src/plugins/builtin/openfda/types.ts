@@ -3,7 +3,12 @@ export const OPENFDA_PANE_ID = "adverse-events";
 export const OPENFDA_API_BASE_URL = "https://api.fda.gov";
 
 /** One openFDA dataset; the pane shows one at a time. */
-export type OpenFdaDataset = "drug" | "device" | "recall";
+export const OPENFDA_DATASETS = [
+  { value: "drug", label: "Drug reports" },
+  { value: "device", label: "Device reports" },
+  { value: "recall", label: "Drug recalls" },
+] as const;
+export type OpenFdaDataset = (typeof OPENFDA_DATASETS)[number]["value"];
 
 /** What part a drug played in a report, as the reporter coded it. */
 export type DrugRole = "suspect" | "concomitant" | "interacting";

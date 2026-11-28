@@ -13,7 +13,8 @@ interface RenderedTableColumn {
  * nothing missing. That is the column's own word (`DataTableColumn.mayBeBlank`)
  * or the cell's (`DataTableCell.mayBeBlank`, drawn as
  * `data-gloom-cell-may-be-blank`), and `--strict` reads a blank column by it,
- * leaving a marked cell out whatever its text.
+ * leaving a marked cell out whatever its text. A cell drawn with
+ * `data-gloom-cell-report-text` is read as that text.
  * A cell with no text is left out, and a row with none.
  *
  * `clipped` is set when a cell shows an ellipsis or holds text wider than itself.
@@ -40,9 +41,12 @@ export function readRenderedTableRows(
     const rowKey = row.getAttribute("data-gloom-row-key");
     const cells = values.map((cell, cellIndex) => {
       const semanticColumn = semanticColumns[cellIndex] || {};
-      const text = textOf(cell);
+      const drawn = textOf(cell);
+      // A cell whose drawn text leans on the pane around it says what a report reads instead (DataTableCell.reportText).
+      const reported = cell.getAttribute("data-gloom-cell-report-text");
+      const text = reported != null ? normalize(reported) : drawn;
       if (
-        /…|\.\.\./.test(text)
+        /…|\.\.\./.test(drawn)
         || [cell, ...Array.from(cell.querySelectorAll("*"))].some((node) => isVisible(node) && node.scrollWidth > node.clientWidth + 1)
       ) {
         clipped = true;

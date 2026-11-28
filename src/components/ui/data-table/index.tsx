@@ -258,7 +258,7 @@ function reportedRows<T, C extends DataTableColumn>(props: DataTableProps<T, C>)
         return {
           columnId: column.id,
           columnLabel: column.label,
-          text: normalize(cell.text),
+          text: normalize(cell.reportText ?? cell.text),
           ...(cell.value instanceof Date && Number.isFinite(cell.value.getTime()) ? { instant: cell.value.toISOString() } : {}),
           ...(typeof cell.value === "number" && Number.isFinite(cell.value) ? { value: cell.value } : {}),
           ...(cell.reportValueUnit ? { unit: cell.reportValueUnit, ...cell.value == null ? { value: null } : {} } : {}),

@@ -162,10 +162,12 @@ describe("DataTable remote metadata", () => {
       return <DataTable columns={[
         { id: "name", label: "Name", width: 12, align: "left" },
         { id: "missing", label: "Missing", width: 10, align: "right", omitWhenEmpty: true },
+        { id: "product", label: "Drug", width: 10, align: "left", omitWhenEmpty: true },
       ]} items={[{ id: "one", name: "One" }]} sortColumnId={null} sortDirection="asc"
         scrollRef={scrollRef} headerScrollRef={scrollRef} syncHeaderScroll={() => {}} onBodyScrollActivity={() => {}}
         getItemKey={(row) => row.id} isSelected={() => false} onSelect={() => {}}
-        renderCell={(row, column) => column.id === "name" ? { text: row.name } : { text: MISSING_VALUE, value: null }}
+        renderCell={(row, column) => column.id === "name" ? { text: row.name } : column.id === "product"
+          ? { text: "", reportText: "OZEMPIC", value: "OZEMPIC" } : { text: MISSING_VALUE, value: null }}
         emptyStateTitle="No rows." reportEveryRow />;
     }
     const registry = createRemoteUiRegistry();
@@ -179,13 +181,15 @@ describe("DataTable remote metadata", () => {
     });
     const node = registry.snapshot().find((entry) => entry.role === "table");
     expect(tui.frame()).not.toContain("MISSING");
+    expect(tui.frame()).not.toContain("OZEMPIC");
     expect(node?.metadata?.columns).toEqual([{ id: "name", label: "Name" }]);
     expect(node?.metadata?.rows).toEqual([{ key: "one", selected: false, cells: [
       { columnId: "name", columnLabel: "Name", text: "One" },
       { columnId: "missing", columnLabel: "Missing", text: MISSING_VALUE, reportOnly: true },
+      { columnId: "product", columnLabel: "Drug", text: "OZEMPIC", reportOnly: true },
     ] }]);
     await exportPaneTable("optional-column", "optional.csv");
-    expect(takeSavedTextFile()?.text).toContain("Name,Missing\nOne,");
+    expect(takeSavedTextFile()?.text).toContain("Name,Missing,Drug\nOne,,OZEMPIC");
   });
 
   test("a range with no rows in it, from a viewport not laid out yet, never hides an in-view column", async () => {

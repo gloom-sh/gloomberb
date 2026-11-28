@@ -429,6 +429,8 @@ function WebDataTableRowInner<
             data-gloom-cell-value={typeof cell.value === "number" && Number.isFinite(cell.value) ? String(cell.value) : undefined}
             // A row that owes no value here (DataTableCell.mayBeBlank): a strict capture leaves the cell out, dash or words.
             data-gloom-cell-may-be-blank={cell.mayBeBlank ? "true" : undefined}
+            // What a rendered-view report reads where the drawn text leans on the pane around it (DataTableCell.reportText).
+            data-gloom-cell-report-text={cell.reportText !== undefined && cell.reportText !== cell.text ? cell.reportText : undefined}
             style={{
               minWidth: 0,
               // A row with a spill places each cell in its own column, the spilling one across the next too.

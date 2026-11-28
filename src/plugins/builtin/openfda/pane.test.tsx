@@ -8,7 +8,7 @@ import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pa
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { OpenFdaPane } from "./pane";
-import { OPENFDA_PANE_ID, OPENFDA_PLUGIN_ID } from "./types";
+import { OPENFDA_PANE_ID, OPENFDA_PLUGIN_ID, type OpenFdaDataset } from "./types";
 
 const tui = createOpenTuiTestHarness();
 const PANE = "fda:test";
@@ -43,12 +43,12 @@ const provider = createTestDataProvider({
 
 const runtime = createTestPluginRuntime({ getMarketData: () => provider });
 
-function Harness({ query }: { query: string }) {
+function Harness({ query, dataset }: { query: string; dataset?: OpenFdaDataset }) {
   // The search the pane runs is pane state, so the harness keeps it as the app does.
   const [paneState, setPaneState] = useState<AppState["paneState"]>({});
   const base = useMemo(() => createInitialState(createTestPaneConfig("/tmp/gloom-openfda-pane-unused", {
-    paneId: OPENFDA_PANE_ID, instanceId: PANE, binding: { kind: "none" }, settings: { query },
-  })), [query]);
+    paneId: OPENFDA_PANE_ID, instanceId: PANE, binding: { kind: "none" }, settings: { query, dataset },
+  })), [query, dataset]);
   const state = useMemo(() => ({ ...base, paneState }), [base, paneState]);
   const dispatch = useCallback((action: AppAction) => setPaneState((current) => appReducer({ ...base, paneState: current }, action).paneState), [base]);
   return (
@@ -57,6 +57,20 @@ function Harness({ query }: { query: string }) {
     </TestPaneProvider>
   );
 }
+
+test.each([["device", "/device/event.json", "device reports"], ["recall", "/drug/enforcement.json", "drug recalls"]] as const)(
+  "FDA's rendered %s selection reads the matching dataset, including an empty response", async (dataset, path, label) => {
+    const requested: string[] = [];
+    setHttpFetchTransport(async (url) => {
+      requested.push(new URL(url).pathname);
+      return Response.json({ error: { code: "NOT_FOUND" } }, { status: 404 });
+    });
+    await act(async () => { await tui.render(<Harness query="coherent" dataset={dataset} />, { width: 110, height: 10 }); });
+    await settleFrame(tui.setup(), 12);
+    expect(requested).toEqual([path]);
+    expect(tui.frame()).toContain(`No ${label} match coherent.`);
+  },
+);
 
 // FDA records name the firm and its products, never a symbol: `FDA AZN` matched nothing.
 test("a ticker that matches nothing is searched as its company's name; a term that still finds nothing says what to try", async () => {

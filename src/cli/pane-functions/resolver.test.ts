@@ -11,6 +11,7 @@ import { ivHistoryModule } from "../../plugins/builtin/iv-history";
 import { volSurfaceModule } from "../../plugins/builtin/vol-surface";
 import { earningsCallsHeadless } from "../../plugins/builtin/earnings-calls/headless";
 import { ipoCalendarPlugin } from "../../plugins/builtin/ipo-calendar";
+import { openFdaPlugin } from "../../plugins/builtin/openfda";
 import { ratePathModule } from "../../plugins/builtin/rate-path";
 import { paneSchemas } from "../../plugins/builtin/chart-composer/headless-schema";
 import { createDefaultConfig } from "../../types/config";
@@ -499,6 +500,23 @@ test("shot opens EE on its Reported view and ERN or EVTS on the board's Reported
   const report = (args: string[]) => resolvePaneFunction(catalog, context, parsePaneFunctionArgs(args), { strictHeadlessOptions: true });
   expect((await report(["EE", "AAPL", "--view", "reported"])).options).toMatchObject({ view: "reported" });
   expect((await report(["ERN", "--kind", "reported"])).options).toMatchObject({ kind: "reported" });
+});
+
+test("FDA's --dataset opens the pane on that dataset by its name or plural, and refuses one it does not have", async () => {
+  const catalog: PaneFunctionCatalog = {
+    panes: new Map(openFdaPlugin.panes!.map((pane) => [pane.id, pane])),
+    paneTemplates: new Map(openFdaPlugin.paneTemplates!.map((entry) => [entry.id, entry])),
+    destroy: () => {},
+  };
+  const run = (args: string[]) => resolvePaneFunction(catalog, context, parsePaneFunctionArgsFor(catalog, ["FDA", "Coherent", ...args]),
+    { strictRenderedOptions: true });
+  for (const [typed, dataset] of [["drug", "drug"], ["device", "device"], ["devices", "device"], ["Recalls", "recall"]]) {
+    const result = await run(["--dataset", typed!]);
+    expect(result.instance.settings).toMatchObject({ query: "Coherent", dataset });
+  }
+  // Without the flag the pane opens on drug reports, as it always has.
+  expect((await run([])).instance.settings?.dataset).toBeUndefined();
+  await expect(run(["--dataset", "diagnoses"])).rejects.toThrow('Invalid --dataset value "diagnoses"');
 });
 
 test("a moved ticker whose new symbol cannot be resolved is read by that symbol alone, never on the old symbol's listing", async () => {

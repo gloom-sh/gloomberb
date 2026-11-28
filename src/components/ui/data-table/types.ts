@@ -65,6 +65,11 @@ export type DataTableColumn = Pick<
 
 export interface DataTableCell {
   text: string;
+  /**
+   * What a report, an export or a rendered-view capture reads for the cell where the drawn `text` leans on
+   * the pane around it: FDA's Drug cell, blank under the drug the search names, reports that drug's name.
+   */
+  reportText?: string;
   /** Muted context after `text`, shown whole only when both fit on one line. Does not change the exported value. */
   note?: string;
   /**

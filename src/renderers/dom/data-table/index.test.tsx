@@ -15,6 +15,7 @@ import { WEB_CELL_HEIGHT } from "../../../theme/font-scale";
 import { WebDataTable } from ".";
 import { colors } from "../../../theme/colors";
 import { selectedCellColor } from "../../../theme/tone-contrast";
+import { readRenderedTableRows } from "../../../cli/rendered-table-rows";
 
 const { window: testWindow, render } = createDomTestHarness();
 const items = Array.from({ length: 100 }, (_, index) => index);
@@ -266,6 +267,43 @@ test("a cell's kept end never shrinks: the ellipsis cuts what comes before it, a
   expect(end!.textContent).toBe(" Jan 2027");
   expect(end!.style.flexShrink).toBe("0");
   expect(end!.style.whiteSpace).toBe("pre");
+});
+
+// FDA leaves a report's Drug cell blank under the drug its search names; the capture, which has no search box, reads the product.
+test("a cell drawn blank beside the context that names it is read by a rendered-view capture as its report text", async () => {
+  const state = createInitialState(createDefaultConfig("/tmp/gloom-table-test"));
+  const rows = [{ product: "OZEMPIC", shown: "" }, { product: "OZEMPIC .25 OR 0.5 PEN INJCTR", shown: "OZEMPIC .25 OR 0.5 PEN INJCTR" }];
+  function Harness() {
+    const headerScrollRef = useRef<ScrollBoxRenderable | null>(null);
+    const scrollRef = useRef<ScrollBoxRenderable | null>(null);
+    return (
+      <AppContext value={createStaticAppStore(state)}>
+        <WebDataTable
+          items={rows}
+          columns={[{ id: "product", label: "Drug", width: 30 }, { id: "role", label: "Role", width: 10 }]}
+          sortColumnId={null}
+          sortDirection="asc"
+          headerScrollRef={headerScrollRef}
+          scrollRef={scrollRef}
+          syncHeaderScroll={() => {}}
+          onBodyScrollActivity={() => {}}
+          getItemKey={(row) => row.product}
+          isSelected={() => false}
+          onSelect={() => {}}
+          renderCell={(row, column) => column.id === "product" ? { text: row.shown, reportText: row.product } : { text: "Suspect" }}
+          emptyStateTitle="No rows"
+          virtualize={false}
+        />
+      </AppContext>
+    );
+  }
+
+  const container = await render(<Harness />);
+  const cells = [...container.querySelectorAll('[data-gloom-role="data-table-cell"]')];
+  expect(cells.map((cell) => cell.textContent)).toEqual(["", "Suspect", "OZEMPIC .25 OR 0.5 PEN INJCTR", "Suspect"]);
+  const table = container.querySelector('[data-gloom-role="data-table"]')!;
+  const read = readRenderedTableRows(table, 0, [{ id: "product", label: "Drug" }, { id: "role", label: "Role" }], () => true);
+  expect(read.rows.map((row) => row.cells.map((cell) => cell.text))).toEqual([["OZEMPIC", "Suspect"], ["OZEMPIC .25 OR 0.5 PEN INJCTR", "Suspect"]]);
 });
 
 // The terminal moves the edge between the two cells (src/components/data-table/spill.test.tsx); here the name's cell
