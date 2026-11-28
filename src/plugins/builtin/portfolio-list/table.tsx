@@ -4,7 +4,6 @@ import {
   type DataTableKeyEvent,
   type TickerListVisibleRange,
 } from "../../../components";
-import { useDataTableSortMenu } from "../../../components/data-table/sort-menu";
 import { followLiveSparklinePrice } from "../../../components/price-sparkline/model";
 import { PRICE_SPARKLINE_COLUMN_ID } from "../../../components/price-sparkline/view";
 import type { QuoteFlashDirection } from "../../../components/quote-flash";
@@ -410,17 +409,6 @@ export function PortfolioTickerTable({
     ].map(labelled);
     return rows.length > 0 ? rows : undefined;
   }, [allocationRows, displayColumns, periodLines]);
-  // The table offers "Sort by…" while it has a sort column. A watchlist starts
-  // unsorted and a third header click turns sorting off, so the unsorted state
-  // needs its own entry until TickerListTableView takes `sortable`.
-  useDataTableSortMenu({
-    enabled: !!focused && sortColumnId === null,
-    columns: displayColumns,
-    sortColumnId: null,
-    sortDirection,
-    onHeaderClick,
-  });
-
   return (
     <TickerListTableView
       focused={focused}

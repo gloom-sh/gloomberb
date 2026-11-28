@@ -652,6 +652,9 @@ describe("PortfolioListPane cash and margin UI", () => {
     }}</PaneFooterProvider>, { width: 100, height: 24 });
     await flushFrame();
     const item = menu.find((entry) => "label" in entry && entry.label === "Earnings Calendar");
+    // The menu's arrows step by id: two entries with one id stop them at the first, short of this one.
+    const ids = menu.flatMap((entry) => ("label" in entry ? [entry.id] : []));
+    expect(new Set(ids).size).toBe(ids.length);
     if (!opens) {
       expect(item).toBeUndefined();
       return;
