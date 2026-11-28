@@ -55,7 +55,7 @@ describe("Form 4 transaction parsing", () => {
     expect(parseForm4Xml(`<ownershipDocument>${director}${transaction("S", "Common Stock", "10", "5")}</ownershipDocument>`)[0]?.rule10b51).toBeUndefined();
     const exit = parseInsiderFiling(filing, `<ownershipDocument>${owner}<remarks>No longer subject to Section 16.</remarks></ownershipDocument>`);
     expect(buildInsiderRows(exit)[0]).toMatchObject({ status: "disclosure", remarks: "No longer subject to Section 16." });
-    expect(buildInsiderSummary(exit, new Date("2026-09-10").getTime())).toBe("1 loaded filing, trades dated 2026-06-12 to 2026-09-10: no parsed non-derivative buys/sales.");
+    expect(buildInsiderSummary(exit, new Date("2026-09-10").getTime())).toBe("1 loaded filing, trades in the 90 days 2026-06-12 to 2026-09-10: no parsed non-derivative buys/sales.");
   });
 
   test("summary excludes exercises and gifts, separates securities, and exposes missing sale prices", () => {
@@ -66,7 +66,7 @@ describe("Form 4 transaction parsing", () => {
       ${transaction("S", "Class A", "6000", "1", "2025-01-01")}
       </ownershipDocument>`;
     const summary = buildInsiderSummary(parseInsiderFiling(filing, xml), new Date("2026-09-10").getTime());
-    expect(summary).toBe("1 loaded filing, trades dated 2026-06-12 to 2026-09-10: Class A: Sold 125 shares (value unavailable) | Class B: Sold 50 shares (1,000.00 USD)");
+    expect(summary).toBe("1 loaded filing, trades in the 90 days 2026-06-12 to 2026-09-10 (latest 2026-08-20): Class A: Sold 125 shares (value unavailable) | Class B: Sold 50 shares (1,000.00 USD)");
   });
 
   test("summary totals every spelling of one class together, under the spelling most of its shares were filed as", () => {
@@ -75,7 +75,7 @@ describe("Form 4 transaction parsing", () => {
       ${transaction("S", "COMMON STOCK, $0.001 PAR VALUE", "20", "10")}${transaction("S", "Common Stock, par value $.01 per share", "1", "10")}
       </ownershipDocument>`;
     expect(buildInsiderSummary(parseInsiderFiling(filing, xml), new Date("2026-09-10").getTime()))
-      .toBe("1 loaded filing, trades dated 2026-06-12 to 2026-09-10: Common Stock: Sold 4.3k shares (43,210.00 USD)");
+      .toBe("1 loaded filing, trades in the 90 days 2026-06-12 to 2026-09-10 (latest 2026-08-20): Common Stock: Sold 4.3k shares (43,210.00 USD)");
     const keys = (titles: string[]) => new Set(titles.map(securityClassKey)).size;
     expect(keys(["Class A Common Stock", "Common Stock, Class A", "class a common stock ($.0001 par value)"])).toBe(1);
     expect(keys(["Class A Common Stock", "Class B Common Stock", "Common Stock", "Series A Preferred Stock", "Series B Preferred Stock"])).toBe(5);
