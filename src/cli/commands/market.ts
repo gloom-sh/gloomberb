@@ -246,7 +246,7 @@ import {
 } from "./news-search";
 import { displayTimeZone, formatUtcDayTime, formatUtcTime, localTimeSuffix, parseReportTime } from "../../utils/utc-time";
 import { localReportTiming } from "../../utils/report-timing";
-import { DAY_SO_FAR_TEXT, dailyOrLongerBarSize, withSessionBar } from "../../time-series/session-bar";
+import { DAY_SO_FAR_TEXT, dailyOrLongerBarSize, reconcileUsDailyClose, withSessionBar } from "../../time-series/session-bar";
 import { requestedBarSize } from "../../time-series/bar-spacing";
 import { isFiniteNumber } from "../../utils/guards";
 import { exportedFundamentals } from "../../utils/price-earnings";
@@ -2268,9 +2268,10 @@ async function loadListingHistory(
     ? requestedBarSize(loaded.points.map((point) => new Date(point.date).getTime()), asked as "1d" | "1wk" | "1mo") : null);
   // While the session trades the day's bar is the quote's, whatever range the history was cut for (withSessionBar).
   // A window that ended before today has no session in progress.
-  const points = window && isPastPriceWindow(window) ? loaded.points
-    : withSessionBar(loaded.points, quote, { now: Date.now(), venue: quote?.listingExchangeName || exchange || undefined,
-      ...dailyOrLongerBarSize(resolution) });
+  const barOptions = { now: Date.now(), venue: quote?.listingExchangeName || exchange || undefined, ...dailyOrLongerBarSize(resolution) };
+  const points = window && isPastPriceWindow(window)
+    ? resolution === "1d" ? reconcileUsDailyClose(loaded.points, quote, barOptions) : loaded.points
+    : withSessionBar(loaded.points, quote, barOptions);
   const fromQuote = points !== loaded.points;
   const identity = listingIdentity(listing, quote);
   // Without a quote currency, the listing metadata research reads (as `ticker` does) may still state it.

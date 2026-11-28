@@ -19,7 +19,7 @@ function legVenue(series: ResolvedSeries | undefined): string | undefined {
 }
 
 /** A coin that trades round the clock, its daily bar the UTC day: BTC-USD on the crypto venue. */
-function isRoundTheClockLeg(series: ResolvedSeries | undefined): boolean {
+export function isRoundTheClockLeg(series: ResolvedSeries | undefined): boolean {
   if (!series) return false;
   const venue = legVenue(series);
   return (!!venue && isAlwaysOpenExchange(venue)) || isRoundTheClockCoin(series.listing?.symbol, series.listing?.exchange);
@@ -29,7 +29,7 @@ function isRoundTheClockLeg(series: ResolvedSeries | undefined): boolean {
  * A leg whose venue closes each day at a known hour: a US fund, a London share. A venue whose close hour is not
  * known has no close to measure a coin at: the coin keeps its UTC closes, and the notice names no close.
  */
-function sessionVenueOf(series: ResolvedSeries | undefined): string | null {
+export function sessionVenueOf(series: ResolvedSeries | undefined): string | null {
   const venue = legVenue(series);
   return venue && !isRoundTheClockLeg(series) && !isAlwaysOpenExchange(venue) && sessionCalendarTimeZone(venue) && hasRegularCloseHour(venue)
     ? venue : null;
@@ -171,7 +171,7 @@ export async function coinLegsAtSessionClose(
     if (!closes.has(baseClose) || times.some((time) => !closes.has(time))) return;
     const points = entry.points.map((point, index) => {
       const price = instants.has(index) ? closes.get(instants.get(index)!)! : undefined;
-      return price === undefined ? point : { ...point, value: price, close: price, rawValue: price };
+      return price === undefined ? point : { ...point, value: price, close: price, rawValue: price, partial: undefined };
     });
     next[next.indexOf(entry)] = { ...entry, points };
     atSessionClose.add(id);

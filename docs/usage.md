@@ -549,9 +549,9 @@ G MSFT:revenue / AAPL:revenue
 
 Series are separated by commas, and tickers separated by spaces are a list too: `fn G AAPL MSFT` charts both, as `fn G AAPL,MSFT` does. Words that are one thing, not tickers side by side, are refused with what to write: a Bloomberg code (`AAPL US Equity` reads as `AAPL`), a currency pair (`EUR USD` is `EUR/USD`) and a series whose field has spaces (`MSFT:net income`, one series among commas). `A/B` charts the ratio of two series and `A - B` the spread. A slash that is part of the symbol stays one series (`EUR/USD`, `BTC/USD`).
 
-`CMP` and normalized price overlays measure every line to the last shared observation. Daily comparisons name the ending session above the plot. They use a forming daily bar only when every line has one for that session; otherwise they end together on an earlier shared close. A preset measures back from that common endpoint, using each listing's close on or before the baseline date.
+`CMP` and normalized price overlays measure every line to the last shared observation. Daily comparisons use a forming bar only when every leg is still forming for that session. When a completed US cash session can't be compared, the chart names the missing or incomplete endpoint alongside the last shared close. A preset measures back from that common endpoint, using each listing's close on or before the baseline date.
 
-The `CMP` 1D preset uses intraday bars from the latest session, as `GP` does. Returns start at the first shared bar and end at the last shared bar. For US listings, use Extended hours (or `--extended-hours` in `fn` and `shot`) to include pre-market and after-hours bars. The 1W preset still compares daily closes.
+The `CMP` 1D preset uses intraday bars from the latest session, as `GP` does. Its initial view and returns span the first through last shared bars, not the later bars of a leg that kept trading. For US listings, use Extended hours (or `--extended-hours` in `fn` and `shot`) to include pre-market and after-hours bars. The 1W preset still compares daily closes.
 
 A ticker's price added to a comparison, from **Series** (`s`) or **+ add series**, joins it as one more leg: its close drawn like the other legs, rebased on the same axis. This holds for any chart whose prices are drawn as % change or an index of 100. Volume, fundamentals, FRED series and indicators are added as on any other chart. A chart still titled after its series (`CMP SMH · QQQ · RSP`) names the series added or removed, and counts those past the third (`CMP SMH · QQQ · RSP +1`). A title you gave the pane stays.
 
@@ -926,7 +926,7 @@ For coins on `CRYP`, visible `DES` overviews use the shared board for supply, ra
 | `LMA <query>` | Layout and pane arrangement actions |
 | `WIN move\|resize` | Move or resize the focused window |
 | `GL` | Tidy all windows. In a terminal under 80 columns it stacks the panes in one column, as one or two tab stacks at the full width; tidied again 80 columns or wider, that column is a grid again |
-| `SB` | Toggle the status bar |
+| `SB` | Show or hide the bottom status bar |
 | `VF` | Toggle quote value flashing |
 | `TH <theme>` | Change color theme. The list shows each theme's id, the one `gloom config set theme <id>` takes. `gloom config themes` lists them, `colorblind`, `colorblind-light` and `high-contrast` included |
 | `FONT+` / `FONT-` | Increase or decrease desktop font size |

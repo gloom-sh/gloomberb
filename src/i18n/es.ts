@@ -182,7 +182,7 @@ export const es: Record<string, string> = {
   "New pane": "Nuevo panel",
 
   // ── Core command descriptions ────────────────────────────────
-  "Show or hide the keyboard shortcuts bar": "Mostrar u ocultar la barra de atajos",
+  "Show or hide the status bar": "Mostrar u ocultar la barra de estado",
   "Turn quote update flashing on or off": "Activar o desactivar el parpadeo de cotizaciones",
   "Check GitHub releases for a newer version": "Buscar una versión más reciente en GitHub Releases",
   "Turn automatic crash reports on or off": "Activar o desactivar los informes automáticos de fallos",

@@ -8,6 +8,7 @@ import { ChartResolveCache } from "./resolve-context";
 import { seedChartResolutionResult } from "./chart-seed";
 import { summarizeResolvedSeries } from "./reporting";
 import { CHART_SPEC_VERSION, type ChartSpec } from "./types";
+import { buildCompositeChartScene } from "../components/chart/composite/scene";
 
 const date = (day: string) => new Date(day);
 const rows = (values: [string, number][]): PricePoint[] => values.map(([day, close]) => ({ date: date(day), close }));
@@ -38,6 +39,39 @@ function sources(history: Record<string, PricePoint[]> = histories) {
     loadFredSeries: async () => ({ data: { observations: [], info: null }, fetchedAt: 0, stale: false, source: "network" as const }),
   };
 }
+
+test("weekend 1D comparison fits only the plotted span in seed, resolution, and projection", async () => {
+  const now = date("2026-11-28T11:00:00Z");
+  for (const [symbol, exchange, start, end] of [
+    ["AAPL", "NASDAQ", "2026-11-27T14:30:00Z", "2026-11-27T17:59:00Z"],
+    ["0700", "HKEX", "2026-11-27T01:30:00Z", "2026-11-27T07:59:00Z"],
+  ] as const) {
+    const coinTail = "2026-11-28T10:59:00Z";
+    const history = { [symbol]: rows([[start, 100], [end, 101]]), "BTC-USD": rows([[start, 200], [end, 190], [coinTail, 220]]) };
+    const input: ChartSpec = { ...spec(), viewport: { range: "1D", resolution: "1m" },
+      series: [[symbol, exchange], ["BTC-USD", "CCC"]].map(([symbol, exchange], index) => ({ ...spec().series[index]!,
+        id: symbol!, source: { kind: "security", instrument: { symbol: symbol!, exchange }, fieldId: "market.close" } })) };
+    const market = { ...sources(history), now };
+    market.dataProvider.getQuote = async (symbol) => ({ symbol, currency: "USD", instrumentType: symbol === "BTC-USD" ? "Cryptocurrency" : "Common Stock",
+      price: 999, change: 0, changePercent: 0, lastUpdated: +now });
+    const cache = new Map(input.series.map((entry) => [chartQuoteOverrideKeyForSource(entry.source), history[entry.id]!]));
+    const viewport = { start: date(start), end: date(end) };
+    const loaded = await resolveChartSpecData(input, market);
+    const seed = seedChartResolutionResult(input, cache, now)!;
+    for (const result of [loaded, seed]) {
+      expect(result.viewport).toEqual(viewport);
+      const scene = buildCompositeChartScene(result.series, input.panels, { width: 100, height: 20, viewport: result.viewport })!;
+      expect(scene.startTime).toBe(+viewport.start);
+      expect(scene.panels[0]?.series.map((leg) => leg.points.at(-1)?.timestamp)).toEqual([+viewport.end, +viewport.end]);
+      expect(scene.panels[0]?.series[0]?.points.at(-1)?.xRatio).toBeGreaterThan(0.85);
+    }
+    const panned = { start: date(start), end: date(coinTail) };
+    expect((await resolveChartSpecData(input, market, new ChartResolveCache(), { requestViewport: panned })).viewport).toEqual(panned);
+    expect(seedChartResolutionResult(input, cache, now, { requestViewport: panned })?.viewport).toEqual(panned);
+    const raw = { ...input, series: input.series.map((entry) => ({ ...entry, transform: "raw" as const })) };
+    expect((await resolveChartSpecData(raw, market)).viewport?.end).toEqual(date(coinTail));
+  }
+});
 
 describe("normalized market price comparison", () => {
   test("generated YTD includes December 31's close, while an authored start measures from the prior close", async () => {
@@ -596,6 +630,38 @@ describe("a fund compared with a coin", () => {
   }
   const coinCloses = (result: Awaited<ReturnType<typeof resolveChartSpecData>>) => result.series[1]!.points.map((point) => point.rawValue);
   const span = (from: string, to: string) => days.filter((day) => day >= from && day <= to);
+
+  test("a verified early cash close can compare to the coin's hourly mark while its UTC day is still forming", async () => {
+    const earlyChart = chart({ start: "2026-11-27", end: "2026-11-27" });
+    earlyChart.series[0] = { ...earlyChart.series[0]!, id: "AAPL", source: { kind: "security",
+      instrument: { symbol: "AAPL", exchange: "NASDAQ" }, fieldId: "market.close" } };
+    const equity = rows([["2026-11-25", 355.58], ["2026-11-27", 359.25]]);
+    const coin = rows([["2026-11-25", 60_010], ["2026-11-26", 60_020], ["2026-11-27", 60_030]]);
+    coin.at(-1)!.partial = true;
+    const hourly = rows([["2026-11-25T20:00:00Z", 60_000], ["2026-11-26T20:00:00Z", 60_100], ["2026-11-27T17:00:00Z", 59_800]]);
+    const now = date("2026-11-27T22:05:00Z");
+    for (const hasHour of [true, false]) {
+      const inputs = coinSources(() => [], { AAPL: equity, "BTC-USD": coin });
+      inputs.dataProvider.getQuote = async (symbol) => ({ symbol, currency: "USD", price: symbol === "AAPL" ? 359.25 : 60_030,
+        change: 0, changePercent: 0, lastUpdated: Date.parse("2026-11-27T21:59:00Z"),
+        ...(symbol === "AAPL" ? { marketState: "CLOSED" as const, instrumentType: "Common Stock", regularClose: 358.54, regularCloseSessionDate: "2026-11-27" }
+          : { instrumentType: "Cryptocurrency" }) });
+      inputs.dataProvider.getDetailedPriceHistoryWithMetadata = async (symbol, _exchange, _start, _end, interval) => ({
+        points: interval === "1d" ? symbol === "AAPL" ? equity : coin : hasHour ? hourly : hourly.slice(0, -1),
+        resolution: interval === "1d" ? "1d" : "1h",
+      });
+      const quoteOverrides = new Map(await Promise.all(earlyChart.series.map(async (entry) => [
+        chartQuoteOverrideKeyForSource(entry.source), await inputs.dataProvider.getQuote(entry.id, entry.id === "AAPL" ? "NASDAQ" : "CCC"),
+      ] as const)));
+      const result = await resolveChartSpecData(earlyChart, { ...inputs, now, quoteOverrides });
+      if (hasHour) {
+        expect(result.series.map((entry) => entry.points.at(-1)?.rawValue)).toEqual([358.54, 59_800]);
+        expect(result.priceComparison?.notice).toContain("BTC-USD at the US close");
+      } else {
+        expect(result.priceComparison?.incompleteSessions).toContain("AAPL 2026-11-27 18:00 UTC: daily comparison unavailable");
+      }
+    }
+  });
 
   test("an authored early-close comparison distinguishes missing, closed incomplete, forming and final daily marks", async () => {
     const window = { start: "2026-11-23", end: "2026-11-27" };

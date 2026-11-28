@@ -68,7 +68,8 @@ import {
   type PriceComparison,
 } from "./price-comparison";
 import { chartBellPairOf, chartQuoteOverrideKeyForSource } from "./live-quotes";
-import { coinLegsAtSessionClose } from "./coin-session-close";
+import { coinLegsAtSessionClose, isRoundTheClockLeg } from "./coin-session-close";
+import { reconcileUsDailyClose } from "./session-bar";
 import { chartSeriesSourceKey, uncoveredCapabilityMessage } from "../capabilities/chart-series";
 import { rememberSeedListingFacts } from "./parsed-history-cache";
 import {
@@ -1025,7 +1026,11 @@ async function resolveChartSpecPass(
         // quote cannot establish the price basis of independent bond history.
         // Comparison endpoints also retain source history: a streamed quote
         // could otherwise update only one leg within a shared weekly bar.
-        merged = { ...mergeHistory(merged, history.points, undefined, observationNow,
+        const comparisonHistory = liveBarResolution === "1d" && comparedSeriesIds.has(seriesSpec.id)
+          ? reconcileUsDailyClose(history.points, merged.quote, { now: observationNow,
+            venue: resolvedSource.instrument.exchange, assetCategory: quoteMetadata?.instrumentType })
+          : history.points;
+        merged = { ...mergeHistory(merged, comparisonHistory, undefined, observationNow,
           liveBarResolution ?? undefined, resolvedSource.instrument.exchange,
           liveBarResolution != null && !comparedSeriesIds.has(seriesSpec.id), resolvedSource.instrument.instrument?.secType,
           { bars: marketField && history.accumulationKey ? cache.liveBarsFor(history.accumulationKey) : undefined,
@@ -1052,7 +1057,8 @@ async function resolveChartSpecPass(
       // Keep provider history separate from quote-extended display bars. A live
       // mark is not a daily closing observation, including on snapshot replay.
       const historical = history ? { ...merged, priceHistory: history.points } : merged;
-      sources.onSecurityData?.(resolvedSpec, dailyValuation || history?.session || realizedVolInputs.has(seriesSpec.id) ? historical : sourceBars, history !== null);
+      sources.onSecurityData?.(resolvedSpec, dailyValuation || history?.session || comparedSeriesIds.has(seriesSpec.id)
+        || realizedVolInputs.has(seriesSpec.id) ? historical : sourceBars, history !== null);
       const forwardEps = (forwardPE || source.fieldId === "valuation.realizedNtmPE") ? merged.epsEstimates : undefined;
       const estimateCurrency = forwardEps?.currency ?? merged.financialCurrency;
       const valuationDates = !historyPricedValuation || !sources.loadFxCloses ? [] : forwardEps ? [
@@ -1203,8 +1209,8 @@ async function resolveChartSpecPass(
     : firstRaw;
   // A panned day keeps its reference line; an authored date window has no latest session.
   const sessionView = spec.viewport.range === "1D" && !explicitBounds(spec)
-    ? latestSessionView(primaryRaw, rawSeries.filter((entry) => entry.observationKind === "market"),
-      extendedHistories.has(primaryRaw?.id ?? ""), quoteReferences.get(primaryRaw?.id ?? ""))
+    ? latestSessionView(primaryRaw, rawSeries,
+      extendedHistories.has(primaryRaw?.id ?? ""), quoteReferences.get(primaryRaw?.id ?? ""), +referenceNow)
     : null;
   const dailyValuationView = spec.series.filter((entry) => entry.visible !== false);
   const shortDailyValuation = !hasExplicitWindow && (spec.viewport.range === "1D" || spec.viewport.range === "1W")
@@ -1249,14 +1255,22 @@ async function resolveChartSpecPass(
   const resolution = commonCadence ?? undefined;
   const comparisonResolution = resolution ?? "auto";
   const comparisonOptions = { preset: hasExplicitWindow ? null : spec.viewport.range, now: returnEligibilityTime ?? comparisonNow() };
-  let priceComparison = resolvePriceComparison(spec, rawSeries, bounds, comparisonResolution, requestBounds ? null : spec.viewport.dateWindow, comparisonOptions);
+  const comparisonWindow = requestBounds ? null : spec.viewport.dateWindow;
+  let priceComparison = resolvePriceComparison(spec, rawSeries, bounds, comparisonResolution, comparisonWindow, comparisonOptions);
   // A coin compared in daily closes with a listing that closes each day is measured at that close when its hourly bars reach.
-  const timed = sources.dataProvider && comparisonResolution === "1d"
-    ? await coinLegsAtSessionClose(priceComparison, rawSeries, sources.dataProvider, comparisonOptions.now) : null;
-  if (timed?.timing.atSessionClose.size) {
-    rawSeries.splice(0, rawSeries.length, ...timed.series);
-    priceComparison = resolvePriceComparison(spec, rawSeries, bounds, comparisonResolution, requestBounds ? null : spec.viewport.dateWindow,
-      { ...comparisonOptions, atSessionClose: timed.timing.atSessionClose, closedEnds: timed.timing.closedEnds });
+  if (sources.dataProvider && priceComparison && comparisonResolution === "1d"
+    && rawSeries.some((entry) => comparedSeriesIds.has(entry.id) && isRoundTheClockLeg(entry))) {
+    const candidate = resolvePriceComparison(spec, rawSeries, bounds, comparisonResolution, comparisonWindow,
+      { ...comparisonOptions, sampleCoinClose: true });
+    let timed = await coinLegsAtSessionClose(candidate, rawSeries, sources.dataProvider, comparisonOptions.now);
+    if (!timed?.timing.atSessionClose.size && candidate?.end !== priceComparison.end) {
+      timed = await coinLegsAtSessionClose(priceComparison, rawSeries, sources.dataProvider, comparisonOptions.now);
+    }
+    if (timed?.timing.atSessionClose.size) {
+      rawSeries.splice(0, rawSeries.length, ...timed.series);
+      priceComparison = resolvePriceComparison(spec, rawSeries, bounds, comparisonResolution, comparisonWindow,
+        { ...comparisonOptions, atSessionClose: timed.timing.atSessionClose, closedEnds: timed.timing.closedEnds });
+    }
   }
   const splitAssessment = priceComparison?.legs
     ? await assessComparedSplits(spec, priceComparison, nativeComparisonSeries, loadDistributions, comparisonOptions.now) : null;
@@ -1264,7 +1278,7 @@ async function resolveChartSpecPass(
   if (priceComparison && splitAssessment?.dropped.length) {
     priceComparison = { ...priceComparison, dropped: [...priceComparison.dropped ?? [], ...splitAssessment.dropped] };
   }
-  const comparedBounds = comparisonDisplayBounds(bounds, priceComparison);
+  const comparedBounds = comparisonDisplayBounds(bounds, priceComparison, !hasExplicitWindow && !requestBounds && spec.viewport.range === "1D");
   const displayBounds = spec.viewport.dateWindow?.endAtLatestObservation && !requestBounds
     ? endAtNewestObservation(comparedBounds, rawSeries) : comparedBounds;
   const comparisonBounds = priceComparison && priceComparison.start !== null

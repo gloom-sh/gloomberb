@@ -6,9 +6,9 @@ import { CHART_RESOLUTION_STEP_MS, chartBarSizeSource, getChartResolutionLabel, 
 import type { TimeRange } from "./range";
 import { zonedDateTimeParts } from "../utils/zoned-date-time";
 import { isCurrencyCode } from "../utils/currency-pair";
-import { priceComparisonCloseTimes } from "./coin-session-close";
+import { isRoundTheClockLeg, priceComparisonCloseTimes, sessionVenueOf } from "./coin-session-close";
 import { barLastSession } from "../market-data/market/bar-period";
-import { latestRegularSessionClose, regularSessionCloseOn, isAlwaysOpenExchange } from "../market-data/market/freshness";
+import { latestRegularSessionClose, regularSessionCloseOn } from "../market-data/market/freshness";
 import { isUsCashListing } from "./chart-data";
 import { priceBasisBreaks, priceBasisFactor } from "../market-data/market/split-price-basis";
 import {
@@ -86,6 +86,8 @@ export interface PriceComparisonOptions {
   atSessionClose?: ReadonlySet<string>;
   /** Of those, the legs whose newest day ends at a session close that has passed: not a price still moving. */
   closedEnds?: ReadonlySet<string>;
+  /** Find the candidate end for hourly coin sampling, not an endpoint to display. */
+  sampleCoinClose?: boolean;
 }
 
 export function observationDate(time: number, series: Pick<ResolvedSeries, "timeBasis">): string {
@@ -410,15 +412,23 @@ export function resolvePriceComparison(
   const sharedWindow = shared((leg) => leg.window);
   const isForming = (leg: ComparedLeg, key: string): boolean => calendarBars && !options.closedEnds?.has(leg.id)
     && (leg.points.get(key)?.partial === true || isIntradayDailyBar(sessionDay(key), legVenue(leg.entry), now));
+  const samplingVenue = options.sampleCoinClose ? legs.map((leg) => sessionVenueOf(leg.entry)).find(Boolean) : null;
+  const comparableEnd = (key: string) => {
+    const forming = legs.filter((leg) => isForming(leg, key));
+    return forming.length === 0 || forming.length === legs.length || (!!samplingVenue
+      && (regularSessionCloseOn(samplingVenue, key) ?? Infinity) <= now
+      && forming.every((leg) => isRoundTheClockLeg(leg.entry)));
+  };
   const sharedEnd = resolution === "1d"
-    ? sharedWindow.findLast((key) => legs.every((leg) => isForming(leg, key) === isForming(legs[0]!, key)))
+    ? sharedWindow.findLast(comparableEnd)
     : sharedWindow.at(-1);
-  const requestedClose = resolution === "1d" && dateWindow && /^\d{4}-\d{2}-\d{2}$/.test(dateWindow.end)
-    && requestedLegs.some(({ venue }) => isAlwaysOpenExchange(venue)) ? requestedLegs.flatMap(({ id, label, venue, entry }) => {
+  const intendedEnd = dateWindow && /^\d{4}-\d{2}-\d{2}$/.test(dateWindow.end)
+    ? Math.min(now, Date.parse(`${dateWindow.end}T23:59:59.999Z`)) : preset ? now : null;
+  const requestedClose = resolution === "1d" && intendedEnd !== null ? requestedLegs.flatMap(({ id, label, venue, entry }) => {
       if (!isDailyCashLeg(resolution, venue, label, entry)) return [];
-      const closed = latestRegularSessionClose(venue, Math.min(now, Date.parse(`${dateWindow.end}T23:59:59.999Z`)));
+      const closed = latestRegularSessionClose(venue, intendedEnd);
       const leg = legs.find((candidate) => candidate.id === id);
-      if (!closed || closed.date < dateWindow.start.slice(0, 10) || (leg && sharedEnd && sharedEnd >= closed.date)) return [];
+      if (!closed || (dateWindow && closed.date < dateWindow.start.slice(0, 10)) || (leg && sharedEnd && sharedEnd >= closed.date)) return [];
       const at = regularSessionCloseOn(venue, closed.date);
       if (at === null) return [];
       const reason = leg?.window.includes(closed.date) ? "daily comparison unavailable"

@@ -3113,6 +3113,25 @@ describe("one-day charts show the latest session", () => {
     expect(result.viewport).toEqual({ start: new Date("2026-10-02T12:00:00Z"), end: new Date("2026-10-03T12:00:00Z") });
     expect(result.series[0]?.priorClose).toBeUndefined();
   });
+
+  test("a closed FX weekend fits the observed day without changing an open or explicit view", async () => {
+    const start = new Date("2026-11-26T22:29:00Z");
+    const end = new Date("2026-11-27T21:59:00Z");
+    const history = [start, new Date("2026-11-27T17:59:00Z"), end].map((date, index) => ({ date, close: 1358 - index }));
+    const source = { kind: "security" as const, instrument: { symbol: "USDNGN=X", exchange: "CCY" }, fieldId: "market.close" };
+    const spec = chartSpec({ viewport: { range: "1D", resolution: "1m" }, series: [chartSeries({ source })] });
+    const now = new Date("2026-11-28T11:00:00Z");
+    const market = { dataProvider: createTestDataProvider({ getPriceHistoryForResolution: async () => history }), now };
+    for (const result of [await resolveChartSpecData(spec, market),
+      seedChartResolutionResult(spec, new Map([[chartQuoteOverrideKeyForSource(source), history]]), now)]) {
+      expect(result?.viewport).toEqual({ start, end });
+      expect(result?.series[0]?.points.map((point) => point.date)).toEqual(history.map((point) => point.date));
+    }
+    const reopened = new Date("2026-11-29T22:15:00Z");
+    expect((await resolveChartSpecData(spec, { ...market, now: reopened })).viewport?.end).toEqual(reopened);
+    const explicit = { ...spec, viewport: { ...spec.viewport, dateWindow: { start: start.toISOString(), end: now.toISOString() } } };
+    expect((await resolveChartSpecData(explicit, market)).viewport).toEqual({ start, end: now });
+  });
 });
 
 describe("Auto charts a young listing over the range it has traded", () => {

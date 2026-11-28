@@ -109,20 +109,17 @@ export function metricReadings(provider: AssetDataProvider, now = Date.now()) {
         const listing = `${symbol}|${venue}`;
         const request = history.get(listing) ?? load(symbol, venue);
         history.set(listing, request);
-        // Final as `history` shows it: a close it prints without `partial` is one the rule may judge.
-        // A bar the source still marks partial once its session has settled is final at the session's quote,
-        // as `history` makes it; the quote is read only then, and one that fails leaves the rule waiting.
-        // Bars read back from the saved cache carry their dates as text.
         const served = await request;
+        const last = served.at(-1);
         let quote: Promise<Quote | null> | null = null;
-        if (served.at(-1)?.partial) {
+        if (last && (last.partial || barSessionDay(getPricePointTimestamp(last), venue) === latest.day)) {
           quote = quotes.get(listing) ?? provider.getQuote(symbol, venue).catch(() => {
             // Intentional ignore: the bar stays partial and the rule keeps waiting; the next pass reads the quote again.
             return null;
           });
           quotes.set(listing, quote);
         }
-        return finalDailyBars(served, { now, venue }, await quote)
+        return finalDailyBars(served, { now, venue, barSize: "1d" }, await quote)
           .map(point => ({ date: barSessionDay(getPricePointTimestamp(point), venue), close: point.close }));
       };
       const bars = await completed(rule.symbol, exchange);

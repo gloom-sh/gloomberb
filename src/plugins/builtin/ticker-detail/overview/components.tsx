@@ -244,9 +244,6 @@ export function QuoteBook({ quote, assetCategory, width, desktopWidth }: {
   const priceOptions = liveQuoteFormatOptions(quote, quote.currency, assetCategory);
   const bidPrice = quote.bid != null ? formatMarketPriceWithCurrency(quote.bid, quote.currency, priceOptions) : MISSING_VALUE;
   const askPrice = quote.ask != null ? formatMarketPriceWithCurrency(quote.ask, quote.currency, priceOptions) : MISSING_VALUE;
-  // A coin's book is sized in fractions (0.0412 x $61,606.17), which whole-share rounding would show as 0.
-  const bidText = quote.bidSize != null && quote.bidSize > 0 ? `${formatTradeSize(quote.bidSize)} x ${bidPrice}` : bidPrice;
-  const askText = quote.askSize != null && quote.askSize > 0 ? `${formatTradeSize(quote.askSize)} x ${askPrice}` : askPrice;
   let spreadText = MISSING_VALUE;
   // A crossed book (a closing auction's last bid above its ask, Tencent's HK$430.80 / HK$430.40) has no spread to show.
   if (quote.bid != null && quote.ask != null && quote.ask >= quote.bid) {
@@ -263,6 +260,18 @@ export function QuoteBook({ quote, assetCategory, width, desktopWidth }: {
     width,
   );
   const row = (label: string, value: string, color: string): ColumnGridCell[] => [{ text: label, color: colors.textDim }, { text: value, color }];
+  const bookRows = (label: string, price: string, size: number | undefined): ColumnGridCell[][] => {
+    const room = Math.max(1, width - BOOK_LABEL_WIDTH);
+    const quantity = price !== MISSING_VALUE && size != null && size > 0 ? formatTradeSize(size) : null;
+    const combined = quantity ? `${quantity} x ${price}` : price;
+    if (displayWidth(combined) <= room) return [row(label, combined, colors.textBright)];
+    const compact = quantity ? `${formatTradeSize(size, { compact: true })} x ${price}` : null;
+    if (compact && displayWidth(compact) <= room) return [row(label, compact, colors.textBright)];
+    return [
+      ...wrapTextLines(price, room).map((line, index) => row(index === 0 ? label : "", line, colors.textBright)),
+      ...(quantity ? wrapTextLines(`x ${quantity}`, room).map((line) => row("", line, colors.textDim)) : []),
+    ];
+  };
   return (
     <Box flexDirection="column" width={nativePaneChrome ? undefined : width} flexShrink={0} style={nativePaneChrome ? { width: desktopWidth } : undefined}>
       <ColumnGrid
@@ -271,8 +280,8 @@ export function QuoteBook({ quote, assetCategory, width, desktopWidth }: {
         role="quote-book"
         rows={[
           // Neutral: a red ask would read as a loss.
-          row(t("Bid"), bidText, colors.textBright),
-          row(t("Ask"), askText, colors.textBright),
+          ...bookRows(t("Bid"), bidPrice, quote.bidSize),
+          ...bookRows(t("Ask"), askPrice, quote.askSize),
           row(t("Spr"), spreadText, colors.textDim),
           ...clockLines.map((line, index) => row(index === 0 ? t("Time") : "", line, colors.textDim)),
         ]}

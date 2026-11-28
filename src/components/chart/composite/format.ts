@@ -3,7 +3,7 @@ import { INDEX_POINTS_UNIT } from "../../../market-data/market/index-level";
 import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
 import type { CompositeAxisDomain, CompositePanelScene } from "./types";
 import { utcDay as utcDate } from "../../../utils/day-format";
-import { formatNumber, formatPercentRaw, formatSignificant } from "../../../utils/format";
+import { displayWidth, formatNumber, formatPercentRaw, formatSignificant } from "../../../utils/format";
 import { timeZoneLabel, zonedWallClockMs } from "../../../utils/zoned-date-time";
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
@@ -570,6 +570,22 @@ export function formatCompositeCursorValue(value: number, domain: CompositeAxisD
   ));
   if (fullPrice) return fullPrice;
   return formatCompositeAxisValue(value, domain);
+}
+
+export function fitCompositeAxisLabel(label: string, width: number): string {
+  if (displayWidth(label) <= width) return label;
+  if (label.endsWith("%")) {
+    const value = Number(label.slice(0, -1));
+    if (Number.isFinite(value) && value !== 0) {
+      for (const digits of [3, 2, 1]) {
+        const decimal = formatSignificant(value, digits).replace(/,/g, "");
+        if (Number(decimal) !== 0 && displayWidth(decimal) + 1 <= width) return `${decimal}%`;
+        const scientific = value.toExponential(digits - 1).replace(/e\+/, "e");
+        if (displayWidth(scientific) + 1 <= width) return `${scientific}%`;
+      }
+    }
+  }
+  return "…";
 }
 
 /**

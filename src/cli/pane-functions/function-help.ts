@@ -1277,7 +1277,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = defineFunct
     docs: "FONT+",
   },
   SB: {
-    summary: "Shows or hides the keyboard shortcuts bar at the bottom.",
+    summary: "Shows or hides the status bar at the bottom.",
   },
   VF: {
     summary: "Turns the flash on quote updates on or off.",

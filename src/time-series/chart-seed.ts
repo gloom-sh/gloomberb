@@ -24,6 +24,7 @@ import { type ChartResolveOptions, instrumentKey } from "./resolve-context";
 import {
   explicitBounds,
   requestedBounds,
+  runtimeAutoBounds,
   runtimeRequestBounds,
   requestResolution,
   filterPoints,
@@ -100,23 +101,24 @@ export function seedChartResolutionResult(
   });
   if (series.length === 0) return null;
   const requested = requestedBounds(spec, now);
+  const interaction = runtimeRequestBounds(options) ?? (spec.viewport.resolution === "auto" ? runtimeAutoBounds(options) : null);
+  const authored = interaction ?? explicitBounds(spec);
+  const observedNow = referenceNow?.getTime() ?? Date.now();
   const sessionView = spec.viewport.range === "1D" && !explicitBounds(spec)
-    ? latestSessionView(series[0], series, spec.viewport.extendedHours === true, undefined)
+    ? latestSessionView(series[0], series, spec.viewport.extendedHours === true, undefined, observedNow)
     : null;
-  const bounds = explicitBounds(spec) || runtimeRequestBounds(options)
-    ? requested
-    : sessionView?.bounds ?? followLatestMarketObservation(requested, series);
+  const bounds = authored ?? sessionView?.bounds ?? followLatestMarketObservation(requested, series);
   const primary = series[0]!;
   if (sessionView?.priorClose != null && primary.transform === "raw"
     && primary.unitGroup.startsWith("price") && primary.unitGroup !== "price:unknown") {
     series[0] = withPriorClose(primary, sessionView.priorClose);
   }
   const resolutionSupport = support.length === series.length ? intersectChartResolutionSupport(support) : [];
-  const priceComparison = resolvePriceComparison(spec, series, bounds, resolution, spec.viewport.dateWindow,
-    { preset: explicitBounds(spec) || runtimeRequestBounds(options) ? null : spec.viewport.range, now: referenceNow?.getTime() ?? Date.now() });
+  const priceComparison = resolvePriceComparison(spec, series, bounds, resolution, interaction ? null : spec.viewport.dateWindow,
+    { preset: authored ? null : spec.viewport.range, now: observedNow });
   if (priceComparison?.legs && comparisonSplitAssessment(priceComparison,
     series.map((entry) => ({ id: entry.id, label: entry.label, series: entry, splits: null })), now.getTime()).dropped.length) return null;
-  const displayBounds = comparisonDisplayBounds(bounds, priceComparison);
+  const displayBounds = comparisonDisplayBounds(bounds, priceComparison, !authored && spec.viewport.range === "1D");
   const comparisonBounds = priceComparison && priceComparison.start !== null
     ? priceComparison : bounds;
   const baseSeries = series.map((entry) => prepareBaseSeriesForStudies(eligibleComparisonSeries(entry, priceComparison),

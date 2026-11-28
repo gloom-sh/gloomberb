@@ -228,7 +228,7 @@ export const commands: Command[] = [
     id: "toggle-status-bar",
     prefix: "SB",
     label: "Toggle Status Bar",
-    description: "Show or hide the keyboard shortcuts bar",
+    description: "Show or hide the status bar",
     category: "Config",
     execute: (dispatch) => {
       dispatch({ type: "TOGGLE_STATUS_BAR" });
