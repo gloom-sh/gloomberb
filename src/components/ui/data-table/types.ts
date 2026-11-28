@@ -23,6 +23,14 @@ export type DataTableColumn = Pick<
   title?: string;
   flexGrow?: number;
   /**
+   * With `flexGrow`: the fewest cells a table fitted to its width narrows
+   * this column to, where the pane knows what its text needs (the longest
+   * name in a fixed list). The least needed columns then leave before that
+   * text is cut, and More draws them again. Unset, the column narrows to
+   * half its set width, never under 12 cells (`tableColumnFitFloor`).
+   */
+  fitFloor?: number;
+  /**
    * This column says what each row is though it does not come first: a
    * chain's strike between its calls and its puts. A table fitted to its
    * width never leaves it out, wherever the reader moved the other columns

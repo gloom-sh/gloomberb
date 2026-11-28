@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { fitDataTableColumns } from "../../../components/ui/data-table/column-fit";
+import { hiddenTableColumns } from "../../../components/ui/table-layout";
 import type { PricePoint, Quote } from "../../../types/financials";
+import { SECTOR_COLLECTIONS } from "./sector-data";
 import {
   applySectorReload,
+  buildSectorColumns,
   computeTrailingReturn,
   overlayLiveSectorQuote,
   sectorReturnTargetDate,
@@ -115,5 +119,37 @@ describe("background sector reloads", () => {
     expect(next[1]).toBe(rows[1]);
     const rolled = applySectorReload(rows, new Map([["XLK", { ...loaded(201), returnAsOfDate: "2026-09-11" }], ["XLE", null]]), true);
     expect(rolled[1]).toMatchObject({ price: null, quoteUnavailable: true });
+  });
+});
+
+describe("the board's columns in a narrow pane", () => {
+  // What the desktop and the web draw in a body `cells` wide, as the table fits it (the terminal scrolls to the rest).
+  const drawn = (width: number, cells: number, sortColumnId: string | null = "changePercent") => {
+    const fitted = fitDataTableColumns(buildSectorColumns(width), cells, { anchoredColumns: 1, sortColumnId });
+    return { ids: fitted.map((column) => column.id).join(" "), name: fitted[0]!.width, hidden: hiddenTableColumns(fitted).join(" ") };
+  };
+  const longest = Math.max(...SECTOR_COLLECTIONS.flatMap((collection) => collection.items.map((item) => item.name.length)));
+
+  test("1Y leaves before a sector's name is cut, and 1M never leaves for the name", () => {
+    // The browser's first screen, 53 cells: six columns left the name ten, and two rows both read "Consumer …".
+    const firstScreen = drawn(53, 53.75);
+    expect(firstScreen).toMatchObject({ ids: "name etf price changePercent return1M", hidden: "1Y" });
+    expect(firstScreen.name).toBeGreaterThanOrEqual(longest);
+    // Every name whole wherever all six columns show.
+    for (const width of [61, 64, 70]) {
+      expect(drawn(width, width)).toMatchObject({ ids: "name etf price changePercent return1M return1Y", hidden: "" });
+      expect(buildSectorColumns(width)[0]!.width).toBeGreaterThanOrEqual(longest);
+    }
+    // Between the two, 1Y waits behind More and the names are whole.
+    for (const width of [52, 56, 58]) {
+      const fitted = drawn(width, width + 0.75);
+      expect(fitted).toMatchObject({ hidden: "1Y" });
+      expect(fitted.name).toBeGreaterThanOrEqual(longest);
+    }
+    // A phone keeps 1M as it did: the name has what 1Y's leaving gives it and no more.
+    expect(drawn(48, 48.75)).toMatchObject({ ids: "name etf price changePercent return1M", hidden: "1Y" });
+    expect(drawn(46, 46.875)).toMatchObject({ ids: "name etf price changePercent return1M", hidden: "1Y" });
+    // Sorted by 1Y, it is the column that stays.
+    expect(drawn(53, 53.75, "return1Y")).toMatchObject({ ids: "name etf price changePercent return1Y", hidden: "1M" });
   });
 });
