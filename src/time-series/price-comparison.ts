@@ -36,16 +36,19 @@ function convertedText(legs: ReadonlyArray<{ label: string; entry: ResolvedSerie
  */
 function comparisonBasis(spec: ChartSpec, legs: ReadonlyArray<{ label: string; entry: ResolvedSeries | undefined }>): string {
   const target = spec.viewport.currency;
-  const priceOnly = spec.viewport.totalReturn === true ? legs.filter(({ entry }) => entry?.returnBasis === "price").map(({ label }) => label) : [];
+  const priceOnly = spec.viewport.totalReturn === true ? legs.filter(({ entry }) => entry?.returnBasis === "price") : [];
   const total = spec.viewport.totalReturn === true && !(priceOnly.length === legs.length && legs.length > 0);
-  if (!target) {
-    if (!total) return PRICE_COMPARISON_BASIS;
-    return priceOnly.length ? `${TOTAL_COMPARISON_BASIS} Price return for ${priceOnly.join(", ")}: distribution history unavailable.` : TOTAL_COMPARISON_BASIS;
+  const fallbackReasons = new Map<string, string[]>();
+  for (const { label, entry } of priceOnly) {
+    if (!total && !entry?.returnBasisReason) continue;
+    const reason = entry?.returnBasisReason ?? "distribution history unavailable";
+    fallbackReasons.set(reason, [...fallbackReasons.get(reason) ?? [], label]);
   }
   const converted = convertedText(legs);
-  const basis = `${total ? "Total" : "Price"} returns in ${target}${converted ? `, ${converted} at each day's FX close` : ""}; ${
+  const basis = !target ? total ? TOTAL_COMPARISON_BASIS : PRICE_COMPARISON_BASIS
+    : `${total ? "Total" : "Price"} returns in ${target}${converted ? `, ${converted} at each day's FX close` : ""}; ${
     total ? "cash distributions reinvested at the ex-date close." : "cash distributions excluded."}`;
-  return total && priceOnly.length ? `${basis} Price return for ${priceOnly.join(", ")}: distribution history unavailable.` : basis;
+  return [basis, ...[...fallbackReasons].map(([reason, labels]) => `Price return for ${labels.join(", ")}: ${reason}.`)].join(" ");
 }
 
 const closedPartialDays = Symbol("closedPartialDays");
@@ -155,6 +158,24 @@ function legsText(entries: ReadonlyArray<{ label: string; text: string }>): stri
 /** A leg's venue, whose sessions say whether its newest bar is still trading. */
 function legVenue(series: ResolvedSeries | undefined): string | undefined {
   return series?.timeBasis?.exchange || series?.listing?.exchange || undefined;
+}
+
+function isDailyCashLeg(resolution: string | undefined, venue: string | undefined, label: string, entry?: ResolvedSeries): boolean {
+  return resolution === "1d" && isUsCashListing(venue, entry?.priceAssetCategory) && !label.startsWith("^");
+}
+
+export function closedPartialComparisonDays(
+  entry: ResolvedSeries, resolution: ManualChartResolution | "auto" | undefined, label: string, now: number, fallbackVenue?: string,
+): ReadonlySet<string> {
+  const days = new Set<string>();
+  const venue = legVenue(entry) ?? fallbackVenue;
+  if (!isDailyCashLeg(resolution, venue, label, entry)) return days;
+  for (const point of entry.points) {
+    if (!point.partial || !Number.isFinite(+point.date) || scalarPointValue(point) === null) continue;
+    const day = observationDate(+point.date, entry);
+    if ((regularSessionCloseOn(venue, day) ?? Infinity) <= now) days.add(day);
+  }
+  return days;
 }
 
 /** Comparable normalized closing-price legs share observed endpoints. Other chart meanings are unchanged. */
@@ -347,27 +368,22 @@ export function resolvePriceComparison(
   const dropped: NonNullable<PriceComparison["dropped"]> = [];
   const reported = new Set<string>();
   const legs: ComparedLeg[] = [];
-  const rejected = new Map<string, Set<string>>();
-  const cashDaily = (venue: string | undefined, label: string, entry?: ResolvedSeries) => resolution === "1d"
-    && isUsCashListing(venue, entry?.priceAssetCategory) && !label.startsWith("^");
+  const rejected = new Map<string, ReadonlySet<string>>();
   // Intraday bars compare by the bar of the chart's size they open in: a fund's 13:30 bar and a coin's 13:00 bar are
   // one hourly bar, so the fund's last bar of the day (19:30, closing at 20:00) meets the coin's bar closing then.
   const bucketMs = calendarBars ? null : intradayBucketMs(resolution, seriesIds.map((id) => byId.get(id)!));
   for (const { id, label, entry: loaded, venue } of requestedLegs) {
     const entry = loaded!;
     const inWindow = priceObservationWindowFilter(entry, bounds, resolution, dateWindow);
+    const rejectedDays = closedPartialComparisonDays(entry, resolution, label, now, venue);
+    if (rejectedDays.size) rejected.set(id, rejectedDays);
     const points = new Map<string, TimeSeriesPoint>();
     const window = new Set<string>();
     for (const point of entry.points) {
       const time = point.date.getTime();
       if (!Number.isFinite(time) || scalarPointValue(point) === null) continue;
       const key = calendarBars ? observationDate(time, entry) : String(bucketMs ? Math.floor(time / bucketMs) * bucketMs : time);
-      if (point.partial && cashDaily(venue, label, entry) && (regularSessionCloseOn(venue, key) ?? Infinity) <= now) {
-        const days = rejected.get(id) ?? new Set<string>();
-        days.add(key);
-        rejected.set(id, days);
-        continue;
-      }
+      if (point.partial && rejectedDays.has(key)) continue;
       points.set(key, point);
       if (inWindow(time)) window.add(key);
     }
@@ -399,7 +415,7 @@ export function resolvePriceComparison(
     : sharedWindow.at(-1);
   const requestedClose = resolution === "1d" && dateWindow && /^\d{4}-\d{2}-\d{2}$/.test(dateWindow.end)
     && requestedLegs.some(({ venue }) => isAlwaysOpenExchange(venue)) ? requestedLegs.flatMap(({ id, label, venue, entry }) => {
-      if (!cashDaily(venue, label, entry)) return [];
+      if (!isDailyCashLeg(resolution, venue, label, entry)) return [];
       const closed = latestRegularSessionClose(venue, Math.min(now, Date.parse(`${dateWindow.end}T23:59:59.999Z`)));
       const leg = legs.find((candidate) => candidate.id === id);
       if (!closed || closed.date < dateWindow.start.slice(0, 10) || (leg && sharedEnd && sharedEnd >= closed.date)) return [];

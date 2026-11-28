@@ -57,6 +57,7 @@ import { currencySeries } from "./currency-conversion";
 import {
   bufferPriceComparison,
   clipPriceComparison,
+  closedPartialComparisonDays,
   comparisonSplitAssessment,
   eligibleComparisonSeries,
   observationDate,
@@ -368,6 +369,9 @@ async function resolveChartSpecPass(
   const referenceNow = sources.now ?? new Date(resolutionStartedAt);
   const liveTails = new Map<string, LiveTailRequest>();
   const comparedSeriesIds = new Set(priceComparisonSeriesIds(spec) ?? []);
+  const comparisonReturnTransforms = new Map<string, (
+    series: ResolvedSeries, resolution: ManualChartResolution | undefined, now: number,
+  ) => Promise<ResolvedSeries>>();
   const initialVisibleBounds = requestedBounds(spec, referenceNow);
 
   const loadFinancials = (source: Extract<ChartSeriesSpec["source"], { kind: "security" }>) => {
@@ -1079,21 +1083,30 @@ async function resolveChartSpecPass(
       if (returnHistory?.note) base.returnRollNote = returnHistory.note;
       let result = builtBars ? withBuiltBarSize(base, builtBars) : base;
       if (comparedSeriesIds.has(seriesSpec.id)) nativeComparisonSeries.set(seriesSpec.id, result);
-      if (spec.viewport.totalReturn === true && totalReturnFieldId(source.fieldId)) {
-        const outcome = await totalReturnSeries(result, () => loadDistributions(resolvedSource),
-          merged.quote?.currency || quoteMetadata?.currency, referenceNow);
-        result = outcome.series;
-        if (outcome.notice) warnings.push(`${instrumentLabel(resolvedSource)}: ${outcome.notice}`);
-      }
-      // A chart in one currency converts each price at its day's FX close, after any distributions are reinvested in the listing's own.
-      const targetCurrency = spec.viewport.currency;
-      if (targetCurrency && totalReturnFieldId(source.fieldId)) {
-        const converted = await currencySeries(result, {
-          target: targetCurrency, priceCurrency: merged.quote?.currency || quoteMetadata?.currency,
-          loadCloses: sources.loadFxCloses, dayOf: (point) => observationDate(point.date.getTime(), result),
-        });
-        result = converted.series;
-        if (converted.notice) warnings.push(`${instrumentLabel(resolvedSource)}: ${converted.notice}`);
+      if (totalReturnFieldId(source.fieldId) && (spec.viewport.totalReturn === true || spec.viewport.currency)) {
+        const applyReturns = async (series: ResolvedSeries, cadence?: ManualChartResolution, now = +referenceNow) => {
+          const priceCurrency = merged.quote?.currency || quoteMetadata?.currency;
+          if (spec.viewport.totalReturn === true) {
+            const { symbol, exchange } = resolvedSource.instrument;
+            const unavailable = cadence === "1d" ? closedPartialComparisonDays(series, cadence, symbol, now, exchange) : undefined;
+            const outcome = await totalReturnSeries(series, () => loadDistributions(resolvedSource), priceCurrency, referenceNow, unavailable);
+            series = outcome.series;
+            if (outcome.notice) warnings.push(`${instrumentLabel(resolvedSource)}: ${outcome.notice}`);
+          }
+          // Convert at the day's FX close after reinvesting in the listing's currency.
+          if (spec.viewport.currency) {
+            const converted = await currencySeries(series, {
+              target: spec.viewport.currency, priceCurrency,
+              loadCloses: sources.loadFxCloses, dayOf: (point) => observationDate(point.date.getTime(), series),
+            });
+            series = converted.series;
+            if (converted.notice) warnings.push(`${instrumentLabel(resolvedSource)}: ${converted.notice}`);
+          }
+          return series;
+        };
+        if (comparedSeriesIds.has(seriesSpec.id) && spec.viewport.totalReturn === true) {
+          comparisonReturnTransforms.set(seriesSpec.id, applyReturns);
+        } else result = await applyReturns(result);
       }
       if (marketField && history?.historyStart !== undefined && Number.isFinite(history.historyStart)) {
         result.historyStart = new Date(history.historyStart);
@@ -1140,6 +1153,15 @@ async function resolveChartSpecPass(
   }));
 
   let rawSeries = loaded.filter((entry): entry is ResolvedSeries => !!entry);
+  const marketCadences = () => new Set(rawSeries.filter((entry) => entry.observationKind === "market" && entry.points.length > 0)
+    .map((entry) => entry.historyResolution));
+  const comparisonNow = () => +referenceNow + Math.max(0, Date.now() - resolutionStartedAt);
+  const returnEligibilityTime = comparisonReturnTransforms.size ? comparisonNow() : undefined;
+  if (returnEligibilityTime !== undefined) {
+    const cadences = marketCadences();
+    const cadence = cadences.size === 1 ? [...cadences][0] ?? undefined : undefined;
+    rawSeries = await Promise.all(rawSeries.map((entry) => comparisonReturnTransforms.get(entry.id)?.(entry, cadence, returnEligibilityTime) ?? entry));
+  }
   const statementTarget = spec.viewport.currency;
   if (statementTarget && sources.loadStatementCurrency) {
     const statements = new Set(spec.series.filter(({ source }) => source.kind === "security" && source.fieldId.startsWith("fundamental.")).map(({ id }) => id));
@@ -1211,8 +1233,7 @@ async function resolveChartSpecPass(
     const index = rawSeries.indexOf(primaryRaw);
     rawSeries[index] = withPriorClose(primaryRaw, sessionView.priorClose);
   }
-  const servedCadences = new Set(rawSeries.filter((entry) => entry.observationKind === "market" && entry.points.length > 0)
-    .map((entry) => entry.historyResolution));
+  const servedCadences = marketCadences();
   const commonCadence = servedCadences.size === 1 ? [...servedCadences][0] : undefined;
   // A series served in other bars than the chart's (a source that did not answer for 5-minute bars, then
   // answered daily ones) says so, so its line is not read in the bars the others are in.
@@ -1226,7 +1247,7 @@ async function resolveChartSpecPass(
   }
   const resolution = commonCadence ?? undefined;
   const comparisonResolution = resolution ?? "auto";
-  const comparisonOptions = { preset: hasExplicitWindow ? null : spec.viewport.range, now: referenceNow.getTime() + Math.max(0, Date.now() - resolutionStartedAt) };
+  const comparisonOptions = { preset: hasExplicitWindow ? null : spec.viewport.range, now: returnEligibilityTime ?? comparisonNow() };
   let priceComparison = resolvePriceComparison(spec, rawSeries, bounds, comparisonResolution, requestBounds ? null : spec.viewport.dateWindow, comparisonOptions);
   // A coin compared in daily closes with a listing that closes each day is measured at that close when its hourly bars reach.
   const timed = sources.dataProvider && comparisonResolution === "1d"

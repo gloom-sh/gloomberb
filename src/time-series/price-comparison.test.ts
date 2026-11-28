@@ -654,6 +654,37 @@ describe("a fund compared with a coin", () => {
     }
   });
 
+  test("total return cannot reinvest a cash distribution at an ineligible interior ex-date close", async () => {
+    const window = { start: "2026-11-23", end: "2026-11-27" };
+    const exDate = "2026-11-24";
+    const equity = rows([["2026-11-20", 100], ["2026-11-23", 100], [exDate, 95], ["2026-11-25", 98], ["2026-11-27", 100]]);
+    const coin = equity.map(({ date }, index) => ({ date, close: 100 + index }));
+    const base = chart(window);
+    const total = { ...base, viewport: { ...base.viewport, totalReturn: true } };
+    const resolve = (partial: boolean) => {
+      const cash = equity.map((point) => ({ ...point, partial: partial && +point.date === +date(exDate) }));
+      const input = coinSources(() => [], { IBIT: cash, "BTC-USD": coin });
+      input.dataProvider.getDetailedPriceHistoryWithMetadata = async (symbol, _exchange, _start, _end, interval) => ({
+        points: interval === "1d" ? symbol === "IBIT" ? cash : coin : [], resolution: interval === "1d" ? "1d" : "1h",
+      });
+      input.dataProvider.getCorporateActions = async (symbol) => ({ symbol, currency: "USD", coverage: { dividends: "available" },
+        splits: [], earnings: [], dividends: symbol === "IBIT" ? [{ exDate, amount: 5 }] : [] });
+      input.dataProvider.getQuoteMetadata = async (symbol) => ({ symbol, currency: "USD", source: {},
+        instrumentType: symbol === "IBIT" ? "ETF" : "CRYPTOCURRENCY", listingExchangeName: symbol === "IBIT" ? "NASDAQ" : "CCC" });
+      return resolveChartSpecData(total, { ...input, now: date("2026-11-28T06:05:00Z") });
+    };
+    const incomplete = await resolve(true);
+    const complete = await resolve(false);
+    expect(incomplete.series.map((leg) => leg.returnBasis)).toEqual(["price", "total"]);
+    expect(incomplete.priceComparison?.notice).toContain("Price return for IBIT: ex-date close unavailable (2026-11-24).");
+    expect(incomplete.series[0]?.points.map((point) => point.date.toISOString().slice(0, 10)))
+      .toEqual(["2026-11-20", "2026-11-23", "2026-11-25", "2026-11-27"]);
+    expect(incomplete.series[0]?.points.at(-1)?.value).toBe(0);
+    expect(complete.series[0]?.returnBasis).toBe("total");
+    expect(complete.series[0]?.points.at(-1)?.value).toBeCloseTo(100 * 5 / 95, 9);
+    expect(incomplete.series[1]?.points).toEqual(complete.series[1]?.points);
+  });
+
   test("the hourly alternative reaches the early bell on both legs without applying daily partial rules", async () => {
     const window = { start: "2026-11-23", end: "2026-11-27" };
     const fundHours = rows([["2026-11-20T20:30:00Z", 33.02], ["2026-11-27T16:30:00Z", 33.70], ["2026-11-27T17:30:00Z", 33.86]]);

@@ -17,9 +17,8 @@ import { zonedDateKey, zonedWallClockToUtcMs } from "../../../utils/zoned-date-t
 import { fetchHistoryResult } from "../../../sources/history-result";
 import { historyRetentionNotice, isHistoryRetentionError, type HistoryRetention } from "../../../sources/history-retention";
 import type { PriceHistoryResult } from "../../../types/price-history";
-import { isRegularSessionTime, latestRegularSessionClose, regularSessionCloseOn } from "../../../market-data/market/freshness";
+import { isRegularSessionTime, regularSessionCloseOn } from "../../../market-data/market/freshness";
 import { isUsCashListing } from "../../../time-series/chart-data";
-import { quoteTradingDay } from "../../../market-data/quotes/day-range";
 
 type IntradayRangePreset = "1D" | "1W";
 
@@ -53,19 +52,16 @@ export interface LoadedIntradayWindow extends IntradayWindow {
 }
 
 export function historicalIntradayClose(
-  window: Pick<LoadedIntradayWindow, "points" | "quote"> & { exchange: string },
+  points: readonly PricePoint[],
+  venue: string,
   day: string,
   now: number,
 ): { at?: number; lastAt?: number } | null {
-  const venue = window.exchange || window.quote?.listingExchangeName || window.quote?.exchangeName;
-  if (!isUsCashListing(venue, window.quote?.instrumentType)) return null;
   const bell = regularSessionCloseOn(venue, day);
-  const latest = latestRegularSessionClose(venue, now);
   if (bell === null || bell > now) return null;
-  if (declaredSessionClose(window.points, bell)) return { at: bell };
-  if (day === latest?.date && window.quote && quoteTradingDay(window.quote) === day) return null;
+  if (declaredSessionClose(points, bell)) return { at: bell };
   const zone = resolveExchangeTimeZone(venue) ?? "UTC";
-  const last = window.points.findLast((point) => {
+  const last = points.findLast((point) => {
     const time = getPricePointTimestamp(point);
     return Number.isFinite(time) && time < bell && zonedDateKey(time, zone) === day
       && isRegularSessionTime(venue, time) === true && !point.sessionClose && !pricePointIntegrity(point);

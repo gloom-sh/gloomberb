@@ -46,6 +46,7 @@ interface FormedBar {
   volumeStart: number | null;
   /** Cumulative session volume when the next bar opened. */
   volumeEnd: number | null;
+  bellBoundary?: { beforeVolume: number | null; extendedVolumeKnown: boolean };
   point: PricePoint | null;
 }
 
@@ -145,6 +146,7 @@ export class LiveBarAccumulator {
   private bars: FormedBar[] = [];
   private lastQuote: Quote | undefined;
   private lastTime = Number.NEGATIVE_INFINITY;
+  private lastMembershipTime = Number.NEGATIVE_INFINITY;
   private lastPrice = Number.NaN;
   /** The last observation was a pre-market quote, whose count is still the previous session's. */
   private lastPreMarket = false;
@@ -255,6 +257,30 @@ export class LiveBarAccumulator {
     forming.point = null;
   }
 
+  private applyCashPrintAtBoundary(
+    latest: PricePoint, extended: FormedBar, price: number, volume: number | null, membershipTime: number, options: LiveBarOptions, currency: string,
+  ): void {
+    const boundary = extended.bellBoundary;
+    const cash = this.bars.at(-2) ?? this.anchor!;
+    if (!boundary || !this.inBar(membershipTime, cash.time, options) || hasLikelyQuoteUnitMismatch(
+      { currency, price: cash.close ?? latest.close }, { currency, price },
+    )) return;
+    cash.high = Math.max(cash.high ?? price, price);
+    cash.low = Math.min(cash.low ?? price, price);
+    cash.close = price;
+    cash.point = null;
+    if (volume !== null) {
+      if (cash.volumeEnd !== null && boundary.beforeVolume !== null) {
+        cash.volumeEnd += Math.max(0, volume - boundary.beforeVolume);
+      }
+      if (!boundary.extendedVolumeKnown) this.cumulative = volume;
+      extended.volumeStart = Math.min(volume, this.cumulative ?? volume);
+      extended.point = null;
+    }
+    delete extended.bellBoundary;
+    this.version += 1;
+  }
+
   private observe(latest: PricePoint, quote: Quote, options: LiveBarOptions, exchange?: string): void {
     if (quote === this.lastQuote) return;
     this.lastQuote = quote;
@@ -269,10 +295,15 @@ export class LiveBarAccumulator {
     const { time, price } = observation;
     const volume = isFiniteNumber(quote.volume) && quote.volume >= 0 ? quote.volume : null;
     if (time < this.lastTime) return;
-    if (time === this.lastTime && price === this.lastPrice && (volume === null || volume === this.cumulative)) return;
+    if (time === this.lastTime && membershipTime === this.lastMembershipTime
+      && price === this.lastPrice && (volume === null || volume === this.cumulative)) return;
 
     const anchor = this.anchor!;
     const forming = this.bars.at(-1);
+    if (options.extendedHours && forming?.time === time && time === this.lastTime && membershipTime === time - 1) {
+      this.applyCashPrintAtBoundary(latest, forming, price, volume, membershipTime, options, quote.currency);
+      return;
+    }
     if (!calendar && membershipTime < (forming?.time ?? anchor.time)) return;
     const latestClose = forming?.close ?? anchor.close ?? latest.close;
     if (hasLikelyQuoteUnitMismatch(
@@ -284,7 +315,9 @@ export class LiveBarAccumulator {
     const range = calendar ? quoteSessionRange(quote, observation, resolution, exchange) : null;
     const preMarket = !!quote.marketState && PRE_MARKET_STATES.has(quote.marketState);
     const previousTime = this.lastTime;
-    let previous = this.cumulative;
+    const cashArrivedFirst = previousTime === time && this.lastMembershipTime === time - 1;
+    const beforeVolume = this.cumulative;
+    let previous = beforeVolume;
     if (volume !== null && previous !== null && volume < previous) {
       // A new session's count starts from zero and all of it belongs to the
       // calendar bar it falls in. Any other drop re-anchors the count lower;
@@ -304,11 +337,13 @@ export class LiveBarAccumulator {
       this.cumulative = volume;
     }
     this.lastTime = time;
+    this.lastMembershipTime = membershipTime;
     this.lastPrice = price;
     this.lastPreMarket = preMarket;
     this.version += 1;
 
     if (forming && this.inBar(membershipTime, forming.time, options, exchange)) {
+      if (forming.bellBoundary && time === forming.time && volume !== null) forming.bellBoundary.extendedVolumeKnown = true;
       forming.high = Math.max(forming.high, price, range?.high ?? price);
       forming.low = Math.min(forming.low, price, range?.low ?? price);
       forming.close = price;
@@ -361,6 +396,9 @@ export class LiveBarAccumulator {
       close: price,
       volumeStart: sessionCount ? 0 : previous ?? volume,
       volumeEnd: null,
+      ...(!calendar && !cashArrivedFirst && quote.extendedSessionPrint === true && barTime === time ? {
+        bellBoundary: { beforeVolume, extendedVolumeKnown: volume !== null },
+      } : {}),
       point: null,
     });
   }

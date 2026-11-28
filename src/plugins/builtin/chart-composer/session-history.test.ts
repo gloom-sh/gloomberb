@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, setSystemTime, test } from "bun:test";
 import { buildFunctionReport } from "../../../cli/pane-functions/report";
 import { parsePaneFunctionArgs } from "../../../cli/pane-functions/options";
 import { resolvePaneFunction } from "../../../cli/pane-functions/resolver";
@@ -10,7 +10,6 @@ import { createDefaultConfig } from "../../../types/config";
 import type { PricePoint } from "../../../types/financials";
 import { chartComposerModule } from ".";
 import type { ChartPaneModel } from "./headless";
-import { historicalIntradayClose } from "./session-history";
 
 const day = "2026-10-30";
 const point = (time: string, close: number, fields?: Partial<PricePoint>): PricePoint => ({ date: new Date(`${day}T${time}:00Z`), close, ...fields });
@@ -76,7 +75,29 @@ test.each([
   }
 });
 
-test("the latest dated session still uses its same-session quote path if no source close is declared", () => {
-  expect(historicalIntradayClose({ exchange: "ARCA", points: [last],
-    quote: createTestQuote({ symbol: "BDRY", listingExchangeName: "ARCA", lastUpdated: +bell.date }) }, day, +bell.date)).toBeNull();
+test("latest completed dated GIP keeps native minute OHLCV when the CLOSED quote has no regular close", async () => {
+  const session = "2026-11-27";
+  const print = { date: new Date(`${session}T17:59:00Z`), open: 33.82, high: 33.88, low: 33.81, close: 33.86, volume: 710 };
+  const points = [{ ...print, date: new Date(`${session}T17:58:00Z`), close: 33.82 }, print];
+  const market = { config: createDefaultConfig("."), store: { loadTicker: async () => null }, dataProvider: createTestDataProvider({
+    getQuote: async () => createTestQuote({ symbol: "IBIT", instrumentType: "ETF", listingExchangeName: "NASDAQ", marketState: "CLOSED",
+      price: 33.85, regularClose: undefined, lastUpdated: Date.parse(`${session}T18:00:00Z`) }),
+    getDetailedPriceHistoryWithMetadata: async () => ({ resolution: "1m", points }),
+  }) } as unknown as MarketContext;
+  const raw = "IBIT:NASDAQ";
+  setSystemTime(new Date("2026-11-28T06:05:00Z"));
+  try {
+    const resolved = await resolvePaneFunction(catalog, market, parsePaneFunctionArgs(["GIP", raw, "--session", session]), { command: "fn" });
+    const report = await buildFunctionReport(resolved, market, raw, catalog);
+    const model = (await loadResolvedHeadlessPaneModel(resolved, market, raw)).result as ChartPaneModel;
+    expect(model.snapshot.intradayHistories[0]).toMatchObject({ points, bufferedPoints: points });
+    expect(report.text).toContain("last regular print 17:59 UTC; official close unavailable");
+    expect(report.data.complete).toBe(false);
+    const csv = renderReportCsv(report.tables!, report.data.freshness);
+    expect(csv).toMatch(/17:59:00.*33\.82,33\.88,33\.81,33\.86,710/);
+    expect(csv).not.toContain(",33.85,");
+    expect(csv).not.toContain("18:00:00");
+  } finally {
+    setSystemTime();
+  }
 });

@@ -60,6 +60,29 @@ describe("LiveBarAccumulator", () => {
     expect(apply({ ...post, lastUpdated: bell + 60_000 })).toEqual([{ ...cash, close: 33.86, high: 33.86, volume: 823_376 }]);
   });
 
+  test.each(["2026-09-22T20:00:00Z", "2026-11-27T18:00:00Z"])("cash and extended prints at %s keep separate bars in either order", (stamp) => {
+    const bell = Date.parse(stamp);
+    const cash = { date: new Date(bell - 300_000), open: 33.77, high: 33.83, low: 33.73, close: 33.82, volume: 1_000 };
+    const auction = quote("00:00:00", 33.86, 1_060, { instrumentType: "ETF", lastUpdated: bell, extendedSessionPrint: false });
+    const extended = { ...auction, marketState: "POST" as const, postMarketPrice: 33.85, extendedSessionPrint: true, volume: 1_070 };
+    const updatedCash = { ...cash, high: 33.86, close: 33.86, volume: 1_060 };
+    const postBar = { date: new Date(bell), open: 33.85, high: 33.85, low: 33.85, close: 33.85, volume: 10 };
+    for (const [first, second] of [[auction, extended], [extended, auction]] as const) {
+      const accumulator = new LiveBarAccumulator();
+      const apply = (next: Quote, now = next.lastUpdated) => accumulator.apply([cash], next, {
+        resolution: "5m", exchange: "NASDAQ", extendedHours: true, liveSince: +cash.date, now,
+      });
+      const beforeBell = { ...auction, lastUpdated: bell - 60_000, price: 33.82, volume: 1_000 };
+      apply(beforeBell);
+      apply(first);
+      expect(apply(second)).toEqual([updatedCash, postBar]);
+      const nextExtended = { ...extended, postMarketPrice: 33.88, volume: 1_090, lastUpdated: bell + 60_000 };
+      expect(apply(nextExtended)).toEqual([updatedCash, { ...postBar, high: 33.88, close: 33.88, volume: 30 }]);
+      expect(apply({ ...auction, price: 33.70, volume: 1_065 }, nextExtended.lastUpdated))
+        .toEqual([updatedCash, { ...postBar, high: 33.88, close: 33.88, volume: 30 }]);
+    }
+  });
+
   test("an early-close ETF's late print cannot extend regular history, even when labelled CLOSED", () => {
     const date = (time: string) => new Date(`2026-11-27T${time}Z`);
     const cash = { date: date("17:55:00"), open: 33.765, high: 33.87, low: 33.735, close: 33.86, volume: 823_316 };

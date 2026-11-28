@@ -58,6 +58,7 @@ import { classifyInstrumentType } from "../../../tickers/instrument-kind";
 import { priceComparisonEndsIntraday, type PriceComparison } from "../../../time-series/price-comparison";
 import { LATEST_INTRADAY_TEXT, periodDayText } from "../../../market-data/market/period-return";
 import { CLOSING_PRINT_PENDING_TEXT, newestClosedSession, newestSessionClose, withOfficialCloses } from "../../../time-series/official-close";
+import { isUsCashListing } from "../../../time-series/chart-data";
 
 export interface ChartPaneModel extends HeadlessSeriesResult {
   /** The renderer consumes the full model; generic reports project series and metadata. */
@@ -943,14 +944,12 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
           if (!history.points.length || futuresSessionOpenMinute(history.symbol, history.exchange) != null
             || isRoundTheClockCoin(history.symbol, history.exchange) || isCurrencyPairListing(history.symbol, history.exchange)) return;
           const now = Date.now();
-          if (request.session) {
-            const dated = historicalIntradayClose(history, request.session, now);
-            if (dated) {
-              historicalCloses.set(history.symbol, dated);
-              return;
-            }
-          }
           const known = history.exchange || history.quote?.listingExchangeName || history.quote?.exchangeName || undefined;
+          if (request.session && known && isUsCashListing(known, history.quote?.instrumentType)) {
+            const dated = historicalIntradayClose(history.points, known, request.session, now);
+            if (dated) historicalCloses.set(history.symbol, dated);
+            return;
+          }
           if (known && isAlwaysOpenExchange(known)) return;
           // While the session trades, no session of the chart has closed since its bars were read.
           if (history.quote?.marketState === "REGULAR" || (known && isRegularSessionTime(known, now) === true)) return;
@@ -1066,7 +1065,7 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
       model.freshness = chartFreshness(model.series, model.spec, model.chart.priceComparison, quotes);
       // A session asked for by its date (`GIP AAPL --session 2026-11-10`) that today's quote does not carry on is a past
       // observation: dated by that session, as a stored close or a past curve is, never stale and never the live quote.
-      const pastSession = template === "graph-intraday-price-pane" && !model.freshness.observations
+      const pastSession = template === "graph-intraday-price-pane" && (!model.freshness.observations || historicalCloses.size > 0)
         ? intradayHistories.find((window) => window.requestedSession && window.points.length)?.requestedSession : null;
       if (pastSession) model.freshness = { status: "not-a-feed", basis: PAST_SESSION_TEXT, asOf: pastSession, oldest: null };
       if (historicalCloses.size) {
