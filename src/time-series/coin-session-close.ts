@@ -3,6 +3,7 @@ import { fetchHistoryResult } from "../sources/history-result";
 import type { DataProvider } from "../types/data-provider";
 import { isRoundTheClockCoin } from "../utils/crypto-pair";
 import { canonicalExchange, isUsListingExchange } from "../utils/exchanges";
+import { isPositiveNumber } from "../utils/guards";
 import { logFailure } from "../utils/log-failure";
 import { zonedDateTimeParts, zonedWallClockToUtcMs } from "../utils/zoned-date-time";
 import type { PriceComparison } from "./price-comparison";
@@ -170,13 +171,17 @@ export async function coinLegsAtSessionClose(
     // Every day or none: a line of closes at the venue's close with a few UTC closes between would be neither.
     if (!closes.has(baseClose) || times.some((time) => !closes.has(time))) return;
     const sampledCloses = new Set<TimeSeriesPoint>();
-    const points = entry.points.map((point, index) => {
-      const price = instants.has(index) ? closes.get(instants.get(index)!)! : undefined;
-      if (price === undefined) return point;
+    const points = [...entry.points];
+    for (const [index, time] of instants) {
+      const point = points[index]!;
+      const factor = point.conversionFactor ?? (entry.convertedFrom ? undefined : 1);
+      if (!isPositiveNumber(factor)) return;
+      const price = closes.get(time)! * factor;
+      if (!isPositiveNumber(price)) return;
       const sampled = { ...point, value: price, close: price, rawValue: price, partial: undefined };
       sampledCloses.add(sampled);
-      return sampled;
-    });
+      points[index] = sampled;
+    }
     next[next.indexOf(entry)] = { ...entry, points };
     samples.set(id, { ...bounds, closes: sampledCloses });
   }));
@@ -187,7 +192,8 @@ export async function coinLegsAtSessionClose(
  * What a daily comparison of coins with listings that trade in sessions says
  * of when each is measured: `BTC-USD at the US close` when its hourly bars
  * put it there, else `BTC-USD to 00:00 UTC, 4 h after the US close`. Null
- * when no coin is compared with such a listing.
+ * when no coin is compared with such a listing. A forming endpoint is not a
+ * close; the sampling basis then describes only the historical observations.
  */
 export function priceComparisonCloseTimes(
   comparison: Pick<PriceComparison, "legs">,
@@ -203,9 +209,11 @@ export function priceComparisonCloseTimes(
   const market = sessionMarketName(venue);
   const parts = coins.map((id) => {
     const label = labels.get(id) ?? id;
-    if (atSessionClose.has(id)) return `${label} at the ${market} close`;
     const leg = comparison.legs![id]!;
-    const sessionClose = leg.intraday ? null : regularSessionCloseOn(venue, leg.endDay);
+    const sampled = atSessionClose.has(id);
+    if (leg.intraday) return `${label} historical marks at ${sampled ? `the ${market} close` : "00:00 UTC"}`;
+    if (sampled) return `${label} at the ${market} close`;
+    const sessionClose = regularSessionCloseOn(venue, leg.endDay);
     const coinClose = Date.parse(`${leg.endDay}T00:00:00Z`) + DAY_MS;
     const hours = sessionClose === null ? null : Math.round((coinClose - sessionClose) / HOUR_MS);
     return hours !== null && hours > 0 ? `${label} to 00:00 UTC, ${hours} h after the ${market} close` : `${label} to 00:00 UTC`;

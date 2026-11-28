@@ -45,10 +45,14 @@ function comparisonBasis(spec: ChartSpec, legs: ReadonlyArray<{ label: string; e
     fallbackReasons.set(reason, [...fallbackReasons.get(reason) ?? [], label]);
   }
   const converted = convertedText(legs);
-  const basis = !target ? total ? TOTAL_COMPARISON_BASIS : PRICE_COMPARISON_BASIS
-    : `${total ? "Total" : "Price"} returns in ${target}${converted ? `, ${converted} at each day's FX close` : ""}; ${
+  const loaded = legs.filter(({ entry }) => entry?.points.length);
+  const unconverted = target ? loaded.filter(({ entry }) => !entry?.convertedFrom && entry?.unitGroup !== `price:${target}`) : [];
+  const basis = !target || (unconverted.length > 0 && unconverted.length === loaded.length)
+    ? total ? TOTAL_COMPARISON_BASIS : PRICE_COMPARISON_BASIS
+    : `${total ? "Total" : "Price"} returns in ${target}${unconverted.length ? " where available" : ""}${converted ? `, ${converted} at each day's FX close` : ""}; ${
     total ? "cash distributions reinvested at the ex-date close." : "cash distributions excluded."}`;
-  return [basis, ...[...fallbackReasons].map(([reason, labels]) => `Price return for ${labels.join(", ")}: ${reason}.`)].join(" ");
+  const fxFallback = unconverted.length ? [`${listLabels(unconverted.map(({ label }) => label))} not converted to ${target}.`] : [];
+  return [basis, ...fxFallback, ...[...fallbackReasons].map(([reason, labels]) => `Price return for ${labels.join(", ")}: ${reason}.`)].join(" ");
 }
 
 const closedPartialDays = Symbol("closedPartialDays");
