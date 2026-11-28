@@ -5,6 +5,7 @@ import {
 } from "../../core/state/app/state";
 import { createSavedLayoutId } from "../../layout/pane-layout-move";
 import { dockPane, floatAtRect, getDockedPaneIds, insertAtRootEdge, removePane, withoutTransientPanes } from "../../layout/pane-manager";
+import { normalizeDockNode } from "../../layout/pane-manager/dock-normalization";
 import { isTransientPane } from "../../layout/pane-manager/transient";
 import {
   createBlankLayout,
@@ -363,6 +364,42 @@ function mergeChange<Value>(current: Value, before: Value, after: Value): Value 
   return applyProfileEdits(json(current), diffProfile(json(before), json(after)), { conflicts: "take" }) as Value;
 }
 
+type PanePlacement = "docked" | "floating" | "detached";
+
+function panePlacements(layout: LayoutConfig): Map<string, PanePlacement> {
+  const placed = new Map<string, PanePlacement>();
+  for (const id of getDockedPaneIds(layout)) placed.set(id, "docked");
+  for (const entry of layout.floating) placed.set(entry.instanceId, "floating");
+  for (const entry of layout.detached) placed.set(entry.instanceId, "detached");
+  return placed;
+}
+
+/** A pane's placement changes with that pane, not with the dock subtree it happened to share. */
+function mergeLayoutChange(current: LayoutConfig, before: LayoutConfig, after: LayoutConfig): LayoutConfig {
+  const merged = mergeChange(current, before, after);
+  if (merged === current || merged === after) return merged;
+
+  const currentPlacements = panePlacements(current);
+  const beforePlacements = panePlacements(before);
+  const afterPlacements = panePlacements(after);
+  const placements = new Map(merged.instances.map(({ instanceId }) => {
+    const next = afterPlacements.get(instanceId);
+    return [instanceId, next === beforePlacements.get(instanceId) ? currentPlacements.get(instanceId) : next] as const;
+  }));
+  const docked = new Set([...placements].flatMap(([id, placement]) => placement === "docked" ? [id] : []));
+  const dock = (layout: LayoutConfig) => normalizeDockNode(layout.dockRoot, docked, new Set());
+  const seen = new Set<string>();
+  const dockRoot = normalizeDockNode(mergeChange(dock(current), dock(before), dock(after)), docked, seen);
+  const layout = {
+    ...merged,
+    dockRoot,
+    floating: merged.floating.filter(({ instanceId }) => placements.get(instanceId) === "floating"),
+    detached: merged.detached.filter(({ instanceId }) => placements.get(instanceId) === "detached"),
+  };
+  for (const id of docked) if (!seen.has(id)) layout.dockRoot = dockPane(layout, id).dockRoot;
+  return layout;
+}
+
 /**
  * Applies what `windowId` sent on top of the shared state, counting only what
  * changed since `base`, the state the window drew from. Settings and lists
@@ -379,6 +416,7 @@ export function mergeWindowSnapshot(
   windowId: string,
   base: DesktopSharedStateSnapshot | null,
   sent: DesktopSharedStateSnapshot,
+  options?: { settingsOnly?: boolean },
 ): WindowLayouts {
   const view = state.views[windowId];
   if (!view) return state;
@@ -395,6 +433,8 @@ export function mergeWindowSnapshot(
     else if (key === "pluginConfig") configRecord[key] = mergedPluginConfig(state.config.pluginConfig, before.config.pluginConfig, after.config.pluginConfig);
     else configRecord[key] = afterRecord[key];
   }
+
+  if (options?.settingsOnly) return { ...state, config };
 
   const owners = { ...state.owners };
   const owns = (id: string) => ownerOf({ owners, views: state.views }, id) === windowId;
@@ -434,8 +474,13 @@ export function mergeWindowSnapshot(
     const previous = baseTabs.get(id);
     if (index >= 0) {
       if (!previous || !deepEqual(previous, tab)) {
-        const hasTransient = (id === baseActiveId && beforeLive) || (id === sentActiveId && afterLive);
-        const updated = hasTransient && previous ? mergeChange(layouts[index]!, previous, tab) : tab;
+        const hasTransient = (id === baseActiveId && beforeLive) || (id === sentActiveId && afterLive)
+          || (id === view.activeLayoutId && view.liveLayout);
+        const current = layouts[index]!;
+        const updated = hasTransient && previous ? {
+          ...mergeChange(current, previous, tab),
+          layout: mergeLayoutChange(current.layout, previous.layout, tab.layout),
+        } : tab;
         layouts = layouts.map((entry, at) => (at === index ? updated : entry));
       }
       continue;
@@ -465,7 +510,7 @@ export function mergeWindowSnapshot(
   let liveLayout = sameView ? view.liveLayout : undefined;
   if (sameTab && saved) {
     if (activeLayoutId === baseActiveId && (beforeLive || afterLive)) {
-      liveLayout = transientLayout(mergeChange(liveLayout ?? saved.layout, before.config.layout, after.config.layout));
+      liveLayout = transientLayout(mergeLayoutChange(liveLayout ?? saved.layout, before.config.layout, after.config.layout));
     } else if (!sameView) {
       liveLayout = afterLive;
     }

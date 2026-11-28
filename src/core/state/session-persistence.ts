@@ -1,7 +1,8 @@
 import { findPaneInstance, type AppConfig } from "../../types/config";
 import type { BrokerContractRef } from "../../types/instrument";
 import type { TickerRecord } from "../../types/ticker";
-import { getDockedPaneIds } from "../../layout/pane-manager";
+import { getDockedPaneIds, withoutTransientPanes } from "../../layout/pane-manager";
+import { isTransientPane } from "../../layout/pane-manager/transient";
 import { normalizeBuiltinPaneStatePluginOwners } from "../../plugins/ownership";
 import { canonicalExchange, normalizeSymbol } from "../../utils/exchanges";
 import { instrumentFromTicker } from "../../market-data/request-types";
@@ -67,6 +68,8 @@ function tickerInCollection(ticker: TickerRecord, collectionId: string | null): 
 }
 
 export function buildAppSessionSnapshot(state: SessionStateInput): AppSessionSnapshot {
+  const layout = withoutTransientPanes(state.config.layout);
+  const focused = state.focusedPaneId && findPaneInstance(state.config.layout, state.focusedPaneId);
   const seen = new Set<string>();
   const hydrationTargets: HydrationTarget[] = [];
 
@@ -85,7 +88,7 @@ export function buildAppSessionSnapshot(state: SessionStateInput): AppSessionSna
     if (ticker && !hasAmbiguousTickerContracts(ticker)) pushTarget(instrumentFromTicker(ticker));
   }
 
-  for (const instance of state.config.layout.instances) {
+  for (const instance of layout.instances) {
     pushTarget(resolveInstrumentForPane(state, instance.instanceId));
     if (instance.paneId === "portfolio-list") {
       const collectionId = resolveCollectionForPane(state as AppState, instance.instanceId);
@@ -103,14 +106,14 @@ export function buildAppSessionSnapshot(state: SessionStateInput): AppSessionSna
   return {
     paneState: Object.fromEntries(
       Object.entries(state.paneState)
-        .filter(([paneId]) => !!findPaneInstance(state.config.layout, paneId))
+        .filter(([paneId]) => !!findPaneInstance(layout, paneId))
         .map(([paneId, value]) => [paneId, { ...value }]),
     ),
-    focusedPaneId: state.focusedPaneId,
+    focusedPaneId: focused && isTransientPane(focused.paneId) ? null : state.focusedPaneId,
     statusBarVisible: state.statusBarVisible,
     openPaneIds: [
-      ...getDockedPaneIds(state.config.layout),
-      ...state.config.layout.floating.map((entry) => entry.instanceId),
+      ...getDockedPaneIds(layout),
+      ...layout.floating.map((entry) => entry.instanceId),
     ],
     hydrationTargets,
     exchangeCurrencies: [],

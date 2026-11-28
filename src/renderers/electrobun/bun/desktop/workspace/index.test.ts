@@ -4,7 +4,7 @@ import { buildAppSessionSnapshot, reconcileAppSessionSnapshot } from "../../../.
 import { normalizeConfigForSave, normalizeLoadedConfig } from "../../../../../data/config/store/normalize";
 import { cloneLayout, createBlankLayout, createDefaultConfig, createPaneInstance, findPaneInstance } from "../../../../../types/config";
 import type { DesktopSharedStateSnapshot } from "../../../../../types/desktop-window";
-import { addPaneFloating, removePane } from "../../../../../layout/pane-manager";
+import { addPaneFloating, getDockedPaneIds, removePane } from "../../../../../layout/pane-manager";
 import { updatePaneInstance } from "../../../../../pane-settings";
 import { MAIN_WINDOW_ID } from "../../../../desktop/screen-setup";
 import { createDesktopWorkspace } from "./index";
@@ -33,6 +33,36 @@ function openLayouts(snapshot: DesktopSharedStateSnapshot, instanceId = LAY) {
 }
 
 describe("desktop workspace", () => {
+  test("closing the last rendered docked pane keeps a concurrently moved pane docked with Layouts open", () => {
+    const config = tabConfig();
+    const existing = "portfolio-list:main";
+    const moved = getDockedPaneIds(config.layouts[1]!.layout)[0]!;
+    const layout = {
+      ...createBlankLayout(),
+      dockRoot: { kind: "pane" as const, instanceId: existing },
+      instances: [findPaneInstance(config.layout, existing)!],
+    };
+    const workspace = createDesktopWorkspace({ ...config, layout }, null, [{ id: SECOND, layoutIds: ["tab:monitor"] }]);
+    workspace.syncMainState(openLayouts(workspace.getWindowSnapshot(MAIN)!));
+    const held = workspace.getWindowSnapshot(MAIN)!;
+    workspace.noteDelivered(MAIN, 1, held);
+
+    expect(workspace.movePaneToWindow(moved, MAIN)).not.toBeNull();
+    expect(getDockedPaneIds(workspace.getSnapshot().config.layout)).toEqual([existing, moved]);
+    const closed = reduceSnapshot(held, { type: "UPDATE_LAYOUT", layout: removePane(held.config.layout, existing) });
+    const result = workspace.syncMainState(closed, 1);
+
+    const normalized = normalizeConfigForSave(result.config);
+    const { config: reloaded } = normalizeLoadedConfig(JSON.parse(JSON.stringify(normalized)), config.dataDir);
+    expect(result.config.layout.floating.map((entry) => entry.instanceId)).toEqual([LAY]);
+    for (const kept of [result.config.layout, result.config.layouts[0]!.layout, normalized.layout, reloaded.layout]) {
+      expect(getDockedPaneIds(kept)).toEqual([moved]);
+      expect(findPaneInstance(kept, moved)).toBeDefined();
+      expect(findPaneInstance(kept, existing)).toBeUndefined();
+    }
+    expect(JSON.stringify(normalized)).not.toContain(LAY);
+  });
+
   test("a secondary renderer keeps Layouts live, closes and reopens it, and saves neither window's Layouts pane", () => {
     const workspace = createDesktopWorkspace(tabConfig(), null, [{ id: SECOND, layoutIds: ["tab:monitor"] }]);
     const mainLay = "layout-marketplace:main-test";
