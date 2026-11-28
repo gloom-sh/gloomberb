@@ -11,6 +11,7 @@ import { latestFinancialPeriod } from "../../../utils/latest-financial-period";
 import { financialAvailabilityTime, statementFieldAvailability } from "../../../utils/financial-statements";
 import { listingOwnsRow, listingOwnsSeries } from "../../../utils/statement-scope";
 import { listingEnterpriseValue } from "../../../market-data/quotes/listing-enterprise-value";
+import { regularSessionValuationTime } from "../../../market-data/quotes/regular-session-valuation";
 import { currentTrailingValuation, latestTrailingStatement, listingStatementConversion } from "../../../time-series/fundamentals";
 import { valuationQuoteIssue } from "../../../time-series/valuation-price";
 import { selectFinancialStatements } from "../ticker-detail/financials/model";
@@ -387,10 +388,12 @@ function incompleteQuarterFields(financials: TickerFinancials, incomplete: Finan
   const unpriced = quoteGap(financials);
   if (unpriced) return { ...fields, evEbitdaGap: unpriced };
   if (!trailing || !Number.isFinite(trailing.ebitda)) return { ...fields, evEbitdaGap: gap };
-  // Twelve months the quote could not have known are no basis for it.
+  // Twelve months published after the price the EV is read at are no basis for it. After the close that price is the
+  // close, dated by the session's end (or its day when the calendar gives no hour), not by a later after-hours print.
   const published = statementFieldAvailability(trailing, "ebitda");
-  const quoted = financials.quote!.lastUpdated;
-  if (Date.parse(trailing.date) > quoted || (published && financialAvailabilityTime(published) > quoted)) return { ...fields, evEbitdaGap: gap };
+  const priced = regularSessionValuationTime(financials.quote)?.time;
+  if (priced == null) return { ...fields, evEbitdaGap: "no current quote" };
+  if (Date.parse(trailing.date) > priced || (published && financialAvailabilityTime(published) > priced)) return { ...fields, evEbitdaGap: gap };
   const ev = listingEnterpriseValue(financials);
   if (ev.kind === "not-meaningful") return { ...fields, evEbitdaNotMeaningful: ev.reason };
   if (ev.kind !== "value") return { ...fields, evEbitdaGap: "EV unavailable" };

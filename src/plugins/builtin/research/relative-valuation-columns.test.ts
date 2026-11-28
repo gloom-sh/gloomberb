@@ -110,6 +110,18 @@ test("a quarter an earnings release dated with EPS alone leaves RV's gross margi
     expect(await read([...filed("EUR"), release("EUR")])).toMatchObject({ grossMarginAsOf: "2026-07-26", evEbitdaGap: "statements in EUR" });
     // Three filed quarters complete no twelve months: the cells name the period they lack.
     expect(await read([...filed().slice(1), release()])).toMatchObject({ grossMarginGap: "no complete TTM to 2026-10-31", evEbitdaGap: "no complete TTM to 2026-10-31" });
+    // The EV is read at Friday's 13:00 close, not the 16:59 late print the quote was last updated at: twelve months
+    // filed between the two came after that price, and twelve months filed before the close stand.
+    const atClose = async (filedAt: string) => {
+      const rows = filed().map((row, index) => index === 3 ? { ...row, availableAt: filedAt } : row);
+      const financials = listing("NVDA", "USD", 149.80, [...rows, release()], { enterpriseValue: 3.55e12, revenue: 303e9 });
+      financials.quote = { ...financials.quote!, listingExchangeName: "NASDAQ", exchangeName: "NASDAQ", marketState: "POSTPOST",
+        regularClose: 150.49, regularCloseSessionDate: "2026-11-27", postMarketPrice: 149.80, lastUpdated: Date.parse("2026-11-27T21:59:58Z"), stale: false };
+      const context = { signal: new AbortController().signal, marketData: createTestDataProvider({ getTickerFinancials: async () => financials }) } as HeadlessPaneContext;
+      return (await loadExtraColumns(["grossMargin", "evEbitda"], ["NVDA"], new Map(), context)).fields.get("NVDA")!;
+    };
+    expect(await atClose("2026-11-27T20:00:00Z")).toMatchObject({ grossMarginAsOf: "2026-07-26", evEbitdaGap: "no complete TTM to 2026-10-31" });
+    expect(await atClose("2026-11-27T17:30:00Z")).toMatchObject({ grossMarginAsOf: "2026-07-26", evEbitdaAsOf: "2026-07-26" });
   } finally { setSystemTime(); }
 });
 
