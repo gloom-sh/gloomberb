@@ -92,17 +92,17 @@ export function getPublishedUsEquitySession(exchange: string, date: string): Pub
  * - UTP, Tape C (Nasdaq listings): vendor alert UTP2026-34 ends the
  *   2026-11-27 post-market at 5:00 PM for the UTP Plan participants. No notice
  *   covers another early close yet.
+ *
+ * Sources:
+ * - https://www.ctaplan.com/publicdocs/ctaplan/CTA_Extended_Trading_Hours_FAQ.pdf
+ * - https://www.nyse.com/trade/hours-calendars
+ * - https://www.nasdaqtrader.com/TraderNews.aspx?id=UTP2026-34
  */
-export const US_LATE_CLOSE_SOURCES = [
-  "https://www.ctaplan.com/publicdocs/ctaplan/CTA_Extended_Trading_Hours_FAQ.pdf",
-  "https://www.nyse.com/trade/hours-calendars",
-  "https://www.nasdaqtrader.com/TraderNews.aspx?id=UTP2026-34",
-] as const;
 const CTA_TAPE_LISTINGS = new Set(["NYSE", "AMEX", "ARCA", "NYSE NATIONAL", "NYSE CHICAGO", "NYSE TEXAS", "BATS", "CBOE"]);
 const CTA_ABBREVIATED_SCHEDULE_FROM = "2026-11-08";
 const UTP_SHORTENED_LATE_SESSIONS = new Set(["2026-11-27"]);
 
-/** Whether `date`'s late session for a listing on `venue` is documented to end at 17:00 (US_LATE_CLOSE_SOURCES). */
+/** Whether `date`'s late session for a listing on `venue` is documented to end at 17:00 (sources above). */
 function documentedEarlyLateClose(venue: string, date: string): boolean {
   if (!NYSE_EARLY_CLOSES.has(date)) return false;
   if (CTA_TAPE_LISTINGS.has(venue)) return date >= CTA_ABBREVIATED_SCHEDULE_FROM;
