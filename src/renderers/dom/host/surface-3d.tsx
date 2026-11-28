@@ -258,7 +258,7 @@ function sameValues(left: ArrayLike<number>, right: ArrayLike<number>): boolean 
  * cells and the same line layout. A different expiry set or a cell that gained
  * or lost a quote swaps in directly.
  */
-export function canMorphSurface(from: SurfaceGeometry, to: SurfaceGeometry): boolean {
+function canMorphSurface(from: SurfaceGeometry, to: SurfaceGeometry): boolean {
   return from.positions.length === to.positions.length && from.normals.length === to.normals.length
     && from.colors.length === to.colors.length && from.wire.length === to.wire.length
     && from.ridge.length === to.ridge.length && sameValues(from.indices, to.indices)
@@ -272,7 +272,7 @@ function lerpInto(out: Float32Array, from: Float32Array, to: Float32Array, weigh
 }
 
 /** Writes the morph frame at progress t (0..1) into out. */
-export function morphSurfaceGeometry(out: SurfaceGeometry, from: SurfaceGeometry, to: SurfaceGeometry, t: number): void {
+function morphSurfaceGeometry(out: SurfaceGeometry, from: SurfaceGeometry, to: SurfaceGeometry, t: number): void {
   const weight = easeOutCubic(Math.min(1, Math.max(0, t)));
   lerpInto(out.positions, from.positions, to.positions, weight);
   lerpInto(out.normals, from.normals, to.normals, weight);

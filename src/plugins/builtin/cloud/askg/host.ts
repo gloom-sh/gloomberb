@@ -44,10 +44,6 @@ export function loadASKGClientManifest(): Promise<ASKGClientManifest> {
   return manifest;
 }
 
-export function resetASKGClientManifestCache(): void {
-  manifestCache = null;
-}
-
 export interface ASKGToolExecutorOptions {
   config: AppConfig;
   remoteHandler: InProcessRemoteControlHandler;
@@ -104,7 +100,7 @@ export async function buildASKGSourceShare(
 }
 
 /** `buildASKGSourceShare` from the functions and the market context it is given. */
-export async function sourceShare(
+async function sourceShare(
   catalog: PaneFunctionCatalog,
   context: MarketContext,
   source: ASKGSourceCommand,

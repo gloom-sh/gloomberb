@@ -963,7 +963,7 @@ function buildExportIdentity(fields: {
  * series with every point, then its statistics. The footer carries the text
  * view's closing line, notices, notes and errors.
  */
-export function headlessReportTables(
+function headlessReportTables(
   definition: HeadlessPaneDefinition,
   result: HeadlessPaneResult,
   args: HeadlessPaneLoadArgs,
@@ -1099,7 +1099,7 @@ function renderMessages(label: string, messages: readonly string[]): string[] {
  * as-of and status line, so no pane can leave it out; a pane can only make it
  * more accurate through its `freshness` declaration.
  */
-export function renderHeadlessPaneText(
+function renderHeadlessPaneText(
   definition: HeadlessPaneDefinition,
   result: HeadlessPaneResult,
   args: HeadlessPaneLoadArgs,

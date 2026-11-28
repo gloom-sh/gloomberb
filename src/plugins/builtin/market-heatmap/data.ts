@@ -48,7 +48,7 @@ const boards = createTtlCache<MarketHeatmapBoard>({ ttlMs: heatmapCheckIntervalM
  * NYSE) arrives twice; drawing both would collide tile ids and count its
  * sector twice, so the larger listing stays where it ranked.
  */
-export function dedupeHeatmapAssets<T extends { symbol: string; size: number | null }>(assets: readonly T[]): T[] {
+function dedupeHeatmapAssets<T extends { symbol: string; size: number | null }>(assets: readonly T[]): T[] {
   const kept = new Map<string, number>();
   const result: T[] = [];
   for (const asset of assets) {
@@ -72,7 +72,7 @@ export function dedupeHeatmapAssets<T extends { symbol: string; size: number | n
  * shows its delayed figures, marked, until the stream's live quote of the
  * name gives it a move of its own. Every other tile is left as it came.
  */
-export function holdDelayedHeatmapTiles<T extends MarketHeatmapAsset>(assets: readonly T[]): T[] {
+function holdDelayedHeatmapTiles<T extends MarketHeatmapAsset>(assets: readonly T[]): T[] {
   return assets.map((asset) => (asset.delayedQuote && typeof asset.delayedQuote === "object"
     ? { ...asset, hasChange: true, change: null, changePercent: null, price: 0, volume: null, regularChangePercent: null }
     : asset));

@@ -33,7 +33,7 @@ function hintChord(key: string): KeyChord | null {
  * advertises a shortcut. A typed character never reaches one while a field owns
  * the keyboard.
  */
-export function resolvePaneFooterKey(
+function resolvePaneFooterKey(
   footer: CombinedPaneFooter,
   event: KeyEventLike,
   typingBlocked: boolean,

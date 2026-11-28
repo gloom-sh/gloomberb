@@ -19,13 +19,13 @@ const LEGEND_STEPS = 24;
 const channel = (value: number) => Math.round(Math.min(1, Math.max(0, value)) * 255).toString(16).padStart(2, "0");
 
 /** The 3D mesh's colour for an implied vol, as a hex string: the same turbo scale over the same range. */
-export function surfaceColorHex(value: number, range: SurfaceColorRange): string {
+function surfaceColorHex(value: number, range: SurfaceColorRange): string {
   const color = turbo((value - range.zMin) / Math.max(range.zMax - range.zMin, 1e-9));
   return `#${channel(color.r)}${channel(color.g)}${channel(color.b)}`;
 }
 
 /** Dark text on the bright half of the scale, light text on the dark end. */
-export function surfaceTextColor(hex: string): string {
+function surfaceTextColor(hex: string): string {
   const red = Number.parseInt(hex.slice(1, 3), 16), green = Number.parseInt(hex.slice(3, 5), 16), blue = Number.parseInt(hex.slice(5, 7), 16);
   return (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255 > 0.45 ? "#101010" : "#f4f4f4";
 }
@@ -34,7 +34,7 @@ export function surfaceTextColor(hex: string): string {
  * The columns a grid of this width shows: all of them when they fit, else an
  * even sample from the put wing to the call wing that always keeps ATM.
  */
-export function heatGridColumns(coordinates: readonly number[], width: number): number[] {
+function heatGridColumns(coordinates: readonly number[], width: number): number[] {
   const fit = Math.max(1, Math.floor((width - TABLE_INSET - LABEL_WIDTH - 1) / (CELL_WIDTH + 1)));
   if (coordinates.length <= fit) return coordinates.map((_, index) => index);
   const atm = coordinates.findIndex((value) => Math.abs(value) < 1e-9);
@@ -51,7 +51,7 @@ export function heatGridColumns(coordinates: readonly number[], width: number): 
 interface HeatRow { index: number; label: string }
 
 /** Days up to the first few months, so neighbouring expiries do not all read "1M". */
-export function heatGridTenorLabel(years: number): string {
+function heatGridTenorLabel(years: number): string {
   const days = Math.round(years * 365);
   return days > 0 && days < 100 ? `${days}D` : tenorLabel(years);
 }

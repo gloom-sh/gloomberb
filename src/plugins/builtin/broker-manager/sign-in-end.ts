@@ -26,7 +26,7 @@ export interface SignInEnd {
 }
 
 /** What Gloom says about a profile's sign-in: when it ends, and what the broker asks on the next one. */
-export interface SignInRead {
+interface SignInRead {
   end: SignInEnd | null;
   /**
    * Whether the broker will or may ask to replace the Gloom connection it
@@ -39,14 +39,14 @@ export interface SignInRead {
 export type SignInReads = ReadonlyMap<string, SignInRead>;
 
 /** When the broker ends the live sign-in, and whether Gloom says to renew it now. */
-export function signInEndOf(connection: Pick<SignedInBrokerConnection, "expiresAt" | "expiresSoon">): SignInEnd | null {
+function signInEndOf(connection: Pick<SignedInBrokerConnection, "expiresAt" | "expiresSoon">): SignInEnd | null {
   if (!connection.expiresAt) return null;
   const endsAt = Date.parse(connection.expiresAt);
   return Number.isFinite(endsAt) ? { endsAt, soon: connection.expiresSoon === true } : null;
 }
 
 /** What Gloom says about the account's connection to a broker. */
-export function signInReadOf(connection: SignedInBrokerConnection): SignInRead {
+function signInReadOf(connection: SignedInBrokerConnection): SignInRead {
   const end = signInEndOf(connection);
   return "replacePrompt" in connection ? { end, replacePrompt: connection.replacePrompt ?? null } : { end };
 }

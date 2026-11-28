@@ -477,7 +477,7 @@ const HISTORY_RANGE_ALIASES = "5d, 1mo, 3mo, 6mo, 1y, 5y and max";
  * `1 month` are 1M, `1wk` and `5d` (a week's five sessions) 1W, `5yr` 5Y,
  * `max` ALL.
  */
-export function readHistoryRange(value: string): HistoryRange | null {
+function readHistoryRange(value: string): HistoryRange | null {
   const typed = value.trim().toUpperCase().replace(/\s+/g, "");
   if (typed === "MAX") return "ALL";
   const spelled = /^(\d+)(D|DAYS?|W|WKS?|WEEKS?|M|MOS?|MONTHS?|Y|YRS?|YEARS?)$/.exec(typed);
@@ -3162,7 +3162,7 @@ const TYPED_SYMBOL = /^[A-Z0-9][A-Z0-9.:^=&-]{0,15}$/;
  * a list only when every part is a symbol as typed, so a company's name
  * (`"Bank of America"`) is still searched for. Null for one symbol.
  */
-export function comparedSymbols(args: readonly string[]): string[] | null {
+function comparedSymbols(args: readonly string[]): string[] | null {
   const words = args.flatMap((arg) => arg.split(/[\s,]+/)).filter(Boolean);
   if (words.length < 2) return null;
   if (args.length > 1 || args.some((arg) => arg.includes(","))) return words;

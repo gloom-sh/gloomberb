@@ -8,7 +8,7 @@ import { LivePaneFrameContext, type CellSize } from "./live-stretch";
  * (live-resize.ts), so a pane under the pointer stays resizing between its
  * catch-ups.
  */
-export const RESIZE_SETTLE_MS = 120;
+const RESIZE_SETTLE_MS = 120;
 
 /**
  * How far a box may stretch from the size its layout was made for, on either
@@ -17,7 +17,7 @@ export const RESIZE_SETTLE_MS = 120;
  */
 const MAX_HELD_STRETCH = 1.5;
 
-export interface ResizeHold {
+interface ResizeHold {
   /** The box's size as it last rendered. */
   size: CellSize;
   /** While the box is resizing, the size its layout holds to; null at rest. */
@@ -33,7 +33,7 @@ function stretch(from: number, to: number): number {
  * the size it had, later ones keep it there, and a stretch past
  * MAX_HELD_STRETCH lays it out again at the new size (still resizing).
  */
-export function nextResizeHold(state: ResizeHold, size: CellSize, maxStretch = MAX_HELD_STRETCH): ResizeHold {
+function nextResizeHold(state: ResizeHold, size: CellSize, maxStretch = MAX_HELD_STRETCH): ResizeHold {
   if (state.size.width === size.width && state.size.height === size.height) return state;
   const held = state.held ?? state.size;
   const far = Math.max(stretch(held.width, size.width), stretch(held.height, size.height)) > maxStretch;
@@ -41,7 +41,7 @@ export function nextResizeHold(state: ResizeHold, size: CellSize, maxStretch = M
 }
 
 /** At rest: the layout takes the box's size. */
-export function settleResizeHold(state: ResizeHold): ResizeHold {
+function settleResizeHold(state: ResizeHold): ResizeHold {
   return state.held ? { size: state.size, held: null } : state;
 }
 

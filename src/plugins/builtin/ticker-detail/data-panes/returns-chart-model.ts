@@ -28,7 +28,7 @@ export interface ReturnBars {
  * longer bar at midnight UTC of the session day the table dates it by, so a
  * JPX bar stamped 15:00 UTC the day before reads as its own day on the axis.
  */
-export function returnBarTime(timestamp: number, resolution: ManualChartResolution, venue: string | undefined): number {
+function returnBarTime(timestamp: number, resolution: ManualChartResolution, venue: string | undefined): number {
   if (isIntradayResolution(resolution)) return timestamp;
   const day = Date.parse(`${barSessionDay(timestamp, venue)}T00:00:00Z`);
   return Number.isFinite(day) ? day : timestamp;

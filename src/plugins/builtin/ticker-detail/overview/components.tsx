@@ -216,7 +216,7 @@ const undatedInWords = (part: string) => part === QUOTE_BOOK_UNDATED ? t("not da
  * - A clock that would touch its label (`TimeThu 26 Nov 00:59 UTC`, in a book
  *   24 cells wide) gives up its weekday before it wraps.
  */
-export function quoteBookTimeLines(parts: readonly string[], shortParts: readonly string[], width: number): { clockLines: string[]; contextLines: string[] } {
+function quoteBookTimeLines(parts: readonly string[], shortParts: readonly string[], width: number): { clockLines: string[]; contextLines: string[] } {
   const [clock, ...context] = parts;
   if (!clock) return { clockLines: [], contextLines: [] };
   // The label, and a blank after it.

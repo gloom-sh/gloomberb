@@ -115,7 +115,7 @@ function analystReferenceWhen(reference: AnalystReferencePrice, now: number): st
  * 14:05 UTC (15m delayed)" while the session trades, or the provider's reference, "$137.32, provider reference at
  * retrieval Wed 21 Oct 21:30 UTC".
  */
-export function formatAnalystReference(reference: AnalystReferencePrice, currency: string | undefined, now = Date.now()): string {
+function formatAnalystReference(reference: AnalystReferencePrice, currency: string | undefined, now = Date.now()): string {
   if (reference.price == null || !Number.isFinite(reference.price)) return MISSING_VALUE;
   const price = formatAnalystPrice(reference.price, currency);
   const when = analystReferenceWhen(reference, now);
@@ -127,7 +127,7 @@ function isCurrentMonthPeriod(period: string | undefined): boolean {
   return ["current month", "0m"].includes((period ?? "").trim().toLowerCase().replace(/_/g, " "));
 }
 
-export function latestRecommendation(data: AnalystResearchData | null) {
+function latestRecommendation(data: AnalystResearchData | null) {
   const rows = data?.recommendations ?? [];
   return rows.find((row) => isCurrentMonthPeriod(row.period)) ?? rows[0] ?? null;
 }
@@ -136,7 +136,7 @@ function recommendationCount(value: number | undefined): number | null {
   return value != null && Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 
-export function recommendationMix(data: AnalystResearchData | null) {
+function recommendationMix(data: AnalystResearchData | null) {
   const rec = latestRecommendation(data);
   return rec ? {
     period: rec.period,
@@ -176,7 +176,7 @@ export function ratingSplit(data: AnalystResearchData | null) {
  * names them: "4 Strong Buy · 9 Buy · 9 Hold · 4 Sell", strong sells in Sell.
  * A missing count reads "-", so a partial mix never reads as a whole one.
  */
-export function formatRecommendationMix(data: AnalystResearchData | null): string {
+function formatRecommendationMix(data: AnalystResearchData | null): string {
   const rec = recommendationMix(data);
   if (!rec) return MISSING_VALUE;
   const sells = rec.sell != null && rec.strongSell != null ? rec.sell + rec.strongSell : null;
@@ -475,7 +475,7 @@ export function buildAnalystFooterInfo(
   ];
 }
 
-export function buildAnalystStatusSegments(
+function buildAnalystStatusSegments(
   data: AnalystResearchData | null,
   reference: AnalystReferencePrice = analystReferencePrice(data, null),
   now = Date.now(),
@@ -570,7 +570,7 @@ function publishedTarget(row: AnalystRatingRecord): number | null {
  * source that reaches back years on a handful of firms would otherwise spend
  * the whole chart on a decade nobody is reading it for.
  */
-export function buildAnalystTargetHistory(
+function buildAnalystTargetHistory(
   ratings: readonly AnalystRatingRecord[],
   options: { windowDays?: number; spanDays?: number; minFirms?: number } = {},
 ): AnalystTargetHistoryPoint[] {

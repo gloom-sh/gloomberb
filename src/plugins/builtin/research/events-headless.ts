@@ -46,7 +46,7 @@ const YEAR_TEXT_COLUMNS: HeadlessPaneColumn[] = [
   { key: "detail", header: "Detail" },
 ];
 
-export interface EventsHeadlessDependencies {
+interface EventsHeadlessDependencies {
   load(
     args: HeadlessPaneLoadArgs,
     symbol: string,
@@ -65,7 +65,7 @@ const defaultDependencies: EventsHeadlessDependencies = {
   },
 };
 
-export function createEventsHeadless(
+function createEventsHeadless(
   dependencies: EventsHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"rows"> {
   return {

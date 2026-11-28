@@ -63,7 +63,7 @@ function prefixPointsEqual(left: readonly TimeSeriesPoint[], right: readonly Tim
  * close/time. Bitmap dirty detection keys off object identity, so this keeps
  * an otherwise-stable plot from full-rerastering on every quote.
  */
-export function reuseResolvedSeriesIdentity(
+function reuseResolvedSeriesIdentity(
   previous: ResolvedSeries | undefined,
   next: ResolvedSeries,
 ): ResolvedSeries {

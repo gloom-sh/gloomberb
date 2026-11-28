@@ -102,14 +102,6 @@ export function isAuthDialogOpen(): boolean {
   return openAuthDialogs > 0;
 }
 
-/** Takes the requests a host would, for a test that signs in without the form. */
-export function interceptAuthDialogForTests(listener: (request: AuthDialogRequest) => void): () => void {
-  authDialogListeners.add(listener);
-  return () => {
-    authDialogListeners.delete(listener);
-  };
-}
-
 export function AuthDialogHost() {
   const dialog = useDialog();
   const openRef = useRef(false);

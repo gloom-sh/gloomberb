@@ -257,7 +257,7 @@ function uncoveredCellRects(rect: CellRect, covered: (x: number, y: number) => b
   return [...done, ...open];
 }
 
-export function computeSurfaceVisibleFragments(
+function computeSurfaceVisibleFragments(
   rect: CellRect,
   visibleRect: CellRect | null,
   surfaceZIndex: number,

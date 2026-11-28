@@ -50,7 +50,7 @@ const FeedPane = createNewsPresetPane({
   emptyStateHint: "Run the Add News Feed command to wire up another source.",
 });
 
-export const BreakingPane = createNewsPresetPane({
+const BreakingPane = createNewsPresetPane({
   paneKey: "breaking",
   title: "Breaking news",
   query: NEWS_QUERY_PRESETS.breaking,

@@ -105,7 +105,7 @@ function closeOnOrBefore(dates: readonly string[], closes: ReadonlyMap<string, n
  * after an episode's start (listed later) has none for it, and neither does
  * one with no close in the week before a boundary.
  */
-export function episodeCloses(points: readonly { date: string; close: number }[]): Record<string, EpisodeCloses> {
+function episodeCloses(points: readonly { date: string; close: number }[]): Record<string, EpisodeCloses> {
   const closes = new Map<string, number>();
   for (const point of points) closes.set(point.date.slice(0, 10), point.close);
   const dates = [...closes.keys()].sort();

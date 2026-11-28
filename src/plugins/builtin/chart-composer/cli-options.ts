@@ -30,7 +30,7 @@ function chartRange(options: HeadlessPaneOptionValues): TimeRange | null {
  * charted listings' last December sessions, a venue's own calendar where it
  * is known.
  */
-export function yearToDateWindow(spec: ChartSpec, now = Date.now()): { start: string; end: string } {
+function yearToDateWindow(spec: ChartSpec, now = Date.now()): { start: string; end: string } {
   const today = new Date(now).toISOString().slice(0, 10);
   const venues = [...new Set(spec.series.flatMap((entry) => entry.source.kind === "security" ? [entry.source.instrument.exchange || undefined] : []))];
   const starts = (venues.length ? venues : [undefined]).flatMap((venue) => yearToDateBaseDay(today, venue, now) ?? []);

@@ -104,7 +104,7 @@ export function localeMayNotReadUtf8(env: LocaleEnv = process.env, platform: str
  * current folder before the system's, so a `chcp.com` left in the folder a
  * command runs in would run in its place; the full path never does.
  */
-export function windowsChcpPath(env: Readonly<Record<string, string | undefined>> = process.env): string {
+function windowsChcpPath(env: Readonly<Record<string, string | undefined>> = process.env): string {
   const root = [env.SystemRoot, env.SYSTEMROOT, env.windir, env.WINDIR]
     .find((dir): dir is string => !!dir && /^[A-Za-z]:[\\/]/.test(dir)) ?? "C:\\Windows";
   return `${root.replace(/[\\/]+$/, "")}\\System32\\chcp.com`;

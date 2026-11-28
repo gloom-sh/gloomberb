@@ -122,7 +122,7 @@ const COLUMNS_BY_STATUS: Record<ColumnSet, ColumnId[]> = {
 const DROP_ORDER: ColumnId[] = ["price", "date", "close", "value", "annualized", "terms", "stage", "acquirer", "spread"];
 
 /** Columns that fit `width`; `targetWidth` widens the target column, e.g. for the unlock prompt. */
-export function mnaColumns(status: ColumnSet, width: number, targetWidth = COLUMNS.target.width): DataTableColumn[] {
+function mnaColumns(status: ColumnSet, width: number, targetWidth = COLUMNS.target.width): DataTableColumn[] {
   const widthOf = (id: ColumnId) => (id === "target" ? Math.max(COLUMNS.target.width, targetWidth) : COLUMNS[id].width);
   let ids = [...COLUMNS_BY_STATUS[status]];
   const need = (list: ColumnId[]) => list.reduce((sum, id) => sum + widthOf(id) + 1, 0);
@@ -161,7 +161,7 @@ export function mnaColumns(status: ColumnSet, width: number, targetWidth = COLUM
  * no date for (a null `expectedClose` or `closed`). A capture whose every
  * agreed deal has none fails on that column.
  */
-export function mnaDealCell(
+function mnaDealCell(
   deal: MnaDeal,
   column: Pick<DataTableColumn, "id">,
   spread: DealSpread | null,

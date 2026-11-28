@@ -51,7 +51,7 @@ function releaseQuickAddFocus(quickAddId: string): void {
   active.blur?.();
 }
 
-export function isChartQuickAddMouseTarget(target: unknown, quickAddId: string): boolean {
+function isChartQuickAddMouseTarget(target: unknown, quickAddId: string): boolean {
   if (!target || typeof target !== "object") return false;
   const candidate = target as Partial<ClosestElementLike> & {
     parentElement?: Partial<ClosestElementLike> | null;

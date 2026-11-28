@@ -63,7 +63,7 @@ const NOT_KEPT: Answer = { status: 503, type: "text/plain", bytes: new TextEncod
  * it: the kept answer is the one that server gives. The other parameters
  * keep their order and encoding, so the label is the one the client wrote.
  */
-export function unversionedRead(label: string): string | null {
+function unversionedRead(label: string): string | null {
   const end = label.indexOf("\n");
   const line = end < 0 ? label : label.slice(0, end);
   const query = line.indexOf("?");

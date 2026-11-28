@@ -5,7 +5,7 @@ import type { TreasuryBenchmarkPoint } from "./math";
 export interface BondBenchmark { points: TreasuryBenchmarkPoint[]; notices: string[] }
 
 /** Older or partially deployed GC endpoints must not stop local bond math. */
-export function parseBondBenchmark(payload: unknown): BondBenchmark {
+function parseBondBenchmark(payload: unknown): BondBenchmark {
   if (!Array.isArray(payload)) throw new Error("Treasury curve response is unavailable");
   const points: TreasuryBenchmarkPoint[] = [];
   const notices = new Set<string>();

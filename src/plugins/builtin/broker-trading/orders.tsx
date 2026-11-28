@@ -63,7 +63,7 @@ const orderColumns: DataTableColumn[] = [
   { id: "type", label: "Type", width: 4, align: "left" }, { id: "price", label: "Price", width: 8, align: "right" },
   { id: "age", label: "Age", width: 4, align: "right" }, { id: "actions", label: "", width: 14, align: "right", mayBeBlank: true },
 ];
-export const activityColumns: DataTableColumn[] = [
+const activityColumns: DataTableColumn[] = [
   { id: "symbol", label: "Symbol", width: 18, align: "left" }, { id: "side", label: "Side", width: 5, align: "left" },
   { id: "quantity", label: "Quantity", width: 12, align: "right" }, { id: "price", label: "Price", width: 12, align: "right" },
   { id: "fees", label: "Fees", width: 12, align: "right" }, { id: "age", label: "Age", width: 5, align: "right" },
@@ -158,7 +158,7 @@ function compactOrderState(order: BrokerOrder): string {
  * `commission` as one whose figure was lost, so the dash is never marked as
  * one that may be blank and a capture whose every fill has none fails on Fees.
  */
-export function renderExecutionCell(execution: BrokerExecution, column: DataTableColumn, now: number): DataTableCell {
+function renderExecutionCell(execution: BrokerExecution, column: DataTableColumn, now: number): DataTableCell {
   switch (column.id) {
     case "symbol": return { text: execution.contract.localSymbol || execution.contract.symbol };
     case "side": return { text: execution.side, content: <Badge label={execution.side} tone={isBuySide(execution.side) ? "positive" : "negative"} /> };

@@ -54,12 +54,5 @@ const doeBoardEndpoint = createCloudEndpoint<void, DoeBoardPayload, Pick<typeof 
 
 export const doeBoardCache = doeBoardEndpoint.cache;
 
-/** The board, or the not-available message when the server does not serve the route yet (404), cannot read its tables yet (503) or has no weeks stored. */
-export async function fetchDoeBoard(client: Pick<typeof apiClient, "getCloudDoeBoard"> = apiClient): Promise<DoeBoardPayload> {
-  const board = await doeBoardEndpoint.fetch(undefined, { client });
-  if (!board.series.some((row) => row.value != null)) throw new Error(DOE_NOT_AVAILABLE);
-  return board;
-}
-
 export const getCachedDoeBoard = () => doeBoardEndpoint.cached();
 export const loadDoeBoard = (force = false) => doeBoardEndpoint.load(undefined, { force });

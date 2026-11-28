@@ -89,10 +89,6 @@ export function bindAppActivity(renderer: CliRenderer): () => void {
   return controller.bindRenderer(renderer);
 }
 
-export function isAppActive(): boolean {
-  return controller.isActive();
-}
-
 export function setAppActive(active: boolean): void {
   controller.setActive(active);
 }

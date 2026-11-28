@@ -222,7 +222,7 @@ export function catalystWith(event: Pick<CatalystEvent, "parties">, self: Cataly
 }
 
 /** A trial's phase as the registry lists it: `3`, `1/2`, `Early 1`; `—` for a study with none (observational). */
-export function trialPhase(event: Pick<CatalystEvent, "metadata">): string {
+function trialPhase(event: Pick<CatalystEvent, "metadata">): string {
   const phases = Array.isArray(event.metadata?.phases) ? event.metadata.phases : [];
   const shown = phases.flatMap((phase) => {
     const match = typeof phase === "string" ? /^(EARLY_)?PHASE(\d)$/i.exec(phase) : null;

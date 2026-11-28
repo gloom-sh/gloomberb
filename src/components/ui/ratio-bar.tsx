@@ -8,7 +8,7 @@ const EIGHTHS = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"];
 /** A track's tint of the bar colour, where that already stands off the page. */
 const TRACK_TINT = 0.16;
 /** The lightness (L*) a track keeps from the page, so the bar's scale reads alike on every theme. */
-export const TRACK_MIN_SEPARATION = 8;
+const TRACK_MIN_SEPARATION = 8;
 const TRACK_MAX_TINT = 0.5;
 const TRACK_TINT_STEP = 0.02;
 
@@ -16,7 +16,7 @@ const TRACK_TINT_STEP = 0.02;
  * The unfilled length of a bar: the page tinted by the bar's colour, tinted
  * further where that would barely stand off the page, never past half the colour.
  */
-export function ratioBarTrack(page: string, color: string): string {
+function ratioBarTrack(page: string, color: string): string {
   let tint = TRACK_TINT;
   let track = blendHex(page, color, tint);
   const separation = (color: string) => Math.abs(perceivedLightness(color) - perceivedLightness(page));

@@ -59,7 +59,7 @@ const setCache = new WeakMap<object, Map<string, Readonly<Record<string, string>
  * as far as reading it on the page takes, as the theme's gains and losses are.
  * A pastel slot on a light page reads as its darker shade, never as a wash.
  */
-export function themedColorSet<K extends string>(slots: Readonly<Record<K, string>>, themeId: string): Readonly<Record<K, string>> {
+function themedColorSet<K extends string>(slots: Readonly<Record<K, string>>, themeId: string): Readonly<Record<K, string>> {
   let byTheme = setCache.get(slots);
   if (!byTheme) setCache.set(slots, byTheme = new Map());
   const cached = byTheme.get(themeId);

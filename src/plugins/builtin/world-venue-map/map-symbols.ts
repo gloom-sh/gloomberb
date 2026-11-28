@@ -223,7 +223,7 @@ export function layerSymbol(layerId: string, sample: GeoFeature | undefined): Ma
  * main thread per pan step against 8 ms as dots, so 900 keeps a machine twice
  * as slow inside a 60 fps frame.
  */
-export const ICON_MAX_VISIBLE = 900;
+const ICON_MAX_VISIBLE = 900;
 
 export type PointStyle = "icons" | "dots";
 

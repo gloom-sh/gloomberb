@@ -260,6 +260,7 @@ function compare(key: string | null, dir: "asc" | "desc") {
 
 const PLAIN_LIST = (values: string[] | null | undefined, count = 6) => (values?.length ? values.slice(0, count).join(", ") : null);
 
+/** @knipignore Dynamically required by src/plugins/builtin/buildout/index.tsx. */
 export const facilitiesLayer: LocalGeoLayer = {
   info: INFO,
   async features(query: LocalFeatureQuery): Promise<GeoFeaturesPayload> {

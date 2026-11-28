@@ -116,17 +116,17 @@ describe("selectTestsForChanges", () => {
     const root = resolve(import.meta.dir, "..");
     const graph = buildRepoImportGraph(root);
 
-    const peBand = selectTestsForChanges(["src/plugins/builtin/pe-band/pane.tsx"], graph);
-    expect(peBand.mode).toBe("scoped");
-    expect(peBand.tests.length).toBeLessThan(35);
-    expect(peBand.tests).toContain("src/plugins/builtin/pe-band/pane.test.tsx");
-    expect(peBand.tests).toContain("src/architecture/ui-literals.test.ts");
-    expect(peBand.tests).toContain("src/cli/pane-functions/catalog-snapshot.test.ts");
+    const backtest = selectTestsForChanges(["src/plugins/builtin/backtest/engine.ts"], graph);
+    expect(backtest.mode).toBe("scoped");
+    expect(backtest.tests.length).toBeLessThan(35);
+    expect(backtest.tests).toContain("src/plugins/builtin/backtest/engine.test.ts");
+    expect(backtest.tests).toContain("src/architecture/ui-literals.test.ts");
+    expect(backtest.tests).toContain("src/cli/pane-functions/catalog-snapshot.test.ts");
 
     // Cross-plugin imports still propagate across plugin boundaries.
-    const changelog = selectTestsForChanges(["src/plugins/builtin/changelog/index.tsx"], graph);
-    expect(changelog.mode).toBe("scoped");
-    expect(changelog.tests).toContain("src/plugins/builtin/roadmap/pane.test.tsx");
+    const binomial = selectTestsForChanges(["src/plugins/builtin/options-calculator/binomial.ts"], graph);
+    expect(binomial.mode).toBe("scoped");
+    expect(binomial.tests).toContain("src/plugins/builtin/options/analytics.test.ts");
 
     // Directly editing a catalog registration barrel bypasses the barrier and fails closed.
     expect(selectTestsForChanges(["src/plugins/catalog.ts"], graph).mode).toBe("full");

@@ -82,7 +82,7 @@ function bracketingExpiries(catalogue: readonly number[], years: number, now: nu
 }
 
 /** Match OVDV fixed-tenor interpolation at one fixed forward log-moneyness. */
-export function projectCalculatorSurfaceVol(
+function projectCalculatorSurfaceVol(
   snapshot: SurfaceSnapshot,
   request: Pick<CalculatorSurfaceRequest, "symbol" | "strike" | "daysToExpiry">,
 ): CalculatorSurfaceVol {

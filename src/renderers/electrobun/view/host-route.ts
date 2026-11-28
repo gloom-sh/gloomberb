@@ -14,7 +14,7 @@ const HOST_ROUTE_LIMIT_MS = 5_000;
 const POLL_MS = 25;
 
 /** What the route reads of Electroview's socket to the Bun process, and closes. */
-export interface HostSocket {
+interface HostSocket {
   readonly readyState: number;
   close(): void;
 }

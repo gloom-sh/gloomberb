@@ -34,7 +34,7 @@ export interface ValuationChartProjection {
 }
 
 /** Snaps to whole grid steps, and opens a floor when the measure can go negative. */
-export function niceDomain(
+function niceDomain(
   dataMin: number,
   dataMax: number,
   step: number,
@@ -112,7 +112,7 @@ export function projectChart(
   };
 }
 
-export function chartYearLabels(points: readonly ProjectedChartPoint[], maxLabels = 8): string[] {
+function chartYearLabels(points: readonly ProjectedChartPoint[], maxLabels = 8): string[] {
   if (points.length === 0) return [];
   const years: string[] = [];
   for (const point of points) {

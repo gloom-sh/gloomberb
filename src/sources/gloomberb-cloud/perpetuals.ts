@@ -27,7 +27,7 @@ import { GLOOMBERB_CLOUD_PROVIDER_ID } from "./normalizers";
 type PerpsClient = Pick<typeof apiClient, "getCloudPerpsMarket" | "getCloudPerpsBoard" | "getCloudPerpsHistory"> & Partial<Pick<typeof apiClient, "hasSessionCredential" | "getSessionToken">>;
 
 /** What the history of a perpetual says to a free account, as PERP's History tab does. */
-export const PERPETUAL_HISTORY_LOCKED = "Full history requires Gloom Pro.";
+const PERPETUAL_HISTORY_LOCKED = "Full history requires Gloom Pro.";
 
 /** The perpetual market a listing names; null for a listing on another venue. */
 export function perpetualTarget(symbol: string, exchange?: string): PerpetualListing | null {

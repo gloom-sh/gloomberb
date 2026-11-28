@@ -67,11 +67,6 @@ interface ChangelogData {
 const changelogCache = createTtlCache<ChangelogData>({ ttlMs: CHANGELOG_CACHE_TTL_MS });
 const CHANGELOG = "changelog";
 
-/** Every test reads its own answers, whichever file ran first. */
-export function resetChangelogCacheForTests(): void {
-  changelogCache.clear();
-}
-
 /**
  * CHANGELOG.md from Gloom Cloud, which reads GitHub with its own credentials,
  * else from GitHub itself; null when neither has it, and then each version

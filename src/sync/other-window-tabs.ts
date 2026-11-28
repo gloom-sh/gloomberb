@@ -34,7 +34,7 @@ export function withOtherWindowTabs(state: AppState, others: readonly OtherWindo
  * and takes the change where the pull made it. A later save of the main
  * window's own tabs would not carry it.
  */
-export function changesOtherWindowTabs(config: AppConfig, others: readonly OtherWindowTab[]): boolean {
+function changesOtherWindowTabs(config: AppConfig, others: readonly OtherWindowTab[]): boolean {
   const pulled = new Map(config.layouts.flatMap((entry) => (entry.id ? [[entry.id, entry] as const] : [])));
   return others.some(({ tab }) => {
     const next = tab.id ? pulled.get(tab.id) : undefined;
@@ -48,7 +48,7 @@ export function changesOtherWindowTabs(config: AppConfig, others: readonly Other
  * (`changesOtherWindowTabs`). The main window stays on the tab it shows when
  * that tab is still there.
  */
-export function withoutOtherWindowTabs(config: AppConfig, others: readonly OtherWindowTab[], current: AppConfig): AppConfig {
+function withoutOtherWindowTabs(config: AppConfig, others: readonly OtherWindowTab[], current: AppConfig): AppConfig {
   const ids = new Set(others.flatMap(({ tab }) => (tab.id ? [tab.id] : [])));
   if (ids.size === 0) return config;
   const layouts = config.layouts.filter((entry) => !entry.id || !ids.has(entry.id));

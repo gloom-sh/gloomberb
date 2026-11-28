@@ -25,7 +25,7 @@ interface DesktopNotificationRunOptions {
   onError?: (error: NodeJS.ErrnoException) => void;
 }
 
-export interface DesktopNotificationRunner {
+interface DesktopNotificationRunner {
   run(command: string, args: string[], options?: DesktopNotificationRunOptions): void;
 }
 
@@ -82,7 +82,7 @@ function buildWindowsBody(notification: AppNotificationRequest): string {
   return parts.length > 0 ? parts.join("\n") : notification.body.trim();
 }
 
-export function buildDesktopNotificationCommand(
+function buildDesktopNotificationCommand(
   notification: AppNotificationRequest,
   platform: NodeJS.Platform = getRuntimePlatform(),
 ): DesktopNotificationCommand | null {
@@ -207,7 +207,7 @@ export function buildSoundCommand(
   return null;
 }
 
-export function createDesktopNotifier(
+function createDesktopNotifier(
   options: {
     platform?: NodeJS.Platform;
     runner?: DesktopNotificationRunner;

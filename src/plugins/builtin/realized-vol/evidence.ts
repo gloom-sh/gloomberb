@@ -58,7 +58,7 @@ export interface RealizedVolEvidence extends RealizedVolEvidenceStatus {
 }
 
 /** The same resolved series passed to CompositeChart supplies the capture evidence. */
-export function realizedVolSemanticEvidence(series: readonly ResolvedSeries[], status: RealizedVolEvidenceStatus): RealizedVolEvidence {
+function realizedVolSemanticEvidence(series: readonly ResolvedSeries[], status: RealizedVolEvidenceStatus): RealizedVolEvidence {
   const plotted = series.map((entry) => ({ id: entry.id, unit: entry.unit,
     points: entry.points.map((point) => ({ date: point.date.toISOString(), value: isFiniteNumber(point.value) ? point.value : null })),
   }));

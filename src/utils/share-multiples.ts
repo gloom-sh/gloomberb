@@ -349,7 +349,7 @@ function staleAnnualEps(financials: EpsInputs): string | undefined {
  * quoted in rand: its EPS of 2.98 beside 0.07 dollars a share is no sign of
  * another company's. Undefined without the three figures.
  */
-export function epsAgainstIncome(financials: EpsInputs): string | undefined {
+function epsAgainstIncome(financials: EpsInputs): string | undefined {
   const fundamentals = financials.fundamentals;
   const eps = fundamentals?.eps;
   const income = fundamentals?.netIncome;

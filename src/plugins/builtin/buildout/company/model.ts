@@ -198,7 +198,7 @@ function hiringSegment(raw: RawObject): BuildoutHiringSegment | null {
   };
 }
 
-export function normalizeCompanyProfile(raw: RawObject, access: "free" | "pro"): BuildoutCompanyProfile {
+function normalizeCompanyProfile(raw: RawObject, access: "free" | "pro"): BuildoutCompanyProfile {
   const chain = raw.supplyChain && typeof raw.supplyChain === "object" ? raw.supplyChain as RawObject : {};
   const suppliers = list(chain.suppliers);
   const relations = [
@@ -233,7 +233,7 @@ export function normalizeCompanyProfile(raw: RawObject, access: "free" | "pro"):
  * A Gloom key names it last (2330:TWSE), which the dataset reads as a venue
  * named 2330 and refuses with a database error.
  */
-export function buildoutCompanyKey(symbol: string): string {
+function buildoutCompanyKey(symbol: string): string {
   const { symbol: code, exchange } = parsePublicTickerKey(symbol.trim());
   return exchange ? `${exchange}:${code}` : code;
 }

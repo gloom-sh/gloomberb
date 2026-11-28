@@ -317,7 +317,7 @@ function sleepUnlessAborted(ms: number, signal?: AbortSignal): Promise<void> {
  * stops waiting at once, spends nothing and rejects with the signal's reason,
  * so its request is never sent; the takes behind it keep their turn.
  */
-export class RequestAllowance {
+class RequestAllowance {
   private spent: Array<{ at: number; cost: number }> = [];
   private turn: Promise<void> = Promise.resolve();
 

@@ -78,7 +78,7 @@ export function withPrimaryReading(market: PerpVenueMarket, row: PerpBoardRow): 
  * When a venue's row was read: the oldest reading among the contracts its figures are made of, each one's open
  * interest by its own read, so the row is never dated newer than a figure it shows.
  */
-export function venueMarketReadAt(market: Pick<PerpVenueMarket, "contracts">): string {
+function venueMarketReadAt(market: Pick<PerpVenueMarket, "contracts">): string {
   return market.contracts.map(rowReadAt).reduce((oldest, at) => Date.parse(at) < Date.parse(oldest) ? at : oldest);
 }
 

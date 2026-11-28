@@ -27,7 +27,7 @@ export function sinceLastSeenTint(move: number, fading: boolean): string {
  * Each row's percent move from `before` to `after`. A row missing from either
  * side, or whose move rounds to 0.00%, is left out, so only what moved shows.
  */
-export function movesSince(
+function movesSince(
   before: ReadonlyMap<string, number>,
   after: ReadonlyMap<string, number>,
 ): Map<string, number> {
@@ -50,7 +50,7 @@ interface Departure {
 // hidden still finds what it showed when it comes back. Nothing is persisted.
 const departures = new Map<string, Departure>();
 
-export function noteDeparture(paneKey: string, at: number, prices: ReadonlyMap<string, number>): void {
+function noteDeparture(paneKey: string, at: number, prices: ReadonlyMap<string, number>): void {
   departures.set(paneKey, { at, prices });
 }
 
@@ -62,7 +62,7 @@ export function noteDeparture(paneKey: string, at: number, prices: ReadonlyMap<s
  */
 const RETURN_SETTLE_MS = 3_000;
 
-export interface ReturnWindow {
+interface ReturnWindow {
   /** What LAST showed when the pane went out of sight. */
   prices: ReadonlyMap<string, number>;
   /** Until when prices still count toward the moves. */
@@ -74,7 +74,7 @@ export interface ReturnWindow {
  * the pane was away for less than `afterMs` or it is off (null). The departure
  * is used up either way: a short glance counts as having looked.
  */
-export function takeReturn(paneKey: string, at: number, afterMs: number | null): ReturnWindow | null {
+function takeReturn(paneKey: string, at: number, afterMs: number | null): ReturnWindow | null {
   const departure = departures.get(paneKey);
   departures.delete(paneKey);
   if (!departure || afterMs == null || at - departure.at < afterMs) return null;
@@ -87,7 +87,7 @@ export function takeReturn(paneKey: string, at: number, afterMs: number | null):
  * any row that has moved since. Null while nothing new moved, and once the
  * window has passed.
  */
-export function returnMoves(
+function returnMoves(
   back: ReturnWindow,
   at: number,
   prices: ReadonlyMap<string, number>,

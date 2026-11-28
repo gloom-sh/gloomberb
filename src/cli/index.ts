@@ -58,7 +58,7 @@ import { primeBoardCoins } from "./board-coins";
 const { width: SHOT_WIDTH, height: SHOT_HEIGHT } = SHOT_SIZE_LIMITS;
 
 /** The commands the CLI itself defines (help, ticker, search, ...), which plugins' commands join. */
-export function createCoreCliCommands(
+function createCoreCliCommands(
   helpEntries: () => CliHelpEntry[],
   lookupCommand: (token: string) => CliCommandDef | null,
   allCommands: () => CliCommandDef[],

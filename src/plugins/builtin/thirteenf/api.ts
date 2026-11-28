@@ -290,7 +290,7 @@ export function thirteenFReadError(error: unknown): unknown {
 }
 
 /** What a 13F read says when Gloom Cloud was reached and its 13F source failed. */
-export const THIRTEENF_SOURCE_UNAVAILABLE = "The 13F source is unavailable right now";
+const THIRTEENF_SOURCE_UNAVAILABLE = "The 13F source is unavailable right now";
 
 /**
  * A 13F read the service answered with a failure of its own (a 5xx: the 13F
@@ -472,7 +472,7 @@ function mapFund(raw: any): ThirteenFFund | null {
   return { cik, name };
 }
 
-export function mapForm(raw: any): ThirteenFFormSummary | null {
+function mapForm(raw: any): ThirteenFFormSummary | null {
   const cik = normalizeCik(stringOrEmpty(raw.cik));
   const accessionNumber = normalizeAccessionNumber(raw.accession_number, raw.url);
   const periodOfReport = stringOrEmpty(raw.period_of_report);

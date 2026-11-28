@@ -62,7 +62,7 @@ export function optionsEnrichmentNeighbour(catalogue: readonly number[], expirat
     .sort((left, right) => left - right)[0] ?? null;
 }
 
-export function optionsEnrichmentTermSlope(
+function optionsEnrichmentTermSlope(
   front: { years: number; volatility: number }, back: { years: number; volatility: number },
 ): Pick<OptionsEnrichmentSnapshot, "termSlope" | "termSlopeAnnualized"> {
   const annualized = volatilityTermSlope(front, back);

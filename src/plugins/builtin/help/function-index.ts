@@ -32,7 +32,7 @@ export interface HelpFunction {
   unlisted?: true;
 }
 
-export interface HelpFunctionSources {
+interface HelpFunctionSources {
   commands?: readonly Command[];
   pluginCommands: Iterable<CommandDef>;
   paneTemplates: Iterable<PaneTemplateDef>;
@@ -65,7 +65,7 @@ function withHelp(fn: Omit<HelpFunction, "help">): HelpFunction {
  * keeps its first owner, so T, the DES alias, is DES and not the Ticker
  * Research template.
  */
-export function buildHelpFunctionIndex(sources: HelpFunctionSources): HelpFunctionIndex {
+function buildHelpFunctionIndex(sources: HelpFunctionSources): HelpFunctionIndex {
   const functions: HelpFunction[] = [];
   for (const command of sources.commands ?? builtInCommands) {
     // Search phrases on an action without a mnemonic are not standalone functions.
@@ -133,7 +133,7 @@ export function buildRegistryHelpIndex(
 }
 
 /** The functions the index knows, once each. */
-export function listHelpFunctions(index: HelpFunctionIndex): HelpFunction[] {
+function listHelpFunctions(index: HelpFunctionIndex): HelpFunction[] {
   return [...new Set(index.values())];
 }
 

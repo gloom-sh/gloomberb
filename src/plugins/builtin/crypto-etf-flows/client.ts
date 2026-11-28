@@ -10,7 +10,7 @@ import { createCloudEndpoint } from "../shared/cloud-resource";
  * that is not a number or null is dropped from that day alone: the flows
  * stand without it.
  */
-export function validateCryptoEtfFlows(payload: CryptoEtfFlowsPayload, asset: CryptoEtfFlowAsset): CryptoEtfFlowsPayload {
+function validateCryptoEtfFlows(payload: CryptoEtfFlowsPayload, asset: CryptoEtfFlowAsset): CryptoEtfFlowsPayload {
   const invalid = (): never => { throw new Error("The server returned invalid crypto ETF flows"); };
   if (!payload || payload.asset !== asset || payload.unit !== "USD millions" || !Array.isArray(payload.funds)
     || !Array.isArray(payload.days) || !isCalendarDay(payload.asOf) || !isIsoInstant(payload.fetchedAt)

@@ -56,15 +56,6 @@ export async function emitKeypress(
   return lastEvent!;
 }
 
-let lastSavedTextFile: { name: string; text: string } | null = null;
-
-/** Returns the most recent file written through the test renderer's `saveTextFile`. */
-export function takeSavedTextFile(): { name: string; text: string } | null {
-  const saved = lastSavedTextFile;
-  lastSavedTextFile = null;
-  return saved;
-}
-
 /**
  * Dialogs open in testRender's host, outside the tree under test, as they open
  * outside the app in production. This registers the app's bridge the way App
@@ -104,10 +95,7 @@ function OpenTuiTestProviders({ children }: { children: ReactNode }) {
     copyText: async () => {},
     readText: async () => "",
     notify: () => {},
-    saveTextFile: async ({ name, text }) => {
-      lastSavedTextFile = { name, text };
-      return `~/Downloads/${name}`;
-    },
+    saveTextFile: async ({ name }) => `~/Downloads/${name}`,
   }), [renderer]);
   const nativeRenderer = useMemo(() => createTestNativeRendererHost(renderer), [renderer]);
 
@@ -168,7 +156,7 @@ export async function settleFrame(
   await renderer.renderOnce();
 }
 
-export function createTestControls(
+function createTestControls(
   getRenderer: () => Awaited<ReturnType<typeof testRender>>,
 ) {
   const waitForFrame = async (

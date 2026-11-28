@@ -42,7 +42,7 @@ function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
-export interface SkippedToolManifest {
+interface SkippedToolManifest {
   source: ClientToolManifestSource;
   token: string;
   reason: string;
@@ -322,7 +322,7 @@ function filterCandidates(candidates: ManifestCandidate[]): {
   };
 }
 
-export function buildASKGToolManifests(registry: PaneFunctionCatalog): {
+function buildASKGToolManifests(registry: PaneFunctionCatalog): {
   tools: ClientToolManifest[];
   skipped: SkippedToolManifest[];
 } {
@@ -336,7 +336,7 @@ function bytesToHex(bytes: Uint8Array): string {
   return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-export async function hashASKGToolManifests(tools: readonly ClientToolManifest[]): Promise<string> {
+async function hashASKGToolManifests(tools: readonly ClientToolManifest[]): Promise<string> {
   const sorted = [...tools].sort(compareManifests);
   const digest = await globalThis.crypto.subtle.digest(
     "SHA-256",

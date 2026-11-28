@@ -2,7 +2,7 @@ import { type NativeRendererHost as CliRenderer } from "../../../../ui";
 import { writeRendererRaw } from "./adapter";
 import { buildKittyGraphicsQuery } from "./protocol";
 
-export interface RendererCapabilities {
+interface RendererCapabilities {
   kitty_graphics?: boolean;
   multiplexer?: string;
 }
@@ -39,7 +39,7 @@ function isMultiplexedTerminal(
  * What is known about kitty graphics before querying: `null` means undecided,
  * so the query result (or its absence) decides.
  */
-export function resolveKittySupport(
+function resolveKittySupport(
   capabilities: RendererCapabilities | null | undefined,
   env: Record<string, string | undefined> = process.env,
 ): boolean | null {

@@ -49,7 +49,7 @@ import { logFailure } from "../../../utils/log-failure";
 
 const NO_ACCOUNTS: BrokerAccount[] = [];
 
-export function BrokersPane({ focused, width, height }: PaneProps) {
+function BrokersPane({ focused, width, height }: PaneProps) {
   const language = useAppLanguage();
   const dispatch = useAppDispatch();
   const config = usePaneAppConfig();

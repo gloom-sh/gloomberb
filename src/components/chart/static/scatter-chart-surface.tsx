@@ -57,7 +57,7 @@ export interface ScatterChartModel {
   xMax: number;
 }
 
-export function buildScatterChartModel(
+function buildScatterChartModel(
   points: readonly ScatterChartPoint[],
   regression: ScatterRegressionLine | null,
   chartColors: ScatterChartColors,

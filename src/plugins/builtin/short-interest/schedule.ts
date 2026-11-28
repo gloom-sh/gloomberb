@@ -15,7 +15,7 @@ const DAY_MS = 86_400_000;
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 
-export interface ShortInterestSchedule {
+interface ShortInterestSchedule {
   /** The settlement the schedule is read from, `YYYY-MM-DD`. */
   settlement: string;
   /** When FINRA published that settlement. */
@@ -72,7 +72,7 @@ function settlementAfter(ms: number): number {
 }
 
 /** The publication dates of a settlement and of the one after it; null for a date that is not `YYYY-MM-DD`. */
-export function shortInterestSchedule(settlement: string): ShortInterestSchedule | null {
+function shortInterestSchedule(settlement: string): ShortInterestSchedule | null {
   const ms = parseDay(settlement);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(settlement) || !Number.isFinite(ms) || isoDay(ms) !== settlement) return null;
   const next = settlementAfter(ms);
@@ -96,7 +96,7 @@ function dayText(date: string, settlement: string): string {
  * `published Fri 9 Oct, next settlement Thu 15 Oct, published Mon 26 Oct`: what a
  * trader could see on a given day, beside the settlement date the report cites.
  */
-export function shortInterestScheduleText(schedule: ShortInterestSchedule): string {
+function shortInterestScheduleText(schedule: ShortInterestSchedule): string {
   const day = (date: string) => dayText(date, schedule.settlement);
   return `published ${day(schedule.published)}, next settlement ${day(schedule.nextSettlement)}, published ${day(schedule.nextPublished)}`;
 }

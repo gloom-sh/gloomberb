@@ -18,7 +18,7 @@ export const MOVE_HORIZONS: readonly MoveHorizon[] = ["1D", "1W"];
 /** How far before the day asked for the observation a move starts from may lie. */
 const MOVE_WINDOW_DAYS = 10;
 /** About a year of moves of its kind before a move's size is ranked. */
-export const MOVE_RANK_MIN_OBSERVATIONS = 250;
+const MOVE_RANK_MIN_OBSERVATIONS = 250;
 
 const DAY_MS = 86_400_000;
 const HORIZON_DAYS: Record<MoveHorizon, number> = { "1D": 1, "1W": 7 };

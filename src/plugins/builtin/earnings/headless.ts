@@ -440,7 +440,7 @@ function boardRange(options: HeadlessPaneLoadArgs["options"]): BoardRange {
   return requestedBoardRange(options.date, options.week);
 }
 
-export function createEarningsBoardHeadless(deps: EarningsHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"rows"> {
+function createEarningsBoardHeadless(deps: EarningsHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"rows"> {
   return {
     shape: "rows",
     freshness: EARNINGS_CALENDAR,
@@ -461,7 +461,7 @@ export function createEarningsBoardHeadless(deps: EarningsHeadlessDependencies =
   };
 }
 
-export function createEarningsHeadless(deps: EarningsHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"rows"> {
+function createEarningsHeadless(deps: EarningsHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"rows"> {
   return {
     shape: "rows",
     freshness: EARNINGS_CALENDAR,

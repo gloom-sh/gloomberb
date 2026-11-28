@@ -34,7 +34,7 @@ type AlertDeepLinkCondition = "above" | "below" | "crosses";
 type NewsDeepLinkKind = "breaking" | "feed" | "ticker" | "top";
 const SHARE_ID = /^[a-f0-9]{32}$/;
 
-export type DesktopDeepLinkAction =
+type DesktopDeepLinkAction =
   | { type: "open-account-management"; route: CloudDeepLinkRoute; message: string }
   | { type: "open-ticker"; symbol: string; tabId: string | null; message: string }
   | { type: "open-function"; code: string; arg: string | null; message: string }
@@ -296,7 +296,7 @@ function parseShareDeepLink(parsed: ParsedGloomUrl): DesktopDeepLinkAction {
     : { type: "unsupported", message: "Share links need a valid id." };
 }
 
-export function resolveDesktopDeepLinkAction(rawUrl: string): DesktopDeepLinkAction {
+function resolveDesktopDeepLinkAction(rawUrl: string): DesktopDeepLinkAction {
   const parsed = parseGloomUrl(rawUrl);
   if (!parsed) return { type: "unsupported", message: "Unsupported Gloom link." };
 
@@ -641,7 +641,7 @@ async function openSharedPaneInApp(
   }
 }
 
-export function handleDesktopDeepLink(rawUrl: string, options: DesktopDeepLinkHandlerOptions): void {
+function handleDesktopDeepLink(rawUrl: string, options: DesktopDeepLinkHandlerOptions): void {
   const action = resolveDesktopDeepLinkAction(rawUrl);
   if (action.type === "unsupported") {
     notifyError(options.pluginRegistry, action.message);

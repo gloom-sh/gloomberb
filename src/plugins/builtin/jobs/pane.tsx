@@ -142,7 +142,7 @@ const formatOpenRoles = (value: number) => formatNumber(value, 0);
  * (2,025 / 2,000 / 1,975), where 1.9k would repeat down the gutter; above
  * that, compact with the decimals the tick step needs (160.0k / 159.5k).
  */
-export function formatOpenRolesAxisValue(value: number, domain: CompositeAxisDomain): string {
+function formatOpenRolesAxisValue(value: number, domain: CompositeAxisDomain): string {
   const magnitude = Math.max(Math.abs(domain.min), Math.abs(domain.max));
   if (magnitude < 10_000) return formatNumber(Math.round(value), 0);
   const [divisor, suffix] = COMPACT_AXIS_UNITS.find(([unit]) => magnitude >= unit)!;

@@ -480,7 +480,7 @@ export function remoteControlSchema(): RemoteControlSchema {
   };
 }
 
-export function writeTierForSideEffectLevel(
+function writeTierForSideEffectLevel(
   sideEffectLevel: RemoteSideEffectLevel,
 ): RemoteWriteTier {
   switch (sideEffectLevel) {

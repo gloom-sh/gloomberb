@@ -42,7 +42,7 @@ function isoDate(date: Date): string {
 }
 
 /** The dates a viewport asks for, as the series route takes them. */
-export function geoSeriesRange(viewport: ChartViewportSpec, now = new Date()): { from?: string; to?: string } {
+function geoSeriesRange(viewport: ChartViewportSpec, now = new Date()): { from?: string; to?: string } {
   if (viewport.dateWindow) {
     return { from: viewport.dateWindow.start.slice(0, 10), to: viewport.dateWindow.end.slice(0, 10) };
   }

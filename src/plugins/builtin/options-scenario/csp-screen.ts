@@ -124,7 +124,7 @@ const bidYield = (row: CspScreenRow) => row.csp?.quote?.bidAnnualizedYield ?? nu
  * rest and flagged, never left out. A put with no yield to rank (it expires
  * today) follows, then the names with no put, by symbol.
  */
-export function rankCspScreen(rows: readonly Omit<CspScreenRow, "rank">[]): CspScreenRow[] {
+function rankCspScreen(rows: readonly Omit<CspScreenRow, "rank">[]): CspScreenRow[] {
   const tier = (row: Omit<CspScreenRow, "rank">) => bidYield(row as CspScreenRow) != null ? 0 : row.csp ? 1 : 2;
   const sorted = [...rows].sort((left, right) => tier(left) - tier(right)
     || (bidYield(right as CspScreenRow) ?? 0) - (bidYield(left as CspScreenRow) ?? 0)

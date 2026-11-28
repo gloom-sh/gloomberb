@@ -211,7 +211,7 @@ const INTRADAY_BAR_MAX_MS = 20 * 60 * 60 * 1000;
  * bars): less than a bar after it, off the bars' grid. It belongs to that bar, as charts fold it in (live-bars.ts), so
  * it has no volume of its own and is never a bar without reported volume. `times` may be in any order.
  */
-export function latestTradeIndex(times: readonly number[]): number {
+function latestTradeIndex(times: readonly number[]): number {
   const order = times.map((time, index) => ({ time, index }))
     .filter(({ time }) => Number.isFinite(time))
     .sort((left, right) => left.time - right.time);

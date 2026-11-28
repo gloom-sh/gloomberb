@@ -160,7 +160,7 @@ export async function loadSessionMovers(
 }
 
 /** The rows with a float of at least `minFloat`, the first LIST_ROWS of them, ranked again from 1. */
-export function withMinFloat<T extends { rank: number; floatShares: number | null }>(items: readonly T[], minFloat: number): T[] {
+function withMinFloat<T extends { rank: number; floatShares: number | null }>(items: readonly T[], minFloat: number): T[] {
   return items
     .filter((item) => meetsMinFloat(item.floatShares, minFloat))
     .slice(0, LIST_ROWS)

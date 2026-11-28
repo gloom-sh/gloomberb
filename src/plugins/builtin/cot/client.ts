@@ -48,7 +48,7 @@ function validateCotBoard(data: CotBoardPayload, family: CotFamily, traderClass:
   }
   return data;
 }
-export function validateCotContract(data: CotContractPayload, family: CotFamily, contractCode: string, positions: CotPositions = "futures-only") {
+function validateCotContract(data: CotContractPayload, family: CotFamily, contractCode: string, positions: CotPositions = "futures-only") {
   base(data, family, positions);
   if (data.contract !== null && data.contract.contractCode !== contractCode || !Array.isArray(data.positions) || !Array.isArray(data.history)) {
     throw new Error("The server returned an invalid COT contract");
@@ -67,7 +67,7 @@ export function validateCotContract(data: CotContractPayload, family: CotFamily,
   return data;
 }
 const unavailable = (error: unknown) => unavailableOnServer(error, "COT history is not available yet.", [404, 503]);
-export async function fetchCotBoard(family: CotFamily, traderClass: CotClass, client: Pick<typeof apiClient, "getCloudCotBoard"> = apiClient, positions: CotPositions = "futures-only") {
+async function fetchCotBoard(family: CotFamily, traderClass: CotClass, client: Pick<typeof apiClient, "getCloudCotBoard"> = apiClient, positions: CotPositions = "futures-only") {
   try { return validateCotBoard(await client.getCloudCotBoard(family, traderClass, positions), family, traderClass, positions); }
   catch (error) { throw unavailable(error); }
 }

@@ -24,7 +24,7 @@ export interface ExperimentAnswer {
   variant?: string;
 }
 
-export interface ExperimentExposureRequest {
+interface ExperimentExposureRequest {
   experiment: string;
   /** The variant this browser was given before, if any. */
   variant?: string;

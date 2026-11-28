@@ -53,6 +53,7 @@ export interface LocalGeoLayer {
 const localLayers = new Map<string, LocalGeoLayer>();
 
 /** Adds a layer to every map's catalog until the returned function removes it. */
+/** @knipignore Dynamically required by src/plugins/builtin/buildout/index.tsx. */
 export function registerLocalGeoLayer(layer: LocalGeoLayer): () => void {
   localLayers.set(layer.info.id, layer);
   // A catalog read before the layer existed would hide it for minutes.

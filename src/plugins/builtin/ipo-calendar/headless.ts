@@ -150,7 +150,7 @@ const MAX_ROWS = 500;
 
 const SPAC_NOTE = "A SPAC's merger with its target (de-SPAC) is no IPO, so the calendar lists the SPACs' own IPOs.";
 
-export function projectIpoCalendarHeadless(
+function projectIpoCalendarHeadless(
   payload: IpoCalendarPayload,
   args: HeadlessPaneLoadArgs,
   detail: IpoDealDetail | null = null,

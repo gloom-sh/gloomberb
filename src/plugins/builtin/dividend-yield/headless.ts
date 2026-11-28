@@ -187,7 +187,7 @@ function matchesType(payment: DividendPayment, type: string): boolean {
  * with `--tax-rate`, a section gives the tax-equivalent yield and the
  * muni/Treasury ratio, each saying what it was computed from.
  */
-export function projectDividendYieldHeadless(
+function projectDividendYieldHeadless(
   data: DividendData,
   args: HeadlessPaneLoadArgs,
   { bond = null, tax = null }: { bond?: FundBondFacts | null; tax?: TaxEquivalentAnalysis | null } = {},
@@ -385,7 +385,7 @@ export function projectDividendYieldHeadless(
   };
 }
 
-export function createDividendYieldHeadless(
+function createDividendYieldHeadless(
   dependencies: DividendYieldHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"bundle"> {
   return {

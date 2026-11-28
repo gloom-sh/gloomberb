@@ -65,7 +65,7 @@ export function futuresRowId(row: FuturesTableRow): string {
  * "Corn Futures,Dec-2026" or cut off mid-month ("Futures,Dec-"); a month
  * without a year is dropped rather than guessed.
  */
-export function futuresContractName(contract: FuturesContract, quote?: Quote | null): string {
+function futuresContractName(contract: FuturesContract, quote?: Quote | null): string {
   const month = quotedContractMonth(contract, quote);
   if (!month) return unplacedName(contract);
   return `${contract.name} ${contractMonthLabel(month.year, month.month)}`;

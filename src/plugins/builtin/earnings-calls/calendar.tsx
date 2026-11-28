@@ -79,7 +79,7 @@ const SORTABLE: Partial<Record<CalendarColumnId, CalendarSort["column"]>> = {
   ticker: "ticker", company: "company", local: "time", newYork: "time",
 };
 
-export function calendarColumns(width: number, { localClock }: { localClock: boolean }): CalendarColumn[] {
+function calendarColumns(width: number, { localClock }: { localClock: boolean }): CalendarColumn[] {
   const fixed = (list: CalendarColumn[]) =>
     list.reduce((sum, column) => sum + (column.id === "company" ? 0 : tableColumnWidth(column)) + TABLE_COLUMN_GAP, 2);
   const original = localClock ? ALL_COLUMNS : ALL_COLUMNS.filter((column) => column.id !== "local");
@@ -101,7 +101,7 @@ export function calendarColumns(width: number, { localClock }: { localClock: boo
  * cannot tell a company that has not announced a time from a time the service
  * did not read: both arrive as a day alone, and are read as the former.
  */
-export function calendarCallCell(call: CloudEarningsCallPayload, column: CalendarColumn, now: number): DataTableCell {
+function calendarCallCell(call: CloudEarningsCallPayload, column: CalendarColumn, now: number): DataTableCell {
   // A call already over is shown and quieter, as a row that no longer applies is.
   const over = !isUpcomingCall(call, now);
   const tone = (color: string) => (over ? colors.textMuted : color);

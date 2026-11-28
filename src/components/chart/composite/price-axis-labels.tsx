@@ -62,7 +62,7 @@ interface CursorPriceAxisOverlay {
   topPercent: number | null;
 }
 
-export function buildCursorPriceAxisOverlay({
+function buildCursorPriceAxisOverlay({
   axisWidth,
   height,
   cursorPixelY,

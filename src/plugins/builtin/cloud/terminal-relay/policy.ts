@@ -41,7 +41,7 @@ export interface TerminalRelayPolicyEntry {
 const ARRANGE = "Rearranges the person's own layout; layout.undo reverts it.";
 const OPEN = "Opens, focuses or navigates panes in this app only.";
 
-export const TERMINAL_RELAY_OPERATION_POLICY: Readonly<Record<string, TerminalRelayPolicyEntry>> = {
+const TERMINAL_RELAY_OPERATION_POLICY: Readonly<Record<string, TerminalRelayPolicyEntry>> = {
   "app.openCommandBar": { policy: "allow", reason: "Opens the command bar; running a row is commandBar.activateResult." },
   "app.closeCommandBar": { policy: "allow", reason: "Closes the command bar." },
   "app.closeDialog": { policy: "allow", reason: "Closes the dialog on top as Esc would; a relay prompt answers Deny when closed." },

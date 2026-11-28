@@ -15,11 +15,6 @@ function cooldownLeft(now = Date.now()): number {
   return Math.max(0, lastSentAt + RESEND_COOLDOWN_MS - now);
 }
 
-/** Forgets the last send, for a test that opens the panel more than once. */
-export function resetVerificationCooldownForTests(): void {
-  lastSentAt = 0;
-}
-
 /**
  * Shared continuation after email signup in the terminal and browser, and
  * what a press of "verify your email" or a wall's resend opens later on.

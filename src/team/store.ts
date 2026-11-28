@@ -60,7 +60,7 @@ const EMPTY: TeamStoreSnapshot = {
  * `team.notification` frames into cards the person can act on.
  */
 /** The slice of the API client the store uses, so tests can hand in a fake. */
-export type TeamStoreClient = Pick<
+type TeamStoreClient = Pick<
   typeof apiClient,
   | "isVerified"
   | "subscribeCurrentUser"
@@ -72,7 +72,7 @@ export type TeamStoreClient = Pick<
   | "markChatNotificationsDelivered"
 >;
 
-export class TeamStore {
+class TeamStore {
   constructor(private readonly client: TeamStoreClient = apiClient) {}
 
   private snapshot: TeamStoreSnapshot = EMPTY;

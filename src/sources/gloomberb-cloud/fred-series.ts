@@ -159,7 +159,7 @@ export function getCachedFredSeries(
   return entry ? withFredSourceFreshness(entry) : null;
 }
 
-export function withFredSourceFreshness<T extends FredSeriesCacheEntry>(entry: T): T {
+function withFredSourceFreshness<T extends FredSeriesCacheEntry>(entry: T): T {
   const sourceTime = entry.data.fetchedAt ? Date.parse(entry.data.fetchedAt) : NaN;
   return {
     ...entry,
@@ -181,7 +181,7 @@ function isUsBusinessDay(time: number): boolean {
  * morning publication may have landed since. Weekends and holidays publish
  * nothing, so the nominal policy applies on those days.
  */
-export function isFredPublicationPending(
+function isFredPublicationPending(
   observations: readonly CloudFredObservationPayload[],
   fetchedAt: number,
   now = Date.now(),

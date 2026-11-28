@@ -276,7 +276,7 @@ export function catalystSections(rows: readonly CatalystEvent[], read: CatalystD
 }
 
 /** The calendar groups by the month of the date it shows; the change feed by the day a change was observed. */
-export function catalystSection(event: CatalystEvent, read: CatalystDateRead, changes: boolean): string {
+function catalystSection(event: CatalystEvent, read: CatalystDateRead, changes: boolean): string {
   if (changes) return formatDay(event.observedAt);
   const field = catalystListedField(event, read);
   if (catalystDateWithheld(event, field)) return CATALYST_DATE_WITHHELD;

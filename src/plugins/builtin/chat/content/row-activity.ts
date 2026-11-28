@@ -3,7 +3,7 @@ import type { ChatMessage } from "../../../../api-client";
 import { useShortcut } from "../../../../react/input";
 
 /** How long a message the reader was sent to (a notification, a quoted reply) stays marked. */
-export const MESSAGE_HIGHLIGHT_MS = 2000;
+const MESSAGE_HIGHLIGHT_MS = 2000;
 
 const MESSAGE_ID_ATTRIBUTE = "data-gloom-chat-message-id";
 const TRANSCRIPT_ROLE = "chat-transcript";

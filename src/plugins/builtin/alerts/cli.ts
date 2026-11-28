@@ -521,7 +521,7 @@ function lastPrice(quote: Quote): number | null {
  * Asks which price `81.000` meant when the last price shows it was a dot
  * between thousands: both readings, and the command to type for each.
  */
-export function thousandsDotMessage(
+function thousandsDotMessage(
   request: Extract<AlertAddRequest, { kind: "price" }>,
   listing: string,
   last: number | null,

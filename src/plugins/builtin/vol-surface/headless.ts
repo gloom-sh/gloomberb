@@ -178,7 +178,7 @@ function skewSection(snapshot: SurfaceSnapshot): HeadlessBundleSection {
  * the change on the day before's close, the year's range and the surface's
  * own 30-day IV at the forward, which DVOL is read against.
  */
-export function dvolSection(dvol: DvolPayload, snapshot: SurfaceSnapshot | null): HeadlessBundleSection {
+function dvolSection(dvol: DvolPayload, snapshot: SurfaceSnapshot | null): HeadlessBundleSection {
   const rows = dvol.observations;
   const latest = dvol.latest ?? (rows.at(-1) ? { value: rows.at(-1)!.value, at: `${rows.at(-1)!.date}T00:00:00.000Z` } : null);
   const today = latest?.at.slice(0, 10);

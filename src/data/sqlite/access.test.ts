@@ -1,10 +1,10 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterAll, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { createSqliteAccess } from "./access";
 import { SqliteDatabase } from "./database";
 import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
 
-afterEach(removeTempDbFiles);
+afterAll(removeTempDbFiles);
 
 function synchronousLevel(connection: Database): number | undefined {
   return connection.query<{ synchronous: number }, []>("PRAGMA synchronous").get()?.synchronous;
@@ -40,11 +40,11 @@ test("commits stop flushing only where WAL took, and user data flushes on the ap
   }
 });
 
-test("a Windows command waits out a long writer lock, but a durable write still expires at its deadline", async () => {
+test.concurrent("a Windows command waits out a long writer lock, but a durable write still expires at its deadline", async () => {
   const dbPath = createTempDbPath("command-lock-wait");
   const realWindows = process.platform === "win32";
-  const command = new SqliteDatabase(dbPath, realWindows ? {} : { commandWriteWaitMs: 1_500 });
-  const shortCommand = new SqliteDatabase(dbPath, { commandWriteWaitMs: 100 });
+  const command = new SqliteDatabase(dbPath, realWindows ? {} : { commandWriteWaitMs: 600 });
+  const shortCommand = new SqliteDatabase(dbPath, { commandWriteWaitMs: 50 });
   const source = URL.createObjectURL(new Blob([`
     import { Database } from "bun:sqlite";
     self.onmessage = ({ data }) => {
@@ -69,7 +69,7 @@ test("a Windows command waits out a long writer lock, but a durable write still 
     const write = (db: SqliteDatabase, id: number) => db.access.write("command write", () => {
       db.connection.query("INSERT INTO command_writes VALUES (?)").run(id);
     });
-    worker.postMessage({ path: dbPath, signal: signal.buffer, holdMs: realWindows ? 9_000 : 500 });
+    worker.postMessage({ path: dbPath, signal: signal.buffer, holdMs: realWindows ? 9_000 : 200 });
     await locked.promise;
     const startedAt = performance.now();
     expect(() => write(shortCommand, 1)).toThrow(/database is locked|database is busy/i);
@@ -240,7 +240,7 @@ function holdFixture(name: string, options: { holdLimitMs?: number } = {}) {
   };
 }
 
-test("in the app, no commit is made while the WAL is being flushed, and what waited lands when the flush ends", async () => {
+test.concurrent("in the app, no commit is made while the WAL is being flushed, and what waited lands when the flush ends", async () => {
   const fixture = holdFixture("hold-commits");
   const { access, put, committed, state, commits, connection } = fixture;
   const seen: boolean[] = [];
@@ -266,7 +266,7 @@ test("in the app, no commit is made while the WAL is being flushed, and what wai
   }
 });
 
-test("in the app, held commits go ahead on their own when the end of a flush goes unannounced", async () => {
+test.concurrent("in the app, held commits go ahead on their own when the end of a flush goes unannounced", async () => {
   const fixture = holdFixture("hold-poll");
   const { access, put, committed, state } = fixture;
   try {
@@ -307,7 +307,7 @@ test("in the app, a replacement queued during a WAL flush runs after earlier wri
 
 // A flush that lasts seconds is waited out; one that never ends (a thread
 // the checkpointer gave up on) must not keep the user's writes back for good.
-test("in the app, commits are held for a flush only up to the limit", async () => {
+test.concurrent("in the app, commits are held for a flush only up to the limit", async () => {
   const fixture = holdFixture("hold-limit", { holdLimitMs: 150 });
   const { access, put, committed } = fixture;
   try {

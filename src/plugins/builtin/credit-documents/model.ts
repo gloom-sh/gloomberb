@@ -123,7 +123,7 @@ const NAMED_COUPON = /(?:^|[\s(])(\d{1,2})(?:\.(\d{1,4}))?(?:\s+(\d)\/(\d{1,2}))
  * fact, with the decimals the name writes it in; null for a floating line or
  * a name with no rate in it.
  */
-export function namedCoupon(name: string): { value: number; digits: number } | null {
+function namedCoupon(name: string): { value: number; digits: number } | null {
   if (FLOATING_NAME.test(name)) return null;
   const match = NAMED_COUPON.exec(name);
   if (!match) return null;
@@ -159,7 +159,7 @@ function couponDigits(data: Pick<CreditDocumentsPayload, "instruments">): number
  * floating line's rate is its margin. A note the filing gave no coupon for
  * reads the one its name states (`3.500% Notes due 2027`).
  */
-export function creditCoupon(row: CreditInstrument, data?: Pick<CreditDocumentsPayload, "instruments">): string {
+function creditCoupon(row: CreditInstrument, data?: Pick<CreditDocumentsPayload, "instruments">): string {
   const coupon = instrumentFact(row, "coupon");
   const reading = couponReading(row);
   if (coupon) return reading && data ? `${reading.value.toFixed(couponDigits(data))}%` : factValue(coupon);
@@ -171,7 +171,7 @@ export function creditCoupon(row: CreditInstrument, data?: Pick<CreditDocumentsP
  * margin with no named base is read as SOFR for a dollar or undated currency
  * instrument, the market's base for dollar loans, and is left bare for any other.
  */
-export function creditMargin(row: CreditInstrument): string {
+function creditMargin(row: CreditInstrument): string {
   const margin = instrumentFact(row, "margin"), reference = instrumentFact(row, "reference_rate");
   const named = reference ? words(typeof reference.value === "string" ? reference.value : creditValue(reference.value)) : null;
   if (margin) {

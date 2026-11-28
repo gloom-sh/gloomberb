@@ -70,7 +70,7 @@ interface HolderSnapshot {
   price?: number;
 }
 
-export interface HoldersHeadlessDependencies {
+interface HoldersHeadlessDependencies {
   loadSnapshot(
     symbol: string,
     args: HeadlessPaneLoadArgs,
@@ -105,7 +105,7 @@ const defaultDependencies: HoldersHeadlessDependencies = {
   loadIndexedHolders: (ticker, limit, ctx) => loadIndexedHolders(ticker, limit, ctx.signal, ctx.apiClient),
 };
 
-export function createHoldersHeadless(
+function createHoldersHeadless(
   overrides: Partial<HoldersHeadlessDependencies> = {},
 ): HeadlessPaneDefinition<"rows"> {
   const dependencies = { ...defaultDependencies, ...overrides };

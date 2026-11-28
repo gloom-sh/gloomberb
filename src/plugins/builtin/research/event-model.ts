@@ -909,7 +909,7 @@ export function eventSourceNotice(state: EventSourceState): EventSourceNotice | 
  * A source's failure in words: a reason code reads as what happened
  * ("UPSTREAM_ERROR" is "the source did not answer"); a sentence stands.
  */
-export function sourceErrorText(error: string): string {
+function sourceErrorText(error: string): string {
   return readableStatus(error.trim());
 }
 

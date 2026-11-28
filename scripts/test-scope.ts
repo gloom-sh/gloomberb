@@ -12,7 +12,7 @@ import { basename, dirname, join, relative, resolve } from "node:path";
  */
 
 const SKIP_DIRS = new Set([".git", ".hutch", "artifacts", "build", "dist", "node_modules"]);
-const TEST_FILE_RE = /(?:^|[/.])(?:test|spec)\.[cm]?[jt]sx?$|_(?:test|spec)\.[cm]?[jt]sx?$/;
+const TEST_FILE_RE = /\.(?:test|spec)\.[cm]?[jt]sx?$|_(?:test|spec)\.[cm]?[jt]sx?$/;
 const CODE_FILE_RE = /\.[cm]?[jt]sx?$/;
 const INDEXED_FILE_RE = /\.(?:[cm]?[jt]sx?|json|css|sql|sh|ps1)$/;
 const IMPORT_SPEC_RE = /(?:from\s+|import\s*\(\s*|require\s*\(\s*|import\s+)["']([^"']+)["']/g;
@@ -32,6 +32,7 @@ const FULL_TEST_TRIGGERS: readonly RegExp[] = [
   /^src\/test-support\//,
   /^src\/renderers\/opentui\/test-utils\.tsx$/,
   /^src\/renderers\/dom\/test-utils\.tsx$/,
+  /^src\/plugins\/catalog\.ts$/,
 ];
 
 /** Files whose changes force a full floating-promise scan across all `src/` runtime files. */
@@ -369,8 +370,11 @@ export function selectTestsForChanges(
     };
   }
 
-  if (selected.size > MAX_SCOPED_TESTS) {
-    return full(`Change reaches ${selected.size} test files (over ${MAX_SCOPED_TESTS}); running full test suite.`);
+  const maxScopedTests = graph.testFiles.length >= 20
+    ? Math.min(MAX_SCOPED_TESTS, Math.floor(graph.testFiles.length * 0.6))
+    : MAX_SCOPED_TESTS;
+  if (selected.size > maxScopedTests) {
+    return full(`Change reaches ${selected.size} test files (over ${maxScopedTests}); running full test suite.`);
   }
 
   const tests = [...selected].sort();

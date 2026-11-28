@@ -58,7 +58,7 @@ function readsAsMonth(month: FxInterventionMonth | undefined): boolean {
  * record, never a guessed one. A server without the route answers 404, which
  * the loader also reads as none.
  */
-export function readFxInterventions(payload: unknown): FxInterventionsPayload | null {
+function readFxInterventions(payload: unknown): FxInterventionsPayload | null {
   if (!payload || typeof payload !== "object") return null;
   const record = payload as FxInterventionsPayload;
   if (record.status !== "available" || !Array.isArray(record.days) || !Array.isArray(record.interventions) || !Array.isArray(record.months)
@@ -79,7 +79,7 @@ const RETRY_MS = 60_000;
  * is left out, never the rate or the chart it goes with. One request serves
  * every caller for ten minutes, a failed one for a minute.
  */
-export function createFxInterventionsLoader(
+function createFxInterventionsLoader(
   client: FxInterventionsClient,
   now: () => number = Date.now,
 ): () => Promise<FxInterventionsPayload | null> {

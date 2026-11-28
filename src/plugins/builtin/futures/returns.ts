@@ -143,22 +143,6 @@ export function pickFrontContract(
 }
 
 /**
- * One contract's returns: the latest price against that same contract's close
- * on or before the same date a week and one, three, six and twelve calendar
- * months earlier, and its last close of the year before (periodReturn). The continuous alias's own
- * series jumps at every roll (LE=F fell 6.3% on a July roll day), so its
- * history is never the baseline. `price` is the live quote, dated `asOf`;
- * without one the contract's last close stands in.
- */
-export function frontContractReturns(
-  history: readonly PricePoint[],
-  price: number | null | undefined,
-  asOf: number | null | undefined,
-): FuturesReturnValues {
-  return frontContractPeriodReturns(history, price, asOf).values;
-}
-
-/**
  * frontContractReturns with the day of each return's base close, which the
  * board's JSON and CSV carry and its report names: `fn FUT ZC`'s
  * 1M on Thu 5 Nov runs from Mon 5 Oct's close, as CTM's 1M curve and RETURN do.

@@ -64,7 +64,7 @@ export interface ButtonProps {
  * page's dim text does not read on (Alt+Enter on Connect was 2.07:1 in
  * colorblind-light), and the quieter dim or muted text beside an unfilled one.
  */
-export function buttonShortcutColor(palette: { bg?: string; fg: string }, inert: boolean, colors: ThemeColors): string {
+function buttonShortcutColor(palette: { bg?: string; fg: string }, inert: boolean, colors: ThemeColors): string {
   const filled = palette.bg !== undefined && palette.bg !== colors.bg && palette.bg !== colors.panel;
   if (filled) return palette.fg;
   return inert ? colors.textMuted : colors.textDim;
@@ -82,7 +82,7 @@ function isFilledVariant(variant: ButtonVariant): boolean {
  * (`buttonLabelAttributes`), so a focused primary never reads weaker than an
  * unfocused one.
  */
-export function resolveButtonColors(variant: ButtonVariant, active: boolean, disabled: boolean, colors: ThemeColors, tone?: ButtonProps["tone"]): { bg?: string; fg: string } {
+function resolveButtonColors(variant: ButtonVariant, active: boolean, disabled: boolean, colors: ThemeColors, tone?: ButtonProps["tone"]): { bg?: string; fg: string } {
   if (variant === "quiet") return { bg: active ? colors.selected : undefined, fg: disabled ? colors.textMuted : active ? colors.textBright : colors.textDim };
   if (variant === "plain") {
     return { fg: disabled ? colors.textMuted : active ? colors.textBright : colors.textDim };
@@ -112,7 +112,7 @@ export function resolveButtonColors(variant: ButtonVariant, active: boolean, dis
  * A terminal button's label: bold when focused, and underlined too on a
  * filled button, whose fill does not change with focus.
  */
-export function buttonLabelAttributes(variant: ButtonVariant, active: boolean, inert: boolean): number {
+function buttonLabelAttributes(variant: ButtonVariant, active: boolean, inert: boolean): number {
   if (!active) return 0;
   return TextAttributes.BOLD | (isFilledVariant(variant) && !inert ? TextAttributes.UNDERLINE : 0);
 }
@@ -123,7 +123,7 @@ export function buttonLabelAttributes(variant: ButtonVariant, active: boolean, i
  * button drawn from children reads stronger than an unfocused one too. Text
  * a component of the caller's draws is its own to mark.
  */
-export function markButtonContent(children: ReactNode, attributes: number): ReactNode {
+function markButtonContent(children: ReactNode, attributes: number): ReactNode {
   if (!attributes) return children;
   return Children.map(children, (child): ReactNode => {
     if (!isValidElement<{ attributes?: number; children?: ReactNode }>(child)) return child;

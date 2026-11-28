@@ -316,7 +316,7 @@ function seriesPeriodicity(dates: readonly Date[]): Periodicity | null {
  * `Sep 2026, released Tue 20 Oct`. Nothing for a chart with a price series
  * or a series observed at a time of day.
  */
-export function periodChartDates(series: readonly HeadlessSeries[], spec: Pick<ChartSpec, "series">): Pick<HeadlessPaneFreshness, "asOf" | "oldest" | "oldestAnyDay" | "periodicity" | "releasedOn"> {
+function periodChartDates(series: readonly HeadlessSeries[], spec: Pick<ChartSpec, "series">): Pick<HeadlessPaneFreshness, "asOf" | "oldest" | "oldestAnyDay" | "periodicity" | "releasedOn"> {
   if (!spec.series.length || spec.series.some(({ source }) => source.kind !== "economic" && source.kind !== "capability")) return {};
   const ends: Array<{ day: string; releasedOn: string | null }> = [];
   const periods = new Set<Periodicity | null>();
@@ -681,7 +681,7 @@ function servedInterval(series: Pick<ResolvedSeries, "historyResolution" | "barS
 }
 
 /** A dropped resolution, as JSON's `metadata.resolution` states it. */
-export interface ChartResolutionDrop {
+interface ChartResolutionDrop {
   requested: ChartBarSize;
   returned: ChartBarSize;
   range: string;
@@ -694,7 +694,7 @@ export interface ChartResolutionDrop {
  * monthly bars for `--chartResolution 1d` without saying so. Null when every
  * price series is in the bars asked for, or none was asked.
  */
-export function chartResolutionDrop(
+function chartResolutionDrop(
   requested: ChartResolution,
   viewport: Pick<ChartViewportSpec, "range" | "dateWindow">,
   series: ReadonlyArray<Pick<ResolvedSeries, "historyResolution" | "barSize"> & { symbol?: string }>,
@@ -725,7 +725,7 @@ export function chartResolutionDrop(
  * BDI:TSX is `BDI:TSX`, `BDI:volume, AAPL` is `BDI:TSX:volume, AAPL`. The
  * listing alone when the argument does not name the symbol as a series.
  */
-export function argumentWithListing(argument: string, symbol: string, key: string): string {
+function argumentWithListing(argument: string, symbol: string, key: string): string {
   let named = false;
   const legs = argument.split(/([;,\n]\s*)/).map((leg, index) => {
     if (index % 2 === 1) return leg;
@@ -746,7 +746,7 @@ export function argumentWithListing(argument: string, symbol: string, key: strin
  * real ticker of the same letters, read as a listing or quoted, still charts
  * as the ticker; null then, and for any other symbol.
  */
-export async function bareCatalogSeries(
+async function bareCatalogSeries(
   series: ChartSeriesSpec,
   readListing: () => Promise<unknown>,
   context: Pick<HeadlessPaneContext, "marketData" | "catalogSeriesName" | "catalogSeriesNamed">,

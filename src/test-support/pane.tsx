@@ -1,12 +1,9 @@
 import { useMemo, type Dispatch, type ReactNode } from "react";
-import { PaneFooterBar, PaneFooterKeys, PaneFooterProvider, type CombinedPaneFooter } from "../components/layout/pane/footer";
 import { AppContext, PaneInstanceProvider, type AppAction, type AppState } from "../state/app/context";
 import { PluginRenderProvider, type PluginRuntimeAccess } from "../plugins/runtime";
-import { Box } from "../ui";
 import { createStaticAppStore } from "./app-store";
 import { cloneLayout, createDefaultConfig, type AppConfig, type PaneInstanceConfig } from "../types/config";
 
-export { createTestTicker } from "./ticker";
 
 interface TestPaneProviderProps {
   state: AppState;
@@ -30,33 +27,6 @@ export function TestPaneProvider({
         </PluginRenderProvider>
       </PaneInstanceProvider>
     </AppContext>
-  );
-}
-
-/**
- * A focused pane inside TestPaneProvider with the footer bar the app draws under it. `children`
- * renders the pane into the body above the footer and runs again with each footer the pane
- * registers. `footerKeys` also binds the footer's shortcut keys.
- */
-export function TestPaneFrame({
-  width, height, footerKeys = false, children, ...provider
-}: Omit<TestPaneProviderProps, "children"> & {
-  width: number;
-  height: number;
-  footerKeys?: boolean;
-  children: (body: { width: number; height: number }, footer: CombinedPaneFooter) => ReactNode;
-}) {
-  const body = { width, height: height - 1 };
-  return (
-    <TestPaneProvider {...provider}>
-      <PaneFooterProvider>{(footer) => (
-        <Box width={width} height={height} flexDirection="column">
-          <Box width={width} height={body.height} flexShrink={0}>{children(body, footer)}</Box>
-          <PaneFooterBar footer={footer} focused width={width} />
-          {footerKeys ? <PaneFooterKeys paneId={provider.paneId} footer={footer} focused /> : null}
-        </Box>
-      )}</PaneFooterProvider>
-    </TestPaneProvider>
   );
 }
 

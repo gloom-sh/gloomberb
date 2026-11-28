@@ -205,7 +205,7 @@ export interface SpreadRank {
  * from the top. A spread rank needs a month of spreads in the year
  * (MIN_SPREAD_RANK_POINTS); with fewer it is blank, never read off a handful.
  */
-export function spreadRank(index: Pick<CdxBoardIndex, "quote" | "points" | "level" | "date" | "spreadBp">): SpreadRank {
+function spreadRank(index: Pick<CdxBoardIndex, "quote" | "points" | "level" | "date" | "spreadBp">): SpreadRank {
   if (index.quote === "spread") {
     return { percentile: yearStatistics(index.points, index.level, index.date, MIN_SPREAD_RANK_POINTS).percentile, basis: "spread" };
   }

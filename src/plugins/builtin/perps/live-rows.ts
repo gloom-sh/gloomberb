@@ -55,7 +55,7 @@ const LIVE_FOR_MS = 60_000;
  * marked within the last minute by the server's clock. The server says so too, but a socket that went quiet says
  * nothing, so the app keeps its own count.
  */
-export function isLivePerpQuote(quote: Quote | null | undefined, now = Date.now() + (getServerClockOffsetMs() ?? 0)): boolean {
+function isLivePerpQuote(quote: Quote | null | undefined, now = Date.now() + (getServerClockOffsetMs() ?? 0)): boolean {
   return quote?.dataSource === "live" && quote.stale !== true && Number.isFinite(quote.lastUpdated)
     && now - quote.lastUpdated <= LIVE_FOR_MS;
 }
@@ -65,7 +65,7 @@ export function isLivePerpQuote(quote: Quote | null | undefined, now = Date.now(
  * after, never more than a minute away. A reading stamped ahead of the clock would otherwise ask for a timer past what
  * `setTimeout` holds, which fires at once, again and again.
  */
-export function liveRecheckMs(expiresInMs: number): number {
+function liveRecheckMs(expiresInMs: number): number {
   return Math.min(LIVE_FOR_MS, Math.max(0, expiresInMs) + 250);
 }
 
@@ -73,7 +73,7 @@ export function liveRecheckMs(expiresInMs: number): number {
 const LIVE_ROW_LIMIT = 60;
 
 /** The markets of the rows a view follows on the quote stream: the first LIVE_ROW_LIMIT. */
-export const followedPerpMarkets = (rows: readonly Pick<PerpBoardRow, "marketId">[]) =>
+const followedPerpMarkets = (rows: readonly Pick<PerpBoardRow, "marketId">[]) =>
   rows.slice(0, LIVE_ROW_LIMIT).map((row) => row.marketId);
 
 export interface LivePerpRows {

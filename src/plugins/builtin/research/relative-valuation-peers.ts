@@ -111,7 +111,7 @@ const RELATED_INDUSTRIES: readonly RelatedIndustry[] = [{
 }];
 
 /** The company `--peers` was given: its industry and business from its profile, and its market cap in US dollars. */
-export interface PeerSubject {
+interface PeerSubject {
   symbol: string;
   industry: string | null;
   description: string | null;
@@ -119,7 +119,7 @@ export interface PeerSubject {
 }
 
 /** A covered equity the screener returned, with what the ranking reads. */
-export interface PeerCandidate {
+interface PeerCandidate {
   symbol: string;
   marketCapUsd: number | null;
   /** It reports revenue figures (growth or a margin): a shell or a treasury vehicle filed in an industry does not. */
@@ -157,7 +157,7 @@ function firstSentence(text: string | null): string {
   return source;
 }
 
-export function peerGroupOf(subject: Pick<PeerSubject, "symbol" | "industry" | "description">): PeerGroup | null {
+function peerGroupOf(subject: Pick<PeerSubject, "symbol" | "industry" | "description">): PeerGroup | null {
   const symbol = bareSymbol(subject.symbol);
   // A member of a curated core is placed by its symbol, whatever its profile says.
   const core = RELATED_INDUSTRIES.find((group) => group.core.includes(symbol));
@@ -175,7 +175,7 @@ export function peerGroupOf(subject: Pick<PeerSubject, "symbol" | "industry" | "
  * that reports no revenue figures is left out, and the subject itself.
  * Without the subject's cap the largest come first.
  */
-export function rankPeerCandidates(
+function rankPeerCandidates(
   subject: Pick<PeerSubject, "symbol" | "marketCapUsd">,
   candidates: readonly PeerCandidate[],
   { limit = MOST_PEERS, exclude = [] }: { limit?: number; exclude?: readonly string[] } = {},
@@ -204,7 +204,7 @@ export function rankPeerCandidates(
  * industry's, its curated core's, and its sector's of comparable size when
  * the industry has too few.
  */
-export interface PeerCandidates {
+interface PeerCandidates {
   industry: readonly PeerCandidate[];
   core: readonly PeerCandidate[];
   sector?: { name: string; candidates: readonly PeerCandidate[] } | null;
@@ -284,7 +284,7 @@ function sectorSelection(subject: PeerSubject, group: PeerGroup, sector: PeerCan
  * answer), falls back to the related industry's curated core when it has
  * one; otherwise what was found, or null when nothing was.
  */
-export function selectPeers(subject: PeerSubject, group: PeerGroup, candidates: PeerCandidates | null): PeerSelection | null {
+function selectPeers(subject: PeerSubject, group: PeerGroup, candidates: PeerCandidates | null): PeerSelection | null {
   const symbol = subject.symbol;
   const related = group.related;
   const curatedCore = group.inCore && related ? (candidates ? rankPeerCandidates(subject, candidates.core) : []) : [];
@@ -421,7 +421,7 @@ async function subjectCapUsd(financials: TickerFinancials | null, ctx: PeerPickC
  * the industry has too few), ranked as `selectPeers` says. Throws a
  * `PeerPickError` when nothing places the subject, or nothing can be found.
  */
-export async function pickPeers(symbol: string, financials: TickerFinancials | null, ctx: PeerPickContext): Promise<PeerSelection> {
+async function pickPeers(symbol: string, financials: TickerFinancials | null, ctx: PeerPickContext): Promise<PeerSelection> {
   const subject: PeerSubject = {
     symbol,
     industry: financials?.profile?.industry?.trim() || null,

@@ -493,7 +493,7 @@ const CONVERTER_WORDS = /^(?:convert|converter|currency converter)$/i;
  * board to type one. Only a figure is an amount: `fx EUR`, `fx usd/jpy`,
  * `convert yen` and `fx forwards` are left to the bar's own search.
  */
-export function fxConvertRows(query: string, open: (options: PaneTemplateCreateOptions) => void): CommandBarResultDef[] {
+function fxConvertRows(query: string, open: (options: PaneTemplateCreateOptions) => void): CommandBarResultDef[] {
   if (CONVERTER_WORDS.test(query.trim())) {
     return [{
       id: "convert", label: t("Convert an amount"), detail: t("In every currency on FX Cross Rates"), right: "FXC",

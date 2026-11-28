@@ -188,7 +188,7 @@ function intent(body: ts.ConciseBody, source: ts.SourceFile): { present: boolean
   return { present, valid: present && valid, logging };
 }
 
-export function scanSilentCatches(file: string, text: string): Scan {
+function scanSilentCatches(file: string, text: string): Scan {
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
   const constants = constantBindings(source);
   const sites: SilentCatch[] = [];
@@ -236,7 +236,7 @@ export function scanSilentCatches(file: string, text: string): Scan {
   return { sites, markerProblems };
 }
 
-export function collectSilentCatches(root = ROOT): Scan {
+function collectSilentCatches(root = ROOT): Scan {
   const result: Scan = { sites: [], markerProblems: [] };
   for (const file of runtimeFiles(join(root, "src")).sort()) {
     const text = readFileSync(file, "utf8");
@@ -248,7 +248,7 @@ export function collectSilentCatches(root = ROOT): Scan {
   return result;
 }
 
-export function formatSilentCatchAllowlist(allowlist: Record<string, string[]>): string {
+function formatSilentCatchAllowlist(allowlist: Record<string, string[]>): string {
   // Keep duplicates: two identical silent catches need two allowances.
   const lines = Object.keys(allowlist).sort().map((file) => `  ${JSON.stringify(file)}: ${JSON.stringify([...allowlist[file]!].sort())}`);
   return `{\n${lines.join(",\n")}\n}\n`;

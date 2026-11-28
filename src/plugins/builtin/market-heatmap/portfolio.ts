@@ -48,7 +48,7 @@ export function heatmapSizeBy(value: unknown, universe?: unknown): HeatmapSizeBy
  * smallest tile: a flat name stays on the map and the layout never has a
  * zero-area tile to place.
  */
-export const DAY_MOVE_FLOOR_PERCENT = 0.25;
+const DAY_MOVE_FLOOR_PERCENT = 0.25;
 
 /**
  * The weight of a name sized by its day move: the square root of the move's
@@ -56,7 +56,7 @@ export const DAY_MOVE_FLOOR_PERCENT = 0.25;
  * movers from taking the board: a +10% name gets about three times the area of
  * a +1% one, not ten.
  */
-export function dayMoveWeight(move: number | null | undefined): number {
+function dayMoveWeight(move: number | null | undefined): number {
   const size = typeof move === "number" && Number.isFinite(move) ? Math.abs(move) : 0;
   return Math.sqrt(Math.max(size, DAY_MOVE_FLOOR_PERCENT));
 }
@@ -90,7 +90,7 @@ export interface HeatmapBoardAsset extends MarketHeatmapAsset {
   lastUpdated?: number;
 }
 
-export interface HeatmapPortfolioPane {
+interface HeatmapPortfolioPane {
   instanceId: string;
   collectionId: string | null;
 }
@@ -190,7 +190,7 @@ export function heatmapSourceSwitchedList(
     && previous.collectionId != null && next.collectionId != null && previous.collectionId !== next.collectionId;
 }
 
-export function heatmapPortfolioPanes(
+function heatmapPortfolioPanes(
   instances: readonly { instanceId: string; paneId: string; params?: Record<string, string> | undefined }[],
   paneState: Record<string, { collectionId?: unknown } | undefined>,
 ): HeatmapPortfolioPane[] {
@@ -205,7 +205,7 @@ export function heatmapPortfolioPanes(
 }
 
 /** The portfolio pane the user is on, else the one this heatmap last followed. */
-export function resolveHeatmapPortfolioSource(
+function resolveHeatmapPortfolioSource(
   panes: readonly HeatmapPortfolioPane[],
   focusedPaneId: string | null,
   rememberedSourceId: string | null,
@@ -217,7 +217,7 @@ export function resolveHeatmapPortfolioSource(
   return remembered ?? panes[0] ?? null;
 }
 
-export function heatmapPortfolioSignature(state: {
+function heatmapPortfolioSignature(state: {
   focusedPaneId: string | null;
   config: { layout: { instances: readonly { instanceId: string; paneId: string; params?: Record<string, string> }[] } };
   paneState: Record<string, { collectionId?: unknown } | undefined>;
@@ -226,7 +226,7 @@ export function heatmapPortfolioSignature(state: {
   return `${state.focusedPaneId ?? ""}\n${panes.map((pane) => `${pane.instanceId}=${pane.collectionId ?? ""}`).join("\n")}`;
 }
 
-export function parseHeatmapPortfolioSignature(signature: string): {
+function parseHeatmapPortfolioSignature(signature: string): {
   focusedPaneId: string | null;
   panes: HeatmapPortfolioPane[];
 } {

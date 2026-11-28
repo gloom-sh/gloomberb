@@ -37,7 +37,7 @@ function hasPortfolioAnalytics(analytics: PublicPortfolioAnalytics | null | unde
   );
 }
 
-export function hasPublicChatProfileInfo(user: ChatUserSummary): boolean {
+function hasPublicChatProfileInfo(user: ChatUserSummary): boolean {
   // Gloom runs a managed assistant and says so on its card, whatever the profile switch holds.
   if (isManagedBot(user)) return true;
   if (user.profilePublic === false || isDiscordGhost(user)) return false;
@@ -48,7 +48,7 @@ function hasChatProfileDetails(user: ChatUserSummary): boolean {
   return Boolean(user.bio?.trim() || user.title?.trim() || user.company?.trim());
 }
 
-export function shouldOfferChatProfileSetup(user: ChatUserSummary, isOwnProfile: boolean): boolean {
+function shouldOfferChatProfileSetup(user: ChatUserSummary, isOwnProfile: boolean): boolean {
   return isOwnProfile && !hasChatProfileDetails(user);
 }
 

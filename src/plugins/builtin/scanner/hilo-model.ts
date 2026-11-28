@@ -51,7 +51,7 @@ export function buildHiloBarRows(windows: ScannerHiloPayload["windows"] | null |
 /** Room for "30 sec" with two cells either side, so a count never runs into the window label. */
 export const HILO_LABEL_WIDTH = 10;
 /** "HIGHS" plus a cell of gap from the bar. */
-export const HILO_SIDE_NAME_WIDTH = 6;
+const HILO_SIDE_NAME_WIDTH = 6;
 /** The side names give way before they would squeeze a bar below this many cells. */
 const MIN_NAMED_BAR_WIDTH = 10;
 const MIN_HALF_WIDTH = 4;

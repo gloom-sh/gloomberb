@@ -20,7 +20,7 @@ export function rememberedDesktopWindowPath(env: NodeJS.ProcessEnv = process.env
   return join(dirname(getGloomberbDirs(env).configFile), FILE_NAME);
 }
 
-export function parseRememberedDesktopWindow(raw: unknown): RememberedDesktopWindow | null {
+function parseRememberedDesktopWindow(raw: unknown): RememberedDesktopWindow | null {
   if (!raw || typeof raw !== "object") return null;
   const record = raw as Record<string, unknown>;
   const frame = record.frame;

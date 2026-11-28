@@ -167,7 +167,7 @@ type HeadlessThirteenFView =
   | "holdings"
   | "filings";
 
-export interface ThirteenFHeadlessDependencies {
+interface ThirteenFHeadlessDependencies {
   loadBrowser(
     tab: ThirteenFBrowserTab,
     query: string,
@@ -545,7 +545,7 @@ function thirteenFShotState(args: HeadlessPaneLoadArgs, metadata: Record<string,
   }
 }
 
-export function createThirteenFHeadless(
+function createThirteenFHeadless(
   overrides: ThirteenFHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"rows"> {
   const dependencies: Required<ThirteenFHeadlessDependencies> = { ...defaultDependencies, ...overrides };

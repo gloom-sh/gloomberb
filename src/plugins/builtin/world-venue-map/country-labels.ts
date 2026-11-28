@@ -33,7 +33,7 @@ const WORLD_VIEW_MIN_ZOOM = 1.7;
 const MAX_LABELS = 60;
 
 /** The web-map zoom (256 px tiles for 360 degrees) of a map drawn at this many pixels per degree. */
-export function webMapZoom(pxPerDegree: number): number {
+function webMapZoom(pxPerDegree: number): number {
   return Math.log2((Math.max(pxPerDegree, 1e-9) * 360) / 256);
 }
 

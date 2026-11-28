@@ -59,7 +59,7 @@ export function buildFilingContentPreviews(
 const CONTENT_READS_AT_ONCE = 4;
 
 /** The first `count` targets not cached yet, once each, in the caller's priority order. */
-export function nextUncachedFilingContentTargets(
+function nextUncachedFilingContentTargets(
   targets: readonly SecFilingItem[],
   cache: ReadonlyMap<string, string | null>,
   count: number,

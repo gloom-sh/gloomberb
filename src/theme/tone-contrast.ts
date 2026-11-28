@@ -17,7 +17,7 @@ export function readsAtBodyContrast(palette: ThemeColors = colors): boolean {
  * colour as it is. Data tables draw every coloured cell of the selected row
  * through it, in the terminal and on the desktop alike.
  */
-export function selectedCellColor<T extends string | undefined>(color: T, palette: ThemeColors = colors): T | string {
+function selectedCellColor<T extends string | undefined>(color: T, palette: ThemeColors = colors): T | string {
   if (color === undefined) return color;
   if (color === palette.positive) return palette.selectedPositive ?? color;
   if (color === palette.negative) return palette.selectedNegative ?? color;

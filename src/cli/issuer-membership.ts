@@ -22,7 +22,7 @@ export interface CompanyMemberships {
  * US venue or none (RCI), SYMBOL:EXCHANGE elsewhere (RCI.B:TSX), with a
  * share class's dash or slash as a dot (BRK-B is BRK.B).
  */
-export function issuerListingKey(symbol: string, exchange?: string): string {
+function issuerListingKey(symbol: string, exchange?: string): string {
   const parsed = parsePublicTickerKey(symbol);
   const venue = parsed.exchange ?? canonicalExchange(exchange);
   const code = parsed.symbol.toUpperCase().replace(/[-/]/g, ".");

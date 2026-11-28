@@ -12,7 +12,7 @@ import { clipToDisplayWidth } from "../../../utils/format";
 export const CHART_TOOLBAR_WIDTH = CHART_TOOLS.length * 3 + (CHART_TOOLS.length - 1) + 4;
 
 /** How long the bar stays open once the pointer has left it. */
-export const CHART_TOOLBAR_FOLD_DELAY_MS = 300;
+const CHART_TOOLBAR_FOLD_DELAY_MS = 300;
 
 const SHORTCUT = "Shift+T";
 /** The handle's icon and its hint, in px on the desktop: together they fix its width, so it keeps it when the bar opens. */

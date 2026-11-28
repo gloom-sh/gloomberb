@@ -69,7 +69,7 @@ const QUESTION_LISTING_WAIT_MS = 2_000;
 const MAX_QUESTION_LOOKUPS = 12;
 
 /** A qualified listing is one token. Bare words still follow the CLI's US-first convention. */
-export async function questionTickers(question: string, functionCodes: ReadonlySet<string> = new Set()): Promise<string[]> {
+async function questionTickers(question: string, functionCodes: ReadonlySet<string> = new Set()): Promise<string[]> {
   const mixedCase = /\p{Ll}/u.test(question);
   const macro = asksAboutRatesOrMacro(question);
   const candidates = new Map<string, { symbol: string; venue?: string; cashtag?: boolean }>();
@@ -155,7 +155,7 @@ function isoDay(year: number, month: number, day: number): string | null {
 }
 
 /** The days a question asks about: from its first date to its second, or from the one it names. */
-export interface QuestionWindow {
+interface QuestionWindow {
   from: string;
   /** Absent for "since October 9": up to today. */
   to?: string;
@@ -168,7 +168,7 @@ export interface QuestionWindow {
  * come yet. One date is that day, or from it after "since", "after" or
  * "from". Null when it names none.
  */
-export function questionWindow(question: string, now = new Date()): QuestionWindow | null {
+function questionWindow(question: string, now = new Date()): QuestionWindow | null {
   const dates = questionDates(question);
   if (dates.length === 0) return null;
   const today = now.toISOString().slice(0, 10);

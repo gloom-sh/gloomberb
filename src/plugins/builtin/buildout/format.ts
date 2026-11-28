@@ -68,7 +68,7 @@ const MONEY_UNITS = [
  * "$356.4B", "-$4.9B". The unit is picked after rounding, so $999.96B is
  * "$1.0T" and not "$1000.0B".
  */
-export function formatCompactMoney(amount: number): string {
+function formatCompactMoney(amount: number): string {
   const abs = Math.abs(amount);
   let index = MONEY_UNITS.findIndex((unit) => abs >= unit.divisor);
   let digits = index < 0 ? abs.toFixed(0) : (abs / MONEY_UNITS[index]!.divisor).toFixed(1);

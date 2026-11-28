@@ -68,7 +68,7 @@ function createUserFeedId(url: string, name: string): string {
   return `user-${hashString(`${url}|${name}`)}`;
 }
 
-export function createUserFeed(input: UserNewsFeedInput): RssFeedConfig {
+function createUserFeed(input: UserNewsFeedInput): RssFeedConfig {
   const url = normalizeUrl(input.url);
   const name = normalizeName(input.name);
   if (!url) throw new Error("Feed URL must be an http(s) URL.");

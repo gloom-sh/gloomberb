@@ -23,7 +23,7 @@ import { expiryRisk, optionExpirationClose, scenarioValue, type ScenarioPosition
  * nearest the target, entered at their midpoints as OSA's seeds are, and read
  * with OSA's expiry risk.
  */
-export const STRATEGY_FAMILIES = ["csp", "covered-call", "bull-put", "bear-call", "bull-call", "bear-put", "iron-condor",
+const STRATEGY_FAMILIES = ["csp", "covered-call", "bull-put", "bear-call", "bull-call", "bear-put", "iron-condor",
   "short-straddle", "long-straddle", "short-strangle", "long-strangle", "calendar"] as const;
 export type StrategyFamily = typeof STRATEGY_FAMILIES[number];
 /** Every family but the cash-secured put, which keeps its own screen. */
@@ -279,7 +279,7 @@ const strategyTradeText = (strategy: StrategyFamily, position: Pick<ScenarioPosi
 
 const finite = (value: number | null | undefined): value is number => typeof value === "number" && Number.isFinite(value);
 
-export interface StrategyTrade {
+interface StrategyTrade {
   strategy: ScreenFamily;
   position: ScenarioPosition;
   /** The legs in plain words, the side the family leads with first: `Sell 95p/105c · buy 90p/110c`. */
@@ -465,7 +465,7 @@ function rankValue(row: Omit<StrategyScreenRow, "rank">, def: StrategyFamilyDef)
  * richest IV rank first when selling and the cheapest when buying. A wide spread is ranked and flagged. A trade with
  * nothing to rank it by follows, then the names with no trade, by symbol.
  */
-export function rankStrategyScreen(rows: readonly Omit<StrategyScreenRow, "rank">[], strategy: ScreenFamily): StrategyScreenRow[] {
+function rankStrategyScreen(rows: readonly Omit<StrategyScreenRow, "rank">[], strategy: ScreenFamily): StrategyScreenRow[] {
   const def = strategyFamilyDef(strategy);
   const direction = def.rank === "iv-rank-low" ? 1 : -1;
   const tier = (row: Omit<StrategyScreenRow, "rank">) => rankValue(row, def) != null ? 0 : row.trade ? 1 : 2;

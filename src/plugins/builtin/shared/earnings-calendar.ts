@@ -238,7 +238,7 @@ const ACTION_ROWS: ReportRowAdapter<EarningsAction> = {
 };
 
 /** A company's corporate-actions earnings rows, newest first, resolved against its calendar event. */
-export function resolveEarningsActions(earnings: readonly EarningsAction[], event: EarningsEvent | null | undefined, today: string): EarningsAction[] {
+function resolveEarningsActions(earnings: readonly EarningsAction[], event: EarningsEvent | null | undefined, today: string): EarningsAction[] {
   return resolveReportRows(earnings, event, today, ACTION_ROWS).sort((left, right) => right.date.localeCompare(left.date));
 }
 

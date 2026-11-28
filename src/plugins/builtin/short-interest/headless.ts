@@ -33,7 +33,7 @@ const SHORT_INTEREST_COLUMNS: HeadlessPaneColumn[] = [
   numCol("floatAsOf", "Float As Of"),
 ];
 
-export interface ShortInterestHeadlessDependencies {
+interface ShortInterestHeadlessDependencies {
   loadRecords(
     symbol: string,
     args: HeadlessPaneLoadArgs,
@@ -49,7 +49,7 @@ const defaultDependencies: ShortInterestHeadlessDependencies = {
   }),
 };
 
-export function createShortInterestHeadless(
+function createShortInterestHeadless(
   dependencies: ShortInterestHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"rows"> {
   return {

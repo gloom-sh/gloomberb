@@ -240,7 +240,7 @@ const STEADY_AFTER_CLOSE_QUOTE_COLUMN_IDS = new Set(["price", "change", "change_
 const EMPTY_FLASH_SYMBOLS = new Map<string, QuoteFlashDirection>();
 
 /** Whether a tick on this row dims the cell: the quote columns it can move. */
-export function flashesOnQuoteTick(columnId: string, quote: TickerFinancials["quote"]): boolean {
+function flashesOnQuoteTick(columnId: string, quote: TickerFinancials["quote"]): boolean {
   if (!FLASHABLE_QUOTE_COLUMN_IDS.has(columnId)) return false;
   return !STEADY_AFTER_CLOSE_QUOTE_COLUMN_IDS.has(columnId) || !getCompletedRegularSessionDisplay(quote);
 }

@@ -41,7 +41,7 @@ function streamRoute(ticker: TickerRecord | null | undefined, options: TickerIns
   return (ticker?.metadata.broker_contracts?.length ?? 0) > 0 ? "broker" : "provider";
 }
 
-export function buildLiveQuoteTarget(
+function buildLiveQuoteTarget(
   symbol: string | null | undefined,
   ticker: TickerRecord | null | undefined,
   options: LiveQuoteStreamOptions = {},

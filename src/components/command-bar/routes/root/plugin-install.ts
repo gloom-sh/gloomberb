@@ -27,14 +27,13 @@ import { PLUGIN_INSTALL_CATEGORY } from "../../view-model";
 import { openUrl } from "../../../ui/external-link";
 
 /** A typed code that belongs to an official plugin this app does not have. */
-export interface PluginInstallOffer {
+interface PluginInstallOffer {
   plugin: RegistryPlugin;
   shortcut: RegistryPluginShortcut;
   /** What followed the code, handed to the function once it opens. */
   argText: string;
 }
 
-export { isRegistryPluginInstalled };
 
 /**
  * Matches the code alone or as the first word, with a ticker or query after
@@ -42,7 +41,7 @@ export { isRegistryPluginInstalled };
  * plugin that is installed) always wins, and an installed plugin is never
  * offered again, even when it is switched off or failed to load.
  */
-export function matchPluginInstallOffer({
+function matchPluginInstallOffer({
   query,
   registry,
   isClaimed,
@@ -67,7 +66,7 @@ export function matchPluginInstallOffer({
  * Every code the app answers to right now: built-in commands, and the pane
  * templates and commands of every registered plugin, switched off or not.
  */
-export function collectClaimedShortcutCodes(
+function collectClaimedShortcutCodes(
   commands: readonly Command[],
   pluginRegistry: Pick<PluginRegistry, "paneTemplates" | "commands">,
 ): Set<string> {

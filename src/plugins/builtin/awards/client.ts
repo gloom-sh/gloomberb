@@ -50,7 +50,7 @@ export function validateAwards(data: AwardsPayload): AwardsPayload {
   }
   return data;
 }
-export function validateAwardDetail(data: AwardDetailPayload): AwardDetailPayload {
+function validateAwardDetail(data: AwardDetailPayload): AwardDetailPayload {
   if (!data || !(data.row === null || validRow(data.row)) || !["full", "preview"].includes(data.access) || typeof data.locked !== "boolean"
     || ![data.subawards, data.modifications].every((rows) => Array.isArray(rows) && rows.every(validRow))
     || !Array.isArray(data.revisions) || !data.revisions.every((row) => text(row.id) && isIsoInstant(row.observedAt) && optionalText(row.supersedes) && validInput(row.award))

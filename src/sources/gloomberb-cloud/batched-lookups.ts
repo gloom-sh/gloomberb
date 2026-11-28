@@ -77,8 +77,3 @@ export function cloudSearchBatch(
 ): Promise<Map<string, InstrumentSearchResult[]> | null> {
   return inBatches("search", queries, SEARCH_BATCH_SIZE, (chunk) => apiClient.searchInstrumentsBatch(chunk, options.limit ?? 10, options));
 }
-
-/** Forgets which batch routes the service lacked. */
-export function resetCloudBatchSupport(): void {
-  unsupported.clear();
-}

@@ -20,7 +20,7 @@ const ACTIONS = new Set<AttentionAction>(["des", "chart", "quote", "option_chain
  * counts, `false` never does, and while the setting is untouched the account
  * counts only once this installation has drawn the notice for it.
  */
-export function attentionCountsEnabled(
+function attentionCountsEnabled(
   config: { telemetry?: TelemetryConfig } | null | undefined,
   account: string | null,
   env: Record<string, string | undefined> = {},
@@ -39,7 +39,7 @@ interface AttentionHost {
 }
 
 /** No disk queue, identifiers, timestamps in the payload, or retries. */
-export class AttentionCounter {
+class AttentionCounter {
   private readonly pending = new Map<string, AttentionCountsPayload["events"][number]>();
   private session: object | null = null;
   private generation = 0;
@@ -207,11 +207,6 @@ export function attentionCollectionAvailable(): boolean {
     // Intentional ignore: an unreadable privacy signal counts as set.
     return false;
   }
-}
-
-/** Sends what the installed counter holds now instead of after its delay. */
-export async function __flushAttentionCountsForTests(): Promise<void> {
-  await counter?.flush();
 }
 
 export function captureAttentionAction(): (symbol: string, action: AttentionAction) => void {

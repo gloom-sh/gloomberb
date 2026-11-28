@@ -87,7 +87,7 @@ export function isLanguagePreference(value: unknown): value is LanguagePreferenc
   return typeof value === "string" && (LANGUAGE_PREFERENCES as readonly string[]).includes(value);
 }
 
-export function parseLanguagePreference(value: string): LanguagePreference | null {
+function parseLanguagePreference(value: string): LanguagePreference | null {
   return LANGUAGE_ALIASES[value.trim().toLowerCase().replaceAll("_", "-")] ?? null;
 }
 

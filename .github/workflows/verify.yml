@@ -38,39 +38,45 @@ jobs:
         with:
           desktop: "true"
 
-      - name: Typecheck production runtimes and built-in plugin tests
-        run: bun run typecheck
-
-      # Fails on a promise in src/ that nothing awaits or handles, and on a
-      # stale entry in src/architecture/floating-promise-allowlist.json.
-      # Pull requests scan only the changed files and their transitive callers;
-      # pushes to main and manual dispatches run the full scan.
-      - name: Check for new floating promises
+      - name: Typecheck, floating promises, unused code, and manifests
         env:
           EVENT: ${{ github.event_name }}
           BASE_REF: ${{ github.base_ref }}
+        shell: bash
         run: |
+          set -euo pipefail
           if [ "$EVENT" = pull_request ]; then
             git fetch --depth=1 origin "$BASE_REF"
-            bun run scripts/update-floating-promise-allowlist.ts --check --changed-from FETCH_HEAD
+            fp_cmd=(bun run scripts/update-floating-promise-allowlist.ts --check --changed-from FETCH_HEAD)
           else
-            bun run check:floating-promises
+            fp_cmd=(bun run check:floating-promises)
           fi
 
-      # Fails on unused files, exports and dependencies. See knip.jsonc for
-      # what it deliberately skips.
-      - name: Check for unused code
-        run: bun run knip
+          log_tc="$(mktemp)"; log_fp="$(mktemp)"; log_knip="$(mktemp)"; log_manifest="$(mktemp)"; log_proxy="$(mktemp)"
+          bun run typecheck >"$log_tc" 2>&1 & p_tc=$!
+          "${fp_cmd[@]}" >"$log_fp" 2>&1 & p_fp=$!
+          bun run knip >"$log_knip" 2>&1 & p_knip=$!
+          bun run plugins:manifest:check >"$log_manifest" 2>&1 & p_manifest=$!
+          bun run web:proxy-hosts:check >"$log_proxy" 2>&1 & p_proxy=$!
 
-      # Fails when a built-in plugin changes without regenerating the published
-      # manifest, which is what the plugin directory renders for built-ins.
-      - name: Check the built-in plugin manifest
-        run: bun run plugins:manifest:check
-
-      # Fails when a plugin in the browser catalog declares a host the worker
-      # proxy does not know about, which would ship broken on the web.
-      - name: Check the web proxy allowlist
-        run: bun run web:proxy-hosts:check
+          status=0
+          for entry in \
+            "typecheck:$p_tc:$log_tc" \
+            "floating-promises:$p_fp:$log_fp" \
+            "knip:$p_knip:$log_knip" \
+            "plugins-manifest:$p_manifest:$log_manifest" \
+            "web-proxy-hosts:$p_proxy:$log_proxy"
+          do
+            IFS=: read -r label pid log <<<"$entry"
+            if ! wait "$pid"; then
+              status=1
+              echo "::error title=Verify ${label}::failed"
+            fi
+            echo "=== ${label} ==="
+            cat "$log"
+            rm -f "$log"
+          done
+          exit "$status"
 
   build-and-test:
     if: github.event_name != 'schedule' && github.event.action != 'closed'
@@ -121,9 +127,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends qemu-user
 
       # The musl one is smoke tested in an Alpine container.
+      # Verify does not upload release archives, so skip level-9 gzip here.
       - name: Build core binaries
         if: steps.scope.outputs.core_binaries == 'true'
-        run: bun run scripts/build.ts --target linux-x64 --target linux-x64-musl
+        run: bun run scripts/build.ts --target linux-x64 --target linux-x64-musl --no-compress
 
       - name: Test global upgrade from 0.5.0
         if: steps.scope.outputs.core_binaries == 'true'
@@ -176,22 +183,31 @@ jobs:
         if: steps.scope.outputs.registry_plugins == 'true'
         run: bun install --frozen-lockfile
 
-      - name: Compile registry plugins against this host
+      # Compile registry plugins against this checkout and build the packaged
+      # terminal binary concurrently, keeping clean checkouts so the packaged
+      # doctor check reuses them without cloning every repo a second time.
+      # build-and-test already runs the binary smoke + QEMU checks.
+      - name: Compile registry plugins and build packaged terminal
         if: steps.scope.outputs.registry_plugins == 'true'
-        run: bun run plugins:registry:check
-
-      # build.ts also runs the x64 binary on an emulated CPU without AVX2.
-      - name: Install QEMU's user-mode emulator
-        if: steps.scope.outputs.registry_plugins == 'true'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends qemu-user
-
-      - name: Build the terminal binary
-        if: steps.scope.outputs.registry_plugins == 'true'
-        run: bun run scripts/build.ts --target linux-x64
+        shell: bash
+        run: |
+          set -euo pipefail
+          plugins_dir="${RUNNER_TEMP}/registry-plugins"
+          log_check="$(mktemp)"; log_build="$(mktemp)"
+          bun run plugins:registry:check --save-plugins-dir "$plugins_dir" >"$log_check" 2>&1 & p_check=$!
+          bun run scripts/build.ts --target linux-x64 --skip-smoke --no-compress >"$log_build" 2>&1 & p_build=$!
+          status=0
+          if ! wait "$p_check"; then status=1; fi
+          echo "=== plugins:registry:check ==="
+          cat "$log_check"; rm -f "$log_check"
+          if ! wait "$p_build"; then status=1; fi
+          echo "=== build linux-x64 ==="
+          cat "$log_build"; rm -f "$log_build"
+          exit "$status"
 
       - name: Load registry plugins in the packaged terminal
         if: steps.scope.outputs.registry_plugins == 'true'
-        run: bun run plugins:registry:packaged --terminal dist/gloomberb-linux-x64.gz --desktop-tui
+        run: bun run plugins:registry:packaged --plugins-dir "${RUNNER_TEMP}/registry-plugins" --terminal dist/gloomberb-linux-x64 --desktop-tui
 
   deploy-web:
     environment: web-production

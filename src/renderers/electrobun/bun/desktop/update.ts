@@ -126,7 +126,7 @@ function isAppleDoublePath(name: string): boolean {
  * entry the archive carries, not the metadata beside it. Null when `bytes`
  * ends before one.
  */
-export function firstTarPath(bytes: Uint8Array): string | null {
+function firstTarPath(bytes: Uint8Array): string | null {
   const decoder = new TextDecoder();
   const field = (start: number, length: number) => {
     const raw = bytes.subarray(start, start + length);
@@ -191,7 +191,7 @@ function tarHeaderChecksumMatches(header: Uint8Array): boolean {
  * quit while writing it) or no tar at all is not. It reads the headers only,
  * so it says nothing about the files' contents.
  */
-export async function isWholeTar(path: string): Promise<boolean> {
+async function isWholeTar(path: string): Promise<boolean> {
   const file = await open(path, "r").catch(() => {
     // Intentional ignore: a file that cannot be opened is not a whole tar, the answer asked for.
     return null;

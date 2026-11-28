@@ -174,7 +174,7 @@ const POINT_ROOTS: ReadonlySet<string> = new Set(["ES", "NQ", "RTY", "YM", "GD",
  * How a generic's price reads: index and VIX futures in points (not dollars),
  * Treasury futures in 32nds of par; everything else in its quote currency.
  */
-export function futuresGenericPriceBasis(generic: Pick<FuturesGeneric, "root">): "points" | "thirty-seconds" | null {
+function futuresGenericPriceBasis(generic: Pick<FuturesGeneric, "root">): "points" | "thirty-seconds" | null {
   if (POINT_ROOTS.has(generic.root)) return "points";
   if (["ZT", "ZF", "ZN", "ZB", "UB"].includes(generic.root)) return "thirty-seconds";
   return null;

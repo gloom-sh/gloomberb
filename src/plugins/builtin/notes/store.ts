@@ -68,7 +68,7 @@ export function splitNoteKey(key: string): { kind: NoteKind; key: string } {
   return quick?.[1] ? { kind: "quick", key: quick[1] } : { kind: "ticker", key: key.toUpperCase() };
 }
 
-export function joinNoteKey(kind: NoteKind, key: string): string {
+function joinNoteKey(kind: NoteKind, key: string): string {
   return kind === "quick" ? `__note-${key}__` : key;
 }
 

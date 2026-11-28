@@ -8,7 +8,7 @@ import { CENTRAL_BANKS, centralBankNames } from "../../utils/central-banks";
  */
 
 /** The word GC's argument takes for each market it has a curve for (`GC jgb`); the other markets have none. */
-export const GC_CURVE_WORDS: Readonly<Record<string, string>> = {
+const GC_CURVE_WORDS: Readonly<Record<string, string>> = {
   US: "ust", EA: "euro", DE: "bund", GB: "gilt", JP: "jgb", CA: "canada", MX: "mexico", BR: "brazil",
 };
 
@@ -57,7 +57,7 @@ function wordAt(text: string, name: string): number {
 }
 
 /** The markets a question names, as the CBR board's codes (EA for the euro area), in the order it names them. */
-export function questionMarkets(question: string): string[] {
+function questionMarkets(question: string): string[] {
   const text = question.toLowerCase();
   const first = new Map<string, number>();
   const add = (code: string, at: number) => {

@@ -145,7 +145,7 @@ const FILTER_TYPES: Record<Exclude<AuctionFilter, "all">, ReadonlySet<string>> =
   bond: new Set(["Bond", "TIPS"]),
 };
 
-export function matchesFilter(auction: TreasuryAuction, filter: AuctionFilter): boolean {
+function matchesFilter(auction: TreasuryAuction, filter: AuctionFilter): boolean {
   return filter === "all" || FILTER_TYPES[filter].has(auction.secType);
 }
 
@@ -259,7 +259,7 @@ function auctionDateValue(value: string): number {
  * The day equivalents order the published labels; they are not settlement
  * dates, remaining maturity, or a financial day-count convention.
  */
-export function termLengthDays(term: string): number {
+function termLengthDays(term: string): number {
   const components = [...term.matchAll(/(\d+)\s*-\s*(Day|Week|Month|Year)/gi)];
   if (!components.length || term.replace(/(\d+)\s*-\s*(Day|Week|Month|Year)/gi, "").trim()) {
     return Number.MAX_SAFE_INTEGER;

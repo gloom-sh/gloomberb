@@ -15,7 +15,7 @@ const LABEL_WIDTH = 11;
 /** The change asks on its own, maybe mid-keystroke: Enter or `y` typed just before it opened do not approve it. */
 const KEY_GRACE_MS = 600;
 
-export function RemoteChangeDialog({
+function RemoteChangeDialog({
   resolve,
   dismiss,
   dialogId,

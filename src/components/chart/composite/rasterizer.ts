@@ -388,7 +388,7 @@ function maximumColumnClusterWidth(pixelWidth: number, seriesCount: number): num
   return maximumSlotWidth * Math.max(1, seriesCount);
 }
 
-export function resolveCompositeOhlcWidth(
+function resolveCompositeOhlcWidth(
   points: CompositeProjectedPoint[],
   pixelWidth: number,
 ): number {

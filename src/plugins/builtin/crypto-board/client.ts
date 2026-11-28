@@ -107,7 +107,7 @@ function onUtcDayBasis(asset: CryptoMarketAsset, now: number): CryptoMarketAsset
   };
 }
 
-export function validateCryptoMarkets(data: CryptoMarketsPayload, now = Date.now()): CryptoMarketsPayload {
+function validateCryptoMarkets(data: CryptoMarketsPayload, now = Date.now()): CryptoMarketsPayload {
   if (
     !data
     || data.version !== 1
@@ -190,7 +190,7 @@ const nonNegativeOrNull = (value: unknown) => value === null || isNonNegative(va
 const supplyValues = (values: unknown) => Array.isArray(values) && values.length <= MAX_SUPPLY_DAYS && values.every(nonNegativeOrNull);
 const supplyStatus = (value: unknown) => value === "available" || value === "stale" || value === "unavailable";
 
-export function validateStablecoinSupply(data: StablecoinSupplyPayload): StablecoinSupplyPayload {
+function validateStablecoinSupply(data: StablecoinSupplyPayload): StablecoinSupplyPayload {
   const history = data?.history;
   if (
     !data
@@ -297,7 +297,7 @@ const changes = (entry: { change7d: unknown; change7dPercent: unknown; change30d
 
 const INCOME_FIELDS = ["fees24h", "fees7d", "fees30d", "revenue24h", "revenue7d", "revenue30d"] as const;
 
-export function validateDefiTvl(data: DefiTvlPayload): DefiTvlPayload {
+function validateDefiTvl(data: DefiTvlPayload): DefiTvlPayload {
   const history = data?.history;
   if (
     !data

@@ -30,8 +30,8 @@ function browserReady(config: AppConfig): AppConfig {
   return { ...config, onboardingComplete: true, onboardingProgress: undefined };
 }
 
-export const BROWSER_RESEARCH_PANE_ID = "ticker-detail:main";
-export const BROWSER_RESEARCH_CHART_ID = "chart-composer:research";
+const BROWSER_RESEARCH_PANE_ID = "ticker-detail:main";
+const BROWSER_RESEARCH_CHART_ID = "chart-composer:research";
 const BROWSER_RESEARCH_NEWS_ID = "ticker-news:research";
 const BROWSER_WORLD_INDICES_ID = "world-indices:main";
 const BROWSER_SECTORS_ID = "sectors:main";
@@ -66,7 +66,7 @@ function holdsGrid(screen: BrowserScreen | undefined): boolean {
  * company's first and the research pane in front: six panes side by side
  * there were a dozen columns each.
  */
-export function createBrowserResearchLayout(symbol: string, screen?: BrowserScreen): LayoutConfig {
+function createBrowserResearchLayout(symbol: string, screen?: BrowserScreen): LayoutConfig {
   const follow = { kind: "follow" as const, sourceInstanceId: BROWSER_RESEARCH_PANE_ID };
   const dockRoot: DockLayoutNode = holdsGrid(screen)
     ? {

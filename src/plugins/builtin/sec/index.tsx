@@ -76,7 +76,6 @@ import { ownerNames, rowSummary, rowSummaryTarget } from "./row-summaries";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { createSecFilingSearchProvider, resetSecFilingFocusRequests, useSecFilingFocusRequest } from "./command-bar-search";
 
-export { secHeadless } from "./headless";
 
 const SEC_FILING_PAGE_SIZE = 50;
 /** Each row is dated by the day EDGAR filed it, as every filing list reads. */
