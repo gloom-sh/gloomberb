@@ -95,7 +95,12 @@ function serve() {
   });
 }
 
-function Harness({ highlight = null, settings = {} }: { highlight?: string | null; settings?: Record<string, unknown> } = {}) {
+function Harness({ highlight = null, settings = {}, prepare }: {
+  highlight?: string | null;
+  settings?: Record<string, unknown>;
+  /** Changes the lists and tickers before the board reads them. */
+  prepare?: (state: AppState) => void;
+} = {}) {
   const [paneState, setPaneState] = useState<AppState["paneState"]>({});
   const state = useMemo(() => {
     const next = createInitialState(createTestPaneConfig("/tmp/gloomberb-ern-board-test", { paneId: "earnings-calendar", instanceId: PANE, settings }));
@@ -105,8 +110,9 @@ function Harness({ highlight = null, settings = {} }: { highlight?: string | nul
       ["NFLX", createTestTicker("NFLX", "Netflix", { watchlists: ["watchlist"] })],
       ["JPM", createTestTicker("JPM", "JPMorgan", { portfolios: ["main"] })],
     ]);
+    prepare?.(next);
     return next;
-  }, [paneState, settings]);
+  }, [paneState, prepare, settings]);
   dispatch = useCallback((action: AppAction) => setPaneState((current) => appReducer({ ...state, paneState: current }, action).paneState), [state]);
   // The desktop's own host, so the query bar is the one the app draws.
   const ui = useMemo(() => createDomUiHost("linux"), []);
@@ -322,6 +328,47 @@ test("the Names filter lists Mine, each portfolio and watchlist and the sector f
   expect([...lastSymbols()!].sort()).toEqual(["JPM", "NFLX"]);
 }, 15_000);
 
+
+const namesChip = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>("button.gloom-qb-chip")]
+  .find((chip) => chip.querySelector(".gloom-qb-label")?.textContent === "Names")!;
+
+/** A second "Main Portfolio", holding A, and a watchlist of the same name holding B. */
+function twinLists(state: AppState) {
+  state.config = {
+    ...state.config,
+    portfolios: [...state.config.portfolios, { id: "twin", name: "Main Portfolio", currency: "USD" }],
+    watchlists: [...state.config.watchlists, { id: "twin", name: "Main Portfolio" }],
+  };
+  state.tickers.set("A", createTestTicker("A", "A Corp", { portfolios: ["twin"] }));
+  state.tickers.set("B", createTestTicker("B", "B Corp", { watchlists: ["twin"] }));
+}
+
+test("PF's Earnings Calendar opens Names on its list by id among lists of one name, and a choice in the pane wins", async () => {
+  const root = await dom.render(<Harness settings={{ collection: "portfolio:twin" }} prepare={twinLists} />);
+  await settle();
+  expect(calendarRequests.mock.calls.map(([query]) => query.symbols)).toEqual([["A"]]);
+  expect(rowKeys(root)).toEqual(["A:2026-10-16"]);
+  expect(namesChip(root).querySelector(".gloom-qb-value")?.textContent).toBe("Main Portfolio");
+
+  await act(async () => dispatch({ type: "UPDATE_PLUGIN_PANE_STATE", paneId: PANE, pluginId: "earnings", key: "scope", value: "watchlist:twin" }));
+  await settle();
+  expect(calendarRequests.mock.calls.at(-1)![0].symbols).toEqual(["B"]);
+  expect(rowKeys(root)).toEqual(["B:2026-10-16"]);
+});
+
+test("a deleted list's board says so and reads nothing, never the market, until another is chosen", async () => {
+  const root = await dom.render(<Harness settings={{ collection: "portfolio:gone" }} />);
+  await settle();
+  expect(calendarRequests).not.toHaveBeenCalled();
+  expect(rowKeys(root)).toEqual([]);
+  expect(root.textContent).toContain("This portfolio was deleted.");
+  expect(namesChip(root).querySelector(".gloom-qb-value")?.textContent).toBe("Deleted portfolio");
+
+  await act(async () => dispatch({ type: "UPDATE_PLUGIN_PANE_STATE", paneId: PANE, pluginId: "earnings", key: "scope", value: "all" }));
+  await settle();
+  expect(calendarRequests.mock.calls.at(-1)![0].perDay).toBe(200);
+  expect(rowKeys(root)).toContain("JPM:2026-10-14");
+});
 
 test("failed or empty industry holdings never show the previous market or request an unfiltered calendar", async () => {
   const pending = Promise.withResolvers<typeof ivv>();

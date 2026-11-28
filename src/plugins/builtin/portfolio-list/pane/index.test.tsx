@@ -16,6 +16,7 @@ import {
   type BrokerInstanceConfig,
 } from "../../../../types/config";
 import type { BrokerAdapter, BrokerConnectionStatus } from "../../../../types/broker";
+import type { ContextMenuItem } from "../../../../types/context-menu";
 import type { DataProvider } from "../../../../types/data-provider";
 import type { Quote, TickerFinancials } from "../../../../types/financials";
 import type { Portfolio, TickerRecord } from "../../../../types/ticker";
@@ -616,6 +617,48 @@ describe("PortfolioListPane cash and margin UI", () => {
     // The pane menu lists the file import once: as the empty state's button, or as its own entry.
     const fileImports = menu().filter((label) => label === "Import CSV" || label === "Import Positions…");
     expect(fileImports).toEqual(offers.length > 0 ? ["Import CSV"] : ["Import Positions…"]);
+  });
+
+  test.each<{ name: string; collectionId: string; empty?: boolean; grid?: boolean; earnings?: "on" | "off" | "none"; setup?: boolean; opens: string | null }>([
+    { name: "a portfolio with tickers opens ERN on it", collectionId: "main", opens: "portfolio:main" },
+    { name: "its grid does the same", collectionId: "main", grid: true, opens: "portfolio:main" },
+    { name: "a watchlist with tickers opens ERN on it", collectionId: "watchlist", opens: "watchlist:watchlist" },
+    { name: "an empty list offers nothing", collectionId: "main", empty: true, opens: null },
+    { name: "with Earnings off, nothing", collectionId: "main", earnings: "off", opens: null },
+    { name: "without Earnings, as in a slimmed build, nothing", collectionId: "main", earnings: "none", opens: null },
+    { name: "during setup, nothing", collectionId: "main", setup: true, opens: null },
+  ])("the pane menu's Earnings Calendar: $name", async ({ collectionId, empty = false, grid = false, earnings = "on", setup = false, opens }) => {
+    const registry = installQuickAddRegistry(createQuickAddProvider(true));
+    if (earnings !== "none") {
+      await registry.register({
+        id: "test-earnings", name: "Earnings", version: "1.0.0",
+        panes: [{ id: "earnings-calendar", name: "Earnings Calendar", component: () => null, defaultPosition: "right" }],
+        paneTemplates: [{ id: "earnings-calendar-pane", paneId: "earnings-calendar", label: "Earnings Calendar", description: "" }],
+      });
+    }
+    const config: AppConfig = {
+      ...createManualCollectionConfig(collectionId),
+      onboardingComplete: !setup,
+      disabledPlugins: earnings === "off" ? ["test-earnings"] : [],
+    };
+    if (grid) config.layout.instances[0]!.settings = { viewMode: "grid" };
+    const opened: unknown[] = [];
+    const runtime = createTestPluginRuntime({ createPaneFromTemplate: (templateId, options) => { opened.push([templateId, options]); } });
+    const ticker = makeTicker({ portfolios: !empty && collectionId === "main" ? ["main"] : [], watchlists: collectionId === "watchlist" ? ["watchlist"] : [], positions: [] });
+    let menu: ContextMenuItem[] = [];
+    await tui.render(<PaneFooterProvider>{(footer) => {
+      menu = footer.menu;
+      return <PortfolioHarness config={config} collectionId={collectionId} ticker={ticker} runtime={runtime} />;
+    }}</PaneFooterProvider>, { width: 100, height: 24 });
+    await flushFrame();
+    const item = menu.find((entry) => "label" in entry && entry.label === "Earnings Calendar");
+    if (!opens) {
+      expect(item).toBeUndefined();
+      return;
+    }
+    await act(async () => { (item as { onSelect: () => void }).onSelect(); });
+    // The list by id alone: its tickers stay out of the board's settings.
+    expect(opened).toEqual([["earnings-calendar-pane", { preset: { collection: opens } }]]);
   });
 
   test("an empty book's Enter starts the file import, and Import from Broker starts Add Broker Account", async () => {
