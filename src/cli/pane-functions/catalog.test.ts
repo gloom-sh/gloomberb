@@ -19,6 +19,7 @@ import { createPaneCatalog } from "./discovery";
 import { parsePaneCatalogArgs } from "./options";
 import { parseViewSpec } from "../../plugins/builtin/custom-view/view-spec";
 import { findPaneFunction } from "./resolver";
+import { normalizeCapabilityOptions } from "./capabilities";
 
 test("limitations read as sentences, so one does not run into the next", () => {
   const limitations = ["Daily medians of public DTCC prints on the on-the-run 5Y contract", "HY and EM quote in price"];
@@ -369,6 +370,23 @@ test("a memo's figures find FA with the tab that shows them, and an option's val
     for (const query of ["roic", "return on invested capital", "operating margin", "capex", "free cash flow"]) {
       expect(filterPaneCatalogEntries(entries, query).slice(0, 3).map((entry) => entry.token), query).toContain("FA");
     }
+    for (const [query, tab] of [
+      ["interest coverage", "leverage"], ["coverage ratio", "leverage"], ["net debt/EBITDA", "leverage"],
+      ["current ratio", "liquidity"], ["quick ratio", "liquidity"], ["ROE", "profitability"], ["margins", "profitability"],
+      ["asset turnover", "efficiency"], ["EV/EBITDA", "valuation"], ["P/E", "valuation"],
+    ] as const) {
+      expect(filterPaneCatalogEntries(entries, query)[0]?.token, query).toBe("FA");
+      expect(searched(query).replace(/\s+/g, " "), query).toContain(`gloom fn FA <ticker> --statement ${tab}`);
+    }
+    for (const [query, code] of [["short interest", "SI"], ["yield curve", "GC"]] as const) {
+      expect(filterPaneCatalogEntries(entries, query)[0]?.token, query).toBe(code);
+    }
+    const fa = entries.find((entry) => entry.token === "FA")!;
+    for (const alias of ["coverage", "credit"]) {
+      expect(normalizeCapabilityOptions(fa.capability, { statement: alias }).statement).toBe("leverage");
+    }
+    expect(searched("FA").replace(/\s+/g, " ")).toContain("leverage (coverage, credit)");
+    expect(() => normalizeCapabilityOptions(fa.capability, { statement: "invalid" })).toThrow("leverage (coverage, credit)");
     expect(searched("roic")).toStartWith('"roic": gloom fn FA <ticker> --statement profitability\n\nFA  Financial Analysis');
     expect(searched("capex")).toStartWith('"capex": gloom fn FA <ticker> --statement cashflow');
     // GF still answers a margin across companies, by the metric its option takes.

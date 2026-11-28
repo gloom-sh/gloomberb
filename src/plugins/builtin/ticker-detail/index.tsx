@@ -10,7 +10,7 @@ import { futuresContractCache } from "./overview/futures-contract";
 import { offeringFilingsCache } from "./financials/offerings";
 import { TICKER_RESEARCH_BUILTIN_TABS } from "./research-tabs";
 import { financialStatementsHeadless, historicalPricesHeadless, quoteComparisonHeadless, returnsHeadless } from "./headless";
-import { FINANCIAL_STATEMENT_VALUES } from "./headless-schema";
+import { FINANCIAL_STATEMENT_OPTION } from "./headless-schema";
 import { FINANCIAL_PERIOD_OPTION } from "../shared/headless-options";
 import {
   buildQuoteMonitorSettingsDef,
@@ -38,7 +38,7 @@ const RESEARCH_VIEW_REPORT_OPTIONS: PaneReportOptionDef[] = [
   { key: "tab", aliases: ["activeTab", "activeTabId", "paneTab"], type: "string", placeholder: "view",
     description: "Tab or view to open, by label or id (Events, Corporate Actions, risk-factors); an unknown tab lists the available choices.",
     example: "--tab risk-factors" },
-  { key: "statement", aliases: ["financialStatement"], type: "enum", values: FINANCIAL_STATEMENT_VALUES,
+  { ...FINANCIAL_STATEMENT_OPTION,
     description: "Financials statement or ratio tab to open; opens the financials tab." },
   { key: "period", aliases: ["financialPeriod"], type: "enum", values: FINANCIAL_PERIOD_OPTION.values,
     description: "Financials period; opens the financials tab." },
