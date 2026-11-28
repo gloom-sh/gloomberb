@@ -5,7 +5,7 @@ import { pricePointIntegrity, pricePointOpenWithheld } from "../utils/price-hist
 import { latestRegularSessionClose } from "../market-data/market/freshness";
 import {
   calendarBarStart,
-  intradayQuoteBarTime,
+  intradayQuoteMembership,
   isCalendarResolution,
   isUsCashListing,
   liveQuoteObservation,
@@ -13,7 +13,7 @@ import {
   onSameVenueDay,
   quoteBelongsToLatestBar,
   quoteSessionRange,
-  regularBellForAfterHoursTrade,
+  usAfterHoursSessionBell,
 } from "./chart-data";
 import { CHART_RESOLUTION_STEP_MS, type ManualChartResolution } from "./resolution";
 import { isFiniteNumber } from "../utils/guards";
@@ -174,7 +174,9 @@ export class LiveBarAccumulator {
     const latestTime = pointTime(latest);
     if (!Number.isFinite(latestTime)) return bars;
     this.syncAnchor(latest, latestTime, options, exchange);
-    if (bellPair && extendedCashVenue && !isCalendarResolution(options.resolution) && bellPair[0].lastUpdated > this.lastReplayedBell) {
+    if (bellPair && extendedCashVenue && !quote?.stale && !isCalendarResolution(options.resolution)
+      && bellPair[0].lastUpdated > this.lastReplayedBell
+      && bellPair[0].lastUpdated === usAfterHoursSessionBell(options.now, extendedCashVenue)) {
       this.lastReplayedBell = bellPair[0].lastUpdated;
       for (const print of bellPair) this.observe(latest, print, options, exchange);
     }
@@ -301,8 +303,9 @@ export class LiveBarAccumulator {
     this.lastQuote = quote;
     const { resolution } = options;
     const calendar = isCalendarResolution(resolution);
-    const membershipTime = calendar ? quote.lastUpdated : intradayQuoteBarTime(quote, exchange, options.extendedHours === true);
-    if (membershipTime === null) return;
+    const membership = calendar ? { time: quote.lastUpdated } : intradayQuoteMembership(quote, exchange, options.extendedHours === true);
+    if (!membership) return;
+    const { time: membershipTime, afterHoursStart } = membership;
     // A daily or longer bar is the regular session's: after the close it holds at the close.
     const observation = liveQuoteObservation(quote, options.now, options.assetCategory,
       calendar ? "regular" : "latest", membershipTime);
@@ -358,8 +361,7 @@ export class LiveBarAccumulator {
     this.lastPreMarket = preMarket;
     this.version += 1;
 
-    const afterHoursStart = !calendar && options.extendedHours ? regularBellForAfterHoursTrade(quote, exchange) : null;
-    const crossesBell = afterHoursStart !== null && latestBarTime < afterHoursStart && onSameVenueDay(latestBarTime, afterHoursStart, exchange);
+    const crossesBell = afterHoursStart !== undefined && latestBarTime < afterHoursStart && onSameVenueDay(latestBarTime, afterHoursStart, exchange);
     if (forming && !crossesBell && this.inBar(membershipTime, forming.time, options, exchange)) {
       if (forming.bellBoundary && time === forming.time && volume !== null) forming.bellBoundary.extendedVolumeKnown = true;
       forming.high = Math.max(forming.high, price, range?.high ?? price);
@@ -414,7 +416,7 @@ export class LiveBarAccumulator {
       close: price,
       volumeStart: sessionCount ? 0 : previous ?? volume,
       volumeEnd: null,
-      ...(afterHoursStart !== null ? { afterHoursStart } : {}),
+      ...(afterHoursStart !== undefined ? { afterHoursStart } : {}),
       ...(!cashArrivedFirst && afterHoursStart === time && barTime === time ? {
         bellBoundary: { beforeVolume, extendedVolumeKnown: volume !== null },
       } : {}),

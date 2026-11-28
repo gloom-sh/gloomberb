@@ -5,8 +5,8 @@ import { createTestDataProvider } from "../test-support/data-provider";
 import type { HistorySession } from "../types/price-history";
 import { LiveBarAccumulator } from "./live-bars";
 import { appendLiveQuotePoint } from "./chart-data";
-import { mergeHistory } from "./base-series";
-import { chartQuoteOverrideKeyForSource, observeLiveChartQuotes } from "./live-quotes";
+import { emptyFinancials, mergeHistory } from "./base-series";
+import { chartBellPairOf, chartQuoteOverrideKeyForSource, observeLiveChartQuotes } from "./live-quotes";
 import { resolveChartSpecData } from "./resolve";
 import { ChartResolveCache, type ChartResolveSources } from "./resolve-context";
 import { reconcileChartTail } from "./tail-reconcile";
@@ -92,6 +92,31 @@ describe("LiveBarAccumulator", () => {
       expect(accumulator.apply([refreshedCash], null, { resolution, exchange: "NASDAQ", extendedHours: true, now: nextExtended.lastUpdated }))
         .toEqual([refreshedCash, updatedExtended]);
     }
+  });
+
+  test.each(["2026-09-22T20:00:00Z", "2026-11-27T18:00:00Z"])("a POST price needs no optional trade flag to start its own hourly bar at %s", (stamp) => {
+    const bell = Date.parse(stamp);
+    const cash = { date: new Date(bell - 30 * 60_000), open: 33.77, high: 33.86, low: 33.73, close: 33.86, volume: 1_060 };
+    const history = [cash];
+    const regular = quote("00:00:00", cash.close, cash.volume, { instrumentType: "ETF", lastUpdated: bell - 1 });
+    const post = { ...regular, marketState: "POST" as const, lastUpdated: bell + 1_000, postMarketPrice: 33.55, volume: 1_070 };
+    const options = { now: post.lastUpdated, resolution: "1h" as const, exchange: "NASDAQ", extendedHours: true };
+    for (const extendedSessionPrint of [undefined, true]) {
+      const bars = new LiveBarAccumulator();
+      expect(bars.apply(history, regular, { ...options, now: regular.lastUpdated })).toEqual(history);
+      expect(bars.apply(history, { ...post, extendedSessionPrint: false }, options)).toEqual(history);
+      const trade = { ...post, extendedSessionPrint };
+      const extended = { date: new Date(bell), open: 33.55, high: 33.55, low: 33.55, close: 33.55 };
+      expect(bars.apply(history, trade, options)).toEqual([cash, { ...extended, volume: 10 }]);
+      expect(appendLiveQuotePoint(history, trade, { ...options, mode: "ohlc" })).toEqual([
+        cash, { ...extended, date: new Date(post.lastUpdated), quoteOnly: true },
+      ]);
+    }
+
+    const ambiguous = { ...post, marketState: "CLOSED" as const, postMarketPrice: undefined, price: 33.55 };
+    const later = { ...options, now: bell + 4 * 60 * 60_000 };
+    expect(new LiveBarAccumulator().apply(history, ambiguous, later)).toEqual(history);
+    expect(appendLiveQuotePoint(history, ambiguous, { ...later, mode: "ohlc" })).toBe(history);
   });
 
   test("an hourly history can keep a source bar starting at the bell beside its shortened cash bar", () => {
@@ -425,7 +450,7 @@ describe("LiveBarAccumulator", () => {
   });
 });
 
-test.each(["2026-09-22T20:00:00Z", "2026-11-27T18:00:00Z"])("the chart observer delivers both tied bell prints at %s to a coalesced resolve", (stamp) => {
+test.each(["2026-09-22T20:00:00Z", "2026-11-27T18:00:00Z"])("the chart observer delivers both tied bell prints at %s after the next minute", (stamp) => {
   const bell = Date.parse(stamp);
   const source = { kind: "security" as const, instrument: { symbol: "LIVE", exchange: "NASDAQ" }, fieldId: "market.ohlcv" };
   const spec: ChartSpec = {
@@ -443,7 +468,8 @@ test.each(["2026-09-22T20:00:00Z", "2026-11-27T18:00:00Z"])("the chart observer 
       let current = initial;
       let notify = () => {};
       const updates: ReadonlyMap<string, Quote>[] = [];
-      const clock = spyOn(Date, "now").mockReturnValue(bell + 100);
+      const nextMinute = bell + 61_000;
+      const clock = spyOn(Date, "now").mockReturnValue(nextMinute);
       let stop: (() => void) | undefined;
       try {
         stop = observeLiveChartQuotes({ readSpec: () => spec, store: {
@@ -451,13 +477,15 @@ test.each(["2026-09-22T20:00:00Z", "2026-11-27T18:00:00Z"])("the chart observer 
           subscribeKeys: (_keys, listener) => { notify = listener; return () => {}; },
         }, onChange: (overrides) => updates.push(overrides) });
         const bars = new LiveBarAccumulator();
-        const merge = (now = bell + 100) => {
-          const override = updates.at(-1)?.get(chartQuoteOverrideKeyForSource(source));
-          return mergeHistory(null, [cash], override, now, "1h", "NASDAQ", true, undefined,
-            { bars, extendedHours: true, since: +cash.date }).priceHistory;
+        const override = () => updates.at(-1)?.get(chartQuoteOverrideKeyForSource(source));
+        const merge = (now = nextMinute, accumulator = bars, fetched?: Quote) => {
+          return mergeHistory(fetched ? { ...emptyFinancials(), quote: fetched } : null, [cash], override(), now, "1h", "NASDAQ", true, undefined,
+            { bars: accumulator, extendedHours: true, since: +cash.date }).priceHistory;
         };
         const publish = (next: Quote) => { current = next; notify(); };
-        expect(merge(initial.lastUpdated)).toEqual([cash]);
+        expect(bars.apply([cash], initial, {
+          now: initial.lastUpdated, resolution: "1h", exchange: "NASDAQ", extendedHours: true,
+        })).toEqual([cash]);
         publish(first);
         publish({ ...first, volume: 5_000 });
         publish(second);
@@ -465,14 +493,24 @@ test.each(["2026-09-22T20:00:00Z", "2026-11-27T18:00:00Z"])("the chart observer 
         publish({ ...second });
         publish({ ...initial, price: 94, receivedAt: bell + 50 });
         expect(updates).toHaveLength(3);
-        const expected = [{ ...cash, close: 102, high: 102, volume: 1_060 },
-          { date: new Date(bell), open: 98, high: 98, low: 98, close: 98, volume: 10 }];
+        const laterTrade = { ...extended, postMarketPrice: 97, volume: 1_090, lastUpdated: nextMinute, receivedAt: nextMinute };
         if (receivedAt !== undefined) {
-          publish({ ...extended, postMarketPrice: 97, volume: 1_090, lastUpdated: bell + 50, receivedAt: bell + 60 });
-          expected[1] = { ...expected[1]!, low: 97, close: 97, volume: 30 };
+          publish({ ...laterTrade, stale: true });
+          expect(merge()).toEqual([cash]);
         }
+        publish(laterTrade);
+        const expected = [{ ...cash, close: 102, high: 102, volume: 1_060 },
+          { date: new Date(bell), open: 98, high: 98, low: 97, close: 97, volume: 30 }];
+        expect(merge(nextMinute, bars, { ...laterTrade, receivedAt: nextMinute + 1 })).toEqual(expected);
         expect(merge()).toEqual(expected);
-        expect(merge()).toEqual(expected);
+
+        const sessionEnded = bell + 4 * 60 * 60_000;
+        expect(merge(sessionEnded, new LiveBarAccumulator()).at(0)).toEqual(cash);
+        const nextSession = Date.parse(stamp.includes("11-27") ? "2026-11-30T15:00:00Z" : "2026-09-23T15:00:00Z");
+        clock.mockReturnValue(nextSession);
+        publish({ ...initial, lastUpdated: nextSession, receivedAt: nextSession });
+        expect(chartBellPairOf(override())).toBeUndefined();
+        expect(merge(nextSession, new LiveBarAccumulator()).at(0)).toEqual(cash);
       } finally {
         stop?.();
         clock.mockRestore();

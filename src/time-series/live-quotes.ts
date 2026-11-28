@@ -11,7 +11,7 @@ import type { InstrumentRef } from "../market-data/request-types";
 import type { QueryEntry } from "../market-data/result-types";
 import { buildQuoteKey, instrumentFromQuoteTarget, resolveEntryData } from "../market-data/selectors";
 import { instrumentIdentityKey } from "../utils/instrument-identity";
-import { intradayQuoteBarTime, regularBellForAfterHoursTrade } from "./chart-data";
+import { intradayQuoteMembership, usAfterHoursSessionBell } from "./chart-data";
 import { chartBarSizeSource, isIntradayResolution } from "./resolution";
 
 /**
@@ -114,12 +114,12 @@ export function chartBellPairOf(quote: Quote | undefined): readonly [Quote, Quot
 }
 
 function formsBellPair(next: Quote, current: Quote, exchange: string | undefined): boolean {
-  if (next.lastUpdated !== current.lastUpdated || next.stale || current.stale || !hasValidQuoteObservationTime(next)
-    || (next.extendedSessionPrint === true) === (current.extendedSessionPrint === true)) return false;
-  const [extended, cash] = next.extendedSessionPrint === true ? [next, current] : [current, next];
-  const venue = exchange || cash.listingExchangeName || cash.exchangeName || extended.listingExchangeName || extended.exchangeName;
-  return regularBellForAfterHoursTrade(extended, venue) === next.lastUpdated
-    && intradayQuoteBarTime(cash, venue, false) === next.lastUpdated - 1;
+  const time = next.lastUpdated;
+  if (time !== current.lastUpdated || next.stale || current.stale || !hasValidQuoteObservationTime(next)) return false;
+  const nextSession = intradayQuoteMembership(next, exchange, true);
+  const currentSession = intradayQuoteMembership(current, exchange, true);
+  return (nextSession?.afterHoursStart === time && currentSession?.time === time - 1)
+    || (currentSession?.afterHoursStart === time && nextSession?.time === time - 1);
 }
 
 function hasResolutionRelevantChange(next: Quote, current: Quote | undefined): boolean {
@@ -179,11 +179,12 @@ export function observeLiveChartQuotes({ readSpec, store, onChange }: LiveChartQ
       const quote = resolveEntryData(store.getQuoteEntry(instrument));
       const previous = quoteOverrides.get(key);
       if (!quote || quote === previous) continue;
-      const heldPair = allowBellPair && !quote.stale ? chartBellPairOf(previous) : undefined;
-      const completesBellPair = allowBellPair && !!previous && !heldPair && formsBellPair(quote, previous, instrument.exchange);
+      const venue = instrument.exchange || quote.listingExchangeName || quote.exchangeName || previous?.listingExchangeName || previous?.exchangeName;
+      const heldPair = allowBellPair ? chartBellPairOf(previous) : undefined;
+      const completesBellPair = allowBellPair && !!previous && !heldPair && formsBellPair(quote, previous, venue);
       if (!isNewerQuote(quote, previous, completesBellPair)) continue;
       const pair = completesBellPair ? [previous!, quote] as const
-        : heldPair && quoteStampBucket(quote) === quoteStampBucket(heldPair[0]) ? heldPair : undefined;
+        : heldPair && usAfterHoursSessionBell(quote.lastUpdated, venue) === heldPair[0].lastUpdated ? heldPair : undefined;
       const snapshot = pair ? { ...quote } : quote;
       if (pair) bellPairs.set(snapshot, pair);
       quoteOverrides.set(key, snapshot);

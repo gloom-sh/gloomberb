@@ -168,29 +168,34 @@ export function isUsCashListing(exchange: string | undefined, instrumentType?: s
   return isUsListingExchange(exchange) && (!instrumentType || /^(?:EQUITY|STOCK|STK|ETF|ETN|FUND)$/i.test(instrumentType.trim()));
 }
 
-export function regularBellForAfterHoursTrade(quote: Quote, exchange: string | undefined): number | null {
-  if (quote.extendedSessionPrint !== true || quote.symbol.startsWith("^") || !isUsCashListing(exchange, quote.instrumentType)
-    || quote.marketState === "PREPRE" || quote.marketState === "POSTPOST" || quote.overnightPrice != null
-    || activeUsMarketSession(quote.lastUpdated, exchange) !== "POST") return null;
-  return latestRegularSessionClose(exchange, quote.lastUpdated)?.close ?? null;
+export function usAfterHoursSessionBell(time: number, exchange: string | undefined): number | undefined {
+  if (activeUsMarketSession(time, exchange) === "POST") return latestRegularSessionClose(exchange, time)?.close;
 }
 
-export function intradayQuoteBarTime(quote: Quote, exchange: string | undefined, extendedHours: boolean): number | null {
+export function intradayQuoteMembership(
+  quote: Quote, exchange: string | undefined, extendedHours: boolean,
+): { time: number; afterHoursStart?: number } | null {
   const time = quote.lastUpdated;
-  if (!isUsCashListing(exchange, quote.instrumentType) || quote.symbol.startsWith("^")) return time;
-  if (quote.marketState === "PREPRE" || quote.marketState === "POSTPOST") return null;
+  if (!isUsCashListing(exchange, quote.instrumentType) || quote.symbol.startsWith("^")) return { time };
+  if (quote.marketState === "PREPRE" || quote.marketState === "POSTPOST" || quote.overnightPrice != null) return null;
   const session = activeUsMarketSession(time, exchange);
   if (session === "REGULAR") {
-    return (quote.marketState === "PRE" && quote.preMarketPrice != null)
-      || (quote.marketState === "POST" && quote.postMarketPrice != null) ? null : time;
+    return quote.extendedSessionPrint === true || (quote.marketState === "PRE" && quote.preMarketPrice != null)
+      || (quote.marketState === "POST" && quote.postMarketPrice != null) ? null : { time };
   }
-  if (session === "POST" && quote.extendedSessionPrint !== true && quote.marketState !== "PRE"
-    && (quote.marketState !== "POST" || quote.postMarketPrice == null)) {
+  if (session === "POST" && quote.marketState !== "PRE") {
     const bell = latestRegularSessionClose(exchange, time);
-    if (bell?.close === time && (quote.marketState === "REGULAR"
-      || (quote.regularCloseSessionDate === bell.date && quote.regularClose === quote.price))) return time - 1;
+    if (bell?.close === time && quote.extendedSessionPrint !== true
+      && (quote.marketState !== "POST" || quote.postMarketPrice == null)
+      && (quote.marketState === "REGULAR" || (quote.regularCloseSessionDate === bell.date && quote.regularClose === quote.price))) {
+      return { time: time - 1 };
+    }
+    if (bell && extendedHours && quote.extendedSessionPrint !== false && quote.marketState !== "REGULAR"
+      && (quote.extendedSessionPrint === true || (quote.marketState === "POST" && quote.postMarketPrice != null))) {
+      return { time, afterHoursStart: bell.close };
+    }
   }
-  return extendedHours && quote.extendedSessionPrint !== false && (session === "PRE" || session === "POST") ? time : null;
+  return extendedHours && quote.extendedSessionPrint !== false && session === "PRE" ? { time } : null;
 }
 
 /**
@@ -319,9 +324,10 @@ export function appendLiveQuotePoint(
     ? CHART_RESOLUTION_STEP_MS[options.resolution] >= DAY_MS
     : latestInterval >= MIN_CALENDAR_BAR_INTERVAL_MS;
   const venue = (options.mode === "ohlc" ? options.exchange : undefined) || quote.listingExchangeName || quote.exchangeName;
-  const quoteTime = !calendarBars && options.mode === "ohlc"
-    ? intradayQuoteBarTime(quote, venue, options.extendedHours === true) : quote.lastUpdated;
-  if (quoteTime === null) return points;
+  const membership = !calendarBars && options.mode === "ohlc"
+    ? intradayQuoteMembership(quote, venue, options.extendedHours === true) : { time: quote.lastUpdated };
+  if (!membership) return points;
+  const { time: quoteTime, afterHoursStart } = membership;
   const observation = liveQuoteObservation(quote, now, options.assetCategory, calendarBars ? "regular" : "latest", quoteTime);
   if (!observation) return points;
   const { price: quotePrice } = observation;
@@ -362,7 +368,8 @@ export function appendLiveQuotePoint(
   }
 
   if (options.mode === "ohlc") {
-    if (quoteBelongsToLatestBar(latestTime, quoteTime, options.resolution, options.exchange || quote.listingExchangeName || quote.exchangeName)) {
+    if ((afterHoursStart === undefined || latestTime >= afterHoursStart)
+      && quoteBelongsToLatestBar(latestTime, quoteTime, options.resolution, venue)) {
       const merged = mergeQuoteIntoLatestBar(latest, quotePrice, range);
       return [...points.slice(0, -1), merged];
     }
