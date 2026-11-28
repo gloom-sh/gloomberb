@@ -168,15 +168,22 @@ export function isUsCashListing(exchange: string | undefined, instrumentType?: s
   return isUsListingExchange(exchange) && (!instrumentType || /^(?:EQUITY|STOCK|STK|ETF|ETN|FUND)$/i.test(instrumentType.trim()));
 }
 
-export function intradayQuoteEligible(quote: Quote, exchange: string | undefined, extendedHours: boolean): boolean {
-  if (!isUsCashListing(exchange, quote.instrumentType) || quote.symbol.startsWith("^")) return true;
-  if (quote.marketState === "PREPRE" || quote.marketState === "POSTPOST") return false;
-  const session = activeUsMarketSession(quote.lastUpdated, exchange);
+export function intradayQuoteBarTime(quote: Quote, exchange: string | undefined, extendedHours: boolean): number | null {
+  const time = quote.lastUpdated;
+  if (!isUsCashListing(exchange, quote.instrumentType) || quote.symbol.startsWith("^")) return time;
+  if (quote.marketState === "PREPRE" || quote.marketState === "POSTPOST") return null;
+  const session = activeUsMarketSession(time, exchange);
   if (session === "REGULAR") {
-    return !((quote.marketState === "PRE" && quote.preMarketPrice != null)
-      || (quote.marketState === "POST" && quote.postMarketPrice != null));
+    return (quote.marketState === "PRE" && quote.preMarketPrice != null)
+      || (quote.marketState === "POST" && quote.postMarketPrice != null) ? null : time;
   }
-  return extendedHours && quote.extendedSessionPrint !== false && (session === "PRE" || session === "POST");
+  if (session === "POST" && quote.extendedSessionPrint !== true && quote.marketState !== "PRE"
+    && (quote.marketState !== "POST" || quote.postMarketPrice == null)) {
+    const bell = latestRegularSessionClose(exchange, time);
+    if (bell?.close === time && (quote.marketState === "REGULAR"
+      || (quote.regularCloseSessionDate === bell.date && quote.regularClose === quote.price))) return time - 1;
+  }
+  return extendedHours && quote.extendedSessionPrint !== false && (session === "PRE" || session === "POST") ? time : null;
 }
 
 /**
@@ -264,8 +271,12 @@ export function liveQuoteObservation(
   now: number,
   assetCategory?: string,
   basis: LiveQuoteBasis = "latest",
+  intradayBarTime?: number,
 ): LiveQuoteObservation | null {
-  if (!quote || isQuoteStaleForCurrentSession(quote, quoteObservationNow(quote, now))) return null;
+  if (!quote) return null;
+  const freshnessQuote = intradayBarTime !== undefined && intradayBarTime < quote.lastUpdated
+    ? { ...quote, lastUpdated: intradayBarTime, marketState: "CLOSED" as const, postMarketPrice: undefined } : quote;
+  if (isQuoteStaleForCurrentSession(freshnessQuote, quoteObservationNow(quote, now))) return null;
   if (hasUnknownBondHistoryBasis(quote, assetCategory)) return null;
   // No history covers the overnight session: its prices form or move no bar.
   if (quote.overnightPrice != null) return null;
@@ -301,10 +312,13 @@ export function appendLiveQuotePoint(
     ? CHART_RESOLUTION_STEP_MS[options.resolution] >= DAY_MS
     : latestInterval >= MIN_CALENDAR_BAR_INTERVAL_MS;
   const venue = (options.mode === "ohlc" ? options.exchange : undefined) || quote.listingExchangeName || quote.exchangeName;
-  if (!calendarBars && options.mode === "ohlc" && !intradayQuoteEligible(quote, venue, options.extendedHours === true)) return points;
-  const observation = liveQuoteObservation(quote, now, options.assetCategory, calendarBars ? "regular" : "latest");
+  const quoteTime = !calendarBars && options.mode === "ohlc"
+    ? intradayQuoteBarTime(quote, venue, options.extendedHours === true) : quote.lastUpdated;
+  if (quoteTime === null) return points;
+  const observation = liveQuoteObservation(quote, now, options.assetCategory, calendarBars ? "regular" : "latest", quoteTime);
   if (!observation) return points;
-  const { time: quoteTime, price: quotePrice } = observation;
+  const { price: quotePrice } = observation;
+  const closingPrint = quoteTime !== observation.time;
   const range = calendarBars && options.mode === "ohlc"
     ? quoteSessionRange(quote, observation, options.resolution, options.exchange || quote.listingExchangeName || quote.exchangeName)
     : null;
@@ -319,7 +333,7 @@ export function appendLiveQuotePoint(
     && latestInterval <= MAX_INTRADAY_BAR_INTERVAL_MS
     && quoteTime - latestTime > Math.max(MIN_LIVE_QUOTE_TAIL_GAP_MS, latestInterval * 3)
     // Bars missing before a regular-session quote of their own day leave a gap, not a stale last price.
-    && !(quote.marketState === "REGULAR" && onSameVenueDay(latestTime, quoteTime, venue))
+    && !((closingPrint || quote.marketState === "REGULAR") && onSameVenueDay(latestTime, quoteTime, venue))
   ) {
     return points;
   }
@@ -345,6 +359,8 @@ export function appendLiveQuotePoint(
       const merged = mergeQuoteIntoLatestBar(latest, quotePrice, range);
       return [...points.slice(0, -1), merged];
     }
+    if (closingPrint) return onSameVenueDay(latestTime, quoteTime, venue)
+      ? [...points, { date: new Date(observation.time), close: quotePrice, sessionClose: true }] : points;
     return [
       ...points,
       {

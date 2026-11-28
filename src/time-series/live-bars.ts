@@ -4,7 +4,7 @@ import { hasLikelyQuoteUnitMismatch } from "../utils/currency-units";
 import { pricePointIntegrity, pricePointOpenWithheld } from "../utils/price-history-integrity";
 import {
   calendarBarStart,
-  intradayQuoteEligible,
+  intradayQuoteBarTime,
   isCalendarResolution,
   liveQuoteObservation,
   MIN_LIVE_QUOTE_TAIL_GAP_MS,
@@ -107,6 +107,7 @@ function foldFinalObservation(
   const last = history.at(-1);
   const previous = history.at(-2);
   if (!last || !previous || !isFiniteNumber(last.close) || !isFiniteNumber(previous.close) || pricePointIntegrity(previous)) return history;
+  if (last.sessionClose || previous.sessionClose) return history;
   const previousTime = pointTime(previous);
   const gap = pointTime(last) - previousTime;
   if (!(gap > 0)) return history;
@@ -257,14 +258,14 @@ export class LiveBarAccumulator {
   private observe(latest: PricePoint, quote: Quote, options: LiveBarOptions, exchange?: string): void {
     if (quote === this.lastQuote) return;
     this.lastQuote = quote;
+    const { resolution } = options;
+    const calendar = isCalendarResolution(resolution);
+    const membershipTime = calendar ? quote.lastUpdated : intradayQuoteBarTime(quote, exchange, options.extendedHours === true);
+    if (membershipTime === null) return;
     // A daily or longer bar is the regular session's: after the close it holds at the close.
     const observation = liveQuoteObservation(quote, options.now, options.assetCategory,
-      isCalendarResolution(options.resolution) ? "regular" : "latest");
+      calendar ? "regular" : "latest", membershipTime);
     if (!observation) return;
-    if (!isCalendarResolution(options.resolution) && !intradayQuoteEligible(quote, exchange, options.extendedHours === true)) {
-      this.closeFormingVolume(this.cumulative);
-      return;
-    }
     const { time, price } = observation;
     const volume = isFiniteNumber(quote.volume) && quote.volume >= 0 ? quote.volume : null;
     if (time < this.lastTime) return;
@@ -272,14 +273,13 @@ export class LiveBarAccumulator {
 
     const anchor = this.anchor!;
     const forming = this.bars.at(-1);
+    if (!calendar && membershipTime < (forming?.time ?? anchor.time)) return;
     const latestClose = forming?.close ?? anchor.close ?? latest.close;
     if (hasLikelyQuoteUnitMismatch(
       { currency: quote.currency, price: latestClose },
       { currency: quote.currency, price },
     )) return;
 
-    const { resolution } = options;
-    const calendar = isCalendarResolution(resolution);
     // A daily or longer bar also takes the session's own range from the quote: what traded before this watch began.
     const range = calendar ? quoteSessionRange(quote, observation, resolution, exchange) : null;
     const preMarket = !!quote.marketState && PRE_MARKET_STATES.has(quote.marketState);
@@ -308,14 +308,14 @@ export class LiveBarAccumulator {
     this.lastPreMarket = preMarket;
     this.version += 1;
 
-    if (forming && this.inBar(time, forming.time, options, exchange)) {
+    if (forming && this.inBar(membershipTime, forming.time, options, exchange)) {
       forming.high = Math.max(forming.high, price, range?.high ?? price);
       forming.low = Math.min(forming.low, price, range?.low ?? price);
       forming.close = price;
       forming.point = null;
       return;
     }
-    if (!forming && this.inBar(time, anchor.time, options, exchange)) {
+    if (!forming && this.inBar(membershipTime, anchor.time, options, exchange)) {
       if (range?.open !== undefined) anchor.open = range.open;
       anchor.high = Math.max(anchor.high ?? price, price, range?.high ?? price);
       anchor.low = Math.min(anchor.low ?? price, price, range?.low ?? price);
@@ -323,7 +323,7 @@ export class LiveBarAccumulator {
       return;
     }
     const latestBarTime = forming?.time ?? anchor.time;
-    if (time < latestBarTime) return;
+    if (membershipTime < latestBarTime) return;
 
     let barTime = time;
     if (calendar) {
@@ -335,7 +335,7 @@ export class LiveBarAccumulator {
     } else {
       const step = CHART_RESOLUTION_STEP_MS[resolution];
       const watched = options.liveSince !== undefined && latestBarTime + step >= options.liveSince;
-      if (!watched && time - latestBarTime > Math.max(MIN_LIVE_QUOTE_TAIL_GAP_MS, 3 * step)) {
+      if (!watched && membershipTime - latestBarTime > Math.max(MIN_LIVE_QUOTE_TAIL_GAP_MS, 3 * step)) {
         // Bars in between are missing, not quiet: ask for the recent history.
         this.gapPending = true;
         // On the bars' own day the quote is still the price, in a bar of its own after the missing ones
@@ -345,7 +345,7 @@ export class LiveBarAccumulator {
           return;
         }
       }
-      barTime = latestBarTime + Math.floor((time - latestBarTime) / step) * step;
+      barTime = latestBarTime + Math.floor((membershipTime - latestBarTime) / step) * step;
     }
 
     this.closeFormingVolume(previous);

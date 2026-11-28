@@ -10,7 +10,7 @@ test("a revised ETF price statistic does not change or inherit the flow snapshot
   const report = (priceChangePct: number) => {
     const payload: CryptoEtfFlowsPayload = {
       asset: "BTC", unit: "USD millions", asOf: date, fetchedAt, stale: false,
-      source: { publisher: "Farside Investors", url: "https://farside.co.uk/btc/" },
+      source: { publisher: "Example Flow Research", url: "https://flows.example.test/btc/" },
       funds: [{ ticker: "IBIT", name: null, issuer: null }, { ticker: "FBTC", name: null, issuer: null }],
       days: [{ date, flows: { IBIT: -327.2, FBTC: null }, total: -389, pending: [], priceChangePct }],
     };
@@ -25,7 +25,7 @@ test("a revised ETF price statistic does not change or inherit the flow snapshot
   expect(before.rows).toEqual([{ date, total: -389, IBIT: -327.2, FBTC: null, pending: [], priceChangePct: -0.61 }]);
   expect(after.rows).toEqual([{ ...before.rows[0], priceChangePct: -0.63 }]);
   expect(after.freshness).toEqual(before.freshness);
-  expect(after.freshness).toMatchObject({ asOf: date, retrievedAt: fetchedAt, publisher: "Farside Investors" });
+  expect(after.freshness).toMatchObject({ asOf: date, retrievedAt: fetchedAt, publisher: "Example Flow Research" });
   expect(after.metadata?.priceChangeProvenance).toEqual({ sessionDate: "row date", asOf: null, retrievedAt: null, fundCoverage: null });
   expect(after.notes?.join(" ")).toContain("flow as-of and retrieval apply only to flows");
 });

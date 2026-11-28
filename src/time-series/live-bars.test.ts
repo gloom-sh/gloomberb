@@ -31,6 +31,35 @@ function dated(date: string, open: number, high: number, low: number, close: num
 }
 
 describe("LiveBarAccumulator", () => {
+  test.each([
+    { day: "2026-09-22", hour: 20, declared: { marketState: "REGULAR" } },
+    { day: "2026-11-27", hour: 18, declared: { marketState: "POST", regularClose: 33.86, regularCloseSessionDate: "2026-11-27", extendedSessionPrint: false } },
+  ] as const)("$day closing print stays in the cash bar and rejected quotes cannot freeze its volume", ({ day, hour, declared }) => {
+    const bell = Date.parse(`${day}T${hour}:00:00Z`);
+    const cash = { date: new Date(bell - 300_000), open: 33.77, high: 33.83, low: 33.73, close: 33.82, volume: 823_316 };
+    const history = [cash];
+    const atBell = quote("00:00:00", 33.86, 1_060, { symbol: "IBIT", instrumentType: "ETF", lastUpdated: bell, ...declared });
+    const post = { ...atBell, marketState: "POST" as const, postMarketPrice: 33.85, extendedSessionPrint: true, volume: 90_000 };
+    const options = { now: bell, mode: "ohlc" as const, resolution: "5m" as const, exchange: "NASDAQ", liveSince: +cash.date };
+    for (const extendedHours of [false, true]) {
+      expect(appendLiveQuotePoint(history, atBell, { ...options, extendedHours })).toEqual([{ ...cash, close: 33.86, high: 33.86 }]);
+    }
+    const earlier = { ...cash, date: new Date(bell - 600_000) };
+    expect(appendLiveQuotePoint([earlier], atBell, options)).toEqual([earlier, { date: new Date(bell), close: 33.86, sessionClose: true }]);
+    expect(appendLiveQuotePoint(history, { ...atBell, marketState: "CLOSED", regularCloseSessionDate: "2026-09-21" }, options)).toBe(history);
+    expect(appendLiveQuotePoint(history, post, options)).toBe(history);
+    const accumulator = new LiveBarAccumulator();
+    const apply = (next: Quote, now = next.lastUpdated) => accumulator.apply(history, next, { ...options, now });
+    const regular = (minutes: number, price: number, volume: number) => ({ ...atBell, marketState: "REGULAR" as const, lastUpdated: bell - minutes * 60_000, price, volume });
+    expect(apply(regular(3, 33.82, 1_000))).toEqual(history);
+    expect(apply(regular(2, 33.83, 1_020))).toEqual([{ ...cash, close: 33.83, volume: 823_336 }]);
+    expect(apply({ ...post, lastUpdated: bell - 150_000 }, bell - 120_000)).toEqual([{ ...cash, close: 33.83, volume: 823_336 }]);
+    expect(apply(regular(1, 33.84, 1_040))).toEqual([{ ...cash, close: 33.84, high: 33.84, volume: 823_356 }]);
+    expect(apply(post)).toEqual([{ ...cash, close: 33.84, high: 33.84, volume: 823_356 }]);
+    expect(apply(atBell)).toEqual([{ ...cash, close: 33.86, high: 33.86, volume: 823_376 }]);
+    expect(apply({ ...post, lastUpdated: bell + 60_000 })).toEqual([{ ...cash, close: 33.86, high: 33.86, volume: 823_376 }]);
+  });
+
   test("an early-close ETF's late print cannot extend regular history, even when labelled CLOSED", () => {
     const date = (time: string) => new Date(`2026-11-27T${time}Z`);
     const cash = { date: date("17:55:00"), open: 33.765, high: 33.87, low: 33.735, close: 33.86, volume: 823_316 };

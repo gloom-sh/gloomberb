@@ -18,8 +18,7 @@ import { fetchHistoryResult } from "../../../sources/history-result";
 import { historyRetentionNotice, isHistoryRetentionError, type HistoryRetention } from "../../../sources/history-retention";
 import type { PriceHistoryResult } from "../../../types/price-history";
 import { isRegularSessionTime, latestRegularSessionClose, regularSessionCloseOn } from "../../../market-data/market/freshness";
-import { calendarBarStart, isUsCashListing } from "../../../time-series/chart-data";
-import { newestSessionClose } from "../../../time-series/official-close";
+import { isUsCashListing } from "../../../time-series/chart-data";
 import { quoteTradingDay } from "../../../market-data/quotes/day-range";
 
 type IntradayRangePreset = "1D" | "1W";
@@ -53,44 +52,38 @@ export interface LoadedIntradayWindow extends IntradayWindow {
   sourceKey?: string;
 }
 
-export async function historicalIntradayClose(
-  provider: DataProvider,
-  window: Pick<LoadedIntradayWindow, "points" | "sourceKey" | "quote"> & { symbol: string; exchange: string },
+export function historicalIntradayClose(
+  window: Pick<LoadedIntradayWindow, "points" | "quote"> & { symbol: string; exchange: string },
   day: string,
   now: number,
-  context?: MarketDataRequestContext,
-): Promise<{ mark?: PricePoint; note: string; lastAt: number } | null> {
+): { at?: number; note: string } | null {
   const venue = window.exchange || window.quote?.listingExchangeName || window.quote?.exchangeName;
   if (!isUsCashListing(venue, window.quote?.instrumentType)) return null;
   const bell = regularSessionCloseOn(venue, day);
   const latest = latestRegularSessionClose(venue, now);
-  if (bell === null || !latest || day > latest.date
-    || (day === latest.date && (!window.quote || quoteTradingDay(window.quote) === day))) return null;
+  if (bell === null || bell > now) return null;
+  if (declaredSessionClose(window.points, bell)) {
+    return { at: bell, note: `${window.symbol}: official close ${utcClock(bell)}; separate from the minute bars.` };
+  }
+  if (day === latest?.date && window.quote && quoteTradingDay(window.quote) === day) return null;
+  const zone = resolveExchangeTimeZone(venue) ?? "UTC";
   const last = window.points.findLast((point) => {
     const time = getPricePointTimestamp(point);
-    return Number.isFinite(time) && time < bell && calendarBarStart(time, "1d", venue) === day
-      && isRegularSessionTime(venue, time) === true && !pricePointIntegrity(point);
+    return Number.isFinite(time) && time < bell && zonedDateKey(time, zone) === day
+      && isRegularSessionTime(venue, time) === true && !point.sessionClose && !pricePointIntegrity(point);
   });
-  if (!last) return null;
-  const lastAt = getPricePointTimestamp(last);
-  const unavailable = { lastAt, note: `${window.symbol}: last regular print ${new Date(lastAt).toISOString().slice(11, 16)} UTC; official close unavailable.` };
-  if (!window.sourceKey) return unavailable;
-  const daily = await fetchHistoryResult(provider, window.symbol, window.exchange, {
-    kind: "detail", interval: "1d", start: new Date(`${day}T00:00:00Z`), end: new Date(`${day}T23:59:59.999Z`),
-  }, context).catch(logFailure("chart-composer.session-history", "Read the dated session close failed", null));
-  if (!daily || daily.sourceKey !== window.sourceKey || daily.savedCopyBehind || daily.extendedHours) return unavailable;
-  const onDay = daily.points.filter((point) => {
-    const time = getPricePointTimestamp(point);
-    return Number.isFinite(time) && calendarBarStart(time, "1d", venue) === day;
-  });
-  const bar = onDay.length === 1 ? onDay[0] : undefined;
-  if (!bar || bar.partial || bar.unsettled || bar.filled || bar.beforeClose || bar.closeCopied || bar.closeRebuilt
-    || bar.rescaled || pricePointIntegrity(bar) || (bar.low != null && last.close < bar.low) || (bar.high != null && last.close > bar.high)) return unavailable;
-  const close = newestSessionClose(null, { date: day, venue, lastTrade: last.close, dailyClose: bar.close });
-  if (!close || !("close" in close)) return unavailable;
-  const date = new Date(bell);
-  return { lastAt, mark: { date, close: close.close, sessionClose: true },
-    note: `${window.symbol}: official close ${date.toISOString().slice(11, 16)} UTC; separate from the minute bars.` };
+  const observation = last ? `last regular print ${utcClock(getPricePointTimestamp(last))}; ` : "";
+  return { note: `${window.symbol}: ${observation}official close unavailable.` };
+}
+
+function utcClock(time: number): string {
+  return `${new Date(time).toISOString().slice(11, 16)} UTC`;
+}
+
+function declaredSessionClose(points: readonly PricePoint[], bell: number | null): boolean {
+  return bell !== null && points.some((point) => point.sessionClose === true && getPricePointTimestamp(point) === bell
+    && !point.partial && !point.unsettled && !point.filled && !point.beforeClose && !point.closeCopied && !point.closeRebuilt
+    && !point.rescaled && point.close > 0 && !pricePointIntegrity(point));
 }
 
 const HISTORICAL_RETRY_DELAY_MS = 61 * 60_000;
@@ -161,6 +154,7 @@ function normalizedPoints(points: readonly PricePoint[]): PricePoint[] {
     // Session selection is independent of the asset's price domain. In
     // particular, a zero/negative futures close is still an observation.
     if (!Number.isFinite(timestamp) || (!Number.isFinite(point.close) && !pricePointIntegrity(point))) continue;
+    if (!point.sessionClose && byTimestamp.get(timestamp)?.sessionClose) continue;
     byTimestamp.set(timestamp, {
       ...point,
       date: point.date instanceof Date ? point.date : new Date(timestamp),
@@ -348,9 +342,12 @@ export async function loadIntradayWindow(options: {
     session: options.request.session,
     timeZone,
   });
-  let sawNonIntradayData = window.points.length > 0 && !hasIntradayBars(window, timeZone);
+  const datedBell = options.request.session && isUsCashListing(options.exchange) && !options.symbol.startsWith("^")
+    ? regularSessionCloseOn(options.exchange, options.request.session) : null;
+  const hasIntradayData = (selection: IntradayWindow) => hasIntradayBars(selection, timeZone) || declaredSessionClose(selection.points, datedBell);
+  let sawNonIntradayData = window.points.length > 0 && !hasIntradayData(window);
 
-  if (!hasIntradayBars(window, timeZone)) {
+  if (!hasIntradayData(window)) {
     acquisition = options.request.session
       ? await loadTrailingHistory(
           options.provider,
@@ -372,7 +369,7 @@ export async function loadIntradayWindow(options: {
       session: options.request.session,
       timeZone,
     });
-    sawNonIntradayData ||= window.points.length > 0 && !hasIntradayBars(window, timeZone);
+    sawNonIntradayData ||= window.points.length > 0 && !hasIntradayData(window);
   }
 
   if (window.points.length === 0) {
@@ -393,7 +390,7 @@ export async function loadIntradayWindow(options: {
       ),
     };
   }
-  if (!hasIntradayBars(window, timeZone)) {
+  if (!hasIntradayData(window)) {
     const requestedWindow = options.request.session
       ? sessionUtcBounds(options.request.session, timeZone)
       : null;

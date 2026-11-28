@@ -58,6 +58,7 @@ import {
   bufferPriceComparison,
   clipPriceComparison,
   comparisonSplitAssessment,
+  eligibleComparisonSeries,
   observationDate,
   priceComparisonBoundsForSeries,
   priceComparisonSeriesIds,
@@ -1248,6 +1249,7 @@ async function resolveChartSpecPass(
     ? priceComparison : bounds;
   const baseSeries = rawSeries
     .filter((entry) => visibleSeriesIds.has(entry.id))
+    .map((entry) => eligibleComparisonSeries(entry, priceComparison))
     .map((entry) => prepareBaseSeriesForStudies(entry, priceComparisonBoundsForSeries(entry, priceComparison) ?? comparisonBounds, false, priceComparison ? undefined : requestVisibleBounds));
   // Studies run over the same loaded history their base series carries. Clipping
   // them to the requested window instead left a study with no observations

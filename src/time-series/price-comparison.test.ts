@@ -623,6 +623,54 @@ describe("a fund compared with a coin", () => {
     }
   });
 
+  test("closed partial cash rows cannot set a baseline, enter the plotted line, or hide an empty requested leg", async () => {
+    const labels = ["2026-11-19", "2026-11-20", "2026-11-23", "2026-11-24", "2026-11-25", "2026-11-27"];
+    const coin = labels.map((day, index) => ({ date: date(day), close: 100 + index }));
+    const equity = labels.map((day, index) => ({ date: date(day), close: 33 + index / 10,
+      partial: [1, 2, 4].includes(index) }));
+    const now = date("2026-11-28T06:05:00Z");
+    const inputs = (cash: PricePoint[]) => {
+      const input = coinSources(() => [], { IBIT: cash, "BTC-USD": coin });
+      input.dataProvider.getDetailedPriceHistoryWithMetadata = async (symbol, _exchange, _start, _end, interval) => ({
+        points: interval === "1d" ? symbol === "IBIT" ? cash : coin : [], resolution: interval === "1d" ? "1d" : "1h",
+      });
+      return { ...input, now };
+    };
+    const window = { start: "2026-11-23", end: "2026-11-27" };
+    const authored = await resolveChartSpecData(chart(window), inputs(equity));
+    expect(authored.priceComparison?.legs?.IBIT).toEqual({ baseDay: labels[0]!, endDay: labels[5]!, intraday: false });
+    expect(authored.series[0]?.points.map((point) => point.date.toISOString().slice(0, 10))).toEqual([labels[0], labels[3], labels[5]]);
+    expect(authored.bufferedSeries?.[0]?.points.some((point) => point.partial)).toBe(false);
+    expect(authored.series[0]?.points.at(-1)?.value).toBeCloseTo((33.5 / 33 - 1) * 100, 8);
+
+    const noAuthoredBase = await resolveChartSpecData(chart(window), inputs(equity.slice(1)));
+    expect(noAuthoredBase.priceComparison?.legs?.IBIT?.baseDay).toBe(labels[3]!);
+    expect(noAuthoredBase.series[0]?.points.map((point) => point.date.toISOString().slice(0, 10))).toEqual([labels[3], labels[5]]);
+
+    for (const cash of [equity.slice(0, 2), []]) {
+      const missing = await resolveChartSpecData(chart(window), inputs(cash));
+      expect(missing.priceComparison?.incompleteSessions).toContain("IBIT 2026-11-27 18:00 UTC: daily close unavailable. Try 1h bars");
+      expect(missing.series[0]?.points).toEqual([]);
+    }
+  });
+
+  test("the hourly alternative reaches the early bell on both legs without applying daily partial rules", async () => {
+    const window = { start: "2026-11-23", end: "2026-11-27" };
+    const fundHours = rows([["2026-11-20T20:30:00Z", 33.02], ["2026-11-27T16:30:00Z", 33.70], ["2026-11-27T17:30:00Z", 33.86]]);
+    const coinHours = rows([["2026-11-20T20:00:00Z", 58_345], ["2026-11-27T16:00:00Z", 60_000], ["2026-11-27T17:00:00Z", 59_867.8]]);
+    const inputs = coinSources(coinHourly(), { IBIT: fundHours, "BTC-USD": coinHours });
+    const now = date("2026-11-28T06:05:00Z");
+    inputs.dataProvider.getDetailedPriceHistoryWithMetadata = async (symbol) => ({
+      resolution: "1h", points: symbol === "IBIT" ? fundHours : coinHours,
+      ...(symbol === "IBIT" ? { session: { version: 1, kind: "regular", calendar: "us-equity", timeZone: "America/New_York",
+        symbol, exchange: "NASDAQ", interval: "1h", source: "gloom", timestampConvention: "bar-open", barAlignment: "session-open", observedAt: +now } } : {}),
+    });
+    const result = await resolveChartSpecData(chart(window, "1h"), { ...inputs, now });
+    expect(result.priceComparison?.incompleteSessions).toBeUndefined();
+    expect(result.series.map((leg) => leg.points.at(-1)?.availableAt?.toISOString())).toEqual(["2026-11-27T18:00:00.000Z", "2026-11-27T18:00:00.000Z"]);
+    expect(result.series.map((leg) => leg.points.at(-1)?.value?.toFixed(2))).toEqual(["2.54", "2.61"]);
+  });
+
   test("the coin is measured at the fund's close on every day of the line, a weekend at that clock, and the notice says so", async () => {
     const result = await resolveChartSpecData(chart({ start: "2026-10-19", end: "2026-10-23" }), coinSources());
     expect(result.priceComparison?.notice).toContain("BTC-USD at the US close");

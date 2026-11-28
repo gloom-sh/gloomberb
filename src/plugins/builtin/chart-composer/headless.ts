@@ -937,26 +937,16 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
         }));
         // Once a session has closed, its last bar ends on the official close (the closing auction's print), as
         // `history` and CMP give it, not on the last trade before it; until the quote has that close, the footer says so.
-        await Promise.all(histories.map(async (history) => {
+        histories.forEach((history) => {
           // A future settles rather than closing on an auction print, and a coin or a currency pair has no session
           // to close: their bars stay as traded, and no quote is read for them.
           if (!history.points.length || futuresSessionOpenMinute(history.symbol, history.exchange) != null
             || isRoundTheClockCoin(history.symbol, history.exchange) || isCurrencyPairListing(history.symbol, history.exchange)) return;
           const now = Date.now();
           if (request.session) {
-            const dated = await historicalIntradayClose(context.marketData, history, request.session, now,
-              { brokerId: history.target.brokerId, brokerInstanceId: history.target.brokerInstanceId, instrument: history.target.instrument });
+            const dated = historicalIntradayClose(history, request.session, now);
             if (dated) {
-              const at = dated.mark?.date.getTime();
-              historicalCloses.set(history.symbol, { note: dated.note, at });
-              history.points = history.points.filter((point) => +new Date(point.date) <= dated.lastAt);
-              history.bufferedPoints = history.bufferedPoints.filter((point) => +new Date(point.date) <= dated.lastAt);
-              history.end = new Date(dated.lastAt);
-              if (dated.mark && at !== undefined) {
-                history.points.push(dated.mark);
-                history.bufferedPoints.push(dated.mark);
-                history.end = dated.mark.date;
-              }
+              historicalCloses.set(history.symbol, dated);
               return;
             }
           }
@@ -978,7 +968,7 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
           const closes = new Map([[newest.date, decided.close]]);
           history.points = withOfficialCloses(history.points, closes, { venue, now });
           history.bufferedPoints = withOfficialCloses(history.bufferedPoints, closes, { venue, now });
-        }));
+        });
         intradayHistories.push(...histories);
         const starts = histories.flatMap(({ start }) => start ? [start.getTime()] : []);
         const ends = histories.flatMap(({ end }) => end ? [end.getTime()] : []);
