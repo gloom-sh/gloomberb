@@ -244,6 +244,28 @@ describe("quote freshness", () => {
     }
   });
 
+  // Held at 19:24 New York on Fri 2026-11-27, after the 17:00 late close: a quote whose last print is that morning's
+  // 08:00 pre-market trade has nothing from the cash or late session since, though its date is the day's.
+  test("after the late close a print from the morning's pre-market is no price for the day; the cash and late sessions' prints are", () => {
+    const at = (stamp: string) => Date.parse(stamp);
+    const evening = at("2026-11-28T00:24:00Z");
+    for (const listingExchangeName of ["NYSE", "NASDAQ"]) {
+      const held = (printed: string, fields: Partial<Quote> = {}) => quote({ symbol: "COHR", currency: "USD", listingExchangeName,
+        exchangeName: listingExchangeName, price: 205, lastUpdated: at(printed), marketState: "POSTPOST", stale: false, ...fields });
+      const stale = (printed: string, fields: Partial<Quote> = {}, now = evening) => isQuoteStaleForCurrentSession(held(printed, fields), now);
+      expect(stale("2026-11-27T13:00:00Z", { preMarketPrice: 205, regularClose: 196.18, regularCloseSessionDate: "2026-11-25" }), listingExchangeName).toBe(true);
+      // The cash session's last print (12:59, no late trade), its open, and a late print (16:59) are the day's price.
+      expect(stale("2026-11-27T17:59:00Z", { regularClose: 223.79, regularCloseSessionDate: "2026-11-27" }), listingExchangeName).toBe(false);
+      expect(stale("2026-11-27T14:30:00Z", { regularClose: 223.79, regularCloseSessionDate: "2026-11-27" }), listingExchangeName).toBe(false);
+      expect(stale("2026-11-27T21:59:58Z", { regularClose: 223.79, regularCloseSessionDate: "2026-11-27", postMarketPrice: 225.25 }), listingExchangeName).toBe(false);
+      // That morning the same print is the pre-market's price.
+      expect(stale("2026-11-27T13:00:00Z", { marketState: "PRE", preMarketPrice: 205 }, at("2026-11-27T14:00:00Z")), listingExchangeName).toBe(false);
+      // A full day, after its 20:00 late close (Wed 25 Nov, 20:30): its 08:00 print is no price either, its 15:59 close is.
+      expect(stale("2026-11-25T13:00:00Z", {}, at("2026-11-26T01:30:00Z")), listingExchangeName).toBe(true);
+      expect(stale("2026-11-25T20:59:00Z", { regularClose: 196.18, regularCloseSessionDate: "2026-11-25" }, at("2026-11-26T01:30:00Z")), listingExchangeName).toBe(false);
+    }
+  });
+
   test("recorded NasdaqGM alias preserves active-session and old-date guards", () => {
     const active = Date.parse("2026-09-11T22:00:00Z");
     for (const listingExchangeName of ["NGM", "NasdaqGM", "NASDAQGM"]) {
@@ -269,7 +291,9 @@ describe("quote freshness", () => {
     expect(isQuoteStaleForCurrentSession({ ...retained, postMarketPrice: 168 }, preNow)).toBe(true);
     expect(isQuoteStaleForCurrentSession({ ...retained, preMarketPrice: 168 }, preNow)).toBe(false);
     expect(isQuoteStaleForCurrentSession({ ...retained, marketState: undefined, preMarketPrice: 168 }, preNow)).toBe(true);
-    expect(isQuoteStaleForCurrentSession({ ...retained, marketState: undefined }, Date.parse("2026-09-15T03:00:00Z"))).toBe(false);
+    // After the late close an unknown state is not stale by itself: the day's cash print stands, its 05:00 pre-market one does not.
+    expect(isQuoteStaleForCurrentSession({ ...retained, marketState: undefined, lastUpdated: Date.parse("2026-09-14T19:00:00Z") }, Date.parse("2026-09-15T03:00:00Z"))).toBe(false);
+    expect(isQuoteStaleForCurrentSession({ ...retained, marketState: undefined }, Date.parse("2026-09-15T03:00:00Z"))).toBe(true);
   });
 
   test("overnight labels cannot bypass explicit stale or the existing prior-session date check", () => {

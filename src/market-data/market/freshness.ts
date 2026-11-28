@@ -828,6 +828,20 @@ export function isTimestampStaleForExchangeSession(
   } catch { /* Intentional ignore: Invalid session dates are conservatively stale, never fresh. */ return true; }
 }
 
+/**
+ * After a US trading day's late session has ended (POSTPOST: 17:00 after an
+ * early close where the listing's tape documents it, else 20:00), a print from
+ * before that day's regular open is the morning's pre-market. Its date is
+ * today's, but the regular and late sessions since are not in it: held at
+ * 19:24 on 27 Nov 2026, an 08:00 print is no price for that day.
+ */
+function isUsPremarketPrintAfterLateClose(timestampMs: number, canonical: string, now: number, today: string): boolean {
+  if (!isUsListingExchange(canonical) || usSessionState(now, canonical) !== "POSTPOST") return false;
+  const published = getPublishedUsEquitySession(canonical, today);
+  const open = published?.kind === "session" ? published.open : latestRegularSessionOpen(canonical, now);
+  return open != null && exchangeLocalDate(canonical, open) === today && timestampMs < open;
+}
+
 function isTimestampStaleForExchangeSessionUnsafe(
   timestampMs: number,
   exchange?: string,
@@ -844,7 +858,8 @@ function isTimestampStaleForExchangeSessionUnsafe(
 
   const timestampDate = exchangeLocalDate(canonical, timestampMs);
   const currentDate = exchangeLocalDate(canonical, now);
-  if (!timestampDate || !currentDate || timestampDate === currentDate) return false;
+  if (!timestampDate || !currentDate) return false;
+  if (timestampDate === currentDate) return isUsPremarketPrintAfterLateClose(timestampMs, canonical, now, currentDate);
   if (marketState === "REGULAR" && !isPublishedEquityHoliday(canonical, now, weekendDays)
     && !isBeforeKnownRegularOpen(canonical, now)) return true;
 
