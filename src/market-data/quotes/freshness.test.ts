@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Quote } from "../../types/financials";
 import { awaitingFirstDelayedPrint, couldQuoteHavePrintedSince, isQuoteBeforeLatestSession, isQuoteStaleForCurrentSession, noPrintsTodayText } from "./freshness";
 import { quoteSessionLabel } from "../market/status";
+import { venueSessionNow } from "../market/venue-session";
 import { createDailyNavQuote } from "../../test-support/daily-nav";
 
 function quote(overrides: Partial<Quote>): Quote {
@@ -193,6 +194,40 @@ describe("quote freshness", () => {
       const input = quote({ symbol: "SPY", currency: "USD", listingExchangeName, exchangeName: listingExchangeName,
         marketState: "POST", lastUpdated: Date.parse(regularClosePrint), ...fields });
       expect(isQuoteStaleForCurrentSession(input, Date.parse(now)), listingExchangeName).toBe(stale);
+    }
+  });
+
+  // Fri 2026-11-27: the cash session closed at 13:00 New York (18:00Z) and the late sessions at 17:00 (22:00Z).
+  // The fields are Gloom Cloud's COHR quote read at 19:24 New York that evening.
+  test("after an early close the late session ends at its published 17:00, and only a print from it stands", () => {
+    const at = (stamp: string) => Date.parse(stamp);
+    const printed = at("2026-11-27T21:59:58.499Z");
+    const evening = at("2026-11-28T00:24:00Z");
+    for (const listingExchangeName of ["NYSE", "NASDAQ", "ARCA"]) {
+      const cohr = quote({ symbol: "COHR", currency: "USD", listingExchangeName, exchangeName: listingExchangeName, price: 225.25,
+        regularClose: 223.79, lastTradePrice: 225.25, lastTradeTime: printed, lastUpdated: printed, marketState: "POSTPOST",
+        regularCloseSessionDate: "2026-11-27", changeSessionDate: "2026-11-27", stale: false });
+      const stale = (fields: Partial<Quote>, now: number) => isQuoteStaleForCurrentSession({ ...cohr, ...fields }, now);
+      expect(stale({}, evening), listingExchangeName).toBe(false);
+      expect(stale({}, at("2026-11-27T22:00:00Z")), listingExchangeName).toBe(false);
+      // Before 17:00 the late session still trades: a POSTPOST label is behind it, a POST one with its print is current.
+      expect(stale({}, at("2026-11-27T21:59:59Z")), listingExchangeName).toBe(true);
+      expect(stale({ marketState: "POST", postMarketPrice: 225.25 }, at("2026-11-27T21:59:59Z")), listingExchangeName).toBe(false);
+      // Wednesday's close is a session behind Friday's, and a server flag or an unusable stamp is never cleared.
+      expect(stale({ lastUpdated: at("2026-11-25T21:00:00Z"), lastTradeTime: undefined }, evening), listingExchangeName).toBe(true);
+      expect(stale({ stale: true }, evening), listingExchangeName).toBe(true);
+      expect(stale({ lastUpdated: Number.NaN }, evening), listingExchangeName).toBe(true);
+      // On Thanksgiving, Wednesday's late print is the price; Tuesday's is not.
+      expect(stale({ lastUpdated: at("2026-11-26T00:59:00Z") }, at("2026-11-27T00:24:00Z")), listingExchangeName).toBe(false);
+      expect(stale({ lastUpdated: at("2026-11-25T00:59:00Z") }, at("2026-11-27T00:24:00Z")), listingExchangeName).toBe(true);
+      // A full day's late session still runs to 20:00 (Wednesday, 19:24): a POSTPOST label then is behind it.
+      expect(stale({ lastUpdated: at("2026-11-25T21:59:00Z") }, at("2026-11-26T00:24:00Z")), listingExchangeName).toBe(true);
+      expect(venueSessionNow(listingExchangeName, at("2026-11-27T21:59:59Z"))?.phase).toBe("after-hours");
+      expect(venueSessionNow(listingExchangeName, at("2026-11-27T22:00:00Z"))?.phase).toBe("closed");
+      expect(venueSessionNow(listingExchangeName, at("2026-11-26T00:24:00Z"))?.phase).toBe("after-hours");
+      // A feed that stopped after 17:00 has missed nothing; one that stopped at 16:30 has.
+      expect(couldQuoteHavePrintedSince({ ...cohr, dataSource: "live" }, at("2026-11-27T22:30:00Z"), evening)).toBe(false);
+      expect(couldQuoteHavePrintedSince({ ...cohr, dataSource: "live" }, at("2026-11-27T21:30:00Z"), evening)).toBe(true);
     }
   });
 

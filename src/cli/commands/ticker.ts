@@ -3,7 +3,7 @@ import { ebitdaLacksDepreciation } from "../../utils/ebitda";
 import { formatShortDate, parseDisplayDate } from "../../utils/datetime-format";
 import { formatReportedMoney, REPORTING_CURRENCY_NOT_SOURCED } from "../../utils/reported-money";
 import {
-  appTtmRate, computedEnterpriseValueNote, convertedPriceEarningsNote, enterpriseValueLabel,
+  appTtmRate, computedEnterpriseValueNote, convertedPriceEarningsNote, enterpriseValueCheck, enterpriseValueLabel,
   enterpriseValueReconciliationNote,
   epsConversionNote, financialEnterpriseValue, fundamentalsCurrency, isFinancialEnterpriseValueReason, reportedEnterpriseValue, trailingEpsFiscalYear, trailingEpsSourceNote, trailingPeriodNote, ttmAtAppRate, ttmConversionNote,
   withFinancialEnterpriseValue,
@@ -1010,9 +1010,8 @@ function fundamentalsNotes(
   const fundamentals = priced.fundamentals;
   const shown = (label: string) => metrics.some((metric) => metric.label === label && metric.text !== "—");
   // The cap shown is the share count times the price where the provider's sits more than 2% from it; the note names the provider's.
-  const shareBasis = shown("Market Cap")
-    ? marketCapBasisNote(viewMarketCapitalization(priced.quote, fundamentals, regularSessionValuationPrice(priced.quote)))
-    : undefined;
+  const capitalization = shown("Market Cap") ? viewMarketCapitalization(priced.quote, fundamentals, regularSessionValuationPrice(priced.quote)) : null;
+  const shareBasis = capitalization ? marketCapBasisNote(capitalization) : undefined;
   const conversion = [...TRAILING_MONEY_METRICS].some(shown) ? ttmConversionNote(fundamentals) : undefined;
   // Which twelve months the revenue, net income and margin are, as Financials' TTM column names them.
   const period = shown("Revenue (TTM)") || shown("Net Income (TTM)") ? trailingPeriodNote(fundamentals) : undefined;
@@ -1025,10 +1024,16 @@ function fundamentalsNotes(
   // A bank's EV line says why it is n/m.
   const bridged = metrics.some((metric) => metric.label === "Enterprise Value" && typeof metric.value === "number")
     && enterpriseValueLabel(fundamentals) === "unavailable";
-  const enterpriseValue = shown("Enterprise Value") && !metrics.some((metric) => isFinancialEnterpriseValueReason(metric.text))
+  const enterpriseValueNote = shown("Enterprise Value") && !metrics.some((metric) => isFinancialEnterpriseValueReason(metric.text))
     ? bridged ? listingNote : [enterpriseValueReconciliationNote(fundamentals, enterpriseValueCurrency(priced.quote, fundamentals), priced)
       ?? computedEnterpriseValueNote(fundamentals), listingNote].filter(Boolean).join(" ") || undefined
     : undefined;
+  // A bridge in another currency than the Market Cap row adds its own cap: said, so the two are not read as one figure.
+  const bridgeCurrency = enterpriseValueCheck(fundamentals)?.currency;
+  const enterpriseValue = enterpriseValueNote && capitalization && bridgeCurrency && capitalization.currency !== bridgeCurrency
+    && /\bis market cap \d/.test(enterpriseValueNote)
+    ? `${enterpriseValueNote} That market cap is in ${bridgeCurrency}, not the ${formatCompact(capitalization.value)} ${capitalization.currency} the Market Cap row shows.`
+    : enterpriseValueNote;
   // A cap Gloom Cloud withheld says why, as RV and EQS do.
   const withheld = withheldMarketCap(fundamentals)?.note;
   return [withheld, shareBasis, enterpriseValue, conversion, period, eps, epsSource, priceEarnings, withdrawnMultiplesNote(fundamentals, metrics),

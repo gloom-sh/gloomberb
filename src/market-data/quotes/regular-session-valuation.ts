@@ -1,11 +1,11 @@
 import type { EnterpriseValueCheck, Fundamentals, Quote, TickerFinancials } from "../../types/financials";
-import { priceEarningsEps } from "../../utils/fundamentals";
+import { enterpriseValueComputed, priceEarningsEps } from "../../utils/fundamentals";
 import { priceScopedEarnings } from "../../utils/statement-scope";
 import type { ReportTime } from "../../utils/utc-time";
 import { latestRegularSessionClose } from "../market/freshness";
 import { getCompletedRegularSessionDisplay, getRegularSessionDisplay } from "../market/status";
 import { quoteTradingDay } from "./day-range";
-import { viewMarketCapitalization } from "../../utils/market-capitalization";
+import { viewMarketCapitalization, type ViewMarketCapitalization } from "../../utils/market-capitalization";
 import { isPositiveNumber as positive } from "../../utils/guards";
 
 export function regularSessionMarketCapitalization(financials: Pick<TickerFinancials, "quote" | "fundamentals">) {
@@ -111,6 +111,33 @@ function movedEnterpriseValueCheck(
     ...(source != null ? { source } : {}),
     marketCap: movedCap,
     ...(finiteComputed ? { computed: check.computed! + shift } : {}),
+  };
+}
+
+/**
+ * The fundamentals with Gloom Cloud's bridge (market cap + debt - cash + minority interest, served in place of a
+ * provider EV more than 5% off it) adding `cap`, the market cap a report shows beside it. A stale quote's figures stay
+ * as served (atRegularSessionPrice), so a report that still prices its cap at that quote's regular session would
+ * otherwise bridge from the price Gloom Cloud measured at: COHR's 44.36B at an after-hours print beside the 44.08B
+ * close cap. Debt, cash and minority interest stay as served. Only the bridge's own currency and share basis: a cap in
+ * another currency, or a provider's the count shown does not tie to, is another figure, and the bridge keeps its own.
+ */
+export function withBridgeAtMarketCap(fundamentals: Fundamentals | undefined, cap: ViewMarketCapitalization | null): Fundamentals | undefined {
+  const check = fundamentals?.enterpriseValueCheck;
+  const served = fundamentals?.enterpriseValue;
+  if (!fundamentals || !check || !cap || cap.otherBasis || check.status !== "differs" || cap.currency !== check.currency
+    || !positive(check.marketCap) || !positive(served) || !positive(cap.value) || !enterpriseValueComputed(fundamentals, check.currency)) {
+    return fundamentals;
+  }
+  const shift = cap.value - check.marketCap;
+  if (shift === 0) return fundamentals;
+  const enterpriseValue = served + shift;
+  if (!(enterpriseValue > 0)) return fundamentals;
+  return {
+    ...fundamentals,
+    enterpriseValue,
+    enterpriseValueCheck: movedEnterpriseValueCheck(check, served, enterpriseValue, cap.value),
+    enterpriseToRevenue: scaled(fundamentals.enterpriseToRevenue, enterpriseValue / served),
   };
 }
 

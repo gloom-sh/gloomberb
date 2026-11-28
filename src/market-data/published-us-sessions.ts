@@ -33,10 +33,11 @@ export const PUBLISHED_US_EQUITY_SESSION_BASIS = {
       "https://www.nasdaq.com/docs/2025/01/06/2025holidayandtradinghours.pdf",
       "https://www.nasdaqtrader.com/Trader.aspx?id=Calendar",
       "https://www.nasdaqtrader.com/TraderNews.aspx?id=ETA2024-87",
+      "https://www.nasdaqtrader.com/TraderNews.aspx?id=UTP2026-34",
     ],
   },
   limitation: "Published schedules only; no live exceptional-closure feed or coverage for other venues/years.",
-  actualCloseCoverage: "NYSE venues and Nasdaq 2025 to 2028. Regular close 16:00 and listed early close 13:00 New York time.",
+  actualCloseCoverage: "NYSE venues and Nasdaq 2025 to 2028. Regular close 16:00 and listed early close 13:00 New York time; late sessions end 20:00, 17:00 after an early close.",
 } as const;
 
 /** Calendar-day coverage is broader than verified actual-close coverage. */
@@ -73,6 +74,22 @@ export function getPublishedUsEquitySession(exchange: string, date: string): Pub
   // The calendar is static, and callers look up the same few dates per bar.
   if (sessionCache.size < 4096) sessionCache.set(key, session);
   return session;
+}
+
+/**
+ * When the late (after-hours) session on a published session day ends: 20:00
+ * New York, 17:00 on a published early close. NYSE Group's calendar closes the
+ * NYSE American, Arca, National and Texas late sessions at 17:00 on each early
+ * close it lists, and Nasdaq's UTP notice ends the 2026-11-27 post-market then.
+ * Null for a day with no published session (a holiday, a weekend, an OTC venue
+ * or an uncovered year): the caller has no published hours to go by.
+ */
+export function usEquityLateClose(exchange: string, date: string): number | null {
+  const session = getPublishedUsEquitySession(exchange, date);
+  const day = calendarDate(date);
+  if (session?.kind !== "session" || !day) return null;
+  return zonedWallClockToUtcMs("America/New_York", day.getUTCFullYear(), day.getUTCMonth() + 1, day.getUTCDate(),
+    NYSE_EARLY_CLOSES.has(date) ? 17 : 20, 0, 0);
 }
 
 function publishedSession(venue: string, date: string): PublishedUsEquitySession | null {
