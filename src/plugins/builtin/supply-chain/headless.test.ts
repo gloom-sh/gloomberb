@@ -330,14 +330,17 @@ test("headless reports keep original evidence and unconverted native units with 
 test("reports say how long a period is when the source states it, and keep older payloads as they were", async () => {
   const half = supplyRow("half", { sourceKind: "xbrl", periodMonths: 6 });
   const context = createTestHeadlessContext();
-  context.apiClient = { ...context.apiClient, getCloudSupplyChain: async () => supplyPayload({ says: [half, supplyRow("prose", { period: "2025-12-31" })], totalRows: 2,
-    counts: { says: { customer: 2, supplier: 0, partner: 0, competitor: 0, investee: 0 }, names: { customer: 0, supplier: 0, partner: 0, competitor: 0, investee: 0 } } }) };
+  const call = supplyRow("call", { sourceKind: "call", period: "null-Q4", fiscalYear: null, filedDate: "2026-09-30" });
+  context.apiClient = { ...context.apiClient, getCloudSupplyChain: async () => supplyPayload({ says: [half, supplyRow("prose", { period: "2025-12-31" }), call], totalRows: 3,
+    counts: { says: { customer: 3, supplier: 0, partner: 0, competitor: 0, investee: 0 }, names: { customer: 0, supplier: 0, partner: 0, competitor: 0, investee: 0 } } }) };
   const args = createTestHeadlessArgs({ symbols: ["FOCUS"] });
   const result = await supplyChainHeadless.load(args, context);
-  expect(result.sections[0]?.rows?.map((row) => [row.period, row.periodMonths])).toEqual([["2026-01-31", 6], ["2025-12-31", null]]);
+  expect(result.sections[0]?.rows?.map((row) => [row.period, row.periodMonths])).toEqual([["2026-01-31", 6], ["2025-12-31", null], ["Q4", null]]);
   const text = renderHeadlessPaneText(supplyChainHeadless, result, args, "SPLC", deriveHeadlessFreshness(supplyChainHeadless, result));
   expect(text).toContain("half to 31 Jan 2026");
   expect(text).not.toMatch(/\S 31 Dec 2025/);
+  expect(text).toMatch(/Q4\s+30 Sep 2026/);
+  expect(text).not.toContain("null-Q4");
   const payload = graphPayload();
   payload.links[0]!.evidence[0]!.periodMonths = 12;
   payload.downstream[0]!.bestPath.exposure!.periodMonths = 12;

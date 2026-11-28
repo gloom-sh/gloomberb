@@ -373,11 +373,15 @@ function periodLength(months: number | null | undefined): string | null {
   return months === 3 ? "quarter" : months === 6 ? "half" : months === 12 ? "year" : `${months} month${months === 1 ? "" : "s"}`;
 }
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** A call period stored before its fiscal year was required ("null-Q4") keeps only the part the source knew. */
+export function knownSupplyPeriod(period: string): string {
+  return /^(?:null|undefined|nan)-(Q[1-4])$/i.exec(period)?.[1]?.toUpperCase() ?? period;
+}
 /** A period end as the reports print a day, "26 Sep 2026"; a label that is no calendar day stays as the source wrote it. */
 export function periodDate(period: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(period);
   const month = match ? MONTHS[Number(match[2]) - 1] : undefined;
-  return match && month ? `${Number(match[3])} ${month} ${match[1]}` : period;
+  return match && month ? `${Number(match[3])} ${month} ${match[1]}` : knownSupplyPeriod(period);
 }
 /**
  * The period end with its length when the source states it: "year to 31 Dec
