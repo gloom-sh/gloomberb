@@ -3,6 +3,7 @@ import type { PricePoint, Quote } from "../types/financials";
 import { createTestDataProvider } from "../test-support/data-provider";
 import type { HistorySession } from "../types/price-history";
 import { LiveBarAccumulator } from "./live-bars";
+import { appendLiveQuotePoint } from "./chart-data";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
 import { resolveChartSpecData } from "./resolve";
 import { ChartResolveCache, type ChartResolveSources } from "./resolve-context";
@@ -30,6 +31,34 @@ function dated(date: string, open: number, high: number, low: number, close: num
 }
 
 describe("LiveBarAccumulator", () => {
+  test("an early-close ETF's late print cannot extend regular history, even when labelled CLOSED", () => {
+    const date = (time: string) => new Date(`2026-11-27T${time}Z`);
+    const cash = { date: date("17:55:00"), open: 33.765, high: 33.87, low: 33.735, close: 33.86, volume: 823_316 };
+    const extended = { date: date("21:55:00"), open: 33.78, high: 33.85, low: 33.78, close: 33.85, volume: 871 };
+    const latest = quote("21:55:00", 33.85, 90_000_000, { symbol: "IBIT", instrumentType: "ETF", marketState: "CLOSED",
+      regularClose: 33.86, regularCloseSessionDate: "2026-11-27", lastUpdated: +extended.date });
+    const accumulator = new LiveBarAccumulator();
+    const apply = [appendLiveQuotePoint, accumulator.apply.bind(accumulator)];
+    for (const project of apply) {
+      const options = { now: +date("22:00:00"), mode: "ohlc" as const, resolution: "5m" as const, exchange: "NASDAQ", liveSince: +cash.date };
+      expect(project([cash], latest, options)).toEqual([cash]);
+      expect(project([cash, extended], { ...latest }, { ...options, extendedHours: true }).at(-1)).toEqual(extended);
+      const nonEquity = { ...latest, symbol: "BTC-USD", instrumentType: "CRYPTOCURRENCY", listingExchangeName: "CCC",
+        price: 33.90, lastUpdated: +date("21:58:00") };
+      expect(project([extended], nonEquity, { ...options, exchange: "CCC" }).at(-1)?.close).toBe(33.90);
+    }
+  });
+
+  test("a daily partial observation does not gain an unreported open from its close", () => {
+    const now = Date.parse("2026-11-27T22:00:00Z");
+    const prices = [{ date: new Date("2026-11-27"), close: 33.86, high: 34.72, low: 33.21, partial: true }];
+    const latest = quote("22:00:00", 33.85, 90_000_000, { symbol: "IBIT", instrumentType: "ETF", marketState: "CLOSED",
+      regularClose: 33.86, regularCloseSessionDate: "2026-11-27", lastUpdated: now });
+    const options = { now, mode: "ohlc" as const, resolution: "1d" as const, exchange: "NASDAQ" };
+    expect(appendLiveQuotePoint(prices, latest, options)).toEqual(prices);
+    expect(new LiveBarAccumulator().apply(prices, latest, options)).toEqual(prices);
+  });
+
   test("folds every quote into the forming bar and opens a new bar at each boundary", () => {
     const history = [bar("14:00:00", 100, 101, 99, 100, 5_000), bar("14:01:00", 100, 100.5, 99.5, 100, 800)];
     const bars = new LiveBarAccumulator();

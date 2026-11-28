@@ -43,6 +43,7 @@ import {
   formatFlowAmount,
   formatPriceChange,
   fundTickerOfColumn,
+  hasFundPriceChanges,
   pendingText,
   type CryptoEtfFlowColumn,
   type CryptoEtfFlowRange,
@@ -111,6 +112,10 @@ export function CryptoEtfFlowsPane({ focused, width, height }: PaneProps) {
   // The publisher and the flows' day, as `fn ETFF` ends; how long ago it loaded goes first on a narrow row.
   const footerInfo = useMemo(() => data ? [
     reportFooterSegment(cryptoEtfFlowsHeadless, { rows: [], freshness: cryptoEtfFlowFreshness(data, data.asOf) }),
+    ...(hasFundPriceChanges(data) ? [{ id: "etf-price-basis", capture: true, holdsPlace: true,
+      parts: [{ text: "Price %: fund close-to-close median · price time/coverage unknown", tone: "muted" as const }],
+      variants: [[{ text: "Price %: close median · coverage/time unknown", tone: "muted" as const }]],
+    }] : []),
     ...(updatedAgo ? [ageFooterSegment(updatedAgo)] : []),
   ] : [], [data, updatedAgo, utcDay]);
   useAutoRefresh(resource.updatedAt, resource.load);

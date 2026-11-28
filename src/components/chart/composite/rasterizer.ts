@@ -480,6 +480,11 @@ function drawOhlc(
       Math.max(width - 1 - halfWidth, halfWidth),
     );
     const close = source.close ?? projected.value;
+    if (source.partial && (source.open == null || source.high == null || source.low == null)) {
+      const closeY = pixelY(close, domain, height);
+      if (closeY !== null) drawLine(data, width, height, x - halfWidth, closeY, x + halfWidth, closeY, color, 1.2);
+      continue;
+    }
     const open = source.open ?? close;
     const high = source.high ?? Math.max(open, close);
     const low = source.low ?? Math.min(open, close);

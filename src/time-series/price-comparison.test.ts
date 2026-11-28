@@ -597,6 +597,32 @@ describe("a fund compared with a coin", () => {
   const coinCloses = (result: Awaited<ReturnType<typeof resolveChartSpecData>>) => result.series[1]!.points.map((point) => point.rawValue);
   const span = (from: string, to: string) => days.filter((day) => day >= from && day <= to);
 
+  test("an authored early-close comparison distinguishes missing, closed incomplete, forming and final daily marks", async () => {
+    const window = { start: "2026-11-23", end: "2026-11-27" };
+    const equity = rows([["2026-11-20", 33.02], ["2026-11-23", 34.62], ["2026-11-24", 33.76], ["2026-11-25", 34.07], ["2026-11-27", 33.86]]);
+    const coin = rows([["2026-11-20", 58_345], ["2026-11-23", 61_210.98], ["2026-11-24", 59_747.77], ["2026-11-25", 60_378.2], ["2026-11-27", 59_858.49]]);
+    for (const state of ["missing", "incomplete", "forming", "final"] as const) {
+      const history = (symbol: string) => {
+        const points = (symbol === "IBIT" ? equity : coin).map((point) => ({ ...point }));
+        if (symbol === "IBIT" && state === "missing") points.pop();
+        if (state === "forming" || (state === "incomplete" && symbol === "IBIT")) Object.assign(points.at(-1)!, { partial: true });
+        return points;
+      };
+      const inputs = coinSources(() => []);
+      inputs.dataProvider.getPriceHistoryForResolution = async (symbol) => history(symbol);
+      inputs.dataProvider.getDetailedPriceHistoryWithMetadata = async (symbol, _exchange, _start, _end, interval) => ({
+        points: interval === "1d" ? history(symbol) : [], resolution: interval === "1d" ? "1d" : "1h",
+      });
+      const now = date(state === "forming" ? "2026-11-27T17:50:00Z" : "2026-11-28T06:05:00Z");
+      const result = await resolveChartSpecData(chart(window), { ...inputs, now });
+      const useFriday = state === "forming" || state === "final";
+      expect(result.priceComparison?.legs?.IBIT).toEqual({ baseDay: "2026-11-20", endDay: useFriday ? "2026-11-27" : "2026-11-25", intraday: state === "forming" });
+      if (useFriday) expect(result.priceComparison?.incompleteSessions).toBeUndefined();
+      else expect(result.priceComparison?.incompleteSessions).toContain(`IBIT 2026-11-27 18:00 UTC: daily close ${state === "missing" ? "unavailable" : "incomplete"}. Try 1h bars`);
+      expect(result.priceComparison?.notice).toContain("BTC-USD to 00:00 UTC");
+    }
+  });
+
   test("the coin is measured at the fund's close on every day of the line, a weekend at that clock, and the notice says so", async () => {
     const result = await resolveChartSpecData(chart({ start: "2026-10-19", end: "2026-10-23" }), coinSources());
     expect(result.priceComparison?.notice).toContain("BTC-USD at the US close");

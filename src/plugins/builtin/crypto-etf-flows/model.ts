@@ -5,6 +5,9 @@ import { MISSING_VALUE, formatCompactAmount, formatNumber } from "../../../utils
 
 export const CRYPTO_ETF_FLOWS_PANE_ID = "crypto-etf-flows";
 
+export const ETF_PRICE_BASIS = "median of the funds' close-to-close price changes, percent";
+export const ETF_PRICE_NOTE = "Price %: derived median of fund close-to-close changes for the row's trading date. Price snapshot time and fund coverage are unknown; flow as-of and retrieval apply only to flows.";
+
 export const CRYPTO_ETF_FLOW_ASSETS: ReadonlyArray<{ value: CryptoEtfFlowAsset; label: string }> = [
   { value: "BTC", label: "Bitcoin" },
   { value: "ETH", label: "Ether" },
@@ -129,7 +132,7 @@ export function cryptoEtfFlowColumns(payload: CryptoEtfFlowsPayload | null | und
     { id: "date", label: "Date", width: 12, align: "left" },
     { id: "total", label: "Total", width: 9, align: "right", title: "The day's net flow across the funds, US$ millions" },
     ...hasFundPriceChanges(payload)
-      ? [{ id: "price", label: "Price %", width: 9, align: "right" as const, title: "The funds' price move that day: the median of their close-to-close changes" }]
+      ? [{ id: "price", label: "Price %", width: 9, align: "right" as const, title: ETF_PRICE_NOTE }]
       : [],
     ...(payload?.funds ?? []).map((fund): CryptoEtfFlowColumn => ({
       id: `fund:${fund.ticker}`,

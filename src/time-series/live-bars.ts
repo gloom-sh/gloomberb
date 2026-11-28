@@ -4,6 +4,7 @@ import { hasLikelyQuoteUnitMismatch } from "../utils/currency-units";
 import { pricePointIntegrity, pricePointOpenWithheld } from "../utils/price-history-integrity";
 import {
   calendarBarStart,
+  intradayQuoteEligible,
   isCalendarResolution,
   liveQuoteObservation,
   MIN_LIVE_QUOTE_TAIL_GAP_MS,
@@ -15,9 +16,6 @@ import { CHART_RESOLUTION_STEP_MS, type ManualChartResolution } from "./resoluti
 import { isFiniteNumber } from "../utils/guards";
 
 const DAY_MS = 24 * 60 * 60_000;
-const EXTENDED_HOURS_STATES = new Set(["PRE", "PREPRE", "POST", "POSTPOST"]);
-/** Before 04:00 and after 20:00 New York, outside even extended hours. */
-const OVERNIGHT_STATES = new Set(["PREPRE", "POSTPOST"]);
 const PRE_MARKET_STATES = new Set(["PRE", "PREPRE"]);
 /** Bars formed without any history refresh stay bounded on a chart left open for weeks. */
 const MAX_FORMED_BARS = 2_000;
@@ -263,6 +261,10 @@ export class LiveBarAccumulator {
     const observation = liveQuoteObservation(quote, options.now, options.assetCategory,
       isCalendarResolution(options.resolution) ? "regular" : "latest");
     if (!observation) return;
+    if (!isCalendarResolution(options.resolution) && !intradayQuoteEligible(quote, exchange, options.extendedHours === true)) {
+      this.closeFormingVolume(this.cumulative);
+      return;
+    }
     const { time, price } = observation;
     const volume = isFiniteNumber(quote.volume) && quote.volume >= 0 ? quote.volume : null;
     if (time < this.lastTime) return;
@@ -306,13 +308,6 @@ export class LiveBarAccumulator {
     this.lastPreMarket = preMarket;
     this.version += 1;
 
-    // Loaded intraday bars cover the regular session unless they include
-    // extended hours. Otherwise extended-hours prints would extend or form
-    // bars that no refresh can confirm.
-    if (!calendar && quote.marketState && (options.extendedHours ? OVERNIGHT_STATES : EXTENDED_HOURS_STATES).has(quote.marketState)) {
-      this.closeFormingVolume(previous);
-      return;
-    }
     if (forming && this.inBar(time, forming.time, options, exchange)) {
       forming.high = Math.max(forming.high, price, range?.high ?? price);
       forming.low = Math.min(forming.low, price, range?.low ?? price);
@@ -391,7 +386,9 @@ export class LiveBarAccumulator {
       if (isFiniteNumber(volume) && end !== null && anchor.volumeBase !== null) {
         volume += Math.max(0, end - anchor.volumeBase);
       }
-      if (anchor.close !== null) {
+      if (anchor.close !== null && latest.partial && (latest.open == null || latest.high == null || latest.low == null)) {
+        value = { ...latest, close: anchor.close };
+      } else if (anchor.close !== null) {
         const close = anchor.close;
         const open = isFiniteNumber(latest.open) ? latest.open : latest.close;
         const body = openWithheld ? latest.close : open;

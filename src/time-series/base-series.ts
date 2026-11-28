@@ -106,7 +106,7 @@ export function mergeHistory(
   exchange?: string,
   appendQuote = true,
   assetCategory?: string,
-  live?: { bars: LiveBarAccumulator; since?: number; session?: HistorySession; extendedHours?: boolean },
+  live?: { bars?: LiveBarAccumulator; since?: number; session?: HistorySession; extendedHours?: boolean },
 ): TickerFinancials {
   const base = financials ?? emptyFinancials();
   const quote = latestQuote(base.quote, quoteOverride);
@@ -114,11 +114,11 @@ export function mergeHistory(
   if (!appendQuote || unknownHistoryBasis) return { ...base, quote, priceHistory: history };
   // Market bars fold every observed quote into the forming bar; other series
   // price their latest point from the current quote alone.
-  const priceHistory = live && liveBarResolution
-    ? live.bars.apply(history, quote, { now, resolution: liveBarResolution, exchange, liveSince: live.since, session: live.session,
+  const priceHistory = live?.bars && liveBarResolution
+    ? live.bars.apply(history, quote, { now, resolution: liveBarResolution, exchange, assetCategory, liveSince: live.since, session: live.session,
       extendedHours: live.extendedHours })
     : appendLiveQuotePoint(history, quote, liveBarResolution
-      ? { now, mode: "ohlc", resolution: liveBarResolution, exchange }
+      ? { now, mode: "ohlc", resolution: liveBarResolution, exchange, extendedHours: live?.extendedHours, assetCategory }
       : { now });
   return { ...base, quote, priceHistory };
 }

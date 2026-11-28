@@ -1023,10 +1023,8 @@ async function resolveChartSpecPass(
         merged = { ...mergeHistory(merged, history.points, undefined, observationNow,
           liveBarResolution ?? undefined, resolvedSource.instrument.exchange,
           liveBarResolution != null && !comparedSeriesIds.has(seriesSpec.id), resolvedSource.instrument.instrument?.secType,
-          marketField && history.accumulationKey
-            ? { bars: cache.liveBarsFor(history.accumulationKey), since: sources.liveSince, session: history.session,
-              extendedHours: history.extendedHours === true }
-            : undefined),
+          { bars: marketField && history.accumulationKey ? cache.liveBarsFor(history.accumulationKey) : undefined,
+            since: sources.liveSince, session: history.session, extendedHours: history.extendedHours === true }),
           priceHistoryResolution: history.resolution, priceHistoryRequestKey: history.requestKey,
           priceHistorySession: history.session, priceHistorySourceKey: history.sourceKey };
       }

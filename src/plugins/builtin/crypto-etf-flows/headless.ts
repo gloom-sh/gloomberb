@@ -13,6 +13,8 @@ import {
   formatFlowAmount,
   formatPriceChange,
   hasFundPriceChanges,
+  ETF_PRICE_BASIS,
+  ETF_PRICE_NOTE,
   pendingText,
 } from "./model";
 
@@ -152,9 +154,11 @@ export const cryptoEtfFlowsHeadless: HeadlessPaneDefinition<"rows"> = {
       rows,
       columns: flowColumns(payload),
       ...(window && !days.length ? { errors: [`No US trading day with flows from ${window.from} to ${window.to}.`] } : {}),
-      notes: [window ? windowSummaryLine(payload, window, days) : summaryLine(payload), ...funds ? [funds] : [], `Source: ${payload.source.publisher}, ${payload.source.url}`],
+      notes: [window ? windowSummaryLine(payload, window, days) : summaryLine(payload), ...funds ? [funds] : [],
+        ...(priced ? [ETF_PRICE_NOTE] : []), `Source: ${payload.source.publisher}, ${payload.source.url}`],
       // The text reads the days first, as the pane does; JSON and CSV keep them in ISO.
-      textNotes: [window ? windowSummaryLine(payload, window, days, formatDay) : summaryLine(payload, formatDay), ...funds ? [funds] : [], `Source: ${payload.source.publisher}, ${payload.source.url}`],
+      textNotes: [window ? windowSummaryLine(payload, window, days, formatDay) : summaryLine(payload, formatDay), ...funds ? [funds] : [],
+        ...(priced ? [ETF_PRICE_NOTE] : []), `Source: ${payload.source.publisher}, ${payload.source.url}`],
       complete: !payload.stale,
       ...(payload.stale ? { warnings: [`The flows were last read ${payload.fetchedAt.slice(0, 10)}; newer days may be missing.`] } : {}),
       freshness: cryptoEtfFlowFreshness(payload, asOf, !(window && asOf !== payload.asOf)),
@@ -165,7 +169,9 @@ export const cryptoEtfFlowsHeadless: HeadlessPaneDefinition<"rows"> = {
         fetchedAt: payload.fetchedAt,
         stale: payload.stale,
         ...(window ? { requestedWindow: window } : {}),
-        ...(priced ? { priceChangeBasis: "median of the funds' close-to-close price changes, percent" } : {}),
+        ...(priced ? { priceChangeBasis: ETF_PRICE_BASIS, priceChangeProvenance: {
+          sessionDate: "row date", asOf: null, retrievedAt: null, fundCoverage: null,
+        } } : {}),
         source: payload.source,
         funds: payload.funds,
         summary: {

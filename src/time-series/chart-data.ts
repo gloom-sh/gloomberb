@@ -2,11 +2,11 @@ import type { PricePoint, Quote } from "../types/financials";
 import { pricePointIntegrity, pricePointOpenWithheld } from "../utils/price-history-integrity";
 import { isQuoteStaleForCurrentSession } from "../market-data/quotes/freshness";
 import { getRegularSessionBarClose } from "../market-data/market/status";
-import { latestRegularSessionClose, sessionCalendarTimeZone } from "../market-data/market/freshness";
+import { activeUsMarketSession, latestRegularSessionClose, sessionCalendarTimeZone } from "../market-data/market/freshness";
 import { quoteTradingDay } from "../market-data/quotes/day-range";
 import { quoteFutureToleranceMs } from "../market-data/quotes/clock";
 import { hasLikelyQuoteUnitMismatch } from "../utils/currency-units";
-import { resolveExchangeTimeZone } from "../utils/exchanges";
+import { isUsListingExchange, resolveExchangeTimeZone } from "../utils/exchanges";
 import { zonedDateKey, zonedWallClockToUtcMs } from "../utils/zoned-date-time";
 import {
   CHART_RESOLUTION_STEP_MS,
@@ -31,6 +31,7 @@ export type AppendLiveQuotePointOptions = { assetCategory?: string } & (
     mode: "ohlc";
     resolution: ManualChartResolution;
     exchange?: string;
+    extendedHours?: boolean;
   });
 
 /** PricePoint history has no declared bond price convention. A quote cannot
@@ -121,6 +122,9 @@ function mergeQuoteIntoLatestBar(latest: PricePoint, quotePrice: number, range?:
     // open, range and price are the bar (GOGL's 2026-10-30 daily bar, served with a high under its open).
     return range?.open === undefined ? latest : { ...latest, open: range.open, high: range.high, low: range.low, close: quotePrice };
   }
+  if (latest.partial && (latest.open == null || latest.high == null || latest.low == null)) {
+    return { ...latest, close: quotePrice };
+  }
   const open = finiteOrFallback(latest.open, latest.close);
   const body = openWithheld ? latest.close : open;
   const high = finiteOrFallback(latest.high, Math.max(body, latest.close));
@@ -159,6 +163,21 @@ interface LiveQuoteObservation {
  * so a closed market's last bar is its regular close.
  */
 export type LiveQuoteBasis = "latest" | "regular";
+
+export function isUsCashListing(exchange: string | undefined, instrumentType?: string): boolean {
+  return isUsListingExchange(exchange) && (!instrumentType || /^(?:EQUITY|STOCK|STK|ETF|ETN|FUND)$/i.test(instrumentType.trim()));
+}
+
+export function intradayQuoteEligible(quote: Quote, exchange: string | undefined, extendedHours: boolean): boolean {
+  if (!isUsCashListing(exchange, quote.instrumentType) || quote.symbol.startsWith("^")) return true;
+  if (quote.marketState === "PREPRE" || quote.marketState === "POSTPOST") return false;
+  const session = activeUsMarketSession(quote.lastUpdated, exchange);
+  if (session === "REGULAR") {
+    return !((quote.marketState === "PRE" && quote.preMarketPrice != null)
+      || (quote.marketState === "POST" && quote.postMarketPrice != null));
+  }
+  return extendedHours && quote.extendedSessionPrint !== false && (session === "PRE" || session === "POST");
+}
 
 /**
  * The regular-session observation of a quote: its price while the session
@@ -281,6 +300,8 @@ export function appendLiveQuotePoint(
   const calendarBars = options.mode === "ohlc"
     ? CHART_RESOLUTION_STEP_MS[options.resolution] >= DAY_MS
     : latestInterval >= MIN_CALENDAR_BAR_INTERVAL_MS;
+  const venue = (options.mode === "ohlc" ? options.exchange : undefined) || quote.listingExchangeName || quote.exchangeName;
+  if (!calendarBars && options.mode === "ohlc" && !intradayQuoteEligible(quote, venue, options.extendedHours === true)) return points;
   const observation = liveQuoteObservation(quote, now, options.assetCategory, calendarBars ? "regular" : "latest");
   if (!observation) return points;
   const { time: quoteTime, price: quotePrice } = observation;
@@ -293,7 +314,6 @@ export function appendLiveQuotePoint(
   const beforeDatedBar = quoteTime < latestTime;
   if (beforeDatedBar && !(latestTime > now && latestTime - quoteTime < DAY_MS)) return points;
 
-  const venue = (options.mode === "ohlc" ? options.exchange : undefined) || quote.listingExchangeName || quote.exchangeName;
   if (
     latestInterval > 0
     && latestInterval <= MAX_INTRADAY_BAR_INTERVAL_MS

@@ -1052,6 +1052,7 @@ function headlessReportTables(
   const gate = reportGate(definition, result);
   return {
     tables,
+    ...(definition.shape === "series" ? { asOfScope: "series" as const } : {}),
     ...(definition.exportDated ? { dated: true } : {}),
     identity: reportIdentity(definition, result, args),
     footer: reportFooterLines({
@@ -1059,7 +1060,8 @@ function headlessReportTables(
       incomplete: incompleteDetail(result, status),
       locked: gate ? [gate] : [],
       errors: failed,
-      notes: [...textNotices(result), ...(definition.exportWarnings ? result.warnings ?? [] : []), ...(result.notes ?? [])],
+      notes: [...(definition.shape === "series" ? ["as_of dates the series snapshot; Date or Time identifies the row observation or session."] : []),
+        ...textNotices(result), ...(definition.exportWarnings ? result.warnings ?? [] : []), ...(result.notes ?? [])],
     }),
   };
 }

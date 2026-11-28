@@ -69,6 +69,7 @@ import { getTimeSeriesField, isMarketFieldId } from "../../../time-series/field-
 import { isDatasetChart, isOhlcSeriesStyle } from "../../../time-series/spec";
 import { useThemeColors } from "../../../theme/theme-context";
 import { comparisonLegCurrencies, priceComparisonSeriesIds } from "../../../time-series/price-comparison";
+import { mixedDailyReadings } from "../../../time-series/market";
 import { periodDayText } from "../../../market-data/market/period-return";
 import { companyLegendLabels } from "./legend-names";
 import { seriesMessageName, studyMessageName } from "../../../time-series/series-name";
@@ -1214,6 +1215,11 @@ function ChartComposerSurface({
     }
   }, [hasProAccess, marketQuoteKey]);
   const quoteDelay = useQuoteDelayFooter(Array.from(marketQuotes.values(), resolveEntryData), "chart-delay");
+  const dailyReadings = resolution.priceComparison ? [] : mixedDailyReadings(plottedSeries);
+  const dailyReadingText = dailyReadings.map(({ text }) => text).join(" · ");
+  const dailyReadingShort = dailyReadings.map(({ short }) => short).join(" · ");
+  const comparisonGap = resolution.priceComparison?.incompleteSessions;
+  useRemoteUiNode(dailyReadingText ? { role: "own-status", label: "Separate daily sessions" } : null);
   usePaneFooter(footerId, () => ({
     info: [
       ...(delistingKey ? [{ id: "delisted", parts: [{ text: delistingKey, tone: "warning" as const }] }] : []),
@@ -1225,7 +1231,14 @@ function ChartComposerSurface({
           : newestBeyondView
             ? [{ id: "newest", asOf: true, parts: [{ text: `newest ${newestBeyondView}`, tone: "muted" as const }] }]
             : []),
-      ...(quoteDelay ? [quoteDelay] : []),
+      ...(comparisonGap ? [{ id: "daily-comparison-gap", capture: true, holdsPlace: true,
+        parts: [{ text: comparisonGap, tone: "warning" as const }],
+        variants: [[{ text: "Daily endpoint incomplete · try 1h", tone: "warning" as const }]],
+      }] : []),
+      ...(dailyReadingText ? [{ id: "daily-readings", capture: true, holdsPlace: true,
+        parts: [{ text: dailyReadingText, tone: "muted" as const }],
+        variants: [[{ text: dailyReadingShort, tone: "muted" as const }]],
+      }] : quoteDelay ? [quoteDelay] : []),
     ],
     hints: [
       // One key opens the ticket, which chooses Buy or Sell; [s]eries keeps its key with trading on.
@@ -1236,7 +1249,7 @@ function ChartComposerSurface({
       { id: "resolution", key: "b", label: "ars", title: "Bar Size", onPress: footerResolution },
       ...(anchorable ? [{ id: "vwap-anchor", key: "v", label: "wap anchor", title: "Anchor VWAP", onPress: footerAnchor }] : []),
     ],
-  }), [delistingKey, savedAt, loading, pickingAnchor, newestBeyondView, quoteDelay, footerSeries, openIndicators, indicatorsDisabled, openFormulas, formulasDisabled, footerResolution, anchorable, footerAnchor, trade]);
+  }), [delistingKey, savedAt, loading, pickingAnchor, newestBeyondView, quoteDelay, comparisonGap, dailyReadingText, dailyReadingShort, footerSeries, openIndicators, indicatorsDisabled, openFormulas, formulasDisabled, footerResolution, anchorable, footerAnchor, trade]);
 
   // A fixed window (a GIP session) highlights no range, so the bar names it.
   const dateWindowLabel = useMemo(() => {

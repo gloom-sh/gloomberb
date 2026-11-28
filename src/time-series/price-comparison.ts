@@ -8,6 +8,8 @@ import { zonedDateTimeParts } from "../utils/zoned-date-time";
 import { isCurrencyCode } from "../utils/currency-pair";
 import { priceComparisonCloseTimes } from "./coin-session-close";
 import { barLastSession } from "../market-data/market/bar-period";
+import { latestRegularSessionClose, regularSessionCloseOn, isAlwaysOpenExchange } from "../market-data/market/freshness";
+import { isUsCashListing } from "./chart-data";
 import { priceBasisBreaks, priceBasisFactor } from "../market-data/market/split-price-basis";
 import {
   barCloseDay, isIntradayDailyBar, isReturnPeriod, LATEST_INTRADAY_TEXT, periodBaseDay, periodBaseIndex, periodDayText,
@@ -62,6 +64,7 @@ export interface PriceComparison {
   legs?: Record<string, { baseDay: string; endDay: string; intraday: boolean }>;
   /** Legs left out of the comparison, by the symbol asked for, and why; the rest still compare. */
   dropped?: Array<{ seriesId: string; label: string; reason: string }>;
+  incompleteSessions?: string;
 }
 
 export interface PriceComparisonOptions {
@@ -372,11 +375,30 @@ export function resolvePriceComparison(
     return legs.length ? keys(legs[0]!).filter((key) => sets.every((set) => set.has(key))) : [];
   };
   const sharedWindow = shared((leg) => leg.window);
+  const closedPartial = (leg: ComparedLeg, key: string) => {
+    const venue = legVenue(leg.entry);
+    if (resolution !== "1d" || !isUsCashListing(venue) || leg.label.startsWith("^") || leg.points.get(key)?.partial !== true) return false;
+    const close = regularSessionCloseOn(venue, key);
+    return close !== null && close <= now;
+  };
   const isForming = (leg: ComparedLeg, key: string): boolean => calendarBars && !options.closedEnds?.has(leg.id)
-    && (leg.points.get(key)?.partial === true || isIntradayDailyBar(sessionDay(key), legVenue(leg.entry), now));
+    && !closedPartial(leg, key) && (leg.points.get(key)?.partial === true || isIntradayDailyBar(sessionDay(key), legVenue(leg.entry), now));
   const sharedEnd = resolution === "1d"
-    ? sharedWindow.findLast((key) => legs.every((leg) => isForming(leg, key) === isForming(legs[0]!, key)))
+    ? sharedWindow.findLast((key) => legs.every((leg) => !closedPartial(leg, key) && isForming(leg, key) === isForming(legs[0]!, key)))
     : sharedWindow.at(-1);
+  const requestedClose = resolution === "1d" && dateWindow && /^\d{4}-\d{2}-\d{2}$/.test(dateWindow.end)
+    && legs.some((leg) => isAlwaysOpenExchange(legVenue(leg.entry))) ? legs.flatMap((leg) => {
+      const venue = legVenue(leg.entry);
+      if (!isUsCashListing(venue) || leg.label.startsWith("^")) return [];
+      const closed = latestRegularSessionClose(venue, Math.min(now, Date.parse(`${dateWindow.end}T23:59:59.999Z`)));
+      if (!closed || closed.date < dateWindow.start.slice(0, 10) || (sharedEnd && sharedEnd >= closed.date)) return [];
+      const at = regularSessionCloseOn(venue, closed.date);
+      if (at === null) return [];
+      const reason = closedPartial(leg, closed.date) ? "daily close incomplete" : leg.window.includes(closed.date)
+        ? "daily comparison unavailable" : "daily close unavailable";
+      return [`${leg.label} ${closed.date} ${new Date(at).toISOString().slice(11, 16)} UTC: ${reason}.`];
+    }) : [];
+  const incompleteSessions = requestedClose.length ? `${requestedClose.join(" ")} Try 1h bars (--chart-resolution 1h).` : undefined;
   // Authored dates (`--from 2026-10-19`) measure from the close before the first date, as RETURN does: the last
   // date the legs share before it. Weekly and monthly bars keep the bar the window starts in.
   const authoredFrom = !preset && !period && dateWindow && /^\d{4}-\d{2}-\d{2}$/.test(dateWindow.start) && (resolution === "1d" || !calendarBars)
@@ -423,7 +445,8 @@ export function resolvePriceComparison(
     const notice = apart
       ? `${basis} Comparison unavailable: ${listLabels(legs.map((leg) => leg.label))} share no ${bucketMs ? `${barLabel(bucketMs)} ` : ""}bar times in this range; daily bars (1D) compare them.`
       : unavailable;
-    return { seriesIds, start: null, end: null, notice, ...(dropped.length ? { dropped } : {}) };
+    return { seriesIds, start: null, end: null, notice: [notice, incompleteSessions].filter(Boolean).join(" "),
+      ...(incompleteSessions ? { incompleteSessions } : {}), ...(dropped.length ? { dropped } : {}) };
   }
   const sourceBounds = Object.fromEntries(compared.map(({ leg, start, end }) => [leg.id, {
     start: leg.points.get(start)!.date.getTime(),
@@ -457,7 +480,8 @@ export function resolvePriceComparison(
     sourceBounds,
     legs: legDays,
     ...(dropped.length ? { dropped } : {}),
-    notice: `${basis} ${span}${droppedText}`,
+    ...(incompleteSessions ? { incompleteSessions } : {}),
+    notice: [`${basis} ${span}${droppedText}`, incompleteSessions].filter(Boolean).join(" "),
   };
 }
 
