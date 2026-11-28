@@ -17,14 +17,18 @@ import { isPublishedFuturesClosure } from "../../../market-data/published-future
 import { dateOptionError, dateOptionFormatsOr, readCalendarDate } from "../../../utils/calendar-date";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 
-/** CME crypto futures have a curve but no FUT board row: their name and tick live with the board's. */
-const CRYPTO_CURVE_ROOTS = CME_CRYPTO_FUTURES;
+const CURVE_ONLY_ROOTS = [
+  ...CME_CRYPTO_FUTURES,
+  { code: "NES", name: "E-nano S&P 500", tick: 0.5 },
+  { code: "NNQ", name: "E-nano Nasdaq-100", tick: 0.5 },
+  { code: "MBT", name: "Micro Bitcoin", tick: 5 },
+];
 const rootLabel = (code: string, name: string) => name === code ? code : `${code} ${name}`;
 
 export const CURVE_ROOTS = [
   ...FUTURES_CONTRACTS.map((row) => ({ value: row.code, label: rootLabel(row.code, row.name) })),
   { value: "VX", label: "VX VIX Futures" },
-  ...CRYPTO_CURVE_ROOTS.map((row) => ({ value: row.code, label: rootLabel(row.code, row.name) })),
+  ...CURVE_ONLY_ROOTS.map((row) => ({ value: row.code, label: rootLabel(row.code, row.name) })),
 ];
 
 /** A root typed as an argument, a stored pane setting or a request: every listed root, crypto included. */
@@ -92,11 +96,10 @@ export function paneCurveRoot(pane: { settings?: Record<string, unknown>; params
   return pane?.settings?.root ?? pane?.params?.root ?? "ES";
 }
 
-/** What a root CTM does not list is told: the roots that work, with the FUT board's, VIX and CME crypto named by group. */
 export function unsupportedCurveRootMessage(value: unknown): string {
   const typed = String(value).trim().toUpperCase().replace(/=F$/, "");
   const examples = ["ES", "CL", "GC", "ZN"].filter((root) => CURVE_ROOTS.some((row) => row.value === root));
-  return `No futures curve for ${typed || "that root"}: CTM covers the FUT board's roots, VIX and CME crypto, such as ${examples.join(", ")}.`;
+  return `No futures curve for ${typed || "that root"}: try a listed root such as ${examples.join(", ")}.`;
 }
 
 /**
@@ -120,10 +123,10 @@ const CURSOR_BARE_ROOTS: ReadonlySet<string> = new Set(["ES", "CL", "BZ", "NG", 
 export function curveRootForTicker(ticker: unknown): string | null {
   if (typeof ticker !== "string") return null;
   const coin = cryptoPairCoin(ticker);
-  if (coin) return CRYPTO_CURVE_ROOTS.some((row) => row.code === coin) ? coin : null;
+  if (coin) return CME_CRYPTO_FUTURES.some((row) => row.code === coin) ? coin : null;
   const root = normalizeCurveRoot(ticker);
   if (!root) return null;
-  if (CRYPTO_CURVE_ROOTS.some((row) => row.code === root)) return isFuturesSymbol(ticker) ? root : null;
+  if (CURVE_ONLY_ROOTS.some((row) => row.code === root)) return isFuturesSymbol(ticker) ? root : null;
   const isBoardRoot = futuresContractByCode(root) != null;
   return isBoardRoot && !CURSOR_BARE_ROOTS.has(root) ? futuresBoardContractForTicker(ticker)?.code ?? null : root;
 }
@@ -145,7 +148,7 @@ function curvePriceDecimals(root: string): number {
   const rateTick = RATE_TICKS[root];
   if (rateTick != null) return tickDecimals(rateTick);
   if (root === "VX") return 4;
-  const tick = futuresContractByCode(root)?.tick ?? CRYPTO_CURVE_ROOTS.find((row) => row.code === root)?.tick;
+  const tick = futuresContractByCode(root)?.tick ?? CURVE_ONLY_ROOTS.find((row) => row.code === root)?.tick;
   return tick == null ? 5 : Math.max(2, tickDecimals(tick));
 }
 
