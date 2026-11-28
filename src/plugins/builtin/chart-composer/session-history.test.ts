@@ -31,7 +31,7 @@ test.each([
   { name: "no intraday data", points: [], count: 0, close: false },
 ])("dated GIP CLI and CSV preserve source observations: $name", async ({ points, count, close, name }) => {
   const requested: string[] = [];
-  const buffered = points.length ? [{ ...prior, date: new Date("2026-10-29T19:37:00Z") }, ...points] : points;
+  const buffered = points.length ? [{ ...prior, date: new Date("2026-10-29T19:37:00Z") }, ...points] : [];
   const provider = createTestDataProvider({
     getQuote: async () => createTestQuote({ symbol: "BDRY", instrumentType: "ETF", listingExchangeName: "ARCA", regularClose: 12.84,
       regularCloseSessionDate: "2026-11-27", lastUpdated: Date.parse("2026-11-27T18:00:00Z") }),
