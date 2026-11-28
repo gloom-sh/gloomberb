@@ -1,3 +1,4 @@
+import { stockConnectListing, StockConnectSection } from "./overview/stock-connect";
 import { TrendingSummary } from "../attention/trending";
 import { fundFactOverviewFields } from "../sec/fund-facts";
 import { useFundFacts } from "../sec/fund-facts-view";
@@ -325,6 +326,7 @@ function ResolvedOverviewTab({
   // Each horizon runs from the daily close on its start date to the headline's close, as CMP and `history` measure
   // it; the chart's weekly bars stand in until the daily ones are in. Bars and the quote are dated on the listing's clock.
   const returnVenue = ticker.metadata.exchange || quote?.listingExchangeName || quote?.exchangeName || undefined;
+  const connectListing = stockConnectListing(ticker.metadata.ticker, returnVenue);
   const performanceFields = yieldIndex ? [] : buildPriceReturnFields(
     dailyReturnBars?.length ? dailyReturnBars : financials?.priceHistory ?? [],
     returnVenue,
@@ -685,6 +687,8 @@ function ResolvedOverviewTab({
             />
           )}
         </Box>
+
+        {connectListing && <StockConnectSection {...connectListing} width={contentWidth} />}
 
         {perpetuals && <PaneLinkMenu>{typeof perpetuals === "function" ? perpetuals(contentWidth) : perpetuals}</PaneLinkMenu>}
 

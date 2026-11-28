@@ -440,6 +440,7 @@ function isBackgroundRequest(path: string): boolean {
     || path.startsWith("/cloud/sec/13f/filer?")
     || path.startsWith("/market/ticker-changes?")
     || path.startsWith("/market/issuer-listings?")
+    || path.startsWith("/market/stock-connect?")
     || path === "/market/ticker-changes/batch"
     || path === "/market/search/batch"
     || path === "/market/organization-tickers"

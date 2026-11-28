@@ -119,6 +119,10 @@ The Weekdays tab reads daily bars instead: every session of the last five years,
 - **A+H companies.** A company listed in Hong Kong and in Shanghai or Shenzhen, as Gloom Cloud's company universe holds it (China Shenhua's 1088:HKEX and 601088:SSE, CATL's 3750:HKEX and 300750:SZSE), adds its other line: **H vs A**, the H price over the A price at spot (`+30.6% premium` when the H shares cost more), **A in HKD**, the A price at that rate, and the **CNY/HKD** spot rate, with the A share's price in yuan, the H share's in Hong Kong dollars and the rate each dated in the inputs. DES's Overview names the other line beside the ADR row (`A Share 601088:SSE`, `H Share 1088:HKEX`) with the premium; select the row, or `Open 601088:SSE` in the pane menu, to open that line's DES. The tab shows on a listing that has a receipt pair; `fn ADR` answers for either line of an A+H company with or without one.
 - `fn ADR <ticker>` gives the same figures and inputs, and `--json` the inputs' prices and times in `metadata`. For the peso's CCL and MEP rates from the Buenos Aires dollar lines, see `gloom fx USD/ARS` in the [usage guide](usage.md).
 
+## Stock Connect
+
+Open `DES` on a Shanghai, Shenzhen or Hong Kong stock or ETF to see its Stock Connect routes. HKEX dates its northbound buy/sell and sell-only files for the following northbound trading session. Hong Kong listings show the Shanghai and Shenzhen southbound buy lists separately. “Off buy list” leaves selling eligibility unconfirmed. Each route shows the exchange list date, or the check time when the exchange provides an undated workbook. Select a status to open its exchange source.
+
 ## P/E band
 
 `PEB <ticker>` draws the weekly close against lines at fixed multiples of trailing EPS, so the price can be read against the stock's own valuation history: on the 20x line it trades at twenty times what it earned over the last year.
