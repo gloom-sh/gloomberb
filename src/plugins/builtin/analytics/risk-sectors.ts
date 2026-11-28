@@ -17,7 +17,7 @@ const SECTOR_NAMES: Record<string, string> = {
 const sectorName = (value: unknown) => typeof value === "string" ? SECTOR_NAMES[value.trim().toLowerCase()] ?? null : null;
 
 /** Signed positions as a share of net liquidation, including cash. Unknowns stay in the denominator. */
-export function comparePortfolioSectors(positions: HeadlessPaneRow[], total: number, benchmark: FundMembersPayload,
+function comparePortfolioSectors(positions: HeadlessPaneRow[], total: number, benchmark: FundMembersPayload,
   sectors: ReadonlyMap<string, string | null>) {
   if (!Number.isFinite(total) || total <= 0) throw new Error("Sector comparison needs positive net liquidation.");
   const book = new Map<string, number>(), index = new Map<string, number>();

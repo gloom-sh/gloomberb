@@ -6,7 +6,7 @@ import { EVENT_ALERTS_KEY, readEventAlerts, type EventAlertRule } from "./events
 
 export const CATALYST_POLL_STATUS = "catalystPollStatus";
 interface Cursor { since: string; cursor?: string; delivered: Record<string, string>; }
-export function catalystMatches(rule: EventAlertRule, event: CatalystEvent, watched: ReadonlySet<string>): boolean {
+function catalystMatches(rule: EventAlertRule, event: CatalystEvent, watched: ReadonlySet<string>): boolean {
   if (rule.kind !== "catalyst" || rule.status !== "active" || Date.parse(event.observedAt) < rule.createdAt) return false;
   const target = rule.value.toUpperCase();
   switch (rule.target) {

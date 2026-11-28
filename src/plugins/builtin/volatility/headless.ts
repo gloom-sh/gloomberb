@@ -45,14 +45,14 @@ function projectVolatilityHeadless(data: VolatilityData): HeadlessBundleResult {
     ], rows: data.board.filter((row) => row.value != null).map((row) => ({ ...row })) },
   ] };
 }
-export interface VolatilityHeadlessDependencies {
+interface VolatilityHeadlessDependencies {
   load(args: HeadlessPaneLoadArgs, context: HeadlessPaneContext): Promise<VolatilityLoadResult>;
 }
 const defaultDependencies: VolatilityHeadlessDependencies = {
   load: (_args, context) => loadVolatilityData(context.refresh === true, createVolatilityDependencies(context.marketData, context.apiClient),
     { signal: context.signal }),
 };
-export function createVolatilityHeadless(dependencies: VolatilityHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"bundle"> {
+function createVolatilityHeadless(dependencies: VolatilityHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"bundle"> {
   return { shape: "bundle", argument: { kind: "none" }, options: [], describe: "VIX curve and volatility board",
     discovery: { screenshotReadiness: "live-dom", limitations: [
       "Daily histories may contain isolated index observations; sparse coverage has no daily change or annual percentile.",

@@ -22,7 +22,7 @@ import { REPORTED_DATA } from "../shared/report-freshness";
 import { EPS_BASIS_NOTE } from "../shared/earnings-report";
 import { enumOption, limitOption, REPORT_FILTER } from "../shared/headless-options";
 
-export interface EarningsEstimateSources {
+interface EarningsEstimateSources {
   actions: CorporateActionsData | null;
   estimates: AnalystResearchData | null;
   financials: TickerFinancials | null;
@@ -30,7 +30,7 @@ export interface EarningsEstimateSources {
   errors?: string[];
 }
 
-export interface EarningsEstimatesHeadlessDependencies {
+interface EarningsEstimatesHeadlessDependencies {
   loadSources(
     symbol: string,
     context: HeadlessPaneContext,
@@ -168,7 +168,7 @@ function projectEarningsEstimatesHeadless(
   };
 }
 
-export function createEarningsEstimatesHeadless(
+function createEarningsEstimatesHeadless(
   dependencies: EarningsEstimatesHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"rows"> {
   return {

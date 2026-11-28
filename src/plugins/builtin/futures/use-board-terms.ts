@@ -103,8 +103,3 @@ export function useFuturesBoardTerms(contracts: readonly FuturesContract[], enab
     // `version` re-reads the cache as loads land.
   }, [enabled, symbolKey, version]);
 }
-
-/** Forgets every cached row's terms (tests). */
-export function resetFuturesBoardTerms(): void {
-  termsCache.clear();
-}

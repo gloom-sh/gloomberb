@@ -126,7 +126,7 @@ function hasResolutionRelevantChange(next: Quote, current: Quote | undefined): b
 }
 
 /** The shared quote store, as exposed by the market data coordinator. */
-export interface ChartQuoteStore {
+interface ChartQuoteStore {
   subscribeKeys(keys: readonly string[], listener: () => void): () => void;
   getQuoteEntry(instrument: InstrumentRef): QueryEntry<Quote>;
 }

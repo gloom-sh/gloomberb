@@ -31,7 +31,7 @@ export type NoEarningsSurface = "cli" | "pane";
  * the app). Null for a stock or a type nothing classifies, whose empty history
  * is only that nothing is on record yet.
  */
-export function noEarningsText(symbol: string, instrumentType: string | null | undefined, surface: NoEarningsSurface): string | null {
+function noEarningsText(symbol: string, instrumentType: string | null | undefined, surface: NoEarningsSurface): string | null {
   const kind = classifyInstrumentType(instrumentType) ?? kindFromListingSyntax(symbol);
   const name = kind ? wrappedFund(instrumentType) ?? NO_EARNINGS[kind] : null;
   const command = surface === "cli" ? `\`fn ERN ${EXAMPLE}\`` : `ERN ${EXAMPLE}`;

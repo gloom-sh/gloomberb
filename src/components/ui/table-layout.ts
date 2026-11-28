@@ -258,7 +258,7 @@ const FIT_TEXT_FLOOR = 12;
  * its set width or not at all, since a figure or a date cut short reads as
  * another one.
  */
-export function tableColumnFitFloor(column: TableWidthColumn): number {
+function tableColumnFitFloor(column: TableWidthColumn): number {
   const width = tableColumnWidth(column);
   if (!((column.flexGrow ?? 0) > 0)) return width;
   const header = column.label ? displayWidth(column.label) + HEADER_RESERVED_WIDTH : 0;

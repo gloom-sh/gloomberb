@@ -37,7 +37,7 @@ import { DESK_KEYS, type DeskKey } from "./desk-keys";
  * gallery.
  */
 
-export { DESK_KEYS, type DeskKey };
+export { type DeskKey };
 
 /** In an argument, the company the desk is built around. */
 const DESK_COMPANY = "{company}";
@@ -242,7 +242,7 @@ export function deskFunctions(desk: Desk<string>): string[] {
 }
 
 /** What the app's registry offers a desk to be built from. */
-export interface DeskCatalog {
+interface DeskCatalog {
   panes: ReadonlyMap<string, PaneDef>;
   paneTemplates: ReadonlyMap<string, PaneTemplateDef>;
 }
@@ -251,7 +251,7 @@ export interface DeskCatalog {
 const TEMPLATE_PREFIXES: Readonly<Record<string, string>> = { DES: "T" };
 
 /** The pane template a desk function opens, by its exact mnemonic. */
-export function deskTemplate(catalog: DeskCatalog, fn: string): PaneTemplateDef | null {
+function deskTemplate(catalog: DeskCatalog, fn: string): PaneTemplateDef | null {
   const prefix = TEMPLATE_PREFIXES[fn] ?? fn;
   for (const template of catalog.paneTemplates.values()) {
     if (template.shortcut?.prefix === prefix) return template;

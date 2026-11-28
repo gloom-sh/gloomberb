@@ -5,7 +5,7 @@ const DECIMAL_COMMA = /^([+-]?\d+),(\d+)$/;
 const THOUSANDS_COMMA = /^[+-]?\d{1,3},\d{3}$/;
 
 /** What `4,5` typed where a number is read means, as a dotted number (`4.5`); null for any other text, and for a thousands comma. */
-export function dottedDecimal(value: unknown): string | null {
+function dottedDecimal(value: unknown): string | null {
   const text = typeof value === "string" ? value.trim() : "";
   const match = THOUSANDS_COMMA.test(text) ? null : DECIMAL_COMMA.exec(text);
   return match ? `${match[1]}.${match[2]}` : null;
@@ -146,7 +146,7 @@ export function parseTypedNumber(value: unknown): PastedNumber {
  * currency with three (KWD, BHD, OMR, JOD, TND) both readings are amounts, so
  * it is `ambiguous`. Anything else reads as `parseTypedNumber` reads it.
  */
-export function parseCurrencyAmount(value: unknown, currency: string): PastedNumber {
+function parseCurrencyAmount(value: unknown, currency: string): PastedNumber {
   const text = withoutUnderscores(value);
   const read = parsePastedNumber(text);
   const reading = read.kind === "ambiguous" ? read : read.kind === "number" ? thousandsDotReadings(text) : null;

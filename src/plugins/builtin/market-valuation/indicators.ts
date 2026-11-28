@@ -52,7 +52,7 @@ function shillerSeries(key: string, field: ShillerField): SeriesDef {
   return { key, scaleToBillions: 1, source: { kind: "shiller", field } };
 }
 
-export const BUFFETT_INDICATOR: IndicatorDef = {
+const BUFFETT_INDICATOR: IndicatorDef = {
   id: "buffett",
   label: "Buffett Indicator",
   shortLabel: "Buffett",
@@ -87,7 +87,7 @@ export const BUFFETT_INDICATOR: IndicatorDef = {
   },
 };
 
-export const TOBINS_Q: IndicatorDef = {
+const TOBINS_Q: IndicatorDef = {
   id: "tobins-q",
   label: "Tobin's Q",
   shortLabel: "Tobin Q",
@@ -125,7 +125,7 @@ export const TOBINS_Q: IndicatorDef = {
   link: { url: "https://en.wikipedia.org/wiki/Tobin%27s_q", label: "Tobin's q, Wikipedia" },
 };
 
-export const SHILLER_CAPE: IndicatorDef = {
+const SHILLER_CAPE: IndicatorDef = {
   id: "shiller-cape",
   label: "Shiller CAPE",
   shortLabel: "CAPE",
@@ -153,7 +153,7 @@ export const SHILLER_CAPE: IndicatorDef = {
   },
 };
 
-export const EXCESS_CAPE_YIELD: IndicatorDef = {
+const EXCESS_CAPE_YIELD: IndicatorDef = {
   id: "excess-cape-yield",
   label: "Excess CAPE Yield",
   shortLabel: "ERP (ECY)",
@@ -184,7 +184,7 @@ export const EXCESS_CAPE_YIELD: IndicatorDef = {
   },
 };
 
-export const SP500_DIVIDEND_YIELD: IndicatorDef = {
+const SP500_DIVIDEND_YIELD: IndicatorDef = {
   id: "sp500-dividend-yield",
   label: "S&P 500 Dividend Yield",
   shortLabel: "Div yield",

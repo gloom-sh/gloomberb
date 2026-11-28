@@ -64,7 +64,7 @@ export function returnSupportRange(range: ReturnRange): TimeRange {
 }
 
 /** Where a window of `range` ending at `end` starts, by the UTC calendar charts use. */
-export function returnWindowStart(range: ReturnRange, end: number): number {
+function returnWindowStart(range: ReturnRange, end: number): number {
   if (range === "6H") return end - 6 * HOUR_MS;
   if (range === "5D") return end - 5 * DAY_MS;
   return subtractTimeRange(new Date(end), range).getTime();
@@ -84,7 +84,7 @@ function venueDay(time: number, venue: string | undefined): string {
  * and every period return measure it: 1M ending Wed 21 Oct is from Mon 21
  * Sep's close. Null for 6H, 1D and 5D, which are spans of time, and ALL.
  */
-export function returnBaseDay(range: ReturnRange, end: number, venue?: string): string | null {
+function returnBaseDay(range: ReturnRange, end: number, venue?: string): string | null {
   return isReturnPeriod(range) ? periodBaseDay(venueDay(end, venue), range) : null;
 }
 

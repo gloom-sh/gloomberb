@@ -15,7 +15,7 @@ export type OutlierNameSource = Partial<Pick<DataProvider, "searchBatch">> | nul
  * among them, then search's own order. A row that carries only the symbol
  * for a name (QCOM on TSX) names nothing, as the overview's title reads it.
  */
-export function outlierListingName(rows: readonly InstrumentSearchResult[], symbol: string): string | null {
+function outlierListingName(rows: readonly InstrumentSearchResult[], symbol: string): string | null {
   const exact = rows.filter((row) => row.symbol.trim().toUpperCase() === symbol);
   const us = exact.filter((row) => isUsListingExchange(listingExchange(row)));
   const pool = us.length ? us : exact;

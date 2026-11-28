@@ -86,9 +86,6 @@ import {
 import { requestPaneDocs } from "../../../docs/requests";
 import { DOCS_PANE_TEMPLATE_ID } from "../../../docs/content";
 
-export { resolveAppHeaderHeightCells } from "./chrome";
-export { buildNativeWindowState } from "./native/window-state";
-export { resolvePaneManagementShortcut } from "./shortcuts";
 
 interface ShellProps {
   pluginRegistry: PluginRegistry;

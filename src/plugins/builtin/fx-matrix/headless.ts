@@ -80,7 +80,7 @@ function usdPerUnit(readings: ReadonlyMap<string, FxLegReading>, currency: strin
  * report itself is dated by the legs, so its closing line is the one the
  * pane's capture ends with.
  */
-export function projectFxCrosses(
+function projectFxCrosses(
   currencies: readonly FxCurrency[],
   readings: ReadonlyMap<string, FxLegReading>,
   options: { notices?: string[]; now?: number; amount?: FxBoardAmount | null } = {},

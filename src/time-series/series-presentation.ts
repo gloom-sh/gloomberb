@@ -96,11 +96,6 @@ function drawnInPriceOf(entry: ResolvedSeries, price: ResolvedSeries): boolean {
 const distantPriceSplits = new Map<string, ReadonlySet<string>>();
 const DISTANT_PRICE_SPLITS_KEPT = 256;
 
-/** Forgets every kept split, for tests that chart one set of prices at different levels. */
-export function resetDistantPriceSplitsForTests(): void {
-  distantPriceSplits.clear();
-}
-
 /**
  * Prices in one unit whose sizes are an order apart, sharing the left axis of
  * a panel with nothing on its right: those under SHARED_AXIS_LEVEL_SHARE of

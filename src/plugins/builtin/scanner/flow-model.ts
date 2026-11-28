@@ -215,7 +215,7 @@ const FLOW_HISTORY_PAGE = 100;
 const FLOW_KEPT_PRINTS = 20_000;
 
 /** Newest first; ties keep the server's byte order on id so pages line up. */
-export function compareFlowDesc(left: ScannerFlowEvent, right: ScannerFlowEvent): number {
+function compareFlowDesc(left: ScannerFlowEvent, right: ScannerFlowEvent): number {
   if (left.at !== right.at) return right.at - left.at;
   return left.id < right.id ? 1 : left.id > right.id ? -1 : 0;
 }

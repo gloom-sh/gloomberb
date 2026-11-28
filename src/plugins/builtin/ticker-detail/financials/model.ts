@@ -23,7 +23,6 @@ import {
 } from "./aggregation";
 import { FINANCIAL_SUB_TABS } from "./schema";
 
-export { computeTTM } from "./aggregation";
 export { FINANCIAL_SUB_TABS } from "./schema";
 export type { FinancialPeriod } from "./aggregation";
 
@@ -194,7 +193,7 @@ export function financialPeriodHeaderLabel(text: string, periodWidth: number): s
  * narrowing, or turning into a profit, is no percentage of the loss). An outflow, kept as a
  * negative number, grows as the money that went out does.
  */
-export function computeGrowth(current: number | undefined, previous: number | undefined, outflow = false): Rate | undefined {
+function computeGrowth(current: number | undefined, previous: number | undefined, outflow = false): Rate | undefined {
   return outflow ? outflowGrowthRate(current, previous) : growthRate(current, previous);
 }
 
@@ -981,7 +980,7 @@ function hasLeadLine(lead: FinancialRowDef, statement: FinancialStatement): bool
  * an all-dash one. A trailing-twelve-month column is kept: it is summed, and
  * so is a period whose lead line was left blank on purpose (`hasLeadLine`).
  */
-export function splitPeriodsNotInYet<T extends FinancialTableStatement>(
+function splitPeriodsNotInYet<T extends FinancialTableStatement>(
   statements: readonly T[],
   subTab: Pick<FinancialSubTab, "rows">,
 ): { shown: T[]; notInYet: T[] } {

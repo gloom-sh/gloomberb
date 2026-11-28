@@ -4,7 +4,7 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { logFailure } from "../../utils/log-failure";
 
 /** The subset of `Bun.Subprocess` this module needs, so tests can supply a fake. */
-export interface TerminalMediaChild {
+interface TerminalMediaChild {
   readonly pid: number;
   kill(): void;
   readonly exited: Promise<number>;

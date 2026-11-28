@@ -94,7 +94,7 @@ export function computeBitmapSize(rect: CellRect, resolution: PixelResolution, t
   };
 }
 
-export function computeNativePlacement(
+function computeNativePlacement(
   rect: CellRect,
   visibleRect: CellRect,
   bitmap: NativeChartBitmap,

@@ -40,7 +40,7 @@ function normalizeEarningsSymbols(symbols: string[]): string[] {
   ).sort();
 }
 
-export function buildEarningsCacheKey(symbols: string[]): string {
+function buildEarningsCacheKey(symbols: string[]): string {
   const normalized = normalizeEarningsSymbols(symbols);
   return normalized.length > 0 ? normalized.join(",") : "empty";
 }

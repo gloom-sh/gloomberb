@@ -63,7 +63,7 @@ import {
 } from "./model";
 
 /** A deal's PRICE: its offer price or range, with a dash marked as one that may be blank only on a deal that owes none. */
-export function ipoPriceCell(deal: IpoDeal, colors: Pick<ThemeColors, "text" | "textMuted">): DataTableCell {
+function ipoPriceCell(deal: IpoDeal, colors: Pick<ThemeColors, "text" | "textMuted">): DataTableCell {
   const text = formatIpoPrice(deal);
   return { text, color: text === MISSING ? colors.textMuted : colors.text, ...(ipoPriceMayBeBlank(deal) ? { mayBeBlank: true } : {}) };
 }

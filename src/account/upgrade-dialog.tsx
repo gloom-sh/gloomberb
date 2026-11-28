@@ -39,7 +39,7 @@ export interface UpgradeOffer {
   paymentFailed: boolean;
 }
 
-export interface UpgradeDialogCopy {
+interface UpgradeDialogCopy {
   title: string;
   subtitle: string;
   confirmLabel: string;
@@ -52,7 +52,7 @@ export interface UpgradeDialogCopy {
  * server confirmed this account still has its trial: an account that used it
  * is billed on the spot, and one we could not check might be.
  */
-export function upgradeDialogCopy(
+function upgradeDialogCopy(
   offer: UpgradeOffer | null,
   interval: CloudBillingInterval,
   now: Date,

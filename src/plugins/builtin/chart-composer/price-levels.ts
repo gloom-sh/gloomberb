@@ -8,7 +8,7 @@ import { isFiniteNumber } from "../../../utils/guards";
  * them and they follow the account to other machines.
  */
 export const PRICE_LEVELS_KEY = "priceLevels";
-export const DEFAULT_LEVEL_COLOR = "#f5a524";
+const DEFAULT_LEVEL_COLOR = "#f5a524";
 const MAX_LEVELS_PER_TICKER = 24;
 const MAX_TICKERS = 400;
 

@@ -342,7 +342,7 @@ function settled<T>(pending: Promise<T>): Promise<T | Error> {
   return pending.catch((error: unknown) => (error instanceof Error ? error : new Error(String(error))));
 }
 
-export interface CdsHeadlessDependencies {
+interface CdsHeadlessDependencies {
   load(
     args: HeadlessPaneLoadArgs,
     issuer: string | null,
@@ -362,7 +362,7 @@ const defaultDependencies: CdsHeadlessDependencies = {
   loadLevels: loadCdsSpreadLevels,
 };
 
-export function createCdsHeadless(
+function createCdsHeadless(
   dependencies: CdsHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"bundle"> {
   const loadHistory = dependencies.loadHistory ?? defaultDependencies.loadHistory!;

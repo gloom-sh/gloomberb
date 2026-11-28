@@ -129,7 +129,7 @@ function extreme(points: readonly StatPoint[], pick: "high" | "low"): StatPoint 
   return best;
 }
 
-export function projectStat(
+function projectStat(
   build: StatBuild,
   range: StatRangeId,
   opts: { nowMs?: number } = {},

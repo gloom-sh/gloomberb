@@ -88,7 +88,7 @@ const STAGE_ACTIVITY: Partial<Record<OnboardingStage, ResearchActivity>> = {
  * a field the letter is typed (the Skip button's `s` went into the Ticker
  * field), and it acts on the card once Esc leaves the field.
  */
-export function cardKey(key: string, editingField: boolean): string | undefined {
+function cardKey(key: string, editingField: boolean): string | undefined {
   return editingField && key.length === 1 ? undefined : key;
 }
 
@@ -104,7 +104,7 @@ function paneIdsOf(config: AppConfig): Set<string> {
  * it would otherwise cover a pane the user opened under it (a floating 13F
  * pane at the top right), and its keys would compete with that pane's.
  */
-export function coachStepsAside(shownWith: ReadonlySet<string> | null, config: AppConfig): boolean {
+function coachStepsAside(shownWith: ReadonlySet<string> | null, config: AppConfig): boolean {
   if (!shownWith) return false;
   for (const id of paneIdsOf(config)) if (!shownWith.has(id)) return true;
   return false;

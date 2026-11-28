@@ -14,7 +14,7 @@ export function validateCatalysts(payload: CatalystResponse): CatalystResponse {
     throw new Error("The server returned invalid catalyst events.");
   return payload;
 }
-export function validateCatalystDetail(payload: CatalystDetail, id?: string): CatalystDetail {
+function validateCatalystDetail(payload: CatalystDetail, id?: string): CatalystDetail {
   if (!payload || !validEvent(payload.event) || (id && payload.event.id !== id) || !Array.isArray(payload.history)
     || !payload.history.every((event) => validEvent(event) && event.id === payload.event.id)) throw new Error("The server returned invalid event history.");
   return payload;

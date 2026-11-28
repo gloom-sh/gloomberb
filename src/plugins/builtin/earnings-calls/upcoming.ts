@@ -38,7 +38,7 @@ export function isUpcomingCall(call: CloudEarningsCallPayload, now = Date.now())
 }
 
 /** Earliest first: by New York day, then the calls with a start, in order, then those known by the day. */
-export function compareCallStarts(left: CloudEarningsCallPayload, right: CloudEarningsCallPayload): number {
+function compareCallStarts(left: CloudEarningsCallPayload, right: CloudEarningsCallPayload): number {
   const leftDay = callDay(left) ?? "9999-12-31";
   const rightDay = callDay(right) ?? "9999-12-31";
   if (leftDay !== rightDay) return leftDay < rightDay ? -1 : 1;

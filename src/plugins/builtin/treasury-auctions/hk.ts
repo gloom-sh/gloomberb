@@ -272,7 +272,7 @@ export function hkWindowStart(window: AuctionHistoryWindow, now = Date.now()): s
 }
 
 /** A month row (a Government Bond's issue) is in a window that starts within or before its month. */
-export const hkOnOrAfter = (date: string, from: string) => date.length === 7 ? date >= from.slice(0, 7) : date >= from;
+const hkOnOrAfter = (date: string, from: string) => date.length === 7 ? date >= from.slice(0, 7) : date >= from;
 
 /** The tenders a group, a search and a window keep, in the sort's order; ties keep the newest first. */
 export function visibleHkTenders(

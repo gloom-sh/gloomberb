@@ -14,7 +14,7 @@ import { resolvePortfolioAccountState, type ResolvedPortfolioAccountState } from
 
 const EMPTY_ACCOUNTS = { instanceId: null, accounts: [] as BrokerAccount[], error: null };
 
-export interface LiveBrokerAccounts {
+interface LiveBrokerAccounts {
   status: BrokerConnectionStatus | null;
   accounts: BrokerAccount[];
   /** Set when the broker refused to list accounts. */
@@ -39,7 +39,7 @@ function isSameBrokerStatus(left: BrokerConnectionStatus | null, right: BrokerCo
  * error through its status and Robinhood rewrites it on each load, which
  * would otherwise reload the account in a loop.
  */
-export function useLiveBrokerAccounts(
+function useLiveBrokerAccounts(
   broker: BrokerAdapter | null | undefined,
   brokerInstance: BrokerInstanceConfig | null | undefined,
   refreshKey?: unknown,
@@ -104,7 +104,7 @@ export interface PortfolioAccountStateResult {
  * connecting, before it reports a status, and for one that only syncs on
  * demand (IBKR Flex), which is never connected.
  */
-export function resolveOfflineBroker(
+function resolveOfflineBroker(
   portfolio: Portfolio | null,
   brokerInstance: BrokerInstanceConfig | null | undefined,
   broker: BrokerAdapter | null | undefined,

@@ -47,7 +47,7 @@ export type ScriptAnswer =
  * The script's answer in its log, a line `<time> started …`,
  * `<time> busy: …` or `<time> declined: …`; null before it wrote one.
  */
-export function scriptAnswer(log: string): ScriptAnswer | null {
+function scriptAnswer(log: string): ScriptAnswer | null {
   for (const line of log.replace(/^\uFEFF/, "").split(/\r?\n/)) {
     const match = /^\S+ (started|busy|declined)\b:? ?(.*)$/.exec(line);
     if (!match) continue;

@@ -133,7 +133,7 @@ const EXTENDED_COLUMN_PREFIX = "ext:";
  * CHG% for each session in `extendedSessions`, and is added only whole, as
  * the metrics are.
  */
-export function resultColumns(
+function resultColumns(
   width: number,
   definition: ScreenDefinition,
   metric: NumericField,

@@ -68,7 +68,7 @@ function validSource(source: IpoSourceHealth): boolean {
  * read for what the pane draws, a region it does not know files under other,
  * and one unreadable deal is left out rather than failing the whole board.
  */
-export function validateIpoCalendar(data: IpoCalendarPayload): IpoCalendarPayload {
+function validateIpoCalendar(data: IpoCalendarPayload): IpoCalendarPayload {
   if (!data || !text(data.asOf) || !Array.isArray(data.deals) || !Array.isArray(data.sources)) {
     throw new Error("The server returned an unreadable IPO calendar");
   }

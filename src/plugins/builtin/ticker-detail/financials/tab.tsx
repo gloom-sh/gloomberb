@@ -104,7 +104,7 @@ const NO_COLLAPSED_GROUPS: ReadonlySet<string> = new Set();
  * and its name a cell apart, and says that width (`contentWidth`) so the table fits the column to it whole.
  * The desktop draws the disclosure as a path, not a glyph.
  */
-export function financialGroupNameCell(
+function financialGroupNameCell(
   row: Extract<FinancialTableRow, { kind: "group" }>,
   color: string,
   attributes: number,

@@ -24,7 +24,7 @@ export interface ReviewedPlugin {
   skip?: string;
 }
 
-export const REVIEWED_PLUGINS: Record<string, ReviewedPlugin> = {
+const REVIEWED_PLUGINS: Record<string, ReviewedPlugin> = {
   hackernews: { repo: "gloom-sh/gloom-hackernews", codes: { HN: [] } },
   "crypto-fear-greed": { repo: "gloom-sh/gloom-fear-greed-crypto", codes: { CFNG: [] } },
   growthepie: { repo: "gloom-sh/gloom-growthepie", codes: { GTP: [] } },

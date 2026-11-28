@@ -18,7 +18,7 @@ export interface LeverageFacts {
   leverage?: { value: number; reset: string; proxy: { ticker: string } | null } | null;
 }
 
-export function dailyObjective(facts: LeverageFacts | null | undefined): DailyObjective | null {
+function dailyObjective(facts: LeverageFacts | null | undefined): DailyObjective | null {
   const leverage = facts?.leverage;
   if (!leverage || leverage.reset !== "daily" || !isLeverageFactor(leverage.value) || !leverage.proxy?.ticker) return null;
   return { factor: leverage.value, proxy: leverage.proxy.ticker.toUpperCase() };

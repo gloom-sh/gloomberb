@@ -73,7 +73,7 @@ export function readIvLevelChecks(value: unknown): Record<string, IvLevelCheck> 
  * (ATM, 25dP and 25dC), solved at 30 days on the same fits. Null with `error`
  * when the chain gives none.
  */
-export interface IvLevelReading {
+interface IvLevelReading {
   atm: number | null;
   rr: number | null;
   /** When the newest option quotes behind it were observed. */
@@ -97,7 +97,7 @@ function feedWords(expiries: readonly Pick<SurfaceExpiry, "dataSource" | "delayM
  * (`buildSurfaceGrid`), so the figure is the one OVDV shows, with the time and
  * feed of the expiries either side of 30 days that it comes from.
  */
-export function ivLevelReading(snapshot: Pick<SurfaceSnapshot, "spot" | "expiries" | "failures">): IvLevelReading {
+function ivLevelReading(snapshot: Pick<SurfaceSnapshot, "spot" | "expiries" | "failures">): IvLevelReading {
   const grid = buildSurfaceGrid(snapshot as SurfaceSnapshot, {
     axis: "delta", tenors: "fixed", fixedTenors: [IV_LEVEL_TENOR], coordinates: IV_LEVEL_DELTAS,
   });

@@ -65,7 +65,7 @@ const STYLE_BY_MODE: Record<ChartRenderMode | "step", ResolvedSeries["style"]> =
 
 const PANELS = [{ id: "main" }];
 
-export function buildStaticChartSeries(
+function buildStaticChartSeries(
   points: readonly ProjectedChartPoint[],
   mode: ChartRenderMode | "step",
   color: string,

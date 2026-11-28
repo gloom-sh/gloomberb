@@ -17,7 +17,7 @@ interface BrowserNotificationOptions {
   focus?: () => void;
 }
 
-export function createBrowserNotifications({
+function createBrowserNotifications({
   getApi = () => typeof globalThis.Notification?.requestPermission === "function" ? globalThis.Notification : undefined,
   getStorage = () => window.localStorage,
   isActive = isBrowserAppActive,

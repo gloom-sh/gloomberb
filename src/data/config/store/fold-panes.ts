@@ -168,7 +168,7 @@ export function foldPaneLayout(layout: LayoutConfig): FoldedLayout {
 }
 
 /** Apply the fixed-income rewrite after the original short-volume/SOVR fold. */
-export function foldFixedIncomePaneLayout(layout: LayoutConfig): FoldedLayout {
+function foldFixedIncomePaneLayout(layout: LayoutConfig): FoldedLayout {
   const folded = foldPaneLayout(layout);
   const fixedIncomeRoutes = new Map<string, FixedIncomeRoute>();
   const instances = folded.layout.instances.map((instance) => {
@@ -281,7 +281,7 @@ export function foldFixedIncomeSavedPanes(saved: Record<string, unknown>): Recor
 }
 
 /** Move related market and energy panes into the one Commodities & Energy workspace. */
-export function foldCommoditiesPaneLayout(layout: LayoutConfig): LayoutConfig {
+function foldCommoditiesPaneLayout(layout: LayoutConfig): LayoutConfig {
   const instances = layout.instances.map((instance) => {
     const tab = COMMODITIES_ENERGY_TABS[instance.paneId];
     if (!tab) return instance;

@@ -33,7 +33,7 @@ function validatePercentile(stats: MoneyMarketRow["percentile"] | undefined): vo
 }
 
 /** Reject incompatible contracts rather than supplying zeros to a board or curve. */
-export function validateMoneyMarkets(payload: MoneyMarketsPayload): MoneyMarketsPayload {
+function validateMoneyMarkets(payload: MoneyMarketsPayload): MoneyMarketsPayload {
   if (!payload || !Number.isFinite(Date.parse(payload.generatedAt)) || !["available", "partial", "unavailable"].includes(payload.status)
     || !Array.isArray(payload.rows) || !payload.netLiquidity || !payload.billsCurve || !Array.isArray(payload.billsCurve.comparisons)
     || payload.billsCurve.basis !== "discount" || !["available", "stale", "unavailable"].includes(payload.billsCurve.status)) return invalid();
@@ -49,7 +49,7 @@ export function validateMoneyMarkets(payload: MoneyMarketsPayload): MoneyMarkets
 }
 
 /** Hong Kong's bill-yield board, refused whole when a row is not a dated Exchange Fund Bill yield. */
-export function validateHongKongMoneyMarkets(payload: HongKongMoneyMarketsPayload): HongKongMoneyMarketsPayload {
+function validateHongKongMoneyMarkets(payload: HongKongMoneyMarketsPayload): HongKongMoneyMarketsPayload {
   if (!payload || !Number.isFinite(Date.parse(payload.generatedAt)) || !["available", "partial", "unavailable"].includes(payload.status)
     || !Array.isArray(payload.rows) || typeof payload.source?.name !== "string") return invalid();
   validateRows(payload.rows, ["efb"]);
@@ -69,12 +69,9 @@ const hongKongMoneyMarketsEndpoint = createCloudEndpoint<void, HongKongMoneyMark
 
 export const moneyMarketsCache = moneyMarketsEndpoint.cache;
 export const hongKongMoneyMarketsCache = hongKongMoneyMarketsEndpoint.cache;
-export const fetchMoneyMarkets = (client: Pick<typeof apiClient, "getCloudMoneyMarkets"> = apiClient) => moneyMarketsEndpoint.fetch(undefined, { client });
 export const getCachedMoneyMarkets = () => moneyMarketsEndpoint.cached();
 export const loadMoneyMarkets = (force = false, client: Pick<typeof apiClient, "getCloudMoneyMarkets"> = apiClient) =>
   moneyMarketsEndpoint.load(undefined, { force, client });
-export const fetchHongKongMoneyMarkets = (client: Pick<typeof apiClient, "getCloudHongKongMoneyMarkets"> = apiClient) =>
-  hongKongMoneyMarketsEndpoint.fetch(undefined, { client });
 export const getCachedHongKongMoneyMarkets = () => hongKongMoneyMarketsEndpoint.cached();
 export const loadHongKongMoneyMarkets = (force = false, client: Pick<typeof apiClient, "getCloudHongKongMoneyMarkets"> = apiClient) =>
   hongKongMoneyMarketsEndpoint.load(undefined, { force, client });

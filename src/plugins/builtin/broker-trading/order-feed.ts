@@ -291,7 +291,7 @@ class ProfileOrderFeed {
  * hold a profile while mounted; the plugin holds every connected trading
  * profile for as long as the app runs, so a fill toasts with no ticket open.
  */
-export class BrokerOrderFeed {
+class BrokerOrderFeed {
   private readonly profiles = new Map<string, ProfileOrderFeed>();
   private readonly listeners = new Set<() => void>();
   private readonly seen = new Map<string, Seen>();

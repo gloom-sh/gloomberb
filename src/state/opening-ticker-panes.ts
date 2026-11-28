@@ -23,7 +23,7 @@ export function markTickerPaneOpening(instanceId: string): () => void {
   };
 }
 
-export function isTickerPaneOpening(instanceId: string | null | undefined): boolean {
+function isTickerPaneOpening(instanceId: string | null | undefined): boolean {
   return !!instanceId && opening.has(instanceId);
 }
 

@@ -38,8 +38,8 @@ import {
 } from "./model";
 
 /** The roadmap calls the pane makes; tests hand it their own. */
-export type RoadmapClient = Pick<typeof apiClient, "getRoadmap" | "setRoadmapVote">;
-export const RoadmapClientContext = createContext<RoadmapClient | null>(null);
+type RoadmapClient = Pick<typeof apiClient, "getRoadmap" | "setRoadmapVote">;
+const RoadmapClientContext = createContext<RoadmapClient | null>(null);
 
 type Row = SectionedRow<RoadmapItem>;
 type ColumnId = "title" | "blurb" | "votes" | "shipped";

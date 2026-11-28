@@ -19,7 +19,7 @@ export const fundFactsCache = createPluginCache<FundFactsPayload>({
 
 type Client = Pick<typeof apiClient, "getFundFacts">;
 
-export const FUND_FACTS_UNAVAILABLE = "Fund facts are not available on this server yet.";
+const FUND_FACTS_UNAVAILABLE = "Fund facts are not available on this server yet.";
 
 /** A failed load as one line: the server-not-ready message as it is, anything else after "Fund facts unavailable:". */
 export function fundFactsErrorText(error: unknown): string {

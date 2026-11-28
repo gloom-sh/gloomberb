@@ -54,7 +54,7 @@ function sharedEstimateCurrency(rows: readonly EventRow[], metric: "eps" | "reve
  * Narrow, the counts go first (the detail keeps them), then the ranges, the
  * period end and growth.
  */
-export function estimateColumns(width: number, units: { eps?: string; revenue?: string } = {}): EstimateColumn[] {
+function estimateColumns(width: number, units: { eps?: string; revenue?: string } = {}): EstimateColumn[] {
   const heading = (label: string, unit: string | undefined) => (unit ? `${label} ${unit}` : label);
   return fitChartTableColumns<EstimateColumn>([
     { id: "period", label: "PERIOD", width: 9, align: "left" },

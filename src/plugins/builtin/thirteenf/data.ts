@@ -455,7 +455,7 @@ const RENAME_LOOKUP_MS = 5_000;
  * A ticker's splits are read once a session (readSplitHistory), however many
  * funds, reopens and refreshes ask for them.
  */
-export async function corporateSplitFactor(marketData: SplitFactorSource, ticker: string, after: string, through: string): Promise<number | null> {
+async function corporateSplitFactor(marketData: SplitFactorSource, ticker: string, after: string, through: string): Promise<number | null> {
   let failure: unknown;
   const own = await ownSplitFactor(marketData, ticker, after, through).catch((error: unknown) => { failure = error; return null; });
   if (own != null) return own;
@@ -629,7 +629,7 @@ const PREFETCH_HOLDINGS_MAX = 2_000;
  * together. A large filer's holdings wait for Enter. These are loadFundDetail's
  * own requests, so opening the fund reads them from cache or joins them.
  */
-export async function prefetchFundDetail(cik: string, signal: AbortSignal): Promise<void> {
+async function prefetchFundDetail(cik: string, signal: AbortSignal): Promise<void> {
   const now = new Date();
   const forms = await listThirteenFForms(cik, isoDateYearsAgo(4, now), isoDateToday(now), 100, signal);
   const filings = buildPeriodReports(forms).slice(0, 2).flatMap((report) => report.filings);

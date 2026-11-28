@@ -75,7 +75,7 @@ function parseDateMs(date: string): number {
   return Date.parse(date);
 }
 
-export function sliceByRange(
+function sliceByRange(
   points: readonly RatioPoint[],
   range: ValuationRangeId,
   nowMs: number = Date.parse(points.at(-1)?.date ?? ""),
@@ -103,7 +103,7 @@ function ratioOneYearAgo(points: readonly RatioPoint[], currentDate: string): nu
   return found?.ratio ?? null;
 }
 
-export function projectView(
+function projectView(
   build: IndicatorBuild,
   range: ValuationRangeId,
   opts: { nowMs?: number } = {},

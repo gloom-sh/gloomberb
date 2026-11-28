@@ -110,7 +110,7 @@ function RelayPromptFrame({
 }
 
 /** First time an assistant asks to drive this terminal. */
-export function AssistantApprovalDialog({
+function AssistantApprovalDialog({
   resolve,
   caller,
   signal,
@@ -152,7 +152,7 @@ export function AssistantApprovalDialog({
  * Every call that can reach an outside service. There is no "always" here,
  * and only `y` allows: `a` means "always" in the approval prompt.
  */
-export function CallConfirmationDialog({
+function CallConfirmationDialog({
   resolve,
   caller,
   summary,

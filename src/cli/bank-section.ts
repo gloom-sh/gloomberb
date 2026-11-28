@@ -128,7 +128,7 @@ export function bankSection(bank: BankFiguresPayload, symbol: string, { latestSt
 const BANK_FIGURES_UNAVAILABLE = "Bank figures (deposits, uninsured share, CRE) are unavailable right now.";
 
 /** The line for a bank listed abroad (HSBA.L, RY:TSX): the SEC deposits and FDIC call reports are US banks'. */
-export const US_BANKS_ONLY = "Bank figures cover US banks.";
+const US_BANKS_ONLY = "Bank figures cover US banks.";
 
 /**
  * A financial company's bank figures, or null: a company outside financial

@@ -9,7 +9,7 @@ export interface ResolvedChartRendererState {
   nativeReady: boolean;
 }
 
-export function resolveChartRendererState(
+function resolveChartRendererState(
   preference: ChartRendererPreference,
   kittySupport: boolean | null,
   resolution: PixelResolution | null,

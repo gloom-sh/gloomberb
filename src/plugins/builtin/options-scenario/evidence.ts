@@ -35,7 +35,7 @@ function observationCount(scenario: ScenarioModel, view: string): number {
 }
 
 /** Uses the active pane's actual chart, table and position inputs. */
-export function scenarioSemanticEvidence(input: ScenarioEvidenceInput): ScenarioEvidence {
+function scenarioSemanticEvidence(input: ScenarioEvidenceInput): ScenarioEvidence {
   const scenario = input.scenario ?? null;
   const count = scenario ? observationCount(scenario, input.view) : 0;
   return { kind: "options-scenario", version: 1, symbol: scenario?.position.symbol ?? "", view: input.view,
@@ -49,7 +49,7 @@ export function useScenarioEvidence(input: ScenarioEvidenceInput): void {
 }
 
 /** Reprice both curves and every grid cell before accepting numeric screenshot evidence. */
-export function readScenarioEvidence(value: unknown): ScenarioEvidence | null {
+function readScenarioEvidence(value: unknown): ScenarioEvidence | null {
   if (!isRecord(value) || value.kind !== "options-scenario" || value.version !== 1
     || typeof value.symbol !== "string" || !["payoff", "grid", "legs"].includes(String(value.view))
     || typeof value.loading !== "boolean" || typeof value.complete !== "boolean"

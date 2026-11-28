@@ -1,6 +1,6 @@
-import type { GpuBoardPayload, GpuBoardRow, GpuEvent, GpuSettle } from "../../../api-client/gpu";
+import type { GpuBoardPayload, GpuBoardRow } from "../../../api-client/gpu";
 
-export function gpuRow(overrides: Partial<GpuBoardRow> = {}): GpuBoardRow {
+function gpuRow(overrides: Partial<GpuBoardRow> = {}): GpuBoardRow {
   const row = {
     source: "azure-list", skuKey: "h100-sxm-80", provider: "Azure", providerClass: "hyperscaler",
     region: "eastus", gpuModel: "H100", gpuCount: 8, formFactor: "SXM", memoryGb: 80,
@@ -17,24 +17,5 @@ export function gpuBoard(overrides: Partial<GpuBoardPayload> = {}): GpuBoardPayl
   return {
     generatedAt: "2026-10-03T19:01:00.000Z", asOf: "2026-10-03T19:00:00.000Z",
     status: "available", stale: false, gaps: [], rows: [gpuRow()], ...overrides,
-  };
-}
-
-export function gpuEvent(overrides: Partial<GpuEvent> = {}): GpuEvent {
-  return {
-    id: "azure-list:h100-sxm-80:2026-10-02", kind: "price", source: "azure-list", skuKey: "h100-sxm-80",
-    provider: "Azure", gpuModel: "H100", formFactor: "SXM", memoryGb: 80, basis: "list",
-    observedAt: "2026-10-02T19:00:00.000Z", effectiveAt: "2026-10-01T00:00:00.000Z",
-    oldPrice: 7, newPrice: 6.98, changePct: -0.285714, oldMembers: null, newMembers: null,
-    ...overrides,
-  };
-}
-
-export function gpuSettle(overrides: Partial<GpuSettle> = {}): GpuSettle {
-  return {
-    id: "11", date: "2026-10-02", settleAt: "2026-10-02T20:00:00.000Z", gpuModel: "H100", formFactor: "SXM", memoryGb: 80,
-    label: "H100 SXM 80GB", status: "settled", pricePerGpuHr: 2.9883, currency: "USD", kind: "settle", corrects: null,
-    publishedAt: "2026-10-02T20:01:00.000Z", change1d: -1.2, change7d: null, change30d: null,
-    ...overrides,
   };
 }

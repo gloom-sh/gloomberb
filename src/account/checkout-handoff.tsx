@@ -52,11 +52,6 @@ function checkoutHandoffPlan(user: PlanAccessUser | null | undefined): CheckoutH
 const POLL_MS = 5_000;
 let pollMs = POLL_MS;
 
-/** A shorter poll, so a test sees Pro arrive without waiting seconds; no argument restores it. */
-export function setCheckoutHandoffPollForTests(ms: number = POLL_MS): void {
-  pollMs = ms;
-}
-
 /** Signed out, or a session the server no longer takes: asking again cannot help. */
 function isAuthFailure(error: unknown): boolean {
   return error instanceof ApiRequestError && (error.status === 401 || error.status === 403);

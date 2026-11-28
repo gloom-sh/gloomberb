@@ -61,8 +61,3 @@ export function curveSpread(points: readonly YieldPoint[] | null | undefined, sh
     || !isYieldObservationDate(near.asOf) || near.asOf !== far.asOf) return null;
   return far.yield - near.yield;
 }
-
-export function spreadBasisPoints(points: readonly YieldPoint[], short = "2Y", long = "10Y"): number | null {
-  const spread = curveSpread(points, short, long);
-  return spread == null ? null : Math.round(spread * 100);
-}

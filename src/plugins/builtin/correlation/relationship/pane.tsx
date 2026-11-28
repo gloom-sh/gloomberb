@@ -112,7 +112,7 @@ function panelSeries(series: MultiLineChartSeries[], panelId: string): ResolvedS
  * lowest-priority piece instead of squeezing every plot, and anything hidden
  * hands its rows to the chart.
  */
-export function relationshipLayout(
+function relationshipLayout(
   rows: number,
   { showCorrelation, showScatter }: { showCorrelation: boolean; showScatter: boolean },
 ): { chartRows: number; scatterRows: number; ratio: boolean; correlation: boolean } {

@@ -18,7 +18,7 @@ import { fetchHistoryResult } from "../../../sources/history-result";
 import { historyRetentionNotice, isHistoryRetentionError, type HistoryRetention } from "../../../sources/history-retention";
 import type { PriceHistoryResult } from "../../../types/price-history";
 
-export type IntradayRangePreset = "1D" | "1W";
+type IntradayRangePreset = "1D" | "1W";
 
 export interface IntradayRequest {
   rangePreset: IntradayRangePreset;
@@ -131,7 +131,7 @@ export function intradaySessionDates(points: readonly PricePoint[], timeZone: st
   return [...new Set(normalizedPoints(points).map((point) => zonedDateKey(getPricePointTimestamp(point), timeZone)))];
 }
 
-export function resolveIntradaySessionWindow(
+function resolveIntradaySessionWindow(
   points: readonly PricePoint[],
   options: {
     rangePreset: IntradayRangePreset;

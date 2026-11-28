@@ -20,7 +20,7 @@ const FRED_ROWS: ReadonlySet<string> = new Set(["US", "EA"]);
  * with no decision between. A rate that may have changed since (a decision
  * BIS has not reported, `stale`) stops at its last observation.
  */
-export function policyRatePoints(row: Pick<CentralBankRow, "history" | "status" | "value" | "confirmedAt">): Array<{ date: string; value: number | null }> {
+function policyRatePoints(row: Pick<CentralBankRow, "history" | "status" | "value" | "confirmedAt">): Array<{ date: string; value: number | null }> {
   const points = row.history.map((point) => ({ date: point.date, value: point.value }));
   const confirmed = row.confirmedAt?.slice(0, 10);
   const last = points.findLast((point) => point.value != null);

@@ -26,7 +26,7 @@ function validContractSpot(spot: unknown): boolean {
   return typeof symbol === "string" && isPositiveNumber(price) && isIsoInstant(minute);
 }
 
-export function validateFuturesCurve(data: FuturesCurvePayload, root: string): FuturesCurvePayload {
+function validateFuturesCurve(data: FuturesCurvePayload, root: string): FuturesCurvePayload {
   if (!data || data.root !== root || !Array.isArray(data.contracts) || !Array.isArray(data.ghosts)
     || !isStringArray(data.gaps) || !data.catalogue || !data.slope || !isIsoInstant(data.fetchedAt)
     || !isNullableIsoInstant(data.asOf)
@@ -71,7 +71,7 @@ export function validateFuturesCurve(data: FuturesCurvePayload, root: string): F
 /** A live curve as every reader takes it: expiring on last trading days, its changes against the settlement shown. */
 const liveCurve = (data: FuturesCurvePayload) => withSettleChanges(withTradedExpirations(data));
 
-export async function fetchFuturesCurve(root: string, client: Pick<typeof apiClient, "getCloudFuturesCurve"> = apiClient): Promise<FuturesCurvePayload> {
+async function fetchFuturesCurve(root: string, client: Pick<typeof apiClient, "getCloudFuturesCurve"> = apiClient): Promise<FuturesCurvePayload> {
   const normalized = normalizeCurveRoot(root);
   if (!normalized) throw new Error(unsupportedCurveRootMessage(root));
   try { return liveCurve(validateFuturesCurve(await client.getCloudFuturesCurve(normalized), normalized)); }

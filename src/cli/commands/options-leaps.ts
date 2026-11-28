@@ -35,7 +35,7 @@ export const LEAPS_USAGE = "options <symbol...> --leaps [--side calls|puts] [--d
   + "[--min-oi <contracts>] [--min-days <days>] [--max-days <days>] [--expiry-from <date>] [--expiry-to <date>] "
   + "[--columns <list>] [--sort <order>]";
 
-export type LeapsSort = "carry" | "spread" | "oi" | "delta" | "expiry" | "symbol";
+type LeapsSort = "carry" | "spread" | "oi" | "delta" | "expiry" | "symbol";
 const LEAPS_SORTS: readonly LeapsSort[] = ["carry", "spread", "oi", "delta", "expiry", "symbol"];
 
 /** What `--columns` adds, in the order the table and the exports show them. */
@@ -254,7 +254,7 @@ export function parseLeapsCriteria(raw: Record<string, string | undefined>, now 
   return criteria;
 }
 
-export type LeapsRow = {
+type LeapsRow = {
   symbol: string;
   /** Expiry date, YYYY-MM-DD. */
   expiration: string;
@@ -406,7 +406,7 @@ function screenLeapsChain(
 }
 
 /** Rows in the screen's order; ties fall back to carry, then symbol, expiry and strike. */
-export function sortLeapsRows(rows: readonly LeapsRow[], sort: LeapsSort): LeapsRow[] {
+function sortLeapsRows(rows: readonly LeapsRow[], sort: LeapsSort): LeapsRow[] {
   const byCarry = (left: LeapsRow, right: LeapsRow) => left.extrinsicPerYearPercent - right.extrinsicPerYearPercent;
   const stable = (left: LeapsRow, right: LeapsRow) => left.symbol.localeCompare(right.symbol)
     || left.expiration.localeCompare(right.expiration) || left.strike - right.strike;

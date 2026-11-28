@@ -192,7 +192,7 @@ export async function loadOptionModelInputs(
 }
 
 /** The chain with each contract's modeled `iv` and `delta` added; every provider field is kept. */
-export function chainWithModelFigures(chain: OptionsChain, inputs: OptionModelInputs): OptionsChain {
+function chainWithModelFigures(chain: OptionsChain, inputs: OptionModelInputs): OptionsChain {
   const figures = optionModelFigures(chain, inputs);
   const add = (contract: OptionContract) => ({ ...contract, iv: figures.get(contract)?.iv ?? null, ivFilled: figures.get(contract)?.ivFilled ?? false,
     delta: figures.get(contract)?.delta ?? null });

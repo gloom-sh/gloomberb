@@ -57,7 +57,7 @@ export const AUCTION_ARCHIVE_PAGE_SIZE = 5000;
 /** Fiscal Data answers 400 to a larger page. */
 const FISCAL_DATA_MAX_PAGE_SIZE = 10_000;
 /** Three times the longest walk's pages; the bound only exists so bad metadata cannot loop. */
-export const AUCTION_MAX_PAGES = 12;
+const AUCTION_MAX_PAGES = 12;
 export const EMPTY_AUCTION_HISTORY = Symbol("empty auction history");
 export type AuctionHistory = TreasuryAuction[] | typeof EMPTY_AUCTION_HISTORY;
 
@@ -99,7 +99,7 @@ export function auctionArchiveBoundary(now = Date.now()): string {
 }
 
 /** `page[size]` brackets are percent-encoded; the API rejects some proxies otherwise. */
-export function buildAuctionsUrl(query: AuctionQuery, page = 1): string {
+function buildAuctionsUrl(query: AuctionQuery, page = 1): string {
   const filters = [`auction_date:gte:${query.from}`, ...(query.before ? [`auction_date:lt:${query.before}`] : [])];
   const params = [
     `fields=${FIELDS}`,
@@ -114,7 +114,7 @@ export function buildAuctionsUrl(query: AuctionQuery, page = 1): string {
 }
 
 /** Fiscal Data reports the page count as `meta["total-pages"]`. */
-export function totalPages(body: unknown, page = 1): number {
+function totalPages(body: unknown, page = 1): number {
   const { data, meta } = (body as { data?: unknown; meta?: Record<string, unknown> } | null) ?? {};
   const value = meta?.["total-pages"];
   if (page === 1 && value === 0 && meta?.count === 0 && meta["total-count"] === 0
@@ -161,7 +161,7 @@ export function inClearingOrder(auction: TreasuryAuction): TreasuryAuction {
   return next;
 }
 
-export function normalizeAuction(raw: unknown): TreasuryAuction | null {
+function normalizeAuction(raw: unknown): TreasuryAuction | null {
   if (!raw || typeof raw !== "object") return null;
   const record = raw as TreasuryAuctionRaw;
   const secType = (record.security_type ?? "").trim();
@@ -201,7 +201,7 @@ export function normalizeAuction(raw: unknown): TreasuryAuction | null {
   });
 }
 
-export function parseTreasuryAuctionsPayload(body: unknown): TreasuryAuction[] {
+function parseTreasuryAuctionsPayload(body: unknown): TreasuryAuction[] {
   const data = (body as { data?: unknown } | null)?.data;
   if (!Array.isArray(data)) return [];
   const seen = new Set<string>();
@@ -220,7 +220,7 @@ export function parseTreasuryAuctionsPayload(body: unknown): TreasuryAuction[] {
  * Pages overlap whenever an auction is announced mid-walk, so ids are deduped
  * across the whole run and not just within a payload.
  */
-export async function fetchAuctionPages(
+async function fetchAuctionPages(
   loadPage: (page: number) => Promise<unknown>,
 ): Promise<AuctionHistory> {
   const auctions: TreasuryAuction[] = [];

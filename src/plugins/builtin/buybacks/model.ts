@@ -106,7 +106,7 @@ export const closePoints = (data: BuybacksPayload) => data.history.map((row) => 
  * since a withheld session can fall anywhere before it. Null when nothing is
  * withheld.
  */
-export function boughtKnownFrom(data: BuybacksPayload): string | null {
+function boughtKnownFrom(data: BuybacksPayload): string | null {
   if (!data.lockedDays) return null;
   // Every session withheld: none of the history is known.
   return data.days.reduce((oldest, day) => day.date < oldest ? day.date : oldest, "9999-12-31");

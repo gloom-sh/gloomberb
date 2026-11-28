@@ -76,7 +76,7 @@ const EMPLOYMENT: Record<string, string> = {
 };
 
 /** "Full time" for FULL_TIME or full_time; a careers system's own word ("CDI", "Vollzeit") as written. Nothing for "other" or "unavailable". */
-export function employmentText(value: string | null | undefined): string | null {
+function employmentText(value: string | null | undefined): string | null {
   const text = value?.trim();
   if (!text || /^(?:other|unknown|unavailable|n\/?a|none)$/i.test(text)) return null;
   const known = EMPLOYMENT[text.toUpperCase().replace(/[\s-]+/g, "_")];

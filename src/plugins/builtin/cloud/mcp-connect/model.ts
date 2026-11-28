@@ -34,7 +34,7 @@ export const MCP_CLIENTS: readonly McpClient[] = [
  * own `/api` path, which only forwards to the public API and which an MCP
  * client outside the browser cannot use, so it gets the public endpoint.
  */
-export function mcpEndpointUrl(apiBaseUrl: string, pageOrigin: string | null): string {
+function mcpEndpointUrl(apiBaseUrl: string, pageOrigin: string | null): string {
   const base = apiBaseUrl.trim().replace(/\/+$/, "");
   if (pageOrigin && base === `${pageOrigin}/api`) return `${DEFAULT_API_URL}${MCP_ENDPOINT_PATH}`;
   return `${base}${MCP_ENDPOINT_PATH}`;

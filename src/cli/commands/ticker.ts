@@ -1345,7 +1345,7 @@ interface TickerReportCommonInput {
   hiddenSecFilings?: HiddenFilings;
 }
 
-export async function buildTickerReport({
+async function buildTickerReport({
   symbol,
   listingExchange,
   tickerFile,

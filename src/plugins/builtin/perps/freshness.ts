@@ -37,7 +37,7 @@ function paysText(rows: readonly Funded[], now: number): string | null {
  * What a view's funding figures are, so a reader does not take a venue's current estimate for a settled rate:
  * `funding = current estimate, pays 08:00 UTC`. With several bases each names its venues. Null when no row shows funding.
  */
-export function fundingNote(rows: readonly Funded[], now = Date.now()): string | null {
+function fundingNote(rows: readonly Funded[], now = Date.now()): string | null {
   const funded = rows.filter((row) => row.fundingRate != null || row.fundingRate8h != null);
   const kinds = KINDS.filter(([kind]) => funded.some((row) => row.fundingKind === kind));
   if (!kinds.length) return null;

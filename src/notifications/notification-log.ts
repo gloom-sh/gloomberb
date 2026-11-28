@@ -2,7 +2,7 @@ import { logFailure } from "../utils/log-failure";
 import type { AppPluginStateStorePort } from "../core/app-service-ports";
 import type { AppNotificationRequest } from "../types/plugin";
 
-export const NOTIFICATION_LOG_LIMIT = 300;
+const NOTIFICATION_LOG_LIMIT = 300;
 
 /**
  * The notices worth finding again after their toast is gone: a price alert or
@@ -177,10 +177,4 @@ export function markNotificationLogReadByRef(refIds: Iterable<string>): void {
   const wanted = new Set(refIds);
   if (wanted.size === 0) return;
   markNotificationLogRead(entries.filter((entry) => wanted.has(entry.refId)).map((entry) => entry.id));
-}
-
-export function resetNotificationLogForTest(): void {
-  entries = [];
-  store = null;
-  listeners.clear();
 }

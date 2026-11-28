@@ -35,7 +35,7 @@ function normalizeName(value: string): string {
 }
 
 /** Ambiguous manager names must remain unlinked, not choose the first search hit. */
-export function bestFundMatch(holderName: string, funds: Array<{ cik: string; name: string }>) {
+function bestFundMatch(holderName: string, funds: Array<{ cik: string; name: string }>) {
   const normalizedHolder = normalizeName(holderName);
   if (!normalizedHolder) return undefined;
   const unique = [...new Map(funds.map(fund => [fund.cik, fund])).values()];

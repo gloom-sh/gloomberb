@@ -179,8 +179,3 @@ export function useFrontContractReturns(
     // `version` re-reads the history cache as loads land.
   }, [candidates, contracts, enabled, quotes, version]);
 }
-
-/** Forgets every cached contract's history (tests). */
-export function resetFrontContractReturns(): void {
-  historyCache.clear();
-}

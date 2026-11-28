@@ -174,7 +174,7 @@ const NARROW_STEPS: { id: Exclude<NewsColumnId, "title">; width?: number }[] = [
 ];
 
 /** `timeZone` is the host's unless named, as the times are. */
-export function buildColumns(width: number, requestedIds: NewsColumnId[], timeZone?: string): NewsTableColumn[] {
+function buildColumns(width: number, requestedIds: NewsColumnId[], timeZone?: string): NewsTableColumn[] {
   const widths = { ...FIXED_COLUMN_WIDTHS };
   let columnIds = requestedIds;
 

@@ -41,14 +41,14 @@ const isoDate = (time: number): string => new Date(time).toISOString().slice(0, 
  * that many days back, no further than `DIRECT_LOOKBACK_DAYS`, up to a month
  * ahead. Both ends are inclusive.
  */
-export function directSearchRange(days: number, now = Date.now()): { startDate: string; endDate: string } {
+function directSearchRange(days: number, now = Date.now()): { startDate: string; endDate: string } {
   return {
     startDate: isoDate(now - Math.min(days, DIRECT_LOOKBACK_DAYS) * 86_400_000),
     endDate: isoDate(now + DIRECT_LOOKAHEAD_DAYS * 86_400_000),
   };
 }
 
-export function buildDirectSearchUrl(days: number, now = Date.now()): string {
+function buildDirectSearchUrl(days: number, now = Date.now()): string {
   const params = new URLSearchParams({
     ...directSearchRange(days, now),
     dateFieldName: "competitiveAuctionCloseDate",
@@ -75,7 +75,7 @@ function toNumber(value: unknown): number | null {
  * Fiscal Data's (CUSIP and auction date), so one auction in both feeds is one
  * row. Null for a record without a CUSIP, a type or the day bidding closes.
  */
-export function normalizeDirectAuction(raw: unknown): TreasuryAuction | null {
+function normalizeDirectAuction(raw: unknown): TreasuryAuction | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const record = raw as Record<string, unknown>;
   const cusip = text(record.cusip);
@@ -117,7 +117,7 @@ export function normalizeDirectAuction(raw: unknown): TreasuryAuction | null {
  * securities is a failure (an error page, a changed endpoint), never a quiet
  * period; a record it cannot identify is skipped.
  */
-export function parseDirectAuctions(body: unknown): TreasuryAuction[] {
+function parseDirectAuctions(body: unknown): TreasuryAuction[] {
   if (!Array.isArray(body)) throw new Error("TreasuryDirect securities search did not return a list of securities");
   const auctions = new Map<string, TreasuryAuction>();
   for (const raw of body) {

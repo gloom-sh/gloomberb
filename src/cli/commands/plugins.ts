@@ -152,7 +152,7 @@ function hostCovered(host: string, declared: readonly string[]): boolean {
  * Hosts are found by a regex over the source, so a page the plugin only opens
  * as a link is found too; gloom.json `linkHosts` names those.
  */
-export function pluginHostChecks(
+function pluginHostChecks(
   sources: readonly string[],
   exported: readonly string[],
   manifest: { hosts: readonly string[] | null; linkHosts: readonly string[] },

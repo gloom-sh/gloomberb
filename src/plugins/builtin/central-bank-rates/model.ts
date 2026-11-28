@@ -82,7 +82,7 @@ function seriesCitation(row: CentralBankRow): string | null {
  * from with its page, and its own observation date, then the bank's site when
  * that confirmed the level. `Bank Rate 3.75%, BIS series D.GB (https://...), as of 2026-10-05`.
  */
-export function policyCitation(row: CentralBankRow): string {
+function policyCitation(row: CentralBankRow): string {
   const series = seriesCitation(row);
   if (row.value == null) {
     const missing = hasNoPolicyRate(row) ? `${row.label}: ${row.instrument.toLowerCase()}`

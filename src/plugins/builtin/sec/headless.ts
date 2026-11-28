@@ -102,7 +102,7 @@ function fundFilingTextColumns(rows: readonly HeadlessPaneRow[]): HeadlessPaneCo
     .map((column) => column.key === "acceptanceReported" ? { ...column, minTableWidth: 100 } : column);
 }
 
-export interface SecHeadlessDependencies {
+interface SecHeadlessDependencies {
   loadFilings(
     symbol: string,
     limit: number,
@@ -125,7 +125,7 @@ const defaultDependencies: SecHeadlessDependencies = {
  * forms, such as a grantor trust (IBIT, GLD) filing 10-Ks and 10-Qs, says so
  * and where its filings are.
  */
-export function fundFilingsEmpty(symbol: string, searched: { count: number; complete: boolean }): string {
+function fundFilingsEmpty(symbol: string, searched: { count: number; complete: boolean }): string {
   if (searched.count === 0) return `No SEC filings found for ${symbol}.`;
   const forms = "prospectus, shareholder reports, N-CEN, N-PORT";
   const none = searched.complete
@@ -134,7 +134,7 @@ export function fundFilingsEmpty(symbol: string, searched: { count: number; comp
   return `${none} Its other filings: fn SEC ${symbol}.`;
 }
 
-export function createSecHeadless(dependencies: SecHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"rows"> {
+function createSecHeadless(dependencies: SecHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"rows"> {
   return {
     shape: "rows",
     freshness: { ...SEC_FILINGS, observedKey: "acceptedAt" },
@@ -233,7 +233,7 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
 
 export const secHeadless = createSecHeadless();
 
-export interface FundHeadlessDependencies extends SecHeadlessDependencies {
+interface FundHeadlessDependencies extends SecHeadlessDependencies {
   loadFacts(symbol: string, ctx: HeadlessPaneContext): Promise<FundFactsPayload>;
   loadAbroadProfile?(key: string, ctx: HeadlessPaneContext): Promise<FundAbroadProfile | null>;
   /** With `--tax-rate`: the Treasury par curve GC shows, for the muni/Treasury ratio; null when it cannot be read. */
@@ -311,7 +311,7 @@ function fundAbroadFactsResult(symbol: string, venue: string, facts: FundFactsPa
  * filings. Either part can fail or be empty without taking the other with it:
  * signed out, the facts still load and the filings say why they do not.
  */
-export function createFundHeadless(dependencies: FundHeadlessDependencies = defaultFundDependencies): HeadlessPaneDefinition<"bundle"> {
+function createFundHeadless(dependencies: FundHeadlessDependencies = defaultFundDependencies): HeadlessPaneDefinition<"bundle"> {
   return {
     shape: "bundle",
     freshness: { source: "Fund sponsors and SEC EDGAR", status: "not-a-feed", basis: "published fund data" },

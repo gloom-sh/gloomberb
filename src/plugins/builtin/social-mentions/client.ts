@@ -34,7 +34,7 @@ function validReddit(reddit: NonNullable<SocialMentionsPayload["reddit"]>): bool
 }
 
 /** Days ascending and unique, counts whole, stances in range, posts linking to X only. */
-export function validateSocialMentions(payload: SocialMentionsPayload, symbol: string, range: SocialMentionsRange): SocialMentionsPayload {
+function validateSocialMentions(payload: SocialMentionsPayload, symbol: string, range: SocialMentionsRange): SocialMentionsPayload {
   const days = payload?.x?.days;
   if (!payload || payload.symbol !== symbol || payload.range !== range || !Array.isArray(days)
     || days.some((row, i) => !isCalendarDay(row.day) || !isNonNegativeInt(row.mentions) || typeof row.closed !== "boolean"

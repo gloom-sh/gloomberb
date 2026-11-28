@@ -12,7 +12,7 @@ export interface BondDraft {
   endOfMonth: boolean;
 }
 
-export function defaultBondDraft(now = new Date()): BondDraft {
+function defaultBondDraft(now = new Date()): BondDraft {
   const settlement = now.toISOString().slice(0, 10);
   const maturity = new Date(now);
   maturity.setUTCFullYear(maturity.getUTCFullYear() + 5);

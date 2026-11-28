@@ -415,4 +415,5 @@ export const EXCHANGE_NOTATION: ExchangeNotation = {
   },
 }
 
+/** @knipignore Generated metadata constant. */
 export const EXCHANGE_NOTATION_VERSION = "c496447bd0bb1aa4"

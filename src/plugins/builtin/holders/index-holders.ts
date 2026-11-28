@@ -17,7 +17,7 @@ import { nonUsHolderCaveat } from "./report-header";
 export const HOLDER_ROWS_MAX = 200;
 
 /** One filer's position in the security, summed over the ticker's CUSIPs. */
-export interface IndexedHolder {
+interface IndexedHolder {
   cik: string;
   name: string;
   shares: number;
@@ -65,7 +65,7 @@ export function indexHolderTicker(
  * list the period's holders before its exits, so the list ends where the
  * holder count does.
  */
-export function indexedHolderPage(holdings: TickerHoldings): IndexedHolderList {
+function indexedHolderPage(holdings: TickerHoldings): IndexedHolderList {
   const byCik = new Map<string, IndexedHolder & { previousKnown: boolean }>();
   for (const row of holdings.rows) {
     const type = row.type.trim().toUpperCase();

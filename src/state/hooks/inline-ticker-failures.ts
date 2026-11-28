@@ -15,8 +15,8 @@
  */
 export type InlineTickerFailureKind = "unknown" | "error" | "ambiguous";
 
-export const INLINE_TICKER_UNKNOWN_RETRY_MS = 10 * 60_000;
-export const INLINE_TICKER_ERROR_RETRY_MS = 30_000;
+const INLINE_TICKER_UNKNOWN_RETRY_MS = 10 * 60_000;
+const INLINE_TICKER_ERROR_RETRY_MS = 30_000;
 
 const RETRY_DELAYS_MS: Record<InlineTickerFailureKind, number> = {
   unknown: INLINE_TICKER_UNKNOWN_RETRY_MS,
@@ -45,7 +45,7 @@ export interface InlineTickerFailureCache {
   reset(): void;
 }
 
-export function createInlineTickerFailureCache(): InlineTickerFailureCache {
+function createInlineTickerFailureCache(): InlineTickerFailureCache {
   const failures = new Map<string, CachedFailure>();
   let scope: unknown;
   let scoped = false;
@@ -93,8 +93,3 @@ export const inlineTickerResolutionFailures = createInlineTickerFailureCache();
 
 /** Tickers the provider could not quote. */
 export const inlineTickerQuoteFailures = createInlineTickerFailureCache();
-
-export function resetInlineTickerFailures(): void {
-  inlineTickerResolutionFailures.reset();
-  inlineTickerQuoteFailures.reset();
-}

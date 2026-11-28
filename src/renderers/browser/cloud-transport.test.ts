@@ -152,40 +152,48 @@ test.each(["device poll", "password reset email", "sign-out"] as const)("a pendi
 });
 
 test.each(["5xx", "offline", "timeout"] as const)("an inconclusive web boot (%s) releases panes and recovers the session", async (failure) => {
-  await withBrowserSession(async () => {
-    let reads = 0;
-    const held = Promise.withResolvers<Response>();
-    const recovered = Promise.withResolvers<void>();
-    const stop = apiClient.subscribeCurrentUser(() => {
-      if (apiClient.getCurrentUser()?.id === proUser.id) recovered.resolve();
-    });
-    globalThis.fetch = (async (url: string, init: RequestInit) => {
-      if (url !== sessionUrl) {
-        expect(init.credentials).toBe("omit");
-        return Response.json({});
+  const realSetTimeout = globalThis.setTimeout;
+  // Compress the 1 s session-revalidation retry timer so all 3 failure modes verify recovery without sleeping 3 s.
+  globalThis.setTimeout = ((fn: (...args: unknown[]) => void, delay?: number, ...args: unknown[]) =>
+    realSetTimeout(fn, typeof delay === "number" && delay >= 500 && delay <= 2_000 ? 20 : delay, ...args)) as typeof setTimeout;
+  try {
+    await withBrowserSession(async () => {
+      let reads = 0;
+      const held = Promise.withResolvers<Response>();
+      const recovered = Promise.withResolvers<void>();
+      const stop = apiClient.subscribeCurrentUser(() => {
+        if (apiClient.getCurrentUser()?.id === proUser.id) recovered.resolve();
+      });
+      globalThis.fetch = (async (url: string, init: RequestInit) => {
+        if (url !== sessionUrl) {
+          expect(init.credentials).toBe("omit");
+          return Response.json({});
+        }
+        expect(init.credentials).toBe("include");
+        reads += 1;
+        if (reads !== 1) return sessionResponse(proUser);
+        if (failure === "timeout") return held.promise;
+        if (failure === "offline") throw new TypeError("Failed to fetch");
+        return sessionResponse(null, 500);
+      }) as typeof fetch;
+      try {
+        await restoreBrowserCloudSession(failure === "timeout" ? 1 : 500);
+        expect(apiClient.isDisplayScopePending()).toBe(false);
+        expect(cloudDisplayScope()).toBe(JSON.stringify([null, false, false]));
+        expect(reads).toBe(1);
+        await browserCredentialedFetch(`${origin}/api/market/quote`);
+        if (failure === "timeout") held.resolve(sessionResponse(null, 500));
+        await withDeadline(recovered.promise, 2_500, "Session did not retry");
+        expect(reads).toBe(2);
+        expect(apiClient.isCookieIdentityUnavailable()).toBe(false);
+        expect(cloudDisplayScope()).toBe(JSON.stringify([proUser.id, true, true]));
+      } finally {
+        stop();
       }
-      expect(init.credentials).toBe("include");
-      reads += 1;
-      if (reads !== 1) return sessionResponse(proUser);
-      if (failure === "timeout") return held.promise;
-      if (failure === "offline") throw new TypeError("Failed to fetch");
-      return sessionResponse(null, 500);
-    }) as typeof fetch;
-    try {
-      await restoreBrowserCloudSession(failure === "timeout" ? 1 : 500);
-      expect(apiClient.isDisplayScopePending()).toBe(false);
-      expect(cloudDisplayScope()).toBe(JSON.stringify([null, false, false]));
-      expect(reads).toBe(1);
-      await browserCredentialedFetch(`${origin}/api/market/quote`);
-      if (failure === "timeout") held.resolve(sessionResponse(null, 500));
-      await withDeadline(recovered.promise, 2_500, "Session did not retry");
-      expect(reads).toBe(2);
-      expect(apiClient.isCookieIdentityUnavailable()).toBe(false);
-      expect(cloudDisplayScope()).toBe(JSON.stringify([proUser.id, true, true]));
-    } finally {
-      stop();
-    }
-  });
+    });
+  } finally {
+    globalThis.setTimeout = realSetTimeout;
+  }
 });
 
 test("a same-origin get-session 401 discards the cached user without a binding header", async () => {

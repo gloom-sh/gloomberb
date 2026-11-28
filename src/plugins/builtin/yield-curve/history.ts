@@ -131,7 +131,7 @@ export interface YieldCurveLookback {
  * back is seven calendar days; a month back is the same day of the previous
  * month, or its last day.
  */
-export function yieldCurveLookbackDate(asOf: string, id: YieldCurveLookbackId): string {
+function yieldCurveLookbackDate(asOf: string, id: YieldCurveLookbackId): string {
   if (id === "1D") return daysBefore(asOf, 1);
   if (id === "1W") return daysBefore(asOf, 7);
   const date = new Date(`${asOf}T00:00:00.000Z`);

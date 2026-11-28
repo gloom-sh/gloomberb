@@ -90,7 +90,7 @@ const MEMBER_COLUMNS: HeadlessPaneColumn[] = [
   { key: "pricedBuyCount", header: "Priced buys" },
 ];
 
-export interface CongressHeadlessDependencies {
+interface CongressHeadlessDependencies {
   loadHouse(
     args: HeadlessPaneLoadArgs,
     ctx: HeadlessPaneContext,
@@ -145,7 +145,7 @@ function emptyFilingWindow(payload: CloudCongressHousePayload, args: HeadlessPan
   return lines.join("\n");
 }
 
-export function createCongressHeadless(
+function createCongressHeadless(
   dependencies: CongressHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"rows"> {
   return {

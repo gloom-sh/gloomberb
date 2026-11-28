@@ -13,7 +13,7 @@ export function formatYieldChange(change: number): string {
   return formatBasisPoints(change);
 }
 
-export function buildYieldCurveSeries(points: readonly YieldPoint[]): CurveSeries {
+function buildYieldCurveSeries(points: readonly YieldPoint[]): CurveSeries {
   return {
     id: "treasury", label: "Treasury", asOf: curveAsOf(points),
     points: points.filter((point) => Number.isFinite(point.maturityYears) && point.maturityYears > 0)

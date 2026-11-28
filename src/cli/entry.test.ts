@@ -41,7 +41,7 @@ test("packaged UI launches plan the plugin restore before the TUI catalog and in
       }}));
       process.on("beforeExit", () => console.log(JSON.stringify(calls)));
     `);
-    for (const args of [[], ["ui"], ["launch-ui", "TV"], ["handoff"], ["help"]]) {
+    await Promise.all([[], ["ui"], ["launch-ui", "TV"], ["handoff"], ["help"]].map(async (args) => {
       const child = Bun.spawn([process.execPath, "--preload", preload, join(root, "bin/gloom"), ...args], {
         cwd: root, stdout: "pipe", stderr: "pipe",
       });
@@ -61,7 +61,7 @@ test("packaged UI launches plan the plugin restore before the TUI catalog and in
           "install",
         ]);
       }
-    }
+    }));
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -71,14 +71,13 @@ test("the entry loads installed commands on a miss and preserves inventories, al
   const root = join(import.meta.dir, "../..");
   const directory = await smokeDirectory();
   const pluginDirectory = join(directory, "plugins", "startup-check");
-  const marker = join(directory, "plugin-imports.txt");
   const config = createDefaultConfig(directory);
   try {
     await mkdir(pluginDirectory, { recursive: true });
     await Bun.write(join(directory, "config.json"), JSON.stringify(config));
     await Bun.write(join(pluginDirectory, "index.ts"), `
       import { appendFileSync } from "node:fs";
-      appendFileSync(${JSON.stringify(marker)}, "imported\\n");
+      appendFileSync(process.env.PLUGIN_IMPORT_MARKER!, "imported\\n");
       export default {
         id: "startup-check", name: "Startup check", version: "1.0.0",
         cliCommands: [{
@@ -92,53 +91,55 @@ test("the entry loads installed commands on a miss and preserves inventories, al
         }],
       };
     `);
+    let runCounter = 0;
     const run = async (args: string[]) => {
-      await rm(marker, { force: true });
+      const runMarker = join(directory, `plugin-imports-${++runCounter}.txt`);
       const child = Bun.spawn([process.execPath, join(root, "bin/gloom"), ...args, "--json"], {
         cwd: root, stdout: "pipe", stderr: "pipe",
-        env: { ...process.env, GLOOMBERB_HOME: directory, GLOOMBERB_NO_TELEMETRY: "1", DO_NOT_TRACK: "1" },
+        env: { ...process.env, GLOOMBERB_HOME: directory, PLUGIN_IMPORT_MARKER: runMarker, GLOOMBERB_NO_TELEMETRY: "1", DO_NOT_TRACK: "1" },
       });
       const timer = setTimeout(() => child.kill("SIGKILL"), 10_000);
       try {
         const [stdout, stderr, status] = await Promise.all([
           new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited,
         ]);
-        const imports = await Bun.file(marker).exists() ? (await readFile(marker, "utf8")).trim().split("\n").length : 0;
+        const imports = await Bun.file(runMarker).exists() ? (await readFile(runMarker, "utf8")).trim().split("\n").length : 0;
         return { stdout, stderr, status, imports };
       } finally {
         clearTimeout(timer);
       }
     };
-    for (const args of [["--version"], ["quote", "--help"], ["help", "quote"], ["notes", "--help"], ["catalog", "glossary", "SOFR"]]) {
-      const result = await run(args);
+    const [fastResults, cmdResults, helpResults, catalog, plugins, unknown] = await Promise.all([
+      Promise.all([["--version"], ["quote", "--help"], ["help", "quote"], ["notes", "--help"], ["catalog", "glossary", "SOFR"]].map(async (args) => ({ args, result: await run(args) }))),
+      Promise.all(["startup-check", "startup-alias"].map((command) => run([command, "hello"]))),
+      Promise.all([["help"], ["help", "startup-alias"], ["startup-check", "--help"]].map((args) => run(args))),
+      run(["catalog", "STARTUP"]),
+      run(["plugin", "list"]),
+      run(["not-a-startup-command"]),
+    ]);
+    for (const { args, result } of fastResults) {
       expect({ args, status: result.status, stderr: result.stderr, imports: result.imports })
         .toEqual({ args, status: 0, stderr: "", imports: 0 });
     }
-    for (const command of ["startup-check", "startup-alias"]) {
-      const result = await run([command, "hello"]);
+    for (const result of cmdResults) {
       expect({ status: result.status, stderr: result.stderr, imports: result.imports }).toEqual({ status: 0, stderr: "", imports: 1 });
       expect(JSON.parse(result.stdout).data).toEqual({ args: ["hello"] });
     }
-    for (const args of [["help"], ["help", "startup-alias"], ["startup-check", "--help"]]) {
-      const result = await run(args);
+    for (const result of helpResults) {
       expect({ status: result.status, stderr: result.stderr, imports: result.imports }).toEqual({ status: 0, stderr: "", imports: 1 });
       expect(result.stdout).toContain("Installed startup command");
     }
-    const catalog = await run(["catalog", "STARTUP"]);
     expect({ status: catalog.status, stderr: catalog.stderr, imports: catalog.imports }).toEqual({ status: 0, stderr: "", imports: 1 });
     expect(JSON.parse(catalog.stdout).data).toContainEqual(expect.objectContaining({ token: "STARTUP", defaultSettings: { installed: true } }));
-    const plugins = await run(["plugin", "list"]);
     expect({ status: plugins.status, stderr: plugins.stderr, imports: plugins.imports }).toEqual({ status: 0, stderr: "", imports: 1 });
     expect(JSON.parse(plugins.stdout).data).toContainEqual(expect.objectContaining({ id: "startup-check" }));
-    const unknown = await run(["not-a-startup-command"]);
     expect({ status: unknown.status, imports: unknown.imports }).toEqual({ status: 1, imports: 1 });
     expect(JSON.parse(unknown.stderr).error.message).toContain('Unknown command "not-a-startup-command"');
 
     await Bun.write(join(directory, "config.json"), JSON.stringify({ ...config, disabledPlugins: ["startup-check"] }));
-    const disabled = await run(["startup-check"]);
+    const [disabled, help] = await Promise.all([run(["startup-check"]), run(["help"])]);
     expect({ status: disabled.status, imports: disabled.imports }).toEqual({ status: 1, imports: 1 });
     expect(JSON.parse(disabled.stderr).error.message).toContain('Unknown command "startup-check"');
-    const help = await run(["help"]);
     expect(help.status).toBe(0);
     expect(help.stdout).not.toContain("Installed startup command");
   } finally {

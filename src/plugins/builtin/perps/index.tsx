@@ -11,7 +11,7 @@ import { VENUES } from "./model";
  * pane back to the market's history, whatever it was showing: the request is stamped onto the instance, so the pane
  * sees it even when nothing else about the instance changed. Without a market, the board.
  */
-export function perpsInstance(arg: string | undefined): PaneTemplateInstanceConfig {
+function perpsInstance(arg: string | undefined): PaneTemplateInstanceConfig {
   const market = arg?.trim() ?? "";
   if (!market) return { placement: "floating", settings: { market } };
   return { instanceId: `perps:${encodeURIComponent(market.toUpperCase()).replace(/%/g, "~")}`, placement: "floating",

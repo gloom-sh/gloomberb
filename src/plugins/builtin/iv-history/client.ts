@@ -224,7 +224,7 @@ export interface ScreenHv {
 const barDay = (value: Date) => new Date(value).toISOString().slice(0, 10);
 
 /** `ScreenHv` from daily closes; a provider that fell back to weekly or intraday bars would misstate daily HV, so it has none. */
-export function screenHv(history: readonly PricePoint[], window: number): ScreenHv {
+function screenHv(history: readonly PricePoint[], window: number): ScreenHv {
   if (realizedVolatilityCadenceIssue(history)) return { value: null, date: null, series: [] };
   const rolling = rollingRealizedVolatility(history, { windows: [window] });
   const series = rolling.flatMap((point) => {

@@ -34,7 +34,7 @@ const NO_CALENDAR_RETRY_MS = 5 * 60 * 1000;
 
 type CalendarRead = Pick<EconCalendarCacheEntry, "data" | "fetchedAt">;
 
-export interface PrintWatchDeps {
+interface PrintWatchDeps {
   now: () => number;
   /** Asks for the calendar; `force` skips a fresh cache. */
   load: (force: boolean) => Promise<CalendarRead>;
@@ -72,7 +72,7 @@ type PrintWatchContext = Pick<GloomPluginContext, "notify" | "showPane">;
  * compared: the watch's own, its idle look at the cache, and a pane's
  * refresh. The first read only records what has already printed.
  */
-export function startHighImpactPrintWatch(
+function startHighImpactPrintWatch(
   ctx: PrintWatchContext,
   overrides: Partial<PrintWatchDeps> = {},
 ): () => void {
@@ -216,7 +216,7 @@ export interface PrintRefresh {
   retainVisiblePane(): () => void;
 }
 
-export function createPrintRefresh(
+function createPrintRefresh(
   start: (ctx: PrintWatchContext) => () => void = startHighImpactPrintWatch,
 ): PrintRefresh {
   let host: PrintWatchContext | null = null;

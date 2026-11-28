@@ -3,7 +3,7 @@ import type { QuoteChangeBasis } from "../../../market-data/market/change-basis"
 import type { ExtendedSession } from "../../../market-data/market/status";
 
 export type AlertCondition = "above" | "below" | "crosses";
-export type AlertStatus = "active" | "triggered" | "expired";
+type AlertStatus = "active" | "triggered" | "expired";
 
 export interface AlertRule {
   id: string;

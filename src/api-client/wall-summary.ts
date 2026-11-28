@@ -12,7 +12,7 @@ export interface WallSummary {
 }
 
 /** Keep the optional public route at its counts-and-dates boundary even on a mismatched API. */
-export function parseWallSummary(value: unknown): WallSummary | null {
+function parseWallSummary(value: unknown): WallSummary | null {
   if (!value || typeof value !== "object") return null;
   const summary = value as Record<string, unknown>;
   if (summary.kind !== "counts" || !Array.isArray(summary.items) || summary.items.length === 0 || summary.items.length > 4) return null;

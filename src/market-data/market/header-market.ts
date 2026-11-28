@@ -66,7 +66,7 @@ const ZONE_BENCHMARKS: Readonly<Record<string, string>> = {
 };
 
 /** The benchmark the header shows before the user picks one, from the machine's time zone. */
-export function defaultHeaderBenchmark(timeZone: string | null | undefined): HeaderBenchmark {
+function defaultHeaderBenchmark(timeZone: string | null | undefined): HeaderBenchmark {
   const id = (timeZone && ZONE_BENCHMARKS[timeZone]) || DEFAULT_BENCHMARK_ID;
   return BENCHMARKS_BY_ID.get(id)!;
 }

@@ -159,7 +159,7 @@ function looksLikeSplit(ratio: number): boolean {
  * venue, a print no newer than the one before, either side in a split's
  * session, or a ratio a split would give.
  */
-export function moveSince(before: VisitObservation, after: VisitObservation): number | null {
+function moveSince(before: VisitObservation, after: VisitObservation): number | null {
   if (before.symbol !== after.symbol || before.currency !== after.currency
     || before.basis !== after.basis || before.venue !== after.venue) return null;
   if (before.split || after.split) return null;

@@ -195,7 +195,7 @@ function normalizeSource(value: unknown): ViewSource | null {
 }
 
 /** Fills defaults and drops junk without judging; `validateViewSpec` judges. */
-export function normalizeViewSpec(value: unknown): ViewSpec {
+function normalizeViewSpec(value: unknown): ViewSpec {
   const raw = isRecord(value) ? value : {};
   const projectionRaw = isRecord(raw.projection) ? raw.projection : {};
   const presentationRaw = isRecord(raw.presentation) ? raw.presentation : {};
@@ -228,7 +228,7 @@ export function normalizeViewSpec(value: unknown): ViewSpec {
   };
 }
 
-export function validateViewSpec(spec: ViewSpec): ViewSpecValidationResult {
+function validateViewSpec(spec: ViewSpec): ViewSpecValidationResult {
   const errors: ViewSpecIssue[] = [];
   const warnings: ViewSpecIssue[] = [];
   if (spec.version !== VIEW_SPEC_VERSION) {

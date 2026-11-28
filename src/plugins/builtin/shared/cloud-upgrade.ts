@@ -120,11 +120,6 @@ async function openCloudUpgradePage(page: CloudUpgradePage, open: () => Promise<
   settle(Date.now() + CLOUD_UPGRADE_REOPEN_MS);
 }
 
-/** Forgets every recent open, so one test's checkout does not swallow the next test's. */
-export function resetCloudUpgradeGuardForTests(): void {
-  cloudUpgradeBlockedUntil.clear();
-}
-
 function cloudUpgradeReturnTo(): string | undefined {
   return getCurrentPluginTarget() === "web" ? window.location.href : undefined;
 }

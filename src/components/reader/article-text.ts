@@ -42,7 +42,7 @@ const HEADER_LINES = 10;
 
 const WORD = /[\p{L}\p{N}][\p{L}\p{N}'’.,$%&/-]*/gu;
 
-export function countWords(text: string): number {
+function countWords(text: string): number {
   return text.match(WORD)?.length ?? 0;
 }
 
@@ -82,7 +82,7 @@ function endsWithAbbreviation(before: string): boolean {
  * and never before a digit, so "No. 5" and "Oct. 10" hold together. Unsure
  * cases stay one sentence: a missed break costs nothing in a reader.
  */
-export function splitSentences(text: string): string[] {
+function splitSentences(text: string): string[] {
   const sentences: string[] = [];
   const boundary = /([.!?\u2026]+["'\u201d\u2019)\]]*)\s+(?=["'\u201c\u2018(\[]?\p{Lu})/gu;
   let start = 0;
@@ -138,7 +138,7 @@ function balancedBreaks(counts: number[], groups: number): number[] {
  * `targetWords`, as even as the sentences allow. A paragraph within a third
  * of the target, or one long sentence, stays whole.
  */
-export function splitParagraph(text: string, targetWords = PARAGRAPH_TARGET_WORDS): string[] {
+function splitParagraph(text: string, targetWords = PARAGRAPH_TARGET_WORDS): string[] {
   const total = countWords(text);
   if (total <= Math.round(targetWords * 4 / 3)) return [text];
   const sentences = splitSentences(text);

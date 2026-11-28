@@ -69,7 +69,7 @@ function sessionColumns(view: CloudSessionMoversCategory) {
 
 const FLOAT_COLUMN: HeadlessPaneColumn = { key: "floatShares", header: "Float", align: "right", format: compact };
 
-export interface MarketMoversHeadlessDependencies {
+interface MarketMoversHeadlessDependencies {
   load(
     args: HeadlessPaneLoadArgs,
     tab: ScreenerTabId,
@@ -95,7 +95,7 @@ const defaultDependencies: MarketMoversHeadlessDependencies = {
   loadSession: (view, side, minFloat) => loadSessionMovers(view, side, { minFloat }),
 };
 
-export function createMarketMoversHeadless(
+function createMarketMoversHeadless(
   dependencies: MarketMoversHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"rows"> {
   return {

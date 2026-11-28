@@ -27,9 +27,9 @@ import { describeMoment, type GoogleCredentialResponse, type GoogleIdApi, type G
 export const ONE_TAP_EXPERIMENT = "web_terminal_one_tap";
 const ONE_TAP_ARM = "one_tap";
 /** On-screen time, with a function opened, before the visitor counts as using the terminal. */
-export const ONE_TAP_ON_SCREEN_MS = 60_000;
+const ONE_TAP_ON_SCREEN_MS = 60_000;
 /** How long a prompt that ended without a sign-in stays away. */
-export const ONE_TAP_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;
+const ONE_TAP_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;
 /** Prompts asked again after the terminal cancelled one for a dialog, per page. */
 const MAX_REPROMPTS = 2;
 

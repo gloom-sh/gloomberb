@@ -9,7 +9,7 @@ const EXHIBITS_LABEL = "Exhibits";
 const UNCLASSIFIED_LABEL = "No item listed";
 const BULLET_PREFIX = "• ";
 
-export interface FilingEventPerson {
+interface FilingEventPerson {
   name: string;
   detail: string;
 }
@@ -36,7 +36,7 @@ export interface FilingEventEntry {
   top: number;
 }
 
-export interface FilingEventsSection {
+interface FilingEventsSection {
   id: "news" | "also";
   title: string;
   entries: FilingEventEntry[];

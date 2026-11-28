@@ -23,7 +23,7 @@ export function groupIdFor(layout: Pick<SavedLayout, "origin">): TabGroupId {
  * folds every team, a team focus folds everything but that team, all folds
  * nothing.
  */
-export function focusCollapses(focus: TeamStoreSnapshot["focus"], groupId: TabGroupId): boolean {
+function focusCollapses(focus: TeamStoreSnapshot["focus"], groupId: TabGroupId): boolean {
   if (focus === "all") return false;
   if (focus === "personal") return groupId !== "personal";
   return groupId !== `team:${focus.teamId}`;

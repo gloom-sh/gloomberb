@@ -42,7 +42,7 @@ function requirementFor(paneId: string, layoutIds: readonly string[]): LayoutReq
  * plugin behind a dashed id; without one the id is cut at the colon, or shown
  * whole when it has none.
  */
-export function describeMissingPane({ paneType, requirement, fromTeam, canInstall, runsPlugins }: {
+function describeMissingPane({ paneType, requirement, fromTeam, canInstall, runsPlugins }: {
   paneType: string;
   requirement: LayoutRequirement | null;
   /** The pane arrived with a published team layout. */

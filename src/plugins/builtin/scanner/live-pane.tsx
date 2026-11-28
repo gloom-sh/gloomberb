@@ -104,7 +104,7 @@ const DISPLAY_ORDER = ["symbol", "name", "price", "change", "conditions", "rvol"
  * one (after the close none does, and an empty column would take the room of
  * the figures).
  */
-export function liveScanColumns(width: number, conditions: readonly LiveScanCondition[], withStatus: boolean): DataTableColumn[] {
+function liveScanColumns(width: number, conditions: readonly LiveScanCondition[], withStatus: boolean): DataTableColumn[] {
   const own = conditions.map((condition, index): DataTableColumn => {
     const label = conditionColumnLabel(condition);
     return { id: `c:${index}`, label, width: Math.max(8, label.length), align: "right" };
@@ -190,7 +190,7 @@ function sortMatches(
     .map(({ match }) => match);
 }
 
-export function liveScanEmptyState(payload: LiveScanPayload | null): { title: string; hint?: string } {
+function liveScanEmptyState(payload: LiveScanPayload | null): { title: string; hint?: string } {
   if (payload?.status === "starting") return { title: "The scanner is starting.", hint: "Matches appear within a minute." };
   if (payload?.status === "closed") return { title: "Nothing matched at the close.", hint: "The scan runs again at the open." };
   return { title: "Nothing matches right now." };

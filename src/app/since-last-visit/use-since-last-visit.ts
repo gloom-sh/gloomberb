@@ -42,7 +42,7 @@ const OFF_FUNCTION = "LASTVISIT-OFF";
 const SINCE_LAST_VISIT_OFF_MESSAGE = "Since Last Visit is off. Turn it on again from the command bar: Since Last Visit.";
 
 /** Who is signed in, as the visit is kept for: the API client unless a test says otherwise. */
-export interface VisitAccountSource {
+interface VisitAccountSource {
   subscribe(listener: () => void): () => void;
   currentId(): string | null;
 }

@@ -10,7 +10,7 @@ function wrappedRows(text: string, width: number): number {
  * (0). As many features from the top keep their description as leave a row for
  * every one below them; when not even the titles fit, the lowest ranked drop.
  */
-export function planProFeatureRows(budget: number, descriptionRows: readonly number[]): number[] {
+function planProFeatureRows(budget: number, descriptionRows: readonly number[]): number[] {
   const count = descriptionRows.length;
   if (budget < count) return descriptionRows.map((_, index) => (index < budget ? 1 : 0));
   let spare = budget - count;
@@ -29,7 +29,7 @@ export function planProFeatureRows(budget: number, descriptionRows: readonly num
  * with one cell between neighbours on a row. A button wider than the row still
  * gets a row of its own.
  */
-export function wrappedActionRows(widths: readonly number[], columns: number): number {
+function wrappedActionRows(widths: readonly number[], columns: number): number {
   let rows = 1;
   let used = 0;
   for (const width of widths) {

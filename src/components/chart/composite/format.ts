@@ -656,7 +656,7 @@ function sameAxisDomainValue(left: unknown, right: unknown): boolean {
  * and records one level down. A chart builds its axes again on every tick,
  * and they come out the same until the price leaves the range.
  */
-export function sameCompositeAxisDomain(left: CompositeAxisDomain, right: CompositeAxisDomain): boolean {
+function sameCompositeAxisDomain(left: CompositeAxisDomain, right: CompositeAxisDomain): boolean {
   if (left === right) return true;
   return sameFields(
     left as unknown as Record<string, unknown>,
@@ -805,7 +805,7 @@ export function formatCompositePointDetails(point: TimeSeriesPoint | null | unde
 }
 
 /** Compact tick label on the chart's clock, selected from the full visible chart span. */
-export function formatCompositeTimeAxisDate(date: Date, startTime: number, endTime: number, timeZone?: string): string {
+function formatCompositeTimeAxisDate(date: Date, startTime: number, endTime: number, timeZone?: string): string {
   const { wall, zone } = onClock(date, timeZone);
   if (!isIntradaySpan(startTime, endTime)) return utcDate(wall);
   const startDate = utcDate(onClock(new Date(startTime), timeZone).wall);

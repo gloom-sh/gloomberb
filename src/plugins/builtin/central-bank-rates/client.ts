@@ -6,7 +6,7 @@ import { createCloudEndpoint } from "../shared/cloud-resource";
 const urlOrNull = (value: unknown) => value === null || typeof value === "string" && /^https:\/\//.test(value);
 
 /** An incompatible deployment cannot turn missing dates or units into current policy rates. */
-export function validateCentralBankRates(payload: CentralBankRatesPayload): CentralBankRatesPayload {
+function validateCentralBankRates(payload: CentralBankRatesPayload): CentralBankRatesPayload {
   const invalid = () => { throw new Error("The server returned invalid central-bank observations"); };
   if (!payload || !Number.isFinite(Date.parse(payload.generatedAt)) || !["available", "partial", "unavailable"].includes(payload.status)
     || !Array.isArray(payload.rows) || !isStringArray(payload.gaps)) return invalid();
@@ -62,8 +62,6 @@ const centralBankRatesEndpoint = createCloudEndpoint<void, CentralBankRatesPaylo
 });
 
 export const centralBankRatesCache = centralBankRatesEndpoint.cache;
-export const fetchCentralBankRates = (client: Pick<typeof apiClient, "getCloudCentralBankRates"> = apiClient) =>
-  centralBankRatesEndpoint.fetch(undefined, { client });
 export const getCachedCentralBankRates = () => centralBankRatesEndpoint.cached();
 export const loadCentralBankRates = (force = false, client: Pick<typeof apiClient, "getCloudCentralBankRates"> = apiClient) =>
   centralBankRatesEndpoint.load(undefined, { force, client });

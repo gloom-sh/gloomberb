@@ -37,7 +37,7 @@ const PANE_DOCS: Readonly<Record<string, DocsTopic>> = {
 const SITE_DOCS_PREFIX = `${DOCS_SITE}/docs/`;
 
 /** The entry for a function: its own mnemonic, or the one its help card files it under. */
-export function docsTopicForFunction(fn: Pick<HelpFunction, "code" | "help">): DocsTopic {
+function docsTopicForFunction(fn: Pick<HelpFunction, "code" | "help">): DocsTopic {
   const target = fn.help?.docs ?? fn.code;
   if (!target.startsWith("https://")) return { kind: "function", code: target.toUpperCase() };
   if (target.startsWith(`${SITE_DOCS_PREFIX}functions#`)) {

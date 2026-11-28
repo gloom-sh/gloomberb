@@ -37,10 +37,10 @@ export interface RiskConversion {
 
 export const FX_UNAVAILABLE = "Foreign holdings: daily FX closes unavailable";
 export const FX_NO_PAIR = "Foreign holdings: no daily FX pair for this currency";
-export const FX_STALE = "Foreign holdings: daily FX history is stale";
-export const FX_GAP = "Foreign holdings: daily FX history has gaps longer than three days on the holding's dates";
+const FX_STALE = "Foreign holdings: daily FX history is stale";
+const FX_GAP = "Foreign holdings: daily FX history has gaps longer than three days on the holding's dates";
 export const FX_DISAGREES = "Foreign holdings: daily FX closes disagree with the current rate";
-export const LOCAL_GAP = "Foreign holdings: local daily history has a gap longer than a market holiday";
+const LOCAL_GAP = "Foreign holdings: local daily history has a gap longer than a market holiday";
 
 /**
  * Most FX trading days in a row (weekdays) a pair may go without a daily

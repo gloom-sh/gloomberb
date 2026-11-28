@@ -77,7 +77,7 @@ export function unreadForYou(snapshot: BadgeSnapshot): UnreadForYou {
  * nothing. Zero signed out. The status bar names the newest of those people
  * and counts the rest of the unread messages ({@link unreadTotal}).
  */
-export function unreadBadgeCount(snapshot: BadgeSnapshot, notices: readonly NotificationLogEntry[]): number {
+function unreadBadgeCount(snapshot: BadgeSnapshot, notices: readonly NotificationLogEntry[]): number {
   if (!snapshot.user && !snapshot.hasSavedSession) return 0;
   return unreadForYou(snapshot).people + unreadNotificationLogCount(notices);
 }

@@ -5,7 +5,7 @@ import { unavailableOnServer } from "../shared/cloud-resource";
 import type { BalanceRow, PriceForecast } from "./model";
 
 /** What the pane says while the server has no balances to serve: before its first read of USDA's files. */
-export const CROPS_NOT_AVAILABLE = "Crop balances are not available yet.";
+const CROPS_NOT_AVAILABLE = "Crop balances are not available yet.";
 
 export interface CommodityBalances {
   rows: BalanceRow[];

@@ -1,11 +1,11 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterAll, expect, test } from "bun:test";
 import { openSync, readSync, closeSync, statSync } from "fs";
 import { startWalCheckpointer, type WalCheckpointResult } from "./checkpointer";
 import { SqliteDatabase } from "./database";
 import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
 import { withDeadline } from "../../utils/async-deadline";
 
-afterEach(removeTempDbFiles);
+afterAll(removeTempDbFiles);
 
 /** Bumped each time a writer starts the WAL over, which only follows a checkpoint of all of it. */
 function walCheckpointSequence(dbPath: string): number {
@@ -21,7 +21,7 @@ function walCheckpointSequence(dbPath: string): number {
 
 // Past 1,000 pages SQLite copies the WAL into the database inside the commit
 // that crossed it: 150 ms to a second of frozen app, every few hundred writes.
-test("in the app, commits leave copying the WAL into the database to the checkpointer's thread", async () => {
+test.concurrent("in the app, commits leave copying the WAL into the database to the checkpointer's thread", async () => {
   const dbPath = createTempDbPath("checkpointer");
   let copiedWal!: (result: WalCheckpointResult) => void;
   const checkpoint = new Promise<WalCheckpointResult>((resolve) => { copiedWal = resolve; });
@@ -52,12 +52,12 @@ test("in the app, commits leave copying the WAL into the database to the checkpo
 // A thread stuck in a checkpoint sends no error event. The app's user writes
 // skip their flush while the checkpointer runs, so without a clock on its
 // answers they would go unflushed until the backstop checkpoint or close.
-test("a checkpointer stuck in a checkpoint gives the app's user writes their flush back", async () => {
+test.concurrent("a checkpointer stuck in a checkpoint gives the app's user writes their flush back", async () => {
   const dbPath = createTempDbPath("checkpointer-stuck");
   const database = new SqliteDatabase(dbPath, {
     interactive: true,
     checkpointer: {
-      stuckAfterMs: 300,
+      stuckAfterMs: 100,
       // Opens, then never answers a checkpoint.
       workerSource: `self.onmessage = (event) => { if (event.data.type === "open") postMessage({ type: "ready" }); };`,
     },
@@ -74,7 +74,7 @@ test("a checkpointer stuck in a checkpoint gives the app's user writes their flu
     // pending Windows queues writes, so wait for the watchdog, not a probe write.
     expect(userWriteLevel()).toBe(1);
     const deadline = performance.now() + 5_000;
-    while (pragma("wal_autocheckpoint") !== 1_000 && performance.now() < deadline) await Bun.sleep(50);
+    while (pragma("wal_autocheckpoint") !== 1_000 && performance.now() < deadline) await Bun.sleep(10);
     expect(pragma("wal_autocheckpoint")).toBe(1_000);
     expect(userWriteLevel()).toBe(2);
   } finally {
@@ -102,17 +102,17 @@ const slowCheckpointWorker = (ms: number) => `
 // Commits of cached data ask for a late checkpoint, so each flush (a window
 // in which the app's commits wait on Windows) comes rarely; a commit of user
 // data asks for the usual one and must not wait out the late one.
-test("a checkpoint asked for soon comes forward, one asked for later does not push it back, and its length is told", async () => {
-  const checkpointer = startWalCheckpointer("unused.db", () => {}, { workerSource: slowCheckpointWorker(200) })!;
+test.concurrent("a checkpoint asked for soon comes forward, one asked for later does not push it back, and its length is told", async () => {
+  const checkpointer = startWalCheckpointer("unused.db", () => {}, { workerSource: slowCheckpointWorker(80) })!;
   const idle = new Promise<void>((resolve) => { checkpointer.onIdle(resolve); });
   try {
     checkpointer.nudge(30_000);
-    await Bun.sleep(100);
+    await Bun.sleep(40);
     expect(checkpointer.busy()).toBe(false);
 
-    checkpointer.nudge(50);
+    checkpointer.nudge(25);
     checkpointer.nudge(30_000);
-    await Bun.sleep(150);
+    await Bun.sleep(60);
     expect(checkpointer.busy()).toBe(true);
     await withDeadline(idle, 3_000, "The checkpoint never ended");
     expect(checkpointer.busy()).toBe(false);
@@ -123,7 +123,7 @@ test("a checkpoint asked for soon comes forward, one asked for later does not pu
 
 // A stream of cached quotes commits every few hundred ms. Each flush it set
 // off a second later was a window in which Windows held the app's commits.
-test("in the app, commits of cached data alone ask for a late flush, and a commit of user data for the usual one", async () => {
+test.concurrent("in the app, commits of cached data alone ask for a late flush, and a commit of user data for the usual one", async () => {
   const dbPath = createTempDbPath("checkpointer-lazy");
   let checkpoints = 0;
   const database = new SqliteDatabase(dbPath, { interactive: true, checkpointer: { onCheckpoint: () => { checkpoints += 1; } } });
@@ -131,12 +131,12 @@ test("in the app, commits of cached data alone ask for a late flush, and a commi
   try {
     connection.exec("CREATE TABLE rows (k INTEGER PRIMARY KEY)");
     access.writeCache("cache write", () => { connection.exec("INSERT INTO rows DEFAULT VALUES"); });
-    await Bun.sleep(1_500);
+    await Bun.sleep(1_300);
     expect(checkpoints).toBe(0);
 
     access.write("user write", () => { connection.exec("INSERT INTO rows DEFAULT VALUES"); });
     const deadline = performance.now() + 5_000;
-    while (checkpoints === 0 && performance.now() < deadline) await Bun.sleep(50);
+    while (checkpoints === 0 && performance.now() < deadline) await Bun.sleep(15);
     expect(checkpoints).toBe(1);
   } finally {
     database.close();

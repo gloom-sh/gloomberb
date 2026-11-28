@@ -100,7 +100,7 @@ interface ChatSearchSource {
  * the Chat pane already keeps: nothing is asked of the server. Signed out or
  * unverified there is nothing, and the Chat pane command is all there is.
  */
-export function buildChatSearchRows(
+function buildChatSearchRows(
   ctx: OpenChatPane,
   query: string,
   source: ChatSearchSource = chatController,

@@ -59,7 +59,7 @@ function shiftDays(day: string, days: number): string {
  * listing older than that, one the calendar does not have, or one whose
  * symbol two deals on its exchange share.
  */
-export async function loadListingIpo(
+async function loadListingIpo(
   client: Pick<HeadlessPaneApiClient, "getCloudIpoCalendar">,
   listing: { symbol: string; exchange?: string | null },
   { signal, now = new Date() }: { signal?: AbortSignal; now?: Date } = {},

@@ -152,7 +152,7 @@ function sameUsdPeriod(row: FinancialStatement, date: string): boolean {
 }
 
 /** A vendor's quarterly rows with a gap for each fourth quarter SEC's filings contradict. */
-export function withCheckedFourthQuarters(
+function withCheckedFourthQuarters(
   vendor: { annualStatements: readonly FinancialStatement[]; quarterlyStatements: readonly FinancialStatement[] },
   checks: readonly SecFourthQuarter[],
 ): FinancialStatement[] {

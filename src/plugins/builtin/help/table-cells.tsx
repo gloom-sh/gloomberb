@@ -37,7 +37,7 @@ export function badgeColumnWidth(
  * cut ("Ctrl+Hor") is left out instead, so what shows is always a real key; the
  * first chip stays whatever the width.
  */
-export function wholeBadges(labels: readonly string[], width: number): readonly string[] {
+function wholeBadges(labels: readonly string[], width: number): readonly string[] {
   let count = Math.min(1, labels.length);
   while (count < labels.length && badgeGroupWidth(labels.slice(0, count + 1)) <= width) count += 1;
   return labels.slice(0, count);

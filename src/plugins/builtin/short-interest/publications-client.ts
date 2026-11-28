@@ -31,7 +31,7 @@ function validateEnvelope(payload: ShortSidePublication<unknown>, symbol: string
 }
 
 /** Reject mixed symbols, duplicate identities and inconsistent category totals; preserve missing values. */
-export function validatePublication(payload: PublicationPayload, symbol: string, kind: PublicationKind): PublicationPayload {
+function validatePublication(payload: PublicationPayload, symbol: string, kind: PublicationKind): PublicationPayload {
   const invalid = () => { throw new Error(`The server returned invalid ${kind === "ftd" ? "fails-to-deliver" : "weekly off-exchange volume"} history`); };
   if (!validateEnvelope(payload, symbol)) return invalid();
   let previous = "";

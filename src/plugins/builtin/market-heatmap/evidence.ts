@@ -41,7 +41,7 @@ interface HeatmapEvidenceInput {
   retained: boolean;
 }
 
-export function marketHeatmapEvidence({ tab, sizedBy, tiles, assets, grouped, loading, retained }: HeatmapEvidenceInput): MarketHeatmapEvidence {
+function marketHeatmapEvidence({ tab, sizedBy, tiles, assets, grouped, loading, retained }: HeatmapEvidenceInput): MarketHeatmapEvidence {
   const drawn = new Set(tiles.map((tile) => tile.item.id));
   const sectors = grouped
     ? new Set(tiles.flatMap((tile) => (tile.item.data.sector ? [tile.item.data.sector] : []))).size

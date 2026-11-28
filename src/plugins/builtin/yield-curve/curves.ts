@@ -223,7 +223,7 @@ const RELATIVE = /^(\d{1,2})([DWMY])$/i;
 const COMPARE_FORMS = `Compare with a date as ${DATE_OPTION_FORMATS}, or a span such as 1D, 1W, 3M or 1Y`;
 
 /** A span back from the session (1D, 1W, 3M, 1Y): what the compare field takes besides a date. */
-export function isCompareSpan(value: string): boolean {
+function isCompareSpan(value: string): boolean {
   const match = value.trim().match(RELATIVE);
   return match != null && Number(match[1]) > 0;
 }

@@ -70,7 +70,7 @@ export function fearGreedReport(result: FearGreedLoadResult): HeadlessBundleResu
   };
 }
 
-export interface FearGreedHeadlessDependencies {
+interface FearGreedHeadlessDependencies {
   load(args: HeadlessPaneLoadArgs, signal: AbortSignal): Promise<FearGreedLoadResult>;
 }
 
@@ -80,7 +80,7 @@ const defaultDependencies: FearGreedHeadlessDependencies = {
   })),
 };
 
-export function createFearGreedHeadless(
+function createFearGreedHeadless(
   dependencies: FearGreedHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"bundle"> {
   return {

@@ -129,7 +129,7 @@ export function formatShare(share: number): string {
 
 
 /** "3d", "6w", "4mo" from an ISO date, with a `+` when the date is a floor. */
-export function formatAge(posted: string | null, precision: string | null, now = new Date()): string {
+function formatAge(posted: string | null, precision: string | null, now = new Date()): string {
   if (!posted) return "";
   const days = Math.max(0, Math.round((now.getTime() - utcDate(posted).getTime()) / 86_400_000));
   const text = days < 1 ? "today" : days < 14 ? `${days}d` : days < 60 ? `${Math.round(days / 7)}w` : `${Math.round(days / 30)}mo`;

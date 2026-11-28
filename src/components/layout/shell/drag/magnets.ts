@@ -59,7 +59,7 @@ const GLIDE_RATE = 35;
 /** How far back the pointer's speed is read, ms: a few frames. */
 const SPEED_WINDOW_MS = 64;
 /** How long the pointer rests before the magnets catch where it stopped, ms. */
-export const MAGNET_REST_MS = 80;
+const MAGNET_REST_MS = 80;
 /**
  * The same in the terminal, which hears from the pointer only as it enters
  * another cell: a hand placing a window there crosses five or so a second, so

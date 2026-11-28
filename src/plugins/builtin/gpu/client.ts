@@ -74,7 +74,7 @@ const validEvidence = (row: Record<string, any>) => provenance(row.provenance) &
   && [row.evidenceUrl, row.sourceUrl].every((value) => value === undefined || value === null || typeof value === "string" && /^https?:\/\//.test(value));
 
 /** Account and plan transitions must never reuse a full-history cache as a free preview. */
-export const gpuCacheScope = cloudDisplayScope;
+const gpuCacheScope = cloudDisplayScope;
 
 function readGpuResource<T>(cache: ReturnType<typeof createPluginCache<T>>, key: string, validate: (data: T) => T) {
   const scope = gpuCacheScope();
@@ -178,7 +178,7 @@ export async function fetchGpuEvents(gpuModel?: string, client: Pick<GpuApi, "ge
 }
 
 export const getCachedGpuBoard = () => readGpuResource(gpuBoardCache, "board", validateBoard);
-export const getCachedGpuHistory = (seriesId: string) => readGpuResource(gpuHistoryCache, `series:${seriesId}`, validateHistory);
+const getCachedGpuHistory = (seriesId: string) => readGpuResource(gpuHistoryCache, `series:${seriesId}`, validateHistory);
 export const getCachedGpuReferences = () => readGpuResource(gpuHistoryCache, "reference-catalog", validateHistory);
 export const getCachedGpuEvents = (gpuModel?: string) => readGpuResource(gpuEventsCache, gpuModel ?? "all", validateEvents);
 export const loadGpuBoard = (force = false) => loadGpuResource(gpuBoardCache, "board", () => fetchGpuBoard(), force, validateBoard);

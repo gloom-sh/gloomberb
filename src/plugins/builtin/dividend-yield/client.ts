@@ -40,8 +40,7 @@ function unavailableDividendSummary(triedAt?: string, { forward = false, payDate
 }
 export const INCOMPLETE_DIVIDEND_HISTORY = incompleteDividendHistory();
 export const MISSING_DIVIDEND_CURRENCY = "Dividend currency is unavailable; cash amounts cannot be compared safely.";
-export const UNAVAILABLE_DIVIDEND_SUMMARY = unavailableDividendSummary();
-export const INVALID_DIVIDEND_SUMMARY_DATE = "Invalid dividend summary date.";
+const INVALID_DIVIDEND_SUMMARY_DATE = "Invalid dividend summary date.";
 
 /** The forward rate a listing's fundamentals state: the annual rate, in the major unit of `currency`, and the ex-date it annualizes. */
 interface StatedForwardRate {

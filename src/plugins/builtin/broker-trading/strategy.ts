@@ -99,7 +99,7 @@ function parseLeg(leg: { contract?: BrokerContractRef; contractSymbol?: string; 
 type NamedLeg = { contract?: BrokerContractRef; contractSymbol?: string; action: Side; ratio: number };
 
 /** "AAPL call vertical", "SPY iron condor", or "AAPL 3-leg spread" when the shape has no common name. */
-export function strategyName(legs: readonly NamedLeg[]): string {
+function strategyName(legs: readonly NamedLeg[]): string {
   const underlying = parseLeg(legs[0] ?? { action: "BUY", ratio: 1 })?.underlying;
   return [underlying, strategyShape(legs)].filter(Boolean).join(" ");
 }

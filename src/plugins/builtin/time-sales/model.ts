@@ -11,9 +11,9 @@ export function tapeTimeKey(value: string): string {
 export const tapeTime = (value: string | null) => value ? value.replace("T", " ").replace(/Z$/, "") : MISSING_VALUE;
 /** Footer and session stamps read to the second; row detail keeps the exact SIP nanoseconds. */
 const tapeTimeSeconds = (value: string | null) => tapeTime(value).replace(/\.\d+$/, "");
-export const tapeClock = (value: string) => value.slice(11).replace(/Z$/, "");
+const tapeClock = (value: string) => value.slice(11).replace(/Z$/, "");
 /** Tape rows read at millisecond precision; the row detail keeps the exact SIP nanoseconds. */
-export const tapeClockMs = (value: string) => tapeClock(value).replace(/(\.\d{3})\d+$/, "$1");
+const tapeClockMs = (value: string) => tapeClock(value).replace(/(\.\d{3})\d+$/, "$1");
 /** Fixed decimals keep a column aligned: pass one digit count for the prices shown together. */
 export const tapePrice = (value: number | null, digits?: number) => value == null ? MISSING_VALUE
   : value.toLocaleString("en-US", { minimumFractionDigits: digits ?? 2, maximumFractionDigits: digits ?? 4 });

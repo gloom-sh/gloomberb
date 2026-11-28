@@ -11,7 +11,7 @@ import { logFailure } from "../utils/log-failure";
  */
 
 /** The most warnings remembered; the one opened longest ago is forgotten first. */
-export const SEEN_PANE_NOTICE_LIMIT = 200;
+const SEEN_PANE_NOTICE_LIMIT = 200;
 
 const STATE_OWNER = "core.pane-notices";
 const STATE_KEY = "seen";
@@ -92,7 +92,7 @@ export function attachSeenPaneNotices(pluginState: Pick<AppPluginStateStorePort,
 }
 
 /** Whether every one of these warnings has been opened: false for none at all. */
-export function arePaneNoticesSeen(notices: readonly string[]): boolean {
+function arePaneNoticesSeen(notices: readonly string[]): boolean {
   if (notices.length === 0) return false;
   const known = new Set(seen);
   return notices.every((notice) => known.has(noticeId(notice)));

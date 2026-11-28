@@ -37,7 +37,7 @@ export function chartInterventionPair(spec: ChartSpec): FxInterventionPair | nul
  * nearest UTC day, since one is stamped at a venue's midnight (23:00Z for
  * London's in summer).
  */
-export function interventionChartEvents(
+function interventionChartEvents(
   markers: readonly FxInterventionMarker[],
   barTimes: readonly number[],
   daily = true,

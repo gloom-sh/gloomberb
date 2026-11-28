@@ -51,7 +51,7 @@ interface HistoryRow {
 }
 
 /** A line as History draws it. */
-export function alertHistoryLine(row: AlertHistoryRow): HistoryRow {
+function alertHistoryLine(row: AlertHistoryRow): HistoryRow {
   const figure = formatAlertHistoryValue(row.value, row.kind, row.unit ?? "");
   const owesFigure = owesAlertFigure(row);
   return {
@@ -78,7 +78,7 @@ export function alertHistoryLine(row: AlertHistoryRow): HistoryRow {
  * line without one leaves the cell empty, which is no placeholder to a
  * capture, and neither column is marked as one that may be blank.
  */
-export function alertHistoryColumns(width: number): DataTableColumn[] {
+function alertHistoryColumns(width: number): DataTableColumn[] {
   return [
     { id: "time", label: "Time (UTC)", width: 16, align: "left" },
     { id: "kind", label: "Event", width: 15, align: "left" },
@@ -101,7 +101,7 @@ export function alertHistoryColumns(width: number): DataTableColumn[] {
  * that owes the figure, so its dash is a gap and its figure fills the column,
  * and one on every other line, words or dash.
  */
-export function alertHistoryCell(item: HistoryRow, column: Pick<DataTableColumn, "id">, selected: boolean): DataTableCell {
+function alertHistoryCell(item: HistoryRow, column: Pick<DataTableColumn, "id">, selected: boolean): DataTableCell {
   if (column.id === "value") {
     return {
       text: item.value || MISSING_VALUE,

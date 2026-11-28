@@ -34,7 +34,7 @@ function isSession(date: string): boolean {
 }
 
 /** US sessions after `date` up to and including `through`: how far behind that session a reading is. */
-export function sessionsBehind(date: string, through: string): number {
+function sessionsBehind(date: string, through: string): number {
   const end = Date.parse(`${through}T00:00:00Z`);
   let behind = 0;
   for (let time = Date.parse(`${date}T00:00:00Z`) + DAY_MS; time <= end; time += DAY_MS) {
@@ -62,7 +62,7 @@ const HV_MAX_SESSIONS_APART = 3;
  * `HV_MAX_SESSIONS_APART` sessions of it; null before the series starts or when the
  * nearest HV is older than that.
  */
-export function hvOn(hv: ScreenHv, date: string): { date: string; value: number } | null {
+function hvOn(hv: ScreenHv, date: string): { date: string; value: number } | null {
   for (let index = hv.series.length - 1; index >= 0; index -= 1) {
     const [sessionDate, value] = hv.series[index]!;
     if (sessionDate <= date) return sessionsBehind(sessionDate, date) <= HV_MAX_SESSIONS_APART ? { date: sessionDate, value } : null;
@@ -83,7 +83,7 @@ const STALE_NOTE_LIMIT = 5;
  * The stale readings, dated, and what that leaves out, in one wording for HIVG and VCA: "Stale, left
  * out of rank: IV 1Y ATM 2025-01-17 (over 5 sessions behind)." The list stops at five, then "N more".
  */
-export function staleReadingsNote(leftOut: string, items: ReadonlyArray<{ label: string; date: string }>): string | null {
+function staleReadingsNote(leftOut: string, items: ReadonlyArray<{ label: string; date: string }>): string | null {
   if (!items.length) return null;
   const listed = items.slice(0, STALE_NOTE_LIMIT).map((item) => `${item.label} ${item.date}`);
   const more = items.length - listed.length;
@@ -145,7 +145,7 @@ function underlyingStill(closes: ReadonlyMap<string, number>, days: readonly str
  * 9.4%, on a flat session. A shock (SPY on 2024-08-05, down 2.9%) keeps its
  * rank. The newest close has no next one, so is never judged.
  */
-export function offMarketSessions(series: readonly IvPoint[], prices: readonly PricePoint[]): Set<string> {
+function offMarketSessions(series: readonly IvPoint[], prices: readonly PricePoint[]): Set<string> {
   const iv = series.filter((point) => point.method === "trade-close" && point.iv30 != null && point.iv30 > 0)
     .sort((a, b) => a.sessionDate.localeCompare(b.sessionDate));
   const closes = new Map(prices.map((price) => [day(price.date), price.close] as const));
@@ -291,7 +291,7 @@ const day = (value: Date | string) => typeof value === "string" ? value.slice(0,
 const utc = (date: string) => new Date(`${date}T00:00:00Z`);
 
 /** Midrank percentile of value within samples, 0 to 100; null below the minimum. */
-export function midrankPercentile(samples: readonly number[], value: number, minimum = MIN_RANK_SAMPLES): number | null {
+function midrankPercentile(samples: readonly number[], value: number, minimum = MIN_RANK_SAMPLES): number | null {
   if (samples.length < minimum) return null;
   let below = 0, equal = 0;
   for (const sample of samples) {
@@ -469,7 +469,7 @@ function riskReversalRow(stats: IvRiskReversalStats): IvStatRow {
  * is read for what it is; "25D RR percentile needs 20 sessions; 12 so far" below
  * the minimum. Null once a year is in, or with no risk reversal.
  */
-export function riskReversalSessionsNote(stats: IvRiskReversalStats | null | undefined): string | null {
+function riskReversalSessionsNote(stats: IvRiskReversalStats | null | undefined): string | null {
   if (!stats || stats.fullYear) return null;
   if (stats.percentile == null) return `25D RR percentile needs ${stats.minSamples} prior sessions; ${stats.samples} so far.`;
   return `25D RR percentile rests on ${stats.samples} session${stats.samples === 1 ? "" : "s"}${
@@ -570,7 +570,7 @@ export function richCheapDates(rows: readonly RichCheapRow[]): RichCheapDates {
 }
 
 /** Rich or cheap against the symbol's own year: IV30 percentile at or above 80, or at or below 20. */
-export function verdictFor(percentile: number | null): RichCheap {
+function verdictFor(percentile: number | null): RichCheap {
   if (percentile == null) return null;
   return percentile >= RICH_PERCENTILE ? "rich" : percentile <= CHEAP_PERCENTILE ? "cheap" : "fair";
 }

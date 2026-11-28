@@ -71,7 +71,7 @@ function holidays(year: number): ReadonlyMap<string, string> {
 }
 
 /** The holiday a day (`YYYY-MM-DD`) closes the US bond market for, or null for a trading day or a weekend. */
-export function usBondMarketHoliday(date: string): string | null {
+function usBondMarketHoliday(date: string): string | null {
   const year = Number(date.slice(0, 4));
   return Number.isInteger(year) ? holidays(year).get(date.slice(0, 10)) ?? null : null;
 }

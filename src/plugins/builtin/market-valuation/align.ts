@@ -1,7 +1,7 @@
 import { indicatorUnavailableReason, type IndicatorDef, type SeriesDef } from "./defs";
 import { validateObservationDates, type DatedSeries } from "./series";
 
-export interface ScaledObs {
+interface ScaledObs {
   date: string;
   value: number | null;
 }
@@ -64,7 +64,7 @@ function scaleObservations(def: SeriesDef, data: DatedSeries): ScaledObs[] {
  * Carries a low-frequency denominator across the numerator's dates, interpolating
  * between prints and holding the last one flat past the final release.
  */
-export function alignToDenominator(
+function alignToDenominator(
   indicator: IndicatorDef,
   numerator: readonly ScaledObs[],
   denominator: readonly ScaledObs[],

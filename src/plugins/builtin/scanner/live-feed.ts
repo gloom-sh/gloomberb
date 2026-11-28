@@ -8,8 +8,8 @@ import { deleteSavedCopy, readSavedCopy, writeSavedCopy, type SavedCopy, type Sa
 import { errorMessage } from "../../../utils/errors";
 
 /** Where a live scan pane reads its scans; absent, Gloom Cloud. */
-export type LiveScanClient = Pick<typeof apiClient, "getLiveScan">;
-export const LiveScanClientContext = createContext<LiveScanClient | null>(null);
+type LiveScanClient = Pick<typeof apiClient, "getLiveScan">;
+const LiveScanClientContext = createContext<LiveScanClient | null>(null);
 
 /** Never ask more often than this, whatever the snapshot's refresh says. */
 const MIN_POLL_MS = 5_000;
@@ -23,7 +23,7 @@ const FAILED_POLL_MS = 30_000;
  * When to ask again: when the snapshot behind the answer is next refreshed,
  * a little after so the next answer is a new one.
  */
-export function nextLiveScanPoll(payload: LiveScanPayload | null, failed: boolean, now: number): number {
+function nextLiveScanPoll(payload: LiveScanPayload | null, failed: boolean, now: number): number {
   if (failed || !payload) return FAILED_POLL_MS;
   if (payload.status === "starting") return STARTING_POLL_MS;
   if (payload.status === "closed") return CLOSED_POLL_MS;
@@ -57,7 +57,7 @@ const realTimers: Timers = {
  * A new definition drops the old answer and asks at once; stopping keeps the
  * last answer on screen. Only the newest request may answer.
  */
-export class LiveScanPoller {
+class LiveScanPoller {
   private definition: LiveScanWireDefinition | null = null;
   private key = "";
   private savedKey: SavedCopyKey | null = null;

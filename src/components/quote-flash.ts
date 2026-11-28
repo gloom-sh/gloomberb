@@ -36,7 +36,7 @@ interface FlashState {
  * Per-symbol flash bookkeeping. Each symbol flashes on its own clock, so one
  * symbol's tick never cuts another symbol's flash short.
  */
-export class QuoteFlashTracker {
+class QuoteFlashTracker {
   private readonly previousPrices = new Map<string, number>();
   private readonly flashes = new Map<string, FlashState>();
 

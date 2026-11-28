@@ -2,7 +2,7 @@ import { colors } from "../../../theme/colors";
 import { blendHex, contrastRatio } from "../../../theme/color-utils";
 
 /** A cross that moved at least this many percent from its previous close earns the step. */
-export const TINT_THRESHOLDS = [0.05, 0.15, 0.3, 0.6, 1] as const;
+const TINT_THRESHOLDS = [0.05, 0.15, 0.3, 0.6, 1] as const;
 /**
  * A step holds until the move falls this far below the threshold that earned
  * it: a fifth of the threshold, and never less than 0.02% (about 2 pips on
@@ -36,7 +36,7 @@ export function crossMovePercent(
  * boundary does not flicker between two shades. A move of the other sign
  * starts afresh.
  */
-export function tintLevel(movePercent: number, held = 0): number {
+function tintLevel(movePercent: number, held = 0): number {
   const sign = Math.sign(movePercent);
   if (sign === 0) return 0;
   const size = Math.abs(movePercent);

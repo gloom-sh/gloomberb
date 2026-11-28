@@ -18,7 +18,7 @@ import { mergeSavedSuffixedListings } from "../../portfolio/suffixed-listings";
 import { withoutStaleWatchlistGroupSymbols } from "../../portfolio/watchlist-groups";
 import { saveConfigImmediately } from "../config-save-scheduler";
 
-export const DEFAULT_WATCHLIST_TICKERS: Array<Pick<TickerMetadata, "ticker" | "exchange" | "currency" | "name">> = [
+const DEFAULT_WATCHLIST_TICKERS: Array<Pick<TickerMetadata, "ticker" | "exchange" | "currency" | "name">> = [
   { ticker: "AAPL", exchange: "NASDAQ", currency: "USD", name: "Apple Inc." },
   { ticker: "MSFT", exchange: "NASDAQ", currency: "USD", name: "Microsoft Corporation" },
   { ticker: "GOOGL", exchange: "NASDAQ", currency: "USD", name: "Alphabet Inc." },

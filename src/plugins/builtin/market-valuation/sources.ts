@@ -17,7 +17,7 @@ export interface ValuationSourceDeps {
   loadShiller: () => Promise<CloudShillerPayload>;
 }
 
-export function shillerObservations(
+function shillerObservations(
   payload: CloudShillerPayload,
   field: ShillerField,
 ): DatedObservation[] {
@@ -62,7 +62,7 @@ function fredProvider(loaded: FredLoad): SeriesCacheInput["provider"] | undefine
  * Adds legs on their shared dates. The result carries the oldest fetch time and
  * is stale if any leg is, so freshness never looks better than the worst input.
  */
-export function sumFredSeries(legs: readonly FredLoad[]): SeriesCacheInput {
+function sumFredSeries(legs: readonly FredLoad[]): SeriesCacheInput {
   if (legs.length === 0) throw new Error("No series to sum");
   const valuesByDate = new Map<string, number[]>();
   for (const leg of legs) {

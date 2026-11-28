@@ -14,7 +14,7 @@ import { useOptionalDialog } from "../../../../ui/dialog";
 import { logFailure } from "../../../../utils/log-failure";
 import { useProductWaitlist, type WaitlistClient } from "./waitlist";
 
-export const PharmaWaitlistClientContext = createContext<WaitlistClient | null>(null);
+const PharmaWaitlistClientContext = createContext<WaitlistClient | null>(null);
 
 const PRODUCT = "pharma-signals";
 const PLANNED = "Planned: alerts the day a trial's endpoint, enrollment, dates or status change, and cash runway against the next catalyst.";

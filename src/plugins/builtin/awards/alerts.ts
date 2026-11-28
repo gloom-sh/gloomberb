@@ -3,7 +3,7 @@ import type { AwardRow, AwardsPayload } from "../../../api-client/awards";
 import { usePaneSettingValue, usePaneVisible, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 
 interface AlertState { scope: string; seen: string[]; through: string }
-export function newAwardAlerts(data: AwardsPayload, previous: AlertState | null, scope: string): { state: AlertState; fresh: AwardRow[] } {
+function newAwardAlerts(data: AwardsPayload, previous: AlertState | null, scope: string): { state: AlertState; fresh: AwardRow[] } {
   const seen = new Set(previous?.scope === scope ? previous.seen : []);
   const now = Date.parse(data.generatedAt);
   const fresh = previous?.scope === scope ? data.alerts.filter((row) => !seen.has(row.id)
