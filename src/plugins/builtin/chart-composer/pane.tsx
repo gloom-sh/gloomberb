@@ -24,7 +24,7 @@ import {
 import { CompositeChart } from "../../../components/chart/composite";
 import { ChartColorChoice } from "../../../components/chart/composite/color-choice";
 import { nextChartPaletteColor } from "../../../theme/chart-palette";
-import { useCaptureDatesData } from "../../../components/layout/pane/capture-status";
+import { useCaptureDatesData, usePaneCapture } from "../../../components/layout/pane/capture-status";
 import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { useChartViewReset, useChartViewResetListener } from "../../../components/chart/core/view-reset";
 import { formatCompositeDatasetDate } from "../../../components/chart/composite/format";
@@ -435,6 +435,9 @@ function ChartComposerSurface({
     const listing = spec.series.find((entry) => entry.source.kind === "security" && isMarketFieldId(entry.source.fieldId));
     return listing?.source.kind === "security" ? futuresSessionOpenMinute(listing.source.instrument.symbol, listing.source.instrument.exchange) : null;
   }, [spec.series]);
+  const isCapture = usePaneCapture();
+  const capturedCadence = isCapture && spec.viewport.dateWindow && resolution.series.some((series) =>
+    series.points.length > 0 && series.historyResolution === spec.viewport.resolution) ? spec.viewport.resolution : null;
   // The sizes of `sizes` this chart can draw now, after Auto.
   const availableOf = useCallback((sizes: readonly ChartBarSize[]): ChartResolution[] => {
     if (!resolution.resolutionSupport) {
@@ -444,14 +447,16 @@ function ChartComposerSurface({
         ? ["auto"]
         : ["auto", spec.viewport.resolution];
     }
-    return ["auto", ...getSupportedChartBarSizesForViewport(
+    const available = getSupportedChartBarSizesForViewport(
       spec.viewport.range,
       resolution.resolutionSupport,
       sizes,
       spec.viewport.dateWindow,
       openMinute,
-    )];
+    );
+    return ["auto", ...sizes.filter((size) => size === capturedCadence || available.includes(size))];
   }, [
+    capturedCadence,
     hasMarketSeries,
     openMinute,
     resolution.loading,

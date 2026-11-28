@@ -846,7 +846,7 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
     async load(args, context) {
       const intradayHistories: ChartPaneModel["snapshot"]["intradayHistories"] = [];
       const closingPrintsPending: string[] = [];
-      const historicalCloses = new Map<string, { note: string; at?: number }>();
+      const historicalCloses = new Map<string, NonNullable<ReturnType<typeof historicalIntradayClose>>>();
       const stored = parseChartSpec(context.settings?.chartSpec);
       if (!stored) throw new Error("The chart specification is invalid.");
       const saved = typeof args.options.exchange === "string" ? onExchange(stored, args.options.exchange) : stored;
@@ -1070,10 +1070,12 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
         ? intradayHistories.find((window) => window.requestedSession && window.points.length)?.requestedSession : null;
       if (pastSession) model.freshness = { status: "not-a-feed", basis: PAST_SESSION_TEXT, asOf: pastSession, oldest: null };
       if (historicalCloses.size) {
-        const notes = [...historicalCloses.values()].map(({ note }) => note);
-        const short = [...historicalCloses].map(([symbol, { at }]) => (historicalCloses.size > 1 ? `${symbol} ` : "") + (at === undefined
-          ? "official close unavailable" : `official close ${new Date(at).toISOString().slice(11, 16)} UTC`));
-        model.freshness = { ...model.freshness, basis: short.join(" · "), note: notes.join(" ") };
+        const time = (at: number) => `${new Date(at).toISOString().slice(11, 16)} UTC`;
+        const short = [...historicalCloses].map(([symbol, { at, lastAt }]) => (historicalCloses.size > 1 ? `${symbol} ` : "") + (at === undefined
+          ? `${lastAt === undefined ? "" : `last regular print ${time(lastAt)}; `}official close unavailable` : `official close ${time(at)}`));
+        const declared = [...historicalCloses.values()].some(({ at }) => at !== undefined);
+        model.freshness = { ...model.freshness, basis: short.join(" · "),
+          ...(declared ? { note: "Closing print shown separately from the minute bars." } : {}) };
         if ([...historicalCloses.values()].some(({ at }) => at === undefined)) model.complete = false;
       }
       if (closingPrintsPending.length) {

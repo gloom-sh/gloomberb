@@ -77,6 +77,6 @@ test.each([
 });
 
 test("the latest dated session still uses its same-session quote path if no source close is declared", () => {
-  expect(historicalIntradayClose({ symbol: "BDRY", exchange: "ARCA", points: [last],
+  expect(historicalIntradayClose({ exchange: "ARCA", points: [last],
     quote: createTestQuote({ symbol: "BDRY", listingExchangeName: "ARCA", lastUpdated: +bell.date }) }, day, +bell.date)).toBeNull();
 });

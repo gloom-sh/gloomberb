@@ -53,18 +53,16 @@ export interface LoadedIntradayWindow extends IntradayWindow {
 }
 
 export function historicalIntradayClose(
-  window: Pick<LoadedIntradayWindow, "points" | "quote"> & { symbol: string; exchange: string },
+  window: Pick<LoadedIntradayWindow, "points" | "quote"> & { exchange: string },
   day: string,
   now: number,
-): { at?: number; note: string } | null {
+): { at?: number; lastAt?: number } | null {
   const venue = window.exchange || window.quote?.listingExchangeName || window.quote?.exchangeName;
   if (!isUsCashListing(venue, window.quote?.instrumentType)) return null;
   const bell = regularSessionCloseOn(venue, day);
   const latest = latestRegularSessionClose(venue, now);
   if (bell === null || bell > now) return null;
-  if (declaredSessionClose(window.points, bell)) {
-    return { at: bell, note: `${window.symbol}: official close ${utcClock(bell)}; separate from the minute bars.` };
-  }
+  if (declaredSessionClose(window.points, bell)) return { at: bell };
   if (day === latest?.date && window.quote && quoteTradingDay(window.quote) === day) return null;
   const zone = resolveExchangeTimeZone(venue) ?? "UTC";
   const last = window.points.findLast((point) => {
@@ -72,12 +70,7 @@ export function historicalIntradayClose(
     return Number.isFinite(time) && time < bell && zonedDateKey(time, zone) === day
       && isRegularSessionTime(venue, time) === true && !point.sessionClose && !pricePointIntegrity(point);
   });
-  const observation = last ? `last regular print ${utcClock(getPricePointTimestamp(last))}; ` : "";
-  return { note: `${window.symbol}: ${observation}official close unavailable.` };
-}
-
-function utcClock(time: number): string {
-  return `${new Date(time).toISOString().slice(11, 16)} UTC`;
+  return { lastAt: last ? getPricePointTimestamp(last) : undefined };
 }
 
 function declaredSessionClose(points: readonly PricePoint[], bell: number | null): boolean {

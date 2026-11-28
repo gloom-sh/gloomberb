@@ -833,7 +833,7 @@ async function capturePageScreenshot({
       const line = await statusLine(rendered);
       const statusText = (await fitShotStatusLine(session, line ?? { variants: [] })) || null;
       await hideCutRows(session);
-      rendered = await readRenderedPaneState(session);
+      rendered = await readRenderedPaneState(session, statusText);
       rendered.statusLine = statusText;
       rendered.statusLineClipped = shotStatusDateClipped(line, statusText);
     }
@@ -1047,7 +1047,7 @@ function withoutReportDecorations<T>(root: HTMLElement, read: (root: HTMLElement
   }
 }
 
-export async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotRenderResult> {
+export async function readRenderedPaneState(session: CdpPage, captureStatus?: string | null): Promise<DesktopPaneShotRenderResult> {
   const result = await session.send("Runtime.evaluate", {
     expression: `(${withoutReportDecorations.toString()})(document.getElementById("root") || document.body, (root) => {
       const semanticUi = window.__GLOOM_CLI_SHOT_SEMANTIC_UI__ || [];
@@ -1292,7 +1292,7 @@ export async function readRenderedPaneState(session: CdpPage): Promise<DesktopPa
   if (value?.error) throw new Error(value.error);
   const visibleText = (value?.visibleText ?? "").replace(/\s+/g, " ").trim();
   const footerNotes = Array.isArray(value?.footerNotes) ? value.footerNotes.filter((note): note is string => typeof note === "string") : [];
-  const markers = paneStateMarkers(visibleText, footerNotes);
+  const markers = paneStateMarkers(visibleText, captureStatus ? [...footerNotes, captureStatus] : footerNotes);
   const loadingStateMarkers = markers.loading;
   const errorStateMarkers = markers.error;
   const emptyStateMarkers = markers.empty;
