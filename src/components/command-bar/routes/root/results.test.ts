@@ -87,8 +87,9 @@ test("exact FA metrics lead the pane matches and open the named ratio tab", () =
   const registry = { getPaneTemplatePluginId: () => null, allPlugins: new Map(), panes: new Map() } as unknown as PluginRegistry;
   for (const [query, label, statement] of [
     ["interest coverage", "Leverage", "leverage"], ["coverage ratio", "Leverage", "leverage"],
-    ["net debt/EBITDA", "Leverage", "leverage"], ["quick ratio", "Liquidity", "liquidity"],
-    ["ROE", "Profitability", "profitability"], ["P/E", "Valuation", "valuation"], ["EV/EBITDA", "Valuation", "valuation"],
+    ["net debt/EBITDA", "Leverage", "leverage"], ["current ratio", "Liquidity", "liquidity"], ["quick ratio", "Liquidity", "liquidity"],
+    ["ROE", "Profitability", "profitability"], ["margins", "Profitability", "profitability"], ["asset turnover", "Efficiency", "efficiency"],
+    ["P/E", "Valuation", "valuation"], ["EV/EBITDA", "Valuation", "valuation"],
   ] as const) {
     const ran: unknown[] = [];
     const { items } = buildRootResultModel(rootOptions({
