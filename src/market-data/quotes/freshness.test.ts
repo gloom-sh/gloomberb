@@ -245,8 +245,9 @@ describe("quote freshness", () => {
   });
 
   // Held at 19:24 New York on Fri 2026-11-27, after the 17:00 late close: a quote whose last print is that morning's
-  // 08:00 pre-market trade has nothing from the cash or late session since, though its date is the day's.
-  test("after the late close a print from the morning's pre-market is no price for the day; the cash and late sessions' prints are", () => {
+  // 08:00 pre-market trade has nothing from the cash or late session since, though its date is the day's. That holds
+  // until the next session opens, across midnight and the weekend.
+  test("after the late close a print from the morning's pre-market is no price for the day until the next session; the cash and late sessions' prints are", () => {
     const at = (stamp: string) => Date.parse(stamp);
     const evening = at("2026-11-28T00:24:00Z");
     for (const listingExchangeName of ["NYSE", "NASDAQ"]) {
@@ -263,6 +264,27 @@ describe("quote freshness", () => {
       // A full day, after its 20:00 late close (Wed 25 Nov, 20:30): its 08:00 print is no price either, its 15:59 close is.
       expect(stale("2026-11-25T13:00:00Z", {}, at("2026-11-26T01:30:00Z")), listingExchangeName).toBe(true);
       expect(stale("2026-11-25T20:59:00Z", { regularClose: 196.18, regularCloseSessionDate: "2026-11-25" }, at("2026-11-26T01:30:00Z")), listingExchangeName).toBe(false);
+      // No session opens again until Monday: past midnight (Sat 00:01), over the weekend and before Monday's pre-market
+      // (03:00), labelled as the evening left it or as closed, Friday's 08:00 print stays no price and its cash and late
+      // prints stay the price.
+      for (const now of ["2026-11-28T05:01:00Z", "2026-11-29T17:00:00Z", "2026-11-30T08:00:00Z"]) {
+        for (const marketState of ["POSTPOST", "CLOSED"] as const) {
+          const label = `${listingExchangeName} ${now} ${marketState}`;
+          expect(stale("2026-11-27T13:00:00Z", { marketState, preMarketPrice: 205, regularClose: 196.18, regularCloseSessionDate: "2026-11-25" }, at(now)), label).toBe(true);
+          expect(stale("2026-11-27T17:59:00Z", { marketState, regularClose: 223.79, regularCloseSessionDate: "2026-11-27" }, at(now)), label).toBe(false);
+          expect(stale("2026-11-27T14:30:00Z", { marketState, regularClose: 223.79, regularCloseSessionDate: "2026-11-27" }, at(now)), label).toBe(false);
+          expect(stale("2026-11-27T21:59:58Z", { marketState, regularClose: 223.79, regularCloseSessionDate: "2026-11-27", postMarketPrice: 225.25 }, at(now)), label).toBe(false);
+        }
+      }
+      // Monday's pre-market (07:00): Friday's close is its price before a trade, Monday's own pre-market print is, and
+      // Friday's pre-market print is not.
+      const monday = at("2026-11-30T12:00:00Z");
+      expect(stale("2026-11-27T17:59:00Z", { marketState: "PRE", regularClose: 223.79, regularCloseSessionDate: "2026-11-27" }, monday), listingExchangeName).toBe(false);
+      expect(stale("2026-11-30T11:30:00Z", { marketState: "PRE", preMarketPrice: 226, regularClose: 223.79, regularCloseSessionDate: "2026-11-27" }, monday), listingExchangeName).toBe(false);
+      expect(stale("2026-11-27T13:00:00Z", { marketState: "PRE", preMarketPrice: 205 }, monday), listingExchangeName).toBe(true);
+      // Thanksgiving (Thu 26 Nov, 12:00) opens no session: Wednesday's 08:00 print is still no price, its close still is.
+      expect(stale("2026-11-25T13:00:00Z", { marketState: "CLOSED" }, at("2026-11-26T17:00:00Z")), listingExchangeName).toBe(true);
+      expect(stale("2026-11-25T20:59:00Z", { marketState: "CLOSED", regularClose: 196.18, regularCloseSessionDate: "2026-11-25" }, at("2026-11-26T17:00:00Z")), listingExchangeName).toBe(false);
     }
   });
 

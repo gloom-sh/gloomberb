@@ -239,6 +239,7 @@ const MINUTE_CACHE_LIMIT = 4096;
 const localDateCache = new Map<string, string | null>();
 const localMinuteCache = new Map<string, number | null>();
 const usSessionCache = new Map<string, UsSessionState>();
+const usLatestOpenCache = new Map<string, number | null>();
 
 function perMinute<K, V>(cache: Map<K, V>, key: K, compute: () => V): V {
   const cached = cache.get(key);
@@ -829,17 +830,25 @@ export function isTimestampStaleForExchangeSession(
 }
 
 /**
- * After a US trading day's late session has ended (POSTPOST: 17:00 after an
- * early close where the listing's tape documents it, else 20:00), a print from
- * before that day's regular open is the morning's pre-market. Its date is
- * today's, but the regular and late sessions since are not in it: held at
- * 19:24 on 27 Nov 2026, an 08:00 print is no price for that day.
+ * Once the late session of the latest US regular session has ended (POSTPOST
+ * that day: 17:00 after an early close where the listing's tape documents it,
+ * else 20:00; or any later day before the next session opens), a print from
+ * that session's day before its regular open is its pre-market. The regular
+ * and late sessions since are not in it, and no session has opened since to
+ * carry it: an 08:00 print on Fri 27 Nov 2026 is no price for that day at 19:24,
+ * at midnight or over the weekend. A print from that day's own regular or late
+ * session is not one, nor is a print from the day before (the prior-session
+ * rules below read those).
  */
-function isUsPremarketPrintAfterLateClose(timestampMs: number, canonical: string, now: number, today: string): boolean {
-  if (!isUsListingExchange(canonical) || usSessionState(now, canonical) !== "POSTPOST") return false;
-  const published = getPublishedUsEquitySession(canonical, today);
-  const open = published?.kind === "session" ? published.open : latestRegularSessionOpen(canonical, now);
-  return open != null && exchangeLocalDate(canonical, open) === today && timestampMs < open;
+function isUsPremarketPrintOfEndedSession(timestampMs: number, canonical: string, now: number): boolean {
+  if (!isUsListingExchange(canonical)) return false;
+  const minute = Math.floor(now / 60_000);
+  const open = perMinute(usLatestOpenCache, `${canonical}:${minute}`, () => latestRegularSessionOpen(canonical, minute * 60_000));
+  if (open == null || timestampMs >= open) return false;
+  const sessionDate = exchangeLocalDate(canonical, open);
+  const today = exchangeLocalDate(canonical, now);
+  if (!sessionDate || !today || exchangeLocalDate(canonical, timestampMs) !== sessionDate) return false;
+  return today > sessionDate || usSessionState(now, canonical) === "POSTPOST";
 }
 
 function isTimestampStaleForExchangeSessionUnsafe(
@@ -859,7 +868,8 @@ function isTimestampStaleForExchangeSessionUnsafe(
   const timestampDate = exchangeLocalDate(canonical, timestampMs);
   const currentDate = exchangeLocalDate(canonical, now);
   if (!timestampDate || !currentDate) return false;
-  if (timestampDate === currentDate) return isUsPremarketPrintAfterLateClose(timestampMs, canonical, now, currentDate);
+  if (isUsPremarketPrintOfEndedSession(timestampMs, canonical, now)) return true;
+  if (timestampDate === currentDate) return false;
   if (marketState === "REGULAR" && !isPublishedEquityHoliday(canonical, now, weekendDays)
     && !isBeforeKnownRegularOpen(canonical, now)) return true;
 
