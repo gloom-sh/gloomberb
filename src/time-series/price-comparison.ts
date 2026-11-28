@@ -8,6 +8,8 @@ import { zonedDateTimeParts } from "../utils/zoned-date-time";
 import { isCurrencyCode } from "../utils/currency-pair";
 import { priceComparisonCloseTimes } from "./coin-session-close";
 import { barLastSession } from "../market-data/market/bar-period";
+import { latestRegularSessionClose, regularSessionCloseOn, isAlwaysOpenExchange } from "../market-data/market/freshness";
+import { isUsCashListing } from "./chart-data";
 import { priceBasisBreaks, priceBasisFactor } from "../market-data/market/split-price-basis";
 import {
   barCloseDay, isIntradayDailyBar, isReturnPeriod, LATEST_INTRADAY_TEXT, periodBaseDay, periodBaseIndex, periodDayText,
@@ -34,17 +36,22 @@ function convertedText(legs: ReadonlyArray<{ label: string; entry: ResolvedSerie
  */
 function comparisonBasis(spec: ChartSpec, legs: ReadonlyArray<{ label: string; entry: ResolvedSeries | undefined }>): string {
   const target = spec.viewport.currency;
-  const priceOnly = spec.viewport.totalReturn === true ? legs.filter(({ entry }) => entry?.returnBasis === "price").map(({ label }) => label) : [];
+  const priceOnly = spec.viewport.totalReturn === true ? legs.filter(({ entry }) => entry?.returnBasis === "price") : [];
   const total = spec.viewport.totalReturn === true && !(priceOnly.length === legs.length && legs.length > 0);
-  if (!target) {
-    if (!total) return PRICE_COMPARISON_BASIS;
-    return priceOnly.length ? `${TOTAL_COMPARISON_BASIS} Price return for ${priceOnly.join(", ")}: distribution history unavailable.` : TOTAL_COMPARISON_BASIS;
+  const fallbackReasons = new Map<string, string[]>();
+  for (const { label, entry } of priceOnly) {
+    if (!total && !entry?.returnBasisReason) continue;
+    const reason = entry?.returnBasisReason ?? "distribution history unavailable";
+    fallbackReasons.set(reason, [...fallbackReasons.get(reason) ?? [], label]);
   }
   const converted = convertedText(legs);
-  const basis = `${total ? "Total" : "Price"} returns in ${target}${converted ? `, ${converted} at each day's FX close` : ""}; ${
+  const basis = !target ? total ? TOTAL_COMPARISON_BASIS : PRICE_COMPARISON_BASIS
+    : `${total ? "Total" : "Price"} returns in ${target}${converted ? `, ${converted} at each day's FX close` : ""}; ${
     total ? "cash distributions reinvested at the ex-date close." : "cash distributions excluded."}`;
-  return total && priceOnly.length ? `${basis} Price return for ${priceOnly.join(", ")}: distribution history unavailable.` : basis;
+  return [basis, ...[...fallbackReasons].map(([reason, labels]) => `Price return for ${labels.join(", ")}: ${reason}.`)].join(" ");
 }
+
+const closedPartialDays = Symbol("closedPartialDays");
 
 export interface PriceComparison {
   seriesIds: string[];
@@ -62,6 +69,8 @@ export interface PriceComparison {
   legs?: Record<string, { baseDay: string; endDay: string; intraday: boolean }>;
   /** Legs left out of the comparison, by the symbol asked for, and why; the rest still compare. */
   dropped?: Array<{ seriesId: string; label: string; reason: string }>;
+  incompleteSessions?: string;
+  [closedPartialDays]?: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
 export interface PriceComparisonOptions {
@@ -151,6 +160,24 @@ function legVenue(series: ResolvedSeries | undefined): string | undefined {
   return series?.timeBasis?.exchange || series?.listing?.exchange || undefined;
 }
 
+function isDailyCashLeg(resolution: string | undefined, venue: string | undefined, label: string, entry?: ResolvedSeries): boolean {
+  return resolution === "1d" && isUsCashListing(venue, entry?.priceAssetCategory) && !label.startsWith("^");
+}
+
+export function closedPartialComparisonDays(
+  entry: ResolvedSeries, resolution: ManualChartResolution | "auto" | undefined, label: string, now: number, fallbackVenue?: string,
+): ReadonlySet<string> {
+  const days = new Set<string>();
+  const venue = legVenue(entry) ?? fallbackVenue;
+  if (!isDailyCashLeg(resolution, venue, label, entry)) return days;
+  for (const point of entry.points) {
+    if (!point.partial || !Number.isFinite(+point.date) || scalarPointValue(point) === null) continue;
+    const day = observationDate(+point.date, entry);
+    if ((regularSessionCloseOn(venue, day) ?? Infinity) <= now) days.add(day);
+  }
+  return days;
+}
+
 /** Comparable normalized closing-price legs share observed endpoints. Other chart meanings are unchanged. */
 export function priceComparisonSeriesIds(spec: ChartSpec): string[] | null {
   if (spec.viewport.maxPoints !== undefined) return null;
@@ -221,7 +248,7 @@ function splitTerms(split: SplitAction): string | null {
  * Null split history is unavailable or not yet read, not a successful empty result.
  */
 export function comparisonSplitAssessment(
-  comparison: Pick<PriceComparison, "legs" | "sourceBounds">,
+  comparison: Pick<PriceComparison, "legs" | "sourceBounds" | typeof closedPartialDays>,
   legs: ReadonlyArray<{ id: string; label: string; splits: readonly SplitAction[] | null; series?: ResolvedSeries }>,
   now = Date.now(),
 ): { notice: string | null; dropped: NonNullable<PriceComparison["dropped"]> } {
@@ -242,7 +269,7 @@ export function comparisonSplitAssessment(
     if (inside.length) named.push(`${label} ${listLabels(inside)}`);
     const bounds = comparison.sourceBounds?.[id];
     if (!series || !bounds) continue;
-    const bars = series.points.flatMap((point) => {
+    const bars = eligibleComparisonSeries(series, comparison).points.flatMap((point) => {
       const time = point.date.getTime();
       return time >= bounds.start && time <= bounds.end ? [{ date: observationDate(time, series),
         close: point.close ?? point.value, high: point.high, low: point.low }] : [];
@@ -327,6 +354,11 @@ export function resolvePriceComparison(
     const source = spec.series.find((entry) => entry.id === id)?.source;
     return source?.kind === "security" ? source.instrument.symbol : id;
   };
+  const requestedLegs = seriesIds.map((id) => {
+    const entry = byId.get(id);
+    const source = spec.series.find((series) => series.id === id)?.source;
+    return { id, label: symbolOf(id), entry, venue: legVenue(entry) ?? (source?.kind === "security" ? source.instrument.exchange : undefined) };
+  });
   // A leg not loaded yet (a seed from cached history) has not failed: nothing compares until it is.
   const basisLegs = seriesIds.map((id) => ({ label: symbolOf(id), entry: byId.get(id) }));
   const basis = [comparisonBasis(spec, basisLegs), ...basisLegs.flatMap(({ label, entry }) =>
@@ -336,22 +368,26 @@ export function resolvePriceComparison(
   const dropped: NonNullable<PriceComparison["dropped"]> = [];
   const reported = new Set<string>();
   const legs: ComparedLeg[] = [];
+  const rejected = new Map<string, ReadonlySet<string>>();
   // Intraday bars compare by the bar of the chart's size they open in: a fund's 13:30 bar and a coin's 13:00 bar are
   // one hourly bar, so the fund's last bar of the day (19:30, closing at 20:00) meets the coin's bar closing then.
   const bucketMs = calendarBars ? null : intradayBucketMs(resolution, seriesIds.map((id) => byId.get(id)!));
-  for (const id of seriesIds) {
-    const entry = byId.get(id)!;
+  for (const { id, label, entry: loaded, venue } of requestedLegs) {
+    const entry = loaded!;
     const inWindow = priceObservationWindowFilter(entry, bounds, resolution, dateWindow);
+    const rejectedDays = closedPartialComparisonDays(entry, resolution, label, now, venue);
+    if (rejectedDays.size) rejected.set(id, rejectedDays);
     const points = new Map<string, TimeSeriesPoint>();
     const window = new Set<string>();
     for (const point of entry.points) {
       const time = point.date.getTime();
       if (!Number.isFinite(time) || scalarPointValue(point) === null) continue;
       const key = calendarBars ? observationDate(time, entry) : String(bucketMs ? Math.floor(time / bucketMs) * bucketMs : time);
+      if (point.partial && rejectedDays.has(key)) continue;
       points.set(key, point);
       if (inWindow(time)) window.add(key);
     }
-    const leg = { id, label: symbolOf(id), entry, keys: [...points.keys()].sort(order), points, window: [...window].sort(order) };
+    const leg = { id, label, entry, keys: [...points.keys()].sort(order), points, window: [...window].sort(order) };
     if (leg.window.length) legs.push(leg);
     else if (entry.warning?.trim()) {
       // A leg that failed to load: the chart's errors already say why.
@@ -377,6 +413,19 @@ export function resolvePriceComparison(
   const sharedEnd = resolution === "1d"
     ? sharedWindow.findLast((key) => legs.every((leg) => isForming(leg, key) === isForming(legs[0]!, key)))
     : sharedWindow.at(-1);
+  const requestedClose = resolution === "1d" && dateWindow && /^\d{4}-\d{2}-\d{2}$/.test(dateWindow.end)
+    && requestedLegs.some(({ venue }) => isAlwaysOpenExchange(venue)) ? requestedLegs.flatMap(({ id, label, venue, entry }) => {
+      if (!isDailyCashLeg(resolution, venue, label, entry)) return [];
+      const closed = latestRegularSessionClose(venue, Math.min(now, Date.parse(`${dateWindow.end}T23:59:59.999Z`)));
+      const leg = legs.find((candidate) => candidate.id === id);
+      if (!closed || closed.date < dateWindow.start.slice(0, 10) || (leg && sharedEnd && sharedEnd >= closed.date)) return [];
+      const at = regularSessionCloseOn(venue, closed.date);
+      if (at === null) return [];
+      const reason = leg?.window.includes(closed.date) ? "daily comparison unavailable"
+        : rejected.get(id)?.has(closed.date) ? "daily close incomplete" : "daily close unavailable";
+      return [`${label} ${closed.date} ${new Date(at).toISOString().slice(11, 16)} UTC: ${reason}.`];
+    }) : [];
+  const incompleteSessions = requestedClose.length ? `${requestedClose.join(" ")} Try 1h bars (--chart-resolution 1h).` : undefined;
   // Authored dates (`--from 2026-10-19`) measure from the close before the first date, as RETURN does: the last
   // date the legs share before it. Weekly and monthly bars keep the bar the window starts in.
   const authoredFrom = !preset && !period && dateWindow && /^\d{4}-\d{2}-\d{2}$/.test(dateWindow.start) && (resolution === "1d" || !calendarBars)
@@ -423,7 +472,9 @@ export function resolvePriceComparison(
     const notice = apart
       ? `${basis} Comparison unavailable: ${listLabels(legs.map((leg) => leg.label))} share no ${bucketMs ? `${barLabel(bucketMs)} ` : ""}bar times in this range; daily bars (1D) compare them.`
       : unavailable;
-    return { seriesIds, start: null, end: null, notice, ...(dropped.length ? { dropped } : {}) };
+    return { seriesIds, start: null, end: null, notice: [notice, incompleteSessions].filter(Boolean).join(" "),
+      ...(rejected.size ? { [closedPartialDays]: rejected } : {}),
+      ...(incompleteSessions ? { incompleteSessions } : {}), ...(dropped.length ? { dropped } : {}) };
   }
   const sourceBounds = Object.fromEntries(compared.map(({ leg, start, end }) => [leg.id, {
     start: leg.points.get(start)!.date.getTime(),
@@ -456,9 +507,16 @@ export function resolvePriceComparison(
     alignment: calendarBars ? "session-date" : "timestamp",
     sourceBounds,
     legs: legDays,
+    ...(rejected.size ? { [closedPartialDays]: rejected } : {}),
     ...(dropped.length ? { dropped } : {}),
-    notice: `${basis} ${span}${droppedText}`,
+    ...(incompleteSessions ? { incompleteSessions } : {}),
+    notice: [`${basis} ${span}${droppedText}`, incompleteSessions].filter(Boolean).join(" "),
   };
+}
+
+export function eligibleComparisonSeries(series: ResolvedSeries, comparison: Pick<PriceComparison, typeof closedPartialDays> | null): ResolvedSeries {
+  const rejected = comparison?.[closedPartialDays]?.get(series.id);
+  return rejected ? { ...series, points: series.points.filter((point) => !point.partial || !rejected.has(observationDate(point.date.getTime(), series))) } : series;
 }
 
 /** Whether a comparison's newest point is the session still trading on any leg. */
@@ -498,7 +556,7 @@ export function bufferPriceComparison(
   return {
     ...series,
     latestChangePercent: undefined,
-    points: comparedBufferPoints(series.points, priceComparisonBoundsForSeries(series, comparison)!, view),
+    points: comparedBufferPoints(eligibleComparisonSeries(series, comparison).points, priceComparisonBoundsForSeries(series, comparison)!, view),
   };
 }
 
@@ -510,7 +568,7 @@ export function clipPriceComparison(series: ResolvedSeries, comparison: PriceCom
     ...series,
     // The legend must describe the compared endpoint, not a newer one-leg quote.
     latestChangePercent: undefined,
-    points: start === null || end === null ? [] : series.points.filter((point) => (
+    points: start === null || end === null ? [] : eligibleComparisonSeries(series, comparison).points.filter((point) => (
       point.date.getTime() >= start && point.date.getTime() <= end
     )),
   };

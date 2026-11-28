@@ -11,6 +11,8 @@ import type { InstrumentRef } from "../market-data/request-types";
 import type { QueryEntry } from "../market-data/result-types";
 import { buildQuoteKey, instrumentFromQuoteTarget, resolveEntryData } from "../market-data/selectors";
 import { instrumentIdentityKey } from "../utils/instrument-identity";
+import { intradayQuoteMembership, usAfterHoursSessionBell } from "./chart-data";
+import { chartBarSizeSource, isIntradayResolution } from "./resolution";
 
 /**
  * A terminal chart re-rasterizes its whole bitmap for each redraw. It follows
@@ -95,14 +97,29 @@ export function compareChartQuoteRecency(next: Quote, current: Quote): number {
   return receipt(next) - receipt(current);
 }
 
-function isNewerQuote(next: Quote, current: Quote | undefined): boolean {
+function isNewerQuote(next: Quote, current: Quote | undefined, completesBellPair: boolean): boolean {
   if (!current) return true;
   const order = compareChartQuoteRecency(next, current);
   // Providers can change status while retaining the original source/receipt
   // timestamps. At that same observation, the incoming status is authoritative.
   // An older source observation or receipt still cannot replace newer data.
   return order > 0 || (order === 0 && next.lastUpdated === current.lastUpdated
-    && (next.stale === true) !== (current.stale === true));
+    && (completesBellPair || (next.stale === true) !== (current.stale === true)));
+}
+
+const bellPairs = new WeakMap<Quote, readonly [Quote, Quote]>();
+
+export function chartBellPairOf(quote: Quote | undefined): readonly [Quote, Quote] | undefined {
+  return quote && bellPairs.get(quote);
+}
+
+function formsBellPair(next: Quote, current: Quote, exchange: string | undefined): boolean {
+  const time = next.lastUpdated;
+  if (time !== current.lastUpdated || next.stale || current.stale || !hasValidQuoteObservationTime(next)) return false;
+  const nextSession = intradayQuoteMembership(next, exchange, true);
+  const currentSession = intradayQuoteMembership(current, exchange, true);
+  return (nextSession?.afterHoursStart === time && currentSession?.time === time - 1)
+    || (currentSession?.afterHoursStart === time && nextSession?.time === time - 1);
 }
 
 function hasResolutionRelevantChange(next: Quote, current: Quote | undefined): boolean {
@@ -132,7 +149,7 @@ interface ChartQuoteStore {
 }
 
 export interface LiveChartQuoteObserverOptions {
-  spec: ChartSpec;
+  readSpec: () => ChartSpec;
   store: ChartQuoteStore;
   /** Latest quote per chart instrument, after any change that affects the chart. */
   onChange: (quoteOverrides: ReadonlyMap<string, Quote>) => void;
@@ -145,8 +162,8 @@ export interface LiveChartQuoteObserverOptions {
  * Receipt-only heartbeats keep freshness metadata current without rebuilding
  * unchanged series, studies and chart bitmaps.
  */
-export function observeLiveChartQuotes({ spec, store, onChange }: LiveChartQuoteObserverOptions): () => void {
-  const entries = getLiveChartQuoteTargets(spec).map((target) => ({
+export function observeLiveChartQuotes({ readSpec, store, onChange }: LiveChartQuoteObserverOptions): () => void {
+  const entries = getLiveChartQuoteTargets(readSpec()).map((target) => ({
     key: chartQuoteOverrideKeyForTarget(target),
     instrument: instrumentFromQuoteTarget(target),
   }));
@@ -155,13 +172,23 @@ export function observeLiveChartQuotes({ spec, store, onChange }: LiveChartQuote
   let disposed = false;
   const read = () => {
     if (disposed) return;
+    const { extendedHours, resolution } = readSpec().viewport;
+    const allowBellPair = extendedHours === true && (resolution === "auto" || isIntradayResolution(chartBarSizeSource(resolution)));
     let changed = false;
     for (const { key, instrument } of entries) {
       const quote = resolveEntryData(store.getQuoteEntry(instrument));
       const previous = quoteOverrides.get(key);
-      if (!quote || quote === previous || !isNewerQuote(quote, previous)) continue;
-      quoteOverrides.set(key, quote);
-      if (hasResolutionRelevantChange(quote, previous)) changed = true;
+      if (!quote || quote === previous) continue;
+      const venue = instrument.exchange || quote.listingExchangeName || quote.exchangeName || previous?.listingExchangeName || previous?.exchangeName;
+      const heldPair = allowBellPair ? chartBellPairOf(previous) : undefined;
+      const completesBellPair = allowBellPair && !!previous && !heldPair && formsBellPair(quote, previous, venue);
+      if (!isNewerQuote(quote, previous, completesBellPair)) continue;
+      const pair = completesBellPair ? [previous!, quote] as const
+        : heldPair && usAfterHoursSessionBell(quote.lastUpdated, venue) === heldPair[0].lastUpdated ? heldPair : undefined;
+      const snapshot = pair ? { ...quote } : quote;
+      if (pair) bellPairs.set(snapshot, pair);
+      quoteOverrides.set(key, snapshot);
+      if (completesBellPair || hasResolutionRelevantChange(quote, previous)) changed = true;
     }
     if (changed) onChange(new Map(quoteOverrides));
   };

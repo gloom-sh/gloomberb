@@ -246,6 +246,11 @@ function renderOhlc(
     const source = projected.point;
     const x = cellPoint(projected, width, height).x;
     const close = source.close ?? projected.value;
+    if (source.partial && (source.open == null || source.high == null || source.low == null)) {
+      const closeRow = valueRow(close, domain, height);
+      if (closeRow !== null) setCell(rows, x, closeRow, "─");
+      continue;
+    }
     const open = source.open ?? close;
     const high = source.high ?? Math.max(open, close);
     const low = source.low ?? Math.min(open, close);

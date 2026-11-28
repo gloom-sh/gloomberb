@@ -11,8 +11,40 @@ import { chartBarSizeParts, chartBarSizeStepMs, type ChartBarSize, type ManualCh
 import { utcDay } from "../utils/day-format";
 import { isFiniteNumber } from "../utils/guards";
 import type { HistorySession } from "../types/price-history";
-import { regularSessionCloseOn } from "../market-data/market/freshness";
+import { isAlwaysOpenExchange, regularSessionCloseOn } from "../market-data/market/freshness";
 import { zonedDateKey } from "../utils/zoned-date-time";
+import { calendarBarStart, isUsCashListing } from "./chart-data";
+import { isRoundTheClockCoin } from "../utils/crypto-pair";
+
+type DailyReadingSeries = Partial<Pick<ResolvedSeries, "historyResolution" | "listing" | "timeBasis">> & {
+  points: readonly { date: Date | string | number; partial?: boolean }[];
+};
+
+export function mixedDailyReadings(series: readonly DailyReadingSeries[], now = Date.now()) {
+  const daily = series.flatMap((entry) => {
+    if (entry.historyResolution !== "1d" || !entry.listing || !entry.points.length) return [];
+    const { symbol, exchange } = entry.listing;
+    const venue = entry.timeBasis?.exchange || exchange;
+    const coin = isAlwaysOpenExchange(venue) || isRoundTheClockCoin(symbol, exchange);
+    const cash = isUsCashListing(venue) && !symbol.startsWith("^");
+    return cash || coin ? [{ ...entry, symbol, venue, cash, coin }] : [];
+  });
+  if (!daily.some((entry) => entry.cash) || !daily.some((entry) => entry.coin)) return [];
+  return daily.flatMap(({ points, symbol, venue, cash }) => {
+    const point = points.at(-1)!;
+    const time = +new Date(point.date);
+    if (!Number.isFinite(time)) return [];
+    const day = calendarBarStart(time, "1d", venue);
+    const end = cash ? regularSessionCloseOn(venue, day) : Date.parse(`${day}T00:00:00Z`) + 86_400_000;
+    const cutoff = end === null ? null : new Date(end).toISOString();
+    const forming = end !== null && end > now;
+    const state = forming ? "forming" : point.partial || !cutoff ? "incomplete" : "close";
+    const session = cash ? "US session" : "UTC day";
+    const ends = !forming && cutoff ? ` · ${cash ? "" : `${cutoff.slice(5, 10)} `}${cutoff.slice(11, 16)} UTC` : "";
+    return [{ text: `${symbol} ${day} ${session}${ends} ${state}`,
+      short: `${symbol} ${day.slice(5)}${cash && !forming && cutoff ? ` ${cutoff.slice(11, 16)}Z` : ""} ${state}` }];
+  });
+}
 
 /** Field catalogue frequency is a default, not evidence for acquired bars. */
 export function marketSeriesFrequency(source: SecuritySeriesSource, historyResolution: ManualChartResolution | null | undefined): SeriesPeriod {

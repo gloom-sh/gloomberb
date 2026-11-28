@@ -120,6 +120,7 @@ export async function totalReturnSeries(
   loadActions: () => Promise<CorporateActionsData | null>,
   priceCurrency: string | undefined,
   asOf: Date,
+  unavailableDays?: ReadonlySet<string>,
 ): Promise<TotalReturnOutcome> {
   const priceOnly = (notice: string): TotalReturnOutcome => ({ series: { ...series, returnBasis: "price" }, notice });
   const actions = await loadActions().catch(logFailure("total-return", "Loading distribution history failed", null));
@@ -137,12 +138,33 @@ export async function totalReturnSeries(
   if (dividends.length > 0 && dividendReferencePrice(1, priceCurrency, currency) === null) {
     return priceOnly(`distributions are in ${currency}, not the price currency; showing the price return.`);
   }
-  const { points } = reinvestDistributions(series.points, dividends, {
-    dayOf: (point) => observationDate(point.date.getTime(), series),
+  const dayOf = (point: TimeSeriesPoint) => observationDate(point.date.getTime(), series);
+  const asOfDay = asOf.toISOString().slice(0, 10);
+  let eligible = series.points;
+  const rejected: TimeSeriesPoint[] = [];
+  if (unavailableDays?.size) {
+    eligible = series.points.filter((point) => {
+      if (!unavailableDays.has(dayOf(point))) return true;
+      rejected.push(point);
+      return false;
+    });
+    const days = eligible.map(dayOf).sort();
+    const first = days[0];
+    const last = days.at(-1);
+    const missing = first && last && dividends.find(({ exDate, amount }) => Number.isFinite(amount) && amount > 0
+      && exDate > first && exDate <= last && exDate <= asOfDay && unavailableDays.has(exDate));
+    if (missing) {
+      const reason = `ex-date close unavailable (${missing.exDate})`;
+      return { series: { ...series, returnBasis: "price", returnBasisReason: reason }, notice: `${reason}; showing the price return.` };
+    }
+  }
+  const { points } = reinvestDistributions(eligible, dividends, {
+    dayOf,
     cashPrice: (price) => dividendReferencePrice(price, priceCurrency, currency),
     barDays: barDaysLongerThanSession(series),
-    asOf: asOf.toISOString().slice(0, 10),
+    asOf: asOfDay,
   });
   // "ECC Close" is its price: a label the chart wrote from the field says what the series is now.
-  return { series: { ...series, points, returnBasis: "total", label: series.label.replace(/ (?:Close|Price|Open|High|Low)$/, " Total return") } };
+  return { series: { ...series, points: rejected.length ? [...points, ...rejected].sort((left, right) => +left.date - +right.date) : points,
+    returnBasis: "total", label: series.label.replace(/ (?:Close|Price|Open|High|Low)$/, " Total return") } };
 }

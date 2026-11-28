@@ -1337,7 +1337,7 @@ export interface PricePoint {
   filled?: boolean;
   /** A future's session that has closed but whose settlement is not confirmed yet: its close is the last trade. */
   unsettled?: boolean;
-  /** An index session's closing print as its last intraday bar, from its daily bar: the source keeps only the latest session's. */
+  /** A separately dated closing observation, not another intraday bar. */
   sessionClose?: boolean;
   /** An index session's last intraday bar, which ends before its close: its closing print was not at hand. */
   beforeClose?: boolean;

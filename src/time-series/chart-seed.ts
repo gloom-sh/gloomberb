@@ -12,7 +12,7 @@ import { isMarketFieldId } from "./field-catalog";
 import { chartPriceHistoryIntegrityNotices } from "./market";
 import { activeStudyInputSeriesIds, resolveStudies } from "./studies/resolve";
 import { clipSeriesToWindow } from "./alignment";
-import { bufferPriceComparison, clipPriceComparison, comparisonSplitAssessment, priceComparisonBoundsForSeries, resolvePriceComparison } from "./price-comparison";
+import { bufferPriceComparison, clipPriceComparison, comparisonSplitAssessment, eligibleComparisonSeries, priceComparisonBoundsForSeries, resolvePriceComparison } from "./price-comparison";
 import { readSeedListingFacts } from "./parsed-history-cache";
 import { getPricePointTimestamp } from "../utils/price-history";
 import type {
@@ -119,7 +119,8 @@ export function seedChartResolutionResult(
   const displayBounds = comparisonDisplayBounds(bounds, priceComparison);
   const comparisonBounds = priceComparison && priceComparison.start !== null
     ? priceComparison : bounds;
-  const baseSeries = series.map((entry) => prepareBaseSeriesForStudies(entry, priceComparisonBoundsForSeries(entry, priceComparison) ?? comparisonBounds));
+  const baseSeries = series.map((entry) => prepareBaseSeriesForStudies(eligibleComparisonSeries(entry, priceComparison),
+    priceComparisonBoundsForSeries(entry, priceComparison) ?? comparisonBounds));
   // Calculate studies from raw buffered inputs, then use the same presentation
   // and visible-window rules as the network result.
   const studies = resolveStudies([...series, ...hiddenInputs], spec.studies, resolution, undefined,

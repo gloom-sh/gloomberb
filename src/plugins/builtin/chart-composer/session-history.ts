@@ -17,6 +17,8 @@ import { zonedDateKey, zonedWallClockToUtcMs } from "../../../utils/zoned-date-t
 import { fetchHistoryResult } from "../../../sources/history-result";
 import { historyRetentionNotice, isHistoryRetentionError, type HistoryRetention } from "../../../sources/history-retention";
 import type { PriceHistoryResult } from "../../../types/price-history";
+import { isRegularSessionTime, regularSessionCloseOn } from "../../../market-data/market/freshness";
+import { isUsCashListing } from "../../../time-series/chart-data";
 
 type IntradayRangePreset = "1D" | "1W";
 
@@ -47,6 +49,30 @@ export interface LoadedIntradayWindow extends IntradayWindow {
   priceDomainFailure?: IntradayPriceDomainFailure;
   session?: PriceHistoryResult["session"];
   sourceKey?: string;
+}
+
+export function historicalIntradayClose(
+  points: readonly PricePoint[],
+  venue: string,
+  day: string,
+  now: number,
+): { at?: number; lastAt?: number } | null {
+  const bell = regularSessionCloseOn(venue, day);
+  if (bell === null || bell > now) return null;
+  if (declaredSessionClose(points, bell)) return { at: bell };
+  const zone = resolveExchangeTimeZone(venue) ?? "UTC";
+  const last = points.findLast((point) => {
+    const time = getPricePointTimestamp(point);
+    return Number.isFinite(time) && time < bell && zonedDateKey(time, zone) === day
+      && isRegularSessionTime(venue, time) === true && !point.sessionClose && !pricePointIntegrity(point);
+  });
+  return { lastAt: last ? getPricePointTimestamp(last) : undefined };
+}
+
+function declaredSessionClose(points: readonly PricePoint[], bell: number | null): boolean {
+  return bell !== null && points.some((point) => point.sessionClose === true && getPricePointTimestamp(point) === bell
+    && !point.partial && !point.unsettled && !point.filled && !point.beforeClose && !point.closeCopied && !point.closeRebuilt
+    && !point.rescaled && point.close > 0 && !pricePointIntegrity(point));
 }
 
 const HISTORICAL_RETRY_DELAY_MS = 61 * 60_000;
@@ -117,6 +143,7 @@ function normalizedPoints(points: readonly PricePoint[]): PricePoint[] {
     // Session selection is independent of the asset's price domain. In
     // particular, a zero/negative futures close is still an observation.
     if (!Number.isFinite(timestamp) || (!Number.isFinite(point.close) && !pricePointIntegrity(point))) continue;
+    if (!point.sessionClose && byTimestamp.get(timestamp)?.sessionClose) continue;
     byTimestamp.set(timestamp, {
       ...point,
       date: point.date instanceof Date ? point.date : new Date(timestamp),
@@ -304,9 +331,12 @@ export async function loadIntradayWindow(options: {
     session: options.request.session,
     timeZone,
   });
-  let sawNonIntradayData = window.points.length > 0 && !hasIntradayBars(window, timeZone);
+  const datedBell = options.request.session && isUsCashListing(options.exchange) && !options.symbol.startsWith("^")
+    ? regularSessionCloseOn(options.exchange, options.request.session) : null;
+  const hasIntradayData = (selection: IntradayWindow) => hasIntradayBars(selection, timeZone) || declaredSessionClose(selection.points, datedBell);
+  let sawNonIntradayData = window.points.length > 0 && !hasIntradayData(window);
 
-  if (!hasIntradayBars(window, timeZone)) {
+  if (!hasIntradayData(window)) {
     acquisition = options.request.session
       ? await loadTrailingHistory(
           options.provider,
@@ -328,7 +358,7 @@ export async function loadIntradayWindow(options: {
       session: options.request.session,
       timeZone,
     });
-    sawNonIntradayData ||= window.points.length > 0 && !hasIntradayBars(window, timeZone);
+    sawNonIntradayData ||= window.points.length > 0 && !hasIntradayData(window);
   }
 
   if (window.points.length === 0) {
@@ -349,7 +379,7 @@ export async function loadIntradayWindow(options: {
       ),
     };
   }
-  if (!hasIntradayBars(window, timeZone)) {
+  if (!hasIntradayData(window)) {
     const requestedWindow = options.request.session
       ? sessionUtcBounds(options.request.session, timeZone)
       : null;

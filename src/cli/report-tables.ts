@@ -68,6 +68,7 @@ export interface CliReportTables {
    * less any it has by name, with `as_of` the release.
    */
   dated?: boolean;
+  asOfScope?: "series";
 }
 
 /** A column as a report declares it: the text view draws `format(value, row)`, or the value itself. */
@@ -796,7 +797,7 @@ export function renderReportCsv(report: CliReportTables, freshness?: ReportFresh
     const at = table.columns.indexOf("as_of");
     return at < 0 ? [] : table.rows.map((row) => String(row[at] ?? ""));
   });
-  const footer = freshness && rowsDatedApart(asOf) ? withRowsDatedApart(report.footer, freshness) : report.footer;
+  const footer = freshness && rowsDatedApart(asOf) ? withRowsDatedApart(report.footer, freshness, report.asOfScope) : report.footer;
   return withCsvFooter(blocks.join("\n\n"), footer);
 }
 

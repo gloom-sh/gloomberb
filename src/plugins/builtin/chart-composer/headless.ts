@@ -2,7 +2,7 @@ import { logFailure } from "../../../utils/log-failure";
 import { financialPeriodCoverage } from "../../../time-series/financial-period-coverage";
 import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../../../utils/financial-statements";
 import { graphRowsForFinancials, summarizeResolvedSeries } from "../../../time-series/reporting";
-import { priceHistoryIntegrityNotices, chartPriceHistoryIntegrityNotices } from "../../../time-series/market";
+import { priceHistoryIntegrityNotices, chartPriceHistoryIntegrityNotices, mixedDailyReadings } from "../../../time-series/market";
 import type { HeadlessPaneContext, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessSeries, HeadlessSeriesResult } from "../../../types/headless";
 import type { CapabilitySeriesSource, ChartResolutionResult, ChartSeriesSource, ChartSeriesSpec, ChartSpec, ChartViewportSpec, ResolvedSeries } from "../../../time-series/types";
 import { resolveGeoChartSeries } from "../world-venue-map/geo-series";
@@ -21,7 +21,7 @@ import {
   type ManualChartResolution,
 } from "../../../time-series/resolution";
 import type { ChartResolution } from "../../../time-series/range";
-import { intradaySessionDates, intradaySessionTimeZone, loadIntradayWindow, resolveIntradayRequest, type IntradayRequest, type IntradayWindow, type LoadedIntradayWindow } from "./session-history";
+import { historicalIntradayClose, intradaySessionDates, intradaySessionTimeZone, loadIntradayWindow, resolveIntradayRequest, type IntradayRequest, type IntradayWindow, type LoadedIntradayWindow } from "./session-history";
 import { sessionRangeReport, usBarCoverageNotice } from "./session-range";
 import { createSnapshotDataProvider, snapshotInstrumentKey, type SnapshotMarketData } from "../../../market-data/snapshot-provider";
 import type { DataProvider } from "../../../types/data-provider";
@@ -58,6 +58,7 @@ import { classifyInstrumentType } from "../../../tickers/instrument-kind";
 import { priceComparisonEndsIntraday, type PriceComparison } from "../../../time-series/price-comparison";
 import { LATEST_INTRADAY_TEXT, periodDayText } from "../../../market-data/market/period-return";
 import { CLOSING_PRINT_PENDING_TEXT, newestClosedSession, newestSessionClose, withOfficialCloses } from "../../../time-series/official-close";
+import { isUsCashListing } from "../../../time-series/chart-data";
 
 export interface ChartPaneModel extends HeadlessSeriesResult {
   /** The renderer consumes the full model; generic reports project series and metadata. */
@@ -216,6 +217,7 @@ export async function loadChartPaneModel(
       stats: periodCoverage.map((entry) => ({ label: `${entry.label} observations`, value: `${entry.returned}/${entry.requested} ${entry.period}${entry.complete ? "" : " (partial)"}` })),
     } : {}),
     ...(integrityNotices.length || valuationPriceIssues.length ? { complete: false } : {}),
+    ...(chart.priceComparison?.incompleteSessions ? { complete: false, incompleteDetail: chart.priceComparison.incompleteSessions } : {}),
     snapshot: {
       financials: [...financials].filter(([key]) => !instruments.get(key)?.instrument).map(([key, data]) => [
         publicTickerKey(instruments.get(key)!.symbol, instruments.get(key)!.exchange), capturedFinancials(key, data),
@@ -276,7 +278,9 @@ export async function loadChartPaneModel(
       ...(chart.priceHistoryIntegrity?.length ? { priceHistoryIntegrity: chart.priceHistoryIntegrity } : {}),
       ...(valuationPriceIssues.length ? { valuationPriceIssues } : {}),
       ...(periodCoverage.length ? { periodCoverage } : {}),
-      notices: [...chart.coverageNotices ?? [], ...chart.returnBasisNotice ? [chart.returnBasisNotice] : [], ...chart.warnings.filter((warning) => warning === FINANCIAL_VINTAGE_NOTICE || warning === SEC_EPS_BASIS_NOTICE || warning === chart.priceComparison?.notice
+      notices: [...chart.coverageNotices ?? [], ...chart.returnBasisNotice ? [chart.returnBasisNotice] : [],
+        ...(!chart.priceComparison ? mixedDailyReadings(chart.series).map(({ text }) => text) : []),
+        ...chart.warnings.filter((warning) => warning === FINANCIAL_VINTAGE_NOTICE || warning === SEC_EPS_BASIS_NOTICE || warning === chart.priceComparison?.notice
         || warning === chart.splitNotice || chart.delistings?.some((delisting) => delisting.notice === warning)), ...integrityNotices,
         // A futures formula says which months its legs are in and when they rolled, as `history` says a front month's rolls.
         ...chart.series.flatMap((series) => {
@@ -409,6 +413,9 @@ function chartFreshness(
   const coarsest = resolutions.reduce((worst, resolution) => (
     order.indexOf(resolution!) > order.indexOf(worst!) ? resolution : worst
   ), resolutions[0]);
+  if (!comparison && coarsest === "1d" && mixedDailyReadings(series).length) {
+    return { ...barHistoryFreshness("1d"), prices: false, basis: "daily bars, separate session times", oldest: null };
+  }
   const closedDay = closedPriceBarDay(series);
   // A window that ended before today (`--to 2026-10-23`) is the history asked for, which no later close makes stale:
   // `daily closes through Fri 23 Oct`.
@@ -840,6 +847,7 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
     async load(args, context) {
       const intradayHistories: ChartPaneModel["snapshot"]["intradayHistories"] = [];
       const closingPrintsPending: string[] = [];
+      const historicalCloses = new Map<string, NonNullable<ReturnType<typeof historicalIntradayClose>>>();
       const stored = parseChartSpec(context.settings?.chartSpec);
       if (!stored) throw new Error("The chart specification is invalid.");
       const saved = typeof args.options.exchange === "string" ? onExchange(stored, args.options.exchange) : stored;
@@ -930,13 +938,18 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
         }));
         // Once a session has closed, its last bar ends on the official close (the closing auction's print), as
         // `history` and CMP give it, not on the last trade before it; until the quote has that close, the footer says so.
-        await Promise.all(histories.map(async (history) => {
+        histories.forEach((history) => {
           // A future settles rather than closing on an auction print, and a coin or a currency pair has no session
           // to close: their bars stay as traded, and no quote is read for them.
           if (!history.points.length || futuresSessionOpenMinute(history.symbol, history.exchange) != null
             || isRoundTheClockCoin(history.symbol, history.exchange) || isCurrencyPairListing(history.symbol, history.exchange)) return;
           const now = Date.now();
           const known = history.exchange || history.quote?.listingExchangeName || history.quote?.exchangeName || undefined;
+          if (request.session && known && isUsCashListing(known, history.quote?.instrumentType)) {
+            const dated = historicalIntradayClose(history.points, known, request.session, now);
+            if (dated) historicalCloses.set(history.symbol, dated);
+            return;
+          }
           if (known && isAlwaysOpenExchange(known)) return;
           // While the session trades, no session of the chart has closed since its bars were read.
           if (history.quote?.marketState === "REGULAR" || (known && isRegularSessionTime(known, now) === true)) return;
@@ -954,7 +967,7 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
           const closes = new Map([[newest.date, decided.close]]);
           history.points = withOfficialCloses(history.points, closes, { venue, now });
           history.bufferedPoints = withOfficialCloses(history.bufferedPoints, closes, { venue, now });
-        }));
+        });
         intradayHistories.push(...histories);
         const starts = histories.flatMap(({ start }) => start ? [start.getTime()] : []);
         const ends = histories.flatMap(({ end }) => end ? [end.getTime()] : []);
@@ -1052,9 +1065,18 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
       model.freshness = chartFreshness(model.series, model.spec, model.chart.priceComparison, quotes);
       // A session asked for by its date (`GIP AAPL --session 2026-11-10`) that today's quote does not carry on is a past
       // observation: dated by that session, as a stored close or a past curve is, never stale and never the live quote.
-      const pastSession = template === "graph-intraday-price-pane" && !model.freshness.observations
+      const pastSession = template === "graph-intraday-price-pane" && (!model.freshness.observations || historicalCloses.size > 0)
         ? intradayHistories.find((window) => window.requestedSession && window.points.length)?.requestedSession : null;
       if (pastSession) model.freshness = { status: "not-a-feed", basis: PAST_SESSION_TEXT, asOf: pastSession, oldest: null };
+      if (historicalCloses.size) {
+        const time = (at: number) => `${new Date(at).toISOString().slice(11, 16)} UTC`;
+        const short = [...historicalCloses].map(([symbol, { at, lastAt }]) => (historicalCloses.size > 1 ? `${symbol} ` : "") + (at === undefined
+          ? `${lastAt === undefined ? "" : `last regular print ${time(lastAt)}; `}official close unavailable` : `official close ${time(at)}`));
+        const declared = [...historicalCloses.values()].some(({ at }) => at !== undefined);
+        model.freshness = { ...model.freshness, basis: short.join(" · "),
+          ...(declared ? { note: "Closing print shown separately from the minute bars." } : {}) };
+        if ([...historicalCloses.values()].some(({ at }) => at === undefined)) model.complete = false;
+      }
       if (closingPrintsPending.length) {
         model.freshness = { ...model.freshness, note: [model.freshness.note, CLOSING_PRINT_PENDING_TEXT].filter(Boolean).join(", ") };
       }
