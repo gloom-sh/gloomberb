@@ -67,7 +67,7 @@ import {
   priceLevelsNotice,
   type PriceComparison,
 } from "./price-comparison";
-import { chartQuoteOverrideKeyForSource } from "./live-quotes";
+import { chartBellPairOf, chartQuoteOverrideKeyForSource } from "./live-quotes";
 import { coinLegsAtSessionClose } from "./coin-session-close";
 import { chartSeriesSourceKey, uncoveredCapabilityMessage } from "../capabilities/chart-series";
 import { rememberSeedListingFacts } from "./parsed-history-cache";
@@ -1029,7 +1029,8 @@ async function resolveChartSpecPass(
           liveBarResolution ?? undefined, resolvedSource.instrument.exchange,
           liveBarResolution != null && !comparedSeriesIds.has(seriesSpec.id), resolvedSource.instrument.instrument?.secType,
           { bars: marketField && history.accumulationKey ? cache.liveBarsFor(history.accumulationKey) : undefined,
-            since: sources.liveSince, session: history.session, extendedHours: history.extendedHours === true }),
+            since: sources.liveSince, session: history.session, extendedHours: history.extendedHours === true,
+            bellPair: marketField ? chartBellPairOf(quoteOverride) : undefined }),
           priceHistoryResolution: history.resolution, priceHistoryRequestKey: history.requestKey,
           priceHistorySession: history.session, priceHistorySourceKey: history.sourceKey };
       }

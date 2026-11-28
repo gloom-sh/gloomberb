@@ -519,6 +519,74 @@ test.each(["2026-09-22T20:00:00Z", "2026-11-27T18:00:00Z"])("the chart observer 
   }
 });
 
+test.each([
+  { extendedFirst: false, withNewerFetch: false },
+  { extendedFirst: true, withNewerFetch: false },
+  { extendedFirst: false, withNewerFetch: true },
+  { extendedFirst: true, withNewerFetch: true },
+])("the resolver projects a coalesced bell pair (extended first: $extendedFirst, newer fetch: $withNewerFetch)", async ({ extendedFirst, withNewerFetch }) => {
+  const bell = Date.parse("2026-11-27T18:00:00Z");
+  const nextMinute = bell + 61_000;
+  const source = { kind: "security" as const, instrument: { symbol: "LIVE" }, fieldId: "market.ohlcv" };
+  const spec: ChartSpec = {
+    version: CHART_SPEC_VERSION, viewport: { range: "1D", resolution: "1h", extendedHours: true },
+    panels: [{ id: "main" }], studies: [],
+    series: [{ id: "price", source, style: "candles", transform: "raw", axis: "left", panelId: "main", interpolation: "none" }],
+  };
+  const cash = { date: new Date(bell - 30 * 60_000), open: 100, high: 101, low: 99, close: 100, volume: 1_000 };
+  const initial = quote("00:00:00", 100, 1_000, { instrumentType: "ETF", lastUpdated: bell - 60_000 });
+  const auction = { ...initial, lastUpdated: bell, price: 102, volume: 1_060 };
+  const extended = { ...auction, marketState: "POST" as const, postMarketPrice: 98, volume: 1_070, extendedSessionPrint: true };
+  const later = { ...extended, lastUpdated: nextMinute, postMarketPrice: 97, volume: 1_090 };
+  let fetched = initial;
+  const provider = createTestDataProvider({
+    getTickerFinancials: async () => ({ ...emptyFinancials(), quote: fetched }),
+    getPriceHistoryForResolutionWithMetadata: async () => ({ points: [cash], resolution: "1h", extendedHours: true }),
+  });
+  const cache = new ChartResolveCache();
+  let current = initial;
+  let notify = () => {};
+  const updates: ReadonlyMap<string, Quote>[] = [];
+  const clock = spyOn(Date, "now").mockReturnValue(initial.lastUpdated);
+  let stop: (() => void) | undefined;
+  try {
+    stop = observeLiveChartQuotes({ readSpec: () => spec, store: {
+      getQuoteEntry: () => ({ ...createIdleEntry<Quote>(), phase: "ready", data: current }),
+      subscribeKeys: (_keys, listener) => { notify = listener; return () => {}; },
+    }, onChange: (overrides) => updates.push(overrides) });
+    const publish = (next: Quote) => { current = next; notify(); };
+    const resolve = async () => {
+      const result = await resolveChartSpecData(spec, {
+        now: new Date(Date.now()), dataProvider: provider, liveSince: +cash.date, quoteOverrides: updates.at(-1),
+        loadFredSeries: async () => { throw new Error("unused"); },
+      }, cache);
+      expect(result.errors).toEqual([]);
+      return result.series.find(({ id }) => id === "price")?.points
+        .map(({ date, open, high, low, close, volume }) => ({ date, open, high, low, close, volume }));
+    };
+    expect(await resolve()).toEqual([cash]);
+    clock.mockReturnValue(nextMinute);
+    publish(extendedFirst ? extended : auction);
+    publish(extendedFirst ? auction : extended);
+    publish(later);
+    if (withNewerFetch) {
+      fetched = { ...later, lastUpdated: nextMinute + 1, postMarketPrice: 96, volume: 1_100 };
+      cache.financialsByInstrument.clear();
+      clock.mockReturnValue(fetched.lastUpdated);
+    }
+    const close = withNewerFetch ? 96 : 97;
+    const expected = [{ ...cash, high: 102, close: 102, volume: 1_060 },
+      { date: new Date(bell), open: 98, high: 98, low: close, close, volume: withNewerFetch ? 40 : 30 }];
+    expect(await resolve()).toEqual(expected);
+    publish({ ...later });
+    expect(updates).toHaveLength(4);
+    expect(await resolve()).toEqual(expected);
+  } finally {
+    stop?.();
+    clock.mockRestore();
+  }
+});
+
 describe("reconcileChartTail", () => {
   const source = { kind: "security" as const, instrument: { symbol: "LIVE", exchange: "NASDAQ" }, fieldId: "market.ohlcv" };
   const spec: ChartSpec = {
