@@ -38,7 +38,7 @@ test.each([
     getDetailedPriceHistoryWithMetadata: async (_symbol, _exchange, _start, _end, interval) => {
       requested.push(interval);
       return { resolution: interval === "1d" ? "1d" : "1m", sourceKey: "test", points: interval === "1d"
-        ? [{ date: new Date(day), close: 12.19, low: 12.05, high: 12.42, ...(name.includes("adjusted") ? { rescaled: true } : {}) }]
+        ? [{ date: new Date(day), close: 12.19, low: 12.05, high: 12.42, ...(name.includes("adjusted") ? { rescaled: 2 } : {}) }]
         : buffered };
     },
   });
