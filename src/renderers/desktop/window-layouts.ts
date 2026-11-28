@@ -3,6 +3,7 @@ import {
   syncConfigActiveLayoutState,
   type PaneRuntimeState,
 } from "../../core/state/app/state";
+import { getPaneOrder, getTopFloatingPaneId } from "../../core/state/app/layout";
 import { createSavedLayoutId } from "../../layout/pane-layout-move";
 import { dockPane, floatAtRect, getDockedPaneIds, insertAtRootEdge, removePane, withoutTransientPanes } from "../../layout/pane-manager";
 import { finalizeLayout } from "../../layout/pane-manager/layout-state";
@@ -417,6 +418,26 @@ function keepConcurrentPanesOnClose(current: SavedLayout, before: SavedLayout, a
   };
 }
 
+/** A tab as it saves with only its focus left out. */
+function sameExceptFocus(before: SavedLayout, after: SavedLayout): boolean {
+  const { focusedPaneId: _before, ...beforeRest } = before;
+  const { focusedPaneId: _after, ...afterRest } = after;
+  return deepEqual(beforeRest, afterRest) || deepEqual({ ...beforeRest, layout: finalizeLayout(before.layout) }, afterRest);
+}
+
+/**
+ * Where focus goes when a window closes its focused transient pane and changes
+ * nothing else in the tab: where it is now if that pane is still placed, else
+ * where the window put it, else, when that pane has gone since, where the
+ * reducer would.
+ */
+function overlayCloseFocus(layout: LayoutConfig, current: string | null, sent: string | null): string | null {
+  const placed = getPaneOrder(layout);
+  if (current && placed.includes(current)) return current;
+  if (sent === null || placed.includes(sent)) return sent;
+  return getTopFloatingPaneId(layout) ?? placed[0] ?? null;
+}
+
 /**
  * Applies what `windowId` sent on top of the shared state, counting only what
  * changed since `base`, the state the window drew from. Settings and lists
@@ -489,6 +510,8 @@ export function mergeWindowSnapshot(
   const closesFocusedOverlay = sameActiveTab && !options?.configOnly && transientBase.focusedPaneId !== null
     && !!view.liveLayout && !!findPaneInstance(view.liveLayout, transientBase.focusedPaneId)
     && closed(transientBase.focusedPaneId);
+  // Set when that close moved focus to an ordinary pane and left the tab as it was.
+  let overlayFocus: string | null | undefined;
   const baseTabs = new Map(before.config.layouts.filter((entry) => entry.id).map((entry) => [entry.id!, entry] as const));
 
   let layouts = state.config.layouts.filter((entry) => {
@@ -504,7 +527,13 @@ export function mergeWindowSnapshot(
     const index = layouts.findIndex((entry) => entry.id === id);
     const previous = baseTabs.get(id);
     if (index >= 0) {
-      if (!previous || !deepEqual(previous, tab)) {
+      if (closesFocusedOverlay && !transientFocus && id === sentActiveId && previous && sameExceptFocus(previous, tab)) {
+        // Only the overlay closed: the tab keeps what it holds now, and its focus
+        // stays where it is when that pane is still there.
+        const current = layouts[index]!;
+        overlayFocus = overlayCloseFocus(current.layout, view.focusedPaneId, after.focusedPaneId);
+        if (current.focusedPaneId !== overlayFocus) layouts[index] = { ...current, focusedPaneId: overlayFocus };
+      } else if (!previous || !deepEqual(previous, tab)) {
         const current = layouts[index]!;
         let updated = tab;
         if (sameActiveTab && id === sentActiveId && previous && transientFocus) {
@@ -519,9 +548,6 @@ export function mergeWindowSnapshot(
           }
         }
         layouts = layouts.map((entry, at) => (at === index ? updated : entry));
-      } else if (closesFocusedOverlay && id === sentActiveId && tab.focusedPaneId) {
-        const current = layouts[index]!;
-        if (findPaneInstance(current.layout, tab.focusedPaneId)) layouts[index] = { ...current, focusedPaneId: tab.focusedPaneId };
       }
       continue;
     }
@@ -562,7 +588,8 @@ export function mergeWindowSnapshot(
       );
       const beforeState = ordinaryState(before);
       const afterState = ordinaryState(after);
-      paneState = deepEqual(beforeState, afterState) ? ordinaryState(view) : afterState;
+      paneState = overlayFocus !== undefined || deepEqual(beforeState, afterState) ? ordinaryState(view) : afterState;
+      if (overlayFocus !== undefined) focusedPaneId = overlayFocus;
       for (const id of liveLayout ? transientIds(liveLayout) : []) {
         const value = !afterIds.includes(id) || deepEqual(after.paneState[id], transientBase.paneState[id])
           ? view.paneState[id] : after.paneState[id];

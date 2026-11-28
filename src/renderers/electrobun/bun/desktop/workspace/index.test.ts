@@ -72,6 +72,59 @@ describe("desktop workspace", () => {
     expect(createDesktopWorkspace(reloaded, null).getSnapshot().focusedPaneId).toBe(moved);
   });
 
+  function heldLayoutsWithMovedPane() {
+    const config = tabConfig();
+    const moved = getDockedPaneIds(config.layouts[1]!.layout)[0]!;
+    const workspace = createDesktopWorkspace(config, null, [{ id: SECOND, layoutIds: ["tab:monitor"] }]);
+    const second = workspace.getWindowSnapshot(SECOND)!;
+    const movedState = { ...second.paneState[moved], cursorSymbol: "MSFT" };
+    workspace.syncWindowState(SECOND, { ...second, mainStateRevision: 1, paneState: { ...second.paneState, [moved]: movedState } });
+    expect(workspace.getWindowSnapshot(SECOND)!.paneState[moved]?.cursorSymbol).toBe("MSFT");
+    workspace.syncMainState(openLayouts(workspace.getWindowSnapshot(MAIN)!));
+    const held = workspace.getWindowSnapshot(MAIN)!;
+    expect(held.focusedPaneId).toBe(LAY);
+    workspace.noteDelivered(MAIN, 1, held);
+    const order = getDockedPaneIds(workspace.movePaneToWindow(moved, MAIN)!.config.layout);
+    expect(order).toContain(moved);
+    const closed = reduceSnapshot(held, { type: "UPDATE_LAYOUT", layout: removePane(held.config.layout, LAY) });
+    expect(closed.focusedPaneId).not.toBeNull();
+    expect(closed.focusedPaneId).not.toBe(LAY);
+    return { config, workspace, moved, order, closed };
+  }
+
+  test("closing a focused Layouts pane from a held snapshot keeps a pane moved in from another window", () => {
+    const { config, workspace, moved, order, closed } = heldLayoutsWithMovedPane();
+    const result = workspace.syncMainState(closed, 1);
+
+    const normalized = normalizeConfigForSave(result.config);
+    const { config: reloaded } = normalizeLoadedConfig(JSON.parse(JSON.stringify(normalized)), config.dataDir);
+    for (const kept of [result.config.layout, result.config.layouts[result.config.activeLayoutIndex]!.layout, normalized.layout, reloaded.layout]) {
+      expect(getDockedPaneIds(kept)).toEqual(order);
+      expect(findPaneInstance(kept, LAY)).toBeUndefined();
+    }
+    expect(result.paneState[moved]?.cursorSymbol).toBe("MSFT");
+    expect(result.focusedPaneId).toBe(moved);
+    for (const saved of [result.config, normalized, reloaded]) {
+      const tab = saved.layouts[saved.activeLayoutIndex]!;
+      expect(tab.paneState?.[moved]?.cursorSymbol).toBe("MSFT");
+      expect(tab.focusedPaneId).toBe(moved);
+    }
+    expect(JSON.stringify(normalized)).not.toContain("layout-marketplace");
+    expect(findPaneInstance(workspace.getWindowSnapshot(SECOND)!.config.layout, moved)).toBeUndefined();
+  });
+
+  test("an ordinary edit sent with a Layouts close still applies", () => {
+    const { workspace, closed } = heldLayoutsWithMovedPane();
+    const edited = closed.config.layout.instances[0]!.instanceId;
+    const layout = updatePaneInstance(closed.config.layout, edited, (pane) => ({ ...pane, title: "Renamed" }));
+    const result = workspace.syncMainState({ ...closed, config: { ...closed.config, layout } }, 1);
+
+    expect(findPaneInstance(result.config.layout, edited)?.title).toBe("Renamed");
+    expect(findPaneInstance(result.config.layouts[result.config.activeLayoutIndex]!.layout, edited)?.title).toBe("Renamed");
+    expect(findPaneInstance(result.config.layout, LAY)).toBeUndefined();
+    expect(result.focusedPaneId).not.toBe(LAY);
+  });
+
   test("opening Layouts from a held snapshot keeps a concurrent ordinary pane move", () => {
     const config = tabConfig();
     const moved = getDockedPaneIds(config.layouts[1]!.layout)[0]!;
