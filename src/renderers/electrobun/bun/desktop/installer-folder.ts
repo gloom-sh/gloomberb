@@ -293,8 +293,9 @@ try {
 /**
  * The script that retires the installer's folder `folder` for the app in
  * `app`, with its paths written in. It removes `pending` once it finished.
+ * @knipignore Imported by the Bun script in scripts/verify-windows-installer-folder.test.ps1.
  */
-function installerFolderScript({ folder, app, log, pending }: { folder: string; app: string; log: string; pending: string }): string {
+export function installerFolderScript({ folder, app, log, pending }: { folder: string; app: string; log: string; pending: string }): string {
   const header = [
     "$ErrorActionPreference = 'Stop'",
     `$Folder = ${psString(folder)}`,
