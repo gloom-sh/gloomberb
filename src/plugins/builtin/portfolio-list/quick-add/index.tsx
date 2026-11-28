@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Box, Text, type InputRenderable } from "../../../../ui";
 import { usePaneFooter } from "../../../../components";
-import { InlineQuickAddRow } from "../../../../components/ui";
+import { choiceDialog, InlineQuickAddRow } from "../../../../components/ui";
 import { useShortcut } from "../../../../react/input";
 import { isPlainKey } from "../../../../utils/keyboard";
 import { useAppDispatch, useAppSelector } from "../../../../state/app/context";
@@ -10,6 +10,7 @@ import { t, tf } from "../../../../i18n";
 import { getSharedRegistry } from "../../../registry";
 import { usePluginAppActions } from "../../../runtime";
 import { isDialogOpen } from "../../../../ui/dialog-stack";
+import { useDialog } from "../../../../ui/dialog";
 import { colors, priceColor } from "../../../../theme/colors";
 import { MISSING_VALUE, formatPercentRaw } from "../../../../utils/format";
 import { formatMarketPrice, quoteFormatOptions } from "../../../../market-data/market/format";
@@ -17,12 +18,12 @@ import { listingChoiceQuery, upsertTickerFromSearchResult } from "../../../../ti
 import type { TickerRecord } from "../../../../types/ticker";
 import { addTickerToPortfolio, addTickerToWatchlist } from "../../../../portfolio/mutations";
 import { captureAttentionAction } from "../../../../telemetry/attention-counts";
-import { publicTickerKey } from "../../../../utils/exchanges";
+import { displayTickerKey, publicTickerKey } from "../../../../utils/exchanges";
 import { tickerChangeLine } from "../../../../tickers/ticker-changes";
 import {
   createQuickAddListMemo,
   IDLE_VALIDATION,
-  isPlausibleTickerQuery,
+  isPlausibleListingQuery,
   exchangeLabelFromValidation,
   mayBeQuickAddList,
   normalizeQuickAddQuery,
@@ -317,7 +318,7 @@ export function QuickAddTickerInput({
     }
 
     // A pasted list's separators are no symbol's: each entry is checked on its own.
-    if (!mayBeQuickAddList(inputValue) && !isPlausibleTickerQuery(query)) {
+    if (!mayBeQuickAddList(inputValue) && !isPlausibleListingQuery(query)) {
       setValidation({ status: "missing", query, message: QUICK_ADD_REFUSAL });
       return;
     }
@@ -412,6 +413,7 @@ export function QuickAddTickerInput({
     }
   }, [addReady, closeAfterAdd, collectionKind, collectionName, notify, onAdded]);
 
+  const dialog = useDialog();
   const submitInput = useCallback(async (submittedValue?: string) => {
     // Before any lookup: consent to count the add cannot be given after it.
     const recordAttention = captureAttentionAction();
@@ -425,9 +427,9 @@ export function QuickAddTickerInput({
 
     setSubmitting(true);
     try {
-      const currentValidation = (
+      let currentValidation = (
         validation.query === query
-        && (validation.status === "ready" || validation.status === "duplicate" || validation.status === "list")
+        && (validation.status === "ready" || validation.status === "duplicate" || validation.status === "list" || validation.status === "choose")
       )
         ? validation
         : await validateInput(value);
@@ -436,8 +438,17 @@ export function QuickAddTickerInput({
         return;
       }
       if (currentValidation.status === "choose") {
-        handOffListingChoice(`${query}:`);
-        return;
+        if (!currentValidation.listings) {
+          handOffListingChoice(`${query}:`);
+          return;
+        }
+        const key = await choiceDialog(dialog, {
+          title: tf("Choose listing for {symbol}", { symbol: currentValidation.query }),
+          choices: currentValidation.listings.map(({ key, name }) => ({ id: key, label: displayTickerKey(key), detail: name })),
+        });
+        if (!key) return;
+        currentValidation = await validateQuery(key);
+        if (currentValidation.status === "list" || currentValidation.status === "choose") return;
       }
       setValidation(currentValidation);
 
@@ -499,6 +510,7 @@ export function QuickAddTickerInput({
     clearFailedInput,
     closeAfterAdd,
     collectionName,
+    dialog,
     handOffListingChoice,
     inputValue,
     notify,
@@ -506,6 +518,7 @@ export function QuickAddTickerInput({
     submitList,
     submitting,
     validateInput,
+    validateQuery,
     validation,
   ]);
 

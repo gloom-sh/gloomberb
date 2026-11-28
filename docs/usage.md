@@ -1807,6 +1807,8 @@ The line under the table names the spot and time they are valued at, the session
 
 ### Adding and removing symbols
 
+The Watchlist and Portfolio quick-add rows also accept company names in their original script, such as `贵州茅台` or `任天堂`, alone or in a pasted list. Full-width tickers such as `ＡＡＰＬ` are read the same as `AAPL`.
+
 `gloom watchlist add <list> <symbols...>` and `portfolio add`, and `remove` for both, take any number of symbols split by spaces, commas or newlines:
 
 ```bash
