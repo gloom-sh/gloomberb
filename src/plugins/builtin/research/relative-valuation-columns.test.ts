@@ -122,6 +122,10 @@ test("a quarter an earnings release dated with EPS alone leaves RV's gross margi
     };
     expect(await atClose("2026-11-27T20:00:00Z")).toMatchObject({ grossMarginAsOf: "2026-07-26", evEbitdaGap: "no complete TTM to 2026-10-31" });
     expect(await atClose("2026-11-27T17:30:00Z")).toMatchObject({ grossMarginAsOf: "2026-07-26", evEbitdaAsOf: "2026-07-26" });
+    // One quarter with no filing time leaves the sum undated: no evidence it was out by the close, so no multiple.
+    const undated = await read([...filed().map((row, index) => index === 1 ? { ...row, availableAt: undefined } : row), release()]);
+    expect(undated).toMatchObject({ grossMarginAsOf: "2026-07-26", evEbitdaGap: "no filing date for TTM to 2026-07-26" });
+    expect(undated.evEbitda).toBeUndefined();
   } finally { setSystemTime(); }
 });
 

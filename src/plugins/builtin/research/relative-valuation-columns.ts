@@ -390,10 +390,13 @@ function incompleteQuarterFields(financials: TickerFinancials, incomplete: Finan
   if (!trailing || !Number.isFinite(trailing.ebitda)) return { ...fields, evEbitdaGap: gap };
   // Twelve months published after the price the EV is read at are no basis for it. After the close that price is the
   // close, dated by the session's end (or its day when the calendar gives no hour), not by a later after-hours print.
+  // The sum is dated only when every quarter's operating income and D&A is (computeTTM, withStatementEbitda): one
+  // undated quarter leaves no evidence the twelve months were out by then, so the cell names it rather than divide.
   const published = statementFieldAvailability(trailing, "ebitda");
   const priced = regularSessionValuationTime(financials.quote)?.time;
   if (priced == null) return { ...fields, evEbitdaGap: "no current quote" };
-  if (Date.parse(trailing.date) > priced || (published && financialAvailabilityTime(published) > priced)) return { ...fields, evEbitdaGap: gap };
+  if (!published) return { ...fields, evEbitdaGap: `no filing date for TTM to ${asOf}` };
+  if (Date.parse(trailing.date) > priced || financialAvailabilityTime(published) > priced) return { ...fields, evEbitdaGap: gap };
   const ev = listingEnterpriseValue(financials);
   if (ev.kind === "not-meaningful") return { ...fields, evEbitdaNotMeaningful: ev.reason };
   if (ev.kind !== "value") return { ...fields, evEbitdaGap: "EV unavailable" };
