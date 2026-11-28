@@ -3,6 +3,7 @@ import type { CompanyProfile, FinancialStatement, PricePoint, TickerFinancials }
 import { MISSING_VALUE, formatNumber, pickUnit } from "../../../../utils/format";
 import { pricePointIntegrity } from "../../../../utils/price-history-integrity";
 import { formatPerShareNumber } from "../../../../utils/reported-money";
+import { normalizeLookupToken } from "../../../../utils/lookup-token";
 import { hasStatementGap } from "../../../../utils/statement-gaps";
 import { statementNopat } from "./nopat";
 import { debtAndLeases, leaseBasis, type LeaseBasis } from "../../../../utils/lease-liabilities";
@@ -99,6 +100,7 @@ interface RatioInputDef {
 export interface RatioDef {
   id: string;
   label: string;
+  searchAliases?: readonly string[];
   format: RatioFormat;
   /** The sign carries meaning (a loss, a negative return), so the value takes the sign colour. */
   signed?: boolean;
@@ -112,6 +114,7 @@ export interface RatioDef {
 export interface RatioTabDef {
   name: string;
   key: string;
+  aliases?: string[];
   ratios: RatioDef[];
 }
 
@@ -306,7 +309,7 @@ function enterpriseValue(period: RatioPeriod): RatioAmount {
 }
 
 /** The lease liabilities net debt includes, or a US GAAP filer's operating leases it leaves out. */
-const LEASE_ROW_LABEL: Record<LeaseBasis, string> = { included: "incl. leases", excluded: "excl. op. leases" };
+const LEASE_ROW_LABEL: Record<LeaseBasis, string> = { included: "of which leases", excluded: "excl. op. leases" };
 
 /** The ratio with a row naming the listing's lease liabilities under its net debt, when it reports any. */
 function withLeaseRow(def: RatioDef, basis: LeaseBasis | undefined): RatioDef {
@@ -376,10 +379,12 @@ export const RATIO_TABS: RatioTabDef[] = [
   {
     name: "Profitability",
     key: "profitability",
+    aliases: ["ratios", "returns", "profit"],
     ratios: [
       {
         id: "roe",
         label: "ROE",
+        searchAliases: ["return on equity"],
         format: "percent",
         signed: true,
         inputs: [netIncome, { label: "Avg Equity", operator: "÷", format: "money", value: average(...equityLines) }],
@@ -391,6 +396,7 @@ export const RATIO_TABS: RatioTabDef[] = [
       {
         id: "roa",
         label: "ROA",
+        searchAliases: ["return on assets"],
         format: "percent",
         signed: true,
         inputs: [netIncome, { label: "Avg Total Assets", operator: "÷", format: "money", value: average(line("totalAssets")) }],
@@ -399,6 +405,7 @@ export const RATIO_TABS: RatioTabDef[] = [
       {
         id: "roic",
         label: "ROIC",
+        searchAliases: ["return on invested capital", "nopat"],
         format: "percent",
         signed: true,
         inputs: [
@@ -431,6 +438,7 @@ export const RATIO_TABS: RatioTabDef[] = [
       {
         id: "operating-margin",
         label: "Operating Margin",
+        searchAliases: ["margins"],
         format: "percent",
         signed: true,
         inputs: [flow("Operating Income", line("operatingIncome")), flow("Revenue", revenue, "÷")],
@@ -449,10 +457,12 @@ export const RATIO_TABS: RatioTabDef[] = [
   {
     name: "Leverage",
     key: "leverage",
+    aliases: ["coverage", "credit"],
     ratios: [
       {
         id: "net-debt-ebitda",
         label: "Net Debt / EBITDA",
+        searchAliases: ["net debt to EBITDA"],
         format: "multiple",
         inputs: [
           { label: "Net Debt", format: "money", netDebt: true, value: netDebt },
@@ -473,6 +483,7 @@ export const RATIO_TABS: RatioTabDef[] = [
       {
         id: "interest-coverage",
         label: "Interest Coverage",
+        searchAliases: ["interest coverage ratio", "coverage ratio"],
         format: "multiple",
         // Both flows over the same trailing year, as a lender reads cover.
         inputs: [
@@ -552,6 +563,7 @@ export const RATIO_TABS: RatioTabDef[] = [
   {
     name: "Efficiency",
     key: "efficiency",
+    aliases: ["working capital"],
     ratios: [
       DSO,
       DIO,
@@ -575,10 +587,12 @@ export const RATIO_TABS: RatioTabDef[] = [
   {
     name: "Valuation",
     key: "valuation",
+    aliases: ["multiples"],
     ratios: [
       {
         id: "pe",
         label: "P/E",
+        searchAliases: ["P/E ratio", "price to earnings"],
         format: "multiple",
         inputs: [
           { label: "Price", format: "perShare", value: ({ price }) => price },
@@ -740,20 +754,11 @@ export const FINANCIAL_SECTIONS: FinancialSection[] = [
   ...RATIO_TABS.map((tab): FinancialSection => ({ kind: "ratio", name: tab.name, key: tab.key, tab })),
 ];
 
-const RATIO_ALIASES: Record<string, string> = {
-  ratios: "profitability",
-  returns: "profitability",
-  profit: "profitability",
-  coverage: "leverage",
-  credit: "leverage",
-  workingcapital: "efficiency",
-  multiples: "valuation",
-};
-
 /** A statement or ratio tab key from a stored value or a report option. */
 export function resolveFinancialSectionKey(value: string | undefined): string {
-  const normalized = (value ?? "").trim().toLowerCase().replace(/[\s_-]+/g, "");
-  const ratio = RATIO_ALIASES[normalized] ?? RATIO_TABS.find((tab) => tab.key === normalized)?.key;
+  const normalized = normalizeLookupToken(value ?? "");
+  const ratio = RATIO_TABS.find((tab) => tab.key === normalized
+    || tab.aliases?.some((alias) => normalizeLookupToken(alias) === normalized))?.key;
   return ratio ?? resolveFinancialSubTabKey(value);
 }
 

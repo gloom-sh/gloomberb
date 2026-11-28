@@ -139,6 +139,12 @@ export function optionChoices(option: PaneFunctionOptionDef): string[] {
   return option.values?.map(({ value }) => String(value)) ?? [];
 }
 
+export function optionValueAliasNote(option: PaneFunctionOptionDef): string | undefined {
+  if (!option.showValueAliases) return undefined;
+  const aliases = option.values?.flatMap(({ value, aliases }) => aliases?.length ? [`${value} (${aliases.join(", ")})`] : []);
+  return aliases?.length ? `Aliases: ${aliases.join("; ")}.` : undefined;
+}
+
 /** `--commodity <oil|gas>`: an option as the catalog and errors write it, its choices inline when they are short. */
 export function optionFlags(option: PaneFunctionOptionDef): string {
   const choices = optionChoices(option).join("|");
@@ -292,7 +298,8 @@ function normalizeEnumValue(option: PaneFunctionOptionDef, rawValue: string, arg
   if (match) return match.value;
   const hint = option.invalidValueHint?.(rawValue, argument);
   throw new Error(
-    `Invalid ${optionFlag(option.key)} value "${rawValue}".${hint ? ` ${hint}` : ""} Use one of: ${optionChoiceNames(option.values ?? [])}.`,
+    [`Invalid ${optionFlag(option.key)} value "${rawValue}".`, hint, `Use one of: ${optionChoiceNames(option.values ?? [])}.`,
+      optionValueAliasNote(option)].filter(Boolean).join(" "),
   );
 }
 

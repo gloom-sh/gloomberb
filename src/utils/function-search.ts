@@ -1,4 +1,5 @@
 import type { PaneTemplateDef } from "../types/plugin";
+import { discoveryOpeningKeywords } from "./lookup-token";
 
 const STOP_WORDS = new Set(["a", "an", "and", "at", "by", "for", "from", "in", "is", "of", "on", "or", "the", "to", "with"]);
 
@@ -34,5 +35,5 @@ export function paneTemplateSearchFields(template: PaneTemplateDef, pane?: { hea
   return [...template.keywords ?? [], template.label, template.description, template.paneId, template.id,
     template.shortcut?.prefix ?? "", ...template.shortcut?.aliases ?? [],
     ...discovery?.aliases ?? [], ...discovery?.suggestFor ?? [], ...discovery?.intents ?? [],
-    ...discovery?.opens?.flatMap((opening) => opening.words) ?? []];
+    ...discoveryOpeningKeywords(discovery)];
 }

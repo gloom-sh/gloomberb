@@ -344,6 +344,7 @@ export function wordNamesCommand(query: string, items: readonly ResultItem[]): b
 }
 
 function commandNamedBy(query: string, item: ResultItem): boolean {
+  if (item.exactViewMatch) return true;
   const word = query.trim();
   return /^[a-z]{4,}$/.test(word) && (item.kind === "command" || item.kind === "action") && !item.disabled
     && commandWords(item).some((part) => part.startsWith(word));

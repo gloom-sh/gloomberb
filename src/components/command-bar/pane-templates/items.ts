@@ -323,7 +323,8 @@ export function buildPaneShortcutItems(options: {
           : options.createOptions,
         showShortcut: true,
       });
-      const named = opening && opening.argument && !item.disabled ? { ...item, name: opening.argument } : item;
+      const name = opening?.label || opening?.argument;
+      const named = name && !item.disabled ? { ...item, name, ...(opening?.label ? { exactViewMatch: true } : {}) } : item;
       return query ? withShownTerm(named, template, query) : named;
     });
 
